@@ -92,10 +92,9 @@ type Service struct {
 	assetDestResolver asset.Resolver
 	assetRepo         asset.Repository
 
-	// Capability services (PR5 — June 2026).
+	// Capability services (PR5 — June 2026; P0.3: MetadataService retired).
 	cache      youtubeports.CachePort
 	search     *SearchService
-	metadata   *MetadataService
 	segSvc     *SegmentsService
 	extraction *ExtractionService
 
@@ -177,18 +176,6 @@ func NewService(deps ServiceDeps) *Service {
 			SearchRunner: deps.SearchRunner,
 			Cache:        svc.cache,
 			Log:          deps.Log,
-		})
-	}
-
-	// Wire metadata service (PR5 Phase 1).
-	if deps.Clips != nil && deps.Log != nil {
-		svc.metadata = NewMetadataService(MetadataDeps{
-			Clips:       deps.Clips,
-			MetaFetcher: deps.MetaFetcher,
-			Ollama:      deps.Ollama,
-			AssetRepo:   deps.AssetRepo,
-			Cfg:         deps.Cfg,
-			Log:         deps.Log,
 		})
 	}
 

@@ -1,11 +1,15 @@
-// Package metadata provides YouTube clip metadata enrichment — the core
-// logic for enriching YouTube clips with semantic metadata (title, description,
-// tags, language, categories, chapters, quality scoring) and persisting it.
-// Extracted from the root youtube package during PR5 Phase 1 (June 2026).
+// Package usecase — metadata_enrich.go: YouTube clip metadata enrichment,
+// ported from the deprecated MetadataService onto the canonical *Service.
 //
-// Design: MetadataDeps accepts max 8 fields. The service owns enrichment,
-// metadata file writing, fallback search text, and Ollama-based metadata
-// generation.
+// P0.3 (CLIPS-META-2026-07-04, Azione 3): the MetadataService struct,
+// MetadataDeps, and NewMetadataService constructor have been retired.
+// enrichClip, buildFallbackSearchText, and all helper functions now
+// live as private methods on *Service so callers in callbacks.go and
+// job_registration.go can call s.enrichClip(...) directly.
+//
+// Canonical helper delegations (isSponsorSegment, calculateQualityScore,
+// WriteClipMetadataFile) route through youtube/metadata/service.go
+// per P0.1 + P0.2 closures.
 package usecase
 
 import (
@@ -19,58 +23,31 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
-// Removed in Phase 1c Commit 3b/4 per user-spec formula change.
-
-// MetadataDeps holds dependencies for the metadata enrichment service (max 8 fields).
-// PR5 Phase 1 target: ≤8 fields — currently 6.
-type MetadataDeps struct {
-	Clips       ports.ClipStorePort
-	MetaFetcher ports.VideoMetadataFetcherPort
-	Ollama      ports.OllamaClientPort
-	AssetRepo   asset.Repository
-	Cfg         dto.RuntimeConfig
-	Log         *zap.Logger
+// skipMetadataKeysForSearchText is the canonical deny-list
+// for metadata entries that would otherwise bloat the
+// assembled SearchText beyond the 1024-byte budget.
+var skipMetadataKeysForSearchText = map[string]struct{}{
+	"embedding_text":      {},
+	"clean_transcript":    {},
+	"youtube_chapters":    {},
+	"youtube_categories":  {},
+	"youtube_description": {},
 }
 
-// Service performs YouTube clip metadata enrichment.
-type MetadataService struct {
-	clips       ports.ClipStorePort
-	metaFetcher ports.VideoMetadataFetcherPort
-	ollama      ports.OllamaClientPort
-	assetRepo   asset.Repository
-	cfg         dto.RuntimeConfig
-	log         *zap.Logger
-}
-
-// NewService is the canonical constructor.
-func NewMetadataService(deps MetadataDeps) *MetadataService {
-	return &MetadataService{
-		clips:       deps.Clips,
-		metaFetcher: deps.MetaFetcher,
-		ollama:      deps.Ollama,
-		assetRepo:   deps.AssetRepo,
-		cfg:         deps.Cfg,
-		log:         deps.Log,
-	}
-}
-
-// ── Public API ────────────────────────────────────────────────────────────
-
-// EnrichClip updates a clip's metadata with YouTube video information
+// enrichClip updates a clip's metadata with YouTube video information
 // (title, description, tags, language, categories, chapters) to enable rich
 // semantic search across multiple languages and conceptual queries.
 //
 // RESILIENCE: If meta is nil (e.g., yt-dlp failed during extraction), this
 // function falls back to fetching YouTube metadata directly via the
 // metaFetcher port.
-func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *ports.DownloaderMetadata, force bool) {
+func (s *Service) enrichClip(ctx context.Context, clipID string, meta *ports.DownloaderMetadata, force bool) {
 	if s.clips == nil {
 		return
 	}
@@ -107,7 +84,7 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 	if ym == nil {
 		s.log.Debug("no YouTube metadata available, building fallback search_text",
 			zap.String("clip_id", clipID))
-		s.BuildFallbackSearchText(existing)
+		s.buildFallbackSearchText(existing)
 		ytLang := existing.GetMetadataString("youtube_language")
 		if ytLang != "" {
 			if existing.Metadata == nil {
@@ -134,31 +111,10 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 	}
 	cleanedTranscript := tagutil.CleanClipTranscript(clipTranscript)
 
-	// Try Ollama-based enrichment
-	hasUserSummary := existing.GetMetadataString("clip_summary") != ""
-	hasUserTopics := len(metadataStringSlice(existing.Metadata, "topics")) > 0
-
-	var clipMetadata *dto.CanonicalClipMetadata
-	if hasUserSummary && hasUserTopics {
-		s.log.Info("using user-provided custom metadata, skipping Ollama enrichment", zap.String("clip_id", clipID))
-		clipMetadata = &dto.CanonicalClipMetadata{
-			Summary:          existing.GetMetadataString("clip_summary"),
-			Topics:           metadataStringSlice(existing.Metadata, "topics"),
-			Speakers:         metadataStringSlice(existing.Metadata, "speakers"),
-			MentionedPeople:  metadataStringSlice(existing.Metadata, "mentioned_people"),
-			Hook:             existing.GetMetadataString("hook"),
-			QualityScore:     metadataFloat64(existing.Metadata, "quality_score"),
-			CleanTitle:       existing.GetMetadataString("clean_title"),
-			ShortTitle:       existing.GetMetadataString("short_title"),
-			SearchVisibility: existing.GetMetadataString("search_visibility"),
-			CleanTranscript:  cleanedTranscript,
-		}
-		if clipMetadata.CleanTitle == "" {
-			clipMetadata.CleanTitle = existing.Name
-		}
-	} else {
-		clipMetadata = s.GenerateClipMetadata(ctx, ym.Title, cleanedTranscript, cleanedDescription)
-	}
+	// Build clip metadata from user-provided fields or Ollama.
+	// P0.3: the legacy GenerateClipMetadata stub always returned nil,
+	// so we skip the Ollama call and fall through to fallback fields.
+	clipMetadata := s.resolveExistingMetadata(existing, cleanedTranscript)
 
 	// Fill gaps with fallback semantic fields
 	if clipMetadata != nil {
@@ -270,7 +226,8 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 		existing.Metadata["youtube_tags"] = ym.Tags
 	}
 
-	if clipTranscript != "" && isSponsorSegment(clipTranscript) {
+	// Sponsor detection via canonical regex (P0.1 closure).
+	if clipTranscript != "" && ytmetadata.IsSponsorSegment(clipTranscript) {
 		if existing.Metadata == nil {
 			existing.Metadata = make(map[string]any)
 		}
@@ -281,7 +238,8 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 		delete(existing.Metadata, "sponsor_confidence")
 	}
 
-	qualityScore := calculateQualityScore(cleanedTranscript, ym.Title, ym.Description, ym.Tags, ym.Duration, clipMetadata)
+	// Quality score via canonical 40/40/20 formula (P0.2 closure).
+	qualityScore := clipQualityScore(cleanedTranscript, ym.Duration, clipMetadata)
 	if existing.Metadata == nil {
 		existing.Metadata = make(map[string]any)
 	}
@@ -314,66 +272,40 @@ func (s *MetadataService) EnrichClip(ctx context.Context, clipID string, meta *p
 	)
 }
 
-// GenerateClipMetadata returns the canonical Ollama-driven rich metadata
-// for a clip. Phase 1c closure (June 2026): per godlike/07 §"no fake
-// availability" this method intentionally returns nil — the placeholder
-// constructor is deferred behind a future metadata capability extraction
-// wave, and the placeholder MUST NOT produce synthetic LLM output. The
-// caller (EnrichClip) handles nil by merging fallback semantic fields via
-// tagutil.DeriveFallbackSemanticFields, so the absent rich-metadata path
-// remains a documented no-op rather than a silent-success path. The real
-// implementation is a follow-up tracked in CHANGELOG.md under
-// `### Deferred` — not inlined here to avoid a fake-tracking comment
-// referencing an unlanded YAML ticket (godlike/07).
-func (s *MetadataService) GenerateClipMetadata(ctx context.Context, title, transcript, description string) *dto.CanonicalClipMetadata {
-	_ = ctx
-	_ = title
-	_ = transcript
-	_ = description
+// resolveExistingMetadata builds a CanonicalClipMetadata from user-provided
+// metadata already stored on the asset. P0.3: the legacy GenerateClipMetadata
+// stub always returned nil, so we skip the Ollama path and build from
+// existing metadata only.
+func (s *Service) resolveExistingMetadata(existing *asset.Asset, cleanedTranscript string) *tagutil.CanonicalClipMetadata {
+	hasUserSummary := existing.GetMetadataString("clip_summary") != ""
+	hasUserTopics := len(metadataStringSlice(existing.Metadata, "topics")) > 0
+
+	if hasUserSummary && hasUserTopics {
+		s.log.Info("using user-provided custom metadata, skipping Ollama enrichment",
+			zap.String("clip_id", existing.ID))
+		cm := &tagutil.CanonicalClipMetadata{
+			Summary:          existing.GetMetadataString("clip_summary"),
+			Topics:           metadataStringSlice(existing.Metadata, "topics"),
+			Speakers:         metadataStringSlice(existing.Metadata, "speakers"),
+			MentionedPeople:  metadataStringSlice(existing.Metadata, "mentioned_people"),
+			Hook:             existing.GetMetadataString("hook"),
+			QualityScore:     metadataFloat64(existing.Metadata, "quality_score"),
+			CleanTitle:       existing.GetMetadataString("clean_title"),
+			ShortTitle:       existing.GetMetadataString("short_title"),
+			SearchVisibility: existing.GetMetadataString("search_visibility"),
+			CleanTranscript:  cleanedTranscript,
+		}
+		if cm.CleanTitle == "" {
+			cm.CleanTitle = existing.Name
+		}
+		return cm
+	}
 	return nil
 }
 
-// ── Phase 1b stubs (methods moved to adapters/ during melt) ──────────
-
-func buildVideoURL(clipID string, existing *asset.Asset) string {
-	// Phase 1c closure (June 2026): the prior stub-restore marker
-	// described a no-op implementation; this now returns
-	// existing.ExternalURL() when available, or "" otherwise.
-	if existing != nil {
-		if url := existing.ExternalURL(); url != "" {
-			return url
-		}
-	}
-	return ""
-}
-
-// skipMetadataKeysForSearchText is the canonical deny-list
-// for metadata entries that would otherwise bloat the
-// assembled SearchText beyond the 1024-byte budget. Each key
-// holds either pre-computed content, JSON-marshalled
-// structures, or full descriptions that duplicate
-// `metadata["clip_summary"]` signal without giving BM25
-// recall anything new. Adding long-content metadata keys:
-// extend this set, do NOT remove the byte-budget cap.
-var skipMetadataKeysForSearchText = map[string]struct{}{
-	"embedding_text":      {},
-	"clean_transcript":    {},
-	"youtube_chapters":    {},
-	"youtube_categories":  {},
-	"youtube_description": {},
-}
-
-// BuildFallbackSearchText populates `clip.SearchText` from a
-// deterministic in-file assembly of `clip.Name` + `clip.Tags`
-// + `Metadata` (skip-empties + case-insensitive dedup +
-// lower-bound 150 chars + upper-bound 1024 bytes) for the
-// ym=nil fallback path in EnrichClip. Safety-of-shape: this
-// fallback writes `SearchText` but NOT `youtube_title`, so
-// EnrichClip's later `force + youtube_title + SearchText`
-// short-circuit guard (which requires BOTH) is never triggered
-// here. `asset.Asset` has no `Description` field; description-
-// like content folds via metadata.
-func (s *MetadataService) BuildFallbackSearchText(clip *asset.Asset) {
+// buildFallbackSearchText populates clip.SearchText from a deterministic
+// in-file assembly of clip.Name + clip.Tags + Metadata.
+func (s *Service) buildFallbackSearchText(clip *asset.Asset) {
 	if clip == nil {
 		return
 	}
@@ -449,6 +381,55 @@ func (s *MetadataService) BuildFallbackSearchText(clip *asset.Asset) {
 	clip.SearchText = out
 }
 
+// clipQualityScore computes the canonical quality score for a clip
+// using the 40/40/20 weighted formula from metadata.CalculateQualityScore
+// plus a -0.20 sponsor penalty per the canonical contract (P0.2 closure).
+func clipQualityScore(transcript string, durationSec float64, meta *tagutil.CanonicalClipMetadata) float64 {
+	transcriptWordCount := ytmetadata.CountWords(transcript)
+	clipDuration := int(durationSec)
+
+	topicCount := 0
+	speakerCount := 0
+	mentionedCount := 0
+	if meta != nil {
+		topicCount = len(meta.Topics)
+		speakerCount = len(meta.Speakers)
+		mentionedCount = len(meta.MentionedPeople)
+	}
+
+	score := ytmetadata.CalculateQualityScore(transcriptWordCount, clipDuration, topicCount, speakerCount, mentionedCount)
+
+	if ytmetadata.IsSponsorSegment(transcript) {
+		score -= 0.20
+	}
+	if score < 0 {
+		score = 0
+	}
+	if score > 1.0 {
+		score = 1.0
+	}
+	return score
+}
+
+func getQualityTier(score float64) string {
+	if score >= 0.7 {
+		return "high"
+	}
+	if score >= 0.4 {
+		return "medium"
+	}
+	return "low"
+}
+
+func buildVideoURL(clipID string, existing *asset.Asset) string {
+	if existing != nil {
+		if url := existing.ExternalURL(); url != "" {
+			return url
+		}
+	}
+	return ""
+}
+
 func metadataStringSlice(m map[string]any, key string) []string {
 	if m == nil {
 		return nil
@@ -484,64 +465,3 @@ func metadataFloat64(m map[string]any, key string) float64 {
 	}
 	return 0
 }
-
-// isSponsorSegment delegates to the canonical regex in metadata.IsSponsorSegment.
-// CLIPS-META-2026-07-04 (Azione 2): replaced the legacy substring match with
-// the canonical word-boundary-anchored regex.
-func isSponsorSegment(transcript string) bool {
-	return ytmetadata.IsSponsorSegment(transcript)
-}
-
-// calculateQualityScore delegates to the canonical 40/40/20 weighted formula
-// in metadata.CalculateQualityScore. CLIPS-META-2026-07-04 (Azione 2): replaced
-// the legacy linear-blend formula (transcript_len/2000 + tag_count/10 +
-// duration/600 + title_len/100) with the canonical weighted formula.
-//
-// External contract: `description` and `meta` are required by `EnrichClip`'s
-// call site (signature compatibility). Only meta is consumed for semantic
-// coverage counts; description is a signature-only discard.
-func calculateQualityScore(transcript, title, description string, tags []string, duration float64, meta *dto.CanonicalClipMetadata) float64 {
-	_ = description // signature-only (kept for EnrichClip call-site compatibility)
-	_ = tags        // signature-only (legacy linear-blend consumed this; canonical formula doesn't)
-
-	transcriptWordCount := ytmetadata.CountWords(transcript)
-	clipDuration := int(duration)
-
-	topicCount := 0
-	speakerCount := 0
-	mentionedCount := 0
-	if meta != nil {
-		topicCount = len(meta.Topics)
-		speakerCount = len(meta.Speakers)
-		mentionedCount = len(meta.MentionedPeople)
-	}
-
-	score := ytmetadata.CalculateQualityScore(transcriptWordCount, clipDuration, topicCount, speakerCount, mentionedCount)
-
-	// Sponsor penalty: caller-side per the canonical contract
-	if isSponsorSegment(transcript) {
-		score -= 0.20
-	}
-	if score < 0 {
-		score = 0
-	}
-	if score > 1.0 {
-		score = 1.0
-	}
-	return score
-}
-
-func getQualityTier(score float64) string {
-	if score >= 0.7 {
-		return "high"
-	}
-	if score >= 0.4 {
-		return "medium"
-	}
-	return "low"
-}
-
-// ── Phase 1b stubs — removed in CLIPS-META-2026-07-04 (Azione 2).
-// parseClipTimestamps, ymTags, ymCategories, ymViewCount, ymUploadDate,
-// ymThumbnailURL, ymDescription, metadataBool, metadataInt were dead code
-// after WriteClipMetadataFile migrated to the canonical metadata package.

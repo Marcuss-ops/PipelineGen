@@ -32,10 +32,7 @@ import (
 // capability service or port.
 
 func (s *Service) EnrichClip(ctx context.Context, clipID string, ym *youtubeports.DownloaderMetadata, force bool) {
-	if s.metadata == nil {
-		return
-	}
-	s.metadata.EnrichClip(ctx, clipID, ym, force)
+	s.enrichClip(ctx, clipID, ym, force)
 }
 
 func (s *Service) ClassifyCategory(ctx context.Context, title string) string {
@@ -347,8 +344,8 @@ func (s *Service) enrichSkippedClip(ctx context.Context, clipID, videoURL, video
 		return
 	}
 
-	// Pass DownloaderMetadata directly to the metadata capability service
-	s.metadata.EnrichClip(ctx, clipID, ym, false)
+	// Pass DownloaderMetadata directly to the enrichment pipeline (P0.3)
+	s.enrichClip(ctx, clipID, ym, false)
 
 	// Also trigger auto-indexing now that the clip has rich search_text
 	s.triggerAutoIndexing(ctx, clipID)

@@ -72,14 +72,11 @@ func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, j *jobservice.
 		Indexer: s.indexer,
 		Clips:   s.clips,
 		Enricher: func(ctx context.Context, clipID string, meta any, force bool) {
-			if s.metadata == nil {
-				return
-			}
 			var m *youtubeports.DownloaderMetadata
 			if meta != nil {
 				m, _ = meta.(*youtubeports.DownloaderMetadata)
 			}
-			s.metadata.EnrichClip(ctx, clipID, m, force)
+			s.enrichClip(ctx, clipID, m, force)
 		},
 	}
 	return ytjobs.HandleRebuildSearchTextJob(deps, ctx, j, tools)
