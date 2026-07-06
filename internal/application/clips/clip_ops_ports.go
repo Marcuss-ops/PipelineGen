@@ -2,16 +2,6 @@ package clips
 
 import "context"
 
-// ── Voiceover / Images / Jobs / Deletion port surface for cleanup ────
-
-// CleanupServicePort is the narrowed surface of *deletion.DeletionService
-// consumed by clip_ops. The full DeletionService has many other
-// methods; we expose only what Reconcile/Cleanup/VerifyClip need.
-type CleanupServicePort interface {
-	CleanupOrphanFiles(ctx context.Context, path string, dryRun bool) (int, error)
-	DeleteClip(ctx context.Context, source, clipID string, hardDelete bool) error
-}
-
 // JobsServicePort is the narrowed surface of `jobservice.Service`
 // for enqueuing "system.cleanup" jobs in deep mode. Repurposes the
 // existing port `domain/job` to avoid a re-import in this file.

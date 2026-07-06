@@ -28,7 +28,6 @@ type ClipOpsService struct {
 	voiceoverRepo  VoiceoverRepositoryPort
 	imagesRepo     ImageRepositoryPort
 	driveUploader  ClipDriveUploaderPort
-	cleanup        CleanupServicePort
 	jobs           JobsServicePort
 	dispatcher     ClipIndexDispatcherPort
 	log            *zap.Logger
@@ -43,7 +42,6 @@ func NewClipOpsService(
 	voiceoverRepo VoiceoverRepositoryPort,
 	imagesRepo ImageRepositoryPort,
 	driveUploader ClipDriveUploaderPort,
-	cleanup CleanupServicePort,
 	jobs JobsServicePort,
 	dispatcher ClipIndexDispatcherPort,
 	log *zap.Logger,
@@ -56,7 +54,6 @@ func NewClipOpsService(
 		voiceoverRepo:  voiceoverRepo,
 		imagesRepo:     imagesRepo,
 		driveUploader:  driveUploader,
-		cleanup:        cleanup,
 		jobs:           jobs,
 		dispatcher:     dispatcher,
 		log:            log,

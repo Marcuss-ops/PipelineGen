@@ -179,9 +179,7 @@ func buildClipsBundle(
 	// single canonical service instead of duplicating the business logic
 	// locally. The clipsAdapterBundle exposes typed ports for every dep
 	// the service takes; the new clipsJobsPortAdapter bridges
-	// domain/job.Service.Enqueue into the service's narrowed DTO. The
-	// cleanup port is a thin pass-through over deletionSvc (signatures
-	// already match the clips.CleanupServicePort contract). HC-1 (June
+	// domain/job.Service.Enqueue into the service's narrowed DTO. HC-1 (June
 	// 2026): pass the typed TimeoutResolver (canonical impl:
 	// appjobs.Compose() — *jobs.Registry) so the cfg adapter in the
 	// bundle has the timeouts port wired.
@@ -199,7 +197,6 @@ func buildClipsBundle(
 		clipsOpsPorts.VoiceoverRepo,
 		clipsOpsPorts.ImagesRepo,
 		clipsOpsPorts.DriveUploader,
-		newClipsCleanupPortAdapter(deletionSvc),
 		newClipsJobsPortAdapter(jobs.Facade),
 		clipsDispatcherPort,
 		log,
