@@ -4367,11 +4367,13 @@
   linked_issues:
   - id: PR-QDRANT-CONFIG-MISMATCH-GATE
     owner_capability: internal/app + internal/infrastructure/qdrant
-    status: pending
+    status: shipped
+    ship_date: 2026-07-06
     deadline: 2026-07-15
   - id: PR-QDRANT-INDEXCLIP-GUARD
     owner_capability: internal/application/assets/indexing/handler.go + internal/infrastructure/indexing/clipindexer
-    status: pending
+    status: shipped
+    ship_date: 2026-07-06
     deadline: 2026-07-15
   - id: PR-QDRANT-E2E-YOUTUBE
     owner_capability: tests/e2e/ + internal/application/youtube/usecase
@@ -5262,11 +5264,13 @@
   linked_issues:
   - id: PR-QDRANT-CONFIG-MISMATCH-GATE
     owner_capability: internal/app + internal/infrastructure/qdrant
-    status: pending
+    status: shipped
+    ship_date: 2026-07-06
     deadline: 2026-07-15
   - id: PR-QDRANT-INDEXCLIP-GUARD
     owner_capability: internal/application/assets/indexing/handler.go + internal/infrastructure/indexing/clipindexer
-    status: pending
+    status: shipped
+    ship_date: 2026-07-06
     deadline: 2026-07-15
   - id: PR-QDRANT-E2E-YOUTUBE
     owner_capability: tests/e2e/ + internal/application/youtube/usecase
@@ -5527,11 +5531,13 @@
   linked_issues:
     - id: PR-QDRANT-CONFIG-MISMATCH-GATE
       owner_capability: internal/app
-      status: pending
+      status: shipped
+    ship_date: 2026-07-06
       deadline: "2026-07-15"
     - id: PR-QDRANT-INDEXCLIP-GUARD
       owner_capability: internal/application/jobs/outbox
-      status: pending
+      status: shipped
+    ship_date: 2026-07-06
       deadline: "2026-07-15"
     - id: PR-GENERATED-SEARCH-FIX
       owner_capability: internal/api/images
