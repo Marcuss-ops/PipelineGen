@@ -9,42 +9,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 )
-
-func (s *Service) BuildFallbackSearchText(clip *asset.Asset) {
-	var parts []string
-	if ytTitle := clip.GetMetadataString("youtube_title"); ytTitle != "" {
-		parts = append(parts, "Title: "+ytTitle)
-	}
-	if clip.Name != "" {
-		parts = append(parts, "Segment: "+clip.Name)
-	}
-	if ytDesc := clip.GetMetadataString("youtube_description"); ytDesc != "" {
-		cleanedDesc := tagutil.CleanYouTubeDescription(ytDesc)
-		if cleanedDesc != "" {
-			if phrases := tagutil.ExtractKeyPhrases(cleanedDesc, 5); len(phrases) > 0 {
-				parts = append(parts, "Description keywords: "+strings.Join(phrases, ", "))
-			}
-		}
-	}
-	if ytTags := clip.GetMetadataString("youtube_tags"); ytTags != "" && ytTags != "[]" {
-		parts = append(parts, "Tags: "+ytTags)
-	}
-	if len(clip.Tags) > 0 {
-		parts = append(parts, "Tags: "+strings.Join(clip.Tags, ", "))
-	}
-	if ytUploader := clip.GetMetadataString("youtube_uploader"); ytUploader != "" {
-		parts = append(parts, "Uploader: "+ytUploader)
-	}
-	if ytLang := clip.GetMetadataString("youtube_language"); ytLang != "" {
-		parts = append(parts, "Language: "+ytLang)
-	}
-	if len(parts) > 0 {
-		clip.SearchText = strings.Join(parts, "\n")
-	}
-}
 
 func (s *Service) GenerateClipMetadata(ctx context.Context, title, transcript, description string) *dto.CanonicalClipMetadata {
 	if s.ollama == nil {
