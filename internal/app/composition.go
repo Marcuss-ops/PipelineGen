@@ -90,8 +90,17 @@ type DriveBundle struct {
 	Admin drive.Admin
 	// Reader is the canonical Pattern 0 port for read-only Drive ops
 	// (download, metadata, listing, existence checks).
-	Reader        drive.Reader
-	DocClient     drive.DocClient
+	Reader drive.Reader
+	// DocClient stays for CreateDoc + ListRecentDocs callers (both return
+	// *drive.Doc / []drive.Doc which tie to the infrastructure package).
+	// Callers that only need ShareDoc / UpdateDoc should use DocPublisher
+	// (the application-layer Pattern 0 port, P1-6, July 2026).
+	DocClient drive.DocClient
+	// DocPublisher is the canonical Pattern 0 port for Google Docs ops
+	// whose signatures avoid *drive.Doc references (ShareDoc + UpdateDoc).
+	// Populated from DocClient via type assertion in BuildDriveBundle.
+	// P1-6 (July 2026).
+	DocPublisher  delivery.DocPublisher
 	DriveDests    *DriveDestinations
 	MediaStore    *drive.Store
 	DestResolver  asset.Resolver

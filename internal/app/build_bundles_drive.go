@@ -93,6 +93,23 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		log.Warn("Docs client not initialized", zap.Error(err))
 	}
 
+	// P1-6 (July 2026): derive the canonical delivery.DocPublisher port
+	// from the concrete DocClient. Go cannot implicitly convert between
+	// two interface types with identical method-sets, so we type-assert.
+	// The assertion is safe because NewDocClient always returns
+	// *DocClientImpl, and the compile-time assertion at
+	// internal/infrastructure/drive/doc_publisher_assert.go locks the
+	// conformance at build time. nil-safe: if docClient is nil (Drive
+	// not configured), DocPublisher stays nil.
+	var docPublisher delivery.DocPublisher
+	if docClient != nil {
+		var ok bool
+		docPublisher, ok = docClient.(delivery.DocPublisher)
+		if !ok {
+			return nil, nil, fmt.Errorf("compose drive: DocClient does not satisfy delivery.DocPublisher (P1-6 migration incomplete)")
+		}
+	}
+
 	driveClient, err := drive.NewDriveServiceFromFiles(ctx, cfg)
 	if err != nil {
 		log.Warn("Google Drive client not initialized", zap.Error(err))
@@ -259,6 +276,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		StyleRegistry: styleRegistry,
 		Publisher:     publisher,
 		DocClient:     docClient,
+		DocPublisher:  docPublisher,
 		Lifecycle:     lifecycle,
 	}, startClosure, nil
 }
