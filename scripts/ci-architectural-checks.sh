@@ -612,7 +612,7 @@ echo "OK: no duplicate migration version prefixes in ${migration_root}/"
 # `package X` line + every `^type X ...` declaration, project to <package>:<type>,
 # fail on any redeclaration that is NOT listed in the per-package allowlist.
 #
-# Allowlist: docs/architecture/godlike/duplicate-types-allowlist.txt lists one
+# Allowlist: docs/migrations/duplicate-types-allowlist.txt lists one
 # `<package>:<TypeName>` per line for intentional redeclarations. Per AGENTS.md
 # §8 ARCHITECTURE-CI-GATES zero-baseline rule, every new entry requires
 # owner + deadline. The file is currently empty by design — same-package
@@ -654,8 +654,8 @@ done < <(find internal/ -name '*.go' -not -name '*_test.go' -print0 2>/dev/null 
 # Empty file = no exceptions; missing file = no exceptions (the file is expected
 # to exist on disk per AGENTS.md §8 but we do not gate on its presence here).
 allowed=""
-if [ -f "docs/architecture/godlike/duplicate-types-allowlist.txt" ]; then
-  allowed=$(grep -vE '^\s*(#|$)' docs/architecture/godlike/duplicate-types-allowlist.txt 2>/dev/null \
+if [ -f "docs/migrations/duplicate-types-allowlist.txt" ]; then
+  allowed=$(grep -vE '^\s*(#|$)' docs/migrations/duplicate-types-allowlist.txt 2>/dev/null \
             | awk '{print $1}' | sort -u | paste -sd'|' - || true)
 fi
 
@@ -694,7 +694,7 @@ if [ -n "$fails" ]; then
   echo "Resolution order:"
   echo "  1. Pick one file as canonical; remove the duplicate from every other file;"
   echo "  2. Or if the redeclaration is intentional (documented wire-mirror), add"
-  echo "     an entry to docs/architecture/godlike/duplicate-types-allowlist.txt"
+  echo "     an entry to docs/migrations/duplicate-types-allowlist.txt"
   echo "     in the form '<package>:<TypeName>   # rationale + owner + deadline'."
   echo ""
   echo "Per AGENTS.md §8 ARCHITECTURE-CI-GATES zero-baseline rule, every new"

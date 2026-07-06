@@ -93,7 +93,7 @@ type Dup struct {
 // TestScanTypeRedeclarations_AllowlistRespected pins the canonical
 // godlike/08 zero-baseline rule semantics: a (pkg, TypeName) pair
 // listed in the allowlist is exempt. The allowlist path is
-// docs/architecture/godlike/duplicate-types-allowlist.txt (matches
+// docs/migrations/duplicate-types-allowlist.txt (matches
 // the shell check's `if [ -f ... ]` guard).
 func TestScanTypeRedeclarations_AllowlistRespected(t *testing.T) {
 	root := t.TempDir()
@@ -106,7 +106,7 @@ type Dup struct{ A int }
 type Dup struct{ B string }
 `)
 	// Seed the allowlist with the (pkg, type) pair.
-	writeFileFixture(t, root, "docs/architecture/godlike/duplicate-types-allowlist.txt",
+	writeFileFixture(t, root, "docs/migrations/duplicate-types-allowlist.txt",
 		"foo:Dup   # transitional — owner: @test, deadline: 2026-09-01\n")
 	r := &report.Report{}
 	ScanTypeRedeclarations(root, &policy.Policy{}, r)
@@ -236,7 +236,7 @@ func TestLoadDuplicateTypesAllowlist(t *testing.T) {
 	})
 	t.Run("parses first whitespace token per line", func(t *testing.T) {
 		root := t.TempDir()
-		writeFileFixture(t, root, "docs/architecture/godlike/duplicate-types-allowlist.txt",
+		writeFileFixture(t, root, "docs/migrations/duplicate-types-allowlist.txt",
 			"# header comment\n"+
 				"\n"+
 				"foo:Alpha   # rationale + owner + deadline\n"+

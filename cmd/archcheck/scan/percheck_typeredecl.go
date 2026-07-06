@@ -42,7 +42,7 @@ import (
 // check reads the same file (single source of truth per godlike/06
 // SSOT). The path is relative to the project root (not the
 // archcheck binary's CWD) so the scanner is CWD-stable.
-const duplicateTypesAllowlistRelPath = "docs/architecture/godlike/duplicate-types-allowlist.txt"
+const duplicateTypesAllowlistRelPath = "docs/migrations/duplicate-types-allowlist.txt"
 
 // ScanTypeRedeclarations walks every non-test .go file under
 // <root>/internal/, extracts each package's exported type
