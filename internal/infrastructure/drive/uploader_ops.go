@@ -468,7 +468,12 @@ func (u *Uploader) Ping(ctx context.Context) error {
 	return err
 }
 
-// MoveFile moves a file from one folder to another by updating its parents.
+// MoveFile moves a file from one folder to another (true "move" — read
+// current parents + add new + remove old). Distinct from
+// FileLifecycle.AddParent which only ADDS a new parent without removing
+// the old one (multi-parent semantics). Per godlike/06 one-owner-per-fact:
+// Admin.MoveFile owns the true-move semantic; FileLifecycle.AddParent owns
+// multi-parent-add. The two are intentionally separate surfaces.
 func (u *Uploader) MoveFile(ctx context.Context, fileID, fromFolderID, toFolderID string) error {
 	if u.Service == nil {
 		return fmt.Errorf("drive service not configured")
