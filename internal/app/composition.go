@@ -551,17 +551,16 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	// cleanup driver inline BEFORE BuildOutboxBundle because the
 	// outbox bundle now expects a jobsoutbox.VoiceoverCleanupDriver
 	// arg (the canonical narrow port for orphan Drive file delete).
-	// The *voiceoverDriveAdapter instance (defined in
-	// adapters_voiceover_publisher.go, package app) satisfies
-	// jobsoutbox.VoiceoverCleanupDriver structurally via Go's
-	// implicit-interface rule. nil Drive admin → nil cleanup driver
-	// → handler registered but skips the Drive delete branch
-	// (local-remove branch still runs via stdlib; logs operator-
-	// visible warning).
+	// The canonical drive.Admin interface structurally satisfies
+	// jobsoutbox.VoiceoverCleanupDriver (both declare DeleteFile with
+	// the same signature). nil Drive admin → nil cleanup driver →
+	// handler registered but skips the Drive delete branch (local-
+	// remove branch still runs via stdlib; logs operator-visible
+	// warning).
 	driveAdmin := driveBundle.Admin
 	var voiceoverDriver jobsoutbox.VoiceoverCleanupDriver
 	if driveAdmin != nil {
-		voiceoverDriver = &voiceoverDriveAdapter{drive: driveAdmin}
+		voiceoverDriver = driveAdmin
 	}
 	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver)
 	if err != nil {

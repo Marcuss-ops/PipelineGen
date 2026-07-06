@@ -93,11 +93,12 @@ type TxOutboxEnqueuer interface {
 	EnqueueCleanupEvent(ctx context.Context, tx *sql.Tx, voiceoverID, oldDriveFileID, newDriveFileID string, oldLocalPaths []string) error
 }
 
-// Azione #9 follow-up (July 2026): DriveUploaderPort interface removed.
-// Post-commit cleanup now flows through jobsoutbox.VoiceoverCleanupDriver
-// (a separate interface in outbox/voiceover_cleanup.go). The same
-// voiceoverDriveAdapter satisfies both structurally, but only
-// VoiceoverCleanupDriver is consumed.
+// Azione #9 follow-up (July 2026): DriveUploaderPort interface removed;
+// voiceoverDriveAdapter struct also removed from
+// internal/app/adapters_voiceover_publisher.go. Post-commit cleanup now
+// flows directly through drive.Admin → jobsoutbox.VoiceoverCleanupDriver
+// (structural conformance — both declare DeleteFile with identical
+// signature; no wrapper needed).
 
 // VoiceoverGenerator is the BACKFILL typed-port (Wave 21
 // PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2, B-2 step closure, per

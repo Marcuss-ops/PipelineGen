@@ -13,7 +13,7 @@
 //
 //   - adapters_voiceover_use_case.go   → this file (orchestrator landmark: package doc only)
 //   - adapters_voiceover_tts.go        → TTSProvider + AudioPostProcessor (AUDIO synthesis cluster)
-//   - adapters_voiceover_publisher.go  → VoiceoverPublisher + voiceoverDriveAdapter (DRIVE cluster)
+//   - adapters_voiceover_publisher.go  → VoiceoverPublisher (DRIVE cluster)
 //   - adapters_voiceover_repo.go       → VoiceoverRepository + DestinationResolver +
 //     VoiceoverDefaultFolderResolver (REPO/RESOLVER cluster;
 //     sole canonical owner of heavy *sql.DB / *sql.Tx /
