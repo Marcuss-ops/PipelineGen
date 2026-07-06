@@ -101,6 +101,8 @@ func (u *StockUseCase) Submit(ctx context.Context, cmd *StockCommand, async bool
 			zap.String("job_id", job.ID),
 			zap.Int("search_queries", len(cmd.SearchQueries)),
 			zap.Int("direct_urls", len(cmd.DirectURLs)),
+			zap.Int("drive_urls", len(cmd.DriveURLs)),
+			zap.Int("clips", len(cmd.Clips)),
 			zap.Int("total_minutes", cmd.TotalMinutes),
 		)
 		return job.ID, nil
@@ -112,38 +114,15 @@ func (u *StockUseCase) Submit(ctx context.Context, cmd *StockCommand, async bool
 	u.log.Info("stock use case: running synchronously",
 		zap.Int("search_queries", len(cmd.SearchQueries)),
 		zap.Int("direct_urls", len(cmd.DirectURLs)),
+		zap.Int("drive_urls", len(cmd.DriveURLs)),
+		zap.Int("clips", len(cmd.Clips)),
 		zap.Int("total_minutes", cmd.TotalMinutes),
 	)
-	if _, err := u.service.Run(ctx, commandToRunInput(cmd)); err != nil {
+	if _, err := u.service.Run(ctx, cmd.ToRunInput()); err != nil {
 		u.log.Error("stock use case: sync run failed", zap.Error(err))
 		return "", err
 	}
 	return "", nil
-}
-
-// commandToRunInput projects StockCommand → RunInput (the runner's
-// internal input shape). Kept private to the use case package so the
-// mapping doesn't leak into the api or driver layer.
-func commandToRunInput(cmd *StockCommand) *RunInput {
-	if cmd == nil {
-		return nil
-	}
-	return &RunInput{
-		SearchQueries: append([]string(nil), cmd.SearchQueries...),
-		DirectURLs:    append([]string(nil), cmd.DirectURLs...),
-		TotalMinutes:  cmd.TotalMinutes,
-		ChunkDuration: cmd.ChunkDuration,
-		ClipDuration:  cmd.ClipDuration,
-		NoAudio:       cmd.NoAudio,
-		NoEffects:     cmd.NoEffects,
-		NoTransitions: cmd.NoTransitions,
-		MaxVideos:     cmd.MaxVideos,
-		Subfolder:     cmd.Subfolder,
-		FolderName:    cmd.FolderName,
-		FolderID:      cmd.FolderID,
-		Metadata:      cmd.Metadata,
-		Persist:       cmd.Persist,
-	}
 }
 
 // Compile-time check that the concrete *stockpipeline.Service satisfies

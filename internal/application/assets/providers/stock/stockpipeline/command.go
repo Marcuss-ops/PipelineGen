@@ -18,6 +18,9 @@ type SearchQuery struct {
 // request DTOs from here (handler binds JSON onto this type).
 type StockSearchAndRunRequest struct {
 	Queries       []SearchQuery       `json:"queries"`
+	DirectURLs    []string            `json:"direct_urls,omitempty"`
+	DriveURLs     []string            `json:"drive_urls,omitempty"`
+	Clips         []ClipSpec          `json:"clips,omitempty"`
 	TotalMinutes  int                 `json:"total_minutes"`
 	ChunkDuration int                 `json:"chunk_duration,omitempty"`
 	ClipDuration  int                 `json:"clip_duration,omitempty"`
@@ -46,6 +49,8 @@ type StockSearchAndRunRequest struct {
 type StockCommand struct {
 	SearchQueries []string
 	DirectURLs    []string
+	DriveURLs     []string
+	Clips         []ClipSpec
 	TotalMinutes  int
 	MaxVideos     int
 	ChunkDuration int
@@ -82,6 +87,8 @@ func FromRunPayload(p *StockRunPayload) (*StockCommand, error) {
 	return &StockCommand{
 		SearchQueries: append([]string(nil), p.SearchQueries...),
 		DirectURLs:    append([]string(nil), p.DirectURLs...),
+		DriveURLs:     append([]string(nil), p.DriveURLs...),
+		Clips:         append([]ClipSpec(nil), p.Clips...),
 		TotalMinutes:  p.TotalMinutes,
 		ChunkDuration: p.ChunkDuration,
 		ClipDuration:  p.ClipDuration,
@@ -128,6 +135,9 @@ func FromSearchAndRunRequest(r *StockSearchAndRunRequest) (*StockCommand, error)
 	}
 	return &StockCommand{
 		SearchQueries: queries,
+		DirectURLs:    append([]string(nil), r.DirectURLs...),
+		DriveURLs:     append([]string(nil), r.DriveURLs...),
+		Clips:         append([]ClipSpec(nil), r.Clips...),
 		TotalMinutes:  r.TotalMinutes,
 		ChunkDuration: r.ChunkDuration,
 		ClipDuration:  r.ClipDuration,
@@ -169,6 +179,8 @@ func (c *StockCommand) ToRunInput() *RunInput {
 	return &RunInput{
 		SearchQueries: append([]string(nil), c.SearchQueries...),
 		DirectURLs:    append([]string(nil), c.DirectURLs...),
+		DriveURLs:     append([]string(nil), c.DriveURLs...),
+		Clips:         append([]ClipSpec(nil), c.Clips...),
 		TotalMinutes:  c.TotalMinutes,
 		ChunkDuration: c.ChunkDuration,
 		ClipDuration:  c.ClipDuration,
@@ -199,12 +211,18 @@ func (c *StockCommand) ToJobPayload() map[string]any {
 	if c == nil {
 		return map[string]any{}
 	}
-	payload := make(map[string]any, 14)
+	payload := make(map[string]any, 16)
 	if len(c.SearchQueries) > 0 {
 		payload["search_queries"] = c.SearchQueries
 	}
 	if len(c.DirectURLs) > 0 {
 		payload["direct_urls"] = c.DirectURLs
+	}
+	if len(c.DriveURLs) > 0 {
+		payload["drive_urls"] = c.DriveURLs
+	}
+	if len(c.Clips) > 0 {
+		payload["clips"] = c.Clips
 	}
 	payload["total_minutes"] = c.TotalMinutes
 	if c.ChunkDuration != 0 {

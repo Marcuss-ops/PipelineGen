@@ -5,6 +5,8 @@ package stockpipeline
 type StockRunPayload struct {
 	SearchQueries []string                 `json:"search_queries"`
 	DirectURLs    []string                 `json:"direct_urls,omitempty"`
+	DriveURLs     []string                 `json:"drive_urls,omitempty"`
+	Clips         []ClipSpec               `json:"clips,omitempty"`
 	TotalMinutes  int                      `json:"total_minutes"`
 	ChunkDuration int                      `json:"chunk_duration,omitempty"`
 	ClipDuration  int                      `json:"clip_duration,omitempty"`

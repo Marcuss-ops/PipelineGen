@@ -176,3 +176,48 @@ func buildClipPlan(src VideoSource, start, end float64, idx int, policyVer strin
 		PolicyVersion:   policyVer,
 	}
 }
+
+// ErrExplicitPlannerNoClips signals that the explicit planner was
+// invoked with an empty clips slice. The caller should fail-closed
+// rather than producing a nil output.
+var ErrExplicitPlannerNoClips = errors.New("explicit planner: no clips provided")
+
+// NewExplicitPlanner returns a ClipPlanner that uses pre-defined
+// ClipSpec entries instead of computing deterministic offsets from
+// a budget. Each ClipSpec produces exactly one ClipPlan.
+//
+// The explicit planner ignores the budgetSec and clipDur parameters
+// — it always returns len(clips) ClipPlan entries regardless of
+// the source duration. SourceID is set to src.URL for all plans.
+//
+// godlike/07 typed-error contract: Plan returns
+// ErrExplicitPlannerNoClips when clips is empty.
+func NewExplicitPlanner(clips []ClipSpec) ClipPlanner {
+	return &explicitPlanner{clips: clips}
+}
+
+type explicitPlanner struct {
+	clips []ClipSpec
+}
+
+var _ ClipPlanner = (*explicitPlanner)(nil)
+
+func (p *explicitPlanner) Plan(_ context.Context, src VideoSource, budgetSec int, clipDur int, policyVer string) ([]ClipPlan, error) {
+	if len(p.clips) == 0 {
+		return nil, ErrExplicitPlannerNoClips
+	}
+	plans := make([]ClipPlan, 0, len(p.clips))
+	for i, clip := range p.clips {
+		h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s", src.URL, i, policyVer)))
+		id := fmt.Sprintf("planner:%x:%d", h[:8], i)
+		plans = append(plans, ClipPlan{
+			SourceID:        src.URL,
+			SourceVersion:   "v1",
+			StartSec:        clip.StartSec,
+			EndSec:          clip.EndSec,
+			OutputLogicalID: id,
+			PolicyVersion:   policyVer,
+		})
+	}
+	return plans, nil
+}

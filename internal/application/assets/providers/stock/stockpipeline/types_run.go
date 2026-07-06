@@ -15,6 +15,15 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
 
+// ClipSpec defines a single clip to extract from a source video.
+// Used with Clips field on RunInput to bypass the deterministic planner.
+type ClipSpec struct {
+	Title    string  `json:"title,omitempty"`
+	URL      string  `json:"url,omitempty"`
+	StartSec float64 `json:"start_sec"`
+	EndSec   float64 `json:"end_sec"`
+}
+
 // RunInput holds the parameters for a stock pipeline run.
 //
 // §12-7 (July 2026): adds FinalizationLease (the canonical
@@ -22,9 +31,15 @@ import (
 // spine-write TX, extracted from broker job by HandleJob via
 // extractLease) and PolicyVersion (the run-fingerprint salt
 // godlike/07 SSOT, propagated to the per-run metadata.json).
+//
+// Explicit clips (July 2026): Clips field holds pre-defined
+// timestamp ranges that bypass the deterministic planner.
+// DriveURLs field holds Google Drive source URLs.
 type RunInput struct {
 	SearchQueries []string
 	DirectURLs    []string
+	DriveURLs     []string
+	Clips         []ClipSpec
 	TotalMinutes  int
 	MaxVideos     int
 	ChunkDuration int

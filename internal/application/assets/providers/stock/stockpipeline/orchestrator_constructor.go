@@ -150,6 +150,10 @@ func stepInputFingerprint(jobID, stepName string) string {
 
 // firstSource returns the first source the orchestrator can plan
 // against. Used by Run as a Commit 1 round-trip target.
+//
+// Priority: DirectURLs > DriveURLs > SearchQueries.
+// DriveURLs are YouTube URLs that should be downloaded via yt-dlp
+// (Google Drive download is a forward-pointer for StockStager).
 func firstSource(input *RunInput) (VideoSource, bool) {
 	if input == nil {
 		return VideoSource{}, false
@@ -159,6 +163,13 @@ func firstSource(input *RunInput) (VideoSource, bool) {
 			URL:    input.DirectURLs[0],
 			Title:  "demo-direct",
 			Source: input.DirectURLs[0],
+		}, true
+	}
+	if len(input.DriveURLs) > 0 {
+		return VideoSource{
+			URL:    input.DriveURLs[0],
+			Title:  "demo-drive",
+			Source: input.DriveURLs[0],
 		}, true
 	}
 	if len(input.SearchQueries) > 0 {
