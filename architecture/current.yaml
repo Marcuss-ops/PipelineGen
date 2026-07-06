@@ -6363,3 +6363,63 @@
     owner_capability: architecture
     status: pending
     deadline: 2026-08-22
+
+- id: LONG-FILES-DECOMPOSITION-2026-07-06
+  owner_capability: architecture
+  status: pending
+  exit_signal: false
+  deadline: 2026-08-01
+  description: |
+    Wave-tracker per la decomposizione degli 8 file Go più lunghi
+    NON ancora tracciati da onde esistenti (GODOBJ-2026-07-03,
+    CODE-QUALITY-AUDIT-2026-07-05, VO-DECOMPOSITION-2026-07-04,
+    CODE-QUALITY-CLEANUP-2026-07-04). Derivato dall'analisi wc -l
+    su origin/main del 2026-07-06.
+
+    8 net-new slim-shape linked_issues (1 per file target).
+    2 bande di priorità: P0 CRITICA (>800 LOC, 3 file, deadline
+    2026-07-15) + P1 ALTA (700-740 LOC, 5 file, deadline 2026-07-25).
+
+    Companion action plan:
+    architecture/action-plans/2026-07-06-long-files-decomposition.md.
+
+    Per-PR verification gates: gofmt + go vet + go build +
+    go test -short sulla subtree target. Ogni PR atterra diretto
+    su main (AGENTS.md Git-Lesson-2).
+
+    godlike/06 4-surface lockstep: action plan (narrative) +
+    current.yaml (wave-tracker) + CHANGELOG.md (closure meta-entry) +
+    AGENTS.md (mirror entry).
+  linked_issues:
+  - id: PR-ARCHCHECK-MAIN-SPLIT
+    owner_capability: scripts/archcheck
+    status: pending
+    deadline: 2026-07-15
+  - id: PR-YOUTUBE-METADATA-SPLIT
+    owner_capability: internal/application/youtube/metadata
+    status: pending
+    deadline: 2026-07-15
+  - id: PR-FLOW-HELPERS-SPLIT
+    owner_capability: internal/application/scripts/usecase
+    status: pending
+    deadline: 2026-07-15
+  - id: PR-IMAGES-REPO-SPLIT
+    owner_capability: internal/infrastructure/database/sqlite/assets
+    status: pending
+    deadline: 2026-07-25
+  - id: PR-PAYLOAD-MAPPER-SPLIT
+    owner_capability: internal/infrastructure/qdrant/indexing
+    status: pending
+    deadline: 2026-07-25
+  - id: PR-STORAGE-SEARCH-SPLIT
+    owner_capability: internal/application/images
+    status: pending
+    deadline: 2026-07-25
+  - id: PR-GENERATE-ONE-SPLIT
+    owner_capability: internal/application/scripts/usecase
+    status: pending
+    deadline: 2026-07-25
+  - id: PR-SYMBOL-REFS-SPLIT
+    owner_capability: scripts/archcheck
+    status: pending
+    deadline: 2026-07-25
