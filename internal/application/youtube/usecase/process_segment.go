@@ -484,7 +484,7 @@ func buildClipAsset(
 	fileHash string,
 	policyVersion string,
 ) youtubetypes.ClipAsset {
-	md := youtubetypes.ClipMetadata{
+	md := youtubetypes.CanonicalClipMetadata{
 		SourceURL:       cmd.VideoURL,
 		TranscriptPath:  "", // populated by Step 6/7 when Whisper fallback fires
 		NormalizedGroup: deriveNormalizedGroup(cmd),

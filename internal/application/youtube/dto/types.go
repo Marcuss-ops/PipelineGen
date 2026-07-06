@@ -40,13 +40,6 @@ type Segment struct {
 	SearchVisibility string   `json:"search_visibility,omitempty"`
 }
 
-// ClipRichMetadata is a zero-copy type alias for CanonicalClipMetadata.
-// CLIPS-META-2026-07-04 (Azione 1): the canonical metadata output type
-// is now CanonicalClipMetadata. ClipRichMetadata exists only for
-// backward compatibility — all new code should use CanonicalClipMetadata.
-// The field formerly named ClipSummary is now Summary.
-type ClipRichMetadata = CanonicalClipMetadata
-
 // ── PR5 Phase 3: Extraction DTOs moved from parent package ──────────────
 
 // ExtractRequest is the payload for a YouTube clip extraction request.
@@ -274,12 +267,6 @@ type ClipAssetCoordinates struct {
 	Duration int
 }
 
-// ClipMetadata is a zero-copy type alias for CanonicalClipMetadata.
-// CLIPS-META-2026-07-04 (Azione 1): the canonical metadata output type
-// is now CanonicalClipMetadata. ClipMetadata exists only for backward
-// compatibility with ClipAsset embedding.
-type ClipMetadata = CanonicalClipMetadata
-
 // ClipAsset is the canonical, strongly-typed internal domain entity
 // the use case passes to the ClipAtomicWriter. The verdict's P1 #6
 // mandates "il writer deve ricevere il record canonico, non un DTO
@@ -292,6 +279,6 @@ type ClipAsset struct {
 	FileHash      string
 	Drive         ClipAssetDrive
 	Coordinates   ClipAssetCoordinates
-	Metadata      ClipMetadata
+	Metadata      CanonicalClipMetadata
 	PolicyVersion string
 }

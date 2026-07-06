@@ -119,10 +119,10 @@ Rules:
 	var result dto.CanonicalClipMetadata
 	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
 		s.log.Warn("failed to parse ollama JSON response for clip metadata", zap.Error(err))
-		return tagutil.FallbackClipRichMetadata(title, transcript, description)
+		return tagutil.FallbackClipMetadata(title, transcript, description)
 	}
 
-	return tagutil.NormalizeClipRichMetadata(&result, title, transcript, description)
+	return tagutil.NormalizeClipMetadata(&result, title, transcript, description)
 }
 
 func (s *Service) metadataModel() string {
