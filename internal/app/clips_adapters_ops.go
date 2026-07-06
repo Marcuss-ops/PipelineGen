@@ -1,61 +1,22 @@
 // Package app — clip_ops port adapters (PR 2, June 2026).
 //
-// Bridges concrete domain/job.Service, *deletion.DeletionService, and
-// clips.ClipRepositoryPort into the typed ports consumed by
-// application/clips.ClipOpsService.
+// Bridges concrete domain/job.Service and clips.ClipRepositoryPort
+// into the typed ports consumed by application/clips.ClipOpsService.
+// CleanupServicePort + clipsCleanupPortAdapter removed July 2026
+// (dead code — field assigned but never read by any ClipOpsService method).
 //
 // PR-GODOBJ-4 (Azione 4, July 2026): consolidated from clips_ops_adapters.go
 // and clipOpsSourceResolverAdapter from clips_adapters_repo.go.
-// 3 adapters: clipsCleanupPortAdapter, clipsJobsPortAdapter, clipOpsSourceResolverAdapter.
+// 2 adapters: clipsJobsPortAdapter, clipOpsSourceResolverAdapter.
 package app
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
-
-// ── clipsCleanupPortAdapter ─────────────────────────────────────────────
-
-// clipsCleanupPortAdapter wraps *deletion.DeletionService to satisfy
-// clips.CleanupServicePort. The 2 methods are exact delegations —
-// CleanupOrphanFiles(ctx,path,dryRun) and DeleteClip(ctx,src,id,hard).
-type clipsCleanupPortAdapter struct {
-	inner *deletion.DeletionService
-}
-
-// Compile-time assertion: clipsCleanupPortAdapter satisfies clips.CleanupServicePort.
-var _ clips.CleanupServicePort = (*clipsCleanupPortAdapter)(nil)
-
-func newClipsCleanupPortAdapter(svc *deletion.DeletionService) clips.CleanupServicePort {
-	if svc == nil {
-		return nil
-	}
-	return &clipsCleanupPortAdapter{inner: svc}
-}
-
-func (a *clipsCleanupPortAdapter) CleanupOrphanFiles(ctx context.Context, path string, dryRun bool) (int, error) {
-	if a == nil {
-		return 0, fmt.Errorf("clipsCleanupPortAdapter: receiver is nil")
-	}
-	if a.inner == nil {
-		return 0, fmt.Errorf("clipsCleanupPortAdapter: inner deletion service is nil")
-	}
-	return a.inner.CleanupOrphanFiles(ctx, path, dryRun)
-}
-
-func (a *clipsCleanupPortAdapter) DeleteClip(ctx context.Context, source, clipID string, hardDelete bool) error {
-	if a == nil {
-		return fmt.Errorf("clipsCleanupPortAdapter: receiver is nil")
-	}
-	if a.inner == nil {
-		return fmt.Errorf("clipsCleanupPortAdapter: inner deletion service is nil")
-	}
-	return a.inner.DeleteClip(ctx, source, clipID, hardDelete)
-}
 
 // ── clipsJobsPortAdapter ────────────────────────────────────────────────
 
