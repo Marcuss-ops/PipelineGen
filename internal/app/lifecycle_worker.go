@@ -43,7 +43,7 @@ type workerDeps struct {
 }
 
 // buildWorkerSteps returns the worker-mode StartupStep list:
-// job-scanner + metrics-refresher + voiceover-parent-aggregator +
+// self-heartbeat + job-scanner + metrics-refresher + voiceover-parent-aggregator +
 // script-parent-aggregator. The voiceover + script parent-aggregators
 // MUST live under runWorker (NOT runScheduler) because the child job's
 // terminal status only transitions when the job runner processes it —
@@ -52,6 +52,36 @@ type workerDeps struct {
 // "Voiceover parent aggregator (Step 4 / micro-commit #5)" rationale.
 func buildWorkerSteps(deps workerDeps) []StartupStep {
 	var steps []StartupStep
+
+	// Self-heartbeat (July 2026): when the server runs in --mode all or
+	// --mode worker without an external cmd/worker, the BrokerLastHeartbeat
+	// atomic stays at zero forever → BrokerHeartbeatAge() returns
+	// math.MaxInt64 → /ready returns 503 "broker heartbeat stale".
+	// This goroutine calls appjobs.SetBrokerAlive() every 25s so the
+	// built-in worker mode satisfies the liveness probe without needing
+	// a separate worker binary. The 3.6x safety margin (25s tick vs 60s
+	// staleness threshold) matches the HeartbeatLoop convention.
+	steps = append(steps, StartupStep{
+		Name: "self-heartbeat", Required: true,
+		Start: func(startCtx context.Context) error {
+			concurrent.SafeGo("self-heartbeat", func() {
+				ticker := time.NewTicker(25 * time.Second)
+				defer ticker.Stop()
+				appjobs.SetBrokerAlive() // seed immediately
+				for {
+					select {
+					case <-startCtx.Done():
+						return
+					case <-ticker.C:
+						appjobs.SetBrokerAlive()
+					}
+				}
+			})
+			deps.log.Info("Self-heartbeat started (interval=25s)")
+			return nil
+		},
+		Stop: func(_ context.Context) error { return nil },
+	})
 
 	jobsRepo := deps.root.Jobs.Repo
 	jobsService := deps.root.Jobs.Service
