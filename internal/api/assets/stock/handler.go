@@ -114,6 +114,9 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		apiutil.BadRequest(c, "clip_duration must be >= 0")
 		return
 	}
+	if req.ClipDuration == 0 {
+		req.ClipDuration = 10
+	}
 	if req.ClipDuration > 0 && (req.ClipDuration < 3 || req.ClipDuration > 30) {
 		apiutil.BadRequest(c, "clip_duration must be between 3 and 30 seconds")
 		return
@@ -211,6 +214,9 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 	if req.ClipDuration < 0 {
 		apiutil.BadRequest(c, "clip_duration must be >= 0")
 		return
+	}
+	if req.ClipDuration == 0 {
+		req.ClipDuration = 10
 	}
 	if req.ClipDuration > 0 && (req.ClipDuration < 3 || req.ClipDuration > 30) {
 		apiutil.BadRequest(c, "clip_duration must be between 3 and 30 seconds")

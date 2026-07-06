@@ -43,6 +43,12 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 	// planner and use the timestamp ranges directly. Each clip
 	// carries its own source URL; the first non-empty URL is used
 	// for the VideoSource.
+	//
+	// Clips with zero-valued StartSec/EndSec are normalised:
+	// EndSec defaults to clip_duration (10s if unset) so the
+	// cutter gets a valid non-zero range instead of passing
+	// Start=0 End=0 to ffmpeg (which would fail with
+	// "-to value smaller than -ss").
 	if len(in.Clips) > 0 {
 		srcURL := ""
 		for _, clip := range in.Clips {
@@ -54,8 +60,35 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 		if srcURL == "" {
 			return errors.New("orchestrator: stock.plan: explicit clips require at least one clip with a non-empty URL")
 		}
+
+		// Normalise zero-valued timestamp ranges before handing
+		// off to the explicit planner. Default clip duration is
+		// taken from RunInput (set by the handler); defensive
+		// fallback of 10s when unset.
+		//
+		// Two cases:
+		//   Start=0 End=0  → URL-only clip, default to [0, clipDur)
+		//   Start>0 End=0  → start provided but no end; default
+		//                     to [start, start+clipDur)
+		//   Otherwise       → explicit range, keep as-is
+		clipDur := in.ClipDuration
+		if clipDur <= 0 {
+			clipDur = 10
+		}
+		normalised := make([]ClipSpec, len(in.Clips))
+		for i, clip := range in.Clips {
+			normalised[i] = clip
+			if clip.EndSec == 0 {
+				if clip.StartSec == 0 {
+					normalised[i].EndSec = float64(clipDur)
+				} else {
+					normalised[i].EndSec = clip.StartSec + float64(clipDur)
+				}
+			}
+		}
+
 		src := VideoSource{URL: srcURL, Title: in.Clips[0].Title, Source: srcURL}
-		explicit := NewExplicitPlanner(in.Clips)
+		explicit := NewExplicitPlanner(normalised)
 		plans, err := explicit.Plan(ctx, src, 0, 0, runner.Cfg().PolicyVersion)
 		if err != nil {
 			return fmt.Errorf("orchestrator: stock.plan: explicit planner: %w", err)
