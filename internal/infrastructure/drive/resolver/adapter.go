@@ -34,6 +34,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	sourcing "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	_ "net/http" // future CUTOVER C9: Drive.EnsureFolder canonical HTTP status mapping
 )
 
@@ -68,6 +69,20 @@ var (
 	ErrFolderIDNonAlphanumeric = errors.New(
 		"resolver: resolved folder-id must be non-empty alphanumeric (drive-safe)",
 	)
+
+	// ErrDestinationNoRootFolder surfaces when a destination has
+	// NEITHER a specific root folder (e.g. stock_root_folder) NOR
+	// a MediaRootFolder configured. The operator MUST set at least
+	// one of the two in config.yaml or via VELOX_DRIVE_* env vars.
+	//
+	// DoD #5 (SEMANTIC-LOCATION-API-2026-07-06): "se root specifica
+	// manca → usa media_root_folder + namespace; se entrambe mancano
+	// → errore chiaro". This sentinel is the godlike/07
+	// NO-FAKE-AVAILABILITY enforcement — the adapter never
+	// synthesises a root folder when none is configured.
+	ErrDestinationNoRootFolder = errors.New(
+		"resolver: destination has no configured root folder",
+	)
 )
 
 // ── adapter struct ────────────────────────────────────────────────────────
@@ -91,48 +106,52 @@ var (
 // rather than synthesizing a synthetic prefix-fold-id. Doing the
 // latter would silently land assets in the wrong folder — operator
 // observability requires fail-closed semantics.
+//
+// DoD #5 (SEMANTIC-LOCATION-API-2026-07-06): the adapter holds the
+// full DriveConfig so it can resolve per-destination root folders
+// (stock_root_folder, clips_root_folder, etc.) with fallback to
+// MediaRootFolder + namespace. When neither is set, Resolve returns
+// ErrDestinationNoRootFolder (fail-closed at call-time).
 type Adapter struct {
-	rootFolder string
-	log        resolverLogger
+	mediaRoot string             // cfg.Drive.MediaRootFolder (cached for composeStubFolderID)
+	cfg       config.DriveConfig // per-destination root resolution (DoD #5)
+	log       resolverLogger
 }
 
-// NewAdapter creates a fail-closed resolver adapter.
+// NewAdapter creates a fail-closed resolver adapter wired to the
+// canonical DriveConfig.
 //
-// rootFolder is the canonical Drive root folder-id under which per-
-// destination subfolders are computed. Empty rootFolder is allowed
-// only for test fixtures (production wiring should pass the canonical
-// cfg.Drive.RootFolder — the composition root guarantees this via
-// the validateDriveServiceAvailability check at boot).
+// driveCfg is the full Drive configuration — the adapter resolves
+// per-destination roots via the priority chain:
+//  1. destination-specific root (e.g. StockFolder() → StockRootFolder)
+//  2. MediaRootFolder (unified fallback)
+//  3. ErrDestinationNoRootFolder (fail-closed)
 //
 // log is the optional narrow logging port — nil falls back to a
 // no-op logger so test fixtures do not need a real logger.
 //
 // godlike/07 fail-closed-at-construction: NewAdapter returns
-// (*Adapter, error) so future validation gates (e.g. rootFolder
-// must equal DriveService.RootFolder()) have a typed-error envelope
-// to surface on composition-time misconfiguration. Today the gate
-// is permissive (rootFolder may be empty in tests; the per-Resolve
-// gate rejects incompatible-fields + empty-Location at call-time).
-func NewAdapter(rootFolder string, log resolverLogger) (*Adapter, error) {
-	if rootFolder != "" {
-		if strings.ContainsAny(rootFolder, " \t\n/\\") {
-			return nil, fmt.Errorf(
-				"%w: rootFolder %q contains whitespace or path separator",
-				ErrFolderIDNonAlphanumeric, rootFolder,
-			)
-		}
-	}
+// (*Adapter, error) so future validation gates have a typed-error
+// envelope to surface on composition-time misconfiguration.
+// Today the gate is permissive (empty DriveConfig is allowed for
+// tests; the per-Resolve gate rejects missing roots at call-time).
+//
+// DoD #5 (SEMANTIC-LOCATION-API-2026-07-06): the per-destination
+// root resolution happens ON-DEMAND at Resolve time, not at
+// construction time — an operator can add a root folder to config
+// without restarting the process (the adapter re-reads cfg on each
+// Resolve call). The MediaRootFolder is cached at construction for
+// composeStubFolderID use; the destination-specific roots are
+// resolved fresh on each call.
+func NewAdapter(driveCfg config.DriveConfig, log resolverLogger) (*Adapter, error) {
 	// Round-2 SHOULD-FIX (2026-07-06): nil-logger fail-closed default.
-	// Without this, a nil log into a non-nil receiver swallows subsequent
-	// a.log.Info/Warn/Error/Debug calls (dead-call hazard). Symmetric
-	// nil-defense with WithLogger below so wire-at-construction and
-	// wire-at-setter yield the same fail-closed surface.
 	if log == nil {
 		log = nopResolverLogger{}
 	}
 	return &Adapter{
-		rootFolder: rootFolder,
-		log:        log,
+		mediaRoot: strings.TrimSpace(driveCfg.MediaRootFolder),
+		cfg:       driveCfg,
+		log:       log,
 	}, nil
 }
 
@@ -211,6 +230,17 @@ func (a *Adapter) Resolve(ctx context.Context, loc domaindelivery.AssetLocationI
 			"%w: empty destination key",
 			sourcing.ErrLocationResolverDestinationUnsupported,
 		)
+	}
+
+	// DoD #5: resolve per-destination root folder BEFORE field
+	// validation (specific root > media_root + namespace > error).
+	// Running root resolution first follows "fail-fast-at-infrastructure
+	// > fail-fast-at-input" — if both root AND fields are misconfigured,
+	// the operator sees the root error first, fixes it, then discovers
+	// the field error (rather than the reverse two-pass dance).
+	root, err := a.rootForDestination(dest)
+	if err != nil {
+		return "", err
 	}
 
 	// Incompatible-fields probe: drop fields that the destination
@@ -306,7 +336,7 @@ func (a *Adapter) Resolve(ctx context.Context, loc domaindelivery.AssetLocationI
 	// not subpath strings. The stub-mode canonical shape prepends a
 	// `stub-shift:` sentinel so future CUTOVER consumers can detect + reject
 	// stub-mode outputs via strings.HasPrefix(directoryID, "stub-shift:").
-	folderID := composeStubFolderID(a.rootFolder, dest, segments)
+	folderID := composeStubFolderID(root, dest, segments)
 	if folderID == "" {
 		return "", fmt.Errorf(
 			"%w: composed empty folder-id for destination=%q",
@@ -323,6 +353,97 @@ func (a *Adapter) Resolve(ctx context.Context, loc domaindelivery.AssetLocationI
 	}
 	_ = ctx // forward-pointer: real Drive API call will use ctx.Deadline + ctx.Err
 	return folderID, nil
+}
+
+// ── DoD #5: per-destination root resolution ─────────────────────────────
+
+// rootForDestination resolves the canonical Drive root folder for a
+// destination via the priority chain mandated by DoD #5:
+//
+//  1. destination-specific root (e.g. StockFolder() → StockRootFolder)
+//  2. MediaRootFolder (unified fallback)
+//  3. ErrDestinationNoRootFolder (fail-closed)
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: this method is the
+// SINGLE canonical source for the destination→root mapping. Every
+// destination added to the segment-shape table MUST also be added
+// to the switch below (godlike/06 2-surface lockstep).
+//
+// godlike/07 typed-error contract: returns (rootID, nil) on success;
+// returns ("", ErrDestinationNoRootFolder) when both the specific root
+// AND MediaRootFolder are empty. The sentinel is wrapped with the
+// destination name + the config-key hint so the operator can grep
+// their config.yaml for the missing key.
+func (a *Adapter) rootForDestination(dest delivery.DestinationKey) (string, error) {
+	if a == nil {
+		return "", fmt.Errorf(
+			"%w: adapter nil (composition-root bug)",
+			ErrDestinationNoRootFolder,
+		)
+	}
+
+	// Resolve the effective folder for this destination.
+	// Priority: specific root > MediaRootFolder > "".
+	var folder string
+	switch dest {
+	case delivery.DestinationImage:
+		folder = a.cfg.ImagesFolder()
+	case delivery.DestinationStock:
+		folder = a.cfg.StockFolder()
+	case delivery.DestinationYouTubeClip:
+		folder = a.cfg.ClipsFolder()
+	case delivery.DestinationArtlist:
+		folder = a.cfg.ArtlistFolder()
+	case delivery.DestinationVoiceover:
+		folder = a.cfg.VoiceoverFolder()
+	case delivery.DestinationBook:
+		folder = a.cfg.BooksFolder()
+	case delivery.DestinationScript:
+		folder = a.cfg.ScriptsFolder()
+	case delivery.DestinationSoundEffect:
+		folder = a.cfg.SoundEffectsFolder()
+	case delivery.DestinationDocument:
+		folder = a.cfg.DocumentsFolder()
+	default:
+		folder = a.cfg.RootFolder()
+	}
+
+	folder = strings.TrimSpace(folder)
+	if folder == "" {
+		return "", fmt.Errorf(
+			"%w: destination=%q has no configured root folder (set %s_root_folder or media_root_folder in config.yaml)",
+			ErrDestinationNoRootFolder, dest, rootConfigKey(dest),
+		)
+	}
+	return folder, nil
+}
+
+// rootConfigKey returns the config.yaml key name for the destination-
+// specific root folder, used in the ErrDestinationNoRootFolder message
+// so operators know exactly which key to set.
+func rootConfigKey(dest delivery.DestinationKey) string {
+	switch dest {
+	case delivery.DestinationImage:
+		return "images"
+	case delivery.DestinationStock:
+		return "stock"
+	case delivery.DestinationYouTubeClip:
+		return "clips"
+	case delivery.DestinationArtlist:
+		return "artlist"
+	case delivery.DestinationVoiceover:
+		return "voiceover"
+	case delivery.DestinationBook:
+		return "books"
+	case delivery.DestinationScript:
+		return "scripts"
+	case delivery.DestinationSoundEffect:
+		return "sound_effects"
+	case delivery.DestinationDocument:
+		return "scripts" // DocumentsFolder delegates to ScriptsRootFolder
+	default:
+		return string(dest)
+	}
 }
 
 // ── per-destination mapping helpers ──────────────────────────────────────
@@ -481,9 +602,10 @@ const stubModePrefix = "stub-shift:"
 func composeStubFolderID(root string, dest delivery.DestinationKey, segments []string) string {
 	parts := make([]string, 0, len(segments)+3)
 	parts = append(parts, stubModePrefix)
-	if root != "" {
-		parts = append(parts, root)
-	}
+	// root is always non-empty at this point (rootForDestination
+	// returns ErrDestinationNoRootFolder before reaching here when
+	// no root is configured).
+	parts = append(parts, root)
 	parts = append(parts, string(dest))
 	for _, s := range segments {
 		s = strings.TrimSpace(s)
