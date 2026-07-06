@@ -7660,3 +7660,8 @@
 # Slim-shape: id + owner_capability + status + ship_sha + ship_date + forward_pointer
 # Per godlike/06 SSOT: appended to the existing YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06 umbrella linked_issues[]
 # (This is a documentation-only bookkeeping entry; the production code change landed in commit 543ae5b7.)
+
+# PR-ARTLIST-COOKIES-CONFIG closure entry (2026-07-06)
+# Slim-shape: id + owner_capability + status + ship_sha + ship_date + forward_pointer
+# Per godlike/06 SSOT: appended to the existing YT-DLP-FLAG-CENTRALIZATION-AUDIT-2026-07-06 umbrella linked_issues[]
+# (This is a documentation-only bookkeeping entry; the production code change landed in commit de057b65.)
