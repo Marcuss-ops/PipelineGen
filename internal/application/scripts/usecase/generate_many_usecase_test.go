@@ -5,6 +5,14 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"testing"
+
+	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+
+	"go.uber.org/zap"
+)
+
 // ── Stub broker ────────────────────────────────────────────────────
 
 type stubBroker struct {
