@@ -14,6 +14,7 @@
 #   python3 scripts/run_stock.py --urls "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" --folder-name "bunny"
 
 import argparse
+import datetime
 import json
 import os
 import ssl
@@ -51,7 +52,9 @@ def main():
                         help="Run asynchronously (default is False/synchronous)")
     parser.add_argument("--persist", action="store_true", default=True,
                         help="Persist results in database in sync mode (default is True)")
-    parser.add_argument("--output", "-o", help="File to write JSON response to")
+    parser.add_argument("--output", "-o", help="Specific custom file to write response JSON to")
+    parser.add_argument("--runs-dir", default="runs/stock",
+                        help="Parent directory to save runs outputs (default: runs/stock)")
 
     args = parser.parse_args()
 
@@ -90,9 +93,20 @@ def main():
     if token:
         req.add_header("Authorization", f"Bearer {token}")
 
+    # Generate timestamp and create directories
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_dir = os.path.join(args.runs_dir, timestamp)
+    os.makedirs(run_dir, exist_ok=True)
+
+    # Save request JSON to timestamped folder
+    request_file = os.path.join(run_dir, "request.json")
+    with open(request_file, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
     print(f"Triggering stock pipeline...")
     print(f"POST {url}")
     print(f"Payload: {json.dumps(payload, indent=2)}")
+    print(f"Saved request to: {request_file}")
 
     try:
         # Avoid SSL certificate validation issues on local environments
@@ -111,17 +125,29 @@ def main():
                 formatted_response = resp_body
                 print(formatted_response)
 
-            # Save to output file if requested
+            # Save response JSON to timestamped folder
+            response_file = os.path.join(run_dir, "response.json")
+            with open(response_file, "w", encoding="utf-8") as f:
+                f.write(formatted_response)
+            print(f"Saved response to: {response_file}")
+
+            # Save to custom output file if requested
             if args.output:
                 with open(args.output, "w", encoding="utf-8") as f:
                     f.write(formatted_response)
-                print(f"\nResponse successfully saved to: {args.output}")
+                print(f"Saved custom output to: {args.output}")
 
     except urllib.error.HTTPError as e:
         print(f"\nHTTP Error {e.code}: {e.reason}", file=sys.stderr)
         try:
             err_body = e.read().decode("utf-8")
             print(err_body, file=sys.stderr)
+            
+            # Save error response to timestamped folder
+            error_file = os.path.join(run_dir, f"error_{e.code}.json")
+            with open(error_file, "w", encoding="utf-8") as f:
+                f.write(err_body)
+            print(f"Saved error response to: {error_file}", file=sys.stderr)
         except Exception:
             pass
         sys.exit(2)
