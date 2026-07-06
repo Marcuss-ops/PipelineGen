@@ -38,17 +38,32 @@ type Admin interface {
 	TrashFile(ctx context.Context, fileID string) error
 	// Deprecated: use FileLifecycle.Delete instead.
 	DeleteFile(ctx context.Context, fileID string) error
+	// MoveFile moves a file from one folder to another (read parents +
+	// add new parent + remove old parent = true "move"). Distinct from
+	// FileLifecycle.AddParent which only ADDS a new parent without
+	// removing the old one (multi-parent semantics). For callers that
+	// only need multi-parent, prefer FileLifecycle.AddParent; for true
+	// move, keep using Admin.MoveFile (the two are intentionally
+	// separate surfaces per godlike/06 one-owner-per-fact).
 	MoveFile(ctx context.Context, fileID, fromFolderID, toFolderID string) error
 	// Deprecated: use FileLifecycle.Rename instead.
 	RenameFile(ctx context.Context, fileID, newName string) error
 
-	// Upload (raw path-based, bypassing DestinationRegistry)
+	// Upload (raw path-based, bypassing DestinationRegistry).
 	//
 	// Deprecated: use delivery.Publisher.Publish instead.
+	// P1-3 (July 2026): raw admin-only — DO NOT use in application
+	// code. The canonical write surface is delivery.Publisher.Publish
+	// (DestinationRegistry + ConflictPolicy + RetryWithJitter).
+	// These methods remain on Admin solely for cmd/admin one-shot
+	// commands that need raw Drive access without the full publish
+	// infrastructure.
 	UploadFile(ctx context.Context, localPath, folderID, filename string) (*UploadResult, error)
 	// Deprecated: use delivery.Publisher.Publish instead.
+	// P1-3 (July 2026): raw admin-only — same contract as UploadFile.
 	UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*UploadResult, error)
 	// Deprecated: use delivery.Publisher.Publish instead.
+	// P1-3 (July 2026): raw admin-only — same contract as UploadFile.
 	UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*UploadResult, bool, error)
 
 	// Liveness probe (replaces direct About.Get on *gdrive.Service)

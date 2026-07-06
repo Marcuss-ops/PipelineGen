@@ -117,6 +117,8 @@ var ErrAmbiguousDriveFile = errors.New("drive: ambiguous file match: multiple no
 // Retries up to 3 times with exponential backoff on transient errors (429, 503, timeouts).
 //
 // Deprecated: use delivery.Publisher.Publish instead.
+// P1-3 (July 2026): raw admin-only — DO NOT use in application code.
+// The canonical write surface is delivery.Publisher.Publish.
 func (u *Uploader) UploadFile(ctx context.Context, localPath, folderID, filename string) (*UploadResult, error) {
 	return u.UploadFileWithDescription(ctx, localPath, folderID, filename, "")
 }
@@ -125,12 +127,11 @@ func (u *Uploader) UploadFile(ctx context.Context, localPath, folderID, filename
 // The description is visible in the Google Drive UI under file details.
 //
 // Retries up to 3 times with exponential backoff (2s, 4s) on transient errors
-// (rate limit 429, server 503, timeouts) via pkg/retry. Keeps the retry policy
-// uniform with the other call sites in the codebase that already use pkg/retry
-// (segment.go, veloxclient, ollama client, script batch QA/coherence, engine.go).
+// (rate limit 429, server 503, timeouts) via pkg/retry.
 // Non-retryable errors short-circuit immediately via the IsRetryable predicate.
 //
 // Deprecated: use delivery.Publisher.Publish instead.
+// P1-3 (July 2026): raw admin-only — same contract as UploadFile.
 func (u *Uploader) UploadFileWithDescription(ctx context.Context, localPath, folderID, filename, description string) (*UploadResult, error) {
 	result, err := retry.DoWithValue(ctx, func() (*UploadResult, error) {
 		return u.doUploadFile(ctx, localPath, folderID, filename, description)
@@ -347,6 +348,7 @@ func (u *Uploader) FindFileByIdempotencyKey(ctx context.Context, folderID, idemK
 // UploadFileIfChanged uploads a file only when the Drive file does not already exist with the same hash.
 //
 // Deprecated: use delivery.Publisher.Publish instead.
+// P1-3 (July 2026): raw admin-only — same contract as UploadFile.
 func (u *Uploader) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*UploadResult, bool, error) {
 	localHash, err := hashutil.MD5File(localPath)
 	if err != nil {
