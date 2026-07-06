@@ -36,7 +36,7 @@ import (
 	logsink "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/logsink"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -371,10 +371,10 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	var qdrantHealth interface{}
 	if cfg.Qdrant.Enabled && root != nil && root.Process != nil &&
 		root.Process.CollectionManager != nil && root.Process.QdrantSearcher != nil {
-		var embedder qdrant.TextEmbedder
+		var embedder search.TextEmbedder
 		if root.AI != nil && root.AI.OllamaClient != nil {
 			ollamaEmb := embeddings.NewOllamaEmbedderAdapter(root.AI.OllamaClient)
-			embedder = qdrant.NewTextEmbedderAdapter(ollamaEmb)
+			embedder = search.NewTextEmbedderAdapter(ollamaEmb)
 		}
 		qdrantHealth = transport.NewQdrantHealthHandler(
 			root.Process.QdrantHealthProbe,

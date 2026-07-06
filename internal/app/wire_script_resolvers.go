@@ -44,7 +44,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -133,10 +133,10 @@ func buildScriptSourceResolvers(
 	}
 
 	// ── Qdrant embedder (shared by SemanticSearchPort and ClipSearchPort) ──
-	var ollamaEmbedder qdrant.TextEmbedder
+	var ollamaEmbedder search.TextEmbedder
 	if root.Process != nil && root.Process.QdrantSearcher != nil && gen != nil {
 		if ollamaClient := gen.GetClient(); ollamaClient != nil {
-			ollamaEmbedder = qdrant.NewTextEmbedderAdapter(embeddings.NewOllamaEmbedderAdapter(ollamaClient))
+			ollamaEmbedder = search.NewTextEmbedderAdapter(embeddings.NewOllamaEmbedderAdapter(ollamaClient))
 		}
 	}
 
@@ -162,7 +162,7 @@ func buildScriptSourceResolvers(
 	// ── ClipSearchPort (Qdrant) ────────────────────────────────────
 	var clipSearchPort scriptports.ClipSearchPort
 	if root.Process != nil && root.Process.QdrantSearcher != nil && ollamaEmbedder != nil {
-		clipSearchPort = qdrant.NewClipSearchAdapter(root.Process.QdrantSearcher, ollamaEmbedder, "text", log)
+		clipSearchPort = search.NewClipSearchAdapter(root.Process.QdrantSearcher, ollamaEmbedder, "text", log)
 		log.Info("ClipSearchPort wired (Qdrant + Ollama embedder)")
 	}
 

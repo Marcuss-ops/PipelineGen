@@ -40,7 +40,7 @@ import (
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -153,8 +153,8 @@ func registerScriptPostProcessors(
 	if root.AI != nil && root.AI.ScriptGen != nil &&
 		root.Process != nil && root.Process.QdrantSearcher != nil {
 		if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
-			embedder := qdrant.NewTextEmbedderAdapter(embeddings.NewOllamaEmbedderAdapter(ollamaClient))
-			stockSearchPort := qdrant.NewStockSearchAdapter(root.Process.QdrantSearcher, embedder, "text", log)
+			embedder := search.NewTextEmbedderAdapter(embeddings.NewOllamaEmbedderAdapter(ollamaClient))
+			stockSearchPort := search.NewStockSearchAdapter(root.Process.QdrantSearcher, embedder, "text", log)
 			if !ppReg.Register(adapters.NewStockAssociationProcessor(stockSearchPort, log)) {
 				return fmt.Errorf("register stock_association processor: composition bug")
 			}

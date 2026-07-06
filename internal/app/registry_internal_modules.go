@@ -30,7 +30,7 @@ import (
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -93,7 +93,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	var embeddingReg search.EmbeddingChannelRegistry
 	if root.AI != nil && root.AI.OllamaClient != nil {
 		ollamaEmb := embeddings.NewOllamaEmbedderAdapter(root.AI.OllamaClient)
-		embeddingReg = newEmbeddingRegistryAdapter(qdrant.NewTextEmbedderAdapter(ollamaEmb), nil)
+		embeddingReg = newEmbeddingRegistryAdapter(qdrantsearch.NewTextEmbedderAdapter(ollamaEmb), nil)
 	}
 
 	// MediaReadRepository: ClipsRepository → search.MediaReadRepository

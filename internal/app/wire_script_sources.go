@@ -48,7 +48,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"go.uber.org/zap"
 )
 
@@ -75,8 +75,8 @@ import (
 // Qdrant client quietly omitted the SourceSearch resolver from
 // the registry instead of failing composition.
 type qdrantSemanticSearchPort struct {
-	searcher   *qdrant.Searcher
-	embedder   qdrant.TextEmbedder
+	searcher   *search.Searcher
+	embedder   search.TextEmbedder
 	vectorName string
 	log        *zap.Logger
 }
