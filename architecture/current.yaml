@@ -6738,7 +6738,9 @@
       deadline: 2026-07-15
     - id: PR-SPLIT-JOBS-REPO-RESIDUAL
       owner_capability: internal/infrastructure/database/sqlite/jobs
-      status: pending
+      status: shipped
+      ship_sha: TBD_FOR_BOOKKEEPING_COMMIT
+      ship_date: 2026-07-06
       deadline: 2026-07-15
     - id: PR-SPLIT-WORKERDOCTOR-PROBES
       owner_capability: internal/application/workerdoctor
