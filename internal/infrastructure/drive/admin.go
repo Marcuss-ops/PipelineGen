@@ -28,11 +28,63 @@ package drive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
 	driveapi "google.golang.org/api/drive/v3"
 )
+
+// ErrAdminAdapterUploaderNil is the composition-time fail-closed guard
+// for the AdminAdapter.Uploader embedded field. Surfaced when a caller
+// (typically the composition root in internal/app/wire_assets.go) types
+// *AdminAdapter out of deps.Delivery.Admin but the embedded Uploader
+// is nil — the panic class the pre-PR build would raise on the FIRST
+// port call (FindFolder, UploadFile, …).
+//
+// Canonical SSOT: emitted only by the AdminAdapter branch in WireAssets.
+// Construction-side guard (NewAdminAdapter returns nil if u==nil)
+// catches the canonical path; this guard catches (a) the typed-NIL
+// interface trap, (b) test paths that build *AdminAdapter via direct
+// struct literal, (c) post-hoc mutation.
+//
+// godlike/06 SSOT: sentinel message starts with `drive:` to self-
+// identify when surfaced alone (e.g., test paths that don't go
+// through WrapDriveAdminError). Matches the codebase convention
+// (ErrAmbiguousDriveFolder, … in folder_manager.go).
+//
+// godlike/07 typed-error contract: callers probe via
+// errors.Is(err, drive.ErrAdminAdapterUploaderNil).
+var ErrAdminAdapterUploaderNil = errors.New("drive: AdminAdapter has nil embedded *Uploader (PR-ADAPTER-NIL-GUARD fail-closed)")
+
+// ErrAdminUnknownType is the godlike/07 NO-FAKE-AVAILABILITY guard for
+// Branch 3 in WireAssets (the silent-nil fallthrough): when
+// deps.Delivery.Admin is neither *Uploader nor *AdminAdapter, the
+// composition root MUST fail-closed rather than leave driveUploader
+// nil silently. Pre-PR, a future Admin port variant or test stub
+// routing to the wrong concrete type would produce a silent failure
+// that surfaces later as a panic mid-flight on the first port call.
+//
+// godlike/06 SSOT: sentinel message starts with `drive:` to self-
+// identify when surfaced alone. Matches the codebase convention.
+var ErrAdminUnknownType = errors.New("drive: unexpected Admin concrete type — composition wiring is wrong; expected *Uploader or *AdminAdapter (PR-ADAPTER-NIL-GUARD fail-closed)")
+
+// WrapDriveAdminError is the canonical composition-root wrap helper
+// for drive.Admin fail-closed errors. godlike/06 SSOT one-canonical-
+// owner-per-fact: ALL composition-root wraps of drive.Admin typed
+// sentinels MUST route through this helper so the wrap shape stays
+// byte-stable across the codebase.
+//
+// godlike/07 minimum-blast-radius rationale: a 1-line wrap helper is
+// cheaper than 100 LoC of duplicated fmt.Errorf calls scattered
+// across composition roots. The helper preserves the %w chain
+// (callers can still probe via errors.Is). The probe test
+// TestDriveAdminSentinels_TypedErrorContract invokes this helper
+// directly, so drift from %w → %s (or similar) surfaces as a test
+// failure rather than a silent semantics regression.
+func WrapDriveAdminError(cause error) error {
+	return fmt.Errorf("%w", cause)
+}
 
 // AdminAdapter is the canonical Pattern 0 port-adapter implementation
 // of drive.Admin with the P0.4 admin-scope fix applied to

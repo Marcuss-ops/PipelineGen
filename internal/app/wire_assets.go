@@ -94,15 +94,45 @@ func WireAssets(
 	var driveUploader *driveutil.Uploader
 	if deps.Delivery.Admin != nil {
 		if up, ok := deps.Delivery.Admin.(*driveutil.Uploader); ok {
+			// PR-ADAPTER-NIL-GUARD (2026-07-06): typed-NIL interface trap.
+			// `deps.Delivery.Admin.(*driveutil.Uploader)` returning ok=true
+			// is not sufficient — the interface can hold a typed nil pointer.
+			// Subsequent dereference of any nil *Uploader field panics at
+			// the first port call (e.g., deletionSvc → drive check). Guard
+			// fail-closed at composition time so the deployment crashes
+			// loudly at boot, not silently mid-flight.
+			if up == nil {
+				return nil, fmt.Errorf("WireAssets: drive.Admin: direct *driveutil.Uploader is nil (typed-NIL interface trap; PR-ADAPTER-NIL-GUARD fail-closed)")
+			}
 			driveUploader = up
-		} else if adapter, ok := deps.Delivery.Admin.(*driveutil.AdminAdapter); ok && adapter.Uploader != nil {
+		} else if adapter, ok := deps.Delivery.Admin.(*driveutil.AdminAdapter); ok {
 			// DRIVE-005 (FASE 9): Admin is now *AdminAdapter (embedding *Uploader) since
 			// PR-DRIVECLIENT-RAW-RETIRE (2026-07-04). The type-assertion above
 			// (*Uploader) fails because the concrete type is now *AdminAdapter;
 			// we unwrap the embedded *Uploader so the downstream driveUploader
 			// consumers (deletionSvc, buildClipsBundle, buildRegisterBundle)
 			// receive the canonical concrete uploader they expect.
+			//
+			// PR-ADAPTER-NIL-GUARD (2026-07-06): fail-closed with typed
+			// sentinel — see drive.ErrAdminAdapterUploaderNil. Canonical
+			// construction via NewAdminAdapter rejects nil u (admin.go:64)
+			// so this branch only succeeds on test paths or post-hoc
+			// mutation; either way, dereferencing adapter.Uploader would
+			// nil-panic on the first port call.
+			if adapter.Uploader == nil {
+				return nil, fmt.Errorf("WireAssets: drive.Admin: %w", driveutil.WrapDriveAdminError(driveutil.ErrAdminAdapterUploaderNil))
+			}
 			driveUploader = adapter.Uploader
+		} else {
+			// PR-ADAPTER-NIL-GUARD (2026-07-06) — godlike/07 NO-FAKE-AVAILABILITY:
+			// Branch 3 silent-nil fallthrough. If deps.Delivery.Admin is
+			// NEITHER *Uploader NOR *AdminAdapter (a future port variant, a
+			// regression that misroutes Admin to the wrong concrete type, a
+			// test stub that bypasses both branches), fail-closed at the
+			// composition root with a typed sentinel rather than leave
+			// driveUploader nil silently — the failure would otherwise
+			// surface later as a panic mid-flight on the first port call.
+			return nil, fmt.Errorf("WireAssets: drive.Admin: %w", driveutil.WrapDriveAdminError(driveutil.ErrAdminUnknownType))
 		}
 	}
 	var assetRepo asset.Repository
