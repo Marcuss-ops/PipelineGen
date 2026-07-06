@@ -1,0 +1,143 @@
+package config
+
+import (
+	"path/filepath"
+)
+
+type StorageConfig struct {
+	// DataDir is the root for ALL persisted data (DBs + blobs).
+	DataDir string `yaml:"data_dir" env:"VELOX_DATA_DIR" default:"./data"`
+	// PrimaryDBPath is the file path for the unified media DB
+	// (jobs, assets, scripts, search_queries, worker_nodes, media_assets,
+	//  clip_folders, voiceovers, etc.). Defaults preserve legacy
+	// `<DataDir>/media/media.db.sqlite`.
+	PrimaryDBPath string `yaml:"primary_db_path" env:"VELOX_PRIMARY_DB_PATH" default:""`
+	// ObservabilityDBPath is the file path for the API request log DB
+	// (`api_requests` table + indexes). Distinct from PrimaryDBPath so
+	// log retention doesn't churn the schema-versioned primary DB.
+	// Default: `<DataDir>/observability/api_requests.db.sqlite`.
+	ObservabilityDBPath string `yaml:"observability_db_path" env:"VELOX_OBSERVABILITY_DB_PATH" default:""`
+	// WorkspaceDir is for transient job scratch space.
+	WorkspaceDir string `yaml:"workspace_dir" env:"VELOX_WORKSPACE_DIR" default:""`
+	// CacheDir is for derived artifacts (re-rendered thumbnails, etc.).
+	CacheDir string `yaml:"cache_dir" env:"VELOX_CACHE_DIR" default:""`
+	// ExportDir is for one-off exports (download bundles, audit dumps).
+	ExportDir string `yaml:"export_dir" env:"VELOX_EXPORT_DIR" default:""`
+	// ObservabilityMaxAgeDays is the retention cutoff for the
+	// observability DB (`admin db rotate`). Rows with ts older than
+	// this are offloaded to <DataDir>/backups/observability-<DATE>.db.sqlite
+	// then DELETEd from the live DB. 0 disables rotation. See
+	// ARCHITECTURE.md §12 (observability retention policy).
+	ObservabilityMaxAgeDays int `yaml:"observability_max_age_days" env:"VELOX_OBSERVABILITY_MAX_AGE_DAYS" default:"7"`
+	// ObservabilityMaxSizeMB is the soft cap on the observability DB
+	// size. After each rotation, `admin db status` reports the WAL
+	// + main file size; if it exceeds this, an operator should run
+	// `admin db rotate` with a smaller -max-age-days.
+	ObservabilityMaxSizeMB int `yaml:"observability_max_size_mb" env:"VELOX_OBSERVABILITY_MAX_SIZE_MB" default:"1024"`
+	// MediaDir / TempDir are kept for backward-compat with the legacy
+	// on-disk filesystem layout (voiceovers, images, youtube, etc.).
+	MediaDir string `yaml:"media_dir" env:"PIPELINEGEN_MEDIA_DIR" default:"media"`
+	TempDir  string `yaml:"temp_dir" env:"VELOX_TEMP_DIR" default:"tmp"`
+}
+
+func (s StorageConfig) MediaPath() string { return s.FullPath(s.MediaDir) }
+
+// FullPath returns the absolute path to a subdirectory within DataDir.
+func (s StorageConfig) FullPath(subDir string) string {
+	if filepath.IsAbs(subDir) {
+		return subDir
+	}
+	return filepath.Join(s.DataDir, subDir)
+}
+
+// TempPath returns the full path to the temporary directory.
+func (s StorageConfig) TempPath() string { return s.FullPath(s.TempDir) }
+
+// mediaSubPath returns the full path to a subdirectory under MediaDir.
+func (s StorageConfig) mediaSubPath(sub string) string {
+	return filepath.Join(s.DataDir, s.MediaDir, sub)
+}
+
+// VoiceoversPath returns the full path to the voiceovers directory.
+func (s StorageConfig) VoiceoversPath() string { return s.mediaSubPath("voiceovers") }
+
+// AssetsPath returns the full path to the main assets directory.
+func (s StorageConfig) AssetsPath() string { return s.mediaSubPath("assets") }
+
+// DownloadsPath returns the full path to the downloads directory.
+func (s StorageConfig) DownloadsPath() string { return s.mediaSubPath("downloads") }
+
+// BackupsPath returns the full path to the backups directory.
+func (s StorageConfig) BackupsPath() string { return s.FullPath("backups") }
+
+// AnimationsPath returns the full path to the animations directory.
+func (s StorageConfig) AnimationsPath() string { return s.mediaSubPath("animations") }
+
+// YoutubeClipsPath returns the full path to the youtube clips directory.
+func (s StorageConfig) YoutubeClipsPath() string { return s.mediaSubPath("youtube") }
+
+// ArtlistPath returns the full path to the artlist directory.
+func (s StorageConfig) ArtlistPath() string { return s.mediaSubPath("artlist") }
+
+// ImagesPath returns the full path to the images directory.
+func (s StorageConfig) ImagesPath() string { return s.mediaSubPath("images") }
+
+func (s StorageConfig) ToDatabaseStorageConfig() interface {
+	DataDir() string
+	PrimaryDBPath() string
+	ObservabilityDBPath() string
+	WorkspaceDir() string
+	CacheDir() string
+	ExportDir() string
+} {
+	return storageSetAdapter{s: s}
+}
+
+// Path resolution helpers — used by internal/app/bootstrap.go and any
+// subsystem that needs the canonical disk layout under DataDir.
+func (s StorageConfig) PrimaryDBFullPath() string {
+	if s.PrimaryDBPath != "" {
+		return s.PrimaryDBPath
+	}
+	return s.FullPath(filepath.Join(s.MediaDir, "media.db.sqlite"))
+}
+func (s StorageConfig) ObservabilityDBFullPath() string {
+	if s.ObservabilityDBPath != "" {
+		return s.ObservabilityDBPath
+	}
+	return s.FullPath("observability/api_requests.db.sqlite")
+}
+func (s StorageConfig) WorkspaceFullPath() string {
+	if s.WorkspaceDir != "" {
+		return s.WorkspaceDir
+	}
+	return s.FullPath("workspace")
+}
+func (s StorageConfig) CacheFullPath() string {
+	if s.CacheDir != "" {
+		return s.CacheDir
+	}
+	return s.FullPath("cache")
+}
+func (s StorageConfig) ExportFullPath() string {
+	if s.ExportDir != "" {
+		return s.ExportDir
+	}
+	return s.FullPath("export")
+}
+
+type storageSetAdapter struct {
+	s StorageConfig
+}
+
+func (a storageSetAdapter) DataDir() string {
+	if a.s.DataDir == "" {
+		return "data"
+	}
+	return a.s.DataDir
+}
+func (a storageSetAdapter) PrimaryDBPath() string       { return a.s.PrimaryDBFullPath() }
+func (a storageSetAdapter) ObservabilityDBPath() string { return a.s.ObservabilityDBFullPath() }
+func (a storageSetAdapter) WorkspaceDir() string        { return a.s.WorkspaceFullPath() }
+func (a storageSetAdapter) CacheDir() string            { return a.s.CacheFullPath() }
+func (a storageSetAdapter) ExportDir() string           { return a.s.ExportFullPath() }
