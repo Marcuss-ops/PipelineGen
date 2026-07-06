@@ -192,74 +192,13 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 		tools.Progress(80, "Stock orchestrator complete")
 	}
 
-	// Stock Cutover §12-1 §F (July 2026): thread HandleJob through
-	// the canonical Spina Dorsale. Build the OrchestrationResult
-	// envelope (already defined in finalizer_gates.go) carrying
-	// the typed manifest + the per-chunk + per-metadata gate
-	// inputs. Today (Commit 4-7 not landed) Chunks and Metadata
-	// are EMPTY so BuildFinalizationRequest's VerifyChunks raises
-	// ErrStockNoChunksFinalized — the gate fires before any
-	// finalizer call, propagating the typed error to the broker
-	// which marks the job FAILED (closing the silent-success
-	// class per user spec P0 2.1).
-	orchestration := &OrchestrationResult{
-		Manifest: manifest,
-		Chunks:   []ChunkState{},  // pre-Commit-4-7: empty
-		Metadata: MetadataState{}, // pre-Commit-4-7: empty
-	}
-
-	// §F.1 (this commit): the Spine is OPTIONAL. When wired
-	// (production case in §F.2 follow-up) the atomic
-	// single-TX SUCCEEDED write happens; when unwired (today's
-	// composition root, which doesn't yet thread a finalizer)
-	// the gate-fail-fast path still propagates and the legacy
-	// return-map shape is preserved so dashboards keep rendering.
-	manifestData, marshalErr := manifestBytes(manifest)
-	if marshalErr != nil {
-		return nil, fmt.Errorf("stockpipeline.Service.HandleJob: marshal manifest: %w", marshalErr)
-	}
-	lease := extractLease(job)
-	finReq, buildErr := BuildFinalizationRequest(
-		job.ID,
-		lease,
-		manifestData,
-		orchestration.Chunks,
-		orchestration.Metadata,
-	)
-	if buildErr != nil {
-		// Gate failed — propagate the typed sentinel so the
-		// broker's downstream runner marks the job FAILED.
-		// Today this returns ErrStockNoChunksFinalized on EVERY
-		// stock run (pre-Commit-4-7). §F.2 does NOT change this
-		// fail-closed behavior — it just enables the
-		// post-gate-pass path through finalizer.CompleteWithArtifacts.
-		return nil, fmt.Errorf("stockpipeline.Service.HandleJob: gates failed (job cannot SUCCEED): %w", buildErr)
-	}
-
-	var finResult *finalization.FinalizationResult
-	if s.finalizer != nil {
-		var finalErr error
-		finResult, finalErr = s.finalizer.CompleteWithArtifacts(ctx, *finReq)
-		if finalErr != nil {
-			return nil, fmt.Errorf("stockpipeline.Service.HandleJob: finalizer spine write: %w", finalErr)
-		}
-		s.log.Info("stock finaliser spine SUCCEEDED",
-			zap.String("job_id", job.ID),
-			zap.Int("attempt", lease.Attempt),
-			zap.Int("artifact_count", len(finResult.ArtifactRefs)),
-		)
-	} else {
-		// §F.1 fallback: composition root hasn't wired the
-		// production finalizer yet. The legacy return-map shape
-		// preserves JobStatusResponse rendering and the broker's
-		// downstream runner still sees the manifest. The job is
-		// NOT marked SUCCEEDED in this branch (finalizer is the
-		// single writer per godlike/06 SSOT).
-		s.log.Warn("stock Service.HandleJob finalizer NOT wired (§12-1 §F.1 OPTIONAL gate) — gates passed but no spine write occurred; legacy return-map path is active",
-			zap.String("job_id", job.ID),
-			zap.Int("attempt", lease.Attempt),
-		)
-	}
+	// Stock Cutover Commit 4-expanded (July 2026): the orchestrator's
+	// step 6 (StockFinalizeStep) owns the canonical single-TX spine
+	// write via JobFinalizer.CompleteWithArtifacts. HandleJob delegates
+	// entirely to runOrchestratorResilient; it does NOT duplicate the
+	// finalization gate — any duplication would always fail with
+	// ErrStockNoChunksFinalized because the orchestrator already
+	// consumed the Published/MetadataPublished runState.
 
 	if tools.Progress != nil {
 		tools.Progress(100, "Stock pipeline finalised")
@@ -278,10 +217,6 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 		Chunks:         projected.Chunks,
 		MetadataLink:   projected.MetadataLink,
 		MetadataFileID: projected.MetadataFileID,
-	}
-	if finResult != nil {
-		out.FinalizationStatus = finResult.Status
-		out.FinalizationCompletedAt = finResult.CompletedAt
 	}
 	return out.ToResultMap(), nil
 }

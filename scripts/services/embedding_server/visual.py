@@ -32,8 +32,8 @@ async def embed_visual(req: VisualEmbedRequest):
     Uses SigLIP's text encoder to produce a visual-aligned embedding.
     For image-file embeddings, use /embed_visual_from_image.
     """
+    _require_siglip()
     async with _inference_sem:
-        _require_siglip()
         try:
             embedding = siglip_model.encode(req.text).tolist()
             return {
@@ -52,8 +52,8 @@ async def embed_visual_from_image(req: ImageEmbedRequest):
 
     Uses SigLIP's image encoder. Returns 501 if PIL is unavailable.
     """
+    _require_siglip()
     async with _inference_sem:
-        _require_siglip()
         try:
             from PIL import Image
             img = Image.open(req.image_path).convert("RGB")
@@ -71,8 +71,8 @@ async def embed_visual_from_image(req: ImageEmbedRequest):
 @router.post("/visual_analyze")
 async def visual_analyze(req: VisualAnalyzeRequest):
     """Generate SigLIP visual embedding + perceptual hash for a local image file."""
+    _require_siglip()
     async with _inference_sem:
-        _require_siglip()
         try:
             from PIL import Image
             import imagehash
