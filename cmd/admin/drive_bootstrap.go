@@ -97,13 +97,7 @@ func runDriveBootstrap(args []string) error {
 
 	// Dry-run: just print the planned structure.
 	if !*apply {
-		fmt.Println("Drive Bootstrap — DRY RUN")
-		fmt.Printf("Root: %s\n\n", *rootID)
-		fmt.Println("Would create/verify the following 10 canonical subdirectories:")
-		for _, ns := range canonicalDriveNamespaces {
-			fmt.Printf("  ✅ %-20s → %s/  (destination: %s)\n", ns.Namespace, ns.Namespace, ns.Destination)
-		}
-		fmt.Println("\nPass --apply to execute the bootstrap.")
+		fmt.Print(formatBootstrapDryRunOutput(*rootID))
 		return nil
 	}
 
@@ -201,4 +195,23 @@ func buildDriveAdminForCLI(ctx context.Context, cfg *config.Config, log *zap.Log
 		return nil, fmt.Errorf("NewDriveServiceFromFiles: %w", err)
 	}
 	return &drive.Uploader{Service: svc, Log: log}, nil
+}
+
+// formatBootstrapDryRunOutput returns the human-readable dry-run output
+// for the given root folder ID. Pure function (no I/O) so callers can
+// test the format without standing up Drive or DB.
+//
+// godlike/07 minimum-blast-radius: a future refactor that changes the
+// format will break the byte-stable test, forcing the operator to
+// consciously ack the change.
+func formatBootstrapDryRunOutput(rootID string) string {
+	var b strings.Builder
+	fmt.Fprintln(&b, "Drive Bootstrap — DRY RUN")
+	fmt.Fprintf(&b, "Root: %s\n\n", rootID)
+	fmt.Fprintln(&b, "Would create/verify the following 10 canonical subdirectories:")
+	for _, ns := range canonicalDriveNamespaces {
+		fmt.Fprintf(&b, "  ✅ %-20s → %s/  (destination: %s)\n", ns.Namespace, ns.Namespace, ns.Destination)
+	}
+	fmt.Fprintln(&b, "\nPass --apply to execute the bootstrap.")
+	return b.String()
 }
