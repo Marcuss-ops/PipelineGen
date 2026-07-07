@@ -167,7 +167,7 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 			zap.String("item_id", item.ID),
 			zap.Error(err))
 		pf(100, "script.generate_item execution failed")
-		return toScriptItemResultMap(item.ID, j.ID, parentJobID, false, err.Error()), fmt.Errorf("script.generate_item: execute: %w", err)
+		return toScriptItemResultMap(item.ID, j.ID, parentJobID, false, err.Error(), nil), fmt.Errorf("script.generate_item: execute: %w", err)
 	}
 
 	// Structural emptiness gate: no Text, ScriptID, or cache.Hit
@@ -180,18 +180,22 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 			zap.String("item_id", item.ID),
 			zap.String("result_text_len", fmt.Sprintf("%d", len(res.Output.Text))))
 		pf(100, "script.generate_item semantic failure: ok=false")
-		return toScriptItemResultMap(item.ID, j.ID, parentJobID, false, errMsg),
+		return toScriptItemResultMap(item.ID, j.ID, parentJobID, false, errMsg, res),
 			fmt.Errorf("%s", errMsg)
 	}
 
 	pf(100, "script.generate_item execution complete")
-	return toScriptItemResultMap(item.ID, j.ID, parentJobID, true, ""), nil
+	return toScriptItemResultMap(item.ID, j.ID, parentJobID, true, "", res), nil
 }
 
 // toScriptItemResultMap serialises a per-item outcome into the
 // map[string]any shape the dispatcher writes into job.Result JSON.
 // The aggregator reads `ok`, `status`, `item_id`, `error`.
-func toScriptItemResultMap(itemID, childJobID, parentJobID string, ok bool, errStr string) map[string]any {
+// When res is non-nil and carries a Document artifact, the doc_link
+// and doc_id are propagated into the result map so downstream
+// consumers (aggregator, API handler) can surface the Google Doc
+// link to operators (2026-07-07 fix for the child-handler drop).
+func toScriptItemResultMap(itemID, childJobID, parentJobID string, ok bool, errStr string, res *domainScript.GenerationResult) map[string]any {
 	m := map[string]any{
 		"item_id":       itemID,
 		"job_id":        childJobID,
@@ -201,6 +205,14 @@ func toScriptItemResultMap(itemID, childJobID, parentJobID string, ok bool, errS
 	}
 	if errStr != "" {
 		m["error"] = errStr
+	}
+	if res != nil && res.Artifacts.Document != nil {
+		if res.Artifacts.Document.DocLink != "" {
+			m["doc_link"] = res.Artifacts.Document.DocLink
+		}
+		if res.Artifacts.Document.DocID != "" {
+			m["doc_id"] = res.Artifacts.Document.DocID
+		}
 	}
 	return m
 }
@@ -237,4 +249,3 @@ func scriptItemIsSuccessful(res *domainScript.GenerationResult) bool {
 	}
 	return false
 }
-

@@ -47,6 +47,9 @@ func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string,
 	}
 	client, ok := d.docClient.(drive.DocClient)
 	if !ok || client == nil {
+		if d.log != nil {
+			d.log.Warn("CreateDoc: DocClient type assertion failed or nil")
+		}
 		return "", ""
 	}
 	folderID := strings.TrimSpace(driveFolderID)
@@ -55,8 +58,22 @@ func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string,
 			folderID = resolved
 		}
 	}
+	if d.log != nil {
+		d.log.Info("CreateDoc: calling DocClient.CreateDoc",
+			zap.String("title", title),
+			zap.String("folderID", folderID))
+	}
 	doc, err := client.CreateDoc(ctx, title, content, folderID)
-	if err != nil || doc == nil || strings.TrimSpace(doc.URL) == "" || strings.TrimSpace(doc.ID) == "" {
+	if err != nil {
+		if d.log != nil {
+			d.log.Warn("CreateDoc: DocClient.CreateDoc error", zap.Error(err))
+		}
+		return "", ""
+	}
+	if doc == nil || strings.TrimSpace(doc.URL) == "" || strings.TrimSpace(doc.ID) == "" {
+		if d.log != nil {
+			d.log.Warn("CreateDoc: empty result")
+		}
 		return "", ""
 	}
 	return doc.URL, doc.ID
