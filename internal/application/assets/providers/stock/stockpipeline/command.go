@@ -222,7 +222,23 @@ func (c *StockCommand) ToJobPayload() map[string]any {
 		payload["drive_urls"] = c.DriveURLs
 	}
 	if len(c.Clips) > 0 {
-		payload["clips"] = c.Clips
+		// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): defensive copy
+		// of c.Clips so post-construction mutations to the caller's
+		// slice do not leak into the jobs wire shape. The struct copy
+		// shares the Tags slice header with the source, so we deep-copy
+		// Tags too (godlike/06 SSOT: every boundary takes its own copy).
+		// Mirrors the pattern in FromRunPayload / FromSearchAndRunRequest
+		// / ToRunInput. The struct copy is sufficient for all value-typed
+		// fields (Title, Description, URL, StartSec, EndSec, Round,
+		// Category, Slug) — future fields are auto-included.
+		clipsCopy := make([]ClipSpec, len(c.Clips))
+		for i, clip := range c.Clips {
+			clipsCopy[i] = clip
+			if len(clip.Tags) > 0 {
+				clipsCopy[i].Tags = append([]string(nil), clip.Tags...)
+			}
+		}
+		payload["clips"] = clipsCopy
 	}
 	payload["total_minutes"] = c.TotalMinutes
 	if c.ChunkDuration != 0 {

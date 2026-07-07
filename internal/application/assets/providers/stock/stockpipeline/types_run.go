@@ -17,12 +17,36 @@ import (
 
 // ClipSpec defines a single clip to extract from a source video.
 // Used with Clips field on RunInput to bypass the deterministic planner.
+//
+// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): adds 4 typed fields
+// that travel end-to-end (ClipSpec → ClipPlan → ChunkState →
+// ChunkMetadataEntry → Qdrant semantic payload):
+//
+//   - Round    int       — boxing-style round number (1-12). Surfaced
+//     in metadata.json + Qdrant payload for
+//     semantic filtering ("round 7").
+//   - Tags     []string  — free-form per-clip tags (people, theme,
+//     technique). Surfaced in metadata.json +
+//     indexed via BM25 sparse vector.
+//   - Category string     — content category (boxing / running / etc.).
+//     Carries the stock pipeline's "sport" axis.
+//   - Slug     string     — explicit operator-supplied Drive folder
+//     slug for this clip. Wins over the title-
+//     derived slug in perClipLeafName (the
+//     publisher's per-clip leaf derivation).
+//     Use this when the title contains characters
+//     that don't slugify cleanly (e.g. accented
+//     Portuguese "Broner barcolla" stays verbatim).
 type ClipSpec struct {
-	Title       string  `json:"title,omitempty"`
-	Description string  `json:"description,omitempty"`
-	URL         string  `json:"url,omitempty"`
-	StartSec    float64 `json:"start_sec"`
-	EndSec      float64 `json:"end_sec"`
+	Title       string   `json:"title,omitempty"`
+	Description string   `json:"description,omitempty"`
+	URL         string   `json:"url,omitempty"`
+	StartSec    float64  `json:"start_sec"`
+	EndSec      float64  `json:"end_sec"`
+	Round       int      `json:"round,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Category    string   `json:"category,omitempty"`
+	Slug        string   `json:"slug,omitempty"`
 }
 
 // RunInput holds the parameters for a stock pipeline run.

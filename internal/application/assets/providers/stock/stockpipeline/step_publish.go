@@ -129,6 +129,15 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			cs.StartSec = plan.StartSec
 			cs.EndSec = plan.EndSec
 			cs.Description = plan.Description
+			// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): thread the
+			// 4 new content fields from ClipPlan → ChunkState. Tags
+			// gets a defensive copy so downstream mutation (rare but
+			// possible for retry paths that reuse ChunkState) doesn't
+			// leak into the plan.
+			cs.Round = plan.Round
+			cs.Tags = append([]string(nil), plan.Tags...)
+			cs.Category = plan.Category
+			cs.Slug = plan.Slug
 		}
 		if explicitTimestamps {
 			cs.ArtifactID = TimestampArtifactID(fp, i, "video")
@@ -488,6 +497,25 @@ func sanitizedURLBasename(rawURL string) string {
 // Pacquiao/Broner clips landed in the same folder instead of
 // in per-clip subdirs.
 func perClipLeafName(plan ClipPlan) string {
+	// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): explicit-override
+	// cascade. The user-supplied Slug (when non-empty) is the canonical
+	// leaf — it wins over the title-derived slug. We still run it
+	// through pathutil.SafeFolderName so the result is filesystem-safe
+	// (no /, no :, no leading dot). godlike/07 NO-FAKE-AVAILABILITY:
+	// the SafeFolderName all-whitespace fallback "untitled" is also
+	// rejected. Critically, we ALSO reject slugs that sanitize to
+	// pure-punctuation (e.g. "///" → "___", "!!!" → "___") because
+	// those would shadow real folders on Drive without any
+	// human-readable meaning. If the user-supplied slug is all
+	// whitespace / unsafe / punctuation-only, fall through to the
+	// title-derived cascade rather than emit a meaningless folder
+	// (operators scanning Drive would see a generic ___/ folder
+	// that shadows other runs).
+	if raw := strings.TrimSpace(plan.Slug); raw != "" {
+		if safe := pathutil.SafeFolderName(raw); safe != "" && safe != "untitled" && hasAlphanumeric(safe) {
+			return safe
+		}
+	}
 	if title := strings.TrimSpace(plan.Title); title != "" {
 		slug := slugifyTitle(title)
 		// godlike/07: never emit "untitled" as a slug (the
@@ -502,6 +530,20 @@ func perClipLeafName(plan ClipPlan) string {
 		int(plan.StartSec)/3600, (int(plan.StartSec)%3600)/60, int(plan.StartSec)%60,
 		int(plan.EndSec)/3600, (int(plan.EndSec)%3600)/60, int(plan.EndSec)%60,
 	)
+}
+
+// hasAlphanumeric returns true if s contains at least one letter or
+// digit. Used by perClipLeafName to reject slugs that sanitize to
+// pure-punctuation (e.g. "___", "---", "...") so the cascade falls
+// through to the title-derived slug (godlike/07 NO-FAKE-AVAILABILITY:
+// meaningless folder names shadow real ones on Drive).
+func hasAlphanumeric(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
 }
 
 // slugifyTitle returns the canonical Drive-folder-safe slug for

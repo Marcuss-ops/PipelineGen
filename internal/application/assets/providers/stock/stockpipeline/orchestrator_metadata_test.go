@@ -358,6 +358,117 @@ func TestExplicitPlanner_InfersProviderAndVideoIDAtPlanBuildTime(t *testing.T) {
 	}
 }
 
+// ── PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026) — 4 content fields ──
+//
+// Round / Tags / Category / Slug travel ClipSpec → ClipPlan →
+// ChunkState → ChunkMetadataEntry verbatim. The buildStockRunMetadata
+// pure function is the canonical seam where ChunkState → entry
+// happens; the test below pins the propagation contract.
+
+func TestBuildStockRunMetadata_PropagatesRoundTagsCategorySlug(t *testing.T) {
+	in := &RunInput{FolderID: "wf-4fields", ClipDuration: 10, ChunkDuration: 10, PolicyVersion: "v1"}
+	chunks := []ChunkState{
+		{
+			Index:        0,
+			ArtifactID:   "stock:fp:c:0",
+			SHA256:       "a64chars_filler________________________________________________0",
+			SizeBytes:    100,
+			RemoteFileID: "d0",
+			Round:        7,
+			Tags:         []string{"boxing", "pacquiao", "broner", "round-7"},
+			Category:     "boxing",
+			Slug:         "round-7-broner-barcolla",
+		},
+		{
+			Index:        1,
+			ArtifactID:   "stock:fp:c:1",
+			SHA256:       "a64chars_filler________________________________________________1",
+			SizeBytes:    200,
+			RemoteFileID: "d1",
+			Round:        1,
+			Tags:         []string{"boxing", "pacquiao", "round-1"},
+			Category:     "boxing",
+			Slug:         "round-1-la-fase-di-studio",
+		},
+		{
+			Index:        2,
+			ArtifactID:   "stock:fp:c:2",
+			SHA256:       "a64chars_filler________________________________________________2",
+			SizeBytes:    300,
+			RemoteFileID: "d2",
+			// Round=0, Tags=nil, Category="", Slug="" — deterministic-planner case
+		},
+	}
+	meta := buildStockRunMetadata(in, chunks, "fp")
+	if len(meta.Chunks) != 3 {
+		t.Fatalf("expected 3 chunk entries, got %d", len(meta.Chunks))
+	}
+	// Chunk 0: all 4 fields populated.
+	if got, want := meta.Chunks[0].Round, 7; got != want {
+		t.Errorf("chunks[0].Round = %d, want %d", got, want)
+	}
+	if got, want := meta.Chunks[0].Category, "boxing"; got != want {
+		t.Errorf("chunks[0].Category = %q, want %q", got, want)
+	}
+	if got, want := meta.Chunks[0].Slug, "round-7-broner-barcolla"; got != want {
+		t.Errorf("chunks[0].Slug = %q, want %q", got, want)
+	}
+	wantTags0 := []string{"boxing", "pacquiao", "broner", "round-7"}
+	if len(meta.Chunks[0].Tags) != len(wantTags0) {
+		t.Fatalf("chunks[0].Tags length = %d, want %d (slice drift)", len(meta.Chunks[0].Tags), len(wantTags0))
+	}
+	for i, want := range wantTags0 {
+		if meta.Chunks[0].Tags[i] != want {
+			t.Errorf("chunks[0].Tags[%d] = %q, want %q", i, meta.Chunks[0].Tags[i], want)
+		}
+	}
+	// Chunk 1: round 1 + distinct slug.
+	if got, want := meta.Chunks[1].Round, 1; got != want {
+		t.Errorf("chunks[1].Round = %d, want %d", got, want)
+	}
+	if got, want := meta.Chunks[1].Slug, "round-1-la-fase-di-studio"; got != want {
+		t.Errorf("chunks[1].Slug = %q, want %q", got, want)
+	}
+	// Chunk 2: deterministic-planner case (zero values) preserved
+	// at struct level. omitempty drops them from JSON wire, which
+	// the next test pins.
+	if got := meta.Chunks[2].Round; got != 0 {
+		t.Errorf("chunks[2].Round = %d, want 0 (deterministic-planner zero value)", got)
+	}
+	if got := meta.Chunks[2].Category; got != "" {
+		t.Errorf("chunks[2].Category = %q, want empty", got)
+	}
+	if got := meta.Chunks[2].Slug; got != "" {
+		t.Errorf("chunks[2].Slug = %q, want empty", got)
+	}
+	if got := meta.Chunks[2].Tags; len(got) != 0 {
+		t.Errorf("chunks[2].Tags = %v, want empty/nil", got)
+	}
+}
+
+// TestBuildStockRunMetadata_ZeroRoundTagsCategorySlug_OmitsFromJSON pins
+// the godlike/07 NO-FAKE-AVAILABILITY contract: when Round/Tags/
+// Category/Slug are at zero-value (the deterministic-planner case),
+// the JSON wire shape does NOT include those keys. Pre-PR baseline
+// maintained: legacy search/direct-url paths produce the same
+// wire shape they did before this front.
+func TestBuildStockRunMetadata_ZeroRoundTagsCategorySlug_OmitsFromJSON(t *testing.T) {
+	in := &RunInput{FolderID: "wf", ClipDuration: 10, ChunkDuration: 10, PolicyVersion: "v1"}
+	chunks := []ChunkState{
+		{Index: 0, ArtifactID: "stock:fp:c:0", SourceProvider: SourceProviderUnknown, TotalChunks: 1, SHA256: "a64chars_filler________________________________________________0", SizeBytes: 1, RemoteFileID: "d0"},
+	}
+	meta := buildStockRunMetadata(in, chunks, "fp")
+	raw, mErr := json.Marshal(meta)
+	if mErr != nil {
+		t.Fatalf("json.Marshal(meta) failed: %v", mErr)
+	}
+	for _, absent := range []string{`"round"`, `"tags"`, `"category"`, `"slug"`} {
+		if strings.Contains(string(raw), absent) {
+			t.Errorf("JSON wire shape contains %q but should omit it (omitempty contract for zero-value Front 2 fields)", absent)
+		}
+	}
+}
+
 // ── IndexingStatus literal (PR-008) ───────────────────────────────
 //
 // stock.finalize must NOT do a media_assets.index_state DB SELECT in
