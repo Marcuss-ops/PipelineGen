@@ -114,6 +114,13 @@ type ExternalConfig struct {
 	// handler falls back to cfg.External.OllamaModel at composition
 	// time (defense-in-depth; never silently blank).
 	ParseArenaLLM string `yaml:"parse_arena_llm" env:"PARSE_ARENA_LLM" default:""`
+
+	// EnrichmentPromptVersion is the per-capability system-prompt
+	// version for the stock RLM/LLM enrichment pass (PR-011B).
+	// Canonical values: "v1" (English, default) | "v2" / "v2-it"
+	// (Italian). Empty falls back to "v1" per godlike/07 fail-closed
+	// (selectSystemPrompt in llm_client.go).
+	EnrichmentPromptVersion string `yaml:"enrichment_prompt_version" env:"ENRICHMENT_PROMPT_VERSION" default:""`
 }
 
 // ResolvedYtdlpPath returns the configured yt-dlp path, falling back to "yt-dlp" if empty.

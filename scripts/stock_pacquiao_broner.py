@@ -9,11 +9,12 @@ Usage:
     # Generate JSON payloads only (no API calls):
     python3 scripts/stock_pacquiao_broner.py --dry-run
 
-    # Send to local PipelineGen server:
-    python3 scripts/stock_pacquiao_broner.py --base-url http://localhost:8080
+    # Send to local PipelineGen server (port 8000 is the canonical
+    # PipelineGen port per AGENTS.md port policy; 8080 is SearXNG, NOT PipelineGen):
+    python3 scripts/stock_pacquiao_broner.py --base-url http://localhost:8000
 
     # Send with admin token:
-    python3 scripts/stock_pacquiao_broner.py --base-url http://localhost:8080 --token YOUR_TOKEN
+    python3 scripts/stock_pacquiao_broner.py --base-url http://localhost:8000 --token YOUR_TOKEN
 
     # Override Drive folder ID:
     python3 scripts/stock_pacquiao_broner.py --drive-folder-id YOUR_FOLDER_ID
@@ -36,14 +37,14 @@ YOUTUBE_VIDEO_ID = "vdC5GXxS-qU"
 YOUTUBE_URL = f"https://www.youtube.com/watch?v={YOUTUBE_VIDEO_ID}"
 
 # ── Drive output folder ───────────────────────────────────────────────
-# Root Drive folder (user-provided).
-DEFAULT_DRIVE_FOLDER_ID = "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV"
+# Root Drive folder (user-provided 2026-07-06).
+DEFAULT_DRIVE_FOLDER_ID = "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA"
 
 # ── API configuration ─────────────────────────────────────────────────
 DEFAULT_BASE_URL = "http://localhost:8000"
 STOCK_ENDPOINT = "/api/stock-pipeline/run"
-# Subfolder name under the root Drive folder.
-PROJECT_SUBFOLDER = "Pacquiao_Vs_Broner"
+# Subfolder name under the root Drive folder (user spec 2026-07-06).
+PROJECT_SUBFOLDER = "Pacquiao Vs Broner"
 
 # ── Clip extraction settings ──────────────────────────────────────────
 CLIP_DURATION_SEC = 5          # 5 seconds per clip

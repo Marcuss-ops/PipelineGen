@@ -279,7 +279,7 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 					deps.Cfg.External.OllamaModel,
 					deps.Cfg.External.OllamaTimeoutSeconds,
 				)
-				realAdapter, realErr := stockenrich.NewOllamaEnrichmentLLMClient(ollamaCli, modelName)
+				realAdapter, realErr := stockenrich.NewOllamaEnrichmentLLMClient(ollamaCli, modelName, deps.Cfg.External.EnrichmentPromptVersion)
 				if realErr != nil {
 					return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewOllamaEnrichmentLLMClient: %w", realErr)
 				}

@@ -284,17 +284,24 @@ func (h *Handler) Ready(c *gin.Context) {
 //	WorkspaceContext.IsAdmin      → Actor.IsAdmin
 func (h *Handler) extractActor(c *gin.Context) (search.Actor, bool) {
 	scope := middleware.ScopeFromContext(c)
-	if scope.WorkspaceID == "" || scope.WorkspaceID == "default" {
-		apiutil.Error(c, http.StatusForbidden,
-			"workspace_id is required (set X-Workspace-ID header for admin, or authenticate as a tenant principal)")
-		return search.Actor{}, false
-	}
 	isAdmin, _ := c.Get("is_admin")
+	adminFlag := toBool(isAdmin)
+
+	if scope.WorkspaceID == "" || scope.WorkspaceID == "default" {
+		if !adminFlag {
+			apiutil.Error(c, http.StatusForbidden,
+				"workspace_id is required (set X-Workspace-ID header for admin, or authenticate as a tenant principal)")
+			return search.Actor{}, false
+		}
+		// Admin principals with no workspace header get a system-wide
+		// search scope (IsAdmin=true → compileSemanticFilters propagates
+		// IsSystem=true → CompileQdrantFilter skips workspace clause).
+	}
 	principalID, _ := c.Get("principal_id")
 	return search.Actor{
 		WorkspaceID: scope.WorkspaceID,
 		UserID:      strings.TrimSpace(toString(principalID)),
-		IsAdmin:     toBool(isAdmin),
+		IsAdmin:     adminFlag,
 	}, true
 }
 

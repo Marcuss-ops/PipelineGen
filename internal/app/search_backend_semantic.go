@@ -308,7 +308,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 func compileSemanticFilters(q search.Query) (assetsearch.SearchScope, assetsearch.AssetFilter) {
 	return assetsearch.SearchScope{
 			WorkspaceID: strings.TrimSpace(q.Actor.WorkspaceID),
-			IsSystem:    false,
+			IsSystem:    q.Actor.IsAdmin,
 		},
 		assetsearch.AssetFilter{
 			Source:    strings.TrimSpace(q.Filters.Source),
