@@ -188,6 +188,76 @@ func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint str
 	}
 }
 
+// writeAndHashPerClipMetadata stages a per-clip metadata.json
+// envelope (StockRunMetadata with Chunks[] = [cs]) to a temp
+// file, computes its SHA256, and returns (LocalPath, SHA256,
+// SizeBytes, error). PR-PER-CLIP-METADATA (July 2026, DoD 5):
+// the per-clip envelope reuses the canonical buildStockRunMetadata
+// helper with a singleton chunks slice so the wire shape is
+// consistent with the run-level metadata.json — only the
+// chunks[] cardinality differs.
+//
+// godlike/06 SSOT (one canonical owner per fact): this is the
+// canonical writer of per-clip metadata envelopes. The
+// singleton-chunks reuse of buildStockRunMetadata keeps
+// StockRunMetadata as the SOLE metadata wire shape — no new
+// envelope types are introduced. The per-clip envelope is NOT
+// a minimal ChunkMetadataEntry JSON (godlike/07 typed-shape
+// contract: re-using the canonical StockRunMetadata envelope
+// lets a downstream consumer (Qdrant semantic-payload
+// enrichment) locate the run via ANY metadata.json in the
+// subtree — all carry the same JobID/RunFingerprint/PolicyVersion
+// fields the consumer keys off).
+//
+// godlike/07 minimum-blast-radius: mirrors writeAndHashMetadata
+// exactly (same MarshalIndent / CreateTemp / Write / Close /
+// ComputeSHA256 / cleanup pattern) so the per-clip path inherits
+// the same defensive contract (errors.Is probes, close-error
+// surfacing, fail-closed on the nil RunInput guard). The
+// additional empty-ArtifactID guard catches a programming bug
+// (caller forgot to stamp ChunkState.ArtifactID before invoking
+// the per-clip writer) before the temp file write would
+// silently emit a malformed envelope.
+func writeAndHashPerClipMetadata(in *RunInput, cs ChunkState, runFingerprint string) (string, string, int64, error) {
+	if in == nil {
+		return "", "", 0, errors.New("writeAndHashPerClipMetadata: nil RunInput")
+	}
+	if cs.ArtifactID == "" {
+		return "", "", 0, errors.New("writeAndHashPerClipMetadata: empty ChunkState.ArtifactID")
+	}
+	meta := buildStockRunMetadata(in, []ChunkState{cs}, runFingerprint)
+	raw, mErr := json.MarshalIndent(meta, "", "  ")
+	if mErr != nil {
+		return "", "", 0, fmt.Errorf("writeAndHashPerClipMetadata: marshal: %w", mErr)
+	}
+	sizeBytes := int64(len(raw))
+
+	f, cErr := os.CreateTemp("", "pipelinegen-stock-clip-metadata-*.json")
+	if cErr != nil {
+		return "", "", 0, fmt.Errorf("writeAndHashPerClipMetadata: create temp: %w", cErr)
+	}
+	cleanup := func() { _ = os.Remove(f.Name()) }
+
+	if _, wErr := f.Write(raw); wErr != nil {
+		closeErr := f.Close() // P3 fix: surface close error alongside write error (godlike/07 no silent error)
+		cleanup()
+		if closeErr != nil {
+			return "", "", 0, fmt.Errorf("writeAndHashPerClipMetadata: write %s: %w (close: %v)", f.Name(), wErr, closeErr)
+		}
+		return "", "", 0, fmt.Errorf("writeAndHashPerClipMetadata: write %s: %w", f.Name(), wErr)
+	}
+	if cErr := f.Close(); cErr != nil {
+		cleanup()
+		return "", "", 0, fmt.Errorf("writeAndHashPerClipMetadata: close %s: %w", f.Name(), cErr)
+	}
+	h, hErr := job.ComputeSHA256(f.Name())
+	if hErr != nil {
+		cleanup()
+		return "", "", 0, fmt.Errorf("writeAndHashPerClipMetadata: hash %s: %w", f.Name(), hErr)
+	}
+	return f.Name(), h, sizeBytes, nil
+}
+
 // writeAndHashMetadata stages the per-run metadata.json content
 // to a temp file, computes its SHA256, and returns
 // (LocalPath, SHA256, SizeBytes, error). Best-effort cleanup on

@@ -222,6 +222,70 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		// new surface contract, just a typed alias on the struct).
 		cs.DrivePath = published.Location.WebViewLink
 		cs.RemoteDownloadLink = published.Location.DownloadLink
+
+		// PR-PER-CLIP-METADATA (July 2026, DoD 5): per-clip
+		// metadata.json in the SAME per-clip subdir as the video
+		// chunk. The per-clip envelope reuses buildStockRunMetadata
+		// with a singleton chunks slice (same wire shape as the
+		// run-level metadata.json, only cardinality differs) so
+		// the canonical StockRunMetadata is the SOLE metadata
+		// wire shape. Lands at PathLeafName = leafName (the SAME
+		// subdir as the video). godlike/07 minimum-blast-radius:
+		// the existing cs is reused (no extra ChunkState build)
+		// so the video path stays byte-equivalent for callers
+		// that don't care about the per-clip metadata.
+		clipMetaPath, clipMetaHash, clipMetaSize, clipMetaErr := writeAndHashPerClipMetadata(in, cs, fp)
+		if clipMetaErr != nil {
+			return fmt.Errorf("%w: per-clip metadata.json stage for chunk %d (artifact=%s): %v",
+				ErrStockPublishArtifactFailed, i, cs.ArtifactID, clipMetaErr)
+		}
+		defer func() {
+			if rmErr := os.Remove(clipMetaPath); rmErr != nil && !os.IsNotExist(rmErr) {
+				if runner.Log() != nil {
+					runner.Log().Warn("orchestrator: stock.publish: failed to remove per-clip metadata temp file",
+						zap.String("path", clipMetaPath), zap.Int("chunk_index", i), zap.Error(rmErr))
+				}
+			}
+		}()
+
+		clipMetaIdem, clipMetaIdemErr := asset.SHA256IdempotencyKey("stock:"+fp+":clip-metadata:"+strconv.Itoa(i), clipMetaHash)
+		if clipMetaIdemErr != nil {
+			return fmt.Errorf("%w: per-clip metadata idem-key for chunk %d: %v",
+				ErrStockPublishArtifactFailed, i, clipMetaIdemErr)
+		}
+		var clipMetaArtifactID string
+		if explicitTimestamps {
+			clipMetaArtifactID = TimestampArtifactID(fp, i, "metadata")
+		} else {
+			clipMetaArtifactID = ChunkArtifactID(fp, i) + ":metadata"
+		}
+		clipMetaVA := finalization.VerifiedArtifact{
+			ArtifactID:     clipMetaArtifactID,
+			Kind:           finalization.KindMetadata,
+			Filename:       "metadata.json",
+			MIMEType:       "application/json",
+			LocalPath:      clipMetaPath,
+			SizeBytes:      clipMetaSize,
+			SHA256:         clipMetaHash,
+			Requirement:    finalization.ArtifactRequirementRequired,
+			IdempotencyKey: clipMetaIdem,
+			// DRIVE-IS-DRIVE (July 2026): RootFolderOverride REMOVED.
+			// Stock no longer passes FolderID as a Drive path override.
+			// The artifact publisher adapter derives Group/Subject from
+			// RootFolderName + PathLeafName via stockArtifactPathParts.
+			RootFolderName: rootFolderName,
+			// SAME subdir as the video chunk — per-clip metadata.json
+			// lands inside the per-clip leaf folder (e.g. round-1/,
+			// round-7-broner-barcolla/), alongside the video. Legacy
+			// mode lands inside the shared timestampGroupName leaf
+			// alongside the legacy shared-folder videos.
+			PathLeafName: leafName,
+		}
+		if _, clipMetaPrepErr := runner.ArtifactPreparation().Prepare(ctx, clipMetaVA); clipMetaPrepErr != nil {
+			return fmt.Errorf("%w: per-clip metadata.json upload for chunk %d (artifact=%s): %v",
+				ErrStockPublishArtifactFailed, i, clipMetaArtifactID, clipMetaPrepErr)
+		}
+
 		chunks = append(chunks, cs)
 	}
 	runner.State().Published = chunks
