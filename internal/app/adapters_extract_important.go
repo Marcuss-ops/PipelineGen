@@ -104,7 +104,9 @@ func (a *sectionDownloaderAdapter) DownloadSection(ctx context.Context, videoURL
 	if err != nil {
 		return "", fmt.Errorf("sectionDownloaderAdapter: mkdir temp: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	// DO NOT defer os.RemoveAll here — the caller needs the file after
+	// this function returns (stat, upload to Drive, hash). Cleanup is
+	// deferred to the per-job workspace eviction (or OS-level /tmp cleanup).
 	outPath := filepath.Join(tmpDir, fmt.Sprintf("clip_%.0f_%.0f.mp4", startSec, endSec))
 	sectionSpec := fmt.Sprintf("*%.0f-%.0f", startSec, endSec)
 	segs, err := a.dl.DownloadSections(ctx, &downloader.DownloadRequest{
