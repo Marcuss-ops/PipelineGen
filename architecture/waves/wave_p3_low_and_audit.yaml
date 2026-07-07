@@ -2284,3 +2284,27 @@ PR-P12-DRIVE-COMPLETION-2026-07-08:
       PR-YOUTUBE-TRANSCRIPT-EMPTY-DEBUG: deadline 2026-08-22
         "zap.Debug (not Warn, to avoid alert-storm) for
         TranscribeAudio returning empty string after TrimSpace"
+
+- id: PR-PY-STEP10-FAIL-LOG
+  title: "Step 10 partial-state Warn log (code-reviewer S1 followup to PR-PY-STEP10-PORT-M3)"
+  status: shipped
+  ship_sha: 35d37f69
+  ship_date: 2026-07-08
+  deadline: 2026-08-08
+  owner_capability: internal/application/youtube/usecase
+  forward_pointers:
+    - id: PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY
+      summary: "Promote partial-state Warn log to a Prometheus counter `transcript_metadata_step10_fail_after_clip_total{failure_code}` so dashboards can aggregate partial-state events across a batch extraction (current zaptest/observer is operator-log-only)."
+    - id: PR-PY-STEP10-FAIL-LOG-RETRY-PARITY
+      summary: "Add an opt-in retry semantic: when FailureCodeMetadataFailed fires AND the typed `Retryable` is true (currently `false`), retry Step 10 in-place before the outer Execute's `u.fail` flips the job status. Per godlike/07 minimum-blast-radius, the retry gate is opt-in via `ProcessSegmentDeps.RetryStep10 bool` so pre-Commit-3 callers see no behavior change."
+    - id: PR-PY-STEP10-FAIL-LOG-METRICS-CONSUMER
+      summary: "Surface the partial-state Warn log on the per-job DLQ-style counter `youtube_step10_partial_state_total{clip_id_prefix, source_group}` so operator dashboards can spot clip IDs that need manual re-extract (NOT a job-level retry — the metadata re-extract is a manual operator action)."
+  notes: |
+    3-surface godlike/06 SSOT lockstep closure for PR-PY-STEP10-FAIL-LOG.
+    1-file production change (process_segment.go) + 1-file TDD test surface
+    (process_segment_correttezza_test.go). Code-reviewer round 1 flagged
+    1 must-fix (clip_id prefix missing "yt_") + 1 nice-to-have (verbose
+    comment); both addressed in round 2 (verdict: SHIP-READY).
+    Pre-existing 6-item voiceover + app build-issue carry-forward
+    (per architecture/waves/wave_p1_high.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04)
+    UNCHANGED — NOT regressions of this closure.
