@@ -30,6 +30,14 @@ import (
 type HealthHandler struct {
 	svc   *systemhealth.Service
 	ready *systemhealth.ReadyChecker
+	// wire is the optional WireRegistry. When set, the /ready
+	// response includes a "wire" field listing which API capabilities
+	// are mounted. nil → wire field is still emitted (with all values
+	// NOT_MOUNTED per the All() nil-safe contract) so operators
+	// can detect a 404'd capability without grepping server logs.
+	// Set via SetWireRegistry at composition root after the gin
+	// engine has all routes registered.
+	wire *WireRegistry
 }
 
 // NewHealthHandler constructs the handler. Both deps are required;
@@ -37,6 +45,14 @@ type HealthHandler struct {
 // ready to slip through silently when the policy was inline.
 func NewHealthHandler(svc *systemhealth.Service, ready *systemhealth.ReadyChecker) *HealthHandler {
 	return &HealthHandler{svc: svc, ready: ready}
+}
+
+// SetWireRegistry wires the WireRegistry into the handler. nil-safe
+// (passing nil resets the registry to the all-NOT_MOUNTED default).
+// The composition root calls this after the gin engine has all
+// routes registered (i.e. after Setup() has built the engine).
+func (h *HealthHandler) SetWireRegistry(r *WireRegistry) {
+	h.wire = r
 }
 
 // fastHealthNames is the default deep-check set used when ?deep=true.
@@ -94,9 +110,22 @@ func (h *HealthHandler) Health(c *gin.Context) {
 
 // Ready is the readiness probe. Policy is owned by ReadyChecker;
 // this handler only maps CheckReady.OK -> 200 vs 503.
+//
+// The response always includes a "wire" field (capability → MOUNTED /
+// NOT_MOUNTED) so operators can detect a 404'd capability without
+// grepping server logs — the canonical use case surfaced by the
+// stale-binary incident on 2026-07-07 where /api/stock-pipeline/run
+// returned 400 (validation) but the new binary didn't have stock
+// wired; a /ready "wire: { stock: NOT_MOUNTED }" would have caught
+// it in 5 seconds.
 func (h *HealthHandler) Ready(c *gin.Context) {
 	if h.ready == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not ready", "ok": false, "error": "ready checker not initialized"})
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status": "not ready",
+			"ok":     false,
+			"error":  "ready checker not initialized",
+			"wire":   h.wireMap(),
+		})
 		return
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
@@ -110,7 +139,15 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 		"status": statusString(resp.OK),
 		"ok":     resp.OK,
 		"checks": resp.Checks,
+		"wire":   h.wireMap(),
 	})
+}
+
+// wireMap returns the wire surface, nil-safe. Always returns a
+// non-nil map (all NOT_MOUNTED when the registry is unset) so the
+// /ready JSON shape is stable for operator tooling.
+func (h *HealthHandler) wireMap() map[string]string {
+	return h.wire.All()
 }
 
 func statusString(ok bool) string {
