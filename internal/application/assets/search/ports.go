@@ -87,6 +87,7 @@ type VectorSearchRequest struct {
 	MediaType   string
 	Language    string
 	WorkspaceID string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
+	IsSystem    bool   // ADMIN scope bypass — skips workspace isolation for admin users
 }
 
 // VectorSearchResult is a single match from a vector search.
@@ -153,6 +154,7 @@ type HybridSearchRequest struct {
 	MediaType    string
 	Language     string
 	WorkspaceID  string // QDRANT-004: tenant isolation filter (applied to Qdrant payload)
+	IsSystem     bool   // admin/reconcile flag — skips workspace must-clause in CompileQdrantFilter
 }
 
 // ── Local search ports ────────────────────────────────────────────────
