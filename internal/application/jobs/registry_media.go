@@ -10,11 +10,14 @@ import "time"
 // Compose() function per AGENTS.md Pattern 5.
 func registerMediaEntries(r *Registry) {
 	// ── Video ──
-	r.Register(JobPolicy{Type: TypeVideoGenerate, Description: "Video generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeRenderVideo, Description: "Video rendering", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
+	// PR-COMPLETE-WORKER-BROAD-FIX Path D (July 2026): ProducesArtifacts REMOVED.
+	// TypeVideoGenerate, TypeRenderVideo, TypeYouTubeUpload are orphaned
+	// registry entries — no production handler is statically registered.
+	r.Register(JobPolicy{Type: TypeVideoGenerate, Description: "Video generation", Timeout: 60 * time.Minute, DefaultMaxRetries: 1})
+	r.Register(JobPolicy{Type: TypeRenderVideo, Description: "Video rendering", Timeout: 60 * time.Minute, DefaultMaxRetries: 1})
 
 	// ── YouTube ──
-	r.Register(JobPolicy{Type: TypeYouTubeUpload, Description: "YouTube upload", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
+	r.Register(JobPolicy{Type: TypeYouTubeUpload, Description: "YouTube upload", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 
 	// ── Catalog / sync ──
 	r.Register(JobPolicy{Type: TypeCatalogSync, Description: "Catalog synchronization", Timeout: 2 * time.Minute, DefaultMaxRetries: 2})
