@@ -117,7 +117,7 @@ func TestDriveToDrive_PublisherNil_ReturnsLocalOnly(t *testing.T) {
 		OutputPath: "/tmp/book_out.md",
 		PDFPath:    "/tmp/book_out.pdf",
 	}
-	status, err := svc.driveToDrive(context.Background(), &ProcessRequest{}, result)
+	status, err := svc.driveToDrive(context.Background(), &ProcessRequest{}, result, "job-test")
 	require.NoError(t, err, "nil publisher MUST NOT return an error; the absence of Drive is itself a valid LOCAL_ONLY outcome")
 	assert.Equal(t, asset.AssetPublishLocalOnly, status,
 		"nil publisher → AssetPublishLocalOnly (godlike/07 no-fake-availability: do not pretend Drive succeeded)")
@@ -147,7 +147,7 @@ func TestDriveToDrive_PublishOK_ReturnsPublished(t *testing.T) {
 		OutputPath: "/tmp/book_out.md",
 		PDFPath:    "/tmp/book_out.pdf",
 	}
-	status, err := svc.driveToDrive(context.Background(), &ProcessRequest{}, result)
+	status, err := svc.driveToDrive(context.Background(), &ProcessRequest{}, result, "job-test")
 	require.NoError(t, err, "all publishes OK → return nil error")
 	assert.Equal(t, asset.AssetPublishPublished, status,
 		"all publishes OK → AssetPublishPublished")
@@ -176,7 +176,7 @@ func TestDriveToDrive_PublishFail_ReturnsPublishFailed_ErrWrapsSentinel(t *testi
 		OutputPath: "/tmp/book_out.md",
 		PDFPath:    "/tmp/book_out.pdf",
 	}
-	status, err := svc.driveToDrive(context.Background(), &ProcessRequest{}, result)
+	status, err := svc.driveToDrive(context.Background(), &ProcessRequest{}, result, "job-test")
 	require.Error(t, err, "publish failure MUST propagate via non-nil err (godlike/07)")
 	assert.Equal(t, asset.AssetPublishFailed, status,
 		"any failed publish → AssetPublishFailed")
@@ -213,7 +213,7 @@ func TestDriveToDrive_MixedPublishPartial_StillFailed(t *testing.T) {
 		OutputPath: "/tmp/book_out.md",
 		PDFPath:    "/tmp/book_out.pdf",
 	}
-	status, err := svc.driveToDrive(context.Background(), &ProcessRequest{}, result)
+	status, err := svc.driveToDrive(context.Background(), &ProcessRequest{}, result, "job-test")
 	require.Error(t, err, "mixed outcome with failure MUST propagate err")
 	assert.Equal(t, asset.AssetPublishFailed, status,
 		"partial success + a failure ⇒ AssetPublishFailed (the failure dominates the canonical status)")
@@ -246,7 +246,7 @@ func TestDriveToDrive_AlreadyPublishedByPython_ReturnsPublished(t *testing.T) {
 		DriveDocURL: "https://drive.google.com/file/d/python-txt",
 		DrivePDFURL: "https://drive.google.com/file/d/python-pdf",
 	}
-	status, err := svc.driveToDrive(context.Background(), &ProcessRequest{}, result)
+	status, err := svc.driveToDrive(context.Background(), &ProcessRequest{}, result, "job-test")
 	require.NoError(t, err, "no-op case MUST NOT return an error")
 	assert.Equal(t, asset.AssetPublishPublished, status,
 		"already-published artifacts (Python-side) ⇒ AssetPublishPublished (truthful surface)")
@@ -344,6 +344,167 @@ func TestHandleJob_LocalOK_DriveFail_DeliveryStatusPublishFailed(t *testing.T) {
 	// caller-side handler that walks this string can still reach
 	// ErrBookDrivePublishFailed via errors.Is once the canonical
 	// pattern lands.
+}
+
+// ─────────────────────────────────────────────────────────────────
+// PR-P12-CLIPS-AND-BOOKS (July 2026, deadline 2026-08-08) —
+// 3 audit-pin tests pinning the canonical auto-derivation of
+// Project/Group/Subject on the books publisher surface.
+// ─────────────────────────────────────────────────────────────────
+
+// TestHandleJob_DrivePublishesWithAutoDerivedFields pins the
+// canonical auto-derivation contract on books driveToDrive. The
+// Publisher receives:
+//
+//	delivery.PublishRequest{
+//	    Destination: delivery.DestinationBook,
+//	    ProjectID:   job.ID,                  // auto-derive from book.JobID
+//	    Group:       "",                       // books don't group; registry picks canonical folder
+//	    Subject:     filepath.Base(a.path),   // per-file identity (.txt or .pdf)
+//	    // RootFolderOverride RETIRED — Publisher resolves target folder
+//	    // via DestinationRegistry + DestinationPolicy.RootFolderID.
+//	}
+//
+// Pre-PR-P12 the code passed `RootFolderOverride: folderID` (legacy
+// bypass) and req.DriveFolderID/s.driveFolder were threaded through
+// the same literal. Post-PR-P12 the call routes via canonical
+// semantic fields only; the per-request folder override is retired.
+func TestHandleJob_DrivePublishesWithAutoDerivedFields(t *testing.T) {
+	t.Parallel()
+	svc := newPhase1_3Service(t, &TransformResult{
+		OutputPath: "/tmp/book_out.md",
+		PDFPath:    "/tmp/book_out.pdf",
+		Language:   "en",
+	}, nil)
+	pub := &stubBookPublisher{
+		publishFn: func(_ context.Context, _ delivery.PublishRequest) (*delivery.PublishResult, error) {
+			return &delivery.PublishResult{
+				FileID:      "drive-book-id",
+				WebViewLink: "https://drive.google.com/file/d/drive-book-id",
+				Action:      delivery.PublishActionCreated,
+			}, nil
+		},
+	}
+	svc.publisher = pub
+
+	payload := []byte(`{"file_path":"/tmp/in.pdf","language":"en"}`)
+	out, err := svc.HandleJob(context.Background(), &job.Job{ID: "book-job-p12", Payload: payload}, &appjobs.JobTools{})
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	assert.Equal(t, "PUBLISHED", out["delivery_status"], "happy path ⇒ PUBLISHED")
+
+	// Both artifacts (.md + .pdf) are published, each with the
+	// canonical auto-derivation.
+	require.Equal(t, 2, len(pub.calls), "publish MUST be called once per artifact")
+	for _, call := range pub.calls {
+		if call.Destination != delivery.DestinationBook {
+			t.Errorf("Destination = %q, want %q", call.Destination, delivery.DestinationBook)
+		}
+		// Auto-derivation contract: ProjectID = book.JobID
+		if call.ProjectID != "book-job-p12" {
+			t.Errorf("ProjectID = %q, want %q (auto-derived from book.JobID)", call.ProjectID, "book-job-p12")
+		}
+		// Group is intentionally empty (books don't group; the
+		// DestinationRegistry picks the canonical folder for
+		// DestinationBook).
+		if call.Group != "" {
+			t.Errorf("Group = %q, want \"\" (books don't group)", call.Group)
+		}
+		// Subject is per-file identity (filename).
+		if call.Subject == "" {
+			t.Errorf("Subject is empty; want filename (per-file identity)")
+		}
+		// godlike/06 SSOT: RootFolderOverride RETIRED.
+		if call.RootFolderOverride != "" {
+			t.Errorf("RootFolderOverride = %q, want \"\" (RETIRED per PR-P12-CLIPS-AND-BOOKS)", call.RootFolderOverride)
+		}
+	}
+}
+
+// TestHandleJob_BothArtifactsPublishedWithDistinctSubjects pins
+// the per-file identity (Subject) for both .md and .pdf artifacts.
+// Subject is set to the filename, so the two calls carry distinct
+// values. This is the canonical wire shape the Qdrant indexer
+// (and the asset-tree upsert) consume to distinguish book outputs.
+func TestHandleJob_BothArtifactsPublishedWithDistinctSubjects(t *testing.T) {
+	t.Parallel()
+	svc := newPhase1_3Service(t, &TransformResult{
+		OutputPath: "/tmp/book_out.md",
+		PDFPath:    "/tmp/book_out.pdf",
+		Language:   "en",
+	}, nil)
+	pub := &stubBookPublisher{
+		publishFn: func(_ context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
+			return &delivery.PublishResult{
+				FileID:      "drive-" + req.Subject,
+				WebViewLink: "https://drive.google.com/file/d/drive-" + req.Subject,
+				Action:      delivery.PublishActionCreated,
+			}, nil
+		},
+	}
+	svc.publisher = pub
+
+	payload := []byte(`{"file_path":"/tmp/in.pdf","language":"en"}`)
+	_, err := svc.HandleJob(context.Background(), &job.Job{ID: "book-job-p12", Payload: payload}, &appjobs.JobTools{})
+	require.NoError(t, err)
+	require.Equal(t, 2, len(pub.calls), "publish MUST be called once per artifact")
+
+	// Collect the (LocalPath, Subject) tuples; the two calls must be
+	// distinct.
+	seen := map[string]string{} // Subject -> LocalPath
+	for _, call := range pub.calls {
+		if prev, ok := seen[call.Subject]; ok && prev == call.LocalPath {
+			t.Errorf("duplicate publish for Subject=%q, LocalPath=%q", call.Subject, call.LocalPath)
+		}
+		seen[call.Subject] = call.LocalPath
+	}
+	if _, ok := seen["book_out.md"]; !ok {
+		t.Errorf(".md artifact not published (Subject=book_out.md expected); saw subjects: %v", keys(seen))
+	}
+	if _, ok := seen["book_out.pdf"]; !ok {
+		t.Errorf(".pdf artifact not published (Subject=book_out.pdf expected); saw subjects: %v", keys(seen))
+	}
+}
+
+// TestHandleJob_PreUploadedArtifactsSkipPublish pins the
+// alreadySet=true (Python script already uploaded) branch: when
+// DriveDocURL + DrivePDFURL are populated, the canonical driveToDrive
+// must NOT issue any Publish call (a duplicate write would corrupt
+// the canonical state). The publisher.calls slice MUST be empty
+// after HandleJob, and the response map carries delivery_status=PUBLISHED
+// (truthful: Drive is already populated).
+func TestHandleJob_PreUploadedArtifactsSkipPublish(t *testing.T) {
+	t.Parallel()
+	svc := newPhase1_3Service(t, &TransformResult{
+		OutputPath:  "/tmp/book_out.md",
+		PDFPath:     "/tmp/book_out.pdf",
+		DriveDocURL: "https://drive.google.com/file/d/python-txt",
+		DrivePDFURL: "https://drive.google.com/file/d/python-pdf",
+		Language:    "en",
+	}, nil)
+	pub := &stubBookPublisher{
+		publishFn: func(_ context.Context, _ delivery.PublishRequest) (*delivery.PublishResult, error) {
+			t.Fatal("Publisher MUST NOT be called when Python has already uploaded; a duplicate write would corrupt canonical state")
+			return nil, nil
+		},
+	}
+	svc.publisher = pub
+
+	payload := []byte(`{"file_path":"/tmp/in.pdf","language":"en"}`)
+	out, err := svc.HandleJob(context.Background(), &job.Job{ID: "book-job-p12", Payload: payload}, &appjobs.JobTools{})
+	require.NoError(t, err)
+	require.NotNil(t, out)
+	assert.Equal(t, 0, len(pub.calls), "pre-uploaded artifacts MUST NOT trigger any Publish call")
+	assert.Equal(t, "PUBLISHED", out["delivery_status"], "Drive is already populated ⇒ delivery_status=PUBLISHED (truthful)")
+}
+
+// keys is a tiny helper for TestHandleJob_BothArtifactsPublishedWithDistinctSubjects.
+func keys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 // TestHandleJob_LocalDisabled_DeliveryStatusLocalOnly: nil publisher

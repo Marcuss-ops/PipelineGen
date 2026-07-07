@@ -80,7 +80,7 @@ func (s *Service) HandleJob(ctx context.Context, job *job.Job, tools *appjobs.Jo
 	// from Go. Phase 1.3 closure: driveToDrive now returns a typed
 	// AssetPublishStatus + the (possibly wrapped) publish error so the
 	// caller can surface the outcome truthfully (godlike/07).
-	deliveryStatus, driveErr := s.driveToDrive(ctx, &req, result)
+	deliveryStatus, driveErr := s.driveToDrive(ctx, &req, result, job.ID)
 
 	if tools.Progress != nil {
 		tools.Progress(100, "Book processing completed")
@@ -123,7 +123,31 @@ func (s *Service) HandleJob(ctx context.Context, job *job.Job, tools *appjobs.Jo
 // AssetPublishFailed with the first failure wrapped via
 // ErrBookDrivePublishFailed; callers can inspect per-artifact Drive
 // URLs via the result.*URL fields to see what landed.
-func (s *Service) driveToDrive(ctx context.Context, req *ProcessRequest, result *ProcessResult) (asset.AssetPublishStatus, error) {
+// driveToDrive uploads output files to Google Drive when the Python
+// script hasn't already done so (fallback). Returns a typed
+// AssetPublishStatus (PUBLISHED / PUBLISH_FAILED / LOCAL_ONLY) + the
+// (possibly wrapped) publish error. F2.10: the legacy `driveUpload
+// *drive.Uploader` field + the per-file `else { driveUpload.UploadFile(...) }`
+// branches were dropped entirely (override brutal); the publisher port
+// (delivery.Publisher) is the single canonical authority for Drive writes.
+//
+// godlike/07 no-fake-availability: a nil publisher is NOT silently "Drive
+// disabled + success" — it returns AssetPublishLocalOnly so the caller
+// can surface the absence of Drive publishing in the response map
+// (`delivery_status=LOCAL_ONLY`) instead of pretending a Drive upload
+// happened. Mixed outcomes (one artifact OK, one failed) return
+// AssetPublishFailed with the first failure wrapped via
+// ErrBookDrivePublishFailed; callers can inspect per-artifact Drive
+// URLs via the result.*URL fields to see what landed.
+//
+// PR-P12-CLIPS-AND-BOOKS (July 2026, deadline 2026-08-08): jobID is
+// the canonical book processing run ID (auto-derived from book.JobID
+// at the call site and threaded in as a parameter). The
+// delivery.Publisher resolves the target folder via
+// DestinationRegistry + DestinationPolicy.RootFolderID using only the
+// semantic fields; the legacy req.DriveFolderID / s.driveFolder
+// per-request override is RETIRED.
+func (s *Service) driveToDrive(ctx context.Context, req *ProcessRequest, result *ProcessResult, jobID string) (asset.AssetPublishStatus, error) {
 	publisher := s.publisher
 
 	// No publisher wired → "Drive disabled". Surface as LOCAL_ONLY (no
@@ -133,10 +157,17 @@ func (s *Service) driveToDrive(ctx context.Context, req *ProcessRequest, result 
 		return asset.AssetPublishLocalOnly, nil
 	}
 
-	folderID := req.DriveFolderID
-	if folderID == "" {
-		folderID = s.driveFolder
-	}
+	// PR-P12-CLIPS-AND-BOOKS (July 2026, deadline 2026-08-08):
+	// req.DriveFolderID and s.driveFolder are NO LONGER threaded as
+	// RootFolderOverride. The canonical Publisher resolves the target
+	// folder via DestinationRegistry + DestinationPolicy.RootFolderID
+	// (single source of truth per architecture/current.yaml#DRIVE-AS-
+	// CENTRAL-CAPABILITY). The per-request folder override is retired;
+	// operators configure folder routing via the destination's policy
+	// rather than per-request fields. godlike/07 minimum-blast-radius:
+	// the ProjectID/Group/Subject semantic fields below carry the
+	// book-processing identity (JobID + filename) so the Publisher can
+	// resolve a deterministic folder from the registry alone.
 
 	type artifact struct {
 		name       string
@@ -164,10 +195,15 @@ func (s *Service) driveToDrive(ctx context.Context, req *ProcessRequest, result 
 		publishAttempted = true
 
 		pubReq := delivery.PublishRequest{
-			Destination:        delivery.DestinationBook,
-			LocalPath:          a.path,
-			Filename:           filepath.Base(a.path),
-			RootFolderOverride: folderID,
+			Destination: delivery.DestinationBook,
+			LocalPath:   a.path,
+			Filename:    filepath.Base(a.path),
+			ProjectID:   jobID,                 // auto-derive Project from book.JobID (godlike/06 SSOT, PR-P12-CLIPS-AND-BOOKS)
+			Group:       "",                    // books don't group; DestinationRegistry picks canonical folder
+			Subject:     filepath.Base(a.path), // per-file identity (.txt or .pdf)
+			// RootFolderOverride RETIRED per PR-P12-CLIPS-AND-BOOKS
+			// (July 2026, deadline 2026-08-08). See the block comment
+			// above driveToDrive's body for the migration rationale.
 		}
 		pubResult, err := publisher.Publish(ctx, pubReq)
 		if err != nil {
