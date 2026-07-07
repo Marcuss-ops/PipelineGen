@@ -6,10 +6,53 @@
 package indexing
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
+
+// resampleFloat32Vector deterministically resizes a dense vector to the
+// target dimension using linear interpolation. The helper is only used as a
+// compatibility shim for legacy visual embeddings produced at a different
+// size than the current schema.
+func resampleFloat32Vector(vec []float32, targetDim int) ([]float32, error) {
+	if targetDim <= 0 {
+		return nil, fmt.Errorf("invalid target dimension %d", targetDim)
+	}
+	if len(vec) == 0 {
+		return nil, fmt.Errorf("empty vector")
+	}
+	if len(vec) == targetDim {
+		out := make([]float32, targetDim)
+		copy(out, vec)
+		return out, nil
+	}
+	if len(vec) == 1 {
+		out := make([]float32, targetDim)
+		for i := range out {
+			out[i] = vec[0]
+		}
+		return out, nil
+	}
+	if targetDim == 1 {
+		return []float32{vec[0]}, nil
+	}
+
+	out := make([]float32, targetDim)
+	scale := float64(len(vec)-1) / float64(targetDim-1)
+	for i := range out {
+		pos := float64(i) * scale
+		left := int(math.Floor(pos))
+		right := left + 1
+		if right >= len(vec) {
+			right = len(vec) - 1
+		}
+		frac := pos - float64(left)
+		out[i] = float32((1-frac)*float64(vec[left]) + frac*float64(vec[right]))
+	}
+	return out, nil
+}
 
 // getVectorForChannel returns the embedding vector for a given channel.
 func (m *PayloadMapper) getVectorForChannel(asset *AssetData, channel string) []float32 {
