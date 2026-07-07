@@ -3135,3 +3135,25 @@
       the Qdrant-payload write share a single canonical source.
     deadline: 2026-09-01
 
+
+  # PR-STOCK-TIMESTAMP-CLIPS-FRONT-5 (2026-07-08) — pre-cut duration validation gate
+  # in StockExtractClipsStep.Run. Clips with EndSec > source duration now abort the
+  # step with typed ErrStockClipsOutOfRange sentinel (no auto-clamp per user spec
+  # "fallire subito con errore leggibile"). Source priority: StagedAsset.DurationSec
+  # (fast path, yt-dlp pre-populated) → runner.SourceDurationProbe() (ffprobe
+  # fallback) → Warn + skip (fail-open backward-compat, PR-STOCK-SOURCE-DURATION-WIRE
+  # is the production wiring forward-pointer). Boundary semantics: strict `>` (no
+  # epsilon) — EndSec == sourceDurationSec is in-range.
+  - id: PR-STOCK-TIMESTAMP-CLIPS-FRONT-5
+    owner_capability: internal/application/assets/providers/stock/stockpipeline
+    status: shipped
+    ship_sha: 79ec2939
+    ship_date: "2026-07-08"
+    deadline: "2026-08-01"
+    forward_pointers:
+      - id: PR-STOCK-SOURCE-DURATION-WIRE
+        deadline: "2026-08-15"
+        reason: composition-root wiring of WithSourceProbe for production
+      - id: PR-STOCK-OUT-OF-RANGE-MULTI-AGG
+        deadline: "2026-09-01"
+        reason: aggregate multi-clip violations in the error envelope
