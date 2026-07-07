@@ -241,6 +241,30 @@ func (s *StubEnrichmentLLMClient) Model() string {
 // time per AGENTS.md Pattern 0 / godlike/06 SSOT.
 var _ EnrichmentLLMClient = (*StubEnrichmentLLMClient)(nil)
 
+// enrichmentSystemPromptV1 is the canonical system message
+// shipped to ollama for the stock RLM/LLM enrichment pass.
+// Declares the 6-field JSON schema with `category` as the
+// canonical "required" marker. Extracted to a package-level
+// const (per PR-011B follow-up) so the prompt can evolve
+// (i18n / prompt-iteration / A-B testing) without touching
+// the call site at ollamaEnrichmentLLMClient.Enrich.
+//
+// godlike/06 SSOT (one canonical owner per fact): the
+// canonical system prompt lives ONLY in this const. Future
+// enrichment passes that need a different prompt MUST
+// declare a new const (e.g. enrichmentSystemPromptV2) and
+// route via a new adapter — NOT mutate this const in place
+// (that would silently change the wire contract for every
+// existing call site).
+//
+// godlike/07 minimum-blast-radius: raw string literal
+// (backticks) so the prompt is human-editable + future
+// i18n / A-B testing requires only a const swap. The
+// trailing backtick + newline marker is canonical Go
+// practice (the constant value INCLUDES the trailing
+// newline as the standard message separator).
+const enrichmentSystemPromptV1 = `You are a video metadata enrichment assistant. Return a JSON object with exactly these fields: "category" (string, required, single most specific category from the canonical taxonomy), "event" (string, event/fight/match name; empty if none), "round" (string, round number for boxing/MMA; empty if not applicable), "scene" (string, 5-15 word description of the visible action; empty if none), "subject" (string, primary subject/protagonist; empty if none), "entities" (array of up to 5 named entities: people, places, organizations; empty array if none). Respond with ONLY the JSON object, no prose, no markdown fences.`
+
 // =============================================================================
 // PR-011B (July 2026): real ollama-backed adapter
 // =============================================================================
@@ -380,23 +404,16 @@ func (o *ollamaEnrichmentLLMClient) Enrich(ctx context.Context, req EnrichmentRe
 	}
 
 	// Build the canonical prompt. The system message declares
-	// the 6-field JSON schema; the user message provides the
+	// the 6-field JSON schema (canonical SSOT = const
+	// enrichmentSystemPromptV1); the user message provides the
 	// chunk context. The response is forced to valid JSON via
 	// ollama's native JSON-mode (format = "json" top-level body
 	// field, NOT nested in options).
 	start := time.Now()
 	messages := []types.Message{
 		{
-			Role: "system",
-			Content: "You are a video metadata enrichment assistant. " +
-				"Return a JSON object with exactly these fields: " +
-				`"category" (string, required, single most specific category from the canonical taxonomy), ` +
-				`"event" (string, event/fight/match name; empty if none), ` +
-				`"round" (string, round number for boxing/MMA; empty if not applicable), ` +
-				`"scene" (string, 5-15 word description of the visible action; empty if none), ` +
-				`"subject" (string, primary subject/protagonist; empty if none), ` +
-				`"entities" (array of up to 5 named entities: people, places, organizations; empty array if none). ` +
-				`Respond with ONLY the JSON object, no prose, no markdown fences.`,
+			Role:    "system",
+			Content: enrichmentSystemPromptV1,
 		},
 		{
 			Role:    "user",
