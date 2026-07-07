@@ -1,0 +1,22 @@
+{
+  "root_folder": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+  "scanned_at": "2026-07-07T06:28:51.824859+00:00",
+  "summary": {
+    "CANONICAL_NAMESPACE": 1
+  },
+  "records": [
+    {
+      "id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+      "path": "stock",
+      "depth": 0,
+      "name": "stock",
+      "file_count": 0,
+      "folder_count": 0,
+      "mime_counts": {},
+      "has_metadata_json": false,
+      "modified_time": null,
+      "classification": "CANONICAL_NAMESPACE",
+      "children_ids": []
+    }
+  ]
+}
