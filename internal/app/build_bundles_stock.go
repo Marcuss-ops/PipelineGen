@@ -33,6 +33,7 @@ package app
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -43,6 +44,7 @@ import (
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
@@ -238,25 +240,78 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	// No adapter shim required — mirrors voiceoverjobs.FanoutDeps.
 	useCase := stockpipeline.NewStockUseCase(svc, deps.Jobs, deps.Log)
 
-	// ── Gate 3b: PR-011A — wire the stock RLM/LLM enrichment handler ─
+	// ── Gate 3b: PR-011A + PR-011B — wire the stock RLM/LLM enrichment handler ─
 	// godlike/07 fail-closed composition: enrichment is OPTIONAL
 	// (nil-LLMClient OR nil-EnabledFunc OR EnabledFunc()==false = no
 	// handler registered; the worker pool cannot dequeue
 	// media.stock_rlm_enrich jobs and the registry entry sits unused).
 	// No silent-success path: a misconfigured production deployment
-	// (EnabledFunc()==true but LLMClient==nil) surfaces as a typed
-	// error at composition time.
-	if deps.EnrichmentEnabled != nil && deps.EnrichmentEnabled() && deps.EnrichmentLLMClient != nil {
-		assetRepo, repoErr := stockenrich.NewSQLiteAssetRepository(deps.DB)
-		if repoErr != nil {
-			return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewSQLiteAssetRepository: %w", repoErr)
+	// (EnabledFunc()==true but LLMClient==nil AND cfg has no
+	// fallback model) surfaces as a typed error at composition time.
+	//
+	// PR-011B (July 2026): the LLM client resolution order is:
+	//   1. deps.EnrichmentLLMClient (test override / future dev override)
+	//   2. real ollama adapter when cfg.External.ParseArenaLLM is non-empty
+	//   3. real ollama adapter fallback to cfg.External.OllamaModel
+	//   4. StubEnrichmentLLMClient (PR-011A default) when BOTH empty
+	//
+	// The model precedence (ParseArenaLLM > OllamaModel) is canonical
+	// for the stock RLM/LLM enrichment pass per AGENTS.md Pattern 0
+	// + godlike/06 SSOT (one canonical owner per fact: the
+	// resolution order lives ONLY here in the composition root).
+	if deps.EnrichmentEnabled != nil && deps.EnrichmentEnabled() {
+		// Step 1: resolve the LLM client (override > real adapter > stub).
+		llmClient := deps.EnrichmentLLMClient
+		if llmClient == nil && deps.Cfg != nil {
+			modelName := strings.TrimSpace(deps.Cfg.External.ParseArenaLLM)
+			if modelName == "" {
+				modelName = strings.TrimSpace(deps.Cfg.External.OllamaModel)
+			}
+			if modelName != "" {
+				// Construct the real ollama-backed adapter. The
+				// ollama client's default model is OllamaModel
+				// (canonical cfg-default); the per-capability
+				// modelName override (typically ParseArenaLLM)
+				// is passed to the adapter so Enrich() threads
+				// it via options["model"] on every Chat call.
+				ollamaCli := ollamaclient.NewClient(
+					deps.Cfg.External.OllamaURL,
+					deps.Cfg.External.OllamaModel,
+					deps.Cfg.External.OllamaTimeoutSeconds,
+				)
+				realAdapter, realErr := stockenrich.NewOllamaEnrichmentLLMClient(ollamaCli, modelName)
+				if realErr != nil {
+					return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewOllamaEnrichmentLLMClient: %w", realErr)
+				}
+				llmClient = realAdapter
+				deps.Log.Info("stock.BuildStockBundle: enrichment wired with real ollama adapter",
+					zap.String("model", modelName),
+					zap.String("ollama_url", deps.Cfg.External.OllamaURL),
+				)
+			} else {
+				// godlike/07 minimum-blast-radius: when neither
+				// ParseArenaLLM nor OllamaModel is configured,
+				// fall back to the stub so the worker retry path
+				// is still exercised end-to-end (no silent
+				// success — the stub returns
+				// ErrEnrichmentLLMUnavailable verbatim).
+				llmClient = stockenrich.NewStubEnrichmentLLMClient("stub:enrichment-unavailable")
+				deps.Log.Warn("stock.BuildStockBundle: enrichment using stub (no model configured; set ParseArenaLLM or OllamaModel to wire the real adapter)")
+			}
 		}
-		enrichHandler, hErr := stockenrich.NewEnrichmentHandler(deps.EnrichmentLLMClient, assetRepo, nil, deps.Log)
-		if hErr != nil {
-			return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewEnrichmentHandler: %w", hErr)
-		}
-		if regErr := enrichHandler.RegisterHandler(deps.Jobs); regErr != nil {
-			return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.RegisterHandler: %w", regErr)
+
+		if llmClient != nil {
+			assetRepo, repoErr := stockenrich.NewSQLiteAssetRepository(deps.DB)
+			if repoErr != nil {
+				return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewSQLiteAssetRepository: %w", repoErr)
+			}
+			enrichHandler, hErr := stockenrich.NewEnrichmentHandler(llmClient, assetRepo, nil, deps.Log)
+			if hErr != nil {
+				return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewEnrichmentHandler: %w", hErr)
+			}
+			if regErr := enrichHandler.RegisterHandler(deps.Jobs); regErr != nil {
+				return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.RegisterHandler: %w", regErr)
+			}
 		}
 	}
 

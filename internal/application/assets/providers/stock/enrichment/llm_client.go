@@ -1,4 +1,4 @@
-// Package enrichment — llm_client.go (PR-011A, July 2026).
+// Package enrichment — llm_client.go (PR-011A + PR-011B, July 2026).
 //
 // Pattern-0 typed port for the stock RLM/LLM enrichment LLM client.
 // The canonical port per godlike/06 SSOT: EnrichmentLLMClient lives
@@ -32,8 +32,14 @@ package enrichment
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
 // EnrichedFields is the typed result envelope returned by
@@ -234,3 +240,297 @@ func (s *StubEnrichmentLLMClient) Model() string {
 // EnrichmentLLMClient. Catches signature drift at compile
 // time per AGENTS.md Pattern 0 / godlike/06 SSOT.
 var _ EnrichmentLLMClient = (*StubEnrichmentLLMClient)(nil)
+
+// =============================================================================
+// PR-011B (July 2026): real ollama-backed adapter
+// =============================================================================
+//
+// ollamaEnrichmentLLMClient is the production adapter. Wraps
+// *ollama.Client (internal/infrastructure/ai/ollama/client) and
+// dispatches the enrichment prompt to the configured model with
+// native JSON-mode forced (format = "json"). The 6 LLM-only fields
+// are parsed back into EnrichedFields; parse failures surface as
+// ErrEnrichmentInvalidLLMResponse (terminal after retries) and
+// network/HTTP failures surface as ErrEnrichmentLLMUnavailable
+// (retryable per the worker's exponential backoff).
+//
+// godlike/06 SSOT (one canonical owner per fact):
+//   - ollamaEnrichmentLLMClient lives ONLY in this file.
+//   - The ollama client itself (wrapping the /api/chat wire) lives
+//     in internal/infrastructure/ai/ollama/client (the canonical
+//     port for the ollama /api/chat wire contract).
+//   - The EnrichmentLLMClient port (declared above) is the SOLE
+//     definition of the LLM-client contract; ollama adapter
+//     implements it via composition (not by redefining the
+//     interface).
+//
+// godlike/07 typed-error contract:
+//   - c.Chat() returns a non-nil error → WrapLLMUnavailable (retryable).
+//   - c.Chat() returns valid JSON but missing the canonical
+//     Category field (the "required" 6-field marker) →
+//     WrapInvalidLLMResponse (terminal after retries).
+//   - c.Chat() returns success and parses cleanly into EnrichedFields
+//     with non-empty Category → success.
+//
+// godlike/07 minimum-blast-radius: the adapter is additive (the
+// stub is RETAINED for dev / test environments). The composition
+// root in internal/app/build_bundles_stock.go decides which to
+// instantiate based on cfg.External.ParseArenaLLM (priority) +
+// cfg.External.OllamaModel (fallback). The stub remains the
+// canonical default when both are empty.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: every code path returns a
+// typed sentinel. Empty Category is a canonical "invalid response"
+// signal — retrying without a different prompt or model will not
+// help. Network errors are retryable (the ollama server may come
+// back online within the worker's exponential backoff window).
+//
+// Prompt design: a single system message declares the canonical
+// 6-field JSON schema (with `category` marked as the required
+// marker); a single user message provides the chunk context
+// (Title / Description / SourceProvider / SourceURL / StartSec /
+// EndSec). The response is forced to valid JSON via ollama's
+// `format: "json"` wire constraint (TOP-LEVEL body field, NOT
+// nested in `options` — see ollama.Client.Chat godoc).
+//
+// model precedence: the adapter's own `modelName` field takes
+// precedence over `c.Model()` so the composition root can pin a
+// per-capability model (e.g. cfg.External.ParseArenaLLM) without
+// mutating the shared ollama.Client. When modelName is empty,
+// falls back to c.Model() (defense-in-depth per
+// cfg.External.OllamaModel default).
+
+// ollamaEnrichmentLLMClient is the PR-011B real adapter. Wraps
+// the canonical *ollama.Client (internal/infrastructure/ai/ollama/client)
+// and implements the EnrichmentLLMClient port with native JSON-mode
+// forced. The composition root injects one instance per server
+// (mirrors the production pattern at app/wire_script.go:125 for the
+// script-generation metaWriter).
+//
+// godlike/06 SSOT: the adapter holds a *client.Client directly
+// (no narrow interface shim) because the production concrete
+// already exposes the minimal surface (Chat + Model) needed by
+// the enrichment pass. Adding a local interface would create
+// a second canonical surface for the same fact (godlike/06
+// violation). Tests that need hermetic isolation use
+// httptest.NewServer + client.NewClient(server.URL, ...) which
+// exercises the real wire path with canned responses — no
+// mock, no fakes.
+type ollamaEnrichmentLLMClient struct {
+	// client is the canonical ollama wire-contract adapter.
+	// Wraps the /api/chat wire + retry + circuit-breaker +
+	// model-fallback chain. The composition root constructs
+	// the client (mirrors app/build_bundles_ai.go::buildAIBundle
+	// — client.NewClient(cfg.External.OllamaURL, cfg.External.OllamaModel, ...)).
+	client *client.Client
+
+	// modelName is the per-capability model identifier. When
+	// non-empty, it overrides client.Model() via the
+	// `options["model"]` parameter on every Chat call. This
+	// allows the composition root to pin a per-capability
+	// model (e.g. cfg.External.ParseArenaLLM = "gemma4:e4b")
+	// without mutating the shared ollama.Client.
+	// Unexported to avoid Go's field/method name collision
+	// with the Model() method below.
+	modelName string
+}
+
+// NewOllamaEnrichmentLLMClient constructs the real ollama-backed
+// adapter. model is the per-capability override (typically
+// cfg.External.ParseArenaLLM); when empty, the adapter falls
+// back to client.Model() at call time (defense-in-depth).
+//
+// godlike/07 fail-closed: returns an error (not nil adapter) when
+// the underlying ollama client is nil. Callers MUST propagate
+// the error per the existing pattern in NewEnrichmentHandler.
+func NewOllamaEnrichmentLLMClient(c *client.Client, model string) (*ollamaEnrichmentLLMClient, error) {
+	if c == nil {
+		return nil, WrapHandlerNotConfigured("ollamaClient")
+	}
+	return &ollamaEnrichmentLLMClient{
+		client:    c,
+		modelName: model,
+	}, nil
+}
+
+// Enrich dispatches the canonical enrichment prompt to the
+// configured ollama model with native JSON-mode forced. The
+// response is parsed into EnrichedFields; the typed-error
+// contract surfaces:
+//
+//   - Network/HTTP failure from c.Chat() →
+//     ErrEnrichmentLLMUnavailable (retryable per worker
+//     exponential backoff).
+//   - JSON parse failure → ErrEnrichmentInvalidLLMResponse
+//     (terminal after retries).
+//   - Empty Category (the canonical "required" 6-field marker) →
+//     ErrEnrichmentInvalidLLMResponse (terminal after retries).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a successful ollama call that
+// returns an empty Category is treated as an invalid response,
+// not a successful enrichment. The LLM must produce the canonical
+// 6 fields; the absence of any one of them (Category is the
+// "required" marker) is a schema-drift signal.
+func (o *ollamaEnrichmentLLMClient) Enrich(ctx context.Context, req EnrichmentRequest) (*EnrichmentResponse, error) {
+	if o == nil || o.client == nil {
+		return nil, WrapHandlerNotConfigured("ollamaClient")
+	}
+	if req.ChunkID == "" {
+		return nil, WrapHandlerNotConfigured("chunk_id")
+	}
+
+	// Build the canonical prompt. The system message declares
+	// the 6-field JSON schema; the user message provides the
+	// chunk context. The response is forced to valid JSON via
+	// ollama's native JSON-mode (format = "json" top-level body
+	// field, NOT nested in options).
+	start := time.Now()
+	messages := []types.Message{
+		{
+			Role: "system",
+			Content: "You are a video metadata enrichment assistant. " +
+				"Return a JSON object with exactly these fields: " +
+				`"category" (string, required, single most specific category from the canonical taxonomy), ` +
+				`"event" (string, event/fight/match name; empty if none), ` +
+				`"round" (string, round number for boxing/MMA; empty if not applicable), ` +
+				`"scene" (string, 5-15 word description of the visible action; empty if none), ` +
+				`"subject" (string, primary subject/protagonist; empty if none), ` +
+				`"entities" (array of up to 5 named entities: people, places, organizations; empty array if none). ` +
+				`Respond with ONLY the JSON object, no prose, no markdown fences.`,
+		},
+		{
+			Role:    "user",
+			Content: buildEnrichmentUserPrompt(req),
+		},
+	}
+
+	// Model selection: per-capability modelName (set by the
+	// composition root to cfg.External.ParseArenaLLM when
+	// non-empty) wins; otherwise falls back to the underlying
+	// ollama client's default model (typically cfg.External.OllamaModel).
+	model := o.modelName
+	if model == "" {
+		model = o.client.Model()
+	}
+	options := map[string]any{
+		"model":      model,
+		"keep_alive": "30m", // keep the model in GPU VRAM across retries
+	}
+
+	// json.RawMessage("\"json\"") is the canonical wire-shape
+	// for ollama's native JSON-mode (the body field is the JSON
+	// string "json", NOT the Go map). See ollama.Client.Chat
+	// godoc for the field placement invariant.
+	format := json.RawMessage(`"json"`)
+	content, err := o.client.Chat(ctx, messages, options, format)
+	if err != nil {
+		// Network/HTTP/circuit-breaker failure path.
+		// Retryable per godlike/07 (the ollama server may
+		// come back online within the worker's exponential
+		// backoff window).
+		return nil, WrapLLMUnavailable(err)
+	}
+
+	// Parse the response. The 6-field JSON shape is the
+	// canonical wire-format (declared in the system message);
+	// json.Unmarshal into EnrichedFields handles missing
+	// optional fields (Event / Round / Scene / Subject /
+	// Entities) by zero-value initialization. Extra fields
+	// returned by the LLM are silently ignored by Go's
+	// default unmarshal behavior.
+	var fields EnrichedFields
+	if err := json.Unmarshal([]byte(content), &fields); err != nil {
+		// Parse failure: malformed JSON, schema drift, or
+		// non-JSON response despite the format hint. Terminal
+		// after retries (the LLM needs a different prompt or
+		// the response schema needs to evolve).
+		return nil, WrapInvalidLLMResponse(fmt.Errorf("ollama chat content did not parse as EnrichedFields JSON: %w (content_preview=%q)", err, previewForLog(content)))
+	}
+
+	// godlike/07 NO-FAKE-AVAILABILITY: the canonical
+	// "required" marker in the system message is `category`.
+	// A successful ollama call that returns an empty Category
+	// is a schema-drift signal (the LLM ignored the system
+	// message). Surface as ErrEnrichmentInvalidLLMResponse so
+	// the operator can identify the drift (and so the worker
+	// doesn't silently no-op on retry).
+	if fields.Category == "" {
+		return nil, WrapInvalidLLMResponse(fmt.Errorf("ollama chat returned empty Category (schema-drift signal; system message requires category as the canonical 6-field marker)"))
+	}
+
+	return &EnrichmentResponse{
+		ChunkID: req.ChunkID,
+		Fields:  fields,
+		Model:   model,
+		Elapsed: time.Since(start),
+	}, nil
+}
+
+// Model returns the per-capability model identifier. When
+// modelName is empty, falls back to the underlying ollama
+// client's default model. The handler logs this value as
+// `result["model"]` for dashboard observability.
+func (o *ollamaEnrichmentLLMClient) Model() string {
+	if o == nil {
+		return ""
+	}
+	if o.modelName != "" {
+		return o.modelName
+	}
+	if o.client != nil {
+		return o.client.Model()
+	}
+	return ""
+}
+
+// buildEnrichmentUserPrompt constructs the user-message text
+// from the EnrichmentRequest fields. Mirrors the canonical
+// metadata-input shape (Title / Description / SourceProvider /
+// SourceURL / StartSec / EndSec). Pure function (no side
+// effects) for hermetic testability.
+func buildEnrichmentUserPrompt(req EnrichmentRequest) string {
+	var b strings.Builder
+	b.WriteString("Enrich this video clip with the canonical 6-field metadata:\n\n")
+	if req.Title != "" {
+		b.WriteString("Title: ")
+		b.WriteString(req.Title)
+		b.WriteString("\n")
+	}
+	if req.Description != "" {
+		b.WriteString("Description: ")
+		b.WriteString(req.Description)
+		b.WriteString("\n")
+	}
+	if req.SourceProvider != "" {
+		b.WriteString("Source provider: ")
+		b.WriteString(req.SourceProvider)
+		b.WriteString("\n")
+	}
+	if req.SourceURL != "" {
+		b.WriteString("Source URL: ")
+		b.WriteString(req.SourceURL)
+		b.WriteString("\n")
+	}
+	if req.StartSec != 0 || req.EndSec != 0 {
+		b.WriteString(fmt.Sprintf("Time range: %.1fs - %.1fs\n", req.StartSec, req.EndSec))
+	}
+	return b.String()
+}
+
+// previewForLog returns a bounded-length preview of the LLM
+// response for log inclusion in parse-failure error messages.
+// Bounded at 200 chars to keep audit logs compact (canonical
+// project pattern per the existing log helpers in
+// pkg/logging).
+func previewForLog(s string) string {
+	const maxLen = 200
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "...(truncated)"
+}
+
+// Compile-time assertion: *ollamaEnrichmentLLMClient satisfies
+// EnrichmentLLMClient. Catches signature drift at compile time
+// per AGENTS.md Pattern 0 / godlike/06 SSOT.
+var _ EnrichmentLLMClient = (*ollamaEnrichmentLLMClient)(nil)
