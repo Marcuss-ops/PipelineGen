@@ -33,6 +33,7 @@ package stockpipeline
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
@@ -112,6 +113,7 @@ func newFakeAvailOrchestrator(stager assets.SourceStager, cutter VideoCutter, re
 	return NewOrchestrator(
 		OrchestratorConfig{
 			JobId:            "fake-avail-test",
+			Lease:            testLease("fake-avail-test"),
 			PolicyVersion:    "v1",
 			ChunkDurationSec: 5,
 			ClipDurationSec:  5,
@@ -119,19 +121,27 @@ func newFakeAvailOrchestrator(stager assets.SourceStager, cutter VideoCutter, re
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
 		stager,
-		cutter,
+		func() VideoCutter {
+			if cutter != nil {
+				return cutter
+			}
+			return fakeSucceedingCutter{}
+		}(),
 		renderer,
-	)
+	).
+		WithAssetPreparation(&recordingArtifactPreparation{}).
+		WithJobFinalizer(stubJobFinalizer{})
 }
 
-// successNoopRenderer is a noop mapRenderer that returns success
-// (RenderResult{}, nil) on every call. Used by tests that exercise
-// the pipeline without asserting on render behavior (the test
-// focuses on stage_sources / plan / extract_clips behavior; the
-// renderer is a placeholder required by the composition-time
-// fail-closed gate per PR-STOCK-PRODUCTION-DEPS, July 2026).
+// successNoopRenderer is a mapRenderer that returns success and
+// writes a small output file at req.OutputPath so the downstream
+// publish step can hash it. Used by tests that exercise the pipeline
+// without asserting on render behavior.
 func successNoopRenderer() *mapRenderer {
 	return &mapRenderer{handler: func(req RenderRequest) (RenderResult, error) {
+		if req.OutputPath != "" {
+			_ = os.WriteFile(req.OutputPath, []byte("rendered"), 0o644)
+		}
 		return RenderResult{}, nil
 	}}
 }

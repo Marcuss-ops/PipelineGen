@@ -189,7 +189,7 @@ func TestOrchestrator_RunResilient_SkipAlreadyCompleted(t *testing.T) {
 		JobId:     jobID,
 		StepStore: store, // C2/4: inject SQLite-backed store via OrchestratorConfig
 	}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, nil, nil)
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
@@ -279,7 +279,7 @@ func TestOrchestrator_RunResilient_AllPreCompletedSkipsAll(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, nil, nil)
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})
@@ -346,7 +346,7 @@ func TestOrchestrator_RunResilient_NewStepFailureMarkFailed(t *testing.T) {
 	}
 
 	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
-	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, nil, nil)
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
 	o.dispatchSteps = dispatchSteps
 
 	_, err := o.RunResilient(ctx, &RunInput{})

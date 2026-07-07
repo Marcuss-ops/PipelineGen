@@ -112,13 +112,15 @@ func (fakeSucceedingCutter) Cut(_ context.Context, req CutRequest) (CutBatchResu
 func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 	w := &stubWriter{forceFail: true}
 	o := NewOrchestratorWithResilience(
-		OrchestratorConfig{JobId: "test-a", PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
+		OrchestratorConfig{JobId: "test-a", Lease: testLease("test-a"), PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
-		fakeSucceedingCutter{}, noopRenderer{},
+		fakeSucceedingCutter{}, successNoopRenderer(),
 		stockManifestBuilder{}, w, noopProjection{},
-	)
+	).
+		WithAssetPreparation(&recordingArtifactPreparation{}).
+		WithJobFinalizer(stubJobFinalizer{})
 	_, err := o.RunResilient(context.Background(), &RunInput{
 		DirectURLs:    []string{"https://example.com/a.mp4"},
 		ClipDuration:  5,
@@ -142,13 +144,15 @@ func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 //	surfaces ErrManifestIncomplete; summary MUST be nil.
 func TestOrchestrator_RunResilient_ManifestGateFails(t *testing.T) {
 	o := NewOrchestratorWithResilience(
-		OrchestratorConfig{JobId: "test-b", PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
+		OrchestratorConfig{JobId: "test-b", Lease: testLease("test-b"), PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
-		nil, noopRenderer{},
+		fakeSucceedingCutter{}, successNoopRenderer(),
 		stubBuilder{}, noopWriter{}, noopProjection{},
-	)
+	).
+		WithAssetPreparation(&recordingArtifactPreparation{}).
+		WithJobFinalizer(stubJobFinalizer{})
 	summary, err := o.RunResilient(context.Background(), &RunInput{
 		DirectURLs:    []string{"https://example.com/b.mp4"},
 		ClipDuration:  5,
@@ -172,13 +176,15 @@ func TestOrchestrator_RunResilient_ManifestGateFails(t *testing.T) {
 //	FinalStatus a StatusIndexPending, ritorna (manifest, nil).
 func TestOrchestrator_RunResilient_QdrantOffline_IndexPending(t *testing.T) {
 	o := NewOrchestratorWithResilience(
-		OrchestratorConfig{JobId: "test-c", PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
+		OrchestratorConfig{JobId: "test-c", Lease: testLease("test-c"), PolicyVersion: "v1", ChunkDurationSec: 5, ClipDurationSec: 5},
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
-		nil, noopRenderer{},
+		fakeSucceedingCutter{}, successNoopRenderer(),
 		stockManifestBuilder{}, noopWriter{}, stubProjection{},
-	)
+	).
+		WithAssetPreparation(&recordingArtifactPreparation{}).
+		WithJobFinalizer(stubJobFinalizer{})
 	summary, err := o.RunResilient(context.Background(), &RunInput{
 		DirectURLs:    []string{"https://example.com/c.mp4"},
 		ClipDuration:  5,

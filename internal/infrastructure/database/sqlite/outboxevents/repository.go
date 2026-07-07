@@ -308,6 +308,28 @@ func (r *Repository) CountByStatus(ctx context.Context, status string) (int64, e
 	return n, nil
 }
 
+// CountByEventTypeAndStatus returns the count of outbox events for a
+// specific event_type in a specific status bucket.
+func (r *Repository) CountByEventTypeAndStatus(ctx context.Context, eventType, status string) (int64, error) {
+	if r.db == nil {
+		return 0, fmt.Errorf("outboxevents.Repository: db is nil")
+	}
+	if eventType == "" {
+		return 0, fmt.Errorf("outboxevents.CountByEventTypeAndStatus: eventType is required")
+	}
+	if status == "" {
+		return 0, fmt.Errorf("outboxevents.CountByEventTypeAndStatus: status is required")
+	}
+	var n int64
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM outbox_events WHERE event_type = ? AND status = ?", eventType, status,
+	).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("outboxevents.CountByEventTypeAndStatus(%q,%q): %w", eventType, status, err)
+	}
+	return n, nil
+}
+
 // MarkDeadLetter moves a claimed event straight to dead_letter,
 // bypassing the attempt-count+max-attempts comparison in MarkFailed.
 // Use this when the handler reports a terminal error (see errors.go

@@ -566,8 +566,8 @@ func TestUploadedManifest_JSONRoundTrip(t *testing.T) {
 		WorkflowID:    "wf_1",
 		JobID:         "job_1",
 		Artifacts: []UploadedArtifact{
-			{ID: "job_1:script", Kind: ArtifactKindScriptJSON, Filename: "script.json", MIMEType: "application/json", SHA256: "abc", RemoteAssetID: "asset_1", Status: "ready"},
-			{ID: "job_1:image:0", Kind: ArtifactKindImage, Filename: "img.png", MIMEType: "image/png", SHA256: "def", RemoteAssetID: "", Status: "skipped"},
+			{ID: "job_1:script", Kind: ArtifactKindScriptJSON, Filename: "script.json", MIMEType: "application/json", SHA256: "abc", Requirement: ArtifactRequirementRequired, RemoteAssetID: "asset_1", Status: "ready"},
+			{ID: "job_1:image:0", Kind: ArtifactKindImage, Filename: "img.png", MIMEType: "image/png", SHA256: "def", Requirement: ArtifactRequirementOptional, RemoteAssetID: "", Status: "skipped"},
 		},
 	}
 
@@ -590,8 +590,14 @@ func TestUploadedManifest_JSONRoundTrip(t *testing.T) {
 	if decoded.Artifacts[0].Status != "ready" {
 		t.Errorf("artifact[0].Status = %q, want ready", decoded.Artifacts[0].Status)
 	}
+	if decoded.Artifacts[0].Requirement != ArtifactRequirementRequired {
+		t.Errorf("artifact[0].Requirement = %v, want %v", decoded.Artifacts[0].Requirement, ArtifactRequirementRequired)
+	}
 	if decoded.Artifacts[1].Status != "skipped" {
 		t.Errorf("artifact[1].Status = %q, want skipped", decoded.Artifacts[1].Status)
+	}
+	if decoded.Artifacts[1].Requirement != ArtifactRequirementOptional {
+		t.Errorf("artifact[1].Requirement = %v, want %v", decoded.Artifacts[1].Requirement, ArtifactRequirementOptional)
 	}
 
 	// Verify no Path or SizeBytes fields leak
@@ -681,8 +687,14 @@ func TestToRemote_AllReady_SchemaVersionV1(t *testing.T) {
 	if result.Artifacts[0].Status != StatusReady {
 		t.Errorf("Artifacts[0].Status = %q, want %q", result.Artifacts[0].Status, StatusReady)
 	}
+	if result.Artifacts[0].Requirement != ArtifactRequirementRequired {
+		t.Errorf("Artifacts[0].Requirement = %v, want %v", result.Artifacts[0].Requirement, ArtifactRequirementRequired)
+	}
 	if result.Artifacts[1].RemoteAssetID != "asset_C5_2" {
 		t.Errorf("Artifacts[1].RemoteAssetID = %q, want asset_C5_2", result.Artifacts[1].RemoteAssetID)
+	}
+	if result.Artifacts[1].Requirement != ArtifactRequirementRequired {
+		t.Errorf("Artifacts[1].Requirement = %v, want %v", result.Artifacts[1].Requirement, ArtifactRequirementRequired)
 	}
 
 	// Raw-byte guard: no "/tmp/" substring anywhere in the remote

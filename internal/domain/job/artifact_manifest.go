@@ -277,17 +277,31 @@ const (
 	StatusSkipped = "skipped"
 )
 
+// ArtifactRequirement mirrors the finalizer-side typed enum without
+// importing the higher-level package into the job manifest contract.
+// The numeric values are intentionally aligned with
+// internal/domain/finalization.ArtifactRequirement so the JSON payload
+// unmarshals cleanly into the canonical finalizer request.
+type ArtifactRequirement int
+
+const (
+	ArtifactRequirementInvalid ArtifactRequirement = iota
+	ArtifactRequirementRequired
+	ArtifactRequirementOptional
+)
+
 // UploadedArtifact is a single artefact in the Sender-safe manifest.
 // Path and SizeBytes are intentionally omitted — the Sender resolves
 // the file via RemoteAssetID.
 type UploadedArtifact struct {
-	ID            string `json:"id"`
-	Kind          string `json:"kind"`
-	Filename      string `json:"filename"`
-	MIMEType      string `json:"mime_type"`
-	SHA256        string `json:"sha256"`
-	RemoteAssetID string `json:"remote_asset_id"`
-	Status        string `json:"status"` // StatusReady | StatusSkipped
+	ID            string              `json:"id"`
+	Kind          string              `json:"kind"`
+	Filename      string              `json:"filename"`
+	MIMEType      string              `json:"mime_type"`
+	SHA256        string              `json:"sha256"`
+	Requirement   ArtifactRequirement `json:"requirement"`
+	RemoteAssetID string              `json:"remote_asset_id"`
+	Status        string              `json:"status"` // StatusReady | StatusSkipped
 }
 
 // RemoteArtifact is the C5 canonical name for the Sender-safe
@@ -373,11 +387,15 @@ func (m *ArtifactManifest) ToRemote(uploaded map[string]RemoteAssetIDAdapter) (*
 		remote, ok := uploaded[a.ID]
 
 		ra := RemoteArtifact{
-			ID:       a.ID,
-			Kind:     a.Kind,
-			Filename: a.Filename,
-			MIMEType: a.MIMEType,
-			SHA256:   a.SHA256,
+			ID:          a.ID,
+			Kind:        a.Kind,
+			Filename:    a.Filename,
+			MIMEType:    a.MIMEType,
+			SHA256:      a.SHA256,
+			Requirement: ArtifactRequirementOptional,
+		}
+		if a.Required {
+			ra.Requirement = ArtifactRequirementRequired
 		}
 
 		if ok {
