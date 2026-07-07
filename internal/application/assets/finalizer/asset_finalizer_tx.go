@@ -142,6 +142,16 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		"publish_action": string(a.Location.Action),
 		"source_version": a.SourceVersion,
 		"size_bytes":     a.SizeBytes,
+		// Tier 1 of SourceVersionFor (see
+		// internal/infrastructure/database/sqlite/assets/source_version.go):
+		// content_hash is the dispatcher-aware write boundary — the
+		// finalizer writes it atomically inside the same tx as the
+		// outbox event, so the IndexingHandler's supersede gate reads
+		// a consistent fingerprint. Without this key, a republish
+		// that changes file_hash but preserves an older metadata_json
+		// would cause SourceVersionFor to read the stale Tier 2
+		// (metadata_json.$.file_hash) and mark the event as superseded.
+		"content_hash": a.SHA256,
 	}
 	metadataJSON, _ := json.Marshal(metadata)
 	actionStr := string(a.Location.Action)
