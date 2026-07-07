@@ -65,7 +65,7 @@ func TestSplit_PublisherAdapter_PanicInvariants(t *testing.T) {
 	t.Run("Publisher_NilPublisher_Panics", func(t *testing.T) {
 		require.PanicsWithValue(t,
 			"app.adapters_voiceover_use_case: newUseCasePublisherAdapter: publisher is required (delivery.Publisher)",
-			func() { _ = newUseCasePublisherAdapter(nil) },
+			func() { _ = newUseCasePublisherAdapter(nil, nil) },
 			"newUseCasePublisherAdapter must panic with the canonical message when publisher is nil")
 	})
 }

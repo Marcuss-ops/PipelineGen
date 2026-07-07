@@ -188,7 +188,7 @@ func buildVoiceoverService(
 	processSeg := voiceover.NewProcessSegmentUseCase(voiceover.ProcessSegmentDeps{
 		TTSProvider:         ttsProvider,
 		AudioPostProcessor:  newUseCaseAudioAdapter(log),
-		Publisher:           newUseCasePublisherAdapter(publisher),
+		Publisher:           newUseCasePublisherAdapter(publisher, log),
 		VoiceoverRepository: voRepoAdapter,
 		Finalizer:           finalizer,
 		Logger:              log,
@@ -240,7 +240,7 @@ func buildVoiceoverService(
 		// retired; Publisher does NOT write to SQLite, does NOT run a
 		// dedupe gate, does NOT touch media_assets (finalizeStage
 		// owns the per-item tx).
-		publisherAdapter := newUseCasePublisherAdapter(publisher)
+		publisherAdapter := newUseCasePublisherAdapter(publisher, log)
 
 		// Adapter: AudioPostProcessor port — silence-removal bridge
 		// built on the canonical ffmpeg.RemoveSilence closure. Nil-safe

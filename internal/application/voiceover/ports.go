@@ -278,8 +278,9 @@ type VoiceoverPublisher interface {
 }
 
 // VoiceoverPublishCommand is the canonical wire-shape for the upload
-// call. Only the 4 fields the upload needs — ID + payload path +
-// display filename + destination folder ID. NO metadata/folderPath/
+// call. ID + payload path + display filename + destination folder ID
+// + the 2 semantic routing fields (Project + Language) added by
+// PR-P12-VOICEOVER-SEMANTIC-FIELDS (July 2026). NO metadata/folderPath/
 // name/fileHash/source — those concerns live in finalizeStage's per-item
 // row OR in the per-style voiceover metadata JSON downstream.
 //
@@ -298,12 +299,51 @@ type VoiceoverPublisher interface {
 //   - Filename  — the Display Name surfaced on Drive (post-Slugify).
 //     Used as the canonical file label.
 //   - FolderID  — the canonical Drive folder ID (post-DestinationResolver).
+//     LEGACY: kept for backward-compat with pre-PR-12 callers that
+//     pass a pre-resolved folder ID. The adapter (useCasePublisherAdapter)
+//     uses this as a fallback for req.RootFolderOverride ONLY when
+//     Project is empty (see adapters_voiceover_publisher.go).
+//   - Project   — semantic project identifier for the voiceover
+//     publish (PR-P12-VOICEOVER-SEMANTIC-FIELDS, July 2026). When
+//     non-empty, the adapter forwards this to req.ProjectID so
+//     the Publisher's PathBuilder (VoiceoverPath) can build
+//     the canonical {project}/{language}/ subpath. When
+//     empty, the adapter falls back to req.RootFolderOverride
+//     (legacy) or req.ProjectID = ID (graceful degradation).
+//   - Language  — semantic BCP-47 language tag (typed at the call
+//     site via Language string conversion; canonical home is
+//     voiceover.Language). The adapter requires this as
+//     non-empty (fail-closed at the typed-sentinel boundary
+//     per godlike/07 NO-FAKE-AVAILABILITY). When non-empty,
+//     the adapter forwards it to req.Language so the
+//     Publisher's PathBuilder (VoiceoverPath) can build
+//     the canonical {project}/{language}/ subpath.
 type VoiceoverPublishCommand struct {
 	ID        string
 	LocalPath string
 	Filename  string
 	FolderID  string
+	Project   string `json:"project,omitempty"`
+	Language  string `json:"language,omitempty"`
 }
+
+// ErrVoiceoverPublishLanguageRequired is the typed sentinel surfaced
+// when useCasePublisherAdapter.Publish is called with an empty
+// Language field (PR-P12-VOICEOVER-SEMANTIC-FIELDS, July 2026).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the voiceover Drive write requires
+// a non-empty Language so the Publisher's PathBuilder (VoiceoverPath)
+// can build the canonical {project}/{language}/ subpath. The adapter
+// fails CLOSED at this sentinel — no silent fallback to a default
+// language — so callers see the typed error and can probe via
+// errors.Is without parsing string fragments.
+//
+// Wire contract: the sentinel wraps a descriptive message that
+// includes the canonical field name ("Language") + the destination
+// ("voiceover publish") + the policy reference (PR-P12-...).
+// Caller pattern: if errors.Is(err, ErrVoiceoverPublishLanguageRequired)
+// { /* populate Language on VoiceoverPublishCommand and retry */ }.
+var ErrVoiceoverPublishLanguageRequired = errors.New("voiceover: Language is required for semantic publish (PR-P12-VOICEOVER-SEMANTIC-FIELDS) — caller must populate Language on VoiceoverPublishCommand before invoking the Publisher")
 
 // Azione #6/#10 (July 2026): TransactionalOutbox type alias removed;
 // FilenameBuilder interface removed (zero consumers after Azione #6).

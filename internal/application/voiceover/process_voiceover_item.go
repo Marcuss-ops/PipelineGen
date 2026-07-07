@@ -229,7 +229,14 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 		Strategy:      string(item.Strategy),
 		Metadata:      item.Metadata,
 		RemoveSilence: item.RemoveSilence,
-		Dest:          dest,
+		// PR-P12-VOICEOVER-SEMANTIC-FIELDS (July 2026): forward the
+		// canonical semantic project identifier from the per-item command
+		// (API request or internal caller) so the adapter (Stage 3
+		// Publisher) builds the canonical {project}/{language}/ subpath
+		// via VoiceoverPath. Empty Project is OK: the adapter falls back
+		// to FolderID (legacy) or voiceover ID (graceful degradation).
+		Project: item.Project,
+		Dest:    dest,
 		// Per-item path (child pipeline): no old-row swap context.
 		// ShouldSwap stays false (no cleanup event).
 	}
