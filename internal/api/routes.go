@@ -383,7 +383,12 @@ func (r *Router) Setup() *gin.Engine {
 	// pipelinegen binary lost stock-pipeline mount, /api/stock-pipeline/run
 	// returned 400 (validation) so the bug wasn't visible — a /ready
 	// "wire: stock: NOT_MOUNTED" would have caught it in 5 seconds.
-	healthHandler.SetWireRegistry(transport.NewWireRegistryFromEngine(engine))
+	//
+	// Also sync the wire_capability_mounted Prometheus gauge so
+	// Grafana can alert on capability drift without polling /ready.
+	wireReg := transport.NewWireRegistryFromEngine(engine)
+	healthHandler.SetWireRegistry(wireReg)
+	transport.SyncWireCapabilityMounted(wireReg)
 
 	return engine
 }
