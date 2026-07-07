@@ -168,7 +168,7 @@ type AIBundle struct {
 type DomainBundle struct {
 	YoutubeClipService *youtube.Service
 
-	ExtractImportantClipsJobHandler *youtube.ExtractImportantClipsJobHandler // PR-GEMMA-EXTRACT-IMPORTANT Step 3 canonical slot (godlike/06 SSOT)
+	ExtractImportantClipsJobHandler *youtube.ExtractImportantClipsJobHandler // PR-GEMMA-EXTRACT-IMPORTANT Step 7: canonical broker handler registered with jobs.Service via wireYoutubeCatalogJobBindings (godlike/06 SSOT — the use case + adapters remain private construction-time deps, not exposed on DomainBundle)
 	VoiceoverService                *voiceover.Service
 	VoiceoverSync                   *voiceoverreconcile.Service
 	ImageService                    *imgservice.Service

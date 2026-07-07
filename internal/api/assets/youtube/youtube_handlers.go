@@ -18,6 +18,7 @@ import (
 	transport "github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
@@ -102,6 +103,7 @@ func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jo
 // stats) fall through unchanged.
 func (h *YouTubeClipHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/process", h.Idempotency, h.Extract)
+	r.POST("/extract-important", h.Idempotency, h.ExtractImportant) // PR-GEMMA-EXTRACT-IMPORTANT Step 5
 	r.GET("/info", h.GetVideoInfo)
 	r.GET("/diagnostics", h.Diagnostics)
 	r.GET("/stats", h.Stats)
@@ -180,9 +182,46 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 	}
 
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-		Type:    "youtube_clip.extract",
+		Type:    appjobs.TypeYouTubeClipExtract,
 		Payload: payloadMap,
 	}, "YouTube clip extraction job enqueued."); ok {
+		return
+	}
+	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
+}
+
+// ExtractImportant enqueues an LLM-driven YouTube clip extraction job.
+//
+// PR-GEMMA-EXTRACT-IMPORTANT Step 5: POST /api/clips/extract-important.
+// The jobType dispatches to ExtractImportantClipsJobHandler via the broker
+// (godlike/06 SSOT — uses the canonical appjobs.TypeYouTubeClipExtractImportant
+// const; the underlying use case has fail-closed sematics: nil analyzer
+// surfaces ErrAnalyzerUnavailable at runtime via the failClosedAnalyzerAdapter,
+// nil Subtitles/Drive would panic at useCase ctor per godlike/07).
+//
+// Reuses the canonical yttypes.ExtractRequest DTO (gemini+ollama analyzer
+// derives important segments from the transcript post-subtitle-fetch).
+func (h *YouTubeClipHandler) ExtractImportant(c *gin.Context) {
+	req, ok := apiutil.BindJSON[yttypes.ExtractRequest](c)
+	if !ok {
+		return
+	}
+
+	payloadBytes, err := json.Marshal(req)
+	if err != nil {
+		apiutil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
+		return
+	}
+	var payloadMap map[string]any
+	if err := json.Unmarshal(payloadBytes, &payloadMap); err != nil {
+		apiutil.InternalError(c, fmt.Errorf("failed to prepare payload: %w", err))
+		return
+	}
+
+	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
+		Type:    appjobs.TypeYouTubeClipExtractImportant,
+		Payload: payloadMap,
+	}, "YouTube clip extraction (LLM-driven) job enqueued."); ok {
 		return
 	}
 	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.

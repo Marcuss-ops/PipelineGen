@@ -64,7 +64,7 @@ const (
 //   - render/video: TypeRenderVideo, TypeVideoGenerate
 //   - subtitles: TypeSubtitleGenerate
 //   - youtube: TypeYouTubeUpload, TypeYouTubeClipExtract,
-//     TypeYouTubeRebuildST
+//     TypeYouTubeClipExtractImportant, TypeYouTubeRebuildST
 //   - catalog: TypeCatalogSync
 //   - system: TypeSystemCleanup
 //   - books: TypeBooksProcess
@@ -169,4 +169,22 @@ const (
 	// events inside a per-clip tx (mirror of youtube_clip.extract); the
 	// broker's legacy Complete is the canonical mark-SUCCEEDED seam.
 	TypeClipRegister = "media.clip"
+
+	// PR-GEMMA-EXTRACT-IMPORTANT (July 2026): per-LLM-segment YouTube clip
+	// extraction for the POST /api/clips/extract-important flow. Each
+	// important LLM-identified segment is downloaded (yt-dlp SectionDownloader),
+	// uploaded to a per-video Drive subfolder, then committed via the
+	// canonical ClipAtomicWriter in a per-clip atomic tx (single-tx
+	// media_assets INSERT + outbox_events asset.index.requested INSERT).
+	// Owned by the youtube capability per the capability listing SSOT
+	// (the `youtube:` line in the const-block goddoc above); the LLM-driven
+	// per-segment fan-out is PRODUCED BY the ExtractImportantClips pipeline
+	// at internal/application/youtube/usecase/extract_important_clips.go.
+	//
+	// ProducesArtifacts=true per-extracted-clips batch — each clip is its own
+	// per-clip atomic tx (ClipAtomicWriter writes media_assets + outbox in
+	// one tx), so the canonical pattern is: handler returns SUCCEEDED on the
+	// batch envelope; the broker's legacy Complete marks the job SUCCEEDED
+	// without trying to persist artifacts (the per-clip tx already did).
+	TypeYouTubeClipExtractImportant = "youtube.clip_extract_important"
 )

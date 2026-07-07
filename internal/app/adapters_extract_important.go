@@ -192,6 +192,50 @@ func (a *md5HasherAdapter) HashFile(ctx context.Context, path string) (string, e
 	return files.MD5File(path)
 }
 
+// ── 7. AdminFolderManagerAdapter ─────────────────────────────────
+
+// adminFolderManagerAdapter bridges drive.Admin (the canonical Pattern 0
+// port) to drive.FolderManagerPort (the narrow port the gemma use case
+// consumes). The Admin interface already exposes GetOrCreateFolder directly;
+// this adapter is a typed-shape conversion (godlike/06 Pattern 0: bridge
+// admin.GetOrCreateFolder(name, parent) → FolderManagerPort.EnsureFolder(parent, segments...)).
+//
+// ComposeRoot-only construction: this adapter is the SOLE caller of
+// drive.Admin for the extract-important pipeline; the canonical YouTube
+// pipeline uses a different adapter (NewYouTubePublisherDriveAdapter).
+type adminFolderManagerAdapter struct {
+	admin drive.Admin
+}
+
+// EnsureFolder accepts a variadic segments slice per drive.FolderManagerPort (FASE 9
+// signature). The gemma use case passes exactly 1 segment (the per-clip subfolder
+// name) — multi-segment paths would mean tree-of-folders creation which is a
+// YouTube-clip-only concern. We delegate the canonical 1-segment case to
+// admin.GetOrCreateFolder and fail-closed on multi-segment misuse.
+func (a *adminFolderManagerAdapter) EnsureFolder(ctx context.Context, parent string, segments ...string) (string, error) {
+	if a.admin == nil {
+		return "", fmt.Errorf("adminFolderManagerAdapter: drive.Admin unwired")
+	}
+	if len(segments) != 1 {
+		return "", fmt.Errorf("adminFolderManagerAdapter: requires exactly 1 segment (got %d); shallow subfolder only", len(segments))
+	}
+	return a.admin.GetOrCreateFolder(ctx, segments[0], parent)
+}
+
+// ProbeFolderAccess delegates to admin.GetFolderName (the canonical
+// Drive-side access probe — returns the folder name or ErrFolderInaccessible).
+func (a *adminFolderManagerAdapter) ProbeFolderAccess(ctx context.Context, rootID string) error {
+	if a.admin == nil {
+		return fmt.Errorf("adminFolderManagerAdapter: drive.Admin unwired")
+	}
+	_, err := a.admin.GetFolderName(ctx, rootID)
+	return err
+}
+
+// Compile-time pin: adminFolderManagerAdapter must satisfy drive.FolderManagerPort
+// (godlike/06 SSOT — signature drift surfaces as build failure, not runtime panic).
+var _ drive.FolderManagerPort = (*adminFolderManagerAdapter)(nil)
+
 // ── Factory + deps ───────────────────────────────────────────────────
 
 // ExtractImportantClipsAdapterDeps is the canonical dep contract for

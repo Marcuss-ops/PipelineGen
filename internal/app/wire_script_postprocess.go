@@ -36,7 +36,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
@@ -82,7 +84,54 @@ func registerScriptPostProcessors(
 	if root.Drive != nil && root.Drive.DocClient != nil {
 		docsSvc := usecase.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
 		resolveFolder := func(ctx context.Context, input, defaultRootID string) (string, error) {
-			return input, nil
+			input = strings.TrimSpace(input)
+			if input == "" {
+				return defaultRootID, nil
+			}
+			if len(input) >= 19 && len(input) <= 45 {
+				isRawID := true
+				for _, r := range input {
+					if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
+						isRawID = false
+						break
+					}
+				}
+				if isRawID {
+					return input, nil
+				}
+			}
+			if root.Drive.Publisher == nil {
+				return defaultRootID, nil
+			}
+			parts := strings.FieldsFunc(input, func(r rune) bool {
+				return r == '/' || r == '\\'
+			})
+			clean := make([]string, 0, len(parts))
+			for _, p := range parts {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					clean = append(clean, p)
+				}
+			}
+			if len(clean) == 0 {
+				return defaultRootID, nil
+			}
+			group := clean[0]
+			subject := "_script"
+			if len(clean) > 1 {
+				group = strings.Join(clean[:len(clean)-1], "/")
+				subject = clean[len(clean)-1]
+			}
+			folderID, err := root.Drive.Publisher.ResolveFolder(ctx, delivery.PublishRequest{
+				Destination:        delivery.DestinationScript,
+				Group:              group,
+				Subject:            subject,
+				RootFolderOverride: defaultRootID,
+			})
+			if err != nil {
+				return "", err
+			}
+			return folderID, nil
 		}
 		if !ppReg.Register(adapters.NewDocumentProcessor(docsSvc, resolveFolder)) {
 			return fmt.Errorf("register document processor: composition bug or duplicate name")
@@ -116,22 +165,20 @@ func registerScriptPostProcessors(
 	// downstream job (see internal/domain/job/job.go TypeVoiceoverGenerate).
 
 	// PR 3 (June 2026) + PR-noop-adapters-purge (2026-07-25):
-	// Entities + Metadata are ProcessorRequired per the user spec.
-	// PR 3: nil-tolerant at runtime (graceful-degradation). The
-	// runtime preflight rejects plans that request these processors
-	// without a real service wired through the composition root.
-	// PR-noop-adapters-purge: the pre-PR noop constructors (which
-	// returned EntityResult{} / nil with nil error = silent-success)
-	// were replaced by the typed-fail unavailable*Adapter
-	// constructors. Every request now returns ErrEntityExtractorUnavailable
-	// / ErrMetadataGeneratorUnavailable (godlike/07 NO-FAKE-AVAILABILITY)
-	// until a real backend is wired in a follow-up PR.
+	// Entities + Metadata remain wired through the typed-fail
+	// unavailable*Adapter constructors, but this runtime mounts
+	// them behind creatorBestEffort so the inline script pipeline can
+	// continue when the backend is absent. The typed sentinel still
+	// reaches logs, but it no longer turns the whole script.generate
+	// job into a retryable failure. This mirrors the Creator runtime
+	// policy and keeps the failure isolated to the postprocessor
+	// warning surface.
 	entityAdapter := adapters.NewUnavailableEntityExtractionAdapter()
-	if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter)) {
+	if !ppReg.Register(&creatorBestEffort{inner: adapters.NewEntitiesProcessor(entityAdapter), name: "entities"}) {
 		return fmt.Errorf("register entities processor: composition bug")
 	}
 	metadataAdapter := adapters.NewUnavailableMetadataGenerationAdapter()
-	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
+	if !ppReg.Register(&creatorBestEffort{inner: adapters.NewMetadataProcessor(metadataAdapter), name: "metadata"}) {
 		return fmt.Errorf("register metadata processor: composition bug")
 	}
 

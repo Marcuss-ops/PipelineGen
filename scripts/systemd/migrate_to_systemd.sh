@@ -271,12 +271,22 @@ fi
 
 # /ready + /health checks (after a short settle)
 sleep 2
-if curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${EXPECTED_PORT_PG}/ready" 2>/dev/null | grep -q 200; then
+# HTTP status code check.
+# Use `grep -qE '^200$'` instead of `grep -q 200` so the check is robust
+# against false-positive matches on any non-`200` 3+ digit string (e.g.
+# corrupted curl output like `2000` or `200\nFoo` if a proxy appends
+# extra chars; HTTP `000` from curl connection failure; etc.).
+# The curl `-w '%{http_code}'` output is just a 3-digit code followed by
+# newline, so `^200$` (anchor to start AND end of line) is the correct
+# match — not just `^200` (which would match `200` followed by anything)
+# nor just `200` (substring match, fragile per round 1).
+# Code Reviewer #4 — round 2.
+if curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${EXPECTED_PORT_PG}/ready" 2>/dev/null | grep -qE '^200$'; then
     ok "pipelinegen /ready = 200"
 else
     warn "pipelinegen /ready did not return 200 yet"
 fi
-if curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${EXPECTED_PORT_AS}/health" 2>/dev/null | grep -q 200; then
+if curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${EXPECTED_PORT_AS}/health" 2>/dev/null | grep -qE '^200$'; then
     ok "artlist-scraper /health = 200"
 else
     warn "artlist-scraper /health did not return 200 yet"

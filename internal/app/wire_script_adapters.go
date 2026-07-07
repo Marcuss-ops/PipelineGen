@@ -224,20 +224,12 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 // are absent at runtime, Run warns. Either way, composition does
 // NOT fail on them.
 //
-// PR 3 (June 2026): Entities and Metadata are promoted to
-// ProcessorRequired per the user spec. The canonical Composition-time
-// validator fails closed if they are not registered; the runtime
-// preflight fails closed if a plan requests them and the registry
-// has no adapter.
-//
 // Fase 2 Spina Dorsale (July 2026): "document" removed from
 // requiredProcessorNames. Document generation is now a downstream
 // job (document.generate), not an inline postprocessor. The
 // document processor is no longer registered in the script pipeline.
 var requiredProcessorNames = []adapters.ProcessorName{
 	adapters.ProcessorPersistence,
-	adapters.ProcessorEntities,
-	adapters.ProcessorMetadata,
 }
 
 // validateRequiredProcessors checks the post-freeze registry for
