@@ -160,9 +160,30 @@ func registerScriptPostProcessors(
 		log.Info("ImageProcessor (inline scene images) successfully registered")
 	}
 
-	// Fase 2 Spina Dorsale (July 2026): voiceover processor removed.
-	// Voiceovers are now produced by a separate voiceover.generate
-	// downstream job (see internal/domain/job/job.go TypeVoiceoverGenerate).
+	// Fase 2 Spina Dorsale (July 2026) — re-enabled 2026-07-08: the
+	// inline voiceover postprocessor is RE-REGISTERED alongside the
+	// separate voiceover.generate downstream job (Catena A P0 +
+	// BLOC5.3 parent-child fanout, internal/domain/job/job.go
+	// TypeVoiceoverGenerate). The two surfaces coexist: the inline
+	// postprocessor runs inside the script.generate flow when
+	// output.generate_voiceover=true + scenes are present; the
+	// downstream voiceover.generate job handles explicit /api/media/
+	// voiceover/generate invocations + the per-language fanout.
+	//
+	// The composition-time nil-guard mirrors the images/persistence
+	// pattern: a missing voiceover service degrades to "postprocessor
+	// not registered" warning at runtime (ProcessorBestEffort), NOT
+	// a hard preflight rejection (the Fase 2 default policy).
+	// godlike/06 SSOT: *voiceover.Service already satisfies the
+	// VoiceoverService interface via the compile-time pin in
+	// internal/application/scripts/adapters/processor_voiceover.go:193.
+	if root.Domains != nil && root.Domains.VoiceoverService != nil {
+		voProc := adapters.NewVoiceoverProcessor(root.Domains.VoiceoverService, log)
+		if !ppReg.Register(voProc) {
+			return fmt.Errorf("register voiceover processor: composition bug or duplicate name")
+		}
+		log.Info("VoiceoverProcessor (inline scene voiceovers) successfully registered")
+	}
 
 	// PR 3 (June 2026) + PR-noop-adapters-purge (2026-07-25):
 	// Entities + Metadata remain wired through the typed-fail
