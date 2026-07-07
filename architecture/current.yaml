@@ -8378,7 +8378,7 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
   - id: PR-NODE-MODULES-RESTORE
     status: shipped
     ship_date: 2026-07-07
-    ship_via: chore(infra): REAL_FIX
+    ship_via: "chore(infra): REAL_FIX"
     deadline: 2026-08-01
     remediation: |
       FIXED: `cd node-scraper && npm install` restored the missing
@@ -8437,7 +8437,8 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
       from a prior session; `systemctl show velox-server -p Environment` will surface it.
   - id: PR-STK-E2E-SCRIPTS-RESTORE
     deadline: 2026-08-15
-    remediation: Re-introduce the 8 STK-E2E-* smoke scripts (route_aliveness + search_and_run
+    remediation: |
+      Re-introduce the 8 STK-E2E-* smoke scripts (route_aliveness + search_and_run
       + direct_url + db_assets + db_outbox + unified_search + download + full_battery) to the
       working tree, then flip STOCK-E2E-BATTERY-2026-07-05 umbrella to status: shipped ONLY
       after live 14/14 PASS on a healthy server.
