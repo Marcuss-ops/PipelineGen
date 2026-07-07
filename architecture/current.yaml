@@ -7441,7 +7441,9 @@
       deadline: 2026-08-22
     - id: PR-SPLIT-ASSET-PUBLISHED
       owner_capability: internal/application/jobs/outbox
-      status: pending
+      status: shipped
+      ship_sha: 64395bcc782fb8cfe269dcca4e82261ab3941205
+      ship_date: 2026-07-07
       deadline: 2026-08-22
     - id: PR-SPLIT-INDEX-WRITER
       owner_capability: internal/infrastructure/qdrant/indexing
