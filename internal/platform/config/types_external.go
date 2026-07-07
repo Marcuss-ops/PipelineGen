@@ -89,6 +89,31 @@ type ExternalConfig struct {
 	// authenticated Artlist downloads set ARTLIST_COOKIES_PATH to a real file
 	// (typically produced by `yt-dlp --cookies-from-browser chrome`).
 	ArtlistCookiesPath string `yaml:"artlist_cookies_path" env:"ARTLIST_COOKIES_PATH" default:""`
+
+	// PR-011 (July 2026): Stock RLM/LLM enrichment pass.
+	//
+	// StockEnrichmentEnabled gates the canonical enrichment pipeline
+	// (internal/application/assets/providers/stock/enrichment). When
+	// false, the composition root skips wiring the EnrichmentHandler
+	// (mirror of the StockPipelineEnabled pattern in
+	// api/assets/stock/module.go). When true, the worker pool picks up
+	// `media.stock_rlm_enrich` jobs and dispatches them to the
+	// EnrichmentHandler via the CompiledJobRegistry.
+	//
+	// Default false (godlike/07 fail-closed): operators must explicitly
+	// opt-in. The enrichment LLM call is the load-bearing pre-condition;
+	// the job type would otherwise be silently retried forever
+	// (godlike/07 no-fake-availability: missing-wiring = no-enqueue, not
+	// enqueue-and-fail-on-llm-error).
+	StockEnrichmentEnabled bool `yaml:"stock_enrichment_enabled" env:"STOCK_ENRICHMENT_ENABLED" default:"false"`
+
+	// ParseArenaLLM is the Ollama model identifier used by the stock
+	// RLM/LLM enrichment pass (PR-011). The "parse_arena" prefix is the
+	// canonical naming convention for the parse-arena model family
+	// (gemma4:e4b + gemma4:e2b siblings). When empty, the enrichment
+	// handler falls back to cfg.External.OllamaModel at composition
+	// time (defense-in-depth; never silently blank).
+	ParseArenaLLM string `yaml:"parse_arena_llm" env:"PARSE_ARENA_LLM" default:""`
 }
 
 // ResolvedYtdlpPath returns the configured yt-dlp path, falling back to "yt-dlp" if empty.

@@ -523,6 +523,26 @@ const (
 	// events inside a per-clip tx (mirror of youtube_clip.extract); the
 	// broker's legacy Complete is the canonical mark-SUCCEEDED seam.
 	TypeClipRegister = job.TypeClipRegister
+
+	// PR-011A (July 2026): post-publish RLM/LLM enrichment pass.
+	//
+	// After the stock pipeline publishes a chunk (PR-001..PR-009
+	// chain), the worker enqueues a media.stock_rlm_enrich job per
+	// chunk to populate the 6 LLM-only fields (Category / Event /
+	// Round / Scene / Subject / Entities) that PR-007 plumbing
+	// already threads but PR-008 left empty pending a real LLM call.
+	// The handler is registered at composition time ONLY when
+	// cfg.External.StockEnrichmentEnabled=true (godlike/07 fail-closed
+	// at composition: no-enrichment-configured = no-handler-registered
+	// = no-job-enqueued; the canonical retry path is via worker
+	// exponential backoff when the LLM call is wired).
+	//
+	// ProducesArtifacts=false because the enrichment pass updates
+	// media_assets.metadata_json inside a per-chunk tx and re-emits
+	// the existing asset.published outbox event (Wave 5
+	// SEMANTIC-LOCATION-API). The broker's legacy Complete is the
+	// canonical mark-SUCCEEDED seam — no per-item finalizer needed.
+	TypeMediaStockRLMEnrich = "media.stock_rlm_enrich"
 )
 
 // Compose builds the standard registry with all known job types.
