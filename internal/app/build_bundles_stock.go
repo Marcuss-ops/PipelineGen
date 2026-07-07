@@ -39,6 +39,7 @@ import (
 	stockapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/stock"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	stockenrich "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/enrichment"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
@@ -87,6 +88,28 @@ type StockBundleDeps struct {
 	// for stockapi.Build — nil closes the capability (no route
 	// registration) per api/assets/stock/module.go's nil-tolerance.
 	StockPipelineEnabled func() bool
+
+	// PR-011A (July 2026): stock RLM/LLM enrichment pass composition
+	// seam. Both fields are OPTIONAL (nil = enrichment disabled,
+	// godlike/07 fail-closed). When both are non-nil AND
+	// EnrichmentEnabled() returns true, BuildStockBundle wires the
+	// canonical EnrichmentHandler (stockenrich.EnrichmentHandler)
+	// and registers it on the jobs dispatcher for
+	// appjobs.TypeMediaStockRLMEnrich ("media.stock_rlm_enrich").
+	//
+	// EnrichmentLLMClient is the canonical Pattern-0 typed port.
+	// PR-011A passes the stockenrich.StubEnrichmentLLMClient
+	// (returns ErrEnrichmentLLMUnavailable, drives the worker
+	// retry path end-to-end). PR-011B will replace the stub
+	// with a real ollama-backed adapter; the composition root
+	// wires it via fluent setter per AGENTS.md Pattern 0.
+	//
+	// EnrichmentEnabled is the canonical cfg-gated closure
+	// (mirrors StockPipelineEnabled). When nil or returning
+	// false, no handler is registered; the worker pool cannot
+	// dequeue media.stock_rlm_enrich jobs.
+	EnrichmentLLMClient stockenrich.EnrichmentLLMClient
+	EnrichmentEnabled   func() bool
 }
 
 // validateStockSymmetricGate enforces the godlike/07 production pairing
@@ -197,6 +220,28 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	// satisfies ServiceRunner; *appjobs.Service satisfies jobsEnqueuer.
 	// No adapter shim required — mirrors voiceoverjobs.FanoutDeps.
 	useCase := stockpipeline.NewStockUseCase(svc, deps.Jobs, deps.Log)
+
+	// ── Gate 3b: PR-011A — wire the stock RLM/LLM enrichment handler ─
+	// godlike/07 fail-closed composition: enrichment is OPTIONAL
+	// (nil-LLMClient OR nil-EnabledFunc OR EnabledFunc()==false = no
+	// handler registered; the worker pool cannot dequeue
+	// media.stock_rlm_enrich jobs and the registry entry sits unused).
+	// No silent-success path: a misconfigured production deployment
+	// (EnabledFunc()==true but LLMClient==nil) surfaces as a typed
+	// error at composition time.
+	if deps.EnrichmentEnabled != nil && deps.EnrichmentEnabled() && deps.EnrichmentLLMClient != nil {
+		assetRepo, repoErr := stockenrich.NewSQLiteAssetRepository(deps.DB)
+		if repoErr != nil {
+			return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewSQLiteAssetRepository: %w", repoErr)
+		}
+		enrichHandler, hErr := stockenrich.NewEnrichmentHandler(deps.EnrichmentLLMClient, assetRepo, deps.Log)
+		if hErr != nil {
+			return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewEnrichmentHandler: %w", hErr)
+		}
+		if regErr := enrichHandler.RegisterHandler(deps.Jobs); regErr != nil {
+			return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.RegisterHandler: %w", regErr)
+		}
+	}
 
 	// ── Gate 4: compose the canonical API Descriptor ─────────────
 	sd, err := stockapi.Build(stockapi.Dependencies{
