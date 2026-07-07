@@ -78,6 +78,13 @@ const (
 	// as FAILED, not retry.
 	FailureCodeWriterFailed FailureCode = "writer_failed"
 
+	// FailureCodeMetadataFailed is returned when the optional
+	// metadata enrichment step fails after the clip write has
+	// succeeded. This is terminal for the current job attempt
+	// because the metadata writer already owns its own tx and
+	// outbox emission.
+	FailureCodeMetadataFailed FailureCode = "metadata_failed"
+
 	// FailureCodeFFProbeValidationFailed is returned when the
 	// optional ffprobe validation step detects a corrupted or
 	// truncated download (container not readable, video stream
