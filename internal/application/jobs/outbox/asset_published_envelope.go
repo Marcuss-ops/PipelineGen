@@ -75,14 +75,3 @@ type AssetPublishedRequestV1 struct {
 	IdempotencyKey string   `json:"idempotency_key"`
 	RequestedAt    string   `json:"requested_at,omitempty"`
 }
-
-// assetPublishedRequestV1 is the deprecated unexported alias for
-// AssetPublishedRequestV1. RETAINED for backward-compat with any
-// in-flight test code that referenced the unexported form. New
-// code MUST use the exported AssetPublishedRequestV1 directly.
-//
-// godlike/07 minimum-blast-radius: the alias is type-equivalent
-// (not a distinct named type) so any existing call site continues
-// to compile without churn. PR-011C's emitter and tests use the
-// exported name; future cleanup PRs may retire this alias.
-type assetPublishedRequestV1 = AssetPublishedRequestV1
