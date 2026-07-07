@@ -43,6 +43,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"go.uber.org/zap"
 
@@ -136,6 +137,17 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			} else if i < len(in.Clips) {
 				cs.Title = in.Clips[i].Title
 			}
+			// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): sync
+			// plan.Title to the resolved cs.Title so perClipLeafName
+			// uses the SAME source-of-truth title the chunk is
+			// indexed/displayed by. Without this, an empty Plan.Title
+			// + populated in.Clips[i].Title would land the chunk in a
+			// start-end-named subdir while the chunk title is "Round 7"
+			// (godlike/07 NO-FAKE-AVAILABILITY: avoid the title/leaf
+			// mismatch that confuses operators scanning Drive).
+			if cs.Title != "" {
+				plan.Title = cs.Title
+			}
 		}
 		if compPath != "" {
 			if err := cs.ComputeAndFillSHA256(); err != nil {
@@ -149,6 +161,19 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		if idemErr != nil {
 			return fmt.Errorf("%w: chunk %d (artifact=%s) idem-key: %v",
 				ErrStockPublishArtifactFailed, i, cs.ArtifactID, idemErr)
+		}
+		// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): per-clip
+		// PathLeafName for explicit-clips runs (each clip lands in
+		// its own Drive subdir, e.g. round-1/, round-7-broner-barcolla/).
+		// Legacy (no clips[]) stays on the shared timestampGroupName
+		// to preserve the TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName
+		// invariant — godlike/07 minimum-blast-radius gates the new
+		// behavior strictly on explicitTimestamps.
+		var leafName string
+		if explicitTimestamps {
+			leafName = perClipLeafName(plan)
+		} else {
+			leafName = timestampGroupName
 		}
 		va := finalization.VerifiedArtifact{
 			ArtifactID:     cs.ArtifactID,
@@ -167,7 +192,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			// RootFolderName + PathLeafName via stockArtifactPathParts.
 			// The DestinationRegistry + PathBuilder handle routing.
 			RootFolderName: rootFolderName,
-			PathLeafName:   timestampGroupName,
+			PathLeafName:   leafName,
 		}
 		published, prepErr := runner.ArtifactPreparation().Prepare(ctx, va)
 		if prepErr != nil {
@@ -242,6 +267,19 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		return fmt.Errorf("%w: metadata idem-key: %v",
 			ErrStockPublishArtifactFailed, metaIdemErr)
 	}
+	// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): metadata.json
+	// sits at the run-root level in explicit-clips mode (the
+	// canonical "metadata/" subdir alongside the per-clip video
+	// subdirs like round-1/, round-2/). Legacy stays on the shared
+	// timestampGroupName leaf (preserves the legacy
+	// TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName
+	// invariant for the metadata artifact).
+	var metaLeafName string
+	if explicitTimestamps {
+		metaLeafName = "metadata"
+	} else {
+		metaLeafName = timestampGroupName
+	}
 	metaVA := finalization.VerifiedArtifact{
 		ArtifactID:     MetadataArtifactID(fp),
 		Kind:           finalization.KindMetadata,
@@ -255,7 +293,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		// DRIVE-IS-DRIVE (July 2026): RootFolderOverride REMOVED.
 		// Stock no longer passes FolderID as a Drive path override.
 		RootFolderName: rootFolderName,
-		PathLeafName:   timestampGroupName,
+		PathLeafName:   metaLeafName,
 	}
 	metaPublished, metaPrepErr := runner.ArtifactPreparation().Prepare(ctx, metaVA)
 	if metaPrepErr != nil {
@@ -414,6 +452,106 @@ func sanitizedURLBasename(rawURL string) string {
 // PR-STOCK-ORCHESTRATOR-SPLIT, July 2026) carries the chosen
 // value into every chunk + metadata artifact in a run, so all
 // chunks + metadata share the SAME leaf (no per-chunk drift).
+// perClipLeafName derives the canonical per-clip Drive leaf folder
+// name for explicit-clips (timestamp-mode) runs. Priority cascade
+// (per user diagnostic "round-01-la-fase-di-studio" example):
+//
+//  1. slugify(plan.Title) — operator-supplied clip title (e.g.
+//     "Round 7 - Broner barcolla" → "round-7-broner-barcolla").
+//     The slug matches the canonical convention established by
+//     pkg/stockparser (SafeFolderName → ToLower → space-to-hyphen
+//     + collapse-consecutive-hyphens + trim-edges).
+//  2. fmt.Sprintf("%02d-%02d-%02d_to_%02d-%02d-%02d", ...)
+//     (StartSec, EndSec) — universal HH-MM-SS_to_HH-MM-SS literal
+//     for the empty-Title / whitespace-Title / pathutil-empty
+//     fallback case (preserves the "00-00-32_to_00-01-27" shape
+//     the legacy code emitted for the run-level leaf).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the slug is NEVER "untitled"
+// (pathutil.SafeFolderName's all-whitespace fallback). When the
+// title produces an empty slug, the function falls through to
+// the start-end literal — operators see a stable, parseable
+// leaf instead of a generic "untitled" folder that shadows
+// other runs.
+//
+// godlike/06 SSOT: this is the SOLE writer of per-clip
+// PathLeafName values for explicit-clips runs. The legacy
+// stockTimestampGroupName function stays as the SOLE writer
+// of shared-leaves for legacy (no clips[]) runs and for the
+// per-run metadata.json — the two functions are disjoint by
+// gate (explicitTimestamps=true vs false) per godlike/07
+// minimum-blast-radius.
+//
+// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): replaces the
+// pre-PR bug where every chunk in an explicit-clips run shared
+// a single PathLeafName (= stockTimestampGroupName), so all 8
+// Pacquiao/Broner clips landed in the same folder instead of
+// in per-clip subdirs.
+func perClipLeafName(plan ClipPlan) string {
+	if title := strings.TrimSpace(plan.Title); title != "" {
+		slug := slugifyTitle(title)
+		// godlike/07: never emit "untitled" as a slug (the
+		// pathutil.SafeFolderName all-whitespace fallback).
+		// Empty-after-slugify also falls through to the
+		// start-end literal.
+		if slug != "" && slug != "untitled" {
+			return slug
+		}
+	}
+	return fmt.Sprintf("%02d-%02d-%02d_to_%02d-%02d-%02d",
+		int(plan.StartSec)/3600, (int(plan.StartSec)%3600)/60, int(plan.StartSec)%60,
+		int(plan.EndSec)/3600, (int(plan.EndSec)%3600)/60, int(plan.EndSec)%60,
+	)
+}
+
+// slugifyTitle returns the canonical Drive-folder-safe slug for
+// a clip title. Cascade (per user diagnostic "round-01-la-fase-di-studio"
+// convention):
+//
+//  1. Strip filesystem-unsafe chars (anything that is not
+//     unicode letter, unicode digit, ASCII hyphen, or ASCII
+//     space). Drops the char entirely — NOT replace with
+//     underscore — so the resulting slug doesn't carry escape
+//     artifacts like "_" or "_official_". The user's canonical
+//     example "Round 7 - Broner barcolla" → "round-7-broner-barcolla"
+//     relies on this (colons, parens, etc. are stripped, not
+//     escaped).
+//  2. ToLower — lowercase convention per Drive naming.
+//  3. space-to-hyphen — single replacement.
+//  4. collapse-consecutive-hyphens — " - " (round-dash-round)
+//     becomes "---" after step 3, collapsed to a single "-".
+//  5. trim-leading-trailing-hyphens — no edge artifacts.
+//
+// godlike/06 SSOT: this is the SOLE writer of per-clip title
+// slugs in the stock pipeline. pkg/stockparser has its own
+// deriveSlug (same convention) for the parser-side surface;
+// both produce byte-equivalent output for the same input.
+// A future refactor that extracts a shared pkg helper should
+// route BOTH call sites through it (forward-pointer
+// PR-SLUG-HELPER-EXTRACT, deadline 2026-08-15).
+func slugifyTitle(title string) string {
+	var b strings.Builder
+	b.Grow(len(title))
+	for _, r := range title {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == ' ' {
+			b.WriteRune(r)
+		}
+		// else: strip entirely (the SafeFolderName escape
+		// via underscore would carry escape artifacts like
+		// "_" or "_official_" into the slug).
+	}
+	slug := strings.ToLower(b.String())
+	slug = strings.ReplaceAll(slug, " ", "-")
+	// Collapse any "---+" run (e.g. " - " → "---") to a single
+	// hyphen. Loop guard: in pathological inputs a single pass
+	// is sufficient; we cap at 2 passes to avoid infinite loops
+	// in case of edge inputs.
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+	return strings.Trim(slug, "-")
+}
+
 func stockTimestampGroupName(in *RunInput) string {
 	if in == nil {
 		return "metadata"

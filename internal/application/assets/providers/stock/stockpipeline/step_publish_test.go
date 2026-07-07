@@ -62,6 +62,204 @@ func (f *publishFakeRunner) State() *runState                        { return f.
 
 var _ StepRunner = (*publishFakeRunner)(nil)
 
+// ── PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026) — per-clip PathLeafName ──
+//
+// The pre-PR bug: StockPublishStep stamped the SAME PathLeafName
+// (= stockTimestampGroupName) on every chunk in an explicit-clips
+// run, so 8 Pacquiao/Broner clips landed in 1 Drive subdir instead
+// of 8 per-clip subdirs. The fix gates perClipLeafName(plan) on
+// explicitTimestamps; legacy (no clips[]) stays on the shared
+// timestampGroupName. Tests below pin the per-clip contract at
+// the unit (perClipLeafName) and integration (StockPublishStep.Run)
+// levels.
+
+// TestPerClipLeafName_SlugFromTitle locks the canonical slug
+// derivation for explicit-clips runs. The slug convention matches
+// pkg/stockparser (SafeFolderName → ToLower → space-to-hyphen) so
+// the parser and the publisher produce byte-equivalent slugs for
+// the same Title input.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the slug is NEVER "untitled"
+// (the pathutil.SafeFolderName all-whitespace fallback); such
+// inputs fall through to the start-end literal.
+func TestPerClipLeafName_SlugFromTitle(t *testing.T) {
+	cases := []struct {
+		name string
+		plan ClipPlan
+		want string
+	}{
+		{
+			name: "Pacquiao/Broner user diagnostic example — Italian title slugifies to canonical Drive folder",
+			plan: ClipPlan{Title: "Round 7 - Broner barcolla", StartSec: 993, EndSec: 1048},
+			want: "round-7-broner-barcolla",
+		},
+		{
+			name: "title with accented chars — unicode letters preserved (à stays à), then collapsed into canonical slug",
+			plan: ClipPlan{Title: "Round 1 - La fase di studio e la velocità di Pacquiao", StartSec: 32, EndSec: 231},
+			want: "round-1-la-fase-di-studio-e-la-velocità-di-pacquiao",
+		},
+		{
+			name: "title with colons — SafeFolderName strips them",
+			plan: ClipPlan{Title: "Round 5: il miglior momento di Broner", StartSec: 628, EndSec: 767},
+			want: "round-5-il-miglior-momento-di-broner",
+		},
+		{
+			name: "title with parentheses — SafeFolderName strips them",
+			plan: ClipPlan{Title: "Verdict (official)", StartSec: 1727, EndSec: 1769},
+			want: "verdict-official",
+		},
+		{
+			name: "title with multiple spaces — collapsed to single hyphens",
+			plan: ClipPlan{Title: "Round  7   Broner", StartSec: 993, EndSec: 1048},
+			want: "round-7-broner",
+		},
+		{
+			name: "title with leading/trailing whitespace — trimmed before slugify",
+			plan: ClipPlan{Title: "   Round 7   ", StartSec: 993, EndSec: 1048},
+			want: "round-7",
+		},
+		{
+			name: "single-word title",
+			plan: ClipPlan{Title: "Highlight", StartSec: 0, EndSec: 30},
+			want: "highlight",
+		},
+		{
+			name: "title with mixed case — lowercased after SafeFolderName",
+			plan: ClipPlan{Title: "Round 7 BRONER BARCOLLA", StartSec: 993, EndSec: 1048},
+			want: "round-7-broner-barcolla",
+		},
+		{
+			name: "all-whitespace title falls through to start-end literal (no 'untitled' leak)",
+			plan: ClipPlan{Title: "   \t\n", StartSec: 32, EndSec: 231},
+			want: "00-00-32_to_00-03-51",
+		},
+		{
+			name: "empty title falls through to start-end literal",
+			plan: ClipPlan{Title: "", StartSec: 0, EndSec: 60},
+			want: "00-00-00_to_00-01-00",
+		},
+		{
+			name: "title that SafeFolderName reduces to empty falls through to start-end literal",
+			plan: ClipPlan{Title: "///", StartSec: 10, EndSec: 20},
+			want: "00-00-10_to_00-00-20",
+		},
+		{
+			name: "underscore in title is preserved (not stripped like unsafe chars) — distinguishes 'user_name' from 'username'",
+			plan: ClipPlan{Title: "user_name highlight", StartSec: 0, EndSec: 30},
+			want: "user_name-highlight",
+		},
+		{
+			name: "underscore between round number and title is preserved as a word boundary (avoids 'round_7-broner' becoming 'round7-broner')",
+			plan: ClipPlan{Title: "round_7_broner_barcolla", StartSec: 993, EndSec: 1048},
+			want: "round_7_broner_barcolla",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := perClipLeafName(tc.plan)
+			if got != tc.want {
+				t.Fatalf("perClipLeafName(%+v) = %q, want %q", tc.plan, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestStockPublishStep_ExplicitClips_PerClipPathLeafName locks the
+// integration contract: when explicitTimestamps is true AND the
+// Plan has per-clip Title set, each chunk lands in its own Drive
+// subdir (slug from Title). The metadata.json sits at the run-root
+// "metadata" leaf. This is the user diagnostic's "non sta creando
+// la subdir correttamente" regression fix — 8 Pacquiao/Broner clips
+// now produce 8 unique leaf folders + 1 run-root metadata subdir.
+func TestStockPublishStep_ExplicitClips_PerClipPathLeafName(t *testing.T) {
+	tmpDir := t.TempDir()
+	const clipCount = 8
+	paths := make([]string, clipCount)
+	plans := make([]ClipPlan, clipCount)
+	expectedLeaves := make([]string, clipCount)
+	// Realistic Pacquiao/Broner round titles (subset of the user
+	// diagnostic). Each slug should be unique.
+	titles := []string{
+		"Round 1 - La fase di studio",
+		"Round 2 - Primi scambi",
+		"Round 5 - Miglior momento di Broner",
+		"Round 7 - Broner barcolla",
+		"Round 9 - Pacquiao attacco",
+		"Round 10-11 - Controllo Pacquiao",
+		"Round 12 - Finale",
+		"Verdetto ufficiale",
+	}
+	for i := 0; i < clipCount; i++ {
+		p := filepath.Join(tmpDir, fmt.Sprintf("clip-%d.mp4", i))
+		if err := os.WriteFile(p, []byte("clip-"+strconv.Itoa(i)), 0o644); err != nil {
+			t.Fatalf("write clip %d: %v", i, err)
+		}
+		paths[i] = p
+		plans[i] = ClipPlan{
+			SourceID: "https://youtu.be/pacquiao-broner",
+			StartSec: float64(30 * i),
+			EndSec:   float64(30*i + 25),
+			Title:    titles[i],
+		}
+		expectedLeaves[i] = perClipLeafName(plans[i])
+	}
+	prep := &recordingArtifactPreparation{}
+	runner := &publishFakeRunner{
+		runInput: &RunInput{
+			FolderName:    "Manny Pacquiao vs Adrien Broner",
+			FolderID:      "wf-8clips",
+			Clips:         make([]ClipSpec, clipCount), // explicit-clips
+			ClipDuration:  25,
+			ChunkDuration: 25,
+		},
+		cfg: OrchestratorConfig{PolicyVersion: "policy-v1"},
+		state: &runState{
+			Plan:          plans,
+			ComposedPaths: paths,
+		},
+		artifactPrep: prep,
+	}
+	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
+		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
+	}
+	// Structural invariant: N videos + EXACTLY 1 metadata.
+	want := clipCount + 1
+	if got := len(prep.artifacts); got != want {
+		t.Fatalf("expected %d prepare calls (%d videos + 1 metadata), got %d", want, clipCount, got)
+	}
+	// Per-clip PathLeafName contract: each chunk's leaf matches
+	// perClipLeafName(plan). The pre-PR bug asserted all chunks
+	// shared the SAME leaf — this test fails immediately if a
+	// future refactor re-introduces that regression.
+	seenLeaves := make(map[string]int)
+	for i := 0; i < clipCount; i++ {
+		got := prep.artifacts[i].PathLeafName
+		if got != expectedLeaves[i] {
+			t.Errorf("chunk[%d].PathLeafName = %q, want %q (per-clip leaf from Plan[%d].Title=%q)",
+				i, got, expectedLeaves[i], i, plans[i].Title)
+		}
+		seenLeaves[got]++
+	}
+	// godlike/07 minimum-blast-radius: 8 unique leaves for 8 clips.
+	// If two clips happen to slugify to the same leaf (e.g. two
+	// "Round 7" titles in the same run), the test still passes
+	// the leaf-correctness assertion but flags the duplicate so
+	// the operator sees the collision.
+	if len(seenLeaves) < clipCount {
+		t.Logf("WARNING: %d clips produced %d unique leaves (some slugs collide: %v)",
+			clipCount, len(seenLeaves), seenLeaves)
+	}
+	// Metadata is exactly ONE, with leaf "metadata" (run-root).
+	metaIdx := clipCount
+	if got := prep.artifacts[metaIdx].PathLeafName; got != "metadata" {
+		t.Errorf("metadata PathLeafName = %q, want %q (run-root level in explicit-clips mode)",
+			got, "metadata")
+	}
+	if got := prep.artifacts[metaIdx].ArtifactID; got != "stock:run-fingerprint-123:metadata" {
+		t.Errorf("metadata ArtifactID = %q, want %q", got, "stock:run-fingerprint-123:metadata")
+	}
+}
+
 func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T) {
 	tmpDir := t.TempDir()
 	clip0 := filepath.Join(tmpDir, "clip0.mp4")
@@ -90,8 +288,8 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 		},
 		state: &runState{
 			Plan: []ClipPlan{
-				{SourceID: "https://youtu.be/a", StartSec: 32, EndSec: 51, Description: "Pacquiao fires the first clean left."},
-				{SourceID: "https://youtu.be/a", StartSec: 67, EndSec: 91, Description: "Broner tries to reset and circle out."},
+				{SourceID: "https://youtu.be/a", StartSec: 32, EndSec: 51, Title: "Round 1", Description: "Pacquiao fires the first clean left."},
+				{SourceID: "https://youtu.be/a", StartSec: 67, EndSec: 91, Title: "Round 2", Description: "Broner tries to reset and circle out."},
 			},
 			ComposedPaths: []string{clip0, clip1},
 		},
@@ -111,8 +309,13 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 	if got := prep.artifacts[0].Description; got != "Pacquiao fires the first clean left." {
 		t.Fatalf("unexpected first artifact description: %q", got)
 	}
-	if got := prep.artifacts[0].PathLeafName; got != "00-00-32_to_00-01-27" {
-		t.Fatalf("unexpected first artifact path leaf: %q", got)
+	// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): per-clip
+	// PathLeafName for explicit-clips runs (was the pre-PR bug:
+	// every chunk shared "00-00-32_to_00-01-27" so all clips
+	// landed in the same folder). New behavior derives per-clip
+	// leaf from Plan.Title via the perClipLeafName helper.
+	if got := prep.artifacts[0].PathLeafName; got != "round-1" {
+		t.Fatalf("unexpected first artifact path leaf: %q, want %q (per-clip leaf from Plan.Title slug)", got, "round-1")
 	}
 	if got := prep.artifacts[1].ArtifactID; got != "stock:run-fingerprint-123:timestamp:1:video" {
 		t.Fatalf("unexpected second artifact id: %q", got)
@@ -120,14 +323,18 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 	if got := prep.artifacts[1].Description; got != "Broner tries to reset and circle out." {
 		t.Fatalf("unexpected second artifact description: %q", got)
 	}
-	if got := prep.artifacts[1].PathLeafName; got != "00-00-32_to_00-01-27" {
-		t.Fatalf("unexpected second artifact path leaf: %q", got)
+	if got := prep.artifacts[1].PathLeafName; got != "round-2" {
+		t.Fatalf("unexpected second artifact path leaf: %q, want %q (per-clip leaf from Plan.Title slug)", got, "round-2")
 	}
 	if got := prep.artifacts[2].ArtifactID; got != "stock:run-fingerprint-123:metadata" {
 		t.Fatalf("unexpected metadata artifact id: %q", got)
 	}
-	if got := prep.artifacts[2].PathLeafName; got != "00-00-32_to_00-01-27" {
-		t.Fatalf("unexpected metadata artifact path leaf: %q", got)
+	// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): metadata.json
+	// sits at the run-root "metadata" leaf in explicit-clips mode
+	// (alongside the per-clip video subdirs). Legacy stays on
+	// the shared timestampGroupName (see TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName).
+	if got := prep.artifacts[2].PathLeafName; got != "metadata" {
+		t.Fatalf("unexpected metadata artifact path leaf: %q, want %q (run-root level in explicit-clips mode)", got, "metadata")
 	}
 	if runner.State().MetadataPublished.LocalPath == "" {
 		t.Fatal("expected metadata published state to be populated")
