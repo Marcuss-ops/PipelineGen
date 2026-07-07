@@ -85,6 +85,20 @@ func (a Animation[T]) IsEmpty() bool {
 	return len(a.Keyframes) == 0
 }
 
+// HasVaryingKeyframes returns true when the animation has 2+ keyframes
+// with potentially different values. A single-keyframe animation holds
+// a constant value and is effectively static.
+//
+// NOTE: This is a structural check (keyframe count), not a value-level
+// check. Multi-keyframe animations where all values are identical
+// (e.g., FloatKF(0, 100), FloatKF(30, 100)) will be marked as "varying"
+// even though they are effectively static. This is conservative — a
+// false-positive "varying" is safe; a false-negative "static" would
+// silently skip needed recomputation.
+func (a Animation[T]) HasVaryingKeyframes() bool {
+	return len(a.Keyframes) > 1
+}
+
 // ── Sentinel errors ────────────────────────────────────────────────
 
 // ErrAnimationEmpty is returned when Sample() is called on an
