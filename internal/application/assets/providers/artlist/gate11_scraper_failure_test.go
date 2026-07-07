@@ -375,6 +375,11 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 		"TestGate07_SearchFindsIndexedClips",
 		"TestGate07_DBSearcherDoesNotFilterByIndexState",
 
+		// Gate 08 — Search round-trip
+		"TestGate08_SearchRoundTripSameTerm",
+		"TestGate08_SearchRoundTripSourceAndMediaType",
+		"TestGate08_SearchRoundTripSearchableAfterPipeline",
+
 		// Gate 09 — Drive failure
 		"TestGate09_DriveFailureFailClosed",
 		"TestGate09_ArtlistFullRun_PartialDriveFailure",
@@ -394,7 +399,7 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 	}
 
 	// UPDATE THIS COUNT when adding gate tests.
-	assert.Len(t, expectedGateTests, 25,
+	assert.Len(t, expectedGateTests, 28,
 		"Gate test matrix count changed — update the count and the list above when adding/removing gate tests")
 
 	// Verify no duplicates (copy-paste error defense).
