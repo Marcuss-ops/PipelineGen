@@ -80,7 +80,13 @@ type CheckSpec struct {
 //     the single tree walk in ScanPackages. The closure captures
 //     the closure-local map so the CheckSpec func(root, pol, r)
 //     signature is uniform across all entries.
-func DefaultChecks() []CheckSpec {
+//
+//  4. percheck_root_override_ban — closure captures productionOnly
+//     so the runner can plumb the flag from --production-only
+//     (PR-P12-PERCHECK-BASELINE-ZERO, July 2026, deadline
+//     2026-08-15) without changing the uniform CheckSpec
+//     signature.
+func DefaultChecks(productionOnly bool) []CheckSpec {
 	return []CheckSpec{
 		{"constructors", scan.ScanConstructors},
 		{"struct_deps", scan.ScanStructDeps},
@@ -124,7 +130,16 @@ func DefaultChecks() []CheckSpec {
 		// CLI overrides). Fails if production code in the
 		// forbidden zones references RootFolderOverride outside
 		// of comment-only lines.
-		{"percheck_root_override_ban", scan.ScanRootOverrideBan},
+		//
+		// PR-P12-PERCHECK-BASELINE-ZERO (July 2026, deadline
+		// 2026-08-15): closure captures the --production-only
+		// flag. In production-only mode the comment-only warning
+		// bucket is silenced (comments are documentation, not
+		// "hits") so the operator-facing "zero production-code
+		// hits" claim is auditable via `len(r.Violations) == 0`.
+		{"percheck_root_override_ban", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanRootOverrideBan(root, pol, r, productionOnly)
+		}},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
 			// ScanPackages and ScanCommandBinaries share a
 			// fileLines map populated by the single tree walk in
@@ -165,7 +180,7 @@ func DefaultChecks() []CheckSpec {
 // with PR-A in the Godlike-08 evolution track, which may plumb
 // context-aware scanners (e.g. timeout-bounded Qdrant linting)
 // that respect a deadline.
-func Run(ctx context.Context, root, policyPath, phase string, strict bool) (int, error) {
+func Run(ctx context.Context, root, policyPath, phase string, strict bool, productionOnly bool) (int, error) {
 	_ = ctx // reserved for context-aware scanners in PR-A+
 
 	pol, err := policy.Load(policyPath)
@@ -182,7 +197,7 @@ func Run(ctx context.Context, root, policyPath, phase string, strict bool) (int,
 		Summary:    report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
 	}
 
-	for _, check := range DefaultChecks() {
+	for _, check := range DefaultChecks(productionOnly) {
 		check.Run(root, pol, r)
 	}
 
