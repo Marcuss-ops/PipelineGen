@@ -296,3 +296,33 @@ type FFProbeReport struct {
 type FFProbePort interface {
 	ValidateClip(ctx context.Context, localPath string, expectedDurationSec int, keepAudio bool) (*FFProbeReport, error)
 }
+
+// Step10MetricsRecorder is the application-layer port for the YouTube
+// Step 10 partial-state metric (PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY,
+// July 2026). The concrete adapter lives in
+// internal/infrastructure/observability/metrics_step10.go and wraps
+// the Prometheus counter
+// `transcript_metadata_step10_fail_after_clip_total{failure_code}`.
+//
+// godlike/06 SSOT: this port is the SOLE canonical application-layer
+// surface for Step 10 partial-state telemetry. The use case MUST NOT
+// import internal/infrastructure/observability directly (clean
+// architecture — application layer is forbidden from depending on
+// infrastructure); the composition root wires the concrete adapter.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the contract is "exactly-once per
+// Step 10 failure, with the failure_code label matching the typed
+// *ExtractionError envelope's Code field". Callers MUST pass the
+// stringified FailureCode constant (e.g. string(FailureCodeMetadataFailed))
+// so dashboard queries can join against the typed-error taxonomy.
+//
+// Nil-tolerance: implementations of this port MUST be safe to invoke
+// via a nil check at the use-case call site (the use case calls
+// `u.deps.Step10Metrics.IncStep10FailAfterClip(...)` only when
+// `u.deps.Step10Metrics != nil`). The composition root MAY wire
+// the concrete adapter or omit it (the optional pattern matches
+// the rest of the youtube package: Subtitles, Transcriber,
+// DriveFolderMgr all gracefully degrade when nil-wired).
+type Step10MetricsRecorder interface {
+	IncStep10FailAfterClip(failureCode string)
+}

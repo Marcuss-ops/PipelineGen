@@ -104,7 +104,27 @@ type ProcessSegmentDeps struct {
 	// when KeepAudio=true. When nil, the validation step is silently
 	// skipped (pre-existing hash + stat checks remain).
 	FFProbe youtubeports.FFProbePort
-	Log     *zap.Logger
+	// Step10Metrics is the optional metrics-recorder port for the
+	// partial-state Step 10 failure counter
+	// (PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY, July 2026). When non-nil,
+	// the use case calls
+	//   u.deps.Step10Metrics.IncStep10FailAfterClip(string(FailureCodeMetadataFailed))
+	// on the Step 10 metadata-enrichment failure path BEFORE the
+	// typed *ExtractionError return. The counter is partitioned by
+	// failure_code so dashboards can aggregate partial-state events
+	// across a batch extraction.
+	//
+	// When nil, the counter increment is silently skipped (the
+	// operator Warn log at PR-PY-STEP10-FAIL-LOG is preserved for
+	// granular forensics). Nil-tolerance matches the optional-port
+	// pattern of Subtitles/Transcriber/DriveFolderMgr/FFProbe.
+	//
+	// godlike/06 SSOT: this port is the SOLE canonical application-
+	// layer surface for Step 10 partial-state telemetry. The
+	// composition root wires the concrete adapter
+	// (internal/infrastructure/observability.Step10MetricsAdapter).
+	Step10Metrics youtubeports.Step10MetricsRecorder
+	Log           *zap.Logger
 }
 
 // ProcessYouTubeSegmentUseCase is the canonical per-segment pipeline.
@@ -566,6 +586,18 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 				zap.String("local_path", localPath),
 				zap.String("failure_code", string(FailureCodeMetadataFailed)),
 				zap.Error(metaErr))
+			// PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY (July 2026):
+			// Increment the transcript_metadata_step10_fail_after_clip_total
+			// counter so dashboards can aggregate partial-state
+			// events across a batch extraction by failure_code.
+			// The counter is the canonical dashboard-aggregate
+			// surface; the Warn log above is preserved for
+			// granular forensics. Nil-tolerance: the call is
+			// silently skipped when the port is not wired
+			// (composition root may omit it).
+			if u.deps.Step10Metrics != nil {
+				u.deps.Step10Metrics.IncStep10FailAfterClip(string(FailureCodeMetadataFailed))
+			}
 			typed := NewExtractionError(FailureCodeMetadataFailed, false,
 				fmt.Sprintf("metadata enrichment failed: %v", metaErr), metaErr)
 			return u.fail(out, typed)
