@@ -116,6 +116,15 @@ func DefaultChecks() []CheckSpec {
 		// allowlist) re-declares the literal. Comment-only
 		// hits are WARNed (residue accounting).
 		{"percheck_player_client_centralization", scan.ScanPlayerClientCentralization},
+		// Check B1 (FASE B1, July 2026): forward-prevention gate
+		// for RootFolderOverride in application/api layers.
+		// Bans the field from internal/application/** and
+		// internal/api/**; allows internal/infrastructure/**
+		// (Publisher implementation) and cmd/admin/** (operator
+		// CLI overrides). Fails if production code in the
+		// forbidden zones references RootFolderOverride outside
+		// of comment-only lines.
+		{"percheck_root_override_ban", scan.ScanRootOverrideBan},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
 			// ScanPackages and ScanCommandBinaries share a
 			// fileLines map populated by the single tree walk in
