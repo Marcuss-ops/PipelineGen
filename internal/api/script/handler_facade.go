@@ -39,6 +39,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 )
 
@@ -52,30 +53,30 @@ import (
 // Fields:
 //   - voService: pre-built voiceover service (cross-handler access).
 //   - groupsResolver: script-side resolver (asset-tree-backed).
-//   - driveFolderClient: typed Drive folder resolver (consumes
-//     DriveFolderClient interface declared in handler_flow.go).
+//   - publisher: canonical delivery.Publisher for Drive folder resolution
+//     (replaces the legacy DriveFolderClient per FASE A5, July 2026).
 //   - documentCreator: typed Google Doc creator (consumes
 //     DocumentCreator interface).
 //   - log: structured logger (used by ResolveDriveFolderID's
 //     nil-tolerance warning path).
 type FacadeHandler struct {
-	voService         *voiceover.Service
-	groupsResolver    *voiceover.GroupsResolver
-	driveFolderClient DriveFolderClient
-	documentCreator   DocumentCreator
-	log               *zap.Logger
+	voService       *voiceover.Service
+	groupsResolver  *voiceover.GroupsResolver
+	publisher       delivery.Publisher
+	documentCreator DocumentCreator
+	log             *zap.Logger
 }
 
 // NewFacadeHandler constructs the canonical FacadeHandler with all
 // required fields. NewScriptFlowHandler is the only intended caller
 // (composition-root-mediated). Log is nil-coalesced to zap.NewNop()
-// so ResolveDriveFolderID's nil-driveFolderClient warning path is
+// so ResolveDriveFolderID's nil-publisher warning path is
 // safe even when log is nil (mirrors ScriptFlowHandler's NewNop
 // fallback per godlike/06 SSOT).
 func NewFacadeHandler(
 	voService *voiceover.Service,
 	groupsResolver *voiceover.GroupsResolver,
-	driveFolderClient DriveFolderClient,
+	publisher delivery.Publisher,
 	documentCreator DocumentCreator,
 	log *zap.Logger,
 ) *FacadeHandler {
@@ -83,11 +84,11 @@ func NewFacadeHandler(
 		log = zap.NewNop()
 	}
 	return &FacadeHandler{
-		voService:         voService,
-		groupsResolver:    groupsResolver,
-		driveFolderClient: driveFolderClient,
-		documentCreator:   documentCreator,
-		log:               log,
+		voService:       voService,
+		groupsResolver:  groupsResolver,
+		publisher:       publisher,
+		documentCreator: documentCreator,
+		log:             log,
 	}
 }
 
@@ -109,14 +110,15 @@ func (fh *FacadeHandler) GetGroupsResolver() *voiceover.GroupsResolver {
 // generation request. Heuristic: empty → defaultRootID; raw Google
 // Drive ID (19-45 chars alphanumeric+_-) → verbatim return;
 // otherwise treat as path segments separated by '/' or '\\' and
-// resolve each via fh.driveFolderClient.GetOrCreateFolder walking
-// the path top-down (currentID starts at defaultRootID).
+// resolve via fh.publisher.ResolveFolder with DestinationYouTubeClip.
 //
-// Body verbatim from internal/api/script/flow.go's lowercase
-// `resolveDriveFolderID` method on ScriptFlowHandler (retired
-// post-extraction per godlike/07 minimum-blast-radius — the only
-// caller was the public ScriptFlowHandler.ResolveDriveFolderID,
-// now a thin delegator to this method).
+// FASE A5 (July 2026): migrated from the legacy DriveFolderClient
+// (iterative GetOrCreateFolder per segment) to the canonical
+// delivery.Publisher.ResolveFolder. The PathBuilder model produces up
+// to 2 levels (Group / Subject) per call; multi-segment paths use the
+// last segment as Subject and the remaining segments as Group.
+// RootFolderOverride=defaultRootID anchors the path under the
+// caller-supplied root (preserving the pre-FASE-A5 anchoring contract).
 func (fh *FacadeHandler) ResolveDriveFolderID(ctx context.Context, input, defaultRootID string) (string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
@@ -139,8 +141,8 @@ func (fh *FacadeHandler) ResolveDriveFolderID(ctx context.Context, input, defaul
 		return input, nil
 	}
 
-	if fh.driveFolderClient == nil {
-		fh.log.Warn("driveFolderClient not initialized, cannot resolve folder name/path; returning defaultRootID",
+	if fh.publisher == nil {
+		fh.log.Warn("publisher not initialized, cannot resolve folder path; returning defaultRootID",
 			zap.String("input", input))
 		return defaultRootID, nil
 	}
@@ -149,20 +151,43 @@ func (fh *FacadeHandler) ResolveDriveFolderID(ctx context.Context, input, defaul
 		return r == '/' || r == '\\'
 	})
 
-	currentID := defaultRootID
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
+	// Build clean parts list (prune empty segments).
+	clean := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			clean = append(clean, p)
 		}
-		id, err := fh.driveFolderClient.GetOrCreateFolder(ctx, part, currentID)
-		if err != nil {
-			return "", fmt.Errorf("failed to get or create folder %q under %q: %w", part, currentID, err)
-		}
-		currentID = id
+	}
+	if len(clean) == 0 {
+		return defaultRootID, nil
 	}
 
-	return currentID, nil
+	// Map to the Publisher's 2-level Group / Subject model.
+	// Single segment: use as Group with placeholder Subject; the
+	// RootFolderOverride anchors under defaultRootID so the result is
+	// functionally equivalent to the pre-FASE-A5 GetOrCreateFolder.
+	// Multi-segment: last segment = Subject, preceding = Group.
+	var group, subject string
+	if len(clean) == 1 {
+		group = clean[0]
+		subject = "_script"
+	} else {
+		group = strings.Join(clean[:len(clean)-1], "/")
+		subject = clean[len(clean)-1]
+	}
+
+	dirID, err := fh.publisher.ResolveFolder(ctx, delivery.PublishRequest{
+		Destination:        delivery.DestinationYouTubeClip,
+		Group:              group,
+		Subject:            subject,
+		RootFolderOverride: defaultRootID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve folder path %q: %w", input, err)
+	}
+
+	return dirID, nil
 }
 
 // MaybeCreateGoogleDoc creates a Google Doc via the document Creator
