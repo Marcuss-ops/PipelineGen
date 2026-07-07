@@ -378,6 +378,23 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 			if u.deps.Transcriber != nil {
 				transcript, wErr := u.deps.Transcriber.TranscribeAudio(ctx, localPath)
 				if wErr == nil && transcript != "" {
+					// NOTE: the os.WriteFile(txtPath, ...) call below is
+					// referenced by a CROSS-PACKAGE consumer — DO NOT
+					// drop per Step 7 refactor without migrating the
+					// consumer to a typed port first.
+					//
+					// Canonical surface: clipindexer.lookupTranscriptPath
+					// (internal/infrastructure/indexing/clipindexer/
+					// indexing_api_persistence.go) reads
+					// `local_path -> TrimSuffix(Ext) + ".txt"` and
+					// os.Stat's it for the Qdrant transcript embedding
+					// lookup (QDRANT transcript_embedding column +
+					// persTranscriptEmbedding writer). Removing this
+					// write silently disables the Qdrant transcript
+					// indexing path until clipindexer migrates to a
+					// typed port
+					// (godlike/06 SSOT forward-pointer:
+					// PR-CLIPINDEXER-TRANSCRIPT-TYPED-PORT).
 					txtPath := strings.TrimSuffix(localPath, filepath.Ext(localPath)) + ".txt"
 					_ = os.WriteFile(txtPath, []byte(transcript), 0o644)
 					u.deps.Log.Info("whisper fallback transcribed clip",
@@ -468,14 +485,58 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	// We feed it the segment-local title/group/hook/visibility so
 	// the resulting metadata JSON reflects the API payload, not just
 	// the downstream video metadata fetch.
-	if u.deps.MetadataService != nil {
-		transcript := ""
-		if localPath != "" {
-			txtPath := strings.TrimSuffix(localPath, filepath.Ext(localPath)) + ".txt"
-			if transcriptBytes, readErr := os.ReadFile(txtPath); readErr == nil && len(transcriptBytes) > 0 {
-				transcript = strings.TrimSpace(string(transcriptBytes))
-			}
+	// STEP-10-TYPED-PORT-FIX (PR-PY-STEP10-PORT-M3, July 2026):
+	// the legacy os.ReadFile(localPath+".txt") filesystem-coupled
+	// read is REPLACED with u.deps.Transcriber.TranscribeAudio(port) —
+	// the canonical WhisperTranscriberPort already wired to the use
+	// case (Step 7's Whisper fallback uses the same port). result:
+	//
+	//   - step-7 race retired (the .txt tempfile was written only when
+	//     SliceSubtitles failed AND Whisper succeeded; under the typical
+	//     SliceSubtitles-success path no .txt was ever written so the
+	//     transcript was silently empty).
+	//   - transcript content reaches metadata enrichment on the happy
+	//     path (SliceSubtitles-success + no Whisper=None + non-empty
+	//     TranscribeAudio result).
+	//   - nil port → fail-open: empty transcript with no panic.
+	//   - port error → graceful swallow (Warn-level log + empty
+	//     transcript + Execute continues). The Execute still surfaces
+	//     to the pipeline as `processed` so the media_assets row +
+	//     outbox event from Step 9 land ungated.
+	//
+	// godlike/06 SSOT (one canonical owner per fact): the Transcriber
+	// port is the SOLE plaintext-transcript surface inside the YouTube
+	// step pipeline. The Transcriber.TranscribeAudio call below is
+	// INVOKED UNCONDITIONALLY WHEN THE PORT IS WIRED (independent of
+	// MetadataService wiring) so the typed-port contract is testable
+	// in isolation AND so the call is symmetric with Step 7's
+	// Whisper-fallback path (same port, same method, same input).
+	// When MetadataService is nil, the `transcript` string is simply
+	// discarded — a one-Whisper-call cost on a code path that
+	// typically also wires MetadataService.
+	//
+	// godlike/07 NO-FAKE-AVAILABILITY: nil port OR port error both
+	// resolve to `transcript = ""` which the metadata service
+	// already handles (empty transcript → low quality score, no
+	// crash). WARN-level log surfaces operator-visible diagnostics
+	// for the Whisper-failure case.
+	transcript := ""
+	if localPath != "" && u.deps.Transcriber != nil {
+		if text, tErr := u.deps.Transcriber.TranscribeAudio(ctx, localPath); tErr == nil {
+			transcript = strings.TrimSpace(text)
+		} else {
+			u.deps.Log.Warn("step 10 transcriber port failed; transcript will be empty",
+				zap.String("clip_id", clipID),
+				zap.String("local_path", localPath),
+				zap.Error(tErr))
 		}
+	}
+
+	// STEP-10-METADATA-ENRICHMENT (canonical; unchanged shape): the
+	// metadata service persists enriched clip metadata into SQLite +
+	// emits its own re-index outbox event. Receives `transcript` from
+	// the typed port above (or "" if Transcriber is nil/errored).
+	if u.deps.MetadataService != nil {
 		_, metaErr := u.deps.MetadataService.EnrichClip(ctx, youtubetypes.ClipMetadataInput{
 			ClipID:           clipID,
 			Title:            out.Item.Name,
