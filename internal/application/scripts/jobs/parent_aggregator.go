@@ -94,6 +94,12 @@ type ScriptChildResult struct {
 	ParentJobID string `json:"parent_job_id"`
 	RequestID   string `json:"request_id,omitempty"`
 	Error       string `json:"error,omitempty"`
+	// DocLink and DocID are propagated from the child handler's
+	// toScriptItemResultMap (2026-07-07 fix). When the child generated
+	// a Google Doc, these fields carry the doc URL and ID so the
+	// aggregator can surface them in the parent result.
+	DocLink string `json:"doc_link,omitempty"`
+	DocID   string `json:"doc_id,omitempty"`
 }
 
 // ScriptAggregateResult is the typed output of the aggregation loop.
@@ -101,12 +107,19 @@ type ScriptChildResult struct {
 // to finalizeParent for FinalizeAggregateParent persistence. Mirrors
 // voiceover's VoiceoverAggregateResult.
 type ScriptAggregateResult struct {
-	ParentState         ScriptParentState
-	TotalItems          int
-	SucceededCount      int
-	FailedCount         int
+	ParentState    ScriptParentState
+	TotalItems     int
+	SucceededCount int
+	FailedCount    int
 	ParentRevision int
-	ChildIDs            []string
+	ChildIDs       []string
+	// ChildDocLinks maps child item_id → doc_link for succeeded children
+	// that produced a Google Doc (2026-07-07 fix). Populated by aggregateOne
+	// and surfaced in the parent result via finalizeParent.
+	ChildDocLinks map[string]string
+	// ChildDocIDs maps child item_id → doc_id (the Google Doc document ID)
+	// for succeeded children that produced a Google Doc (2026-07-07 fix).
+	ChildDocIDs map[string]string
 }
 
 // ScriptParentState is the canonical typed enum for script-batch
@@ -224,8 +237,8 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 	// Edge case: zero children enqueued → PartialSuccess immediately.
 	if len(childIDs) == 0 {
 		a.finalizeParent(ctx, j.ID, ScriptAggregateResult{
-			ParentState:         ScriptParentPartialSuccess,
-			TotalItems:          0,
+			ParentState:    ScriptParentPartialSuccess,
+			TotalItems:     0,
 			ParentRevision: j.Revision,
 		})
 		return nil
@@ -235,9 +248,12 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 	succeeded := 0
 	failed := parentResult.FailedEnqueue
 	allTerminal := true
+	childDocLinks := make(map[string]string) // item_id → doc_link (2026-07-07 fix)
+	childDocIDs := make(map[string]string)   // item_id → doc_id (2026-07-07 fix)
 	for _, childID := range childIDs {
 		var status job.Status
 		var childOK bool
+		var childResult ScriptChildResult
 
 		childJob, err := a.deps.JobsSvc.Get(ctx, childID)
 		if err != nil {
@@ -267,7 +283,6 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 			}
 		}
 		if status == job.StatusFailed || status == job.StatusCancelled {
-			var childResult ScriptChildResult
 			if len(childJob.Result) > 0 {
 				if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
 					if childResult.OK != nil {
@@ -276,7 +291,6 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 				}
 			}
 		} else if status == job.StatusSucceeded {
-			var childResult ScriptChildResult
 			if len(childJob.Result) > 0 {
 				if err := json.Unmarshal(childJob.Result, &childResult); err == nil {
 					if childResult.OK != nil {
@@ -295,6 +309,15 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 		// All script-batch children are OPTIONAL. Count terminal outcome.
 		if (status == job.StatusSucceeded) && childOK {
 			succeeded++
+			// Collect doc_link/doc_id from succeeded children so the
+			// parent result surfaces Google Doc links to operators
+			// (2026-07-07 fix — previously dropped by toScriptItemResultMap).
+			if childResult.DocLink != "" {
+				childDocLinks[childResult.ItemID] = childResult.DocLink
+			}
+			if childResult.DocID != "" {
+				childDocIDs[childResult.ItemID] = childResult.DocID
+			}
 		} else {
 			failed++
 		}
@@ -322,12 +345,14 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 	}
 
 	aggResult := ScriptAggregateResult{
-		ParentState:         state,
-		TotalItems:          totalItems,
-		SucceededCount:      succeeded,
-		FailedCount:         failed,
+		ParentState:    state,
+		TotalItems:     totalItems,
+		SucceededCount: succeeded,
+		FailedCount:    failed,
 		ParentRevision: j.Revision,
-		ChildIDs:            childIDs,
+		ChildIDs:       childIDs,
+		ChildDocLinks:  childDocLinks,
+		ChildDocIDs:    childDocIDs,
 	}
 	a.finalizeParent(ctx, j.ID, aggResult)
 	return nil
@@ -344,6 +369,12 @@ func (a *ScriptParentAggregator) finalizeParent(ctx context.Context, parentJobID
 		"succeeded_count":     agg.SucceededCount,
 		"failed_count":        agg.FailedCount,
 		"child_job_ids":       agg.ChildIDs,
+	}
+	if len(agg.ChildDocLinks) > 0 {
+		resultMap["child_doc_links"] = agg.ChildDocLinks
+	}
+	if len(agg.ChildDocIDs) > 0 {
+		resultMap["child_doc_ids"] = agg.ChildDocIDs
 	}
 
 	targetStatus := job.StatusSucceeded
