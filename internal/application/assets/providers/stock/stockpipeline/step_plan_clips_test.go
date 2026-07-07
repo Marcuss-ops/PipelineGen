@@ -186,6 +186,29 @@ func TestStockPlanStep_ClipsExplicitRange_PassesThroughUnchanged(t *testing.T) {
 	}
 }
 
+func TestStockPlanStep_ClipsDescription_Preserved(t *testing.T) {
+	runner := newFakeRunner([]ClipSpec{
+		{
+			URL:         "https://www.youtube.com/watch?v=test-desc",
+			StartSec:    12,
+			EndSec:      18,
+			Title:       "Round 3",
+			Description: "Pacquiao pressures Broner with a sharp left hand and body work.",
+		},
+	}, 6, "")
+	step := StockPlanStep{}
+	if err := step.Run(context.Background(), runner); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	plans := runner.State().Plan
+	if len(plans) != 1 {
+		t.Fatalf("expected 1 plan, got %d", len(plans))
+	}
+	if plans[0].Description != "Pacquiao pressures Broner with a sharp left hand and body work." {
+		t.Fatalf("expected description to be preserved, got %q", plans[0].Description)
+	}
+}
+
 func TestStockPlanStep_ClipsMixed_NormalisedAndExplicit(t *testing.T) {
 	// Mixed batch: URL-only + start-only + explicit range.
 	// ClipDuration=15.

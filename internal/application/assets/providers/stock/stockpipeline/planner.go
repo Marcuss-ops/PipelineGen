@@ -156,6 +156,11 @@ type ClipPlan struct {
 	// leave it empty.
 	Title string
 
+	// Description carries the human-readable English summary for the
+	// timestamp. Explicit clip payloads can populate it per segment;
+	// deterministic planner runs leave it empty.
+	Description string
+
 	// OutputLogicalID is the deterministic asset ID the chunk
 	// producer will mint. Format: planner:<sha256-prefix>:<index>
 	// — opaque hash so callers don't depend on its internal shape.
@@ -330,6 +335,7 @@ func (p *explicitPlanner) Plan(_ context.Context, src VideoSource, budgetSec int
 		// in one place).
 		plan := buildClipPlan(src, clip.StartSec, clip.EndSec, i, policyVer)
 		plan.Title = clip.Title
+		plan.Description = clip.Description
 		plans = append(plans, plan)
 	}
 	return plans, nil

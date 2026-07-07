@@ -44,6 +44,11 @@ type PublishedArtifact struct {
 	// IdempotencyKey is the deterministic key the worker supplied.
 	IdempotencyKey string `json:"idempotency_key"`
 
+	// Description is the human-readable English summary for the clip
+	// or artifact. It is carried through to the canonical asset row
+	// metadata for downstream search/indexing.
+	Description string `json:"description,omitempty"`
+
 	// Location is the canonical descriptor of where the artifact was
 	// published.
 	Location AssetLocation `json:"location"`

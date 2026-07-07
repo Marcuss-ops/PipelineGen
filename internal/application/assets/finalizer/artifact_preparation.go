@@ -85,6 +85,7 @@ func (s *ArtifactPreparation) Prepare(
 		SourceVersion:  artifact.SourceVersion,
 		Requirement:    artifact.Requirement,
 		IdempotencyKey: artifact.IdempotencyKey,
+		Description:    artifact.Description,
 		Location:       location,
 	}, nil
 }

@@ -58,6 +58,11 @@ type VerifiedArtifact struct {
 	// When empty, infrastructure falls back to a synthetic label.
 	RootFolderName string `json:"root_folder_name,omitempty"`
 
+	// Description is the human-readable English summary for the clip
+	// or artifact. Stock uses it to carry per-timestamp narration into
+	// Drive metadata and Qdrant payloads.
+	Description string `json:"description,omitempty"`
+
 	// PathLeafName is the human-readable leaf folder name used for the
 	// artifact's immediate Drive subfolder (for example, the timestamp
 	// directory under the named run folder). When empty, infrastructure

@@ -89,6 +89,7 @@ func (p *MetadataProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		if err != nil {
 			if errors.Is(err, ErrMetadataGeneratorUnavailable) {
 				return &PostProcessResult{
+					Changed:  true,
 					Warnings: []string{err.Error()},
 				}, nil
 			}
@@ -105,5 +106,9 @@ func (p *MetadataProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		out = append(out, records...)
 	}
 
-	return &PostProcessResult{Metadata: out}, nil
+	// godlike/07 NO-FAKE-AVAILABILITY: signal Changed=true ONLY when
+	// the LLM enrichment actually produced at least one record; an
+	// empty result means the postprocessor must NOT trigger a merge
+	// write-back (would silently overwrite prior metadata with empty).
+	return &PostProcessResult{Metadata: out, Changed: len(out) > 0}, nil
 }

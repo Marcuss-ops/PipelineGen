@@ -113,6 +113,7 @@ type ChunkMetadataEntry struct {
 	StartSec         float64 `json:"start_sec,omitempty"`
 	EndSec           float64 `json:"end_sec,omitempty"`
 	Title            string  `json:"title,omitempty"`
+	Description      string  `json:"description,omitempty"`
 	SHA256           string  `json:"sha256"`
 	SizeBytes        int64   `json:"size_bytes"`
 	LocalPath        string  `json:"local_path,omitempty"`
@@ -140,6 +141,7 @@ func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint str
 			StartSec:         c.StartSec,
 			EndSec:           c.EndSec,
 			Title:            c.Title,
+			Description:      c.Description,
 			SHA256:           c.SHA256,
 			SizeBytes:        c.SizeBytes,
 			LocalPath:        c.LocalPath,

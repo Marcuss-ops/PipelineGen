@@ -157,6 +157,7 @@ func TestBuildStockRunMetadata_IncludesTimestampFields(t *testing.T) {
 			StartSec:     32,
 			EndSec:       51,
 			Title:        "Round 1",
+			Description:  "Pacquiao steps in with a quick left cross and angles off.",
 			SHA256:       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			SizeBytes:    1234,
 			RemoteFileID: "drive-file-1",
@@ -179,6 +180,9 @@ func TestBuildStockRunMetadata_IncludesTimestampFields(t *testing.T) {
 	}
 	if entry.Title != chunks[0].Title {
 		t.Fatalf("expected Title %q, got %q", chunks[0].Title, entry.Title)
+	}
+	if entry.Description != chunks[0].Description {
+		t.Fatalf("expected Description %q, got %q", chunks[0].Description, entry.Description)
 	}
 }
 

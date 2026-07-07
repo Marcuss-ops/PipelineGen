@@ -18,10 +18,11 @@ import (
 // ClipSpec defines a single clip to extract from a source video.
 // Used with Clips field on RunInput to bypass the deterministic planner.
 type ClipSpec struct {
-	Title    string  `json:"title,omitempty"`
-	URL      string  `json:"url,omitempty"`
-	StartSec float64 `json:"start_sec"`
-	EndSec   float64 `json:"end_sec"`
+	Title       string  `json:"title,omitempty"`
+	Description string  `json:"description,omitempty"`
+	URL         string  `json:"url,omitempty"`
+	StartSec    float64 `json:"start_sec"`
+	EndSec      float64 `json:"end_sec"`
 }
 
 // RunInput holds the parameters for a stock pipeline run.
