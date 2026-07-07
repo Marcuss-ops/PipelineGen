@@ -100,6 +100,10 @@ const (
 // Server-internal locators (DriveLink, LocalPath) are NOT in this
 // struct. See the package-level doctrine above.
 type IndexedMetadata struct {
+	// Summary is the clip summary / run summary extracted from the
+	// metadata_json bag (canonical key: summary / clip_summary).
+	Summary string
+
 	// Title + Description are extracted from AssetData.MetadataJSON
 	// via BuildPayload's parseMetadataJSON helper (the legacy
 	// popper, unchanged in shape).
@@ -116,24 +120,79 @@ type IndexedMetadata struct {
 	// IndexVersion are direct columns from media_assets. Each is
 	// gated by an `if != ""` check in BuildPayload so legacy rows
 	// with NULL columns don't emit empty payload keys.
-	Source       string
-	MediaType    string
-	Language     string
-	Category     string
-	Style        string
-	License      string
-	IndexVersion string
+	Source         string
+	MediaType      string
+	Language       string
+	Category       string
+	Style          string
+	License        string
+	IndexVersion   string
+	SourceProvider string
+	Origin         string
+	Destination    string
 
 	// DurationMs is the int64 ms duration for video/audio assets.
 	// Zero → no payload key (the int zero is not a legitimate
 	// duration for indexed assets anyway).
-	DurationMs int64
+	DurationMs  int64
+	DurationSec int
+
+	// SourceURL is the canonical source URL for the asset. For the
+	// stock/timestamp workflow this is the original video URL.
+	SourceURL string
 
 	// YouTubeID + YouTubeURL are the canonical YT clip references.
 	// Non-YouTube assets leave these empty; the payload-key guards
 	// keep the keys absent.
-	YouTubeID  string
-	YouTubeURL string
+	YouTubeID     string
+	YouTubeURL    string
+	SourceVideoID string
+
+	// SemanticTitle and EmbeddingText are the search-facing text
+	// fields. SemanticTitle is a compact human label; EmbeddingText is
+	// the richer text block used to build the dense embedding input.
+	SemanticTitle string
+	EmbeddingText string
+
+	// Event / Round / Scene / Subject make the workflow and content
+	// semantics filterable in Qdrant. All are optional.
+	Event   string
+	Round   int
+	Scene   string
+	Subject string
+
+	// ContextSubject is the canonical LLM-derived secondary
+	// subject (e.g. "Manny Pacquiao" when Subject is "Adrien
+	// Broner"). Distinct from Subject — Subject is the
+	// primary-actor descriptor, ContextSubject is the
+	// secondary-actor / counter-party. Empty until RLM pass;
+	// omitempty guard in payload_builder.go keeps the payload
+	// key absent.
+	ContextSubject string
+
+	// Tags / entity bags used by the embedding text builder and
+	// payload filters.
+	Topics           []string
+	Speakers         []string
+	MentionedPeople  []string
+	People           []string
+	SourceTags       []string
+	ClipTags         []string
+	SearchKeywords   []string
+	Entities         []string
+	Hook             string
+	SearchVisibility string
+
+	// Workflow/projection identifiers used to reconstruct the publish
+	// run and to filter chunks by their source job.
+	JobID          string
+	WorkflowID     string
+	RunFingerprint string
+	ChunkIndex     int
+	TotalChunks    int
+	PolicyVersion  string
+	DrivePath      string
+	IndexingStatus string
 
 	// StartTime / EndTime are the HH:MM:SS.ms timeline anchors
 	// (YouTube clip excerpts). Empty when the asset is not a clip.
