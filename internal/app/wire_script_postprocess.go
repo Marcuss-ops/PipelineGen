@@ -166,19 +166,16 @@ func registerScriptPostProcessors(
 
 	// PR 3 (June 2026) + PR-noop-adapters-purge (2026-07-25):
 	// Entities + Metadata remain wired through the typed-fail
-	// unavailable*Adapter constructors, but this runtime mounts
-	// them behind creatorBestEffort so the inline script pipeline can
-	// continue when the backend is absent. The typed sentinel still
-	// reaches logs, but it no longer turns the whole script.generate
-	// job into a retryable failure. This mirrors the Creator runtime
-	// policy and keeps the failure isolated to the postprocessor
-	// warning surface.
+	// unavailable*Adapter constructors. The concrete processors now
+	// downgrade the typed "backend unavailable" sentinel to a warning
+	// at process time, so the script pipeline can continue without a
+	// backend while the required postprocessor contract stays intact.
 	entityAdapter := adapters.NewUnavailableEntityExtractionAdapter()
-	if !ppReg.Register(&creatorBestEffort{inner: adapters.NewEntitiesProcessor(entityAdapter), name: "entities"}) {
+	if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter)) {
 		return fmt.Errorf("register entities processor: composition bug")
 	}
 	metadataAdapter := adapters.NewUnavailableMetadataGenerationAdapter()
-	if !ppReg.Register(&creatorBestEffort{inner: adapters.NewMetadataProcessor(metadataAdapter), name: "metadata"}) {
+	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
 		return fmt.Errorf("register metadata processor: composition bug")
 	}
 
