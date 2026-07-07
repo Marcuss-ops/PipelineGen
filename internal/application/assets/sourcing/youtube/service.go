@@ -156,12 +156,29 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	var pubResult *usecase.PublishClipResult
 	var pubErr error
 	if s.publisher != nil {
+		// PR-YT-CLIP-SEMANTIC-LOCATION-FIX: thread Category, Provider,
+		// Tags, and Language from the command into the publish request
+		// so the Drive Publisher's YouTubeClipPath can build the correct
+		// folder hierarchy from semantic metadata. Provider defaults to
+		// "youtube" when Location.Provider is empty.
+		provider := strings.TrimSpace(cmd.Location.Provider)
+		if provider == "" {
+			provider = "youtube"
+		}
 		pubResult, pubErr = usecase.PublishClipToDrive(ctx,
 			&publisherAdapter{inner: s.publisher},
 			usecase.PublishClipCommand{
-				AssetID: fetched.ClipID, Group: group, Subject: videoSlug,
-				RootFolder: strings.TrimSpace(cmd.FolderID), LocalPath: fetched.LocalPath,
-				Filename: driveFilename, Description: driveDesc,
+				AssetID:     fetched.ClipID,
+				Group:       group,
+				Subject:     videoSlug,
+				RootFolder:  strings.TrimSpace(cmd.FolderID),
+				LocalPath:   fetched.LocalPath,
+				Filename:    driveFilename,
+				Description: driveDesc,
+				Category:    cmd.Category,
+				Provider:    provider,
+				Tags:        cmd.Tags,
+				Language:    cmd.Location.Language,
 			})
 	}
 	uploadResult, targetFolderID, deliveryStatus := s.processPublishResult(md.VideoID, pubResult, pubErr)
