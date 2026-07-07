@@ -1,0 +1,268 @@
+// Package jobs — registry_definitions.go (PR-SPLIT-JOBS-REGISTRY, July 2026).
+//
+// godlike/06 SSOT (one-canonical-owner-per-fact): this file is the
+// canonical SOLE owner of the registry's pure data shapes:
+//
+//   - RegistryEntry + JobPolicy (type alias) — the per-job-type
+//     policy record surface (Wave 19 / P1-9, June 2026).
+//   - TimeoutMap + TimeoutResolver (HC-1 typed-port port, June 2026).
+//   - Compile-time pin: var _ TimeoutResolver = (*Registry)(nil).
+//   - DefaultQueue + DefaultConcurrency canonical constants.
+//   - The full Type... identifier block — every canonical string
+//     jobType that any registration or producer references.
+//
+// Lookup paths preserved: jobs.RegistryEntry{...}, jobs.JobPolicy{...},
+// jobs.TimeoutMap, jobs.TimeoutResolver, jobs.DefaultQueue, and every
+// `jobs.Type*` constant resolve identically pre/post split (same
+// package).
+package jobs
+
+import (
+	"time"
+
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+)
+
+// ── Wave 19 / P1-9 canonical policy constants (June 2026) ─────────────────
+//
+// Single source of truth for default routing / concurrency values; the
+// typed accessors + Compose()'s applyDefaults pass both reference these
+// constants so a future rename (e.g. "primary" instead of "default") is
+// a one-line change. Co-located with RegistryEntry for godlike/06
+// SSOT — the policy record + its canonical defaults live together.
+const (
+	// DefaultQueue is the canonical routing label assigned to any
+	// registered job type whose Queue field is empty. The string is
+	// hard-coded here so the typed accessor Queue(t), the applyDefaults
+	// pass in Compose(), and any future operator-facing dashboard
+	// surface agree on the same default label.
+	DefaultQueue = "default"
+	// DefaultConcurrency is the canonical per-worker parallel-lease
+	// budget for any registered job type whose Concurrency field is
+	// zero or negative. The value 1 mirrors the pre-Wave-19 in-process
+	// broker semantics: a worker polls one job at a time.
+	DefaultConcurrency = 1
+)
+
+// ── HC-1 Typed Timeout Surface (June 2026) ──────────────────────────────
+//
+// HC-1 (June 2026) replaces the pre-HC-1 package-level
+// `var jobTimeoutRegistry` global in worker.go with a type-keyed
+// lookup rooted here on Registry.
+//
+//   - TimeoutMap        : a type-keyed snapshot of every registered
+//                         job-type timeout (Compose()).
+//   - TimeoutResolver   : the typed port both worker.go and the
+//                         bulk_upload config-port consume.
+
+// TimeoutMap is the type-keyed lookup of per-job-type execution
+// timeouts. Returned by (*Registry).Compose() as a fresh snapshot
+// so callers cannot mutate the underlying registry state.
+//
+// Usage: `reg.Compose()[j.Type]` returns the canonical timeout for
+// job type j.Type, or zero if not registered (worker.go treats zero
+// as the canonical 10-minute default).
+type TimeoutMap map[string]time.Duration
+
+// TimeoutResolver is the typed timeout lookup port consumed by HC-1
+// worker.go (replaces the pre-HC-1 package-level global) and by the
+// HC-1 bulk_upload config-port (see clips.ClipConfigPort.JobTimeout
+// + internal/app/clips_adapters_cfg.go::clipsCfgAdapter).
+//
+// *Registry satisfies this interface directly (via JobTimeout). A
+// narrow port interface lets future consumers (e.g. an admin-driven
+// override layer) satisfy the contract without forcing them to also
+// be a Registry.
+type TimeoutResolver interface {
+	JobTimeout(jobType string) time.Duration
+}
+
+// ── RegistryEntry (Wave 19 / P1-9 canonical policy record) ─────────────
+
+// RegistryEntry defines a registered job type with its operational parameters.
+//
+// Wave 19 / P1-9 (June 2026): the canonical policy record. The
+// Queue + Concurrency fields extend the pre-Wave-19 surface so that
+// every registered job type carries operator-facing controls in ONE
+// shape (Timeout + DefaultMaxRetries + Queue + Concurrency + caps).
+// The pre-Wave-19 name RegistryEntry is preserved because callers
+// across internal/app, internal/application/scheduler, and the
+// dispatcher wiring reference it directly; the JobPolicy alias
+// (declared below) is the user-facing semantic name.
+//
+// Job type policy contract (Wave 19 / P1-9):
+//
+//	JobPolicy{
+//	    Type:                canonicalJobType,                  // e.g. "script.generate"
+//	    Description:         human-readable string,             // operator-facing
+//	    Timeout:             per-job execution cap,             // 0 = canonical 10m default
+//	    DefaultMaxRetries:   retry count when caller omits,     // canonical = 3
+//	    Queue:               queue label (string),              // empty -> DefaultQueue
+//	    Concurrency:         per-worker parallel-leases,        // <=0 -> DefaultConcurrency
+//	    RequiredCapabilities: capability tags worker must have,  // empty = any worker
+//	}
+//
+// Field-default canon (Wave 19): every registered job type surfaces a
+// non-zero Queue (DefaultQueue) and Concurrency (>=DefaultConcurrency)
+// through the typed accessors after applyDefaults() applies them. The
+// raw entry.Queue / entry.Concurrency MAY read "" / 0 before the
+// pass; consumers MUST read through the typed `Registry.Queue(t)` and
+// `Registry.Concurrency(t)` accessors rather than the raw field so
+// the canonical values are observed regardless of whether the literal
+// was set.
+//
+// Migration to Wave 19 fields is field-additive (no struct rename).
+// Because JobPolicy is a Go type alias (not a new named type), all
+// pre-Wave-19 `RegistryEntry{...}` literals and `RegistryEntry`-by-
+// name references in production code compile unchanged. New code MUST
+// prefer the JobPolicy name when declaring entries.
+type RegistryEntry struct {
+	// Type is the canonical job type string (e.g. "script.generate_from_clips").
+	Type string
+	// Description is a human-readable description for operators.
+	Description string
+	// Timeout is the per-job execution timeout. Zero means use the default (10 min).
+	Timeout time.Duration
+	// DefaultMaxRetries is the default retry count when the caller doesn't specify.
+	DefaultMaxRetries int
+	// Queue is the routing label for the in-process broker.
+	//
+	// Today the broker is in-process (Worker polls SQLite), so Queue is
+	// a logical-grouping label rather than a hard routing key. Future
+	// broker upgrades (e.g. a dedicated message bus with multiple queue
+	// partitions) read this field to bucket workers per job family.
+	// Empty value is normalised to DefaultQueue by Compose() so the
+	// typed accessor `Registry.Queue(t)` returns a non-empty label for
+	// ANY registered job type.
+	Queue string
+	// Concurrency is the per-worker parallel-lease budget for this job type.
+	//
+	// Today workers poll one job at a time, so this is a CLAMP rather
+	// than an immediate concurrency control. Future broker upgrades
+	// (e.g. an in-process semaphore that throttles expensive job types)
+	// read this field to cap per-worker fan-out. Zero or negative
+	// values are normalised to DefaultConcurrency by Compose() so the
+	// typed accessor `Registry.Concurrency(t)` returns a value
+	// >= DefaultConcurrency for ANY registered job type.
+	Concurrency int
+	// RequiredCapabilities are worker capabilities needed (empty = any worker).
+	RequiredCapabilities []string
+
+	// ProducesArtifacts is true when this job type produces files (videos,
+	// images, documents, audio, etc.) that must be finalised through the
+	// JobFinalizer spine. Jobs with ProducesArtifacts=true MUST call
+	// CompleteWithArtifacts instead of the legacy Complete path.
+	//
+	// When true, SQLiteStore.Complete rejects completions with the canonical
+	// typed sentinel domainremote.ErrCompleteJobPathViolation (godlike/06
+	// SSOT: the typed sentinel at internal/domain/remote/complete_job.go is
+	// the SINGLE canonical owner of the failure mode "legacy Complete path
+	// attempted on artifact-producing job"; the pre-FASE-0.1 package-local
+	// alias ErrArtifactJobRequiresCompleteWithArtifacts was REMOVED).
+	ProducesArtifacts bool
+}
+
+// JobPolicy is the canonical alias for RegistryEntry. New code MUST
+// prefer the JobPolicy name when declaring or augmenting entries;
+// the RegistryEntry alias is kept for back-compat with pre-Wave-19
+// callers that reference the field by name directly. Both names refer
+// to the SAME type (Go type-alias semantics — not a named distinct
+// type), so adapting a pre-Wave-19 RegistryEntry literal to the
+// Wave-19 surface is a field-additive change, not a struct rename.
+type JobPolicy = RegistryEntry
+
+// ── Standard job.Job Types — canonical SSOT block ──────────────────────
+//
+// Each constant is the canonical string identifier. These are the SSOT; no
+// other package should define job type string literals.
+const (
+	TypeMediaExtract          = "media.extract"
+	TypeMediaStock            = "media.stock"
+	TypeVoiceoverBatch        = "voiceover.batch"
+	TypeVoiceoverGenerate     = job.TypeVoiceoverGenerate
+	TypeSubtitleGenerate      = "subtitle.generate"
+	TypeRenderVideo           = "render.video"
+	TypeYouTubeUpload         = "youtube.upload"
+	TypeYouTubeClipExtract    = "youtube_clip.extract"
+	TypeCatalogSync           = "catalog.sync"
+	TypeArtlistRun            = "media.artlist"
+	TypeSystemCleanup         = "system.cleanup"
+	TypeMediaGenerate         = "media.generate_missing_asset"
+	TypeVideoGenerate         = "video.generate"
+	TypeBooksProcess          = "books.process"
+	TypeLessonsProcess        = "lessons.process"
+	TypeMediaReindex          = "media.reindex"
+	TypeMediaEnrich           = job.TypeMediaEnrich
+	TypeYouTubeRebuildST      = "youtube.rebuild_search_text"
+	TypeScriptGenerate        = job.TypeScriptGenerate
+	TypeBulUploadYouTubeClips = "media.bulk_upload_youtube_clips"
+	TypeDriveFolderSync       = "drive.folder.sync"
+	TypeMediaCurate           = job.TypeMediaCurate
+	TypeVoiceoverPromo        = job.TypeVoiceoverPromo
+	// TypeVoiceoverGenerateItem is the per-language child job scheduled by the
+	// parent voiceover.generate handler via FanoutVoiceoversUseCase
+	// (PR-VOICEOVER-PARENT-CHILD-FANOUT, June 2026). Concurrency is
+	// regulated by the registry's per-job-type Concurrency field
+	// (configured at compose time), NOT by goroutines inside the API.
+	TypeVoiceoverGenerateItem = job.TypeVoiceoverGenerateItem
+	TypeImageGenerateGoogle   = "image.generate.google"
+
+	// P0 Commit 2 (July 2026) canonical aliases — declared in this block
+	// (NOT in codec.go) so the package-level re-export surface stays in
+	// ONE place. registry_codec_completeness_test.go uses these as bare
+	// identifiers when wiring canonical codecs; the canonical strings
+	// themselves live in internal/domain/job/job.go (per godlike/02
+	// §Capability-specific constants stay in their owning domain package).
+	TypeImagesGenerate   = job.TypeImagesGenerate
+	TypeDocumentGenerate = job.TypeDocumentGenerate
+	TypeAssetsResolve    = job.TypeAssetsResolve
+
+	// Step 11B (July 2026) sibling-job type aliases. Canonical strings
+	// ("script.spawn_voiceover", "script.spawn_images") live in
+	// internal/domain/job/job.go per godlike/02 §Capability-specific
+	// constants stay in their owning domain package.
+	TypeScriptVoiceoverSibling = job.TypeScriptVoiceoverSibling
+	TypeScriptImageSibling     = job.TypeScriptImageSibling
+
+	// ── P0 #4 audit (audit 2026-07-03) child-job type ──
+	// Audit 2026-07-03 P0 #4: per-item retry in script batches via
+	// canonical child-job architecture (mirror of voiceover P0 #1
+	// closure, commit 7f319edb). Each item in a multi-item batch
+	// becomes a script.generate_item job with its own broker-side
+	// retry envelope. Concurrency=4 per-worker per Step 11B/12B
+	// sibling-fan-out budget; independent per-item retry. The
+	// parent aggregator (internal/application/scripts/jobs/
+	// parent_aggregator.go) ticks the children and emits FinalizeAggregateParent
+	// with target_status=FAILED when aggregate=failed_terminal per
+	// godlike/07 (no fake availability), otherwise SUCCEEDED.
+	TypeScriptGenerateItem = job.TypeScriptGenerateItem
+
+	// PR-BATCH-REGISTER-ASYNC (July 2026): async clip registration via
+	// the /api/media/register-batch endpoint. Each clip becomes an
+	// independent media.clip job; yt-dlp + cut + Drive upload + DB write
+	// happen off the request thread. ProducesArtifacts=false because the
+	// registration pipeline persists its own media_assets row + outbox
+	// events inside a per-clip tx (mirror of youtube_clip.extract); the
+	// broker's legacy Complete is the canonical mark-SUCCEEDED seam.
+	TypeClipRegister = job.TypeClipRegister
+
+	// PR-011A (July 2026): post-publish RLM/LLM enrichment pass.
+	//
+	// After the stock pipeline publishes a chunk (PR-001..PR-009
+	// chain), the worker enqueues a media.stock_rlm_enrich job per
+	// chunk to populate the 6 LLM-only fields (Category / Event /
+	// Round / Scene / Subject / Entities) that PR-007 plumbing
+	// already threads but PR-008 left empty pending a real LLM call.
+	// The handler is registered at composition time ONLY when
+	// cfg.External.StockEnrichmentEnabled=true (godlike/07 fail-closed
+	// at composition: no-enrichment-configured = no-handler-registered
+	// = no-job-enqueued; the canonical retry path is via worker
+	// exponential backoff when the LLM call is wired).
+	//
+	// ProducesArtifacts=false because the enrichment pass updates
+	// media_assets.metadata_json inside a per-chunk tx and re-emits
+	// the existing asset.published outbox event (Wave 5
+	// SEMANTIC-LOCATION-API). The broker's legacy Complete is the
+	// canonical mark-SUCCEEDED seam — no per-item finalizer needed.
+	TypeMediaStockRLMEnrich = "media.stock_rlm_enrich"
+)
