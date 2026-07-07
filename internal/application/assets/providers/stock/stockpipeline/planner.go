@@ -27,7 +27,91 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
+
+	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
+
+// Canonical SourceProvider bucket identifiers (PR-003, July 2026).
+// godlike/06 SSOT — one canonical owner per fact: the inference
+// helper inferSourceProvider lives in this file (the canonical
+// place where SourceID is consumed). All downstream consumers
+// (ChunkState, ChunkMetadataEntry, StepRunner publishers) reference
+// these constants via plan.SourceProvider — no stringly-typed
+// branch anywhere in the pipeline.
+const (
+	SourceProviderYouTube = "youtube"
+	SourceProviderPexels  = "pexels"
+	SourceProviderPixabay = "pixabay"
+	// SourceProviderUnknown is the godlike/07 NO-FAKE-AVAILABILITY
+	// sentinel for non-classifiable URLs (direct mp4 blobs, Vimeo,
+	// archive.org, etc.). Inference emits this literal — empty
+	// string is reserved for "not yet inferred" (defensive only;
+	// build paths always fill this field on a populated plan).
+	SourceProviderUnknown = "unknown"
+)
+
+// inferSourceProvider classifies a source URL into the canonical
+// 4-bucket provider taxonomy. Single canonical implementer per
+// godlike/06 SSOT — every consumer reads plan.SourceProvider which
+// is set ONCE at plan-build time.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: parsing the hostname (not
+// substring-matching the full URL) closes the SSRF-style false-
+// positive class — a URL like
+// `https://fake-youtube.com.attacker.io/video.mp4` would have
+// matched the substring-based classification. We delegate to
+// net/url.Parse + Hostname() + suffix/exact-host match so the
+// only counts are on real YouTube/Pexels/Pixabay domains. Bare
+// non-URL inputs (parse error OR empty host) collapse to
+// SourceProviderUnknown — the bucket is observable and never
+// silent-empty.
+func inferSourceProvider(rawURL string) string {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return SourceProviderUnknown
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return SourceProviderUnknown
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host == "" {
+		return SourceProviderUnknown
+	}
+	switch {
+	case host == "youtu.be",
+		host == "youtube.com",
+		strings.HasSuffix(host, ".youtube.com"):
+		return SourceProviderYouTube
+	case host == "pexels.com", strings.HasSuffix(host, ".pexels.com"):
+		return SourceProviderPexels
+	case host == "pixabay.com", strings.HasSuffix(host, ".pixabay.com"):
+		return SourceProviderPixabay
+	}
+	return SourceProviderUnknown
+}
+
+// inferSourceVideoID extracts the canonical video ID ONLY when
+// the URL belongs to the YouTube provider bucket. Returns "" for
+// non-YouTube URLs (provider mismatch — caller can rely on
+// plan.SourceProvider too) AND for malformed YouTube URLs where
+// ExtractVideoID errors (channel pages, playlists, bare /UCxxx).
+//
+// godlike/07 fail-open rationale: SourceVideoID is an
+// observability field (not a gate). Failing the entire chunk
+// build because a YouTube channel-page URL has no watch-ID would
+// surface false-positive FAILED jobs for an otherwise valid
+// SourceURL. Callers that NEED the ID can re-run the extraction
+// verbatim — the function is pure + deterministic.
+func inferSourceVideoID(rawURL string) string {
+	vid, err := urlutil.ExtractVideoID(rawURL)
+	if err != nil {
+		return ""
+	}
+	return vid
+}
 
 // ClipPlan is the deterministic output of the ClipPlanner.
 // The plan is persisted as data so subsequent phases (download,
@@ -37,6 +121,24 @@ type ClipPlan struct {
 	// VideoID). Carried through the pipeline so retries can
 	// re-fetch without re-planning.
 	SourceID string
+
+	// SourceProvider is the canonical provider bucket for
+	// SourceID — inference happens at plan-build time so all
+	// downstream consumers (stager, cutter, publish step,
+	// metadata.json) read the same value. Possible values
+	// (canonical constants above): youtube / pexels / pixabay /
+	// unknown. Locked to inferSourceProvider() — call sites
+	// MUST NOT re-parse the URL.
+	SourceProvider string
+
+	// SourceVideoID is the canonical provider-native identifier
+	// (YouTube video ID when SourceProvider == youtube; ""
+	// otherwise). Extracted via pkg/urlutil.ExtractVideoID at
+	// plan-build time. Empty string is the canonical zero
+	// value for non-YouTube providers AND for YouTube URLs that
+	// are not watch pages (channel, playlist, live, embed —
+	// see pkg/urlutil::ExtractVideoID for the exact contract).
+	SourceVideoID string
 
 	// SourceVersion is a content-derived hash that locks the plan
 	// to a specific source snapshot. v1 today (producers don't
@@ -169,11 +271,18 @@ func deterministicStart(url string, idx int, sliceSec int) float64 {
 // stable across runs + across implementations (URL-driven), so
 // re-planning the same source yields identical IDs — downstream
 // producers can use the Logical ID as a dedupe key.
+//
+// SourceProvider + SourceVideoID are inferred ONCE at plan-build
+// time (per godlike/06 SSOT — both deterministicPlanner and
+// explicitPlanner go through this single constructor; there is
+// exactly one canonical place that classifies URLs).
 func buildClipPlan(src VideoSource, start, end float64, idx int, policyVer string) ClipPlan {
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s", src.URL, idx, policyVer)))
 	id := fmt.Sprintf("planner:%x:%d", h[:8], idx)
 	return ClipPlan{
 		SourceID:        src.URL,
+		SourceProvider:  inferSourceProvider(src.URL),
+		SourceVideoID:   inferSourceVideoID(src.URL),
 		SourceVersion:   "v1",
 		StartSec:        start,
 		EndSec:          end,
@@ -213,17 +322,15 @@ func (p *explicitPlanner) Plan(_ context.Context, src VideoSource, budgetSec int
 	}
 	plans := make([]ClipPlan, 0, len(p.clips))
 	for i, clip := range p.clips {
-		h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s", src.URL, i, policyVer)))
-		id := fmt.Sprintf("planner:%x:%d", h[:8], i)
-		plans = append(plans, ClipPlan{
-			SourceID:        src.URL,
-			SourceVersion:   "v1",
-			StartSec:        clip.StartSec,
-			EndSec:          clip.EndSec,
-			Title:           clip.Title,
-			OutputLogicalID: id,
-			PolicyVersion:   policyVer,
-		})
+		// godlike/06 SSOT — route through buildClipPlan so the
+		// inference + ID derivation stay canonical (PR-003 only
+		// added fields; the literal was deliberately modified here
+		// to share buildClipPlan rather than duplicate the
+		// 11-field struct literal — future field additions stay
+		// in one place).
+		plan := buildClipPlan(src, clip.StartSec, clip.EndSec, i, policyVer)
+		plan.Title = clip.Title
+		plans = append(plans, plan)
 	}
 	return plans, nil
 }

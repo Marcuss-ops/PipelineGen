@@ -46,12 +46,22 @@ type StockRunMetadata struct {
 // ChunkMetadataEntry is the per-chunk metadata entry embedded
 // in the per-run metadata.json. LocalPath is exposed here for
 // audit; the public API response strips it.
+//
+// PR-003 (July 2026) added 3 observability fields: TotalChunks
+// (per-run count, repeated per-entry per user spec — logically a
+// run-level scalar but propagates per-entry for consumer
+// convenience), SourceProvider (canonical 4-bucket enum: youtube
+// / pexels / pixabay / unknown), SourceVideoID (provider-native
+// ID, e.g. YouTube video ID when SourceProvider == youtube).
 type ChunkMetadataEntry struct {
 	Index            int     `json:"index"`
 	ArtifactID       string  `json:"artifact_id"`
 	DriveFileID      string  `json:"drive_file_id"`
 	DriveWebViewLink string  `json:"drive_web_view_link,omitempty"`
 	SourceURL        string  `json:"source_url,omitempty"`
+	SourceProvider   string  `json:"source_provider,omitempty"`
+	SourceVideoID    string  `json:"source_video_id,omitempty"`
+	TotalChunks      int     `json:"total_chunks,omitempty"`
 	StartSec         float64 `json:"start_sec,omitempty"`
 	EndSec           float64 `json:"end_sec,omitempty"`
 	Title            string  `json:"title,omitempty"`
@@ -76,6 +86,9 @@ func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint str
 			DriveFileID:      c.RemoteFileID,
 			DriveWebViewLink: c.RemoteWebViewLink,
 			SourceURL:        c.SourceURL,
+			SourceProvider:   c.SourceProvider,
+			SourceVideoID:    c.SourceVideoID,
+			TotalChunks:      c.TotalChunks,
 			StartSec:         c.StartSec,
 			EndSec:           c.EndSec,
 			Title:            c.Title,
