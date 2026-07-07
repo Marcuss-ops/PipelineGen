@@ -2,8 +2,8 @@
 //
 // ExtractImportantClipsJobHandler is the canonical broker-facing handler.
 // Per AGENTS.md Git-Lesson-2 direct-to-main, Steps 1+2 land atomically;
-// Step 4 (a follow-up commit) replaces the hardcoded literal below with
-// the canonical const job.TypeYouTubeClipExtractImportant from
+// Step 4 (this follow-up commit) flips the hardcoded literal to the
+// canonical const job.TypeYouTubeClipExtractImportant from
 // internal/domain/job/job.go via godlike/06 SSOT one-canonical-const-per-jobType.
 //
 // CANONICAL BROKER SIGNATURE (per voiceover/jobs/generate_handler.go):
@@ -22,12 +22,9 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 )
-
-// JobTypeExtractImportantClips: hardcoded literal for this PR. Step 4 (follow-up
-// bookkeeping commit) replaces this with job.TypeYouTubeClipExtractImportant.
-const JobTypeExtractImportantClips = "youtube.clip_extract_important"
 
 type ExtractImportantClipsJobHandler struct {
 	useCase *ExtractImportantClipsUseCase
@@ -47,11 +44,14 @@ func NewExtractImportantClipsJobHandler(
 // Register: hand the handler to the canonical jobs.Service. The composition
 // wiring site is internal/app/build_bundles_youtube.go::wireYoutubeCatalogJobBindings
 // (mirrors the existing YoutubeClipService.Register pattern).
+//
+// Uses the canonical const job.TypeYouTubeClipExtractImportant from
+// internal/domain/job/job.go (godlike/06 SSOT one-canonical-const-per-jobType).
 func (h *ExtractImportantClipsJobHandler) Register(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return errors.New("ExtractImportantClipsJobHandler.Register: jobsSvc is nil")
 	}
-	return jobsSvc.RegisterHandler(JobTypeExtractImportantClips, appjobs.HandlerFunc(h.HandleJob))
+	return jobsSvc.RegisterHandler(job.TypeYouTubeClipExtractImportant, appjobs.HandlerFunc(h.HandleJob))
 }
 
 // HandleJob: canonical broker entry-point.

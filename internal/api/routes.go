@@ -235,6 +235,8 @@ func (r *Router) Setup() *gin.Engine {
 		c.Redirect(http.StatusMovedPermanently, "/health")
 	})
 
+	registerVLMRoutes(engine)
+
 	// Only add CORS middleware if origins are configured
 	corsConfig := buildCORSConfig(r.cfg.CORSOrigins)
 	if len(corsConfig.AllowOrigins) > 0 || corsConfig.AllowAllOrigins {

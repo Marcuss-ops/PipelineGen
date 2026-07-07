@@ -24,6 +24,12 @@ func wireYoutubeCatalogJobBindings(sync *SyncBundle, domains *DomainBundle, jobs
 			return fmt.Errorf("youtube.clip_extract: %w", err)
 		}
 	}
+	// PR-GEMMA-EXTRACT-IMPORTANT Step 7: register the LLM-driven extractor.
+	if domains.ExtractImportantClipsJobHandler != nil && jobs.Service != nil {
+		if err := domains.ExtractImportantClipsJobHandler.Register(jobs.Service); err != nil {
+			return fmt.Errorf("youtube.clip_extract_important: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -55,6 +61,18 @@ func appendYoutubeCatalogCriticalValidators(sync *SyncBundle, domains *DomainBun
 				Name: "youtube.clip_extract",
 				Bind: func(svc *appjobs.Service) error {
 					return yt.RegisterHandler(svc)
+				},
+			},
+		)
+	}
+	// PR-GEMMA-EXTRACT-IMPORTANT Step 7: mirror critical-validator pattern.
+	if domains.ExtractImportantClipsJobHandler != nil && jobs.Service != nil {
+		h := domains.ExtractImportantClipsJobHandler
+		*validators = append(*validators,
+			CriticalHandler{
+				Name: "youtube.clip_extract_important",
+				Bind: func(svc *appjobs.Service) error {
+					return h.Register(svc)
 				},
 			},
 		)

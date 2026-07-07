@@ -20,9 +20,11 @@ import (
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/transcripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/hashutil"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
@@ -410,22 +412,69 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		return nil, fmt.Errorf("compose images: %w", err)
 	}
 
+	// PR-GEMMA-EXTRACT-IMPORTANT Step 7: wire the LLM-driven YouTube clip
+	// extraction chain inline. The use case + adapters are private
+	// construction-time state; only the broker handler is exposed on
+	// DomainBundle (godlike/06 SSOT one-canonical-owner-per-fact). nil
+	// handler would surface as 503 at runtime (fail-closed per godlike/07).
+	extractDl := downloader.NewYTDLP(cfg)
+	extractAdapters := BuildExtractImportantClipsAdapters(ExtractImportantClipsAdapterDeps{
+		Subtitles: transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{
+			Ytdlp:      extractDl,
+			CmdBuilder: ytdlp.NewCommandBuilder(cfg),
+			UseCookies: false, // gemma is public video segmentation; monitor uses separate UseCookies=true instance
+			Log:        log,
+		}),
+		Downloader: extractDl,
+		Folder:     &adminFolderManagerAdapter{admin: drive.Admin},
+		Files: func(ctx context.Context, req drivePutFnRequest) (*drivePutFnResult, error) {
+			if drive.driveUploader == nil {
+				return nil, fmt.Errorf("compose domains: extract-important upload: drive.driveUploader unwired")
+			}
+			// P1-3 PENDING-MIGRATION: drive.Admin.UploadFile is deprecated per
+			// internal/infrastructure/drive/ports.go godoc. Forward-pointer
+			// PR-GEMMA-EXTRACT-IMPORTANT-FOLLOWUP routes this surface through
+			// delivery.Publisher.Publish (canonical Pattern-0 write seam) for
+			// ConflictSkipByHash content-dedupe parity with YouTubeClipService.
+			// Today: native 4-arg method — no drive package reference needed
+			// (the function param `drive *DriveBundle` shadows the `drive`
+			// package; per pattern-0 access via bundle fields only).
+			res, err := drive.driveUploader.UploadFile(ctx, req.LocalPath, req.FolderID, req.Filename)
+			if err != nil {
+				return nil, fmt.Errorf("compose domains: extract-important upload: %w", err)
+			}
+			return &drivePutFnResult{FileID: res.FileID, WebViewLink: res.WebViewLink}, nil
+		},
+	})
+	extractUseCase := youtube.NewExtractImportantClipsUseCase(
+		log,
+		extractAdapters.TranscriptFetcher,
+		nil, // analyzer=nil → failClosedAnalyzerAdapter returns ErrAnalyzerUnavailable at runtime
+		extractAdapters.SectionDownloader,
+		extractAdapters.DriveFolder,
+		extractAdapters.DriveUploader,
+		clipWriter, // canonical ClipAtomicWriter constructed earlier this fn
+		extractAdapters.Hasher,
+	)
+	extractHandler := youtube.NewExtractImportantClipsJobHandler(extractUseCase, log)
+
 	return &DomainBundle{
-		YoutubeClipService:           youtubeClipService,
-		VoiceoverService:             voiceoverSvc,
-		VoiceoverSync:                vosyncSvc,
-		VoiceoverProcessItem:         voiceoverProcessItem, // Step 8/12: narrow VoiceoverItemExecutor port (BLOC5.4 closer)
-		ImageService:                 imageSvc,
-		IngestService:                ingestSvc,
-		BooksService:                 booksSvc,
-		LessonsService:               lessonsS,
-		MetaWriter:                   metaWriter,
-		RealtimeMatcher:              realtimeMatcher,
-		RealtimeSearch:               realtimeSearch,
-		AutotagService:               autotagSvc,
-		AssocService:                 assocService,
-		ArtifactService:              artifactService,
-		VoiceoverGenerateItemHandler: nil, // populated at composition.go late-bindings block
+		YoutubeClipService:              youtubeClipService,
+		ExtractImportantClipsJobHandler: extractHandler, // PR-GEMMA-EXTRACT-IMPORTANT Step 7 wire-up
+		VoiceoverService:                voiceoverSvc,
+		VoiceoverSync:                   vosyncSvc,
+		VoiceoverProcessItem:            voiceoverProcessItem, // Step 8/12: narrow VoiceoverItemExecutor port (BLOC5.4 closer)
+		ImageService:                    imageSvc,
+		IngestService:                   ingestSvc,
+		BooksService:                    booksSvc,
+		LessonsService:                  lessonsS,
+		MetaWriter:                      metaWriter,
+		RealtimeMatcher:                 realtimeMatcher,
+		RealtimeSearch:                  realtimeSearch,
+		AutotagService:                  autotagSvc,
+		AssocService:                    assocService,
+		ArtifactService:                 artifactService,
+		VoiceoverGenerateItemHandler:    nil, // populated at composition.go late-bindings block
 		// Commit 4/6: the canonical metadata service. Populated
 		// in BuildDomainBundle; consumed by the late-bindings
 		// block + future EnrichClip migration (PR-4.7).

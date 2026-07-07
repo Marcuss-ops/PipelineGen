@@ -213,4 +213,16 @@ const (
 	// SEMANTIC-LOCATION-API). The broker's legacy Complete is the
 	// canonical mark-SUCCEEDED seam — no per-item finalizer needed.
 	TypeMediaStockRLMEnrich = "media.stock_rlm_enrich"
+
+	// PR-GEMMA-EXTRACT-IMPORTANT (July 2026): per-LLM-segment fan-out
+	// clip extractor for POST /api/clips/extract-important. Canonical
+	// string lives in internal/domain/job/job.go (godlike/02
+	// capability-specific constants stay in their owning domain package);
+	// this re-export keeps the registry_extraction.go Register call
+	// site consistent with the rest of its sibling entries
+	// (TypeMediaExtract, TypeYouTubeClipExtract, TypeClipRegister —
+	// all unprefixed). JobType mirrors TypeYouTubeClipExtract but
+	// batch-fans out per LLM-identified segment instead of per video
+	// OR clip ID.
+	TypeYouTubeClipExtractImportant = job.TypeYouTubeClipExtractImportant
 )
