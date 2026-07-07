@@ -7425,7 +7425,9 @@
       deadline: 2026-08-22
     - id: PR-SPLIT-ARTLIST-ENRICHER
       owner_capability: internal/application/assets/providers/artlist
-      status: pending
+      status: shipped
+      ship_sha: d25c5a6294248de3ed8d98bb491e164f08d7b026
+      ship_date: 2026-07-07
       deadline: 2026-08-22
     - id: PR-SPLIT-QDRANT-REINDEX
       owner_capability: cmd/admin
