@@ -50,8 +50,17 @@ import (
 //	    DELETED, "deleted"} + asset row missing.
 //	continue_normal_chain — Handler returns nil (success); writer
 //	    1 (DRIVE_DELETE_PENDING stamp); drive 1 (side-effect fired);
-//	    advancer 1 (INDEX_DELETE_PENDING advance + emit). State ∈
+//	    advancer 1 (DRIVE_DELETED advance + emit of the next
+//	    asset.index.delete_requested event). State ∈
 //	    {DELETE_REQUESTED, DELETE_PENDING, DRIVE_DELETE_PENDING}.
+//	    The advancer target is StateDriveDeleted (not the legacy
+//	    direct-to-INDEX_DELETE_PENDING) per the Blocco 3.1 commit
+//	    2/3 state machine expansion: the canonical 6-state deletion
+//	    chain is ACTIVE → DELETE_REQUESTED → DRIVE_DELETE_PENDING
+//	    → DRIVE_DELETED → INDEX_DELETE_PENDING → INDEX_DELETED →
+//	    DELETED, and StateDriveDeleted is the post-Drive
+//	    confirmation hop that IndexDeleteHandler's Drive-block guard
+//	    consults on entry.
 //	terminal_lifecycle_state — Handler returns non-nil wrapped with
 //	    driveLifecycleTerminalErr. State ∉ any of the 5 deletion-chain
 //	    states (e.g. {ACTIVE, STAGING, PROCESSING, ERROR}).
@@ -167,8 +176,20 @@ func TestDriveDeleteHandler_PreflightIdempotencyTable(t *testing.T) {
 					t.Fatalf("continue_normal_chain: advancer calls=%d, want 1 (advance + emit)", len(adv.calls))
 				}
 				advCall := adv.calls[0]
-				if advCall.fromState != asset.StateDriveDeletePending || advCall.newState != asset.StateLifecycleIndexDeletePending {
-					t.Fatalf("continue_normal_chain: advancer transition %s→%s, want DRIVE_DELETE_PENDING→INDEX_DELETE_PENDING",
+				// Blocco 3.1 commit 2/3 (July 2026): the advancer's
+				// target is StateDriveDeleted (the post-Drive
+				// confirmation hop) per the canonical 6-state
+				// deletion state machine in
+				// internal/domain/asset/lifecycle_state.go. The legacy
+				// direct-to-INDEX_DELETE_PENDING transition is
+				// FORBIDDEN by IsValidTransition: from DRIVE_DELETE_PENDING
+				// the only valid forward edge is to DRIVE_DELETED. The
+				// IndexDeleteHandler accepts both DRIVE_DELETED (new
+				// chain) and INDEX_DELETE_PENDING (legacy forward-compat
+				// for pre-commit 2/3 rows) as entry points, so the
+				// chain stays valid across the migration.
+				if advCall.fromState != asset.StateDriveDeletePending || advCall.newState != asset.StateDriveDeleted {
+					t.Fatalf("continue_normal_chain: advancer transition %s→%s, want DRIVE_DELETE_PENDING→DRIVE_DELETED",
 						advCall.fromState, advCall.newState)
 				}
 			case terminalError:
