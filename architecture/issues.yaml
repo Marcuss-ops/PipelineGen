@@ -849,7 +849,7 @@
     fix lands.
 
 - id: Q18-PUBLISH-COMPLETE-USE-CASE-TEST-COMPILE-BLOCKERS
-  closed_at: 2026-07-06  # b81dc0af committer-date -- canonical closure landed BEFORE Q18 forward-pointer mirror (b81dc0af ship_date 2026-07-06T09:09:44+00:00; mirror commit 6d64ea63 ship_date 2026-07-07)
+  closed_at: 2026-07-06  # b81dc0af (canonical closure)
   ship_sha: b81dc0af  # JOBS-VET-ERRORS-FIX-2026-07-06 (canonical closure)
   title: "publish_and_complete_use_case_test.go has 4 pre-existing test compile errors that block `go test ./internal/application/jobs/...` (P0-COMPL-5 closure residue 4030081a+bb4a19e8)"
   status: done
@@ -860,7 +860,7 @@
     - 4030081a  # P0-COMPL-5-WIRE-NAMING (cause)
     - bb4a19e8  # P0-COMPL-5-WIRE-NAMING typo fixup (cause)
     - b81dc0af  # JOBS-VET-ERRORS-FIX-2026-07-06 (canonical closure)
-    - Q17-IMAGES-REGISTERHANDLER-REGRESSION  # canonical audit-pin-resolution precedent (cross-ref per Q17's notes ## AUDIT-PIN REUSE LESSON sub-block)
+    - Q17-IMAGES-REGISTERHANDLER-REGRESSION  # Q17 (audit-pin precedent)
   notes: |
     Phase 11 battery triage (2026-07-04) detected 4 NEW REVEALs in
     internal/application/jobs/completion/publish_and_complete_use_case_test.go
@@ -928,24 +928,22 @@
 
     godlike/07 honest-limitation: TEST-file compile error. Production
            code (`go build`) continues to compile cleanly. The
-           blocker is exclusively for the CI test step.    ## AUDIT-PIN REUSE LESSON (RESOLVED 2026-07-06):
+           blocker is exclusively for the CI test step.    ## AUDIT-PIN REUSE LESSON (RESOLVED):
 
-    RESOLVED 2026-07-06 (1 day BEFORE the Q18 forward-pointer mirror
-    commit 6d64ea63 landed on 2026-07-07). The underlying fix that
-    resolves the 4 documented compile errors at
-    publish_and_complete_use_case_test.go lines 72 / 153 / 262 / 342
-    / 457 SURFACED ON ORIGIN/MAIN as commit b81dc0af:
-      - subject: fix(jobs): resolve 12+ pre-existing go vet errors in jobs/ subtree
-      - ship_date: 2026-07-06T09:09:44+00:00
-      - chain: ba41d630 (io.Reader anti-pattern) -> b81dc0af (multi-vet)
-    `go vet ./internal/application/jobs/completion/...` exits 0 as of
-    2026-07-07 (live verified). Q18's status:done is now anchored
-    to a verifiable origin/main per-file on-disk fix per the canonical
-    verification recipe. Cross-ticket consensus reached: Q17 + Q18
-    both anchor to distinct on-disk per-file fixes. Forward-pointer
-    intent (the PR-JOBS-PUBLISH-COMPLETE-USECASE-FIX slug from the
-    2026-07-07 mirror commit) is now subsumed by the canonical
-    closure SHA b81dc0af per the linked_issues ratchet above.
+    RESOLVED. The underlying fix that resolves the 4 documented compile
+    errors at publish_and_complete_use_case_test.go lines 72 / 153 /
+    262 / 342 / 457 SURFACED ON ORIGIN/MAIN as commit b81dc0af
+    (canonical closure = JOBS-VET-ERRORS-FIX-2026-07-06). The fix
+    chain ba41d630 (io.Reader anti-pattern) -> b81dc0af (multi-vet)
+    closed all 4 documented errors. Q18's status:done is now anchored
+    to a verifiable on-disk fix per the canonical recipe. Verification
+    anchors (live, reproducible):
+      go vet ./internal/application/jobs/completion/...           (exits 0)
+      git show origin/main:b81dc0af -- publish_and_complete_use_case_test.go
+      git log --grep=b81dc0af --oneline (canonical hit on origin/main)
+    Cross-ticket consensus: Q17 + Q18 both anchor to distinct on-disk
+    per-file fixes; the forward-pointer mirror intent is subsumed by
+    the canonical closure SHA in the linked_issues ratchet.
     godlike/07 typed-error contract preserved end-to-end.
 
 
