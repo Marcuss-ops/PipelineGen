@@ -32,6 +32,7 @@ package stockpipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,9 +42,23 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
+
+// ErrStockClipsOutOfRange (PR-STOCK-TIMESTAMP-CLIPS Front 5,
+// July 2026) surfaces a clip whose EndSec exceeds the probed
+// source duration. The step validates every ClipPlan in the
+// group BEFORE invoking VideoCutter.Cut so a malformed timestamp
+// fails fast with a typed error instead of silently producing a
+// half-broken artifact via ffmpeg. Per user spec literal
+// "fallire subito con errore leggibile" — no auto-clamp, no
+// truncation, the operator must fix the input. Wrap the typed
+// sentinel via fmt.Errorf("...: %w", ErrStockClipsOutOfRange) so
+// callers can errors.Is(err, ErrStockClipsOutOfRange) without
+// parsing the human-readable prefix.
+var ErrStockClipsOutOfRange = errors.New("stock.extract_clips: clip EndSec exceeds source duration — input out of range (PR-STOCK-TIMESTAMP-CLIPS Front 5, godlike/07 NO-FAKE-AVAILABILITY)")
 
 // StockExtractClipsStep is the canonical implementation of
 // stock.extract_clips. Phase 1 (July 2026): rewired to use the
@@ -90,11 +105,15 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 		return nil
 	}
 
-	// Build sourceID → localPath map from StagedAssets.
-	stagedBySource := make(map[string]string)
+	// Build sourceID → *StagedAsset map from StagedAssets. We
+	// keep the full pointer (not just LocalPath) so the pre-cut
+	// probe in the loop can read DurationSec (PR-STOCK-TIMESTAMP-CLIPS
+	// Front 5, July 2026) without a second iteration.
+	stagedBySource := make(map[string]*assets.StagedAsset)
 	for _, sa := range runner.State().StagedAssets {
 		if sa.SourceID != "" && sa.LocalPath != "" {
-			stagedBySource[sa.SourceID] = sa.LocalPath
+			sa := sa
+			stagedBySource[sa.SourceID] = sa
 		}
 	}
 
@@ -112,8 +131,8 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 	sourceIdx := 0
 
 	for sourceID, groupPlans := range grouped {
-		sourcePath := stagedBySource[sourceID]
-		if sourcePath == "" {
+		staged := stagedBySource[sourceID]
+		if staged == nil {
 			// Source not staged — skip gracefully. The upstream
 			// stock.stage_sources step logs Warn on stage failure;
 			// here we surface the downstream impact without aborting
@@ -125,6 +144,90 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 			}
 			sourceIdx++
 			continue
+		}
+		sourcePath := staged.LocalPath
+
+		// PR-STOCK-TIMESTAMP-CLIPS Front 5 (July 2026): pre-cut
+		// duration validation. The step probes the source duration
+		// BEFORE invoking VideoCutter.Cut so a clip with EndSec >
+		// duration fails fast with a typed sentinel (no auto-clamp
+		// per user spec "fallire subito con errore leggibile").
+		// Source of truth priority (godlike/06 SSOT):
+		//   1. StagedAsset.DurationSec — populated upstream by
+		//      stock.stage_sources when known (yt-dlp
+		//      --print-duration at staging time). Fast path; no
+		//      subprocess call.
+		//   2. runner.SourceDurationProbe().ProbeDurationSec() —
+		//      ffprobe-backed probe for legacy composition roots
+		//      that don't pre-populate DurationSec. Optional;
+		//      nil ⇒ skip validation (godlike/07 fail-open
+		//      backward-compat; PR-STOCK-SOURCE-DURATION-WIRE
+		//      is the forward-pointer for production wiring).
+		//   3. Neither available — log Warn + skip validation
+		//      (legacy unvalidated path; same backward-compat as
+		//      nil probe).
+		var durationSec float64
+		durationKnown := false
+		if staged.DurationSec > 0 {
+			durationSec = staged.DurationSec
+			durationKnown = true
+		} else if probe := runner.SourceDurationProbe(); probe != nil {
+			d, probeErr := probe.ProbeDurationSec(ctx, sourcePath)
+			if probeErr != nil {
+				if runner.Log() != nil {
+					runner.Log().Warn("orchestrator: stock.extract_clips: duration probe failed — skipping bounds check (godlike/07 fail-open)",
+						zap.String("source_id", sourceID),
+						zap.String("source_path", sourcePath),
+						zap.Error(probeErr))
+				}
+			} else if d > 0 {
+				durationSec = d
+				durationKnown = true
+			}
+		} else if runner.Log() != nil {
+			// godlike/07 fail-open but loudly: a missing
+			// probe AND no DurationSec is a composition-root
+			// misconfiguration. Warn (not Debug) so operators
+			// notice out-of-range clips are not being caught.
+			// Forward-pointer PR-STOCK-SOURCE-DURATION-WIRE
+			// closes this gap at the composition root.
+			runner.Log().Warn("orchestrator: stock.extract_clips: no DurationSec + no SourceDurationProbe wired — bounds check skipped (out-of-range clips will NOT be caught; compose WithSourceProbe at the composition root)",
+				zap.String("source_id", sourceID),
+				zap.String("source_path", sourcePath),
+				zap.Int("clip_count", len(groupPlans)))
+		}
+
+		// Bounds check (godlike/07 NO-FAKE-AVAILABILITY): every clip
+		// in the group must have EndSec <= source duration. The
+		// step counts out-of-range clips and returns the FIRST
+		// violation with the typed sentinel; subsequent violations
+		// are surfaced via the wrapped error message (Read-back
+		// contract: errors.Is(err, ErrStockClipsOutOfRange) succeeds
+		// regardless of which clip was the first violator).
+		//
+		// Boundary semantics: strict `>` (no epsilon) — EndSec ==
+		// sourceDurationSec is treated as in-range. This matches
+		// the user spec literal "fallire subito con errore leggibile"
+		// (the boundary-equal case is a valid full-length cut, not
+		// an out-of-range error). If a future PR needs sub-second
+		// tolerance for floating-point drift, add an epsilon constant
+		// at the top of this file and re-pin the test.
+		if durationKnown {
+			for clipIdx, plan := range groupPlans {
+				if plan.EndSec > durationSec {
+					if runner.Log() != nil {
+						runner.Log().Error("orchestrator: stock.extract_clips: clip EndSec exceeds source duration — aborting (no auto-clamp per user spec)",
+							zap.String("source_id", sourceID),
+							zap.Int("clip_index", clipIdx),
+							zap.String("artifact_id", plan.OutputLogicalID),
+							zap.Float64("clip_end_sec", plan.EndSec),
+							zap.Float64("source_duration_sec", durationSec),
+							zap.Float64("overrun_sec", plan.EndSec-durationSec))
+					}
+					return fmt.Errorf("orchestrator: stock.extract_clips: clip[%d] (artifact=%s) EndSec=%.2f exceeds source duration=%.2f (overrun=%.2fs): %w",
+						clipIdx, plan.OutputLogicalID, plan.EndSec, durationSec, plan.EndSec-durationSec, ErrStockClipsOutOfRange)
+				}
+			}
 		}
 
 		// Build CutJobs from ClipPlan entries. Each job gets a

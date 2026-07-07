@@ -47,6 +47,16 @@ type StepRunner interface {
 	Builder() ManifestBuilder
 	Writer() TransactionalAssetWriter
 	Projection() ProjectionPort
+	// SourceDurationProbe is the optional ffprobe-backed port
+	// (PR-STOCK-TIMESTAMP-CLIPS Front 5, July 2026) that
+	// step_extract_clips uses to validate ClipPlan.EndSec against
+	// the source video duration BEFORE invoking VideoCutter.Cut.
+	// nil is the canonical backward-compat value: validation is
+	// skipped (godlike/07 fail-open), and the step falls through
+	// to the legacy unvalidated path. The composition root wires
+	// the concrete via orchestrator.WithSourceProbe(probe) (forward-
+	// pointer PR-STOCK-SOURCE-DURATION-WIRE for production wiring).
+	SourceDurationProbe() SourceDurationProbe
 
 	// §12-7 extensions: Finalizer-side ports + run fingerprint.
 	ArtifactPreparation() finalization.ArtifactPreparationService
@@ -141,6 +151,9 @@ func (a *orchestratorRunner) Renderer() StockRenderer           { return a.orch.
 func (a *orchestratorRunner) Builder() ManifestBuilder          { return a.orch.builder }
 func (a *orchestratorRunner) Writer() TransactionalAssetWriter  { return a.orch.writer }
 func (a *orchestratorRunner) Projection() ProjectionPort        { return a.orch.projection }
+func (a *orchestratorRunner) SourceDurationProbe() SourceDurationProbe {
+	return a.orch.sourceProbe
+}
 func (a *orchestratorRunner) ArtifactPreparation() finalization.ArtifactPreparationService {
 	return a.artifactPreparation
 }

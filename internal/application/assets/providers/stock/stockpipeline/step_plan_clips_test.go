@@ -47,6 +47,7 @@ func (f *fakeStepRunner) Renderer() StockRenderer                               
 func (f *fakeStepRunner) Builder() ManifestBuilder                                     { return nil }
 func (f *fakeStepRunner) Writer() TransactionalAssetWriter                             { return nil }
 func (f *fakeStepRunner) Projection() ProjectionPort                                   { return nil }
+func (f *fakeStepRunner) SourceDurationProbe() SourceDurationProbe                     { return nil }
 func (f *fakeStepRunner) ArtifactPreparation() finalization.ArtifactPreparationService { return nil }
 func (f *fakeStepRunner) JobFinalizer() finalization.JobFinalizer                      { return nil }
 func (f *fakeStepRunner) RunFingerprint() string                                       { return "test-fingerprint" }

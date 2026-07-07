@@ -135,6 +135,22 @@ func (o *Orchestrator) WithJobFinalizer(svc finalization.JobFinalizer) *Orchestr
 	return o
 }
 
+// WithSourceProbe (PR-STOCK-TIMESTAMP-CLIPS Front 5, July 2026)
+// threads the optional ffprobe-backed SourceDurationProbe port
+// to the step_extract_clips step. The probe is OPTIONAL: nil
+// pass-through is allowed so existing composition roots + test
+// fixtures compile unchanged (godlike/07 minimum-blast-radius:
+// backward-compat; the step falls through to the legacy
+// unvalidated path when probe is nil and StagedAsset.DurationSec
+// is 0). Returns the receiver for fluent chaining. Production
+// wiring injects the ffprobe-backed concrete in
+// run_orchestrator.go::runOrchestratorResilient (forward-pointer
+// PR-STOCK-SOURCE-DURATION-WIRE for the live ffprobe adapter).
+func (o *Orchestrator) WithSourceProbe(probe SourceDurationProbe) *Orchestrator {
+	o.sourceProbe = probe
+	return o
+}
+
 // WithLogger threads a real zap.Logger into the Orchestrator so
 // step-level logs (download sizes, FFmpeg errors, cut results)
 // appear in the journal instead of being silently swallowed by
