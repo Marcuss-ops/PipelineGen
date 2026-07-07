@@ -13,6 +13,7 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -86,6 +87,11 @@ func (p *MetadataProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		}
 		records, err := p.generator.GenerateMetadata(ctx, req)
 		if err != nil {
+			if errors.Is(err, ErrMetadataGeneratorUnavailable) {
+				return &PostProcessResult{
+					Warnings: []string{err.Error()},
+				}, nil
+			}
 			// If the first-language call fails on a multi-language
 			// plan, surface the typed error (Required posture).
 			// Partial success for subsequent languages is appended

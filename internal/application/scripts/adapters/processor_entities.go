@@ -14,6 +14,7 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -83,6 +84,11 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	}
 	res, err := p.extractor.ExtractEntities(ctx, req)
 	if err != nil {
+		if errors.Is(err, ErrEntityExtractorUnavailable) {
+			return &PostProcessResult{
+				Warnings: []string{err.Error()},
+			}, nil
+		}
 		return nil, err
 	}
 	if res == nil {
