@@ -284,6 +284,140 @@ func TestHealthHandler_NilReadyCheckerReturns503(t *testing.T) {
 	assert.Contains(t, resp["error"].(string), "ready checker not initialized")
 }
 
+// ── /ready wire field ────────────────────────────────────────────────
+
+// TestHealthHandler_ReadyIncludesWireFieldNilRegistry verifies the
+// /ready response always includes a "wire" field (all NOT_MOUNTED when
+// the WireRegistry is not wired). This is the canonical stale-binary
+// failure mode detection surface: if the field is absent OR has fewer
+// keys than knownCapabilities, the binary is missing the wire surface.
+func TestHealthHandler_ReadyIncludesWireFieldNilRegistry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := healthyService()
+	ready := systemhealth.NewReadyChecker(svc)
+	handler := NewHealthHandler(svc, ready)
+	// Note: SetWireRegistry NOT called — nil-receiver path is the
+	// canonical "stale binary" detector.
+	router := gin.New()
+	router.GET("/ready", handler.Ready)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/ready", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	wire, ok := resp["wire"].(map[string]any)
+	require.True(t, ok, "/ready response must always include wire field, got %v", resp)
+	require.NotEmpty(t, wire, "wire field must be a non-empty map")
+	for _, cap := range knownCapabilities {
+		assert.Equal(t, WireNotMounted, wire[cap.name], "nil registry must report %q as NOT_MOUNTED", cap.name)
+	}
+}
+
+// TestHealthHandler_ReadyIncludesWireFieldStockMounted verifies the
+// canonical "stock pipeline is mounted" case — when the WireRegistry
+// is wired with stock routes, /ready reports wire.stock = MOUNTED.
+func TestHealthHandler_ReadyIncludesWireFieldStockMounted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := healthyService()
+	ready := systemhealth.NewReadyChecker(svc)
+	handler := NewHealthHandler(svc, ready)
+
+	// Build a real gin engine with stock + artlist routes, then extract
+	// the WireRegistry and inject it into the HealthHandler.
+	engine := gin.New()
+	engine.POST("/api/stock-pipeline/run", func(c *gin.Context) {})
+	engine.POST("/api/artlist/sync", func(c *gin.Context) {})
+	handler.SetWireRegistry(NewWireRegistryFromEngine(engine))
+
+	router := gin.New()
+	router.GET("/ready", handler.Ready)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/ready", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	wire, ok := resp["wire"].(map[string]any)
+	require.True(t, ok, "/ready response must include wire field")
+	assert.Equal(t, WireMounted, wire["stock"], "stock should be MOUNTED")
+	assert.Equal(t, WireMounted, wire["artlist"], "artlist should be MOUNTED")
+	assert.Equal(t, WireNotMounted, wire["voiceover"], "voiceover should be NOT_MOUNTED")
+}
+
+// TestHealthHandler_ReadyRendersWireMapProductionHotPath simulates the
+// production hot path: a healthy service + ready checker + wire
+// registry built from a fully-routed gin engine. Asserts the 200
+// response includes both the readiness verdict AND the wire map
+// (mirrors what /ready looks like in a healthy production server).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: this is the canonical "binary is
+// actually wired" smoke — both ready and wire must be set. A future
+// refactor that drops the wire field in the success path (only
+// emitting it on 503) would fail this test.
+func TestHealthHandler_ReadyRendersWireMapProductionHotPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := healthyService()
+	ready := systemhealth.NewReadyChecker(svc)
+	handler := NewHealthHandler(svc, ready)
+
+	engine := gin.New()
+	engine.POST("/api/stock-pipeline/run", func(c *gin.Context) {})
+	engine.POST("/api/stock-pipeline/search-and-run", func(c *gin.Context) {})
+	engine.POST("/api/artlist/sync", func(c *gin.Context) {})
+	engine.POST("/internal/v1/media/search", func(c *gin.Context) {})
+	engine.GET("/internal/v1/media/ready", func(c *gin.Context) {})
+	engine.GET("/qdrant/live", func(c *gin.Context) {})
+	handler.SetWireRegistry(NewWireRegistryFromEngine(engine))
+
+	router := gin.New()
+	router.GET("/ready", handler.Ready)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/ready", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code, "production hot path should return 200")
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.True(t, resp["ok"].(bool), "production hot path should report ok=true")
+	assert.Equal(t, "ready", resp["status"])
+
+	wire, ok := resp["wire"].(map[string]any)
+	require.True(t, ok, "production hot path /ready response must include wire field")
+	assert.Equal(t, WireMounted, wire["stock"], "stock should be MOUNTED in production hot path")
+	assert.Equal(t, WireMounted, wire["artlist"], "artlist should be MOUNTED in production hot path")
+	assert.Equal(t, WireMounted, wire["mediasearch"], "mediasearch should be MOUNTED (both /internal/v1/media/search and /ready are routed)")
+	assert.Equal(t, WireMounted, wire["qdrant_health"], "qdrant_health should be MOUNTED")
+	assert.Equal(t, WireNotMounted, wire["voiceover"], "voiceover should be NOT_MOUNTED (no voiceover routes registered)")
+}
+
+// TestHealthHandler_ReadyWireSurvivesFailurePath verifies the wire
+// field is still present when /ready returns 503 (e.g. nil ready
+// checker). Operators can detect a 404'd capability regardless of
+// the overall readiness verdict.
+func TestHealthHandler_ReadyWireSurvivesFailurePath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler := NewHealthHandler(nil, nil) // both nil → 503
+	router := gin.New()
+	router.GET("/ready", handler.Ready)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/ready", nil)
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	wire, ok := resp["wire"].(map[string]any)
+	require.True(t, ok, "wire field must survive the 503 failure path")
+	assert.Equal(t, WireNotMounted, wire["stock"], "stock should be NOT_MOUNTED with nil registry")
+}
+
 // ── /ready status mapping ─────────────────────────────────────────────
 
 func TestHealthHandler_ReadyStatusMapping(t *testing.T) {

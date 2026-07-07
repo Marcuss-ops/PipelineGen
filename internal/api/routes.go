@@ -264,6 +264,16 @@ func (r *Router) Setup() *gin.Engine {
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)
 
+	// Build the WireRegistry AFTER the engine is built (all routes are
+	// registered at this point) and wire it into the /ready handler so
+	// operators can detect 404'd capabilities via `wire: { stock: "NOT_MOUNTED" }`
+	// without grepping server logs. Captured 2026-07-07 stale-binary
+	// incident: the new pipelinegen binary lost stock-pipeline mount,
+	// /api/stock-pipeline/run returned 400 (validation) so the bug
+	// wasn't visible — a /ready "wire: stock: NOT_MOUNTED" would have
+	// caught it in 5 seconds.
+	healthHandler.SetWireRegistry(transport.NewWireRegistryFromEngine(engine))
+
 	// /models — E5 + SigLIP model health probes (Task 10, July 2026).
 	// nil-safe: returns 503 when the handler is not wired.
 	modelsHandler := r.modelsHandler
