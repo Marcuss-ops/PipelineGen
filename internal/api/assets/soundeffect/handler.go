@@ -260,12 +260,24 @@ func (h *Handler) Generate(c *gin.Context) {
 		localMetaPath := filepath.Join(filepath.Dir(dest.LocalPath), "metadata.json")
 		if parentFolderID != "" {
 			if _, err := os.Stat(localMetaPath); err == nil {
+				// PR-P12-SOUND-EFFECT-SIDECAR (July 2026): the sidecar
+				// publish now uses the canonical semantic routing via
+				// DestinationSoundEffectSidecar + Group=name. The
+				// DestinationRegistry maps this key to the same
+				// <root>/<name>/ folder as the audio (PathBuilder =
+				// SoundEffectPath) but with ConflictOverwrite
+				// (regenerable metadata.json — latest wins). The
+				// pre-PR-12 RootFolderOverride=parentFolderID bypass
+				// is RETIRED per godlike/07 NO-FAKE-AVAILABILITY:
+				// the canonical Publisher seam now resolves the
+				// folder via DestinationRegistry + DestinationPolicy
+				// for the sidecar key, identical to the audio path
+				// but with a different conflict policy.
 				metaPubReq := delivery.PublishRequest{
-					Destination:        delivery.DestinationSoundEffect,
-					LocalPath:          localMetaPath,
-					Filename:           "metadata.json",
-					Group:              "", // folder already resolved by first publish
-					RootFolderOverride: parentFolderID,
+					Destination: delivery.DestinationSoundEffectSidecar,
+					LocalPath:   localMetaPath,
+					Filename:    "metadata.json",
+					Group:       name, // same as the audio publish — co-locates in <root>/<name>/
 				}
 				if _, err := h.publisher.Publish(ctx, metaPubReq); err != nil {
 					h.log.Error("failed to publish metadata.json to Drive", zap.Error(err))

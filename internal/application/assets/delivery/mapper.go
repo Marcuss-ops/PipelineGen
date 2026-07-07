@@ -305,7 +305,19 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 		req.ProjectID = loc.Project
 		req.Language = loc.Language
 
-	case DestinationSoundEffect:
+	case DestinationSoundEffect, DestinationSoundEffectSidecar:
+		// PR-P12-SOUND-EFFECT-SIDECAR (July 2026): the sidecar key
+		// (DestinationSoundEffectSidecar) shares the same mandatory
+		// Location.Category → req.Group mapping as the audio key so
+		// both the .mp3 + its metadata.json land in the same
+		// <root>/<name>/ folder. godlike/06 SSOT: the canonical
+		// Publisher.Publish path resolves the root folder for each
+		// destination via DestinationRegistry, so two distinct
+		// DestinationKeys for the same name produce two Drive
+		// uploads in the same folder — the conflict policy (Skip
+		// for audio, Overwrite for sidecar) is the per-key
+		// differentiator and lives in the registry, not in the
+		// mapper.
 		if loc.Category == "" {
 			return PublishRequest{}, fmt.Errorf(
 				"%w %q: missing %q", ErrAssetPublishLocationIncompleteForDestination,

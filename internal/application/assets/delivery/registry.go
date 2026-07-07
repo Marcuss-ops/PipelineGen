@@ -160,6 +160,23 @@ func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 				RequireSubpath: true,
 				ConflictPolicy: ConflictSkip, // licensed sound effect
 			},
+			// PR-P12-SOUND-EFFECT-SIDECAR (July 2026): the canonical
+			// destination for sound-effect metadata.json sidecars. Shares
+			// the audio's root folder + namespace + PathBuilder so the
+			// sidecar co-locates with the .mp3 in the same
+			// <root>/<name>/ folder, but carries ConflictOverwrite
+			// (regenerable sidecar — the latest metadata.json wins)
+			// instead of ConflictSkip (immutable audio). godlike/06 SSOT:
+			// one canonical owner per fact — the sidecar's overwrite
+			// policy is a separate concern from the audio's skip
+			// policy and lives in the registry, not at the handler.
+			DestinationSoundEffectSidecar: {
+				RootFolderID:   cfg.Drive.SoundEffectsFolder(),
+				Namespace:      "sound_effects",
+				PathBuilder:    maybeWrapNamespace(cfg, "sound_effects", cfg.Drive.SoundEffectsRootFolder, SoundEffectPath),
+				RequireSubpath: true,
+				ConflictPolicy: ConflictOverwrite, // latest metadata.json wins
+			},
 			DestinationDocument: {
 				RootFolderID:   cfg.Drive.DocumentsFolder(),
 				Namespace:      "documents",
