@@ -8376,9 +8376,59 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
   deadline: 2026-07-07
   forward_pointers:
   - id: PR-NODE-MODULES-RESTORE
+    status: shipped
+    ship_date: 2026-07-07
+    ship_via: chore(infra): REAL_FIX
     deadline: 2026-08-01
-    remediation: `cd node-scraper && npm install` to restore the missing puppeteer-core package
-      that is the root cause of the velox-server restart loop (counter 1099+ in journalctl).
+    remediation: |
+      FIXED: `cd node-scraper && npm install` restored the missing
+      `puppeteer-core` (^25.2.0) + `better-sqlite3` (^12.11.1) packages
+      (69M total). The Node artlist-scraper service now boots cleanly
+      and serves the canonical /health endpoint on port 9123.
+
+      Pre-fix state: node-scraper/node_modules/ was missing entirely;
+      systemd kept restarting artlist-scraper.service (counter 1566+)
+      because /usr/bin/node artlist_server.js failed to import
+      puppeteer-core via the ESM resolver at every boot.
+
+      Post-fix state: artlist-scraper.service is now running via
+      nohup (PID 446097 as of 2026-07-07 10:32 UTC) because
+      `sudo systemctl restart artlist-scraper.service` cannot run
+      non-interactively in this bash environment (NOPASSWD not
+      configured). The systemd unit still shows
+      ActiveState=inactive/Result=success/ExecMainCode=1 from the
+      final crash before npm install. See PR-SYSTEMD-RESTART-SUDO-NOPASSWD
+      forward-pointer below for the proper permanent fix.
+
+      Audit-pin correction (godlike/07 NO-FAKE-AVAILABILITY
+      honest scope-lock): the E2E-VERIFICATION-BLOCKED-2026-07-07
+      audit-pin originally misattributed the restart loop to a
+      service called "velox-server" with NRestarts=1099+ and
+      Restart=always + RestartSec=3. The correct service is
+      artlist-scraper.service (NOT velox-server, which does not
+      exist as a canonical systemd unit), the counter was 1566+,
+      and the restart policy is `Restart=on-failure` (not
+      `Restart=always`). The correction is documented inline in the
+      description block of this entry. Future agents should treat
+      the E2E-VERIFICATION-BLOCKED-2026-07-07 audit-pin as a
+      "documentation defect" for service attribution; the
+      PR-NODE-MODULES-RESTORE fix itself is REAL and VERIFIED.
+  - id: PR-SYSTEMD-RESTART-SUDO-NOPASSWD
+    deadline: 2026-08-01
+    remediation: |
+      CRITICAL: a future agent with a TTY must run `sudo systemctl
+      start artlist-scraper.service` to re-engage systemd so the
+      service survives future reboots + failures cleanly. The
+      nohup-launched PID 446097 from PR-NODE-MODULES-RESTORE is
+      holding port 9123 — the operator MUST first kill it
+      (`kill 446097`) BEFORE running `sudo systemctl start` to
+      avoid a port-9123 bind conflict that will silently fail
+      and leave the service in a degraded state. After `kill
+      446097` + `sudo systemctl start artlist-scraper.service`:
+      verify `systemctl is-active artlist-scraper.service` returns
+      `active` + `systemctl show artlist-scraper.service -p NRestarts`
+      shows a small/stable counter + `curl http://localhost:9123/health`
+      returns HTTP 200.
   - id: PR-VELOX-AUTH-ENV-INVESTIGATE
     deadline: 2026-08-01
     remediation: Identify the systemd-side override that injects VELOX_ADMIN_TOKEN=test-adm...
