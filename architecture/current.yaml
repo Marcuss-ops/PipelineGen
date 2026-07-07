@@ -7381,7 +7381,9 @@
       deadline: 2026-08-08
     - id: PR-SPLIT-VO-PARENT-AGG-AUDIT-PIN
       owner_capability: internal/application/voiceover
-      status: pending
+      status: shipped
+      ship_sha: 9adf8170
+      ship_date: "2026-07-07"
       deadline: 2026-08-08
     - id: PR-SPLIT-VO-FINALIZER
       owner_capability: internal/application/voiceover
