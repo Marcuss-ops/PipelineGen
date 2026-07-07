@@ -857,6 +857,8 @@
   linked_issues:
     - 4030081a  # P0-COMPL-5-WIRE-NAMING canonical ship SHA on origin/main
     - bb4a19e8  # P0-COMPL-5-WIRE-NAMING typo fixup canonical SHA
+    - Q17-IMAGES-REGISTERHANDLER-REGRESSION  # canonical audit-pin-resolution precedent (cross-ref per Q17's notes ## AUDIT-PIN REUSE LESSON sub-block)
+    - PR-JOBS-PUBLISH-COMPLETE-USECASE-FIX  # forward-pointer; closed_at/ship_sha + canonical closure will be added when the underlying PR lands on origin/main (estimated deadline 2026-07-15)
   notes: |
     Phase 11 battery triage (2026-07-04) detected 4 NEW REVEALs in
     internal/application/jobs/completion/publish_and_complete_use_case_test.go
@@ -925,6 +927,28 @@
     godlike/07 honest-limitation: TEST-file compile error. Production
            code (`go build`) continues to compile cleanly. The
            blocker is exclusively for the CI test step.
+
+
+    ## AUDIT-PIN REUSE LESSON (AWAITING FIX as of 2026-07-07):
+
+    This entry is the sibling-forward-pointer referenced in Q17's
+    notes: | sub-block (canonical precedent: the cross-ticket
+    audit-pin-overuse anti-pattern surfaced when Q17 carried
+    status:done between 2026-07-04 and 2026-07-07 without a
+    corresponding physical edit on origin/main). AWAITING FIX: this
+    entry's closed_at + ship_sha + canonical closure will be added
+    when the underlying fix lands on origin/main as
+    PR-JOBS-PUBLISH-COMPLETE-USECASE-FIX (estimated deadline
+    2026-07-15). Resolution discipline per Q17: before any future
+    status:done flip is paired with closed_at + ship_sha, run
+    `git show origin/main:<file>:<line>` to verify the disk-presence
+    of the corresponding edit (the canonical verification recipe
+    traced via publish_and_complete_use_case_test.go lines 72 / 153
+    / 262 / 342 / 457). Until that PR lands, this entry is the
+    cross-ticket forward-pointer that future agents re-discovering
+    Q17 will arrive at. godlike/07 typed-error contract is preserved
+    via the linked_issues[Q17-IMAGES-REGISTERHANDLER-REGRESSION]
+    bidirectional reference.
 
 
 # ============================================================================
