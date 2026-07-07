@@ -1,6 +1,10 @@
 package stockpipeline
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 // ── SourceProvider / SourceVideoID inference (planner.go) ────────
 //
@@ -347,5 +351,47 @@ func TestExplicitPlanner_InfersProviderAndVideoIDAtPlanBuildTime(t *testing.T) {
 		if plan.SourceVideoID != "EXP99xyz" {
 			t.Errorf("plans[%d].SourceVideoID = %q, want %q", i, plan.SourceVideoID, "EXP99xyz")
 		}
+	}
+}
+
+// ── IndexingStatus literal (PR-008) ───────────────────────────────
+//
+// stock.finalize must NOT do a media_assets.index_state DB SELECT in
+// the hot path. The projection-time literal is hardcoded; the
+// IndexingHandler downstream overwrites it to "INDEXED" in the
+// Qdrant payload after a successful upsert. media_assets.index_state
+// in the SQLite DB remains the canonical SSOT for retry/decision
+// logic. This test pins the projection-time literal exactly.
+
+func TestBuildStockRunMetadata_IndexingStatusLiteralIsPending(t *testing.T) {
+	in := &RunInput{FolderID: "wf", ClipDuration: 10, ChunkDuration: 10, PolicyVersion: "v1"}
+	chunks := []ChunkState{
+		{Index: 0, ArtifactID: "stock:fp:c:0", SourceURL: "https://example.com/v.mp4", SourceProvider: SourceProviderUnknown, TotalChunks: 1, SHA256: "a64chars_filler________________________________________________0", SizeBytes: 1, RemoteFileID: "d0"},
+	}
+	meta := buildStockRunMetadata(in, chunks, "fp")
+
+	// godlike/06 SSOT: the field uses the canonical constant.
+	if got, want := meta.IndexingStatus, IndexingStatusPending; got != want {
+		t.Errorf("meta.IndexingStatus = %q, want %q (canonical constant)", got, want)
+	}
+	// godlike/07 NO-FAKE-AVAILABILITY: the literal value is the
+	// exact string "INDEXING_PENDING" (no stringly-typed drift).
+	if got, want := meta.IndexingStatus, "INDEXING_PENDING"; got != want {
+		t.Errorf("meta.IndexingStatus = %q, want %q (literal)", got, want)
+	}
+	// godlike/06 SSOT: the constant is the canonical SOLE owner
+	// of the literal value (no shadow const anywhere).
+	if IndexingStatusPending != "INDEXING_PENDING" {
+		t.Errorf("IndexingStatusPending = %q, want %q (drift from canonical)", IndexingStatusPending, "INDEXING_PENDING")
+	}
+	// Wire-shape: also pin the JSON tag is "indexing_status"
+	// (matches the qdrant payload key + the IndexingHandler
+	// downstream expectation).
+	raw, mErr := json.Marshal(&meta)
+	if mErr != nil {
+		t.Fatalf("json.Marshal(meta) failed: %v", mErr)
+	}
+	if !strings.Contains(string(raw), `"indexing_status":"INDEXING_PENDING"`) {
+		t.Errorf("JSON wire shape missing indexing_status:INDEXING_PENDING — got %s", string(raw))
 	}
 }
