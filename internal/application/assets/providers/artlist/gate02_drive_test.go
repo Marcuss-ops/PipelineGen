@@ -313,10 +313,12 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 
 	// ── Gate 9 assertions ──
 
-	// The item appears in Items (processor returned it) but Processed
-	// is 0 because stagePersistResults skipped it.
+	// The item appears in Items (processor returned it) but stagePersistResults
+	// marked it as "drive_upload_failed" because Drive fields were missing.
+	// Processed is 0 — the gate skipped it.
 	require.Len(t, resp.Items, 1)
-	assert.Equal(t, "processed", resp.Items[0].Status, "processor status should be 'processed'")
+	assert.Equal(t, "drive_upload_failed", resp.Items[0].Status, "item status should be 'drive_upload_failed'")
+	assert.Contains(t, resp.Items[0].Error, "missing Drive fields", "item Error should explain the failure")
 	assert.Empty(t, resp.Items[0].DriveFileID, "DriveFileID should be empty (Drive upload failed)")
 	assert.Empty(t, resp.Items[0].DriveLink, "DriveLink should be empty (Drive upload failed)")
 	assert.NotEmpty(t, resp.Items[0].FileHash, "FileHash should be present (transcode succeeded)")
