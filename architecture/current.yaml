@@ -7405,7 +7405,9 @@
       deadline: 2026-08-08
     - id: PR-SPLIT-REGISTER-HANDLER
       owner_capability: internal/api/assets/register
-      status: pending
+      status: shipped
+      ship_sha: c94fae5
+      ship_date: "2026-07-07"
       deadline: 2026-08-08
     - id: PR-SPLIT-CLIPS-INGEST
       owner_capability: internal/api/assets/clips
