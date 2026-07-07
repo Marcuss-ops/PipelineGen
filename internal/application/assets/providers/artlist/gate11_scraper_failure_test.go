@@ -358,6 +358,11 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 		"TestGate03_ArtlistRunsPopulatedAfterHandleJob",
 		"TestGate03_ArtlistRunsNotRecordedWhenDiscoveryFails",
 
+		// Gate 04 — Outbox emission
+		"TestGate04_OutboxEventEmittedPerClip",
+		"TestGate04_OutboxEventPayloadContainsSourceArtlist",
+		"TestGate04_OutboxEventNotEmittedWhenNoClips",
+
 		// Gate 05 — Outbox dispatch
 		"TestGate05_OutboxDispatchContract",
 		"TestGate05_OutboxNoDispatchWithoutDriveFields",
@@ -389,7 +394,7 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 	}
 
 	// UPDATE THIS COUNT when adding gate tests.
-	assert.Len(t, expectedGateTests, 22,
+	assert.Len(t, expectedGateTests, 25,
 		"Gate test matrix count changed — update the count and the list above when adding/removing gate tests")
 
 	// Verify no duplicates (copy-paste error defense).
