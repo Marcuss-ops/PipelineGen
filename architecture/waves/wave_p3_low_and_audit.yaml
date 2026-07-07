@@ -2308,3 +2308,26 @@ PR-P12-DRIVE-COMPLETION-2026-07-08:
     Pre-existing 6-item voiceover + app build-issue carry-forward
     (per architecture/waves/wave_p1_high.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04)
     UNCHANGED — NOT regressions of this closure.
+
+# PR-FIX-WORKER-SESSION-REGISTER-RACE — register idempotency for active sessions
+# 3-surface godlike/06 SSOT lockstep entry (per CANONICAL.md §1).
+# Status: shipped (2026-07-08). Ship SHA: b8cb7f40. Owner: internal/infrastructure/database/sqlite/assets.
+# Surface: Register UPSERT was overwriting session_id on ON CONFLICT; now uses
+# CASE expressions to preserve the existing session if it's still alive.
+- id: PR-FIX-WORKER-SESSION-REGISTER-RACE
+  status: shipped
+  ship_sha: b8cb7f40
+  ship_date: 2026-07-08
+  owner_capability: internal/infrastructure/database/sqlite/assets
+  deadline: 2026-08-15
+  forward_pointers:
+    - id: PR-FIX-WORKER-SESSION-HEARTBEAT-AUTO-RENEW
+      description: defense-in-depth — worker auto re-Register on heartbeat-fail
+      deadline: 2026-08-15
+    - id: PR-FIX-WORKER-SESSION-DOCTOR-FRIENDLY
+      description: explicit doctor-mode Register with cmd.ForceTakeover bool flag
+      deadline: 2026-08-15
+    - id: PR-FIX-WORKER-SESSION-LEASES-EXPLAINER
+      description: goddoc on IsSessionActive explaining the session_id match contract
+      deadline: 2026-08-15
+
