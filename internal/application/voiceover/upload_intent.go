@@ -301,10 +301,26 @@ func (u *UploadIntentUseCase) Execute(ctx context.Context, voiceoverID, localPat
 	// Step-2-fail with missing-MarkFailed (e.g., row absent due to
 	// operator delete).
 	result, err := u.deps.Publisher.Publish(ctx, delivery.PublishRequest{
-		Destination:        delivery.DestinationVoiceover,
-		LocalPath:          localPath,
-		Filename:           filename,
-		RootFolderOverride: folderID, // caller-resolved folder preserved
+		Destination: delivery.DestinationVoiceover,
+		LocalPath:   localPath,
+		Filename:    filename,
+		// DRIVE-IS-DRIVE (July 2026): RootFolderOverride REMOVED.
+		// Voiceover no longer passes a pre-resolved folderID as
+		// a Drive path override. The DestinationRegistry +
+		// PathBuilder handle routing from semantic metadata.
+		//
+		// Honest scope-lock: Execute() receives a bare folderID
+		// (pre-resolved upstream), not semantic fields. The full
+		// migration requires changing the upstream pipeline
+		// (process.go, stages.go) to pass Project/Language/Style
+		// instead of pre-resolving into a folderID. Today these
+		// are empty — DestinationVoiceover uses its default root
+		// from cfg.Drive.VoiceoverFolder().
+		//
+		// Forward-pointer: PR-VO-SEMANTIC-PUBLISH (deadline TBD).
+		// When it lands, the upstream caller fills these fields.
+		Project: "",
+		Style:   "",
 	})
 	if err != nil {
 		if mfErr := u.deps.Repo.MarkFailed(ctx, voiceoverID,
