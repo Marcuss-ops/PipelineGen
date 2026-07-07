@@ -42,6 +42,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
@@ -98,6 +99,46 @@ func startCancelWatcher(jobCtx context.Context, jobCancel context.CancelFunc, is
 			}
 		}
 	}()
+}
+
+// extractStagedArtifacts reads the __artifact_manifest from the handler
+// result map and converts it to the JSON wire format consumed by
+// CompleteWithArtifactsCommand.StagedArtifacts. When no manifest is
+// present, returns an empty JSON array (byte-stable "no manifest" sentinel).
+//
+// The mapping from job.Artifact → finalization.PublishedArtifact:
+//
+//	id          → artifact_id
+//	kind        → kind
+//	filename    → filename
+//	mime_type   → mime_type
+//	size_bytes  → size_bytes
+//	sha256      → sha256
+//	local_path  → (discarded — the Sender never sees local paths)
+//	required    → (discarded — manifest-level concern, not per-artifact)
+func extractStagedArtifacts(result map[string]any) json.RawMessage {
+	manifest, err := job.Decode(result)
+	if err != nil || manifest == nil || len(manifest.Artifacts) == 0 {
+		return json.RawMessage("[]")
+	}
+
+	published := make([]finalization.PublishedArtifact, 0, len(manifest.Artifacts))
+	for _, a := range manifest.Artifacts {
+		published = append(published, finalization.PublishedArtifact{
+			ArtifactID: a.ID,
+			Kind:       finalization.ArtifactKind(a.Kind),
+			Filename:   a.Filename,
+			MIMEType:   a.MIMEType,
+			SizeBytes:  a.SizeBytes,
+			SHA256:     a.SHA256,
+		})
+	}
+
+	raw, err := json.Marshal(published)
+	if err != nil {
+		return json.RawMessage("[]")
+	}
+	return json.RawMessage(raw)
 }
 
 func (w *Worker) runJob(parent context.Context, j *job.Job) {
@@ -270,7 +311,6 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		}
 		return
 	}
-
 	// PR-WORKER-RUNNER-INPROCESS-MIGRATION (July 2026): artifact-
 	// producing jobs MUST be completed via the typed CompletionPort
 	// (broker.CompleteWithArtifacts) — NOT the legacy w.repo.Complete
@@ -316,27 +356,18 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			return
 		}
 
-		// Build the CompleteWithArtifactsCommand. Worker today does NOT
-		// have access to a typed StagedArtifacts slice (handlers don't
-		// pass it through tools / result); the Worker's role here is
-		// write job.status = SUCCEEDED via the canonical surface, leaving
-		// artifact manifest construction to the caller/controller (the
-		// handlers persist the actual asset rows + drive_file_id in
-		// media_assets inside their own per-item tx). The empty JSON
-		// array is the byte-stable "no artifact manifest" sentinel.
+		// Extract the artifact manifest from the handler result. Handlers
+		// that produce files (script.generate, image.generate.google,
+		// etc.) inject a __artifact_manifest key into the result map.
+		// The worker extracts it here and passes it as StagedArtifacts
+		// so the broker's CompleteWithArtifacts can persist the artifact
+		// metadata atomically with the job SUCCEEDED transition.
 		//
-		// OutboxEvents is nil because the in-process Worker does NOT
-		// emit typed outbox events from this runJob finalization path
-		// (typed EventCommand surface is forward-pointer to PR-VO-B3 /
-		// PR-YOU-E1 / PR-IMG-D2 per AGENTS.md Pattern 9).
-		//
-		// godlike/07 minimal-blast-radius: ResultData + StagedArtifacts
-		// + WorkerSessionID are the only fields populated beyond the
-		// canonical WorkerID/JobID/LeaseID/ExpectedRevision quartet.
-		// WorkerSessionID is empty today (the in-process Worker does
-		// not use the typed WorkerSession surface); the future typed
-		// WorkerSession port (forward-pointer, deadline 2026-Q4) will
-		// populate this field from the worker's session state.
+		// When no manifest is present, StagedArtifacts stays empty ([])
+		// — the broker still marks the job SUCCEEDED via the single-TX
+		// spine, just without artifact metadata.
+		stagedArtifacts := extractStagedArtifacts(result)
+
 		cmd := CompleteWithArtifactsCommand{
 			WorkerID:         w.id,
 			WorkerSessionID:  "",
@@ -345,15 +376,38 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			ExpectedRevision: finalRevision,
 			CorrelationID:    j.CorrelationID,
 			ResultData:       mapToRawMessage(result),
-			StagedArtifacts:  json.RawMessage("[]"),
+			StagedArtifacts:  stagedArtifacts,
 			OutboxEvents:     nil,
 		}
 
 		if _, err := w.broker.CompleteWithArtifacts(finalizationCtx, cmd); err != nil {
-			w.log.Error("failed to mark artifact-producing job as completed via CompletionPort",
+			completionErr := fmt.Sprintf("CompletionPort.CompleteWithArtifacts failed for artifact-producing job %q: %v", j.Type, err)
+			w.log.Error("failed to mark artifact-producing job as completed via CompletionPort — failing job",
 				zap.String("job_id", j.ID),
 				zap.String("job_type", j.Type),
 				zap.Error(err))
+			// PR-COMPLETE-WORKER-BROAD-FIX (July 2026): the pre-PR code
+			// silently logged the error and returned, leaving the job
+			// RUNNING forever. The canonical fix is to fail the job
+			// with a diagnostic naming the CompletionPort failure so
+			// the operator can see WHY the job never reached SUCCEEDED.
+			if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, finalRevision,
+				completionErr); failErr != nil {
+				if errors.Is(failErr, sqljobs.ErrLeaseLost) {
+					w.log.Warn("lease lost during fail-after-completion-error",
+						zap.String("job_id", j.ID))
+				} else {
+					w.log.Error("failed to mark artifact-producing job as failed (after CompletionPort error)",
+						zap.String("job_id", j.ID),
+						zap.Error(failErr))
+				}
+			}
+			// DeadLetter for audit-trail completeness — mirrors the
+			// dispatchErr exhausted-retries path (code-review, July 2026).
+			if dlqErr := w.repo.DeadLetter(finalizationCtx, j.ID, completionErr); dlqErr != nil {
+				w.log.Warn("failed to dead-letter job after CompletionPort error",
+					zap.String("job_id", j.ID), zap.Error(dlqErr))
+			}
 		} else {
 			w.log.Info("job completed with artifacts",
 				zap.String("job_id", j.ID),
