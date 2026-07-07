@@ -598,6 +598,123 @@ func TestAssetToIndexDocument_AirLockStripsForbiddenFields(t *testing.T) {
 	_ = found // explicit no-op marker for grep forensics
 }
 
+// ═════════════════════════════════════════════════════════════════════════
+// PR 6 (refactor/assetdata-semantic-fields) — top-level AssetData
+// field propagation + backward compat (godlike/06 SSOT + godlike/07
+// NO-FAKE-AVAILABILITY).
+// ═════════════════════════════════════════════════════════════════════════
+
+// TestBuildPayloadFromDocument_AssetDataSemanticFields_ZeroValueOmitsAll
+// pins the godlike/06 SSOT contract that ZERO-valued AssetData
+// top-level fields (PR 6's 18 NEW fields) do NOT emit any
+// corresponding payload keys. Old callers that pass AssetData with
+// all 18 fields at zero-value MUST continue to produce a
+// backward-compatible payload (the canonical pre-PR-6 wire shape).
+// For each of the 18 new fields, a missing payload key is the
+// correct outcome — the godlike/07 NO-FAKE-AVAILABILITY rule
+// forbids placeholder strings (e.g. `Category: "unknown"`).
+func TestBuildPayloadFromDocument_AssetDataSemanticFields_ZeroValueOmitsAll(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	asset := &AssetData{
+		ID:             "asset-zero-semantic",
+		Source:         "stock",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		// All 18 PR-6 fields intentionally at zero-value:
+		// Title, Description, Summary, SourceURL, SourceVideoID,
+		// SourceProvider, Origin, Destination, Event, Round,
+		// Scene, Subject, Entities, WorkflowID, RunFingerprint,
+		// ChunkIndex, TotalChunks, PolicyVersion.
+	}
+	doc := assetToIndexDocumentNoValidate(asset, schema)
+	payload := BuildPayloadFromDocument(doc, schema)
+
+	// For each PR-6 field, the corresponding payload key MUST be absent.
+	expectedAbsent := []string{
+		"title", "description", "summary", "source_url", "source_video_id",
+		"source_provider", "origin", "destination", "event", "round",
+		"scene", "subject", "entities", "workflow_id", "run_fingerprint",
+		"chunk_index", "total_chunks", "policy_version", "job_id",
+	}
+	for _, key := range expectedAbsent {
+		if v, present := payload[key]; present {
+			t.Errorf("zero-value AssetData MUST NOT emit payload key %q (godlike/07 NO-FAKE-AVAILABILITY); got %v", key, v)
+		}
+	}
+	// Sanity: the canonical keys ARE present.
+	if _, ok := payload["asset_id"]; !ok {
+		t.Errorf("BuildPayloadFromDocument MISSING canonical payload key %q", "asset_id")
+	}
+	if _, ok := payload["lifecycle_state"]; !ok {
+		t.Errorf("BuildPayloadFromDocument MISSING canonical payload key %q", "lifecycle_state")
+	}
+}
+
+// TestBuildPayloadFromDocument_AssetDataSemanticFields_PopulatedPropagates
+// pins the godlike/06 SSOT contract that POPULATED AssetData
+// top-level fields (PR 6's 18 NEW fields) DO emit the corresponding
+// payload keys via the airlock's first-class struct copy. The
+// PayloadMapper.AssetToIndexDocument signature is UNCHANGED — the
+// airlock detects the new fields and forwards them automatically
+// (no signature change, struct copy on top-level AssetData fields).
+func TestBuildPayloadFromDocument_AssetDataSemanticFields_PopulatedPropagates(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	asset := &AssetData{
+		ID:             "asset-populated-semantic",
+		Source:         "stock",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		// All 18 PR-6 fields populated to verify the airlock
+		// forwards them to the payload.
+		Title:          "Pacquiao vs Broner Round 7",
+		Description:    "Broner is hurt and stumbling",
+		Summary:        "Pacquiao pressure",
+		SourceURL:      "https://example.com/video.mp4",
+		SourceVideoID:  "vdC5GXxS-qU",
+		SourceProvider: "pexels",
+		Origin:         "retrieved",
+		Destination:    "stock",
+		Event:          "Pacquiao vs Broner",
+		Round:          7,
+		Scene:          "Broner barcolla",
+		Subject:        "Adrien Broner",
+		Entities:       []string{"Manny Pacquiao", "Adrien Broner"},
+		WorkflowID:     "wf-1",
+		RunFingerprint: "fp-1",
+		ChunkIndex:     0,
+		TotalChunks:    11,
+		PolicyVersion:  "timestamp_v1",
+		JobID:          "job-1",
+	}
+	doc := assetToIndexDocumentNoValidate(asset, schema)
+	payload := BuildPayloadFromDocument(doc, schema)
+
+	// Semantic block.
+	assert.Equal(t, "Pacquiao vs Broner Round 7", payload["title"])
+	assert.Equal(t, "Broner is hurt and stumbling", payload["description"])
+	assert.Equal(t, "Pacquiao pressure", payload["summary"])
+	assert.Equal(t, "https://example.com/video.mp4", payload["source_url"])
+	assert.Equal(t, "vdC5GXxS-qU", payload["source_video_id"])
+	assert.Equal(t, "pexels", payload["source_provider"])
+	assert.Equal(t, "retrieved", payload["origin"])
+	assert.Equal(t, "stock", payload["destination"])
+	// LLM enrichment block.
+	assert.Equal(t, "Pacquiao vs Broner", payload["event"])
+	assert.Equal(t, 7, payload["round"])
+	assert.Equal(t, "Broner barcolla", payload["scene"])
+	assert.Equal(t, "Adrien Broner", payload["subject"])
+	entities, ok := payload["entities"].([]string)
+	require.True(t, ok, "entities must be projected as []string")
+	assert.Equal(t, []string{"Manny Pacquiao", "Adrien Broner"}, entities)
+	// Workflow / provenance block.
+	assert.Equal(t, "wf-1", payload["workflow_id"])
+	assert.Equal(t, "fp-1", payload["run_fingerprint"])
+	assert.Equal(t, 0, payload["chunk_index"])
+	assert.Equal(t, 11, payload["total_chunks"])
+	assert.Equal(t, "timestamp_v1", payload["policy_version"])
+	assert.Equal(t, "job-1", payload["job_id"])
+}
+
 // ── Task 4 (July 2026) — dense-vector validation tests ─────────────────
 
 // TestValidateDenseVector_RequiredChannelNil returns ErrMissingRequiredVector

@@ -41,7 +41,10 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	}
 	parseMetadataJSON(asset)
 
-	title := assetpkg.MetadataString(asset.Metadata, "title")
+	title := asset.Title
+	if title == "" {
+		title = assetpkg.MetadataString(asset.Metadata, "title")
+	}
 	if title == "" {
 		title = asset.Name
 	}
@@ -49,38 +52,69 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	if name == "" {
 		name = title
 	}
-	description := assetpkg.MetadataString(asset.Metadata, "description")
-	summary := assetpkg.MetadataString(asset.Metadata, "summary")
+	description := asset.Description
+	if description == "" {
+		description = assetpkg.MetadataString(asset.Metadata, "description")
+	}
+	summary := asset.Summary
+	if summary == "" {
+		summary = assetpkg.MetadataString(asset.Metadata, "summary")
+	}
 	if summary == "" {
 		summary = assetpkg.MetadataString(asset.Metadata, "clip_summary")
 	}
-	sourceURL := assetpkg.MetadataString(asset.Metadata, "source_url")
+	sourceURL := asset.SourceURL
+	if sourceURL == "" {
+		sourceURL = assetpkg.MetadataString(asset.Metadata, "source_url")
+	}
 	if sourceURL == "" {
 		sourceURL = asset.YouTubeURL
 	}
-	sourceVideoID := parseSourceVideoID(assetpkg.MetadataString(asset.Metadata, "source_url"), assetpkg.MetadataString(asset.Metadata, "source_video_id"))
+	sourceVideoID := asset.SourceVideoID
+	if sourceVideoID == "" {
+		sourceVideoID = parseSourceVideoID(assetpkg.MetadataString(asset.Metadata, "source_url"), assetpkg.MetadataString(asset.Metadata, "source_video_id"))
+	}
 	if sourceVideoID == "" {
 		sourceVideoID = parseSourceVideoID(asset.YouTubeURL, asset.YouTubeVideoID)
 	}
-	destination := assetpkg.MetadataString(asset.Metadata, "destination")
+	destination := asset.Destination
 	if destination == "" {
-		destination = string(asset.Source)
+		destination = assetpkg.MetadataString(asset.Metadata, "destination")
 	}
-	sourceProvider := assetpkg.MetadataString(asset.Metadata, "source_provider")
+	// PR 6 (July 2026): removed the legacy fall-back to `string(asset.Source)`
+	// for destination / source_provider / origin. The pre-PR-6 airlock
+	// silently filled these from asset.Source as a "make sure we have
+	// SOMETHING" default — exactly the godlike/07 NO-FAKE-AVAILABILITY
+	// placeholder-string anti-pattern the new spec forbids. Callers that
+	// want destination / source_provider / origin MUST set them
+	// explicitly via top-level AssetData fields or MetadataJSON.
+	sourceProvider := asset.SourceProvider
+	if sourceProvider == "" {
+		sourceProvider = assetpkg.MetadataString(asset.Metadata, "source_provider")
+	}
 	if sourceProvider == "" {
 		sourceProvider = assetpkg.MetadataString(asset.Metadata, "origin_provider")
 	}
-	if sourceProvider == "" {
-		sourceProvider = string(asset.Source)
-	}
-	origin := assetpkg.MetadataString(asset.Metadata, "origin")
+	origin := asset.Origin
 	if origin == "" {
-		origin = inferAssetOrigin(string(asset.Source), sourceProvider, assetpkg.MetadataString(asset.Metadata, "origin"))
+		origin = assetpkg.MetadataString(asset.Metadata, "origin")
 	}
-	event := assetpkg.MetadataString(asset.Metadata, "event")
-	round := assetpkg.MetadataInt(asset.Metadata, "round")
-	scene := assetpkg.MetadataString(asset.Metadata, "scene")
-	subject := assetpkg.MetadataString(asset.Metadata, "subject")
+	event := asset.Event
+	if event == "" {
+		event = assetpkg.MetadataString(asset.Metadata, "event")
+	}
+	round := asset.Round
+	if round == 0 {
+		round = assetpkg.MetadataInt(asset.Metadata, "round")
+	}
+	scene := asset.Scene
+	if scene == "" {
+		scene = assetpkg.MetadataString(asset.Metadata, "scene")
+	}
+	subject := asset.Subject
+	if subject == "" {
+		subject = assetpkg.MetadataString(asset.Metadata, "subject")
+	}
 	semanticTitle := assetpkg.MetadataString(asset.Metadata, "semantic_title")
 	if semanticTitle == "" {
 		semanticTitle = buildSemanticTitle(title, event, round, scene, subject)
@@ -93,7 +127,10 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	sourceTags := assetpkg.MetadataStringSlice(asset.Metadata, "source_tags")
 	clipTags := assetpkg.MetadataStringSlice(asset.Metadata, "clip_tags")
 	searchKeywords := assetpkg.MetadataStringSlice(asset.Metadata, "search_keywords")
-	entities := assetpkg.MetadataStringSlice(asset.Metadata, "entities")
+	entities := asset.Entities
+	if len(entities) == 0 {
+		entities = assetpkg.MetadataStringSlice(asset.Metadata, "entities")
+	}
 	if len(entities) == 0 {
 		entities = mergeStringSlices(nil, people, speakers, mentionedPeople)
 	}
@@ -101,7 +138,10 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	if asset.DurationMs > 0 {
 		durationSec = int(asset.DurationMs / 1000)
 	}
-	policyVersion := assetpkg.MetadataString(asset.Metadata, "policy_version")
+	policyVersion := asset.PolicyVersion
+	if policyVersion == "" {
+		policyVersion = assetpkg.MetadataString(asset.Metadata, "policy_version")
+	}
 	if policyVersion == "" {
 		policyVersion = asset.IndexVersion
 	}
@@ -161,11 +201,11 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			Entities:         entities,
 			Hook:             assetpkg.MetadataString(asset.Metadata, "hook"),
 			SearchVisibility: assetpkg.MetadataString(asset.Metadata, "search_visibility"),
-			JobID:            assetpkg.MetadataString(asset.Metadata, "job_id"),
-			WorkflowID:       assetpkg.MetadataString(asset.Metadata, "workflow_id"),
-			RunFingerprint:   assetpkg.MetadataString(asset.Metadata, "run_fingerprint"),
-			ChunkIndex:       assetpkg.MetadataInt(asset.Metadata, "chunk_index"),
-			TotalChunks:      assetpkg.MetadataInt(asset.Metadata, "total_chunks"),
+			JobID:            firstNonEmpty(asset.JobID, assetpkg.MetadataString(asset.Metadata, "job_id")),
+			WorkflowID:       firstNonEmpty(asset.WorkflowID, assetpkg.MetadataString(asset.Metadata, "workflow_id")),
+			RunFingerprint:   firstNonEmpty(asset.RunFingerprint, assetpkg.MetadataString(asset.Metadata, "run_fingerprint")),
+			ChunkIndex:       intOrFallback(asset.ChunkIndex, assetpkg.MetadataInt(asset.Metadata, "chunk_index")),
+			TotalChunks:      intOrFallback(asset.TotalChunks, assetpkg.MetadataInt(asset.Metadata, "total_chunks")),
 			PolicyVersion:    policyVersion,
 			DrivePath:        drivePath,
 			IndexingStatus:   indexingStatus,
@@ -243,25 +283,6 @@ func buildSemanticTitle(title, event string, round int, scene, subject string) s
 	return strings.Join(dedupTrimmedStrings(parts...), " ")
 }
 
-func inferAssetOrigin(source, provider, explicit string) string {
-	if explicit != "" {
-		return explicit
-	}
-	lower := strings.ToLower(strings.TrimSpace(provider))
-	switch {
-	case lower == "generated" || lower == "generated_image" || strings.Contains(lower, "dall-e") || strings.Contains(lower, "midjourney") || strings.Contains(lower, "stable-diffusion"):
-		return "generated"
-	case source == "image" && lower != "":
-		return "generated"
-	case source == "generated_image":
-		return "generated"
-	case source == "stock", source == "youtube", source == "artlist", source == "voiceover":
-		return "retrieved"
-	default:
-		return source
-	}
-}
-
 func dedupTrimmedStrings(values ...string) []string {
 	out := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -336,6 +357,26 @@ func cleanDrivePath(path string) string {
 		return ""
 	}
 	return filepath.ToSlash(path)
+}
+
+// intOrFallback returns the top-level AssetData field if non-zero,
+// otherwise the MetadataJSON-derived fallback (godlike/06 SSOT
+// airlock precedence contract for int fields). The canonical
+// firstNonEmpty helper (in payload_builder.go) handles the same
+// contract for strings; the int counterpart uses 0 as the "not set"
+// sentinel.
+//
+// Caveat (forward-pointer PR-ASSETDATA-INT-SENTINEL): for int
+// fields where 0 is a legitimate value (e.g. ChunkIndex=0 for the
+// first chunk), a caller that explicitly sets top-level=0 and also
+// has a stale Metadata entry will get the Metadata value. Acceptable
+// for the current state; a future PR can swap to a pointer-based
+// sentinel if the conflict becomes real.
+func intOrFallback(top, fallback int) int {
+	if top != 0 {
+		return top
+	}
+	return fallback
 }
 
 // AssetToIndexDocument is the canonical Mapper airlock (PR 6). Builds

@@ -48,9 +48,15 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	sourceURL := firstNonEmpty(doc.Metadata.SourceURL, doc.Metadata.YouTubeURL)
 	sourceVideoID := firstNonEmpty(doc.Metadata.SourceVideoID, doc.Metadata.YouTubeID)
 	name := firstNonEmpty(doc.Metadata.Name, doc.Metadata.Title, doc.Metadata.SemanticTitle, doc.AssetID)
-	destination := firstNonEmpty(doc.Metadata.Destination, doc.Metadata.Source)
-	origin := firstNonEmpty(doc.Metadata.Origin, inferAssetOrigin(string(doc.Metadata.Source), doc.Metadata.SourceProvider, ""))
-	sourceProvider := firstNonEmpty(doc.Metadata.SourceProvider, doc.Metadata.Source)
+	// PR 6 (July 2026): removed the legacy fall-back to `doc.Metadata.Source`
+	// for destination / source_provider / origin. The pre-PR-6 builder
+	// silently filled these from asset.Source as a "make sure we have
+	// SOMETHING" default — exactly the godlike/07 NO-FAKE-AVAILABILITY
+	// placeholder-string anti-pattern. Callers that want these fields MUST
+	// set them explicitly via top-level AssetData fields or MetadataJSON.
+	destination := doc.Metadata.Destination
+	origin := doc.Metadata.Origin
+	sourceProvider := doc.Metadata.SourceProvider
 	entities := mergeStringSlices(doc.Metadata.Entities, doc.Metadata.People, doc.Metadata.Speakers, doc.Metadata.MentionedPeople)
 	if len(entities) == 0 {
 		entities = mergeStringSlices(doc.Metadata.People, doc.Metadata.Topics, doc.Metadata.SearchKeywords)
