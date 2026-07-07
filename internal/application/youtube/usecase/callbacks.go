@@ -125,11 +125,11 @@ func (s *Service) TranscribeAudio(ctx context.Context, localPath string) (string
 	return s.whisper.TranscribeAudio(ctx, localPath)
 }
 
-func (s *Service) DriveUploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtubeports.UploadResultDTO, bool, error) {
+func (s *Service) DriveUploadFileIfChanged(ctx context.Context, localPath, folderID, filename, group, subject string) (*youtubeports.UploadResultDTO, bool, error) {
 	if isUnavailablePort(s.driveFolderMgr) {
 		return &youtubeports.UploadResultDTO{}, false, fmt.Errorf("youtube: drive folder manager not wired")
 	}
-	return s.driveFolderMgr.UploadFileIfChanged(ctx, localPath, folderID, filename)
+	return s.driveFolderMgr.UploadFileIfChanged(ctx, localPath, folderID, filename, group, subject)
 }
 
 func (s *Service) DriveGetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {

@@ -133,7 +133,13 @@ type VideoMetadataFetcherPort interface {
 
 type DriveFolderManagerPort interface {
 	GetOrCreateFolder(ctx context.Context, channelName, parentFolderID string) (string, error)
-	UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*UploadResultDTO, bool, error)
+	// UploadFileIfChanged uploads a local file to the resolved Drive folder.
+	// group and subject are the semantic-location fields the canonical
+	// delivery.Publisher needs for YouTubeClipPath path-building
+	// (group = channel/category, subject = video ID). Legacy callers
+	// that use drive.Admin directly may pass empty strings — the admin
+	// path ignores them.
+	UploadFileIfChanged(ctx context.Context, localPath, folderID, filename, group, subject string) (*UploadResultDTO, bool, error)
 }
 
 type FolderMemoryPort interface {

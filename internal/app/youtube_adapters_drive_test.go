@@ -104,7 +104,7 @@ func (r *ytDriveRecordingPublisher) Close() error { return nil }
 // the supplied publisher (logs via zap.NewNop per the canonical
 // composition root convention).
 func newYouTubePubAdapter(pub *ytDriveRecordingPublisher) *YouTubePublisherDriveAdapter {
-	return NewYouTubePublisherDriveAdapter(pub, zap.NewNop())
+	return NewYouTubePublisherDriveAdapter(pub, nil, zap.NewNop())
 }
 
 // TestGetOrCreateFolder_GroupSubjectSplit_NoRootOverride pins the
@@ -157,7 +157,7 @@ func TestGetOrCreateFolder_GroupSubjectSplit_NoRootOverride(t *testing.T) {
 // surface can act on it.
 func TestGetOrCreateFolder_PublisherNil_FailsClosed(t *testing.T) {
 	t.Parallel()
-	a := NewYouTubePublisherDriveAdapter(nil, zap.NewNop())
+	a := NewYouTubePublisherDriveAdapter(nil, nil, zap.NewNop())
 
 	got, err := a.GetOrCreateFolder(context.Background(), "boxing-channels", "legacy-parent")
 	if err == nil {
@@ -237,6 +237,8 @@ func TestUploadFileIfChanged_NoRootOverride_PreservesConflictPolicy(t *testing.T
 		"/tmp/clip-yt_abc123_0_30_v1.mp4",
 		"resolved-folder-id",
 		"clip-yt_abc123_0_30_v1.mp4",
+		"boxing-channels",
+		"abc123",
 	)
 	if err != nil {
 		t.Fatalf("UploadFileIfChanged err: %v", err)
@@ -272,6 +274,13 @@ func TestUploadFileIfChanged_NoRootOverride_PreservesConflictPolicy(t *testing.T
 	if pub.lastPublishReq.RootFolderOverride != "" {
 		t.Fatalf("RootFolderOverride = %q, want \"\" (legacy bypass retired per PR-P12)", pub.lastPublishReq.RootFolderOverride)
 	}
+	// Group + Subject MUST be propagated for YouTubeClipPath path-building.
+	if pub.lastPublishReq.Group != "boxing-channels" {
+		t.Errorf("Group = %q, want %q (channel name must propagate to PublishRequest)", pub.lastPublishReq.Group, "boxing-channels")
+	}
+	if pub.lastPublishReq.Subject != "abc123" {
+		t.Errorf("Subject = %q, want %q (video ID must propagate to PublishRequest)", pub.lastPublishReq.Subject, "abc123")
+	}
 	// ConflictPolicy MUST be preserved (Publisher's content-dedupe
 	// via hash comparison is the canonical replacement for the
 	// legacy Uploader.UploadFileIfChanged filename-based lookup).
@@ -298,7 +307,7 @@ func TestUploadFileIfChanged_SkippedBoolDerivesFromAction(t *testing.T) {
 		t.Parallel()
 		pub := &ytDriveRecordingPublisher{publishAction: delivery.UploadOutcomeSkipped}
 		a := newYouTubePubAdapter(pub)
-		res, skipped, err := a.UploadFileIfChanged(context.Background(), "/tmp/clip.mp4", "folder", "clip.mp4")
+		res, skipped, err := a.UploadFileIfChanged(context.Background(), "/tmp/clip.mp4", "folder", "clip.mp4", "group", "subj")
 		if err != nil {
 			t.Fatalf("UploadFileIfChanged err: %v", err)
 		}
@@ -314,7 +323,7 @@ func TestUploadFileIfChanged_SkippedBoolDerivesFromAction(t *testing.T) {
 		t.Parallel()
 		pub := &ytDriveRecordingPublisher{publishAction: delivery.UploadOutcomeCreated}
 		a := newYouTubePubAdapter(pub)
-		_, skipped, err := a.UploadFileIfChanged(context.Background(), "/tmp/clip.mp4", "folder", "clip.mp4")
+		_, skipped, err := a.UploadFileIfChanged(context.Background(), "/tmp/clip.mp4", "folder", "clip.mp4", "group", "subj")
 		if err != nil {
 			t.Fatalf("UploadFileIfChanged err: %v", err)
 		}
