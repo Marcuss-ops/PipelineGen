@@ -24,6 +24,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -39,6 +40,15 @@ type YouTubeClipService interface {
 	Extract(ctx context.Context, req *yttypes.ExtractRequest) (*yttypes.ExtractResponse, error)
 	GetOrCreateChannelFolder(ctx context.Context, channelName, parentFolderID string) (string, error)
 }
+
+// Compile-time pin (godlike/06 SSOT drift-prevention):
+// *youtube.Service MUST keep satisfying YouTubeClipService. Any future
+// signature drift on either side surfaces as a build failure here
+// rather than a runtime panic at the first /api/clips/* call. The
+// pin is also the canonical SOLE place that asserts the type —
+// downstream callers (composition root + test fixtures) only need
+// to satisfy the interface, not re-import this file.
+var _ YouTubeClipService = (*youtube.Service)(nil)
 
 // YouTubeClipHandler owns the HTTP transport for YouTube clip operations:
 // download, info, advanced search, diagnostics, and stats. Construction
@@ -179,31 +189,36 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 		if groupName != "" {
 			channelFolderID, err := h.service.GetOrCreateChannelFolder(c.Request.Context(), groupName, currentFolderID)
 			if err != nil {
-				apiutil.InternalError(c, fmt.Errorf("failed to resolve channel folder %q: %w", groupName, err))
-				return
-			}
-			if channelFolderID != currentFolderID {
+				// Fall back gracefully: the worker will resolve the folder
+				// during extraction. This matches the pre-Pattern-12
+				// behavior where errors were silently swallowed.
+				h.log.Warn("channel folder resolution failed; falling back to root folder",
+					zap.String("group", groupName),
+					zap.String("root_folder", currentFolderID),
+					zap.Error(err))
+			} else if channelFolderID != currentFolderID {
 				h.log.Info("pre-resolved channel Drive subfolder from API request",
 					zap.String("group", groupName),
 					zap.String("root_folder", currentFolderID),
 					zap.String("channel_folder_id", channelFolderID))
+				currentFolderID = channelFolderID
 			}
-			currentFolderID = channelFolderID
 		}
 
 		if createSubfolder && subfolderName != "" {
 			subfolderFolderID, err := h.service.GetOrCreateChannelFolder(c.Request.Context(), subfolderName, currentFolderID)
 			if err != nil {
-				apiutil.InternalError(c, fmt.Errorf("failed to resolve extraction subfolder %q: %w", subfolderName, err))
-				return
-			}
-			if subfolderFolderID != currentFolderID {
+				h.log.Warn("extraction subfolder resolution failed; falling back to current folder",
+					zap.String("subfolder", subfolderName),
+					zap.String("parent_folder", currentFolderID),
+					zap.Error(err))
+			} else if subfolderFolderID != currentFolderID {
 				h.log.Info("pre-resolved extraction Drive leaf folder from API request",
 					zap.String("subfolder", subfolderName),
 					zap.String("parent_folder", currentFolderID),
 					zap.String("leaf_folder_id", subfolderFolderID))
+				currentFolderID = subfolderFolderID
 			}
-			currentFolderID = subfolderFolderID
 			req.Destination.CreateSubfolder = true
 		}
 
