@@ -56,10 +56,14 @@ type fakeReuploadPublisher struct {
 	resolveFolderErr error
 
 	lastPublishRequest delivery.PublishRequest
+	lastResolveRequest delivery.PublishRequest
+	calls              int
+	resolveFolderCalls int
 }
 
 func (p *fakeReuploadPublisher) Publish(ctx context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
 	p.lastPublishRequest = req
+	p.calls++
 	if p.publishErr != nil {
 		return nil, p.publishErr
 	}
@@ -67,6 +71,8 @@ func (p *fakeReuploadPublisher) Publish(ctx context.Context, req delivery.Publis
 }
 
 func (p *fakeReuploadPublisher) ResolveFolder(ctx context.Context, req delivery.PublishRequest) (string, error) {
+	p.lastResolveRequest = req
+	p.resolveFolderCalls++
 	if p.resolveFolderErr != nil {
 		return "", p.resolveFolderErr
 	}
@@ -247,6 +253,236 @@ func TestReuploadExecute_HappyPath_Populates5CanonicalFieldsOnDispatchedAsset(t 
 	}
 	if pub.lastPublishRequest.LocalPath != stubAsset.LocalPath() {
 		t.Errorf("pub.lastPublishRequest.LocalPath = %q, want %q", pub.lastPublishRequest.LocalPath, stubAsset.LocalPath())
+	}
+}
+
+// ── PR-P12-CLIPS-AND-BOOKS (July 2026) — auto-derivation audit pins ──────
+
+// TestReuploadExecute_PublishesWithAutoDerivedFields pins the
+// canonical auto-derivation contract on ReuploadUseCase.Execute.
+// The Publisher receives:
+//
+//	delivery.PublishRequest{
+//	    Destination: destKey,                              // artlist/stock/clip per ReuploadRequest.Source
+//	    ProjectID:   strings.TrimSpace(string(clip.Source)), // auto-derive from clip.Source
+//	    Group:       strings.TrimSpace(clip.Group),          // explicit caller-provided
+//	    Subject:     filename,                               // per-file identity (mirrors soundeffect/handler.go)
+//	    ConflictPolicy: delivery.ConflictOverwrite,
+//	    // RootFolderOverride RETIRED — Publisher resolves target folder
+//	    // via DestinationRegistry + DestinationPolicy.RootFolderID.
+//	}
+//
+// Pre-PR-P12 the code passed `RootFolderOverride: folderID` (legacy
+// bypass) and `Subject: ""` (TODO F2.9+). Post-PR-P12 the call routes
+// via canonical semantic fields only and the per-file identity is
+// captured in Subject (filename).
+func TestReuploadExecute_PublishesWithAutoDerivedFields(t *testing.T) {
+	t.Parallel()
+
+	stubAsset, tmpDir := makeTempAsset(t, "clip-p12-auto", "clips", "boxing")
+	pub := &fakeReuploadPublisher{
+		publishResult: &delivery.PublishResult{
+			FileID:      "drive-file-p12-auto",
+			WebViewLink: "https://drive.google.com/file/d/drive-file-p12-auto/view",
+			Action:      delivery.PublishActionCreated,
+		},
+	}
+	repo := &fakeReuploadAssetRepo{stub: stubAsset}
+	disp := &fakeReuploadDispatcher{}
+
+	uc := NewReuploadUseCase(
+		repo, pub, disp,
+		map[string]ReuploadFolderRoot{
+			"clips": {RootID: "root-folder-p12", PathMarker: tmpDir},
+		},
+		zap.NewNop(),
+	)
+
+	if _, err := uc.Execute(context.Background(), ReuploadRequest{
+		Source: "clips",
+		ClipID: "clip-p12-auto",
+	}); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	req := pub.lastPublishRequest
+	if req.Destination != delivery.DestinationYouTubeClip {
+		t.Errorf("Destination = %q, want %q (Source=\"clips\" → DestinationYouTubeClip)", req.Destination, delivery.DestinationYouTubeClip)
+	}
+	// Auto-derivation contract: ProjectID = clip.Source
+	if req.ProjectID != "clips" {
+		t.Errorf("ProjectID = %q, want %q (auto-derived from clip.Source)", req.ProjectID, "clips")
+	}
+	// Group = clip.Group (explicit caller-provided)
+	if req.Group != "boxing" {
+		t.Errorf("Group = %q, want %q (clip.Group verbatim)", req.Group, "boxing")
+	}
+	// Auto-derivation contract: Subject = filename (per-file identity)
+	if req.Subject != "f29-video.mp4" {
+		t.Errorf("Subject = %q, want %q (filename per-file identity)", req.Subject, "f29-video.mp4")
+	}
+	// godlike/06 SSOT: RootFolderOverride RETIRED
+	if req.RootFolderOverride != "" {
+		t.Errorf("RootFolderOverride = %q, want \"\" (RETIRED per PR-P12-CLIPS-AND-BOOKS)", req.RootFolderOverride)
+	}
+	// ConflictPolicy preserved (reupload semantics)
+	if req.ConflictPolicy != delivery.ConflictOverwrite {
+		t.Errorf("ConflictPolicy = %d, want %d (ConflictOverwrite)", req.ConflictPolicy, delivery.ConflictOverwrite)
+	}
+}
+
+// TestReuploadExecute_ArtlistSourceSetsArtlistDestination pins the
+// per-source destination mapping: ReuploadRequest.Source="artlist"
+// → Destination=Artlist + ProjectID="artlist" + auto-derived fields.
+// This is the cross-source routing surface that the canonical
+// DestinationRegistry consumes; the test ensures the auto-derivation
+// chain (Source → Destination + ProjectID) works for non-clip
+// sources too.
+func TestReuploadExecute_ArtlistSourceSetsArtlistDestination(t *testing.T) {
+	t.Parallel()
+
+	stubAsset, tmpDir := makeTempAsset(t, "clip-p12-artlist", "artlist", "italy")
+	pub := &fakeReuploadPublisher{
+		publishResult: &delivery.PublishResult{
+			FileID:      "drive-file-p12-artlist",
+			WebViewLink: "https://drive.google.com/file/d/drive-file-p12-artlist/view",
+			Action:      delivery.PublishActionCreated,
+		},
+	}
+	repo := &fakeReuploadAssetRepo{stub: stubAsset}
+	disp := &fakeReuploadDispatcher{}
+
+	uc := NewReuploadUseCase(
+		repo, pub, disp,
+		map[string]ReuploadFolderRoot{
+			"artlist": {RootID: "root-folder-artlist", PathMarker: tmpDir},
+		},
+		zap.NewNop(),
+	)
+
+	if _, err := uc.Execute(context.Background(), ReuploadRequest{
+		Source: "artlist",
+		ClipID: "clip-p12-artlist",
+	}); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	req := pub.lastPublishRequest
+	if req.Destination != delivery.DestinationArtlist {
+		t.Errorf("Destination = %q, want %q (Source=\"artlist\" → DestinationArtlist)", req.Destination, delivery.DestinationArtlist)
+	}
+	// ProjectID auto-derives from clip.Source — for an artlist clip,
+	// the canonical Project surface is "artlist".
+	if req.ProjectID != "artlist" {
+		t.Errorf("ProjectID = %q, want %q (auto-derived from clip.Source)", req.ProjectID, "artlist")
+	}
+	if req.Subject != "f29-video.mp4" {
+		t.Errorf("Subject = %q, want %q (per-file identity)", req.Subject, "f29-video.mp4")
+	}
+	if req.RootFolderOverride != "" {
+		t.Errorf("RootFolderOverride = %q, want \"\" (RETIRED)", req.RootFolderOverride)
+	}
+}
+
+// TestReuploadResolveFolder_OmitsSubjectAndOverride pins the
+// canonical dynamic-folder-resolution surface (resolveFolder). The
+// Publisher.ResolveFolder call MUST carry Group=seg, no Subject
+// (folder resolution operates on Group only — Subject is per-file
+// identity, resolved at the Publish call site), and no
+// RootFolderOverride (RETIRED — Publisher's PathBuilder walks the
+// canonical hierarchy for DestinationYouTubeClip using only Group).
+func TestReuploadResolveFolder_OmitsSubjectAndOverride(t *testing.T) {
+	t.Parallel()
+
+	// Use a clip with a non-empty FolderID to skip the resolveFolder
+	// path; we want to exercise resolveFolder explicitly, so use
+	// FolderID="" and a localPath that contains the PathMarker.
+	tmpDir := t.TempDir()
+	localPath := tmpDir + "/italy/mike-tyson/sub.mp4"
+	// Ensure parent directories exist before writing the file
+	// (t.TempDir() only creates the root).
+	if err := os.MkdirAll(tmpDir+"/italy/mike-tyson", 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(localPath, []byte("test"), 0o644); err != nil {
+		t.Fatalf("write tiny file: %v", err)
+	}
+	clip := &asset.Asset{
+		ID:       "clip-p12-resolve",
+		Name:     "resolve test",
+		Filename: "sub.mp4",
+		Source:   asset.Source("clips"),
+		Group:    "italy",
+	}
+	clip.SetLocalPath(localPath)
+	// FolderID intentionally left empty so resolveFolder is exercised.
+
+	pub := &fakeReuploadPublisher{
+		publishResult: &delivery.PublishResult{
+			FileID:      "drive-file-p12-resolve",
+			WebViewLink: "https://drive.google.com/file/d/drive-file-p12-resolve/view",
+			Action:      delivery.PublishActionCreated,
+		},
+		// ResolveFolder echoes back the Group so the loop advances
+		// through segments deterministically.
+		resolveFolderID: "resolved-id",
+	}
+	repo := &fakeReuploadAssetRepo{stub: clip}
+	disp := &fakeReuploadDispatcher{}
+
+	uc := NewReuploadUseCase(
+		repo, pub, disp,
+		map[string]ReuploadFolderRoot{
+			"clips": {RootID: "root-folder-p12", PathMarker: tmpDir},
+		},
+		zap.NewNop(),
+	)
+
+	if _, err := uc.Execute(context.Background(), ReuploadRequest{
+		Source: "clips",
+		ClipID: "clip-p12-resolve",
+	}); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	// Inspect the post-publish clip + the per-segment ResolveFolder
+	// surface via the strengthened fakeReuploadPublisher stub (which
+	// captures lastResolveRequest + resolveFolderCalls per code-reviewer
+	// round-1 feedback).
+	if pub.calls == 0 {
+		t.Fatal("Publisher.Publish was not called; resolveFolder path is broken")
+	}
+	// The post-publish clip should carry the resolved folder.
+	if clip.FolderID() == "" {
+		t.Error("clip.FolderID is empty after resolveFolder path; the resolved folder was not propagated to the clip")
+	}
+	// The Publish call must carry the canonical auto-derivation (no
+	// RootFolderOverride, Subject=filename).
+	req := pub.lastPublishRequest
+	if req.RootFolderOverride != "" {
+		t.Errorf("Publish.RootFolderOverride = %q, want \"\" (RETIRED)", req.RootFolderOverride)
+	}
+	if req.Subject != "sub.mp4" {
+		t.Errorf("Publish.Subject = %q, want %q (per-file identity)", req.Subject, "sub.mp4")
+	}
+
+	// Per-segment ResolveFolder pin (code-reviewer round-1 strengthening):
+	// the resolveFolder loop runs once per segment under tmpDir/italy/mike-tyson/,
+	// producing 2 calls ("italy" then "mike-tyson"). The last call carries
+	// Group="mike-tyson", Subject="" (intentionally OMITTED — folder
+	// resolution operates on Group only), and RootFolderOverride=""
+	// (RETIRED). PR-P12-CLIPS-AND-BOOKS locks the contract end-to-end.
+	if pub.resolveFolderCalls < 2 {
+		t.Errorf("resolveFolderCalls = %d, want >= 2 (one per segment)", pub.resolveFolderCalls)
+	}
+	if pub.lastResolveRequest.Group != "mike-tyson" {
+		t.Errorf("lastResolveRequest.Group = %q, want %q (last segment)", pub.lastResolveRequest.Group, "mike-tyson")
+	}
+	if pub.lastResolveRequest.Subject != "" {
+		t.Errorf("lastResolveRequest.Subject = %q, want \"\" (folder resolution OMITTED Subject)", pub.lastResolveRequest.Subject)
+	}
+	if pub.lastResolveRequest.RootFolderOverride != "" {
+		t.Errorf("lastResolveRequest.RootFolderOverride = %q, want \"\" (RETIRED)", pub.lastResolveRequest.RootFolderOverride)
 	}
 }
 
