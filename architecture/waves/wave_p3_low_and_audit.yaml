@@ -2144,12 +2144,25 @@ PR-P12-DRIVE-COMPLETION-2026-07-08:
         DestinationSoundEffectSidecar + Group=parent-folder.
         4 TDD cases in handler_test.go.
     - id: PR-P12-YOUTUBE-LEGACY-RETIRE
+      status: shipped
+      ship_sha: d5c5c167
+      ship_date: 2026-07-08
       deadline: 2026-08-08
       remediation: |
         Migrate YouTubePublisherDriveAdapter (2 sites) to semantic
         Group/Subject + composition-time ban on driveFolderMgrAdapter
         (or git-rm if zero live callers per rg).
         5 TDD cases in youtube_adapters_drive_test.go.
+      notes: |
+        2026-07-08 closure (commit d5c5c167): the dual-path concern
+        surfaced by code-reviewer M1+M2 of `0a7f7995` is closed — the
+        admin branch is RETIRED per godlike/07 minimum-blast-radius.
+        delivery.Publisher is now the SOLE canonical write seam for
+        YouTubeClipPath (Group + Subject always reach publisher.Publish).
+        Interface signature of DriveFolderManagerPort.UploadFileIfChanged
+        stays at 5-string so the 4 caller files do NOT need updates.
+        Composition root in build_bundles_domain.go dropped the
+        drive.Admin arg from NewYouTubePublisherDriveAdapter.
     - id: PR-P12-CLIPS-AND-BOOKS
       deadline: 2026-08-08
       remediation: |
