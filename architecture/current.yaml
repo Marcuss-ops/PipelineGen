@@ -7431,7 +7431,9 @@
       deadline: 2026-08-22
     - id: PR-SPLIT-QDRANT-REINDEX
       owner_capability: cmd/admin
-      status: pending
+      status: shipped
+      ship_sha: 1dd25bf89ef6d823d12a6dd3771906ac7aaa0e37
+      ship_date: 2026-07-07
       deadline: 2026-08-22
     - id: PR-SPLIT-DRIVE-FOLDER-MANAGER
       owner_capability: internal/infrastructure/drive

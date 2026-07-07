@@ -6,7 +6,7 @@
 // can probe with errors.Is() / errors.As() and act on the specific
 // failure mode (retry vs. terminal vs. re-think).
 //
-// Sentinel taxonomy (5 sentinels, disjoint semantic classes):
+// Sentinel taxonomy (8 sentinels, disjoint semantic classes):
 //
 //  1. ErrEnrichmentHandlerNotConfigured — composition-time wiring gap.
 //     Returned from HandleJob when the handler is constructed without
@@ -41,13 +41,13 @@
 //     likely indicates a deeper infrastructure problem; retry would
 //     mask it. Terminal on first failure.
 //
-// All 5 sentinels are package-level `var Err...` declarations so
+// All 8 sentinels are package-level `var Err...` declarations so
 // callers can probe via errors.Is(err, enrichment.ErrXxx) from any
 // package without import-side alias gymnastics. Dual-%w wraps in the
 // handler preserve the chain for both errors.Is (sentinel) and
 // errors.As (typed envelope) probes (Go 1.20+).
 //
-// The 5-sentinel taxonomy matches the canonical P0-typed-error
+// The 8-sentinel taxonomy matches the canonical P0-typed-error
 // surface shipped across the project (PR-COMPLETE-WORKER-BROAD-FIX +
 // PR-VO-TYPED-PRIMITIVES + PR-ARTLIST-FAKE-AVAILABILITY precedent):
 // composition-time + chunk-lookup + LLM-unavailable + LLM-bad-response
