@@ -156,6 +156,8 @@ type ChunkState struct {
 
 	Title string // human label propagated into metadata.json
 
+	Description string // human-readable English summary propagated into metadata.json
+
 	SHA256 string // hex-encoded SHA-256 of LocalPath (populated by ComputeAndFillSHA256)
 
 	SizeBytes int64 // os.Stat(LocalPath).Size() at hash time

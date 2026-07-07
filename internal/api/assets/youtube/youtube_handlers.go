@@ -8,9 +8,12 @@
 package youtube
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -21,12 +24,21 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
+
+// YouTubeClipService is the narrow service surface the HTTP handler needs.
+// *youtube.Service satisfies this interface.
+type YouTubeClipService interface {
+	Config() yttypes.RuntimeConfig
+	GetVideoInfo(ctx context.Context, url string) (*ytports.DownloaderMetadata, error)
+	Extract(ctx context.Context, req *yttypes.ExtractRequest) (*yttypes.ExtractResponse, error)
+	GetOrCreateChannelFolder(ctx context.Context, channelName, parentFolderID string) (string, error)
+}
 
 // YouTubeClipHandler owns the HTTP transport for YouTube clip operations:
 // download, info, advanced search, diagnostics, and stats. Construction
@@ -37,7 +49,7 @@ import (
 // idempotency middleware instance installed on POST /clips/process
 // (the only Write route in this handler). Read routes fall through.
 type YouTubeClipHandler struct {
-	service     *youtube.Service
+	service     YouTubeClipService
 	log         *zap.Logger
 	jobsSvc     jobservice.Service
 	clipsRepo   ytports.ClipStorePort
@@ -77,7 +89,7 @@ type YouTubeClipHandler struct {
 // (the only Write route in the handler). Read routes (info, search,
 // diagnostics, stats) are unchanged. nil disables idempotency for
 // test fixtures.
-func NewYouTubeClipHandler(service *youtube.Service, log *zap.Logger, jobsSvc jobservice.Service, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchAggregator *providers.SearchAggregator) *YouTubeClipHandler {
+func NewYouTubeClipHandler(service YouTubeClipService, log *zap.Logger, jobsSvc jobservice.Service, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchAggregator *providers.SearchAggregator) *YouTubeClipHandler {
 	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware
@@ -154,20 +166,50 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 		return
 	}
 
-	// ── Pre-resolve per-Group (channel) Drive subfolder ──────────────
-	// When the caller provides a root folder_id and a group name,
-	// look up or create the channel subfolder and use its ID instead
-	// of the root. This only runs in the HTTP handler path (direct API
-	// calls). The monitor pre-resolves separately in downloadClip()
-	// before calling Extract directly on the YouTube service.
-	if req.Destination != nil && req.Destination.FolderID != "" && req.Destination.Group != "" {
-		channelFolderID, err := h.service.GetOrCreateChannelFolder(c.Request.Context(), req.Destination.Group, req.Destination.FolderID)
-		if err == nil && channelFolderID != req.Destination.FolderID {
-			h.log.Info("pre-resolved channel Drive subfolder from API request",
-				zap.String("group", req.Destination.Group),
-				zap.String("root_folder", req.Destination.FolderID),
-				zap.String("channel_folder_id", channelFolderID))
-			req.Destination.FolderID = channelFolderID
+	// ── Pre-resolve the Drive folder hierarchy ───────────────────────
+	// Direct API calls can ask for a root folder plus a logical group
+	// and optional subfolder. The endpoint now materializes both levels
+	// before enqueueing so the worker receives a payload with the final
+	// Drive folder ID and the canonical folder path.
+	if req.Destination != nil && req.Destination.FolderID != "" {
+		videoID, _ := urlutil.ExtractVideoID(req.URL)
+		groupName, subfolderName, folderPath, createSubfolder := normalizeExtractionDestination(req.Destination, videoID)
+		currentFolderID := req.Destination.FolderID
+
+		if groupName != "" {
+			channelFolderID, err := h.service.GetOrCreateChannelFolder(c.Request.Context(), groupName, currentFolderID)
+			if err != nil {
+				apiutil.InternalError(c, fmt.Errorf("failed to resolve channel folder %q: %w", groupName, err))
+				return
+			}
+			if channelFolderID != currentFolderID {
+				h.log.Info("pre-resolved channel Drive subfolder from API request",
+					zap.String("group", groupName),
+					zap.String("root_folder", currentFolderID),
+					zap.String("channel_folder_id", channelFolderID))
+			}
+			currentFolderID = channelFolderID
+		}
+
+		if createSubfolder && subfolderName != "" {
+			subfolderFolderID, err := h.service.GetOrCreateChannelFolder(c.Request.Context(), subfolderName, currentFolderID)
+			if err != nil {
+				apiutil.InternalError(c, fmt.Errorf("failed to resolve extraction subfolder %q: %w", subfolderName, err))
+				return
+			}
+			if subfolderFolderID != currentFolderID {
+				h.log.Info("pre-resolved extraction Drive leaf folder from API request",
+					zap.String("subfolder", subfolderName),
+					zap.String("parent_folder", currentFolderID),
+					zap.String("leaf_folder_id", subfolderFolderID))
+			}
+			currentFolderID = subfolderFolderID
+			req.Destination.CreateSubfolder = true
+		}
+
+		req.Destination.FolderID = currentFolderID
+		if folderPath != "" {
+			req.Destination.FolderPath = folderPath
 		}
 	}
 
@@ -239,6 +281,37 @@ func (h *YouTubeClipHandler) ExtractImportant(c *gin.Context) {
 	}, "YouTube clip extraction (LLM-driven) job enqueued."); ok {
 		return
 	}
+}
+
+// normalizeExtractionDestination resolves the canonical folder naming
+// pieces used by the clip extraction endpoint.
+func normalizeExtractionDestination(dest *yttypes.DestinationRequest, videoID string) (groupName, subfolderName, folderPath string, createSubfolder bool) {
+	if dest == nil {
+		return "", "", "", false
+	}
+	if rawGroup := strings.TrimSpace(dest.Group); rawGroup != "" {
+		groupName = pathutil.SafeFolderName(rawGroup)
+	}
+	if rawSubfolder := strings.TrimPrefix(strings.TrimSpace(dest.SubfolderName), "yt_"); rawSubfolder != "" {
+		subfolderName = pathutil.SafeFolderName(rawSubfolder)
+	}
+	createSubfolder = subfolderName != "" || strings.TrimSpace(dest.FolderID) == "" || groupName != "" || dest.CreateSubfolder
+	if createSubfolder && subfolderName == "" && strings.TrimSpace(videoID) != "" {
+		subfolderName = pathutil.SafeFolderName(strings.TrimPrefix(videoID, "yt_"))
+	}
+	parts := make([]string, 0, 2)
+	if groupName != "" {
+		parts = append(parts, groupName)
+	}
+	if subfolderName != "" && createSubfolder {
+		parts = append(parts, subfolderName)
+	}
+	if explicit := strings.TrimSpace(dest.FolderPath); explicit != "" {
+		folderPath = explicit
+	} else if len(parts) > 0 {
+		folderPath = path.Join(parts...)
+	}
+	return groupName, subfolderName, folderPath, createSubfolder
 }
 
 // Diagnostics returns YouTube clip module health and dependency status.

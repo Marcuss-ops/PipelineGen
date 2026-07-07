@@ -86,6 +86,7 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	if err != nil {
 		if errors.Is(err, ErrEntityExtractorUnavailable) {
 			return &PostProcessResult{
+				Changed:  true,
 				Warnings: []string{err.Error()},
 			}, nil
 		}
@@ -96,10 +97,12 @@ func (p *EntitiesProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		// "no entities" — produce an empty result with a
 		// warning so the caller sees the observation.
 		return &PostProcessResult{
+			Changed:  true,
 			Warnings: []string{"entities: backend returned no result"},
 		}, nil
 	}
 	return &PostProcessResult{
 		Entities: res,
+		Changed:  true,
 	}, nil
 }

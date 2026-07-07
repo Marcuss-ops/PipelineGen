@@ -127,6 +127,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			cs.SourceVideoID = plan.SourceVideoID
 			cs.StartSec = plan.StartSec
 			cs.EndSec = plan.EndSec
+			cs.Description = plan.Description
 		}
 		if explicitTimestamps {
 			cs.ArtifactID = TimestampArtifactID(fp, i, "video")
@@ -159,6 +160,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			SHA256:         cs.SHA256,
 			Requirement:    finalization.ArtifactRequirementRequired,
 			IdempotencyKey: idem + ":c" + strconv.Itoa(i),
+			Description:    cs.Description,
 			// DRIVE-IS-DRIVE (July 2026): RootFolderOverride REMOVED.
 			// Stock no longer passes FolderID as a Drive path override.
 			// The artifact publisher adapter derives Group/Subject from

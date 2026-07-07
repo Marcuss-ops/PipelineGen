@@ -79,7 +79,7 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 			FolderName:    "Round_7_Broner_barcolla",
 			Subfolder:     "Pacquiao_Vs_Broner/Round_7_Broner_barcolla/00-00-32_to_00-01-27",
 			FolderID:      "wf-123",
-			Clips:         []ClipSpec{{URL: "https://youtu.be/a", Title: "Round 1"}, {URL: "https://youtu.be/a", Title: "Round 2"}},
+			Clips:         []ClipSpec{{URL: "https://youtu.be/a", Title: "Round 1", Description: "Pacquiao fires the first clean left."}, {URL: "https://youtu.be/a", Title: "Round 2", Description: "Broner tries to reset and circle out."}},
 			ClipDuration:  10,
 			ChunkDuration: 10,
 			NoEffects:     true,
@@ -90,8 +90,8 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 		},
 		state: &runState{
 			Plan: []ClipPlan{
-				{SourceID: "https://youtu.be/a", StartSec: 32, EndSec: 51},
-				{SourceID: "https://youtu.be/a", StartSec: 67, EndSec: 91},
+				{SourceID: "https://youtu.be/a", StartSec: 32, EndSec: 51, Description: "Pacquiao fires the first clean left."},
+				{SourceID: "https://youtu.be/a", StartSec: 67, EndSec: 91, Description: "Broner tries to reset and circle out."},
 			},
 			ComposedPaths: []string{clip0, clip1},
 		},
@@ -108,11 +108,17 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 	if got := prep.artifacts[0].ArtifactID; got != "stock:run-fingerprint-123:timestamp:0:video" {
 		t.Fatalf("unexpected first artifact id: %q", got)
 	}
+	if got := prep.artifacts[0].Description; got != "Pacquiao fires the first clean left." {
+		t.Fatalf("unexpected first artifact description: %q", got)
+	}
 	if got := prep.artifacts[0].PathLeafName; got != "00-00-32_to_00-01-27" {
 		t.Fatalf("unexpected first artifact path leaf: %q", got)
 	}
 	if got := prep.artifacts[1].ArtifactID; got != "stock:run-fingerprint-123:timestamp:1:video" {
 		t.Fatalf("unexpected second artifact id: %q", got)
+	}
+	if got := prep.artifacts[1].Description; got != "Broner tries to reset and circle out." {
+		t.Fatalf("unexpected second artifact description: %q", got)
 	}
 	if got := prep.artifacts[1].PathLeafName; got != "00-00-32_to_00-01-27" {
 		t.Fatalf("unexpected second artifact path leaf: %q", got)

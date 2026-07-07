@@ -123,6 +123,36 @@ func TestToJobPayload_RoundTrip_ToStockRunPayload(t *testing.T) {
 	assert.Equal(t, cmd.Metadata.Extra, rp.Metadata.Extra)
 }
 
+func TestToJobPayload_RoundTrip_ClipDescriptions(t *testing.T) {
+	cmd := &StockCommand{
+		Clips: []ClipSpec{
+			{
+				Title:       "Round 1",
+				Description: "Pacquiao touches Broner with a probing left and resets.",
+				URL:         "https://www.youtube.com/watch?v=abc123",
+				StartSec:    32,
+				EndSec:      37,
+			},
+		},
+		TotalMinutes: 1,
+	}
+
+	payload := cmd.ToJobPayload()
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err, "ToJobPayload output must marshal cleanly")
+
+	var rp StockRunPayload
+	require.NoError(t, json.Unmarshal(raw, &rp),
+		"marshalled ToJobPayload output must unmarshal cleanly into StockRunPayload")
+
+	require.Len(t, rp.Clips, 1)
+	assert.Equal(t, cmd.Clips[0].Title, rp.Clips[0].Title)
+	assert.Equal(t, cmd.Clips[0].Description, rp.Clips[0].Description)
+	assert.Equal(t, cmd.Clips[0].URL, rp.Clips[0].URL)
+	assert.Equal(t, cmd.Clips[0].StartSec, rp.Clips[0].StartSec)
+	assert.Equal(t, cmd.Clips[0].EndSec, rp.Clips[0].EndSec)
+}
+
 // TestToJobPayload_EquivalentToLegacyStockPayloadToMap is the
 // invariant test the user requested: ToJobPayload() must produce
 // output equivalent to the (removed) legacy stockPayloadToMap helper

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -128,6 +129,7 @@ func publishedArtifact(assetID, sha256, fileID string) finalization.PublishedArt
 		SourceVersion:  1,
 		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: fmt.Sprintf("idem-%s", assetID),
+		Description:    "Pacquiao lands a clean left hand while Broner backs up.",
 		Location: finalization.AssetLocation{
 			Provider:     "drive",
 			FileID:       fileID,
@@ -207,6 +209,17 @@ func TestAssetTxFinalizer_RoundTrip(t *testing.T) {
 	// FASE 3b: new rows are PUBLISHED (not ACTIVE).
 	if lifecycleState != "PUBLISHED" {
 		t.Errorf("lifecycle_state = %q, want PUBLISHED", lifecycleState)
+	}
+	var metadataJSON string
+	err = tx.QueryRowContext(ctx,
+		`SELECT metadata_json FROM media_assets WHERE id = ?`,
+		"asset-001",
+	).Scan(&metadataJSON)
+	if err != nil {
+		t.Fatalf("verify media_assets metadata_json: %v", err)
+	}
+	if !strings.Contains(metadataJSON, `"description":"Pacquiao lands a clean left hand while Broner backs up."`) {
+		t.Fatalf("metadata_json missing description, got %s", metadataJSON)
 	}
 
 	// Verify asset_versions row exists.

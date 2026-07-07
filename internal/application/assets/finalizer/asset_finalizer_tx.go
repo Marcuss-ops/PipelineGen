@@ -153,6 +153,9 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		// (metadata_json.$.file_hash) and mark the event as superseded.
 		"content_hash": a.SHA256,
 	}
+	if a.Description != "" {
+		metadata["description"] = a.Description
+	}
 	metadataJSON, _ := json.Marshal(metadata)
 	actionStr := string(a.Location.Action)
 

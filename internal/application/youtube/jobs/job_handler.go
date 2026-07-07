@@ -132,14 +132,15 @@ func (h *JobHandler) HandleJob(ctx context.Context, job *jobservice.Job, tools *
 // share the same shape without duplicating keys.
 func (h *JobHandler) buildResultMap(resp *youtubetypes.ExtractResponse, message string) map[string]any {
 	result := map[string]any{
-		"ok":              resp.OK,
-		"source_url":      resp.SourceURL,
-		"video_id":        resp.VideoID,
-		"folder":          resp.Folder,
-		"stats":           resp.Stats,
-		"items":           resp.Items,
-		"drive_folder_id": resp.DriveFolderID,
-		"message":         message,
+		"ok":                resp.OK,
+		"source_url":        resp.SourceURL,
+		"video_id":          resp.VideoID,
+		"folder":            resp.Folder,
+		"stats":             resp.Stats,
+		"items":             resp.Items,
+		"drive_folder_id":   resp.DriveFolderID,
+		"drive_folder_path": resp.DriveFolderPath,
+		"message":           message,
 	}
 	if resp.Error != "" {
 		result["error"] = resp.Error
