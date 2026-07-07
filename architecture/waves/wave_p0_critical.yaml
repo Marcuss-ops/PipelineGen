@@ -1449,6 +1449,75 @@
     owner_capability: internal/domain/asset + internal/application/assets
     status: shipped
     deadline: 2026-07-25
+- id: TIMELINE-RESOLVER-2026-07-07
+  status: shipped
+  exit_signal: true
+  owner_capability: internal/domain/timeline
+  deadline: 2026-08-15
+  description: |
+    Go implementation of the C++ timeline resolution architecture.
+    9 production files + 4 test files in internal/domain/timeline/.
+    75 tests all PASS (gofmt + go vet + go build clean).
+
+    FASE A-F shipped across 5 commits (26965f68 through c9b532cd):
+    - FASE A+B: Frame, TimeContext, SequenceSpec, MapSequenceTime,
+      TimelineNode, ResolvedScene, NewComposition with root sequence
+    - FASE C: LegacyLayer adapter (git-rm'd in FASE F)
+    - FASE D: Animation[T], Keyframe[T], SampleStep(ctx.LocalFrame),
+      SampleFloat64Lerp
+    - FASE E: BuildComposition, CompositionBuilder, SequenceBuilder,
+      LayerBuilder fluent API with nested sequences
+    - FASE F: TemporalAnalysis replaces duration==1; legacy adapter
+      removed; 0 anti-patterns remaining in codebase (rg-verified)
+
+    godlike/06 SSOT: each file owns exactly one capability concern.
+    godlike/07: MapSequenceTime 6-step algorithm, ResolveMediaFrame
+    freeze+playback_rate, AnimationSampleContext.LocalFrame, all
+    locked with typed errors and compile-time interface pins.
+  linked_issues:
+  - id: FASE-A
+    owner_capability: internal/domain/timeline (frame.go + time_context.go + sequence.go + media_time.go + resolver.go + timeline_test.go)
+    status: shipped
+    ship_sha: 26965f68
+    ship_date: 2026-07-07
+    deadline: 2026-07-15
+    description: Frame + TimeContext + SequenceSpec + MapSequenceTime + MediaTimeSpec + ResolveMediaFrame + TimelineNode + ResolvedScene + TimelineResolver interface. 9 mandatory tests + 12 edge-case tests all PASS.
+  - id: FASE-B
+    owner_capability: internal/domain/timeline (resolver.go::NewComposition + composition.go)
+    status: shipped
+    ship_sha: 26965f68
+    ship_date: 2026-07-07
+    deadline: 2026-07-15
+    description: Root implicit sequence (from=0, duration=composition.Duration, local_frame=global_frame). buildRootTimeContext + ResolveCompositionFlat reference implementation.
+  - id: FASE-C
+    owner_capability: internal/domain/timeline (legacy_adapter.go → git-rm'd in FASE F)
+    status: shipped
+    ship_sha: 43b376b4
+    ship_date: 2026-07-07
+    deadline: 2026-07-15
+    description: LegacyLayer type + WrapLegacyLayer + Composition.AddLegacyLayer. Bridge for old-style layer.from/duration. 13 TDD tests. Removed in FASE F once migration complete.
+  - id: FASE-D
+    owner_capability: internal/domain/timeline (animation.go)
+    status: shipped
+    ship_sha: b6d7f6e7
+    ship_date: 2026-07-07
+    deadline: 2026-07-15
+    description: Animation[T] + Keyframe[T] + SampleStep(ctx.LocalFrame) + SampleFloat64Lerp + Float64Lerp. All sampling uses ctx.LocalFrame per godlike/07.
+  - id: FASE-E
+    owner_capability: internal/domain/timeline (builder.go)
+    status: shipped
+    ship_sha: d2cff8a0
+    ship_date: 2026-07-07
+    deadline: 2026-07-15
+    description: BuildComposition + CompositionBuilder + SequenceBuilder + LayerBuilder fluent API. Nested sequences (SequenceBuilder.Sequence) + LayerProperties with typed animation tracks.
+  - id: FASE-F
+    owner_capability: internal/domain/timeline (temporal_analysis.go)
+    status: shipped
+    ship_sha: c9b532cd
+    ship_date: 2026-07-07
+    deadline: 2026-07-15
+    description: TemporalAnalysis replaces duration==1. HasVaryingKeyframes structural check. 0 anti-patterns remaining in codebase (rg-verified). Legacy adapter git-rm'd.
+
 - id: FASE-2.1-VOICE-FREEZE
   status: shipped
   exit_signal: false

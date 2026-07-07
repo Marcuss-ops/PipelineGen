@@ -401,8 +401,27 @@ Cache static only if: `!analysis.frame_dependent`.
 
 - **2026-07-07**: this plan created from user-provided C++ architectural spec.
   Status: `pending` (reference document). No PR shipped.
-- **TBD**: FASE A (tipi base) implementation start.
-- **TBD**: FASE F (elimina legacy) — final wave closure.
+- **2026-07-07**: FASE A+B shipped (commit `26965f68`) — Frame, TimeContext,
+  SequenceSpec, MapSequenceTime, MediaTimeSpec, ResolveMediaFrame,
+  TimelineNode, ResolvedScene, TimelineResolver, NewComposition
+  with root sequence. 21 TDD tests.
+- **2026-07-07**: FASE C shipped (commit `43b376b4`) — LegacyLayer adapter
+  bridge. 13 TDD tests. Removed in FASE F.
+- **2026-07-07**: FASE D shipped (commit `b6d7f6e7`) — Animation[T],
+  Keyframe[T], SampleStep(ctx.LocalFrame), SampleFloat64Lerp,
+  Float64Lerp. All sampling uses ctx.LocalFrame per godlike/07.
+  14 TDD tests.
+- **2026-07-07**: FASE E shipped (commit `d2cff8a0`) — BuildComposition,
+  CompositionBuilder, SequenceBuilder, LayerBuilder fluent API
+  with nested sequences. 16 TDD tests.
+- **2026-07-07**: FASE F shipped (commit `c9b532cd`) — TemporalAnalysis
+  replaces duration==1; legacy adapter git-rm'd; 0 residual
+  anti-patterns (rg-verified). 14 TDD tests.
+- **2026-07-07**: Wave closure — Status: `completed`. All 6 FASE A-F
+  shipped on origin/main. Wave-tracker entry at
+  `architecture/waves/wave_p0_critical.yaml#TIMELINE-RESOLVER-2026-07-07`
+  (status: shipped + exit_signal: true). 75 total tests, all PASS.
+  9 production files + 4 test files in internal/domain/timeline/.
 
 **Co-authored-by**: PipelineGen Agent <agent@pipelinegen.local>
 (per AGENTS.md Git-Lesson-3 auditability convention)
