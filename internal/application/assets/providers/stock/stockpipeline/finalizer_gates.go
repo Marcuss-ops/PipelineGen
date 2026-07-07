@@ -158,6 +158,30 @@ type ChunkState struct {
 
 	Description string // human-readable English summary propagated into metadata.json
 
+	// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): the 4 typed
+	// content fields travel ClipSpec → ClipPlan → ChunkState →
+	// ChunkMetadataEntry verbatim. Each has omitempty in the JSON
+	// wire so deterministic-planner runs (where the 4 stay at
+	// zero/nil) produce the same wire shape as the pre-PR baseline.
+
+	// Round is the boxing-style round number. Zero is the canonical
+	// "not specified" value; deterministic planner runs leave it at
+	// zero.
+	Round int
+
+	// Tags is the per-clip free-form tag list. nil-or-empty both
+	// serialize as absent (omitempty on the metadata entry).
+	Tags []string
+
+	// Category is the content category (boxing / running / etc.).
+	Category string
+
+	// Slug is the explicit operator-supplied Drive folder slug.
+	// When non-empty, it wins over the title-derived slug in
+	// perClipLeafName (the publisher's leaf derivation). Empty
+	// means "derive slug from title" (pre-PR behavior).
+	Slug string
+
 	SHA256 string // hex-encoded SHA-256 of LocalPath (populated by ComputeAndFillSHA256)
 
 	SizeBytes int64 // os.Stat(LocalPath).Size() at hash time

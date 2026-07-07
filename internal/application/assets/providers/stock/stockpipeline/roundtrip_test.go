@@ -153,6 +153,149 @@ func TestToJobPayload_RoundTrip_ClipDescriptions(t *testing.T) {
 	assert.Equal(t, cmd.Clips[0].EndSec, rp.Clips[0].EndSec)
 }
 
+// TestToJobPayload_RoundTrip_ClipTagsDefensiveCopy locks the
+// godlike/06 SSOT contract: ClipSpec.Tags is defensive-copied at
+// the ToJobPayload boundary (clipsCopy + per-ClipSpec.Tags deep
+// copy in command.go::ToJobPayload). Mutating the source
+// ClipSpec.Tags after ToJobPayload() must NOT affect the already-
+// produced payload (the copy points to a new backing array).
+//
+// Regression guard: if a future refactor reverts the defensive copy
+// and routes the source slice header through (payload["clips"] =
+// c.Clips with no copy), this test fails because the marshalled
+// JSON would include post-mutation tokens.
+//
+// Contract: this test calls ToJobPayload() ONCE, then re-marshals
+// the same payload after the source mutation. The defensive copy
+// ensures the payload is independent of subsequent source mutations.
+// (Calling ToJobPayload() twice would defeat the test — the second
+// call would snapshot the post-mutation state regardless of whether
+// the copy happened.)
+func TestToJobPayload_RoundTrip_ClipTagsDefensiveCopy(t *testing.T) {
+	originalTags := []string{"boxing", "pacquiao", "broner"}
+	cmd := &StockCommand{
+		Clips: []ClipSpec{
+			{
+				Title:    "Round 7",
+				URL:      "https://www.youtube.com/watch?v=round7",
+				StartSec: 993,
+				EndSec:   1048,
+				Round:    7,
+				Tags:     originalTags,
+				Category: "boxing",
+				Slug:     "round-7",
+			},
+		},
+		TotalMinutes: 1,
+	}
+
+	// Single payload snapshot.
+	payload := cmd.ToJobPayload()
+	rawBefore, err := json.Marshal(payload)
+	require.NoError(t, err)
+	assert.Contains(t, string(rawBefore), `"tags":["boxing","pacquiao","broner"]`,
+		"initial wire shape must contain the original Tags verbatim")
+
+	// Mutate the source ClipSpec.Tags AFTER ToJobPayload. The
+	// already-produced payload must remain stable (godlike/06 SSOT:
+	// defensive copy at every boundary).
+	cmd.Clips[0].Tags[0] = "MUTATED"
+	cmd.Clips[0].Tags = append(cmd.Clips[0].Tags, "APPENDED")
+
+	// Re-marshal the SAME payload (not a fresh ToJobPayload call).
+	// With the defensive copy in place, the payload's clipsCopy
+	// is independent of the source mutation. Without the copy,
+	// the payload's clips would share the source's backing array
+	// and the mutation would leak into the JSON.
+	rawAfter, err := json.Marshal(payload)
+	require.NoError(t, err)
+	assert.NotContains(t, string(rawAfter), "MUTATED",
+		"payload must remain stable after caller mutates cmd.Clips[0].Tags[0]")
+	assert.NotContains(t, string(rawAfter), "APPENDED",
+		"payload must remain stable after caller appends to cmd.Clips[0].Tags")
+	assert.Contains(t, string(rawAfter), `"tags":["boxing","pacquiao","broner"]`,
+		"payload's Tags must remain the original after caller mutation")
+}
+
+// TestToJobPayload_RoundTrip_ClipRoundTagsCategorySlug pins the JSON
+// wire-shape contract for the 4 PR-STOCK-TIMESTAMP-CLIPS Front 2
+// fields (Round / Tags / Category / Slug) on ClipSpec. Each field
+// uses omitempty so a zero-value ClipSpec produces the same wire
+// shape as the pre-PR baseline (no spurious keys on the legacy
+// search/direct-url paths).
+//
+// godlike/06 SSOT: the canonical wire shape lives at
+// internal/application/assets/providers/stock/stockpipeline/types_run.go
+// (the ClipSpec struct). Drift in any JSON tag surfaces as a
+// test failure here.
+func TestToJobPayload_RoundTrip_ClipRoundTagsCategorySlug(t *testing.T) {
+	cmd := &StockCommand{
+		Clips: []ClipSpec{
+			{
+				Title:       "Round 7 - Broner barcolla",
+				Description: "Pacquiao lands a series of clean left hands.",
+				URL:         "https://www.youtube.com/watch?v=round7",
+				StartSec:    993,
+				EndSec:      1048,
+				Round:       7,
+				Tags:        []string{"boxing", "pacquiao", "broner", "round-7"},
+				Category:    "boxing",
+				Slug:        "round-7-broner-barcolla",
+			},
+		},
+		TotalMinutes: 1,
+	}
+
+	payload := cmd.ToJobPayload()
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err, "ToJobPayload output must marshal cleanly")
+
+	// omitempty contract: non-empty fields are present on the wire.
+	for _, want := range []string{`"round":7`, `"category":"boxing"`, `"slug":"round-7-broner-barcolla"`, `"tags":`} {
+		assert.Contains(t, string(raw), want, "JSON wire shape must contain %s", want)
+	}
+
+	var rp StockRunPayload
+	require.NoError(t, json.Unmarshal(raw, &rp),
+		"marshalled ToJobPayload output must unmarshal cleanly into StockRunPayload")
+
+	require.Len(t, rp.Clips, 1)
+	assert.Equal(t, cmd.Clips[0].Round, rp.Clips[0].Round)
+	assert.Equal(t, cmd.Clips[0].Tags, rp.Clips[0].Tags)
+	assert.Equal(t, cmd.Clips[0].Category, rp.Clips[0].Category)
+	assert.Equal(t, cmd.Clips[0].Slug, rp.Clips[0].Slug)
+}
+
+// TestToJobPayload_RoundTrip_ClipZeroFieldsOmitsAll4 locks the
+// godlike/07 NO-FAKE-AVAILABILITY contract: when Round/Tags/Category/
+// Slug are all at zero value (the deterministic-planner case), the
+// JSON wire shape does NOT include those keys. Operators inspecting
+// the metadata see the same wire shape they did pre-PR for the
+// legacy search/direct-url paths.
+func TestToJobPayload_RoundTrip_ClipZeroFieldsOmitsAll4(t *testing.T) {
+	cmd := &StockCommand{
+		Clips: []ClipSpec{
+			{
+				Title:    "Round 1",
+				URL:      "https://www.youtube.com/watch?v=round1",
+				StartSec: 32,
+				EndSec:   51,
+				// Round/Tags/Category/Slug all zero — deterministic-planner case
+			},
+		},
+		TotalMinutes: 1,
+	}
+
+	payload := cmd.ToJobPayload()
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	for _, absent := range []string{`"round"`, `"tags"`, `"category"`, `"slug"`} {
+		assert.NotContains(t, string(raw), absent,
+			"zero-value field %s must be omitted from JSON wire (omitempty contract)", absent)
+	}
+}
+
 // TestToJobPayload_EquivalentToLegacyStockPayloadToMap is the
 // invariant test the user requested: ToJobPayload() must produce
 // output equivalent to the (removed) legacy stockPayloadToMap helper

@@ -114,9 +114,18 @@ type ChunkMetadataEntry struct {
 	EndSec           float64 `json:"end_sec,omitempty"`
 	Title            string  `json:"title,omitempty"`
 	Description      string  `json:"description,omitempty"`
-	SHA256           string  `json:"sha256"`
-	SizeBytes        int64   `json:"size_bytes"`
-	LocalPath        string  `json:"local_path,omitempty"`
+	// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): the 4 typed
+	// content fields that travel ClipSpec → ClipPlan → ChunkState →
+	// ChunkMetadataEntry. omitempty on all so deterministic-planner
+	// runs (where the 4 stay at zero/nil) produce the same wire shape
+	// as the pre-PR baseline.
+	Round     int      `json:"round,omitempty"`
+	Tags      []string `json:"tags,omitempty"`
+	Category  string   `json:"category,omitempty"`
+	Slug      string   `json:"slug,omitempty"`
+	SHA256    string   `json:"sha256"`
+	SizeBytes int64    `json:"size_bytes"`
+	LocalPath string   `json:"local_path,omitempty"`
 }
 
 // buildStockRunMetadata constructs the typed StockRunMetadata
@@ -142,9 +151,17 @@ func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint str
 			EndSec:           c.EndSec,
 			Title:            c.Title,
 			Description:      c.Description,
-			SHA256:           c.SHA256,
-			SizeBytes:        c.SizeBytes,
-			LocalPath:        c.LocalPath,
+			// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): the 4
+			// content fields propagate verbatim (godlike/06 SSOT
+			// one-owner-per-fact: ChunkState is the canonical owner
+			// after step_publish copies them in from ClipPlan).
+			Round:     c.Round,
+			Tags:      append([]string(nil), c.Tags...), // defensive copy so the entry doesn't share ChunkState's slice
+			Category:  c.Category,
+			Slug:      c.Slug,
+			SHA256:    c.SHA256,
+			SizeBytes: c.SizeBytes,
+			LocalPath: c.LocalPath,
 		}
 		entries = append(entries, entry)
 	}

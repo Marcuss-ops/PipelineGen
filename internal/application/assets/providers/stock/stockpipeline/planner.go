@@ -161,6 +161,34 @@ type ClipPlan struct {
 	// deterministic planner runs leave it empty.
 	Description string
 
+	// Round carries the boxing-style round number when set. Surfaced
+	// into ChunkState + ChunkMetadataEntry + Qdrant semantic payload
+	// (PR-STOCK-TIMESTAMP-CLIPS Front 2, July 2026). Zero is the
+	// canonical "not set" value (godlike/07 NO-FAKE-AVAILABILITY —
+	// never use -1 or a magic literal). Deterministic planner runs
+	// leave it at zero.
+	Round int
+
+	// Tags is the free-form per-clip tag list. Carries people, theme,
+	// technique — any metadata that should surface in BM25 sparse
+	// search. Empty slice = no tags; nil/empty are byte-equivalent
+	// for the wire shape.
+	Tags []string
+
+	// Category is the content category for this clip (boxing / running
+	// etc.). Surfaces in metadata.json + Qdrant payload for semantic
+	// filtering. Empty = not specified.
+	Category string
+
+	// Slug is the explicit operator-supplied Drive folder slug for
+	// this clip. Per godlike/07 user-spec directive: Slug is the
+	// EXPLICIT OVERRIDE that wins over Title-derived slug in
+	// perClipLeafName. Use this when the title contains characters
+	// that don't slugify cleanly (e.g. accented Portuguese "veredito"
+	// stays verbatim) or when the operator wants a canonical
+	// machine-friendly folder name.
+	Slug string
+
 	// OutputLogicalID is the deterministic asset ID the chunk
 	// producer will mint. Format: planner:<sha256-prefix>:<index>
 	// — opaque hash so callers don't depend on its internal shape.
@@ -336,6 +364,16 @@ func (p *explicitPlanner) Plan(_ context.Context, src VideoSource, budgetSec int
 		plan := buildClipPlan(src, clip.StartSec, clip.EndSec, i, policyVer)
 		plan.Title = clip.Title
 		plan.Description = clip.Description
+		// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): thread the 4
+		// new content fields from ClipSpec → ClipPlan so downstream
+		// consumers (ChunkState, ChunkMetadataEntry, perClipLeafName)
+		// see them verbatim. godlike/06 SSOT one canonical owner per
+		// fact: explicitPlanner is the SOLE place that copies
+		// operator-supplied clip metadata into the plan shape.
+		plan.Round = clip.Round
+		plan.Tags = append([]string(nil), clip.Tags...) // defensive copy so the plan doesn't share the caller's slice
+		plan.Category = clip.Category
+		plan.Slug = clip.Slug
 		plans = append(plans, plan)
 	}
 	return plans, nil

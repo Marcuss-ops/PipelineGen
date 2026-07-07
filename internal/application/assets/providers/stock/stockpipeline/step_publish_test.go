@@ -153,6 +153,46 @@ func TestPerClipLeafName_SlugFromTitle(t *testing.T) {
 			plan: ClipPlan{Title: "round_7_broner_barcolla", StartSec: 993, EndSec: 1048},
 			want: "round_7_broner_barcolla",
 		},
+		// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): Slug
+		// override cases. When ClipPlan.Slug is non-empty, it
+		// wins over the Title-derived slug. Falls through to
+		// title cascade only when Slug is empty/whitespace or
+		// sanitizes to "untitled".
+		{
+			name: "Slug override wins over title-derived slug",
+			plan: ClipPlan{Title: "Round 7 - Broner barcolla", Slug: "veredito-ufficiale", StartSec: 993, EndSec: 1048},
+			want: "veredito-ufficiale",
+		},
+		{
+			name: "Slug wins when title is empty (no fallback to start-end)",
+			plan: ClipPlan{Slug: "round-7", StartSec: 993, EndSec: 1048},
+			want: "round-7",
+		},
+		{
+			name: "Slug with whitespace falls through to title cascade",
+			plan: ClipPlan{Title: "Round 7 - Broner barcolla", Slug: "   \t\n", StartSec: 993, EndSec: 1048},
+			want: "round-7-broner-barcolla",
+		},
+		{
+			name: "Slug with unsafe chars is sanitized via SafeFolderName",
+			plan: ClipPlan{Title: "Round 7 - Broner barcolla", Slug: "Round/7:Broner?barcolla", StartSec: 993, EndSec: 1048},
+			want: "Round_7_Broner_barcolla",
+		},
+		{
+			name: "Slug that sanitizes to empty falls through to title cascade",
+			plan: ClipPlan{Title: "Round 7 - Broner barcolla", Slug: "///", StartSec: 993, EndSec: 1048},
+			want: "round-7-broner-barcolla",
+		},
+		{
+			name: "Slug that sanitizes to pure-punctuation falls through to title cascade (no '___' shadow folder)",
+			plan: ClipPlan{Title: "Round 7 - Broner barcolla", Slug: "!!!", StartSec: 993, EndSec: 1048},
+			want: "round-7-broner-barcolla",
+		},
+		{
+			name: "empty Slug + empty Title falls through to start-end literal (regression guard: no empty leaf)",
+			plan: ClipPlan{Slug: "", Title: "", StartSec: 32, EndSec: 51},
+			want: "00-00-32_to_00-00-51",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
