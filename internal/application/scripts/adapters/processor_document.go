@@ -120,30 +120,19 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		SpecScene:     input.SpecScene,
 	}
 
-	// ── Honest-limitation audit-pin (godlike/07 no-fake-availability) ──
-	// BuildGenerationDocumentHTML accepts entities (scriptpkg.EntityResult)
-	// and metadata ([]scriptpkg.VideoMetadata) explicitly — but we pass
-	// `nil, nil` here because adapters.ProcessInput (the canonical envelope
-	// wired from GenerateOneUseCase through the registry) doesn't carry
-	// them today. The pre-FASE-document-canonical dual-branch renderer
-	// (`BuildClipSpecSceneDocumentHTML` + `BuildSectionDocHTML`) ALSO
-	// didn't propagate them, so this refactor doesn't regress behaviour
-	// (the title, prose, scenes, bindings, and per-scene <a href> drive
-	// links render in BOTH before/after paths); it just doesn't YET
-	// expose them.
+	// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026): entities and
+	// metadata now flow through ProcessInput from upstream
+	// processors via mergePostProcessResult write-back. When nil,
+	// the canonical renderer gracefully skips those sections — no
+	// spurious headers, no regressions.
 	//
-	// Forward-pointer: PR-PROCESS-INPUT-ENTITIES-METADATA (deferred; the
-	// canonical migration is to extend adapters.ProcessInput with two new
-	// optional fields — `Entities *scriptpkg.EntityResult` (omitempty,
-	// populated by the entity_parser adapter) and `Metadata
-	// []scriptpkg.VideoMetadata` (omitempty, populated by the
-	// metadata_generator adapter) — and thread them from
-	// GenerateOneUseCase's postResult.Entities + postResult.VideoMetadata
-	// into the canonical call site here. Once that lands the `nil, nil`
-	// literal below becomes `entities, metadata` and the canonical
-	// renderer auto-surfaces the `<h2>Entities</h2>` + `<h2>Video
-	// Metadata</h2>` sections without further changes).
-	htmlContent := BuildGenerationDocumentHTML(model, docTitle, plan.Language, nil, nil, false)
+	// Honest scope-lock (godlike/07): the write-back only takes
+	// effect when the document processor runs AFTER the entities/
+	// metadata processors in plan.Postprocessors execution order.
+	// When it runs before, the inputs stay nil (byte-equivalent to
+	// pre-PR behavior). Future reordering of the postprocessor list
+	// to place document last would unlock full rendering.
+	htmlContent := BuildGenerationDocumentHTML(model, docTitle, plan.Language, input.Entities, input.Metadata, false)
 
 	link, id := p.docsSvc.CreateDoc(ctx, docTitle, htmlContent, p.resolveFolder, plan.DriveFolderID)
 	if link == "" {

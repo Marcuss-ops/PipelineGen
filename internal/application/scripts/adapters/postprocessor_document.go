@@ -136,4 +136,20 @@ type ProcessInput struct {
 	CacheStatus    string
 	SourceTrace    *scriptpkg.ClipEvidence
 	PriorArtifacts map[string]PostProcessResult
+
+	// Entities carries the entity-extraction result, populated by
+	// mergePostProcessResult when the entities processor produces
+	// output. Threaded through to BuildGenerationDocumentHTML so
+	// the Google Doc renders the <h2>Entities</h2> section when
+	// non-empty. Nil until the entities processor runs.
+	// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026).
+	Entities *scriptpkg.EntityResult
+
+	// Metadata carries the video-metadata result, populated by
+	// mergePostProcessResult when the metadata processor produces
+	// output. Threaded through to BuildGenerationDocumentHTML so
+	// the Google Doc renders the <h2>Video Metadata</h2> section
+	// when non-empty. Nil until the metadata processor runs.
+	// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026).
+	Metadata []scriptpkg.VideoMetadata
 }
