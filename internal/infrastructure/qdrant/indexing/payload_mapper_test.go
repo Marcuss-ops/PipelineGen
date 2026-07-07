@@ -19,11 +19,12 @@ import (
 	"testing"
 
 	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestBuildPayload_LifecycleKeyIsCanonical asserts that BuildPayload
@@ -34,6 +35,7 @@ import (
 func TestBuildPayload_LifecycleKeyIsCanonical(t *testing.T) {
 	asset := &AssetData{
 		ID:             "asset-1",
+		Name:           "asset-1-name",
 		LifecycleState: "ACTIVE",
 		Source:         "stock",
 	}
@@ -47,6 +49,10 @@ func TestBuildPayload_LifecycleKeyIsCanonical(t *testing.T) {
 	}
 	if got != "ACTIVE" {
 		t.Errorf("lifecycle_state => %v, want %q (PR 1 canonical SSOT)", got, "ACTIVE")
+	}
+
+	if got, ok := payload["name"]; !ok || got != "asset-1-name" {
+		t.Fatalf("BuildPayload must write name from asset.Name; got %v (present=%v)", got, ok)
 	}
 
 	if _, leaked := payload["status"]; leaked {
@@ -154,6 +160,40 @@ func TestAssetToPoint_SparseVector_EmptySearchText_DropsChannel(t *testing.T) {
 	}
 	if _, present := point.Vectors["bm25_text"]; present {
 		t.Errorf("PR2: empty SearchText MUST drop the bm25_text channel; got %v", point.Vectors["bm25_text"])
+	}
+}
+
+// TestAssetToPoint_VisualVector_1152ResamplesToSchema pins the legacy
+// compatibility shim for older visual embeddings. Some historical YouTube
+// assets still carry 1152-d vectors; the mapper must normalize them to the
+// current 768-d schema instead of rejecting the point outright.
+func TestAssetToPoint_VisualVector_1152ResamplesToSchema(t *testing.T) {
+	asset := &AssetData{
+		ID:             "asset-visual-legacy",
+		SearchText:     "legacy visual clip",
+		Source:         "youtube",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		TextVector:     makeFloat32Slice(768),
+		VisualVector:   makeFloat32Slice(1152),
+	}
+	schema := qdrantSchema.DefaultV3Schema()
+
+	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
+	point, err := mapper.AssetToPoint(context.Background(), asset, schema)
+	if err != nil {
+		t.Fatalf("AssetToPoint error: %v", err)
+	}
+	visual, ok := point.Vectors["visual"]
+	if !ok {
+		t.Fatalf("expected visual channel to be present after resampling")
+	}
+	vec, ok := visual.([]float32)
+	if !ok {
+		t.Fatalf("visual channel has unexpected type %T", visual)
+	}
+	if got := len(vec); got != 768 {
+		t.Fatalf("visual vector length = %d, want 768", got)
 	}
 }
 
@@ -363,6 +403,90 @@ func TestBuildPayloadFromDocument_NoForbiddenLocatorKeys(t *testing.T) {
 			t.Errorf("BuildPayloadFromDocument MISSING canonical payload key %q (PR 6); got keys %v", mustHave, mapKeys(payload))
 		}
 	}
+}
+
+// TestBuildPayloadFromDocument_SemanticFieldsAreProjected pins the
+// semantic enrichment contract: the mapper must carry the workflow /
+// content metadata through to the Qdrant payload and build a rich
+// embedding_text block from it.
+func TestBuildPayloadFromDocument_SemanticFieldsAreProjected(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	asset := &AssetData{
+		ID:             "asset-semantic",
+		Name:           "Pacquiao vs Broner Round 7",
+		Source:         "stock",
+		MediaType:      "video",
+		LifecycleState: "ACTIVE",
+		Tags:           []string{"boxing", "pacquiao", "broner"},
+		DurationMs:     5000,
+		YouTubeVideoID: "vdC5GXxS-qU",
+		YouTubeURL:     "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+		MetadataJSON: `{
+			"title":"Pacquiao vs Broner Round 7 Broner barcolla",
+			"summary":"Broner is hurt and stumbling under Pacquiao pressure",
+			"source_url":"https://www.youtube.com/watch?v=vdC5GXxS-qU",
+			"source_video_id":"vdC5GXxS-qU",
+			"destination":"stock",
+			"origin":"retrieved",
+			"source_provider":"youtube",
+			"event":"Pacquiao vs Broner",
+			"round":7,
+			"scene":"Broner barcolla",
+			"subject":"Adrien Broner",
+			"topics":["boxing","round 7"],
+			"speakers":["Manny Pacquiao"],
+			"mentioned_people":["Adrien Broner"],
+			"people":["Manny Pacquiao","Adrien Broner"],
+			"search_keywords":["knockdown","fight"],
+			"entities":["Manny Pacquiao","Adrien Broner"],
+			"hook":"Pacquiao pressures Broner",
+			"search_visibility":"high",
+			"policy_version":"timestamp_v1",
+			"job_id":"job-1",
+			"workflow_id":"wf-1",
+			"run_fingerprint":"fp-1",
+			"chunk_index":0,
+			"total_chunks":11,
+			"drive_path":"stock/Boxe/youtube/Pacquiao-Vs-Broner/Round-7-Broner-barcolla",
+			"indexing_status":"indexed"
+		}`,
+	}
+
+	doc := assetToIndexDocumentNoValidate(asset, schema)
+	payload := BuildPayloadFromDocument(doc, schema)
+
+	assert.Equal(t, "stock", payload["destination"])
+	assert.Equal(t, "retrieved", payload["origin"])
+	assert.Equal(t, "youtube", payload["source_provider"])
+	assert.Equal(t, "Pacquiao vs Broner Round 7 Broner barcolla", payload["semantic_title"])
+	assert.Equal(t, "Broner is hurt and stumbling under Pacquiao pressure", payload["summary"])
+	assert.Equal(t, "Pacquiao vs Broner", payload["event"])
+	assert.Equal(t, 7, payload["round"])
+	assert.Equal(t, "Broner barcolla", payload["scene"])
+	assert.Equal(t, "Adrien Broner", payload["subject"])
+	assert.Equal(t, 0, payload["chunk_index"])
+	assert.Equal(t, 11, payload["total_chunks"])
+	assert.Equal(t, "fp-1", payload["run_fingerprint"])
+	assert.Equal(t, "wf-1", payload["workflow_id"])
+	assert.Equal(t, "job-1", payload["job_id"])
+	assert.Equal(t, "timestamp_v1", payload["policy_version"])
+	assert.Equal(t, "stock/Boxe/youtube/Pacquiao-Vs-Broner/Round-7-Broner-barcolla", payload["drive_path"])
+	assert.Equal(t, "indexed", payload["indexing_status"])
+	assert.Equal(t, "vdC5GXxS-qU", payload["source_video_id"])
+	assert.Equal(t, "https://www.youtube.com/watch?v=vdC5GXxS-qU", payload["source_url"])
+	assert.Equal(t, int64(5000), payload["duration_ms"])
+	assert.Equal(t, 5, payload["duration_sec"])
+	assert.Contains(t, payload["embedding_text"], "Pacquiao vs Broner Round 7 Broner barcolla")
+	assert.Contains(t, payload["embedding_text"], "origin: retrieved")
+	assert.Contains(t, payload["embedding_text"], "workflow_id: wf-1")
+	assert.Contains(t, payload["embedding_text"], "chunk_index: 0")
+	assert.Contains(t, payload["embedding_text"], "total_chunks: 11")
+	assert.Contains(t, payload["embedding_text"], "tags: ")
+	entities, ok := payload["entities"].([]string)
+	require.True(t, ok, "entities must be projected as []string")
+	assert.NotEmpty(t, entities)
+	assert.Contains(t, entities, "Manny Pacquiao")
+	assert.Contains(t, entities, "Adrien Broner")
 }
 
 // TestBuildPayloadFromDocument_BadModelVersion_EmitsBadKey pins the

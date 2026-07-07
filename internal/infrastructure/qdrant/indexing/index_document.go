@@ -104,9 +104,12 @@ type IndexedMetadata struct {
 	// metadata_json bag (canonical key: summary / clip_summary).
 	Summary string
 
-	// Title + Description are extracted from AssetData.MetadataJSON
+	// Name is the human-readable payload name required by the
+	// verifier and search adapters. Title + Description are extracted
+	// from AssetData.MetadataJSON
 	// via BuildPayload's parseMetadataJSON helper (the legacy
 	// popper, unchanged in shape).
+	Name        string
 	Title       string
 	Description string
 

@@ -150,6 +150,11 @@ func TestValidatePoint_AudioDimensionMismatch(t *testing.T) {
 	t.Parallel()
 
 	idxSchema := schema.DefaultV3Schema()
+	idxSchema.DenseVectors = append(idxSchema.DenseVectors, schema.EmbeddingSpec{
+		Channel:    "audio",
+		Dimensions: 512,
+		Distance:   "Cosine",
+	})
 	point := &schema.Point{
 		ID: "asset-1",
 		Vectors: map[string]interface{}{
