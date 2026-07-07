@@ -174,8 +174,18 @@ func WorkerAuth(sec middleware.AuthSecurityPort, log *zap.Logger) gin.HandlerFun
 			return
 		}
 
+		// Admin tokens also accepted on internal endpoints — the
+		// handler layer decides workspace scope (admin principals
+		// get IsSystem=true via extractActor → compileSemanticFilters
+		// → CompileQdrantFilter skips workspace clause).
+		if compareTokens(token, sec.AdminToken()) {
+			c.Set("is_admin", true)
+			c.Next()
+			return
+		}
+
 		if log != nil {
-			log.Warn("WorkerAuth rejected request (admin token or wrong secret)",
+			log.Warn("WorkerAuth rejected request (neither worker nor admin token)",
 				zap.String("path", c.Request.URL.Path),
 				zap.Bool("has_credential", token != ""),
 				zap.String("client_ip", c.ClientIP()))
