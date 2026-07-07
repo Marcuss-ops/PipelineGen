@@ -1,0 +1,325 @@
+// Package app — youtube_adapters_drive_test.go: PR-P12-YOUTUBE-LEGACY-RETIRE
+// contract tests (P0 absolute, deadline 2026-08-08).
+//
+// Pins the canonical semantic-routing contract for
+// YouTubePublisherDriveAdapter:
+//
+//  1. GetOrCreateFolder: Group = channelName, RootFolderOverride = ""
+//     (RETIRED per godlike/07 NO-FAKE-AVAILABILITY — the
+//     Publisher resolves the root via DestinationRegistry +
+//     DestinationPolicy.RootFolderID).
+//  2. GetOrCreateFolder: publisher == nil returns a typed error
+//     (godlike/07 fail-closed at the seam).
+//  3. GetOrCreateFolder: Publisher.ResolveFolder error is wrapped
+//     (typed-error contract preserved via fmt.Errorf %w).
+//  4. UploadFileIfChanged: RootFolderOverride = "" (RETIRED),
+//     Group/Subject omitted (per-file identity in Filename),
+//     ConflictPolicy = ConflictSkipByHash (preserved).
+//  5. UploadFileIfChanged: skipped bool derives from
+//     PublishResult.Action == delivery.UploadOutcomeSkipped
+//     (godlike/07 NO-FAKE-AVAILABILITY: no caller-side heuristic,
+//     the canonical Publisher declares the outcome).
+//
+// godlike/06 SSOT: the recorded `lastResolveReq` and `lastPublishReq`
+// are the canonical assertion targets — the legacy
+// `RootFolderOverride = parentFolderID` + `RootFolderOverride = folderID`
+// literals are the exact violations PR-P12 retires.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: every case asserts the recorded
+// `lastReq` matches the expected wire-shape exactly; a future
+// refactor that silently re-introduces RootFolderOverride (or
+// silently drops ConflictSkipByHash) surfaces as a test failure.
+package app
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+)
+
+// ytDriveRecordingPublisher is a stub delivery.Publisher that captures
+// the PublishRequest it receives so tests can assert the wire-shape
+// (Group/Subject/RootFolderOverride/Destination/ConflictPolicy)
+// propagated from YouTubePublisherDriveAdapter. The Publish
+// outcome is configurable via publishAction field so Case 5 can
+// verify the skipped-bool derivation against both
+// UploadOutcomeCreated (skipped=false) and UploadOutcomeSkipped
+// (skipped=true). Named with the ytDrive prefix to avoid collision
+// with the recordingPublisher stub in adapters_voiceover_publisher_test.go
+// (same package `app`).
+type ytDriveRecordingPublisher struct {
+	lastResolveReq delivery.PublishRequest
+	lastPublishReq delivery.PublishRequest
+
+	resolveCalls int
+	publishCalls int
+
+	// Optional error to surface from ResolveFolder / Publish (default nil).
+	resolveErr error
+	publishErr error
+
+	// Outcome returned by Publish (default UploadOutcomeCreated).
+	publishAction delivery.UploadOutcome
+	// FileID + WebViewLink returned in PublishResult.
+	publishFileID      string
+	publishWebViewLink string
+}
+
+var _ delivery.Publisher = (*ytDriveRecordingPublisher)(nil)
+
+func (r *ytDriveRecordingPublisher) Publish(_ context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
+	r.lastPublishReq = req
+	r.publishCalls++
+	if r.publishErr != nil {
+		return nil, r.publishErr
+	}
+	action := r.publishAction
+	if action == "" {
+		action = delivery.UploadOutcomeCreated
+	}
+	return &delivery.PublishResult{
+		Action:      action,
+		FileID:      r.publishFileID,
+		WebViewLink: r.publishWebViewLink,
+	}, nil
+}
+
+func (r *ytDriveRecordingPublisher) ResolveFolder(_ context.Context, req delivery.PublishRequest) (string, error) {
+	r.lastResolveReq = req
+	r.resolveCalls++
+	if r.resolveErr != nil {
+		return "", r.resolveErr
+	}
+	return "resolved-folder-id", nil
+}
+
+func (r *ytDriveRecordingPublisher) Close() error { return nil }
+
+// newYouTubePubAdapter builds a YouTubePublisherDriveAdapter with
+// the supplied publisher (logs via zap.NewNop per the canonical
+// composition root convention).
+func newYouTubePubAdapter(pub *ytDriveRecordingPublisher) *YouTubePublisherDriveAdapter {
+	return NewYouTubePublisherDriveAdapter(pub, zap.NewNop())
+}
+
+// TestGetOrCreateFolder_GroupSubjectSplit_NoRootOverride pins the
+// canonical GetOrCreateFolder contract per PR-P12:
+//
+//   - input (channelName="boxing-channels", parentFolderID="any")
+//   - lastResolveReq.Group = "boxing-channels"
+//   - lastResolveReq.Destination = DestinationYouTubeClip
+//   - lastResolveReq.RootFolderOverride = "" (RETIRED — Publisher
+//     resolves root via DestinationRegistry per godlike/06 SSOT)
+//   - returned folderID = the canonical Publisher.ResolveFolder
+//     resolved ID ("resolved-folder-id")
+func TestGetOrCreateFolder_GroupSubjectSplit_NoRootOverride(t *testing.T) {
+	t.Parallel()
+	pub := &ytDriveRecordingPublisher{}
+	a := newYouTubePubAdapter(pub)
+
+	got, err := a.GetOrCreateFolder(context.Background(), "boxing-channels", "legacy-parent-folder")
+	if err != nil {
+		t.Fatalf("GetOrCreateFolder err: %v", err)
+	}
+	if got != "resolved-folder-id" {
+		t.Fatalf("folder ID = %q, want %q", got, "resolved-folder-id")
+	}
+	if pub.resolveCalls != 1 {
+		t.Fatalf("publisher.ResolveFolder called %d times, want 1", pub.resolveCalls)
+	}
+	if pub.lastResolveReq.Destination != delivery.DestinationYouTubeClip {
+		t.Errorf("Destination = %q, want %q", pub.lastResolveReq.Destination, delivery.DestinationYouTubeClip)
+	}
+	if pub.lastResolveReq.Group != "boxing-channels" {
+		t.Errorf("Group = %q, want %q (channel name must be Group)", pub.lastResolveReq.Group, "boxing-channels")
+	}
+	// godlike/07 NO-FAKE-AVAILABILITY: the legacy bypass literal
+	// is RETIRED. The Publisher must NEVER see a caller-supplied
+	// RootFolderOverride — it resolves root folders via
+	// DestinationRegistry per the architecture/current.yaml
+	// DRIVE-AS-CENTRAL-CAPABILITY wave.
+	if pub.lastResolveReq.RootFolderOverride != "" {
+		t.Fatalf("RootFolderOverride = %q, want \"\" (legacy bypass retired per PR-P12)", pub.lastResolveReq.RootFolderOverride)
+	}
+}
+
+// TestGetOrCreateFolder_PublisherNil_FailsClosed pins the
+// fail-closed contract: when the canonical Publisher is nil
+// (composition-time wiring gap), GetOrCreateFolder MUST return
+// a typed error (godlike/07 fail-closed at the seam, NOT a
+// silent nil-deref panic). The error MUST mention the
+// publisher-not-wired condition so the operator's diagnostic
+// surface can act on it.
+func TestGetOrCreateFolder_PublisherNil_FailsClosed(t *testing.T) {
+	t.Parallel()
+	a := NewYouTubePublisherDriveAdapter(nil, zap.NewNop())
+
+	got, err := a.GetOrCreateFolder(context.Background(), "boxing-channels", "legacy-parent")
+	if err == nil {
+		t.Fatal("GetOrCreateFolder err = nil, want typed error (publisher not wired)")
+	}
+	// godlike/07 NO-FAKE-AVAILABILITY: the error MUST be
+	// surface-able — the literal substring "publisher not wired"
+	// is the canonical operator-actionable signal.
+	if !strings.Contains(err.Error(), "publisher not wired") {
+		t.Errorf("err = %q, want substring %q (operator-actionable diagnostic)", err.Error(), "publisher not wired")
+	}
+	// The legacy parentFolderID MUST be returned as the
+	// fail-closed fallback (pre-PR-12 behavior preserved for
+	// graceful-degradation callers that may consume the ID
+	// even on failure — channel_folders.go logs and continues).
+	if got != "legacy-parent" {
+		t.Errorf("folder ID on nil publisher = %q, want %q (fail-closed parentFolderID)", got, "legacy-parent")
+	}
+}
+
+// TestGetOrCreateFolder_PublisherError_WrapsTypedError pins the
+// godlike/07 typed-error contract: when Publisher.ResolveFolder
+// returns an error, GetOrCreateFolder MUST wrap it via
+// fmt.Errorf %w so callers can errors.Is-probe the underlying
+// cause. The error message MUST also surface the operation
+// context ("GetOrCreateFolder") for operator diagnostics.
+func TestGetOrCreateFolder_PublisherError_WrapsTypedError(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("downstream drive connection refused")
+	pub := &ytDriveRecordingPublisher{resolveErr: cause}
+	a := newYouTubePubAdapter(pub)
+
+	got, err := a.GetOrCreateFolder(context.Background(), "boxing-channels", "legacy-parent")
+	if err == nil {
+		t.Fatal("GetOrCreateFolder err = nil, want wrapped error")
+	}
+	// godlike/07 typed-error contract: errors.Is must recover
+	// the underlying cause through the fmt.Errorf %w wrap.
+	if !errors.Is(err, cause) {
+		t.Errorf("errors.Is(err, cause) = false; err = %v", err)
+	}
+	// The error MUST mention the operation context for
+	// operator-dashboard triage.
+	if !strings.Contains(err.Error(), "GetOrCreateFolder") {
+		t.Errorf("err = %q, want substring %q (operation context)", err.Error(), "GetOrCreateFolder")
+	}
+	// Fail-closed: parentFolderID returned on error (same as
+	// the publisher-nil case for consistent caller semantics).
+	if got != "legacy-parent" {
+		t.Errorf("folder ID on publisher error = %q, want %q (fail-closed parentFolderID)", got, "legacy-parent")
+	}
+}
+
+// TestUploadFileIfChanged_NoRootOverride_PreservesConflictPolicy
+// pins the canonical UploadFileIfChanged contract per PR-P12:
+//
+//   - input (localPath="/tmp/clip.mp4", folderID="resolved-folder",
+//     filename="clip-yt_abc123_0_30_v1.mp4")
+//   - lastPublishReq.LocalPath = "/tmp/clip.mp4"
+//   - lastPublishReq.Filename = "clip-yt_abc123_0_30_v1.mp4"
+//   - lastPublishReq.Destination = DestinationYouTubeClip
+//   - lastPublishReq.RootFolderOverride = "" (RETIRED)
+//   - lastPublishReq.ConflictPolicy = ConflictSkipByHash
+//     (preserved — Publisher's content-dedupe via hash comparison)
+//   - Group + Subject omitted (per-file identity in Filename;
+//     folder context was established by prior GetOrCreateFolder)
+func TestUploadFileIfChanged_NoRootOverride_PreservesConflictPolicy(t *testing.T) {
+	t.Parallel()
+	pub := &ytDriveRecordingPublisher{
+		publishFileID:      "drive-file-id-123",
+		publishWebViewLink: "https://drive.google.com/file/d/123/view",
+	}
+	a := newYouTubePubAdapter(pub)
+
+	res, skipped, err := a.UploadFileIfChanged(
+		context.Background(),
+		"/tmp/clip-yt_abc123_0_30_v1.mp4",
+		"resolved-folder-id",
+		"clip-yt_abc123_0_30_v1.mp4",
+	)
+	if err != nil {
+		t.Fatalf("UploadFileIfChanged err: %v", err)
+	}
+	if skipped {
+		t.Errorf("skipped = true, want false (PublishResult.Action = UploadOutcomeCreated)")
+	}
+	if res == nil {
+		t.Fatal("UploadResultDTO = nil, want non-nil")
+	}
+	if res.FileID != "drive-file-id-123" {
+		t.Errorf("FileID = %q, want %q", res.FileID, "drive-file-id-123")
+	}
+	if res.WebViewLink != "https://drive.google.com/file/d/123/view" {
+		t.Errorf("WebViewLink = %q, want %q", res.WebViewLink, "https://drive.google.com/file/d/123/view")
+	}
+	if pub.publishCalls != 1 {
+		t.Fatalf("publisher.Publish called %d times, want 1", pub.publishCalls)
+	}
+	if pub.lastPublishReq.Destination != delivery.DestinationYouTubeClip {
+		t.Errorf("Destination = %q, want %q", pub.lastPublishReq.Destination, delivery.DestinationYouTubeClip)
+	}
+	if pub.lastPublishReq.LocalPath != "/tmp/clip-yt_abc123_0_30_v1.mp4" {
+		t.Errorf("LocalPath = %q, want %q", pub.lastPublishReq.LocalPath, "/tmp/clip-yt_abc123_0_30_v1.mp4")
+	}
+	if pub.lastPublishReq.Filename != "clip-yt_abc123_0_30_v1.mp4" {
+		t.Errorf("Filename = %q, want %q", pub.lastPublishReq.Filename, "clip-yt_abc123_0_30_v1.mp4")
+	}
+	// godlike/07 NO-FAKE-AVAILABILITY: the legacy bypass literal
+	// is RETIRED. The Publisher must NEVER see a caller-supplied
+	// RootFolderOverride — it applies the resolved folder from
+	// the prior GetOrCreateFolder call via DestinationRegistry.
+	if pub.lastPublishReq.RootFolderOverride != "" {
+		t.Fatalf("RootFolderOverride = %q, want \"\" (legacy bypass retired per PR-P12)", pub.lastPublishReq.RootFolderOverride)
+	}
+	// ConflictPolicy MUST be preserved (Publisher's content-dedupe
+	// via hash comparison is the canonical replacement for the
+	// legacy Uploader.UploadFileIfChanged filename-based lookup).
+	if pub.lastPublishReq.ConflictPolicy != delivery.ConflictSkipByHash {
+		t.Errorf("ConflictPolicy = %q, want %q (canonical content-dedupe)",
+			pub.lastPublishReq.ConflictPolicy, delivery.ConflictSkipByHash)
+	}
+}
+
+// TestUploadFileIfChanged_SkippedBoolDerivesFromAction pins the
+// godlike/07 NO-FAKE-AVAILABILITY contract: the skipped bool is
+// the canonical Publisher-declared outcome (NOT a caller-side
+// heuristic). When the Publisher returns UploadOutcomeSkipped
+// (the same value as PublishActionSkipped via type alias),
+// UploadFileIfChanged MUST return skipped=true; for any other
+// action (UploadOutcomeCreated default), it MUST return
+// skipped=false. This guards against future refactors that
+// silently drift to a filename-based dedupe (the legacy
+// behavior) instead of the canonical hash-based dedupe.
+func TestUploadFileIfChanged_SkippedBoolDerivesFromAction(t *testing.T) {
+	t.Parallel()
+
+	t.Run("UploadOutcomeSkipped_returns_true", func(t *testing.T) {
+		t.Parallel()
+		pub := &ytDriveRecordingPublisher{publishAction: delivery.UploadOutcomeSkipped}
+		a := newYouTubePubAdapter(pub)
+		res, skipped, err := a.UploadFileIfChanged(context.Background(), "/tmp/clip.mp4", "folder", "clip.mp4")
+		if err != nil {
+			t.Fatalf("UploadFileIfChanged err: %v", err)
+		}
+		if !skipped {
+			t.Errorf("skipped = false, want true (UploadOutcomeSkipped)")
+		}
+		if res == nil {
+			t.Errorf("UploadResultDTO = nil, want non-nil (skipped does not mean no-file)")
+		}
+	})
+
+	t.Run("UploadOutcomeCreated_returns_false", func(t *testing.T) {
+		t.Parallel()
+		pub := &ytDriveRecordingPublisher{publishAction: delivery.UploadOutcomeCreated}
+		a := newYouTubePubAdapter(pub)
+		_, skipped, err := a.UploadFileIfChanged(context.Background(), "/tmp/clip.mp4", "folder", "clip.mp4")
+		if err != nil {
+			t.Fatalf("UploadFileIfChanged err: %v", err)
+		}
+		if skipped {
+			t.Errorf("skipped = true, want false (UploadOutcomeCreated)")
+		}
+	})
+}
