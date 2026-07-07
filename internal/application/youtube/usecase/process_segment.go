@@ -395,6 +395,7 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	if u.deps.DriveFolderMgr != nil && cmd.DriveFolderID != "" && localPath != "" {
 		if upRes, _, upErr := u.deps.DriveFolderMgr.UploadFileIfChanged(
 			ctx, localPath, cmd.DriveFolderID, out.Item.Filename,
+			deriveNormalizedGroup(cmd), cmd.VideoID,
 		); upErr == nil && upRes != nil {
 			out.Item.DriveFileID = upRes.FileID
 			out.Item.DriveLink = upRes.WebViewLink
@@ -458,6 +459,41 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 			return u.fail(out, typed)
 		}
 		out.IndexedRequestID = event.AggregateID
+	}
+
+	// Step 10 — canonical metadata enrichment.
+	//
+	// When wired, the metadata service persists the enriched clip
+	// metadata into SQLite and emits its own re-index outbox event.
+	// We feed it the segment-local title/group/hook/visibility so
+	// the resulting metadata JSON reflects the API payload, not just
+	// the downstream video metadata fetch.
+	if u.deps.MetadataService != nil {
+		transcript := ""
+		if localPath != "" {
+			txtPath := strings.TrimSuffix(localPath, filepath.Ext(localPath)) + ".txt"
+			if transcriptBytes, readErr := os.ReadFile(txtPath); readErr == nil && len(transcriptBytes) > 0 {
+				transcript = strings.TrimSpace(string(transcriptBytes))
+			}
+		}
+		_, metaErr := u.deps.MetadataService.EnrichClip(ctx, youtubetypes.ClipMetadataInput{
+			ClipID:           clipID,
+			Title:            out.Item.Name,
+			Transcript:       transcript,
+			ClipDuration:     duration,
+			SourceURL:        cmd.VideoURL,
+			Group:            deriveNormalizedGroup(cmd),
+			Hook:             cmd.Segment.Hook,
+			SearchVisibility: cmd.Segment.SearchVisibility,
+			Topics:           append([]string(nil), cmd.Segment.Topics...),
+			Speakers:         append([]string(nil), cmd.Segment.Speakers...),
+			MentionedPeople:  append([]string(nil), cmd.Segment.MentionedPeople...),
+		})
+		if metaErr != nil {
+			typed := NewExtractionError(FailureCodeMetadataFailed, false,
+				fmt.Sprintf("metadata enrichment failed: %v", metaErr), metaErr)
+			return u.fail(out, typed)
+		}
 	}
 
 	out.Item.Status = "processed"
