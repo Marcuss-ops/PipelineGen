@@ -53,14 +53,6 @@ type VerifiedArtifact struct {
 	// and finalisation idempotent. Same content → same key.
 	IdempotencyKey string `json:"idempotency_key"`
 
-	// RootFolderOverride, when non-empty, overrides the destination's
-	// configured root folder ID in the Drive publisher. Threading path:
-	// RunInput.FolderID (from API request) → this field →
-	// PublishRequest.RootFolderOverride → resolveDestination Step 2.
-	// Allows the stock pipeline to use the request's folder_id instead
-	// of hardcoded config Drive root folders.
-	RootFolderOverride string `json:"root_folder_override,omitempty"`
-
 	// RootFolderName is the human-readable top-level folder name used
 	// by Drive path builders when the artifact belongs to a named run.
 	// When empty, infrastructure falls back to a synthetic label.
