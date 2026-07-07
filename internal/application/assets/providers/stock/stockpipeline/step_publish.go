@@ -50,6 +50,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/slug"
 )
 
 // StockPublishStep is the canonical implementation of
@@ -546,52 +547,23 @@ func hasAlphanumeric(s string) bool {
 	return false
 }
 
-// slugifyTitle returns the canonical Drive-folder-safe slug for
-// a clip title. Cascade (per user diagnostic "round-01-la-fase-di-studio"
-// convention):
+// slugifyTitle is a thin package-internal alias for the canonical
+// pkg/slug.SlugifyTitle helper. Per godlike/06 SSOT, pkg/slug is
+// the SOLE canonical owner of the title-slug convention; both
+// the parser-side surface (pkg/stockparser/parser.go::deriveSlug)
+// and this stock-pipeline surface route through it for
+// byte-equivalent output (PR-SLUG-HELPER-EXTRACT, July 2026).
 //
-//  1. Strip filesystem-unsafe chars (anything that is not
-//     unicode letter, unicode digit, ASCII hyphen, or ASCII
-//     space). Drops the char entirely — NOT replace with
-//     underscore — so the resulting slug doesn't carry escape
-//     artifacts like "_" or "_official_". The user's canonical
-//     example "Round 7 - Broner barcolla" → "round-7-broner-barcolla"
-//     relies on this (colons, parens, etc. are stripped, not
-//     escaped).
-//  2. ToLower — lowercase convention per Drive naming.
-//  3. space-to-hyphen — single replacement.
-//  4. collapse-consecutive-hyphens — " - " (round-dash-round)
-//     becomes "---" after step 3, collapsed to a single "-".
-//  5. trim-leading-trailing-hyphens — no edge artifacts.
-//
-// godlike/06 SSOT: this is the SOLE writer of per-clip title
-// slugs in the stock pipeline. pkg/stockparser has its own
-// deriveSlug (same convention) for the parser-side surface;
-// both produce byte-equivalent output for the same input.
-// A future refactor that extracts a shared pkg helper should
-// route BOTH call sites through it (forward-pointer
-// PR-SLUG-HELPER-EXTRACT, deadline 2026-08-15).
+// The local alias is preserved (not deleted outright) so the
+// perClipLeafName call site (above) stays grep-stable and the
+// pre-extraction goddoc comment block documents the surface
+// transition for future readers. Forward-pointer: a future
+// refactor can inline-slugifyTitle to a direct call to
+// pkg/slug.SlugifyTitle if the per-call overhead warrants it
+// (today: the inliner is unrolled by the Go compiler — both
+// paths have identical zero-cost).
 func slugifyTitle(title string) string {
-	var b strings.Builder
-	b.Grow(len(title))
-	for _, r := range title {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == ' ' {
-			b.WriteRune(r)
-		}
-		// else: strip entirely (the SafeFolderName escape
-		// via underscore would carry escape artifacts like
-		// "_" or "_official_" into the slug).
-	}
-	slug := strings.ToLower(b.String())
-	slug = strings.ReplaceAll(slug, " ", "-")
-	// Collapse any "---+" run (e.g. " - " → "---") to a single
-	// hyphen. Loop guard: in pathological inputs a single pass
-	// is sufficient; we cap at 2 passes to avoid infinite loops
-	// in case of edge inputs.
-	for strings.Contains(slug, "--") {
-		slug = strings.ReplaceAll(slug, "--", "-")
-	}
-	return strings.Trim(slug, "-")
+	return slug.SlugifyTitle(title)
 }
 
 func stockTimestampGroupName(in *RunInput) string {

@@ -25,7 +25,7 @@
 //
 // Leaf rule: this package MUST NOT import anything from
 // internal/. It uses only stdlib + the canonical pkg/textutil
-// `ParseTimestamp` atomic helper + pkg/pathutil for slug
+// `ParseTimestamp` atomic helper + pkg/slug for title-slug
 // derivation. The Title field on ParsedClipSpec is the raw
 // captured text (no title-casing) — callers format as they
 // please.
@@ -37,7 +37,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/slug"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
@@ -64,7 +64,7 @@ type ParsedClipSpec struct {
 	Round       int      // 1-based round number when the user prefixed the line with "Round N"; 0 otherwise
 	Tags        []string // Caller-populated
 	Category    string   // Caller-populated
-	Slug        string   // Filesystem-safe slug derived from Title via pathutil.SafeFolderName; falls back to the time range literal when Title is empty/whitespace
+	Slug        string   // Filesystem-safe slug derived from Title via pkg/slug.SlugifyTitle (strip-entirely + lowercase + hyphenate + collapse); falls back to the time range literal when Title is empty/whitespace/pure-unsafe
 	StartSec    float64  // Clip start in seconds (atomic HH:MM:SS / MM:SS parse via pkg/textutil)
 	EndSec      float64  // Clip end in seconds
 	SourceURL   string   // The URL passed through verbatim by the caller (parser is agnostic to source identity)
@@ -215,21 +215,22 @@ func parseTimestampAtom(ts string) float64 {
 
 // deriveSlug returns the canonical Drive-leaf-safe slug for a
 // clip. Priority order:
-//  1. SafeFolderName(Title) → lowercase → spaces-to-hyphens
-//     when Title is non-empty (after TrimSpace — guards against
-//     the "untitled" leak when the user pastes "  " as a title).
-//     The lowercase+hyphen convention mirrors the user's
-//     diagnostic example ("round-01-la-fase-di-studio") and the
-//     Drive-folder-naming convention (lowercase + hyphens > mixed
-//     case + spaces).
+//  1. pkg/slug.SlugifyTitle(Title) when Title is non-empty (after
+//     TrimSpace — guards against the "" leak when the user pastes
+//     "  " as a title). The shared pkg/slug helper is the SOLE
+//     canonical owner of the title-slug convention; both this
+//     parser-side surface and the stock-pipeline surface
+//     (step_publish.go::slugifyTitle) route through it for
+//     byte-equivalent output per godlike/06 SSOT (PR-SLUG-HELPER-EXTRACT,
+//     July 2026).
 //  2. time-range literal "HH-MM-SS_to_HH-MM-SS" (colons replaced
 //     with hyphens so the leaf is operator-readable on Drive).
+//     Used when Title is empty / whitespace-only / pure-unsafe-
+//     chars (SlugifyTitle returns "" for those per godlike/07
+//     NO-FAKE-AVAILABILITY).
 func deriveSlug(title, startAtom, endAtom string) string {
-	if strings.TrimSpace(title) != "" {
-		// SafeFolderName strips filesystem-unsafe chars (/: etc).
-		// ToLower + space-to-hyphen normalizes the convention.
-		slug := strings.ToLower(pathutil.SafeFolderName(title))
-		return strings.ReplaceAll(slug, " ", "-")
+	if derived := slug.SlugifyTitle(title); derived != "" {
+		return derived
 	}
 	return strings.ReplaceAll(
 		fmt.Sprintf("%s_to_%s", startAtom, endAtom),
