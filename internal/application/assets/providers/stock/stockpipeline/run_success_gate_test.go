@@ -273,4 +273,3 @@ func TestAssertRunSummaryArtifactsRequired_RequiredFalseSkipped(t *testing.T) {
 		t.Fatalf("all Required:false (same Kind as Required entries): want ErrMetadataMissing, got %v", err)
 	}
 }
-

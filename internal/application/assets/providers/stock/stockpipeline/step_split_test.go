@@ -88,13 +88,13 @@ func TestSplit_SentinelsLiveInOrchestratorStepErrors(t *testing.T) {
 	// typed-error contract). Drift to bare messages would break
 	// operator log scanability + dashboard errors.Is routing.
 	wantSubstrings := map[string]string{
-		"ErrStockPublishArtifactFailed":    "stock.publish",
-		"ErrStockFinalizeSpineFailed":      "stock.finalize",
-		"ErrStockFinalizeLeaseMissing":     "stock.finalize",
-		"ErrStockFnRequired":               "stock.finalize",
-		"ErrStockStageSourcesAllFailed":    "stock.stage_sources",
+		"ErrStockPublishArtifactFailed":      "stock.publish",
+		"ErrStockFinalizeSpineFailed":        "stock.finalize",
+		"ErrStockFinalizeLeaseMissing":       "stock.finalize",
+		"ErrStockFnRequired":                 "stock.finalize",
+		"ErrStockStageSourcesAllFailed":      "stock.stage_sources",
 		"ErrStockExtractClipsCutterRequired": "stock.extract_clips",
-		"ErrStockComposeChunksAllFailed":   "stock.compose_chunks",
+		"ErrStockComposeChunksAllFailed":     "stock.compose_chunks",
 	}
 	for i, s := range sentinels {
 		if s == nil {
