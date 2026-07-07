@@ -110,6 +110,18 @@ var (
 	ErrStockMetadataNotPublished = errors.New("stock: metadata.json not published (P0 2.1)")
 )
 
+// StockTimestampPolicyVersionV1 is the canonical fallback policy
+// version stamped on ChunkState.PolicyVersion when RunInput.PolicyVersion
+// is empty. PR-004 (July 2026) introduces this typed constant for
+// the godlike/06 SSOT literal — single canonical source for the
+// fallback. Used in StockPublishStep.Run when
+// strings.TrimSpace(in.PolicyVersion) == "". Locked at "v1" until
+// a future policy break justifies a v2 — the wire-shape field
+// already exists today (filled in buildStockRunMetadata +
+// buildRunSummary from the same RunInput.PolicyVersion) so the
+// fallback is a defensible default, not a wire-shape change.
+const StockTimestampPolicyVersionV1 = "stock_timestamp_v1"
+
 // ChunkState captures the state of a single chunk at finalize
 // time. Built by the future Commit 4-7 chunk-rendering ladder
 // (render → ComputeAndFillSHA256 → publisher.Publish → fill
@@ -133,6 +145,10 @@ type ChunkState struct {
 	SourceVideoID string // canonical provider-native ID (YouTube video ID when SourceProvider == youtube; empty otherwise)
 
 	TotalChunks int // per-run total chunk count = len(runner.State().Plan) at chunk-build time; repeated per-entry per user spec (godlike/07 minimum-blast-radius acknowledges logical duplication)
+
+	DrivePath string // PR-004 (July 2026): canonical per-chunk Drive webview link captured from PublishedArtifact.Location.WebViewLink at chunk-build time. Duplicate of RemoteWebViewLink by design — godlike/06 SSOT keeps a single source (Location.WebViewLink); the second field name is for the Qdrant semantic-payload enrichment wave which expects the wire-shape key drive_path (vs the legacy remote_web_view_link). For godlike/07 minimum-blast-radius the duplication is acknowledged in this godoc rather than reflected in metadata.json (per godlike/07 no-fake-availability the wire-shape delta is forward-pointer to the Qdrant pipeline not the stock metadata.json).
+
+	PolicyVersion string // PR-004 (July 2026): per-run policy version tag. Source: RunInput.PolicyVersion (operator-supplied) with hardcoded fallback to StockTimestampPolicyVersionV1 ("stock_timestamp_v1") when empty. Pre-computed ONCE per run by StockPublishStep.Run and stamped on every chunk for trace-back traceability.
 
 	StartSec float64 // clip start timestamp in seconds
 

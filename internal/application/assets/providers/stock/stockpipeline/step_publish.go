@@ -95,6 +95,18 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	// godoc for the duplication rationale). Pre-compute once
 	// outside the loop per godlike/07 minimum-blast-radius.
 	totalChunks := len(runner.State().Plan)
+	// PR-004 (July 2026): pre-compute policyVersion once per run
+	// so the per-chunk assignment is byte-equivalent across the
+	// whole run (locks traceability + avoids N-times strings.TrimSpace
+	// in the hot loop). Fallback to StockTimestampPolicyVersionV1
+	// when RunInput.PolicyVersion is empty/whitespace per user
+	// spec. Stamped on every chunk via ChunkState.PolicyVersion.
+	policyVersion := StockTimestampPolicyVersionV1
+	if in != nil {
+		if trimmed := strings.TrimSpace(in.PolicyVersion); trimmed != "" {
+			policyVersion = trimmed
+		}
+	}
 	for i, compPath := range composed {
 		plan := ClipPlan{}
 		hasPlan := i < len(runner.State().Plan)
@@ -102,11 +114,12 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			plan = runner.State().Plan[i]
 		}
 		cs := ChunkState{
-			Index:       i,
-			ArtifactID:  ChunkArtifactID(fp, i),
-			Filename:    ChunkArtifactFilename(fp, i),
-			LocalPath:   compPath,
-			TotalChunks: totalChunks,
+			Index:         i,
+			ArtifactID:    ChunkArtifactID(fp, i),
+			Filename:      ChunkArtifactFilename(fp, i),
+			LocalPath:     compPath,
+			TotalChunks:   totalChunks,
+			PolicyVersion: policyVersion,
 		}
 		if hasPlan {
 			cs.SourceURL = plan.SourceID
@@ -157,6 +170,16 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 		cs.RemoteFileID = published.Location.FileID
 		cs.RemoteWebViewLink = published.Location.WebViewLink
+		// PR-004 (July 2026): capture the canonical Drive webview
+		// link as DrivePath. The Qdrant semantic-payload enrichment
+		// wave expects the wire-shape key drive_path on chunk rows;
+		// the legacy metadata.json still uses drive_web_view_link
+		// (preserved on RemoteWebViewLink above). Same source-of-truth
+		// (PublishedArtifact.Location.WebViewLink) — the field-name
+		// divergence is the canonical SSOT-vs-legacy-tradeoff the
+		// user spec asks for (godlike/07 minimum-blast-radius: no
+		// new surface contract, just a typed alias on the struct).
+		cs.DrivePath = published.Location.WebViewLink
 		cs.RemoteDownloadLink = published.Location.DownloadLink
 		chunks = append(chunks, cs)
 	}

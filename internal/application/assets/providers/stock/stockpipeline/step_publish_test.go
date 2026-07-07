@@ -402,3 +402,262 @@ func TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName(t *testing.T) 
 		})
 	}
 }
+
+// ── PR-004 (July 2026) — DrivePath + PolicyVersion on ChunkState ──
+//
+// Per user spec: capture DrivePath (from
+// PublishedArtifact.Location.WebViewLink) + PolicyVersion (from
+// RunInput.PolicyVersion with hardcoded fallback to
+// StockTimestampPolicyVersionV1 = "stock_timestamp_v1") on the
+// Phase 1 per-chunk loop. The tests below pin the post-publish
+// sequence: prepare-call returns a PublishedArtifact → the next
+// line writes its WebViewLink into ChunkState.DrivePath →
+// the ChunkState propagates into runner.State().Published.
+
+// publishedDrivePathFor mirrors the recordingArtifactPreparation's
+// WebViewLink contract so the test assertions can compute the
+// expected per-chunk drive path without coupling to the mock's
+// internal state.
+func publishedDrivePathFor(artifactID string) string {
+	return "https://drive.google.com/file/d/" + artifactID + "/view"
+}
+
+func makePR004LegacyRunner(t *testing.T, runInput *RunInput, policyVersion string) *publishFakeRunner {
+	t.Helper()
+	tmpDir := t.TempDir()
+	chunk := filepath.Join(tmpDir, "chunk.mp4")
+	if err := os.WriteFile(chunk, []byte("chunk"), 0o644); err != nil {
+		t.Fatalf("write chunk: %v", err)
+	}
+	prep := &recordingArtifactPreparation{}
+	return &publishFakeRunner{
+		runInput: runInput,
+		cfg:      OrchestratorConfig{PolicyVersion: policyVersion},
+		state: &runState{
+			Plan:          []ClipPlan{{SourceID: "https://youtu.be/abc", StartSec: 10, EndSec: 20}},
+			ComposedPaths: []string{chunk},
+		},
+		artifactPrep: prep,
+	}
+}
+
+// TestStockPublishStep_CapturesDrivePathFromPublishResult pins the
+// post-publish sequence: PublishedArtifact.Location.WebViewLink
+// captured by PublishedArtifact → ChunkState.DrivePath set on
+// the same line. The expected drive path mirrors the
+// recordingArtifactPreparation contract (artifactID-based URL).
+func TestStockPublishStep_CapturesDrivePathFromPublishResult(t *testing.T) {
+	runner := makePR004LegacyRunner(t, &RunInput{
+		FolderID:      "wf-pr4-1",
+		ClipDuration:  10,
+		ChunkDuration: 10,
+		PolicyVersion: "policy-v1",
+	}, "policy-v1")
+	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
+		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
+	}
+	published := runner.State().Published
+	if len(published) != 1 {
+		t.Fatalf("expected 1 published chunk, got %d", len(published))
+	}
+	wantDrivePath := publishedDrivePathFor(published[0].ArtifactID)
+	if got := published[0].DrivePath; got != wantDrivePath {
+		t.Errorf("chunk[0].DrivePath = %q, want %q (captured from PublishedArtifact.Location.WebViewLink)",
+			got, wantDrivePath)
+	}
+	// godlike/06 SSOT lockstep: DrivePath is the SAME source as
+	// RemoteWebViewLink. A future refactor that derives them from
+	// distinct sources (e.g. Location.DownloadLink) will surface
+	// here as a single test failure.
+	if published[0].DrivePath != published[0].RemoteWebViewLink {
+		t.Errorf("DrivePath = %q, RemoteWebViewLink = %q (SSOT requires byte-equivalent)",
+			published[0].DrivePath, published[0].RemoteWebViewLink)
+	}
+}
+
+// TestStockPublishStep_CapturesPolicyVersionFromRunInput pins
+// the post-publish sequence: RunInput.PolicyVersion
+// (operator-supplied) → ChunkState.PolicyVersion stamped on every
+// chunk (byte-equivalent across the run for traceability).
+func TestStockPublishStep_CapturesPolicyVersionFromRunInput(t *testing.T) {
+	const want = "policy-v9-explicit"
+	runner := makePR004LegacyRunner(t, &RunInput{
+		FolderID:      "wf-pr4-2",
+		ClipDuration:  10,
+		ChunkDuration: 10,
+		PolicyVersion: want,
+	}, want)
+	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
+		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
+	}
+	published := runner.State().Published
+	if len(published) != 1 {
+		t.Fatalf("expected 1 published chunk, got %d", len(published))
+	}
+	if got := published[0].PolicyVersion; got != want {
+		t.Errorf("chunk[0].PolicyVersion = %q, want %q (RunInput.PolicyVersion must propagate to ChunkState)",
+			got, want)
+	}
+}
+
+// TestStockPublishStep_PolicyVersionFallsBackToV1WhenEmpty pins
+// the godlike/07 NO-FAKE-AVAILABILITY fallback contract: when
+// RunInput.PolicyVersion is empty (or whitespace-only) the
+// canonical StockTimestampPolicyVersionV1 = "stock_timestamp_v1"
+// literal is stamped on every chunk. A future refactor that lets
+// an empty PolicyVersion silently propagate would surface here
+// as a single test failure.
+func TestStockPublishStep_PolicyVersionFallsBackToV1WhenEmpty(t *testing.T) {
+	cases := []struct {
+		name          string
+		policyVersion string
+		wantPolicy    string
+	}{
+		{"empty string falls back to v1", "", StockTimestampPolicyVersionV1},
+		{"whitespace-only falls back to v1", "   \t\n", StockTimestampPolicyVersionV1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runner := makePR004LegacyRunner(t, &RunInput{
+				FolderID:      "wf-pr4-3",
+				ClipDuration:  10,
+				ChunkDuration: 10,
+				PolicyVersion: tc.policyVersion,
+			}, tc.policyVersion)
+			if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
+				t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
+			}
+			published := runner.State().Published
+			if len(published) != 1 {
+				t.Fatalf("expected 1 published chunk, got %d", len(published))
+			}
+			if got := published[0].PolicyVersion; got != tc.wantPolicy {
+				t.Errorf("chunk[0].PolicyVersion = %q, want %q (empty RunInput.PolicyVersion must fall back to StockTimestampPolicyVersionV1)",
+					got, tc.wantPolicy)
+			}
+		})
+	}
+}
+
+// TestStockPublishStep_BothFieldsPropagatedPerChunk pins the
+// post-publish sequence across a 3-chunk legacy run: BOTH
+// DrivePath and PolicyVersion are stamped on every chunk. The
+// per-chunk DriftPath reflects each chunk's own ArtifactID (the
+// recordingArtifactPreparation contract derives WebViewLink from
+// ArtifactID). PolicyVersion is byte-equivalent across the 3
+// chunks (single per-run value).
+func TestStockPublishStep_BothFieldsPropagatedPerChunk(t *testing.T) {
+	tmpDir := t.TempDir()
+	const chunkCount = 3
+	paths := make([]string, chunkCount)
+	plans := make([]ClipPlan, chunkCount)
+	for i := 0; i < chunkCount; i++ {
+		p := filepath.Join(tmpDir, fmt.Sprintf("chunk-%d.mp4", i))
+		if err := os.WriteFile(p, []byte("chunk-"+strconv.Itoa(i)), 0o644); err != nil {
+			t.Fatalf("write chunk %d: %v", i, err)
+		}
+		paths[i] = p
+		plans[i] = ClipPlan{
+			SourceID: "https://youtu.be/source-" + strconv.Itoa(i),
+			StartSec: float64(10 * i),
+			EndSec:   float64(10*i + 10),
+		}
+	}
+	const wantPolicy = "policy-v3-perchunk"
+	prep := &recordingArtifactPreparation{}
+	runner := &publishFakeRunner{
+		runInput: &RunInput{
+			FolderID:      "wf-pr4-4",
+			ClipDuration:  10,
+			ChunkDuration: 10,
+			PolicyVersion: wantPolicy,
+		},
+		cfg: OrchestratorConfig{PolicyVersion: wantPolicy},
+		state: &runState{
+			Plan:          plans,
+			ComposedPaths: paths,
+		},
+		artifactPrep: prep,
+	}
+	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
+		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
+	}
+	published := runner.State().Published
+	if len(published) != chunkCount {
+		t.Fatalf("expected %d published chunks, got %d", chunkCount, len(published))
+	}
+	for i := 0; i < chunkCount; i++ {
+		// Per-chunk DrivePath: derived from THIS chunk's ArtifactID
+		// (recordingArtifactPreparation contract: WebViewLink uses
+		// the artifact's own ArtifactID as the file id segment).
+		wantDrivePath := publishedDrivePathFor(published[i].ArtifactID)
+		if got := published[i].DrivePath; got != wantDrivePath {
+			t.Errorf("chunk[%d].DrivePath = %q, want %q", i, got, wantDrivePath)
+		}
+		// Per-run PolicyVersion: byte-equivalent across all chunks
+		// (locks the pre-compute-once-outside-loop contract).
+		if got := published[i].PolicyVersion; got != wantPolicy {
+			t.Errorf("chunk[%d].PolicyVersion = %q, want %q (per-run, byte-equivalent across chunks)",
+				i, got, wantPolicy)
+		}
+	}
+}
+
+// TestStockPublishStep_ExplicitClips_DrivePathOnTimestampChunks
+// locks the per-chunk DrivePath capture for the explicit-clips
+// (timestamp-mode) path too. The PathLeafName + ArtifactID
+// differ from the legacy path (TimestampArtifactID format) but
+// the WebViewLink capture contract is the same — the
+// recordingArtifactPreparation mock derives the URL from each
+// chunk's own ArtifactID, so the expected drive path mirrors
+// that contract per-chunk.
+func TestStockPublishStep_ExplicitClips_DrivePathOnTimestampChunks(t *testing.T) {
+	tmpDir := t.TempDir()
+	clip0 := filepath.Join(tmpDir, "clip0.mp4")
+	clip1 := filepath.Join(tmpDir, "clip1.mp4")
+	if err := os.WriteFile(clip0, []byte("clip-0"), 0o644); err != nil {
+		t.Fatalf("write clip0: %v", err)
+	}
+	if err := os.WriteFile(clip1, []byte("clip-1"), 0o644); err != nil {
+		t.Fatalf("write clip1: %v", err)
+	}
+	prep := &recordingArtifactPreparation{}
+	runner := &publishFakeRunner{
+		runInput: &RunInput{
+			FolderName:    "Round_7",
+			Subfolder:     "Pacquiao_Vs_Broner/Round_7/00-00-32_to_00-01-27",
+			FolderID:      "wf-pr4-5",
+			Clips:         []ClipSpec{{URL: "https://youtu.be/a", Title: "Round 1"}, {URL: "https://youtu.be/a", Title: "Round 2"}},
+			ClipDuration:  10,
+			ChunkDuration: 10,
+			PolicyVersion: "policy-explicit-v1",
+		},
+		cfg: OrchestratorConfig{PolicyVersion: "policy-explicit-v1"},
+		state: &runState{
+			Plan: []ClipPlan{
+				{SourceID: "https://youtu.be/a", StartSec: 32, EndSec: 51},
+				{SourceID: "https://youtu.be/a", StartSec: 67, EndSec: 91},
+			},
+			ComposedPaths: []string{clip0, clip1},
+		},
+		artifactPrep: prep,
+	}
+	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
+		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
+	}
+	published := runner.State().Published
+	if len(published) != 2 {
+		t.Fatalf("expected 2 published timestamp chunks, got %d", len(published))
+	}
+	for i := 0; i < 2; i++ {
+		wantDrivePath := publishedDrivePathFor(published[i].ArtifactID)
+		if got := published[i].DrivePath; got != wantDrivePath {
+			t.Errorf("chunk[%d].DrivePath = %q, want %q (explicit-clips path captures per-chunk DrivePath)",
+				i, got, wantDrivePath)
+		}
+		if got := published[i].PolicyVersion; got != "policy-explicit-v1" {
+			t.Errorf("chunk[%d].PolicyVersion = %q, want %q (explicit-clips path uses RunInput.PolicyVersion)",
+				i, got, "policy-explicit-v1")
+		}
+	}
+}
