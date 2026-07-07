@@ -37,8 +37,12 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -77,6 +81,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	fp := runner.RunFingerprint()
 	explicitTimestamps := in != nil && len(in.Clips) > 0
 	rootFolderName := stockRootFolderName(in)
+	timestampGroupName := stockTimestampGroupName(in)
 	composed := runner.State().ComposedPaths
 	chunks := make([]ChunkState, 0, len(composed))
 	metadataArtifactID := MetadataArtifactID(fp)
@@ -89,7 +94,6 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		if hasPlan {
 			plan = runner.State().Plan[i]
 		}
-		leafName := stockTimestampLeafName(i, plan, in)
 		cs := ChunkState{
 			Index:      i,
 			ArtifactID: ChunkArtifactID(fp, i),
@@ -103,7 +107,6 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 		if explicitTimestamps {
 			cs.ArtifactID = TimestampArtifactID(fp, i, "video")
-			metadataArtifactID = TimestampArtifactID(fp, i, "metadata")
 			if i < len(runner.State().Plan) && runner.State().Plan[i].Title != "" {
 				cs.Title = runner.State().Plan[i].Title
 			} else if i < len(in.Clips) {
@@ -135,7 +138,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			IdempotencyKey:     idem + ":c" + strconv.Itoa(i),
 			RootFolderOverride: runner.RunInput().FolderID,
 			RootFolderName:     rootFolderName,
-			PathLeafName:       leafName,
+			PathLeafName:       timestampGroupName,
 		}
 		published, prepErr := runner.ArtifactPreparation().Prepare(ctx, va)
 		if prepErr != nil {
@@ -146,70 +149,13 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		cs.RemoteWebViewLink = published.Location.WebViewLink
 		cs.RemoteDownloadLink = published.Location.DownloadLink
 		chunks = append(chunks, cs)
-
-		if explicitTimestamps {
-			clipMetaPath, clipMetaHash, clipMetaSize, clipMetaErr := writeAndHashMetadata(in, []ChunkState{cs}, fp)
-			if clipMetaErr != nil {
-				return fmt.Errorf("%w: timestamp metadata stage (clip %d): %v",
-					ErrStockPublishArtifactFailed, i, clipMetaErr)
-			}
-			defer func(path string) {
-				if rmErr := os.Remove(path); rmErr != nil && !os.IsNotExist(rmErr) {
-					if runner.Log() != nil {
-						runner.Log().Warn("orchestrator: stock.publish: failed to remove timestamp metadata temp file",
-							zap.String("path", path), zap.Error(rmErr))
-					}
-				}
-			}(clipMetaPath)
-
-			clipMetaIdem, clipMetaIdemErr := asset.SHA256IdempotencyKey("stock:"+fp+":timestamp:"+strconv.Itoa(i)+":metadata", clipMetaHash)
-			if clipMetaIdemErr != nil {
-				return fmt.Errorf("%w: timestamp metadata idem-key (clip %d): %v",
-					ErrStockPublishArtifactFailed, i, clipMetaIdemErr)
-			}
-			clipMetaVA := finalization.VerifiedArtifact{
-				ArtifactID:         TimestampArtifactID(fp, i, "metadata"),
-				Kind:               finalization.KindMetadata,
-				Filename:           "metadata.json",
-				MIMEType:           "application/json",
-				LocalPath:          clipMetaPath,
-				SizeBytes:          clipMetaSize,
-				SHA256:             clipMetaHash,
-				Requirement:        finalization.ArtifactRequirementRequired,
-				IdempotencyKey:     clipMetaIdem,
-				RootFolderOverride: in.FolderID,
-				RootFolderName:     rootFolderName,
-				PathLeafName:       leafName,
-			}
-			clipMetaPublished, clipMetaPrepErr := runner.ArtifactPreparation().Prepare(ctx, clipMetaVA)
-			if clipMetaPrepErr != nil {
-				return fmt.Errorf("%w: timestamp metadata upload (clip %d): %v",
-					ErrStockPublishArtifactFailed, i, clipMetaPrepErr)
-			}
-			if runner.State().MetadataPublished.LocalPath == "" {
-				metadataPublished = clipMetaPublished
-				runner.State().MetadataPublished = MetadataState{
-					LocalPath:         clipMetaVA.LocalPath,
-					SHA256:            clipMetaVA.SHA256,
-					SizeBytes:         clipMetaVA.SizeBytes,
-					RemoteFileID:      clipMetaPublished.Location.FileID,
-					RemoteWebViewLink: clipMetaPublished.Location.WebViewLink,
-				}
-			}
-			if runner.Log() != nil {
-				runner.Log().Info("orchestrator: stock.publish: timestamp metadata uploaded",
-					zap.Int("clip_index", i),
-					zap.String("metadata_artifact_id", clipMetaVA.ArtifactID),
-					zap.String("metadata_remote_file_id", clipMetaPublished.Location.FileID))
-			}
-		}
 	}
 	runner.State().Published = chunks
 
 	// ── Phase 2: metadata.json ArtifactPreparation ────────────────
-	// Explicit timestamp mode publishes one metadata.json per
-	// timestamp directory inside that timestamp folder itself.
-	// Legacy mode keeps the single per-run metadata.json envelope.
+	// Timestamp-mode and legacy runs both publish a single
+	// metadata.json envelope. The difference is only the leaf
+	// folder name used for the publish path.
 	//
 	// STATO ATTUALE: compose_chunks produce file reali.
 	// L'ErrStockChunkLocalMissing è RIMOSSO — chunk mancanti sono
@@ -238,114 +184,209 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 		return nil
 	}
-	if !explicitTimestamps {
-		metaPath, metaHash, metaSize, metaErr := writeAndHashMetadata(
-			in, chunks, fp,
-		)
-		if metaErr != nil {
-			return fmt.Errorf("%w: metadata.json stage: %v",
-				ErrStockPublishArtifactFailed, metaErr)
-		}
-		defer func() {
-			// Best-effort cleanup of the metadata temp file after
-			// Prepare. The Publisher has already consumed the contents
-			// and the metadata RemoteFileID lives on in GoMemory.
-			if rmErr := os.Remove(metaPath); rmErr != nil && !os.IsNotExist(rmErr) {
-				if runner.Log() != nil {
-					runner.Log().Warn("orchestrator: stock.publish: failed to remove metadata temp file",
-						zap.String("path", metaPath), zap.Error(rmErr))
-				}
+	metaPath, metaHash, metaSize, metaErr := writeAndHashMetadata(in, chunks, fp)
+	if metaErr != nil {
+		return fmt.Errorf("%w: metadata.json stage: %v",
+			ErrStockPublishArtifactFailed, metaErr)
+	}
+	defer func() {
+		if rmErr := os.Remove(metaPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			if runner.Log() != nil {
+				runner.Log().Warn("orchestrator: stock.publish: failed to remove metadata temp file",
+					zap.String("path", metaPath), zap.Error(rmErr))
 			}
-		}()
+		}
+	}()
 
-		metaIdem, metaIdemErr := asset.SHA256IdempotencyKey("stock:"+fp+":metadata", metaHash)
-		if metaIdemErr != nil {
-			return fmt.Errorf("%w: metadata idem-key: %v",
-				ErrStockPublishArtifactFailed, metaIdemErr)
-		}
-		metaVA := finalization.VerifiedArtifact{
-			ArtifactID:         MetadataArtifactID(fp),
-			Kind:               finalization.KindMetadata,
-			Filename:           "metadata.json",
-			MIMEType:           "application/json",
-			LocalPath:          metaPath,
-			SizeBytes:          metaSize,
-			SHA256:             metaHash,
-			Requirement:        finalization.ArtifactRequirementRequired,
-			IdempotencyKey:     metaIdem,
-			RootFolderOverride: in.FolderID,
-			RootFolderName:     rootFolderName,
-			PathLeafName:       "metadata",
-		}
-		metaPublished, metaPrepErr := runner.ArtifactPreparation().Prepare(ctx, metaVA)
-		if metaPrepErr != nil {
-			return fmt.Errorf("%w: metadata.json upload: %v",
-				ErrStockPublishArtifactFailed, metaPrepErr)
-		}
-		metadataPublished = metaPublished
-		runner.State().MetadataPublished = MetadataState{
-			LocalPath:         metaVA.LocalPath,
-			SHA256:            metaVA.SHA256,
-			SizeBytes:         metaVA.SizeBytes,
-			RemoteFileID:      metaPublished.Location.FileID,
-			RemoteWebViewLink: metaPublished.Location.WebViewLink,
-		}
+	metaIdem, metaIdemErr := asset.SHA256IdempotencyKey("stock:"+fp+":metadata", metaHash)
+	if metaIdemErr != nil {
+		return fmt.Errorf("%w: metadata idem-key: %v",
+			ErrStockPublishArtifactFailed, metaIdemErr)
+	}
+	metaVA := finalization.VerifiedArtifact{
+		ArtifactID:         MetadataArtifactID(fp),
+		Kind:               finalization.KindMetadata,
+		Filename:           "metadata.json",
+		MIMEType:           "application/json",
+		LocalPath:          metaPath,
+		SizeBytes:          metaSize,
+		SHA256:             metaHash,
+		Requirement:        finalization.ArtifactRequirementRequired,
+		IdempotencyKey:     metaIdem,
+		RootFolderOverride: in.FolderID,
+		RootFolderName:     rootFolderName,
+		PathLeafName:       timestampGroupName,
+	}
+	metaPublished, metaPrepErr := runner.ArtifactPreparation().Prepare(ctx, metaVA)
+	if metaPrepErr != nil {
+		return fmt.Errorf("%w: metadata.json upload: %v",
+			ErrStockPublishArtifactFailed, metaPrepErr)
+	}
+	metadataPublished = metaPublished
+	runner.State().MetadataPublished = MetadataState{
+		LocalPath:         metaVA.LocalPath,
+		SHA256:            metaVA.SHA256,
+		SizeBytes:         metaVA.SizeBytes,
+		RemoteFileID:      metaPublished.Location.FileID,
+		RemoteWebViewLink: metaPublished.Location.WebViewLink,
 	}
 
 	if runner.Log() != nil {
-		metadataArtifactLogID := metadataArtifactID
-		if explicitTimestamps && len(chunks) > 0 {
-			metadataArtifactLogID = TimestampArtifactID(fp, 0, "metadata")
-		}
 		runner.Log().Info("orchestrator: stock.publish: SUCCEEDED",
 			zap.Int("chunk_count", len(chunks)),
-			zap.String("metadata_artifact_id", metadataArtifactLogID),
+			zap.String("metadata_artifact_id", metadataArtifactID),
 			zap.String("metadata_remote_file_id", metadataPublished.Location.FileID))
 	}
 	return nil
 }
 
+// stockRootFolderName derives the human-readable Drive top-level
+// folder name for a stock pipeline run. Canonical SSOT for legacy
+// "no-folder-name" legibility (July 2026). Source evaluation order:
+//
+//  1. in.FolderName — operator-supplied readable name (highest priority).
+//  2. in.Subfolder   — operator-supplied secondary root.
+//  3. in.SearchQueries[0] — sanitized first query (legacy search-only).
+//  4. in.DirectURLs[0]   — basename of first URL (legacy direct-url).
+//  5. "stock_<YYYY-MM-DD>" UTC date — universal fallback.
+//
+// Pre-change legibility gap: a legacy run that omits folder_name +
+// clips[] surfaced either "stock" or run_<fingerprint> on Drive —
+// both illegible to operators scanning the Drive folder tree. The
+// fallback chain above preserves the first two branches
+// byte-stable for operators who DO supply folder_name (or
+// subfolder) and extends with three new fallback rules for the
+// legacy path.
+//
+// godlike/06 SSOT: this function is the SOLE writer of stock
+// pipeline root folder names. The VerifiedArtifact.RootFolderName
+// field (locked in PR-STOCK-ORCHESTRATOR-SPLIT, July 2026) carries
+// the chosen value into the artifact publisher adapter
+// stockArtifactPathParts switch which honors it via
+// stockRunFolderName.
+//
+// godlike/07 minimum-blast-radius: zero new signatures, zero new
+// dependencies, zero composition-root surface change. Date fallback
+// runs at request time (no cached time) so test fixtures and replay
+// paths stay stable. The nil RunInput branch returns "stock"
+// (preserving pre-change behavior for legacy fixture flows).
 func stockRootFolderName(in *RunInput) string {
 	if in == nil {
 		return "stock"
 	}
-	if name := pathutil.SafeFolderName(in.FolderName); name != "" {
+	if name := sanitizedRootName(in.FolderName); name != "" {
 		return name
 	}
-	if name := pathutil.SafeFolderName(in.Subfolder); name != "" {
+	if name := sanitizedRootName(in.Subfolder); name != "" {
 		return name
 	}
-	return "stock"
+	if name := sanitizeLegacyQuery(in.SearchQueries); name != "" {
+		return name
+	}
+	if name := sanitizeLegacyURLBasename(in.DirectURLs); name != "" {
+		return name
+	}
+	return "stock_" + time.Now().UTC().Format("2006-01-02")
 }
 
-func stockTimestampLeafName(index int, plan ClipPlan, in *RunInput) string {
-	title := plan.Title
-	if title == "" && in != nil && index < len(in.Clips) {
-		title = in.Clips[index].Title
+// sanitizedRootName trims whitespace, returns "" for empty input,
+// otherwise runs through pathutil.SafeFolderName. Empty-in / all-
+// whitespace-in collapses to "" so the caller continues to the
+// next fallback rule (closes the pre-existing latent bug where
+// empty FolderName silently surfaced as "untitled" on Drive).
+func sanitizedRootName(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
 	}
-	rangeName := fmt.Sprintf("timestamp_%d", index)
-	if plan.StartSec > 0 || plan.EndSec > 0 {
-		rangeName = fmt.Sprintf("timestamp_%s_to_%s",
-			formatTimestampPathToken(plan.StartSec), formatTimestampPathToken(plan.EndSec))
-	}
-	if title != "" {
-		if name := pathutil.SafeFolderName(fmt.Sprintf("%s_%s", rangeName, title)); name != "" {
+	return pathutil.SafeFolderName(s)
+}
+
+// sanitizeLegacyQuery returns the first non-empty sanitized search
+// query from queries. Returns "" if none survive so the caller
+// falls through to the URL / date fallback rule.
+func sanitizeLegacyQuery(queries []string) string {
+	for _, q := range queries {
+		if name := sanitizedRootName(q); name != "" {
 			return name
 		}
 	}
-	return pathutil.SafeFolderName(rangeName)
+	return ""
 }
 
-func formatTimestampPathToken(sec float64) string {
-	if sec < 0 {
-		sec = 0
+// sanitizeLegacyURLBasename returns the first non-empty sanitized
+// URL basename (sans file extension) from urls. Returns "" if none
+// survive so the caller falls through to the date fallback rule.
+func sanitizeLegacyURLBasename(urls []string) string {
+	for _, u := range urls {
+		if name := sanitizedURLBasename(u); name != "" {
+			return name
+		}
 	}
-	total := int(sec + 0.5)
-	h := total / 3600
-	m := (total % 3600) / 60
-	s := total % 60
-	if h > 0 {
-		return fmt.Sprintf("%02d-%02d-%02d", h, m, s)
+	return ""
+}
+
+// sanitizedURLBasename strips query + fragment layers from a raw
+// URL, takes the URL path's Base, strips the file extension, then
+// runs through sanitizedRootName so the result is a filesystem-
+// safe folder name. Returns "" on empty / malformed input so
+// callers fall through to the next fallback rule.
+func sanitizedURLBasename(rawURL string) string {
+	s := strings.TrimSpace(rawURL)
+	if s == "" {
+		return ""
 	}
-	return fmt.Sprintf("%02d-%02d", m, s)
+	if i := strings.IndexByte(s, '?'); i >= 0 {
+		s = s[:i]
+	}
+	if i := strings.IndexByte(s, '#'); i >= 0 {
+		s = s[:i]
+	}
+	if parsed, err := url.Parse(s); err == nil && parsed.Path != "" {
+		s = parsed.Path
+	}
+	base := filepath.Base(s)
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	return sanitizedRootName(base)
+}
+
+// stockTimestampGroupName derives the human-readable Drive leaf
+// folder name shared by all chunks + the per-run metadata.json
+// of a stock pipeline run. Cascade:
+//
+//  1. basename of in.Subfolder (operator-supplied path).
+//  2. in.FolderName (operator-supplied readable name).
+//  3. "metadata" (universal literal-name fallback).
+//
+// Empty in.FolderName (or all-whitespace) is no longer incorrectly
+// surfaced as the literal "untitled" string. The pre-existing bug
+// was exposed by TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName:
+// when in.FolderName == "" AND in.Subfolder == "" the function
+// returned pathutil.SafeFolderName("") = "untitled", which then
+// surfaced on Drive as the literal folder name `untitled/`. The
+// fix threads in.FolderName through sanitizedRootName which
+// trims+empty-checks BEFORE SafeFolderName, returning "" for
+// empty input so the caller falls through to the "metadata"
+// literal fallback.
+//
+// godlike/06 SSOT: this is the SOLE writer of stock
+// PathLeafName values. VerifiedArtifact.PathLeafName (locked in
+// PR-STOCK-ORCHESTRATOR-SPLIT, July 2026) carries the chosen
+// value into every chunk + metadata artifact in a run, so all
+// chunks + metadata share the SAME leaf (no per-chunk drift).
+func stockTimestampGroupName(in *RunInput) string {
+	if in == nil {
+		return "metadata"
+	}
+	if sub := strings.TrimSpace(in.Subfolder); sub != "" {
+		if base := filepath.Base(filepath.Clean(sub)); base != "" && base != "." && base != string(filepath.Separator) {
+			if name := sanitizedRootName(base); name != "" {
+				return name
+			}
+		}
+	}
+	if name := sanitizedRootName(in.FolderName); name != "" {
+		return name
+	}
+	return "metadata"
 }
