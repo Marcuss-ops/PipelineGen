@@ -3,6 +3,7 @@ package stockpipeline
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
@@ -83,6 +84,7 @@ type fakeSucceedingCutter struct{}
 func (fakeSucceedingCutter) Cut(_ context.Context, req CutRequest) (CutBatchResult, error) {
 	items := make([]CutItemResult, len(req.Jobs))
 	for i, j := range req.Jobs {
+		_ = os.WriteFile(j.OutputPath, []byte("fake-cut-bytes"), 0o644)
 		items[i] = CutItemResult{
 			JobID:      j.OutputPath,
 			OutputPath: j.OutputPath,

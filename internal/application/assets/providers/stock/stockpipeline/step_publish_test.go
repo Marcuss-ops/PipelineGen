@@ -52,6 +52,9 @@ func (f *publishFakeRunner) Renderer() StockRenderer           { return nil }
 func (f *publishFakeRunner) Builder() ManifestBuilder          { return nil }
 func (f *publishFakeRunner) Writer() TransactionalAssetWriter  { return nil }
 func (f *publishFakeRunner) Projection() ProjectionPort        { return nil }
+func (f *publishFakeRunner) SourceDurationProbe() SourceDurationProbe {
+	return nil
+}
 func (f *publishFakeRunner) ArtifactPreparation() finalization.ArtifactPreparationService {
 	return f.artifactPrep
 }
