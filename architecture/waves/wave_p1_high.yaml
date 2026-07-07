@@ -2849,3 +2849,38 @@
         The audit scope is to walk all 7 shipped Wave-1 entries + set the
         actual ship_sha for any that landed on origin/main but were never
         recorded. Scope: docs-only, no code change.
+
+- id: PR-GEMMA-EXTRACT-IMPORTANT
+  status: shipped
+  exit_signal: false  # until literal-flip commit lands per godlike/07 NO-FAKE-AVAILABILITY
+  ship_date: 2026-07-08
+  owner_capability: internal/application/youtube/usecase
+  deadline: 2026-08-01
+  exit_gate: |
+    All 4 per-step closures shipped atomically:
+    (a) Step 1 use case at internal/application/youtube/usecase/extract_important_clips.go
+        (7-port dep chain + analyzer=nil to failClosedAnalyzerAdapter runtime fail-closed pattern).
+    (b) Step 2 broker-facing job handler at internal/application/youtube/usecase/extract_important_clips_job_handler.go
+        (canonical appjobs.HandlerFunc signature + 5-typed-sentinel TERMINAL vs RETRYABLE classifyError split).
+    (c) Step 4 const canonicalization: TypeYouTubeClipExtractImportant const at internal/domain/job/job.go:189
+        + re-export at internal/application/jobs/registry_types.go:227
+        + registry entry at internal/application/jobs/registry_extraction.go:39 (Timeout=60min, DefaultMaxRetries=2).
+    (d) Literal-flip SSOT closure in internal/app/build_bundles_youtube.go
+        (3 surgical flips: add job import + flip Errorf prefix to pct_s+const byte-equivalent + flip CriticalHandler.Name to const).
+    verified_zero = rg "youtube.clip_extract_important" internal/ returns EXACTLY 1 hit (the canonical const declaration).
+  linked_issues:
+    - id: Step-1-UseCase
+      owner_capability: internal/application/youtube/usecase
+      status: shipped
+      ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_USE_CASE
+      deadline: 2026-08-01
+    - id: Step-2-JobHandler
+      owner_capability: internal/application/youtube/usecase
+      status: shipped
+      ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_HANDLER
+      deadline: 2026-08-01
+    - id: Step-4-Const-Canonicalized
+      owner_capability: internal/application/jobs
+      status: shipped
+      ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_CONST
+      deadline: 2026-08-01

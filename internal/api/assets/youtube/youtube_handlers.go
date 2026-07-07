@@ -25,6 +25,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // YouTubeClipHandler owns the HTTP transport for YouTube clip operations:
@@ -193,29 +194,43 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 // ExtractImportant enqueues an LLM-driven YouTube clip extraction job.
 //
 // PR-GEMMA-EXTRACT-IMPORTANT Step 5: POST /api/clips/extract-important.
-// The jobType dispatches to ExtractImportantClipsJobHandler via the broker
-// (godlike/06 SSOT — uses the canonical appjobs.TypeYouTubeClipExtractImportant
-// const; the underlying use case has fail-closed sematics: nil analyzer
-// surfaces ErrAnalyzerUnavailable at runtime via the failClosedAnalyzerAdapter,
-// nil Subtitles/Drive would panic at useCase ctor per godlike/07).
+// The jobType dispatches to ExtractImportantClipsJobHandler via the broker.
 //
-// Reuses the canonical yttypes.ExtractRequest DTO (gemini+ollama analyzer
-// derives important segments from the transcript post-subtitle-fetch).
+// Payload mapping: the handler uses the canonical yttypes.ExtractRequest DTO
+// but builds a payload map compatible with ExtractImportantClipsCommand:
+//   - url             → req.URL
+//   - video_id        → extracted from req.URL via urlutil.ExtractVideoID
+//   - max_segments    → default 5 (the DTO has no segments field; LLM decides)
+//   - drive_root_folder → req.Destination.FolderID (or empty string)
+//   - language        → "en" (forward-pointer: add a query param)
+//
+// godlike/07 NO-FAKE-AVAILABILITY: nil jobsSvc returns 503 BEFORE dispatch;
+// nil Destination or empty FolderID will cause the use case to fail with
+// ErrInvalidInput (drive_root_folder required).
 func (h *YouTubeClipHandler) ExtractImportant(c *gin.Context) {
 	req, ok := apiutil.BindJSON[yttypes.ExtractRequest](c)
 	if !ok {
 		return
 	}
 
-	payloadBytes, err := json.Marshal(req)
-	if err != nil {
-		apiutil.InternalError(c, fmt.Errorf("failed to marshal request: %w", err))
+	// Extract video_id from URL.
+	videoID, err := urlutil.ExtractVideoID(req.URL)
+	if err != nil || videoID == "" {
+		apiutil.BadRequest(c, "could not extract video_id from url (use a standard youtube.com/watch?v=... URL)")
 		return
 	}
-	var payloadMap map[string]any
-	if err := json.Unmarshal(payloadBytes, &payloadMap); err != nil {
-		apiutil.InternalError(c, fmt.Errorf("failed to prepare payload: %w", err))
-		return
+
+	driveRootFolder := ""
+	if req.Destination != nil {
+		driveRootFolder = req.Destination.FolderID
+	}
+
+	payloadMap := map[string]any{
+		"video_id":          videoID,
+		"url":               req.URL,
+		"max_segments":      5,
+		"drive_root_folder": driveRootFolder,
+		"language":          "en",
 	}
 
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
@@ -224,7 +239,6 @@ func (h *YouTubeClipHandler) ExtractImportant(c *gin.Context) {
 	}, "YouTube clip extraction (LLM-driven) job enqueued."); ok {
 		return
 	}
-	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
 }
 
 // Diagnostics returns YouTube clip module health and dependency status.
