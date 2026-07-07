@@ -305,7 +305,33 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 			if repoErr != nil {
 				return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewSQLiteAssetRepository: %w", repoErr)
 			}
-			enrichHandler, hErr := stockenrich.NewEnrichmentHandler(llmClient, assetRepo, nil, deps.Log)
+
+			// PR-011C follow-up (July 2026): wire the production
+			// outbox-dispatcher-backed emitter. The emitter opens
+			// a fresh SQL tx + calls outboxevents.Repository.Enqueue
+			// per the canonical pattern. When deps.DB is nil, fall
+			// back to the nil-emitter (handler's godlike/07
+			// nil-tolerance logs a Warn + skips the emit step)
+			// — this preserves the PR-011C composition-root
+			// disabled-mode wiring for tests / dev environments
+			// where SQLite is not available.
+			//
+			// godlike/07 minimum-blast-radius: the emitter is
+			// OPTIONAL (nil is allowed). Production deployments
+			// that enable enrichment MUST wire a real DB +
+			// real emitter (no silent-success on the emit path).
+			var emitter stockenrich.AssetPublishedEmitter
+			if deps.DB != nil {
+				emitter, repoErr = stockenrich.NewOutboxBackedAssetPublishedEmitter(deps.DB, deps.Log)
+				if repoErr != nil {
+					return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewOutboxBackedAssetPublishedEmitter: %w", repoErr)
+				}
+				deps.Log.Info("stock.BuildStockBundle: enrichment wired with outbox-backed emitter (asset.published v1)")
+			} else {
+				deps.Log.Warn("stock.BuildStockBundle: enrichment nil-emitter (no DB; the handler will skip asset.published v1 emit with a Warn log)")
+			}
+
+			enrichHandler, hErr := stockenrich.NewEnrichmentHandler(llmClient, assetRepo, emitter, deps.Log)
 			if hErr != nil {
 				return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewEnrichmentHandler: %w", hErr)
 			}

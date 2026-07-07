@@ -152,7 +152,7 @@ func (m *MetadataService) tagImageMetadata(ctx context.Context, prompt, style, g
 }
 
 // uploadImageMetadata writes a metadata.json file in the same Drive folder as the image.
-func (m *MetadataService) uploadImageMetadata(ctx context.Context, req drive.AssetDestinationRequest, result *semantic.WriteResult) {
+func (m *MetadataService) uploadImageMetadata(ctx context.Context, style, subject string, result *semantic.WriteResult) {
 	if result == nil || result.LocalPath == "" {
 		m.log.Warn("uploadImageMetadata: nil result or empty local path")
 		return
@@ -162,11 +162,15 @@ func (m *MetadataService) uploadImageMetadata(ctx context.Context, req drive.Ass
 		return
 	}
 
-	metaReq := req
-	metaReq.Ext = ".json"
-	metaReq.Hash = "metadata"
-
-	if err := m.publishMetadata(ctx, metaReq, result.LocalPath); err != nil {
+	if _, err := m.publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:    delivery.DestinationImage,
+		LocalPath:      result.LocalPath,
+		Filename:       filepath.Base(result.LocalPath),
+		Style:          style,
+		Subject:        subject,
+		Group:          subject,
+		ConflictPolicy: delivery.ConflictOverwrite,
+	}); err != nil {
 		m.log.Warn("uploadImageMetadata: failed to upload metadata.json", zap.Error(err))
 		return
 	}

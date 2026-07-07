@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	audio "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -19,30 +19,31 @@ import (
 
 // ── Drive Upload ───────────────────────────────────────────────────────
 
-// UploadToStyleDrive uploads an image to Drive in a style-based subfolder.
+// UploadToStyleDrive uploads an image to Drive in a style-based subfolder
+// via the canonical delivery.Publisher.Publish canal.
 func (s *ImageStorageService) UploadToStyleDrive(ctx context.Context, imgAsset *asset.ImageAsset, style string) (string, string, error) {
-	if s.mediaStore == nil {
-		return "", "", fmt.Errorf("media store not configured")
+	if s.publisher == nil {
+		return "", "", fmt.Errorf("publisher not configured")
 	}
 	if style == "" {
 		return "", "", fmt.Errorf("style is required")
 	}
 
-	req := drive.AssetDestinationRequest{
-		Source:            drive.SourceImage,
-		MediaType:         drive.MediaTypeImage,
-		Style:             style,
-		Subject:           imgAsset.SubjectID,
-		Hash:              imgAsset.Hash,
-		Ext:               filepath.Ext(imgAsset.PathRel),
-		DriveRootOverride: s.cfg.Drive.ImagesFolder(),
-	}
 	imagePath := filepath.Join(s.imagesDir, imgAsset.PathRel)
 
-	fileID, webLink, err := s.publishToDrive(ctx, req, imagePath)
+	result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:    delivery.DestinationImage,
+		LocalPath:      imagePath,
+		Filename:       filepath.Base(imagePath),
+		Style:          style,
+		Subject:        imgAsset.SubjectID,
+		ConflictPolicy: delivery.ConflictSkip,
+	})
 	if err != nil {
 		return "", "", fmt.Errorf("style-based Drive upload: %w", err)
 	}
+	fileID := result.FileID
+	webLink := result.WebViewLink
 
 	prompt := imgAsset.Description
 	generator := "nvidia"
@@ -69,7 +70,7 @@ func (s *ImageStorageService) UploadToStyleDrive(ctx context.Context, imgAsset *
 
 	metaResult, metaErr := s.meta.tagImageMetadata(ctx, prompt, style, generator, imgAsset.Hash, imagePath, imgAsset.Width, imgAsset.Height)
 	if metaErr == nil && metaResult != nil {
-		s.meta.uploadImageMetadata(ctx, req, metaResult)
+		s.meta.uploadImageMetadata(ctx, style, imgAsset.SubjectID, metaResult)
 	}
 
 	s.log.Info("image uploaded to Drive with style", zap.String("file_id", fileID), zap.String("style", style))
@@ -86,7 +87,8 @@ func (s *ImageStorageService) FormatDriveLink(id string) string {
 
 // ── Video Asset Registration ───────────────────────────────────────────
 
-// RegisterVideoAsset uploads a video to Drive and creates a record in media_assets.
+// RegisterVideoAsset uploads a video to Drive via the canonical Publisher
+// and creates a record in media_assets.
 func (s *ImageStorageService) RegisterVideoAsset(ctx context.Context, filePath, description, source, style string, durationSec int, existingDriveFileID, existingDriveLink string) error {
 	if s.stockRepo == nil {
 		return fmt.Errorf("stock repo not configured")
@@ -106,31 +108,28 @@ func (s *ImageStorageService) RegisterVideoAsset(ctx context.Context, filePath, 
 	}
 
 	uploaded := false
-	var folderID string
 	var semanticMeta *semantic.Payload
 	var driveFileID, driveLink string
 	if existingDriveFileID != "" {
 		driveFileID = existingDriveFileID
 		driveLink = existingDriveLink
-	} else if s.mediaStore != nil || s.publisher != nil {
-		req := drive.AssetDestinationRequest{
-			Source:    drive.SourceImage,
-			MediaType: drive.MediaTypeImageVideo,
-			Subject:   subject,
-			Hash:      id,
-			Ext:       ".mp4",
-			Style:     style,
-		}
-		folderID, _ = s.mediaStore.EnsureDriveFolder(ctx, req)
-		fid, wl, err := s.publishToDrive(ctx, req, filePath)
+	} else if s.publisher != nil {
+		result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
+			Destination:    delivery.DestinationImage,
+			LocalPath:      filePath,
+			Filename:       filepath.Base(filePath),
+			Style:          style,
+			Subject:        subject,
+			ConflictPolicy: delivery.ConflictSkip,
+		})
 		if err != nil {
 			s.log.Warn("RegisterVideoAsset: Drive upload failed (non fatale)", zap.Error(err))
 		} else {
-			driveFileID = fid
-			driveLink = wl
+			driveFileID = result.FileID
+			driveLink = result.WebViewLink
 			uploaded = true
-			s.log.Info("RegisterVideoAsset: Drive upload successful", zap.String("file_id", fid))
-			semanticMeta = s.uploadVideoMetadata(ctx, req, description, style, source, fid, wl, durationSec, id, filePath, folderID)
+			s.log.Info("RegisterVideoAsset: Drive upload successful", zap.String("file_id", result.FileID))
+			semanticMeta = s.uploadVideoMetadata(ctx, style, subject, description, source, result.FileID, result.WebViewLink, durationSec, id, filePath, result.FolderID)
 		}
 	}
 
@@ -169,7 +168,7 @@ func (s *ImageStorageService) RegisterVideoAsset(ctx context.Context, filePath, 
 		return err
 	}
 
-	if uploaded && s.mediaStore != nil {
+	if uploaded {
 		s.registerAudioClip(ctx, filePath, description, style, source, durationSec, id, subject)
 	}
 
@@ -184,7 +183,7 @@ func (s *ImageStorageService) RegisterVideoAsset(ctx context.Context, filePath, 
 	return nil
 }
 
-func (s *ImageStorageService) uploadVideoMetadata(ctx context.Context, req drive.AssetDestinationRequest, prompt, style, generator, fileID, driveLink string, durationSec int, hash, localPath, folderID string) *SemanticMetadataPayload {
+func (s *ImageStorageService) uploadVideoMetadata(ctx context.Context, style, subject, prompt, generator, fileID, driveLink string, durationSec int, hash, localPath, folderID string) *SemanticMetadataPayload {
 	if s.meta == nil || s.meta.metaWriter == nil {
 		s.log.Warn("uploadVideoMetadata: metadata writer not configured")
 		return nil
@@ -210,10 +209,15 @@ func (s *ImageStorageService) uploadVideoMetadata(ctx context.Context, req drive
 		return nil
 	}
 
-	metaReq := req
-	metaReq.Hash = "metadata"
-	metaReq.Ext = ".json"
-	if _, _, err := s.publishToDrive(ctx, metaReq, result.LocalPath); err != nil {
+	if _, err := s.publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:    delivery.DestinationImage,
+		LocalPath:      result.LocalPath,
+		Filename:       filepath.Base(result.LocalPath),
+		Style:          style,
+		Subject:        subject,
+		Group:          subject,
+		ConflictPolicy: delivery.ConflictOverwrite,
+	}); err != nil {
 		s.log.Warn("uploadVideoMetadata: failed to upload metadata.json", zap.Error(err))
 		return result.Payload
 	}
@@ -238,28 +242,22 @@ func (s *ImageStorageService) registerAudioClip(ctx context.Context, videoPath, 
 	}
 	defer os.Remove(audioPath)
 
-	req := drive.AssetDestinationRequest{
-		Source:    drive.SourceSoundEffect,
-		MediaType: drive.MediaTypeSoundEffect,
-		Subject:   subject,
-		Hash:      videoID + "_audio",
-		Ext:       ".mp3",
-		Style:     style,
-	}
-
-	folderID, err := s.mediaStore.EnsureDriveFolder(ctx, req)
-	if err != nil {
-		s.log.Warn("registerAudioClip: EnsureDriveFolder failed", zap.Error(err))
-		return
-	}
-
-	fileID, webLink, err := s.publishToDrive(ctx, req, audioPath)
+	pubResult, err := s.publisher.Publish(ctx, delivery.PublishRequest{
+		Destination:    delivery.DestinationSoundEffect,
+		LocalPath:      audioPath,
+		Filename:       filepath.Base(audioPath),
+		Group:          subject,
+		ConflictPolicy: delivery.ConflictSkip,
+	})
 	if err != nil {
 		s.log.Warn("registerAudioClip: Drive upload failed", zap.Error(err))
 		return
 	}
+	fileID := pubResult.FileID
+	webLink := pubResult.WebViewLink
+	folderID := pubResult.FolderID
 
-	result, err := s.meta.metaWriter.Write(ctx, semantic.WriteRequest{
+	semResult, err := s.meta.metaWriter.Write(ctx, semantic.WriteRequest{
 		AssetID:    videoID + "_audio",
 		AssetType:  "sound_effect",
 		MediaType:  "audio",
@@ -273,13 +271,16 @@ func (s *ImageStorageService) registerAudioClip(ctx context.Context, videoPath, 
 
 	var searchText string
 	var tags []string
-	if err == nil && result != nil && result.Payload != nil {
-		searchText = result.Payload.SearchText
-		tags = result.Payload.Tags
-		audioReq := req
-		audioReq.Hash = "metadata"
-		audioReq.Ext = ".json"
-		if _, _, err := s.publishToDrive(ctx, audioReq, result.LocalPath); err != nil {
+	if err == nil && semResult != nil && semResult.Payload != nil {
+		searchText = semResult.Payload.SearchText
+		tags = semResult.Payload.Tags
+		if _, err := s.publisher.Publish(ctx, delivery.PublishRequest{
+			Destination:    delivery.DestinationSoundEffect,
+			LocalPath:      semResult.LocalPath,
+			Filename:       filepath.Base(semResult.LocalPath),
+			Group:          subject,
+			ConflictPolicy: delivery.ConflictOverwrite,
+		}); err != nil {
 			s.log.Warn("registerAudioClip: metadata upload failed", zap.Error(err))
 		}
 	} else {

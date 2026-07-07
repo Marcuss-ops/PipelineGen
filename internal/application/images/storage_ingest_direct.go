@@ -87,7 +87,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		} else {
 			driveFileID = fileID
 			if !skipMetadata && metaResult != nil {
-				s.meta.uploadImageMetadata(ctx, req, metaResult)
+				s.meta.uploadImageMetadata(ctx, style, slug, metaResult)
 			}
 		}
 	}
