@@ -164,3 +164,177 @@ func TestPublishClipToDrive_EmptyOptionals_StillPublishes(t *testing.T) {
 		t.Errorf("expected Subject to be empty, got %q", stub.lastReq.Subject)
 	}
 }
+
+// ── PR-YT-CLIP-SEMANTIC-LOCATION-FIX tests ────────────────────────────────
+
+// TestPublishClipToDrive_SemanticCategory_FlowsToRequest verifies that
+// Category, Provider, Tags, and Language flow through from PublishClipCommand
+// to the PublishRequest that reaches the Publisher. This is the canonical
+// contract: a payload with location={category:"Boxe", subject:"Pacquiao vs
+// Broner", provider:"youtube"} must result in the Publisher receiving those
+// fields so YouTubeClipPath can build clips/Boxe/Pacquiao vs Broner/.
+func TestPublishClipToDrive_SemanticCategory_FlowsToRequest(t *testing.T) {
+	stub := &stubPublisher{
+		result: &PublishResult{
+			FileID:      "drive-semantic-1",
+			WebViewLink: "https://drive.google.com/file/d/drive-semantic-1/view",
+			FolderID:    "folder-semantic-1",
+		},
+	}
+
+	cmd := PublishClipCommand{
+		AssetID:     "yt_pacquiao_a1b2c3d4",
+		Group:       "Boxe",
+		Subject:     "dQw4w9WgXcQ-pacquiao-vs-broner",
+		LocalPath:   "/tmp/pacquiao.mp4",
+		Filename:    "dQw4w9WgXcQ - Pacquiao vs Broner.mp4",
+		Description: "Name: Pacquiao vs Broner\nCategory: Boxe",
+		Category:    "Boxe",
+		Provider:    "youtube",
+		Tags:        []string{"boxing", "pacquiao", "broner"},
+		Language:    "en-US",
+	}
+
+	result, err := PublishClipToDrive(context.Background(), stub, cmd)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !result.Published {
+		t.Error("expected Published=true")
+	}
+
+	req := stub.lastReq
+
+	// Category must flow through so YouTubeClipPath can use it.
+	if req.Category != "Boxe" {
+		t.Errorf("expected Category 'Boxe', got %q", req.Category)
+	}
+
+	// Provider must flow through for Qdrant payload enrichment.
+	if req.Provider != "youtube" {
+		t.Errorf("expected Provider 'youtube', got %q", req.Provider)
+	}
+
+	// Tags must flow through for hybrid BM25 lexical search.
+	if len(req.Tags) != 3 {
+		t.Errorf("expected 3 tags, got %d: %v", len(req.Tags), req.Tags)
+	}
+	if len(req.Tags) > 0 && req.Tags[0] != "boxing" {
+		t.Errorf("expected Tags[0]='boxing', got %q", req.Tags[0])
+	}
+
+	// Language must flow through for BCP-47 metadata.
+	if req.Language != "en-US" {
+		t.Errorf("expected Language 'en-US', got %q", req.Language)
+	}
+
+	// Group and Subject must still be present for YouTubeClipPath.
+	if req.Group != "Boxe" {
+		t.Errorf("expected Group 'Boxe', got %q", req.Group)
+	}
+	if req.Subject != "dQw4w9WgXcQ-pacquiao-vs-broner" {
+		t.Errorf("expected Subject non-empty, got %q", req.Subject)
+	}
+
+	// RootFolderOverride must be empty when semantic fields are set —
+	// the adapter suppresses it when Category or Provider are populated.
+	if req.RootFolderOverride != "" {
+		t.Errorf("expected RootFolderOverride empty when semantic fields are set, got %q", req.RootFolderOverride)
+	}
+}
+
+// TestPublishClipToDrive_SemanticFieldsEmptyByDefault verifies that
+// existing callers who don't populate Category/Provider/Tags/Language
+// get zero-value defaults (empty strings / nil slice). This is the
+// backward-compat contract: pre-PR-YT-CLIP-SEMANTIC-LOCATION-FIX call
+// sites compile and behave identically.
+func TestPublishClipToDrive_SemanticFieldsEmptyByDefault(t *testing.T) {
+	stub := &stubPublisher{
+		result: &PublishResult{
+			FileID:      "drive-legacy-1",
+			WebViewLink: "https://drive.google.com/file/d/drive-legacy-1/view",
+			FolderID:    "folder-legacy-1",
+		},
+	}
+
+	// Legacy-style command: only Group/Subject/RootFolder, no semantic fields.
+	cmd := PublishClipCommand{
+		AssetID:     "yt_legacy_abc123",
+		Group:       "legacy-group",
+		Subject:     "legacy-subject",
+		RootFolder:  "root-legacy",
+		LocalPath:   "/tmp/legacy.mp4",
+		Filename:    "legacy.mp4",
+		Description: "legacy clip",
+		// Category, Provider, Tags, Language intentionally zero-valued.
+	}
+
+	result, err := PublishClipToDrive(context.Background(), stub, cmd)
+	if err != nil {
+		t.Fatalf("expected nil error for legacy command, got %v", err)
+	}
+	if !result.Published {
+		t.Error("expected Published=true for legacy command")
+	}
+
+	req := stub.lastReq
+
+	// Semantic fields must be empty for backward-compat.
+	if req.Category != "" {
+		t.Errorf("expected Category empty for legacy command, got %q", req.Category)
+	}
+	if req.Provider != "" {
+		t.Errorf("expected Provider empty for legacy command, got %q", req.Provider)
+	}
+	if len(req.Tags) != 0 {
+		t.Errorf("expected Tags empty for legacy command, got %v", req.Tags)
+	}
+	if req.Language != "" {
+		t.Errorf("expected Language empty for legacy command, got %q", req.Language)
+	}
+
+	// Legacy fields must still flow through.
+	if req.Group != "legacy-group" {
+		t.Errorf("expected Group 'legacy-group', got %q", req.Group)
+	}
+	if req.RootFolderOverride != "root-legacy" {
+		t.Errorf("expected RootFolderOverride 'root-legacy', got %q", req.RootFolderOverride)
+	}
+}
+
+// TestPublishClipToDrive_CategoryOnly_NoRootOverrideSuppression verifies
+// that RootFolderOverride still passes through when only legacy fields
+// are set — the suppression logic lives in publisherAdapter, not here.
+// PublishClipToDrive is a thin passthrough; it does not apply policy.
+func TestPublishClipToDrive_RootFolderOverride_PassesThrough(t *testing.T) {
+	stub := &stubPublisher{
+		result: &PublishResult{
+			FileID:      "drive-root-1",
+			WebViewLink: "https://drive.google.com/file/d/drive-root-1/view",
+			FolderID:    "folder-root-1",
+		},
+	}
+
+	cmd := PublishClipCommand{
+		AssetID:    "yt_root_test",
+		Group:      "some-group",
+		Subject:    "some-subject",
+		RootFolder: "explicit-folder-id",
+		LocalPath:  "/tmp/root.mp4",
+		Filename:   "root.mp4",
+	}
+
+	result, err := PublishClipToDrive(context.Background(), stub, cmd)
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !result.Published {
+		t.Error("expected Published=true")
+	}
+
+	// RootFolderOverride must pass through — the adapter decides suppression.
+	if stub.lastReq.RootFolderOverride != "explicit-folder-id" {
+		t.Errorf("expected RootFolderOverride 'explicit-folder-id', got %q",
+			stub.lastReq.RootFolderOverride)
+	}
+}
