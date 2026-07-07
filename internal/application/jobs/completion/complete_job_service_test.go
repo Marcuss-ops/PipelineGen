@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 )
@@ -269,7 +270,10 @@ func TestService_Complete_HappyPath_SingleTransaction(t *testing.T) {
 	rxFactory := func(jobID string, leaseID string, attempt int) CompletionTxRunner {
 		return &seedingMockTxRunner{
 			seedJob: &completion.JobRow{
-				JobID: jobID, JobType: "test.non-artifact", LeaseID: leaseID, Attempt: attempt, Status: job.StatusRunning,
+				JobRow: internal.JobRow{
+					JobID: jobID, LeaseID: leaseID, Attempt: attempt, Status: job.StatusRunning,
+				},
+				JobType: "test.non-artifact",
 			},
 		}
 	}
@@ -370,7 +374,10 @@ func TestService_Complete_LeaseStolen_ReturnsTypedErrConcurrentLeaseRefutation(t
 	// Seed the job with WRONG lease so CAS rejects.
 	rx := &seedingMockTxRunner{
 		seedJob: &completion.JobRow{
-			JobID: "j-1", JobType: "test.non-artifact", LeaseID: "different-lease", Attempt: 0, Status: job.StatusRunning,
+			JobRow: internal.JobRow{
+				JobID: "j-1", LeaseID: "different-lease", Attempt: 0, Status: job.StatusRunning,
+			},
+			JobType: "test.non-artifact",
 		},
 	}
 	cache := newMockCache()
@@ -427,7 +434,10 @@ func TestService_Complete_HashMismatch_ReturnsTypedErrRemoteArtifactHashMismatch
 	// not work here, so the test wraps the mockTxRunner.
 	wrapped := &seedingWithPriorHashesRunner{
 		seedJob: &completion.JobRow{
-			JobID: "j-1", JobType: "test.non-artifact", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning,
+			JobRow: internal.JobRow{
+				JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning,
+			},
+			JobType: "test.non-artifact",
 		},
 		priorHashes: map[string]completion.PriorArtifactHash{
 			"j-1:voiceover": {SHA256: "DIFFERENT-SHA", RemoteAssetID: "ra-prior", Status: job.StatusReady},

@@ -53,6 +53,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion/internal"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
@@ -187,7 +188,8 @@ func TestWithArtifactsService_HappyPath_FiveStepChain(t *testing.T) {
 	rxFactory := func() completion.CompleteJobTxRunner {
 		return &seedingMockWithArtifactsRunner{
 			seedJob: &completion.JobRow{
-				JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning,
+				JobRow:  internal.JobRow{JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning},
+				JobType: "test.artifact",
 			},
 		}
 	}
@@ -281,7 +283,8 @@ func TestWithArtifactsService_IdempotencyReplay_ShortCircuitsTx(t *testing.T) {
 func TestWithArtifactsService_LeaseStolen_ReturnsTypedErrConcurrentLeaseRefutation(t *testing.T) {
 	rx := &seedingMockWithArtifactsRunner{
 		seedJob: &completion.JobRow{
-			JobID: "j-1", LeaseID: "different-lease", Attempt: 0, Status: job.StatusRunning,
+			JobRow:  internal.JobRow{JobID: "j-1", LeaseID: "different-lease", Attempt: 0, Status: job.StatusRunning},
+			JobType: "test.artifact",
 		},
 	}
 	cache := newMockCache()
@@ -307,7 +310,8 @@ func TestWithArtifactsService_AssetLocationMismatch_ReturnsTypedErrRemoteArtifac
 	// DIFFERENT (location_kind, external_id, ...) tuple.
 	rx := &seedingMockWithArtifactsRunner{
 		seedJob: &completion.JobRow{
-			JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning,
+			JobRow:  internal.JobRow{JobID: "j-1", LeaseID: "lease-1", Attempt: 0, Status: job.StatusRunning},
+			JobType: "test.artifact",
 		},
 		insertLocationsFn: func(ctx context.Context, entries []completion.AssetLocationEntry) error {
 			for _, e := range entries {
