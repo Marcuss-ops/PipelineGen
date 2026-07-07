@@ -103,14 +103,26 @@ func searchQueryFromRequest(req searchRequest, mode search.SearchMode, limit int
 	if mediaType != "" {
 		mediaTypes = []string{mediaType}
 	}
+	source := strings.TrimSpace(req.Filters.Source)
+	// Propagate the source filter into Query.Sources (plural) so
+	// BackendRegistry.Eligible can route to the correct backend.
+	// Without this, source=artlist/youtube/stock silently routes to
+	// ALL backends (local/semantic included) and the Aggregator
+	// returns "no eligible backends" when those non-provider
+	// backends fail on the source-filtered query.
+	var sources []string
+	if source != "" {
+		sources = []string{source}
+	}
 	return search.Query{
 		Text:       strings.TrimSpace(req.Query),
 		Mode:       mode,
 		Limit:      limit,
+		Sources:    sources,
 		MediaTypes: mediaTypes,
 		Actor:      actor,
 		Filters: search.Filters{
-			Source:        strings.TrimSpace(req.Filters.Source),
+			Source:        source,
 			MediaType:     mediaType,
 			Category:      strings.TrimSpace(req.Filters.Category),
 			Language:      strings.TrimSpace(req.Filters.Language),
