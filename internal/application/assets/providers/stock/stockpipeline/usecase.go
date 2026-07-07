@@ -3,10 +3,12 @@ package stockpipeline
 import (
 	"context"
 	"errors"
+	"time"
 
 	"go.uber.org/zap"
 
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 )
 
 // jobsEnqueuer is the narrowed surface of the jobs service that
@@ -89,7 +91,10 @@ func (u *StockUseCase) Submit(ctx context.Context, cmd *StockCommand, async bool
 		if u.jobsSvc == nil {
 			return "", ErrJobsServiceRequired
 		}
-		job, err := u.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+		enqueueCtx, cancel := background.DetachWithTimeout(ctx, "stock-submit-enqueue", 15*time.Second)
+		defer cancel()
+
+		job, err := u.jobsSvc.Enqueue(enqueueCtx, &jobservice.EnqueueRequest{
 			Type:    "media.stock",
 			Payload: cmd.ToJobPayload(),
 		})

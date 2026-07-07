@@ -93,7 +93,7 @@ type FeaturesConfig struct {
 	ScriptClipsEnabled        bool `yaml:"script_clips_enabled" env:"VELOX_FEATURE_SCRIPT_CLIPS_ENABLED" default:"false"`
 	VoiceoverEnabled          bool `yaml:"voiceover_enabled" env:"VELOX_FEATURE_VOICEOVER_ENABLED" default:"false"`
 	ImagesEnabled             bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
-	StockPipelineEnabled      bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"false"`
+	StockPipelineEnabled      bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"true"`
 	CatalogScriptVectorSearch bool `yaml:"catalog_script_vector_search" env:"VELOX_FEATURE_CATALOG_SCRIPT_VECTOR_SEARCH" default:"false"`
 }
 

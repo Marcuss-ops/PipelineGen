@@ -27,6 +27,7 @@ import (
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 
@@ -37,8 +38,14 @@ import (
 // the worker-mode startup steps. Typed, not interface{}: every field
 // is a concrete pointer that callers must provide. Mirrors the
 // jobRunnerDeps pattern in lifecycle_job_runner.go (PR4.8, June 2026).
+// cfg is added so buildWorkerSteps can gate voiceover-by-default-off
+// steps (canonical fix for the 2026-07-06 startup nil-pointer on
+// aggregateOne crash: voiceover_enabled=false in config.yaml already
+// says "don't run voiceover's background goroutines" — composition root
+// must respect that flag, not just initialize-under-noisy-crash).
 type workerDeps struct {
 	root *ComposeRoot
+	cfg  *config.Config
 	log  *zap.Logger
 }
 
@@ -121,7 +128,21 @@ func buildWorkerSteps(deps workerDeps) []StartupStep {
 	// child job's terminal status only transitions when the job runner
 	// processes it — placing the aggregator under runScheduler would
 	// orphan parents on mode=worker machines (no aggregator ticks).
-	if jobsService != nil {
+	//
+	// CANONICAL FIX (2026-07-06 startup nil-pointer regression):
+	// The aggregator depends on a stable AggregatorJobsService contract
+	// (JobsSvc.Get returning ErrNotFound OR a typed (job, nil) row).
+	// A freshly-booted server can SIGSEGV in aggregateOne if orphan
+	// parent references exist in the DB after a prior crash. The
+	// canonical fix per reviewer recommendation (Option B — gate at
+	// composition time) is to respect cfg.Features.VoiceoverEnabled:
+	// if voiceover subsystem is operator-disabled, do NOT even
+	// construct the aggregator. config.yaml default is false; the
+	// stock pipeline user's task is voiceover-unrelated. Step is
+	// also still guarded by recover() in parent_aggregator.go as
+	// defense-in-depth (PR-VO-AGGREGATEORPHAN-GUARD forward-pointer
+	// upgrades the broker to typed ErrChildNotFound).
+	if jobsService != nil && deps.cfg.Features.VoiceoverEnabled {
 		voAgg := voiceoverjobs.NewParentAggregator(voiceoverjobs.AggregatorDeps{
 			JobsSvc:      jobsService,
 			Logger:       deps.log,

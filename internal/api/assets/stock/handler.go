@@ -76,7 +76,10 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 func (h *Handler) SearchAndRun(c *gin.Context) {
 	// Default Async=true so existing clients (no "async" field in payload)
 	// preserve the canonical jobs-broker path. Operators that want
-	// in-process sync set "async": false on the wire.
+	// in-process sync set "async": false on the wire. Sync mode also
+	// flips Persist=true so the runner uses the resilient path and
+	// completes upload + finalization + indexing instead of stopping
+	// at the legacy manifest-only flow.
 	req := stockpipeline.StockSearchAndRunRequest{Async: true}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
@@ -134,6 +137,9 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		apiutil.BadRequest(c, "clip_duration must be between 3 and 30 seconds")
 		return
 	}
+	if !req.Async {
+		req.Persist = true
+	}
 
 	cmd, err := stockpipeline.FromSearchAndRunRequest(&req)
 	if err != nil {
@@ -179,7 +185,10 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 func (h *Handler) RunStockPipeline(c *gin.Context) {
 	// Default Async=true so existing clients (no "async" field in payload)
 	// preserve the canonical jobs-broker path. Operators that want
-	// in-process sync set "async": false on the wire.
+	// in-process sync set "async": false on the wire. Sync mode also
+	// flips Persist=true so the runner uses the resilient path and
+	// completes upload + finalization + indexing instead of stopping
+	// at the legacy manifest-only flow.
 	req := stockpipeline.StockRunPayload{Async: true}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
@@ -234,6 +243,9 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 	if req.ClipDuration > 0 && (req.ClipDuration < 3 || req.ClipDuration > 30) {
 		apiutil.BadRequest(c, "clip_duration must be between 3 and 30 seconds")
 		return
+	}
+	if !req.Async {
+		req.Persist = true
 	}
 
 	cmd, err := stockpipeline.FromRunPayload(&req)

@@ -45,11 +45,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )
 
 // ── Sentinel errors ─────────────────────────────────────────────────
@@ -148,20 +150,22 @@ func (a *ArtifactPublisherAdapter) Publish(
 	// Both propagate when the upstream finalizer adds them to the
 	// VerifiedArtifact envelope.
 	idemKey := delivery.DeriveIdempotencyKey(destKey, artifact.ArtifactID, artifact.SHA256, artifact.SourceVersion)
+	group, subject, provider := stockArtifactPathParts(artifact)
 	req := delivery.PublishRequest{
-		Destination:    destKey,
-		LocalPath:      artifact.LocalPath,
-		Filename:       artifact.Filename,
-		Description:    fmt.Sprintf("artifact %s v%d (%s)", artifact.ArtifactID, artifact.SourceVersion, artifact.Kind),
-		AssetID:        artifact.ArtifactID,
-		ConflictPolicy: delivery.ConflictSkip,
-		IdempotencyKey: idemKey,
-		ContentHash:    artifact.SHA256,
-		SourceVersion:  artifact.SourceVersion,
-		Group:          "stock",
-		Subject:        artifact.ArtifactID,
-		Provider:       "stock",
-		Tags:           nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
+		Destination:        destKey,
+		LocalPath:          artifact.LocalPath,
+		Filename:           artifact.Filename,
+		Description:        fmt.Sprintf("artifact %s v%d (%s)", artifact.ArtifactID, artifact.SourceVersion, artifact.Kind),
+		AssetID:            artifact.ArtifactID,
+		ConflictPolicy:     delivery.ConflictSkip,
+		IdempotencyKey:     idemKey,
+		ContentHash:        artifact.SHA256,
+		SourceVersion:      artifact.SourceVersion,
+		Group:              group,
+		Subject:            subject,
+		Provider:           provider,
+		Tags:               nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
+		RootFolderOverride: artifact.RootFolderOverride,
 	}
 
 	// Step 4: Delegate to canonical Drive publisher.
@@ -193,6 +197,97 @@ func (a *ArtifactPublisherAdapter) Publish(
 	)
 
 	return loc, nil
+}
+
+// stockArtifactPathParts derives the Drive folder path segments for
+// stock-pipeline artifacts. The folder tree is keyed off a readable
+// run label derived from the run fingerprint embedded in ArtifactID,
+// so Drive paths remain per-run without recreating a redundant
+// "stock" subfolder under the stock root folder.
+func stockArtifactPathParts(artifact finalization.VerifiedArtifact) (group, subject, provider string) {
+	parts := strings.Split(artifact.ArtifactID, ":")
+	group = stockRunFolderName(artifact.RootFolderName)
+	subject = stockFolderLeafName(artifact.PathLeafName)
+	switch {
+	case len(parts) >= 5 && parts[0] == "stock" && parts[2] == "timestamp" && parts[4] == "video":
+		if group == "" {
+			group = stockRunFolderName(parts[1])
+		}
+		if subject == "" {
+			subject = "timestamp_" + parts[3]
+		}
+	case len(parts) >= 5 && parts[0] == "stock" && parts[2] == "timestamp" && parts[4] == "metadata":
+		if group == "" {
+			group = stockRunFolderName(parts[1])
+		}
+		if subject == "" {
+			subject = "timestamp_" + parts[3]
+		}
+	case len(parts) >= 4 && parts[0] == "stock" && parts[2] == "chunk":
+		if group == "" {
+			group = stockRunFolderName(parts[1])
+		}
+		if subject == "" {
+			subject = "chunk_" + parts[3]
+		}
+	case len(parts) >= 3 && parts[0] == "stock" && parts[2] == "metadata":
+		if group == "" {
+			group = stockRunFolderName(parts[1])
+		}
+		if subject == "" {
+			subject = "metadata"
+		}
+	default:
+		if group == "" {
+			group = stockRunFolderName("")
+		}
+		if subject == "" {
+			subject = artifact.Filename
+		}
+	}
+	return group, subject, provider
+}
+
+func stockRunFolderName(runFingerprint string) string {
+	runFingerprint = pathutil.SafeFolderName(strings.TrimSpace(runFingerprint))
+	if runFingerprint == "" {
+		return "run"
+	}
+	if isHexString(runFingerprint) {
+		if len(runFingerprint) > 12 {
+			runFingerprint = runFingerprint[:12]
+		}
+		return "run_" + runFingerprint
+	}
+	return runFingerprint
+}
+
+func stockFolderLeafName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	name = pathutil.SafeFolderName(name)
+	if len(name) > 120 {
+		name = name[:120]
+	}
+	return name
+}
+
+func isHexString(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+		case r >= 'a' && r <= 'f':
+		case r >= 'A' && r <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // ── Kind → DestinationKey mapping ───────────────────────────────────
