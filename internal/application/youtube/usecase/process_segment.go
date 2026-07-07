@@ -551,6 +551,21 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 			MentionedPeople:  append([]string(nil), cmd.Segment.MentionedPeople...),
 		})
 		if metaErr != nil {
+			// PR-PY-STEP10-FAIL-LOG (code-reviewer S1, July 2026):
+			// Step 9 already wrote media_assets + emitted the
+			// asset.index.requested outbox event before we reach
+			// here, so the clip IS persisted. Only the metadata
+			// enrichment needs manual re-extract. Emit a Warn log
+			// BEFORE u.fail so operator dashboards see the
+			// partial-state class WITHOUT weakening the typed-error
+			// contract (godlike/07 NO-FAKE-AVAILABILITY: the
+			// canonical job outcome is the typed error; the Warn
+			// log is purely observability).
+			u.deps.Log.Warn("Step 10 failed AFTER clip write – manual re-extract needed",
+				zap.String("clip_id", clipID),
+				zap.String("local_path", localPath),
+				zap.String("failure_code", string(FailureCodeMetadataFailed)),
+				zap.Error(metaErr))
 			typed := NewExtractionError(FailureCodeMetadataFailed, false,
 				fmt.Sprintf("metadata enrichment failed: %v", metaErr), metaErr)
 			return u.fail(out, typed)

@@ -39,8 +39,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 )
 
@@ -494,3 +497,124 @@ func TestProcessSegment_Step10_ReadsTranscriptFromTypedPort_TranscriberError(t *
 // log_silence is a Nop logger reference; the process_segment tests
 // inject validProcessSegmentDeps().Log = zap.NewNop().
 var _ = zap.NewNop
+
+// ── Test 8: Step 10 partial-state Warn log (PR-PY-STEP10-FAIL-LOG) ──
+//
+// Code-reviewer S1 followup: when Step 10's metadata enrichment
+// fails AFTER Step 9 has already persisted the clip (media_assets
+// row + asset.index.requested outbox event), the use case MUST
+// emit a Warn-level log BEFORE the typed u.fail call so operator
+// dashboards see the partial-state class — the clip IS on disk,
+// only the metadata enrichment needs manual re-extract.
+//
+// godlike/07 NO-FAKE-AVAILABILITY contract: the canonical job
+// outcome is the typed *ExtractionError with FailureCodeMetadataFailed
+// (the use case's typed-error envelope is the single source of
+// truth for the job-status flip). The Warn log is purely
+// observability for operators — it does NOT change the typed
+// contract, NOR does it suppress the fail-closed semantic.
+
+// errBuilder is a ClipMetadataBuilder fake that always returns an
+// error from Build. The use case's EnrichClip wraps the error
+// twice (GenerateClipMetadata → EnrichClip), then process_segment's
+// Step 10 wraps it once more before u.fail flips the job status
+// to FAILED. The Warn log is the operator-observable signal
+// that the clip is salvageable (Step 9 succeeded) but metadata
+// is not.
+type errBuilder struct{}
+
+func (errBuilder) Build(_ context.Context, _ youtubetypes.ClipMetadataInput) (youtubetypes.CanonicalClipMetadata, error) {
+	return youtubetypes.CanonicalClipMetadata{}, errors.New("simulated metadata builder failure")
+}
+
+// compile-time assertion: errBuilder satisfies ClipMetadataBuilder.
+var _ ytmetadata.ClipMetadataBuilder = errBuilder{}
+
+// noopWriter satisfies ClipMetadataWriter. It is not exercised in
+// the failure path (errBuilder returns before the writer is called)
+// but it satisfies the constructor's required-arg contract.
+type noopWriter struct{} //nolint:unused — ctor-required only; errBuilder errors before writer is called
+
+func (noopWriter) UpdateClipMetadataAndRequestIndex(_ context.Context, _ string, _ youtubetypes.CanonicalClipMetadata) error {
+	return nil
+}
+
+// compile-time assertion: noopWriter satisfies ClipMetadataWriter.
+var _ youtubeports.ClipMetadataWriter = noopWriter{}
+
+// TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog pins S1:
+// when Step 10's MetadataService.EnrichClip returns an error AFTER
+// Step 9 has already written the clip, the use case MUST emit the
+// canonical Warn log "Step 10 failed AFTER clip write" with
+// (clip_id, local_path, failure_code, error) fields BEFORE the
+// typed u.fail call. The typed *ExtractionError returned by
+// Execute MUST have FailureCodeMetadataFailed (canonical job
+// outcome) — the Warn log is additive observability, NOT a
+// replacement of the typed contract.
+func TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog(t *testing.T) {
+	realPath := filepath.Join(t.TempDir(), "clip.mp4")
+	_ = os.WriteFile(realPath, []byte("fake audio bytes"), 0o644)
+
+	// Wire a captured logger so we can assert on the canonical Warn.
+	core, recorded := observer.New(zapcore.WarnLevel)
+	capturedLog := zap.New(core)
+
+	// Construct a real MetadataService with errBuilder so EnrichClip
+	// returns an error (and Step 10's typed-fail path runs).
+	svc, svcErr := ytmetadata.NewMetadataService(ytmetadata.MetadataDeps{
+		Builder: errBuilder{},
+		Writer:  noopWriter{},
+		Logger:  capturedLog,
+	})
+	require.NoError(t, svcErr, "NewMetadataService must succeed with errBuilder + noopWriter")
+	require.NotNil(t, svc)
+
+	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
+		d := validProcessSegmentDeps()
+		d.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
+		d.Hash = testStubHash{} // non-empty so Step 5 passes
+		d.Log = capturedLog     // override the zap.NewNop default
+		d.MetadataService = svc // wire the real service that errors
+		return d
+	}())
+	cmd := youtubetypes.ProcessSegmentCommand{
+		VideoID: "abc",
+		Segment: youtubetypes.Segment{Start: "0:00", End: "0:10", Name: "Test"},
+		Index:   0,
+		OutDir:  t.TempDir(),
+	}
+	out, err := uc.Execute(context.Background(), cmd)
+
+	// 1) Canonical typed-error contract: job outcome is FAILED with
+	//    FailureCodeMetadataFailed. The Warn log does NOT suppress
+	//    the typed-error flip.
+	require.Error(t, err, "Step 10 metadata-enrichment failure MUST surface as typed error")
+	require.Equal(t, "failed", out.Status, "Execute must surface as failed when Step 10 errors")
+	var ee *ExtractionError
+	require.True(t, errors.As(err, &ee), "error must be a typed *ExtractionError, got %T", err)
+	require.Equal(t, FailureCodeMetadataFailed, ee.Code, "FailureCode must be FailureCodeMetadataFailed")
+	require.False(t, ee.Retryable, "FailureCodeMetadataFailed is terminal (not retryable)")
+	// 2) Canonical Warn log: the partial-state class MUST be
+	//    observable in the captured log stream with the canonical
+	//    substring + the required structured fields. The substring
+	//    is the operator-facing signal that the clip is on disk and
+	//    only the metadata needs manual re-extract.
+	entries := recorded.FilterMessageSnippet("Step 10 failed AFTER clip write").All()
+	require.NotEmpty(t, entries,
+		"Warn log 'Step 10 failed AFTER clip write' MUST be emitted before u.fail (got %d entries)", recorded.Len())
+
+	// 3) Verify the entry has the canonical fields (clip_id +
+	//    local_path + failure_code) so dashboards can correlate
+	//    the partial-state event with the clip row.
+	entry := entries[0]
+	require.Equal(t, zapcore.WarnLevel, entry.Level, "log entry must be at Warn level")
+	fields := map[string]string{}
+	for _, f := range entry.Context {
+		if f.Type == zapcore.StringType {
+			fields[f.Key] = f.String
+		}
+	}
+	require.Equal(t, "yt_abc_0_10_v1", fields["clip_id"], "Warn log must carry canonical clip_id (yt_<videoID>_<startSec>_<endSec>_<policyVer> format)")
+	require.Equal(t, realPath, fields["local_path"], "Warn log must carry local_path so operators can re-extract")
+	require.Equal(t, string(FailureCodeMetadataFailed), fields["failure_code"], "Warn log must carry canonical failure_code")
+}
