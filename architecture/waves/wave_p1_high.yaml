@@ -2906,6 +2906,18 @@
       ship_sha: 0ab39ae6
       ship_date: 2026-07-08
       deadline: 2026-08-15
+    - id: PR-QDRANT-DOD-LIFECYCLE-FILTER
+      owner_capability: tests/e2e
+      status: shipped
+      ship_sha: 49d3d58b
+      ship_date: 2026-07-08
+      deadline: 2026-08-15
+    - id: PR-QDRANT-DOD-SUPERSEDE-GATE
+      owner_capability: tests/e2e
+      status: shipped
+      ship_sha: b6a0e364
+      ship_date: 2026-07-08
+      deadline: 2026-08-15
     - id: PR-QDRANT-DOD-HOTSPOT-CROSSREF
       owner_capability: architecture
       status: pending
