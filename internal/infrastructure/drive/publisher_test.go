@@ -1433,11 +1433,13 @@ func TestYouTubeClipPath_PathBuilderSanitisesSpecialCharacters_DOD_9_3(t *testin
 	segs, err := delivery.YouTubeClipPath(req)
 	require.NoError(t, err)
 
-	// SafeFolderName replaces / and : with safe alternatives.
+	// SafeFolderName replaces / and : with safe alternatives (spaces/hyphens).
 	require.Equal(t, 2, len(segs), "must produce exactly 2 segments [{group},{subject}]")
-	require.NotContains(t, segs[0], "/", "group segment must not contain forward slash after SafeFolderName")
-	require.NotContains(t, segs[1], "/", "subject segment must not contain forward slash after SafeFolderName")
-	require.NotContains(t, segs[1], ":", "subject segment must not contain colon after SafeFolderName")
+	// Positive assertions: SafeFolderName replaces non-alphanum (except -/_) with _.
+	require.Equal(t, "NBA _ Highlights", segs[0],
+		"SafeFolderName must replace / with _ in group segment")
+	require.Equal(t, "game_7_OT", segs[1],
+		"SafeFolderName must replace / with _ and : with _ in subject segment")
 }
 
 // ── FASE D: DoD 10 tests (July 2026) — fake FolderManager EnsureFolder integration ──
@@ -1461,6 +1463,12 @@ func TestYouTubeClipPath_PathBuilderSanitisesSpecialCharacters_DOD_9_3(t *testin
 // This is the canonical integration-contract test: it proves the Publisher
 // correctly routes the semantic metadata through the PathBuilder and into
 // the FolderManager adapter without requiring a real Drive API.
+//
+// Note: Category is SET on the request but NOT asserted in the result —
+// YouTubeClipPath consumes only Group+Subject for path resolution; Category
+// is additive metadata carried downstream (Qdrant payload / outbox events)
+// by the callers that consume PublishResult. The Publisher is transport-only
+// and does not re-derive Category.
 func TestPublisher_PublishYouTubeClip_CategoryBoxe_EnsureFolderSegments_DOD_10_1(t *testing.T) {
 	reg := testRegistry()
 	folders := &fakeFolderManager{result: "boxe-pacquiao-broner-folder-id"}
