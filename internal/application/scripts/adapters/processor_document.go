@@ -132,7 +132,7 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	// When it runs before, the inputs stay nil (byte-equivalent to
 	// pre-PR behavior). Future reordering of the postprocessor list
 	// to place document last would unlock full rendering.
-	htmlContent := BuildGenerationDocumentHTML(model, docTitle, plan.Language, input.Entities, input.Metadata, false)
+	htmlContent := BuildGenerationDocumentHTML(model, docTitle, plan.Language, input.Entities, input.Metadata, true)
 
 	link, id := p.docsSvc.CreateDoc(ctx, docTitle, htmlContent, p.resolveFolder, plan.DriveFolderID)
 	if link == "" {
