@@ -327,7 +327,8 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		return
 	}
 
-	for _, item := range resp.Items {
+	for i := range resp.Items {
+		item := &resp.Items[i]
 		if item.Status == "media_process_failed" || item.Status == "dry_run" {
 			continue
 		}
@@ -338,11 +339,18 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		// write a clip row with empty drive_link / drive_file_id and
 		// increment Processed for a clip that was never actually
 		// uploaded (godlike/07 no-fake-availability violation).
+		//
+		// PR-ARTLIST-DOD-GATE-09 (2026-07-07): mark the item as
+		// "drive_upload_failed" so the caller can distinguish
+		// "processor succeeded but Drive upload failed" from
+		// "processor itself failed" (media_process_failed).
 		if item.DriveFileID == "" || item.DriveLink == "" {
 			o.svc.log.Warn("stagePersistResults: skipping clip with missing Drive fields",
 				zap.String("clip_id", item.ClipID),
 				zap.String("drive_file_id", item.DriveFileID),
 				zap.String("drive_link", item.DriveLink))
+			item.Status = "drive_upload_failed"
+			item.Error = "Drive upload failed: missing Drive fields after processing"
 			continue
 		}
 		existingClip, err := o.svc.assetStore.Get(ctx, item.ClipID)
@@ -357,7 +365,7 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 			// the clip is absent in media_assets, build it from the
 			// item metadata so the dispatch path is upsert-safe
 			// instead of silently no-op-dropping the persist.
-			clip = buildAssetFromRunTagItem(item)
+			clip = buildAssetFromRunTagItem(*item)
 			o.svc.log.Info("stagePersistResults: clip absent in DB; creating new asset from item metadata",
 				zap.String("clip_id", item.ClipID))
 		} else {
