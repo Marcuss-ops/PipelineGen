@@ -2294,7 +2294,29 @@ PR-P12-DRIVE-COMPLETION-2026-07-08:
   owner_capability: internal/application/youtube/usecase
   forward_pointers:
     - id: PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY
-      summary: "Promote partial-state Warn log to a Prometheus counter `transcript_metadata_step10_fail_after_clip_total{failure_code}` so dashboards can aggregate partial-state events across a batch extraction (current zaptest/observer is operator-log-only)."
+      status: shipped
+      ship_sha: 227696fc
+      ship_date: 2026-07-08
+      ship_via: feat_metric_promotion_with_typed_port
+      summary: "Promote partial-state Warn log to a Prometheus counter `transcript_metadata_step10_fail_after_clip_total{failure_code}` so dashboards can aggregate partial-state events across a batch extraction (current zaptest/observer is operator-log-only). Shipped: 7-file surface (counter def + adapter + port + 2 TDD files + composition root wiring + metrics_jobs.go augmentation). Typed-port pattern: youtubeports.Step10MetricsRecorder interface in application layer; observability.Step10MetricsAdapter concrete in infrastructure layer; composition-root compile-time pin `var _ youtubeports.Step10MetricsRecorder = (*observability.Step10MetricsAdapter)(nil)`. failure_code label cardinality bounded to ~10 typed FailureCode constants."
+    - id: PR-PROCESS-SECURITY-REVIEW
+      status: shipped
+      ship_sha: 43227611f
+      ship_date: 2026-07-08
+      owner_capability: internal/infrastructure/process
+      deadline: 2026-08-01
+      summary: "Security review of internal/infrastructure/process/process.go shell argv injection surface per user-spec /review. MUST-FIX: filepath.IsAbs(name) gate in runViaPythonScript (closes CVE-2022-30699-style CWD-relative path hijacking). SHOULD-FIX: secretPatterns extension for JWT (Base64URL charset) + AWS access keys (AKIA with word boundary). 3 new hermetic TDD tests (shell injection, Python CWD hijack, extended redaction charsets). All 8 tests PASS."
+      forward_pointers:
+        - id: PR-QDRANT-DOD-4-ASSERTIONS-LAND
+          deadline: 2026-08-15
+          reason: "Scope gap from this PR: tests/e2e/qdrant_dod_4_assertions_test.go is correct in isolation but blocked by a pre-existing build carry-forward in the tests/e2e package (qdrant_e2e_youtube_test.go:625 undefined youtubetypes.ClipMetadata). Forward-pointer lands the file in a follow-up commit once the build carry-forward is resolved."
+        - id: PR-PROCESS-001
+          deadline: 2026-08-15
+          reason: "Defense-in-depth: add explicit NUL byte (\x00) rejection in shellJoin/shellQuote. Go's os/exec currently blocks NUL bytes at the syscall boundary, but explicit future-proofs against Go runtime changes (e.g. if a future execve wrapper doesn't reject NUL)."
+        - id: PR-PROCESS-ALLOWLIST
+          deadline: 2026-08-22
+          reason: "Add AllowShellBinaries []string option to runViaShell for defense-in-depth. Currently any binary on PATH can use the shell fallback. The allowlist would constrain the fallback to a closed set of known-safe binaries (e.g. /bin/echo, /bin/ls, /bin/cat). Code-reviewer flagged as forward-pointer (not blocking)."
+
     - id: PR-PY-STEP10-FAIL-LOG-RETRY-PARITY
       summary: "Add an opt-in retry semantic: when FailureCodeMetadataFailed fires AND the typed `Retryable` is true (currently `false`), retry Step 10 in-place before the outer Execute's `u.fail` flips the job status. Per godlike/07 minimum-blast-radius, the retry gate is opt-in via `ProcessSegmentDeps.RetryStep10 bool` so pre-Commit-3 callers see no behavior change."
     - id: PR-PY-STEP10-FAIL-LOG-METRICS-CONSUMER
