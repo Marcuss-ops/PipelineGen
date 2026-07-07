@@ -3079,3 +3079,59 @@
     one per audience.
   forward_pointer:
   - PR-CHUNKSTATE-PATHLEAFNAME-MIRROR
+- id: PR-STOCK-RICHASSET-WRITE
+  owner_capability: internal/application/assets/providers/stock/stockpipeline
+  status: shipped
+  ship_sha: dc080232
+  ship_date: 2026-07-08
+  deadline: 2026-08-08
+  exit_signal: true
+  description: |
+    Front 4: replace the 4-field asset.Asset literal in
+    StockExtractClipsStep.Run with a 10-field rich-asset write
+    so downstream consumers (Qdrant indexer, asset search,
+    media_assets projection) see Title/Description/Round/Tags/
+    Category/LocalPath/SHA256/StartSec/EndSec/SearchText at the
+    asset-row write seam instead of only in metadata.json emitted
+    later by stock.finalize.
+
+    Canonical surface (godlike/06 SSOT one-canonical-owner-per-fact):
+    buildRichStockAsset(plan, sourceIdx, clipIdx, localPath, sha256)
+    composes the canonical 10-field asset. direct fields:
+    ID, Name=slug, Filename=slug+.mp4, Source, MediaType, Category,
+    SourceURL, Duration, Tags (defensive copy), SearchText (composed
+    via composeStockChunkSearchText), LifecycleState=StateActive.
+    Metadata map: title, description, round, start_sec, end_sec,
+    local_path, sha256, file_hash (SetFileHash), slug. Typed
+    accessors SetLocalPath + SetFileHash populate BOTH the explicit
+    metadata key + the typed-accessor key for legacy/canonical
+    compat.
+
+    godlike/07 NO-FAKE-AVAILABILITY: SHA256 computed fail-closed
+    via job.ComputeSHA256(item.OutputPath) (P0 2.4 hardening); hash
+    passed to writer.WriteAndEnqueue(ctx, clip, hash).
+
+    godlike/07 minimum-blast-radius: composeStockChunkSearchText
+    composes inline to avoid clean-architecture violation (no app→
+    infra import of internal/infrastructure/indexing/searchtext).
+
+    Test coverage: TestStockExtractClipsStep_RichAssetWrite in
+    step_extract_clips_test.go, 15 assertions on a Round 7 clip.
+
+    Forward-pointers: PR-STOCK-RICHASSET-GROUP (Group field empty
+    today), PR-STOCK-SEARCHTEXT-PORT (port + composition-root
+    wiring for the inline composer).
+  forward_pointers:
+  - id: PR-STOCK-RICHASSET-GROUP
+    note: Group field left empty today (planner's per-clip group is
+      the YouTube channel name, not a stock-derived concept). A
+      future PR can inject runner.RunInput() into buildRichStockAsset
+      and derive Group from stockRootFolderName(in) for consistency
+      with stock.publish's per-chunk group semantics.
+    deadline: 2026-09-01
+  - id: PR-STOCK-SEARCHTEXT-PORT
+    note: Extract the inline composeStockChunkSearchText into a
+      port + composition-root wiring so the asset-row write and
+      the Qdrant-payload write share a single canonical source.
+    deadline: 2026-09-01
+
