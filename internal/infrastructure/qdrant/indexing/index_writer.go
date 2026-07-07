@@ -438,20 +438,49 @@ type AssetData struct {
 	// `internal/application/{assets|clips}/ingest/*.go` flow
 	// diagnostics, and removing it would silently break ingest
 	// crash-trace logs.
-	LocalPath      string                 `json:"local_path,omitempty"`
-	YouTubeVideoID string                 `json:"youtube_video_id,omitempty"`
-	YouTubeURL     string                 `json:"youtube_url,omitempty"`
-	StartTime      string                 `json:"start_time,omitempty"`
-	EndTime        string                 `json:"end_time,omitempty"`
-	DurationMs     int64                  `json:"duration_ms,omitempty"`
-	WorkspaceID    string                 `json:"workspace_id,omitempty"`
-	ChannelID      string                 `json:"channel_id,omitempty"`
-	License        string                 `json:"license,omitempty"`
-	IndexVersion   string                 `json:"index_version,omitempty"`
-	SourceVersion  string                 `json:"source_version,omitempty"`
-	CreatedAt      string                 `json:"created_at,omitempty"`
-	UpdatedAt      string                 `json:"updated_at,omitempty"`
-	DeletedAt      string                 `json:"deleted_at,omitempty"`
+	LocalPath      string `json:"local_path,omitempty"`
+	YouTubeVideoID string `json:"youtube_video_id,omitempty"`
+	YouTubeURL     string `json:"youtube_url,omitempty"`
+	StartTime      string `json:"start_time,omitempty"`
+	EndTime        string `json:"end_time,omitempty"`
+	DurationMs     int64  `json:"duration_ms,omitempty"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
+	ChannelID      string `json:"channel_id,omitempty"`
+	License        string `json:"license,omitempty"`
+	IndexVersion   string `json:"index_version,omitempty"`
+	SourceVersion  string `json:"source_version,omitempty"`
+	CreatedAt      string `json:"created_at,omitempty"`
+	UpdatedAt      string `json:"updated_at,omitempty"`
+	DeletedAt      string `json:"deleted_at,omitempty"`
+
+	// PR 6 (July 2026, refactor/assetdata-semantic-fields) — first-class
+	// semantic metadata fields. Previously accessible only via MetadataJSON;
+	// the PayloadMapper airlock now reads these top-level fields FIRST
+	// (fall-back to MetadataJSON for backward compat with old callers that
+	// haven't yet migrated to top-level). 19 new fields:
+	// semantic block (Title/Description/Summary/SourceURL/SourceVideoID/
+	// SourceProvider/Origin/Destination) + LLM enrichment block (Event/
+	// Round/Scene/Subject/Entities) + workflow/provenance block
+	// (WorkflowID/RunFingerprint/ChunkIndex/TotalChunks/PolicyVersion/JobID).
+	Title          string                 `json:"title,omitempty"`
+	Description    string                 `json:"description,omitempty"`
+	Summary        string                 `json:"summary,omitempty"`
+	SourceURL      string                 `json:"source_url,omitempty"`
+	SourceVideoID  string                 `json:"source_video_id,omitempty"`
+	SourceProvider string                 `json:"source_provider,omitempty"`
+	Origin         string                 `json:"origin,omitempty"`
+	Destination    string                 `json:"destination,omitempty"`
+	Event          string                 `json:"event,omitempty"`
+	Round          int                    `json:"round,omitempty"`
+	Scene          string                 `json:"scene,omitempty"`
+	Subject        string                 `json:"subject,omitempty"`
+	Entities       []string               `json:"entities,omitempty"`
+	WorkflowID     string                 `json:"workflow_id,omitempty"`
+	RunFingerprint string                 `json:"run_fingerprint,omitempty"`
+	ChunkIndex     int                    `json:"chunk_index,omitempty"`
+	TotalChunks    int                    `json:"total_chunks,omitempty"`
+	PolicyVersion  string                 `json:"policy_version,omitempty"`
+	JobID          string                 `json:"job_id,omitempty"`
 	MetadataJSON   string                 `json:"-"`
 	Metadata       map[string]interface{} `json:"-"`
 	// Embeddings are populated by the mapper from DB columns.

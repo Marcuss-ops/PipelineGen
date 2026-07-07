@@ -36,14 +36,19 @@ func TestBuildPayloadFromDocument_DestinationEmittedWhenSet(t *testing.T) {
 	}
 }
 
-// 2. Destination inferred from Source when Metadata.Destination is
-// empty (the existing firstNonEmpty fallback contract).
-func TestBuildPayloadFromDocument_DestinationInferredFromSource(t *testing.T) {
+// 2. Destination NOT inferred from Source when Metadata.Destination is
+// empty. PR 6 (July 2026) removed the legacy firstNonEmpty fallback
+// contract that silently filled destination from Source — exactly the
+// godlike/07 NO-FAKE-AVAILABILITY placeholder-string anti-pattern. A
+// caller that sets only Metadata.Source MUST NOT see a destination
+// payload key. Callers that want destination MUST set it explicitly
+// via top-level AssetData fields or MetadataJSON.
+func TestBuildPayloadFromDocument_DestinationNotInferredFromSource(t *testing.T) {
 	doc := emptyDoc()
 	doc.Metadata.Source = "youtube"
 	p := BuildPayloadFromDocument(doc, nil)
-	if v, ok := p["destination"]; !ok || v != "youtube" {
-		t.Fatalf("payload[destination] = %v, ok = %v — want inferred from Source = \"youtube\"", v, ok)
+	if v, ok := p["destination"]; ok {
+		t.Fatalf("payload[destination] = %v, ok = %v — want ABSENT (PR 6 removed auto-population from Source; godlike/07 NO-FAKE-AVAILABILITY)", v, ok)
 	}
 }
 
