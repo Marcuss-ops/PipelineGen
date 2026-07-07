@@ -8,9 +8,18 @@
 //     entirely is also success (next-hop already finished).
 //
 //   - Happy path (6-step sequence): pre-flight → stamp DRIVE_DELETE_PENDING
-//     → Drive.Trash → AdvanceAndEmit (DRIVE_DELETE_PENDING → INDEX_DELETE_PENDING
+//     → Drive.Trash → AdvanceAndEmit (DRIVE_DELETE_PENDING → DRIVE_DELETED
 //
-//   - emit EventAssetIndexDeleteRequested).
+//   - emit EventAssetIndexDeleteRequested). The advancer target is
+//     StateDriveDeleted (the post-Drive confirmation hop) per the
+//     Blocco 3.1 commit 2/3 state machine expansion: the canonical
+//     6-state deletion chain is ACTIVE → DELETE_REQUESTED →
+//     DRIVE_DELETE_PENDING → DRIVE_DELETED → INDEX_DELETE_PENDING
+//     → INDEX_DELETED → DELETED. The legacy direct-to-
+//     INDEX_DELETE_PENDING transition is FORBIDDEN by
+//     lifecycle_state.go::IsValidTransition; IndexDeleteHandler
+//     accepts both DRIVE_DELETED (new) and INDEX_DELETE_PENDING
+//     (legacy forward-compat) as entry points.
 //
 //   - Drive 404 tolerance: Drive.Delete on an already-deleted
 //     fileID is folded to idempotent success.
@@ -224,12 +233,20 @@ func TestDriveDeleteHandler_HappyPath_PermanentlyFalse(t *testing.T) {
 	}
 
 	// 3. AdvanceAndEmit once: from DRIVE_DELETE_PENDING to
-	//    INDEX_DELETE_PENDING + emit EventAssetIndexDeleteRequested.
+	//    DRIVE_DELETED + emit EventAssetIndexDeleteRequested.
+	//    Blocco 3.1 commit 2/3 (July 2026) expanded the deletion
+	//    state machine to 6 explicit states; the post-Drive
+	//    confirmation hop is now StateDriveDeleted. The
+	//    IndexDeleteHandler accepts this as its entry point
+	//    (alongside legacy INDEX_DELETE_PENDING for pre-commit 2/3
+	//    forward-compat), and lifecycle_state.go::IsValidTransition
+	//    FORBIDS the direct DRIVE_DELETE_PENDING → INDEX_DELETE_PENDING
+	//    transition the previous test asserted.
 	if len(adv.calls) != 1 {
 		t.Fatalf("expected 1 AdvanceAndEmit call, got %d", len(adv.calls))
 	}
 	got := adv.calls[0]
-	if got.fromState != asset.StateDriveDeletePending || got.newState != asset.StateLifecycleIndexDeletePending {
+	if got.fromState != asset.StateDriveDeletePending || got.newState != asset.StateDriveDeleted {
 		t.Fatalf("AdvanceAndEmit state-machine transition wrong: %+v", got)
 	}
 	if got.eventType != outboxevents.EventAssetIndexDeleteRequested {
