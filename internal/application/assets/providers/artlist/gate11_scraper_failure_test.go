@@ -354,6 +354,10 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 		// Gate 02 — Drive fields
 		"TestGate02_DriveFieldsPopulated",
 
+		// Gate 03 — SQLite persistence
+		"TestGate03_ArtlistRunsPopulatedAfterHandleJob",
+		"TestGate03_ArtlistRunsNotRecordedWhenDiscoveryFails",
+
 		// Gate 05 — Outbox dispatch
 		"TestGate05_OutboxDispatchContract",
 		"TestGate05_OutboxNoDispatchWithoutDriveFields",
@@ -380,7 +384,7 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 	}
 
 	// UPDATE THIS COUNT when adding gate tests.
-	assert.Len(t, expectedGateTests, 17,
+	assert.Len(t, expectedGateTests, 19,
 		"Gate test matrix count changed — update the count and the list above when adding/removing gate tests")
 
 	// Verify no duplicates (copy-paste error defense).
