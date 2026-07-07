@@ -2928,3 +2928,48 @@
       owner_capability: cmd/admin/qdrant_preflight
       status: pending
       deadline: 2026-08-01
+
+- id: PR-QDRANT-DOD-STOCK-PRODUCER
+  status: shipped
+  ship_date: 2026-07-08
+  owner_capability: internal/application/assets/providers/stock/stockpipeline
+  deadline: 2026-08-08
+  exit_gate: |
+    3 hermetic TDD scenarios shipped atomically with new
+    orchestrator_finalize_test.go (ship_sha 4fe07e75 on origin/main, QDRANT-DOD-FINAL
+    action plan Gate 3: Producer contract Stock coverage). YouTube/Artlist/Voiceover
+    were already covered through finalizer.NewAssetTxFinalizer.FinalizeAsset; Stock
+    was the missing symmetric producer.
+    (a) Scenario-1-HappyPath: 3 chunks (stock:fp:c0..c2) -> 3 outbox_events rows
+        with event_type=asset.index.requested + aggregate_type='stock' + payload
+        v1 envelope (5 REQUIRED fields asserted per in-line comment header:
+        schema_version + asset_id + source_version + idempotency_key + operation=UPSERT).
+        target_index_version + requested_vectors INTENTIONALLY OMITTED (canonical-finalizer
+        asymmetry documented per godlike/07 NO-FAKE-AVAILABILITY audit-pin; suppressed
+        by parseAndValidateRequest in internal/application/jobs/outbox/indexing_handle.go).
+    (b) Scenario-2-IdempotencyReplay: partial UNIQUE INDEX ux_outbox_events_event_key
+        suppresses 2nd INSERT (RowsAffected==0 verified at SQL literal level — event_key
+        sourced FROM production path via SELECT, not reconstructed in test).
+    (c) Scenario-3-SupersedeGate: stale v1 dispatch surfaces *SupersedeError
+        (AssetID + Current + Expected + Reason populated per canonical struct in
+        internal/infrastructure/database/sqlite/outboxevents/supersede.go,
+        Current != Expected). IndexClip NOT invoked on stale v1; v2 dispatch succeeds.
+    preflight TEST-3 reuse: aggregate_type='stock' filter present in Test 1 + cmd/admin
+    qdrant-preflight TEST-3 (testOutboxEventsCreated) cross-references this test fixture
+    without re-wiring.
+  linked_issues:
+    - id: Scenario-1-HappyPath
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: shipped
+      ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_TEST
+      deadline: 2026-08-08
+    - id: Scenario-2-IdempotencyReplay
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: shipped
+      ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_TEST
+      deadline: 2026-08-08
+    - id: Scenario-3-SupersedeGate
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: shipped
+      ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_TEST
+      deadline: 2026-08-08
