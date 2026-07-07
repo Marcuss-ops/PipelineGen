@@ -62,6 +62,126 @@ func (f *publishFakeRunner) State() *runState                        { return f.
 
 var _ StepRunner = (*publishFakeRunner)(nil)
 
+// TestStockPublishStep_PerClipPathLeafName locks the per-clip
+// PathLeafName contract for explicit-clips runs as a HARD regression
+// guard. The pre-PR bug stamped the SAME PathLeafName
+// (= stockTimestampGroupName) on every chunk in an explicit-clips
+// run, so 8 Pacquiao/Broner clips landed in 1 Drive subdir instead
+// of 8 per-clip subdirs.
+//
+// User spec (Front 3, July 2026): "8 explicit clips → 8 unique leaf
+// names, NO shared folder". This test HARD-FAILS on any duplicate
+// leaf (godlike/07 NO-FAKE-AVAILABILITY: a silent duplicate shadow
+// folder on Drive is the regression we just fixed). The sibling
+// TestStockPublishStep_ExplicitClips_PerClipPathLeafName logs
+// duplicate leaves as a soft warning (operator visibility); this
+// test is the canonical regression guard for the per-clip contract
+// itself.
+//
+// 8 titles picked so that the slugifyTitle cascade produces 8
+// distinct slugs — Round 1, Round 2, Round 3, Round 4, Round 5,
+// Round 6, Round 7, Round 8 → round-1, round-2, ..., round-8.
+// The fix to perClipLeafName's gate on explicitTimestamps is
+// load-bearing: a regression that drops the gate (e.g. falls back
+// to stockTimestampGroupName for every chunk) would collapse all 8
+// leaves to a single value and HARD-FAIL this test.
+func TestStockPublishStep_PerClipPathLeafName(t *testing.T) {
+	tmpDir := t.TempDir()
+	const clipCount = 8
+	paths := make([]string, clipCount)
+	plans := make([]ClipPlan, clipCount)
+	wantLeaves := []string{
+		"round-1", "round-2", "round-3", "round-4",
+		"round-5", "round-6", "round-7", "round-8",
+	}
+	for i := 0; i < clipCount; i++ {
+		p := filepath.Join(tmpDir, fmt.Sprintf("clip-%d.mp4", i))
+		if err := os.WriteFile(p, []byte("clip-"+strconv.Itoa(i)), 0o644); err != nil {
+			t.Fatalf("write clip %d: %v", i, err)
+		}
+		paths[i] = p
+		plans[i] = ClipPlan{
+			SourceID: "https://youtu.be/pacquiao-broner",
+			StartSec: float64(30 * i),
+			EndSec:   float64(30*i + 25),
+			Title:    "Round " + strconv.Itoa(i+1),
+		}
+	}
+	prep := &recordingArtifactPreparation{}
+	runner := &publishFakeRunner{
+		runInput: &RunInput{
+			FolderName:    "Manny Pacquiao vs Adrien Broner",
+			FolderID:      "wf-8clips-front3",
+			Clips:         make([]ClipSpec, clipCount), // explicit-clips trigger
+			ClipDuration:  25,
+			ChunkDuration: 25,
+		},
+		cfg: OrchestratorConfig{PolicyVersion: "policy-v1"},
+		state: &runState{
+			Plan:          plans,
+			ComposedPaths: paths,
+		},
+		artifactPrep: prep,
+	}
+	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
+		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
+	}
+	// Structural invariant: 8 video chunks + EXACTLY 1 metadata.
+	want := clipCount + 1
+	if got := len(prep.artifacts); got != want {
+		t.Fatalf("expected %d prepare calls (%d videos + 1 metadata), got %d", want, clipCount, got)
+	}
+	// Per-clip PathLeafName contract: 8 unique leaves, no shared
+	// folder. This is the HARD regression guard — godlike/07
+	// NO-FAKE-AVAILABILITY: a silent duplicate would shadow real
+	// Drive folders without operator visibility, so the test fails
+	// immediately on any collision (vs the sibling test which only
+	// logs a soft warning).
+	//
+	// The VerifiedArtifact.PathLeafName is the write-side seam (the
+	// value passed to ArtifactPreparation.Prepare). The ChunkState
+	// captures RemoteFileID + RemoteWebViewLink + DrivePath +
+	// RemoteDownloadLink from the PublishedArtifact.Location but
+	// does NOT carry PathLeafName today (a future PR could add it
+	// for SSOT round-trip verification — see forward-pointer
+	// PR-CHUNKSTATE-PATHLEAFNAME-MIRROR).
+	seenLeaves := make(map[string]int, clipCount)
+	for i := 0; i < clipCount; i++ {
+		got := prep.artifacts[i].PathLeafName
+		if got != wantLeaves[i] {
+			t.Errorf("chunk[%d].PathLeafName = %q, want %q (per-clip leaf from Plan[%d].Title=%q)",
+				i, got, wantLeaves[i], i, plans[i].Title)
+		}
+		if prev, dup := seenLeaves[got]; dup {
+			t.Errorf("SHARED FOLDER REGRESSION: chunk[%d].PathLeafName = %q, but chunk[%d] already used this leaf — 8 clips must produce 8 unique leaves, not 1 shared folder",
+				i, got, prev)
+		}
+		seenLeaves[got] = i
+	}
+	// godlike/07 fail-closed: 8 unique leaves is the structural
+	// invariant for explicit-clips runs. If the test data + the
+	// production code both work, we MUST see 8 unique leaves.
+	if len(seenLeaves) != clipCount {
+		t.Fatalf("expected %d unique PathLeafName values, got %d (collisions: %v) — perClipLeafName must produce distinct leaves per clip",
+			clipCount, len(seenLeaves), seenLeaves)
+	}
+	// Metadata is exactly ONE, with leaf "metadata" (run-root in
+	// explicit-clips mode — sits alongside the per-clip video
+	// subdirs, NOT inside one of them).
+	metaIdx := clipCount
+	if got := prep.artifacts[metaIdx].PathLeafName; got != "metadata" {
+		t.Errorf("metadata PathLeafName = %q, want %q (run-root level in explicit-clips mode)", got, "metadata")
+	}
+	if got := prep.artifacts[metaIdx].ArtifactID; got != "stock:run-fingerprint-123:metadata" {
+		t.Errorf("metadata ArtifactID = %q, want %q", got, "stock:run-fingerprint-123:metadata")
+	}
+	// Legacy MUST be untouched: with no `clips[]` the chunks
+	// share a single PathLeafName (stockTimestampGroupName). This
+	// half of the contract is enforced by
+	// TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName
+	// (3 sub-cases) — flagged here for cross-reference.
+}
+
 // ── PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026) — per-clip PathLeafName ──
 //
 // The pre-PR bug: StockPublishStep stamped the SAME PathLeafName
