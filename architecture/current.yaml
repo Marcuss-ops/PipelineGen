@@ -8511,3 +8511,118 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
     3-surface godlike/06 lockstep: this entry ==
     CHANGELOG.md ## Unreleased > ### Documentation mirror entry ==
     AGENTS.md Recent cross-cutting closures mirror entry.
+- id: PR-PROCESS-INPUT-ENTITIES-METADATA
+  owner_capability: internal/application/scripts/adapters (ProcessInput + mergePostProcessResult + processor_document.go)
+  status: shipped
+  ship_sha: 8007f857
+  ship_date: 2026-07-06
+  exit_signal: true
+  deadline: 2026-08-15
+  description: |
+    PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026): extend ProcessInput
+    with Entities + Metadata fields, thread them through
+    mergePostProcessResult write-back, and pass them to
+    BuildGenerationDocumentHTML in processor_document.go so the
+    Google Doc renders populated Entities + Video Metadata sections
+    when the entities/metadata processors run before the document
+    processor in plan.Postprocessors execution order. Honest
+    scope-lock (godlike/07): the write-back only takes effect
+    when document runs AFTER entities/metadata processors; when
+    it runs before, inputs stay nil (byte-equivalent to pre-PR
+    behavior). Future reordering of the postprocessor list would
+    unlock full rendering.
+
+    godlike/06 SSOT (one canonical owner per fact):
+    ProcessInput.Entities + ProcessInput.Metadata live ONLY in
+    postprocessor_document.go; the merge-write-back lives ONLY
+    in postprocessor_composite_merge.go; the doc-consumer call
+    site lives ONLY in processor_document.go.
+
+    godlike/07 minimum-blast-radius: 3 files modified, 0 new files,
+    0 surface contract changes, 0 signature changes, 0 new
+    dependencies.
+
+    Verification: gofmt + go vet + go build on
+    internal/application/scripts/adapters/... all exit 0.
+    go test -short on the adapters package PASS (pre-existing
+    failures in postprocessor_registry_test.go UNCHANGED per
+    architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04
+    carry-forward).
+
+# ── 2026-07-08: PR-P12-DRIVE-COMPLETION-2026-07-08 (action plan registration) ──
+PR-P12-DRIVE-COMPLETION-2026-07-08:
+  status: pending
+  deadline: 2026-08-15
+  description: |
+    Pattern 12 (Drive as Central Capability) completion wave.
+    Source: 2026-07-08 user diagnosis (Italian text) +
+    archcheck scanner percheck_root_override_ban baseline.
+
+    Goal: 4 production-code RootFolderOverride violations in
+    internal/application/** and internal/api/** → 0.
+
+    Per-PR migration sequence + verification gates + cross-references
+    live canonically at:
+    architecture/action-plans/2026-07-08-pattern-12-completion.md
+
+    Honest-limitation (godlike/07): the parent FASE A→E closure
+    (DRIVE-AS-CENTRAL-CAPABILITY-2026-07-07, ship_date 2026-07-07)
+    shipped prematurely. The closure documented "Drive as central
+    capability" but the 4 production-code RootFolderOverride
+    violations remained because the scanner baseline was non-zero.
+    This wave closes the residual gap end-to-end.
+  linked_issues:
+    - id: PR-P12-VOICEOVER-SEMANTIC-FIELDS
+      deadline: 2026-08-01
+      remediation: |
+        Add Project + Language to VoiceoverPublishCommand
+        (internal/application/voiceover/ports.go). Route voiceover
+        Drive writes through delivery.Publisher.Publish with
+        req.ProjectID + req.Language instead of RootFolderOverride.
+        5 TDD cases in process_voiceover_item_test.go.
+    - id: PR-P12-HANDLER-FACADE-SEMANTIC
+      deadline: 2026-08-01
+      remediation: |
+        Replace RootFolderOverride=defaultRootID in
+        internal/api/script/handler_facade.go:184 with semantic
+        Group=clean[0..n-1] + Subject=clean[n] routing.
+        3 TDD cases in handler_facade_test.go.
+    - id: PR-P12-SOUND-EFFECT-SIDECAR
+      deadline: 2026-08-08
+      remediation: |
+        Replace metadata.json sidecar RootFolderOverride in
+        internal/api/assets/soundeffect/handler.go:268 with new
+        DestinationSoundEffectSidecar + Group=parent-folder.
+        4 TDD cases in handler_test.go.
+    - id: PR-P12-YOUTUBE-LEGACY-RETIRE
+      deadline: 2026-08-08
+      remediation: |
+        Migrate YouTubePublisherDriveAdapter (2 sites) to semantic
+        Group/Subject + composition-time ban on driveFolderMgrAdapter
+        (or git-rm if zero live callers per rg).
+        5 TDD cases in youtube_adapters_drive_test.go.
+    - id: PR-P12-CLIPS-AND-BOOKS
+      deadline: 2026-08-08
+      remediation: |
+        Replace RootFolderOverride in internal/application/clips/upload
+        + clips/reupload + books/upload/handler with semantic
+        Project/Group/Subject auto-derived from clip.URL/clip.Title
+        or book.JobID.
+        8 TDD cases (4 per surface).
+    - id: PR-P12-PERCHECK-BASELINE-ZERO
+      deadline: 2026-08-15
+      remediation: |
+        Add --production-only flag to percheck_root_override_ban
+        (cmd/archcheck/scan/percheck_root_override.go) so the
+        scanner baseline reports zero production-code hits after
+        the 5 prior PRs land. The 14 historical fixture hits
+        (test files + allowlist + comments) stay in the allowlist.
+        3 TDD cases in percheck_root_override_test.go.
+  forward_pointers:
+    - id: PR-P12-HOTSPOT-CROSSREF
+      deadline: 2026-08-15
+      remediation: |
+        Post-wave git-log frequency cross-validation per
+        `git log --since=14.days --pretty=format: --name-only | sort | uniq -c | sort -rn | head -30`
+        to confirm the static priority ranking matches the actual
+        change frequency in the working tree.
