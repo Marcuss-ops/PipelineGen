@@ -2256,3 +2256,31 @@ PR-P12-DRIVE-COMPLETION-2026-07-08:
     closure is purely the diagnostic finding documentation. Pre-existing
     6-item voiceover + app build-issue carry-forward per
     architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04 unchanged.
+
+  - id: PR-PY-STEP10-PORT-M3
+    ship_sha: 09fe81c7
+    ship_date: 2026-07-08
+    status: shipped
+    deadline: 2026-08-08
+    remediation: |
+      Step 10 transcript source switched from os.ReadFile(...+.txt)
+      to u.deps.Transcriber.TranscribeAudio(port) typed port.
+      godlike/06 SSOT one-canonical-owner-per-fact preserved
+      (Transcriber is SOLE plaintext-transcript surface).
+      godlike/07 NO-FAKE-AVAILABILITY contracts documented.
+      Cross-package clipindexer.lookupTranscriptPath consumer
+      preserves Step 7's os.WriteFile (NOT dropped).
+    forward_pointer:
+      PR-CLIPINDEXER-TRANSCRIPT-TYPED-PORT: deadline 2026-08-22
+        "migrate clipindexer.lookupTranscriptPath off the .txt
+        tempfile handoff to a typed TranscriptReaderPort"
+      PR-YOUTUBE-METADATA-SERVICE-PORT: deadline 2026-08-22
+        "introduce MetadataServicePort interface in youtube/ports
+        (currently concrete *ytmetadata.MetadataService blocks TDD
+        on the ClipMetadataInput.Transcript handoff field)"
+      PR-YOUTUBE-TRANSCRIPT-CACHE: deadline 2026-09-01
+        "use-case-scoped cache of Step 7's Whisper result so Step 10
+        skips the re-invocation in the rare dual-failure path"
+      PR-YOUTUBE-TRANSCRIPT-EMPTY-DEBUG: deadline 2026-08-22
+        "zap.Debug (not Warn, to avoid alert-storm) for
+        TranscribeAudio returning empty string after TrimSpace"
