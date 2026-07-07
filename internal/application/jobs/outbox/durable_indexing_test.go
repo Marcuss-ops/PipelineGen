@@ -78,7 +78,10 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
@@ -469,5 +472,412 @@ func TestDurableIndexing_SupersededEvent_NoCallback(t *testing.T) {
 	if got := clipper.CallCount(assetID); got != 0 {
 		t.Errorf("IndexClip(%s) called %d times on SUPERSEDED event, want 0 (Qdrant must NOT re-upsert stale data)",
 			assetID, got)
+	}
+}
+
+// ── Scenario 4: integration — finalizer → outbox → handler → no supersede ──
+
+// dbSourceQuerier adapts *sql.DB to the SourceVersionQuerier interface
+// by delegating to assets.SourceVersionFor — the SAME production SQL
+// helper the IndexingHandler uses via *assets.ClipsRepository.
+// This eliminates the fakeSourceQuerier drift risk: the test reads from
+// the real 3-tier COALESCE chain (content_hash → file_hash → column).
+type dbSourceQuerier struct {
+	db *sql.DB
+}
+
+func (q *dbSourceQuerier) SourceVersionFor(ctx context.Context, id string) (string, error) {
+	return assets.SourceVersionFor(ctx, q.db, id)
+}
+
+// testCombinedSchema creates media_assets + outbox_events + asset_versions
+// + asset_locations tables in a single in-memory SQLite DB. This mirrors
+// the real production schema where both the finalizer and the outbox
+// handler share the same database.
+const testCombinedSchema = `
+CREATE TABLE IF NOT EXISTS media_assets (
+	id TEXT PRIMARY KEY,
+	source TEXT NOT NULL DEFAULT '',
+	name TEXT NOT NULL DEFAULT '',
+	filename TEXT NOT NULL DEFAULT '',
+	media_type TEXT NOT NULL DEFAULT '',
+	file_hash TEXT NOT NULL DEFAULT '',
+	drive_file_id TEXT NOT NULL DEFAULT '',
+	drive_link TEXT NOT NULL DEFAULT '',
+	download_link TEXT NOT NULL DEFAULT '',
+	folder_id TEXT NOT NULL DEFAULT '',
+	folder_path TEXT NOT NULL DEFAULT '',
+	lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
+	index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at TEXT NOT NULL DEFAULT '',
+	updated_at TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS asset_versions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+	version_number INTEGER NOT NULL,
+	source_uri TEXT NOT NULL DEFAULT '',
+	file_hash TEXT NOT NULL DEFAULT '',
+	file_size_bytes INTEGER NOT NULL DEFAULT 0,
+	mime_type TEXT NOT NULL DEFAULT '',
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at TEXT NOT NULL DEFAULT '',
+	UNIQUE (asset_id, version_number)
+);
+CREATE TABLE IF NOT EXISTS asset_locations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+	location_kind TEXT NOT NULL CHECK (location_kind IN ('local', 'drive', 'object_storage')),
+	uri TEXT NOT NULL,
+	external_id TEXT NOT NULL DEFAULT '',
+	web_view_link TEXT NOT NULL DEFAULT '',
+	download_url TEXT NOT NULL DEFAULT '',
+	mime_type TEXT NOT NULL DEFAULT '',
+	file_size_bytes INTEGER NOT NULL DEFAULT 0,
+	file_hash TEXT NOT NULL DEFAULT '',
+	is_primary INTEGER NOT NULL DEFAULT 0,
+	created_at TEXT NOT NULL DEFAULT '',
+	updated_at TEXT NOT NULL DEFAULT '',
+	UNIQUE (asset_id, location_kind)
+);
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type      TEXT    NOT NULL,
+    aggregate_id    TEXT    NOT NULL,
+    aggregate_type  TEXT    NOT NULL DEFAULT '',
+    payload_json    TEXT    NOT NULL,
+    event_key       TEXT    NOT NULL DEFAULT '',
+    status          TEXT    NOT NULL DEFAULT 'pending',
+    attempt_count   INTEGER NOT NULL DEFAULT 0,
+    max_attempts    INTEGER NOT NULL DEFAULT 5,
+    last_error      TEXT    NOT NULL DEFAULT '',
+    worker_id       TEXT    NOT NULL DEFAULT '',
+    lease_id        TEXT    NOT NULL DEFAULT '',
+    lease_expiry    DATETIME,
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    next_attempt_at DATETIME,
+    completed_at    DATETIME
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
+    ON outbox_events(event_key) WHERE event_key != '';
+CREATE INDEX IF NOT EXISTS IX_outbox_events_status_next
+    ON outbox_events(status, next_attempt_at);
+`
+
+func openInMemDB_Integration(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", ":memory:?_busy_timeout=5000&_foreign_keys=on")
+	if err != nil {
+		t.Fatalf("open :memory: db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(testCombinedSchema); err != nil {
+		t.Fatalf("apply combined schema: %v", err)
+	}
+	return db
+}
+
+// TestDurableIndexing_FinalizerWrites_HandlerDoesNotSupersede is the
+// canonical integration-level test that closes the loop on the
+// content_hash supersede-gate fix (asset_finalizer_tx.go PR, July 2026).
+//
+// It simulates the PRODUCTION flow end-to-end:
+//
+//  1. FinalizeAsset writes media_assets row with content_hash in
+//     metadata_json (same tx as outbox event creation).
+//  2. The outbox event's source_version = artifact.SHA256.
+//  3. IndexingHandler reads SourceVersionFor() from the SAME DB
+//     (real 3-tier COALESCE: content_hash → file_hash → column).
+//  4. Supersede gate MUST NOT fire — content_hash (Tier 1) matches
+//     the event's source_version (same write boundary).
+//  5. IndexClip MUST be invoked.
+//
+// Stages 1–5 are happy-path integration coverage: they verify that
+// FinalizeAsset writes content_hash to metadata_json and that
+// SourceVersionFor reads it correctly through the supersede gate.
+//
+// Stage 6 is the ACTUAL regression guard: it simulates a different
+// pipeline (YouTube) having written a stale file_hash to metadata_json
+// in a previous ingest. Without the content_hash fix, SourceVersionFor
+// would read the stale Tier 2 (file_hash) and the supersede gate would
+// fire — Qdrant never updates. With the fix, Tier 1 (content_hash)
+// wins because the finalizer writes it on every republish.
+func TestDurableIndexing_FinalizerWrites_HandlerDoesNotSupersede(t *testing.T) {
+	db := openInMemDB_Integration(t)
+	repo := outboxevents.NewRepository(db)
+
+	fx := finalizer.NewAssetTxFinalizer(zap.NewNop())
+	ctx := context.Background()
+	assetID := "yt_integration_001"
+
+	// ── Stage 1: FinalizeAsset writes media_assets + returns outbox event ──
+	hash1 := "sha256:integration_hash_v1"
+	artifact1 := finalization.PublishedArtifact{
+		ArtifactID:     assetID,
+		Kind:           finalization.KindVideo,
+		Filename:       "test-video.mp4",
+		MIMEType:       "video/mp4",
+		SizeBytes:      1024,
+		SHA256:         hash1,
+		Requirement:    finalization.ArtifactRequirementRequired,
+		IdempotencyKey: "idem-" + assetID,
+		Location: finalization.AssetLocation{
+			Provider:     "drive",
+			FileID:       "drive-file-integration",
+			WebViewLink:  "https://drive.google.com/file/d/drive-file-integration/view",
+			DownloadLink: "https://drive.google.com/uc?id=drive-file-integration",
+			FolderID:     "folder-abc",
+			FolderPath:   "/test",
+			Action:       finalization.PublishCreated,
+		},
+	}
+
+	tx1, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx1: %v", err)
+	}
+	ref1, events1, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx1), artifact1)
+	if err != nil {
+		tx1.Rollback()
+		t.Fatalf("FinalizeAsset (v1): %v", err)
+	}
+	if err := tx1.Commit(); err != nil {
+		t.Fatalf("commit tx1: %v", err)
+	}
+	if ref1.ContentHash != hash1 {
+		t.Errorf("ref1.ContentHash = %q, want %q", ref1.ContentHash, hash1)
+	}
+
+	// Insert the returned outbox event into the outbox_events table
+	// (mirrors production: the JobFinalizer inserts events after commit).
+	if len(events1) != 1 {
+		t.Fatalf("expected 1 outbox event from finalizer, got %d", len(events1))
+	}
+	eventKey1 := events1[0].EventKey
+	_, err = db.Exec(`
+		INSERT INTO outbox_events
+		    (event_type, aggregate_id, aggregate_type, payload_json, event_key, status)
+		VALUES (?, ?, '', ?, ?, 'pending')
+		ON CONFLICT(event_key) WHERE event_key != '' DO NOTHING
+	`, events1[0].EventType, events1[0].AggregateID, string(events1[0].Payload), eventKey1)
+	if err != nil {
+		t.Fatalf("insert outbox event (v1): %v", err)
+	}
+
+	// ── Stage 2: wire IndexingHandler with REAL SourceVersionFor ──
+	clipper := newFakeIndexClipper()
+	srcQuerier := &dbSourceQuerier{db: db}
+	handler := outbox.NewIndexingHandler(clipper, srcQuerier, zap.NewNop())
+
+	// ── Stage 3: claim + handle — MUST NOT supersede ──
+	claim1, err := repo.ClaimNext(ctx, "worker-integration-1", 30*time.Second)
+	if err != nil {
+		t.Fatalf("ClaimNext (v1): %v", err)
+	}
+	if claim1 == nil {
+		t.Fatal("expected a claim (1 pending event)")
+	}
+
+	err = handler.Handle(ctx, claim1.Event)
+	if err != nil {
+		var supersede *outboxevents.SupersedeError
+		if errors.As(err, &supersede) {
+			t.Fatalf("handler.Handle returned SupersedeError — the content_hash fix is BROKEN! (current=%q, expected=%q)",
+				supersede.Current, supersede.Expected)
+		}
+		t.Fatalf("handler.Handle: %v", err)
+	}
+	if got := clipper.CallCount(assetID); got != 1 {
+		t.Errorf("IndexClip(%s) called %d times after FinalizeAsset, want 1", assetID, got)
+	}
+
+	// ── Stage 4: REPUBLISH scenario (the original bug) ──
+	// Finalize with a NEW hash — this is the exact scenario where the
+	// supersede gate would fire if content_hash was missing from
+	// metadata_json (stale Tier 2 would beat empty Tier 1).
+	hash2 := "sha256:integration_hash_v2"
+	artifact2 := artifact1
+	artifact2.SHA256 = hash2
+	artifact2.IdempotencyKey = "idem-" + assetID + "-v2"
+
+	tx2, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx2: %v", err)
+	}
+	ref2, events2, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx2), artifact2)
+	if err != nil {
+		tx2.Rollback()
+		t.Fatalf("FinalizeAsset (v2): %v", err)
+	}
+	if err := tx2.Commit(); err != nil {
+		t.Fatalf("commit tx2: %v", err)
+	}
+	if ref2.ContentHash != hash2 {
+		t.Errorf("ref2.ContentHash = %q, want %q", ref2.ContentHash, hash2)
+	}
+
+	// Insert the republish outbox event.
+	if len(events2) != 1 {
+		t.Fatalf("expected 1 outbox event from republish, got %d", len(events2))
+	}
+	_, err = db.Exec(`
+		INSERT INTO outbox_events
+		    (event_type, aggregate_id, aggregate_type, payload_json, event_key, status)
+		VALUES (?, ?, '', ?, ?, 'pending')
+	`, events2[0].EventType, events2[0].AggregateID, string(events2[0].Payload), events2[0].EventKey)
+	if err != nil {
+		t.Fatalf("insert outbox event (v2): %v", err)
+	}
+
+	// Mark the v1 event as completed so ClaimNext picks up the v2 event.
+	if err := repo.MarkCompleted(ctx, claim1.Event.ID, claim1.LeaseID); err != nil {
+		t.Fatalf("MarkCompleted (v1): %v", err)
+	}
+
+	claim2, err := repo.ClaimNext(ctx, "worker-integration-2", 30*time.Second)
+	if err != nil {
+		t.Fatalf("ClaimNext (v2): %v", err)
+	}
+	if claim2 == nil {
+		t.Fatal("expected a claim for republish event")
+	}
+
+	// THE CRITICAL ASSERTION: the republish event must NOT be superseded.
+	// Before the content_hash fix, metadata_json was missing content_hash,
+	// so SourceVersionFor read stale Tier 2 (old file_hash from v1 ingest)
+	// and the supersede gate fired — Qdrant never got updated.
+	err = handler.Handle(ctx, claim2.Event)
+	if err != nil {
+		var supersede *outboxevents.SupersedeError
+		if errors.As(err, &supersede) {
+			t.Fatalf("RE-PUBLISH SupersedeError — content_hash fix is BROKEN! (current=%q, expected=%q). \n"+
+				"SourceVersionFor should read Tier 1 (content_hash=new-hash) from metadata_json, \n"+
+				"NOT stale Tier 2 (file_hash=old-hash) from previous ingest.",
+				supersede.Current, supersede.Expected)
+		}
+		t.Fatalf("handler.Handle (v2): %v", err)
+	}
+	// IndexClip fired for the republish — Qdrant gets updated.
+	if got := clipper.CallCount(assetID); got != 2 {
+		t.Errorf("IndexClip(%s) called %d times after republish, want 2 (v1 + v2)", assetID, got)
+	}
+
+	// ── Stage 5: verify SourceVersionFor reads Tier 1 (content_hash) ──
+	// After the republish, SourceVersionFor must return hash2 (the new
+	// content_hash), NOT hash1 (the stale file_hash from v1).
+	sv, err := assets.SourceVersionFor(ctx, db, assetID)
+	if err != nil {
+		t.Fatalf("SourceVersionFor: %v", err)
+	}
+	if sv != hash2 {
+		t.Errorf("SourceVersionFor(%s) = %q, want %q (Tier 1 content_hash must win after republish)",
+			assetID, sv, hash2)
+	}
+
+	// ── Stage 6: stale-Tier-2 regression guard ──
+	// This simulates the ACTUAL production bug: a different pipeline
+	// (YouTube) wrote metadata_json.file_hash = "stale_old_hash" in a
+	// previous ingest. After the finalizer republishes, ON CONFLICT
+	// replaces metadata_json — but without content_hash, Tier 2
+	// (stale file_hash) would have beaten Tier 3 (fresh column).
+	//
+	// The fix ensures Tier 1 (content_hash) wins because the finalizer
+	// writes it on every republish. This stage verifies the fix
+	// survives even when metadata_json previously contained a stale
+	// file_hash from a different pipeline.
+	staleHash := "sha256:stale_from_youtube_pipeline"
+	hash3 := "sha256:integration_hash_v3"
+
+	// Simulate: YouTube pipeline wrote stale file_hash to metadata_json.
+	if _, err := db.Exec(`UPDATE media_assets SET metadata_json = ? WHERE id = ?`,
+		`{"file_hash":"`+staleHash+`","publish_action":"drive"}`, assetID); err != nil {
+		t.Fatalf("simulate stale Tier 2: %v", err)
+	}
+
+	// Verify: before the fix, SourceVersionFor would read stale Tier 2.
+	// After the fix, the next FinalizeAsset overwrites metadata_json
+	// with content_hash.
+	svStale, err := assets.SourceVersionFor(ctx, db, assetID)
+	if err != nil {
+		t.Fatalf("SourceVersionFor (stale): %v", err)
+	}
+	if svStale != staleHash {
+		t.Fatalf("pre-condition failed: SourceVersionFor = %q, want stale %q (stale Tier 2 simulation didn't work)",
+			svStale, staleHash)
+	}
+
+	// Now republish with hash3 — the finalizer writes content_hash=hash3
+	// to metadata_json, overwriting the stale file_hash.
+	artifact3 := artifact1
+	artifact3.SHA256 = hash3
+	artifact3.IdempotencyKey = "idem-" + assetID + "-v3"
+
+	tx3, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx3: %v", err)
+	}
+	_, events3, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx3), artifact3)
+	if err != nil {
+		tx3.Rollback()
+		t.Fatalf("FinalizeAsset (v3): %v", err)
+	}
+	if err := tx3.Commit(); err != nil {
+		t.Fatalf("commit tx3: %v", err)
+	}
+
+	// Verify: SourceVersionFor now returns hash3 (Tier 1 content_hash),
+	// NOT staleHash (the stale Tier 2 file_hash that was overwritten).
+	sv3, err := assets.SourceVersionFor(ctx, db, assetID)
+	if err != nil {
+		t.Fatalf("SourceVersionFor (v3): %v", err)
+	}
+	if sv3 != hash3 {
+		t.Errorf("SourceVersionFor after republish with stale Tier 2 = %q, want %q (content_hash must overwrite stale file_hash)",
+			sv3, hash3)
+	}
+
+	// Insert v3 outbox event and verify handler does NOT supersede.
+	if len(events3) != 1 {
+		t.Fatalf("expected 1 outbox event from v3, got %d", len(events3))
+	}
+	_, err = db.Exec(`
+		INSERT INTO outbox_events
+		    (event_type, aggregate_id, aggregate_type, payload_json, event_key, status)
+		VALUES (?, ?, '', ?, ?, 'pending')
+	`, events3[0].EventType, events3[0].AggregateID, string(events3[0].Payload), events3[0].EventKey)
+	if err != nil {
+		t.Fatalf("insert outbox event (v3): %v", err)
+	}
+	if err := repo.MarkCompleted(ctx, claim2.Event.ID, claim2.LeaseID); err != nil {
+		t.Fatalf("MarkCompleted (v2): %v", err)
+	}
+
+	claim3, err := repo.ClaimNext(ctx, "worker-integration-3", 30*time.Second)
+	if err != nil {
+		t.Fatalf("ClaimNext (v3): %v", err)
+	}
+	if claim3 == nil {
+		t.Fatal("expected a claim for v3 republish event")
+	}
+
+	// THE STALE-TIER-2 REGRESSION GUARD: before the fix, SourceVersionFor
+	// would read staleHash from Tier 2 (stale file_hash), compare with
+	// hash3 from the event, and mark as superseded. After the fix,
+	// Tier 1 (content_hash=hash3) matches the event — no supersede.
+	err = handler.Handle(ctx, claim3.Event)
+	if err != nil {
+		var supersede *outboxevents.SupersedeError
+		if errors.As(err, &supersede) {
+			t.Fatalf("STALE-TIER-2 SupersedeError — content_hash fix is BROKEN! (current=%q, expected=%q). \n"+
+				"Before the fix: Tier 2 (stale file_hash=%q) beat empty Tier 1. \n"+
+				"After the fix: Tier 1 (content_hash=%q) wins.",
+				supersede.Current, supersede.Expected, staleHash, hash3)
+		}
+		t.Fatalf("handler.Handle (v3): %v", err)
+	}
+	if got := clipper.CallCount(assetID); got != 3 {
+		t.Errorf("IndexClip(%s) called %d times after stale-Tier-2 scenario, want 3 (v1 + v2 + v3)", assetID, got)
 	}
 }
