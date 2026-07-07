@@ -258,6 +258,14 @@ Drive is split into narrow surfaces:
 
 Application code should not receive the raw Google SDK client.
 
+**Drive canonical rule (Pattern 12):** every application-layer Drive write MUST
+route through `delivery.Publisher.Publish`. Direct calls to `*drive.Uploader`,
+`*drive.Admin`, or `RootFolderOverride` in `internal/application/**` or
+`internal/api/**` are blocked by the `percheck_root_override_ban` archcheck
+scanner (CI `--strict` gate via `make verify-main`). All legacy call sites
+(clips, images, voiceover, scripts) have been migrated. See
+[AGENTS.md Pattern 12](AGENTS.md#pattern-12--drive-as-central-capability-fase-ae-closure-july-2026).
+
 ### Transactional outbox
 
 The outbox connects an atomic SQLite commit to side effects that may fail or
