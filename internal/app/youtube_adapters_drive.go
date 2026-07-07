@@ -38,7 +38,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 )
 
@@ -50,6 +49,17 @@ import (
 // (July 2026): this adapter is the SOLE DriveFolderManagerPort
 // implementation in production. The legacy driveFolderMgrAdapter
 // (which wrapped drive.Admin directly) is RETIRED.
+//
+// godlike/06 SSOT (one canonical owner per fact): delivery.Publisher
+// is the SOLE canonical write seam for YouTubeClipPath (Group +
+// Subject + DestinationRegistry). drive.Admin is intentionally NOT
+// exposed here — it carries NO delivery semantics, and re-introducing
+// it would silently drop Group/Subject (code-reviewer M1+M2 of the
+// prior `0a7f7995` commit). Per godlike/07 NO-FAKE-AVAILABILITY,
+// there is exactly one Drive write path for the YouTube pipeline:
+// publisher.Publish. A future migration that ever needs to also
+// call drive.Admin (e.g. for a Drive-only housekeeping op) MUST
+// route through the composition root, NOT re-add an admin seam here.
 //
 // GetOrCreateFolder delegates folder resolution to
 // Publisher.ResolveFolder, passing the channel name as the Group
@@ -64,38 +74,35 @@ import (
 // (filename-based lookup + MD5 comparison). The skipped bool and
 // UploadResultDTO fields are derived from PublishResult.Action +
 // PublishResult.FileID/PublishResult.WebViewLink. Group + Subject
-// are intentionally OMITTED — the folder context was established
-// by the prior GetOrCreateFolder call, and the per-file identity
-// lives in PublishRequest.Filename (the canonical file path is
-// {resolvedFolder}/{filename}).
+// ARE propagated on this surface (the canonical YouTubeClipPath
+// path-builder reads them) — the prior GetOrCreateFolder call
+// established the channel-level folder context, and this per-file
+// call attaches the video-level identity on top.
 type YouTubePublisherDriveAdapter struct {
 	publisher delivery.Publisher
-	admin     drive.Admin
 	log       *zap.Logger
 }
 
 // NewYouTubePublisherDriveAdapter returns the canonical adapter.
 // pub must be non-nil (the caller — build_bundles_domain.go —
-// asserts this).
-func NewYouTubePublisherDriveAdapter(pub delivery.Publisher, admin drive.Admin, log *zap.Logger) *YouTubePublisherDriveAdapter {
-	return &YouTubePublisherDriveAdapter{publisher: pub, admin: admin, log: log}
+// asserts this). The legacy `drive.Admin` parameter was RETIRED
+// per code-reviewer M1+M2 of `0a7f7995` (Group/Subject silently
+// dropped on admin path), and the surface is now Publisher-only.
+func NewYouTubePublisherDriveAdapter(pub delivery.Publisher, log *zap.Logger) *YouTubePublisherDriveAdapter {
+	return &YouTubePublisherDriveAdapter{publisher: pub, log: log}
 }
 
 // Compile-time assertion: adapter satisfies DriveFolderManagerPort.
 var _ youtubeports.DriveFolderManagerPort = (*YouTubePublisherDriveAdapter)(nil)
 
 func (a *YouTubePublisherDriveAdapter) GetOrCreateFolder(ctx context.Context, channelName, parentFolderID string) (string, error) {
-	if a.admin != nil {
-		return a.admin.GetOrCreateFolder(ctx, channelName, parentFolderID)
-	}
 	// PR-P12-YOUTUBE-LEGACY-RETIRE (July 2026): the legacy
 	// RootFolderOverride=parentFolderID literal is RETIRED per
-	// godlike/07 NO-FAKE-AVAILABILITY. When the dedicated drive.Admin
-	// seam is unavailable (legacy tests / fallback wiring), the
-	// canonical Publisher resolves the root folder for
-	// DestinationYouTubeClip via DestinationRegistry +
-	// DestinationPolicy.RootFolderID (single source of truth for root
-	// folders per the architecture/current.yaml#DRIVE-AS-CENTRAL-CAPABILITY wave).
+	// godlike/07 NO-FAKE-AVAILABILITY. The canonical Publisher
+	// resolves the root folder for DestinationYouTubeClip via
+	// DestinationRegistry + DestinationPolicy.RootFolderID
+	// (single source of truth for root folders per the
+	// architecture/current.yaml#DRIVE-AS-CENTRAL-CAPABILITY wave).
 	if a.publisher == nil {
 		return parentFolderID, fmt.Errorf("YouTubePublisherDriveAdapter.GetOrCreateFolder: publisher not wired")
 	}
@@ -116,19 +123,6 @@ func (a *YouTubePublisherDriveAdapter) GetOrCreateFolder(ctx context.Context, ch
 }
 
 func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename, group, subject string) (*youtubeports.UploadResultDTO, bool, error) {
-	if a.admin != nil {
-		res, skipped, err := a.admin.UploadFileIfChanged(ctx, localPath, folderID, filename)
-		if err != nil {
-			return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: %w", err)
-		}
-		if res == nil {
-			return nil, skipped, nil
-		}
-		return &youtubeports.UploadResultDTO{
-			FileID:      res.FileID,
-			WebViewLink: res.WebViewLink,
-		}, skipped, nil
-	}
 	// PR-P12-YOUTUBE-LEGACY-RETIRE (July 2026): the legacy
 	// RootFolderOverride=folderID literal is RETIRED per
 	// godlike/07 NO-FAKE-AVAILABILITY. The folder context was
@@ -137,11 +131,9 @@ func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, 
 	// for the channel's Group); the canonical Publisher applies
 	// that folder to the per-file publish via the DestinationRegistry
 	// resolution (NOT via a caller-supplied RootFolderOverride).
-	// Group + Subject are also intentionally OMITTED — the
-	// per-file identity is captured in PublishRequest.Filename
-	// (mirrors the soundeffect/handler.go canonical pattern:
-	// soundeffect sidecar + audio file publish drop Group/Subject
-	// in favor of Filename as the canonical file identifier).
+	// Group + Subject ARE propagated to YouTubeClipPath
+	// path-building (the canonical Surface per
+	// architecture/current.yaml#PR-P12-DRIVE-COMPLETION-2026-07-08).
 	if a.publisher == nil {
 		return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: publisher not wired")
 	}

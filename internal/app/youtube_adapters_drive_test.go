@@ -102,9 +102,12 @@ func (r *ytDriveRecordingPublisher) Close() error { return nil }
 
 // newYouTubePubAdapter builds a YouTubePublisherDriveAdapter with
 // the supplied publisher (logs via zap.NewNop per the canonical
-// composition root convention).
+// composition root convention). The legacy `drive.Admin` parameter
+// was RETIRED per code-reviewer M1+M2 — the canonical surface is
+// delivery.Publisher only (Group/Subject silently dropped on the
+// prior dual-path).
 func newYouTubePubAdapter(pub *ytDriveRecordingPublisher) *YouTubePublisherDriveAdapter {
-	return NewYouTubePublisherDriveAdapter(pub, nil, zap.NewNop())
+	return NewYouTubePublisherDriveAdapter(pub, zap.NewNop())
 }
 
 // TestGetOrCreateFolder_GroupSubjectSplit_NoRootOverride pins the
@@ -157,7 +160,7 @@ func TestGetOrCreateFolder_GroupSubjectSplit_NoRootOverride(t *testing.T) {
 // surface can act on it.
 func TestGetOrCreateFolder_PublisherNil_FailsClosed(t *testing.T) {
 	t.Parallel()
-	a := NewYouTubePublisherDriveAdapter(nil, nil, zap.NewNop())
+	a := NewYouTubePublisherDriveAdapter(nil, zap.NewNop())
 
 	got, err := a.GetOrCreateFolder(context.Background(), "boxing-channels", "legacy-parent")
 	if err == nil {

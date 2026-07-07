@@ -112,8 +112,13 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// ConflictSkipByHash for content-dedupe); the canonical
 	// Publisher resolves the root folder for DestinationYouTubeClip
 	// via DestinationRegistry + RootFolderID (NO caller-supplied
-	// RootFolderOverride per godlike/07).
-	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, drive.Admin, log)
+	// RootFolderOverride per godlike/07). The legacy `drive.Admin`
+	// arg of NewYouTubePublisherDriveAdapter is RETIRED (post
+	// code-reviewer M1+M2): the canonical surface is Publisher-only —
+	// Group + Subject always reach delivery.Publisher via this seam,
+	// so YouTubeClipPath path-building gets the video-level identity
+	// (was previously silently dropped when drive.Admin was wired).
+	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, log)
 	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})
 
 	var clipIndexerAdapterValue youtubeports.ClipIndexerPort
