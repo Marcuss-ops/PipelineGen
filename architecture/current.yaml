@@ -7391,6 +7391,14 @@
       owner_capability: internal/platform/config
       status: pending
       deadline: 2026-08-08
+    - id: PR-SPLIT-YTDLP-SUBTITLES
+      owner_capability: internal/application/transcripts
+      status: pending
+      deadline: 2026-08-08
+    - id: PR-SPLIT-REGISTER-HANDLER
+      owner_capability: internal/api/assets/register
+      status: pending
+      deadline: 2026-08-08
     - id: PR-SPLIT-CLIPS-INGEST
       owner_capability: internal/api/assets/clips
       status: shipped
@@ -7419,6 +7427,18 @@
       deadline: 2026-08-22
     - id: PR-SPLIT-OUTBOX-INDEXING
       owner_capability: internal/application/jobs/outbox
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-SPLIT-ASSET-PUBLISHED
+      owner_capability: internal/application/jobs/outbox
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-SPLIT-INDEX-WRITER
+      owner_capability: internal/infrastructure/qdrant/indexing
+      status: pending
+      deadline: 2026-08-22
+    - id: PR-SPLIT-OLLOMA-ANALYZER
+      owner_capability: internal/application/semantic
       status: pending
       deadline: 2026-08-22
     - id: PR-LONG-FILES-HOTSPOT-CROSSREF-V2

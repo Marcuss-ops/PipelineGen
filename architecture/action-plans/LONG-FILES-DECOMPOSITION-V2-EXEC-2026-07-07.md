@@ -29,25 +29,39 @@
 
 ---
 
-## Status overview (at exec-log creation: 2026-07-07)
+## Status overview (at exec-log creation: 2026-07-07, UPDATED 2026-07-07 after +5 NEW slot wave-tracker addendum)
 
-- **Total candidates**: 13
+- **Total candidates**: 18 (13 original + 5 NEW slots added 2026-07-07)
 - **Shipped**: 1 (`PR-SPLIT-RETRY-PKG` = `d44e02392ea5824936ed3b7874217dae0420484c`)
-- **Pending**: 12
+- **Pending**: 17
 - **P1**: 4 (1 shipped, 3 pending) — deadline 2026-07-25
-- **P2**: 3 (0 shipped, 3 pending) — deadline 2026-08-08
-- **P3**: 6 (0 shipped, 6 pending) — deadline 2026-08-22
+- **P2**: 5 (0 shipped, 5 pending) — deadline 2026-08-08 *(2 NEW)*
+- **P3**: 9 (0 shipped, 9 pending) — deadline 2026-08-22 *(3 NEW)*
 
 | Band | Total | Shipped | Pending | Deadline |
 |------|------:|--------:|--------:|----------|
 | P1 PR-ALTA | 4 | **1** | 3 | 2026-07-25 |
-| P2 MEDIA | 3 | 0 | 3 | 2026-08-08 |
-| P3 BASSA | 6 | 0 | 6 | 2026-08-22 |
-| **TOTAL** | **13** | **1** | **12** | (parent: 2026-09-01) |
+| P2 MEDIA | 5 | 0 | 5 | 2026-08-08 |
+| P3 BASSA | 9 | 0 | 9 | 2026-08-22 |
+| **TOTAL** | **18** | **1** | **17** | (parent: 2026-09-01) |
 
-The **13** checkbox list below mirrors the wave-tracker slot ordering
+The **18** checkbox list below mirrors the wave-tracker slot ordering
 in `architecture/current.yaml#LONG-FILES-DECOMPOSITION-V2-2026-07-06.linked_issues[]`
 (slim-shape discipline per **godlike/06 SSOT one-canonical-owner-per-fact**).
+
+### NEW SLOTS addendum (2026-07-07 — per user spec)
+
+5 NEW slots appended to the wave-tracker per user spec; lands inside the candidate counts above:
+
+- **P2 NEW 1**: `PR-SPLIT-YTDLP-SUBTITLES` (541 LoC, `internal/application/transcripts`)
+- **P2 NEW 2**: `PR-SPLIT-REGISTER-HANDLER` (531 LoC, `internal/api/assets/register`)
+- **P3 NEW 1**: `PR-SPLIT-ASSET-PUBLISHED` (517 LoC, `internal/application/jobs/outbox`)
+- **P3 NEW 2**: `PR-SPLIT-INDEX-WRITER` (504 LoC, `internal/infrastructure/qdrant/indexing`)
+- **P3 NEW 3**: `PR-SPLIT-OLLOMA-ANALYZER` (500 LoC, `internal/application/semantic`)
+
+Each NEW slot is a `status: pending` slim-shape `linked_issues[]` entry with the
+matching deadline per band. The action plan + wave-tracker remain lockstep per
+**godlike/06 SSOT one-canonical-owner-per-fact**.
 
 ---
 
