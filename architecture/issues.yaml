@@ -938,9 +938,9 @@
     closed all 4 documented errors. Q18's status:done is now anchored
     to a verifiable on-disk fix per the canonical recipe. Verification
     anchors (live, reproducible):
-      go vet ./internal/application/jobs/completion/...           (exits 0)
-      git show origin/main:b81dc0af -- publish_and_complete_use_case_test.go
-      git log --grep=b81dc0af --oneline (canonical hit on origin/main)
+      go vet ./internal/application/jobs/completion/...  # reproducible; per PRE-EXISTING-BUILD-ISSUES-2026-07-04 carry-forward (currently non-0 due to 1 pre-existing build issue in the package)
+      git show b81dc0af:internal/application/jobs/completion/publish_and_complete_use_case_test.go  # exit 0; live reproducible (canonical git-show-sha-path syntax)
+      git show --no-patch --format='%H %s' b81dc0af  # exit 0; reproducible (canonical hit confirmation per schema preamble presence rule)
     Cross-ticket consensus: Q17 + Q18 both anchor to distinct on-disk
     per-file fixes; the forward-pointer mirror intent is subsumed by
     the canonical closure SHA in the linked_issues ratchet.
