@@ -1,14 +1,20 @@
+// Package artlist — semantic_enricher.go is the slim orchestrator for the
+// 3-file split of the pre-PR 509 LoC semantic_enricher.go (LONG-FILES-DECOMPOSITION-V2-2026-07-06 P3 BASSA, July 2026).
+//
+// File layout (per godlike/06 one-canonical-owner-per-fact):
+//
+//   - semantic_enricher.go          (this file) — slim orchestrator: SemanticEnricher struct + NewSemanticEnricher + dispatchOrIndexAndUpsert + newDispatchBridge + enrichMetaMu (package-level lock used by Enrich in semantic_enricher_enrich.go)
+//   - semantic_enricher_enrich.go   (sibling)   — Enrich entry-point + buildArtlistPrompt + deduplicateStrings pure helpers
+//   - semantic_enricher_metadata.go (sibling)   — updateCumulativeMetadataJSON (the RMW path for cumulative Drive metadata.json sync)
+//
+// All cross-file symbol resolution works via same-package scope visibility.
+// Pure code-motion split — zero behavior change, zero new exported symbols.
 package artlist
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
-	"time"
 
 	"go.uber.org/zap"
 
@@ -16,9 +22,19 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
+// enrichMetaMu serialises access to the cumulative metadata.json file
+// across concurrent Enrich invocations on the same folder.
+//
+// Lives in the slim orchestrator because the lock is acquired in
+// semantic_enricher_enrich.go's Enrich method (the only caller in
+// the package); the var is package-scope so the sibling file can
+// reach it without re-declaring. The lock is intentionally
+// package-scope (not embed-on-struct) because it is a
+// per-Folder resource guarded across goroutines that may outlive
+// a single SemanticEnricher (test fixtures can spawn many
+// enrichers pointing at the same folder).
 var enrichMetaMu sync.Mutex
 
 // SemanticEnricher arricchisce un clip Artlist con metadati semantici.
@@ -166,344 +182,4 @@ func (e *SemanticEnricher) newDispatchBridge() (*dispatchBridge, error) {
 		indexer:    e.indexer,
 		log:        e.log,
 	}, nil
-}
-
-// Enrich esegue il tagger e aggiorna il DB con i metadati semantici.
-// Restituisce errore solo se il tagger stesso fallisce; aggiornamenti parziali
-// sono tollerati (il clip è già salvato, il metadata è un bonus).
-func (e *SemanticEnricher) Enrich(ctx context.Context, clip *asset.Asset, term string) error {
-	if e.metaWriter == nil {
-		return fmt.Errorf("metadata writer not configured")
-	}
-
-	// Costruiamo un prompt ricco dal titolo + term di ricerca
-	prompt := buildArtlistPrompt(clip.Name, term, clip.Tags)
-
-	// Stile di default per stock footage
-	style := "cinematic"
-
-	e.log.Debug("enriching artlist clip semantically",
-		zap.String("clip_id", clip.ID),
-		zap.String("prompt_preview", textutil.Truncate(prompt, 80)),
-	)
-
-	// Usa MetadataWriter.GeneratePayload() invece di chiamare Tagger() direttamente
-	// Questo garantisce che il metadata passi dal percorso centralizzato con fallback e override.
-	payload, _, err := e.metaWriter.GeneratePayload(ctx, semantic.WriteRequest{
-		AssetID:   clip.ID,
-		AssetType: "clip",
-		MediaType: "video",
-		Source:    "artlist",
-		Generator: "artlist_scraper",
-		Style:     style,
-		Prompt:    prompt,
-	})
-	if err != nil {
-		return fmt.Errorf("metaWriter.GeneratePayload: %w", err)
-	}
-
-	// Ricarichiamo il clip dal DB per non sovrascrivere campi aggiornati nel frattempo
-	existing, err := e.repo.Get(ctx, clip.ID)
-	if err != nil || existing == nil {
-		// Se non troviamo il clip usiamo quello in memoria
-		existing = clip
-	}
-
-	// Patch dei campi semantici
-	if payload.SearchText != "" {
-		existing.SearchText = payload.SearchText
-	}
-
-	// Aggiungi concept tags + subjects ai tags esistenti (deduplicati)
-	existing.Tags = deduplicateStrings(append(existing.Tags, payload.Tags...))
-
-	// Preserva SearchTerms (i termini di ricerca originali) e aggiungi subjects
-	if payload.Subjects != nil {
-		existing.SearchTerms = deduplicateStrings(append(existing.SearchTerms, payload.Subjects...))
-	}
-
-	// Concept tags vanno salvati in Metadata, NON in EmbeddingJSON.
-	// EmbeddingJSON deve contenere solo vettori float numerici per Qdrant.
-	// Salvare tag testuali qui romperebbe l'indicizzazione vettoriale.
-	if existing.Metadata == nil {
-		existing.Metadata = make(map[string]any)
-	}
-	if len(payload.ConceptTags) > 0 {
-		existing.Metadata["concept_tags"] = payload.ConceptTags
-	}
-	if len(payload.Mood) > 0 {
-		existing.Metadata["mood"] = payload.Mood
-	}
-	if len(payload.Categories) > 0 {
-		existing.Metadata["categories"] = payload.Categories
-	}
-	if len(payload.VisualObjects) > 0 {
-		existing.Metadata["visual_objects"] = payload.VisualObjects
-	}
-	if len(payload.EmotionalTone) > 0 {
-		existing.Metadata["emotional_tone"] = payload.EmotionalTone
-	}
-	if payload.SemanticDescription != "" {
-		existing.Metadata["semantic_description"] = payload.SemanticDescription
-	}
-	existing.Metadata["semantic_enriched"] = true
-	if payload.RetrievalScore != nil {
-		existing.Metadata["semantic_confidence"] = *payload.RetrievalScore
-	} else {
-		existing.Metadata["semantic_confidence"] = 0.0
-	}
-
-	// Aggiorna il DB
-	if err := e.repo.Upsert(ctx, existing); err != nil {
-		return fmt.Errorf("upsert after enrichment: %w", err)
-	}
-
-	// Update cumulative metadata.json locally and on Google Drive with the enriched semantic data under lock to avoid races
-	if existing.LocalPath() != "" {
-		enrichMetaMu.Lock()
-		localMetaPath := filepath.Join(filepath.Dir(existing.LocalPath()), "metadata.json")
-		var localExisting []map[string]any
-		if data, err := os.ReadFile(localMetaPath); err == nil {
-			_ = json.Unmarshal(data, &localExisting)
-		}
-
-		metaData := map[string]any{
-			"clip_id":              existing.ID,
-			"name":                 existing.Name,
-			"source":               existing.Source,
-			"term":                 term,
-			"filename":             existing.Filename,
-			"file_hash":            existing.FileHash(),
-			"duration_sec":         existing.Duration.Seconds(),
-			"created_at":           existing.CreatedAt.Format(time.RFC3339),
-			"drive_file_id":        existing.DriveFileID(),
-			"drive_link":           existing.DriveLink(),
-			"download_link":        existing.DownloadLink(),
-			"clip_page_url":        existing.ClipPageURL,
-			"source_url":           existing.ExternalURL(),
-			"tags":                 existing.Tags,
-			"search_terms":         existing.SearchTerms,
-			"search_text":          existing.SearchText,
-			"concept_tags":         existing.Metadata["concept_tags"],
-			"mood":                 existing.Metadata["mood"],
-			"categories":           existing.Metadata["categories"],
-			"visual_objects":       existing.Metadata["visual_objects"],
-			"emotional_tone":       existing.Metadata["emotional_tone"],
-			"semantic_description": existing.Metadata["semantic_description"],
-			"semantic_confidence":  existing.Metadata["semantic_confidence"],
-		}
-
-		foundLocal := false
-		for i, entry := range localExisting {
-			if id, ok := entry["clip_id"].(string); ok && id == existing.ID {
-				localExisting[i] = metaData
-				foundLocal = true
-				break
-			}
-		}
-		if !foundLocal {
-			localExisting = append(localExisting, metaData)
-		}
-
-		if data, err := json.MarshalIndent(localExisting, "", "  "); err == nil {
-			_ = os.WriteFile(localMetaPath, data, 0644)
-		}
-
-		folderID := existing.FolderID()
-		if folderID == "" {
-			folderID = existing.ParentFolderID()
-		}
-		if e.publisher != nil && folderID != "" {
-			e.updateCumulativeMetadataJSON(ctx, folderID, existing.ID, metaData)
-		}
-		enrichMetaMu.Unlock()
-	}
-
-	// Ricalcola embedding veri e indicizza in Qdrant via dispatcher
-	// (atomic UpsertClip + IndexClip) when wired. Dispatcher.EnqueueAndIndex
-	// genera l'embedding da search_text come faceva IndexClip, ma lo fa in
-	// una tx con UpsertClip + outbox enqueue, eliminando la finestra in cui
-	// un crash tra le due lascia il clip un-indexed.
-	e.dispatchOrIndexAndUpsert(ctx, existing, existing.FileHash())
-
-	// 🚀 Update search terms index after semantic enrichment
-	// This ensures the indexed clip_search_terms table reflects the rich
-	// search_text produced by the tagger, not just the raw title + term.
-	if updateErr := e.repo.UpdateSearchTerms(ctx, existing.ID, "artlist", existing.Name, existing.Tags, existing.SearchText); updateErr != nil {
-		e.log.Warn("failed to update search terms after enrichment",
-			zap.String("clip_id", existing.ID),
-			zap.Error(updateErr),
-		)
-	}
-
-	e.log.Info("artlist clip enriched",
-		zap.String("clip_id", existing.ID),
-		zap.Int("tags_count", len(existing.Tags)),
-		zap.String("search_text_preview", textutil.Truncate(existing.SearchText, 60)),
-	)
-
-	return nil
-}
-
-// updateCumulativeMetadataJSON maintains a single metadata.json per
-// folder on Google Drive.
-//
-// F2.11 (June 2026, override brutal): the legacy
-// DriveFolderManagerAdapter surface (ListByQuery + Download + Upload)
-// is RETIRED. The read-modify-write path is now backed by the
-// canonical Split-Ports introduced at PR2.7 / DRIVE-005:
-//
-//   - drive.Reader.SearchFiles replaces ListByQuery (same Q-level
-//     semantics: the metadata.json lookup queries by parent + name +
-//     trashed=false).
-//   - drive.Reader.DownloadFile replaces Download (same return shape:
-//     (io.ReadCloser, content-type, error)).
-//   - delivery.Publisher.Publish replaces Upload (conflict-aware per
-//     P0 #1). We thread `RootFolderOverride=folderID` so the metadata
-//     lands in the same destination as its clip (per the canonical
-//     publisher resolution pipeline Step 2 in publisher.go).
-//
-// The Trash call still routes through drive.FileLifecycle (CARD-3 split
-// out from DriveFolderManagerAdapter in PR2.7; preserved unchanged).
-//
-// F2.11 nil-tolerance: the Publisher is mandatory at composition
-// (Service.NewService enforces ErrPublisherUnavailable fail-fast), so
-// `e.publisher == nil` is unreachable in production. The Reader is a
-// soft-dep — test fixtures can opt out of cumulative metadata.json
-// sync by passing nil reader (the caller in Enrich() already gates on
-// `e.publisher != nil && folderID != ""`; the inner check below
-// remains for the reader-only nil path which has no equivalent
-// composition guard).
-func (e *SemanticEnricher) updateCumulativeMetadataJSON(ctx context.Context, folderID, clipID string, newEntry map[string]any) {
-	const metaFilename = "metadata.json"
-
-	// F2.11: reader is the only optional dep (publisher is fail-fast
-	// in NewService). Skip the RMW path entirely if the composition
-	// root wired nil reader (test fixtures opting out of cumulative
-	// sync; production wires bundle.DriveUploader as drive.Reader).
-	if e.reader == nil {
-		e.log.Debug("semantic_enricher: reader is nil, skipping cumulative metadata.json sync (F2.11 test-fixture opt-out)")
-		return
-	}
-
-	var existing []map[string]any
-	query := fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename)
-	files, err := e.reader.SearchFiles(ctx, query)
-	if err != nil {
-		e.log.Warn("failed to list metadata.json", zap.Error(err))
-	} else if len(files) > 0 {
-		existingFileID := files[0].ID
-		body, _, dlErr := e.reader.DownloadFile(ctx, existingFileID)
-		if dlErr == nil && body != nil {
-			defer body.Close()
-			var raw []map[string]any
-			if decErr := json.NewDecoder(body).Decode(&raw); decErr == nil {
-				existing = raw
-			}
-		}
-		if trashErr := e.lifecycle.Trash(ctx, existingFileID); trashErr != nil {
-			e.log.Warn("failed to trash old metadata.json", zap.Error(trashErr))
-		}
-	}
-
-	found := false
-	for i, entry := range existing {
-		if id, ok := entry["clip_id"].(string); ok && id == clipID {
-			existing[i] = newEntry
-			found = true
-			break
-		}
-	}
-	if !found {
-		existing = append(existing, newEntry)
-	}
-
-	jsonBytes, err := json.MarshalIndent(existing, "", "  ")
-	if err != nil {
-		e.log.Warn("failed to marshal cumulative metadata json", zap.Error(err))
-		return
-	}
-	metaTempPath := filepath.Join(os.TempDir(), fmt.Sprintf("meta_%s_%d.json", clipID, time.Now().UnixNano()))
-	if err := os.WriteFile(metaTempPath, jsonBytes, 0644); err != nil {
-		e.log.Warn("failed to write metadata json temp file", zap.Error(err))
-		return
-	}
-	defer os.Remove(metaTempPath)
-
-	// F2.11 (June 2026): route the metadata.json upload through the
-	// canonical delivery.Publisher.Publish (the F2.11 successor to the
-	// pre-F2.11 wide-port FolderManager path; F3.14 retired the
-	// underlying DriveFolderManagerAdapter entirely). The publisher
-	// resolves the destination policy (DestinationArtlist + Group="metadata"
-	// → segments=["metadata"] satisfies RequireSubpath) and pins the
-	// resolved root to the clip's parent folder via RootFolderOverride.
-	// ConflictPolicy=ConflictOverwrite matches the legacy "find existing
-	// → update in place" semantics that the pre-F2.11 folder-write
-	// path implicitly had (preserved intentionally so existing
-	// metadata.json siblings survive F2.11 → current-state reruns).
-	//
-	// KNOWN LAYOUT-SHIFT caveat (F2.11, June 2026): the pre-F2.11
-	// folder-write path placed metadata.json DIRECTLY in the clip's
-	// parent folder (/Artlist/<term>/metadata.json). The new
-	// Publisher.Publish path appends the PathBuilder segments after
-	// the overridden root, producing /Artlist/<term>/metadata/metadata.json
-	// — one folder deeper. The cumulative metadata.json RMW semantics
-	// stay correct (the file is still found-and-merged per term — see
-	// Reader.SearchFiles query above) but the on-disk Drive layout grew
-	// a "metadata" subfolder under every term. This is acceptable per
-	// the F2.11 user spec ("drop legacy FolderManager fallback"; the
-	// spec does not pin the exact metadata.json layout) and is documented
-	// here for follow-up — a future DestinationPolicy with
-	// RequireSubpath=false would let the metadata.json land at the
-	// legacy location without re-introducing the legacy fallback path.
-	if _, err := e.publisher.Publish(ctx, delivery.PublishRequest{
-		Destination:        delivery.DestinationArtlist,
-		Group:              "metadata",
-		Filename:           metaFilename,
-		LocalPath:          metaTempPath,
-		RootFolderOverride: folderID,
-		ConflictPolicy:     delivery.ConflictOverwrite,
-	}); err != nil {
-		e.log.Warn("failed to upload metadata.json to Drive", zap.Error(err))
-	} else {
-		e.log.Info("uploaded cumulative metadata.json to Drive (enriched)", zap.Int("entries", len(existing)))
-	}
-}
-
-// buildArtlistPrompt costruisce un prompt descrittivo per il tagger
-// combinando il titolo del clip con il termine di ricerca originale.
-func buildArtlistPrompt(name, term string, tags []string) string {
-	parts := []string{}
-	if name != "" {
-		parts = append(parts, name)
-	}
-	if term != "" && !strings.EqualFold(name, term) {
-		parts = append(parts, "search term: "+term)
-	}
-	for _, t := range tags {
-		if t != "" && !strings.EqualFold(t, term) && !strings.EqualFold(t, name) {
-			parts = append(parts, t)
-		}
-	}
-	if len(parts) == 0 {
-		return "stock video clip"
-	}
-	return strings.Join(parts, ", ")
-}
-
-// deduplicateStrings rimuove i duplicati preservando l'ordine.
-func deduplicateStrings(ss []string) []string {
-	seen := make(map[string]struct{}, len(ss))
-	out := make([]string, 0, len(ss))
-	for _, s := range ss {
-		if s == "" {
-			continue
-		}
-		lc := strings.ToLower(s)
-		if _, ok := seen[lc]; !ok {
-			seen[lc] = struct{}{}
-			out = append(out, s)
-		}
-	}
-	return out
 }
