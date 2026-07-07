@@ -40,21 +40,47 @@
 //   - Optional: requested_vectors, requested_at, embedding_*,
 //     idempotency_key, target_index_version, operation. Defaulted in
 //     payload decoding so handlers can rely on the enriched names.
+//
+// PR-SPLIT-OUTBOX-INDEXING (Fase 3.4 of
+// LONG-FILES-DECOMPOSITION-V2-2026-07-06, July 2026): the 504 LoC
+// monolithic file was split into 3 sibling files per AGENTS.md
+// Pattern 5 godlike/06 SSOT. The 3 files are in the same Go
+// package (internal/application/jobs/outbox) so cross-file symbol
+// resolution is via package-scope visibility.
+//
+//   - indexing.go (this file, slim, ~190 LoC): package goddoc +
+//     imports + 2 schema constants + 2 interface declarations +
+//     indexRequestV1 envelope struct + IndexingHandler struct +
+//     NewIndexingHandler ctor + WithStateUpdater fluent setter +
+//     EventType accessor + the closing PR-11 follow-up comment block
+//     (the producer-side migration note).
+//   - indexing_validate.go (~150 LoC, NEW): parseAndValidateRequest
+//     function — the SOLE canonical entry point for v1 envelope
+//     parse + strict envelope validation. Extracted from the
+//     original Handle method's first 7 validation blocks
+//     (parse + schema_version + event_id + asset_id + source_version +
+//     idempotency_key + operation). Terminal classification is
+//     preserved EXACTLY (the same outboxevents.NewTerminalError wrap,
+//     the same Warn-level log lines, the same zap fields).
+//   - indexing_handle.go (~230 LoC, NEW): Handle method — the main
+//     entry point. Calls parseAndValidateRequest (sibling), then
+//     performs the source_version supersede gate, then delegates
+//     to IndexClip (with sentinel-driven retry-pending + CAS-miss
+//     supersede classification). The deferred MediaIndexDuration
+//     observation + outcome propagation is preserved EXACTLY.
+//
+// Lookup paths preserved: outbox.IndexingHandler /
+// outbox.IndexRequestSchemaVersion / outbox.IndexRequestOperationUPSERT /
+// outbox.parseAndValidateRequest all canonical.
 package outbox
 
 import (
 	"context"
-	"database/sql"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 // IndexRequestSchemaVersion is the canonical, EXACT string the
@@ -215,277 +241,6 @@ func (h *IndexingHandler) WithStateUpdater(u clipindexer.IndexerStateUpdater) *I
 // EventType returns the canonical outboxevents constant.
 func (h *IndexingHandler) EventType() string {
 	return outboxevents.EventAssetIndexRequested
-}
-
-// Handle parses the v1 envelope, performs the source_version
-// supersede gate, and delegates to IndexClip. Validation failures
-// and unsatisfiable payloads return typed terminal errors (PR1's
-// outboxevents.NewTerminalError) so the pool's IsTerminal classifier
-// dead-letters them immediately rather than burning max_attempts in
-// a repair loop. Transient IndexClip failures return non-terminal
-// errors so the pool retries per its exponential backoff. A
-// source_version mismatch returns *SupersedeError so the pool's
-// IsSupersede classifier routes the row to MarkSuperseded.
-//
-// Outcome label propagation: a closure-local variable `outcome` is
-// reassigned in each branch (default "parse_err"). The deferred
-// MediaIndexDuration observation reads it once at exit. This is the
-// simplest pattern that survives early returns and panic without
-// context-value indirection. The function does NOT use named returns —
-// every branch returns its error explicitly — so future edits adding
-// a branch cannot accidentally overwrite an earlier `err =` assignment
-// via a bare `return` (a maintenance landmine named returns introduce
-// when mixed with bare returns).
-func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) error {
-	start := time.Now()
-	metrics.MediaIndexAttemptsTotal.WithLabelValues(evt.EventType).Inc()
-	outcome := "parse_err"
-	defer func() {
-		metrics.MediaIndexDuration.WithLabelValues(evt.EventType, outcome).Observe(time.Since(start).Seconds())
-	}()
-
-	log := h.log
-	if log == nil {
-		log = zap.NewNop()
-	}
-
-	var p indexRequestV1
-	if jerr := json.Unmarshal([]byte(evt.PayloadJSON), &p); jerr != nil {
-		log.Warn("asset.index.requested payload parse failed (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-			zap.Int("attempt", evt.AttemptCount),
-			zap.Error(jerr),
-		)
-		outcome = "terminal"
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.requested payload parse: %w", jerr),
-		)
-	}
-
-	// Strict v1 envelope validation. Each missing/mismatched field is
-	// TERMINAL — retrying won't bring the field into existence.
-	if p.SchemaVersion != IndexRequestSchemaVersion {
-		log.Warn("asset.index.requested schema_version mismatch (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-			zap.String("got_version", p.SchemaVersion),
-			zap.String("want_version", IndexRequestSchemaVersion),
-		)
-		outcome = "terminal"
-		return outboxevents.NewTerminalError(fmt.Errorf(
-			"asset.index.requested: schema_version mismatch (terminal — got %q, want %q)",
-			p.SchemaVersion, IndexRequestSchemaVersion,
-		))
-	}
-	if p.EventID == "" {
-		log.Warn("asset.index.requested: missing event_id (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-		)
-		outcome = "terminal"
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.requested: event_id is required (terminal)"),
-		)
-	}
-	if p.AssetID == "" {
-		log.Warn("asset.index.requested: empty asset_id (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-		)
-		outcome = "terminal"
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.requested: empty asset_id (terminal — retry cannot conjure an id)"),
-		)
-	}
-	if p.SourceVersion == "" {
-		// Empty source_version is the canonical supersede amibiguity
-		// signal — we cannot verify the event is current, so retrying
-		// won't fix it. Producers MUST send the ingest-time content
-		// hash. Terminal so producers upgrade.
-		log.Warn("asset.index.requested: missing source_version (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-		)
-		outcome = "terminal"
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.requested: source_version is required for the supersede gate (terminal — retry cannot conjure a fingerprint)"),
-		)
-	}
-	if p.IdempotencyKey == "" {
-		log.Warn("asset.index.requested: missing idempotency_key (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("aggregate_id", evt.AggregateID),
-		)
-		outcome = "terminal"
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.requested: idempotency_key is required (terminal)"),
-		)
-	}
-	if p.Operation != "" && p.Operation != IndexRequestOperationUPSERT {
-		log.Warn("asset.index.requested: unsupported operation (terminal)",
-			zap.Int64("event_id", evt.ID),
-			zap.String("operation", p.Operation),
-		)
-		outcome = "terminal"
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.requested: unsupported operation %q (terminal — only %q is supported in v1)", p.Operation, IndexRequestOperationUPSERT),
-		)
-	}
-
-	reqLog := []zap.Field{
-		zap.String("asset_id", p.AssetID),
-		zap.Int64("event_id", evt.ID),
-		zap.String("outbox_event_id", p.EventID),
-		zap.String("source_version", p.SourceVersion),
-		zap.Int("attempt", evt.AttemptCount),
-	}
-	if p.RequestedAt != "" {
-		reqLog = append(reqLog, zap.String("requested_at", p.RequestedAt))
-	}
-	if p.Operation != "" {
-		reqLog = append(reqLog, zap.String("operation", p.Operation))
-	}
-
-	// Source-version supersede gate (QDRANT-002 item F — "Se l'evento
-	// è obsoleto, marcarlo SUPERSEDED senza indicizzare dati vecchi").
-	// Read the current asset's source fingerprint via the
-	// SourceVersionQuerier port (PR 11 follow-up: this replaced the
-	// previous AssetSourceChecker.GetClip pattern, which had a
-	// producer-/consumer-side priority-chain drift — see
-	// internal/infrastructure/database/sqlite/assets/source_version.go
-	// for the canonical priority list and the regression test that
-	// pins it).
-	//
-	// Three outcomes from the helper:
-	//   (a) (value, nil)             — fingerprint present. If differs
-	//                                  from the event's source_version,
-	//                                  return *SupersedeError so the
-	//                                  pool routes the row to
-	//                                  MarkSuperseded without burning
-	//                                  a Qdrant upsert.
-	//   (b) ("", nil)                — row exists but no fingerprint;
-	//                                  fall through to IndexClip.
-	//   (c) ("", sql.ErrNoRows)      — row missing; fall through to
-	//                                  IndexClip (its own idempotency
-	//                                  check handles the ghost case).
-	// All OTHER errors are SQL failures (lock, I/O, drift) — retryable.
-	//
-	// The gate is skipped when sourceQuerier is nil (test path only)
-	// so we don't break tests that wire only the indexer.
-	if h.sourceQuerier != nil {
-		curVersion, qerr := h.sourceQuerier.SourceVersionFor(ctx, p.AssetID)
-		if qerr != nil && !errors.Is(qerr, sql.ErrNoRows) {
-			// Generic SQL failure (lock, network blip, schema
-			// drift) is retryable — the pool's exponential backoff
-			// retries per its config.
-			log.Warn("asset.index.requested: SourceVersionFor failed (retryable)",
-				append(reqLog, zap.Error(qerr))...,
-			)
-			outcome = "retryable"
-			return fmt.Errorf("asset.index.requested SourceVersionFor(%s): %w", p.AssetID, qerr)
-		}
-		// sql.ErrNoRows (row missing) — fall through.
-		// (value, nil) — proceed; supersede if value differs.
-		if qerr == nil && curVersion != "" && curVersion != p.SourceVersion {
-			// Stamp the metric before returning so dashboards
-			// surface the supersede delta even when the handler
-			// short-circuits before the duration observation
-			// captures the rest of the path.
-			metrics.MediaIndexSupersededTotal.WithLabelValues(evt.EventType).Inc()
-			outcome = "superseded"
-			log.Info("asset.index.requested: event superseded by newer aggregate version",
-				append(reqLog,
-					zap.String("current_source_version", curVersion),
-				)...,
-			)
-			return outboxevents.NewSupersede(p.AssetID, curVersion, p.SourceVersion)
-		}
-	}
-
-	// IndexClip delegation. The clipindexer is responsible for
-	// embedding generation + Qdrant upsert + SQLite indexed_at stamp.
-	log.Info("asset.index.requested: delegating to IndexClip", reqLog...)
-	if h.indexer == nil {
-		outcome = "terminal"
-		return outboxevents.NewTerminalError(
-			fmt.Errorf("asset.index.requested: indexer not wired (terminal — production misconfiguration)"),
-		)
-	}
-	if ierr := h.indexer.IndexClip(ctx, p.AssetID); ierr != nil {
-		// PR-QDRANT-INDEXCLIP-GUARD (July 2026): the indexer-offline
-		// path. clipindexer.Service.IndexClip returns the typed
-		// sentinel ErrIndexClipDisabledButEventRequested when
-		// cfg.Enabled=false (the indexer is disabled at runtime but
-		// an asset.index.requested event arrived anyway). Detection
-		// branch fires BEFORE the existing CAS-supersede check so
-		// the typed sentinel takes precedence over generic
-		// transient-error classification.
-		//
-		// Outcome: stamp INDEXING_SKIPPED_NO_INDEXER on
-		// media_assets via the IndexerStateUpdater port (best-effort
-		// — log+continue if the updater is nil or fails), then
-		// return a NON-nil retryable error so the outbox pool does
-		// NOT mark the event COMPLETED and the event is re-emitted
-		// when the operator re-enables the indexer (pending+retry
-		// per godlike/07 fail-closed).
-		if errors.Is(ierr, clipindexer.ErrIndexClipDisabledButEventRequested) {
-			metrics.MediaIndexSkippedTotal.WithLabelValues(evt.EventType).Inc()
-			outcome = "skipped_no_indexer"
-			log.Warn("asset.index.requested: indexer disabled, retry pending until re-enabled",
-				append(reqLog, zap.Error(ierr))...,
-			)
-			if h.stateUpdater != nil {
-				if suErr := h.stateUpdater.MarkIndexingSkippedNoIndexer(ctx, p.AssetID); suErr != nil {
-					// godlike/07 fail-closed: a state-update
-					// failure MUST NOT abort the retry path — the
-					// asset row stays in its previous state, the
-					// outbox event is still re-emitted on retry,
-					// and the operator gets a Warn line to
-					// investigate. Returning nil here would
-					// silently lose the retry signal.
-					log.Warn("asset.index.requested: MarkIndexingSkippedNoIndexer failed; retry path continues unchanged",
-						append(reqLog, zap.Error(suErr))...,
-					)
-				}
-			}
-			// Wrap the typed sentinel in a retryable error
-			// (NOT a TerminalError) so the outbox pool's
-			// IsTerminal classifier routes the event back to
-			// the pending bucket. The sentinel itself remains
-			// errors.Is-probe-able for downstream consumers.
-			return fmt.Errorf("asset.index.requested: %w", ierr)
-		}
-		// CAS miss after Qdrant upsert (BLOCKER #2): setIndexedAt's
-		// source_version + file_hash + index_state='INDEXING' fence
-		// matched zero rows — the asset was superseded while embeddings
-		// were being generated. Route to SUPERSEDED so the outbox does
-		// NOT retry and does NOT mark the stale event as SUCCESS.
-		var superseded *clipindexer.ErrIndexSuperseded
-		if errors.As(ierr, &superseded) {
-			metrics.MediaIndexSupersededTotal.WithLabelValues(evt.EventType).Inc()
-			outcome = "superseded"
-			log.Info("asset.index.requested: IndexClip CAS miss — event superseded (routing to MarkSuperseded)",
-				append(reqLog,
-					zap.String("stale_source_version", superseded.SourceVersion),
-				)...,
-			)
-			return outboxevents.NewSupersede(superseded.ClipID, "<post-upsert-race>", superseded.SourceVersion)
-		}
-		// Retryable — embedding-server transient failures (timeouts,
-		// 502/503/504), network blips, and Qdrant conn drops ride
-		// the existing exponential-backoff path; max_attempts is their
-		// natural dead-letter cap.
-		outcome = "retryable"
-		log.Warn("asset.index.requested: IndexClip failed (retryable)",
-			append(reqLog, zap.Error(ierr))...,
-		)
-		return fmt.Errorf("asset.index.requested IndexClip(%s): %w", p.AssetID, ierr)
-	}
-
-	outcome = "success"
-	log.Info("asset.index.requested: indexing complete", reqLog...)
-	return nil
 }
 
 // NOTE (PR 11 follow-up, June 2026): the previous readSourceVersion
