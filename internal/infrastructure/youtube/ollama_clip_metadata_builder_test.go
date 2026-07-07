@@ -32,9 +32,7 @@ func TestBuild_DeterministicFallbackNilClient(t *testing.T) {
 		ClipID:       "yt_abc_0_60_v1",
 		Title:        "Sample Title",
 		Transcript:   "Hello world this is a test transcript that has a few words.",
-		Description:  "Test description",
 		SourceURL:    "https://www.youtube.com/watch?v=abc",
-		VideoID:      "abc",
 		Group:        "general",
 		ClipDuration: 60,
 	})
