@@ -97,6 +97,20 @@ func (r *recordingDispatcherForArtlist) DispatchedClipIDs() []string {
 	return ids
 }
 
+// ContentHashFor returns the content hash that was passed to
+// EnqueueAndIndex for the given clip ID, or empty string if the
+// clip was never dispatched. Safe for concurrent use.
+func (r *recordingDispatcherForArtlist) ContentHashFor(clipID string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, c := range r.calls {
+		if c.clipID == clipID {
+			return c.contentHash
+		}
+	}
+	return ""
+}
+
 // TestGate01_ArtlistFullRun_HappyPath exercises the full 6-stage pipeline
 // (DiscoverClips → ResolveDestination → BuildProcessInputs →
 // ProcessBatch → PersistResults → IndexAsync) against a hermetic stack:
