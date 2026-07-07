@@ -704,8 +704,8 @@ deprecations:
       CUTOVER → CONTRACT collapses over the natural migration
       window; the umbrella ID carries the audit-footprint for the
       full chain.
-    migration_phase: EXPAND
-    status: in_progress
+    migration_phase: CONTRACT
+    status: contract
     notes: |
       Three legacy port stragglers are GO-TYPE-ALIASED to the
       canonical Fase 9 SSOT in internal/application/translation/legacy.go.
@@ -748,14 +748,17 @@ deprecations:
           delegate to gen transparently — no separate "adapter
           doing partial work" layer.
 
-      Migration-window scheduling (per Fase 9 step roadmap):
-        - EXPAND      : commit unlanded, July 2026 (this PR).
-        - BACKFILL    : Fase 9 step 3 (target 2026-Q3) — honour
-          Temperature / MaxTokens + cmd.ModelHints typed-errors.
-        - CUTOVER     : Fase 9 step 4 (target 2026-Q4) — drop
+      Migration-window scheduling (per Fase 9 step roadmap, post-closure):
+        - EXPAND      : shipped (2026-07-08) — canonical TranslationPort +
+          3-typed-alias legacy surface + OllamaTranslator canonical
+          concrete + composition-root wire-up.
+        - BACKFILL    : shipped (Fase 9 step 3, 2026-07-08) — honour
+          Temperature / MaxTokens + cmd.ModelHints typed-errors +
+          voiceover typewriter aliases retired.
+        - CUTOVER     : shipped (Fase 9 step 4, 2026-07-08) — drop
           legacy field population at composition root.
-        - CONTRACT    : Fase 9 step 5 (target 2026-Q4) — physical
-          removal of legacy.go + Oth of the legacy methods on
+        - CONTRACT    : shipped (Fase 9 step 5, 2026-07-08) — physical
+          removal of legacy.go + 3 of the legacy methods on
           OllamaTranslator + alias type declarations.
 
   # ── 21. MONITOR-YOUTUBE-DIRECT-IMPORT — monitor↔youtube canonical seam (ytdomain import surface) ──
@@ -1295,9 +1298,26 @@ deprecations:
       Back-compat path: the 3-step legacy aliases (TextTranslationService,
       TranslatorService, MetadataTranslator) remain populated until
       Fase 9 step 4 CUTOVER commits the field-population removal at
-      composition root. Tracking for the implicit-canonical completion
+      composition root.      Tracking for the implicit-canonical completion
       of CUTOVER + CONTRACT phases lives in the wave-tracker entry which
       will be filed once Fase 9 step 4 + step 5 land.
+
+      Lifecycle closure (2026-07-08): Fase 9 steps 3 (BACKFILL) + 4
+      (CUTOVER) + 5 (CONTRACT) landed today per the godlike/07 EXPAND→
+      BACKFILL→CUTOVER→CONTRACT sequence. Step 3 retracted the voiceover
+      typewriter aliases (TranslatorFunc + LanguageTarget) and stamped
+      json-tag omitempty gates on TranslationCommand + TranslationResult
+      + ModelPolicy. Step 4 dropped the legacy Translation + Translator
+      field population at composition root. Step 5 physically removed
+      internal/application/translation/legacy.go + the 3 legacy methods
+      on OllamaTranslator (TranslateText + TranslateTextWithModel +
+      GenerateVideoMetadataWithModel) + the 3 alias type declarations
+      (TextTranslationService + TranslatorService + MetadataTranslator).
+      This record flips migration_phase: EXPAND → CONTRACT + status:
+      in_progress → contract per the canonical godlike/07 marker on a
+      fully-landed 4-phase migration. CHANGELOG.md mirror entry under
+      `## Unreleased > ### Removed` (lockstep 3-surface SSOT per
+      CANONICAL.md §1).
     compatibility_test: |
       Triple-defence mirroring godlike/07 standard pattern:
         (a) Compile-time assertions at
