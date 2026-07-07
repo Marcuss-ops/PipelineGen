@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	fullimagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/fullimages"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 )
 
@@ -56,9 +57,13 @@ func TestGenerate_Returns501_AfterSlidesAPIRemoval(t *testing.T) {
 // ken-burns path (pre-PR godlike/07 fake-availability surface).
 //
 // godlike/06 SSOT: ErrEngineRetired canonical surface lives ONLY in
-// handler_full.go (this package's public fullimages surface). godlike/07
-// typed-error contract: callers probe via errors.Is(err, ErrEngineRetired)
-// — the 400 body message is the canonical diagnostic string.
+// internal/api/fullimages/handler.go (the canonical public fullimages
+// surface per the PR-IMG-LEGACY-6-FIX closure, ship_sha 246c095f,
+// 2026-07-06). This test exercises that surface via the aliased import
+// `fullimagesapi.FullImagesHandler` — the canonical typed construct.
+// godlike/07 typed-error contract: callers probe via
+// errors.Is(err, ErrEngineRetired) — the 400 body message is the
+// canonical diagnostic string.
 //
 // Test surface: 5 sub-cases — engine omitted (positive control),
 // engine=ken-burns (positive control, no error), engine="google-vids"
@@ -116,7 +121,7 @@ func TestGenerateFullImages_GoogleVidsEngine_ReturnsBadRequest(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc // capture range var
 		t.Run(tc.name, func(t *testing.T) {
-			h := &FullImagesHandler{service: nil}
+			h := fullimagesapi.NewFullImagesHandler(nil)
 
 			rec := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(rec)
@@ -133,11 +138,13 @@ func TestGenerateFullImages_GoogleVidsEngine_ReturnsBadRequest(t *testing.T) {
 			c.Request.Header.Set("Content-Type", "application/json")
 
 			// ACT — call handler. For want400=false sub-cases the nil
-			// service short-circuits via 500 (fullimages.Service not
-			// wired) — that's the EXPECTED positive-control behavior
-			// (the engine gate passes, then the service fails or returns
-			// a generation error). For want400=true sub-cases the engine
-			// gate fires BEFORE the service dispatch, returning 400.
+			// service short-circuits via 503 ("fullimages service not
+			// wired") — that's the EXPECTED positive-control behavior
+			// (the engine gate passes, then the nil-service check at
+			// handler.go returns 503). For want400=true sub-cases the
+			// engine gate fires BEFORE the nil-service check, returning
+			// 400. GenerateFullImages is the canonical method on the
+			// canonical fullimages surface (internal/api/fullimages/handler.go).
 			h.GenerateFullImages(c)
 
 			if tc.want400 {
@@ -151,15 +158,25 @@ func TestGenerateFullImages_GoogleVidsEngine_ReturnsBadRequest(t *testing.T) {
 							tc.engine, want, rec.Body.String())
 					}
 				}
-			} else {
-				// Positive control: the gate passes; downstream behavior
-				// depends on the service (nil → 500). Either non-400
-				// status confirms the engine gate did NOT fire.
-				if rec.Code == http.StatusBadRequest {
-					t.Fatalf("engine=%q: positive control should NOT trigger the engine gate (got 400); body=%q",
-						tc.engine, rec.Body.String())
-				}
+		} else {
+			// Positive control: the engine gate passes; nil service
+			// short-circuits at handler.go with HTTP 503
+			// "fullimages service not wired" (canonical typed
+			// nil-tolerance per godlike/07 no-fake-availability).
+			// Asserting the exact 503 locks the canonical nil-service
+			// contract — if a future refactor changes the nil
+			// response (e.g. silent-success to 200), this test fails
+			// immediately rather than silently passing on != 400.
+			if rec.Code != http.StatusServiceUnavailable {
+				t.Fatalf("engine=%q: positive control should return 503 (nil service); got %d body=%q",
+					tc.engine, rec.Code, rec.Body.String())
 			}
+			wantSub := "fullimages service not wired"
+			if !strings.Contains(rec.Body.String(), wantSub) {
+				t.Errorf("engine=%q: 503 body must contain %q; got body=%q",
+					tc.engine, wantSub, rec.Body.String())
+			}
+		}
 		})
 	}
 }
