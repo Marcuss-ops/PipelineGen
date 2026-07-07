@@ -9,7 +9,7 @@
 //     AssetPublishedRequestV1 struct + the deprecated unexported
 //     alias. Wire-shape contract only — NO business logic.
 //   - asset_published_handler.go  — AssetPublisher port (Pattern 0)
-//     + AssetPublishedHandler struct + NewAssetPublishedHandler +
+//   - AssetPublishedHandler struct + NewAssetPublishedHandler +
 //     EventType + Handle + ComposeSearchText. Consumer-side surface
 //     only.
 //
