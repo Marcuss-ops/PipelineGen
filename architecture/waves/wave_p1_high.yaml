@@ -3157,3 +3157,34 @@
       - id: PR-STOCK-OUT-OF-RANGE-MULTI-AGG
         deadline: "2026-09-01"
         reason: aggregate multi-clip violations in the error envelope
+  - id: PR-STOCK-TIMESTAMP-CLIPS
+    owner_capability: internal/application/assets/providers/stock/stockpipeline
+    status: in_progress
+    deadline: "2026-08-15"
+    description: |
+      Parent umbrella for the 5-front feature wave that threads per-timestamp
+      metadata (Description, Round, Tags, Category, Slug, PathLeafName,
+      SourceProvider, SourceVideoID, RichAsset write, IndexingStatus) through
+      the stock pipeline's explicit-clips (timestamp) flow.
+      DoD 8 E2E test landed in commit 20e862ab (2026-07-08).
+    linked_issues:
+      - id: PR-STOCK-TIMESTAMP-CLIPS-FRONT-1
+        ship_sha: 42c31498
+        ship_date: "2026-07-07"
+        subject: "Description threading through stock pipeline"
+      - id: PR-STOCK-TIMESTAMP-CLIPS-FRONT-2
+        ship_sha: 6209070b
+        ship_date: "2026-07-07"
+        subject: "Round/Tags/Category/Slug threading through stock pipeline"
+      - id: PR-STOCK-TIMESTAMP-CLIPS-FRONT-3
+        ship_sha: 218d0bb8
+        ship_date: "2026-07-07"
+        subject: "per-clip PathLeafName cascade for explicit-clips"
+      - id: PR-STOCK-TIMESTAMP-CLIPS-FRONT-4
+        ship_sha: dc080232
+        ship_date: "2026-07-07"
+        subject: "rich-asset write for stock.extract_clips"
+      - id: PR-STOCK-TIMESTAMP-CLIPS-FRONT-5
+        ship_sha: 79ec2939
+        ship_date: "2026-07-08"
+        subject: "pre-cut duration validation gate"
