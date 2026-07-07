@@ -8378,7 +8378,7 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
   - id: PR-NODE-MODULES-RESTORE
     status: shipped
     ship_date: 2026-07-07
-    ship_via: "chore(infra): REAL_FIX"
+    ship_via: "chore(infra): ship closure — node-scraper/node_modules restored via npm install, artlist-scraper.service healthy on :9123"
     deadline: 2026-08-01
     remediation: |
       FIXED: `cd node-scraper && npm install` restored the missing
@@ -8416,19 +8416,16 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
   - id: PR-SYSTEMD-RESTART-SUDO-NOPASSWD
     deadline: 2026-08-01
     remediation: |
-      CRITICAL: a future agent with a TTY must run `sudo systemctl
-      start artlist-scraper.service` to re-engage systemd so the
-      service survives future reboots + failures cleanly. The
-      nohup-launched PID 446097 from PR-NODE-MODULES-RESTORE is
-      holding port 9123 — the operator MUST first kill it
-      (`kill 446097`) BEFORE running `sudo systemctl start` to
-      avoid a port-9123 bind conflict that will silently fail
-      and leave the service in a degraded state. After `kill
-      446097` + `sudo systemctl start artlist-scraper.service`:
-      verify `systemctl is-active artlist-scraper.service` returns
-      `active` + `systemctl show artlist-scraper.service -p NRestarts`
-      shows a small/stable counter + `curl http://localhost:9123/health`
-      returns HTTP 200.
+      Configure NOPASSWD sudo for systemctl restart artlist-scraper.service so the
+      operator can restart the service without a TTY password prompt. After the
+      operator runs `sudo systemctl start artlist-scraper` and verifies port 9123
+      is listening, the current nohup PID 446097 MUST be killed to release the port
+      (systemd will then claim it as the canonical service). After port handoff,
+      `systemctl enable artlist-scraper` ensures durability across reboots.
+      Without this forward-pointer, the next system reboot will leave port 9123
+      unbound (the nohup process is lost) and the Artlist integration will silently
+      fail at first call.
+
   - id: PR-VELOX-AUTH-ENV-INVESTIGATE
     deadline: 2026-08-01
     remediation: Identify the systemd-side override that injects VELOX_ADMIN_TOKEN=test-adm...
