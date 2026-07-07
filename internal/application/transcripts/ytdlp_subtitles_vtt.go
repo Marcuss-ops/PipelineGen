@@ -58,8 +58,16 @@ func parseVTTBlock(block string) (start, end float64, text string, ok bool) {
 	if len(parts) < 2 {
 		return 0, 0, "", false
 	}
-	start = parseTimestampSeconds(strings.TrimSpace(parts[0]))
-	end = parseTimestampSeconds(strings.TrimSpace(parts[1]))
+	// youtube.com auto-subs VTT appends align:/position: style info
+	// after the end timestamp (e.g. "00:00:04.309 align:start position:0%").
+	// strings.Fields[0] isolates the bare timestamp before the parser.
+	startFields := strings.Fields(parts[0])
+	endFields := strings.Fields(parts[1])
+	if len(startFields) == 0 || len(endFields) == 0 {
+		return 0, 0, "", false
+	}
+	start = parseTimestampSeconds(startFields[0])
+	end = parseTimestampSeconds(endFields[0])
 	if end <= start {
 		return 0, 0, "", false
 	}
