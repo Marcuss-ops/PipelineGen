@@ -2902,7 +2902,9 @@
       deadline: 2026-08-08
     - id: PR-QDRANT-DOD-4-ASSERTIONS
       owner_capability: tests/e2e
-      status: pending
+      status: shipped
+      ship_sha: 0ab39ae6
+      ship_date: 2026-07-08
       deadline: 2026-08-15
     - id: PR-QDRANT-DOD-HOTSPOT-CROSSREF
       owner_capability: architecture
