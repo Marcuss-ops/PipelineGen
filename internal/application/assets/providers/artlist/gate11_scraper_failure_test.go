@@ -374,6 +374,11 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 		"TestGate09_DriveFailureFailClosed",
 		"TestGate09_ArtlistFullRun_PartialDriveFailure",
 
+		// Gate 10 — Qdrant failure
+		"TestGate10_QdrantFailureIndexStateNotIndexed",
+		"TestGate10_QdrantFailureProcessedCountUnaffected",
+		"TestGate10_QdrantFailureDoesNotPreventArtlistRun",
+
 		// Gate 11 — Scraper failure
 		"TestGate11_ScraperFailureReturnsClearError",
 		"TestGate11_ScraperFailureDistinctFromEmptyResults",
@@ -384,7 +389,7 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 	}
 
 	// UPDATE THIS COUNT when adding gate tests.
-	assert.Len(t, expectedGateTests, 19,
+	assert.Len(t, expectedGateTests, 22,
 		"Gate test matrix count changed — update the count and the list above when adding/removing gate tests")
 
 	// Verify no duplicates (copy-paste error defense).
