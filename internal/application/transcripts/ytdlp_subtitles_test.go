@@ -272,3 +272,306 @@ func containsFlagOrValue(args []string, needle string) bool {
 	}
 	return false
 }
+
+// ── parseVTTBlock unit tests (PR-VTT-STYLE-ANNOTATED-TEST, July 2026) ──
+
+// TestParseVTTBlock_StyleAnnotatedTimestamp is the load-bearing
+// regression guard for the PR-GEMMA-EXTRACT-IMPORTANT VTT parser fix
+// (commit e925d674). YouTube auto-subs VTT appends align:/position:
+// style info after the end timestamp:
+//
+//	00:00:02.310 --> 00:00:04.309 align:start position:0%
+//
+// Pre-fix, parseTimestampSeconds received "00:00:04.309 align:start
+// position:0%" as one string, split on ":" into 7+ parts, and fell
+// through to the default returning 0.0. Then end<=start and the block
+// was silently discarded (579+ entries lost).
+//
+// Post-fix (strings.Fields[0]), only the bare "00:00:04.309" is
+// passed to the parser. This test fails if the fix is reverted.
+func TestParseVTTBlock_StyleAnnotatedTimestamp(t *testing.T) {
+	block := "00:00:02.310 --> 00:00:04.309 align:start position:0%\nhello world"
+	start, end, text, ok := parseVTTBlock(block)
+	if !ok {
+		t.Fatalf("parseVTTBlock returned ok=false for style-annotated timestamp; regression of commit e925d674 (strings.Fields[0] fix)")
+	}
+	if start != 2.310 {
+		t.Fatalf("start: expected 2.310, got %v", start)
+	}
+	if end != 4.309 {
+		t.Fatalf("end: expected 4.309, got %v", end)
+	}
+	if text != "hello world" {
+		t.Fatalf("text: expected 'hello world', got %q", text)
+	}
+}
+
+// TestParseVTTBlock_StyleAnnotatedTimestamp_AlignOnly tests the case
+// where only align: is appended (no position:).
+func TestParseVTTBlock_StyleAnnotatedTimestamp_AlignOnly(t *testing.T) {
+	block := "00:00:05.000 --> 00:00:10.500 align:start\nsome text here"
+	start, end, text, ok := parseVTTBlock(block)
+	if !ok {
+		t.Fatalf("parseVTTBlock returned ok=false for align:only style-annotated timestamp")
+	}
+	if start != 5.0 {
+		t.Fatalf("start: expected 5.0, got %v", start)
+	}
+	if end != 10.5 {
+		t.Fatalf("end: expected 10.5, got %v", end)
+	}
+	if text != "some text here" {
+		t.Fatalf("text: expected 'some text here', got %q", text)
+	}
+}
+
+// TestParseVTTBlock_StyleAnnotatedTimestamp_PositionOnly tests the case
+// where only position: is appended (no align:).
+func TestParseVTTBlock_StyleAnnotatedTimestamp_PositionOnly(t *testing.T) {
+	block := "00:01:00.000 --> 00:01:30.000 position:15%\nposition-only test"
+	start, end, text, ok := parseVTTBlock(block)
+	if !ok {
+		t.Fatalf("parseVTTBlock returned ok=false for position:only style-annotated timestamp")
+	}
+	if start != 60.0 {
+		t.Fatalf("start: expected 60.0, got %v", start)
+	}
+	if end != 90.0 {
+		t.Fatalf("end: expected 90.0, got %v", end)
+	}
+	if text != "position-only test" {
+		t.Fatalf("text: expected 'position-only test', got %q", text)
+	}
+}
+
+// TestParseVTTBlock_StyleAnnotatedTimestamp_MultiLineText verifies that
+// style-annotated timestamps work with multi-line VTT text bodies.
+func TestParseVTTBlock_StyleAnnotatedTimestamp_MultiLineText(t *testing.T) {
+	block := "00:00:00.080 --> 00:00:02.310 align:start position:0%\nline one\nline two\nline three"
+	start, end, text, ok := parseVTTBlock(block)
+	if !ok {
+		t.Fatalf("parseVTTBlock returned ok=false for multi-line text with style-annotated timestamp")
+	}
+	if start != 0.080 {
+		t.Fatalf("start: expected 0.080, got %v", start)
+	}
+	if end != 2.310 {
+		t.Fatalf("end: expected 2.310, got %v", end)
+	}
+	expectedText := "line one line two line three"
+	if text != expectedText {
+		t.Fatalf("text: expected %q, got %q", expectedText, text)
+	}
+}
+
+// TestParseVTTBlock_StyleAnnotatedTimestamp_AlignPositionLinesFiltered
+// verifies that align:/position: cue lines WITHIN the text body are
+// filtered out (not treated as text content).
+func TestParseVTTBlock_StyleAnnotatedTimestamp_AlignPositionLinesFiltered(t *testing.T) {
+	block := "00:00:01.000 --> 00:00:03.000 align:start position:0%\nalign:start\nposition:0%\nreal text here"
+	_, _, text, ok := parseVTTBlock(block)
+	if !ok {
+		t.Fatalf("parseVTTBlock returned ok=false")
+	}
+	// The align:start and position:0% lines within the body must be filtered.
+	if text != "real text here" {
+		t.Fatalf("text: expected 'real text here' (align:/position: body lines filtered), got %q", text)
+	}
+}
+
+// TestParseVTTBlock_CleanTimestamp_NoAnnotations tests the baseline
+// case with no style annotations on the timestamp line.
+func TestParseVTTBlock_CleanTimestamp_NoAnnotations(t *testing.T) {
+	block := "00:01:00.000 --> 00:01:30.000\nbaseline text"
+	start, end, text, ok := parseVTTBlock(block)
+	if !ok {
+		t.Fatalf("parseVTTBlock returned ok=false for clean timestamp (no annotations)")
+	}
+	if start != 60.0 {
+		t.Fatalf("start: expected 60.0, got %v", start)
+	}
+	if end != 90.0 {
+		t.Fatalf("end: expected 90.0, got %v", end)
+	}
+	if text != "baseline text" {
+		t.Fatalf("text: expected 'baseline text', got %q", text)
+	}
+}
+
+// TestParseVTTBlock_StripXMLTags verifies that inline XML tags are
+// stripped from the text content.
+func TestParseVTTBlock_StripXMLTags(t *testing.T) {
+	block := "00:00:00.000 --> 00:00:05.000\n<c>bold text</c> and <i>italic</i> normal"
+	_, _, text, ok := parseVTTBlock(block)
+	if !ok {
+		t.Fatalf("parseVTTBlock returned ok=false for XML-tagged text")
+	}
+	if text != "bold text and italic normal" {
+		t.Fatalf("text: expected 'bold text and italic normal', got %q", text)
+	}
+}
+
+// TestParseVTTBlock_StyleAnnotatedTimestamp_StartSide verifies
+// that style annotations on the START timestamp are also handled.
+func TestParseVTTBlock_StyleAnnotatedTimestamp_StartSide(t *testing.T) {
+	block := "00:00:02.310 align:start --> 00:00:04.309\ntext"
+	start, end, text, ok := parseVTTBlock(block)
+	if !ok {
+		t.Fatalf("parseVTTBlock returned ok=false for style-annotated start timestamp")
+	}
+	if start != 2.310 {
+		t.Fatalf("start: expected 2.310, got %v", start)
+	}
+	if end != 4.309 {
+		t.Fatalf("end: expected 4.309, got %v", end)
+	}
+	if text != "text" {
+		t.Fatalf("text: expected 'text', got %q", text)
+	}
+}
+
+// TestParseVTTBlock_StyleAnnotatedTimestamp_BothSides verifies that
+// style annotations on BOTH timestamps are handled correctly.
+func TestParseVTTBlock_StyleAnnotatedTimestamp_BothSides(t *testing.T) {
+	block := "00:00:02.310 align:start --> 00:00:04.309 position:0%\ntext"
+	start, end, text, ok := parseVTTBlock(block)
+	if !ok {
+		t.Fatalf("parseVTTBlock returned ok=false for both-sides style-annotated timestamps")
+	}
+	if start != 2.310 {
+		t.Fatalf("start: expected 2.310, got %v", start)
+	}
+	if end != 4.309 {
+		t.Fatalf("end: expected 4.309, got %v", end)
+	}
+	if text != "text" {
+		t.Fatalf("text: expected 'text', got %q", text)
+	}
+}
+
+// ── Negative cases (godlike/07 fail-closed at input) ──
+
+// TestParseVTTBlock_EmptyBlock returns ok=false.
+func TestParseVTTBlock_EmptyBlock(t *testing.T) {
+	_, _, _, ok := parseVTTBlock("")
+	if ok {
+		t.Fatalf("parseVTTBlock should return ok=false for empty block")
+	}
+}
+
+// TestParseVTTBlock_NoTimestampLine returns ok=false.
+func TestParseVTTBlock_NoTimestampLine(t *testing.T) {
+	_, _, _, ok := parseVTTBlock("just some text\nno timestamp here")
+	if ok {
+		t.Fatalf("parseVTTBlock should return ok=false for block with no timestamp line")
+	}
+}
+
+// TestParseVTTBlock_TimestampOnly_NoText returns ok=false.
+func TestParseVTTBlock_TimestampOnly_NoText(t *testing.T) {
+	_, _, _, ok := parseVTTBlock("00:00:01.000 --> 00:00:02.000")
+	if ok {
+		t.Fatalf("parseVTTBlock should return ok=false for timestamp-only block (no text)")
+	}
+}
+
+// TestParseVTTBlock_EndBeforeStart returns ok=false.
+func TestParseVTTBlock_EndBeforeStart(t *testing.T) {
+	_, _, _, ok := parseVTTBlock("00:01:00.000 --> 00:00:30.000\ntext")
+	if ok {
+		t.Fatalf("parseVTTBlock should return ok=false when end <= start")
+	}
+}
+
+// TestParseVTTBlock_MalformedTimestamp_NoArrow returns ok=false.
+func TestParseVTTBlock_MalformedTimestamp_NoArrow(t *testing.T) {
+	_, _, _, ok := parseVTTBlock("00:00:01.000 00:00:02.000\ntext")
+	if ok {
+		t.Fatalf("parseVTTBlock should return ok=false when timestamp line has no '-->' arrow")
+	}
+}
+
+// TestParseVTTBlock_EndEqualsStart returns ok=false (duration must be > 0).
+func TestParseVTTBlock_EndEqualsStart(t *testing.T) {
+	_, _, _, ok := parseVTTBlock("00:01:00.000 --> 00:01:00.000\ntext")
+	if ok {
+		t.Fatalf("parseVTTBlock should return ok=false when end == start (zero duration)")
+	}
+}
+
+// ── stripVTTHeader tests ──
+
+// TestStripVTTHeader_RemovesHeader strips the WEBVTT header block.
+func TestStripVTTHeader_RemovesHeader(t *testing.T) {
+	input := "WEBVTT\nKind: captions\nLanguage: en\n\n00:00:01.000 --> 00:00:02.000\nfirst cue"
+	result := stripVTTHeader(input)
+	if strings.HasPrefix(result, "WEBVTT") {
+		t.Fatalf("stripVTTHeader should remove the WEBVTT header; got prefix still present")
+	}
+	if !strings.HasPrefix(strings.TrimSpace(result), "00:00:01.000") {
+		t.Fatalf("stripVTTHeader should leave the first cue after the blank line; got: %q", result[:50])
+	}
+}
+
+// TestStripVTTHeader_NoHeader_Passthrough returns the content unchanged
+// when there is no WEBVTT header.
+func TestStripVTTHeader_NoHeader_Passthrough(t *testing.T) {
+	input := "00:00:01.000 --> 00:00:02.000\nfirst cue"
+	result := stripVTTHeader(input)
+	if result != input {
+		t.Fatalf("stripVTTHeader should passthrough content without WEBVTT header unchanged")
+	}
+}
+
+// ── stripXMLTags tests ──
+
+// TestStripXMLTags_RemovesInlineTags strips <c>, <i>, <b> tags.
+func TestStripXMLTags_RemovesInlineTags(t *testing.T) {
+	cases := []struct {
+		name, input, expected string
+	}{
+		{"simple italic", "<i>italic text</i>", "italic text"},
+		{"simple bold", "<b>bold text</b>", "bold text"},
+		{"class tag", "<c>class text</c>", "class text"},
+		{"nested", "<i><b>nested</b></i>", "nested"},
+		{"mid sentence", "hello <i>world</i> test", "hello world test"},
+		{"no tags", "plain text", "plain text"},
+		{"empty", "", ""},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			result := stripXMLTags(tc.input)
+			if result != tc.expected {
+				t.Fatalf("stripXMLTags(%q): expected %q, got %q", tc.input, tc.expected, result)
+			}
+		})
+	}
+}
+
+// ── parseTimestampSeconds tests ──
+
+// TestParseTimestampSeconds_AllFormats verifies HH:MM:SS.mmm, MM:SS.mmm,
+// and bare seconds.
+func TestParseTimestampSeconds_AllFormats(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected float64
+	}{
+		{"01:30:45.500", 1*3600 + 30*60 + 45.5},
+		{"05:30.250", 5*60 + 30.25},
+		{"42.750", 42.75},
+		{"00:00:00.080", 0.080},
+		{"00:00.000", 0.0},
+		{" 00:00:05.000 ", 5.0}, // whitespace trimmed
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.input, func(t *testing.T) {
+			result := parseTimestampSeconds(tc.input)
+			if result != tc.expected {
+				t.Fatalf("parseTimestampSeconds(%q): expected %v, got %v", tc.input, tc.expected, result)
+			}
+		})
+	}
+}
