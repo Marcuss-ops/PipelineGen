@@ -7551,6 +7551,11 @@
     ship_sha: 11f2c167
     ship_date: 2026-07-07
     owner_capability: internal/application/semantic (ollama_analyzer.go 500 LoC -> slim + score + segments 3-file split)
+  - id: PR-SPLIT-JOBS-REGISTRY-DEFINITIONS
+    status: shipped
+    ship_sha: 85d91470
+    ship_date: 2026-07-07
+    owner_capability: internal/application/semantic (ollama_analyzer.go 500 LoC -> slim + score + segments 3-file split)
 - id: SEMANTIC-LOCATION-API-2026-07-06
   status: shipped
   exit_signal: true
