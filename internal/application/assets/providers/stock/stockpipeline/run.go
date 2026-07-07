@@ -28,22 +28,19 @@ import (
 	"fmt"
 )
 
-// Run is the Stock Cutover Commit 2 thin Orchestrator delegate.
+// Run is the Stock Cutover thin Orchestrator delegate.
 //
 // Signature preserved at (*PipelineResult, error) for backwards
 // compat with the ServiceRunner interface
 // (var _ ServiceRunner = (*Service)(nil) in stockpipeline/usecase.go)
-// and stock.Adapter's stockRunner interface. The body no longer
-// references the legacy ~280-line orchestration ladder; instead it
-// delegates to runOrchestrator, then projects the typed manifest
-// back to the legacy PipelineResult shape.
+// and stock.Adapter's stockRunner interface.
 //
-// When input.Persist is true, the sync path routes through the
-// resilient orchestrator (RunResilient) with a synthetic broker
-// lease, so StockFinalizeStep writes to media_assets via the
-// single-TX spine (same contract as production broker jobs).
+// All sync paths now route through runSyncPersist →
+// runOrchestratorResilient with a synthetic broker lease, so
+// StockFinalizeStep writes to media_assets via the single-TX spine
+// (same contract as production broker jobs).
 //
-// On error the underlying orchestrator.Run error is wrapped via %w
+// On error the underlying orchestrator error is wrapped via %w
 // so callers can errors.Is/As inspect the orchestrator's signal
 // class (ErrOrchestratorNilDeps etc.).
 func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, error) {
@@ -54,13 +51,8 @@ func (s *Service) Run(ctx context.Context, input *RunInput) (*PipelineResult, er
 		return nil, fmt.Errorf("stockpipeline.Service.Run: nil *RunInput")
 	}
 
-	if input.Persist {
-		return s.runSyncPersist(ctx, input)
-	}
-
-	manifest, err := s.runOrchestrator(ctx, input, "")
-	if err != nil {
-		return nil, fmt.Errorf("stockpipeline.Service.Run: orchestrator delegate: %w", err)
-	}
-	return projectManifestToPipelineResult(manifest), nil
+	// All sync paths route through the resilient orchestrator
+	// via runSyncPersist, which provides a synthetic lease and
+	// delegates to runOrchestratorResilient.
+	return s.runSyncPersist(ctx, input)
 }
