@@ -2884,3 +2884,47 @@
       status: shipped
       ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_CONST
       deadline: 2026-08-01
+
+- id: QDRANT-DOD-FINAL-2026-07-08
+  status: pending
+  exit_signal: false  # until 11/11 preflight green AND 12/12 gates ship per godlike/07 NO-FAKE-AVAILABILITY
+  ship_date: 2026-07-08
+  owner_capability: cmd/admin/qdrant_preflight + tests/e2e (composition-level aggregator)
+  deadline: 2026-09-01
+  exit_gate: |
+    Per godlike/07 no-fake-availability QDRANT is DOD finale globale ONLY when ALL 12 gate-by-gate criteria pass
+    AND cmd/admin qdrant-preflight exits 0 (0 FAIL Test 9 SKIP allowed only via manual chaos-day window).
+    Action plan architecture/action-plans/2026-07-08-qdrant-dod-final.md (canonical narrative per CANONICAL.md §1).
+  linked_issues:
+    - id: PR-QDRANT-DOD-STOCK-PRODUCER
+      owner_capability: internal/application/assets/providers/stock/stockpipeline
+      status: pending
+      deadline: 2026-08-08
+    - id: PR-QDRANT-DOD-4-ASSERTIONS
+      owner_capability: tests/e2e
+      status: pending
+      deadline: 2026-08-15
+    - id: PR-QDRANT-DOD-HOTSPOT-CROSSREF
+      owner_capability: architecture
+      status: pending
+      deadline: 2026-09-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-2-IMPL
+      owner_capability: cmd/admin/qdrant_preflight
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-5-IMPL
+      owner_capability: cmd/admin/qdrant_preflight
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-6-IMPL
+      owner_capability: cmd/admin/qdrant_preflight
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-7-IMPL
+      owner_capability: cmd/admin/qdrant_preflight
+      status: pending
+      deadline: 2026-08-01
+    - id: PR-QDRANT-PREFLIGHT-TEST-8-IMPL
+      owner_capability: cmd/admin/qdrant_preflight
+      status: pending
+      deadline: 2026-08-01
