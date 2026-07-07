@@ -27,7 +27,7 @@ type Registry struct {
 	strategies map[string]Strategy
 }
 
-// NewRegistry creates a Registry with the five canonical strategies
+// NewRegistry creates a Registry with the six canonical strategies
 // pre-registered. Callers that need to add custom sources can import
 // the per-source constructors and call Register directly.
 func NewRegistry() *Registry {
@@ -38,6 +38,7 @@ func NewRegistry() *Registry {
 			"voiceover":       voiceoverStrategy,
 			"image":           imageStrategy,
 			"generated_image": generatedImageStrategy,
+			"stock":           stockChunkStrategy,
 		},
 	}
 	return r

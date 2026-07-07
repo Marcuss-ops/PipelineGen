@@ -1,10 +1,25 @@
 package searchtext
 
 import (
+	"fmt"
 	"strings"
 
 	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
 )
+
+// stockChunkStrategyAdditionalKeys enumerates the stock-specific keys the
+// strategy reads from SearchTextInput.Additional. Defined as a typed
+// slice so callers and tests can introspect the contract (single
+// canonical owner per fact — godlike/06 SSOT).
+var stockChunkStrategyAdditionalKeys = []string{
+	"event",      // boxing-event / fight name (e.g. "Pacquiao vs Broner")
+	"round",      // round number within the event (e.g. "3")
+	"subject",    // canonical subject of the clip (e.g. "Mike Tyson")
+	"action",     // action verb / phrase (e.g. "lands a left hook")
+	"source_url", // original source URL (e.g. YouTube watch link)
+	"start_sec",  // clip start in seconds (e.g. "12.5")
+	"end_sec",    // clip end in seconds (e.g. "35.0")
+}
 
 // Truncation limits for long text fields. Transcripts and descriptions
 // can be hundreds of KB; truncation keeps the search_text column bounded
@@ -98,6 +113,93 @@ func imageStrategy(input appsearchtext.SearchTextInput) string {
 // identifier or generation seed) without changing the image path.
 func generatedImageStrategy(input appsearchtext.SearchTextInput) string {
 	return imageStrategy(input)
+}
+
+// stockChunkStrategy builds search text for a stock-pipeline chunk
+// (per-chunk metadata from the stock finalizer). It composes the
+// canonical sentence pattern:
+//
+//	"Stock video from {event} round {N}. {subject} {action}.
+//	 Segment {start}s to {end}s. Tags: {tags}."
+//
+// Stock-specific fields (event, round, subject, action, source_url,
+// start_sec, end_sec) are read from SearchTextInput.Additional under
+// the keys listed in stockChunkStrategyAdditionalKeys. Title, Tags
+// and Category come from the typed top-level fields so the consumer
+// (e.g. the finalizer in
+// internal/application/assets/providers/stock/stockpipeline) only
+// needs to populate the standard DTO fields + Additional.
+//
+// godlike/07 minimum-blast-radius: each labelled segment is dropped
+// silently when its inputs are empty — never emit "Stock video from
+//
+//	round ." or "Tags: " fragments. godlike/06 SSOT: this function
+//
+// is the SOLE canonical owner of the stock-chunk text format; other
+// callers MUST NOT re-derive the same composition.
+func stockChunkStrategy(input appsearchtext.SearchTextInput) string {
+	add := input.Additional
+
+	event := strings.TrimSpace(add["event"])
+	roundN := strings.TrimSpace(add["round"])
+	subject := strings.TrimSpace(add["subject"])
+	action := strings.TrimSpace(add["action"])
+	sourceURL := strings.TrimSpace(add["source_url"])
+	startSec := strings.TrimSpace(add["start_sec"])
+	endSec := strings.TrimSpace(add["end_sec"])
+
+	// ── Mandatory prefix: title + category ──────────────────────
+	prefix := joinNonEmpty(" ", input.Title, input.Category)
+
+	// ── Segment 1: "Stock video from {event} round {N}" ─────────
+	seg1 := composeStockHeader(event, roundN)
+
+	// ── Segment 2: "{subject} {action}" ──────────────────────────
+	seg2 := joinNonEmpty(" ", subject, action)
+
+	// ── Segment 3: "Segment {start}s to {end}s" ──────────────────
+	// godlike/07 NO-FAKE-AVAILABILITY: emit only when BOTH endpoints
+	// are present — a one-sided "Segment 10.0s to s" or "Segment s
+	// to 20.0s" would be a malformed sentence that pollutes the
+	// Qdrant BM25 channel. Drop the segment cleanly when either
+	// endpoint is missing (mirrors seg1/seg4/seg5 graceful-drop).
+	var seg3 string
+	if startSec != "" && endSec != "" {
+		seg3 = fmt.Sprintf("Segment %ss to %ss", startSec, endSec)
+	}
+
+	// ── Segment 4: "Tags: {tags}" ────────────────────────────────
+	var seg4 string
+	if len(input.Tags) > 0 {
+		seg4 = "Tags: " + joinTags(input.Tags)
+	}
+
+	// ── Segment 5: "Source: {source_url}" ────────────────────────
+	var seg5 string
+	if sourceURL != "" {
+		seg5 = "Source: " + sourceURL
+	}
+
+	return joinNonEmpty(" ", prefix, seg1, seg2, seg3, seg4, seg5)
+}
+
+// composeStockHeader renders "Stock video from {event} round {N}".
+// godlike/07 minimum-blast-radius: drops the leading "from" or
+// trailing "round N" cleanly when either input is empty so we
+// never emit "Stock video from  round ." fragments. The
+// "round-only" branch uses a comma separator to keep the phrase
+// grammatically clean even when the event is unknown.
+func composeStockHeader(event, roundN string) string {
+	switch {
+	case event != "" && roundN != "":
+		return "Stock video from " + event + " round " + roundN
+	case event != "":
+		return "Stock video from " + event
+	case roundN != "":
+		return "Stock video, round " + roundN
+	default:
+		return ""
+	}
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
