@@ -35,9 +35,23 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	}
 	if src.Entities != nil {
 		dst.Entities = src.Entities
+		// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026):
+		// write-back to currentInput so the document processor
+		// (which runs later in the registry) receives populated
+		// entities instead of nil.
+		if currentInput != nil {
+			currentInput.Entities = src.Entities
+		}
 	}
 	if len(src.Metadata) > 0 {
 		dst.VideoMetadata = append(dst.VideoMetadata, src.Metadata...)
+		// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026):
+		// write-back to currentInput so the document processor
+		// (which runs later in the registry) receives populated
+		// metadata instead of nil.
+		if currentInput != nil {
+			currentInput.Metadata = append(currentInput.Metadata, src.Metadata...)
+		}
 	}
 	if len(src.Voiceovers) > 0 {
 		dst.Voiceovers = append(dst.Voiceovers, src.Voiceovers...)
