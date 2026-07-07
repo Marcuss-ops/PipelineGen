@@ -190,12 +190,10 @@ func TestIndexedMetadata_RoundIsInt_NotPointer(t *testing.T) {
 		t.Fatalf("IndexedMetadata.Round NOT FOUND")
 	}
 
-	// Lock: kind == Int, NOT Ptr.
+	// Lock: kind == Int (NOT Ptr — fields are disjoint, no second
+	// check needed since Int ≠ Ptr by construction).
 	if f.Type.Kind() != reflect.Int {
 		t.Errorf("IndexedMetadata.Round type.kind = %v — want reflect.Int (parallel-agent settle; user spec asked *int but SSOT is int)", f.Type.Kind())
-	}
-	if f.Type.Kind() == reflect.Ptr {
-		t.Errorf("IndexedMetadata.Round is *int — would conflict with parallel-agent pre-applied settle on `Round int` (godlike/06 SSOT violation)")
 	}
 }
 
