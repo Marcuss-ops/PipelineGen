@@ -18,15 +18,10 @@
 // structure next to the rendered prose. The default (false) keeps
 // production docs pristine.
 //
-// Deprecated helpers (BuildClipSpecSceneDocumentHTML, BuildSectionDocHTML)
-// live in generation_html_helpers.go.
-//
-// PR-HTML-SPLIT (July 2026): decomposed into 2 files per AGENTS.md
-// Pattern 5:
-//   generation_html.go          — BuildGenerationDocumentHTML + chapterLabel
-//                                  (this file)
-//   generation_html_helpers.go  — BuildClipSpecSceneDocumentHTML +
-//                                  BuildSectionDocHTML (deprecated helpers)
+// PR-HTML-SPLIT (July 2026): this file was decomposed from a larger
+// generation_html.go; the deprecated helpers (BuildClipSpecSceneDocumentHTML,
+// BuildSectionDocHTML) were removed in a subsequent cleanup wave
+// (PR-DEPRECATED-HTML-HELPERS-REMOVAL, July 2026).
 package adapters
 
 import (
@@ -64,10 +59,9 @@ import (
 //	  who want a textual dump of the macro-structure next to the
 //	  rendered prose.
 //
-// language is used for localised chapter-label aliases (matching
-// BuildSectionDocHTML's "Chapter" / "Capitolo" / "Chapitre" /
-// "Capítulo" / "Kapitel" mapping). Unknown languages default to
-// "Chapter".
+// language is used for localised chapter-label aliases
+// ("Chapter" / "Capitolo" / "Chapitre" / "Capítulo" / "Kapitel"
+// mapping). Unknown languages default to "Chapter".
 //
 // Empty inputs render a minimal HTML doc — pass an empty model to
 // get an empty doc shell. nil model renders an empty string.
@@ -274,9 +268,8 @@ func BuildGenerationDocumentHTML(
 }
 
 // chapterLabel maps a BCP-47-ish language tag to the localised
-// "Chapter" word. Mirrors BuildSectionDocHTML's mapping so the
-// pre-PR-3 batch pipeline and the PR 3 typed renderer produce
-// visually equivalent docs.
+// "Chapter" word. The PR 3 typed renderer uses this function
+// to produce visually consistent docs across languages.
 func chapterLabel(language string) string {
 	switch strings.ToLower(strings.TrimSpace(language)) {
 	case "it":

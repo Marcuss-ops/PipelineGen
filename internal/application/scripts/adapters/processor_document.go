@@ -87,18 +87,15 @@ func (p *DocumentProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Processo
 // PR 5 (June 2026): signature now takes ProcessInput envelope.
 //
 // FASE-document-canonical (July 2026): ALWAYS calls the canonical
-// renderer BuildGenerationDocumentHTML (was: dual-branch
-// BuildClipSpecSceneDocumentHTML vs BuildSectionDocHTML). Per
-// godlike/06 SSOT one-canonical-owner-per-fact the production doc
-// surface has a single canonical renderer; BuildGenerationDocumentHTML
-// gracefully handles both the with-SpecScene and empty-SpecScene
-// cases (the empty case skips the <h2>Scenes</h2> section via the
-// `len(model.SpecScene.Scenes) > 0` guard internally). The optional
-// `includeSpecSceneBlock` 6th parameter is set to false for production
-// pristine output — the SpecScene JSON textual dump is opt-in
-// (godlike/07 minimal-blast-radius; operators wanting the debug
-// block can call the canonical renderer with includeSpecSceneBlock
-// =true directly).
+// renderer BuildGenerationDocumentHTML. Per godlike/06 SSOT
+// one-canonical-owner-per-fact the production doc surface has a
+// single canonical renderer; BuildGenerationDocumentHTML gracefully
+// handles both the with-SpecScene and empty-SpecScene cases (the
+// empty case skips the <h2>Scenes</h2> section via the
+// `len(model.SpecScene.Scenes) > 0` guard internally). The
+// `includeSpecSceneBlock` 6th parameter is set to true for production
+// output — operators can visually verify the SpecScene JSON debug
+// block at the bottom of every Google Doc.
 func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.docsSvc == nil {
 		return nil, fmt.Errorf("%w: document processor: DocumentsService not configured", scriptpkg.ErrPostprocessFailed)
@@ -112,8 +109,8 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		docTitle = "Generated Script"
 	}
 
-	// Canonical single-renderer call (was: BuildClipSpecSceneDocumentHTML
-	// when len(SpecScene.Scenes) > 0, BuildSectionDocHTML otherwise).
+	// Canonical single-renderer call: BuildGenerationDocumentHTML is the
+	// SOLE canonical production renderer per AGENTS.md Pattern 0.
 	model := &scriptpkg.ModelScriptOutputV1{
 		SchemaVersion: 1,
 		Text:          input.Text,
