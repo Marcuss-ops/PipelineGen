@@ -2331,3 +2331,25 @@ PR-P12-DRIVE-COMPLETION-2026-07-08:
       description: goddoc on IsSessionActive explaining the session_id match contract
       deadline: 2026-08-15
 
+# PR-FIX-PYTHON-BRIDGE-DEPS — bake sentence-transformers/spacy/yake/requests into Dockerfile.scraper
+# 3-surface godlike/06 SSOT lockstep entry (per CANONICAL.md §1).
+# Status: shipped (2026-07-08). Ship SHA: 205676ef. Owner: node-scraper (image build).
+# Surface: Dockerfile.scraper — 3-layer addition (apt + pip install + spacy model download).
+# REQUIRES IMAGE REBUILD on the operator side before the new deps are effective in production.
+- id: PR-FIX-PYTHON-BRIDGE-DEPS
+  status: shipped
+  ship_sha: 205676ef
+  ship_date: 2026-07-08
+  owner_capability: node-scraper (image build)
+  deadline: 2026-08-15
+  forward_pointers:
+    - id: PR-PY-BRIDGE-REQUIREMENTS-TXT
+      description: extract 4-package list to scripts/bridges/requirements.txt + pip install -r (file-based dep management, mirrors package.json)
+      deadline: 2026-08-15
+    - id: PR-PY-BRIDGE-IMAGE-BUILD-VERIFY
+      description: operator-side image rebuild + push + redeploy (docker build -f node-scraper/Dockerfile.scraper -t pipelinegen-artlist:py-bridge-deps .)
+      deadline: 2026-07-22
+    - id: PR-PY-BRIDGE-TEMP-STUB-RETIRE
+      description: delete the temporary /app/scripts/bridges/sentence_transformers.py stub inside the live container once the rebuilt image is deployed
+      deadline: 2026-08-15
+
