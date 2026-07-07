@@ -331,6 +331,20 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		if item.Status == "media_process_failed" || item.Status == "dry_run" {
 			continue
 		}
+		// PR-ARTLIST-DOD-GATE-02 (2026-07-07): Drive field gate.
+		// Skip items whose processor returned Status="processed" but
+		// left Drive fields empty — the processor's Drive upload step
+		// failed silently. Without this gate, stagePersistResults would
+		// write a clip row with empty drive_link / drive_file_id and
+		// increment Processed for a clip that was never actually
+		// uploaded (godlike/07 no-fake-availability violation).
+		if item.DriveFileID == "" || item.DriveLink == "" {
+			o.svc.log.Warn("stagePersistResults: skipping clip with missing Drive fields",
+				zap.String("clip_id", item.ClipID),
+				zap.String("drive_file_id", item.DriveFileID),
+				zap.String("drive_link", item.DriveLink))
+			continue
+		}
 		existingClip, err := o.svc.assetStore.Get(ctx, item.ClipID)
 		if err != nil {
 			o.svc.log.Warn("stagePersistResults: artlistRepo.GetClip failed",
