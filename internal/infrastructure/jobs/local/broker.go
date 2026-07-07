@@ -352,6 +352,17 @@ func (b *Broker) IsCancelled(ctx context.Context, jobID string, leaseID string) 
 	return j.Status == domainjob.StatusCancelled, nil
 }
 
+// WithFinalizer threads the canonical JobFinalizer into the broker
+// after construction. nil is tolerated — the broker falls back to
+// ErrFinalizerNotConfigured at CompleteWithArtifacts time (the typed
+// sentinel surfaces the wiring gap to the operator).
+//
+// Returns the receiver for builder-style chaining at the composition site.
+func (b *Broker) WithFinalizer(f finalization.JobFinalizer) *Broker {
+	b.finalizer = f
+	return b
+}
+
 // Coalescer returns the broker's progress coalescer for use by the
 // lifecycle StartupStep wiring (PR-Progress / ADR-0002 §D6.4). The
 // returned pointer is the same instance the broker holds in its
@@ -371,6 +382,13 @@ func (b *Broker) Coalescer() *ProgressCoalescer {
 }
 
 func (b *Broker) ensureSession(ctx context.Context, workerID, sessionID string) error {
+	// In-process workers don't register a remote session — their
+	// WorkerSessionID is empty. Skip the DB probe in that case.
+	// Remote workers (non-empty sessionID) MUST pass the active-session
+	// check per the broker's typed sentinel contract.
+	if sessionID == "" {
+		return nil
+	}
 	if b.workers == nil {
 		return nil
 	}

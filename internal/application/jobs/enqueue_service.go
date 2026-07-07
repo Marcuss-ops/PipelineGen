@@ -4,9 +4,10 @@
 // per the god-object decomposition plan.
 //
 // 2026-07-06 (Phase 1 decomposition): further split per Pattern 5:
-//   enqueue_validate.go — validateEnqueueRequest + MaxPayloadSize (input validation)
-//   enqueue_retry.go    — resolveMaxRetries (typed lookup contract)
-//   enqueue_id.go       — generateJobID (identity)
+//
+//	enqueue_validate.go — validateEnqueueRequest + MaxPayloadSize (input validation)
+//	enqueue_retry.go    — resolveMaxRetries (typed lookup contract)
+//	enqueue_id.go       — generateJobID (identity)
 //
 // Zero behavior changes. Same-package visibility preserves all caller paths.
 //
@@ -26,8 +27,11 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
+
+const correlationLookupTimeout = 2 * time.Second
 
 // Enqueue enqueues a job from a domain request. Implements job.Service.
 func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
@@ -58,9 +62,9 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 
 	// Idempotency on (type, correlation_id).
 	if req.CorrelationID != "" {
-		existing, err := s.repo.FindByTypeAndCorrelation(ctx, req.Type, req.CorrelationID)
+		existing, err := s.findExistingByCorrelation(ctx, req.Type, req.CorrelationID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to check existing job by correlation: %w", err)
+			return nil, err
 		}
 		if existing != nil {
 			s.log.Info("returning existing job with same (type, correlation_id)",
@@ -146,7 +150,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 			// race condition returned the generic "failed to create job"
 			// error instead of the existing job.
 			if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {
-				if existing, findErr := s.repo.FindByTypeAndCorrelation(ctx, j.Type, j.CorrelationID); findErr == nil && existing != nil {
+				if existing, findErr := s.findExistingByCorrelation(ctx, j.Type, j.CorrelationID); findErr == nil && existing != nil {
 					s.log.Info("returning existing job by (type, correlation_id) — caught race on SQLite UNIQUE constraint (typed sqlite3 probe)",
 						zap.String("job_id", existing.ID),
 						zap.String("type", j.Type),
@@ -183,4 +187,36 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 		zap.String("correlation_id", j.CorrelationID),
 	)
 	return j, nil
+}
+
+func (s *Service) findExistingByCorrelation(ctx context.Context, jobType, correlationID string) (*job.Job, error) {
+	if correlationID == "" {
+		return nil, nil
+	}
+
+	lookupCtx, cancel := background.DetachWithTimeout(ctx, "jobs-correlation-lookup", correlationLookupTimeout)
+	defer cancel()
+
+	existing, err := s.repo.FindByTypeAndCorrelation(lookupCtx, jobType, correlationID)
+	if err == nil {
+		return existing, nil
+	}
+
+	if isTransientCorrelationLookupError(err) {
+		s.log.Warn("job correlation lookup unavailable; proceeding without pre-check",
+			zap.String("type", jobType),
+			zap.String("correlation_id", correlationID),
+			zap.Error(err),
+		)
+		return nil, nil
+	}
+
+	return nil, fmt.Errorf("failed to check existing job by correlation: %w", err)
+}
+
+func isTransientCorrelationLookupError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }

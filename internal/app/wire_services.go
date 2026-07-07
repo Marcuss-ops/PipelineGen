@@ -31,7 +31,9 @@ import (
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	assetsjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
+	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
 	workerassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	logsink "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/logsink"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
@@ -103,8 +105,14 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	if cfg.Jobs.ProgressCoalesceWindow != "" {
 		if parsed, perr := time.ParseDuration(cfg.Jobs.ProgressCoalesceWindow); perr == nil && parsed >= 0 {
 			progressCoalesceWindow = parsed
+		} else if perr != nil {
+			log.Warn("invalid VELOX_PROGRESS_COALESCE_WINDOW; using default 100ms",
+				zap.String("raw", cfg.Jobs.ProgressCoalesceWindow), zap.Error(perr))
 		}
 	}
+	// Coalescer is ALWAYS constructed — when Window=0 the coalescer
+	// runs in passthrough mode (every Take → immediate SetProgress),
+	// which keeps the broker-side Progress + FlushJob paths uniform.
 	progressSink := root.Jobs.Repo
 	progressCoalescer := localbroker.NewProgressCoalescer(progressSink, localbroker.ProgressCoalesceConfig{
 		Window: progressCoalesceWindow,
@@ -122,6 +130,22 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		return nil, nil, nil, fmt.Errorf("wire broker: %w", err)
 	}
 	root.Jobs.Broker = broker
+
+	// PR-COMPLETE-WORKER-BROAD-FIX (July 2026): wire the canonical
+	// JobFinalizer into the broker at construction time so Path B
+	// artifact-producing jobs (script.generate, image.generate.google,
+	// books.process, lessons.process) can complete via the single-TX
+	// finalization spine. root.Outbox.EventsRepo is available because
+	// NewComposition already ran BuildProcessBundle which populated it.
+	if root.Outbox != nil && root.Outbox.EventsRepo != nil && root.DB != nil && root.DB.DB != nil {
+		assetTx := assetfinalizer.NewAssetTxFinalizer(log)
+		finalizer := jobsfinalizer.New(root.DB.DB, root.Outbox.EventsRepo, assetTx, log)
+		broker.WithFinalizer(finalizer)
+		log.Info("wired JobFinalizer into local broker at construction time (Path B artifact-producing jobs can now complete via CompleteWithArtifacts)")
+	} else {
+		log.Warn("JobFinalizer NOT wired into local broker (one or more deps nil — root.Outbox, root.Outbox.EventsRepo, or root.DB). Path B artifact-producing jobs will fail at CompleteWithArtifacts with ErrFinalizerNotConfigured.",
+			zap.Bool("Outbox_nil", root.Outbox == nil))
+	}
 
 	jobs := startBackgroundJobs(ctx, cfg, dbs, root, log, mode)
 	cleanup := buildCleanup(dbs, root, jobs, cancel, log)
