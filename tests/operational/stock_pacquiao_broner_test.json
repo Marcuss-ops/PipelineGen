@@ -3,7 +3,7 @@
     "description": "Pacquiao vs Broner \u2014 stock pipeline test payloads",
     "video_id": "vdC5GXxS-qU",
     "video_url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-    "drive_folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+    "drive_folder_id": "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA",
     "project_subfolder": "Pacquiao_Vs_Broner",
     "clip_duration_sec": 5,
     "total_rounds": 8,
@@ -12,7 +12,7 @@
     "no_effects": true,
     "no_transitions": true,
     "endpoint": "POST /api/stock/run",
-    "generated_at": "2026-07-07T07:01:43Z"
+    "generated_at": "2026-07-07T08:22:03Z"
   },
   "rounds": [
     {
@@ -267,7 +267,7 @@
             "end_sec": 231.0
           }
         ],
-        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "folder_id": "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA",
         "subfolder": "Pacquiao_Vs_Broner/Round_1_La_fase_di_studio/00-00-32_to_00-03-51",
         "folder_name": "Round_1_La_fase_di_studio",
         "total_minutes": 4,
@@ -421,7 +421,7 @@
             "end_sec": 345.0
           }
         ],
-        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "folder_id": "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA",
         "subfolder": "Pacquiao_Vs_Broner/Round_2_Posizionamento_e_scambi/00-04-07_to_00-05-45",
         "folder_name": "Round_2_Posizionamento_e_scambi",
         "total_minutes": 2,
@@ -623,7 +623,7 @@
             "end_sec": 767.0
           }
         ],
-        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "folder_id": "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA",
         "subfolder": "Pacquiao_Vs_Broner/Round_5_Miglior_momento_Broner/00-10-28_to_00-12-47",
         "folder_name": "Round_5_Miglior_momento_Broner",
         "total_minutes": 3,
@@ -723,7 +723,7 @@
             "end_sec": 87.0
           }
         ],
-        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "folder_id": "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA",
         "subfolder": "Pacquiao_Vs_Broner/Round_7_Broner_barcolla/00-00-32_to_00-01-27",
         "folder_name": "Round_7_Broner_barcolla",
         "total_minutes": 1,
@@ -823,7 +823,7 @@
             "end_sec": 1330.0
           }
         ],
-        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "folder_id": "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA",
         "subfolder": "Pacquiao_Vs_Broner/Round_9_Pacquiao_all_attacco/00-21-16_to_00-22-10",
         "folder_name": "Round_9_Pacquiao_all_attacco",
         "total_minutes": 1,
@@ -1151,7 +1151,7 @@
             "end_sec": 1626.0
           }
         ],
-        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "folder_id": "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA",
         "subfolder": "Pacquiao_Vs_Broner/Round_10_11_Controllo_Pacquiao/00-23-02_to_00-27-06",
         "folder_name": "Round_10_11_Controllo_Pacquiao",
         "total_minutes": 5,
@@ -1239,7 +1239,7 @@
             "end_sec": 1698.0
           }
         ],
-        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "folder_id": "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA",
         "subfolder": "Pacquiao_Vs_Broner/Round_12_Finale/00-27-37_to_00-28-18",
         "folder_name": "Round_12_Finale",
         "total_minutes": 1,
@@ -1327,7 +1327,7 @@
             "end_sec": 1769.0
           }
         ],
-        "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
+        "folder_id": "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA",
         "subfolder": "Pacquiao_Vs_Broner/Verdetto_Unanime/00-28-47_to_00-29-29",
         "folder_name": "Verdetto_Unanime",
         "total_minutes": 1,
