@@ -28,6 +28,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/hashutil"
 	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
@@ -210,6 +211,16 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	if err != nil {
 		return nil, fmt.Errorf("compose domains: clip metadata service: %w", err)
 	}
+
+	// PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY (July 2026): compile-time
+	// pin that the canonical observability adapter satisfies the
+	// application-layer port. Per godlike/06 SSOT discipline, the
+	// composition root is the only place that knows about BOTH the
+	// adapter (infrastructure) AND the port (application). The pin
+	// catches signature drift on either side at build time (the
+	// in-package shape-pin in metrics_step10_test.go is the second
+	// line of defense for adapter-side drift).
+	var _ youtubeports.Step10MetricsRecorder = (*observability.Step10MetricsAdapter)(nil)
 	processSeg := youtube.NewProcessYouTubeSegmentUseCase(youtube.ProcessSegmentDeps{
 		Cache:          clipCache,
 		VideoPipeline:  videoPipelineAdapter,
@@ -237,6 +248,16 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		// A future config-driven value can flow through here via
 		// cfg.YouTube.MinSegmentDuration / MaxSegmentDuration.
 		SegmentPolicy: youtubetypes.DefaultSegmentPolicy(),
+		// PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY (July 2026): wire the
+		// Step 10 partial-state metrics recorder. The use case
+		// calls IncStep10FailAfterClip(string(FailureCodeMetadataFailed))
+		// on the metadata-enrichment failure path so dashboards can
+		// aggregate partial-state events by failure_code. The
+		// adapter is nil-tolerant — if composition were to omit it,
+		// the use case silently skips the counter increment (the
+		// operator Warn log at PR-PY-STEP10-FAIL-LOG is preserved
+		// for granular forensics regardless of recorder wiring).
+		Step10Metrics: observability.NewStep10MetricsAdapter(),
 		Log:           log,
 	})
 
@@ -304,7 +325,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		drive.Publisher,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
-		voMetaWriter, ai.ScriptGen,
+		voMetaWriter, ai.OllamaTranslator, // Fase 9 step 4 CUTOVER: ai.OllamaTranslator satisfies translation.TranslationPort; bare ai.ScriptGen direct-call is RETIRED.
 		outbox.Dispatcher,
 	)
 

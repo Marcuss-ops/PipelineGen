@@ -101,4 +101,35 @@ var (
 		Help:    "Duration of outbox entry processing (claim to complete)",
 		Buckets: []float64{0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
 	}, []string{"status"})
+
+	// YouTube Pipeline Metrics
+	// (PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY, July 2026)
+	//
+	// The Step 10 partial-state counter: incremented when the YouTube
+	// process_segment.go Step 10 (metadata enrichment) fails AFTER the
+	// clip write succeeded. The counter is partitioned by failure_code
+	// (the stringified FailureCode constant, e.g. "metadata_failed") so
+	// dashboards can aggregate partial-state events across a batch
+	// extraction by failure class.
+	//
+	// godlike/06 SSOT (one canonical owner per fact): the
+	// transcript_metadata_step10_fail_after_clip_total counter is the
+	// SOLE canonical writer of "partial-state Step 10 failure" telemetry
+	// in the YouTube pipeline. The typed *ExtractionError envelope with
+	// FailureCodeMetadataFailed remains the canonical job-status flip
+	// (the operator Warn log at PR-PY-STEP10-FAIL-LOG is preserved for
+	// granular forensics; this counter is the dashboard-aggregate
+	// surface that complements it per PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY).
+	//
+	// godlike/07 NO-FAKE-AVAILABILITY: the counter is incremented
+	// exactly once per Step 10 failure, with the failure_code label
+	// matching the typed error envelope's Code field. Callers MUST
+	// pass the stringified FailureCode constant — the wire format
+	// matches `internal/application/youtube/usecase.FailureCode` so
+	// dashboard queries can join against the typed-error taxonomy
+	// without string parsing.
+	Step10FailAfterClipTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "transcript_metadata_step10_fail_after_clip_total",
+		Help: "Total number of YouTube Step 10 partial-state failures (metadata enrichment failed AFTER clip write succeeded), partitioned by failure_code. See PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY.",
+	}, []string{"failure_code"})
 )
