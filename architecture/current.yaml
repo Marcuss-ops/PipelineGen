@@ -8367,3 +8367,99 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
     status: pending
     deadline: 2026-08-04
     summary: cmd/admin qdrant-preflight passa (exit 0, zero FAIL), test Artlist non piu stub.
+- id: E2E-VERIFICATION-BLOCKED-2026-07-07
+  owner_capability: architecture (documentation-only audit-pin)
+  status: shipped
+  ship_date: 2026-07-07
+  ship_via: AUDIT_PIN_FOR_BLOCKED_VERIFICATION
+  exit_signal: false
+  deadline: 2026-07-07
+  forward_pointers:
+  - id: PR-NODE-MODULES-RESTORE
+    deadline: 2026-08-01
+    remediation: `cd node-scraper && npm install` to restore the missing puppeteer-core package
+      that is the root cause of the velox-server restart loop (counter 1099+ in journalctl).
+  - id: PR-VELOX-AUTH-ENV-INVESTIGATE
+    deadline: 2026-08-01
+    remediation: Identify the systemd-side override that injects VELOX_ADMIN_TOKEN=test-adm...
+      into the velox-server process despite the .env file having the real d6e31eb8... token.
+      Likely a /etc/velox-server.env.d/ drop-in or `systemctl set-environment` leftover
+      from a prior session; `systemctl show velox-server -p Environment` will surface it.
+  - id: PR-STK-E2E-SCRIPTS-RESTORE
+    deadline: 2026-08-15
+    remediation: Re-introduce the 8 STK-E2E-* smoke scripts (route_aliveness + search_and_run
+      + direct_url + db_assets + db_outbox + unified_search + download + full_battery) to the
+      working tree, then flip STOCK-E2E-BATTERY-2026-07-05 umbrella to status: shipped ONLY
+      after live 14/14 PASS on a healthy server.
+  description: |
+    0-action audit-pin per godlike/07 NO-FAKE-AVAILABILITY: E2E verification
+    was attempted on 2026-07-07 but NOT achievable on this host. Per the
+    FASE-11 Option-C precedent (FASE-11-V3-RETRY-ATTEMPT-2 closure, 2026-07-05;
+    see linked_issues under FASE-11-RETRY-RICETTA-FORWARD-POINTERS umbrella),
+    E2E success is NOT fabricated when the canonical verification surface is
+    unreachable. The verification is logged honestly here for follow-up action.
+
+    In-process test results (authoritative functional signal):
+      * enrichment test suite (PR-011A + PR-011B + PR-011C + i18n/prompt-iteration
+        follow-up): 66/66 tests PASS in
+        internal/application/assets/providers/stock/enrichment/...
+      * outbox test suite (drive_delete + index_delete + indexing + preflight
+        + drive_delete 404): 107/107 tests PASS in
+        internal/application/jobs/outbox/...
+      * Total: 173/173 in-process tests PASS across both surfaces.
+
+    Live server state (port 8000, PID 308795, ./pipelinegen --mode all):
+      * Reachable: YES (HTTP responses observed on canonical /api/* paths).
+      * Auth-blocked: YES. The canonical X-Velox-Admin-Token header (per
+        internal/api/middleware/middleware_auth_test.go:165) returns HTTP 401.
+        The running process has VELOX_ADMIN_TOKEN=test-adm... in
+        /proc/308795/environ (a test placeholder), while the .env file
+        (the canonical EnvironmentFile per pipelinegen.service) has the
+        real d6e31eb8... token. The systemd unit (Restart=always,
+        RestartSec=3) auto-restarts the same binary in ~3s, so a shell-side
+        kill+restart would be replaced with the same placeholder.
+      * Restart-loop degraded: velox-server.service restart counter is at
+        1099+ in journalctl (Main process exited, code=exited,
+        status=1/FAILURE). Root cause: Node artlist-scraper is broken
+        (Cannot find package puppeteer-core imported from
+        node-scraper/src/artlist/browser.js; node_modules/ is missing
+        entirely in node-scraper/). The crash loop is INDEPENDENT of the
+        auth-token mismatch and is the canonical blocker for live E2E.
+
+    STK-E2E-A to STK-E2E-H battery status (tests/operational/stock_e2e_*.sh):
+      * Scripts are historically recorded in git history (per
+        STOCK-E2E-BATTERY-2026-07-05 wave closures, commits d7a36eed /
+        819f5000 / 0e0201f3 / f32ad3cd / a9771e2a / c5835649 / 98fa118d /
+        51a991aa) but are NOT in the current working tree (git ls-files
+        tests/operational/ shows only voiceover + semantic smokes).
+      * Battery cannot run until the scripts are re-introduced to the
+        working tree AND the server is in a healthy (non-restart-loop) state
+        AND the auth token is in lockstep between .env and the running process.
+
+    Forward-pointers (godlike/07 minimum-blast-radius):
+      * PR-NODE-MODULES-RESTORE: `cd node-scraper && npm install` to fix
+        the puppeteer-core missing-package root cause of the restart loop.
+      * PR-VELOX-AUTH-ENV-INVESTIGATE: identify the systemd-side override
+        that injects VELOX_ADMIN_TOKEN=test-adm... despite the .env having
+        the real token (likely a /etc/velox-server.env.d/ drop-in or
+        systemctl set-environment leftover from a prior session).
+      * PR-STK-E2E-SCRIPTS-RESTORE: re-introduce the 8 STK-E2E-* smoke
+        scripts (A through H) to the working tree, then flip the
+        STOCK-E2E-BATTERY-2026-07-05 umbrella to status: shipped ONLY
+        after live 14/14 PASS.
+
+    godlike/06 SSOT (one-canonical-owner-per-fact): this audit-pin is
+    the SOLE source of the 2026-07-07 verification-blocked state. The
+    173 in-process PASSes are the authoritative functional signal; the
+    live-server degraded state is the audit-pin-receipt per the FASE-11
+    Option-C discipline.
+
+    Pre-existing build issues (carry-forward, NOT regressions of this
+    audit-pin per AGENTS.md "Pre-existing build issues" convention):
+    the 6-item voiceover + app build-issue list per
+    architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04
+    is UNCHANGED.
+
+    3-surface godlike/06 lockstep: this entry ==
+    CHANGELOG.md ## Unreleased > ### Documentation mirror entry ==
+    AGENTS.md Recent cross-cutting closures mirror entry.
