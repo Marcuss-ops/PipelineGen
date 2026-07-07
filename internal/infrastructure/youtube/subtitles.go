@@ -142,6 +142,9 @@ func (a *SubtitleFetcherAdapter) FetchFullVTT(ctx context.Context, videoURL stri
 	args = append(args, "-o", filepath.Join(a.cacheDir, "%(id)s.%(ext)s"))
 	// best-effort: no error if yt-dlp can't fetch subs.
 	_, _, _ = a.runner.Run(ctx, a.ytdlpPath, args)
+	if _, err := os.Stat(cachedPath); err != nil {
+		return nil, nil
+	}
 	return parseVTTEntries(cachedPath, 0, 0)
 }
 
