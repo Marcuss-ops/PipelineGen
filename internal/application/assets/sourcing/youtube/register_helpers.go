@@ -88,8 +88,24 @@ func (s *Service) warnNameCollision(ctx context.Context, name string) {
 
 // buildDriveParams derives the Drive filename, description, video slug, and
 // group from the resolved metadata and command.
+//
+// PR-YT-CLIP-SEMANTIC-LOCATION-FIX (July 2026): group now falls back
+// through a 3-level cascade:
+//
+//  1. cmd.Group (explicit, highest priority)
+//  2. cmd.Category (semantic category from the API payload)
+//  3. cmd.Location.Category (canonical semantic-location DTO)
+//
+// This ensures that a payload with location={category:"Boxe"} but no
+// explicit Group still routes through YouTubeClipPath correctly.
 func (s *Service) buildDriveParams(cmd sourcing.RegisterClipCommand, md *usecase.ResolvedMetadata) (driveFilename, driveDesc, videoSlug, group string) {
 	group = strings.TrimSpace(cmd.Group)
+	if group == "" {
+		group = strings.TrimSpace(cmd.Category)
+	}
+	if group == "" {
+		group = strings.TrimSpace(cmd.Location.Category)
+	}
 	videoSlug = md.VideoID
 	if cmd.Name != "" {
 		if titleSlug := textutil.SlugifyWithMax(cmd.Name, 60); titleSlug != "" {
