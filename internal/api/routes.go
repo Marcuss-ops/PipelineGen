@@ -264,15 +264,7 @@ func (r *Router) Setup() *gin.Engine {
 	engine.GET("/health", healthHandler.Health)
 	engine.GET("/ready", healthHandler.Ready)
 
-	// Build the WireRegistry AFTER the engine is built (all routes are
-	// registered at this point) and wire it into the /ready handler so
-	// operators can detect 404'd capabilities via `wire: { stock: "NOT_MOUNTED" }`
-	// without grepping server logs. Captured 2026-07-07 stale-binary
-	// incident: the new pipelinegen binary lost stock-pipeline mount,
-	// /api/stock-pipeline/run returned 400 (validation) so the bug
-	// wasn't visible — a /ready "wire: stock: NOT_MOUNTED" would have
-	// caught it in 5 seconds.
-	healthHandler.SetWireRegistry(transport.NewWireRegistryFromEngine(engine))
+	// /models — E5 + SigLIP model health probes (Task 10, July 2026).
 
 	// /models — E5 + SigLIP model health probes (Task 10, July 2026).
 	// nil-safe: returns 503 when the handler is not wired.
@@ -377,6 +369,21 @@ func (r *Router) Setup() *gin.Engine {
 	for _, route := range engine.Routes() {
 		log.Info("registered route", zap.String("method", route.Method), zap.String("path", route.Path))
 	}
+
+	// Build the WireRegistry AFTER all routes are registered and wire
+	// it into the /ready handler. This is the canonical SSOT site for
+	// the wire surface — earlier SetWireRegistry calls would observe
+	// only the routes registered up to that point (the original bug:
+	// an early call saw no /api/* routes and reported all
+	// capabilities NOT_MOUNTED).
+	//
+	// The wire field lets operators detect 404'd capabilities (e.g.
+	// `wire: stock: NOT_MOUNTED`) without grepping server logs.
+	// Captured the 2026-07-07 stale-binary incident: the new
+	// pipelinegen binary lost stock-pipeline mount, /api/stock-pipeline/run
+	// returned 400 (validation) so the bug wasn't visible — a /ready
+	// "wire: stock: NOT_MOUNTED" would have caught it in 5 seconds.
+	healthHandler.SetWireRegistry(transport.NewWireRegistryFromEngine(engine))
 
 	return engine
 }
