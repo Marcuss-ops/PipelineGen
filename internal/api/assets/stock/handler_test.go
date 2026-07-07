@@ -34,6 +34,19 @@ func (f *fakeJobsEnqueuer) Enqueue(_ context.Context, _ *jobservice.EnqueueReque
 	return &jobservice.Job{ID: f.jobID}, nil
 }
 
+type fakeStockServiceRunner struct {
+	lastInput *stockpipeline.RunInput
+	err       error
+}
+
+func (f *fakeStockServiceRunner) Run(_ context.Context, input *stockpipeline.RunInput) (*stockpipeline.PipelineResult, error) {
+	f.lastInput = input
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &stockpipeline.PipelineResult{}, nil
+}
+
 // newTestHandler builds a Handler with a stub use case wired so the
 // happy path (validation passes → Submit called) doesn't nil-deref.
 // For the negative tests (validation → 400), the use case is never
@@ -215,6 +228,30 @@ func TestSearchAndRun_AcceptsQueriesOnly_Returns200(t *testing.T) {
 	gotID, _ := body["job_id"].(string)
 	if gotID != "job_test_queries_12345" {
 		t.Errorf("expected job_id from stub enqueuer, got %q", gotID)
+	}
+}
+
+func TestRunStockPipeline_SyncMode_EnablesPersist(t *testing.T) {
+	runner := &fakeStockServiceRunner{}
+	usecase := stockpipeline.NewStockUseCase(runner, nil, nil)
+	handler := NewHandler(usecase, nil)
+
+	rec, _ := runPOST(t, handler.RunStockPipeline, map[string]any{
+		"direct_urls":    []string{"https://example.com/video.mp4"},
+		"total_minutes":  1,
+		"clip_duration":  10,
+		"chunk_duration": 10,
+		"async":          false,
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if runner.lastInput == nil {
+		t.Fatal("expected sync runner to be invoked")
+	}
+	if !runner.lastInput.Persist {
+		t.Fatal("expected sync stock request to enable Persist so the resilient path can upload, finalize, and index")
 	}
 }
 

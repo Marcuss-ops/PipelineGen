@@ -12,7 +12,7 @@
     "no_effects": true,
     "no_transitions": true,
     "endpoint": "POST /api/stock/run",
-    "generated_at": "2026-07-06T18:57:09Z"
+    "generated_at": "2026-07-07T06:22:41Z"
   },
   "rounds": [
     {
@@ -648,8 +648,8 @@
     {
       "index": 3,
       "label": "Round_7_Broner_barcolla",
-      "start": "00:16:33",
-      "end": "00:17:28",
+      "start": "00:00:32",
+      "end": "00:01:27",
       "description": "Spectacular round. Pacquiao series of heavy shots, Broner nearly KO.",
       "payload": {
         "direct_urls": [
@@ -657,74 +657,74 @@
         ],
         "clips": [
           {
-            "title": "clip_000_993s-998s",
+            "title": "clip_000_32s-37s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 993.0,
-            "end_sec": 998.0
+            "start_sec": 32.0,
+            "end_sec": 37.0
           },
           {
-            "title": "clip_001_998s-1003s",
+            "title": "clip_001_37s-42s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 998.0,
-            "end_sec": 1003.0
+            "start_sec": 37.0,
+            "end_sec": 42.0
           },
           {
-            "title": "clip_002_1003s-1008s",
+            "title": "clip_002_42s-47s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 1003.0,
-            "end_sec": 1008.0
+            "start_sec": 42.0,
+            "end_sec": 47.0
           },
           {
-            "title": "clip_003_1008s-1013s",
+            "title": "clip_003_47s-52s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 1008.0,
-            "end_sec": 1013.0
+            "start_sec": 47.0,
+            "end_sec": 52.0
           },
           {
-            "title": "clip_004_1013s-1018s",
+            "title": "clip_004_52s-57s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 1013.0,
-            "end_sec": 1018.0
+            "start_sec": 52.0,
+            "end_sec": 57.0
           },
           {
-            "title": "clip_005_1018s-1023s",
+            "title": "clip_005_57s-62s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 1018.0,
-            "end_sec": 1023.0
+            "start_sec": 57.0,
+            "end_sec": 62.0
           },
           {
-            "title": "clip_006_1023s-1028s",
+            "title": "clip_006_62s-67s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 1023.0,
-            "end_sec": 1028.0
+            "start_sec": 62.0,
+            "end_sec": 67.0
           },
           {
-            "title": "clip_007_1028s-1033s",
+            "title": "clip_007_67s-72s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 1028.0,
-            "end_sec": 1033.0
+            "start_sec": 67.0,
+            "end_sec": 72.0
           },
           {
-            "title": "clip_008_1033s-1038s",
+            "title": "clip_008_72s-77s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 1033.0,
-            "end_sec": 1038.0
+            "start_sec": 72.0,
+            "end_sec": 77.0
           },
           {
-            "title": "clip_009_1038s-1043s",
+            "title": "clip_009_77s-82s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 1038.0,
-            "end_sec": 1043.0
+            "start_sec": 77.0,
+            "end_sec": 82.0
           },
           {
-            "title": "clip_010_1043s-1048s",
+            "title": "clip_010_82s-87s",
             "url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-            "start_sec": 1043.0,
-            "end_sec": 1048.0
+            "start_sec": 82.0,
+            "end_sec": 87.0
           }
         ],
         "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-        "subfolder": "Pacquiao_Vs_Broner/Round_7_Broner_barcolla/00-16-33_to_00-17-28",
+        "subfolder": "Pacquiao_Vs_Broner/Round_7_Broner_barcolla/00-00-32_to_00-01-27",
         "folder_name": "Round_7_Broner_barcolla",
         "total_minutes": 1,
         "clip_duration": 5,

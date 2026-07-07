@@ -71,19 +71,11 @@ paths:
 
 drive:
   strict_startup_validation: false
+  # Drive root folders are resolved via the API (folder_id in request payload).
+  # Do NOT hardcode folder IDs here — they are passed per-request through
+  # VerifiedArtifact.RootFolderOverride → PublishRequest.RootFolderOverride.
   stock_root_folder: "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV"
-  clips_root_folder: "1r9k5qUyW6-hBlPwl7lYXWa7NMlaPz5w3"
-  voiceover_root_folder: ""
-  artlist_root_folder: "1Dj3-BlM9LcJr3dh3I4VxEDuMBbaBwwSE"
-  images_root_folder: "1OJ1-ITo8J3sh1IpUiLwoTkXmPCANmnzL"
-  books_root_folder: ""
-  scripts_root_folder: ""
-  scripts_generate_folder: "1unQMyEH_ZqtXHT5D-68dxvcV9KgKA6d4"
-  scripts_generate_images_folder: "1muxuYXF2ugv0GPukiOAXVQG1E_QyxPLZ"
-  video_ai_root_folder: "1OJ1-ITo8J3sh1IpUiLwoTkXmPCANmnzL"
-  copertine_root_folder: ""
-  sound_effects_root_folder: ""
-  outro_root_folder: "1MB9pTRjvHUdMXUtGOMBcvgRc-MZG2rA4"
+  clips_root_folder: "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV"
 
 video:
   width: 1280

@@ -600,7 +600,6 @@ func TestRegistry_ConflictPolicyPerDestination_P1_1(t *testing.T) {
 		delivery.DestinationYouTubeClip,
 		delivery.DestinationArtlist,
 		delivery.DestinationStock,
-		delivery.DestinationImage,
 		delivery.DestinationVoiceover,
 		delivery.DestinationSoundEffect,
 	}
@@ -613,6 +612,13 @@ func TestRegistry_ConflictPolicyPerDestination_P1_1(t *testing.T) {
 				"%q is an immutable / versioned asset — registry default MUST be ConflictSkip (P1.1 invariant)", dest)
 		})
 	}
+
+	t.Run(string(delivery.DestinationImage)+"/skip-by-hash", func(t *testing.T) {
+		policy, err := reg.Resolve(delivery.DestinationImage)
+		require.NoError(t, err, "missing policy for %q", delivery.DestinationImage)
+		require.Equal(t, delivery.ConflictSkipByHash, policy.ConflictPolicy,
+			"%q must default to ConflictSkipByHash (content-hash dedupe)", delivery.DestinationImage)
+	})
 
 	overwriteDestinations := []delivery.DestinationKey{
 		delivery.DestinationBook,

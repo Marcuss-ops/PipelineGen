@@ -66,6 +66,15 @@ func TestAdminPath_ReturnsEmpty(t *testing.T) {
 	require.Nil(t, segments, "AdminPath must return nil segments (root folder)")
 }
 
+func TestStockPath_AllowsOptionalProvider(t *testing.T) {
+	segments, err := StockPath(PublishRequest{
+		Group:   "run_1b25ac8e5470",
+		Subject: "metadata",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"run_1b25ac8e5470", "metadata"}, segments)
+}
+
 // TestRegistry_AllKeysPresent runs a completeness check across all
 // registered destination keys. Adding a new DestinationKey without
 // a corresponding registry entry must surface here.

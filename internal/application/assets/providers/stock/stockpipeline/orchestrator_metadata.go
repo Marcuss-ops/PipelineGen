@@ -47,13 +47,17 @@ type StockRunMetadata struct {
 // in the per-run metadata.json. LocalPath is exposed here for
 // audit; the public API response strips it.
 type ChunkMetadataEntry struct {
-	Index            int    `json:"index"`
-	ArtifactID       string `json:"artifact_id"`
-	DriveFileID      string `json:"drive_file_id"`
-	DriveWebViewLink string `json:"drive_web_view_link,omitempty"`
-	SHA256           string `json:"sha256"`
-	SizeBytes        int64  `json:"size_bytes"`
-	LocalPath        string `json:"local_path,omitempty"`
+	Index            int     `json:"index"`
+	ArtifactID       string  `json:"artifact_id"`
+	DriveFileID      string  `json:"drive_file_id"`
+	DriveWebViewLink string  `json:"drive_web_view_link,omitempty"`
+	SourceURL        string  `json:"source_url,omitempty"`
+	StartSec         float64 `json:"start_sec,omitempty"`
+	EndSec           float64 `json:"end_sec,omitempty"`
+	Title            string  `json:"title,omitempty"`
+	SHA256           string  `json:"sha256"`
+	SizeBytes        int64   `json:"size_bytes"`
+	LocalPath        string  `json:"local_path,omitempty"`
 }
 
 // buildStockRunMetadata constructs the typed StockRunMetadata
@@ -71,6 +75,10 @@ func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint str
 			ArtifactID:       c.ArtifactID,
 			DriveFileID:      c.RemoteFileID,
 			DriveWebViewLink: c.RemoteWebViewLink,
+			SourceURL:        c.SourceURL,
+			StartSec:         c.StartSec,
+			EndSec:           c.EndSec,
+			Title:            c.Title,
 			SHA256:           c.SHA256,
 			SizeBytes:        c.SizeBytes,
 			LocalPath:        c.LocalPath,

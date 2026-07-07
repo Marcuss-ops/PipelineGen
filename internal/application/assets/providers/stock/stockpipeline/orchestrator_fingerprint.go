@@ -43,3 +43,12 @@ func ChunkArtifactFilename(runFingerprint string, chunkIndex int) string {
 func MetadataArtifactID(runFingerprint string) string {
 	return "stock:" + runFingerprint + ":metadata"
 }
+
+// TimestampArtifactID returns the canonical logical ArtifactID for
+// an explicit timestamp clip and its sidecar metadata.
+//
+// Format: stock:<run_fingerprint>:timestamp:<timestamp_index>:<kind>
+// where kind is typically "video" or "metadata".
+func TimestampArtifactID(runFingerprint string, timestampIndex int, kind string) string {
+	return "stock:" + runFingerprint + ":timestamp:" + strconv.Itoa(timestampIndex) + ":" + kind
+}

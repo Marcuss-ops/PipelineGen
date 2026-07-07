@@ -185,7 +185,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 	var channelMon *monitor.ChannelMonitor
 
 	if runWorker {
-		steps = append(steps, buildWorkerSteps(workerDeps{root: root, log: log})...)
+		steps = append(steps, buildWorkerSteps(workerDeps{root: root, cfg: cfg, log: log})...)
 	}
 	if runScheduler {
 		// Use plain `=` (not `:=`) so the outer channelMon is reassigned,

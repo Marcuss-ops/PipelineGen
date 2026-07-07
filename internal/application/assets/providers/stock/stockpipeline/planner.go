@@ -49,6 +49,11 @@ type ClipPlan struct {
 	StartSec float64
 	EndSec   float64
 
+	// Title carries the human-readable clip/timestamp label when the
+	// plan originates from explicit clips. Deterministic planner runs
+	// leave it empty.
+	Title string
+
 	// OutputLogicalID is the deterministic asset ID the chunk
 	// producer will mint. Format: planner:<sha256-prefix>:<index>
 	// — opaque hash so callers don't depend on its internal shape.
@@ -215,6 +220,7 @@ func (p *explicitPlanner) Plan(_ context.Context, src VideoSource, budgetSec int
 			SourceVersion:   "v1",
 			StartSec:        clip.StartSec,
 			EndSec:          clip.EndSec,
+			Title:           clip.Title,
 			OutputLogicalID: id,
 			PolicyVersion:   policyVer,
 		})

@@ -71,7 +71,7 @@ ROUNDS = [
     ),
     (
         "Round_7_Broner_barcolla",
-        "00:16:33", "00:17:28",
+        "00:00:32", "00:01:27",
         "Spectacular round. Pacquiao series of heavy shots, Broner nearly KO.",
     ),
     (

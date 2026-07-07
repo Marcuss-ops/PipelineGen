@@ -52,4 +52,23 @@ type VerifiedArtifact struct {
 	// IdempotencyKey is a deterministic key that makes publication
 	// and finalisation idempotent. Same content → same key.
 	IdempotencyKey string `json:"idempotency_key"`
+
+	// RootFolderOverride, when non-empty, overrides the destination's
+	// configured root folder ID in the Drive publisher. Threading path:
+	// RunInput.FolderID (from API request) → this field →
+	// PublishRequest.RootFolderOverride → resolveDestination Step 2.
+	// Allows the stock pipeline to use the request's folder_id instead
+	// of hardcoded config Drive root folders.
+	RootFolderOverride string `json:"root_folder_override,omitempty"`
+
+	// RootFolderName is the human-readable top-level folder name used
+	// by Drive path builders when the artifact belongs to a named run.
+	// When empty, infrastructure falls back to a synthetic label.
+	RootFolderName string `json:"root_folder_name,omitempty"`
+
+	// PathLeafName is the human-readable leaf folder name used for the
+	// artifact's immediate Drive subfolder (for example, the timestamp
+	// directory under the named run folder). When empty, infrastructure
+	// falls back to an index-based synthetic label.
+	PathLeafName string `json:"path_leaf_name,omitempty"`
 }

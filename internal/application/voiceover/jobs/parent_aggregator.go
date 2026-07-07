@@ -156,26 +156,15 @@ func (a *ParentAggregator) Start(ctx context.Context) {
 		return
 	}
 	go func() {
-		// ── TACTICAL recover (NOT FOR MERGE) ────────────────────────
-		// 2026-07-06 unblock for SIGSEGV on freshly-booted server. The
-		// existing aggregateOne dereferences child.* fields after
-		// childJob, err := deps.JobsSvc.Get(...) WITHOUT a nil-guard.
-		// Brokers honouring the AggregatorJobsService contract may
-		// legitimately return (nil, nil) for orphan parent references
-		// in the DB after a previous run left dangling childIDs; that
-		// crash kills the entire process because the panic lives in an
-		// unrecovered background goroutine. Canonical fix per godlike/07
-		// minimum-blast-radius is a typed-sentinel probe on the broker
-		// side (ErrChildNotFound) plus a defensive nil-guard in
-		// aggregateOne — see forward-pointer PR-VO-AGGREGATEORPHAN-GUARD
-		// (deadline TBD). This single recover wrapper catches the
-		// panic, logs it, and CONTINUES — the voiceover aggregator
-		// effectively skips one tick; stock-pipeline + HTTP handlers
-		// remain available. Must be REVERTED OR HARDENED into the
-		// forward-pointer PR before any commit ships.
+		// ── Defense-in-depth recover ────────────────────────────
+		// Catches any panic in the tick goroutine (including future
+		// nil-derefs in aggregateOne) so the server stays up. The
+		// canonical fix is the broker-side typed ErrChildNotFound +
+		// a defensive nil-guard in aggregateOne — see
+		// PR-VO-AGGREGATEORPHAN-GUARD (forward-pointer, unblocked).
 		defer func() {
 			if rec := recover(); rec != nil {
-				a.deps.Logger.Error("voiceover parent aggregator: PANIC recovered in tick goroutine — voiceover tick disabled this cycle; server stays up; retry on next tick",
+				a.deps.Logger.Error("voiceover parent aggregator: PANIC recovered in tick goroutine — voiceover tick skipped this cycle; server stays up",
 					zap.Any("panic", rec))
 			}
 		}()

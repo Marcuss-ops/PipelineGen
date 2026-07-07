@@ -145,7 +145,7 @@ features:
   # Experimental modules - default to false
   script_docs_enabled: false
   script_clips_enabled: false
-  stock_pipeline_enabled: false
+  stock_pipeline_enabled: true
   images_enabled: false
   voiceover_enabled: false
   catalog_script_vector_search: false

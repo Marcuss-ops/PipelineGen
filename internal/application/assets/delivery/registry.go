@@ -278,10 +278,11 @@ func ArtlistPath(req PublishRequest) ([]string, error) {
 
 // StockPath builds the path for stock footage (DoD item 4, July 2026):
 //
-//	stock/{category}/{provider}/{subject}
+//	stock/{category}/{subject}
 //
 // Category is read from req.Category (primary) or req.Group (legacy fallback).
-// Provider is required. Subject is required.
+// Subject is required. Provider is retained as an optional third segment for
+// legacy callers that still want an extra namespace layer.
 func StockPath(req PublishRequest) ([]string, error) {
 	category := strings.TrimSpace(req.Category)
 	if category == "" {
@@ -292,17 +293,17 @@ func StockPath(req PublishRequest) ([]string, error) {
 	if category == "" {
 		return nil, fmt.Errorf("delivery: StockPath: category is required (set req.Category or req.Group)")
 	}
-	if provider == "" {
-		return nil, fmt.Errorf("delivery: StockPath: provider is required")
-	}
 	if subject == "" {
 		return nil, fmt.Errorf("delivery: StockPath: subject is required")
 	}
-	return []string{
+	segs := []string{
 		pathutil.SafeFolderName(category),
-		pathutil.SafeFolderName(provider),
-		pathutil.SafeFolderName(subject),
-	}, nil
+	}
+	if provider != "" {
+		segs = append(segs, pathutil.SafeFolderName(provider))
+	}
+	segs = append(segs, pathutil.SafeFolderName(subject))
+	return segs, nil
 }
 
 // ImagePath builds the path for generated images:

@@ -68,15 +68,9 @@ var availableCommands = []string{
 	"db",
 	"delete-specific-folders",
 	"dr-qdrant",
-<<<<<<< Updated upstream
 	"drive-bootstrap",
 	"drive-doctor",
 	"drive-reconcile",
-||||||| constructed merge base
-=======
-	"drive-bootstrap",
-	"drive-doctor",
->>>>>>> Stashed changes
 	"gen-api-docs",
 	"list-drive-folder",
 	"list-styles",
@@ -168,20 +162,12 @@ func main() {
 		err = runDB(args)
 	case "dr-qdrant":
 		err = runDrQdrant(args)
-<<<<<<< Updated upstream
 	case "drive-bootstrap":
 		err = runDriveBootstrap(args)
 	case "drive-doctor":
 		err = runDriveDoctor(args)
 	case "drive-reconcile":
 		err = runDriveReconcile(args)
-||||||| constructed merge base
-=======
-	case "drive-bootstrap":
-		err = runDriveBootstrap(args)
-	case "drive-doctor":
-		err = runDriveDoctor(args)
->>>>>>> Stashed changes
 	case "gen-api-docs":
 		err = runGenAPIDocs(args)
 	default:

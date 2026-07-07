@@ -126,14 +126,103 @@ func TestArtifactPublisherAdapter_Publish_HappyPath(t *testing.T) {
 	if req.Filename != "clip_abc123.mp4" {
 		t.Errorf("expected Filename='clip_abc123.mp4', got %q", req.Filename)
 	}
-	if req.Description != "idem-key-001" {
-		t.Errorf("expected Description='idem-key-001' (idempotency key threading), got %q", req.Description)
+	if req.Description != "artifact test-artifact-001 v1 (video)" {
+		t.Errorf("expected Description to carry the human-readable artifact summary, got %q", req.Description)
 	}
 	if req.AssetID != "test-artifact-001" {
 		t.Errorf("expected AssetID='test-artifact-001', got %q", req.AssetID)
 	}
 	if req.ConflictPolicy != delivery.ConflictSkip {
 		t.Errorf("expected ConflictPolicy=ConflictSkip (Drive-side dedup), got %v", req.ConflictPolicy)
+	}
+}
+
+func TestArtifactPublisherAdapter_Publish_StockMetadata_UsesRunFingerprintPath(t *testing.T) {
+	content := `{"ok":true}`
+	localPath, sha := writeTempFile(t, content)
+
+	stub := &stubDeliveryPublisher{}
+	adapter := NewArtifactPublisherAdapter(stub, nil)
+
+	artifact := finalization.VerifiedArtifact{
+		ArtifactID:     "stock:1b25ac8e54701c88469a92e47cc32137415bbf8929da3c0dc5c1fbf3e8b54cb0:metadata",
+		Kind:           finalization.KindMetadata,
+		Filename:       "metadata.json",
+		LocalPath:      localPath,
+		MIMEType:       "application/json",
+		SizeBytes:      int64(len(content)),
+		SHA256:         sha,
+		SourceVersion:  1,
+		Requirement:    finalization.ArtifactRequirementRequired,
+		IdempotencyKey: "idem-key-stock-metadata",
+		RootFolderName: "Round_7_Broner_barcolla",
+	}
+
+	_, err := adapter.Publish(context.Background(), artifact)
+	if err != nil {
+		t.Fatalf("Publish() unexpected error: %v", err)
+	}
+
+	req := stub.lastReq
+	if req == nil {
+		t.Fatal("expected Publish to be called")
+	}
+	if req.Destination != delivery.DestinationStock {
+		t.Fatalf("expected DestinationStock, got %q", req.Destination)
+	}
+	if req.Group != "Round_7_Broner_barcolla" {
+		t.Fatalf("expected Group to use the readable run name, got %q", req.Group)
+	}
+	if req.Subject != "metadata" {
+		t.Fatalf("expected Subject=metadata, got %q", req.Subject)
+	}
+	if req.Provider != "" {
+		t.Fatalf("expected Provider empty, got %q", req.Provider)
+	}
+}
+
+func TestArtifactPublisherAdapter_Publish_ExplicitTimestamp_UsesTimestampPath(t *testing.T) {
+	content := `{"timestamp":true}`
+	localPath, sha := writeTempFile(t, content)
+
+	stub := &stubDeliveryPublisher{}
+	adapter := NewArtifactPublisherAdapter(stub, nil)
+
+	artifact := finalization.VerifiedArtifact{
+		ArtifactID:     "stock:1b25ac8e54701c88469a92e47cc32137415bbf8929da3c0dc5c1fbf3e8b54cb0:timestamp:2:metadata",
+		Kind:           finalization.KindMetadata,
+		Filename:       "metadata.json",
+		LocalPath:      localPath,
+		MIMEType:       "application/json",
+		SizeBytes:      int64(len(content)),
+		SHA256:         sha,
+		SourceVersion:  1,
+		Requirement:    finalization.ArtifactRequirementRequired,
+		IdempotencyKey: "idem-key-explicit-timestamp",
+		RootFolderName: "Round_7_Broner_barcolla",
+		PathLeafName:   "timestamp_00-32_to_00-37_Round_7_Broner_barcolla",
+	}
+
+	_, err := adapter.Publish(context.Background(), artifact)
+	if err != nil {
+		t.Fatalf("Publish() unexpected error: %v", err)
+	}
+
+	req := stub.lastReq
+	if req == nil {
+		t.Fatal("expected Publish to be called")
+	}
+	if req.Destination != delivery.DestinationStock {
+		t.Fatalf("expected DestinationStock, got %q", req.Destination)
+	}
+	if req.Group != "Round_7_Broner_barcolla" {
+		t.Fatalf("expected Group to use the readable run name, got %q", req.Group)
+	}
+	if req.Subject != "timestamp_00-32_to_00-37_Round_7_Broner_barcolla" {
+		t.Fatalf("expected Subject to use the readable timestamp name, got %q", req.Subject)
+	}
+	if req.Provider != "" {
+		t.Fatalf("expected Provider empty, got %q", req.Provider)
 	}
 }
 
