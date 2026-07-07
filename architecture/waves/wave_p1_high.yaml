@@ -2996,3 +2996,61 @@
       status: scheduled
       ship_via: PENDING_SRE_COORDINATION
       deadline: 2026-08-01
+- id: PR-STOCK-TIMESTAMP-CLIPS
+  owner_capability: internal/application/assets/providers/stock/stockpipeline
+  status: shipped
+  ship_sha: 6209070b
+  ship_date: 2026-07-08
+  deadline: 2026-08-08
+  exit_signal: true
+  description: |
+    Front 2 final: thread 4 typed content fields (Round int /
+    Tags []string / Category string / Slug string) through
+    the canonical stock pipeline (ClipSpec → ClipPlan →
+    ChunkState → ChunkMetadataEntry). Threading pattern
+    (godlike/06 SSOT one-canonical-owner-per-fact):
+      explicitPlanner.Plan (planner.go) copies clip.Round +
+      clip.Tags (defensive copy via
+      `append([]string(nil), clip.Tags...)`) + clip.Category +
+      clip.Slug into plan.*; step_publish.go chunk loop copies
+      plan.* into cs.*; buildStockRunMetadata (orchestrator_metadata.go)
+      copies cs.* into entry.*. perClipLeafName 3-level cascade
+      honors Slug → Title (slugifyTitle) → start-end literal
+      with hasAlphanumeric guard rejecting pure-punctuation
+      slugs that SafeFolderName would render as ___. ToJobPayload
+      (command.go) does deep defensive copy of c.Clips at the
+      boundary (slice-header copy + per-ClipSpec Tags deep copy)
+      -- locks the godlike/06 SSOT contract that every boundary
+      takes its own copy (mirrors FromRunPayload /
+      FromSearchAndRunRequest / ToRunInput precedent in the same
+      file). All 4 fields use json:omitempty so zero-value is
+      correctly absent from the wire shape (godlike/07
+      NO-FAKE-AVAILABILITY). godlike/07 minimum-blast-radius: 0
+      new exported symbols, 0 signature changes, 0 composition-root
+      wiring change. 13 TDD tests pin the contract
+      (TestStockPlanStep_ClipsDescription_Preserved +
+      TestStockPublishStep_ExplicitClips_ThreadsRoundTagsCategorySlug
+      + TestStockPublishStep_ExplicitClips_PerClipPathLeafName +
+      TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata
+      + TestToJobPayload_RoundTrip_ClipRoundTagsCategorySlug +
+      TestToJobPayload_RoundTrip_ClipZeroFieldsOmitsAll4 +
+      TestToJobPayload_RoundTrip_ClipTagsDefensiveCopy +
+      TestPerClipLeafName_SlugFromTitle (3 sub-cases) +
+      TestBuildStockRunMetadata_PropagatesRoundTagsCategorySlug +
+      TestBuildStockRunMetadata_ZeroRoundTagsCategorySlug_OmitsFromJSON
+      + TestBuildStockRunMetadata_IncludesTimestampFields extended).
+      gofmt + go vet + go build + go test -short all green.
+      3-surface godlike/06 SSOT lockstep (per CANONICAL.md §1):
+      this wave-tracker entry ≡ CHANGELOG.md ## Unreleased > ###
+      Added entry ≡ AGENTS.md ## Recent cross-cutting closures
+      mirror. Pre-existing 6-item voiceover + app build-issue
+      carry-forward per #PRE-EXISTING-BUILD-ISSUES-2026-07-04
+      UNCHANGED -- NOT regressions. Direct-to-main per AGENTS.md
+      Git-Lesson-2 (no branches, no --force). Co-authored-by:
+      PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md
+      Git-Lesson-3.
+  linked_issues:
+  - id: 6209070b
+    owner_capability: internal/application/assets/providers/stock/stockpipeline
+    status: shipped
+    deadline: 2026-08-08
