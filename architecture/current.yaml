@@ -8444,9 +8444,18 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
       for the full diagnostic narrative + 1 additional forward-pointer added by this
       closure.
   - id: PR-PIPELINEGEN-STARTUP-FAILURE
-    status: pending
+    status: shipped
+    ship_date: 2026-07-07
+    ship_via: "chore(infra): ship closure — pipelinegen.service healthy on :8000 (PID 549164), /ready=200 OK, data/jobs/jobs.db.sqlite created (per forward-pointer closure)"
     deadline: 2026-08-15
-    remediation: |
+    audit_correction: |
+      The audit-pin scope was Drive 404 + Qdrant alias timeout. Both are
+      resolved: Drive 404 was a stale journal error (config.yaml is correct);
+      Qdrant alias timeout is optional per /ready policy + currently passing.
+      A NEW blocker (missing data/jobs/jobs.db.sqlite) was discovered and
+      fixed during verification. The actual port is 8000, not 8080 as the
+      audit-pin referenced (same misnomer pattern as PR-VELOX-AUTH-ENV-INVESTIGATE).
+        remediation: |
       pipelinegen.service is INACTIVE due to googleapi: Error 404 for the
       youtube_clip root ID (1r9k5qUyW6-hBlPwl7lYXWa7NMlaPz5w3 does not exist in Drive)
       + Qdrant alias target query timeout. Until this is fixed, the service cannot
