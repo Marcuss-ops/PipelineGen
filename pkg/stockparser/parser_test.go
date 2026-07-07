@@ -341,6 +341,14 @@ func TestParseTimestampClipSpecs_LongSlugFromLongTitle(t *testing.T) {
 // which expects "broner-barcolla" (NOT "round-7-broner-barcolla")
 // for "Round 7 - Broner barcolla".
 //
+// Note: deriveSlug in parser.go adds the time-range-literal
+// fallback (when SlugifyTitle returns ""). The stock-pipeline
+// step_publish.go caller has its OWN start-end fallback
+// (SlugifyTitle("path/to/file.mp4") returns "" for non-title
+// inputs). Both fallbacks are caller-local; pkg/slug.SlugifyTitle
+// itself is a pure transform with no fallback (godlike/07
+// NO-FAKE-AVAILABILITY: callers must decide their own fallback).
+//
 // godlike/07 NO-FAKE-AVAILABILITY regression guard: a future
 // refactor that re-introduces the legacy pathutil.SafeFolderName
 // underscore-replacement semantic (e.g. "Round: 1" -> "round__1")
@@ -366,6 +374,13 @@ func TestParseTimestampClipSpecs_SlugRoutesThroughCanonicalHelper(t *testing.T) 
 		{"double_space_collapsed", "Round 1 - double  space [00:00:32] - [00:03:51]", "double-space"},
 		{"leading_trailing_dash_trimmed", "Round 1 - ---trim--- [00:00:32] - [00:03:51]", "trim"},
 		{"underscore_preserved", "Round 1 - snake_case_title [00:00:32] - [00:03:51]", "snake_case_title"},
+		// Separator-less "Round 1 Title" (no dash/colon/period
+		// after the number) — the roundPrefixRe accepts the
+		// missing-separator form so the Title extraction must
+		// still work. Regression guard: a future tightening of
+		// the regex's `[-:.]?` class to require the separator
+		// would silently break this case.
+		{"no_separator_after_round", "Round 1 Broner barcolla [00:00:32] - [00:03:51]", "broner-barcolla"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
