@@ -77,6 +77,18 @@ func (a *publisherAdapter) Publish(ctx context.Context, req usecase.PublishReque
 	if a.inner == nil {
 		return nil, fmt.Errorf("usecase.publisherAdapter: inner publisher is nil")
 	}
+
+	// PR-YT-CLIP-SEMANTIC-LOCATION-FIX (July 2026): thread Category,
+	// Provider, Tags, and Language into the canonical delivery.PublishRequest
+	// so YouTubeClipPath can build the correct folder hierarchy from
+	// semantic metadata. RootFolderOverride is suppressed when semantic
+	// fields are populated — the DestinationRegistry + PathBuilder handle
+	// routing; the override is only for legacy FolderID-only callers.
+	rootOverride := req.RootFolderOverride
+	if req.Category != "" || req.Provider != "" {
+		rootOverride = ""
+	}
+
 	result, err := a.inner.Publish(ctx, delivery.PublishRequest{
 		Destination:        delivery.DestinationYouTubeClip,
 		LocalPath:          req.LocalPath,
@@ -85,7 +97,11 @@ func (a *publisherAdapter) Publish(ctx context.Context, req usecase.PublishReque
 		AssetID:            req.AssetID,
 		Group:              req.Group,
 		Subject:            req.Subject,
-		RootFolderOverride: req.RootFolderOverride,
+		Category:           req.Category,
+		Provider:           req.Provider,
+		Tags:               req.Tags,
+		Language:           req.Language,
+		RootFolderOverride: rootOverride,
 	})
 	if err != nil {
 		return nil, err
