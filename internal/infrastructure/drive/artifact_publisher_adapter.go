@@ -152,20 +152,19 @@ func (a *ArtifactPublisherAdapter) Publish(
 	idemKey := delivery.DeriveIdempotencyKey(destKey, artifact.ArtifactID, artifact.SHA256, artifact.SourceVersion)
 	group, subject, provider := stockArtifactPathParts(artifact)
 	req := delivery.PublishRequest{
-		Destination:        destKey,
-		LocalPath:          artifact.LocalPath,
-		Filename:           artifact.Filename,
-		Description:        fmt.Sprintf("artifact %s v%d (%s)", artifact.ArtifactID, artifact.SourceVersion, artifact.Kind),
-		AssetID:            artifact.ArtifactID,
-		ConflictPolicy:     delivery.ConflictSkip,
-		IdempotencyKey:     idemKey,
-		ContentHash:        artifact.SHA256,
-		SourceVersion:      artifact.SourceVersion,
-		Group:              group,
-		Subject:            subject,
-		Provider:           provider,
-		Tags:               nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
-		RootFolderOverride: artifact.RootFolderOverride,
+		Destination:    destKey,
+		LocalPath:      artifact.LocalPath,
+		Filename:       artifact.Filename,
+		Description:    fmt.Sprintf("artifact %s v%d (%s)", artifact.ArtifactID, artifact.SourceVersion, artifact.Kind),
+		AssetID:        artifact.ArtifactID,
+		ConflictPolicy: delivery.ConflictSkip,
+		IdempotencyKey: idemKey,
+		ContentHash:    artifact.SHA256,
+		SourceVersion:  artifact.SourceVersion,
+		Group:          group,
+		Subject:        subject,
+		Provider:       provider,
+		Tags:           nil, // DoD #3: populated by per-capability finalizer (forward-pointer)
 	}
 
 	// Step 4: Delegate to canonical Drive publisher.
