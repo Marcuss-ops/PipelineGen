@@ -309,7 +309,7 @@ func TestParseTimestampClipSpecs_SecondRangeOnSameLineDropped(t *testing.T) {
 
 // TestParseTimestampClipSpecs_LongSlugFromLongTitle asserts that
 // a long title doesn't exceed the Drive leaf-name cap (255
-// bytes). pathutil.SafeFolderName keeps the leaf verbatim (no
+// bytes). pkg/slug.SlugifyTitle keeps the leaf verbatim (no
 // trim-suffix) so a 240-char title produces a 240-char slug, well
 // within Drive's 255-byte limit. The test guards against a future
 // "add TrimSuffix" optimization that would silently drop the
@@ -326,5 +326,50 @@ func TestParseTimestampClipSpecs_LongSlugFromLongTitle(t *testing.T) {
 	}
 	if len(got[0].Slug) > 255 {
 		t.Errorf("Slug exceeds Drive leaf-name cap (255 bytes), got len=%d", len(got[0].Slug))
+	}
+}
+
+// TestParseTimestampClipSpecs_SlugRoutesThroughCanonicalHelper
+// pins the PR-SLUG-HELPER-EXTRACT contract: the parser-side
+// Slug output MUST byte-equal pkg/slug.SlugifyTitle(title) for
+// every Title that produces a non-empty slug, and MUST fall
+// back to the time-range literal for the empty-slug case.
+//
+// godlike/07 NO-FAKE-AVAILABILITY regression guard: a future
+// refactor that re-introduces the legacy pathutil.SafeFolderName
+// underscore-replacement semantic (e.g. "Round: 1" -> "round__1")
+// would silently re-divergate the parser-side Slug from the
+// stock-pipeline Slug, breaking the canonical-owner contract.
+// This test fires BEFORE the regression reaches production.
+func TestParseTimestampClipSpecs_SlugRoutesThroughCanonicalHelper(t *testing.T) {
+	cases := []struct {
+		name     string
+		line     string
+		wantSlug string
+	}{
+		{"lowercase_round", "Round 7 - Broner barcolla [00:16:33] - [00:17:28]", "round-7-broner-barcolla"},
+		{"ascii_only", "Round 1 - Test Title [00:00:32] - [00:03:51]", "round-1-test-title"},
+		{"hyphenated_already", "Round 1 - already-hyphenated [00:00:32] - [00:03:51]", "round-1-already-hyphenated"},
+		{"digits_in_title", "Round 12 - Top 10 Knockouts [00:00:32] - [00:03:51]", "round-12-top-10-knockouts"},
+		{"colon_in_title_stripped", "Round 1 - title: with colon [00:00:32] - [00:03:51]", "round-1-title-with-colon"},
+		{"empty_title_falls_back", "[00:00:32] - [00:03:51]", "00-00-32_to_00-03-51"},
+		{"whitespace_title_falls_back", "Round 1 -      [00:00:32] - [00:03:51]", "00-00-32_to_00-03-51"},
+		{"apostrophe_stripped", "Round 1 - Pacquiao's jab [00:00:32] - [00:03:51]", "round-1-pacquiao-s-jab"},
+		{"punctuation_stripped", "Round 1 - Step 3: \"The Answer\" [00:00:32] - [00:03:51]", "round-1-step-3-the-answer"},
+		{"mixed_case_lowered", "Round 1 - UPPERCASE Title [00:00:32] - [00:03:51]", "round-1-uppercase-title"},
+		{"double_space_collapsed", "Round 1 - double  space [00:00:32] - [00:03:51]", "round-1-double-space"},
+		{"leading_trailing_dash_trimmed", "Round 1 - ---trim--- [00:00:32] - [00:03:51]", "round-1-trim"},
+		{"underscore_preserved", "Round 1 - snake_case_title [00:00:32] - [00:03:51]", "round-1-snake_case_title"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseTimestampClipSpecs(tc.line, testURL)
+			if len(got) != 1 {
+				t.Fatalf("expected 1 clip, got %d (line=%q)", len(got), tc.line)
+			}
+			if got[0].Slug != tc.wantSlug {
+				t.Errorf("Slug: got %q, want %q (PR-SLUG-HELPER-EXTRACT contract: parser-side must byte-equal pkg/slug.SlugifyTitle output for non-empty titles, else time-range literal)", got[0].Slug, tc.wantSlug)
+			}
+		})
 	}
 }
