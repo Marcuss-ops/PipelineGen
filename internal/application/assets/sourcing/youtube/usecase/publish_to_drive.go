@@ -89,7 +89,9 @@ func PublishToDrive(ctx context.Context, folderResolver DriveFolderResolver, fil
 	// PR-YT-CLIP-SEMANTIC-LOCATION-FIX: cmd.Category, cmd.Provider,
 	// cmd.Tags, and cmd.Language are available on the command struct
 	// but not yet threaded into the folder-resolver or file-uploader
-	// calls — that wiring lands in a follow-up step (adapters.go).
+	// calls. DriveFolderResolver.ResolveFolder signature needs
+	// Category/Provider/Tags/Language params — forward-pointer to
+	// follow-up PR.
 	result := &PublishToDriveResult{}
 
 	// ── Step 1: Resolve folder ──────────────────────────────────
