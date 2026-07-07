@@ -309,6 +309,15 @@ func deterministicStart(url string, idx int, sliceSec int) float64 {
 // time (per godlike/06 SSOT — both deterministicPlanner and
 // explicitPlanner go through this single constructor; there is
 // exactly one canonical place that classifies URLs).
+//
+// Description is caller-populated: this constructor intentionally
+// leaves plan.Description at the zero value. The deterministic
+// planner runs (which use this constructor directly) leave
+// Description empty and rely on the post-extract LLM enrichment
+// pass to populate it (forward-pointer PR-ENRICHMENT-PLAN-DESC).
+// The explicit planner is the ONLY caller that mutates
+// plan.Description after this function returns — see
+// (p *explicitPlanner).Plan below.
 func buildClipPlan(src VideoSource, start, end float64, idx int, policyVer string) ClipPlan {
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s|%d|%s", src.URL, idx, policyVer)))
 	id := fmt.Sprintf("planner:%x:%d", h[:8], idx)
