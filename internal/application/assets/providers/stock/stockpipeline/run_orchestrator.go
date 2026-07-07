@@ -1,12 +1,8 @@
 // Package stockpipeline — run_orchestrator.go (Stock Cutover, July 2026).
 //
 // STATO ATTUALE: Service.runOrchestratorResilient è il canonical
-// entrypoint per traffico produzione (Service.HandleJob).
-// Service.runOrchestrator è la versione manifest-only usata dal
-// path legacy Service.Run (ServiceRunner interface back-compat).
-//
-// PROSSIMO STEP: migrare Service.runOrchestrator →
-// runOrchestratorResilient e collassare Run in RunResilient.
+// entrypoint per traffico produzione (Service.HandleJob e
+// Service.Run via runSyncPersist).
 //
 // DEPRECATO: projectManifestToPipelineResult proietta il manifesto
 // nel legacy *PipelineResult per il ServiceRunner interface.
@@ -26,68 +22,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
-
-// runOrchestrator is the manifest-only entry point for legacy
-// Service.Run callers (ServiceRunner interface back-compat).
-// Production traffic uses runOrchestratorResilient instead.
-//
-// PROSSIMO STEP: migrate all callers to runOrchestratorResilient
-// and collapse this function.
-//
-// Configuration precedence (preserves the legacy run.go override chain;
-// see effectiveChunkDurationSec / effectiveClipDurationSec below).
-func (s *Service) runOrchestrator(ctx context.Context, input *RunInput, jobID string) (*job.ArtifactManifest, error) {
-	if s == nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runOrchestrator: nil receiver")
-	}
-	if input == nil {
-		return nil, fmt.Errorf("stockpipeline.Service.runOrchestrator: nil *RunInput")
-	}
-
-	// Resolve text search queries to YouTube URLs before passing to
-	// the orchestrator, which only understands DirectURLs.
-	s.resolveInputQueries(ctx, input)
-
-	cfg := OrchestratorConfig{
-		JobId:            jobID,
-		PolicyVersion:    "v1",
-		ChunkDurationSec: effectiveChunkDurationSec(input, s),
-		ClipDurationSec:  effectiveClipDurationSec(input, s),
-	}
-	o := NewOrchestrator(
-		cfg,
-		NewDeterministicPlanner(),
-		NewInMemoryStepStore(),
-		s.stagerForRun(),
-		s.cutter,
-		s.renderer,
-	)
-	if s.log != nil {
-		o.WithLogger(s.log)
-	}
-	if s.publisher != nil {
-		o.WithAssetPreparation(finalizer.NewArtifactPreparation(
-			drive.NewArtifactPublisherAdapter(s.publisher, s.log), s.log))
-		o.WithJobFinalizer(s.finalizer)
-	}
-	manifest, err := o.Run(ctx, input)
-	if err != nil {
-		// Preserve the orchestrator's signal class via wrap so callers
-		// can errors.Is(orchestrator-senterr). The Service.Run shim
-		// wraps once more so the double-wrap is observable in tests
-		// — service callers that want the inner error unwrap should
-		// use runOrchestrator directly (HandleJob does).
-		return nil, fmt.Errorf("stockpipeline.Service.runOrchestrator: orchestrator.Run: %w", err)
-	}
-	if s.log != nil {
-		s.log.Info("stock orchestrator run succeeded",
-			zap.String("job_id", manifest.JobID),
-			zap.String("workflow_id", manifest.WorkflowID),
-			zap.Int("artifact_count", len(manifest.Artifacts)),
-		)
-	}
-	return manifest, nil
-}
 
 // runOrchestratorResilient is the canonical production entry point.
 // Calls Orchestrator.RunResilient to obtain the *RunSummary that pairs
@@ -169,20 +103,13 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 // *job.ArtifactManifest into the legacy *PipelineResult used by
 // pre-cutover callers via the ServiceRunner interface.
 //
-// STATO ATTUALE: la proiezione è identity-shaped (campi zero)
-// perché il ServiceRunner interface non è ancora stato migrato.
-//
-// PROSSIMO STEP: quando ServiceRunner viene ritirato (post-Commit-9
-// cleanup wave), questa funzione e *PipelineResult possono essere
-// rimossi.
-//
 // DEPRECATO: tenere solo per back-compat ServiceRunner.
 
-// runSyncPersist (July 2026) routes the sync path through the
+// runSyncPersist (July 2026) routes ALL sync paths through the
 // resilient orchestrator (RunResilient) with a synthetic broker
 // lease, so StockFinalizeStep writes to media_assets via the
-// single-TX spine. This is the canonical path when the operator
-// passes persist=true on a sync-mode stock pipeline request.
+// single-TX spine. This is the canonical path for both
+// persist=true and persist=false sync-mode stock pipeline requests.
 //
 // godlike/07 no-fake-availability: the synthetic lease uses
 // deterministic identifiers (sync-stock-<nanos>) so every call
