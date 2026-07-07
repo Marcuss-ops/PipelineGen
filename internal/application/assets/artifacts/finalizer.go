@@ -215,6 +215,14 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 		assetType = semantic.AssetTypeForMediaType(rec.MediaType)
 	}
 
+	// Supersede-gate fix: content_hash MUST be in metadata_json so
+	// SourceVersionFor() reads Tier 1 (highest priority) instead of
+	// falling back to stale Tier 2 (file_hash from a previous ingest).
+	contentHash := rec.ContentHash
+	if contentHash == "" {
+		contentHash = rec.FileHash
+	}
+
 	metadata := semantic.BuildAssetMetadata(semantic.AssetSemanticInput{
 		AssetID:             rec.ID,
 		AssetType:           assetType,
@@ -251,6 +259,7 @@ func (f *Finalizer) writeMetadataJSON(rec *MediaRecord) {
 			"drive_file_id":   rec.DriveFileID,
 			"download_link":   rec.DownloadLink,
 			"file_hash":       rec.FileHash,
+			"content_hash":    contentHash,
 			"source_id":       rec.SourceID,
 			"subfolder":       rec.Subfolder,
 			"embedding_ready": rec.PHash != "" || rec.VisualEmbeddingJSON != "" || firstString(existingMeta, "embedding_status", "") == "ready",

@@ -3,6 +3,7 @@ package artifacts
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -597,6 +598,133 @@ func TestFinalize_DriveVerifyError_SurfaceError(t *testing.T) {
 	if !result.DBSaved {
 		t.Error("DBSaved must be true (verify error is downstream of the registry write)")
 	}
+}
+
+// TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson pins the
+// supersede-gate fix for the artifacts finalizer: writeMetadataJSON
+// MUST include content_hash in the Extra map so that SourceVersionFor()
+// reads Tier 1 (highest priority) instead of falling back to stale
+// Tier 2 (file_hash from a previous ingest). Without this fix, a
+// republish that changes file_hash would leave metadata_json.$.file_hash
+// stale and the supersede gate would fire incorrectly.
+func TestFinalizer_WriteMetadataJSON_ContentHashInMetadataJson(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "clip.mp4")
+	if err := os.WriteFile(tmpFile, []byte("video"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	registry := &mockRegistry{savedRecords: make(map[string]*MediaRecord)}
+	logger, _ := zap.NewDevelopment()
+	f := NewFinalizer(registry, nil, logger)
+
+	// First finalize: content_hash = "ch-001", file_hash = "fh-001"
+	rec := &MediaRecord{
+		ID:          "art-001",
+		Name:        "Boxing clip",
+		LocalPath:   tmpFile,
+		FileHash:    "fh-001",
+		ContentHash: "ch-001",
+		Source:      "artlist",
+		MediaType:   "video",
+		Status:      "processed",
+	}
+
+	result, err := f.Finalize(context.Background(), rec, FinalizeOptions{
+		RequireLocal: true,
+		RequireHash:  true,
+		VerifyDB:     true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.OK {
+		t.Fatalf("finalize not OK: %s", result.Error)
+	}
+
+	// Parse the metadata that was persisted on rec.Metadata by writeMetadataJSON
+	meta := parseMetadataJSON(t, rec.Metadata)
+
+	// content_hash MUST be present and equal to ContentHash (Tier 1)
+	if meta["content_hash"] != "ch-001" {
+		t.Errorf("metadata_json.content_hash = %v, want %q (Tier 1 supersede-gate fix)",
+			meta["content_hash"], "ch-001")
+	}
+	if meta["file_hash"] != "fh-001" {
+		t.Errorf("metadata_json.file_hash = %v, want %q", meta["file_hash"], "fh-001")
+	}
+
+	// Second finalize (republish): new hashes, content_hash MUST update
+	rec2 := &MediaRecord{
+		ID:          "art-001",
+		Name:        "Boxing clip republished",
+		LocalPath:   tmpFile,
+		FileHash:    "fh-002",
+		ContentHash: "ch-002",
+		Source:      "artlist",
+		MediaType:   "video",
+		Status:      "processed",
+	}
+
+	result2, err := f.Finalize(context.Background(), rec2, FinalizeOptions{
+		RequireLocal: true,
+		RequireHash:  true,
+		VerifyDB:     true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result2.OK {
+		t.Fatalf("republish finalize not OK: %s", result2.Error)
+	}
+
+	meta2 := parseMetadataJSON(t, rec2.Metadata)
+
+	if meta2["content_hash"] != "ch-002" {
+		t.Errorf("metadata_json.content_hash after republish = %v, want %q (supersede gate would fire!)",
+			meta2["content_hash"], "ch-002")
+	}
+	if meta2["file_hash"] != "fh-002" {
+		t.Errorf("metadata_json.file_hash after republish = %v, want %q", meta2["file_hash"], "fh-002")
+	}
+
+	// ContentHash fallback: when ContentHash is empty, falls back to FileHash
+	rec3 := &MediaRecord{
+		ID:        "art-002",
+		Name:      "No explicit content hash",
+		LocalPath: tmpFile,
+		FileHash:  "fh-fallback",
+		Source:    "artlist",
+		MediaType: "video",
+		Status:    "processed",
+	}
+
+	result3, err := f.Finalize(context.Background(), rec3, FinalizeOptions{
+		RequireLocal: true,
+		RequireHash:  true,
+		VerifyDB:     true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result3.OK {
+		t.Fatalf("fallback finalize not OK: %s", result3.Error)
+	}
+
+	meta3 := parseMetadataJSON(t, rec3.Metadata)
+	if meta3["content_hash"] != "fh-fallback" {
+		t.Errorf("metadata_json.content_hash fallback = %v, want %q (empty ContentHash -> FileHash)",
+			meta3["content_hash"], "fh-fallback")
+	}
+}
+
+func parseMetadataJSON(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		t.Fatalf("parseMetadataJSON: %v (raw=%q)", err, raw[:min(len(raw), 200)])
+	}
+	return m
 }
 
 func assertEqual(t *testing.T, expected, actual any) {
