@@ -7399,7 +7399,9 @@
       deadline: 2026-08-08
     - id: PR-SPLIT-YTDLP-SUBTITLES
       owner_capability: internal/application/transcripts
-      status: pending
+      status: shipped
+      ship_sha: 9bdbb0d
+      ship_date: "2026-07-07"
       deadline: 2026-08-08
     - id: PR-SPLIT-REGISTER-HANDLER
       owner_capability: internal/api/assets/register

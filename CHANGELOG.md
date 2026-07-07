@@ -3177,3 +3177,15 @@ Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesso
   (NOT regressions). Wave-tracker slot flipped to shipped per
   Q16 prudent-2-PR split bookkeeping. Cross-ref: AGENTS.md mirror entry
   + architecture/current.yaml#PR-SPLIT-VO-PARENT-AGG (status: shipped).
+
+- **PR-SPLIT-YTDLP-SUBTITLES closure (3-surface godlike/06 SSOT lockstep, ship_date 2026-07-07)**:
+  ytdlp_subtitles.go (541 LoC) split into 2 files per godlike/06 SSOT
+  one-canonical-owner-per-fact: `ytdlp_subtitles.go` slim orchestrator
+  (459 LoC after gofmt fixup) + `ytdlp_subtitles_vtt.go` NEW (110 LoC,
+  the 4 VTT parser helpers: stripVTTHeader + parseVTTBlock +
+  parseTimestampSeconds + stripXMLTags). Ship SHA: 9bdbb0d.
+  Cross-file symbol resolution: fetchTimedTranscript's stripVTTHeader +
+  parseVTTBlock calls resolve to the new companion file via same-package
+  scope visibility. Wave-tracker slot flipped to shipped per Q16
+  prudent-2-PR split bookkeeping. Cross-ref: AGENTS.md mirror entry +
+  architecture/current.yaml#PR-SPLIT-YTDLP-SUBTITLES (status: shipped).
