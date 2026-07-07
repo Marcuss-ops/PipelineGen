@@ -150,18 +150,22 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 				ErrStockPublishArtifactFailed, i, cs.ArtifactID, idemErr)
 		}
 		va := finalization.VerifiedArtifact{
-			ArtifactID:         cs.ArtifactID,
-			Kind:               finalization.KindVideo,
-			Filename:           cs.Filename,
-			MIMEType:           "video/mp4",
-			LocalPath:          cs.LocalPath,
-			SizeBytes:          cs.SizeBytes,
-			SHA256:             cs.SHA256,
-			Requirement:        finalization.ArtifactRequirementRequired,
-			IdempotencyKey:     idem + ":c" + strconv.Itoa(i),
-			RootFolderOverride: runner.RunInput().FolderID,
-			RootFolderName:     rootFolderName,
-			PathLeafName:       timestampGroupName,
+			ArtifactID:     cs.ArtifactID,
+			Kind:           finalization.KindVideo,
+			Filename:       cs.Filename,
+			MIMEType:       "video/mp4",
+			LocalPath:      cs.LocalPath,
+			SizeBytes:      cs.SizeBytes,
+			SHA256:         cs.SHA256,
+			Requirement:    finalization.ArtifactRequirementRequired,
+			IdempotencyKey: idem + ":c" + strconv.Itoa(i),
+			// DRIVE-IS-DRIVE (July 2026): RootFolderOverride REMOVED.
+			// Stock no longer passes FolderID as a Drive path override.
+			// The artifact publisher adapter derives Group/Subject from
+			// RootFolderName + PathLeafName via stockArtifactPathParts.
+			// The DestinationRegistry + PathBuilder handle routing.
+			RootFolderName: rootFolderName,
+			PathLeafName:   timestampGroupName,
 		}
 		published, prepErr := runner.ArtifactPreparation().Prepare(ctx, va)
 		if prepErr != nil {
@@ -237,18 +241,19 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			ErrStockPublishArtifactFailed, metaIdemErr)
 	}
 	metaVA := finalization.VerifiedArtifact{
-		ArtifactID:         MetadataArtifactID(fp),
-		Kind:               finalization.KindMetadata,
-		Filename:           "metadata.json",
-		MIMEType:           "application/json",
-		LocalPath:          metaPath,
-		SizeBytes:          metaSize,
-		SHA256:             metaHash,
-		Requirement:        finalization.ArtifactRequirementRequired,
-		IdempotencyKey:     metaIdem,
-		RootFolderOverride: in.FolderID,
-		RootFolderName:     rootFolderName,
-		PathLeafName:       timestampGroupName,
+		ArtifactID:     MetadataArtifactID(fp),
+		Kind:           finalization.KindMetadata,
+		Filename:       "metadata.json",
+		MIMEType:       "application/json",
+		LocalPath:      metaPath,
+		SizeBytes:      metaSize,
+		SHA256:         metaHash,
+		Requirement:    finalization.ArtifactRequirementRequired,
+		IdempotencyKey: metaIdem,
+		// DRIVE-IS-DRIVE (July 2026): RootFolderOverride REMOVED.
+		// Stock no longer passes FolderID as a Drive path override.
+		RootFolderName: rootFolderName,
+		PathLeafName:   timestampGroupName,
 	}
 	metaPublished, metaPrepErr := runner.ArtifactPreparation().Prepare(ctx, metaVA)
 	if metaPrepErr != nil {
