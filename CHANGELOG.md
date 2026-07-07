@@ -3189,3 +3189,16 @@ Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesso
   scope visibility. Wave-tracker slot flipped to shipped per Q16
   prudent-2-PR split bookkeeping. Cross-ref: AGENTS.md mirror entry +
   architecture/current.yaml#PR-SPLIT-YTDLP-SUBTITLES (status: shipped).
+
+- **PR-SPLIT-REGISTER-HANDLER closure (3-surface godlike/06 SSOT lockstep, ship_date 2026-07-07)**:
+  handler.go (531 LoC) split into 2 files per godlike/06 SSOT
+  one-canonical-owner-per-fact: `handler.go` slim orchestrator
+  (451 LoC after gofmt fixup) + `requests.go` NEW (115 LoC, the 3
+  wire-shape DTOs: RegisterFromYouTubeRequest + BatchRegisterRequest +
+  BatchRegisterResponse). Ship SHA: c94fae5.
+  Cross-file symbol resolution: handler.go's BindJSON[RegisterFromYouTubeRequest] +
+  var req BatchRegisterRequest + toRegisterClipCommand + expandClipsBySegments
+  all resolve to the new companion file via same-package scope visibility.
+  Wave-tracker slot flipped to shipped per Q16 prudent-2-PR split bookkeeping.
+  Cross-ref: AGENTS.md mirror entry +
+  architecture/current.yaml#PR-SPLIT-REGISTER-HANDLER (status: shipped).
