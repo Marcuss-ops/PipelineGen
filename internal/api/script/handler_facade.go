@@ -117,8 +117,17 @@ func (fh *FacadeHandler) GetGroupsResolver() *voiceover.GroupsResolver {
 // delivery.Publisher.ResolveFolder. The PathBuilder model produces up
 // to 2 levels (Group / Subject) per call; multi-segment paths use the
 // last segment as Subject and the remaining segments as Group.
-// RootFolderOverride=defaultRootID anchors the path under the
-// caller-supplied root (preserving the pre-FASE-A5 anchoring contract).
+//
+// PR-P12-HANDLER-FACADE-SEMANTIC (July 2026): the legacy
+// RootFolderOverride=defaultRootID bypass is RETIRED per godlike/07
+// NO-FAKE-AVAILABILITY. The canonical Publisher now resolves the
+// root folder for DestinationYouTubeClip via DestinationRegistry +
+// DestinationPolicy.RootFolderID (single source of truth for root
+// folders per the architecture/current.yaml#DRIVE-AS-CENTRAL-CAPABILITY
+// wave). Group + Subject are the SOLE wire-shape inputs; the
+// caller-supplied defaultRootID remains as the empty-input
+// fallback only (no path to resolve → return the operator's
+// configured default verbatim, never as a bypass literal).
 func (fh *FacadeHandler) ResolveDriveFolderID(ctx context.Context, input, defaultRootID string) (string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
@@ -163,11 +172,19 @@ func (fh *FacadeHandler) ResolveDriveFolderID(ctx context.Context, input, defaul
 		return defaultRootID, nil
 	}
 
-	// Map to the Publisher's 2-level Group / Subject model.
-	// Single segment: use as Group with placeholder Subject; the
-	// RootFolderOverride anchors under defaultRootID so the result is
-	// functionally equivalent to the pre-FASE-A5 GetOrCreateFolder.
-	// Multi-segment: last segment = Subject, preceding = Group.
+	// Map to the Publisher's 2-level Group / Subject model per
+	// PR-P12-HANDLER-FACADE-SEMANTIC (July 2026). Single segment:
+	// use as Group with placeholder Subject. Multi-segment: last
+	// segment = Subject, preceding segments joined as Group.
+	// RootFolderOverride is INTENTIONALLY OMITTED — the canonical
+	// Publisher resolves the root folder for DestinationYouTubeClip
+	// via DestinationRegistry + DestinationPolicy.RootFolderID
+	// (single source of truth for root folders per the
+	// architecture/current.yaml#DRIVE-AS-CENTRAL-CAPABILITY wave).
+	// defaultRootID is preserved as the empty-input + nil-publisher
+	// fallback only (godlike/07 NO-FAKE-AVAILABILITY: no path to
+	// resolve → return the operator's configured default verbatim,
+	// never as a bypass literal).
 	var group, subject string
 	if len(clean) == 1 {
 		group = clean[0]
@@ -178,10 +195,9 @@ func (fh *FacadeHandler) ResolveDriveFolderID(ctx context.Context, input, defaul
 	}
 
 	dirID, err := fh.publisher.ResolveFolder(ctx, delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		Group:              group,
-		Subject:            subject,
-		RootFolderOverride: defaultRootID,
+		Destination: delivery.DestinationYouTubeClip,
+		Group:       group,
+		Subject:     subject,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve folder path %q: %w", input, err)
