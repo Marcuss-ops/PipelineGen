@@ -55,6 +55,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
@@ -196,6 +197,10 @@ type Dependencies struct {
 	// (P1.5, June 2026).
 	// MANDATORY — used by Ingest sub-handler (UploadVideoClip).
 	UploadUC *appupload.UseCase
+
+	// Publisher is the canonical delivery.Publisher (Drive write).
+	// MANDATORY — used by BulkUploadTransport for folder-name resolution.
+	Publisher delivery.Publisher
 
 	// ── Build-time fields (mirrors artlist/youtube) ───────────────
 
@@ -345,6 +350,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		BulkUploadWorker: deps.BulkUploadWorker,
 		ClipOpsService:   deps.ClipOpsService,
 		UploadUC:         deps.UploadUC,
+		Publisher:        deps.Publisher,
 	}, idem)
 
 	// Construct the route Module. The closure inside

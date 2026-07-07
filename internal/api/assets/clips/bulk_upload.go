@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -140,29 +141,25 @@ func (h *Handler) BulkUploadYouTubeClips(c *gin.Context) {
 	// Resolve target Drive folder once so the worker doesn't have to.
 	targetDriveFolderID := strings.TrimSpace(req.DriveFolderID)
 	if targetDriveFolderID == "" {
-		if h.driveAdmin == nil {
-			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured; drive_folder_id is required"))
+		if h.publisher == nil {
+			apiutil.InternalError(c, fmt.Errorf("publisher not configured; drive_folder_id is required"))
 			return
 		}
 		if req.DriveFolderName == "" {
 			apiutil.BadRequest(c, "either drive_folder_id or drive_folder_name is required")
 			return
 		}
-		root := h.cfg.Drive.ClipsFolder()
-		if root == "" {
-			root = h.cfg.Drive.RootFolder()
-		}
-		if root == "" {
-			apiutil.InternalError(c, fmt.Errorf("no Drive root folder configured (drive.clips_folder / drive.root_folder)"))
-			return
-		}
-		dirID, err := h.driveAdmin.GetOrCreateFolder(ctx, req.DriveFolderName, root)
+		dirID, err := h.publisher.ResolveFolder(ctx, delivery.PublishRequest{
+			Destination: delivery.DestinationYouTubeClip,
+			Group:       req.DriveFolderName,
+			Subject:     "_batch",
+		})
 		if err != nil {
 			apiutil.InternalError(c, fmt.Errorf("failed to resolve drive_folder_name: %w", err))
 			return
 		}
 		targetDriveFolderID = dirID
-		log.Info("resolved Drive folder by name",
+		log.Info("resolved Drive folder by name via Publisher",
 			zap.String("name", req.DriveFolderName),
 			zap.String("folder_id", targetDriveFolderID))
 	}
