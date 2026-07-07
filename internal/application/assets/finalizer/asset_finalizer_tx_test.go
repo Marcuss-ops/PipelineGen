@@ -37,6 +37,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 			folder_id TEXT NOT NULL DEFAULT '',
 			folder_path TEXT NOT NULL DEFAULT '',
 			lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
+			-- PR-009 (July 2026): E2E wiring finale — index_state column
+			-- added to mirror migration 094. The finalizer's spine write
+			-- sets it to 'INDEXING_PENDING' literally (matching the wire
+			-- shape from PR-008); the IndexingHandler downstream
+			-- overwrites to 'INDEXED' after Qdrant upsert.
+			index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
 			metadata_json TEXT NOT NULL DEFAULT '{}',
 			created_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL DEFAULT ''
@@ -425,8 +431,89 @@ func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
 	tx2.Commit()
 }
 
-// TestTxAdapter_SatisfiesInterface verifies the compile-time assertion
-// (this is tested at compile time, but we also test at runtime).
+// TestAssetTxFinalizer_IndexStatePendingAtInsert pins the godlike/07
+// no-fake-availability contract for the E2E wiring finale (PR-009):
+// the finalizer's spine write MUST set media_assets.index_state to
+// the literal 'INDEXING_PENDING' on fresh INSERT, matching the wire
+// shape from PR-008 (StockRunMetadata.IndexingStatus). The
+// IndexingHandler downstream overwrites to 'INDEXED' after a
+// successful Qdrant upsert.
+//
+// godlike/06 SSOT: the literal value is the canonical projection-time
+// hint; media_assets.index_state remains the single source of truth
+// for the lifecycle state in the DB. The ON CONFLICT DO UPDATE clause
+// intentionally does NOT include index_state — a re-finalization
+// must NOT clobber a state the clipindexer has already transitioned
+// (INDEXING / INDEXED / INDEX_FAILED).
+func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	fx := finalizer.NewAssetTxFinalizer(nil)
+	ctx := context.Background()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback()
+
+	artifact := publishedArtifact("asset-e2e-finale", "hash-e2e", "file-e2e")
+	if _, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx), artifact); err != nil {
+		t.Fatalf("FinalizeAsset: %v", err)
+	}
+
+	// godlike/06 SSOT: the literal value is the canonical
+	// projection-time hint. Must be present on the row after the
+	// spine write, BEFORE the IndexingHandler runs.
+	var indexState string
+	err = tx.QueryRowContext(ctx,
+		`SELECT index_state FROM media_assets WHERE id = ?`,
+		"asset-e2e-finale",
+	).Scan(&indexState)
+	if err != nil {
+		t.Fatalf("query index_state: %v", err)
+	}
+	if indexState != "INDEXING_PENDING" {
+		t.Errorf("media_assets.index_state = %q, want %q (E2E wiring finale: DB column must match the PR-008 wire shape)",
+			indexState, "INDEXING_PENDING")
+	}
+
+	// Re-finalize (ON CONFLICT path): the index_state must NOT be
+	// clobbered. This guards the godlike/06 SSOT invariant that a
+	// re-finalization preserves the clipindexer's state transitions.
+	// Simulate the clipindexer having advanced the state to INDEXING.
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE media_assets SET index_state = ? WHERE id = ?`,
+		"INDEXING", "asset-e2e-finale"); err != nil {
+		t.Fatalf("simulate clipindexer INDEXING: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	// Open a NEW tx + re-finalize (new hash → re-finalization).
+	tx2, _ := db.BeginTx(ctx, nil)
+	defer tx2.Rollback()
+	artifact2 := publishedArtifact("asset-e2e-finale", "hash-e2e-v2", "file-e2e-v2")
+	if _, _, err := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx2), artifact2); err != nil {
+		t.Fatalf("re-FinalizeAsset: %v", err)
+	}
+
+	// ON CONFLICT DO UPDATE must NOT touch index_state — the
+	// clipindexer's INDEXING transition must survive re-finalization.
+	var indexStateAfterReFinalize string
+	if err := tx2.QueryRowContext(ctx,
+		`SELECT index_state FROM media_assets WHERE id = ?`,
+		"asset-e2e-finale",
+	).Scan(&indexStateAfterReFinalize); err != nil {
+		t.Fatalf("query index_state after re-finalize: %v", err)
+	}
+	if indexStateAfterReFinalize != "INDEXING" {
+		t.Errorf("media_assets.index_state after re-finalize = %q, want %q (ON CONFLICT must NOT clobber clipindexer's state transition)",
+			indexStateAfterReFinalize, "INDEXING")
+	}
+}
 func TestTxAdapter_SatisfiesInterface(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
