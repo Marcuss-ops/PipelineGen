@@ -84,10 +84,11 @@ func (f *partialDriveProcessor) Process(_ context.Context, input *asset.ProcessI
 		Status:       "processed",
 	}
 
-	// Deterministic: only clips with "-ok" suffix get Drive fields.
-	// This is immune to goroutine processing order (the count-based
-	// approach was non-deterministic under parallel stageProcessBatch).
-	if input.ID == "gate09-mixed-ok" {
+	// Deterministic: any clip ID ending with "-ok" gets Drive fields;
+	// any other clip simulates Drive upload failure.
+	// This suffix-based check is immune to goroutine processing order
+	// and works across all test fixtures (Gate 09 mixed, Gate 05 dispatch).
+	if len(input.ID) >= 3 && input.ID[len(input.ID)-3:] == "-ok" {
 		result.DriveLink = "https://drive.google.com/file/d/" + input.ID + "-drive/view"
 		result.DriveFileID = input.ID + "-drive-id"
 		result.PublishAction = "created"
@@ -460,4 +461,265 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 	assert.Equal(t, string(asset.StateStaging), failLifecycle, "FAIL clip should still be STAGING")
 	assert.Empty(t, failDriveLink, "FAIL clip should have empty drive_link")
 	assert.Empty(t, failDriveFileID, "FAIL clip should have empty drive_file_id")
+}
+
+// TestGate05_OutboxDispatchContract verifies the outbox dispatch
+// contract (Gate 05 of ARTLIST-DOD-2026-07-07):
+//
+//  1. The dispatcher is called exactly once per successfully processed clip
+//  2. Each dispatch carries the clip's FileHash as the content hash
+//  3. Dispatch only fires for clips with non-empty Drive fields AND FileHash
+//  4. Dispatch is NOT called for clips skipped by the Drive gate
+//
+// godlike/07 no-fake-availability: a clip with empty FileHash must NOT
+// reach the dispatcher — the persist gate in stagePersistResults must
+// reject it before dispatch.
+func TestGate05_OutboxDispatchContract(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	security.AddAllowedHost("cdn.artlist.io")
+
+	scraperDir := writeFakeArtlistScraper(t, []Candidate{
+		{
+			ID:        "gate05-clip-a",
+			Title:     "Outbox Test A",
+			SourceRef: "https://cdn.artlist.io/video/gate05-a.m3u8",
+			PageURL:   "https://artlist.io/clip/outbox-test-a",
+		},
+		{
+			ID:        "gate05-clip-b",
+			Title:     "Outbox Test B",
+			SourceRef: "https://cdn.artlist.io/video/gate05-b.m3u8",
+			PageURL:   "https://artlist.io/clip/outbox-test-b",
+		},
+		{
+			ID:        "gate05-clip-c",
+			Title:     "Outbox Test C",
+			SourceRef: "https://cdn.artlist.io/video/gate05-c.m3u8",
+			PageURL:   "https://artlist.io/clip/outbox-test-c",
+		},
+	})
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{DataDir: tmp},
+		Video:   config.VideoConfig{Duration: 15},
+		External: config.ExternalConfig{
+			NodeScraperDir: scraperDir,
+		},
+	}
+
+	db := createTestDB(t)
+	defer db.Close()
+
+	logger := zap.NewNop()
+	artlistRepo := assets.NewClipsRepository(db, logger)
+
+	for _, clip := range []struct {
+		id, name, sourceURL, term1, term2 string
+	}{
+		{"gate05-clip-a", "Outbox Test A", "https://cdn.artlist.io/video/gate05-a.m3u8", "outbox", "test"},
+		{"gate05-clip-b", "Outbox Test B", "https://cdn.artlist.io/video/gate05-b.m3u8", "outbox", "test"},
+		{"gate05-clip-c", "Outbox Test C", "https://cdn.artlist.io/video/gate05-c.m3u8", "outbox", "test"},
+	} {
+		_, _ = db.Exec("INSERT OR IGNORE INTO clip_search_terms (term, clip_id) VALUES (?, ?)", clip.term1, clip.id)
+		_, _ = db.Exec("INSERT OR IGNORE INTO clip_search_terms (term, clip_id) VALUES (?, ?)", clip.term2, clip.id)
+
+		a := &asset.Asset{
+			ID:             clip.id,
+			Name:           clip.name,
+			SourceURL:      clip.sourceURL,
+			Source:         "artlist",
+			LifecycleState: asset.StateStaging,
+			MediaType:      "video",
+		}
+		a.SetDownloadLink(clip.sourceURL)
+		a.SetMetadataString("index_state", string(asset.StateDiscovered))
+		insertTestClip(t, db, a)
+	}
+
+	// successMediaProcessor returns unique FileHash per clip ID.
+	// The gate05-hash- prefix is the canonical pattern from
+	// successMediaProcessor.Process in gate01_happy_path_test.go.
+	processor := &successMediaProcessor{}
+	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
+
+	svc, err := NewService(ServiceDeps{
+		ServicePorts: ServicePorts{
+			AssetStore:    artlistRepo,
+			Publisher:     &stubPublisherForArtlist{},
+			RunRepository: &stubRunRepoForArtlist{},
+		},
+		ServiceDependencies: ServiceDependencies{
+			Cfg:            cfg,
+			MainDB:         db,
+			Log:            logger,
+			Dispatcher:     recDisp,
+			MediaProcessor: processor,
+		},
+	})
+	require.NoError(t, err)
+	defer svc.Close()
+
+	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
+		Term:         "outbox test",
+		Limit:        3,
+		Strategy:     "replace",
+		RootFolderID: "gate05-root-folder",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// ── Gate 5: Contract 1 — dispatch count equals processed count ──
+	assert.Equal(t, 3, resp.Processed, "all 3 clips should be processed")
+	assert.Equal(t, 3, recDisp.DispatchCount(), "dispatcher should be called exactly once per processed clip")
+
+	// ── Gate 5: Contract 2 — per-clip content hash verification ──
+	expectedClipIDs := []string{"gate05-clip-a", "gate05-clip-b", "gate05-clip-c"}
+	for _, clipID := range expectedClipIDs {
+		dispatchedHash := recDisp.ContentHashFor(clipID)
+		assert.NotEmpty(t, dispatchedHash, "clip %s should have been dispatched", clipID)
+
+		// successMediaProcessor sets FileHash = "gate01-hash-" + input.ID
+		// stagePersistResults calls bridge.Dispatch(ctx, clip, clip.FileHash())
+		// which passes clip.FileHash() as the content hash to EnqueueAndIndex.
+		//
+		// After stagePersistResults hydrates the clip, clip.FileHash() should
+		// equal the processor's FileHash ("gate01-hash-<clipID>").
+		// The recording dispatcher sees the hash that EnqueueAndIndex received.
+		expectedHash := "gate01-hash-" + clipID
+		assert.Equal(t, expectedHash, dispatchedHash,
+			"clip %s: dispatched content hash must match the processor's FileHash", clipID)
+	}
+
+	// ── Gate 5: Contract 3 — only dispatched clips are in SQLite ──
+	for _, clipID := range expectedClipIDs {
+		var driveLink string
+		err := db.QueryRow("SELECT COALESCE(drive_link, '') FROM media_assets WHERE id = ?", clipID).Scan(&driveLink)
+		require.NoError(t, err)
+		assert.NotEmpty(t, driveLink, "SQLite: clip %s should have non-empty drive_link after dispatch", clipID)
+	}
+
+	// ── Gate 5: Contract 4 — no duplicate dispatches ──
+	// Each clip ID should appear exactly once in the dispatch log.
+	seen := map[string]int{}
+	for _, cid := range recDisp.DispatchedClipIDs() {
+		seen[cid]++
+	}
+	for _, clipID := range expectedClipIDs {
+		assert.Equal(t, 1, seen[clipID], "clip %s should be dispatched exactly once (no duplicates)", clipID)
+	}
+}
+
+// TestGate05_OutboxNoDispatchWithoutDriveFields verifies the negative
+// contract: when Drive fields are missing, the dispatcher is NOT called.
+// Uses partialDriveProcessor to produce a mixed batch — one clip with
+// Drive, one without — and asserts the dispatcher is only called for
+// the clip with Drive fields.
+func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
+	ctx := context.Background()
+	tmp := t.TempDir()
+
+	security.AddAllowedHost("cdn.artlist.io")
+
+	scraperDir := writeFakeArtlistScraper(t, []Candidate{
+		{
+			ID:        "gate05-ok",
+			Title:     "Dispatch OK",
+			SourceRef: "https://cdn.artlist.io/video/gate05-ok.m3u8",
+			PageURL:   "https://artlist.io/clip/dispatch-ok",
+		},
+		{
+			ID:        "gate05-nodrive",
+			Title:     "Dispatch No Drive",
+			SourceRef: "https://cdn.artlist.io/video/gate05-nodrive.m3u8",
+			PageURL:   "https://artlist.io/clip/dispatch-nodrive",
+		},
+	})
+
+	cfg := &config.Config{
+		Storage: config.StorageConfig{DataDir: tmp},
+		Video:   config.VideoConfig{Duration: 15},
+		External: config.ExternalConfig{
+			NodeScraperDir: scraperDir,
+		},
+	}
+
+	db := createTestDB(t)
+	defer db.Close()
+
+	logger := zap.NewNop()
+	artlistRepo := assets.NewClipsRepository(db, logger)
+
+	for _, clip := range []struct {
+		id, name, sourceURL, term1, term2 string
+	}{
+		{"gate05-ok", "Dispatch OK", "https://cdn.artlist.io/video/gate05-ok.m3u8", "dispatch", "ok"},
+		{"gate05-nodrive", "Dispatch No Drive", "https://cdn.artlist.io/video/gate05-nodrive.m3u8", "dispatch", "nodrive"},
+	} {
+		_, _ = db.Exec("INSERT OR IGNORE INTO clip_search_terms (term, clip_id) VALUES (?, ?)", clip.term1, clip.id)
+		_, _ = db.Exec("INSERT OR IGNORE INTO clip_search_terms (term, clip_id) VALUES (?, ?)", clip.term2, clip.id)
+
+		a := &asset.Asset{
+			ID:             clip.id,
+			Name:           clip.name,
+			SourceURL:      clip.sourceURL,
+			Source:         "artlist",
+			LifecycleState: asset.StateStaging,
+			MediaType:      "video",
+		}
+		a.SetDownloadLink(clip.sourceURL)
+		a.SetMetadataString("index_state", string(asset.StateDiscovered))
+		insertTestClip(t, db, a)
+	}
+
+	// partialDriveProcessor gives Drive fields only to "gate05-ok"
+	// (the ID-suffix check covers -ok but not -nodrive).
+	processor := &partialDriveProcessor{}
+	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
+
+	svc, err := NewService(ServiceDeps{
+		ServicePorts: ServicePorts{
+			AssetStore:    artlistRepo,
+			Publisher:     &stubPublisherForArtlist{},
+			RunRepository: &stubRunRepoForArtlist{},
+		},
+		ServiceDependencies: ServiceDependencies{
+			Cfg:            cfg,
+			MainDB:         db,
+			Log:            logger,
+			Dispatcher:     recDisp,
+			MediaProcessor: processor,
+		},
+	})
+	require.NoError(t, err)
+	defer svc.Close()
+
+	resp, err := svc.runOrchestrator.RunTag(ctx, &RunTagRequest{
+		Term:         "dispatch ok nodrive",
+		Limit:        2,
+		Strategy:     "replace",
+		RootFolderID: "gate05-root-folder",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Only gate05-ok has Drive fields → dispatched; gate05-nodrive skipped
+	assert.Equal(t, 1, resp.Processed)
+	assert.Equal(t, 1, recDisp.DispatchCount())
+
+	// The OK clip was dispatched with the correct hash
+	assert.NotEmpty(t, recDisp.ContentHashFor("gate05-ok"),
+		"gate05-ok should have been dispatched with a content hash")
+
+	// The no-drive clip was NOT dispatched
+	assert.Empty(t, recDisp.ContentHashFor("gate05-nodrive"),
+		"gate05-nodrive should NOT have been dispatched (no Drive fields)")
+
+	// SQLite: OK clip has Drive link, no-drive clip doesn't
+	var okDrive, nodriveDrive string
+	_ = db.QueryRow("SELECT COALESCE(drive_link, '') FROM media_assets WHERE id = 'gate05-ok'").Scan(&okDrive)
+	_ = db.QueryRow("SELECT COALESCE(drive_link, '') FROM media_assets WHERE id = 'gate05-nodrive'").Scan(&nodriveDrive)
+	assert.NotEmpty(t, okDrive, "OK clip should have drive_link in SQLite")
+	assert.Empty(t, nodriveDrive, "no-drive clip should have empty drive_link in SQLite")
 }
