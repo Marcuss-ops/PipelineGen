@@ -25,14 +25,24 @@ import (
 
 // PublishClipCommand carries every input needed to publish a clip to Drive.
 // It mirrors the fields that Register() passes to delivery.Publisher.Publish.
+//
+// PR-YT-CLIP-SEMANTIC-LOCATION-FIX (July 2026): Category, Provider, Tags,
+// and Language added so the semantic-location metadata from the API payload
+// reaches the Drive Publisher. Previously only Group/Subject/RootFolder were
+// threaded, causing location.category="Boxe" to be silently dropped before
+// the Publisher could build the correct Drive folder hierarchy.
 type PublishClipCommand struct {
-	AssetID     string // clipID derived from videoID + file hash
-	Group       string // logical group (e.g. actor / project)
-	Subject     string // folder segment (e.g. videoID-titleSlug)
-	RootFolder  string // backward-compat override for cmd.FolderID
-	LocalPath   string // path to the downloaded .mp4 on disk
-	Filename    string // Drive filename (e.g. "dQw4w9WgXcQ - title.mp4")
-	Description string // human-readable Drive file description
+	AssetID     string   // clipID derived from videoID + file hash
+	Group       string   // logical group (e.g. actor / project)
+	Subject     string   // folder segment (e.g. videoID-titleSlug)
+	RootFolder  string   // backward-compat override for cmd.FolderID
+	LocalPath   string   // path to the downloaded .mp4 on disk
+	Filename    string   // Drive filename (e.g. "dQw4w9WgXcQ - title.mp4")
+	Description string   // human-readable Drive file description
+	Category    string   // semantic category (e.g. "Boxe", "Personaggi")
+	Provider    string   // upstream source (e.g. "youtube", "pexels")
+	Tags        []string // semantic keywords for Qdrant payload
+	Language    string   // BCP-47 language tag (optional)
 }
 
 // PublishClipResult is the canonical output of the Drive-publish step.
@@ -60,6 +70,8 @@ type DrivePublisher interface {
 // PublishRequest is the use-case-owned wire shape for a Drive publish call.
 // It mirrors delivery.PublishRequest but is owned by this package so the
 // use case does not import delivery.
+//
+// PR-YT-CLIP-SEMANTIC-LOCATION-FIX: Category, Provider, Tags, Language added.
 type PublishRequest struct {
 	Destination        string // canonical destination key (e.g. "youtube-clip")
 	LocalPath          string
@@ -68,6 +80,10 @@ type PublishRequest struct {
 	AssetID            string
 	Group              string
 	Subject            string
+	Category           string   // semantic category (e.g. "Boxe")
+	Provider           string   // upstream source (e.g. "youtube")
+	Tags               []string // semantic keywords for Qdrant
+	Language           string   // BCP-47 language tag
 	RootFolderOverride string
 }
 
@@ -95,6 +111,9 @@ func PublishClipToDrive(ctx context.Context, pub DrivePublisher, cmd PublishClip
 		return &PublishClipResult{Published: false}, nil
 	}
 
+	// PR-YT-CLIP-SEMANTIC-LOCATION-FIX: thread Category/Provider/Tags/Language
+	// so the Drive Publisher's YouTubeClipPath can build the correct folder
+	// hierarchy from semantic metadata rather than relying solely on Group.
 	result, err := pub.Publish(ctx, PublishRequest{
 		Destination:        "youtube-clip",
 		LocalPath:          cmd.LocalPath,
@@ -103,6 +122,10 @@ func PublishClipToDrive(ctx context.Context, pub DrivePublisher, cmd PublishClip
 		AssetID:            cmd.AssetID,
 		Group:              cmd.Group,
 		Subject:            cmd.Subject,
+		Category:           cmd.Category,
+		Provider:           cmd.Provider,
+		Tags:               cmd.Tags,
+		Language:           cmd.Language,
 		RootFolderOverride: cmd.RootFolder,
 	})
 	if err != nil {
