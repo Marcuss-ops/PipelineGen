@@ -102,6 +102,32 @@ var ErrEnrichmentPayloadInvalid = errors.New("enrichment: job payload is malform
 // retry would mask the underlying infrastructure problem.
 var ErrEnrichmentPersistFailed = errors.New("enrichment: failed to persist enriched fields to media_assets")
 
+// ErrEnrichmentEmitFailed is returned when the asset.published v1
+// outbox event emit failed. RETRYABLE — the worker pool's
+// exponential backoff retries this sentinel up to DefaultMaxRetries
+// before flipping terminal. A retry re-emits the same event_key,
+// which collapses on the outbox_events UNIQUE constraint via
+// ON CONFLICT (event_key) DO NOTHING — so a successful retry on
+// the second attempt is a no-op at the SQLite level.
+//
+// Distinct from ErrEnrichmentPersistFailed (terminal UPDATE
+// failure): the UPDATE on media_assets.metadata_json may have
+// SUCCEEDED but the subsequent outbox emit may have failed (e.g.
+// outbox_events table temporarily locked, SQLite I/O error). The
+// UPDATE is idempotent on retry (same EnrichedFields input produces
+// byte-identical metadata_json) so re-running the handler is safe;
+// the outbox emit is also idempotent on retry (same event_key
+// collapses via UNIQUE constraint). Both surfaces are independently
+// retryable.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: this sentinel is REACHABLE on
+// transient infrastructure failures. The retry path must NOT
+// silently no-op on emit failure — a worker that catches this
+// sentinel and returns nil would mask the outbox gap and the asset
+// would never be re-upserted to Qdrant via the AssetPublishedHandler
+// path.
+var ErrEnrichmentEmitFailed = errors.New("enrichment: failed to emit asset.published v1 outbox event (retryable)")
+
 // WrapHandlerNotConfigured wraps the canonical sentinel with a
 // specific missing-dependency name. Mirrors the godlike/07
 // dual-%w pattern (Go 1.20+) so errors.Is recovers the sentinel
@@ -151,4 +177,13 @@ func WrapPayloadInvalid(parseErr error) error {
 // errors.As for diagnostics.
 func WrapPersistFailed(cause error) error {
 	return fmt.Errorf("%w: %v", ErrEnrichmentPersistFailed, cause)
+}
+
+// WrapEmitFailed wraps the canonical retryable sentinel with the
+// outbox-emit error. Preserves the underlying chain via errors.As
+// for diagnostics. Callers (the worker's exponential backoff) probe
+// errors.Is(err, ErrEnrichmentEmitFailed) to decide the retry
+// strategy.
+func WrapEmitFailed(cause error) error {
+	return fmt.Errorf("%w: %v", ErrEnrichmentEmitFailed, cause)
 }

@@ -110,6 +110,23 @@ type StockBundleDeps struct {
 	// dequeue media.stock_rlm_enrich jobs.
 	EnrichmentLLMClient stockenrich.EnrichmentLLMClient
 	EnrichmentEnabled   func() bool
+
+	// EnrichmentEmitter is the canonical Pattern-0 typed port for
+	// the asset.published v1 outbox event (PR-011C, July 2026).
+	// OPTIONAL (nil = disabled-mode wiring; the handler's
+	// godlike/07 nil-tolerance logs a Warn and skips the emit
+	// step). When non-nil, the handler builds the v1 envelope
+	// (via stockenrich.EnrichmentIdempotencyKey) and hands it to
+	// this port for emission to outbox_events.
+	//
+	// PR-011C ships the producer-side surface (handler + port +
+	// stub + tests). The production concrete (outbox-dispatcher-backed
+	// adapter that opens a tx + calls outboxevents.Repository.Enqueue)
+	// is a follow-up PR-011C-FOLLOW-UP-1 forward-pointer. Until
+	// that lands, production wiring passes nil here (handler
+	// skips emit with a Warn log; the LLM + UPDATE sequence still
+	// reaches the mark-SUCCEEDED seam end-to-end).
+	EnrichmentEmitter stockenrich.AssetPublishedEmitter
 }
 
 // validateStockSymmetricGate enforces the godlike/07 production pairing
@@ -234,7 +251,7 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 		if repoErr != nil {
 			return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewSQLiteAssetRepository: %w", repoErr)
 		}
-		enrichHandler, hErr := stockenrich.NewEnrichmentHandler(deps.EnrichmentLLMClient, assetRepo, deps.Log)
+		enrichHandler, hErr := stockenrich.NewEnrichmentHandler(deps.EnrichmentLLMClient, assetRepo, nil, deps.Log)
 		if hErr != nil {
 			return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewEnrichmentHandler: %w", hErr)
 		}

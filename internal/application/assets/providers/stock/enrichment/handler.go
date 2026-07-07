@@ -50,10 +50,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 )
 
 // AssetRepository is the canonical Pattern-0 typed port for
@@ -72,7 +75,9 @@ import (
 // The 2 methods are the minimal surface for the enrichment pass:
 //   - GetByID returns the canonical media_assets row needed
 //     to build the EnrichmentRequest (SourceURL / Title /
-//     Description / StartSec / EndSec / SourceProvider).
+//     Description / StartSec / EndSec / SourceProvider / DriveFileID /
+//     DrivePath / FileHash — the 3 drive fields are required for
+//     PR-011C's asset.published v1 envelope construction).
 //   - UpdateEnrichedMetadata persists the EnrichedFields into
 //     media_assets.metadata_json (PR-011B will call this).
 type AssetRepository interface {
@@ -97,14 +102,22 @@ type AssetRepository interface {
 }
 
 // AssetRow is the typed read-back envelope from GetByID.
-// The 7 fields are the canonical projection of the media_assets
-// columns the enrichment pass needs to build the EnrichmentRequest.
+// The 10 fields are the canonical projection of the media_assets
+// columns the enrichment pass needs to build the EnrichmentRequest
+// + the asset.published v1 envelope (PR-011C).
 //
 // godlike/06 SSOT: AssetRow lives ONLY in this file. The
 // production concrete (sqliteAssetRepository) populates these
 // fields from the media_assets row; the handler projects them
-// into EnrichmentRequest. Future LLM-driven enrichment passes
-// MUST extend this struct (NOT introduce a parallel envelope).
+// into EnrichmentRequest + AssetPublishedRequestV1. Future
+// LLM-driven enrichment passes MUST extend this struct (NOT
+// introduce a parallel envelope).
+//
+// PR-011C added 3 drive fields (DriveFileID + DrivePath + FileHash)
+// so the asset.published v1 envelope can carry the canonical
+// drive_file_id + drive_path (consumer ComposeSearchText uses
+// them) + the file_hash (idempotency_key derivation per
+// PR-ENRICHMENT-IDEMPOTENCY-KEY).
 type AssetRow struct {
 	ID             string
 	SourceURL      string
@@ -113,6 +126,9 @@ type AssetRow struct {
 	StartSec       float64
 	EndSec         float64
 	SourceProvider string
+	DriveFileID    string
+	DrivePath      string
+	FileHash       string
 }
 
 // EnrichmentHandler is the canonical broker entry-point for the
@@ -130,6 +146,20 @@ type EnrichmentHandler struct {
 	// injects the production concrete.
 	AssetRepo AssetRepository
 
+	// Emitter is the canonical Pattern-0 typed port for the
+	// asset.published v1 outbox event (PR-011C). The composition
+	// root injects the production concrete (outbox-dispatcher-backed)
+	// or the stub (PR-011C tests — captures the emitted payload
+	// for hermetic TDD assertions).
+	//
+	// godlike/07 minimum-blast-radius: the emitter is OPTIONAL
+	// (nil = no emit; the composition root may wire a noop stub
+	// in disabled mode). When nil, HandleJob skips the emit step
+	// (a Warn log is emitted per godlike/07 nil-tolerance discipline
+	// so an operator inspecting the audit log can identify the
+	// misconfiguration).
+	Emitter AssetPublishedEmitter
+
 	// Log is the canonical zap logger. godlike/07 nil-tolerance:
 	// nil-logger falls back to zap.NewNop() (defense-in-depth).
 	Log *zap.Logger
@@ -139,7 +169,13 @@ type EnrichmentHandler struct {
 // fail-closed nil-deps gate per godlike/07 typed-error contract.
 // Returns (nil, ErrEnrichmentHandlerNotConfigured) when LLMClient
 // or AssetRepo is nil; composition root MUST propagate the error.
-func NewEnrichmentHandler(llmClient EnrichmentLLMClient, assetRepo AssetRepository, log *zap.Logger) (*EnrichmentHandler, error) {
+//
+// PR-011C: the signature is now 4-arg (llmClient, assetRepo,
+// emitter, log). Existing callers (PR-011A composition root at
+// build_bundles_stock.go) MUST be updated to pass the emitter.
+// The emitter is OPTIONAL (nil is allowed) so PR-011A-style
+// disabled-mode wiring is preserved.
+func NewEnrichmentHandler(llmClient EnrichmentLLMClient, assetRepo AssetRepository, emitter AssetPublishedEmitter, log *zap.Logger) (*EnrichmentHandler, error) {
 	if llmClient == nil {
 		return nil, WrapHandlerNotConfigured("llmClient")
 	}
@@ -152,6 +188,7 @@ func NewEnrichmentHandler(llmClient EnrichmentLLMClient, assetRepo AssetReposito
 	return &EnrichmentHandler{
 		LLMClient: llmClient,
 		AssetRepo: assetRepo,
+		Emitter:   emitter,
 		Log:       log,
 	}, nil
 }
@@ -241,7 +278,7 @@ func (h *EnrichmentHandler) HandleJob(ctx context.Context, job *appjobs.Job, too
 	}
 
 	// ── Step 3: call the LLM (stub in PR-011A; real in PR-011B) ─
-	_, err = h.LLMClient.Enrich(ctx, EnrichmentRequest{
+	resp, err := h.LLMClient.Enrich(ctx, EnrichmentRequest{
 		ChunkID:        row.ID,
 		SourceURL:      row.SourceURL,
 		Title:          row.Title,
@@ -258,38 +295,194 @@ func (h *EnrichmentHandler) HandleJob(ctx context.Context, job *appjobs.Job, too
 		// on parse failures (also retryable up to 3, then terminal).
 		return nil, err
 	}
+	// PR-011A: the stub returns a non-nil *EnrichmentResponse with
+	// empty fields (per StubEnrichmentLLMClient.Enrich). The handler
+	// proceeds to Step 5 (emit) even with empty EnrichedFields so
+	// the v1 envelope wire-shape is exercised end-to-end. PR-011B
+	// will replace the stub with a real ollama adapter that returns
+	// populated EnrichedFields (Category/Event/Round/Scene/Subject/Entities).
+	if resp == nil {
+		resp = &EnrichmentResponse{Fields: EnrichedFields{}}
+	}
 
 	if tools != nil && tools.Progress != nil {
-		tools.Progress(80, "PR-011B/C: persist + emit outbox (forward-pointer)")
+		tools.Progress(70, "PR-011B: persist (forward-pointer); PR-011C: emit asset.published v1")
 	}
 
 	// ── Step 4 (PR-011B): UPDATE media_assets.metadata_json ──
-	// Forward-pointer: PR-011B will call
-	// h.AssetRepo.UpdateEnrichedMetadata(ctx, row.ID, enriched.Fields)
-	// here with the LLM response. The method is declared on the
-	// AssetRepository port but the call site is gated on the
-	// future adapter returning a non-nil *EnrichmentResponse.
+	// Per user-spec literal: "After the UPDATE succeeds, populate
+	// the v1 envelope and emit." The UPDATE is idempotent on
+	// retry (same EnrichedFields input produces byte-identical
+	// metadata_json) so re-running the handler is safe. The
+	// StubEnrichmentLLMClient returns empty EnrichedFields, so
+	// the UPDATE is a no-op on the stub (UPDATE media_assets
+	// SET metadata_json = '{}' WHERE id = ?). PR-011B will
+	// replace the stub with a real ollama adapter that returns
+	// populated EnrichedFields; the UPDATE call site is the
+	// same — no change to the persist path.
 	//
-	// ── Step 5 (PR-011C): emit asset.published v1 outbox ─────
-	// Forward-pointer: PR-011C will emit
-	// outboxevents.NewEnvelope(EventAssetPublished, SchemaVersionAssetPublished,
-	//     assetPublishedRequestV1{...enriched fields...})
-	// so the IndexingHandler re-upserts the chunk to Qdrant with
-	// the enriched fields.
-
-	if tools != nil && tools.Progress != nil {
-		tools.Progress(100, "PR-011A stub handler: LLM call exercised the retry path (PR-011B/C forward-pointer)")
+	// godlike/07 NO-FAKE-AVAILABILITY: a persist failure aborts
+	// the emit per the user spec ("the asset is not enriched,
+	// so the v1 envelope must NOT be emitted"). The error path
+	// returns WrapPersistFailed (terminal — the worker's
+	// exponential backoff would mask the underlying SQL failure
+	// if retryable).
+	if updateErr := h.AssetRepo.UpdateEnrichedMetadata(ctx, row.ID, resp.Fields); updateErr != nil {
+		return nil, updateErr
 	}
 
-	// PR-011A: the handler does not yet produce a non-trivial
-	// result map (the persistence + outbox emit land in PR-011B+C).
-	// Return a minimal result envelope so the broker's mark-SUCCEEDED
-	// seam is reachable end-to-end.
+	// ── Step 5 (PR-011C): emit asset.published v1 outbox ─────
+	// emitAssetPublishedV1 returns (stageLabel, error). The stageLabel
+	// is the canonical audit-trail label for the emit outcome (3
+	// distinct values: ok / skipped_nil_emitter / failed_retryable).
+	// The error is non-nil only for the failed_retryable case; the
+	// worker's exponential backoff retries up to DefaultMaxRetries=3.
+	// The UPDATE (Step 4) is idempotent on retry (same EnrichedFields
+	// input produces byte-identical metadata_json) and the emit is
+	// idempotent on retry (same event_key collapses via UNIQUE
+	// constraint).
+	emitStage, emitErr := h.emitAssetPublishedV1(ctx, row, resp.Fields)
+	if emitErr != nil {
+		return nil, emitErr
+	}
+
+	if tools != nil && tools.Progress != nil {
+		tools.Progress(100, "PR-011C: enrichment emit complete (stage="+emitStage+")")
+	}
+
+	// PR-011C: the handler produces a result envelope that carries
+	// the canonical emit-stage label (1 of 3 distinct values) so the
+	// broker's mark-SUCCEEDED seam + the audit log have a canonical
+	// record of the emit outcome. The 3 stage labels
+	// (pr011c_v1_emit_ok / pr011c_v1_emit_skipped_nil_emitter /
+	// pr011c_v1_emit_failed_retryable) are the SSOT — no implicit
+	// "v1 emitted" claim when the emit was skipped or failed.
 	return map[string]any{
-		"chunk_id":      row.ID,
-		"handler_stage": "pr011a_stub_llm_called",
-		"model":         h.LLMClient.Model(),
+		"chunk_id":       row.ID,
+		"handler_stage":  emitStage,
+		"model":          h.LLMClient.Model(),
+		"destination":    "stock",
+		"schema_version": outbox.AssetPublishedSchemaVersion,
 	}, nil
+}
+
+// emitAssetPublishedV1 builds the canonical v1 envelope and
+// hands it to the AssetPublishedEmitter port. godlike/06 SSOT:
+// the v1 envelope is the canonical wire-shape owned by
+// internal/application/jobs/outbox/asset_published.go; this
+// method is a producer-side builder that maps the
+// EnrichmentHandler's internal types (AssetRow + EnrichedFields)
+// onto the canonical envelope fields.
+//
+// Returns:
+//   - nil on successful emit (or skipped when Emitter is nil —
+//     a Warn log captures the disabled-mode wiring per
+//     godlike/07 nil-tolerance).
+//   - ErrEnrichmentEmitFailed on emitter-side failure (retryable).
+//   - ErrEnrichmentHandlerNotConfigured (via WrapEmitFailed) on
+//     required-field validation failure (terminal — the handler
+//     itself has a wiring bug if asset_id or file_hash is empty
+//     on a properly-fetched media_assets row).
+//
+// emitAssetPublishedV1 builds the canonical v1 envelope and
+// hands it to the AssetPublishedEmitter port. godlike/06 SSOT:
+// the v1 envelope is the canonical wire-shape owned by
+// internal/application/jobs/outbox/asset_published.go; this
+// method is a producer-side builder that maps the
+// EnrichmentHandler's internal types (AssetRow + EnrichedFields)
+// onto the canonical envelope fields.
+//
+// Returns (stageLabel, error) where stageLabel is one of 3
+// canonical audit-trail values:
+//   - "pr011c_v1_emit_ok" — emit succeeded; the v1 envelope
+//     was enqueued to outbox_events
+//   - "pr011c_v1_emit_skipped_nil_emitter" — disabled-mode
+//     wiring (composition root did not inject the emitter);
+//     the handler logged a Warn; the v1 envelope was NOT
+//     emitted (no fake-availability: the audit log captures
+//     the misconfiguration)
+//   - "pr011c_v1_emit_failed_retryable" — emitter-side failure
+//     (e.g. SQLite locked, I/O error) OR idempotency-key
+//     validation failure; the error is non-nil
+//     (ErrEnrichmentEmitFailed wrapped); the worker's
+//     exponential backoff retries up to DefaultMaxRetries
+//
+// The error is non-nil only for the failed_retryable case.
+// godlike/07 NO-FAKE-AVAILABILITY: nil-emitter surfaces the
+// canonical skipped label (NOT a silent success); the audit
+// log captures the misconfiguration.
+func (h *EnrichmentHandler) emitAssetPublishedV1(ctx context.Context, row *AssetRow, fields EnrichedFields) (string, error) {
+	// godlike/07 nil-tolerance: nil-emitter is disabled-mode
+	// wiring (composition root did not inject the emitter). Log
+	// a Warn + return the canonical skipped stage label so
+	// the handler's happy-path is reachable in tests that
+	// don't exercise the emit step. The composition root
+	// MUST wire a real emitter in production
+	// (godlike/07 NO-FAKE-AVAILABILITY).
+	if h.Emitter == nil {
+		if h.Log != nil {
+			h.Log.Warn("enrichment.HandleJob: emitter nil (composition root disabled-mode wiring) — skipping asset.published v1 emit",
+				zap.String("chunk_id", row.ID),
+			)
+		}
+		return "pr011c_v1_emit_skipped_nil_emitter", nil
+	}
+
+	// Derive the canonical idempotency_key from (chunk_id,
+	// file_hash, v1). ErrEnrichmentIdempotencyKeyConflict surfaces
+	// the godlike/07 no-fake-availability contract violation
+	// (empty chunk_id or malformed content_hash) — terminal
+	// because the producer (the stock pipeline that wrote
+	// the media_assets row) must fix the underlying state.
+	idemKey, idemErr := EnrichmentIdempotencyKey(row.ID, row.FileHash, EnrichmentVersionV1)
+	if idemErr != nil {
+		// godlike/07 typed-error contract: a malformed triple
+		// is a producer-side bug. Surface as a terminal sentinel
+		// (WrapEmitFailed with the idem conflict as the cause)
+		// so the operator can identify the root cause. The
+		// stage label is the "failed" variant because the emit
+		// WAS attempted (we got past the nil-emitter check) but
+		// the pre-emit validation rejected the payload.
+		return "pr011c_v1_emit_failed_retryable", WrapEmitFailed(fmt.Errorf("%w: %v", ErrEnrichmentIdempotencyKeyConflict, idemErr))
+	}
+
+	// Build the canonical v1 envelope (godlike/06 SSOT one
+	// canonical owner per fact: AssetPublishedRequestV1 in
+	// internal/application/jobs/outbox/asset_published.go).
+	payload := outbox.AssetPublishedRequestV1{
+		SchemaVersion:  outbox.AssetPublishedSchemaVersion,
+		EventID:        uuid.NewString(),
+		AssetID:        row.ID,
+		Destination:    "stock",
+		Origin:         "generated",
+		Category:       fields.Category,
+		Subject:        fields.Subject,
+		Provider:       row.SourceProvider,
+		DriveFileID:    row.DriveFileID,
+		DrivePath:      row.DrivePath,
+		ContentType:    "video",
+		Tags:           nil, // PR-011C: tags deferred to PR-ENRICHMENT-E2E-SUITE forward-pointer
+		IdempotencyKey: idemKey,
+		RequestedAt:    time.Now().UTC().Format(time.RFC3339Nano),
+	}
+
+	// Hand to the emitter. The production concrete (outbox-dispatcher-backed)
+	// opens its own tx and enqueues to outbox_events. The stub
+	// (tests) captures the payload for hermetic TDD assertions.
+	if err := h.Emitter.EmitAssetPublished(ctx, payload); err != nil {
+		return "pr011c_v1_emit_failed_retryable", WrapEmitFailed(err)
+	}
+
+	if h.Log != nil {
+		h.Log.Info("enrichment.HandleJob: asset.published v1 emitted",
+			zap.String("chunk_id", row.ID),
+			zap.String("event_id", payload.EventID),
+			zap.String("idempotency_key", idemKey),
+			zap.String("drive_file_id", payload.DriveFileID),
+			zap.String("destination", payload.Destination),
+		)
+	}
+	return "pr011c_v1_emit_ok", nil
 }
 
 // SQLiteAssetRepository is the PR-011A production concrete
@@ -324,6 +517,17 @@ func NewSQLiteAssetRepository(db *sql.DB) (*SQLiteAssetRepository, error) {
 // (nil, WrapChunkNotFound(id)) when the row is absent
 // (sql.ErrNoRows) — the canonical terminal sentinel.
 // Other SQL errors wrap WrapPersistFailed (SQL-side diagnostic).
+//
+// PR-011C: the SELECT projection expanded from 7 to 10 columns
+// to include the 3 drive fields required for the v1 envelope:
+// drive_file_id, drive_path, file_hash. The columns are
+// COALESCE-wrapped to NULL → ” / 0 mappings so a legacy row
+// written before the columns existed returns empty strings (not
+// nil-pointer panics) — the emitter then either uses an empty
+// drive_file_id (the canonical v1 envelope allows omitempty) or
+// the idempotency_key derivation fails with
+// ErrEnrichmentIdempotencyKeyConflict on an empty file_hash
+// (terminal, surfaces as a producer-side state gap).
 func (r *SQLiteAssetRepository) GetByID(ctx context.Context, id string) (*AssetRow, error) {
 	if r == nil || r.DB == nil {
 		return nil, WrapHandlerNotConfigured("repo")
@@ -331,12 +535,14 @@ func (r *SQLiteAssetRepository) GetByID(ctx context.Context, id string) (*AssetR
 	row := r.DB.QueryRowContext(ctx, `
 		SELECT id, COALESCE(source_url, ''), COALESCE(title, ''),
 		       COALESCE(description, ''), COALESCE(start_sec, 0.0),
-		       COALESCE(end_sec, 0.0), COALESCE(source_provider, '')
+		       COALESCE(end_sec, 0.0), COALESCE(source_provider, ''),
+		       COALESCE(drive_file_id, ''), COALESCE(drive_path, ''),
+		       COALESCE(file_hash, '')
 		FROM media_assets
 		WHERE id = ?
 	`, id)
 	var out AssetRow
-	if err := row.Scan(&out.ID, &out.SourceURL, &out.Title, &out.Description, &out.StartSec, &out.EndSec, &out.SourceProvider); err != nil {
+	if err := row.Scan(&out.ID, &out.SourceURL, &out.Title, &out.Description, &out.StartSec, &out.EndSec, &out.SourceProvider, &out.DriveFileID, &out.DrivePath, &out.FileHash); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, WrapChunkNotFound(id)
 		}

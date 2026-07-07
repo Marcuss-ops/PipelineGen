@@ -255,6 +255,39 @@ func TestRunStockPipeline_SyncMode_EnablesPersist(t *testing.T) {
 	}
 }
 
+func TestRunStockPipeline_PreservesFolderPayload(t *testing.T) {
+	runner := &fakeStockServiceRunner{}
+	usecase := stockpipeline.NewStockUseCase(runner, nil, nil)
+	handler := NewHandler(usecase, nil)
+
+	rec, _ := runPOST(t, handler.RunStockPipeline, map[string]any{
+		"direct_urls":    []string{"https://example.com/video.mp4"},
+		"total_minutes":  1,
+		"clip_duration":  10,
+		"chunk_duration": 10,
+		"async":          false,
+		"folder_name":    "Pacquiao Vs Broner",
+		"subfolder":      "Press Conference",
+		"folder_id":      "drive-root-123",
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if runner.lastInput == nil {
+		t.Fatal("expected sync runner to be invoked")
+	}
+	if runner.lastInput.FolderName != "Pacquiao Vs Broner" {
+		t.Fatalf("FolderName = %q, want %q", runner.lastInput.FolderName, "Pacquiao Vs Broner")
+	}
+	if runner.lastInput.Subfolder != "Press Conference" {
+		t.Fatalf("Subfolder = %q, want %q", runner.lastInput.Subfolder, "Press Conference")
+	}
+	if runner.lastInput.FolderID != "drive-root-123" {
+		t.Fatalf("FolderID = %q, want %q", runner.lastInput.FolderID, "drive-root-123")
+	}
+}
+
 func TestSearchAndRun_AcceptsDirectURLsOnly_Returns200(t *testing.T) {
 	// DirectURLs-only path (no queries, no clips).
 	handler := newTestHandler("job_test_direct_12345")
