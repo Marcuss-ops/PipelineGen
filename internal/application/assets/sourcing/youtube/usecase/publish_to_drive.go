@@ -56,14 +56,20 @@ type PublishToDriveResult struct {
 
 // PublishToDriveCommand carries every input needed to resolve a Drive folder
 // and upload a file. Same fields as PublishClipCommand.
+//
+// PR-YT-CLIP-SEMANTIC-LOCATION-FIX: Category, Provider, Tags, Language added.
 type PublishToDriveCommand struct {
-	AssetID     string // clipID derived from videoID + file hash
-	Group       string // logical group (e.g. actor / project)
-	Subject     string // folder segment (e.g. videoID-titleSlug)
-	RootFolder  string // backward-compat override for cmd.FolderID
-	LocalPath   string // path to the downloaded .mp4 on disk
-	Filename    string // Drive filename (e.g. "dQw4w9WgXcQ - title.mp4")
-	Description string // human-readable Drive file description
+	AssetID     string   // clipID derived from videoID + file hash
+	Group       string   // logical group (e.g. actor / project)
+	Subject     string   // folder segment (e.g. videoID-titleSlug)
+	RootFolder  string   // backward-compat override for cmd.FolderID
+	LocalPath   string   // path to the downloaded .mp4 on disk
+	Filename    string   // Drive filename (e.g. "dQw4w9WgXcQ - title.mp4")
+	Description string   // human-readable Drive file description
+	Category    string   // semantic category (e.g. "Boxe", "Personaggi")
+	Provider    string   // upstream source (e.g. "youtube", "pexels")
+	Tags        []string // semantic keywords for Qdrant payload
+	Language    string   // BCP-47 language tag (optional)
 }
 
 // PublishToDrive resolves a Drive folder and uploads a file into it. Each
@@ -80,6 +86,10 @@ type PublishToDriveCommand struct {
 // The caller receives an explicit PublishToDriveResult so partial success
 // (FolderResolved=true, FileUploaded=false) is transparent.
 func PublishToDrive(ctx context.Context, folderResolver DriveFolderResolver, fileUploader DriveFileUploader, cmd PublishToDriveCommand) (*PublishToDriveResult, error) {
+	// PR-YT-CLIP-SEMANTIC-LOCATION-FIX: cmd.Category, cmd.Provider,
+	// cmd.Tags, and cmd.Language are available on the command struct
+	// but not yet threaded into the folder-resolver or file-uploader
+	// calls — that wiring lands in a follow-up step (adapters.go).
 	result := &PublishToDriveResult{}
 
 	// ── Step 1: Resolve folder ──────────────────────────────────
