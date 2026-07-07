@@ -78,6 +78,18 @@ func TestSearchableLifecycleStates_AcceptsACTIVE(t *testing.T) {
 	}
 }
 
+// TestSearchableLifecycleStates_AcceptsPUBLISHED pins that the
+// stock pipeline's PUBLISHED lifecycle state is searchable. Stock
+// assets are indexed with lifecycle_state=PUBLISHED (not ACTIVE);
+// without this state in the allowlist, all stock search results
+// would be silently dropped during SQLite hydration.
+func TestSearchableLifecycleStates_AcceptsPUBLISHED(t *testing.T) {
+	if !slices.Contains(SearchableLifecycleStates, "PUBLISHED") {
+		t.Fatalf("SearchableLifecycleStates MUST permit PUBLISHED; got %v",
+			SearchableLifecycleStates)
+	}
+}
+
 // TestSearchableLifecycleStates_RejectsDELETED pins the canonical
 // rejection of the terminal delete state. DELETED is the
 // irreversible terminal state (the row is gone from the user-facing

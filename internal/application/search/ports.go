@@ -343,4 +343,4 @@ type AssetDeliveryService interface {
 // pinned at the implementation (composition-root adapter) so the
 // interface is intentionally drift-free per godlike/06
 // one-canonical-owner-per-fact.
-var SearchableLifecycleStates = []string{"ACTIVE"}
+var SearchableLifecycleStates = []string{"ACTIVE", "PUBLISHED"}

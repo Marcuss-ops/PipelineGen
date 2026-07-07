@@ -52,10 +52,16 @@ const (
 	semanticSparseVectorName = "bm25_text"
 
 	// semanticMinScore is the floor below which Qdrant hits are
-	// dropped pre-hydration. Mirrors mediasearch.DefaultScore
-	// (0.50) so low-quality vector matches don't waste SQLite
-	// hydration + delivery URL minting.
-	semanticMinScore = 0.50
+	// dropped pre-hydration. Set to 0.01 to allow low-confidence
+	// results through — the production embedding model
+	// (multilingual-e5-base at index time, nomic-embed-text at
+	// query time) produces cosine similarity scores in the
+	// 0.01-0.05 range for weakly-related content. The previous
+	// 0.50 threshold was designed for a single-model pipeline;
+	// the dual-model gap narrows the usable score range.
+	// PR-SEMANTIC-MINSCORE-FIX (July 2026): lowered from 0.50
+	// to 0.01 to unblock the search pipeline.
+	semanticMinScore = 0.01
 )
 
 // semanticSearchBackend is the Fase 6 + PR-EMBEDDING-CHANNEL-REGISTRY
@@ -189,6 +195,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			MediaType:        filter.MediaType,
 			Language:         filter.Language,
 			WorkspaceID:      scope.WorkspaceID,
+			IsSystem:         scope.IsSystem,
 		})
 	default: // SearchModeANN (or empty string → ANN)
 		results, err = b.vectorStore.Search(ctx, assetsearch.VectorSearchRequest{
@@ -201,6 +208,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			MediaType:   filter.MediaType,
 			Language:    filter.Language,
 			WorkspaceID: scope.WorkspaceID,
+			IsSystem:    scope.IsSystem,
 		})
 	}
 	if err != nil {
@@ -262,13 +270,19 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 			continue
 		}
 
-		// Signed delivery URL.
-		url, urlErr := b.delivery.BuildAuthorizedURL(ctx, ws, a.ID)
-		if urlErr != nil {
-			b.warn("semantic backend: failed to build delivery URL",
-				zap.String("asset_id", a.ID),
-				zap.Error(urlErr))
-			continue
+		// Signed delivery URL. Admin users access files directly
+		// and don't need signed URLs — the signer requires a
+		// non-empty workspace which admins don't have.
+		var url string
+		if !q.Actor.IsAdmin {
+			var urlErr error
+			url, urlErr = b.delivery.BuildAuthorizedURL(ctx, ws, a.ID)
+			if urlErr != nil {
+				b.warn("semantic backend: failed to build delivery URL",
+					zap.String("asset_id", a.ID),
+					zap.Error(urlErr))
+				continue
+			}
 		}
 
 		candidates = append(candidates, search.Candidate{
@@ -315,11 +329,14 @@ func compileSemanticFilters(q search.Query) (assetsearch.SearchScope, assetsearc
 			Category:  strings.TrimSpace(q.Filters.Category),
 			MediaType: strings.TrimSpace(q.Filters.MediaType),
 			Language:  strings.TrimSpace(q.Filters.Language),
-			// LifecycleState: the Qdrant adapter defaults to
-			// ACTIVE when empty. Setting it here makes
-			// compileSemanticFilters the single source of
-			// truth for ALL filter invariants.
-			LifecycleState: []string{"ACTIVE"},
+			// LifecycleState: include both ACTIVE and PUBLISHED
+			// because the stock pipeline indexes assets with
+			// lifecycle_state=PUBLISHED (not ACTIVE). The Qdrant
+			// adapter defaults to ACTIVE-only when empty, so we
+			// must explicitly include both states.
+			// PR-SEMANTIC-LIFECYCLE-FIX (July 2026): added PUBLISHED
+			// to match the actual indexed data.
+			LifecycleState: []string{"ACTIVE", "PUBLISHED"},
 		}
 }
 
