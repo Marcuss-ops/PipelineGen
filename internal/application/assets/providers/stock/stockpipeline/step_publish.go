@@ -236,7 +236,12 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		// that don't care about the per-clip metadata.
 		clipMetaPath, clipMetaHash, clipMetaSize, clipMetaErr := writeAndHashPerClipMetadata(in, cs, fp)
 		if clipMetaErr != nil {
-			return fmt.Errorf("%w: per-clip metadata.json stage for chunk %d (artifact=%s): %v",
+			// PR-PER-CLIP-METADATA fix (July 2026, code-reviewer item #1):
+			// dual-%w preserves the underlying typed-error chain
+			// (json.SyntaxError / os.PathError) so callers can probe
+			// the root cause via errors.As — godlike/07 typed-error
+			// contract. Single-%w with %v would drop the chain.
+			return fmt.Errorf("%w: per-clip metadata.json stage for chunk %d (artifact=%s): %w",
 				ErrStockPublishArtifactFailed, i, cs.ArtifactID, clipMetaErr)
 		}
 		defer func() {
@@ -250,7 +255,8 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 
 		clipMetaIdem, clipMetaIdemErr := asset.SHA256IdempotencyKey("stock:"+fp+":clip-metadata:"+strconv.Itoa(i), clipMetaHash)
 		if clipMetaIdemErr != nil {
-			return fmt.Errorf("%w: per-clip metadata idem-key for chunk %d: %v",
+			// dual-%w: godlike/07 typed-error chain preserved.
+			return fmt.Errorf("%w: per-clip metadata idem-key for chunk %d: %w",
 				ErrStockPublishArtifactFailed, i, clipMetaIdemErr)
 		}
 		var clipMetaArtifactID string
@@ -282,7 +288,8 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			PathLeafName: leafName,
 		}
 		if _, clipMetaPrepErr := runner.ArtifactPreparation().Prepare(ctx, clipMetaVA); clipMetaPrepErr != nil {
-			return fmt.Errorf("%w: per-clip metadata.json upload for chunk %d (artifact=%s): %v",
+			// dual-%w: godlike/07 typed-error chain preserved.
+			return fmt.Errorf("%w: per-clip metadata.json upload for chunk %d (artifact=%s): %w",
 				ErrStockPublishArtifactFailed, i, clipMetaArtifactID, clipMetaPrepErr)
 		}
 
