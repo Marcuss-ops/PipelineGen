@@ -62,6 +62,14 @@ func (s *Service) runOrchestrator(ctx context.Context, input *RunInput, jobID st
 		s.cutter,
 		s.renderer,
 	)
+	if s.log != nil {
+		o.WithLogger(s.log)
+	}
+	if s.publisher != nil {
+		o.WithAssetPreparation(finalizer.NewArtifactPreparation(
+			drive.NewArtifactPublisherAdapter(s.publisher, s.log), s.log))
+		o.WithJobFinalizer(s.finalizer)
+	}
 	manifest, err := o.Run(ctx, input)
 	if err != nil {
 		// Preserve the orchestrator's signal class via wrap so callers
