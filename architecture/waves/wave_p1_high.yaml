@@ -2973,3 +2973,26 @@
       status: shipped
       ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_TEST
       deadline: 2026-08-08
+
+- id: PR-QDRANT-CHAOS-DAY-2026-08-01
+  status: scheduled
+  ship_date: PENDING  # flips to YYYY-MM-DD on execution day (SRE coord + 7-step runbook)
+  owner_capability: sre  # SRE discipline: agent CANNOT execute; on-call SRE owns maintenance window
+  deadline: 2026-08-01
+  exit_gate: |
+    Gate 10 Failure mode Qdrant spento (canonical QDRANT-DOD-FINAL-2026-07-08
+    Gate 10 + architecture/action-plans/2026-07-04-qdrant-preflight-execution.md
+    section 3 Test 9 forward-pointer). SRE-coordinated 7-step chaos sequence
+    executing in a maintenance window (Sunday 02:00–04:00 UTC preferred).
+    Status flips from scheduled to shipped ONLY after the on-call SRE
+    (a) executes all 7 steps in tests/operational/chaos_day_2026_08_01_report.md,
+    (b) records PASS verdicts in §Results, (c) commits the runbook + verdict
+    table to origin/main, (d) cross-references the chaos_date + ship_sha on
+    this slot. Per godlike/07 NO-FAKE-AVAILABILITY the agent CANNOT fabricate
+    a 'shipped' state without SRE coord + actual execution.
+  linked_issues:
+    - id: Test-9-Retry-Recovery
+      owner_capability: sre
+      status: scheduled
+      ship_via: PENDING_SRE_COORDINATION
+      deadline: 2026-08-01
