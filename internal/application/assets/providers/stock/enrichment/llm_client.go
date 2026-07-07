@@ -265,6 +265,21 @@ var _ EnrichmentLLMClient = (*StubEnrichmentLLMClient)(nil)
 // newline as the standard message separator).
 const enrichmentSystemPromptV1 = `You are a video metadata enrichment assistant. Return a JSON object with exactly these fields: "category" (string, required, single most specific category from the canonical taxonomy), "event" (string, event/fight/match name; empty if none), "round" (string, round number for boxing/MMA; empty if not applicable), "scene" (string, 5-15 word description of the visible action; empty if none), "subject" (string, primary subject/protagonist; empty if none), "entities" (array of up to 5 named entities: people, places, organizations; empty array if none). Respond with ONLY the JSON object, no prose, no markdown fences.`
 
+// enrichmentSystemPromptV2 is the Italian-language variant of the
+// enrichment system prompt (PR-011B follow-up i18n seam, July 2026).
+// Selected when cfg.External.EnrichmentPromptVersion == "v2" or
+// "v2-it" (canonical alias). JSON keys are byte-equivalent to V1
+// so the parser (json tags) works unchanged — only the natural-
+// language instructions differ. This keeps the wire output shape
+// stable across versions; only the model's vocabulary changes.
+//
+// godlike/06 SSOT (one canonical owner per fact): the canonical
+// V2 prompt lives ONLY in this const. Future Italian variants
+// (regional dialects, A/B-tested phrasing) MUST declare a new
+// const (e.g. enrichmentSystemPromptV2ItNeapolitan) and route
+// via selectSystemPrompt — NOT mutate this const in place.
+const enrichmentSystemPromptV2 = `Sei un assistente di arricchimento dei metadati video. Restituisci un oggetto JSON con esattamente questi campi: "category" (stringa, obbligatoria, la singola categoria più specifica dalla tassonomia canonica), "event" (stringa, nome dell'evento/incontro/match; vuoto se assente), "round" (stringa, numero della ripresa per boxe/MMA; vuoto se non applicabile), "scene" (stringa, descrizione di 5-15 parole dell'azione visibile; vuoto se assente), "subject" (stringa, soggetto/protagonista principale; vuoto se assente), "entities" (array fino a 5 entità nominate: persone, luoghi, organizzazioni; array vuoto se assente). Rispondi SOLO con l'oggetto JSON, senza prosa, senza delimitatori markdown.`
+
 // =============================================================================
 // PR-011B (July 2026): real ollama-backed adapter
 // =============================================================================
@@ -357,24 +372,76 @@ type ollamaEnrichmentLLMClient struct {
 	// Unexported to avoid Go's field/method name collision
 	// with the Model() method below.
 	modelName string
+
+	// promptVersion is the per-capability system-prompt version
+	// (PR-011B follow-up i18n seam). When set, selectSystemPrompt
+	// consults the canonical version enum ("v1" | "v2" | "v2-it")
+	// at Enrich() time to pick the right canonical prompt
+	// (enrichmentSystemPromptV1 / enrichmentSystemPromptV2).
+	// Empty value falls back to V1 (default) per godlike/07
+	// fail-closed (so legacy configs without this field
+	// continue to work byte-equivalently).
+	promptVersion string
 }
 
 // NewOllamaEnrichmentLLMClient constructs the real ollama-backed
 // adapter. model is the per-capability override (typically
 // cfg.External.ParseArenaLLM); when empty, the adapter falls
 // back to client.Model() at call time (defense-in-depth).
+// promptVersion is the per-capability system-prompt version
+// (typically cfg.External.EnrichmentPromptVersion); when empty,
+// the adapter uses V1 (default).
 //
 // godlike/07 fail-closed: returns an error (not nil adapter) when
 // the underlying ollama client is nil. Callers MUST propagate
 // the error per the existing pattern in NewEnrichmentHandler.
-func NewOllamaEnrichmentLLMClient(c *client.Client, model string) (*ollamaEnrichmentLLMClient, error) {
+func NewOllamaEnrichmentLLMClient(c *client.Client, model, promptVersion string) (*ollamaEnrichmentLLMClient, error) {
 	if c == nil {
 		return nil, WrapHandlerNotConfigured("ollamaClient")
 	}
 	return &ollamaEnrichmentLLMClient{
-		client:    c,
-		modelName: model,
+		client:        c,
+		modelName:     model,
+		promptVersion: promptVersion,
 	}, nil
+}
+
+// selectSystemPrompt is the canonical i18n/prompt-iteration seam
+// (PR-011B follow-up). Returns the right canonical prompt for
+// the configured promptVersion + locale combination.
+//
+// godlike/06 SSOT (one canonical owner per fact): the version
+// enum ("v1" | "v2" | "v2-it") lives ONLY in this method.
+// Future versions MUST add a new case here + a new const
+// (NOT mutate V1/V2 in place per the canonical SSOT discipline).
+//
+// godlike/07 fail-closed: unknown versions fall back to V1 so a
+// typo in cfg.External.EnrichmentPromptVersion does not silently
+// break the enrichment pass.
+//
+// godlike/07 minimum-blast-radius: the locale parameter is
+// forward-extensibility only. Today the version alone is the
+// switch (V1 vs V2); the locale hook lets a future V3 do
+// "v3-it" vs "v3-en" without a signature change. Passing
+// locale="" is byte-equivalent to passing the adapter's
+// configured locale.
+func (o *ollamaEnrichmentLLMClient) selectSystemPrompt(locale string) string {
+	if o == nil {
+		return enrichmentSystemPromptV1
+	}
+	version := strings.ToLower(strings.TrimSpace(o.promptVersion))
+	switch version {
+	case "v2", "v2-it":
+		return enrichmentSystemPromptV2
+	case "", "v1":
+		return enrichmentSystemPromptV1
+	default:
+		// Unknown version: fall back to V1 (godlike/07
+		// fail-closed at the language-default level so a
+		// typo in cfg.External.EnrichmentPromptVersion
+		// does not silently break the enrichment pass).
+		return enrichmentSystemPromptV1
+	}
 }
 
 // Enrich dispatches the canonical enrichment prompt to the
@@ -404,16 +471,17 @@ func (o *ollamaEnrichmentLLMClient) Enrich(ctx context.Context, req EnrichmentRe
 	}
 
 	// Build the canonical prompt. The system message declares
-	// the 6-field JSON schema (canonical SSOT = const
-	// enrichmentSystemPromptV1); the user message provides the
-	// chunk context. The response is forced to valid JSON via
-	// ollama's native JSON-mode (format = "json" top-level body
-	// field, NOT nested in options).
+	// the 6-field JSON schema (canonical SSOT = selectSystemPrompt
+	// consults the configured promptVersion + locale to pick V1 or
+	// V2 at runtime — PR-011B follow-up i18n seam); the user
+	// message provides the chunk context. The response is forced
+	// to valid JSON via ollama's native JSON-mode (format = "json"
+	// top-level body field, NOT nested in options).
 	start := time.Now()
 	messages := []types.Message{
 		{
 			Role:    "system",
-			Content: enrichmentSystemPromptV1,
+			Content: o.selectSystemPrompt(""),
 		},
 		{
 			Role:    "user",

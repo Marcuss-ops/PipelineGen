@@ -104,7 +104,7 @@ func newOllamaClient(t *testing.T, serverURL, model string) *ollamaclient.Client
 
 // Test 1: composition-time fail-closed on nil ollama client.
 func TestOllamaEnrichment_NewOllamaEnrichmentLLMClient_NilClient(t *testing.T) {
-	a, err := NewOllamaEnrichmentLLMClient(nil, "gemma4:e4b")
+	a, err := NewOllamaEnrichmentLLMClient(nil, "gemma4:e4b", "")
 	if a != nil {
 		t.Errorf("expected nil adapter, got %+v", a)
 	}
@@ -121,7 +121,7 @@ func TestOllamaEnrichment_HappyPath_ParsesAll6Fields(t *testing.T) {
 	srv, _, callCount := newOllamaTestServer(t, canned, 0)
 
 	cli := newOllamaClient(t, srv.URL, "gemma4:e4b")
-	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b")
+	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b", "")
 	if err != nil {
 		t.Fatalf("NewOllamaEnrichmentLLMClient: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestOllamaEnrichment_InvalidJSON_ReturnsTypedSentinel(t *testing.T) {
 	srv, _, _ := newOllamaTestServer(t, canned, 0)
 
 	cli := newOllamaClient(t, srv.URL, "gemma4:e4b")
-	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b")
+	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b", "")
 	if err != nil {
 		t.Fatalf("NewOllamaEnrichmentLLMClient: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestOllamaEnrichment_EmptyCategory_ReturnsTypedSentinel(t *testing.T) {
 	srv, _, _ := newOllamaTestServer(t, canned, 0)
 
 	cli := newOllamaClient(t, srv.URL, "gemma4:e4b")
-	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b")
+	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b", "")
 	if err != nil {
 		t.Fatalf("NewOllamaEnrichmentLLMClient: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestOllamaEnrichment_NetworkError_ReturnsRetryableSentinel(t *testing.T) {
 	srv, _, _ := newOllamaTestServer(t, "", http.StatusInternalServerError)
 
 	cli := newOllamaClient(t, srv.URL, "gemma4:e4b")
-	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b")
+	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b", "")
 	if err != nil {
 		t.Fatalf("NewOllamaEnrichmentLLMClient: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestOllamaEnrichment_ModelOverride_PassedInOptions(t *testing.T) {
 	srv, lastBody, _ := newOllamaTestServer(t, canned, 0)
 
 	cli := newOllamaClient(t, srv.URL, "fallback-model")
-	adapter, err := NewOllamaEnrichmentLLMClient(cli, "parse-arena-llm")
+	adapter, err := NewOllamaEnrichmentLLMClient(cli, "parse-arena-llm", "")
 	if err != nil {
 		t.Fatalf("NewOllamaEnrichmentLLMClient: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestOllamaEnrichment_ModelFallback_UsesClientDefault(t *testing.T) {
 	// Pass empty modelName to the adapter; the underlying
 	// ollama client has model="default-ollama-model".
 	cli := newOllamaClient(t, srv.URL, "default-ollama-model")
-	adapter, err := NewOllamaEnrichmentLLMClient(cli, "")
+	adapter, err := NewOllamaEnrichmentLLMClient(cli, "", "")
 	if err != nil {
 		t.Fatalf("NewOllamaEnrichmentLLMClient: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestOllamaEnrichment_EmptyChunkID_ReturnsTypedSentinel(t *testing.T) {
 	srv, _, _ := newOllamaTestServer(t, canned, 0)
 
 	cli := newOllamaClient(t, srv.URL, "gemma4:e4b")
-	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b")
+	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b", "")
 	if err != nil {
 		t.Fatalf("NewOllamaEnrichmentLLMClient: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestOllamaEnrichment_ContextCancelled_ReturnsRetryableSentinel(t *testing.T
 	defer close(release)
 
 	cli := newOllamaClient(t, srv.URL, "gemma4:e4b")
-	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b")
+	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b", "")
 	if err != nil {
 		t.Fatalf("NewOllamaEnrichmentLLMClient: %v", err)
 	}
@@ -390,5 +390,125 @@ func TestOllamaEnrichment_ContextCancelled_ReturnsRetryableSentinel(t *testing.T
 	// reachable via errors.Is chain.
 	if !errors.Is(err, ErrEnrichmentLLMUnavailable) {
 		t.Errorf("expected ErrEnrichmentLLMUnavailable, got %v", err)
+	}
+}
+
+// Test 10 (i18n/prompt-iteration seam, PR-011B follow-up): when
+// the adapter is constructed with promptVersion="v2", the wire
+// request body's `messages[0].content` MUST contain the canonical
+// V2 Italian prompt (detected by the substring "Sei un assistente"
+// + "categoria" which are unique to V2 and absent from V1). This
+// is the canonical SSOT contract for the i18n seam: the
+// composition root can swap cfg.External.EnrichmentPromptVersion
+// to switch the LLM's vocabulary without touching the call site.
+func TestOllamaEnrichment_V2PromptSelected_WhenLocaleConfigured(t *testing.T) {
+	canned := `{"message":{"role":"assistant","content":"{\"category\":\"Boxe\"}"},"done":true}`
+	srv, lastBody, _ := newOllamaTestServer(t, canned, 0)
+
+	cli := newOllamaClient(t, srv.URL, "gemma4:e4b")
+	// Construct the adapter with promptVersion="v2" — this is
+	// the canonical "use Italian" signal from the composition
+	// root (mirrors cfg.External.EnrichmentPromptVersion="v2").
+	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b", "v2")
+	if err != nil {
+		t.Fatalf("NewOllamaEnrichmentLLMClient: %v", err)
+	}
+
+	_, err = adapter.Enrich(context.Background(), EnrichmentRequest{
+		ChunkID: "stock:abc:chunk:0",
+		Title:   "Pacquiao Broner",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Parse the wire request body. The ollama /api/chat
+	// contract is: {"model": "...", "messages": [{"role":
+	// "system", "content": "<prompt>"}, {"role": "user",
+	// "content": "<user_prompt>"}], "format": "json", ...}.
+	var got struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(*lastBody, &got); err != nil {
+		t.Fatalf("unmarshal request body: %v", err)
+	}
+	if len(got.Messages) < 1 {
+		t.Fatal("expected at least 1 message (system) in request body")
+	}
+	systemContent := got.Messages[0].Content
+
+	// V2 contract: the system message contains the canonical
+	// Italian vocabulary. The substring "Sei un assistente" is
+	// unique to V2 (V1 uses "You are a video metadata"). The
+	// substring "categoria" is the Italian word for "category"
+	// and also unique to V2. Asserting both locks the contract
+	// against future regressions where V2 is silently swapped
+	// back to V1 (e.g., a typo in selectSystemPrompt's case
+	// statement).
+	if !strings.Contains(systemContent, "Sei un assistente") {
+		t.Errorf("V2 prompt NOT selected: expected 'Sei un assistente' in system content, got: %q", systemContent)
+	}
+	if !strings.Contains(systemContent, "categoria") {
+		t.Errorf("V2 prompt NOT selected: expected 'categoria' in system content, got: %q", systemContent)
+	}
+	// Defensive: V1 vocabulary MUST NOT appear (catches a
+	// future regression where V2 const is accidentally
+	// overwritten with V1 text — godlike/07 NO-FAKE-AVAILABILITY).
+	if strings.Contains(systemContent, "You are a video metadata") {
+		t.Errorf("V1 vocabulary leaked into V2 prompt: %q", systemContent)
+	}
+}
+
+// Test 11 (godlike/07 fail-closed contract, PR-011B follow-up):
+// when the adapter is constructed with an UNKNOWN promptVersion
+// (e.g., a typo in cfg.External.EnrichmentPromptVersion), the
+// adapter MUST fall back to V1 (godlike/07 fail-closed at the
+// language-default level) rather than silently breaking the
+// enrichment pass. The wire body must contain V1 vocabulary
+// ("You are a video metadata") and MUST NOT contain V2 vocabulary.
+func TestOllamaEnrichment_UnknownVersion_FallsBackToV1(t *testing.T) {
+	canned := `{"message":{"role":"assistant","content":"{\"category\":\"Boxe\"}"},"done":true}`
+	srv, lastBody, _ := newOllamaTestServer(t, canned, 0)
+
+	cli := newOllamaClient(t, srv.URL, "gemma4:e4b")
+	// Construct with a typo'd version string — mirrors an
+	// operator who mis-configured cfg.External.EnrichmentPromptVersion.
+	adapter, err := NewOllamaEnrichmentLLMClient(cli, "gemma4:e4b", "v999-typo")
+	if err != nil {
+		t.Fatalf("NewOllamaEnrichmentLLMClient: %v", err)
+	}
+
+	_, err = adapter.Enrich(context.Background(), EnrichmentRequest{
+		ChunkID: "stock:abc:chunk:0",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(*lastBody, &got); err != nil {
+		t.Fatalf("unmarshal request body: %v", err)
+	}
+	if len(got.Messages) < 1 {
+		t.Fatal("expected at least 1 message (system) in request body")
+	}
+	systemContent := got.Messages[0].Content
+
+	// Unknown version MUST fall back to V1 (canonical English).
+	if !strings.Contains(systemContent, "You are a video metadata") {
+		t.Errorf("unknown version fallback FAILED: expected V1 vocabulary in system content, got: %q", systemContent)
+	}
+	// And MUST NOT contain V2 vocabulary (catches a regression
+	// where the default case accidentally routes to V2).
+	if strings.Contains(systemContent, "Sei un assistente") {
+		t.Errorf("unknown version fallback leaked V2: %q", systemContent)
 	}
 }
