@@ -128,6 +128,12 @@ type ChunkState struct {
 
 	SourceURL string // original source URL for this timestamp / clip
 
+	SourceProvider string // canonical provider bucket (youtube/pexels/pixabay/unknown) — inferred at plan-build time, copied verbatim from ClipPlan.SourceProvider per godlike/06 SSOT
+
+	SourceVideoID string // canonical provider-native ID (YouTube video ID when SourceProvider == youtube; empty otherwise)
+
+	TotalChunks int // per-run total chunk count = len(runner.State().Plan) at chunk-build time; repeated per-entry per user spec (godlike/07 minimum-blast-radius acknowledges logical duplication)
+
 	StartSec float64 // clip start timestamp in seconds
 
 	EndSec float64 // clip end timestamp in seconds

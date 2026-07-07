@@ -88,6 +88,13 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	var metadataPublished finalization.PublishedArtifact
 
 	// ── Phase 1: per-chunk ArtifactPreparation ─────────────────────
+	// PR-003 (July 2026): per-run total chunk count = the
+	// post-plan length of runner.State().Plan. Repeated per-entry
+	// per user spec (logically a run-level scalar — see
+	// ChunkState.TotalChunks godoc + ChunkMetadataEntry field
+	// godoc for the duplication rationale). Pre-compute once
+	// outside the loop per godlike/07 minimum-blast-radius.
+	totalChunks := len(runner.State().Plan)
 	for i, compPath := range composed {
 		plan := ClipPlan{}
 		hasPlan := i < len(runner.State().Plan)
@@ -95,13 +102,16 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			plan = runner.State().Plan[i]
 		}
 		cs := ChunkState{
-			Index:      i,
-			ArtifactID: ChunkArtifactID(fp, i),
-			Filename:   ChunkArtifactFilename(fp, i),
-			LocalPath:  compPath,
+			Index:       i,
+			ArtifactID:  ChunkArtifactID(fp, i),
+			Filename:    ChunkArtifactFilename(fp, i),
+			LocalPath:   compPath,
+			TotalChunks: totalChunks,
 		}
 		if hasPlan {
 			cs.SourceURL = plan.SourceID
+			cs.SourceProvider = plan.SourceProvider
+			cs.SourceVideoID = plan.SourceVideoID
 			cs.StartSec = plan.StartSec
 			cs.EndSec = plan.EndSec
 		}
