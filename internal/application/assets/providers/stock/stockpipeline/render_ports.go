@@ -163,6 +163,40 @@ type TransitionRegistry interface {
 	Len() int
 }
 
+// ── SourceDurationProbe port (PR-STOCK-TIMESTAMP-CLIPS Front 5, July 2026) ──
+
+// SourceDurationProbe is the canonical port the stock pipeline
+// uses to probe a source video's duration in seconds BEFORE
+// invoking VideoCutter.Cut. The probe lets step_extract_clips
+// validate each ClipPlan's EndSec against the source duration
+// (godlike/07 NO-FAKE-AVAILABILITY: a clip with EndSec > source
+// duration cannot be cut by ffmpeg; the prior silent-success path
+// would have written a half-broken artifact to Drive). The probe
+// is OPTIONAL in the composition root: when nil, step_extract_clips
+// falls back to StagedAsset.DurationSec (populated by the upstream
+// stage_sources step when known) or skips the bounds check
+// (godlike/07 minimum-blast-radius: backward-compat for test
+// fixtures and legacy composition roots that haven't wired the
+// probe yet; PR-STOCK-SOURCE-DURATION-WIRE is the forward-pointer
+// for production wiring).
+//
+// Implementations live in `internal/infrastructure/media/probe/`
+// (ffprobe-backed) or `internal/application/youtube/usecase/`
+// (yt-dlp --print-duration-backed). The port is declared on the
+// application layer per AGENTS.md Pattern 0; the infrastructure
+// concrete is injected via composition root.
+type SourceDurationProbe interface {
+	// ProbeDurationSec returns the source video's duration in
+	// seconds (float, fractional). The probe is read-only (does
+	// not mutate the source); a returned error means the probe
+	// could not determine the duration (e.g. ffprobe subprocess
+	// failed, or the file is not a recognizable video container).
+	// On error, step_extract_clips logs Warn and falls through to
+	// the unvalidated path (godlike/07 fail-open) so transient
+	// probe failures don't break the whole pipeline.
+	ProbeDurationSec(ctx context.Context, sourcePath string) (float64, error)
+}
+
 // ── VideoCutter port (PR6) ─────────────────────────────────────────────
 
 // VideoCutter extracts multiple clips from a single source video. The

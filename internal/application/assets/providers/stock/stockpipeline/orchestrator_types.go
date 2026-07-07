@@ -181,4 +181,15 @@ type Orchestrator struct {
 	// no-op behavior.
 	artifactPreparation finalization.ArtifactPreparationService // nil ⇒ StockPublishStep logs+skips upload
 	jobFinalizer        finalization.JobFinalizer               // nil ⇒ StockFinalizeStep logs+skips spine write
+
+	// sourceProbe (PR-STOCK-TIMESTAMP-CLIPS Front 5, July 2026)
+	// is the optional ffprobe-backed port the step_extract_clips
+	// step uses to validate ClipPlan.EndSec against the source
+	// video duration BEFORE invoking VideoCutter.Cut. nil is the
+	// canonical backward-compat value: validation is skipped
+	// (godlike/07 fail-open), and the step falls through to the
+	// legacy unvalidated path. Production wiring injects the
+	// concrete via orchestrator.WithSourceProbe(probe); see
+	// forward-pointer PR-STOCK-SOURCE-DURATION-WIRE.
+	sourceProbe SourceDurationProbe
 }
