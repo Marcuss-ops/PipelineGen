@@ -3054,3 +3054,28 @@
     owner_capability: internal/application/assets/providers/stock/stockpipeline
     status: shipped
     deadline: 2026-08-08
+- id: PR-STOCK-PERCLIP-PATHLEAFNAME
+  owner_capability: internal/application/assets/providers/stock/stockpipeline
+  status: shipped
+  ship_sha: 0d7a5b0d
+  ship_date: 2026-07-08
+  deadline: 2026-08-08
+  exit_signal: true
+  description: |
+    Front 3: per-clip PathLeafName regression guard. The
+    pre-PR bug stamped the SAME PathLeafName
+    (= stockTimestampGroupName) on every chunk in an
+    explicit-clips run, so 8 Pacquiao/Broner clips landed in
+    1 Drive subdir instead of 8 per-clip subdirs. The new
+    test HARD-FAILS on any duplicate leaf (godlike/07
+    NO-FAKE-AVAILABILITY). 8 distinct slugs produced from
+    "Round 1"..."Round 8" titles → round-1...round-8.
+    VerifiedArtifact.PathLeafName is the canonical write-side
+    seam. Forward-pointer PR-CHUNKSTATE-PATHLEAFNAME-MIRROR
+    (deadline TBD) would add ChunkState.PathLeafName for SSOT
+    round-trip verification (read-back mirrors write-side
+    contract). 3 layered contract tests (canonical regression
+    guard + soft-warn operator visibility + legacy invariant)
+    one per audience.
+  forward_pointer:
+  - PR-CHUNKSTATE-PATHLEAFNAME-MIRROR
