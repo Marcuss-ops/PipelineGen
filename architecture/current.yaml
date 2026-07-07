@@ -409,14 +409,46 @@
 
       `PR-META-CLOSURE-SHA-CORRECTION` (deadline 2026-07-15) that
 
-      fixes this wave-tracker entry to use the correct SHA per
-
-      godlike/07 no-fake-availability.      Future wave-tracker readers
-      who land in this block first should FOLLOW THE BACKLINK to
-      the AGENTS.md entry for the correction context before acting
+      fixes this wave-tracker entry to use the correct SHA per      godlike/07 no-fake-availability.      Future wave-tracker readers
+      who land in this block first should FOLLOW THE BACKLINK to the
+      AGENTS.md entry for the correction context before acting
       on the broken SHA.
 
       '
+  audit_pin_reuse_lesson: |
+    ## AUDIT-PIN REUSE LESSON (mirror of Q17 + Q18 forward-pointer pattern; RESOLVED across all 7 PEBI items per godlike/06 SSOT one-canonical-owner-per-fact; canonical surface: this PEBI umbrella entry)
+
+    Cross-ticket sibling references (per Q17+Q18 audit-pin precedent in architecture/issues.yaml — the audit-pin mirror pattern):
+      Q17-IMAGES-REGISTERHANDLER-REGRESSION  # actual-repo: architecture/issues.yaml  # audit-pin forward-pointer MIRROR origin (closed 2026-07-07 via ship_sha 17b160e7 PR-JOBS-TEST-COMPILE-FIX)
+      Q18-PUBLISH-COMPLETE-USE-CASE-TEST-COMPILE-BLOCKERS  # actual-repo: architecture/issues.yaml  # audit-pin RESOLVED-flip precedent (mirrored + closed 2026-07-06 via ship_sha b81dc0af JOBS-VET-ERRORS-FIX-2026-07-06)
+
+    Per-item Q-ticket sub-refs (bidirectional cross-ticket lookup table; per godlike/06 SSOT one-canonical-owner-per-fact):
+      FIX-MONITOR-ENQUEUE-TOLOWER          --> Q12-MONITOR-ENQUEUE-stringsToLower-resolved          # actual-repo: architecture/issues.yaml
+      FIX-MONITOR-SCHEDULER-ENQUEUER        --> Q13-MONITOR-SCHEDULER-JobEnqueuer-Wire-resolved     # actual-repo: architecture/issues.yaml
+      FIX-STOCKPIPELINE-REDECLARATION       --> Q14-STOCKPIPELINE-RunUpload-syntax-resolved        # actual-repo: architecture/issues.yaml
+      FIX-APP-MODULE-MEDIA-DISPATCHER       --> Q15-APP-MODULE-MEDIA-MutationsDispatcherAdapter-resolved # actual-repo: architecture/issues.yaml
+      FIX-IMAGES-ROUTING-CYCLE              --> (no Q-ticket; canonical surfacing solely on PEBI; cycle-absence verified at ship_via diagnostic)
+      FIX-APP-WIRE-SCRIPT-SYNTAX            --> (no Q-ticket; status:retired per retire_audit_sha b2e880e0; canonical retire SHA on origin/main)
+
+    Per-class verification recipes (per godlike/07 no-fake-availability audit-pin discipline; future agents run these BEFORE accepting a status:shipped flip):
+      ## Real-fix-verified (Q12 + Q13; on-disk Go code change present in ship_sha commit):
+        $ go vet <owner_capability-package>                                       # exits 0  (Q12: monitor/; Q13: monitor scheduler subtree)
+        $ git show origin/main:<ship_sha> -- <claim-path>.go                      # actual code change visible
+        $ git log --grep=<ship_sha> --oneline                                     # canonical closure on origin/main
+
+      ## Audit-pin-only closure (Q14 + Q15 + FIX-IMAGES-ROUTING-CYCLE; metadata-only ship_via: commit, no Go code change):
+        $ go vet <owner_capability-package>                                       # exits 0  (Q14: stock/stockpipeline; Q15: app; FIX-IMAGES: images/routing)
+        $ git show origin/main:<ship_sha>                                         # commit touches ONLY CHANGELOG.md + architecture/current.yaml (no Go code)
+        $ rg '<claim-path-file-or-token>' internal/                              # returns 0 hits (file retired / renamed / cycle-never-existed)
+
+      ## Retired (FIX-APP-WIRE-SCRIPT-SYNTAX; status:retired, bug-never-existed assertion):
+        $ go vet <owner_capability-package>                                       # exits 0  (app)
+        $ git show origin/main:<retire_audit_sha>                                 # documents the retirement rationale (b2e880e0 on origin/main)
+        $ rg 'wire_script\.go'                                                    # returns 0 hits (file retired; canonically surfaced via PR-PERSIST-... lineage)
+
+    sha_correction cross-reference: the closure_shas[5] (FIX-APP-WIRE-SCRIPT-SYNTAX) reference to SHA `85e96411` is BROKEN (git cat-file -t 85e96411 returns NOT FOUND); canonical is `b2e880e0` per the sha_correction_note above. Forward-pointer PR-META-CLOSURE-SHA-CORRECTION (deadline 2026-07-15) fixes that ref; this audit_pin_reuse_lesson block is independent of that refactor.
+
+    godlike/07 minimum-blast-radius: this block is MIRROR documentation; it does NOT modify the canonical ssot: meta_closure_2026_07_04 entries (breakdown + closure_shas + patterns + related_closure_shas + forward_pointer + future_test_wave + future_owner_cleanup + user_framing_note + sha_correction_note) above. Future future-PER-PR closures in the linked_issues[] array should cite both this audit_pin_reuse_lesson block AND the canonical Q-ticket in architecture/issues.yaml (per the per-item Q-ticket sub-refs table above) for the bidirectional cross-ticket lookup contract.
 - id: FIX-CI-ARCHCHECK-REPOROOT-UNDEFINED
   owner_capability: scripts/ci-architectural-checks.sh
   status: shipped
@@ -7994,3 +8026,112 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
       deadline: 2026-08-15
       owner_capability: internal/application/youtube/adapters
       summary: Cache the ytdlp.NewCommandBuilder(cfg) in a package-level sync.Once value to avoid per-call construction. Per-call overhead is negligible today (called once per video) but a future optimization for hot-loop callers.
+- id: PR-STOCK-QDRANT-SEMANTIC-ENRICHMENT
+  owner_capability: architecture
+  status: shipped
+  ship_date: 2026-07-07
+  exit_signal: true
+  deadline: 2026-08-15
+  description: |
+    Stock/Qdrant semantic-payload enrichment wave closure: 9 sequential
+    PRs ship the canonical 17+ Qdrant semantic-payload enrichment
+    fields + the IndexingStatus wire-shape contract + the E2E wiring
+    (media_assets.index_state = INDEXING_PENDING at the canonical
+    spine write). Closes the loop end-to-end: RunInput -> orchestrator
+    -> step_publish -> finalizer -> AssetData -> AssetToIndexDocument
+    -> BuildPayloadFromDocument -> Qdrant upsert.
+
+    godlike/06 SSOT: media_assets.index_state in SQLite is the
+    canonical lifecycle SSOT; IndexingStatus in metadata.json is the
+    wire-snapshot hint overwritten by the IndexingHandler to INDEXED
+    after a successful Qdrant upsert (NOT authoritative for retry or
+    decision logic). AssetData is the canonical owner of the 19
+    first-class semantic fields. PayloadMapper airlock is the
+    canonical owner of the top-level-first / MetadataJSON-fallback
+    precedence contract.
+
+    godlike/07 NO-FAKE-AVAILABILITY: IndexingStatus literal at
+    projection time (no DB SELECT on hot path); index_state set
+    explicitly at INSERT (no column default); the 17 enrichment
+    fields all use omitempty so zero-value is correctly absent from
+    the JSON wire shape; destination / source_provider / origin no
+    longer silently fall back to string(asset.Source) -- callers
+    MUST set these explicitly.
+
+    godlike/07 minimum-blast-radius: AssetToIndexDocument /
+    BuildPayload / BuildPayloadFromDocument signatures unchanged
+    (backward-compat preserved); index_state EXCLUDED from ON
+    CONFLICT DO UPDATE preserves the clipindexer state machine
+    invariant.
+  linked_issues:
+  - id: PR-001-INDEXED-METADATA-17-FIELD
+    owner_capability: internal/infrastructure/qdrant/indexing
+    status: shipped
+    ship_sha: e8f8587f
+    ship_date: 2026-07-07
+  - id: PR-002-PAYLOAD-BUILDER-OMITEMPTY-CONTRACT
+    owner_capability: internal/infrastructure/qdrant/indexing
+    status: shipped
+    ship_sha: 315e1b2e
+    ship_date: 2026-07-07
+  - id: PR-003-TOTALCHUNKS-SOURCEPROVIDER-SOURCEVIDEOID
+    owner_capability: internal/application/assets/providers/stock/stockpipeline
+    status: shipped
+    ship_sha: f07e262d
+    ship_date: 2026-07-07
+  - id: PR-004-DRIVEPATH-POLICYVERSION
+    owner_capability: internal/application/assets/providers/stock/stockpipeline
+    status: shipped
+    ship_sha: 69b0ab54
+    ship_date: 2026-07-07
+  - id: PR-005-STOCKCHUNKSTRATEGY-BM25
+    owner_capability: internal/application/searchtext
+    status: shipped
+    ship_sha: f527f804
+    ship_date: 2026-07-07
+  - id: PR-006-ASSETDATA-19-FIRST-CLASS-FIELDS
+    owner_capability: internal/infrastructure/qdrant/indexing
+    status: shipped
+    ship_sha: 840129b9
+    ship_date: 2026-07-07
+  - id: PR-007-LLM-ENRICHMENT-PLUMBING
+    owner_capability: internal/application/assets/providers/stock/stockpipeline
+    status: shipped
+    ship_sha: 2f235c5b
+    ship_date: 2026-07-07
+  - id: PR-008-INDEXING-STATUS-LITERAL-PROJECTION
+    owner_capability: internal/application/assets/providers/stock/stockpipeline
+    status: shipped
+    ship_sha: 28eeb744
+    ship_date: 2026-07-07
+  - id: PR-009-E2E-WIRING-FINALE-INDEX-STATE-PENDING
+    owner_capability: internal/application/assets/finalizer
+    status: shipped
+    ship_sha: 0b8c1325
+    ship_date: 2026-07-07
+  cross_references:
+    parent_audit:
+      - architecture/current.yaml#QDRANT-CHAIN-VERIFY-2026-07-04
+      - architecture/current.yaml#SEMANTIC-LOCATION-API-2026-07-06
+    sister_wave:
+      - architecture/current.yaml#IMAGES-LEGACY-CLEANUP-2026-07-06
+      - architecture/current.yaml#PR-VO-COMPLETEPATH-FIX
+    canonical_surface:
+      - internal/infrastructure/qdrant/indexing/index_document.go::IndexedMetadata
+      - internal/infrastructure/qdrant/indexing/payload_builder.go::BuildPayloadFromDocument
+      - internal/application/assets/providers/stock/stockpipeline/orchestrator_metadata.go::buildStockRunMetadata
+      - internal/application/assets/finalizer/asset_finalizer_tx.go::upsertMediaAsset
+  godlike_06_ssot:
+    - media_assets.index_state (SQLite) is the canonical lifecycle SSOT; IndexingStatus (metadata.json) is the wire-snapshot hint, overwritten downstream to INDEXED by the IndexingHandler.
+    - AssetData (internal/infrastructure/qdrant/indexing) is the SOLE owner of the 19 first-class semantic fields.
+    - PayloadMapper airlock reads top-level first, falls back to MetadataJSON for backward compat (per godlike/07 minimum-blast-radius on existing callers).
+  godlike_07_no_fake_availability:
+    - IndexingStatus literal at projection (no hot-path DB SELECT on media_assets.index_state).
+    - index_state set explicitly at INSERT (no column default -- every FinalizeAsset call knows the canonical initial state).
+    - All 17 enrichment fields use omitempty -- zero-value is correctly absent from the JSON wire shape.
+    - destination / source_provider / origin no longer silently fall back to string(asset.Source) -- callers MUST set these explicitly.
+  forward_pointers:
+    - id: PR-STOCK-RESIDUE-CROSSVALIDATION
+      deadline: 2026-08-01
+      owner_capability: internal/application/assets/providers/stock
+      summary: The original stock-residue cleanup task can now cross-validate against the enriched payload (drive_link + indexing_status + source_provider discriminator fields) to identify stock_metadata folders generated PRE vs POST this enrichment wave.
