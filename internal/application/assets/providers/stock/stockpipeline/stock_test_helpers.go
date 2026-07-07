@@ -23,7 +23,12 @@
 // handler. Both are valid per the composition-time gate.
 package stockpipeline
 
-import "context"
+import (
+	"context"
+	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+)
 
 // noopRenderer is a trivial StockRenderer that always returns success.
 // Used by tests that exercise the orchestrator wiring without asserting
@@ -40,4 +45,20 @@ var _ StockRenderer = (*noopRenderer)(nil)
 // / publish / finalize behavior, not on render output).
 func (noopRenderer) Render(_ context.Context, _ RenderRequest) (RenderResult, error) {
 	return RenderResult{}, nil
+}
+
+// testLease returns a deterministic non-empty lease for stockpipeline
+// tests that need the finalize step to proceed through the job-finalizer
+// gate without touching the real broker wiring.
+func testLease(jobID string) finalization.Lease {
+	if jobID == "" {
+		jobID = "stock-test-job"
+	}
+	return finalization.Lease{
+		JobID:     jobID,
+		WorkerID:  "stock-test-worker",
+		LeaseID:   jobID + "-lease",
+		Attempt:   1,
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+	}
 }

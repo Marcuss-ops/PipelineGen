@@ -14,15 +14,18 @@ import (
 // the vector store. Without this guard, every re-ingestion of a clip folder
 // reinserts ~1 metadata.json point into Qdrant, polluting semantic search.
 //
-// "ends with .json" catches any JSON artifact uploaded as media (per-file
-// captions, transcript exports, etc.) which is not a real searchable asset.
+// "ends with .json" catches most JSON artifacts uploaded as media
+// (per-file captions, transcript exports, etc.) which are not real
+// searchable assets. The timestamp-manifest `metadata.json` rows are
+// explicitly excluded from this skip so they can be indexed with the
+// rest of the workflow metadata.
 func isSkippableAssetName(name string) bool {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return false
 	}
 	if name == "metadata.json" {
-		return true
+		return false
 	}
 	return strings.HasSuffix(strings.ToLower(name), ".json")
 }

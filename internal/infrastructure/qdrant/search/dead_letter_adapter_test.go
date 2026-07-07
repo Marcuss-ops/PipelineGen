@@ -33,9 +33,9 @@ import (
 )
 
 // TestOutboxEventsDeadLetterAdapter_CountOpen spins up an in-memory SQLite
-// with the minimum outbox_events schema needed by CountByStatus, inserts
-// events in various statuses, and asserts the adapter surfaces ONLY the
-// dead_letter count.
+// with the minimum outbox_events schema needed by CountByEventTypeAndStatus,
+// inserts events in various statuses, and asserts the adapter surfaces ONLY
+// the dead_letter count for asset.index.requested.
 //
 // QDRANT-003 (June 2026) closure — "Dead-letter reale" sub-task: this
 // test is the load-bearing round-trip behind the verification.ReindexVerifier
@@ -50,25 +50,26 @@ func TestOutboxEventsDeadLetterAdapter_CountOpen(t *testing.T) {
 	db := openDLTestDB(t)
 	defer db.Close()
 
-	seedDLRow(t, db, 1, "dead_letter")
-	seedDLRow(t, db, 2, "dead_letter")
-	seedDLRow(t, db, 3, "pending")
-	seedDLRow(t, db, 4, "processing")
-	seedDLRow(t, db, 5, "completed")
-	seedDLRow(t, db, 6, "superseded")
+	seedDLRow(t, db, 1, outboxevents.EventAssetIndexRequested, "dead_letter")
+	seedDLRow(t, db, 2, outboxevents.EventAssetIndexRequested, "dead_letter")
+	seedDLRow(t, db, 3, outboxevents.EventAssetIndexRequested, "pending")
+	seedDLRow(t, db, 4, outboxevents.EventAssetIndexRequested, "processing")
+	seedDLRow(t, db, 5, outboxevents.EventAssetIndexRequested, "completed")
+	seedDLRow(t, db, 6, outboxevents.EventAssetIndexRequested, "superseded")
+	seedDLRow(t, db, 7, outboxevents.EventAssetDriveDeleteRequested, "dead_letter")
 
 	repo := outboxevents.NewRepository(db)
 	adapter := NewOutboxEventsDeadLetterAdapter(repo)
 
 	got, err := adapter.CountOpen(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, 2, got, "CountOpen must return ONLY status='dead_letter' rows")
+	assert.Equal(t, 2, got, "CountOpen must return ONLY asset.index.requested dead_letter rows")
 }
 
 // TestOutboxEventsDeadLetterAdapter_EmptyDB asserts the adapter returns 0
-// (not an error) when the outbox_events table has zero rows in
-// dead_letter. This is the canonical "first deployment" scenario where
-// the Ready gate sees a fresh table.
+// (not an error) when the outbox_events table has zero rows for
+// asset.index.requested in dead_letter. This is the canonical
+// "first deployment" scenario where the Ready gate sees a fresh table.
 func TestOutboxEventsDeadLetterAdapter_EmptyDB(t *testing.T) {
 	t.Parallel()
 
@@ -76,6 +77,28 @@ func TestOutboxEventsDeadLetterAdapter_EmptyDB(t *testing.T) {
 
 	db := openDLTestDB(t)
 	defer db.Close()
+
+	repo := outboxevents.NewRepository(db)
+	adapter := NewOutboxEventsDeadLetterAdapter(repo)
+
+	got, err := adapter.CountOpen(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 0, got)
+}
+
+// TestOutboxEventsDeadLetterAdapter_IgnoresDriveDeleteDeadLetters ensures
+// unrelated deletion-lifecycle dead letters do not block the Qdrant reindex
+// readiness gate.
+func TestOutboxEventsDeadLetterAdapter_IgnoresDriveDeleteDeadLetters(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	db := openDLTestDB(t)
+	defer db.Close()
+
+	seedDLRow(t, db, 1, outboxevents.EventAssetDriveDeleteRequested, "dead_letter")
+	seedDLRow(t, db, 2, outboxevents.EventAssetDriveDeleteRequested, "dead_letter")
 
 	repo := outboxevents.NewRepository(db)
 	adapter := NewOutboxEventsDeadLetterAdapter(repo)
@@ -138,11 +161,11 @@ func openDLTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func seedDLRow(t *testing.T, db *sql.DB, id int64, status string) {
+func seedDLRow(t *testing.T, db *sql.DB, id int64, eventType, status string) {
 	t.Helper()
 	_, err := db.Exec(`
 		INSERT INTO outbox_events (id, event_type, aggregate_id, aggregate_type, payload_json, status, created_at, updated_at)
-		VALUES (?, 'asset.index.requested.v1', 'agg-x', 'media_assets', '{}', ?, '2026-06-26T00:00:00Z', '2026-06-26T00:00:00Z')
-	`, id, status)
+		VALUES (?, ?, 'agg-x', 'media_assets', '{}', ?, '2026-06-26T00:00:00Z', '2026-06-26T00:00:00Z')
+	`, id, eventType, status)
 	require.NoError(t, err)
 }

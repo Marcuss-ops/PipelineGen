@@ -115,7 +115,7 @@ func startCancelWatcher(jobCtx context.Context, jobCancel context.CancelFunc, is
 //	size_bytes  → size_bytes
 //	sha256      → sha256
 //	local_path  → (discarded — the Sender never sees local paths)
-//	required    → (discarded — manifest-level concern, not per-artifact)
+//	required    → requirement (bool → ArtifactRequirement enum)
 func extractStagedArtifacts(result map[string]any) json.RawMessage {
 	manifest, err := job.Decode(result)
 	if err != nil || manifest == nil || len(manifest.Artifacts) == 0 {
@@ -124,13 +124,19 @@ func extractStagedArtifacts(result map[string]any) json.RawMessage {
 
 	published := make([]finalization.PublishedArtifact, 0, len(manifest.Artifacts))
 	for _, a := range manifest.Artifacts {
+		req := finalization.ArtifactRequirementOptional
+		if a.Required {
+			req = finalization.ArtifactRequirementRequired
+		}
 		published = append(published, finalization.PublishedArtifact{
-			ArtifactID: a.ID,
-			Kind:       finalization.ArtifactKind(a.Kind),
-			Filename:   a.Filename,
-			MIMEType:   a.MIMEType,
-			SizeBytes:  a.SizeBytes,
-			SHA256:     a.SHA256,
+			ArtifactID:     a.ID,
+			Kind:           finalization.ArtifactKind(a.Kind),
+			Filename:       a.Filename,
+			MIMEType:       a.MIMEType,
+			SizeBytes:      a.SizeBytes,
+			SHA256:         a.SHA256,
+			Requirement:    req,
+			IdempotencyKey: a.ID,
 		})
 	}
 

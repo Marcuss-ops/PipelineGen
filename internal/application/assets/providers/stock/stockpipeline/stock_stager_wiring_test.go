@@ -157,6 +157,7 @@ func newWiringTestOrchestrator(rec *recordingStager) *Orchestrator {
 	return NewOrchestrator(
 		OrchestratorConfig{
 			JobId:            "wiring-test",
+			Lease:            testLease("wiring-test"),
 			PolicyVersion:    "v1",
 			ChunkDurationSec: 5,
 			ClipDurationSec:  5,
@@ -164,8 +165,11 @@ func newWiringTestOrchestrator(rec *recordingStager) *Orchestrator {
 		NewDeterministicPlanner(),
 		NewInMemoryStepStore(),
 		rec,
-		nil, noopRenderer{}, // cutter nil (out of scope per PR); renderer is a noop stub required by the composition-time gate
-	)
+		fakeSucceedingCutter{},
+		successNoopRenderer(),
+	).
+		WithAssetPreparation(&recordingArtifactPreparation{}).
+		WithJobFinalizer(stubJobFinalizer{})
 }
 
 // ─────────────────────────────────────────────────────────────────────
