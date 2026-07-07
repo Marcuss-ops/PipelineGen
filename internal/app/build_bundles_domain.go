@@ -96,15 +96,22 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
-	// Phase 1d (July 2026): YouTube → Publisher migration.
-	// The canonical YouTubePublisherDriveAdapter routes UploadFileIfChanged
-	// through delivery.Publisher.Publish (with ConflictSkipByHash for
-	// content-dedupe) instead of the legacy drive.Admin.UploadFileIfChanged.
-	// The legacy driveFolderMgr adapter is retained as the fallback for now;
-	// a future CUTOVER wave will retire it entirely.
+	// PR-P12-YOUTUBE-LEGACY-RETIRE (July 2026, deadline 2026-08-08): the
+	// canonical YouTubePublisherDriveAdapter is the SOLE
+	// DriveFolderManagerPort binding for the YouTube pipeline. The
+	// legacy driveFolderMgrAdapter (which wrapped drive.Admin
+	// directly, bypassing the DestinationRegistry) is RETIRED
+	// via git-rm per godlike/07 NO-FAKE-AVAILABILITY — its sole
+	// caller was a dead-code discard in this function
+	// (`_ = driveFolderMgr` per Phase 1d provisional wiring), so
+	// physical retirement is godlike/07 minimum-blast-radius.
+	// The canonical YouTubePublisherDriveAdapter routes
+	// UploadFileIfChanged through delivery.Publisher.Publish (with
+	// ConflictSkipByHash for content-dedupe); the canonical
+	// Publisher resolves the root folder for DestinationYouTubeClip
+	// via DestinationRegistry + RootFolderID (NO caller-supplied
+	// RootFolderOverride per godlike/07).
 	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, log)
-	driveFolderMgr := newDriveFolderMgrAdapter(drive.driveUploader, log) // Phase 1d: retained as fallback; retire in CUTOVER wave
-	_ = driveFolderMgr                                                   // suppress unused-var while both adapters coexist
 	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})
 
 	var clipIndexerAdapterValue youtubeports.ClipIndexerPort
