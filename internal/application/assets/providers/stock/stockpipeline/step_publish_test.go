@@ -1100,6 +1100,195 @@ func TestStockPublishStep_BothFieldsPropagatedPerChunk(t *testing.T) {
 	}
 }
 
+// TestStockPublishStep_PlanDescriptionSync (PR-PLAN-DESCRIPTION-SYNC,
+// July 2026): same bug class as the Title MUST-FIX. When
+// Plan[i].Description is empty (e.g. a planner that doesn't
+// thread Description through to ClipPlan, or a future
+// implicit-planner path) but in.Clips[i].Description is
+// populated, the canonical per-clip description must reach
+// ChunkState.Description — which is then carried into both the
+// VerifiedArtifact.Description (write-side seam) and the
+// metadata.json chunks[i].description (read-side seam, via
+// buildStockRunMetadata). Without this sync, an explicit-clips
+// run that lands through a non-front-2 planner path silently
+// drops the per-timestamp narration (godlike/07
+// NO-FAKE-AVAILABILITY: a silent description drop in
+// metadata.json hides Qdrant search-text input from downstream
+// consumers).
+//
+// This test mirrors the canonical Title MUST-FIX pattern
+// (TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata
+// asserts cs.Title, this test asserts cs.Description). The
+// pre-PR bug: a chunk whose Plan.Description="" + Clips[].Description="..."
+// surfaced with empty cs.Description, an empty per-clip
+// metadata.json chunks[0].description, and an empty run-level
+// metadata.json chunks[0].description — all 3 seams lost the
+// canonical description. The fix mirrors the Title fix exactly:
+// (a) prefer Plan.Description, (b) fall through to
+// in.Clips[i].Description, (c) sync back plan.Description so
+// perClipLeafName + downstream consumers read the SAME
+// source-of-truth.
+//
+// godlike/07 NO-FAKE-AVAILABILITY contract:
+//   - Plan.Description == "" AND in.Clips[i].Description == "X"
+//     → cs.Description == "X" (fallback to canonical source)
+//   - Plan.Description == "Y" AND in.Clips[i].Description == "X"
+//     → cs.Description == "Y" (Plan wins, X is shadowed)
+//   - Plan.Description == "" AND in.Clips[i].Description == ""
+//     → cs.Description == "" (no fabrication — no fake-availability
+//     placeholder literal like "n/a" or "unknown")
+func TestStockPublishStep_PlanDescriptionSync(t *testing.T) {
+	tmpDir := t.TempDir()
+	const want = "Pacquiao fires the first clean left jab and resets the guard."
+	clip0 := filepath.Join(tmpDir, "clip0.mp4")
+	clip1 := filepath.Join(tmpDir, "clip1.mp4")
+	if err := os.WriteFile(clip0, []byte("clip-0"), 0o644); err != nil {
+		t.Fatalf("write clip0: %v", err)
+	}
+	if err := os.WriteFile(clip1, []byte("clip-1"), 0o644); err != nil {
+		t.Fatalf("write clip1: %v", err)
+	}
+
+	prep := &recordingArtifactPreparation{}
+	runner := &publishFakeRunner{
+		runInput: &RunInput{
+			FolderName: "Round_7_Broner_barcolla",
+			Subfolder:  "Pacquiao_Vs_Broner/Round_7_Broner_barcolla/00-00-32_to_00-01-27",
+			FolderID:   "wf-desc-sync",
+			// In.Clips[i].Description is populated (canonical source)
+			// but Plan[i].Description is empty (the MUST-FIX case).
+			Clips: []ClipSpec{
+				{URL: "https://youtu.be/a", Title: "Round 1", Description: want},
+				{URL: "https://youtu.be/a", Title: "Round 2"}, // no description
+			},
+			ClipDuration:  10,
+			ChunkDuration: 10,
+			NoEffects:     true,
+			NoTransitions: true,
+		},
+		cfg: OrchestratorConfig{PolicyVersion: "policy-v1"},
+		state: &runState{
+			// Both Plan entries have Description = "" (empty) — the
+			// MUST-FIX precondition. The fix must populate
+			// cs.Description from in.Clips[i].Description for chunk 0
+			// and leave it empty for chunk 1 (no canonical source).
+			Plan: []ClipPlan{
+				{SourceID: "https://youtu.be/a", StartSec: 32, EndSec: 51, Title: "Round 1"},
+				{SourceID: "https://youtu.be/a", StartSec: 67, EndSec: 91, Title: "Round 2"},
+			},
+			ComposedPaths: []string{clip0, clip1},
+		},
+		artifactPrep: prep,
+	}
+	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
+		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
+	}
+
+	// Structural invariant: 2N+1 artifacts = 2 videos + 2 per-clip
+	// metadata + 1 run-level metadata.
+	if got, want := len(prep.artifacts), 5; got != want {
+		t.Fatalf("expected %d prepare calls (2 videos + 2 per-clip metadata + 1 run-level metadata), got %d", want, got)
+	}
+	// ── PR-PLAN-DESCRIPTION-SYNC contract ──
+	// Artifact 0 = video0 (with Description from in.Clips[0].Description).
+	// The recordingArtifactPreparation mock captures the
+	// VerifiedArtifact.Description verbatim — the per-clip metadata
+	// emit AND the run-level metadata.json both use the SAME
+	// cs.Description (canonical StockRunMetadata chunks[] entry),
+	// so asserting on the video artifact's Description proves the
+	// metadata.json carries the same content (godlike/06 SSOT
+	// one-canonical-owner-per-fact: ChunkState.Description is the
+	// SOLE source of metadata chunks[].description).
+	if got := prep.artifacts[0].Description; got != want {
+		t.Errorf("artifact[0] (video0) Description = %q, want %q (Plan.Description was empty, must fall through to in.Clips[0].Description)",
+			got, want)
+	}
+	// Artifact 2 = video1 (with NO description — chunk 1 had no
+	// in.Clips[1].Description and Plan[1].Description is empty).
+	// The fix must NOT fabricate a description here (godlike/07
+	// NO-FAKE-AVAILABILITY: no "n/a" / "unknown" placeholder).
+	if got := prep.artifacts[2].Description; got != "" {
+		t.Errorf("artifact[2] (video1) Description = %q, want %q (no canonical source on either side; must NOT fabricate)",
+			got, "")
+	}
+	// Sync-back invariant: plan.Description == cs.Description after
+	// the explicit-clips block. Read from the ChunkState
+	// (runner.State().Published) which carries the post-fix value.
+	published := runner.State().Published
+	if len(published) != 2 {
+		t.Fatalf("expected 2 published chunks, got %d", len(published))
+	}
+	if got := published[0].Description; got != want {
+		t.Errorf("published[0].Description = %q, want %q (sync-back must populate plan.Description from in.Clips[i].Description)",
+			got, want)
+	}
+	if got := published[1].Description; got != "" {
+		t.Errorf("published[1].Description = %q, want %q (no canonical source; must stay empty post-sync-back)",
+			got, "")
+	}
+}
+
+// TestStockPublishStep_PlanDescriptionWinsOverClipsSpec pins the
+// precedence rule: when BOTH Plan.Description and
+// in.Clips[i].Description are populated, Plan.Description wins.
+// The fall-through to in.Clips[i].Description is ONLY the
+// MUST-FIX case (Plan empty). Mirrors the Title precedence
+// rule (TestPerClipLeafName_SlugFromTitle has a Slug-over-Title
+// variant — same pattern for the Description pair).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the Plan source is the
+// canonical write-side seam (the planner's output is the
+// authoritative per-clip metadata); the ClipsSpec source is
+// the operator-supplied fallback (the original brief that the
+// planner could overwrite via front-2 threading). When the
+// planner explicitly stamps a description, that wins — we
+// don't shadow an authoritative value with a stale ClipsSpec.
+func TestStockPublishStep_PlanDescriptionWinsOverClipsSpec(t *testing.T) {
+	tmpDir := t.TempDir()
+	const planDesc = "Planner-authoritative description for Round 1."
+	const clipDesc = "Stale ClipsSpec description that should be SHADOWED."
+	clip0 := filepath.Join(tmpDir, "clip0.mp4")
+	if err := os.WriteFile(clip0, []byte("clip-0"), 0o644); err != nil {
+		t.Fatalf("write clip0: %v", err)
+	}
+	prep := &recordingArtifactPreparation{}
+	runner := &publishFakeRunner{
+		runInput: &RunInput{
+			FolderName: "Round_7",
+			Subfolder:  "Pacquiao_Vs_Broner/Round_7",
+			FolderID:   "wf-plan-wins",
+			Clips: []ClipSpec{
+				{URL: "https://youtu.be/a", Title: "Round 1", Description: clipDesc},
+			},
+			ClipDuration:  10,
+			ChunkDuration: 10,
+		},
+		cfg: OrchestratorConfig{PolicyVersion: "policy-v1"},
+		state: &runState{
+			Plan: []ClipPlan{
+				{SourceID: "https://youtu.be/a", StartSec: 32, EndSec: 51, Title: "Round 1", Description: planDesc},
+			},
+			ComposedPaths: []string{clip0},
+		},
+		artifactPrep: prep,
+	}
+	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
+		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
+	}
+	// 2N+1 = 1 video + 1 per-clip metadata + 1 run-level metadata = 3.
+	if got, want := len(prep.artifacts), 3; got != want {
+		t.Fatalf("expected %d prepare calls, got %d", want, got)
+	}
+	if got := prep.artifacts[0].Description; got != planDesc {
+		t.Errorf("artifact[0] (video0) Description = %q, want %q (Plan.Description must win over in.Clips[i].Description)",
+			got, planDesc)
+	}
+	if got := runner.State().Published[0].Description; got != planDesc {
+		t.Errorf("published[0].Description = %q, want %q (sync-back must keep Plan value, not ClipsSpec shadow)",
+			got, planDesc)
+	}
+}
+
 // TestStockPublishStep_ExplicitClips_DrivePathOnTimestampChunks
 // locks the per-chunk DrivePath capture for the explicit-clips
 // (timestamp-mode) path too. The PathLeafName + ArtifactID
