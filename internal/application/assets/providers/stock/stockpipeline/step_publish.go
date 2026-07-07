@@ -158,6 +158,33 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			if cs.Title != "" {
 				plan.Title = cs.Title
 			}
+			// PR-PLAN-DESCRIPTION-SYNC (July 2026): same bug class as
+			// the Title MUST-FIX above. If Plan.Description is empty
+			// but in.Clips[i].Description is populated, populate
+			// cs.Description from the canonical clip spec source.
+			// Without this, an explicit-clips run that surfaces
+			// through a planner that doesn't propagate Description
+			// (e.g. a future implicit-planner path or a third-party
+			// planner that skips the front-2 thread) would silently
+			// lose the per-timestamp narration — metadata.json's
+			// chunks[0].description would be absent even though
+			// in.Clips[i].Description carried the canonical content
+			// (godlike/07 NO-FAKE-AVAILABILITY: a silent description
+			// drop in metadata.json hides Qdrant search-text input
+			// from downstream consumers).
+			if i < len(runner.State().Plan) && runner.State().Plan[i].Description != "" {
+				cs.Description = runner.State().Plan[i].Description
+			} else if i < len(in.Clips) {
+				cs.Description = in.Clips[i].Description
+			}
+			// Sync back plan.Description so perClipLeafName and any
+			// other downstream consumer (e.g. Qdrant semantic-payload
+			// enrichment) reads the SAME source-of-truth description
+			// the chunk is indexed by — same godlike/06 SSOT
+			// lockstep discipline as the Title sync-back above.
+			if cs.Description != "" {
+				plan.Description = cs.Description
+			}
 		}
 		if compPath != "" {
 			if err := cs.ComputeAndFillSHA256(); err != nil {
