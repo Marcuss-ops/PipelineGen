@@ -65,7 +65,31 @@ type StockRunMetadata struct {
 	Scene    string   `json:"scene,omitempty"`
 	Subject  string   `json:"subject,omitempty"`
 	Entities []string `json:"entities,omitempty"`
+
+	// ── IndexingStatus (PR-008) ────────────────────────────────────
+	// Projection-time literal: stock.finalize emits "INDEXING_PENDING"
+	// without doing a DB SELECT on media_assets.index_state (which
+	// would block throughput on every chunk finalization). The
+	// IndexingHandler downstream (outbox asset.index.requested
+	// consumer) will overwrite this to "INDEXED" in the Qdrant
+	// payload after a successful upsert, but media_assets.index_state
+	// in the SQLite DB is the canonical SSOT for the lifecycle
+	// state. This field is the wire-snapshot hint for offline
+	// consumers; it is NOT authoritative for retry/decision logic.
+	//
+	// No `omitempty` per godlike/07 NO-FAKE-AVAILABILITY: the
+	// literal value is ALWAYS present at projection time so
+	// consumers see a stable, parseable value. Setting this to
+	// "" would silently drop the hint.
+	IndexingStatus string `json:"indexing_status"`
 }
+
+// IndexingStatusPending is the canonical projection-time literal
+// for the IndexingStatus field on StockRunMetadata. Per PR-008 the
+// stock.finalize path emits this value at the metadata.json build
+// site (no DB SELECT). The IndexingHandler downstream overwrites
+// to "INDEXED" in the Qdrant payload after a successful upsert.
+const IndexingStatusPending = "INDEXING_PENDING"
 
 // ChunkMetadataEntry is the per-chunk metadata entry embedded
 // in the per-run metadata.json. LocalPath is exposed here for
@@ -135,6 +159,13 @@ func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint str
 		Chunks:         entries,
 		CreatedAt:      time.Now().UTC(),
 		PolicyVersion:  in.PolicyVersion, // populated from RunInput; Cfg() also has it
+		// PR-008 (July 2026): hardcode the projection-time literal
+		// to avoid a media_assets.index_state DB SELECT in the
+		// hot path. The IndexingHandler (outbox consumer) flips
+		// to "INDEXED" in the Qdrant payload after a successful
+		// upsert; media_assets.index_state in the DB is the
+		// canonical SSOT for retry/decision logic.
+		IndexingStatus: IndexingStatusPending,
 	}
 }
 
