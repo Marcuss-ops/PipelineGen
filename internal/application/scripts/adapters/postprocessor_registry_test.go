@@ -437,10 +437,13 @@ func TestRegistry_MergeAllFields(t *testing.T) {
 func TestRegistry_ValidateRequested_PreflightRejectsMissingRequired(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
 	// Only "persistence" (required) is registered. The caller
-	// will request "document" — also required — but it is missing.
+	// will request "entities" — also required (post-PR 3) — but
+	// it is missing. Note: "document" was downgraded to BestEffort
+	// in Fase 2 Spina Dorsale so it would NOT trigger a preflight
+	// rejection; "entities" remains Required.
 	r.Register(&countingProcessor{name: "persistence"})
 
-	err := r.ValidateRequested([]string{"persistence", "document"})
+	err := r.ValidateRequested([]string{"persistence", "entities"})
 	if err == nil {
 		t.Fatal("ValidateRequested should reject missing-required processor")
 	}
@@ -450,7 +453,7 @@ func TestRegistry_ValidateRequested_PreflightRejectsMissingRequired(t *testing.T
 	if !errors.As(err, &inv) {
 		t.Fatalf("expected *scriptpkg.PlanInvalidError, got %T: %v", err, err)
 	}
-	if !strings.Contains(inv.Error(), "document") {
+	if !strings.Contains(inv.Error(), "entities") {
 		t.Errorf("error should mention missing processor name: %v", inv)
 	}
 }
@@ -490,13 +493,17 @@ func TestRegistry_ValidateRequested_NoProcessorsRequested(t *testing.T) {
 // duplicate errors.
 func TestRegistry_ValidateRequested_Deduplicates(t *testing.T) {
 	r := adapterspkg.NewPostProcessorRegistry(zap.NewNop())
-	err := r.ValidateRequested([]string{"document", "document", "document"})
+	// "entities" is Required (post-PR 3); requesting it 3× when
+	// nothing is registered must produce exactly one deduplicated
+	// error entry. Note: "document" was downgraded to BestEffort
+	// in Fase 2 and would NOT error on missing-registered.
+	err := r.ValidateRequested([]string{"entities", "entities", "entities"})
 	if err == nil {
-		t.Fatal("missing document should still error after dedup")
+		t.Fatal("missing entities should still error after dedup")
 	}
-	// Count occurrences of "document" in the error message — at
+	// Count occurrences of "entities" in the error message — at
 	// most once (dedup guarantee).
-	if strings.Count(err.Error(), "document") > 2 {
+	if strings.Count(err.Error(), "entities") > 2 {
 		t.Errorf("dedup failed: %v", err)
 	}
 }
