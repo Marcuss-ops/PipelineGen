@@ -7333,7 +7333,9 @@
       deadline: 2026-07-25
     - id: PR-SPLIT-JOBS-REGISTRY-AUDIT-PIN
       owner_capability: internal/application/jobs
-      status: pending
+      status: shipped
+      ship_sha: 2e2c3d87
+      ship_date: 2026-07-07
       deadline: 2026-07-25
     - id: PR-SPLIT-CLIPS-HANDLER
       owner_capability: internal/api/assets/clips
@@ -8155,3 +8157,124 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
       deadline: 2026-08-01
       owner_capability: internal/application/assets/providers/stock
       summary: The original stock-residue cleanup task can now cross-validate against the enriched payload (drive_link + indexing_status + source_provider discriminator fields) to identify stock_metadata folders generated PRE vs POST this enrichment wave.
+
+- id: PR-011-FORWARD-POINTERS
+  owner_capability: architecture
+  status: pending
+  ship_date: 2026-07-07
+  exit_signal: false
+  deadline: 2026-08-22
+  description: |
+    Stock RLM/LLM enrichment wave scope-lock: 7 forward-pointers
+    document the operational surface OUTSIDE the 3-PR chain so
+    PR-011A + PR-011B + PR-011C ship without future surprise
+    regressions. The 3-PR chain (PR-011A shipped 2026-07-07 +
+    PR-011B pending + PR-011C pending) is the core delivery; the
+    7 forward-pointers are the scope-lock items that prevent drift
+    on model selection, idempotency contract, backfill, schema
+    evolution, residue cross-validation, and ops observability.
+
+    godlike/06 SSOT (one canonical owner per fact):
+    - EnrichmentIdempotencyKey (in internal/application/assets/
+      providers/stock/enrichment/idempotency.go) is the SOLE
+      canonical owner of the chunk_id+content_hash+version -> key
+      derivation. PR-011C's AssetPublishedHandler v1 envelope
+      idempotency_key field MUST consume this helper (not re-derive
+      inline).
+    - ErrEnrichmentIdempotencyKeyConflict is distinct from the C6
+      and C7 sentinels (ErrArtifactIdempotencyKeyConflict +
+      ErrCompleteJobIdempotencyKeyConflict) per godlike/06
+      one-canonical-owner-per-fact -- 3 sentinel classes, 3
+      scopes (upload-protocol, completion-protocol, enrichment).
+    - Each of the 7 forward-pointers has a single canonical
+      owner declared in its owner_capability slot.
+
+    godlike/07 NO-FAKE-AVAILABILITY:
+    - EnrichmentIdempotencyKey returns ("", ErrEnrichmentIdempotencyKeyConflict)
+      on empty-input / malformed-contentHash / unknown-version (no
+      silent "" markers that would collapse all uploads onto a
+      single dedup slot).
+    - All 7 forward-pointers are TYPED contracts (no silent
+      fallback to canonical surface). Each future PR must surface
+      a typed sentinel at the gate per AGENTS.md Pattern 0.
+    - The ops-dashboard forward-pointer specifies Prometheus-style
+      counters (no in-memory-only state) so SRE-side alerts
+      survive worker restarts.
+
+    godlike/07 minimum-blast-radius: the 3-PR chain preserves the
+    existing 2-arg NewEnrichmentHandler signature (no caller
+    update required); the 6 unshipped forward-pointers are
+    additive surfaces that the worker DOES NOT call today.
+
+    Wave-flip criterion: status flips to shipped + exit_signal: true
+    when ALL of the following are true:
+    (1) PR-011A is shipped (DONE: 99e29dcc).
+    (2) PR-ENRICHMENT-IDEMPOTENCY-KEY is shipped (DONE: d9e9afe0).
+    (3) PR-011B is shipped (pending).
+    (4) PR-011C is shipped (pending).
+    (5) All 6 unshipped forward-pointers (PR-ENRICHMENT-MODEL-FALLBACK,
+        PR-ENRICHMENT-SUPERSEDE-GATE, PR-ENRICHMENT-BACKFILL-CLI,
+        PR-ENRICHMENT-SCHEMA-EVOLUTION, PR-ENRICHMENT-RESIDUE-CROSSVALIDATION,
+        PR-ENRICHMENT-OPS-DASHBOARD) reach shipped.
+  linked_issues:
+  - id: PR-011A-REGISTRATION-HANDLER-SKELETON
+    owner_capability: internal/application/assets/providers/stock
+    status: shipped
+    ship_sha: 99e29dcc
+    ship_date: 2026-07-07
+  - id: PR-011B-OLLAMA-CALL
+    owner_capability: internal/application/assets/providers/stock
+    status: pending
+  - id: PR-011C-OUTBOX-EMIT
+    owner_capability: internal/application/jobs/outbox
+    status: pending
+  cross_references:
+    parent_audit:
+      - architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05
+      - architecture/current.yaml#PR-STOCK-QDRANT-SEMANTIC-ENRICHMENT
+    sister_wave:
+      - architecture/current.yaml#VO-DECOMPOSITION-2026-07-04
+      - architecture/current.yaml#SEMANTIC-LOCATION-API-2026-07-06
+    canonical_surface:
+      - internal/application/assets/providers/stock/enrichment/idempotency.go
+      - internal/application/assets/providers/stock/enrichment/handler.go
+      - internal/application/jobs/outbox/asset_published.go
+  godlike_06_ssot:
+    - EnrichmentIdempotencyKey (enrichment/idempotency.go) is the SOLE canonical owner of the chunk_id+content_hash+version -> key derivation.
+    - ErrEnrichmentIdempotencyKeyConflict is distinct from C6/C7 sentinels (3 sentinel classes, 3 scopes per godlike/06 one-canonical-owner-per-fact).
+    - Each of the 7 forward-pointers has a single canonical owner declared in its owner_capability slot.
+  godlike_07_no_fake_availability:
+    - EnrichmentIdempotencyKey returns ("", ErrEnrichmentIdempotencyKeyConflict) on empty-input / malformed-contentHash / unknown-version.
+    - All 7 forward-pointers are TYPED contracts (no silent fallback).
+    - ops-dashboard forward-pointer specifies Prometheus counters (no in-memory-only state).
+  forward_pointers:
+  - id: PR-ENRICHMENT-IDEMPOTENCY-KEY
+    deadline: 2026-07-07
+    owner_capability: internal/application/assets/providers/stock
+    ship_sha: d9e9afe0
+    ship_date: 2026-07-07
+    summary: SHIPPED (commit d9e9afe0, 2026-07-07). Stable idempotency_key from (chunk_id, content_hash, version) via SHA-256 hex of "chunkID:contentHash:version". Mirrors the C6 ArtifactIdempotencyKey + C7 CompleteJobIdempotencyKey patterns. Returns ("", ErrEnrichmentIdempotencyKeyConflict) on empty/malformed/unknown-version input (no silent empty markers). Unblocks PR-011C's AssetPublishedHandler v1 envelope idempotency_key contract.
+  - id: PR-ENRICHMENT-MODEL-FALLBACK
+    deadline: 2026-08-15
+    owner_capability: internal/application/assets/providers/stock
+    summary: When the primary LLM (nomic-embed-text or gemma) fails/times out, fall back to a smaller/cheaper model. Mirrors the parse_arena LLM chain in cfg.External.ParseArenaLLM. Canonical surface: enrichment/handler.go LLM call site. Fail-closed contract: typed ErrEnrichmentLLMUnavailable sentinel with dual-%w chain preserving the underlying LLM error.
+  - id: PR-ENRICHMENT-SUPERSEDE-GATE
+    deadline: 2026-08-15
+    owner_capability: internal/application/assets/providers/stock
+    summary: When re-enriching an existing chunk, only re-call the LLM if content has changed (idempotency_key stable across same content). Consumes EnrichmentIdempotencyKey. Canonical surface: enrichment/handler.go entry-point. godlike/07 NO-FAKE-AVAILABILITY: the gate MUST surface a typed sentinel (e.g., ErrEnrichmentChunkNotModified) so retries that hit a no-content-change chunk are observable in metrics, not silently no-op'd.
+  - id: PR-ENRICHMENT-BACKFILL-CLI
+    deadline: 2026-08-15
+    owner_capability: cmd/admin
+    summary: Operator CLI that walks the existing media_assets table and enqueues media.stock_rlm_enrich jobs for chunks not yet enriched (or whose enrichment_idempotency_key doesn't match the current canonical formula). Mirrors the JOBS-T01-002 zombie-sweep CLI precedent (cmd/admin/zombie_sweep.go). Default --dry-run mode (no DB writes); --apply flag is operator-explicit opt-in.
+  - id: PR-ENRICHMENT-SCHEMA-EVOLUTION
+    deadline: 2026-08-22
+    owner_capability: internal/application/assets/providers/stock
+    summary: When the 19-field Qdrant schema gains/loses fields, govern the EXPAND -> BACKFILL -> CUTOVER -> CONTRACT migration. Mirrors the ArtifactIdempotencyKeyV1->V2 godlike/07 sequence with EnrichmentVersionV1/V2. The EnrichmentVersion type (enrichment/idempotency.go) is the single source of truth for the versioned-key contract; future V2+ versions require a new typed sentinel and a 4-phase migration.
+  - id: PR-ENRICHMENT-RESIDUE-CROSSVALIDATION
+    deadline: 2026-08-01
+    owner_capability: internal/application/assets/providers/stock
+    summary: The original stock-residue cleanup task can now cross-validate against the enrichment_idempotency_key to identify stock_metadata folders generated PRE vs POST the enrichment wave. Sister to PR-STOCK-RESIDUE-CROSSVALIDATION (already in the PR-STOCK-QDRANT-SEMANTIC-ENRICHMENT forward_pointers). Produces a single backfill-CLI target list scoped to PRE-wave rows.
+  - id: PR-ENRICHMENT-OPS-DASHBOARD
+    deadline: 2026-08-15
+    owner_capability: internal/infrastructure/observability
+    summary: Operator-facing Prometheus metrics: enrichment_jobs_total{outcome=succeeded|failed|retried|dead_lettered}, enrichment_latency_seconds (LLM call latency histogram), enrichment_idempotency_key_conflicts_total (alert on retries with mismatched content_hash), enrichment_residue_total (chunks still pending enrichment, by age bucket). Mirrors the existing finalizer_metrics surface (PR-DOC-FINALIZER-METRICS-NO-OP-SEMANTICS).
