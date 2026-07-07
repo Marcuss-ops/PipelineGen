@@ -7440,28 +7440,20 @@
       status: pending
       deadline: 2026-08-22
     - id: PR-SPLIT-OUTBOX-INDEXING
-      owner_capability: internal/application/jobs/outbox
-      status: pending
-      deadline: 2026-08-22
-    - id: PR-SPLIT-ASSET-PUBLISHED
-      owner_capability: internal/application/jobs/outbox
-      status: shipped
-      ship_sha: 64395bcc782fb8cfe269dcca4e82261ab3941205
-      ship_date: 2026-07-07
-      deadline: 2026-08-22
-    - id: PR-SPLIT-INDEX-WRITER
-      owner_capability: internal/infrastructure/qdrant/indexing
-      status: pending
-      deadline: 2026-08-22
-    - id: PR-SPLIT-OLLOMA-ANALYZER
-      owner_capability: internal/application/semantic
-      status: pending
-      deadline: 2026-08-22
-    - id: PR-LONG-FILES-HOTSPOT-CROSSREF-V2
-      owner_capability: architecture
-      status: pending
-      deadline: 2026-09-01
-- id: SEMANTIC-LOCATION-API-2026-07-06
+    status: shipped
+    ship_sha: c25c806a68408d9a92814af669823053180d65d4
+    ship_date: 2026-07-07
+    ship_via: EXTRACT_METHOD_REFACTOR
+    owner_capability: internal/application/jobs/outbox (IndexingHandler package)
+    exit_signal: false
+    deadline: 2026-08-22
+    description: |
+      Extract-method refactor + code-motion split (godlike/06 SSOT, AGENTS.md Pattern 5) of internal/application/jobs/outbox/indexing.go (was 504 LoC).
+      Post-split: 3 files in same package (internal/application/jobs/outbox).
+        - indexing.go (259 LoC, slim): package goddoc + 2 schema constants (IndexRequestSchemaVersion + IndexRequestOperationUPSERT) + 2 interface declarations (IndexClipper + SourceVersionQuerier) + indexRequestV1 envelope struct + IndexingHandler struct + NewIndexingHandler ctor + WithStateUpdater fluent setter + EventType accessor + closing PR-11 follow-up comment block.
+        - indexing_validate.go (115 LoC, NEW): parseAndValidateRequest function (parse + strict v1 envelope validation, 7 terminal-classification blocks). Extracted from original Handle method's first 7 validation blocks verbatim. Returns (nil, *outboxevents.TerminalError) for any failure.
+        - indexing_handle.go (215 LoC, NEW): Handle method. Calls parseAndValidateRequest (sibling), then performs source_version supersede gate, then delegates to IndexClip (sentinel-driven retry-pending + CAS-miss supersede classification). Deferred MediaIndexDuration observation + outcome propagation preserved EXACTLY.
+      Lookup paths preserved: outbox.IndexingHandler / outbox.IndexRequestSchemaVersion / outbox.IndexRequestOperationUPSERT / outbox.parseAndValidateRequest all canonical.- id: SEMANTIC-LOCATION-API-2026-07-06
   owner_capability: architecture
   status: shipped
   exit_signal: true
