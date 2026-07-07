@@ -227,6 +227,15 @@ type GenerateVoiceoverItemCommand struct {
 	// Read by the aggregator from the child job's payload to feed
 	// the domain StateMachine Transition() rule ①.
 	Required bool `json:"required,omitempty"`
+
+	// Project is the canonical semantic project identifier for the
+	// voiceover publish (PR-P12-VOICEOVER-SEMANTIC-FIELDS, July 2026).
+	// Threaded from the API request (or, for internal callers, from
+	// the per-call context) down to ProcessSegmentCommand → the
+	// adapter → the Publisher's VoiceoverPath. When empty, the
+	// adapter falls back to the pre-PR-12 FolderID (legacy) or
+	// the canonical voiceover ID (graceful degradation).
+	Project string `json:"project,omitempty"`
 }
 
 // Validate runs the canonical validation gate ONCE at the child use case
