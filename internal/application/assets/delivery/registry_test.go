@@ -94,6 +94,7 @@ func TestRegistry_AllKeysPresent(t *testing.T) {
 		DestinationBook,
 		DestinationScript,
 		DestinationSoundEffect,
+		DestinationSoundEffectSidecar,
 		DestinationDocument,
 		DestinationAdmin,
 	}

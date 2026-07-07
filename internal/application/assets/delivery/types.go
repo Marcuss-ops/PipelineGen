@@ -44,8 +44,19 @@ const (
 	DestinationBook        DestinationKey = "book"
 	DestinationScript      DestinationKey = "script"
 	DestinationSoundEffect DestinationKey = "sound_effect"
-	DestinationDocument    DestinationKey = "document"
-	DestinationAdmin       DestinationKey = "admin"
+	// DestinationSoundEffectSidecar (PR-P12-SOUND-EFFECT-SIDECAR, July 2026):
+	// canonical destination for sound-effect metadata.json sidecars
+	// (tags, search_text, semantic metadata) co-located with the
+	// audio file in the same <root>/<name>/ folder. Distinct from
+	// DestinationSoundEffect (audio) so the sidecar can carry its
+	// own conflict policy (ConflictOverwrite — the latest
+	// metadata.json wins) without conflating with the audio's
+	// immutable ConflictSkip semantics. godlike/06 SSOT: one
+	// canonical owner per fact; the sidecar's overwrite policy is
+	// a separate concern from the audio's skip policy.
+	DestinationSoundEffectSidecar DestinationKey = "sound_effect_sidecar"
+	DestinationDocument           DestinationKey = "document"
+	DestinationAdmin              DestinationKey = "admin"
 )
 
 // ConflictPolicy controls what happens when a file with the same name
