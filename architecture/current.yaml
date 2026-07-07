@@ -8431,20 +8431,23 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
     ship_date: 2026-07-07
     ship_via: AUDIT_PIN_NEGATIVE_FINDING_2026_07_07
     deadline: 2026-08-01
-    remediation: RESOLVED as a stale-process artifact (NOT a config drift). The .env
-      at the project root has the real `d6e31eb8...` token (last modified 2026-07-04,
-      3 days BEFORE the audit-pin was written). The canonical pipelinegen.service unit
-      uses EnvironmentFile=-...refactored/.env which loads the .env at process start.
-      NONE of the 5 systemd drop-in files override VELOX_ADMIN_TOKEN. The audit-pin
-      likely captured the stale-process environment from a crash-looped service that
-      could never restart to pick up the new .env value. The actual current blocker
-      is PR-PIPELINEGEN-STARTUP-FAILURE (Google Drive 404 + Qdrant alias timeout,
-      forward-pointer below). See architecture/current.yaml#PR-VELOX-AUTH-ENV-INVESTIGATE
-      for the full diagnostic narrative + 2 NEW forward-pointers added by this closure.
+    remediation: |
+      RESOLVED as a stale-process artifact (NOT a config drift). The .env at the
+      project root has the real `d6e31eb8...` token (last modified 2026-07-04, 3 days
+      BEFORE the audit-pin was written). The canonical pipelinegen.service unit uses
+      EnvironmentFile=-...refactored/.env which loads the .env at process start. NONE
+      of the 5 systemd drop-in files override VELOX_ADMIN_TOKEN. The audit-pin likely
+      captured the stale-process environment from a crash-looped service that could
+      never restart to pick up the new .env value. The actual current blocker is
+      PR-PIPELINEGEN-STARTUP-FAILURE (Google Drive 404 + Qdrant alias timeout, the
+      forward-pointer immediately below). See architecture/current.yaml#PR-VELOX-AUTH-ENV-INVESTIGATE
+      for the full diagnostic narrative + 1 additional forward-pointer added by this
+      closure.
   - id: PR-PIPELINEGEN-STARTUP-FAILURE
     status: pending
     deadline: 2026-08-15
-    remediation: pipelinegen.service is INACTIVE due to googleapi: Error 404 for the
+    remediation: |
+      pipelinegen.service is INACTIVE due to googleapi: Error 404 for the
       youtube_clip root ID (1r9k5qUyW6-hBlPwl7lYXWa7NMlaPz5w3 does not exist in Drive)
       + Qdrant alias target query timeout. Until this is fixed, the service cannot
       restart, so the VELOX_ADMIN_TOKEN value is frozen at whatever the .env had when
@@ -8454,7 +8457,8 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
   - id: PR-DROPIN-DEDUPE
     status: pending
     deadline: 2026-08-22
-    remediation: stock_flag.conf (sets VELOX_FEATURE_STOCK_PIPELINE_ENABLED=true) is
+    remediation: |
+      stock_flag.conf (sets VELOX_FEATURE_STOCK_PIPELINE_ENABLED=true) is
       a DUPLICATE of fase1_override.conf (sets the same var). Cleanup residue from
       the FASE 1 + stock_flag waves. Remove stock_flag.conf OR rename to a meaningful
       purpose if the duplicate is intentional. Forward-pointer per godlike/07
