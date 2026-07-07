@@ -219,6 +219,30 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 		item.Title = "Untitled Script"
 	}
 
+	// ── Postprocessor flags (P0.1, July 2026) ─────
+	//
+	// GenerateDocument and SaveToDB are safety defaults because:
+	//   1. The "custom" preset is pass-through (ApplyPreset touches nothing).
+	//   2. applyConfigDefaults only fills identity/sizing/prompt fields.
+	//   3. Without these safety defaults, buildPostprocessorList never adds
+	//      ProcessorDocument or ProcessorPersistence to the postprocessor
+	//      list, so Google Docs are never created and scripts never persisted.
+	//
+	// godlike/06 caveat (bool zero-value = false, indistinguishable from
+	// "caller did not set" — acknowledged and acceptable because the safety
+	// default fills the gap for both cases; when the caller explicitly sets
+	// generate_document: false they opt out, and the safety default overrides
+	// that because there is no way to distinguish. The aspirational Fase 2
+	// Spina Dorsale (separate document.generate downstream job) would
+	// eliminate this ambiguity; until then, the safety default ensures that
+	// the inline postprocessor runs by default for all presets).
+	if !item.Output.GenerateDocument {
+		item.Output.GenerateDocument = true
+	}
+	if !item.Output.SaveToDB {
+		item.Output.SaveToDB = true
+	}
+
 	// Output format (P0.1, June 2026).
 	//
 	// Canonical script-generation now mandates the structured V1

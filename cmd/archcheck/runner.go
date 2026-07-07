@@ -122,6 +122,19 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// allowlist) re-declares the literal. Comment-only
 		// hits are WARNed (residue accounting).
 		{"percheck_player_client_centralization", scan.ScanPlayerClientCentralization},
+		// Dual-mode sync gate (post-PR-morti-sync, 2026-07-06):
+		// forward-prevention for re-introduction of the
+		// retired syncSingle / syncMulti helpers on
+		// GenerateResponse (the canonical async-only wire
+		// shape — 5 fields). The probes cover BOTH call-
+		// and definition-sides of the dual-mode surface;
+		// companion field-count lock at
+		// internal/api/script/response_test.go::TestGenerate
+		// Response_FieldCountLock catches the struct-shape
+		// leg of the same regression class. Two gates
+		// together = load-bearing forward-prevention; either
+		// alone is insufficient.
+		{"percheck_dual_mode_sync", scan.ScanDualModeSync},
 		// Check B1 (FASE B1, July 2026): forward-prevention gate
 		// for RootFolderOverride in application/api layers.
 		// Bans the field from internal/application/** and

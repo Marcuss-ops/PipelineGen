@@ -92,6 +92,12 @@ type ProcessSegmentCommand struct {
 	// Behavior flags
 	RemoveSilence bool
 
+	// Semantic routing (PR-P12-VOICEOVER-SEMANTIC-FIELDS, July 2026).
+	// Canonical project identifier forwarded from the per-item command.
+	// Empty Project is OK — the adapter builds the canonical subpath
+	// from other fields when Project is absent.
+	Project string
+
 	// Destination (pre-resolved by caller). The ProcessSegmentUseCase
 	// does NOT call DestinationResolver — destination resolution
 	// is a caller-side concern (usecase.go resolves ONCE per

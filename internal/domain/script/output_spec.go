@@ -113,13 +113,12 @@ type OutputSpec struct {
 	// a separate images.generate downstream job. This flag is kept
 	// for backward compatibility; setting it has no effect on the
 	// script.generate pipeline.
-	GenerateSceneImages bool `json:"generate_scene_images,omitempty"`
-
-	// Deprecated: GenerateDocument is no longer an inline postprocessor.
-	// Fase 2 Spina Dorsale (July 2026): Google Doc creation is now
-	// produced by a separate document.generate downstream job. This
-	// flag is kept for backward compatibility; setting it has no
-	// effect on the script.generate pipeline.
+	GenerateSceneImages bool `json:"generate_scene_images,omitempty"` // GenerateDocument controls inline Google Doc creation via the
+	// ProcessorDocument postprocessor. The aspirational Fase 2
+	// Spina Dorsale plan (separate document.generate downstream job)
+	// is not yet implemented — until it is, this flag gates the
+	// inline processor, and the safety default in generation_normalizer
+	// sets it to true for all presets including custom.
 	GenerateDocument bool `json:"generate_document,omitempty"`
 
 	// ── Persistence ──────────────────────────────────────────────────
