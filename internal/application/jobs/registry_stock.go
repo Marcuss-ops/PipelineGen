@@ -21,8 +21,14 @@ func registerStockEntries(r *Registry) {
 	// InsertOutboxEnvelope per Pattern 11 in AGENTS.md). The spine call IS the
 	// terminal-flip seam for this job type — NOT the legacy SQLiteStore.Complete.
 	r.Register(JobPolicy{Type: TypeMediaStock, Description: "Stock media pipeline (per-run artifacts persisted via the canonical JobFinalizer.CompleteWithArtifacts SPINE inside Service.runOrchestratorResilient → Orchestrator.RunResilient step 6 stock.finalize; the spine call is the terminal-flip + artifact-write seam, NOT the legacy SQLiteStore.Complete)", Timeout: 60 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeMediaGenerate, Description: "Generate missing media asset", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, ProducesArtifacts: true})
+	// PR-COMPLETE-WORKER-BROAD-FIX Path D (July 2026): ProducesArtifacts REMOVED.
+	// TypeMediaGenerate is an orphaned registry entry — no production handler
+	// is statically registered.
+	r.Register(JobPolicy{Type: TypeMediaGenerate, Description: "Generate missing media asset", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
 	r.Register(JobPolicy{Type: TypeMediaReindex, Description: "Reindex media assets", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
 	r.Register(JobPolicy{Type: TypeMediaEnrich, Description: "Single-asset semantic enrichment + Qdrant-style indexing", Timeout: 3 * time.Minute, DefaultMaxRetries: 2})
-	r.Register(JobPolicy{Type: TypeBulUploadYouTubeClips, Description: "Bulk upload YouTube clips", Timeout: 120 * time.Minute, DefaultMaxRetries: 1, ProducesArtifacts: true})
+	// PR-COMPLETE-WORKER-BROAD-FIX Path D (July 2026): ProducesArtifacts REMOVED.
+	// TypeBulUploadYouTubeClips is an orphaned registry entry — no production
+	// handler is statically registered.
+	r.Register(JobPolicy{Type: TypeBulUploadYouTubeClips, Description: "Bulk upload YouTube clips", Timeout: 120 * time.Minute, DefaultMaxRetries: 1})
 }

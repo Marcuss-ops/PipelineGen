@@ -16,8 +16,13 @@ func registerScriptEntries(r *Registry) {
 	// Concurrency=4 per user spec bounds per-worker sibling fan-out. Both
 	// sibling classes produce canonical asset rows via JobFinalizer.
 	// CompleteWithArtifacts (PR-VO-A3) so ProducesArtifacts=true.
-	r.Register(JobPolicy{Type: TypeScriptVoiceoverSibling, Description: "Voiceover sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
-	r.Register(JobPolicy{Type: TypeScriptImageSibling, Description: "Image sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4, ProducesArtifacts: true})
+	// PR-COMPLETE-WORKER-BROAD-FIX Path D (July 2026): ProducesArtifacts REMOVED.
+	// TypeScriptVoiceoverSibling and TypeScriptImageSibling are orphaned
+	// registry entries — no production handler is statically registered
+	// (the sibling fan-out is orchestrated by the parent handler directly,
+	// not via a separate job dispatch).
+	r.Register(JobPolicy{Type: TypeScriptVoiceoverSibling, Description: "Voiceover sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
+	r.Register(JobPolicy{Type: TypeScriptImageSibling, Description: "Image sibling spawned by script.generate (Step 11B: ParentJobID = script.generate.id, Concurrency=4, AssetRequirements.Required drives parent fail-closed)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
 
 	// ── P0 #4 script.generate_item child-job ──
 	// Per-item retry via broker-emitted child jobs. The parent aggregator
