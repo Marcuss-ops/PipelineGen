@@ -28,14 +28,15 @@ import (
 
 func main() {
 	var (
-		root   = flag.String("root", ".", "project root to scan (default: cwd)")
-		polstr = flag.String("policy", "architecture/policy.yaml", "path to policy YAML")
-		strict = flag.Bool("strict", false, "exit 1 on any violation (Phase N gate)")
-		phase  = flag.String("phase", "0", "phase label (printed in the report header)")
+		root           = flag.String("root", ".", "project root to scan (default: cwd)")
+		polstr         = flag.String("policy", "architecture/policy.yaml", "path to policy YAML")
+		strict         = flag.Bool("strict", false, "exit 1 on any violation (Phase N gate)")
+		phase          = flag.String("phase", "0", "phase label (printed in the report header)")
+		productionOnly = flag.Bool("production-only", false, "PR-P12-PERCHECK-BASELINE-ZERO: silences the comment-only warning bucket for percheck_root_override_ban so the operator-facing 'zero production-code hits' claim is auditable via len(r.Violations) == 0 (deadline 2026-08-15)")
 	)
 	flag.Parse()
 
-	code, err := Run(context.Background(), *root, *polstr, *phase, *strict)
+	code, err := Run(context.Background(), *root, *polstr, *phase, *strict, *productionOnly)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "archcheck: %v\n", err)
 		os.Exit(2)

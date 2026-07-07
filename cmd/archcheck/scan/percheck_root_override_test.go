@@ -55,7 +55,7 @@ func buildRequest() delivery.PublishRequest {
 	writeFixture(t, root, relPath, infraContent)
 
 	r := newEmptyReport()
-	ScanRootOverrideBan(root, newTestPolicy(), r)
+	ScanRootOverrideBan(root, newTestPolicy(), r, false)
 
 	if got := len(r.Violations); got != 0 {
 		t.Fatalf("infrastructure file MUST NOT be flagged; got %d violation(s): %+v", got, r.Violations)
@@ -80,7 +80,7 @@ func reconcileFolder() {
 	writeFixture(t, root, relPath, adminContent)
 
 	r := newEmptyReport()
-	ScanRootOverrideBan(root, newTestPolicy(), r)
+	ScanRootOverrideBan(root, newTestPolicy(), r, false)
 
 	if got := len(r.Violations); got != 0 {
 		t.Fatalf("admin CLI file MUST NOT be flagged; got %d violation(s): %+v", got, r.Violations)
@@ -106,7 +106,7 @@ func uploadClip() {
 	writeFixture(t, root, relPath, appContent)
 
 	r := newEmptyReport()
-	ScanRootOverrideBan(root, newTestPolicy(), r)
+	ScanRootOverrideBan(root, newTestPolicy(), r, false)
 
 	if got := len(r.Violations); got != 1 {
 		t.Fatalf("application file MUST be flagged exactly once; got %d: %+v", got, r.Violations)
@@ -151,7 +151,7 @@ func handleUpload() {
 	writeFixture(t, root, relPath, apiContent)
 
 	r := newEmptyReport()
-	ScanRootOverrideBan(root, newTestPolicy(), r)
+	ScanRootOverrideBan(root, newTestPolicy(), r, false)
 
 	if got := len(r.Violations); got != 1 {
 		t.Fatalf("API file MUST be flagged exactly once; got %d: %+v", got, r.Violations)
@@ -180,7 +180,7 @@ func doSomething() {}
 	writeFixture(t, root, relPath, commentContent)
 
 	r := newEmptyReport()
-	ScanRootOverrideBan(root, newTestPolicy(), r)
+	ScanRootOverrideBan(root, newTestPolicy(), r, false)
 
 	if got := len(r.Violations); got != 0 {
 		t.Fatalf("comment-only hits MUST NOT be violations; got %d: %+v", got, r.Violations)
@@ -210,7 +210,7 @@ func doWork() error {
 	writeFixture(t, root, "internal/application/clips/clean.go", cleanContent)
 
 	r := newEmptyReport()
-	ScanRootOverrideBan(root, newTestPolicy(), r)
+	ScanRootOverrideBan(root, newTestPolicy(), r, false)
 
 	if got := len(r.Violations); got != 0 {
 		t.Fatalf("clean file MUST NOT be flagged; got %d: %+v", got, r.Violations)
@@ -236,7 +236,7 @@ func TestRootOverride(t *testing.T) {
 	writeFixture(t, root, "internal/application/clips/publisher_test.go", testContent)
 
 	r := newEmptyReport()
-	ScanRootOverrideBan(root, newTestPolicy(), r)
+	ScanRootOverrideBan(root, newTestPolicy(), r, false)
 
 	if got := len(r.Violations); got != 0 {
 		t.Fatalf("test files MUST NOT be flagged; got %d: %+v", got, r.Violations)
@@ -265,7 +265,7 @@ const note = "RootFolderOverride is in delivery.PublishRequest"
 	writeFixture(t, root, "internal/domain/asset/docs.go", domainContent)
 
 	r := newEmptyReport()
-	ScanRootOverrideBan(root, newTestPolicy(), r)
+	ScanRootOverrideBan(root, newTestPolicy(), r, false)
 
 	if got := len(r.Violations); got != 0 {
 		t.Fatalf("outside-forbidden-zone files MUST NOT be flagged; got %d: %+v", got, r.Violations)
@@ -281,10 +281,136 @@ func TestScanRootOverrideBan_ScannerDirectorySelfExempt(t *testing.T) {
 	writeFixture(t, root, relPath, scannerContent)
 
 	r := newEmptyReport()
-	ScanRootOverrideBan(root, newTestPolicy(), r)
+	ScanRootOverrideBan(root, newTestPolicy(), r, false)
 
 	if got := len(r.Violations); got != 0 {
 		t.Fatalf("scanner directory MUST be self-exempt; got %d: %+v", got, r.Violations)
+	}
+}
+
+// TestScanRootOverrideBan_ProductionOnly_CleanFile_ZeroOutput
+// is the wave-flip verifier for the FASE A1-A5 + P12 series:
+// after the 5 prior PRs (P12-SOUND-EFFECT-SIDECAR +
+// P12-HANDLER-FACADE-SEMANTIC + P12-YOUTUBE-LEGACY-RETIRE +
+// P12-CLIPS-AND-BOOKS) reduced the production-code hit
+// baseline, a clean production file MUST surface ZERO output
+// in production-only mode (no violations, no warnings).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the production-only view
+// is the operator-facing "zero production-code hits" claim;
+// a future drift that re-introduces RootFolderOverride in
+// production code surfaces as a violation even in this mode,
+// so the baseline check is robust to comment noise.
+func TestScanRootOverrideBan_ProductionOnly_CleanFile_ZeroOutput(t *testing.T) {
+	root := t.TempDir()
+	cleanContent := `package clips
+
+func doWork() error {
+	return nil
+}
+`
+	writeFixture(t, root, "internal/application/clips/clean.go", cleanContent)
+
+	r := newEmptyReport()
+	ScanRootOverrideBan(root, newTestPolicy(), r, true) // productionOnly=true
+
+	if got := len(r.Violations); got != 0 {
+		t.Fatalf("clean file in production-only mode MUST surface 0 violations; got %d: %+v", got, r.Violations)
+	}
+	if got := len(r.Warnings); got != 0 {
+		t.Fatalf("clean file in production-only mode MUST surface 0 warnings; got %d: %+v", got, r.Warnings)
+	}
+}
+
+// TestScanRootOverrideBan_ProductionOnly_DriftFile_OneViolation
+// is the load-bearing forward-prevention pin: a production
+// file with the literal in actual code (not in a comment)
+// MUST surface exactly one violation in production-only mode.
+// The test mirrors the default-mode coverage in
+// TestScanRootOverrideBan_ApplicationFileFlagged so the
+// production-only path cannot silently weaken the gate.
+func TestScanRootOverrideBan_ProductionOnly_DriftFile_OneViolation(t *testing.T) {
+	root := t.TempDir()
+	driftContent := `package clips
+
+import "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+
+func uploadClip() {
+	_ = delivery.PublishRequest{
+		Destination:       "youtube_clip",
+		RootFolderOverride: "bypass-path-builder",
+	}
+}
+`
+	relPath := "internal/application/clips/drift_worker.go"
+	writeFixture(t, root, relPath, driftContent)
+
+	r := newEmptyReport()
+	ScanRootOverrideBan(root, newTestPolicy(), r, true) // productionOnly=true
+
+	if got := len(r.Violations); got != 1 {
+		t.Fatalf("drift file in production-only mode MUST surface exactly 1 violation; got %d: %+v", got, r.Violations)
+	}
+	v := r.Violations[0]
+	if v.File != relPath {
+		t.Errorf("violation file = %q, want %q", v.File, relPath)
+	}
+	if v.Rule != "percheck_root_override_ban" {
+		t.Errorf("violation rule = %q, want percheck_root_override_ban", v.Rule)
+	}
+	if v.Severity != string(report.SeverityError) {
+		t.Errorf("violation severity = %q, want error (forward-prevention gate)", v.Severity)
+	}
+	// Production-only mode silences the comment-only warning
+	// bucket; drift files have no comments, so Warnings is
+	// empty by construction (this is the operator-facing
+	// "zero noise" property of the production-only view).
+	if got := len(r.Warnings); got != 0 {
+		t.Errorf("drift file in production-only mode MUST surface 0 warnings; got %d: %+v", got, r.Warnings)
+	}
+}
+
+// TestScanRootOverrideBan_ProductionOnly_CommentOnly_Silenced
+// is the wave-flip verifier's noise-reduction contract:
+// comment-only hits are SILENCED entirely in production-only
+// mode (no warning appended, no violation raised). This
+// distinguishes production-only mode from default mode where
+// the same file would generate a single comment-only warning
+// (per TestScanRootOverrideBan_CommentOnlyWarned).
+//
+// The semantic intent: production-only = "production-code
+// hits" only; comments are documentation, not "hits". A
+// future drift that re-introduces the literal in a comment
+// will not surface in the production-only view — the operator
+// sees only what matters (production-code hits).
+func TestScanRootOverrideBan_ProductionOnly_CommentOnly_Silenced(t *testing.T) {
+	root := t.TempDir()
+	commentContent := `package clips
+
+// Note: RootFolderOverride is the back-compat escape hatch on
+// delivery.PublishRequest. Application code MUST route through
+// the typed Publisher surface instead (FASE B1 gate).
+//
+// This file is a doc-only reference. In production-only mode
+// the comment-only warning bucket is silenced, so this file
+// surfaces 0 violations and 0 warnings.
+func doSomething() {}
+`
+	relPath := "internal/application/clips/docs.go"
+	writeFixture(t, root, relPath, commentContent)
+
+	r := newEmptyReport()
+	ScanRootOverrideBan(root, newTestPolicy(), r, true) // productionOnly=true
+
+	if got := len(r.Violations); got != 0 {
+		t.Fatalf("comment-only hits in production-only mode MUST NOT be violations; got %d: %+v", got, r.Violations)
+	}
+	// Load-bearing assertion: the comment-only warning bucket
+	// is SILENCED in production-only mode (this is the whole
+	// point of the flag — noise reduction for the operator
+	// baseline check).
+	if got := len(r.Warnings); got != 0 {
+		t.Fatalf("comment-only hits in production-only mode MUST be SILENCED (no warning); got %d warnings: %+v", got, r.Warnings)
 	}
 }
 
@@ -345,7 +471,7 @@ const x = "RootFolderOverride"
 `)
 
 	r := newEmptyReport()
-	ScanRootOverrideBan(root, newTestPolicy(), r)
+	ScanRootOverrideBan(root, newTestPolicy(), r, false)
 
 	// Exactly 2 violations: the app drift + the API drift.
 	if got := len(r.Violations); got != 2 {

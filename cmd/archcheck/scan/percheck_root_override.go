@@ -146,7 +146,23 @@ func isRootOverrideForbidden(relSlash string) bool {
 // --strict mode promotes to ExitViolations). For non-strict
 // mode, the runner still prints the report; the exit code
 // remains 0 unless --strict is on.
-func ScanRootOverrideBan(root string, pol *policy.Policy, r *report.Report) {
+//
+// productionOnly=true is the canonical wave-flip verifier
+// (PR-P12-PERCHECK-BASELINE-ZERO, July 2026, deadline
+// 2026-08-15): it silences the comment-only warning bucket so
+// the operator-facing summary "zero production-code hits" is
+// auditable via `len(r.Violations) == 0`. In production-only
+// mode:
+//   - Test files remain SKIPPED (they're not production code).
+//   - Comment-only hits are SILENCED (no warning, no violation)
+//     — they are documentation, not "hits".
+//   - Production-code hits remain violations.
+//
+// The flag is forward-prevention: a future drift that re-introduces
+// RootFolderOverride in production code surfaces as a violation
+// even in production-only mode, so the baseline check is robust
+// to comment noise.
+func ScanRootOverrideBan(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
 	_ = pol // reserved for future allowlist tuning
 
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -179,7 +195,7 @@ func ScanRootOverrideBan(root string, pol *policy.Policy, r *report.Report) {
 		if !isRootOverrideForbidden(relSlash) {
 			return nil
 		}
-		scanRootOverrideFile(path, relSlash, r)
+		scanRootOverrideFile(path, relSlash, r, productionOnly)
 		return nil
 	})
 }
@@ -187,7 +203,13 @@ func ScanRootOverrideBan(root string, pol *policy.Policy, r *report.Report) {
 // scanRootOverrideFile reads a single .go file line-by-line
 // and emits violations / warnings per the gate contract.
 // See ScanRootOverrideBan for the full semantics.
-func scanRootOverrideFile(path, relPath string, r *report.Report) {
+//
+// When productionOnly=true (PR-P12-PERCHECK-BASELINE-ZERO), the
+// comment-only warning bucket is silenced entirely — comments
+// are documentation, not "production code hits". This makes
+// the operator-facing "zero production-code hits" claim
+// auditable via a simple `len(r.Violations) == 0` check.
+func scanRootOverrideFile(path, relPath string, r *report.Report, productionOnly bool) {
 	f, err := os.Open(path)
 	if err != nil {
 		return
@@ -208,7 +230,9 @@ func scanRootOverrideFile(path, relPath string, r *report.Report) {
 		trimmed := strings.TrimSpace(line)
 		// Bucket 1: full-line `//`-prefixed comment (descriptive
 		// prose, not a real usage). Logged as warning per
-		// godlike/07 residue accounting.
+		// godlike/07 residue accounting UNLESS productionOnly
+		// is set, in which case the comment is silenced
+		// (production-only view = "hits" only).
 		if strings.HasPrefix(trimmed, "//") {
 			commentCount++
 			continue
@@ -225,7 +249,7 @@ func scanRootOverrideFile(path, relPath string, r *report.Report) {
 		})
 	}
 
-	if commentCount > 0 {
+	if commentCount > 0 && !productionOnly {
 		r.Warnings = append(r.Warnings, "Check B1 (RootFolderOverride): "+strconv.Itoa(commentCount)+
 			" comment-only reference(s) in "+relPath+
 			" (descriptive prose; non-fatal per godlike/07 no-fake-availability)")
