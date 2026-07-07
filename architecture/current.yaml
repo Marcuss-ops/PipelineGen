@@ -8295,3 +8295,75 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
     deadline: 2026-08-15
     owner_capability: internal/infrastructure/observability
     summary: Operator-facing Prometheus metrics: enrichment_jobs_total{outcome=succeeded|failed|retried|dead_lettered}, enrichment_latency_seconds (LLM call latency histogram), enrichment_idempotency_key_conflicts_total (alert on retries with mismatched content_hash), enrichment_residue_total (chunks still pending enrichment, by age bucket). Mirrors the existing finalizer_metrics surface (PR-DOC-FINALIZER-METRICS-NO-OP-SEMANTICS).
+- id: ARTLIST-DOD-2026-07-07
+  status: pending
+  exit_signal: false
+  owner_capability: internal/application/assets/providers/artlist + tests/e2e
+  deadline: 2026-08-11
+  description: |
+    Artlist Definition of Done wave derived from the Marcuss-ops 2026-07-07
+    architectural audit. Parent wave ART-002 is shipped (architettura solida);
+    this wave closes the remaining 12 end-to-end gates (functional +
+    persistence + Qdrant + Drive failure + scraper failure + preflight).
+    Action plan: architecture/action-plans/2026-07-07-artlist-dod-action-plan.md.
+  linked_issues:
+  - id: PR-ARTLIST-DOD-GATE-1-SEARCH-LIVE
+    owner_capability: internal/application/assets/providers/artlist + tests/e2e
+    status: pending
+    deadline: 2026-07-21
+    summary: GET /api/artlist/search/live?term=... trova clip reali dal Node scraper (o mock).
+  - id: PR-ARTLIST-DOD-GATE-2-FULL-RUN
+    owner_capability: internal/application/assets/providers/artlist + tests/e2e
+    status: pending
+    deadline: 2026-07-21
+    summary: POST /api/artlist/run con 3-5 clip produce processed_count == expected, DriveFileID/DriveLink/DownloadLink/FileHash non vuoti.
+  - id: PR-ARTLIST-DOD-GATE-3-SQLITE-PROJECTION
+    owner_capability: internal/application/assets/providers/artlist
+    status: pending
+    deadline: 2026-07-21
+    summary: SQLite: source=artlist, media_type=video, lifecycle_state=ACTIVE, file_hash, drive_file_id, drive_link.
+  - id: PR-ARTLIST-DOD-GATE-4-OUTBOX-EMISSION
+    owner_capability: internal/application/assets/providers/artlist + internal/application/jobs/outbox
+    status: pending
+    deadline: 2026-07-21
+    summary: L'outbox crea asset.index.requested SOLO dopo upload/hash completato.
+  - id: PR-ARTLIST-DOD-GATE-5-OUTBOX-COMPLETED
+    owner_capability: internal/application/jobs/outbox + internal/infrastructure/qdrant
+    status: pending
+    deadline: 2026-08-04
+    summary: Evento outbox completed solo dopo vera scrittura Qdrant. No fake-completed.
+  - id: PR-ARTLIST-DOD-GATE-6-INDEX-STATE
+    owner_capability: internal/application/jobs/outbox + internal/infrastructure/qdrant
+    status: pending
+    deadline: 2026-08-04
+    summary: media_assets.index_state = INDEXED dopo Qdrant upsert.
+  - id: PR-ARTLIST-DOD-GATE-7-QDRANT-SCROLL
+    owner_capability: internal/infrastructure/qdrant
+    status: pending
+    deadline: 2026-08-04
+    summary: qdrant scroll trova ogni asset_id Artlist dopo indexing.
+  - id: PR-ARTLIST-DOD-GATE-8-HYBRID-SEARCH
+    owner_capability: internal/infrastructure/qdrant/search + internal/api/mediasearch
+    status: pending
+    deadline: 2026-07-21
+    summary: /internal/v1/media/search ritrova almeno una clip Artlist con score >0.5.
+  - id: PR-ARTLIST-DOD-GATE-9-DRIVE-FAILURE
+    owner_capability: internal/application/assets/providers/artlist + tests/e2e
+    status: pending
+    deadline: 2026-07-28
+    summary: Test negativo: Drive spento -> UPLOAD_FAILED, no Processed++, no Qdrant event.
+  - id: PR-ARTLIST-DOD-GATE-10-QDRANT-FAILURE
+    owner_capability: internal/application/jobs/outbox + tests/e2e
+    status: pending
+    deadline: 2026-07-28
+    summary: Test negativo: Qdrant spento -> evento NON marcato falso completed.
+  - id: PR-ARTLIST-DOD-GATE-11-SCRAPER-FAILURE
+    owner_capability: internal/application/assets/providers/artlist + tests/e2e
+    status: pending
+    deadline: 2026-07-28
+    summary: Test negativo: scraper spento -> errore 503 chiaro, non finge zero risultati.
+  - id: PR-ARTLIST-DOD-GATE-12-PREFLIGHT
+    owner_capability: cmd/admin + tests/e2e
+    status: pending
+    deadline: 2026-08-04
+    summary: cmd/admin qdrant-preflight passa (exit 0, zero FAIL), test Artlist non piu stub.
