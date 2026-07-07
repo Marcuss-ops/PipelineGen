@@ -24,6 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
@@ -71,6 +72,7 @@ type Deps struct {
 	BulkUploadWorker *appclips.BulkUploadWorker
 	ClipOpsService   *appclips.ClipOpsService
 	UploadUC         *appupload.UseCase
+	Publisher        delivery.Publisher
 }
 
 // Handler owns every clip-related HTTP method. One receiver per method;
@@ -102,6 +104,7 @@ type Handler struct {
 	driveAdmin       drive.Admin
 	downloadUC       *appclips.DownloadUseCase
 	reuploadUC       *appclips.ReuploadUseCase
+	publisher        delivery.Publisher
 	log              *zap.Logger
 
 	// Cfg used by driveRootForSource helper (Action cluster).
@@ -151,6 +154,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		driveAdmin:       d.DriveAdmin,
 		downloadUC:       downloadUC,
 		reuploadUC:       d.ReuploadUC,
+		publisher:        d.Publisher,
 		log:              d.Log,
 		cfg:              d.Cfg,
 

@@ -54,6 +54,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -75,6 +76,7 @@ type BulkTransportDeps struct {
 	DriveAdmin       drive.Admin
 	Cfg              *config.Config
 	BulkUploadWorker *appclips.BulkUploadWorker
+	Publisher        delivery.Publisher
 	Log              *zap.Logger
 }
 
@@ -88,6 +90,7 @@ type BulkUploadTransport struct {
 	driveAdmin       drive.Admin
 	cfg              *config.Config
 	bulkUploadWorker *appclips.BulkUploadWorker
+	publisher        delivery.Publisher
 	log              *zap.Logger
 }
 
@@ -104,6 +107,7 @@ func NewBulkUploadTransport(d BulkTransportDeps) *BulkUploadTransport {
 		driveAdmin:       d.DriveAdmin,
 		cfg:              d.Cfg,
 		bulkUploadWorker: d.BulkUploadWorker,
+		publisher:        d.Publisher,
 		log:              d.Log,
 	}
 }
@@ -245,29 +249,25 @@ func (bt *BulkUploadTransport) BulkUploadYouTubeClips(c *gin.Context) {
 	// Resolve target Drive folder once so the worker doesn't have to.
 	targetDriveFolderID := strings.TrimSpace(req.DriveFolderID)
 	if targetDriveFolderID == "" {
-		if bt.driveAdmin == nil {
-			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured; drive_folder_id is required"))
+		if bt.publisher == nil {
+			apiutil.InternalError(c, fmt.Errorf("publisher not configured; drive_folder_id is required"))
 			return
 		}
 		if req.DriveFolderName == "" {
 			apiutil.BadRequest(c, "either drive_folder_id or drive_folder_name is required")
 			return
 		}
-		root := bt.cfg.Drive.ClipsFolder()
-		if root == "" {
-			root = bt.cfg.Drive.RootFolder()
-		}
-		if root == "" {
-			apiutil.InternalError(c, fmt.Errorf("no Drive root folder configured (drive.clips_folder / drive.root_folder)"))
-			return
-		}
-		dirID, err := bt.driveAdmin.GetOrCreateFolder(ctx, req.DriveFolderName, root)
+		dirID, err := bt.publisher.ResolveFolder(ctx, delivery.PublishRequest{
+			Destination: delivery.DestinationYouTubeClip,
+			Group:       req.DriveFolderName,
+			Subject:     "_batch",
+		})
 		if err != nil {
 			apiutil.InternalError(c, fmt.Errorf("failed to resolve drive_folder_name: %w", err))
 			return
 		}
 		targetDriveFolderID = dirID
-		log.Info("resolved Drive folder by name",
+		log.Info("resolved Drive folder by name via Publisher",
 			zap.String("name", req.DriveFolderName),
 			zap.String("folder_id", targetDriveFolderID))
 	}

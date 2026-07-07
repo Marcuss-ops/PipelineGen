@@ -236,6 +236,7 @@ func buildClipsBundle(
 		ClipOpsService:   clipOpsSvc,
 		UploadUC:         uploadUC,
 		ReuploadUC:       reuploadUC, // F2.9: wired via delivery.Publisher (was nil pre-F2.9)
+		Publisher:        deps.Delivery.Publisher,
 		Idempotency:      idemHandler,
 		EnabledFunc:      func() bool { return true },
 	})
