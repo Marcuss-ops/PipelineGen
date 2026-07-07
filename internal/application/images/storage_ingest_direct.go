@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -73,10 +72,22 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 
 	generator := imageGeneratorLabel(source)
 	width, height := decodeImageDimensions(content)
+
+	// PR-QDRANT-IMAGES-INDEX (July 2026): tagImageMetadata failure is
+	// now non-fatal. On error we log a warning and continue with
+	// metaResult=nil — the image is still downloaded to disk, uploaded
+	// to Drive, and persisted in SQLite. The caller still gets a valid
+	// *asset.ImageAsset back. Pre-PR this was a hard failure that
+	// deleted the downloaded file and aborted the entire ingest.
 	metaResult, err := s.meta.tagImageMetadata(ctx, description, style, generator, hash, dest.LocalPath, width, height)
 	if err != nil {
-		_ = os.Remove(dest.LocalPath)
-		return nil, err
+		if s.log != nil {
+			s.log.Warn("tagImageMetadata failed; continuing with minimal metadata",
+				zap.Error(err),
+				zap.String("hash", hash),
+				zap.String("source", source))
+		}
+		metaResult = nil
 	}
 
 	var driveFileID string
@@ -131,6 +142,37 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		}
 		return nil, fmt.Errorf("add image: %w", err)
 	}
+
+	// PR-QDRANT-IMAGES-INDEX (July 2026): after AddImage succeeds,
+	// emit an asset.index.requested outbox event so the Qdrant
+	// IndexingHandler indexes the image in the vector store.
+	//
+	// Two-transaction gap note: AddImage commits in its own tx,
+	// then EnqueueAndIndex opens a new tx. If the process crashes
+	// between them, the image is in SQLite but not Qdrant. The
+	// admin reconcile tool (cmd/admin/reconcile_qdrant.go) can
+	// repair this gap — forward-pointer PR-QDRANT-IMAGES-RECONCILE.
+	if s.dispatcher != nil {
+		dispAsset := &asset.Asset{
+			ID:             hash,
+			Name:           textutil.Truncate(description, 500),
+			Source:         "image",
+			MediaType:      asset.MediaTypeImage,
+			LifecycleState: asset.StateStaging,
+		}
+		if err := s.dispatcher.EnqueueAndIndex(ctx, dispAsset, hash); err != nil {
+			if s.log != nil {
+				s.log.Warn("Qdrant indexing enqueue failed for retrieved image",
+					zap.Error(err),
+					zap.String("hash", hash),
+					zap.String("source", source))
+			}
+		}
+	} else if s.log != nil {
+		s.log.Debug("Qdrant indexing skipped for retrieved image (dispatcher not wired)",
+			zap.String("hash", hash))
+	}
+
 	return result, nil
 }
 
