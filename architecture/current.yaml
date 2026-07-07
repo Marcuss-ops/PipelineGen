@@ -8172,9 +8172,9 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
     PR-011A + PR-011B + PR-011C ship without future surprise
     regressions. The 3-PR chain (PR-011A shipped 2026-07-07 +
     PR-011B pending + PR-011C pending) is the core delivery; the
-    7 forward-pointers are the scope-lock items that prevent drift
-    on model selection, idempotency contract, backfill, schema
-    evolution, residue cross-validation, and ops observability.
+    7 forward-pointers (1 shipped + 6 pending) are the scope-lock items that prevent drift
+    on model selection, idempotency contract, backfill, schema evolution, residue
+    cross-validation, and ops observability.
 
     godlike/06 SSOT (one canonical owner per fact):
     - EnrichmentIdempotencyKey (in internal/application/assets/
@@ -8230,6 +8230,11 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
   - id: PR-011C-OUTBOX-EMIT
     owner_capability: internal/application/jobs/outbox
     status: pending
+  - id: PR-ENRICHMENT-IDEMPOTENCY-KEY
+    owner_capability: internal/application/assets/providers/stock
+    status: shipped
+    ship_sha: d9e9afe0
+    ship_date: 2026-07-07
   cross_references:
     parent_audit:
       - architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05
@@ -8250,12 +8255,6 @@ PR-SEGMENT-FINDER-BASEARGS-MIGRATION:
     - All 7 forward-pointers are TYPED contracts (no silent fallback).
     - ops-dashboard forward-pointer specifies Prometheus counters (no in-memory-only state).
   forward_pointers:
-  - id: PR-ENRICHMENT-IDEMPOTENCY-KEY
-    deadline: 2026-07-07
-    owner_capability: internal/application/assets/providers/stock
-    ship_sha: d9e9afe0
-    ship_date: 2026-07-07
-    summary: SHIPPED (commit d9e9afe0, 2026-07-07). Stable idempotency_key from (chunk_id, content_hash, version) via SHA-256 hex of "chunkID:contentHash:version". Mirrors the C6 ArtifactIdempotencyKey + C7 CompleteJobIdempotencyKey patterns. Returns ("", ErrEnrichmentIdempotencyKeyConflict) on empty/malformed/unknown-version input (no silent empty markers). Unblocks PR-011C's AssetPublishedHandler v1 envelope idempotency_key contract.
   - id: PR-ENRICHMENT-MODEL-FALLBACK
     deadline: 2026-08-15
     owner_capability: internal/application/assets/providers/stock
