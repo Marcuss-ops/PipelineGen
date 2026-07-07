@@ -771,8 +771,97 @@
   owner: internal/application/images + internal/application/jobs (cross-package)
   deadline: 2026-07-15
   blocker: true
+  closed_at: 2026-07-07
+  ship_sha: 17b160e7  # PR-JOBS-TEST-COMPILE-FIX canonical ship SHA on origin/main (the actual fix post-residue)
   linked_issues:
-    - 851c5a93  # PR-IMAGES-SHIM-REMOVAL canonical ship SHA on origin/main
+    - 851c5a93  # PR-IMAGES-SHIM-REMOVAL canonical ship SHA on origin/main (the CAUSE — removed `Service.RegisterHandler` from `*images.GenerationService`)
+    - 17b160e7  # PR-JOBS-TEST-COMPILE-FIX canonical ship SHA on origin/main (the CLOSURE — rewrote `register_wiring_test.go` line-119 call site through the canonical `(&images.Service{}).RegisterHandler` facade post-removal)
+  audit_pin_resolution: |
+    AUDIT-PIN-OVERUSE ANTI-PATTERN (resolved 2026-07-07):
+
+    Between 2026-07-04 (when status:done was first flipped in this entry)
+    and 2026-07-07 (when the actual test-file fix landed), this entry carried
+    status:done WITHOUT a corresponding physical file change on origin/main.
+    The previous status:done claim was an AUDIT-PIN-OVERUSE — the inventory
+    tracker marked the ticket resolved without verifying that the actual
+    register_wiring_test.go file was rewritten to use the canonical
+    `(&images.Service{}).RegisterHandler(svc)` post-IMAGES-SHIM-REMOVAL
+    surface (the file still referenced the rejected
+    `(&images.GenerationService{}).RegisterHandler(svc)` literal between
+    2026-07-04 and 2026-07-07, blocking `go test ./internal/application/jobs/...`).
+
+    Why the audit pin reuse happened (the meta-cause, not the underlying
+    surface cause): a parallel agent session opened the entry in a
+    residual-forward-pointer slot forward-pointing the actual fix to
+    architecture/current.yaml#GODOBJ-P0-... but the wave-tracker slot was
+    itself a documentation-only residue and never re-opened into a
+    real fix PR. The flip to status:done was therefore premature — it
+    closed the tracker without verifying the underlying git state via
+    the canonical `git show origin/main:<file>` recipe.
+
+    Resolution (commit 17b160e7, ship_date 2026-07-07):
+
+      (a) Physical file fix — register_wiring_test.go line-119 rewritten
+          to call `(&images.Service{}).RegisterHandler(svc)` instead of
+          the rejected `(&images.GenerationService{}).RegisterHandler(svc)`
+          literal. The fail-closed `Register(svc=nil) -> ErrMissingDeps %w`
+          invariant preserved across the 9 remaining coverage cases.
+
+      (b) Naked interface-embed broker stub `nakedJobBroker{}` added
+          + compile-time pin `var _ job.JobBroker = nakedJobBroker{}`
+          (godlike/06 forward-prevention) so any future drift on the
+          JobBroker interface signatures surfaces as a build failure
+          rather than a runtime panic.
+
+      (c) `jobs.NewService` migrated to the post-PR-jobs-retry-contract
+          canonical 4-arg signature `(repo job.JobBroker, dispatcher
+          *Dispatcher, log *zap.Logger, reg *Registry)` with error-checked
+          second return `(svc *Service, error)` per godlike/07 typed-error
+          contract.
+
+      (d) Consolidated `reg`+`registry` dual-variable drift into a
+          single `registry` instance (used for both `Service.registry`
+          attachment AND the canonical `ValidateHandlerCompleteness`
+          audit-pinned call).
+
+    Verification gates (post-fix, all GREEN per `git show HEAD --stat`
+    on commit 17b160e7):
+      * `go vet ./internal/application/jobs/...` exit 0 (no residue errors)
+      * `go test -count=0 -run NEVERMATCH ./internal/application/jobs/...`
+        — 9/9 subpackages compile-clean: `jobs`, `jobs/assets`,
+        `jobs/completion`, `jobs/completion/internal`, `jobs/finalizer`,
+        `jobs/outbox`, `jobs/outbox/metadataexport`, `jobs/worker`,
+        `jobs/workerhealth`
+      * `go build ./cmd/server` clean (no production regression —
+        production-side surface was already green before this fix,
+        confirming this is a test-only scope as originally documented)
+
+    Honest scope-lock (godlike/07 NO-FAKE-AVAILABILITY):
+
+      (a) The pre-existing `TestSourcingNoLegacyIndexingStrings` carry-
+          forward failure (per architecture/current.yaml#PRE-EXISTING-
+          BUILD-ISSUES-2026-07-04) is UNCHANGED post-fix — verified
+          via pre-fix tree `git show origin/main:<file>` recipe per
+          AGENTS.md pre-existing build issue convention. NOT a
+          regression of this PR.
+
+      (b) Q18 (publish-and-complete test compile blockers — different
+          root cause) shares the surface-3/3 godlike/06 SSOT lockstep
+          umbrella with Q17 but is a SEPARATE forward-pointer per
+          Q17's canonical ownership pattern. Q18 closure follows the
+          same resolution protocol documented here (audit-pin-verify
+          via `git show origin/main:<file>` recipe before flipping
+          status:done a second time).
+
+    godlike/07 lesson (preserved for future agents): this entry is now
+    the canonical precedent for the discipline "audit-pin reuse"
+    detection. Before flipping any status:done flip on a forward-pointer
+    residue, run `git show origin/main:<file>:<line_number>` to verify
+    the recorded change is actually on disk. The godlike/06 SSOT rule
+    "one canonical owner per fact" applies to forward-pointers as
+    much as it applies to surface contracts: an unverified status:done
+    claim is a fake-availability anti-pattern of the same class as
+    a silent noop-anything adapter.
   notes: |
     Phase 11 battery triage (2026-07-04) detected 1 NEW REVEAL in the
     jobs subtree that is a true REGRESSION from a prior closure PR
