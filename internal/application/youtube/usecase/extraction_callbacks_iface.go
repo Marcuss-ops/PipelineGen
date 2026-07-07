@@ -68,7 +68,7 @@ type ExtractionCallbacks interface {
 	MD5String(data string) string
 
 	// Drive upload (→ driveFolderMgr).
-	DriveUploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtubeports.UploadResultDTO, bool, error)
+	DriveUploadFileIfChanged(ctx context.Context, localPath, folderID, filename, group, subject string) (*youtubeports.UploadResultDTO, bool, error)
 	DriveGetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)
 
 	// Ollama (→ ollama port + semaphore).

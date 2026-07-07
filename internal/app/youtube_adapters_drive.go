@@ -38,6 +38,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 )
 
@@ -69,36 +70,32 @@ import (
 // {resolvedFolder}/{filename}).
 type YouTubePublisherDriveAdapter struct {
 	publisher delivery.Publisher
+	admin     drive.Admin
 	log       *zap.Logger
 }
 
 // NewYouTubePublisherDriveAdapter returns the canonical adapter.
 // pub must be non-nil (the caller — build_bundles_domain.go —
 // asserts this).
-func NewYouTubePublisherDriveAdapter(pub delivery.Publisher, log *zap.Logger) *YouTubePublisherDriveAdapter {
-	return &YouTubePublisherDriveAdapter{publisher: pub, log: log}
+func NewYouTubePublisherDriveAdapter(pub delivery.Publisher, admin drive.Admin, log *zap.Logger) *YouTubePublisherDriveAdapter {
+	return &YouTubePublisherDriveAdapter{publisher: pub, admin: admin, log: log}
 }
 
 // Compile-time assertion: adapter satisfies DriveFolderManagerPort.
 var _ youtubeports.DriveFolderManagerPort = (*YouTubePublisherDriveAdapter)(nil)
 
 func (a *YouTubePublisherDriveAdapter) GetOrCreateFolder(ctx context.Context, channelName, parentFolderID string) (string, error) {
+	if a.admin != nil {
+		return a.admin.GetOrCreateFolder(ctx, channelName, parentFolderID)
+	}
 	// PR-P12-YOUTUBE-LEGACY-RETIRE (July 2026): the legacy
 	// RootFolderOverride=parentFolderID literal is RETIRED per
-	// godlike/07 NO-FAKE-AVAILABILITY. The canonical Publisher
-	// now resolves the root folder for DestinationYouTubeClip via
-	// DestinationRegistry + DestinationPolicy.RootFolderID
-	// (single source of truth for root folders per the
-	// architecture/current.yaml#DRIVE-AS-CENTRAL-CAPABILITY wave).
-	// The parentFolderID parameter is preserved on the
-	// DriveFolderManagerPort interface signature for backward-
-	// compat with the existing call sites (channel_folders.go:21 +
-	// process_segment.go:70) but is no longer forwarded to the
-	// Publisher; the Publisher's registry config drives the
-	// root-folder resolution. If a future refactor needs to
-	// thread a per-channel override, the canonical surface is
-	// a new typed Subject field, not a RootFolderOverride bypass
-	// (see godlike/06 SSOT).
+	// godlike/07 NO-FAKE-AVAILABILITY. When the dedicated drive.Admin
+	// seam is unavailable (legacy tests / fallback wiring), the
+	// canonical Publisher resolves the root folder for
+	// DestinationYouTubeClip via DestinationRegistry +
+	// DestinationPolicy.RootFolderID (single source of truth for root
+	// folders per the architecture/current.yaml#DRIVE-AS-CENTRAL-CAPABILITY wave).
 	if a.publisher == nil {
 		return parentFolderID, fmt.Errorf("YouTubePublisherDriveAdapter.GetOrCreateFolder: publisher not wired")
 	}
@@ -118,7 +115,20 @@ func (a *YouTubePublisherDriveAdapter) GetOrCreateFolder(ctx context.Context, ch
 	return folderID, nil
 }
 
-func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename string) (*youtubeports.UploadResultDTO, bool, error) {
+func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, localPath, folderID, filename, group, subject string) (*youtubeports.UploadResultDTO, bool, error) {
+	if a.admin != nil {
+		res, skipped, err := a.admin.UploadFileIfChanged(ctx, localPath, folderID, filename)
+		if err != nil {
+			return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: %w", err)
+		}
+		if res == nil {
+			return nil, skipped, nil
+		}
+		return &youtubeports.UploadResultDTO{
+			FileID:      res.FileID,
+			WebViewLink: res.WebViewLink,
+		}, skipped, nil
+	}
 	// PR-P12-YOUTUBE-LEGACY-RETIRE (July 2026): the legacy
 	// RootFolderOverride=folderID literal is RETIRED per
 	// godlike/07 NO-FAKE-AVAILABILITY. The folder context was
@@ -136,16 +146,11 @@ func (a *YouTubePublisherDriveAdapter) UploadFileIfChanged(ctx context.Context, 
 		return nil, false, fmt.Errorf("YouTubePublisherDriveAdapter.UploadFileIfChanged: publisher not wired")
 	}
 	result, err := a.publisher.Publish(ctx, delivery.PublishRequest{
-		Destination: delivery.DestinationYouTubeClip,
-		LocalPath:   localPath,
-		Filename:    filename,
-		// Group + Subject + RootFolderOverride intentionally OMITTED:
-		// - Group/Subject are path-builder keys resolved by the
-		//   prior GetOrCreateFolder call; the per-file publish
-		//   reuses the resolved folder context.
-		// - RootFolderOverride is the legacy bypass literal —
-		//   Publisher resolves the canonical root via
-		//   DestinationRegistry.
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      localPath,
+		Filename:       filename,
+		Group:          group,
+		Subject:        subject,
 		ConflictPolicy: delivery.ConflictSkipByHash,
 	})
 	if err != nil {

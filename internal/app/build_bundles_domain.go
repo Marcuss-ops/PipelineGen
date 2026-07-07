@@ -113,7 +113,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// Publisher resolves the root folder for DestinationYouTubeClip
 	// via DestinationRegistry + RootFolderID (NO caller-supplied
 	// RootFolderOverride per godlike/07).
-	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, log)
+	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, drive.Admin, log)
 	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})
 
 	var clipIndexerAdapterValue youtubeports.ClipIndexerPort

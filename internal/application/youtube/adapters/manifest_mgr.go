@@ -391,7 +391,7 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 				s.log.Info("metadata_unified.json updated locally", zap.String("path", unifiedMetaPath))
 
 				if targetFolderID != "" {
-					if _, skipped, err := s.callbacks.DriveUploadFileIfChanged(ctx, unifiedMetaPath, targetFolderID, "metadata_unified.json"); err != nil {
+					if _, skipped, err := s.callbacks.DriveUploadFileIfChanged(ctx, unifiedMetaPath, targetFolderID, "metadata_unified.json", "", ""); err != nil {
 						s.log.Warn("failed to upload metadata_unified.json to Drive", zap.Error(err))
 					} else if skipped {
 						s.log.Info("metadata_unified.json unchanged on Drive, skipped re-upload")
@@ -405,7 +405,7 @@ func (s *Service) saveManifest(ctx context.Context, clipFolder *asset.ClipFolder
 
 	// ── Upload manifest to Drive as metadata.json (backward compat) ──
 	if clipFolder.ManifestJSONPath != "" && targetFolderID != "" {
-		result, skipped, err := s.callbacks.DriveUploadFileIfChanged(ctx, clipFolder.ManifestJSONPath, targetFolderID, "metadata.json")
+		result, skipped, err := s.callbacks.DriveUploadFileIfChanged(ctx, clipFolder.ManifestJSONPath, targetFolderID, "metadata.json", "", "")
 		if err != nil {
 			s.log.Warn("failed to upload manifest as metadata.json to Drive",
 				zap.String("folder_id", targetFolderID),
