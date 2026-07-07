@@ -78,11 +78,13 @@ func (s *stubPostProcessor) Process(
 //     plan.Postprocessors (both Required-class per
 //     `defaultPolicyByName` and registered in the test's
 //     registry — the canonical two procs whose per-stage
-//     variance the assertion inspects)
-//   - opts-OUT of GenerateVoiceover / GenerateSceneImages /
-//     GenerateDocument / SaveToDB so plan.Postprocessors stays
-//     small (no extra Required procs the test would have to
-//     register cover for)
+//     variance the assertion inspects)	//   - opts-OUT of GenerateVoiceover / GenerateSceneImages so
+//     plan.Postprocessors stays small (no extra Required procs
+//     the test would have to register cover for).
+//     GenerateDocument / SaveToDB are NOW safety defaults
+//     (July 2026) — the test Explicitly sets them false so
+//     NormalizeItem overrides them to true; persistence is
+//     registered in the test registry to satisfy ValidateRequested.
 //   - leaves VoiceoverFolderID empty so ResolveVoiceoverFolderForItem
 //     short-circuits before touching anything
 //
@@ -174,6 +176,14 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
 	require.True(t, ppReg.Register(entitiesProc), "entities stub must register")
 	require.True(t, ppReg.Register(metadataProc), "metadata stub must register")
+	// persistence stub — safety default (July 2026) adds
+	// "persistence" to postprocessor list (Required-class),
+	// must be registered to pass ValidateRequested.
+	persistenceProc := &stubPostProcessor{
+		name:   "persistence",
+		result: &adapters.PostProcessResult{Changed: true},
+	}
+	require.True(t, ppReg.Register(persistenceProc), "persistence stub must register")
 	ppReg.Freeze()
 
 	// Use case wired with the stubbed engine + my registry.
@@ -250,7 +260,7 @@ func TestGenerateOneUseCase_TimingsPostprocessMsClonesStageDurations(t *testing.
 	// unregistered name.
 	for key := range result.Timings.PostprocessMs {
 		assert.Contains(t,
-			[]string{"entities", "metadata"}, key,
+			[]string{"entities", "metadata", "persistence"}, key,
 			"Issue #3: timings.PostprocessMs must mirror the registry's registered-and-ran keys; got unexpected %q", key)
 	}
 }
@@ -436,6 +446,13 @@ func TestGenerateOneUseCase_UmbrellaCoverage_AllPhasePaths(t *testing.T) {
 		gen := &fakeOllamaGen{}
 		e := buildTestEngine(gen, nil)
 		ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
+		// persistence stub — safety default (July 2026) adds
+		// "persistence" to postprocessor list (Required-class),
+		// must be registered to pass ValidateRequested.
+		ppReg.Register(&stubPostProcessor{
+			name:   "persistence",
+			result: &adapters.PostProcessResult{Changed: true},
+		})
 		ppReg.Freeze()
 
 		uc := NewGenerateOneUseCase(
@@ -500,6 +517,11 @@ func TestGenerateOneUseCase_UmbrellaCoverage_AllPhasePaths(t *testing.T) {
 		e := buildTestEngine(gen, nil)
 
 		ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
+		// persistence stub (see voiceover_resolve comment).
+		ppReg.Register(&stubPostProcessor{
+			name:   "persistence",
+			result: &adapters.PostProcessResult{Changed: true},
+		})
 		ppReg.Freeze()
 
 		uc := NewGenerateOneUseCase(
@@ -560,6 +582,11 @@ func TestGenerateOneUseCase_UmbrellaCoverage_AllPhasePaths(t *testing.T) {
 			err:  errors.New("forced postprocess error"),
 		}
 		require.True(t, ppReg.Register(ppErrProc))
+		// persistence stub (see voiceover_resolve comment).
+		ppReg.Register(&stubPostProcessor{
+			name:   "persistence",
+			result: &adapters.PostProcessResult{Changed: true},
+		})
 		ppReg.Freeze()
 
 		uc := NewGenerateOneUseCase(

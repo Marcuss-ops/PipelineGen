@@ -166,24 +166,26 @@ type AIBundle struct {
 
 // DomainBundle is everything media-specific that lives at the application layer.
 type DomainBundle struct {
-	YoutubeClipService           *youtube.Service
-	VoiceoverService             *voiceover.Service
-	VoiceoverSync                *voiceoverreconcile.Service
-	ImageService                 *imgservice.Service
-	IngestService                *ingest.Service
-	BooksService                 *books.Service
-	LessonsService               *lessonsSvc.Service
-	MetaWriter                   *semantic.MetadataWriter
-	RealtimeMatcher              assetsapi.RealtimeMatcher
-	RealtimeSearch               scriptcore.RealtimeSearchService
-	AutotagService               *autotag.Service
-	AssocService                 scriptcore.AssocSearchService
-	VoiceoverGenerateHandler     *voiceoverjobs.GenerateJobHandler
-	VoiceoverProcessItem         voiceover.VoiceoverItemExecutor
-	VoiceoverGenerateItemHandler *voiceoverjobs.GenerateItemJobHandler
-	ArtifactService              *artifacts.Service
-	ImageSearchResolver          routing.ImageSearchResolver
-	AudioProcessor               *audioasset.Processor
+	YoutubeClipService *youtube.Service
+
+	ExtractImportantClipsJobHandler *youtube.ExtractImportantClipsJobHandler // PR-GEMMA-EXTRACT-IMPORTANT Step 3 canonical slot (godlike/06 SSOT)
+	VoiceoverService                *voiceover.Service
+	VoiceoverSync                   *voiceoverreconcile.Service
+	ImageService                    *imgservice.Service
+	IngestService                   *ingest.Service
+	BooksService                    *books.Service
+	LessonsService                  *lessonsSvc.Service
+	MetaWriter                      *semantic.MetadataWriter
+	RealtimeMatcher                 assetsapi.RealtimeMatcher
+	RealtimeSearch                  scriptcore.RealtimeSearchService
+	AutotagService                  *autotag.Service
+	AssocService                    scriptcore.AssocSearchService
+	VoiceoverGenerateHandler        *voiceoverjobs.GenerateJobHandler
+	VoiceoverProcessItem            voiceover.VoiceoverItemExecutor
+	VoiceoverGenerateItemHandler    *voiceoverjobs.GenerateItemJobHandler
+	ArtifactService                 *artifacts.Service
+	ImageSearchResolver             routing.ImageSearchResolver
+	AudioProcessor                  *audioasset.Processor
 }
 
 // OutboxBundle aggregates the canonical outbox dispatcher and events pool.

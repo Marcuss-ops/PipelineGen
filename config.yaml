@@ -74,8 +74,9 @@ drive:
   # Drive root folders are resolved via the API (folder_id in request payload).
   # Do NOT hardcode folder IDs here — they are passed per-request through
   # VerifiedArtifact.RootFolderOverride → PublishRequest.RootFolderOverride.
-  stock_root_folder: "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV"
-  clips_root_folder: "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV"
+  stock_root_folder: "10p7NPodbQNjbSyvDIQJtowcmGeejwwlb"
+  clips_root_folder: "10p7NPodbQNjbSyvDIQJtowcmGeejwwlb"
+  artlist_root_folder: "1Dj3-BlM9LcJr3dh3I4VxEDuMBbaBwwSE"
 
 video:
   width: 1280
