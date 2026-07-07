@@ -28,6 +28,16 @@ import (
 // (HandleJob result map) does NOT carry LocalPath — see godlike/07
 // no-fake-availability: ApiResponseFields{AssetID/RemoteAssetID/
 // SHA256/SizeBytes/DurationMS/IndexState} only.
+//
+// LLM enrichment fields (Category, Event, Round, Scene, Subject,
+// Entities) are added in PR-007 as plumbing-on-nil slots. The
+// fields stay at zero-value until the downstream LLM enrichment
+// pass lands (forward-pointer per user spec). Per godlike/07
+// NO-FAKE-AVAILABILITY: NEVER emit a placeholder string like
+// Category:"unknown" or Event:"n/a" — omitempty drops empty
+// values from the JSON wire so consumers see the field as
+// absent (not as a meaningless literal). The LLM enrichment
+// pass is the sole authority on when to populate these fields.
 type StockRunMetadata struct {
 	JobID          string               `json:"job_id"`
 	RunFingerprint string               `json:"run_fingerprint"`
@@ -41,6 +51,20 @@ type StockRunMetadata struct {
 	Chunks         []ChunkMetadataEntry `json:"chunks"`
 	CreatedAt      time.Time            `json:"created_at"`
 	PolicyVersion  string               `json:"policy_version"`
+
+	// ── LLM enrichment (PR-007, plumbing-on-nil) ───────────────────
+	// Forward-pointer: these fields are wired into the wire shape
+	// NOW so future PRs can populate them after the LLM enrichment
+	// pass lands. For now, all 6 stay at zero-value; the omitempty
+	// JSON tags ensure they are dropped from the metadata.json
+	// payload until the LLM pass hydrates them. godlike/07
+	// NO-FAKE-AVAILABILITY: do NOT use placeholder strings here.
+	Category string   `json:"category,omitempty"`
+	Event    string   `json:"event,omitempty"`
+	Round    int      `json:"round,omitempty"`
+	Scene    string   `json:"scene,omitempty"`
+	Subject  string   `json:"subject,omitempty"`
+	Entities []string `json:"entities,omitempty"`
 }
 
 // ChunkMetadataEntry is the per-chunk metadata entry embedded

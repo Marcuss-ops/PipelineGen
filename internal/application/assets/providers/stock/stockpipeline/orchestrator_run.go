@@ -268,6 +268,22 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	// dedicated Step type) because the gate checks RunSummary state, not
 	// per-step progress; threading it through a Step would duplicate
 	// state and break the §12-5 typed-slice ingress invariant.
+	// ── PR-007 (July 2026) — LLM enrichment plumbing-on-nil ──────────
+	// After the Plan step (and the rest of the 6-step ladder:
+	// plan / stage_sources / extract_clips / compose_chunks /
+	// publish / finalize) completes, the 6 LLM-enrichment fields
+	// on StockRunMetadata (Category / Event / Round / Scene /
+	// Subject / Entities) stay at zero-value per the
+	// plumbing-on-nil contract. The wire shape IS the plumbing —
+	// struct-field declarations + omitempty JSON tags ensure
+	// zero-value fields are dropped from the metadata.json payload.
+	//
+	// godlike/07 NO-FAKE-AVAILABILITY: NEVER populate these fields
+	// with placeholder strings (e.g. Category:"unknown" or
+	// Event:"n/a"). The LLM enrichment pass is the SOLE authority
+	// on when to populate them. The forward-pointer lives in
+	// StockRunMetadata (orchestrator_metadata.go) so the step body
+	// implementations do not need to change.
 	summary = &RunSummary{Manifest: state.Manifest, FinalStatus: state.FinalStatus}
 
 	// §12-1 P0 #1 gate: enforce manifest-completeness BEFORE
