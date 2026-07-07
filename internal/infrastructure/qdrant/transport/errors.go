@@ -108,7 +108,7 @@ func classifyRetryability(status int) bool {
 // error responses are typically <1KB but a misconfigured proxy or an
 // attacker pushed body could be MBs — caps prevent log-cardinality
 // surprises and accidental PII capture.
-const maxAPIBodyBytes = 4096
+const maxAPIBodyBytes = 1024 * 1024 // 1 MiB (was 4 KiB; hybrid search payloads with full metadata exceed 4 KiB)
 
 // newAPIErrorFromResponse is the canonical constructor used by
 // Client.parseError. It centralises the body read + status classification.

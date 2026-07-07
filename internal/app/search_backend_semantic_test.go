@@ -344,7 +344,204 @@ func TestSemanticBackendFiltersLifecycle(t *testing.T) {
 	}
 }
 
-// ── Test 6: MediaType filter ───────────────────────────────────────────
+// ── Test 6: IsAdmin → IsSystem propagation (ANN) ─────────────────────
+//
+// Pinned by PR-STOCK-QDRANT-SEMANTIC-ENRICHMENT: when Actor.IsAdmin=true,
+// compileSemanticFilters MUST set SearchScope.IsSystem=true so
+// CompileQdrantFilter skips the workspace must-clause. This test
+// verifies the full chain: Query.Actor.IsAdmin → compileSemanticFilters →
+// VectorSearchRequest.IsSystem.
+
+func TestSemanticBackend_IsAdmin_PropagatesIsSystem_ANN(t *testing.T) {
+	reg := &mockEmbeddingRegistry{vec: []float32{0.1, 0.2}}
+	vs := &mockVectorStore{
+		annRes: []assetsearch.VectorSearchResult{
+			{AssetID: "admin-hit", Score: 0.9},
+		},
+	}
+	mr := &mockMediaReader{
+		assets: []search.MediaAsset{
+			{ID: "admin-hit", Name: "Admin Hit"},
+		},
+	}
+	del := &mockDelivery{}
+	b := newSemanticBackend(reg, vs, mr, del)
+
+	q := search.Query{
+		Text:   "admin query",
+		Mode:   search.SearchModeANN,
+		Limit:  5,
+		Actor:  search.Actor{IsAdmin: true},
+	}
+	_, err := b.Search(context.Background(), q)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vs.lastAnnReq == nil {
+		t.Fatal("expected ANN Search to be called")
+	}
+	if !vs.lastAnnReq.IsSystem {
+		t.Error("expected IsSystem=true on VectorSearchRequest when Actor.IsAdmin=true")
+	}
+	// WorkspaceID should be empty (admin with no workspace header).
+	if vs.lastAnnReq.WorkspaceID != "" {
+		t.Errorf("WorkspaceID = %q, want empty (admin with no workspace)", vs.lastAnnReq.WorkspaceID)
+	}
+}
+
+// ── Test 7: IsAdmin → IsSystem propagation (hybrid) ───────────────────
+//
+// Same as Test 6 but for the hybrid path: Actor.IsAdmin=true must
+// propagate to HybridSearchRequest.IsSystem=true.
+
+func TestSemanticBackend_IsAdmin_PropagatesIsSystem_Hybrid(t *testing.T) {
+	reg := &mockEmbeddingRegistry{vec: []float32{0.3, 0.4}}
+	vs := &mockVectorStore{
+		hybRes: []assetsearch.VectorSearchResult{
+			{AssetID: "admin-hyb", Score: 0.85},
+		},
+	}
+	mr := &mockMediaReader{
+		assets: []search.MediaAsset{
+			{ID: "admin-hyb", Name: "Admin Hybrid"},
+		},
+	}
+	del := &mockDelivery{}
+	b := newSemanticBackend(reg, vs, mr, del)
+
+	q := search.Query{
+		Text:   "admin hybrid query",
+		Mode:   search.SearchModeHybrid,
+		Limit:  5,
+		Actor:  search.Actor{IsAdmin: true},
+	}
+	_, err := b.Search(context.Background(), q)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vs.lastHybridReq == nil {
+		t.Fatal("expected HybridSearch to be called")
+	}
+	if !vs.lastHybridReq.IsSystem {
+		t.Error("expected IsSystem=true on HybridSearchRequest when Actor.IsAdmin=true")
+	}
+	if vs.lastHybridReq.WorkspaceID != "" {
+		t.Errorf("WorkspaceID = %q, want empty (admin with no workspace)", vs.lastHybridReq.WorkspaceID)
+	}
+}
+
+// ── Test 8: Non-admin keeps IsSystem=false ────────────────────────────
+//
+// Regression guard: when Actor.IsAdmin=false, IsSystem MUST stay
+// false so the workspace must-clause is enforced in CompileQdrantFilter.
+
+func TestSemanticBackend_NonAdmin_IsSystemFalse(t *testing.T) {
+	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}
+	vs := &mockVectorStore{
+		annRes: []assetsearch.VectorSearchResult{
+			{AssetID: "tenant-hit", Score: 0.9},
+		},
+	}
+	mr := &mockMediaReader{
+		assets: []search.MediaAsset{
+			{ID: "tenant-hit", Name: "Tenant Hit"},
+		},
+	}
+	del := &mockDelivery{}
+	b := newSemanticBackend(reg, vs, mr, del)
+
+	q := search.Query{
+		Text:   "tenant query",
+		Mode:   search.SearchModeANN,
+		Limit:  5,
+		Actor:  search.Actor{WorkspaceID: "tenant-42", IsAdmin: false},
+	}
+	_, err := b.Search(context.Background(), q)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vs.lastAnnReq == nil {
+		t.Fatal("expected ANN Search to be called")
+	}
+	if vs.lastAnnReq.IsSystem {
+		t.Error("expected IsSystem=false on VectorSearchRequest when Actor.IsAdmin=false")
+	}
+	if vs.lastAnnReq.WorkspaceID != "tenant-42" {
+		t.Errorf("WorkspaceID = %q, want %q", vs.lastAnnReq.WorkspaceID, "tenant-42")
+	}
+}
+
+// ── Test 9: compileSemanticFilters direct unit test ────────────────────
+//
+// Pins the compileSemanticFilters mapping directly without going
+// through the full Search pipeline. Verifies that:
+// - Actor.IsAdmin=true → IsSystem=true
+// - Actor.IsAdmin=false → IsSystem=false
+// - WorkspaceID is trimmed and forwarded
+// - LifecycleState is always ["ACTIVE", "PUBLISHED"]
+
+func TestCompileSemanticFilters_IsAdminMapping(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		actor          search.Actor
+		wantIsSystem   bool
+		wantWorkspace  string
+	}{
+		{
+			name:          "admin with empty workspace",
+			actor:         search.Actor{IsAdmin: true},
+			wantIsSystem:  true,
+			wantWorkspace: "",
+		},
+		{
+			name:          "admin with workspace set",
+			actor:         search.Actor{IsAdmin: true, WorkspaceID: "ws-1"},
+			wantIsSystem:  true,
+			wantWorkspace: "ws-1",
+		},
+		{
+			name:          "non-admin with workspace",
+			actor:         search.Actor{IsAdmin: false, WorkspaceID: "tenant-42"},
+			wantIsSystem:  false,
+			wantWorkspace: "tenant-42",
+		},
+		{
+			name:          "non-admin without workspace",
+			actor:         search.Actor{},
+			wantIsSystem:  false,
+			wantWorkspace: "",
+		},
+		{
+			name:          "workspace trimmed",
+			actor:         search.Actor{WorkspaceID: "  tenant-99  "},
+			wantIsSystem:  false,
+			wantWorkspace: "tenant-99",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			q := search.Query{Actor: tt.actor}
+		scope, filter := compileSemanticFilters(q)
+
+			if scope.IsSystem != tt.wantIsSystem {
+				t.Errorf("IsSystem = %v, want %v", scope.IsSystem, tt.wantIsSystem)
+			}
+			if scope.WorkspaceID != tt.wantWorkspace {
+				t.Errorf("WorkspaceID = %q, want %q", scope.WorkspaceID, tt.wantWorkspace)
+			}
+			// LifecycleState includes both ACTIVE and PUBLISHED
+			// (stock pipeline indexes assets with lifecycle_state=PUBLISHED).
+			if len(filter.LifecycleState) != 2 || filter.LifecycleState[0] != "ACTIVE" || filter.LifecycleState[1] != "PUBLISHED" {
+				t.Errorf("LifecycleState = %v, want [ACTIVE PUBLISHED]", filter.LifecycleState)
+			}
+		})
+	}
+}
+
+// ── Test 10: MediaType filter ───────────────────────────────────────────
 
 func TestSemanticBackendFiltersMediaType(t *testing.T) {
 	reg := &mockEmbeddingRegistry{vec: []float32{0.1}}
