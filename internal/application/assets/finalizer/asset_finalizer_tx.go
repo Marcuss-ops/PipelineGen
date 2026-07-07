@@ -150,9 +150,9 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		INSERT INTO media_assets (
 			id, source, name, filename, media_type,
 			file_hash, drive_file_id, drive_link, download_link,
-			folder_id, folder_path, lifecycle_state,
+			folder_id, folder_path, lifecycle_state, index_state,
 			metadata_json, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PUBLISHED', ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PUBLISHED', 'INDEXING_PENDING', ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			filename = excluded.filename,
 			media_type = excluded.media_type,
