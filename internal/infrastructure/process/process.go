@@ -8,9 +8,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -32,6 +35,11 @@ type Options struct {
 
 	// MaxOutputBytes caps stdout+stderr combined. 0 means no limit.
 	MaxOutputBytes int64
+
+	// AllowShellFallback enables a last-resort /bin/sh -lc execution
+	// path when direct exec fails because the target binary is missing.
+	// Default false to preserve the no-shell contract.
+	AllowShellFallback bool
 }
 
 // Result holds the output from a command execution.
@@ -120,6 +128,14 @@ func Run(ctx context.Context, name string, args []string, opts Options) (*Result
 		result.ExitCode = exitCode(err)
 		result.TimedOut = isTimeout(err)
 		if err != nil {
+			if shouldTryPythonFallback(name, err) {
+				if pyResult, pyErr := runViaPythonScript(ctx, name, args, opts, start); pyErr == nil {
+					return pyResult, nil
+				}
+			}
+			if isNotFoundExecError(err) && opts.AllowShellFallback {
+				return runViaShell(ctx, name, args, opts, start)
+			}
 			return result, fmt.Errorf("command %s failed: %w (output: %s)", name, err, redactSecrets(result.Output))
 		}
 	} else {
@@ -132,12 +148,177 @@ func Run(ctx context.Context, name string, args []string, opts Options) (*Result
 		result.ExitCode = exitCode(err)
 		result.TimedOut = isTimeout(err)
 		if err != nil {
+			if shouldTryPythonFallback(name, err) {
+				if pyResult, pyErr := runViaPythonScript(ctx, name, args, opts, start); pyErr == nil {
+					return pyResult, nil
+				}
+			}
+			if isNotFoundExecError(err) && opts.AllowShellFallback {
+				return runViaShell(ctx, name, args, opts, start)
+			}
 			return result, fmt.Errorf("command %s failed: %w (stdout: %s, stderr: %s)",
 				name, err, redactSecrets(result.Stdout), redactSecrets(result.Stderr))
 		}
 	}
 
 	return result, nil
+}
+
+func isNotFoundExecError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, exec.ErrNotFound) {
+		return true
+	}
+	return strings.Contains(err.Error(), "no such file or directory")
+}
+
+func runViaShell(ctx context.Context, name string, args []string, opts Options, start time.Time) (*Result, error) {
+	shellCmd := shellJoin(name, args)
+	sh := exec.CommandContext(ctx, "/bin/sh", "-lc", shellCmd)
+	if opts.WorkDir != "" {
+		sh.Dir = opts.WorkDir
+	}
+	sh.Env = mergeEnv(opts.Env)
+
+	var stdout, stderr bytes.Buffer
+	result := &Result{}
+	if opts.CombinedOutput {
+		out, err := sh.CombinedOutput()
+		result.Duration = time.Since(start)
+		result.Output = truncateSafe(string(out), opts.MaxOutputBytes)
+		result.ExitCode = exitCode(err)
+		result.TimedOut = isTimeout(err)
+		if err != nil {
+			return result, fmt.Errorf("command %s failed via shell fallback: %w (output: %s)", name, err, redactSecrets(result.Output))
+		}
+		return result, nil
+	}
+
+	sh.Stdout = &stdout
+	sh.Stderr = &stderr
+	err := sh.Run()
+	result.Duration = time.Since(start)
+	result.Stdout = truncateSafe(stdout.String(), opts.MaxOutputBytes)
+	result.Stderr = truncateSafe(stderr.String(), opts.MaxOutputBytes)
+	result.ExitCode = exitCode(err)
+	result.TimedOut = isTimeout(err)
+	if err != nil {
+		return result, fmt.Errorf("command %s failed via shell fallback: %w (stdout: %s, stderr: %s)",
+			name, err, redactSecrets(result.Stdout), redactSecrets(result.Stderr))
+	}
+	return result, nil
+}
+
+func runViaPythonScript(ctx context.Context, name string, args []string, opts Options, start time.Time) (*Result, error) {
+	// PR-PROCESS-CWD-HIJACK guard (security review, July 2026):
+	// CWD-relative paths could be hijacked by an attacker who drops a
+	// file (e.g. `ls` with a #!python shebang) into the runner's
+	// current working directory. The Python fallback is triggered on
+	// exec.ErrNotFound (PATH lookup failed) but looksLikePythonScript
+	// opens `name` via os.Open which resolves against CWD. Require
+	// an absolute path so the only files we open are the ones the
+	// kernel-level exec just rejected (i.e. the absolute path was
+	// verified to NOT exist as a binary, but might still exist as a
+	// script). godlike/07 fail-closed: if a caller wants the
+	// fallback with a relative path, they must resolve it to an
+	// absolute path themselves (e.g. via filepath.Abs or by
+	// pre-computing the location of the script).
+	if !filepath.IsAbs(name) {
+		return nil, fmt.Errorf("python fallback requires absolute path (got %q; CWD-relative paths rejected to prevent local-file hijacking)", name)
+	}
+	if !looksLikePythonScript(name) {
+		return nil, fmt.Errorf("no python fallback for %s", name)
+	}
+	pythonPath := "/usr/bin/python3"
+	if _, err := os.Stat(pythonPath); err != nil {
+		if found, lookErr := exec.LookPath("python3"); lookErr == nil {
+			pythonPath = found
+		} else {
+			return nil, fmt.Errorf("python fallback unavailable: %w", err)
+		}
+	}
+	pyArgs := append([]string{name}, args...)
+	sh := exec.CommandContext(ctx, pythonPath, pyArgs...)
+	if opts.WorkDir != "" {
+		sh.Dir = opts.WorkDir
+	}
+	sh.Env = mergeEnv(opts.Env)
+
+	var stdout, stderr bytes.Buffer
+	result := &Result{}
+	if opts.CombinedOutput {
+		out, err := sh.CombinedOutput()
+		result.Duration = time.Since(start)
+		result.Output = truncateSafe(string(out), opts.MaxOutputBytes)
+		result.ExitCode = exitCode(err)
+		result.TimedOut = isTimeout(err)
+		if err != nil {
+			return result, fmt.Errorf("command %s failed via python fallback: %w (output: %s)", name, err, redactSecrets(result.Output))
+		}
+		return result, nil
+	}
+
+	sh.Stdout = &stdout
+	sh.Stderr = &stderr
+	err := sh.Run()
+	result.Duration = time.Since(start)
+	result.Stdout = truncateSafe(stdout.String(), opts.MaxOutputBytes)
+	result.Stderr = truncateSafe(stderr.String(), opts.MaxOutputBytes)
+	result.ExitCode = exitCode(err)
+	result.TimedOut = isTimeout(err)
+	if err != nil {
+		return result, fmt.Errorf("command %s failed via python fallback: %w (stdout: %s, stderr: %s)",
+			name, err, redactSecrets(result.Stdout), redactSecrets(result.Stderr))
+	}
+	return result, nil
+}
+
+func looksLikePythonScript(name string) bool {
+	fi, err := os.Stat(name)
+	if err != nil || fi.IsDir() {
+		return false
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 128)
+	n, _ := io.ReadFull(f, buf)
+	line := string(buf[:n])
+	if !strings.HasPrefix(line, "#!") {
+		return false
+	}
+	return strings.Contains(strings.ToLower(line), "python")
+}
+
+func shouldTryPythonFallback(name string, err error) bool {
+	if !looksLikePythonScript(name) {
+		return false
+	}
+	if isNotFoundExecError(err) {
+		return true
+	}
+	return exitCode(err) == 127
+}
+
+func shellJoin(name string, args []string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, shellQuote(name))
+	for _, arg := range args {
+		parts = append(parts, shellQuote(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
 
 // RunSimple is a convenience wrapper around Run with default options.
@@ -181,7 +362,18 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._\-+/=]{8,}`),
 	regexp.MustCompile(`(?i)token[=:]\s*[A-Za-z0-9._\-+/=]{16,}`),
 	regexp.MustCompile(`(?i)(authorization|api[_-]?key|secret|password)["':=\s]+[A-Za-z0-9._\-+/=]{8,}`),
-	regexp.MustCompile(`[A-Za-z0-9+/]{40,}={0,2}`),
+	// PR-PROCESS-SECRET-PATTERNS extension (security review, July 2026):
+	// broadened the charset to also catch Base64URL (adds `.` for JWT
+	// segment separators, `-` and `_` for the URL-safe alphabet) so
+	// JWTs (header.payload.signature) and other base64url-encoded
+	// tokens no longer leak through the redactor.
+	regexp.MustCompile(`[A-Za-z0-9._\-+/]{40,}={0,2}`),
+	// AWS access key ID canonical shape (AKIA + 16 uppercase alnum).
+	// Pre-existing rules would only catch these when prefixed with an
+	// "api_key" / "secret" keyword; the standalone shape is now caught.
+	// Word-boundary anchor prevents matching inside larger identifiers
+	// (e.g. "XAKIAIOSFODNN7EXAMPLE" would otherwise match).
+	regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),
 }
 
 func redactSecrets(s string) string {
