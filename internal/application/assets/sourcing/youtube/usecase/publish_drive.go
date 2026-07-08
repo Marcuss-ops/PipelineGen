@@ -39,6 +39,7 @@ type PublishClipCommand struct {
 	LocalPath   string   // path to the downloaded .mp4 on disk
 	Filename    string   // Drive filename (e.g. "dQw4w9WgXcQ - title.mp4")
 	Description string   // human-readable Drive file description
+	ProjectID   string   // canonical project umbrella (e.g. "boxing-doc-2026")
 	Category    string   // semantic category (e.g. "Boxe", "Personaggi")
 	Provider    string   // upstream source (e.g. "youtube", "pexels")
 	Tags        []string // semantic keywords for Qdrant payload
@@ -78,6 +79,7 @@ type PublishRequest struct {
 	Filename           string
 	Description        string
 	AssetID            string
+	ProjectID          string   // canonical project umbrella (e.g. "boxing-doc-2026")
 	Group              string
 	Subject            string
 	Category           string   // semantic category (e.g. "Boxe")
@@ -120,6 +122,7 @@ func PublishClipToDrive(ctx context.Context, pub DrivePublisher, cmd PublishClip
 		Filename:           cmd.Filename,
 		Description:        cmd.Description,
 		AssetID:            cmd.AssetID,
+		ProjectID:          cmd.ProjectID,
 		Group:              cmd.Group,
 		Subject:            cmd.Subject,
 		Category:           cmd.Category,
