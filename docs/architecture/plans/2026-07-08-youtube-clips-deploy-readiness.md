@@ -69,6 +69,7 @@ register-from-youtube → MediaRegisterService → DestinationResolver
 ```
 NON fare upload Drive direttamente dentro il service YouTube.
 `PublishRequest` deve includere `ProjectID` / `Group` / `Subject` per routing semantico.
+Per `/api/clips/process`, se il payload porta solo `destination.folder_id`, l'handler ora materializza una subdir di default dal `video_id` invece di caricare tutto in root Drive.
 
 ### Step 6 🟢 — Correggi `/api/clips/process`
 Il job fallisce al 5% senza errori significativi. Aggiungere `job_events` persistenti:

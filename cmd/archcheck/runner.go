@@ -154,6 +154,23 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_root_override_ban", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanRootOverrideBan(root, pol, r, productionOnly)
 		}},
+		// Check 63 (PR-CHECK-63-SCRIPT-DOCS-ROUTE-2026-07-08):
+		// forward-prevention gate for the canonical
+		// /api/script-docs/generate route. Scoped to
+		// internal/api/** ONLY (per user spec); bans the
+		// route literal from any internal/api/ package
+		// other than the canonical surface at
+		// internal/api/script-docs/. Fails if any production
+		// .go file outside the canonical package + test
+		// files (regression-guard allowlist) re-references
+		// the route. Comment-only hits are WARNed (residue
+		// accounting). Codifies the invariant: the route
+		// lives at exactly one internal/api/** package;
+		// AGENTS.md drift notices for future routes can
+		// point at this gate as the forward-prevention
+		// seam so the next agent that drifts surfaces as a
+		// CI build failure, not an operator trap.
+		{"percheck_script_docs_route", scan.ScanScriptDocsRoute},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
 			// ScanPackages and ScanCommandBinaries share a
 			// fileLines map populated by the single tree walk in

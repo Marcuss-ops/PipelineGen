@@ -180,7 +180,7 @@ func (h *GenerateJobHandler) handleSingle(
 	if mapErr != nil {
 		return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
 	}
-	artifacts, persistErr := adapters.PersistGeneratedArtifacts(ctx, j.ID, result)
+	artifacts, persistErr := adapters.PersistGeneratedArtifacts(ctx, j.ID, result, h.log)
 	if persistErr != nil {
 		if h.log != nil {
 			h.log.Warn("handleSingle: persistence failed — manifest not injected; typed envelope still propagates",

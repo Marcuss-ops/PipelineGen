@@ -1,7 +1,7 @@
 // Package clips hosts the unified HTTP handler that owns every clip-related
 // endpoint. PR-A Phase 4 BULK consolidation: a single Handler struct carries
-// the full 27-dep surface and exposes every method previously scattered
-// across handler_sources_clip_*.go in the flat sources package.
+// the full dep surface and exposes every method previously scattered across
+// handler_sources_clip_*.go in the flat sources package.
 //
 // Splits 1 + 2 + Step-5-Split-2 (June 2026, override ADR 0009): Search /
 // Ingest / Ops sub-handlers own their idiomatic-route band via per-cluster
@@ -10,10 +10,16 @@
 // idempotency middleware (PR8) for all writes, and calls RegisterRoutes on
 // each sub-handler.
 //
-// NON-Ops methods: BulkAddTags/BulkRemoveTags stay INLINE on *Handler.
-// ReprocessClip → handler_reprocess.go, EnrichMedia+EnrichAndIndexClip
-// → handler_download.go, ReindexClip+BatchReindex → handler_index.go
-// (PG-028 capability split, July 2026).
+// NonOps methods (9): BulkAddTags / BulkRemoveTags / ReprocessClip /
+// ReindexClip / BatchReindex / EnrichMedia / EnrichAndIndexClip /
+// RegisterJobHandlers / HandleBulkUploadYouTubeClipsJob live in the
+// nonops sub-package (PR-CLIPS-NONOPS-EXTRACT, July 2026, deadline
+// 2026-08-01). The orchestrator *Handler keeps 3 one-line
+// delegators (EnrichAndIndexClip / RegisterJobHandlers /
+// HandleBulkUploadYouTubeClipsJob) for non-HTTP consumer stability
+// (sourcingEnrichmentAdapter + ClipsDescriptor.RegisterJobHandlers +
+// jobs-service dispatcher). The 6 HTTP routes are installed via
+// h.nonops.RegisterRoutes(r, idem) in Handler.RegisterRoutes.
 //
 // Action cluster (DownloadClip / ReuploadClip / FindDuplicates) stays on
 // *Handler via clip_action.go; Action its own sub-handler will land in a
@@ -21,6 +27,10 @@
 package clips
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/nonops"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
@@ -28,14 +38,15 @@ import (
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
@@ -77,26 +88,15 @@ type Deps struct {
 
 // Handler owns every clip-related HTTP method. One receiver per method;
 // methods live on *Handler until their cluster lands its own sub-handler
-// (Search/Ingest/Ops already split; NonOps methods + Action methods stay
-// inline until their future splits).
+// (Search/Ingest/Ops/NonOps already split; Action methods stay inline
+// until their future split).
 type Handler struct {
 	// PR8 (June 2026): Idempotency is the reusable Gin idempotency
 	// middleware (constructed once at server boot via NewHandler →
 	// WireAssets → BuildRepoBundle.IdempotencyStore). Nil-tolerated so
-	// test fixtures can opt out. Only WRITE routes (POST/PUT/PATCH/DELETE
-	// on /clips/* and the upload/bulk routes) install it — READ routes
-	// fall through unchanged.
+	// test fixtures can opt out. Only WRITE routes install it — READ
+	// routes fall through unchanged.
 	Idempotency gin.HandlerFunc
-
-	// Mirror fields for INLINE NON-Ops methods on *Handler (Step 5 Split
-	// 2 — these methods live inline on *Handler until their clusters
-	// get dedicated sub-handlers in follow-up commits).
-	jobsSvc          jobservice.Service         // EnrichMedia/ReindexClip/BatchReindex + RegisterJobHandlers
-	bulkTagsUC       *appclips.BulkTagsUseCase  // BulkAddTags/BulkRemoveTags
-	reprocessUC      *appclips.ReprocessUseCase // ReprocessClip
-	enrichUC         *appclips.EnrichUseCase    // EnrichAndIndexClip helper + nil-check in EnrichMedia/ReindexClip
-	clipIndexer      *clipindexer.Service       // ReindexClip/BatchReindex
-	bulkUploadWorker *appclips.BulkUploadWorker // HandleBulkUploadYouTubeClipsJob
 
 	// Action cluster mirror fields (split 3 TBD).
 	assetRepo        asset.Repository
@@ -106,6 +106,7 @@ type Handler struct {
 	reuploadUC       *appclips.ReuploadUseCase
 	publisher        delivery.Publisher
 	log              *zap.Logger
+	jobsSvc          jobservice.Service
 
 	// Cfg used by driveRootForSource helper (Action cluster).
 	cfg *config.Config
@@ -116,6 +117,15 @@ type Handler struct {
 	ingest *IngestHandler
 	// ops (Step 5 Split 2): Ops sub-handler — 14 ops routes (5 read + 9 write+idem).
 	ops *OpsHandler
+	// nonops (PR-CLIPS-NONOPS-EXTRACT, July 2026): 9 NonOps methods
+	// (6 HTTP routes + 3 non-HTTP delegators on the orchestrator)
+	// extracted from handler.go + handler_delegators.go +
+	// handler_reprocess.go + handler_index.go + handler_download.go +
+	// clip_ops_handlers.go. Construction receives pre-built use case
+	// instances per thinker verdict Q7 (don't re-construct in the
+	// sub-package — that would leak repository/service deps to
+	// nonops).
+	nonops *nonops.NonOpsHandler
 }
 
 // NewHandler constructs the unified Handler. May be called before every
@@ -140,15 +150,8 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	downloadUC := appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo)
 	reprocessUC := appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor, nil)
 
-	return &Handler{
+	h := &Handler{
 		Idempotency:      idem,
-		jobsSvc:          d.JobsSvc,
-		bulkTagsUC:       bulkTagsUC,
-		reprocessUC:      reprocessUC,
-		enrichUC:         enrichUC,
-		clipIndexer:      d.ClipIndexer,
-		bulkUploadWorker: d.BulkUploadWorker,
-
 		assetRepo:        d.AssetRepo,
 		searchAggregator: d.SearchAggregator,
 		driveAdmin:       d.DriveAdmin,
@@ -156,6 +159,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		reuploadUC:       d.ReuploadUC,
 		publisher:        d.Publisher,
 		log:              d.Log,
+		jobsSvc:          d.JobsSvc,
 		cfg:              d.Cfg,
 
 		// Split 1 (June 2026, override ADR 0009): Search sub-handler.
@@ -193,6 +197,26 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			Log:            d.Log,
 		}),
 	}
+
+	// PR-CLIPS-NONOPS-EXTRACT (July 2026): construct the NonOps
+	// sub-handler AFTER the h struct is in place so we can bind
+	// h.repoForSource as the canonical source-resolution callback
+	// (method value, captured even though h is partially populated
+	// at this point — when the method is invoked later via
+	// h.nonops.ReindexClip, the receiver's h.search field is fully
+	// constructed and the lookup chains correctly).
+	h.nonops = nonops.NewNonOpsHandler(nonops.Deps{
+		BulkTagsUC:       bulkTagsUC,
+		ReprocessUC:      reprocessUC,
+		EnrichUC:         enrichUC,
+		ClipIndexer:      d.ClipIndexer,
+		JobsSvc:          d.JobsSvc,
+		BulkUploadWorker: d.BulkUploadWorker,
+		RepoForSource:    h.repoForSource,
+		Log:              d.Log,
+	})
+
+	return h
 }
 
 // enrichUCOrLocal returns `shared` when non-nil, otherwise constructs a
@@ -213,6 +237,10 @@ func enrichUCOrLocal(
 
 // repoForSource resolves a clip source to its canonical repository
 // by delegating to the Search sub-handler (Split 1, June 2026).
+// Used as the method-value callback by the nonops sub-handler
+// (RepoForSource: h.repoForSource in NewHandler) so the lookup
+// chains into the Search sub-handler without coupling nonops to
+// it directly.
 func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
 	if h.search == nil {
 		return nil
@@ -220,27 +248,67 @@ func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
 	return h.search.repoForSource(source)
 }
 
+// ── One-line delegators to nonops (3 non-HTTP methods) ────────────────
+//
+// PR-CLIPS-NONOPS-EXTRACT (July 2026): these 3 methods stay on
+// *Handler (the orchestrator) as one-line delegators to the nonops
+// sub-handler so external non-HTTP consumers continue to work
+// without breaking. The 6 HTTP routes are installed via
+// h.nonops.RegisterRoutes(r, idem) in RegisterRoutes below.
+
+// EnrichAndIndexClip is a 1-line delegator to nonops.EnrichAndIndexClip.
+// External consumer: sourcingEnrichmentAdapter
+// (internal/app/youtube_adapters_meta.go) calls this on the
+// orchestrator *Handler to drive the bulk-enrich path that
+// supplements the HTTP /enrich route. Returns immediately if the
+// nonops sub-handler is nil (test fixture / pre-construction call).
+func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, source string) {
+	if h.nonops == nil {
+		return
+	}
+	h.nonops.EnrichAndIndexClip(ctx, clip, source)
+}
+
+// RegisterJobHandlers is a 1-line delegator to nonops.RegisterJobHandlers.
+// External consumers: ClipsDescriptor.RegisterJobHandlers
+// (clips/module.go) + tests. Returns nil when the nonops sub-handler
+// is nil (test fixture / pre-construction call).
+func (h *Handler) RegisterJobHandlers() error {
+	if h.nonops == nil {
+		return nil
+	}
+	return h.nonops.RegisterJobHandlers()
+}
+
+// HandleBulkUploadYouTubeClipsJob is a 1-line delegator to
+// nonops.HandleBulkUploadYouTubeClipsJob. External consumer: the
+// jobs service dispatcher (wired via RegisterJobHandlers above).
+// Returns a typed error when the nonops sub-handler is nil
+// (test fixture / pre-construction call) so the dispatcher can
+// fail-closed rather than silently succeeding on a no-op.
+func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *jobservice.Job, tools *appjobs.JobTools) (map[string]any, error) {
+	if h.nonops == nil {
+		return nil, fmt.Errorf("nonops sub-handler not wired (clips.Handler constructed without NewHandler)")
+	}
+	return h.nonops.HandleBulkUploadYouTubeClipsJob(ctx, j, tools)
+}
+
 // RegisterRoutes mounts the entire clip-route surface.
 // Thin delegators + helpers moved to handler_delegators.go
-// (LONG-FILES-DECOMPOSITION-2026-07-06 Band B #7).
+// (LONG-FILES-DECOMPOSITION-2026-07-06 Band B #7). The 6 NonOps
+// HTTP routes (BulkAddTags + BulkRemoveTags + ReprocessClip +
+// ReindexClip + EnrichMedia + BatchReindex) are installed via
+// h.nonops.RegisterRoutes(r, idem) — see PR-CLIPS-NONOPS-EXTRACT
+// (July 2026) for the sub-package extraction rationale.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	idem := h.idemWriter()
 
 	h.ingest.RegisterRoutes(r, idem)
 	h.search.RegisterRoutes(r, idem)
 	h.ops.RegisterRoutes(r, idem)
-
-	r.POST("/:source/bulk/tags/add", idem, h.BulkAddTags)
-	r.POST("/:source/bulk/tags/remove", idem, h.BulkRemoveTags)
-	r.POST("/:source/clips/:id/reprocess", idem, h.ReprocessClip)
-	r.POST("/:source/clips/:id/reindex", idem, h.ReindexClip)
-	r.POST("/enrich", idem, h.EnrichMedia)
-	r.POST("/enrich/batch", idem, h.BatchReindex)
+	h.nonops.RegisterRoutes(r, idem)
 
 	r.POST("/:source/clips/:id/download", idem, h.DownloadClip)
 	r.POST("/:source/clips/:id/duplicates", idem, h.FindDuplicates)
 	r.POST("/:source/clips/:id/reupload", idem, h.ReuploadClip)
 }
-
-// Local typed alias for jobs.EnqueueRequest.
-type enqueueRequest = jobservice.EnqueueRequest

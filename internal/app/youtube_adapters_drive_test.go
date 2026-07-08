@@ -12,8 +12,8 @@
 //     (godlike/07 fail-closed at the seam).
 //  3. GetOrCreateFolder: Publisher.ResolveFolder error is wrapped
 //     (typed-error contract preserved via fmt.Errorf %w).
-//  4. UploadFileIfChanged: RootFolderOverride = "" (RETIRED),
-//     Group/Subject omitted (per-file identity in Filename),
+//  4. UploadFileIfChanged: RootFolderOverride = resolved folder ID,
+//     Group/Subject propagated (per-file identity in Filename),
 //     ConflictPolicy = ConflictSkipByHash (preserved).
 //  5. UploadFileIfChanged: skipped bool derives from
 //     PublishResult.Action == delivery.UploadOutcomeSkipped
@@ -21,13 +21,13 @@
 //     the canonical Publisher declares the outcome).
 //
 // godlike/06 SSOT: the recorded `lastResolveReq` and `lastPublishReq`
-// are the canonical assertion targets — the legacy
-// `RootFolderOverride = parentFolderID` + `RootFolderOverride = folderID`
-// literals are the exact violations PR-P12 retires.
+// are the canonical assertion targets — the request-selected folder
+// must be threaded through the publish seam so uploads do not fall
+// back to the registry root.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: every case asserts the recorded
 // `lastReq` matches the expected wire-shape exactly; a future
-// refactor that silently re-introduces RootFolderOverride (or
+// refactor that silently drops the resolved folder override (or
 // silently drops ConflictSkipByHash) surfaces as a test failure.
 package app
 
@@ -110,17 +110,17 @@ func newYouTubePubAdapter(pub *ytDriveRecordingPublisher) *YouTubePublisherDrive
 	return NewYouTubePublisherDriveAdapter(pub, zap.NewNop())
 }
 
-// TestGetOrCreateFolder_GroupSubjectSplit_NoRootOverride pins the
-// canonical GetOrCreateFolder contract per PR-P12:
+// TestGetOrCreateFolder_GroupSubjectSplit_ThreadsParentRoot pins the
+// canonical GetOrCreateFolder contract for payload-selected roots:
 //
 //   - input (channelName="boxing-channels", parentFolderID="any")
 //   - lastResolveReq.Group = "boxing-channels"
 //   - lastResolveReq.Destination = DestinationYouTubeClip
-//   - lastResolveReq.RootFolderOverride = "" (RETIRED — Publisher
-//     resolves root via DestinationRegistry per godlike/06 SSOT)
+//   - lastResolveReq.RootFolderOverride = "any" so the folder is
+//     created under the caller-selected Drive root
 //   - returned folderID = the canonical Publisher.ResolveFolder
 //     resolved ID ("resolved-folder-id")
-func TestGetOrCreateFolder_GroupSubjectSplit_NoRootOverride(t *testing.T) {
+func TestGetOrCreateFolder_GroupSubjectSplit_ThreadsParentRoot(t *testing.T) {
 	t.Parallel()
 	pub := &ytDriveRecordingPublisher{}
 	a := newYouTubePubAdapter(pub)
@@ -141,13 +141,10 @@ func TestGetOrCreateFolder_GroupSubjectSplit_NoRootOverride(t *testing.T) {
 	if pub.lastResolveReq.Group != "boxing-channels" {
 		t.Errorf("Group = %q, want %q (channel name must be Group)", pub.lastResolveReq.Group, "boxing-channels")
 	}
-	// godlike/07 NO-FAKE-AVAILABILITY: the legacy bypass literal
-	// is RETIRED. The Publisher must NEVER see a caller-supplied
-	// RootFolderOverride — it resolves root folders via
-	// DestinationRegistry per the architecture/current.yaml
-	// DRIVE-AS-CENTRAL-CAPABILITY wave.
-	if pub.lastResolveReq.RootFolderOverride != "" {
-		t.Fatalf("RootFolderOverride = %q, want \"\" (legacy bypass retired per PR-P12)", pub.lastResolveReq.RootFolderOverride)
+	// The parent folder must be threaded through so the child folder is
+	// created under the request-selected root instead of the catalog root.
+	if pub.lastResolveReq.RootFolderOverride != "legacy-parent-folder" {
+		t.Fatalf("RootFolderOverride = %q, want %q", pub.lastResolveReq.RootFolderOverride, "legacy-parent-folder")
 	}
 }
 
@@ -214,7 +211,7 @@ func TestGetOrCreateFolder_PublisherError_WrapsTypedError(t *testing.T) {
 	}
 }
 
-// TestUploadFileIfChanged_NoRootOverride_PreservesConflictPolicy
+// TestUploadFileIfChanged_ThreadsResolvedFolder_PreservesConflictPolicy
 // pins the canonical UploadFileIfChanged contract per PR-P12:
 //
 //   - input (localPath="/tmp/clip.mp4", folderID="resolved-folder",
@@ -222,12 +219,12 @@ func TestGetOrCreateFolder_PublisherError_WrapsTypedError(t *testing.T) {
 //   - lastPublishReq.LocalPath = "/tmp/clip.mp4"
 //   - lastPublishReq.Filename = "clip-yt_abc123_0_30_v1.mp4"
 //   - lastPublishReq.Destination = DestinationYouTubeClip
-//   - lastPublishReq.RootFolderOverride = "" (RETIRED)
+//   - lastPublishReq.RootFolderOverride = "resolved-folder-id"
 //   - lastPublishReq.ConflictPolicy = ConflictSkipByHash
 //     (preserved — Publisher's content-dedupe via hash comparison)
 //   - Group + Subject omitted (per-file identity in Filename;
 //     folder context was established by prior GetOrCreateFolder)
-func TestUploadFileIfChanged_NoRootOverride_PreservesConflictPolicy(t *testing.T) {
+func TestUploadFileIfChanged_ThreadsResolvedFolder_PreservesConflictPolicy(t *testing.T) {
 	t.Parallel()
 	pub := &ytDriveRecordingPublisher{
 		publishFileID:      "drive-file-id-123",
@@ -270,12 +267,10 @@ func TestUploadFileIfChanged_NoRootOverride_PreservesConflictPolicy(t *testing.T
 	if pub.lastPublishReq.Filename != "clip-yt_abc123_0_30_v1.mp4" {
 		t.Errorf("Filename = %q, want %q", pub.lastPublishReq.Filename, "clip-yt_abc123_0_30_v1.mp4")
 	}
-	// godlike/07 NO-FAKE-AVAILABILITY: the legacy bypass literal
-	// is RETIRED. The Publisher must NEVER see a caller-supplied
-	// RootFolderOverride — it applies the resolved folder from
-	// the prior GetOrCreateFolder call via DestinationRegistry.
-	if pub.lastPublishReq.RootFolderOverride != "" {
-		t.Fatalf("RootFolderOverride = %q, want \"\" (legacy bypass retired per PR-P12)", pub.lastPublishReq.RootFolderOverride)
+	// The resolved folder must be threaded into the publish request
+	// so the Drive upload lands in the payload-selected folder.
+	if pub.lastPublishReq.RootFolderOverride != "resolved-folder-id" {
+		t.Fatalf("RootFolderOverride = %q, want %q", pub.lastPublishReq.RootFolderOverride, "resolved-folder-id")
 	}
 	// Group + Subject MUST be propagated for YouTubeClipPath path-building.
 	if pub.lastPublishReq.Group != "boxing-channels" {

@@ -64,15 +64,22 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	}
 
 	// Step 6: Folder hierarchy creation (catalog-first, DoD item 6).
-	// Before calling Drive's EnsureFolder API, consult the local
-	// drive_folder_catalog for a cached folder ID. If a matching
-	// entry exists with status=active and a non-empty folder_id,
-	// use it directly — no Drive API call needed.
+	// When the caller supplied an explicit RootFolderOverride we must
+	// bypass the folder catalog lookup: the override is a request-local
+	// root, so reusing a cached path from another root would silently
+	// route the upload into the wrong Drive tree.
 	folderID := rootFolderID
 	if len(segments) > 0 {
 		pathKey := strings.Join(segments, "/")
-		if cachedID := p.lookupCatalogFolder(ctx, req.Destination, pathKey); cachedID != "" {
-			folderID = cachedID
+		if strings.TrimSpace(req.RootFolderOverride) == "" {
+			if cachedID := p.lookupCatalogFolder(ctx, req.Destination, pathKey); cachedID != "" {
+				folderID = cachedID
+			} else {
+				folderID, err = p.folders.EnsureFolder(ctx, rootFolderID, segments...)
+				if err != nil {
+					return nil, fmt.Errorf("delivery: resolve drive path for %q: %w", req.Destination, err)
+				}
+			}
 		} else {
 			folderID, err = p.folders.EnsureFolder(ctx, rootFolderID, segments...)
 			if err != nil {

@@ -235,16 +235,15 @@ func derivePathLeafName(in DriveDestinationInput) string {
 
 // ── Shared sanitization helpers ──────────────────────────────────────
 //
-// NOTE: These helpers intentionally mirror stockpipeline/step_publish.go
-// equivalents (sanitizedRootName, sanitizeLegacyQuery, sanitizeLegacyURLBasename,
-// hasAlphanumeric) to avoid a reverse dependency from domain/ to application/.
-// If the semantics change, update BOTH sites. This is the godlike/06
-// one-canonical-owner-per-fact exception for pure-function mirrors.
+// godlike/06 SSOT (one canonical owner per fact): these helpers are
+// the SOLE canonical implementations. Previous mirror copies in
+// stockpipeline/step_publish.go have been retired (PR-CANONICAL-CLIP-NAMING,
+// July 2026) — callers import the domain delivery package instead.
 
 // sanitizedFolderName trims whitespace, returns "" for empty input,
 // otherwise runs through pathutil.SafeFolderName. Empty-in / all-
 // whitespace-in collapses to "" so the caller continues to the next
-// fallback rule. Mirrors stockpipeline.sanitizedRootName exactly.
+// fallback rule.
 func sanitizedFolderName(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -253,9 +252,12 @@ func sanitizedFolderName(s string) string {
 	return pathutil.SafeFolderName(s)
 }
 
+// FirstSanitizedQuery is the exported entry point for the canonical
+// first-non-empty-sanitized-query helper.
+func FirstSanitizedQuery(queries []string) string { return firstSanitizedQuery(queries) }
+
 // firstSanitizedQuery returns the first non-empty sanitized search
-// query from queries. Returns "" if none survive. Mirrors
-// stockpipeline.sanitizeLegacyQuery exactly.
+// query from queries. Returns "" if none survive.
 func firstSanitizedQuery(queries []string) string {
 	for _, q := range queries {
 		if name := sanitizedFolderName(q); name != "" {
@@ -265,9 +267,12 @@ func firstSanitizedQuery(queries []string) string {
 	return ""
 }
 
+// FirstSanitizedURLBasename is the exported entry point for the canonical
+// first-non-empty-sanitized-URL-basename helper.
+func FirstSanitizedURLBasename(urls []string) string { return firstSanitizedURLBasename(urls) }
+
 // firstSanitizedURLBasename returns the first non-empty sanitized
-// URL basename (sans file extension) from urls. Returns "" if none
-// survive. Mirrors stockpipeline.sanitizeLegacyURLBasename exactly.
+// URL basename (sans file extension) from urls. Returns "" if none survive.
 func firstSanitizedURLBasename(urls []string) string {
 	for _, u := range urls {
 		if name := sanitizedURLBasename(u); name != "" {
@@ -276,6 +281,10 @@ func firstSanitizedURLBasename(urls []string) string {
 	}
 	return ""
 }
+
+// SanitizedURLBasename is the exported entry point for the canonical
+// URL-basename sanitization helper.
+func SanitizedURLBasename(rawURL string) string { return sanitizedURLBasename(rawURL) }
 
 // sanitizedURLBasename strips query + fragment layers from a raw URL,
 // takes the URL path's Base, strips the file extension, then runs
@@ -311,9 +320,13 @@ func formatTimeRange(startSec, endSec float64) string {
 	)
 }
 
+// ContainsAlphanumeric is the exported entry point for the canonical
+// alphanumeric-content check helper.
+func ContainsAlphanumeric(s string) bool { return containsAlphanumeric(s) }
+
 // containsAlphanumeric returns true if s contains at least one letter
 // or digit. Used to reject slugs that sanitize to pure punctuation
-// (e.g. "___", "---", "..."). Mirrors stockpipeline.hasAlphanumeric.
+// (e.g. "___", "---", "...").
 func containsAlphanumeric(s string) bool {
 	for _, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {

@@ -74,6 +74,15 @@ type ProcessVoiceoverItemDeps struct {
 	// Pre-Fase-3a only steps 2-3 + index outbox were executed; dedupe,
 	// media_assets, and cleanup were missing from the child pipeline.
 	Finalizer VoiceoverFinalizer
+	// OutputDir is the base local filesystem directory for TTS output.
+	// When the resolved destination's FolderPath is empty, Execute falls
+	// back to OutputDir. Mirrors the batch path's Service.outputDir (set
+	// from cfg.Storage.VoiceoversPath() at composition time). When empty,
+	// the per-item path will fail at the TTS/AudioPost stage with
+	// "empty OutputDir" — the caller MUST wire this field.
+	// PR-VO-PERITEM-OUTPUTDIR (July 2026): added to close the empty
+	// FolderPath gap on the per-item path.
+	OutputDir string
 	Logger    *zap.Logger // nil-safe via zap.NewNop()
 }
 
@@ -201,6 +210,19 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 			Status:   StatusFailed,
 			Error:    "missing_folder_id: voiceover destination has no FolderID for upload",
 		}, newPipelineError(StageDestinationResolve, false, fmt.Errorf("missing_folder_id"))
+	}
+
+	// PR-VO-PERITEM-OUTPUTDIR (July 2026): the resolved destination
+	// carries FolderID (Drive target) but NOT FolderPath (local
+	// filesystem directory for TTS output). The batch path in
+	// process.go:processLanguage explicitly overrides FolderPath
+	// via Service.outputDir + ensureOutputDir; the per-item path
+	// resolves FolderPath from the OutputDir dep. Without this,
+	// ProcessSegmentUseCase.Execute receives an empty FolderPath
+	// and fails at the TTS Synthesize call (OutputDir="" →
+	// AudioPostProcessor returns "empty OutputDir/Filename").
+	if dest.FolderPath == "" && u.deps.OutputDir != "" {
+		dest.FolderPath = u.deps.OutputDir
 	}
 
 	// Trust item.TextHash from fanout (P0.6 invariant — no re-derive).

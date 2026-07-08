@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
@@ -83,12 +84,44 @@ func newTestJobsService(t *testing.T) (job.Service, *fakeJobsService) {
 
 // newMinimalScriptFlowDepsForTest returns the canonical minimal
 // ScriptFlowDeps for unit tests (PR-script-deps-slim, July 2026):
-// the slim 5-field bag with only Jobs populated. Other fields
-// (Generate, Legacy, ClipsSearcher, AdminToken) default to zero
+// the slim 5-field bag with Jobs + Generate populated. Generate is
+// populated to the all-caps-enabled conservative default so the
+// SCRIPTCONTRACT-2026-07-08 PR-2 preflight gate (handler_enqueue.go
+// ::enqueueEnvelopeFn) short-circuits to the enqueue path instead
+// of 503-fail-closing on any user envelope that doesn't request
+// voiceover/document/images (the canonical 99% of test envelopes).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: this is the canonical test
+// fixture; weakening the preflight gate by zero-value caps would
+// silently accept voiceover/document requests on a deployment that
+// hasn't wired the corresponding services. The 3-bool true
+// surface HERE means "the test deployment has all 3 services
+// wired" — production wiring is the SOLE owner of the real
+// composition-time contract (see internal/app/wire_script.go).
+//
+// Other fields (Legacy, ClipsSearcher, AdminToken) default to zero
 // values — tests that need a populated dep supply it explicitly.
 func newMinimalScriptFlowDepsForTest(jobs job.Service) ScriptFlowDeps {
 	return ScriptFlowDeps{
 		Jobs: JobsDeps{Jobs: jobs},
+		Generate: GenerateDeps{
+			Jobs: jobs,
+			Log:  zap.NewNop(),
+			// SCRIPTCONTRACT-2026-07-08 PR-2: zero-value caps would
+			// make the preflight gate 503 on any user envelope that
+			// requests voiceover/document/images. The canonical test
+			// fixture wires all 3 caps = true so the preflight gate
+			// passes for the canonical minimal-envelope test path
+			// (e.g. handler_idempotency_test.go uses no output
+			// flags, so the gate is a no-op; but other tests in the
+			// package may exercise the same fixture with explicit
+			// output flags).
+			Caps: PreflightCaps{
+				VoiceoverEnabled: true,
+				ImagesEnabled:    true,
+				DocumentEnabled:  true,
+			},
+		},
 	}
 }
 

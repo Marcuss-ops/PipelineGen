@@ -86,4 +86,16 @@ var (
 	// root (currently routed via imageSvc per
 	// registry_internal_modules.go::registerInternalModules).
 	ErrStockPipelineNilFinalizer = errors.New("stockpipeline.NewService: Finalizer is nil — gates still fire but no spine write occurs (§12-1 §F.2 follow-up to wire production finalizer)")
+
+	// ErrStockPipelineAllQueriesFailed surfaces when every text
+	// search query in resolveInputQueries fails to resolve to a
+	// YouTube URL via yt-dlp. Without at least one resolved URL,
+	// the orchestrator has no video source to plan against.
+	//
+	// Common root causes: yt-dlp n-challenge, missing cookies,
+	// network failure, or rate limiting.
+	//
+	// godlike/07 typed-error contract: callers probe via
+	// errors.Is(err, ErrStockPipelineAllQueriesFailed).
+	ErrStockPipelineAllQueriesFailed = errors.New("stockpipeline: all search queries failed to resolve via yt-dlp")
 )

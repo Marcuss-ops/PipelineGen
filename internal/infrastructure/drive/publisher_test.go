@@ -1152,8 +1152,8 @@ func TestResolveDestination_SuccessPath_ReturnsNilErr(t *testing.T) {
 		"success path: FolderID must equal the leaf folder returned by EnsureFolder")
 	require.NotEmpty(t, resolved.PathSegments,
 		"success path: PathSegments must be non-empty when PathBuilder succeeds")
-	require.Equal(t, []string{"test", "abc"}, resolved.PathSegments,
-		"success path: PathSegments must be the canonical [{group},{subject}] structure")
+	require.Equal(t, []string{"abc"}, resolved.PathSegments,
+		"success path: PathSegments must collapse to a single leaf under RootFolderOverride")
 	require.Equal(t, "explicit-override-folder-id", resolved.RootFolderID,
 		"success path: RootFolderID must be the explicit override (RootFolderOverride precedence)")
 }
@@ -1442,6 +1442,29 @@ func TestYouTubeClipPath_PathBuilderSanitisesSpecialCharacters_DOD_9_3(t *testin
 		"SafeFolderName must replace / with _ in group segment")
 	require.Equal(t, "game_7_OT", segs[1],
 		"SafeFolderName must replace / with _ and : with _ in subject segment")
+}
+
+// TestYouTubeClipPath_WithRootFolderOverride_UsesSingleLeaf pins the
+// override-aware clip path contract used by payload-selected roots:
+// when RootFolderOverride is set, the path builder must emit a single
+// leaf folder instead of the legacy youtube_uncategorized/group layer.
+func TestYouTubeClipPath_WithRootFolderOverride_UsesSingleLeaf(t *testing.T) {
+	req := delivery.PublishRequest{
+		RootFolderOverride: "explicit-root",
+		Subject:            "qQIsvIOQS8U",
+	}
+
+	segs, err := delivery.YouTubeClipPath(req)
+	require.NoError(t, err)
+	require.Equal(t, []string{"qQIsvIOQS8U"}, segs)
+
+	req = delivery.PublishRequest{
+		RootFolderOverride: "explicit-root",
+		Group:              "boxing-channels",
+	}
+	segs, err = delivery.YouTubeClipPath(req)
+	require.NoError(t, err)
+	require.Equal(t, []string{"boxing-channels"}, segs)
 }
 
 // ── FASE D: DoD 10 tests (July 2026) — fake FolderManager EnsureFolder integration ──

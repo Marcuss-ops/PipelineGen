@@ -121,6 +121,14 @@ func (r *BackendRegistry) Eligible(q Query) []SearchBackend {
 	all := r.All()
 
 	// 1. Sources filter (fail-fast on unknown aliases).
+	//
+	// PR-SEARCH-HANDLER-MOUNT (July 2026): the semantic backend
+	// is a cross-source meta-backend — it searches Qdrant for
+	// ALL sources and applies source filtering internally via
+	// compileSemanticFilters → filter.Source. It MUST always be
+	// included regardless of q.Sources, otherwise requests like
+	// sources=["stock"] with mode=hybrid produce zero eligible
+	// backends and fail with ErrSemanticBackendUnavailable.
 	canonicalSources := ResolveCanonicals(q.Sources)
 	if len(q.Sources) > 0 && len(canonicalSources) == 0 {
 		// All sources supplied were unknown aliases. NO
@@ -137,6 +145,10 @@ func (r *BackendRegistry) Eligible(q Query) []SearchBackend {
 		filtered := make([]SearchBackend, 0, len(all))
 		for _, b := range all {
 			if _, ok := allow[b.Name()]; ok {
+				filtered = append(filtered, b)
+			} else if b.Name() == "semantic" {
+				// Always include semantic: cross-source
+				// meta-backend with internal source filter.
 				filtered = append(filtered, b)
 			}
 		}

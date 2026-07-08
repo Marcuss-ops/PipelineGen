@@ -43,11 +43,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/slug"
@@ -488,10 +488,10 @@ func stockRootFolderName(in *RunInput) string {
 	if name := sanitizedRootName(in.Subfolder); name != "" {
 		return name
 	}
-	if name := sanitizeLegacyQuery(in.SearchQueries); name != "" {
+	if name := domaindelivery.FirstSanitizedQuery(in.SearchQueries); name != "" {
 		return name
 	}
-	if name := sanitizeLegacyURLBasename(in.DirectURLs); name != "" {
+	if name := domaindelivery.FirstSanitizedURLBasename(in.DirectURLs); name != "" {
 		return name
 	}
 	return "stock_" + time.Now().UTC().Format("2006-01-02")
@@ -634,29 +634,20 @@ func sanitizedURLBasename(rawURL string) string {
 func perClipLeafName(plan ClipPlan) string {
 	// PR-STOCK-TIMESTAMP-CLIPS Front 2 (July 2026): explicit-override
 	// cascade. The user-supplied Slug (when non-empty) is the canonical
-	// leaf — it wins over the title-derived slug. We still run it
-	// through pathutil.SafeFolderName so the result is filesystem-safe
-	// (no /, no :, no leading dot). godlike/07 NO-FAKE-AVAILABILITY:
+	// leaf — it wins over the title-derived slug. Uses
+	// sanitizedRootName (canonical SSOT) so the
+	// result is filesystem-safe. godlike/07 NO-FAKE-AVAILABILITY:
 	// the SafeFolderName all-whitespace fallback "untitled" is also
 	// rejected. Critically, we ALSO reject slugs that sanitize to
-	// pure-punctuation (e.g. "///" → "___", "!!!" → "___") because
-	// those would shadow real folders on Drive without any
-	// human-readable meaning. If the user-supplied slug is all
-	// whitespace / unsafe / punctuation-only, fall through to the
-	// title-derived cascade rather than emit a meaningless folder
-	// (operators scanning Drive would see a generic ___/ folder
-	// that shadows other runs).
+	// pure-punctuation (e.g. "///" → "___", "!!!" → "___") via
+	// domaindelivery.ContainsAlphanumeric.
 	if raw := strings.TrimSpace(plan.Slug); raw != "" {
-		if safe := pathutil.SafeFolderName(raw); safe != "" && safe != "untitled" && hasAlphanumeric(safe) {
+		if safe := sanitizedRootName(raw); safe != "" && safe != "untitled" && domaindelivery.ContainsAlphanumeric(safe) {
 			return safe
 		}
 	}
 	if title := strings.TrimSpace(plan.Title); title != "" {
 		slug := slugifyTitle(title)
-		// godlike/07: never emit "untitled" as a slug (the
-		// pathutil.SafeFolderName all-whitespace fallback).
-		// Empty-after-slugify also falls through to the
-		// start-end literal.
 		if slug != "" && slug != "untitled" {
 			return slug
 		}
@@ -673,7 +664,7 @@ func perClipLeafName(plan ClipPlan) string {
 // slices from the same parent clip land together.
 func timestampParentLeafName(plan ClipPlan) string {
 	if raw := strings.TrimSpace(plan.ParentSlug); raw != "" {
-		if safe := pathutil.SafeFolderName(raw); safe != "" && safe != "untitled" && hasAlphanumeric(safe) {
+		if safe := sanitizedRootName(raw); safe != "" && safe != "untitled" && domaindelivery.ContainsAlphanumeric(safe) {
 			return safe
 		}
 	}
@@ -684,7 +675,7 @@ func timestampParentLeafName(plan ClipPlan) string {
 		}
 	}
 	if raw := strings.TrimSpace(plan.Slug); raw != "" {
-		if safe := pathutil.SafeFolderName(raw); safe != "" && safe != "untitled" && hasAlphanumeric(safe) {
+		if safe := sanitizedRootName(raw); safe != "" && safe != "untitled" && domaindelivery.ContainsAlphanumeric(safe) {
 			return safe
 		}
 	}
@@ -694,35 +685,10 @@ func timestampParentLeafName(plan ClipPlan) string {
 	)
 }
 
-// hasAlphanumeric returns true if s contains at least one letter or
-// digit. Used by perClipLeafName to reject slugs that sanitize to
-// pure-punctuation (e.g. "___", "---", "...") so the cascade falls
-// through to the title-derived slug (godlike/07 NO-FAKE-AVAILABILITY:
-// meaningless folder names shadow real ones on Drive).
-func hasAlphanumeric(s string) bool {
-	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			return true
-		}
-	}
-	return false
-}
-
-// slugifyTitle is a thin package-internal alias for the canonical
-// pkg/slug.SlugifyTitle helper. Per godlike/06 SSOT, pkg/slug is
-// the SOLE canonical owner of the title-slug convention; both
-// the parser-side surface (pkg/stockparser/parser.go::deriveSlug)
-// and this stock-pipeline surface route through it for
-// byte-equivalent output (PR-SLUG-HELPER-EXTRACT, July 2026).
-//
-// The local alias is preserved (not deleted outright) so the
-// perClipLeafName call site (above) stays grep-stable and the
-// pre-extraction goddoc comment block documents the surface
-// transition for future readers. Forward-pointer: a future
-// refactor can inline-slugifyTitle to a direct call to
-// pkg/slug.SlugifyTitle if the per-call overhead warrants it
-// (today: the inliner is unrolled by the Go compiler — both
-// paths have identical zero-cost).
+// slugifyTitle delegates to the canonical pkg/slug.SlugifyTitle
+// (godlike/06 SSOT: pkg/slug is the SOLE canonical owner of the
+// title-slug convention). PR-CANONICAL-CLIP-NAMING (July 2026):
+// local alias preserved for grep-stability.
 func slugifyTitle(title string) string {
 	return slug.SlugifyTitle(title)
 }

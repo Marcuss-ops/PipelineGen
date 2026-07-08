@@ -176,55 +176,21 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 		return
 	}
 
-	// ── Pre-resolve the Drive folder hierarchy ───────────────────────
-	// Direct API calls can ask for a root folder plus a logical group
-	// and optional subfolder. The endpoint now materializes both levels
-	// before enqueueing so the worker receives a payload with the final
-	// Drive folder ID and the canonical folder path.
+	// Normalize the destination payload without performing Drive I/O.
+	// The worker resolves folder creation asynchronously; the HTTP
+	// handler must stay fast and fail-closed on enqueue only.
 	if req.Destination != nil && req.Destination.FolderID != "" {
 		videoID, _ := urlutil.ExtractVideoID(req.URL)
 		groupName, subfolderName, folderPath, createSubfolder := normalizeExtractionDestination(req.Destination, videoID)
-		currentFolderID := req.Destination.FolderID
-
-		if groupName != "" {
-			channelFolderID, err := h.service.GetOrCreateChannelFolder(c.Request.Context(), groupName, currentFolderID)
-			if err != nil {
-				// Fall back gracefully: the worker will resolve the folder
-				// during extraction. This matches the pre-Pattern-12
-				// behavior where errors were silently swallowed.
-				h.log.Warn("channel folder resolution failed; falling back to root folder",
-					zap.String("group", groupName),
-					zap.String("root_folder", currentFolderID),
-					zap.Error(err))
-			} else if channelFolderID != currentFolderID {
-				h.log.Info("pre-resolved channel Drive subfolder from API request",
-					zap.String("group", groupName),
-					zap.String("root_folder", currentFolderID),
-					zap.String("channel_folder_id", channelFolderID))
-				currentFolderID = channelFolderID
-			}
-		}
-
-		if createSubfolder && subfolderName != "" {
-			subfolderFolderID, err := h.service.GetOrCreateChannelFolder(c.Request.Context(), subfolderName, currentFolderID)
-			if err != nil {
-				h.log.Warn("extraction subfolder resolution failed; falling back to current folder",
-					zap.String("subfolder", subfolderName),
-					zap.String("parent_folder", currentFolderID),
-					zap.Error(err))
-			} else if subfolderFolderID != currentFolderID {
-				h.log.Info("pre-resolved extraction Drive leaf folder from API request",
-					zap.String("subfolder", subfolderName),
-					zap.String("parent_folder", currentFolderID),
-					zap.String("leaf_folder_id", subfolderFolderID))
-				currentFolderID = subfolderFolderID
-			}
-			req.Destination.CreateSubfolder = true
-		}
-
-		req.Destination.FolderID = currentFolderID
+		req.Destination.CreateSubfolder = createSubfolder
 		if folderPath != "" {
 			req.Destination.FolderPath = folderPath
+		}
+		if groupName != "" {
+			req.Destination.Group = groupName
+		}
+		if subfolderName != "" {
+			req.Destination.SubfolderName = subfolderName
 		}
 	}
 
@@ -310,7 +276,13 @@ func normalizeExtractionDestination(dest *yttypes.DestinationRequest, videoID st
 	if rawSubfolder := strings.TrimPrefix(strings.TrimSpace(dest.SubfolderName), "yt_"); rawSubfolder != "" {
 		subfolderName = pathutil.SafeFolderName(rawSubfolder)
 	}
-	createSubfolder = subfolderName != "" || strings.TrimSpace(dest.FolderID) == "" || groupName != "" || dest.CreateSubfolder
+	// Default to a child folder when we have a concrete video ID.
+	// This keeps direct clip extraction runs from dumping multiple
+	// clips into the same Drive root when the caller only supplied
+	// folder_id. Callers that want a flat upload can still force it
+	// by omitting videoID at this layer (not possible for /process)
+	// or by providing an explicit folder_path.
+	createSubfolder = subfolderName != "" || strings.TrimSpace(dest.FolderID) == "" || groupName != "" || dest.CreateSubfolder || strings.TrimSpace(videoID) != ""
 	if createSubfolder && subfolderName == "" && strings.TrimSpace(videoID) != "" {
 		subfolderName = pathutil.SafeFolderName(strings.TrimPrefix(videoID, "yt_"))
 	}

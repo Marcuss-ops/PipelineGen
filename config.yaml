@@ -148,7 +148,7 @@ features:
   script_clips_enabled: true
   stock_pipeline_enabled: true
   images_enabled: true
-  voiceover_enabled: false
+  voiceover_enabled: true
   catalog_script_vector_search: false
 
 # NOTE (June 2026 drft-fix): the previous config.example.yaml featured

@@ -1,7 +1,18 @@
 // Package clips — handler_delegators.go contains the thin delegator methods
-// that forward to the Search/Ingest/Ops sub-handlers, plus the NON-Ops methods
-// (BulkAddTags, BulkRemoveTags) and helper methods (driveRootForSource,
-// RegisterJobHandlers, idemWriter).
+// that forward to the Search/Ingest/Ops sub-handlers, plus the Action
+// cluster helper methods (driveRootForSource, idemWriter).
+//
+// NonOps methods (BulkAddTags, BulkRemoveTags, RegisterJobHandlers) +
+// helper methods (driveRootForSource, RegisterJobHandlers, idemWriter) used
+// to live here; per PR-CLIPS-NONOPS-EXTRACT (July 2026) the 9 NonOps
+// methods + the 1 BulkTag helper were extracted to the nonops sub-package
+// (internal/api/assets/clips/nonops). This file now hosts ONLY the thin
+// sub-handler delegators (CreateClip / UpdateClip / UploadVideoClip /
+// VerifyClip / HandleFixHash / TrashClip / DeleteClip / Reconcile /
+// Cleanup / ListFolders / FolderStatus / RegenerateManifest /
+// TrashFolder / DeleteFolder / GetFolderChildren / GetTree /
+// GetBreadcrumb) + driveRootForSource + idemWriter.
+//
 // Extracted from handler.go (LONG-FILES-DECOMPOSITION-2026-07-06 Band B #7).
 package clips
 
@@ -9,9 +20,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
-	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -172,68 +180,6 @@ func (h *Handler) GetBreadcrumb(c *gin.Context) {
 	h.ops.GetBreadcrumb(c)
 }
 
-// ── NON-Ops methods (Step 5 Split 2, June 2026) ───────────────────────
-
-// BulkAddTags adds tags to multiple clips in one request.
-func (h *Handler) BulkAddTags(c *gin.Context) {
-	source := c.Param("source")
-	var req struct {
-		IDs  []string `json:"ids"`
-		Tags []string `json:"tags"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
-		return
-	}
-
-	result, err := h.bulkTagsUC.AddTags(c.Request.Context(), appclips.BulkTagsRequest{
-		Source: source,
-		IDs:    req.IDs,
-		Tags:   req.Tags,
-	})
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"source":  result.Source,
-		"count":   result.Count,
-		"message": result.Message,
-	})
-}
-
-// BulkRemoveTags removes tags from multiple clips.
-func (h *Handler) BulkRemoveTags(c *gin.Context) {
-	source := c.Param("source")
-	var req struct {
-		IDs  []string `json:"ids"`
-		Tags []string `json:"tags"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		apiutil.BadRequest(c, err.Error())
-		return
-	}
-
-	result, err := h.bulkTagsUC.RemoveTags(c.Request.Context(), appclips.BulkTagsRequest{
-		Source: source,
-		IDs:    req.IDs,
-		Tags:   req.Tags,
-	})
-	if err != nil {
-		apiutil.InternalError(c, err)
-		return
-	}
-
-	apiutil.OK(c, gin.H{
-		"ok":      true,
-		"source":  result.Source,
-		"count":   result.Count,
-		"message": result.Message,
-	})
-}
-
 // ── Helper methods ────────────────────────────────────────────────────
 
 // driveRootForSource returns the Drive root folder for a clip source
@@ -254,17 +200,6 @@ func (h *Handler) driveRootForSource(source string) (string, string) {
 	default:
 		return "", ""
 	}
-}
-
-// RegisterJobHandlers wires up the bulk-upload worker.
-// Deprecated: ClipsDescriptor.RegisterJobHandlers (module.go) is the
-// canonical DescriptorJobs path that the production composition root
-// invokes. This method survives for test-backward-compat only.
-func (h *Handler) RegisterJobHandlers() error {
-	if h.jobsSvc == nil {
-		return nil
-	}
-	return h.jobsSvc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), appjobs.HandlerFunc(h.HandleBulkUploadYouTubeClipsJob))
 }
 
 // idemWriter returns h.Idempotency if set, else a no-op pass-through handler.

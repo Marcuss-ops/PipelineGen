@@ -26,6 +26,7 @@ package stockpipeline
 
 import (
 	"context"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -82,7 +83,7 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 		seen[plan.SourceID] = true
 
-		ref := assets.SourceRef{URL: plan.SourceID}
+		ref := assets.SourceRef{URL: stagingSourceURL(plan)}
 		sa, stageErr := stager.StageSource(ctx, ref)
 		if stageErr != nil {
 			// Graceful degradation: stage failure logs Warn + continues.
@@ -141,4 +142,25 @@ func (StockStageSourcesStep) Run(ctx context.Context, runner StepRunner) error {
 			zap.Int("plan_count", len(plans)))
 	}
 	return nil
+}
+
+// stagingSourceURL canonicalizes YouTube URLs before handing them to
+// the acquisition stager. The stager rejects query-string variants
+// such as `...?pp=...`; the stock pipeline keeps the original SourceID
+// for downstream grouping, but downloads use the canonical watch URL.
+func stagingSourceURL(plan ClipPlan) string {
+	raw := strings.TrimSpace(plan.SourceID)
+	if raw == "" {
+		return raw
+	}
+	lower := strings.ToLower(raw)
+	if plan.SourceProvider != SourceProviderYouTube &&
+		!strings.Contains(lower, "youtube.com") &&
+		!strings.Contains(lower, "youtu.be") {
+		return raw
+	}
+	if id := extractVideoID(raw); id != "" {
+		return "https://www.youtube.com/watch?v=" + id
+	}
+	return raw
 }
