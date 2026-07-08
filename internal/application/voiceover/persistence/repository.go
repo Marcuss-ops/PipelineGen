@@ -166,13 +166,17 @@ type VoiceoverRecord struct {
 	// IdempotencyKey is the FASE 3 (July 2026) deterministic retry-safe
 	// deduplication key. Stored in the voiceovers.idempotency_key column
 	// (migration 132). The UNIQUE INDEX idx_voiceovers_idempotency
-	// enforces ONE row per non-empty key; the Step 0 gate in the finalizer
+	// enforces ONE row per non-empty key; the coarser
+	// idx_voiceovers_job_language (migration 133) enforces ONE row per
+	// (job_id, language) pair. The Step 0 gate in the finalizer
 	// short-circuits the entire 6-step sequence when a match is found.
 	IdempotencyKey string
 
 	// JobID is the canonical job identifier that produced this voiceover
 	// item. Enables operator audit-trail correlation: "which job run
 	// produced this Drive audio file?". Empty JobID is OK (pre-FASE-3
-	// rows carry the empty sentinel).
+	// rows carry the empty sentinel). The UNIQUE INDEX
+	// idx_voiceovers_job_language (migration 133) ensures at most ONE
+	// voiceover row per (job_id, language) pair.
 	JobID string
 }

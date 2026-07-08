@@ -1,0 +1,31 @@
+-- Migration 133: Add job-level idempotency constraint to voiceovers table
+-- FASE 3 VO-OPERATIONAL-READINESS (July 2026): true retry-safe
+-- idempotency enforced at the DB structural level.
+--
+-- This UNIQUE INDEX ensures at most ONE voiceover row per (job_id,
+-- language) pair. When a job is retried with the same language, the
+-- INSERT will fail with a UNIQUE constraint violation, preventing
+-- duplicate Drive uploads for the same logical voiceover item.
+--
+-- The (job_id, language) pair is the natural key for "which language
+-- voiceover did this job produce?" — different from the
+-- idempotency_key UNIQUE INDEX (migration 132) which uses the
+-- triple (jobID:language:textHash). The textHash component makes
+-- the idempotency_key specific to the content, while this index
+-- guarantees at most one row per job+language regardless of text
+-- content (useful when the same job re-runs with slightly different
+-- text — e.g. a prompt tweak — but should still produce exactly
+-- one voiceover per language).
+--
+-- Partial index: only enforce uniqueness when job_id is non-empty.
+-- Legacy rows (pre-FASE-3, empty job_id) are excluded so the
+-- migration is backward-compatible. SQLite 3.8.0+ (bundled with
+-- mattn/go-sqlite3 since ~2018) supports partial indexes.
+--
+-- godlike/06 SSOT: the canonical UNIQUE constraint on (job_id,
+-- language) lives ONLY here. No other index enforces this pair.
+-- The idempotency_key UNIQUE INDEX (migration 132) is a finer-
+-- grained per-content gate; this index is the coarser per-job gate.
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_voiceovers_job_language
+    ON voiceovers(job_id, language) WHERE job_id != '';

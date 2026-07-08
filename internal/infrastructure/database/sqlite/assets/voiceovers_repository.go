@@ -43,10 +43,16 @@ type Record struct {
 	// BuildVoiceoverIdempotencyKey(jobID, language, textHash).
 	// The UNIQUE INDEX idx_voiceovers_idempotency (migration 132)
 	// enforces ONE row per non-empty key.
+	// The coarser UNIQUE INDEX idx_voiceovers_job_language (migration 133)
+	// enforces ONE row per (job_id, language) pair — distinct jobs
+	// with the same content produce distinct keys but the job-level
+	// constraint still guarantees at most one voiceover per language.
 	IdempotencyKey string
 
 	// JobID is the canonical job identifier that produced this voiceover
 	// item (FASE 3, July 2026). Enables operator audit-trail correlation.
+	// The UNIQUE INDEX idx_voiceovers_job_language (migration 133)
+	// ensures at most ONE voiceover row per (job_id, language) pair.
 	JobID string
 
 	CreatedAt time.Time
