@@ -200,4 +200,44 @@ type CanonicalClipMetadata struct {
 	// Tags is the merged-deduplicated union of SourceTags + ClipTags +
 	// SearchKeywords + Topics + Speakers + MentionedPeople.
 	Tags []string `json:"tags,omitempty"`
+
+	// ── PR-YT-DOD-7: DoD 7 canonical metadata_json fields ────────────
+	//
+	// SourceProvider identifies the source platform. Always "youtube"
+	// for clips extracted through the YouTube pipeline. Non-empty at
+	// write time so the Qdrant payload + operator dashboards surface
+	// the canonical source.
+	SourceProvider string `json:"source_provider,omitempty"`
+
+	// VideoID is the YouTube video ID (e.g., "vdC5GXxS-qU"). Stored
+	// in metadata_json so offline consumers can reconstruct the
+	// canonical source URL without parsing the source_url field.
+	VideoID string `json:"video_id,omitempty"`
+
+	// ClipStartSec is the clip start timestamp in seconds (e.g., 146).
+	ClipStartSec int `json:"clip_start_sec,omitempty"`
+
+	// ClipEndSec is the clip end timestamp in seconds (e.g., 155).
+	ClipEndSec int `json:"clip_end_sec,omitempty"`
+
+	// ClipDurationSec is the clip duration in seconds (EndSec - StartSec).
+	ClipDurationSec int `json:"clip_duration_sec,omitempty"`
+
+	// Title is the display title of the clip (segment name or derived
+	// from the video title). Distinct from Summary which is a longer
+	// narrative description.
+	Title string `json:"title,omitempty"`
+
+	// PolicyVersion is the extraction policy version (e.g., "v1").
+	// Same value as ClipAsset.PolicyVersion.
+	PolicyVersion string `json:"policy_version,omitempty"`
+
+	// DrivePath is the canonical Drive locator (WebViewLink). Used by
+	// Qdrant consumers to construct the download URL without querying
+	// the API.
+	DrivePath string `json:"drive_path,omitempty"`
+
+	// ContentHash is the file content hash (FileHash / MD5 of the
+	// local clip). The canonical ingest-time fingerprint.
+	ContentHash string `json:"content_hash,omitempty"`
 }

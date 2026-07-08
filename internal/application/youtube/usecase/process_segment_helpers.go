@@ -27,11 +27,25 @@ func buildClipAsset(
 		SourceURL:       cmd.VideoURL,
 		TranscriptPath:  "",
 		NormalizedGroup: deriveNormalizedGroup(cmd),
+		SourceProvider:  "youtube",
+		VideoID:         cmd.VideoID,
+		ClipStartSec:    out.Item.StartSeconds,
+		ClipEndSec:      out.Item.EndSeconds,
+		ClipDurationSec: out.Item.Duration,
+		PolicyVersion:   policyVersion,
+		DrivePath:       out.Item.DriveLink,
+		ContentHash:     fileHash,
 	}
 	md.Summary = cmd.Segment.Summary
 	md.Topics = cmd.Segment.Topics
 	md.Speakers = cmd.Segment.Speakers
 	md.MentionedPeople = cmd.Segment.MentionedPeople
+	// Title: use the segment name if present, otherwise derive from Summary.
+	if cmd.Segment.Name != "" {
+		md.Title = cmd.Segment.Name
+	} else if cmd.Segment.Summary != "" {
+		md.Title = cmd.Segment.Summary
+	}
 	return youtubetypes.ClipAsset{
 		ID:            clipID,
 		VideoID:       cmd.VideoID,

@@ -124,11 +124,10 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataAndRequestIndex(
 		}
 	}()
 
-	// 2) UPDATE media_assets.metadata_json (json_set on the canonical
-	// 9 base keys + conditional Hook + SearchVisibility). The query
-	// uses COALESCE(metadata_json, '{}') so the row is
-	// created-or-updated safely (first enrichment creates the JSON,
-	// subsequent writes update the keys in place).
+	// 2) UPDATE media_assets.metadata_json via json_patch — builds
+	// the full JSON object in Go (PR-YT-DOD-7: 18 canonical keys
+	// including the 9 new DoD 7 fields) and merges it with the
+	// existing metadata_json via SQLite's json_patch.
 	nowStr := w.now().UTC().Format(time.RFC3339)
 	if err := updateMediaAssetsMetadataTx(ctx, tx, clipID, m, nowStr); err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataAndRequestIndex: update media_assets: %w", err)
@@ -191,13 +190,14 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataAndRequestIndex(
 	return nil
 }
 
-// isEnqueueTerminalStatus reports whether an outbox row's status is
-// are non-empty (so the indexing layer never sees an empty
-// semantic marker).
+// updateMediaAssetsMetadataTx builds the full metadata JSON object
+// in Go (18 canonical keys — 9 from the original PR-C commit + 9
+// from PR-YT-DOD-7) and merges it into the existing metadata_json
+// via SQLite's json_patch. The idempotency contract is preserved:
+// json_patch of identical keys is idempotent on the JSON value.
 //
-// The query is idempotent: a second call with the same values
-// produces an idempotent UPDATE (json_set is idempotent on
-// identical key/value pairs).
+// Conditional keys (Hook, SearchVisibility) are included only when
+// their CanonicalClipMetadata fields are non-empty.
 func updateMediaAssetsMetadataTx(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -205,78 +205,48 @@ func updateMediaAssetsMetadataTx(
 	m youtubetypes.CanonicalClipMetadata,
 	nowStr string,
 ) error {
-	// Marshal the typed fields into JSON-safe strings.
-	topicsJSON, _ := json.Marshal(m.Topics)
-	speakersJSON, _ := json.Marshal(m.Speakers)
-	mentionedJSON, _ := json.Marshal(m.MentionedPeople)
-	// sql.Exec uses ? placeholders; we can't pass a map[string]any
-	// directly. The base chain writes 9 keys; the optional
-	// json_set for Hook + SearchVisibility is appended when
-	// their CanonicalClipMetadata fields are non-empty.
-	baseSet := `json_set(
-		json_set(
-			json_set(
-				json_set(
-					json_set(
-						json_set(
-							json_set(
-								json_set(
-									json_set(
-										COALESCE(metadata_json, '{}'),
-										'$.summary', ?
-									),
-									'$.topics', ?
-								),
-								'$.speakers', ?
-							),
-							'$.mentioned_people', ?
-						),
-						'$.quality_score', ?
-					),
-					'$.sponsor_segment', ?
-				),
-				'$.transcript_path', ?
-			),
-			'$.source_url', ?
-		),
-		'$.normalized_group', ?
-	)
-	`
+	// Build the metadata JSON in Go — avoids the fragile deeply-nested
+	// json_set chain that was error-prone at 18+ keys (PR-YT-DOD-7).
+	meta := map[string]any{
+		"summary":          m.Summary,
+		"topics":           m.Topics,
+		"speakers":         m.Speakers,
+		"mentioned_people": m.MentionedPeople,
+		"quality_score":    m.QualityScore,
+		"sponsor_segment":  m.SponsorSegment,
+		"transcript_path":  m.TranscriptPath,
+		"source_url":       m.SourceURL,
+		"normalized_group": m.NormalizedGroup,
+		// ── PR-YT-DOD-7: 9 new canonical fields ──
+		"source_provider":   m.SourceProvider,
+		"video_id":          m.VideoID,
+		"title":             m.Title,
+		"clip_start_sec":    m.ClipStartSec,
+		"clip_end_sec":      m.ClipEndSec,
+		"clip_duration_sec": m.ClipDurationSec,
+		"policy_version":    m.PolicyVersion,
+		"drive_path":        m.DrivePath,
+		"content_hash":      m.ContentHash,
+	}
 	if m.Hook != "" {
-		baseSet = fmt.Sprintf(`json_set(%s, '$.hook', ?)`, baseSet)
+		meta["hook"] = m.Hook
 	}
 	if m.SearchVisibility != "" {
-		baseSet = fmt.Sprintf(`json_set(%s, '$.search_visibility', ?)`, baseSet)
+		meta["search_visibility"] = m.SearchVisibility
 	}
-	query := fmt.Sprintf(`
+
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("marshal metadata JSON: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `
 		UPDATE media_assets
-		SET metadata_json = %s,
-			updated_at = ?
+		SET metadata_json = json_patch(COALESCE(metadata_json, '{}'), ?),
+		    updated_at = ?
 		WHERE id = ?
-	`, baseSet)
-	// Argument assembly: the order MUST match the ? placeholders above.
-	args := []any{
-		m.Summary,
-		string(topicsJSON),
-		string(speakersJSON),
-		string(mentionedJSON),
-		m.QualityScore,
-		m.SponsorSegment,
-		m.TranscriptPath,
-		m.SourceURL,
-		m.NormalizedGroup,
-	}
-	if m.Hook != "" {
-		args = append(args, m.Hook)
-	}
-	if m.SearchVisibility != "" {
-		args = append(args, m.SearchVisibility)
-	}
-	args = append(args, nowStr, clipID)
-	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
-		return err
-	}
-	return nil
+	`, string(metaJSON), nowStr, clipID)
+	return err
 }
 
 // buildMetadataEventKey returns the canonical event_key for the

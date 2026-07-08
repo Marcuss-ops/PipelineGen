@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     local_path TEXT, file_hash TEXT,
     folder_id TEXT, folder_path TEXT,
     source_version TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
     lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
     created_at TEXT, updated_at TEXT
 );
@@ -496,4 +497,142 @@ func TestClipAtomicWriter_ClosedWriterDBReturnsError(t *testing.T) {
 	err := adapter.CommitClipAndIndexEvent(context.Background(), clipID, item, canonicalEnvelopePayload())
 	require.Error(t, err, "CommitClipAndIndexEvent must return error when writer DB is closed (P0 #3 fail-closed posture; no silent success)")
 	require.NotEmpty(t, err.Error(), "error must carry a message for operator diagnosis")
+}
+
+// ── Test 6: PR-YT-DOD-7 metadata_json completeness ───────────────────
+
+// TestClipMetadataWriter_DoD7_MetadataJSONCompleteness pins the
+// canonical PR-YT-DOD-7 contract: after UpdateClipMetadataAndRequestIndex,
+// the media_assets.metadata_json column MUST contain all 16 required
+// fields per the DoD 7 specification:
+//
+//	source_url, source_provider, video_id, clip_start_sec,
+//	clip_end_sec, clip_duration_sec, title, summary, topics,
+//	speakers, mentioned_people, hook, normalized_group,
+//	policy_version, drive_path, content_hash
+//
+// [NOTE: The test lives in clip_atomic_writer_test.go (same package)
+// because it exercises the ClipMetadataWriterAdapter which shares
+// the assets package with ClipAtomicWriterAdapter. The test DB
+// schema includes all columns needed by both writers.]
+//
+// godlike/07 NO-FAKE-AVAILABILITY: every assertion reads from the
+// real SQLite row AFTER the writer commits — no in-memory stubs.
+func TestClipMetadataWriter_DoD7_MetadataJSONCompleteness(t *testing.T) {
+	db := newAtomicWriterDB(t)
+	box := outboxevents.NewRepository(db)
+	atomicWriter := NewClipAtomicWriterAdapter(db, box, nil)
+	metaWriter := NewClipMetadataWriterAdapter(db, box, nil)
+
+	const clipID = "yt_vdC5GXxS-qU_146_155_v1"
+	ctx := context.Background()
+
+	// ── Step 1: Write the initial media_assets row via ClipAtomicWriter ──
+	fileHash := sha256Hex("broner-pacquiao-146-155")
+	asset := youtubetypes.ClipAsset{
+		ID:        clipID,
+		VideoID:   "vdC5GXxS-qU",
+		FileHash:  fileHash,
+		LocalPath: "/tmp/clips/" + clipID + ".mp4",
+		Drive: youtubetypes.ClipAssetDrive{
+			FolderID:    "folder_broner",
+			FolderPath:  "youtube/vdC5GXxS-qU",
+			FileID:      "drive_broner_001",
+			WebViewLink: "https://drive.google.com/file/d/drive_broner_001/view",
+		},
+		Coordinates: youtubetypes.ClipAssetCoordinates{
+			StartSec: 146,
+			EndSec:   155,
+			Duration: 9,
+		},
+		Metadata: youtubetypes.CanonicalClipMetadata{
+			Summary:         "Broner urla a Pacquiao: Pensa a me, non a Floyd!",
+			NormalizedGroup: "boxing",
+		},
+		PolicyVersion: "v1",
+	}
+	if err := atomicWriter.CommitClipAndIndexEvent(ctx, clipID, asset, canonicalEnvelopePayload()); err != nil {
+		t.Fatalf("Step 1 ClipAtomicWriter: %v", err)
+	}
+
+	// ── Step 2: Enrich with full metadata via ClipMetadataWriter ──
+	meta := youtubetypes.CanonicalClipMetadata{
+		ClipID:          clipID,
+		AssetID:         clipID,
+		SourceURL:       "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+		SourceProvider:  "youtube",
+		VideoID:         "vdC5GXxS-qU",
+		Title:           "Sfuriata di Broner contro Pacquiao",
+		Summary:         "Broner urla a Pacquiao: Pensa a me, non a Floyd!",
+		Topics:          []string{"boxing", "trash talk", "press conference"},
+		Speakers:        []string{"Adrien Broner", "Manny Pacquiao"},
+		MentionedPeople: []string{"Floyd Mayweather"},
+		Hook:            "Ti sto per spaccare il culo, non preoccuparti di Floyd! Pensa a me!",
+		NormalizedGroup: "boxing",
+		ClipStartSec:    146,
+		ClipEndSec:      155,
+		ClipDurationSec: 9,
+		PolicyVersion:   "v1",
+		DrivePath:       "https://drive.google.com/file/d/drive_broner_001/view",
+		ContentHash:     fileHash,
+		SourceVersion:   fileHash,
+		TranscriptPath:  "/tmp/transcripts/vdC5GXxS-qU.vtt",
+		QualityScore:    0.85,
+	}
+	if err := metaWriter.UpdateClipMetadataAndRequestIndex(ctx, clipID, meta); err != nil {
+		t.Fatalf("Step 2 ClipMetadataWriter: %v", err)
+	}
+
+	// ── Step 3: Read back metadata_json and verify all 16 DoD 7 fields ──
+	var metadataJSON string
+	if err := db.QueryRow(`SELECT metadata_json FROM media_assets WHERE id = ?`, clipID).Scan(&metadataJSON); err != nil {
+		t.Fatalf("read metadata_json: %v", err)
+	}
+
+	// Define the 16 required DoD 7 keys and their expected Go values.
+	type fieldCheck struct {
+		jsonKey string
+		// wantJSON is the expected JSON fragment that appears in metadata_json.
+		// We use strings.Contains on the raw JSON to avoid json.Unmarshal
+		// coupling the test to CanonicalClipMetadata's struct tags.
+		wantJSON string
+		desc     string
+	}
+	checks := []fieldCheck{
+		{jsonKey: "source_url", wantJSON: `"source_url":"https://www.youtube.com/watch?v=vdC5GXxS-qU"`, desc: "DoD 7.1: source_url"},
+		{jsonKey: "source_provider", wantJSON: `"source_provider":"youtube"`, desc: "DoD 7.2: source_provider"},
+		{jsonKey: "video_id", wantJSON: `"video_id":"vdC5GXxS-qU"`, desc: "DoD 7.3: video_id"},
+		{jsonKey: "clip_start_sec", wantJSON: `"clip_start_sec":146`, desc: "DoD 7.4: clip_start_sec"},
+		{jsonKey: "clip_end_sec", wantJSON: `"clip_end_sec":155`, desc: "DoD 7.5: clip_end_sec"},
+		{jsonKey: "clip_duration_sec", wantJSON: `"clip_duration_sec":9`, desc: "DoD 7.6: clip_duration_sec"},
+		{jsonKey: "title", wantJSON: `"title":"Sfuriata di Broner contro Pacquiao"`, desc: "DoD 7.7: title"},
+		{jsonKey: "summary", wantJSON: `"summary":"Broner urla a Pacquiao: Pensa a me, non a Floyd!"`, desc: "DoD 7.8: summary"},
+		{jsonKey: "topics", wantJSON: `"topics":["boxing","trash talk","press conference"]`, desc: "DoD 7.9: topics"},
+		{jsonKey: "speakers", wantJSON: `"speakers":["Adrien Broner","Manny Pacquiao"]`, desc: "DoD 7.10: speakers"},
+		{jsonKey: "mentioned_people", wantJSON: `"mentioned_people":["Floyd Mayweather"]`, desc: "DoD 7.11: mentioned_people"},
+		{jsonKey: "hook", wantJSON: `"hook":"Ti sto per spaccare il culo, non preoccuparti di Floyd! Pensa a me!"`, desc: "DoD 7.12: hook"},
+		{jsonKey: "normalized_group", wantJSON: `"normalized_group":"boxing"`, desc: "DoD 7.13: normalized_group"},
+		{jsonKey: "policy_version", wantJSON: `"policy_version":"v1"`, desc: "DoD 7.14: policy_version"},
+		{jsonKey: "drive_path", wantJSON: `"drive_path":"https://drive.google.com/file/d/drive_broner_001/view"`, desc: "DoD 7.15: drive_path"},
+		{jsonKey: "content_hash", wantJSON: `"content_hash":"` + fileHash + `"`, desc: "DoD 7.16: content_hash"},
+	}
+
+	for _, c := range checks {
+		if !strings.Contains(metadataJSON, c.wantJSON) {
+			t.Errorf("%s: metadata_json MISSING expected fragment %s\ngot: %s", c.desc, c.wantJSON, metadataJSON)
+		}
+	}
+
+	// ── Sanity checks: forbidden patterns (must NOT be present) ──
+	forbidden := []string{
+		`"source_provider":""`,
+		`"video_id":""`,
+		`"drive_path":""`,
+		`"content_hash":""`,
+	}
+	for _, fb := range forbidden {
+		if strings.Contains(metadataJSON, fb) {
+			t.Errorf("metadata_json contains forbidden empty-value pattern: %s", fb)
+		}
+	}
 }
