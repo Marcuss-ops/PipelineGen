@@ -187,6 +187,12 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: jobs: %w", err)
 	}
 
+	// Admin module — Drive canary and operational readiness endpoints.
+	// Uses cfg as AuthSecurityPort for RequireAdminToken middleware.
+	if err := registerAdminModule(registry, log, cfg, root); err != nil {
+		return nil, fmt.Errorf("wire registry: admin: %w", err)
+	}
+
 	// Step 2 — Internal modules (bundle-driven). MUST run before
 	// registerImages (consumes wiring.MediaIngest.Service) and
 	// registerAssets (consumes wiring.searchFanOut + wiring.searchBackends
