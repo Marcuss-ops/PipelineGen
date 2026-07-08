@@ -27,7 +27,6 @@ package adapters
 
 import (
 	"context"
-	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -81,31 +80,19 @@ func (p *ClipSearchProcessor) Process(ctx context.Context, plan *scriptpkg.Resol
 		return &PostProcessResult{}, nil
 	}
 
-	// Deduplicate and filter empty phrases (defensive — the
-	// entities processor already deduplicates, but callers may
-	// inject phrases through other paths in the future).
-	seen := make(map[string]struct{}, len(input.Entities.ArtlistPhrases))
-	var phrases []string
-	for _, p := range input.Entities.ArtlistPhrases {
-		trimmed := strings.TrimSpace(p)
-		if trimmed == "" {
-			continue
-		}
-		if _, ok := seen[trimmed]; ok {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		phrases = append(phrases, trimmed)
-	}
-	if len(phrases) == 0 {
-		return &PostProcessResult{}, nil
-	}
+	// Dedup is owned by artlist_phrase.PhraseAssetSearchService
+	// (PR-POSTPROCESSOR-UNIFICATION-PHASE-4, July 2026, deadline
+	// 2026-08-22). The ArtlistClipSearcher port adapter
+	// (wire_script_postprocess.go::artlistClipSearchAdapter)
+	// delegates to the service which applies DedupeEmpty +
+	// TranslateEach before the search. This processor no longer
+	// duplicates the dedup logic inline.
 
 	title := ""
 	if plan != nil {
 		title = plan.Title
 	}
-	matches := p.searcher.SearchClips(ctx, title, phrases)
+	matches := p.searcher.SearchClips(ctx, title, input.Entities.ArtlistPhrases)
 	if len(matches) == 0 {
 		return &PostProcessResult{
 			Changed:  true,
