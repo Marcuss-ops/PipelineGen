@@ -197,6 +197,14 @@ type IndexedMetadata struct {
 	DrivePath      string
 	IndexingStatus string
 
+	// TimestampDriveFolderLink / TimestampFolderID carry the parent
+	// timestamp Drive folder metadata. Per-run scalar (all chunks in
+	// the same timestamp block share the same parent folder). Propagated
+	// from ChunkState → ChunkMetadataEntry → metadata.json → Qdrant
+	// payload for "open in Drive" navigation from search results.
+	TimestampDriveFolderLink string
+	TimestampFolderID        string
+
 	// StartTime / EndTime are the HH:MM:SS.ms timeline anchors
 	// (YouTube clip excerpts). Empty when the asset is not a clip.
 	StartTime string

@@ -146,6 +146,16 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	if doc.Metadata.IndexingStatus != "" {
 		payload["indexing_status"] = doc.Metadata.IndexingStatus
 	}
+	// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent timestamp Drive
+	// folder metadata for "open in Drive" navigation from search
+	// results. drive_link remains FORBIDDEN (QDRANT-001); these are
+	// distinct keys with distinct semantics (folder vs file).
+	if doc.Metadata.TimestampDriveFolderLink != "" {
+		payload["timestamp_drive_folder_link"] = doc.Metadata.TimestampDriveFolderLink
+	}
+	if doc.Metadata.TimestampFolderID != "" {
+		payload["timestamp_folder_id"] = doc.Metadata.TimestampFolderID
+	}
 	if doc.Metadata.CreatedAt != "" {
 		payload["created_at"] = doc.Metadata.CreatedAt
 	}

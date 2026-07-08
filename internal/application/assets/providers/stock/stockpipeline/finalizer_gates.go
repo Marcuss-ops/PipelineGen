@@ -150,6 +150,10 @@ type ChunkState struct {
 
 	PolicyVersion string // PR-004 (July 2026): per-run policy version tag. Source: RunInput.PolicyVersion (operator-supplied) with hardcoded fallback to StockTimestampPolicyVersionV1 ("stock_timestamp_v1") when empty. Pre-computed ONCE per run by StockPublishStep.Run and stamped on every chunk for trace-back traceability.
 
+	TimestampDriveFolderLink string // WebViewLink of the parent timestamp Drive folder. Captured from PublishedArtifact.Location.FolderID via the canonical https://drive.google.com/drive/folders/{FOLDER_ID} construction. Propagated to Qdrant payload as "timestamp_drive_folder_link" for "open in Drive" navigation from search results. Per-run scalar (all chunks in the same timestamp block share the same parent folder).
+
+	TimestampFolderID string // Google Drive folder ID of the parent timestamp folder. Captured from PublishedArtifact.Location.FolderID. Propagated to Qdrant payload as "timestamp_folder_id" for programmatic Drive API access.
+
 	StartSec float64 // clip start timestamp in seconds
 
 	EndSec float64 // clip end timestamp in seconds
