@@ -1998,3 +1998,249 @@ func TestProcessSegmentUseCase_Execute_FASE4_OrphanCleanupEnqueueFail_Warns(t *t
 	// The original Finalize error is still the canonical job outcome.
 	assert.Contains(t, out.Error, "finalize_failed:")
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// stubLifecycleProjectionUpserter — records UpsertVoiceoverProjectionTx calls
+// ──────────────────────────────────────────────────────────────────────────────
+
+// stubLifecycleProjectionUpserter satisfies LifecycleProjectionUpserter
+// so the real voiceoverFinalizer can run inside an E2E test. Records
+// each call for assertion.
+type stubLifecycleProjectionUpserter struct {
+	calls []*VoiceoverProjectionInput
+}
+
+func (s *stubLifecycleProjectionUpserter) UpsertVoiceoverProjectionTx(_ context.Context, _ *sql.Tx, input *VoiceoverProjectionInput) error {
+	s.calls = append(s.calls, input)
+	return nil
+}
+
+var _ LifecycleProjectionUpserter = (*stubLifecycleProjectionUpserter)(nil)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 21: FASE 5 — E2E full 4-stage pipeline with real finalizer + SQLite tx
+// ──────────────────────────────────────────────────────────────────────────────
+
+// TestProcessSegmentUseCase_Execute_FASE5_E2E_RealFinalizer_HappyPath
+// exercises the full 4-stage pipeline (TTS → Publish → Finalize → Commit)
+// with the REAL voiceoverFinalizer wired against an in-memory SQLite DB.
+// The prior tests (1-20) use stubProcessFinalizer which records calls
+// but never touches the DB. This test pins the end-to-end happy path:
+// the finalizer actually INSERTs a row into voiceovers, enqueues an
+// index outbox event via the TxOutboxEnqueuer, and the tx commits.
+//
+// Asserted invariants:
+//  1. Execute returns StatusCompleted.
+//  2. The voiceover row is durably present in SQLite (post-commit SELECT).
+//  3. The row carries all canonical fields (id, drive_file_id, file_hash, etc.).
+//  4. The index outbox event was emitted exactly once.
+//  5. No cleanup event (happy path, ShouldSwap=false).
+//  6. The media_assets projection was invoked exactly once.
+func TestProcessSegmentUseCase_Execute_FASE5_E2E_RealFinalizer_HappyPath(t *testing.T) {
+	db := openProcessTestDB(t)
+	repo := &stubProcessVoRepo{db: db}
+	outboxStub := &stubTxOutboxEnqueuer{}
+	lifecycleStub := &stubLifecycleProjectionUpserter{}
+
+	finalizer := NewVoiceoverFinalizer(
+		repo,
+		outboxStub,
+		lifecycleStub,
+		zap.NewNop(),
+	)
+
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath:   "/tmp/vo/e2e-happy.mp3",
+			CleanedPath: "/tmp/vo/e2e-happy-cleaned.mp3",
+			Voice:       "en-US-RogerNeural",
+			FileHash:    "hash-e2e-happy-001",
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-e2e-happy-001"}
+
+	dest := &stubProcessDestResolver{folderID: "dest-e2e-happy"}
+	resolvedDest, err := dest.Resolve(context.Background(), &DestinationRequest{FolderID: "dest-e2e-happy"})
+	require.NoError(t, err)
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: repo,
+		Finalizer:           finalizer,
+		TxOutboxEnqueuer:    outboxStub,
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		JobID:    "job-e2e-happy",
+		ID:       "vo-e2e-happy",
+		Language: "en",
+		Text:     "E2E test with the real voiceover finalizer.",
+		TextHash: "hash-e2e-text-001",
+		Voice:    "en-US-RogerNeural",
+		Filename: "e2e-happy.mp3",
+		Strategy: "replace",
+		Dest:     resolvedDest,
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+
+	require.NoError(t, err, "FASE 5 E2E: Execute must succeed with real finalizer")
+	require.NotNil(t, out)
+	assert.Equal(t, StatusCompleted, out.Status, "FASE 5 E2E: happy path must end with StatusCompleted")
+	assert.Equal(t, "vo-e2e-happy", out.ID)
+	assert.Equal(t, "drive-e2e-happy-001", out.DriveFileID)
+
+	// ── Assertion 1: voiceover row durably present in SQLite ──────────────
+	var (
+		rowID          string
+		rowDriveFileID string
+		rowFileHash    string
+		rowLanguage    string
+		rowIdemKey     string
+		rowJobID       string
+	)
+	err = db.QueryRow(`SELECT id, drive_file_id, file_hash, language, idempotency_key, job_id FROM voiceovers WHERE id = ?`, "vo-e2e-happy").
+		Scan(&rowID, &rowDriveFileID, &rowFileHash, &rowLanguage, &rowIdemKey, &rowJobID)
+	require.NoError(t, err, "FASE 5 E2E: voiceover row must be durably present in SQLite after commit")
+	assert.Equal(t, "vo-e2e-happy", rowID)
+	assert.Equal(t, "drive-e2e-happy-001", rowDriveFileID)
+	assert.Equal(t, "hash-e2e-happy-001", rowFileHash)
+	assert.Equal(t, "en", rowLanguage)
+	assert.NotEmpty(t, rowIdemKey, "idempotency_key must be populated when JobID is non-empty")
+	assert.Equal(t, "job-e2e-happy", rowJobID)
+
+	// ── Assertion 2: index outbox event emitted ──────────────────
+	require.Len(t, outboxStub.indexEvents, 1,
+		"FASE 5 E2E: index outbox event must be emitted exactly once")
+	assert.Equal(t, "vo-e2e-happy", outboxStub.indexEvents[0].assetID)
+	assert.Equal(t, "hash-e2e-happy-001", outboxStub.indexEvents[0].contentHash)
+	assert.NotNil(t, outboxStub.indexEvents[0].tx)
+
+	// ── Assertion 3: NO cleanup event (happy path, ShouldSwap=false) ────
+	assert.Len(t, outboxStub.cleanupEvents, 0,
+		"FASE 5 E2E: no cleanup event on happy path (ShouldSwap=false)")
+
+	// ── Assertion 4: media_assets projection invoked ────────────
+	require.Len(t, lifecycleStub.calls, 1,
+		"FASE 5 E2E: media_assets projection must be invoked exactly once")
+	assert.Equal(t, "vo-e2e-happy", lifecycleStub.calls[0].ID)
+	assert.Equal(t, "voiceover", lifecycleStub.calls[0].Source)
+	assert.Equal(t, "audio", lifecycleStub.calls[0].MediaType)
+
+	// ── Assertion 5: Publisher invoked with CleanedPath (production
+	// priority: CleanedPath > LocalPath when both are non-empty).
+	require.Len(t, pub.published, 1)
+	assert.Equal(t, "/tmp/vo/e2e-happy-cleaned.mp3", pub.published[0].LocalPath)
+	assert.Equal(t, "e2e-happy.mp3", pub.published[0].Filename)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 22: FASE 5 — E2E idempotency replay with real finalizer
+// ──────────────────────────────────────────────────────────────────────────────
+
+// TestProcessSegmentUseCase_Execute_FASE5_E2E_IdempotencyReplay
+// pins the FASE 3 idempotency contract end-to-end: when the same job
+// is retried with the same (JobID + Language + TextHash), the second
+// invocation triggers the real finalizer's Step 0 idempotency gate
+// (FindByIdempotencyKeyTx), short-circuits Steps 1-6, and returns
+// Reused=true. The test uses the real finalizer wired against in-memory
+// SQLite so the idempotency lookup hits the actual DB row.
+//
+// Asserted invariants:
+//  1. First invocation: StatusCompleted, row inserted, index event emitted.
+//  2. Second invocation: StatusCompleted, same row ID.
+//  3. Exactly 1 row in SQLite (no duplicate).
+//  4. Exactly 1 index event across both invocations.
+//  5. Publisher was invoked twice (Stage 3 runs before the idempotency gate).
+func TestProcessSegmentUseCase_Execute_FASE5_E2E_IdempotencyReplay(t *testing.T) {
+	db := openProcessTestDB(t)
+	repo := &stubProcessVoRepo{db: db}
+	outboxStub := &stubTxOutboxEnqueuer{}
+	lifecycleStub := &stubLifecycleProjectionUpserter{}
+
+	finalizer := NewVoiceoverFinalizer(
+		repo,
+		outboxStub,
+		lifecycleStub,
+		zap.NewNop(),
+	)
+
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath:   "/tmp/vo/e2e-idem.mp3",
+			CleanedPath: "/tmp/vo/e2e-idem-cleaned.mp3",
+			Voice:       "it-IT-ElsaNeural",
+			FileHash:    "hash-e2e-idem-001",
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-e2e-idem-001"}
+
+	dest := &stubProcessDestResolver{folderID: "dest-e2e-idem"}
+	resolvedDest, err := dest.Resolve(context.Background(), &DestinationRequest{FolderID: "dest-e2e-idem"})
+	require.NoError(t, err)
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: repo,
+		Finalizer:           finalizer,
+		TxOutboxEnqueuer:    outboxStub,
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		JobID:    "job-e2e-idem",
+		ID:       "vo-e2e-idem",
+		Language: "it-IT",
+		Text:     "E2E idempotency replay test.",
+		TextHash: "hash-e2e-idem-text",
+		Voice:    "it-IT-ElsaNeural",
+		Filename: "e2e-idem.mp3",
+		Strategy: "replace",
+		Dest:     resolvedDest,
+	}
+
+	// ── First invocation ──────────────────────────────────
+	out1, err1 := uc.Execute(context.Background(), cmd)
+	require.NoError(t, err1)
+	assert.Equal(t, StatusCompleted, out1.Status)
+	assert.Equal(t, "vo-e2e-idem", out1.ID)
+
+	var count int
+	err = db.QueryRow(`SELECT COUNT(*) FROM voiceovers WHERE id = ?`, "vo-e2e-idem").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "first invocation must insert exactly 1 row")
+
+	indexBefore := len(outboxStub.indexEvents)
+	require.Equal(t, 1, indexBefore, "first invocation emits 1 index event")
+
+	pubBefore := len(pub.published)
+	require.Equal(t, 1, pubBefore, "first invocation publishes to Drive once")
+
+	// ── Second invocation (replay) ─────────────────────────
+	out2, err2 := uc.Execute(context.Background(), cmd)
+	require.NoError(t, err2)
+	assert.Equal(t, StatusCompleted, out2.Status)
+	assert.Equal(t, "vo-e2e-idem", out2.ID, "idempotency gate must return the matched row ID")
+
+	// ── Assertions ──────────────────────────────────
+
+	// Exactly 1 row still in SQLite.
+	err = db.QueryRow(`SELECT COUNT(*) FROM voiceovers WHERE id = ?`, "vo-e2e-idem").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "FASE 5 E2E idempotency: exactly 1 row after replay (no duplicate)")
+
+	// Exactly 1 index event across both invocations.
+	assert.Len(t, outboxStub.indexEvents, 1,
+		"FASE 5 E2E idempotency: exactly 1 index event (replay short-circuits at Step 0)")
+
+	// Publisher was invoked twice (Stage 3 runs before Finalize).
+	assert.Len(t, pub.published, 2,
+		"FASE 5 E2E: Publisher invoked twice (Stage 3 is outside the idempotency gate)")
+
+	// Media_assets projection was invoked only once.
+	assert.Len(t, lifecycleStub.calls, 1,
+		"FASE 5 E2E idempotency: media_assets projection invoked once (replay short-circuits)")
+}

@@ -88,13 +88,13 @@ func (r *stubProcessVoRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *Voice
 			id, request_id, text_hash, text_preview, language, voice, filename,
 			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
 			drive_link, download_link, file_hash, status, error, strategy,
-			metadata, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			metadata, idempotency_key, job_id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice, rec.Filename,
 		rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath, rec.DriveFileID,
 		rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.Status, rec.Error, rec.Strategy,
-		rec.Metadata, rec.CreatedAt, rec.UpdatedAt,
+		rec.Metadata, rec.IdempotencyKey, rec.JobID, rec.CreatedAt, rec.UpdatedAt,
 	)
 	return err
 }
@@ -112,11 +112,25 @@ func (r *stubProcessVoRepo) CountByDriveFileIDTx(_ context.Context, _ *sql.Tx, _
 	return "", 0, nil
 }
 
-func (r *stubProcessVoRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx, idempotencyKey string) (string, error) {
+func (r *stubProcessVoRepo) FindByIdempotencyKeyTx(ctx context.Context, tx *sql.Tx, idempotencyKey string) (string, error) {
 	if idempotencyKey == "" {
 		return "", sql.ErrNoRows
 	}
-	return "", sql.ErrNoRows
+	if tx == nil {
+		return "", sql.ErrNoRows
+	}
+	var matchedID string
+	err := tx.QueryRowContext(ctx,
+		`SELECT id FROM voiceovers WHERE idempotency_key = ? LIMIT 1`,
+		idempotencyKey,
+	).Scan(&matchedID)
+	if err == sql.ErrNoRows {
+		return "", sql.ErrNoRows
+	}
+	if err != nil {
+		return "", err
+	}
+	return matchedID, nil
 }
 
 var _ VoiceoverRepository = (*stubProcessVoRepo)(nil)
@@ -163,6 +177,8 @@ func openProcessTestDB(t *testing.T) *sql.DB {
 			error TEXT NOT NULL DEFAULT '',
 			strategy TEXT NOT NULL DEFAULT '',
 			metadata TEXT NOT NULL DEFAULT '',
+			idempotency_key TEXT NOT NULL DEFAULT '',
+			job_id TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL DEFAULT ''
 		)
