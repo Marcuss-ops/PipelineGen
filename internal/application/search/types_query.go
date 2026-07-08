@@ -96,6 +96,7 @@ type Actor struct {
 	WorkspaceID string // tenant workspace; empty disables semantic backend
 	UserID      string // optional user-level identifier for audit
 	IsAdmin     bool   // admin principals may pick arbitrary workspaces
+	IsSystem    bool   // explicit cross-workspace/system scope for admin/reconcile paths
 }
 
 // IsZero reports whether the Actor has no identity fields set.
@@ -103,7 +104,7 @@ type Actor struct {
 // the semantic backend to decide whether to fall back to the
 // composition-time default workspace.
 func (a Actor) IsZero() bool {
-	return a.WorkspaceID == "" && a.UserID == "" && !a.IsAdmin
+	return a.WorkspaceID == "" && a.UserID == "" && !a.IsAdmin && !a.IsSystem
 }
 
 // ── Query ───────────────────────────────────────────────────────────

@@ -302,6 +302,7 @@ func (h *Handler) extractActor(c *gin.Context) (search.Actor, bool) {
 		WorkspaceID: scope.WorkspaceID,
 		UserID:      strings.TrimSpace(toString(principalID)),
 		IsAdmin:     adminFlag,
+		IsSystem:    adminFlag,
 	}, true
 }
 
