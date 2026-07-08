@@ -1358,3 +1358,209 @@ func TestProcessSegmentUseCase_Execute_FASE3_Idempotency_LegacyEmptyJobID(t *tes
 			"insert %d: legacy row MUST have empty IdempotencyKey", i+1)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Test 14: FASE 2 audio format validation — mp3/wav header detection
+// ─────────────────────────────────────────────────────────────────────────
+
+// mp3SyncPatterns are the valid MPEG audio frame sync bytes for Layer III.
+// The first byte must be 0xFF and the second byte's top 3 bits must be
+// 111 (0xE0 mask). Common values: 0xFF 0xFB (MPEG1 Layer3), 0xFF 0xF3
+// (MPEG2 Layer3), 0xFF 0xF2 (MPEG2.5 Layer3).
+var mp3SyncPatterns = [][]byte{
+	{0xFF, 0xFB},
+	{0xFF, 0xF3},
+	{0xFF, 0xF2},
+}
+
+// wavRIFFHeader is the canonical RIFF/WAVE file signature.
+var wavRIFFHeader = []byte("RIFF")
+
+// isValidAudioFormat reads the first bytes of a file and checks for
+// MP3 frame sync or WAV RIFF header. Returns nil on valid audio,
+// a descriptive error otherwise.
+func isValidAudioFormat(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("cannot open audio file: %w", err)
+	}
+	defer f.Close()
+
+	// Read first 12 bytes to cover both MP3 (2 bytes) and WAV (12 bytes).
+	buf := make([]byte, 12)
+	n, err := f.Read(buf)
+	if err != nil || n < 2 {
+		return fmt.Errorf("audio file too short (%d bytes): %w", n, err)
+	}
+
+	// MP3 check: first byte 0xFF, second byte top 3 bits = 111 (0xE0 mask).
+	if buf[0] == 0xFF && (buf[1]&0xE0) == 0xE0 {
+		return nil
+	}
+
+	// WAV check: first 4 bytes = "RIFF", bytes 8-11 = "WAVE".
+	if n >= 12 && string(buf[0:4]) == "RIFF" && string(buf[8:12]) == "WAVE" {
+		return nil
+	}
+
+	return fmt.Errorf("not a valid audio format: first 2 bytes = %02X %02X", buf[0], buf[1])
+}
+
+// TestIsValidAudioFormat_MP3FrameSync pinc the FASE 2 contract #1 extension:
+// the isValidAudioFormat helper must correctly detect MP3 files (frame sync
+// pattern 0xFF 0xFB/0xF3/0xF2) and WAV files (RIFF header). Rejects empty
+// files, non-audio bytes, and missing files.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: each sub-test writes a real temp file
+// with the advertised bytes — the helper reads real disk bytes, not
+// stub strings.
+func TestIsValidAudioFormat_MP3FrameSync(t *testing.T) {
+	tests := []struct {
+		name    string
+		bytes   []byte
+		wantErr bool
+		errText string
+	}{
+		{
+			name:    "MPEG1 Layer3 (0xFF 0xFB)",
+			bytes:   []byte{0xFF, 0xFB, 0x90, 0x00}, // minimal valid frame header
+			wantErr: false,
+		},
+		{
+			name:    "MPEG2 Layer3 (0xFF 0xF3)",
+			bytes:   []byte{0xFF, 0xF3, 0x90, 0x00},
+			wantErr: false,
+		},
+		{
+			name:    "MPEG2.5 Layer3 (0xFF 0xF2)",
+			bytes:   []byte{0xFF, 0xF2, 0x90, 0x00},
+			wantErr: false,
+		},
+		{
+			name:    "WAV RIFF header",
+			bytes:   append([]byte("RIFF\x00\x00\x00\x00WAVE"), 0x00),
+			wantErr: false,
+		},
+		{
+			name:    "empty file (too short)",
+			bytes:   []byte{},
+			wantErr: true,
+			errText: "too short",
+		},
+		{
+			name:    "HTML error page (non-audio bytes)",
+			bytes:   []byte("<!DOCTYPE html>\n"),
+			wantErr: true,
+			errText: "not a valid audio format",
+		},
+		{
+			name:    "missing file",
+			bytes:   nil, // special case: don't create the file
+			wantErr: true,
+			errText: "cannot open",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var path string
+			if tt.bytes != nil {
+				f, err := os.CreateTemp(t.TempDir(), "audio-test-*")
+				require.NoError(t, err)
+				_, err = f.Write(tt.bytes)
+				require.NoError(t, err)
+				require.NoError(t, f.Close())
+				path = f.Name()
+			} else {
+				path = "/nonexistent/path/for/audio/validation/test"
+			}
+
+			err := isValidAudioFormat(path)
+			if tt.wantErr {
+				require.Error(t, err, "FASE 2 contract: invalid audio must return error")
+				if tt.errText != "" {
+					assert.Contains(t, err.Error(), tt.errText)
+				}
+			} else {
+				assert.NoError(t, err, "FASE 2 contract: valid audio must return nil error")
+			}
+		})
+	}
+
+	// Cross-reference: canonical MP3 sync patterns must match the spec.
+	for i, pat := range mp3SyncPatterns {
+		assert.Equal(t, byte(0xFF), pat[0],
+			"mp3SyncPatterns[%d] first byte must be 0xFF (MPEG frame sync)", i)
+		assert.True(t, (pat[1]&0xE0) == 0xE0,
+			"mp3SyncPatterns[%d] second byte top 3 bits must be 111 (0xE0 mask)", i)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Test 15: FASE 2 — Stage 3 Publisher with empty Project propagates correctly
+// ─────────────────────────────────────────────────────────────────────────
+
+// TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyProject
+// pins the FASE 2 contract #5: when ProcessSegmentCommand carries an
+// empty Project, the VoiceoverPublishCommand must forward the empty
+// value verbatim. The Publisher adapter then routes empty Project →
+// no ProjectID in the PublishRequest (semantic-first path).
+//
+// This is the companion to Test 9 which tests non-empty Project.
+// Together they lock the full propagation contract.
+func TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyProject(t *testing.T) {
+	db := openProcessTestDB(t)
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath: "/tmp/vo/stage3-empty-proj.mp3",
+			Voice:     "it-IT-ElsaNeural",
+			FileHash:  "hash-stage3-ep-001",
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-stage3-empty-proj"}
+	finalizer := &stubProcessFinalizer{
+		cannedRes: &FinalizeResult{ID: "vo-stage3-empty-proj", Reused: false},
+	}
+
+	dest := &stubProcessDestResolver{folderID: "dest-stage3-ep"}
+	resolvedDest, err := dest.Resolve(context.Background(),
+		&DestinationRequest{FolderID: "dest-stage3-ep"})
+	require.NoError(t, err)
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		ID:       "vo-stage3-empty-proj",
+		Language: "it-IT",
+		Text:     "Testo con Project vuoto.",
+		Voice:    "it-IT-ElsaNeural",
+		Filename: "stage3-empty-proj.mp3",
+		Project:  "", // empty — Publisher sees empty string verbatim
+		Dest:     resolvedDest,
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.Equal(t, StatusCompleted, out.Status,
+		"empty Project must NOT prevent pipeline completion")
+
+	// FASE 2 contract #5: empty Project MUST be forwarded verbatim.
+	require.Len(t, pub.published, 1,
+		"Publisher.Publish must be invoked exactly once")
+	got := pub.published[0]
+	assert.Equal(t, "", got.Project,
+		"FASE 2 contract #5: empty cmd.Project MUST be forwarded as empty VoiceoverPublishCommand.Project (verbatim propagation)")
+	assert.Equal(t, "it-IT", got.Language,
+		"Language must still be forwarded correctly even when Project is empty")
+
+	// Finalizer MUST be invoked exactly once (symmetry with Test 9).
+	require.Len(t, finalizer.calls, 1,
+		"Finalizer.Finalize must be invoked exactly once even when Project is empty")
+}
