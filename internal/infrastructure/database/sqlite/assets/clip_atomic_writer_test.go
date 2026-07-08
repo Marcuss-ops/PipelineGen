@@ -41,6 +41,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -636,4 +637,153 @@ func TestClipMetadataWriter_DoD7_MetadataJSONCompleteness(t *testing.T) {
 			t.Errorf("metadata_json contains forbidden empty-value pattern: %s", fb)
 		}
 	}
+}
+
+// ── Test 7: PR-YT-DOD-7-METADATA-JSON-AUDIT — exactly 14 required fields ──
+
+// TestClipMetadataWriter_MetadataJSON_AllRequiredFields pins the
+// PR-YT-DOD-7-METADATA-JSON-AUDIT contract (user-spec 2026-07-08):
+// the canonical ClipMetadataWriterAdapter MUST populate the
+// metadata_json column with exactly 14 required semantic fields per
+// the user-spec field list. Tighter than Test 6 (16 fields) — this
+// is the audit shortlist for canonical producer-data compliance.
+//
+// The 14 required fields (canonical producer-data shortlist):
+//
+//	source_url, source_provider, video_id, clip_start_sec,
+//	clip_end_sec, clip_duration_sec, title, summary, topics,
+//	speakers, mentioned_people, hook, normalized_group,
+//	policy_version
+//
+// Notable exclusions (NOT asserted here — see Test 6 for 16-field
+// coverage): drive_path + content_hash (best-effort enrichments).
+func TestClipMetadataWriter_MetadataJSON_AllRequiredFields(t *testing.T) {
+	db := newAtomicWriterDB(t)
+	box := outboxevents.NewRepository(db)
+	atomicWriter := NewClipAtomicWriterAdapter(db, box, nil)
+	metaWriter := NewClipMetadataWriterAdapter(db, box, nil)
+
+	const clipID = "yt_audit_shortlist_146_155_v1"
+	ctx := context.Background()
+
+	// Step 1: write initial media_assets row via ClipAtomicWriter.
+	fileHash := sha256Hex("audit-shortlist-broner-pacquiao")
+	asset := youtubetypes.ClipAsset{
+		ID:        clipID,
+		VideoID:   "vdC5GXxS-qU",
+		FileHash:  fileHash,
+		LocalPath: "/tmp/clips/" + clipID + ".mp4",
+		Drive: youtubetypes.ClipAssetDrive{
+			FolderID:    "folder_audit",
+			FolderPath:  "youtube/vdC5GXxS-qU",
+			FileID:      "drive_audit_001",
+			WebViewLink: "https://drive.google.com/file/d/drive_audit_001/view",
+		},
+		Coordinates:   youtubetypes.ClipAssetCoordinates{StartSec: 146, EndSec: 155, Duration: 9},
+		Metadata:      youtubetypes.CanonicalClipMetadata{Summary: "Broner insult Pacquiao", NormalizedGroup: "boxing"},
+		PolicyVersion: "v1",
+	}
+	if err := atomicWriter.CommitClipAndIndexEvent(ctx, clipID, asset, canonicalEnvelopePayload()); err != nil {
+		t.Fatalf("Step 1 ClipAtomicWriter: %v", err)
+	}
+
+	// Step 2: enrich with full metadata. DrivePath + ContentHash
+	// intentionally left zero so this test does NOT cover the
+	// broader 16-field DoD-7 surface (Test 6 owns that scope).
+	meta := youtubetypes.CanonicalClipMetadata{
+		ClipID:          clipID,
+		AssetID:         clipID,
+		SourceURL:       "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+		SourceProvider:  "youtube",
+		VideoID:         "vdC5GXxS-qU",
+		Title:           "Sfuriata di Broner contro Pacquiao",
+		Summary:         "Broner insult Pacquiao, then lands leather on him.",
+		Topics:          []string{"boxing", "trash talk", "press conference"},
+		Speakers:        []string{"Adrien Broner", "Manny Pacquiao"},
+		MentionedPeople: []string{"Floyd Mayweather"},
+		Hook:            "Ti sto per spaccare il culo, non preoccuparti di Floyd! Pensa a me!",
+		NormalizedGroup: "boxing",
+		ClipStartSec:    146,
+		ClipEndSec:      155,
+		ClipDurationSec: 9,
+		PolicyVersion:   "v1",
+	}
+	if err := metaWriter.UpdateClipMetadataAndRequestIndex(ctx, clipID, meta); err != nil {
+		t.Fatalf("Step 2 ClipMetadataWriter: %v", err)
+	}
+
+	// Step 3: read back metadata_json + parse.
+	var metadataJSON string
+	if err := db.QueryRow(`SELECT metadata_json FROM media_assets WHERE id = ?`, clipID).Scan(&metadataJSON); err != nil {
+		t.Fatalf("read metadata_json: %v", err)
+	}
+
+	// Decode the JSON envelope into a generic map so the test is
+	// robust against Map-iteration-order, whitespace, and quoting
+	// variations in the underlying JSON encoder output.
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(metadataJSON), &parsed); err != nil {
+		t.Fatalf("metadata_json is not valid JSON: %v\nraw: %s", err, metadataJSON)
+	}
+
+	// required14: the canonical user-spec shortlist. Assert each field
+	// is present AND has a non-empty value (godlike/07 NO-FAKE-AVAILABILITY).
+	type fieldCheck struct {
+		key  string
+		desc string
+	}
+	required14 := []fieldCheck{
+		{"source_url", "Audit 1: source_url (canonical traceability)"},
+		{"source_provider", "Audit 2: source_provider (canonical producer label)"},
+		{"video_id", "Audit 3: video_id (canonical identifier)"},
+		{"clip_start_sec", "Audit 4: clip_start_sec (canonical second-precise start)"},
+		{"clip_end_sec", "Audit 5: clip_end_sec (canonical second-precise end)"},
+		{"clip_duration_sec", "Audit 6: clip_duration_sec (canonical duration)"},
+		{"title", "Audit 7: title (canonical narrative headline)"},
+		{"summary", "Audit 8: summary (canonical content description)"},
+		{"topics", "Audit 9: topics (canonical BM25 channel)"},
+		{"speakers", "Audit 10: speakers (canonical attribution list)"},
+		{"mentioned_people", "Audit 11: mentioned_people (canonical person refs)"},
+		{"hook", "Audit 12: hook (canonical attention-grabber)"},
+		{"normalized_group", "Audit 13: normalized_group (canonical routing tag)"},
+		{"policy_version", "Audit 14: policy_version (canonical event-version seal)"},
+	}
+
+	for _, c := range required14 {
+		val, ok := parsed[c.key]
+		if !ok {
+			t.Errorf("%s: metadata_json MISSING key %q (not present in JSON map)\nraw: %s", c.desc, c.key, metadataJSON)
+			continue
+		}
+		if isEmpty(val) {
+			t.Errorf("%s: metadata_json has empty value for %q — godlike/07 NO-FAKE-AVAILABILITY forbids empty canonical fields\nraw: %s", c.desc, c.key, metadataJSON)
+		}
+	}
+
+	// Forbidden empties: assert NONE of the 14 required text keys
+	// serialized as empty strings (defense-in-depth on top of the
+	// isEmpty check above).
+	for _, key := range []string{"source_url", "source_provider", "video_id", "normalized_group", "policy_version"} {
+		if s, ok := parsed[key].(string); ok && s == "" {
+			t.Errorf("metadata_json has forbidden empty string for canonical key %q", key)
+		}
+	}
+}
+
+// isEmpty reports whether a generic JSON-decoded value is morallyempty
+// (nil, empty string, empty slice, zero number). The metadata_json
+// payload is expected to be a non-empty primitive-or-slice for the
+// 14 required canonical producer-data fields.
+func isEmpty(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return true
+	case string:
+		return x == ""
+	case []any:
+		return len(x) == 0
+	case float64: // JSON numbers decode as float64
+		return x == 0
+	}
+	return false
 }
