@@ -12,13 +12,18 @@
 # explicit owner + deadline. New entries WITHOUT those columns fail the
 # governance gate.
 #
-# Current baseline (origin/main, June 2026): 17 entries.
+# Current baseline (origin/main, July 2026): 27 entries.
 #   - 7 legacy QDRANT-hygiene entries (sqlite-vs-application mirror, cross-module
 #     search mirror, jobs broker port)
 #   - 7 PR-check-5 baseline-closure entries (cross-package-NAME false
 #     positives — see Check 5 log section below; awk regex `^type[[:space:]]+
 #     [A-Z]` matches type aliases alongside struct declarations when both
 #     files declare the same package name)
+#   - 10 PR-CHECK-5-FOLLOWUP entries (July 2026) — cross-package-NAME false
+#     positives for the remaining 10 same-package-NAME collisions that
+#     were not in the original PR-check-5 scope; entries added after the
+#     scanner bug (656 blank-line noise) was fixed by adding `if (NF < 3)
+#     next` to the Check 5 awk block in scripts/ci-architectural-checks.sh
 # Deadline (whole block): 2026-09-01.
 # After 2026-09-01 these MUST migrate per godlike/07 §"Migration sequence"
 # (EXPAND → BACKFILL → CUTOVER → CONTRACT); the allowlist may NOT shrink

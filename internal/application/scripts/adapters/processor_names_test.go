@@ -1,7 +1,7 @@
 // Package adapters_test — processor_names_test.go exercises the
 // typed ProcessorName constants and CanonicalProcessorNames().
 //
-// AZIONE 3 (July 2026): TDD test pins the 9-name closed set, the
+// AZIONE 3 (July 2026): TDD test pins the 10-name closed set, the
 // canonical execution order, and verifies no duplicates. Drift
 // here (e.g. a constant renamed but CanonicalProcessorNames() not
 // updated) surfaces as a test failure rather than a runtime
@@ -13,6 +13,14 @@
 // Clip is an OPTIONAL enrichment (BestEffort); when a plan does not
 // request ExtractEntities the registry's run-path skips it, but
 // the closed-set slot is reserved so the slice is deterministic.
+//
+// PR-TRANSLATE-SCRIPT-SPEC FP2 (2026-08-08): bumped from 9 to 10
+// (added ProcessorTranslation at index 3 — between metadata and
+// clip_bindings — per the EXECUTION order documented in
+// CanonicalProcessorNames). Translation is an OPTIONAL enrichment
+// (BestEffort); when a plan does not request TranslateTo the
+// registry's run-path skips it, but the closed-set slot is
+// reserved so the slice is deterministic.
 package adapters_test
 
 import (
@@ -24,22 +32,24 @@ import (
 func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 	names := adapterspkg.CanonicalProcessorNames()
 
-	// 1. Exactly 9 canonical names (PR-CLIP-SEARCH-WIRING added clip_search
-	//    at index 1; see file godoc above for EXECUTION vs REGISTRATION
-	//    order distinction).
-	if len(names) != 9 {
-		t.Fatalf("CanonicalProcessorNames() returned %d names, want 9: %v", len(names), names)
+	// 1. Exactly 10 canonical names (PR-TRANSLATE-SCRIPT-SPEC FP2
+	//    added translation at index 3; PR-CLIP-SEARCH-WIRING earlier
+	//    added clip_search at index 1; see file godoc above for
+	//    EXECUTION vs REGISTRATION order distinction).
+	if len(names) != 10 {
+		t.Fatalf("CanonicalProcessorNames() returned %d names, want 10: %v", len(names), names)
 	}
 
 	// 2. Expected EXECUTION order (entities → clip_search → metadata →
-	//    clip_bindings → stock_association → voiceover → images →
-	//    document → persistence). See processor_names.go goddoc for
-	//    why this differs from the REGISTRATION order in
+	//    translation → clip_bindings → stock_association → voiceover →
+	//    images → document → persistence). See processor_names.go
+	//    goddoc for why this differs from the REGISTRATION order in
 	//    internal/app/wire_script_postprocess.go.
 	expected := []adapterspkg.ProcessorName{
 		adapterspkg.ProcessorEntities,
 		adapterspkg.ProcessorClipSearch,
 		adapterspkg.ProcessorMetadata,
+		adapterspkg.ProcessorTranslation,
 		adapterspkg.ProcessorClipBindings,
 		adapterspkg.ProcessorStockAssociation,
 		adapterspkg.ProcessorVoiceover,

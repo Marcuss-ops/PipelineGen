@@ -139,6 +139,21 @@ var rootOverrideAllowedFiles = map[string]bool{
 	// breaking the cumulative metadata.json sync contract.
 	"internal/application/assets/providers/artlist/destination_service.go":        true,
 	"internal/application/assets/providers/artlist/semantic_enricher_metadata.go": true,
+	// PR-P12-ADMIN-CANARY-WHITELIST (July 2026): the Drive canary
+	// handler (internal/api/admin/handler_drive_canary.go) is an
+	// operational readiness endpoint that must upload to an arbitrary
+	// folder specified by the operator at request time. RootFolderOverride
+	// is the correct mechanism for targeting folders outside the
+	// registry's configured roots — the canary's whole purpose is
+	// verifying that an arbitrary folder is writable.
+	"internal/api/admin/handler_drive_canary.go": true,
+	// PR-P12-REGISTRY-WHITELIST (July 2026): the DestinationRegistry's
+	// PathBuilder functions (YouTubeClipPath at registry.go:280) legitimately
+	// read req.RootFolderOverride to support the backwards-compat path where
+	// callers pass per-call folder overrides while the registry transitions
+	// to full semantic routing. The field is the canonical owner of
+	// PublishRequest shape; reading it in a PathBuilder is NOT a violation.
+	"internal/application/assets/delivery/registry.go": true,
 }
 
 // rootOverrideForbiddenPrefixes enumerates the production Go

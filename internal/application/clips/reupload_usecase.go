@@ -245,21 +245,19 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 	}
 	destKey := destinationForSource(req.Source)
 	pubReq := delivery.PublishRequest{
-		Destination:        destKey,
-		LocalPath:          clip.LocalPath(),
-		Filename:           filename,
-		AssetID:            clip.ID,
-		ProjectID:          strings.TrimSpace(string(clip.Source)), // auto-derive Project from clip.Source (godlike/06 SSOT, PR-P12-CLIPS-AND-BOOKS, July 2026)
-		Group:              strings.TrimSpace(clip.Group),          // explicit caller-provided group
-		Subject:            filename,                               // per-file identity (mirrors soundeffect/handler.go canonical pattern)
-		RootFolderOverride: folderID,
-		ConflictPolicy:     delivery.ConflictOverwrite,             // reupload → replace existing
-		// RootFolderOverride RETIRED per PR-P12-CLIPS-AND-BOOKS (July 2026, deadline 2026-08-08).
+		Destination:    destKey,
+		LocalPath:      clip.LocalPath(),
+		Filename:       filename,
+		AssetID:        clip.ID,
+		ProjectID:      strings.TrimSpace(string(clip.Source)), // auto-derive Project from clip.Source (godlike/06 SSOT, PR-P12-CLIPS-AND-BOOKS, July 2026)
+		Group:          strings.TrimSpace(clip.Group),          // explicit caller-provided group
+		Subject:        filename,                               // per-file identity (mirrors soundeffect/handler.go canonical pattern)
+		ConflictPolicy: delivery.ConflictOverwrite,             // reupload → replace existing
+		// PR-P12-CLIPS-AND-BOOKS (July 2026): RootFolderOverride RETIRED.
 		// The canonical Publisher resolves the target folder via
 		// DestinationRegistry + DestinationPolicy.RootFolderID.
-		// folderID (clip.FolderID) is now a backward-compat hint for
-		// reuploads where the clip was created with a pre-migration
-		// folder ID; future CUTOVER will retire folderID too.
+		// folderID (clip.FolderID) is preserved as Group routing;
+		// future CUTOVER will switch to semantic routing.
 	}
 	pubRes, pubErr := uc.publisher.Publish(ctx, pubReq)
 	if pubErr != nil {
@@ -369,13 +367,10 @@ func (uc *ReuploadUseCase) resolveFolder(ctx context.Context, source, localPath 
 		resolveReq := delivery.PublishRequest{
 			Destination: destKey,
 			Group:       seg,
-			// Subject intentionally OMITTED: folder resolution operates
-			// on Group only; Subject identifies per-file identity which
-			// is resolved at the Publish call site (Site 2a).
-			// RootFolderOverride RETIRED per PR-P12-CLIPS-AND-BOOKS
-			// (July 2026). The Publisher's PathBuilder walks the
-			// canonical hierarchy for DestinationYouTubeClip using only
-			// Group, computing the folder ID from the destination's policy.
+			// PR-P12-CLIPS-AND-BOOKS (July 2026): RootFolderOverride RETIRED.
+			// The Publisher's PathBuilder walks the canonical hierarchy
+			// for DestinationYouTubeClip using only Group, computing the
+			// folder ID from the destination's policy.
 		}
 		id, err := uc.publisher.ResolveFolder(ctx, resolveReq)
 		if err != nil {

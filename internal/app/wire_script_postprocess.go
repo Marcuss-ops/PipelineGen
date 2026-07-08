@@ -40,12 +40,15 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"go.uber.org/zap"
 )
@@ -251,6 +254,74 @@ func registerScriptPostProcessors(
 	}
 	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
 		return fmt.Errorf("register metadata processor: composition bug")
+	}
+
+	// PR-TRANSLATE-SCRIPT-SPEC forward-pointer FP2 (2026-08-08):
+	// TranslationProcessor wires the typed ports.ScriptTranslator
+	// (canonical Italian→English LLM translator) + the typed
+	// ports.TranslationMetricsRecorder (canonical Prometheus
+	// counter adapter). Both are nil-tolerant: a missing translator
+	// degrades to "translator_missing" warning + bounded-reason
+	// metric (BestEffort policy); the metrics adapter is constructed
+	// inline as a zero-size struct (no per-instance state needed).
+	//
+	// The translator source is root.AI.OllamaTranslator (the
+	// canonical translation.TranslatorFunc already wired in
+	// build_bundles_voiceover.go for the voiceover.Promo surface).
+	// When the Ollama backend is not available, the processor is
+	// skipped (composition caller contract: BestEffort
+	// postprocessors may be absent without failing composition).
+	//
+	// DI pattern: the canonical TranslateScriptSpec + ClassifyReason
+	// functions live in the usecase package (adapters → usecase is
+	// a forbidden import edge per the documents_usecase.go cycle).
+	// The composition root — which already imports both adapters
+	// AND usecase — passes the function values at wiring time. This
+	// breaks the cycle while preserving the pure-function contract.
+	//
+	// Registration slot: between metadata and clip_bindings per the
+	// canonical EXECUTION order in CanonicalProcessorNames (so
+	// downstream ClipBindings sees the translated SpecScene).
+	if root.AI != nil && root.AI.OllamaTranslator != nil {
+		// Adapter closure 1: *translation.OllamaTranslator → ports.ScriptTranslator.
+		// The canonical method signature is (ctx, text, targetLanguage) →
+		// (string, error) per translation.TranslatorFunc; the port's
+		// NewScriptTranslatorFromFunc adapter wraps it byte-equivalently.
+		translatorPort := ports.NewScriptTranslatorFromFunc(root.AI.OllamaTranslator.TranslateText)
+		// PR-TRANSLATE-SCRIPT-SPEC CR#1+#2+#3 review-fix (2026-08-08):
+		// the metrics adapter ctor now takes a prometheus.Registerer
+		// (per-adapter registry) + returns (*Adapter, error). The
+		// production composition root uses prometheus.DefaultRegisterer
+		// so the counter is scrapeable on /metrics; the typed-error
+		// return surfaces a fail-closed composition bug at boot
+		// (e.g. nil-registry or double-registration) instead of
+		// silently degrading to a no-op counter.
+		metricsPort, mErr := observability.NewTranslationMetricsAdapter(prometheus.DefaultRegisterer)
+		if mErr != nil {
+			return fmt.Errorf("register translation processor: metrics adapter: %w", mErr)
+		}
+		// CR#2 review-fix: the processor now consumes typed
+		// ports.TranslationUseCase + ports.TranslationReasonClassifier
+		// (NOT bare function values) per godlike/06 Pattern 0. The
+		// composition root — which already imports both adapters AND
+		// usecase — wires the thin struct adapters via
+		// NewTranslationUseCaseAdapter + NewTranslationReasonClassifierAdapter
+		// (declared in usecase/translation.go). This breaks the
+		// adapters → usecase import cycle while preserving the
+		// canonical 1-method Pattern 0 port convention.
+		transProc := adapters.NewTranslationProcessor(
+			translatorPort,
+			metricsPort,
+			usecase.NewTranslationUseCaseAdapter(),
+			usecase.NewTranslationReasonClassifierAdapter(),
+			log,
+		)
+		if !ppReg.Register(transProc) {
+			return fmt.Errorf("register translation processor: composition bug")
+		}
+		log.Info("TranslationProcessor wired (OllamaTranslator + Prometheus metrics adapter)")
+	} else {
+		log.Warn("TranslationProcessor: OllamaTranslator not available; postprocessor not registered (translation requests will produce warnings)")
 	}
 
 	// PR 7 (June 2026): register ClipBindingsProcessor so the

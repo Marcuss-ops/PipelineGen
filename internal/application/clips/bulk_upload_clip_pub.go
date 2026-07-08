@@ -75,12 +75,16 @@ func publishClip(
 	}
 
 	pubReq := delivery.PublishRequest{
-		Destination:        delivery.DestinationYouTubeClip,
-		LocalPath:          cand.LocalPath,
-		Filename:           driveFilename,
-		Description:        driveDesc,
-		Group:              pubGroup,
-		RootFolderOverride: payload.DriveFolderID,
+		Destination:    delivery.DestinationYouTubeClip,
+		LocalPath:      cand.LocalPath,
+		Filename:       driveFilename,
+		Description:    driveDesc,
+		Group:          pubGroup,
+		ProjectID:      payload.DriveFolderID,
+		// PR-P12-CLIPS-AND-BOOKS (July 2026): RootFolderOverride RETIRED.
+		// The caller's explicit DriveFolderID is now routed as ProjectID
+		// so the canonical Publisher's DestinationYouTubeClip root +
+		// PathBuilder construct the target folder hierarchy.
 	}
 	pubRes, err := publisher.Publish(ctx, pubReq)
 	if err != nil {
