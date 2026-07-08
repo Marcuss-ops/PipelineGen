@@ -67,80 +67,63 @@ func newUseCasePublisherAdapter(publisher delivery.Publisher, log *zap.Logger) *
 // retired; all voiceover Drive writes now flow through the same Publisher seam
 // as YouTube clips, stock, images, sound effects, and books.
 //
-// PR-P12-VOICEOVER-SEMANTIC-FIELDS (July 2026): the canonical surface is
-// now the SEMANTIC publish (req.ProjectID + req.Language). The legacy
-// RootFolderOverride path is preserved ONLY as a backward-compat
-// fallback when cmd.Project is empty AND cmd.FolderID is non-empty
-// (i.e. pre-PR-12 callers that resolved the folder manually).
+// PR-VOICEOVER-DRIVE-DRIFT (2026-08-08): the canonical surface is now the
+// SEMANTIC publish (req.ProjectID + req.Language). The legacy fallback
+// chain (Project→FolderID→voiceover-ID) is RETIRED per godlike/07
+// NO-FAKE-AVAILABILITY: an empty Project silently routed to
+// req.RootFolderOverride, which surfaced upstream as
+// "PathBuilder incomplete but RootFolderOverride is set (direct-to-
+// root fallback)" — operators saw the uploaded audio land in the
+// wrong Drive folder with no typed diagnostic.
 //
-// godlike/07 NO-FAKE-AVAILABILITY:
+// godlike/07 NO-FAKE-AVAILABILITY (post-drift-closure):
 //   - Language is REQUIRED. Empty Language → typed sentinel
 //     ErrVoiceoverPublishLanguageRequired (callers can errors.Is-probe).
-//   - Project is PREFERRED. Empty Project → fallback chain:
-//     (a) cmd.FolderID non-empty → req.RootFolderOverride = cmd.FolderID
-//     (backward-compat with pre-PR-12 callers)
-//     (b) cmd.FolderID empty → req.ProjectID = cmd.ID (graceful
-//     degradation so the Publisher's VoiceoverPath validation
-//     never blocks on an empty ProjectID; operator-warning log
-//     captures the degradation signal).
+//   - Project is REQUIRED. Empty Project → typed sentinel
+//     ErrVoiceoverPublishProjectRequired (callers can errors.Is-probe).
+//   - FolderID is OPTIONAL. Empty FolderID is OK (the canonical
+//     semantic surface does NOT consume FolderID for voiceover
+//     publishes — VoiceoverPath derives the path from
+//     Project + Language). The pre-PR-12 silent-fallback
+//     to RootFolderOverride is REMOVED.
 //
 // Field precedence summary (semantic-first per godlike/06 SSOT):
-//  1. cmd.Project  → req.ProjectID
-//  2. cmd.FolderID → req.RootFolderOverride (only when Project empty)
-//  3. cmd.ID       → req.ProjectID (last-resort fallback)
+//  1. cmd.Project  → req.ProjectID (REQUIRED, fail-closed via Validate)
+//  2. cmd.Language → req.Language   (REQUIRED, fail-closed via Validate)
+//
+// Validate() runs as the FIRST step (before the Publish call). The
+// typed error envelope carries a wrapped sentinel (errors.Is-probable)
+// so callers can probe without parsing string fragments. The
+// fallback chain is RETIRED — the adapter no longer reads
+// cmd.FolderID, no longer logs a Warn, no longer falls back to
+// cmd.ID.
 func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.VoiceoverPublishCommand) (string, error) {
-	if cmd.LocalPath == "" {
-		return "", fmt.Errorf("useCasePublisherAdapter.Publish: empty LocalPath (use case supplied no local payload)")
-	}
-	if cmd.Filename == "" {
-		return "", fmt.Errorf("useCasePublisherAdapter.Publish: empty Filename (use case supplied no display name)")
-	}
-	// godlike/07 fail-closed: Language is required for the canonical
-	// semantic voiceover publish (VoiceoverPath builds {project}/{language}/).
-	// Empty Language MUST surface the typed sentinel so callers can probe
-	// via errors.Is — no silent fallback to a default language.
-	if cmd.Language == "" {
+	// godlike/07 fail-closed at the typed-sentinel boundary.
+	// cmd.Validate() returns a wrapped sentinel (errors.Is-probable)
+	// for the FIRST missing field per the precedence order documented
+	// on the Validate method. Pre-Stage-3 gates (LocalPath, Filename,
+	// ID) run BEFORE the semantic gates (Language, Project) so a
+	// caller with multiple missing fields gets a deterministic
+	// single error.
+	if err := cmd.Validate(); err != nil {
 		return "", fmt.Errorf(
-			"useCasePublisherAdapter.Publish: empty Language (voiceover publish requires Language for canonical semantic routing per PR-P12-VOICEOVER-SEMANTIC-FIELDS): %w",
-			voiceover.ErrVoiceoverPublishLanguageRequired,
+			"useCasePublisherAdapter.Publish: validate: %w",
+			err,
 		)
 	}
-	// FolderID is OPTIONAL post-PR-12 — it was the legacy root-folder
-	// override. Removed the pre-PR-12 hard fail-closed at empty
-	// FolderID; the adapter now derives ProjectID via the fallback
-	// chain documented above.
 
 	req := delivery.PublishRequest{
 		Destination: delivery.DestinationVoiceover,
 		LocalPath:   cmd.LocalPath,
 		Filename:    cmd.Filename,
 		AssetID:     cmd.ID,
-		Language:    cmd.Language,
-	}
-	switch {
-	case cmd.Project != "":
-		// Canonical semantic path: caller populated the Project field
-		// (typically from GenerateVoiceoverItemCommand.Project, threaded
-		// from the API request). Publisher builds the {project}/{language}/
-		// subpath via VoiceoverPath.
-		req.ProjectID = cmd.Project
-	case cmd.FolderID != "":
-		// Backward-compat fallback: pre-PR-12 callers that resolved the
-		// folder manually and pass a FolderID. The Publisher bypasses
-		// DestinationRegistry root-folder resolution and writes to the
-		// pre-resolved root.
-		req.RootFolderOverride = cmd.FolderID
-	default:
-		// Graceful degradation: both Project and FolderID are empty.
-		// Use the canonical voiceover ID (cmd.ID) as the ProjectID so
-		// VoiceoverPath's {project}/{language}/ subpath still resolves.
-		// The warning log captures the godlike/07 no-fake-availability
-		// signal so operators can detect callers that haven't migrated
-		// to the semantic surface.
-		req.ProjectID = cmd.ID
-		if a.log != nil {
-			a.log.Warn("voiceover publisher: neither Project nor FolderID set, using voiceover ID as ProjectID fallback (this is a godlike/07 degradation signal — set Project for canonical semantic routing)")
-		}
+		// Canonical semantic routing (PR-VOICEOVER-DRIVE-DRIFT, 2026-08-08):
+		// Project + Language are the ONLY inputs to the Publisher's
+		// VoiceoverPath builder. cmd.FolderID is intentionally NOT
+		// read here — the legacy silent-fallback to
+		// req.RootFolderOverride has been RETIRED.
+		ProjectID: cmd.Project,
+		Language:  cmd.Language,
 	}
 	res, err := a.publisher.Publish(ctx, req)
 	if err != nil {
