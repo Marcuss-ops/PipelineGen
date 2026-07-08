@@ -84,6 +84,20 @@ func buildVoiceoverService(
 	outboxDispatcher *outbox.Dispatcher,
 ) (*voiceover.Service, *assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor) {
 
+	// FASE 9 (July 2026): fail-closed gate — when cfg.Translation.Required
+	// is true, the translation port MUST be wired. A nil port is a
+	// composition-time misconfiguration; panic with an actionable message
+	// so the operator sees the boot failure and fixes the wiring rather
+	// than discovering the silent fallback at the first promo translation
+	// request (godlike/07 NO-FAKE-AVAILABILITY: never silently degrade
+	// a required production dependency).
+	if cfg.Translation.Required && translationPort == nil {
+		panic("voiceover: cfg.Translation.Required=true but translationPort is nil — " +
+			"the voiceover pipeline requires a translation.TranslationPort (e.g. *translation.OllamaTranslator) " +
+			"for promo generation. Set cfg.Translation.Required=false for dev mode, or wire the port " +
+			"via build_bundles_ai.go → BuildDomainBundle → buildVoiceoverService.")
+	}
+
 	voDir := cfg.Storage.VoiceoversPath()
 	voRepo := assets.NewVoiceoversRepository(dbs.main.DB)
 
