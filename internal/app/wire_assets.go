@@ -165,6 +165,20 @@ func WireAssets(
 		return nil, fmt.Errorf("WireAssets: clips: %w", err)
 	}
 
+	// PR-STEP7-DESCRIPTOR-JOBS (July 2026): publish clips worker handlers
+	// (bulk_upload_youtube_clips) into the canonical jobs service at boot.
+	// Pre-Step-7, ClipsDescriptor did NOT implement DescriptorJobs so this
+	// slot was never invoked — the bulk_upload_youtube_clips handler was
+	// never registered and the worker could never claim those jobs.
+	// clipsDesc is *ClipsDescriptor (concrete); wrap in interface{} for
+	// the type assertion (mirrors registerGenerationCapability pattern
+	// where genDesc is already api.Descriptor).
+	if dj, ok := interface{}(clipsDesc).(module.DescriptorJobs); ok {
+		if err := dj.RegisterJobHandlers(jobs.Service); err != nil {
+			log.Warn("failed to register clips job handlers", zap.Error(err))
+		}
+	}
+
 	storageDesc, err := buildStorageBundle(log, jobs, deps.Core.CatalogSyncService)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: storage: %w", err)

@@ -243,8 +243,18 @@ func NewToolsChecker() ToolsChecker {
 }
 
 // RequiredHandlers is the canonical list of critical job handlers that
-// MUST be registered for YouTube clips deploy readiness (Step 8, July 2026).
-var RequiredHandlers = []string{"media.clip", "clips.process"}
+// MUST be registered for YouTube clips deploy readiness (Step 7, July 2026).
+//
+// - media.clip: async register-batch handler (uses same ytSvc as sync path)
+//   Canonical constant: domain/job.TypeClipRegister = "media.clip"
+// - media.bulk_upload_youtube_clips: async bulk-upload worker (uses same
+//   delivery.Publisher via ClipPublisherPort as sync path)
+//   Canonical constant: domain/job.TypeBulkUploadYouTubeClips
+//
+// Both async paths route through the SAME delivery.Publisher + Drive
+// adapters as the sync register-from-youtube path, verified per
+// AGENTS.md Step 7 wiring audit (2026-07-08).
+var RequiredHandlers = []string{"media.clip", "media.bulk_upload_youtube_clips"}
 
 // HandlerPresenceChecker probes HasHandler on the canonical
 // appjobs.Service. The concrete interface avoids importing appjobs

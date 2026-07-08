@@ -283,6 +283,31 @@ func (d *ClipsDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
 	d.Module.RegisterRoutes(rg)
 }
 
+// RegisterJobHandlers implements api.DescriptorJobs so the
+// composition root publishes the clips worker handlers
+// (bulk_upload_youtube_clips) into the canonical jobs service
+// at boot. The slot takes the typed JobRegistrar port (not the
+// concrete *appjobs.Service) per godlike/06 Pattern 0 — the
+// composition root injects its concrete service at
+// descriptor-wiring time.
+//
+// Pre-Step-7 (July 2026): ClipsDescriptor did NOT implement
+// DescriptorJobs. The handler was reachable via
+// Descriptor.Handler.RegisterJobHandlers() in tests, but the
+// production composition root (registry_public_modules.go)
+// only calls RegisterJobHandlers on modules that type-assert as
+// DescriptorJobs. The gap meant bulk_upload_youtube_clips was
+// never registered at boot — the worker could never claim
+// those jobs.
+func (d *ClipsDescriptor) RegisterJobHandlers(svc api.JobRegistrar) error {
+	if d.Handler == nil {
+		return nil
+	}
+	// The handler holds the concrete job.HandlerFunc; we register
+	// it with the typed port the composition root provides.
+	return svc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), d.Handler.HandleBulkUploadYouTubeClipsJob)
+}
+
 // Build composes the Clips HTTP capability from the typed narrow
 // dependencies. Returns a fail-closed error when any mandatory dep
 // is nil. Logger nil → zap.NewNop(). Idempotency nil → no-op
