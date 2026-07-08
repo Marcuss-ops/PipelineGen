@@ -1,0 +1,169 @@
+// Package usecase — generation_plan_builder_test.go exercises
+// the buildPostprocessorList helper at the package-internal
+// seam (buildPostprocessorList is UNEXPORTED, so this test
+// must live in `package usecase` not `package usecase_test`).
+//
+// PR-TRANSLATE-SCRIPT-SPEC §2 (2026-08-08): forward-prevention
+// regression-guard. The contract pinned here is: every name
+// returned by buildPostprocessorList MUST be a member of
+// adapters.CanonicalProcessorNames() (the closed canonical
+// set). A future refactor that introduces a string literal
+// (e.g. "translator", "summariser", "narrator") NOT in the
+// canonical set would silently bypass the registry's
+// postprocessor-name gate and surface only at runtime as
+// "processor X not registered" warnings. The test below
+// blocks that drift class by asserting the subset invariant
+// across 10 scenarios (all-flags-on, all-flags-off, 6
+// individual flag toggles, 2 flag-combination permutations).
+package usecase
+
+import (
+	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+)
+
+// buildPostprocessorListTestScenarios enumerates 10 OutputSpec
+// variants that cover the full conditional branches of
+// buildPostprocessorList (per the godoc in
+// generation_plan_builder.go: the function appends conditional
+// postprocessors based on OutputSpec.ExtractEntities /
+// GenerateMetadata / GenerateVoiceover / GenerateSceneImages /
+// GenerateDocument / SaveToDB, plus the unconditional
+// clip_bindings + stock_association).
+func buildPostprocessorListTestScenarios() []struct {
+	name string
+	out  scriptpkg.OutputSpec
+} {
+	return []struct {
+		name string
+		out  scriptpkg.OutputSpec
+	}{
+		{
+			name: "all_flags_on",
+			out: scriptpkg.OutputSpec{
+				ExtractEntities:     true,
+				GenerateMetadata:    true,
+				GenerateVoiceover:   true,
+				GenerateSceneImages: true,
+				GenerateDocument:    true,
+				SaveToDB:            true,
+			},
+		},
+		{
+			name: "all_flags_off",
+			out:  scriptpkg.OutputSpec{},
+		},
+		{
+			name: "extract_entities_only",
+			out: scriptpkg.OutputSpec{
+				ExtractEntities: true,
+			},
+		},
+		{
+			name: "metadata_only",
+			out: scriptpkg.OutputSpec{
+				GenerateMetadata: true,
+			},
+		},
+		{
+			name: "voiceover_only",
+			out: scriptpkg.OutputSpec{
+				GenerateVoiceover: true,
+			},
+		},
+		{
+			name: "scene_images_only",
+			out: scriptpkg.OutputSpec{
+				GenerateSceneImages: true,
+			},
+		},
+		{
+			name: "document_only",
+			out: scriptpkg.OutputSpec{
+				GenerateDocument: true,
+			},
+		},
+		{
+			name: "save_to_db_only",
+			out: scriptpkg.OutputSpec{
+				SaveToDB: true,
+			},
+		},
+		{
+			name: "entities_and_metadata",
+			out: scriptpkg.OutputSpec{
+				ExtractEntities:  true,
+				GenerateMetadata: true,
+			},
+		},
+		{
+			name: "voiceover_and_images_and_document",
+			out: scriptpkg.OutputSpec{
+				GenerateVoiceover:   true,
+				GenerateSceneImages: true,
+				GenerateDocument:    true,
+			},
+		},
+	}
+}
+
+// TestBuildPostprocessorList_OnlyUsesCanonicalProcessorNames is
+// the §2 forward-prevention regression-guard for the plan-time
+// postprocessor list construction. The contract pinned here is:
+// every name returned by buildPostprocessorList MUST be a member
+// of adapters.CanonicalProcessorNames() (the closed canonical
+// set declared in processor_names.go).
+//
+// Why this matters: postprocessor execution is gated by the
+// registry's lookup-by-name in
+// internal/app/wire_script_postprocess.go (the canonical
+// "processor not registered" check). A future refactor that
+// introduces a string literal NOT in the canonical set (e.g.
+// "translator" instead of the typed ProcessorTranslation
+// constant, or a misspelled "voice-over" instead of "voiceover")
+// would bypass the compile-time safety of the typed constants
+// and surface only at runtime as a 5xx "postprocessor not
+// registered" error.
+//
+// This test blocks that drift class by iterating 10 OutputSpec
+// variants (all-flags-on, all-flags-off, 6 individual flag
+// toggles, 2 flag-combination permutations) and asserting the
+// subset invariant for each.
+//
+// godlike/06 SSOT: the canonical set lives ONLY in
+// adapters.CanonicalProcessorNames() (godlike/06
+// one-canonical-owner-per-fact). buildPostprocessorList lives
+// in the usecase package; the import edge usecase -> adapters
+// is the canonical read direction.
+func TestBuildPostprocessorList_OnlyUsesCanonicalProcessorNames(t *testing.T) {
+	// Build the canonical-set membership set once for O(1) lookup.
+	canonical := make(map[adapters.ProcessorName]bool, 10)
+	for _, n := range adapters.CanonicalProcessorNames() {
+		canonical[n] = true
+	}
+
+	scenarios := buildPostprocessorListTestScenarios()
+	for _, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			got := buildPostprocessorList(sc.out)
+			if len(got) == 0 {
+				t.Fatalf("buildPostprocessorList(%q) returned 0 names; expected at least the "+
+					"unconditional clip_bindings + stock_association per the goddoc in "+
+					"generation_plan_builder.go", sc.name)
+			}
+			for i, name := range got {
+				if !canonical[name] {
+					t.Errorf("buildPostprocessorList(%q)[%d] = %q is NOT in adapters.CanonicalProcessorNames() "+
+						"(canonical closed set). This is a 'fuori registry' drift class: the postprocessor "+
+						"string literal is not declared as a typed ProcessorName constant in "+
+						"internal/application/scripts/adapters/processor_names.go. Fix: declare a typed "+
+						"constant (godlike/06 SSOT one-canonical-owner-per-fact) and add it to the "+
+						"CanonicalProcessorNames() slice in the correct EXECUTION order position.",
+						sc.name, i, name)
+				}
+			}
+		})
+	}
+}

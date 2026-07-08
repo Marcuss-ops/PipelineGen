@@ -92,3 +92,75 @@ func TestProcessorName_StringConversion(t *testing.T) {
 		}
 	}
 }
+
+// TestCanonicalProcessorNames_IncludesClipSearch is the §2
+// forward-prevention regression-guard for the PR-CLIP-SEARCH-WIRING
+// (July 2026) addition. Pre-PR the canonical list was 8 names
+// (no clip_search slot); post-PR it is 10 with clip_search at
+// index 1 (between entities and metadata per the EXECUTION order
+// documented in processor_names.go). This test pins BOTH the
+// presence AND the canonical index so a future refactor that
+// renames or removes clip_search surfaces as a build failure.
+//
+// godlike/06 SSOT: ProcessorClipSearch is the SOLE canonical home
+// for the "clip_search" identifier (godlike/06 one-canonical-owner-per-fact)
+// — declared in processor_names.go, NOT in processor_clip_search.go.
+func TestCanonicalProcessorNames_IncludesClipSearch(t *testing.T) {
+	names := adapterspkg.CanonicalProcessorNames()
+
+	// 1. clip_search MUST be present in the canonical list.
+	var found bool
+	var foundIndex = -1
+	for i, n := range names {
+		if n == adapterspkg.ProcessorClipSearch {
+			found = true
+			foundIndex = i
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("CanonicalProcessorNames() does not contain ProcessorClipSearch (%q). "+
+			"A future refactor that drops the clip_search slot would re-enable 'fuori registry' logic "+
+			"in internal/application/scripts/usecase/generation_plan_builder.go. "+
+			"If the slot was intentionally retired, update this test AND the goddoc in processor_names.go.",
+			adapterspkg.ProcessorClipSearch)
+	}
+
+	// 2. clip_search MUST be at index 1 (between entities [0] and
+	//    metadata [2]) per the EXECUTION order documented in
+	//    processor_names.go godoc. A drift to a different index
+	//    (e.g. moving clip_search to the tail) would silently
+	//    break the ordering invariant: clip_search must run AFTER
+	//    entities (reads Entities.ArtlistPhrases) and BEFORE
+	//    metadata (so the enriched SpecScene text is visible).
+	const wantIndex = 1
+	if foundIndex != wantIndex {
+		t.Errorf("ProcessorClipSearch is at index %d, want %d (between entities and metadata per EXECUTION order). "+
+			"A future refactor that moves clip_search would break the ordering invariant "+
+			"documented in processor_names.go godoc.",
+			foundIndex, wantIndex)
+	}
+
+	// 3. The string form MUST be "clip_search" (NOT "clip-search"
+	//    or "ClipSearch" or "clips"). This pins the wire-shape
+	//    that plan.Postprocessors serialises to JSON; a drift in
+	//    the constant value would break the canonical contract
+	//    with the engine dispatcher.
+	if got := string(adapterspkg.ProcessorClipSearch); got != "clip_search" {
+		t.Errorf("string(ProcessorClipSearch) = %q, want %q (canonical wire-shape invariant)", got, "clip_search")
+	}
+
+	// 4. Neighbours at the canonical index MUST be entities and
+	//    metadata respectively (locks the EXECUTION order around
+	//    the clip_search slot — a future re-ordering that swaps
+	//    the neighbours would silently break the read-of-
+	//    Entities.ArtlistPhrases ordering dependency).
+	if foundIndex > 0 && names[foundIndex-1] != adapterspkg.ProcessorEntities {
+		t.Errorf("names[%d] = %q, want %q (clip_search must follow entities in EXECUTION order)",
+			foundIndex-1, names[foundIndex-1], adapterspkg.ProcessorEntities)
+	}
+	if foundIndex < len(names)-1 && names[foundIndex+1] != adapterspkg.ProcessorMetadata {
+		t.Errorf("names[%d] = %q, want %q (clip_search must precede metadata in EXECUTION order)",
+			foundIndex+1, names[foundIndex+1], adapterspkg.ProcessorMetadata)
+	}
+}
