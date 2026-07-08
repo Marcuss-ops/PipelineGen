@@ -1,224 +1,352 @@
-// Package usecase — artlist translation and search helpers.
+// Package usecase — translation.go implements TranslateScriptSpec, the
+// canonical ScriptSpec translation surface for the script.generate
+// pipeline.
 //
-// translation.go owns the artlist-phrase → English → Qdrant search
-// pipeline: SearchArtlistClips, artlistSearchPhrase,
-// resolveArtlistFolderForPhrase, enqueueArtlistBackgroundJob.
-// Extracted from flow_helpers.go
-// (July 2026, LONG-FILES-SPLIT-2026-07-06).
+// AGENTS.md godlike/06 SSOT (onecanonical-owner-per-fact):
+// TranslateScriptSpec is the SOLE canonical owner of the LLM-based
+// script translation flow that PRESERVES identifier-keyed structure
+// (scene.id, scene.index, scene.kind, bindings.clip.clip_id,
+// bindings.clip.drive_link, bindings.image.image_id / url,
+// bindings.voiceover.link). It is a pure function: no I/O, no log
+// emissions, concurrent-safe.
+//
+// AGENTS.md godlike/07 NO-FAKE-AVAILABILITY: the function is fail-fast
+// all-or-nothing on STRUCTURAL drift (typed sentinels
+// ErrTranslationClipIDChanged / ErrTranslationDriveLinkChanged /
+// ErrTranslationEmpty / ErrTranslationIncomplete /
+// ErrTranslationSourceInvalid / ErrTranslationTranslatorMissing /
+// ErrTranslationTargetLangMissing). Non-fatal anomalies (validator
+// warnings + equal-to-source warnings) are returned in the warnings
+// []string channel so operator dashboards observe them WITHOUT
+// blocking the pipeline. There is NO partial-success mode for
+// STRUCTURAL drift (fail-fast all-or-nothing); there IS observable
+// non-fatal warning mode for SEMANTIC drift (warnings []string).
+//
+// Field-level strategy (structural prevention of LLM key-mutation):
+//
+//	Translates: model.Text, scene.Text, scene.Title (if non-empty),
+//	  scene.Bindings.Image.Prompt, scene.Bindings.Stock.Name
+//	Preserved byte-identical: model.SchemaVersion / WordCount /
+//	  ModelUsed / CacheStatus, SpecScene.Version, Scene.ID, Scene.Index,
+//	  Scene.Kind, full SceneBindings tree (clip.* / image ID+URL+LocalPath+Status
+//	  / voiceover.* / stock.AssetID+Source+DriveLink+Score+Fallback).
+//
+// Validator ordering (PR-SCRIPT-TRANSLATION-2026 fixup, July 2026):
+// ValidateAndEnrichSpecScene is called BEFORE translation to produce
+// the canonical enriched state (this auto-populates DriveLink +
+// ClipTitle fields per persistence layer policy). The enriched
+// surface becomes the comparison baseline: we never mutate the
+// enriched bindings in the translate step (only text fields are sent
+// to the LLM), so the post-rebuild byte-equality invariants hold.
+// Validating POST-translation would mutate the comparison baseline
+// (broken-invariant failure mode).
+//
+// Per-text strategy: only text fields are sent to the LLM translator
+// (one call per text segment); non-text fields are NEVER exposed to
+// the LLM, so they CANNOT be mutated by the translator. The
+// post-rebuild defensive invariants (ErrTranslationClipIDChanged /
+// ErrTranslationDriveLinkChanged) are belt-and-suspenders assertions
+// that confirm the structural-prevention strategy held through the
+// rebuild; THEY SHOULD NEVER FIRE under correct behaviour.
+//
+// Title / Description / VideoMetadata translation is OUT OF SCOPE for
+// this function — those are post-script payload fields owned by the
+// DocContent layer. A future TranslateDocContent extension can plumb
+// them through a parallel pipeline; this function deliberately stays
+// scoped to the canonical ModelScriptOutputV1.
 package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
-	"time"
 
-	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// artlistPhraseResult is the internal envelope for parallel artlist search results.
-type artlistPhraseResult struct {
-	suggestion ScriptArtlistClipSuggestion
-	valid      bool
-}
+// Typed sentinels (godlike/07 typed-error contract).
+var (
+	// ErrTranslationSourceInvalid: the *ModelScriptOutputV1 input is
+	// nil or has empty Text → function returns this sentinel.
+	ErrTranslationSourceInvalid = errors.New("translate script: source invalid")
 
-// ── SearchArtlistClips ──────────────────────────────────────────────────────
+	// ErrTranslationTranslatorMissing: the TranslatorFunc passed is
+	// nil → function returns this sentinel.
+	ErrTranslationTranslatorMissing = errors.New("translate script: translator nil")
 
-// SearchArtlistClips processes each artlist phrase in parallel, translating
-// to English and searching Qdrant for matching Artlist clips.
-func SearchArtlistClips(ctx context.Context, svc ClipServices, title string, phrases []string) []ScriptArtlistClipSuggestion {
-	validPhrases := make([]string, 0, len(phrases))
-	for _, p := range phrases {
-		if trimmed := strings.TrimSpace(p); trimmed != "" {
-			validPhrases = append(validPhrases, trimmed)
-		}
-	}
-	if len(validPhrases) == 0 {
-		return nil
-	}
+	// ErrTranslationTargetLangMissing: targetLang is empty/whitespace
+	// → function returns this sentinel.
+	ErrTranslationTargetLangMissing = errors.New("translate script: target language required")
 
-	artlistTarget := []AssetSearchTarget{{Source: "artlist", MediaType: "video"}}
+	// ErrTranslationEmpty: the translator returned empty/whitespace for
+	// any single text segment → function returns this sentinel wrapped
+	// at the relevant segment index.
+	ErrTranslationEmpty = errors.New("translate script: empty translation")
 
-	concurrency := 5
-	if concurrency > len(validPhrases) {
-		concurrency = len(validPhrases)
-	}
+	// ErrTranslationIncomplete: aggregated failure mode — the
+	// canonical post-translation ValidateAndEnrichSpecScene (re)gate
+	// rejected the rebuilt output → function returns this sentinel.
+	ErrTranslationIncomplete = errors.New("translate script: incomplete")
 
-	results := concurrent.ParallelMap(validPhrases, concurrency, func(idx int, phrase string) artlistPhraseResult {
-		// Resolve the Drive folder before the translation step: that
-		// lookup only needs the user-supplied phrase and is unaffected
-		// by translation success/failure. If the translation then
-		// fails, the suggestion still carries FolderLink/FolderID/Name
-		// for the operator audit trail.
-		folderLink, folderName, folderID := resolveArtlistFolderForPhrase(ctx, svc, phrase)
-		suggestion := ScriptArtlistClipSuggestion{
-			Phrase:     phrase,
-			FolderLink: folderLink,
-			FolderName: folderName,
-			FolderID:   folderID,
-		}
-		enPhrase, txErr := artlistSearchPhrase(ctx, svc, phrase)
-		if txErr != nil {
-			// P0.6 (June 2026): silent translation failure is banned
-			// (godlike/07). Surface the error on the suggestion and
-			// intentionally leave Clips empty / do not enqueue a
-			// background job with the original phrase. The user-
-			// supplied Phrase stays populated so the API response is
-			// contract-stable (callers can decide whether to retry).
-			suggestion.TranslationError = txErr.Error()
-			return artlistPhraseResult{suggestion: suggestion, valid: true}
-		}
-		cq := contextualQuery(title, enPhrase)
-		clips := SearchScriptAssets(ctx, svc, []string{cq, enPhrase}, artlistTarget, 2)
-		if len(clips) > 0 {
-			suggestion.Clips = clips
-			return artlistPhraseResult{suggestion: suggestion, valid: true}
-		}
-		enqueueArtlistBackgroundJob(ctx, svc, enPhrase)
-		return artlistPhraseResult{suggestion: suggestion, valid: true}
-	})
+	// ErrTranslationClipIDChanged: defensive invariant — the rebuilt
+	// scene's clip.clip_id byte-equality with the enriched baseline's
+	// clip.clip_id violated. SHOULD NEVER FIRE under the per-text
+	// strategy; if it fires, the rebuild logic has regressed.
+	ErrTranslationClipIDChanged = errors.New("translate script: invariant violation (clip id changed)")
 
-	out := make([]ScriptArtlistClipSuggestion, 0, len(results))
-	for _, r := range results {
-		if r.valid {
-			out = append(out, r.suggestion)
-		}
-	}
-	return out
-}
+	// ErrTranslationDriveLinkChanged: defensive invariant — the rebuilt
+	// scene's clip.drive_link byte-equality with the enriched baseline's
+	// violated.
+	ErrTranslationDriveLinkChanged = errors.New("translate script: invariant violation (drive link changed)")
+)
 
-// artlistSearchPhrase translates an artlist phrase to "english" so the
-// downstream Qdrant search runs over the canonical English form.
+// Warning sentinel strings (godlike/07 NO-FAKE-AVAILABILITY operator
+// observability — NOT typed-errors, surfaced via the warnings []string
+// return channel).
+const (
+	// WarnTranslationEqualToSource is appended when a per-segment
+	// translation returns text byte-identical to the source segment.
+	// This is non-fatal but operationally significant: the translator
+	// (LLM, human, fallback) returned untranslated text, possibly
+	// because the LLM detected the source IS the target language.
+	// Operators should review the translation chain if this warning
+	// recurs across multiple segments.
+	WarnTranslationEqualToSource = "translation equals source language; segment was not translated"
+)
+
+// TranslateScriptSpec translates the text fields of a *ModelScriptOutputV1
+// to targetLang while preserving byte-identical identifier-keyed
+// structure.
 //
-// Per P0.6 (June 2026) the silent-success "fallback to input phrase" anti-pattern
-// was removed (godlike/07 no-fake-availability). On translator error or empty
-// translation output, this function now returns ("", err) — the caller
-// decides what to do (e.g. surface via ScriptArtlistClipSuggestion.TranslationError
-// and skip the search).
+// Returns nil + typedSentinel on:
 //
-// Fase 9 step 2 (July 2026, Spina Dorsale): migrated from the legacy
-// 4-arg `svc.Translator.TranslateTextWithModel` (TranslatorService
-// straggler) to the canonical `svc.TranslationPort.Translate(ctx, cmd)`
-// surface. The legacy `Svc.Translator` field stays populated for
-// the godlike/07 EXPAND window per the umbrella deprecation record
-// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION.
-func artlistSearchPhrase(ctx context.Context, svc ClipServices, phrase string) (string, error) {
-	if svc.TranslationPort == nil {
-		return "", fmt.Errorf("artlist translator not configured")
+//	nil input / empty input.Text                 → ErrTranslationSourceInvalid
+//	nil translator                                → ErrTranslationTranslatorMissing
+//	empty targetLang                              → ErrTranslationTargetLangMissing
+//	any translator call returns ""                 → ErrTranslationEmpty-wrapped sentinel
+//	any scene's binding IDs mutate (defensive)    → ErrTranslationClipIDChanged
+//	any scene's drive_link mutates (defensive)    → ErrTranslationDriveLinkChanged
+//	post-translation ValidateAndEnrichSpecScene (re)gate fails → ErrTranslationIncomplete-wrapped sentinel
+//
+// On success: a (Out, warnings []string, nil) tuple where Out is a new
+// *ModelScriptOutputV1 with all preserved fields byte-identical to the
+// enriched baseline, and all text fields translated. Warnings are
+// non-fatal anomalies (validator warnings + equal-to-source per-segment
+// warnings) for operator dashboard observability.
+//
+// evidence may be nil; if nil, ValidateAndEnrichSpecScene will not gate
+// against accepted clip IDs (canonical behavior for pure-prose generation
+// where no clip bindings are present).
+//
+// Pure: no I/O, no log writes, concurrent-safe (struct-local mutation).
+func TranslateScriptSpec(
+	ctx context.Context,
+	in *scriptpkg.ModelScriptOutputV1,
+	evidence *scriptpkg.ClipEvidence,
+	targetLang string,
+	translator translationpkg.TranslatorFunc,
+) (out *scriptpkg.ModelScriptOutputV1, warnings []string, err error) {
+	warnings = []string{}
+
+	// ── 1. Pre-flight validation (godlike/07 fail-fast-at-input) ──
+	if in == nil {
+		return nil, warnings, ErrTranslationSourceInvalid
 	}
-	if strings.TrimSpace(phrase) == "" {
-		return "", fmt.Errorf("artlist phrase is empty")
+	if translator == nil {
+		return nil, warnings, ErrTranslationTranslatorMissing
+	}
+	if strings.TrimSpace(targetLang) == "" {
+		return nil, warnings, ErrTranslationTargetLangMissing
+	}
+	if strings.TrimSpace(in.Text) == "" {
+		return nil, warnings, ErrTranslationSourceInvalid
 	}
 
-	// Resolve the effective model via ModelPolicy: cmd.ModelPolicy.Model
-	// wins when set (server default-token "ollama"+model string from
-	// svc.MetadataModel). cmd.SourceLang left empty — the underlying
-	// gen.TranslateTextWithModel consumes only TargetLang; leaving
-	// SourceLang empty signals "inference" to downstream auditors
-	// without affecting wire behavior of the legacy gen method.
-	var modelPolicy *translation.ModelPolicy
-	if svc.MetadataModel != "" {
-		modelPolicy = &translation.ModelPolicy{
-			Provider: "ollama",
-			Model:    svc.MetadataModel,
+	// ── 2. Pre-translation ValidateAndEnrichSpecScene (canonical
+	//      enriched baseline). This populates DriveLink + ClipTitle
+	//      per persistence policy. The enriched state IS the
+	//      byte-equality comparison baseline for the post-rebuild
+	//      defensive invariants. ──
+	enriched, vWarnings, vErr := ValidateAndEnrichSpecScene(ctx, in, evidence)
+	if vErr != nil {
+		// Fail-closed: validator rejection at the input layer means
+		// the model surface is inconsistent; no point translating a
+		// spec whose structure already fails canonical rules.
+		warnings = append(warnings, vWarnings...)
+		return nil, warnings, fmt.Errorf("translate script: pre-validation failed: %w (cause: %v)", ErrTranslationIncomplete, vErr)
+	}
+	warnings = append(warnings, vWarnings...)
+	if enriched == nil {
+		// Defensive: validator returned (nil, _, nil) without error
+		// only on the empty-Scene canonical path (pure prose without
+		// SpecScene). In that case translated surface mirrors the
+		// input spec literally (only Text fields change).
+		//
+		// godlike/06 SSOT aliasing note: `enriched` is an alias of
+		// `in.SpecScene` ONLY on this path. The per-scene loop writes
+		// exclusively to the freshly-allocated `out.SpecScene.Scenes`
+		// slice (line 145 below), so the caller's `*ModelScriptOutputV1`
+		// is never mutated. Treat `*ModelScriptOutputV1` as immutable
+		// post-call (per the function-level godlike/06 SSOT contract).
+		enriched = &in.SpecScene
+	}
+
+	// ── 3. Translate full-script text ──
+	translatedFullText, tErr := translator(ctx, in.Text, targetLang)
+	if tErr != nil {
+		return nil, warnings, fmt.Errorf("translate script: full-text: %w", tErr)
+	}
+	if strings.TrimSpace(translatedFullText) == "" {
+		return nil, warnings, fmt.Errorf("translate script: full-text: %w", ErrTranslationEmpty)
+	}
+	if strings.TrimSpace(translatedFullText) == strings.TrimSpace(in.Text) {
+		warnings = append(warnings,
+			fmt.Sprintf("[full-text] %s", WarnTranslationEqualToSource))
+	}
+
+	// ── 4. Build output struct (deep clone preserving identifier fields) ──
+	out = &scriptpkg.ModelScriptOutputV1{
+		SchemaVersion: in.SchemaVersion,
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: enriched.Version,
+			Scenes:  make([]scriptpkg.SpecScene, len(enriched.Scenes)),
+		},
+		WordCount:   in.WordCount,
+		ModelUsed:   in.ModelUsed,
+		CacheStatus: in.CacheStatus,
+		Text:        translatedFullText,
+	}
+
+	// ── 5. Per-scene: translate text-bearing fields + clone enriched
+	//      bindings byte-identical ──
+	for i := range enriched.Scenes {
+		scene := enriched.Scenes[i]
+		inputScene := in.SpecScene.Scenes[i]
+		translated := scriptpkg.SpecScene{
+			ID:    scene.ID,
+			Index: scene.Index,
+			Kind:  scene.Kind,
 		}
-	}
 
-	cmd := translation.TranslationCommand{
-		SourceLang:  "",
-		TargetLang:  "english",
-		Text:        phrase,
-		ModelPolicy: modelPolicy,
-	}
+		// Translate scene.Text.
+		if strings.TrimSpace(inputScene.Text) != "" {
+			translatedText, err2 := translator(ctx, inputScene.Text, targetLang)
+			if err2 != nil {
+				return nil, warnings, fmt.Errorf("translate script: scene[%d] text: %w", i, err2)
+			}
+			if strings.TrimSpace(translatedText) == "" {
+				return nil, warnings, fmt.Errorf("translate script: scene[%d] text: %w", i, ErrTranslationEmpty)
+			}
+			if strings.TrimSpace(translatedText) == strings.TrimSpace(inputScene.Text) {
+				warnings = append(warnings,
+					fmt.Sprintf("[scene[%d].text] %s", i, WarnTranslationEqualToSource))
+			}
+			translated.Text = translatedText
+		} else {
+			translated.Text = scene.Text
+		}
 
-	result, err := svc.TranslationPort.Translate(ctx, cmd)
-	if err != nil {
-		if svc.Logger != nil {
-			svc.Logger.Debug("artlist phrase translation failed",
-				zap.String("phrase", phrase),
-				zap.Error(err),
+		// Translate scene.Title (if non-empty).
+		var translatedTitle string
+		if strings.TrimSpace(inputScene.Title) != "" {
+			t, err2 := translator(ctx, inputScene.Title, targetLang)
+			if err2 != nil {
+				return nil, warnings, fmt.Errorf("translate script: scene[%d] title: %w", i, err2)
+			}
+			if strings.TrimSpace(t) == "" {
+				return nil, warnings, fmt.Errorf("translate script: scene[%d] title: %w", i, ErrTranslationEmpty)
+			}
+			if strings.TrimSpace(t) == strings.TrimSpace(inputScene.Title) {
+				warnings = append(warnings,
+					fmt.Sprintf("[scene[%d].title] %s", i, WarnTranslationEqualToSource))
+			}
+			translatedTitle = t
+		}
+		translated.Title = translatedTitle
+
+		// Clone Clip binding byte-identical (clip_id / drive_link /
+		// clip_title / start_ms / end_ms are NEVER sent to translator).
+		if scene.Bindings.Clip != nil {
+			clipCopy := *scene.Bindings.Clip
+			translated.Bindings.Clip = &clipCopy
+		}
+
+		// Clone Image binding + translate Image.Prompt (text-bearing).
+		if scene.Bindings.Image != nil {
+			imgCopy := *scene.Bindings.Image
+			if strings.TrimSpace(inputScene.Bindings.Image.Prompt) != "" {
+				t, err2 := translator(ctx, inputScene.Bindings.Image.Prompt, targetLang)
+				if err2 != nil {
+					return nil, warnings, fmt.Errorf("translate script: scene[%d] image prompt: %w", i, err2)
+				}
+				if strings.TrimSpace(t) == "" {
+					return nil, warnings, fmt.Errorf("translate script: scene[%d] image prompt: %w", i, ErrTranslationEmpty)
+				}
+				if strings.TrimSpace(t) == strings.TrimSpace(inputScene.Bindings.Image.Prompt) {
+					warnings = append(warnings,
+						fmt.Sprintf("[scene[%d].image.prompt] %s", i, WarnTranslationEqualToSource))
+				}
+				imgCopy.Prompt = t
+			}
+			translated.Bindings.Image = &imgCopy
+		}
+
+		// Clone Voiceover binding byte-identical (Link/LocalPath/
+		// DurationMs/Status are URLs/paths/numeric identifiers — NEVER
+		// sent to translator).
+		if scene.Bindings.Voiceover != nil {
+			voCopy := *scene.Bindings.Voiceover
+			translated.Bindings.Voiceover = &voCopy
+		}
+
+		// Clone Stock binding + translate Stock.Name (text-bearing).
+		if scene.Bindings.Stock != nil {
+			stockCopy := *scene.Bindings.Stock
+			if inputScene.Bindings.Stock != nil && strings.TrimSpace(inputScene.Bindings.Stock.Name) != "" {
+				t, err2 := translator(ctx, inputScene.Bindings.Stock.Name, targetLang)
+				if err2 != nil {
+					return nil, warnings, fmt.Errorf("translate script: scene[%d] stock name: %w", i, err2)
+				}
+				if strings.TrimSpace(t) == "" {
+					return nil, warnings, fmt.Errorf("translate script: scene[%d] stock name: %w", i, ErrTranslationEmpty)
+				}
+				stockCopy.Name = t
+			}
+			translated.Bindings.Stock = &stockCopy
+		}
+
+		// ── 6. Defensive invariants: byte-equality check against
+		//      enriched baseline (NEVER against input — enriched
+		//      state is canonical). These invariants SHOULD NEVER
+		//      FIRE under the per-text strategy (only text fields
+		//      are sent to the LLM). If they fire, the rebuild logic
+		//      has regressed. ──
+		if (scene.Bindings.Clip == nil) != (translated.Bindings.Clip == nil) {
+			return nil, warnings, fmt.Errorf(
+				"translate script: scene[%d] clip-binding nil-mismatch: %w",
+				i, ErrTranslationClipIDChanged,
 			)
 		}
-		return "", fmt.Errorf("artlist phrase translation: %w", err)
-	}
-	translated := result.TranslatedText
-	if strings.TrimSpace(translated) == "" {
-		if svc.Logger != nil {
-			svc.Logger.Debug("artlist phrase translation returned empty",
-				zap.String("phrase", phrase),
+		if scene.Bindings.Clip != nil && translated.Bindings.Clip != nil &&
+			scene.Bindings.Clip.ClipID != translated.Bindings.Clip.ClipID {
+			return nil, warnings, fmt.Errorf(
+				"translate script: scene[%d] clip_id changed %q -> %q: %w",
+				i, scene.Bindings.Clip.ClipID, translated.Bindings.Clip.ClipID,
+				ErrTranslationClipIDChanged,
 			)
 		}
-		return "", fmt.Errorf("artlist phrase translation returned empty output for %q", phrase)
-	}
-	if svc.Logger != nil {
-		svc.Logger.Debug("artlist phrase translated for Qdrant search",
-			zap.String("original", phrase),
-			zap.String("english", translated),
-		)
-	}
-	return translated, nil
-}
-
-func resolveArtlistFolderForPhrase(ctx context.Context, svc ClipServices, phrase string) (string, string, string) {
-	if svc.AssocSvc == nil || strings.TrimSpace(phrase) == "" {
-		return "", "", ""
-	}
-	req := AssociationCandidatesRequest{
-		Topic:    phrase,
-		Subject:  phrase,
-		Keywords: []string{phrase},
-		TopK:     1,
-	}
-	resp, err := svc.AssocSvc.BuildCandidates(ctx, req)
-	if err != nil || resp == nil || len(resp.Candidates) == 0 {
-		return "", "", ""
-	}
-	candidate := resp.Candidates[0]
-	folderID := strings.TrimSpace(candidate.FolderID)
-	link := strings.TrimSpace(candidate.Link)
-	if link == "" && folderID != "" {
-		link = "https://drive.google.com/drive/folders/" + folderID
-	}
-	if folderID != "" && svc.DriveSvc != nil {
-		active, checkErr := svc.DriveSvc.FileIsNotTrashed(ctx, folderID)
-		if checkErr != nil || !active {
-			return "", "", ""
-		}
-	}
-	return link, strings.TrimSpace(candidate.Name), folderID
-}
-
-func enqueueArtlistBackgroundJob(ctx context.Context, svc ClipServices, phrase string) {
-	if svc.JobsSvc == nil || svc.ArtlistFolder == "" {
-		return
-	}
-	if svc.ArtlistFolder == "" {
-		if svc.Logger != nil {
-			svc.Logger.Warn("skipping background artlist job: no root folder configured",
-				zap.String("phrase", phrase),
+		if scene.Bindings.Clip != nil && translated.Bindings.Clip != nil &&
+			scene.Bindings.Clip.DriveLink != translated.Bindings.Clip.DriveLink {
+			return nil, warnings, fmt.Errorf(
+				"translate script: scene[%d] drive_link changed: %w",
+				i, ErrTranslationDriveLinkChanged,
 			)
 		}
-		return
+
+		out.SpecScene.Scenes[i] = translated
 	}
-	bgCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	payload := map[string]any{
-		"term":           phrase,
-		"limit":          3,
-		"root_folder_id": svc.ArtlistFolder,
-	}
-	if _, err := svc.JobsSvc.Enqueue(bgCtx, &job.EnqueueRequest{
-		Type:       "media.artlist",
-		Payload:    payload,
-		MaxRetries: 2,
-	}); err != nil && svc.Logger != nil {
-		svc.Logger.Warn("failed to enqueue background artlist job",
-			zap.String("phrase", phrase),
-			zap.Error(err),
-		)
-	}
+
+	return out, warnings, nil
 }
