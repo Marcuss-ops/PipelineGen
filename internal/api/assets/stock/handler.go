@@ -1,35 +1,66 @@
 package stock
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
+// StockAssetLookup is the narrow port for looking up a single media
+// asset by ID. Satisfied by *assets.ClipsRepository.Get (returns
+// *asset.Asset). Pattern 0 typed port — the stock package stays
+// free of infrastructure imports.
+type StockAssetLookup interface {
+	Get(ctx context.Context, id string) (*asset.Asset, error)
+}
+
+// StockDriveReader is the narrow port for streaming files from Google
+// Drive. Satisfied by drive.Reader (DownloadFile + GetFileMeta).
+// Pattern 0 typed port.
+type StockDriveReader interface {
+	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
+	GetFileMeta(ctx context.Context, fileID string) (*DriveFileMeta, error)
+}
+
+// DriveFileMeta is a minimal mirror of drive.FileMeta so the stock
+// package stays free of infrastructure/drive imports. Exported so the
+// composition-root adapter can construct it.
+type DriveFileMeta struct {
+	MimeType string
+}
+
 // Handler is the api-layer adapter for the stock pipeline endpoints.
-// After S2b it holds ONLY the use case + logger — neither the
-// stockpipeline.Service nor the jobs service are referenced directly.
+// After S2b it holds the use case + logger + optional download deps.
 // All dispatch logic lives in stockpipeline.StockUseCase.
 type Handler struct {
-	useCase *stockpipeline.StockUseCase
-	log     *zap.Logger
+	useCase   *stockpipeline.StockUseCase
+	log       *zap.Logger
+	assetRepo StockAssetLookup // optional (nil → 503 on /clips/:id/download)
+	driveRead StockDriveReader // optional (nil → 503 on /clips/:id/download)
 }
 
 // NewHandler constructs the api handler. Production wire-up builds a
 // *stockpipeline.StockUseCase first (composition root, module_sources.go)
 // and passes it in; test fixtures may pass nil for either dependency.
-func NewHandler(useCase *stockpipeline.StockUseCase, log *zap.Logger) *Handler {
+func NewHandler(useCase *stockpipeline.StockUseCase, log *zap.Logger, assetRepo StockAssetLookup, driveRead StockDriveReader) *Handler {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &Handler{
-		useCase: useCase,
-		log:     log,
+		useCase:   useCase,
+		log:       log,
+		assetRepo: assetRepo,
+		driveRead: driveRead,
 	}
 }
 
@@ -38,6 +69,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 
 	r.POST("/run", h.RunStockPipeline)
 	r.POST("/search-and-run", h.SearchAndRun)
+	r.POST("/clips/:id/download", h.DownloadStockClip)
 }
 
 // ── 200-vs-202 SEMANTIC DECISION (S2c spec, applies to /run AND /search-and-run) ──
@@ -307,5 +339,93 @@ func stockLocationPlaceholder() gin.H {
 		"subject":  "",
 		"provider": "",
 		"style":    "",
+	}
+}
+
+// DownloadStockClip streams the MP4 file for a stock media asset.
+// Looks up the asset by ID from media_assets (source=stock), gets its
+// drive_file_id, and proxies the file from Google Drive.
+//
+// Route: POST /api/stock-pipeline/clips/:id/download
+//
+// POST (not GET) is intentional per the E2E test contract — the
+// download is a side-effect-producing operation in the stock pipeline
+// context (may trigger lazy indexing). Mirrors the clips DownloadClip
+// pattern (clip_action.go) but uses narrow Pattern-0 ports
+// (StockAssetLookup + StockDriveReader) so the stock package stays
+// free of infrastructure imports.
+func (h *Handler) DownloadStockClip(c *gin.Context) {
+	clipID := c.Param("id")
+	if clipID == "" {
+		apiutil.BadRequest(c, "clip id is required")
+		return
+	}
+
+	if h.assetRepo == nil || h.driveRead == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "stock download not available (asset repo or drive reader not wired)")
+		return
+	}
+
+	// 1. Look up the asset from media_assets
+	ast, err := h.assetRepo.Get(c.Request.Context(), clipID)
+	if err != nil {
+		h.log.Error("stock download: asset lookup failed", zap.String("clip_id", clipID), zap.Error(err))
+		apiutil.InternalError(c, fmt.Errorf("asset lookup failed: %w", err))
+		return
+	}
+	if ast == nil {
+		apiutil.NotFound(c, "stock asset not found: "+clipID)
+		return
+	}
+
+	// 2. Get the drive_file_id from the asset
+	driveFileID := ast.DriveFileID()
+	if driveFileID == "" {
+		// Try local path as fallback
+		localPath := ast.LocalPath()
+		if localPath != "" {
+			c.File(localPath)
+			return
+		}
+		apiutil.NotFound(c, "stock asset has no drive_file_id and no local path")
+		return
+	}
+
+	// 3. Verify MIME type (block non-media files)
+	meta, metaErr := h.driveRead.GetFileMeta(c.Request.Context(), driveFileID)
+	if metaErr != nil {
+		h.log.Error("stock download: drive metadata lookup failed", zap.String("drive_id", driveFileID), zap.Error(metaErr))
+		apiutil.InternalError(c, fmt.Errorf("drive metadata lookup failed: %w", metaErr))
+		return
+	}
+
+	if !strings.HasPrefix(meta.MimeType, "video/") &&
+		!strings.HasPrefix(meta.MimeType, "audio/") &&
+		meta.MimeType != "application/octet-stream" {
+		h.log.Warn("stock download: refusing to proxy non-media file",
+			zap.String("drive_id", driveFileID), zap.String("mime", meta.MimeType))
+		apiutil.BadRequest(c, "drive file is not media: "+meta.MimeType)
+		return
+	}
+
+	// 4. Stream the file from Drive
+	body, contentType, dlErr := h.driveRead.DownloadFile(c.Request.Context(), driveFileID)
+	if dlErr != nil {
+		h.log.Error("stock download: drive download failed", zap.String("drive_id", driveFileID), zap.Error(dlErr))
+		apiutil.InternalError(c, fmt.Errorf("drive download failed: %w", dlErr))
+		return
+	}
+	defer body.Close()
+
+	if contentType == "" || contentType == "application/octet-stream" {
+		contentType = "video/mp4"
+	}
+
+	c.Header("Content-Type", contentType)
+	c.Header("Cache-Control", "public, max-age=3600")
+
+	_, copyErr := io.Copy(c.Writer, body)
+	if copyErr != nil {
+		h.log.Debug("stock download: drive stream interrupted", zap.Error(copyErr))
 	}
 }

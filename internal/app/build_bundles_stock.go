@@ -31,8 +31,10 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"strings"
 
 	"go.uber.org/zap"
@@ -48,6 +50,7 @@ import (
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -90,6 +93,11 @@ type StockBundleDeps struct {
 	// for stockapi.Build — nil closes the capability (no route
 	// registration) per api/assets/stock/module.go's nil-tolerance.
 	StockPipelineEnabled func() bool
+
+	// DriveReader is the narrow port for streaming files from
+	// Google Drive (stock download endpoint). OPTIONAL — nil
+	// produces a 503 on /clips/:id/download.
+	DriveReader stockapi.StockDriveReader
 
 	// PR-011A (July 2026): stock RLM/LLM enrichment pass composition
 	// seam. Both fields are OPTIONAL (nil = enrichment disabled,
@@ -156,6 +164,38 @@ func validateStockSymmetricGate(publisher delivery.Publisher, finalizer finaliza
 	}
 	return nil
 }
+
+// stockDriveReaderFromBundle extracts the drive.Reader from the
+// ComposeRoot and adapts it to stockapi.StockDriveReader. Returns
+// nil when root.Drive or root.Drive.Reader is nil (godlike/07
+// fail-closed: 503 on /clips/:id/download).
+func stockDriveReaderFromBundle(root *ComposeRoot) stockapi.StockDriveReader {
+	if root == nil || root.Drive == nil || root.Drive.Reader == nil {
+		return nil
+	}
+	return &stockDriveReaderAdapter{reader: root.Drive.Reader}
+}
+
+// stockDriveReaderAdapter adapts drive.Reader to stockapi.StockDriveReader.
+// Pattern 0 adapter — lives in the composition root to break the import
+// cycle (stock package cannot import infrastructure/drive directly).
+type stockDriveReaderAdapter struct {
+	reader driveup.Reader
+}
+
+func (a *stockDriveReaderAdapter) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error) {
+	return a.reader.DownloadFile(ctx, fileID)
+}
+
+func (a *stockDriveReaderAdapter) GetFileMeta(ctx context.Context, fileID string) (*stockapi.DriveFileMeta, error) {
+	meta, err := a.reader.GetFileMeta(ctx, fileID)
+	if err != nil {
+		return nil, err
+	}
+	return &stockapi.DriveFileMeta{MimeType: meta.MimeType}, nil
+}
+
+var _ stockapi.StockDriveReader = (*stockDriveReaderAdapter)(nil)
 
 // BuildStockBundle assembles the stock video pipeline composition root:
 //
@@ -345,6 +385,8 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	sd, err := stockapi.Build(stockapi.Dependencies{
 		UseCase:     useCase,
 		EnabledFunc: deps.StockPipelineEnabled,
+		AssetLookup: deps.ClipsRepo,
+		DriveReader: deps.DriveReader,
 		Logger:      deps.Log,
 	})
 	if err != nil {
