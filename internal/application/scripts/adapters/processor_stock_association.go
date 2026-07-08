@@ -2,10 +2,9 @@ package adapters
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -19,13 +18,30 @@ import (
 // Enabled as "stock_association" in the plan's Postprocessors list.
 // Best-effort policy: a missing or failing stock search does not
 // block the pipeline.
+//
+// Phase 2 of postprocessor-unification (2026-07-08): the processor
+// is a thin orchestrator that delegates to
+// scene.SceneAssetBinder.BindStock. The per-iteration search loop,
+// empty-text skip, and clip-fallback helper all moved to the scene
+// package (godlike/06 SSOT one canonical owner per fact).
+//
+// The constructor signature is STABLE for godlike/07
+// minimum-blast-radius — wire_script_postprocess.go does not need
+// to change; the binder is constructed inline; the stock search
+// port stays on the processor (passed per-call to BindStock — Q10
+// verdict).
 type StockAssociationProcessor struct {
 	stockSearch ports.StockSearchPort
+	binder      *scene.SceneAssetBinder
 	log         *zap.Logger
 }
 
 func NewStockAssociationProcessor(stockSearch ports.StockSearchPort, log *zap.Logger) *StockAssociationProcessor {
-	return &StockAssociationProcessor{stockSearch: stockSearch, log: log}
+	return &StockAssociationProcessor{
+		stockSearch: stockSearch,
+		log:         log,
+		binder:      scene.NewSceneAssetBinder(log),
+	}
 }
 
 func (p *StockAssociationProcessor) Name() ProcessorName { return ProcessorStockAssociation }
@@ -34,90 +50,25 @@ func (p *StockAssociationProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) 
 	return ProcessorBestEffort
 }
 
+// Process delegates to scene.SceneAssetBinder.BindStock. The binder
+// mutates input.SpecScene.Scenes in-place (per scene by index).
+// Returns changed=true on every non-trivial path (Phase 1
+// Changed: true invariant) so the registry's IsEmpty() short-circuit
+// at postprocessor_document.go does not fire a false "returned empty
+// output" warning.
 func (p *StockAssociationProcessor) Process(
 	ctx context.Context,
 	plan *scriptpkg.ResolvedGenerationPlan,
 	input ProcessInput,
 ) (*PostProcessResult, error) {
-	if p.stockSearch == nil {
+	res := p.binder.BindStock(ctx, input.SpecScene.Scenes, p.stockSearch)
+	if !res.Changed {
 		return &PostProcessResult{}, nil
 	}
-
-	scenes := input.SpecScene.Scenes
-	if len(scenes) == 0 {
-		return &PostProcessResult{}, nil
-	}
-
-	for i := range scenes {
-		scene := &scenes[i]
-		text := strings.TrimSpace(scene.Text)
-		if text == "" {
-			p.fallbackToClip(scene)
-			continue
-		}
-
-		hits, err := p.stockSearch.SearchStock(ctx, text, 1)
-		if err != nil {
-			if p.log != nil {
-				p.log.Warn("stock_association: search failed",
-					zap.String("scene_id", scene.ID),
-					zap.Error(err))
-			}
-			p.fallbackToClip(scene)
-			continue
-		}
-
-		if len(hits) == 0 {
-			p.fallbackToClip(scene)
-			continue
-		}
-
-		hit := hits[0]
-		scene.Bindings.Stock = &scriptpkg.StockBinding{
-			AssetID:   hit.AssetID,
-			Name:      hit.Name,
-			Source:    hit.Source,
-			DriveLink: hit.DriveLink,
-			Score:     hit.Score,
-			Fallback:  false,
-		}
-
-		if p.log != nil {
-			p.log.Info("stock_association: bound stock to scene",
-				zap.String("scene_id", scene.ID),
-				zap.String("asset_id", hit.AssetID),
-				zap.Float64("score", hit.Score))
-		}
-	}
-
-	if p.log != nil {
-		p.log.Info("stock_association: processed scenes",
-			zap.Int("scenes", len(scenes)))
-	}
-
 	// godlike/07 NO-FAKE-AVAILABILITY: must surface post-loop work
 	// even when no emitted fields landed in the result envelope —
 	// every iter may have set scene.Bindings.Stock (real hit OR
-	// fallbackToClip) and zero-out the most-likely-warning surface
-	// by returning a 0-emit result here would falsely trip the
-	// registry's "returned empty output" IsEmpty() check. ClipBindings
-	// already does this (P1 #10, June 2026); bring stock_association
-	// in line.
+	// fallbackToClip). Phase 1 closure shipped Changed:true for
+	// this exact reason.
 	return &PostProcessResult{Changed: true}, nil
 }
-
-// fallbackToClip sets StockBinding.DriveLink from the scene's
-// existing Clip.DriveLink and marks it as a fallback.
-func (p *StockAssociationProcessor) fallbackToClip(scene *scriptpkg.SpecScene) {
-	if scene.Bindings.Clip != nil && scene.Bindings.Clip.DriveLink != "" {
-		scene.Bindings.Stock = &scriptpkg.StockBinding{
-			DriveLink: scene.Bindings.Clip.DriveLink,
-			Fallback:  true,
-		}
-		return
-	}
-	// No clip binding either — leave Stock nil.
-}
-
-// Ensure StockSearchPort is importable (defensive import).
-var _ = fmt.Sprintf
