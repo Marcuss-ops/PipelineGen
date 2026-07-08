@@ -180,20 +180,24 @@ func (r *GenerateVoiceoversRequest) Validate() error {
 func (r *GenerateVoiceoversRequest) ToCommand() *voiceover.GenerateVoiceoversCommand {
 	items := make([]voiceover.VoiceoverItem, len(r.Items))
 	for i, it := range r.Items {
-		// PR-VO-TYPED-PRIMITIVES (July 2026): VoiceoverItem is a
-		// type alias for voiceover.VoiceoverItem (canonical
-		// typed-envelope shape), so the item-to-item copy is a
-		// 1:1 field-for-field pass-through with no conversion
-		// needed at the wire boundary. The API handler's
-		// request-level Validate gate has already enforced the
-		// canonical BCP-47 alphanumeric+hyphen shape on
-		// each it.Language value before this function runs.
-		items[i] = voiceover.VoiceoverItem{
-			Text:     it.Text,
-			Language: it.Language,
-			Voice:    it.Voice,
-			Filename: it.Filename,
-		}
+		// PR-PROMOTE-REQUIRED-FIX (2026-07-08): VoiceoverItem is a
+		// type alias (`type VoiceoverItem = voiceover.VoiceoverItem`)
+		// so the item-to-item copy is a 1:1 field-for-field
+		// pass-through via direct assignment. The previous explicit
+		// 4-field struct literal SILENTLY DROPPED the Required
+		// field (FASE 2, July 2026) — a REQUIRED-failed child whose
+		// item.Required=true reaches the API → the parent would
+		// treat the failure as OPTIONAL (Compute() FASE 1 semantics),
+		// breaking godlike/07 NO-FAKE-AVAILABILITY. ThreadingCampaign
+		// iteration 2: the assignment below is the canonical fix;
+		// future fields added to voiceover.VoiceoverItem also flow
+		// through 1:1 with no additional code at this seam. The
+		// lookup path voiceover.VoiceoverItem{...} is preserved
+		// ONLY at the canonical child-emit site (jobs/fanout.go) so
+		// the field-set drift surface stays narrow at the validate
+		// seam (item.Validate() returns 400 BEFORE invalid input
+		// reaches the fanout loop).
+		items[i] = it
 	}
 
 	return &voiceover.GenerateVoiceoversCommand{
@@ -266,6 +270,15 @@ func (r *GenerateVoiceoversRequest) parentActiveKey() string {
 	}
 	if r.Destination != nil && r.Destination.FolderID != "" {
 		h.Write([]byte(r.Destination.FolderID))
+	}
+	// PR-PROMOTE-REQUIRED-FIX (2026-07-08): only hash Project when
+	// non-empty (back-compat byte-identical for empty Project). Do
+	// NOT remove the `if r.Project != ""` guard — unconditional
+	// append triggers a broker key-rotation storm. Audited by
+	// TestRequest_parentActiveKey_EmptyProjectProducesLegacyHash.
+	if r.Project != "" {
+		h.Write([]byte("|"))
+		h.Write([]byte(r.Project))
 	}
 	return "voiceover:parent:" + hex.EncodeToString(h.Sum(nil))[:16]
 }
