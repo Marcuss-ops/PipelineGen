@@ -62,6 +62,7 @@ func NewProfileRegistry() *WorkerProfileRegistry {
 					"script.generate",
 					"voiceover.generate_item",
 					"image.generate.google",
+					"media.stock",
 				},
 				MaxParallel: 1, // script generation is memory-heavy
 			},

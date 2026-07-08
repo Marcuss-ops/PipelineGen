@@ -2244,3 +2244,144 @@ func TestProcessSegmentUseCase_Execute_FASE5_E2E_IdempotencyReplay(t *testing.T)
 	assert.Len(t, lifecycleStub.calls, 1,
 		"FASE 5 E2E idempotency: media_assets projection invoked once (replay short-circuits)")
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// stubFailingInsertRepo — wraps stubProcessVoRepo, fails InsertTx with a
+// configurable error. All other methods delegate to the inner repo. Used by
+// Test 23 to trigger the orphan-cleanup path when the real finalizer's
+// Step 3 (InsertTx) fails inside the finalize tx.
+// ──────────────────────────────────────────────────────────────────────────────
+
+type stubFailingInsertRepo struct {
+	*stubProcessVoRepo
+	insertErr error
+}
+
+func (r *stubFailingInsertRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
+	return r.insertErr
+}
+
+var _ VoiceoverRepository = (*stubFailingInsertRepo)(nil)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 23: FASE 6 — E2E orphan-cleanup with real finalizer + InsertTx failure
+// ──────────────────────────────────────────────────────────────────────────────
+
+// TestProcessSegmentUseCase_Execute_FASE6_E2E_OrphanCleanup_RealFinalizer
+// exercises the full orphan-cleanup path end-to-end with the REAL
+// voiceoverFinalizer wired against in-memory SQLite. Stage 3 (Drive
+// upload) succeeds → DriveFileID is set. Stage 4 (Finalize) fails
+// because InsertTx returns an error. The use case's orphan-cleanup
+// path opens a SEPARATE tx (the Finalize tx was rolled back) and
+// enqueues a voiceover.cleanup.requested outbox event.
+//
+// Asserted invariants:
+//  1. Execute returns error with "finalize_failed:" prefix.
+//  2. DriveFileID is set (Stage 3 succeeded before Stage 4 failed).
+//  3. Exactly 1 cleanup event was emitted (in a separate tx).
+//  4. Cleanup event carries the correct voiceoverID + driveFileID.
+//  5. oldLocalPaths contains both localPath and cleanedPath.
+//  6. The voiceover row is NOT present in SQLite (Finalize tx rolled back).
+//  7. No index event was emitted (index event requires successful InsertTx).
+//  8. Media_assets projection was NOT invoked (Step 4 runs after InsertTx).
+//  9. Publisher was invoked exactly once (Stage 3 ran successfully).
+func TestProcessSegmentUseCase_Execute_FASE6_E2E_OrphanCleanup_RealFinalizer(t *testing.T) {
+	db := openProcessTestDB(t)
+	baseRepo := &stubProcessVoRepo{db: db}
+	repo := &stubFailingInsertRepo{
+		stubProcessVoRepo: baseRepo,
+		insertErr:         fmt.Errorf("sqlite: simulated UNIQUE constraint violation on voiceovers"),
+	}
+	outboxStub := &stubTxOutboxEnqueuer{}
+	lifecycleStub := &stubLifecycleProjectionUpserter{}
+
+	finalizer := NewVoiceoverFinalizer(
+		repo,
+		outboxStub,
+		lifecycleStub,
+		zap.NewNop(),
+	)
+
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath:   "/tmp/vo/fase6-orphan.mp3",
+			CleanedPath: "/tmp/vo/fase6-orphan-cleaned.mp3",
+			Voice:       "en-US-RogerNeural",
+			FileHash:    "hash-fase6-001",
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-fase6-orphan"}
+
+	dest := &stubProcessDestResolver{folderID: "dest-fase6"}
+	resolvedDest, err := dest.Resolve(context.Background(), &DestinationRequest{FolderID: "dest-fase6"})
+	require.NoError(t, err)
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: repo,
+		Finalizer:           finalizer,
+		TxOutboxEnqueuer:    outboxStub,
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		JobID:    "job-fase6-orphan",
+		ID:       "vo-fase6-orphan",
+		Language: "en",
+		Text:     "This voiceover will be orphaned by a failing InsertTx.",
+		TextHash: "hash-fase6-text-001",
+		Voice:    "en-US-RogerNeural",
+		Filename: "fase6-orphan.mp3",
+		Strategy: "replace",
+		Dest:     resolvedDest,
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+
+	// ── Assertion 1: Stage 4 Failed ────────────────────────────
+	require.Error(t, err, "FASE 6 E2E: Finalize failure (InsertTx) MUST return error")
+	require.NotNil(t, out)
+	assert.Equal(t, StatusFailed, out.Status)
+	assert.Contains(t, out.Error, "finalize_failed:")
+
+	// ── Assertion 2: Stage 3 Succeeded ─────────────────────────
+	assert.Equal(t, "drive-fase6-orphan", out.DriveFileID,
+		"FASE 6 E2E: DriveFileID must be set (Stage 3 succeeded before Stage 4 failed)")
+
+	// ── Assertion 3: Cleanup event emitted ─────────────────────
+	require.Len(t, outboxStub.cleanupEvents, 1,
+		"FASE 6 E2E: exactly 1 cleanup event must be emitted for the orphaned Drive file")
+	ce := outboxStub.cleanupEvents[0]
+	assert.Equal(t, "vo-fase6-orphan", ce.voiceoverID)
+	assert.Equal(t, "", ce.oldDriveFileID,
+		"FASE 6 E2E: oldDriveFileID must be empty (no prior row existed)")
+	assert.Equal(t, "drive-fase6-orphan", ce.newDriveFileID,
+		"FASE 6 E2E: newDriveFileID must be the orphaned Drive file ID")
+	assert.NotNil(t, ce.tx, "FASE 6 E2E: cleanup event must carry a non-nil tx (separate BeginTx)")
+
+	// ── Assertion 4: oldLocalPaths contain both paths ───────────
+	assert.Contains(t, ce.oldLocalPaths, "/tmp/vo/fase6-orphan.mp3",
+		"FASE 6 E2E: oldLocalPaths must contain the TTS local path")
+	assert.Contains(t, ce.oldLocalPaths, "/tmp/vo/fase6-orphan-cleaned.mp3",
+		"FASE 6 E2E: oldLocalPaths must contain the cleaned path")
+
+	// ── Assertion 5: Row NOT in SQLite (tx rolled back) ────────
+	var count int
+	err = db.QueryRow(`SELECT COUNT(*) FROM voiceovers WHERE id = ?`, "vo-fase6-orphan").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count,
+		"FASE 6 E2E: voiceover row must NOT be present in SQLite (Finalize tx was rolled back)")
+
+	// ── Assertion 6: No index event ────────────────────────────
+	assert.Len(t, outboxStub.indexEvents, 0,
+		"FASE 6 E2E: no index event must be emitted (InsertTx failed before Step 5)")
+
+	// ── Assertion 7: Media_assets NOT invoked ───────────────────
+	assert.Len(t, lifecycleStub.calls, 0,
+		"FASE 6 E2E: media_assets projection must NOT be invoked (UpsertVoiceoverProjectionTx runs after InsertTx)")
+
+	// ── Assertion 8: Publisher invoked exactly once ─────────────
+	require.Len(t, pub.published, 1,
+		"FASE 6 E2E: Publisher must be invoked exactly once (Stage 3 succeeded)")
+}
