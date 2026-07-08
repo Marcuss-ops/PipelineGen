@@ -2,6 +2,7 @@ package stockpipeline
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -350,6 +351,249 @@ func TestBuildFinalizationRequest_Idempotent(t *testing.T) {
 	}
 	if r1.Artifacts[1].IdempotencyKey != r3.Artifacts[1].IdempotencyKey {
 		t.Fatalf("chunk idempotency key drift: %q vs %q", r1.Artifacts[1].IdempotencyKey, r3.Artifacts[1].IdempotencyKey)
+	}
+}
+
+// ── ArtifactMetadata round-trip + Source='stock' ─────────────────────
+
+// TestBuildFinalizationRequest_ArtifactMetadata_All22FieldsRoundTrip
+// asserts that BuildFinalizationRequest populates ALL 22 metadata keys
+// on each chunk's PublishedArtifact.ArtifactMetadata map AND sets
+// Source="stock" on both metadata and chunk artifacts. This is the
+// canonical regression guard for the semantic-enrichment bridge:
+// without it, ChunkState's Title/Round/Tags/Category/SourceProvider/
+// DrivePath/etc. are silently lost at the PublishedArtifact boundary
+// and the Qdrant PayloadMapper has no rich data.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the 22-field list is EXHAUSTIVE —
+// if a future PR adds a new field to the chunkMeta map, this test
+// must be extended or it will silently pass with the field missing
+// (the test asserts PRESENCE, not ABSENCE of extra keys).
+func TestBuildFinalizationRequest_ArtifactMetadata_All22FieldsRoundTrip(t *testing.T) {
+	// Build a ChunkState with ALL typed enrichment fields populated.
+	chunk := ChunkState{
+		Index:             2,
+		ArtifactID:        "stock:fp-test:chunk:2",
+		Filename:          "round-7.mp4",
+		LocalPath:         "/tmp/c2.mp4",
+		SourceURL:         "https://www.youtube.com/watch?v=YE7VzlLtp-4",
+		SourceProvider:    "youtube",
+		SourceVideoID:     "YE7VzlLtp-4",
+		TotalChunks:       8,
+		DrivePath:         "https://drive.google.com/file/d/abc123",
+		PolicyVersion:     "stock_timestamp_v1",
+		StartSec:          32.0,
+		EndSec:            51.0,
+		Title:             "La fase di studio e la velocita di Pacquiao",
+		Description:       "Round 7: Pacquiao's jab-and-move sequence",
+		Round:             7,
+		Tags:              []string{"boxing", "pacquiao", "broner"},
+		Category:          "Boxe",
+		Slug:              "round-7",
+		SHA256:            fakeSHA(2),
+		SizeBytes:         4096,
+		RemoteFileID:      "drive-2",
+		RemoteWebViewLink: "https://drive.google.com/file/d/abc123/view",
+	}
+	m := MetadataState{
+		LocalPath:         "/tmp/m.json",
+		SHA256:            fakeSHA(99),
+		SizeBytes:         512,
+		RemoteFileID:      "drive-m",
+		RemoteWebViewLink: "https://drive.google.com/file/d/meta/view",
+	}
+
+	req, err := BuildFinalizationRequest(
+		"job-test-42",
+		validLease("job-test-42"),
+		[]byte(`{"run":"test"}`),
+		[]ChunkState{chunk},
+		m,
+		"fp-round-trip",
+	)
+	if err != nil {
+		t.Fatalf("BuildFinalizationRequest: %v", err)
+	}
+	if len(req.Artifacts) != 2 {
+		t.Fatalf("artifacts count=%d, want 2 (1 metadata + 1 chunk)", len(req.Artifacts))
+	}
+
+	// ── Assert Source='stock' on BOTH artifacts ────────────────────
+	for i, a := range req.Artifacts {
+		if a.Source != "stock" {
+			t.Errorf("artifact[%d] (%s) Source=%q, want %q", i, a.ArtifactID, a.Source, "stock")
+		}
+	}
+
+	// ── Assert chunk artifact has all 22+ metadata keys ────────────
+	chunkArt := req.Artifacts[1] // index 1 = first chunk (0 = metadata)
+	meta := chunkArt.ArtifactMetadata
+	if meta == nil {
+		t.Fatal("chunk ArtifactMetadata is nil — bridge is broken")
+	}
+
+	// The 22 deterministic keys (always populated for non-zero values).
+	expectedKeys := map[string]any{
+		"title":               chunk.Title,
+		"description":         chunk.Description,
+		"start_sec":           chunk.StartSec,
+		"end_sec":             chunk.EndSec,
+		"source_url":          chunk.SourceURL,
+		"source_provider":     chunk.SourceProvider,
+		"source_video_id":     chunk.SourceVideoID,
+		"total_chunks":        chunk.TotalChunks,
+		"drive_path":          chunk.DrivePath,
+		"policy_version":      chunk.PolicyVersion,
+		"indexing_status":     "INDEXING_PENDING",
+		"chunk_index":         chunk.Index,
+		"job_id":              "job-test-42",
+		"run_fingerprint":     "fp-round-trip",
+		"chunk_filename":      chunk.Filename,
+		"chunk_duration_sec":  19.0, // end_sec - start_sec = 51 - 32
+		"chunk_drive_file_id": chunk.RemoteFileID,
+		"chunk_drive_link":    chunk.RemoteWebViewLink,
+		"timestamp_title":     chunk.Title,
+		"timestamp_slug":      chunk.Slug,
+		"timestamp_start_sec": chunk.StartSec,
+		"timestamp_end_sec":   chunk.EndSec,
+	}
+	// The 4 conditional keys (populated only when non-zero/non-empty).
+	expectedConditional := map[string]any{
+		"round":    chunk.Round,
+		"tags":     chunk.Tags,
+		"category": chunk.Category,
+		"slug":     chunk.Slug,
+	}
+
+	// Assert all 22 deterministic keys are present with correct values.
+	for key, want := range expectedKeys {
+		got, ok := meta[key]
+		if !ok {
+			t.Errorf("chunk ArtifactMetadata missing key %q (want %v)", key, want)
+			continue
+		}
+		// Use fmt.Sprintf for float64 comparison (JSON round-trip may
+		// change the concrete type from float64 to any-number).
+		if fmt.Sprintf("%v", got) != fmt.Sprintf("%v", want) {
+			t.Errorf("chunk ArtifactMetadata[%q] = %v (%T), want %v (%T)",
+				key, got, got, want, want)
+		}
+	}
+
+	// Assert all 4 conditional keys are present (values are non-zero).
+	for key, want := range expectedConditional {
+		got, ok := meta[key]
+		if !ok {
+			t.Errorf("chunk ArtifactMetadata missing conditional key %q (want %v)", key, want)
+			continue
+		}
+		if fmt.Sprintf("%v", got) != fmt.Sprintf("%v", want) {
+			t.Errorf("chunk ArtifactMetadata[%q] = %v (%T), want %v (%T)",
+				key, got, got, want, want)
+		}
+	}
+
+	// ── Assert chunk_duration_sec is end_sec - start_sec ──────────
+	dur, ok := meta["chunk_duration_sec"]
+	if !ok {
+		t.Fatal("chunk_duration_sec missing")
+	}
+	if durF, ok := dur.(float64); ok {
+		if durF != 19.0 {
+			t.Errorf("chunk_duration_sec=%.1f, want 19.0 (51-32)", durF)
+		}
+	} else {
+		t.Errorf("chunk_duration_sec is %T, want float64", dur)
+	}
+
+	// ── Assert ArtifactID convention ──────────────────────────────
+	if chunkArt.ArtifactID != "stock:fp-test:chunk:2" {
+		t.Errorf("chunk ArtifactID=%q, want %q", chunkArt.ArtifactID, "stock:fp-test:chunk:2")
+	}
+	if chunkArt.Kind != finalization.KindVideo {
+		t.Errorf("chunk Kind=%v, want KindVideo", chunkArt.Kind)
+	}
+}
+
+// TestBuildFinalizationRequest_ArtifactMetadata_ZeroFieldsOmitted
+// asserts that when Round=0, Tags=nil, Category="", Slug="",
+// the 4 conditional keys are NOT present in the chunk metadata map.
+// This locks the omitempty contract: deterministic-planner runs
+// produce the same wire shape as the pre-PR baseline.
+func TestBuildFinalizationRequest_ArtifactMetadata_ZeroFieldsOmitted(t *testing.T) {
+	chunk := ChunkState{
+		Index:             0,
+		ArtifactID:        "stock:fp-zero:chunk:0",
+		Filename:          "chunk_000.mp4",
+		LocalPath:         "/tmp/c0.mp4",
+		StartSec:          10.0,
+		EndSec:            20.0,
+		Title:             "test",
+		SHA256:            fakeSHA(0),
+		SizeBytes:         1024,
+		RemoteFileID:      "drive-0",
+		RemoteWebViewLink: "https://drive/0",
+		// Round=0, Tags=nil, Category="", Slug="" — zero values
+	}
+	m := MetadataState{
+		LocalPath: "/tmp/m.json", SHA256: fakeSHA(99),
+		SizeBytes: 512, RemoteFileID: "drive-m",
+	}
+
+	req, err := BuildFinalizationRequest(
+		"job-zero", validLease("job-zero"),
+		[]byte("{}"), []ChunkState{chunk}, m, "fp-zero",
+	)
+	if err != nil {
+		t.Fatalf("BuildFinalizationRequest: %v", err)
+	}
+
+	chunkMeta := req.Artifacts[1].ArtifactMetadata
+	for _, key := range []string{"round", "tags", "category", "slug"} {
+		if _, ok := chunkMeta[key]; ok {
+			t.Errorf("chunk ArtifactMetadata[%q] should be absent when zero-value, but was present with value %v",
+				key, chunkMeta[key])
+		}
+	}
+}
+
+// TestBuildFinalizationRequest_MetadataArtifactHasNoArtifactMetadata
+// asserts that the metadata.json artifact (KindMetadata) does NOT
+// carry an ArtifactMetadata map — the enrichment bridge only applies
+// to chunk artifacts (KindVideo), not the run-level metadata.json.
+// This prevents the AssetTxFinalizer from merging spurious keys into
+// the metadata.json artifact's media_assets row.
+func TestBuildFinalizationRequest_MetadataArtifactHasNoArtifactMetadata(t *testing.T) {
+	chunk := ChunkState{
+		Index: 0, ArtifactID: "stock:fp-meta:chunk:0",
+		Filename: "c.mp4", LocalPath: "/tmp/c.mp4",
+		SHA256: fakeSHA(0), SizeBytes: 1024,
+		RemoteFileID: "drive-0", RemoteWebViewLink: "https://drive/0",
+	}
+	m := MetadataState{
+		LocalPath: "/tmp/m.json", SHA256: fakeSHA(99),
+		SizeBytes: 512, RemoteFileID: "drive-m",
+	}
+
+	req, err := BuildFinalizationRequest(
+		"job-meta", validLease("job-meta"),
+		[]byte("{}"), []ChunkState{chunk}, m, "fp-meta",
+	)
+	if err != nil {
+		t.Fatalf("BuildFinalizationRequest: %v", err)
+	}
+
+	// Artifact 0 = metadata.json
+	metaArt := req.Artifacts[0]
+	if metaArt.Kind != finalization.KindMetadata {
+		t.Fatalf("artifact[0] Kind=%v, want KindMetadata", metaArt.Kind)
+	}
+	if metaArt.ArtifactMetadata != nil {
+		t.Errorf("metadata artifact ArtifactMetadata should be nil, got %v", metaArt.ArtifactMetadata)
+	}
+	// Source should still be 'stock' on the metadata artifact.
+	if metaArt.Source != "stock" {
+		t.Errorf("metadata artifact Source=%q, want %q", metaArt.Source, "stock")
 	}
 }
 
