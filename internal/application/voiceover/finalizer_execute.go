@@ -58,7 +58,9 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	// this idempotency_key, the gate short-circuits the entire 6-step
 	// sequence — the row IS the canonical outcome. The UNIQUE INDEX
 	// idx_voiceovers_idempotency (migration 132) enforces ONE row per
-	// non-empty key; the gate reads the matched row for identity.
+	// non-empty key; the coarser idx_voiceovers_job_language (migration
+	// 133) enforces ONE row per (job_id, language) pair at the DB
+	// structural level. The gate reads the matched row for identity.
 	//
 	// godlike/07 idempotency contract:
 	//   - Empty IdempotencyKey → skip gate (backward-compat with
