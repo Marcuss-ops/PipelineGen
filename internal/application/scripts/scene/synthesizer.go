@@ -45,6 +45,22 @@ type SceneSynthesizer struct{}
 // callers.
 func NewSceneSynthesizer() *SceneSynthesizer { return &SceneSynthesizer{} }
 
+// CleanProseFallbackText is the exported thin wrapper around the
+// package-internal cleanProseFallbackText helper. It exists so
+// external test packages can lock the canonical JSON-envelope
+// stripping contract without going through the SceneSynthesizer
+// orchestration path (the §4 test in the pasted plan exercises
+// this surface directly).
+//
+// godlike/06 SSOT: cleanProseFallbackText stays UNEXPORTED (the
+// package-internal seam is the canonical write surface per
+// godlike/07 minimum-blast-radius); this wrapper is a 1-line
+// delegation that preserves the exact same behaviour byte-for-byte
+// (no transformation, no validation, no logging side-effect).
+func CleanProseFallbackText(text string) string {
+	return cleanProseFallbackText(text)
+}
+
 // FromProse heuristically partitions the supplied prose into N
 // scenes using sentence-aware balanced distribution (sentences are
 // grouped into contiguous chunks sized by word count, with a

@@ -41,6 +41,25 @@ func (f *fakeStockSearch) SearchStock(_ context.Context, q string, _ int) ([]por
 	return f.hits, nil
 }
 
+// SearchAssets is the no-op stub that satisfies the embedded
+// ports.AssetSearchPort interface (which ports.StockSearchPort
+// embeds). The binder under test routes through the legacy
+// SearchStock seam, so SearchAssets is not exercised — the no-op
+// return preserves the existing test surface byte-for-byte.
+//
+// godlike/07 minimum-blast-radius: same pattern as the
+// processor_stock_association_test.go::fakeStockSearch.SearchAssets
+// fix (PR-TRANSLATE-SCRIPT-SPEC-STOCK-ASSOCIATION-CHANGED-CONTRACT
+// ship_sha 648e778b1). Pre-existing carry-forward: ports.StockSearchPort
+// embeds ports.AssetSearchPort, and the canonical fix is to either
+// (a) add the no-op stub here, or (b) keep the legacy
+// SearchStock-only surface and forward through a dedicated
+// ports.ClipSearchPort sub-port (forward-pointer
+// PR-TRANSLATE-SCRIPT-SPEC-PORT-EMBED, deadline 2026-08-15).
+func (f *fakeStockSearch) SearchAssets(_ context.Context, _ ports.AssetSearchQuery) ([]ports.AssetSearchHit, error) {
+	return nil, nil
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 func makeScenes(n int) []scriptpkg.SpecScene {
