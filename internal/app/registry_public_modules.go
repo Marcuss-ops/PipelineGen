@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/admin"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
@@ -250,5 +251,38 @@ func registerSearchQueriesCapability(registry *module.Registry, log *zap.Logger,
 	), WithRegistrationPoint("register.SearchQueries")); err != nil {
 		return fmt.Errorf("wire registry: search_queries module: %w", err)
 	}
+	return nil
+}
+
+// registerAdminModule wires the /api/admin/* capability via admin.Build.
+//
+// The admin module hosts operational readiness endpoints (Drive canary).
+// Routes are protected by RequireAdminToken middleware using the
+// canonical *config.Config as AuthSecurityPort.
+//
+// Step 3 of YouTube Clips Deploy Readiness action plan (July 2026).
+func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+	if root.Drive == nil || root.Drive.Publisher == nil {
+		log.Warn("admin module skipped: Drive.Publisher not wired")
+		return nil
+	}
+
+	// *config.Config satisfies middleware.AuthSecurityPort via its
+	// EnableAuth() / AdminToken() / WorkerToken() methods.
+	adminDesc, err := admin.Build(admin.Dependencies{
+		Publisher:   root.Drive.Publisher,
+		EnabledFunc: func() bool { return true },
+		ModuleOpts:  []module.RouteModuleOption{module.WithMiddleware(middleware.RequireAdminToken(cfg, log))},
+		Logger:      log,
+	})
+	if err != nil {
+		return fmt.Errorf("wire registry: admin: %w", err)
+	}
+
+	if err := tryRegisterModuleStrict(registry, log, adminDesc, WithRegistrationPoint("register.Admin")); err != nil {
+		return fmt.Errorf("wire registry: admin: %w", err)
+	}
+
+	log.Info("admin module registered (drive canary: /api/admin/drive/canary-upload)")
 	return nil
 }
