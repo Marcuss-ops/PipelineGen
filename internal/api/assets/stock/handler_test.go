@@ -327,6 +327,189 @@ func TestSearchAndRun_AcceptsDriveURLsOnly_Returns200(t *testing.T) {
 	}
 }
 
+// ── Response contract: minimal {job_id, message, status_url} ────────
+//
+// PR-STOCK-NO-PLACEHOLDERS (2026-07-08): the pre-PR response shape
+// included `drive: {path: "", folder_id: "", file_id: "", link: ""}`
+// + `indexed: false` + `location: {category: "", subject: "",
+// provider: "", style: ""}` placeholders. These were the canonical
+// silent-success class — a caller reading `drive: {path: ""}` saw a
+// shape that LOOKED populated but was functionally empty, forcing
+// them to poll status_url anyway. Post-PR the response carries ONLY
+// {job_id, message, status_url} (status_url is conditional on
+// job_id != ""). The tests below pin this contract: every silent-
+// success placeholder key MUST be absent from the response body.
+
+// forbiddenPlaceholders enumerates the 3 pre-PR placeholder keys that
+// MUST NOT appear in the async response body. The constant lives in
+// the test file (NOT the production package) because the absence
+// assertion is a contract guard — the production code should NEVER
+// add any of these keys back without a deliberate godlike/07 review.
+var forbiddenPlaceholders = []string{"drive", "indexed", "location"}
+
+func TestSearchAndRun_ResponseExcludesSilentSuccessPlaceholders(t *testing.T) {
+	// godlike/07 NO-FAKE-AVAILABILITY: the response carries ONLY the
+	// 3 canonical keys (job_id, message, status_url) — no empty
+	// placeholders. Pinning this contract locks out future
+	// regressions where a refactor re-adds silent-success class
+	// fields "for shape stability".
+	handler := newTestHandler("job_no_placeholders")
+	rec, body := runPOST(t, handler.SearchAndRun, map[string]any{
+		"queries":        []map[string]any{{"q": "boxing"}},
+		"total_minutes":  1,
+		"clip_duration":  10,
+		"chunk_duration": 10,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %v)", rec.Code, body)
+	}
+	// 3 required keys MUST be present.
+	for _, key := range []string{"job_id", "message", "status_url"} {
+		if _, ok := body[key]; !ok {
+			t.Errorf("required key %q missing from response body: %v", key, body)
+		}
+	}
+	// 3 forbidden placeholder keys MUST be absent.
+	for _, key := range forbiddenPlaceholders {
+		if _, ok := body[key]; ok {
+			t.Errorf("silent-success placeholder %q MUST NOT appear in response body (godlike/07 NO-FAKE-AVAILABILITY): got %v", key, body[key])
+		}
+	}
+	// Defensive: also assert status_url points to the canonical
+	// job-status endpoint so a future drift in the URL pattern
+	// surfaces as a test failure (not a silent contract change).
+	if statusURL, _ := body["status_url"].(string); statusURL != "/api/jobs/job_no_placeholders/full" {
+		t.Errorf("status_url = %q, want %q", statusURL, "/api/jobs/job_no_placeholders/full")
+	}
+}
+
+func TestRunStockPipeline_ResponseExcludesSilentSuccessPlaceholders(t *testing.T) {
+	// Same contract pin for the /run endpoint. A future refactor
+	// that re-adds the placeholders to ONLY ONE of the two handlers
+	// would surface here (the contracts are per-handler not shared
+	// because the wire-shape differences are pre-validated in
+	// applyStockDefaults).
+	handler := newTestHandler("job_run_no_placeholders")
+	rec, body := runPOST(t, handler.RunStockPipeline, map[string]any{
+		"direct_urls":    []string{"https://example.com/video.mp4"},
+		"total_minutes":  1,
+		"clip_duration":  10,
+		"chunk_duration": 10,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %v)", rec.Code, body)
+	}
+	for _, key := range []string{"job_id", "message", "status_url"} {
+		if _, ok := body[key]; !ok {
+			t.Errorf("required key %q missing from response body: %v", key, body)
+		}
+	}
+	for _, key := range forbiddenPlaceholders {
+		if _, ok := body[key]; ok {
+			t.Errorf("silent-success placeholder %q MUST NOT appear in response body (godlike/07 NO-FAKE-AVAILABILITY): got %v", key, body[key])
+		}
+	}
+	if statusURL, _ := body["status_url"].(string); statusURL != "/api/jobs/job_run_no_placeholders/full" {
+		t.Errorf("status_url = %q, want %q", statusURL, "/api/jobs/job_run_no_placeholders/full")
+	}
+}
+
+// ── Response contract: sync mode omits status_url ──────────────────
+//
+// PR-STOCK-NO-PLACEHOLDERS (2026-07-08) round-2 SHOULD-FIX:
+// the conditional `if jobID != ""` in BOTH handlers is the only
+// remaining shape branch that wasn't pinned. A future refactor that
+// hoists `status_url` out of the `if` (or moves the `else` branch's
+// message assignment) would silently break the contract — a sync
+// caller would see `status_url: ""` (silent-success class, the
+// empty string IS a placeholder).
+//
+// These tests pin: when the enqueuer returns an empty jobID
+// (canonical "sync mode success" signal), the response carries
+// ONLY {job_id: "", message: "Stock pipeline run completed"} and
+// MUST NOT include a `status_url` key.
+
+// newSyncHandler builds a Handler with a stub use case whose service
+// runner is wired (the canonical sync-mode path) and the enqueuer is
+// nil. The sync runner returns a (result, nil) pair; the use case
+// resolves to empty jobID + "Stock pipeline run completed" message —
+// the canonical sync-completion signal.
+//
+// godlike/06 SSOT: mirrors the wiring pattern of
+// TestRunStockPipeline_SyncMode_EnablesPersist (the canonical sync
+// test). The fakeStockServiceRunner type is defined above in the
+// same file — no duplicate definition.
+func newSyncHandler() *Handler {
+	usecase := stockpipeline.NewStockUseCase(&fakeStockServiceRunner{}, nil, nil)
+	return NewHandler(usecase, nil, nil, nil)
+}
+
+func TestSearchAndRun_SyncMode_ResponseOmitsStatusURL(t *testing.T) {
+	handler := newSyncHandler()
+	rec, body := runPOST(t, handler.SearchAndRun, map[string]any{
+		"queries":        []map[string]any{{"q": "boxing"}},
+		"total_minutes":  1,
+		"clip_duration":  10,
+		"chunk_duration": 10,
+		"async":          false,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %v)", rec.Code, body)
+	}
+	// job_id MUST be the empty string (sync completion signal).
+	if gotID, ok := body["job_id"].(string); !ok || gotID != "" {
+		t.Errorf("sync mode: job_id = %q, want empty string", gotID)
+	}
+	// message MUST be the sync-completion string.
+	if msg, _ := body["message"].(string); msg != "Stock pipeline run completed" {
+		t.Errorf("sync mode: message = %q, want %q", msg, "Stock pipeline run completed")
+	}
+	// status_url MUST be ABSENT (not "" — a missing key, not an
+	// empty value). The if-branch conditional is the canonical
+	// surface; surfacing status_url with empty value would
+	// re-introduce the silent-success class for sync callers.
+	if _, ok := body["status_url"]; ok {
+		t.Errorf("sync mode: status_url MUST be absent (empty string is silent-success class), got %v", body["status_url"])
+	}
+	// Sanity: the forbidden placeholders remain absent in sync mode.
+	for _, key := range forbiddenPlaceholders {
+		if _, ok := body[key]; ok {
+			t.Errorf("silent-success placeholder %q leaked into sync response: %v", key, body[key])
+		}
+	}
+}
+
+func TestRunStockPipeline_SyncMode_ResponseOmitsStatusURL(t *testing.T) {
+	// Same contract pin for /run in sync mode. The two handlers
+	// share the same response shape contract — if a future refactor
+	// breaks one but not the other, only the broken one surfaces.
+	handler := newSyncHandler()
+	rec, body := runPOST(t, handler.RunStockPipeline, map[string]any{
+		"direct_urls":    []string{"https://example.com/video.mp4"},
+		"total_minutes":  1,
+		"clip_duration":  10,
+		"chunk_duration": 10,
+		"async":          false,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body: %v)", rec.Code, body)
+	}
+	if gotID, ok := body["job_id"].(string); !ok || gotID != "" {
+		t.Errorf("sync mode: job_id = %q, want empty string", gotID)
+	}
+	if msg, _ := body["message"].(string); msg != "Stock pipeline run completed" {
+		t.Errorf("sync mode: message = %q, want %q", msg, "Stock pipeline run completed")
+	}
+	if _, ok := body["status_url"]; ok {
+		t.Errorf("sync mode: status_url MUST be absent, got %v", body["status_url"])
+	}
+	for _, key := range forbiddenPlaceholders {
+		if _, ok := body[key]; ok {
+			t.Errorf("silent-success placeholder %q leaked into sync response: %v", key, body[key])
+		}
+	}
+}
+
 // ── Defaulting behaviour ────────────────────────────────────────────
 
 func TestSearchAndRun_DefaultsTotalMinutesToFive(t *testing.T) {
