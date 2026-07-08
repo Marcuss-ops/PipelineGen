@@ -146,6 +146,14 @@ func buildVoiceoverService(
 	//   - voLifecycle:     *lifecycle.Service → LifecycleProjectionUpserter
 	//                       via voiceoverProjectionAdapter
 	//   - log:             *zap.Logger
+	// FASE 8 (July 2026): wrap the translation port with bounded
+	// concurrency (Ollama semaphore) and per-call timeout BEFORE
+	// the closure captures it. The closure's nil-guard still works
+	// when translationPort is nil (rate-limited wrapper is skipped).
+	if translationPort != nil {
+		translationPort = newRateLimitedTranslator(translationPort, cfg.Voiceover, log)
+	}
+
 	// Build translator closure from translationPort (canonical Fase 9
 	// step 4 surface). The closure adapts the canonical 1-method port
 	// (Translate(ctx, cmd TranslationCommand)) to the legacy 3-arg
@@ -205,16 +213,25 @@ func buildVoiceoverService(
 		log.Warn("voiceover: cfg.Paths.PythonScriptsDir is empty; audioasset.NewProcessor will be called with an empty string (TTS invocation will fail at runtime)")
 	}
 	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
-	ttsProvider := newUseCaseTTSAdapter(audioProcessor)
+	var ttsProvider voiceover.TTSProvider = newUseCaseTTSAdapter(audioProcessor)
+
+	// FASE 8 (July 2026): wrap adapters with bounded concurrency,
+	// per-call timeouts, and Drive-upload retry. The voiceover package
+	// stays unaware of rate-limiting; the composition root swaps the
+	// raw adapters with these wrappers in-place.
+	ttsProvider = newRateLimitedTTSProvider(ttsProvider, cfg.Voiceover, log)
 
 	// Azione #1 (July 2026): construct the shared per-item pipeline
 	// runner. The legacy batch path (process.go::processLanguage) now
 	// delegates to ProcessSegmentUseCase.Execute instead of calling
 	// synthesizeStage/destinationStage/finalizeStage inline.
+	//
+	// FASE 8: Publisher wrapped with rate-limiting + retry.
+	voPublisher := newRateLimitedPublisher(newUseCasePublisherAdapter(publisher, log), cfg.Voiceover, log)
 	processSeg := voiceover.NewProcessSegmentUseCase(voiceover.ProcessSegmentDeps{
 		TTSProvider:         ttsProvider,
 		AudioPostProcessor:  newUseCaseAudioAdapter(log),
-		Publisher:           newUseCasePublisherAdapter(publisher, log),
+		Publisher:           voPublisher,
 		VoiceoverRepository: voRepoAdapter,
 		Finalizer:           finalizer,
 		Logger:              log,
@@ -266,7 +283,9 @@ func buildVoiceoverService(
 		// retired; Publisher does NOT write to SQLite, does NOT run a
 		// dedupe gate, does NOT touch media_assets (finalizeStage
 		// owns the per-item tx).
-		publisherAdapter := newUseCasePublisherAdapter(publisher, log)
+		// FASE 8: wrapped with rate-limiting + retry (same instance
+		// as the batch path's voPublisher above — shared semaphore).
+		publisherAdapter := voPublisher
 
 		// Adapter: AudioPostProcessor port — silence-removal bridge
 		// built on the canonical ffmpeg.RemoveSilence closure. Nil-safe
