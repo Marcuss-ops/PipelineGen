@@ -51,14 +51,15 @@ package voiceover
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
-	"go.uber.org/zap"
-
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+	"go.uber.org/zap"
 )
 
 // BuildVoiceoverIdempotencyKey derives the deterministic retry-safe
@@ -242,6 +243,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		return nil, fmt.Errorf("ProcessSegmentUseCase.Execute: nil input")
 	}
 	if cmd.Dest == nil || cmd.Dest.FolderID == "" {
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out := &VoiceoverItemResult{
 			Language: cmd.Language,
 			Status:   StatusFailed,
@@ -258,6 +260,35 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		Status:   StatusFailed,
 	}
 
+	// ── FASE 5 structured logging + metrics helper ──────────────────
+	// stageTiming returns a closure that logs stage start/completed
+	// and observes the duration histogram. The deferred closure
+	// captures the stage name and start time.
+	log := u.deps.Logger
+	stageTiming := func(stage string) func(status string) {
+		start := time.Now()
+		logFields := []zap.Field{
+			zap.String("stage", stage),
+			zap.String("job_id", cmd.RequestID),
+			zap.String("asset_id", cmd.ID),
+			zap.String("language", string(cmd.Language)),
+		}
+		if cmd.Project != "" {
+			logFields = append(logFields, zap.String("project", cmd.Project))
+		}
+		log.Info("pipeline_stage_started", logFields...)
+		return func(status string) {
+			dur := time.Since(start).Seconds()
+			log.Info("pipeline_stage_completed",
+				append(logFields,
+					zap.Float64("duration_ms", dur*1000),
+					zap.String("status", status),
+				)...,
+			)
+			observability.VoiceoverStageDuration.WithLabelValues(stage).Observe(dur)
+		}
+	}
+
 	// Stage 1: TTSProvider.Synthesize.
 	// P0.2 Fase 2c (July 2026): RemoveSilence is ALWAYS false here.
 	// AudioPostProcessor owns silence removal (Stage 2), not the TTS
@@ -265,6 +296,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// cause the TTS bridge to strip silence inline, and then
 	// AudioPostProcessor would re-process an already-cleaned file —
 	// double-processing that wastes CPU and risks audio artifacts.
+	emitTTS := stageTiming("tts")
 	ttsOut, err := u.deps.TTSProvider.Synthesize(ctx, TTSInput{
 		Text:          cmd.Text,
 		Language:      cmd.Language,
@@ -274,9 +306,13 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		RemoveSilence: false, // P0.2 Fase 2c: never delegate to TTS
 	})
 	if err != nil {
+		emitTTS("failed")
+		observability.TTSFailuresTotal.Inc()
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.Error = fmt.Sprintf("tts_failed: %v", err)
 		return out, err
 	}
+	emitTTS("completed")
 	out.LocalPath = ttsOut.LocalPath
 	out.CleanedPath = ttsOut.CleanedPath
 	if ttsOut.Voice != "" {
@@ -286,21 +322,26 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 
 	// Stage 2: optional AudioPostProcessor (silence removal). Nil-safe.
 	if cmd.RemoveSilence && u.deps.AudioPostProcessor != nil && ttsOut.LocalPath != "" {
+		emitPost := stageTiming("audio_post")
 		postOut, err := u.deps.AudioPostProcessor.Process(ctx, AudioPostInput{
 			LocalPath: ttsOut.LocalPath,
 			OutputDir: cmd.Dest.FolderPath,
 			Filename:  cmd.Filename,
 		})
 		if err != nil {
+			emitPost("failed")
+			observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 			out.Error = fmt.Sprintf("audio_post_process_failed: %v", err)
 			return out, err
 		}
+		emitPost("completed")
 		if postOut.CleanedPath != "" {
 			out.CleanedPath = postOut.CleanedPath
 		}
 	}
 
 	if out.LocalPath == "" && out.CleanedPath == "" {
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.Error = "no_local_payload: TTSProvider + AudioPostProcessor produced no local path"
 		return out, fmt.Errorf("%s", out.Error)
 	}
@@ -354,6 +395,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// dropped — the adapter would fall back to cmd.ID as ProjectID
 	// (graceful degradation, but wrong folder tree) or fail-closed
 	// on empty Language (ErrVoiceoverPublishLanguageRequired).
+	emitPublish := stageTiming("publish")
 	fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
 		ID:             cmd.ID,
 		LocalPath:      uploadPath,
@@ -364,9 +406,13 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		IdempotencyKey: idemKey,
 	})
 	if err != nil {
+		emitPublish("failed")
+		observability.DriveUploadFailuresTotal.Inc()
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.Error = fmt.Sprintf("upload_failed: %v", err)
 		return out, err
 	}
+	emitPublish("completed")
 	out.DriveFileID = fileID
 	out.DriveLink = CanonicalDriveWebURL(fileID)
 	out.DownloadLink = CanonicalDriveDownloadURL(fileID)
@@ -378,8 +424,11 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// missing pre-DRY). The per-item path was already using the
 	// finalizer; the only change is that the body now lives in
 	// the ProcessSegmentUseCase.
+	emitFinalize := stageTiming("finalize")
 	tx, err := u.deps.VoiceoverRepository.BeginTx(ctx)
 	if err != nil {
+		emitFinalize("failed")
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.Error = fmt.Sprintf("tx_begin_failed: %v", err)
 		return out, err
 	}
@@ -413,6 +462,8 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 
 	finalizeRes, err := u.deps.Finalizer.Finalize(ctx, tx, finalizeCmd)
 	if err != nil {
+		emitFinalize("failed")
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.Error = fmt.Sprintf("finalize_failed: %v", err)
 		return out, err
 	}
@@ -424,10 +475,14 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	}
 
 	if err := tx.Commit(); err != nil {
+		emitFinalize("failed")
+		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.Error = fmt.Sprintf("tx_commit_failed: %v", err)
 		return out, err
 	}
+	emitFinalize("completed")
 
 	out.Status = StatusCompleted
+	observability.VoiceoverJobsTotal.WithLabelValues("completed").Inc()
 	return out, nil
 }

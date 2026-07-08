@@ -44,4 +44,52 @@ var (
 		Name: "orphan_sweeper_reconciled_total",
 		Help: "Total number of stale upload_intents rows reconciled by the orphan sweeper, partitioned by outcome.",
 	}, []string{"outcome"})
+
+	// ── FASE 5 — VO-OPERATIONAL-READINESS pipeline metrics (July 2026) ──
+
+	// VoiceoverJobsTotal is incremented once per voiceover job completion
+	// (ProcessSegmentUseCase.Execute exit). Labels:
+	//   status="completed" — Execute returned StatusCompleted
+	//   status="failed"    — Execute returned StatusFailed (any stage)
+	VoiceoverJobsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "voiceover_jobs_total",
+		Help: "Total number of voiceover pipeline executions, partitioned by final status.",
+	}, []string{"status"})
+
+	// VoiceoverStageDuration tracks per-stage execution time in seconds.
+	// Labels:
+	//   stage="tts"        — Stage 1: TTSProvider.Synthesize
+	//   stage="audio_post"  — Stage 2: AudioPostProcessor.Process
+	//   stage="publish"     — Stage 3: VoiceoverPublisher.Publish
+	//   stage="finalize"    — Stage 4: BeginTx + Finalizer.Finalize + Commit
+	VoiceoverStageDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "voiceover_stage_duration_seconds",
+		Help:    "Duration of each voiceover pipeline stage in seconds.",
+		Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300},
+	}, []string{"stage"})
+
+	// DriveUploadFailuresTotal counts Stage 3 (Publisher.Publish) failures.
+	// godlike/07 NO-FAKE-AVAILABILITY: incremented ONLY when the publisher
+	// returns a non-nil error — the counter is the canonical metric for
+	// orphan-Drive-file risk (upload succeeded but the DB tx hasn't started
+	// yet, so a cleanup event is the only recovery path).
+	DriveUploadFailuresTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "drive_upload_failures_total",
+		Help: "Total number of Drive upload (VoiceoverPublisher.Publish) failures in the voiceover pipeline.",
+	})
+
+	// TTSFailuresTotal counts Stage 1 (TTSProvider.Synthesize) failures.
+	TTSFailuresTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "tts_failures_total",
+		Help: "Total number of TTS synthesis (TTSProvider.Synthesize) failures in the voiceover pipeline.",
+	})
+
+	// TranslationFailuresTotal counts voiceover translation failures
+	// (translator closure in the promo generation path). This metric is
+	// incremented from the translator closure wired in
+	// build_bundles_voiceover.go when the translation port returns an error.
+	TranslationFailuresTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "translation_failures_total",
+		Help: "Total number of voiceover text translation failures in the promo generation path.",
+	})
 )
