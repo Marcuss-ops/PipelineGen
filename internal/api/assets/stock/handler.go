@@ -35,9 +35,55 @@ type StockDriveReader interface {
 // DriveFileMeta is a minimal mirror of drive.FileMeta so the stock
 // package stays free of infrastructure/drive imports. Exported so the
 // composition-root adapter can construct it.
+//
+// godlike/06 SSOT (one canonical owner per fact): the `Size int64`
+// field is populated by the composition-root adapter from
+// `drive.FileMeta.Size`, which the underlying *Uploader.GetFileMeta
+// fetches in the SAME Drive API call (single files.get?fields=
+// "...,size,..." round-trip — zero additional network cost). The
+// canonical 2GB cap (`MaxStockDownloadSize`) gates downstream
+// DownloadFile streaming — see `ErrStockDownloadOversized` below
+// (PR-STOCK-OVERSIZED-DOWNLOAD-GUARD, 2026-07-08).
 type DriveFileMeta struct {
 	MimeType string
+	Size     int64
 }
+
+// MaxStockDownloadSize is the canonical upper bound on stock clip
+// downloads. 2 binary GB (= 2 << 30 bytes) covers any legitimate
+// stock video clip (5-second stock snippets at typical bitrates are
+// <500MB) while rejecting pathological inputs (oversized garbage
+// flagged as video/mp4 via MIME bypass attempts).
+//
+// godlike/06 SSOT: this constant is the SOLE owner of the cap value;
+// tests + production code MUST reference it by symbol (NOT by hard-
+// coded 2GB literal) so future cap changes propagate uniformly.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the cap is fail-closed at the file
+// size guard boundary (returns 413 BEFORE the DownloadFile streaming
+// call opens — operators never see a wasted Drive bandwidth charge).
+const MaxStockDownloadSize int64 = 2 << 30 // 2 GiB
+
+// ErrStockDownloadOversized is the canonical typed sentinel for the
+// size-guard gate in DownloadStockClip.
+//
+// godlike/07 typed-error contract: callers probe via
+// `errors.Is(err, stock.ErrStockDownloadOversized)` — the typed
+// sentinel is the SOLE contract surface (NO string-match fallback).
+//
+// godlike/06 SSOT: this sentinel lives ONLY in handler.go (the
+// canonical SOLE owner of the size-gate contract). Composition-root
+// adapters + downstream consumers MUST import this package to use
+// errors.Is — NO re-declaration in adapters or wrappers.
+//
+// The byte-count suffix is computed via fmt.Errorf so future changes
+// to MaxStockDownloadSize propagate naturally (a hardcoded literal
+// "2 GiB" in the message string would lie if the constant were
+// bumped; the runtime apiutil.Error response surfaces the actual
+// size-vs-cap diagnostic separately).
+var ErrStockDownloadOversized = fmt.Errorf(
+	"stock download: drive file exceeds MaxStockDownloadSize (%d bytes); refusing to proxy",
+	MaxStockDownloadSize)
 
 // Handler is the api-layer adapter for the stock pipeline endpoints.
 // After S2b it holds the use case + logger + optional download deps.
@@ -405,6 +451,28 @@ func (h *Handler) DownloadStockClip(c *gin.Context) {
 		h.log.Warn("stock download: refusing to proxy non-media file",
 			zap.String("drive_id", driveFileID), zap.String("mime", meta.MimeType))
 		apiutil.BadRequest(c, "drive file is not media: "+meta.MimeType)
+		return
+	}
+
+	// Size guard (godlike/07 NO-FAKE-AVAILABILITY): reject oversized
+	// files BEFORE opening the DownloadFile stream. Pre-PR this gate
+	// did not exist — a 5GB garbage file flagged as video/mp4 would
+	// stream fully, wasting Drive bandwidth and consuming the
+	// caller-side connection. Post-PR, MIME-bypass attempts above
+	// 2 GiB are rejected at the typed-sentinel boundary. See
+	// MaxStockDownloadSize + ErrStockDownloadOversized for the
+	// canonical contract. The size check is `>` (strict inequality,
+	// NO epsilon) so exactly-2GiB files pass through (canonical
+	// boundary semantics for byte-counting).
+	if meta.Size > MaxStockDownloadSize {
+		h.log.Warn("stock download: refusing to proxy oversized file",
+			zap.String("drive_id", driveFileID),
+			zap.String("mime", meta.MimeType),
+			zap.Int64("size_bytes", meta.Size),
+			zap.Int64("cap_bytes", MaxStockDownloadSize))
+		apiutil.Error(c, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("drive file is %d bytes; maximum is %d bytes (%s)",
+				meta.Size, MaxStockDownloadSize, ErrStockDownloadOversized.Error()))
 		return
 	}
 

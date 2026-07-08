@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -688,5 +689,110 @@ func TestDownloadStockClip_DriveDownloadError_Returns500(t *testing.T) {
 	errMsg, _ := body["error"].(string)
 	if !strings.Contains(errMsg, "drive download failed") {
 		t.Errorf("expected 500 message to surface transport error, got %q", errMsg)
+	}
+}
+
+// ── TestDownloadStockClip_OversizedFile_Returns413 ───────────────────
+//
+// PR-STOCK-OVERSIZED-DOWNLOAD-GUARD (2026-07-08): size guard fires
+// BEFORE DownloadFile streaming. A 3 GiB file flagged as video/mp4 via
+// MIME bypass MUST be rejected with HTTP 413 and MUST NOT invoke the
+// Drive.DownloadFile reader (godlike/07 NO-FAKE-AVAILABILITY: never
+// open the streaming connection for content we've already pre-decided
+// to reject — avoids wasted Drive bandwidth).
+func TestDownloadStockClip_OversizedFile_Returns413(t *testing.T) {
+	lookup := &fakeStockAssetLookup{asset: newStockAssetFixture("drive-oversized-1", "")}
+	reader := &fakeStockDriveReader{
+		metaResp: &DriveFileMeta{
+			MimeType: "video/mp4",
+			Size:     MaxStockDownloadSize + 1, // 1 byte over the 2 GiB cap
+		},
+		// dlResp / dlErr deliberately unset — the size guard must fire
+		// BEFORE DownloadFile is invoked, so reading these fields would
+		// fail the test (not just the assertion).
+	}
+	handler := newDownloadHandler(lookup, reader)
+	rec := runDownloadPOST(t, handler, "clip-oversized")
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413 for oversized file, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	body := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "exceeds") {
+		t.Errorf("expected 413 message to surface size-guard rejection, got %q", errMsg)
+	}
+	if !strings.Contains(errMsg, strconv.FormatInt(MaxStockDownloadSize, 10)) {
+		t.Errorf("expected 413 message to surface cap value, got %q", errMsg)
+	}
+
+	// godlike/07 NO-FAKE-AVAILABILITY pin: the size guard fires BEFORE
+	// DownloadFile, so the reader.calls counter MUST be exactly 1
+	// (GetFileMeta was invoked once for the mime + size lookup) and
+	// MUST NOT have advanced further. The fake's `calls` counter
+	// increments on EVERY reader method call (both GetFileMeta AND
+	// DownloadFile), so this assertion is the canonical pin that the
+	// size guard prevented the wasted streaming connection.
+	if reader.calls != 1 {
+		t.Errorf("expected exactly 1 reader call (GetFileMeta only); got %d (DownloadFile may have been invoked despite rejection -- wasted bandwidth)", reader.calls)
+	}
+}
+
+// ── TestDownloadStockClip_ExactlyCapSize_PassesGuard ──────────────────
+//
+// Boundary test: a file exactly at MaxStockDownloadSize (2 GiB exactly)
+// MUST pass the size guard (the check is `>` strict-inequality, NOT
+// `>=`). Pre-PR literal uses of `>=` would reject the boundary case
+// empirically — the canonical invariant is inclusive at the cap.
+func TestDownloadStockClip_ExactlyCapSize_PassesGuard(t *testing.T) {
+	lookup := &fakeStockAssetLookup{asset: newStockAssetFixture("drive-exactly-2gib", "")}
+	reader := &fakeStockDriveReader{
+		metaResp: &DriveFileMeta{
+			MimeType: "video/mp4",
+			Size:     MaxStockDownloadSize, // EXACTLY 2 GiB
+		},
+		dlResp: io.NopCloser(strings.NewReader("zero-bytes-2gib-stub")),
+		dlCT:   "video/mp4",
+	}
+	handler := newDownloadHandler(lookup, reader)
+	rec := runDownloadPOST(t, handler, "clip-2gib-exact")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for exactly-at-cap file (inclusive boundary), got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+// ── TestDownloadStockClip_UndersizedFile_HappyPath ─────────────────────
+//
+// Regression guard: a small file (100 MiB) flows through the size guard
+// cleanly — DownloadFile is invoked, body streams, Content-Type echoes.
+// This pins the contract that the size guard is a no-op for in-bound
+// files (NOT a transform of the happy path), preserving the pre-PR
+// streaming behavior for legitimate stock clips.
+func TestDownloadStockClip_UndersizedFile_HappyPath(t *testing.T) {
+	const stubSize = 100 * 1024 * 1024 // 100 MiB
+	lookup := &fakeStockAssetLookup{asset: newStockAssetFixture("drive-small-1", "")}
+	reader := &fakeStockDriveReader{
+		metaResp: &DriveFileMeta{
+			MimeType: "video/mp4",
+			Size:     stubSize,
+		},
+		dlResp: io.NopCloser(strings.NewReader("fake-mp4-bytes")),
+		dlCT:   "video/mp4",
+	}
+	handler := newDownloadHandler(lookup, reader)
+	rec := runDownloadPOST(t, handler, "clip-small-stock")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for 100 MiB happy path, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	gotCT := rec.Header().Get("Content-Type")
+	if gotCT != "video/mp4" {
+		t.Errorf("expected Content-Type=video/mp4 preserved, got %q", gotCT)
+	}
+	body, err := io.ReadAll(rec.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if string(body) != "fake-mp4-bytes" {
+		t.Errorf("expected streamed bytes to round-trip, got %q", string(body))
 	}
 }

@@ -192,7 +192,17 @@ func (a *stockDriveReaderAdapter) GetFileMeta(ctx context.Context, fileID string
 	if err != nil {
 		return nil, err
 	}
-	return &stockapi.DriveFileMeta{MimeType: meta.MimeType}, nil
+	// PR-STOCK-OVERSIZED-DOWNLOAD-GUARD (2026-07-08): propagate the
+	// canonical Size int64 field so the api-layer size guard
+	// (`MaxStockDownloadSize` check in DownloadStockClip) can enforce
+	// the 2GiB cap WITHOUT adding a new Drive API round-trip. The
+	// underlying *Uploader.GetFileMeta already fetches Size from the
+	// same files.get?fields="...,size,..." call (uploader_file.go:114).
+	// godlike/06 SSOT: Size is the SOLE canonical owner of the byte
+	// count mirroring drive.FileMeta.Size — pre-PR the adapter
+	// silently dropped Size (zero callers used it), creating the
+	// false-fidelity gap that the 413 guard closes.
+	return &stockapi.DriveFileMeta{MimeType: meta.MimeType, Size: meta.Size}, nil
 }
 
 var _ stockapi.StockDriveReader = (*stockDriveReaderAdapter)(nil)
