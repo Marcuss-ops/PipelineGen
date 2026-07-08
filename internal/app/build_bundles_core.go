@@ -135,10 +135,11 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader dr
 		))
 	}
 
-	// FASE 6: severe readiness probes (temp, tts).
-	// Drive root check is wired above via driveReader.ListFiles.
-	// Ollama and outbox are wired elsewhere when their deps are available;
-	// nil-safe default = applicable=false per ReadyChecker contract.
+	// FASE 6: severe readiness probes (temp, tts, drive_root, ollama, outbox).
+	// Temp + TTS + Drive root are wired inline below.
+	// Ollama and outbox probes are nil-safe — they report applicable=false
+	// until the composition root is extended to inject their deps
+	// (forward-pointer PR-FASE6-OLLAMA-OUTBOX-WIRING, deadline 2026-08-15).
 	rc = rc.WithTempPath(cfg.Storage.DataDir).
 		WithTTSChecker(systemhealth.NewTTSChecker("", cfg.Paths.PythonScriptsDir))
 
