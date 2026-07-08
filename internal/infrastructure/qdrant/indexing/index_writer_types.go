@@ -95,6 +95,12 @@ type AssetData struct {
 	VisualVector     []float32 `json:"-"`
 	AudioVector      []float32 `json:"-"`
 	ContentHash      string    `json:"content_hash,omitempty"`
+	// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent timestamp Drive
+	// folder metadata. Propagated from ChunkState → metadata.json →
+	// AssetData → Qdrant payload. Per-run scalar (all chunks in the
+	// same timestamp block share the same parent folder).
+	TimestampDriveFolderLink string `json:"timestamp_drive_folder_link,omitempty"`
+	TimestampFolderID        string `json:"timestamp_folder_id,omitempty"`
 }
 
 // AssetStore is the interface the PayloadMapper needs to fetch asset data.

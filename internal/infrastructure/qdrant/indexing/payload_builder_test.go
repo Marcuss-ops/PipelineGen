@@ -237,3 +237,49 @@ func TestBuildPayloadFromDocument_NilDocReturnsEmptyMap(t *testing.T) {
 		t.Fatalf("payload size = %d — want 0 for nil doc (graceful empty map)", len(p))
 	}
 }
+
+// 16. TimestampDriveFolderLink + TimestampFolderID both set → both
+// emitted verbatim as the canonical "open-in-Drive" navigation keys.
+// Locks PR-TIMESTAMP-FOLDER-LINK (July 2026): the producer side
+// (step_publish.go Phase 2 from metadataPublished.Location.FolderID)
+// is deferred to PR-TIMESTAMP-FOLDER-LINK-DEFERRED; this test pins
+// the canonical RECEIVER contract so the producer PR lands a
+// pass-the-test branch without re-touching the receiver.
+//
+// godlike/06 SSOT: payload key names
+// (`timestamp_drive_folder_link`, `timestamp_folder_id`) must match
+// the goddoc in payload_builder.go's BuildPayloadFromDocument
+// block 11 + the JSON tags on index_writer_types.go::AssetData.
+// Keys are FOLDER-locators distinct from the FORBIDDEN`drive_link`
+// (QDRANT-001).
+func TestBuildPayloadFromDocument_TimestampFolderFieldsEmittedWhenSet(t *testing.T) {
+	doc := emptyDoc()
+	doc.Metadata.TimestampDriveFolderLink = "https://drive.google.com/drive/folders/1iAGhWidRF0hpJYvku_fIavEIY50_V1wA"
+	doc.Metadata.TimestampFolderID = "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA"
+	p := BuildPayloadFromDocument(doc, nil)
+	if v, ok := p["timestamp_drive_folder_link"]; !ok || v != "https://drive.google.com/drive/folders/1iAGhWidRF0hpJYvku_fIavEIY50_V1wA" {
+		t.Fatalf("payload[timestamp_drive_folder_link] = %v, ok = %v — want canonical Drive folder URL", v, ok)
+	}
+	if v, ok := p["timestamp_folder_id"]; !ok || v != "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA" {
+		t.Fatalf("payload[timestamp_folder_id] = %v, ok = %v — want folder ID only (no URL quoting)", v, ok)
+	}
+}
+
+// 17. TimestampDriveFolderLink + TimestampFolderID both empty →
+// both keys ABSENT. godlike/07 NO-FAKE-AVAILABILITY: empty-string
+// fields MUST NOT emit a payload key (no placeholder "unknown"
+// or empty-string leakage into the Qdrant index). Pre-producer
+// state (receiver-side-only): all current rows have empty values
+// → payload surface must stay clean until the deferred producer
+// (step_publish.go Phase 2) populates c.TimestampFolderID verbatim.
+func TestBuildPayloadFromDocument_TimestampFolderFieldsEmpty_NoKeys(t *testing.T) {
+	doc := emptyDoc()
+	// TimestampDriveFolderLink / TimestampFolderID both empty (default)
+	p := BuildPayloadFromDocument(doc, nil)
+	if _, ok := p["timestamp_drive_folder_link"]; ok {
+		t.Errorf("payload[timestamp_drive_folder_link] present when empty — want ABSENT (omitempty contract)")
+	}
+	if _, ok := p["timestamp_folder_id"]; ok {
+		t.Errorf("payload[timestamp_folder_id] present when empty — want ABSENT (omitempty contract)")
+	}
+}
