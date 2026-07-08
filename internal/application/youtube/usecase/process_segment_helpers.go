@@ -51,6 +51,7 @@ func buildClipAsset(
 		VideoID:       cmd.VideoID,
 		LocalPath:     out.Item.LocalPath,
 		FileHash:      fileHash,
+		SearchText:    composeYouTubeClipSearchText(md, cmd.Segment.Hook),
 		PolicyVersion: policyVersion,
 		Drive: youtubetypes.ClipAssetDrive{
 			FolderID:    cmd.DriveFolderID,
@@ -91,6 +92,81 @@ func (u *ProcessYouTubeSegmentUseCase) failInvalidTimestamp(out youtubetypes.Pro
 		err,
 	)
 	return u.fail(out, typed)
+}
+
+// composeYouTubeClipSearchText builds the canonical search_text for a
+// YouTube clip from the metadata available at Step 9 write time. The
+// order of fields mirrors the DoD 10 priority:
+//
+//	title → summary → hook → topics → source_url → speakers → mentioned_people
+//
+// Fields with empty/zero values are silently skipped (godlike/07
+// minimum-blast-radius: no dangling " ," or "Tags: " fragments).
+//
+// Transcript and channel are intentionally deferred to the
+// youtube.rebuild_search_text job (Step 10 / post-enrichment) — they
+// are NOT available at Step 9 write time.
+//
+// godlike/06 SSOT: this function is the SOLE canonical owner of
+// the YouTube-clip search_text format at Step 9; other callers
+// MUST NOT re-derive the same composition.
+func composeYouTubeClipSearchText(md youtubetypes.CanonicalClipMetadata, hook string) string {
+	parts := make([]string, 0, 8)
+
+	// Title
+	if v := strings.TrimSpace(md.Title); v != "" {
+		parts = append(parts, v)
+	}
+	// Summary
+	if v := strings.TrimSpace(md.Summary); v != "" {
+		parts = append(parts, v)
+	}
+	// Hook
+	if v := strings.TrimSpace(hook); v != "" {
+		parts = append(parts, v)
+	}
+	// Topics (space-joined, each trimmed)
+	if len(md.Topics) > 0 {
+		kept := make([]string, 0, len(md.Topics))
+		for _, t := range md.Topics {
+			if t = strings.TrimSpace(t); t != "" {
+				kept = append(kept, t)
+			}
+		}
+		if len(kept) > 0 {
+			parts = append(parts, strings.Join(kept, " "))
+		}
+	}
+	// Source URL
+	if v := strings.TrimSpace(md.SourceURL); v != "" {
+		parts = append(parts, v)
+	}
+	// Speakers
+	if len(md.Speakers) > 0 {
+		kept := make([]string, 0, len(md.Speakers))
+		for _, s := range md.Speakers {
+			if s = strings.TrimSpace(s); s != "" {
+				kept = append(kept, s)
+			}
+		}
+		if len(kept) > 0 {
+			parts = append(parts, strings.Join(kept, " "))
+		}
+	}
+	// Mentioned people
+	if len(md.MentionedPeople) > 0 {
+		kept := make([]string, 0, len(md.MentionedPeople))
+		for _, p := range md.MentionedPeople {
+			if p = strings.TrimSpace(p); p != "" {
+				kept = append(kept, p)
+			}
+		}
+		if len(kept) > 0 {
+			parts = append(parts, strings.Join(kept, " "))
+		}
+	}
+
+	return strings.Join(parts, " ")
 }
 
 func cleanSegmentName(name string, idx int) string {
