@@ -3257,3 +3257,29 @@
     owner_capability: internal/application/voiceover + internal/infrastructure/audio
     status: pending
     deadline: 2026-08-15
+
+- id: SCRIPTCONTRACT-2026-07-08
+  status: pending
+  owner_capability: internal/application/scripts
+  deadline: 2026-08-15
+  linked_issues:
+  - id: PR-SCRIPTCONTRACT-REORDER-PERSISTENCE
+    status: pending
+    owner_capability: internal/app
+    deadline: 2026-07-15
+  - id: PR-SCRIPTCONTRACT-HARD-PREFLIGHT
+    status: shipped
+    ship_sha: 46c8911652e008baabe41d7d5985834898b31a38
+    ship_date: 2026-07-08
+    owner_capability: internal/app
+    deadline: 2026-07-15
+  - id: PR-SCRIPTCONTRACT-CI-GATE-CHECK-62
+    status: pending
+    owner_capability: scripts/ci-architectural-checks.sh
+    deadline: 2026-07-15
+  - id: PR-SCRIPTCONTRACT-TDD-CHILD-DOC-PROPAGATION
+    status: shipped
+    ship_sha: 7eebce97c11f7cbbb36862b71946002f2323a633
+    ship_date: 2026-07-08
+    owner_capability: internal/application/scripts/jobs
+    deadline: 2026-07-22
