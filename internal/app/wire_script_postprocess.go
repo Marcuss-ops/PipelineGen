@@ -59,10 +59,22 @@ import (
 // and the composition-time validator in wire_script_adapters.go
 // (validateRequiredProcessors) surfaces the gap after the freeze.
 //
-// Order follows the pre-PR3 block in wireScriptFlow. The freeze step
-// remains in wireScriptFlow so the orchestrator owns the freeze +
-// post-freeze invariant ordering (matches the postProcessorRegistry
-// precedent in the canonical pipeline composer).
+// SCRIPTCONTRACT-2026-07-08 PR-1 canonical order (godlike/06 SSOT):
+//
+//	Persistence → Document → Image → Voiceover → Entities → Metadata →
+//	ClipBindings → StockAssociation → ClipSearch
+//
+// Persistence is FIRST so no Drive-write side effect runs before the
+// local SQLite row is locked. Pre-PR-1 order was Document →
+// Persistence → ... which caused RETRY_WAIT 90% on a Drive-write-
+// success + DB-persist-failure cascade (job retries re-triggered
+// Drive writes on already-created artifacts; idempotency was only
+// event-outbox, not artifact-publish). Forward-prevention gate:
+// scripts/ci-architectural-checks.sh `Check 62` lands in PR-3 to
+// enforce this order.
+// The freeze step remains in wireScriptFlow so the orchestrator owns
+// the freeze + post-freeze invariant ordering (matches the
+// postProcessorRegistry precedent in the canonical pipeline composer).
 //
 // Returns the FIRST error encountered on a Register call so the
 // orchestrator can wrap it with the "wireScriptFlow:" prefix and
@@ -82,7 +94,33 @@ func registerScriptPostProcessors(
 		return fmt.Errorf("registerScriptPostProcessors: ppReg is nil (composition bug)")
 	}
 
-	// Google Doc creation inline registration (temporarily restored).
+	// SCRIPTCONTRACT-2026-07-08 PR-1: PersistenceProcessor moved to
+	// FIRST slot in this function body. The canonical reasoning is
+	// that NO Drive-write side effect may run before the local
+	// SQLite row is persisted — this prevents RETRY_WAIT-90% on a
+	// Drive-write-success + DB-persist-failure cascade (post-fix,
+	// retries on transient persistence failure leave the (now empty)
+	// Drive side-effect space clean; idempotency is replay-safe via
+	// text-hash triple per docs in this package's canonical
+	// handover).
+	//
+	// Owner: PersistenceProcessor is the SOLE canonical owner of
+	// scripts/script_assets SQLite row writes post FASE PR-5. The
+	// engine layer was previously a second writer and was retired in
+	// favor of this single-seam persistence. Constructor takes the
+	// logger for idempotency-hit / replay diagnostics.
+	//
+	// Conditional on scriptsRepoAdapter != nil (composition caller
+	// wires this from root.Repos.ScriptsRepo; missing-Repo is caught
+	// earlier in wireScriptFlow via the godlike/07 typed-error
+	// ErrRepoRequired envelope).
+	if scriptsRepoAdapter != nil {
+		if !ppReg.Register(adapters.NewPersistenceProcessor(scriptsRepoAdapter, log)) {
+			return fmt.Errorf("register persistence processor: composition bug or duplicate name")
+		}
+	}
+
+	// Google Doc creation inline registration (preserved: post-Persistence).
 	if root.Drive != nil && root.Drive.DocClient != nil {
 		docsSvc := usecase.NewDocumentsService(root.Drive.DocClient, log, cfg.Drive.ScriptsGenFolder())
 		resolveFolder := func(ctx context.Context, input, defaultRootID string) (string, error) {
@@ -139,18 +177,6 @@ func registerScriptPostProcessors(
 			return fmt.Errorf("register document processor: composition bug or duplicate name")
 		}
 		log.Info("DocumentProcessor (inline Google Docs) successfully registered")
-	}
-
-	// Persistence processor (PR 5: now the single persistence
-	// owner; engine no longer writes to SQLite). Constructor takes
-	// the logger for idempotency-hit / replay diagnostics.
-	// Conditional on scriptsRepoAdapter != nil (composition caller
-	// wires this from root.Repos.ScriptsRepo; missing-Repo is
-	// caught earlier in wireScriptFlow).
-	if scriptsRepoAdapter != nil {
-		if !ppReg.Register(adapters.NewPersistenceProcessor(scriptsRepoAdapter, log)) {
-			return fmt.Errorf("register persistence processor: composition bug or duplicate name")
-		}
 	}
 
 	// Inline Image generation processor (temporarily restored).
