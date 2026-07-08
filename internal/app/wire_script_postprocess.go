@@ -62,19 +62,28 @@ import (
 // and the composition-time validator in wire_script_adapters.go
 // (validateRequiredProcessors) surfaces the gap after the freeze.
 //
-// SCRIPTCONTRACT-2026-07-08 PR-1 canonical order (godlike/06 SSOT):
+// SCRIPTCONTRACT-2026-07-08 PR-1 canonical order (godlike/06 SSOT,
+// extended PR-TRANSLATE-SCRIPT-SPEC FP2 2026-08-08 with TranslationProcessor):
 //
 //	Persistence → Document → Image → Voiceover → Entities → Metadata →
-//	ClipBindings → StockAssociation → ClipSearch
+//	Translation → ClipBindings → StockAssociation → ClipSearch
 //
 // Persistence is FIRST so no Drive-write side effect runs before the
 // local SQLite row is locked. Pre-PR-1 order was Document →
 // Persistence → ... which caused RETRY_WAIT 90% on a Drive-write-
 // success + DB-persist-failure cascade (job retries re-triggered
 // Drive writes on already-created artifacts; idempotency was only
-// event-outbox, not artifact-publish). Forward-prevention gate:
-// scripts/ci-architectural-checks.sh `Check 62` lands in PR-3 to
-// enforce this order.
+// event-outbox, not artifact-publish). TranslationProcessor slots
+// between Metadata and ClipBindings so the translated SpecScene is
+// consumed by the downstream ClipBindings pass (PR-TRANSLATE-SCRIPT-SPEC
+// FP2, 2026-08-08). Forward-prevention gate:
+// scripts/ci-architectural-checks.sh `Check 64` locks this 10-processor
+// REGISTRATION order. The SCRIPTCONTRACT-2026-07-08 action plan §3.PR-3
+// referenced this gate as `Check 62`; subsequent commits registered
+// Check 62 (inline-middleware-in-feature-routing gate) and Check 63
+// before the postprocessor-order gate landed, so the canonical
+// reference today is `Check 64` (the action-plan comment marker below
+// keeps the historical CR reference for SSOT traceability).
 // The freeze step remains in wireScriptFlow so the orchestrator owns
 // the freeze + post-freeze invariant ordering (matches the
 // postProcessorRegistry precedent in the canonical pipeline composer).
@@ -329,6 +338,10 @@ func registerScriptPostProcessors(
 	// bindings consumed by both the Google Doc builder (via
 	// DocumentProcessor) AND the JSON response writer (via
 	// result.Output.SpecScene.Scenes). BestEffort policy.
+	//
+	// Registration slot: AFTER TranslationProcessor (per the
+	// SCRIPTCONTRACT-2026-07-08 canonical 10-processor order;
+	// forward-prevention gate: ci-check 64).
 	if !ppReg.Register(adapters.NewClipBindingsProcessor(log)) {
 		return fmt.Errorf("register clip_bindings processor: composition bug")
 	}
