@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
@@ -52,10 +53,19 @@ func TestBuildClipAsset_SearchText_NotJustFilename(t *testing.T) {
 			VideoURL: "https://www.youtube.com/watch?v=vdC5GXxS-qU",
 			VideoID:  "vdC5GXxS-qU",
 			Segment: youtubetypes.Segment{
-				Name:            "Sfuriata contro Pacquiao",
-				Summary:         "Broner insults Pacquiao, then lands leather on him.",
-				Hook:            "Don't think about Floyd, think about me!",
-				Topics:          []string{"boxing", "mayweather", "confrontation"},
+				Name: "Sfuriata contro Pacquiao",
+				// Summary intentionally DOES NOT contain "Broner" or "Pacquiao"
+				// so that the speakers-segment assertions below are
+				// uniquely attributable to the joined-Speakers branch of
+				// composeYouTubeClipSearchText (not bleed-through from
+				// Summary). Code-reviewer round-2 MUST-FIX-2026-07-08.
+				Summary: "An insult on camera, then leather on him.",
+				// Hook intentionally DOES NOT contain "Floyd" (it does
+				// contain "thinks") so that the MentionedPeople
+				// assertion for "Floyd Mayweather" is uniquely attributable
+				// to the MentionedPeople branch.
+				Hook:            "Stay focused! It is personal.",
+				Topics:          []string{"boxing", "confrontation", "prefight"},
 				Speakers:        []string{"Broner", "Pacquiao"},
 				MentionedPeople: []string{"Floyd Mayweather"},
 			},
@@ -114,24 +124,29 @@ func TestBuildClipAsset_SearchText_NotJustFilename(t *testing.T) {
 		// title → summary → hook → topics → source_url → speakers → mentioned_people
 		assert.Contains(t, a.SearchText, "Sfuriata contro Pacquiao",
 			"DoD 10: title segment must be present (=Segment.Name, primary identifier)")
-		assert.Contains(t, a.SearchText, "Broner insults Pacquiao",
+		assert.Contains(t, a.SearchText, "An insult on camera",
 			"DoD 10: summary segment must be present (=Segment.Summary, narrative)")
-		assert.Contains(t, a.SearchText, "Don't think about Floyd",
+		assert.Contains(t, a.SearchText, "Stay focused",
 			"DoD 10: hook segment must be present (=Segment.Hook, attention-grabber)")
 		assert.Contains(t, a.SearchText, "boxing",
 			"DoD 10: topics segment must be present (first topic)")
-		assert.Contains(t, a.SearchText, "mayweather",
-			"DoD 10: topics segment must be present (second topic)")
 		assert.Contains(t, a.SearchText, "confrontation",
+			"DoD 10: topics segment must be present (second topic)")
+		assert.Contains(t, a.SearchText, "prefight",
 			"DoD 10: topics segment must be present (third topic)")
 		assert.Contains(t, a.SearchText, "https://www.youtube.com/watch?v=vdC5GXxS-qU",
 			"DoD 10: source_url segment must be present (=SourceURL, traceability)")
-		assert.Contains(t, a.SearchText, "Broner",
-			"DoD 10: speakers segment must be present (first speaker)")
-		assert.Contains(t, a.SearchText, "Pacquiao",
-			"DoD 10: speakers segment must be present (second speaker)")
+		// Lock speakers as joined "Broner Pacquiao" (NOT separate strings).
+		// Post-CR-fixup: Summary no longer contains "Broner"/"Pacquiao", so
+		// this joined-string assertion is UNIQUELY attributable to the
+		// Speakers composer branch (no bleed-through from Summary).
+		assert.Contains(t, a.SearchText, "Broner Pacquiao",
+			"DoD 10: speakers segment MUST be present as joined string — "+
+				"a regression that drops the Speakers branch surfaces here "+
+				"(no bleed-through from Summary after CR round-2 fixup)")
 		assert.Contains(t, a.SearchText, "Floyd Mayweather",
-			"DoD 10: mentioned_people segment must be present (=MentionedPeople, person refs)")
+			"DoD 10: mentioned_people segment must be present (=MentionedPeople, person refs; "+
+				"uniquely attributable — Hook no longer overlaps post-CR fixup)")
 	})
 
 	t.Run("EmptyAllFields_EmptySearchText_NoDanglingFragments", func(t *testing.T) {
@@ -185,13 +200,17 @@ func TestBuildClipAsset_SearchText_NotJustFilename(t *testing.T) {
 		}
 		a := buildClipAsset("yt_test", cmd, out, "sha256-x", "v1")
 
-		// Summary must still surface somewhere in SearchText (as Title
-		// via the fallback). Defense against future "Title field unused"
-		// refactor that would silently drop the fallback.
-		assert.Contains(t, a.SearchText,
-			"Broner rises to fame but ignores discipline",
-			"DoD 10: Title fallback to Summary when Segment.Name→\"\" "+
-				"MUST still surface Summary content in SearchText "+
-				"(locks process_segment_helpers.go:53-56 fallback contract)")
+		// Title-fallback robust invariant (CR round-2 SHOULD-FIX-2026-07-08):
+		// The fallback path puts Summary into md.Title, AND the composer
+		// ALSO appends md.Summary. So the literal substring must appear
+		// EXACTLY TWICE in SearchText — once via Title-via-fallback,
+		// once via Summary-via-direct. A regression that breaks either
+		// path surfaces as strings.Count != 2.
+		const fallbackLiteral = "Broner rises to fame but ignores discipline."
+		require.Equal(t, 2, strings.Count(a.SearchText, fallbackLiteral),
+			"DoD 10: Title fallback to Summary must surface the Summary "+
+				"content EXACTLY TWICE (once via md.Title-via-fallback, "+
+				"once via md.Summary-via-direct) — "+
+				"locks process_segment_helpers.go:53-56 fallback contract")
 	})
 }
