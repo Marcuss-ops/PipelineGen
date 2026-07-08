@@ -163,6 +163,21 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		zap.Int("revision", j.Revision),
 	)
 
+	// Step 8 (July 2026): emit "leased" event so the operator can
+	// trace the full job lifecycle: queued → leased → ... → completed.
+	// The enqueuer emits "queued"; this is the "leased" bookend.
+	if err := w.repo.AddEvent(ctx, j.ID, "leased",
+		fmt.Sprintf("job claimed by worker %s", w.id),
+		map[string]any{
+			"worker_id": w.id,
+			"lease_id":  j.LeaseID,
+			"revision":  j.Revision,
+		}); err != nil {
+		w.log.Warn("failed to record leased event",
+			zap.String("job_id", j.ID),
+			zap.Error(err))
+	}
+
 	// HC-1 (June 2026): per-job-type timeout resolves through the
 	// typed Registry attached via WithRegistry(). Replaces the
 	// pre-HC-1 `context.WithTimeout(ctx, jobTimeout(j.Type))` call
