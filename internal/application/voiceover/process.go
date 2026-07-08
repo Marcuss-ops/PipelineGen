@@ -20,8 +20,10 @@
 // semantic enrichment can be re-added to ProcessSegmentUseCase in a
 // future BACKFILL wave.
 //
-// The stageLog telemetry wrapper now emits a single "pipeline" stage
-// (previously 3 separate stages: synthesize / destination / finalize).
+// Per-stage telemetry (tts/audio_post/publish/finalize) is emitted
+// by ProcessSegmentUseCase.Execute internally via the shared stageLog
+// helper. processLanguage does NOT wrap Execute in its own stage —
+// the inner per-stage calls are the canonical granular telemetry.
 // Operators can correlate via request_id + language as before.
 package voiceover
 
@@ -47,9 +49,10 @@ import (
 // duration_ms.
 //
 // FASE 7 (July 2026): added histogram observation via
-// observability.VoiceoverStageDuration so both callers
-// (processLanguage and ProcessSegmentUseCase.Execute) benefit
-// from the same telemetry — no more duplicated stageTiming closure.
+// observability.VoiceoverStageDuration. Used by
+// ProcessSegmentUseCase.Execute for per-stage telemetry; the
+// batch path (processLanguage) inherits this via its delegation
+// to Execute — no more duplicated stageTiming closure.
 func stageLog(log *zap.Logger, jobID, assetID, project, stage, language string) func(status string) {
 	start := time.Now()
 	logFields := []zap.Field{
@@ -249,16 +252,12 @@ func (s *Service) processLanguage(
 		OldCleanedPath: oldCleanedPath,
 	}
 
-	// Azione #1 + FASE 5: single "pipeline" stage replaces the legacy 3-stage
-	// telemetry (synthesize / destination / finalize). Structured logging
-	// includes job_id, asset_id, project, language, stage, status, duration_ms.
-	emitPipelineCompleted := stageLog(s.log, requestID, id, cmd.Project, "pipeline", string(language))
+	// Per-stage telemetry (tts/audio_post/publish/finalize) is emitted
+	// by ProcessSegmentUseCase.Execute internally via stageLog.
+	// No outer wrapper here — that would mix a coarse "pipeline" label
+	// into the same VoiceoverStageDuration histogram as the fine-grained
+	// per-stage labels, breaking p99 aggregation.
 	out, runErr := s.processSeg.Execute(ctx, cmd)
-	status := "completed"
-	if out == nil || out.Status != StatusCompleted {
-		status = "failed"
-	}
-	emitPipelineCompleted(status)
 
 	if out == nil {
 		return item.fail(FailureTTS, fmt.Errorf("pipeline_run_failed: %v", runErr))
