@@ -37,6 +37,15 @@ import (
 // implementation for table-driven tests. Configure `hits` for the
 // happy path, `err` for the transport-error path, `nil` for
 // empty-match. `calls` records the number of SearchStock invocations.
+//
+// SearchAssets is a COMPILE-FIX ONLY no-op stub so the fake
+// satisfies the ports.StockSearchPort interface (which embeds
+// AssetSearchPort). The StockAssociationProcessor under test only
+// invokes the legacy SearchStock path; SearchAssets returns
+// (nil, nil) because no test in this file exercises the unified
+// port path. Discarding f.hits / f.err here is intentional — a
+// future test that switches the processor to the unified port
+// MUST add a non-trivial stub that wires these fields.
 type fakeStockSearch struct {
 	hits  []ports.StockSearchHit
 	err   error
@@ -49,6 +58,11 @@ func (f *fakeStockSearch) SearchStock(_ context.Context, _ string, _ int) ([]por
 		return nil, f.err
 	}
 	return f.hits, nil
+}
+
+func (f *fakeStockSearch) SearchAssets(_ context.Context, _ ports.AssetSearchQuery) ([]ports.AssetSearchHit, error) {
+	// Not exercised by the StockAssociationProcessor under test.
+	return nil, nil
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -250,4 +264,96 @@ func TestStockAssociation_NilSearchIsNoOp(t *testing.T) {
 	require.NotNil(t, res)
 	assert.Nil(t, input.SpecScene.Scenes[0].Bindings.Stock,
 		"nil port must NOT populate Stock binding on its own")
+}
+
+// ── Changed-contract regression guards (Phase 1 + P1 #10) ───────────
+//
+// These tests pin the Phase 1 closure invariant: the
+// StockAssociationProcessor MUST return Changed=true whenever the
+// binder mutates scene.Bindings.Stock (real Qdrant hit OR
+// fallbackToClip). Pre-fix the processor returned
+// &PostProcessResult{} (Changed: false) even after mutating scenes,
+// which masked the work from the registry's IsEmpty() short-circuit
+// at postprocessor_document.go and produced a false
+// "returned empty output" warning.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: without Changed=true the
+// pipeline surfaces a phantom warning that misleads operators into
+// thinking the stock-association stage produced no observable
+// work, when in fact it has populated scene-level Stock bindings
+// that downstream document/persistence processors observe.
+
+// TestStockAssociation_QdrantHit_ReturnsChanged pins the contract
+// for the happy path: Qdrant returns 1 hit, the binder mutates
+// scene.Bindings.Stock from that hit, the processor result MUST
+// report Changed=true.
+func TestStockAssociation_QdrantHit_ReturnsChanged(t *testing.T) {
+	t.Parallel()
+	search := &fakeStockSearch{
+		hits: []ports.StockSearchHit{{
+			AssetID:   "stock-1",
+			DriveLink: "https://drive.google.com/file/d/stock-1",
+			Score:     0.91,
+		}},
+	}
+	proc := NewStockAssociationProcessor(search, zap.NewNop())
+
+	input := ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{{
+				ID:    "scene-0",
+				Index: 0,
+				Text:  "car drifting in desert",
+				Kind:  scriptpkg.SceneClip,
+			}},
+		},
+	}
+
+	res, err := proc.Process(context.Background(), stockPlan(), input)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.True(t, res.Changed,
+		"Changed must be true when the binder mutates scene from a Qdrant hit (Phase 1 closure invariant)")
+	require.NotNil(t, input.SpecScene.Scenes[0].Bindings.Stock,
+		"Stock binding must be populated from the Qdrant hit")
+}
+
+// TestStockAssociation_FallbackToClip_ReturnsChanged pins the
+// contract for the fallback path: Qdrant returns no hits, the
+// scene has a non-empty Clip.DriveLink, the binder populates
+// scene.Bindings.Stock with Fallback=true, the processor result
+// MUST report Changed=true.
+func TestStockAssociation_FallbackToClip_ReturnsChanged(t *testing.T) {
+	t.Parallel()
+	search := &fakeStockSearch{hits: nil}
+	proc := NewStockAssociationProcessor(search, zap.NewNop())
+
+	input := ProcessInput{
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{{
+				ID:    "scene-0",
+				Index: 0,
+				Text:  "scene text",
+				Kind:  scriptpkg.SceneClip,
+				Bindings: scriptpkg.SceneBindings{
+					Clip: &scriptpkg.ClipBinding{
+						ClipID:    "clip-1",
+						DriveLink: "https://drive.google.com/file/d/clip-1",
+					},
+				},
+			}},
+		},
+	}
+
+	res, err := proc.Process(context.Background(), stockPlan(), input)
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.True(t, res.Changed,
+		"Changed must be true when the binder falls back to clip (Phase 1 closure invariant)")
+	require.NotNil(t, input.SpecScene.Scenes[0].Bindings.Stock,
+		"Stock binding must be populated from clip.DriveLink on fallback")
+	assert.True(t, input.SpecScene.Scenes[0].Bindings.Stock.Fallback,
+		"Fallback must be true on the clip-fallback path")
 }
