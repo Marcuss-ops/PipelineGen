@@ -119,7 +119,7 @@ and skips the false "empty output" warning.
 ---
 
 ## §2 Phase 2 — Extract `SceneSynthesizer` + `SceneAssetBinder`
-`{id: PR-POSTPROCESSOR-UNIFICATION-PHASE-2, owner_capability: internal/application/scripts/scene, status: PLANNING-ONLY, deadline: 2026-07-15, ship_sha: empty}`
+`{id: PR-POSTPROCESSOR-UNIFICATION-PHASE-2, owner_capability: internal/application/scripts/scene, status: shipped, exit_signal: true, deadline: 2026-07-15, ship_sha: 4ea04f4b36bd7526fa36f1188589fee5f2b56267, ship_date: 2026-07-08}`
 
 Per audit point 3 + 4. Future agents move the prose-synth + clip
 + stock binding logics out of the two processors into a shared
