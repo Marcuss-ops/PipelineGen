@@ -50,6 +50,8 @@ var knownCapabilities = []struct {
 	{name: "storage", prefix: "/api/storage"},
 	{name: "mediasearch", prefix: "/internal/v1/media"},
 	{name: "qdrant_health", prefix: "/qdrant/"},
+	{name: "admin", prefix: "/api/drive"},
+	{name: "clips", prefix: "/api/clips"},
 }
 
 // RouteInfo is the minimal projection of a gin RouteInfo the

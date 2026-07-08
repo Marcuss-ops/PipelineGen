@@ -20,8 +20,8 @@ func TestReadyChecker_RequiredSet(t *testing.T) {
 	ready := NewReadyChecker(svc)
 	resp := ready.CheckReady(context.Background())
 	require.True(t, resp.OK)
-	require.Len(t, resp.Checks, 4, "ready should check exactly db, drive, qdrant, jobs")
-	for _, name := range []string{"db", "drive", "jobs"} {
+	require.Len(t, resp.Checks, 8, "ready should check 8: db, drive, qdrant, jobs + tools, clips_path, drive_canary, handlers")
+	for _, name := range []string{"db", "drive", "jobs", "tools", "clips_path", "drive_canary", "handlers"} {
 		require.Contains(t, resp.Checks, name, "ready missing %s", name)
 	}
 }
@@ -60,7 +60,7 @@ func TestReadyChecker_OptionalCapabilitiesHealthy(t *testing.T) {
 	ready := NewReadyChecker(svc)
 	resp := ready.CheckReady(context.Background())
 	require.True(t, resp.OK, "optional nil capabilities should not make ready unhealthy, got %v", resp)
-	require.Len(t, resp.Checks, 4)
+	require.Len(t, resp.Checks, 8)
 }
 
 // TestReadyChecker_Deterministic verifies that calling CheckReady
