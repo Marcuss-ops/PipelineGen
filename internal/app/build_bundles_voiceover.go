@@ -26,6 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
@@ -161,9 +162,8 @@ func buildVoiceoverService(
 			return text, nil
 		}
 		res, err := translationPort.Translate(ctx, translation.TranslationCommand{
-			ContentKind: translation.ContentKindVoiceover,
-			TargetLang:  targetLanguage,
-			Text:        text,
+			TargetLang: targetLanguage,
+			Text:       text,
 		})
 		if err != nil {
 			return text, err
