@@ -37,6 +37,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 )
 
 // TxOutboxEnqueuer is the canonical narrow port for transactional
@@ -345,6 +346,187 @@ type VoiceoverPublishCommand struct {
 // Caller pattern: if errors.Is(err, ErrVoiceoverPublishLanguageRequired)
 // { /* populate Language on VoiceoverPublishCommand and retry */ }.
 var ErrVoiceoverPublishLanguageRequired = errors.New("voiceover: Language is required for semantic publish (PR-P12-VOICEOVER-SEMANTIC-FIELDS) — caller must populate Language on VoiceoverPublishCommand before invoking the Publisher")
+
+// ErrVoiceoverPublishProjectRequired is the typed sentinel surfaced
+// when useCasePublisherAdapter.Publish is called with an empty
+// Project field (PR-VOICEOVER-DRIVE-DRIFT, 2026-08-08).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the voiceover Drive write requires
+// a non-empty Project so the Publisher's PathBuilder (VoiceoverPath)
+// can build the canonical {project}/{language}/ subpath. The legacy
+// fallback chain (Project→FolderID→voiceover-ID) silently routed
+// empty-Project calls to req.RootFolderOverride, which surfaces
+// upstream as "PathBuilder incomplete but RootFolderOverride is set
+// (direct-to-root fallback)" — a godlike/07 NO-FAKE-AVAILABILITY
+// violation because operators see the uploaded audio land in the
+// wrong Drive folder with no typed diagnostic.
+//
+// This sentinel closes the drift:
+//   - Empty Project → typed sentinel (errors.Is-probable, fail-closed)
+//   - The fallback chain is RETIRED in favour of strict Project requirement
+//
+// Wire contract: the sentinel wraps a descriptive message that
+// includes the canonical field name ("Project") + the destination
+// ("voiceover publish") + the policy reference (PR-VOICEOVER-DRIVE-DRIFT).
+// Caller pattern: if errors.Is(err, ErrVoiceoverPublishProjectRequired)
+// { /* populate Project on VoiceoverPublishCommand (thread from API
+//
+//	GenerateVoiceoversRequest.Project per the PR-VOICEOVER-PROJECT-
+//	THREADING closure) and retry */ }.
+var ErrVoiceoverPublishProjectRequired = errors.New("voiceover: Project is required for semantic publish (PR-VOICEOVER-DRIVE-DRIFT) — caller must populate Project on VoiceoverPublishCommand before invoking the Publisher; the legacy FolderID/RootFolderOverride silent-fallback chain has been RETIRED per godlike/07 NO-FAKE-AVAILABILITY")
+
+// VoiceoverPublishCommandValidateError is the typed error envelope
+// returned by VoiceoverPublishCommand.Validate. It carries a wrapped
+// sentinel (ErrVoiceoverPublishProjectRequired OR
+// ErrVoiceoverPublishLanguageRequired OR a pre-Stage-3 field
+// requirement error) so callers can probe via errors.Is without
+// parsing the error string (godlike/07 typed-error contract).
+//
+// Implementation note: the canonical envelope is a fmt.Errorf
+// wrap of the typed sentinel; errors.Is recovers the sentinel per
+// Go 1.13+ behaviour. The error message includes the field name
+// (e.g. "Project", "Language", "LocalPath", "Filename") + the
+// canonical voiceover destination for operator log correlation.
+type VoiceoverPublishCommandValidateError struct {
+	Field   string // canonical field name (Project, Language, LocalPath, Filename, ID)
+	Wrapped error  // the typed sentinel or pre-Stage-3 gate error
+}
+
+// Compile-time pin (godlike/06 SSOT Pattern 0): the envelope
+// struct must structurally satisfy the error interface. Drift on
+// the Error() / Unwrap() signatures surfaces as a build failure
+// at this line — preventing silent drift on the typed-error contract.
+var _ error = (*VoiceoverPublishCommandValidateError)(nil)
+
+// ErrRecordingPublisherResolveFolderNotImplemented is the typed
+// sentinel returned by the test stub recordingPublisher.ResolveFolder
+// (internal/app/adapters_voiceover_publisher_test.go). It enforces
+// the godlike/07 NO-FAKE-AVAILABILITY contract: a future refactor
+// that accidentally invokes ResolveFolder from the adapter must
+// surface as a test failure (via errors.Is), NOT a silent
+// ("", nil) fallback that corrupts the wire shape.
+//
+// The per-item voiceover adapter (useCasePublisherAdapter) does NOT
+// call ResolveFolder because the folder is pre-resolved by the
+// caller via DestinationResolver. The stub returns this sentinel
+// to lock the invariant via the test surface.
+var ErrRecordingPublisherResolveFolderNotImplemented = errors.New(
+	"recordingPublisher.ResolveFolder is not implemented (the per-item voiceover adapter does NOT call ResolveFolder — if a future refactor invokes it, this sentinel surfaces as a test failure rather than a silent (\"\", nil) fallback)",
+)
+
+// Error implements the error interface. The format is
+// "voiceover publish: validate: field <Field>: <Wrapped.Error()>".
+func (e *VoiceoverPublishCommandValidateError) Error() string {
+	return "voiceover publish: validate: field " + e.Field + ": " + e.Wrapped.Error()
+}
+
+// Unwrap returns the wrapped error so errors.Is can recover the
+// underlying typed sentinel (godlike/07 typed-error contract).
+// Production callers (useCasePublisherAdapter.Publish) wrap this
+// envelope via fmt.Errorf("...: %w", err) — errors.Is + errors.As
+// both round-trip correctly through the dual-%w chain.
+func (e *VoiceoverPublishCommandValidateError) Unwrap() error {
+	return e.Wrapped
+}
+
+// VoiceoverPublishCommandError is the alias used by
+// VoiceoverPublishCommand.Validate for godlike/07 typed-error
+// contract. The error chain is:
+//
+//	fmt.Errorf("voiceover publish: validate: %w", &VoiceoverPublishCommandValidateError{Field: "Project", Wrapped: ErrVoiceoverPublishProjectRequired})
+//
+// so callers can errors.Is(err, ErrVoiceoverPublishProjectRequired)
+// AND/OR errors.As(err, &validateErr) to extract the field name
+// for operator log correlation.
+type VoiceoverPublishCommandError = VoiceoverPublishCommandValidateError
+
+// Validate runs the canonical fail-closed validation gate ONCE at
+// the voiceover Publisher seam. Mirrors the Language pattern but
+// extends to Project (PR-VOICEOVER-DRIVE-DRIFT, 2026-08-08): both
+// Project AND Language are required for canonical semantic routing
+// (VoiceoverPath builds {project}/{language}/).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the legacy fallback chain
+// (Project→FolderID→voiceover-ID) silently routed empty-Project
+// calls to req.RootFolderOverride, which surfaced as
+// "PathBuilder incomplete but RootFolderOverride is set" in the
+// operational diagnostic (2026-08-08). This Validate gate is the
+// typed-sentinel replacement: callers see a typed error and can
+// probe via errors.Is without parsing string fragments.
+//
+// godlike/06 SSOT: this is the canonical SOLE Validate method for
+// VoiceoverPublishCommand. The useCasePublisherAdapter.Publish
+// method calls this gate BEFORE any fallback chain (the chain is
+// now removed per the drift closure).
+//
+// ⚠️ BLAST RADIUS (BREAKING for pre-PR-VOICEOVER-PROJECT-THREADING
+// callers, 2026-07-08): any caller that passes cmd.FolderID without
+// cmd.Project will NOW FAIL with ErrVoiceoverPublishProjectRequired.
+// The legacy fallback to req.RootFolderOverride has been RETIRED.
+// To migrate: thread Project through your call site
+// (see PR-VOICEOVER-PROJECT-THREADING closure 2026-07-08 which added
+// `Project string` to VoiceoverPublishCommand + the parent
+// GenerateVoiceoversCommand + the fanout loop).
+//
+// Field precedence (fail-closed per field, "identity first, then
+// content" — routing concerns surface BEFORE filesystem concerns
+// so the most-actionable error is the one the caller sees first):
+//  1. nil receiver        → "ID is required" (typed-error envelope)
+//  2. empty ID            → "empty ID" (identity, no canonical row id)
+//  3. empty Project       → wrapped ErrVoiceoverPublishProjectRequired
+//  4. empty Language      → wrapped ErrVoiceoverPublishLanguageRequired
+//  5. empty LocalPath     → "empty LocalPath" (pre-publish gate)
+//  6. empty Filename      → "empty Filename" (pre-publish gate)
+//
+// The gate runs in this order so a caller with multiple missing
+// fields gets a deterministic single error (the FIRST failure),
+// not a "which-is-worst" composite — godlike/07 typed-error contract.
+// The routing concerns (Project + Language) are checked BEFORE
+// the filesystem concerns (LocalPath + Filename) because the drift
+// closure's primary use case is the Project-empty path; surfacing
+// the routing error first lets operators debug the drift directly.
+//
+// Returns nil when ALL fields are populated; the typed-error envelope
+// otherwise.
+func (c *VoiceoverPublishCommand) Validate() error {
+	if c == nil {
+		return &VoiceoverPublishCommandValidateError{
+			Field:   "ID",
+			Wrapped: fmt.Errorf("nil VoiceoverPublishCommand (callers must pass a non-nil *VoiceoverPublishCommand)"),
+		}
+	}
+	if c.ID == "" {
+		return &VoiceoverPublishCommandValidateError{
+			Field:   "ID",
+			Wrapped: fmt.Errorf("empty ID (use case supplied no canonical voiceover id)"),
+		}
+	}
+	if c.Project == "" {
+		return &VoiceoverPublishCommandValidateError{
+			Field:   "Project",
+			Wrapped: ErrVoiceoverPublishProjectRequired,
+		}
+	}
+	if c.Language == "" {
+		return &VoiceoverPublishCommandValidateError{
+			Field:   "Language",
+			Wrapped: ErrVoiceoverPublishLanguageRequired,
+		}
+	}
+	if c.LocalPath == "" {
+		return &VoiceoverPublishCommandValidateError{
+			Field:   "LocalPath",
+			Wrapped: fmt.Errorf("empty LocalPath (use case supplied no local payload)"),
+		}
+	}
+	if c.Filename == "" {
+		return &VoiceoverPublishCommandValidateError{
+			Field:   "Filename",
+			Wrapped: fmt.Errorf("empty Filename (use case supplied no display name)"),
+		}
+	}
+	return nil
+}
 
 // Azione #6/#10 (July 2026): TransactionalOutbox type alias removed;
 // FilenameBuilder interface removed (zero consumers after Azione #6).

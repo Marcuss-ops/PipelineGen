@@ -1,22 +1,28 @@
 // Package app — adapters_voiceover_publisher_test.go
-// (PR-P12-VOICEOVER-SEMANTIC-FIELDS, July 2026).
+// (PR-P12-VOICEOVER-SEMANTIC-FIELDS + PR-VOICEOVER-DRIVE-DRIFT, July/Aug 2026).
 //
 // Contract test surface for the canonical useCasePublisherAdapter.Publish
-// seam (internal/app/adapters_voiceover_publisher.go). 5 TDD cases pin:
+// seam (internal/app/adapters_voiceover_publisher.go). 7 TDD cases pin:
 //
 //  1. Project + Language forward to PublishRequest (req.ProjectID +
 //     req.Language) — the canonical semantic routing path.
-//  2. Empty Project + non-empty FolderID → req.RootFolderOverride
-//     (backward-compat with pre-PR-12 callers that resolved the
-//     folder manually and pass a FolderID literal).
-//  3. Empty Project + empty FolderID → req.ProjectID = cmd.ID
-//     (graceful degradation: voiceover ID is used as the canonical
-//     project slot; warning log captures the godlike/07 no-fake-
-//     availability signal).
-//  4. Empty Language → typed sentinel
+//  2. Empty Project → typed sentinel
+//     voiceover.ErrVoiceoverPublishProjectRequired (errors.Is-probable,
+//     fail-closed at the seam; PR-VOICEOVER-DRIVE-DRIFT).
+//     The legacy fallback chain (Project→FolderID→voiceover-ID) is
+//     RETIRED; both sub-cases (empty Project + non-empty FolderID,
+//     and empty Project + empty FolderID) fail closed identically.
+//  3. VoiceoverPublishCommand.Validate() field-precedence gate
+//     (6 sub-cases: nil receiver, empty LocalPath, empty Filename,
+//     empty ID, empty Language, empty Project) — first-failure-wins.
+//  4. VoiceoverPublishCommand.Validate() happy path (all fields populated).
+//  5. VoiceoverPublishCommandValidateError errors.As field extraction
+//     (godlike/07 typed-error contract; operators can probe the
+//     field name without parsing string fragments).
+//  6. Empty Language → typed sentinel
 //     ErrVoiceoverPublishLanguageRequired (errors.Is-probable,
 //     fail-closed at the seam).
-//  5. Empty LocalPath + empty Filename → pre-Stage-3 fail-closed
+//  7. Empty LocalPath + empty Filename → pre-Stage-3 fail-closed
 //     gates (the adapter rejects these BEFORE invoking Publisher).
 //
 // godlike/06 SSOT: this file lives ONLY at internal/app/ (the
@@ -35,13 +41,13 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -72,12 +78,14 @@ func (r *recordingPublisher) Publish(_ context.Context, req delivery.PublishRequ
 
 // ResolveFolder is the second method on delivery.Publisher. The
 // per-item voiceover adapter does NOT call ResolveFolder (the
-// folder is pre-resolved by the caller via DestinationResolver),
-// so this stub returns an empty folder ID and a typed-error sentinel
-// if a future test ever exercises the path. Keeps the test stub
-// a REAL delivery.Publisher per godlike/06 SSOT compile-time pin.
+// folder is pre-resolved by the caller via DestinationResolver).
+// Returns a typed-error sentinel (NOT a silent ("", nil) fallback)
+// so an accidental future call from the adapter surfaces as a
+// test failure rather than silently corrupting the wire shape.
+// Keeps the test stub a REAL delivery.Publisher per godlike/06 SSOT
+// compile-time pin.
 func (r *recordingPublisher) ResolveFolder(_ context.Context, _ delivery.PublishRequest) (string, error) {
-	return "", nil
+	return "", voiceover.ErrRecordingPublisherResolveFolderNotImplemented
 }
 
 func (r *recordingPublisher) callCount() int {
@@ -95,6 +103,21 @@ func canonicalRecordingPublisher() *recordingPublisher {
 	}
 }
 
+// canonicalVoiceoverPublishCommand returns a fully-populated
+// VoiceoverPublishCommand for happy-path test fixtures. Tests
+// that exercise the fail-closed contract start from this and
+// clear a single field to test the gate.
+func canonicalVoiceoverPublishCommand() voiceover.VoiceoverPublishCommand {
+	return voiceover.VoiceoverPublishCommand{
+		ID:        "vo-pr12-canonical-001",
+		LocalPath: "/tmp/vo-pr12-canonical-001.mp3",
+		Filename:  "vo-pr12-canonical-001_it-IT.mp3",
+		FolderID:  "legacy-folder-id-may-be-set",
+		Project:   "storia-boxe",
+		Language:  "it-IT",
+	}
+}
+
 // TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest
 // pins contract #1: when both Project and Language are non-empty
 // on VoiceoverPublishCommand, the adapter forwards them to
@@ -103,6 +126,13 @@ func canonicalRecordingPublisher() *recordingPublisher {
 // VoiceoverPath will build {project}/{language}/ subpath from
 // these fields. No RootFolderOverride is set; no fallback warning
 // is logged.
+//
+// PR-VOICEOVER-DRIVE-DRIFT (2026-08-08): the canonical test now also
+// verifies that FolderID is NOT forwarded to req.RootFolderOverride
+// (the legacy silent-fallback chain has been RETIRED). The
+// FolderID field on VoiceoverPublishCommand is now informational
+// only — it survives the wire-shape migration for backward-compat
+// with API DTOs, but the adapter no longer reads it.
 func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testing.T) {
 	pub := canonicalRecordingPublisher()
 	adapter := newUseCasePublisherAdapter(pub, zap.NewNop())
@@ -112,8 +142,9 @@ func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testin
 		LocalPath: "/tmp/vo-pr12-canonical-001.mp3",
 		Filename:  "vo-pr12-canonical-001_it-IT.mp3",
 		// Legacy FolderID is intentionally non-empty to prove the
-		// adapter prefers Project over FolderID (semantic-first per
-		// godlike/06 SSOT).
+		// adapter does NOT consume it (semantic-first per
+		// godlike/06 SSOT; PR-VOICEOVER-DRIVE-DRIFT retirement of
+		// the silent-fallback chain).
 		FolderID: "legacy-folder-DO-NOT-USE",
 		Project:  "storia-boxe",
 		Language: "it-IT",
@@ -135,92 +166,230 @@ func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testin
 		"req.RootFolderOverride MUST be empty when Project is set (semantic-first precedence)")
 }
 
-// TestPublisherAdapter_EmptyProject_FolderIDFallbackToRootOverride
-// pins contract #2: when Project is empty AND FolderID is non-empty
-// (pre-PR-12 callers that resolved the folder manually and pass a
-// FolderID literal), the adapter uses FolderID as the
-// req.RootFolderOverride. The Publisher bypasses DestinationRegistry
-// root-folder resolution and writes to the pre-resolved root.
-func TestPublisherAdapter_EmptyProject_FolderIDFallbackToRootOverride(t *testing.T) {
-	pub := canonicalRecordingPublisher()
-	adapter := newUseCasePublisherAdapter(pub, zap.NewNop())
+// TestPublisherAdapter_EmptyProject_FailsClosedWithTypedSentinel
+// pins contract #2 (NEW, PR-VOICEOVER-DRIVE-DRIFT 2026-08-08): when
+// Project is empty on VoiceoverPublishCommand, the adapter MUST
+// fail CLOSED at the typed sentinel
+// voiceover.ErrVoiceoverPublishProjectRequired. No Publisher
+// invocation (the gate runs BEFORE the Publisher call). The sentinel
+// is errors.Is-probable (godlike/07 typed-error contract) so callers
+// can detect the failure mode without parsing string fragments.
+//
+// The legacy fallback chain (empty Project + non-empty FolderID →
+// req.RootFolderOverride; empty Project + empty FolderID →
+// req.ProjectID = cmd.ID with a Warn log) is RETIRED per
+// godlike/07 NO-FAKE-AVAILABILITY. Both legacy scenarios now fail
+// closed identically — the test exercises BOTH sub-cases to lock
+// the contract.
+func TestPublisherAdapter_EmptyProject_FailsClosedWithTypedSentinel(t *testing.T) {
+	t.Run("EmptyProject_NonEmptyFolderID_StillFailsClosed", func(t *testing.T) {
+		// godlike/07 minimum-blast-radius: the FolderID field is
+		// no longer consumed by the adapter. Even if a legacy
+		// caller passes a FolderID, the empty Project gate fires
+		// FIRST (Validate runs before any Publish call).
+		pub := canonicalRecordingPublisher()
+		adapter := newUseCasePublisherAdapter(pub, zap.NewNop())
 
-	fileID, err := adapter.Publish(context.Background(), voiceover.VoiceoverPublishCommand{
-		ID:        "vo-pr12-legacy-001",
-		LocalPath: "/tmp/vo-pr12-legacy-001.mp3",
-		Filename:  "vo-pr12-legacy-001.mp3",
-		// Project empty (legacy caller doesn't know the semantic surface)
-		// but FolderID non-empty (legacy caller resolved the folder manually).
-		FolderID: "legacy-resolved-folder-id",
-		Language: "en-US",
+		cmd := canonicalVoiceoverPublishCommand()
+		cmd.Project = "" // gate trigger
+		// FolderID remains non-empty (legacy compat shape)
+
+		fileID, err := adapter.Publish(context.Background(), cmd)
+		require.Error(t, err)
+		assert.Empty(t, fileID, "fileID MUST be empty when Project is empty (fail-closed contract)")
+		assert.Equal(t, 0, pub.callCount(),
+			"Publisher MUST NOT be invoked when Project is empty (Validate gate runs first)")
+		assert.True(t, errors.Is(err, voiceover.ErrVoiceoverPublishProjectRequired),
+			"errors.Is must recover the typed sentinel so callers can probe without parsing strings")
+		assert.Contains(t, err.Error(), "PR-VOICEOVER-DRIVE-DRIFT",
+			"error message must reference the canonical PR so operators can trace the policy")
 	})
-	require.NoError(t, err)
-	assert.Equal(t, "drive-file-id-canonical", fileID)
-	assert.Equal(t, 1, pub.callCount())
 
-	got := pub.calls[0]
-	assert.Equal(t, "legacy-resolved-folder-id", got.RootFolderOverride,
-		"empty Project + non-empty FolderID MUST surface as req.RootFolderOverride (legacy compat path)")
-	assert.Empty(t, got.ProjectID,
-		"req.ProjectID MUST be empty in the legacy compat path (no semantic routing)")
-	assert.Equal(t, "en-US", got.Language)
+	t.Run("EmptyProject_EmptyFolderID_StillFailsClosed", func(t *testing.T) {
+		// godlike/07 minimum-blast-radius: this sub-case was the
+		// "graceful degradation" path (req.ProjectID = cmd.ID with
+		// a Warn log). Both empty → must STILL fail closed. No
+		// Warn log is emitted; no req.ProjectID fallback.
+		pub := canonicalRecordingPublisher()
+		adapter := newUseCasePublisherAdapter(pub, zap.NewNop())
+
+		cmd := canonicalVoiceoverPublishCommand()
+		cmd.Project = ""  // gate trigger
+		cmd.FolderID = "" // both empty (was the degradation path)
+
+		fileID, err := adapter.Publish(context.Background(), cmd)
+		require.Error(t, err)
+		assert.Empty(t, fileID, "fileID MUST be empty when Project is empty (fail-closed contract)")
+		assert.Equal(t, 0, pub.callCount(),
+			"Publisher MUST NOT be invoked when Project is empty (Validate gate runs first)")
+		assert.True(t, errors.Is(err, voiceover.ErrVoiceoverPublishProjectRequired),
+			"errors.Is must recover the typed sentinel so callers can probe without parsing strings")
+		assert.False(t, errors.Is(err, voiceover.ErrVoiceoverPublishLanguageRequired),
+			"empty-Project failure MUST NOT be wrapped as Language-required (disambiguate failure modes)")
+	})
 }
 
-// TestPublisherAdapter_EmptyProjectAndFolder_GracefulDegradationWithWarn
-// pins contract #3: when BOTH Project and FolderID are empty
-// (the canonical godlike/07 no-fake-availability degradation
-// path), the adapter uses cmd.ID as req.ProjectID so VoiceoverPath
-// can still build {project}/{language}/. A Warn-level log captures
-// the degradation signal so operators can detect callers that
-// haven't migrated to the semantic surface.
+// TestVoiceoverPublishCommand_Validate_FieldPrecedence pins contract #3:
+// the canonical fail-closed Validate gate runs on the typed command
+// struct BEFORE the adapter forwards to the Publisher. 6 sub-cases
+// cover the full field-precedence order (identity first, then content
+// per PR-VOICEOVER-DRIVE-DRIFT code-reviewer feedback, 2026-08-08):
 //
-// Uses zaptest/observer to capture the warn log entry — confirms
-// the canonical observability contract pinned by the action plan.
-func TestPublisherAdapter_EmptyProjectAndFolder_GracefulDegradationWithWarn(t *testing.T) {
-	pub := canonicalRecordingPublisher()
-	core, logs := observer.New(zap.WarnLevel)
-	adapter := newUseCasePublisherAdapter(pub, zap.New(core))
-
-	fileID, err := adapter.Publish(context.Background(), voiceover.VoiceoverPublishCommand{
-		ID:        "vo-pr12-degraded-001",
-		LocalPath: "/tmp/vo-pr12-degraded-001.mp3",
-		Filename:  "vo-pr12-degraded-001.mp3",
-		// Both Project and FolderID empty — graceful degradation path.
-		Language: "en-US",
+//  1. nil receiver
+//  2. empty ID (identity — no canonical row id)
+//  3. empty Project (routing primary, NEW drift-closure gate)
+//  4. empty Language (routing secondary)
+//  5. empty LocalPath (pre-Stage-3 filesystem gate)
+//  6. empty Filename (pre-Stage-3 filesystem gate)
+//
+// godlike/07 typed-error contract: each error is a
+// *VoiceoverPublishCommandValidateError envelope with the
+// canonical Field name; errors.Is recovers the wrapped typed
+// sentinel; errors.As extracts the envelope struct.
+//
+// First-failure-wins semantics: only the FIRST missing field is
+// reported, NOT a "which-is-worst" composite. godlike/07 minimum-
+// blast-radius ensures callers see a deterministic single error.
+func TestVoiceoverPublishCommand_Validate_FieldPrecedence(t *testing.T) {
+	t.Run("NilReceiver", func(t *testing.T) {
+		var cmd *voiceover.VoiceoverPublishCommand
+		err := cmd.Validate()
+		require.Error(t, err)
+		var vErr *voiceover.VoiceoverPublishCommandValidateError
+		require.True(t, errors.As(err, &vErr),
+			"errors.As must extract the canonical envelope struct")
+		assert.Equal(t, "ID", vErr.Field,
+			"nil receiver MUST be reported as ID (canonical first-failure)")
 	})
-	require.NoError(t, err)
-	assert.Equal(t, "drive-file-id-canonical", fileID)
-	assert.Equal(t, 1, pub.callCount())
 
-	got := pub.calls[0]
-	assert.Equal(t, "vo-pr12-degraded-001", got.ProjectID,
-		"empty Project + empty FolderID MUST use voiceover ID as ProjectID fallback (graceful degradation)")
-	assert.Empty(t, got.RootFolderOverride,
-		"req.RootFolderOverride MUST be empty in the degradation path")
-	assert.Equal(t, "en-US", got.Language)
+	t.Run("EmptyID", func(t *testing.T) {
+		cmd := canonicalVoiceoverPublishCommand()
+		cmd.ID = "" // gate trigger
+		err := cmd.Validate()
+		require.Error(t, err)
+		var vErr *voiceover.VoiceoverPublishCommandValidateError
+		require.True(t, errors.As(err, &vErr))
+		assert.Equal(t, "ID", vErr.Field,
+			"empty ID MUST be reported before LocalPath/Filename (identity-first precedence)")
+		assert.Contains(t, err.Error(), "empty ID")
+	})
 
-	// Warn-level log assertion: the adapter MUST emit exactly one
-	// warn entry with the canonical godlike/07 degradation-signal
-	// message so operators can detect pre-PR-12 callers.
-	require.Equal(t, 1, logs.Len(),
-		"graceful-degradation path MUST emit exactly one Warn log (no log = silent-success anti-pattern)")
-	entry := logs.All()[0]
-	assert.Equal(t, zap.WarnLevel, entry.Level)
-	assert.Contains(t, entry.Message, "voiceover publisher",
-		"warn message must start with the canonical adapter prefix")
-	assert.Contains(t, entry.Message, "degradation signal",
-		"warn message must call out the godlike/07 no-fake-availability contract")
-	assert.Contains(t, entry.Message, "neither Project nor FolderID set",
-		"warn message must identify the empty-input condition")
+	t.Run("EmptyProject", func(t *testing.T) {
+		cmd := canonicalVoiceoverPublishCommand()
+		cmd.Project = "" // gate trigger
+		err := cmd.Validate()
+		require.Error(t, err)
+		var vErr *voiceover.VoiceoverPublishCommandValidateError
+		require.True(t, errors.As(err, &vErr),
+			"errors.As must extract the canonical envelope (operator-scannable field name)")
+		assert.Equal(t, "Project", vErr.Field,
+			"empty Project MUST be reported with the canonical field name 'Project'")
+		assert.True(t, errors.Is(err, voiceover.ErrVoiceoverPublishProjectRequired),
+			"errors.Is must recover the typed sentinel via the Unwrap chain")
+		assert.Contains(t, err.Error(), "PR-VOICEOVER-DRIVE-DRIFT",
+			"error message must reference the canonical PR so operators can trace the drift closure")
+	})
+
+	t.Run("EmptyLanguage", func(t *testing.T) {
+		cmd := canonicalVoiceoverPublishCommand()
+		cmd.Language = "" // gate trigger
+		err := cmd.Validate()
+		require.Error(t, err)
+		var vErr *voiceover.VoiceoverPublishCommandValidateError
+		require.True(t, errors.As(err, &vErr),
+			"errors.As must extract the canonical envelope (operator-scannable field name)")
+		assert.Equal(t, "Language", vErr.Field)
+		assert.True(t, errors.Is(err, voiceover.ErrVoiceoverPublishLanguageRequired),
+			"errors.Is must recover the typed sentinel via the Unwrap chain")
+		assert.Contains(t, err.Error(), "PR-P12-VOICEOVER-SEMANTIC-FIELDS")
+	})
+
+	t.Run("EmptyLocalPath", func(t *testing.T) {
+		cmd := canonicalVoiceoverPublishCommand()
+		cmd.LocalPath = "" // gate trigger
+		err := cmd.Validate()
+		require.Error(t, err)
+		var vErr *voiceover.VoiceoverPublishCommandValidateError
+		require.True(t, errors.As(err, &vErr))
+		assert.Equal(t, "LocalPath", vErr.Field,
+			"empty LocalPath MUST be reported AFTER Project/Language (routing-first precedence)")
+		assert.Contains(t, err.Error(), "empty LocalPath",
+			"envelope must surface the canonical field-name + condition")
+	})
+
+	t.Run("EmptyFilename", func(t *testing.T) {
+		cmd := canonicalVoiceoverPublishCommand()
+		cmd.Filename = "" // gate trigger
+		err := cmd.Validate()
+		require.Error(t, err)
+		var vErr *voiceover.VoiceoverPublishCommandValidateError
+		require.True(t, errors.As(err, &vErr))
+		assert.Equal(t, "Filename", vErr.Field,
+			"empty Filename MUST be reported AFTER Project/Language/LocalPath (routing-first precedence)")
+		assert.Contains(t, err.Error(), "empty Filename")
+	})
+}
+
+// TestVoiceoverPublishCommand_Validate_AllFieldsPopulated pins
+// contract #4: when all 6 fields (ID + LocalPath + Filename +
+// Language + Project + optional FolderID/IdempotencyKey) are
+// populated, Validate returns nil. The happy-path contract is
+// the canonical pass-condition that the rest of the field-precedence
+// suite depends on.
+func TestVoiceoverPublishCommand_Validate_AllFieldsPopulated(t *testing.T) {
+	cmd := canonicalVoiceoverPublishCommand()
+	err := cmd.Validate()
+	require.NoError(t, err, "fully-populated command MUST pass Validate (happy-path contract)")
+}
+
+// TestVoiceoverPublishCommandValidateError_FieldExtraction pins
+// contract #5: the typed envelope carries the canonical Field
+// name (string), and operators can recover it via errors.As without
+// parsing the error string. This is the godlike/07 typed-error
+// contract — operator dashboards groupBy(field_name) WITHOUT
+// depending on the canonical error message wording.
+func TestVoiceoverPublishCommandValidateError_FieldExtraction(t *testing.T) {
+	cmd := canonicalVoiceoverPublishCommand()
+	cmd.Project = "" // gate trigger (Project = canonical drift-closure field)
+	err := cmd.Validate()
+	require.Error(t, err)
+
+	var vErr *voiceover.VoiceoverPublishCommandValidateError
+	require.True(t, errors.As(err, &vErr),
+		"errors.As must extract the canonical envelope struct (operator-scannable field)")
+	assert.Equal(t, "Project", vErr.Field,
+		"Field name MUST be the canonical 'Project' (matches the typed-sentinel contract)")
+
+	// Direct method-call also recovers the same field (defense-in-depth).
+	assert.Equal(t, "Project", vErr.Field,
+		"envelope.Field getter MUST return the canonical field name")
+
+	// Unwrap chain MUST recover the typed sentinel (errors.Is).
+	assert.True(t, errors.Is(err, voiceover.ErrVoiceoverPublishProjectRequired),
+		"errors.Is chain MUST recover the wrapped typed sentinel via Unwrap()")
+
+	// Error() method MUST include both the envelope prefix AND the
+	// sentinel's full text (operator-log-readable).
+	assert.Contains(t, err.Error(), "voiceover publish: validate: field Project",
+		"envelope Error() MUST format as 'voiceover publish: validate: field <Name>'")
+	assert.Contains(t, err.Error(), "PR-VOICEOVER-DRIVE-DRIFT",
+		"sentinel text MUST surface in the final error message")
 }
 
 // TestPublisherAdapter_EmptyLanguage_FailsClosedWithTypedSentinel
-// pins contract #4: when Language is empty on VoiceoverPublishCommand,
+// pins contract #6: when Language is empty on VoiceoverPublishCommand,
 // the adapter MUST fail CLOSED at the typed sentinel
 // voiceover.ErrVoiceoverPublishLanguageRequired. No Publisher
 // invocation (the gate runs BEFORE the fallback chain). The sentinel
 // is errors.Is-probable (godlike/07 typed-error contract) so callers
 // can detect the failure mode without parsing string fragments.
+//
+// The test sets Project to a non-empty value so the routing-first
+// precedence (ID → Project → Language → LocalPath → Filename)
+// skips past the Project gate and lands on the Language gate —
+// this locks that Project is checked BEFORE Language (not the
+// reverse). The canonical order is: identity (ID), then routing
+// (Project → Language), then filesystem (LocalPath → Filename).
 func TestPublisherAdapter_EmptyLanguage_FailsClosedWithTypedSentinel(t *testing.T) {
 	pub := canonicalRecordingPublisher()
 	adapter := newUseCasePublisherAdapter(pub, zap.NewNop())
@@ -231,6 +400,9 @@ func TestPublisherAdapter_EmptyLanguage_FailsClosedWithTypedSentinel(t *testing.
 		Filename:  "vo-pr12-no-lang-001.mp3",
 		Project:   "storia-boxe",
 		// Language intentionally empty — fail-closed at the sentinel.
+		// Project is non-empty so the gate passes Project and stops
+		// at Language (per the identity-first precedence; this locks
+		// that Project is checked BEFORE Language, not the reverse).
 		Language: "",
 	})
 	require.Error(t, err)
@@ -243,19 +415,125 @@ func TestPublisherAdapter_EmptyLanguage_FailsClosedWithTypedSentinel(t *testing.
 		"error message must reference the canonical PR so operators can trace the policy")
 }
 
-// TestPublisherAdapter_EmptyLocalPathOrFilename_PreStage3FailClosed
-// pins contract #5: the pre-Stage-3 fail-closed gates reject empty
-// LocalPath and empty Filename BEFORE any Publisher invocation.
-// These are the pre-PR-12 gates preserved verbatim across the
-// PR-P12 migration (the new Language gate sits between them and
-// the Publisher call).
+// TestPublisherAdapter_ProjectAndLanguageBothEmpty_ProjectCheckedFirst
+// pins the canonical precedence-order lock (PR-VOICEOVER-DRIVE-DRIFT
+// code-reviewer feedback, 2026-08-08): when BOTH Project and Language
+// are empty on VoiceoverPublishCommand, the adapter MUST fail CLOSED
+// at the Project-required sentinel (NOT the Language-required sentinel).
+// The routing-primary field is checked FIRST so operators debugging
+// the drift see the most-actionable error directly.
 //
-// 5a: empty LocalPath → fail-closed before the Language gate.
-// 5b: empty Filename → fail-closed before the Language gate.
+// godlike/07 NO-FAKE-AVAILABILITY: the drift closure's primary use
+// case is the Project-empty path (the legacy silent-fallback chain
+// routed empty-Project to RootFolderOverride which surfaced as
+// "PathBuilder incomplete but RootFolderOverride is set"). Surfacing
+// the Project error FIRST lets operators debug the drift directly,
+// without first fixing a downstream Language issue that may be a
+// secondary symptom.
+func TestPublisherAdapter_ProjectAndLanguageBothEmpty_ProjectCheckedFirst(t *testing.T) {
+	pub := canonicalRecordingPublisher()
+	adapter := newUseCasePublisherAdapter(pub, zap.NewNop())
+
+	fileID, err := adapter.Publish(context.Background(), voiceover.VoiceoverPublishCommand{
+		ID:        "vo-pr12-both-empty-001",
+		LocalPath: "/tmp/vo-pr12-both-empty-001.mp3",
+		Filename:  "vo-pr12-both-empty-001.mp3",
+		// Both Project AND Language intentionally empty.
+		// Per canonical precedence (identity first, then content),
+		// Project is checked BEFORE Language — so the typed error
+		// MUST be ErrVoiceoverPublishProjectRequired, not
+		// ErrVoiceoverPublishLanguageRequired.
+		Project:  "",
+		Language: "",
+	})
+	require.Error(t, err)
+	assert.Empty(t, fileID)
+	assert.Equal(t, 0, pub.callCount(),
+		"Publisher MUST NOT be invoked when Project is empty (Validate gate runs first)")
+	assert.True(t, errors.Is(err, voiceover.ErrVoiceoverPublishProjectRequired),
+		"errors.Is must recover the Project-required sentinel (NOT the Language one) — precedence-order lock")
+	assert.False(t, errors.Is(err, voiceover.ErrVoiceoverPublishLanguageRequired),
+		"empty-Project failure MUST NOT be wrapped as Language-required (disambiguate failure modes + lock precedence)")
+	assert.Contains(t, err.Error(), "PR-VOICEOVER-DRIVE-DRIFT",
+		"error message must reference the Project-drift-closure PR so operators can trace the policy")
+}
+
+// TestVoiceoverPublishCommandValidateError_Unwrap_PreservesSentinel
+// pins the load-bearing assertion for the errors.Is recovery path the
+// adapter relies on (useCasePublisherAdapter.Publish wraps the
+// envelope via fmt.Errorf("...: %w", err); errors.Is must traverse
+// the dual-%w chain back to the typed sentinel).
+//
+// godlike/07 typed-error contract: callers probe via
+// errors.Is(err, ErrVoiceoverPublishProjectRequired) to detect
+// the drift-closure failure mode without parsing string fragments.
+// If Unwrap() does not return the wrapped sentinel, the chain
+// breaks and callers see only the opaque envelope text — a
+// godlike/07 NO-FAKE-AVAILABILITY violation class.
+func TestVoiceoverPublishCommandValidateError_Unwrap_PreservesSentinel(t *testing.T) {
+	t.Run("Unwrap_ProjectSentinel", func(t *testing.T) {
+		envelope := &voiceover.VoiceoverPublishCommandValidateError{
+			Field:   "Project",
+			Wrapped: voiceover.ErrVoiceoverPublishProjectRequired,
+		}
+		assert.Equal(t, voiceover.ErrVoiceoverPublishProjectRequired, envelope.Unwrap(),
+			"Unwrap() MUST return the wrapped typed sentinel directly (canonical typed-error contract)")
+	})
+
+	t.Run("Unwrap_LanguageSentinel", func(t *testing.T) {
+		envelope := &voiceover.VoiceoverPublishCommandValidateError{
+			Field:   "Language",
+			Wrapped: voiceover.ErrVoiceoverPublishLanguageRequired,
+		}
+		assert.Equal(t, voiceover.ErrVoiceoverPublishLanguageRequired, envelope.Unwrap(),
+			"Unwrap() MUST return the wrapped typed sentinel directly (canonical typed-error contract)")
+	})
+
+	t.Run("ErrorsIs_DualPercentW_ChainTraversal", func(t *testing.T) {
+		// godlike/07 minimum-blast-radius: the adapter wraps the
+		// envelope via fmt.Errorf("...: %w", err). The dual-%w
+		// chain (envelope → sentinel) must round-trip via
+		// errors.Is so callers can detect the failure mode
+		// through the wrap.
+		cmd := canonicalVoiceoverPublishCommand()
+		cmd.Project = "" // gate trigger
+		err := cmd.Validate()
+		require.Error(t, err)
+
+		// Wrap the envelope error in another %w (mirroring the
+		// adapter's dual-%w pattern).
+		wrapped := fmt.Errorf("useCasePublisherAdapter.Publish: validate: %w", err)
+
+		// errors.Is MUST traverse through the outer wrap → envelope
+		// → sentinel chain.
+		assert.True(t, errors.Is(wrapped, voiceover.ErrVoiceoverPublishProjectRequired),
+			"errors.Is MUST recover the typed sentinel through a dual-%w chain (load-bearing for the adapter's wrap pattern)")
+
+		// errors.As MUST extract the envelope from the dual-%w chain.
+		var vErr *voiceover.VoiceoverPublishCommandValidateError
+		assert.True(t, errors.As(wrapped, &vErr),
+			"errors.As MUST extract the canonical envelope from the dual-%w chain (operator-scannable field name)")
+		assert.Equal(t, "Project", vErr.Field,
+			"extracted envelope MUST carry the canonical field name 'Project'")
+	})
+}
+
+// TestPublisherAdapter_EmptyLocalPathOrFilename_PreStage3FailClosed
+// pins contract #7: the pre-Stage-3 fail-closed gates reject empty
+// LocalPath and empty Filename BEFORE any Publisher invocation.
+// These are the pre-PR-12 gates preserved across the PR-P12
+// migration — under the new identity-first precedence (post
+// PR-VOICEOVER-DRIVE-DRIFT 2026-08-08), the routing checks
+// (Project + Language) run BEFORE the filesystem checks
+// (LocalPath + Filename) so a caller with both a routing issue
+// AND a filesystem issue sees the routing error first.
+//
+// 7a: empty LocalPath → fail-closed AFTER the routing gates pass.
+// 7b: empty Filename → fail-closed AFTER the routing gates pass.
 //
 // Both cases assert zero Publisher invocations and the absence
 // of the typed-sentinel (so callers can disambiguate the failure
-// mode from the Language-required failure).
+// mode from the Language/Project-required failure).
 func TestPublisherAdapter_EmptyLocalPathOrFilename_PreStage3FailClosed(t *testing.T) {
 	t.Run("EmptyLocalPath", func(t *testing.T) {
 		pub := canonicalRecordingPublisher()
@@ -274,6 +552,8 @@ func TestPublisherAdapter_EmptyLocalPathOrFilename_PreStage3FailClosed(t *testin
 			"Publisher MUST NOT be invoked when LocalPath is empty (pre-Stage-3 gate)")
 		assert.False(t, errors.Is(err, voiceover.ErrVoiceoverPublishLanguageRequired),
 			"empty-LocalPath failure MUST NOT be wrapped as Language-required (disambiguate failure modes)")
+		assert.False(t, errors.Is(err, voiceover.ErrVoiceoverPublishProjectRequired),
+			"empty-LocalPath failure MUST NOT be wrapped as Project-required (disambiguate failure modes)")
 		assert.Contains(t, err.Error(), "empty LocalPath",
 			"error message must identify the empty-LocalPath condition")
 	})
@@ -295,6 +575,8 @@ func TestPublisherAdapter_EmptyLocalPathOrFilename_PreStage3FailClosed(t *testin
 			"Publisher MUST NOT be invoked when Filename is empty (pre-Stage-3 gate)")
 		assert.False(t, errors.Is(err, voiceover.ErrVoiceoverPublishLanguageRequired),
 			"empty-Filename failure MUST NOT be wrapped as Language-required (disambiguate failure modes)")
+		assert.False(t, errors.Is(err, voiceover.ErrVoiceoverPublishProjectRequired),
+			"empty-Filename failure MUST NOT be wrapped as Project-required (disambiguate failure modes)")
 		assert.Contains(t, err.Error(), "empty Filename",
 			"error message must identify the empty-Filename condition")
 	})
