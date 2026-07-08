@@ -254,6 +254,7 @@ func buildVoiceoverService(
 		Publisher:           voPublisher,
 		VoiceoverRepository: voRepoAdapter,
 		Finalizer:           finalizer,
+		TxOutboxEnqueuer:    outboxEnqueuer, // FASE 4 (July 2026): orphan-cleanup path active in production
 		Logger:              log,
 	})
 
