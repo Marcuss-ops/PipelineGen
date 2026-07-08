@@ -163,12 +163,22 @@ type ProcessSegmentCommand struct {
 // the batch path used TransactionalOutbox directly; post-DRY
 // the finalizer handles the index + cleanup outbox events inside
 // the same tx.
+//
+// FASE 4 (July 2026): TxOutboxEnqueuer is an OPTIONAL port used
+// ONLY for the orphan-cleanup path — when Stage 3 (Drive upload)
+// succeeded but Stage 4 (Finalize) failed, the use case opens a
+// SEPARATE tx (the original Finalize tx was rolled back) and
+// enqueues a voiceover.cleanup.requested event for the orphaned
+// Drive file. When nil (pre-FASE-4 callers), the orphan-cleanup
+// path is silently skipped — the orphan sweeper will eventually
+// recover the Drive file.
 type ProcessSegmentDeps struct {
 	TTSProvider         TTSProvider
 	AudioPostProcessor  AudioPostProcessor // nil-safe
 	Publisher           VoiceoverPublisher
 	VoiceoverRepository VoiceoverRepository
 	Finalizer           VoiceoverFinalizer // mandatory (P0.4 Fase 3a)
+	TxOutboxEnqueuer    TxOutboxEnqueuer   // optional (FASE 4 orphan-cleanup path; nil-safe)
 	Logger              *zap.Logger
 }
 
@@ -441,6 +451,27 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		emitFinalize("failed")
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.Error = fmt.Sprintf("finalize_failed: %v", err)
+
+		// FASE 4 (July 2026): orphan-cleanup path — when Drive upload
+		// succeeded (Stage 3) but DB finalize failed (Stage 4), the
+		// Drive file is orphaned (exists on Drive with no DB row).
+		// Open a SEPARATE tx (the Finalize tx is about to be rolled
+		// back by defer) and enqueue a voiceover.cleanup.requested
+		// outbox event so the orphan sweeper can trash the Drive
+		// file. When TxOutboxEnqueuer is nil (pre-FASE-4 callers),
+		// this path is silently skipped — the background orphan
+		// sweeper will eventually recover the file.
+		//
+		// godlike/07 NO-FAKE-AVAILABILITY: the cleanup event is
+		// committed in its OWN tx, independent of the rolled-back
+		// Finalize tx. A failure to enqueue the cleanup event (e.g.
+		// DB unreachable) is logged at Warn level but does NOT
+		// change the finalize_failed error — the caller still sees
+		// the original Finalize error.
+		if out.DriveFileID != "" && u.deps.TxOutboxEnqueuer != nil {
+			u.enqueueOrphanCleanup(ctx, cmd.ID, out.DriveFileID, out.LocalPath, out.CleanedPath)
+		}
+
 		return out, err
 	}
 
@@ -461,4 +492,78 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	out.Status = StatusCompleted
 	observability.VoiceoverJobsTotal.WithLabelValues("completed").Inc()
 	return out, nil
+}
+
+// enqueueOrphanCleanup opens a SEPARATE tx and enqueues a
+// voiceover.cleanup.requested outbox event for an orphaned Drive file
+// (FASE 4, July 2026). Called ONLY from the Finalize-failure path
+// when Stage 3 succeeded (DriveFileID is non-empty) and
+// TxOutboxEnqueuer is wired.
+//
+// The caller's Finalize tx was rolled back (defer in Execute), so
+// this method opens a FRESH tx via VoiceoverRepository.BeginTx for
+// the cleanup event. The cleanup tx is committed independently — a
+// failure here does NOT change the original finalize_failed error
+// (godlike/07 typed-error contract: the caller sees the Finalize
+// error, not the cleanup error).
+//
+// Cleanup event fields:
+//   - voiceoverID: cmd.ID (the voiceover row that was never inserted)
+//   - oldDriveFileID: "" (no prior row existed)
+//   - newDriveFileID: driveFileID (the orphaned Drive file to trash)
+//   - oldLocalPaths: [localPath, cleanedPath] (local temp files)
+//
+// godlike/07 NO-FAKE-AVAILABILITY: every failure in this method
+// is logged at Warn level but does NOT propagate to the caller.
+// The original Finalize error IS the canonical job outcome; the
+// cleanup event is a best-effort recovery path. The background
+// orphan sweeper (orphan_sweeper.go) is the safety net.
+func (u *ProcessSegmentUseCase) enqueueOrphanCleanup(ctx context.Context, voiceoverID, driveFileID, localPath, cleanedPath string) {
+	log := u.deps.Logger
+	cleanupTx, txErr := u.deps.VoiceoverRepository.BeginTx(ctx)
+	if txErr != nil {
+		log.Warn("FASE 4 orphan-cleanup: BeginTx failed; orphan sweeper will recover",
+			zap.String("voiceover_id", voiceoverID),
+			zap.String("drive_file_id", driveFileID),
+			zap.Error(txErr),
+		)
+		return
+	}
+	defer func() { _ = cleanupTx.Rollback() }()
+
+	var oldLocalPaths []string
+	if localPath != "" {
+		oldLocalPaths = append(oldLocalPaths, localPath)
+	}
+	if cleanedPath != "" && cleanedPath != localPath {
+		oldLocalPaths = append(oldLocalPaths, cleanedPath)
+	}
+
+	if err := u.deps.TxOutboxEnqueuer.EnqueueCleanupEvent(ctx, cleanupTx,
+		voiceoverID,
+		"",            // oldDriveFileID — no prior row existed
+		driveFileID,   // newDriveFileID — the orphaned Drive file
+		oldLocalPaths, // local temp files to remove
+	); err != nil {
+		log.Warn("FASE 4 orphan-cleanup: EnqueueCleanupEvent failed; orphan sweeper will recover",
+			zap.String("voiceover_id", voiceoverID),
+			zap.String("drive_file_id", driveFileID),
+			zap.Error(err),
+		)
+		return
+	}
+
+	if err := cleanupTx.Commit(); err != nil {
+		log.Warn("FASE 4 orphan-cleanup: cleanup tx commit failed; orphan sweeper will recover",
+			zap.String("voiceover_id", voiceoverID),
+			zap.String("drive_file_id", driveFileID),
+			zap.Error(err),
+		)
+		return
+	}
+
+	log.Debug("FASE 4 orphan-cleanup: enqueued voiceover.cleanup.requested for orphaned Drive file",
+		zap.String("voiceover_id", voiceoverID),
+		zap.String("drive_file_id", driveFileID),
+	)
 }

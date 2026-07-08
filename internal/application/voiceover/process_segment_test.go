@@ -1564,3 +1564,212 @@ func TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyProject(t *testing.
 	require.Len(t, finalizer.calls, 1,
 		"Finalizer.Finalize must be invoked exactly once even when Project is empty")
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Test 16: FASE 4 — Drive upload OK + Finalize FAIL → cleanup event emitted
+// ────────────────────────────────────────────────────────────────────────────
+
+// stubTxOutboxEnqueuer records EnqueueCleanupEvent calls for FASE 4 tests.
+type stubTxOutboxEnqueuer struct {
+	indexEvents   []indexEventCall
+	cleanupEvents []cleanupEventCall
+}
+
+type indexEventCall struct {
+	tx          *sql.Tx
+	assetID     string
+	contentHash string
+}
+
+type cleanupEventCall struct {
+	tx             *sql.Tx
+	voiceoverID    string
+	oldDriveFileID string
+	newDriveFileID string
+	oldLocalPaths  []string
+}
+
+func (s *stubTxOutboxEnqueuer) EnqueueIndexEvent(_ context.Context, tx *sql.Tx, assetID, contentHash string) error {
+	s.indexEvents = append(s.indexEvents, indexEventCall{tx: tx, assetID: assetID, contentHash: contentHash})
+	return nil
+}
+
+func (s *stubTxOutboxEnqueuer) EnqueueCleanupEvent(_ context.Context, tx *sql.Tx, voiceoverID, oldDriveFileID, newDriveFileID string, oldLocalPaths []string) error {
+	s.cleanupEvents = append(s.cleanupEvents, cleanupEventCall{
+		tx: tx, voiceoverID: voiceoverID, oldDriveFileID: oldDriveFileID,
+		newDriveFileID: newDriveFileID, oldLocalPaths: oldLocalPaths,
+	})
+	return nil
+}
+
+var _ TxOutboxEnqueuer = (*stubTxOutboxEnqueuer)(nil)
+
+// TestProcessSegmentUseCase_Execute_FASE4_DriveUploadOK_FinalizeFail_EmitsCleanup
+// pins the FASE 4 transaction-boundary contract: when Stage 3 (Drive
+// upload) succeeds but Stage 4 (Finalize inside a caller-owned tx)
+// fails, the use case MUST emit a voiceover.cleanup.requested outbox
+// event in a SEPARATE tx (the Finalize tx was rolled back) so the
+// orphaned Drive file is eventually cleaned up.
+func TestProcessSegmentUseCase_Execute_FASE4_DriveUploadOK_FinalizeFail_EmitsCleanup(t *testing.T) {
+	db := openProcessTestDB(t)
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath:   "/tmp/vo/fase4-orphan.mp3",
+			CleanedPath: "/tmp/vo/fase4-orphan-cleaned.mp3",
+			Voice:       "en-US-RogerNeural",
+			FileHash:    "hash-fase4-001",
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-fase4-orphan"}
+	finalizer := &stubProcessFinalizer{
+		cannedErr: fmt.Errorf("finalizer: simulated DB write failure"),
+	}
+	outboxStub := &stubTxOutboxEnqueuer{}
+
+	dest := &stubProcessDestResolver{folderID: "dest-fase4"}
+	resolvedDest, err := dest.Resolve(context.Background(),
+		&DestinationRequest{FolderID: "dest-fase4"})
+	require.NoError(t, err)
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		TxOutboxEnqueuer:    outboxStub,
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		ID:       "vo-fase4-orphan",
+		Language: "en",
+		Text:     "This voiceover will be orphaned.",
+		Voice:    "en-US-RogerNeural",
+		Filename: "fase4-orphan.mp3",
+		Dest:     resolvedDest,
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+
+	require.Error(t, err, "FASE 4: Finalize failure MUST return error")
+	require.NotNil(t, out)
+	assert.Equal(t, StatusFailed, out.Status)
+	assert.Contains(t, out.Error, "finalize_failed:")
+
+	// Stage 3 succeeded: DriveFileID is set.
+	assert.Equal(t, "drive-fase4-orphan", out.DriveFileID)
+
+	// Publisher + Finalizer were both invoked.
+	require.Len(t, pub.published, 1)
+	require.Len(t, finalizer.calls, 1)
+
+	// FASE 4 contract: cleanup event emitted in a SEPARATE tx.
+	require.Len(t, outboxStub.cleanupEvents, 1,
+		"FASE 4: EnqueueCleanupEvent MUST be called exactly once for the orphaned Drive file")
+	ce := outboxStub.cleanupEvents[0]
+	assert.Equal(t, "vo-fase4-orphan", ce.voiceoverID)
+	assert.Equal(t, "", ce.oldDriveFileID,
+		"FASE 4: oldDriveFileID must be empty (no prior row existed)")
+	assert.Equal(t, "drive-fase4-orphan", ce.newDriveFileID,
+		"FASE 4: newDriveFileID must be the orphaned Drive file ID")
+	assert.Contains(t, ce.oldLocalPaths, "/tmp/vo/fase4-orphan.mp3",
+		"FASE 4: oldLocalPaths must contain the TTS local path")
+	assert.Contains(t, ce.oldLocalPaths, "/tmp/vo/fase4-orphan-cleaned.mp3",
+		"FASE 4: oldLocalPaths must contain the cleaned path")
+
+	// The cleanup tx is separate from the Finalize tx
+	// (guaranteed by the production code opening a fresh BeginTx).
+	require.NotNil(t, ce.tx, "FASE 4: cleanup event must carry a non-nil tx (fresh BeginTx)")
+
+	// Index events must NOT have been emitted.
+	assert.Len(t, outboxStub.indexEvents, 0,
+		"FASE 4: EnqueueIndexEvent must NOT be called on orphan-cleanup path")
+}
+
+// TestProcessSegmentUseCase_Execute_FASE4_Stage0Failure_NoCleanupEvent
+// pins the FASE 4 nil-guard: when Execute fails BEFORE Stage 3
+// (e.g. Stage 0 missing-folder), DriveFileID is empty and NO cleanup
+// event is emitted (no orphaned Drive file exists).
+func TestProcessSegmentUseCase_Execute_FASE4_Stage0Failure_NoCleanupEvent(t *testing.T) {
+	db := openProcessTestDB(t)
+	tts := &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/unused.mp3"}}
+	pub := &stubProcessPublisher{fileID: "unused"}
+	finalizer := &stubProcessFinalizer{cannedRes: &FinalizeResult{ID: "unused"}}
+	outboxStub := &stubTxOutboxEnqueuer{}
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		TxOutboxEnqueuer:    outboxStub,
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		ID:       "vo-fase4-stage0",
+		Language: "en",
+		Filename: "stage0.mp3",
+		Dest:     nil, // Stage 0 short-circuit
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+
+	require.Error(t, err)
+	require.NotNil(t, out)
+	assert.Equal(t, StatusFailed, out.Status)
+	assert.Empty(t, out.DriveFileID)
+
+	assert.Len(t, outboxStub.cleanupEvents, 0,
+		"FASE 4: Stage 0 failure must NOT emit cleanup (no Drive upload)")
+	assert.Len(t, outboxStub.indexEvents, 0)
+}
+
+// TestProcessSegmentUseCase_Execute_FASE4_NilOutboxEnqueuer_NoPanic
+// pins the FASE 4 nil-safe contract: when TxOutboxEnqueuer is nil
+// (pre-FASE-4 callers), the orphan-cleanup path is silently skipped.
+func TestProcessSegmentUseCase_Execute_FASE4_NilOutboxEnqueuer_NoPanic(t *testing.T) {
+	db := openProcessTestDB(t)
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath: "/tmp/vo/fase4-nil.mp3",
+			Voice:     "en-US-RogerNeural",
+			FileHash:  "hash-fase4-nil",
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-fase4-nil"}
+	finalizer := &stubProcessFinalizer{
+		cannedErr: fmt.Errorf("finalizer: simulated failure"),
+	}
+
+	dest := &stubProcessDestResolver{folderID: "dest-fase4-nil"}
+	resolvedDest, err := dest.Resolve(context.Background(),
+		&DestinationRequest{FolderID: "dest-fase4-nil"})
+	require.NoError(t, err)
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		TxOutboxEnqueuer:    nil, // pre-FASE-4: not wired
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		ID:       "vo-fase4-nil",
+		Language: "en",
+		Text:     "Nil outbox test.",
+		Filename: "fase4-nil.mp3",
+		Dest:     resolvedDest,
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+
+	require.Error(t, err, "Finalize failure must still return error")
+	require.NotNil(t, out)
+	assert.Equal(t, StatusFailed, out.Status)
+	assert.Equal(t, "drive-fase4-nil", out.DriveFileID)
+	assert.Contains(t, out.Error, "finalize_failed:")
+	// No panic — nil TxOutboxEnqueuer is handled gracefully.
+}
