@@ -42,7 +42,21 @@ PipelineGen is a Go-based backend service that manages media processing pipeline
 > `git push` — no copy-paste of secrets into chat, ever.
 
 The remote `origin` is HTTPS; every `git push` requires authentication. Configure
-the OS-level credential helper **once per machine** before your first push:
+the OS-level credential helper **once per machine** before your first push.
+
+#### Recommended: fine-grained Personal Access Token
+
+GitHub deprecated classic PATs for new workflows. Generate a **fine-grained PAT**
+scoped to a single repository + a single permission (Contents: Read and write)
+at <https://github.com/settings/personal-access-tokens/new>:
+
+- Resource owner: `Marcuss-ops`
+- Repository access: `PipelineGen` only
+- Permissions: `Contents` → `Read and write` (NO other scopes)
+- Expiration: 30 days (auto-rotate cadence)
+
+A fine-grained PAT limits the blast radius if the token is leaked (it can only
+push to one repo, one permission), and auto-rotation forces periodic re-issue.
 
 #### macOS
 
@@ -56,20 +70,22 @@ silent).
 
 #### Linux
 
-```bash
-git config --global credential.helper store
-```
-
-The `store` helper writes the token to `~/.git-credentials` (`chmod 600`,
-plaintext). For an encrypted alternative, use
-[Git Credential Manager for Unix](https://github.com/git-ecosystem/git-credential-manager)
-or [`pass`](https://www.passwordstore.org/) (GPG-encrypted).
-
-For an **in-memory-only cache** (no on-disk persistence, expires after 900s
-by default):
+**Recommended: in-memory cache** (no on-disk persistence, expires after 900s):
 
 ```bash
 git config --global credential.helper 'cache --timeout=900'
+```
+
+For an **encrypted** alternative (preferred over the plaintext `store` helper):
+
+- [Git Credential Manager for Unix](https://github.com/git-ecosystem/git-credential-manager) (`gcm` or `manager-core` alias)
+- [`pass`](https://www.passwordstore.org/) (GPG-encrypted, requires a GPG key)
+
+**Last resort: plaintext `store`** (writes the token to `~/.git-credentials`,
+`chmod 600`):
+
+```bash
+git config --global credential.helper store
 ```
 
 #### Windows
@@ -78,7 +94,10 @@ git config --global credential.helper 'cache --timeout=900'
 git config --global credential.helper manager
 ```
 
-Uses the Windows Credential Manager.
+Uses the Windows Credential Manager. **WSL note:** Windows Subsystem for
+Linux uses the **Linux** helpers (e.g. `cache` or GCM-for-Unix), NOT
+`manager` — the WSL/Linux credential store is separate from the Windows
+Credential Manager.
 
 #### Verify
 
@@ -86,8 +105,33 @@ Uses the Windows Credential Manager.
 git config --global --get credential.helper
 ```
 
-Expected output: `osxkeychain` (macOS), `store` (Linux), `manager` (Windows),
-or `cache --timeout=900` (Linux cache mode).
+Expected output: `osxkeychain` (macOS), `cache --timeout=900` (Linux cache),
+`store` (Linux last-resort), `manager` (Windows), or `gcm` (GCM-for-Unix).
+
+#### If you already pasted a PAT in chat (recovery)
+
+If you (or an agent acting on your behalf) have already pasted a GitHub
+PAT into a chat window, the token is **leaked**. Recovery procedure
+**immediately**:
+
+1. **Rotate the token** at <https://github.com/settings/personal-access-tokens>:
+   - Locate the leaked PAT → click `Delete` (NOT just revoke; the leaked copy
+     is already in chat history and any other export).
+   - Generate a **new fine-grained PAT** with the same scope (Contents:
+     Read and write on `PipelineGen` only) → 30-day expiration.
+2. **Clear cached credentials** on every machine that uses the leaked token:
+   ```bash
+   # macOS
+   git credential-osxkeychain erase
+   # Linux (cache helper — wait for timeout, or kill the cache process)
+   git credential-cache exit
+   # Linux (store helper)
+   rm ~/.git-credentials
+   # Windows
+   git credential-manager erase
+   ```
+3. **Re-push once** with the new token — the OS will prompt for the new
+   credential and cache it.
 
 #### Alternative: SSH keys (zero-token)
 
@@ -102,6 +146,9 @@ ssh-keygen -t ed25519 -C "your_email@example.com"
 # Then update the remote
 git remote set-url origin git@github.com:Marcuss-ops/PipelineGen.git
 ```
+
+For multi-account setups (work + personal), use the per-URL variant
+`credential.https://github.com.helper` (forward-pointer; not common).
 
 ### Installation
 
