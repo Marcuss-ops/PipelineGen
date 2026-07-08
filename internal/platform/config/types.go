@@ -32,6 +32,20 @@ type ConcurrencyConfig struct {
 	MaxConcurrentChannelChecks int `yaml:"max_concurrent_channel_checks" env:"VELOX_CONCURRENT_CHANNEL_CHECKS" default:"20"`
 }
 
+// TranslationConfig holds translation-service policy (FASE 9 VO-OPERATIONAL-READINESS, July 2026).
+//
+// When Required=true, the voiceover composition root MUST receive a non-nil
+// translation.TranslationPort at boot time. A nil port causes a fail-fast
+// panic with an actionable error message — no silent fallback to "return text
+// unchanged". Default is false (dev mode: translation is optional, missing
+// port degrades gracefully).
+type TranslationConfig struct {
+	// Required gates the translation port at composition time. When true,
+	// buildVoiceoverService panics if translationPort is nil. Operators
+	// should set this to true in production configs. Default: false.
+	Required bool `yaml:"required" default:"false"`
+}
+
 // VoiceoverConcurrencyConfig holds voiceover-pipeline concurrency limits,
 // retry budgets, and per-stage timeouts (FASE 8 VO-OPERATIONAL-READINESS, July 2026).
 //
@@ -92,6 +106,7 @@ type Config struct {
 	Drive            DriveConfig                `yaml:"drive"`
 	Concurrency      ConcurrencyConfig          `yaml:"concurrency"`
 	Voiceover        VoiceoverConcurrencyConfig `yaml:"voiceover"`
+	Translation      TranslationConfig          `yaml:"translation"`
 	Jobs             JobsConfig                 `yaml:"jobs"`
 	Workers          WorkersConfig              `yaml:"workers"`
 	Video            VideoConfig                `yaml:"video"`

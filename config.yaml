@@ -187,6 +187,12 @@ voiceover:
   drive_upload_timeout_sec: 300     # per-attempt Drive upload timeout (5 min)
   ollama_timeout_sec: 120           # per-call Ollama translation timeout (2 min)
 
+# FASE 9 VO-OPERATIONAL-READINESS (July 2026): when required=true,
+# the voiceover composition root panics at boot if the translation
+# port (Ollama) is not wired. Default false for dev mode.
+translation:
+  required: false
+
 vector_search:
   enabled: true
   url: "http://127.0.0.1:6333"
