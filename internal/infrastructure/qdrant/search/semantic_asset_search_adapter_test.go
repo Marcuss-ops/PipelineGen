@@ -29,7 +29,7 @@
 //     contracts that the pre-PR-4 2-struct split could not verify
 //     in a single test file).
 //   - Test 17-19: 7-day backward-compat wrappers (NewClipSearchAdapter
-//     + NewStockSearchAdapter still produce the legacy interface
+//   - NewStockSearchAdapter still produce the legacy interface
 //     type so composition-root callers don't change).
 package search
 
@@ -326,4 +326,3 @@ func TestSemanticSearch_BACKCOMPAT_NewStockSearchAdapter_KindDiscriminantIsStock
 		t.Fatalf("stock-path wrapper unexpectedly succeeded on clip path; cross-kind runtime guard failed")
 	}
 }
-

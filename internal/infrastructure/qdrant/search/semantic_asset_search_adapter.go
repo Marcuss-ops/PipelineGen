@@ -171,18 +171,22 @@ func (a *semanticAssetSearchAdapter) SearchAssets(ctx context.Context, q ports.A
 	if a == nil {
 		return nil, fmt.Errorf("semantic search adapter: nil receiver")
 	}
-	if a.searcher == nil {
-		return nil, fmt.Errorf("%s search adapter: searcher not configured", a.kind)
-	}
-	// Fast-path: empty query short-circuits BEFORE the embedder guard
-	// (you don't need a wired embedder to return [] for an empty
-	// query; this is a cheap pre-flight that mirrors the legacy
-	// pattern). The fast-path is shared across both kinds because
-	// "empty query = empty result" is a universal invariant, not a
-	// per-path one.
+	// Fast-path: empty query short-circuits BEFORE the searcher AND
+	// embedder guards (you don't need a wired searcher or embedder
+	// to return [] for an empty query; this is a cheap pre-flight
+	// that mirrors the legacy clip+stock patterns). The fast-path is
+	// shared across both kinds because "empty query = empty result"
+	// is a universal invariant, not a per-path one. This ordering
+	// is the load-bearing contract that lets the 7-day backward-
+	// compat wrappers (NewClipSearchAdapter + NewStockSearchAdapter)
+	// be probed for the empty-query invariant without wiring the
+	// full searcher/embedder stack in the test surface.
 	query := strings.TrimSpace(q.Query)
 	if query == "" {
 		return []ports.AssetSearchHit{}, nil
+	}
+	if a.searcher == nil {
+		return nil, fmt.Errorf("%s search adapter: searcher not configured", a.kind)
 	}
 
 	// Strategy dispatch. The 7-day soak fails closed: if a
