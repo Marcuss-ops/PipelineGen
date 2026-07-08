@@ -170,6 +170,79 @@ func TestSceneSynthesizer_FromProse_SentenceAwareChunking(t *testing.T) {
 	}
 }
 
+// TestSceneSynthesizer_FromProse_ThreeScenesIntroClipOutro verifies
+// the canonical n=3 case: scene[0]=SceneIntro, scene[1]=SceneClip,
+// scene[2]=SceneOutro. Also pins the ID='scene-0' + Index=0
+// contract for the first scene (the canonical "balanced 3-scene
+// bundle" shape used by the document+voiceover orchestration).
+func TestSceneSynthesizer_FromProse_ThreeScenesIntroClipOutro(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+	const prose = "First sentence. Second sentence. Third sentence. Fourth sentence."
+
+	got := s.FromProse(prose, 3)
+	if len(got) != 3 {
+		t.Fatalf("FromProse returned %d scenes, want 3", len(got))
+	}
+
+	if got[0].Kind != scriptpkg.SceneIntro {
+		t.Errorf("scene[0].Kind = %q, want %q", got[0].Kind, scriptpkg.SceneIntro)
+	}
+	if got[1].Kind != scriptpkg.SceneClip {
+		t.Errorf("scene[1].Kind = %q, want %q", got[1].Kind, scriptpkg.SceneClip)
+	}
+	if got[2].Kind != scriptpkg.SceneOutro {
+		t.Errorf("scene[2].Kind = %q, want %q", got[2].Kind, scriptpkg.SceneOutro)
+	}
+
+	if got[0].ID != "scene-0" {
+		t.Errorf("scene[0].ID = %q, want %q", got[0].ID, "scene-0")
+	}
+	if got[0].Index != 0 {
+		t.Errorf("scene[0].Index = %d, want 0", got[0].Index)
+	}
+}
+
+// TestSceneSynthesizer_FromProse_TwoScenesAreClipKind verifies the
+// n<3 contract: every scene is SceneClip (no intro/outro bleed for
+// short bundles — the "every requested clip is a real narrative
+// beat" intent wins over the "frame with intro/outro" heuristic).
+func TestSceneSynthesizer_FromProse_TwoScenesAreClipKind(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+	const prose = "One. Two. Three."
+
+	got := s.FromProse(prose, 2)
+	if len(got) != 2 {
+		t.Fatalf("FromProse returned %d scenes, want 2", len(got))
+	}
+
+	for i, sc := range got {
+		if sc.Kind != scriptpkg.SceneClip {
+			t.Errorf("scene[%d].Kind = %q, want %q (n<3 contract: all SceneClip)",
+				i, sc.Kind, scriptpkg.SceneClip)
+		}
+	}
+}
+
+// TestSceneSynthesizer_CleansJSONEnvelopeNoise verifies the
+// canonical JSON-envelope stripping contract via the exported
+// CleanProseFallbackText wrapper. The canonical pattern: when a
+// model emits structured-output JSON (with "text" key +
+// schema_version noise) FOLLOWED BY prose after the closing brace,
+// the function drops the envelope and returns the trailing prose
+// (the §4 test in the pasted plan exercises this surface directly
+// instead of going through FromProse orchestration).
+func TestSceneSynthesizer_CleansJSONEnvelopeNoise(t *testing.T) {
+	t.Parallel()
+
+	input := `{"schema_version":1,"text":"bad"} Real prose starts here.`
+	got := scene.CleanProseFallbackText(input)
+	if got != "Real prose starts here." {
+		t.Errorf("CleanProseFallbackText returned %q, want %q", got, "Real prose starts here.")
+	}
+}
+
 // TestSceneSynthesizer_NewSynthesizer_IsIdempotent verifies the
 // stateless contract: multiple synthesizers produce byte-stable
 // output for identical inputs (no RNG seeds, no clock state, no
