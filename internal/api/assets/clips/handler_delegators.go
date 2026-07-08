@@ -10,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -255,11 +256,14 @@ func (h *Handler) driveRootForSource(source string) (string, string) {
 }
 
 // RegisterJobHandlers wires up the bulk-upload worker.
+// Deprecated: ClipsDescriptor.RegisterJobHandlers (module.go) is the
+// canonical DescriptorJobs path that the production composition root
+// invokes. This method survives for test-backward-compat only.
 func (h *Handler) RegisterJobHandlers() error {
 	if h.jobsSvc == nil {
 		return nil
 	}
-	return h.jobsSvc.RegisterHandler("bulk_upload_youtube_clips", h.HandleBulkUploadYouTubeClipsJob)
+	return h.jobsSvc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), h.HandleBulkUploadYouTubeClipsJob)
 }
 
 // idemWriter returns h.Idempotency if set, else a no-op pass-through handler.
