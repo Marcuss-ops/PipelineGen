@@ -95,7 +95,15 @@ func (p *StockAssociationProcessor) Process(
 			zap.Int("scenes", len(scenes)))
 	}
 
-	return &PostProcessResult{}, nil
+	// godlike/07 NO-FAKE-AVAILABILITY: must surface post-loop work
+	// even when no emitted fields landed in the result envelope —
+	// every iter may have set scene.Bindings.Stock (real hit OR
+	// fallbackToClip) and zero-out the most-likely-warning surface
+	// by returning a 0-emit result here would falsely trip the
+	// registry's "returned empty output" IsEmpty() check. ClipBindings
+	// already does this (P1 #10, June 2026); bring stock_association
+	// in line.
+	return &PostProcessResult{Changed: true}, nil
 }
 
 // fallbackToClip sets StockBinding.DriveLink from the scene's

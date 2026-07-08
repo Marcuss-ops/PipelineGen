@@ -32,10 +32,9 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// ProcessorClipSearch is the canonical ProcessorName for the
-// ClipSearchProcessor. Plans that request "clip_search" in their
-// Postprocessors list will trigger this processor.
-const ProcessorClipSearch ProcessorName = "clip_search"
+// ProcessorClipSearch is declared in processor_names.go (canonical
+// SOLE home per godlike/06 SSOT). This file consumes the constant via
+// package-scope visibility; do NOT redeclare it here.
 
 // ClipSearchProcessor queries the ArtlistClipSearcher port for
 // matching clips, using the artlist_phrases extracted by the
