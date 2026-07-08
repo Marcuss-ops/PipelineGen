@@ -2247,9 +2247,10 @@ func TestProcessSegmentUseCase_Execute_FASE5_E2E_IdempotencyReplay(t *testing.T)
 
 // ──────────────────────────────────────────────────────────────────────────────
 // stubFailingInsertRepo — wraps stubProcessVoRepo, fails InsertTx with a
-// configurable error. All other methods delegate to the inner repo. Used by
-// Test 23 to trigger the orphan-cleanup path when the real finalizer's
-// Step 3 (InsertTx) fails inside the finalize tx.
+// configurable error. All other methods (including BeginTx for the orphan-
+// cleanup path) delegate to the embedded *stubProcessVoRepo via Go field
+// promotion. Used by Test 23 to trigger the orphan-cleanup path when the
+// real finalizer's Step 3 (InsertTx) fails inside the finalize tx.
 // ──────────────────────────────────────────────────────────────────────────────
 
 type stubFailingInsertRepo struct {
