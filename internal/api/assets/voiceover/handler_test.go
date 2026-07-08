@@ -664,3 +664,153 @@ func TestGenerateVoiceoversCommand_NoLegacyJSONFields(t *testing.T) {
 		}
 	}
 }
+
+// TestRequest_ToCommand_PropagatesRequiredFlag is the audit pin for
+// PR-PROMOTE-REQUIRED-FIX (2026-07-08). Prior to the fix, ToCommand()
+// used an explicit 4-field struct literal that SILENTLY DROPPED the
+// Required field when crossing the API → Command boundary. A
+// REQUIRED-failed child whose item.Required=true reaches the API
+// would propagate as item.Required=false into the parent command,
+// breaking the parent's REQUIRED-failed short-circuit
+// (godlike/07 NO-FAKE-AVAILABILITY — a required failure would be
+// treated as optional and the parent could pass without the child).
+//
+// Fix: VoiceoverItem is `type VoiceoverItem = voiceover.VoiceoverItem`
+// (a true Go type alias, NOT a named type), so `items[i] = it` is a
+// 1:1 field-for-field pass-through. Required flows through verbatim.
+//
+// This test pins the post-fix contract: API item.Required=true MUST
+// arrive at the parent command as item.Required=true.
+func TestRequest_ToCommand_PropagatesRequiredFlag(t *testing.T) {
+	req := &GenerateVoiceoversRequest{
+		Items: []VoiceoverItem{
+			{Text: "ciao", Language: "it-IT", Voice: "it-IT-DiegoNeural", Filename: "ciao.mp3", Required: true},
+			{Text: "hello", Language: "en-US", Filename: "hello.mp3", Required: false}, // explicit false
+			{Text: "ola", Language: "pt-BR", Filename: "ola.mp3"},                      // zero-value false
+		},
+	}
+	cmd := req.ToCommand()
+	if len(cmd.Items) != 3 {
+		t.Fatalf("len(Items): got %d, want 3", len(cmd.Items))
+	}
+	if !cmd.Items[0].Required {
+		t.Errorf("Items[0].Required: got false, want true (API Required=true must reach the parent command)")
+	}
+	if cmd.Items[1].Required {
+		t.Errorf("Items[1].Required: got true, want false (API Required=false must reach the parent command)")
+	}
+	if cmd.Items[2].Required {
+		t.Errorf("Items[2].Required: got true, want false (zero-value Required=false must stay false)")
+	}
+
+	// Bonus: all non-Required fields propagate byte-equivalent too.
+	if cmd.Items[0].Text != "ciao" || cmd.Items[0].Language != "it-IT" ||
+		cmd.Items[0].Voice != "it-IT-DiegoNeural" || cmd.Items[0].Filename != "ciao.mp3" {
+		t.Errorf("Items[0] fields: got %+v, want full item-equivalent copy", cmd.Items[0])
+	}
+}
+
+// TestRequest_parentActiveKey_DistinctWhenProjectDiffers is the audit
+// pin for the dedup-collision branch of PR-PROMOTE-REQUIRED-FIX.
+// Two POsts that are byte-identical except for Project should produce
+// distinct parent ActiveKeys — otherwise the broker's per-ActiveKey
+// idempotency dedup would silently merge batches that target
+// different Drive subdirs (`{project}/{language}/` for project A vs B),
+// breaking both godlike/06 SSOT (one canonical owner per fact:
+// the publisher MUST NOT silently overwrite project A's folder with
+// project B's content) and godlike/07 NO-FAKE-AVAILABILITY (a request
+// that "succeeded" against project A would be reported as project B).
+func TestRequest_parentActiveKey_DistinctWhenProjectDiffers(t *testing.T) {
+	base := &GenerateVoiceoversRequest{
+		Items: []VoiceoverItem{
+			{Text: "hello", Language: "en-US", Filename: "hello.mp3"},
+		},
+		Destination: &voiceover.DestinationRequest{
+			Kind:     "explicit",
+			FolderID: "folder-1",
+		},
+	}
+	a := *base
+	a.Project = "project-a"
+	b := *base
+	b.Project = "project-b"
+
+	keyA := a.parentActiveKey()
+	keyB := b.parentActiveKey()
+	if keyA == keyB {
+		t.Fatalf("parentActiveKey collision across projects: %q == %q (would silently dedup project-a and project-b)", keyA, keyB)
+	}
+	// Both keys MUST carry the canonical voiceover:parent: prefix.
+	const wantPrefix = "voiceover:parent:"
+	if !strings.HasPrefix(keyA, wantPrefix) || !strings.HasPrefix(keyB, wantPrefix) {
+		t.Errorf("ActiveKey prefix mismatch: %q / %q (want %q)", keyA, keyB, wantPrefix)
+	}
+}
+
+// TestRequest_parentActiveKey_EmptyProjectProducesLegacyHash locks
+// the back-compat invariant AND a literal hex anchor. The empty-Project
+// guard (`if r.Project != ""`) is mandatory — unconditional append
+// (`h.Write([]byte("|")); h.Write([]byte(r.Project))`) would silently
+// append `|` to every empty-Project batch's SHA-256 input, triggering
+// a broker key-rotation storm (duplicate enqueues, lost dedup
+// guarantees) on the next deploy. The literal anchor pins the
+// pre-fix algorithm: any algorithm change that produces a different
+// hash for the same input breaks the test loudly (and the operator
+// reasonably expects a key-rotation storm if they change the algo).
+//
+// SHA-256 input bytes for the canonical test input (NOT outputting the
+// "voiceover:parent:" prefix):
+//
+//	sha256("hello|en-us|folder-1") [:16] = "1c98f20e67398c6b"
+//
+// Reference: see git log for the pre-PR commit to confirm this is
+// the verbatim pre-fix anchor. If this constant ever hardcodes false
+// (e.g. someone flips Project-from-empty processing), the test will
+// surface the regression immediately.
+func TestRequest_parentActiveKey_EmptyProjectProducesLegacyHash(t *testing.T) {
+	// Literal anchor — empty-Project pre-fix canonical hash.
+	// SHA-256("hello|en-us|folder-1")[:16] hex-prefix.
+	const wantLegacyKey = "voiceover:parent:1c98f20e67398c6b"
+
+	req := &GenerateVoiceoversRequest{
+		Items: []VoiceoverItem{
+			{Text: "hello", Language: "en-US", Filename: "hello.mp3"},
+		},
+		Destination: &voiceover.DestinationRequest{
+			Kind:     "explicit",
+			FolderID: "folder-1",
+		},
+		// Project is intentionally omitted — zero-value empty string.
+	}
+	keyA := req.parentActiveKey()
+
+	// Literal anchor: empty-Project MUST hash to the pre-fix bytes.
+	// If a future agent flips the guard to unconditional append
+	// (`h.Write([]byte("|")); h.Write([]byte(r.Project))`) the hash
+	// changes AND this test fails — the key-rotation storm bug.
+	if keyA != wantLegacyKey {
+		t.Errorf("empty-Project hash diverged from pre-fix anchor: got %q, want %q "+
+			"(unconditional-append regression? check the if r.Project != \"\" guard)",
+			keyA, wantLegacyKey)
+	}
+
+	// Same items/dest with explicit empty Project MUST produce the
+	// same hash (byte-identical back-compat invariant).
+	keyB := req.parentActiveKey() // same struct, no mutation
+	if keyA != keyB {
+		t.Errorf("re-invocations must produce identical hash: %q vs %q", keyA, keyB)
+	}
+
+	// Mutate Project to empty (explicit assignment) and re-invoke.
+	req.Project = ""
+	if keyA != req.parentActiveKey() {
+		t.Errorf("explicit empty Project must produce the same hash as implicit empty: %q vs %q",
+			keyA, req.parentActiveKey())
+	}
+
+	// A non-empty Project MUST diverge from the empty-Project hash.
+	req.Project = "yt-channel-test"
+	if keyA == req.parentActiveKey() {
+		t.Errorf("non-empty Project produced the same hash as empty (Project guard bypassed): %q", keyA)
+	}
+}
