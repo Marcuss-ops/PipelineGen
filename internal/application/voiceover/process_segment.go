@@ -55,7 +55,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -260,34 +259,11 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		Status:   StatusFailed,
 	}
 
-	// ── FASE 5 structured logging + metrics helper ──────────────────
-	// stageTiming returns a closure that logs stage start/completed
-	// and observes the duration histogram. The deferred closure
-	// captures the stage name and start time.
+	// ── FASE 7 structured logging + metrics helper ──────────────────
+	// The shared stageLog helper (process.go) now emits start/completed
+	// log lines AND observes VoiceoverStageDuration — both callers
+	// (processLanguage and Execute) benefit from the same telemetry.
 	log := u.deps.Logger
-	stageTiming := func(stage string) func(status string) {
-		start := time.Now()
-		logFields := []zap.Field{
-			zap.String("stage", stage),
-			zap.String("job_id", cmd.RequestID),
-			zap.String("asset_id", cmd.ID),
-			zap.String("language", string(cmd.Language)),
-		}
-		if cmd.Project != "" {
-			logFields = append(logFields, zap.String("project", cmd.Project))
-		}
-		log.Info("pipeline_stage_started", logFields...)
-		return func(status string) {
-			dur := time.Since(start).Seconds()
-			log.Info("pipeline_stage_completed",
-				append(logFields,
-					zap.Float64("duration_ms", dur*1000),
-					zap.String("status", status),
-				)...,
-			)
-			observability.VoiceoverStageDuration.WithLabelValues(stage).Observe(dur)
-		}
-	}
 
 	// Stage 1: TTSProvider.Synthesize.
 	// P0.2 Fase 2c (July 2026): RemoveSilence is ALWAYS false here.
@@ -296,7 +272,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// cause the TTS bridge to strip silence inline, and then
 	// AudioPostProcessor would re-process an already-cleaned file —
 	// double-processing that wastes CPU and risks audio artifacts.
-	emitTTS := stageTiming("tts")
+	emitTTS := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "tts", string(cmd.Language))
 	ttsOut, err := u.deps.TTSProvider.Synthesize(ctx, TTSInput{
 		Text:          cmd.Text,
 		Language:      cmd.Language,
@@ -322,7 +298,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 
 	// Stage 2: optional AudioPostProcessor (silence removal). Nil-safe.
 	if cmd.RemoveSilence && u.deps.AudioPostProcessor != nil && ttsOut.LocalPath != "" {
-		emitPost := stageTiming("audio_post")
+		emitPost := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "audio_post", string(cmd.Language))
 		postOut, err := u.deps.AudioPostProcessor.Process(ctx, AudioPostInput{
 			LocalPath: ttsOut.LocalPath,
 			OutputDir: cmd.Dest.FolderPath,
@@ -395,7 +371,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// dropped — the adapter would fall back to cmd.ID as ProjectID
 	// (graceful degradation, but wrong folder tree) or fail-closed
 	// on empty Language (ErrVoiceoverPublishLanguageRequired).
-	emitPublish := stageTiming("publish")
+	emitPublish := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "publish", string(cmd.Language))
 	fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
 		ID:             cmd.ID,
 		LocalPath:      uploadPath,
@@ -424,7 +400,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// missing pre-DRY). The per-item path was already using the
 	// finalizer; the only change is that the body now lives in
 	// the ProcessSegmentUseCase.
-	emitFinalize := stageTiming("finalize")
+	emitFinalize := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "finalize", string(cmd.Language))
 	tx, err := u.deps.VoiceoverRepository.BeginTx(ctx)
 	if err != nil {
 		emitFinalize("failed")
