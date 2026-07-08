@@ -124,6 +124,14 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		zap.String("drive_folder_id", payload.DriveFolderID),
 		zap.Int("concurrency", payload.Concurrency))
 
+	if tools != nil && tools.Event != nil {
+		tools.Event("job_started", "bulk upload job started", map[string]any{
+			"local_folder":    payload.LocalFolder,
+			"drive_folder_id": payload.DriveFolderID,
+			"concurrency":     payload.Concurrency,
+		})
+	}
+
 	if strings.TrimSpace(payload.LocalFolder) == "" {
 		return nil, fmt.Errorf("local_folder is required")
 	}
@@ -147,8 +155,19 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	if tools != nil && tools.Progress != nil {
 		tools.Progress(2, fmt.Sprintf("Scanning %s", payload.LocalFolder))
 	}
-	candidates, err := scanLocalClips(payload.LocalFolder, payload.Recursive, payload.FilePatterns, payload.SkipPatterns, payload.Limit)
+	if tools != nil && tools.Event != nil {
+		tools.Event("scan_started", fmt.Sprintf("Scanning %s", payload.LocalFolder), map[string]any{
+			"local_folder": payload.LocalFolder,
+		})
+	}
+		candidates, err := scanLocalClips(payload.LocalFolder, payload.Recursive, payload.FilePatterns, payload.SkipPatterns, payload.Limit)
 	if err != nil {
+		if tools != nil && tools.Event != nil {
+			tools.Event("error", fmt.Sprintf("scan failed: %v", err), map[string]any{
+				"local_folder": payload.LocalFolder,
+				"error":        err.Error(),
+			})
+		}
 		return nil, fmt.Errorf("scan: %w", err)
 	}
 	if len(candidates) == 0 {
@@ -163,6 +182,11 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 
 	total := len(candidates)
 	log.Info("found clips", zap.Int("total", total))
+	if tools != nil && tools.Event != nil {
+		tools.Event("scan_complete", fmt.Sprintf("Found %d clips", total), map[string]any{
+			"total": total,
+		})
+	}
 	if tools != nil && tools.Progress != nil {
 		tools.Progress(5, fmt.Sprintf("Found %d clips, starting pipeline", total))
 	}
@@ -218,7 +242,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 			defer reportProgress(false)
 
 			if err := w.processOneClip(ctx, payload, cand,
-				&uploaded, &indexed, &pushed, &skipped, &failed, log); err != nil {
+				&uploaded, &indexed, &pushed, &skipped, &failed, log, tools); err != nil {
 				failedMu.Lock()
 				failedDetails = append(failedDetails, fmt.Sprintf("%s: %v", cand.LocalPath, err))
 				if len(failedDetails) > 50 {
@@ -236,6 +260,14 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 
 	result := finalizeJobResult(total, &uploaded, &indexed, &pushed, &skipped, &failed, failedDetails, payload)
 	log.Info("bulk upload job complete", zap.Any("result", result))
+	if tools != nil && tools.Event != nil {
+		tools.Event("completed", "bulk upload job completed", map[string]any{
+			"total":    total,
+			"uploaded": uploaded.Load(),
+			"indexed":  indexed.Load(),
+			"failed":   failed.Load(),
+		})
+	}
 	return result, nil
 }
 
@@ -264,6 +296,7 @@ func (w *BulkUploadWorker) processOneClip(
 	cand clipCandidate,
 	uploaded, indexed, pushed, skipped, failed *atomic.Int64,
 	log *zap.Logger,
+	tools *appjobs.JobTools,
 ) error {
 	if w == nil || w.hasher == nil || w.publisher == nil || w.repo == nil {
 		failed.Add(1)
@@ -276,10 +309,22 @@ func (w *BulkUploadWorker) processOneClip(
 	fileHash, err := w.hasher.MD5File(cand.LocalPath)
 	if err != nil {
 		failed.Add(1)
+		if tools != nil && tools.Event != nil {
+			tools.Event("error", fmt.Sprintf("hash failed for %s", cand.LocalPath), map[string]any{
+				"local_path": cand.LocalPath,
+				"error":      err.Error(),
+			})
+		}
 		return fmt.Errorf("hash: %w", err)
 	}
 	clipID := buildBulkClipID(cand, fileHash)
 	log = log.With(zap.String("clip_id", clipID), zap.String("path", cand.LocalPath))
+	if tools != nil && tools.Event != nil {
+		tools.Event("hash_computed", fmt.Sprintf("Computed hash for %s", cand.LocalPath), map[string]any{
+			"clip_id":   clipID,
+			"file_hash": fileHash,
+		})
+	}
 
 	// Step 2-3: publish clip via Publisher (clip-pub section).
 	var pubRes *delivery.PublishResult
@@ -289,6 +334,12 @@ func (w *BulkUploadWorker) processOneClip(
 		pubRes, pubErr = publishClip(ctx, w.publisher, payload, cand, fileHash, log)
 		if pubErr != nil {
 			failed.Add(1)
+			if tools != nil && tools.Event != nil {
+				tools.Event("error", fmt.Sprintf("drive upload failed for %s", cand.LocalPath), map[string]any{
+					"local_path": cand.LocalPath,
+					"error":      pubErr.Error(),
+				})
+			}
 			return pubErr
 		}
 		uploaded.Add(1)
@@ -297,6 +348,13 @@ func (w *BulkUploadWorker) processOneClip(
 			zap.String("file_id", pubRes.FileID),
 			zap.String("drive_link", pubRes.WebViewLink),
 			zap.String("publish_action", string(pubRes.Action)))
+		if tools != nil && tools.Event != nil {
+			tools.Event("drive_upload", fmt.Sprintf("Uploaded %s to Drive", cand.LocalPath), map[string]any{
+				"clip_id":    clipID,
+				"file_id":    pubRes.FileID,
+				"drive_link": pubRes.WebViewLink,
+			})
+		}
 		// Step 3b: best-effort sidecar publishes (errors logged
 		// but not bubbled — pre-split silently dropped sidecar
 		// errors; P1.7 preserves silent-drop semantics by NOT
@@ -312,15 +370,31 @@ func (w *BulkUploadWorker) processOneClip(
 	// dispatcher — surfaces explicitly via returned error.
 	if err := registerClip(ctx, w.dispatcher, payload, cand, pubRes, fileHash, targetFolderID, log); err != nil {
 		failed.Add(1)
+		if tools != nil && tools.Event != nil {
+			tools.Event("error", fmt.Sprintf("db register failed for %s", cand.LocalPath), map[string]any{
+				"local_path": cand.LocalPath,
+				"error":      err.Error(),
+			})
+		}
 		return err
 	}
 	log.Info("saved clip to DB", zap.String("clip_id", clipID))
+	if tools != nil && tools.Event != nil {
+		tools.Event("db_register", fmt.Sprintf("Registered %s in DB", clipID), map[string]any{
+			"clip_id": clipID,
+		})
+	}
 
 	// Step 6: enrichment (transcript staging + IndexClip), only
 	// when embeddings are not skipped (preserve pre-split gate).
 	if !payload.SkipEmbeddings {
 		if didIndex := enrichClip(ctx, w.cfg, w.indexer, cand, clipID, log); didIndex {
 			indexed.Add(1)
+			if tools != nil && tools.Event != nil {
+				tools.Event("indexed", fmt.Sprintf("Indexed %s for Qdrant", clipID), map[string]any{
+					"clip_id": clipID,
+				})
+			}
 		}
 	}
 	return nil
