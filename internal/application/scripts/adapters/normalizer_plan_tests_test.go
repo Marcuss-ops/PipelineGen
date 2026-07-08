@@ -664,14 +664,22 @@ func TestBuildPlanPostprocessorList(t *testing.T) {
 
 	// buildPostprocessorList now auto-adds clip_bindings and
 	// stock_association BEFORE voiceover/images (P0 reorder,
-	// June 2026). With SaveToDB, Document, and Entities
-	// enabled: entities + document + persistence + clip_bindings
-	// + stock_association = 5.
-	if len(plan.Postprocessors) != 5 {
-		t.Fatalf("expected 5 postprocessors, got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
+	// June 2026). With SaveToDB, Document, and Entities enabled:
+	// entities + clip_search + clip_bindings + stock_association
+	// + document + persistence = 6.
+	//
+	// PR-CLIP-SEARCH-WIRING (July 2026): clip_search is now in the
+	// closed canonical set; buildPostprocessorList appends it
+	// immediately after entities when ExtractEntities=true. Bumped
+	// expected count from 5 to 6.
+	if len(plan.Postprocessors) != 6 {
+		t.Fatalf("expected 6 postprocessors, got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
 	}
 	if plan.Postprocessors[0] != "entities" {
 		t.Errorf("postprocessor[0]: %q", plan.Postprocessors[0])
+	}
+	if plan.Postprocessors[1] != "clip_search" {
+		t.Errorf("postprocessor[1] (expected 'clip_search' per PR-CLIP-SEARCH-WIRING extraction-order): %q", plan.Postprocessors[1])
 	}
 	// clip_bindings and stock_association are auto-inserted; document
 	// and persistence come after them in the final position.
@@ -704,12 +712,17 @@ func TestBuildPlanPostprocessorListFull(t *testing.T) {
 
 	// Full set with auto-added clip_bindings and stock_association
 	// (now BEFORE voiceover/images — P0 reorder, June 2026):
-	// entities, metadata, clip_bindings, stock_association,
-	// voiceover, images, document, persistence = 8.
-	expected := []string{"entities", "metadata", "clip_bindings", "stock_association", "voiceover", "images", "document", "persistence"}
+	// entities, clip_search, metadata, clip_bindings,
+	// stock_association, voiceover, images, document,
+	// persistence = 9.
+	//
+	// PR-CLIP-SEARCH-WIRING (July 2026): clip_search appended
+	// between entities and metadata when ExtractEntities=true.
+	// Bumped expected count from 8 to 9.
+	expected := []string{"entities", "clip_search", "metadata", "clip_bindings", "stock_association", "voiceover", "images", "document", "persistence"}
 	// ClipBindings + StockAssociation are appended automatically.
-	if len(plan.Postprocessors) != 8 {
-		t.Fatalf("expected 8 postprocessors, got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
+	if len(plan.Postprocessors) != 9 {
+		t.Fatalf("expected 9 postprocessors, got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
 	}
 	for i, name := range expected {
 		if plan.Postprocessors[i] != name {

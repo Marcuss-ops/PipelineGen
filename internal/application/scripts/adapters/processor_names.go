@@ -15,9 +15,17 @@ package adapters
 type ProcessorName string
 
 // Canonical postprocessor names. Each concrete processor's Name()
-// method MUST return one of these constants.
+// method MUST return one of these constants. This is the SOLE
+// canonical home for every postprocessor identifier in the package
+// (godlike/06 SSOT one-owner-per-fact) — do NOT redeclare these in
+// sibling files.
 const (
-	ProcessorEntities         ProcessorName = "entities"
+	ProcessorEntities ProcessorName = "entities"
+	// PR-CLIP-SEARCH-WIRING (July 2026): clip_search is the canonical
+	// identifier for the ClipSearchProcessor (artlist phrase enrichment,
+	// BestEffort policy). Lives here — NOT in processor_clip_search.go —
+	// to satisfy godlike/06 SSOT one-canonical-owner-per-fact.
+	ProcessorClipSearch       ProcessorName = "clip_search"
 	ProcessorMetadata         ProcessorName = "metadata"
 	ProcessorClipBindings     ProcessorName = "clip_bindings"
 	ProcessorStockAssociation ProcessorName = "stock_association"
@@ -27,13 +35,36 @@ const (
 	ProcessorPersistence      ProcessorName = "persistence"
 )
 
-// CanonicalProcessorNames returns the closed set of all 8 canonical
-// postprocessors in their expected execution order:
-// entities → metadata → clip_bindings → stock_association →
-// voiceover → images → document → persistence.
+// CanonicalProcessorNames returns the closed set of all 9 canonical
+// postprocessors in their canonical EXECUTION order.
+//
+// IMPORTANT (godlike/07 typed-distinction): this list reflects
+// EXECUTION order (the order the registry walks processors when
+// Run() is called), NOT REGISTRATION order (the order processors
+// are added to the registry at composition time). The two are not
+// the same on purpose:
+//   - EXECUTION order (this list): entities → clip_search → metadata →
+//     clip_bindings → stock_association → voiceover → images →
+//     document → persistence. Persistence at the tail because each
+//     processor that mutated scene/payload must run BEFORE the row
+//     is locked for replay/retry.
+//   - REGISTRATION order (see registerScriptPostProcessors in
+//     internal/app/wire_script_postprocess.go): persistence FIRST so
+//     no Drive-write side effect runs before the SQLite row is
+//     locked (replay-safe semantics per PR SCRIPTCONTRACT-2026-07-08
+//     PR-1, godlike/06 SSOT, fails-closed at composition).
+//
+// Plan-time execution order is constructed in buildPostprocessorList
+// (internal/application/scripts/usecase/generation_plan_builder.go)
+// — clip_search is conditionally appended between entities and
+// metadata when OutputSpec.ExtractEntities=true. The closed set
+// here uses position 2 (clip_search) so the EXECUTION order is
+// consistent with the plan-time build even when ExtractEntities is
+// false (the closed-set slot is reserved, not optional).
 func CanonicalProcessorNames() []ProcessorName {
 	return []ProcessorName{
 		ProcessorEntities,
+		ProcessorClipSearch,
 		ProcessorMetadata,
 		ProcessorClipBindings,
 		ProcessorStockAssociation,
