@@ -16,6 +16,7 @@ package script
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -77,7 +78,7 @@ func TestRequireRequestedProcessors_NilEnvelope(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nil envelope, got nil")
 	}
-	if !contains(err.Error(), "nil envelope") {
+	if !strings.Contains(err.Error(), "nil envelope") {
 		t.Errorf("expected error to mention 'nil envelope', got: %v", err)
 	}
 }
@@ -313,18 +314,4 @@ func TestRequireRequestedProcessors_MultipleItems_AllValid(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error for all-valid batch, got: %v", err)
 	}
-}
-
-// contains is a minimal test-only substring helper (avoids
-// pulling in strings.Contains dependency on this file).
-func contains(s, substr string) bool {
-	if len(substr) > len(s) {
-		return false
-	}
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

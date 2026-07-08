@@ -53,6 +53,14 @@ import (
 // AGENTS.md Pattern 5: one capability per file, one struct per
 // capability. godlike/06 SSOT (one canonical owner per fact) means
 // JobsHandler owns ONLY these 3 methods — nothing else.
+//
+// SCRIPTCONTRACT-2026-07-08 PR-2: JobsHandler does NOT have a caps
+// field. The preflight surface is passed as a per-call parameter
+// (EnqueueEnvelope takes `caps PreflightCaps` from the caller —
+// ScriptFlowHandler.enqueueEnvelope threads h.caps through). This
+// keeps the canonical PreflightCaps instance on ScriptFlowHandler
+// alone (one owner per fact) and avoids per-handler struct
+// duplication of the same value.
 type JobsHandler struct {
 	jobsSvc  jobservice.Service
 	log      *zap.Logger
@@ -61,10 +69,12 @@ type JobsHandler struct {
 
 // NewJobsHandler constructs the canonical JobsHandler.
 //
-// The same 3-field shape as HandlerGenerate (job-observation +
-// enqueue share the same underlying job broker + logger + retry-
+// The same 3-field shape as the pre-PR-2 JobsHandler (job-observation
+// + enqueue share the same underlying job broker + logger + retry-
 // policy registry). Kept as a separate struct per godlike/06 SSOT
-// so each capability owns its reconstruction seam.
+// so each capability owns its reconstruction seam. The
+// preflight surface is threaded per-call by the caller, NOT stored
+// on the struct (canonical SOLE-owner discipline).
 func NewJobsHandler(jobsSvc jobservice.Service, log *zap.Logger, registry *appjobs.Registry) *JobsHandler {
 	return &JobsHandler{
 		jobsSvc:  jobsSvc,
@@ -88,16 +98,19 @@ func (jh *JobsHandler) RegisterJobRoutes(r *gin.RouterGroup, auth AdminTokenProv
 	jobs.GET("/jobs/:id", jh.GetJobStatus)
 }
 
-// EnqueueEnvelope validates the envelope, reads the Idempotency-Key
+// EnqueueEnvelope validates the envelope, runs the
+// SCRIPTCONTRACT-2026-07-08 PR-2 preflight (using the `caps`
+// parameter threaded by the caller — the canonical PreflightCaps
+// instance lives on ScriptFlowHandler), reads the Idempotency-Key
 // header, enqueues a script.generate job, and writes the async
 // response. Canonical enqueue path shared with HandlerGenerate
-// (3-field struct invoked directly from enqueueEnvelopeFn) and
+// (4-field struct invoked directly from enqueueEnvelopeFn) and
 // ScriptFlowHandler (legacy adapters via thin delegator).
 //
 // Delegates to the package-level enqueueEnvelopeFn so the async
 // path stays single-implementation (godlike/06 SSOT).
-func (jh *JobsHandler) EnqueueEnvelope(c *gin.Context, env domainScript.GenerationEnvelopeV2) {
-	enqueueEnvelopeFn(c, env, jh.jobsSvc, jh.log, jh.registry)
+func (jh *JobsHandler) EnqueueEnvelope(c *gin.Context, env domainScript.GenerationEnvelopeV2, caps PreflightCaps) {
+	enqueueEnvelopeFn(c, env, jh.jobsSvc, jh.log, jh.registry, caps)
 }
 
 // GetJobStatus is the canonical handler for GET /api/script/jobs/:id.

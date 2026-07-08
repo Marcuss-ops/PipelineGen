@@ -75,11 +75,17 @@ type DocumentCreator interface {
 //     locked by middleware_auth.go's compile-time assertion).
 //  3. **Delegation pointers** (gen + jobs) — sub-handlers that own
 //     canonical impls of POST /generate, /jobs/:id.
-//  4. **Operating envelope** (jobsSvc + registry + log) — used by:
+//  4. **Operating envelope** (jobsSvc + registry + log + caps) — used by:
 //     - jobsSvc + registry: enqueueEnvelope fallback path on the
 //     godlike/07 minimum-blast-radius test fixtures
 //     (PR-SCRIPT-JOBS-EXTRACT).
 //     - log: universal; every per-method logger.
+//     - caps: SCRIPTCONTRACT-2026-07-08 PR-2 PreflightCaps, the
+//     flat composition-time postprocessor-availability surface.
+//     Mirrored to h.gen + h.jobs at construction time; the field
+//     here is the canonical owner of the top-level preflight
+//     surface for the legacy-adapter thin-delegator path
+//     (h.enqueueEnvelope nil-jobs fallback).
 type ScriptFlowHandler struct {
 	// Domain primitives
 	clipsSearcher ClipSearcher
@@ -98,6 +104,7 @@ type ScriptFlowHandler struct {
 	jobsSvc  jobservice.Service
 	log      *zap.Logger
 	registry *appjobs.Registry
+	caps     PreflightCaps
 }
 
 // jobsRegisterRoutes mounts /api/script/jobs/:id via JobsHandler.
@@ -150,10 +157,19 @@ func (h *ScriptFlowHandler) AdminToken() string {
 // PR-SCRIPT-JOBS-EXTRACT. The nil-jobs fallback preserves the
 // godlike/07 minimum-blast-radius test-fixture contract (struct-
 // literal fixtures rely on direct enqueueEnvelopeFn dispatch).
+//
+// SCRIPTCONTRACT-2026-07-08 PR-2: the `h.caps` field is the
+// canonical preflight surface; both the nil-jobs fallback path
+// AND the JobsHandler.EnqueueEnvelope dispatch thread h.caps to
+// enqueueEnvelopeFn. godlike/06 SSOT: there is exactly ONE
+// PreflightCaps instance per ScriptFlowHandler (set in
+// NewScriptFlowHandler); both the canonical live /generate path
+// (HandlerGenerate.Generate) and the legacy-adapter thin-delegator
+// path (this method) share it.
 func (h *ScriptFlowHandler) enqueueEnvelope(c *gin.Context, env domainScript.GenerationEnvelopeV2) {
 	if h.jobs == nil {
-		enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry)
+		enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry, h.caps)
 		return
 	}
-	h.jobs.EnqueueEnvelope(c, env)
+	h.jobs.EnqueueEnvelope(c, env, h.caps)
 }

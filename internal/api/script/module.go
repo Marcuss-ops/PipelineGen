@@ -150,6 +150,11 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		Legacy:        deps.Legacy,
 		ClipsSearcher: deps.ClipsSearcher,
 		AdminToken:    deps.AdminToken,
+		// Caps is read directly from deps.Generate.Caps inside
+		// NewScriptFlowHandler (godlike/06 SSOT one canonical owner
+		// per fact); it is NOT forwarded as a separate top-level
+		// field on ScriptFlowDeps to avoid the drift hazard of two
+		// independent PreflightCaps instances per ScriptFlowHandler.
 	})
 
 	// Construct the route Module (name "script-flow" + prefix

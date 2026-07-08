@@ -27,23 +27,40 @@ import (
 )
 
 // HandlerGenerate is the narrow HTTP handler for script generation.
-// It owns exactly the 3 fields it needs — no more, no less.
+// It owns exactly the 4 fields it needs — no more, no less.
 // Constructed by NewScriptFlowHandler alongside the legacy
 // ScriptFlowHandler; wired by RegisterRoutes as the handler for
 // POST /api/script/generate.
+//
+// SCRIPTCONTRACT-2026-07-08 PR-2: the new `caps PreflightCaps` field
+// carries the composition-time postprocessor availability into the
+// per-request preflight gate (see `requireRequestedProcessors` in
+// postprocessor_preflight.go). godlike/06 SSOT: PreflightCaps is
+// the SOLE canonical flat-deps surface; the 3 bool fields map 1:1
+// to the root.Domains.VoiceoverService + root.Domains.ImageService
+// + root.Drive.DocClient composition checks. The composition root
+// (internal/app/wire_script.go) builds PreflightCaps at startup;
+// the handler carries the frozen value to the request seam.
 type HandlerGenerate struct {
 	jobsSvc  jobservice.Service
 	log      *zap.Logger
 	registry *appjobs.Registry
+	caps     PreflightCaps
 }
 
 // NewHandlerGenerate constructs the handler from the canonical deps.
-// All three fields are nil-tolerant at construction time; the
+// All four fields are nil-tolerant at construction time; the
 // Generate method's nil-guards on jobsSvc return 503 at request time.
+// The `caps` field is a flat struct — zero-value is the
+// conservative default (all false, fail-closed for any user-requested
+// processor; this is intentional per godlike/07 NO-FAKE-AVAILABILITY:
+// a misconfigured deployment cannot accidentally accept voiceover
+// requests).
 func NewHandlerGenerate(
 	jobsSvc jobservice.Service,
 	log *zap.Logger,
 	registry *appjobs.Registry,
+	caps PreflightCaps,
 ) *HandlerGenerate {
 	if log == nil {
 		log = zap.NewNop()
@@ -52,6 +69,7 @@ func NewHandlerGenerate(
 		jobsSvc:  jobsSvc,
 		log:      log,
 		registry: registry,
+		caps:     caps,
 	}
 }
 
@@ -93,5 +111,5 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 
 	// P0 #4 (June 2026): delegate to the centralized enqueue path.
 	// Uses the package-level enqueueEnvelopeFn shared with legacy adapters.
-	enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry)
+	enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry, h.caps)
 }
