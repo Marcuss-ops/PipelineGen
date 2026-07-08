@@ -617,12 +617,13 @@ func commitYouTubeClip(t *testing.T, fx *e2eFixture, assetID, summary, youTubeVi
 			EndSec:   60,
 			Duration: 60,
 		},
-		// ClipMetadata is an alias for CanonicalClipMetadata (per
-		// application/youtube/dto/types.go). The writer only reads
-		// the Summary field for the canonical asset_name; search_text
-		// / transcript payloads are written by downstream stages
-		// (Whisper, embedder) and surfaced via metadata_json.
-		Metadata: youtubetypes.ClipMetadata{
+		// CanonicalClipMetadata is the consolidated metadata type
+		// (per application/youtube/dto/metadata_types.go). The
+		// writer only reads the Summary field for the canonical
+		// asset_name; search_text / transcript payloads are written
+		// by downstream stages (Whisper, embedder) and surfaced
+		// via metadata_json.
+		Metadata: youtubetypes.CanonicalClipMetadata{
 			Summary:         summary,
 			NormalizedGroup: "general",
 			Tags:            []string{"e2e", "qdrant"},

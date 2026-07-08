@@ -84,8 +84,8 @@ func (s *stubReader) ListFiles(_ context.Context, _ string) ([]drive.DriveFileIn
 	return nil, nil
 }
 
-func (s *stubReader) FindFileByName(_ context.Context, _, _ string) (*drive.RemoteFile, error) {
-	return nil, nil
+func (s *stubReader) FindFileByName(_ context.Context, _, _ string) (drive.ExistingFileLookup, error) {
+	return drive.ExistingFileLookup{}, nil
 }
 
 func (s *stubReader) FileIsNotTrashed(_ context.Context, _ string) (bool, error) {

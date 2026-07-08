@@ -26,7 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
@@ -54,6 +54,14 @@ import (
 // structurally satisfying voiceover.TxOutboxEnqueuer via Go's
 // implicit-interface rules.
 //
+// textTranslator is a local interface for the TranslateText method.
+// Both *ollama.Generator and *translation.OllamaTranslator satisfy
+// it structurally, so the composition root can pass either concrete
+// type without the function signature needing to import either package.
+type textTranslator interface {
+	TranslateText(ctx context.Context, text, targetLanguage string) (string, error)
+}
+
 // Azione #9 follow-up (July 2026): DriveUploaderPort interface removed
 // from ports.go; voiceoverDriveAdapter struct also removed from
 // adapters_voiceover_publisher.go. Post-commit Drive cleanup now flows
@@ -70,7 +78,7 @@ func buildVoiceoverService(
 	clipIndexerService *clipindexer.Service, // PR-VO-A3: no longer injects clipIndexFn into voiceover.Service; retained on the signature only because other voiceover paths still reach the indexer directly.
 	destResolver asset.Resolver,
 	metaWriter *semantic.MetadataWriter,
-	scriptGen *ollama.Generator,
+	scriptGen textTranslator,
 	outboxDispatcher *outbox.Dispatcher,
 ) (*voiceover.Service, *assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor) {
 
