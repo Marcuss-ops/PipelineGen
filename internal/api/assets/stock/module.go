@@ -77,6 +77,18 @@ type Dependencies struct {
 	// RouteModule.
 	ModuleOpts []api.RouteModuleOption
 
+	// AssetLookup is the narrow port for looking up a media asset
+	// by ID (stock download endpoint). Satisfied by
+	// *assets.ClipsRepository.Get. OPTIONAL — nil produces a 503
+	// on /clips/:id/download (godlike/07 fail-closed).
+	AssetLookup StockAssetLookup
+
+	// DriveReader is the narrow port for streaming files from
+	// Google Drive (stock download endpoint). Satisfied by
+	// drive.Reader. OPTIONAL — nil produces a 503 on
+	// /clips/:id/download.
+	DriveReader StockDriveReader
+
 	// Logger is the canonical structured logger. nil →
 	// zap.NewNop() (composition-root-friendly default).
 	Logger *zap.Logger
@@ -150,7 +162,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 
 	// Construct the canonical Handler. NewHandler has its own
 	// nil-tolerance for log (defaults to zap.NewNop()).
-	handler := NewHandler(deps.UseCase, log)
+	handler := NewHandler(deps.UseCase, log, deps.AssetLookup, deps.DriveReader)
 
 	// Construct the route Module. The closure inside
 	// api.NewRouteModule calls handler.RegisterRoutes(r) — the

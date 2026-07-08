@@ -60,7 +60,7 @@ func (f *fakeStockServiceRunner) Run(_ context.Context, input *stockpipeline.Run
 // EnqueueRequest/Job surfaces here as build failure.
 func newTestHandler(jobID string) *Handler {
 	usecase := stockpipeline.NewStockUseCase(nil, &fakeJobsEnqueuer{jobID: jobID}, nil)
-	return NewHandler(usecase, nil)
+	return NewHandler(usecase, nil, nil, nil)
 }
 
 // runPOST sends a POST request to the given gin handler and returns
@@ -234,7 +234,7 @@ func TestSearchAndRun_AcceptsQueriesOnly_Returns200(t *testing.T) {
 func TestRunStockPipeline_SyncMode_EnablesPersist(t *testing.T) {
 	runner := &fakeStockServiceRunner{}
 	usecase := stockpipeline.NewStockUseCase(runner, nil, nil)
-	handler := NewHandler(usecase, nil)
+	handler := NewHandler(usecase, nil, nil, nil)
 
 	rec, _ := runPOST(t, handler.RunStockPipeline, map[string]any{
 		"direct_urls":    []string{"https://example.com/video.mp4"},
@@ -258,7 +258,7 @@ func TestRunStockPipeline_SyncMode_EnablesPersist(t *testing.T) {
 func TestRunStockPipeline_PreservesFolderPayload(t *testing.T) {
 	runner := &fakeStockServiceRunner{}
 	usecase := stockpipeline.NewStockUseCase(runner, nil, nil)
-	handler := NewHandler(usecase, nil)
+	handler := NewHandler(usecase, nil, nil, nil)
 
 	rec, _ := runPOST(t, handler.RunStockPipeline, map[string]any{
 		"direct_urls":    []string{"https://example.com/video.mp4"},

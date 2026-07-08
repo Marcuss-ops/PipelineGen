@@ -167,6 +167,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 		Renderer:             stockRenderer,
 		Jobs:                 root.Jobs.Service,
 		ChannelLister:        stockChannelLister,
+		DriveReader:          stockDriveReaderFromBundle(root),
 		StockPipelineEnabled: func() bool { return cfg.Features.StockPipelineEnabled },
 	})
 }
