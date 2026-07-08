@@ -225,6 +225,18 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		return
 	}
 
+	// godlike/07 NO-FAKE-AVAILABILITY (PR-STOCK-NO-PLACEHOLDERS, 2026-07-08):
+	// the response carries ONLY {job_id, message, status_url}. The
+	// pre-PR `drive`/`indexed`/`location` placeholder fields were
+	// REMOVED — empty-string placeholders are the canonical
+	// silent-success class (per AGENTS.md "cerco ... punti in cui il
+	// flusso può dichiarare successo senza aver completato davvero"):
+	// a caller reading `drive: {path: "", folder_id: ""}` sees a
+	// shape that LOOKS populated but is functionally empty, forcing
+	// them to poll status_url anyway. Removing the placeholders
+	// makes the contract explicit: the handler resolved the
+	// dispatch (job_id + status_url inline); the rest comes from
+	// the canonical job status endpoint.
 	resp := gin.H{
 		"job_id": jobID,
 	}
@@ -234,13 +246,6 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 	} else {
 		resp["message"] = "Stock pipeline run completed"
 	}
-	// DoD #8 (July 2026): drive and indexing fields are empty for
-	// async responses — populated when the caller polls the job
-	// status via status_url. Pre-populated here so the response
-	// shape is stable across both async and sync modes.
-	resp["drive"] = stockDrivePlaceholder()
-	resp["indexed"] = false
-	resp["location"] = stockLocationPlaceholder()
 	apiutil.OK(c, resp)
 }
 
@@ -321,6 +326,9 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 		return
 	}
 
+	// godlike/07 NO-FAKE-AVAILABILITY: response carries ONLY
+	// {job_id, message, status_url}. See SearchAndRun above for
+	// the canonical rationale (PR-STOCK-NO-PLACEHOLDERS, 2026-07-08).
 	resp := gin.H{
 		"job_id": jobID,
 	}
@@ -330,37 +338,7 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 	} else {
 		resp["message"] = "Stock pipeline run completed"
 	}
-	// DoD #8 (July 2026): drive and indexing fields populated when
-	// the caller polls the job status via status_url.
-	resp["drive"] = stockDrivePlaceholder()
-	resp["indexed"] = false
-	resp["location"] = stockLocationPlaceholder()
 	apiutil.OK(c, resp)
-}
-
-// stockDrivePlaceholder returns the canonical empty drive response block
-// used by both SearchAndRun and RunStockPipeline. The placeholder is
-// empty for async responses — populated when the caller polls the job
-// status via status_url.
-func stockDrivePlaceholder() gin.H {
-	return gin.H{
-		"path":      "",
-		"folder_id": "",
-		"file_id":   "",
-		"link":      "",
-	}
-}
-
-// stockLocationPlaceholder returns the canonical empty location response
-// block (DoD #10, July 2026). Stock endpoints are async — the location
-// is populated when the caller polls the job status via status_url.
-func stockLocationPlaceholder() gin.H {
-	return gin.H{
-		"category": "",
-		"subject":  "",
-		"provider": "",
-		"style":    "",
-	}
 }
 
 // stockValidationInput is the type-erased input to applyStockDefaults.
