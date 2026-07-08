@@ -86,6 +86,13 @@ func TestYoutubeStrategy(t *testing.T) {
 		Transcript:  "This is the full transcript of the video.",
 		Channel:     "MyChannel",
 		Description: "Video description here.",
+		Tags:        []string{"boxing", "press conference"},
+		Additional: map[string]string{
+			"hook":             "Ti spacco il culo!",
+			"source_url":       "https://www.youtube.com/watch?v=abc123",
+			"speakers":         "Adrien Broner Manny Pacquiao",
+			"mentioned_people": "Floyd Mayweather",
+		},
 	}
 	got := youtubeStrategy(input)
 	mustContainAll(t, got,
@@ -93,6 +100,11 @@ func TestYoutubeStrategy(t *testing.T) {
 		"This is the full transcript of the video.",
 		"MyChannel",
 		"Video description here.",
+		"boxing press conference",
+		"Ti spacco il culo!",
+		"https://www.youtube.com/watch?v=abc123",
+		"Adrien Broner Manny Pacquiao",
+		"Floyd Mayweather",
 	)
 }
 
@@ -600,8 +612,13 @@ func TestRegistryDispatch_AllSources(t *testing.T) {
 			input: appsearchtext.SearchTextInput{
 				AssetID: "a-1", Source: "youtube",
 				Title: "YT Title", Transcript: "transcript", Channel: "ch", Description: "desc",
+				Tags: []string{"boxing"},
+				Additional: map[string]string{
+					"hook": "hook text", "source_url": "https://youtu.be/x",
+					"speakers": "Speaker A", "mentioned_people": "Person B",
+				},
 			},
-			want: []string{"YT Title", "transcript", "ch", "desc"},
+			want: []string{"YT Title", "transcript", "ch", "desc", "boxing", "hook text", "https://youtu.be/x", "Speaker A", "Person B"},
 		},
 		{
 			name:   "artlist",
@@ -674,7 +691,7 @@ func TestRegistryDispatch_AllSources(t *testing.T) {
 
 func TestAllStrategies_EmptyInput_ReturnsEmpty(t *testing.T) {
 	empty := appsearchtext.SearchTextInput{AssetID: "e", Source: "youtube"}
-	for _, s := range []Strategy{youtubeStrategy, artlistStrategy, voiceoverStrategy, imageStrategy, generatedImageStrategy} {
+	for _, s := range []Strategy{youtubeStrategy, artlistStrategy, voiceoverStrategy, imageStrategy, generatedImageStrategy, stockChunkStrategy} {
 		got := s(empty)
 		if got != "" {
 			t.Errorf("strategy with no data must return empty; got %q", got)
@@ -745,6 +762,112 @@ func TestTruncate_Truncates(t *testing.T) {
 	got := truncate("hello world", 5)
 	if got != "hello" {
 		t.Errorf("must truncate to 5 chars; got %q", got)
+	}
+}
+
+// ── Enhanced YouTube strategy tests (PR-YT-DOD-10) ────────────────────
+
+// TestYoutubeStrategy_NilAdditional_NoPanic pins the no-panic contract
+// when Additional is nil (the strategy reads add["x"] which returns ""
+// for nil maps in Go — but the test locks this for future drift).
+func TestYoutubeStrategy_NilAdditional_NoPanic(t *testing.T) {
+	input := appsearchtext.SearchTextInput{
+		AssetID:    "yt-nil-1",
+		Source:     "youtube",
+		Title:      "Title only",
+		Additional: nil,
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("nil Additional must not panic; got %v", r)
+		}
+	}()
+	got := youtubeStrategy(input)
+	if got != "Title only" {
+		t.Errorf("nil Additional with title only: got %q", got)
+	}
+}
+
+// TestYoutubeStrategy_FullBronerPacquiaoClip pins the canonical
+// PR-YT-DOD-10 contract: the search_text for a YouTube clip MUST
+// contain title, summary (=Description), hook, topics (=Tags),
+// transcript, source_url, speakers, and mentioned_people — NOT
+// just the filename.
+//
+// This mirrors the real Broner-Pacquiao clip (vdC5GXxS-qU [146-155])
+// that the 12-DoD E2E test exercises.
+func TestYoutubeStrategy_FullBronerPacquiaoClip(t *testing.T) {
+	input := appsearchtext.SearchTextInput{
+		AssetID:     "yt_vdC5GXxS-qU_146_155_v1",
+		Source:      "youtube",
+		Title:       "Sfuriata di Broner contro Pacquiao",
+		Description: "Broner urla a Pacquiao: Pensa a me, non a Floyd!",
+		Transcript:  "I'm gonna whoop your ass! Don't worry about Floyd, worry about me!",
+		Channel:     "SHOWTIME Sports",
+		Tags:        []string{"boxing", "trash talk", "press conference"},
+		Additional: map[string]string{
+			"hook":             "Ti sto per spaccare il culo, non preoccuparti di Floyd! Pensa a me!",
+			"source_url":       "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+			"speakers":         "Adrien Broner Manny Pacquiao",
+			"mentioned_people": "Floyd Mayweather",
+		},
+	}
+	got := youtubeStrategy(input)
+
+	mustContainAll(t, got,
+		"Sfuriata di Broner contro Pacquiao",
+		"Broner urla a Pacquiao: Pensa a me, non a Floyd!",
+		"Ti sto per spaccare il culo, non preoccuparti di Floyd! Pensa a me!",
+		"boxing trash talk press conference",
+		"I'm gonna whoop your ass! Don't worry about Floyd, worry about me!",
+		"https://www.youtube.com/watch?v=vdC5GXxS-qU",
+		"Adrien Broner Manny Pacquiao",
+		"Floyd Mayweather",
+		"SHOWTIME Sports",
+	)
+
+	// Must NOT be just the filename.
+	if strings.HasPrefix(got, "yt_vdC5GXxS-qU_146_155_v1") {
+		t.Errorf("search_text must NOT be just the filename (DoD 10 contract); got prefix match on clip ID: %q", got)
+	}
+}
+
+// TestYoutubeStrategy_AdditionalFieldsOnly tests the case where only
+// Additional fields are populated — the strategy must compose them
+// without top-level fields.
+func TestYoutubeStrategy_AdditionalFieldsOnly(t *testing.T) {
+	input := appsearchtext.SearchTextInput{
+		AssetID: "yt-addonly-1",
+		Source:  "youtube",
+		Additional: map[string]string{
+			"hook":       "Check this out!",
+			"source_url": "https://youtu.be/xyz",
+		},
+	}
+	got := youtubeStrategy(input)
+	mustContainAll(t, got,
+		"Check this out!",
+		"https://youtu.be/xyz",
+	)
+}
+
+// TestYoutubeStrategy_Idempotent mirrors the existing
+// TestAllStrategies_Idempotent for the YouTube strategy.
+func TestYoutubeStrategy_Idempotent(t *testing.T) {
+	input := appsearchtext.SearchTextInput{
+		AssetID:     "yt-idem-1",
+		Source:      "youtube",
+		Title:       "Title",
+		Description: "Desc",
+		Tags:        []string{"a", "b"},
+		Additional: map[string]string{
+			"hook": "Hook", "source_url": "https://x.com",
+		},
+	}
+	first := youtubeStrategy(input)
+	second := youtubeStrategy(input)
+	if first != second {
+		t.Errorf("strategy must be idempotent; first=%q second=%q", first, second)
 	}
 }
 
