@@ -32,6 +32,10 @@ func (s *stubFinalizer) Finalize(_ context.Context, _ *sql.Tx, cmd *FinalizeComm
 	return s.cannedRes, s.cannedErr
 }
 
+func (s *stubFinalizer) VerifyPostCommit(_ context.Context, _ string) error {
+	return nil // nil-safe: no-op stub (tests that wire the real verifier use the real finalizer)
+}
+
 var _ VoiceoverFinalizer = (*stubFinalizer)(nil)
 
 // ─────────────────────────────────────────────────────────────────────
