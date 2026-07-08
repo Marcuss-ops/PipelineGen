@@ -3283,3 +3283,39 @@
     ship_date: 2026-07-08
     owner_capability: internal/application/scripts/jobs
     deadline: 2026-07-22
+  - id: PR-SCRIPTCONTRACT-COMPOSITION-WIRE
+    owner_capability: internal/app
+    status: shipped
+    ship_sha: 6565ca71e
+    ship_date: 2026-07-08
+    deadline: 2026-07-15
+    ship_via: 'LATE-DOCUMENTATION AUDIT-PIN (godlike/07 NO-FAKE-AVAILABILITY):
+      the buildPreflightCaps helper + preflightCaps field wire + top-of-function
+      root.Drive==nil guard + 4 hermetic TDD tests in
+      internal/app/wire_script_preflight_test.go landed on origin/main at SHA
+      6565ca71e on 2026-07-08 (3+ weeks BEFORE the 2026-07-15 deadline). The
+      3-surface lockstep (CHANGELOG + AGENTS + this wave-tracker flip) was
+      deferred across a session interruption and is now closing on 2026-08-08
+      as documentation-only: 0 Go code changes, 0 surface contract changes,
+      0 new exported symbols. godlike/06 SSOT: buildPreflightCaps lives ONLY at
+      internal/app/wire_script.go (composition-time canonical construction
+      site); the preflightCaps field lives ONLY at
+      internal/api/script/handler_deps.go (canonical typed-envelope consumer).
+      godlike/07 typed-error contract: the 3 booleans are nil-safe (a
+      misconfigured deployment without a service gets Enabled=false, the
+      preflight surfaces ErrPreflightProcessorMissing for any user-requested
+      processor that needs it). Verification: gofmt -l clean; go vet
+      ./internal/app/... ./internal/api/script/... exit 0; go test -short
+      -count=1 -run TestBuildPreflightCaps ./internal/app/... PASS 4/4; go
+      test -short -count=1 -run TestRequireRequestedProcessors
+      ./internal/api/script/... PASS 8/8. 4 forward-pointers carry forward:
+      PR-VOICEOVER-PIPELINE-DEBUG-2026-07-08 (the composition root gap --
+      root.Domains.VoiceoverService is nil at runtime; buildPreflightCaps
+      correctly reports VoiceoverEnabled=false in that state, surfacing the
+      typed 503 to the operator); PR-SCRIPTCONTRACT-PREFLIGHT-HTTP-TEST (TDD
+      test that pins the HTTP-level 503 mapping in enqueueEnvelopeFn);
+      PR-SCRIPTCONTRACT-SENTINEL-STRING-COUPLE (decouple the preflight_sentinel
+      field in the 503 response from
+      domainScript.ErrPreflightProcessorMissing.Error());
+      PR-SCRIPTCONTRACT-COMPOSITION-WIRE-VERIFY (live integration test against
+      a running pipelinegen server).'
