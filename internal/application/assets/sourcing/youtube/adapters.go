@@ -92,6 +92,7 @@ func (a *publisherAdapter) Publish(ctx context.Context, req usecase.PublishReque
 		Filename:           req.Filename,
 		Description:        req.Description,
 		AssetID:            req.AssetID,
+		ProjectID:          req.ProjectID,
 		Group:              req.Group,
 		Subject:            req.Subject,
 		Category:           req.Category,

@@ -175,6 +175,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 				LocalPath:   fetched.LocalPath,
 				Filename:    driveFilename,
 				Description: driveDesc,
+				ProjectID:   strings.TrimSpace(cmd.Location.Project),
 				Category:    cmd.Category,
 				Provider:    provider,
 				Tags:        cmd.Tags,
