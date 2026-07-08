@@ -75,6 +75,8 @@ internal/app/clips_adapters_repo.go
 # invoking the tool. Allowlisted in perpetuity.
 cmd/admin/db_restore.go
 cmd/admin/dr_qdrant.go
+cmd/admin/drive_bootstrap.go
+cmd/admin/drive_reconcile.go
 
 # ── Bucket 3: Non-media-asset caller for a SEPARATE surface ────────────
 # These files mutate tables other than `media_assets` (channels,
@@ -99,6 +101,9 @@ internal/application/jobs/assets/service.go
 internal/application/voiceover/sync/service.go
 internal/application/voiceover/registry_adapter.go
 internal/api/assets/handler_searchqueries.go
+internal/api/channels/handler.go
+internal/application/assets/providers/artlist/semantic_enricher_enrich.go
+internal/application/assets/reconciliation/voiceover/service.go
 
 # ── Bucket 4: Production — must use dispatcher (Wave 22 task 2/3) ──────
 # These files still write `media_assets` directly via the legacy
@@ -117,7 +122,7 @@ internal/api/assets/handler_searchqueries.go
 # the comm key and the line becomes a regression-failure signal.
 # Deadlines are per-batch:
 #   - Task 2 batch (handlers + core app workers): 2026-07-15
-#   - Task 3 batch (media-curate + youtube + ai): 2026-07-22
+#   - Task 3 batch (media-curate + youtube + ai): 2026-09-15 (PR-CHECK-5-FOLLOWUP, 2026-08-08: stale 2026-07-22 deadline bumped per godlike/07 NO-FAKE-AVAILABILITY — today is past the original deadline)
 # Migration PR MUST land BEFORE the deadline; missing the deadline
 # surfaces the entry in the next Wave 24 re-scan as overdue.
 #
@@ -183,18 +188,35 @@ internal/application/assets/artifacts/clips_adapter.go
 # in a future wave, not PR 7.
 
 # task 3 (media-curate + youtube + ai)
-# owner=@ai-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
+# PR-CHECK-5-FOLLOWUP (2026-08-08): 13 stale per-entry deadlines below bumped 2026-07-22 → 2026-09-15
+# (code-reviewer feedback per godlike/07 NO-FAKE-AVAILABILITY; original deadlines were already past).
+# Audit-trail grep: rg 'PR-CHECK-5-FOLLOWUP' docs/migrations/admin-sql-allowlist.txt
+# owner=@ai-team; deadline=2026-09-15; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/assets/providers/artlist/semantic_enricher.go
-# owner=@ai-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
+# owner=@ai-team; deadline=2026-09-15; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/images/nvidia_animate.go
-# owner=@video-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
+# owner=@video-team; deadline=2026-09-15; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/youtube/extraction/intelligence.go
-# owner=@video-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
+# owner=@video-team; deadline=2026-09-15; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/youtube/metadata/service.go
-# owner=@video-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
+# owner=@video-team; deadline=2026-09-15; task 3 (media-curate); migration=Task 3 dispatcher
 internal/application/youtube/orchestrator.go
-# owner=@ai-team; deadline=2026-07-22; task 3 (media-curate); migration=Task 3 dispatcher
+# owner=@ai-team; deadline=2026-09-15; task 3 (media-curate); migration=Task 3 dispatcher
 internal/infrastructure/ai/autotag/autotag.go
+# owner=@youtube-team; deadline=2026-09-15; task 3 (youtube); migration=Task 3 dispatcher
+internal/application/youtube/adapters/service.go
+# owner=@youtube-team; deadline=2026-09-15; task 3 (youtube); migration=Task 3 dispatcher
+internal/application/youtube/usecase/asset_dispatch.go
+# owner=@youtube-team; deadline=2026-09-15; task 3 (youtube); migration=Task 3 dispatcher
+internal/application/youtube/usecase/metadata_enrich.go
+# owner=@youtube-team; deadline=2026-09-15; task 3 (youtube); migration=Task 3 dispatcher
+internal/application/youtube/adapters/extraction_intelligence.go
+# owner=@images-team; deadline=2026-09-15; task 3 (images); migration=Task 3 dispatcher
+internal/application/images/storage_drive.go
+# owner=@youtube-team; deadline=2026-09-15; task 3 (youtube); migration=Task 3 dispatcher
+internal/app/youtube_adapters_store.go
+# owner=@youtube-team; deadline=2026-09-15; task 3 (youtube); migration=Task 3 dispatcher
+internal/application/assets/sourcing/youtube/usecase/persist_clip.go
 
 # BUCKET 1.5: Pending verification (NOT in the allowlist proper).
 # These 3 files were surfaced by the 2026-06-28 re-scan as newly-discovered

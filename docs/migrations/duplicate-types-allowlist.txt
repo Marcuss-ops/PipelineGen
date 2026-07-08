@@ -37,6 +37,10 @@
 #   @voiceover-reconciliation — reconstruction deprecation shims (PR 6 + reconciliation/voiceover)
 #   @scripts-adapters         — application/scripts/adapters module-local service structs
 #   @images-team              — application/images (canonical DTO) + api/images (HTTP transport DTO)
+#   @youtube-team             — application/youtube (canonical) + assets/providers/youtube (provider-adapter mirror)
+#   @completion-team          — assets/completion (projector) + jobs/completion (broker spine)
+#   @qdrant-team              — qdrant-side canonical (reconciler/maintenance) vs assets-side cross-package-NAME mirrors
+#   @translation-team         — application/translation (ports) + domain/translation (canonical)
 #
 # ◷ CHECK 5 LOG SECTION (PR-check-5 baseline closure, June 2026) ◷
 # At PR-check-5 closure time the lint scanner flagged 10 same-package
@@ -64,6 +68,28 @@ images:GenerateImageRequest            # port-pattern domain-vs-transport — `a
 engine:Generate                        # cross-package-NAME false positive — `engine.go` (definition) + `generate_one_usecase.go` (canonical sole permitted caller per Check 3) both declare `package engine`; Check 5 scanner groups by package-NAME so the cross-file surface is over-counted; mitigated by Check 3 ownership gate (allowlisted `!**/engine.go --glob '!**/generate_one_usecase.go'`) — owner: @jobs-core, deadline: 2026-09-01
 health:DriveChecker                    # port-pattern canonical-vs-impl mirror — `application/system/health/ports.go` (interface DBChecker/DriveChecker/QdrantChecker/JobsChecker) + `infrastructure/health/drive_checker.go` (struct impl `DriveChecker`); both declare `package health`; same cross-directory port-pattern shape as health:JobsChecker (already allowlisted above) — owner: @system-health-team, deadline: 2026-09-01
 jobs:QueueNotifier                     # type-alias port-pattern — `application/jobs/notifier.go` declares `type QueueNotifier = sqljobs.QueueNotifier` (a Go type ALIAS, not a redeclaration) + `infrastructure/database/sqlite/jobs/queue_notifier.go` declares the canonical interface; both declare `package jobs`; the application-tier entry is structurally identical to the canonical via the alias — owner: @jobs-core, deadline: 2026-09-01
+#
+# ◷ PR-CHECK-5-FOLLOWUP (July 2026) ◷
+# 10 additional cross-package-NAME false positives surfaced after the
+# scanner bug (656 blank-line noise) was fixed by adding `if (NF < 3) next`
+# to the Check 5 awk block in scripts/ci-architectural-checks.sh. Each
+# entry is a distinct package that happens to share its name with
+# another directory (e.g. `reconciler` appears in both
+# `application/assets/deletion/reconciler` and
+# `application/qdrant/reconciler`). The Check 5 scanner groups by Go
+# package NAME so the cross-file surface is over-counted; these entries
+# are the canonical godlike/06 SSOT resolution.
+#
+youtube:YouTubeStager                   # cross-package-NAME false positive — `application/assets/providers/youtube/stager_adapter.go:72` (provider-adapter mirror) + `application/youtube/stager_adapter.go:30` (canonical) both declare `package youtube`; provider-adapter entry is a thin forward to the canonical per godlike/07 minimum-blast-radius — owner: @youtube-team, deadline: 2026-09-01
+completion:Service                     # cross-package-NAME false positive — `application/assets/completion/publish_verified.go:175` (projector for verified-artifacts) + `application/jobs/completion/complete_job_service.go:64` (broker spine) both declare `package completion`; the projector wraps the broker per Pattern 0 (godlike/06 SSOT) — owner: @completion-team, deadline: 2026-09-01
+reconciler:Service                     # cross-package-NAME false positive — `application/assets/deletion/reconciler/service.go:34` (assets-side deletion reconciler) + `application/qdrant/reconciler/service.go:71` (qdrant-side drift reconciler) both declare `package reconciler`; distinct concerns (Drive-deletion vs Qdrant-drift) per godlike/06 SSOT — owner: @qdrant-team, deadline: 2026-09-01
+translation:TranslationCommand         # cross-package-NAME false positive — `application/translation/ports.go:120` (application port) + `domain/translation/translation.go:88` (domain canonical) both declare `package translation`; the application port wraps the domain type per Pattern 0 — owner: @translation-team, deadline: 2026-09-01
+voiceover:VoiceoverItem                # cross-package-NAME false positive — `api/assets/voiceover/types.go:97` (HTTP transport DTO) + `application/voiceover/command.go:63` (domain command) both declare `package voiceover`; the HTTP transport wraps the domain per Pattern 0 — owner: @voiceover-team, deadline: 2026-09-01
+translation:ModelPolicy                 # cross-package-NAME false positive — `application/translation/ports.go:281` (application port) + `domain/translation/translation.go:67` (domain canonical) both declare `package translation`; the application port wraps the domain type per Pattern 0 — owner: @translation-team, deadline: 2026-09-01
+maintenance:Service                    # cross-package-NAME false positive — `application/assets/maintenance/service.go:34` (assets-side maintenance) + `application/qdrant/maintenance/service.go:90` (qdrant-side maintenance) both declare `package maintenance`; distinct concerns (Drive-folder vs Qdrant-collection) per godlike/06 SSOT — owner: @qdrant-team, deadline: 2026-09-01
+reconciler:Metrics                     # cross-package-NAME false positive — `application/assets/deletion/reconciler/ports.go:105` (assets-side metrics interface) + `application/qdrant/reconciler/ports.go:139` (qdrant-side metrics interface) both declare `package reconciler`; distinct concerns per godlike/06 SSOT — owner: @qdrant-team, deadline: 2026-09-01
+translation:TranslationResult          # cross-package-NAME false positive — `application/translation/ports.go:224` (application port) + `domain/translation/translation.go:115` (domain canonical) both declare `package translation`; the application port wraps the domain type per Pattern 0 — owner: @translation-team, deadline: 2026-09-01
+reconciler:ServiceDeps                 # cross-package-NAME false positive — `application/assets/deletion/reconciler/service.go:53` (assets-side deps) + `application/qdrant/reconciler/service.go:94` (qdrant-side deps) both declare `package reconciler`; distinct dep-bag per godlike/06 SSOT — owner: @qdrant-team, deadline: 2026-09-01
 #
 # ── OUT-OF-SCOPE DEFERRED PAIRS (PR-check-5 follow-up, June 2026) ──
 # The Check 5 lint also flagged 3 additional pairs that are NOT in the
