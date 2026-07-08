@@ -119,6 +119,12 @@ Pre-existing build issues carry forward unchanged (per CHANGELOG forward-pointer
 - **Non applicare migration generiche a più database se creano tabelle non usate da quel database.**
 - Schema attuale (Unificato):
   - `data/media/media.db.sqlite`: **Unico database** — tutto in un solo file (scripts, jobs, asset_index, media_assets, harvester, pipeline_runs, voiceovers, etc.)
+- **Regole Struttura Drive per Stock Pipeline (DoD 8 e successive)**:
+  - **1 timestamp originale = 1 cartella Drive**. Le clip figlie da 5 secondi NON devono creare cartelle separate.
+  - Tutti i segmenti da 5 secondi appartenenti allo stesso blocco timestamp originale devono essere caricati come file nella stessa cartella padre.
+  - Il nome progressivo (`clip_001.mp4`, `clip_002.mp4` o `segment-01`) deve essere usato solo come nome file, mai per creare nuove sotto-cartelle Drive separate.
+  - Il nome della cartella del blocco originale (`PathLeafName`) o folder slug deve derivare esclusivamente dal timestamp padre.
+  - Ogni cartella del timestamp padre deve contenere un file `metadata.json` aggregato contenente la lista e la descrizione dei chunk figli contenuti al suo interno.
 
 *(DB driver lock, FTS5 ban, single-table-per-capability ownership, EXPAND/BACKFILL/CUTOVER/CONTRACT sequence — the rules previously restated under a `> Authority` blockquote citing `docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md#database-rules` — now live in CANONICAL.md §1 as the authoritative pointer; the bullet content above remains the agent-facing fast-reference at code-edit time.)*
 

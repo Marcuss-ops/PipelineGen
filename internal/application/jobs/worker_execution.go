@@ -299,7 +299,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			// ScheduleRetry does running→queued atomically with
 			// server-side backoff via available_at. No intermediate
 			// "failed" state — avoids false alerting.
-			if retryErr := w.repo.ScheduleRetry(finalizationCtx, j.ID, workerID, leaseID, finalRevision, backoff); retryErr != nil {
+			if retryErr := w.repo.ScheduleRetry(finalizationCtx, j.ID, workerID, leaseID, finalRevision, dispatchErr.Error(), backoff); retryErr != nil {
 				if errors.Is(retryErr, sqljobs.ErrLeaseLost) {
 					w.log.Warn("lease lost during ScheduleRetry — another worker claimed this job",
 						zap.String("job_id", j.ID))

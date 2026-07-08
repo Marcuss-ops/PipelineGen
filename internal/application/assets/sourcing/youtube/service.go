@@ -56,9 +56,10 @@ type Service struct {
 	enrichment  EnrichmentPort
 	log         sourcing.Logger
 
-	// RequireDrive, when true, causes Register to return an error if the
-	// Drive Publisher fails (P0.2, July 2026).
-	RequireDrive bool
+	// requireDrive, when true, causes Register to return an error if the
+	// Drive Publisher fails (P0.2, July 2026). Set at construction via
+	// NewService (not post-construction mutation per godlike/06 SSOT).
+	requireDrive bool
 }
 
 // NewService creates a YouTubeRegistrar service. indexDisp is REQUIRED
@@ -85,6 +86,15 @@ func NewService(
 		enrichment:  enrichment,
 		log:         log,
 	}
+}
+
+// WithRequireDrive sets the requireDrive flag. When true, Register returns
+// ErrYouTubeDriveRequired if the Drive Publisher fails (P0.2, July 2026).
+// Mirrors the fluent-setter pattern used by WithLocationResolver,
+// WithTranscriptStore, and WithFolderEnsurer for config-driven behavior.
+func (s *Service) WithRequireDrive(v bool) *Service {
+	s.requireDrive = v
+	return s
 }
 
 // Register downloads a YouTube clip, uploads to Drive, saves to DB, and
@@ -183,7 +193,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 			})
 	}
 	uploadResult, targetFolderID, deliveryStatus := s.processPublishResult(md.VideoID, pubResult, pubErr)
-	if s.RequireDrive && deliveryStatus != asset.AssetPublishPublished {
+	if s.requireDrive && deliveryStatus != asset.AssetPublishPublished {
 		return nil, fmt.Errorf("%w: publisher returned %v (Drive is required but asset was not published)", ErrYouTubeDriveRequired, deliveryStatus)
 	}
 

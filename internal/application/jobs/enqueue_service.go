@@ -108,6 +108,24 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 		CorrelationID: req.CorrelationID,
 	}
 
+	// Step 6 (July 2026): fail-closed handler gate. When the dispatcher is
+	// wired (non-nil), reject enqueue for job types that have no registered
+	// handler — a job enqueued without a consumer will sit in the queue
+	// forever and never be claimed. The gate is skipped when the dispatcher
+	// is nil (test/minimal compositions that don't wire handlers) to avoid
+	// spurious idempotency-key / correlation-id rejections. The dispatcher’s
+	// AllHandlers() map is the canonical source of truth for handler presence.
+	//
+	// godlike/07 NO-FAKE-AVAILABILITY: pre-Step-6, this check was absent.
+	// Jobs for unregistered types were silently accepted (HTTP 200), rows
+	// accumulated in the jobs table, and the only diagnostic was the /ready
+	// handlers check (which only covers 2 required types). The gate closes
+	// the silent-queue-buildup class by surfacing the typed sentinel at
+	// enqueue time.
+	if s.dispatcher != nil && !s.HasHandler(j.Type) {
+		return nil, fmt.Errorf("%w: %s", ErrNoHandlerForJobType, j.Type)
+	}
+
 	// PR-jobs-retry-contract (July 2026): strict typed MaxRetries resolution
 	// via Registry.GetMaxRetries. Errors propagate (no silent fallback).
 	maxRetries, err := s.resolveMaxRetries(j.Type, j.MaxRetries)

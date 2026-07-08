@@ -414,16 +414,50 @@ func BuildFinalizationRequest(
 				errChunk,
 			)
 		}
+		// Build ArtifactMetadata so the AssetTxFinalizer can merge
+		// semantic enrichment data into media_assets.metadata_json.
+		// Without this bridge, ChunkState's Title/Round/Tags/Category/
+		// SourceProvider/DrivePath/etc. are lost at the PublishedArtifact
+		// boundary and the Qdrant PayloadMapper has no rich data.
+		chunkMeta := map[string]any{
+			"title":           c.Title,
+			"description":     c.Description,
+			"start_sec":       c.StartSec,
+			"end_sec":         c.EndSec,
+			"source_url":      c.SourceURL,
+			"source_provider": c.SourceProvider,
+			"source_video_id": c.SourceVideoID,
+			"total_chunks":    c.TotalChunks,
+			"drive_path":      c.DrivePath,
+			"policy_version":  c.PolicyVersion,
+			"indexing_status": "INDEXING_PENDING",
+			"chunk_index":     c.Index,
+		}
+		if c.Round > 0 {
+			chunkMeta["round"] = c.Round
+		}
+		if len(c.Tags) > 0 {
+			chunkMeta["tags"] = c.Tags
+		}
+		if c.Category != "" {
+			chunkMeta["category"] = c.Category
+		}
+		if c.Slug != "" {
+			chunkMeta["slug"] = c.Slug
+		}
+
 		arts = append(arts, finalization.PublishedArtifact{
-			ArtifactID:     c.ArtifactID,
-			Kind:           finalization.KindVideo,
-			Filename:       c.Filename,
-			MIMEType:       "video/mp4",
-			SizeBytes:      c.SizeBytes,
-			SHA256:         c.SHA256,
-			SourceVersion:  int64(c.Index + 1),
-			Requirement:    finalization.ArtifactRequirementRequired,
-			IdempotencyKey: chunkIdemKey,
+			ArtifactID:       c.ArtifactID,
+			Kind:             finalization.KindVideo,
+			Filename:         c.Filename,
+			MIMEType:         "video/mp4",
+			SizeBytes:        c.SizeBytes,
+			SHA256:           c.SHA256,
+			SourceVersion:    int64(c.Index + 1),
+			Requirement:      finalization.ArtifactRequirementRequired,
+			IdempotencyKey:   chunkIdemKey,
+			Description:      c.Description,
+			ArtifactMetadata: chunkMeta,
 			Location: finalization.AssetLocation{
 				Provider:     "drive",
 				FileID:       c.RemoteFileID,

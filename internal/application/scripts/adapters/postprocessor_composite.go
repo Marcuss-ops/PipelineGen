@@ -6,10 +6,11 @@
 //
 // PR-COMPOSITE-SPLIT (July 2026): decomposed into 3 files per AGENTS.md
 // Pattern 5:
-//   postprocessor_composite.go       — types + constructor + simple methods
-//                                       (this file)
-//   postprocessor_composite_run.go   — Run method
-//   postprocessor_composite_merge.go — mergePostProcessResult helper
+//
+//	postprocessor_composite.go       — types + constructor + simple methods
+//	                                    (this file)
+//	postprocessor_composite_run.go   — Run method
+//	postprocessor_composite_merge.go — mergePostProcessResult helper
 package adapters
 
 import (
@@ -97,6 +98,7 @@ var defaultPolicyByName = map[ProcessorName]ProcessorPolicy{
 	ProcessorVoiceover:   ProcessorBestEffort, // Fase 2: downgraded (→ voiceover.generate job)
 	ProcessorEntities:    ProcessorRequired,
 	ProcessorMetadata:    ProcessorRequired,
+	ProcessorClipSearch:  ProcessorBestEffort, // PR-CLIP-SEARCH-WIRING (July 2026): enrichment, not a hard gate
 }
 
 // DefaultPolicyFor returns the canonical default policy for a

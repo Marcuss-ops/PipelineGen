@@ -156,6 +156,37 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 	if a.Description != "" {
 		metadata["description"] = a.Description
 	}
+	// Merge ArtifactMetadata (source-specific enrichment data
+	// from ChunkState: title, round, tags, category, source_provider,
+	// drive_path, etc.) so the Qdrant PayloadMapper can read rich
+	// data from media_assets.metadata_json. Without this merge,
+	// the semantic fields are lost at the PublishedArtifact boundary
+	// and the indexer falls back to filename-only payloads.
+	for k, v := range a.ArtifactMetadata {
+		if v == nil {
+			continue
+		}
+		// Skip zero-value scalars (omitempty semantics).
+		switch val := v.(type) {
+		case string:
+			if val == "" {
+				continue
+			}
+		case int:
+			if val == 0 {
+				continue
+			}
+		case float64:
+			if val == 0 {
+				continue
+			}
+		case []string:
+			if len(val) == 0 {
+				continue
+			}
+		}
+		metadata[k] = v
+	}
 	metadataJSON, _ := json.Marshal(metadata)
 	actionStr := string(a.Location.Action)
 

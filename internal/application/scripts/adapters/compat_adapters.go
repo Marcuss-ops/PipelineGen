@@ -51,6 +51,34 @@ var ErrEntityExtractorUnavailable = errors.New("adapters: EntityExtractor backen
 // above for rationale.
 var ErrMetadataGeneratorUnavailable = errors.New("adapters: MetadataGenerator backend unavailable (fail-closed per godlike/07 — wire a real backend or remove the metadata postprocessor)")
 
+// ── ArtlistClipMatch: result type for clip-search postprocessor ──────────
+
+// ArtlistClipMatch pairs an artlist phrase with matching clip results.
+// This is the adapters-layer wire shape (parallel to
+// usecase.ScriptArtlistClipSuggestion which lives in the usecase
+// package and cannot be imported here due to circular-dependency
+// constraints).
+type ArtlistClipMatch struct {
+	Phrase           string   `json:"phrase"`
+	ClipNames        []string `json:"clip_names,omitempty"`
+	ClipDriveLinks   []string `json:"clip_drive_links,omitempty"`
+	FolderLink       string   `json:"folder_link,omitempty"`
+	FolderName       string   `json:"folder_name,omitempty"`
+	FolderID         string   `json:"folder_id,omitempty"`
+	TranslationError string   `json:"translation_error,omitempty"`
+}
+
+// ArtlistClipSearcher is the canonical port for searching Artlist
+// clips from extracted entity phrases. Processors (ClipSearchProcessor)
+// consume an ArtlistClipSearcher at composition time and dispatch
+// (title, phrases) → []ArtlistClipMatch.
+//
+// godlike/06 SSOT: the port is declared ONLY here. No other package
+// may redefine ArtlistClipSearcher.
+type ArtlistClipSearcher interface {
+	SearchClips(ctx context.Context, title string, phrases []string) []ArtlistClipMatch
+}
+
 // ── Typed ports (PR 3 — June 2026) ────────────────────────────────────────
 
 // EntityExtractor is the canonical port for entity extraction.
@@ -123,4 +151,25 @@ func NewUnavailableMetadataGenerationAdapter() MetadataGenerator {
 // (fail-closed).
 func (unavailableMetadataGenerationAdapter) GenerateMetadata(_ context.Context, _ scriptpkg.MetadataGenerationRequest) ([]scriptpkg.VideoMetadata, error) {
 	return nil, ErrMetadataGeneratorUnavailable
+}
+
+// ── ArtlistClipSearcher typed-fail adapter ──────────────────────────────
+
+// unavailableArtlistClipSearcher is the canonical fail-closed
+// implementation of ArtlistClipSearcher. Returns an empty slice on
+// every SearchClips call (BestEffort — clip search is never a hard
+// gate; nil backend → empty results).
+type unavailableArtlistClipSearcher struct{}
+
+// NewUnavailableArtlistClipSearcher returns the canonical fail-closed
+// ArtlistClipSearcher. The returned adapter is safe for concurrent use
+// and carries no state.
+func NewUnavailableArtlistClipSearcher() ArtlistClipSearcher {
+	return unavailableArtlistClipSearcher{}
+}
+
+// SearchClips implements ArtlistClipSearcher. Returns nil on every
+// call (BestEffort semantics — empty results, not an error).
+func (unavailableArtlistClipSearcher) SearchClips(_ context.Context, _ string, _ []string) []ArtlistClipMatch {
+	return nil
 }

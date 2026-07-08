@@ -32,6 +32,10 @@ type PipelineResult struct {
 	// callers that did not opt into the heuristic.
 	SynthesizedScenes []scriptpkg.SpecScene `json:"synthesized_scenes,omitempty"`
 	Warnings          []string              `json:"warnings,omitempty"`
+	// ArtlistClipSuggestions carries Artlist clip matches discovered
+	// by the ClipSearchProcessor from the artlist_phrases extracted
+	// by the upstream EntitiesProcessor. PR-CLIP-SEARCH-WIRING (July 2026).
+	ArtlistClipSuggestions []ArtlistClipMatch `json:"artlist_clip_suggestions,omitempty"`
 	// FinalSpecScene (Issue #1, June 2026) is the canonical
 	// post-walk SpecScene surface consumed by buildGenerationResult.
 	// Pre-fix: buildGenerationResult read from engineResult.Output
@@ -83,6 +87,9 @@ type PostProcessResult struct {
 	// not see a serialisation diff.
 	SynthesizedScenes []scriptpkg.SpecScene `json:"synthesized_scenes,omitempty"`
 	Warnings          []string              `json:"warnings,omitempty"`
+	// ArtlistClipSuggestions carries Artlist clip matches discovered
+	// by the ClipSearchProcessor. PR-CLIP-SEARCH-WIRING (July 2026).
+	ArtlistClipSuggestions []ArtlistClipMatch `json:"artlist_clip_suggestions,omitempty"`
 }
 
 // IsEmpty reports whether the result carries no observable work.
@@ -122,6 +129,11 @@ func (r *PostProcessResult) IsEmpty() bool {
 	// is functionally complete but the registry still complains
 	// "returned empty output" — choking the job on a false-positive.
 	if len(r.SynthesizedScenes) > 0 {
+		return false
+	}
+	// PR-CLIP-SEARCH-WIRING (July 2026): clip search results count
+	// as observable work.
+	if len(r.ArtlistClipSuggestions) > 0 {
 		return false
 	}
 	return true

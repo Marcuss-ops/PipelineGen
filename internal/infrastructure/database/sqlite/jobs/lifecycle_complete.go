@@ -165,8 +165,9 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
+	evtData, _ := json.Marshal(map[string]string{"error": errMsg})
 	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_failed", errMsg, "{}", nowStr); err != nil {
+		evtID, id, "job_failed", errMsg, string(evtData), nowStr); err != nil {
 		return fmt.Errorf("fail: insert job event: %w", err)
 	}
 

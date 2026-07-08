@@ -83,9 +83,15 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	fp := runner.RunFingerprint()
 	explicitTimestamps := in != nil && len(in.Clips) > 0
 	rootFolderName := stockRootFolderName(in)
+	rootFolderOverride := stockRootFolderOverride(in)
 	timestampGroupName := stockTimestampGroupName(in)
 	composed := runner.State().ComposedPaths
+	existingPublished := runner.State().Published
+	publishedReady := len(existingPublished) > 0 && (len(composed) == 0 || len(existingPublished) == len(composed))
 	chunks := make([]ChunkState, 0, len(composed))
+	if publishedReady {
+		chunks = append(chunks, existingPublished...)
+	}
 	metadataArtifactID := MetadataArtifactID(fp)
 	var metadataPublished finalization.PublishedArtifact
 
@@ -110,6 +116,9 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 	}
 	for i, compPath := range composed {
+		if publishedReady {
+			break
+		}
 		plan := ClipPlan{}
 		hasPlan := i < len(runner.State().Plan)
 		if hasPlan {
@@ -208,7 +217,7 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		// behavior strictly on explicitTimestamps.
 		var leafName string
 		if explicitTimestamps {
-			leafName = perClipLeafName(plan)
+			leafName = timestampParentLeafName(plan)
 		} else {
 			leafName = timestampGroupName
 		}
@@ -223,13 +232,16 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			Requirement:    finalization.ArtifactRequirementRequired,
 			IdempotencyKey: idem + ":c" + strconv.Itoa(i),
 			Description:    cs.Description,
-			// DRIVE-IS-DRIVE (July 2026): RootFolderOverride REMOVED.
-			// Stock no longer passes FolderID as a Drive path override.
+			// DRIVE-IS-DRIVE (July 2026): stock now passes the explicit
+			// drive_folder_id as the Drive root override when provided.
+			// FolderID remains the workflow identifier; the override is
+			// the actual Drive root selector.
 			// The artifact publisher adapter derives Group/Subject from
 			// RootFolderName + PathLeafName via stockArtifactPathParts.
 			// The DestinationRegistry + PathBuilder handle routing.
-			RootFolderName: rootFolderName,
-			PathLeafName:   leafName,
+			RootFolderName:     rootFolderName,
+			RootFolderOverride: rootFolderOverride,
+			PathLeafName:       leafName,
 		}
 		published, prepErr := runner.ArtifactPreparation().Prepare(ctx, va)
 		if prepErr != nil {
@@ -250,74 +262,49 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		cs.DrivePath = published.Location.WebViewLink
 		cs.RemoteDownloadLink = published.Location.DownloadLink
 
-		// PR-PER-CLIP-METADATA (July 2026, DoD 5): per-clip
-		// metadata.json in the SAME per-clip subdir as the video
-		// chunk. The per-clip envelope reuses buildStockRunMetadata
-		// with a singleton chunks slice (same wire shape as the
-		// run-level metadata.json, only cardinality differs) so
-		// the canonical StockRunMetadata is the SOLE metadata
-		// wire shape. Lands at PathLeafName = leafName (the SAME
-		// subdir as the video). godlike/07 minimum-blast-radius:
-		// the existing cs is reused (no extra ChunkState build)
-		// so the video path stays byte-equivalent for callers
-		// that don't care about the per-clip metadata.
-		clipMetaPath, clipMetaHash, clipMetaSize, clipMetaErr := writeAndHashPerClipMetadata(in, cs, fp)
-		if clipMetaErr != nil {
-			// PR-PER-CLIP-METADATA fix (July 2026, code-reviewer item #1):
-			// dual-%w preserves the underlying typed-error chain
-			// (json.SyntaxError / os.PathError) so callers can probe
-			// the root cause via errors.As — godlike/07 typed-error
-			// contract. Single-%w with %v would drop the chain.
-			return fmt.Errorf("%w: per-clip metadata.json stage for chunk %d (artifact=%s): %w",
-				ErrStockPublishArtifactFailed, i, cs.ArtifactID, clipMetaErr)
-		}
-		defer func() {
-			if rmErr := os.Remove(clipMetaPath); rmErr != nil && !os.IsNotExist(rmErr) {
-				if runner.Log() != nil {
-					runner.Log().Warn("orchestrator: stock.publish: failed to remove per-clip metadata temp file",
-						zap.String("path", clipMetaPath), zap.Int("chunk_index", i), zap.Error(rmErr))
-				}
+		if !explicitTimestamps {
+			// Legacy non-timestamp runs retain the per-chunk metadata
+			// envelope behavior. Explicit timestamp runs now publish one
+			// metadata.json per parent timestamp folder from the extract
+			// step, so this branch is skipped for the 5-second child clips.
+			clipMetaPath, clipMetaHash, clipMetaSize, clipMetaErr := writeAndHashPerClipMetadata(in, cs, fp)
+			if clipMetaErr != nil {
+				return fmt.Errorf("%w: per-clip metadata.json stage for chunk %d (artifact=%s): %w",
+					ErrStockPublishArtifactFailed, i, cs.ArtifactID, clipMetaErr)
 			}
-		}()
+			defer func() {
+				if rmErr := os.Remove(clipMetaPath); rmErr != nil && !os.IsNotExist(rmErr) {
+					if runner.Log() != nil {
+						runner.Log().Warn("orchestrator: stock.publish: failed to remove per-clip metadata temp file",
+							zap.String("path", clipMetaPath), zap.Int("chunk_index", i), zap.Error(rmErr))
+					}
+				}
+			}()
 
-		clipMetaIdem, clipMetaIdemErr := asset.SHA256IdempotencyKey("stock:"+fp+":clip-metadata:"+strconv.Itoa(i), clipMetaHash)
-		if clipMetaIdemErr != nil {
-			// dual-%w: godlike/07 typed-error chain preserved.
-			return fmt.Errorf("%w: per-clip metadata idem-key for chunk %d: %w",
-				ErrStockPublishArtifactFailed, i, clipMetaIdemErr)
-		}
-		var clipMetaArtifactID string
-		if explicitTimestamps {
-			clipMetaArtifactID = TimestampArtifactID(fp, i, "metadata")
-		} else {
-			clipMetaArtifactID = ChunkArtifactID(fp, i) + ":metadata"
-		}
-		clipMetaVA := finalization.VerifiedArtifact{
-			ArtifactID:     clipMetaArtifactID,
-			Kind:           finalization.KindMetadata,
-			Filename:       "metadata.json",
-			MIMEType:       "application/json",
-			LocalPath:      clipMetaPath,
-			SizeBytes:      clipMetaSize,
-			SHA256:         clipMetaHash,
-			Requirement:    finalization.ArtifactRequirementRequired,
-			IdempotencyKey: clipMetaIdem,
-			// DRIVE-IS-DRIVE (July 2026): RootFolderOverride REMOVED.
-			// Stock no longer passes FolderID as a Drive path override.
-			// The artifact publisher adapter derives Group/Subject from
-			// RootFolderName + PathLeafName via stockArtifactPathParts.
-			RootFolderName: rootFolderName,
-			// SAME subdir as the video chunk — per-clip metadata.json
-			// lands inside the per-clip leaf folder (e.g. round-1/,
-			// round-7-broner-barcolla/), alongside the video. Legacy
-			// mode lands inside the shared timestampGroupName leaf
-			// alongside the legacy shared-folder videos.
-			PathLeafName: leafName,
-		}
-		if _, clipMetaPrepErr := runner.ArtifactPreparation().Prepare(ctx, clipMetaVA); clipMetaPrepErr != nil {
-			// dual-%w: godlike/07 typed-error chain preserved.
-			return fmt.Errorf("%w: per-clip metadata.json upload for chunk %d (artifact=%s): %w",
-				ErrStockPublishArtifactFailed, i, clipMetaArtifactID, clipMetaPrepErr)
+			clipMetaIdem, clipMetaIdemErr := asset.SHA256IdempotencyKey("stock:"+fp+":clip-metadata:"+strconv.Itoa(i), clipMetaHash)
+			if clipMetaIdemErr != nil {
+				return fmt.Errorf("%w: per-clip metadata idem-key for chunk %d: %w",
+					ErrStockPublishArtifactFailed, i, clipMetaIdemErr)
+			}
+			clipMetaArtifactID := ChunkArtifactID(fp, i) + ":metadata"
+			clipMetaVA := finalization.VerifiedArtifact{
+				ArtifactID:     clipMetaArtifactID,
+				Kind:           finalization.KindMetadata,
+				Filename:       "metadata.json",
+				MIMEType:       "application/json",
+				LocalPath:      clipMetaPath,
+				SizeBytes:      clipMetaSize,
+				SHA256:         clipMetaHash,
+				Requirement:    finalization.ArtifactRequirementRequired,
+				IdempotencyKey: clipMetaIdem,
+				RootFolderName: rootFolderName,
+				RootFolderOverride: rootFolderOverride,
+				PathLeafName:   leafName,
+			}
+			if _, clipMetaPrepErr := runner.ArtifactPreparation().Prepare(ctx, clipMetaVA); clipMetaPrepErr != nil {
+				return fmt.Errorf("%w: per-clip metadata.json upload for chunk %d (artifact=%s): %w",
+					ErrStockPublishArtifactFailed, i, clipMetaArtifactID, clipMetaPrepErr)
+			}
 		}
 
 		chunks = append(chunks, cs)
@@ -398,10 +385,13 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		SHA256:         metaHash,
 		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: metaIdem,
-		// DRIVE-IS-DRIVE (July 2026): RootFolderOverride REMOVED.
-		// Stock no longer passes FolderID as a Drive path override.
-		RootFolderName: rootFolderName,
-		PathLeafName:   metaLeafName,
+		// DRIVE-IS-DRIVE (July 2026): stock now passes the explicit
+		// drive_folder_id as the Drive root override when provided.
+		// FolderID remains the workflow identifier; the override is
+		// the actual Drive root selector.
+		RootFolderName:     rootFolderName,
+		RootFolderOverride: rootFolderOverride,
+		PathLeafName:       metaLeafName,
 	}
 	metaPublished, metaPrepErr := runner.ArtifactPreparation().Prepare(ctx, metaVA)
 	if metaPrepErr != nil {
@@ -473,6 +463,20 @@ func stockRootFolderName(in *RunInput) string {
 		return name
 	}
 	return "stock_" + time.Now().UTC().Format("2006-01-02")
+}
+
+// stockRootFolderOverride returns the explicit Drive root folder ID
+// when the caller provided drive_folder_id. FolderID remains the
+// workflow identifier and is only used as a fallback for older
+// callers that still populate folder_id.
+func stockRootFolderOverride(in *RunInput) string {
+	if in == nil {
+		return ""
+	}
+	if id := strings.TrimSpace(in.DriveFolderID); id != "" {
+		return id
+	}
+	return strings.TrimSpace(in.FolderID)
 }
 
 // sanitizedRootName trims whitespace, returns "" for empty input,
@@ -623,6 +627,33 @@ func perClipLeafName(plan ClipPlan) string {
 		// start-end literal.
 		if slug != "" && slug != "untitled" {
 			return slug
+		}
+	}
+	return fmt.Sprintf("%02d-%02d-%02d_to_%02d-%02d-%02d",
+		int(plan.StartSec)/3600, (int(plan.StartSec)%3600)/60, int(plan.StartSec)%60,
+		int(plan.EndSec)/3600, (int(plan.EndSec)%3600)/60, int(plan.EndSec)%60,
+	)
+}
+
+// timestampParentLeafName returns the Drive leaf for the original
+// timestamp block before it was expanded into 5-second children.
+// Explicit timestamp runs use this for the folder path so all
+// slices from the same parent clip land together.
+func timestampParentLeafName(plan ClipPlan) string {
+	if raw := strings.TrimSpace(plan.ParentSlug); raw != "" {
+		if safe := pathutil.SafeFolderName(raw); safe != "" && safe != "untitled" && hasAlphanumeric(safe) {
+			return safe
+		}
+	}
+	if title := strings.TrimSpace(plan.Title); title != "" {
+		slug := slugifyTitle(title)
+		if slug != "" && slug != "untitled" {
+			return slug
+		}
+	}
+	if raw := strings.TrimSpace(plan.Slug); raw != "" {
+		if safe := pathutil.SafeFolderName(raw); safe != "" && safe != "untitled" && hasAlphanumeric(safe) {
+			return safe
 		}
 	}
 	return fmt.Sprintf("%02d-%02d-%02d_to_%02d-%02d-%02d",

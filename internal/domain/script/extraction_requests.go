@@ -43,6 +43,23 @@ type EntityResult struct {
 	Persons  []Entity `json:"persons,omitempty"`
 	Places   []Entity `json:"places,omitempty"`
 	Concepts []Entity `json:"concepts,omitempty"`
+	// ArtlistPhrases are visual/search phrases extracted per
+	// segment (PR-ENTITY-EXTRACTOR-WIRING, July 2026). Populated
+	// by the EntityExtractor adapter from the Ollama backend.
+	// Downstream consumers (InsightBuilder, SearchArtlistClips)
+	// read this typed field to search for matching Artlist clips.
+	ArtlistPhrases []string `json:"artlist_phrases,omitempty"`
+	// ImportantPhrases are key phrases extracted per segment
+	// (PR-ENTITY-EXTRACTOR-WIRING, July 2026). Maps from the
+	// Ollama backend's frasi_importanti field — narrative
+	// fragments that capture the essence of each segment.
+	ImportantPhrases []string `json:"important_phrases,omitempty"`
+	// ImportantWords are key concepts/words extracted per
+	// segment (PR-ENTITY-EXTRACTOR-WIRING, July 2026). Maps
+	// from the Ollama backend's parole_importanti — mirrors
+	// Concepts but uses a clearer field name aligned with the
+	// Italian schema (parole_importanti = important words).
+	ImportantWords []string `json:"important_words,omitempty"`
 	// Raw is the original postgen LLM JSON string, kept for
 	// backward read-compat with rows written before PR 3.
 	Raw string `json:"raw,omitempty"`

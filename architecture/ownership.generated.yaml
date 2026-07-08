@@ -654,6 +654,7 @@ pkg:
 # internal/domain/job/worker.go::WorkerHardwareStats (lines 122-159)
 # remains the authoritative contract; any reintroduced sampler MUST
 # project the POJO verbatim (no field copies, no JSON-tag renames) and
-# MUST NOT import prometheus/client_golang (the import boundary stays
-# in internal/infrastructure/observability — metric var definitions
-# per the now-cleaned Option B governance).
+# MUST satisfy architecture/policy.yaml::prometheus_boundary (no
+# prometheus/client_golang imports at the leaf pkg layer; metric var
+# definitions stay in internal/infrastructure/observability/ — the
+# now-cleaned Option B governance).

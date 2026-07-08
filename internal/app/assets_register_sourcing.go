@@ -99,14 +99,7 @@ func newAssetRegisterService(
 		ytIndex,
 		ytEnrich,
 		&zapSourcingLogger{log: log},
-	)
-
-	// MEDIA_DRIVE_REQUIRED (P0.2, July 2026): when the operator sets
-	// VELOX_MEDIA_DRIVE_REQUIRED=true (or media_drive_required: true
-	// in config.yaml), the YouTubeRegistrar MUST return an error on
-	// any non-PUBLISHED delivery status. No partial-success
-	// "asset registered locally" semantics.
-	ytSvc.RequireDrive = cfg.Features.MediaDriveRequired
+	).WithRequireDrive(cfg.Features.MediaDriveRequired)
 
 	// P0-1 / commit 2: BatchRegistrar sub-service (PR-BATCH-REGISTER-ASYNC).
 	// The synchronous YouTubeRegistrar loop is replaced with an async
@@ -195,9 +188,51 @@ func newAssetRegisterService(
 		log.Warn("PR-RESOLVER-PORT-EXTRACT: failed to construct resolver adapter; fluent setter will be skipped and a non-empty Location will fail-closed via ErrLocationResolverEmpty at runtime", zap.Error(resolverErr))
 		return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, &zapSourcingLogger{log: log})
 	}
+	// Wire real Drive FolderEnsurer so semantic location fields produce
+	// real Drive folder IDs (not stub-shift: prefix-mode paths).
+	// The resolverFolderEnsurerAdapter wraps drive.EnsureFolderPath
+	// (the canonical recursive folder-creation helper) and injects the
+	// drive.Admin dependency so the resolver package avoids an import
+	// cycle with its parent drive package.
+	if driveUploader != nil {
+		resolverAdapter = resolverAdapter.WithFolderEnsurer(
+			&resolverFolderEnsurerAdapter{admin: driveUploader},
+		)
+		log.Info("PR-RESOLVER-PORT-EXTRACT: real Drive FolderEnsurer wired (EnsureFolderPath via drive.Admin)")
+	} else {
+		log.Warn("PR-RESOLVER-PORT-EXTRACT: driveUploader is nil — FolderEnsurer NOT wired; non-empty Location will fail-closed via ErrFolderEnsurerNotWired at runtime")
+	}
 	log.Info("PR-RESOLVER-PORT-EXTRACT: canonical LocationResolverPort wired into sourcing façade (Wave 7 SEMANTIC-LOCATION-API deliverable)")
 	return sourcing.NewService(ytSvc, batchSvc, drvSvc, localSvc, &zapSourcingLogger{log: log}).WithLocationResolver(resolverAdapter)
 }
+
+// resolverFolderEnsurerAdapter wraps drive.EnsureFolderPath into the
+// resolver.FolderEnsurer port. This adapter lives in the composition
+// root (NOT in the resolver package) to break the import cycle:
+// resolver is a child of drive, so it cannot import drive.Admin or
+// drive.EnsureFolderPath directly.
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: this is the canonical
+// SOLE adapter between resolver.FolderEnsurer and the real Drive
+// folder-creation surface.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the adapter calls the real
+// drive.EnsureFolderPath function which walks segments and creates
+// each folder via admin.GetOrCreateFolder (retry-aware, P0.4 admin
+// scope). No stub-mode fallback.
+type resolverFolderEnsurerAdapter struct {
+	admin driveutil.Admin
+}
+
+// EnsureFolder satisfies resolver.FolderEnsurer.
+func (a *resolverFolderEnsurerAdapter) EnsureFolder(ctx context.Context, rootID string, segments ...string) (string, error) {
+	if a == nil || a.admin == nil {
+		return "", fmt.Errorf("resolverFolderEnsurerAdapter: drive.Admin not wired")
+	}
+	return driveutil.EnsureFolderPath(ctx, a.admin, rootID, segments...)
+}
+
+var _ resolver.FolderEnsurer = (*resolverFolderEnsurerAdapter)(nil)
 
 // clipJobEnqueuerAdapter bridges batch.ClipJobEnqueuer → appjobs.Service.Enqueue.
 // Each RegisterClipCommand is JSON-marshalled and enqueued as a media.clip job.

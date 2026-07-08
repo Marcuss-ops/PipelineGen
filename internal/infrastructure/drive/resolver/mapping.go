@@ -11,7 +11,7 @@
 //   - softIgnoredFieldProbe   → per-destination off-channel metadata fields
 //   - segmentsForDestination  → canonical segment-shape table
 //   - mandatoryFieldGate      → per-destination FIRST-missing field check
-//   - composeStubFolderID + stubModePrefix → stab-mode folder-id composition
+//   - stubModePrefix → retained for test regression guards only (composeStubFolderID retired)
 //
 // godlike/06 SSOT one-canonical-owner-per-fact: these tables live ONLY
 // here. The canonical BuildPublishRequest surface in
@@ -257,45 +257,11 @@ func mandatoryFieldGate(dest delivery.DestinationKey, segments []string) string 
 	return ""
 }
 
-// composeStubFolderID joins the root, destination, and per-destination
-// segments into a canonical STUB-MODE folder-id. Sanitises each segment
-// against the pathutil.SafeFolderName contract (no whitespace, no slash)
-// so the resulting id is Drive-safe at the wire-shape level.
-//
-// STUB-MODE contract (forward-pointer CUTOVER C9):
-//   - Output is prefixed with "stub-shift:" sentinel so future consumers
-//     can detect stub-mode outputs via strings.HasPrefix(folderID, "stub-shift:").
-//   - Real Drive folder-ids are alphanumeric Drive.File.ID strings;
-//     the stub returns a synthetic slash-joined path BECAUSE the real
-//     Drive.EnsureFolder integration is forward-pointer.
-//   - Segments joined by "/" — real CUTOVER replaces this with the
-//     canonical Drive File.ID returned by EnsureFolder.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: stub-mode ids are NOT silently
-// consumed downstream; composition-root + adapter tests reject them
-// on forward-detection. Future CUTOVER PR removes the prefix sentinel.
+// stubModePrefix is retained for test regression guards that assert
+// real Drive folder-ids do NOT carry the legacy stub prefix.
+// composeStubFolderID was retired when the real Drive.EnsureFolderPath
+// integration landed (CUTOVER C9). The prefix constant remains so
+// test assertions like `strings.HasPrefix(folderID, stubModePrefix)`
+// serve as regression guards detecting accidental stub-mode revival.
 const stubModePrefix = "stub-shift:"
 
-func composeStubFolderID(root string, dest delivery.DestinationKey, segments []string) string {
-	parts := make([]string, 0, len(segments)+3)
-	parts = append(parts, stubModePrefix)
-	// root is always non-empty at this point (rootForDestination
-	// returns ErrDestinationNoRootFolder before reaching here when
-	// no root is configured).
-	parts = append(parts, root)
-	parts = append(parts, string(dest))
-	for _, s := range segments {
-		s = strings.TrimSpace(s)
-		if s == "" {
-			continue
-		}
-		s = strings.ReplaceAll(s, "/", "-")
-		s = strings.ReplaceAll(s, "\\", "-")
-		s = strings.TrimSpace(s)
-		if s == "" {
-			continue
-		}
-		parts = append(parts, s)
-	}
-	return strings.Join(parts, "/")
-}

@@ -58,6 +58,11 @@ type VerifiedArtifact struct {
 	// When empty, infrastructure falls back to a synthetic label.
 	RootFolderName string `json:"root_folder_name,omitempty"`
 
+	// RootFolderOverride is the explicit provider root folder ID. When
+	// non-empty, infrastructure treats it as the actual Drive root
+	// rather than resolving the registry default.
+	RootFolderOverride string `json:"root_folder_override,omitempty"`
+
 	// Description is the human-readable English summary for the clip
 	// or artifact. Stock uses it to carry per-timestamp narration into
 	// Drive metadata and Qdrant payloads.

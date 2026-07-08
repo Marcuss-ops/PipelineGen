@@ -38,6 +38,29 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
+// ── Pattern 0 port: FolderEnsurer ────────────────────────────────────────
+
+// FolderEnsurer is the narrow Pattern 0 port the resolver adapter
+// consumes to create/resolve real Drive folders. Defined here in the
+// resolver package (NOT in the parent drive package) to break the
+// import cycle: resolver is a child of drive, so it cannot import
+// drive.Admin or drive.EnsureFolderPath directly.
+//
+// The composition root in internal/app/ creates a thin adapter that
+// wraps drive.EnsureFolderPath(ctx, admin, rootID, segments...) and
+// injects it here.
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: this interface is the
+// canonical SOLE typed contract between the resolver and the Drive
+// folder-creation surface. No other interface in the codebase
+// duplicates this shape for the resolver's consumption.
+type FolderEnsurer interface {
+	// EnsureFolder walks the given segments under rootID, creating
+	// each folder if it doesn't already exist. Returns the final
+	// (leaf) folder's Drive File.ID.
+	EnsureFolder(ctx context.Context, rootID string, segments ...string) (string, error)
+}
+
 // ── adapter struct ────────────────────────────────────────────────────────
 
 // Adapter implements the canonical Pattern-0 LocationResolverPort
@@ -66,9 +89,10 @@ import (
 // MediaRootFolder + namespace. When neither is set, Resolve returns
 // ErrDestinationNoRootFolder (fail-closed at call-time).
 type Adapter struct {
-	mediaRoot string             // cfg.Drive.MediaRootFolder (cached for composeStubFolderID)
-	cfg       config.DriveConfig // per-destination root resolution (DoD #5)
-	log       resolverLogger
+	mediaRoot     string             // cfg.Drive.MediaRootFolder (cached for rootForDestination fallback)
+	cfg           config.DriveConfig // per-destination root resolution (DoD #5)
+	log           resolverLogger
+	folderEnsurer FolderEnsurer      // real Drive folder creation (nil → ErrFolderEnsurerNotWired at call-time)
 }
 
 // NewAdapter creates a fail-closed resolver adapter wired to the
@@ -93,8 +117,7 @@ type Adapter struct {
 // root resolution happens ON-DEMAND at Resolve time, not at
 // construction time — an operator can add a root folder to config
 // without restarting the process (the adapter re-reads cfg on each
-// Resolve call). The MediaRootFolder is cached at construction for
-// composeStubFolderID use; the destination-specific roots are
+// Resolve call). The MediaRootFolder is cached at construction for	// the destination-specific roots are
 // resolved fresh on each call.
 func NewAdapter(driveCfg config.DriveConfig, log resolverLogger) (*Adapter, error) {
 	// Round-2 SHOULD-FIX (2026-07-06): nil-logger fail-closed default.
@@ -106,6 +129,23 @@ func NewAdapter(driveCfg config.DriveConfig, log resolverLogger) (*Adapter, erro
 		cfg:       driveCfg,
 		log:       log,
 	}, nil
+}
+
+// WithFolderEnsurer injects the real Drive FolderEnsurer dependency.
+// This is the canonical fluent setter the composition root calls to
+// wire the real Drive.EnsureFolderPath adapter. Without it, Resolve
+// returns ErrFolderEnsurerNotWired for any non-empty Location.
+//
+// godlike/07 fail-closed-at-call-time: construction succeeds even
+// without a FolderEnsurer (the process may boot without Drive
+// credentials for local/dry-run tasks). The fail-closed gate fires
+// at Resolve time when a non-empty Location is provided.
+func (a *Adapter) WithFolderEnsurer(ensurer FolderEnsurer) *Adapter {
+	if a == nil {
+		return nil
+	}
+	a.folderEnsurer = ensurer
+	return a
 }
 
 // WithLogger overrides the adapter's logger (fluent setter for tests).
@@ -264,26 +304,51 @@ func (a *Adapter) Resolve(ctx context.Context, loc domaindelivery.AssetLocationI
 		)
 	}
 
-	// Forward-pointer CUTOVER (C9): real Drive folder-ids are alphanumeric,
-	// not subpath strings. The stub-mode canonical shape prepends a
-	// `stub-shift:` sentinel so future CUTOVER consumers can detect + reject
-	// stub-mode outputs via strings.HasPrefix(directoryID, "stub-shift:").
-	folderID := composeStubFolderID(root, dest, segments)
+	// Fail-closed gate: the real Drive FolderEnsurer must be wired
+	// at composition time. Without it, the resolver cannot produce
+	// a real Drive folder-id — returning a stub would silently land
+	// assets in the wrong folder. godlike/07 NO-FAKE-AVAILABILITY.
+	if a.folderEnsurer == nil {
+		return "", fmt.Errorf(
+			"%w: destination=%q, segments=[%s]",
+			ErrFolderEnsurerNotWired, dest, strings.Join(segments, "/"),
+		)
+	}
+
+	// Build the full segment list: destination key as the first
+	// segment under root, followed by the per-destination metadata
+	// segments. This mirrors the composeStubFolderID structure
+	// (root → dest → segments) and the Publisher's path hierarchy.
+	allSegs := make([]string, 0, len(segments)+1)
+	allSegs = append(allSegs, string(dest))
+	for _, s := range segments {
+		if strings.TrimSpace(s) != "" {
+			allSegs = append(allSegs, strings.TrimSpace(s))
+		}
+	}
+
+	folderID, err := a.folderEnsurer.EnsureFolder(ctx, root, allSegs...)
+	if err != nil {
+		return "", fmt.Errorf(
+			"%w: destination=%q, root=%q, segments=[%s]: %w",
+			ErrFolderEnsureFailed, dest, root, strings.Join(allSegs, "/"), err,
+		)
+	}
 	if folderID == "" {
 		return "", fmt.Errorf(
-			"%w: composed empty folder-id for destination=%q",
+			"%w: Drive.EnsureFolder returned empty folder-id for destination=%q",
 			ErrFolderIDNonAlphanumeric, dest,
 		)
 	}
 	if a.log != nil {
 		a.log.Info(
-			"resolver: resolved location to folder",
+			"resolver: resolved location to real Drive folder",
 			"destination", string(dest),
+			"root", root,
 			"folder_id", folderID,
-			"segments", strings.Join(segments, "/"),
+			"segments", strings.Join(allSegs, "/"),
 		)
 	}
-	_ = ctx // forward-pointer: real Drive API call will use ctx.Deadline + ctx.Err
 	return folderID, nil
 }
 

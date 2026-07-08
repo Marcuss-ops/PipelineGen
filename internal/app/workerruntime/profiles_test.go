@@ -202,8 +202,8 @@ func TestResolveCapabilities_NoProfileTypesRegistered_Error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no profile types are registered")
 	}
-	if !strings.Contains(err.Error(), "not registered in the worker dispatcher") {
-		t.Errorf("error should mention dispatcher registration, got: %v", err)
+	if !strings.Contains(err.Error(), "resolved to empty capability set") {
+		t.Errorf("error should mention empty capability set, got: %v", err)
 	}
 }
 

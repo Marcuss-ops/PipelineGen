@@ -114,6 +114,7 @@ func TestStockPublishStep_PerClipPathLeafName(t *testing.T) {
 	runner := &publishFakeRunner{
 		runInput: &RunInput{
 			FolderName:    "Manny Pacquiao vs Adrien Broner",
+			DriveFolderID: "drive-root-123",
 			FolderID:      "wf-8clips-front3",
 			Clips:         make([]ClipSpec, clipCount), // explicit-clips trigger
 			ClipDuration:  25,
@@ -129,12 +130,15 @@ func TestStockPublishStep_PerClipPathLeafName(t *testing.T) {
 	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
 		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
 	}
-	// Structural invariant: 2N+1 artifacts = N videos + N per-clip
-	// metadata + 1 run-level metadata (PR-PER-CLIP-METADATA, July
-	// 2026, DoD 5). For 8 clips: 8 + 8 + 1 = 17.
-	want := 2*clipCount + 1
+	// Structural invariant for explicit-timestamps: N+1 artifacts =
+	// N videos + 1 run-level metadata. Per-clip metadata is now
+	// published by step_extract_clips (the extract step emits a
+	// per-parent metadata.json alongside the video clips), so
+	// step_publish only emits the run-level metadata.json for
+	// explicit-timestamps runs. For 8 clips: 8 + 1 = 9.
+	want := clipCount + 1
 	if got := len(prep.artifacts); got != want {
-		t.Fatalf("expected %d prepare calls (%d videos + %d per-clip metadata + 1 run-level metadata), got %d", want, clipCount, clipCount, got)
+		t.Fatalf("expected %d prepare calls (%d videos + 1 run-level metadata), got %d", want, clipCount, got)
 	}
 	// Per-clip PathLeafName contract: 8 unique leaves, no shared
 	// folder. This is the HARD regression guard — godlike/07
@@ -147,41 +151,24 @@ func TestStockPublishStep_PerClipPathLeafName(t *testing.T) {
 	// value passed to ArtifactPreparation.Prepare). The ChunkState
 	// captures RemoteFileID + RemoteWebViewLink + DrivePath +
 	// RemoteDownloadLink from the PublishedArtifact.Location but
-	// does NOT carry PathLeafName today (a future PR could add it
-	// for SSOT round-trip verification — see forward-pointer
-	// PR-CHUNKSTATE-PATHLEAFNAME-MIRROR).
+	// does NOT carry PathLeafName today.
 	//
-	// PR-PER-CLIP-METADATA: the 2N+1 contract means artifacts
-	// are interleaved [video0, clipMeta0, video1, clipMeta1, ...,
-	// runMeta]. The video at index 2*i and its sibling per-clip
-	// metadata at index 2*i+1 share the same PathLeafName.
+	// For explicit-timestamps, artifacts are [video0, video1, ..., videoN, runMeta].
+	// Per-clip metadata is published by step_extract_clips, NOT step_publish.
 	seenLeaves := make(map[string]int, clipCount)
 	for i := 0; i < clipCount; i++ {
-		videoIdx := 2 * i
-		clipMetaIdx := 2*i + 1
-		// Video at 2*i. Use a separate declaration (not the
-		// `if got := ...; got != ...` short-decl form) so the
-		// outer `got` stays in scope for the `seenLeaves[got]`
-		// collision check below.
-		got := prep.artifacts[videoIdx].PathLeafName
+		got := prep.artifacts[i].PathLeafName
 		if got != wantLeaves[i] {
 			t.Errorf("video[%d] (artifact[%d]).PathLeafName = %q, want %q (per-clip leaf from Plan[%d].Title=%q)",
-				i, videoIdx, got, wantLeaves[i], i, plans[i].Title)
+				i, i, got, wantLeaves[i], i, plans[i].Title)
 		}
 		if prev, dup := seenLeaves[got]; dup {
 			t.Errorf("SHARED FOLDER REGRESSION: video[%d] (artifact[%d]).PathLeafName = %q, but video[%d] already used this leaf — 8 clips must produce 8 unique leaves, not 1 shared folder",
-				i, videoIdx, got, prev)
+				i, i, got, prev)
 		}
 		seenLeaves[got] = i
-		// Per-clip metadata at 2*i+1 MUST share the same PathLeafName
-		// as the sibling video (PR-PER-CLIP-METADATA DoD 5: per-clip
-		// metadata.json lands in the SAME per-clip subdir as the video).
-		if gotMeta := prep.artifacts[clipMetaIdx].PathLeafName; gotMeta != wantLeaves[i] {
-			t.Errorf("clipMeta[%d] (artifact[%d]).PathLeafName = %q, want %q (per-clip metadata sidecar MUST live in the same subdir as the sibling video)",
-				i, clipMetaIdx, gotMeta, wantLeaves[i])
-		}
-		if gotKind := prep.artifacts[clipMetaIdx].Kind; gotKind != finalization.KindMetadata {
-			t.Errorf("clipMeta[%d] (artifact[%d]).Kind = %q, want %q (KindMetadata)", i, clipMetaIdx, gotKind, finalization.KindMetadata)
+		if gotRoot := prep.artifacts[i].RootFolderOverride; gotRoot != "drive-root-123" {
+			t.Errorf("video[%d] (artifact[%d]).RootFolderOverride = %q, want %q", i, i, gotRoot, "drive-root-123")
 		}
 	}
 	// godlike/07 fail-closed: 8 unique leaves is the structural
@@ -194,12 +181,15 @@ func TestStockPublishStep_PerClipPathLeafName(t *testing.T) {
 	// Run-level metadata is exactly ONE, with leaf "metadata"
 	// (run-root in explicit-clips mode — sits alongside the
 	// per-clip video subdirs, NOT inside one of them).
-	metaIdx := 2 * clipCount
+	metaIdx := clipCount
 	if got := prep.artifacts[metaIdx].PathLeafName; got != "metadata" {
 		t.Errorf("runMeta PathLeafName = %q, want %q (run-root level in explicit-clips mode)", got, "metadata")
 	}
 	if got := prep.artifacts[metaIdx].ArtifactID; got != "stock:run-fingerprint-123:metadata" {
 		t.Errorf("runMeta ArtifactID = %q, want %q", got, "stock:run-fingerprint-123:metadata")
+	}
+	if got := prep.artifacts[metaIdx].RootFolderOverride; got != "drive-root-123" {
+		t.Errorf("runMeta RootFolderOverride = %q, want %q", got, "drive-root-123")
 	}
 	// Legacy MUST be untouched: with no `clips[]` the chunks
 	// share a single PathLeafName (stockTimestampGroupName). This
@@ -407,49 +397,31 @@ func TestStockPublishStep_ExplicitClips_PerClipPathLeafName(t *testing.T) {
 	}
 	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
 		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
-	} // Structural invariant: 2N+1 artifacts = N videos + N per-clip
-	// metadata + 1 run-level metadata (PR-PER-CLIP-METADATA, July
-	// 2026, DoD 5). For 8 clips: 8 + 8 + 1 = 17.
-	want := 2*clipCount + 1
+	}	// Structural invariant for explicit-timestamps: N+1 artifacts =
+	// N videos + 1 run-level metadata. Per-clip metadata is
+	// published by step_extract_clips. For 8 clips: 8 + 1 = 9.
+	want := clipCount + 1
 	if got := len(prep.artifacts); got != want {
-		t.Fatalf("expected %d prepare calls (%d videos + %d per-clip metadata + 1 run-level metadata), got %d", want, clipCount, clipCount, got)
+		t.Fatalf("expected %d prepare calls (%d videos + 1 run-level metadata), got %d", want, clipCount, got)
 	}
 	// Per-clip PathLeafName contract: each chunk's leaf matches
-	// perClipLeafName(plan). The pre-PR bug asserted all chunks
-	// shared the SAME leaf — this test fails immediately if a
-	// future refactor re-introduces that regression. PR-PER-CLIP-METADATA:
-	// the 2N+1 contract means artifacts are interleaved
-	// [video0, clipMeta0, video1, clipMeta1, ..., runMeta]. The video
-	// at index 2*i and its sibling per-clip metadata at index 2*i+1
-	// share the same PathLeafName.
+	// perClipLeafName(plan). Artifacts are [video0..videoN, runMeta].
 	seenLeaves := make(map[string]int)
 	for i := 0; i < clipCount; i++ {
-		videoIdx := 2 * i
-		clipMetaIdx := 2*i + 1
-		got := prep.artifacts[videoIdx].PathLeafName
+		got := prep.artifacts[i].PathLeafName
 		if got != expectedLeaves[i] {
 			t.Errorf("video[%d] (artifact[%d]).PathLeafName = %q, want %q (per-clip leaf from Plan[%d].Title=%q)",
-				i, videoIdx, got, expectedLeaves[i], i, plans[i].Title)
+				i, i, got, expectedLeaves[i], i, plans[i].Title)
 		}
 		seenLeaves[got]++
-		// Per-clip metadata MUST share the same PathLeafName as the
-		// sibling video (DoD 5).
-		if got := prep.artifacts[clipMetaIdx].PathLeafName; got != expectedLeaves[i] {
-			t.Errorf("clipMeta[%d] (artifact[%d]).PathLeafName = %q, want %q (per-clip metadata sidecar MUST live in the same subdir as the sibling video)",
-				i, clipMetaIdx, got, expectedLeaves[i])
-		}
 	}
 	// godlike/07 minimum-blast-radius: 8 unique leaves for 8 clips.
-	// If two clips happen to slugify to the same leaf (e.g. two
-	// "Round 7" titles in the same run), the test still passes
-	// the leaf-correctness assertion but flags the duplicate so
-	// the operator sees the collision.
 	if len(seenLeaves) < clipCount {
 		t.Logf("WARNING: %d clips produced %d unique leaves (some slugs collide: %v)",
 			clipCount, len(seenLeaves), seenLeaves)
 	}
 	// Run-level metadata is exactly ONE, with leaf "metadata" (run-root).
-	metaIdx := 2 * clipCount
+	metaIdx := clipCount
 	if got := prep.artifacts[metaIdx].PathLeafName; got != "metadata" {
 		t.Errorf("runMeta PathLeafName = %q, want %q (run-root level in explicit-clips mode)", got, "metadata")
 	}
@@ -498,18 +470,12 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
 	}
 
-	// PR-PER-CLIP-METADATA (July 2026, DoD 5): 2N+1 artifacts =
-	// N videos + N per-clip metadata + 1 run-level metadata.
-	// For 2 clips: 2 + 2 + 1 = 5 artifacts. The per-clip
-	// metadata.json lands in the SAME per-clip subdir as the
-	// video (PathLeafName = perClipLeafName(plan)) so each clip
-	// has its own metadata sidecar alongside the video. The
-	// run-level metadata.json sits at the run-root "metadata"
-	// leaf (alongside the per-clip video subdirs).
-	if got, want := len(prep.artifacts), 5; got != want {
-		t.Fatalf("expected %d prepare calls (2 videos + 2 per-clip metadata + 1 run-level metadata), got %d", want, got)
+	// For explicit-timestamps: N+1 artifacts = N videos + 1 run-level
+	// metadata. Per-clip metadata is published by step_extract_clips.
+	// For 2 clips: 2 + 1 = 3 artifacts. Artifacts are [video0, video1, runMeta].
+	if got, want := len(prep.artifacts), 3; got != want {
+		t.Fatalf("expected %d prepare calls (2 videos + 1 run-level metadata), got %d", want, got)
 	}
-	// ── Per-clip ordering invariants: [video0, clipMeta0, video1, clipMeta1, runMeta] ──
 	// Index 0: video0
 	if got := prep.artifacts[0].ArtifactID; got != "stock:run-fingerprint-123:timestamp:0:video" {
 		t.Fatalf("unexpected artifact[0] (video0) id: %q", got)
@@ -517,63 +483,25 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 	if got := prep.artifacts[0].Description; got != "Pacquiao fires the first clean left." {
 		t.Fatalf("unexpected artifact[0] (video0) description: %q", got)
 	}
-	// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): per-clip
-	// PathLeafName for explicit-clips runs (was the pre-PR bug:
-	// every chunk shared "00-00-32_to_00-01-27" so all clips
-	// landed in the same folder). New behavior derives per-clip
-	// leaf from Plan.Title via the perClipLeafName helper.
 	if got := prep.artifacts[0].PathLeafName; got != "round-1" {
 		t.Fatalf("unexpected artifact[0] (video0) path leaf: %q, want %q (per-clip leaf from Plan.Title slug)", got, "round-1")
 	}
-	// Index 1: clipMeta0 (per-clip metadata sidecar inside round-1/ subdir)
-	if got := prep.artifacts[1].ArtifactID; got != "stock:run-fingerprint-123:timestamp:0:metadata" {
-		t.Fatalf("unexpected artifact[1] (clipMeta0) id: %q, want %q (per-clip metadata ArtifactID mirrors video format with :metadata suffix)", got, "stock:run-fingerprint-123:timestamp:0:metadata")
+	// Index 1: video1
+	if got := prep.artifacts[1].ArtifactID; got != "stock:run-fingerprint-123:timestamp:1:video" {
+		t.Fatalf("unexpected artifact[1] (video1) id: %q", got)
 	}
-	if got := prep.artifacts[1].Kind; got != finalization.KindMetadata {
-		t.Fatalf("unexpected artifact[1] (clipMeta0) kind: %q, want %q (KindMetadata)", got, finalization.KindMetadata)
+	if got := prep.artifacts[1].Description; got != "Broner tries to reset and circle out." {
+		t.Fatalf("unexpected artifact[1] (video1) description: %q", got)
 	}
-	if got := prep.artifacts[1].Filename; got != "metadata.json" {
-		t.Fatalf("unexpected artifact[1] (clipMeta0) filename: %q, want %q", got, "metadata.json")
+	if got := prep.artifacts[1].PathLeafName; got != "round-2" {
+		t.Fatalf("unexpected artifact[1] (video1) path leaf: %q, want %q (per-clip leaf from Plan.Title slug)", got, "round-2")
 	}
-	// Per-clip metadata.json lands in the SAME per-clip subdir
-	// as the sibling video (round-1/), not at the run-root
-	// "metadata" leaf. The 2N+1 contract requires per-clip
-	// PathLeafName = perClipLeafName(plan) for the metadata
-	// sidecar.
-	if got := prep.artifacts[1].PathLeafName; got != "round-1" {
-		t.Fatalf("unexpected artifact[1] (clipMeta0) path leaf: %q, want %q (per-clip metadata sidecar MUST live in the same subdir as the video)", got, "round-1")
+	// Index 2: runMeta (run-level metadata.json at the run-root "metadata" leaf)
+	if got := prep.artifacts[2].ArtifactID; got != "stock:run-fingerprint-123:metadata" {
+		t.Fatalf("unexpected artifact[2] (runMeta) id: %q", got)
 	}
-	// Index 2: video1
-	if got := prep.artifacts[2].ArtifactID; got != "stock:run-fingerprint-123:timestamp:1:video" {
-		t.Fatalf("unexpected artifact[2] (video1) id: %q", got)
-	}
-	if got := prep.artifacts[2].Description; got != "Broner tries to reset and circle out." {
-		t.Fatalf("unexpected artifact[2] (video1) description: %q", got)
-	}
-	if got := prep.artifacts[2].PathLeafName; got != "round-2" {
-		t.Fatalf("unexpected artifact[2] (video1) path leaf: %q, want %q (per-clip leaf from Plan.Title slug)", got, "round-2")
-	}
-	// Index 3: clipMeta1 (per-clip metadata sidecar inside round-2/ subdir)
-	if got := prep.artifacts[3].ArtifactID; got != "stock:run-fingerprint-123:timestamp:1:metadata" {
-		t.Fatalf("unexpected artifact[3] (clipMeta1) id: %q, want %q (per-clip metadata ArtifactID mirrors video format with :metadata suffix)", got, "stock:run-fingerprint-123:timestamp:1:metadata")
-	}
-	if got := prep.artifacts[3].Kind; got != finalization.KindMetadata {
-		t.Fatalf("unexpected artifact[3] (clipMeta1) kind: %q, want %q (KindMetadata)", got, finalization.KindMetadata)
-	}
-	if got := prep.artifacts[3].PathLeafName; got != "round-2" {
-		t.Fatalf("unexpected artifact[3] (clipMeta1) path leaf: %q, want %q (per-clip metadata sidecar MUST live in the same subdir as the video)", got, "round-2")
-	}
-	// Index 4: runMeta (run-level metadata.json at the run-root "metadata" leaf)
-	if got := prep.artifacts[4].ArtifactID; got != "stock:run-fingerprint-123:metadata" {
-		t.Fatalf("unexpected artifact[4] (runMeta) id: %q", got)
-	}
-	// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): run-level
-	// metadata.json sits at the run-root "metadata" leaf in
-	// explicit-clips mode (alongside the per-clip video
-	// subdirs). Legacy stays on the shared timestampGroupName
-	// (see TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName).
-	if got := prep.artifacts[4].PathLeafName; got != "metadata" {
-		t.Fatalf("unexpected artifact[4] (runMeta) path leaf: %q, want %q (run-root level in explicit-clips mode)", got, "metadata")
+	if got := prep.artifacts[2].PathLeafName; got != "metadata" {
+		t.Fatalf("unexpected artifact[2] (runMeta) path leaf: %q, want %q (run-root level in explicit-clips mode)", got, "metadata")
 	}
 	if runner.State().MetadataPublished.LocalPath == "" {
 		t.Fatal("expected metadata published state to be populated")
@@ -1184,31 +1112,19 @@ func TestStockPublishStep_PlanDescriptionSync(t *testing.T) {
 		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
 	}
 
-	// Structural invariant: 2N+1 artifacts = 2 videos + 2 per-clip
-	// metadata + 1 run-level metadata.
-	if got, want := len(prep.artifacts), 5; got != want {
-		t.Fatalf("expected %d prepare calls (2 videos + 2 per-clip metadata + 1 run-level metadata), got %d", want, got)
+	// For explicit-timestamps: N+1 = 2 videos + 1 run-level metadata = 3.
+	if got, want := len(prep.artifacts), 3; got != want {
+		t.Fatalf("expected %d prepare calls (2 videos + 1 run-level metadata), got %d", want, got)
 	}
 	// ── PR-PLAN-DESCRIPTION-SYNC contract ──
 	// Artifact 0 = video0 (with Description from in.Clips[0].Description).
-	// The recordingArtifactPreparation mock captures the
-	// VerifiedArtifact.Description verbatim — the per-clip metadata
-	// emit AND the run-level metadata.json both use the SAME
-	// cs.Description (canonical StockRunMetadata chunks[] entry),
-	// so asserting on the video artifact's Description proves the
-	// metadata.json carries the same content (godlike/06 SSOT
-	// one-canonical-owner-per-fact: ChunkState.Description is the
-	// SOLE source of metadata chunks[].description).
 	if got := prep.artifacts[0].Description; got != want {
 		t.Errorf("artifact[0] (video0) Description = %q, want %q (Plan.Description was empty, must fall through to in.Clips[0].Description)",
 			got, want)
 	}
-	// Artifact 2 = video1 (with NO description — chunk 1 had no
-	// in.Clips[1].Description and Plan[1].Description is empty).
-	// The fix must NOT fabricate a description here (godlike/07
-	// NO-FAKE-AVAILABILITY: no "n/a" / "unknown" placeholder).
-	if got := prep.artifacts[2].Description; got != "" {
-		t.Errorf("artifact[2] (video1) Description = %q, want %q (no canonical source on either side; must NOT fabricate)",
+	// Artifact 1 = video1 (with NO description — no canonical source).
+	if got := prep.artifacts[1].Description; got != "" {
+		t.Errorf("artifact[1] (video1) Description = %q, want %q (no canonical source; must NOT fabricate)",
 			got, "")
 	}
 	// Sync-back invariant: plan.Description == cs.Description after
@@ -1275,13 +1191,17 @@ func TestStockPublishStep_PlanDescriptionWinsOverClipsSpec(t *testing.T) {
 	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
 		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
 	}
-	// 2N+1 = 1 video + 1 per-clip metadata + 1 run-level metadata = 3.
-	if got, want := len(prep.artifacts), 3; got != want {
+	// For explicit-timestamps: N+1 = 1 video + 1 run-level metadata = 2.
+	if got, want := len(prep.artifacts), 2; got != want {
 		t.Fatalf("expected %d prepare calls, got %d", want, got)
 	}
 	if got := prep.artifacts[0].Description; got != planDesc {
 		t.Errorf("artifact[0] (video0) Description = %q, want %q (Plan.Description must win over in.Clips[i].Description)",
 			got, planDesc)
+	}
+	// Run-level metadata at index 1
+	if got := prep.artifacts[1].ArtifactID; got != "stock:run-fingerprint-123:metadata" {
+		t.Errorf("artifact[1] (runMeta) ArtifactID = %q, want %q", got, "stock:run-fingerprint-123:metadata")
 	}
 	if got := runner.State().Published[0].Description; got != planDesc {
 		t.Errorf("published[0].Description = %q, want %q (sync-back must keep Plan value, not ClipsSpec shadow)",

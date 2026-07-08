@@ -201,23 +201,17 @@ func (a *clipResolverRecommendAdapter) Recommend(ctx context.Context, req *artli
 	// auto-classification from Value — see file-level docstring).
 	refs := buildCanonicalReferences(req.SegmentID)
 
-	// Empty inputs fast path: no SegmentID + no queries to score
-	// against. Return 200 with empty Results (per godlike/07
-	// "no fake availability" — there is no asset to recommend, so
-	// we return no recommendations rather than a fake single
-	// "best of nothing" hit).
-	if len(refs) == 0 && strings.TrimSpace(req.Topic) == "" && len(req.Queries) == 0 {
+	// Step 2: dispatch to the canonical resolver. When refs is
+	// empty (no SegmentID), there is no candidate asset pool to
+	// score against — return empty results without dispatching.
+	// The query text (Topic/Queries) is used only for scoring, not
+	// for generating candidate pools (the canonical port's contract
+	// forbids auto-classification from Value).
+	if len(refs) == 0 {
 		return &artlist.ClipResolverRecommendResponse{
 			Results: []artlist.ClipResolverRecommendResult{},
 		}, nil
 	}
-
-	// Step 2: dispatch to the canonical resolver. For the no-Input
-	// case (refs == 0 but Topic/Queries non-empty), the canonical
-	// resolver returns an empty Resolved slice — the scorer
-	// produces no results, which is the correct semantics
-	// ("recommend clips for a query" without any candidate asset
-	// pool has no recommendations to make).
 	result, err := a.canonical.Resolve(ctx, refs)
 	if err != nil {
 		// DB-level error from canonical: propagate so the handler

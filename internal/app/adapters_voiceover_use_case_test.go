@@ -96,7 +96,7 @@ func TestExplicitFolderIDReachesPublisher(t *testing.T) {
 		"P0.2 fix: explicit FolderPath must take precedence over resolver's FolderPath")
 	assert.Equal(t, "my-subfolder", result.SubfolderName,
 		"P0.2 fix: SubfolderName must be mirrored on ResolvedDestination")
-	assert.Equal(t, "style-cohort-1", result.StyleGroup,
+	assert.Equal(t, voiceover.StyleGroup("style-cohort-1"), result.StyleGroup,
 		"StyleGroup must be mirrored verbatim on ResolvedDestination")
 	assert.Equal(t, "test-group", result.Group,
 		"Group must be mirrored on ResolvedDestination")
@@ -171,6 +171,6 @@ func TestDestinationResolverEmptyFolderIDFallsBackToResolver(t *testing.T) {
 		"No explicit FolderPath → resolver's FolderPath must be used")
 	assert.Equal(t, "per-script-sub", result.SubfolderName,
 		"SubfolderName must be mirrored verbatim")
-	assert.Equal(t, "promo", result.StyleGroup,
+	assert.Equal(t, voiceover.StyleGroup("promo"), result.StyleGroup,
 		"StyleGroup must be mirrored verbatim")
 }

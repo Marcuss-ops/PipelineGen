@@ -163,17 +163,26 @@ func (s *Service) ProcessAsset(ctx context.Context, input *FinalizeInput, fileHa
 			if filename == "" {
 				filename = filepath.Base(input.LocalPath)
 			}
+			// PR-P12-LIFECYCLE-SEMANTIC (July 2026): RootFolderOverride
+			// REMOVED. Destination + Group + Subject + ProjectID + Language
+			// provide canonical semantic routing via DestinationRegistry +
+			// PathBuilder. The explicit folder override is the
+			// infrastructure-layer escape hatch (delivery.Publisher
+			// internal); application-layer code uses typed semantic fields.
+			// Forward-pointer: PR-P12-LIFECYCLE-CALLER-VERIFY (deadline
+			// 2026-08-15) — audit all callers of ProcessAsset that set
+			// input.FolderID to verify semantic fields resolve to the
+			// same folder.
 			pubReq := delivery.PublishRequest{
-				Destination:        input.Destination,
-				LocalPath:          input.LocalPath,
-				Filename:           filename,
-				AssetID:            input.ID,
-				Group:              input.Group,
-				Subject:            input.Subject,
-				ProjectID:          input.ProjectID,
-				Language:           input.Language,
-				Style:              input.Style,
-				RootFolderOverride: input.FolderID,
+				Destination: input.Destination,
+				LocalPath:   input.LocalPath,
+				Filename:    filename,
+				AssetID:     input.ID,
+				Group:       input.Group,
+				Subject:     input.Subject,
+				ProjectID:   input.ProjectID,
+				Language:    input.Language,
+				Style:       input.Style,
 			}
 			pubRes, pubErr := s.publisher.Publish(ctx, pubReq)
 			if pubErr != nil {

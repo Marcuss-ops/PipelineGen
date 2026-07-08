@@ -61,10 +61,7 @@ func NewProfileRegistry() *WorkerProfileRegistry {
 				AllowedJobTypes: []string{
 					"script.generate",
 					"voiceover.generate_item",
-					// "image.generate.google" — reserved; not yet
-					// registered because the handler may not exist
-					// in all deployments. Add back when the image
-					// pipeline is stable on the Creator.
+					"image.generate.google",
 				},
 				MaxParallel: 1, // script generation is memory-heavy
 			},
@@ -179,9 +176,13 @@ func ResolveCapabilities(profile *WorkerProfile, envOverride string, registeredT
 		}
 		seen[jt] = struct{}{}
 		if _, ok := registered[jt]; !ok {
-			return appjobs.WorkerCapabilities{}, fmt.Errorf(
-				"job type %q (allowed by profile %q) is not registered in the worker dispatcher",
-				jt, profile.Name)
+			// Silently skip types that are allowed by the profile
+			// but not registered in the worker dispatcher. This
+			// enables opt-in gating: the profile declares the
+			// ceiling, the dispatcher determines which types are
+			// actually available. The worker starts with the
+			// intersection.
+			continue
 		}
 		validated = append(validated, jt)
 	}

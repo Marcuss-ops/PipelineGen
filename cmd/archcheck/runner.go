@@ -26,6 +26,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
@@ -220,6 +221,22 @@ func Run(ctx context.Context, root, policyPath, phase string, strict bool, produ
 		r.Summary.BySeverity[v.Severity]++
 	}
 	r.Passed = len(r.Violations) == 0
+
+	// Sort violations for deterministic JSON output (Go map
+	// iteration in scan functions produces non-deterministic
+	// ordering; the golden-file snapshot test needs byte-stable
+	// output across runs). Sort by package → file → line,
+	// mirroring the logical grouping operators see in CI logs.
+	sort.Slice(r.Violations, func(i, j int) bool {
+		a, b := r.Violations[i], r.Violations[j]
+		if a.Package != b.Package {
+			return a.Package < b.Package
+		}
+		if a.File != b.File {
+			return a.File < b.File
+		}
+		return a.Line < b.Line
+	})
 
 	out, err := json.MarshalIndent(r, "", "  ")
 	if err != nil {

@@ -14,6 +14,7 @@ package resolver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -22,6 +23,44 @@ import (
 	domaindelivery "github.com/Marcuss-ops/PipelineGen/internal/domain/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
+
+// ── test helper: fakeFolderEnsurer ─────────────────────────────────────
+
+// fakeFolderEnsurer is a hermetic test double for FolderEnsurer.
+// It returns a deterministic folder-id based on the root + segments,
+// without touching any real Drive API.
+type fakeFolderEnsurer struct {
+	// lastRoot captures the rootID passed to EnsureFolder for assertion.
+	lastRoot string
+	// lastSegs captures the segments passed to EnsureFolder for assertion.
+	lastSegs []string
+	// err, if set, causes EnsureFolder to return this error.
+	err error
+}
+
+func (f *fakeFolderEnsurer) EnsureFolder(_ context.Context, rootID string, segments ...string) (string, error) {
+	f.lastRoot = rootID
+	f.lastSegs = segments
+	if f.err != nil {
+		return "", f.err
+	}
+	// Deterministic: join root + segments with "/" to produce a
+	// fake Drive folder-id. This mirrors what real EnsureFolderPath
+	// would return (a Drive File.ID string).
+	parts := make([]string, 0, len(segments)+1)
+	parts = append(parts, rootID)
+	parts = append(parts, segments...)
+	return strings.Join(parts, "/"), nil
+}
+
+var _ FolderEnsurer = (*fakeFolderEnsurer)(nil)
+
+// newTestAdapter constructs an Adapter with a fakeFolderEnsurer wired
+// so Resolve exercises the real EnsureFolder path (not stub-mode).
+func newTestAdapter(driveCfg config.DriveConfig) *Adapter {
+	a, _ := NewAdapter(driveCfg, nil)
+	return a.WithFolderEnsurer(&fakeFolderEnsurer{})
+}
 
 // ── (a) specific root wins over MediaRootFolder ─────────────────────────
 
@@ -233,16 +272,19 @@ func TestRootForDestination_WhitespaceMediaRootAndEmptySpecific_ReturnsSentinel(
 
 // ── (h) Resolve integration: root populated into folder-id ──────────────
 
-// TestResolve_RootInStubFolderID pins: when rootForDestination returns
-// "stock-specific-root", the stub folder-id includes it in the
-// composed path (e.g. "stub-shift:stock-specific-root/stock/Cat/Sub").
-func TestResolve_RootInStubFolderID(t *testing.T) {
+// TestResolve_FolderEnsurerCalledWithCorrectSegments pins: when
+// rootForDestination returns "stock-specific-root", the real
+// FolderEnsurer is called with the root as rootID and the destination
+// key + metadata segments as the segment list.
+func TestResolve_FolderEnsurerCalledWithCorrectSegments(t *testing.T) {
+	fake := &fakeFolderEnsurer{}
 	a, err := NewAdapter(config.DriveConfig{
 		StockRootFolder: "stock-specific-root",
 	}, nil)
 	if err != nil {
 		t.Fatalf("NewAdapter: %v", err)
 	}
+	a = a.WithFolderEnsurer(fake)
 
 	loc := domaindelivery.AssetLocationInput{Category: "Boxe", Subject: "Ali", Provider: "pexels"}
 	folderID, err := a.Resolve(context.Background(), loc, delivery.DestinationStock)
@@ -250,9 +292,26 @@ func TestResolve_RootInStubFolderID(t *testing.T) {
 		t.Fatalf("Resolve: %v", err)
 	}
 
-	wantPrefix := stubModePrefix + "/stock-specific-root/stock/Boxe/Ali/pexels"
-	if folderID != wantPrefix {
-		t.Fatalf("expected folder-id %q, got %q", wantPrefix, folderID)
+	// Verify the FolderEnsurer received the correct root and segments.
+	if fake.lastRoot != "stock-specific-root" {
+		t.Fatalf("EnsureFolder root: expected %q, got %q", "stock-specific-root", fake.lastRoot)
+	}
+	wantSegs := []string{"stock", "Boxe", "Ali", "pexels"}
+	if len(fake.lastSegs) != len(wantSegs) {
+		t.Fatalf("EnsureFolder segments: expected %d, got %d (%v)", len(wantSegs), len(fake.lastSegs), fake.lastSegs)
+	}
+	for i, want := range wantSegs {
+		if fake.lastSegs[i] != want {
+			t.Fatalf("EnsureFolder segment[%d]: expected %q, got %q", i, want, fake.lastSegs[i])
+		}
+	}
+
+	// Verify the returned folder-id is from the FolderEnsurer (not stub-mode).
+	if strings.HasPrefix(folderID, stubModePrefix) {
+		t.Fatalf("expected real Drive folder-id (no stub prefix), got %q", folderID)
+	}
+	if folderID == "" {
+		t.Fatal("expected non-empty folder-id from FolderEnsurer")
 	}
 }
 
@@ -262,13 +321,10 @@ func TestResolve_RootInStubFolderID(t *testing.T) {
 // specific root nor MediaRootFolder are set, Resolve returns
 // ErrDestinationNoRootFolder (fail-closed at call-time).
 func TestResolve_NoRootConfigured_ReturnsSentinel(t *testing.T) {
-	a, err := NewAdapter(config.DriveConfig{}, nil)
-	if err != nil {
-		t.Fatalf("NewAdapter: %v", err)
-	}
+	a := newTestAdapter(config.DriveConfig{})
 
 	loc := domaindelivery.AssetLocationInput{Category: "Boxe", Subject: "Ali", Provider: "pexels"}
-	_, err = a.Resolve(context.Background(), loc, delivery.DestinationStock)
+	_, err := a.Resolve(context.Background(), loc, delivery.DestinationStock)
 	if err == nil {
 		t.Fatal("expected ErrDestinationNoRootFolder; got nil")
 	}
@@ -290,6 +346,61 @@ func TestRootForDestination_NilAdapter_ReturnsSentinel(t *testing.T) {
 	}
 	if !errors.Is(err, ErrDestinationNoRootFolder) {
 		t.Fatalf("expected errors.Is(err, ErrDestinationNoRootFolder); got %v", err)
+	}
+}
+
+// ── (k) FolderEnsurer not wired returns sentinel ───────────────────────
+
+// TestResolve_FolderEnsurerNotWired_ReturnsSentinel pins: when the
+// FolderEnsurer is nil (not wired at composition time), Resolve returns
+// ErrFolderEnsurerNotWired for any non-empty Location. godlike/07
+// NO-FAKE-AVAILABILITY: the adapter never produces a stub folder-id.
+func TestResolve_FolderEnsurerNotWired_ReturnsSentinel(t *testing.T) {
+	a, err := NewAdapter(config.DriveConfig{
+		StockRootFolder: "stock-root",
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewAdapter: %v", err)
+	}
+	// Intentionally NOT calling WithFolderEnsurer — simulates composition
+	// root where driveUploader was nil.
+
+	loc := domaindelivery.AssetLocationInput{Category: "Boxe", Subject: "Ali", Provider: "pexels"}
+	_, err = a.Resolve(context.Background(), loc, delivery.DestinationStock)
+	if err == nil {
+		t.Fatal("expected ErrFolderEnsurerNotWired; got nil")
+	}
+	if !errors.Is(err, ErrFolderEnsurerNotWired) {
+		t.Fatalf("expected errors.Is(err, ErrFolderEnsurerNotWired); got %v", err)
+	}
+}
+
+// ── (l) FolderEnsurer error propagates as ErrFolderEnsureFailed ─────────
+
+// TestResolve_FolderEnsurerError_PropagatesAsWrappedSentinel pins: when
+// the FolderEnsurer returns an error, Resolve wraps it with
+// ErrFolderEnsureFailed so callers can probe via errors.Is.
+func TestResolve_FolderEnsurerError_PropagatesAsWrappedSentinel(t *testing.T) {
+	fake := &fakeFolderEnsurer{err: fmt.Errorf("drive API timeout")}
+	a, err := NewAdapter(config.DriveConfig{
+		StockRootFolder: "stock-root",
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewAdapter: %v", err)
+	}
+	a = a.WithFolderEnsurer(fake)
+
+	loc := domaindelivery.AssetLocationInput{Category: "Boxe", Subject: "Ali", Provider: "pexels"}
+	_, err = a.Resolve(context.Background(), loc, delivery.DestinationStock)
+	if err == nil {
+		t.Fatal("expected ErrFolderEnsureFailed; got nil")
+	}
+	if !errors.Is(err, ErrFolderEnsureFailed) {
+		t.Fatalf("expected errors.Is(err, ErrFolderEnsureFailed); got %v", err)
+	}
+	// The underlying cause must be preserved in the chain.
+	if !strings.Contains(err.Error(), "drive API timeout") {
+		t.Fatalf("expected error to contain underlying cause; got %v", err)
 	}
 }
 

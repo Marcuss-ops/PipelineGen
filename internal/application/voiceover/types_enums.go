@@ -28,6 +28,8 @@ package voiceover
 // and cannot silently miss any "*_failed" sub-state.
 type Status string
 
+func (s Status) String() string { return string(s) }
+
 const (
 	// StatusProcessing is the initial state set by process.go right
 	// after ID + filename build. Visible to API consumers while a

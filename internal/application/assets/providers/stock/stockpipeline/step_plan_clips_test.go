@@ -284,6 +284,43 @@ func TestStockPlanStep_ClipsEndSecZeroFloat_RoundedCorrectly(t *testing.T) {
 	}
 }
 
+func TestStockPlanStep_ExplicitClips_ExpandSecondsPerSegment(t *testing.T) {
+	runner := newFakeRunner([]ClipSpec{
+		{
+			URL:         "https://www.youtube.com/watch?v=test-expand",
+			Title:       "Round 7",
+			Description: "Short test clip",
+			StartSec:    32,
+			EndSec:      42,
+			Slug:        "segment-07-il-finale-del-match",
+		},
+	}, 10, "")
+	runner.runInput.SecondsPerSegment = 5
+
+	step := StockPlanStep{}
+	err := step.Run(context.Background(), runner)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	plans := runner.State().Plan
+	if len(plans) != 2 {
+		t.Fatalf("expected 2 expanded plans, got %d", len(plans))
+	}
+	if plans[0].StartSec != 32 || plans[0].EndSec != 37 {
+		t.Fatalf("first plan range = [%v,%v], want [32,37]", plans[0].StartSec, plans[0].EndSec)
+	}
+	if plans[1].StartSec != 37 || plans[1].EndSec != 42 {
+		t.Fatalf("second plan range = [%v,%v], want [37,42]", plans[1].StartSec, plans[1].EndSec)
+	}
+	if plans[0].Slug != "segment-07-il-finale-del-match-0-0-32_to_0-0-37" {
+		t.Fatalf("first plan slug = %q, want timestamp-suffixed slug", plans[0].Slug)
+	}
+	if plans[1].Slug != "segment-07-il-finale-del-match-0-0-37_to_0-0-42" {
+		t.Fatalf("second plan slug = %q, want timestamp-suffixed slug", plans[1].Slug)
+	}
+}
+
 // ── Error-path tests ────────────────────────────────────────────────
 
 func TestStockPlanStep_ClipsNoURL_ReturnsError(t *testing.T) {

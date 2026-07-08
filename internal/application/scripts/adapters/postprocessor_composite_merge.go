@@ -116,6 +116,12 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 			currentInput.SpecScene.Scenes = src.SynthesizedScenes
 		}
 	}
+	// PR-CLIP-SEARCH-WIRING (July 2026): propagate Artlist clip
+	// search results from the ClipSearchProcessor into the aggregate
+	// pipeline result.
+	if len(src.ArtlistClipSuggestions) > 0 {
+		dst.ArtlistClipSuggestions = append(dst.ArtlistClipSuggestions, src.ArtlistClipSuggestions...)
+	}
 	// Issue #1 (June 2026) FINAL SURFACE. Capture the post-walk
 	// SpecScene envelope so buildGenerationResult can read it
 	// instead of the pre-walk engineResult.Output.SpecScene.

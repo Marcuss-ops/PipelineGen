@@ -41,6 +41,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	ollamaadapters "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -185,17 +187,42 @@ func registerScriptPostProcessors(
 		log.Info("VoiceoverProcessor (inline scene voiceovers) successfully registered")
 	}
 
-	// PR 3 (June 2026) + PR-noop-adapters-purge (2026-07-25):
-	// Entities + Metadata remain wired through the typed-fail
-	// unavailable*Adapter constructors. The concrete processors now
-	// downgrade the typed "backend unavailable" sentinel to a warning
-	// at process time, so the script pipeline can continue without a
-	// backend while the required postprocessor contract stays intact.
-	entityAdapter := adapters.NewUnavailableEntityExtractionAdapter()
+	// PR-ENTITY-EXTRACTOR-WIRING (July 2026): Entities backend wired
+	// through the real ollama.Client via OllamaEntityExtractorAdapter.
+	// When the Ollama client is available (root.AI.ScriptGen), the
+	// adapter calls ExtractEntitiesFromScriptWithModel and populates
+	// EntityResult with Persons/Concepts + Raw JSON (which carries
+	// ArtlistPhrases for the InsightBuilder→SearchArtlistClips path).
+	// Fallback to unavailable adapter when root.AI is not wired.
+	var entityAdapter adapters.EntityExtractor
+	if root.AI != nil && root.AI.ScriptGen != nil {
+		if ollamaClient := root.AI.ScriptGen.GetClient(); ollamaClient != nil {
+			entityAdapter = ollamaadapters.NewOllamaEntityExtractorAdapter(ollamaClient)
+			log.Info("EntitiesProcessor wired with real Ollama backend (ollama.Client)")
+		}
+	}
+	if entityAdapter == nil {
+		entityAdapter = adapters.NewUnavailableEntityExtractionAdapter()
+		log.Warn("EntitiesProcessor: Ollama backend not available; falling back to unavailable adapter (entities will produce warnings)")
+	}
 	if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter)) {
 		return fmt.Errorf("register entities processor: composition bug")
 	}
-	metadataAdapter := adapters.NewUnavailableMetadataGenerationAdapter()
+	// PR-METADATA-GENERATOR-WIRING (July 2026): Metadata backend wired
+	// through the real ollama.Generator via OllamaMetadataGeneratorAdapter.
+	// When the Ollama generator is available (root.AI.ScriptGen), the
+	// adapter calls GenerateVideoMetadataWithModel and populates
+	// VideoMetadata with Title/Description/Tags.
+	// Fallback to unavailable adapter when root.AI is not wired.
+	var metadataAdapter adapters.MetadataGenerator
+	if root.AI != nil && root.AI.ScriptGen != nil {
+		metadataAdapter = ollamaadapters.NewOllamaMetadataGeneratorAdapter(root.AI.ScriptGen)
+		log.Info("MetadataProcessor wired with real Ollama backend (ollama.Generator)")
+	}
+	if metadataAdapter == nil {
+		metadataAdapter = adapters.NewUnavailableMetadataGenerationAdapter()
+		log.Warn("MetadataProcessor: Ollama backend not available; falling back to unavailable adapter (metadata will produce warnings)")
+	}
 	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
 		return fmt.Errorf("register metadata processor: composition bug")
 	}
@@ -227,5 +254,177 @@ func registerScriptPostProcessors(
 		}
 	}
 
+	// PR-CLIP-SEARCH-WIRING (July 2026): ClipSearchProcessor wired
+	// through the real OllamaTranslator (TranslationPort) so that
+	// artlist_phrases extracted by the EntitiesProcessor trigger
+	// actual Artlist clip searches (Italian→English translation +
+	// Qdrant hybrid search). The adapter wraps usecase.SearchArtlistClips
+	// with a rich ClipServices:
+	//
+	//   - TranslationPort (load-bearing): Italian→English translation
+	//   - DriveSvc: validates Drive folder existence via FileIsNotTrashed
+	//   - JobsSvc: enqueues background media.artlist jobs for unmatched phrases
+	//   - AssocSvc: resolves Drive folders for artlist phrases (nil-safe —
+	//     currently unavailable post-package-removal)
+	//   - ArtlistFolder: root folder for background artlist job enqueue
+	//   - MetadataModel + Logger: for translation model policy + diagnostics
+	//
+	// Fallback to unavailable adapter when root.AI.OllamaTranslator
+	// is not wired.
+	var clipSearchAdapter adapters.ArtlistClipSearcher
+	if root.AI != nil && root.AI.OllamaTranslator != nil {
+		clipSvc := usecase.ClipServices{
+			TranslationPort: root.AI.OllamaTranslator,
+			MetadataModel:   metaModel,
+			Logger:          log,
+			ArtlistFolder:   cfg.Drive.ArtlistFolder(),
+		}
+
+		// DriveSvc: wrap driveUploader.FileIsNotTrashed for
+		// per-folder validation in resolveArtlistFolderForPhrase.
+		// nil is safe — the function skips the validation step
+		// when DriveSvc is nil.
+		if root.Drive != nil && root.Drive.driveUploader != nil {
+			clipSvc.DriveSvc = &driveCheckServiceAdapter{
+				up: root.Drive.driveUploader,
+			}
+		}
+
+		// JobsSvc: wrap root.Jobs.Service.Enqueue so unmatched
+		// artlist phrases trigger background media.artlist jobs.
+		// nil is safe — enqueueArtlistBackgroundJob returns early
+		// when JobsSvc is nil.
+		if root.Jobs != nil && root.Jobs.Service != nil {
+			clipSvc.JobsSvc = &jobsEnqueueServiceAdapter{
+				svc: root.Jobs.Service,
+			}
+		}
+
+		// AssocSvc: the canonical association service is currently
+		// unavailable (package removed from remote, per
+		// build_bundles_domain.go). Nil is safe —
+		// resolveArtlistFolderForPhrase returns empty
+		// FolderLink/Name/ID when AssocSvc is nil.
+		if root.Domains != nil && root.Domains.AssocService != nil {
+			clipSvc.AssocSvc = root.Domains.AssocService
+		}
+
+		clipSearchAdapter = &artlistClipSearchAdapter{
+			svc: clipSvc,
+		}
+		log.Info("ClipSearchProcessor wired with rich ClipServices",
+			zap.Bool("drive_svc", clipSvc.DriveSvc != nil),
+			zap.Bool("jobs_svc", clipSvc.JobsSvc != nil),
+			zap.Bool("assoc_svc", clipSvc.AssocSvc != nil),
+			zap.Bool("artlist_folder", clipSvc.ArtlistFolder != ""),
+		)
+	}
+	if clipSearchAdapter == nil {
+		clipSearchAdapter = adapters.NewUnavailableArtlistClipSearcher()
+		log.Warn("ClipSearchProcessor: OllamaTranslator not available; falling back to unavailable adapter (clip_search will produce empty results)")
+	}
+	if !ppReg.Register(adapters.NewClipSearchProcessor(clipSearchAdapter)) {
+		return fmt.Errorf("register clip_search processor: composition bug")
+	}
+
 	return nil
 }
+
+// artlistClipSearchAdapter wraps usecase.SearchArtlistClips into the
+// adapters.ArtlistClipSearcher port. This adapter lives in the
+// composition root (NOT in the adapters package) to avoid a circular
+// import: adapters cannot import usecase.
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: this is the canonical
+// SOLE adapter between ArtlistClipSearcher and SearchArtlistClips.
+type artlistClipSearchAdapter struct {
+	svc usecase.ClipServices
+}
+
+// SearchClips satisfies adapters.ArtlistClipSearcher.
+func (a *artlistClipSearchAdapter) SearchClips(ctx context.Context, title string, phrases []string) []adapters.ArtlistClipMatch {
+	if a == nil {
+		return nil
+	}
+	suggestions := usecase.SearchArtlistClips(ctx, a.svc, title, phrases)
+	if len(suggestions) == 0 {
+		return nil
+	}
+
+	// Convert usecase.ScriptArtlistClipSuggestion → adapters.ArtlistClipMatch.
+	// adapters cannot import usecase types directly, so we convert at
+	// the composition-root boundary.
+	matches := make([]adapters.ArtlistClipMatch, 0, len(suggestions))
+	for _, s := range suggestions {
+		m := adapters.ArtlistClipMatch{
+			Phrase:           s.Phrase,
+			FolderLink:       s.FolderLink,
+			FolderName:       s.FolderName,
+			FolderID:         s.FolderID,
+			TranslationError: s.TranslationError,
+		}
+		for _, c := range s.Clips {
+			m.ClipNames = append(m.ClipNames, c.Name)
+			m.ClipDriveLinks = append(m.ClipDriveLinks, c.DriveLink)
+		}
+		matches = append(matches, m)
+	}
+	return matches
+}
+
+var _ adapters.ArtlistClipSearcher = (*artlistClipSearchAdapter)(nil)
+
+// ── ClipServices adapter structs (composition-root-local) ─────────────────
+
+// driveCheckServiceAdapter wraps drive.Uploader.FileIsNotTrashed into
+// usecase.DriveCheckService. This adapter lives in the composition
+// root (NOT in the adapters or usecase packages) to avoid import cycles.
+//
+// godlike/06 SSOT: this is the canonical SOLE adapter between the
+// drive.Uploader and the usecase.DriveCheckService port.
+type driveCheckServiceAdapter struct {
+	up interface {
+		FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
+	}
+}
+
+// FileIsNotTrashed satisfies usecase.DriveCheckService.
+func (a *driveCheckServiceAdapter) FileIsNotTrashed(ctx context.Context, fileID string) (bool, error) {
+	if a == nil || a.up == nil {
+		return false, fmt.Errorf("driveCheckServiceAdapter: drive uploader not wired")
+	}
+	return a.up.FileIsNotTrashed(ctx, fileID)
+}
+
+var _ usecase.DriveCheckService = (*driveCheckServiceAdapter)(nil)
+
+// jobsEnqueueServiceAdapter wraps appjobs.Service.Enqueue into
+// usecase.JobEnqueueService. This adapter lives in the composition
+// root (NOT in the adapters or usecase packages) to avoid import cycles.
+//
+// The adapter bridges the typed appjobs.Service.Enqueue(ctx,
+// *job.EnqueueRequest) (*job.Job, error) to the interface-based
+// usecase.JobEnqueueService.Enqueue(ctx, interface{}) (interface{}, error)
+// expected by the artlist background job enqueue path.
+//
+// godlike/06 SSOT: this is the canonical SOLE adapter between the
+// jobs.Service and the usecase.JobEnqueueService port.
+type jobsEnqueueServiceAdapter struct {
+	svc interface {
+		Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
+	}
+}
+
+// Enqueue satisfies usecase.JobEnqueueService.
+func (a *jobsEnqueueServiceAdapter) Enqueue(ctx context.Context, req interface{}) (interface{}, error) {
+	if a == nil || a.svc == nil {
+		return nil, fmt.Errorf("jobsEnqueueServiceAdapter: jobs service not wired")
+	}
+	typedReq, ok := req.(*job.EnqueueRequest)
+	if !ok {
+		return nil, fmt.Errorf("jobsEnqueueServiceAdapter: req is %T, want *job.EnqueueRequest", req)
+	}
+	return a.svc.Enqueue(ctx, typedReq)
+}
+
+var _ usecase.JobEnqueueService = (*jobsEnqueueServiceAdapter)(nil)

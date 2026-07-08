@@ -52,6 +52,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
@@ -303,9 +304,9 @@ func (d *ClipsDescriptor) RegisterJobHandlers(svc api.JobRegistrar) error {
 	if d.Handler == nil {
 		return nil
 	}
-	// The handler holds the concrete job.HandlerFunc; we register
-	// it with the typed port the composition root provides.
-	return svc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), d.Handler.HandleBulkUploadYouTubeClipsJob)
+	// The handler holds the concrete *Handler method; we cast it
+	// to appjobs.HandlerFunc so the typed port accepts it.
+	return svc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), appjobs.HandlerFunc(d.Handler.HandleBulkUploadYouTubeClipsJob))
 }
 
 // Build composes the Clips HTTP capability from the typed narrow

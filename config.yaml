@@ -42,6 +42,7 @@ security:
     - "www.artlist.com"
     - "artlist.io"
     - "cdn.artlist.io"
+    - "commondatastorage.googleapis.com"
 
 external:
   ollama_url: "http://localhost:11434"

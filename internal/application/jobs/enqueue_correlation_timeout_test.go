@@ -51,7 +51,7 @@ func (m *correlationTimeoutBroker) Complete(_ context.Context, _ string, _, _ st
 func (m *correlationTimeoutBroker) Fail(_ context.Context, _ string, _, _ string, _ int, _ string) error {
 	return nil
 }
-func (m *correlationTimeoutBroker) ScheduleRetry(_ context.Context, _ string, _, _ string, _ int, _ time.Duration) error {
+func (m *correlationTimeoutBroker) ScheduleRetry(_ context.Context, _ string, _, _ string, _ int, _ string, _ time.Duration) error {
 	return nil
 }
 func (m *correlationTimeoutBroker) Cancel(_ context.Context, _ string) error { return nil }
