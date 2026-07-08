@@ -167,7 +167,13 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		MaxChars:    plan.MaxChars,
 		ClipIDs:     clipIDs,
 		Temperature: plan.Temperature,
-		OutputMode:  ollamatypes.OutputModeScriptV1,
+		// LLM-PLAIN-TEXT-CONTRACT wave (PR-2, July 2026): flip
+		// from OutputModeScriptV1 to the canonical OutputModePlainText
+		// default. The engine ships raw narrative prose; the
+		// downstream SceneSynthesizer + scene binder + postprocessor
+		// pipeline own all structured fields (schema_version /
+		// specscene / scene IDs / scene indexes / kind labels).
+		OutputMode: ollamatypes.OutputModePlainText,
 	}
 
 	genResult, err := e.ollamaGen.GenerateScript(ctx, ollamaReq)

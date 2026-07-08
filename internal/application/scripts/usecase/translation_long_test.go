@@ -286,12 +286,25 @@ func TestTranslatedScript_LongScript_NoSceneLossNoTruncation(t *testing.T) {
 			"warnings must still be non-nil (operator-observable state)")
 
 		// Confirm the fail-closed happens on the EXACT expected
-		// scene (call #7 = 1 [FULL] + 6 [TEXT] for scenes 0-5; the
-		// 7th call = scene[5].Text = scene-6 which triggers the
-		// empty return). The function is fail-fast on the first
-		// empty per-segment return.
-		assert.Equal(t, 7, len(tr.allInputs),
-			"translator must be called exactly 7 times before fail-closed (1 [FULL] + 6 [TEXT]; call #7 is scene[5].Text = scene-6 which triggers the empty return)")
+		// scene. Call order is 1× [FULL] + per-scene (Text + Title)
+		// pairs in order; the production translateSceneBindings does
+		// NOT call the translator for the clip-only binding (no Image
+		// or Stock in this fixture, so no per-scene binding
+		// translator invocations). So before fail-closed at
+		// scene[5].Text (the 12th call):
+		//   call 1: [FULL]
+		//   calls 2-3: scene[0] text + title
+		//   calls 4-5: scene[1] text + title
+		//   calls 6-7: scene[2] text + title
+		//   calls 8-9: scene[3] text + title
+		//   calls 10-11: scene[4] text + title
+		//   call 12: scene[5].Text (= "[TEXT] Original EN narration
+		//            for scene-6.") matches failOnSubstrings → empty
+		//            return → fail-closed
+		// Total: 12 calls. The function is fail-fast on the first
+		// empty per-segment return (godlike/07 NO-FAKE-AVAILABILITY).
+		assert.Equal(t, 12, len(tr.allInputs),
+			"translator must be called exactly 12 times before fail-closed (1 [FULL] + 5 prior scene pairs (Text + Title each) + scene[5].Text; call #12 is scene[5].Text = scene-6 which matches failOnSubstrings and triggers the empty return)")
 	})
 
 	t.Run("(6d) 10 scenes + word count translated >= 70% source invariant", func(t *testing.T) {

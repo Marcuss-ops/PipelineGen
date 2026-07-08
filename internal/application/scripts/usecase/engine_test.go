@@ -579,12 +579,25 @@ func TestEngineGenerate_AlwaysAppendsVSuffix(t *testing.T) {
 		require.NotNil(t, captured, "fakeOllamaGen must have captured the request for plan %q", p.Title)
 		assert.Equal(t, p.RenderedPrompt, captured.Prompt[:len(p.RenderedPrompt)],
 			"rendered prompt body must flow through verbatim to ollama request for plan %q", p.Title)
-		assert.Equal(t, ollamatypes.OutputModeScriptV1, captured.OutputMode,
-			"OutputModeScriptV1 must be set on the ollama request for plan %q", p.Title)
+		// LLM-PLAIN-TEXT-CONTRACT wave (PR-2, July 2026): the engine
+		// now requests OutputModePlainText on every plan (canonical
+		// post-wave default). OutputModeScriptV1 is RETAINED in the
+		// const block for backward-compat with pre-wave cached rows;
+		// no new caller should request it.
+		assert.Equal(t, ollamatypes.OutputModePlainText, captured.OutputMode,
+			"OutputModePlainText must be set on the ollama request for plan %q (canonical post-PR-2 default)",
+			p.Title)
 		assert.Contains(t, captured.Prompt, "[OUTPUT_FORMAT]",
-			"V1 output instruction must be appended for plan %q", p.Title)
-		assert.Contains(t, captured.Prompt, "schema_version",
-			"V1 output instruction must include schema_version for plan %q", p.Title)
+			"V1 output instruction must be appended for plan %q (canonical engine format marker)", p.Title)
+		// LLM-PLAIN-TEXT-CONTRACT wave — PR-1 replaced the historical
+		// "schema_version" schema-shape instruction with the canonical
+		// "NO JSON" prose-only marker. The downstream pipeline
+		// (SceneSynthesizer + SceneAssetBinder + postprocessors)
+		// owns all structured fields; the LLM only writes prose.
+		assert.Contains(t, captured.Prompt, "NO JSON",
+			"V1 output instruction must forbid JSON output for plan %q (PR-1, LLM-PLAIN-TEXT-CONTRACT)", p.Title)
+		assert.NotContains(t, captured.Prompt, "schema_version",
+			"V1 output instruction must NOT ask the LLM for the historical V1 JSON schema (PR-1, LLM-PLAIN-TEXT-CONTRACT) for plan %q", p.Title)
 	}
 }
 
