@@ -35,24 +35,33 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	"go.uber.org/zap"
-)
-
-// stageLog returns a closure that emits pipeline_stage_started now
+) // stageLog returns a closure that emits pipeline_stage_started now
 // and pipeline_stage_completed when invoked. Mirrors the
 // scripts/jobs/job_helpers.go canonical emission pattern (Pattern
 // 3, AGENTS.md).
-func stageLog(log *zap.Logger, requestID, stage, language string) func() {
+//
+// FASE 5 (VO-OPERATIONAL-READINESS, July 2026): added assetID and
+// project fields per the structured logging contract. Every stage
+// now logs: job_id, asset_id, project, language, stage, status,
+// duration_ms.
+func stageLog(log *zap.Logger, jobID, assetID, project, stage, language string) func(status string) {
 	start := time.Now()
-	log.Info("pipeline_stage_started",
+	logFields := []zap.Field{
 		zap.String("stage", stage),
-		zap.String("job_id", requestID),
-		zap.String("language", string(language)))
-	return func() {
-		log.Info("pipeline_stage_completed",
-			zap.String("stage", stage),
-			zap.String("job_id", requestID),
-			zap.String("language", string(language)),
-			zap.Int64("duration_ms", time.Since(start).Milliseconds()))
+		zap.String("job_id", jobID),
+		zap.String("asset_id", assetID),
+		zap.String("language", language),
+	}
+	if project != "" {
+		logFields = append(logFields, zap.String("project", project))
+	}
+	log.Info("pipeline_stage_started", logFields...)
+	return func(status string) {
+		completedFields := append(logFields,
+			zap.Int64("duration_ms", time.Since(start).Milliseconds()),
+			zap.String("status", status),
+		)
+		log.Info("pipeline_stage_completed", completedFields...)
 	}
 }
 
@@ -232,14 +241,30 @@ func (s *Service) processLanguage(
 		OldCleanedPath: oldCleanedPath,
 	}
 
-	// Azione #1: single "pipeline" stage replaces the legacy 3-stage
-	// telemetry (synthesize / destination / finalize).
-	emitPipelineCompleted := stageLog(s.log, requestID, "pipeline", string(language))
+	// Azione #1 + FASE 5: single "pipeline" stage replaces the legacy 3-stage
+	// telemetry (synthesize / destination / finalize). Structured logging
+	// includes job_id, asset_id, project, language, stage, status, duration_ms.
+	emitPipelineCompleted := stageLog(s.log, requestID, id, cmd.Project, "pipeline", string(language))
 	out, runErr := s.processSeg.Execute(ctx, cmd)
-	emitPipelineCompleted()
+	status := "completed"
+	if out == nil || out.Status != StatusCompleted {
+		status = "failed"
+	}
+	emitPipelineCompleted(status)
 
 	if out == nil {
 		return item.fail(FailureTTS, fmt.Errorf("pipeline_run_failed: %v", runErr))
+	}
+
+	// Log the underlying error when present (structured logging
+	// path — operators can search by request_id + language).
+	if runErr != nil {
+		s.log.Warn("processLanguage: pipeline completed with error",
+			zap.String("job_id", requestID),
+			zap.String("asset_id", id),
+			zap.String("language", string(language)),
+			zap.String("status", string(out.Status)),
+			zap.Error(runErr))
 	}
 
 	// Map VoiceoverItemResult back to BatchItem.
