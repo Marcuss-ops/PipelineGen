@@ -1,0 +1,66 @@
+// Package usecase — process_segment_step2.go: canonical owner of
+// Step 2 (clip cache lookup + StrategyReplace bypass).
+//
+// godlike/06 SSOT (one canonical owner per fact): this file is the
+// SOLE owner of the `Cache.GetExisting` lookup inside the Execute
+// pipeline. StrategyReplace bypass is a Commit 2/6 #2 invariant —
+// when `cmd.Strategy == StrategyReplace`, the cache lookup is
+// SKIPPED entirely so a re-extract under the same clipID always
+// re-runs the full 9-step pipeline (no false cache hits on
+// explicitly-forced re-extract).
+//
+// godlike/07 no-fake-availability: a cache-lookup FAILURE (cacheErr)
+// is Warn-logged and the pipeline FALLS THROUGH to re-process. The
+// pre-Commit-2 behavior swallowed the error silently which masked
+// infrastructure outages. Warn-level observability is the canonical
+// surface for transient cache misses (godlike/07 minimum-blast-radius:
+// the cache may legitimately be empty on a fresh deploy).
+package usecase
+
+import (
+	"context"
+
+	"go.uber.org/zap"
+
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+)
+
+// step2_CacheLookup is the canonical owner of Step 2. Returns:
+//
+//   - cacheHit=true: pipeline should early-return with current `out`
+//     (out.Status + out.Item.Status are set to "skipped" by this method)
+//   - cacheHit=false + err=nil: pipeline should proceed to step 3+
+//   - cacheHit=false + err=typed: pipeline should propagate the error
+//     (the orchestrator returns out, err immediately)
+//
+// godlike/06 SSOT: the "on cache hit" mutation of `out` (5 fields)
+// is byte-equivalent to the pre-split inline block. StrategyReplace
+// short-circuit semantics preserved EXACTLY (no log spam on the
+// forced-re-extract path). Warn-log on cacheErr is preserved EXACTLY.
+func (u *ProcessYouTubeSegmentUseCase) step2_CacheLookup(
+	ctx context.Context,
+	cmd youtubetypes.ProcessSegmentCommand,
+	out *youtubetypes.ProcessSegmentResult,
+	clipID string,
+) (bool, error) {
+	// StrategyReplace bypasses the cache lookup entirely so a
+	// re-extract under the same clipID always re-runs the full
+	// pipeline.
+	if u.deps.Cache != nil && cmd.Strategy != youtubetypes.StrategyReplace {
+		existingItem, exists, cacheErr := u.deps.Cache.GetExisting(ctx, clipID)
+		if cacheErr == nil && exists && existingItem != nil {
+			out.Item.Status = "skipped"
+			out.Item.LocalPath = existingItem.LocalPath
+			out.Item.DriveFileID = existingItem.DriveFileID
+			out.Item.DriveLink = existingItem.DriveLink
+			out.Item.DownloadLink = existingItem.DownloadLink
+			out.Status = "skipped"
+			return true, nil
+		}
+		if cacheErr != nil {
+			u.deps.Log.Warn("clip cache lookup failed; falling through to re-process",
+				zap.String("clip_id", clipID), zap.Error(cacheErr))
+		}
+	}
+	return false, nil
+}
