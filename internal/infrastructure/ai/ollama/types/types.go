@@ -4,27 +4,49 @@ import "encoding/json"
 
 // OutputMode declares the contractual shape the model must emit for
 // a given request. Empty value means the caller does not require a
-// structured contract (legacy prose behaviour — PR 1 deprecates this
-// for the canonical script pipeline).
+// structured contract (legacy prose behaviour — deprecated for the
+// canonical script pipeline).
 //
-// Engine.Generate (internal/application/scripts/engine.go) sets
-// OutputMode = OutputModeScriptV1 unconditionally for script
-// generation in PR 1. The decode path uses DecodeModelOutput, with
-// the legacy array decoder as the cache-fallback path.
+// LLM-PLAIN-TEXT-CONTRACT wave (PR-2, July 2026): the canonical
+// script pipeline now requests OutputModePlainText. The engine
+// (internal/application/scripts/usecase/engine_generate.go) sets
+// OutputMode = OutputModePlainText unconditionally; the LLM emits
+// raw narrative prose per the v1OutputInstruction suffix (see
+// engine_prompt.go), and the downstream SceneSynthesizer + scene
+// binder (internal/application/scripts/scene/) + postprocessor
+// pipeline own all structured fields. OutputModeScriptV1 is
+// RETAINED for backward-compat with cached rows and pre-wave
+// callers; the decode path uses jsonextract.Scanner (mode
+// depends on the schema of the stored rows, NOT on this flag).
 type OutputMode string
 
 const (
-	// OutputModeScriptV1 demands the canonical ModelScriptOutputV1
-	// shape ("internal/domain/script/model_output.go"):
+	// OutputModePlainText is the canonical default for the script
+	// pipeline post-LLM-PLAIN-TEXT-CONTRACT wave. The model is
+	// NOT asked to emit JSON, a schema, scene IDs, scene indexes,
+	// or kind labels — the downstream pipeline derives ALL of
+	// those from the raw prose (see engine_prompt.go::v1OutputInstruction).
+	//
+	// Wire effect: the Format json.RawMessage field on the
+	// TextGenerationRequest is left empty for this mode (no Ollama
+	// native JSON-mode constraint). The native Ollama Format field
+	// stays available for test rigs and future non-script callers.
+	OutputModePlainText OutputMode = "plain_text"
 
+	// OutputModeScriptV1 demands the canonical ModelScriptOutputV1
+	// shape ("internal/domain/script/model_output.go") — RETAINED
+	// for backward-compat with pre-wave cached rows:
+	//
 	//   {
 	//     "schema_version": 1,
 	//     "text": "<complete script>",
 	//     "specscene": { "version": 1, "scenes": [...] }
 	//   }
-
-	// Calls without this value continue to receive legacy prose and
-	// will be rejected by the engine's payload decoder.
+	//
+	// LLM-PLAIN-TEXT-CONTRACT wave: no new caller should request
+	// this mode. The const remains so the decode path can still
+	// promote legacy cached rows (a pre-wave cache row stored as
+	// JSON is unambiguous, regardless of the current request mode).
 	OutputModeScriptV1 OutputMode = "script_v1"
 )
 
@@ -44,8 +66,9 @@ type TextGenerationRequest struct {
 	WebContext      string // Optional: pre-fetched web search results injected into the prompt
 
 	// OutputMode declares the contractual shape the caller requires.
-	// See OutputModeScriptV1. When empty, the engine treats the
-	// request as legacy prose (PR 1: deprecated path).
+	// See OutputModePlainText (canonical) and OutputModeScriptV1
+	// (backward-compat). When empty, the wire request behaves as
+	// legacy prose (no JSON-mode constraint set).
 	OutputMode OutputMode
 
 	// Format is the Ollama native output-format constraint
@@ -55,12 +78,12 @@ type TextGenerationRequest struct {
 	// JSON-Schema object). This is a TOP-LEVEL body field on
 	// Ollama's `/api/chat` endpoint — it is NOT inside `options`.
 	//
-	// Concretely: when OutputMode == OutputModeScriptV1 the
-	// Generator.GenerateScript path sets Format to `"json"` so the
-	// script-engine contract is defended at both the prompt-suffix
-	// layer (engine.go::v1OutputInstruction) and the wire-format
-	// layer. Native json-mode does NOT enforce a schema — the
-	// suffix does that.
+	// LLM-PLAIN-TEXT-CONTRACT wave (PR-2): Format is set to
+	// `"json"` ONLY when OutputMode == OutputModeScriptV1 (the
+	// legacy path). For OutputModePlainText (canonical), Format
+	// is left empty — Ollama's native generation stays in prose mode.
+	// Native json-mode does NOT enforce a schema — the prompt
+	// suffix (engine_prompt.go::v1OutputInstruction) does that.
 	Format json.RawMessage `json:"format,omitempty"`
 
 	// Diversity knobs (all optional). When zero, GenerateScript fills in safe
