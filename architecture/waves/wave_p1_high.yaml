@@ -3212,3 +3212,45 @@
           ratchet adds ZERO new linked_issues (per godlike/06 SSOT). The cross-
           validation finding IS the canonical outcome; documenting it is the
           load-bearing closure record."
+  - id: SCRIPT-TRANSLATION-TESTING-2026-08-08
+    status: shipped
+    exit_signal: true
+    owner_capability: internal/application/scripts/usecase + tests/operational
+    deadline: 2026-08-15
+    linked_issues:
+      - id: PR-1 of SCRIPT-TRANSLATION-TESTING-2026-08-08
+        owner_capability: internal/application/scripts/usecase
+        status: shipped
+        ship_sha: 0332a4ac92e3fb78f588aadedea80c0434abdc94
+        ship_date: 2026-07-08
+        deadline: 2026-08-15
+      - id: PR-2 of SCRIPT-TRANSLATION-TESTING-2026-08-08
+        owner_capability: internal/application/scripts/usecase
+        status: shipped
+        ship_sha: 4a21f15b064820eb465646844a884663cb9df103
+        ship_date: 2026-07-08
+        deadline: 2026-08-15
+      - id: PR-3 of SCRIPT-TRANSLATION-TESTING-2026-08-08
+        owner_capability: internal/application/scripts/usecase
+        status: shipped
+        ship_sha: 93ff49aa34c1bad643063175a4d656d702a1ab52
+        ship_date: 2026-07-08
+        deadline: 2026-08-15
+      - id: PR-4 of SCRIPT-TRANSLATION-TESTING-2026-08-08
+        owner_capability: internal/application/scripts/adapters
+        status: shipped
+        ship_sha: bae1e9b51cd20f35e693b1aa5605485993efe252
+        ship_date: 2026-07-08
+        deadline: 2026-08-15
+      - id: PR-5 of SCRIPT-TRANSLATION-TESTING-2026-08-08
+        owner_capability: internal/application/scripts/usecase
+        status: shipped
+        ship_sha: ec7db3783679e6d20ccead4b9b2b441b943c974a
+        ship_date: 2026-07-08
+        deadline: 2026-08-15
+      - id: PR-6 of SCRIPT-TRANSLATION-TESTING-2026-08-08
+        owner_capability: tests/operational
+        status: shipped
+        ship_sha: ec7db3783679e6d20ccead4b9b2b441b943c974a
+        ship_date: 2026-07-08
+        deadline: 2026-08-15
