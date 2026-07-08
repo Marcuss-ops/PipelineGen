@@ -20,8 +20,21 @@ import "context"
 //   - DB + Jobs are mandatory; nil checker = misconfiguration surfaced loudly.
 //   - Drive + Qdrant are optional; nil / typed-nil / applicable=false = opted out.
 //   - applicable=false results do NOT flip allOK; ok=false results do.
+//
+// Step 8 YouTube Clips Deploy Readiness (July 2026): added severe checks
+// for tools (yt-dlp/ffmpeg/ffprobe), clips path writability, Drive canary,
+// and handler registration. These are OPTIONAL at construction — nil deps
+// report {ok:true, applicable:false} so the /ready shape is stable across
+// deploy profiles.
 type ReadyChecker struct {
 	svc *Service
+
+	// Step 8 severe checks (July 2026).
+	tools         ToolsChecker
+	clipsPath     string              // data/media/clips/
+	canary        DriveCanaryPort     // publisher-backed canary upload
+	canaryFolder  string              // target folder for canary
+	handlerCheck  HandlerRegChecker   // job handler registration probe
 }
 
 // NewReadyChecker wraps the canonical *Service with the readiness policy.
@@ -32,6 +45,10 @@ func NewReadyChecker(svc *Service) *ReadyChecker {
 // CheckReady runs the deep health set (db + drive + qdrant + jobs) and
 // returns the aggregated HealthResponse. Callers map the response.OK
 // to HTTP 200 vs 503 — the status-mapping lives at the transport layer.
+//
+// Step 8 (July 2026): also runs severe checks (tools, clips path,
+// Drive canary, handler registration) when wired. These are additive —
+// nil deps report {ok:true, applicable:false}.
 //
 // codex/health-ready-contract (June 2026): nil svc is handled gracefully
 // — returns ok=false with an explicit error rather than panicking.
@@ -48,5 +65,14 @@ func (r *ReadyChecker) CheckReady(ctx context.Context) HealthResponse {
 			},
 		}
 	}
-	return r.svc.Check(ctx, []string{"db", "drive", "qdrant", "jobs"})
+	resp := r.svc.Check(ctx, []string{"db", "drive", "qdrant", "jobs"})
+
+	// Step 8: run severe checks (tools, clips path, Drive canary, handlers).
+	// Each nil dep reports applicable=false, preserving the allOK logic.
+	r.runToolsCheck(ctx, &resp)
+	r.runClipsPathCheck(&resp)
+	r.runCanaryCheck(ctx, &resp)
+	r.runHandlerCheck(ctx, &resp)
+
+	return resp
 }

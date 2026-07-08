@@ -88,11 +88,25 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}, nil
 }
 
-func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveAdmin drive.Admin) *UtilityBundle {
+func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveAdmin drive.Admin, publisher delivery.Publisher, jobsSvc *appjobs.Service, log *zap.Logger) *UtilityBundle {
 	svc := buildHealthService(cfg, db, driveAdmin)
+	rc := systemhealth.NewReadyChecker(svc).
+		WithTools(systemhealth.NewToolsChecker()).
+		WithClipsPath("data/media/clips")
+	if publisher != nil && cfg.Drive.ClipsFolder() != "" {
+		rc = rc.WithDriveCanary(
+			systemhealth.NewPublisherCanary(publisher),
+			cfg.Drive.ClipsFolder(),
+		)
+	}
+	if jobsSvc != nil {
+		rc = rc.WithHandlerCheck(systemhealth.NewHandlerPresenceChecker(
+			func(jobType string) bool { return jobsSvc.HasHandler(jobType) },
+		))
+	}
 	return &UtilityBundle{
 		Utility: transport.NewUtilityHandler(), HealthService: svc,
-		ReadyChecker: systemhealth.NewReadyChecker(svc),
+		ReadyChecker: rc,
 	}
 }
 
