@@ -188,7 +188,15 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		metadata[k] = v
 	}
 	metadataJSON, _ := json.Marshal(metadata)
-	actionStr := string(a.Location.Action)
+
+	// Source column: use explicit Source if set ("stock", "youtube",
+	// "artlist", etc.), otherwise fall back to Location.Action ("created").
+	// PR-STOCK-SOURCE-FIX: stock assets must NOT use Location.Action as
+	// source — that's the publish action, not the content source.
+	sourceStr := a.Source
+	if sourceStr == "" {
+		sourceStr = string(a.Location.Action)
+	}
 
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO media_assets (
@@ -210,7 +218,7 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 			updated_at = excluded.updated_at
 	`,
 		a.ArtifactID,
-		actionStr,
+		sourceStr,
 		a.Filename,
 		a.Filename,
 		mediaType,

@@ -181,6 +181,7 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 		manifestData,
 		runner.State().Published,
 		runner.State().MetadataPublished,
+		fp,
 	)
 	if finBuildErr != nil {
 		return fmt.Errorf("orchestrator: stock.finalize: BuildFinalizationRequest: %w", finBuildErr)

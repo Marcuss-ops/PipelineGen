@@ -235,7 +235,7 @@ func TestVerifyMetadata_SHA256Missing(t *testing.T) {
 func TestBuildFinalizationRequest_GatesFirst(t *testing.T) {
 	_, err := BuildFinalizationRequest("job-1", validLease("job-1"), []byte("{}"),
 		nil, // empty chunks → ErrStockNoChunksFinalized
-		MetadataState{})
+		MetadataState{}, "fp-test")
 	if !errors.Is(err, ErrStockNoChunksFinalized) {
 		t.Fatalf("empty chunks: want ErrStockNoChunksFinalized, got %v", err)
 	}
@@ -246,6 +246,7 @@ func TestBuildFinalizationRequest_GatesFirst(t *testing.T) {
 	_, err = BuildFinalizationRequest("job-1", validLease("job-1"), []byte("{}"),
 		chunks,
 		MetadataState{LocalPath: "/tmp/m.json"}, // missing RemoteFileID, SHA256
+		"fp-test",
 	)
 	if !errors.Is(err, ErrStockMetadataNotPublished) {
 		t.Fatalf("incomplete metadata: want ErrStockMetadataNotPublished, got %v", err)
@@ -263,7 +264,7 @@ func TestBuildFinalizationRequest_HappyPath(t *testing.T) {
 	m := MetadataState{LocalPath: "/tmp/m.json", SHA256: fakeSHA(2), SizeBytes: 512,
 		RemoteFileID: "drive-m", RemoteWebViewLink: "https://drive/m"}
 
-	req, err := BuildFinalizationRequest("job-1", validLease("job-1"), []byte(`{"foo":1}`), chunks, m)
+	req, err := BuildFinalizationRequest("job-1", validLease("job-1"), []byte(`{"foo":1}`), chunks, m, "fp-test")
 	if err != nil {
 		t.Fatalf("happy path: want nil, got %v", err)
 	}
@@ -294,7 +295,7 @@ func TestBuildFinalizationRequest_LeaseMismatch(t *testing.T) {
 		{Index: 0, ArtifactID: "stock:job-1:chunk:0", LocalPath: "/tmp/c0.mp4", SHA256: fakeSHA(0), RemoteFileID: "drive-0", SizeBytes: 1024, Filename: "c0.mp4"},
 	}
 	m := MetadataState{LocalPath: "/tmp/m.json", SHA256: fakeSHA(2), SizeBytes: 512, RemoteFileID: "drive-m"}
-	_, err := BuildFinalizationRequest("job-1", validLease("job-2"), []byte("{}"), chunks, m)
+	_, err := BuildFinalizationRequest("job-1", validLease("job-2"), []byte("{}"), chunks, m, "fp-test")
 	if err == nil {
 		t.Fatal("lease mismatch: want error, got nil")
 	}
@@ -311,7 +312,7 @@ func TestBuildFinalizationRequest_JobIDEmpty(t *testing.T) {
 		{Index: 0, ArtifactID: "stock:job-1:chunk:0", LocalPath: "/tmp/c0.mp4", SHA256: fakeSHA(0), RemoteFileID: "drive-0", SizeBytes: 1024, Filename: "c0.mp4"},
 	}
 	m := MetadataState{LocalPath: "/tmp/m.json", SHA256: fakeSHA(2), SizeBytes: 512, RemoteFileID: "drive-m"}
-	_, err := BuildFinalizationRequest("", validLease(""), []byte("{}"), chunks, m)
+	_, err := BuildFinalizationRequest("", validLease(""), []byte("{}"), chunks, m, "fp-test")
 	if err == nil {
 		t.Fatal("empty jobID: want error, got nil")
 	}
@@ -330,15 +331,15 @@ func TestBuildFinalizationRequest_Idempotent(t *testing.T) {
 	}
 	m := MetadataState{LocalPath: "/tmp/m.json", SHA256: fakeSHA(2), SizeBytes: 512, RemoteFileID: "drive-m"}
 
-	r1, err := BuildFinalizationRequest("job-1", validLease("job-1"), []byte(`{"foo":"bar"}`), chunks, m)
+	r1, err := BuildFinalizationRequest("job-1", validLease("job-1"), []byte(`{"foo":"bar"}`), chunks, m, "fp-test")
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	r2, err := BuildFinalizationRequest("job-1", validLease("job-1"), []byte(`{"foo":"bar"}`), chunks, m)
+	r2, err := BuildFinalizationRequest("job-1", validLease("job-1"), []byte(`{"foo":"bar"}`), chunks, m, "fp-test")
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
-	r3, err := BuildFinalizationRequest("job-1", validLease("job-1"), []byte(`{"foo":"bar"}`), chunks, m)
+	r3, err := BuildFinalizationRequest("job-1", validLease("job-1"), []byte(`{"foo":"bar"}`), chunks, m, "fp-test")
 	if err != nil {
 		t.Fatalf("third call: %v", err)
 	}
