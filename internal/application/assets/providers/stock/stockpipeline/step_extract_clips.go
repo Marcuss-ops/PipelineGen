@@ -1,5 +1,6 @@
 // Package stockpipeline — step_extract_clips.go
-// (PR-STOCK-ORCHESTRATOR-SPLIT, July 2026).
+// (PR-STOCK-ORCHESTRATOR-SPLIT, July 2026;
+// PR-SPLIT-STEP-EXTRACT-CLIPS, August 2026).
 //
 // SOLE owner of StockExtractClipsStep — the canonical
 // implementation of the stock.extract_clips step (Step 3 of the
@@ -10,12 +11,18 @@
 // The step:
 //  1. Builds a sourceID → localPath map from StagedAssets.
 //  2. Groups ClipPlan entries by SourceID.
-//  3. For each group, constructs CutRequest with the real
-//     SourcePath and calls runner.Cutter().Cut(ctx, req).
+//  3. For each group, calls the canonical
+//     validateAndProbeSourceDuration helper (in
+//     step_extract_clips_validation.go) to probe the source
+//     duration and bounds-check every clip; then constructs
+//     CutRequest with the real SourcePath and calls
+//     runner.Cutter().Cut(ctx, req).
 //  4. Collects OutputPath values from SuccessfulItems() →
 //     CutPaths.
 //  5. Writes asset/outbox via Writer.WriteAndEnqueue for each
-//     successfully cut clip.
+//     successfully cut clip (via buildRichStockAsset +
+//     composeStockChunkSearchText helpers in
+//     step_extract_clips_assets.go).
 //
 // godlike/07 fail-closed contracts:
 //   - Cutter nil + plans empty → test-fixture path (CutPaths = nil,
@@ -28,6 +35,15 @@
 //     preserving cutter typed sentinel via %w).
 //   - Zero cut files across all sources → terminal error
 //     (production gate, closes false-success class).
+//
+// godlike/06 SSOT: this file is the slim orchestrator only. The
+// asset-write helpers (buildRichStockAsset + composeStockChunkSearchText)
+// live in step_extract_clips_assets.go; the pre-cut validation helper
+// (validateAndProbeSourceDuration) lives in
+// step_extract_clips_validation.go. Both helpers are pure
+// functions in the same package — cross-file resolution via
+// package-scope visibility (godlike/07 minimum-blast-radius:
+// zero new exported symbols).
 package stockpipeline
 
 import (
@@ -37,8 +53,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -65,6 +79,12 @@ var ErrStockClipsOutOfRange = errors.New("stock.extract_clips: clip EndSec excee
 // StockExtractClipsStep is the canonical implementation of
 // stock.extract_clips. Phase 1 (July 2026): rewired to use the
 // real VideoCutter.Cut port instead of emitting logical IDs.
+// Phase 2 (August 2026, PR-SPLIT-STEP-EXTRACT-CLIPS): the inline
+// pre-cut validation block was extracted to
+// validateAndProbeSourceDuration in step_extract_clips_validation.go
+// per godlike/06 SSOT one-canonical-owner-per-fact. The asset-write
+// helpers (buildRichStockAsset + composeStockChunkSearchText) were
+// extracted to step_extract_clips_assets.go.
 type StockExtractClipsStep struct{}
 
 func (StockExtractClipsStep) Name() string { return StepKeyStockExtractClips }
@@ -160,87 +180,22 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 		sourcePath := staged.LocalPath
 
-		// PR-STOCK-TIMESTAMP-CLIPS Front 5 (July 2026): pre-cut
-		// duration validation. The step probes the source duration
-		// BEFORE invoking VideoCutter.Cut so a clip with EndSec >
-		// duration fails fast with a typed sentinel (no auto-clamp
-		// per user spec "fallire subito con errore leggibile").
-		// Source of truth priority (godlike/06 SSOT):
-		//   1. StagedAsset.DurationSec — populated upstream by
-		//      stock.stage_sources when known (yt-dlp
-		//      --print-duration at staging time). Fast path; no
-		//      subprocess call.
-		//   2. runner.SourceDurationProbe().ProbeDurationSec() —
-		//      ffprobe-backed probe for legacy composition roots
-		//      that don't pre-populate DurationSec. Optional;
-		//      nil ⇒ skip validation (godlike/07 fail-open
-		//      backward-compat; PR-STOCK-SOURCE-DURATION-WIRE
-		//      is the forward-pointer for production wiring).
-		//   3. Neither available — log Warn + skip validation
-		//      (legacy unvalidated path; same backward-compat as
-		//      nil probe).
-		var durationSec float64
-		durationKnown := false
-		if staged.DurationSec > 0 {
-			durationSec = staged.DurationSec
-			durationKnown = true
-		} else if probe := runner.SourceDurationProbe(); probe != nil {
-			d, probeErr := probe.ProbeDurationSec(ctx, sourcePath)
-			if probeErr != nil {
-				if runner.Log() != nil {
-					runner.Log().Warn("orchestrator: stock.extract_clips: duration probe failed — skipping bounds check (godlike/07 fail-open)",
-						zap.String("source_id", sourceID),
-						zap.String("source_path", sourcePath),
-						zap.Error(probeErr))
-				}
-			} else if d > 0 {
-				durationSec = d
-				durationKnown = true
-			}
-		} else if runner.Log() != nil {
-			// godlike/07 fail-open but loudly: a missing
-			// probe AND no DurationSec is a composition-root
-			// misconfiguration. Warn (not Debug) so operators
-			// notice out-of-range clips are not being caught.
-			// Forward-pointer PR-STOCK-SOURCE-DURATION-WIRE
-			// closes this gap at the composition root.
-			runner.Log().Warn("orchestrator: stock.extract_clips: no DurationSec + no SourceDurationProbe wired — bounds check skipped (out-of-range clips will NOT be caught; compose WithSourceProbe at the composition root)",
-				zap.String("source_id", sourceID),
-				zap.String("source_path", sourcePath),
-				zap.Int("clip_count", len(groupPlans)))
-		}
-
-		// Bounds check (godlike/07 NO-FAKE-AVAILABILITY): every clip
-		// in the group must have EndSec <= source duration. The
-		// step counts out-of-range clips and returns the FIRST
-		// violation with the typed sentinel; subsequent violations
-		// are surfaced via the wrapped error message (Read-back
-		// contract: errors.Is(err, ErrStockClipsOutOfRange) succeeds
-		// regardless of which clip was the first violator).
-		//
-		// Boundary semantics: strict `>` (no epsilon) — EndSec ==
-		// sourceDurationSec is treated as in-range. This matches
-		// the user spec literal "fallire subito con errore leggibile"
-		// (the boundary-equal case is a valid full-length cut, not
-		// an out-of-range error). If a future PR needs sub-second
-		// tolerance for floating-point drift, add an epsilon constant
-		// at the top of this file and re-pin the test.
-		if durationKnown {
-			for clipIdx, plan := range groupPlans {
-				if plan.EndSec > durationSec {
-					if runner.Log() != nil {
-						runner.Log().Error("orchestrator: stock.extract_clips: clip EndSec exceeds source duration — aborting (no auto-clamp per user spec)",
-							zap.String("source_id", sourceID),
-							zap.Int("clip_index", clipIdx),
-							zap.String("artifact_id", plan.OutputLogicalID),
-							zap.Float64("clip_end_sec", plan.EndSec),
-							zap.Float64("source_duration_sec", durationSec),
-							zap.Float64("overrun_sec", plan.EndSec-durationSec))
-					}
-					return fmt.Errorf("orchestrator: stock.extract_clips: clip[%d] (artifact=%s) EndSec=%.2f exceeds source duration=%.2f (overrun=%.2fs): %w",
-						clipIdx, plan.OutputLogicalID, plan.EndSec, durationSec, plan.EndSec-durationSec, ErrStockClipsOutOfRange)
-				}
-			}
+		// PR-STOCK-TIMESTAMP-CLIPS Front 5 (July 2026) + PR-SPLIT-STEP-EXTRACT-CLIPS
+		// (August 2026): pre-cut duration validation extracted to
+		// validateAndProbeSourceDuration (sister file
+		// step_extract_clips_validation.go). The helper:
+		//   1. Resolves the source duration via the 3-tier source-of-truth
+		//      priority (staged.DurationSec fast-path → ffprobe
+		//      SourceDurationProbe → Warn + skip).
+		//   2. Bounds-checks every clip.EndSec against the duration
+		//      with strict `>` boundary semantics (no epsilon).
+		//   3. Returns the typed ErrStockClipsOutOfRange sentinel
+		//      wrapped via fmt.Errorf on the first violation.
+		// No auto-clamp per user spec literal "fallire subito con
+		// errore leggibile".
+		_, _, validationErr := validateAndProbeSourceDuration(ctx, runner, sourceID, sourcePath, staged, groupPlans)
+		if validationErr != nil {
+			return validationErr
 		}
 
 		// Cut and publish one clip at a time so Drive uploads can
@@ -294,8 +249,9 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 				// at the cut step rather than silently reaching the
 				// indexer which would terminal-reject it), then build
 				// the canonical 10-field asset via buildRichStockAsset
-				// and pass the hash to WriteAndEnqueue (replaces the
-				// prior "" literal).
+				// (sister file step_extract_clips_assets.go) and pass
+				// the hash to WriteAndEnqueue (replaces the prior ""
+				// literal).
 				hash, hashErr := job.ComputeSHA256(item.OutputPath)
 				if hashErr != nil {
 					if runner.Log() != nil {
@@ -479,137 +435,9 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 	return nil
 }
 
-// buildRichStockAsset composes the canonical 10-field asset.Asset
-// for a stock-pipeline cut clip. PR-STOCK-TIMESTAMP-CLIPS Front 4
-// (July 2026) replaces the prior 4-field literal with this rich
-// surface so downstream consumers (Qdrant indexer, asset search,
-// media_assets projection) see Title/Description/Round/Tags/Category/
-// LocalPath/SHA256/StartSec/EndSec/SearchText at the row level
-// instead of just in metadata.json emitted later.
-//
-// Field routing (godlike/06 SSOT one-canonical-owner-per-fact):
-//   - Direct fields (asset.Asset top-level): ID, Name, Filename,
-//     Source, MediaType, Category, SourceURL, Duration, Tags,
-//     SearchText, LifecycleState.
-//   - Metadata map (open-ended, canonical for fields with no
-//     direct column): Title, Description, Round, StartSec, EndSec,
-//     LocalPath, SHA256 (mirrored as file_hash), Slug.
-//
-// godlike/06 typed-accessor contract: SetLocalPath + SetFileHash
-// are the canonical typed setters in asset_accessors.go — they
-// populate BOTH the Metadata map AND any future typed columns
-// when they land. Calling them keeps the wire-shape and the
-// accessor surface in lockstep.
-//
-// godlike/07 minimum-blast-radius: sourceIdx + clipIdx are
-// retained as parameters for the legacy chunk_%d_%d fallback
-// slug (used only when perClipLeafName returns empty); they
-// don't appear in the canonical slug derivation otherwise.
-//
-// forward-pointer PR-STOCK-RICHASSET-GROUP: the Group field is
-// left empty today (the planner's per-clip group is the YouTube
-// channel name, not a stock-derived concept). A future PR can
-// inject runner.RunInput() into buildRichStockAsset and derive
-// Group from stockRootFolderName(in) for consistency with
-// stock.publish's per-chunk group semantics.
-func buildRichStockAsset(plan ClipPlan, sourceIdx, clipIdx int, localPath, sha256 string) *asset.Asset {
-	slug := perClipLeafName(plan)
-	if strings.TrimSpace(slug) == "" {
-		slug = fmt.Sprintf("chunk_%d_%d", sourceIdx, clipIdx)
-	}
-
-	durationSec := plan.EndSec - plan.StartSec
-	if durationSec < 0 {
-		durationSec = 0
-	}
-
-	clip := &asset.Asset{
-		ID:             plan.OutputLogicalID,
-		Name:           slug,
-		Filename:       slug + ".mp4",
-		Source:         asset.Source("stock"),
-		MediaType:      asset.MediaType("video"),
-		Category:       plan.Category,
-		SourceURL:      plan.SourceID,
-		Duration:       time.Duration(durationSec * float64(time.Second)),
-		Tags:           append([]string(nil), plan.Tags...),
-		SearchText:     composeStockChunkSearchText(plan),
-		LifecycleState: asset.StateActive,
-		Metadata: asset.Metadata{
-			"title":       plan.Title,
-			"description": plan.Description,
-			"round":       plan.Round,
-			"start_sec":   plan.StartSec,
-			"end_sec":     plan.EndSec,
-			"local_path":  localPath,
-			"sha256":      sha256,
-			"file_hash":   sha256,
-			"slug":        slug,
-		},
-	}
-
-	clip.SetLocalPath(localPath)
-	clip.SetFileHash(sha256)
-
-	return clip
-}
-
-// composeStockChunkSearchText composes the canonical Qdrant BM25
-// channel text for a stock-pipeline cut clip. Format:
-//
-//	"Stock video clip | title: <title> | description: <description>
-//	 | round <N> | category: <cat> | tags: <t1, t2, ...>
-//	 | start_sec: <s> | end_sec: <e>"
-//
-// godlike/07 minimum-blast-radius: each labelled segment is dropped
-// silently when its inputs are empty so the output never contains
-// dangling " | title: " or " | tags: " fragments. godlike/06 SSOT:
-// this is the SOLE canonical owner of the stock-chunk text format
-// used at the asset-row write seam; the strategy function in
-// internal/infrastructure/indexing/searchtext/strategies.go is
-// the canonical owner for the downstream Qdrant-payload compose
-// seam. The two surfaces produce byte-equivalent SearchText for
-// the same input (modulo the " | " separator vs " " separator
-// chosen at each seam).
-//
-// forward-pointer PR-STOCK-SEARCHTEXT-PORT: extract this inline
-// composition into a port + composition-root wiring so the
-// asset-row write and the Qdrant-payload write share a single
-// canonical source. Today the duplication is acceptable per
-// godlike/07 minimum-blast-radius (test surface locks both
-// compositions to the same field set).
-func composeStockChunkSearchText(plan ClipPlan) string {
-	parts := []string{"Stock video clip"}
-
-	if title := strings.TrimSpace(plan.Title); title != "" {
-		parts = append(parts, "title: "+title)
-	}
-	if desc := strings.TrimSpace(plan.Description); desc != "" {
-		parts = append(parts, "description: "+desc)
-	}
-	if plan.Round > 0 {
-		parts = append(parts, "round "+strconv.Itoa(plan.Round))
-	}
-	if cat := strings.TrimSpace(plan.Category); cat != "" {
-		parts = append(parts, "category: "+cat)
-	}
-	if len(plan.Tags) > 0 {
-		// Filter empty tags to avoid dangling "tags: , , " fragments.
-		var kept []string
-		for _, t := range plan.Tags {
-			if t = strings.TrimSpace(t); t != "" {
-				kept = append(kept, t)
-			}
-		}
-		if len(kept) > 0 {
-			parts = append(parts, "tags: "+strings.Join(kept, ", "))
-		}
-	}
-
-	parts = append(parts,
-		"start_sec: "+strconv.FormatFloat(plan.StartSec, 'f', -1, 64),
-		"end_sec: "+strconv.FormatFloat(plan.EndSec, 'f', -1, 64),
-	)
-
-	return strings.Join(parts, " | ")
-}
+// time package usage is preserved per the existing asset
+// LifecycleState / Duration / time.Duration patterns in
+// buildRichStockAsset (sister file step_extract_clips_assets.go).
+// The blank import is the canonical godlike/06 SSOT pin keeping
+// this file's dependency on the time package explicit.
+var _ = time.Time{} // pin import (used transitively via time.Duration in sister file)
