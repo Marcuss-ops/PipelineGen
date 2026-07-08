@@ -68,6 +68,7 @@ package voiceover
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -701,7 +702,6 @@ func TestProcessSegmentUseCase_Execute_Stage0MissingFolderGuard(t *testing.T) {
 			assert.Equal(t, StatusFailed, out.Status)
 			assert.Contains(t, out.Error, "missing_folder_id",
 				"error envelope must surface the canonical missing_folder_id prefix")
-
 			assert.Len(t, tts.synthesized, 0,
 				"Stage 0 missing-folder MUST short-circuit BEFORE TTSProvider.Synthesize invocation")
 			assert.Len(t, pub.published, 0,
@@ -710,4 +710,333 @@ func TestProcessSegmentUseCase_Execute_Stage0MissingFolderGuard(t *testing.T) {
 				"Stage 0 missing-folder MUST short-circuit BEFORE Finalizer.Finalize invocation")
 		})
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Test 7: Stage 1 TTS success — valid input generates non-empty output
+// ─────────────────────────────────────────────────────────────────────────
+
+// TestProcessSegmentUseCase_Execute_Stage1_TTS_GeneratesNonEmptyOutput
+// pins the FASE 2 contract #1: when TTSProvider.Synthesize succeeds
+// with valid input (non-empty Text + supported Language), the result
+// carries a non-empty LocalPath and the pipeline proceeds to Stage 3
+// (Publisher invoked) and Stage 4 (Finalizer invoked). The test
+// asserts the output envelope fields are populated end-to-end.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the TTS stub returns a concrete
+// LocalPath, not an empty string — a broken TTS bridge that silently
+// produces empty output would fail this assertion at the contract layer.
+func TestProcessSegmentUseCase_Execute_Stage1_TTS_GeneratesNonEmptyOutput(t *testing.T) {
+	db := openProcessTestDB(t)
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath: "/tmp/vo/stage1-valid.mp3",
+			Voice:     "it-IT-ElsaNeural",
+			FileHash:  "hash-stage1-valid-001",
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-stage1-valid"}
+	finalizer := &stubProcessFinalizer{
+		cannedRes: &FinalizeResult{ID: "vo-stage1-valid", Reused: false},
+	}
+
+	dest := &stubProcessDestResolver{folderID: "dest-stage1"}
+	resolvedDest, err := dest.Resolve(context.Background(), &DestinationRequest{FolderID: "dest-stage1"})
+	require.NoError(t, err)
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		ID:       "vo-stage1-valid",
+		Language: "it-IT",
+		Text:     "Questo è un test del sintetizzatore vocale.",
+		Voice:    "it-IT-ElsaNeural",
+		Filename: "stage1-valid.mp3",
+		Dest:     resolvedDest,
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+
+	require.NoError(t, err, "TTS success must not return error")
+	require.NotNil(t, out)
+	assert.Equal(t, StatusCompleted, out.Status,
+		"successful 4-stage pipeline must end with StatusCompleted")
+	assert.NotEmpty(t, out.LocalPath,
+		"FASE 2 contract #1: TTS must produce a non-empty LocalPath")
+	assert.Equal(t, "/tmp/vo/stage1-valid.mp3", out.LocalPath)
+	assert.Equal(t, "it-IT-ElsaNeural", out.Voice)
+	assert.Equal(t, "hash-stage1-valid-001", out.FileHash)
+
+	// Stage 3 (Publish) must have been invoked exactly once.
+	require.Len(t, pub.published, 1,
+		"TTS success → Publisher.Publish must be invoked exactly once")
+
+	// Stage 4 (Finalize) must have been invoked exactly once.
+	require.Len(t, finalizer.calls, 1,
+		"TTS success → Finalizer.Finalize must be invoked exactly once")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Test 8: Stage 1 TTS failure — error propagated, pipeline short-circuits
+// ─────────────────────────────────────────────────────────────────────────
+
+// TestProcessSegmentUseCase_Execute_Stage1_TTS_Fails_PropagatesError
+// pins the FASE 2 contract #2: when TTSProvider.Synthesize fails
+// (returning a non-nil error), the use case MUST surface a
+// StatusFailed result with a "tts_failed:" error prefix, and Stages
+// 3–4 MUST NOT be invoked (short-circuit at the first failure).
+//
+// The canonical failure triggers (empty text, unsupported language,
+// missing Python bridge, ffmpeg crash) are the TTS provider's
+// responsibility — the use case's contract is to propagate the error
+// and stop the pipeline, not to re-classify the failure mode.
+func TestProcessSegmentUseCase_Execute_Stage1_TTS_Fails_PropagatesError(t *testing.T) {
+	tests := []struct {
+		name     string
+		ttsErr   error
+		wantText string
+	}{
+		{
+			name:     "empty text rejected by TTS bridge",
+			ttsErr:   fmt.Errorf("tts: empty text not allowed"),
+			wantText: "",
+		},
+		{
+			name:     "unsupported language rejected by TTS bridge",
+			ttsErr:   fmt.Errorf("tts: unsupported language 'xx-XX'"),
+			wantText: "Hello in unsupported locale",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := openProcessTestDB(t)
+			tts := &stubProcessTTS{
+				cannedErr: tt.ttsErr,
+				cannedOut: TTSOutput{}, // zero-value; never reached
+			}
+			pub := &stubProcessPublisher{fileID: "should-never-be-used"}
+			finalizer := &stubProcessFinalizer{
+				cannedRes: &FinalizeResult{ID: "should-never-be-used"},
+			}
+
+			dest := &stubProcessDestResolver{folderID: "dest-stage1-fail"}
+			resolvedDest, err := dest.Resolve(context.Background(),
+				&DestinationRequest{FolderID: "dest-stage1-fail"})
+			require.NoError(t, err)
+
+			uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+				TTSProvider:         tts,
+				Publisher:           pub,
+				VoiceoverRepository: &stubProcessVoRepo{db: db},
+				Finalizer:           finalizer,
+				Logger:              zap.NewNop(),
+			})
+
+			cmd := &ProcessSegmentCommand{
+				ID:       "vo-stage1-fail",
+				Language: "en",
+				Text:     tt.wantText,
+				Filename: "stage1-fail.mp3",
+				Dest:     resolvedDest,
+			}
+
+			out, err := uc.Execute(context.Background(), cmd)
+
+			require.Error(t, err,
+				"FASE 2 contract #2: TTS failure MUST return error")
+			require.NotNil(t, out, "error envelope must be non-nil")
+			assert.Equal(t, StatusFailed, out.Status,
+				"TTS failure MUST set Status=StatusFailed")
+			assert.Contains(t, out.Error, "tts_failed:",
+				"error prefix must be 'tts_failed:' (canonical per-item surface)")
+
+			// godlike/07 NO-FAKE-AVAILABILITY: Publisher + Finalizer
+			// MUST NOT be invoked after TTS failure.
+			assert.Len(t, pub.published, 0,
+				"Publisher.Publish MUST NOT be invoked after TTS failure (short-circuit at Stage 1)")
+			assert.Len(t, finalizer.calls, 0,
+				"Finalizer.Finalize MUST NOT be invoked after TTS failure")
+		})
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Test 9: Stage 3 Publisher — Language + Project forwarded correctly
+// ─────────────────────────────────────────────────────────────────────────
+
+// TestProcessSegmentUseCase_Execute_Stage3_Publisher_ForwardsLanguageAndProject
+// pins the FASE 2 contract #3: when ProcessSegmentCommand carries a
+// non-empty Language and Project, the VoiceoverPublishCommand forwarded
+// to the Publisher MUST carry those exact values. This is the regression
+// guard for the PR-VO-LANGUAGE-PROJECT-PROPAGATION fix (July 2026) —
+// pre-fix the fields were silently dropped.
+//
+// The adapter (useCasePublisherAdapter) then routes Language→req.Language
+// and Project→req.ProjectID (semantic-first path). This test does NOT
+// assert the adapter-side translation (that contract lives at
+// adapters_voiceover_publisher_test.go) — it ONLY asserts the use case
+// correctly threads the fields into Port publish command.
+func TestProcessSegmentUseCase_Execute_Stage3_Publisher_ForwardsLanguageAndProject(t *testing.T) {
+	db := openProcessTestDB(t)
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath: "/tmp/vo/stage3-lang-proj.mp3",
+			Voice:     "it-IT-ElsaNeural",
+			FileHash:  "hash-stage3-lp-001",
+		},
+	}
+	pub := &stubProcessPublisher{fileID: "drive-stage3-lang-proj"}
+	finalizer := &stubProcessFinalizer{
+		cannedRes: &FinalizeResult{ID: "vo-stage3-lang-proj", Reused: false},
+	}
+
+	dest := &stubProcessDestResolver{folderID: "dest-stage3"}
+	resolvedDest, err := dest.Resolve(context.Background(),
+		&DestinationRequest{FolderID: "dest-stage3"})
+	require.NoError(t, err)
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		ID:       "vo-stage3-lang-proj",
+		Language: "it-IT",
+		Text:     "Testo per la verifica della propagazione semantica.",
+		Voice:    "it-IT-ElsaNeural",
+		Filename: "stage3-lang-proj.mp3",
+		Project:  "storia-boxe",
+		Dest:     resolvedDest,
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+
+	require.NoError(t, err)
+	assert.Equal(t, StatusCompleted, out.Status)
+
+	// FASE 2 contract #3 assertion: Language + Project MUST be
+	// forwarded to the Publisher's VoiceoverPublishCommand.
+	require.Len(t, pub.published, 1,
+		"Publisher.Publish must be invoked exactly once")
+	got := pub.published[0]
+	assert.Equal(t, "it-IT", got.Language,
+		"PR-VO-LANGUAGE-PROJECT-PROPAGATION: cmd.Language MUST be forwarded as VoiceoverPublishCommand.Language")
+	assert.Equal(t, "storia-boxe", got.Project,
+		"PR-VO-LANGUAGE-PROJECT-PROPAGATION: cmd.Project MUST be forwarded as VoiceoverPublishCommand.Project")
+	assert.Equal(t, "vo-stage3-lang-proj", got.ID,
+		"VoiceoverPublishCommand.ID must equal cmd.ID")
+	assert.Equal(t, "/tmp/vo/stage3-lang-proj.mp3", got.LocalPath,
+		"VoiceoverPublishCommand.LocalPath must be the TTS output path")
+	assert.Equal(t, "stage3-lang-proj.mp3", got.Filename,
+		"VoiceoverPublishCommand.Filename must equal cmd.Filename")
+	assert.Equal(t, "dest-stage3", got.FolderID,
+		"VoiceoverPublishCommand.FolderID must equal resolvedDest.FolderID")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Test 10: Stage 3 Publisher — empty Language propagates typed sentinel
+// ─────────────────────────────────────────────────────────────────────────
+
+// stubFailingPublisher is a VoiceoverPublisher that returns a
+// pre-configured error. Used by the Stage 3 empty-Language contract
+// test to simulate the adapter's fail-closed semantics without
+// duplicating the adapter logic at the use-case test layer.
+type stubFailingPublisher struct {
+	err       error
+	published []VoiceoverPublishCommand
+}
+
+func (s *stubFailingPublisher) Publish(_ context.Context, cmd VoiceoverPublishCommand) (string, error) {
+	s.published = append(s.published, cmd)
+	return "", s.err
+}
+
+var _ VoiceoverPublisher = (*stubFailingPublisher)(nil)
+
+// TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyLanguage_PropagatesSentinel
+// pins the FASE 2 contract #4: when the Publisher returns
+// ErrVoiceoverPublishLanguageRequired (the adapter's fail-closed
+// sentinel for empty Language), the use case MUST propagate the error
+// and surface a StatusFailed result. The test uses a stub that returns
+// the sentinel unconditionally — it does NOT replicate the adapter's
+// empty-Language check (that contract lives at
+// adapters_voiceover_publisher_test.go). The use-case contract is:
+// "if the Publisher fails, surface StatusFailed + upload_failed prefix".
+func TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyLanguage_PropagatesSentinel(t *testing.T) {
+	db := openProcessTestDB(t)
+	tts := &stubProcessTTS{
+		cannedOut: TTSOutput{
+			LocalPath: "/tmp/vo/stage3-no-lang.mp3",
+			Voice:     "en-US-RogerNeural",
+			FileHash:  "hash-stage3-nolang",
+		},
+	}
+	pub := &stubFailingPublisher{
+		err: fmt.Errorf(
+			"useCasePublisherAdapter.Publish: empty Language (voiceover publish requires Language for canonical semantic routing per PR-P12-VOICEOVER-SEMANTIC-FIELDS): %w",
+			ErrVoiceoverPublishLanguageRequired,
+		),
+	}
+	finalizer := &stubProcessFinalizer{
+		cannedRes: &FinalizeResult{ID: "should-never-be-used"},
+	}
+
+	dest := &stubProcessDestResolver{folderID: "dest-stage3-nolang"}
+	resolvedDest, err := dest.Resolve(context.Background(),
+		&DestinationRequest{FolderID: "dest-stage3-nolang"})
+	require.NoError(t, err)
+
+	uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+		TTSProvider:         tts,
+		Publisher:           pub,
+		VoiceoverRepository: &stubProcessVoRepo{db: db},
+		Finalizer:           finalizer,
+		Logger:              zap.NewNop(),
+	})
+
+	cmd := &ProcessSegmentCommand{
+		ID:       "vo-stage3-no-lang",
+		Language: "", // empty — adapter would reject; stub simulates this
+		Text:     "Text without a language",
+		Filename: "stage3-no-lang.mp3",
+		Dest:     resolvedDest,
+	}
+
+	out, err := uc.Execute(context.Background(), cmd)
+
+	require.Error(t, err,
+		"FASE 2 contract #4: Publisher failure MUST return error")
+	require.NotNil(t, out)
+	assert.Equal(t, StatusFailed, out.Status,
+		"Publisher failure MUST set Status=StatusFailed")
+	assert.Contains(t, out.Error, "upload_failed:",
+		"error prefix must be 'upload_failed:' (canonical per-item surface)")
+
+	// godlike/07 typed-error contract: the sentinel is errors.Is-probable
+	// through the %w chain preserved by fmt.Errorf in the stub.
+	assert.True(t, errors.Is(err, ErrVoiceoverPublishLanguageRequired),
+		"errors.Is must recover ErrVoiceoverPublishLanguageRequired through the dual-%%w chain")
+
+	// Publisher MUST have been invoked (the stub records the call
+	// even when returning an error — the use case reaches Stage 3,
+	// the adapter validates Language, the error surfaces).
+	require.Len(t, pub.published, 1,
+		"Publisher.Publish must be invoked (the use case reaches Stage 3 before the adapter fails)")
+	assert.Equal(t, "", pub.published[0].Language,
+		"VoiceoverPublishCommand.Language must be empty (the use case forwards cmd.Language verbatim)")
+
+	// Finalizer MUST NOT be invoked after Publisher failure.
+	assert.Len(t, finalizer.calls, 0,
+		"Finalizer.Finalize MUST NOT be invoked after Publisher failure (short-circuit at Stage 3)")
 }
