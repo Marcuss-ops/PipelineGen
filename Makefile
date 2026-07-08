@@ -479,6 +479,24 @@ smoke-run-all:
 	done
 	@echo "✅ smoke-run-all OK"
 
+# smoke-voiceover — FASE 7 E2E smoke for the voiceover pipeline.
+# Usage:
+#   make smoke-voiceover                              # use default env
+#   VELOX_ADMIN_TOKEN=<t> make smoke-voiceover         # explicit token
+#   VELOX_ADMIN_TOKEN=<t> SMOKE_DB=<path> make smoke-voiceover  # custom DB
+#
+# Runs the Go E2E smoke test at tests/operational/voiceover_e2e_smoke_test.go.
+# The test skips when VELOX_ADMIN_TOKEN is unset or -short is active.
+# Wall-clock budget: 5min (3min job poll + TTS/Drive latency).
+smoke-voiceover:
+	@echo "→ Running voiceover E2E smoke test..."
+	@if [ -z "$$VELOX_ADMIN_TOKEN" ]; then \
+		echo "❌ VELOX_ADMIN_TOKEN not set — the voiceover E2E smoke needs auth. Set VELOX_ADMIN_TOKEN and retry."; \
+		exit 1; \
+	fi
+	@go test -v -count=1 -timeout 5m -run TestVoiceoverE2ESmoke ./tests/operational/...
+	@echo "✅ smoke-voiceover OK"
+
 # Dry-run for the heavy path. Prints the would-be payloads, exits 0. Honors
 # SMOKE_DRY_RUN=1 env override for CI-friendly invocations.
 smoke-dry:
