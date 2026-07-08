@@ -54,7 +54,7 @@ func TestWireRegistry_AllCapabilitiesMounted(t *testing.T) {
 	reg := NewWireRegistry([]RouteInfo{
 		{Method: "POST", Path: "/api/stock-pipeline/run"},
 		{Method: "POST", Path: "/api/artlist/sync"},
-		{Method: "POST", Path: "/api/voiceover/generate"},
+		{Method: "POST", Path: "/api/media/voiceover/generate"},
 		{Method: "POST", Path: "/api/youtube/clip-extract"},
 		{Method: "POST", Path: "/api/register/from-youtube"},
 		{Method: "POST", Path: "/api/storage/sync"},
@@ -187,4 +187,70 @@ func TestWireRegistry_PrefixBoundaryExactMatch(t *testing.T) {
 	assert.True(t, reg.IsMounted("artlist"), "exact-prefix route /api/artlist must classify as artlist")
 	assert.True(t, reg.IsMounted("qdrant_health"), "trailing-slash route /qdrant/ must classify as qdrant_health")
 	assert.False(t, reg.IsMounted("voiceover"), "no voiceover route in this test")
+}
+
+// TestWireRegistry_VoiceoverMountedUnderMedia locks the canonical
+// voiceover prefix contract (per internal/app/wire_assets.go::WireAssets
+// assetsRouteMod wraps the Assets module under prefix `/media`,
+// voiceover module under `/voiceover`, beneath routes.go's
+// `api := engine.Group("/api")` — the resulting URL is
+// `/api/media/voiceover/*`).
+//
+// Regression guard for the 2026-07-08 incident: the prior voiceover
+// prefix `/api/voiceover` did NOT match the actual mount
+// `/api/media/voiceover/*` and the /ready JSON reported
+// `wire.voiceover: NOT_MOUNTED` while the route was live. This test
+// asserts BOTH directions:
+//
+//	(a) HappyPath: /api/media/voiceover/generate → voiceover MOUNTED.
+//	(b) SiblingBoundary: /api/voiceover/generate (a hypothetical
+//	    non-aggregated route) does NOT classify as voiceover when
+//	    NEITHER prefix is registered — protects against a future
+//	    agent accidentally widening the prefix to also match
+//	    /api/voiceover/* while keeping the mount at /api/media.
+//
+// godlike/06 SSOT (one canonical owner per fact): this test pins the
+// canonical prefix contract; the wire.go prefix constant + this test
+// form the SSOT lockstep pair — updates to either require the other.
+func TestWireRegistry_VoiceoverMountedUnderMedia(t *testing.T) {
+	t.Run("happy_path_mounts_under_media", func(t *testing.T) {
+		reg := NewWireRegistry([]RouteInfo{
+			{Method: "POST", Path: "/api/media/voiceover/generate"},
+		})
+		assert.True(t, reg.IsMounted("voiceover"),
+			"voiceover MUST be MOUNTED when /api/media/voiceover/generate is registered "+
+				"(this is the canonical Wire-clipped assets aggregate path)")
+		all := reg.All()
+		assert.Equal(t, WireMounted, all["voiceover"])
+	})
+
+	t.Run("sibling_boundary_does_not_match_api_voiceover", func(t *testing.T) {
+		// Sibling-prefix boundary: hypothetical /api/voiceover/generate
+		// (without /media/) must NOT classify as voiceover when the
+		// canonical mount path is /api/media/voiceover/*.
+		reg := NewWireRegistry([]RouteInfo{
+			{Method: "POST", Path: "/api/voiceover/generate"},
+		})
+		assert.False(t, reg.IsMounted("voiceover"),
+			"/api/voiceover/generate must NOT classify as voiceover (canonical mount is /api/media/voiceover/*; "+
+				"sibling-prefix boundary enforcement prevents voiceoverX-style false positives)")
+		assert.False(t, reg.IsMounted("stock"), "stock unaffected by this test")
+	})
+
+	t.Run("all_lit_at_canonical_prefix", func(t *testing.T) {
+		// Production realistic: stock + artlist registered at /api/*,
+		// voiceover registered at the assets aggregate /api/media/voiceover/*
+		// (assetsRouteMod wraps all 7 capability descriptors).
+		reg := NewWireRegistry([]RouteInfo{
+			{Method: "POST", Path: "/api/stock-pipeline/run"},
+			{Method: "POST", Path: "/api/artlist/sync"},
+			{Method: "POST", Path: "/api/media/voiceover/generate"},
+		})
+		all := reg.All()
+		assert.Equal(t, WireMounted, all["stock"])
+		assert.Equal(t, WireMounted, all["artlist"])
+		assert.Equal(t, WireMounted, all["voiceover"],
+			"with the canonical assets aggregate prefix /api/media/voiceover/generate, "+
+				"voiceover MUST report MOUNTED — this is the regression guard")
+	})
 }
