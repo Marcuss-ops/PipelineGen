@@ -329,9 +329,10 @@ func TestQueryActorFieldPresent(t *testing.T) {
 			WorkspaceID: "ws-1",
 			UserID:      "u-1",
 			IsAdmin:     false,
+			IsSystem:    false,
 		},
 	}
-	if q.Actor.WorkspaceID != "ws-1" || q.Actor.UserID != "u-1" || q.Actor.IsAdmin {
+	if q.Actor.WorkspaceID != "ws-1" || q.Actor.UserID != "u-1" || q.Actor.IsAdmin || q.Actor.IsSystem {
 		t.Fatalf("Actor field round-trip broken: %+v", q.Actor)
 	}
 	if q.Actor.IsZero() {
@@ -341,7 +342,7 @@ func TestQueryActorFieldPresent(t *testing.T) {
 	if !zeroQ.Actor.IsZero() {
 		t.Fatal("zero Actor must report IsZero=true")
 	}
-	if zeroQ.Actor.WorkspaceID != "" || zeroQ.Actor.UserID != "" || zeroQ.Actor.IsAdmin {
+	if zeroQ.Actor.WorkspaceID != "" || zeroQ.Actor.UserID != "" || zeroQ.Actor.IsAdmin || zeroQ.Actor.IsSystem {
 		t.Fatalf("zero Query.Actor must have all fields blank, got %+v", zeroQ.Actor)
 	}
 }

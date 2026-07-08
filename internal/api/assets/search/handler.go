@@ -114,10 +114,11 @@ func (h *Handler) Search(c *gin.Context) {
 	// search with mode=hybrid fails with
 	// "SearchScope.WorkspaceID is required" from the Qdrant
 	// filter compiler, producing 503 + ErrSemanticBackendUnavailable.
-	actor := search.Actor{IsAdmin: true}
+	actor := search.Actor{IsAdmin: true, IsSystem: true}
 	if isAdmin, ok := c.Get("is_admin"); ok {
 		if adminFlag, ok2 := isAdmin.(bool); ok2 {
 			actor.IsAdmin = adminFlag
+			actor.IsSystem = adminFlag
 		}
 	}
 
