@@ -44,7 +44,9 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 
 	// Resolve text search queries to YouTube URLs before passing to
 	// the orchestrator, which only understands DirectURLs.
-	s.resolveInputQueries(ctx, input)
+	if err := s.resolveInputQueries(ctx, input); err != nil {
+		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: %w", err)
+	}
 
 	cfg := OrchestratorConfig{
 		JobId:            jobID,
@@ -191,10 +193,13 @@ func projectManifestToPipelineResult(manifest *job.ArtifactManifest) *PipelineRe
 // godlike/07 no-fake-availability: nil receiver, nil input, and empty
 // SearchQueries are no-ops (not silent-success — the orchestrator will
 // still fail loudly later if no sources are available).
-func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) {
+func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) error {
 	if s == nil || input == nil || len(input.SearchQueries) == 0 {
-		return
+		return nil
 	}
+	total := len(input.SearchQueries)
+	failed := 0
+	var lastErr error
 	for _, query := range input.SearchQueries {
 		sources, err := s.resolveQuery(ctx, query)
 		if err != nil {
@@ -202,6 +207,8 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) {
 				s.log.Warn("stock: failed to resolve search query, skipping",
 					zap.String("query", query), zap.Error(err))
 			}
+			failed++
+			lastErr = err
 			continue
 		}
 		for _, src := range sources {
@@ -222,6 +229,17 @@ func (s *Service) resolveInputQueries(ctx context.Context, input *RunInput) {
 	// raw text as a URL (firstSource checks SearchQueries after
 	// DirectURLs — the resolved URLs are already in DirectURLs).
 	input.SearchQueries = nil
+	// PR-STOCK-QUERY-RESOLUTION-FAIL-CLOSED (July 2026): when ALL
+	// queries fail to resolve, return a typed error instead of
+	// silently clearing SearchQueries. Without this, the
+	// orchestrator hits the misleading "no sources to plan" error
+	// in StockPlanStep.Run instead of surfacing the actual yt-dlp
+	// failure (n-challenge, cookies, network).
+	if failed > 0 && failed == total {
+		return fmt.Errorf("%w: %d/%d queries failed, last error: %v",
+			ErrStockPipelineAllQueriesFailed, failed, total, lastErr)
+	}
+	return nil
 }
 
 // effectiveChunkDurationSec resolves the per-run chunk duration

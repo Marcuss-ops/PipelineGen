@@ -212,6 +212,15 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: scripts: %w", err)
 	}
 
+	// Step 3a — ScriptDocs: PR-SCRIPT-DOCS-DRIFT-2026-07-08 closure.
+	// Mounts /api/script-docs/* (POST /generate today; future endpoints
+	// for /reset + /state land in lockstep with ReActPort surface
+	// extensions). Gated on cfg.Features.ScriptDocsEnabled. ReAct
+	// typed port is nil-tolerant; composition root passes nil today.
+	if err := registerScriptDocs(registry, log, cfg); err != nil {
+		return nil, fmt.Errorf("wire registry: script-docs: %w", err)
+	}
+
 	// Step 4 — Images: single route module; consumes wiring.MediaIngest.Service.
 	if err := registerImages(registry, log, cfg, root, wiring); err != nil {
 		return nil, fmt.Errorf("wire registry: images: %w", err)

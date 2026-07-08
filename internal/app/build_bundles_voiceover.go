@@ -336,6 +336,7 @@ func buildVoiceoverService(
 			VoiceoverRepository:   voRepoAdapter,
 			DefaultFolderResolver: defaultFolderResolver,
 			Finalizer:             finalizer,
+			OutputDir:             voDir,
 			Logger:                log,
 		})
 		log.Info("voiceover.processVoiceoverItemUseCase wired (Step 8/12 — child pipeline for voiceover.generate_item jobs)")

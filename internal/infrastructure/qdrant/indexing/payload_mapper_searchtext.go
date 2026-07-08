@@ -87,6 +87,11 @@ func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
 			"source_url": assetpkg.MetadataString(asset.Metadata, "source_url"),
 			"start_sec":  fmtFloatMetadata(asset.Metadata, "start_sec"),
 			"end_sec":    fmtFloatMetadata(asset.Metadata, "end_sec"),
+			// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent folder
+			// metadata for search-text enrichment so Qdrant BM25 can
+			// surface "open in Drive folder" navigation from search.
+			"timestamp_drive_folder_link": assetpkg.MetadataString(asset.Metadata, "timestamp_drive_folder_link"),
+			"timestamp_folder_id":         assetpkg.MetadataString(asset.Metadata, "timestamp_folder_id"),
 		}
 	}
 

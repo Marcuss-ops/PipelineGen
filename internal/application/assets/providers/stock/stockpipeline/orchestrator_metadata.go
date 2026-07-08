@@ -178,6 +178,13 @@ func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint str
 			SHA256:    c.SHA256,
 			SizeBytes: c.SizeBytes,
 			LocalPath: c.LocalPath,
+			// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent folder metadata
+			// propagated verbatim from ChunkState (per-run scalar; ChunkState
+			// is the canonical owner after step_publish.go stamps the same
+			// value onto every chunk via metadataPublished.Location.FolderID
+			// backfill in Phase 2).
+			TimestampDriveFolderLink: c.TimestampDriveFolderLink,
+			TimestampFolderID:        c.TimestampFolderID,
 		}
 		entries = append(entries, entry)
 	}

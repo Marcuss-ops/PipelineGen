@@ -277,6 +277,18 @@ func withNamespace(namespace string, inner PathBuilder) PathBuilder {
 // incomplete semantic metadata don't loop forever. New callers
 // SHOULD be validated at the handler boundary.
 func YouTubeClipPath(req PublishRequest) ([]string, error) {
+	if strings.TrimSpace(req.RootFolderOverride) != "" {
+		leaf := firstNonEmpty(
+			strings.TrimSpace(req.Subject),
+			strings.TrimSpace(req.Group),
+			strings.TrimSpace(req.Category),
+		)
+		if leaf != "" {
+			return []string{
+				pathutil.SafeFolderName(leaf),
+			}, nil
+		}
+	}
 	group := firstNonEmpty(
 		strings.TrimSpace(req.Group),
 		strings.TrimSpace(req.Category),

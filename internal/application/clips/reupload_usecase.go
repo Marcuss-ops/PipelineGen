@@ -245,14 +245,15 @@ func (uc *ReuploadUseCase) Execute(ctx context.Context, req ReuploadRequest) (*R
 	}
 	destKey := destinationForSource(req.Source)
 	pubReq := delivery.PublishRequest{
-		Destination:    destKey,
-		LocalPath:      clip.LocalPath(),
-		Filename:       filename,
-		AssetID:        clip.ID,
-		ProjectID:      strings.TrimSpace(string(clip.Source)), // auto-derive Project from clip.Source (godlike/06 SSOT, PR-P12-CLIPS-AND-BOOKS, July 2026)
-		Group:          strings.TrimSpace(clip.Group),          // explicit caller-provided group
-		Subject:        filename,                               // per-file identity (mirrors soundeffect/handler.go canonical pattern)
-		ConflictPolicy: delivery.ConflictOverwrite,             // reupload → replace existing
+		Destination:        destKey,
+		LocalPath:          clip.LocalPath(),
+		Filename:           filename,
+		AssetID:            clip.ID,
+		ProjectID:          strings.TrimSpace(string(clip.Source)), // auto-derive Project from clip.Source (godlike/06 SSOT, PR-P12-CLIPS-AND-BOOKS, July 2026)
+		Group:              strings.TrimSpace(clip.Group),          // explicit caller-provided group
+		Subject:            filename,                               // per-file identity (mirrors soundeffect/handler.go canonical pattern)
+		RootFolderOverride: folderID,
+		ConflictPolicy:     delivery.ConflictOverwrite,             // reupload → replace existing
 		// RootFolderOverride RETIRED per PR-P12-CLIPS-AND-BOOKS (July 2026, deadline 2026-08-08).
 		// The canonical Publisher resolves the target folder via
 		// DestinationRegistry + DestinationPolicy.RootFolderID.

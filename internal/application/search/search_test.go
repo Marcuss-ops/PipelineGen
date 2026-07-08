@@ -200,15 +200,18 @@ func TestRegistryEligibleFiltersBySources(t *testing.T) {
 		input     []string
 		wantNames []string
 	}{
-		{"canonical_youtube", []string{"youtube"}, []string{"youtube"}},
-		{"alias_yt_resolves_to_youtube", []string{"yt"}, []string{"youtube"}},
-		{"artlist_canonical", []string{"artlist"}, []string{"artlist"}},
-		{"clips_alias_resolves_to_local", []string{"clips"}, []string{"local"}},
+		{"canonical_youtube", []string{"youtube"}, []string{"semantic", "youtube"}},
+		{"alias_yt_resolves_to_youtube", []string{"yt"}, []string{"semantic", "youtube"}},
+		{"artlist_canonical", []string{"artlist"}, []string{"artlist", "semantic"}},
+		// PR-SEARCH-HANDLER-MOUNT (July 2026): semantic backend
+		// is always included (cross-source meta-backend with
+		// internal source filter via Qdrant filter.Source).
+		{"clips_alias_resolves_to_local", []string{"clips"}, []string{"local", "semantic"}},
 		{"vector_alias_resolves_to_semantic", []string{"vector"}, []string{"semantic"}},
-		{"multiple_sources", []string{"youtube", "artlist"}, []string{"artlist", "youtube"}},
-		{"case_insensitive_YT_upper", []string{"YT"}, []string{"youtube"}},
-		{"mixed_case_ArTlist", []string{"ArTlist"}, []string{"artlist"}},
-		{"mixed_canoncials_aliases", []string{"yt", "stock"}, []string{"stock", "youtube"}},
+		{"multiple_sources", []string{"youtube", "artlist"}, []string{"artlist", "semantic", "youtube"}},
+		{"case_insensitive_YT_upper", []string{"YT"}, []string{"semantic", "youtube"}},
+		{"mixed_case_ArTlist", []string{"ArTlist"}, []string{"artlist", "semantic"}},
+		{"mixed_canoncials_aliases", []string{"yt", "stock"}, []string{"semantic", "stock", "youtube"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

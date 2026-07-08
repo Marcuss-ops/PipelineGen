@@ -147,6 +147,18 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 	}
 	drivePath := cleanDrivePath(assetpkg.MetadataString(asset.Metadata, "drive_path"))
 	indexingStatus := assetpkg.MetadataString(asset.Metadata, "indexing_status")
+	// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent timestamp Drive
+	// folder metadata. Read from top-level AssetData first, fall
+	// back to metadata_json for backward compat with old callers
+	// that haven't yet surfaced these fields explicitly.
+	timestampDriveFolderLink := asset.TimestampDriveFolderLink
+	if timestampDriveFolderLink == "" {
+		timestampDriveFolderLink = assetpkg.MetadataString(asset.Metadata, "timestamp_drive_folder_link")
+	}
+	timestampFolderID := asset.TimestampFolderID
+	if timestampFolderID == "" {
+		timestampFolderID = assetpkg.MetadataString(asset.Metadata, "timestamp_folder_id")
+	}
 
 	// EmbeddingArtifact population needs the dimensional vectors; resolve
 	// them once so we don't recurse via the Mapper from a free function.
@@ -209,9 +221,14 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			PolicyVersion:    policyVersion,
 			DrivePath:        drivePath,
 			IndexingStatus:   indexingStatus,
-			CreatedAt:        asset.CreatedAt,
-			UpdatedAt:        asset.UpdatedAt,
-			DeletedAt:        asset.DeletedAt,
+			// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent timestamp
+			// folder metadata propagated through the airlock (top-level
+			// first, metadata_json fallback).
+			TimestampDriveFolderLink: timestampDriveFolderLink,
+			TimestampFolderID:        timestampFolderID,
+			CreatedAt:                asset.CreatedAt,
+			UpdatedAt:                asset.UpdatedAt,
+			DeletedAt:                asset.DeletedAt,
 		},
 		Embeddings: map[VectorChannel]EmbeddingArtifact{},
 	}

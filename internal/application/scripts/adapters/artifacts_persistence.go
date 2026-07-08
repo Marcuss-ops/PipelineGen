@@ -46,6 +46,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.uber.org/zap"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -72,7 +74,11 @@ func PersistGeneratedArtifacts(
 	ctx context.Context,
 	jobID string,
 	result *domainScript.GenerationResult,
+	log *zap.Logger,
 ) ([]scriptpkg.Artifact, error) {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	if result == nil {
 		return nil, nil
 	}
@@ -134,6 +140,11 @@ func PersistGeneratedArtifacts(
 				SHA256:    pdfSHA,
 				Required:  true,
 			})
+		} else {
+			log.Warn("artifacts_persistence: document-pdf file not on disk — skipping artifact (source_version will be absent if document pipeline emits separately)",
+				zap.String("job_id", jobID),
+				zap.String("pdf_path", pdfPath),
+				zap.Error(statErr))
 		}
 	}
 
@@ -179,7 +190,7 @@ func PersistGeneratedArtifacts(
 	// if multiple scenes share the same language, only one manifest
 	// entry is created and the per-scene voices are uploaded as part
 	// of the same Drive asset via per-language disambiguation.
-	// ── 5. voiceover (OPTIONAL, language-grouped) ──────────────────
+	//
 	// PR-OUTBOX-SOURCE-VERSION: compute SHA256 + SizeBytes for
 	// voiceover artifacts. Without this, FinalizeAsset emits
 	// outbox events with empty source_version, causing dead_letter
@@ -222,6 +233,12 @@ func PersistGeneratedArtifacts(
 				SHA256:    voSHA,
 				Required:  false,
 			})
+		} else {
+			log.Debug("artifacts_persistence: voiceover file not on disk — skipping artifact",
+				zap.String("job_id", jobID),
+				zap.String("lang", lang),
+				zap.String("vo_path", voPath),
+				zap.Error(voStatErr))
 		}
 	}
 

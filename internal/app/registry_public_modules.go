@@ -25,6 +25,7 @@ import (
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
+	scriptdocsapi "github.com/Marcuss-ops/PipelineGen/internal/api/script-docs"
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
@@ -252,6 +253,41 @@ func registerSearchQueriesCapability(registry *module.Registry, log *zap.Logger,
 		return fmt.Errorf("wire registry: search_queries module: %w", err)
 	}
 	return nil
+}
+
+// registerScriptDocs wires the /api/script-docs/* capability via
+// scriptdocs.Build. Closes PR-SCRIPT-DOCS-DRIFT-2026-07-08: the
+// canonical /api/script-docs/generate route is now mounted (returns
+// 503 with ErrReActNotWired diagnostic when the typed ReActPort is
+// not wired at the composition root — the canonical pre-fail-closed
+// posture for optional modules).
+//
+// The route module is gated on cfg.Features.ScriptDocsEnabled
+// (canonical ScriptDocsEnabled feature flag from
+// internal/platform/config/types_misc.go). The ReAct typed port
+// itself is nil-tolerant — composition root passes nil today (the
+// Python ReAct bridge is a forward-pointer CUTOVER); a future
+// CUTOVER injects a concrete adapter.
+//
+// Step 3 placement: script-docs routes are mounted alongside the
+// script-flow routes (both are script-domain surfaces). Mirrors
+// the registerScripts placement at Step 3.
+func registerScriptDocs(registry *module.Registry, log *zap.Logger, cfg *config.Config) error {
+	scriptDocsDesc, err := scriptdocsapi.Build(scriptdocsapi.Dependencies{
+		Port:        nil, // forward-pointer: composition root wires a concrete adapter on CUTOVER
+		EnabledFunc: func() bool { return cfg.Features.ScriptDocsEnabled },
+		ModuleOpts:  nil, // no per-feature middleware (matches the script pattern)
+		Logger:      log,
+	})
+	if err != nil {
+		return fmt.Errorf("wire registry: script-docs: %w", err)
+	}
+	sdd, ok := scriptDocsDesc.(*scriptdocsapi.ScriptDocsDescriptor)
+	if !ok || sdd == nil {
+		return fmt.Errorf("wire registry: script-docs: scriptdocs.Build returned unexpected descriptor type %T (want *scriptdocsapi.ScriptDocsDescriptor)", scriptDocsDesc)
+	}
+	log.Info("created ScriptDocs module (ReAct typed port wired at composition time; nil-port pre-CUTOVER returns 503 ErrReActNotWired)")
+	return tryRegisterModuleStrict(registry, log, sdd, WithRegistrationPoint("register.ScriptDocs"))
 }
 
 // registerAdminModule wires the /api/admin/* capability via admin.Build.

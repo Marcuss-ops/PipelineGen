@@ -16,15 +16,15 @@
 // surface for the writer contract.
 //
 // godlike/06 SSOT (one canonical owner per fact):
-//  - media_assets table schema is inlined in openPartialStateDB; it
-//    mirrors the canonical 17-column shape in
-//    internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go::upsertClipInTx.
-//  - outbox_events table schema is inlined in openPartialStateDB; it
-//    mirrors the canonical shape in
-//    internal/infrastructure/database/sqlite/outboxevents/repository.go::Enqueue.
-//  - future schema changes that break this test are the canonical
-//    signal that the E2E companion needs to be updated in lockstep
-//    (the test is the regression guard, not the source of truth).
+//   - media_assets table schema is inlined in openPartialStateDB; it
+//     mirrors the canonical 17-column shape in
+//     internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go::upsertClipInTx.
+//   - outbox_events table schema is inlined in openPartialStateDB; it
+//     mirrors the canonical shape in
+//     internal/infrastructure/database/sqlite/outboxevents/repository.go::Enqueue.
+//   - future schema changes that break this test are the canonical
+//     signal that the E2E companion needs to be updated in lockstep
+//     (the test is the regression guard, not the source of truth).
 package usecase
 
 import (
@@ -40,11 +40,11 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 
-	_ "github.com/mattn/go-sqlite3"
-	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
+	assetsdb "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // openPartialStateDB creates an in-memory SQLite DB with the canonical
@@ -94,11 +94,11 @@ func openPartialStateDB(t *testing.T) (*sql.DB, *outboxevents.Repository) {
 			aggregate_id TEXT,
 			aggregate_type TEXT,
 			payload_json TEXT,
-			status TEXT,
+			status TEXT NOT NULL DEFAULT 'pending',
 			attempt_count INTEGER DEFAULT 0,
 			max_attempts INTEGER DEFAULT 5,
 			last_error TEXT,
-			event_key TEXT,
+			event_key TEXT UNIQUE,
 			worker_id TEXT,
 			lease_id TEXT,
 			lease_expiry TEXT,
@@ -184,9 +184,9 @@ func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(
 	// ── 6) Build deps with the REAL writer (the only difference from Test 9) ──
 	deps := validProcessSegmentDeps()
 	deps.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-	deps.Hash = testStubHash{}    // non-empty fileHash so Step 5 passes
-	deps.Writer = writer          // REAL writer (not stubWriterAssetRecorder)
-	deps.Log = capturedLog        // override zap.NewNop default
+	deps.Hash = testStubHash{}     // non-empty fileHash so Step 5 passes
+	deps.Writer = writer           // REAL writer (not stubWriterAssetRecorder)
+	deps.Log = capturedLog         // override zap.NewNop default
 	deps.MetadataService = metaSvc // always-fail Step 10 service
 	uc := NewProcessYouTubeSegmentUseCase(deps)
 
@@ -248,12 +248,12 @@ func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(
 	// non-empty canonical v1 envelope (validates the writer's
 	// payload construction, not just the row existence).
 	var (
-		evtType     string
-		evtAggID    string
-		evtAggType  string
-		evtStatus   string
-		evtKey      string
-		evtPayload  string
+		evtType    string
+		evtAggID   string
+		evtAggType string
+		evtStatus  string
+		evtKey     string
+		evtPayload string
 	)
 	err = db.QueryRowContext(context.Background(),
 		`SELECT event_type, aggregate_id, aggregate_type, status, event_key, payload_json

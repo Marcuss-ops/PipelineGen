@@ -80,6 +80,17 @@ func TestNormalizeExtractionDestination_DefaultsVideoSubfolder(t *testing.T) {
 	require.True(t, createSubfolder)
 }
 
+func TestNormalizeExtractionDestination_DefaultsVideoSubfolderWithoutGroup(t *testing.T) {
+	group, subfolder, folderPath, createSubfolder := normalizeExtractionDestination(&yttypes.DestinationRequest{
+		FolderID: "root-folder-id",
+	}, "yt_vdC5GXxS-qU")
+
+	require.Empty(t, group)
+	require.Equal(t, "vdC5GXxS-qU", subfolder)
+	require.Equal(t, "vdC5GXxS-qU", folderPath)
+	require.True(t, createSubfolder)
+}
+
 func TestYouTubeClipHandler_Extract_PreparesFolderPathAndPayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -121,9 +132,7 @@ func TestYouTubeClipHandler_Extract_PreparesFolderPathAndPayload(t *testing.T) {
 	handler.Extract(ctx)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Len(t, svc.folderCalls, 2)
-	require.Equal(t, folderCall{name: "Pacquiao Vs Broner", parentID: "root-folder-id"}, svc.folderCalls[0])
-	require.Equal(t, folderCall{name: "vdC5GXxS-qU", parentID: "root-folder-id/Pacquiao Vs Broner"}, svc.folderCalls[1])
+	require.Empty(t, svc.folderCalls, "HTTP handler must not perform Drive folder creation synchronously")
 
 	require.NotNil(t, jobsSvc.lastReq)
 	payload, ok := jobsSvc.lastReq.Payload.(map[string]any)
@@ -131,7 +140,9 @@ func TestYouTubeClipHandler_Extract_PreparesFolderPathAndPayload(t *testing.T) {
 
 	dest, ok := payload["destination"].(map[string]any)
 	require.True(t, ok, "destination must be present in payload")
-	require.Equal(t, "root-folder-id/Pacquiao Vs Broner/vdC5GXxS-qU", dest["folder_id"])
+	require.Equal(t, "root-folder-id", dest["folder_id"])
+	require.Equal(t, "Pacquiao Vs Broner", dest["group"])
+	require.Equal(t, "vdC5GXxS-qU", dest["subfolder_name"])
 	require.Equal(t, "Pacquiao Vs Broner/vdC5GXxS-qU", dest["folder_path"])
 	require.Equal(t, true, dest["create_subfolder"])
 }
