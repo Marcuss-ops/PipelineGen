@@ -257,9 +257,9 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 			drive_file_id, drive_link, download_link,
 			local_path, file_hash,
 			folder_id, folder_path,
-			source_version,
+			source_version, search_text,
 			lifecycle_state, updated_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
@@ -272,6 +272,7 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 			folder_id = excluded.folder_id,
 			folder_path = excluded.folder_path,
 			source_version = excluded.source_version,
+			search_text = excluded.search_text,
 			updated_at = excluded.updated_at
 	`,
 		clipID,
@@ -287,6 +288,7 @@ func upsertClipInTx(ctx context.Context, tx *sql.Tx, clipID string, asset youtub
 		asset.Drive.FolderID,
 		routeEmpty(asset.Drive.FolderPath, asset.Drive.FolderID),
 		sourceVersion,
+		routeEmpty(asset.SearchText, ""),
 		nowStr,
 		nowStr,
 	)

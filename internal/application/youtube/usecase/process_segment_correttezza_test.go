@@ -722,3 +722,153 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_PartialState(t *testing.T) {
 	require.Equal(t, realPath, fields["local_path"])
 	require.Equal(t, string(FailureCodeMetadataFailed), fields["failure_code"])
 }
+
+// ── Test 10: PR-YT-DOD-10 search_text composition ────────────────────
+
+// TestComposeYouTubeClipSearchText_HappyPath pins the DoD 10 contract:
+// search_text MUST contain title, summary, hook, topics, source_url
+// (NOT just the filename like "yt_vdC5GXxS-qU_146_155_v1.mp4").
+//
+// Fields in order: title → summary → hook → topics → source_url
+// → speakers → mentioned_people. Each must appear as a space-joined
+// token in the canonical order. Empty/nil fields are silently dropped.
+func TestComposeYouTubeClipSearchText_HappyPath(t *testing.T) {
+	md := youtubetypes.CanonicalClipMetadata{
+		Title:           "Pacquiao vs Broner Press Conference",
+		Summary:         "Broner interrupts Pacquiao, yells at him to stop worrying about Floyd Mayweather.",
+		Topics:          []string{"boxing", "press conference", "trash talk"},
+		SourceURL:       "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+		Speakers:        []string{"Adrien Broner", "Manny Pacquiao"},
+		MentionedPeople: []string{"Floyd Mayweather"},
+		SourceProvider:  "youtube",
+		VideoID:         "vdC5GXxS-qU",
+	}
+	hook := "I'm about to whoop your ass, stop worrying about Floyd! Think about me!"
+
+	got := composeYouTubeClipSearchText(md, hook)
+
+	// (a) All 7 canonical segments MUST be present in order.
+	require.Contains(t, got, md.Title, "search_text MUST contain title")
+	require.Contains(t, got, md.Summary, "search_text MUST contain summary")
+	require.Contains(t, got, hook, "search_text MUST contain hook")
+	require.Contains(t, got, md.SourceURL, "search_text MUST contain source_url")
+	require.Contains(t, got, "boxing press conference trash talk", "search_text MUST contain space-joined topics")
+	require.Contains(t, got, "Adrien Broner Manny Pacquiao", "search_text MUST contain space-joined speakers")
+	require.Contains(t, got, "Floyd Mayweather", "search_text MUST contain mentioned people")
+
+	// (b) search_text MUST NOT be just the filename.
+	require.NotContains(t, got, "yt_vdC5GXxS-qU",
+		"search_text MUST NOT contain the clip ID (that would be just-the-filename anti-pattern)")
+	require.NotContains(t, got, ".mp4",
+		"search_text MUST NOT contain .mp4 extension")
+
+	// (c) Order verification: title before summary before hook before source_url.
+	ti := strings.Index(got, md.Title)
+	si := strings.Index(got, md.Summary)
+	hi := strings.Index(got, hook)
+	ui := strings.Index(got, md.SourceURL)
+	require.True(t, ti < si, "title (%d) must appear before summary (%d)", ti, si)
+	require.True(t, si < hi, "summary (%d) must appear before hook (%d)", si, hi)
+	require.True(t, hi < ui, "hook (%d) must appear before source_url (%d)", hi, ui)
+}
+
+// TestComposeYouTubeClipSearchText_EmptyFieldsDropped pins the
+// godlike/07 minimum-blast-radius contract: empty fields produce
+// no dangling " ," fragments in the output.
+func TestComposeYouTubeClipSearchText_EmptyFieldsDropped(t *testing.T) {
+	// Only title and source_url are populated.
+	md := youtubetypes.CanonicalClipMetadata{
+		Title:     "Only Title",
+		SourceURL: "https://www.youtube.com/watch?v=abc",
+	}
+	got := composeYouTubeClipSearchText(md, "") // empty hook
+
+	// Must contain the two populated fields, nothing else.
+	require.Contains(t, got, "Only Title")
+	require.Contains(t, got, "https://www.youtube.com/watch?v=abc")
+	// No dangling separators or empty segments.
+	require.NotContains(t, got, "  ", "empty fields must not produce double spaces")
+	require.NotContains(t, got, " ,", "empty fields must not produce dangling commas")
+}
+
+// TestComposeYouTubeClipSearchText_AllEmptyReturnsEmpty pins the
+// nil-safe contract: all-empty input → empty output.
+func TestComposeYouTubeClipSearchText_AllEmptyReturnsEmpty(t *testing.T) {
+	got := composeYouTubeClipSearchText(youtubetypes.CanonicalClipMetadata{}, "")
+	require.Equal(t, "", got, "all-empty metadata must produce empty search_text")
+}
+
+// TestComposeYouTubeClipSearchText_TopicsOnly pins the edge case
+// where only topics are populated (no title/summary/hook).
+func TestComposeYouTubeClipSearchText_TopicsOnly(t *testing.T) {
+	md := youtubetypes.CanonicalClipMetadata{
+		Topics: []string{"boxing", "press conference"},
+	}
+	got := composeYouTubeClipSearchText(md, "")
+	require.Equal(t, "boxing press conference", got,
+		"topics-only must produce space-joined topics")
+}
+
+// TestBuildClipAsset_SetsSearchText pins the wiring between
+// buildClipAsset and composeYouTubeClipSearchText: when the builder
+// receives rich metadata (title + summary + hook + topics + source_url),
+// the returned ClipAsset.SearchText MUST be non-empty and contain
+// the expected human-readable fields (NOT the clip ID).
+//
+// This is the companion to TestBuildClipAsset_CanonicalShape (which
+// creates a ClipAsset literal — not via the builder). Together they
+// lock the full SearchText contract: literal shape + builder wiring.
+func TestBuildClipAsset_SetsSearchText(t *testing.T) {
+	cmd := youtubetypes.ProcessSegmentCommand{
+		VideoID:       "vdC5GXxS-qU",
+		VideoURL:      "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+		OutDir:        "/tmp/yt",
+		DriveFolderID: "folder_x",
+		Segment: youtubetypes.Segment{
+			Name:    "Broner yells at Pacquiao",
+			Summary: "Broner interrupts, points at Pacquiao and yells at him.",
+			Topics:  []string{"boxing", "press conference"},
+			Hook:    "Stop worrying about Floyd! Think about me!",
+		},
+	}
+	out := youtubetypes.ProcessSegmentResult{
+		Item: youtubetypes.ExtractItem{
+			StartSeconds: 146,
+			EndSeconds:   155,
+			Duration:     9,
+			LocalPath:    "/tmp/yt/yt_vdC5GXxS-qU_146_155_v1.mp4",
+			DriveFileID:  "drive_x",
+			DriveLink:    "https://drive.google.com/file/d/drive_x/view",
+		},
+	}
+
+	asset := buildClipAsset("yt_vdC5GXxS-qU_146_155_v1", cmd, out, "abc123def", "v1")
+
+	// (a) SearchText MUST be non-empty and contain the human-readable
+	//     fields, NOT the clip ID or file extension.
+	require.NotEmpty(t, asset.SearchText,
+		"buildClipAsset MUST populate SearchText (DoD 10 contract)")
+	require.Contains(t, asset.SearchText, "Broner yells at Pacquiao",
+		"SearchText MUST contain title (segment name)")
+	require.Contains(t, asset.SearchText, "Broner interrupts",
+		"SearchText MUST contain summary")
+	require.Contains(t, asset.SearchText, "Stop worrying about Floyd",
+		"SearchText MUST contain hook")
+	require.Contains(t, asset.SearchText, "boxing press conference",
+		"SearchText MUST contain space-joined topics")
+	require.Contains(t, asset.SearchText, "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+		"SearchText MUST contain source_url")
+
+	// (b) SearchText MUST NOT be just the filename.
+	require.NotContains(t, asset.SearchText, "yt_vdC5GXxS-qU_146_155_v1",
+		"SearchText MUST NOT leak the clip ID")
+	require.NotContains(t, asset.SearchText, ".mp4",
+		"SearchText MUST NOT contain .mp4 extension")
+
+	// (c) SearchText MUST be on the ClipAsset struct (the writer reads
+	//     it from there), not buried inside Metadata.
+	require.Equal(t, "yt_vdC5GXxS-qU_146_155_v1", asset.ID,
+		"sanity: ClipAsset.ID must be canonical clip ID")
+	require.Equal(t, "v1", asset.PolicyVersion,
+		"sanity: PolicyVersion must be forwarded verbatim")
+}

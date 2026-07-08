@@ -277,6 +277,7 @@ type ClipAsset struct {
 	VideoID       string
 	LocalPath     string
 	FileHash      string
+	SearchText    string
 	Drive         ClipAssetDrive
 	Coordinates   ClipAssetCoordinates
 	Metadata      CanonicalClipMetadata
