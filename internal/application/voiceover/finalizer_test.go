@@ -116,6 +116,13 @@ func (r *finalizerTestRepo) CountByDriveFileIDTx(_ context.Context, _ *sql.Tx, _
 	return "", 0, nil
 }
 
+func (r *finalizerTestRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx, idempotencyKey string) (string, error) {
+	if idempotencyKey == "" {
+		return "", sql.ErrNoRows
+	}
+	return "", sql.ErrNoRows
+}
+
 var _ VoiceoverRepository = (*finalizerTestRepo)(nil)
 
 // ─────────────────────────────────────────────────────────────────────

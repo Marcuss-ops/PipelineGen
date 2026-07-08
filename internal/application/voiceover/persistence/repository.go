@@ -85,6 +85,26 @@ type Repository interface {
 		currentID string,
 		driveFileID string,
 	) (matchedID string, count int, err error)
+
+	// FindByIdempotencyKeyTx runs the FASE 3 idempotency gate
+	// (July 2026) INSIDE the caller-owned tx. The gate fires BEFORE
+	// the dedupe gate (Step 1) so a retry of the same job+text+language
+	// triple short-circuits the entire 6-step sequence.
+	//
+	// Returns the matched voiceover row ID when a prior row with the
+	// same idempotency_key exists and is still usable (idempotency
+	// gate fires). Returns ("", ErrNoRows) when no match exists
+	// (first-time run or key collision — the dedupe gate handles
+	// the Drive-side check).
+	//
+	// Empty idempotencyKey short-circuits to ("", sql.ErrNoRows, nil)
+	// — the gate is intentionally skipped for pre-FASE-3 callers
+	// that don't supply a key (backward-compat).
+	FindByIdempotencyKeyTx(
+		ctx context.Context,
+		tx *sql.Tx,
+		idempotencyKey string,
+	) (matchedID string, err error)
 }
 
 // VoiceoverRecord is the canonical column-set for the voiceovers
@@ -142,4 +162,17 @@ type VoiceoverRecord struct {
 	Metadata     string
 	CreatedAt    string
 	UpdatedAt    string
+
+	// IdempotencyKey is the FASE 3 (July 2026) deterministic retry-safe
+	// deduplication key. Stored in the voiceovers.idempotency_key column
+	// (migration 132). The UNIQUE INDEX idx_voiceovers_idempotency
+	// enforces ONE row per non-empty key; the Step 0 gate in the finalizer
+	// short-circuits the entire 6-step sequence when a match is found.
+	IdempotencyKey string
+
+	// JobID is the canonical job identifier that produced this voiceover
+	// item. Enables operator audit-trail correlation: "which job run
+	// produced this Drive audio file?". Empty JobID is OK (pre-FASE-3
+	// rows carry the empty sentinel).
+	JobID string
 }

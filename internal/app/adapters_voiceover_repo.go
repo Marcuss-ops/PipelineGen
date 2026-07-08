@@ -170,8 +170,12 @@ func (a *useCaseRepoAdapter) toInfraRecord(rec *voiceover.VoiceoverRecord) *sqas
 		Strategy:        rec.Strategy,
 		Metadata:        rec.Metadata,
 		DurationSeconds: 0, // canonical use case does not track duration today
-		CreatedAt:       parseRFC3339OrNow(rec.CreatedAt),
-		UpdatedAt:       parseRFC3339OrNow(rec.UpdatedAt),
+		// FASE 3 (July 2026): thread the deterministic idempotency
+		// key and the producing job ID through to the SQLite row.
+		IdempotencyKey: rec.IdempotencyKey,
+		JobID:          rec.JobID,
+		CreatedAt:      parseRFC3339OrNow(rec.CreatedAt),
+		UpdatedAt:      parseRFC3339OrNow(rec.UpdatedAt),
 	}
 }
 
@@ -216,8 +220,11 @@ func (a *useCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *voiceover.Voic
 		Error:        r.Error,
 		Strategy:     r.Strategy,
 		Metadata:     r.Metadata,
-		CreatedAt:    createdAt,
-		UpdatedAt:    updatedAt,
+		// FASE 3 (July 2026): round-trip through the infra layer.
+		IdempotencyKey: r.IdempotencyKey,
+		JobID:          r.JobID,
+		CreatedAt:      createdAt,
+		UpdatedAt:      updatedAt,
 	}
 }
 
@@ -249,6 +256,42 @@ func (a *useCaseRepoAdapter) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id st
 		return fmt.Errorf("useCaseRepoAdapter.DeleteByIDTx: empty id")
 	}
 	return a.repo.DeleteByIDTx(ctx, tx, id)
+}
+
+// FindByIdempotencyKeyTx runs the FASE 3 idempotency gate (July 2026)
+// INSIDE the caller-owned tx. Scans voiceovers for an existing row
+// with the same idempotency_key. Returns (matchedID, nil) when a
+// match is found (idempotency gate fires); returns ("", sql.ErrNoRows)
+// when no match exists (first-time run).
+//
+// Empty idempotencyKey short-circuits to ("", sql.ErrNoRows, nil) —
+// the gate is intentionally skipped for pre-FASE-3 callers.
+func (a *useCaseRepoAdapter) FindByIdempotencyKeyTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	idempotencyKey string,
+) (string, error) {
+	if idempotencyKey == "" {
+		return "", sql.ErrNoRows
+	}
+	if tx == nil {
+		return "", fmt.Errorf("useCaseRepoAdapter.FindByIdempotencyKeyTx: nil tx")
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	var matchedID string
+	err := tx.QueryRowContext(ctx,
+		`SELECT id FROM voiceovers WHERE idempotency_key = ? LIMIT 1`,
+		idempotencyKey,
+	).Scan(&matchedID)
+	if err == sql.ErrNoRows {
+		return "", sql.ErrNoRows
+	}
+	if err != nil {
+		return "", fmt.Errorf("FindByIdempotencyKeyTx: scan: %w", err)
+	}
+	return matchedID, nil
 }
 
 func (a *useCaseRepoAdapter) PreReadByID(ctx context.Context, id string) (*voiceover.VoiceoverRecord, error) {

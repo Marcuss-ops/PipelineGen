@@ -37,8 +37,20 @@ type Record struct {
 	// predating migration 113 — those are cache-MISS on the first
 	// P0.4 lookup.
 	Fingerprint string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+
+	// IdempotencyKey is the FASE 3 (July 2026) deterministic retry-safe
+	// deduplication key. Populated from the voiceover pipeline's
+	// BuildVoiceoverIdempotencyKey(jobID, language, textHash).
+	// The UNIQUE INDEX idx_voiceovers_idempotency (migration 132)
+	// enforces ONE row per non-empty key.
+	IdempotencyKey string
+
+	// JobID is the canonical job identifier that produced this voiceover
+	// item (FASE 3, July 2026). Enables operator audit-trail correlation.
+	JobID string
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type VoiceoversRepository struct {
@@ -69,8 +81,9 @@ func (r *VoiceoversRepository) Upsert(ctx context.Context, rec *Record) error {
 			id, request_id, text_hash, text_preview, language, voice, filename,
 			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
 			drive_link, download_link, file_hash, duration_seconds, status,
-			error, strategy, metadata, fingerprint, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			error, strategy, metadata, fingerprint, idempotency_key, job_id,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			request_id = excluded.request_id,
 			text_hash = excluded.text_hash,
@@ -92,11 +105,14 @@ func (r *VoiceoversRepository) Upsert(ctx context.Context, rec *Record) error {
 			strategy = excluded.strategy,
 			metadata = excluded.metadata,
 			fingerprint = excluded.fingerprint,
+			idempotency_key = excluded.idempotency_key,
+			job_id = excluded.job_id,
 			updated_at = excluded.updated_at
 	`, rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
 		rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
 		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.DurationSeconds,
 		rec.Status, rec.Error, rec.Strategy, rec.Metadata, rec.Fingerprint,
+		rec.IdempotencyKey, rec.JobID,
 		timeutil.FormatRFC3339(rec.CreatedAt), now)
 
 	return err
@@ -268,13 +284,15 @@ func (r *VoiceoversRepository) InsertTx(ctx context.Context, tx *sql.Tx, rec *Re
 			id, request_id, text_hash, text_preview, language, voice, filename,
 			local_path, cleaned_path, folder_id, folder_path, drive_file_id,
 			drive_link, download_link, file_hash, duration_seconds, status,
-			error, strategy, metadata, fingerprint, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			error, strategy, metadata, fingerprint, idempotency_key, job_id,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		rec.ID, rec.RequestID, rec.TextHash, rec.TextPreview, rec.Language, rec.Voice,
 		rec.Filename, rec.LocalPath, rec.CleanedPath, rec.FolderID, rec.FolderPath,
 		rec.DriveFileID, rec.DriveLink, rec.DownloadLink, rec.FileHash, rec.DurationSeconds,
 		rec.Status, rec.Error, rec.Strategy, rec.Metadata, rec.Fingerprint,
+		rec.IdempotencyKey, rec.JobID,
 		timeutil.FormatRFC3339(rec.CreatedAt), timeutil.FormatRFC3339(rec.UpdatedAt),
 	)
 	return err

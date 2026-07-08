@@ -242,6 +242,24 @@ func (a *e2eRepoAdapter) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id string
 	return a.repo.DeleteByIDTx(ctx, tx, id)
 }
 
+func (a *e2eRepoAdapter) FindByIdempotencyKeyTx(ctx context.Context, tx *sql.Tx, idempotencyKey string) (string, error) {
+	if idempotencyKey == "" {
+		return "", sql.ErrNoRows
+	}
+	var matchedID string
+	err := tx.QueryRowContext(ctx,
+		`SELECT id FROM voiceovers WHERE idempotency_key = ? LIMIT 1`,
+		idempotencyKey,
+	).Scan(&matchedID)
+	if err == sql.ErrNoRows {
+		return "", sql.ErrNoRows
+	}
+	if err != nil {
+		return "", err
+	}
+	return matchedID, nil
+}
+
 func (a *e2eRepoAdapter) PreReadByID(ctx context.Context, id string) (*VoiceoverRecord, error) {
 	r, err := a.repo.PreReadByID(ctx, id)
 	if err != nil {
