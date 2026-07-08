@@ -559,6 +559,7 @@ func setupFinalizerE2EDB(t *testing.T) *sql.DB {
 			folder_id TEXT NOT NULL DEFAULT '',
 			folder_path TEXT NOT NULL DEFAULT '',
 			lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
+			index_state TEXT NOT NULL DEFAULT '',
 			metadata_json TEXT NOT NULL DEFAULT '{}',
 			created_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL DEFAULT ''
