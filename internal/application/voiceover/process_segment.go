@@ -304,11 +304,21 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	mergeUserMetadata(metaBuf, cmd.Dest, cmd.Metadata, u.deps.Logger)
 	metaJSON, _ := json.Marshal(metaBuf)
 
+	// PR-VO-LANGUAGE-PROJECT-PROPAGATION (July 2026): Language and
+	// Project MUST be forwarded to VoiceoverPublishCommand so the
+	// adapter's semantic-first path (req.ProjectID + req.Language)
+	// builds the canonical {project}/{language}/ Drive subpath via
+	// VoiceoverPath. Before this fix, both fields were silently
+	// dropped — the adapter would fall back to cmd.ID as ProjectID
+	// (graceful degradation, but wrong folder tree) or fail-closed
+	// on empty Language (ErrVoiceoverPublishLanguageRequired).
 	fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
 		ID:        cmd.ID,
 		LocalPath: uploadPath,
 		Filename:  cmd.Filename,
 		FolderID:  cmd.Dest.FolderID,
+		Project:   cmd.Project,
+		Language:  string(cmd.Language),
 	})
 	if err != nil {
 		out.Error = fmt.Sprintf("upload_failed: %v", err)
