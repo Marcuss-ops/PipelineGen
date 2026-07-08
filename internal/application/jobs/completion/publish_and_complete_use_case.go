@@ -303,6 +303,7 @@ func refToVerifiedArtifact(ref *remote.StagedArtifactReference, jobID string) fi
 		SourceVersion:  1,
 		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: ref.ArtifactID, // minimal hint; canonical derivation post-resolver
+		Source:         sourceFromDestination(ref.Destination),
 	}
 }
 
@@ -326,5 +327,35 @@ func kindFromDestination(dest string) finalization.ArtifactKind {
 		return finalization.KindDocument
 	default:
 		return finalization.KindDocument
+	}
+}
+
+// sourceFromDestination maps the canonical destination key to the
+// content source identity written to media_assets.source. PR-SOURCE-FIX
+// (July 2026): without this mapping, AssetTxFinalizer falls back to
+// string(a.Location.Action) which is "created" — the publish action,
+// not the content source.
+func sourceFromDestination(dest string) string {
+	switch dest {
+	case "youtube_clip":
+		return "youtube"
+	case "voiceover":
+		return "voiceover"
+	case "image":
+		return "image"
+	case "script":
+		return "script"
+	case "document":
+		return "document"
+	case "book":
+		return "book"
+	case "stock":
+		return "stock"
+	case "artlist":
+		return "artlist"
+	case "sound_effect":
+		return "sound_effect"
+	default:
+		return dest
 	}
 }

@@ -201,6 +201,7 @@ func (uc *GenerateDocumentUseCase) Handle(ctx context.Context, req DocumentReque
 					SourceVersion:  1,
 					Requirement:    finalization.ArtifactRequirementRequired,
 					IdempotencyKey: idemKey,
+					Source:         "document",
 					Location: finalization.AssetLocation{
 						Provider:     "drive",
 						FileID:       driveFileID,

@@ -40,6 +40,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
@@ -116,13 +117,22 @@ func startCancelWatcher(jobCtx context.Context, jobCancel context.CancelFunc, is
 //	sha256      → sha256
 //	local_path  → (discarded — the Sender never sees local paths)
 //	required    → requirement (bool → ArtifactRequirement enum)
-func extractStagedArtifacts(result map[string]any) json.RawMessage {
+//	source      → source (PR-SOURCE-FIX: derived from jobType prefix)
+func extractStagedArtifacts(result map[string]any, jobType string) json.RawMessage {
 	manifest, err := job.Decode(result)
 	if err != nil || manifest == nil || len(manifest.Artifacts) == 0 {
 		return json.RawMessage("[]")
 	}
 
 	published := make([]finalization.PublishedArtifact, 0, len(manifest.Artifacts))
+	// PR-SOURCE-FIX: derive source from job type prefix
+	// ("script.generate" → "script", "image.generate.google" → "image", etc.).
+	// Hoisted outside the loop — all artifacts in one manifest share the
+	// same job type.
+	src := ""
+	if idx := strings.Index(jobType, "."); idx > 0 {
+		src = jobType[:idx]
+	}
 	for _, a := range manifest.Artifacts {
 		req := finalization.ArtifactRequirementOptional
 		if a.Required {
@@ -137,6 +147,7 @@ func extractStagedArtifacts(result map[string]any) json.RawMessage {
 			SHA256:         a.SHA256,
 			Requirement:    req,
 			IdempotencyKey: a.ID,
+			Source:         src,
 		})
 	}
 
@@ -387,7 +398,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		// When no manifest is present, StagedArtifacts stays empty ([])
 		// — the broker still marks the job SUCCEEDED via the single-TX
 		// spine, just without artifact metadata.
-		stagedArtifacts := extractStagedArtifacts(result)
+		stagedArtifacts := extractStagedArtifacts(result, j.Type)
 
 		cmd := CompleteWithArtifactsCommand{
 			WorkerID:         w.id,
