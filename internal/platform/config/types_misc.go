@@ -95,6 +95,17 @@ type FeaturesConfig struct {
 	ImagesEnabled             bool `yaml:"images_enabled" env:"VELOX_FEATURE_IMAGES_ENABLED" default:"false"`
 	StockPipelineEnabled      bool `yaml:"stock_pipeline_enabled" env:"VELOX_FEATURE_STOCK_PIPELINE_ENABLED" default:"true"`
 	CatalogScriptVectorSearch bool `yaml:"catalog_script_vector_search" env:"VELOX_FEATURE_CATALOG_SCRIPT_VECTOR_SEARCH" default:"false"`
+
+	// MediaDriveRequired, when true, causes asset registration to fail
+	// when Drive upload is not successful (PUBLISH_FAILED or LOCAL_ONLY).
+	// Assets are never marked as "registered locally" with partial-success
+	// semantics. The failure surfaces as ErrYouTubeDriveRequired sentinel.
+	//
+	// Default false (backward-compatible): Drive upload is best-effort.
+	// Set to true for production deployments where every clip MUST
+	// have a Drive file (Step 4 of YouTube Clips Deploy Readiness,
+	// July 2026).
+	MediaDriveRequired bool `yaml:"media_drive_required" env:"VELOX_MEDIA_DRIVE_REQUIRED" default:"false"`
 }
 
 // ToDatabaseStorageConfig projects this StorageConfig into the
