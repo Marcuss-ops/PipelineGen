@@ -56,7 +56,26 @@ import (
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
+
+	hashutil "github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
 )
+
+// BuildVoiceoverIdempotencyKey derives the deterministic retry-safe
+// deduplication key for the voiceover pipeline (FASE 3, July 2026).
+// The canonical triple (jobID + language + textHash) ensures that:
+//   - Same job retried → same key (idempotency gate fires)
+//   - Different job with same text → different key (no cross-job collision)
+//   - Same job, different language → different key (per-language isolation)
+//
+// The key is a SHA-256 hex string of "jobID:language:textHash" so it
+// is byte-stable across retries with the same inputs. Empty inputs
+// produce a unique key that still hashes deterministically.
+//
+// godlike/07 minimum-blast-radius: the hash is computed via the
+// canonical hashutil.SHA256String helper (no new hash implementation).
+func BuildVoiceoverIdempotencyKey(jobID string, language Language, textHash TextHash) string {
+	return hashutil.SHA256String(jobID + ":" + string(language) + ":" + string(textHash))
+}
 
 // ────────────────────────────────────────────────────────────────────────
 // ProcessSegmentCommand — neutral DTO consumed by ProcessSegmentUseCase
@@ -78,6 +97,13 @@ import (
 // them, mirroring the BLOC4 P0.6 pass-through invariant pinned
 // on the per-item path.
 type ProcessSegmentCommand struct {
+	// JobID is the canonical job identifier that produced this voiceover
+	// item. Used to derive the deterministic idempotency key via
+	// BuildVoiceoverIdempotencyKey(jobID, language, textHash).
+	// Empty JobID is OK — the idempotency gate is skipped when empty
+	// (backward-compat with pre-FASE-3 callers).
+	JobID string
+
 	// Identity (pre-computed by caller)
 	ID        string
 	RequestID string
@@ -304,6 +330,14 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	mergeUserMetadata(metaBuf, cmd.Dest, cmd.Metadata, u.deps.Logger)
 	metaJSON, _ := json.Marshal(metaBuf)
 
+	// FASE 3 (July 2026): derive the deterministic idempotency key
+	// from the canonical triple (jobID + language + textHash). When
+	// JobID is empty (pre-FASE-3 callers), the key is still derived
+	// deterministically — the idempotency gate will still match on
+	// retry of the same text+language pair within the same empty-job
+	// context. The finalizer's Step 0 short-circuits on a match.
+	idemKey := BuildVoiceoverIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash)
+
 	// PR-VO-LANGUAGE-PROJECT-PROPAGATION (July 2026): Language and
 	// Project MUST be forwarded to VoiceoverPublishCommand so the
 	// adapter's semantic-first path (req.ProjectID + req.Language)
@@ -313,12 +347,13 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	// (graceful degradation, but wrong folder tree) or fail-closed
 	// on empty Language (ErrVoiceoverPublishLanguageRequired).
 	fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
-		ID:        cmd.ID,
-		LocalPath: uploadPath,
-		Filename:  cmd.Filename,
-		FolderID:  cmd.Dest.FolderID,
-		Project:   cmd.Project,
-		Language:  string(cmd.Language),
+		ID:             cmd.ID,
+		LocalPath:      uploadPath,
+		Filename:       cmd.Filename,
+		FolderID:       cmd.Dest.FolderID,
+		Project:        cmd.Project,
+		Language:       string(cmd.Language),
+		IdempotencyKey: idemKey,
 	})
 	if err != nil {
 		out.Error = fmt.Sprintf("upload_failed: %v", err)
@@ -343,6 +378,8 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	defer func() { _ = tx.Rollback() }() // safe after Commit
 
 	finalizeCmd := &FinalizeCommand{
+		IdempotencyKey: idemKey,
+		JobID:          cmd.JobID,
 		ID:             cmd.ID,
 		RequestID:      cmd.RequestID,
 		TextHash:       string(cmd.TextHash),
