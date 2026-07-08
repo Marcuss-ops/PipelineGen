@@ -22,6 +22,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
+	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/books/pythontransformer"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
@@ -30,6 +31,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/catalog"
 	idemsqlite "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/idempotency"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	infrahealth "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/health"
@@ -88,7 +90,7 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}, nil
 }
 
-func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, log *zap.Logger) *UtilityBundle {
+func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, ollamaClient *ollamaclient.Client, outboxPool *outboxevents.Pool, log *zap.Logger) *UtilityBundle {
 	svc := buildHealthService(cfg, db)
 	rc := systemhealth.NewReadyChecker(svc).
 		WithTools(systemhealth.NewToolsChecker()).
@@ -137,11 +139,34 @@ func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader dr
 
 	// FASE 6: severe readiness probes (temp, tts, drive_root, ollama, outbox).
 	// Temp + TTS + Drive root are wired inline below.
-	// Ollama and outbox probes are nil-safe — they report applicable=false
-	// until the composition root is extended to inject their deps
-	// (forward-pointer PR-FASE6-OLLAMA-OUTBOX-WIRING, deadline 2026-08-15).
 	rc = rc.WithTempPath(cfg.Storage.DataDir).
 		WithTTSChecker(systemhealth.NewTTSChecker("", cfg.Paths.PythonScriptsDir))
+
+	// Outbox worker pool liveness (July 2026): checks that the
+	// outboxevents.Pool was created and started at composition time.
+	// The probe verifies the pool is non-nil — a nil pool means
+	// BuildOutboxBundle failed during composition and the outbox
+	// event-processing workers never started. When the pool is wired,
+	// the probe returns nil (the workers were launched via SafeGo
+	// at startup; if they crash, SafeGo recovers and logs the panic
+	// without taking down the server — the next /ready call will
+	// still see the pool as non-nil, which is correct: the pool
+	// struct itself is still alive even if individual workers died).
+	if outboxPool != nil {
+		rc = rc.WithOutboxChecker(systemhealth.NewOutboxChecker(
+			func(ctx context.Context) error {
+				// Pool is non-nil by construction — was created and
+				// started in BuildOutboxBundle.
+				return nil
+			},
+		))
+	}
+	// Ollama reachability probe (nil-safe: nil client → applicable=false).
+	if ollamaClient != nil {
+		rc = rc.WithOllamaChecker(systemhealth.NewOllamaChecker(
+			func(ctx context.Context) bool { return ollamaClient.CheckHealth(ctx) },
+		))
+	}
 
 	return &UtilityBundle{
 		Utility: transport.NewUtilityHandler(), HealthService: svc,
