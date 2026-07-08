@@ -74,6 +74,21 @@ type ProcessVoiceoverItemDeps struct {
 	// Pre-Fase-3a only steps 2-3 + index outbox were executed; dedupe,
 	// media_assets, and cleanup were missing from the child pipeline.
 	Finalizer VoiceoverFinalizer
+	// TxOutboxEnqueuer is the OPTIONAL FASE 4 orphan-cleanup port (July 2026).
+	// When Stage 3 (Drive upload) succeeds and Stage 4 (Finalize) fails,
+	// the per-item path opens a SEPARATE tx and enqueues a
+	// voiceover.cleanup.requested outbox event for the orphaned Drive
+	// file. When nil (pre-FASE-4 callers, or composition root not yet
+	// wired), the orphan-cleanup path is silently skipped — the
+	// background orphan sweeper will eventually recover the Drive file.
+	//
+	// godlike/07 NO-FAKE-AVAILABILITY: this field is OPTIONAL (nil-safe)
+	// at the use case boundary because pre-FASE-4 production code did
+	// not wire the outbox for orphan cleanup; the failure mode
+	// (orphan sweeper recovery) is the safety net. A future
+	// composition-root audit can promote it to mandatory when
+	// FASE 4 wiring becomes the canonical production posture.
+	TxOutboxEnqueuer TxOutboxEnqueuer
 	// OutputDir is the base local filesystem directory for TTS output.
 	// When the resolved destination's FolderPath is empty, Execute falls
 	// back to OutputDir. Mirrors the batch path's Service.outputDir (set
@@ -140,6 +155,7 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 			Publisher:           deps.Publisher,
 			VoiceoverRepository: deps.VoiceoverRepository,
 			Finalizer:           deps.Finalizer,
+			TxOutboxEnqueuer:    deps.TxOutboxEnqueuer,
 			Logger:              deps.Logger,
 		}),
 	}
