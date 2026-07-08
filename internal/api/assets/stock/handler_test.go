@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -394,5 +396,297 @@ func TestSearchAndRun_JobsServiceMissing_Returns503(t *testing.T) {
 	errMsg, _ := body["error"].(string)
 	if !strings.Contains(errMsg, "stock async submit requires jobs service") {
 		t.Errorf("expected jobs-service-required error message, got %q", errMsg)
+	}
+}
+
+// ── DownloadStockClip test stubs ─────────────────────────────────────
+
+// fakeStockAssetLookup implements StockAssetLookup with deterministic
+// per-test asset + error injection. Future maintainers: signature drift
+// on StockAssetLookup surfaces here as build failure.
+type fakeStockAssetLookup struct {
+	asset  *asset.Asset
+	err    error
+	calls  int
+	lastID string
+}
+
+var _ StockAssetLookup = (*fakeStockAssetLookup)(nil)
+
+func (f *fakeStockAssetLookup) Get(_ context.Context, id string) (*asset.Asset, error) {
+	f.calls++
+	f.lastID = id
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.asset, nil
+}
+
+// fakeStockDriveReader implements StockDriveReader with deterministic
+// per-test meta/body/error injection. Future maintainers: signature
+// drift on StockDriveReader (the 2 port methods) surfaces here as
+// build failure on the `var _` pin below.
+type fakeStockDriveReader struct {
+	metaResp   *DriveFileMeta
+	metaErr    error
+	dlResp     io.ReadCloser
+	dlCT       string
+	dlErr      error
+	calls      int
+	lastFileID string
+}
+
+var _ StockDriveReader = (*fakeStockDriveReader)(nil)
+
+func (f *fakeStockDriveReader) GetFileMeta(_ context.Context, fileID string) (*DriveFileMeta, error) {
+	f.calls++
+	f.lastFileID = fileID
+	if f.metaErr != nil {
+		return nil, f.metaErr
+	}
+	return f.metaResp, nil
+}
+
+func (f *fakeStockDriveReader) DownloadFile(_ context.Context, fileID string) (io.ReadCloser, string, error) {
+	f.calls++
+	f.lastFileID = fileID
+	if f.dlErr != nil {
+		return nil, "", f.dlErr
+	}
+	return f.dlResp, f.dlCT, nil
+}
+
+// newDownloadHandler builds a Handler wired with the given lookup + reader
+// (or all-nil for the nil-deps test). useCase is nil because
+// DownloadStockClip doesn't dispatch through the broker.
+func newDownloadHandler(lookup StockAssetLookup, reader StockDriveReader) *Handler {
+	return &Handler{
+		log:       zap.NewNop(),
+		assetRepo: lookup,
+		driveRead: reader,
+	}
+}
+
+// runDownloadPOST sends a POST to /clips/<id>/download and returns the
+// recorder. The handler reads clipID from the route param (NOT the body),
+// so the request has no JSON payload.
+func runDownloadPOST(t *testing.T, h *Handler, clipID string) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/clips/:id/download", h.DownloadStockClip)
+	req := httptest.NewRequest(http.MethodPost, "/clips/"+clipID+"/download", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+// newStockAssetFixture builds a minimally-populated asset.Asset with
+// optional driveFileID and localPath (both empty by default — most tests
+// use SetDriveFileID directly to construct the specific failure mode).
+func newStockAssetFixture(driveFileID, localPath string) *asset.Asset {
+	a := &asset.Asset{
+		ID:        "stock-asset-test",
+		Source:    "stock",
+		Name:      "test-stock-clip",
+		Filename:  "test.mp4",
+		MediaType: asset.MediaTypeStock,
+	}
+	if driveFileID != "" {
+		a.SetDriveFileID(driveFileID)
+	}
+	if localPath != "" {
+		a.SetLocalPath(localPath)
+	}
+	return a
+}
+
+// ── TestDownloadStockClip_NilDeps_Returns503 ─────────────────────────
+
+func TestDownloadStockClip_NilDeps_Returns503(t *testing.T) {
+	// godlike/07 fail-closed: when assetRepo or driveRead is nil
+	// (composition-time wiring gap), the handler must NOT panic and
+	// must NOT silently serve from cache. It must return 503 so the
+	// operator sees the wiring miss.
+	handler := newDownloadHandler(nil, nil)
+	rec := runDownloadPOST(t, handler, "clip-xyz")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	body := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "stock download not available") {
+		t.Errorf("expected 503 message to mention wiring failure, got %q", errMsg)
+	}
+}
+
+// ── TestDownloadStockClip_AssetNotFound_Returns404 ────────────────────
+
+func TestDownloadStockClip_AssetNotFound_Returns404(t *testing.T) {
+	// Lookup returns (nil, nil) — Canonical "asset does not exist"
+	// sentinel. Handler must return 404 with the clip id echo in the
+	// error message.
+	lookup := &fakeStockAssetLookup{asset: nil, err: nil}
+	handler := newDownloadHandler(lookup, &fakeStockDriveReader{})
+	rec := runDownloadPOST(t, handler, "missing-clip-123")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	body := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "stock asset not found: missing-clip-123") {
+		t.Errorf("expected 404 message to echo clip id, got %q", errMsg)
+	}
+	if lookup.lastID != "missing-clip-123" {
+		t.Errorf("expected lookup to receive clip id %q, got %q", "missing-clip-123", lookup.lastID)
+	}
+}
+
+// ── TestDownloadStockClip_DriveFileIDAndLocalPathEmpty_Returns404 ─────
+
+func TestDownloadStockClip_DriveFileIDAndLocalPathEmpty_Returns404(t *testing.T) {
+	// Asset exists (non-nil) but has no drive_file_id AND no local_path.
+	// Handler must return 404 with diagnostic of the missing location.
+	lookup := &fakeStockAssetLookup{asset: newStockAssetFixture("", "")}
+	handler := newDownloadHandler(lookup, &fakeStockDriveReader{})
+	rec := runDownloadPOST(t, handler, "lonely-clip")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	body := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "no drive_file_id and no local path") {
+		t.Errorf("expected 404 message naming the missing location, got %q", errMsg)
+	}
+}
+
+// ── TestDownloadStockClip_NonMediaMime_Returns400 ─────────────────────
+
+func TestDownloadStockClip_NonMediaMime_Returns400(t *testing.T) {
+	// Drive.GetFileMeta returns a non-media MIME (e.g. application/pdf).
+	// Handler must return 400, NOT silently proxy the file as "video/mp4"
+	// (the prior behavior that mislabeled PDFs as videos).
+	lookup := &fakeStockAssetLookup{asset: newStockAssetFixture("drive-fake-pdf", "")}
+	reader := &fakeStockDriveReader{
+		metaResp: &DriveFileMeta{MimeType: "application/pdf"},
+	}
+	handler := newDownloadHandler(lookup, reader)
+	rec := runDownloadPOST(t, handler, "clip-pdf")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-media mime, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	body := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "drive file is not media") {
+		t.Errorf("expected 400 message to surface mime rejection, got %q", errMsg)
+	}
+	if !strings.Contains(errMsg, "application/pdf") {
+		t.Errorf("expected 400 message to echo the rejected mime, got %q", errMsg)
+	}
+}
+
+// ── TestDownloadStockClip_AudioMime_PreservesAudioContentType ─────────
+
+func TestDownloadStockClip_AudioMime_PreservesAudioContentType(t *testing.T) {
+	// CRITICAL: post-fix, an audio stock clip served via
+	// Drive.DownloadFile should return Content-Type: audio/mpeg, NOT
+	// the pre-fix default of "video/mp4".
+	//
+	// This test forces the new fallback chain by setting `dlCT: ""`
+	// (the Drive DownloadFile response contentType is empty — the
+	// canonical "I don't know my own MIME" opaque response). The
+	// handler must then fall back to meta.MimeType = "audio/mpeg"
+	// (Step 1 of the 2-step chain). A future regression that reverts
+	// the fix to "video/mp4" hard-coded fallback would surface here
+	// as a test failure (the assertion `gotCT != "video/mp4"`).
+	lookup := &fakeStockAssetLookup{asset: newStockAssetFixture("drive-audio-1", "")}
+	reader := &fakeStockDriveReader{
+		metaResp: &DriveFileMeta{MimeType: "audio/mpeg"},
+		dlResp:   io.NopCloser(strings.NewReader("fake-mp3-bytes")),
+		dlCT:     "", // empty → triggers Step 1 fallback to meta.MimeType
+	}
+	handler := newDownloadHandler(lookup, reader)
+	rec := runDownloadPOST(t, handler, "clip-audio-stock")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for audio mime happy path, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	gotCT := rec.Header().Get("Content-Type")
+	if gotCT != "audio/mpeg" {
+		t.Errorf("expected Content-Type=audio/mpeg preserved via fallback, got %q", gotCT)
+	}
+	if gotCT == "video/mp4" {
+		t.Errorf("CRITICAL: audio file mislabeled as video/mp4 (regression of pre-fix behavior)")
+	}
+	body, err := io.ReadAll(rec.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if string(body) != "fake-mp3-bytes" {
+		t.Errorf("expected streamed bytes to round-trip, got %q", string(body))
+	}
+}
+
+// ── TestDownloadStockClip_VideoMime_HappyPath ─────────────────────────
+
+func TestDownloadStockClip_VideoMime_HappyPath(t *testing.T) {
+	// Canonical happy path: video/mp4 drive file → 200 + Content-Type
+	// echo + body round-trip. This is the most common case for stock
+	// footage (provider like Pexels / Pixabay returns MP4).
+	lookup := &fakeStockAssetLookup{asset: newStockAssetFixture("drive-video-1", "")}
+	reader := &fakeStockDriveReader{
+		metaResp: &DriveFileMeta{MimeType: "video/mp4"},
+		dlResp:   io.NopCloser(strings.NewReader("fake-mp4-bytes")),
+		dlCT:     "video/mp4",
+	}
+	handler := newDownloadHandler(lookup, reader)
+	rec := runDownloadPOST(t, handler, "clip-video-stock")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for video mime happy path, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	gotCT := rec.Header().Get("Content-Type")
+	if gotCT != "video/mp4" {
+		t.Errorf("expected Content-Type=video/mp4 preserved, got %q", gotCT)
+	}
+	body, err := io.ReadAll(rec.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if string(body) != "fake-mp4-bytes" {
+		t.Errorf("expected streamed bytes to round-trip, got %q", string(body))
+	}
+	if reader.lastFileID != "drive-video-1" {
+		t.Errorf("expected reader to receive drive_file_id %q, got %q", "drive-video-1", reader.lastFileID)
+	}
+}
+
+// ── TestDownloadStockClip_DriveDownloadError_Returns500 ───────────────
+
+func TestDownloadStockClip_DriveDownloadError_Returns500(t *testing.T) {
+	// Driver returns (nil, "", err) on DownloadFile. The MIME preflight
+	// passes (video/mp4), so the handler reaches the stream call and
+	// surfaces the error as 500 Internal Server Error — NOT a 502/503
+	// (the underlying Drive API technically returned a service error,
+	// but the canonical mapping is 500 for unknown transport errors
+	// inside the handler; future maintainers can refine to 502 if a
+	// canonical ErrBrowserDownloadFailed sentinel is added).
+	lookup := &fakeStockAssetLookup{asset: newStockAssetFixture("drive-fail-1", "")}
+	reader := &fakeStockDriveReader{
+		metaResp: &DriveFileMeta{MimeType: "video/mp4"},
+		dlErr:    errors.New("simulated drive transport error"),
+	}
+	handler := newDownloadHandler(lookup, reader)
+	rec := runDownloadPOST(t, handler, "clip-broken")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 on drive download error, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	body := map[string]any{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	errMsg, _ := body["error"].(string)
+	if !strings.Contains(errMsg, "drive download failed") {
+		t.Errorf("expected 500 message to surface transport error, got %q", errMsg)
 	}
 }
