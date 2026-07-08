@@ -172,7 +172,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	// pass `driveBundle.Admin` (the Pattern 0 port) directly so the
 	// health probe can call driveAdmin.Ping() which wraps the raw
 	// About.Get internally.
-	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.Admin, driveBundle.Publisher, jobs.Service, log)
+	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
 
 	// Late-bindings: jobs.RegisterHandler for domain services that opt in.
 	// Per PG-028 (July 2026): extracted into per-capability wire_* helpers.
