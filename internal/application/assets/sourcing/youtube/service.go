@@ -182,8 +182,8 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 			})
 	}
 	uploadResult, targetFolderID, deliveryStatus := s.processPublishResult(md.VideoID, pubResult, pubErr)
-	if s.RequireDrive && deliveryStatus == asset.AssetPublishFailed {
-		return nil, fmt.Errorf("%w: publisher returned %v", ErrYouTubeDriveRequired, deliveryStatus)
+	if s.RequireDrive && deliveryStatus != asset.AssetPublishPublished {
+		return nil, fmt.Errorf("%w: publisher returned %v (Drive is required but asset was not published)", ErrYouTubeDriveRequired, deliveryStatus)
 	}
 
 	clipID, fileHash := fetched.ClipID, fetched.FileHash

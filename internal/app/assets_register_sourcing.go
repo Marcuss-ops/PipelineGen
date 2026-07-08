@@ -101,6 +101,13 @@ func newAssetRegisterService(
 		&zapSourcingLogger{log: log},
 	)
 
+	// MEDIA_DRIVE_REQUIRED (P0.2, July 2026): when the operator sets
+	// VELOX_MEDIA_DRIVE_REQUIRED=true (or media_drive_required: true
+	// in config.yaml), the YouTubeRegistrar MUST return an error on
+	// any non-PUBLISHED delivery status. No partial-success
+	// "asset registered locally" semantics.
+	ytSvc.RequireDrive = cfg.Features.MediaDriveRequired
+
 	// P0-1 / commit 2: BatchRegistrar sub-service (PR-BATCH-REGISTER-ASYNC).
 	// The synchronous YouTubeRegistrar loop is replaced with an async
 	// ClipJobEnqueuer adapter. Each clip becomes an independent media.clip
