@@ -132,4 +132,15 @@ var (
 		Name: "transcript_metadata_step10_fail_after_clip_total",
 		Help: "Total number of YouTube Step 10 partial-state failures (metadata enrichment failed AFTER clip write succeeded), partitioned by failure_code. See PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY.",
 	}, []string{"failure_code"})
+
+	// Translation warnings counter is now PER-ADAPTER, registered
+	// in internal/infrastructure/observability/metrics_translation.go
+	// via NewTranslationMetricsAdapter(reg). The package-level
+	// global was removed in the CR#1+#2+#3 review-fix pass (per
+	// godlike/06 SSOT one-canonical-owner-per-fact: the counter is
+	// the metrics adapter's counter, not a package-level one). The
+	// production composition root uses
+	// observability.NewTranslationMetricsAdapter(prometheus.DefaultRegisterer);
+	// tests use observability.NewTranslationMetricsAdapter(prometheus.NewRegistry())
+	// for hermetic per-test counter assertions.
 )

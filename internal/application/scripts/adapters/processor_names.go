@@ -33,6 +33,13 @@ const (
 	ProcessorImages           ProcessorName = "images"
 	ProcessorDocument         ProcessorName = "document"
 	ProcessorPersistence      ProcessorName = "persistence"
+	// PR-TRANSLATE-SCRIPT-SPEC forward-pointer FP2 (2026-08-08):
+	// translation postprocessor lives in the canonical SOLE identifier
+	// set (godlike/06 SSOT one-canonical-owner-per-fact) — inserted
+	// between metadata and clip_bindings in the EXECUTION order so the
+	// translated SpecScene is consumed by the downstream ClipBindings
+	// pass (localised Drive links + clip titles).
+	ProcessorTranslation ProcessorName = "translation"
 )
 
 // CanonicalProcessorNames returns the closed set of all 9 canonical
@@ -44,10 +51,12 @@ const (
 // are added to the registry at composition time). The two are not
 // the same on purpose:
 //   - EXECUTION order (this list): entities → clip_search → metadata →
-//     clip_bindings → stock_association → voiceover → images →
-//     document → persistence. Persistence at the tail because each
-//     processor that mutated scene/payload must run BEFORE the row
-//     is locked for replay/retry.
+//     translation → clip_bindings → stock_association → voiceover →
+//     images → document → persistence. Persistence at the tail because
+//     each processor that mutated scene/payload must run BEFORE the
+//     row is locked for replay/retry. Translation slots between
+//     metadata and clip_bindings so the translated SpecScene text is
+//     visible to the downstream clip_bindings pass.
 //   - REGISTRATION order (see registerScriptPostProcessors in
 //     internal/app/wire_script_postprocess.go): persistence FIRST so
 //     no Drive-write side effect runs before the SQLite row is
@@ -57,15 +66,19 @@ const (
 // Plan-time execution order is constructed in buildPostprocessorList
 // (internal/application/scripts/usecase/generation_plan_builder.go)
 // — clip_search is conditionally appended between entities and
-// metadata when OutputSpec.ExtractEntities=true. The closed set
-// here uses position 2 (clip_search) so the EXECUTION order is
-// consistent with the plan-time build even when ExtractEntities is
-// false (the closed-set slot is reserved, not optional).
+// metadata when OutputSpec.ExtractEntities=true; translation is
+// conditionally appended between metadata and clip_bindings when
+// OutputSpec.TranslateTo != "" (PR-TRANSLATE-SCRIPT-SPEC FP2).
+// The closed set here uses position 2 (clip_search) + position 4
+// (translation) so the EXECUTION order is consistent with the
+// plan-time build even when the corresponding OutputSpec flags
+// are false (the closed-set slot is reserved, not optional).
 func CanonicalProcessorNames() []ProcessorName {
 	return []ProcessorName{
 		ProcessorEntities,
 		ProcessorClipSearch,
 		ProcessorMetadata,
+		ProcessorTranslation,
 		ProcessorClipBindings,
 		ProcessorStockAssociation,
 		ProcessorVoiceover,

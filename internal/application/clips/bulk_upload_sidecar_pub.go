@@ -64,11 +64,15 @@ func publishSidecars(
 	manifestPath := filepath.Join(dir, "clip_manifest.json")
 	if _, err := os.Stat(manifestPath); err == nil {
 		if _, err := publisher.Publish(ctx, delivery.PublishRequest{
-			Destination:        delivery.DestinationYouTubeClip,
-			LocalPath:          manifestPath,
-			Filename:           baseNoExt + ".clip_manifest.json",
-			Description:        "Clip manifest for " + baseNoExt,
-			RootFolderOverride: targetFolderID,
+			Destination: delivery.DestinationYouTubeClip,
+			LocalPath:   manifestPath,
+			Filename:    baseNoExt + ".clip_manifest.json",
+			Description: "Clip manifest for " + baseNoExt,
+			ProjectID:   targetFolderID,
+			// PR-P12-CLIPS-AND-BOOKS (July 2026): RootFolderOverride RETIRED.
+			// The resolved .mp4 folder ID is now routed via ProjectID so
+			// the sidecar co-locates with the clip under the canonical
+			// DestinationYouTubeClip root + PathBuilder hierarchy.
 		}); err != nil && log != nil {
 			log.Warn("sidecar publish failed (non-fatal)",
 				zap.String("path", manifestPath),
@@ -82,11 +86,13 @@ func publishSidecars(
 	} {
 		if _, err := os.Stat(tp); err == nil {
 			if _, err := publisher.Publish(ctx, delivery.PublishRequest{
-				Destination:        delivery.DestinationYouTubeClip,
-				LocalPath:          tp,
-				Filename:           baseNoExt + ".transcript.txt",
-				Description:        "Whisper transcript for " + baseNoExt,
-				RootFolderOverride: targetFolderID,
+				Destination: delivery.DestinationYouTubeClip,
+				LocalPath:   tp,
+				Filename:    baseNoExt + ".transcript.txt",
+				Description: "Whisper transcript for " + baseNoExt,
+				ProjectID:   targetFolderID,
+				// PR-P12-CLIPS-AND-BOOKS (July 2026): RootFolderOverride RETIRED.
+				// See manifest publish above for the canonical routing rationale.
 			}); err != nil && log != nil {
 				log.Warn("sidecar publish failed (non-fatal)",
 					zap.String("path", tp),

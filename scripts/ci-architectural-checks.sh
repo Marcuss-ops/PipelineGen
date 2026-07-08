@@ -671,6 +671,7 @@ fails=$(printf '%s\n' "$decls" \
       out = ""
     }
     {
+      if (NF < 3) next
       pkg = $1; tn = $2
       key = pkg ":" tn
       sites[key] = (sites[key] == "" ? $3 : sites[key] ", " $3)

@@ -35,7 +35,6 @@ func TestPublishClipToDrive_HappyPath(t *testing.T) {
 		AssetID:     "yt_dQw4w9WgXcQ_a1b2c3d4",
 		Group:       "test-group",
 		Subject:     "dQw4w9WgXcQ-my-video",
-		RootFolder:  "root-789",
 		LocalPath:   "/tmp/clip.mp4",
 		Filename:    "dQw4w9WgXcQ - My Video.mp4",
 		Description: "Name: My Video\nCategory: sports",
@@ -68,9 +67,6 @@ func TestPublishClipToDrive_HappyPath(t *testing.T) {
 	}
 	if req.Subject != cmd.Subject {
 		t.Errorf("expected Subject %q, got %q", cmd.Subject, req.Subject)
-	}
-	if req.RootFolderOverride != cmd.RootFolder {
-		t.Errorf("expected RootFolderOverride %q, got %q", cmd.RootFolder, req.RootFolderOverride)
 	}
 	if req.LocalPath != cmd.LocalPath {
 		t.Errorf("expected LocalPath %q, got %q", cmd.LocalPath, req.LocalPath)
@@ -236,11 +232,9 @@ func TestPublishClipToDrive_SemanticCategory_FlowsToRequest(t *testing.T) {
 		t.Errorf("expected Subject non-empty, got %q", req.Subject)
 	}
 
-	// RootFolderOverride must be empty when semantic fields are set —
-	// the adapter suppresses it when Category or Provider are populated.
-	if req.RootFolderOverride != "" {
-		t.Errorf("expected RootFolderOverride empty when semantic fields are set, got %q", req.RootFolderOverride)
-	}
+	// RootFolderOverride is RETIRED (PR-P12-YOUTUBE-LEGACY-RETIRE, July 2026).
+	// The canonical Publisher resolves the target folder via
+	// DestinationRegistry + semantic fields (Category/Provider/Group/etc).
 }
 
 // TestPublishClipToDrive_SemanticFieldsEmptyByDefault verifies that
@@ -262,7 +256,6 @@ func TestPublishClipToDrive_SemanticFieldsEmptyByDefault(t *testing.T) {
 		AssetID:     "yt_legacy_abc123",
 		Group:       "legacy-group",
 		Subject:     "legacy-subject",
-		RootFolder:  "root-legacy",
 		LocalPath:   "/tmp/legacy.mp4",
 		Filename:    "legacy.mp4",
 		Description: "legacy clip",
@@ -297,16 +290,18 @@ func TestPublishClipToDrive_SemanticFieldsEmptyByDefault(t *testing.T) {
 	if req.Group != "legacy-group" {
 		t.Errorf("expected Group 'legacy-group', got %q", req.Group)
 	}
-	if req.RootFolderOverride != "root-legacy" {
-		t.Errorf("expected RootFolderOverride 'root-legacy', got %q", req.RootFolderOverride)
-	}
 }
 
-// TestPublishClipToDrive_CategoryOnly_NoRootOverrideSuppression verifies
-// that RootFolderOverride still passes through when only legacy fields
-// are set — the suppression logic lives in publisherAdapter, not here.
-// PublishClipToDrive is a thin passthrough; it does not apply policy.
-func TestPublishClipToDrive_RootFolderOverride_PassesThrough(t *testing.T) {
+// TestPublishClipToDrive_ProjectID_FlowsToRequest verifies that
+// ProjectID flows through from PublishClipCommand to PublishRequest.
+// This is the canonical replacement for the retired RootFolderOverride
+// field — callers that need per-call folder targeting pass ProjectID
+// instead (PR-P12-YOUTUBE-LEGACY-RETIRE, July 2026).
+//
+// RootFolder is intentionally NOT threaded to PublishRequest — the
+// canonical Publisher resolves the target folder via DestinationRegistry
+// + DestinationPolicy.RootFolderID.
+func TestPublishClipToDrive_ProjectID_FlowsToRequest(t *testing.T) {
 	stub := &stubPublisher{
 		result: &PublishResult{
 			FileID:      "drive-root-1",
@@ -319,6 +314,7 @@ func TestPublishClipToDrive_RootFolderOverride_PassesThrough(t *testing.T) {
 		AssetID:    "yt_root_test",
 		Group:      "some-group",
 		Subject:    "some-subject",
+		ProjectID:  "explicit-project-id",
 		RootFolder: "explicit-folder-id",
 		LocalPath:  "/tmp/root.mp4",
 		Filename:   "root.mp4",
@@ -332,9 +328,10 @@ func TestPublishClipToDrive_RootFolderOverride_PassesThrough(t *testing.T) {
 		t.Error("expected Published=true")
 	}
 
-	// RootFolderOverride must pass through — the adapter decides suppression.
-	if stub.lastReq.RootFolderOverride != "explicit-folder-id" {
-		t.Errorf("expected RootFolderOverride 'explicit-folder-id', got %q",
-			stub.lastReq.RootFolderOverride)
+	// ProjectID must pass through — this is the canonical replacement
+	// for the retired RootFolderOverride field.
+	if stub.lastReq.ProjectID != "explicit-project-id" {
+		t.Errorf("expected ProjectID 'explicit-project-id', got %q",
+			stub.lastReq.ProjectID)
 	}
 }

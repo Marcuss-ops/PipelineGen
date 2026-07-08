@@ -62,6 +62,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	translationpkg "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -115,6 +116,174 @@ const (
 	// recurs across multiple segments.
 	WarnTranslationEqualToSource = "translation equals source language; segment was not translated"
 )
+
+// ReasonCode is the bounded enum for Prometheus label cardinality
+// (PR-TRANSLATE-SCRIPT-SPEC forward-pointer FP3, 2026-08-08). The
+// TranslationProcessor emits one ReasonCode per warning +
+// per non-fatal typed error. Dashboards MUST groupBy(reason) before
+// groupingBy(target_lang) to surface real failure classes — the
+// bounded enum prevents label-cardinality explosion.
+//
+// godlike/06 SSOT: this type is the LEGACY local alias of
+// `ports.TranslationWarningReason` (which is the SOLE canonical
+// owner post-FP3 SSOT-divergence fix). The string underlying-type
+// is identical to ports.TranslationWarningReason so the bounded
+// label value is byte-equivalent across both declarations.
+type ReasonCode = ports.TranslationWarningReason
+
+const (
+	ReasonEqualToSource        = ports.ReasonEqualToSource
+	ReasonTranslatorMissing    = ports.ReasonTranslatorMissing
+	ReasonTargetLangMissing    = ports.ReasonTargetLangMissing
+	ReasonEmptyTranslation     = ports.ReasonEmptyTranslation
+	ReasonIncompleteValidation = ports.ReasonIncompleteValidation
+	ReasonClipIDChanged        = ports.ReasonClipIDChanged
+	ReasonDriveLinkChanged     = ports.ReasonDriveLinkChanged
+	ReasonSourceInvalid        = ports.ReasonSourceInvalid
+	ReasonPreValidationWarn    = ports.ReasonPreValidationWarn
+	// ReasonUnknown is the bounded-enum fallback for
+	// godlike/07 typed-error-contract: every translation call that
+	// emits an unknown warning has its reason coerced to
+	// ReasonUnknown at the metrics-adapter boundary, so the
+	// Prometheus label cardinality is guaranteed bounded.
+	ReasonUnknown = ports.ReasonUnknown
+)
+
+// translationUseCaseAdapter is the canonical thin struct that
+// adapts the pure TranslateScriptSpec function to the typed
+// ports.TranslationUseCase port. The composition root wires this
+// adapter via NewTranslationUseCaseAdapter so the postprocessor
+// layer can inject the canonical function value without importing
+// the usecase package (breaks the adapters → usecase import cycle).
+//
+// godlike/06 SSOT (one canonical owner per fact): the adapter
+// lives in usecase/ (NOT in adapters/) because the pure function
+// it wraps lives in usecase/. The adapter's only job is the typed
+// port satisfaction — every method body is a single
+// byte-for-byte delegation.
+//
+// godlike/07 minimum-blast-radius: the zero-value struct satisfies
+// the port (method is nil-safe at the call site); the
+// composition root never wires a nil adapter. A future
+// signature-drift in ports.TranslationUseCase surfaces as a
+// build failure at the compile-time pin below.
+type translationUseCaseAdapter struct{}
+
+// NewTranslationUseCaseAdapter returns the canonical
+// ports.TranslationUseCase adapter that delegates to the pure
+// TranslateScriptSpec function. The composition root calls this
+// once during TranslationProcessor wiring.
+//
+// godlike/07 minimum-blast-radius: the adapter is a zero-size
+// struct (no fields, no state); the only method body is a single
+// delegation line to the canonical pure function.
+func NewTranslationUseCaseAdapter() ports.TranslationUseCase {
+	return &translationUseCaseAdapter{}
+}
+
+// TranslateScriptSpec satisfies ports.TranslationUseCase by
+// delegating to the canonical pure function byte-for-byte.
+func (*translationUseCaseAdapter) TranslateScriptSpec(
+	ctx context.Context,
+	in *scriptpkg.ModelScriptOutputV1,
+	evidence *scriptpkg.ClipEvidence,
+	targetLang string,
+	translator ports.ScriptTranslator,
+) (out *scriptpkg.ModelScriptOutputV1, warnings []string, err error) {
+	// Adapt the typed port (interface) to the function value the
+	// pure function expects. Nil-port → returns
+	// ErrTranslationTranslatorMissing via the adapter closure so the
+	// pure function fails fast with the canonical typed sentinel.
+	fn := translationpkg.TranslatorFunc(func(ctx context.Context, text, lang string) (string, error) {
+		if translator == nil {
+			return "", ErrTranslationTranslatorMissing
+		}
+		return translator.Translate(ctx, text, lang)
+	})
+	return TranslateScriptSpec(ctx, in, evidence, targetLang, fn)
+}
+
+// Compile-time pin: translationUseCaseAdapter satisfies
+// ports.TranslationUseCase. A future signature drift in the port
+// surfaces as a build failure, not a runtime panic.
+var _ ports.TranslationUseCase = (*translationUseCaseAdapter)(nil)
+
+// translationReasonClassifierAdapter is the canonical thin struct
+// that adapts the pure ClassifyReason function to the typed
+// ports.TranslationReasonClassifier port. Same rationale as
+// translationUseCaseAdapter (composition-root-injected, breaks
+// the adapters → usecase import cycle).
+//
+// godlike/07 typed-error contract: the adapter is a zero-size
+// struct; the only method body is a single delegation line.
+type translationReasonClassifierAdapter struct{}
+
+// NewTranslationReasonClassifierAdapter returns the canonical
+// ports.TranslationReasonClassifier adapter that delegates to the
+// pure ClassifyReason function. The composition root calls this
+// once during TranslationProcessor wiring.
+func NewTranslationReasonClassifierAdapter() ports.TranslationReasonClassifier {
+	return &translationReasonClassifierAdapter{}
+}
+
+// ClassifyReason satisfies ports.TranslationReasonClassifier by
+// delegating to the canonical pure function byte-for-byte.
+func (*translationReasonClassifierAdapter) ClassifyReason(s string) ports.TranslationWarningReason {
+	return ClassifyReason(s)
+}
+
+// Compile-time pin: translationReasonClassifierAdapter satisfies
+// ports.TranslationReasonClassifier.
+var _ ports.TranslationReasonClassifier = (*translationReasonClassifierAdapter)(nil)
+
+// ClassifyReason returns the bounded ReasonCode that corresponds
+// to a translation warning string OR a typed-error .Error()
+// representation. The mapping is exhaustive for the canonical
+// TranslateScriptSpec surface (PR-TRANSLATE-SCRIPT-SPEC
+// godlike/07 typed-error contract).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: strings NOT matching any of
+// the canonical substring tokens are mapped to ReasonUnknown so
+// dashboards never see unbounded label values. The raw warning
+// string is preserved on PostProcessResult.Warnings (full fidelity);
+// only the metric label is bounded.
+//
+// The function is string-based (NOT errors.Is-based) because the
+// translation postprocessor surface works in the warnings []string
+// channel and the .Error() canonical form, NOT in the typed-error
+// chain. The substring patterns match the typed sentinels'
+// canonical .Error() messages (the "translate script: ..." prefix
+// is shared across all sentinels, so the function falls through
+// to the SECOND substring token for disambiguation).
+//
+// godlike/06 SSOT: the returned value is the canonical
+// `ports.TranslationWarningReason` (this function is the SOLE
+// canonical classifier surface); the alias declaration above
+// preserves the legacy `usecase.ReasonCode` reference for any
+// downstream caller that still uses the local name.
+func ClassifyReason(s string) ports.TranslationWarningReason {
+	switch {
+	case strings.Contains(s, WarnTranslationEqualToSource):
+		return ReasonEqualToSource
+	case strings.Contains(s, "pre-validation failed"):
+		return ReasonPreValidationWarn
+	case strings.Contains(s, "source invalid"):
+		return ReasonSourceInvalid
+	case strings.Contains(s, "translator nil"):
+		return ReasonTranslatorMissing
+	case strings.Contains(s, "target language required"):
+		return ReasonTargetLangMissing
+	case strings.Contains(s, "empty translation"):
+		return ReasonEmptyTranslation
+	case strings.Contains(s, "incomplete"):
+		return ReasonIncompleteValidation
+	case strings.Contains(s, "clip id changed"):
+		return ReasonClipIDChanged
+	case strings.Contains(s, "drive link changed"):
+		return ReasonDriveLinkChanged
+	}
+	return ReasonUnknown
+}
 
 // TranslateScriptSpec translates the text fields of a *ModelScriptOutputV1
 // to targetLang while preserving byte-identical identifier-keyed

@@ -86,7 +86,6 @@ type PublishRequest struct {
 	Provider           string   // upstream source (e.g. "youtube")
 	Tags               []string // semantic keywords for Qdrant
 	Language           string   // BCP-47 language tag
-	RootFolderOverride string
 }
 
 // PublishResult is the use-case-owned wire shape for a Drive publish outcome.
@@ -117,19 +116,23 @@ func PublishClipToDrive(ctx context.Context, pub DrivePublisher, cmd PublishClip
 	// so the Drive Publisher's YouTubeClipPath can build the correct folder
 	// hierarchy from semantic metadata rather than relying solely on Group.
 	result, err := pub.Publish(ctx, PublishRequest{
-		Destination:        "youtube-clip",
-		LocalPath:          cmd.LocalPath,
-		Filename:           cmd.Filename,
-		Description:        cmd.Description,
-		AssetID:            cmd.AssetID,
-		ProjectID:          cmd.ProjectID,
-		Group:              cmd.Group,
-		Subject:            cmd.Subject,
-		Category:           cmd.Category,
-		Provider:           cmd.Provider,
-		Tags:               cmd.Tags,
-		Language:           cmd.Language,
-		RootFolderOverride: cmd.RootFolder,
+		Destination: "youtube-clip",
+		LocalPath:   cmd.LocalPath,
+		Filename:    cmd.Filename,
+		Description: cmd.Description,
+		AssetID:     cmd.AssetID,
+		ProjectID:   cmd.ProjectID,
+		Group:       cmd.Group,
+		Subject:     cmd.Subject,
+		Category:    cmd.Category,
+		Provider:    cmd.Provider,
+		Tags:        cmd.Tags,
+		Language:    cmd.Language,
+		// PR-P12-YOUTUBE-LEGACY-RETIRE (July 2026): RootFolderOverride RETIRED.
+		// The canonical Publisher resolves the target folder via
+		// DestinationRegistry + DestinationPolicy.RootFolderID.
+		// cmd.RootFolder (the legacy backward-compat override) is now unused;
+		// callers that need per-call folder targeting pass ProjectID instead.
 	})
 	if err != nil {
 		return &PublishClipResult{Published: false}, fmt.Errorf("usecase.PublishClipToDrive: %w", err)
