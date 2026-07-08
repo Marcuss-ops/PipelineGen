@@ -68,10 +68,37 @@ func NewClipSearchAdapter(searcher *Searcher, embedder TextEmbedder, vectorName 
 	}
 }
 
-// Compile-time assertion (AGENTS.md Pattern 0).
-var _ ports.ClipSearchPort = (*clipSearchAdapter)(nil)
+// Compile-time assertions (AGENTS.md Pattern 0).
+//
+// PR-POSTPROCESSOR-UNIFICATION-PHASE-3 Commit 2 (July 2026): the
+// adapter now satisfies BOTH the canonical AssetSearchPort (added
+// per the unification wave) AND the legacy ClipSearchPort (embedded
+// in clip_search_port.go during the 7-day soak). The SearchAssets
+// method is the canonical entry point; SearchClips is preserved
+// for back-compat with the 15 existing callers during the soak
+// (forward-pointer PR-CLIPS-STOCK-PORT-RETIRE removes it).
+var (
+	_ ports.AssetSearchPort = (*clipSearchAdapter)(nil)
+	_ ports.ClipSearchPort  = (*clipSearchAdapter)(nil)
+)
 
-// SearchClips implements ports.ClipSearchPort.
+// SearchAssets implements ports.AssetSearchPort (canonical).
+//
+// PR-POSTPROCESSOR-UNIFICATION-PHASE-3 Commit 2: the real
+// implementation. The legacy SearchClips method (preserved for the
+// 7-day soak) is now a thin wrapper that converts
+// ClipSearchQuery → AssetSearchQuery, calls this method, and
+// converts the result back. This direction (canonical-first) makes
+// the forward-pointer PR-CLIPS-STOCK-PORT-RETIRE safer: after the
+// soak, deleting SearchClips requires zero body rewrite because
+// the validated scope guard + embed + filter + result-conversion
+// logic all live here in the canonical method.
+//
+// RequireActiveLifecycle semantics: the field is IGNORED on the
+// clip path (lifecycle=ACTIVE is already enforced by
+// CompileQdrantFilter per the PR 5 June 2026 fix). The field is
+// retained in the unified query type for cross-source consistency;
+// the stock path reads it explicitly (Commit 3).
 //
 // Fail-closed tenant contract (PR 5 §8):
 //
@@ -81,20 +108,41 @@ var _ ports.ClipSearchPort = (*clipSearchAdapter)(nil)
 //   - Otherwise → CompileQdrantFilter emits the canonical
 //     workspace + lifecycle filter and Search runs against the
 //     runtime alias.
-func (a *clipSearchAdapter) SearchClips(ctx context.Context, q ports.ClipSearchQuery) ([]ports.ClipSearchHit, error) {
+func (a *clipSearchAdapter) SearchAssets(ctx context.Context, q ports.AssetSearchQuery) ([]ports.AssetSearchHit, error) {
 	if a == nil || a.searcher == nil {
 		return nil, fmt.Errorf("clip search adapter: searcher not configured")
 	}
-	if a.embedder == nil {
-		return nil, fmt.Errorf("clip search adapter: embedder not configured")
+	// Operator visibility for the unified RequireActiveLifecycle
+	// field: the clip path always enforces lifecycle=ACTIVE via
+	// CompileQdrantFilter (PR 5 June 2026 fix), so the field is
+	// REDUNDANT here. A Debug log surfaces the field-usage
+	// pattern to operator dashboards (the typed-envelope
+	// contract is unchanged — the field is still accepted, just
+	// silently ignored semantically). Mirrors the
+	// PR-PY-STEP10-FAIL-LOG pattern: typed log + typed contract,
+	// additive observability only.
+	if q.RequireActiveLifecycle && a.log != nil {
+		a.log.Debug("clip search: RequireActiveLifecycle=true is redundant (lifecycle=ACTIVE already enforced by CompileQdrantFilter)",
+			zap.String("query", strings.TrimSpace(q.Query)))
 	}
+	// Fast-path: empty query short-circuits BEFORE the embedder guard
+	// (you don't need a wired embedder to return [] for an empty
+	// query; this is a cheap pre-flight that avoids surfacing a
+	// misleading "embedder not configured" error to callers that
+	// only call the port to detect empty queries).
 	query := strings.TrimSpace(q.Query)
 	if query == "" {
-		return []ports.ClipSearchHit{}, nil
+		return []ports.AssetSearchHit{}, nil
 	}
-	// Tenant guard — fail-closed before any embed cost.
+	// Tenant guard — fail-closed before any embed cost. This runs
+	// BEFORE the embedder check so callers with misconfigured
+	// workspace see the typed workspace error rather than a
+	// misleading "embedder not configured" error.
 	if err := validateScope(q.WorkspaceID, q.IsSystem); err != nil {
 		return nil, err
+	}
+	if a.embedder == nil {
+		return nil, fmt.Errorf("clip search adapter: embedder not configured")
 	}
 
 	limit := defaults.Int(q.Limit, 20)
@@ -136,19 +184,60 @@ func (a *clipSearchAdapter) SearchClips(ctx context.Context, q ports.ClipSearchQ
 	if err != nil {
 		return nil, fmt.Errorf("clip search: %w", err)
 	}
-	return convertClipHits(results), nil
+	return convertAssetHits(results), nil
 }
 
-// convertClipHits maps infra-level schema.SearchResult → app-level
-// ClipSearchHit (strips non-port fields).
-func convertClipHits(results []schema.SearchResult) []ports.ClipSearchHit {
-	out := make([]ports.ClipSearchHit, 0, len(results))
-	for _, r := range results {
+// SearchClips implements ports.ClipSearchPort.
+//
+// PR-POSTPROCESSOR-UNIFICATION-PHASE-3 Commit 2: thin wrapper that
+// converts the legacy ClipSearchQuery → unified AssetSearchQuery,
+// delegates to the canonical SearchAssets, then converts the
+// canonical AssetSearchHit results back to the legacy ClipSearchHit
+// shape. This is the only stable surface for the 15 existing
+// callers during the 7-day soak; after forward-pointer
+// PR-CLIPS-STOCK-PORT-RETIRE ships, this method is deleted and
+// the callers migrate to SearchAssets directly.
+func (a *clipSearchAdapter) SearchClips(ctx context.Context, q ports.ClipSearchQuery) ([]ports.ClipSearchHit, error) {
+	canonicalHits, err := a.SearchAssets(ctx, ports.AssetSearchQuery{
+		Query:                  q.Query,
+		Source:                 q.Source,
+		Category:               q.Category,
+		MediaType:              q.MediaType,
+		WorkspaceID:            q.WorkspaceID,
+		IsSystem:               q.IsSystem,
+		Limit:                  q.Limit,
+		MinScore:               q.MinScore,
+		RequireActiveLifecycle: false, // clip path: CompileQdrantFilter already locks lifecycle=ACTIVE.
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ports.ClipSearchHit, 0, len(canonicalHits))
+	for _, h := range canonicalHits {
 		out = append(out, ports.ClipSearchHit{
-			AssetID: payloadString(r.Payload, "asset_id"),
-			Name:    payloadString(r.Payload, "name"),
-			Score:   r.Score,
-			Source:  payloadString(r.Payload, "source"),
+			AssetID: h.AssetID,
+			Name:    h.Name,
+			Score:   h.Score,
+			Source:  h.Source,
+		})
+	}
+	return out, nil
+}
+
+// convertAssetHits maps infra-level schema.SearchResult → canonical
+// AssetSearchHit (5 fields, DriveLink empty for clip path per
+// QDRANT-001: server-internal locators do not belong in the search
+// contract; clip consumers fetch signed URLs via
+// delivery.Signer.BuildAuthorizedURL).
+func convertAssetHits(results []schema.SearchResult) []ports.AssetSearchHit {
+	out := make([]ports.AssetSearchHit, 0, len(results))
+	for _, r := range results {
+		out = append(out, ports.AssetSearchHit{
+			AssetID:   payloadString(r.Payload, "asset_id"),
+			Name:      payloadString(r.Payload, "name"),
+			Score:     r.Score,
+			Source:    payloadString(r.Payload, "source"),
+			DriveLink: "", // clip path: per QDRANT-001
 		})
 	}
 	return out
