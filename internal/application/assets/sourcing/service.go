@@ -19,6 +19,8 @@ package sourcing
 import (
 	"context"
 	"fmt"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 )
 
 // Service is the SourcingService façade. After P0-1 / commit 5 the ctor
@@ -125,7 +127,7 @@ func (s *Service) WithLocationResolver(r LocationResolverPort) *Service {
 // godlike/07 NO-FAKE-AVAILABILITY: this helper either returns a
 // non-empty folder-id or returns nil+error. There is no
 // silent-fail-closed pass-through to the orchestrator.
-func (s *Service) resolveLocationFallback(ctx context.Context, cmd RegisterClipCommand) (string, error) {
+func (s *Service) resolveLocationFallback(ctx context.Context, cmd RegisterClipCommand, dest delivery.DestinationKey) (string, error) {
 	if cmd.FolderID != "" {
 		return cmd.FolderID, nil
 	}
@@ -138,7 +140,7 @@ func (s *Service) resolveLocationFallback(ctx context.Context, cmd RegisterClipC
 			ErrLocationResolverEmpty,
 		)
 	}
-	folderID, err := s.locationResolver.Resolve(ctx, cmd.Location, "")
+	folderID, err := s.locationResolver.Resolve(ctx, cmd.Location, dest)
 	if err != nil {
 		return "", fmt.Errorf("sourcing.Service.resolveLocationFallback: resolver error: %w", err)
 	}
@@ -181,7 +183,7 @@ func (s *Service) resolveLocationFallback(ctx context.Context, cmd RegisterClipC
 func (s *Service) RegisterFromYouTube(ctx context.Context, cmd RegisterClipCommand) (*RegisterClipResult, error) {
 	// F3 service-layer fallback runs FIRST so resolver-misconfig failures
 	// surface at the typed sentinel rather than the orchestrator-nil one.
-	resolved, err := s.resolveLocationFallback(ctx, cmd)
+	resolved, err := s.resolveLocationFallback(ctx, cmd, delivery.DestinationYouTubeClip)
 	if err != nil {
 		return nil, err
 	}

@@ -71,7 +71,7 @@ func TestService_ResolveLocationFallback_NoResolver_ReturnsTypedSentinel(t *test
 	cmd := RegisterClipCommand{
 		Location: domaindelivery.AssetLocationInput{Category: "Boxe", Subject: "Ali"},
 	}
-	_, err := s.resolveLocationFallback(context.Background(), cmd)
+	_, err := s.resolveLocationFallback(context.Background(), cmd, delivery.DestinationYouTubeClip)
 	if err == nil {
 		t.Fatalf("expected typed error from unconfigured resolver; got nil")
 	}
@@ -179,7 +179,7 @@ func TestService_ResolveLocationFallback_EmptyLocation_NoResolverCall(t *testing
 	cmd := RegisterClipCommand{
 		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
 	}
-	fid, err := s.resolveLocationFallback(context.Background(), cmd)
+	fid, err := s.resolveLocationFallback(context.Background(), cmd, delivery.DestinationYouTubeClip)
 	if err != nil {
 		t.Fatalf("expected nil err for empty-location fallback; got %v", err)
 	}
