@@ -345,6 +345,7 @@ func BuildFinalizationRequest(
 	resultData []byte,
 	chunks []ChunkState,
 	metadata MetadataState,
+	runFingerprint string,
 ) (*finalization.FinalizationRequest, error) {
 	// Gates first — fail-fast before composing the request.
 	if err := VerifyChunks(chunks); err != nil {
@@ -398,6 +399,7 @@ func BuildFinalizationRequest(
 			FolderPath:   "",
 			Action:       finalization.PublishCreated,
 		},
+		Source: "stock",
 	})
 
 	// (2) Chunk artifacts (one per ChunkState, Required:true).
@@ -419,19 +421,33 @@ func BuildFinalizationRequest(
 		// Without this bridge, ChunkState's Title/Round/Tags/Category/
 		// SourceProvider/DrivePath/etc. are lost at the PublishedArtifact
 		// boundary and the Qdrant PayloadMapper has no rich data.
+		chunkDuration := c.EndSec - c.StartSec
+		if chunkDuration < 0 {
+			chunkDuration = 0
+		}
 		chunkMeta := map[string]any{
-			"title":           c.Title,
-			"description":     c.Description,
-			"start_sec":       c.StartSec,
-			"end_sec":         c.EndSec,
-			"source_url":      c.SourceURL,
-			"source_provider": c.SourceProvider,
-			"source_video_id": c.SourceVideoID,
-			"total_chunks":    c.TotalChunks,
-			"drive_path":      c.DrivePath,
-			"policy_version":  c.PolicyVersion,
-			"indexing_status": "INDEXING_PENDING",
-			"chunk_index":     c.Index,
+			"title":               c.Title,
+			"description":         c.Description,
+			"start_sec":           c.StartSec,
+			"end_sec":             c.EndSec,
+			"source_url":          c.SourceURL,
+			"source_provider":     c.SourceProvider,
+			"source_video_id":     c.SourceVideoID,
+			"total_chunks":        c.TotalChunks,
+			"drive_path":          c.DrivePath,
+			"policy_version":      c.PolicyVersion,
+			"indexing_status":     "INDEXING_PENDING",
+			"chunk_index":         c.Index,
+			"job_id":              jobID,
+			"run_fingerprint":     runFingerprint,
+			"chunk_filename":      c.Filename,
+			"chunk_duration_sec":  chunkDuration,
+			"chunk_drive_file_id": c.RemoteFileID,
+			"chunk_drive_link":    c.RemoteWebViewLink,
+			"timestamp_title":     c.Title,
+			"timestamp_slug":      c.Slug,
+			"timestamp_start_sec": c.StartSec,
+			"timestamp_end_sec":   c.EndSec,
 		}
 		if c.Round > 0 {
 			chunkMeta["round"] = c.Round
@@ -458,6 +474,7 @@ func BuildFinalizationRequest(
 			IdempotencyKey:   chunkIdemKey,
 			Description:      c.Description,
 			ArtifactMetadata: chunkMeta,
+			Source:           "stock",
 			Location: finalization.AssetLocation{
 				Provider:     "drive",
 				FileID:       c.RemoteFileID,
