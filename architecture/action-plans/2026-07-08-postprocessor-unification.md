@@ -15,6 +15,23 @@
 
 ## §0 Honest status snapshot (godlike/07 NO-FAKE-AVAILABILITY)
 
+### Community snapshot
+**[SHIPPED]** Phase 1 = canonical SSOT home for `ProcessorClipSearch`
++ `Changed: true` flip on `StockAssociationProcessor` — commit
+`1e5b17011` on `origin/main` (2026-07-08).
+**[PLANNING-ONLY]** Phase 2 = `SceneSynthesizer` + `SceneAssetBinder`
+extraction (forward-pointer `PR-POSTPROCESSOR-UNIFICATION-PHASE-2`).
+**[PLANNING-ONLY]** Phase 3 = `AssetSearchPort` +
+`SemanticAssetSearcher` unification (forward-pointer
+`PR-POSTPROCESSOR-UNIFICATION-PHASE-3`).
+**[PLANNING-ONLY]** Phase 4 = `PhraseAssetSearchService` extraction
+(forward-pointer
+`PR-POSTPROCESSOR-UNIFICATION-CHEN-SCRIPT-RUNNER-HARNESS`).
+**[PLANNING-ONLY]** INVALIDATOR Check 65 = forward-prevention gate
+`{id: PR-CHECK-65-INVALIDATOR, owner_capability: cmd/archcheck/scan, status: PLANNING-ONLY, deadline: 2026-07-29, ship_sha: empty}`.
+
+### Audit-pin detail
+
 Today `internal/application/scripts/adapters/` has **9
 canonical postprocessors** (closed set in
 `CanonicalProcessorNames()`) but **`clip_search` was NOT in
@@ -102,7 +119,7 @@ and skips the false "empty output" warning.
 ---
 
 ## §2 Phase 2 — Extract `SceneSynthesizer` + `SceneAssetBinder`
-(forward-pointer, NOT shipped)
+`{id: PR-POSTPROCESSOR-UNIFICATION-PHASE-2, owner_capability: internal/application/scripts/scene, status: PLANNING-ONLY, deadline: 2026-07-15, ship_sha: empty}`
 
 Per audit point 3 + 4. Future agents move the prose-synth + clip
 + stock binding logics out of the two processors into a shared
@@ -133,7 +150,7 @@ new package avoid exposing `scriptpkg` at a new boundary.
 ---
 
 ## §3 Phase 3 — Unify `AssetSearchPort` + `SemanticAssetSearcher`
-(forward-pointer, NOT shipped)
+`{id: PR-POSTPROCESSOR-UNIFICATION-PHASE-3, owner_capability: internal/infrastructure/qdrant/search, status: PLANNING-ONLY, deadline: 2026-07-22, ship_sha: empty}`
 
 Per audit point 1 + 2. Future agents collapse the 3 distinct
 search ports into one canonical surface:
@@ -173,7 +190,7 @@ FASE-2.1-VOICE-FREEZE discipline.
 ---
 
 ## §4 Phase 4 — Unify `PhraseAssetSearchService`
-(forward-pointer, NOT shipped)
+`{id: PR-POSTPROCESSOR-UNIFICATION-CHEN-SCRIPT-RUNNER-HARNESS, owner_capability: internal/application/scripts/artlist_phrase, status: PLANNING-ONLY, deadline: 2026-07-29, ship_sha: empty}`
 
 Per audit point 6. Today the same preprocessing lives in two
 spot: `ClipSearchProcessor.Process()` (dedupe, ArtlistPhrase
@@ -233,8 +250,16 @@ cd /home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored && \
 gofmt -l <changed-files> && \
 go vet ./internal/application/scripts/... && \
 go build ./internal/application/scripts/... && \
-go test -short -count=1 ./internal/application/scripts/...
+go test -short -count=1 ./internal/application/scripts/... && \
+bash scripts/ci-architectural-checks.sh --strict
 ```
+
+`bash scripts/ci-architectural-checks.sh --strict` returns
+**exit 0** iff every per-check scanner (incl. forward-prevention
+gates for canonical routes, root-override scans, and archcheck
+Go scanners) is green. The wave-tracker slot flip to
+`status: shipped + exit_signal: true` triggers ONLY after this
+gate exits 0 (godlike/07 NO-FAKE-AVAILABILITY contract).
 
 Phase 2-4 add downstream test runs for the helpers + ports
 they touch (e.g. Phase 3's adapter file in
@@ -261,6 +286,15 @@ they touch (e.g. Phase 3's adapter file in
 - `AGENTS.md Git-Lesson-2` — direct-to-main workflow,
   `Co-authored-by:` trailer per Git-Lesson-3, race-protect
   per Git-Lesson-4. Each per-Phase commit lands atomic.
+- **Sister action plan** —
+  [`architecture/action-plans/2026-07-04-archcheck-phase-2-action-plan.md`](2026-07-04-archcheck-phase-2-action-plan.md)
+  (Phase 4 register retires — the canonical archcheck-script
+  retirement companion to this action plan's Phase 4
+  verified-gate step).
+- **Sister action plan** —
+  [`architecture/action-plans/2026-07-04-qdrant-verification-chain.md`](2026-07-04-qdrant-verification-chain.md)
+  (Qdrant DoD — the canonical Qdrant index contract companion
+  to this action plan's Phase 3 `AssetSearchPort` unification).
 
 ---
 
@@ -304,8 +338,10 @@ For Phase 2-4 (forward-pointers):
 
 ## §10 Co-authored-by trailer (for closure commits)
 
-```
-Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>
-```
+Use this byte-exact trailer (per the codebase convention; the
+period `.` and trailing `AGENTS.md Git-Lesson-3.` are required
+for grep-pinning by future agents):
 
-Per AGENTS.md Git-Lesson-3.
+```
+Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesson-3.
+```
