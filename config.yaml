@@ -70,7 +70,7 @@ paths:
   token_file: "token.json"
 
 drive:
-  strict_startup_validation: false
+  strict_startup_validation: true
   # Drive root folders are resolved via the API (folder_id in request payload).
   # Do NOT hardcode folder IDs here — they are passed per-request through
   # VerifiedArtifact.RootFolderOverride → PublishRequest.RootFolderOverride.
@@ -175,6 +175,17 @@ qdrant:
   enabled: true
   base_url: "http://127.0.0.1:6333"
   api_key: ""  # override via VELOX_QDRANT_API_KEY env var (AGENTS.md secrets policy)
+
+# FASE 8 VO-OPERATIONAL-READINESS (July 2026): voiceover pipeline
+# concurrency limits, retry budgets, and per-stage timeouts.
+voiceover:
+  max_concurrent_drive_uploads: 3   # 2-5: parallel Drive upload semaphore
+  max_concurrent_tts: 1             # 1-2: parallel TTS synthesis semaphore
+  drive_upload_max_retries: 3       # retry attempts before permanent failure
+  drive_upload_retry_backoff_ms: 1000  # initial backoff (exponential: 1s → 2s → 4s)
+  tts_timeout_sec: 120              # per-call TTS synthesis timeout (2 min)
+  drive_upload_timeout_sec: 300     # per-attempt Drive upload timeout (5 min)
+  ollama_timeout_sec: 120           # per-call Ollama translation timeout (2 min)
 
 vector_search:
   enabled: true

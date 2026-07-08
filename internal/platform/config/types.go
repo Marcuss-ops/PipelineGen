@@ -32,33 +32,80 @@ type ConcurrencyConfig struct {
 	MaxConcurrentChannelChecks int `yaml:"max_concurrent_channel_checks" env:"VELOX_CONCURRENT_CHANNEL_CHECKS" default:"20"`
 }
 
+// VoiceoverConcurrencyConfig holds voiceover-pipeline concurrency limits,
+// retry budgets, and per-stage timeouts (FASE 8 VO-OPERATIONAL-READINESS, July 2026).
+//
+// Concurrency limits use channel-based semaphores wired as thin adapters in
+// the composition root (build_bundles_voiceover_rate_limits.go). Retry for
+// Drive uploads routes through pkg/retry.Do with exponential backoff.
+// Per-stage timeouts are applied via context.WithTimeout in the respective
+// adapters BEFORE the semaphore acquire so the timeout budget includes both
+// the queue-wait and the actual execution.
+type VoiceoverConcurrencyConfig struct {
+	// MaxConcurrentDriveUploads limits parallel Google Drive upload calls
+	// across the voiceover pipeline. Recommended range: 2-5.
+	// Default: 3.
+	MaxConcurrentDriveUploads int `yaml:"max_concurrent_drive_uploads" default:"3"`
+
+	// MaxConcurrentTTS limits parallel text-to-speech synthesis calls.
+	// TTS is CPU-bound (ffmpeg/edge-tts spawn per-call processes); keeping
+	// this at 1-2 avoids I/O oversubscription. Default: 1.
+	MaxConcurrentTTS int `yaml:"max_concurrent_tts" default:"1"`
+
+	// Drive retry budget.
+
+	// DriveUploadMaxRetries is the maximum number of Drive upload attempts
+	// (inclusive) before the call fails permanently. Default: 3.
+	DriveUploadMaxRetries int `yaml:"drive_upload_max_retries" default:"3"`
+
+	// DriveUploadRetryBackoffMs is the initial backoff in milliseconds
+	// before the first Drive upload retry. The pkg/retry loop applies
+	// exponential backoff with factor 2.0 capped at 10s. Default: 1000 (1s).
+	DriveUploadRetryBackoffMs int `yaml:"drive_upload_retry_backoff_ms" default:"1000"`
+
+	// Per-stage timeout budgets (seconds).
+
+	// TTSTimeoutSec is the per-call timeout for TTS synthesis.
+	// Default: 120 (2 min).
+	TTSTimeoutSec int `yaml:"tts_timeout_sec" default:"120"`
+
+	// DriveUploadTimeoutSec is the per-call timeout for a single Drive
+	// upload attempt (NOT the cumulative retry budget). Default: 300 (5 min).
+	DriveUploadTimeoutSec int `yaml:"drive_upload_timeout_sec" default:"300"`
+
+	// OllamaTimeoutSec is the per-call timeout for Ollama translation calls
+	// from the voiceover pipeline. Default: 120 (2 min).
+	OllamaTimeoutSec int `yaml:"ollama_timeout_sec" default:"120"`
+}
+
 // Config holds all configuration for the application.
 // All fields are public and read-only after bootstrap. The previous
 // sync.RWMutex was decorative (fields were mutated directly without locking)
 // so it has been removed to avoid a false guarantee of thread safety.
 type Config struct {
-	Server           ServerConfig           `yaml:"server"`
-	Logging          LoggingConfig          `yaml:"logging"`
-	Storage          StorageConfig          `yaml:"storage"`
-	Security         SecurityConfig         `yaml:"security"`
-	External         ExternalConfig         `yaml:"external"`
-	Paths            PathsConfig            `yaml:"paths"`
-	Drive            DriveConfig            `yaml:"drive"`
-	Concurrency      ConcurrencyConfig      `yaml:"concurrency"`
-	Jobs             JobsConfig             `yaml:"jobs"`
-	Workers          WorkersConfig          `yaml:"workers"`
-	Video            VideoConfig            `yaml:"video"`
-	Features         FeaturesConfig         `yaml:"features"`
-	GoogleAccounting GoogleAccountingConfig `yaml:"google_accounting"`
-	ClipIndexer      ClipIndexerConfig      `yaml:"clip_indexer"`
-	Reranker         RerankerConfig         `yaml:"reranker"`
-	Books            BooksConfig            `yaml:"books"`
-	VLM              VLMConfig              `yaml:"vlm"`
-	Lessons          LessonsConfig          `yaml:"lessons"`
-	Multilingual     MultilingualConfig     `yaml:"multilingual"`
-	Scripts          ScriptsConfig          `yaml:"scripts"`
-	Outbox           OutboxConfig           `yaml:"outbox"`
-	Qdrant           QdrantConfig           `yaml:"qdrant"`
+	Server           ServerConfig               `yaml:"server"`
+	Logging          LoggingConfig              `yaml:"logging"`
+	Storage          StorageConfig              `yaml:"storage"`
+	Security         SecurityConfig             `yaml:"security"`
+	External         ExternalConfig             `yaml:"external"`
+	Paths            PathsConfig                `yaml:"paths"`
+	Drive            DriveConfig                `yaml:"drive"`
+	Concurrency      ConcurrencyConfig          `yaml:"concurrency"`
+	Voiceover        VoiceoverConcurrencyConfig `yaml:"voiceover"`
+	Jobs             JobsConfig                 `yaml:"jobs"`
+	Workers          WorkersConfig              `yaml:"workers"`
+	Video            VideoConfig                `yaml:"video"`
+	Features         FeaturesConfig             `yaml:"features"`
+	GoogleAccounting GoogleAccountingConfig     `yaml:"google_accounting"`
+	ClipIndexer      ClipIndexerConfig          `yaml:"clip_indexer"`
+	Reranker         RerankerConfig             `yaml:"reranker"`
+	Books            BooksConfig                `yaml:"books"`
+	VLM              VLMConfig                  `yaml:"vlm"`
+	Lessons          LessonsConfig              `yaml:"lessons"`
+	Multilingual     MultilingualConfig         `yaml:"multilingual"`
+	Scripts          ScriptsConfig              `yaml:"scripts"`
+	Outbox           OutboxConfig               `yaml:"outbox"`
+	Qdrant           QdrantConfig               `yaml:"qdrant"`
 }
 
 // AuthSecurityPort compatibility helpers. These keep the application-layer
