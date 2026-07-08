@@ -21,8 +21,25 @@ package ports
 
 import "context"
 
-// ClipSearchPort is the narrow port for semantic clip discovery.
+// ClipSearchPort is the legacy narrow port for semantic clip
+// discovery consumed by MediaCurator.
+//
+// PR-POSTPROCESSOR-UNIFICATION-PHASE-3 Commit 2 (July 2026):
+// ClipSearchPort EMBEDS the canonical AssetSearchPort AND retains
+// the legacy SearchClips method. This is the Go-idiomatic
+// "soft migration" pattern: callers see both the new SearchAssets
+// (from the embedded interface) and the legacy SearchClips methods
+// during the 7-day soak (FASE-2.1-VOICE-FREEZE discipline).
+//
+// After 7 days, forward-pointer PR-CLIPS-STOCK-PORT-RETIRE will
+// remove the legacy SearchClips method and convert this to:
+//
+//	type ClipSearchPort = AssetSearchPort
+//
+// (true Go type alias for canonical surface deduplication).
 type ClipSearchPort interface {
+	AssetSearchPort
+
 	// SearchClips embeds the query text, performs an ANN search
 	// over the configured vector store, and returns up to `limit`
 	// clip hits ranked by similarity (highest first).
