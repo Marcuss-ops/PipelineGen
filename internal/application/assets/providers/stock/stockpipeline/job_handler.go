@@ -137,8 +137,10 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 		zap.Int("clips", len(payload.Clips)),
 		zap.Int("total_minutes", payload.TotalMinutes),
 		zap.Int("chunk_duration", payload.ChunkDuration),
+		zap.Int("seconds_per_segment", payload.SecondsPerSegment),
 		zap.String("subfolder", payload.Subfolder),
 		zap.String("folder_name", payload.FolderName),
+		zap.String("drive_folder_id", payload.DriveFolderID),
 		zap.String("folder_id", payload.FolderID),
 	)
 
@@ -150,12 +152,14 @@ func (s *Service) HandleJob(ctx context.Context, job *appjobs.Job, tools *appjob
 		TotalMinutes:      payload.TotalMinutes,
 		ChunkDuration:     payload.ChunkDuration,
 		ClipDuration:      payload.ClipDuration,
+		SecondsPerSegment: payload.SecondsPerSegment,
 		NoAudio:           payload.NoAudio,
 		NoEffects:         payload.NoEffects,
 		NoTransitions:     payload.NoTransitions,
 		MaxVideos:         payload.MaxVideos,
 		Subfolder:         payload.Subfolder,
 		FolderName:        payload.FolderName,
+		DriveFolderID:     payload.DriveFolderID,
 		FolderID:          payload.FolderID,
 		FinalizationLease: extractLease(job),
 	}

@@ -85,10 +85,11 @@ func buildGenerationResult(
 			meta := make([]scriptpkg.VideoMetadata, len(postResult.VideoMetadata))
 			for i, m := range postResult.VideoMetadata {
 				meta[i] = scriptpkg.VideoMetadata{
-					Language:    m.Language,
-					Title:       m.Title,
-					Description: m.Description,
-					Tags:        m.Tags,
+					Language:          m.Language,
+					Title:             m.Title,
+					Description:       m.Description,
+					Tags:              m.Tags,
+					TranslationStatus: m.TranslationStatus,
 				}
 			}
 			result.Artifacts.Metadata = meta

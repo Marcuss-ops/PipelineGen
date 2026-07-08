@@ -66,7 +66,10 @@ type Store interface {
 
 	// ScheduleRetry re-enqueues a running job for retry with backoff.
 	// Fenced by lease. Used when the handler returns a retryable error.
-	ScheduleRetry(ctx context.Context, id string, workerID, leaseID string, expectedRevision int, backoff time.Duration) error
+	// errMsg is the handler's dispatch error; it is persisted to both
+	// jobs.error and job_events.data_json so operators can diagnose WHY
+	// a job is retrying without reading server logs.
+	ScheduleRetry(ctx context.Context, id string, workerID, leaseID string, expectedRevision int, errMsg string, backoff time.Duration) error
 
 	// Cancel cancels a queued or running job (operator action, no lease required).
 	Cancel(ctx context.Context, id string) error

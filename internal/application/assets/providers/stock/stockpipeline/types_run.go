@@ -37,6 +37,10 @@ import (
 //     Use this when the title contains characters
 //     that don't slugify cleanly (e.g. accented
 //     Portuguese "Broner barcolla" stays verbatim).
+//   - ParentSlug string   — optional operator-supplied slug for the
+//     parent timestamp folder. When explicit clips are split into
+//     5-second children, this value is preserved so all children land
+//     under the same Drive folder.
 type ClipSpec struct {
 	Title       string   `json:"title,omitempty"`
 	Description string   `json:"description,omitempty"`
@@ -47,6 +51,7 @@ type ClipSpec struct {
 	Tags        []string `json:"tags,omitempty"`
 	Category    string   `json:"category,omitempty"`
 	Slug        string   `json:"slug,omitempty"`
+	ParentSlug  string   `json:"parent_slug,omitempty"`
 }
 
 // RunInput holds the parameters for a stock pipeline run.
@@ -61,22 +66,24 @@ type ClipSpec struct {
 // timestamp ranges that bypass the deterministic planner.
 // DriveURLs field holds Google Drive source URLs.
 type RunInput struct {
-	SearchQueries []string
-	DirectURLs    []string
-	DriveURLs     []string
-	Clips         []ClipSpec
-	TotalMinutes  int
-	MaxVideos     int
-	ChunkDuration int
-	ClipDuration  int
-	NoAudio       bool
-	NoEffects     bool
-	NoTransitions bool
-	Subfolder     string
-	FolderName    string
-	FolderID      string
-	Metadata      *ChunkMetadataInput
-	Progress      func(percent int, message string)
+	SearchQueries     []string
+	DirectURLs        []string
+	DriveURLs         []string
+	Clips             []ClipSpec
+	TotalMinutes      int
+	MaxVideos         int
+	ChunkDuration     int
+	ClipDuration      int
+	SecondsPerSegment int
+	NoAudio           bool
+	NoEffects         bool
+	NoTransitions     bool
+	Subfolder         string
+	FolderName        string
+	DriveFolderID     string
+	FolderID          string
+	Metadata          *ChunkMetadataInput
+	Progress          func(percent int, message string)
 
 	// §12-7 (July 2026).
 	FinalizationLease finalization.Lease // broker lease for StockFinalizeStep spine write

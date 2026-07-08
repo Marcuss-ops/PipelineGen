@@ -10,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -263,7 +264,7 @@ func (h *Handler) RegisterJobHandlers() error {
 	if h.jobsSvc == nil {
 		return nil
 	}
-	return h.jobsSvc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), h.HandleBulkUploadYouTubeClipsJob)
+	return h.jobsSvc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), appjobs.HandlerFunc(h.HandleBulkUploadYouTubeClipsJob))
 }
 
 // idemWriter returns h.Idempotency if set, else a no-op pass-through handler.

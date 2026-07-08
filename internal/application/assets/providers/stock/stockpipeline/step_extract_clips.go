@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +45,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -126,8 +128,19 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 	in := runner.RunInput()
 	noAudio := in != nil && in.NoAudio
 	writer := runner.Writer()
+	artifactPrep := runner.ArtifactPreparation()
+	rootFolderName := stockRootFolderName(in)
+	rootFolderOverride := stockRootFolderOverride(in)
 
 	var cutPaths []string
+	var publishedChunks []ChunkState
+	type timestampGroupBuffer struct {
+		leafName   string
+		firstIndex int
+		chunks     []ChunkState
+	}
+	groupBuckets := make(map[string]*timestampGroupBuffer)
+	segmentCounts := make(map[string]int)
 	sourceIdx := 0
 
 	for sourceID, groupPlans := range grouped {
@@ -230,39 +243,43 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 			}
 		}
 
-		// Build CutJobs from ClipPlan entries. Each job gets a
-		// unique output path via the per-clip index, avoiding the
-		// collision where all clips in a source group shared the
-		// same OutputLogicalID prefix.
-		jobs := make([]CutJob, 0, len(groupPlans))
+		// Cut and publish one clip at a time so Drive uploads can
+		// happen progressively as soon as each cut finishes.
 		for clipIdx, plan := range groupPlans {
 			outputPath := filepath.Join(os.TempDir(),
 				fmt.Sprintf("stock_cut_%s_%d_%d.mp4", runner.JobID(), sourceIdx, clipIdx))
-			jobs = append(jobs, CutJob{
-				StartSec:   plan.StartSec,
-				EndSec:     plan.EndSec,
-				OutputPath: outputPath,
-			})
-		}
+			req := CutRequest{
+				SourcePath: sourcePath,
+				Jobs: []CutJob{{
+					StartSec:   plan.StartSec,
+					EndSec:     plan.EndSec,
+					OutputPath: outputPath,
+				}},
+				Codec:     "libx264",
+				Preset:    "medium",
+				CRF:       23,
+				NoAudio:   noAudio,
+				Logger:    runner.Log(),
+				SourceIdx: sourceIdx,
+			}
 
-		req := CutRequest{
-			SourcePath: sourcePath,
-			Jobs:       jobs,
-			Codec:      "libx264",
-			Preset:     "medium",
-			CRF:        23,
-			NoAudio:    noAudio,
-			Logger:     runner.Log(),
-			SourceIdx:  sourceIdx,
-		}
+			result, cutErr := cutter.Cut(ctx, req)
+			successful := result.SuccessfulItems()
+			if cutErr != nil && len(successful) == 0 {
+				return fmt.Errorf("orchestrator: stock.extract_clips: VideoCutter.Cut failed for source %s clip %d with zero clips produced: %w",
+					sourceID, clipIdx, cutErr)
+			}
+			if len(successful) == 0 {
+				if runner.Log() != nil {
+					runner.Log().Warn("orchestrator: stock.extract_clips: no playable clip produced",
+						zap.String("source_id", sourceID),
+						zap.Int("clip_index", clipIdx),
+						zap.String("output_path", outputPath))
+				}
+				continue
+			}
 
-		result, cutErr := cutter.Cut(ctx, req)
-
-		// Process successful items. The port contract guarantees
-		// len(Items) == len(req.Jobs) (mai-nil-with-zero-output
-		// invariant); SuccessfulItems() filters to file-on-disk-
-		// playable outcomes (Succeeded | Validated | ProbeFailed).
-		for clipIdx, item := range result.SuccessfulItems() {
+			item := successful[0]
 			// CutPaths carries REAL file paths (for compose_chunks).
 			cutPaths = append(cutPaths, item.OutputPath)
 
@@ -270,9 +287,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 			// Asset ID uses the planner's OutputLogicalID (stable
 			// across retries) so retry dedupe works; the real file
 			// path is in CutPaths for downstream consumption.
-			if writer != nil && clipIdx < len(groupPlans) {
-				plan := groupPlans[clipIdx]
-
+			if writer != nil {
 				// PR-STOCK-TIMESTAMP-CLIPS Front 4 (July 2026):
 				// rich-asset write — compute SHA256 fail-closed
 				// (P0 2.4 hardening: a malformed digest short-circuits
@@ -297,23 +312,6 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 				clip := buildRichStockAsset(plan, sourceIdx, clipIdx, item.OutputPath, hash)
 
 				if err := writer.WriteAndEnqueue(ctx, clip, hash); err != nil {
-					// PR-STOCK-ATLASTORCH-DISPATCH (commit-1 stock fix).
-					// Pre-fix: the loop logged + continued on writer
-					// error, leaving physical clip on disk but no
-					// DB/outbox row — silent-success false-positive.
-					// Post-fix: abort the run with the canonical
-					// ErrAtomicDispatchFailed sentinel. Surfaced as
-					// JobFailed by the broker; ledger writes roll back
-					// via the single-TX outbox + SQLite Begin-Immediate
-					// path.
-					//
-					// dual-%w (NEVER %v) preserves the underlying writer
-					// error in the typed-error chain so callers can
-					// errors.As-recover production causes (e.g.
-					// outbox.ErrDispatcherClosed, sqlite3.ErrLocked).
-					// Per AGENTS.md godlike/07 typed-error contract +
-					// compat_adapters.go precedent — %v would silently
-					// drop the chain.
 					if runner.Log() != nil {
 						runner.Log().Warn("orchestrator: stock.extract_clips: WriteAndEnqueue failed — aborting atomic dispatch",
 							zap.String("logical_id", plan.OutputLogicalID),
@@ -324,22 +322,140 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 					}
 					return fmt.Errorf("orchestrator: stock.extract_clips: %w: %w", ErrAtomicDispatchFailed, err)
 				}
+
+				if artifactPrep != nil {
+					leafName := timestampParentLeafName(plan)
+					segmentCount := segmentCounts[leafName] + 1
+					segmentCounts[leafName] = segmentCount
+					segmentFilename := fmt.Sprintf("clip_%03d.mp4", segmentCount)
+					clipVA := finalization.VerifiedArtifact{
+						ArtifactID:         plan.OutputLogicalID,
+						Kind:               finalization.KindVideo,
+						Filename:           segmentFilename,
+						MIMEType:           "video/mp4",
+						LocalPath:          item.OutputPath,
+						SizeBytes:          item.SizeBytes,
+						SHA256:             hash,
+						Requirement:        finalization.ArtifactRequirementRequired,
+						IdempotencyKey:     clip.ID + ":" + hash,
+						Description:        plan.Description,
+						RootFolderName:     rootFolderName,
+						RootFolderOverride: rootFolderOverride,
+						PathLeafName:       leafName,
+					}
+					clipPublished, clipPrepErr := artifactPrep.Prepare(ctx, clipVA)
+					if clipPrepErr != nil {
+						return fmt.Errorf("%w: clip publish for chunk %d (artifact=%s): %w",
+							ErrStockPublishArtifactFailed, clipIdx, plan.OutputLogicalID, clipPrepErr)
+					}
+
+					publishedChunk := ChunkState{
+						Index:              clipIdx,
+						ArtifactID:         plan.OutputLogicalID,
+						Filename:           segmentFilename,
+						LocalPath:          item.OutputPath,
+						SizeBytes:          item.SizeBytes,
+						SHA256:             hash,
+						Description:        plan.Description,
+						Title:              plan.Title,
+						SourceURL:          plan.SourceID,
+						SourceProvider:     plan.SourceProvider,
+						SourceVideoID:      plan.SourceVideoID,
+						StartSec:           plan.StartSec,
+						EndSec:             plan.EndSec,
+						Round:              plan.Round,
+						Tags:               append([]string(nil), plan.Tags...),
+						Category:           plan.Category,
+						Slug:               plan.Slug,
+						RemoteFileID:       clipPublished.Location.FileID,
+						RemoteWebViewLink:  clipPublished.Location.WebViewLink,
+						DrivePath:          clipPublished.Location.WebViewLink,
+						RemoteDownloadLink: clipPublished.Location.DownloadLink,
+					}
+					publishedChunks = append(publishedChunks, publishedChunk)
+					bucket := groupBuckets[leafName]
+					if bucket == nil {
+						bucket = &timestampGroupBuffer{leafName: leafName, firstIndex: clipIdx}
+						groupBuckets[leafName] = bucket
+					}
+					bucket.chunks = append(bucket.chunks, publishedChunk)
+				}
 			}
 		}
 
-		if cutErr != nil && len(result.SuccessfulItems()) == 0 {
-			return fmt.Errorf("orchestrator: stock.extract_clips: VideoCutter.Cut failed for source %s with zero clips produced: %w",
-				sourceID, cutErr)
-		}
-
 		if runner.Log() != nil {
-			runner.Log().Info("orchestrator: stock.extract_clips: cut batch complete",
+			runner.Log().Info("orchestrator: stock.extract_clips: source complete",
 				zap.String("source_id", sourceID),
-				zap.Int("planned", len(jobs)),
-				zap.Int("produced", len(result.SuccessfulItems())))
+				zap.Int("planned", len(groupPlans)),
+				zap.Int("produced", len(cutPaths)))
 		}
 
 		sourceIdx++
+	}
+
+	if artifactPrep != nil && len(groupBuckets) > 0 {
+		type orderedGroup struct {
+			leafName   string
+			firstIndex int
+			chunks     []ChunkState
+		}
+		ordered := make([]orderedGroup, 0, len(groupBuckets))
+		for leafName, bucket := range groupBuckets {
+			if bucket == nil || len(bucket.chunks) == 0 {
+				continue
+			}
+			ordered = append(ordered, orderedGroup{
+				leafName:   leafName,
+				firstIndex: bucket.firstIndex,
+				chunks:     append([]ChunkState(nil), bucket.chunks...),
+			})
+		}
+		sort.Slice(ordered, func(i, j int) bool {
+			if ordered[i].firstIndex == ordered[j].firstIndex {
+				return ordered[i].leafName < ordered[j].leafName
+			}
+			return ordered[i].firstIndex < ordered[j].firstIndex
+		})
+		for _, group := range ordered {
+			metaPath, metaHash, metaSize, metaErr := writeAndHashMetadata(in, group.chunks, runner.RunFingerprint())
+			if metaErr != nil {
+				return fmt.Errorf("%w: parent metadata stage for %s: %w",
+					ErrStockPublishArtifactFailed, group.leafName, metaErr)
+			}
+			defer func(p string) {
+				if rmErr := os.Remove(p); rmErr != nil && !os.IsNotExist(rmErr) {
+					if runner.Log() != nil {
+						runner.Log().Warn("orchestrator: stock.extract_clips: failed to remove parent metadata temp file",
+							zap.String("path", p), zap.Error(rmErr))
+					}
+				}
+			}(metaPath)
+
+			metaIdem, metaIdemErr := asset.SHA256IdempotencyKey("stock:"+runner.RunFingerprint()+":timestamp-group-metadata:"+group.leafName, metaHash)
+			if metaIdemErr != nil {
+				return fmt.Errorf("%w: parent metadata idem-key for %s: %w",
+					ErrStockPublishArtifactFailed, group.leafName, metaIdemErr)
+			}
+			metaArtifactID := TimestampArtifactID(runner.RunFingerprint(), group.firstIndex, "metadata")
+			metaVA := finalization.VerifiedArtifact{
+				ArtifactID:         metaArtifactID,
+				Kind:               finalization.KindMetadata,
+				Filename:           "metadata.json",
+				MIMEType:           "application/json",
+				LocalPath:          metaPath,
+				SizeBytes:          metaSize,
+				SHA256:             metaHash,
+				Requirement:        finalization.ArtifactRequirementRequired,
+				IdempotencyKey:     metaIdem,
+				RootFolderName:     rootFolderName,
+				RootFolderOverride: rootFolderOverride,
+				PathLeafName:       group.leafName,
+			}
+			if _, metaPrepErr := artifactPrep.Prepare(ctx, metaVA); metaPrepErr != nil {
+				return fmt.Errorf("%w: parent metadata upload for %s (artifact=%s): %w",
+					ErrStockPublishArtifactFailed, group.leafName, metaArtifactID, metaPrepErr)
+			}
+		}
 	}
 
 	// Production gate: cutter wired (non-nil) + zero cut files
@@ -351,6 +467,9 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 	}
 
 	runner.State().CutPaths = cutPaths
+	if len(publishedChunks) > 0 {
+		runner.State().Published = publishedChunks
+	}
 
 	if runner.Log() != nil {
 		runner.Log().Info("orchestrator: stock.extract_clips: SUCCEEDED",

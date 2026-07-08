@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 // ── ScheduleRetry ────────────────────────────────────────────────────────
 
 // ScheduleRetry transitions a running job to retry_wait (or failed if retries exhausted).
-func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, leaseID string, expectedRevision int, backoff time.Duration) error {
+func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, leaseID string, expectedRevision int, errMsg string, backoff time.Duration) error {
 	j, err := r.Get(ctx, id)
 	if err != nil {
 		return err
@@ -41,7 +42,7 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 		 lease_expiry = NULL, revision = revision + 1, updated_at = ?
 		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING')
 		 AND worker_id = ? AND lease_id = ? AND revision = ?`,
-		"scheduled for retry by worker "+workerID, nowStr,
+		errMsg, nowStr,
 		id, workerID, leaseID, expectedRevision)
 	if err != nil {
 		return fmt.Errorf("scheduleRetry: update: %w", err)
@@ -59,8 +60,9 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
+	evtData, _ := json.Marshal(map[string]string{"error": errMsg})
 	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		evtID, id, "job_retry_wait", "job.Job scheduled for retry", "{}", nowStr); err != nil {
+		evtID, id, "job_retry_wait", "job.Job scheduled for retry", string(evtData), nowStr); err != nil {
 		return fmt.Errorf("scheduleRetry: insert job event: %w", err)
 	}
 

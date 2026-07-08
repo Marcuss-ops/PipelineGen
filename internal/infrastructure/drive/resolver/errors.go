@@ -20,19 +20,27 @@ import "errors"
 // the destination key + the offending field name so a failing caller
 // can probe via errors.Is + errors.As + log-scanner grep.
 //
-// Additional adapter-local sentinel: ErrFolderEnsureNotImplemented is
-// raised ONLY when the production Drive API integration is expected
-// but the stub's prefix-mode is in use. Today (Wave 7 stub) the adapter
-// is intentionally NOT calling Drive.EnsureFolder — the prefix-mode
-// resolution is the canonical Wave 7 deliverable. Operators reading
-// the diagnostic see the suffix `(<mode>=stub-shift)` or
-// `(<mode>=ensure-api)` once the real Drive API wiring lands.
+// Adapter-local sentinels for the real Drive FolderEnsurer integration
+// (CUTOVER C9). The real Drive.EnsureFolderPath call is now wired via
+// the Pattern-0 FolderEnsurer port. Operators reading diagnostics see
+// `(<mode>=ensure-api)` for the real Drive path.
 var (
-	// ErrFolderEnsureNotImplemented surfaces if a future CUTOVER
-	// version of this adapter is wired but the Drive.EnsureFolder
-	// call fails (re-export of the canonical Drive-side error).
-	ErrFolderEnsureNotImplemented = errors.New(
-		"resolver: Drive.EnsureFolder not implemented (forward-pointer CUTOVER)",
+	// ErrFolderEnsurerNotWired surfaces when the real Drive
+	// FolderEnsurer dependency was NOT injected at composition time
+	// but a non-empty Location is being resolved. This is the
+	// fail-closed gate that prevents silent stub-mode folder-ids
+	// from being consumed downstream. godlike/07 NO-FAKE-AVAILABILITY:
+	// the adapter never synthesises a stub folder-id in production.
+	ErrFolderEnsurerNotWired = errors.New(
+		"resolver: Drive FolderEnsurer not wired at composition time (set resolverAdapter.WithFolderEnsurer or pass non-nil to NewAdapter)",
+	)
+
+	// ErrFolderEnsureFailed surfaces when the real Drive
+	// EnsureFolder call fails (re-export of the canonical
+	// Drive-side error). godlike/07 typed-error contract:
+	// callers probe via errors.Is(err, ErrFolderEnsureFailed).
+	ErrFolderEnsureFailed = errors.New(
+		"resolver: Drive.EnsureFolder call failed",
 	)
 
 	// ErrFolderIDNonAlphanumeric surfaces if a per-destination mapping

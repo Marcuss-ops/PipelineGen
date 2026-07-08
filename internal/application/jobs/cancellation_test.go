@@ -244,7 +244,7 @@ func (m *mockCancelBroker) RenewLease(_ context.Context, _ string, _ string, _ t
 // finalize handlers -- record which branch runJob took (ScheduleRetry
 // vs Fail vs Complete). Asserting these is optional; the load-
 // bearing signal is the handler observing ctx.Err().
-func (m *mockCancelBroker) ScheduleRetry(_ context.Context, _ string, _ string, _ string, _ int, _ time.Duration) error {
+func (m *mockCancelBroker) ScheduleRetry(_ context.Context, _ string, _ string, _ string, _ int, _ string, _ time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.finalizeOp = "ScheduleRetry"

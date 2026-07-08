@@ -49,6 +49,15 @@ type PublishedArtifact struct {
 	// metadata for downstream search/indexing.
 	Description string `json:"description,omitempty"`
 
+	// ArtifactMetadata carries source-specific enrichment data that
+	// the AssetTxFinalizer merges into media_assets.metadata_json.
+	// This bridge preserves semantic fields (title, round, tags,
+	// category, source_provider, drive_path, etc.) that would
+	// otherwise be lost at the PublishedArtifact boundary.
+	// The map is keyed by the JSON field name the PayloadMapper
+	// expects when reading from media_assets.metadata_json.
+	ArtifactMetadata map[string]any `json:"artifact_metadata,omitempty"`
+
 	// Location is the canonical descriptor of where the artifact was
 	// published.
 	Location AssetLocation `json:"location"`

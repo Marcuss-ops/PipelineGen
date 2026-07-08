@@ -87,7 +87,7 @@ func newTestService(pub sourcing.PublisherPort, requireDrive bool) *Service {
 		indexDisp:    &stubIndexDispatcher{},
 		enrichment:   &stubEnrichment{indexingEnabled: false},
 		log:          &stubLogger{},
-		RequireDrive: requireDrive,
+		requireDrive: requireDrive,
 	}
 }
 

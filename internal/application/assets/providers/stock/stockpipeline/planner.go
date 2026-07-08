@@ -28,6 +28,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
@@ -188,6 +189,13 @@ type ClipPlan struct {
 	// stays verbatim) or when the operator wants a canonical
 	// machine-friendly folder name.
 	Slug string
+
+	// ParentSlug is the explicit timestamp-group folder slug for
+	// expanded 5-second children. When explicit clips are split into
+	// child slices, ParentSlug preserves the original parent folder
+	// identity while Slug may carry the child-specific timestamp
+	// suffix. Nil/empty means "derive from Title / other cascade".
+	ParentSlug string
 
 	// OutputLogicalID is the deterministic asset ID the chunk
 	// producer will mint. Format: planner:<sha256-prefix>:<index>
@@ -383,7 +391,60 @@ func (p *explicitPlanner) Plan(_ context.Context, src VideoSource, budgetSec int
 		plan.Tags = append([]string(nil), clip.Tags...) // defensive copy so the plan doesn't share the caller's slice
 		plan.Category = clip.Category
 		plan.Slug = clip.Slug
+		// PR-STOCK-TIMESTAMP-CLIPS (July 2026): thread ParentSlug so
+		// timestampParentLeafName uses the correct parent identity for
+		// expanded 5-second children. Without this, children whose
+		// Title is empty would fall through to their child-specific
+		// Slug (e.g. "la-fase-di-studio-0-0-0_to_0-0-5") instead of
+		// sharing the parent folder name.
+		plan.ParentSlug = clip.ParentSlug
 		plans = append(plans, plan)
 	}
 	return plans, nil
+}
+
+// expandExplicitClipSpecs splits explicit clips into successive
+// fixed-length slices when secondsPerSegment is positive.
+func expandExplicitClipSpecs(clips []ClipSpec, secondsPerSegment int) []ClipSpec {
+	if secondsPerSegment <= 0 || len(clips) == 0 {
+		return append([]ClipSpec(nil), clips...)
+	}
+	expanded := make([]ClipSpec, 0, len(clips))
+	step := float64(secondsPerSegment)
+	for _, clip := range clips {
+		if clip.EndSec <= clip.StartSec {
+			expanded = append(expanded, clip)
+			continue
+		}
+		for cursor := clip.StartSec; cursor < clip.EndSec; cursor += step {
+			next := cursor + step
+			if next > clip.EndSec {
+				next = clip.EndSec
+			}
+			child := clip
+			child.ParentSlug = clip.ParentSlug
+			if child.ParentSlug == "" {
+				child.ParentSlug = clip.Slug
+			}
+			child.StartSec = cursor
+			child.EndSec = next
+			if clip.Slug != "" {
+				child.Slug = clip.Slug + "-" + formatTimestampForSlug(cursor, next)
+			}
+			expanded = append(expanded, child)
+		}
+	}
+	return expanded
+}
+
+func formatTimestampForSlug(startSec, endSec float64) string {
+	return formatTimestampSeconds(startSec) + "_to_" + formatTimestampSeconds(endSec)
+}
+
+func formatTimestampSeconds(sec float64) string {
+	total := int(sec)
+	h := total / 3600
+	m := (total % 3600) / 60
+	s := total % 60
+	return strconv.Itoa(h) + "-" + strconv.Itoa(m) + "-" + strconv.Itoa(s)
 }

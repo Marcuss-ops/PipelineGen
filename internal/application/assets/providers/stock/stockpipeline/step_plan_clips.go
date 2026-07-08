@@ -95,9 +95,10 @@ func (StockPlanStep) Run(ctx context.Context, runner StepRunner) error {
 				}
 			}
 		}
+		expanded := expandExplicitClipSpecs(normalised, in.SecondsPerSegment)
 
 		src := VideoSource{URL: srcURL, Title: in.Clips[0].Title, Source: srcURL}
-		explicit := NewExplicitPlanner(normalised)
+		explicit := NewExplicitPlanner(expanded)
 		plans, err := explicit.Plan(ctx, src, 0, 0, runner.Cfg().PolicyVersion)
 		if err != nil {
 			return fmt.Errorf("orchestrator: stock.plan: explicit planner: %w", err)

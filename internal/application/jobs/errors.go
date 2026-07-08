@@ -111,6 +111,26 @@ var ErrMaxRetriesUnknown = errors.New("appjobs.Registry: no entry for jobType (G
 // not a string.
 var ErrUniqueConstraintViolation = errors.New("appjobs.Service.Enqueue: SQLite UNIQUE constraint violation (typed probe via sqlite3.Error.Code()==SQLITE_CONSTRAINT_UNIQUE)")
 
+// ErrNoHandlerForJobType is returned by Service.Enqueue when a job is
+// submitted for a type that has no handler registered in the dispatcher.
+// The gate prevents silent queue buildup: without this check, jobs for
+// unregistered types would be accepted into the queue and sit there
+// forever (no handler = no consumer). The gate only fires when the
+// dispatcher is wired (non-nil); nil-dispatcher compositions (tests,
+// minimal deployments) let the enqueue proceed to avoid breaking
+// idempotency-key / correlation-id flows that don't involve handlers.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the pre-PR enqueue_service.go
+// accepted ANY job type without checking handler presence. Operators
+// could enqueue 1000 jobs for "typoed.job.type", receive HTTP 200,
+// and never see a consumer pick them up — the only diagnostic was
+// the /ready handlers check (which only covers 2 registered types).
+// This sentinel closes that gap: the typed error surfaces immediately
+// at enqueue time, so callers see "no handler for this type" inline.
+//
+// Errors.Is(err, ErrNoHandlerForJobType) is the canonical probe.
+var ErrNoHandlerForJobType = errors.New("appjobs.Service.Enqueue: no handler registered for the requested job type (the job would never be consumed; register a handler first or correct the job type)")
+
 // ErrMissingDeps marks a nil dependency detected at registration time
 // (typically RegisterHandler / RegisterJobHandler). Surfaced as a typed
 // sentinel so callers (composition root, batch wiring, clipindexer

@@ -203,12 +203,14 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 		zap.Int("total_minutes", req.TotalMinutes),
 		zap.Int("chunk_duration", req.ChunkDuration),
 		zap.Int("clip_duration", req.ClipDuration),
+		zap.Int("seconds_per_segment", req.SecondsPerSegment),
 		zap.Bool("no_audio", req.NoAudio),
 		zap.Bool("no_effects", req.NoEffects),
 		zap.Bool("no_transitions", req.NoTransitions),
 		zap.Int("max_videos", req.MaxVideos),
 		zap.String("subfolder", req.Subfolder),
 		zap.String("folder_name", req.FolderName),
+		zap.String("drive_folder_id", req.DriveFolderID),
 		zap.String("folder_id", req.FolderID),
 	)
 

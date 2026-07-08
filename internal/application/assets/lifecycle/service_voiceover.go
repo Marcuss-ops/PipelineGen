@@ -79,17 +79,19 @@ func (s *Service) UploadOnly(ctx context.Context, input *FinalizeInput) (*Upload
 		if filename == "" {
 			filename = filepath.Base(input.LocalPath)
 		}
+		// PR-P12-LIFECYCLE-SEMANTIC (July 2026): RootFolderOverride
+		// REMOVED. Same rationale as service.go — semantic routing via
+		// Destination + Group + Subject + ProjectID + Language.
 		pubReq := delivery.PublishRequest{
-			Destination:        input.Destination,
-			LocalPath:          input.LocalPath,
-			Filename:           filename,
-			AssetID:            input.ID,
-			Group:              input.Group,
-			Subject:            input.Subject,
-			ProjectID:          input.ProjectID,
-			Language:           input.Language,
-			Style:              input.Style,
-			RootFolderOverride: input.FolderID,
+			Destination: input.Destination,
+			LocalPath:   input.LocalPath,
+			Filename:    filename,
+			AssetID:     input.ID,
+			Group:       input.Group,
+			Subject:     input.Subject,
+			ProjectID:   input.ProjectID,
+			Language:    input.Language,
+			Style:       input.Style,
 		}
 		pubRes, err := s.publisher.Publish(ctx, pubReq)
 		if err != nil {

@@ -19,6 +19,8 @@ import (
 
 	"go.uber.org/zap"
 
+	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -84,7 +86,7 @@ func (s *stubJobBroker) Fail(ctx context.Context, id, workerID, leaseID string, 
 	panic("stubJobBroker.Fail: unexpected call — Service.Enqueue does not call Fail")
 }
 
-func (s *stubJobBroker) ScheduleRetry(ctx context.Context, id, workerID, leaseID string, expectedRevision int, backoff time.Duration) error {
+func (s *stubJobBroker) ScheduleRetry(ctx context.Context, id, workerID, leaseID string, expectedRevision int, errMsg string, backoff time.Duration) error {
 	panic("stubJobBroker.ScheduleRetry: unexpected call — Service.Enqueue does not call ScheduleRetry")
 }
 
@@ -317,6 +319,198 @@ func TestClipJobEnqueuerAdapter_DoubleEncodingPrevention(t *testing.T) {
 	}
 	if roundTripped.Tags[0] != cmd.Tags[0] {
 		t.Fatalf("roundTripped.Tags[0] = %q, want %q", roundTripped.Tags[0], cmd.Tags[0])
+	}
+}
+
+// ── resolverFolderEnsurerAdapter tests ──────────────────────────────
+
+// fakeAdmin implements drive.Admin for testing resolverFolderEnsurerAdapter.
+// Only GetOrCreateFolder has real behavior (call capture + configurable result);
+// all other Admin port methods return zero values or nil.
+type fakeAdmin struct {
+	getOrCreateFn func(ctx context.Context, name, parentID string) (string, error)
+}
+
+func (f *fakeAdmin) GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error) {
+	if f.getOrCreateFn != nil {
+		return f.getOrCreateFn(ctx, name, parentID)
+	}
+	return "fake-folder-id", nil
+}
+func (f *fakeAdmin) GetFolderName(context.Context, string) (string, error)     { return "", nil }
+func (f *fakeAdmin) TrashFolder(context.Context, string) error                 { return nil }
+func (f *fakeAdmin) DeleteFolder(context.Context, string) error                { return nil }
+func (f *fakeAdmin) TrashFile(context.Context, string) error                   { return nil }
+func (f *fakeAdmin) DeleteFile(context.Context, string) error                  { return nil }
+func (f *fakeAdmin) MoveFile(context.Context, string, string, string) error    { return nil }
+func (f *fakeAdmin) RenameFile(context.Context, string, string) error          { return nil }
+func (f *fakeAdmin) UploadFile(context.Context, string, string, string) (*driveutil.UploadResult, error) {
+	return nil, nil
+}
+func (f *fakeAdmin) UploadFileWithDescription(context.Context, string, string, string, string) (*driveutil.UploadResult, error) {
+	return nil, nil
+}
+func (f *fakeAdmin) UploadFileIfChanged(context.Context, string, string, string) (*driveutil.UploadResult, bool, error) {
+	return nil, false, nil
+}
+func (f *fakeAdmin) Ping(context.Context) error { return nil }
+
+// Compile-time assertion: fakeAdmin satisfies drive.Admin.
+var _ driveutil.Admin = (*fakeAdmin)(nil)
+
+// TestResolverFolderEnsurer_NilReceiver verifies godlike/07 fail-closed:
+// a nil receiver returns a typed error containing "not wired".
+func TestResolverFolderEnsurer_NilReceiver(t *testing.T) {
+	var a *resolverFolderEnsurerAdapter // nil receiver
+	id, err := a.EnsureFolder(context.Background(), "root-123", "seg1", "seg2")
+	if err == nil {
+		t.Fatal("err = nil, want error for nil receiver")
+	}
+	if id != "" {
+		t.Fatalf("id = %q, want empty on error", id)
+	}
+	if !strings.Contains(err.Error(), "not wired") {
+		t.Fatalf("err = %q, want message containing 'not wired'", err.Error())
+	}
+}
+
+// TestResolverFolderEnsurer_NilAdmin verifies godlike/07 fail-closed:
+// a nil admin field returns a typed error containing "not wired".
+func TestResolverFolderEnsurer_NilAdmin(t *testing.T) {
+	a := &resolverFolderEnsurerAdapter{admin: nil}
+	id, err := a.EnsureFolder(context.Background(), "root-456", "seg")
+	if err == nil {
+		t.Fatal("err = nil, want error for nil admin")
+	}
+	if id != "" {
+		t.Fatalf("id = %q, want empty on error", id)
+	}
+	if !strings.Contains(err.Error(), "not wired") {
+		t.Fatalf("err = %q, want message containing 'not wired'", err.Error())
+	}
+}
+
+// folderCall records a GetOrCreateFolder invocation for assertions.
+type folderCall struct {
+	name     string
+	parentID string
+}
+
+// TestResolverFolderEnsurer_HappyPath verifies that EnsureFolder delegates
+// to drive.EnsureFolderPath which walks segments via admin.GetOrCreateFolder.
+func TestResolverFolderEnsurer_HappyPath(t *testing.T) {
+	var calls []folderCall
+	admin := &fakeAdmin{
+		getOrCreateFn: func(_ context.Context, name, parentID string) (string, error) {
+			calls = append(calls, folderCall{name: name, parentID: parentID})
+			return "folder-" + name, nil
+		},
+	}
+	a := &resolverFolderEnsurerAdapter{admin: admin}
+
+	id, err := a.EnsureFolder(context.Background(), "root-000", "Boxe", "mike-tyson")
+	if err != nil {
+		t.Fatalf("EnsureFolder: %v", err)
+	}
+	if id != "folder-mike-tyson" {
+		t.Fatalf("id = %q, want %q", id, "folder-mike-tyson")
+	}
+	if len(calls) != 2 {
+		t.Fatalf("GetOrCreateFolder called %d times, want 2", len(calls))
+	}
+	if calls[0].name != "Boxe" || calls[0].parentID != "root-000" {
+		t.Fatalf("call[0] = {%q, %q}, want {Boxe, root-000}", calls[0].name, calls[0].parentID)
+	}
+	if calls[1].name != "mike-tyson" || calls[1].parentID != "folder-Boxe" {
+		t.Fatalf("call[1] = {%q, %q}, want {mike-tyson, folder-Boxe}", calls[1].name, calls[1].parentID)
+	}
+}
+
+// TestResolverFolderEnsurer_EmptySegmentSkipped pins the EnsureFolderPath
+// contract that empty-string segments are silently skipped (not passed to
+// admin.GetOrCreateFolder). EnsureFolder(ctx, root, 'Boxe', '', 'mike-tyson')
+// must produce exactly 2 calls — the empty segment in position 2 is a no-op.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: this test locks the skip behavior so a
+// future refactor that removes the `if seg == "" { continue }` guard in
+// EnsureFolderPath surfaces as a test failure (3 calls instead of 2).
+func TestResolverFolderEnsurer_EmptySegmentSkipped(t *testing.T) {
+	var calls []folderCall
+	admin := &fakeAdmin{
+		getOrCreateFn: func(_ context.Context, name, parentID string) (string, error) {
+			calls = append(calls, folderCall{name: name, parentID: parentID})
+			return "folder-" + name, nil
+		},
+	}
+	a := &resolverFolderEnsurerAdapter{admin: admin}
+
+	// The empty string in position 2 must be skipped — only "Boxe" and
+	// "mike-tyson" should reach admin.GetOrCreateFolder.
+	id, err := a.EnsureFolder(context.Background(), "root-000", "Boxe", "", "mike-tyson")
+	if err != nil {
+		t.Fatalf("EnsureFolder: %v", err)
+	}
+	if id != "folder-mike-tyson" {
+		t.Fatalf("id = %q, want %q", id, "folder-mike-tyson")
+	}
+	if len(calls) != 2 {
+		t.Fatalf("GetOrCreateFolder called %d times, want 2 (empty segment must be skipped)", len(calls))
+	}
+	// First call: Boxe under root.
+	if calls[0].name != "Boxe" || calls[0].parentID != "root-000" {
+		t.Fatalf("call[0] = {%q, %q}, want {Boxe, root-000}", calls[0].name, calls[0].parentID)
+	}
+	// Second call: mike-tyson under folder-Boxe (empty segment skipped).
+	if calls[1].name != "mike-tyson" || calls[1].parentID != "folder-Boxe" {
+		t.Fatalf("call[1] = {%q, %q}, want {mike-tyson, folder-Boxe}", calls[1].name, calls[1].parentID)
+	}
+}
+
+// TestResolverFolderEnsurer_AllEmptySegments returns rootID when every
+// segment is empty — zero GetOrCreateFolder calls.
+func TestResolverFolderEnsurer_AllEmptySegments(t *testing.T) {
+	var calls []folderCall
+	admin := &fakeAdmin{
+		getOrCreateFn: func(_ context.Context, name, parentID string) (string, error) {
+			calls = append(calls, folderCall{name: name, parentID: parentID})
+			return "folder-" + name, nil
+		},
+	}
+	a := &resolverFolderEnsurerAdapter{admin: admin}
+
+	id, err := a.EnsureFolder(context.Background(), "root-999", "", "", "")
+	if err != nil {
+		t.Fatalf("EnsureFolder: %v", err)
+	}
+	// When all segments are empty, EnsureFolderPath returns rootID as-is.
+	if id != "root-999" {
+		t.Fatalf("id = %q, want %q (rootID passthrough when all segments empty)", id, "root-999")
+	}
+	if len(calls) != 0 {
+		t.Fatalf("GetOrCreateFolder called %d times, want 0 (all segments empty)", len(calls))
+	}
+}
+
+// TestResolverFolderEnsurer_ErrorPropagation verifies that errors from
+// admin.GetOrCreateFolder propagate through EnsureFolderPath to the caller.
+func TestResolverFolderEnsurer_ErrorPropagation(t *testing.T) {
+	simulatedErr := fmt.Errorf("drive API: permission denied")
+	admin := &fakeAdmin{
+		getOrCreateFn: func(_ context.Context, name, parentID string) (string, error) {
+			return "", simulatedErr
+		},
+	}
+	a := &resolverFolderEnsurerAdapter{admin: admin}
+
+	id, err := a.EnsureFolder(context.Background(), "root-err", "Boxe")
+	if err == nil {
+		t.Fatal("err = nil, want error from admin.GetOrCreateFolder")
+	}
+	if id != "" {
+		t.Fatalf("id = %q, want empty on error", id)
+	}
+	if !strings.Contains(err.Error(), simulatedErr.Error()) {
+		t.Fatalf("err = %q, want to contain downstream error %q", err.Error(), simulatedErr.Error())
 	}
 }
 

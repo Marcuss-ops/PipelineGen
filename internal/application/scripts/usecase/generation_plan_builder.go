@@ -157,6 +157,12 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	var pp []adapters.ProcessorName
 	if out.ExtractEntities {
 		pp = append(pp, adapters.ProcessorEntities)
+		// PR-CLIP-SEARCH-WIRING (July 2026): when entities are
+		// extracted, also search for Artlist clips matching the
+		// artlist_phrases. Must run AFTER entities (ordering
+		// dependency: reads input.Entities.ArtlistPhrases).
+		// BestEffort — nil backend is a warning, not a failure.
+		pp = append(pp, adapters.ProcessorClipSearch)
 	}
 	if out.GenerateMetadata {
 		pp = append(pp, adapters.ProcessorMetadata)
