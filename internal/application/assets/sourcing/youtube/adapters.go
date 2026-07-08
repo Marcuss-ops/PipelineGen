@@ -81,13 +81,10 @@ func (a *publisherAdapter) Publish(ctx context.Context, req usecase.PublishReque
 	// PR-YT-CLIP-SEMANTIC-LOCATION-FIX (July 2026): thread Category,
 	// Provider, Tags, and Language into the canonical delivery.PublishRequest
 	// so YouTubeClipPath can build the correct folder hierarchy from
-	// semantic metadata. RootFolderOverride is suppressed when semantic
-	// fields are populated — the DestinationRegistry + PathBuilder handle
-	// routing; the override is only for legacy FolderID-only callers.
+	// semantic metadata. RootFolderOverride is preserved when explicitly
+	// set by the caller (folder_id in the API request). When empty, the
+	// DestinationRegistry + PathBuilder handle routing via semantic fields.
 	rootOverride := req.RootFolderOverride
-	if req.Category != "" || req.Provider != "" {
-		rootOverride = ""
-	}
 
 	result, err := a.inner.Publish(ctx, delivery.PublishRequest{
 		Destination:        delivery.DestinationYouTubeClip,
