@@ -25,6 +25,10 @@
 //   - AssetRepository port lives ONLY in this file (the canonical
 //     narrow seam for "read media_assets row by id" — the
 //     composition root wires the production concrete).
+//   - SQLiteAssetRepository concrete + its 2 methods live ONLY in
+//     handler_repository.go (the canonical concrete surface).
+//   - emitAssetPublishedV1 lives ONLY in handler_emit.go (the
+//     v1 envelope builder + emitter call).
 //
 // godlike/07 fail-closed contracts:
 //   - NewEnrichmentHandler returns (nil, ErrEnrichmentHandlerNotConfigured)
@@ -46,17 +50,12 @@ package enrichment
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"time"
-
-	"github.com/google/uuid"
-	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	"go.uber.org/zap"
 )
 
 // AssetRepository is the canonical Pattern-0 typed port for
@@ -65,8 +64,9 @@ import (
 // the asset-repository contract for the enrichment pass.
 //
 // Implementations:
-//   - enrichment.sqliteAssetRepository (PR-011A — wraps
+//   - enrichment.SQLiteAssetRepository (PR-011A — wraps
 //     *sql.DB, reads media_assets by id, updates metadata_json)
+//     declared in handler_repository.go
 //   - The future production concrete (already in
 //     internal/infrastructure/database/sqlite/assets/repository.go)
 //     is wired via composition root fluent setter per AGENTS.md
@@ -107,10 +107,10 @@ type AssetRepository interface {
 // + the asset.published v1 envelope (PR-011C).
 //
 // godlike/06 SSOT: AssetRow lives ONLY in this file. The
-// production concrete (sqliteAssetRepository) populates these
-// fields from the media_assets row; the handler projects them
-// into EnrichmentRequest + AssetPublishedRequestV1. Future
-// LLM-driven enrichment passes MUST extend this struct (NOT
+// production concrete (SQLiteAssetRepository in handler_repository.go)
+// populates these fields from the media_assets row; the handler
+// projects them into EnrichmentRequest + AssetPublishedRequestV1.
+// Future LLM-driven enrichment passes MUST extend this struct (NOT
 // introduce a parallel envelope).
 //
 // PR-011C added 3 drive fields (DriveFileID + DrivePath + FileHash)
@@ -365,232 +365,3 @@ func (h *EnrichmentHandler) HandleJob(ctx context.Context, job *appjobs.Job, too
 		"schema_version": outbox.AssetPublishedSchemaVersion,
 	}, nil
 }
-
-// emitAssetPublishedV1 builds the canonical v1 envelope and
-// hands it to the AssetPublishedEmitter port. godlike/06 SSOT:
-// the v1 envelope is the canonical wire-shape owned by
-// internal/application/jobs/outbox/asset_published.go; this
-// method is a producer-side builder that maps the
-// EnrichmentHandler's internal types (AssetRow + EnrichedFields)
-// onto the canonical envelope fields.
-//
-// Returns:
-//   - nil on successful emit (or skipped when Emitter is nil —
-//     a Warn log captures the disabled-mode wiring per
-//     godlike/07 nil-tolerance).
-//   - ErrEnrichmentEmitFailed on emitter-side failure (retryable).
-//   - ErrEnrichmentHandlerNotConfigured (via WrapEmitFailed) on
-//     required-field validation failure (terminal — the handler
-//     itself has a wiring bug if asset_id or file_hash is empty
-//     on a properly-fetched media_assets row).
-//
-// emitAssetPublishedV1 builds the canonical v1 envelope and
-// hands it to the AssetPublishedEmitter port. godlike/06 SSOT:
-// the v1 envelope is the canonical wire-shape owned by
-// internal/application/jobs/outbox/asset_published.go; this
-// method is a producer-side builder that maps the
-// EnrichmentHandler's internal types (AssetRow + EnrichedFields)
-// onto the canonical envelope fields.
-//
-// Returns (stageLabel, error) where stageLabel is one of 3
-// canonical audit-trail values:
-//   - "pr011c_v1_emit_ok" — emit succeeded; the v1 envelope
-//     was enqueued to outbox_events
-//   - "pr011c_v1_emit_skipped_nil_emitter" — disabled-mode
-//     wiring (composition root did not inject the emitter);
-//     the handler logged a Warn; the v1 envelope was NOT
-//     emitted (no fake-availability: the audit log captures
-//     the misconfiguration)
-//   - "pr011c_v1_emit_failed_retryable" — emitter-side failure
-//     (e.g. SQLite locked, I/O error) OR idempotency-key
-//     validation failure; the error is non-nil
-//     (ErrEnrichmentEmitFailed wrapped); the worker's
-//     exponential backoff retries up to DefaultMaxRetries
-//
-// The error is non-nil only for the failed_retryable case.
-// godlike/07 NO-FAKE-AVAILABILITY: nil-emitter surfaces the
-// canonical skipped label (NOT a silent success); the audit
-// log captures the misconfiguration.
-func (h *EnrichmentHandler) emitAssetPublishedV1(ctx context.Context, row *AssetRow, fields EnrichedFields) (string, error) {
-	// godlike/07 nil-tolerance: nil-emitter is disabled-mode
-	// wiring (composition root did not inject the emitter). Log
-	// a Warn + return the canonical skipped stage label so
-	// the handler's happy-path is reachable in tests that
-	// don't exercise the emit step. The composition root
-	// MUST wire a real emitter in production
-	// (godlike/07 NO-FAKE-AVAILABILITY).
-	if h.Emitter == nil {
-		if h.Log != nil {
-			h.Log.Warn("enrichment.HandleJob: emitter nil (composition root disabled-mode wiring) — skipping asset.published v1 emit",
-				zap.String("chunk_id", row.ID),
-			)
-		}
-		return "pr011c_v1_emit_skipped_nil_emitter", nil
-	}
-
-	// Derive the canonical idempotency_key from (chunk_id,
-	// file_hash, v1). ErrEnrichmentIdempotencyKeyConflict surfaces
-	// the godlike/07 no-fake-availability contract violation
-	// (empty chunk_id or malformed content_hash) — terminal
-	// because the producer (the stock pipeline that wrote
-	// the media_assets row) must fix the underlying state.
-	idemKey, idemErr := EnrichmentIdempotencyKey(row.ID, row.FileHash, EnrichmentVersionV1)
-	if idemErr != nil {
-		// godlike/07 typed-error contract: a malformed triple
-		// is a producer-side bug. Surface as a terminal sentinel
-		// (WrapEmitFailed with the idem conflict as the cause)
-		// so the operator can identify the root cause. The
-		// stage label is the "failed" variant because the emit
-		// WAS attempted (we got past the nil-emitter check) but
-		// the pre-emit validation rejected the payload.
-		return "pr011c_v1_emit_failed_retryable", WrapEmitFailed(fmt.Errorf("%w: %v", ErrEnrichmentIdempotencyKeyConflict, idemErr))
-	}
-
-	// Build the canonical v1 envelope (godlike/06 SSOT one
-	// canonical owner per fact: AssetPublishedRequestV1 in
-	// internal/application/jobs/outbox/asset_published.go).
-	payload := outbox.AssetPublishedRequestV1{
-		SchemaVersion:  outbox.AssetPublishedSchemaVersion,
-		EventID:        uuid.NewString(),
-		AssetID:        row.ID,
-		Destination:    "stock",
-		Origin:         "generated",
-		Category:       fields.Category,
-		Subject:        fields.Subject,
-		Provider:       row.SourceProvider,
-		DriveFileID:    row.DriveFileID,
-		DrivePath:      row.DrivePath,
-		ContentType:    "video",
-		Tags:           nil, // PR-011C: tags deferred to PR-ENRICHMENT-E2E-SUITE forward-pointer
-		IdempotencyKey: idemKey,
-		RequestedAt:    time.Now().UTC().Format(time.RFC3339Nano),
-	}
-
-	// Hand to the emitter. The production concrete (outbox-dispatcher-backed)
-	// opens its own tx and enqueues to outbox_events. The stub
-	// (tests) captures the payload for hermetic TDD assertions.
-	if err := h.Emitter.EmitAssetPublished(ctx, payload); err != nil {
-		return "pr011c_v1_emit_failed_retryable", WrapEmitFailed(err)
-	}
-
-	if h.Log != nil {
-		h.Log.Info("enrichment.HandleJob: asset.published v1 emitted",
-			zap.String("chunk_id", row.ID),
-			zap.String("event_id", payload.EventID),
-			zap.String("idempotency_key", idemKey),
-			zap.String("drive_file_id", payload.DriveFileID),
-			zap.String("destination", payload.Destination),
-		)
-	}
-	return "pr011c_v1_emit_ok", nil
-}
-
-// SQLiteAssetRepository is the PR-011A production concrete
-// AssetRepository. Wraps *sql.DB and reads media_assets by id
-// + updates metadata_json (PR-011B will call the update path).
-//
-// godlike/06 SSOT (one canonical owner per fact):
-// SQLiteAssetRepository lives ONLY in this file. The composition
-// root wires this concrete via fluent setter; future production
-// concretes (e.g. a sharded repository for high-throughput
-// deployments) MUST implement the same AssetRepository port and
-// be injected via the same fluent setter.
-type SQLiteAssetRepository struct {
-	// DB is the canonical *sql.DB handle. The composition root
-	// injects the same DB handle the broker uses (canonical
-	// SSOT for "which DB does the system read from").
-	DB *sql.DB
-}
-
-// NewSQLiteAssetRepository constructs the canonical concrete
-// with fail-closed nil-DB gate per godlike/07 typed-error
-// contract. Returns (nil, ErrEnrichmentHandlerNotConfigured)
-// when DB is nil.
-func NewSQLiteAssetRepository(db *sql.DB) (*SQLiteAssetRepository, error) {
-	if db == nil {
-		return nil, WrapHandlerNotConfigured("db")
-	}
-	return &SQLiteAssetRepository{DB: db}, nil
-}
-
-// GetByID reads the canonical media_assets row by id. Returns
-// (nil, WrapChunkNotFound(id)) when the row is absent
-// (sql.ErrNoRows) — the canonical terminal sentinel.
-// Other SQL errors wrap WrapPersistFailed (SQL-side diagnostic).
-//
-// PR-011C: the SELECT projection expanded from 7 to 10 columns
-// to include the 3 drive fields required for the v1 envelope:
-// drive_file_id, drive_path, file_hash. The columns are
-// COALESCE-wrapped to NULL → ” / 0 mappings so a legacy row
-// written before the columns existed returns empty strings (not
-// nil-pointer panics) — the emitter then either uses an empty
-// drive_file_id (the canonical v1 envelope allows omitempty) or
-// the idempotency_key derivation fails with
-// ErrEnrichmentIdempotencyKeyConflict on an empty file_hash
-// (terminal, surfaces as a producer-side state gap).
-func (r *SQLiteAssetRepository) GetByID(ctx context.Context, id string) (*AssetRow, error) {
-	if r == nil || r.DB == nil {
-		return nil, WrapHandlerNotConfigured("repo")
-	}
-	row := r.DB.QueryRowContext(ctx, `
-		SELECT id, COALESCE(source_url, ''), COALESCE(title, ''),
-		       COALESCE(description, ''), COALESCE(start_sec, 0.0),
-		       COALESCE(end_sec, 0.0), COALESCE(source_provider, ''),
-		       COALESCE(drive_file_id, ''), COALESCE(drive_path, ''),
-		       COALESCE(file_hash, '')
-		FROM media_assets
-		WHERE id = ?
-	`, id)
-	var out AssetRow
-	if err := row.Scan(&out.ID, &out.SourceURL, &out.Title, &out.Description, &out.StartSec, &out.EndSec, &out.SourceProvider, &out.DriveFileID, &out.DrivePath, &out.FileHash); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, WrapChunkNotFound(id)
-		}
-		return nil, WrapPersistFailed(err)
-	}
-	return &out, nil
-}
-
-// UpdateEnrichedMetadata persists the EnrichedFields into
-// media_assets.metadata_json. PR-011A: declared for future
-// use; the handler does NOT yet call this method (the stub
-// LLM client returns ErrEnrichmentLLMUnavailable before the
-// call site is reached). PR-011B will replace the call site.
-//
-// godlike/07 minimum-blast-radius: the implementation is
-// idempotent on retry (UPDATE is naturally idempotent given
-// the same EnrichedFields input). The metadata_json column
-// shape mirrors the PR-001..PR-009 wire-format (JSON
-// encoding of the 6 LLM-only fields).
-func (r *SQLiteAssetRepository) UpdateEnrichedMetadata(ctx context.Context, id string, fields EnrichedFields) error {
-	if r == nil || r.DB == nil {
-		return WrapHandlerNotConfigured("repo")
-	}
-	metaJSON, err := json.Marshal(fields)
-	if err != nil {
-		return WrapInvalidLLMResponse(err)
-	}
-	_, err = r.DB.ExecContext(ctx, `
-		UPDATE media_assets
-		SET metadata_json = ?,
-		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, string(metaJSON), id)
-	if err != nil {
-		return WrapPersistFailed(err)
-	}
-	return nil
-}
-
-// Compile-time assertion: *SQLiteAssetRepository satisfies the
-// AssetRepository port. Catches signature drift at compile time
-// per AGENTS.md Pattern 0 / godlike/06 SSOT.
-//
-// Note: there is no compile-time pin for *EnrichmentHandler →
-// appjobs.Handler because the appjobs surface uses a HandlerFunc
-// adapter (not a named interface) for broker registration. The
-// adapter handles the signature conversion from
-// `func(ctx, *appjobs.Job, *appjobs.JobTools) (map[string]any, error)`
-// to the domain Handler type. The RegisterHandler call site
-// validates the signature at registration time.
-var _ AssetRepository = (*SQLiteAssetRepository)(nil)
