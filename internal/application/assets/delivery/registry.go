@@ -262,12 +262,27 @@ func withNamespace(namespace string, inner PathBuilder) PathBuilder {
 // YouTubeClipPath builds the path for YouTube clips:
 //
 //	clips/{group}/{video_id}
+//
+// Group fallback chain (July 2026 — PR-YT-PATH-FALLBACK):
+//  1. req.Group (caller-supplied channel/category name)
+//  2. req.Category (semantic-location metadata, e.g. "Boxe")
+//  3. "youtube_uncategorized" (technical fallback — prevents
+//     RETRY_WAIT loops when callers lack semantic metadata.
+//     The handler SHOULD validate upfront with 400 Bad Request
+//     for new POSTs; this fallback is for legacy/stuck jobs.)
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a zero-value Group no longer
+// fails-closed (was: "group is required"). An empty group now
+// routes to "youtube_uncategorized" so existing jobs with
+// incomplete semantic metadata don't loop forever. New callers
+// SHOULD be validated at the handler boundary.
 func YouTubeClipPath(req PublishRequest) ([]string, error) {
-	group := strings.TrimSpace(req.Group)
+	group := firstNonEmpty(
+		strings.TrimSpace(req.Group),
+		strings.TrimSpace(req.Category),
+		"youtube_uncategorized",
+	)
 	subject := strings.TrimSpace(req.Subject)
-	if group == "" {
-		return nil, fmt.Errorf("delivery: YouTubeClipPath: group is required")
-	}
 	if subject == "" {
 		return nil, fmt.Errorf("delivery: YouTubeClipPath: subject (video ID) is required")
 	}
@@ -275,6 +290,17 @@ func YouTubeClipPath(req PublishRequest) ([]string, error) {
 		pathutil.SafeFolderName(group),
 		pathutil.SafeFolderName(subject),
 	}, nil
+}
+
+// firstNonEmpty returns the first non-empty string from the provided
+// candidates. If all are empty, returns "".
+func firstNonEmpty(candidates ...string) string {
+	for _, c := range candidates {
+		if c != "" {
+			return c
+		}
+	}
+	return ""
 }
 
 // ArtlistPath builds the path for Artlist assets:
