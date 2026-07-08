@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS media_assets (
     local_path TEXT, file_hash TEXT,
     folder_id TEXT, folder_path TEXT,
     source_version TEXT NOT NULL DEFAULT '',
+    search_text TEXT NOT NULL DEFAULT '',
     metadata_json TEXT NOT NULL DEFAULT '{}',
     lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
     created_at TEXT, updated_at TEXT

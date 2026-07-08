@@ -7,6 +7,7 @@ package indexing
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -56,6 +57,21 @@ func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
 		return appsearchtext.SearchTextInput{}
 	}
 	parseMetadataJSON(asset)
+
+	// Populate Additional for YouTube clips from metadata_json fields
+	// that don't have a dedicated SearchTextInput slot. The youtubeStrategy
+	// reads these keys from Additional to produce the canonical search_text.
+	// godlike/06 SSOT: the key names here MUST match what youtubeStrategy reads.
+	var additional map[string]string
+	if asset.Source == "youtube" {
+		additional = map[string]string{
+			"hook":             assetpkg.MetadataString(asset.Metadata, "hook"),
+			"source_url":       assetpkg.MetadataString(asset.Metadata, "source_url"),
+			"speakers":         flattenMetadataSlice(asset.Metadata, "speakers"),
+			"mentioned_people": flattenMetadataSlice(asset.Metadata, "mentioned_people"),
+		}
+	}
+
 	return appsearchtext.SearchTextInput{
 		AssetID:          asset.ID,
 		Source:           asset.Source,
@@ -71,6 +87,35 @@ func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
 		Channel:          asset.ChannelID,
 		DetectedEntities: assetpkg.MetadataStringSlice(asset.Metadata, "detected_entities"),
 		OriginProvider:   assetpkg.MetadataString(asset.Metadata, "origin_provider"),
+		Additional:       additional,
+	}
+}
+
+// flattenMetadataSlice reads a metadata_json key that may be either a
+// []interface{} or a plain string, and returns a space-joined string.
+// Used by buildSearchTextInput to convert speakers/mentioned_people arrays
+// into a format the searchtext strategies can consume from Additional.
+func flattenMetadataSlice(meta map[string]interface{}, key string) string {
+	if meta == nil {
+		return ""
+	}
+	v, ok := meta[key]
+	if !ok {
+		return ""
+	}
+	switch val := v.(type) {
+	case string:
+		return val
+	case []interface{}:
+		parts := make([]string, 0, len(val))
+		for _, item := range val {
+			if s, ok := item.(string); ok && s != "" {
+				parts = append(parts, s)
+			}
+		}
+		return strings.Join(parts, " ")
+	default:
+		return ""
 	}
 }
 

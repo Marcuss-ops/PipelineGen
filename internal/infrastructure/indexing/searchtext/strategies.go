@@ -43,17 +43,40 @@ const (
 // Strategies only read the subset of fields they document; unknown
 // fields are ignored silently.
 
-// youtubeStrategy builds search text from:
+// youtubeStrategy builds the canonical YouTube clip search text from
+// the full set of available SearchTextInput fields:
 //
-//	title + transcript + channel + description
+//	title + transcript + channel + description + tags + detected_entities +
+//	hook + source_url + speakers + mentioned_people
 //
-// Follows the documented YouTube formula from the original plan.
+// Fields that are not applicable (zero-value) are silently dropped.
+// The strategy reads Additional keys for YouTube-specific metadata_json
+// fields that don't have a dedicated SearchTextInput slot:
+//
+//	hook, source_url, speakers, mentioned_people
+//
+// godlike/06 SSOT: this function is the SOLE canonical owner of the
+// YouTube search_text format for the Qdrant BM25 indexing path.
 func youtubeStrategy(input appsearchtext.SearchTextInput) string {
+	add := input.Additional
+
+	// Additional fields from metadata_json (populated by PayloadMapper).
+	hook := strings.TrimSpace(add["hook"])
+	sourceURL := strings.TrimSpace(add["source_url"])
+	speakers := strings.TrimSpace(add["speakers"])
+	mentionedPeople := strings.TrimSpace(add["mentioned_people"])
+
 	return joinNonEmpty(" ",
 		input.Title,
 		truncate(input.Transcript, maxTranscriptChars),
 		input.Channel,
 		truncate(input.Description, maxDescriptionChars),
+		joinTags(input.Tags),
+		joinTags(input.DetectedEntities),
+		hook,
+		sourceURL,
+		speakers,
+		mentionedPeople,
 	)
 }
 
