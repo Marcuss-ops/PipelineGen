@@ -254,10 +254,11 @@ func TestPublisher_RejectsDirectRootUpload(t *testing.T) {
 		Destination: delivery.DestinationYouTubeClip,
 		LocalPath:   "/tmp/video.mp4",
 		Filename:    "video.mp4",
-		// Group and Subject are empty → PathBuilder returns error
+		// Group falls back to "youtube_uncategorized" (PR-YT-PATH-FALLBACK),
+		// Subject is empty → PathBuilder returns "subject (video ID) is required".
 	})
 	require.Error(t, err, "should reject when PathBuilder fails due to missing fields")
-	require.Contains(t, err.Error(), "group")
+	require.Contains(t, err.Error(), "subject (video ID) is required")
 }
 
 func TestPublisher_UnknownDestinationRejected(t *testing.T) {
@@ -1070,7 +1071,8 @@ func TestResolveDestination_PathBuilderFailOverride_ReturnsBothStructAndSentinel
 		Filename:           "clip.mp4",
 		RootFolderOverride: override,
 		ConflictPolicy:     delivery.ConflictOverwrite,
-		// Group + Subject omitted → YouTubeClipPath returns "group is required".
+		// Group falls back to "youtube_uncategorized" (PR-YT-PATH-FALLBACK),
+		// Subject omitted → YouTubeClipPath returns "subject (video ID) is required".
 	})
 
 	// (1) Dual-return shape assertions.
@@ -1101,8 +1103,8 @@ func TestResolveDestination_PathBuilderFailOverride_ReturnsBothStructAndSentinel
 	//     target must be a concrete type, (c) the (3a) + (3b) checks
 	//     together verify the chain-preservation contract without
 	//     walk-order flakiness.
-	require.Contains(t, err.Error(), "group is required",
-		"dual-%w fmt.Errorf must preserve the underlying PathBuilder cause 'group is required' (typed-chain diagnostic via message-preservation)")
+	require.Contains(t, err.Error(), "subject (video ID) is required",
+		"dual-%w fmt.Errorf must preserve the underlying PathBuilder cause 'subject (video ID) is required' (typed-chain diagnostic via message-preservation — Group now falls back to youtube_uncategorized, Subject is first to fail)")
 	require.ErrorIs(t, err, ErrPathBuilderIncompleteForOverride,
 		"dual-%w fmt.Errorf must preserve ErrPathBuilderIncompleteForOverride for errors.Is at the resolveDestination call site (call-site decision gateway)")
 }
@@ -1293,8 +1295,8 @@ func TestResolveDestination_PathBuilderFailsWithOverride_FallsBack(t *testing.T)
 		LocalPath:          "/tmp/clip.mp4",
 		Filename:           "clip.mp4",
 		RootFolderOverride: override,
-		// Group + Subject omitted → YouTubeClipPath returns
-		// "group is required".
+		// Group falls back to "youtube_uncategorized" (PR-YT-PATH-FALLBACK),
+		// Subject omitted → YouTubeClipPath returns "subject (video ID) is required".
 		// ConflictPolicy explicit Overwrite so the registry's
 		// ConflictSkip default is bypassed (test focuses on the
 		// PathBuilder branch, not the policy branch).
@@ -1354,15 +1356,15 @@ func TestResolveDestination_PathBuilderFailsNoOverride_ReturnsError(t *testing.T
 		Destination: delivery.DestinationYouTubeClip,
 		LocalPath:   "/tmp/clip.mp4",
 		Filename:    "clip.mp4",
-		// Group + Subject omitted → YouTubeClipPath returns
-		// "group is required".
+		// Group falls back to "youtube_uncategorized" (PR-YT-PATH-FALLBACK),
+		// Subject omitted → YouTubeClipPath returns "subject (video ID) is required".
 		// RootFolderOverride omitted (zero value).
 		ConflictPolicy: delivery.ConflictOverwrite,
 	})
 	require.Error(t, err,
 		"PathBuilder failure with NO override MUST propagate to caller — the registry default would otherwise hide a metadata gap")
-	require.Contains(t, err.Error(), "group",
-		"Error must surface PathBuilder's underlying 'group is required' message verbatim — wrapping preserved so callers can errors.Is/As on it")
+	require.Contains(t, err.Error(), "subject",
+		"Error must surface PathBuilder's underlying 'subject (video ID) is required' — wrapping preserved so callers can errors.Is/As on it")
 	require.Contains(t, err.Error(), "build path",
 		"Error must include the publisher's 'delivery: build path for %q: %w' prefix so the canonical seam is grep-able in logs")
 }
