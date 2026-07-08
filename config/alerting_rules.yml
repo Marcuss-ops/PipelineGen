@@ -365,3 +365,127 @@ groups:
             suggests DB writes are failing; outcome="uploaded_cleanup"
             suggests Drive API is flapping. Outcome label:
             {{ $labels.outcome }}. Page on-call.
+
+  - name: velox_voiceover
+    interval: 30s
+    rules:
+      # CRITICAL: voiceover job failures in the last 5 minutes.
+      # voiceover_jobs_total{status="failed"} is a counter — any
+      # increase means at least one voiceover pipeline execution
+      # terminated with StatusFailed (any stage: TTS, audio post,
+      # publish, finalize). A single failure may be a transient
+      # backoff, but sustained failures signal a systemic issue.
+      - alert: VoiceoverJobsFailed
+        expr: increase(voiceover_jobs_total{status="failed"}[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+          pipeline: voiceover
+        annotations:
+          summary: "🚨 Voiceover job failures detected"
+          description: |
+            voiceover_jobs_total{status="failed"} increased by
+            {{ $value }} in the last 5 minutes. At least one
+            voiceover pipeline execution terminated with
+            StatusFailed. Check the voiceover pipeline stage logs
+            (ProcessSegmentUseCase.Execute) for the failing stage.
+
+      # CRITICAL: Drive upload failures in the voiceover pipeline.
+      # drive_upload_failures_total is incremented ONLY when
+      # VoiceoverPublisher.Publish returns a non-nil error. More
+      # than 3 failures in 5 minutes suggests a Drive API outage
+      # or token-expiry issue — the orphan sweeper will clean up
+      # any stale rows, but sustained failures block the pipeline.
+      - alert: VoiceoverDriveUploadFailures
+        expr: increase(drive_upload_failures_total[5m]) > 3
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+          pipeline: voiceover
+        annotations:
+          summary: "🚨 Voiceover Drive upload failures > 3 in 5m"
+          description: |
+            drive_upload_failures_total increased by {{ $value }}
+            in the last 5 minutes. Drive uploads in the voiceover
+            pipeline are failing at an elevated rate. Check Drive
+            API health and token validity. The orphan sweeper will
+            recover stale rows, but sustained failures will block
+            the pipeline.
+
+      # CRITICAL: TTS synthesis failures in the voiceover pipeline.
+      # tts_failures_total is incremented when TTSProvider.Synthesize
+      # returns an error (after all retries + circuit breaker). More
+      # than 5 failures in 5 minutes means the TTS backend (edge-tts
+      # or the Python bridge) is likely down — check the circuit
+      # breaker state (it may have opened) and the Python process.
+      - alert: VoiceoverTTSFailures
+        expr: increase(tts_failures_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+          pipeline: voiceover
+        annotations:
+          summary: "🚨 Voiceover TTS failures > 5 in 5m"
+          description: |
+            tts_failures_total increased by {{ $value }} in the
+            last 5 minutes. TTS synthesis is failing at an
+            elevated rate. Check: (1) edge-tts / Python bridge
+            health, (2) the TTS circuit breaker state (may have
+            opened), (3) CPU/memory on the TTS host.
+
+      # CRITICAL: voiceover translation failures in the promo path.
+      # TranslationFailuresTotal is incremented from the translator
+      # closure in build_bundles_voiceover.go. More than 2 failures
+      # in 5 minutes means the Ollama translation backend is
+      # unavailable or returning errors — promo generation will
+      # silently fall back to untranslated text.
+      - alert: VoiceoverTranslationFailures
+        expr: increase(translation_failures_total[5m]) > 2
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+          service: velox-go
+          pipeline: voiceover
+        annotations:
+          summary: "🚨 Voiceover translation failures > 2 in 5m"
+          description: |
+            translation_failures_total increased by {{ $value }}
+            in the last 5 minutes. The Ollama translation backend
+            for voiceover promo generation is returning errors.
+            Promo text will silently fall back to untranslated.
+            Check Ollama server health and the translation model.
+
+      # WARNING: voiceover stage duration p99 exceeds 60 seconds.
+      # voiceover_stage_duration_seconds is a histogram partitioned
+      # by stage (tts / audio_post / publish / finalize). p99 > 60s
+      # on any stage indicates severe pipeline degradation — the
+      # Prometheus histogram_quantile function computes the 99th
+      # percentile from the bucket distribution.
+      - alert: VoiceoverStageDurationHigh
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(voiceover_stage_duration_seconds_bucket[5m])) by (le, stage)
+          ) > 60
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          service: velox-go
+          pipeline: voiceover
+        annotations:
+          summary: "⚠️ Voiceover stage p99 latency > 60s"
+          description: |
+            voiceover_stage_duration_seconds p99 is
+            {{ $value }}s for stage {{ $labels.stage }}.
+            The voiceover pipeline is experiencing severe
+            latency degradation. Check the affected stage:
+            - tts: edge-tts / Python bridge may be overloaded
+            - publish: Drive API may be slow or throttled
+            - finalize: SQLite may be under contention
