@@ -213,6 +213,14 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			Strategy:      cmd.Strategy,
 			RemoveSilence: cmd.RemoveSilence,
 			Metadata:      cmd.Metadata,
+			// ThreadingCampaign 2026-07-08: propagate the parent's
+			// Project field down to every child so the
+			// delivery.Publisher path builder sees `cmd.Project` per
+			// per-item payload. Without this line, the child struct's
+			// fallback (per its goddoc) kicks in: pre-PR-12 FolderID
+			// OR canonical voiceover ID — neither surfaces the
+			// canonical `{project}/{language}/` Drive subdir layout.
+			Project: cmd.Project,
 		}
 		if err := item.Validate(); err != nil {
 			u.deps.Logger.Warn("FanoutUseCase: child command validation failed",

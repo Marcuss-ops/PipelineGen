@@ -65,6 +65,25 @@ type GenerateVoiceoversRequest struct {
 	// Options wraps three optional fields from the canonical Command
 	// that callers prefer as a sub-map (matches the verdict body).
 	Options VoiceoverOptions `json:"options,omitempty"`
+
+	// Project is the canonical semantic project identifier for the
+	// voiceover batch publish (ThreadingCampaign, 2026-07-08).
+	// Threaded verbatim to GenerateVoiceoversCommand.Project by
+	// ToCommand() (this file) and ultimately to delivery.Publisher.Publish
+	// via the fanout loop (jobs/fanout.go) so voiceovers land in
+	// `{project}/{language}/` Drive subdirs.
+	//
+	// godlike/06 SSOT (one canonical owner per fact): this field is
+	// the SOURCE-OF-TRUTH for Project at the API layer; the parent
+	// GenerateVoiceoversCommand is the storage OF-TRUTH through the
+	// async boundary; the per-item GenerateVoiceoverItemCommand is the
+	// WORKER CONTRACT OF-TRUTH. All three layers map 1:1 with no
+	// transformation (string-in, string-out).
+	//
+	// godlike/07 minimum-blast-radius: empty Project is allowed and
+	// falls through to the pre-P12 default (legacy FolderID + canonical
+	// voiceover ID) so existing callers do not break.
+	Project string `json:"project,omitempty"`
 }
 
 // VoiceoverItem is a single (text, language, voice, filename) row
@@ -187,6 +206,13 @@ func (r *GenerateVoiceoversRequest) ToCommand() *voiceover.GenerateVoiceoversCom
 		// (the worker's journal mergeUserMetadata uses it for collision
 		// resolution on the voiceovers row's metadata column).
 		Metadata: r.Options.Metadata,
+		// ThreadingCampaign 2026-07-08: thread the API request's
+		// Project field 1:1 into the parent GenerateVoiceoversCommand
+		// so the fanout loop (internal/application/voiceover/jobs/
+		// fanout.go) can propagate it into each
+		// GenerateVoiceoverItemCommand → delivery.Publisher.Publish
+		// for the `{project}/{language}/` Drive subdir layout.
+		Project: r.Project,
 	}
 }
 
