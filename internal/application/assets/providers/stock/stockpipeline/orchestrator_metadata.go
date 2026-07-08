@@ -82,6 +82,17 @@ type StockRunMetadata struct {
 	// consumers see a stable, parseable value. Setting this to
 	// "" would silently drop the hint.
 	IndexingStatus string `json:"indexing_status"`
+
+	// ── Timestamp folder metadata (PR-TIMESTAMP-FOLDER-LINK) ──────
+	// Parent timestamp Drive folder metadata. Captured from the
+	// metadataPublished.Location after Phase 2 (metadata.json upload).
+	// For legacy runs: points to the timestamp parent folder.
+	// For explicit-clips runs: points to the metadata/ subfolder
+	// (operators can click the Drive breadcrumb to go up one level).
+	// Propagated to Qdrant payload for "open folder in Drive"
+	// navigation from search results.
+	TimestampDriveFolderLink string `json:"timestamp_drive_folder_link,omitempty"`
+	TimestampFolderID        string `json:"timestamp_folder_id,omitempty"`
 }
 
 // IndexingStatusPending is the canonical projection-time literal
@@ -126,6 +137,11 @@ type ChunkMetadataEntry struct {
 	SHA256    string   `json:"sha256"`
 	SizeBytes int64    `json:"size_bytes"`
 	LocalPath string   `json:"local_path,omitempty"`
+	// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent timestamp Drive
+	// folder metadata. Per-run scalar (all chunks in the same
+	// timestamp block share the same parent folder).
+	TimestampDriveFolderLink string `json:"timestamp_drive_folder_link,omitempty"`
+	TimestampFolderID        string `json:"timestamp_folder_id,omitempty"`
 }
 
 // buildStockRunMetadata constructs the typed StockRunMetadata
@@ -185,7 +201,32 @@ func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint str
 		// upsert; media_assets.index_state in the DB is the
 		// canonical SSOT for retry/decision logic.
 		IndexingStatus: IndexingStatusPending,
+		// PR-TIMESTAMP-FOLDER-LINK (July 2026): run-level parent
+		// timestamp folder metadata. Captured from the first chunk's
+		// ChunkState after Phase 2 backfill (step_publish.go). All
+		// chunks share the same parent folder per godlike/06 SSOT.
+		TimestampDriveFolderLink: timestampFolderLink(chunks),
+		TimestampFolderID:        timestampFolderID(chunks),
 	}
+}
+
+// timestampFolderLink returns the TimestampDriveFolderLink from the
+// first chunk (run-level scalar: all chunks share the same parent
+// folder after the Phase 2 backfill). Returns "" when empty.
+func timestampFolderLink(chunks []ChunkState) string {
+	if len(chunks) > 0 {
+		return chunks[0].TimestampDriveFolderLink
+	}
+	return ""
+}
+
+// timestampFolderID returns the TimestampFolderID from the first chunk.
+// Symmetric with timestampFolderLink.
+func timestampFolderID(chunks []ChunkState) string {
+	if len(chunks) > 0 {
+		return chunks[0].TimestampFolderID
+	}
+	return ""
 }
 
 // writeAndHashPerClipMetadata stages a per-clip metadata.json

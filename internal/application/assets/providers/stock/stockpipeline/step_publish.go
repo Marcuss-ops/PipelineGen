@@ -288,18 +288,18 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			}
 			clipMetaArtifactID := ChunkArtifactID(fp, i) + ":metadata"
 			clipMetaVA := finalization.VerifiedArtifact{
-				ArtifactID:     clipMetaArtifactID,
-				Kind:           finalization.KindMetadata,
-				Filename:       "metadata.json",
-				MIMEType:       "application/json",
-				LocalPath:      clipMetaPath,
-				SizeBytes:      clipMetaSize,
-				SHA256:         clipMetaHash,
-				Requirement:    finalization.ArtifactRequirementRequired,
-				IdempotencyKey: clipMetaIdem,
-				RootFolderName: rootFolderName,
+				ArtifactID:         clipMetaArtifactID,
+				Kind:               finalization.KindMetadata,
+				Filename:           "metadata.json",
+				MIMEType:           "application/json",
+				LocalPath:          clipMetaPath,
+				SizeBytes:          clipMetaSize,
+				SHA256:             clipMetaHash,
+				Requirement:        finalization.ArtifactRequirementRequired,
+				IdempotencyKey:     clipMetaIdem,
+				RootFolderName:     rootFolderName,
 				RootFolderOverride: rootFolderOverride,
-				PathLeafName:   leafName,
+				PathLeafName:       leafName,
 			}
 			if _, clipMetaPrepErr := runner.ArtifactPreparation().Prepare(ctx, clipMetaVA); clipMetaPrepErr != nil {
 				return fmt.Errorf("%w: per-clip metadata.json upload for chunk %d (artifact=%s): %w",
@@ -310,6 +310,23 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 		chunks = append(chunks, cs)
 	}
 	runner.State().Published = chunks
+
+	// PR-TIMESTAMP-FOLDER-LINK (July 2026): capture parent timestamp
+	// folder metadata from the FIRST chunk's PublishedArtifact.Location
+	// (all chunks share the same parent folder). Must happen BEFORE
+	// writeAndHashMetadata so the metadata.json file on Drive also
+	// contains the timestamp fields (not just SQLite metadata_json).
+	// For explicit-clips: each chunk was published to its own per-clip
+	// subfolder under the shared timestamp parent — the parent folder
+	// is the grandparent of each per-clip folder. We capture the
+	// metadataPublished.Location.FolderID below (Phase 2) since that
+	// artifact is always uploaded into the timestamp-parent context.
+	//
+	// Inline URL construction matches drive.FolderURLFromID exactly
+	// ("https://drive.google.com/drive/folders/" + id). The stock
+	// pipeline cannot import infrastructure/drive directly (Pattern 0
+	// clean architecture); the constant is SSOT-locked here.
+	const driveFolderURLPrefix = "https://drive.google.com/drive/folders/"
 
 	// ── Phase 2: metadata.json ArtifactPreparation ────────────────
 	// Timestamp-mode and legacy runs both publish a single
@@ -399,6 +416,21 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 			ErrStockPublishArtifactFailed, metaPrepErr)
 	}
 	metadataPublished = metaPublished
+	// PR-TIMESTAMP-FOLDER-LINK (July 2026): capture the parent
+	// timestamp Drive folder metadata from the metadata artifact's
+	// Location. For legacy runs: this is the timestamp parent
+	// folder. For explicit-clips runs: this is the metadata/
+	// subfolder (operators click breadcrumb to go up). Backfill
+	// onto all chunks so buildStockRunMetadata propagates.
+	metaFolderID := metadataPublished.Location.FolderID
+	if metaFolderID != "" {
+		metaFolderLink := driveFolderURLPrefix + metaFolderID
+		for i := range chunks {
+			chunks[i].TimestampDriveFolderLink = metaFolderLink
+			chunks[i].TimestampFolderID = metaFolderID
+		}
+	}
+
 	runner.State().MetadataPublished = MetadataState{
 		LocalPath:         metaVA.LocalPath,
 		SHA256:            metaVA.SHA256,
