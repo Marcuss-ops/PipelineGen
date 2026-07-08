@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	"go.uber.org/zap"
@@ -44,6 +45,11 @@ import (
 // project fields per the structured logging contract. Every stage
 // now logs: job_id, asset_id, project, language, stage, status,
 // duration_ms.
+//
+// FASE 7 (July 2026): added histogram observation via
+// observability.VoiceoverStageDuration so both callers
+// (processLanguage and ProcessSegmentUseCase.Execute) benefit
+// from the same telemetry — no more duplicated stageTiming closure.
 func stageLog(log *zap.Logger, jobID, assetID, project, stage, language string) func(status string) {
 	start := time.Now()
 	logFields := []zap.Field{
@@ -57,11 +63,13 @@ func stageLog(log *zap.Logger, jobID, assetID, project, stage, language string) 
 	}
 	log.Info("pipeline_stage_started", logFields...)
 	return func(status string) {
+		dur := time.Since(start)
 		completedFields := append(logFields,
-			zap.Int64("duration_ms", time.Since(start).Milliseconds()),
+			zap.Int64("duration_ms", dur.Milliseconds()),
 			zap.String("status", status),
 		)
 		log.Info("pipeline_stage_completed", completedFields...)
+		observability.VoiceoverStageDuration.WithLabelValues(stage).Observe(dur.Seconds())
 	}
 }
 
