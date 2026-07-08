@@ -78,7 +78,7 @@ func buildVoiceoverService(
 	clipIndexerService *clipindexer.Service, // PR-VO-A3: no longer injects clipIndexFn into voiceover.Service; retained on the signature only because other voiceover paths still reach the indexer directly.
 	destResolver asset.Resolver,
 	metaWriter *semantic.MetadataWriter,
-	scriptGen textTranslator,
+	translationPort translation.TranslationPort, // Fase 9 step 4 CUTOVER: *translation.OllamaTranslator satisfies this port; the bare *ollama.Generator.TranslateText direct-call closure is RETIRED.
 	outboxDispatcher *outbox.Dispatcher,
 ) (*voiceover.Service, *assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor) {
 
@@ -144,15 +144,31 @@ func buildVoiceoverService(
 	//   - voLifecycle:     *lifecycle.Service → LifecycleProjectionUpserter
 	//                       via voiceoverProjectionAdapter
 	//   - log:             *zap.Logger
-	// Build translator closure from scriptGen (used by promo generation
-	// to translate voiceover text into target language). Graceful
-	// degradation: if scriptGen is nil, return input unchanged so promo
-	// generation can still proceed.
+	// Build translator closure from translationPort (canonical Fase 9
+	// step 4 surface). The closure adapts the canonical 1-method port
+	// (Translate(ctx, cmd TranslationCommand)) to the legacy 3-arg
+	// TranslatorFunc signature voiceover.Service expects (ctx, text, lang)
+	// → (string, error). The ContentKind=voiceover envelope tells the
+	// provider this is a voiceover translation (preserves verbatim
+	// formatting for TTS downstream). Graceful degradation: if
+	// translationPort is nil, return input unchanged so promo generation
+	// can still proceed (godlike/07 no-fake-availability: callers should
+	// detect nil + wire, but the missing-wire failure mode is silent
+	// fallback, not panic — same pattern as the pre-CUTOVER bare
+	// scriptGen closure).
 	translator := func(ctx context.Context, text, targetLanguage string) (string, error) {
-		if scriptGen == nil {
+		if translationPort == nil {
 			return text, nil
 		}
-		return scriptGen.TranslateText(ctx, text, targetLanguage)
+		res, err := translationPort.Translate(ctx, translation.TranslationCommand{
+			ContentKind: translation.ContentKindVoiceover,
+			TargetLang:  targetLanguage,
+			Text:        text,
+		})
+		if err != nil {
+			return text, err
+		}
+		return res.TranslatedText, nil
 	}
 
 	// PR-VO-A3: outbox enqueuer (idle if nil). The voiceover.Service
