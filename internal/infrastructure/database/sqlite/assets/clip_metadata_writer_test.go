@@ -156,14 +156,11 @@ func TestClipMetadataWriter_UpdatesMediaAndEmitsOutbox(t *testing.T) {
 		t.Errorf("expected 1 outbox row; got %d", got)
 	}
 	// media_assets.metadata_json has the 9 keys.
-	// Note: SQLite's json_set stores booleans as 0/1 (not
-	// true/false); the wrapper above writes via $ as the
-	// second json_set arg with the typed Go value, and
-	// the json1 extension canonicalises to integer when
-	// the value is bool. We assert against the integer
-	// representation.
+	// Note: PR-YT-DOD-7 switched from nested json_set (which stored
+	// Go bool as SQLite integer 0/1) to json_patch with Go-side
+	// json.Marshal (which produces proper JSON false/true).
 	md := readMetadataJSON(t, db, clipID)
-	for _, want := range []string{`"summary":"Test summary"`, `"quality_score":0.85`, `"sponsor_segment":0`, `"topics"`} {
+	for _, want := range []string{`"summary":"Test summary"`, `"quality_score":0.85`, `"sponsor_segment":false`, `"topics"`} {
 		if !strings.Contains(md, want) {
 			t.Errorf("metadata_json missing %q; got %s", want, md)
 		}
@@ -250,9 +247,8 @@ func TestClipMetadataWriter_MismatchedClipIDFailsClosed(t *testing.T) {
 
 // ── Test helpers ─────────────────────────────────────────────────────
 //
-// Note: SQLite's json1.json_set stores Go bool values as
-// 0/1 (not true/false) in the underlying TEXT column. The
-// tests above assert against the integer representation
-// (`"sponsor_segment":0`) to match the on-disk shape. Use
-// stdlib strings.Contains for substring checks — no
-// hand-rolled index helper.
+// Note: PR-YT-DOD-7 switched the writer from nested json_set
+// (which stored Go bool as SQLite integer 0/1) to Go-side
+// json.Marshal + json_patch (which produces proper JSON
+// false/true). Tests assert against the correct JSON boolean
+// representation.
