@@ -13,9 +13,43 @@ import (
 //
 // Extracted from process_segment.go per AGENTS.md Pattern 5
 // (PR-SEGMENT-SPLIT, July 2026).
+//
+// Phase 2 honor (PR-SPLIT-PROCESS-SEGMENT, July 2026): `fail` and
+// `failInvalidTimestamp` now take `*out` (pointer receiver) and return
+// the typed `*ExtractionError` directly. The pre-split signature was
+// `(out, typed) (out, err)` (value-snapshot) which was awkward for the
+// step-method pattern in files step1..step10 that all mutate `&out`
+// passed by the orchestrator at process_segment.go::Execute. The
+// pointer-receiver form is byte-equivalent behaviorally: the SAME
+// fields are set on `out` (Item.Status="failed" + Item.Error + Error)
+// — the caller just propagates the typed error directly instead of
+// unpacking a 2-tuple. Unexported helpers, no external API change
+// (godlike/07 minimum-blast-radius holds).
+func (u *ProcessYouTubeSegmentUseCase) fail(out *youtubetypes.ProcessSegmentResult, typed *ExtractionError) *ExtractionError {
+	out.Item.Status = "failed"
+	if typed != nil {
+		out.Item.Error = typed.Error()
+		out.Error = typed
+	}
+	return typed
+}
+
+func (u *ProcessYouTubeSegmentUseCase) failInvalidTimestamp(out *youtubetypes.ProcessSegmentResult, which string, err error) *ExtractionError {
+	typed := NewExtractionError(
+		FailureCodeInvalidTimestamp,
+		false,
+		fmt.Sprintf("invalid %s timestamp: %v", which, err),
+		err,
+	)
+	return u.fail(out, typed)
+}
 
 // buildClipAsset constructs the canonical youtubetypes.ClipAsset
 // from the use case's per-segment state.
+//
+// godlike/06 SSOT (one canonical owner per fact): buildClipAsset lives
+// ONLY in process_segment_helpers.go. Step 9 (process_segment_step6to9.go)
+// calls it; no other caller may re-derive the canonical shape.
 func buildClipAsset(
 	clipID string,
 	cmd youtubetypes.ProcessSegmentCommand,
@@ -83,25 +117,6 @@ func deriveNormalizedGroup(cmd youtubetypes.ProcessSegmentCommand) string {
 		return strings.TrimSpace(cmd.Destination.Group)
 	}
 	return ""
-}
-
-func (u *ProcessYouTubeSegmentUseCase) fail(out youtubetypes.ProcessSegmentResult, typed *ExtractionError) (youtubetypes.ProcessSegmentResult, error) {
-	out.Item.Status = "failed"
-	if typed != nil {
-		out.Item.Error = typed.Error()
-		out.Error = typed
-	}
-	return out, typed
-}
-
-func (u *ProcessYouTubeSegmentUseCase) failInvalidTimestamp(out youtubetypes.ProcessSegmentResult, which string, err error) (youtubetypes.ProcessSegmentResult, error) {
-	typed := NewExtractionError(
-		FailureCodeInvalidTimestamp,
-		false,
-		fmt.Sprintf("invalid %s timestamp: %v", which, err),
-		err,
-	)
-	return u.fail(out, typed)
 }
 
 // composeYouTubeClipSearchText builds the canonical search_text for a

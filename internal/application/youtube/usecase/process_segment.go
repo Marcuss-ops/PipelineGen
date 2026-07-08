@@ -1,4 +1,5 @@
-// Package usecase — process_segment.go: canonical ProcessYouTubeSegmentUseCase.
+// Package usecase — process_segment.go: canonical slim orchestrator for
+// ProcessYouTubeSegmentUseCase.
 //
 // Commit C (PR-C-YouTube-Cutover, June 2026) lifts the legacy per-segment
 // orchestration out of the youtube/adapters/ package into a typed use case.
@@ -8,156 +9,76 @@
 // (Cache/VideoPipeline/Hash/Writer/SegmentsSvc).
 //
 // Commit 2/6 (PR-C-YouTube-Cutover, June 2026, Correttezza): 5 fail-closed
-// corrections landed:
-//   - #2 StrategyReplace cache-bypass: when cmd.Strategy == "replace",
-//     the cache lookup is skipped so a re-extract under the same clipID
-//     always re-runs the full 9-step pipeline.
-//   - #3 SegmentPolicy: a Min/Max duration gate (defaults 4s/60s; user-
-//     requested clip-duration window — no effects, no transitions) is
-//     applied at Step 1. Out-of-range segments fail with
-//     FailureCodeDurationOutOfRange.
-//   - #4 policyVersion in filename: BuildClipFilename takes a 5th
-//     parameter (policyVersion) so two policy versions of the same
-//     (videoID, start, end) tuple produce different files.
-//   - #5 runtime fail-closed at Step 5: localPath == "" →
-//     FailureCodeEmptyLocalPath; os.Stat size == 0 →
-//     FailureCodeInvalidLocalArtifact; hash.MD5File err/empty →
-//     FailureCodeHashFailed. Pre-Commit-2 silently swallowed all
-//     three.
-//   - #6 ClipAsset canonical: Step 9 builds a `youtubetypes.ClipAsset`
-//     (the canonical domain entity — ID/VideoID/LocalPath/FileHash/
-//     Drive/Coordinates/Metadata) and passes it to the writer. The
-//     writer no longer sees the HTTP-shaped ExtractItem.
+// corrections landed (StrategyReplace cache-bypass + SegmentPolicy bounds +
+// policyVersion in filename + runtime fail-closed at Step 5 + ClipAsset
+// canonical wiring). See CHANGELOG.md §1 for the full per-issue commentary.
 //
-// The 9-step sequence is preserved.
+// Phase 2 split (PR-SPLIT-PROCESS-SEGMENT, July 2026): the original 614-LOC
+// Execute god-method is decomposed into 6 step methods localized in
+// godlike/06 SSOT owner files (one canonical owner per fact per step):
+//
+//   - process_segment_step1.go      → Step 1   deterministic clip ID + SegmentPolicy
+//   - process_segment_step2.go      → Step 2   cache lookup + StrategyReplace bypass
+//   - process_segment_step3to5.go   → Steps 3-5 cut/retry/hash/fail-closed + Step 4a Stager
+//   - process_segment_step5a_ffprobe.go → Step 5a ffprobe validation
+//   - process_segment_step6to9.go   → Steps 6-9 subtitles + Drive upload + writer commit
+//   - process_segment_step10.go     → Step 10  metadata enrichment
+//
+// The public Execute(ctx, cmd) (ProcessSegmentResult, error) signature is
+// byte-identical to pre-split (godlike/07 minimum-blast-radius). Lookup
+// path *UseCase.{Name,Policy,Execute} unchanged. Helpers
+// (buildClipAsset, deriveNormalizedGroup, fail, failInvalidTimestamp,
+// composeYouTubeClipSearchText, cleanSegmentName, validateFFProbeReport)
+// still live in process_segment_helpers.go.
 package usecase
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
-	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
-// ProcessSegmentPolicyVersion is the canonical "v1" policy version
-// stamped into the deterministic clip ID + filename. Bump it when
-// the metadata enrichment prompt, semantic keywords, embedding
-// model, or segment policy change.
-const ProcessSegmentPolicyVersion = "v1"
-
-// ProcessSegmentDeps bundles every port ProcessYouTubeSegmentUseCase
-// touches. nil-port tolerance matches the rest of the youtube package
-// for the OPTIONAL ports (Subtitles/Transcriber/DriveFolderMgr); the
-// REQUIRED ports panic on nil at ctor time.
-type ProcessSegmentDeps struct {
-	Cache          youtubeports.ClipCachePort
-	VideoPipeline  youtubeports.VideoPipelinePort
-	Subtitles      youtubeports.SubtitleFetcherPort
-	Transcriber    youtubeports.WhisperTranscriberPort
-	Hash           youtubeports.HashServicePort
-	DriveFolderMgr youtubeports.DriveFolderManagerPort
-	Writer         youtubeports.ClipAtomicWriter
-	SegmentsSvc    *SegmentsService
-	// SegmentPolicy is the duration gate (Min/Max in seconds).
-	// Zero values default to {Min: 4, Max: 60}. Commit 2/6 #3.
-	// Per user spec (2026-07-04): no effects, no transitions are
-	// applied to extracted clips; the YouTube endpoint only cuts
-	// the segment, preserves audio, uploads to Drive, writes
-	// media_assets and emits the asset.index.requested outbox event.
-	SegmentPolicy youtubetypes.SegmentPolicy
-	// ClipMetadataWriter is the optional metadata-enrichment writer
-	// (Commit 4/6, P1 #15). When non-nil, Step 10 of the pipeline
-	// writes CanonicalClipMetadata to media_assets + emits the
-	// metadata outbox event. When nil, Step 10 short-circuits
-	// silently. Type: youtubeports.ClipMetadataWriter.
-	ClipMetadataWriter youtubeports.ClipMetadataWriter
-	// MetadataService is the optional metadata-enrichment orchestrator
-	// (Commit 4/6, P1 #15 + #16). When non-nil, Step 10 calls
-	// EnrichClip to build + persist metadata. When nil, Step 10
-	// is a no-op.
-	MetadataService *ytmetadata.MetadataService
-	// Stager is the shared assets.SourceStager port (Step 9/12 wire-up,
-	// July 2026). Optional. When non-nil, Step 4 stages the FULL
-	// video via the shared stager before retry.Do, then sets
-	// cutReq.PreDownloadedPath so the concrete VideoPipeline
-	// uses ffmpeg -c copy (videomuscles/youtube_pipeline.go:124-133)
-	// to slice the local staged file instead of re-downloading via
-	// yt-dlp. This is genuine bandwidth-saving (one yt-dlp download
-	// per Execute vs N downloads for the retry+replace case).
-	Stager assets.SourceStager
-	// FFProbe is the optional ffprobe validation port (audit 2026-07-03
-	// BLOCKER #3). When non-nil, Step 5a validates the downloaded clip
-	// via ffprobe: container readable, video stream present, duration
-	// within ±5% tolerance, width/height > 0, FPS > 0, audio present
-	// when KeepAudio=true. When nil, the validation step is silently
-	// skipped (pre-existing hash + stat checks remain).
-	FFProbe youtubeports.FFProbePort
-	// Step10Metrics is the optional metrics-recorder port for the
-	// partial-state Step 10 failure counter
-	// (PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY, July 2026). When non-nil,
-	// the use case calls
-	//   u.deps.Step10Metrics.IncStep10FailAfterClip(string(FailureCodeMetadataFailed))
-	// on the Step 10 metadata-enrichment failure path BEFORE the
-	// typed *ExtractionError return. The counter is partitioned by
-	// failure_code so dashboards can aggregate partial-state events
-	// across a batch extraction.
-	//
-	// When nil, the counter increment is silently skipped (the
-	// operator Warn log at PR-PY-STEP10-FAIL-LOG is preserved for
-	// granular forensics). Nil-tolerance matches the optional-port
-	// pattern of Subtitles/Transcriber/DriveFolderMgr/FFProbe.
-	//
-	// godlike/06 SSOT: this port is the SOLE canonical application-
-	// layer surface for Step 10 partial-state telemetry. The
-	// composition root wires the concrete adapter
-	// (internal/infrastructure/observability.Step10MetricsAdapter).
-	Step10Metrics youtubeports.Step10MetricsRecorder
-	Log           *zap.Logger
-}
-
 // ProcessYouTubeSegmentUseCase is the canonical per-segment pipeline.
+//
+// godlike/06 SSOT for the accompanying types:
+//   - ProcessSegmentPolicyVersion const → process_segment_deps.go (canonical SSOT)
+//   - ProcessSegmentDeps struct         → process_segment_deps.go (canonical bundle)
 type ProcessYouTubeSegmentUseCase struct {
 	deps ProcessSegmentDeps
 }
 
 // NewProcessYouTubeSegmentUseCase constructs the canonical use case.
-// 5 required ports panic on nil. Subtitles/Transcriber/DriveFolderMgr
-// are runtime-gated (no panic).
+// The 5 REQUIRED-port panic-on-nil checks now live in
+// ProcessSegmentDeps.Validate() (declared at process_segment_deps.go);
+// this ctor delegates to Validate() then handles the optional
+// Logger nil-fallback. Subtitles/Transcriber/DriveFolderMgr remain
+// runtime-gated (no panic) per the canonical optional-port pattern.
 func NewProcessYouTubeSegmentUseCase(d ProcessSegmentDeps) *ProcessYouTubeSegmentUseCase {
-	if d.Cache == nil {
-		panic("usecase.NewProcessYouTubeSegmentUseCase: Cache port is required (composition must wire ClipCacheAdapter from internal/infrastructure/database/sqlite/assets/clip_cache_adapter.go)")
-	}
-	if d.VideoPipeline == nil {
-		panic("usecase.NewProcessYouTubeSegmentUseCase: VideoPipeline port is required (composition must wire the YouTube pipeline adapter)")
-	}
-	if d.Hash == nil {
-		panic("usecase.NewProcessYouTubeSegmentUseCase: Hash port is required (composition must wire hashutil.NewHashAdapter)")
-	}
-	if d.Writer == nil {
-		panic("usecase.NewProcessYouTubeSegmentUseCase: Writer port is required — composition must wire ClipAtomicWriterAdapter (PR-C P0 #3 fail-closed; pre-Commit-1 silently wrote nothing and returned 'processed')")
-	}
-	if d.SegmentsSvc == nil {
-		panic("usecase.NewProcessYouTubeSegmentUseCase: SegmentsSvc port is required (composition must construct *SegmentsService via youtube.NewSegmentsService())")
-	}
+	d.Validate()
 	if d.Log == nil {
 		d.Log = zap.NewNop()
 	}
 	return &ProcessYouTubeSegmentUseCase{deps: d}
 }
 
-// Execute runs the canonical 9-step pipeline for one segment.
+// Execute runs the canonical 9-step pipeline for one segment. The body
+// is decomposed into 6 step methods (see package-doc godoc for the
+// per-file ownership map). This function is the SOLE orchestrator —
+// the order of step calls here is the canonical pipeline order
+// (gated at runtime by the per-step defer/fail-closed invariants).
+//
+// godlike/06 SSOT: the orchestrator owns the 6-step SEQUENCE only;
+// each step body lives in exactly one sister file. Fail-closed gates
+// (fail/failInvalidTimestamp) live in process_segment_helpers.go.
+//
+// godlike/07 minimum-blast-radius: signature byte-identical to pre-split
+// (parent commit e9a5b3994 / process_segment.go 614 LOC). The 17 existing
+// tests in process_segment_test.go + _correttezza_test.go +
+// _step10_metrics_test.go + _step10_partial_state_e2e_test.go exercise
+// this signature directly with mocked ports — they MUST PASS unchanged.
 func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubetypes.ProcessSegmentCommand) (youtubetypes.ProcessSegmentResult, error) {
 	out := youtubetypes.ProcessSegmentResult{
 		Status: "failed",
@@ -171,444 +92,65 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 		},
 	}
 
-	// Step 1 — deterministic clip ID + timestamp validation +
-	// SegmentPolicy bounds (Commit 2/6 #3) + filename with policyVersion
-	// (Commit 2/6 #4).
-	startSec, err := textutil.ParseTimestamp(out.Item.Start)
-	if err != nil {
-		return u.failInvalidTimestamp(out, "start", err)
-	}
-	endSec, err := textutil.ParseTimestamp(out.Item.End)
-	if err != nil {
-		return u.failInvalidTimestamp(out, "end", err)
-	}
-	if startSec >= endSec {
-		msg := fmt.Sprintf("start time (%s) must be before end time (%s)", cmd.Segment.Start, cmd.Segment.End)
-		typed := NewExtractionError(FailureCodeInvalidTimestamp, false, msg, nil)
-		return u.fail(out, typed)
-	}
-	duration := endSec - startSec
-	policyVer := cmd.PolicyVersion
-	if policyVer == "" {
-		policyVer = ProcessSegmentPolicyVersion
-	}
-	// Commit 2/6 #3: SegmentPolicy duration gate.
-	if !u.deps.SegmentPolicy.ValidDuration(duration) {
-		policy := u.deps.SegmentPolicy
-		if policy.MinDuration == 0 {
-			policy.MinDuration = youtubetypes.DefaultSegmentPolicy().MinDuration
-		}
-		if policy.MaxDuration == 0 {
-			policy.MaxDuration = youtubetypes.DefaultSegmentPolicy().MaxDuration
-		}
-		msg := fmt.Sprintf("duration %ds out of range [%d, %d]", duration, policy.MinDuration, policy.MaxDuration)
-		typed := NewExtractionError(FailureCodeDurationOutOfRange, false, msg, nil)
-		return u.fail(out, typed)
-	}
-	clipID := fmt.Sprintf("yt_%s_%d_%d_%s", cmd.VideoID, startSec, endSec, policyVer)
-	out.ID = clipID
-	out.Item.ID = clipID
-	out.Item.StartSeconds = startSec
-	out.Item.EndSeconds = endSec
-	out.Item.Duration = duration
-	// Commit 2/6 #4: filename carries the policyVersion.
-	out.Item.Filename = u.deps.SegmentsSvc.BuildClipFilename(
-		cmd.VideoID, startSec, endSec, out.Item.Name, policyVer,
-	)
-
-	// Step 2 — cache hit short-circuit. Commit 2/6 #2:
-	// StrategyReplace bypasses the cache lookup entirely so a
-	// re-extract under the same clipID always re-runs the full
-	// pipeline.
-	if u.deps.Cache != nil && cmd.Strategy != youtubetypes.StrategyReplace {
-		existingItem, exists, cacheErr := u.deps.Cache.GetExisting(ctx, clipID)
-		if cacheErr == nil && exists && existingItem != nil {
-			out.Item.Status = "skipped"
-			out.Item.LocalPath = existingItem.LocalPath
-			out.Item.DriveFileID = existingItem.DriveFileID
-			out.Item.DriveLink = existingItem.DriveLink
-			out.Item.DownloadLink = existingItem.DownloadLink
-			out.Status = "skipped"
-			return out, nil
-		}
-		if cacheErr != nil {
-			u.deps.Log.Warn("clip cache lookup failed; falling through to re-process",
-				zap.String("clip_id", clipID), zap.Error(cacheErr))
-		}
-	}
-
-	// Step 3 — coords into VideoPipeline for cut/download.
+	// Resolve keepAudio/normalize ONCE here so both step3to5 (whose
+	// cutReq.KeepAudio is read by the concrete VideoPipeline) and
+	// step5a_FFProbeValidate (whose keepAudio gate en-/disables the
+	// audio-stream check) see the same value. NIT-1 from the
+	// pre-PR thinker-with-files-gemini code review.
 	keepAudio := true
 	if cmd.KeepAudio != nil {
 		keepAudio = *cmd.KeepAudio
 	}
-	normalize := true
-	if cmd.Normalize != nil {
-		normalize = *cmd.Normalize
-	}
-	cutReq := youtubeports.VideoCutRequest{
-		URL:            cmd.VideoURL,
-		VideoID:        cmd.VideoID,
-		Start:          float64(startSec),
-		Duration:       float64(duration),
-		OutputName:     strings.TrimSuffix(out.Item.Filename, ".mp4"),
-		ForceKeyframes: cmd.ForceKeyframes,
-		KeepAudio:      keepAudio,
-		Normalize:      normalize,
-		Strategy:       string(cmd.Strategy),
-		OutputDir:      cmd.OutDir,
-	}
 
-	// Step 4 — retry download with exponential backoff.
-	if u.deps.VideoPipeline == nil {
-		typed := NewExtractionError(FailureCodeVideoProcessingFailed, false, "video pipeline port not wired", nil)
-		return u.fail(out, typed)
-	}
-
-	// Step 4a — shared SourceStager pre-stage (Step 9/12 wire-up, July 2026).
-	//
-	// When the Stager port is wired, download the FULL source video via the
-	// shared SourceStager port BEFORE the retry loop. CutRequest.PreDownloadedPath
-	// is set so the concrete VideoPipeline (videomuscles/youtube_pipeline.go:124-133)
-	// SKIPS the yt-dlp download slice and uses ffmpeg -c copy on the local file —
-	// saving N yt-dlp calls for the retry loop (the retry consumes the SAME
-	// staged file).
-	//
-	// Graceful degradation: stager.StageSource failure is logged Warn and the
-	// cutReq keeps PreDownloadedPath=""; the legacy DownloadAndCut path
-	// downloads itself per attempt. No call site is locked-out.
-	//
-	// Cleanup is deferred best-effort via Cleanup() so a transient failure
-	// cannot mask the mediaProcessor's outcome (mirrors Artlist pattern).
-	if u.deps.Stager != nil && cmd.VideoURL != "" {
-		staged, stageErr := u.deps.Stager.StageSource(ctx, assets.SourceRef{
-			URL: cmd.VideoURL,
-		})
-		if stageErr != nil {
-			u.deps.Log.Warn("shared SourceStager pre-stage failed (continuing with legacy per-segment yt-dlp)",
-				zap.String("clip_id", clipID),
-				zap.String("video_url", cmd.VideoURL),
-				zap.Error(stageErr))
-		} else {
-			cutReq.PreDownloadedPath = staged.LocalPath
-			u.deps.Log.Info("shared SourceStager pre-staged full video for -c copy slicing",
-				zap.String("clip_id", clipID),
-				zap.String("video_url", cmd.VideoURL),
-				zap.String("local_path", staged.LocalPath),
-				zap.Int64("bytes", staged.Bytes))
-			defer func(staged *assets.StagedAsset) {
-				if cleanupErr := u.deps.Stager.Cleanup(ctx, staged); cleanupErr != nil {
-					u.deps.Log.Warn("shared SourceStager cleanup failed (best-effort)",
-						zap.String("local_path", staged.LocalPath),
-						zap.Error(cleanupErr))
-				}
-			}(staged)
-		}
-	}
-	var dlResult *youtubeports.VideoCutResult
-	err = retry.Do(ctx, func() error {
-		_ = os.Remove(filepath.Join(cmd.OutDir, out.Item.Filename))
-		var dlErr error
-		dlResult, dlErr = u.deps.VideoPipeline.DownloadAndCutYouTubeVideo(ctx, cutReq)
-		return dlErr
-	}, retry.RetryOptions{
-		MaxAttempts:    3,
-		InitialBackoff: 2 * time.Second,
-		MaxBackoff:     30 * time.Second,
-		IsRetryable:    IsTransientExtractionError,
-	})
+	// Step 1 — deterministic clip ID + timestamp validation +
+	// SegmentPolicy bounds + filename. (step1 does NOT use keepAudio
+	// — only step3to5 + step5a need it, so the orchestrator resolves
+	// it once and threads it to those two methods only.)
+	startSec, endSec, duration, clipID, policyVer, err := u.step1_BuildClipID(cmd, &out)
 	if err != nil {
-		typed := NewExtractionError(
-			FailureCodeVideoProcessingFailed,
-			IsTransientExtractionError(err),
-			fmt.Sprintf("video processing failed: %v", err),
-			err,
-		)
-		return u.fail(out, typed)
+		return out, err
 	}
 
-	// Step 5 — runtime fail-closed (Commit 2/6 #5): empty path,
-	// missing/zero-size file, and hash failure all fail-closed
-	// with the typed ExtractionError taxonomy.
-	localPath := ""
-	if dlResult != nil {
-		localPath = dlResult.LocalPath
+	// Step 2 — cache lookup + StrategyReplace bypass.
+	cacheHit, err := u.step2_CacheLookup(ctx, cmd, &out, clipID)
+	if err != nil {
+		return out, err
 	}
-	if localPath == "" {
-		typed := NewExtractionError(FailureCodeEmptyLocalPath, false,
-			"video pipeline returned empty LocalPath", nil)
-		return u.fail(out, typed)
-	}
-	if stat, statErr := os.Stat(localPath); statErr != nil || stat.Size() == 0 {
-		typed := NewExtractionError(FailureCodeInvalidLocalArtifact, false,
-			fmt.Sprintf("local artifact %q missing or zero-size (stat_err=%v)", localPath, statErr),
-			statErr)
-		return u.fail(out, typed)
-	}
-	var fileHash string
-	if u.deps.Hash != nil {
-		var hashErr error
-		fileHash, hashErr = u.deps.Hash.MD5File(localPath)
-		if hashErr != nil || fileHash == "" {
-			typed := NewExtractionError(FailureCodeHashFailed, false,
-				fmt.Sprintf("hash.MD5File failed for %q (err=%v)", localPath, hashErr),
-				hashErr)
-			return u.fail(out, typed)
-		}
-	}
-	out.Item.LocalPath = localPath
-	out.Item.Filename = filepath.Base(localPath)
-	out.Item.FileHash = fileHash
-	out.FileHash = fileHash
-
-	// Step 5a — ffprobe validation (audit 2026-07-03 BLOCKER #3).
-	// Optional port: when nil, validation is silently skipped.
-	// Validates: container readable, video stream present, duration
-	// within ±5% tolerance, width/height > 0, FPS > 0, audio present
-	// when KeepAudio=true. A corrupted file fails terminal — the
-	// caller must re-download.
-	if u.deps.FFProbe != nil {
-		report, probeErr := u.deps.FFProbe.ValidateClip(ctx, localPath, duration, keepAudio)
-		if probeErr != nil {
-			typed := NewExtractionError(FailureCodeFFProbeValidationFailed, false,
-				fmt.Sprintf("ffprobe execution failed for %q: %v", localPath, probeErr),
-				probeErr)
-			return u.fail(out, typed)
-		}
-		if ffprobeErr := validateFFProbeReport(report, localPath, duration, keepAudio); ffprobeErr != nil {
-			return u.fail(out, ffprobeErr)
-		}
-		// Log non-fatal warnings for operator dashboards.
-		for _, w := range report.Warnings {
-			u.deps.Log.Warn("ffprobe: non-fatal warning",
-				zap.String("clip_id", clipID),
-				zap.String("local_path", localPath),
-				zap.String("warning", w))
-		}
+	if cacheHit {
+		return out, nil
 	}
 
-	// Step 6 — SliceSubtitles (cache hit per Commit G).
-	if u.deps.Subtitles != nil {
-		if subErr := u.deps.Subtitles.SliceSubtitles(
-			ctx, cmd.VideoID, startSec, endSec, localPath,
-		); subErr != nil {
-			u.deps.Log.Warn("subtitle slice failed, falling back to Whisper",
-				zap.String("clip_id", clipID), zap.Error(subErr))
-			// Step 7 — Whisper fallback.
-			if u.deps.Transcriber != nil {
-				transcript, wErr := u.deps.Transcriber.TranscribeAudio(ctx, localPath)
-				if wErr == nil && transcript != "" {
-					// NOTE: the os.WriteFile(txtPath, ...) call below is
-					// referenced by a CROSS-PACKAGE consumer — DO NOT
-					// drop per Step 7 refactor without migrating the
-					// consumer to a typed port first.
-					//
-					// Canonical surface: clipindexer.lookupTranscriptPath
-					// (internal/infrastructure/indexing/clipindexer/
-					// indexing_api_persistence.go) reads
-					// `local_path -> TrimSuffix(Ext) + ".txt"` and
-					// os.Stat's it for the Qdrant transcript embedding
-					// lookup (QDRANT transcript_embedding column +
-					// persTranscriptEmbedding writer). Removing this
-					// write silently disables the Qdrant transcript
-					// indexing path until clipindexer migrates to a
-					// typed port
-					// (godlike/06 SSOT forward-pointer:
-					// PR-CLIPINDEXER-TRANSCRIPT-TYPED-PORT).
-					txtPath := strings.TrimSuffix(localPath, filepath.Ext(localPath)) + ".txt"
-					_ = os.WriteFile(txtPath, []byte(transcript), 0o644)
-					u.deps.Log.Info("whisper fallback transcribed clip",
-						zap.String("clip_id", clipID),
-						zap.String("txt_path", txtPath))
-				} else if wErr != nil {
-					u.deps.Log.Warn("whisper fallback failed",
-						zap.String("clip_id", clipID), zap.Error(wErr))
-				}
-			}
-		}
-	}
-
-	// Step 8 — DriveUploadFileIfChanged.
-	if u.deps.DriveFolderMgr != nil && cmd.DriveFolderID != "" && localPath != "" {
-		if upRes, _, upErr := u.deps.DriveFolderMgr.UploadFileIfChanged(
-			ctx, localPath, cmd.DriveFolderID, out.Item.Filename,
-			deriveNormalizedGroup(cmd), cmd.VideoID,
-		); upErr == nil && upRes != nil {
-			out.Item.DriveFileID = upRes.FileID
-			out.Item.DriveLink = upRes.WebViewLink
-		} else if upErr != nil {
-			retryable := IsTransientExtractionError(upErr)
-			if retryable {
-				u.deps.Log.Warn("drive upload transient failure (will be classified retryable by parent)",
-					zap.String("clip_id", clipID), zap.Error(upErr))
-			} else {
-				u.deps.Log.Error("drive upload terminal failure (will be classified terminal by parent)",
-					zap.String("clip_id", clipID), zap.Error(upErr))
-			}
-			typed := NewExtractionError(
-				FailureCodeDriveUploadFailed,
-				retryable,
-				fmt.Sprintf("drive upload failed: %v", upErr),
-				upErr,
-			)
-			return u.fail(out, typed)
-		}
-	}
-	out.DriveFileID = out.Item.DriveFileID
-	out.DriveLink = out.Item.DriveLink
-
-	// Step 9 — ClipAtomicWriter. Build the canonical ClipAsset
-	// and delegate to the writer, which owns the outbox envelope
-	// exclusively. The caller MUST NOT supply a custom payload
-	// (Blocco 1.1: the previous ad-hoc payload caused every
-	// indexing event to land in dead_letter because the consumer
-	// requires the canonical BuildReindexEnvelopeV1 shape).
+	// Steps 3-5 — cut + retry + runtime fail-closed (path / size / hash)
+	// + Step 4a shared SourceStager pre-stage (deferred best-effort
+	// cleanup at scope end).
 	//
-	// BLOCKER #4 closure (audit 2026-07-03): when the outbox event
-	// is suppressed by an existing terminal row (dead_letter or
-	// superseded), the writer returns ErrOutboxTerminalConflict.
-	// We surface this as "processed_but_index_blocked" — the clip
-	// was written to the DB but no new indexing event was created.
-	if u.deps.Writer != nil {
-		asset := buildClipAsset(clipID, cmd, out, fileHash, policyVer)
-		event := youtubeports.IndexEventPayload{
-			Type:        "asset.index.requested",
-			AggregateID: clipID,
-			CreatedAt:   time.Now().UTC(),
-		}
-		if wErr := u.deps.Writer.CommitClipAndIndexEvent(
-			ctx, clipID, asset, event,
-		); wErr != nil {
-			// BLOCKER #4: terminal outbox conflict → processed_but_index_blocked.
-			// The clip row was committed; the index event was suppressed by
-			// a dead_letter/superseded row. Not a failure — the clip is safe,
-			// but the operator must resolve the terminal event before indexing.
-			if errors.Is(wErr, youtubeports.ErrOutboxTerminalConflict) {
-				out.Item.Status = "processed_but_index_blocked"
-				out.Status = "processed_but_index_blocked"
-				u.deps.Log.Warn("clip committed but index blocked by terminal outbox row (BLOCKER #4)",
-					zap.String("clip_id", clipID),
-					zap.Error(wErr))
-				return out, nil
-			}
-			typed := NewExtractionError(FailureCodeWriterFailed, false,
-				fmt.Sprintf("writer failed: %v", wErr), wErr)
-			return u.fail(out, typed)
-		}
-		out.IndexedRequestID = event.AggregateID
+	// policyVer is intentionally NOT threaded here: it's consumed
+	// downstream by Step 9 (buildClipAsset filename) + Step 10
+	// (metadata writer audit-pin) via step6to9 (godlike/07 minimum-
+	// blast-radius, no YAGNI hooks at this seam).
+	fileHash, localPath, err := u.step3to5_CutRetryHash(ctx, cmd, &out, clipID, startSec, endSec, duration, keepAudio)
+	if err != nil {
+		return out, err
 	}
 
-	// Step 10 — canonical metadata enrichment.
-	//
-	// When wired, the metadata service persists the enriched clip
-	// metadata into SQLite and emits its own re-index outbox event.
-	// We feed it the segment-local title/group/hook/visibility so
-	// the resulting metadata JSON reflects the API payload, not just
-	// the downstream video metadata fetch.
-	// STEP-10-TYPED-PORT-FIX (PR-PY-STEP10-PORT-M3, July 2026):
-	// the legacy os.ReadFile(localPath+".txt") filesystem-coupled
-	// read is REPLACED with u.deps.Transcriber.TranscribeAudio(port) —
-	// the canonical WhisperTranscriberPort already wired to the use
-	// case (Step 7's Whisper fallback uses the same port). result:
-	//
-	//   - step-7 race retired (the .txt tempfile was written only when
-	//     SliceSubtitles failed AND Whisper succeeded; under the typical
-	//     SliceSubtitles-success path no .txt was ever written so the
-	//     transcript was silently empty).
-	//   - transcript content reaches metadata enrichment on the happy
-	//     path (SliceSubtitles-success + no Whisper=None + non-empty
-	//     TranscribeAudio result).
-	//   - nil port → fail-open: empty transcript with no panic.
-	//   - port error → graceful swallow (Warn-level log + empty
-	//     transcript + Execute continues). The Execute still surfaces
-	//     to the pipeline as `processed` so the media_assets row +
-	//     outbox event from Step 9 land ungated.
-	//
-	// godlike/06 SSOT (one canonical owner per fact): the Transcriber
-	// port is the SOLE plaintext-transcript surface inside the YouTube
-	// step pipeline. The Transcriber.TranscribeAudio call below is
-	// INVOKED UNCONDITIONALLY WHEN THE PORT IS WIRED (independent of
-	// MetadataService wiring) so the typed-port contract is testable
-	// in isolation AND so the call is symmetric with Step 7's
-	// Whisper-fallback path (same port, same method, same input).
-	// When MetadataService is nil, the `transcript` string is simply
-	// discarded — a one-Whisper-call cost on a code path that
-	// typically also wires MetadataService.
-	//
-	// godlike/07 NO-FAKE-AVAILABILITY: nil port OR port error both
-	// resolve to `transcript = ""` which the metadata service
-	// already handles (empty transcript → low quality score, no
-	// crash). WARN-level log surfaces operator-visible diagnostics
-	// for the Whisper-failure case.
-	transcript := ""
-	if localPath != "" && u.deps.Transcriber != nil {
-		if text, tErr := u.deps.Transcriber.TranscribeAudio(ctx, localPath); tErr == nil {
-			transcript = strings.TrimSpace(text)
-		} else {
-			u.deps.Log.Warn("step 10 transcriber port failed; transcript will be empty",
-				zap.String("clip_id", clipID),
-				zap.String("local_path", localPath),
-				zap.Error(tErr))
-		}
+	// Step 5a — ffprobe validation (optional; nil-port = skip).
+	if err := u.step5a_FFProbeValidate(ctx, &out, clipID, localPath, duration, keepAudio); err != nil {
+		return out, err
 	}
 
-	// STEP-10-METADATA-ENRICHMENT (canonical; unchanged shape): the
-	// metadata service persists enriched clip metadata into SQLite +
-	// emits its own re-index outbox event. Receives `transcript` from
-	// the typed port above (or "" if Transcriber is nil/errored).
-	if u.deps.MetadataService != nil {
-		_, metaErr := u.deps.MetadataService.EnrichClip(ctx, youtubetypes.ClipMetadataInput{
-			ClipID:           clipID,
-			Title:            out.Item.Name,
-			Transcript:       transcript,
-			ClipDuration:     duration,
-			SourceURL:        cmd.VideoURL,
-			Group:            deriveNormalizedGroup(cmd),
-			Hook:             cmd.Segment.Hook,
-			SearchVisibility: cmd.Segment.SearchVisibility,
-			Topics:           append([]string(nil), cmd.Segment.Topics...),
-			Speakers:         append([]string(nil), cmd.Segment.Speakers...),
-			MentionedPeople:  append([]string(nil), cmd.Segment.MentionedPeople...),
-		})
-		if metaErr != nil {
-			// PR-PY-STEP10-FAIL-LOG (code-reviewer S1, July 2026):
-			// Step 9 already wrote media_assets + emitted the
-			// asset.index.requested outbox event before we reach
-			// here, so the clip IS persisted. Only the metadata
-			// enrichment needs manual re-extract. Emit a Warn log
-			// BEFORE u.fail so operator dashboards see the
-			// partial-state class WITHOUT weakening the typed-error
-			// contract (godlike/07 NO-FAKE-AVAILABILITY: the
-			// canonical job outcome is the typed error; the Warn
-			// log is purely observability).
-			u.deps.Log.Warn("Step 10 failed AFTER clip write – manual re-extract needed",
-				zap.String("clip_id", clipID),
-				zap.String("local_path", localPath),
-				zap.String("failure_code", string(FailureCodeMetadataFailed)),
-				zap.Error(metaErr))
-			// PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY (July 2026):
-			// Increment the transcript_metadata_step10_fail_after_clip_total
-			// counter so dashboards can aggregate partial-state
-			// events across a batch extraction by failure_code.
-			// The counter is the canonical dashboard-aggregate
-			// surface; the Warn log above is preserved for
-			// granular forensics. Nil-tolerance: the call is
-			// silently skipped when the port is not wired
-			// (composition root may omit it).
-			if u.deps.Step10Metrics != nil {
-				u.deps.Step10Metrics.IncStep10FailAfterClip(string(FailureCodeMetadataFailed))
-			}
-			typed := NewExtractionError(FailureCodeMetadataFailed, false,
-				fmt.Sprintf("metadata enrichment failed: %v", metaErr), metaErr)
-			return u.fail(out, typed)
-		}
+	// Steps 6-9 — subtitle slicing (Step 6) + Whisper fallback (Step 7) +
+	// Drive upload (Step 8) + canonical ClipAsset Writer commit (Step 9).
+	if err := u.step6to9_SubtitlesDriveWriter(ctx, cmd, &out, clipID, startSec, endSec, localPath, fileHash, policyVer); err != nil {
+		return out, err
+	}
+
+	// Step 10 — canonical metadata enrichment via typed Transcriber port
+	// + MetadataService (or no-op when either is nil).
+	if err := u.step10_MetadataEnrich(ctx, cmd, clipID, localPath, duration); err != nil {
+		return out, err
 	}
 
 	out.Item.Status = "processed"
 	out.Status = "processed"
 	return out, nil
 }
-
-// buildClipAsset, deriveNormalizedGroup, fail, failInvalidTimestamp,
-// cleanSegmentName, validateFFProbeReport live in process_segment_helpers.go
-// (PR-SEGMENT-SPLIT, July 2026).
