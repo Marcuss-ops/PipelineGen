@@ -3132,3 +3132,83 @@
         ship_date: 2026-07-08
         deadline: 2026-07-15
         ship_via: 'LATE-DOCUMENTATION AUDIT-PIN (godlike/07 NO-FAKE-AVAILABILITY): the buildPreflightCaps helper + preflightCaps field wire + top-of-function root.Drive==nil guard + 4 hermetic TDD tests in internal/app/wire_script_preflight_test.go landed on origin/main at SHA 6565ca71e on 2026-07-08 (3+ weeks BEFORE the 2026-07-15 deadline). The 3-surface lockstep (CHANGELOG + AGENTS + this wave-tracker flip) was deferred across a session interruption and is now closing on 2026-08-08 as documentation-only: 0 Go code changes, 0 surface contract changes, 0 new exported symbols. godlike/06 SSOT: buildPreflightCaps lives ONLY at internal/app/wire_script.go (composition-time canonical construction site); the preflightCaps field lives ONLY at internal/api/script/handler_deps.go (canonical typed-envelope consumer). godlike/07 typed-error contract: the 3 booleans are nil-safe (a misconfigured deployment without a service gets Enabled=false, the preflight surfaces ErrPreflightProcessorMissing for any user-requested processor that needs it). Verification: gofmt -l clean; go vet ./internal/app/... ./internal/api/script/... exit 0; go test -short -count=1 -run TestBuildPreflightCaps ./internal/app/... PASS 4/4; go test -short -count=1 -run TestRequireRequestedProcessors ./internal/api/script/... PASS 8/8. 4 forward-pointers carry forward: PR-VOICEOVER-PIPELINE-DEBUG-2026-07-08 (the composition root gap -- root.Domains.VoiceoverService is nil at runtime; buildPreflightCaps correctly reports VoiceoverEnabled=false in that state, surfacing the typed 503 to the operator); PR-SCRIPTCONTRACT-PREFLIGHT-HTTP-TEST (TDD test that pins the HTTP-level 503 mapping in enqueueEnvelopeFn); PR-SCRIPTCONTRACT-SENTINEL-STRING-COUPLE (decouple the preflight_sentinel field in the 503 response from domainScript.ErrPreflightProcessorMissing.Error()); PR-SCRIPTCONTRACT-COMPOSITION-WIRE-VERIFY (live integration test against a running pipelinegen server).'
+
+  - id: PR-REFACTOR-WAVE-3-2026-08-08
+    status: shipped
+    exit_signal: true
+    owner: architecture (refactor wave rollup)
+    deadline: 2026-08-22
+    exit_gate: "All 5 PR-SPLIT closures shipped on origin/main via direct-to-main
+      per AGENTS.md Git-Lesson-2 (race-protect clean at every commit-push
+      boundary per Git-Lesson-4). Each per-PR is a pure mechanical code-motion
+      split per AGENTS.md Pattern 5 + godlike/06 SSOT one-canonical-owner-per-fact.
+      Wave-tracker slot is the canonical SOLE owner of the rollup status; each
+      per-PR ship_sha below is the canonical SOLE owner of that closure's
+      verification receipt. The 3-surface godlike/06 SSOT lockstep per
+      CANONICAL.md §1 is intact: this wave-tracker entry (surface 1) ==
+      CHANGELOG.md `## Unreleased > ### Documentation` mirror (surface 2)
+      == AGENTS.md `## Recent cross-cutting closures` mirror (surface 3)
+      == architecture/action-plans/2026-08-08-refactor-wave-3.md narrative
+      (surface 4). No production code change in the wave-wrap commit itself
+      (this entry IS a documentation-only audit-pin per godlike/07
+      minimum-blast-radius); the 5 per-PR code commits were the load-bearing
+      surface changes (already shipped in prior commits). Deadline 2026-08-22
+      is 4 weeks ahead, conservative per AGENTS.md Pattern B YAML block-scalar
+      ratchet. Post-wave hotspot cross-validation confirmed 0 NEW hotspots
+      per `git log --since=90.days --pretty=format: --name-only | sort | uniq
+      -c | sort -rn | head -30` (the canonical PR-CLEANUP-HOTSPOT-CROSSREF
+      pattern); all 5 per-PR files are NOT in the top-30 90-day hotspots
+      (which is dominated by architecture/current.yaml + CHANGELOG.md +
+      AGENTS.md + composition root churn). godlike/07 NO-FAKE-AVAILABILITY:
+      the 5 ship_shas are the real commits on origin/main (verified via
+      `git branch -r --contains <sha>` returning origin/main for all 5)."
+    linked_issues:
+      - id: PR-SPLIT-FINALIZE-TYPES-V2
+        owner_capability: internal/domain/finalization
+        status: shipped
+        ship_sha: 31b36cd84
+        ship_date: 2026-07-06
+        deadline: 2026-07-15
+      - id: PR-SPLIT-LEGACYAUDIT-V2
+        owner_capability: internal/application/qdrant/legacyaudit
+        status: shipped
+        ship_sha: 085210c02
+        ship_date: 2026-07-06
+        deadline: 2026-07-15
+      - id: PR-SPLIT-READYZ-CHECKERS
+        owner_capability: internal/application/system/health
+        status: shipped
+        ship_sha: 7f038334d
+        ship_date: 2026-08-08
+        deadline: 2026-08-15
+      - id: PR-SPLIT-LLM-CLIENT
+        owner_capability: internal/infrastructure/ai/ollama
+        status: shipped
+        ship_sha: e96b7ff8c
+        ship_date: 2026-08-08
+        deadline: 2026-08-15
+      - id: PR-SPLIT-STEP-EXTRACT-CLIPS
+        owner_capability: internal/application/assets/providers/stock/stockpipeline
+        status: shipped
+        ship_sha: a73533ace
+        ship_date: 2026-08-08
+        deadline: 2026-08-15
+      - id: PR-REFACTOR-WAVE-3-HOTSPOT-CROSSREF
+        owner_capability: architecture
+        status: shipped
+        ship_date: 2026-08-08
+        deadline: 2026-09-01
+        ship_via: "0-action audit-pin (per godlike/07 honest-limitation discipline):
+          the canonical `git log --since=90.days --pretty=format: --name-only
+          | sort | uniq -c | sort -rn | head -30` returned the top-30 hot
+          files on origin/main; cross-validation confirmed ZERO of the 5
+          per-PR target files (internal/domain/finalization/types.go +
+          internal/application/qdrant/legacyaudit/legacyaudit.go +
+          internal/application/system/health/readyz_checkers.go +
+          internal/infrastructure/ai/ollama/llm_client.go +
+          internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go)
+          appear in the top-30. The wave's static-priority ranking is therefore
+          VALIDATED by the frequency measurement; the slim-schema append-only
+          ratchet adds ZERO new linked_issues (per godlike/06 SSOT). The cross-
+          validation finding IS the canonical outcome; documenting it is the
+          load-bearing closure record."
