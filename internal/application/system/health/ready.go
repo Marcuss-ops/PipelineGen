@@ -30,11 +30,27 @@ type ReadyChecker struct {
 	svc *Service
 
 	// Step 8 severe checks (July 2026).
-	tools         ToolsChecker
-	clipsPath     string              // data/media/clips/
-	canary        DriveCanaryPort     // publisher-backed canary upload
-	canaryFolder  string              // target folder for canary
-	handlerCheck  HandlerRegChecker   // job handler registration probe
+	tools        ToolsChecker
+	clipsPath    string            // data/media/clips/
+	canary       DriveCanaryPort   // publisher-backed canary upload
+	canaryFolder string            // target folder for canary
+	handlerCheck HandlerRegChecker // job handler registration probe
+
+	// FASE 6 severe readiness checks (July 2026).
+	tempPath         string              // writable temp folder path
+	tempChecker      TempWritableChecker // temp folder writability
+	ttsChecker       TTSChecker          // Python TTS availability
+	driveRootChecker DriveRootChecker    // Drive root folder accessible
+	driveRootFolder  string              // Drive root folder ID
+	ollamaChecker    OllamaChecker       // Ollama reachability
+	outboxChecker    OutboxChecker       // outbox worker pool active
+
+	// Step 4 Drive-specific checks (July 2026).
+	driveCreds     DriveCredentialsChecker // token.json + credentials.json
+	driveFolder    DriveFolderChecker      // folder accessibility via Publisher
+	driveFolderID  string                  // target folder for folder-access check
+	publisherCheck PublisherChecker        // delivery.Publisher is non-nil
+	destClipCheck  DestinationClipChecker  // DestinationYouTubeClip registered
 }
 
 // NewReadyChecker wraps the canonical *Service with the readiness policy.
@@ -73,6 +89,20 @@ func (r *ReadyChecker) CheckReady(ctx context.Context) HealthResponse {
 	r.runClipsPathCheck(&resp)
 	r.runCanaryCheck(ctx, &resp)
 	r.runHandlerCheck(ctx, &resp)
+
+	// Step 4: run Drive-specific severe checks (credentials, folder,
+	// Publisher wiring, DestinationClip registration).
+	r.runDriveCredentialsCheck(ctx, &resp)
+	r.runDriveFolderCheck(ctx, &resp)
+	r.runPublisherCheck(&resp)
+	r.runDestinationClipCheck(&resp)
+
+	// FASE 6: run severe readiness checks (temp, tts, drive_root, ollama, outbox).
+	r.runTempPathCheck(&resp)
+	r.runTTSCheck(ctx, &resp)
+	r.runDriveRootCheck(ctx, &resp)
+	r.runOllamaCheck(ctx, &resp)
+	r.runOutboxCheck(ctx, &resp)
 
 	return resp
 }

@@ -88,29 +88,67 @@ func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}, nil
 }
 
-func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveAdmin drive.Admin, publisher delivery.Publisher, jobsSvc *appjobs.Service, log *zap.Logger) *UtilityBundle {
-	svc := buildHealthService(cfg, db, driveAdmin)
+func BuildUtilityBundle(cfg *config.Config, db *storage.SQLiteDB, driveReader drive.Reader, publisher delivery.Publisher, jobsSvc *appjobs.Service, log *zap.Logger) *UtilityBundle {
+	svc := buildHealthService(cfg, db)
 	rc := systemhealth.NewReadyChecker(svc).
 		WithTools(systemhealth.NewToolsChecker()).
 		WithClipsPath("data/media/clips")
+
+	// Step 4: Drive readiness checks (July 2026).
+	// Publisher non-nil check (always wired when publisher is available).
+	rc = rc.WithPublisherCheck(systemhealth.NewPublisherChecker(publisher))
+
+	// Drive credentials file check.
+	rc = rc.WithDriveCredentials(systemhealth.NewDriveCredentialsChecker(
+		cfg.GetTokenPath(),
+		cfg.GetCredentialsPath(),
+	))
+
+	// DestinationClip registry check.
+	reg := delivery.NewDestinationRegistry(cfg)
+	rc = rc.WithDestinationClipCheck(systemhealth.NewDestinationClipChecker(
+		func(key delivery.DestinationKey) bool { return reg.Has(key) },
+	))
+
+	// Step 8: Drive canary + handler checks (wired when deps available).
 	if publisher != nil && cfg.Drive.ClipsFolder() != "" {
 		rc = rc.WithDriveCanary(
 			systemhealth.NewPublisherCanary(publisher),
 			cfg.Drive.ClipsFolder(),
+		).WithDriveFolder(
+			systemhealth.NewDriveFolderChecker(publisher),
+			cfg.Drive.ClipsFolder(),
 		)
+	}
+	if driveReader != nil {
+		rc = rc.WithDriveRootFolder(cfg.Drive.ClipsFolder()).
+			WithDriveRootChecker(systemhealth.NewDriveRootChecker(
+				func(ctx context.Context, folderID string) error {
+					_, err := driveReader.ListFiles(ctx, folderID)
+					return err
+				},
+			))
 	}
 	if jobsSvc != nil {
 		rc = rc.WithHandlerCheck(systemhealth.NewHandlerPresenceChecker(
 			func(jobType string) bool { return jobsSvc.HasHandler(jobType) },
 		))
 	}
+
+	// FASE 6: severe readiness probes (temp, tts).
+	// Drive root check is wired above via driveReader.ListFiles.
+	// Ollama and outbox are wired elsewhere when their deps are available;
+	// nil-safe default = applicable=false per ReadyChecker contract.
+	rc = rc.WithTempPath(cfg.Storage.DataDir).
+		WithTTSChecker(systemhealth.NewTTSChecker("", cfg.Paths.PythonScriptsDir))
+
 	return &UtilityBundle{
 		Utility: transport.NewUtilityHandler(), HealthService: svc,
 		ReadyChecker: rc,
 	}
 }
 
-func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin drive.Admin) *systemhealth.Service {
+func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.Service {
 	if cfg == nil {
 		return nil
 	}
@@ -128,7 +166,6 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB, driveAdmin dri
 	// a side-effect-free helper-builder context. Cross-ref:
 	// internal/app/build_bundles_qdrant_gates.go::validateQdrantIndexerCompatibility.
 	var driveChecker systemhealth.DriveChecker
-	_ = driveAdmin
 	var qdrantChecker systemhealth.QdrantChecker
 	// godlike/07 consistency: when the upstream 3 sites declare an
 	// incompatible configuration, buildHealthService's helper check
