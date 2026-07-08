@@ -102,6 +102,13 @@ func (stubRepo) CountByDriveFileIDTx(_ context.Context, _ *sql.Tx, _ string, _ s
 	return "", 0, nil
 }
 
+func (stubRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx, idempotencyKey string) (string, error) {
+	if idempotencyKey == "" {
+		return "", sql.ErrNoRows
+	}
+	return "", sql.ErrNoRows
+}
+
 // Compile-time assertion: stubRepo must structurally satisfy
 // persistence.Repository. Drift in either direction (stub methods
 // dropped vs Repository widened) triggers a compile error here —

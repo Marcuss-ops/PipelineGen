@@ -60,6 +60,25 @@ import (
 // inside a caller-owned transaction. Every field is populated by the
 // caller; the finalizer reads them but never mutates the command.
 type FinalizeCommand struct {
+	// IdempotencyKey is the deterministic retry-safe deduplication key
+	// computed by BuildVoiceoverIdempotencyKey(jobID, language, textHash).
+	// Step 0 of Finalize reads this field BEFORE the dedupe gate (Step 1)
+	// to short-circuit the entire 6-step sequence when a prior attempt
+	// already persisted the same logical row. Empty IdempotencyKey means
+	// "skip the idempotency gate" (backward-compat with pre-FASE-3 callers).
+	//
+	// godlike/06 SSOT: the canonical key derivation lives ONLY in
+	// process_segment.go::BuildVoiceoverIdempotencyKey; the finalizer
+	// trusts the caller-supplied key verbatim (no re-derivation).
+	IdempotencyKey string
+
+	// JobID is the canonical job identifier that produced this voiceover
+	// item. Stored in the voiceovers row for audit-trail correlation
+	// (operator query: "which job run produced this Drive audio file?").
+	// Empty JobID is OK — the column default is '' and pre-FASE-3 rows
+	// will carry the empty sentinel.
+	JobID string
+
 	// Identity & Content
 	ID        string
 	RequestID string

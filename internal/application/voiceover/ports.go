@@ -319,12 +319,13 @@ type VoiceoverPublisher interface {
 //     Publisher's PathBuilder (VoiceoverPath) can build
 //     the canonical {project}/{language}/ subpath.
 type VoiceoverPublishCommand struct {
-	ID        string
-	LocalPath string
-	Filename  string
-	FolderID  string
-	Project   string `json:"project,omitempty"`
-	Language  string `json:"language,omitempty"`
+	ID             string
+	LocalPath      string
+	Filename       string
+	FolderID       string
+	Project        string `json:"project,omitempty"`
+	Language       string `json:"language,omitempty"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"` // FASE 3 (July 2026): deterministic retry-safe deduplication key (jobID:language:textHash)
 }
 
 // ErrVoiceoverPublishLanguageRequired is the typed sentinel surfaced

@@ -57,7 +57,8 @@ import (
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/pkg/hashutil"
+	"crypto/sha256"
+	"encoding/hex"
 )
 
 // BuildVoiceoverIdempotencyKey derives the deterministic retry-safe
@@ -71,10 +72,12 @@ import (
 // is byte-stable across retries with the same inputs. Empty inputs
 // produce a unique key that still hashes deterministically.
 //
-// godlike/07 minimum-blast-radius: the hash is computed via the
-// canonical hashutil.SHA256String helper (no new hash implementation).
+// godlike/07 minimum-blast-radius: the hash is computed via
+// crypto/sha256 directly (no new dependencies).
 func BuildVoiceoverIdempotencyKey(jobID string, language Language, textHash TextHash) string {
-	return hashutil.SHA256String(jobID + ":" + string(language) + ":" + string(textHash))
+	h := sha256.New()
+	h.Write([]byte(jobID + ":" + string(language) + ":" + string(textHash)))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -332,11 +335,16 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 
 	// FASE 3 (July 2026): derive the deterministic idempotency key
 	// from the canonical triple (jobID + language + textHash). When
-	// JobID is empty (pre-FASE-3 callers), the key is still derived
-	// deterministically — the idempotency gate will still match on
-	// retry of the same text+language pair within the same empty-job
-	// context. The finalizer's Step 0 short-circuits on a match.
-	idemKey := BuildVoiceoverIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash)
+	// JobID is empty (pre-FASE-3 callers), the key is left empty —
+	// the finalizer's Step 0 idempotency gate is skipped so legacy
+	// callers continue to rely on the Step 1 dedupe gate (Drive
+	// file ID lookup) alone. This avoids false-positive collisions
+	// between distinct legacy requests with the same language+textHash
+	// originating from different batch contexts.
+	var idemKey string
+	if cmd.JobID != "" {
+		idemKey = BuildVoiceoverIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash)
+	}
 
 	// PR-VO-LANGUAGE-PROJECT-PROPAGATION (July 2026): Language and
 	// Project MUST be forwarded to VoiceoverPublishCommand so the

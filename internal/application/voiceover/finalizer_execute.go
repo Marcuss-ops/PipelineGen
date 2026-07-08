@@ -52,6 +52,42 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	var optional []string
 	var required []string
 
+	// ── Step 0: FASE 3 Idempotency Gate (July 2026) ──
+	// Runs BEFORE the dedupe gate (Step 1). When a prior attempt
+	// of the same job+text+language triple already wrote a row with
+	// this idempotency_key, the gate short-circuits the entire 6-step
+	// sequence — the row IS the canonical outcome. The UNIQUE INDEX
+	// idx_voiceovers_idempotency (migration 132) enforces ONE row per
+	// non-empty key; the gate reads the matched row for identity.
+	//
+	// godlike/07 idempotency contract:
+	//   - Empty IdempotencyKey → skip gate (backward-compat with
+	//     pre-FASE-3 callers).
+	//   - Non-empty IdempotencyKey + match found → Reused=true,
+	//     Steps 1-6 skipped, caller's tx commits empty (safe).
+	//   - Non-empty IdempotencyKey + no match → fall through to
+	//     Step 1 (dedupe) + Steps 2-6 (first-time insert).
+	//   - FindByIdempotencyKeyTx returns non-ErrNoRows error →
+	//     fail-closed (idempotency-gate semantics must be validated
+	//     BEFORE the dedupe gate runs).
+	if cmd.IdempotencyKey != "" {
+		matchedID, err := f.deps.VoiceoverRepo.FindByIdempotencyKeyTx(ctx, tx, cmd.IdempotencyKey)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("voiceoverFinalizer: idempotency lookup: %w", err)
+		}
+		if matchedID != "" {
+			f.deps.Logger.Info("voiceoverFinalizer: FASE 3 idempotency reuse — matched prior row with same idempotency_key, skipping all 6 steps",
+				zap.String("item_id", cmd.ID),
+				zap.String("matched_id", matchedID),
+				zap.String("idempotency_key", cmd.IdempotencyKey))
+			return &FinalizeResult{
+				ID:            matchedID,
+				Reused:        true,
+				OptionalSteps: []string{"idempotency: reuse existing row (FASE 3)"},
+			}, nil
+		}
+	}
+
 	// ── Step 1: Dedupe Gate (PR-VO-B3) ──
 	// Optional — guard-skipped when DriveFileID is empty. Early-
 	// return on dedupe-reuse hit (Reused=true) skips Steps 2-6.
@@ -104,26 +140,28 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 	}
 
 	rec := &VoiceoverRecord{
-		ID:           cmd.ID,
-		RequestID:    cmd.RequestID,
-		TextHash:     cmd.TextHash,
-		TextPreview:  textPreview,
-		Language:     string(cmd.Language),
-		Voice:        cmd.Voice,
-		Filename:     cmd.Filename,
-		LocalPath:    cmd.LocalPath,
-		CleanedPath:  cmd.CleanedPath,
-		FolderID:     cmd.FolderID,
-		FolderPath:   cmd.FolderPath,
-		DriveFileID:  cmd.DriveFileID,
-		DriveLink:    cmd.DriveLink,
-		DownloadLink: cmd.DownloadLink,
-		FileHash:     cmd.FileHash,
-		Status:       string(StatusGenerated),
-		Strategy:     cmd.Strategy,
-		Metadata:     string(cmd.MetaJSON),
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:             cmd.ID,
+		RequestID:      cmd.RequestID,
+		TextHash:       cmd.TextHash,
+		TextPreview:    textPreview,
+		Language:       string(cmd.Language),
+		Voice:          cmd.Voice,
+		Filename:       cmd.Filename,
+		LocalPath:      cmd.LocalPath,
+		CleanedPath:    cmd.CleanedPath,
+		FolderID:       cmd.FolderID,
+		FolderPath:     cmd.FolderPath,
+		DriveFileID:    cmd.DriveFileID,
+		DriveLink:      cmd.DriveLink,
+		DownloadLink:   cmd.DownloadLink,
+		FileHash:       cmd.FileHash,
+		Status:         string(StatusGenerated),
+		Strategy:       cmd.Strategy,
+		Metadata:       string(cmd.MetaJSON),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+		IdempotencyKey: cmd.IdempotencyKey,
+		JobID:          cmd.JobID,
 	}
 	if err := f.deps.VoiceoverRepo.InsertTx(ctx, tx, rec); err != nil {
 		return nil, fmt.Errorf("voiceoverFinalizer: InsertTx: %w", err)

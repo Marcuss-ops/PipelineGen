@@ -76,6 +76,13 @@ func (r *recordingDedupeErrRepo) CountByDriveFileIDTx(_ context.Context, _ *sql.
 	return "", 0, r.countErr
 }
 
+func (r *recordingDedupeErrRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx, idempotencyKey string) (string, error) {
+	if idempotencyKey == "" {
+		return "", sql.ErrNoRows
+	}
+	return "", sql.ErrNoRows
+}
+
 var _ VoiceoverRepository = (*recordingDedupeErrRepo)(nil)
 
 // recordingOutbox counts enqueue calls; both MUST be 0 on the
