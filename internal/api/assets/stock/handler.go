@@ -181,43 +181,31 @@ func (h *Handler) SearchAndRun(c *gin.Context) {
 		zap.String("folder_id", req.FolderID),
 	)
 
-	// HTTP validation — must run before FromSearchAndRunRequest so the
-	// converter sees a valid shape (per the S2b design: validation in
-	// the api layer, defaulting in the api layer).
-	if len(req.Queries) == 0 && len(req.DirectURLs) == 0 && len(req.DriveURLs) == 0 && len(req.Clips) == 0 {
-		apiutil.BadRequest(c, "queries, direct_urls, drive_urls, or clips required")
+	// HTTP validation (PR-STOCK-DRY-VALIDATION): single typed-helper
+	// call (applyStockDefaults in handler.go, canonical SOLE owner).
+	// The "queries, direct_urls, drive_urls, or clips required" wire
+	// error literal is preserved byte-equivalent to pre-PR (vs the
+	// /run variant which uses "search_queries, ..."). The
+	// SearchSourceCount field is len(req.Queries) for the typed source
+	// list ([]SearchQuery) — the helper only checks count, not
+	// element type, so a future rename of SearchQuery stays
+	// transparent.
+	adjusted, validateErr := applyStockDefaults("queries, direct_urls, drive_urls, or clips required", stockValidationInput{
+		SearchSourceCount: len(req.Queries),
+		DirectURLsCount:   len(req.DirectURLs),
+		DriveURLsCount:    len(req.DriveURLs),
+		Clips:             req.Clips,
+		TotalMinutes:      req.TotalMinutes,
+		ClipDuration:      req.ClipDuration,
+		Async:             req.Async,
+	})
+	if validateErr != nil {
+		apiutil.BadRequest(c, validateErr.Error())
 		return
 	}
-	if len(req.Clips) > 0 {
-		hasURL := false
-		for _, clip := range req.Clips {
-			if clip.URL != "" {
-				hasURL = true
-				break
-			}
-		}
-		if !hasURL {
-			apiutil.BadRequest(c, "clips require at least one clip with a non-empty url")
-			return
-		}
-	}
-	if req.TotalMinutes <= 0 {
-		req.TotalMinutes = 5
-	}
-	if req.ClipDuration < 0 {
-		apiutil.BadRequest(c, "clip_duration must be >= 0")
-		return
-	}
-	if req.ClipDuration == 0 {
-		req.ClipDuration = 10
-	}
-	if req.ClipDuration > 0 && (req.ClipDuration < 3 || req.ClipDuration > 30) {
-		apiutil.BadRequest(c, "clip_duration must be between 3 and 30 seconds")
-		return
-	}
-	if !req.Async {
-		req.Persist = true
-	}
+	req.TotalMinutes = adjusted.TotalMinutes
+	req.ClipDuration = adjusted.ClipDuration
+	req.Persist = adjusted.Persist
 
 	cmd, err := stockpipeline.FromSearchAndRunRequest(&req)
 	if err != nil {
@@ -292,41 +280,28 @@ func (h *Handler) RunStockPipeline(c *gin.Context) {
 		zap.String("folder_id", req.FolderID),
 	)
 
-	// HTTP validation (same shape as SearchAndRun).
-	if len(req.SearchQueries) == 0 && len(req.DirectURLs) == 0 && len(req.DriveURLs) == 0 && len(req.Clips) == 0 {
-		apiutil.BadRequest(c, "search_queries, direct_urls, drive_urls, or clips required")
+	// HTTP validation (PR-STOCK-DRY-VALIDATION): the 22-line
+	// pre-PR validation block is now a single typed-helper call
+	// (applyStockDefaults lives ONLY at handler.go, canonical
+	// SOLE owner — godlike/06 SSOT). The "search_queries, ..." vs
+	// "queries, ..." wire-field-name difference between /run and
+	// /search-and-run is captured via the sourcesEmptyMsg arg.
+	adjusted, validateErr := applyStockDefaults("search_queries, direct_urls, drive_urls, or clips required", stockValidationInput{
+		SearchSourceCount: len(req.SearchQueries),
+		DirectURLsCount:   len(req.DirectURLs),
+		DriveURLsCount:    len(req.DriveURLs),
+		Clips:             req.Clips,
+		TotalMinutes:      req.TotalMinutes,
+		ClipDuration:      req.ClipDuration,
+		Async:             req.Async,
+	})
+	if validateErr != nil {
+		apiutil.BadRequest(c, validateErr.Error())
 		return
 	}
-	if len(req.Clips) > 0 {
-		hasURL := false
-		for _, clip := range req.Clips {
-			if clip.URL != "" {
-				hasURL = true
-				break
-			}
-		}
-		if !hasURL {
-			apiutil.BadRequest(c, "clips require at least one clip with a non-empty url")
-			return
-		}
-	}
-	if req.TotalMinutes <= 0 {
-		req.TotalMinutes = 5
-	}
-	if req.ClipDuration < 0 {
-		apiutil.BadRequest(c, "clip_duration must be >= 0")
-		return
-	}
-	if req.ClipDuration == 0 {
-		req.ClipDuration = 10
-	}
-	if req.ClipDuration > 0 && (req.ClipDuration < 3 || req.ClipDuration > 30) {
-		apiutil.BadRequest(c, "clip_duration must be between 3 and 30 seconds")
-		return
-	}
-	if !req.Async {
-		req.Persist = true
-	}
+	req.TotalMinutes = adjusted.TotalMinutes
+	req.ClipDuration = adjusted.ClipDuration
+	req.Persist = adjusted.Persist
 
 	cmd, err := stockpipeline.FromRunPayload(&req)
 	if err != nil {
@@ -386,6 +361,111 @@ func stockLocationPlaceholder() gin.H {
 		"provider": "",
 		"style":    "",
 	}
+}
+
+// stockValidationInput is the type-erased input to applyStockDefaults.
+//
+// godlike/06 SSOT: lives ONLY at handler.go (private to package).
+// godlike/07 minimum-blast-radius: pure-data plain struct, no methods.
+//
+// SearchSourceCount is len(req.SearchQueries) for Run OR
+// len(req.Queries) for SearchAndRun — both payload types carry a
+// wire-shape list of search-source terms; the validator only cares
+// about the count (≥1 requirement on any source field), not the
+// element type. DirectURLs and DriveURLs use the same field name on
+// both payload types. Clips is the shared []stockpipeline.ClipSpec
+// slice; the helper inspects only Clip.URL to enforce the has-URL
+// rule.
+type stockValidationInput struct {
+	SearchSourceCount int
+	DirectURLsCount   int
+	DriveURLsCount    int
+	Clips             []stockpipeline.ClipSpec
+	TotalMinutes      int
+	ClipDuration      int
+	Async             bool
+}
+
+// stockValidationDefaults is the canonical return shape.
+//
+// godlike/06 SSOT: lives ONLY at handler.go. The 3 fields populate
+// back into the request struct after validation succeeds — the
+// caller assigns them back to req before invoking
+// FromRunPayload/FromSearchAndRunRequest so the application-layer
+// converter sees the defaulted values verbatim.
+type stockValidationDefaults struct {
+	TotalMinutes int
+	ClipDuration int
+	Persist      bool
+}
+
+// applyStockDefaults enforces the canonical validation contract
+// shared by POST /api/stock-pipeline/run AND POST
+// /api/stock-pipeline/search-and-run (PR-STOCK-DRY-VALIDATION,
+// 2026-07-08).
+//
+// godlike/06 SSOT: This helper lives ONLY at handler.go — the
+// canonical SOLE owner. NO re-declaration in adapters or wrappers.
+// The 2 pre-extraction validation blocks were textually identical
+// EXCEPT for the "no sources" error message string:
+//
+//	/run pre-PR:               "search_queries, direct_urls, drive_urls, or clips required"
+//	/search-and-run pre-PR:    "queries,         direct_urls, drive_urls, or clips required"
+//
+// The sourcesEmptyMsg parameter carries the contextual wire-field
+// name difference.
+//
+// godlike/07 minimum-blast-radius: 0 signature drift, 0 new imports,
+// 0 new dependencies. Pure refactor — every operator-readable wire
+// error message is preserved byte-equivalent so the existing
+// handler_test.go assertions on those literal strings continue to
+// pass unchanged.
+//
+// Validation contract (preserves both pre-extraction blocks EXACTLY):
+//
+//  1. All 4 source fields empty → return sourcesEmptyMsg error.
+//  2. Clips non-empty AND no clip with non-empty URL → return
+//     "clips require at least one clip with a non-empty url".
+//  3. TotalMinutes ≤ 0 → default 5.
+//  4. ClipDuration < 0 → "clip_duration must be >= 0".
+//  5. ClipDuration == 0 → default 10.
+//  6. ClipDuration > 0 AND (ClipDuration < 3 OR > 30) →
+//     "clip_duration must be between 3 and 30 seconds".
+//  7. Async=false → Persist=true (sync mode enables the resilient
+//     path so the runner completes upload + finalization + indexing
+//     instead of stopping at the legacy manifest-only flow).
+func applyStockDefaults(sourcesEmptyMsg string, in stockValidationInput) (stockValidationDefaults, error) {
+	if in.SearchSourceCount == 0 && in.DirectURLsCount == 0 && in.DriveURLsCount == 0 && len(in.Clips) == 0 {
+		return stockValidationDefaults{}, errors.New(sourcesEmptyMsg)
+	}
+	if len(in.Clips) > 0 {
+		hasURL := false
+		for _, clip := range in.Clips {
+			if clip.URL != "" {
+				hasURL = true
+				break
+			}
+		}
+		if !hasURL {
+			return stockValidationDefaults{}, errors.New("clips require at least one clip with a non-empty url")
+		}
+	}
+	out := stockValidationDefaults{TotalMinutes: in.TotalMinutes}
+	if out.TotalMinutes <= 0 {
+		out.TotalMinutes = 5
+	}
+	out.ClipDuration = in.ClipDuration
+	if out.ClipDuration < 0 {
+		return stockValidationDefaults{}, errors.New("clip_duration must be >= 0")
+	}
+	if out.ClipDuration == 0 {
+		out.ClipDuration = 10
+	}
+	if out.ClipDuration > 0 && (out.ClipDuration < 3 || out.ClipDuration > 30) {
+		return stockValidationDefaults{}, errors.New("clip_duration must be between 3 and 30 seconds")
+	}
+	out.Persist = !in.Async
+	return out, nil
 }
 
 // DownloadStockClip streams the MP4 file for a stock media asset.
