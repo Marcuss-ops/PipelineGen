@@ -44,7 +44,18 @@ var knownCapabilities = []struct {
 }{
 	{name: "stock", prefix: "/api/stock-pipeline"},
 	{name: "artlist", prefix: "/api/artlist"},
-	{name: "voiceover", prefix: "/api/voiceover"},
+	// voiceover mounts via internal/app/wire_assets.go::WireAssets which
+	// wraps the Assets module under prefix "/media" (assetsRouteMod) +
+	// the voiceover capability's own prefix "/voiceover"
+	// (internal/api/assets/voiceover/module.go::Build), all beneath
+	// routes.go's `api := engine.Group("/api")`. The resulting URL
+	// is `/api/media/voiceover/*` — the wire scanner must scan this
+	// prefix (NOT `/api/voiceover`, which would only match a
+	// dedicated registerVoiceover-style future re-wiring).
+	// godlike/06 SSOT (one canonical owner per fact): the wire
+	// prefix string is owned by this list; the assets aggregate
+	// prefix `/media` is owned by wire_assets.go; both lock together.
+	{name: "voiceover", prefix: "/api/media/voiceover"},
 	{name: "youtube", prefix: "/api/youtube"},
 	{name: "register", prefix: "/api/register"},
 	{name: "storage", prefix: "/api/storage"},
