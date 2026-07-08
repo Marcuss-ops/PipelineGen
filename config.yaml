@@ -186,6 +186,10 @@ voiceover:
   tts_timeout_sec: 120              # per-call TTS synthesis timeout (2 min)
   drive_upload_timeout_sec: 300     # per-attempt Drive upload timeout (5 min)
   ollama_timeout_sec: 120           # per-call Ollama translation timeout (2 min)
+  tts_max_retries: 3                # TTS synthesis retry attempts
+  tts_retry_backoff_ms: 500         # initial TTS retry backoff (exponential: 0.5s → 1s → 2s)
+  tts_circuit_breaker_threshold: 5  # consecutive failures before circuit opens
+  tts_circuit_breaker_cooldown_ms: 30000  # circuit breaker cooldown (30s)
 
 # FASE 9 VO-OPERATIONAL-READINESS (July 2026): when required=true,
 # the voiceover composition root panics at boot if the translation
