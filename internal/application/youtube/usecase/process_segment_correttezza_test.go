@@ -618,3 +618,107 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog(t *testing.T) {
 	require.Equal(t, realPath, fields["local_path"], "Warn log must carry local_path so operators can re-extract")
 	require.Equal(t, string(FailureCodeMetadataFailed), fields["failure_code"], "Warn log must carry canonical failure_code")
 }
+
+// ── Test 9: PR-YT-DOD-11 partial-state handling ─────────────────────
+
+// TestProcessSegment_Step10_FailsAfterClipWrite_PartialState pins the
+// PR-YT-DOD-11 contract: when Step 10's MetadataService.EnrichClip
+// fails AFTER Step 9 has already committed media_assets + outbox via
+// ClipAtomicWriter.CommitClipAndIndexEvent, the partial-state
+// scenario MUST satisfy ALL FOUR conditions:
+//
+//	(1) MetadataService failure is surfaced as FAILED.
+//	(2) The media_assets row WAS written (Step 9 writer was called).
+//	(3) The outbox event WAS emitted (Step 9 writer was called).
+//	(4) The canonical Warn log "Step 10 failed AFTER clip write"
+//	    was emitted with (clip_id, local_path, failure_code).
+//
+// This is the COMPANION to Test 8 (which only checks (1) and (4)).
+// The new stubWriterAssetRecorder captures every CommitClipAndIndexEvent
+// call so tests can assert "Step 9 ran before Step 10's failure".
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the writer stub records real
+// call counts — a regression that skips Step 9 before the metadata
+// failure would surface as zero calls instead of exactly one.
+func TestProcessSegment_Step10_FailsAfterClipWrite_PartialState(t *testing.T) {
+	realPath := filepath.Join(t.TempDir(), "clip.mp4")
+	_ = os.WriteFile(realPath, []byte("fake audio bytes"), 0o644)
+
+	// Wire a captured logger AND a recording writer stub.
+	core, recorded := observer.New(zapcore.WarnLevel)
+	capturedLog := zap.New(core)
+	writerRecorder := &stubWriterAssetRecorder{}
+
+	// Construct a real MetadataService with errBuilder so EnrichClip fails.
+	svc, svcErr := ytmetadata.NewMetadataService(ytmetadata.MetadataDeps{
+		Builder: errBuilder{},
+		Writer:  noopWriter{},
+		Logger:  capturedLog,
+	})
+	require.NoError(t, svcErr, "NewMetadataService must succeed with errBuilder + noopWriter")
+	require.NotNil(t, svc)
+
+	// Build deps: the recording writer stub is the key difference from
+	// Test 8. It captures every CommitClipAndIndexEvent call so we can
+	// prove Step 9 ran BEFORE the metadata failure (conditions 2+3).
+	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
+		d := validProcessSegmentDeps()
+		d.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
+		d.Hash = testStubHash{}   // non-empty so Step 5 passes
+		d.Writer = writerRecorder // recording stub → proves Step 9 ran
+		d.Log = capturedLog
+		d.MetadataService = svc
+		return d
+	}())
+	cmd := youtubetypes.ProcessSegmentCommand{
+		VideoID: "abc",
+		Segment: youtubetypes.Segment{Start: "0:00", End: "0:10", Name: "Test"},
+		Index:   0,
+		OutDir:  t.TempDir(),
+	}
+	out, err := uc.Execute(context.Background(), cmd)
+
+	// ── (1) MetadataService failure → FAILED with typed error ─────
+	require.Error(t, err, "Step 10 failure MUST surface as typed error")
+	require.Equal(t, "failed", out.Status)
+	var ee *ExtractionError
+	require.True(t, errors.As(err, &ee), "error must be typed *ExtractionError, got %T", err)
+	require.Equal(t, FailureCodeMetadataFailed, ee.Code)
+	require.False(t, ee.Retryable, "FailureCodeMetadataFailed is terminal")
+
+	// ── (2) Media assets row WAS written (Step 9 writer called) ──
+	// The recorder captures every CommitClipAndIndexEvent call. When
+	// the count is 1, the media_assets row + outbox event were
+	// committed in a single tx before the metadata error.
+	require.Equal(t, 1, writerRecorder.calls,
+		"Step 9 ClipAtomicWriter.CommitClipAndIndexEvent MUST be called exactly once BEFORE Step 10 failure (media_assets row + outbox event committed)")
+
+	// ── (3) Outbox event WAS emitted (proven by the same call) ───
+	// The writer's single call proves both media_assets INSERT and
+	// outbox INSERT landed in the same tx. A second call would be
+	// wrong (metadata writer is a separate port, not ClipAtomicWriter).
+	capturedAsset := writerRecorder.captured
+	require.Equal(t, "yt_abc_0_10_v1", capturedAsset.ID,
+		"captured ClipAsset.ID must match canonical clipID from Step 1")
+	require.Equal(t, "abc", capturedAsset.VideoID,
+		"captured ClipAsset.VideoID must match cmd.VideoID")
+	require.NotEmpty(t, capturedAsset.FileHash,
+		"captured ClipAsset.FileHash must be non-empty (Step 5 hash)")
+
+	// ── (4) Warn log "Step 10 failed AFTER clip write" emitted ───
+	entries := recorded.FilterMessageSnippet("Step 10 failed AFTER clip write").All()
+	require.NotEmpty(t, entries,
+		"Warn log 'Step 10 failed AFTER clip write' MUST be emitted (partial-state class observable)")
+	entry := entries[0]
+	require.Equal(t, zapcore.WarnLevel, entry.Level)
+	// Verify structured fields so dashboards can correlate.
+	fields := map[string]string{}
+	for _, f := range entry.Context {
+		if f.Type == zapcore.StringType {
+			fields[f.Key] = f.String
+		}
+	}
+	require.Equal(t, "yt_abc_0_10_v1", fields["clip_id"])
+	require.Equal(t, realPath, fields["local_path"])
+	require.Equal(t, string(FailureCodeMetadataFailed), fields["failure_code"])
+}
