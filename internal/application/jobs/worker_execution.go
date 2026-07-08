@@ -200,6 +200,10 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	stopLease := make(chan struct{})
 	leaseDone := make(chan struct{})
 	go w.renewLeaseLoop(jobCtx, j.ID, stopLease, leaseDone)
+	defer func() {
+		close(stopLease)
+		<-leaseDone
+	}()
 
 	// Snapshot lease tokens for finalisation.
 	workerID := w.id
@@ -272,9 +276,6 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	startCancelWatcher(jobCtx, jobCancel, tools.IsCancelled)
 
 	result, dispatchErr := w.dispatcher.Dispatch(jobCtx, j, tools)
-
-	close(stopLease)
-	<-leaseDone
 
 	// ── finalizationCtx ───────────────────────────────────────────────
 	// AGENTS.md §context-util-table explicitly allowlists this
