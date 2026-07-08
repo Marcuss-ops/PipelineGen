@@ -54,10 +54,17 @@ type AutoHarvestService interface {
 //   - Registry: the canonical job-type registry used by
 //     EnqueueGenerationJob to source MaxRetries via
 //     registry.DefaultMaxRetries(jType).
+//   - Caps: SCRIPTCONTRACT-2026-07-08 PR-2 PreflightCaps. The
+//     flat composition-time postprocessor-availability surface.
+//     Built by the composition root from root.Domains.VoiceoverService
+//   - root.Domains.ImageService + root.Drive.DocClient. Zero-value
+//     is the conservative default (all false, fail-closed for any
+//     user-requested processor).
 type GenerateDeps struct {
 	Jobs     jobservice.Service
 	Log      *zap.Logger
 	Registry *appjobs.Registry
+	Caps     PreflightCaps
 }
 
 // JobsDeps groups the canonical constructor inputs for the
@@ -65,6 +72,15 @@ type GenerateDeps struct {
 // routes can evolve independently — future JobsDeps additions
 // like a status-query repo stay scoped to /jobs/* without
 // polluting /generate).
+//
+// SCRIPTCONTRACT-2026-07-08 PR-2: JobsDeps intentionally does NOT
+// have a Caps field. The preflight surface lives ONLY on
+// GenerateDeps.Caps (the canonical SOLE owner). JobsHandler receives
+// the preflight caps as a per-call parameter from
+// ScriptFlowHandler.enqueueEnvelope (the canonical thread surface).
+// godlike/06 SSOT: there is exactly ONE PreflightCaps instance per
+// ScriptFlowHandler; storing it on JobsDeps would duplicate the
+// canonical value and invite drift.
 type JobsDeps struct {
 	Jobs     jobservice.Service
 	Log      *zap.Logger
@@ -133,22 +149,34 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		log = zap.NewNop()
 	}
 
+	// SCRIPTCONTRACT-2026-07-08 PR-2: there is exactly ONE
+	// PreflightCaps instance per ScriptFlowHandler. The composition
+	// root (internal/app/wire_script.go) builds it at startup from
+	// root.Domains.VoiceoverService / root.Domains.ImageService /
+	// root.Drive.DocClient. The canonical source is
+	// `deps.Generate.Caps`; ScriptFlowHandler.caps carries it to
+	// the request seam (enqueueEnvelopeFn) and to the legacy-
+	// adapter thin-delegator path (h.jobs.EnqueueEnvelope).
+	caps := deps.Generate.Caps
+
 	return &ScriptFlowHandler{
 		log:           log,
 		jobsSvc:       deps.Jobs.Jobs,
 		registry:      deps.Jobs.Registry,
 		adminToken:    deps.AdminToken,
 		clipsSearcher: deps.ClipsSearcher,
+		caps:          caps,
 
-		// AZIONE 1 (July 2026): construct the 3-field HandlerGenerate
+		// AZIONE 1 (July 2026): construct the 4-field HandlerGenerate
 		// alongside the slim ScriptFlowHandler. POST /generate
 		// delegates to h.gen.Generate(c).
-		gen: NewHandlerGenerate(deps.Generate.Jobs, deps.Generate.Log, deps.Generate.Registry),
+		gen: NewHandlerGenerate(deps.Generate.Jobs, deps.Generate.Log, deps.Generate.Registry, caps),
 
 		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 3-field
 		// JobsHandler. POST /api/script/jobs/:id mounts via
 		// JobsHandler.RegisterJobRoutes; legacy adapters' h.enqueueEnvelope
-		// thin-delegates to JobsHandler.EnqueueEnvelope.
+		// thin-delegates to JobsHandler.EnqueueEnvelope (which
+		// takes caps as a per-call parameter from h.caps).
 		jobs: NewJobsHandler(deps.Jobs.Jobs, deps.Jobs.Log, deps.Jobs.Registry),
 	}
 }
