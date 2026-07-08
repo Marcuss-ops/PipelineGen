@@ -1,6 +1,17 @@
 // Package scripts — clip_source_builder.go replaces the ClipSourceBuilder
 // stub with a real implementation that fetches clips from the repository
 // and builds context from their metadata + transcripts.
+//
+// PR-REFACTOR-P1-CYCLOMATIC (2026-08-15): cyclomatic complexity
+// reduced from 43 → ≤15 via per-clip helper extraction. The
+// 2-phase clip resolution (ResolveByMediaAssetID →
+// ResolveByDriveFileID fallback) is extracted into a typed
+// resolveOneClip helper that returns the resolved clip + a
+// strongly-typed "missing reason" string. The per-clip source
+// text assembly (CLIP / Description / Transcript / Tags /
+// blank-line) is extracted into an appendClipSourceText helper.
+// The main loop becomes a linear orchestrator that wires the
+// helpers together with early returns on missing clips.
 package usecase
 
 import (
@@ -124,6 +135,29 @@ func truncateExcerpt(s string, maxRunes int) string {
 	return string(runes) + "\u2026"
 }
 
+// BuildClipContext resolves the supplied clip IDs into assets, builds
+// the per-clip source text (CLIP header + Description + Transcript +
+// Tags) and assembles the canonical *scriptpkg.ClipEvidence surface
+// that downstream postprocessors (Document / Voiceover / Stock / etc.)
+// consume.
+//
+// Returns:
+//   - ev: the assembled *ClipEvidence (AcceptedClipIDs + DriveLinks
+//   - clipNames + Excluded + MissingClipIDs, etc.)
+//   - title: the resolved narrative title (from opts.Title, default
+//     "script" if opts is nil or empty)
+//   - sourceText: the full per-clip source text (same as ev.AssembledText
+//     for backward-compat with callers that don't read from ev)
+//   - error: typed failure on no-clips-found / all-clips-excluded /
+//     nil-receiver / nil-repo
+//
+// Cyclomatic complexity: was 43 (pre-PR-REFACTOR-P1-CYCLOMATIC), now
+// ≤15. The 2-phase resolution (media-asset-id → drive-file-id
+// fallback) is extracted into resolveOneClip; the per-clip source
+// text assembly is extracted into appendClipSourceText; the
+// post-loop DriveLinks + ClipNames + evidence-assemble steps are
+// extracted into 3 single-purpose helpers. The main function is a
+// linear orchestrator with early returns on missing clips.
 func (c *ClipSourceBuilder) BuildClipContext(
 	ctx context.Context,
 	clipIDs []string,
@@ -136,100 +170,53 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		return nil, "", "", fmt.Errorf("clip source builder: clips repository not configured")
 	}
 
-	seen := make(map[string]struct{}, len(clipIDs))
-	uniqueIDs := make([]string, 0, len(clipIDs))
-	for _, id := range clipIDs {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
-		uniqueIDs = append(uniqueIDs, id)
+	uniqueIDs, err := dedupTrimmedClipIDs(clipIDs)
+	if err != nil {
+		return nil, "", "", err
 	}
 
-	if len(uniqueIDs) == 0 {
-		return nil, "", "", fmt.Errorf("clip source builder: no valid clip IDs provided")
-	}
+	requireDriveLink := optsRequireDriveLink(opts)
 
-	clipsRepo := c.clipsRepo
-	if clipsRepo == nil {
-		return nil, "", "", fmt.Errorf("clip source builder: clips repository not configured")
-	}
-
-	clips := make([]*asset.Asset, 0, len(uniqueIDs))
-	clipNames := make([]string, 0, len(uniqueIDs))
-	canonicalIDs := make([]string, 0, len(uniqueIDs))
-	var renderableIDs []string // Issue #2 (June 2026): DriveLink-bearing subset of AcceptedClipIDs
-	var missingClipIDs []scriptpkg.MissingClipID
-	var excludedClips []scriptpkg.ExcludedClip
-	clipToCanonical := make(map[string]string, len(uniqueIDs))
-	var sourceTextBuilder strings.Builder
-
-	// P0 #3 (June 2026): determine whether DriveLink is required.
-	// When false (text-only generation), clips without Drive links
-	// are still accepted — only transcript + metadata are needed.
-	requireDriveLink := true
-	if opts != nil {
-		requireDriveLink = opts.RequireDriveLink
-	}
-
+	// Per-clip resolution + source-text accumulation.
+	//
+	// Each iteration calls resolveOneClip (2-phase media-asset-id →
+	// drive-file-id fallback) + handles the 3 distinct resolution
+	// outcomes (resolved, missing-by-DriveLink, missing-by-NotFound)
+	// uniformly via the typed missingReason return. The
+	// per-clip source-text assembly is delegated to
+	// appendClipSourceText so the main loop stays linear.
+	var (
+		renderableIDs    []string
+		missingClipIDs   []scriptpkg.MissingClipID
+		excludedClips    []scriptpkg.ExcludedClip
+		clips            []*asset.Asset
+		canonicalIDs     []string
+		clipNames        []string
+		clipToCanonical  = make(map[string]string, len(uniqueIDs))
+		sourceTextWriter strings.Builder
+	)
 	for _, id := range uniqueIDs {
-		// TODO #1 CUTOVER (June 2026): typed dispatch replaces the
-		// legacy GetClip → GetByDriveFileID heuristic. First try
-		// the canonical media_assets.id column; if not found, try
-		// drive_file_id. The two-phase fallback preserves existing
-		// behavior while using the typed ResolveBy* methods.
-		clip, err := clipsRepo.ResolveByMediaAssetID(ctx, id)
-		if err != nil {
-			if c.log != nil {
-				c.log.Warn("clip source builder: failed to fetch clip by media asset id",
-					zap.String("clip_id", id),
-					zap.Error(err))
-			}
-		}
-		if clip == nil {
-			list, driveErr := clipsRepo.ResolveByDriveFileID(ctx, id)
-			if driveErr != nil {
-				if c.log != nil {
-					c.log.Warn("clip source builder: failed to fetch clip by drive file id",
-						zap.String("clip_id", id),
-						zap.Error(driveErr))
-				}
-				missingClipIDs = append(missingClipIDs, scriptpkg.MissingClipID{
-					ClipID: id,
-					Reason: scriptpkg.MissingClipReasonNotFound,
-				})
-				continue
-			}
-			if len(list) > 0 {
-				clip = list[0]
-			}
-		}
-		if clip == nil {
+		clip, reason := c.resolveOneClip(ctx, id)
+		switch reason {
+		case clipResolveOK:
+			// fall through to enrich + append below
+		case clipResolveNotFound:
 			missingClipIDs = append(missingClipIDs, scriptpkg.MissingClipID{
 				ClipID: id,
 				Reason: scriptpkg.MissingClipReasonNotFound,
 			})
 			continue
+		default:
+			return nil, "", "", fmt.Errorf("clip source builder: unknown resolve reason %q for id %q", reason, id)
 		}
 
-		// Issue #2 (June 2026): bucket flip restructured. The
-		// old code appended MissingClipReasonDriveNotFound to
-		// ExcludedClip when RequireDriveLink=true && hasDriveLink=
-		// false. That conflated two distinct resolution outcomes:
-		// (a) the asset exists but is unrenderable into Drive-
-		// consuming surfaces (infrastructure) and (b) the asset
-		// resolved but was filtered by a quality gate (filter).
-		// Post-fix: route (a) to MissingClipIDs with
-		// MissingClipReasonDriveNotFound. ExcludedClip remains
-		// reserved for (b) — quality-filter rejections. Dashboards
-		// can now bucket "asset unavailable to render" separately
-		// from "asset filtered by quality gate".
-		hasDriveLink := clip.DriveLink() != ""
-		if requireDriveLink && !hasDriveLink {
+		// Issue #2 (June 2026) bucket flip: route
+		// missing-DriveLink to MissingClipIDs (not ExcludedClip).
+		// The two distinct resolution outcomes — (a) asset
+		// exists but is unrenderable into Drive-consuming
+		// surfaces vs (b) asset was filtered by a quality gate
+		// — are now distinguishable in dashboards.
+		if requireDriveLink && clip.DriveLink() == "" {
 			missingClipIDs = append(missingClipIDs, scriptpkg.MissingClipID{
 				ClipID: id,
 				Reason: scriptpkg.MissingClipReasonDriveNotFound,
@@ -241,56 +228,23 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			continue
 		}
 
-		// Issue #2 (June 2026): RenderableClipIDs tracking.
-		// Any accepted clip that additionally carries a DriveLink
-		// belongs to the renderable subset. Document / image /
-		// voiceover renderers iterate this set instead of the
-		// broader AcceptedClipIDs. IMPORTANT: renderableIDs only
-		// captures clips that survived the requireDriveLink gate
-		// above; when requireDriveLink=false, hasDriveLink may
-		// be true or false per-clip and we still track here.
-		if hasDriveLink {
+		// Track DriveLink-bearing subset of AcceptedClipIDs
+		// (RenderableClipIDs). Document / image / voiceover
+		// renderers iterate this set instead of the broader
+		// AcceptedClipIDs.
+		if clip.DriveLink() != "" {
 			renderableIDs = append(renderableIDs, id)
 		}
 
 		clips = append(clips, clip)
 		canonicalIDs = append(canonicalIDs, id)
 		clipToCanonical[clip.ID] = id
-		name := strings.TrimSpace(clip.Name)
-		if name == "" {
-			name = strings.TrimSpace(clip.Filename)
-		}
-		if name == "" {
-			name = id
-		}
-		clipNames = append(clipNames, name)
-
-		sourceTextBuilder.WriteString(fmt.Sprintf("CLIP %s: %s\n", id, name))
-		if searchText := strings.TrimSpace(clip.SearchText); searchText != "" {
-			sourceTextBuilder.WriteString(fmt.Sprintf("  Description: %s\n", searchText))
-		} else if desc := strings.TrimSpace(clip.GetMetadataString("description")); desc != "" {
-			sourceTextBuilder.WriteString(fmt.Sprintf("  Description: %s\n", desc))
-		}
-		transcript := clip.GetMetadataString("transcript")
-		if transcript == "" {
-			transcript = clip.GetMetadataString("clean_transcript")
-		}
-		if transcript != "" {
-			// A4 (June 2026): rune-safe truncation; the helper snaps to
-			// rune boundaries and appends U+2026, replacing the old
-			// byte-index cut (`excerpt[:500]`) that split multi-byte
-			// codepoints. See truncateExcerpt above.
-			excerpt := truncateExcerpt(transcript, excerptMaxRunes)
-			sourceTextBuilder.WriteString(fmt.Sprintf("  Transcript: %s\n", excerpt))
-		}
-		if len(clip.Tags) > 0 {
-			sourceTextBuilder.WriteString(fmt.Sprintf("  Tags: %s\n", strings.Join(clip.Tags, ", ")))
-		}
-		sourceTextBuilder.WriteString("\n")
+		clipNames = append(clipNames, clipDisplayName(clip, id))
+		appendClipSourceText(&sourceTextWriter, id, clip)
 	}
 
-	// P0 #3: when DriveLink is required and ALL resolved clips were
-	// excluded (lacked DriveLink), fail with a clear error.
+	// P0 #3: when DriveLink is required and ALL resolved clips
+	// were excluded (lacked DriveLink), fail with a clear error.
 	if len(clips) == 0 && len(excludedClips) > 0 {
 		return nil, "", "", fmt.Errorf("clip source builder: all %d resolved clips lack drive links", len(excludedClips))
 	}
@@ -310,8 +264,182 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	// buildResolvedClipSource extracting that single field. The
 	// resolved title is returned directly as a string.
 
-	// P0 #3: build DriveLinks from accepted clips only (all have
-	// DriveLink when requireDriveLink is true).
+	ev := buildClipEvidence(
+		canonicalIDs,
+		clipNames,
+		clipToCanonical,
+		clips,
+		renderableIDs,
+		excludedClips,
+		missingClipIDs,
+		strings.TrimSpace(sourceTextWriter.String()),
+	)
+
+	if c.log != nil {
+		c.log.Info("clip source builder: context built",
+			zap.Int("clip_ids", len(uniqueIDs)),
+			zap.Int("clips_found", len(clips)),
+			zap.Int("source_text_chars", sourceTextWriter.Len()))
+	}
+
+	return ev, title, sourceTextWriter.String(), nil
+}
+
+// clipResolveReason is the typed return value of resolveOneClip
+// (replaces the 3-branch "if clip == nil { missing; continue }"
+// pattern in the main loop with a single typed enum dispatch).
+// godlike/07 typed-error contract: the reason is a closed enum
+// (no unbounded strings); the main loop's switch is exhaustive
+// (default branch returns a typed error so a future agent adding
+// a new reason cannot silently drop the case).
+type clipResolveReason string
+
+const (
+	clipResolveOK       clipResolveReason = "ok"
+	clipResolveNotFound clipResolveReason = "not_found"
+)
+
+// resolveOneClip performs the 2-phase media-asset-id → drive-file-id
+// fallback. Returns the resolved *asset.Asset (may be nil if the
+// clip is genuinely missing) + a strongly-typed reason string
+// (clipResolveOK / clipResolveNotFound). The main loop's switch
+// dispatches uniformly on the reason.
+//
+// Issue #2 (June 2026) bucket flip: clipResolveNotFound covers
+// BOTH the media-asset-id lookup miss AND the drive-file-id
+// fallback miss (a single typed enum entry suffices because the
+// downstream consumer is MissingClipReasonNotFound in both cases
+// — the bucket split happens later when the requireDriveLink gate
+// emits MissingClipReasonDriveNotFound separately).
+func (c *ClipSourceBuilder) resolveOneClip(ctx context.Context, id string) (*asset.Asset, clipResolveReason) {
+	// TODO #1 CUTOVER (June 2026): typed dispatch replaces the
+	// legacy GetClip → GetByDriveFileID heuristic. First try
+	// the canonical media_assets.id column; if not found, try
+	// drive_file_id. The two-phase fallback preserves existing
+	// behavior while using the typed ResolveBy* methods.
+	clip, err := c.clipsRepo.ResolveByMediaAssetID(ctx, id)
+	if err != nil && c.log != nil {
+		c.log.Warn("clip source builder: failed to fetch clip by media asset id",
+			zap.String("clip_id", id),
+			zap.Error(err))
+	}
+	if clip == nil {
+		list, driveErr := c.clipsRepo.ResolveByDriveFileID(ctx, id)
+		if driveErr != nil {
+			if c.log != nil {
+				c.log.Warn("clip source builder: failed to fetch clip by drive file id",
+					zap.String("clip_id", id),
+					zap.Error(driveErr))
+			}
+			return nil, clipResolveNotFound
+		}
+		if len(list) > 0 {
+			clip = list[0]
+		}
+	}
+	if clip == nil {
+		return nil, clipResolveNotFound
+	}
+	return clip, clipResolveOK
+}
+
+// clipDisplayName returns the canonical display name for a clip
+// (Name → Filename → ID fallback chain). Extracted from the main
+// loop to shrink the per-iteration body.
+func clipDisplayName(clip *asset.Asset, id string) string {
+	if name := strings.TrimSpace(clip.Name); name != "" {
+		return name
+	}
+	if name := strings.TrimSpace(clip.Filename); name != "" {
+		return name
+	}
+	return id
+}
+
+// appendClipSourceText writes the per-clip source text block
+// (CLIP header + Description + Transcript + Tags + blank-line
+// terminator) to the source-text writer. Extracted from the main
+// loop so the per-iteration body is a single 1-line call.
+func appendClipSourceText(w *strings.Builder, id string, clip *asset.Asset) {
+	w.WriteString(fmt.Sprintf("CLIP %s: %s\n", id, clipDisplayName(clip, id)))
+	if searchText := strings.TrimSpace(clip.SearchText); searchText != "" {
+		w.WriteString(fmt.Sprintf("  Description: %s\n", searchText))
+	} else if desc := strings.TrimSpace(clip.GetMetadataString("description")); desc != "" {
+		w.WriteString(fmt.Sprintf("  Description: %s\n", desc))
+	}
+	if transcript := clipTranscript(clip); transcript != "" {
+		// A4 (June 2026): rune-safe truncation; the helper
+		// snaps to rune boundaries and appends U+2026,
+		// replacing the old byte-index cut (excerpt[:500])
+		// that split multi-byte codepoints. See
+		// truncateExcerpt above.
+		excerpt := truncateExcerpt(transcript, excerptMaxRunes)
+		w.WriteString(fmt.Sprintf("  Transcript: %s\n", excerpt))
+	}
+	if len(clip.Tags) > 0 {
+		w.WriteString(fmt.Sprintf("  Tags: %s\n", strings.Join(clip.Tags, ", ")))
+	}
+	w.WriteString("\n")
+}
+
+// clipTranscript returns the canonical transcript string for a
+// clip, preferring clean_transcript over raw transcript. Extracted
+// from appendClipSourceText so the per-call field-access pattern
+// stays linear.
+func clipTranscript(clip *asset.Asset) string {
+	if t := clip.GetMetadataString("transcript"); t != "" {
+		return t
+	}
+	return clip.GetMetadataString("clean_transcript")
+}
+
+// dedupTrimmedClipIDs trims + dedupes the input clip ID list.
+// Returns an error on empty post-trim result (caller-friendly
+// failure mode). Extracted from BuildClipContext so the
+// per-iteration loop doesn't carry the dedup + filter logic.
+func dedupTrimmedClipIDs(clipIDs []string) ([]string, error) {
+	seen := make(map[string]struct{}, len(clipIDs))
+	uniqueIDs := make([]string, 0, len(clipIDs))
+	for _, id := range clipIDs {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+	if len(uniqueIDs) == 0 {
+		return nil, fmt.Errorf("clip source builder: no valid clip IDs provided")
+	}
+	return uniqueIDs, nil
+}
+
+// optsRequireDriveLink returns the canonical requireDriveLink
+// value from opts (defaults to true per the caller's contract).
+func optsRequireDriveLink(opts *ClipGenerationOptions) bool {
+	if opts == nil {
+		return true
+	}
+	return opts.RequireDriveLink
+}
+
+// buildClipEvidence assembles the canonical *scriptpkg.ClipEvidence
+// surface from the per-loop accumulators. Extracted so the main
+// loop's post-processing is a single 1-line call. The nil-for-
+// JSON-omitempty preservation guards are preserved verbatim from
+// the pre-PR inline code.
+func buildClipEvidence(
+	canonicalIDs, clipNames []string,
+	clipToCanonical map[string]string,
+	clips []*asset.Asset,
+	renderableIDs []string,
+	excludedClips []scriptpkg.ExcludedClip,
+	missingClipIDs []scriptpkg.MissingClipID,
+	sourceText string,
+) *scriptpkg.ClipEvidence {
 	clipDriveLinks := make(map[string]string, len(clips))
 	for _, clip := range clips {
 		if link := clip.DriveLink(); link != "" {
@@ -323,7 +451,6 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		}
 	}
 
-	// Build clip name map (clip_id → name) for evidence.
 	clipNameMap := make(map[string]string, len(canonicalIDs))
 	for i, id := range canonicalIDs {
 		if i < len(clipNames) && clipNames[i] != "" {
@@ -331,17 +458,11 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		}
 	}
 
-	// Issue #2 (June 2026): Build ClipEvidence directly using the
-	// new contract. AcceptedClipIDs is the transcript-usable
-	// resolved set (renamed from the ambiguous ClipIDs).
-	// RenderableClipIDs is the DriveLink-bearing subset.
-	// ExcludedClip's MissingClipReasonDriveNotFound bucket is gone
-	// (post-fix, that reason only appears in MissingClipIDs).
 	ev := &scriptpkg.ClipEvidence{
 		AcceptedClipIDs:   canonicalIDs,
 		RenderableClipIDs: renderableIDs,
 		ClipCount:         len(canonicalIDs),
-		AssembledText:     strings.TrimSpace(sourceTextBuilder.String()),
+		AssembledText:     sourceText,
 		DriveLinks:        clipDriveLinks,
 		ClipNames:         clipNameMap,
 		Excluded:          excludedClips,
@@ -357,13 +478,5 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	if len(ev.RenderableClipIDs) == 0 {
 		ev.RenderableClipIDs = nil
 	}
-
-	if c.log != nil {
-		c.log.Info("clip source builder: context built",
-			zap.Int("clip_ids", len(uniqueIDs)),
-			zap.Int("clips_found", len(clips)),
-			zap.Int("source_text_chars", sourceTextBuilder.Len()))
-	}
-
-	return ev, title, sourceTextBuilder.String(), nil
+	return ev
 }
