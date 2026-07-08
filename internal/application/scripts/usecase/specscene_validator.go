@@ -98,9 +98,14 @@ func ValidateAndEnrichSpecScene(
 
 	// Build a quick-lookup of allowed clip IDs (Issue #2, June
 	// 2026: field renamed ClipIDs → AcceptedClipIDs).
-	allowedClips := make(map[string]struct{}, len(evidence.AcceptedClipIDs))
-	for _, id := range evidence.AcceptedClipIDs {
-		allowedClips[strings.TrimSpace(id)] = struct{}{}
+	var allowedClips map[string]struct{}
+	if evidence != nil {
+		allowedClips = make(map[string]struct{}, len(evidence.AcceptedClipIDs))
+		for _, id := range evidence.AcceptedClipIDs {
+			allowedClips[strings.TrimSpace(id)] = struct{}{}
+		}
+	} else {
+		allowedClips = make(map[string]struct{})
 	}
 
 	enriched := scriptpkg.SpecSceneOutput{
