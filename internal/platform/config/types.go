@@ -90,6 +90,27 @@ type VoiceoverConcurrencyConfig struct {
 	// OllamaTimeoutSec is the per-call timeout for Ollama translation calls
 	// from the voiceover pipeline. Default: 120 (2 min).
 	OllamaTimeoutSec int `yaml:"ollama_timeout_sec" default:"120"`
+
+	// TTS retry + circuit breaker (FASE 6, July 2026).
+
+	// TTSMaxRetries is the maximum number of TTS synthesis attempts
+	// (inclusive) before the call fails permanently. Default: 3.
+	TTSMaxRetries int `yaml:"tts_max_retries" default:"3"`
+
+	// TTSRetryBackoffMs is the initial backoff in milliseconds before
+	// the first TTS retry. Exponential backoff with factor 2.0.
+	// Default: 500 (0.5s).
+	TTSRetryBackoffMs int `yaml:"tts_retry_backoff_ms" default:"500"`
+
+	// TTSCircuitBreakerThreshold is the number of consecutive TTS
+	// failures after which the circuit breaker opens and TTS calls
+	// are rejected immediately (no attempt). Default: 5.
+	TTSCircuitBreakerThreshold int `yaml:"tts_circuit_breaker_threshold" default:"5"`
+
+	// TTSCircuitBreakerCooldownMs is the cooldown period in
+	// milliseconds before the circuit breaker transitions from
+	// open → half-open, allowing a single probe call. Default: 30000 (30s).
+	TTSCircuitBreakerCooldownMs int `yaml:"tts_circuit_breaker_cooldown_ms" default:"30000"`
 }
 
 // Config holds all configuration for the application.

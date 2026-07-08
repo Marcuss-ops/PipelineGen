@@ -29,6 +29,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -38,6 +39,156 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
+
+// ── retryableTTSProvider (FASE 6, July 2026) ──────────────────────────────
+
+// retryableTTSProvider wraps a voiceover.TTSProvider with exponential-backoff
+// retry (pkg/retry.Do) and a circuit breaker that opens after N consecutive
+// failures, rejecting calls for a cooldown period.
+//
+// Circuit breaker states:
+//
+//	closed   – normal operation; calls pass through to inner.
+//	open     – threshold exceeded; calls are rejected immediately with
+//	           ErrTTSCircuitBreakerOpen until the cooldown expires.
+//	half-open – cooldown expired; the NEXT call probes the inner provider.
+//	           If it succeeds → closed (counter reset). If it fails →
+//	           open again (cooldown restarts).
+//
+// Concurrency: atomic.Int64 for the failure counter + atomic.Int64 for the
+// opened-at timestamp. No mutex — the circuit breaker tolerates transient
+// over-count (a few extra failures past the threshold) because the cooldown
+// timer is the authoritative gate.
+//
+// Compile-time assertion: satisfies TTSProvider.
+var _ voiceover.TTSProvider = (*retryableTTSProvider)(nil)
+
+var (
+	// ErrTTSCircuitBreakerOpen is returned when the circuit breaker is
+	// open and the cooldown has not yet expired.
+	ErrTTSCircuitBreakerOpen = fmt.Errorf("voiceover TTS circuit breaker is open")
+)
+
+type retryableTTSProvider struct {
+	inner voiceover.TTSProvider
+
+	// Retry config.
+	maxRetries  int
+	initialWait time.Duration
+
+	// Circuit breaker config.
+	cbThreshold int           // consecutive failures before opening
+	cbCooldown  time.Duration // how long the breaker stays open
+
+	// Circuit breaker state (atomic, lock-free).
+	consecutiveFailures atomic.Int64
+	openedAt            atomic.Int64 // unix nano timestamp; 0 = closed
+
+	log *zap.Logger
+}
+
+func newRetryableTTSProvider(inner voiceover.TTSProvider, vcfg config.VoiceoverConcurrencyConfig, log *zap.Logger) *retryableTTSProvider {
+	maxRetries := vcfg.TTSMaxRetries
+	if maxRetries < 1 {
+		maxRetries = 3
+	}
+	initialWait := time.Duration(vcfg.TTSRetryBackoffMs) * time.Millisecond
+	if initialWait <= 0 {
+		initialWait = 500 * time.Millisecond
+	}
+	cbThreshold := vcfg.TTSCircuitBreakerThreshold
+	if cbThreshold < 1 {
+		cbThreshold = 5
+	}
+	cbCooldown := time.Duration(vcfg.TTSCircuitBreakerCooldownMs) * time.Millisecond
+	if cbCooldown <= 0 {
+		cbCooldown = 30 * time.Second
+	}
+	return &retryableTTSProvider{
+		inner:       inner,
+		maxRetries:  maxRetries,
+		initialWait: initialWait,
+		cbThreshold: cbThreshold,
+		cbCooldown:  cbCooldown,
+		log:         log,
+	}
+}
+
+func (r *retryableTTSProvider) Synthesize(ctx context.Context, input voiceover.TTSInput) (voiceover.TTSOutput, error) {
+	// Circuit breaker gate: if open and cooldown not expired, reject immediately.
+	if opened := r.openedAt.Load(); opened != 0 {
+		if elapsed := time.Since(time.Unix(0, opened)); elapsed < r.cbCooldown {
+			r.log.Warn("voiceover TTS circuit breaker open — rejecting call",
+				zap.Duration("elapsed", elapsed),
+				zap.Duration("cooldown", r.cbCooldown),
+				zap.Int64("remaining_ms", (r.cbCooldown-elapsed).Milliseconds()),
+			)
+			return voiceover.TTSOutput{}, ErrTTSCircuitBreakerOpen
+		}
+		// Cooldown expired → half-open: allow one probe call.
+		r.log.Info("voiceover TTS circuit breaker half-open — probing")
+	}
+
+	// Retry loop with exponential backoff.
+	var out voiceover.TTSOutput
+	err := retry.Do(ctx, func() error {
+		var attemptErr error
+		out, attemptErr = r.inner.Synthesize(ctx, input)
+		if attemptErr != nil {
+			r.log.Warn("voiceover TTS synthesis attempt failed (will retry)",
+				zap.String("filename", input.Filename),
+				zap.Error(attemptErr),
+			)
+		}
+		return attemptErr
+	}, retry.Options{
+		MaxAttempts:    r.maxRetries,
+		InitialBackoff: r.initialWait,
+		MaxBackoff:     10 * time.Second,
+		BackoffFactor:  2.0,
+		IsRetryable:    retry.IsTransient,
+	})
+
+	if err != nil {
+		// All retries exhausted — increment circuit breaker counter.
+		failures := r.consecutiveFailures.Add(1)
+		r.log.Warn("voiceover TTS synthesis failed after all retries",
+			zap.Int("max_retries", r.maxRetries),
+			zap.Int64("consecutive_failures", failures),
+			zap.Error(err),
+		)
+		if failures >= int64(r.cbThreshold) {
+			// Open (or re-open) the circuit breaker. Store
+			// (not CompareAndSwap) because openedAt may already
+			// be non-zero from a prior open (half-open → open
+			// transition). CAS would silently fail when openedAt
+			// is non-zero, leaving the circuit stuck half-open
+			// forever. Store unconditionally resets the cooldown
+			// timer correctly for both closed→open and
+			// half-open→open transitions.
+			prev := r.openedAt.Swap(time.Now().UnixNano())
+			if prev == 0 {
+				r.log.Error("voiceover TTS circuit breaker OPEN",
+					zap.Int64("consecutive_failures", failures),
+					zap.Duration("cooldown", r.cbCooldown),
+				)
+			} else {
+				r.log.Error("voiceover TTS circuit breaker remains OPEN after probe failure",
+					zap.Int64("consecutive_failures", failures),
+					zap.Duration("cooldown", r.cbCooldown),
+				)
+			}
+		}
+		return voiceover.TTSOutput{}, fmt.Errorf("retryableTTSProvider.Synthesize: all %d attempts failed: %w", r.maxRetries, err)
+	}
+
+	// Success — reset circuit breaker state.
+	r.consecutiveFailures.Store(0)
+	if r.openedAt.Swap(0) != 0 {
+		r.log.Info("voiceover TTS circuit breaker closed (probe succeeded)")
+	}
+	return out, nil
+}
 
 // ── rateLimitedTTSProvider ────────────────────────────────────────────────
 

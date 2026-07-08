@@ -229,6 +229,12 @@ func buildVoiceoverService(
 	audioProcessor := audioasset.NewProcessor(cfg.Paths.PythonScriptsDir, log)
 	var ttsProvider voiceover.TTSProvider = newUseCaseTTSAdapter(audioProcessor)
 
+	// FASE 6 (July 2026): wrap TTS provider with exponential-backoff
+	// retry + circuit breaker. The retry fires INSIDE the rate limiter
+	// (each semaphore slot owns its retries). Circuit breaker opens
+	// after N consecutive failures across all calls.
+	ttsProvider = newRetryableTTSProvider(ttsProvider, cfg.Voiceover, log)
+
 	// FASE 8 (July 2026): wrap adapters with bounded concurrency,
 	// per-call timeouts, and Drive-upload retry. The voiceover package
 	// stays unaware of rate-limiting; the composition root swaps the
