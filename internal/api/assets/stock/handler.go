@@ -417,8 +417,19 @@ func (h *Handler) DownloadStockClip(c *gin.Context) {
 	}
 	defer body.Close()
 
+	// Content-Type fallback chain (godlike/07 NO-FAKE-AVAILABILITY):
+	// prefer the Drive DownloadFile response's contentType if non-empty
+	// and not the opaque octet-stream sentinel; otherwise fall back to
+	// the MIME type we just fetched via GetFileMeta (which preserves
+	// the canonical audio/mpeg vs video/mp4 distinction — important
+	// because stock clips can be either); finally fall back to
+	// application/octet-stream (NEVER video/mp4 — that was a false
+	// assumption if the file happens to be audio).
 	if contentType == "" || contentType == "application/octet-stream" {
-		contentType = "video/mp4"
+		contentType = meta.MimeType
+	}
+	if contentType == "" || contentType == "application/octet-stream" {
+		contentType = "application/octet-stream"
 	}
 
 	c.Header("Content-Type", contentType)
