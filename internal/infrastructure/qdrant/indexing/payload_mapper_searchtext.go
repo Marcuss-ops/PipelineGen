@@ -7,6 +7,7 @@ package indexing
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"go.uber.org/zap"
@@ -63,12 +64,29 @@ func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
 	// reads these keys from Additional to produce the canonical search_text.
 	// godlike/06 SSOT: the key names here MUST match what youtubeStrategy reads.
 	var additional map[string]string
-	if asset.Source == "youtube" {
+	switch asset.Source {
+	case "youtube":
 		additional = map[string]string{
 			"hook":             assetpkg.MetadataString(asset.Metadata, "hook"),
 			"source_url":       assetpkg.MetadataString(asset.Metadata, "source_url"),
 			"speakers":         flattenMetadataSlice(asset.Metadata, "speakers"),
 			"mentioned_people": flattenMetadataSlice(asset.Metadata, "mentioned_people"),
+		}
+	case "stock":
+		// stockChunkStrategy reads: event, round, subject, action,
+		// source_url, start_sec, end_sec (per stockChunkStrategyAdditionalKeys).
+		// godlike/07 NO-FAKE-AVAILABILITY: "event" is left empty because
+		// the boxing event name lives at the RUN level (RunInput.FolderName),
+		// not in per-chunk metadata_json. The stock strategy handles empty
+		// event gracefully (falls through to round-only or prefix-only).
+		additional = map[string]string{
+			"event":      "",
+			"round":      fmtIntMetadata(asset.Metadata, "round"),
+			"subject":    assetpkg.MetadataString(asset.Metadata, "title"),
+			"action":     assetpkg.MetadataString(asset.Metadata, "description"),
+			"source_url": assetpkg.MetadataString(asset.Metadata, "source_url"),
+			"start_sec":  fmtFloatMetadata(asset.Metadata, "start_sec"),
+			"end_sec":    fmtFloatMetadata(asset.Metadata, "end_sec"),
 		}
 	}
 
@@ -88,6 +106,54 @@ func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
 		DetectedEntities: assetpkg.MetadataStringSlice(asset.Metadata, "detected_entities"),
 		OriginProvider:   assetpkg.MetadataString(asset.Metadata, "origin_provider"),
 		Additional:       additional,
+	}
+}
+
+// fmtIntMetadata reads a numeric metadata_json key and returns its
+// decimal string representation. Returns "" when the key is absent or
+// zero (omitempty contract: Round=0 is not written to metadata_json).
+func fmtIntMetadata(meta map[string]interface{}, key string) string {
+	if meta == nil {
+		return ""
+	}
+	v, ok := meta[key]
+	if !ok {
+		return ""
+	}
+	switch val := v.(type) {
+	case float64:
+		if val == 0 {
+			return ""
+		}
+		return strconv.FormatFloat(val, 'f', 0, 64)
+	case int:
+		if val == 0 {
+			return ""
+		}
+		return strconv.Itoa(val)
+	default:
+		return ""
+	}
+}
+
+// fmtFloatMetadata reads a float64-typed metadata_json key and returns its
+// string representation. Returns "" when the key is absent or zero.
+func fmtFloatMetadata(meta map[string]interface{}, key string) string {
+	if meta == nil {
+		return ""
+	}
+	v, ok := meta[key]
+	if !ok {
+		return ""
+	}
+	switch val := v.(type) {
+	case float64:
+		if val == 0 {
+			return ""
+		}
+		return strconv.FormatFloat(val, 'g', -1, 64)
+	default:
+		return ""
 	}
 }
 

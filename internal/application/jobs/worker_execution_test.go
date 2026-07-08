@@ -39,7 +39,7 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 		job.ManifestKey: manifestToRawJSON(t, manifest),
 	}
 
-	raw := extractStagedArtifacts(result)
+	raw := extractStagedArtifacts(result, "script.generate")
 
 	if string(raw) == "[]" {
 		t.Fatal("expected non-empty staged artifacts for a valid manifest")
@@ -81,6 +81,11 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 		t.Errorf("IdempotencyKey: got %q, want %q", a.IdempotencyKey, "job_test_123:script_json")
 	}
 
+	// Source derived from job type prefix
+	if a.Source != "script" {
+		t.Errorf("Source: got %q, want %q", a.Source, "script")
+	}
+
 	// Second artifact: optional
 	b := artifacts[1]
 	if b.Requirement != finalization.ArtifactRequirementOptional {
@@ -92,7 +97,7 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 }
 
 func TestExtractStagedArtifacts_NilResult(t *testing.T) {
-	raw := extractStagedArtifacts(nil)
+	raw := extractStagedArtifacts(nil, "script.generate")
 
 	if string(raw) != "[]" {
 		t.Fatalf("expected empty array for nil result, got %s", string(raw))
@@ -105,7 +110,7 @@ func TestExtractStagedArtifacts_NoManifestKey(t *testing.T) {
 		"data":           map[string]any{"score": 0.95},
 	}
 
-	raw := extractStagedArtifacts(result)
+	raw := extractStagedArtifacts(result, "image.generate.google")
 
 	if string(raw) != "[]" {
 		t.Fatalf("expected empty array when __artifact_manifest key is absent, got %s", string(raw))
@@ -124,7 +129,7 @@ func TestExtractStagedArtifacts_EmptyArtifactsList(t *testing.T) {
 		job.ManifestKey: manifestToRawJSON(t, manifest),
 	}
 
-	raw := extractStagedArtifacts(result)
+	raw := extractStagedArtifacts(result, "script.generate")
 
 	if string(raw) != "[]" {
 		t.Fatalf("expected empty array for manifest with zero artifacts, got %s", string(raw))
@@ -137,7 +142,7 @@ func TestExtractStagedArtifacts_MalformedManifest(t *testing.T) {
 		job.ManifestKey: "not-valid-json",
 	}
 
-	raw := extractStagedArtifacts(result)
+	raw := extractStagedArtifacts(result, "books.process")
 
 	if string(raw) != "[]" {
 		t.Fatalf("expected empty array for malformed manifest, got %s", string(raw))

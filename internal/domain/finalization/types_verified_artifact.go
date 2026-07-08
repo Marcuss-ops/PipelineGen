@@ -73,4 +73,15 @@ type VerifiedArtifact struct {
 	// directory under the named run folder). When empty, infrastructure
 	// falls back to an index-based synthetic label.
 	PathLeafName string `json:"path_leaf_name,omitempty"`
+
+	// Source is the content source identity ("stock", "youtube",
+	// "artlist", "voiceover", "document", etc.) carried through
+	// ArtifactPreparation.Prepare to PublishedArtifact.Source, which
+	// the AssetTxFinalizer writes to media_assets.source.
+	//
+	// PR-SOURCE-FIX (July 2026): without this field, the
+	// AssetTxFinalizer falls back to string(a.Location.Action)
+	// which is "created" — the publish action, not the content
+	// source. Every pipeline MUST set this before calling Prepare.
+	Source string `json:"source,omitempty"`
 }
