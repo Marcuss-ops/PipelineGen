@@ -68,11 +68,21 @@ func buildClipAsset(
 	}
 }
 
+// deriveNormalizedGroup returns the caller-supplied Group or an empty string.
+//
+// Prior to PR-YT-PATH-FALLBACK (July 2026), this function returned "general"
+// as a hard-coded fallback. That shadowed the delivery layer's YouTubeClipPath
+// fallback chain (Group → Category → "youtube_uncategorized") because the
+// publisher always received req.Group="general" and never reached the
+// "youtube_uncategorized" technical fallback.
+//
+// Returning "" delegates the fallback decision to the canonical SOLE owner
+// (delivery.YouTubeClipPath) per godlike/06 SSOT one-canonical-owner-per-fact.
 func deriveNormalizedGroup(cmd youtubetypes.ProcessSegmentCommand) string {
 	if cmd.Destination != nil && strings.TrimSpace(cmd.Destination.Group) != "" {
 		return strings.TrimSpace(cmd.Destination.Group)
 	}
-	return "general"
+	return ""
 }
 
 func (u *ProcessYouTubeSegmentUseCase) fail(out youtubetypes.ProcessSegmentResult, typed *ExtractionError) (youtubetypes.ProcessSegmentResult, error) {

@@ -145,6 +145,25 @@ type GenerateVoiceoversCommand struct {
 	// instead of generating a new BuildRequestID(). Populated by
 	// GenerateJobHandler.HandleJob from j.CorrelationID.
 	RequestID string `json:"request_id,omitempty"`
+
+	// Project is the canonical semantic project identifier for the
+	// voiceover publish (canonical surface for the P12 wave's
+	// ThreadingCampaign, 2026-07-08). Threaded from the API request
+	// down through the fanout loop into every
+	// GenerateVoiceoverItemCommand → ProcessSegmentCommand → adapter →
+	// Publisher's VoiceoverPath so voiceovers land in
+	// `{project}/{language}/` Drive subdirs via delivery.Publisher.
+	//
+	// Propagation chain (godlike/06 SSOT one canonical owner per fact):
+	//   1. GenerateVoiceoversRequest.Project (internal/api/assets/voiceover/types.go)
+	//   2. GenerateVoiceoversCommand.Project (this struct)
+	//   3. GenerateVoiceoverItemCommand.Project (per-item, fan-out copy)
+	//   4. delivery.Publisher.Publish (read by VoiceoverPath builder)
+	//
+	// godlike/07 minimum-blast-radius: empty Project falls through the
+	// adapter to the pre-P12 FolderID or the canonical voiceover ID
+	// (graceful degradation — existing callers do not break).
+	Project string `json:"project,omitempty"`
 }
 
 // ── Per-language child command (PR-VOICEOVER-PARENT-CHILD-FANOUT, P0.3) ──

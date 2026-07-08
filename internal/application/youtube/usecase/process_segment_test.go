@@ -171,8 +171,8 @@ func TestBuildClipAsset_SearchText_NotJustFilename(t *testing.T) {
 		require.Equal(t, "", a.SearchText,
 			"all-empty inputs MUST produce empty SearchText "+
 				"(godlike/07 minimum-blast-radius: no dangling fragments; "+
-				"`deriveNormalizedGroup` falls back to \"general\" when "+
-				"cmd.Destination is nil — nil-safe default per helper)")
+				"`deriveNormalizedGroup` returns \"\" when "+
+				"cmd.Destination is nil — delegates fallback to delivery.YouTubeClipPath (SSOT))")
 	})
 
 	t.Run("TitleDerivedFromSummary_WhenNameEmpty", func(t *testing.T) {
