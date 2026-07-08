@@ -81,10 +81,17 @@ type stubScriptAggregatorJobsService struct {
 // captures the parent.Revision that the aggregator passed as the SQL
 // CAS-fence argument; in real SQL this is the row's revision at tick
 // start, and the UPDATE WHERE revision=? is the CAS fence).
+//
+// 2026-07-08 PR-4 extension: result captures the resultMap arg so
+// child→parent doc_id/doc_link propagation tests can assert the
+// presence + content of child_doc_links / child_doc_ids keys (per
+// godlike/06 SSOT — the aggregator is the SOLE writer of these keys
+// in the parent result; the test pin locks the contract).
 type scriptFlipRecord struct {
 	targetStatus    job.Status
 	errMsg          string
 	expectedVersion int
+	result          map[string]any
 }
 
 // Ensure the stub satisfies the port interface (compile-time).
@@ -115,7 +122,9 @@ func (s *stubScriptAggregatorJobsService) Get(ctx context.Context, id string) (*
 }
 
 // TerminalFlip records the flip into stub.flipped (including expectedVersion
-// so CAS-fence-argument assertions can pin parent.Revision selection).
+// so CAS-fence-argument assertions can pin parent.Revision selection;
+// and the result map so child→parent doc_id/doc_link propagation tests
+// can assert the child_doc_links/child_doc_ids keys per PR-4).
 func (s *stubScriptAggregatorJobsService) FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
 	if s.flippedErr != nil {
 		// CAS-rejection simulation: do NOT mutate stub.flipped (the
@@ -132,6 +141,7 @@ func (s *stubScriptAggregatorJobsService) FinalizeAggregateParent(ctx context.Co
 		targetStatus:    targetStatus,
 		errMsg:          errMsg,
 		expectedVersion: expectedVersion,
+		result:          result,
 	}
 	return nil
 }
@@ -168,6 +178,71 @@ func makeScriptChildResultOK(childID string, ok bool) []byte {
 	}
 	raw, _ := json.Marshal(wire)
 	return raw
+}
+
+// makeScriptChildResultWithDoc builds the per-child result JSON with
+// doc_link + doc_id fields populated (PR-4 child→parent propagation).
+// The aggregator reads DocLink + DocID from the unmarshalled
+// ScriptChildResult and surfaces them in the parent result map
+// (child_doc_links / child_doc_ids keyed by item_id). When
+// docLink or docID is empty, the corresponding key is omitted from
+// the JSON wire shape (omitempty contract).
+func makeScriptChildResultWithDoc(itemID string, ok bool, docLink string, docID string) []byte {
+	type childResultWire struct {
+		ItemID  string `json:"item_id"`
+		JobID   string `json:"job_id"`
+		OK      bool   `json:"ok"`
+		Status  string `json:"status"`
+		DocLink string `json:"doc_link,omitempty"`
+		DocID   string `json:"doc_id,omitempty"`
+	}
+	wire := childResultWire{
+		ItemID:  itemID,
+		JobID:   itemID,
+		OK:      ok,
+		Status:  map[bool]string{true: "completed", false: "failed"}[ok],
+		DocLink: docLink,
+		DocID:   docID,
+	}
+	raw, _ := json.Marshal(wire)
+	return raw
+}
+
+// buildParentStubWithDocs constructs a stub parent + N children with
+// the given per-child status + result_ok + (docLink, docID) quadruple.
+// The parent's parent_state is "waiting_children" so the aggregator
+// routes it through aggregateOne. Reuses the buildParentStub
+// surface but extends it with the doc fields needed for PR-4
+// child→parent propagation tests.
+func buildParentStubWithDocs(parentID string, childSpecs map[string]struct {
+	Status  job.Status
+	OK      bool
+	DocLink string
+	DocID   string
+}) *stubScriptAggregatorJobsService {
+	childIDs := make([]string, 0, len(childSpecs))
+	for id := range childSpecs {
+		childIDs = append(childIDs, id)
+	}
+	parent := &job.Job{
+		ID:     parentID,
+		Type:   job.TypeScriptGenerate,
+		Status: job.StatusFinalizing,
+		Result: makeScriptParentStateWaitingChildren(parentID, childIDs, len(childIDs)),
+	}
+	children := make(map[string]*job.Job, len(childSpecs))
+	for id, spec := range childSpecs {
+		children[id] = &job.Job{
+			ID:     id,
+			Type:   job.TypeScriptGenerateItem,
+			Status: spec.Status,
+			Result: makeScriptChildResultWithDoc(id, spec.OK, spec.DocLink, spec.DocID),
+		}
+	}
+	return &stubScriptAggregatorJobsService{
+		parentJob: parent,
+		childJobs: children,
+	}
 }
 
 // buildParentStub constructs a stub parent + N children with the given
@@ -562,8 +637,12 @@ func TestFinalizeAggregateParent_ReplayIdempotentAfterAlreadyTerminal(t *testing
 		t.Errorf("P0 #4 CAS: second tick must NOT mutate stub.flipped map; expected 1 entry, got %d",
 			len(stub.flipped))
 	}
-	if stub.flipped["parent-replay-second"] != firstRecord {
-		t.Error("P0 #4 CAS: second tick must NOT overwrite first tick's record (CAS-rejection preserves state)")
+	recSecond := stub.flipped["parent-replay-second"]
+	if recSecond.targetStatus != firstRecord.targetStatus ||
+		recSecond.errMsg != firstRecord.errMsg ||
+		recSecond.expectedVersion != firstRecord.expectedVersion {
+		t.Errorf("P0 #4 CAS: second tick must NOT overwrite first tick's record (CAS-rejection preserves state); got %+v, want %+v",
+			recSecond, firstRecord)
 	}
 
 	// Zero Warn log entries on idempotent replay (godlike/07 silent-success).
@@ -603,3 +682,133 @@ func TestScriptParentBrokerStatusSUCCEEDEDWhenZeroChildren(t *testing.T) {
 // Ensure the compile-time assertion still holds after Commit 3 interface
 // narrowing (removed List/Complete — the aggregator doesn't use them).
 var _ ScriptAggregatorJobsService = (*appjobs.Service)(nil)
+
+// ── PR-4: child→parent doc_id/doc_link propagation (3 NEW tests) ──────
+//
+// Closes the canonical contract loop established in
+// script_generation_item_handler.go::toScriptItemResultMap (2026-07-07
+// fix): the child writes doc_link + doc_id into its result map when
+// the per-item pipeline produced a Google Doc; the aggregator
+// collects them into per-item maps and surfaces them in the parent
+// result as child_doc_links + child_doc_ids. The 3 tests below
+// pin the aggregator side of the contract.
+//
+// Test 12 (NEW PR-4): succeeded child with doc_link + doc_id → the
+// aggregator collects them into the per-item maps and writes the
+// maps to the result arg passed to FinalizeAggregateParent. The
+// maps are keyed by item_id (NOT child_job_id) so downstream
+// consumers can correlate with the parent's original child_job_ids.
+func TestScriptParentAggregator_AggregateOne_CollectsDocFieldsFromSucceededChild(t *testing.T) {
+	stub := buildParentStubWithDocs("parent-doc-ok", map[string]struct {
+		Status  job.Status
+		OK      bool
+		DocLink string
+		DocID   string
+	}{
+		"child-doc-1": {Status: job.StatusSucceeded, OK: true,
+			DocLink: "https://docs.google.com/document/d/abc123/edit", DocID: "abc123"},
+	})
+
+	agg := NewScriptParentAggregator(ScriptAggregatorDeps{
+		JobsSvc: stub,
+		Logger:  zap.NewNop(),
+	})
+	agg.Tick(context.Background())
+
+	rec, ok := stub.flipped["parent-doc-ok"]
+	if !ok {
+		t.Fatal("PR-4: aggregator must call FinalizeAggregateParent on succeeded child")
+	}
+	if rec.result == nil {
+		t.Fatal("PR-4: result map must be captured for child→parent doc propagation assertion")
+	}
+	links, ok := rec.result["child_doc_links"].(map[string]string)
+	if !ok {
+		t.Fatalf("PR-4: result must contain child_doc_links map[string]string, got %T (%v)", rec.result["child_doc_links"], rec.result["child_doc_links"])
+	}
+	if got := links["child-doc-1"]; got != "https://docs.google.com/document/d/abc123/edit" {
+		t.Errorf("PR-4: child_doc_links[child-doc-1] must be the child's doc_link, got %v", got)
+	}
+	ids, ok := rec.result["child_doc_ids"].(map[string]string)
+	if !ok {
+		t.Fatalf("PR-4: result must contain child_doc_ids map[string]string, got %T (%v)", rec.result["child_doc_ids"], rec.result["child_doc_ids"])
+	}
+	if got := ids["child-doc-1"]; got != "abc123" {
+		t.Errorf("PR-4: child_doc_ids[child-doc-1] must be the child's doc_id, got %v", got)
+	}
+}
+
+// Test 13 (NEW PR-4): FAILED child with doc fields populated in its
+// result body → the aggregator MUST NOT propagate the doc fields.
+// The contract is strict: only succeeded children (status=SUCCEEDED
+// AND childOK=true) surface doc links to operators. A failed
+// child — even one that produced a Google Doc before the rest of
+// the pipeline failed — must not leak doc metadata to the parent
+// (the child is a failure surface; the doc may be incomplete or
+// stale).
+func TestScriptParentAggregator_AggregateOne_IgnoresDocFieldsFromFailedChild(t *testing.T) {
+	stub := buildParentStubWithDocs("parent-doc-fail", map[string]struct {
+		Status  job.Status
+		OK      bool
+		DocLink string
+		DocID   string
+	}{
+		"child-doc-fail": {Status: job.StatusFailed, OK: false,
+			DocLink: "https://docs.google.com/document/d/leaked/edit", DocID: "leaked"},
+	})
+
+	agg := NewScriptParentAggregator(ScriptAggregatorDeps{
+		JobsSvc: stub,
+		Logger:  zap.NewNop(),
+	})
+	agg.Tick(context.Background())
+
+	rec, ok := stub.flipped["parent-doc-fail"]
+	if !ok {
+		t.Fatal("PR-4: aggregator must call FinalizeAggregateParent on all-failed aggregate")
+	}
+	if rec.result == nil {
+		t.Fatal("PR-4: result map must be captured")
+	}
+	if _, present := rec.result["child_doc_links"]; present {
+		t.Errorf("PR-4: FAILED child must NOT contribute to child_doc_links, got %v", rec.result["child_doc_links"])
+	}
+	if _, present := rec.result["child_doc_ids"]; present {
+		t.Errorf("PR-4: FAILED child must NOT contribute to child_doc_ids, got %v", rec.result["child_doc_ids"])
+	}
+}
+
+// Test 14 (NEW PR-4): succeeded children without doc fields → the
+// aggregator MUST NOT write child_doc_links / child_doc_ids keys to
+// the result map. The omitempty contract at finalizeParent is
+// load-bearing: empty maps stay out of the JSON wire shape so
+// downstream consumers (operator dashboards, replay tooling) do
+// not see noisy empty-key entries.
+func TestScriptParentAggregator_FinalizeParent_OmitsMapsWhenEmpty(t *testing.T) {
+	// Succeeded child with NO doc fields (using the original
+	// makeScriptChildResultOK helper which emits no doc fields).
+	stub := buildParentStub("parent-no-doc", map[string]job.Status{
+		"c1": job.StatusSucceeded,
+		"c2": job.StatusSucceeded,
+	}, map[string]bool{"c1": true, "c2": true})
+
+	agg := NewScriptParentAggregator(ScriptAggregatorDeps{
+		JobsSvc: stub,
+		Logger:  zap.NewNop(),
+	})
+	agg.Tick(context.Background())
+
+	rec, ok := stub.flipped["parent-no-doc"]
+	if !ok {
+		t.Fatal("PR-4: aggregator must call FinalizeAggregateParent on all-succeeded-no-doc aggregate")
+	}
+	if rec.result == nil {
+		t.Fatal("PR-4: result map must be captured")
+	}
+	if _, present := rec.result["child_doc_links"]; present {
+		t.Errorf("PR-4: when no child produced a doc, child_doc_links must be OMITTED from result, got %v", rec.result["child_doc_links"])
+	}
+	if _, present := rec.result["child_doc_ids"]; present {
+		t.Errorf("PR-4: when no child produced a doc, child_doc_ids must be OMITTED from result, got %v", rec.result["child_doc_ids"])
+	}
+}
