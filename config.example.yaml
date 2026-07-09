@@ -141,6 +141,14 @@ scripts:
   batch_web_search_concurrency: 4     # Parallel SearXNG searches (1-16)
   batch_chapter_concurrency: 3        # Parallel Ollama chapter generations (1-10)
 
+concurrency:
+  max_concurrent_video_extracts: 2
+  max_concurrent_script_generations: 2
+  max_concurrent_nvidia_generations: 10
+  max_concurrent_ollama_calls: 1
+  max_concurrent_google_slides_generations: 2
+  max_concurrent_channel_checks: 20
+
 features:
   # Stable modules - enable as needed
   artlist_enabled: false
