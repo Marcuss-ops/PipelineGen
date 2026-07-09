@@ -49,6 +49,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ── Shared structural interfaces for composition-root handler fields ──────
+//
+// These interfaces deduplicate the identical inline interface literals
+// that were repeated in both AppDeps (bootstrap.go) and RegistryWiring
+// (registry.go). The concrete handlers satisfy these structurally via
+// Go's implicit-interface rules — no adapter wrappers needed.
+
+// RouteRegistrar is the standard interface for HTTP handlers that mount
+// routes on a gin.RouterGroup. Used by WorkerHandler, OutboxHandler,
+// and MediasearchHandler across AppDeps and RegistryWiring.
+type RouteRegistrar interface {
+	RegisterRoutes(*gin.RouterGroup)
+}
+
+// InternalMediaRegistrar is the interface for the /internal/v1/media/*
+// server-to-server surface (currently /sync).
+type InternalMediaRegistrar interface {
+	RegisterInternalMediaRoutes(*gin.RouterGroup)
+}
+
+// HealthProber is the interface for liveness/readiness probes.
+type HealthProber interface {
+	Probe(context.Context) error
+}
+
 // AppDeps holds the minimal initialized dependencies for the server.
 //
 // PG-006 (June 2026): the concrete composition entry point
@@ -83,7 +108,7 @@ import (
 //     deps.Cleanup() now call deps.Lifecycle.Stop(ctx).
 type AppDeps struct {
 	Registry      *module.Registry
-	WorkerHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+	WorkerHandler RouteRegistrar
 	// InternalMediaHandler is the QDRANT-001 server-to-server surface
 	// for /internal/v1/media/* (currently just /sync).
 	// Same shape as WorkerHandler — narrow interface, no infra imports
@@ -91,17 +116,17 @@ type AppDeps struct {
 	// server.SetInternalMediaHandler(deps.InternalMediaHandler) so the
 	// /internal/v1/media/sync route registers on the
 	// WorkerAuth-protected group.
-	InternalMediaHandler interface{ RegisterInternalMediaRoutes(*gin.RouterGroup) }
+	InternalMediaHandler InternalMediaRegistrar
 	// OutboxHandler is the QDRANT-002 surface for
 	// /internal/v1/outbox/status and /events (operator-only monitor).
-	OutboxHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+	OutboxHandler RouteRegistrar
 	// MediasearchHandler is the QDRANT-004 surface for
 	// /internal/v1/media/search (server-to-server semantic search).
-	MediasearchHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+	MediasearchHandler RouteRegistrar
 	// QdrantProbe is the QDRANT-005 health probe used by /ready.
 	// nil-safe: when qdrant is disabled the probe is nil and the
 	// lifecycle readiness barrier auto-skips it.
-	QdrantProbe interface{ Probe(context.Context) error }
+	QdrantProbe HealthProber
 	// QdrantHealth is the HIGH #7 handler for /qdrant/live and /qdrant/ready.
 	// Concrete type: *transport.QdrantHealthHandler; nil-safe when Qdrant is disabled.
 	QdrantHealth  interface{}

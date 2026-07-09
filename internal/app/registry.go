@@ -147,8 +147,8 @@ type RegistryWiring struct {
 	// mounted on the /internal/v1 WorkerAuth-protected internalGroup
 	// by cmd/server/main.go. The split is enforced by the
 	// anti-regression test internal/api/routes_test.go.
-	OutboxHandler      interface{ RegisterRoutes(*gin.RouterGroup) }
-	MediasearchHandler interface{ RegisterRoutes(*gin.RouterGroup) }
+	OutboxHandler      RouteRegistrar
+	MediasearchHandler RouteRegistrar
 
 	// PR4 (June 2026) cross-step state — populated by internal modules
 	// registry, consumed by assets registration. Unexported.
