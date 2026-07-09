@@ -93,13 +93,22 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 
 	var driveFileID string
 	if s.mediaStore != nil && !skipDrive {
-		fileID, _, uploadErr := s.publishToDrive(ctx, req, dest.LocalPath)
-		if uploadErr != nil {
-			s.log.Warn("Drive upload failed", zap.Error(uploadErr))
+		if req.DriveRootOverride == "" {
+			if s.log != nil {
+				s.log.Debug("Drive upload skipped for image: no configured root folder",
+					zap.String("source", source),
+					zap.String("style", style),
+					zap.String("slug", slug))
+			}
 		} else {
-			driveFileID = fileID
-			if !skipMetadata && metaResult != nil {
-				s.meta.uploadImageMetadata(ctx, style, slug, metaResult)
+			fileID, _, uploadErr := s.publishToDrive(ctx, req, dest.LocalPath)
+			if uploadErr != nil {
+				s.log.Warn("Drive upload failed", zap.Error(uploadErr))
+			} else {
+				driveFileID = fileID
+				if !skipMetadata && metaResult != nil {
+					s.meta.uploadImageMetadata(ctx, style, slug, metaResult)
+				}
 			}
 		}
 	}

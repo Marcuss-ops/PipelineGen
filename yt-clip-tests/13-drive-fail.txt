@@ -1,0 +1,7 @@
+HTTP/1.1 500 Internal Server Error
+Content-Type: application/json; charset=utf-8
+X-Request-Id: 20260709-160521-f6591942c30821ac
+Date: Thu, 09 Jul 2026 16:05:34 GMT
+Content-Length: 213
+
+{"error":"usecase.DownloadAndHashClip: fetch: youtube fetch: video processing failed: command ffmpeg failed: exit status 1 (stdout: , stderr: data/tmp/raw_jNQXAC9IVRw.mp4: No such file or directory\n)","ok":false}

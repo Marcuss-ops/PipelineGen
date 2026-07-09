@@ -90,18 +90,30 @@ func TestSceneAssetBinder_BindClips_NilPlan(t *testing.T) {
 }
 
 // TestSceneAssetBinder_BindClips_NoClipEvidence covers the
-// plan.ClipEvidence==nil OR AcceptedClipIDs==empty no-op branches.
+// plan.ClipEvidence==nil OR AcceptedClipIDs==empty branches.
+// Post null-safety fix: the binder no longer early-returns on nil
+// ClipEvidence — it continues processing (Changed=true) but binds
+// zero clips since AcceptedClipIDs is empty.
 func TestSceneAssetBinder_BindClips_NoClipEvidence(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	// ClipEvidence==nil branch.
-	res := b.BindClips(makeScenes(3), "text", &scriptpkg.ResolvedGenerationPlan{})
-	assert.Equal(t, false, res.Changed)
-	// AcceptedClipIDs empty branch.
-	res = b.BindClips(makeScenes(3), "text", &scriptpkg.ResolvedGenerationPlan{
+	// ClipEvidence==nil branch — binder processes but binds nothing.
+	scenes := makeScenes(3)
+	res := b.BindClips(scenes, "text", &scriptpkg.ResolvedGenerationPlan{})
+	assert.Equal(t, true, res.Changed, "binder returns Changed=true even with nil ClipEvidence")
+	// Verify no clip bindings were populated.
+	for i, s := range scenes {
+		assert.Nil(t, s.Bindings.Clip, "scene %d must have nil Clip binding when ClipEvidence is nil", i)
+	}
+	// AcceptedClipIDs empty branch — same behavior.
+	scenes2 := makeScenes(3)
+	res = b.BindClips(scenes2, "text", &scriptpkg.ResolvedGenerationPlan{
 		ClipEvidence: &scriptpkg.ClipEvidence{},
 	})
-	assert.Equal(t, false, res.Changed)
+	assert.Equal(t, true, res.Changed, "binder returns Changed=true even with empty AcceptedClipIDs")
+	for i, s := range scenes2 {
+		assert.Nil(t, s.Bindings.Clip, "scene %d must have nil Clip binding when AcceptedClipIDs is empty", i)
+	}
 }
 
 // TestSceneAssetBinder_BindClips_OneToOneBinding covers the

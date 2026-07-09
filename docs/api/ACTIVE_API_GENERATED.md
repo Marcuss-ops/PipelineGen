@@ -114,8 +114,6 @@
 | POST | `/api/script/cache/evict` | Evict script cache entries |
 | POST | `/api/script/curate` | Curate generated content |
 | POST | `/api/script/generate` | ⚠️ MISSING DESCRIPTION |
-| POST | `/api/script/generate-from-clips` | Generate script from clips |
-| POST | `/api/script/generate-with-images` | Generate script with AI scene images |
 
 ## /api/script-assets
 
@@ -149,4 +147,3 @@
 |--------|------|-------------|
 | GET | `/media/google-accounting/*filepath` | Serve Google Accounting media files |
 | HEAD | `/media/google-accounting/*filepath` | HEAD check for Google Accounting media |
-

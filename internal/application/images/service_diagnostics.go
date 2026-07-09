@@ -65,7 +65,8 @@ func (s *Service) StopChromeProvider() error {
 	if s == nil || s.Diag == nil || s.Diag.imageGen == nil {
 		return nil
 	}
-	cp, ok := s.Diag.imageGen.(*ChromeImageProvider)
+	type chromeStopper interface{ Stop() error }
+	cp, ok := s.Diag.imageGen.(chromeStopper)
 	if !ok || cp == nil {
 		return nil
 	}

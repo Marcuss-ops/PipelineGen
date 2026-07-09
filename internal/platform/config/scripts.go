@@ -1,8 +1,7 @@
 package config
 
 // ScriptsConfig holds tunables for the unified script generation endpoints
-// (POST /api/script/legacy-batch, /generate-from-clips,
-// /generate-with-images → script + Google Slides images).
+// (POST /api/script/generate and batch generation).
 //
 // Why centralize these here:
 //   - Batch web search concurrency and chapter generation concurrency were
@@ -13,13 +12,13 @@ package config
 // Defaults match the previous hard-coded values to preserve behavior.
 type ScriptsConfig struct {
 	// BatchWebSearchConcurrency caps the parallel SearXNG searches in
-	// /api/script/legacy-batch. Each search is a network call; 4 is a
+	// batch generation. Each search is a network call; 4 is a
 	// safe default for a single SearXNG instance. Raise for a clustered
 	// SearXNG deployment, lower if you see 429s from SearXNG.
 	BatchWebSearchConcurrency int `yaml:"batch_web_search_concurrency" env:"VELOX_SCRIPTS_BATCH_WEBSEARCH_CONCURRENCY" default:"4"`
 
 	// BatchChapterConcurrency caps the parallel Ollama chapter generations
-	// in /api/script/legacy-batch. Each goroutine sends one LLM call to
+	// in batch generation. Each goroutine sends one LLM call to
 	// Ollama, which serializes requests internally, so going above the
 	// Ollama queue depth just adds latency. 3 is the safe default.
 	BatchChapterConcurrency int `yaml:"batch_chapter_concurrency" env:"VELOX_SCRIPTS_BATCH_CHAPTER_CONCURRENCY" default:"3"`
@@ -43,7 +42,7 @@ type ScriptsConfig struct {
 	DefaultLanguage string `yaml:"default_language" env:"VELOX_SCRIPTS_DEFAULT_LANGUAGE" default:"it"`
 
 	// DefaultDurationSeconds is the default script duration in seconds.
-	// 600 = 10 minutes (standard YouTube clip). Used by /generate and /legacy-batch.
+	// 600 = 10 minutes (standard YouTube clip). Used by /generate and batch jobs.
 	DefaultDurationSeconds int `yaml:"default_duration_seconds" env:"VELOX_SCRIPTS_DEFAULT_DURATION" default:"600"`
 
 	// GenerateTimeoutSeconds overrides the default request timeout for
@@ -51,7 +50,7 @@ type ScriptsConfig struct {
 	GenerateTimeoutSeconds int `yaml:"generate_timeout_seconds" env:"VELOX_SCRIPTS_GENERATE_TIMEOUT" default:"600"`
 
 	// BatchTimeoutSeconds overrides the default request timeout for
-	// POST /api/script/legacy-batch (30 min sync) and individual chapters.
+	// batch generation (30 min sync) and individual chapters.
 	BatchTimeoutSeconds int `yaml:"batch_timeout_seconds" env:"VELOX_SCRIPTS_BATCH_TIMEOUT" default:"1800"`
 
 	// MaxTopicChars caps the Topic field length (single generate).
@@ -71,7 +70,7 @@ type ScriptsConfig struct {
 	// ChannelID is the default memory-gate channel for /api/script/generate.
 	ChannelID string `yaml:"channel_id" env:"VELOX_SCRIPTS_CHANNEL_ID" default:"default"`
 
-	// BatchChannelID is the default memory-gate channel for /api/script/legacy-batch.
+	// BatchChannelID is the default memory-gate channel for batch generation.
 	BatchChannelID string `yaml:"batch_channel_id" env:"VELOX_SCRIPTS_BATCH_CHANNEL_ID" default:"default-batch"`
 
 	// ClipSearchMinScore is the minimum similarity score for clip suggestions

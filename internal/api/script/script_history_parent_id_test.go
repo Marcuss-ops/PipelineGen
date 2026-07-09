@@ -52,6 +52,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	ports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 )
 
 // fakeScriptHistoryRepo satisfies usecase.ScriptRepository with two
@@ -112,6 +113,10 @@ func (f *fakeScriptHistoryRepo) SaveOutlineSections(_ context.Context, _ int64, 
 
 func (f *fakeScriptHistoryRepo) SaveResearchSources(_ context.Context, _ int64, _ []adapters.ScriptResearchSource) error {
 	return errors.New("fakeScriptHistoryRepo.SaveResearchSources: not implemented")
+}
+
+func (f *fakeScriptHistoryRepo) SaveManifestV2(_ context.Context, _ int64, _ ports.ScriptManifestJSON) error {
+	return errors.New("fakeScriptHistoryRepo.SaveManifestV2: not implemented")
 }
 
 func (f *fakeScriptHistoryRepo) NextVersionForTopic(_ context.Context, _, _, _ string) (int, error) {

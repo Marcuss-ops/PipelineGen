@@ -13,12 +13,12 @@
 // `tryRegisterModule` with Module name "script-flow" + prefix
 // "/script" → /api/script/* (zero-change-contract).
 //
-// PR-script-deps-slim (July 2026, P1): Dependencies was a 22+3-field
+// PR-script-deps-slim (July 2026, P1): Dependencies was a 22+2-field
 // bag with 12 ignored fields + a mandatory Engine check that was
 // never dereferenced (the api/ layer never reads Engine — the
 // pre-Step-14 Build fail-closed was defensive-only). Slim form
-// below: 3 small dep bags (Generate / Jobs / Legacy) + the
-// ClipsSearcher + AdminToken + 3 build-time fields (7 total).
+// below: 2 small dep bags (Generate / Jobs) + the
+// ClipsSearcher + AdminToken + 3 build-time fields (6 total).
 // ScriptDescriptor.Handler field is RETIRED (defensive
 // fake-availability — the 6 non-HTTP methods have ZERO external
 // callers at HEAD).
@@ -35,21 +35,18 @@ import (
 )
 
 // Dependencies is the typed narrow input to Build. After
-// PR-script-deps-slim the bag holds 3 small dep bags (Generate /
-// Jobs / Legacy) + ClipsSearcher + AdminToken + 3 build-time
+// PR-script-deps-slim the bag holds 2 small dep bags (Generate /
+// Jobs) + ClipsSearcher + AdminToken + 3 build-time
 // fields. Only EnabledFunc is mandatory (Build fail-closes on
 // nil — the pre-Step-14 Engine check is RETIRED because the api/
 // layer never dereferences Engine; godlike/07 minimum-blast-radius
 // means the defensive Engine check is dead wire).
 type Dependencies struct {
-	// ── Slim handler bag (was 22 fields, now 5) ─────────────────────
+	// ── Slim handler bag (was 22 fields, now 4) ─────────────────────
 	// Generate is the dep bag for POST /generate.
 	Generate GenerateDeps
 	// Jobs is the dep bag for /jobs/:id.
 	Jobs JobsDeps
-	// Legacy is the dep bag for the 2 legacy 410-Gone endpoints.
-	// Empty today (FASE-2.1-VOICE-FREEZE).
-	Legacy LegacyDeps
 
 	// ClipsSearcher is the clip-name searcher for the
 	// GET /script/clips/search?q= discovery endpoint. Nil →
@@ -147,7 +144,6 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	handler := NewScriptFlowHandler(ScriptFlowDeps{
 		Generate:      deps.Generate,
 		Jobs:          deps.Jobs,
-		Legacy:        deps.Legacy,
 		ClipsSearcher: deps.ClipsSearcher,
 		AdminToken:    deps.AdminToken,
 		// Caps is read directly from deps.Generate.Caps inside

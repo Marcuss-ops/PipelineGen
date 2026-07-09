@@ -3,7 +3,9 @@ package app
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtubeapp "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
@@ -145,6 +147,55 @@ type stubMediaProcessor struct{}
 
 func (s *stubMediaProcessor) Process(ctx context.Context, input *asset.ProcessInput) (*asset.ProcessResult, error) {
 	return &asset.ProcessResult{Status: "ok"}, nil
+}
+
+// ── fromExistingClip mapper tests ───────────────────────────────────────
+
+// TestFromExistingClip_SetsMediaTypeAndLifecycleState regression-guards the
+// YouTube registration path: without MediaType and LifecycleState, UpsertClipTx
+// writes empty strings to media_assets.media_type and lifecycle_state columns.
+// This is the canonical 2-line bug that this test prevents from recurring.
+func TestFromExistingClip_SetsMediaTypeAndLifecycleState(t *testing.T) {
+	clip := &sourcing.ExistingClip{
+		ID:       "yt_abc123_0_10_v1",
+		Name:     "Test Clip",
+		Filename: "test-clip.mp4",
+		Source:   "youtube",
+		Duration: 10 * time.Second,
+	}
+	a := fromExistingClip(clip)
+	require.NotNil(t, a, "fromExistingClip must return non-nil for non-nil input")
+
+	assert.Equal(t, asset.MediaTypeClip, a.MediaType,
+		"fromExistingClip must set MediaType=clip so UpsertClipTx writes media_type correctly")
+	assert.Equal(t, asset.StateActive, a.LifecycleState,
+		"fromExistingClip must set LifecycleState=ACTIVE so UpsertClipTx writes lifecycle_state correctly")
+}
+
+// TestFromExistingClip_RoundTrip_RichMetadata verifies the rich metadata
+// fields survive the fromExistingClip → toExistingClip round-trip.
+func TestFromExistingClip_RoundTrip_RichMetadata(t *testing.T) {
+	original := &sourcing.ExistingClip{
+		ID:              "yt_xyz_0_10_v1",
+		Name:            "Round Trip Clip",
+		Source:          "youtube",
+		Summary:         "A summary",
+		Topics:          []string{"boxing", "sports"},
+		Speakers:        []string{"Joe"},
+		MentionedPeople: []string{"Mike"},
+		Hook:            "The hook!",
+	}
+	assetNode := fromExistingClip(original)
+	require.NotNil(t, assetNode)
+
+	roundTripped := toExistingClip(assetNode)
+	require.NotNil(t, roundTripped)
+
+	assert.Equal(t, original.Summary, roundTripped.Summary)
+	assert.Equal(t, original.Topics, roundTripped.Topics)
+	assert.Equal(t, original.Speakers, roundTripped.Speakers)
+	assert.Equal(t, original.MentionedPeople, roundTripped.MentionedPeople)
+	assert.Equal(t, original.Hook, roundTripped.Hook)
 }
 
 // Compile-time assertion (Wave 16 follow-up, June 2026): *stubAssetRepo

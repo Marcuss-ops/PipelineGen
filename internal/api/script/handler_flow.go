@@ -1,8 +1,7 @@
 // Package script (api/script) — ScriptFlowHandler is the slim HTTP
 // orchestrator (post-PR-script-deps-slim, 2026-07-04).
 // Surface contracts (RegisterRoutes + EnableAuth/AdminToken + facade
-// accessors + enqueue thunk + SearchClipsByName + LegacyGenerateFromClips
-// + LegacyGenerateWithImages) preserved byte-stable per
+// accessors + enqueue thunk + SearchClipsByName) preserved byte-stable per
 // PR-SCRIPT-AUTH-EXTRACT / PR-SCRIPT-JOBS-EXTRACT /
 // PR-SCRIPT-FACADE-EXTRACT (godlike/06 SSOT 3-surface lockstep via
 // architecture/current.yaml#SCRIPT-FLOW-SPLIT).
@@ -114,31 +113,17 @@ func (h *ScriptFlowHandler) jobsRegisterRoutes(r *gin.RouterGroup) {
 	h.jobs.RegisterJobRoutes(r, h)
 }
 
-// RegisterRoutes mounts every script-flow route under r.
+// RegisterRoutes mounts every active script-flow route under r.
 // AZIONE 1 (July 2026): POST /generate → h.gen.
 // PR-SCRIPT-JOBS-EXTRACT: /jobs/:id → h.jobsRegisterRoutes.
-// PR-script-legacy-contract (Jul 2026, P0 ABSOLUTE): the 2 legacy r.POST
-// lines (generate-from-clips + generate-with-images) physically move
-// out of this function into RegisterLegacyDeprecationRoutes
-// (handler_legacy_deprecation.go — the canonical godlike/06 SSOT for
-// the deprecation contract). They're delegated-to at the end of this
-// function so observable route surface is byte-compatible with
-// pre-PR callers of RegisterRoutes directly. godlike/07
-// minimum-blast-radius preserved.
 //
-// PR-script-deps-slim (Jul 2026, P1): the 2 routes that depended on
-// sectionRegen + cacheEviction (RegenerateSection + EvictCache) are
-// RETIRED (godlike/07 no-fake-availability — the fields were never
-// populated so the routes always returned 503; routes that always
-// 503 are fake-availability).
+// Legacy generate adapters are no longer mounted.
 func (h *ScriptFlowHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.gen.GenerateRoute(r)
 
 	r.GET("/clips/search", h.SearchClipsByName)
 
 	h.jobsRegisterRoutes(r)
-
-	h.RegisterLegacyDeprecationRoutes(r)
 }
 
 // EnableAuth + AdminToken satisfy AdminTokenProvider.

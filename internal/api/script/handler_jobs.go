@@ -10,8 +10,7 @@
 //
 // Delegation pattern (godlike/07 minimum-blast-radius):
 // ScriptFlowHandler retains thin delegator methods (jobsRegisterRoutes
-// + enqueueEnvelope) so legacy adapter call sites
-// (LegacyGenerateFromClips + LegacyGenerateWithImages) keep calling
+// + enqueueEnvelope) so active call sites keep calling
 // h.enqueueEnvelope(c, env) unchanged. The delegation hops once
 // through JobsHandler to the canonical impl.
 //

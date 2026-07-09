@@ -27,6 +27,11 @@ type ConcurrencyConfig struct {
 	// June 2026 GPU tuning: lowered from 50 to 1 to avoid RAM saturation on single GPU.
 	MaxConcurrentOllamaCalls int `yaml:"max_concurrent_ollama_calls" env:"VELOX_CONCURRENT_OLLAMA_CALLS" default:"1"`
 
+	// MaxConcurrentGoogleSlidesGenerations limits the number of Chrome/Playwright
+	// workers used for AI image generation. Each slot is a separate browser
+	// process, so keep this small unless the host has headroom.
+	MaxConcurrentGoogleSlidesGenerations int `yaml:"max_concurrent_google_slides_generations" env:"VELOX_CONCURRENT_GOOGLE_SLIDES_GENERATIONS" default:"2"`
+
 	// MaxConcurrentChannelChecks limits concurrent YouTube channel monitor checks.
 	// Was hardcoded at 3; raised to 20.
 	MaxConcurrentChannelChecks int `yaml:"max_concurrent_channel_checks" env:"VELOX_CONCURRENT_CHANNEL_CHECKS" default:"20"`

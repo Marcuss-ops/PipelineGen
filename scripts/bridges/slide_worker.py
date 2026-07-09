@@ -98,28 +98,49 @@ class ProfileWorker(threading.Thread):
         _log(f"[profile-{self.profile_id}] warmup: launching browser...")
 
         self.playwright = sync_playwright().start()
-        os.makedirs(self.profile_dir, exist_ok=True)
 
-        self.context = self.playwright.chromium.launch_persistent_context(
-            self.profile_dir,
-            headless=not self.headful,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-            ],
-        )
+        # Try stable profile directory first to reuse browser state, fallback to PID-based if locked
+        self.profile_dir = f"{PROFILE_DIR}_{self.profile_id}"
+        try:
+            os.makedirs(self.profile_dir, exist_ok=True)
+            self.context = self.playwright.chromium.launch_persistent_context(
+                self.profile_dir,
+                headless=not self.headful,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                ],
+            )
+            _log(f"[profile-{self.profile_id}] warmup: launched browser with stable context at {self.profile_dir}")
+        except Exception as le:
+            self.profile_dir = f"{PROFILE_DIR}_{self.profile_id}_{os.getpid()}"
+            os.makedirs(self.profile_dir, exist_ok=True)
+            _log(f"[profile-{self.profile_id}] warmup: stable context locked ({le}), falling back to {self.profile_dir}")
+            self.context = self.playwright.chromium.launch_persistent_context(
+                self.profile_dir,
+                headless=not self.headful,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                ],
+            )
 
         # Load session cookies if available
-        if os.path.exists(MASTER_STORAGE):
+        cookie_path = f"{MASTER_STORAGE}.profile_{self.profile_id}"
+        if not os.path.exists(cookie_path):
+            cookie_path = MASTER_STORAGE
+
+        if os.path.exists(cookie_path):
             try:
-                with open(MASTER_STORAGE) as f:
+                with open(cookie_path) as f:
                     sdata = json.load(f)
                     if "cookies" in sdata and sdata["cookies"]:
                         self.context.add_cookies(sdata["cookies"])
-                        _log(f"[profile-{self.profile_id}] warmup: loaded session cookies")
+                        _log(f"[profile-{self.profile_id}] warmup: loaded session cookies from {cookie_path}")
             except Exception as e:
-                _log(f"[profile-{self.profile_id}] warmup: failed to load cookies: {e}")
+                _log(f"[profile-{self.profile_id}] warmup: failed to load cookies from {cookie_path}: {e}")
 
         _log(f"[profile-{self.profile_id}] warmup: navigating to slides.new...")
         self.page = self.context.new_page()
@@ -127,6 +148,9 @@ class ProfileWorker(threading.Thread):
             self.page.goto("https://slides.new", wait_until="load", timeout=30000)
         except PlaywrightTimeout:
             _log(f"[profile-{self.profile_id}] warmup: slides.new timed out — continuing")
+
+        if "accounts.google.com" in self.page.url:
+            raise Exception("login required: user is logged out (please run scripts/bridges/login.py to sign in)")
 
         self._warmed.set()
         _log(f"[profile-{self.profile_id}] warmup: ready")
@@ -159,11 +183,13 @@ class ProfileWorker(threading.Thread):
         try:
             if self.context:
                 storage = self.context.storage_state()
+                os.makedirs(os.path.dirname(MASTER_STORAGE) or ".", exist_ok=True)
+                with open(MASTER_STORAGE, "w") as f:
+                    json.dump(storage, f, indent=2)
                 storage_path = f"{MASTER_STORAGE}.profile_{self.profile_id}"
-                os.makedirs(os.path.dirname(storage_path) or ".", exist_ok=True)
                 with open(storage_path, "w") as f:
                     json.dump(storage, f, indent=2)
-                _log(f"[profile-{self.profile_id}] saved session to {storage_path}")
+                _log(f"[profile-{self.profile_id}] saved session to {MASTER_STORAGE} and {storage_path}")
         except Exception as e:
             _log(f"[profile-{self.profile_id}] failed to save storage: {e}")
 
@@ -180,11 +206,14 @@ class ProfileWorker(threading.Thread):
             pass
 
         import shutil
-        try:
-            shutil.rmtree(self.profile_dir, ignore_errors=True)
-            _log(f"[profile-{self.profile_id}] cleaned up profile directory {self.profile_dir}")
-        except Exception as e:
-            _log(f"[profile-{self.profile_id}] failed to clean up profile directory: {e}")
+        if "_" + str(os.getpid()) in self.profile_dir:
+            try:
+                shutil.rmtree(self.profile_dir, ignore_errors=True)
+                _log(f"[profile-{self.profile_id}] cleaned up temporary profile directory {self.profile_dir}")
+            except Exception as e:
+                _log(f"[profile-{self.profile_id}] failed to clean up profile directory: {e}")
+        else:
+            _log(f"[profile-{self.profile_id}] preserving stable profile directory {self.profile_dir}")
 
         _log(f"[profile-{self.profile_id}] stopped")
 
@@ -223,14 +252,16 @@ class ProfileWorker(threading.Thread):
         os.makedirs(os.path.dirname(os.path.abspath(output_path)) or ".", exist_ok=True)
         t0 = time.time()
 
+        if "accounts.google.com" in self.page.url:
+            return {"id": request_id, "status": "error", "error": "login required: user is logged out (please run scripts/bridges/login.py to sign in)", "profile": self.profile_id}
+
         try:
-            # Step 1: Click insert-generated-image
-            ta_wait = self.page.locator('.image-synthesis textarea:visible, textarea:visible').first
+            # Step 1: Ensure Gemini panel is open
+            ta = self.page.locator('textarea:visible').first
             panel_open = False
             try:
-                ta_wait.wait_for(state="visible", timeout=2000)
-                panel_open = True
-                _log(f"[profile-{self.profile_id}][{request_id}] panel already open, skipping click")
+                if ta.is_visible():
+                    panel_open = True
             except Exception:
                 pass
 
@@ -252,18 +283,30 @@ class ProfileWorker(threading.Thread):
                         pass
                     btn.click(force=True, timeout=5000)
 
-                # Wait for the textarea to become visible (was fixed sleep(2))
+                # Wait for any textarea to become visible
                 try:
-                    ta_wait.wait_for(state="visible", timeout=10000)
+                    ta.wait_for(state="visible", timeout=25000)
                 except PlaywrightTimeout:
                     _log(f"[profile-{self.profile_id}][{request_id}] click confirmed but textarea not found — recovery")
                     raise
 
+            # Step 1.5: Switch to Immagine/Image tab to ensure we are in the image generation view
+            _log(f"[profile-{self.profile_id}][{request_id}] switching to Immagine/Image tab...")
+            try:
+                tab = self.page.locator(
+                    '[role="tab"]:has-text("Immagine"), [role="tab"]:has-text("Image"), '
+                    'button:has-text("Immagine"), button:has-text("Image"), '
+                    'div:has-text("Immagine"), div:has-text("Image")'
+                ).first
+                tab.click(force=True, timeout=5000)
+                self.page.wait_for_timeout(1000)
+            except Exception as te:
+                _log(f"[profile-{self.profile_id}][{request_id}] warning: failed switching tab directly: {te}")
+
             # Step 2: Fill prompt
             _log(f"[profile-{self.profile_id}][{request_id}] filling prompt: '{prompt[:60]}...'")
-            ta = self.page.locator('.image-synthesis textarea:visible, textarea:visible').first
             try:
-                ta.wait_for(state="visible", timeout=10000)
+                ta.wait_for(state="visible", timeout=25000)
             except PlaywrightTimeout:
                 _log(f"[profile-{self.profile_id}][{request_id}] textarea not visible — recovery")
                 self._fresh_page()
@@ -273,8 +316,8 @@ class ProfileWorker(threading.Thread):
                     'div:has-text("Nano Banana Pro")'
                 ).last
                 btn2.click(force=True, timeout=5000)
-                ta = self.page.locator('.image-synthesis textarea:visible, textarea:visible').first
-                ta.wait_for(state="visible", timeout=10000)
+                ta = self.page.locator('textarea:visible').first
+                ta.wait_for(state="visible", timeout=25000)
 
             ta.fill(prompt)
             # fill() is synchronous — no sleep needed
@@ -317,6 +360,12 @@ class ProfileWorker(threading.Thread):
                     break
             else:
                 _log(f"[profile-{self.profile_id}][{request_id}] timed out waiting for AI after {max_wait}s")
+                try:
+                    os.makedirs("data/tmp", exist_ok=True)
+                    self.page.screenshot(path="data/tmp/slide_ai_timeout.png")
+                    _log(f"[profile-{self.profile_id}][{request_id}] saved timeout screenshot to data/tmp/slide_ai_timeout.png")
+                except Exception as se:
+                    _log(f"[profile-{self.profile_id}][{request_id}] failed to save timeout screenshot: {se}")
 
             # Step 6: Extract image
             imgs = self.page.locator(
@@ -380,6 +429,21 @@ class ProfileWorker(threading.Thread):
             self._maybe_recycle_page()
 
             elapsed_ms = int((time.time() - t0) * 1000)
+
+            # Auto-save cookies to ensure session persists across runs/restarts
+            try:
+                if self.context:
+                    storage = self.context.storage_state()
+                    os.makedirs(os.path.dirname(MASTER_STORAGE) or ".", exist_ok=True)
+                    with open(MASTER_STORAGE, "w") as f:
+                        json.dump(storage, f, indent=2)
+                    profile_storage_path = f"{MASTER_STORAGE}.profile_{self.profile_id}"
+                    with open(profile_storage_path, "w") as f:
+                        json.dump(storage, f, indent=2)
+                    _log(f"[profile-{self.profile_id}][{request_id}] auto-saved session cookies")
+            except Exception as se:
+                _log(f"[profile-{self.profile_id}][{request_id}] failed to auto-save cookies: {se}")
+
             return {
                 "id": request_id,
                 "status": "ok",
@@ -426,6 +490,8 @@ class ProfileWorker(threading.Thread):
             return {"status": "error", "error": "thread died"}
         if self.page is None or self.page.is_closed():
             return {"status": "error", "error": "page closed"}
+        if "accounts.google.com" in self.page.url:
+            return {"status": "error", "error": "login required: user is logged out (please run scripts/bridges/login.py to sign in)"}
         return {"status": "ok"}
 
     # ── Stop ──────────────────────────────────────────────────────────

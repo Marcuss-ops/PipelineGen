@@ -17,6 +17,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
@@ -38,6 +39,13 @@ type ImageResult struct {
 // (concrete *images.Service); stub implementations live in adapters/.
 type ImageGenService interface {
 	SearchAndDownload(ctx context.Context, sceneName, sceneText, altText, language string) (*ImageResult, error)
+}
+
+// imagePrewarmer is the optional warmup seam used by production image
+// services that can pre-initialize their browser/session pool before
+// the parallel scene fan-out starts.
+type imagePrewarmer interface {
+	TriggerPrewarm(ctx context.Context, jobID string, count int)
 }
 
 // ImageProcessor generates scene images via ImageGenService.
@@ -94,52 +102,24 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 		language = defaults.DefaultScriptConfig().DefaultLanguage
 	}
 
-	images := make([]SceneImage, 0, len(scenes))
+	if prewarmer, ok := p.gen.(imagePrewarmer); ok {
+		prewarmCount := imageFanoutConcurrency(len(scenes))
+		prewarmer.TriggerPrewarm(ctx, plan.ID, prewarmCount)
+	}
+
+	outcomes := runImageSceneFanout(ctx, p.gen, plan, scenes, language)
+	images := make([]SceneImage, 0, len(outcomes))
 	var warnings []string
-
-	for i, scene := range scenes {
-		sceneText := scene.Text
-		if sceneText == "" {
-			sceneText = fmt.Sprintf("Scene %d", i+1)
+	for _, out := range outcomes {
+		images = append(images, out.image)
+		if out.warning != "" {
+			warnings = append(warnings, out.warning)
 		}
-		sceneName := fmt.Sprintf("scene-%d", i)
-		if scene.ID != "" {
-			sceneName = scene.ID
-		}
-
-		query := scene.Title
-		if query == "" {
-			query = sceneText
-		}
-		if query == "" {
-			query = plan.Topic
-		}
-		if query == "" {
-			query = plan.Title
-		}
-
-		asset, err := p.gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
-		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("image generation failed for scene %d: %v", i, err))
-			images = append(images, SceneImage{Index: i, Text: sceneText})
-			continue
-		}
-
-		url := ""
-		if asset != nil {
-			url = asset.SourceURL
-		}
-
-		images = append(images, SceneImage{
-			Index: i,
-			Text:  sceneText,
-			URL:   url,
-		})
 	}
 
 	if len(warnings) > 0 && p.log != nil {
 		p.log.Warn("image processor: partial failures",
-			zap.Int("total", len(scenes)),
+			zap.Int("total", len(outcomes)),
 			zap.Int("failed", len(warnings)),
 			zap.Int("succeeded", len(images)-len(warnings)),
 			zap.Strings("warnings", warnings))
@@ -158,4 +138,109 @@ func specScenesFromInput(input ProcessInput) []scriptpkg.SpecScene {
 		return nil
 	}
 	return input.SpecScene.Scenes
+}
+
+type imageSceneOutcome struct {
+	image   SceneImage
+	warning string
+}
+
+const defaultImageSceneConcurrency = 4
+
+func imageFanoutConcurrency(sceneCount int) int {
+	if sceneCount < 1 {
+		return 1
+	}
+	if sceneCount < defaultImageSceneConcurrency {
+		return sceneCount
+	}
+	return defaultImageSceneConcurrency
+}
+
+func runImageSceneFanout(
+	ctx context.Context,
+	gen ImageGenService,
+	plan *scriptpkg.ResolvedGenerationPlan,
+	scenes []scriptpkg.SpecScene,
+	language string,
+) []imageSceneOutcome {
+	if len(scenes) == 0 {
+		return nil
+	}
+
+	concurrency := imageFanoutConcurrency(len(scenes))
+	outcomes := make([]imageSceneOutcome, len(scenes))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, concurrency)
+
+	for i, scene := range scenes {
+		i, scene := i, scene
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				outcomes[i] = imageSceneOutcome{
+					image:   SceneImage{Index: i, Text: fallbackSceneText(scene.Text, i)},
+					warning: fmt.Sprintf("image generation failed for scene %d: %v", i, ctx.Err()),
+				}
+				return
+			}
+			defer func() { <-sem }()
+
+			sceneText := fallbackSceneText(scene.Text, i)
+			sceneName := fmt.Sprintf("scene-%d", i)
+			if scene.ID != "" {
+				sceneName = scene.ID
+			}
+
+			query := scene.Title
+			if query == "" {
+				query = sceneText
+			}
+			if query == "" {
+				query = plan.Topic
+			}
+			if query == "" {
+				query = plan.Title
+			}
+
+			out := imageSceneOutcome{
+				image: SceneImage{
+					Index: i,
+					Text:  sceneText,
+				},
+			}
+			defer func() {
+				if r := recover(); r != nil {
+					out.warning = fmt.Sprintf("image generation failed for scene %d: panic", i)
+					outcomes[i] = out
+				}
+			}()
+
+			asset, err := gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
+			if err != nil {
+				out.warning = fmt.Sprintf("image generation failed for scene %d: %v", i, err)
+				outcomes[i] = out
+				return
+			}
+
+			if asset != nil {
+				out.image.URL = asset.SourceURL
+			}
+			outcomes[i] = out
+		}()
+	}
+
+	wg.Wait()
+	return outcomes
+}
+
+func fallbackSceneText(sceneText string, i int) string {
+	if sceneText != "" {
+		return sceneText
+	}
+	return fmt.Sprintf("Scene %d", i+1)
 }

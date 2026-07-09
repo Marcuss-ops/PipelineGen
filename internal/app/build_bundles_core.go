@@ -258,7 +258,11 @@ func buildImagesService(
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
 			LLMGen: scriptGen, MetaWriter: voMetaWriter, StyleRegistry: styleRegistry,
-			ImageGen: imgservice.NewChromeImageProvider(cfg.Paths.PythonScriptsDir, log),
+			ImageGen: imgservice.NewChromeImageProviderPool(
+				cfg.Paths.PythonScriptsDir,
+				cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations,
+				log,
+			),
 		},
 		External: imgservice.ImagesExternalDeps{
 			IngestSvc: ingestSvc, Dispatcher: dispatcher, VeloxBaseURL: cfg.External.VeloxBaseURL,

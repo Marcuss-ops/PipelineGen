@@ -138,6 +138,9 @@ func (g *GenerationService) TriggerPrewarm(ctx context.Context, jobID string, co
 		return
 	default:
 	}
+	if g.registry != nil {
+		g.registry.TriggerPrewarm(ctx, jobID, count)
+	}
 	if g.log != nil {
 		g.log.Info("Google Slides: automation session tab pool prewarmed",
 			zap.String("job_id", jobID),

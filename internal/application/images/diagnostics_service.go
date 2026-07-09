@@ -33,6 +33,12 @@ func (d *DiagnosticsService) Diagnostics() DiagnosticsReport {
 	if cp, ok := d.imageGen.(*ChromeImageProvider); ok {
 		report.ImageGenHealthy = cp.Health() == nil
 		report.ImageGenCooldownProfiles = cp.ActiveCooldownProfiles()
+	} else if cp, ok := d.imageGen.(interface {
+		Health() error
+		ActiveCooldownProfiles() int
+	}); ok {
+		report.ImageGenHealthy = cp.Health() == nil
+		report.ImageGenCooldownProfiles = cp.ActiveCooldownProfiles()
 	}
 	return report
 }

@@ -19,13 +19,15 @@ func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 		return nil
 	}
 	out := &asset.Asset{
-		ID:       c.ID,
-		Name:     c.Name,
-		Filename: c.Filename,
-		Source:   asset.Source(c.Source),
-		Category: c.Category,
-		Tags:     append([]string(nil), c.Tags...),
-		Duration: c.Duration,
+		ID:            c.ID,
+		Name:          c.Name,
+		Filename:      c.Filename,
+		Source:        asset.Source(c.Source),
+		MediaType:     asset.MediaTypeClip,
+		LifecycleState: asset.StateActive,
+		Category:      c.Category,
+		Tags:          append([]string(nil), c.Tags...),
+		Duration:      c.Duration,
 	}
 	out.SetLocalPath(c.LocalPath)
 	out.SetDriveLink(c.DriveLink)

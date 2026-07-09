@@ -42,10 +42,6 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 		path   string
 	}{
 		{"POST", "/api/script/generate"},
-		// Legacy routes — now registered as deprecated adapters (PR 11).
-		// FASE 12c: legacy batch route REMOVED.
-		{"POST", "/api/script/generate-from-clips"},
-		{"POST", "/api/script/generate-with-images"},
 		{"GET", "/api/script/jobs/:id"},
 		{"GET", "/api/script/clips/search"},
 	}
@@ -70,10 +66,8 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 	}
 }
 
-// TestScriptFlowAsyncRoutes_EnqueueJobs verifies that legacy adapter routes
-// add the X-Deprecated header and enqueue as script.generate.
-// AZIONE 5 (July 2026): changed from /curate to /generate-from-clips
-// after /curate was removed.
+// TestScriptFlowAsyncRoutes_EnqueueJobs verifies that the active
+// /generate route enqueues a script.generate job.
 func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	t.Parallel()
 
@@ -83,22 +77,18 @@ func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
 
-	req := httptest.NewRequest("POST", "/api/script/generate-from-clips", strings.NewReader(`{"topic":"observability","clip_ids":["clip-a"],"language":"it"}`))
+	req := httptest.NewRequest("POST", "/api/script/generate", strings.NewReader(`{"version":2,"preset":"custom","items":[{"id":"job-1","title":"Observability","language":"it","source":{"type":"text","topic":"observability","source_text":"observability fixture"}}]}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Request-ID", "req-123")
+	req.Header.Set("Idempotency-Key", "req-123")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	// PR-script-legacy-contract (Jul 2026, P0 ABSOLUTE): legacy route
-	// is RETIRED to canonical 410-Gone contract. Tests below pin the
-	// contract — no enqueue happens, only the deprecation increment +
-	// canonical body.
-	assert.Equal(t, http.StatusGone, w.Code)
-	assert.Nil(t, fake.lastReq, "deprecation registrar must NOT enqueue a job")
-	assert.Contains(t, w.Header().Get("X-Deprecated"), "true")
-	assert.Contains(t, w.Body.String(), `"canonical_endpoint":"POST /api/script/generate"`)
-	assert.Contains(t, w.Body.String(), `"removal_date":"2026-12-31"`)
-	assert.Contains(t, w.Body.String(), `"ok":false`)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.NotNil(t, fake.lastReq, "generate route must enqueue a job")
+	assert.Equal(t, "script.generate", fake.lastReq.Type)
+	assert.Equal(t, "req-123", fake.lastReq.ActiveKey)
+	assert.Contains(t, w.Body.String(), `"ok":true`)
+	assert.Contains(t, w.Body.String(), `"status":"QUEUED"`)
 }
 
 // ── RequireAdminToken middleware ──────────────────────────────────────────
