@@ -33,7 +33,6 @@
 //   - internal/infrastructure/qdrant: Searcher, TextEmbedder,
 //     NewClipSearchAdapter.
 //   - internal/infrastructure/embeddings: OllamaEmbedderAdapter.
-//   - internal/infrastructure/ai/reranker: reranker.Client.
 package app
 
 import (
