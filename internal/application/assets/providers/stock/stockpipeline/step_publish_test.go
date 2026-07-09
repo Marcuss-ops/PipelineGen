@@ -65,149 +65,13 @@ func (f *publishFakeRunner) State() *runState                        { return f.
 
 var _ StepRunner = (*publishFakeRunner)(nil)
 
-// TestStockPublishStep_PerClipPathLeafName locks the per-clip
-// PathLeafName contract for explicit-clips runs as a HARD regression
-// guard. The pre-PR bug stamped the SAME PathLeafName
-// (= stockTimestampGroupName) on every chunk in an explicit-clips
-// run, so 8 Pacquiao/Broner clips landed in 1 Drive subdir instead
-// of 8 per-clip subdirs.
+// ── PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026) — shared timestamp leaf ──
 //
-// User spec (Front 3, July 2026): "8 explicit clips → 8 unique leaf
-// names, NO shared folder". This test HARD-FAILS on any duplicate
-// leaf (godlike/07 NO-FAKE-AVAILABILITY: a silent duplicate shadow
-// folder on Drive is the regression we just fixed). The sibling
-// TestStockPublishStep_ExplicitClips_PerClipPathLeafName logs
-// duplicate leaves as a soft warning (operator visibility); this
-// test is the canonical regression guard for the per-clip contract
-// itself.
-//
-// 8 titles picked so that the slugifyTitle cascade produces 8
-// distinct slugs — Round 1, Round 2, Round 3, Round 4, Round 5,
-// Round 6, Round 7, Round 8 → round-1, round-2, ..., round-8.
-// The fix to perClipLeafName's gate on explicitTimestamps is
-// load-bearing: a regression that drops the gate (e.g. falls back
-// to stockTimestampGroupName for every chunk) would collapse all 8
-// leaves to a single value and HARD-FAIL this test.
-func TestStockPublishStep_PerClipPathLeafName(t *testing.T) {
-	tmpDir := t.TempDir()
-	const clipCount = 8
-	paths := make([]string, clipCount)
-	plans := make([]ClipPlan, clipCount)
-	wantLeaves := []string{
-		"round-1", "round-2", "round-3", "round-4",
-		"round-5", "round-6", "round-7", "round-8",
-	}
-	for i := 0; i < clipCount; i++ {
-		p := filepath.Join(tmpDir, fmt.Sprintf("clip-%d.mp4", i))
-		if err := os.WriteFile(p, []byte("clip-"+strconv.Itoa(i)), 0o644); err != nil {
-			t.Fatalf("write clip %d: %v", i, err)
-		}
-		paths[i] = p
-		plans[i] = ClipPlan{
-			SourceID: "https://youtu.be/pacquiao-broner",
-			StartSec: float64(30 * i),
-			EndSec:   float64(30*i + 25),
-			Title:    "Round " + strconv.Itoa(i+1),
-		}
-	}
-	prep := &recordingArtifactPreparation{}
-	runner := &publishFakeRunner{
-		runInput: &RunInput{
-			FolderName:    "Manny Pacquiao vs Adrien Broner",
-			DriveFolderID: "drive-root-123",
-			FolderID:      "wf-8clips-front3",
-			Clips:         make([]ClipSpec, clipCount), // explicit-clips trigger
-			ClipDuration:  25,
-			ChunkDuration: 25,
-		},
-		cfg: OrchestratorConfig{PolicyVersion: "policy-v1"},
-		state: &runState{
-			Plan:          plans,
-			ComposedPaths: paths,
-		},
-		artifactPrep: prep,
-	}
-	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
-		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
-	}
-	// Structural invariant for explicit-timestamps: N+1 artifacts =
-	// N videos + 1 run-level metadata. Per-clip metadata is now
-	// published by step_extract_clips (the extract step emits a
-	// per-parent metadata.json alongside the video clips), so
-	// step_publish only emits the run-level metadata.json for
-	// explicit-timestamps runs. For 8 clips: 8 + 1 = 9.
-	want := clipCount + 1
-	if got := len(prep.artifacts); got != want {
-		t.Fatalf("expected %d prepare calls (%d videos + 1 run-level metadata), got %d", want, clipCount, got)
-	}
-	// Per-clip PathLeafName contract: 8 unique leaves, no shared
-	// folder. This is the HARD regression guard — godlike/07
-	// NO-FAKE-AVAILABILITY: a silent duplicate would shadow real
-	// Drive folders without operator visibility, so the test fails
-	// immediately on any collision (vs the sibling test which only
-	// logs a soft warning).
-	//
-	// The VerifiedArtifact.PathLeafName is the write-side seam (the
-	// value passed to ArtifactPreparation.Prepare). The ChunkState
-	// captures RemoteFileID + RemoteWebViewLink + DrivePath +
-	// RemoteDownloadLink from the PublishedArtifact.Location but
-	// does NOT carry PathLeafName today.
-	//
-	// For explicit-timestamps, artifacts are [video0, video1, ..., videoN, runMeta].
-	// Per-clip metadata is published by step_extract_clips, NOT step_publish.
-	seenLeaves := make(map[string]int, clipCount)
-	for i := 0; i < clipCount; i++ {
-		got := prep.artifacts[i].PathLeafName
-		if got != wantLeaves[i] {
-			t.Errorf("video[%d] (artifact[%d]).PathLeafName = %q, want %q (per-clip leaf from Plan[%d].Title=%q)",
-				i, i, got, wantLeaves[i], i, plans[i].Title)
-		}
-		if prev, dup := seenLeaves[got]; dup {
-			t.Errorf("SHARED FOLDER REGRESSION: video[%d] (artifact[%d]).PathLeafName = %q, but video[%d] already used this leaf — 8 clips must produce 8 unique leaves, not 1 shared folder",
-				i, i, got, prev)
-		}
-		seenLeaves[got] = i
-		if gotRoot := prep.artifacts[i].RootFolderOverride; gotRoot != "drive-root-123" {
-			t.Errorf("video[%d] (artifact[%d]).RootFolderOverride = %q, want %q", i, i, gotRoot, "drive-root-123")
-		}
-	}
-	// godlike/07 fail-closed: 8 unique leaves is the structural
-	// invariant for explicit-clips runs. If the test data + the
-	// production code both work, we MUST see 8 unique leaves.
-	if len(seenLeaves) != clipCount {
-		t.Fatalf("expected %d unique PathLeafName values, got %d (collisions: %v) — perClipLeafName must produce distinct leaves per clip",
-			clipCount, len(seenLeaves), seenLeaves)
-	}
-	// Run-level metadata is exactly ONE, with leaf "metadata"
-	// (run-root in explicit-clips mode — sits alongside the
-	// per-clip video subdirs, NOT inside one of them).
-	metaIdx := clipCount
-	if got := prep.artifacts[metaIdx].PathLeafName; got != "metadata" {
-		t.Errorf("runMeta PathLeafName = %q, want %q (run-root level in explicit-clips mode)", got, "metadata")
-	}
-	if got := prep.artifacts[metaIdx].ArtifactID; got != "stock:run-fingerprint-123:metadata" {
-		t.Errorf("runMeta ArtifactID = %q, want %q", got, "stock:run-fingerprint-123:metadata")
-	}
-	if got := prep.artifacts[metaIdx].RootFolderOverride; got != "drive-root-123" {
-		t.Errorf("runMeta RootFolderOverride = %q, want %q", got, "drive-root-123")
-	}
-	// Legacy MUST be untouched: with no `clips[]` the chunks
-	// share a single PathLeafName (stockTimestampGroupName). This
-	// half of the contract is enforced by
-	// TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName
-	// (3 sub-cases) — flagged here for cross-reference.
-}
-
-// ── PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026) — per-clip PathLeafName ──
-//
-// The pre-PR bug: StockPublishStep stamped the SAME PathLeafName
-// (= stockTimestampGroupName) on every chunk in an explicit-clips
-// run, so 8 Pacquiao/Broner clips landed in 1 Drive subdir instead
-// of 8 per-clip subdirs. The fix gates perClipLeafName(plan) on
-// explicitTimestamps; legacy (no clips[]) stays on the shared
-// timestampGroupName. Tests below pin the per-clip contract at
-// the unit (perClipLeafName) and integration (StockPublishStep.Run)
-// levels.
+// The pre-PR bug: StockPublishStep stamped the same PathLeafName on
+// every chunk in an explicit-clips run, so all 5-second children from
+// the same timestamp block landed in different folders instead of one
+// shared timestamp folder. The fix gates the explicit-clips leaf on
+// the timestamp parent label, not the child clip title.
 
 // TestPerClipLeafName_SlugFromTitle locks the canonical slug
 // derivation for explicit-clips runs. The slug convention matches
@@ -340,21 +204,19 @@ func TestPerClipLeafName_SlugFromTitle(t *testing.T) {
 	}
 }
 
-// TestStockPublishStep_ExplicitClips_PerClipPathLeafName locks the
-// integration contract: when explicitTimestamps is true AND the
-// Plan has per-clip Title set, each chunk lands in its own Drive
-// subdir (slug from Title). The metadata.json sits at the run-root
-// "metadata" leaf. This is the user diagnostic's "non sta creando
-// la subdir correttamente" regression fix — 8 Pacquiao/Broner clips
-// now produce 8 unique leaf folders + 1 run-root metadata subdir.
-func TestStockPublishStep_ExplicitClips_PerClipPathLeafName(t *testing.T) {
+// TestStockPublishStep_ExplicitClips_SharedTimestampPathLeafName locks
+// the integration contract: when explicitTimestamps is true, every
+// 5-second child from the same parent timestamp lands in the SAME Drive
+// folder leaf. The files differ by filename (clip_001.mp4, clip_002.mp4,
+// etc.); the folder leaf is the timestamp block from the run subfolder.
+func TestStockPublishStep_ExplicitClips_SharedTimestampPathLeafName(t *testing.T) {
 	tmpDir := t.TempDir()
 	const clipCount = 8
 	paths := make([]string, clipCount)
 	plans := make([]ClipPlan, clipCount)
-	expectedLeaves := make([]string, clipCount)
 	// Realistic Pacquiao/Broner round titles (subset of the user
-	// diagnostic). Each slug should be unique.
+	// diagnostic. The folder leaf comes from the run subfolder, not
+	// from these child titles.
 	titles := []string{
 		"Round 1 - La fase di studio",
 		"Round 2 - Primi scambi",
@@ -377,18 +239,19 @@ func TestStockPublishStep_ExplicitClips_PerClipPathLeafName(t *testing.T) {
 			EndSec:   float64(30*i + 25),
 			Title:    titles[i],
 		}
-		expectedLeaves[i] = perClipLeafName(plans[i])
 	}
 	prep := &recordingArtifactPreparation{}
+	runInput := &RunInput{
+		FolderName:    "Manny Pacquiao vs Adrien Broner",
+		FolderID:      "wf-8clips",
+		Subfolder:     "Pacquiao_Vs_Broner/Round_7_Broner_barcolla/00-00-32_to_00-01-27",
+		Clips:         make([]ClipSpec, clipCount), // explicit-clips
+		ClipDuration:  25,
+		ChunkDuration: 25,
+	}
 	runner := &publishFakeRunner{
-		runInput: &RunInput{
-			FolderName:    "Manny Pacquiao vs Adrien Broner",
-			FolderID:      "wf-8clips",
-			Clips:         make([]ClipSpec, clipCount), // explicit-clips
-			ClipDuration:  25,
-			ChunkDuration: 25,
-		},
-		cfg: OrchestratorConfig{PolicyVersion: "policy-v1"},
+		runInput: runInput,
+		cfg:      OrchestratorConfig{PolicyVersion: "policy-v1"},
 		state: &runState{
 			Plan:          plans,
 			ComposedPaths: paths,
@@ -397,33 +260,28 @@ func TestStockPublishStep_ExplicitClips_PerClipPathLeafName(t *testing.T) {
 	}
 	if err := (StockPublishStep{}).Run(context.Background(), runner); err != nil {
 		t.Fatalf("StockPublishStep.Run() unexpected error: %v", err)
-	}	// Structural invariant for explicit-timestamps: N+1 artifacts =
-	// N videos + 1 run-level metadata. Per-clip metadata is
-	// published by step_extract_clips. For 8 clips: 8 + 1 = 9.
+	}
+	// Structural invariant for explicit-timestamps: N+1 artifacts =
+	// N videos + 1 run-level metadata. Per-clip metadata is published
+	// by step_extract_clips. For 8 clips: 8 + 1 = 9.
 	want := clipCount + 1
 	if got := len(prep.artifacts); got != want {
 		t.Fatalf("expected %d prepare calls (%d videos + 1 run-level metadata), got %d", want, clipCount, got)
 	}
-	// Per-clip PathLeafName contract: each chunk's leaf matches
-	// perClipLeafName(plan). Artifacts are [video0..videoN, runMeta].
-	seenLeaves := make(map[string]int)
+	// Shared PathLeafName contract: each chunk's leaf matches the
+	// parent timestamp label derived from the run subfolder.
+	wantLeaf := stockTimestampParentGroupName(runInput)
 	for i := 0; i < clipCount; i++ {
 		got := prep.artifacts[i].PathLeafName
-		if got != expectedLeaves[i] {
-			t.Errorf("video[%d] (artifact[%d]).PathLeafName = %q, want %q (per-clip leaf from Plan[%d].Title=%q)",
-				i, i, got, expectedLeaves[i], i, plans[i].Title)
+		if got != wantLeaf {
+			t.Errorf("video[%d] (artifact[%d]).PathLeafName = %q, want %q (shared timestamp leaf)",
+				i, i, got, wantLeaf)
 		}
-		seenLeaves[got]++
 	}
-	// godlike/07 minimum-blast-radius: 8 unique leaves for 8 clips.
-	if len(seenLeaves) < clipCount {
-		t.Logf("WARNING: %d clips produced %d unique leaves (some slugs collide: %v)",
-			clipCount, len(seenLeaves), seenLeaves)
-	}
-	// Run-level metadata is exactly ONE, with leaf "metadata" (run-root).
+	// Run-level metadata lives in the SAME explicit timestamp folder.
 	metaIdx := clipCount
-	if got := prep.artifacts[metaIdx].PathLeafName; got != "metadata" {
-		t.Errorf("runMeta PathLeafName = %q, want %q (run-root level in explicit-clips mode)", got, "metadata")
+	if got := prep.artifacts[metaIdx].PathLeafName; got != wantLeaf {
+		t.Errorf("runMeta PathLeafName = %q, want %q (shared explicit timestamp leaf)", got, wantLeaf)
 	}
 	if got := prep.artifacts[metaIdx].ArtifactID; got != "stock:run-fingerprint-123:metadata" {
 		t.Errorf("runMeta ArtifactID = %q, want %q", got, "stock:run-fingerprint-123:metadata")
@@ -483,8 +341,8 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 	if got := prep.artifacts[0].Description; got != "Pacquiao fires the first clean left." {
 		t.Fatalf("unexpected artifact[0] (video0) description: %q", got)
 	}
-	if got := prep.artifacts[0].PathLeafName; got != "round-1" {
-		t.Fatalf("unexpected artifact[0] (video0) path leaf: %q, want %q (per-clip leaf from Plan.Title slug)", got, "round-1")
+	if got := prep.artifacts[0].PathLeafName; got != "Round_7_Broner_barcolla" {
+		t.Fatalf("unexpected artifact[0] (video0) path leaf: %q, want %q (shared timestamp leaf from Subfolder parent)", got, "Round_7_Broner_barcolla")
 	}
 	// Index 1: video1
 	if got := prep.artifacts[1].ArtifactID; got != "stock:run-fingerprint-123:timestamp:1:video" {
@@ -493,15 +351,15 @@ func TestStockPublishStep_ExplicitClips_PublishesTimestampMetadata(t *testing.T)
 	if got := prep.artifacts[1].Description; got != "Broner tries to reset and circle out." {
 		t.Fatalf("unexpected artifact[1] (video1) description: %q", got)
 	}
-	if got := prep.artifacts[1].PathLeafName; got != "round-2" {
-		t.Fatalf("unexpected artifact[1] (video1) path leaf: %q, want %q (per-clip leaf from Plan.Title slug)", got, "round-2")
+	if got := prep.artifacts[1].PathLeafName; got != "Round_7_Broner_barcolla" {
+		t.Fatalf("unexpected artifact[1] (video1) path leaf: %q, want %q (shared timestamp leaf from Subfolder parent)", got, "Round_7_Broner_barcolla")
 	}
 	// Index 2: runMeta (run-level metadata.json at the run-root "metadata" leaf)
 	if got := prep.artifacts[2].ArtifactID; got != "stock:run-fingerprint-123:metadata" {
 		t.Fatalf("unexpected artifact[2] (runMeta) id: %q", got)
 	}
-	if got := prep.artifacts[2].PathLeafName; got != "metadata" {
-		t.Fatalf("unexpected artifact[2] (runMeta) path leaf: %q, want %q (run-root level in explicit-clips mode)", got, "metadata")
+	if got := prep.artifacts[2].PathLeafName; got != "Round_7_Broner_barcolla" {
+		t.Fatalf("unexpected artifact[2] (runMeta) path leaf: %q, want %q (shared explicit timestamp leaf)", got, "Round_7_Broner_barcolla")
 	}
 	if runner.State().MetadataPublished.LocalPath == "" {
 		t.Fatal("expected metadata published state to be populated")

@@ -14,8 +14,9 @@
 // User-spec contract (DoD 8):
 //  1. 8 timestamp Pacquiao/Broner payload → 8 ClipPlan
 //  2. → 8 video.mp4 on disk (synthetic 1769s source via ffmpeg)
-//  3. → 8 unique Drive subdirs (one per chunk; the per-clip
-//     PathLeafName cascade Slug→Title→start-end literal)
+//  3. → 1 shared Drive subdir per timestamp block (parent leaf
+//     derived from the JSON timestamp label, with all child clips
+//     stored inside that folder)
 //  4. → 1 metadata.json (the run-root aggregate) describing all 8 chunks
 //  5. → RunSummary.Manifest shows real chunks/links/indexing
 //
@@ -58,8 +59,9 @@ import (
 // Each round is 5s long, starting at distinct offsets within the 1769s
 // synthetic source. The Round field carries the boxing round number for
 // the Qdrant semantic-payload enrichment path; Slug cascades into
-// the per-clip PathLeafName ("round-1"…"round-8") which is the
-// canonical Drive subdir discriminator the test asserts on.
+// the shared timestamp-parent PathLeafName ("Round_1_La_fase_di_studio"
+// in the canonical run) which is the Drive subdir discriminator the
+// test asserts on.
 //
 // Timeline (per user spec: 5s clips at distinct offsets within 1769s):
 //
@@ -456,8 +458,9 @@ func generateSyntheticSource(t *testing.T, ffmpegPath, outputPath string, durati
 //  2. Builds an 8-clip Pacquiao/Broner timestamp payload with
 //     distinct Start/End times within the 1769s source, distinct
 //     Round numbers (1-8), distinct Tags, and per-clip Slug
-//     ("round-1"…"round-8") that cascades into the per-clip
-//     PathLeafName (the canonical Drive subdir discriminator).
+//     ("round-1"…"round-8") that still threads through metadata,
+//     while the Drive folder leaf comes from the timestamp-parent
+//     JSON label.
 //  3. Wires the canonical Orchestrator with:
 //     - syntheticStager (returns the source path + DurationSec=1769
 //     pre-populated so step_extract_clips uses the fast path)
@@ -474,7 +477,7 @@ func generateSyntheticSource(t *testing.T, ffmpegPath, outputPath string, durati
 //  4. Calls Orchestrator.RunResilient with the 8-clip payload.
 //  5. Asserts:
 //     - 8 video.mp4 on disk (the cut files from ffmpegCutter)
-//     - 8 unique PathLeafName values in the recorded artifacts
+//     - 1 shared PathLeafName across the video artifacts
 //     (one per chunk — the canonical Drive subdir discriminator)
 //     - 1 metadata entry + 8 video entries in RunSummary.Manifest
 //     - 8 distinct Location.WebViewLink values in the recorded artifacts
@@ -574,7 +577,7 @@ func TestStockE2E_Timestamp_8Clips_PacquiaoBroner(t *testing.T) {
 		ChunkDuration: 5,
 		FolderName:    "Pacquiao_Vs_Broner",
 		FolderID:      "fake-folder-id-dod-8",
-		Subfolder:     "Pacquiao_Vs_Broner",
+		Subfolder:     "Pacquiao_Vs_Broner/Round_1_La_fase_di_studio/00-00-32_to_00-03_51",
 	})
 	if err != nil {
 		t.Fatalf("RunResilient failed: %v", err)
@@ -613,52 +616,37 @@ func TestStockE2E_Timestamp_8Clips_PacquiaoBroner(t *testing.T) {
 		}
 	}
 
-	// ── 7. Assert: 8 unique Drive subdirs (per-chunk PathLeafName) ─
-	// prep.inputs contains 9 entries: 8 video chunks + 1 metadata
-	// (PathLeafName="metadata"). The user spec literal "8 unique
-	// Drive subdirs" refers to the 8 per-chunk video subdirs; the
-	// metadata subdir is a separate run-root sibling (canonical
-	// per PR-STOCK-TIMESTAMP-CLIPS Front 3). Filter metadata from
-	// the per-chunk assertion so the 8-subdir count is exact.
+	// ── 7. Assert: one shared Drive subdir for the timestamp block ─
+	// prep.inputs contains the explicit-clips artifacts published by
+	// the pipeline. Every artifact should share the same timestamp
+	// parent leaf derived from the JSON subfolder.
+	wantLeaf := stockTimestampParentGroupName(&RunInput{
+		Subfolder: "Pacquiao_Vs_Broner/Round_1_La_fase_di_studio/00-00-32_to_00-03_51",
+	})
 	seenLeaves := make(map[string]int)
-	videoChunkCount := 0
 	for i, art := range prep.inputs {
-		if art.Kind == finalization.KindMetadata {
-			// Metadata is the run-root aggregate, not a per-chunk
-			// subdir. Excluded from the 8-chunk subdir count.
-			continue
-		}
-		videoChunkCount++
 		if art.PathLeafName == "" {
-			t.Errorf("video artifact %d missing PathLeafName: %+v", i, art)
+			t.Errorf("artifact %d missing PathLeafName: %+v", i, art)
 			continue
 		}
 		seenLeaves[art.PathLeafName]++
 	}
-	if videoChunkCount != 8 {
-		t.Errorf("expected 8 video chunks + 1 metadata (9 total in prep.inputs), got %d video chunks", videoChunkCount)
-	}
-	if len(seenLeaves) != 8 {
-		t.Errorf("expected 8 unique PathLeafName values (one Drive subdir per video chunk), got %d: %v", len(seenLeaves), seenLeaves)
+	if len(seenLeaves) != 1 {
+		t.Errorf("expected 1 shared PathLeafName value (one Drive subdir per timestamp block), got %d: %v", len(seenLeaves), seenLeaves)
 	}
 	for leaf, count := range seenLeaves {
-		if count != 1 {
-			t.Errorf("PathLeafName %q appears %d times — duplicate Drive subdir (godlike/07 NO-FAKE-AVAILABILITY: each chunk must land in its own subdir)", leaf, count)
+		if leaf != wantLeaf {
+			t.Errorf("shared PathLeafName = %q, want %q (derived from JSON timestamp label)", leaf, wantLeaf)
 		}
-	}
-	// Verify the Slug cascade produced the expected per-clip subdir names
-	// (round-1 … round-8 from the make8PacquiaoBronerClips Slug field).
-	for i := 1; i <= 8; i++ {
-		expected := fmt.Sprintf("round-%d", i)
-		if _, ok := seenLeaves[expected]; !ok {
-			t.Errorf("missing PathLeafName %q — Slug cascade Slug→Title→start-end literal should produce this for chunk %d", expected, i)
+		if count != len(prep.inputs) {
+			t.Errorf("PathLeafName %q appears %d times — all explicit artifacts should share the timestamp folder (got %d total artifacts)", leaf, count, len(prep.inputs))
 		}
 	}
 
 	// ── 8. Assert: 8 distinct Drive links (Location.WebViewLink + FileID) ─
 	// Same filter: prep.results has 9 entries (8 video + 1 metadata).
-	// Assert on the 8 video Drive links; the metadata gets its own
-	// subdir at the run-root (validated separately via the manifest).
+	// Assert on the 8 video Drive links; metadata shares the same
+	// timestamp folder and is validated separately via the manifest.
 	// Use parallel-index lookup against prep.inputs (the inputs and
 	// results arrays are populated 1:1 in Prepare) so we filter by
 	// Kind accurately — the recording fixture sets Provider:"drive"

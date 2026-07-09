@@ -3,8 +3,8 @@ package scripts
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -327,3 +327,48 @@ func (r *ScriptRepository) UpdateScriptFinalContent(ctx context.Context, id int6
 	`, text, text, wordCount, status, metadataJSON, model, baseURL, version, id)
 	return err
 }
+
+// SaveManifestV2 (PR 1, July 2026, SCRIPT-DOWNSTREAM-CUTOVER wave)
+// persists the canonical NEW-mode downstream-fan-out manifest bound
+// to the given scriptID. The manifest is the JSON-marshalled
+// script.ManifestV2 (pre-marshalled by the caller via
+// json.Marshal before the port-adapter layer; the concrete impl
+// writes the bytes verbatim to the `manifest_v2 TEXT` column
+// introduced by migration 134).
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: the
+// *ScriptRepository concrete is the SOLE writer of the manifest_v2
+// column. No other code path mutates the column (the adapter just
+// passes bytes; the persistence processor is the only caller).
+//
+// godlike/07 fail-closed: an empty/zero payload returns
+// ErrSaveManifestV2Empty so the caller surfaces a typed sentinel
+// (NOT a silent "I wrote nothing" success that would mask a
+// caller-side bug).
+//
+// Idempotency: the call is an UPSERT keyed on scriptID — a
+// re-publish of the same manifest overwrites the column
+// (rows_affected = 1 on UPDATE; = 0 if scriptID not found). The
+// dispatcher's fan-out uses the canonical NEW-mode (NoInlineAssets
+// true) per the godlike/07 no-fake-availability contract.
+func (r *ScriptRepository) SaveManifestV2(ctx context.Context, scriptID int64, manifest []byte) error {
+	if len(manifest) == 0 {
+		return ErrSaveManifestV2Empty
+	}
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE scripts
+		SET manifest_v2 = ?, updated_at = datetime('now')
+		WHERE id = ?
+	`, string(manifest), scriptID)
+	if err != nil {
+		return fmt.Errorf("failed to save manifest_v2 for script %d: %w", scriptID, err)
+	}
+	return nil
+}
+
+// ErrSaveManifestV2Empty is the canonical godlike/07 typed
+// sentinel for the empty-payload fail-closed path. Callers
+// (PersistenceProcessor) probe with errors.Is to surface a typed
+// diagnostic at composition time rather than masking the failure
+// as a generic sql error.
+var ErrSaveManifestV2Empty = errors.New("scripts: SaveManifestV2 requires a non-empty manifest payload (empty bytes would silently overwrite the column with an empty string — caller bug)")

@@ -15,6 +15,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -278,6 +279,35 @@ func (a *sqliteRepoAdapter) FindScriptByIdempotencyKey(ctx context.Context, item
 	}
 	return fromSQLiteScriptRecord(rec), true, nil
 }
+
+// SaveManifestV2 (PR 1, July 2026, SCRIPT-DOWNSTREAM-CUTOVER wave)
+// bridges the port-level SaveManifestV2 to the concrete SQLite
+// implementation. The bytes are passed verbatim — the adapter does
+// NOT re-marshal (the caller already marshaled the typed
+// script.ManifestV2 to JSON before calling SaveManifestV2 per the
+// port contract).
+//
+// godlike/07 fail-closed: a nil adapter or nil inner pointer
+// returns errSaveManifestV2AdapterNotWired so the caller surfaces
+// a typed sentinel (NOT a nil-pointer panic) at composition time.
+func (a *sqliteRepoAdapter) SaveManifestV2(ctx context.Context, scriptID int64, manifest ports.ScriptManifestJSON) error {
+	if a == nil || a.inner == nil {
+		return errSaveManifestV2AdapterNotWired
+	}
+	return a.inner.SaveManifestV2(ctx, scriptID, manifest)
+}
+
+// errSaveManifestV2AdapterNotWired is the canonical godlike/07 typed
+// sentinel for the nil-adapter / nil-inner composition failure.
+// Exposed as ErrSaveManifestV2AdapterNotWired below for callers that
+// probe with errors.Is.
+var errSaveManifestV2AdapterNotWired = errors.New("adapters: SaveManifestV2 adapter not wired (composition root must pass a non-nil *sqlitescripts.ScriptRepository)")
+
+// ErrSaveManifestV2AdapterNotWired is the exported form of the
+// adapter-nil sentinel. Callers (PersistenceProcessor) probe with
+// errors.Is to surface a typed diagnostic at composition time
+// rather than masking the failure as a generic sql error.
+var ErrSaveManifestV2AdapterNotWired = errSaveManifestV2AdapterNotWired
 
 func computeAdapterIdempotencyKey(itemID, cacheKey, promptVersion string, targetWords int, language string) string {
 	tuple := fmt.Sprintf("%s|%s|%s|%d|%s", itemID, cacheKey, promptVersion, targetWords, language)

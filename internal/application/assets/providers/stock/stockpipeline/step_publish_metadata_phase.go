@@ -109,15 +109,14 @@ func publishMetadataPhase(
 			ErrStockPublishArtifactFailed, metaIdemErr)
 	}
 	// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): metadata.json
-	// sits at the run-root level in explicit-clips mode (the
-	// canonical "metadata/" subdir alongside the per-clip video
-	// subdirs like round-1/, round-2/). Legacy stays on the shared
+	// sits inside the shared explicit timestamp parent folder (the
+	// same leaf used by the child clips). Legacy stays on the shared
 	// timestampGroupName leaf (preserves the legacy
 	// TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName
 	// invariant for the metadata artifact).
 	var metaLeafName string
 	if explicitTimestamps {
-		metaLeafName = "metadata"
+		metaLeafName = timestampGroupName
 	} else {
 		metaLeafName = timestampGroupName
 	}

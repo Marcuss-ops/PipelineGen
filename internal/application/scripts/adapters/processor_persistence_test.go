@@ -59,6 +59,13 @@ type idemFakeRepo struct {
 	saveCalls atomic.Int32
 	lastRec   *ScriptRecord
 
+	// PR 1 (SCRIPT-DOWNSTREAM-CUTOVER wave): SaveManifestV2 audit
+	// fields so the 4 manifest emit TDD tests can assert the
+	// canonical NEW-mode write seam.
+	saveManifestCalls    atomic.Int32
+	lastManifestScriptID int64
+	lastManifest         []byte
+
 	// seedHash: when non-empty AND non-nil, return the seed
 	// record with found=true from FindScriptByIdempotencyKey.
 	seedHash string
@@ -120,6 +127,16 @@ func (f *idemFakeRepo) FindScriptByIdempotencyKey(_ context.Context, _, _, _ str
 		return nil, false, nil
 	}
 	return f.seedRec, true, nil
+}
+
+// SaveManifestV2 (PR 1, SCRIPT-DOWNSTREAM-CUTOVER wave) records the
+// pre-marshalled manifest bytes + scriptID so TDD tests can assert
+// the canonical NEW-mode write seam.
+func (f *idemFakeRepo) SaveManifestV2(_ context.Context, scriptID int64, manifest []byte) error {
+	f.saveManifestCalls.Add(1)
+	f.lastManifestScriptID = scriptID
+	f.lastManifest = append([]byte(nil), manifest...)
+	return nil
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────

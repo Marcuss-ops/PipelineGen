@@ -189,19 +189,14 @@ func publishChunkPhase(
 			return nil, fmt.Errorf("%w: chunk %d (artifact=%s) idem-key: %v",
 				ErrStockPublishArtifactFailed, i, cs.ArtifactID, idemErr)
 		}
-		// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): per-clip
-		// PathLeafName for explicit-clips runs (each clip lands in
-		// its own Drive subdir, e.g. round-1/, round-7-broner-barcolla/).
-		// Legacy (no clips[]) stays on the shared timestampGroupName
-		// to preserve the TestStockPublishStep_LegacyMultipleChunks_SharedPathLeafName
-		// invariant — godlike/07 minimum-blast-radius gates the new
-		// behavior strictly on explicitTimestamps.
+		// PR-STOCK-TIMESTAMP-CLIPS Front 3 (July 2026): explicit-clips
+		// PathLeafName uses the shared explicit timestamp parent folder
+		// (all 5-second children from the same parent timestamp land in
+		// the same Drive folder). Legacy (no clips[]) also stays on
+		// timestampGroupName, so the two modes now agree on the parent
+		// leaf and differ only in how many files are placed under it.
 		var leafName string
-		if explicitTimestamps {
-			leafName = timestampParentLeafName(plan)
-		} else {
-			leafName = timestampGroupName
-		}
+		leafName = timestampGroupName
 		va := finalization.VerifiedArtifact{
 			ArtifactID:     cs.ArtifactID,
 			Kind:           finalization.KindVideo,

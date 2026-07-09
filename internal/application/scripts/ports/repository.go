@@ -16,6 +16,7 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -59,7 +60,52 @@ type ScriptRepository interface {
 	// PR 5 (June 2026): required by PersistenceProcessor for the
 	// single-writer contract.
 	FindScriptByIdempotencyKey(ctx context.Context, itemID, cacheKey, promptVersion string, targetWords int, language string) (*ScriptRecord, bool, error)
+
+	// SaveManifestV2 persists the canonical ManifestV2 envelope
+	// (NEW-mode downstream fan-out manifest) bound to the given
+	// scriptID. PR 1 (July 2026, SCRIPT-DOWNSTREAM-CUTOVER wave):
+	// the canonical typed surface for the Step 11A downstream
+	// fan-out; replaces the legacy inline voice/image collection
+	// on the script manifest. Caller is the SOLE writer
+	// (PersistenceProcessor) per godlike/06 one-canonical-owner-
+	// per-fact — no other port consumer writes the manifest_v2
+	// column.
+	//
+	// The manifest is JSON-marshalled into the dedicated
+	// `manifest_v2 TEXT` column. NoInlineAssets=true is the
+	// canonical NEW-mode marker; the zero-value &ManifestV2{} is
+	// rejected at the column level (SaveManifestV2 is
+	// fail-closed: a nil manifest returns a typed error
+	// ErrSaveManifestV2NilManifest).
+	//
+	// Idempotency: the call is treated as an UPSERT keyed on
+	// scriptID — a re-publish of the same manifest overwrites the
+	// column. The ON CONFLICT DO UPDATE semantics preserve the
+	// canonical write-seam without violating godlike/07 fail-fast.
+	//
+	// The `manifest` argument is the pre-marshalled JSON bytes of
+	// script.ManifestV2 (port alias ScriptManifestJSON). The
+	// caller (PersistenceProcessor) marshals the typed
+	// ManifestV2 to JSON via json.Marshal and passes the bytes
+	// verbatim. The port stays decoupled from the
+	// DownstreamRequest type tree; the concrete impl writes the
+	// bytes to the `manifest_v2 TEXT` column directly.
+	SaveManifestV2(ctx context.Context, scriptID int64, manifest ScriptManifestJSON) error
 }
+
+// ErrSaveManifestV2NilManifest reports a nil/empty ManifestV2 payload
+// passed to SaveManifestV2. The port is fail-closed: callers must
+// marshal a real manifest before invoking the repository.
+var ErrSaveManifestV2NilManifest = errors.New("scripts repository: nil manifest_v2")
+
+// ScriptManifestJSON is the port-level alias for the
+// pre-marshalled JSON payload of script.ManifestV2. Persistence
+// Processor marshals the typed ManifestV2 to JSON, then passes the
+// bytes verbatim. The port stays decoupled from the domain type
+// tree (the canonical ManifestV2 + DownstreamRequest + nested
+// AssetRequirements live in internal/domain/script and are NOT
+// imported by the port).
+type ScriptManifestJSON = []byte
 
 // ScriptListFilter is the filter for listing scripts.
 type ScriptListFilter struct {

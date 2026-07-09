@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -159,7 +160,13 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 			Source:         "image",
 			MediaType:      asset.MediaTypeImage,
 			LifecycleState: asset.StateStaging,
+			CreatedAt:      time.Now(),
 		}
+		dispAsset.SetDriveFileID(driveFileID)
+		dispAsset.SetDriveLink(s.FormatDriveLink(driveFileID))
+		dispAsset.SetLocalPath(dest.RelativePath)
+		dispAsset.SetFileHash(hash)
+
 		if err := s.dispatcher.EnqueueAndIndex(ctx, dispAsset, hash); err != nil {
 			if s.log != nil {
 				s.log.Warn("Qdrant indexing enqueue failed for retrieved image",

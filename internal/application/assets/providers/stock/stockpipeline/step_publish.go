@@ -89,6 +89,10 @@ func (StockPublishStep) Run(ctx context.Context, runner StepRunner) error {
 	rootFolderName := stockRootFolderName(in)
 	rootFolderOverride := stockRootFolderOverride(in)
 	timestampGroupName := stockTimestampGroupName(in)
+	explicitTimestampGroupName := stockTimestampParentGroupName(in)
+	if explicitTimestamps {
+		timestampGroupName = explicitTimestampGroupName
+	}
 
 	// Phase 1: per-chunk AssetPreparation ladder (see
 	// step_publish_chunks_phase.go). Returns built ChunkState
