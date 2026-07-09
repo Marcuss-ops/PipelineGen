@@ -118,8 +118,13 @@ var rootOverrideAllowedPrefixes = []string{
 //     (Drive canary + folder checker) that need RootFolderOverride
 //     to target specific Drive folders for canary uploads.
 var rootOverrideAllowedFiles = map[string]bool{
-	"internal/application/assets/delivery/types.go":          true,
-	"internal/application/system/health/readyz_checkers.go":  true,
+	"internal/application/assets/delivery/types.go": true,
+	// PR-P12-HEALTH-CHECKER-SPLIT: readyz_checkers.go was decomposed into 4 sister files
+	// (readyz_checkers.go orchestrator + readyz_checkers_tools.go + readyz_checkers_canary.go +
+	// readyz_checkers_fase6.go). The 2 files that reference RootFolderOverride are the
+	// canary probe (uploads a test file to verify publisher) and fase6 (folder checker).
+	"internal/application/system/health/readyz_checkers_fase6.go":  true,
+	"internal/application/system/health/readyz_checkers_canary.go": true,
 	// PR-P12-STOCK-PIPELINE-WHITELIST (July 2026): stock pipeline
 	// uses VerifiedArtifact.RootFolderOverride to pass the caller's
 	// explicit drive_folder_id through the finalization domain type
@@ -129,8 +134,11 @@ var rootOverrideAllowedFiles = map[string]bool{
 	// DestinationRegistry — deferred to PR-P12-STOCK-SEMANTIC-ROUTING
 	// (deadline 2026-09-01). The 8 violations are architecturally
 	// justified: callers pass explicit folder IDs via the API.
-	"internal/application/assets/providers/stock/stockpipeline/step_publish.go":       true,
-	"internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go": true,
+	"internal/application/assets/providers/stock/stockpipeline/step_publish.go":                true,
+	"internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go":          true,
+	"internal/application/assets/providers/stock/stockpipeline/step_publish_chunks_phase.go":   true,
+	"internal/application/assets/providers/stock/stockpipeline/step_publish_metadata_phase.go": true,
+	"internal/application/assets/providers/stock/stockpipeline/step_publish_naming.go":         true,
 	// PR-P12-ARTLIST-WHITELIST (July 2026): artlist destination_service
 	// uses RootFolderOverride for non-media-root explicit folder
 	// targeting; semantic_enricher_metadata uses it for metadata.json
@@ -154,6 +162,10 @@ var rootOverrideAllowedFiles = map[string]bool{
 	// to full semantic routing. The field is the canonical owner of
 	// PublishRequest shape; reading it in a PathBuilder is NOT a violation.
 	"internal/application/assets/delivery/registry.go": true,
+	// PR-P12-IMAGES-WHITELIST (July 2026): images/storage_service.go passes
+	// req.DriveRootOverride from the AssetDestinationRequest into the Publisher.
+	// This is a legitimate operator-supplied folder override for image storage.
+	"internal/application/images/storage_service.go": true,
 }
 
 // rootOverrideForbiddenPrefixes enumerates the production Go
