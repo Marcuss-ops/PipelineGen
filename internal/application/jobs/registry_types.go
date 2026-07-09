@@ -1,12 +1,16 @@
 // Package jobs — registry_types.go (PR-SPLIT-JOBS-REGISTRY-DEFINITIONS, July 2026).
 //
 // godlike/06 SSOT (one-canonical-owner-per-fact): this file is the
-// canonical SOLE owner of the registry's per-job-type data shapes:
+// canonical RE-EXPORT surface for the registry's per-job-type data shapes.
+// The canonical string literals live in internal/domain/job/job.go
+// (per godlike/02 §Capability-specific constants stay in their owning
+// domain package). Every Type* constant here is an alias (= job.TypeXxx)
+// — ZERO new string literals.
 //
 //   - RegistryEntry + JobPolicy (type alias) — the per-job-type
 //     policy record surface (Wave 19 / P1-9, June 2026).
-//   - The full Type... identifier block — every canonical string
-//     jobType that any registration or producer references.
+//   - The full Type... identifier block — RE-EXPORTS every canonical
+//     string jobType from internal/domain/job/job.go.
 //
 // Lookup paths preserved: jobs.RegistryEntry{...}, jobs.JobPolicy{...},
 // and every `jobs.Type*` constant resolve identically pre/post split
@@ -119,32 +123,34 @@ type RegistryEntry struct {
 // Wave-19 surface is a field-additive change, not a struct rename.
 type JobPolicy = RegistryEntry
 
-// ── Standard job.Job Types — canonical SSOT block ──────────────────────
+// ── Standard job.Job Types — RE-EXPORT block ──────────────────────────
 //
-// Each constant is the canonical string identifier. These are the SSOT; no
-// other package should define job type string literals.
+// Each constant is an alias to the canonical SSOT in internal/domain/job/job.go.
+// Per godlike/06 one-canonical-owner-per-fact: ZERO new string literals here;
+// every value resolves to a domain/job constant.
 const (
-	TypeMediaExtract          = "media.extract"
-	TypeMediaStock            = "media.stock"
-	TypeVoiceoverBatch        = "voiceover.batch"
-	TypeVoiceoverGenerate     = job.TypeVoiceoverGenerate
-	TypeSubtitleGenerate      = "subtitle.generate"
-	TypeRenderVideo           = "render.video"
-	TypeYouTubeUpload         = "youtube.upload"
-	TypeYouTubeClipExtract    = "youtube_clip.extract"
-	TypeCatalogSync           = "catalog.sync"
-	TypeArtlistRun            = "media.artlist"
-	TypeSystemCleanup         = "system.cleanup"
-	TypeMediaGenerate         = "media.generate_missing_asset"
-	TypeVideoGenerate         = "video.generate"
-	TypeBooksProcess          = "books.process"
-	TypeLessonsProcess        = "lessons.process"
-	TypeMediaReindex          = "media.reindex"
-	TypeMediaEnrich           = job.TypeMediaEnrich
-	TypeYouTubeRebuildST      = "youtube.rebuild_search_text"
-	TypeScriptGenerate        = job.TypeScriptGenerate
-	TypeBulUploadYouTubeClips = "media.bulk_upload_youtube_clips"
-	TypeDriveFolderSync       = "drive.folder.sync"
+	TypeMediaExtract       = job.TypeMediaExtract
+	TypeMediaStock         = job.TypeMediaStock
+	TypeVoiceoverBatch     = job.TypeVoiceoverBatch
+	TypeVoiceoverGenerate  = job.TypeVoiceoverGenerate
+	TypeSubtitleGenerate   = job.TypeSubtitleGenerate
+	TypeRenderVideo        = job.TypeRenderVideo
+	TypeYouTubeUpload      = job.TypeYouTubeUpload
+	TypeYouTubeClipExtract = job.TypeYouTubeClipExtract
+	TypeCatalogSync        = job.TypeCatalogSync
+	TypeArtlistRun         = job.TypeArtlistRun
+	TypeSystemCleanup      = job.TypeSystemCleanup
+	TypeMediaGenerate      = job.TypeMediaGenerate
+	TypeVideoGenerate      = job.TypeVideoGenerate
+	TypeBooksProcess       = job.TypeBooksProcess
+	TypeLessonsProcess     = job.TypeLessonsProcess
+	TypeMediaReindex       = job.TypeMediaReindex
+	TypeMediaEnrich        = job.TypeMediaEnrich
+	TypeYouTubeRebuildST   = job.TypeYouTubeRebuildST
+	TypeScriptGenerate     = job.TypeScriptGenerate
+	// Deprecated: use TypeBulkUploadYouTubeClips. Kept for backward-compat.
+	TypeBulUploadYouTubeClips = job.TypeBulkUploadYouTubeClips
+	TypeDriveFolderSync       = job.TypeDriveFolderSync
 	TypeMediaCurate           = job.TypeMediaCurate
 	TypeVoiceoverPromo        = job.TypeVoiceoverPromo
 	// TypeVoiceoverGenerateItem is the per-language child job scheduled by the
@@ -153,7 +159,7 @@ const (
 	// regulated by the registry's per-job-type Concurrency field
 	// (configured at compose time), NOT by goroutines inside the API.
 	TypeVoiceoverGenerateItem = job.TypeVoiceoverGenerateItem
-	TypeImageGenerateGoogle   = "image.generate.google"
+	TypeImageGenerateGoogle   = job.TypeImageGenerateGoogle
 
 	// P0 Commit 2 (July 2026) canonical aliases — declared in this block
 	// (NOT in codec.go) so the package-level re-export surface stays in
@@ -212,7 +218,7 @@ const (
 	// the existing asset.published outbox event (Wave 5
 	// SEMANTIC-LOCATION-API). The broker's legacy Complete is the
 	// canonical mark-SUCCEEDED seam — no per-item finalizer needed.
-	TypeMediaStockRLMEnrich = "media.stock_rlm_enrich"
+	TypeMediaStockRLMEnrich = job.TypeMediaStockRLMEnrich
 
 	// PR-GEMMA-EXTRACT-IMPORTANT (July 2026): per-LLM-segment fan-out
 	// clip extractor for POST /api/clips/extract-important. Canonical

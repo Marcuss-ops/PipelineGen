@@ -7,7 +7,7 @@
 // boundary. Future code should import internal/kernel/job directly.
 //
 // What stayed in domain/job (intentionally NOT migrated to kernel):
-//   - 22 Type* string constants (job.Type discriminator constants).
+//   - Type* string constants (job.Type discriminator constants).
 //     These are CAPABILITY-SPECIFIC (TypeMediaExtract lives with the
 //     media capability, TypeScriptGenerate with the scripts capability,
 //     etc.) and fail the ≥2-capability kernel eligibility rule. They
@@ -187,4 +187,10 @@ const (
 	// batch envelope; the broker's legacy Complete marks the job SUCCEEDED
 	// without trying to persist artifacts (the per-clip tx already did).
 	TypeYouTubeClipExtractImportant = "youtube.clip_extract_important"
+
+	// PR-011A (July 2026): post-publish RLM/LLM enrichment pass.
+	TypeMediaStockRLMEnrich = "media.stock_rlm_enrich"
+
+	// TypeImageGenerateGoogle is the job type for Google Slides image generation.
+	TypeImageGenerateGoogle = "image.generate.google"
 )
