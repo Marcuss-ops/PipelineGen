@@ -119,10 +119,6 @@ func (b *SceneAssetBinder) BindClips(
 	if plan == nil {
 		return BindClipsResult{}
 	}
-	// Issue #2 (June 2026): ClipIDs renamed to AcceptedClipIDs.
-	if plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0 {
-		return BindClipsResult{}
-	}
 
 	heuristicEngaged := false
 
@@ -140,7 +136,10 @@ func (b *SceneAssetBinder) BindClips(
 		if cleanedText == "" {
 			return BindClipsResult{}
 		}
-		n := len(plan.ClipEvidence.AcceptedClipIDs)
+		n := 8 // Fallback to 8 scenes if no clips are accepted
+		if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
+			n = len(plan.ClipEvidence.AcceptedClipIDs)
+		}
 		if plan.NumClips > 0 && plan.NumClips < n {
 			n = plan.NumClips
 		}
@@ -153,7 +152,7 @@ func (b *SceneAssetBinder) BindClips(
 		if b.log != nil {
 			b.log.Info("clip_bindings: prose-fallback heuristic engaged",
 				zap.Int("synthesized", len(synthesized)),
-				zap.Int("clips", len(plan.ClipEvidence.AcceptedClipIDs)))
+				zap.Int("clips", n))
 		}
 	}
 
@@ -166,11 +165,13 @@ func (b *SceneAssetBinder) BindClips(
 	// DriveLinks map + sort.Strings. The resolver's order is
 	// preserved; clips bind to scenes 1:1 in arrival order.
 	// Issue #2 (June 2026): ClipIDs renamed → AcceptedClipIDs.
-	clipIDs := plan.ClipEvidence.AcceptedClipIDs
-
-	// Respect NumClips limit.
-	if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
-		clipIDs = clipIDs[:plan.NumClips]
+	var clipIDs []string
+	if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
+		clipIDs = plan.ClipEvidence.AcceptedClipIDs
+		// Respect NumClips limit.
+		if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
+			clipIDs = clipIDs[:plan.NumClips]
+		}
 	}
 
 	// One clip per scene — no modulo cycling. Extra scenes beyond
@@ -203,9 +204,8 @@ func (b *SceneAssetBinder) BindClips(
 		b.log.Info("clip_bindings: assigned clips to scenes",
 			zap.Int("scenes", len(scenes)),
 			zap.Int("clips_bound", bindCount),
-			zap.Int("clips_available", len(plan.ClipEvidence.AcceptedClipIDs)),
-			zap.Int("scenes_unbound", len(scenes)-bindCount),
-			zap.Strings("clip_ids", clipIDs[:bindCount]))
+			zap.Int("clips_available", len(clipIDs)),
+			zap.Int("scenes_unbound", len(scenes)-bindCount))
 	}
 
 	result := BindClipsResult{Changed: true}

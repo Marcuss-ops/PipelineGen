@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // Verify reports DB/local/Drive coherence for a single clip.
@@ -100,8 +101,8 @@ func (s *ClipOpsService) verifyClip(ctx context.Context, source string, repo Cli
 	if driveLink != "" {
 		report.HasDriveLink = true
 		report.DriveLink = driveLink
-		fileID = ExtractDriveFolderID(driveLink)
-		if fileID != "" {
+		fileID, err := urlutil.FileIDFromDriveLink(driveLink)
+		if err == nil && fileID != "" {
 			report.DriveFileID = fileID
 			report.DriveLinkValid = true
 		} else {

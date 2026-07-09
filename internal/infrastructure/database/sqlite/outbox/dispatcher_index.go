@@ -47,6 +47,9 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 	if clip == nil || clip.ID == "" {
 		return errors.New("clip with non-empty ID is required")
 	}
+	if contentHash == "" {
+		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for clip %s (supersede gate cannot function without a content fingerprint — callers must set file_hash before dispatching)", clip.ID)
+	}
 	// Folders are not vector-indexable.
 	if clip.IsFolder() {
 		return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {

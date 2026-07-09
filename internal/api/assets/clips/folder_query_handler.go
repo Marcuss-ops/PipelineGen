@@ -142,6 +142,38 @@ func (oh *OpsHandler) GetFolderChildren(c *gin.Context) {
 
 	var children []*asset.AssetNode
 	var err error
+	var clipChildren []*asset.Asset
+	var clipErr error
+
+	if repo != nil {
+		clipChildren, clipErr = repo.ListByFolderID(ctx, folderID)
+		if clipErr == nil {
+			for _, clip := range clipChildren {
+				children = append(children, appclips.TreeNodeToAssetNode(appclips.ClipToAssetNode(clip)))
+			}
+			if len(children) > 0 {
+				if limit > 0 && limit < len(children) {
+					children = children[:limit]
+				}
+				if offset > 0 {
+					if offset >= len(children) {
+						children = []*asset.AssetNode{}
+					} else {
+						children = children[offset:]
+					}
+				}
+				apiutil.OK(c, gin.H{
+					"ok":       true,
+					"source":   source,
+					"count":    len(children),
+					"children": children,
+				})
+				return
+			}
+		} else {
+			err = clipErr
+		}
+	}
 
 	if oh.assetTreeSvc != nil {
 		treeNodes, treeErr := oh.assetTreeSvc.ListChildrenPaged(ctx, source, folderID, limit, offset)
@@ -149,19 +181,15 @@ func (oh *OpsHandler) GetFolderChildren(c *gin.Context) {
 			for _, tn := range treeNodes {
 				children = append(children, appclips.TreeNodeToAssetNode(tn))
 			}
-		} else {
-			err = treeErr
+			apiutil.OK(c, gin.H{
+				"ok":       true,
+				"source":   source,
+				"count":    len(children),
+				"children": children,
+			})
+			return
 		}
-	} else {
-		children = []*asset.AssetNode{}
-		clipChildren, clipErr := repo.GetFolderChildren(ctx, folderID)
-		if clipErr == nil {
-			for _, clip := range clipChildren {
-				children = append(children, appclips.TreeNodeToAssetNode(appclips.ClipToAssetNode(clip)))
-			}
-		} else {
-			err = clipErr
-		}
+		err = treeErr
 	}
 
 	if err != nil {

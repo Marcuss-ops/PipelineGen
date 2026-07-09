@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 // FixHash orchestrates the fix-hash recovery flow:
@@ -47,8 +49,8 @@ func (s *ClipOpsService) FixHash(ctx context.Context, source, clipID string) (*F
 	if driveLink == "" {
 		return nil, ErrFixHashMissingDriveLink
 	}
-	fileID := ExtractDriveFolderID(driveLink)
-	if fileID == "" {
+	fileID, err := urlutil.FileIDFromDriveLink(driveLink)
+	if err != nil || fileID == "" {
 		return nil, fmt.Errorf("fix-hash: drive_link %q has no extractable file id", driveLink)
 	}
 	if s.driveUploader == nil {

@@ -19,10 +19,13 @@ package images
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -30,9 +33,28 @@ import (
 
 // ensureStarted launches the persistent worker if not already running.
 // Must be called while p.mu is held.
+//
+// If the worker was previously started but the process has died (broken pipe,
+// EOF on stdout, etc.), this method detects the failure, resets the worker
+// state, and relaunches the subprocess. This prevents a permanently stuck
+// provider after the Python worker crashes (OOM, SIGKILL, unhandled exception).
 func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 	if p.started {
-		return p.healthCheck()
+		err := p.healthCheck()
+		if err == nil {
+			return nil
+		}
+		// Health check failed — the worker may have died.
+		if p.isDeadWorkerError(err) {
+			p.log.Warn("ChromeImageProvider: worker died, relaunching",
+				zap.Error(err))
+			p.resetWorker()
+			// Fall through to relaunch below.
+		} else {
+			// Health check failed for a non-pipe reason (e.g. worker
+			// returned unhealthy status). Don't relaunch — surface the error.
+			return fmt.Errorf("worker unhealthy: %w", err)
+		}
 	}
 
 	scriptPath := filepath.Join(p.scriptsDir, "bridges", "slide_worker.py")
@@ -156,4 +178,89 @@ func (p *ChromeImageProvider) Stop() error {
 	p.started = false
 	p.log.Info("ChromeImageProvider: worker stopped")
 	return nil
+}
+
+// isDeadWorkerError detects errors caused by a dead worker subprocess
+// (broken pipe, EOF, process exited). These are recoverable by relaunching.
+// Must be called while p.mu is held.
+func (p *ChromeImageProvider) isDeadWorkerError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	// Broken pipe: write to a closed stdin pipe.
+	if strings.Contains(msg, "broken pipe") {
+		return true
+	}
+	// Use the underlying syscall error for EPIPE detection.
+	// (Go wraps syscall.EPIPE in os.PathError / fs.PathError for pipe writes.)
+	if p.stdin != nil {
+		// Probe: try a zero-byte write to stdin. If the pipe is dead,
+		// this returns syscall.EPIPE.
+		_, probeErr := p.stdin.Write([]byte{0})
+		if probeErr != nil && (errors.Is(probeErr, os.ErrClosed) ||
+			probeErr == syscall.EPIPE ||
+			strings.Contains(strings.ToLower(probeErr.Error()), "broken pipe") ||
+			strings.Contains(strings.ToLower(probeErr.Error()), "closed pipe") ||
+			strings.Contains(strings.ToLower(probeErr.Error()), "file already closed")) {
+			return true
+		}
+	}
+	// stdin was nil (process exited, pipe closed, or never started).
+	if strings.Contains(msg, "stdin is nil") {
+		return true
+	}
+	// EOF / unexpected stdout close from readRawResponse.
+	if strings.Contains(msg, "stdout closed unexpectedly") {
+		return true
+	}
+	// bufio.Scanner returns "token too long" on malformed output.
+	if strings.Contains(msg, "scanner") || strings.Contains(msg, "token too long") {
+		return true
+	}
+	// Process has exited (ProcessState available).
+	if p.cmd != nil && p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited() {
+		return true
+	}
+	return false
+}
+
+// resetWorker kills the old worker process (if any) and clears all state
+// so the next ensureStarted() launches a fresh subprocess.
+// Must be called while p.mu is held.
+//
+// This is the recovery seam for broken-pipe / dead-worker detection.
+// The old process is killed (best-effort), pipes are closed, and the
+// started flag is cleared.
+//
+// Returns a channel that is closed when the background Wait() completes
+// (process fully reaped). Callers that need to know the process is gone
+// can wait on the returned channel. Callers that don't care can ignore it.
+func (p *ChromeImageProvider) resetWorker() <-chan struct{} {
+	waitDone := make(chan struct{})
+
+	if p.stdin != nil {
+		_ = p.stdin.Close()
+		p.stdin = nil
+	}
+	p.stdout = nil
+
+	if p.cmd != nil && p.cmd.Process != nil {
+		// Best-effort kill — the process may already be dead.
+		_ = p.cmd.Process.Kill()
+		// Drain the Wait() to prevent zombie. Capture cmd into a local
+		// variable because we nil p.cmd on the next line — the goroutine
+		// must not dereference p.cmd after resetWorker returns.
+		cmd := p.cmd
+		go func() {
+			_ = cmd.Wait()
+			close(waitDone)
+		}()
+	} else {
+		close(waitDone)
+	}
+	p.cmd = nil
+	p.started = false
+	p.log.Info("ChromeImageProvider: worker state reset, ready for relaunch")
+	return waitDone
 }

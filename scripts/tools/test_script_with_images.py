@@ -12,10 +12,10 @@ client = VeloxClient("http://127.0.0.1:8000", token)
 payload = {
     "version": 2,
     "preset": "custom",
-    "correlation_id": "test_script_with_images_correlation_roma_v5",
+    "correlation_id": "test_script_with_images_correlation_roma_v7",
     "items": [
         {
-            "id": "test-item-images-roma-v5",
+            "id": "test-item-images-roma-v7",
             "title": "Antica Roma",
             "language": "it",
             "tone": "informative",
