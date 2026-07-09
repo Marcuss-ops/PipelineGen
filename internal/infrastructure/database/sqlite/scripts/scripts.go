@@ -3,9 +3,10 @@ package scripts
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
+
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 )
 
 type ScriptRepository struct {
@@ -352,8 +353,16 @@ func (r *ScriptRepository) UpdateScriptFinalContent(ctx context.Context, id int6
 // dispatcher's fan-out uses the canonical NEW-mode (NoInlineAssets
 // true) per the godlike/07 no-fake-availability contract.
 func (r *ScriptRepository) SaveManifestV2(ctx context.Context, scriptID int64, manifest []byte) error {
+	// godlike/07 fail-closed: nil/empty payload returns the port's
+	// CANONICAL sentinel (godlike/06 SSOT one-owner-per-fact — the
+	// port is the SOLE owner of the typed-error contract; the
+	// concrete layer enforces the check for defense in depth and
+	// uses the SAME port sentinel so errors.Is probes are stable
+	// across both layers). Importing the port here is allowed
+	// (infrastructure → application is fine; the port package
+	// only depends on stdlib + domain, so no cycle).
 	if len(manifest) == 0 {
-		return ErrSaveManifestV2Empty
+		return scriptports.ErrSaveManifestV2NilManifest
 	}
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE scripts
@@ -365,10 +374,3 @@ func (r *ScriptRepository) SaveManifestV2(ctx context.Context, scriptID int64, m
 	}
 	return nil
 }
-
-// ErrSaveManifestV2Empty is the canonical godlike/07 typed
-// sentinel for the empty-payload fail-closed path. Callers
-// (PersistenceProcessor) probe with errors.Is to surface a typed
-// diagnostic at composition time rather than masking the failure
-// as a generic sql error.
-var ErrSaveManifestV2Empty = errors.New("scripts: SaveManifestV2 requires a non-empty manifest payload (empty bytes would silently overwrite the column with an empty string — caller bug)")

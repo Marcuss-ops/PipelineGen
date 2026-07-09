@@ -73,15 +73,16 @@ type ScriptRepository interface {
 	//
 	// The manifest is JSON-marshalled into the dedicated
 	// `manifest_v2 TEXT` column. NoInlineAssets=true is the
-	// canonical NEW-mode marker; the zero-value &ManifestV2{} is
-	// rejected at the column level (SaveManifestV2 is
-	// fail-closed: a nil manifest returns a typed error
-	// ErrSaveManifestV2NilManifest).
+	// canonical NEW-mode marker. The port is fail-closed: an
+	// empty manifest returns the canonical typed sentinel
+	// ErrSaveManifestV2NilManifest (godlike/07 no-fake-availability
+	// — silently writing `''` to the column would mask a
+	// caller-side bug as a "successful empty write").
 	//
 	// Idempotency: the call is treated as an UPSERT keyed on
 	// scriptID — a re-publish of the same manifest overwrites the
-	// column. The ON CONFLICT DO UPDATE semantics preserve the
-	// canonical write-seam without violating godlike/07 fail-fast.
+	// column. The UPDATE statement preserves the canonical
+	// write-seam without violating godlike/07 fail-fast.
 	//
 	// The `manifest` argument is the pre-marshalled JSON bytes of
 	// script.ManifestV2 (port alias ScriptManifestJSON). The
@@ -93,10 +94,14 @@ type ScriptRepository interface {
 	SaveManifestV2(ctx context.Context, scriptID int64, manifest ScriptManifestJSON) error
 }
 
-// ErrSaveManifestV2NilManifest reports a nil/empty ManifestV2 payload
-// passed to SaveManifestV2. The port is fail-closed: callers must
-// marshal a real manifest before invoking the repository.
-var ErrSaveManifestV2NilManifest = errors.New("scripts repository: nil manifest_v2")
+// ErrSaveManifestV2NilManifest is the canonical godlike/07 typed
+// sentinel for the empty-manifest fail-closed path. The port is the
+// SOLE canonical owner (godlike/06 one-canonical-owner-per-fact);
+// the concrete's ErrSaveManifestV2Empty is an alias for
+// defense-in-depth. Callers (PersistenceProcessor) probe with
+// errors.Is to surface a typed diagnostic at composition time
+// rather than masking the failure as a generic sql error.
+var ErrSaveManifestV2NilManifest = errors.New("scripts repository: nil manifest_v2 (empty bytes would silently overwrite the column with an empty string — caller bug)")
 
 // ScriptManifestJSON is the port-level alias for the
 // pre-marshalled JSON payload of script.ManifestV2. Persistence

@@ -287,12 +287,24 @@ func (a *sqliteRepoAdapter) FindScriptByIdempotencyKey(ctx context.Context, item
 // script.ManifestV2 to JSON before calling SaveManifestV2 per the
 // port contract).
 //
-// godlike/07 fail-closed: a nil adapter or nil inner pointer
-// returns errSaveManifestV2AdapterNotWired so the caller surfaces
-// a typed sentinel (NOT a nil-pointer panic) at composition time.
+// godlike/07 fail-closed (3 layers):
+//  1. nil adapter / nil inner → errSaveManifestV2AdapterNotWired
+//     (composition-time sentinel — caller surfaces a typed
+//     diagnostic instead of a nil-pointer panic).
+//  2. nil/empty manifest → ports.ErrSaveManifestV2NilManifest
+//     (CANONICAL owner per godlike/06 SSOT one-owner-per-fact).
+//     Silently writing ” to the column would mask a caller-side
+//     bug as a "successful empty write" — godlike/07 fail-closed.
+//  3. underlying concrete write → propagated verbatim (the
+//     concrete layer also enforces the empty check for defense
+//     in depth; both layers return the SAME port sentinel so
+//     errors.Is probes are stable).
 func (a *sqliteRepoAdapter) SaveManifestV2(ctx context.Context, scriptID int64, manifest ports.ScriptManifestJSON) error {
 	if a == nil || a.inner == nil {
 		return errSaveManifestV2AdapterNotWired
+	}
+	if len(manifest) == 0 {
+		return ports.ErrSaveManifestV2NilManifest
 	}
 	return a.inner.SaveManifestV2(ctx, scriptID, manifest)
 }
