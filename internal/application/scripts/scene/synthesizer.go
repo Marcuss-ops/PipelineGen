@@ -80,6 +80,80 @@ func (s *SceneSynthesizer) FromProse(text string, n int) []scriptpkg.SpecScene {
 	return buildScenesFromProse(text, n)
 }
 
+// FromText is the canonical fresh-generation orchestration entry point
+// that pairs the prose partitioner (FromProse) with the optional
+// clip-binding contract for the LLM-PLAIN-TEXT-CONTRACT wave PR-6.
+//
+// Signature contract (godlike/06 SSOT):
+//   - text: the LLM-emitted plain prose (canonical fresh-mode contract
+//     per PR-1 prompt flip + PR-2 OutputModePlainText const).
+//   - numClips (alias for n): the requested scene count.
+//   - evidence: optional *ClipEvidence; when non-nil AND
+//     evidence.AcceptedClipIDs is non-empty, FromText binds the i-th
+//     scene to AcceptedClipIDs[i] per the canonical P0 #2 1:1 binding
+//     contract (NO modulo cycling: scene[i] for i>=len(AcceptedClipIDs)
+//     has scene.Bindings.Clip == nil; the binder will surface its own
+//     sentinel at postprocessor time if downstream needs coverage).
+//
+// godlike/06 SSOT (one canonical owner per fact): this method DELEGATES
+// to FromProse for prose → scenes distribution (the canonical SOLE
+// text-partitioner per the godlike/06 one-canonical-owner-per-fact
+// discipline on the per-pipeline prose parser). The binding addition
+// layer is purely additive orchestrator (zero new heuristics);
+// bindSites[i] assignments go to scene.Bindings.Clip per evidence
+// lookup, with the P0 #2 promote-empty invariant preserved (if the
+// driver's ClipNames/DriveLinks map omits a key, the binding IS set
+// with the known fields; an absent ID lookup yields nil pointer
+// which the binder downstream treats as "no binding" per its sentinel
+// contract).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: never synthesises clip IDs via
+// modulo cycling (i % len(AcceptedClipIDs)). When i >= len(clipIDs)
+// the scene's Bindings.Clip field is left nil (NOT silently
+// re-cycled to index 0). The canonical SceneAssetBinder.BindClips is
+// the authority on per-clip remix; this method only honours the
+// ORDERED 1:1 evidence chain.
+//
+// godlike/07 minimum-blast-radius: zero new dependencies; uses the
+// pre-existing ClipEvidence fields (AcceptedClipIDs canonical slice,
+// ClipNames/DriveLinks map[string]string lookups); zero composition-
+// root wiring changes (callers opt-in by passing non-nil evidence).
+//
+// Returns nil when numClips <= 0 OR when the underlying FromProse
+// returns nil (caller preserves the no-op invariant).
+func (s *SceneSynthesizer) FromText(text string, numClips int, evidence *scriptpkg.ClipEvidence) []scriptpkg.SpecScene {
+	scenes := s.FromProse(text, numClips)
+	if len(scenes) == 0 {
+		return nil
+	}
+	if evidence == nil || len(evidence.AcceptedClipIDs) == 0 {
+		return scenes
+	}
+	// P0 #2 contract: bind scenes 0..min(len(scenes), len(clipIDs)) 1:1.
+	// NO modulo cycling — i >= len(AcceptedClipIDs) leaves scene.Bindings.Clip == nil.
+	bindingCount := len(scenes)
+	if len(evidence.AcceptedClipIDs) < bindingCount {
+		bindingCount = len(evidence.AcceptedClipIDs)
+	}
+	for i := 0; i < bindingCount; i++ {
+		clipID := evidence.AcceptedClipIDs[i]
+		if clipID == "" {
+			continue
+		}
+		binding := &scriptpkg.ClipBinding{
+			ClipID: clipID,
+		}
+		if title, ok := evidence.ClipNames[clipID]; ok {
+			binding.ClipTitle = title
+		}
+		if link, ok := evidence.DriveLinks[clipID]; ok {
+			binding.DriveLink = link
+		}
+		scenes[i].Bindings.Clip = binding
+	}
+	return scenes
+}
+
 // buildScenesFromProse partitions text into N scenes via
 // sentence-aware chunking + per-chunk word packing. All callers
 // MUST route through SceneSynthesizer.FromProse (this is the

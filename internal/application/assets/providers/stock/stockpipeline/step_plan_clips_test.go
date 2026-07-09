@@ -321,6 +321,68 @@ func TestStockPlanStep_ExplicitClips_ExpandSecondsPerSegment(t *testing.T) {
 	}
 }
 
+func TestStockPlanStep_ExplicitClips_LongClip_DefaultsToFiveSecondSegments(t *testing.T) {
+	runner := newFakeRunner([]ClipSpec{
+		{
+			URL:      "https://www.youtube.com/watch?v=test-auto-expand",
+			Title:    "Round 1",
+			StartSec: 0,
+			EndSec:   60,
+			Slug:     "pacquiao-boner-round-1",
+		},
+	}, 10, "")
+
+	step := StockPlanStep{}
+	err := step.Run(context.Background(), runner)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	plans := runner.State().Plan
+	if len(plans) != 12 {
+		t.Fatalf("expected 12 auto-expanded plans, got %d", len(plans))
+	}
+	for i, plan := range plans {
+		wantStart := float64(i * 5)
+		wantEnd := wantStart + 5
+		if plan.StartSec != wantStart || plan.EndSec != wantEnd {
+			t.Fatalf("plan[%d] range = [%v,%v], want [%v,%v]", i, plan.StartSec, plan.EndSec, wantStart, wantEnd)
+		}
+	}
+	if plans[0].Slug != "pacquiao-boner-round-1-0-0-0_to_0-0-5" {
+		t.Fatalf("first auto-expanded slug = %q, want timestamp-suffixed slug", plans[0].Slug)
+	}
+	if plans[11].Slug != "pacquiao-boner-round-1-0-0-55_to_0-1-0" {
+		t.Fatalf("last auto-expanded slug = %q, want timestamp-suffixed slug", plans[11].Slug)
+	}
+}
+
+func TestStockPlanStep_ExplicitClips_SubSixtySecondsStaySingle(t *testing.T) {
+	runner := newFakeRunner([]ClipSpec{
+		{
+			URL:      "https://www.youtube.com/watch?v=test-no-expand",
+			Title:    "Round 2",
+			StartSec: 0,
+			EndSec:   59,
+			Slug:     "pacquiao-boner-round-2",
+		},
+	}, 10, "")
+
+	step := StockPlanStep{}
+	err := step.Run(context.Background(), runner)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	plans := runner.State().Plan
+	if len(plans) != 1 {
+		t.Fatalf("expected 1 plan for sub-60s clip, got %d", len(plans))
+	}
+	if plans[0].StartSec != 0 || plans[0].EndSec != 59 {
+		t.Fatalf("sub-60s plan range = [%v,%v], want [0,59]", plans[0].StartSec, plans[0].EndSec)
+	}
+}
+
 // ── Error-path tests ────────────────────────────────────────────────
 
 func TestStockPlanStep_ClipsNoURL_ReturnsError(t *testing.T) {

@@ -30,6 +30,7 @@ import (
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -212,13 +213,35 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	}
 
 	// Step 7 — FullImages (bundle-driven; ImageService + MediaStore).
-	// The legacy WireFullImages helper was retired in FASE 6 and is not
-	// in this codebase; the canonical ImageService already exposes the
-	// full-resolution surfaces via root.Domains.ImageService. We stub
-	// the wiring slot to nil + log so the registry contract holds and
-	// future re-introduction is a single function rename away.
-	log.Warn("registerInternalModules Step 7 FullImages wire stubbed (WireFullImages retired; ImageService covers the surface)")
-	wiring.FullImages = nil
+	var imagesDir string
+	if cfg != nil {
+		imagesDir = cfg.Storage.ImagesPath()
+	}
+	var ffmpegProc *ffmpeg.Processor
+	if cfg != nil {
+		ffmpegProc = ffmpeg.NewFromConfig(cfg)
+	}
+
+	fullImgBundle := &FullImagesBundle{
+		ImageService: root.Domains.ImageService,
+		FfmpegProc:   ffmpegProc,
+		Publisher:    root.Drive.Publisher,
+		ImagesDir:    imagesDir,
+	}
+
+	fullW, fullErr := WireFullImages(fullImgBundle, cfg, log)
+	if fullErr != nil {
+		log.Warn("registerInternalModules Step 7 WireFullImages failed (godlike/07 fail-closed)", zap.Error(fullErr))
+		wiring.FullImages = nil
+	} else if fullW != nil && fullW.Module != nil {
+		wiring.FullImages = fullW
+		if err := tryRegisterModuleStrict(registry, log, fullW.Module, WithRegistrationPoint("register.FullImages")); err != nil {
+			return fmt.Errorf("wire registry: full-images: %w", err)
+		}
+		log.Info("registerInternalModules Step 7 FullImages pipeline mounted")
+	} else {
+		wiring.FullImages = nil
+	}
 
 	// Step 8 — StockPipeline (bundle-driven). Delegates to WireStockPipeline
 	// which constructs every dep (DB, Cutter, Renderer, yt-dlp, Fetch,

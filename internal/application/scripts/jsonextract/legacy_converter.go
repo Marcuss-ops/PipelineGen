@@ -146,9 +146,23 @@ func convertLegacyArray(raw []byte) (*scriptpkg.ModelScriptOutputV1, error) {
 }
 
 // wrapPlainText wraps raw bytes as a synthetic ModelScriptOutputV1
-// with the full text in the Text field and empty scenes. Used only
-// in ModeCompatibility as the last-resort fallback when the model
-// emits bare prose with no JSON at all.
+// with the full text in the Text field and empty scenes. This is the
+// canonical PLANE-PROSE wrapping primitive for the LLM-PLAIN-TEXT
+// contract wave (PR-5 of PR-1..PR-6).
+//
+// PR-5 (the Flip): this function is the canonical PRIMARY entry
+// path for fresh-mode plain-prose LLM output. It is still lowercase
+// (unexported) so the canonical SOLE write seam for the untagged-prose
+// → ModelScriptOutputV1 composition lives ONLY here per godlike/06
+// SSOT one-canonical-owner-per-fact. Public callers MUST route
+// through ParsePlainTextFresh (the exported gate that enforces the
+// typed-sentinel contract on legacy-JSON input — see below).
+//
+// Pre-PR-5: this was the last-resort fallback for ModeCompatibility
+// only. After PR-5: the canonical primary path for ModePlainTextFresh
+// scanner routes (ModePlainTextFresh ships in a future PR; today
+// it is the typed-enveloped sentinel-aware retry path ModeStrict
+// falls into when JSON extraction fails).
 //
 // This replaces fallbackTextOutput from the now-removed
 // model_output_decoder.go.
@@ -162,6 +176,57 @@ func wrapPlainText(raw []byte) *scriptpkg.ModelScriptOutputV1 {
 			Scenes:  []scriptpkg.SpecScene{},
 		},
 	}
+}
+
+// ParsePlainTextFresh is the EXPORTED canonical entry point for
+// fresh-mode plain-prose LLM output (LLM-PLAIN-TEXT-CONTRACT wave
+// PR-5). It wraps the binary untagged-prose → ModelScriptOutputV1
+// envelope composition in a typed-sentinel envelope so callers can
+// probe failures via errors.Is(err, scriptpkg.ErrModelOutputMalformed).
+//
+// godlike/06 SSOT (one canonical owner per fact): the
+// untagged-prose → ModelScriptOutputV1 composition logic lives in the
+// unexported wrapPlainText below; this function is the SOLE external
+// entry point. Any future caller wanting to wrap raw LLM output
+// for fresh mode MUST route through ParsePlainTextFresh — no
+// direct usage of wrapPlainText from outside the package.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: rejects legacy-JSON-shaped input
+// (object or array) with ErrModelOutputMalformed so a future LLM
+// silently falling back to the deprecated V1 contract is observable
+// (NOT silently absorbed into a prose scene). Plain-prose input
+// (no leading `{` or `[`) is ALWAYS wrapped.
+//
+// godlike/07 typed-error contract: ErrModelOutputMalformed wrapped
+// via fmt.Errorf("%w: ...") so errors.Is and errors.As both work
+// per the Go 1.20+ dual-%w idiom.
+//
+// godlike/07 minimum-blast-radius: zero new dependencies, zero new
+// composition-root wiring, zero signature changes on existing
+// callers (wrapPlainText is UNCHANGED; only scanner.go ModeStrict
+// route calls ParsePlainTextFresh instead of returning a typed
+// error directly on JSON-decode failure so a future body of
+// legacy-JSON still surfaces ErrModelOutputMalformed upstream).
+func ParsePlainTextFresh(raw []byte) (*scriptpkg.ModelScriptOutputV1, error) {
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("%w: empty output", scriptpkg.ErrModelOutputMalformed)
+	}
+	trimmed := cleanFallbackText(string(raw))
+	if looksLikeJSON(trimmed) {
+		return nil, fmt.Errorf("%w: legacy JSON envelope detected on fresh plain-text path; the LLM is honouring the deprecated V1 contract — caller MUST either re-emit without JSON framing OR explicitly opt-in via ModeLegacyJSONCache",
+			scriptpkg.ErrModelOutputMalformed)
+	}
+	if trimmed == "" {
+		return nil, fmt.Errorf("%w: empty output after JSON-envelope stripping", scriptpkg.ErrModelOutputMalformed)
+	}
+	return &scriptpkg.ModelScriptOutputV1{
+		SchemaVersion: 1,
+		Text:          trimmed,
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes:  []scriptpkg.SpecScene{},
+		},
+	}, nil
 }
 
 // cleanFallbackText removes obvious JSON-envelope noise from a raw
