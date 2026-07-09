@@ -74,8 +74,9 @@ sqlite_q() {
 
 preflight_server_up() {
     smoke_log_section "Preflight: Go server reachable (GET /health)"
+    smoke_curl GET "/health" >/dev/null
     local code
-    code=$(smoke_curl GET "/health")
+    code=$(cat "$WORK_DIR/last.code" 2>/dev/null || echo "000")
     if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
         fail "preflight_server_http_${code}"
         printf '%sFAIL: GET /health returned HTTP %s (expected 2xx)%s\n' \
@@ -117,7 +118,13 @@ post_voiceover() {
     if [[ -n "$SMOKE_DRIVE_ROOT" ]]; then
         dest_block=$(jq -n --arg fid "$SMOKE_DRIVE_ROOT" '{kind: "explicit", folder_id: $fid}')
     else
-        dest_block='{"kind": "explicit", "folder_id": ""}'
+        # No SMOKE_DRIVE_ROOT — voiceover endpoint requires non-empty folder_id
+        # when kind="explicit". Exit 2 (setup error) so the aggregator treats
+        # this zone as "not applicable" rather than cascading failures in T2-T6.
+        printf '%sSETUP: SMOKE_DRIVE_ROOT not set — Zone 3 requires a Drive folder_id%s\n' \
+            "$RED" "$RESET" >&2
+        printf '  Set SMOKE_DRIVE_ROOT=<folder_id> to enable Zone 3 voiceover tests.\n'
+        exit 2
     fi
 
     local payload
@@ -130,8 +137,9 @@ post_voiceover() {
         options: {remove_silence: false, strategy: "verify", parallelism: 1}
     }')
 
+    smoke_curl POST "/api/media/voiceover/generate" --data "$payload" >/dev/null
     local code
-    code=$(smoke_curl POST "/api/media/voiceover/generate" --data "$payload")
+    code=$(cat "$WORK_DIR/last.code" 2>/dev/null || echo "000")
     if ! smoke_assert_http_2xx "POST /api/media/voiceover/generate"; then
         fail "post_voiceover_http_${SMOKE_LAST_HTTP}"
         return 1

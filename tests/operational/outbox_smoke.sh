@@ -55,7 +55,8 @@ TIMESTAMP_BEFORE=$(date '+%Y-%m-%dT%H:%M:%SZ')
 
 # ── Pre-flight: server + DB ──────────────────────────────────────────
 smoke_log_section "Pre-flight"
-HEALTH=$(smoke_curl GET "/health")
+smoke_curl GET "/health" >/dev/null
+HEALTH=$(cat "$WORK_DIR/last.code" 2>/dev/null || echo "000")
 if [[ "$HEALTH" != "200" ]]; then
     printf '%sFAIL: server unreachable at %s (HTTP %s)%s\n' \
         "$RED" "$SMOKE_API_BASE" "$HEALTH" "$RESET" >&2
@@ -107,7 +108,8 @@ ENQUEUE_PAYLOAD=$(jq -n \
         "metadata": {"test": $tag}
     }')
 
-ENQUEUE_CODE=$(smoke_curl POST "/api/stock-pipeline/run" --data "$ENQUEUE_PAYLOAD")
+smoke_curl POST "/api/stock-pipeline/run" --data "$ENQUEUE_PAYLOAD" >/dev/null
+ENQUEUE_CODE=$(cat "$WORK_DIR/last.code" 2>/dev/null || echo "000")
 JOB_ID=$(jq -r '.job_id // empty' "$SMOKE_LAST_BODY")
 if [[ -z "$JOB_ID" || ! "$ENQUEUE_CODE" =~ ^2[0-9][0-9]$ ]]; then
     printf '%sFAIL: could not enqueue stock job (HTTP %s)%s\n' \
