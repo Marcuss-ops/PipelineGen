@@ -81,27 +81,14 @@ const (
 	// media_assets.lifecycle_state set to "deleted" or "DELETED".
 	StateDELETED IndexState = "DELETED"
 
-	// ── Deprecated (pre-Task 2) — kept for DB backward-compat ──────
-
-	// Deprecated: StateIndexPending is subsumed by the granular
-	// EMBEDDING/INDEXING states. Embedding retries use
-	// StateEmbeddingFailed → re-enqueue; indexing retries use
-	// StateIndexingFailed → re-enqueue. The state remains valid
-	// so existing DB rows with INDEX_PENDING are not orphaned.
-	// New writers MUST use the granular states.
-	//
-	// As of 2026-08-10 the last production writer
-	// (outbox.Dispatcher.EnqueueAndRestore) was migrated to
-	// StateDiscovered. No production code writes this state.
+	// StateIndexPending — retained for DB backward-compat only.
+	// No production code writes this state (last writer migrated
+	// to StateDiscovered on 2026-08-10). Valid() still accepts it.
 	StateIndexPending IndexState = "INDEX_PENDING"
 
-	// Deprecated: StateIndexFailed is split into StateEmbeddingFailed
-	// (no vectors) and StateIndexingFailed (vectors exist, Qdrant
-	// missing). The state remains valid for existing DB rows; new
-	// writers MUST use the granular states.
-	//
-	// No production code has ever written this state; it exists
-	// solely for backward-compat with pre-Task 2 DB rows.
+	// StateIndexFailed — retained for DB backward-compat only.
+	// No production code has ever written this state. Valid()
+	// still accepts it.
 	StateIndexFailed IndexState = "INDEX_FAILED"
 )
 
@@ -118,7 +105,7 @@ func (s IndexState) Valid() bool {
 		StateEmbeddingFailed, StateIndexingFailed,
 		StateIndexingSkippedNoIndexer,
 		StateIndexDeletePending, StateDELETED,
-		StateIndexPending, StateIndexFailed: // deprecated, backward-compat
+		StateIndexPending, StateIndexFailed: // backward-compat only
 		return true
 	}
 	return false
@@ -131,15 +118,15 @@ func (s IndexState) IsTerminal() bool {
 	switch s {
 	case StateNotIndexable, StateIndexed, StateDELETED,
 		StateEmbeddingFailed, StateIndexingFailed,
-		StateIndexFailed: // deprecated, treated as terminal
+		StateIndexFailed: // backward-compat only
 		return true
 	}
 	return false
 }
 
 // IsFailedTerminal returns true if the state is a failure terminal
-// (operator-must-intervene). Includes the current EMBEDDING_FAILED
-// and INDEXING_FAILED, plus the deprecated INDEX_FAILED.
+// (operator-must-intervene). Includes EMBEDDING_FAILED,
+// INDEXING_FAILED, and the backward-compat INDEX_FAILED.
 func (s IndexState) IsFailedTerminal() bool {
 	return s == StateIndexFailed || s == StateEmbeddingFailed || s == StateIndexingFailed
 }
