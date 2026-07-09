@@ -90,5 +90,15 @@ func (p *GoogleSlidesProvider) Generate(ctx context.Context, req GenerateRequest
 	}, nil
 }
 
+// TriggerPrewarm forwards the warmup signal to the underlying image generator
+// port. The count parameter lets a pool warm only the requested number of
+// browser workers while still keeping the Google Slides provider surface thin.
+func (p *GoogleSlidesProvider) TriggerPrewarm(ctx context.Context, jobID string, count int) {
+	if p == nil || p.delegate == nil {
+		return
+	}
+	p.delegate.TriggerPrewarm(ctx, jobID, count)
+}
+
 // ID returns the canonical string ID of this provider.
 func (p *GoogleSlidesProvider) ID() string { return string(p.Name()) }

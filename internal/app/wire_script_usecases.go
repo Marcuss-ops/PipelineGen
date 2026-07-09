@@ -225,11 +225,13 @@ func (a *scriptItemFanoutBrokerAdapter) EnqueueScriptItem(
 	}
 
 	activeKey := fmt.Sprintf("script:item:%s:%d:%s", parentJobID, itemIndex, item.ID)
+	correlationID := fmt.Sprintf("%s:item:%d:%s", parentJobID, itemIndex, item.ID)
 
 	req := &domainjob.EnqueueRequest{
-		Type:      domainjob.TypeScriptGenerateItem,
-		Payload:   json.RawMessage(payloadBytes),
-		ActiveKey: activeKey,
+		Type:          domainjob.TypeScriptGenerateItem,
+		Payload:       json.RawMessage(payloadBytes),
+		ActiveKey:     activeKey,
+		CorrelationID: correlationID,
 	}
 	ret, err := a.jobsSvc.Enqueue(ctx, req)
 	if err != nil {

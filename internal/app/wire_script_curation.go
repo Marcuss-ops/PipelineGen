@@ -57,6 +57,7 @@ type imageGenSvcAdapter struct {
 	svc interface {
 		SearchAndDownload(ctx context.Context, name, description, query, language string, tags []string) (*asset.ImageAsset, error)
 		GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts []string, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error)
+		TriggerPrewarm(ctx context.Context, jobID string, count int)
 	}
 }
 
@@ -91,6 +92,16 @@ func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, descri
 		url = fmt.Sprintf("https://drive.google.com/file/d/%s/view", imgAsset.DriveFileID)
 	}
 	return &adapters.ImageResult{SourceURL: url}, nil
+}
+
+// TriggerPrewarm forwards the warmup signal to the concrete image
+// service so the processor's optional warmup seam can activate the
+// browser/session pool before the parallel fan-out begins.
+func (a *imageGenSvcAdapter) TriggerPrewarm(ctx context.Context, jobID string, count int) {
+	if a == nil || a.svc == nil {
+		return
+	}
+	a.svc.TriggerPrewarm(ctx, jobID, count)
 }
 
 // GenerateSmartImage is the second method on usecase.ImageGenService.

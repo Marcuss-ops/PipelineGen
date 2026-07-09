@@ -9,9 +9,8 @@ const (
 	// PresetCustom means the caller filled in every flag explicitly.
 	PresetCustom Preset = "custom"
 
-	// PresetWithImages means the job came from the /generate-with-images
-	// endpoint: scene images and voiceover are forced on, entity
-	// extraction and metadata are forced off.
+	// PresetWithImages means the job requests scene images and voiceover
+	// by default while leaving entity extraction and metadata off.
 	PresetWithImages Preset = "with_images"
 
 	// PresetFullMedia enables both scene images and voiceover outputs

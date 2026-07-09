@@ -110,6 +110,10 @@ type ImageGenerator interface {
 	// Returns ErrImageGenNotImplemented if the provider is a stub waiting
 	// for real wiring (e.g. ChromeImageProvider before FASE 7-8).
 	Generate(ctx context.Context, req GenerateImageRequest) (*GeneratedImage, error)
+
+	// TriggerPrewarm asks the backend to start or warm its worker pool.
+	// The count is an advisory ceiling for pooled implementations.
+	TriggerPrewarm(ctx context.Context, jobID string, count int)
 }
 
 // ErrImageGenProviderNotAvailable is returned when an ImageGenerator

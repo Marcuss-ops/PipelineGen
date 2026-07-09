@@ -73,6 +73,14 @@ func (r *GenerationProviderRegistry) Generate(ctx context.Context, req GenerateR
 	return out, nil
 }
 
+// TriggerPrewarm forwards the warmup signal to the single registered provider.
+func (r *GenerationProviderRegistry) TriggerPrewarm(ctx context.Context, jobID string, count int) {
+	if r == nil || r.provider == nil {
+		return
+	}
+	r.provider.TriggerPrewarm(ctx, jobID, count)
+}
+
 // ProviderByName returns Google Slides for its canonical ID and nil for every
 // other provider name.
 func (r *GenerationProviderRegistry) ProviderByName(name asset.ImageProvider) GenerationProvider {

@@ -21,9 +21,22 @@ func (s *Service) fetchClipSearchInputs(
 	ctx context.Context,
 	clipID string,
 ) (searchText, name string, err error) {
+	// PR-QDRANT-SEARCH-TEXT-SOURCE-FIX (2026-07-09): read search_text
+	// from the COLUMN first, then fall back to metadata_json. YouTube
+	// clips (process_segment_step6to9) write search_text to the column
+	// via clip_atomic_writer, but metadata_json.search_text is empty.
+	// The prior query read only from metadata_json, causing indexViaAPI
+	// to generate embeddings from `name` alone (e.g. "Round_7_Broner_barcolla")
+	// instead of the rich search text (title + summary + hook + topics +
+	// source_url + speakers + mentioned_people). This mismatch between
+	// computeContentHash (reads column) and fetchClipSearchInputs (read
+	// metadata_json) was the root cause of outbox-completed but empty
+	// Qdrant search results for YouTube clips.
 	row := s.db.QueryRowContext(ctx, `
 SELECT COALESCE(name, ''),
-       COALESCE(json_extract(COALESCE(metadata_json, '{}'), '$.search_text'), '')
+       COALESCE(search_text,
+                json_extract(COALESCE(metadata_json, '{}'), '$.search_text'),
+                '')
 FROM media_assets WHERE id = ?`, clipID)
 	if err := row.Scan(&name, &searchText); err != nil {
 		return "", "", err

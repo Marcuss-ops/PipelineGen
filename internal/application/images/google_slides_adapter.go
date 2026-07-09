@@ -85,3 +85,13 @@ func (a *ImageGeneratorAdapter) Generate(ctx context.Context, req generated.Port
 		OutputPath: out.OutputPath,
 	}, nil
 }
+
+// TriggerPrewarm forwards the warmup signal to the underlying image backend.
+// The adapter stays thin: it only relays the browser-pool hint and does not
+// interpret the count.
+func (a *ImageGeneratorAdapter) TriggerPrewarm(ctx context.Context, jobID string, count int) {
+	if a.gen == nil {
+		return
+	}
+	a.gen.TriggerPrewarm(ctx, jobID, count)
+}

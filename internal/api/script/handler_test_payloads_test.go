@@ -12,21 +12,19 @@
 package script
 
 // validScriptGeneratePayload returns the canonical JSON payload for
-// POST /api/script/generate (and legacy /generate-from-clips).
+// POST /api/script/generate.
 func validScriptGeneratePayload() string {
 	return `{"topic":"observability","clip_ids":["clip-a"],"language":"it"}`
 }
 
-// validLegacyClipPayload returns the canonical JSON payload for
-// the legacy clip adapter route (POST /api/script/generate-from-clips
-// with an alternative topic/clip pair).
+// validLegacyClipPayload is retained for compatibility with older
+// test helpers, but the route itself is retired.
 func validLegacyClipPayload() string {
 	return `{"topic":"boxing","clip_ids":["clip-b"],"language":"en"}`
 }
 
-// validSlideshowPayload returns the canonical JSON payload for
-// slide-related endpoints (POST /api/script/generate-with-images
-// or similar). Includes images + topic + language.
+// validSlideshowPayload is retained for compatibility with older
+// test helpers, but the route itself is retired.
 func validSlideshowPayload() string {
 	return `{"images":["img1","img2"],"topic":"boxing","language":"en"}`
 }

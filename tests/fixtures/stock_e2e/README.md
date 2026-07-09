@@ -21,8 +21,8 @@ git fetch origin && bash scripts/ci-architectural-checks.sh
 | # | Method | URL | FASE origin | Outcome class |
 |---|--------|-----|-----|------|
 | 1 | GET  | `/ready` | FASE 0+2+7 carry | HTTP 503 — `broker heartbeat stale: last heartbeat 9223372036854775807s ago` |
-| 2 | POST | `/api/script/generate-with-images` | FASE 1 seed #1 + carry | HTTP 500 (broker internal) — wiring-blocked terminal |
-| 3 | POST | `/api/script/generate-from-clips` | FASE 1 seed #2 + FASE 7 replay ×3 | HTTP 500 (broker internal) + HTTP 429 ×3 (rate-limit) |
+| 2 | POST | `/api/script/generate` (with images) | FASE 1 seed #1 + carry | HTTP 500 (broker internal) — wiring-blocked terminal |
+| 3 | POST | `/api/script/generate` (from clips) | FASE 1 seed #2 + FASE 7 replay ×3 | HTTP 500 (broker internal) + HTTP 429 ×3 (rate-limit) |
 | 4 | POST | `/api/media/search?mode=hybrid` | FASE 4 | HTTP 500 — `semantic backend not available` |
 | 5 | POST | `/api/media/announce` | FASE 4 alternatives | HTTP 500 — `no eligible backends` |
 | 6 | GET  | `/api/jobs/$JOB_ID/full` | FASE 2 + FASE 6 surrogate poll | HTTP 200 RETRY_WAIT (single-poll cadence per PR-POLL-CADENCE-DISCIPLINE) |

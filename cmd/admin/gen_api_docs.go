@@ -164,9 +164,7 @@ var routeDescriptions = map[string]string{
 	// ── Script generation ─────────────────────────────────────
 	"GET /api/script/jobs/:job_id":           "Get script job status",
 	"GET /api/script/jobs/:job_id/full":      "Get full script job details",
-	"POST /api/script/generate-from-clips":   "Generate script from clips",
 	"POST /api/script/generate-from-catalog": "Generate script from catalog",
-	"POST /api/script/generate-with-images":  "Generate script with AI scene images",
 
 	// ── Media — voiceover ────────────────────────────────────
 	"POST /api/media/voiceover/generate":            "Generate voiceover",

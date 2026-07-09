@@ -1,0 +1,95 @@
+{
+  "category": "test",
+  "clip_id": "yt_jNQXAC9IVRw_257a8179",
+  "drive_file_id": "1rCxZpNB2pvooRprXfy_taXf-BGT5fewk",
+  "drive_folder_id": "11GJO9NsjJLU-J4tBaFEHBbPnWUfGPY0x",
+  "drive_link": "https://drive.google.com/file/d/1rCxZpNB2pvooRprXfy_taXf-BGT5fewk/view?usp=drivesdk",
+  "drive_path": "clips/youtube-e2e/jNQXAC9IVRw-yt-e2e-clip-5s",
+  "duplicate": false,
+  "duration_sec": 19,
+  "file_hash": "257a81794dcec42eebc497725f414a08",
+  "filename": "jNQXAC9IVRw - YT E2E clip 5s.mp4",
+  "indexed": false,
+  "indexing_status": "skipped",
+  "language": "",
+  "local_path": "data/media/clips/general/jNQXAC9IVRw/jNQXAC9IVRw.mp4",
+  "location": {
+    "category": "test",
+    "provider": "",
+    "style": "",
+    "subject": ""
+  },
+  "message": "",
+  "name": "YT E2E clip 5s",
+  "ok": true,
+  "related_clips": {
+    "search": {
+      "count": 11,
+      "results": [
+        {
+          "SourceRef": "script_assets://test youtube e2e YT E2E clip 5s",
+          "Title": "test youtube e2e YT E2E clip 5s",
+          "Score": 1
+        },
+        {
+          "SourceRef": "isI1c0eGSZ0",
+          "Title": "When To Unit, E2E, And Integration Test",
+          "Score": 0.761
+        },
+        {
+          "SourceRef": "jPH_vR4pQ4Y",
+          "Title": "Storybook + E2E Testing = 5x Faster way to test UI \u26a1\ufe0f(You're Doing It Wrong)",
+          "Score": 0.649
+        },
+        {
+          "SourceRef": "jydYq7oAtD8",
+          "Title": "Software Testing Course \u2013 Playwright, E2E, and AI Agents",
+          "Score": 0.604
+        },
+        {
+          "SourceRef": "PnPl2OdsXkg",
+          "Title": "Clip: Why we run e2e tests",
+          "Score": 0.53
+        },
+        {
+          "SourceRef": "68xvfrxlEYo",
+          "Title": "End to End Testing - Explained",
+          "Score": 0.485
+        },
+        {
+          "SourceRef": "VVmB844HIDA",
+          "Title": "CELPIP Speaking Mock Test with Sample Answers",
+          "Score": 0.411
+        },
+        {
+          "SourceRef": "E4I7P_5J9e0",
+          "Title": "E2E Summit\u00ae  . . . Where Innovation meets Execution\u2122",
+          "Score": 0.366
+        },
+        {
+          "SourceRef": "4-LwodVujTg",
+          "Title": "Get started with end-to-end testing: Playwright | Episode 1 - Introduction",
+          "Score": 0.254
+        },
+        {
+          "SourceRef": "nf6RzmOvkus",
+          "Title": "Using cy.viewport to Test Responsive Designs in Cypress",
+          "Score": 0.254
+        },
+        {
+          "SourceRef": "NTbzl5MbwZE",
+          "Title": "How to replace a Surefire Pocket Clip",
+          "Score": 0.18
+        }
+      ]
+    }
+  },
+  "source": "youtube",
+  "tags": [
+    "youtube",
+    "e2e",
+    "clip"
+  ],
+  "transcribed": false,
+  "video_id": "jNQXAC9IVRw"
+}

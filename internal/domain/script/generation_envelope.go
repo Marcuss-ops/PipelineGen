@@ -4,9 +4,8 @@
 //
 //	GenerationEnvelopeV2 → [{GenerationItemV2 → SourceSpec + ScriptSpec + OutputSpec}]
 //
-// A single-item envelope maps to the previous /generate-from-clips,
-// /generate-with-images, /generate-from-catalog, and /curate flows.
-// A multi-item envelope maps to the previous /legacy-batch flow.
+// A single-item envelope maps to the unified /generate flow.
+// A multi-item envelope maps to batch generation.
 //
 // No durable field uses interface{}, any, or map[string]any.
 package script

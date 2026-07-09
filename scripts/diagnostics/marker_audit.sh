@@ -96,21 +96,36 @@ fi
 # ── Dry-run short-circuit ─────────────────────────────────────────────
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
     cat <<EOF
-DRY RUN payload that would be POSTed to /api/script/generate-from-clips:
+DRY RUN payload that would be POSTed to /api/script/generate:
 
 {
-  "clip_ids": $CLIP_IDS,
-  "topic": "$TOPIC",
-  "title": "$TITLE",
-  "tone": "$TONE",
-  "model": "$MODEL",
-  "target_words": $TARGET_WORDS,
-  "force_refresh": true,
-  "min_quality_score": 0,
-  "min_transcript_words": 100,
-  "generate_scene_images": false,
-  "extract_entities": false,
-  "generate_metadata": false
+  "version": 2,
+  "preset": "custom",
+  "items": [
+    {
+      "title": "$TITLE",
+      "tone": "$TONE",
+      "model": "$MODEL",
+      "source": {
+        "type": "clips",
+        "clip_ids": $CLIP_IDS,
+        "min_quality_score": 0,
+        "min_transcript_words": 100,
+        "transcript_policy": "auto",
+        "ordering_strategy": "auto",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": $TARGET_WORDS
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_scene_images": "disabled",
+        "extract_entities": "disabled",
+        "generate_metadata": "disabled"
+      }
+    }
+  ]
 }
 EOF
     exit 0
@@ -131,35 +146,47 @@ fi
 # ── 1. Dispatch ────────────────────────────────────────────────────────
 if [[ "$QUIET" == "0" ]]; then
     echo -e "${CYAN}===== 1. Dispatch job =====${RESET}"
-    echo "endpoint: POST http://$API_BASE/api/script/generate-from-clips"
+    echo "endpoint: POST http://$API_BASE/api/script/generate"
     echo "model:    $MODEL"
     echo "target:   $TARGET_WORDS words"
 fi
 
 PAYLOAD=$(cat <<EOF
 {
-  "clip_ids": $CLIP_IDS,
-  "topic": "$TOPIC",
-  "title": "$TITLE",
-  "tone": "$TONE",
-  "model": "$MODEL",
-  "target_words": $TARGET_WORDS,
-  "min_quality_score": 0,
-  "min_transcript_words": 100,
-  "transcript_policy": "auto",
-  "ordering_strategy": "auto",
-  "save_to_db": true,
-  "force_refresh": true,
-  "generate_scene_images": false,
-  "extract_entities": false,
-  "generate_metadata": false
+  "version": 2,
+  "preset": "custom",
+  "items": [
+    {
+      "title": "$TITLE",
+      "tone": "$TONE",
+      "model": "$MODEL",
+      "source": {
+        "type": "clips",
+        "clip_ids": $CLIP_IDS,
+        "min_quality_score": 0,
+        "min_transcript_words": 100,
+        "transcript_policy": "auto",
+        "ordering_strategy": "auto",
+        "force_refresh": true
+      },
+      "script_params": {
+        "target_words": $TARGET_WORDS
+      },
+      "output": {
+        "save_to_db": true,
+        "generate_scene_images": "disabled",
+        "extract_entities": "disabled",
+        "generate_metadata": "disabled"
+      }
+    }
+  ]
 }
 EOF
 )
 
 HTTP=$(curl -s --max-time 30 -o "$POST_FILE" \
     -w '%{http_code}' \
-    -X POST "http://$API_BASE/api/script/generate-from-clips" \
+    -X POST "http://$API_BASE/api/script/generate" \
     -H "Authorization: Bearer $TOKEN" \
     -H 'Content-Type: application/json' \
     -d "$PAYLOAD")

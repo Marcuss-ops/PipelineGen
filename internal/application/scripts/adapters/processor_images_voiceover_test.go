@@ -19,8 +19,11 @@ package adapters_test
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,8 +43,14 @@ type fakeImageGen struct {
 	calls   atomic.Int32
 }
 
-func (f *fakeImageGen) SearchAndDownload(_ context.Context, _, _, _, _ string) (*adapterspkg.ImageResult, error) {
+func (f *fakeImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*adapterspkg.ImageResult, error) {
 	i := int(f.calls.Add(1) - 1)
+	// Keep the fake deterministic under parallel fan-out by mapping
+	// scene-<n> back to the corresponding fixture slot when possible.
+	// Falls back to call order for any other sceneName format.
+	if idx, ok := sceneIndexFromName(sceneName); ok && idx >= 0 && idx < len(f.results) {
+		i = idx
+	}
 	if i >= len(f.results) {
 		return nil, errors.New("unexpected call index")
 	}
@@ -49,6 +58,48 @@ func (f *fakeImageGen) SearchAndDownload(_ context.Context, _, _, _, _ string) (
 		return nil, f.errs[i]
 	}
 	return f.results[i], nil
+}
+
+func sceneIndexFromName(sceneName string) (int, bool) {
+	const prefix = "scene-"
+	if !strings.HasPrefix(sceneName, prefix) {
+		return 0, false
+	}
+	i, err := strconv.Atoi(strings.TrimPrefix(sceneName, prefix))
+	if err != nil {
+		return 0, false
+	}
+	return i, true
+}
+
+type blockingImageGen struct {
+	release       chan struct{}
+	prewarmCalled atomic.Int32
+	prewarmMisses atomic.Int32
+	calls         atomic.Int32
+	inFlight      atomic.Int32
+	maxInFlight   atomic.Int32
+}
+
+func (f *blockingImageGen) TriggerPrewarm(_ context.Context, _ string, _ int) {
+	f.prewarmCalled.Store(1)
+}
+
+func (f *blockingImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*adapterspkg.ImageResult, error) {
+	if f.prewarmCalled.Load() == 0 {
+		f.prewarmMisses.Add(1)
+	}
+	cur := f.inFlight.Add(1)
+	for {
+		max := f.maxInFlight.Load()
+		if cur <= max || f.maxInFlight.CompareAndSwap(max, cur) {
+			break
+		}
+	}
+	f.calls.Add(1)
+	<-f.release
+	f.inFlight.Add(-1)
+	return &adapterspkg.ImageResult{SourceURL: "http://img/" + sceneName}, nil
 }
 
 // ── Voiceover processor fakes ─────────────────────────────────────
@@ -202,6 +253,42 @@ func TestImageProcessorPartialFailure(t *testing.T) {
 	// ImageProcessor logs partial failures but does not populate
 	// PostProcessResult.Warnings (unlike VoiceoverProcessor which
 	// does). The log output is the canonical warning surface.
+}
+
+func TestImageProcessorWarmupAndParallelFanout(t *testing.T) {
+	t.Parallel()
+
+	gen := &blockingImageGen{
+		release: make(chan struct{}),
+	}
+
+	proc := adapterspkg.NewImageProcessor(gen, zap.NewNop())
+	model := nScenesModel(4)
+
+	done := make(chan struct{})
+	var result *adapterspkg.PostProcessResult
+	var err error
+	go func() {
+		result, err = proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
+		close(done)
+	}()
+
+	require.Eventually(t, func() bool {
+		return gen.calls.Load() >= 2
+	}, 2*time.Second, 10*time.Millisecond, "expected at least two concurrent image generations")
+
+	close(gen.release)
+	<-done
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.SceneImages, 4)
+	assert.Equal(t, int32(1), gen.prewarmCalled.Load(), "expected prewarm to run before fan-out")
+	assert.Equal(t, int32(0), gen.prewarmMisses.Load(), "search should never start before warmup completes")
+	assert.GreaterOrEqual(t, gen.maxInFlight.Load(), int32(2), "expected parallel fan-out to keep >1 generation in flight")
+	for i, img := range result.SceneImages {
+		assert.Equal(t, i, img.Index)
+		assert.Equal(t, "http://img/scene-"+itoaSimple(i), img.URL)
+	}
 }
 
 // ── Test: VoiceoverProcessor ──────────────────────────────────────

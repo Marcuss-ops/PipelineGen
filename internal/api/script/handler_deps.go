@@ -1,15 +1,15 @@
 // Package script (api/script) — handler_deps.go owns the construction
-// seam for ScriptFlowHandler: 3 typed-narrow dep bags
-// (GenerateDeps / JobsDeps / LegacyDeps) + the slim top-level
-// ScriptFlowDeps + the optional auto-harvest port interface
+// seam for ScriptFlowHandler: 2 typed-narrow dep bags
+// (GenerateDeps / JobsDeps) + the slim top-level ScriptFlowDeps +
+// the optional auto-harvest port interface
 // (AutoHarvestService) + the canonical constructor
 // (NewScriptFlowHandler).
 //
 // PR-SCRIPT-DEPENDENCIES-EXTRACT (July 2026): extracted from
 // handler_flow.go.
 // PR-script-deps-slim (July 2026, P1): split the 23-field
-// ScriptFlowDeps into 3 capability-scoped dep bags
-// (GenerateDeps / JobsDeps / LegacyDeps) + dropped the 12 fields
+// ScriptFlowDeps into 2 capability-scoped dep bags
+// (GenerateDeps / JobsDeps) + dropped the 12 fields
 // that NewScriptFlowHandler never read (Engine / Image / Realtime /
 // Association / Voiceover / AssetTree / ClipSourceBuilder /
 // MediaCurator / Harvest / ScriptsRepo / DriveScriptsGenFolder /
@@ -87,18 +87,8 @@ type JobsDeps struct {
 	Registry *appjobs.Registry
 }
 
-// LegacyDeps groups the canonical constructor inputs for the
-// 2 legacy endpoints (/generate-from-clips + /generate-with-images).
-// Both endpoints are FROZEN at 410-Gone per FASE-2.1-VOICE-FREEZE
-// (July 2026, removal_date 2026-12-31) — the handlers increment a
-// Prometheus counter and return the canonical deprecation JSON;
-// no domain deps are required today. The struct is intentionally
-// empty (kept for godlike/06 SSOT + future migration back to
-// /generate when the freeze expires).
-type LegacyDeps struct{}
-
 // ScriptFlowDeps is the slim top-level bag assembled by Build.
-// Was 23 fields; now 5 (Generate + Jobs + Legacy + ClipsSearcher +
+// Was 23 fields; now 4 (Generate + Jobs + ClipsSearcher +
 // AdminToken). godlike/07 minimum-blast-radius: Build still
 // constructs NewScriptFlowHandler(ScriptFlowDeps{...}) so direct
 // callers (test fixtures) compile unchanged in shape — only the
@@ -108,9 +98,6 @@ type ScriptFlowDeps struct {
 	Generate GenerateDeps
 	// Jobs is the dep bag for /jobs/:id.
 	Jobs JobsDeps
-	// Legacy is the dep bag for the 2 legacy 410-Gone endpoints.
-	// Empty today (FASE-2.1-VOICE-FREEZE).
-	Legacy LegacyDeps
 
 	// ClipsSearcher is the clip-name searcher for
 	// GET /script/clips/search?q= discovery endpoint.

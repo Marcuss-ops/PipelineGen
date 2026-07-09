@@ -21,6 +21,7 @@ import (
 // Production composition must register GoogleSlidesProvider and nothing else.
 type GenerationProvider interface {
 	Generate(ctx context.Context, req GenerateRequest, opts GenerateOptions) (*GeneratedImage, error)
+	TriggerPrewarm(ctx context.Context, jobID string, count int)
 	Name() asset.ImageProvider
 	Healthy(ctx context.Context) error
 }
@@ -29,4 +30,5 @@ type GenerationProvider interface {
 // Chrome/Playwright backend without importing the parent images package.
 type ImageGeneratorPort interface {
 	Generate(ctx context.Context, req PortGenerateRequest) (*PortGeneratedImage, error)
+	TriggerPrewarm(ctx context.Context, jobID string, count int)
 }

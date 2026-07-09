@@ -52,7 +52,7 @@
 // instead of double-marshalling, constant reference fix.
 //
 // PR-script-deps-slim (July 2026, P1): slim form of Dependencies
-// (3 small dep bags + ClipsSearcher + AdminToken + 3 build-time
+// (2 small dep bags + ClipsSearcher + AdminToken + 3 build-time
 // fields, was 22+3 fields with 12 ignored). The 12 ignored
 // ScriptFlowDeps fields (Engine, Section, CacheEviction, Image,
 // Realtime, Association, Voiceover, AssetTree, ClipSourceBuilder,
@@ -103,7 +103,7 @@ import (
 // CacheEviction + Image + Realtime + Association + Voiceover +
 // AssetTree + ClipSourceBuilder + MediaCurator + Harvest +
 // ScriptsRepo + DriveScriptsGenFolder + ClipServices). The
-// slim Dependencies is 7 fields (Generate + Jobs + Legacy +
+// slim Dependencies is 6 fields (Generate + Jobs +
 // ClipsSearcher + AdminToken + 3 build-time). The 2 routes that
 // depended on sectionRegen + cacheEviction (RegenerateSection +
 // EvictCache) are RETIRED in lockstep.
@@ -237,7 +237,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			Log:      log,
 			Registry: appjobs.Compose(),
 		},
-		Legacy:        scriptapi.LegacyDeps{},
 		ClipsSearcher: clipsSearcher,
 		AdminToken:    adminToken,
 		EnabledFunc:   func() bool { return anyScriptFeatureEnabled(cfg) },

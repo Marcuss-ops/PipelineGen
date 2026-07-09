@@ -27,7 +27,7 @@
 #   --check-only           run checks, print summary; do NOT exec the server
 #   --strict               treat ANY warning as a hard failure (CI gate)
 #   --quick                skip slow checks (go test, Ollama probe, /health)
-#   --full                 also attempt a real `generate-from-clips` job
+#   --full                 also attempt a real script generation job
 #                          (requires server already listening on VELOX_PORT)
 #   --help, -h             show this header
 #
@@ -321,7 +321,7 @@ check_token "VELOX_DELIVERY_HMAC_SECRET" "${VELOX_DELIVERY_HMAC_SECRET:-}" 64
 section "Post-start probes  (exec'd only if make run succeeds)"
 
 log_skip "/health 200"  "exec make run; can't probe before server binds"
-log_skip "real job"      "exec make run + enable --full to dispatch a generate-from-clips job"
+log_skip "real job"      "exec make run + enable --full to dispatch a generate job"
 
 # ── summary ──────────────────────────────────────────────────────────────────
 section "Summary"
@@ -356,7 +356,7 @@ fi
 # a self-contained smoke test. We don't loop the server in the background here
 # (that's what scripts/diagnostics/marker_audit.sh is for \u2014 see AGENTS.md).
 if [ "$FULL" -eq 1 ]; then
-  printf "\n${C_DIM}--full mode noted: after server boots, run scripts/diagnostics/marker_audit.sh for a real generate-from-clips job. This script does not background the server itself.${C_RESET}\n"
+  printf "\n${C_DIM}--full mode noted: after server boots, run scripts/diagnostics/marker_audit.sh for a real generate job. This script does not background the server itself.${C_RESET}\n"
 fi
 
 printf "\n${C_GREEN}${C_BOLD}\xe2\x9c\x93 All readiness checks passed${C_RESET} \xe2\x86\x92 exec make run\n\n"
