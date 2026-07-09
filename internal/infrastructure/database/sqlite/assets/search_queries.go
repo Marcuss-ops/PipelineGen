@@ -15,6 +15,47 @@ import (
 	sqlutil "github.com/Marcuss-ops/PipelineGen/pkg/sqlutil"
 )
 
+// SearchableLifecycleFilter returns the canonical SQL fragment that
+// restricts search results to the two lifecycle states that clients
+// are allowed to see: ACTIVE and PUBLISHED.
+//
+// PR-QDRANT-SEARCH-LIFECYCLE-FILTER (T5 fix): the previous search
+// path used SoftDeleteFilter() which only excluded terminal DELETED
+// assets. Assets in DELETE_REQUESTED, DRIVE_DELETE_PENDING,
+// DRIVE_DELETED, INDEX_DELETE_PENDING, INDEX_DELETED, PREPARING,
+// STAGING, PROCESSING, ERROR all leaked into search results.
+// The Qdrant path (CompileQdrantFilter) correctly restricts to
+// ACTIVE-only; this function brings the local SQLite path into
+// parity with the canonical SearchableLifecycleStates allowlist
+// declared at internal/application/search/ports.go.
+//
+// godlike/06 SSOT: SoftDeleteFilter() (lifecycle_state != 'DELETED')
+// is the correct general-purpose exclusion for CRUD operations
+// (Get, List, Resolve, Dedup). Search is a STRICTER surface —
+// only searchable states should surface. The two filters are
+// intentionally different and coexist.
+func SearchableLifecycleFilter() string {
+	return "lifecycle_state IN ('ACTIVE', 'PUBLISHED')"
+}
+
+// buildSearchableMediaAssetQuery mirrors buildMediaAssetQuery but uses
+// SearchableLifecycleFilter (the stricter ACTIVE-only+PUBLISHED filter)
+// instead of SoftDeleteFilter. Used exclusively by the 3 search functions
+// (SearchClips, SearchClipsByKeywords, SearchStockByKeywords) so search
+// results never include DELETED/DELETE_REQUESTED/DRIVE_DELETE_PENDING/...
+// assets.
+//
+// godlike/06 SSOT: buildMediaAssetQuery stays as-is for non-search
+// paths (Get, List, Resolve, Dedup) — those paths correctly use
+// SoftDeleteFilter().
+func buildSearchableMediaAssetQuery(source string) string {
+	q := "SELECT " + MediaAssetColumns + " FROM media_assets WHERE " + SearchableLifecycleFilter()
+	if source != "" && source != "all" && source != "unified" {
+		q += " AND source = ?"
+	}
+	return q
+}
+
 // allowedSortColumns maps user-facing sort keys to the canonical
 // media_assets column name used in the ORDER BY clause. Unknown keys
 // are rejected (ErrInvalidSortColumn) instead of silently falling back
@@ -95,7 +136,7 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 		return []*asset.Asset{}, nil
 	}
 
-	query := buildMediaAssetQuery(source) + " AND (" + conditionSQL + ")"
+	query := buildSearchableMediaAssetQuery(source) + " AND (" + conditionSQL + ")"
 
 	finalArgs := []any{}
 	if source != "" && source != "all" && source != "unified" {
@@ -128,7 +169,7 @@ func (s *AssetStoreSQLite) SearchClips(ctx context.Context, source, tag string) 
 	if len(keywords) > 1 {
 		orCondition, orArgs := sqlutil.BuildFallbackLikeConditionsOR(keywords, columns)
 		if orCondition != "" {
-			orQuery := buildMediaAssetQuery(source) + " AND (" + orCondition + ")"
+			orQuery := buildSearchableMediaAssetQuery(source) + " AND (" + orCondition + ")"
 			orFinalArgs := []any{}
 			if source != "" && source != "all" && source != "unified" {
 				orFinalArgs = append(orFinalArgs, source)
@@ -170,7 +211,7 @@ func (s *AssetStoreSQLite) SearchClipsByKeywords(ctx context.Context, source str
 		return []*asset.Asset{}, nil
 	}
 
-	query := fmt.Sprintf("%s AND (%s) LIMIT ?", buildMediaAssetQuery(source), conditionSQL)
+	query := fmt.Sprintf("%s AND (%s) LIMIT ?", buildSearchableMediaAssetQuery(source), conditionSQL)
 	finalArgs := []any{}
 	if source != "" && source != "all" && source != "unified" {
 		finalArgs = append(finalArgs, source)
@@ -204,7 +245,10 @@ func (s *AssetStoreSQLite) SearchClipsAdvanced(ctx context.Context, req asset.Ad
 		req.Limit = 500
 	}
 
-	conditions := []string{SoftDeleteFilter()}
+	// PR-QDRANT-SEARCH-LIFECYCLE-FILTER (T5 fix): use the stricter
+	// SearchableLifecycleFilter instead of SoftDeleteFilter so search
+	// results never include DELETED/DELETE_REQUESTED/DRIVE_* states.
+	conditions := []string{SearchableLifecycleFilter()}
 	args := []any{}
 
 	if req.Source != "" && req.Source != "all" {
@@ -347,7 +391,7 @@ func (s *AssetStoreSQLite) SearchStockByKeywords(ctx context.Context, keywords [
 	query := fmt.Sprintf(`
 		SELECT %s
 		FROM media_assets
-		WHERE source = 'stock' AND `+SoftDeleteFilter()+` AND (%s)
+		WHERE source = 'stock' AND `+SearchableLifecycleFilter()+` AND (%s)
 		LIMIT ?`,
 		MediaAssetColumns,
 		conditionSQL,
