@@ -81,8 +81,7 @@ type HealthProber interface {
 // return-shape type so it can stay strictly transport-shaped. Every
 // concrete infra type ("Drive", "Qdrant", "JobBroker") is hidden
 // behind the *ComposeRoot tree in wire_services.go — the API runtime
-// only ever sees the AppDeps, Registry, module.LifecycleManager and
-// the typed GetDroppedLogs() / RegisterRoutes interfaces.
+// only ever sees the AppDeps, Registry, module.LifecycleManager and//     the typed GetDroppedLogs() / RouteRegistrar interfaces.
 //
 // Fields:
 //
