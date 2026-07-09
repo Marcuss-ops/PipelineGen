@@ -342,25 +342,4 @@ var ErrRunRepositoryUnavailable = errors.New(
 //	                              as fallback (the prior implicit behaviour).
 //	public_only_for_dev          — ONLY Pixabay + Pexels (no scraper). Useful
 //	                              for dev/testing without a running Node scraper.
-type ArtlistSearchStrategy string
 
-const (
-	StrategyArtlistOnly               ArtlistSearchStrategy = "artlist_only"
-	StrategyArtlistThenPublicFallback ArtlistSearchStrategy = "artlist_then_public_fallback"
-	StrategyPublicOnlyForDev          ArtlistSearchStrategy = "public_only_for_dev"
-)
-
-// IsValid reports whether s is a recognised strategy value.
-func (s ArtlistSearchStrategy) IsValid() bool {
-	switch s {
-	case StrategyArtlistOnly, StrategyArtlistThenPublicFallback, StrategyPublicOnlyForDev:
-		return true
-	default:
-		return false
-	}
-}
-
-// DefaultArtlistSearchStrategy is the fail-closed default when no strategy
-// is configured. artlist_only ensures that no external stock sources (Pixabay/
-// Pexels) are invoked without an explicit operator opt-in.
-const DefaultArtlistSearchStrategy = StrategyArtlistOnly
