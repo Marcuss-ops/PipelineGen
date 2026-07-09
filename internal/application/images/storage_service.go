@@ -97,9 +97,11 @@ func mapMediaTypeToDestination(mt drive.MediaType) delivery.DestinationKey {
 }
 
 // mapMediaTypeToConflictPolicy chooses the canonical ConflictPolicy for
-// the given AssetDestinationRequest. Images and audio are treated as
-// immutable (ConflictSkip); metadata JSON files are treated as
-// regenerable (ConflictOverwrite).
+// the given AssetDestinationRequest. metadata JSON files are treated as
+// regenerable (ConflictOverwrite); all other media (images, audio) use
+// ConflictRename to ensure no file is silently lost on name collision
+// (godlike/07 NO-FAKE-AVAILABILITY: ConflictSkip would silently drop
+// images on duplicate filenames without operator visibility).
 func mapMediaTypeToConflictPolicy(req drive.AssetDestinationRequest) delivery.ConflictPolicy {
 	if req.Ext == ".json" || req.Hash == "metadata" {
 		return delivery.ConflictOverwrite
