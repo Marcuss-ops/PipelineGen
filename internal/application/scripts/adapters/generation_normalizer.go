@@ -228,6 +228,18 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 	//      ProcessorDocument or ProcessorPersistence to the postprocessor
 	//      list, so Google Docs are never created and scripts never persisted.
 	//
+	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-1: GenerateVoiceover and
+	// GenerateSceneImages are NOT safety-defaulted here because they are
+	// composition-gated (require VoiceoverService / ImageService wiring).
+	// The composition root at internal/app/wire_script_postprocess.go
+	// silently skips their registration on missing service + the
+	// BestEffort policy in defaultPolicyByName prevents a hard preflight
+	// failure; the runtime processor emits a warning + bounded metric
+	// on an unwired service. The bool zero-value ambiguity (cannot
+	// distinguish "caller did not set" from "caller explicitly false")
+	// is acknowledged and is forward-pointer PR-3 TOGGLE-TRISTATE
+	// (Toggle tri-state migration full cutover).
+	//
 	// godlike/06 caveat (bool zero-value = false, indistinguishable from
 	// "caller did not set" — acknowledged and acceptable because the safety
 	// default fills the gap for both cases; when the caller explicitly sets

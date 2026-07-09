@@ -101,24 +101,53 @@ type OutputSpec struct {
 	ExtractEntities  bool `json:"extract_entities,omitempty"`
 	GenerateMetadata bool `json:"generate_metadata,omitempty"`
 
-	// Deprecated: GenerateVoiceover is no longer an inline postprocessor.
-	// Fase 2 Spina Dorsale (July 2026): voiceovers are now produced by
-	// a separate voiceover.generate downstream job. This flag is kept
-	// for backward compatibility; setting it has no effect on the
-	// script.generate pipeline.
+	// GenerateVoiceover is an ACTIVE inline postprocessor gated on the
+	// VoiceoverService wiring (composition root at
+	// internal/app/wire_script_postprocess.go::registerScriptPostProcessors
+	// checks for a nil service and silently skips registration; the
+	// BestEffort policy in defaultPolicyByName prevents a missing
+	// service from triggering a hard preflight failure at the canonical
+	// preflight gate).
+	//
+	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-1: the godoc previously
+	// marked this as "deprecated / no effect" referencing the Fase 2
+	// Spina Dorsale plan. That wording was incorrect — the plan is
+	// forward-looking (separate voiceover.generate downstream job) but
+	// is NOT yet wired, and script.generate keeps the inline surface as
+	// the canonical path. The downstream cutover will land in a future
+	// FASE-2 wave; until then, setting GenerateVoiceover=true produces
+	// inline per-scene voiceover via ProcessorVoiceover.
 	GenerateVoiceover bool `json:"generate_voiceover,omitempty"`
 
-	// Deprecated: GenerateSceneImages is no longer an inline postprocessor.
-	// Fase 2 Spina Dorsale (July 2026): scene images are now produced by
-	// a separate images.generate downstream job. This flag is kept
-	// for backward compatibility; setting it has no effect on the
-	// script.generate pipeline.
-	GenerateSceneImages bool `json:"generate_scene_images,omitempty"` // GenerateDocument controls inline Google Doc creation via the
-	// ProcessorDocument postprocessor. The aspirational Fase 2
-	// Spina Dorsale plan (separate document.generate downstream job)
-	// is not yet implemented — until it is, this flag gates the
-	// inline processor, and the safety default in generation_normalizer
-	// sets it to true for all presets including custom.
+	// GenerateSceneImages is an ACTIVE inline postprocessor gated on the
+	// ImageService wiring (composition root at
+	// internal/app/wire_script_postprocess.go::registerScriptPostProcessors
+	// checks for a nil service and silently skips registration; the
+	// BestEffort policy in defaultPolicyByName prevents a missing
+	// service from triggering a hard preflight failure).
+	//
+	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-1: same correction as
+	// GenerateVoiceover above — the inline surface is canonical today;
+	// the FASE-2 downstream cutover (separate images.generate job) is
+	// forward-looking only.
+	GenerateSceneImages bool `json:"generate_scene_images,omitempty"`
+
+	// GenerateDocument controls inline Google Doc creation via the
+	// ProcessorDocument postprocessor. Gated on DriveBundle.DocClient
+	// (composition root checks for a nil client and silently skips
+	// registration; the BestEffort policy in defaultPolicyByName
+	// prevents a missing client from triggering a hard preflight failure).
+	//
+	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-1: the goddoc previously
+	// referenced a forward-looking FASE-2 plan as if it were current.
+	// The inline surface is canonical today (ProcessorDocument is
+	// registered whenever DocClient != nil), and the downstream cutover
+	// (separate document.generate job) is forward-looking only. The
+	// applySafetyDefaults function in generation_normalizer.go sets
+	// this to true as a safety default for all presets including custom
+	// (because the custom preset is pass-through + applyConfigDefaults
+	// only fills identity/sizing/prompt fields, leaving the postprocessor
+	// flag at its Go zero-value false without an explicit safety floor).
 	GenerateDocument bool `json:"generate_document,omitempty"`
 
 	// ── Persistence ──────────────────────────────────────────────────
@@ -143,11 +172,18 @@ type OutputSpec struct {
 // HasAnyPostprocessor returns true when at least one postprocessor
 // flag is enabled.
 //
-// Fase 2 Spina Dorsale (July 2026): GenerateVoiceover, GenerateSceneImages,
-// and GenerateDocument are no longer inline postprocessors — they are
-// produced by separate downstream jobs. Only script-internal transformations
-// (entities, metadata) are checked here.
+// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-1: the previous goddoc was
+// inconsistent with the registered behavior — it claimed
+// GenerateVoiceover/GenerateSceneImages/GenerateDocument were downstream
+// jobs (Fase 2 Spina Dorsale plan) but the inline ProcessorVoiceover /
+// ProcessorImages / ProcessorDocument are still registered whenever
+// their composition-time service is wired. Until the downstream cutover
+// actually lands (forward-pointer FASE-2 wave), all three are ACTIVE
+// inline processors; HasAnyPostprocessor reflects that fact.
 func (o *OutputSpec) HasAnyPostprocessor() bool {
 	return o.ExtractEntities ||
-		o.GenerateMetadata
+		o.GenerateMetadata ||
+		o.GenerateVoiceover ||
+		o.GenerateSceneImages ||
+		o.GenerateDocument
 }
