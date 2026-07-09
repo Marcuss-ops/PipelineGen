@@ -151,6 +151,10 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 	artifactPrep := runner.ArtifactPreparation()
 	rootFolderName := stockRootFolderName(in)
 	rootFolderOverride := stockRootFolderOverride(in)
+	timestampGroupName := stockTimestampGroupName(in)
+	if in != nil && len(in.Clips) > 0 {
+		timestampGroupName = stockTimestampParentGroupName(in)
+	}
 
 	var cutPaths []string
 	var publishedChunks []ChunkState
@@ -280,7 +284,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 				}
 
 				if artifactPrep != nil {
-					leafName := timestampParentLeafName(plan)
+					leafName := timestampGroupName
 					segmentCount := segmentCounts[leafName] + 1
 					segmentCounts[leafName] = segmentCount
 					segmentFilename := fmt.Sprintf("clip_%03d.mp4", segmentCount)

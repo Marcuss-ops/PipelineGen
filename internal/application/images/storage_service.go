@@ -70,13 +70,14 @@ func (s *ImageStorageService) publishToDrive(ctx context.Context, req drive.Asse
 		return "", "", fmt.Errorf("ImageStorageService.publishToDrive: publisher not configured (P0-2 godlike/07: nil publisher fail-closed)")
 	}
 	result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
-		Destination:    mapMediaTypeToDestination(req.MediaType),
-		LocalPath:      filePath,
-		Filename:       filepath.Base(filePath),
-		Style:          req.Style,
-		Subject:        req.Subject,
-		Group:          req.Subject,
-		ConflictPolicy: mapMediaTypeToConflictPolicy(req),
+		Destination:        mapMediaTypeToDestination(req.MediaType),
+		LocalPath:          filePath,
+		Filename:           filepath.Base(filePath),
+		Style:              req.Style,
+		Subject:            req.Subject,
+		Group:              req.Subject,
+		ConflictPolicy:     mapMediaTypeToConflictPolicy(req),
+		RootFolderOverride: req.DriveRootOverride,
 	})
 	if err != nil {
 		return "", "", fmt.Errorf("publishToDrive: %w", err)
@@ -103,5 +104,5 @@ func mapMediaTypeToConflictPolicy(req drive.AssetDestinationRequest) delivery.Co
 	if req.Ext == ".json" || req.Hash == "metadata" {
 		return delivery.ConflictOverwrite
 	}
-	return delivery.ConflictSkip
+	return delivery.ConflictRename
 }

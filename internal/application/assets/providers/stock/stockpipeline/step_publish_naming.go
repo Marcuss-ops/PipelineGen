@@ -212,6 +212,32 @@ func stockTimestampGroupName(in *RunInput) string {
 	return "metadata"
 }
 
+// stockTimestampParentGroupName derives the human-readable leaf for
+// the parent folder that contains all 5-second children of a single
+// explicit timestamp block. Priority cascade:
+//
+//  1. Parent directory basename of in.Subfolder (e.g.
+//     `Pacquiao_Vs_Broner/Round_1_La_fase_di_studio/00-...` →
+//     `Round_1_La_fase_di_studio`).
+//  2. stockTimestampGroupName(in) fallback when no parent segment
+//     exists or the parent segment sanitizes to empty.
+//
+// This is the leaf shared by every child file and by the aggregated
+// metadata.json in explicit-clips mode.
+func stockTimestampParentGroupName(in *RunInput) string {
+	if in == nil {
+		return stockTimestampGroupName(in)
+	}
+	if sub := strings.TrimSpace(in.Subfolder); sub != "" {
+		if parent := filepath.Base(filepath.Dir(filepath.Clean(sub))); parent != "" && parent != "." && parent != string(filepath.Separator) {
+			if name := sanitizedRootName(parent); name != "" {
+				return name
+			}
+		}
+	}
+	return stockTimestampGroupName(in)
+}
+
 // perClipLeafName derives the canonical per-clip Drive leaf folder
 // name for explicit-clips (timestamp-mode) runs. Priority cascade
 // (per user diagnostic "round-01-la-fase-di-studio" example):

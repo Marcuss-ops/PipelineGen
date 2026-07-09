@@ -74,7 +74,8 @@ class ProfileWorker(threading.Thread):
     def __init__(self, profile_id: int, headful: bool = False) -> None:
         super().__init__(daemon=True, name=f"profile-{profile_id}")
         self.profile_id = profile_id
-        self.profile_dir = PROFILE_DIR
+        # Append PID to prevent locking conflicts when running concurrent processes
+        self.profile_dir = f"{PROFILE_DIR}_{profile_id}_{os.getpid()}"
         self.headful = headful
 
         # in_queue: max 1 pending request — enforces "1 job at a time per profile"
@@ -123,8 +124,7 @@ class ProfileWorker(threading.Thread):
         _log(f"[profile-{self.profile_id}] warmup: navigating to slides.new...")
         self.page = self.context.new_page()
         try:
-            self.page.goto("https://slides.new", wait_until="domcontentloaded", timeout=30000)
-            self.page.wait_for_load_state("networkidle", timeout=15000)
+            self.page.goto("https://slides.new", wait_until="load", timeout=30000)
         except PlaywrightTimeout:
             _log(f"[profile-{self.profile_id}] warmup: slides.new timed out — continuing")
 
@@ -179,6 +179,13 @@ class ProfileWorker(threading.Thread):
         except Exception:
             pass
 
+        import shutil
+        try:
+            shutil.rmtree(self.profile_dir, ignore_errors=True)
+            _log(f"[profile-{self.profile_id}] cleaned up profile directory {self.profile_dir}")
+        except Exception as e:
+            _log(f"[profile-{self.profile_id}] failed to clean up profile directory: {e}")
+
         _log(f"[profile-{self.profile_id}] stopped")
 
     # ── Generation (same logic as before, extracted into ProfileWorker) ──
@@ -196,8 +203,7 @@ class ProfileWorker(threading.Thread):
             return
         self.page = self.context.new_page()
         try:
-            self.page.goto("https://slides.new", wait_until="domcontentloaded", timeout=30000)
-            self.page.wait_for_load_state("networkidle", timeout=15000)
+            self.page.goto("https://slides.new", wait_until="load", timeout=30000)
         except PlaywrightTimeout:
             _log(f"[profile-{self.profile_id}] recovery: slides.new timed out — continuing")
 
@@ -219,34 +225,43 @@ class ProfileWorker(threading.Thread):
 
         try:
             # Step 1: Click insert-generated-image
-            _log(f"[profile-{self.profile_id}][{request_id}] clicking insert-generated-image...")
-            btn = self.page.locator(
-                'button.insert-generated-image, '
-                '[data-view-id="insert-generated-image"], '
-                'div:has-text("Nano Banana Pro")'
-            ).last
+            ta_wait = self.page.locator('.image-synthesis textarea:visible, textarea:visible').first
+            panel_open = False
             try:
-                btn.click(force=True, timeout=5000)
-            except PlaywrightTimeout:
-                _log(f"[profile-{self.profile_id}][{request_id}] first click timed out — recovery")
-                try:
-                    self.page.keyboard.press("Escape")
-                    self.page.wait_for_timeout(500)
-                except Exception:
-                    pass
-                btn.click(force=True, timeout=5000)
+                ta_wait.wait_for(state="visible", timeout=2000)
+                panel_open = True
+                _log(f"[profile-{self.profile_id}][{request_id}] panel already open, skipping click")
+            except Exception:
+                pass
 
-            # Wait for the textarea to become visible (was fixed sleep(2))
-            ta_wait = self.page.locator('.image-synthesis textarea, textarea').first
-            try:
-                ta_wait.wait_for(state="visible", timeout=10000)
-            except PlaywrightTimeout:
-                _log(f"[profile-{self.profile_id}][{request_id}] click confirmed but textarea not found — recovery")
-                raise
+            if not panel_open:
+                _log(f"[profile-{self.profile_id}][{request_id}] clicking insert-generated-image...")
+                btn = self.page.locator(
+                    'button.insert-generated-image, '
+                    '[data-view-id="insert-generated-image"], '
+                    'div:has-text("Nano Banana Pro")'
+                ).last
+                try:
+                    btn.click(force=True, timeout=5000)
+                except PlaywrightTimeout:
+                    _log(f"[profile-{self.profile_id}][{request_id}] first click timed out — recovery")
+                    try:
+                        self.page.keyboard.press("Escape")
+                        self.page.wait_for_timeout(500)
+                    except Exception:
+                        pass
+                    btn.click(force=True, timeout=5000)
+
+                # Wait for the textarea to become visible (was fixed sleep(2))
+                try:
+                    ta_wait.wait_for(state="visible", timeout=10000)
+                except PlaywrightTimeout:
+                    _log(f"[profile-{self.profile_id}][{request_id}] click confirmed but textarea not found — recovery")
+                    raise
 
             # Step 2: Fill prompt
             _log(f"[profile-{self.profile_id}][{request_id}] filling prompt: '{prompt[:60]}...'")
-            ta = self.page.locator('.image-synthesis textarea, textarea').first
+            ta = self.page.locator('.image-synthesis textarea:visible, textarea:visible').first
             try:
                 ta.wait_for(state="visible", timeout=10000)
             except PlaywrightTimeout:
@@ -258,7 +273,7 @@ class ProfileWorker(threading.Thread):
                     'div:has-text("Nano Banana Pro")'
                 ).last
                 btn2.click(force=True, timeout=5000)
-                ta = self.page.locator('.image-synthesis textarea, textarea').first
+                ta = self.page.locator('.image-synthesis textarea:visible, textarea:visible').first
                 ta.wait_for(state="visible", timeout=10000)
 
             ta.fill(prompt)

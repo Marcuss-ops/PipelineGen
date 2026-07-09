@@ -1,0 +1,24 @@
+-- Migration 134: ADD manifest_v2 TEXT column to scripts table.
+--
+-- PR 1 (July 2026, SCRIPT-DOWNSTREAM-CUTOVER wave): canonical
+-- NEW-mode downstream fan-out manifest bound to the canonical
+-- script row. The column carries the JSON-marshalled
+-- script.ManifestV2 envelope (NoInlineAssets=true + Items
+-- []DownstreamRequest) emitted by PersistenceProcessor (the
+-- single-writer of the column per godlike/06
+-- one-canonical-owner-per-fact).
+--
+-- Wire shape: TEXT NOT NULL DEFAULT '' (empty string sentinel
+-- for "no manifest emitted yet" — the canonical new-mode
+-- detector is "manifest_v2 != ''" + json.Unmarshal + NoInlineAssets
+-- true). Forward-compat with the existing rows: pre-PR-1 rows
+-- have manifest_v2='' (the zero value after the ALTER TABLE);
+-- a future PR can backfill by walking each script and re-running
+-- PersistenceProcessor with the new manifest-builder helper (NOT
+-- in scope for PR-1 per godlike/07 minimum-blast-radius).
+--
+-- The "" default avoids a schema-incompatible row rewrite for
+-- the existing ~few-hundred scripts rows (ALTER TABLE ADD
+-- COLUMN with NOT NULL DEFAULT '' is cheap; rewriting all rows
+-- to a non-trivial default would lock the table for seconds).
+ALTER TABLE scripts ADD COLUMN manifest_v2 TEXT NOT NULL DEFAULT '';
