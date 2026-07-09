@@ -32,8 +32,8 @@ import (
 // ClipSourceBuilder consumes. It replaces the legacy clipsResolverPort
 // (GetClip + GetByDriveFileID heuristic) with explicit per-type dispatch.
 // *assets.ClipsRepository satisfies it in production via its
-// ResolveByMediaAssetID / ResolveByDriveFileID methods (TODO #1 CUTOVER,
-// June 2026). Unit tests inject a hand-rolled stub.
+// ResolveByMediaAssetID / ResolveByDriveFileID methods. Unit tests
+// inject a hand-rolled stub.
 type typedClipResolverPort interface {
 	ResolveByMediaAssetID(ctx context.Context, id string) (*asset.Asset, error)
 	ResolveByDriveFileID(ctx context.Context, fileID string) ([]*asset.Asset, error)
@@ -77,10 +77,8 @@ type ClipGenerationOptions struct {
 // by internal/app/wire_script.go. Unit tests pass a hand-rolled
 // stub directly — no separate test-only constructor is needed.
 //
-// TODO #1 CUTOVER (June 2026): parameter changed from clipsResolverPort
-// (GetClip + GetByDriveFileID) to typedClipResolverPort (ResolveByMediaAssetID
-// + ResolveByDriveFileID), switching from heuristic fallback to explicit
-// per-type dispatch.
+// NewClipSourceBuilder accepts the typed clip resolver (explicit
+// per-type dispatch replaces the legacy heuristic fallback).
 func NewClipSourceBuilder(
 	clipsRepo typedClipResolverPort,
 	ollamaClient interface{},
@@ -312,11 +310,9 @@ const (
 // — the bucket split happens later when the requireDriveLink gate
 // emits MissingClipReasonDriveNotFound separately).
 func (c *ClipSourceBuilder) resolveOneClip(ctx context.Context, id string) (*asset.Asset, clipResolveReason) {
-	// TODO #1 CUTOVER (June 2026): typed dispatch replaces the
-	// legacy GetClip → GetByDriveFileID heuristic. First try
-	// the canonical media_assets.id column; if not found, try
-	// drive_file_id. The two-phase fallback preserves existing
-	// behavior while using the typed ResolveBy* methods.
+	// Typed dispatch: first try the canonical media_assets.id column;
+	// if not found, try drive_file_id. The two-phase fallback preserves
+	// existing behavior while using the typed ResolveBy* methods.
 	clip, err := c.clipsRepo.ResolveByMediaAssetID(ctx, id)
 	if err != nil && c.log != nil {
 		c.log.Warn("clip source builder: failed to fetch clip by media asset id",

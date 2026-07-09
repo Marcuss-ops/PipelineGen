@@ -2,11 +2,9 @@
 // ports.ClipResolver adapter, wrapping the typed repo methods on
 // *assets.ClipsRepository (this PR adds the typed methods).
 //
-// TODO #1 (June 2026, refactor/generate-from-clips): the legacy
-// clip_source_builder.clipsResolverPort (now typedClipResolverPort)
-// admitted a "try media_assets.id, then fall back to drive_file_id"
-// heuristic that silently mixed identifier layers. This adapter swaps
-// that for EXPLICIT per-ReferenceType dispatch — there is no fall-back, only:
+// This adapter replaces the legacy clip_source_builder.clipsResolverPort
+// (now typedClipResolverPort) heuristic that silently mixed identifier
+// layers with EXPLICIT per-ReferenceType dispatch — there is no fall-back, only:
 //
 //	RefTypeMediaAssetID        → ResolveByMediaAssetID
 //	RefTypeYouTubeVideoID      → ResolveByYouTubeVideoID (LIKE yt_<videoID>_% fan-out)
@@ -14,7 +12,7 @@
 //	RefTypeExternalProviderID  → ResolveByExternalProviderID
 //
 // Missing assets are reported as Unresolved references with
-// Reason="not_found" — NEVER auto-ingest (TODO #6 owns that path).
+// Reason="not_found" — NEVER auto-ingest (the ingest path is separate).
 //
 // DB errors propagate as the resolver-level error and the per-
 // reference Reason="db_error" simultaneously: the resolver-level
@@ -60,8 +58,7 @@ type clipResolverAdapter struct {
 
 // NewClipResolver constructs the production adapter. The repo
 // argument must be the concrete *assets.ClipsRepository — the
-// canonical typed methods are added in this PR (TODO #1 changes
-// land here). nil repo returns a no-op adapter so test fixtures can
+// canonical typed methods are wired here. nil repo returns a no-op adapter so test fixtures can
 // pass nil without nil-checking at every call site (mirrors the
 // nil-safe shape of voiceoverGroupsAdapter).
 func NewClipResolver(repo *assets.ClipsRepository, log *zap.Logger) ports.ClipResolver {
@@ -84,12 +81,11 @@ func NewClipResolverForTest(repo clipResolverPortReadOnly, log *zap.Logger) port
 // at the first production dispatch.
 var _ ports.ClipResolver = (*clipResolverAdapter)(nil)
 
-// Compile-time pin (Q-A from TODO #1 review): the concrete
-// *assets.ClipsRepository satisfies the narrow clipResolverPortReadOnly
-// surface. Without this assertion, a future signature drift on
-// clipResolverPortReadOnly fails only at the first adapter
-// dispatch (silent runtime panic), not at compile. AGENTS.md
-// Pattern 0 prefers the compile-time gate.
+// Compile-time pin: the concrete *assets.ClipsRepository satisfies
+// the narrow clipResolverPortReadOnly surface. Without this assertion,
+// a future signature drift on clipResolverPortReadOnly fails only at
+// the first adapter dispatch (silent runtime panic), not at compile.
+// AGENTS.md Pattern 0 prefers the compile-time gate.
 var _ clipResolverPortReadOnly = (*assets.ClipsRepository)(nil)
 
 // Resolve dispatches each input reference to the typed arm.
