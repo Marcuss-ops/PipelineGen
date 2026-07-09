@@ -264,3 +264,242 @@ func TestSceneSynthesizer_NewSynthesizer_IsIdempotent(t *testing.T) {
 		}
 	}
 }
+
+// ── FromText tests (LLM-PLAIN-TEXT-CONTRACT wave PR-6) ─────────────
+
+// TestSceneSynthesizer_FromText_PartitionsProse verifies the
+// basic contract: FromText delegates to FromProse when no evidence
+// is provided, producing N scenes with the same distribution as
+// FromProse.
+func TestSceneSynthesizer_FromText_PartitionsProse(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+	const prose = "First. Second. Third. Fourth. Fifth. Sixth."
+
+	got := s.FromText(prose, 3, nil)
+	if len(got) != 3 {
+		t.Fatalf("FromText returned %d scenes, want 3", len(got))
+	}
+	for i, sc := range got {
+		if sc.Text == "" {
+			t.Errorf("scene[%d].Text is empty", i)
+		}
+		if sc.ID == "" {
+			t.Errorf("scene[%d].ID is empty", i)
+		}
+	}
+}
+
+// TestSceneSynthesizer_FromText_BindsClipsOneToOne verifies the
+// canonical 1:1 binding contract: when evidence is provided with
+// N AcceptedClipIDs, the first min(N, len(scenes)) scenes get
+// their Bindings.Clip populated in order.
+func TestSceneSynthesizer_FromText_BindsClipsOneToOne(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+	const prose = "Scene one here. Scene two here. Scene three here."
+
+	evidence := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
+		ClipNames: map[string]string{
+			"clip-a": "First Clip",
+			"clip-b": "Second Clip",
+			"clip-c": "Third Clip",
+		},
+		DriveLinks: map[string]string{
+			"clip-a": "https://drive.google.com/file/d/a",
+			"clip-b": "https://drive.google.com/file/d/b",
+			"clip-c": "https://drive.google.com/file/d/c",
+		},
+	}
+
+	got := s.FromText(prose, 3, evidence)
+	if len(got) != 3 {
+		t.Fatalf("FromText returned %d scenes, want 3", len(got))
+	}
+
+	// Scene 0 → clip-a.
+	if got[0].Bindings.Clip == nil {
+		t.Fatal("scene[0].Bindings.Clip is nil, want binding to clip-a")
+	}
+	if got[0].Bindings.Clip.ClipID != "clip-a" {
+		t.Errorf("scene[0].Bindings.Clip.ClipID = %q, want %q", got[0].Bindings.Clip.ClipID, "clip-a")
+	}
+	if got[0].Bindings.Clip.ClipTitle != "First Clip" {
+		t.Errorf("scene[0].Bindings.Clip.ClipTitle = %q, want %q", got[0].Bindings.Clip.ClipTitle, "First Clip")
+	}
+	if got[0].Bindings.Clip.DriveLink != "https://drive.google.com/file/d/a" {
+		t.Errorf("scene[0].Bindings.Clip.DriveLink = %q, want drive link for clip-a", got[0].Bindings.Clip.DriveLink)
+	}
+
+	// Scene 1 → clip-b.
+	if got[1].Bindings.Clip == nil {
+		t.Fatal("scene[1].Bindings.Clip is nil, want binding to clip-b")
+	}
+	if got[1].Bindings.Clip.ClipID != "clip-b" {
+		t.Errorf("scene[1].Bindings.Clip.ClipID = %q, want %q", got[1].Bindings.Clip.ClipID, "clip-b")
+	}
+
+	// Scene 2 → clip-c.
+	if got[2].Bindings.Clip == nil {
+		t.Fatal("scene[2].Bindings.Clip is nil, want binding to clip-c")
+	}
+	if got[2].Bindings.Clip.ClipID != "clip-c" {
+		t.Errorf("scene[2].Bindings.Clip.ClipID = %q, want %q", got[2].Bindings.Clip.ClipID, "clip-c")
+	}
+}
+
+// TestSceneSynthesizer_FromText_NilEvidence_ReturnsScenesUnbound
+// verifies that nil evidence returns scenes without any clip
+// bindings (the caller preserves the no-op invariant).
+func TestSceneSynthesizer_FromText_NilEvidence_ReturnsScenesUnbound(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+	const prose = "Prose without any clip evidence."
+
+	got := s.FromText(prose, 2, nil)
+	if len(got) != 2 {
+		t.Fatalf("FromText returned %d scenes, want 2", len(got))
+	}
+	for i, sc := range got {
+		if sc.Bindings.Clip != nil {
+			t.Errorf("scene[%d].Bindings.Clip = %+v, want nil (nil evidence → no binding)",
+				i, sc.Bindings.Clip)
+		}
+	}
+}
+
+// TestSceneSynthesizer_FromText_EmptyAcceptedClipIDs_ReturnsScenesUnbound
+// verifies that evidence with empty AcceptedClipIDs returns scenes
+// without any clip bindings.
+func TestSceneSynthesizer_FromText_EmptyAcceptedClipIDs_ReturnsScenesUnbound(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+	const prose = "Prose with empty evidence."
+
+	evidence := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{},
+		ClipNames: map[string]string{
+			"orphan": "Orphaned Clip",
+		},
+	}
+
+	got := s.FromText(prose, 2, evidence)
+	if len(got) != 2 {
+		t.Fatalf("FromText returned %d scenes, want 2", len(got))
+	}
+	for i, sc := range got {
+		if sc.Bindings.Clip != nil {
+			t.Errorf("scene[%d].Bindings.Clip = %+v, want nil (empty AcceptedClipIDs → no binding)",
+				i, sc.Bindings.Clip)
+		}
+	}
+}
+
+// TestSceneSynthesizer_FromText_NoModuloCycling verifies the P0 #2
+// contract: when there are more scenes than clip IDs, scenes beyond
+// len(AcceptedClipIDs) get nil Bindings.Clip — NO modulo cycling.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: modulo cycling would silently
+// re-bind scene[1] to clip-a, masking the evidence gap. The contract
+// requires nil for unbound scenes so the binder downstream emits
+// its own sentinel.
+func TestSceneSynthesizer_FromText_NoModuloCycling(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+	const prose = "First scene text. Second scene text. Third scene text."
+
+	evidence := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"clip-a"},
+		ClipNames:       map[string]string{"clip-a": "Solo Clip"},
+		DriveLinks:      map[string]string{"clip-a": "https://drive.google.com/file/d/solo"},
+	}
+
+	got := s.FromText(prose, 3, evidence)
+	if len(got) != 3 {
+		t.Fatalf("FromText returned %d scenes, want 3", len(got))
+	}
+
+	// Scene 0: bound to clip-a.
+	if got[0].Bindings.Clip == nil {
+		t.Fatal("scene[0].Bindings.Clip is nil, want binding to clip-a")
+	}
+	if got[0].Bindings.Clip.ClipID != "clip-a" {
+		t.Errorf("scene[0].Bindings.Clip.ClipID = %q, want %q", got[0].Bindings.Clip.ClipID, "clip-a")
+	}
+
+	// Scene 1 + Scene 2: MUST be nil (NO modulo cycling).
+	for i := 1; i <= 2; i++ {
+		if got[i].Bindings.Clip != nil {
+			t.Errorf("scene[%d].Bindings.Clip = %+v, want nil (P0 #2 no-modulo-cycling contract: only 1 clip ID available)",
+				i, got[i].Bindings.Clip)
+		}
+	}
+}
+
+// TestSceneSynthesizer_FromText_EmptyClipID_Skipped verifies that
+// an empty-string clip ID in AcceptedClipIDs is skipped (the scene
+// at that index gets nil binding).
+func TestSceneSynthesizer_FromText_EmptyClipID_Skipped(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+	const prose = "First scene. Second scene."
+
+	evidence := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"", "clip-b"},
+		ClipNames:       map[string]string{"clip-b": "Second Clip"},
+	}
+
+	got := s.FromText(prose, 2, evidence)
+	if len(got) != 2 {
+		t.Fatalf("FromText returned %d scenes, want 2", len(got))
+	}
+
+	// Scene 0: empty clip ID → nil binding.
+	if got[0].Bindings.Clip != nil {
+		t.Errorf("scene[0].Bindings.Clip = %+v, want nil (empty clip ID → skipped)",
+			got[0].Bindings.Clip)
+	}
+
+	// Scene 1: bound to clip-b.
+	if got[1].Bindings.Clip == nil {
+		t.Fatal("scene[1].Bindings.Clip is nil, want binding to clip-b")
+	}
+	if got[1].Bindings.Clip.ClipID != "clip-b" {
+		t.Errorf("scene[1].Bindings.Clip.ClipID = %q, want %q", got[1].Bindings.Clip.ClipID, "clip-b")
+	}
+}
+
+// TestSceneSynthesizer_FromText_NumClipsZero_ReturnsNil verifies
+// the no-op contract: numClips <= 0 returns nil.
+func TestSceneSynthesizer_FromText_NumClipsZero_ReturnsNil(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+	const prose = "Some prose."
+
+	evidence := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"clip-a"},
+	}
+
+	if got := s.FromText(prose, 0, evidence); got != nil {
+		t.Errorf("FromText(_, 0, _) = %v, want nil", got)
+	}
+	if got := s.FromText(prose, -1, evidence); got != nil {
+		t.Errorf("FromText(_, -1, _) = %v, want nil", got)
+	}
+}
+
+// TestSceneSynthesizer_FromText_EmptyText_ReturnsNil verifies the
+// contract: empty text returns nil (FromProse returns nil).
+func TestSceneSynthesizer_FromText_EmptyText_ReturnsNil(t *testing.T) {
+	t.Parallel()
+	s := scene.NewSceneSynthesizer()
+
+	evidence := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"clip-a"},
+	}
+
+	if got := s.FromText("", 3, evidence); got != nil {
+		t.Errorf("FromText(\"\", 3, _) = %v, want nil", got)
+	}
+}

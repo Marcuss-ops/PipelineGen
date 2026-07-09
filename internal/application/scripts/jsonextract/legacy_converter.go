@@ -211,11 +211,24 @@ func ParsePlainTextFresh(raw []byte) (*scriptpkg.ModelScriptOutputV1, error) {
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("%w: empty output", scriptpkg.ErrModelOutputMalformed)
 	}
-	trimmed := cleanFallbackText(string(raw))
-	if looksLikeJSON(trimmed) {
+
+	// ── Legacy-JSON guard: check BEFORE cleanFallbackText ──────
+	//
+	// cleanFallbackText extracts prose from JSON envelopes (e.g.
+	// {"schema_version":1,"text":"hello"} → "hello"), so checking
+	// looksLikeJSON AFTER stripping would silently accept every
+	// legacy-V1 payload as plain prose. The guard below runs on the
+	// raw input to catch:
+	//  1. Bare JSON objects ({...}) and arrays ([...]).
+	//  2. JSON-string-wrapped objects ("{...}") — a known LLM
+	//     output pattern where the model double-wraps its JSON.
+	rawStr := strings.TrimSpace(string(raw))
+	if isLegacyJSONShape(rawStr) {
 		return nil, fmt.Errorf("%w: legacy JSON envelope detected on fresh plain-text path; the LLM is honouring the deprecated V1 contract — caller MUST either re-emit without JSON framing OR explicitly opt-in via ModeLegacyJSONCache",
 			scriptpkg.ErrModelOutputMalformed)
 	}
+
+	trimmed := cleanFallbackText(string(raw))
 	if trimmed == "" {
 		return nil, fmt.Errorf("%w: empty output after JSON-envelope stripping", scriptpkg.ErrModelOutputMalformed)
 	}
@@ -227,6 +240,21 @@ func ParsePlainTextFresh(raw []byte) (*scriptpkg.ModelScriptOutputV1, error) {
 			Scenes:  []scriptpkg.SpecScene{},
 		},
 	}, nil
+}
+
+// isLegacyJSONShape returns true when text is a JSON object, JSON
+// array, or a JSON-quoted string whose content is a JSON object or
+// array. It is load-bearing for ParsePlainTextFresh's godlike/07
+// NO-FAKE-AVAILABILITY contract — it MUST fire BEFORE cleanFallbackText
+// because cleanFallbackText extracts prose from inside JSON envelopes.
+func isLegacyJSONShape(text string) bool {
+	if looksLikeJSON(text) {
+		return true
+	}
+	if unquoted, ok := tryUnquoteJSONString(text); ok {
+		return looksLikeJSON(strings.TrimSpace(unquoted))
+	}
+	return false
 }
 
 // cleanFallbackText removes obvious JSON-envelope noise from a raw
