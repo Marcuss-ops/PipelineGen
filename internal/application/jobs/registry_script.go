@@ -28,4 +28,30 @@ func registerScriptEntries(r *Registry) {
 	// Per-item retry via broker-emitted child jobs. The parent aggregator
 	// reads child outcomes and finalizes the parent.
 	r.Register(JobPolicy{Type: TypeScriptGenerateItem, Description: "Script generate per-item child", Timeout: 30 * time.Minute, DefaultMaxRetries: 2, Concurrency: 4})
+
+	// ── Spina Dorsale Fase 2 (July 2026): downstream artifact jobs ──
+	// These are spawned by the script.generate pipeline cutover
+	// (SCRIPT-DOWNSTREAM-CUTOVER-2026-07-09) as async sibling jobs
+	// instead of running inline in the postprocessor chain.
+
+	// TypeImagesGenerate: AI image generation via Chrome/Playwright →
+	// slides.new → Nano Banana Pro. DefaultMaxRetries=2 covers transient
+	// failures (Chrome crash, network blip, LLM overload) before the
+	// broker routes the job to the dead-letter path. Mirrors the
+	// TypeScriptGenerate envelope (same timeout + retry budget) since
+	// image generation is the costliest downstream operation.
+	r.Register(JobPolicy{Type: TypeImagesGenerate, Description: "AI image generation for script scenes (Chrome + Playwright — Spina Dorsale Fase 2 downstream cutover)", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
+
+	// TypeAssetsResolve: semantic asset resolution via Qdrant hybrid
+	// search. DefaultMaxRetries=1 because resolution is lightweight and
+	// deterministic (a single Qdrant query per scene); 1 retry covers
+	// transient Qdrant connection blips without wasting broker resources
+	// on repeated lookups that would yield the same result set.
+	r.Register(JobPolicy{Type: TypeAssetsResolve, Description: "Semantic asset resolution via Qdrant (script scene → clip/stock matching — Spina Dorsale Fase 2 downstream cutover)", Timeout: 10 * time.Minute, DefaultMaxRetries: 1})
+
+	// TypeDocumentGenerate: Google Doc creation via Drive API.
+	// DefaultMaxRetries=2 mirrors TypeScriptGenerate — transient Drive
+	// API failures (rate-limit 429, 5xx, token-expiry) are retried once
+	// before the broker routes the job to the dead-letter path.
+	r.Register(JobPolicy{Type: TypeDocumentGenerate, Description: "Google Doc creation for script output (Drive API — Spina Dorsale Fase 2 downstream cutover)", Timeout: 15 * time.Minute, DefaultMaxRetries: 2})
 }
