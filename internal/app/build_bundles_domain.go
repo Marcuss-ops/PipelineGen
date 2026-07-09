@@ -38,28 +38,8 @@ import (
 )
 
 // BuildDomainBundle builds the media-domain services.
-//
-// Split-topology: companion files own the standalone bundle builders:
-//   - build_bundles_ai.go: BuildAIBundle (Ollama/script-gen/translation)
-//   - build_bundles_maint.go: BuildMaintBundle (deletion + maintenance)
-//   - build_bundles_sync.go: BuildSyncBundle + buildYouTubeRuntimeConfig
-//   - build_bundles_ingest.go: buildIngestService + imageListRepoAdapter
-//   - buildImageSearchResolver
-//
-// PR-12d (June 2026): takes the OutboxBundle as the LAST positional
-// argument so the canonical outbox.Dispatcher is available for
-// constructor injection into images.Service. NewComposition must
-// call BuildOutboxBundle BEFORE BuildDomainBundle for this dep to
-// be satisfied (see composition.go::NewComposition).
+// Requires outbox.Dispatcher (injected via OutboxBundle, last arg).
 func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, process *ProcessBundle, ai *AIBundle, outbox *OutboxBundle) (*DomainBundle, error) {
-	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): construct
-	// the canonical mutations.AssetMutationDispatcher SSOT once here so
-	// the buildDomainBundle-level NewClipsRegistry call routes media_assets
-	// UPSERT through the same outbox+tx writer (QDRANT-002 atomicity
-	// invariant). The same SSOT flows into buildIngestService (1 caller
-	// below) and into the rest of the composition graph via outbox.
-	// Fail-closed: a nil outbox.Dispatcher is surfaced as a BundleError so
-	// WireRegistry aborts before any half-built bundle is cached.
 	var mutationsDisp mutations.AssetMutationDispatcher
 	if outbox != nil && outbox.Dispatcher != nil {
 		var err error
@@ -99,26 +79,6 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
-	// PR-P12-YOUTUBE-LEGACY-RETIRE (July 2026, deadline 2026-08-08): the
-	// canonical YouTubePublisherDriveAdapter is the SOLE
-	// DriveFolderManagerPort binding for the YouTube pipeline. The
-	// legacy driveFolderMgrAdapter (which wrapped drive.Admin
-	// directly, bypassing the DestinationRegistry) is RETIRED
-	// via git-rm per godlike/07 NO-FAKE-AVAILABILITY — its sole
-	// caller was a dead-code discard in this function
-	// (`_ = driveFolderMgr` per Phase 1d provisional wiring), so
-	// physical retirement is godlike/07 minimum-blast-radius.
-	// The canonical YouTubePublisherDriveAdapter routes
-	// UploadFileIfChanged through delivery.Publisher.Publish (with
-	// ConflictSkipByHash for content-dedupe); the canonical
-	// Publisher resolves the root folder for DestinationYouTubeClip
-	// via DestinationRegistry + RootFolderID (NO caller-supplied
-	// RootFolderOverride per godlike/07). The legacy `drive.Admin`
-	// arg of NewYouTubePublisherDriveAdapter is RETIRED (post
-	// code-reviewer M1+M2): the canonical surface is Publisher-only —
-	// Group + Subject always reach delivery.Publisher via this seam,
-	// so YouTubeClipPath path-building gets the video-level identity
-	// (was previously silently dropped when drive.Admin was wired).
 	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, log)
 	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})
 
@@ -137,33 +97,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	hashAdapter := hashutil.NewHashAdapter()
 
-	// Commit 1/6 (PR-C-YouTube-Cutover, June 2026): construct the
-	// ClipCacheAdapter + ClipAtomicWriterAdapter pair (the bare DB
-	// halves of the canonical 2-port surface) and the
-	// ProcessYouTubeSegmentUseCase that consumes them.
-	//
-	// Subtitles / Transcriber are intentionally NOT wired here —
-	// the use case's runtime path tolerates nil on both (steps 6 + 7
-	// are gated by `if u.deps.Subtitles != nil` / `if u.deps.Transcriber != nil`
-	// in process_segment.go). A future commit wires YTDLPSubtitleAdapter
-	// for Subtitles and the canonical Whisper bridge for Transcriber;
-	// for Commit 1 the post-cut step degrades to a no-op path.
-	//
-	// PR-WIRE-SUBTITLE-FETCHER-ADAPTER (2026-07-06): construct the
-	// infrastructure-layer SubtitleFetcherAdapter (post
-	// PR-SUBTITLES-BASEARGS-MIGRATION the canonical Pattern-0 port
-	// consumer) so application/youtube/usecase.Service.SliceSubtitles
-	// stops silently erroring at runtime with `youtube: subtitle
-	// fetcher port not wired`. The adapter satisfies the
-	// application-side SubtitleFetcherPort (internal/application/youtube/ports/ports.go:160)
-	// structurally via Go's implicit interface satisfaction (it
-	// implements the SliceSubtitles method). UseCookies=false here
-	// because the YouTube segmentation path is invoked for public
-	// auto-generated content (n-challenge / age-restricted videos
-	// route through the monitor's YTDLPSubtitleAdapter, not the
-	// YouTube use case's SliceSubtitles). The cacheDir is the
-	// canonical cfg.Storage.SubtitlesPath() (added in this PR for
-	// godlike/06 SSOT consistency with VoiceoversPath/AssetsPath/etc).
+	// UseCookies=false: public video segmentation (n-challenge path via monitor).
 	subtitleFetcherAdapter := ytinfra.NewSubtitleFetcherAdapter(
 		ytinfra.SubtitleCacheConfig{
 			YTDLPPath:    cfg.External.ResolvedYtdlpPath(),
@@ -176,31 +110,13 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	)
 	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo, log)
 	clipWriter := assets.NewClipAtomicWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
-	// Commit 4/6 (PR-C-YouTube-Cutover, June 2026, P1 #15 + #16):
-	// the canonical ClipMetadataWriter adapter (tx-bound UPDATE
-	// media_assets + INSERT outbox_events). Wired BEFORE the
-	// Ollama builder so the metadata service construction can
-	// reference the writer.
 	clipMetadataWriter := assets.NewClipMetadataWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
-	// Commit 4/6: concrete Ollama ClipMetadataBuilder with
-	// deterministic fallback. The model name is read from the
-	// canonical cfg.External.OllamaMetadataModel (set at
-	// buildYouTubeRuntimeConfig); empty value falls through to
-	// the client's default model. The deterministic fallback
-	// uses the formula in metadata/service.go so the production
-	// + fallback score ranges are identical.
 	ollamaBuilder := ytinfra.NewOllamaClipMetadataBuilder(
 		ai.OllamaClient,
 		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
 		0, // timeout=0 → default 60s
 		log,
 	)
-	// Commit 4/6: the canonical metadata service. Wired into
-	// DomainBundle.ClipMetadataService for the late-bindings
-	// block; not yet threaded into the existing
-	// usecase.MetadataService (that migration is a future
-	// PR-4.7 follow-up; the spec is satisfied by the new
-	// service being canonical).
 	clipMetadataService, err := ytmetadata.NewMetadataService(ytmetadata.MetadataDeps{
 		Builder:  ollamaBuilder,
 		Writer:   clipMetadataWriter,
@@ -212,53 +128,20 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		return nil, fmt.Errorf("compose domains: clip metadata service: %w", err)
 	}
 
-	// PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY (July 2026): compile-time
-	// pin that the canonical observability adapter satisfies the
-	// application-layer port. Per godlike/06 SSOT discipline, the
-	// composition root is the only place that knows about BOTH the
-	// adapter (infrastructure) AND the port (application). The pin
-	// catches signature drift on either side at build time (the
-	// in-package shape-pin in metrics_step10_test.go is the second
-	// line of defense for adapter-side drift).
+	// Compile-time pin: Step10MetricsRecorder port ↔ Step10MetricsAdapter.
 	var _ youtubeports.Step10MetricsRecorder = (*observability.Step10MetricsAdapter)(nil)
 	processSeg := youtube.NewProcessYouTubeSegmentUseCase(youtube.ProcessSegmentDeps{
-		Cache:          clipCache,
-		VideoPipeline:  videoPipelineAdapter,
-		Hash:           hashAdapter,
-		DriveFolderMgr: youtubePubAdapter, // Phase 1d: canonical Publisher.Publish path
-		Writer:         clipWriter,
-		// Commit 4/6 (PR-C-YouTube-Cutover, P1 #15 + #16):
-		// the ClipMetadataWriter is wired as an optional port
-		// (no panic on nil at ctor time). When non-nil, Step 10
-		// of the pipeline writes the CanonicalClipMetadata to
-		// media_assets + emits the metadata outbox event. When
-		// nil, the pipeline short-circuits Step 10 silently
-		// (the clip write alone is sufficient for the indexing
-		// path; the metadata write is a downstream enrichment).
+		Cache:              clipCache,
+		VideoPipeline:      videoPipelineAdapter,
+		Hash:               hashAdapter,
+		DriveFolderMgr:     youtubePubAdapter, // Phase 1d: canonical Publisher.Publish path
+		Writer:             clipWriter,
 		ClipMetadataWriter: clipMetadataWriter,
 		MetadataService:    clipMetadataService,
-		SegmentsSvc:        youtube.NewSegmentsService(), // dependency-free helper, safe at boot
-		// Commit 2/6 (PR-C-YouTube-Cutover, Correttezza #3):
-		// SegmentPolicy is the duration gate applied to every
-		// segment (LLM-discovered and API-supplied). Default
-		// Min=4s / Max=60s is the user-requested clip-duration
-		// policy (no effects, no transitions applied by the
-		// YouTube extraction endpoint — only cut + audio + Drive
-		// upload + media_assets write + Qdrant indexing event).
-		// A future config-driven value can flow through here via
-		// cfg.YouTube.MinSegmentDuration / MaxSegmentDuration.
-		SegmentPolicy: youtubetypes.DefaultSegmentPolicy(),
-		// PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY (July 2026): wire the
-		// Step 10 partial-state metrics recorder. The use case
-		// calls IncStep10FailAfterClip(string(FailureCodeMetadataFailed))
-		// on the metadata-enrichment failure path so dashboards can
-		// aggregate partial-state events by failure_code. The
-		// adapter is nil-tolerant — if composition were to omit it,
-		// the use case silently skips the counter increment (the
-		// operator Warn log at PR-PY-STEP10-FAIL-LOG is preserved
-		// for granular forensics regardless of recorder wiring).
-		Step10Metrics: observability.NewStep10MetricsAdapter(),
-		Log:           log,
+		SegmentsSvc:        youtube.NewSegmentsService(),        // dependency-free helper, safe at boot
+		SegmentPolicy:      youtubetypes.DefaultSegmentPolicy(), // default Min=4s / Max=60s
+		Step10Metrics:      observability.NewStep10MetricsAdapter(),
+		Log:                log,
 	})
 
 	youtubeDeps := youtube.ServiceDeps{
@@ -266,7 +149,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		Log:               log,
 		MediaProcessor:    process.MediaProcessor,
 		VideoPipeline:     videoPipelineAdapter,
-		LifecycleService:  youtubeLifecycle, // youtube's lifecycle (NOT the retired PR-ARTLIST-LIFECYCLE artlist forward-pointer, 2026-07-04)
+		LifecycleService:  youtubeLifecycle,
 		AssetDestResolver: drive.DestResolver,
 		AssetRepo:         repos.Assets.Repository(),
 		Clips:             newClipStoreAdapter(repos.ClipsRepo),
@@ -279,71 +162,27 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		FolderMemory:      newFolderMemoryAdapter(folderMemSvc),
 		SearchRunner:      searchRunnerAdapter,
 		HashSvc:           hashAdapter,
-		// Commit 1/6: ProcessSeg is wired from the canonical use case
-		// constructed above. Wired into NewExtractionService via
-		// NewService so Extract fans out through the 9-step
-		// pipeline + ClipAtomicWriter.CommitClipAndIndexEvent.
-		ProcessSeg:       processSeg,
-		TranscriptReader: &youtube.OSTranscriptReader{},
-		// PR-WIRE-SUBTITLE-FETCHER-ADAPTER (2026-07-06): wire the
-		// infrastructure-layer SubtitleFetcherAdapter as the
-		// application-side SubtitleFetcherPort. The port is
-		// optional (service_validate_test.go:130 sets it nil to
-		// verify the validator tolerates missing optional ports);
-		// pre-PR wiring left it nil so callbacks.go:110-112
-		// surfaced a runtime "youtube: subtitle fetcher port not
-		// wired" error. Post-PR the Service.SliceSubtitles
-		// callback routes through the adapter, which delegates
-		// the canonical yt-dlp argv prefix to ytdlp.BaseArgs
-		// (same Pattern-0 port the monitor's YTDLPSubtitleAdapter
-		// uses post PR-WIRE-SUBTITLE-FETCHER-ADAPTER migration).
-		SubtitleFetcher: subtitleFetcherAdapter,
+		ProcessSeg:        processSeg,
+		TranscriptReader:  &youtube.OSTranscriptReader{},
+		SubtitleFetcher:   subtitleFetcherAdapter,
 	}
 	if err := youtube.ValidateServiceDeps(youtubeDeps); err != nil {
 		return nil, fmt.Errorf("compose youtube: %w", err)
 	}
 	youtubeClipService := youtube.NewService(youtubeDeps)
 
-	// PR-VO-A3 (June 2026): pass the canonical outbox.Dispatcher to the
-	// voiceover service so swapVoiceoverRow can enqueue
-	// `asset.index.requested` inside the SQLite transaction that
-	// commits the new voiceovers row. The dispatcher is required (no
-	// legacy fallback): BuildDomainBundle's earlier nil-check already
-	// rejects a nil outbox.Dispatcher, so we can assert it here.
 	if outbox == nil || outbox.Dispatcher == nil {
 		return nil, fmt.Errorf("compose domains: outbox.Dispatcher is required (PR-VO-A3 voiceover indexing handoff)")
 	}
-	// Step 8/12 (June 2026, child use case on the new 7-port boundary):
-	// buildVoiceoverService now returns a 3rd value — the canonical
-	// *voiceover.ProcessVoiceoverItemUseCase constructed on top of the
-	// 7-port typed seam (Pattern 0). The use case is the canonical
-	// per-item pipeline that GenerateItemJobHandler dispatches when
-	// voiceover.generate_item jobs arrive (replacing the legacy
-	// ProcessOneVoiceoverUseCase bridge for Step 12 retirement).
 	voiceoverSvc, voiceoverRepo, voiceoverProcessItem, audioProcessor := buildVoiceoverService(ctx, cfg, dbs, log,
 		drive.driveUploader,
 		drive.Publisher,
 		search.AssetIndexService, process.ClipIndexerService,
 		drive.DestResolver,
-		voMetaWriter, ai.OllamaTranslator, // Fase 9 step 4 CUTOVER: ai.OllamaTranslator satisfies translation.TranslationPort; bare ai.ScriptGen direct-call is RETIRED.
+		voMetaWriter, ai.OllamaTranslator, // satisfies translation.TranslationPort
 		outbox.Dispatcher,
 	)
 
-	// F2.10 (June 2026): the legacy driveUploader arg was retired (override
-	// brutal) — books uploads route through delivery.Publisher, books downloads
-	// route through the canonical drive.Reader port (concrete *drive.Uploader
-	// satisfies drive.Reader structurally per the compile-time assertion at
-	// internal/infrastructure/drive/ports.go so the field passes at compile).
-	//
-	// Fase 7 review-fix #2 (July 2026): composition-root hard-fail on the
-	// books.BookTransformer construction. buildBooksService signature
-	// changed from `*books.Service` to `(*books.Service, error)` so a
-	// transformer-construction failure aborts NewComposition rather than
-	// silently returning a half-wired Service (godlike/07 §"No fake
-	// availability" closure). The error taxonomy matches the surrounding
-	// pattern (`compose domains: <surface>: %w`, mirrors `compose domains:
-	// youtube SearchRunnerPort typed-nil` + `compose domains: clip
-	// metadata service` + `compose domains: outbox.Dispatcher is required`).
 	booksSvc, err := buildBooksService(cfg, dbs, log, voiceoverSvc, drive.Publisher, drive.driveUploader)
 	if err != nil {
 		return nil, fmt.Errorf("compose domains: books transformer: %w", err)
@@ -359,31 +198,16 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		outbox.Dispatcher,
 	)
 
-	// Wave 15 (June 2026): RealtimeService split into two typed ports —
-	// see composition.go DomainBundle for rationale. Both stay typed-nil
-	// (package removed in commit d61068b3).
 	var realtimeMatcher assetsapi.RealtimeMatcher
 	var realtimeSearch usecase.RealtimeSearchService
 
-	// autotagVectorStore removed during the bundle simplification
-	// deleted. The autotag service no longer takes a vector-store indexer;
-	// its semantic-tagging pipeline can still consume clip embeddings from
-	// the DB but no longer propagates them to a vector store backend.
 	autotagSvc := autotag.NewService(dbs.main.DB, repos.Assets.Repository(), process.VLMClient, nil, log)
 
-	// Wave 15 (June 2026): typed-nil for scriptcore.AssocSearchService —
-	// replaces the preceding `interface{}` carrier.
 	var assocService usecase.AssocSearchService
 	log.Info("association service unavailable — package removed from remote")
 
-	// P1-6 (July 2026): drive.DocClient is an interface value whose
-	// concrete (*drive.DocClientImpl) now satisfies delivery.DocPublisher
-	// (compile-time assertion in delivery/doc_publisher.go). Go cannot
-	// implicitly convert between two interface types with identical method
-	// sets, so we type-assert here. The assertion is safe because
-	// NewDocClient always returns *DocClientImpl, and the compile-time
-	// pin var _ delivery.DocPublisher = (*drive.DocClientImpl)(nil) locks
-	// the conformance at build time.
+	// drive.DocClient (*drive.DocClientImpl) satisfies delivery.DocPublisher;
+	// compile-time pin in delivery/doc_publisher.go locks conformance.
 	docPublisher, ok := drive.DocClient.(delivery.DocPublisher)
 	if !ok {
 		return nil, fmt.Errorf("compose domains: lessons: drive.DocClient does not satisfy delivery.DocPublisher (P1-6 migration incomplete)")
@@ -408,17 +232,6 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 
-	// Step 8/12 (June 2026): the canonical per-item use case is wired
-	// here so the late-bindings block in composition.go can construct
-	// GenerateItemJobHandler on top of the typed VoiceoverItemExecutor
-	// port (Pattern 0, AGENTS.md). The previous forward-deferred comment
-	// (BLOC5.4) is closed by this assignment.
-
-	// P0.1 (June 2026): construct the content-addressed artifact blob
-	// service so the upload UseCase (UploadVideoClip) can accept real
-	// video uploads instead of returning HTTP 500. The LocalBlobStore
-	// stages blobs under cfg.Storage.DataDir; SQLiteRepository persists
-	// metadata in the unified media.db.sqlite.
 	artifactBlobStore, err := artifacts.NewLocalBlobStore(cfg.Storage.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("compose domains: artifact blob store: %w", err)
@@ -428,21 +241,11 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	log.Info("P0.1: artifact blob service wired (content-addressed staging + verify + promote)",
 		zap.String("data_dir", cfg.Storage.DataDir))
 
-	// FASE 7 (July 2026, image-territories action plan): wire the
-	// routing.ImageSearchResolver from imageSvc.RetrievalRegistry() +
-	// repos.ImageRepo. Fail-closed per godlike/07; if either input is
-	// missing the composition error aborts NewComposition (no
-	// half-wired resolver on DomainBundle).
 	imageSearchResolver, err := buildImageSearchResolver(imageSvc, repos.ImageRepo, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose images: %w", err)
 	}
 
-	// PR-GEMMA-EXTRACT-IMPORTANT Step 7: wire the LLM-driven YouTube clip
-	// extraction chain inline. The use case + adapters are private
-	// construction-time state; only the broker handler is exposed on
-	// DomainBundle (godlike/06 SSOT one-canonical-owner-per-fact). nil
-	// handler would surface as 503 at runtime (fail-closed per godlike/07).
 	extractDl := downloader.NewYTDLP(cfg)
 	extractAdapters := BuildExtractImportantClipsAdapters(ExtractImportantClipsAdapterDeps{
 		Subtitles: transcripts.NewYTDLPSubtitleAdapter(transcripts.Deps{
@@ -457,14 +260,8 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 			if drive.driveUploader == nil {
 				return nil, fmt.Errorf("compose domains: extract-important upload: drive.driveUploader unwired")
 			}
-			// P1-3 PENDING-MIGRATION: drive.Admin.UploadFile is deprecated per
-			// internal/infrastructure/drive/ports.go godoc. Forward-pointer
-			// PR-GEMMA-EXTRACT-IMPORTANT-FOLLOWUP routes this surface through
-			// delivery.Publisher.Publish (canonical Pattern-0 write seam) for
-			// ConflictSkipByHash content-dedupe parity with YouTubeClipService.
-			// Today: native 4-arg method — no drive package reference needed
-			// (the function param `drive *DriveBundle` shadows the `drive`
-			// package; per pattern-0 access via bundle fields only).
+			// drive.Admin.UploadFile — forward-pointer PR-GEMMA-EXTRACT-IMPORTANT-FOLLOWUP
+			// migrates to delivery.Publisher.Publish (Pattern 0 canonical write seam).
 			res, err := drive.driveUploader.UploadFile(ctx, req.LocalPath, req.FolderID, req.Filename)
 			if err != nil {
 				return nil, fmt.Errorf("compose domains: extract-important upload: %w", err)
@@ -486,10 +283,10 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 
 	return &DomainBundle{
 		YoutubeClipService:              youtubeClipService,
-		ExtractImportantClipsJobHandler: extractHandler, // PR-GEMMA-EXTRACT-IMPORTANT Step 7 wire-up
+		ExtractImportantClipsJobHandler: extractHandler,
 		VoiceoverService:                voiceoverSvc,
 		VoiceoverSync:                   vosyncSvc,
-		VoiceoverProcessItem:            voiceoverProcessItem, // Step 8/12: narrow VoiceoverItemExecutor port (BLOC5.4 closer)
+		VoiceoverProcessItem:            voiceoverProcessItem,
 		ImageService:                    imageSvc,
 		IngestService:                   ingestSvc,
 		BooksService:                    booksSvc,
@@ -501,9 +298,7 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		AssocService:                    assocService,
 		ArtifactService:                 artifactService,
 		VoiceoverGenerateItemHandler:    nil, // populated at composition.go late-bindings block
-		// Commit 4/6: the canonical metadata service. Populated
-		// in BuildDomainBundle; consumed by the late-bindings
-		// block + future EnrichClip migration (PR-4.7).
+
 		ImageSearchResolver: imageSearchResolver, // FASE 7
 		AudioProcessor:      audioProcessor,      // VO-DECOMPOSITION P0 #1: persistent TTS worker
 	}, nil
