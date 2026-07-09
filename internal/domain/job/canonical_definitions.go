@@ -17,17 +17,24 @@
 //
 // ── Update discipline ───────────────────────────────────────────────
 //
-// A 5th canonical family must:
+// A 6th canonical family must:
 //  1. Append the literal here (this file).
 //  2. Append the entry to CanonicalJobDefinitions (this file).
 //  3. Append the corresponding typed payload/result structs in
 //     internal/application/jobs/codec.go (C2 surface).
 //  4. Append the type string constant in internal/domain/job/job.go.
-//  5. Append the registry.go re-export alias in internal/application/jobs/registry.go.
+//  5. Append the registry.go re-export alias in internal/application/jobs/registry_types.go.
 //  6. Append the per-family round-trip test in internal/application/jobs/registry_codec_completeness_test.go.
+//  7. Append the job type to workflowRefs in c3ValidateRuntimeGraph (internal/app/registry.go).
+//
+// Handler binding is the responsibility of the composition root
+// (c3ValidateRuntimeGraph) — JobDefinition declares the operational
+// parameters only. HandlerKey was removed in PR-AUDIT-7 (July 2026)
+// because it was never consumed: c3ValidateRuntimeGraph binds via
+// def.Type, not a separate indirection key.
 //
 // The compile-time assertions in registry_test.go + startup_validator_test.go
-// (next-package-internal) will fail immediately if any of (1)–(6) is removed
+// (next-package-internal) will fail immediately if any of (1)–(7) is removed
 // while keeping the canonical literal in this file.
 //
 // ── Layering ─────────────────────────────────────────────────────────
@@ -60,7 +67,6 @@ var CanonicalScriptGenerate = JobDefinition{
 		MaxArtifacts:      16,
 		MaxTotalBytes:     256 * 1024 * 1024,
 	},
-	HandlerKey: "script.generate.handler",
 }
 
 // CanonicalImagesGenerate is the canonical JobDefinition for
@@ -84,7 +90,6 @@ var CanonicalImagesGenerate = JobDefinition{
 		MaxArtifacts:      64,
 		MaxTotalBytes:     512 * 1024 * 1024,
 	},
-	HandlerKey: "images.generate.handler",
 }
 
 // CanonicalDocumentGenerate is the canonical JobDefinition for
@@ -108,7 +113,6 @@ var CanonicalDocumentGenerate = JobDefinition{
 		MaxArtifacts:      8,
 		MaxTotalBytes:     64 * 1024 * 1024,
 	},
-	HandlerKey: "document.generate.handler",
 }
 
 // CanonicalAssetsResolve is the canonical JobDefinition for
@@ -128,7 +132,6 @@ var CanonicalAssetsResolve = JobDefinition{
 	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.assets.resolve.v1", TypeAssetsResolve),
 	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.assets.resolve.v1", TypeAssetsResolve),
 	// Pure-data job: zero ArtifactPolicy left implicit.
-	HandlerKey: "assets.resolve.handler",
 }
 
 // CanonicalClipRegister is the canonical JobDefinition for
@@ -154,7 +157,6 @@ var CanonicalClipRegister = JobDefinition{
 	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.media.clip.v1", TypeClipRegister),
 	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.media.clip.v1", TypeClipRegister),
 	// ProducesArtifacts=false: per-item tx owns artifact persistence.
-	HandlerKey: "media.clip.handler",
 }
 
 // CanonicalJobDefinitions is the slice used by composition-root

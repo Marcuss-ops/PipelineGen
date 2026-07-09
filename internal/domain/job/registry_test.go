@@ -38,7 +38,6 @@ func validDef(jobType, queue string) JobDefinition {
 		PayloadCodec:   codecFor(jobType),
 		ResultCodec:    resultCodecFor(jobType),
 		ArtifactPolicy: ArtifactPolicy{ProducesArtifacts: true, RequireManifest: true},
-		HandlerKey:     jobType + ".handler",
 		RequiredCapabilities: []Capability{
 			Capability("cap." + jobType),
 		},

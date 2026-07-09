@@ -30,7 +30,6 @@ func validFullyWiredDef(t *testing.T, jobType string) JobDefinition {
 			ProducesArtifacts: true,
 			RequireManifest:   true,
 		},
-		HandlerKey: jobType + ".handler",
 		RequiredCapabilities: []Capability{
 			Capability("cap." + jobType),
 		},

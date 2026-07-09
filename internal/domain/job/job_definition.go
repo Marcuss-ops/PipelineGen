@@ -49,10 +49,12 @@
 //
 // ── Field scope (locked to user C1 spec) ─────────────────────────────
 //
-// The JobDefinition struct has exactly the 11 fields listed in the
+// The JobDefinition struct has exactly the 10 fields listed in the
 // user's C1 prompt: Type, ExecutionClass, Queue, Timeout,
 // RetryPolicyKey, ConcurrencyKey, RequiredCapabilities, PayloadCodec,
-// ResultCodec, ArtifactPolicy, HandlerKey. A "Description" field
+// ResultCodec, ArtifactPolicy. (HandlerKey was removed in PR-AUDIT-7;
+// handler binding is via c3ValidateRuntimeGraph by def.Type directly.)
+// A "Description" field
 // appears in the parallel pre-P0 JobPolicy record but is intentionally
 // NOT mirrored here — the canonical registry entry's Description
 // lives on JobPolicy until Commit 3's CompiledJobRegistry reconciles
@@ -248,7 +250,8 @@ type Capability string
 // queue, timeout, retry, codec, artifact policy, handler binding, and
 // execution-class gating.
 //
-// The 11 fields below are locked to the user C1 spec:
+// The 10 fields below are locked to the user C1 spec
+// (HandlerKey removed in PR-AUDIT-7, July 2026):
 //
 //  1. Type
 //  2. ExecutionClass
@@ -260,7 +263,6 @@ type Capability string
 //  8. PayloadCodec
 //  9. ResultCodec
 //  10. ArtifactPolicy
-//  11. HandlerKey
 //
 // JobDefinition is constructed once at composition time (Commit 3:
 // MutableJobRegistry.RegisterDefinition), validated at startup
@@ -336,15 +338,6 @@ type JobDefinition struct {
 	// whether it MUST return an ArtifactManifest. Sender-side
 	// runtime enforces RequireManifest at Complete time.
 	ArtifactPolicy ArtifactPolicy
-
-	// HandlerKey is the registry key under which the handler is
-	// Bound (P0 Commit 3). It is the indirection between the
-	// definition (pre-bound) and the handler binding (post-bound);
-	// a Definition may exist before its handler is wired. Empty
-	// value flags an unbound Definition; StartupValidator rejects
-	// that state for executable definitions
-	// (ExecutionClass != sender_only).
-	HandlerKey string
 }
 
 // Validate returns nil if the JobDefinition is internally consistent
@@ -373,8 +366,7 @@ type JobDefinition struct {
 //     per-registry presence for executable jobs).
 //   - RequiredCapabilities may be empty (means "any worker can
 //     claim").
-//   - HandlerKey may be empty (means "unbound", flagged up-stream
-//     for executable classifications).
+
 func (d JobDefinition) Validate() error {
 	if strings.TrimSpace(d.Type) == "" {
 		return fmt.Errorf("JobDefinition: Type is empty")

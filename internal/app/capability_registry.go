@@ -6,10 +6,12 @@
 // (godlike/04 + AGENTS.md Pattern 0 + Wave C1):
 //
 //   - registerCapabilities is the ONLY function in the codebase
-//     that takes *module.Registry, *jobs.Registry, *providers.Registry
+//     that takes *module.Registry, *providers.Registry
 //     as parameters AND may mutate them via the .Register method.
+//     (PR-AUDIT-7 removed *jobs.Registry — job handler binding
+//     is via c3ValidateRuntimeGraph, not this composition point.)
 //   - Its helpers (registerHTTPModules + registerProviders +
-//     registerJobs + the strict-uniqueness helpers
+//     registerHTTPModules + the strict-uniqueness helpers
 //     tryRegisterModuleStrict + tryRegisterModule, all relocated
 //     from registry_registration.go in this PR) are the ONLY
 //     functions in internal/app/** that may call any
@@ -37,7 +39,6 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 
 	"go.uber.org/zap"
 )
@@ -57,15 +58,14 @@ import (
 //   - Providers: asset-search + asset-fetch adapters published
 //     into providers.Registry via its Register* methods.
 //
-// The Jobs slice is forward-only: today the codebase publishes
-// job handlers via jobs.Service.RegisterHandler(...) at the
-// composition-time late-bindings block in composition.go. When
-// typed jobs registry mutation becomes the canonical surface
-// (future PR), the slice carries the handlers.
+// PR-AUDIT-7 (July 2026): the Jobs slice and ForwardJobHandlerEntry
+// were removed — job handler binding is the responsibility of
+// c3ValidateRuntimeGraph in registry.go, which binds handlers via
+// def.Type directly. The forward-only surface was never wired and
+// served only as dead documentation.
 type CapabilityDeps struct {
 	HTTPModules []TrackedHTTPModule
 	Providers   []TrackedProviderEntry
-	Jobs        []ForwardJobHandlerEntry
 }
 
 // TrackedHTTPModule couples a route Module with the registration-
@@ -103,15 +103,6 @@ const (
 	ProviderKindFetch
 )
 
-// ForwardJobHandlerEntry is the typed jobs-registry mutation surface
-// (not yet wired). Entries here currently cause registerJobs to
-// fail-closed with a "not yet wired" message so a future
-// jobsRegistry land surfaces loudly during composition rather
-// than silently dropping the route.
-type ForwardJobHandlerEntry struct {
-	Type string
-}
-
 // registerCapabilities is the canonical single composition point
 // that mutates the three PipelineGen registries during composition.
 //
@@ -119,7 +110,6 @@ type ForwardJobHandlerEntry struct {
 // Nil-safety:
 //   - reg == nil ⇒ hard error (composition bug — callers should
 //     error before this gate if the api.Registry is missing).
-//   - jobsReg == nil ⇒ no-op for the Jobs slice.
 //   - provReg == nil ⇒ no-op for the Providers slice (skip).
 //
 // On success the api.Registry is left in its post-write state
@@ -127,7 +117,7 @@ type ForwardJobHandlerEntry struct {
 // — the Freeze is the canonical composition-time gate closing
 // the write side and opening the runtime read side (Reviewer Q8
 // invariant from Blocco C1 PR1).
-func registerCapabilities(reg *module.Registry, jobsReg *jobs.Registry, provReg *providers.Registry, deps CapabilityDeps) error {
+func registerCapabilities(reg *module.Registry, provReg *providers.Registry, deps CapabilityDeps) error {
 	if reg == nil {
 		return fmt.Errorf("registerCapabilities: nil api.Registry (composition bug)")
 	}
@@ -136,9 +126,6 @@ func registerCapabilities(reg *module.Registry, jobsReg *jobs.Registry, provReg 
 	}
 	if err := registerProviders(provReg, deps.Providers); err != nil {
 		return fmt.Errorf("registerCapabilities: providers: %w", err)
-	}
-	if err := registerJobsHandlers(jobsReg, deps.Jobs); err != nil {
-		return fmt.Errorf("registerCapabilities: jobs: %w", err)
 	}
 	return nil
 }
@@ -208,28 +195,6 @@ func registerProviders(provReg *providers.Registry, entries []TrackedProviderEnt
 	// providers registered then frozen" sequencing in one place.
 	provReg.Freeze()
 	return nil
-}
-
-// registerJobsHandlers is the forward-only surface for jobs.Registry
-// handlers. Today the codebase publishes job handlers via
-// jobs.Service.RegisterHandler(...) (composition.go late-bindings
-// block + module_sources.go + voiceover wrappers) and the Jobs
-// slice is always empty in this PR. We keep the fail-closed gate
-// so any future drift surfaces loudly.
-//
-// Renamed from registerJobs (Blocco C1-Step 2) to avoid the name
-// collision with the existing registerJobs HTTP-module registrar
-// in registry_public_modules.go; the two have entirely different
-// signatures and surface semantics (HTTP route module vs.
-// jobs.Registry handler table).
-func registerJobsHandlers(jobsReg *jobs.Registry, entries []ForwardJobHandlerEntry) error {
-	if jobsReg == nil {
-		return nil
-	}
-	if len(entries) == 0 {
-		return nil
-	}
-	return fmt.Errorf("registerJobsHandlers: typed jobs registry surface not yet wired (len=%d)", len(entries))
 }
 
 // ── Strict-uniqueness helpers (RELOCATED here from
