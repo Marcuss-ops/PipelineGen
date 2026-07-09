@@ -177,7 +177,9 @@ func parsePlainTextEntityResult(response string, segmentIndex int) (*asset.Entit
 		}
 
 		// Detect bare section name on its own line (model may skip ##).
-		if sec, ok := sectionHeaders[strings.ToLower(strings.TrimRight(line, ":"))]; ok {
+		// Normalize spaces→underscores same as detectEntitySection.
+		bare := normalizeEntitySectionName(line)
+		if sec, ok := sectionHeaders[bare]; ok {
 			currentSection = sec
 			continue
 		}
@@ -212,18 +214,20 @@ func parsePlainTextEntityResult(response string, segmentIndex int) (*asset.Entit
 	return result, nil
 }
 
-// detectEntitySection extracts the section name from a header line like
-// "## frasi_importanti" or "# entity_senza_testo".
-// Normalizes spaces to underscores so "## frasi importanti" also matches.
-func detectEntitySection(line string) string {
-	// Strip leading # characters and whitespace.
+// normalizeEntitySectionName strips leading #, trailing :, lowercases,
+// and replaces spaces with underscores for fuzzy section-name matching.
+// Called by both detectEntitySection (# headers) and the bare-name path.
+func normalizeEntitySectionName(line string) string {
 	name := strings.TrimLeft(line, "# ")
 	name = strings.TrimSpace(name)
 	name = strings.TrimRight(name, ":")
-	// Normalize: replace spaces with underscores for fuzzy matching
-	// (small models may emit "frasi importanti" instead of "frasi_importanti").
-	name = strings.ReplaceAll(strings.ToLower(name), " ", "_")
-	if sec, ok := sectionHeaders[name]; ok {
+	return strings.ReplaceAll(strings.ToLower(name), " ", "_")
+}
+
+// detectEntitySection extracts the section name from a header line like
+// "## frasi_importanti" or "# entity_senza_testo".
+func detectEntitySection(line string) string {
+	if sec, ok := sectionHeaders[normalizeEntitySectionName(line)]; ok {
 		return sec
 	}
 	return ""
