@@ -90,6 +90,21 @@ type ExternalConfig struct {
 	// (typically produced by `yt-dlp --cookies-from-browser chrome`).
 	ArtlistCookiesPath string `yaml:"artlist_cookies_path" env:"ARTLIST_COOKIES_PATH" default:""`
 
+	// ArtlistSearchStrategy controls the Pexels/Pixabay fallback chain
+	// (PR-AUDIT-5, July 2026). Canonical values:
+	//
+	//   artlist_only               — ONLY the Artlist scraper (no Pixabay/Pexels).
+	//                                The safest default.
+	//   artlist_then_public_fallback — Artlist scraper first, then Pixabay + Pexels
+	//                                  as fallback (the prior implicit behaviour).
+	//   public_only_for_dev          — ONLY Pixabay + Pexels (no scraper).
+	//
+	// Default: artlist_only (godlike/07 fail-closed — no external stock sources
+	// without explicit operator opt-in). The prior implicit fallback chain is
+	// now gated by this config field so operators see exactly which searchers
+	// are active at boot time.
+	ArtlistSearchStrategy string `yaml:"artlist_search_strategy" env:"ARTLIST_SEARCH_STRATEGY" default:"artlist_only"`
+
 	// PR-011 (July 2026): Stock RLM/LLM enrichment pass.
 	//
 	// StockEnrichmentEnabled gates the canonical enrichment pipeline

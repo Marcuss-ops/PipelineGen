@@ -52,6 +52,11 @@ type ServicePorts struct {
 	// and stock. When nil, stageProcessBatch falls through to the legacy
 	// mediaProcessor.Process pipeline without breaking.
 	Stager assets.SourceStager
+	// SearchStrategy controls the Pexels/Pixabay fallback chain (PR-AUDIT-5,
+	// July 2026). The strategy is wired from cfg.External.ArtlistSearchStrategy
+	// at composition time. Zero-value defaults to artlist_only (the safest
+	// default — no external stock sources without explicit operator opt-in).
+	SearchStrategy ArtlistSearchStrategy
 	// IsLiveProbe is the canonical runtime liveness probe port
 	// (PR-ARTLIST-LIVE-WIRE, July 2026; godlike/06 SSOT owner of the
 	// HTTP self-loop surface). Optional — the WireArtlist composition
@@ -221,6 +226,11 @@ type Service struct {
 	// composition: NewService rejects nil with
 	// ErrRunRepositoryUnavailable (fail-closed).
 	runRepo RunRepository
+
+	// searchStrategy controls the Pexels/Pixabay fallback chain
+	// (PR-AUDIT-5, July 2026). Wired from deps.SearchStrategy.
+	// Zero-value (empty string) defaults to artlist_only.
+	searchStrategy ArtlistSearchStrategy
 }
 
 // NewService crea una nuova istanza del servizio Artlist come facade.
@@ -267,6 +277,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		scraperSearcher:   deps.ScraperSearcher,
 		pixabaySearcher:   deps.PixabaySearcher,
 		pexelsSearcher:    deps.PexelsSearcher,
+		searchStrategy:    deps.SearchStrategy,
 		liveCache:         newPersistentLiveSearchCache(deps.MainDB, deps.Log),
 		assetProcessing:   deps.AssetProcRepo,
 		assetVersions:     deps.AssetVerRepo,

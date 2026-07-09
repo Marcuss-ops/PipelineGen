@@ -298,7 +298,8 @@ func WireArtlist(
 			// owns the import-cycle pin) so the ServicePorts field
 			// sees the canonical port type, not the infra-side
 			// local Record interface.
-			RunRepository: artlistRunsAdapter,
+			RunRepository:  artlistRunsAdapter,
+			SearchStrategy: artlistPkg.ArtlistSearchStrategy(cfg.External.ArtlistSearchStrategy),
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
 			// ServiceDependencies (10) — 10 DIRECT.
