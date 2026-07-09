@@ -8,18 +8,23 @@
 //     voiceover/document pipelines (see `voiceover/usecase.go`,
 //     `documents_usecase.go`).
 //   - SceneVoiceover / SceneImage: per-scene postprocessor output rows.
-//   - PipelineResult: the canonical postprocessor-output aggregator
-//     returned by `Run` for both voiceover + image sub-pipelines.
 //
-// A future re-introduction of the per-scene service MUST be a fresh
-// canonical implementation in `internal/application/scripts/usecase/`
-// (NOT a stub re-added to this file) per godlike/07 minimum-blast-radius.
+// `dto.PipelineResult` was REMOVED (PR-DTO-PIPELINERESULT-DEDUPE, 2026-07-09;
+// follows PR-5/PR-6 SCRIPT-DOWNSTREAM-CUTOVER at canonical ship_sha
+// `4bf91e52c`): the canonical postprocessor-output aggregator lives
+// at `internal/application/scripts/adapters.PipelineResult`
+// (declared in `adapters/postprocessor_document.go`). The dto-package
+// duplicate was a residual from a previous consolidation wave
+// (zero callers verified via `rg 'dto\.PipelineResult' internal/`).
+//
+// A future re-introduction of any type retired from this file MUST be
+// a fresh canonical implementation in `internal/application/scripts/usecase/`
+// or `internal/application/scripts/adapters/` (NOT a stub re-added here)
+// per godlike/07 minimum-blast-radius.
 package dto
 
 import (
 	"context"
-
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // FolderResolver resolves drive folder IDs with a fallback.
@@ -38,17 +43,4 @@ type SceneImage struct {
 	Index int    `json:"index"`
 	Text  string `json:"text"`
 	URL   string `json:"url"`
-}
-
-// PipelineResult aggregates results from running postprocessors.
-type PipelineResult struct {
-	Entities         *scriptpkg.EntityResult
-	VideoMetadata    []scriptpkg.VideoMetadata
-	Voiceovers       []SceneVoiceover
-	Scenes           []SceneImage
-	DocLink          string
-	DocID            string
-	ScriptID         int64
-	AlreadyPersisted bool
-	Warnings         []string
 }
