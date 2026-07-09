@@ -9,6 +9,14 @@ import (
 
 // allowedHosts defines domains permitted for downloads.
 // Must be populated from config at startup - defaults to empty for security.
+//
+// PR-CODE-HEALTH-C3 audit-pin (2026-07-09): this is one of only 2
+// package-level mutexes in production code. It CANNOT be replaced
+// with sync.Once because AddAllowedHost supports runtime additions
+// and SetAllowedHosts supports full replacement (called at startup
+// from wire_services.go:66 and in tests). The RWMutex pattern is
+// the correct semantics for a shared map with concurrent reads and
+// occasional writes.
 var (
 	allowedHostsMu sync.RWMutex
 	allowedHosts   = make(map[string]bool)
