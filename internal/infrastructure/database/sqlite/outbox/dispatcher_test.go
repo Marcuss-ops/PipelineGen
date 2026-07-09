@@ -3,12 +3,14 @@ package outbox
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"sync"
 	"testing"
 
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
 // fakeClips records UpsertClipTx invocations and argument order so tests
@@ -105,6 +107,41 @@ func TestDispatcher_MissingTxMgrRejected(t *testing.T) {
 		t.Fatal("nil txmgr must return error before any field access")
 	}
 }
+
+// TestDispatcher_EmptyContentHashRejected confirms that EnqueueAndIndex
+// rejects empty contentHash — the supersede gate in IndexingHandler
+// dead-letters events with source_version="" (PR-ARTLIST-SOURCE-VERSION-FIX).
+func TestDispatcher_EmptyContentHashRejected(t *testing.T) {
+	// Wire all deps non-nil so the contentHash guard fires (not a nil-dep guard).
+	// outboxEventsRepo uses a noop stub so the tx is never reached.
+	d := &Dispatcher{
+		clips:            &fakeClips{},
+		outboxEventsRepo: &noopOutboxEventsRepo{},
+		txmgr:            txMgrNoop{},
+		log:              zap.NewNop(),
+	}
+	err := d.EnqueueAndIndex(context.Background(), &asset.Asset{ID: "clip-1"}, "")
+	if err == nil {
+		t.Fatal("empty contentHash must return error before txmgr.InTransaction is reached")
+	}
+	if got := err.Error(); !strings.Contains(got, "contentHash is required") {
+		t.Errorf("error message must mention 'contentHash is required', got: %s", got)
+	}
+	if got := err.Error(); !strings.Contains(got, "clip-1") {
+		t.Errorf("error message must name the clip ID, got: %s", got)
+	}
+}
+
+// noopOutboxEventsRepo is a no-op stub satisfying the outboxEventsRepo
+// interface so Dispatcher tests can wire all deps non-nil.
+type noopOutboxEventsRepo struct{}
+
+func (noopOutboxEventsRepo) Enqueue(_ context.Context, _ *sql.Tx, _, _, _, _, _ string) (*outboxevents.EnqueueResult, error) {
+	return &outboxevents.EnqueueResult{}, nil
+}
+
+// Compile-time guard: noopOutboxEventsRepo satisfies the outboxEnqueuer port.
+var _ outboxEnqueuer = (*noopOutboxEventsRepo)(nil)
 
 // TestShortHashPrefix covers the trivial content-hash log prefix shim.
 func TestShortHashPrefix(t *testing.T) {

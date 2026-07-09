@@ -25,6 +25,9 @@ import (
 // healthCheck sends a health action to the worker.
 // Must be called while p.mu is held.
 func (p *ChromeImageProvider) healthCheck() error {
+	if p.stdin == nil {
+		return fmt.Errorf("health check: worker stdin is nil (process may have exited)")
+	}
 	if err := p.writeJSON(map[string]any{"action": "health"}); err != nil {
 		return fmt.Errorf("health check: write failed: %w", err)
 	}

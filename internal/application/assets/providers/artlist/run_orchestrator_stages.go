@@ -375,6 +375,22 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		clip.SetDriveLink(item.DriveLink)
 		clip.SetDriveFileID(item.DriveFileID)
 		clip.SetFileHash(item.FileHash)
+		// PR-ARTLIST-SOURCE-VERSION-FIX (2026-07-09): when the media
+		// processor returned an empty FileHash, the outbox dispatcher
+		// would emit an asset.index.requested event with source_version="",
+		// which the IndexingHandler's supersede gate dead-letters (161
+		// dead-letter events as of 2026-07-09). Compute a deterministic
+		// fallback hash from clipID+source so the supersede gate has a
+		// content fingerprint to compare across retries.
+		if clip.FileHash() == "" {
+			fallbackHash := hashutil.SHA256String(clip.ID + ":" + string(clip.Source))
+			clip.SetFileHash(fallbackHash)
+			item.FileHash = fallbackHash // keep response item in sync with dispatched hash
+			o.svc.log.Warn("stagePersistResults: FileHash empty after processing; computed fallback from clipID+source",
+				zap.String("clip_id", clip.ID),
+				zap.String("fallback_hash_prefix", fallbackHash[:12]),
+			)
+		}
 		clip.SetDownloadLink(item.DownloadLink)
 		clip.SetMetadataString("status", "processed")
 		clip.LifecycleState = asset.StateActive

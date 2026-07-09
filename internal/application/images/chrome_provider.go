@@ -140,6 +140,28 @@ func (p *ChromeImageProvider) Generate(ctx context.Context, req GenerateImageReq
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// Retry-once on dead worker: if the first attempt fails with a
+	// broken-pipe / dead-worker error, resetWorker() has already cleared
+	// the state. We relaunch and retry the same request exactly once.
+	result, err := p.generateOnce(ctx, req)
+	if err == nil {
+		return result, nil
+	}
+	if p.isDeadWorkerError(err) {
+		p.log.Warn("ChromeImageProvider: dead worker detected, retrying once",
+			zap.Error(err))
+		return p.generateOnce(ctx, req)
+	}
+	return nil, err
+}
+
+// generateOnce executes a single Generate attempt: ensure worker is
+// started, send the generate request, read the response, and return
+// the image. Returns a typed dead-worker error if the subprocess dies,
+// allowing the caller to retry once.
+//
+// Must be called while p.mu is held (caller locks).
+func (p *ChromeImageProvider) generateOnce(ctx context.Context, req GenerateImageRequest) (*GeneratedImage, error) {
 	if err := p.ensureStarted(ctx); err != nil {
 		return nil, fmt.Errorf("chrome provider: %w", err)
 	}
@@ -162,12 +184,22 @@ func (p *ChromeImageProvider) Generate(ctx context.Context, req GenerateImageReq
 		"output": outputPath,
 	}
 	if err := p.writeJSON(workerReq); err != nil {
+		if p.isDeadWorkerError(err) {
+			p.log.Warn("ChromeImageProvider: broken pipe on write, resetting worker", zap.Error(err))
+			p.resetWorker()
+			return nil, fmt.Errorf("chrome provider: worker died (broken pipe): %w", err)
+		}
 		return nil, fmt.Errorf("chrome provider: failed to send generate request: %w", err)
 	}
 
 	// Read and parse the response.
 	resp, err := p.readResponse(requestID)
 	if err != nil {
+		if p.isDeadWorkerError(err) {
+			p.log.Warn("ChromeImageProvider: dead worker on read, resetting", zap.Error(err))
+			p.resetWorker()
+			return nil, fmt.Errorf("chrome provider: worker died (read failure): %w", err)
+		}
 		return nil, fmt.Errorf("chrome provider: failed to read worker response: %w", err)
 	}
 

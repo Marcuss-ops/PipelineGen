@@ -1,0 +1,119 @@
+{
+  "_comment": "Canonical YouTube clip batch for RRJvrDKunyA. This is a clips fixture, not a stock fixture. The smoke script injects destination.folder_id at runtime so all 8 clips land in the same Drive subfolder.",
+  "url": "https://www.youtube.com/watch?v=RRJvrDKunyA",
+  "force_keyframes": true,
+  "normalize": true,
+  "keep_audio": true,
+  "strategy": "replace",
+  "concurrency": 4,
+  "destination": {
+    "subfolder_name": "Manny Pacquiao vs Adrien Broner",
+    "create_subfolder": true
+  },
+  "segments": [
+    {
+      "start": "00:00:32",
+      "end": "00:00:37",
+      "name": "Round 1 - La fase di studio e la velocita di Pacquiao",
+      "tags": ["boxing", "pacquiao-broner", "round-1", "opening", "footwork"],
+      "summary": "Inizio del match: Pacquiao mostra subito mobilita e rapidita di gambe, lavorando con il jab da mancino per prendere le misure.",
+      "topics": ["opening round", "footwork", "jab", "study phase"],
+      "speakers": ["commentator"],
+      "mentioned_people": ["Manny Pacquiao", "Adrien Broner"],
+      "hook": "Pacquiao parte piu veloce e piu leggero sui piedi.",
+      "quality_score": 0.92,
+      "search_visibility": "high"
+    },
+    {
+      "start": "00:04:07",
+      "end": "00:04:12",
+      "name": "Round 2 - Il posizionamento e i primi scambi",
+      "tags": ["boxing", "pacquiao-broner", "round-2", "positioning", "trade-offs"],
+      "summary": "Entrambi cercano la posizione con il piede avanzato. Pacquiao alza il ritmo con combinazioni veloci, Broner risponde di rimessa.",
+      "topics": ["positioning", "early exchanges", "counterpunching", "tempo"],
+      "speakers": ["commentator"],
+      "mentioned_people": ["Manny Pacquiao", "Adrien Broner"],
+      "hook": "Si apre la prima vera lettura tattica del match.",
+      "quality_score": 0.9,
+      "search_visibility": "high"
+    },
+    {
+      "start": "00:10:28",
+      "end": "00:10:33",
+      "name": "Round 5 - Il miglior momento di Broner",
+      "tags": ["boxing", "pacquiao-broner", "round-5", "broner", "right-hand"],
+      "summary": "Broner trova continuita con il diretto destro e colpisce il mento di Pacquiao; Pacquiao replica con gancio sinistro al corpo e riprende il ritmo.",
+      "topics": ["Broner offense", "right hand", "body work", "momentum shift"],
+      "speakers": ["commentator"],
+      "mentioned_people": ["Manny Pacquiao", "Adrien Broner"],
+      "hook": "Broner trova il suo miglior scambio e fa vedere il destro.",
+      "quality_score": 0.91,
+      "search_visibility": "high"
+    },
+    {
+      "start": "00:16:33",
+      "end": "00:16:38",
+      "name": "Round 7 - Il momento chiave: Broner barcolla",
+      "tags": ["boxing", "pacquiao-broner", "round-7", "near-ko", "corner"],
+      "summary": "Pacquiao mette a segno una serie di colpi durissimi, tra cui un montante e un sinistro che scuotono visibilmente Broner vicino all'angolo.",
+      "topics": ["near knockout", "corner pressure", "heavy combinations", "damage"],
+      "speakers": ["commentator"],
+      "mentioned_people": ["Manny Pacquiao", "Adrien Broner"],
+      "hook": "Broner e quasi in difficolta seria contro le corde.",
+      "quality_score": 0.97,
+      "search_visibility": "high"
+    },
+    {
+      "start": "00:21:16",
+      "end": "00:21:21",
+      "name": "Round 9 - Pacquiao ancora all'attacco",
+      "tags": ["boxing", "pacquiao-broner", "round-9", "pressure", "left-hook"],
+      "summary": "Pacquiao intercetta Broner con un gancio sinistro d'incontro che lo fa arretrare, costringendolo a subire una nuova raffica all'angolo.",
+      "topics": ["pressure", "counter left hook", "cornering", "output"],
+      "speakers": ["commentator"],
+      "mentioned_people": ["Manny Pacquiao", "Adrien Broner"],
+      "hook": "Pacquiao rimette subito Broner sotto pressione.",
+      "quality_score": 0.95,
+      "search_visibility": "high"
+    },
+    {
+      "start": "00:23:02",
+      "end": "00:23:07",
+      "name": "Round 10 & 11 - Il controllo di Pacquiao e la mancanza di iniziativa di Broner",
+      "tags": ["boxing", "pacquiao-broner", "round-10", "round-11", "volume"],
+      "summary": "Il divario nei colpi portati diventa evidente: Pacquiao domina per volume, mentre Broner lancia pochi destri e sembra limitato da un problema alla mano.",
+      "topics": ["volume", "scorecards", "hand injury", "control"],
+      "speakers": ["commentator"],
+      "mentioned_people": ["Manny Pacquiao", "Adrien Broner"],
+      "hook": "Pacquiao detta il ritmo, Broner perde iniziativa.",
+      "quality_score": 0.93,
+      "search_visibility": "high"
+    },
+    {
+      "start": "00:27:37",
+      "end": "00:27:42",
+      "name": "Round 12 - Il finale del match",
+      "tags": ["boxing", "pacquiao-broner", "round-12", "final-round", "control"],
+      "summary": "Negli ultimi 30 secondi Broner non mostra urgenza di recuperare e Pacquiao controlla agevolmente fino alla campana finale.",
+      "topics": ["final round", "control", "distance management", "closing sequence"],
+      "speakers": ["commentator"],
+      "mentioned_people": ["Manny Pacquiao", "Adrien Broner"],
+      "hook": "Pacquiao chiude il match senza perdere il controllo.",
+      "quality_score": 0.91,
+      "search_visibility": "high"
+    },
+    {
+      "start": "00:28:47",
+      "end": "00:28:52",
+      "name": "Post-Match - Annuncio del verdetto ufficiale",
+      "tags": ["boxing", "pacquiao-broner", "post-match", "verdict", "decision"],
+      "summary": "I giudici assegnano una decisione unanime a favore di Manny Pacquiao, che conserva il titolo mondiale WBA dei pesi welter.",
+      "topics": ["decision", "verdict", "scorecards", "title retention"],
+      "speakers": ["announcer"],
+      "mentioned_people": ["Manny Pacquiao", "Adrien Broner"],
+      "hook": "Il verdetto ufficiale conferma la vittoria di Pacquiao.",
+      "quality_score": 0.9,
+      "search_visibility": "high"
+    }
+  ]
+}

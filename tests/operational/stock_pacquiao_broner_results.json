@@ -1,169 +1,102 @@
 {
-  "run_at": "2026-07-09T10:16:14Z",
+  "run_at": "2026-07-09T10:40:28Z",
   "base_url": "http://127.0.0.1:8000",
   "drive_folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-  "submits": [
-    [
-      0,
-      "job_1783590867403213976_c0fee0a2",
-      200,
-      {
-        "job_id": "job_1783590867403213976_c0fee0a2",
+  "results": [
+    {
+      "round": 0,
+      "label": "Round_1_La_fase_di_studio",
+      "http_status": 200,
+      "job_id": "job_1783592169488096739_13b9df16",
+      "response": {
+        "job_id": "job_1783592169488096739_13b9df16",
         "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783590867403213976_c0fee0a2/full"
+        "status_url": "/api/jobs/job_1783592169488096739_13b9df16/full"
       },
-      ""
-    ],
-    [
-      1,
-      "job_1783590867410609209_124a9c63",
-      200,
-      {
-        "job_id": "job_1783590867410609209_124a9c63",
+      "final_status": "SUCCEEDED"
+    },
+    {
+      "round": 1,
+      "label": "Round_2_Posizionamento_e_scambi",
+      "http_status": 200,
+      "job_id": "job_1783592237630523341_86e27f5a",
+      "response": {
+        "job_id": "job_1783592237630523341_86e27f5a",
         "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783590867410609209_124a9c63/full"
+        "status_url": "/api/jobs/job_1783592237630523341_86e27f5a/full"
       },
-      ""
-    ],
-    [
-      2,
-      "job_1783590867423981959_616a6d1d",
-      200,
-      {
-        "job_id": "job_1783590867423981959_616a6d1d",
+      "final_status": "SUCCEEDED"
+    },
+    {
+      "round": 2,
+      "label": "Round_5_Miglior_momento_Broner",
+      "http_status": 200,
+      "job_id": "job_1783592356903677522_e0a9986e",
+      "response": {
+        "job_id": "job_1783592356903677522_e0a9986e",
         "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783590867423981959_616a6d1d/full"
+        "status_url": "/api/jobs/job_1783592356903677522_e0a9986e/full"
       },
-      ""
-    ],
-    [
-      3,
-      "job_1783590867434366874_832fc0a8",
-      200,
-      {
-        "job_id": "job_1783590867434366874_832fc0a8",
+      "final_status": "TIMEOUT"
+    },
+    {
+      "round": 3,
+      "label": "Round_7_Broner_barcolla",
+      "http_status": 200,
+      "job_id": "job_1783592539699198503_4edb8894",
+      "response": {
+        "job_id": "job_1783592539699198503_4edb8894",
         "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783590867434366874_832fc0a8/full"
+        "status_url": "/api/jobs/job_1783592539699198503_4edb8894/full"
       },
-      ""
-    ],
-    [
-      4,
-      "job_1783590867440766926_4a2eff59",
-      200,
-      {
-        "job_id": "job_1783590867440766926_4a2eff59",
+      "final_status": "TIMEOUT"
+    },
+    {
+      "round": 4,
+      "label": "Round_9_Pacquiao_all_attacco",
+      "http_status": 200,
+      "job_id": "job_1783592724413888058_1d45f9bd",
+      "response": {
+        "job_id": "job_1783592724413888058_1d45f9bd",
         "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783590867440766926_4a2eff59/full"
+        "status_url": "/api/jobs/job_1783592724413888058_1d45f9bd/full"
       },
-      ""
-    ],
-    [
-      5,
-      "job_1783590867446146319_767a9904",
-      200,
-      {
-        "job_id": "job_1783590867446146319_767a9904",
+      "final_status": "TIMEOUT"
+    },
+    {
+      "round": 5,
+      "label": "Round_10_11_Controllo_Pacquiao",
+      "http_status": 200,
+      "job_id": "job_1783592906791189213_ddec6136",
+      "response": {
+        "job_id": "job_1783592906791189213_ddec6136",
         "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783590867446146319_767a9904/full"
+        "status_url": "/api/jobs/job_1783592906791189213_ddec6136/full"
       },
-      ""
-    ],
-    [
-      6,
-      "job_1783590867457504187_6b5b70bb",
-      200,
-      {
-        "job_id": "job_1783590867457504187_6b5b70bb",
+      "final_status": "TIMEOUT"
+    },
+    {
+      "round": 6,
+      "label": "Round_12_Finale",
+      "http_status": 200,
+      "job_id": "job_1783593089146419806_5d80e229",
+      "response": {
+        "job_id": "job_1783593089146419806_5d80e229",
         "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783590867457504187_6b5b70bb/full"
+        "status_url": "/api/jobs/job_1783593089146419806_5d80e229/full"
       },
-      ""
-    ],
-    [
-      7,
-      "job_1783590867463770822_cb08da61",
-      200,
-      {
-        "job_id": "job_1783590867463770822_cb08da61",
-        "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783590867463770822_cb08da61/full"
+      "final_status": "TIMEOUT"
+    },
+    {
+      "round": 7,
+      "label": "Verdetto_Unanime",
+      "http_status": 401,
+      "job_id": "",
+      "response": {
+        "error": "Unauthorized",
+        "ok": false
       },
-      ""
-    ]
-  ],
-  "poll_results": [
-    [
-      3,
-      "job_1783590867434366874_832fc0a8",
-      "TIMEOUT",
-      {
-        "status": "TIMEOUT",
-        "polls": 240
-      }
-    ],
-    [
-      1,
-      "job_1783590867410609209_124a9c63",
-      "TIMEOUT",
-      {
-        "status": "TIMEOUT",
-        "polls": 240
-      }
-    ],
-    [
-      2,
-      "job_1783590867423981959_616a6d1d",
-      "TIMEOUT",
-      {
-        "status": "TIMEOUT",
-        "polls": 240
-      }
-    ],
-    [
-      7,
-      "job_1783590867463770822_cb08da61",
-      "TIMEOUT",
-      {
-        "status": "TIMEOUT",
-        "polls": 240
-      }
-    ],
-    [
-      6,
-      "job_1783590867457504187_6b5b70bb",
-      "TIMEOUT",
-      {
-        "status": "TIMEOUT",
-        "polls": 240
-      }
-    ],
-    [
-      0,
-      "job_1783590867403213976_c0fee0a2",
-      "TIMEOUT",
-      {
-        "status": "TIMEOUT",
-        "polls": 240
-      }
-    ],
-    [
-      4,
-      "job_1783590867440766926_4a2eff59",
-      "TIMEOUT",
-      {
-        "status": "TIMEOUT",
-        "polls": 240
-      }
-    ],
-    [
-      5,
-      "job_1783590867446146319_767a9904",
-      "TIMEOUT",
-      {
-        "status": "TIMEOUT",
-        "polls": 240
-      }
-    ]
+      "error": "HTTP Error 401: Unauthorized"
+    }
   ]
 }

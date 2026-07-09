@@ -146,9 +146,10 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 
 // Generate is the canonical POST /api/script-docs/generate handler.
 //
-// godlike/07 fail-closed mapping:
-//   - nil port → 503 (composition root did not wire ReActPort)
+// godlike/07 fail-closed mapping (validation-first):
+//   - bind JSON fails → 400 (request body malformed)
 //   - topic empty → 400 (request validation)
+//   - nil port → 503 (composition root did not wire ReActPort)
 //   - port call returns error → 500 (typed error passthrough)
 //   - happy path → 200 (canonical ReActResponse shape)
 //
@@ -156,18 +157,10 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 // success response. If the port is nil or returns an error, the
 // caller sees the typed failure, NOT a 200 with empty Result.
 func (h *Handler) Generate(c *gin.Context) {
-	// Fail-closed at the seam: composition root that hasn't
-	// wired ReActPort yet returns 503 with the canonical diagnostic.
-	if h.port == nil {
-		h.log.Debug("script-docs: ReAct port is nil — returning 503 ErrReActNotWired")
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"error":   "service_unavailable",
-			"message": ErrReActNotWired.Error(),
-		})
-		return
-	}
-
-	// Parse + validate the request body.
+	// Parse + validate the request body FIRST — request validation
+	// is cheaper than runtime dependency checks, and 400 is more
+	// actionable than 503 for a malformed request. The nil-port
+	// guard fires only after the request is known-valid.
 	var req ReActRequest
 	if bindErr := c.ShouldBindJSON(&req); bindErr != nil {
 		h.log.Debug("script-docs: bind JSON failed", zap.Error(bindErr))
@@ -181,6 +174,17 @@ func (h *Handler) Generate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "bad_request",
 			"message": "topic is required",
+		})
+		return
+	}
+
+	// Fail-closed at the seam: composition root that hasn't
+	// wired ReActPort yet returns 503 with the canonical diagnostic.
+	if h.port == nil {
+		h.log.Debug("script-docs: ReAct port is nil — returning 503 ErrReActNotWired")
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "service_unavailable",
+			"message": ErrReActNotWired.Error(),
 		})
 		return
 	}
