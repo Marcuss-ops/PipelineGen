@@ -1,5 +1,4 @@
-// Package app — clipindexer job handler late-binding (extracted from
-// composition.go NewComposition per PG-028 capability split, July 2026).
+// Package app — clipindexer job handler late-binding.
 package app
 
 import (
@@ -9,7 +8,7 @@ import (
 )
 
 // wireClipIndexerJobBinding registers the media_reindex handler into
-// jobs.Service. Extracted from NewComposition per PG-028.
+// jobs.Service.
 func wireClipIndexerJobBinding(process *ProcessBundle, jobs *JobsBundle) error {
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		if err := process.ClipIndexerService.RegisterJobHandler(jobs.Service); err != nil {
@@ -21,7 +20,6 @@ func wireClipIndexerJobBinding(process *ProcessBundle, jobs *JobsBundle) error {
 
 // appendClipIndexerCriticalValidator populates the critical-handler
 // validators slice with the clipindexer.media_reindex binding.
-// Extracted from NewComposition per PG-028.
 func appendClipIndexerCriticalValidator(process *ProcessBundle, jobs *JobsBundle, validators *[]CriticalHandler) {
 	if process.ClipIndexerService != nil && jobs.Service != nil {
 		ci := process.ClipIndexerService
