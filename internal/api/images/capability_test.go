@@ -12,16 +12,23 @@ import (
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 )
 
-// TestGenerate_Returns501_AfterSlidesAPIRemoval: After the Google Slides API
-// was removed (Step 2, June 2026), the Generate endpoint returns 501 Not
-// Implemented with the honest ErrImageGenNotImplemented message. This test
-// pins the contract so the endpoint doesn't accidentally start returning
-// fake successes again.
-func TestGenerate_Returns501_AfterSlidesAPIRemoval(t *testing.T) {
+// TestGenerate_Returns410_AfterPR_AUDIT_3: PR-AUDIT-3 (2026-07-09)
+// retired the legacy POST /api/images/generate endpoint to HTTP 410
+// Gone, matching the legacy script-route precedent. The handler
+// MUST NOT call GenerateSmartImage — every invocation returns 410
+// with the canonical deprecation payload pointing to the replacement
+// endpoint POST /api/images/generated/generate.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a future regression that
+// re-activates the handler (calling GenerateSmartImage again) would
+// surface as a test failure — the counter increments on every 410
+// call (godlike/07 observability) so operators can track the 7-day
+// sustained-zero gate via rate(legacy_images_generate_total[7d]).
+func TestGenerate_Returns410_AfterPR_AUDIT_3(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	h := &ImagesHandler{
-		service: &imgservice.Service{}, // zero-valued
+		service: &imgservice.Service{}, // zero-valued; handler never reaches service
 	}
 
 	rec := httptest.NewRecorder()
@@ -32,14 +39,33 @@ func TestGenerate_Returns501_AfterSlidesAPIRemoval(t *testing.T) {
 
 	h.Generate(c)
 
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("expected HTTP 501 (not implemented), got %d. body=%s",
+	if rec.Code != http.StatusGone {
+		t.Fatalf("expected HTTP 410 Gone, got %d. body=%s",
 			rec.Code, rec.Body.String())
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "image generation endpoint has been removed") {
-		t.Errorf("501 body should state endpoint removed; got body=%s", body)
+
+	// Canonical deprecation payload fields (per legacyDeprecationPayload SSOT).
+	requiredSubstrings := []string{
+		`"ok":false`,
+		`"canonical_endpoint":"POST /api/images/generated/generate"`,
+		`"removal_date":"2026-12-31"`,
+		`"deprecation_notice_ref":"PR-AUDIT-3`,
+	}
+	for _, want := range requiredSubstrings {
+		if !strings.Contains(body, want) {
+			t.Errorf("410 body must contain %q; got body=%s", want, body)
+		}
+	}
+
+	// X-Deprecated response headers.
+	if rec.Header().Get("X-Deprecated") != "true" {
+		t.Errorf("410 response must include X-Deprecated: true header")
+	}
+	if !strings.Contains(rec.Header().Get("X-Deprecation-Notice"), "POST /api/images/generated/generate") {
+		t.Errorf("X-Deprecation-Notice must reference the canonical endpoint; got %q",
+			rec.Header().Get("X-Deprecation-Notice"))
 	}
 }
 
@@ -158,25 +184,25 @@ func TestGenerateFullImages_GoogleVidsEngine_ReturnsBadRequest(t *testing.T) {
 							tc.engine, want, rec.Body.String())
 					}
 				}
-		} else {
-			// Positive control: the engine gate passes; nil service
-			// short-circuits at handler.go with HTTP 503
-			// "fullimages service not wired" (canonical typed
-			// nil-tolerance per godlike/07 no-fake-availability).
-			// Asserting the exact 503 locks the canonical nil-service
-			// contract — if a future refactor changes the nil
-			// response (e.g. silent-success to 200), this test fails
-			// immediately rather than silently passing on != 400.
-			if rec.Code != http.StatusServiceUnavailable {
-				t.Fatalf("engine=%q: positive control should return 503 (nil service); got %d body=%q",
-					tc.engine, rec.Code, rec.Body.String())
+			} else {
+				// Positive control: the engine gate passes; nil service
+				// short-circuits at handler.go with HTTP 503
+				// "fullimages service not wired" (canonical typed
+				// nil-tolerance per godlike/07 no-fake-availability).
+				// Asserting the exact 503 locks the canonical nil-service
+				// contract — if a future refactor changes the nil
+				// response (e.g. silent-success to 200), this test fails
+				// immediately rather than silently passing on != 400.
+				if rec.Code != http.StatusServiceUnavailable {
+					t.Fatalf("engine=%q: positive control should return 503 (nil service); got %d body=%q",
+						tc.engine, rec.Code, rec.Body.String())
+				}
+				wantSub := "fullimages service not wired"
+				if !strings.Contains(rec.Body.String(), wantSub) {
+					t.Errorf("engine=%q: 503 body must contain %q; got body=%q",
+						tc.engine, wantSub, rec.Body.String())
+				}
 			}
-			wantSub := "fullimages service not wired"
-			if !strings.Contains(rec.Body.String(), wantSub) {
-				t.Errorf("engine=%q: 503 body must contain %q; got body=%q",
-					tc.engine, wantSub, rec.Body.String())
-			}
-		}
 		})
 	}
 }
