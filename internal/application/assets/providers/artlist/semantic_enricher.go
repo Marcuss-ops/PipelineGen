@@ -35,6 +35,16 @@ import (
 // per-Folder resource guarded across goroutines that may outlive
 // a single SemanticEnricher (test fixtures can spawn many
 // enrichers pointing at the same folder).
+//
+// PR-CODE-HEALTH-C3 audit-pin (2026-07-09): this is one of only 2
+// package-level mutexes in production code. It CANNOT be replaced
+// with sync.Once because it guards repeated RMW (read-modify-write)
+// cycles to metadata.json across concurrent Enrich invocations, not
+// a one-time initialisation. It CANNOT be moved into a struct field
+// because the lock spans across goroutines that outlive a single
+// SemanticEnricher instance — multiple enrichers may point at the
+// same Drive folder. The per-folder serialisation is the correct
+// semantics; the package-level var is the least-bad home.
 var enrichMetaMu sync.Mutex
 
 // SemanticEnricher arricchisce un clip Artlist con metadati semantici.

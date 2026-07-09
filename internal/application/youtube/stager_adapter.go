@@ -28,15 +28,21 @@ var _ assets.SourceStager = (*YouTubeStager)(nil)
 
 // YouTubeStager downloads YouTube videos into a staging location via yt-dlp.
 type YouTubeStager struct {
-	ytdlp    *downloader.YTDLPDownloader
-	tempPath string
+	ytdlp      *downloader.YTDLPDownloader
+	tempPath   string
+	useCookies bool
 }
 
 // NewYouTubeStager constructs a YouTube SourceStager. cfg must be non-nil.
 func NewYouTubeStager(cfg *config.Config) *YouTubeStager {
+	cookiesPath := cfg.External.YouTubeCookiesPath
+	if cookiesPath == "" {
+		cookiesPath = "cookies.txt"
+	}
 	return &YouTubeStager{
-		ytdlp:    downloader.NewYTDLP(cfg),
-		tempPath: cfg.Storage.TempPath(),
+		ytdlp:      downloader.NewYTDLP(cfg),
+		tempPath:   cfg.Storage.TempPath(),
+		useCookies: fileExists(cookiesPath),
 	}
 }
 
@@ -61,6 +67,7 @@ func (s *YouTubeStager) StageSource(ctx context.Context, ref assets.SourceRef) (
 		NoPlaylist:  true,
 		Timeout:     10 * time.Minute,
 		MergeFormat: "mp4",
+		UseCookies:  s.useCookies,
 	}
 
 	if err := s.ytdlp.Download(ctx, dlReq); err != nil {
@@ -107,4 +114,12 @@ func stageCleanupDir(localPath string) error {
 		return nil
 	}
 	return os.RemoveAll(dir)
+}
+
+func fileExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
 }

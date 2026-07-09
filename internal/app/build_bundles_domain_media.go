@@ -1,0 +1,174 @@
+package app
+
+import (
+	"context"
+	"fmt"
+
+	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
+	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/hashutil"
+	pkgffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
+	ytcache "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube/cache"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
+)
+
+// buildDomainMediaServices constructs the YouTube clip pipeline service
+// and populates the DomainBundle with it. Returns intermediate deps
+// consumed by other domain sections.
+//
+// godlike/06 SSOT: the YouTube Service and its adapters are the SOLE
+// canonical owners of the clip extraction pipeline.
+func buildDomainMediaServices(
+	ctx context.Context,
+	cfg *config.Config,
+	dbs *databases,
+	log *zap.Logger,
+	drive *DriveBundle,
+	repos *RepoBundle,
+	search *SearchBundle,
+	process *ProcessBundle,
+	ai *AIBundle,
+	outbox *OutboxBundle,
+	mutationsDisp mutations.AssetMutationDispatcher,
+	bundle *DomainBundle,
+) (
+	voMetaWriter *semantic.MetadataWriter,
+	clipWriter *assets.ClipAtomicWriterAdapter,
+	err error,
+) {
+	voMetaWriter = semantic.NewMetadataWriter(
+		cfg.Paths.PythonScriptsDir,
+		cfg.Storage.TempPath(),
+		cfg.External.OllamaURL,
+		cfg.External.OllamaModel,
+		log,
+	)
+
+	clipProcessor := pkgffmpeg.NewFromConfig(cfg)
+	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
+	videoPipelineAdapter := ytinfra.NewVideoPipelineAdapter(videoPipeline)
+
+	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
+	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
+	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, log)
+	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})
+
+	var clipIndexerAdapterValue youtubeports.ClipIndexerPort
+	if process.ClipIndexerService != nil {
+		clipIndexerAdapterValue = &clipIndexerAdapter{inner: process.ClipIndexerService}
+	}
+
+	searchRunnerAdapter := ytinfra.NewSearchRunnerAdapter(cfg, log)
+	if searchRunnerAdapter == nil {
+		return nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort nil (cfg or log missing — fail-closed per PR2)")
+	}
+	if portutil.IsNilPort(searchRunnerAdapter) {
+		return nil, nil, fmt.Errorf("compose domains: youtube SearchRunnerPort typed-nil (portutil.IsNilPort true — fail-closed per PR2)")
+	}
+
+	hashAdapter := hashutil.NewHashAdapter()
+
+	// UseCookies=false: public video segmentation (n-challenge path via monitor).
+	subtitleFetcherAdapter := ytinfra.NewSubtitleFetcherAdapter(
+		ytinfra.SubtitleCacheConfig{
+			YTDLPPath:    cfg.External.ResolvedYtdlpPath(),
+			DefaultLangs: "en,en-US",
+			CacheDir:     cfg.Storage.SubtitlesPath(),
+		},
+		nil,
+		ytdlp.NewCommandBuilder(cfg),
+		false,
+	)
+	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo, log)
+	clipWriter = assets.NewClipAtomicWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
+	clipMetadataWriter := assets.NewClipMetadataWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
+	ollamaBuilder := ytinfra.NewOllamaClipMetadataBuilder(
+		ai.OllamaClient,
+		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
+		0,
+		log,
+	)
+	clipMetadataService, err := ytmetadata.NewMetadataService(ytmetadata.MetadataDeps{
+		Builder:  ollamaBuilder,
+		Writer:   clipMetadataWriter,
+		Logger:   log,
+		JobID:    "",
+		JobGroup: "general",
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("compose domains: clip metadata service: %w", err)
+	}
+
+	// Compile-time pin: Step10MetricsRecorder port ↔ Step10MetricsAdapter.
+	var _ youtubeports.Step10MetricsRecorder = (*observability.Step10MetricsAdapter)(nil)
+	processSeg := youtube.NewProcessYouTubeSegmentUseCase(youtube.ProcessSegmentDeps{
+		Cache:              clipCache,
+		VideoPipeline:      videoPipelineAdapter,
+		Hash:               hashAdapter,
+		DriveFolderMgr:     youtubePubAdapter,
+		Writer:             clipWriter,
+		ClipMetadataWriter: clipMetadataWriter,
+		MetadataService:    clipMetadataService,
+		SegmentsSvc:        youtube.NewSegmentsService(),
+		SegmentPolicy:      youtubetypes.DefaultSegmentPolicy(),
+		Step10Metrics:      observability.NewStep10MetricsAdapter(),
+		Log:                log,
+	})
+
+	youtubeDeps := youtube.ServiceDeps{
+		Cfg:            buildYouTubeRuntimeConfig(cfg),
+		Log:            log,
+		MediaProcessor: process.MediaProcessor,
+		VideoPipeline:  videoPipelineAdapter,
+		LifecycleService: NewLifecycleFromDeps(&LifecycleDeps{
+			Registry: artifacts.NewClipsRegistry(
+				dbs.main.DB,
+				repos.Assets.Repository(),
+				repos.Assets,
+				repos.Assets.LocationRepository(),
+				repos.Assets.ProcessingRepository(),
+				mutationsDisp,
+			),
+			Publisher:   drive.Publisher,
+			DriveReader: drive.driveUploader,
+			AssetIndex:  search.AssetIndexService,
+		}, log),
+		AssetDestResolver: drive.DestResolver,
+		AssetRepo:         repos.Assets.Repository(),
+		Clips:             newClipStoreAdapter(repos.ClipsRepo),
+		Cache:             youtubeCache,
+		Monitors:          newMonitorsStoreAdapter(repos.MonitorsRepo),
+		Indexer:           clipIndexerAdapterValue,
+		Ollama:            ai.OllamaClient,
+		MetaFetcher:       metaFetcher,
+		DriveFolderMgr:    youtubePubAdapter,
+		FolderMemory:      newFolderMemoryAdapter(folderMemSvc),
+		SearchRunner:      searchRunnerAdapter,
+		HashSvc:           hashAdapter,
+		ProcessSeg:        processSeg,
+		TranscriptReader:  &youtube.OSTranscriptReader{},
+		SubtitleFetcher:   subtitleFetcherAdapter,
+	}
+	if err := youtube.ValidateServiceDeps(youtubeDeps); err != nil {
+		return nil, nil, fmt.Errorf("compose youtube: %w", err)
+	}
+	bundle.YoutubeClipService = youtube.NewService(youtubeDeps)
+
+	return voMetaWriter, clipWriter, nil
+}

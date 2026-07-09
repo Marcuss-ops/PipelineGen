@@ -33,12 +33,12 @@ import time
 from pathlib import Path
 
 # ── YouTube source video ──────────────────────────────────────────────
-YOUTUBE_VIDEO_ID = "vdC5GXxS-qU"
+YOUTUBE_VIDEO_ID = "RRJvrDKunyA"
 YOUTUBE_URL = f"https://www.youtube.com/watch?v={YOUTUBE_VIDEO_ID}"
 
 # ── Drive output folder ───────────────────────────────────────────────
-# Root Drive folder (user-provided 2026-07-06).
-DEFAULT_DRIVE_FOLDER_ID = "1iAGhWidRF0hpJYvku_fIavEIY50_V1wA"
+# Root Drive folder requested for the final smoke.
+DEFAULT_DRIVE_FOLDER_ID = "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV"
 
 # ── API configuration ─────────────────────────────────────────────────
 DEFAULT_BASE_URL = "http://localhost:8000"
@@ -53,47 +53,47 @@ NO_EFFECTS = True              # no visual effects
 NO_TRANSITIONS = True          # no crossfade transitions
 
 # ── Round definitions ─────────────────────────────────────────────────
-# Each round: (label, start_timestamp, end_timestamp, description)
+# Each round: (label, start_timestamp, description)
 ROUNDS = [
     (
         "Round_1_La_fase_di_studio",
-        "00:00:32", "00:03:51",
-        "Pacquiao mobility, jab work. Broner wide guard.",
+        "00:00:32",
+        "La fase di studio e la velocità di Pacquiao. Pacquiao mette subito in mostra la sua mobilità e rapidità di gambe, lavorando molto con il jab da mancino per prendere le misure. Broner mantiene una guardia molto larga e fatica a prendergli il tempo.",
     ),
     (
         "Round_2_Posizionamento_e_scambi",
-        "00:04:07", "00:05:45",
-        "Both fighters seeking position. Pacquiao quick combinations.",
+        "00:04:07",
+        "Il posizionamento e i primi scambi. Entrambi i pugili cercano di guadagnare la posizione con il piede avanzato. Pacquiao accelera il ritmo con combinazioni veloci, mentre Broner risponde principalmente di rimessa spingendo via l'avversario.",
     ),
     (
         "Round_5_Miglior_momento_Broner",
-        "00:10:28", "00:12:47",
-        "Broner finds right hand. Pacquiao left hook to body.",
+        "00:10:28",
+        "Il miglior momento di Broner. Broner riesce a trovare maggiore continuità con il diretto destro, colpendo il mento di Pacquiao in un paio di occasioni. Pacquiao risponde con un potente gancio sinistro al corpo prima di riprendere il controllo del ritmo a fine round.",
     ),
     (
         "Round_7_Broner_barcolla",
-        "00:00:32", "00:01:27",
-        "Spectacular round. Pacquiao series of heavy shots, Broner nearly KO.",
+        "00:16:33",
+        "Il momento chiave: Broner barcolla. Il round più spettacolare del match. Pacquiao mette a segno una serie di colpi durissimi, tra cui un potente montante e un sinistro che scuotono visibilmente Broner. Broner è costretto a legare ed è quasi sul punto di andare KO mentre Pacquiao lo tempesta di colpi all'angolo.",
     ),
     (
         "Round_9_Pacquiao_all_attacco",
-        "00:21:16", "00:22:10",
-        "Pacquiao left hook intercept, Broner retreats to ropes.",
+        "00:21:16",
+        "Pacquiao ancora all'attacco. Un altro ottimo round per il filippino. Pacquiao intercetta Broner con un potente gancio sinistro d'incontro che lo fa arretrare vistosamente sui tacchi, costringendolo nuovamente a subire una raffica di colpi all'angolo.",
     ),
     (
         "Round_10_11_Controllo_Pacquiao",
-        "00:23:02", "00:27:06",
-        "Pacquiao dominates volume. Broner low output, suspected hand injury.",
+        "00:23:02",
+        "Il controllo di Pacquiao e la mancanza di iniziativa di Broner. Viene evidenziato il divario nei colpi portati: Pacquiao domina per volume, mentre Broner lancia pochissimi destri, facendo sospettare un infortunio alla mano. Al Round 11 le statistiche mostrano 109 colpi a segno per Pacquiao contro i soli 49 di Broner.",
     ),
     (
         "Round_12_Finale",
-        "00:27:37", "00:28:18",
-        "Last 30 seconds, Broner shows no urgency. Pacquiao controls to bell.",
+        "00:27:37",
+        "Il finale del match. Negli ultimi 30 secondi Broner non mostra l'urgenza di dover recuperare lo svantaggio e Pacquiao controlla agevolmente fino al suono della campana finale.",
     ),
     (
         "Verdetto_Unanime",
-        "00:28:47", "00:29:29",
-        "Judges: 117-111, 116-112, 116-112. Pacquiao retains WBA welterweight.",
+        "00:28:47",
+        "Annuncio del verdetto ufficiale. I giudici assegnano una netta decisione unanime a favore di Manny Pacquiao (117-111, 116-112, 116-112), che conserva il titolo mondiale WBA dei pesi welter.",
     ),
 ]
 
@@ -130,19 +130,19 @@ def split_into_clips(
 def build_payload_for_round(
     label: str,
     start_ts: str,
-    end_ts: str,
     description: str,
     drive_folder_id: str,
     clip_duration: int = CLIP_DURATION_SEC,
+    window_sec: int = 60,
 ) -> dict:
     """Build a POST /api/stock/run payload for one round."""
     start_sec = ts_to_seconds(start_ts)
-    end_sec = ts_to_seconds(end_ts)
+    end_sec = start_sec + window_sec
     clips = split_into_clips(start_sec, end_sec, clip_duration)
 
-    # Subfolder path: Pacquiao_Vs_Broner/Round_1_.../00-00-32_to_00-03-51
-    ts_dir = f"{start_ts.replace(':', '-')}_to_{end_ts.replace(':', '-')}"
-    subfolder = f"{PROJECT_SUBFOLDER}/{label}/{ts_dir}"
+    # Subfolder path: Pacquiao Vs Broner / Round label.
+    # The timestamp is encoded in the clip windows, not in the folder name.
+    subfolder = f"{PROJECT_SUBFOLDER}/{label}"
 
     return {
         "direct_urls": [YOUTUBE_URL],
@@ -168,8 +168,8 @@ def build_payload_for_round(
 def build_all_payloads(drive_folder_id: str) -> list[dict]:
     """Build payloads for all rounds."""
     payloads = []
-    for label, start_ts, end_ts, desc in ROUNDS:
-        p = build_payload_for_round(label, start_ts, end_ts, desc, drive_folder_id)
+    for label, start_ts, desc in ROUNDS:
+        p = build_payload_for_round(label, start_ts, desc, drive_folder_id)
         payloads.append(p)
     return payloads
 
@@ -264,12 +264,12 @@ def main():
         },
         "rounds": [],
     }
-    for i, (label, start_ts, end_ts, desc) in enumerate(ROUNDS):
+    for i, (label, start_ts, desc) in enumerate(ROUNDS):
         test_data["rounds"].append({
             "index": i,
             "label": label,
             "start": start_ts,
-            "end": end_ts,
+            "end": "start+60s",
             "description": desc,
             "payload": payloads[i],
         })
