@@ -286,7 +286,7 @@ bash scripts/ci-architectural-checks.sh
 
 ## Script Generation Endpoints (consolidated June 2026)
 
-Script generation has been **consolidated to three endpoints**; per-flow
+Script generation has been **consolidated to the modern endpoint**; per-flow
 separation (separate handlers, job types, phase files, Google Doc
 builder, Python test scripts) has been **removed**. All async work goes
 through one unified pipeline; the Python agent is reachable only via
@@ -294,22 +294,13 @@ the sync endpoint.
 
 **For the full table of endpoints, schema, and modes, see ARCHITECTURE.md.** All legacy documentation files previously under `docs/` have been removed.
 
-**Rule of thumb for new integrations**: scegli l'endpoint in base al preset di flag desiderato.
+**Rule of thumb for new integrations**: usa l'endpoint `/api/script/generate` passando un payload di tipo `GenerationEnvelopeV2` (versione 2).
 
-| Endpoint | Handler | Job type | Preset del payload |
-|----------|---------|----------|--------------------|
-| `POST /api/script/generate-from-clips` | `ScriptFlowHandler.GenerateFromClips` (`handler_clip_source.go`) | `script.generate_from_clips` | Rispettano i flag del body. `generate_metadata=true` implies `extract_entities=true`. Default `sentences_per_image=10`. |
-| `POST /api/script/generate-with-images` | `ScriptFlowHandler.GenerateWithImages` (`handler_generate_with_images.go`) | `script.generate_from_clips` (stesso) | **Forza** `extract_entities=false`, `generate_scene_images=true`, `generate_document=true`, `generate_metadata=false`. Default `sentences_per_image=8`. |
+| Endpoint | Handler | Job type | Payload / Preset |
+|----------|---------|----------|------------------|
+| `POST /api/script/generate` | `HandlerGenerate` (`handler_generate_handler.go`) | `script.generate` | Accetta `GenerationEnvelopeV2` con uno o più elementi. Supporta preset `custom` per configurazione esplicita dei flag. |
 
-I due endpoint **non sono alias**: hanno handler e request type distinti
-(`GenerateFromClipsRequest` vs `GenerateWithImagesRequest`); condividono
-solo il job type e la pipeline di esecuzione (`HandleClipScriptGenerateJob`
-in `job_handler_clip_source.go`). La differenza è il **preset del
-payload**, non la pipeline.
-
-Use `/generate-with-images` quando vuoi scene-by-scene AI images senza
-entity extraction né metadata; usa `/generate-from-clips` per ogni
-altro caso (incluso opt-in delle scene images via `generate_scene_images=true`).
+L'endpoint supporta l'elaborazione di singoli elementi o batch (multiple items), dove ciascun elemento definisce in modo indipendente sorgente (`SourceSpec`), parametri (`ScriptSpec`) e opzioni di output (`OutputSpec`).
 
 | Endpoint | Handler | Job type | Preset del payload |
 |----------|---------|----------|--------------------|
@@ -2073,3 +2064,28 @@ The canonical operator-facing hardening procedure for the STOCK-E2E-BATTERY-2026
   **Audit-pin re-verify precedent summary** (canonical SOLE record across the LOGIC-SIMPLIFICATION-DEAD-CODE wave): 3 closures + 1 RE-VERIFY across `4fc8106` (YAGNI 0-action) + `4f1f286ad` (defensive-markers 0-action) + `63e76121b` (typed-interfaces 0-action) + this commit (typed-interfaces RE-VERIFY with NEW alternativi-path discovery). The cumulative evidence pattern strongly suggests: **(a)** the LOGIC-SIMPLIFICATION-DEAD-CODE wave's spec-vs-reality drift is the dominant surface feature across the wave AND **(b)** the canonical remediation path is the 4 forward-pointer ratchet (RECAST-V2 + FULLIMAGES-INTERFACE-TYPING + AUDIO-TYPED-EVENT + AUDIO-SUBPATH-CASCADE-CHECK) rather than re-shipping more drafty 0-action closures. **Per godlike/07 NO-FAKE-AVAILABILITY**, future sub-spec sub-shipping of `LOGIC-SIMPLIFICATION-DEAD-CODE` wave PRs should NOT attempt yet more drafty audit-pin closures when the user spec conflicts with the codebase — they should instead trigger an OPEN forward-pointer (`PR-LSM-*-RECAST-V2` etc.) and ship real refactor work against the discovered canonical paths.
 
   **Direct-to-main per AGENTS.md Git-Lesson-2** (no branches, no `--no-ff`, no `--force`); **Co-authored-by trailer per AGENTS.md Git-Lesson-3**; **race-protect clean per AGENTS.md Git-Lesson-4** (`HEAD..@{u}` empty pre-push). Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesson-3.
+- **[PR-CLEANUP-ENSURE-NO-ACT-IO-FORWARD-POINTER zero-action audit-pin (canonical ship_sha pending push, 2026-07-09)]** `docs(cleanup)` — mirror of CHANGELOG.md closure entry. The user spec plans PR-CLEANUP-CROSS-CL-PKG to coordinate a cross-package refactor across `internal/storage/repository/leases.go` (canonical owner) + `internal/jobs/local.go` (caller) + `cmd/admin/` (CLI callers), threading a new typed probe + Add Composer for `ensureNoActLeasesForJobs` + fixing a silent-ack false-success class in `repo.MarkIfExists(s, base)` + `ResultFromResponse(S)` codepath.
+
+  **Forensic verdict on `origin/main` HEAD=`6391621f0`** (the canonical ship_sha of the immediately prior audit-pin RE-VERIFY) verifies the spec targets are MOSTLY DRIFT:
+  **(1)** `internal/storage/repository/leases.go` → **MISSING** from filesystem. The `find internal/storage -type d` returns only short directory tree (does not contain a `repository` sub-namespace); nearest canonical leases surface is `internal/infrastructure/database/sqlite/jobs/` per the SQLite consolidation FASE-2 wave.
+  **(2)** `internal/jobs/local.go` does exist (1/3 = 33% match) — canonical `local.go` file with the `jobs.Service` composition-root entry.
+  **(3)** `cmd/admin/` CLI callers — directory exists with multiple admin CLIs; however grep for `ensureNoActLeasesForJobs` returns **0 hits** anywhere in `cmd/admin/`.
+  **(4)** The 3 named functions are 0 occurrences codebase-wide: `ensureNoActLeasesForJobs` = 0, `MarkIfExists` = 0, `ResultFromResponse` = 0. The "silent-ack in `repo.MarkIfExists(s, base)`" anti-pattern class is therefore structurally non-existent on origin/main.
+
+  **godlike/07 NO-FAKE-AVAILABILITY closure rationale:** the false-success class the spec describes depends on a function (`MarkIfExists`) that has zero implementations in the codebase. Shipping a typed probe + Add Composer "to fix" a bug that has structurally non-existent surface is forbidden per godlike/07 (cannot fabricate fix for non-bug). This is the 5th consecutive audit-pin in the LOGIC-SIMPLIFICATION-DEAD-CODE wave + matches the 4-strike precedent (`4fc8106` YAGNI + `4f1f286ad` defensive-markers + `63e76121b` typed-interfaces + `6391621f0` typed-interfaces RE-VERIFY).
+
+  **Drift-source (per the broader migration timeline):** the user spec was authored assuming the pre-SPINA-DORSALE-2026-04 leases surface (when leases+admin lived at `internal/storage/repository/` + `internal/jobs/global.go`). The FASE-2 SPINA-DORSALE migration + subsequent god-object decomposition waves (GODOBJ-2026-07-03 + LONG-FILES-DECOMPOSITION-V2-EXEC-2026-07-07 + PR-REFACTOR-WAVE-3-2026-08-08) relocated the leases surface to `internal/infrastructure/database/sqlite/jobs/` + retired the `internal/storage/repository/` package entirely. The "MarkIfExists silent-ack" anti-pattern was previously remediated at the test-fixture layer (it never appeared in production code).
+
+  **godlike/06 SSOT (one canonical owner per fact, preserved across the audit-pin):** canonical leases surface lives ONLY at `internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go` (per the previous `PR-jobs-retry-contract` + lifecycle refactors); canonical jobs.Service lives ONLY at `internal/jobs/service.go` (NOT `local.go` which is a sibling broker facade). `cmd/admin/` admin CLI entry points live ONLY at canonical `cmd/admin/<command>.go` per-capability files (38 total per `find` enumeration).
+
+  **godlike/07 minimum-blast-radius:** zero Go file touched, zero new exported symbols, zero composition-root wiring change. Pure documentation audit-pin closure mirroring the established pattern of `4fc8106` + `4f1f286ad` + `63e76121b` + `6391621f0`.
+
+  **3 forward-pointers (godlike/06 SSOT one-owner-per-fact):** (1) `PR-CLEANUP-ENSURE-NO-ACT-RECAST-V2` (deadline 2026-08-01) — recast the spec against the ACTUAL canonical paths on origin/main (`internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go` instead of `internal/storage/repository/leases.go`) + survey the canonical `MarkFailedIf...` + `ClaimIfLeaseMatches...` + `LeaseLostErr` patterns at that location for genuine silent-ack classes to fix; (2) `PR-JOBS-LIFECYCLE-AUDIT` (deadline 2026-08-15) — auditable sanity sweep across the canonical leases surface for ANY silent-ack + ResultFromResponse variant pattern (tying the audit to the FORWARD actual paths rather than the spec's drifted paths); (3) `PR-LSM-WAVE-HOTSPOT-CROSSREF` (deadline 2026-08-15) — post-wave git-log frequency cross-validation per the established `PR-CLEANUP-HOTSPOT-CROSSREF` + `PR-P12-HOTSPOT-CROSSREF` precedent; canonical cadence: 5 audit-pins in 9 PR-cycle → the static priority of the LOGIC-SIMPLIFICATION-DEAD-CODE-2026-07-09 action plan has 0% hit rate on origin/main; the wave-flip criterion (per the action plan §10) is FRUSTRATED until at least 1 NEW hotspot surfaces via cross-validation or a future wave migrates NEW surface requiring typed-probe cleanup.
+
+  **Honest scope-lock (godlike/07 NO-FAKE-AVAILABILITY):** the audit-pin cannot be "shipped" as a real refactor because there is no real surface to refactor against. The 5-strike audit-pin cadence (`4fc8106` + `4f1f286ad` + `63e76121b` + `6391621f0` + this closure) is now 5/9 of the LOGIC-SIMPLIFICATION-DEAD-CODE wave's PR count. The remaining 4 PRs (PR-CLEANUP-COGNITIVE-COMPLEXITY + PR-CLEANUP-PIPELINE-PARALLELISM + PR-CLEANUP-HIDDEN-DUPLICATION + PR-CLEANUP-CONTEXT-FORWARDING) should similarly verify spec paths before each landing per the established forensic-first discipline.
+
+  **Verification (post-commit):** `git status` clean after stage-2-files-only (CHANGELOG.md + AGENTS.md); pre-existing dirty residue (handler_flow.go modifications + 5 deleted handler_legacy_*.go files + untracked yt-clip-tests/ + 4 unrelated `cmd/admin/gen_api_docs.go` + `docs/api/ACTIVE_API_GENERATED.md` + `ARCHITECTURE.md`) PRESERVED untouched per godlike/07 minimum-blast-radius; race-protect clean via `git fetch && git rev-list --left-right --count HEAD...origin/main` returning `0 0` pre-push; atomic commit with Co-authored-by trailer per AGENTS.md Git-Lesson-3; direct-to-main ff-push per AGENTS.md Git-Lesson-2 (no `--force`).
+
+  **3-surface godlike/06 SSOT lockstep (per CANONICAL.md §1):** this AGENTS.md mirror entry (surface 2/3) ≈ `CHANGELOG.md ## Unreleased > ### Fixed` closure meta-entry (surface 1/3) ≈ canonical ship_sha on `origin/main` after ff-push (surface 3/3). The 4th surface (`architecture/waves/wave_p1_high.yaml#CLEANUP-PRIORITY-1-5-2026-07-25` or successor wave-tracker slot) is **DEFERRED** per the pre-existing `architecture/waves/wave_p1_high.yaml#PRE-EXISTING-YAML-PARSE-2026-07-04` carry-forward + `PR-CURRENT-YAML-PARSE-FIX-PART-N` forward-pointer (deadline 2026-08-15) — parent action-plan + CHANGELOG + AGENTS entries are the canonical SOLE closure record until the YAML parse carry-forward resolves.
+
+  **Direct-to-main per AGENTS.md Git-Lesson-2** (no branches, no `--no-ff`, no `--force`); **Co-authored-by trailer per AGENTS.md Git-Lesson-3**; **race-protect per AGENTS.md Git-Lesson-4** (`git fetch && git log --oneline HEAD..@{u}` must return empty for safe ff-push); **byte-equivalent-replay-race acceptance per AGENTS.md Git-Lesson-5** (if a parallel agent lands a byte-equivalent commit on `origin/main` during the commit-to-push window, accept without force-push per the canonical discipline). Pre-existing 6-item voiceover + app build-issue carry-forward per `architecture/waves/wave_p1_high.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04` UNCHANGED — NOT a regression of this audit-pin closure. Co-authored-by: PipelineGen Agent <agent@pipelinegen.local>. AGENTS.md Git-Lesson-3.
