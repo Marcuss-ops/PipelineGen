@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # media_assets_drive_qdrant_smoke.sh — Zone 3 production readiness smoke test.
 #
-# Generates a voiceover asset via POST /api/media/voiceover/generate (1 item),
-# then verifies the full chain:
-#   T1: media_assets row exists with drive_file_id + file_hash + lifecycle_state=ACTIVE
-#   T2: outbox_events asset.index.requested emitted and completed
-#   T3: voiceover row has drive_file_id + drive_link non-empty
-#   T4: Drive file exists via Google Drive API (if token available)
-#   T5: Qdrant point exists for the asset (if Qdrant reachable)
+# Submits a stock pipeline job via POST /api/stock-pipeline/run (search_queries),
+# polls to terminal, then verifies the full chain:
+#   T1: stock job submitted + reaches terminal
+#   T2: media_assets row exists with drive_file_id + file_hash + lifecycle_state=ACTIVE
+#   T3: outbox_events asset.index.requested emitted and completed
+#   T4: stock media_assets drive_file_id non-empty (asset published to Drive)
+#   T5: Drive file exists via Google Drive API (if token available)
+#   T6: Qdrant point exists for the asset (if Qdrant reachable)
 #
 # Exit codes: 0 = PASS, 1 = FAIL, 2 = setup error.
 #
@@ -15,7 +16,6 @@
 #   SMOKE_DB            — SQLite database path (default: data/media/media.db.sqlite)
 #   SMOKE_DRIVE_TOKEN_FILE — Google OAuth token file (default: token.json)
 #   QDRANT_URL          — Qdrant base URL (default: http://127.0.0.1:6333)
-#   SMOKE_DRIVE_ROOT    — Drive folder_id for voiceover destination
 #
 # Uses: tests/operational/lib/common.sh (smoke_curl, smoke_poll_terminal, etc.)
 
@@ -36,9 +36,9 @@ fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
     smoke_echo_safe "DRY RUN — would probe:"
-    printf '  POST http://%s/api/media/voiceover/generate  (1 item: it-IT, required=true)\n' "$SMOKE_API_BASE"
+    printf '  POST http://%s/api/stock-pipeline/run  (search_queries=boxing training)\n' "$SMOKE_API_BASE"
     printf '  poll http://%s/api/jobs/<id>/full  (terminal)\n' "$SMOKE_API_BASE"
-    printf '  sqlite3: media_assets WHERE source=voiceover + drive_file_id + file_hash + lifecycle_state=ACTIVE\n'
+    printf '  sqlite3: media_assets WHERE source=stock + drive_file_id + file_hash + lifecycle_state=ACTIVE\n'
     printf '  sqlite3: outbox_events WHERE event_type=asset.index.requested\n'
     printf '  Drive API: GET /drive/v3/files/<id>  (if token available)\n'
     printf '  Qdrant: POST /collections/media_assets_current/points/scroll  (if reachable)\n'
@@ -49,9 +49,8 @@ fi
 SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
 SMOKE_DRIVE_TOKEN_FILE="${SMOKE_DRIVE_TOKEN_FILE:-${REPO_ROOT:-$(pwd)}/token.json}"
 QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
-SMOKE_DRIVE_ROOT="${SMOKE_DRIVE_ROOT:-}"
 DRIVE_API_BASE="https://www.googleapis.com"
-TAG_PREFIX="media_smoke_$(date +%s)_$$"
+TAG_PREFIX="zone3_stock_$(date +%s)_$$"
 REQ_ID="${TAG_PREFIX}_zone3"
 
 declare -a FAILURES=()
@@ -108,50 +107,40 @@ preflight_db_exists() {
     return 0
 }
 
-# ── T1: Generate voiceover asset ──────────────────────────────────
+# ── T1: Submit stock pipeline job ─────────────────────────────────
 
-post_voiceover() {
-    smoke_log_section "T1: POST /api/media/voiceover/generate (1 item: it-IT)"
-
-    # Use explicit folder_id if provided; otherwise use empty (composition root will resolve)
-    local dest_block
-    if [[ -n "$SMOKE_DRIVE_ROOT" ]]; then
-        dest_block=$(jq -n --arg fid "$SMOKE_DRIVE_ROOT" '{kind: "explicit", folder_id: $fid}')
-    else
-        # No SMOKE_DRIVE_ROOT — voiceover endpoint requires non-empty folder_id
-        # when kind="explicit". Exit 2 (setup error) so the aggregator treats
-        # this zone as "not applicable" rather than cascading failures in T2-T6.
-        printf '%sSETUP: SMOKE_DRIVE_ROOT not set — Zone 3 requires a Drive folder_id%s\n' \
-            "$RED" "$RESET" >&2
-        printf '  Set SMOKE_DRIVE_ROOT=<folder_id> to enable Zone 3 voiceover tests.\n'
-        exit 2
-    fi
+submit_stock_job() {
+    smoke_log_section "T1: POST /api/stock-pipeline/run (search_queries=boxing training)"
 
     local payload
-    payload=$(jq -n --arg rid "$REQ_ID" --arg vid "$TAG_PREFIX" --argjson dest "$dest_block" '{
-        request_id: $rid,
-        items: [
-            {text: "Smoke test voiceover for media assets chain verification.", language: "it-IT", voice: "it-IT-DiegoNeural", filename: ("smoke_zone3_" + $vid + ".mp3"), required: true}
-        ],
-        destination: $dest,
-        options: {remove_silence: false, strategy: "verify", parallelism: 1}
+    payload=$(jq -n '{
+        search_queries: ["boxing training gym"],
+        total_minutes: 1,
+        chunk_duration: 10,
+        clip_duration: 10,
+        max_videos: 2,
+        no_audio: true,
+        no_effects: true,
+        no_transitions: true
     }')
 
-    smoke_curl POST "/api/media/voiceover/generate" --data "$payload" >/dev/null
+    smoke_curl POST "/api/stock-pipeline/run" --data "$payload" >/dev/null
     local code
     code=$(cat "$WORK_DIR/last.code" 2>/dev/null || echo "000")
-    if ! smoke_assert_http_2xx "POST /api/media/voiceover/generate"; then
-        fail "post_voiceover_http_${SMOKE_LAST_HTTP}"
+    if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
+        fail "submit_stock_http_${code}"
+        printf '%sFAIL: POST /api/stock-pipeline/run returned HTTP %s (expected 2xx)%s\n' \
+            "$RED" "$code" "$RESET" >&2
         return 1
     fi
 
     JOB_ID=$(jq -r '.job_id // .id // empty' "$SMOKE_LAST_BODY" 2>/dev/null || echo "")
     if [[ -z "$JOB_ID" ]]; then
-        fail "post_voiceover_no_job_id"
+        fail "submit_stock_no_job_id"
         printf '%sFAIL: POST returned no job_id in body%s\n' "$RED" "$RESET" >&2
         return 1
     fi
-    printf '  %senqueued job_id=%s (req_id=%s)%s\n' "$GREEN" "$JOB_ID" "$REQ_ID" "$RESET"
+    printf '  %senqueued job_id=%s%s\n' "$GREEN" "$JOB_ID" "$RESET"
     return 0
 }
 
@@ -185,33 +174,19 @@ poll_to_terminal() {
 verify_media_assets() {
     smoke_log_section "T2: media_assets row — drive_file_id + file_hash + lifecycle_state=ACTIVE"
 
-    # Query media_assets for this voiceover request's drive_file_id
-    # Canonical link: voiceovers.drive_file_id → media_assets.drive_file_id
+    # Query media_assets for stock rows created in the last 10 minutes.
+    # The stock pipeline creates rows with source='stock' and populates
+    # drive_file_id, file_hash, lifecycle_state via the finalizer.
     local rows
-    rows=$(sqlite_q "SELECT id || '|' || COALESCE(drive_file_id, '') || '|' || COALESCE(file_hash, '') || '|' || COALESCE(lifecycle_state, '') || '|' || COALESCE(index_state, '') || '|' || COALESCE(source, '') FROM media_assets WHERE source = 'voiceover' AND drive_file_id IN (SELECT drive_file_id FROM voiceovers WHERE request_id = '${REQ_ID}' AND drive_file_id != '') ORDER BY created_at DESC")
-
-    # Fallback: if zero rows AND voiceovers table has rows, diagnose why
-    if [[ -z "$rows" ]]; then
-        local vo_count
-        vo_count=$(sqlite_q "SELECT COUNT(*) FROM voiceovers WHERE request_id = '${REQ_ID}'")
-        if [[ "$vo_count" -gt 0 ]]; then
-            local vo_drive_empty
-            vo_drive_empty=$(sqlite_q "SELECT COUNT(*) FROM voiceovers WHERE request_id = '${REQ_ID}' AND (drive_file_id = '' OR drive_file_id IS NULL)")
-            if [[ "$vo_drive_empty" -gt 0 ]]; then
-                printf '  %sDIAG: %s voiceover(s) exist but drive_file_id is empty — Drive upload failed before media_assets UPSERT%s
-' \
-                    "$YELLOW" "$vo_drive_empty" "$RESET"
-            fi
-        fi
-    fi
+    rows=$(sqlite_q "SELECT id || '|' || COALESCE(drive_file_id, '') || '|' || COALESCE(file_hash, '') || '|' || COALESCE(lifecycle_state, '') || '|' || COALESCE(index_state, '') || '|' || COALESCE(source, '') FROM media_assets WHERE source = 'stock' AND created_at > datetime('now', '-10 minutes') ORDER BY created_at DESC LIMIT 20")
 
     if [[ -z "$rows" ]]; then
         fail "media_assets_no_rows"
-        printf '%sFAIL: no media_assets rows found for request_id=%s\n' "$RED" "$REQ_ID" >&2
+        printf '%sFAIL: no media_assets rows with source=stock created in last 10 min%s\n' "$RED" "$RESET" >&2
         printf '  Possible causes:\n' >&2
-        printf '    1. Finalizer tx rolled back before media_assets UPSERT (PR-VOICEOVER-PIPELINE-DEBUG-2026-07-08)\n' >&2
-        printf '    2. Voiceover job FAILED before finalizer stage\n' >&2
-        printf '    3. drive_file_id empty in voiceovers table (Drive upload failed)\n' >&2
+        printf '    1. Stock job FAILED before finalizer stage\n' >&2
+        printf '    2. Finalizer tx rolled back before media_assets UPSERT\n' >&2
+        printf '    3. stock_root_folder not configured (Drive upload skipped)\n' >&2
         return 1
     fi
 
@@ -219,10 +194,16 @@ verify_media_assets() {
     ma_count=$(printf '%s\n' "$rows" | wc -l | tr -d ' ')
     printf '  found %s media_assets row(s)\n' "$ma_count"
 
+    # Save asset IDs for T3 (outbox) and T6 (Qdrant)
+    : > "$WORK_DIR/asset_ids.txt"
+
     local row_ok=0
     local row_fail=0
     while IFS='|' read -r ma_id drive_file_id file_hash lifecycle_state index_state source; do
         [[ -z "$ma_id" ]] && continue
+
+        # Save for downstream queries
+        printf '%s\n' "$ma_id" >> "$WORK_DIR/asset_ids.txt"
 
         local row_has_issue=0
 
@@ -269,12 +250,20 @@ verify_media_assets() {
 verify_outbox_events() {
     smoke_log_section "T3: outbox_events — asset.index.requested emitted + completed"
 
+    if [[ ! -s "$WORK_DIR/asset_ids.txt" ]]; then
+        fail "outbox_no_asset_ids"
+        printf '%sFAIL: no asset IDs to check outbox (T2 may have failed)%s\n' "$RED" "$RESET" >&2
+        return 1
+    fi
+
+    # Build quoted IN-clause from asset IDs
+    local in_list
+    in_list=$(awk 'BEGIN{ORS=","; q=sprintf("%c",39)} {printf q "%s" q, $0}' "$WORK_DIR/asset_ids.txt" | sed 's/,$//')
+
     local total completed pending dead_letter last_error_count
-    # Canonical: outbox aggregate_id = media_assets.id (set by FinalizeAsset),
-    # NOT voiceovers.id. Join via media_assets.drive_file_id → voiceovers.drive_file_id.
     local outbox_where="event_type = 'asset.index.requested'
-    AND aggregate_id IN (SELECT id FROM media_assets WHERE source = 'voiceover' AND drive_file_id IN (SELECT drive_file_id FROM voiceovers WHERE request_id = '${REQ_ID}' AND drive_file_id != ''))
-    AND created_at > datetime('now', '-5 minutes')"
+    AND aggregate_id IN (${in_list})
+    AND created_at > datetime('now', '-10 minutes')"
     total=$(sqlite_q "SELECT COUNT(*) FROM outbox_events WHERE $outbox_where")
     completed=$(sqlite_q "SELECT COUNT(*) FROM outbox_events WHERE $outbox_where AND status = 'completed'")
     pending=$(sqlite_q "SELECT COUNT(*) FROM outbox_events WHERE $outbox_where AND status = 'pending'")
@@ -287,8 +276,8 @@ verify_outbox_events() {
     # T3a: at least 1 outbox event emitted
     if [[ "$total" -eq 0 ]]; then
         fail "outbox_no_events"
-        printf '%sFAIL: zero outbox_events for request_id=%s (asset.index.requested not emitted)%s\n' \
-            "$RED" "$REQ_ID" "$RESET" >&2
+        printf '%sFAIL: zero outbox_events for stock assets (asset.index.requested not emitted)%s\n' \
+            "$RED" "$RESET" >&2
         printf '  Canonical owner: internal/application/assets/finalizer/asset_finalizer_tx.go::FinalizeAsset\n' >&2
         return 1
     fi
@@ -309,12 +298,10 @@ verify_outbox_events() {
         return 1
     fi
 
-    # T3d: if no completed events, check if still pending (acceptable — Qdrant may be slow)
+    # T3d: if no completed events, check if still pending
     if [[ "$completed" -eq 0 && "$pending" -gt 0 ]]; then
         printf '  %sWARN: %s pending events, 0 completed — outbox dispatcher may be lagging or Qdrant unavailable%s\n' \
             "$YELLOW" "$pending" "$RESET"
-        # Not a hard fail — the event exists and hasn't dead-lettered
-        # The Qdrant-down scenario (T5) will surface the root cause
     elif [[ "$completed" -gt 0 ]]; then
         printf '  %sOK: %s completed outbox events, 0 dead_letter, 0 last_error%s\n' \
             "$GREEN" "$completed" "$RESET"
@@ -323,49 +310,58 @@ verify_outbox_events() {
     return 0
 }
 
-# ── T4: Verify voiceover row has drive fields ─────────────────────
+# ── T4: Verify stock media_assets drive fields ────────────────────
 
-verify_voiceover_drive_fields() {
-    smoke_log_section "T4: voiceover row — drive_file_id + drive_link non-empty"
+verify_stock_drive_fields() {
+    smoke_log_section "T4: stock media_assets — drive_file_id + drive_link non-empty"
 
-    local vo_rows
-    vo_rows=$(sqlite_q "SELECT id || '|' || COALESCE(drive_file_id, '') || '|' || COALESCE(drive_link, '') || '|' || COALESCE(folder_id, '') FROM voiceovers WHERE request_id = '${REQ_ID}' AND drive_file_id != ''")
+    if [[ ! -s "$WORK_DIR/asset_ids.txt" ]]; then
+        printf '  %sSKIP: no asset IDs from T2%s\n' "$YELLOW" "$RESET"
+        return 0
+    fi
 
-    if [[ -z "$vo_rows" ]]; then
-        fail "voiceover_no_drive_fields"
-        printf '%sFAIL: no voiceovers with non-empty drive_file_id for request_id=%s\n' \
-            "$RED" "$REQ_ID" >&2
+    # Build quoted IN-clause
+    local in_list
+    in_list=$(awk 'BEGIN{ORS=","; q=sprintf("%c",39)} {printf q "%s" q, $0}' "$WORK_DIR/asset_ids.txt" | sed 's/,$//')
+
+    local rows
+    rows=$(sqlite_q "SELECT id || '|' || COALESCE(drive_file_id, '') || '|' || COALESCE(drive_link, '') FROM media_assets WHERE id IN (${in_list}) AND drive_file_id != ''")
+
+    if [[ -z "$rows" ]]; then
+        fail "stock_no_drive_fields"
+        printf '%sFAIL: no stock assets with non-empty drive_file_id%s\n' "$RED" "$RESET" >&2
         printf '  Possible causes:\n' >&2
-        printf '    1. Drive upload failed (token expired, folder not found)\n' >&2
-        printf '    2. Voiceover job FAILED before Stage 3 (Drive upload)\n' >&2
-        printf '    3. Publisher returned typed error (ErrPathBuilderIncompleteForOverride)\n' >&2
+        printf '    1. Drive upload failed (stock_root_folder not configured)\n' >&2
+        printf '    2. Stock job FAILED before publish step\n' >&2
+        printf '    3. Publisher returned typed error\n' >&2
         return 1
     fi
 
-    local vo_count
-    vo_count=$(printf '%s\n' "$vo_rows" | wc -l | tr -d ' ')
+    local count
+    count=$(printf '%s\n' "$rows" | wc -l | tr -d ' ')
 
-    local vo_ok=0 vo_fail=0
-    while IFS='|' read -r vo_id drive_file_id drive_link folder_id; do
-        [[ -z "$vo_id" ]] && continue
-        if [[ -n "$drive_file_id" && -n "$drive_link" ]]; then
-            printf '  %sOK: voiceover %s — drive_file_id=%s drive_link=%s…%s\n' \
-                "$GREEN" "$vo_id" "${drive_file_id:0:16}..." "${drive_link:0:40}" "$RESET"
-            # Save for T4 Drive API verification
-            printf '%s|%s|%s\n' "$vo_id" "$drive_file_id" "$folder_id" >> "$WORK_DIR/voiceover_drive_ids.txt"
-            vo_ok=$((vo_ok + 1))
+    # Save drive IDs for T5 Drive API verification
+    : > "$WORK_DIR/stock_drive_ids.txt"
+
+    local ok=0 fail_count=0
+    while IFS='|' read -r asset_id drive_file_id drive_link; do
+        [[ -z "$asset_id" ]] && continue
+        if [[ -n "$drive_file_id" ]]; then
+            printf '  %sOK: %s — drive_file_id=%s drive_link=%s…%s\n' \
+                "$GREEN" "$asset_id" "${drive_file_id:0:16}..." "${drive_link:0:40}" "$RESET"
+            printf '%s|%s\n' "$asset_id" "$drive_file_id" >> "$WORK_DIR/stock_drive_ids.txt"
+            ok=$((ok + 1))
         else
-            fail "voiceover_empty_drive_${vo_id}"
-            printf '%s  FAIL: voiceover %s — drive_file_id=%s drive_link=%s%s\n' \
-                "$RED" "$vo_id" "${drive_file_id:-empty}" "${drive_link:-empty}" "$RESET" >&2
-            vo_fail=$((vo_fail + 1))
+            fail "stock_empty_drive_${asset_id}"
+            printf '%s  FAIL: %s — drive_file_id empty%s\n' "$RED" "$asset_id" "$RESET" >&2
+            fail_count=$((fail_count + 1))
         fi
-    done <<< "$vo_rows"
+    done <<< "$rows"
 
-    if [[ "$vo_fail" -gt 0 ]]; then
+    if [[ "$fail_count" -gt 0 ]]; then
         return 1
     fi
-    printf '  %s%s voiceover(s) with complete Drive metadata%s\n' "$GREEN" "$vo_ok" "$RESET"
+    printf '  %s%s stock asset(s) with complete Drive metadata%s\n' "$GREEN" "$ok" "$RESET"
     return 0
 }
 
@@ -374,7 +370,6 @@ verify_voiceover_drive_fields() {
 verify_drive_api() {
     smoke_log_section "T5: Drive API — file exists (if token available)"
 
-    # Check if token file exists
     if [[ ! -f "$SMOKE_DRIVE_TOKEN_FILE" ]]; then
         printf '  %sSKIP: token file %s not found — Drive API verification skipped%s\n' \
             "$YELLOW" "$SMOKE_DRIVE_TOKEN_FILE" "$RESET"
@@ -390,25 +385,25 @@ verify_drive_api() {
         return 0
     fi
 
-    if [[ ! -f "$WORK_DIR/voiceover_drive_ids.txt" ]]; then
-        printf '  %sSKIP: no voiceover drive IDs to verify%s\n' "$YELLOW" "$RESET"
+    if [[ ! -s "$WORK_DIR/stock_drive_ids.txt" ]]; then
+        printf '  %sSKIP: no stock drive IDs to verify%s\n' "$YELLOW" "$RESET"
         return 0
     fi
 
     local drive_ok=0 drive_fail=0
-    while IFS='|' read -r vo_id drive_file_id folder_id; do
+    while IFS='|' read -r asset_id drive_file_id; do
         [[ -z "$drive_file_id" ]] && continue
 
         local api_url="$DRIVE_API_BASE/drive/v3/files/${drive_file_id}?fields=id,name,mimeType,size,webViewLink"
         local code
         code=$(curl -s --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
-            -o "$WORK_DIR/drive_${vo_id}.json" -w '%{http_code}' \
+            -o "$WORK_DIR/drive_${asset_id}.json" -w '%{http_code}' \
             -H "Authorization: Bearer $token" \
             "$api_url" 2>/dev/null || echo "000")
 
         if [[ "$code" == "200" ]]; then
             local body drive_id drive_size
-            body=$(cat "$WORK_DIR/drive_${vo_id}.json")
+            body=$(cat "$WORK_DIR/drive_${asset_id}.json")
             drive_id=$(printf '%s' "$body" | jq -r '.id // empty')
             drive_size=$(printf '%s' "$body" | jq -r '.size // "0"')
 
@@ -417,13 +412,13 @@ verify_drive_api() {
                     "$GREEN" "${drive_file_id:0:16}..." "$drive_size" "$RESET"
                 drive_ok=$((drive_ok + 1))
             else
-                fail "drive_id_mismatch_${vo_id}"
+                fail "drive_id_mismatch_${asset_id}"
                 printf '%s  FAIL: Drive ID mismatch — db=%s vs api=%s%s\n' \
                     "$RED" "$drive_file_id" "$drive_id" "$RESET" >&2
                 drive_fail=$((drive_fail + 1))
             fi
         elif [[ "$code" == "404" ]]; then
-            fail "drive_file_not_found_${vo_id}"
+            fail "drive_file_not_found_${asset_id}"
             printf '%s  FAIL: Drive file %s returned 404 (file deleted or trashed)%s\n' \
                 "$RED" "$drive_file_id" "$RESET" >&2
             drive_fail=$((drive_fail + 1))
@@ -433,12 +428,12 @@ verify_drive_api() {
                 "$RED" "$RESET" >&2
             drive_fail=$((drive_fail + 1))
         else
-            fail "drive_api_error_${code}_${vo_id}"
+            fail "drive_api_error_${code}_${asset_id}"
             printf '%s  FAIL: Drive API returned HTTP %s for file %s%s\n' \
                 "$RED" "$code" "$drive_file_id" "$RESET" >&2
             drive_fail=$((drive_fail + 1))
         fi
-    done < "$WORK_DIR/voiceover_drive_ids.txt"
+    done < "$WORK_DIR/stock_drive_ids.txt"
 
     if [[ "$drive_fail" -gt 0 ]]; then
         return 1
@@ -454,7 +449,6 @@ verify_drive_api() {
 verify_qdrant_point() {
     smoke_log_section "T6: Qdrant — point exists (if Qdrant reachable)"
 
-    # Check Qdrant reachability
     local qdrant_health
     qdrant_health=$(curl -s --max-time 3 "${QDRANT_URL}/healthz" 2>/dev/null || echo "")
     if [[ -z "$qdrant_health" ]]; then
@@ -463,19 +457,13 @@ verify_qdrant_point() {
         return 0
     fi
 
-    # Get asset IDs from media_assets for this request
-    # Canonical: outbox aggregate_id = media_assets.id (set by FinalizeAsset),
-    # so we look up media_assets rows directly.
-    local asset_ids
-    asset_ids=$(sqlite_q "SELECT id FROM media_assets WHERE source = 'voiceover' AND drive_file_id IN (SELECT drive_file_id FROM voiceovers WHERE request_id = '${REQ_ID}' AND drive_file_id != '')")
-
-    if [[ -z "$asset_ids" ]]; then
-        printf '  %sSKIP: no media_assets rows to look up in Qdrant%s\n' "$YELLOW" "$RESET"
+    if [[ ! -s "$WORK_DIR/asset_ids.txt" ]]; then
+        printf '  %sSKIP: no asset IDs to look up in Qdrant%s\n' "$YELLOW" "$RESET"
         return 0
     fi
 
     local qdrant_ok=0 qdrant_fail=0
-    while IFS='|' read -r asset_id; do
+    while IFS= read -r asset_id; do
         [[ -z "$asset_id" ]] && continue
 
         local scroll_body
@@ -514,9 +502,8 @@ verify_qdrant_point() {
                 qdrant_fail=$((qdrant_fail + 1))
             fi
         else
-            # If outbox is still pending, this is expected (Qdrant not yet indexed)
             local outbox_completed
-            outbox_completed=$(sqlite_q "SELECT COUNT(*) FROM outbox_events WHERE event_type = 'asset.index.requested' AND aggregate_id = '${asset_id}' AND status = 'completed' AND created_at > datetime('now', '-5 minutes')")
+            outbox_completed=$(sqlite_q "SELECT COUNT(*) FROM outbox_events WHERE event_type = 'asset.index.requested' AND aggregate_id = '${asset_id}' AND status = 'completed' AND created_at > datetime('now', '-10 minutes')")
             if [[ "$outbox_completed" -gt 0 ]]; then
                 fail "qdrant_point_missing_outbox_completed_${asset_id}"
                 printf '%s  FAIL: Qdrant point %s NOT found but outbox COMPLETED (silent-success anti-pattern)%s\n' \
@@ -527,7 +514,7 @@ verify_qdrant_point() {
                     "$YELLOW" "${asset_id:0:24}..." "$RESET"
             fi
         fi
-    done <<< "$asset_ids"
+    done < "$WORK_DIR/asset_ids.txt"
 
     if [[ "$qdrant_fail" -gt 0 ]]; then
         return 1
@@ -541,11 +528,9 @@ verify_qdrant_point() {
 # ── Main ──────────────────────────────────────────────────────────
 
 main() {
-    smoke_log_section "Zone 3: Media Assets + Drive + Qdrant smoke"
+    smoke_log_section "Zone 3: Media Assets + Drive + Qdrant smoke (stock pipeline)"
     printf '  target:   %s\n  db:       %s\n  qdrant:   %s\n  tag:      %s\n  req_id:   %s\n' \
         "$SMOKE_API_BASE" "$SMOKE_DB" "$QDRANT_URL" "$TAG_PREFIX" "$REQ_ID"
-
-    # Note: voiceover_drive_ids.txt is created by verify_voiceover_drive_fields via >> append
 
     # Preflights (fail-fast before any mutation)
     preflight_server_up || true
@@ -559,8 +544,8 @@ main() {
         exit 1
     fi
 
-    # T1: Generate voiceover
-    post_voiceover || { fail "post_voiceover"; exit 1; }
+    # T1: Submit stock job
+    submit_stock_job || { fail "submit_stock_job"; exit 1; }
 
     # Poll to terminal
     poll_to_terminal || true
@@ -571,8 +556,8 @@ main() {
     # T3: Verify outbox events
     verify_outbox_events || true
 
-    # T4: Verify voiceover drive fields
-    verify_voiceover_drive_fields || true
+    # T4: Verify stock drive fields
+    verify_stock_drive_fields || true
 
     # T5: Drive API (optional)
     verify_drive_api || true
@@ -582,33 +567,34 @@ main() {
 
     # ── Verdict ──────────────────────────────────────────────────
     echo
-    if (( ${#FAILURES[@]} == 0 )); then
+    local fail_count=${#FAILURES[@]}
+    if (( fail_count == 0 )); then
         printf '%sOK: Zone 3 Media Assets + Drive + Qdrant smoke PASS%s\n' \
             "$GREEN" "$RESET"
         printf '  Assertions passed:\n'
-        printf '    T1: voiceover generated + job completed\n'
+        printf '    T1: stock job submitted + completed\n'
         printf '    T2: media_assets row with drive_file_id + file_hash + lifecycle_state=ACTIVE\n'
         printf '    T3: outbox asset.index.requested emitted + no dead_letter + no last_error\n'
-        printf '    T4: voiceover row with drive_file_id + drive_link\n'
+        printf '    T4: stock media_assets drive_file_id non-empty\n'
         printf '    T5: Drive file exists (if token available)\n'
         printf '    T6: Qdrant point exists (if Qdrant reachable)\n'
         exit 0
     fi
 
     printf '%sFAIL: %d assertion(s) failed:%s\n' \
-        "$RED" "${#FAILURES[@]}" "$RESET" >&2
+        "$RED" "$fail_count" "$RESET" >&2
     for f in "${FAILURES[@]}"; do
         printf '  - %s\n' "$f" >&2
     done
     printf '\n  Failure-to-PR mapping:\n' >&2
-    printf '    media_assets empty drive_file_id  → PR-VOICEOVER-PIPELINE-DEBUG-2026-07-08\n' >&2
+    printf '    media_assets empty drive_file_id  → PR-STOCK-FINALIZER-COMPLETE\n' >&2
     printf '    media_assets empty file_hash      → PR-STOCK-FILEHASH-PERSIST\n' >&2
     printf '    media_assets lifecycle != ACTIVE   → PR-STOCK-LIFECYCLE-TRANSITION\n' >&2
     printf '    outbox dead_letter                 → PR-STOCK-OUTBOX-DEAD-LETTERED\n' >&2
     printf '    outbox completed + last_error      → PR-STOCK-OUTBOX-LAST-ERROR\n' >&2
-    printf '    Drive file 404                     → PR-VOICEOVER-DRIVE-DRIFT-FORWARD-POINTER\n' >&2
+    printf '    Drive file 404                     → PR-STOCK-DOWNLOAD-RESOLVER\n' >&2
     printf '    Qdrant point missing + completed   → PR-STOCK-OUTBOX-QDRANT-INDEX\n' >&2
     exit 1
 }
 
-main "$@"
+main

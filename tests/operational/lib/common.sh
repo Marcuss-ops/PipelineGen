@@ -280,7 +280,7 @@ smoke_poll_terminal() {
         status=$(jq -r '.status // "?"' "$SMOKE_LAST_BODY")
         SMOKE_LAST_STATUS="$status"
         case "$status" in
-            completed|failed|cancelled|dead_letter) return 0 ;;
+            completed|SUCCEEDED|failed|FAILED|cancelled|dead_letter) return 0 ;;
         esac
         sleep "$SMOKE_POLL_INTERVAL_SECONDS"
     done
