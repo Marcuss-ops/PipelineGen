@@ -41,11 +41,11 @@ func TestIndexState_ValidAcceptsCanonical12(t *testing.T) {
 // legacy alphabet that would break the canonical 7-state contract.
 func TestIndexState_ValidRejectsLegacyLowercase(t *testing.T) {
 	legacy := []IndexState{
-		legacyStateEmbedding,
-		legacyStateUpserting,
-		legacyStateRetrying,
-		legacyStateIndexed,
-		legacyStateFailed,
+		IndexState("embedding"),
+		IndexState("upserting"),
+		IndexState("retrying"),
+		IndexState("indexed"),
+		IndexState("failed"),
 		// And arbitrary lowercase strings that were never valid.
 		"indexing_failed",
 		"deleted",
