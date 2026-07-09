@@ -119,17 +119,19 @@ func BuildProcessBundle(
 	collectionMgr, vectorSvc, qdrantClient, qdrantHealthProbe, locatorCleaner, qdrantSearcher := initQdrantProcessSubsystems(qd, cfg, log)
 
 	return &ProcessBundle{
+		ProcessQdrantBundle: ProcessQdrantBundle{
+			CollectionManager: collectionMgr,
+			QdrantDeleter:     qd.QdrantDeleter,
+			QdrantRuntime:     qd.Runtime, // PR 4: first-class facade exposed at ProcessBundle level
+			VectorSvc:         vectorSvc,
+			QdrantClient:      qdrantClient,
+			QdrantHealthProbe: qdrantHealthProbe,
+			LocatorCleaner:    locatorCleaner,
+			QdrantSearcher:    qdrantSearcher,
+		},
 		MediaProcessor:     mediaProcessor,
 		ClipIndexerService: qd.ClipIndexerService,
 		VLMClient:          vlmClient,
-		CollectionManager:  collectionMgr,
-		QdrantDeleter:      qd.QdrantDeleter,
-		QdrantRuntime:      qd.Runtime, // PR 4: first-class facade exposed at ProcessBundle level
-		VectorSvc:          vectorSvc,
-		QdrantClient:       qdrantClient,
-		QdrantHealthProbe:  qdrantHealthProbe,
-		LocatorCleaner:     locatorCleaner,
-		QdrantSearcher:     qdrantSearcher,
 	}, nil
 }
 
