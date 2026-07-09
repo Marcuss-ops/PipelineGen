@@ -104,20 +104,158 @@ func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segment
 }
 
 func parseEntityExtractionResult(response string, segmentIndex int) (*asset.EntityExtractionResult, error) {
-	jsonStr := strings.TrimSpace(response)
+	cleaned := stripMarkdownFences(strings.TrimSpace(response))
 
-	if strings.HasPrefix(jsonStr, "```") {
-		lines := strings.Split(jsonStr, "\n")
-		var contentLines []string
-		for _, line := range lines {
-			if strings.HasPrefix(line, "```") {
-				continue
-			}
-			contentLines = append(contentLines, line)
+	// Primary path: plain-text labeled sections (LLM-PLAIN-TEXT-CONTRACT P1).
+	if !looksLikeEntityJSON(cleaned) {
+		result, err := parsePlainTextEntityResult(cleaned, segmentIndex)
+		if err == nil && !resultIsEmpty(result) {
+			return result, nil
 		}
-		jsonStr = strings.TrimSpace(strings.Join(contentLines, "\n"))
+		// Fall through to legacy JSON parser if plain-text yields nothing.
 	}
 
+	return parseLegacyJSONEntityResult(cleaned, segmentIndex)
+}
+
+// stripMarkdownFences removes ``` fence lines from the response.
+func stripMarkdownFences(s string) string {
+	if !strings.Contains(s, "```") {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	var clean []string
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			continue
+		}
+		clean = append(clean, line)
+	}
+	return strings.TrimSpace(strings.Join(clean, "\n"))
+}
+
+// looksLikeEntityJSON returns true when the response appears to be JSON
+// (starts with { or contains a JSON object). Plain-text responses with
+// Markdown headers (##) are not JSON-like.
+func looksLikeEntityJSON(s string) bool {
+	s = strings.TrimSpace(s)
+	// If it starts with a Markdown header or bullet, it's plain text.
+	if strings.HasPrefix(s, "#") || strings.HasPrefix(s, "-") || strings.HasPrefix(s, "*") {
+		return false
+	}
+	return strings.HasPrefix(s, "{")
+}
+
+// sectionHeaders maps lowercase header strings to canonical section keys.
+var sectionHeaders = map[string]string{
+	"frasi_importanti":   "frasi_importanti",
+	"entity_senza_testo": "entity_senza_testo",
+	"nomi_speciali":      "nomi_speciali",
+	"parole_importanti":  "parole_importanti",
+	"artlist_phrases":    "artlist_phrases",
+}
+
+// parsePlainTextEntityResult parses the LLM-PLAIN-TEXT-CONTRACT P1 format:
+// labeled sections with "## SectionName" headers and "- item" bullet points.
+func parsePlainTextEntityResult(response string, segmentIndex int) (*asset.EntityExtractionResult, error) {
+	result := &asset.EntityExtractionResult{
+		SegmentIndex:     segmentIndex,
+		EntitaSenzaTesto: make(map[string]string),
+	}
+
+	var currentSection string
+	for _, line := range strings.Split(response, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Detect "## section_name" header.
+		if strings.HasPrefix(line, "##") || strings.HasPrefix(line, "#") {
+			currentSection = detectEntitySection(line)
+			continue
+		}
+
+		// Detect bare section name on its own line (model may skip ##).
+		if sec, ok := sectionHeaders[strings.ToLower(strings.TrimRight(line, ":"))]; ok {
+			currentSection = sec
+			continue
+		}
+
+		// Skip non-bullet lines when not in a known section.
+		if currentSection == "" {
+			continue
+		}
+
+		// Extract bullet item.
+		val := stripEntityBullet(line)
+		if val == "" {
+			continue
+		}
+
+		switch currentSection {
+		case "frasi_importanti":
+			result.FrasiImportanti = append(result.FrasiImportanti, val)
+		case "nomi_speciali":
+			result.NomiSpeciali = append(result.NomiSpeciali, val)
+		case "parole_importanti":
+			result.ParoleImportanti = append(result.ParoleImportanti, val)
+		case "artlist_phrases":
+			result.ArtlistPhrases = append(result.ArtlistPhrases, val)
+		case "entity_senza_testo":
+			if key, value, ok := parseEntityKeyValue(val); ok {
+				result.EntitaSenzaTesto[key] = value
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// detectEntitySection extracts the section name from a header line like
+// "## frasi_importanti" or "# entity_senza_testo".
+// Normalizes spaces to underscores so "## frasi importanti" also matches.
+func detectEntitySection(line string) string {
+	// Strip leading # characters and whitespace.
+	name := strings.TrimLeft(line, "# ")
+	name = strings.TrimSpace(name)
+	name = strings.TrimRight(name, ":")
+	// Normalize: replace spaces with underscores for fuzzy matching
+	// (small models may emit "frasi importanti" instead of "frasi_importanti").
+	name = strings.ReplaceAll(strings.ToLower(name), " ", "_")
+	if sec, ok := sectionHeaders[name]; ok {
+		return sec
+	}
+	return ""
+}
+
+// stripEntityBullet removes bullet markers ("- ", "* ", "• ") from a line.
+func stripEntityBullet(line string) string {
+	for _, prefix := range []string{"- ", "* ", "• "} {
+		if after, ok := strings.CutPrefix(line, prefix); ok {
+			return strings.TrimSpace(after)
+		}
+	}
+	return ""
+}
+
+// parseEntityKeyValue parses a "Key: Value" pair from a bullet item.
+func parseEntityKeyValue(item string) (key, value string, ok bool) {
+	idx := strings.Index(item, ":")
+	if idx < 1 {
+		return "", "", false
+	}
+	key = strings.TrimSpace(item[:idx])
+	value = strings.TrimSpace(item[idx+1:])
+	if key == "" {
+		return "", "", false
+	}
+	return key, value, true
+}
+
+// parseLegacyJSONEntityResult parses the pre-P1 JSON format.
+// Kept as fallback for cache hits and models that still produce JSON.
+func parseLegacyJSONEntityResult(jsonStr string, segmentIndex int) (*asset.EntityExtractionResult, error) {
 	start := strings.Index(jsonStr, "{")
 	end := strings.LastIndex(jsonStr, "}")
 	if start != -1 && end != -1 && end > start {
