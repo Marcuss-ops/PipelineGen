@@ -359,26 +359,26 @@
   exit_signal: true
   deadline: 2026-08-01
   description: |
-    Wave-tracker per la decomposizione degli 8 file Go più lunghi
-    NON ancora tracciati da onde esistenti (GODOBJ-2026-07-03,
-    CODE-QUALITY-AUDIT-2026-07-05, VO-DECOMPOSITION-2026-07-04,
-    CODE-QUALITY-CLEANUP-2026-07-04). Derivato dall'analisi wc -l
-    su origin/main del 2026-07-06.
+      Wave-tracker per la decomposizione degli 8 file Go più lunghi
+      NON ancora tracciati da onde esistenti (GODOBJ-2026-07-03,
+      CODE-QUALITY-AUDIT-2026-07-05, VO-DECOMPOSITION-2026-07-04,
+      CODE-QUALITY-CLEANUP-2026-07-04). Derivato dall'analisi wc -l
+      su origin/main del 2026-07-06.
 
-    8 net-new slim-shape linked_issues (1 per file target).
-    2 bande di priorità: P0 CRITICA (>800 LOC, 3 file, deadline
-    2026-07-15) + P1 ALTA (700-740 LOC, 5 file, deadline 2026-07-25).
+      8 net-new slim-shape linked_issues (1 per file target).
+      2 bande di priorità: P0 CRITICA (>800 LOC, 3 file, deadline
+      2026-07-15) + P1 ALTA (700-740 LOC, 5 file, deadline 2026-07-25).
 
-    Companion action plan:
-    architecture/action-plans/2026-07-06-long-files-decomposition.md.
+      Companion action plan:
+      architecture/action-plans/2026-07-06-long-files-decomposition.md.
 
-    Per-PR verification gates: gofmt + go vet + go build +
-    go test -short sulla subtree target. Ogni PR atterra diretto
-    su main (AGENTS.md Git-Lesson-2).
+      Per-PR verification gates: gofmt + go vet + go build +
+      go test -short sulla subtree target. Ogni PR atterra diretto
+      su main (AGENTS.md Git-Lesson-2).
 
-    godlike/06 4-surface lockstep: action plan (narrative) +
-    current.yaml (wave-tracker) + CHANGELOG.md (closure meta-entry) +
-    AGENTS.md (mirror entry).
+      godlike/06 4-surface lockstep: action plan (narrative) +
+      current.yaml (wave-tracker) + CHANGELOG.md (closure meta-entry) +
+      AGENTS.md (mirror entry).
   linked_issues:
     - id: PR-LONG-FINALIZATION-TYPES-SPLIT
       owner_capability: "internal/domain/finalization (godlike/06 SSOT one-canonical-owner-per-fact: 15 type-specific files + doc.go canonical preamble)"
@@ -387,7 +387,7 @@
       ship_date: 2026-07-06
       ship_via: CODE_COMMIT_2COMMIT_SPLIT_DISCIPLINE
       deadline: 2026-07-15
-  - id: PR-LONG-FILES-IMAGES-REPOSITORY
+    - id: PR-LONG-FILES-IMAGES-REPOSITORY
       owner_capability: "internal/infrastructure/database/sqlite/assets (canonical SSOT after 5-file decomposition: images_repository_slim.go 129 LoC orchestrator + 4 per-capability files per commit 612c39b1)"
       status: shipped
       ship_sha: 61af4183d27f0dc58150d013c61071dd738d486f
@@ -413,7 +413,7 @@
         audit-pin commit. The decomposition is already shipped on
         origin/main per commit 612c39b1; this entry only aligns
         the wavetracker with the canonical state.
-  - id: PR-LONG-FILES-PAYLOAD-MAPPER
+    - id: PR-LONG-FILES-PAYLOAD-MAPPER
       owner_capability: "internal/infrastructure/qdrant/indexing (canonical SSOT after 4-file decomposition: payload_mapper_slim.go 152 LoC orchestrator + 3 per-capability files per commit f0156f66)"
       status: shipped
       ship_sha: 61af4183d27f0dc58150d013c61071dd738d486f
@@ -435,7 +435,7 @@
         audit-pin commit. The decomposition is already shipped on
         origin/main per commit f0156f66; this entry only aligns
         the wavetracker with the canonical state.
-  - id: PR-LONG-FILES-STORAGE-SEARCH
+    - id: PR-LONG-FILES-STORAGE-SEARCH
       owner_capability: N/A (file physically not present on origin/main HEAD as of 2026-07-06; the canonical surface was either merged into a sibling file or removed in a prior wave)
       status: shipped
       ship_sha: 61af4183d27f0dc58150d013c61071dd738d486f
@@ -466,7 +466,7 @@
         godlike/07 minimum-blast-radius: 0 Go code change in this
         audit-pin commit. The file is already gone from origin/main;
         this entry only aligns the wavetracker with the canonical state.
-  - id: PR-LONG-FILES-SYMBOL-REFS
+    - id: PR-LONG-FILES-SYMBOL-REFS
       owner_capability: N/A (file physically not present on origin/main HEAD as of 2026-07-06; the canonical surface was either merged into a sibling file or removed in a prior wave)
       status: shipped
       ship_sha: 61af4183d27f0dc58150d013c61071dd738d486f
@@ -497,7 +497,7 @@
         godlike/07 minimum-blast-radius: 0 Go code change in this
         audit-pin commit. The file is already gone from origin/main;
         this entry only aligns the wavetracker with the canonical state.
-  - id: PR-LONG-FILES-GENERATE-ONE-USECASE
+    - id: PR-LONG-FILES-GENERATE-ONE-USECASE
       owner_capability: "internal/application/scripts/usecase (canonical SSOT after decomposition: generate_one_usecase_slim.go 205 LoC orchestrator + per-stage files per commit 0f2f6622)"
       status: shipped
       ship_sha: 61af4183d27f0dc58150d013c61071dd738d486f
@@ -519,37 +519,37 @@
         audit-pin commit. The decomposition is already shipped on
         origin/main per commit 0f2f6622; this entry only aligns
         the wavetracker with the canonical state.
-  - id: PR-ARCHCHECK-MAIN-SPLIT
-    owner_capability: scripts/archcheck
-    status: pending
-    deadline: 2026-07-15
-  - id: PR-YOUTUBE-METADATA-SPLIT
-    owner_capability: internal/application/youtube/metadata
-    status: pending
-    deadline: 2026-07-15
-  - id: PR-FLOW-HELPERS-SPLIT
-    owner_capability: internal/application/scripts/usecase
-    status: pending
-    deadline: 2026-07-15
-  - id: PR-IMAGES-REPO-SPLIT
-    owner_capability: internal/infrastructure/database/sqlite/assets
-    status: pending
-    deadline: 2026-07-25
-  - id: PR-PAYLOAD-MAPPER-SPLIT
-    owner_capability: internal/infrastructure/qdrant/indexing
-    status: pending
-    deadline: 2026-07-25
-  - id: PR-STORAGE-SEARCH-SPLIT
-    owner_capability: internal/application/images
-    status: pending
-    deadline: 2026-07-25
-  - id: PR-GENERATE-ONE-SPLIT
-    owner_capability: internal/application/scripts/usecase
-    status: pending
-    deadline: 2026-07-25
-  - id: PR-SYMBOL-REFS-SPLIT
-    owner_capability: scripts/archcheck
-    status: pending
+    - id: PR-ARCHCHECK-MAIN-SPLIT
+      owner_capability: scripts/archcheck
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-YOUTUBE-METADATA-SPLIT
+      owner_capability: internal/application/youtube/metadata
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-FLOW-HELPERS-SPLIT
+      owner_capability: internal/application/scripts/usecase
+      status: pending
+      deadline: 2026-07-15
+    - id: PR-IMAGES-REPO-SPLIT
+      owner_capability: internal/infrastructure/database/sqlite/assets
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-PAYLOAD-MAPPER-SPLIT
+      owner_capability: internal/infrastructure/qdrant/indexing
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-STORAGE-SEARCH-SPLIT
+      owner_capability: internal/application/images
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-GENERATE-ONE-SPLIT
+      owner_capability: internal/application/scripts/usecase
+      status: pending
+      deadline: 2026-07-25
+    - id: PR-SYMBOL-REFS-SPLIT
+      owner_capability: scripts/archcheck
+      status: pending
     deadline: 2026-07-25
 - id: PR-DRIVE-UPLOAD-HOTSPOT-CROSSREF
   owner_capability: architecture
@@ -566,7 +566,6 @@
     Documentation-only closure per godlike/07 slim-schema append-only ratchet.
   deadline: 2026-08-01
   exit_signal: true
-||||||| constructed merge base
 
 - id: IMAGES-TERRITORY-SPLIT-2026-07-06
   status: in_progress
