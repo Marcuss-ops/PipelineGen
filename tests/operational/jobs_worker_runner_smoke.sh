@@ -53,7 +53,8 @@ smoke_require sqlite3
 
 # Server reachability
 smoke_log_section "Pre-flight: server reachable?"
-HEALTH=$(smoke_curl GET "/health")
+smoke_curl GET "/health" >/dev/null
+HEALTH=$(cat "$WORK_DIR/last.code" 2>/dev/null || echo "000")
 if [[ "$HEALTH" != "200" ]]; then
     printf '%sFAIL: server unreachable at %s (HTTP %s)%s\n' \
         "$RED" "$SMOKE_API_BASE" "$HEALTH" "$RESET" >&2
@@ -67,18 +68,22 @@ TOTAL=7
 
 # ── Test 1: Stats baseline ──────────────────────────────────────────
 smoke_log_section "T1: Stats baseline"
-STATS_CODE=$(smoke_curl GET "/api/jobs/stats")
+# NOTE: smoke_curl must NOT run inside $(…) because it sets SMOKE_LAST_BODY
+# as a side-effect; inside a subshell the variable is lost (set -u → unbound).
+smoke_curl GET "/api/jobs/stats" >/dev/null
+STATS_CODE="$SMOKE_LAST_HTTP"
 if [[ "$STATS_CODE" != "200" ]]; then
     printf '%sFAIL: /api/jobs/stats returned HTTP %s (expected 200)%s\n' \
         "$RED" "$STATS_CODE" "$RESET" >&2
     FAIL_COUNT=$((FAIL_COUNT + 1))
 else
     # Validate it returns valid JSON with expected fields
-    if jq -e '.total_jobs // .by_status' "$SMOKE_LAST_BODY" >/dev/null 2>&1; then
+    # The handler wraps stats in {"stats": {...}} — check both envelope and direct.
+    if jq -e '.stats.total // .total // .stats.by_status // .by_status' "$SMOKE_LAST_BODY" >/dev/null 2>&1; then
         printf '%sT1 PASS: stats endpoint returns valid JSON%s\n' "$GREEN" "$RESET"
         jq '.' "$SMOKE_LAST_BODY"
     else
-        printf '%sT1 FAIL: stats JSON missing expected fields (total_jobs/by_status)%s\n' \
+        printf '%sT1 FAIL: stats JSON missing expected fields (stats.total / stats.by_status)%s\n' \
             "$RED" "$RESET" >&2
         FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
@@ -102,7 +107,8 @@ ENQUEUE_PAYLOAD=$(jq -n \
         "metadata": {"test": $tag}
     }')
 
-ENQUEUE_CODE=$(smoke_curl POST "/api/stock-pipeline/run" --data "$ENQUEUE_PAYLOAD")
+smoke_curl POST "/api/stock-pipeline/run" --data "$ENQUEUE_PAYLOAD" >/dev/null
+ENQUEUE_CODE="$SMOKE_LAST_HTTP"
 if [[ ! "$ENQUEUE_CODE" =~ ^2[0-9][0-9]$ ]]; then
     printf '%sT2 FAIL: enqueue returned HTTP %s (expected 2xx)%s\n' \
         "$RED" "$ENQUEUE_CODE" "$RESET" >&2
@@ -139,7 +145,8 @@ fi
 
 # ── Test 3: Invalid payload → FAILED (not silently accepted) ───────
 smoke_log_section "T3: Invalid payload → rejected or FAILED"
-INVALID_CODE=$(smoke_curl POST "/api/stock-pipeline/run" --data '{}')
+smoke_curl POST "/api/stock-pipeline/run" --data '{}' >/dev/null
+INVALID_CODE="$SMOKE_LAST_HTTP"
 if [[ "$INVALID_CODE" =~ ^4[0-9][0-9]$ ]]; then
     printf '%sT3 PASS: invalid payload rejected with HTTP %s%s\n' \
         "$GREEN" "$INVALID_CODE" "$RESET"
@@ -189,7 +196,8 @@ CANCEL_PAYLOAD=$(jq -n \
         "metadata": {"test": $tag}
     }')
 
-CANCEL_ENQUEUE_CODE=$(smoke_curl POST "/api/stock-pipeline/run" --data "$CANCEL_PAYLOAD")
+smoke_curl POST "/api/stock-pipeline/run" --data "$CANCEL_PAYLOAD" >/dev/null
+CANCEL_ENQUEUE_CODE="$SMOKE_LAST_HTTP"
 CANCEL_JOB_ID=$(jq -r '.job_id // empty' "$SMOKE_LAST_BODY")
 if [[ -z "$CANCEL_JOB_ID" || ! "$CANCEL_ENQUEUE_CODE" =~ ^2[0-9][0-9]$ ]]; then
     printf '%sT4 SKIP: could not enqueue cancel-test job (HTTP %s)%s\n' \
@@ -198,7 +206,8 @@ else
     printf 'Enqueued cancel-test job %s, waiting 3s then cancelling...\n' "$CANCEL_JOB_ID"
     sleep 3
 
-    CANCEL_CODE=$(smoke_curl POST "/api/jobs/${CANCEL_JOB_ID}/cancel")
+    smoke_curl POST "/api/jobs/${CANCEL_JOB_ID}/cancel" >/dev/null
+CANCEL_CODE="$SMOKE_LAST_HTTP"
     if [[ ! "$CANCEL_CODE" =~ ^2[0-9][0-9]$ ]]; then
         printf '%sT4 FAIL: cancel returned HTTP %s (expected 2xx)%s\n' \
             "$RED" "$CANCEL_CODE" "$RESET" >&2
@@ -206,9 +215,10 @@ else
     else
         # Verify final state
         sleep 2
-        VERIFY_CODE=$(smoke_curl GET "/api/jobs/${CANCEL_JOB_ID}/full")
+        smoke_curl GET "/api/jobs/${CANCEL_JOB_ID}/full" >/dev/null
+VERIFY_CODE="$SMOKE_LAST_HTTP"
         VERIFY_STATUS=$(jq -r '.status // "?"' "$SMOKE_LAST_BODY")
-        if [[ "$VERIFY_STATUS" == "cancelled" || "$VERIFY_STATUS" == "canceled" ]]; then
+        if [[ "${VERIFY_STATUS,,}" == "cancelled" || "${VERIFY_STATUS,,}" == "canceled" ]]; then
             printf '%sT4 PASS: job %s cancelled (status: %s)%s\n' \
                 "$GREEN" "$CANCEL_JOB_ID" "$VERIFY_STATUS" "$RESET"
         elif [[ "$VERIFY_STATUS" == "completed" ]]; then
@@ -248,7 +258,8 @@ if [[ -z "$RETRY_CANDIDATE" ]]; then
             "max_retries": 0,
             "active_key": "retry-fail-'"$(date +%s)"'"
         }')
-    RETRY_ENQUEUE=$(smoke_curl POST "/api/jobs" --data "$RETRY_FAIL_PAYLOAD")
+    smoke_curl POST "/api/jobs" --data "$RETRY_FAIL_PAYLOAD" >/dev/null
+RETRY_ENQUEUE="$SMOKE_LAST_HTTP"
     RETRY_JOB_ID=$(jq -r '.job_id // empty' "$SMOKE_LAST_BODY")
     if [[ -n "$RETRY_JOB_ID" ]]; then
         sleep 3
@@ -264,7 +275,8 @@ if [[ -z "$RETRY_CANDIDATE" ]]; then
     printf '%sT5 SKIP: no FAILED job available to retry%s\n' "$YELLOW" "$RESET"
 else
     printf 'Retrying FAILED job %s...\n' "$RETRY_CANDIDATE"
-    RETRY_CODE=$(smoke_curl POST "/api/jobs/${RETRY_CANDIDATE}/retry")
+    smoke_curl POST "/api/jobs/${RETRY_CANDIDATE}/retry" >/dev/null
+RETRY_CODE="$SMOKE_LAST_HTTP"
     if [[ "$RETRY_CODE" =~ ^2[0-9][0-9]$ ]]; then
         NEW_STATUS=$(jq -r '.status // "?"' "$SMOKE_LAST_BODY")
         printf '%sT5 PASS: retry of FAILED job returned HTTP %s (new status: %s)%s\n' \
@@ -296,7 +308,8 @@ if [[ -z "$SUCCEEDED_JOB_ID" ]]; then
     printf '%sT6 SKIP: no SUCCEEDED job available to test retry rejection%s\n' "$YELLOW" "$RESET"
 else
     printf 'Attempting retry of SUCCEEDED job %s (should be rejected)...\n' "$SUCCEEDED_JOB_ID"
-    RETRY_S_CODE=$(smoke_curl POST "/api/jobs/${SUCCEEDED_JOB_ID}/retry")
+    smoke_curl POST "/api/jobs/${SUCCEEDED_JOB_ID}/retry" >/dev/null
+RETRY_S_CODE="$SMOKE_LAST_HTTP"
     if [[ "$RETRY_S_CODE" =~ ^4[0-9][0-9]$ ]]; then
         printf '%sT6 PASS: retry of SUCCEEDED rejected with HTTP %s%s\n' \
             "$GREEN" "$RETRY_S_CODE" "$RESET"
@@ -319,13 +332,14 @@ if [[ ! -f "$DB" ]]; then
     printf '%sT7 SKIP: DB not found at %s%s\n' "$YELLOW" "$DB" "$RESET"
 else
     # Get stats from API
-    STATS2_CODE=$(smoke_curl GET "/api/jobs/stats")
+    smoke_curl GET "/api/jobs/stats" >/dev/null
+STATS2_CODE="$SMOKE_LAST_HTTP"
     if [[ "$STATS2_CODE" != "200" ]]; then
         printf '%sT7 FAIL: /api/jobs/stats returned HTTP %s%s\n' \
             "$RED" "$STATS2_CODE" "$RESET" >&2
         FAIL_COUNT=$((FAIL_COUNT + 1))
     else
-        API_TOTAL=$(jq -r '.total_jobs // 0' "$SMOKE_LAST_BODY")
+        API_TOTAL=$(jq -r '.stats.total // .total // 0' "$SMOKE_LAST_BODY")
         DB_TOTAL=$(sqlite3 "$DB" "SELECT COUNT(*) FROM jobs;" 2>/dev/null || echo "0")
         DB_BY_STATUS=$(sqlite3 "$DB" \
             "SELECT status, COUNT(*) FROM jobs GROUP BY status ORDER BY status;" 2>/dev/null || echo "query failed")

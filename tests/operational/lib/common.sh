@@ -100,6 +100,15 @@ SMOKE_POLL_TIMEOUT_SECONDS="${SMOKE_POLL_TIMEOUT_SECONDS:-120}"
 SMOKE_POLL_INTERVAL_SECONDS="${SMOKE_POLL_INTERVAL_SECONDS:-2}"
 SMOKE_HTTP_TIMEOUT_SECONDS="${SMOKE_HTTP_TIMEOUT_SECONDS:-8}"
 
+# ── Curl result state — initialised empty so `set -u` (nounset) never aborts
+# when a smoke script reads these BEFORE the first smoke_curl() call (e.g.
+# common.sh:smoke_assert_http_2xx referencing SMOKE_LAST_HTTP, or
+# outbox_smoke.sh reading SMOKE_LAST_BODY from a pre-curl diagnostic path).
+# smoke_curl() overwrites both on every call.
+SMOKE_LAST_HTTP=""
+SMOKE_LAST_BODY=""
+SMOKE_LAST_STATUS=""
+
 # ── CLI flags ─────────────────────────────────────────────────────────────
 # SMOKE_DRY_RUN=1 env var is honoured so callers can flip dry mode without
 # passing --dry explicitly (e.g. `SMOKE_DRY_RUN=1 make smoke-dry`).
@@ -231,6 +240,7 @@ smoke_curl() {
     local method="$1"; shift
     local url_path="$1"; shift
     local out_file="$WORK_DIR/last.body"
+    local code_file="$WORK_DIR/last.code"
     local code
     code=$(curl -s --max-time "$SMOKE_HTTP_TIMEOUT_SECONDS" \
         -X "$method" \
@@ -241,6 +251,11 @@ smoke_curl() {
         "http://${SMOKE_API_BASE}${url_path}")
     export SMOKE_LAST_HTTP="$code"
     export SMOKE_LAST_BODY="$out_file"
+    # Also write the HTTP code to a file so callers in $(…) subshells can
+    # read it after the subshell exits. SMOKE_LAST_HTTP/SIDE effects of
+    # smoke_curl are lost when called inside $(…) because exports die with
+    # the child process. The .code file persists in $WORK_DIR.
+    printf '%s' "$code" > "$code_file"
     printf '%s' "$code"
 }
 
@@ -253,9 +268,12 @@ smoke_poll_terminal() {
     local deadline=$(( $(date +%s) + SMOKE_POLL_TIMEOUT_SECONDS ))
     while (( $(date +%s) < deadline )); do
         smoke_wallclock_check
-        local code
-        code=$(smoke_curl GET "/api/jobs/${job_id}/full")
-        if [[ "$code" != "200" ]]; then
+        # NOTE: smoke_curl MUST NOT run inside $(…) — it sets
+        # SMOKE_LAST_BODY/SMOKE_LAST_HTTP as side-effects; inside a subshell
+        # those exports are lost and subsequent jq reads fail with
+        # "No such file or directory".
+        smoke_curl GET "/api/jobs/${job_id}/full" >/dev/null
+        if [[ "$SMOKE_LAST_HTTP" != "200" ]]; then
             return 1
         fi
         local status
