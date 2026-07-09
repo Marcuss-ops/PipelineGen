@@ -126,16 +126,39 @@ func (s *Scanner) Scan(raw []byte, source string) (*scriptpkg.ModelScriptOutputV
 
 	jsonBytes, extractErr := extractJSON(raw)
 
-	// ── ModeStrict: JSON required, no fallbacks ──────────────────
+	// ── ModeStrict: V1 JSON primary, plain-text wrap AS THE PRIMARY PATH (PR-5 flip) ───
+	//
+	// PR-5 of the LLM-PLAIN-TEXT-CONTRACT wave inverts the original
+	// "ModeStrict => JSON required, no fallbacks" logic. Fresh-mode
+	// generation now expects raw narrative prose (see PR-1 prompt
+	// flip + PR-2 OutputModePlainText const). The strict path
+	// therefore:
+	//
+	//  1. Try decodeV1 (canonical V1 JSON envelope) → success returns.
+	//  2. On decodeV1 failure or no JSON, delegate to ParsePlainTextFresh
+	//     which is the CANONICAL PRIMARY path for plain prose. The
+	//     delegate itself enforces the typed-envelope contract:
+	//     legacy-JSON-shaped input returns ErrModelOutputMalformed
+	//     (NOT a silent-success wrap); un-tagged prose wraps cleanly.
+	//
+	// Pre-PR-5 behaviour was "no fallbacks" — a deprecated V1
+	// contract violation would surface as ErrModelOutputMalformed
+	// upstream. Post-PR-5 behaviour is "primary text path is
+	// parsePlainTextFresh (the LLM-PLAIN-TEXT contract)"; the JSON
+	// path is now the OPTIONAL fast-lane, not the only legal input.
+	//
+	// godlike/06 SSOT: ParsePlainTextFresh (the canonical gate)
+	// lives ONLY at legacy_converter.go. Scanner is a router, not a
+	// decoder. godlike/07 NO-FAKE-AVAILABILITY: legacy-JSON detection
+	// is owned by ParsePlainTextFresh (single typed-sentinel surface).
 	if s.Mode == ModeStrict {
-		if extractErr != nil {
-			return nil, fmt.Errorf("%w: %w", scriptpkg.ErrModelOutputMalformed, extractErr)
+		if extractErr == nil {
+			if output, err := decodeV1(jsonBytes); err == nil {
+				return output, nil
+			}
 		}
-		output, err := decodeV1(jsonBytes)
-		if err != nil {
-			return nil, err
-		}
-		return output, nil
+		// PRIMARY path: plain prose (fresh-mode LLM contract).
+		return ParsePlainTextFresh(raw)
 	}
 
 	// ── ModeCompatibility: cascading fallbacks ───────────────────

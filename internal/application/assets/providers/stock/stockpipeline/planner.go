@@ -34,6 +34,11 @@ import (
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
+const (
+	explicitClipAutoSegmentThresholdSec = 60
+	explicitClipAutoSegmentSeconds      = 5
+)
+
 // Canonical SourceProvider bucket identifiers (PR-003, July 2026).
 // godlike/06 SSOT — one canonical owner per fact: the inference
 // helper inferSourceProvider lives in this file (the canonical
@@ -405,17 +410,27 @@ func (p *explicitPlanner) Plan(_ context.Context, src VideoSource, budgetSec int
 
 // expandExplicitClipSpecs splits explicit clips into successive
 // fixed-length slices when secondsPerSegment is positive.
+//
+// Backward-compat fallback: when secondsPerSegment is zero, clips
+// whose duration is at least 60 seconds are still expanded into
+// 5-second slices. Shorter explicit clips remain single chunks.
 func expandExplicitClipSpecs(clips []ClipSpec, secondsPerSegment int) []ClipSpec {
-	if secondsPerSegment <= 0 || len(clips) == 0 {
+	if len(clips) == 0 {
 		return append([]ClipSpec(nil), clips...)
 	}
 	expanded := make([]ClipSpec, 0, len(clips))
-	step := float64(secondsPerSegment)
 	for _, clip := range clips {
-		if clip.EndSec <= clip.StartSec {
+		stepSec := secondsPerSegment
+		if stepSec <= 0 && clip.EndSec > clip.StartSec {
+			if clip.EndSec-clip.StartSec >= explicitClipAutoSegmentThresholdSec {
+				stepSec = explicitClipAutoSegmentSeconds
+			}
+		}
+		if stepSec <= 0 || clip.EndSec <= clip.StartSec {
 			expanded = append(expanded, clip)
 			continue
 		}
+		step := float64(stepSec)
 		for cursor := clip.StartSec; cursor < clip.EndSec; cursor += step {
 			next := cursor + step
 			if next > clip.EndSec {
