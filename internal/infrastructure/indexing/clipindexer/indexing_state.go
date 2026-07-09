@@ -133,12 +133,6 @@ func (s *Service) setIndexState(ctx context.Context, clipID string, state asset.
 		// No metric: in-flight embedding work.
 	case asset.StateEmbedded:
 		// No metric: intermediate state; embeddings saved, awaiting upsert.
-	case asset.StateIndexPending:
-		metrics.MediaIndexRetryTotal.WithLabelValues(source).Inc()
-		metrics.StaleAssets.WithLabelValues(source, "retrying").Inc()
-	case asset.StateIndexFailed:
-		metrics.MediaIndexFailureTotal.WithLabelValues(source).Inc()
-		metrics.StaleAssets.WithLabelValues(source, "failed").Inc()
 	case asset.StateEmbeddingFailed:
 		metrics.MediaIndexFailureTotal.WithLabelValues(source).Inc()
 		metrics.StaleAssets.WithLabelValues(source, "embedding_failed").Inc()

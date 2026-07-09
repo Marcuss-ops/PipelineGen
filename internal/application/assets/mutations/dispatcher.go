@@ -57,14 +57,15 @@
 //     skips the outbox half (folder metadata still UPSERTs).
 //
 //   - EnqueueAndRestore(ctx, assetID):
-//     atomic STATE STAMP media_assets.index_state=PENDING
+//     atomic STATE STAMP media_assets.index_state=DISCOVERED (initial sentinel;
+//     outbox handler re-indexes from scratch)
 //
 //   - INSERT outbox_events (event_type='asset.index.restore_requested',
 //     v1 envelope) + commit. Handler (planned for task 3 of 5) completes
 //     the picture with Qdrant re-upsert + lifecycle_state flip.
 //
 //   - EnqueueAndDelete(ctx, assetID):
-//     atomic STATE STAMP media_assets.index_state=DELETE_PENDING
+//     atomic STATE STAMP media_assets.lifecycle_state=DELETE_REQUESTED
 //
 //   - INSERT outbox_events (event_type='asset.index.delete_requested',
 //     v1 envelope) + commit. IndexDeleteHandler completes the picture
