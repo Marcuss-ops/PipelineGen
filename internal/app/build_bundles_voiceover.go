@@ -56,14 +56,6 @@ import (
 // structurally satisfying voiceover.TxOutboxEnqueuer via Go's
 // implicit-interface rules.
 //
-// textTranslator is a local interface for the TranslateText method.
-// Both *ollama.Generator and *translation.OllamaTranslator satisfy
-// it structurally, so the composition root can pass either concrete
-// type without the function signature needing to import either package.
-type textTranslator interface {
-	TranslateText(ctx context.Context, text, targetLanguage string) (string, error)
-}
-
 // Azione #9 follow-up (July 2026): DriveUploaderPort interface removed
 // from ports.go; voiceoverDriveAdapter struct also removed from
 // adapters_voiceover_publisher.go. Post-commit Drive cleanup now flows
