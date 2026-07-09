@@ -267,13 +267,13 @@ func TestApplyPresetWithImages(t *testing.T) {
 
 	// with_images preset forces generate_scene_images; voiceover is
 	// no longer forced by the preset (June 2026 consolidation).
-	if !item.Output.GenerateSceneImages {
+	if !item.Output.GenerateSceneImages.AsBool() {
 		t.Error("with_images: generate_scene_images should be true")
 	}
-	if item.Output.ExtractEntities {
+	if item.Output.ExtractEntities.AsBool() {
 		t.Error("with_images: extract_entities should be false")
 	}
-	if item.Output.GenerateMetadata {
+	if item.Output.GenerateMetadata.AsBool() {
 		t.Error("with_images: generate_metadata should be false")
 	}
 
@@ -301,8 +301,8 @@ func TestApplyPresetWithImages(t *testing.T) {
 
 func TestApplyPresetWithImagesRespectsExplicitSizing(t *testing.T) {
 	item := clipsItem()
-	item.ScriptParams.SentencesPerImage = 12 // caller explicit
-	item.Output.GenerateDocument = false     // caller explicit OFF
+	item.ScriptParams.SentencesPerImage = 12                // caller explicit
+	item.Output.GenerateDocument = scriptpkg.ToggleDisabled // caller explicit OFF
 
 	scripts.ApplyPreset(&item, scriptpkg.PresetWithImages)
 
@@ -313,19 +313,19 @@ func TestApplyPresetWithImagesRespectsExplicitSizing(t *testing.T) {
 	}
 	// Document: preset forces ON because bool zero-value is indistinguishable.
 	// Current behavior: preset overwrites false → true.
-	if !item.Output.GenerateDocument {
+	if !item.Output.GenerateDocument.AsBool() {
 		t.Log("generate_document false was overwritten by preset (bool zero-value limitation)")
 	}
 }
 
 func TestApplyPresetCustom(t *testing.T) {
 	item := clipsItem()
-	item.Output.GenerateSceneImages = true
+	item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
 
 	scripts.ApplyPreset(&item, scriptpkg.PresetCustom)
 
 	// Custom: no overrides.
-	if !item.Output.GenerateSceneImages {
+	if !item.Output.GenerateSceneImages.AsBool() {
 		t.Error("custom preset should not change generate_scene_images")
 	}
 }
@@ -339,7 +339,7 @@ func TestApplyPresetBatchPassThrough(t *testing.T) {
 	scripts.ApplyPreset(&item, scriptpkg.Preset("batch"))
 
 	// Batch: no overrides — same as custom.
-	if item.Output.GenerateSceneImages {
+	if item.Output.GenerateSceneImages.AsBool() {
 		t.Error("batch preset should not enable generate_scene_images")
 	}
 }
@@ -362,13 +362,13 @@ func TestApplyPresetNilItem(t *testing.T) {
 // the preset does NOT touch either field — caller precedence is preserved.
 func TestApplyPresetFullMedia_DoesNothingWhenExplicit(t *testing.T) {
 	item := clipsItem()
-	item.Output.GenerateSceneImages = true
-	item.Output.GenerateVoiceover = true
+	item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
+	item.Output.GenerateVoiceover = scriptpkg.ToggleEnabled
 	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
-	if !item.Output.GenerateSceneImages {
+	if !item.Output.GenerateSceneImages.AsBool() {
 		t.Error("full_media: caller-set GenerateSceneImages must remain true (caller > preset)")
 	}
-	if !item.Output.GenerateVoiceover {
+	if !item.Output.GenerateVoiceover.AsBool() {
 		t.Error("full_media: caller-set GenerateVoiceover must remain true (caller > preset)")
 	}
 }
@@ -380,10 +380,10 @@ func TestApplyPresetFullMedia_EnablesBothByDefault(t *testing.T) {
 	item := clipsItem()
 	// Both flags are zero (false) by default on a fresh clipsItem.
 	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
-	if !item.Output.GenerateSceneImages {
+	if !item.Output.GenerateSceneImages.AsBool() {
 		t.Error("full_media: GenerateSceneImages must be enabled when caller left at zero")
 	}
-	if !item.Output.GenerateVoiceover {
+	if !item.Output.GenerateVoiceover.AsBool() {
 		t.Error("full_media: GenerateVoiceover must be enabled when caller left at zero")
 	}
 }
@@ -396,27 +396,27 @@ func TestApplyPresetFullMedia_EnablesBothByDefault(t *testing.T) {
 //   - caller sets GenerateVoiceover=true, leaves images=false → preset
 //     enables ONLY images (the zero field), leaves voiceover untouched.
 func TestApplyPresetFullMedia_OverridesOnlyZeroValues(t *testing.T) {
-	// Scenario A: images=true, voiceover=false → preset enables voiceover only.
+	// Scenario A: images=Enabled, voiceover=Default → preset enables voiceover only.
 	item := clipsItem()
-	item.Output.GenerateSceneImages = true
-	// GenerateVoiceover deliberately left at zero (false).
+	item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
+	// GenerateVoiceover deliberately left at ToggleDefault (unset).
 	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
-	if !item.Output.GenerateSceneImages {
+	if !item.Output.GenerateSceneImages.AsBool() {
 		t.Error("full_media (scenario A): caller-set GenerateSceneImages must remain true")
 	}
-	if !item.Output.GenerateVoiceover {
+	if !item.Output.GenerateVoiceover.AsBool() {
 		t.Error("full_media (scenario A): preset must enable ONLY the caller-zero field (GenerateVoiceover)")
 	}
 
-	// Scenario B (symmetric): images=false, voiceover=true → preset enables images only.
+	// Scenario B (symmetric): images=Disabled, voiceover=Enabled → preset enables images only.
 	item2 := clipsItem()
-	item2.Output.GenerateSceneImages = false
-	item2.Output.GenerateVoiceover = true
+	item2.Output.GenerateSceneImages = scriptpkg.ToggleDisabled
+	item2.Output.GenerateVoiceover = scriptpkg.ToggleEnabled
 	scripts.ApplyPreset(&item2, scriptpkg.PresetFullMedia)
-	if !item2.Output.GenerateSceneImages {
+	if !item2.Output.GenerateSceneImages.AsBool() {
 		t.Error("full_media (scenario B): preset must enable GenerateSceneImages when only that field is zero")
 	}
-	if !item2.Output.GenerateVoiceover {
+	if !item2.Output.GenerateVoiceover.AsBool() {
 		t.Error("full_media (scenario B): caller-set GenerateVoiceover must remain true")
 	}
 }
@@ -446,12 +446,16 @@ func TestApplyPresetCatalog_PassThrough(t *testing.T) {
 	}
 	// Output side: explicit flag-by-flag check. No struct-level
 	// comparison (OutputSpec contains []string Languages which is
-	// not `==`-comparable).
-	if item.Output.GenerateSceneImages ||
-		item.Output.GenerateVoiceover ||
-		item.Output.GenerateDocument ||
-		item.Output.ExtractEntities ||
-		item.Output.GenerateMetadata {
+	// not `==`-comparable). SCRIPT-PIPELINE-DECOUPLING PR-3
+	// (TOGGLE-TRISTATE): every flag check uses .AsBool() so
+	// caller-explicit ToggleDisabled flows through correctly — a
+	// preset must not flip ToggleDefault → ToggleEnabled OR
+	// ToggleDisabled → ToggleEnabled.
+	if item.Output.GenerateSceneImages.AsBool() ||
+		item.Output.GenerateVoiceover.AsBool() ||
+		item.Output.GenerateDocument.AsBool() ||
+		item.Output.ExtractEntities.AsBool() ||
+		item.Output.GenerateMetadata.AsBool() {
 		t.Error("catalog: ANY output flag must remain caller-controlled; preset must not set any")
 	}
 	if item.Output.OutputFmt != "" {
@@ -487,12 +491,16 @@ func TestApplyPresetSearch_PassThrough(t *testing.T) {
 	}
 	// Output side: explicit flag-by-flag check. No struct-level
 	// comparison (OutputSpec contains []string Languages which is
-	// not `==`-comparable).
-	if item.Output.GenerateSceneImages ||
-		item.Output.GenerateVoiceover ||
-		item.Output.GenerateDocument ||
-		item.Output.ExtractEntities ||
-		item.Output.GenerateMetadata {
+	// not `==`-comparable). SCRIPT-PIPELINE-DECOUPLING PR-3
+	// (TOGGLE-TRISTATE): every flag check uses .AsBool() so
+	// caller-explicit ToggleDisabled flows through correctly — a
+	// preset must not flip ToggleDefault → ToggleEnabled OR
+	// ToggleDisabled → ToggleEnabled.
+	if item.Output.GenerateSceneImages.AsBool() ||
+		item.Output.GenerateVoiceover.AsBool() ||
+		item.Output.GenerateDocument.AsBool() ||
+		item.Output.ExtractEntities.AsBool() ||
+		item.Output.GenerateMetadata.AsBool() {
 		t.Error("search: ANY output flag must remain caller-controlled; preset must not set any")
 	}
 	if item.Output.OutputFmt != "" {
@@ -655,8 +663,8 @@ func TestBuildPlanClipsFieldMapping(t *testing.T) {
 
 func TestBuildPlanPostprocessorList(t *testing.T) {
 	item := textItem()
-	item.Output.ExtractEntities = true
-	item.Output.GenerateDocument = true
+	item.Output.ExtractEntities = scriptpkg.ToggleEnabled
+	item.Output.GenerateDocument = scriptpkg.ToggleEnabled
 	item.Output.SaveToDB = true
 	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
@@ -700,11 +708,11 @@ func TestBuildPlanPostprocessorList(t *testing.T) {
 
 func TestBuildPlanPostprocessorListFull(t *testing.T) {
 	item := textItem()
-	item.Output.ExtractEntities = true
-	item.Output.GenerateMetadata = true
-	item.Output.GenerateVoiceover = true
-	item.Output.GenerateSceneImages = true
-	item.Output.GenerateDocument = true
+	item.Output.ExtractEntities = scriptpkg.ToggleEnabled
+	item.Output.GenerateMetadata = scriptpkg.ToggleEnabled
+	item.Output.GenerateVoiceover = scriptpkg.ToggleEnabled
+	item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
+	item.Output.GenerateDocument = scriptpkg.ToggleEnabled
 	item.Output.SaveToDB = true
 	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
@@ -975,13 +983,13 @@ func TestBuildItemIdentityIgnoresOutputFlags(t *testing.T) {
 	// Output flags control postprocessors, not script text.
 	// The identity must not change when output flags change.
 	item1 := textItem()
-	item1.Output.ExtractEntities = false
-	item1.Output.GenerateDocument = false
+	item1.Output.ExtractEntities = scriptpkg.ToggleDisabled
+	item1.Output.GenerateDocument = scriptpkg.ToggleDisabled
 	item1.Output.SaveToDB = false
 
 	item2 := textItem()
-	item2.Output.ExtractEntities = true
-	item2.Output.GenerateDocument = true
+	item2.Output.ExtractEntities = scriptpkg.ToggleEnabled
+	item2.Output.GenerateDocument = scriptpkg.ToggleEnabled
 	item2.Output.SaveToDB = true
 
 	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())

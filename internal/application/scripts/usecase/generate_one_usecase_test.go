@@ -112,8 +112,8 @@ func itemForTimingsTest() scriptpkg.GenerationItemV2 {
 		},
 		Output: scriptpkg.OutputSpec{
 			// Required-class procs the test exercises:
-			ExtractEntities:  true,
-			GenerateMetadata: true,
+			ExtractEntities:  scriptpkg.ToggleEnabled,
+			GenerateMetadata: scriptpkg.ToggleEnabled,
 			// Opt-out of every other postprocessor so
 			// plan.Postprocessors stays to: entities,
 			// metadata, clip_bindings, stock_association, voiceover,
@@ -121,9 +121,9 @@ func itemForTimingsTest() scriptpkg.GenerationItemV2 {
 			// (last two are unconditional best-efforts per
 			// buildPostprocessorList and missing-registered
 			// in this test, surfacing as warnings only).
-			GenerateDocument:    false,
-			GenerateSceneImages: false,
-			GenerateVoiceover:   false,
+			GenerateDocument:    scriptpkg.ToggleDisabled,
+			GenerateSceneImages: scriptpkg.ToggleDisabled,
+			GenerateVoiceover:   scriptpkg.ToggleDisabled,
 			SaveToDB:            false,
 		},
 	}
@@ -603,7 +603,7 @@ func TestGenerateOneUseCase_UmbrellaCoverage_AllPhasePaths(t *testing.T) {
 				SourceText: "text body long enough for validator — please.",
 			},
 			Output: scriptpkg.OutputSpec{
-				ExtractEntities: true, // forces "entities" into plan.Postprocessors
+				ExtractEntities: scriptpkg.ToggleEnabled, // forces "entities" into plan.Postprocessors
 			},
 		}
 

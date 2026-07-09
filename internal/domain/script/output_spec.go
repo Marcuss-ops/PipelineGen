@@ -1,20 +1,43 @@
 // Package script — output_spec.go defines the canonical ScriptSpec
 // (HOW to generate) and OutputSpec (WHAT to produce) contracts.
 //
-// PR 8 (June 2026): introduces the canonical tri-state Toggle type
-// for future-migration but keeps OutputSpec fields as bool for
-// backward compatibility with preset_resolver,
-// handler_legacy_adapters, generation_normalizer, and postprocessor
-// wiring. The full bool→Toggle cutover is a follow-up PR once those
-// call sites migrate; until then, Toggle.Resolve() is available
-// for any caller that wants tri-state semantics, and Toggle.AsBool()
-// converts to bool at the OutputSpec boundary.
+// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE): the 5
+// postprocessor flags (ExtractEntities + GenerateMetadata +
+// GenerateVoiceover + GenerateSceneImages + GenerateDocument) are now
+// Toggle tri-state (ToggleDefault/ToggleEnabled/ToggleDisabled),
+// closing the audit item #6 "bool zero-value ambiguity" — caller
+// explicit false is now distinguishable from caller-did-not-set, and
+// ToggleDisabled survives the applySafetyDefaults+ApplyPreset chain
+// (no silent override per godlike/07 NO-FAKE-AVAILABILITY). The
+// SaveToDB field stays bool (out of PR-3 scope per action plan).
 //
-// PR 7 (June 2026): unchanged from prior turn — GenerationEnvelopeResult
-// unification consolidated with GenerationEnvelopeItem.
+// PR-3 wire-shape: the Toggle.UnmarshalJSON / Toggle.MarshalJSON methods
+// (plus OutputSpec.UnmarshalJSON + OutputSpec.MarshalJSON) accept BOTH the new Toggle strings
+// ("enabled"/"disabled"/"default") AND the legacy boolean values
+// (true/false → ToggleEnabled/ToggleDisabled) so pre-PR-3 HTTP clients
+// continue to function during the migration window. OutputSpec
+// also implements UnmarshalJSON to default OMITTED Toggle fields to
+// ToggleDefault (Go's default leaves them at the zero value
+// Toggle(""), which is not equal to ToggleDisabled NOR ToggleDefault
+// — explicit defaulting is required for the godlike/07
+// NO-FAKE-AVAILABILITY contract). The canonical resolution chain
+// after unmarshal is:
+//
+//	if caller != ToggleDefault: return caller
+//	elif preset != ToggleDefault: return preset
+//	elif config != ToggleDefault: return config
+//	else: return safety
+//
+// PR-1 (June 2026): HasAnyPostprocessor already OR'd all 5 flags;
+// unchanged in PR-3 (still uses .AsBool() per side).
 //
 // No durable field uses interface{}, any, or map[string]any.
 package script
+
+import (
+	"bytes"
+	"encoding/json"
+)
 
 // Toggle is the canonical tri-state for OutputSpec postprocessor
 // flags. The precedence chain is:
@@ -40,6 +63,16 @@ const (
 	ToggleDisabled Toggle = "disabled"
 )
 
+// ToggleFromBool converts a legacy bool to the canonical Toggle
+// (true → ToggleEnabled, false → ToggleDisabled). Used by callers
+// that haven't migrated to explicit Toggle values.
+func ToggleFromBool(b bool) Toggle {
+	if b {
+		return ToggleEnabled
+	}
+	return ToggleDisabled
+}
+
 // Resolve applies the precedence chain to a sequence of Toggles
 // (caller, preset, config, safety) and returns the resolved value.
 func (t Toggle) Resolve(caller, preset, config, safety Toggle) Toggle {
@@ -55,10 +88,101 @@ func (t Toggle) Resolve(caller, preset, config, safety Toggle) Toggle {
 	return safety
 }
 
-// AsBool collapses the resolved toggle to a boolean. ToggleDisabled
-// → false. ToggleEnabled or ToggleDefault → true.
+// AsBool collapses the resolved toggle to a boolean. Only ToggleEnabled
+// resolves to true. ToggleDisabled + ToggleDefault + the Go zero value
+// Toggle("") all resolve to false.
+//
+// Semantics (godlike/07 NO-FAKE-AVAILABILITY): caller-omitted is
+// treated as "no opt-in" (false) at the gate boundary. The legacy
+// bool=true intent maps to ToggleEnabled → AsBool=true; the legacy
+// bool=false intent maps to ToggleDisabled OR ToggleDefault → either
+// of which resolves to false. Pre-PR-3 callers sending {}/caller-omitted
+// see identical false semantics at the gate (zero bool = false both
+// before and after the Toggle migration).
+//
+// Forward-pointer: applySafetyDefaults converts ToggleDefault →
+// ToggleEnabled in the worker, so the post-safety-default
+// HasAnyPostprocessor=AsBool() OR returns true and the registered
+// postprocessors run for caller-omitted payloads. The preflight
+// gate evaluates pre-safety and therefore does NOT block caller-omitted
+// (mismatch with required-service is forward-pointer
+// PR-PREFLIGHT-RUN-AFTER-SAFETY).
 func (t Toggle) AsBool() bool {
-	return t != ToggleDisabled
+	return t == ToggleEnabled
+}
+
+// UnmarshalJSON is dispatched by Go's json package ONLY when the
+// method name is exactly "UnmarshalJSON" — this is the canonical
+// json.Unmarshaler interface (golang.org/pkg/encoding/json). Accepts
+// the canonical Toggle string form (3 valid values per the const
+// block) AND the legacy bool form (true → ToggleEnabled,
+// false → ToggleDisabled), plus JSON null → ToggleDefault (caller
+// explicit nulls []resolve to "no preference", the same as omitting
+// the field). Returns an error if the input is neither string, bool,
+// nor null, OR if the string value is not one of the 3 canonical
+// tokens.
+//
+// godlike/06 SSOT: this wire-shape adapter lives on the domain type
+// itself (single canonical owner) so HTTP DTO layers and outbound
+// marshalers do NOT need duplicate compat shims.
+func (t *Toggle) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*t = ToggleDefault
+		return nil
+	}
+	var asString string
+	if err := json.Unmarshal(data, &asString); err == nil {
+		switch Toggle(asString) {
+		case ToggleDefault, ToggleEnabled, ToggleDisabled:
+			*t = Toggle(asString)
+			return nil
+		}
+		return &toggleInvalidStringError{raw: asString}
+	}
+	var asBool bool
+	if err := json.Unmarshal(data, &asBool); err == nil {
+		*t = ToggleFromBool(asBool)
+		return nil
+	}
+	return &toggleInvalidTypeError{data: data}
+}
+
+// MarshalJSON (canonical json.Marshaler interface name — Go's json
+// package dispatches only by exact name) emits the canonical Toggle
+// string form. ToggleDefault MARSHALS AS THE STRING "default" —
+// outbound wire-shape includes the explicit "default" token for
+// fields that were unset (no override applied). For inbound compat,
+// JSON `"key": "default"` strings also round-trip correctly.
+func (t Toggle) MarshalJSON() ([]byte, error) {
+	switch t {
+	case ToggleDefault, ToggleEnabled, ToggleDisabled:
+		return json.Marshal(string(t))
+	}
+	return nil, &toggleInvalidStringError{raw: string(t)}
+}
+
+// toggleInvalidStringError signals a non-canonical Toggle string
+// during wire (un)marshaling. Reachable only via unmarshaling invalid
+// data (operator-facing API fails closed) or via a buggy migration
+// (compile-time string Set ensures the const block is exhaustive).
+type toggleInvalidStringError struct {
+	raw string
+}
+
+func (e *toggleInvalidStringError) Error() string {
+	return "script: invalid Toggle string value: " + e.raw +
+		" (canonical: \"default\", \"enabled\", \"disabled\")"
+}
+
+// toggleInvalidTypeError signals a wire payload that is neither string
+// nor bool during SafeUnmarshalJSON.
+type toggleInvalidTypeError struct {
+	data []byte
+}
+
+func (e *toggleInvalidTypeError) Error() string {
+	return "script: Toggle wire payload must be string or bool; got: " +
+		string(bytes.TrimSpace(e.data))
 }
 
 // ── ScriptSpec ─────────────────────────────────────────────────────
@@ -89,46 +213,50 @@ type ScriptSpec struct {
 // ── OutputSpec ─────────────────────────────────────────────────────
 
 // OutputSpec declares which post-generation artifacts to produce.
-// PR 8 (June 2026): the postprocessor flags remain as bool
-// (transitional). A future PR migrates to the tri-state Toggle
-// type once all consumer sites (preset_resolver,
-// handler_legacy_adapters, generation_normalizer, postprocessor
-// wiring) are updated in lock-step. Until then, callers that want
-// tri-state semantics can use Toggle.Resolve() internally and convert
-// to bool via Toggle.AsBool() at the boundary.
+//
+// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE): the 5
+// postprocessor flags are now Toggle tri-state. Caller-explicit
+// ToggleDisabled survives the applySafetyDefaults + ApplyPreset chain
+// (no silent override per godlike/07 NO-FAKE-AVAILABILITY). SaveToDB
+// stays bool (persistence flag is not a postprocessor toggle per
+// the action plan).
 type OutputSpec struct {
-	// ── Postprocessors (bool — fully compatible with prior contracts) ──
-	ExtractEntities  bool `json:"extract_entities,omitempty"`
-	GenerateMetadata bool `json:"generate_metadata,omitempty"`
+	// ── Postprocessors (Toggle tri-state) ──────────────────────────
+	//
+	// ExtractEntities is an ACTIVE inline postprocessor
+	// (ProcessorEntities) registered conditionally on
+	// DefaultPolicyFor("entities") == ProcessorRequired. Caller
+	// explicit ToggleDisabled is preserved through the resolution
+	// chain.
+	ExtractEntities Toggle `json:"extract_entities,omitempty"`
 
-	// GenerateVoiceover is an ACTIVE inline postprocessor gated on the
-	// VoiceoverService wiring (composition root at
+	// GenerateMetadata is an ACTIVE inline postprocessor
+	// (ProcessorMetadata). See ExtractEntities comment for
+	// Toggle semantics.
+	GenerateMetadata Toggle `json:"generate_metadata,omitempty"`
+
+	// GenerateVoiceover is an ACTIVE inline postprocessor gated on
+	// the VoiceoverService wiring (composition root at
 	// internal/app/wire_script_postprocess.go::registerScriptPostProcessors
-	// checks for a nil service and silently skips registration; the
-	// BestEffort policy in defaultPolicyByName prevents a missing
-	// service from triggering a hard preflight failure at the canonical
-	// preflight gate).
-	//
-	GenerateVoiceover bool `json:"generate_voiceover,omitempty"`
+	// silently skips registration on nil service; BestEffort policy
+	// prevents hard preflight failure). ToggleDisabled survives
+	// applySafetyDefaults — caller opt-out is honored.
+	GenerateVoiceover Toggle `json:"generate_voiceover,omitempty"`
 
-	// GenerateSceneImages is an ACTIVE inline postprocessor gated on the
-	// ImageService wiring (composition root at
-	// internal/app/wire_script_postprocess.go::registerScriptPostProcessors
-	// checks for a nil service and silently skips registration; the
-	// BestEffort policy in defaultPolicyByName prevents a missing
-	// service from triggering a hard preflight failure).
-	//
-	GenerateSceneImages bool `json:"generate_scene_images,omitempty"`
+	// GenerateSceneImages is an ACTIVE inline postprocessor gated
+	// on the ImageService wiring. ToggleDisabled survives
+	// applySafetyDefaults — caller opt-out is honored.
+	GenerateSceneImages Toggle `json:"generate_scene_images,omitempty"`
 
-	// GenerateDocument controls inline Google Doc creation via the
-	// ProcessorDocument postprocessor. Gated on DriveBundle.DocClient
-	// (composition root checks for a nil client and silently skips
-	// registration; the BestEffort policy in defaultPolicyByName
-	// prevents a missing client from triggering a hard preflight failure).
-	//
-	GenerateDocument bool `json:"generate_document,omitempty"`
+	// GenerateDocument controls inline Google Doc creation via
+	// ProcessorDocument. Gated on DriveBundle.DocClient. Pre-PR-3
+	// audit item #1 found this flag was silently overridden to true
+	// when caller set explicit false — fixed in PR-3:
+	// applySafetyDefaults now checks ToggleDefault (only the unset
+	// path is overridden to ToggleEnabled); ToggleDisabled survives.
+	GenerateDocument Toggle `json:"generate_document,omitempty"`
 
-	// ── Persistence ──────────────────────────────────────────────────
+	// ── Persistence (bool — out of PR-3 scope per action plan) ──
 	SaveToDB         bool `json:"save_to_db,omitempty"`
 	GenerateTimeline bool `json:"generate_timeline,omitempty"`
 
@@ -148,20 +276,113 @@ type OutputSpec struct {
 }
 
 // HasAnyPostprocessor returns true when at least one postprocessor
-// flag is enabled.
+// flag is non-disabled (toggle tri-state: ToggleEnabled or
+// ToggleDefault both resolve to true; ToggleDisabled resolves to
+// false). SaveToDB is intentionally out of scope.
 //
-// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-1: the previous goddoc was
-// inconsistent with the registered behavior — it claimed
-// GenerateVoiceover/GenerateSceneImages/GenerateDocument were downstream
-// jobs (Fase 2 Spina Dorsale plan) but the inline ProcessorVoiceover /
-// ProcessorImages / ProcessorDocument are still registered whenever
-// their composition-time service is wired. Until the downstream cutover
-// actually lands (forward-pointer FASE-2 wave), all three are ACTIVE
-// inline processors; HasAnyPostprocessor reflects that fact.
+// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3: post-tri-state cutover,
+// every flag check uses .AsBool() so caller-explicit ToggleDisabled
+// flows through correctly (no false positive "processor enabled"
+// when caller opted out).
 func (o *OutputSpec) HasAnyPostprocessor() bool {
-	return o.ExtractEntities ||
-		o.GenerateMetadata ||
-		o.GenerateVoiceover ||
-		o.GenerateSceneImages ||
-		o.GenerateDocument
+	return o.ExtractEntities.AsBool() ||
+		o.GenerateMetadata.AsBool() ||
+		o.GenerateVoiceover.AsBool() ||
+		o.GenerateSceneImages.AsBool() ||
+		o.GenerateDocument.AsBool()
+}
+
+// UnmarshalJSON is the canonical godlike/06 SSOT owner of OutputSpec's
+// wire-shape ingress. It does a 2-pass decode:
+//
+//  1. Alias-decode via Alias OutputSpec (recursion-safe — Alias has
+//     the same JSON tags BUT no UnmarshalJSON method) so standard
+//     json.Unmarshal handles struct field assignment via Toggle's
+//     canonical UnmarshalJSON method (the bool/string/null forms).
+//
+//  2. Raw-map pre-pass to detect OMITTED Toggle keys. Go's default
+//     decode leaves an absent field at its zero value Toggle("")
+//     which is NOT equal to ToggleDefault OR ToggleDisabled —
+//     the AsBool() invariant would return true for the zero value
+//     (semantically a ToggleDefault-from-comparison-not-from-Wire,
+//     which is a godlike/07 NO-FAKE-AVAILABILITY risk). This method
+//     manually defaults every OMITTED toggle key to ToggleDefault.
+//
+// Clobber-bug fix (godlike/07 NO-FAKE-AVAILABILITY): if the raw-map
+// pre-pass FAILS (corrupt JSON mid-object, or RAM pressure, etc.)
+// we DO NOT collapse all fields to ToggleDefault — we preserve the
+// pass-1 alias-decode values. Only OMITTED keys get defaulted; present
+// keys (even if raw-map decode cannot parse them) pass through as
+// alias-decoded.
+//
+// godlike/06 SSOT: this lives ONLY here (canonical) — HTTP DTOs and
+// any future JSON middleware MUST NOT duplicate it.
+func (o *OutputSpec) UnmarshalJSON(data []byte) error {
+	// Step 1: alias-decode to populate all fields via Toggle's
+	// UnmarshalJSON (handles string/bool/null forms correctly).
+	type Alias OutputSpec
+	var tmp Alias
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return err
+	}
+	*o = OutputSpec(tmp)
+
+	// Step 2: raw-map pre-pass to detect OMITTED Toggle keys
+	// individually (no clobber of pass-1 values). If the payload is
+	// not a JSON object, skip the raw-map step — pass-1 alias values
+	// are preserved (which may be Toggle("") for unmappable data,
+	// but that's safer than collapsing to ToggleDefault and erasing
+	// any valid string-form keys the alias pass managed to read).
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err == nil {
+		if _, ok := raw["extract_entities"]; !ok {
+			o.ExtractEntities = ToggleDefault
+		}
+		if _, ok := raw["generate_metadata"]; !ok {
+			o.GenerateMetadata = ToggleDefault
+		}
+		if _, ok := raw["generate_voiceover"]; !ok {
+			o.GenerateVoiceover = ToggleDefault
+		}
+		if _, ok := raw["generate_scene_images"]; !ok {
+			o.GenerateSceneImages = ToggleDefault
+		}
+		if _, ok := raw["generate_document"]; !ok {
+			o.GenerateDocument = ToggleDefault
+		}
+	}
+	return nil
+}
+
+// MarshalJSON is the canonical godlike/06 SSOT owner of OutputSpec's
+// wire-shape egress. It converts every ToggleDefault value to the
+// empty string before delegating to the alias marshaler — the alias
+// (which has no custom MarshalJSON method) emits Toggle as a plain
+// string, and the standard json:",omitempty" tag suppresses the key
+// when the underlying string is empty. This restores the
+// outbound-compact wire-shape that pre-PR-3 callers enjoy (5 toggle
+// keys collapsed to ONLY the explicitly-set ones).
+//
+// godlike/06 SSOT: this lives ONLY here (canonical) — HTTP DTOs and
+// any future JSON middleware MUST NOT duplicate it.
+func (o OutputSpec) MarshalJSON() ([]byte, error) {
+	type Alias OutputSpec
+	tmp := Alias(o)
+
+	// Collapse ToggleDefault → "" so omitempty kicks in. The other
+	// 3 canonical states (ToggleEnabled/ToggleDisabled plus any
+	// non-canonical value) are marshaled as-is.
+	hideIfDefault := func(t *Toggle) {
+		if *t == ToggleDefault {
+			*t = ""
+		}
+	}
+
+	hideIfDefault(&tmp.ExtractEntities)
+	hideIfDefault(&tmp.GenerateMetadata)
+	hideIfDefault(&tmp.GenerateVoiceover)
+	hideIfDefault(&tmp.GenerateSceneImages)
+	hideIfDefault(&tmp.GenerateDocument)
+
+	return json.Marshal(tmp)
 }

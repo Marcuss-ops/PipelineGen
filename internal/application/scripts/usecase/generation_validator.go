@@ -78,7 +78,7 @@ func validateSource(src scriptpkg.SourceSpec, ref string) []string {
 
 func validateOutput(out scriptpkg.OutputSpec, ref string) []string {
 	var d []string
-	if out.GenerateVoiceover {
+	if out.GenerateVoiceover.AsBool() {
 		if out.VoiceoverGroup == "" {
 			// Voiceover group can default from config; not an error.
 		}

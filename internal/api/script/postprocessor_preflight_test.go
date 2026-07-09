@@ -44,6 +44,11 @@ func makeCaps(voiceover, images, document bool) PreflightCaps {
 // the preflight predicate directly, so envelope.Validate is
 // not invoked here — the test isolates the preflight surface
 // from the envelope validation surface).
+// makeEnvelopeWithOutput builds a minimal GenerationEnvelopeV2 for
+// preflight tests. The bool parameters are converted via the
+// canonical ToggleFromBool helper (true → ToggleEnabled, false →
+// ToggleDisabled) so legacy test call-sites that pass literals
+// continue to work post PR-3 (TOGGLE-TRISTATE).
 func makeEnvelopeWithOutput(voiceover, images, document bool) *domainScript.GenerationEnvelopeV2 {
 	return &domainScript.GenerationEnvelopeV2{
 		Version: 2,
@@ -58,9 +63,9 @@ func makeEnvelopeWithOutput(voiceover, images, document bool) *domainScript.Gene
 					SourceText: "test",
 				},
 				Output: domainScript.OutputSpec{
-					GenerateVoiceover:   voiceover,
-					GenerateSceneImages: images,
-					GenerateDocument:    document,
+					GenerateVoiceover:   domainScript.ToggleFromBool(voiceover),
+					GenerateSceneImages: domainScript.ToggleFromBool(images),
+					GenerateDocument:    domainScript.ToggleFromBool(document),
 				},
 			},
 		},
@@ -241,7 +246,7 @@ func TestRequireRequestedProcessors_MultipleItems_FailsOnFirstInvalid(t *testing
 					Topic:      "test",
 					SourceText: "test",
 				},
-				Output: domainScript.OutputSpec{GenerateVoiceover: true},
+				Output: domainScript.OutputSpec{GenerateVoiceover: domainScript.ToggleEnabled},
 			},
 			// item[1]: valid (no processors requested) — must NOT
 			// be reached because item[0] short-circuits.
@@ -285,7 +290,7 @@ func TestRequireRequestedProcessors_MultipleItems_AllValid(t *testing.T) {
 					Topic:      "test",
 					SourceText: "test",
 				},
-				Output: domainScript.OutputSpec{GenerateVoiceover: true},
+				Output: domainScript.OutputSpec{GenerateVoiceover: domainScript.ToggleEnabled},
 			},
 			{
 				ID:    "item-1",
@@ -295,7 +300,7 @@ func TestRequireRequestedProcessors_MultipleItems_AllValid(t *testing.T) {
 					Topic:      "test",
 					SourceText: "test",
 				},
-				Output: domainScript.OutputSpec{GenerateSceneImages: true},
+				Output: domainScript.OutputSpec{GenerateSceneImages: domainScript.ToggleEnabled},
 			},
 			{
 				ID:    "item-2",
@@ -305,7 +310,7 @@ func TestRequireRequestedProcessors_MultipleItems_AllValid(t *testing.T) {
 					Topic:      "test",
 					SourceText: "test",
 				},
-				Output: domainScript.OutputSpec{GenerateDocument: true},
+				Output: domainScript.OutputSpec{GenerateDocument: domainScript.ToggleEnabled},
 			},
 		},
 	}

@@ -147,13 +147,13 @@ func WireFullImages(bundle *FullImagesBundle, cfg *config.Config, log *zap.Logge
 	mod := api.NewRouteModule(
 		"fullimages",
 		func() bool { return cfg.Features.ImagesEnabled },
-		"/api/fullimages",
+		"/fullimages",
 		handler,
 		log,
 	)
 
 	log.Info("WireFullImages: fullimages module wired",
-		zap.String("route_prefix", "/api/fullimages"),
+		zap.String("route_prefix", "/fullimages"),
 		zap.String("public_url", "/api/fullimages/video/generate"),
 		zap.Bool("godlike_07_fail_closed", true),
 	)

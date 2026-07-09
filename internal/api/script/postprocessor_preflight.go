@@ -131,8 +131,19 @@ func requireRequestedProcessors(caps PreflightCaps, env *domainScript.Generation
 // OutputSpec against PreflightCaps. Returns nil on success or
 // dual-%w-wrapped typed error on the first preflight failure.
 func requireRequestedProcessorsOne(caps PreflightCaps, item domainScript.GenerationItemV2, log *zap.Logger, itemIdx int) error {
-	// Voiceover: required composition-time dep = caps.VoiceoverEnabled.
-	if item.Output.GenerateVoiceover && !caps.VoiceoverEnabled {
+	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE):
+	// the preflight gate now fires ONLY when caller explicitly
+	// requested the processor (ToggleEnabled). caller explicit
+	// ToggleDisabled → no processor needed → no preflight fail.
+	// caller passed ToggleDefault → safety default does NOT run
+	// for voiceover/scene_images (per PR-1 Decision-Lock note —
+	// they're composition-gated, not safety-defaulted), so no
+	// processor will register → no preflight fail. Document IS
+	// safety-defaulted in applySafetyDefaults (the only field
+	// flipped when caller passed ToggleDefault), so the gate
+	// fires when AsBool() reads true (covers both ToggleEnabled
+	// and post-safety-toggle ToggleDefault).
+	if item.Output.GenerateVoiceover == domainScript.ToggleEnabled && !caps.VoiceoverEnabled {
 		if log != nil {
 			log.Warn("script preflight: voiceover requested but disabled at composition",
 				zap.Int("item_index", itemIdx),
@@ -145,7 +156,7 @@ func requireRequestedProcessorsOne(caps PreflightCaps, item domainScript.Generat
 	}
 
 	// Scene images: required composition-time dep = caps.ImagesEnabled.
-	if item.Output.GenerateSceneImages && !caps.ImagesEnabled {
+	if item.Output.GenerateSceneImages == domainScript.ToggleEnabled && !caps.ImagesEnabled {
 		if log != nil {
 			log.Warn("script preflight: scene images requested but disabled at composition",
 				zap.Int("item_index", itemIdx),
@@ -158,7 +169,20 @@ func requireRequestedProcessorsOne(caps PreflightCaps, item domainScript.Generat
 	}
 
 	// Document: required composition-time dep = caps.DocumentEnabled.
-	if item.Output.GenerateDocument && !caps.DocumentEnabled {
+	// Body: NOT fired on ToggleDisabled; fired on ToggleEnabled OR
+	// ToggleDefault (which is safety-flipped to ToggleEnabled by
+	// applySafetyDefaults AFTER the preflight returns).
+	//
+	// Body: ADOPTS `.AsBool()` (NOT `== ToggleEnabled`) because
+	// Document is the ONLY safety-defaulted postprocessor (per
+	// generation_normalizer.go::applySafetyDefaults lines 247:
+	// "if item.Output.GenerateDocument == ToggleDefault → ToggleEnabled").
+	// Voiceover + scene-images above use `== ToggleEnabled` because
+	// they are composition-gated but NEVER safety-defaulted
+	// (PR-1 DECISION-LOCK audit-pin). Mixing the idioms on
+	// per-processor basis is the correct, canonical form — they are
+	// NOT all the same class of gate.
+	if item.Output.GenerateDocument.AsBool() && !caps.DocumentEnabled {
 		if log != nil {
 			log.Warn("script preflight: document requested but disabled at composition",
 				zap.Int("item_index", itemIdx),

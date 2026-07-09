@@ -378,12 +378,24 @@ class ProfileWorker(threading.Thread):
             elapsed_ms = int((time.time() - t0) * 1000)
             _log(f"[profile-{self.profile_id}][{request_id}] timeout after {elapsed_ms}ms: {e}")
             try:
+                os.makedirs("data/tmp", exist_ok=True)
+                self.page.screenshot(path="data/tmp/slide_error.png")
+                _log(f"[profile-{self.profile_id}][{request_id}] saved error screenshot to data/tmp/slide_error.png")
+            except Exception as se:
+                _log(f"[profile-{self.profile_id}][{request_id}] failed to save screenshot: {se}")
+            try:
                 self._fresh_page()
             except Exception:
                 pass
             return {"id": request_id, "status": "error", "error": f"timeout after {elapsed_ms}ms: {e}", "profile": self.profile_id}
         except Exception as e:
             _log(f"[profile-{self.profile_id}][{request_id}] error: {traceback.format_exc()}")
+            try:
+                os.makedirs("data/tmp", exist_ok=True)
+                self.page.screenshot(path="data/tmp/slide_error.png")
+                _log(f"[profile-{self.profile_id}][{request_id}] saved error screenshot to data/tmp/slide_error.png")
+            except Exception as se:
+                _log(f"[profile-{self.profile_id}][{request_id}] failed to save screenshot: {se}")
             try:
                 self._fresh_page()
             except Exception:
