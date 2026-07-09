@@ -89,12 +89,19 @@ const (
 	// StateIndexingFailed → re-enqueue. The state remains valid
 	// so existing DB rows with INDEX_PENDING are not orphaned.
 	// New writers MUST use the granular states.
+	//
+	// As of 2026-08-10 the last production writer
+	// (outbox.Dispatcher.EnqueueAndRestore) was migrated to
+	// StateDiscovered. No production code writes this state.
 	StateIndexPending IndexState = "INDEX_PENDING"
 
 	// Deprecated: StateIndexFailed is split into StateEmbeddingFailed
 	// (no vectors) and StateIndexingFailed (vectors exist, Qdrant
 	// missing). The state remains valid for existing DB rows; new
 	// writers MUST use the granular states.
+	//
+	// No production code has ever written this state; it exists
+	// solely for backward-compat with pre-Task 2 DB rows.
 	StateIndexFailed IndexState = "INDEX_FAILED"
 )
 

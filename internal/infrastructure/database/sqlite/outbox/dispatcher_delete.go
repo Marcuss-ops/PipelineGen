@@ -290,8 +290,8 @@ func (d *Dispatcher) EnqueueAndRestore(ctx context.Context, assetID string) erro
 	}
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
-		if err := d.stateWriter.SetIndexStateTx(ctx, tx, assetID, asset.StateIndexPending); err != nil {
-			return fmt.Errorf("dispatcher restore: set index_state=PENDING %s: %w", assetID, err)
+		if err := d.stateWriter.SetIndexStateTx(ctx, tx, assetID, asset.StateDiscovered); err != nil {
+			return fmt.Errorf("dispatcher restore: set index_state=DISCOVERED %s: %w", assetID, err)
 		}
 
 		eventID := uuid.NewString()
