@@ -108,7 +108,7 @@ func buildClipsBundle(
 	// atomicity invariant). HC-1 (June 2026): the `cfg` 5th positional
 	// arg is now constructed with appjobs.Compose() as the typed
 	// TimeoutResolver — the bulk_upload worker uses
-	// cfg.JobTimeout(TypeBulUploadYouTubeClips) to derive its
+	// cfg.JobTimeout(TypeBulkUploadYouTubeClips) to derive its
 	// 2*time.Hour literal via the canonical Registry (replaces the
 	// pre-HC-1 hard-coded context.WithTimeout(ctx, 2*time.Hour) in
 	// bulk_upload_worker.go::HandleJob).

@@ -129,25 +129,27 @@ type JobPolicy = RegistryEntry
 // Per godlike/06 one-canonical-owner-per-fact: ZERO new string literals here;
 // every value resolves to a domain/job constant.
 const (
-	TypeMediaExtract       = job.TypeMediaExtract
-	TypeMediaStock         = job.TypeMediaStock
-	TypeVoiceoverBatch     = job.TypeVoiceoverBatch
-	TypeVoiceoverGenerate  = job.TypeVoiceoverGenerate
-	TypeSubtitleGenerate   = job.TypeSubtitleGenerate
-	TypeRenderVideo        = job.TypeRenderVideo
-	TypeYouTubeUpload      = job.TypeYouTubeUpload
-	TypeYouTubeClipExtract = job.TypeYouTubeClipExtract
-	TypeCatalogSync        = job.TypeCatalogSync
-	TypeArtlistRun         = job.TypeArtlistRun
-	TypeSystemCleanup      = job.TypeSystemCleanup
-	TypeMediaGenerate      = job.TypeMediaGenerate
-	TypeVideoGenerate      = job.TypeVideoGenerate
-	TypeBooksProcess       = job.TypeBooksProcess
-	TypeLessonsProcess     = job.TypeLessonsProcess
-	TypeMediaReindex       = job.TypeMediaReindex
-	TypeMediaEnrich        = job.TypeMediaEnrich
-	TypeYouTubeRebuildST   = job.TypeYouTubeRebuildST
-	TypeScriptGenerate     = job.TypeScriptGenerate
+	TypeMediaExtract           = job.TypeMediaExtract
+	TypeMediaStock             = job.TypeMediaStock
+	TypeVoiceoverBatch         = job.TypeVoiceoverBatch
+	TypeVoiceoverGenerate      = job.TypeVoiceoverGenerate
+	TypeSubtitleGenerate       = job.TypeSubtitleGenerate
+	TypeRenderVideo            = job.TypeRenderVideo
+	TypeYouTubeUpload          = job.TypeYouTubeUpload
+	TypeYouTubeClipExtract     = job.TypeYouTubeClipExtract
+	TypeCatalogSync            = job.TypeCatalogSync
+	TypeArtlistRun             = job.TypeArtlistRun
+	TypeSystemCleanup          = job.TypeSystemCleanup
+	TypeMediaGenerate          = job.TypeMediaGenerate
+	TypeVideoGenerate          = job.TypeVideoGenerate
+	TypeBooksProcess           = job.TypeBooksProcess
+	TypeLessonsProcess         = job.TypeLessonsProcess
+	TypeMediaReindex           = job.TypeMediaReindex
+	TypeMediaEnrich            = job.TypeMediaEnrich
+	TypeYouTubeRebuildST       = job.TypeYouTubeRebuildST
+	TypeScriptGenerate         = job.TypeScriptGenerate
+	TypeBulkUploadYouTubeClips = job.TypeBulkUploadYouTubeClips
+
 	// Deprecated: use TypeBulkUploadYouTubeClips. Kept for backward-compat.
 	TypeBulUploadYouTubeClips = job.TypeBulkUploadYouTubeClips
 	TypeDriveFolderSync       = job.TypeDriveFolderSync

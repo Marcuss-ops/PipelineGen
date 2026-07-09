@@ -103,9 +103,9 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	if w.cfg == nil {
 		return nil, fmt.Errorf("bulk upload worker: cfg not configured (ClipConfigPort is nil — production wiring must supply non-nil cfg)")
 	}
-	jobTimeout := w.cfg.JobTimeout(appjobs.TypeBulUploadYouTubeClips)
+	jobTimeout := w.cfg.JobTimeout(appjobs.TypeBulkUploadYouTubeClips)
 	if jobTimeout <= 0 {
-		return nil, fmt.Errorf("bulk upload worker: job timeout for %q resolved to %v (non-positive — check registry configuration)", appjobs.TypeBulUploadYouTubeClips, jobTimeout)
+		return nil, fmt.Errorf("bulk upload worker: job timeout for %q resolved to %v (non-positive — check registry configuration)", appjobs.TypeBulkUploadYouTubeClips, jobTimeout)
 	}
 	ctx, cancel := context.WithTimeout(ctx, jobTimeout)
 	defer cancel()
@@ -160,7 +160,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 			"local_folder": payload.LocalFolder,
 		})
 	}
-		candidates, err := scanLocalClips(payload.LocalFolder, payload.Recursive, payload.FilePatterns, payload.SkipPatterns, payload.Limit)
+	candidates, err := scanLocalClips(payload.LocalFolder, payload.Recursive, payload.FilePatterns, payload.SkipPatterns, payload.Limit)
 	if err != nil {
 		if tools != nil && tools.Event != nil {
 			tools.Event("error", fmt.Sprintf("scan failed: %v", err), map[string]any{
