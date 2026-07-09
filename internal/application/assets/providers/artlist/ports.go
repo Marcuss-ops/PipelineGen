@@ -168,59 +168,6 @@ type AssetStore interface {
 	UpdateSearchTerms(ctx context.Context, clipID string, source string, name string, tags []string, searchText string) error
 }
 
-// Uploader was the narrow port for folder-ensure + upload. F2.11
-// (June 2026) retired the interface entirely (override brutal): the
-// service's destination_service.go::ResolveDestination now routes
-// ONLY through delivery.Publisher (the canonical write canal per
-// DRIVE-005 closure), and semantic_enricher.go's
-// updateCumulativeMetadataJSON uses drive.Reader for ListByQuery +
-// Download and delivery.Publisher.Publish for upload. There is no
-// remaining consumer of the Uploader interface (no callers in this
-// package, no callers outside this package). The dual surface
-// (Uploader + DriveFolderManager) that PR2.7 introduced as a
-// layering compromise is gone — all Drive writes fan out through
-// delivery.Publisher per the AGENTS.md godlike/06 'one owner per
-// fact' rule.
-
-// DriveFolderManager was the wide port (EnsureFolder + ListByQuery +
-// Download + Upload) PR2.7 introduced to retire the raw
-// *google.golang.org/api/drive/v3 leak from ServiceDeps.DriveClient.
-// F2.11 (June 2026) retired the interface entirely:
-//
-//   - DestinationService uses delivery.Publisher.ResolveFolder only
-//     (the canonical folder-resolution path). The legacy `else if
-//     driveManager != nil` branch + the silent `folderID = rootFolderID`
-//     fallback are gone — a nil Publisher at composition is now the
-//     fail-closed wiring error ErrPublisherUnavailable.
-//
-//   - SemanticEnricher's updateCumulativeMetadataJSON now uses
-//     drive.Reader for the read-modify-write path (ListByQuery →
-//     SearchFiles; Download → DownloadFile) and delivery.Publisher.Publish
-//     for the upload. The TRASH on the previous metadata.json still
-//     routes through drive.FileLifecycle (the CARD-3 port split out
-//     from DriveFolderManager in PR2.7).
-//
-// Per AGENTS.md godlike/06 'one owner per fact': drive.Reader owns the
-// read surface, drive.FileLifecycle owns the lifecycle surface, and
-// delivery.Publisher owns the write surface. The composite
-// DriveFolderManager adapter (which conflated those three) is gone.
-//
-// The DriveFileRef alias to drivepkg.DriveFileRef was RETIRED together
-// with the wide DriveFolderManager interface in F2.11 (zero remaining
-// callers — the alias only existed to support the now-defunct
-// ListByQuery return type). Per AGENTS.md Code Hygiene ("remove unused
-// variables, functions, and files as a result of your changes"), the
-// alias was deleted from this file in the F2.11 commit.
-//
-// F3.14 follow-up (June 2026): the underlying drivepkg.DriveFileRef
-// type definition in internal/infrastructure/drive/types.go was also
-// retired (zero direct callers after the F2.11 + F3.14 brutal-override
-// route-through drive.Reader / delivery.Publisher / drive.FileLifecycle
-// per godlike/06 'one owner per fact'). The audit-only doc-comment
-// references in verifier_adapter.go, artifacts/verifier.go, and this
-// file are updated to point at the post-F3.14 surface rather than the
-// retired type name.
-
 // Indexer publishes a clip embedding into Qdrant (or whatever vector store).
 // Implementations may be no-op in tests.
 type Indexer interface {

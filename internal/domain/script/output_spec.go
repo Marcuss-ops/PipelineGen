@@ -109,14 +109,6 @@ type OutputSpec struct {
 	// service from triggering a hard preflight failure at the canonical
 	// preflight gate).
 	//
-	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-1: the godoc previously
-	// marked this as "deprecated / no effect" referencing the Fase 2
-	// Spina Dorsale plan. That wording was incorrect — the plan is
-	// forward-looking (separate voiceover.generate downstream job) but
-	// is NOT yet wired, and script.generate keeps the inline surface as
-	// the canonical path. The downstream cutover will land in a future
-	// FASE-2 wave; until then, setting GenerateVoiceover=true produces
-	// inline per-scene voiceover via ProcessorVoiceover.
 	GenerateVoiceover bool `json:"generate_voiceover,omitempty"`
 
 	// GenerateSceneImages is an ACTIVE inline postprocessor gated on the
@@ -126,10 +118,6 @@ type OutputSpec struct {
 	// BestEffort policy in defaultPolicyByName prevents a missing
 	// service from triggering a hard preflight failure).
 	//
-	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-1: same correction as
-	// GenerateVoiceover above — the inline surface is canonical today;
-	// the FASE-2 downstream cutover (separate images.generate job) is
-	// forward-looking only.
 	GenerateSceneImages bool `json:"generate_scene_images,omitempty"`
 
 	// GenerateDocument controls inline Google Doc creation via the
@@ -138,16 +126,6 @@ type OutputSpec struct {
 	// registration; the BestEffort policy in defaultPolicyByName
 	// prevents a missing client from triggering a hard preflight failure).
 	//
-	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-1: the goddoc previously
-	// referenced a forward-looking FASE-2 plan as if it were current.
-	// The inline surface is canonical today (ProcessorDocument is
-	// registered whenever DocClient != nil), and the downstream cutover
-	// (separate document.generate job) is forward-looking only. The
-	// applySafetyDefaults function in generation_normalizer.go sets
-	// this to true as a safety default for all presets including custom
-	// (because the custom preset is pass-through + applyConfigDefaults
-	// only fills identity/sizing/prompt fields, leaving the postprocessor
-	// flag at its Go zero-value false without an explicit safety floor).
 	GenerateDocument bool `json:"generate_document,omitempty"`
 
 	// ── Persistence ──────────────────────────────────────────────────

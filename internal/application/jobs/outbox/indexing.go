@@ -243,17 +243,6 @@ func (h *IndexingHandler) EventType() string {
 	return outboxevents.EventAssetIndexRequested
 }
 
-// NOTE (PR 11 follow-up, June 2026): the previous readSourceVersion
-// helper above was REMOVED. Both the producer-side
-// (cmd/admin/reconcile_qdrant.go) and this consumer-side handler now
-// route through assets.SourceVersionFor in
-// internal/infrastructure/database/sqlite/assets/source_version.go.
-// The legacy reader walked *Asset accessor methods, which DROPPED
-// tier 3 (legacy top-level media_assets.file_hash column) — the new
-// SQL helper honours all three tiers so backfilled rows from
-// pre-metadata-json tooling are correctly fingerprinted.
-//
-// The migration path for any future reader that needs to operate on
-// a pre-loaded *Asset should call into a thin adapter rather than
-// re-creating the priority chain — see the doc-comment on the
-// upstream package-level function for the canonical rules.
+// Historical note: the legacy readSourceVersion helper was removed in
+// PR 11 (June 2026). Both producer and consumer route through
+// assets.SourceVersionFor (internal/infrastructure/database/sqlite/assets/source_version.go).
