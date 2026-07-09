@@ -11,7 +11,7 @@ import "encoding/json"
 // script pipeline now requests OutputModePlainText. The engine
 // (internal/application/scripts/usecase/engine_generate.go) sets
 // OutputMode = OutputModePlainText unconditionally; the LLM emits
-// raw narrative prose per the v1OutputInstruction suffix (see
+// raw narrative prose per the plainTextInstruction suffix (see
 // engine_prompt.go), and the downstream SceneSynthesizer + scene
 // binder (internal/application/scripts/scene/) + postprocessor
 // pipeline own all structured fields. OutputModeScriptV1 is
@@ -25,7 +25,7 @@ const (
 	// pipeline post-LLM-PLAIN-TEXT-CONTRACT wave. The model is
 	// NOT asked to emit JSON, a schema, scene IDs, scene indexes,
 	// or kind labels — the downstream pipeline derives ALL of
-	// those from the raw prose (see engine_prompt.go::v1OutputInstruction).
+	// those from the raw prose (see engine_prompt.go::plainTextInstruction).
 	//
 	// Wire effect: the Format json.RawMessage field on the
 	// TextGenerationRequest is left empty for this mode (no Ollama
@@ -83,7 +83,7 @@ type TextGenerationRequest struct {
 	// legacy path). For OutputModePlainText (canonical), Format
 	// is left empty — Ollama's native generation stays in prose mode.
 	// Native json-mode does NOT enforce a schema — the prompt
-	// suffix (engine_prompt.go::v1OutputInstruction) does that.
+	// suffix (engine_prompt.go::plainTextInstruction) does that.
 	Format json.RawMessage `json:"format,omitempty"`
 
 	// Diversity knobs (all optional). When zero, GenerateScript fills in safe
