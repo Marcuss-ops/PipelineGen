@@ -26,8 +26,9 @@ security:
   # internal/platform/config/config.go::Config.Validate() for
   # the exact check.
   enable_auth: true
-  admin_token: "YOUR_SECURE_TOKEN_HERE"  # REPLACE before boot or set VELOX_ADMIN_TOKEN env var
-  worker_token: "YOUR_WORKER_TOKEN_HERE"  # REPLACE before boot or set VELOX_WORKER_TOKEN env var
+  admin_token: "dev-admin-token-change-me"
+  worker_token: "dev-worker-token-change-me"
+  delivery_hmac_secret: "dev-hmac-secret-32-bytes-minimum-change-me"
   # CORS origins - leave empty to block all cross-origin requests
   cors_origins: []
   rate_limit_enabled: true
@@ -66,6 +67,9 @@ paths:
   token_file: "token.json"
 
 drive:
+  # Local/dev soft mode: skip the Google Drive startup probe unless
+  # VELOX_DRIVE_STRICT_STARTUP_VALIDATION=true is set.
+  strict_startup_validation: false
   stock_root_folder: ""
   clips_root_folder: ""
   voiceover_root_folder: ""
@@ -145,8 +149,11 @@ features:
   # Experimental modules - default to false
   script_docs_enabled: false
   script_clips_enabled: false
+  # Keep the unified script endpoint mounted in local/dev bootstraps.
+  # Script generation uses the images capability for /api/script/generate,
+  # so leaving this off would disable the route entirely.
+  images_enabled: true
   stock_pipeline_enabled: true
-  images_enabled: false
   voiceover_enabled: false
   catalog_script_vector_search: false
 
@@ -166,11 +173,12 @@ google_accounting:
   sessions_path: "./google-accounting/sessions"
   schedule_cron: "0 2 * * *"
 # QDRANT-005A canonical configuration (AGENTS.md "Qdrant Entity Associations").
-# Runtime precedence per viper: env > yaml > struct-default, so set
-# VELOX_QDRANT_ENABLED=false to disable at runtime even when this file
-# says true (local pipeline default). The legacy `vector_search:` block
-# below uses `url:` (not `base_url:`) and is superseded by this section.
+# Local/dev default: keep Qdrant and the clip indexer off so the server
+# can boot and serve /api/script/generate without external vector-store
+# readiness. Production deployments can flip both back on via env.
 qdrant:
-  enabled: true
+  enabled: false
   base_url: "http://127.0.0.1:6333"
   api_key: ""  # override via VELOX_QDRANT_API_KEY env var (AGENTS.md secrets policy)
+clip_indexer:
+  enabled: false

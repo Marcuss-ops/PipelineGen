@@ -493,7 +493,7 @@ instead of duplicating source switches and persistence logic.
 
 ### Script generation
 
-The canonical script route is async. For `generate-from-clips`:
+The canonical script route is async. For the generation route (`/api/script/generate`):
 
 1. the HTTP handler maps the request into the canonical generation envelope;
 2. the source resolver hydrates clip evidence from SQLite, including Drive
