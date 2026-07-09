@@ -79,7 +79,6 @@ func buildTestRegistry(t *testing.T) job.CompiledJobRegistry {
 			ProducesArtifacts: true,
 			RequireManifest:   true,
 		},
-		HandlerKey: "test.dispatcher.handler",
 		RequiredCapabilities: []job.Capability{
 			job.Capability("test.cap"),
 		},
@@ -230,7 +229,6 @@ func buildTestRegistryNoPayloadCodec(t *testing.T) job.CompiledJobRegistry {
 		// Queue, ExecutionClass, ArtifactPolicy — does NOT check codecs).
 		ResultCodec:    job.NewCodecDescriptorMarker("v1", "test.noCodec"),
 		ArtifactPolicy: job.ArtifactPolicy{},
-		HandlerKey:     "test.noCodec.handler",
 	}
 	mutable := job.NewMutableJobRegistry()
 	if err := mutable.RegisterDefinition(def); err != nil {

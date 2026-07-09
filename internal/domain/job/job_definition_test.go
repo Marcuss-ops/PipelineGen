@@ -124,9 +124,7 @@ func TestJobDefinition_ScriptGenerate_LiteralCompiles(t *testing.T) {
 	if d.ResultCodec.SchemaVersion() == "" {
 		t.Error("ResultCodec.SchemaVersion must be non-empty")
 	}
-	if d.HandlerKey != "script.generate.handler" {
-		t.Errorf("HandlerKey = %q, want script.generate.handler", d.HandlerKey)
-	}
+
 }
 
 // Test 2: images.generate. Heavy queue, multi-artifact, capacity-2
@@ -374,7 +372,7 @@ func TestJobDefinition_Validate_NegativeTimeout(t *testing.T) {
 
 func TestJobDefinition_Validate_PassThroughTolerance(t *testing.T) {
 	// Pass-through fields (RetryPolicyKey, ConcurrencyKey, codecs,
-	// HandlerKey, RequiredCapabilities) MAY be zero/nil for a
+	// RequiredCapabilities) MAY be zero/nil for a
 	// programmatically-valid (but unbound) definition; Commit 3's
 	// StartupValidator layers the global invariants (codec presence,
 	// handler binding, etc.) on top of this base check.
@@ -389,7 +387,6 @@ func TestJobDefinition_Validate_PassThroughTolerance(t *testing.T) {
 		RequiredCapabilities: nil,
 		PayloadCodec:         nil,
 		ResultCodec:          nil,
-		HandlerKey:           "",
 		// ArtifactPolicy zero = pure-data default.
 	}
 	if err := d.Validate(); err != nil {

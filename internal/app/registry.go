@@ -9,11 +9,13 @@
 //   - registry.go                 (this file) — slim orchestrator
 //   - RegistryWiring struct + WireRegistry function + package doc.
 //   - capability_registry.go      registerCapabilities +
-//     registerHTTPModules + registerProviders + registerJobs +
+//     registerHTTPModules + registerProviders +
 //     tryRegisterModule + tryRegisterModuleStrict + strictOption +
 //     WithRegistrationPoint + collectRegPoint (the canonical
 //     single composition point for typed-punctuated
 //     Registry.Register mutations — Blocco C1-Step 2).
+//     (PR-AUDIT-7: registerJobs removed — handler binding
+//     is via c3ValidateRuntimeGraph, not this surface.)
 //   - registry_public_modules.go  registerSystem + registerJobs +
 //     registerImages + registerScriptHistory + registerUtility +
 //     registerRealtime + registerGenerationCapability +
@@ -266,7 +268,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	if root.Search != nil {
 		providerReg = root.Search.ProviderRegistry
 	}
-	if err := registerCapabilities(registry, nil, providerReg, CapabilityDeps{
+	if err := registerCapabilities(registry, providerReg, CapabilityDeps{
 		Providers: providerEntries,
 	}); err != nil {
 		return nil, fmt.Errorf("wire registry: register-capabilities: %w", err)
