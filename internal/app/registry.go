@@ -273,7 +273,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	}
 
 	// Step 8 — P0 Commit 3 (July 2026) C3 runtime-graph validation.
-	// Populate the C3 MutableJobRegistry with the 4 canonical
+	// Populate the C3 MutableJobRegistry with the 5 canonical
 	// JobDefinitions + placeholder handler bindings, freeze, and run
 	// the §4.5 validator. If ANY check fails (creator-enabled without
 	// handler, RequireManifest=true without ResultCodec, empty codec
@@ -297,7 +297,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 // ── Step 8 helper (P0 Commit 3, July 2026) ───────────────────────────
 
 // c3ValidateRuntimeGraph constructs the C3 MutableJobRegistry,
-// populates it with the 4 canonical JobDefinitions wired with
+// populates it with the 5 canonical JobDefinitions wired with
 // placeholder JobHandlerFunc bindings, freezes the registry, and
 // runs the §4.5 validator. Returns nil on a clean graph, or an
 // error wrapping ErrInvalidRuntimeGraph when ANY check fails.
@@ -310,16 +310,17 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 //
 // The wire-up target is job.StartupValidationInput with Workflow =
 // {TypeScriptGenerate, TypeImagesGenerate, TypeDocumentGenerate,
-// TypeAssetsResolve} — the canonical 4-family execution graph.
+// TypeAssetsResolve, TypeClipRegister} — the canonical 5-family
+// execution graph.
 //
-// A future contributor adding a 5th canonical job family must:
+// A future contributor adding a 6th canonical job family must:
 //  1. Append the literal to internal/domain/job/canonical_definitions.go.
 //  2. Append the type constant to internal/domain/job/job.go.
 //  3. Update workflowRefs below.
 //  4. Update the per-family round-trip test in registry_codec_completeness_test.go.
 //
 // The compile-time assertions in startup_validator_test.go lock the
-// canonical 4 literal references — adding a 5th and forgetting step
+// canonical literal references — adding a 6th and forgetting step
 // (3) surfaces as a test failure rather than a runtime mismatch.
 func c3ValidateRuntimeGraph() error {
 	mutableReg := jobpkg.NewMutableJobRegistry()
@@ -346,6 +347,7 @@ func c3ValidateRuntimeGraph() error {
 		jobpkg.TypeImagesGenerate,
 		jobpkg.TypeDocumentGenerate,
 		jobpkg.TypeAssetsResolve,
+		jobpkg.TypeClipRegister,
 	}
 	validator := jobpkg.DefaultStartupValidator{}
 	if err := validator.ValidateRuntimeGraph(jobpkg.StartupValidationInput{

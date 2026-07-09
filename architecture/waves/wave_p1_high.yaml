@@ -3767,3 +3767,69 @@
 
       translation consumer to assert against.'
     deadline: '2026-09-15'
+- id: SCRIPT-PIPELINE-DECOUPLING-2026-07-09
+  status: pending
+  exit_signal: false
+  deadline: '2026-08-08'
+  owner_capability: internal/application/scripts/adapters + internal/application/scripts/usecase + internal/app
+  description: 'Ship the canonical 12-PR migration sequence for the script.postprocessor SSOT drift cleanup. Phase A P0 (PR-1..4,
+    deadline 2026-07-15): goddoc-truth alignment (revert OutputSpec ''deprecated'' language), defaultPolicyByName gap closure
+    (register Translation), Toggle tri-state (caller > preset > config > safety precedence), buildPostprocessorList = sole
+    execution-order owner matching CanonicalProcessorNames() byte-for-byte. Phase B P0 (PR-5..6, 2026-07-22): TranslationProcessor
+    conditionally in plan when len(out.Languages)>0; TranslationProcessor propagation-fix (add TranslatedText+TranslatedSpecScene
+    to PostProcessResult; mergePostProcessResult applies to next input — fixes the value-pass mutation bug). Phase C P1 (PR-7..9,
+    2026-07-29): PipelineResult.Scenes -> SceneImages rename (preserve JSON tag ''scenes''); AssetStatus enum (empty URL never
+    status=''generated''); OutputFmt split into ModelOutputMode+WireOutputMode (aligns with LLM-PLAIN-TEXT-CONTRACT). Phase
+    D P2 (PR-10..12, 2026-08-08): ProcessorCapabilityRegistry (one registry replaces HTTP preflight + Registry runtime split);
+    SourceResolverValidator (composition-time fail-closed gate); ClipSearchPort+StockSearchPort -> type aliases for AssetSearchPort.
+    Decision (per thinker-with-files-gemini verdict 2026-07-09): keep voiceover/scene-images/document INLINE in script.generate
+    for now; downstream cutover deferred to future FASE-2 wave.'
+  linked_issues:
+  - id: PR-SCRIPT-DECOUPLE-DECISION-LOCK
+    owner_capability: internal/application/scripts/adapters
+    status: pending
+    deadline: '2026-07-15'
+  - id: PR-SCRIPT-DECOUPLE-TRANSLATION-DEFAULT-POLICY
+    owner_capability: internal/application/scripts/adapters
+    status: pending
+    deadline: '2026-07-15'
+  - id: PR-SCRIPT-DECOUPLE-TOGGLE-TRISTATE
+    owner_capability: internal/domain/script
+    status: pending
+    deadline: '2026-07-15'
+  - id: PR-SCRIPT-DECOUPLE-EXECUTION-ORDER-OWNER
+    owner_capability: internal/application/scripts/usecase
+    status: pending
+    deadline: '2026-07-15'
+  - id: PR-SCRIPT-DECOUPLE-TRANSLATION-IN-PLAN
+    owner_capability: internal/application/scripts/usecase
+    status: pending
+    deadline: '2026-07-22'
+  - id: PR-SCRIPT-DECOUPLE-TRANSLATION-PROPAGATION-FIX
+    owner_capability: internal/application/scripts/adapters
+    status: pending
+    deadline: '2026-07-22'
+  - id: PR-SCRIPT-DECOUPLE-RENAME-SCENES
+    owner_capability: internal/application/scripts/adapters
+    status: pending
+    deadline: '2026-07-29'
+  - id: PR-SCRIPT-DECOUPLE-ASSET-STATUS-ENUM
+    owner_capability: internal/domain/script
+    status: pending
+    deadline: '2026-07-29'
+  - id: PR-SCRIPT-DECOUPLE-OUTPUTFMT-MODEL-WIRE-SPLIT
+    owner_capability: internal/domain/script
+    status: pending
+    deadline: '2026-07-29'
+  - id: PR-SCRIPT-DECOUPLE-PROCESSOR-CAPABILITY-REGISTRY
+    owner_capability: internal/application/scripts/capabilities
+    status: pending
+    deadline: '2026-08-08'
+  - id: PR-SCRIPT-DECOUPLE-SOURCE-RESOLVER-VALIDATOR
+    owner_capability: internal/application/scripts/source
+    status: pending
+    deadline: '2026-08-08'
+  - id: PR-SCRIPT-DECOUPLE-ASSET-SEARCH-PORT-CUTOVER
+    owner_capability: internal/application/scripts/ports
+    status: pending
+    deadline: '2026-08-08'
