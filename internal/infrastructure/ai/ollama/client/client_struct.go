@@ -69,6 +69,20 @@ var modelFallbackChains = map[string][]string{
 	"mistral:12b":  {"mistral:7b"},
 }
 
+// EntityExtractionFallbackMode controls the fallback behaviour when the LLM
+// entity extraction call fails or produces an empty result.
+//
+//   - EntityExtractionFallbackHeuristic (default): fall back to a local
+//     regex/tokenizer-based result tagged with Source="heuristic_fallback".
+//   - EntityExtractionFallbackDisabled: return the LLM error verbatim — no
+//     silent synthetic results (godlike/07 NO-FAKE-AVAILABILITY).
+type EntityExtractionFallbackMode string
+
+const (
+	EntityExtractionFallbackHeuristic EntityExtractionFallbackMode = "heuristic"
+	EntityExtractionFallbackDisabled  EntityExtractionFallbackMode = "disabled"
+)
+
 // Client client per Ollama API
 type Client struct {
 	baseURL         string
@@ -85,6 +99,11 @@ type Client struct {
 	vllmModel string
 
 	webSearcher *WebSearcher
+
+	// entityExtractionFallbackMode controls whether a failed LLM entity
+	// extraction silently falls back to a heuristic result (default:
+	// EntityExtractionFallbackHeuristic for backward-compat).
+	entityExtractionFallbackMode EntityExtractionFallbackMode
 }
 
 // BaseURL returns the configured Ollama base URL.
@@ -120,6 +139,12 @@ func (c *Client) SetVLLMConfig(useVLLM bool, url, model string) {
 	if useVLLM {
 		c.useNvidiaForLLM = false
 	}
+}
+
+// SetEntityExtractionFallbackMode sets the fallback mode for entity extraction.
+// Default is EntityExtractionFallbackHeuristic for backward compatibility.
+func (c *Client) SetEntityExtractionFallbackMode(mode EntityExtractionFallbackMode) {
+	c.entityExtractionFallbackMode = mode
 }
 
 // SetWebSearcher enables RAG web search augmentation for Chat calls.

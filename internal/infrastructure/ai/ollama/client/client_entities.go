@@ -74,10 +74,16 @@ func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segment
 
 		result, err := c.ExtractEntitiesFromSegmentWithModel(ctx, req, model)
 		if err != nil {
+			if c.entityExtractionFallbackMode == EntityExtractionFallbackDisabled {
+				return nil, fmt.Errorf("entity extraction failed for segment %d (fallback disabled): %w", i, err)
+			}
 			result = fallbackEntityExtractionResult(segment, i, entityCount)
 		}
 		result = sanitizeEntityExtractionResult(segment, result, entityCount)
 		if resultIsEmpty(result) {
+			if c.entityExtractionFallbackMode == EntityExtractionFallbackDisabled {
+				return nil, fmt.Errorf("LLM returned empty entity extraction result for segment %d (fallback disabled)", i)
+			}
 			result = fallbackEntityExtractionResult(segment, i, entityCount)
 			result = sanitizeEntityExtractionResult(segment, result, entityCount)
 		}
@@ -91,6 +97,7 @@ func (c *Client) ExtractEntitiesFromScriptWithModel(ctx context.Context, segment
 			NomiSpeciali:     result.NomiSpeciali,
 			ParoleImportanti: result.ParoleImportanti,
 			ArtlistPhrases:   result.ArtlistPhrases,
+			Source:           result.Source,
 		})
 
 		analysis.TotalEntities += len(result.FrasiImportanti) +

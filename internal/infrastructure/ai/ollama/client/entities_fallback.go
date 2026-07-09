@@ -20,6 +20,7 @@ func fallbackEntityExtractionResult(segment string, segmentIndex, entityCount in
 		NomiSpeciali:     []string{},
 		ParoleImportanti: []string{},
 		ArtlistPhrases:   []string{},
+		Source:           "heuristic_fallback",
 	}
 
 	sentences := splitSentences(segment)
