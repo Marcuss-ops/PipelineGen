@@ -2,25 +2,15 @@
 // typed port that resolves a slice of ClipReference values into
 // ClipEvidence rows from media_assets.
 //
-// TODO #1 (June 2026, refactor/generate-from-clips architecture
-// plan): the previous clip_source_builder mixed classification
-// and lookup (id-as-PK, then drive-as-fallback) inside a private
-// port. Callers couldn't guarantee that "swpjc1vNLZQ" would resolve
-// to segmented YouTube assets and "1XcdSo0so-ur0-cITwWNeQyP9Q-n_GKvv"
-// would resolve by Drive file id — the heuristic lived in the
-// caller, not the contract.
-//
 // ClipReference.Type is authoritative; the resolver NEVER
 // auto-classifies from Value. Per-type lookups are explicit and
 // exhaustive (each ReferenceType has exactly one resolver
 // dispatch arm; missing arm → ResolveReasonInvalidType).
 //
-// The resolver NEVER auto-ingests missing assets (per the user's
-// TODO #1 + TODO #6 split: TODO #6 owns the ingest endpoint, which
-// delegates to the channel_monitor canonical use case). Missing
-// references are reported as UnresolvedReference so the caller can
-// surface them diagnostically (TODO #7 wraps this in the typed
-// stage-error shape).
+// The resolver NEVER auto-ingests missing assets (the ingest
+// endpoint lives at RegisterFromYouTube + MediaingestHandler).
+// Missing references are reported as UnresolvedReference so the
+// caller can surface them diagnostically.
 //
 // Layering note: per AGENTS.md Pattern 0 the port is declared
 // structurally here. The adapter that wraps
@@ -98,11 +88,9 @@ func (r ReferenceType) Valid() bool {
 // Type is authoritative — the resolver never inspects Value to
 // derive a Type (no shape heuristics, no length-window guessing).
 // Callers that pass raw strings MUST classify first and set the
-// Type explicitly; the canonical mistake prior to TODO #1 was
-// Accepting Type=ignore and probing multiple DB columns
-// sequentially, which silently mixed layers (YouTube segments
-// resolving to media_assets.id == "swpjc1vNLZQ" check would
-// always miss).
+// Type explicitly; the original design accepted Type=ignore and
+// probed multiple DB columns sequentially, which silently mixed
+// layers.
 type ClipReference struct {
 	Type  ReferenceType `json:"type"`
 	Value string        `json:"value"`
@@ -125,16 +113,16 @@ type ClipEvidence struct {
 }
 
 // UnresolvedReference pairs the input ClipReference with a stable
-// Reason token. The caller's diagnostics code (TODO #7 typed error
-// shape) keys on Reason, not on message text.
+// Reason token. The caller's diagnostics code keys on Reason, not
+// on message text.
 type UnresolvedReference struct {
 	Reference ClipReference `json:"reference"`
 	Reason    string        `json:"reason"`
 }
 
 // Reasons for UnresolvedReference.Reason. Stable wire tokens; do
-// not rename without coordinating with TODO #7 (error shape) and
-// the admin tools that key on these strings.
+// not rename without coordinating with the admin tools that key on
+// these strings.
 const (
 	// ResolveReasonEmptyValue: caller passed Type set but Value="".
 	ResolveReasonEmptyValue = "empty_value"
@@ -145,7 +133,7 @@ const (
 	// ResolveReasonNotFound: lookup succeeded but no media_assets
 	// row matched the canonical column for this ReferenceType.
 	// Diagnostic action: caller surfaces unresolved_references to
-	// operator; ingest path is separate (TODO #6 endpoint).
+	// operator; ingest path is separate (RegisterFromYouTube).
 	ResolveReasonNotFound = "not_found"
 
 	// ResolveReasonDBError: lookup failed with a non-ErrNoRows
@@ -168,7 +156,7 @@ const (
 //
 // The resolver sets these fields but does NOT error on partial
 // resolution — only top-level DB errors fail the call. This lets
-// the caller (TODO #7) build a typed stage error that distinguishes
+// the caller build a typed stage error that distinguishes
 // "all unresolved" from "partial resolution" from "db error".
 type ClipResolutionResult struct {
 	Resolved   []ClipEvidence        `json:"resolved"`
@@ -179,8 +167,7 @@ type ClipResolutionResult struct {
 // Production wiring is NewClipResolver(repo, log) in
 // internal/application/scripts/usecase/clip_resolver.go, which
 // satisfies the port via the typed repo methods on
-// *assets.ClipsRepository (this PR adds the typed methods — see
-// TODO #1 in architecture/current.yaml). Tests can wire a stub via
+// *assets.ClipsRepository. Tests can wire a stub via
 // the narrow clipResolverPortReadOnly interface defined next to
 // NewClipResolver.
 type ClipResolver interface {
@@ -189,7 +176,7 @@ type ClipResolver interface {
 
 // externalProviderSeparator is the canonical compound separator for
 // RefTypeExternalProviderID values. Single source of truth — the
-// admin ingest endpoint (TODO #6) emits the same separator. Exported
+// admin ingest endpoint emits the same separator. Exported
 // so callers constructing compound values do not magic-string the
 // delimiter in unrelated packages.
 const externalProviderSeparator = "::"

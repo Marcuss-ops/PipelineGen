@@ -1,16 +1,15 @@
 // Package scripts — clip_resolver_test.go is the unit-test seam for
 // the new typed ClipResolver adapter.
 //
-// TODO #1 (June 2026): the adapter uses the narrow
-// clipResolverPortReadOnly interface so tests don't need a real DB.
-// These tests cover the explicit dispatch table:
+// These tests cover the explicit dispatch table using the narrow
+// clipResolverPortReadOnly interface (no real DB needed):
 //
 //	RefTypeMediaAssetID        → ResolveByMediaAssetID
 //	RefTypeYouTubeVideoID      → ResolveByYouTubeVideoID (fan-out)
 //	RefTypeDriveFileID         → ResolveByDriveFileID    (fan-out)
 //	RefTypeExternalProviderID  → ResolveByExternalProviderID
 //
-// Plus edge cases the caller (TODO #7) relies on:
+// Plus edge cases the caller relies on:
 //   - empty value → empty_value reason
 //   - invalid type → invalid_type reason
 //   - not found → not_found reason
@@ -199,7 +198,7 @@ func TestResolve_HappyPath_ExternalProviderID(t *testing.T) {
 	}
 }
 
-// ── Edge cases — the caller (TODO #7) keys on these reasons ────────────
+// ── Edge cases — the caller keys on these reasons ──────────────
 
 func TestResolve_EmptyValue_ReportsEmptyValueReason(t *testing.T) {
 	svc := NewClipResolverForTest(newFakeRepo(), zap.NewNop())

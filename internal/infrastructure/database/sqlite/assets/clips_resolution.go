@@ -20,12 +20,12 @@ import (
 // in clips_index_state.go. Tx-scoped mutations live in
 // clips_transactions.go.
 
-// ── Typed resolver methods (TODO #1, June 2026) ──────────────────────────
+// ── Typed resolver methods ──────────────────────────────────────────────
 //
 // ResolveByMediaAssetID / ResolveByYouTubeVideoID / ResolveByDriveFileID
 // / ResolveByExternalProviderID are the canonical typed DB lookups
 // consumed by internal/application/scripts/usecase/clip_resolver.go
-// (the new ports.ClipResolver adapter). They replace the legacy
+// (the ports.ClipResolver adapter). They replace the legacy
 // clip_source_builder heuristic "try GetClip, then fall back to
 // GetByDriveFileID" with EXPLICIT per-ReferenceType dispatch:
 //
@@ -66,8 +66,8 @@ func (r *ClipsRepository) ResolveByMediaAssetID(ctx context.Context, id string) 
 // media_assets rows whose id starts with `yt_<videoID>_`. Convention:
 // each YouTube ingest segment is persisted with id =
 // `yt_<videoID>_<start>_<n>` so a single video id fans out to N
-// rows. The resolver returns the full fan-out — the caller (TODO #3
-// backend-built skeleton) decides which subset to bind.
+// rows. The resolver returns the full fan-out — the caller decides
+// which subset to bind.
 //
 // Empty videoID is a noop (returns nil, nil); LIKE wildcards in the
 // input are intentionally NOT escaped at this layer — YouTube video
