@@ -75,43 +75,39 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 	return strings.Join(lines, "\n")
 }
 
-// v1OutputInstruction is the prompt suffix appended unconditionally
+// plainTextInstruction is the prompt suffix appended unconditionally
 // for the canonical script-generation pipeline.
 //
-// Two layers of enforcement cooperate to keep the model output on the
-// ModelScriptOutputV1 contract:
+// LLM-PLAIN-TEXT-CONTRACT wave (PR-1, July 2026): the model MUST
+// emit ONLY narrative prose. Every structured field (schema_version,
+// text envelope, specscene, scene IDs, scene indexes, kind labels,
+// bindings) is owned by downstream Go code (SceneSynthesizer +
+// scene binder + postprocessor registry — see
+// internal/application/scripts/scene/synthesizer.go and
+// internal/application/scripts/adapters/processor_*.go).
 //
-//  1. Native Ollama JSON-mode (generate.go::GenerateScript sets
-//     `options["format"] = "json"` when OutputMode == script_v1).
-//     Ollama forces the model response to be syntactically valid
-//     JSON — but a JSON object is not a V1 script; the schema
-//     (schema_version, text, specscene.scenes[…].bindings) is still
-//     the model's responsibility.
+// The model is FORBIDDEN from producing:
+//   - JSON objects or arrays
+//   - schema_version / specscene keys
+//   - scene IDs ("scene-N") or scene indexes
+//   - kind labels (narration|clip|image|mixed)
+//   - bindings objects (clip_id, drive_link, image_id, etc.)
+//   - markdown fences, code blocks, or any structured envelope
 //
-//  2. The v1OutputInstruction suffix below tells the model which
-//     keys the V1 contract expects, in what shape, and forbids
-//     markdown fences and any prose around the JSON object. The
-//     decoder (model_output_decoder.go) tolerates code fences for
-//     legacy cache rows, but the suffix biases the model toward
-//     emitting clean canonical JSON so the decoder's path is the
-//     happy path.
-//
-// Removing this suffix in favour of "json format only" is not safe:
-// native json mode does not enforce schema-shaped JSON.
-const v1OutputInstruction = `
+// godlike/06 SSOT (one canonical owner per fact): the narrative-prose
+// contract lives ONLY here (engine_prompt.go). The downstream
+// structured envelope (ModelScriptOutputV1) is composed exclusively
+// by SceneSynthesizer.FromProse + SceneAssetBinder + postprocessor
+// pipeline — the model output is read as raw text via
+// jsonextract.ParsePlainTextFresh.
+const plainTextInstruction = `
 
 [OUTPUT_FORMAT]
-Respond ONLY with a single JSON object matching the canonical V1 shape:
+Write ONLY the complete narrative script text. Follow these rules:
 
-  {
-    "schema_version": 1,
-    "text": "<complete script prose>",
-    "specscene": {
-      "version": 1,
-      "scenes": [
-        {"id": "scene-N", "index": N, "text": "<scene narration>", "kind": "narration|clip|image|mixed", "bindings": {}}
-      ]
-    }
-  }
-
-Do not include any text outside the JSON object. Do not wrap the JSON in markdown fences. Top-level keys are required: schema_version, text, specscene. SpecScene.scenes requires id (non-empty), index (sequential from 0), text (non-empty), kind (one of narration|clip|image|mixed), bindings (object).`
+1. DO NOT output JSON, JSON objects, or JSON arrays.
+2. DO NOT output markdown, code fences, or block formatting.
+3. DO NOT output scene IDs, scene indexes, kind labels, or bindings.
+4. DO NOT output schema_version, specscene, or any structured envelope.
+5. DO NOT output metadata fields, clip_ids, drive links, or image URLs.
+6. Write ONLY cohesive narrative prose. The script text itself. Nothing else.`

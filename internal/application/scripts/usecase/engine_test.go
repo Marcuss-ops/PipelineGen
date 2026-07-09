@@ -589,15 +589,15 @@ func TestEngineGenerate_AlwaysAppendsVSuffix(t *testing.T) {
 			p.Title)
 		assert.Contains(t, captured.Prompt, "[OUTPUT_FORMAT]",
 			"V1 output instruction must be appended for plan %q (canonical engine format marker)", p.Title)
-		// LLM-PLAIN-TEXT-CONTRACT wave — PR-1 replaced the historical
-		// "schema_version" schema-shape instruction with the canonical
-		// "NO JSON" prose-only marker. The downstream pipeline
+		// LLM-PLAIN-TEXT-CONTRACT wave — PR-1 flipped the output instruction
+		// from "Respond ONLY with a single JSON object" to the canonical
+		// "DO NOT output JSON" prose-only contract. The downstream pipeline
 		// (SceneSynthesizer + SceneAssetBinder + postprocessors)
 		// owns all structured fields; the LLM only writes prose.
-		assert.Contains(t, captured.Prompt, "NO JSON",
-			"V1 output instruction must forbid JSON output for plan %q (PR-1, LLM-PLAIN-TEXT-CONTRACT)", p.Title)
-		assert.NotContains(t, captured.Prompt, "schema_version",
-			"V1 output instruction must NOT ask the LLM for the historical V1 JSON schema (PR-1, LLM-PLAIN-TEXT-CONTRACT) for plan %q", p.Title)
+		assert.Contains(t, captured.Prompt, "DO NOT output JSON",
+			"plain-text instruction must forbid JSON output for plan %q (PR-1, LLM-PLAIN-TEXT-CONTRACT)", p.Title)
+		assert.NotContains(t, captured.Prompt, "Respond ONLY with a single JSON object",
+			"plain-text instruction must NOT ask the LLM for the historical V1 JSON schema (PR-1, LLM-PLAIN-TEXT-CONTRACT) for plan %q", p.Title)
 	}
 }
 

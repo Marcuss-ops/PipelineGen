@@ -154,7 +154,7 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		}
 		builtPrompt += clipRules
 	}
-	builtPrompt += v1OutputInstruction
+	builtPrompt += plainTextInstruction
 
 	ollamaReq := ollamatypes.TextGenerationRequest{
 		Language:    language,

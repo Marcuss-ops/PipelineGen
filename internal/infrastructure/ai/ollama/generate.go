@@ -272,7 +272,7 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 //     return req.Format verbatim (passthrough). Test rigs and future
 //     non-script callers opt out of the auto-fill by pre-setting Format.
 //
-// Native json-mode does NOT enforce a schema — the v1OutputInstruction
+// Native json-mode does NOT enforce a schema — the plainTextInstruction
 // prompt suffix does that (see engine_prompt.go). The wire-format
 // trigger here is the FIRST half of the V1 contract defence.
 //

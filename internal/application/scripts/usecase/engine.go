@@ -45,7 +45,7 @@
 //	engine.go           — struct + types + constructor (this file)
 //	engine_generate.go  — Generate method (the canonical entry point)
 //	engine_prompt.go    — prompt helpers (extractPlanClipIDs,
-//	                       buildClipGroundingInstructions, v1OutputInstruction)
+//	                       buildClipGroundingInstructions, plainTextInstruction)
 package usecase
 
 import (
