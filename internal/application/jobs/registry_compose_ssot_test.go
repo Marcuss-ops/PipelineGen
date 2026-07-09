@@ -102,7 +102,7 @@ func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 		{"TypeMediaGenerate", TypeMediaGenerate},
 		{"TypeMediaReindex", TypeMediaReindex},
 		{"TypeMediaEnrich", TypeMediaEnrich},
-		{"TypeBulUploadYouTubeClips", TypeBulUploadYouTubeClips}, // HC-1 anchor
+		{"TypeBulkUploadYouTubeClips", TypeBulkUploadYouTubeClips}, // HC-1 anchor
 
 		// ── Video ──
 		{"TypeVideoGenerate", TypeVideoGenerate},
@@ -172,7 +172,7 @@ func TestCompose_AllCanonicalTypesAreRegistered(t *testing.T) {
 // SSOT direction. The HC-1 lookup chain has THREE independent
 // dispatch surfaces:
 //
-//  1. REGISTRY DIRECT: reg.JobTimeout(TypeBulUploadYouTubeClips)
+//  1. REGISTRY DIRECT: reg.JobTimeout(TypeBulkUploadYouTubeClips)
 //     — the canonical method on Registry. Used by JobsHandler
 //     directly via Worker.WithRegistry.
 //  2. INTERFACE: typed-port TimeoutResolver.JobTimeout(...) —
@@ -199,31 +199,31 @@ func TestCompose_BulkUploadTimeoutResolvesThroughAllSurfaces(t *testing.T) {
 	const wantTimeout = 120 * time.Minute
 
 	// Surface 1: Registry.JobTimeout (direct method).
-	if got := reg.JobTimeout(TypeBulUploadYouTubeClips); got != wantTimeout {
+	if got := reg.JobTimeout(TypeBulkUploadYouTubeClips); got != wantTimeout {
 		t.Fatalf("Registry.JobTimeout(%q) = %v; want canonical %v (width-SSOT, HC-1 SSOT pin)",
-			TypeBulUploadYouTubeClips, got, wantTimeout)
+			TypeBulkUploadYouTubeClips, got, wantTimeout)
 	}
 
 	// Surface 2: TimeoutResolver interface dispatch.
 	// This is the surface internal/app/clips_adapters_cfg.go consumes
 	// and forwards to the bulk_upload_worker's ClipConfigPort.JobTimeout.
 	var resolver TimeoutResolver = reg
-	if got := resolver.JobTimeout(TypeBulUploadYouTubeClips); got != wantTimeout {
+	if got := resolver.JobTimeout(TypeBulkUploadYouTubeClips); got != wantTimeout {
 		t.Fatalf("TimeoutResolver.JobTimeout(%q) via interface = %v; want %v (interface dispatch MUST agree with direct method — composability invariant of HC-1)",
-			TypeBulUploadYouTubeClips, got, wantTimeout)
+			TypeBulkUploadYouTubeClips, got, wantTimeout)
 	}
 
 	// Surface 3: Compose() snapshot (the typed-port TimeoutMap held
 	// by each Worker internally as w.timeouts).
 	snap := reg.Compose()
-	got, ok := snap[TypeBulUploadYouTubeClips]
+	got, ok := snap[TypeBulkUploadYouTubeClips]
 	if !ok {
 		t.Fatalf("Compose() snapshot missing entry for %q; Worker.timeouts index lookup would silently fall through to canonical 10m default",
-			TypeBulUploadYouTubeClips)
+			TypeBulkUploadYouTubeClips)
 	}
 	if got != wantTimeout {
 		t.Fatalf("Compose()[%q] = %v; want %v (snapshot lookup MUST agree with direct method — Worker.jobTimeoutFor uses this snapshot)",
-			TypeBulUploadYouTubeClips, got, wantTimeout)
+			TypeBulkUploadYouTubeClips, got, wantTimeout)
 	}
 
 	// Negative control: an unregistered type must NOT collide with

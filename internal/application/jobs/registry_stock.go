@@ -28,9 +28,9 @@ func registerStockEntries(r *Registry) {
 	r.Register(JobPolicy{Type: TypeMediaReindex, Description: "Reindex media assets", Timeout: 2 * time.Minute, DefaultMaxRetries: 1})
 	r.Register(JobPolicy{Type: TypeMediaEnrich, Description: "Single-asset semantic enrichment + Qdrant-style indexing", Timeout: 3 * time.Minute, DefaultMaxRetries: 2})
 	// PR-COMPLETE-WORKER-BROAD-FIX Path D (July 2026): ProducesArtifacts REMOVED.
-	// TypeBulUploadYouTubeClips is an orphaned registry entry — no production
+	// TypeBulkUploadYouTubeClips is an orphaned registry entry — no production
 	// handler is statically registered.
-	r.Register(JobPolicy{Type: TypeBulUploadYouTubeClips, Description: "Bulk upload YouTube clips", Timeout: 120 * time.Minute, DefaultMaxRetries: 1})
+	r.Register(JobPolicy{Type: TypeBulkUploadYouTubeClips, Description: "Bulk upload YouTube clips", Timeout: 120 * time.Minute, DefaultMaxRetries: 1})
 
 	// PR-011A (July 2026): post-publish RLM/LLM enrichment pass.
 	//

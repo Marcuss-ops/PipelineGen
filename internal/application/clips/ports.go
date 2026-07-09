@@ -232,7 +232,7 @@ type ClipFolderMemoryPort interface{}
 // per-job-type execution timeouts. Consumed by the bulk_upload worker
 // (`internal/application/clips/bulk_upload_worker.go::HandleJob` —
 // was `context.WithTimeout(ctx, 2*time.Hour)` pre-HC-1, now
-// `w.cfg.JobTimeout(jobs.TypeBulUploadYouTubeClips)`). The concrete
+// `w.cfg.JobTimeout(jobs.TypeBulkUploadYouTubeClips)`). The concrete
 // adapter at internal/app/clips_adapters_cfg.go delegates to
 // jobs.TimeoutResolver (canonical impl: *jobs.Registry via
 // jobs.Compose()).
