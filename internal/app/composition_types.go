@@ -132,19 +132,33 @@ type SearchBundle struct {
 	ProviderRegistry  *providers.Registry
 }
 
+// ProcessQdrantBundle groups all Qdrant-related adapter fields.
+// Embedded anonymously in ProcessBundle so consumer code
+// (process.QdrantClient, process.VectorSvc, etc.) continues to
+// compile via Go's field promotion — zero refactoring in callers.
+//
+// Extracted from ProcessBundle per CODE-QUALITY-AUDIT-2026-07-05 P0-1
+// embedded-struct-promotion topology.
+type ProcessQdrantBundle struct {
+	CollectionManager *collections.CollectionManager
+	QdrantDeleter     jobsoutbox.VectorPointDeleter
+	QdrantRuntime     *qdrant.QdrantRuntime
+	VectorSvc         assetsearch.VectorStorePort
+	QdrantClient      *qdranttransport.Client
+	QdrantHealthProbe *disasterrecovery.HealthProbe
+	LocatorCleaner    *qdrantmaintenance.LocatorCleaner
+	QdrantSearcher    *qdrantsearch.Searcher
+}
+
 // ProcessBundle holds the heavy media-processing adapters.
+//
+// ProcessQdrantBundle is embedded anonymously so process.QdrantClient etc.
+// continue to resolve via Go field promotion (zero refactoring in callers).
 type ProcessBundle struct {
+	ProcessQdrantBundle
 	MediaProcessor     asset.Processor
 	ClipIndexerService *clipindexer.Service
 	VLMClient          *vlm.Client
-	CollectionManager  *collections.CollectionManager
-	QdrantDeleter      jobsoutbox.VectorPointDeleter
-	QdrantRuntime      *qdrant.QdrantRuntime
-	VectorSvc          assetsearch.VectorStorePort
-	QdrantClient       *qdranttransport.Client
-	QdrantHealthProbe  *disasterrecovery.HealthProbe
-	LocatorCleaner     *qdrantmaintenance.LocatorCleaner
-	QdrantSearcher     *qdrantsearch.Searcher
 }
 
 // QdrantDeps is the tiny pre-phase bundle for BuildOutboxBundle.
