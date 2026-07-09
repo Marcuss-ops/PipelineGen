@@ -163,11 +163,11 @@ type AssetMutationDispatcher interface {
 	EnqueueAndIndex(ctx context.Context, a *asset.Asset, contentHash string) error
 
 	// EnqueueAndRestore atomically STAMPS the row's index_state to
-	// StateIndexPending (visibility marker operators observe while
-	// the restore handler is mid-process) AND emits an outbox event
-	// of type 'asset.index.restore_requested' (v1 envelope). The
-	// restore handler (deferred to task 3 of 5) completes the picture
-	// with Qdrant re-upsert + lifecycle_state flip to 'ready'.
+	// StateDiscovered (initial sentinel; outbox handler re-indexes
+	// from scratch) AND emits an outbox event of type
+	// 'asset.index.restore_requested' (v1 envelope). The restore
+	// handler completes the picture with Qdrant re-upsert +
+	// lifecycle_state flip to 'ready'.
 	//
 	// Empty assetID is rejected before any tx opens.
 	EnqueueAndRestore(ctx context.Context, assetID string) error
