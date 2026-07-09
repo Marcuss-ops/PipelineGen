@@ -91,7 +91,7 @@ func (u *StockUseCase) Submit(ctx context.Context, cmd *StockCommand, async bool
 		if u.jobsSvc == nil {
 			return "", ErrJobsServiceRequired
 		}
-		enqueueCtx, cancel := background.DetachWithTimeout(ctx, "stock-submit-enqueue", 15*time.Second)
+		enqueueCtx, cancel := background.DetachWithTimeout(ctx, "stock-submit-enqueue", 30*time.Second)
 		defer cancel()
 
 		job, err := u.jobsSvc.Enqueue(enqueueCtx, &jobservice.EnqueueRequest{
