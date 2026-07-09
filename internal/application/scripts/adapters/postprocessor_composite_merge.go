@@ -1,6 +1,8 @@
 package adapters
 
 import (
+	"strings"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -133,5 +135,38 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	// to use it.
 	if currentInput != nil {
 		dst.FinalSpecScene = currentInput.SpecScene
+	}
+	// PR-TRANSLATE-SCRIPT-SPEC PR-6 (2026-07-09): propagate the
+	// canonical translated-text + translated-SpecScene fields
+	// from the per-stage result into the aggregate pipeline
+	// result. Last-writer-wins semantics, mirroring the
+	// SynthesizedScenes pattern above: there is only ever one
+	// translator running per Run, so a simple overwrite keeps
+	// the invariant simple. godlike/07 NO-FAKE-AVAILABILITY: the
+	// empty-string / nil-Scenes guards ensure pre-translation
+	// pipeline runs (which may carry the same TranslateTo=""'')
+	// don't accidentally overwrite a previously-set translated
+	// surface.
+	// PR-TRANSLATE-SCRIPT-SPEC PR-5/PR-6 (2026-07-09) WARNINGS
+	// PROPAGATION FIX: the TranslationProcessor emits soft warnings
+	// via the warnings []string slot on TranslateScriptSpec (the
+	// typed-warning contract is "warnings are signals, errors are
+	// stops"; the ErrTranslationEqualToSource sentinel surfaces
+	// here). Pre-fix: src.Warnings never bubbled to dst.Warnings so
+	// the aggregate pipeline result lost the per-stage observation
+	// surface (operator dashboards could not count translation
+	// soft-fails at the API response level). Post-fix: append
+	// (mirrors the canonical Voiceovers / SceneImages /
+	// VideoMetadata direct-append pattern; per-Run the warning
+	// surface is bounded — there is only ever one translator per
+	// pipeline, so duplicate-aggregation is not a real concern).
+	if len(src.Warnings) > 0 {
+		dst.Warnings = append(dst.Warnings, src.Warnings...)
+	}
+	if strings.TrimSpace(src.TranslatedText) != "" {
+		dst.TranslatedText = src.TranslatedText
+	}
+	if len(src.TranslatedSpecScene.Scenes) > 0 {
+		dst.TranslatedSpecScene = src.TranslatedSpecScene
 	}
 }

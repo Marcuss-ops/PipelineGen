@@ -276,9 +276,28 @@ func (p *TranslationProcessor) Process(
 	// translated surface is non-nil (defensive: TranslateScriptSpec
 	// is documented to never return (nil, _, nil) but the post-
 	// processor surface still guards the edge case).
+	//
+	// PR-TRANSLATE-SCRIPT-SPEC PR-6 (2026-07-09) MIX design: ALSO
+	// surface the translated bundle into PostProcessResult.TranslatedText
+	// + TranslatedSpecScene so cross-Run observability + the
+	// buildGenerationResult preference path can see the translated
+	// surface WITHOUT relying on the in-place ProcessInput mutation
+	// (which only affects downstream processors in the same Run).
+	// Without these explicit fields, IsEmpty() would flag the
+	// postprocessor "returned empty output" even when substantial
+	// LLM work happened (false-positive surfaced by the pre-PR-5
+	// audit). omitempty ensures callers that did not opt into
+	// translation see a wire-shape-stable result.
+	var postTranslatedText string
+	var postTranslatedSpecScene scriptpkg.SpecSceneOutput
 	if translated != nil {
 		input.SpecScene = translated.SpecScene
 		input.Text = translated.Text
+		postTranslatedText = translated.Text
+		postTranslatedSpecScene = scriptpkg.SpecSceneOutput{
+			Version: translated.SchemaVersion,
+			Scenes:  translated.SpecScene.Scenes,
+		}
 	}
 
 	// Per-warning emission: each warning → bounded-reason metric.
@@ -290,7 +309,9 @@ func (p *TranslationProcessor) Process(
 	}
 
 	return &PostProcessResult{
-		Changed:  true,
-		Warnings: tWarnings,
+		Changed:             true,
+		Warnings:            tWarnings,
+		TranslatedText:      postTranslatedText,
+		TranslatedSpecScene: postTranslatedSpecScene,
 	}, nil
 }

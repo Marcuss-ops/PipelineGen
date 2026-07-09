@@ -81,6 +81,10 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		OutputFmt:           item.Output.OutputFmt,
 		SaveToDB:            item.Output.SaveToDB,
 		Languages:           append([]string(nil), item.Output.Languages...),
+		// PR-TRANSLATE-SCRIPT-SPEC PR-5 (2026-07-09): thread
+		// OutputSpec.TranslateTo into the resolved plan so the
+		// TranslationProcessor reads a single source (the plan).
+		TranslateTo: item.Output.TranslateTo,
 	}
 
 	// Build postprocessor list from output flags.
@@ -173,6 +177,23 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	}
 	if out.GenerateMetadata.AsBool() {
 		pp = append(pp, adapters.ProcessorMetadata)
+	}
+	// PR-TRANSLATE-SCRIPT-SPEC PR-5 (2026-07-09): when caller sets
+	// TranslateTo != "", append the TranslationProcessor between
+	// metadata and clip_bindings (per the EXECUTION order documented
+	// in processor_names.go goddoc) so the translated SpecScene is
+	// visible to the downstream clip binder. Empty string is the
+	// canonical "no translation requested" sentinel — the processor
+	// is NOT appended (BestEffort + backwards-compat with the
+	// pre-PR-5 silent-no-op behaviour). godlike/07 NO-FAKE-AVAILABILITY:
+	// considering `out.TranslateTo != ""` is the SOLE trigger — the
+	// legacy `len(out.Languages) > 0` fallback is intentionally NOT
+	// consulted because callers that explicitly set Languages[]
+	// without TranslateTo would silently incur an LLM cost per the
+	// pre-PR-5 audit (false-positive "translation expected" derived
+	// from stale caller intent).
+	if strings.TrimSpace(out.TranslateTo) != "" {
+		pp = append(pp, adapters.ProcessorTranslation)
 	}
 	// Scene-normalisation stages: MUST run before artifact producers
 	// (voiceover, images, document) so prose-fallback synthesised

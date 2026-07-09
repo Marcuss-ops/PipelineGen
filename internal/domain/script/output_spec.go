@@ -273,6 +273,34 @@ type OutputSpec struct {
 
 	// ── Translations ────────────────────────────────────────────────
 	Languages []string `json:"languages,omitempty"`
+
+	// PR-TRANSLATE-SCRIPT-SPEC PR-5+PR-6 (2026-07-09): the canonical
+	// opt-in trigger for the TranslationProcessor. When non-empty,
+	// buildPostprocessorList appends ProcessorTranslation between
+	// metadata and clip_bindings in the EXECUTION order so the
+	// translated SpecScene is visible to the downstream clip binder
+	// (localised Drive links + clip titles). Empty string is the
+	// "no translation requested" sentinel — caller-omission is
+	// distinguishable from caller-explicit-empty because callers
+	// that want "explicit no translation" pass TranslateTo="". The
+	// resolution chain (caller > preset > config > safety) applies
+	// unchanged from PR-3.
+	//
+	// godlike/07 NO-FAKE-AVAILABILITY: a caller that supplies
+	// TranslateTo="en" (the script's primary language) intentionally
+	// bypasses translation (translator would no-op into ErrTranslationEqualToSource)
+	// — this is the canonical explicit opt-in for "I already wrote in
+	// the target language, don't waste LLM tokens". The processor
+	// surfaces the no-op soft-warning + the bounded-reason metric so
+	// operator dashboards can distinguish "translator idle" from
+	// "translator absent".
+	//
+	// godlike/06 SSOT (one-canonical-owner-per-fact): TranslateTo lives
+	// ONLY here on OutputSpec. BuildPlan copies it onto the
+	// canonical ResolvedGenerationPlan so the postprocessor reads
+	// a single source (the plan); no duplicate expression in
+	// ResolvedGenerationPlan or in processor_translation.go.
+	TranslateTo string `json:"translate_to,omitempty"`
 }
 
 // HasAnyPostprocessor returns true when at least one postprocessor
