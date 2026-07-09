@@ -171,6 +171,19 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// seam so the next agent that drifts surfaces as a
 		// CI build failure, not an operator trap.
 		{"percheck_script_docs_route", scan.ScanScriptDocsRoute},
+		// Check PR-AUDIT-8 (July 2026, P2): forward-prevention gate
+		// that bans `spec_aliases.go` files outside the two
+		// approved territories (internal/application/images/
+		// generated/ + internal/application/images/retrieved/).
+		// spec_aliases.go is the user-spec surface that exposes
+		// type aliases + sentinel errors + compile-time assertions.
+		// Per godlike/06 SSOT, only the two canonical directories
+		// may host this file; a copy-paste into a new module
+		// creates a silent drift (godlike/07 NO-FAKE-AVAILABILITY
+		// regression). The gate catches new spec_aliases.go at the
+		// filename level (no content-based matching — simple
+		// basename check).
+		{"percheck_spec_aliases", scan.ScanSpecAliasesTerritory},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
 			// ScanPackages and ScanCommandBinaries share a
 			// fileLines map populated by the single tree walk in
