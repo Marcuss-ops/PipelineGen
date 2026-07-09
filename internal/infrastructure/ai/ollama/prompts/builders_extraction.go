@@ -19,17 +19,34 @@ func BuildEntityExtractionPrompt(text string, entityCount int) string {
 func buildEntityExtractionFallback(text string, entityCount int) string {
 	return fmt.Sprintf(`You are extracting structured metadata from a documentary script fragment for a visual production pipeline.
 
-Return ONLY valid JSON with exactly this shape:
-{
-  "frasi_importanti": ["..."],
-  "entity_senza_testo": {"VisualSubject": "Description of search term"},
-  "nomi_speciali": ["..."],
-  "parole_importanti": ["..."],
-  "artlist_phrases": ["visual phrase 1", "visual phrase 2"]
-}
+DO NOT output JSON, JSON objects, or JSON arrays.
+DO NOT output markdown fences, code blocks, or backticks.
+DO NOT output metadata labels, scene IDs, indexes, or bindings.
+
+Instead, output EXACTLY five labeled sections using "## SectionName" headers.
+Each section MUST have bullet-point items starting with "- ".
+
+The required structure:
+
+## frasi_importanti
+- [first evocative sentence verbatim from the text]
+- [second evocative sentence verbatim from the text]
+
+## entity_senza_testo
+- VisualSubject1: Description of search term 1
+- VisualSubject2: Description of search term 2
+
+## nomi_speciali
+- [specific named entity]
+
+## parole_importanti
+- [key technical term or specific ingredient]
+
+## artlist_phrases
+- [short visual concept phrase]
 
 RULES FOR VISUAL ENTITIES:
-1. "nomi_speciali": Extract a MAXIMUM of %d specific names of people, places, organizations, works, or clearly identifiable unique things (e.g., "Vesuvio", "San Marzano", "Pompei").
+1. "nomi_speciali": Extract a MAXIMUM of %d specific names of people, places, organizations, works, or clearly identifiable unique things.
    - STRICT LIMIT: Do NOT extract more than %d names under any circumstance. Only take the most important ones.
    - ONLY include real named entities, not descriptions, scene labels, titles, dialogue, sentence fragments, or discourse markers.
    - AVOID abstract or generic nouns, common nouns, adjectives, verbs, and category labels.
@@ -38,7 +55,7 @@ RULES FOR VISUAL ENTITIES:
    - Do not include the topic itself unless it is a real named entity that needs a visual reference.
 2. "parole_importanti": Extract a MAXIMUM of %d key technical terms or specific ingredients (e.g., "mozzarella di bufala", "forno a legna").
 3. "frasi_importanti": Extract up to 5 most evocative verbatim sentences or sentence fragments that appear in the TEXT.
-4. "entity_senza_testo": Map identifiable subjects to a short descriptive search query.
+4. "entity_senza_testo": Map identifiable subjects to a short descriptive search query using the format "- Subject: Description of search term".
 5. "artlist_phrases": Extract EXACTLY 3 to 5 SHORT VISUAL CONCEPT PHRASES (2-3 words each) suitable for stock footage search.
 
 CRITICAL — What artlist_phrases ARE:
@@ -74,17 +91,14 @@ BAD examples for the SAME script:
   ❌ "sua posizione" — NOT visual, starts with function word
   ❌ "alimentavano contribuì" — NOT visual, two verbs, nonsense
   ❌ "79 d" — NOT visual, truncated date
-  ❌ "città lasciando" — NOT visual, verb form
 
 STRICT CONSTRAINTS:
 - Output EXACTLY 3 to 5 artlist_phrases. Never more than 5.
 - Each phrase MUST pass ALL 4 self-check questions above.
-- Return ONLY the JSON object.
+- Output ONLY the labeled sections, no JSON, no markdown fences.
 
 TEXT:
-"%s"
-
-JSON:`, entityCount, entityCount, entityCount, text)
+"%s"`, entityCount, entityCount, entityCount, text)
 }
 
 // BuildTimelineAssetRoutingPrompt asks the model to choose the best asset source for a timeline segment.
