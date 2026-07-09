@@ -150,6 +150,20 @@ func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {
 		limit = MaxLimit
 	}
 
+	// T4 fix: when a cursor is present, backends must return MORE
+	// items than the final page size so that after skip-set dedup
+	// removes previously-served items, there are still enough
+	// candidates to fill the page. Without this, backends return
+	// exactly `limit` items — if all of them were on the previous
+	// page, the skip-set removes them all and page 2 is empty.
+	if len(skipSet) > 0 {
+		effectiveBackendLimit := limit + len(skipSet)
+		if effectiveBackendLimit > MaxLimit {
+			effectiveBackendLimit = MaxLimit
+		}
+		q.Limit = effectiveBackendLimit
+	}
+
 	eligible := a.backends.Eligible(q)
 	if len(eligible) == 0 {
 		a.log.Debug("search.Aggregator.Search: no eligible backends",
