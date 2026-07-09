@@ -134,6 +134,20 @@ type LegacyDeprecationPayload struct {
 // `const StatusGoneDeprecated = http.StatusGone`.
 const StatusGoneDeprecated = http.StatusGone
 
+// PR-AUDIT-9 (P2, July 2026): verified the two legacy_generate_*_total
+// Prometheus counters are correctly wired and the retirement deadline
+// of 2026-12-31 is exhaustively documented across this file (godoc,
+// const block, counter Help strings) + the 2 handler bodies
+// (handler_legacy_from_clips.go + handler_legacy_with_images.go) +
+// the test surface (handler_legacy_deprecation_test.go 6 TDD tests +
+// handler_legacy_int_stock_test.go wire-shape assertions). The FREEZE
+// retirement trigger (rate(legacy_generate_*_total[7d]) == 0 for both
+// counters, sustained 7 days, THEN git-rm handlers + consts + counters
+// in a single atomic commit) is the canonical godlike/07 NO-FAKE-
+// AVAILABILITY contract — do NOT remove the counter declarations before
+// the 7-day-zero gate is met; do NOT remove the handlers while either
+// counter is non-zero.
+//
 // RegisterLegacyDeprecationRoutes mounts the 2 retired legacy routes
 // (generate-from-clips + generate-with-images) under r with the canonical
 // 410-Gone contract. PR-script-legacy-contract (Jul 2026, P0 ABSOLUTE):
