@@ -160,12 +160,33 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 		return nil, fmt.Errorf("%w: persistence processor: SaveScript failed: %w", scriptpkg.ErrPostprocessFailed, err)
 	}
 
+	// PR 1 (SCRIPT-DOWNSTREAM-CUTOVER wave): persist the canonical
+	// ManifestV2 envelope after the script row is written. The
+	// manifest is the typed NEW-mode surface for Step 11B
+	// downstream fan-out (replaces the legacy inline voice/image
+	// collection on the script manifest). godlike/07 fail-closed:
+	// a SaveManifestV2 failure aborts the postprocessor (NOT a
+	// Warn+continue per the canonical surface contract — a
+	// silently-dropped manifest would break the Step 11B
+	// dispatcher's fan-out). The typed-error contract is
+	// preserved: callers can errors.Is(err, ports.ErrSaveManifestV2NilManifest)
+	// to surface a typed diagnostic at composition time.
+	manifest := buildManifestV2(plan, input)
+	manifestBytes, marshalErr := json.Marshal(manifest)
+	if marshalErr != nil {
+		return nil, fmt.Errorf("%w: persistence processor: manifest_v2 marshal failed: %w", scriptpkg.ErrPostprocessFailed, marshalErr)
+	}
+	if saveManifestErr := p.repo.SaveManifestV2(ctx, scriptID, manifestBytes); saveManifestErr != nil {
+		return nil, fmt.Errorf("%w: persistence processor: SaveManifestV2 failed: %w", scriptpkg.ErrPostprocessFailed, saveManifestErr)
+	}
+
 	if p.log != nil {
 		p.log.Info("persistence processor: script row inserted",
 			zap.String("idem_key", idemKey),
 			zap.Int64("script_id", scriptID),
 			zap.Int("word_count", input.WordCount),
-			zap.String("cache_status", input.CacheStatus))
+			zap.String("cache_status", input.CacheStatus),
+			zap.Int("manifest_items_count", len(manifest.Items)))
 	}
 
 	return &PostProcessResult{
