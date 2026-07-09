@@ -342,4 +342,3 @@ var ErrRunRepositoryUnavailable = errors.New(
 //	                              as fallback (the prior implicit behaviour).
 //	public_only_for_dev          — ONLY Pixabay + Pexels (no scraper). Useful
 //	                              for dev/testing without a running Node scraper.
-
