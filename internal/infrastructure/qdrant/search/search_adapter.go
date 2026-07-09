@@ -63,7 +63,10 @@ func (a *SearchAdapter) Search(ctx context.Context, req appsearch.VectorSearchRe
 	}
 
 	filter, err := CompileQdrantFilter(
-		appsearch.SearchScope{WorkspaceID: req.WorkspaceID},
+		appsearch.SearchScope{
+			WorkspaceID: req.WorkspaceID,
+			IsSystem:    req.IsSystem,
+		},
 		appsearch.AssetFilter{
 			Source:    req.Source,
 			Category:  req.Category,
@@ -118,7 +121,10 @@ func (a *SearchAdapter) HybridSearch(ctx context.Context, req appsearch.HybridSe
 	}
 
 	filter, err := CompileQdrantFilter(
-		appsearch.SearchScope{WorkspaceID: req.WorkspaceID},
+		appsearch.SearchScope{
+			WorkspaceID: req.WorkspaceID,
+			IsSystem:    req.IsSystem,
+		},
 		appsearch.AssetFilter{
 			Source:    req.Source,
 			Category:  req.Category,
