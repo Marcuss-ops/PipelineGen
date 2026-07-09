@@ -103,6 +103,12 @@ type EntityExtractionRequest struct {
 
 // EntityExtractionResult represents the result of entity extraction
 // for a segment.
+//
+// Source carries the provenance of this result. When the LLM backend
+// succeeds, Source is empty (omitted from JSON). When the heuristic
+// fallback path produced this result, Source is set to
+// "heuristic_fallback" (godlike/07 NO-FAKE-AVAILABILITY — callers
+// can distinguish LLM-extracted entities from regex/tokenizer ones).
 type EntityExtractionResult struct {
 	SegmentIndex     int               `json:"segment_index"`
 	FrasiImportanti  []string          `json:"frasi_importanti"`
@@ -110,6 +116,7 @@ type EntityExtractionResult struct {
 	NomiSpeciali     []string          `json:"nomi_speciali"`
 	ParoleImportanti []string          `json:"parole_importanti"`
 	ArtlistPhrases   []string          `json:"artlist_phrases"`
+	Source           string            `json:"source,omitempty"`
 }
 
 // SegmentEntities represents extracted entities for a single segment.
@@ -122,6 +129,7 @@ type SegmentEntities struct {
 	ParoleImportanti []string            `json:"parole_importanti"`
 	ArtlistPhrases   []string            `json:"artlist_phrases"`
 	ArtlistMatches   map[string][]string `json:"artlist_matches"`
+	Source           string              `json:"source,omitempty"`
 }
 
 // FullEntityAnalysis represents the complete entity analysis for a
