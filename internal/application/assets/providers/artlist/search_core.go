@@ -26,8 +26,11 @@ type SearchService struct {
 	scraperSearcher Searcher
 	pixabaySearcher Searcher
 	pexelsSearcher  Searcher
-	cfg             *config.Config
-	log             *zap.Logger
+	// searchStrategy controls the Pexels/Pixabay fallback chain
+	// (PR-AUDIT-5, July 2026). Wired from the parent Service.
+	searchStrategy ArtlistSearchStrategy
+	cfg            *config.Config
+	log            *zap.Logger
 }
 
 // SetAssetRepo injects the canonical assetRepo.
@@ -54,7 +57,8 @@ func NewSearchService(s *Service, dispatcher Dispatcher) (*SearchService, error)
 	if dispatcher == nil {
 		return nil, ErrAssetMutationDispatcherUnavailable
 	}
-	return &SearchService{service: s, dispatcher: dispatcher}, nil
+	ss := &SearchService{service: s, dispatcher: dispatcher, searchStrategy: s.searchStrategy}
+	return ss, nil
 }
 
 // Search esegue una ricerca di clip nel database Artlist.
@@ -339,36 +343,43 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 // buildSearcherChain constructs the Searcher fallback chain from the service
 // configuration. Infrastructure searchers are injected here so the application
 // layer stays decoupled from concrete implementations.
+//
+// PR-AUDIT-5 (July 2026): the strategy resolver (ResolveSearcherChain) now
+// controls which infra searchers are included. Only the DB searcher is always
+// appended; scraper/pixabay/pexels are gated by the wired SearchStrategy.
 func (ss *SearchService) buildSearcherChain() *SearcherFallbackChain {
 	s := ss.service
 
 	var searchers []Searcher
 
-	// Level 1: DB search (fast, indexed).
+	// Level 1: DB search (fast, indexed) — always included.
 	if s.assetStore != nil {
 		searchers = append(searchers, NewDBSearcher(s.assetStore))
 	}
 
-	// Level 2: Cached scraper (in-memory with background refresh).
-	// The infrastructure scraper.Provider satisfies Searcher directly.
-	// We wrap it with CachedSearcher for L1 in-memory caching.
-	if s.scraperSearcher != nil {
-		ttlHours := 24
-		if s.cfg != nil && s.cfg.External.ArtlistLiveSearchCacheTTLHours > 0 {
-			ttlHours = s.cfg.External.ArtlistLiveSearchCacheTTLHours
+	// Levels 2-4: infrastructure searchers gated by the canonical strategy
+	// resolver (PR-AUDIT-5, godlike/06 SSOT). The resolver translates
+	// the operator-chosen strategy into an ordered []Searcher.
+	strategy := ss.searchStrategy
+	if !strategy.IsValid() {
+		strategy = DefaultArtlistSearchStrategy
+	}
+
+	infraSearchers := ResolveSearcherChain(strategy, s.scraperSearcher, s.pixabaySearcher, s.pexelsSearcher)
+
+	// Wrap scraper with CachedSearcher if present (the resolver already
+	// decided to include it; we just add the caching layer).
+	for _, searcher := range infraSearchers {
+		if searcher == s.scraperSearcher {
+			ttlHours := 24
+			if s.cfg != nil && s.cfg.External.ArtlistLiveSearchCacheTTLHours > 0 {
+				ttlHours = s.cfg.External.ArtlistLiveSearchCacheTTLHours
+			}
+			cached := NewCachedSearcher(s.scraperSearcher, s.liveCache, ttlHours, s.log)
+			searchers = append(searchers, cached)
+		} else {
+			searchers = append(searchers, searcher)
 		}
-		cached := NewCachedSearcher(s.scraperSearcher, s.liveCache, ttlHours, s.log)
-		searchers = append(searchers, cached)
-	}
-
-	// Level 3: Pixabay API (free fallback).
-	if s.pixabaySearcher != nil {
-		searchers = append(searchers, s.pixabaySearcher)
-	}
-
-	// Level 4: Pexels API (free fallback).
-	if s.pexelsSearcher != nil {
-		searchers = append(searchers, s.pexelsSearcher)
 	}
 
 	if len(searchers) == 0 {

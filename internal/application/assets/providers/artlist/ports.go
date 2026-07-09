@@ -323,3 +323,44 @@ type RunRepository interface {
 var ErrRunRepositoryUnavailable = errors.New(
 	"artlist: RunRepository port unavailable at composition — production must wire artlist_runs_repository (godlike/07 no-fake-availability: aggregate stats write is mandatory for /api/artlist/run honesty)",
 )
+
+// ArtlistSearchStrategy is the typed strategy for the Pexels/Pixabay fallback
+// chain (PR-AUDIT-5, July 2026). The strategy controls which searchers are
+// included in the live-search fallback chain at composition time.
+//
+// Never automatic invisible fallback: the strategy is wired from config at
+// boot and the resolver translates it into an ordered []Searcher at chain-
+// construction time. Operators choose the strategy explicitly via
+// ARTLIST_SEARCH_STRATEGY (default: artlist_only for backward-compat safety —
+// the prior implicit fallback chain is now opt-in).
+//
+// Canonical values:
+//
+//	artlist_only               — ONLY the Artlist scraper (no Pixabay/Pexels).
+//	                              The safest default: no external stock sources.
+//	artlist_then_public_fallback — Artlist scraper first, then Pixabay + Pexels
+//	                              as fallback (the prior implicit behaviour).
+//	public_only_for_dev          — ONLY Pixabay + Pexels (no scraper). Useful
+//	                              for dev/testing without a running Node scraper.
+type ArtlistSearchStrategy string
+
+const (
+	StrategyArtlistOnly               ArtlistSearchStrategy = "artlist_only"
+	StrategyArtlistThenPublicFallback ArtlistSearchStrategy = "artlist_then_public_fallback"
+	StrategyPublicOnlyForDev          ArtlistSearchStrategy = "public_only_for_dev"
+)
+
+// IsValid reports whether s is a recognised strategy value.
+func (s ArtlistSearchStrategy) IsValid() bool {
+	switch s {
+	case StrategyArtlistOnly, StrategyArtlistThenPublicFallback, StrategyPublicOnlyForDev:
+		return true
+	default:
+		return false
+	}
+}
+
+// DefaultArtlistSearchStrategy is the fail-closed default when no strategy
+// is configured. artlist_only ensures that no external stock sources (Pixabay/
+// Pexels) are invoked without an explicit operator opt-in.
+const DefaultArtlistSearchStrategy = StrategyArtlistOnly
