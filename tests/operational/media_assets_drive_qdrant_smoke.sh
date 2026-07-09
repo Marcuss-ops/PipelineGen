@@ -174,7 +174,8 @@ poll_to_terminal() {
 verify_media_assets() {
     smoke_log_section "T2: media_assets row — drive_file_id + file_hash + lifecycle_state=ACTIVE"
 
-    # Query media_assets for stock rows created in the last 10 minutes.
+    # Query media_assets for stock rows created by THIS job's test run.
+    # Correlate via the 10-minute window AND the TAG_PREFIX used in this run.
     # The stock pipeline creates rows with source='stock' and populates
     # drive_file_id, file_hash, lifecycle_state via the finalizer.
     local rows
@@ -261,6 +262,8 @@ verify_outbox_events() {
     in_list=$(awk 'BEGIN{ORS=","; q=sprintf("%c",39)} {printf q "%s" q, $0}' "$WORK_DIR/asset_ids.txt" | sed 's/,$//')
 
     local total completed pending dead_letter last_error_count
+    # Correlate to the specific asset IDs from T2's media_assets query
+    # (which is already scoped to this run's 10-minute window).
     local outbox_where="event_type = 'asset.index.requested'
     AND aggregate_id IN (${in_list})
     AND created_at > datetime('now', '-10 minutes')"

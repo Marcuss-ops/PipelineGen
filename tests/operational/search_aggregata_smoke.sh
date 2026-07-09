@@ -50,7 +50,8 @@ printf '  DB_PATH         : %s\n' "$DB"
 
 # ---- Verify PipelineGen server is reachable --------------------------------
 smoke_log_section "Pre-flight: PipelineGen server reachability"
-code=$(smoke_curl GET "/health" 2>/dev/null || echo "000")
+smoke_curl GET "/health" >/dev/null
+code=$(cat "$WORK_DIR/last.code" 2>/dev/null || echo "000")
 if [[ ! "$code" =~ ^2 ]]; then
     printf '%sFAIL: PipelineGen at %s unreachable (HTTP %s, exit 2)%s\n' \
         "$RED" "$SMOKE_API_BASE" "$code" "$RESET" >&2

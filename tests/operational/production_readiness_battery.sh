@@ -42,6 +42,17 @@
 
 set -euo pipefail
 
+# ── Source .env for VELOX_ADMIN_TOKEN if not already in environment ─────
+# The running PipelineGen server reads VELOX_ADMIN_TOKEN from its own env.
+# The battery's child scripts (via common.sh) need the SAME token to
+# authenticate. Source .env from repo root if the token is not already set.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [[ -z "${VELOX_ADMIN_TOKEN:-}" && -f "$REPO_ROOT/.env" ]]; then
+    # shellcheck disable=SC1091
+    set -a; source "$REPO_ROOT/.env"; set +a
+    export VELOX_ADMIN_TOKEN
+fi
+
 # ── Constants (godlike/06 SSOT) ─────────────────────────────────────────
 PROBE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CO_AUTHOR="PipelineGen Agent <agent@pipelinegen.local>"
@@ -305,8 +316,8 @@ else
                     ;;
                 ZONE-3)
                     printf '  %s FAIL → see media_assets_drive_qdrant_smoke.sh diagnostics\n' "$tag" >&2
-                    echo "    Possible: voiceover pipeline / Drive upload / Qdrant index" >&2
-                    echo "    PR mapping: PR-VOICEOVER-PIPELINE-DEBUG / PR-STOCK-OUTBOX-QDRANT-INDEX" >&2
+                    echo "    Possible: stock pipeline stuck in RETRY_WAIT / Drive upload / Qdrant index" >&2
+                    echo "    PR mapping: PR-STOCK-FINALIZER-COMPLETE / PR-STOCK-OUTBOX-QDRANT-INDEX" >&2
                     ;;
                 ZONE-4)
                     printf '  %s FAIL → see qdrant_indexing_smoke.sh diagnostics\n' "$tag" >&2
