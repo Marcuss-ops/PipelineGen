@@ -380,8 +380,8 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 			// scenes. Leaving other flags false keeps the plan
 			// small (4 postprocessors) and avoids missing-
 			// registered Required-class failures.
-			GenerateVoiceover:   true,
-			GenerateSceneImages: true,
+			GenerateVoiceover:   scriptpkg.ToggleEnabled,
+			GenerateSceneImages: scriptpkg.ToggleEnabled,
 		},
 	}
 	plan := scripts.BuildPlan(item)

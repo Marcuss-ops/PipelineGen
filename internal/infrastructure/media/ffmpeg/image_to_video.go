@@ -53,7 +53,7 @@ func (p *Processor) ImageToVideo(ctx context.Context, inputImage, outputVideo st
 		filter = fmt.Sprintf(
 			"scale=%d:%d:force_original_aspect_ratio=increase,"+
 				"crop=%d:%d,setsar=1,"+
-				"zoompan=z='min(zoom+%.6f,1.05)':d=%d:s=%dx%d",
+				"zoompan=z='min(zoom+%.6f,1.05)':x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':d=%d:s=%dx%d",
 			opts.Width*2, opts.Height*2,
 			opts.Width, opts.Height,
 			zoomRate,

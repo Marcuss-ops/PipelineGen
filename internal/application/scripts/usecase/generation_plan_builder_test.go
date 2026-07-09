@@ -43,11 +43,11 @@ func buildPostprocessorListTestScenarios() []struct {
 		{
 			name: "all_flags_on",
 			out: scriptpkg.OutputSpec{
-				ExtractEntities:     true,
-				GenerateMetadata:    true,
-				GenerateVoiceover:   true,
-				GenerateSceneImages: true,
-				GenerateDocument:    true,
+				ExtractEntities:     scriptpkg.ToggleEnabled,
+				GenerateMetadata:    scriptpkg.ToggleEnabled,
+				GenerateVoiceover:   scriptpkg.ToggleEnabled,
+				GenerateSceneImages: scriptpkg.ToggleEnabled,
+				GenerateDocument:    scriptpkg.ToggleEnabled,
 				SaveToDB:            true,
 			},
 		},
@@ -58,31 +58,31 @@ func buildPostprocessorListTestScenarios() []struct {
 		{
 			name: "extract_entities_only",
 			out: scriptpkg.OutputSpec{
-				ExtractEntities: true,
+				ExtractEntities: scriptpkg.ToggleEnabled,
 			},
 		},
 		{
 			name: "metadata_only",
 			out: scriptpkg.OutputSpec{
-				GenerateMetadata: true,
+				GenerateMetadata: scriptpkg.ToggleEnabled,
 			},
 		},
 		{
 			name: "voiceover_only",
 			out: scriptpkg.OutputSpec{
-				GenerateVoiceover: true,
+				GenerateVoiceover: scriptpkg.ToggleEnabled,
 			},
 		},
 		{
 			name: "scene_images_only",
 			out: scriptpkg.OutputSpec{
-				GenerateSceneImages: true,
+				GenerateSceneImages: scriptpkg.ToggleEnabled,
 			},
 		},
 		{
 			name: "document_only",
 			out: scriptpkg.OutputSpec{
-				GenerateDocument: true,
+				GenerateDocument: scriptpkg.ToggleEnabled,
 			},
 		},
 		{
@@ -94,16 +94,16 @@ func buildPostprocessorListTestScenarios() []struct {
 		{
 			name: "entities_and_metadata",
 			out: scriptpkg.OutputSpec{
-				ExtractEntities:  true,
-				GenerateMetadata: true,
+				ExtractEntities:  scriptpkg.ToggleEnabled,
+				GenerateMetadata: scriptpkg.ToggleEnabled,
 			},
 		},
 		{
 			name: "voiceover_and_images_and_document",
 			out: scriptpkg.OutputSpec{
-				GenerateVoiceover:   true,
-				GenerateSceneImages: true,
-				GenerateDocument:    true,
+				GenerateVoiceover:   scriptpkg.ToggleEnabled,
+				GenerateSceneImages: scriptpkg.ToggleEnabled,
+				GenerateDocument:    scriptpkg.ToggleEnabled,
 			},
 		},
 	}

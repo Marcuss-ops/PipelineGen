@@ -151,7 +151,7 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 	}
 
 	// Voiceover group default.
-	if item.Output.GenerateVoiceover && strings.TrimSpace(item.Output.VoiceoverGroup) == "" {
+	if item.Output.GenerateVoiceover.AsBool() && strings.TrimSpace(item.Output.VoiceoverGroup) == "" {
 		item.Output.VoiceoverGroup = cfg.ChannelID
 	}
 
@@ -228,28 +228,24 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 	//      ProcessorDocument or ProcessorPersistence to the postprocessor
 	//      list, so Google Docs are never created and scripts never persisted.
 	//
-	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-1: GenerateVoiceover and
-	// GenerateSceneImages are NOT safety-defaulted here because they are
-	// composition-gated (require VoiceoverService / ImageService wiring).
-	// The composition root at internal/app/wire_script_postprocess.go
-	// silently skips their registration on missing service + the
-	// BestEffort policy in defaultPolicyByName prevents a hard preflight
-	// failure; the runtime processor emits a warning + bounded metric
-	// on an unwired service. The bool zero-value ambiguity (cannot
-	// distinguish "caller did not set" from "caller explicitly false")
-	// is acknowledged and is forward-pointer PR-3 TOGGLE-TRISTATE
-	// (Toggle tri-state migration full cutover).
-	//
-	// godlike/06 caveat (bool zero-value = false, indistinguishable from
-	// "caller did not set" — acknowledged and acceptable because the safety
-	// default fills the gap for both cases; when the caller explicitly sets
-	// generate_document: false they opt out, and the safety default overrides
-	// that because there is no way to distinguish. The aspirational Fase 2
-	// Spina Dorsale (separate document.generate downstream job) would
-	// eliminate this ambiguity; until then, the safety default ensures that
-	// the inline postprocessor runs by default for all presets).
-	if !item.Output.GenerateDocument {
-		item.Output.GenerateDocument = true
+	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE):
+	// the safety default now uses `== ToggleDefault` to distinguish
+	// unset from explicit-disabled. Post-PR-3:
+	//   - caller explicit ToggleDisabled → survives the safety chain
+	//     (no silent override on caller opt-out per godlike/07
+	//     NO-FAKE-AVAILABILITY).
+	//   - caller explicit ToggleDefault → safety flips to ToggleEnabled
+	//     (processor runs by default for backward compat with the
+	//     pre-PR-3 silent-overwrite behavior on the UNSET path).
+	// PR-1 (Decision-Lock) preserved: GenerateVoiceover +
+	// GenerateSceneImages are NOT safety-defaulted because they're
+	// composition-gated (require VoiceoverService / ImageService
+	// wiring). The composition root at
+	// internal/app/wire_script_postprocess.go silently skips their
+	// registration on missing service + the BestEffort policy in
+	// defaultPolicyByName prevents a hard preflight failure.
+	if item.Output.GenerateDocument == scriptpkg.ToggleDefault {
+		item.Output.GenerateDocument = scriptpkg.ToggleEnabled
 	}
 	if !item.Output.SaveToDB {
 		item.Output.SaveToDB = true
@@ -326,8 +322,12 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 		// metadata stay caller-controlled — the preset never alters
 		// them silently (per doc §6 last line). Sizing defaults fill
 		// in only when caller left them at zero (caller precedence
-		// via OutputSpec bool contract).
-		item.Output.GenerateSceneImages = true
+		// via OutputSpec Toggle tri-state contract — caller-explicit
+		// ToggleDisabled is preserved through ApplyPreset because the
+		// assignment only runs when caller left field at ToggleDefault).
+		if item.Output.GenerateSceneImages == scriptpkg.ToggleDefault {
+			item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
+		}
 		if item.ScriptParams.SentencesPerImage <= 0 {
 			item.ScriptParams.SentencesPerImage = 8
 		}
@@ -344,12 +344,13 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 		// GenerateVoiceover off, the preset enables ONLY voiceover;
 		// if both are off, preset enables both. Caller > preset >
 		// config > safety — entities, metadata and document remain
-		// caller-controlled.
-		if !item.Output.GenerateSceneImages {
-			item.Output.GenerateSceneImages = true
+		// caller-controlled. Toggle tri-state: caller-explicit
+		// ToggleDisabled survives (no override on opt-out).
+		if item.Output.GenerateSceneImages == scriptpkg.ToggleDefault {
+			item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
 		}
-		if !item.Output.GenerateVoiceover {
-			item.Output.GenerateVoiceover = true
+		if item.Output.GenerateVoiceover == scriptpkg.ToggleDefault {
+			item.Output.GenerateVoiceover = scriptpkg.ToggleEnabled
 		}
 	case scriptpkg.PresetCatalog:
 		// §6 row 4: catalog | source.kind=catalog | none.

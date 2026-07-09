@@ -87,6 +87,17 @@ styles:
     destination_key: "ai-images/cinematic"
     enabled: true
 
+  - name: "cinematic-boxing"
+    display_name: "Cinematic Boxing"
+    version: 2
+    prompt_suffix: >-
+      cinematic boxing action scene, dramatic sports lighting, realistic depth,
+      detailed composition
+    negative_prompt: >-
+      text, watermark, logo, blurry, low resolution, cartoon, sketch
+    destination_key: "ai-images/cinematic-boxing"
+    enabled: true
+
   - name: "whiteboard"
     display_name: "Whiteboard"
     version: 2

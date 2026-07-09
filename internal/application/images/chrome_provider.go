@@ -153,10 +153,6 @@ func (p *ChromeImageProvider) Generate(ctx context.Context, req GenerateImageReq
 	if outputPath == "" {
 		outputPath = filepath.Join(os.TempDir(), fmt.Sprintf("slide_gen_%s.png", requestID))
 	}
-	// Only clean up temp files; canonical workspace files are managed by the caller.
-	if req.OutputPath == "" {
-		defer os.Remove(outputPath)
-	}
 
 	// Send the generate request over stdin.
 	workerReq := map[string]any{
@@ -215,6 +211,6 @@ func (p *ChromeImageProvider) Generate(ctx context.Context, req GenerateImageReq
 		PromptUsed: req.Prompt,
 		Provider:   "google-slides",
 		SourceHash: sourceHash,
-		OutputPath: req.OutputPath,
+		OutputPath: outputPath,
 	}, nil
 }

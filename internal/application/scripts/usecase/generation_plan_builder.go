@@ -155,7 +155,14 @@ func modeForSource(st scriptpkg.SourceType) string {
 //     centralization tautological.
 func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	var pp []adapters.ProcessorName
-	if out.ExtractEntities {
+	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE):
+	// .AsBool() collapses Toggle tri-state → bool while preserving
+	// caller-explicit ToggleDisabled (returns false) and treating
+	// ToggleDefault + ToggleEnabled as enabled (saftey-default
+	// fallback semantics). The unconditional clip_bindings +
+	// stock_association are still append-before-flag-checks per
+	// godlike/06 SSOT (PR-CLIP-SEARCH-WIRING rationale).
+	if out.ExtractEntities.AsBool() {
 		pp = append(pp, adapters.ProcessorEntities)
 		// PR-CLIP-SEARCH-WIRING (July 2026): when entities are
 		// extracted, also search for Artlist clips matching the
@@ -164,7 +171,7 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 		// BestEffort — nil backend is a warning, not a failure.
 		pp = append(pp, adapters.ProcessorClipSearch)
 	}
-	if out.GenerateMetadata {
+	if out.GenerateMetadata.AsBool() {
 		pp = append(pp, adapters.ProcessorMetadata)
 	}
 	// Scene-normalisation stages: MUST run before artifact producers
@@ -175,13 +182,13 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	// Qdrant is unavailable). Runs after clip_bindings so it can
 	// fall back to scene.Bindings.Clip.DriveLink.
 	pp = append(pp, adapters.ProcessorStockAssociation)
-	if out.GenerateVoiceover {
+	if out.GenerateVoiceover.AsBool() {
 		pp = append(pp, adapters.ProcessorVoiceover)
 	}
-	if out.GenerateSceneImages {
+	if out.GenerateSceneImages.AsBool() {
 		pp = append(pp, adapters.ProcessorImages)
 	}
-	if out.GenerateDocument {
+	if out.GenerateDocument.AsBool() {
 		pp = append(pp, adapters.ProcessorDocument)
 	}
 	if out.SaveToDB {
