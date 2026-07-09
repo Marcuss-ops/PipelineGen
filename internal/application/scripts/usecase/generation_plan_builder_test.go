@@ -106,6 +106,29 @@ func buildPostprocessorListTestScenarios() []struct {
 				GenerateDocument:    scriptpkg.ToggleEnabled,
 			},
 		},
+		{
+			// PR-TRANSLATE-SCRIPT-SPEC PR-5 (2026-07-09): setting
+			// TranslateTo="it" alone triggers the TranslationProcessor
+			// insertion between metadata and clip_bindings (the
+			// canonical EXECUTION order documented in processor_names.go
+			// goddoc). The §2 forward-prevention guard above verifies the
+			// inserted canonical set membership.
+			name: "translate_to_only",
+			out: scriptpkg.OutputSpec{
+				TranslateTo: "it",
+			},
+		},
+		{
+			// PR-TRANSLATE-SCRIPT-SPEC PR-5 (2026-07-09): setting
+			// TranslateTo="es" alongside ExtractEntities exercises both
+			// conditional branches sequentially; the §2 forward-prevention
+			// guard above verifies BOTH orderings are canonical.
+			name: "translate_to_with_entities",
+			out: scriptpkg.OutputSpec{
+				ExtractEntities: scriptpkg.ToggleEnabled,
+				TranslateTo:     "es",
+			},
+		},
 	}
 }
 

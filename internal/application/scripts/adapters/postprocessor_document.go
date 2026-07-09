@@ -5,6 +5,8 @@
 package adapters
 
 import (
+	"strings"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -53,6 +55,16 @@ type PipelineResult struct {
 	// the JSON envelope stable for calls that did not exercise any
 	// postprocessor.
 	FinalSpecScene scriptpkg.SpecSceneOutput `json:"final_specscene,omitempty"`
+	// PR-TRANSLATE-SCRIPT-SPEC PR-6 (2026-07-09): the canonical
+	// pipeline-level surface for the translated text + translated
+	// SpecScene (Last-writer-wins from mergePostProcessResult).
+	// omitempty so callers that did not opt into translation don't
+	// see a serialisation diff. The buildGenerationResult consumer
+	// in usecase/generate_one_usecase.go prefers these fields
+	// (when populated) so the post-translation version is the
+	// canonical wire-shape observed downstream.
+	TranslatedText      string                    `json:"translated_text,omitempty"`
+	TranslatedSpecScene scriptpkg.SpecSceneOutput `json:"translated_specscene,omitempty"`
 }
 
 // PostProcessResult carries the output of a single processor.
@@ -90,6 +102,17 @@ type PostProcessResult struct {
 	// ArtlistClipSuggestions carries Artlist clip matches discovered
 	// by the ClipSearchProcessor. PR-CLIP-SEARCH-WIRING (July 2026).
 	ArtlistClipSuggestions []ArtlistClipMatch `json:"artlist_clip_suggestions,omitempty"`
+	// PR-TRANSLATE-SCRIPT-SPEC PR-6 (2026-07-09): the canonical
+	// pipeline-level surface for translated text + translated
+	// SpecScene. The TranslationProcessor populates both in
+	// addition to the in-place mutation on ProcessInput (per the
+	// MIX design; the in-place mutation handles downstream
+	// document/persistence within the same Run, the explicit
+	// fields handle cross-Run observability + buildGenerationResult
+	// preference). omitempty so callers that did not request
+	// translation don't see a serialisation diff.
+	TranslatedText      string                    `json:"translated_text,omitempty"`
+	TranslatedSpecScene scriptpkg.SpecSceneOutput `json:"translated_specscene,omitempty"`
 }
 
 // IsEmpty reports whether the result carries no observable work.
@@ -134,6 +157,21 @@ func (r *PostProcessResult) IsEmpty() bool {
 	// PR-CLIP-SEARCH-WIRING (July 2026): clip search results count
 	// as observable work.
 	if len(r.ArtlistClipSuggestions) > 0 {
+		return false
+	}
+	// PR-TRANSLATE-SCRIPT-SPEC PR-6 (2026-07-09): translated text +
+	// translated SpecScene count as observable work. The MIX design
+	// keeps the in-place mutation on ProcessInput.SpecScene (so
+	// downstream document/persistence see the translated bundle
+	// within the same Run) AND surfaces the explicit fields here
+	// for cross-Run observability. Without this branch, the registry
+	// would flag the TranslationProcessor "returned empty output"
+	// when only in-place mutation occurred (a false-positive bug
+	// surfaced in the pre-PR-5 audit).
+	if strings.TrimSpace(r.TranslatedText) != "" {
+		return false
+	}
+	if len(r.TranslatedSpecScene.Scenes) > 0 {
 		return false
 	}
 	return true

@@ -126,6 +126,18 @@ type ResolvedGenerationPlan struct {
 	// ── Translations ──────────────────────────────────────────────────
 	Languages []string `json:"languages,omitempty"`
 
+	// PR-TRANSLATE-SCRIPT-SPEC PR-5+PR-6 (2026-07-09): the canonical
+	// opt-in trigger for the TranslationProcessor, copied from
+	// OutputSpec.TranslateTo in BuildPlan so the postprocessor reads
+	// a single source (the plan, NOT the request envelope). Empty
+	// string = no translation requested (built-in prompt-side
+	// collateral — the processor falls back to plan.Languages[0]
+	// when this is empty AND the operator wants translation via the
+	// legacy Languages[] field). godlike/06 SSOT: this is the SOLE
+	// field the translator reads; processor_translation.go NEVER
+	// reaches into the request envelope.
+	TranslateTo string `json:"translate_to,omitempty"`
+
 	// ── Token budget ──────────────────────────────────────────────────
 	// NumPredict is the LLM num_predict override (0 = use server default).
 	NumPredict int `json:"num_predict,omitempty"`
