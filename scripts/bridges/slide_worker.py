@@ -368,7 +368,8 @@ class ProfileWorker(threading.Thread):
                 btn = self.page.locator(
                     'button.insert-generated-image, '
                     '[data-view-id="insert-generated-image"], '
-                    'div:has-text("Nano Banana Pro")'
+                    'div[role="button"]:has-text("Nano Banana Pro"), '
+                    'button:has-text("Nano Banana Pro")'
                 ).last
                 try:
                     btn.click(force=True, timeout=5000)
@@ -411,7 +412,8 @@ class ProfileWorker(threading.Thread):
                 btn2 = self.page.locator(
                     'button.insert-generated-image, '
                     '[data-view-id="insert-generated-image"], '
-                    'div:has-text("Nano Banana Pro")'
+                    'div[role="button"]:has-text("Nano Banana Pro"), '
+                    'button:has-text("Nano Banana Pro")'
                 ).last
                 btn2.click(force=True, timeout=5000)
                 ta = self.page.locator('textarea:visible').first

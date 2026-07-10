@@ -44,19 +44,6 @@ func buildSectionPrompts(sec Section, topic string) []string {
 	return prompts
 }
 
-// pickBestPrompt returns the first non-empty prompt, or constructs a default.
-func pickBestPrompt(prompts []string, subject, topic string) string {
-	for _, p := range prompts {
-		if strings.TrimSpace(p) != "" {
-			return p
-		}
-	}
-	if subject != "" {
-		return fmt.Sprintf("A cinematic image of %s", subject)
-	}
-	return fmt.Sprintf("A documentary image about %s", topic)
-}
-
 // resolveImagePath searches the images directory for a file whose name starts
 // with the given hash. This is needed because the ingest pipeline may not
 // reliably populate PathRel on the returned asset.
