@@ -115,7 +115,7 @@ func (g *GenerationService) GenerateSmartImage(
 	model string,
 	skipDrive bool,
 ) (*asset.ImageAsset, error) {
-	return GenerateSync(ctx, g, SyncCommand{
+	assetOut, err := GenerateSync(ctx, g, SyncCommand{
 		Subject:   subject,
 		Topic:     topic,
 		Style:     style,
@@ -126,6 +126,19 @@ func (g *GenerationService) GenerateSmartImage(
 		Model:     model,
 		SkipDrive: skipDrive,
 	})
+	if err == nil {
+		return assetOut, nil
+	}
+	if fallback, fbErr := g.generateFallbackGeneratedImage(ctx, subject, topic, style, prompts, tags, width, height, model, skipDrive, err); fbErr == nil {
+		if g.log != nil {
+			g.log.Warn("GenerateSmartImage: primary provider failed, used local fallback image",
+				zap.Error(err),
+				zap.String("subject", subject),
+				zap.String("topic", topic))
+		}
+		return fallback, nil
+	}
+	return nil, err
 }
 
 // TriggerPrewarm satisfies the ImageSearchService interface so the

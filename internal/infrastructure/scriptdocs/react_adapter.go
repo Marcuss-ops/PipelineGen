@@ -185,11 +185,9 @@ func (a *Adapter) Generate(ctx context.Context, req scriptdocsapi.ReActRequest) 
 		)
 	}
 
-	if bridgeResp.Error != "" {
-		return scriptdocsapi.ReActResponse{}, fmt.Errorf("scriptdocs adapter: bridge error: %s", bridgeResp.Error)
-	}
-
-	if bridgeResp.Status == "error" {
+	// Unified error check: the Python bridge sets both `error` and
+	// `status: "error"` on failure; either signal is sufficient.
+	if bridgeResp.Status == "error" || bridgeResp.Error != "" {
 		errMsg := bridgeResp.Error
 		if errMsg == "" {
 			errMsg = "bridge reported error status with no message"
