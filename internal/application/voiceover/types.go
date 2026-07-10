@@ -316,38 +316,11 @@ type PromoResult = promoTypes.Result
 // Deprecated: use promo.Response directly.
 type PromoResponse = promoTypes.Response
 
-// PromoRequestPayloadMap serialises a PromoRequest into a map for the job system.
-// PromoRequest is a type alias (workflow/promo.Request) so methods cannot be
-// defined on it — use this standalone function instead.
-//
-// PR-VO-A6 (strict translator failure, June 2026): the payload now
-// serialises AllowUntranslated so the async /promo path (where the
-// handler enqueues a voiceover.promo job and the worker re-runs
-// Generator.Generate via job_handler.go) preserves the original
-// strict/lenient intent across the job boundary. JSON name is
-// `allow_untranslated` (snake_case) to match the existing payload
-// shape; the field is omitempty so legacy callers (no flag set)
-// default to strict / fail-closed.
-func PromoRequestPayloadMap(r *PromoRequest) map[string]any {
-	if r == nil {
-		return map[string]any{}
-	}
-	payload := map[string]any{
-		"text":            r.Text,
-		"drive_folder_id": r.DriveFolderID,
-		"dry_run":         r.DryRun,
-	}
-	if len(r.Languages) > 0 {
-		payload["languages"] = r.Languages
-	}
-	if r.AllowUntranslated {
-		// omitempty semantics: omit when false to preserve payload
-		// readability + keep pre-PR-VO-A6 jobs valid (the field is
-		// optional from the consumer's perspective).
-		payload["allow_untranslated"] = r.AllowUntranslated
-	}
-	return payload
-}
+// PromoRequestPayloadMap RETIRED 2026-07-10 (PR-DEADC-PROD-PROMOREQUEST-PAYLOAD-MAP-RETIRE).
+// Zero production callers (verified via rg 'PromoRequestPayloadMap' internal/ — only 2 hits
+// in types.go declaration + 4 hits in the now-deleted promopayload_test.go test file).
+// The /promo async path now threads the canonical Request struct directly via
+// promo.Generator.Generate(ctx, req) — no map serialisation intermediate.
 
 // PR-VO-AUDIT-P01 (June 2026): the canonical fail() helper. The
 // previous implementation forward-stored the literal status (e.g.
