@@ -30,6 +30,7 @@ type DownloadAndHashCommand struct {
 	SourceRef    string        // canonical YouTube URL
 	SegmentStart time.Duration // start offset in seconds
 	SegmentEnd   time.Duration // end offset in seconds
+	NoAudio      bool          // when true, strip audio from the fetched clip
 }
 
 // DownloadAndHashResult is the canonical output of the fetch + hash step.
@@ -61,6 +62,7 @@ type FetchRequest struct {
 	SourceRef    string
 	SegmentStart time.Duration
 	SegmentEnd   time.Duration
+	NoAudio      bool
 }
 
 // FetchedAsset is the use-case-owned wire shape for a completed download.
@@ -104,6 +106,7 @@ func DownloadAndHashClip(ctx context.Context, fetcher Fetcher, hasher FileHasher
 		SourceRef:    cmd.SourceRef,
 		SegmentStart: cmd.SegmentStart,
 		SegmentEnd:   cmd.SegmentEnd,
+		NoAudio:      cmd.NoAudio,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("usecase.DownloadAndHashClip: fetch: %w", err)

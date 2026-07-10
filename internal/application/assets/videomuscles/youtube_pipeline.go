@@ -130,7 +130,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		endStr := p.formatTime(req.Start + req.Duration)
 		rawFile = p.tempCutPath(req.OutputName)
 
-		if err := p.clipProcess.CutCopy(ctx, req.PreDownloadedPath, rawFile, startStr, endStr); err != nil {
+		if err := p.clipProcess.CutCopy(ctx, req.PreDownloadedPath, rawFile, startStr, endStr, false); err != nil {
 			return nil, fmt.Errorf("failed to cut segment from pre-downloaded file: %w", err)
 		}
 	} else {
@@ -198,7 +198,7 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 	} else {
 		// Raw fetch: stream-copy the already-cut segment — no re-encode.
 		// CutCopy with empty start/end is a pure container remux.
-		normalizeErr = p.clipProcess.CutCopy(ctx, rawFile, outputPath, "", "")
+		normalizeErr = p.clipProcess.CutCopy(ctx, rawFile, outputPath, "", "", !req.KeepAudio)
 	}
 
 	status := "success"
