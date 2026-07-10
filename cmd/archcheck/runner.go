@@ -184,6 +184,23 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// filename level (no content-based matching — simple
 		// basename check).
 		{"percheck_spec_aliases", scan.ScanSpecAliasesTerritory},
+		// PR-VOICEOVER-ALIASES-RETIRE Sub-PR C (ship_date
+		// 2026-07-10): forward-prevention gate for the 6
+		// retired voiceover.* type aliases. Each alias has
+		// a canonical owner per godlike/06 SSOT (persistence.
+		// VoiceoverRecord, ports.VoiceoverRepository, workflow/
+		// promo.{Request,Result,Response}, translation.
+		// DefaultPromoLanguages); the voiceover.* prefix was
+		// a proxy re-export godlike/06 drift. Production-code
+		// references to ANY of the 6 retired aliases are
+		// SeverityError violations; comment-only references
+		// are WARNed (residue accounting). productionOnly
+		// mode silences the WARN bucket so the operator-
+		// facing "zero production-code hits" claim is
+		// auditable via `len(r.Violations) == 0`.
+		{"percheck_voiceover_alias_ban", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanVoiceoverAliasBan(root, pol, r, productionOnly)
+		}},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
 			// ScanPackages and ScanCommandBinaries share a
 			// fileLines map populated by the single tree walk in
