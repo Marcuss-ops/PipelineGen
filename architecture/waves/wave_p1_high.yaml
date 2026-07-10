@@ -3899,14 +3899,15 @@
   exit_signal: true
   owner_capability: architecture
   deadline: 2026-08-15
-  exit_gate: 'Wave flipped per architecture/action-plans/2026-07-10-dead-code-p1-p2-cleanup.md (9 per-PR closures across 6 priority bands). Pre-existing build issues carry forward unchanged.'
+  description: 'Dead-code cleanup wave: 9 per-PR closures across 6 priority bands per architecture/action-plans/2026-07-10-dead-code-p1-p2-cleanup.md. godlike/07 NO-FAKE-AVAILABILITY discipline: 8 PRs are real shipped commits, PR-7 + PR-9 + HOTSPOT-CROSSREF closed as 0-action audit-pins (real production callers exist for PR-7/PR-9; HOTSPOT-CROSSREF is a post-wave forward-pointer with deadline 2026-09-15).'
+  exit_gate: 'Wave flipped per architecture/action-plans/2026-07-10-dead-code-p1-p2-cleanup.md. Pre-existing build issues carry forward unchanged.'
   linked_issues:
   - id: PR-7
     status: shipped
-    ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
+    ship_via: AUDIT_PIN_FOR_SPEC_DRIFT
   - id: PR-9
     status: shipped
-    ship_via: AUDIT_PIN_FOR_PRE_SHIPPED_FIX
+    ship_via: AUDIT_PIN_FOR_SPEC_DRIFT
   - id: PR-DEADCODE-P1-P2-HOTSPOT-CROSSREF
     status: shipped
     ship_via: AUDIT_PIN_FOR_0_NEW_HOTSPOTS
