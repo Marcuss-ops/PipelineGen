@@ -74,18 +74,18 @@ type DrivePublisher interface {
 //
 // PR-YT-CLIP-SEMANTIC-LOCATION-FIX: Category, Provider, Tags, Language added.
 type PublishRequest struct {
-	Destination        string // canonical destination key (e.g. "youtube-clip")
-	LocalPath          string
-	Filename           string
-	Description        string
-	AssetID            string
-	ProjectID          string   // canonical project umbrella (e.g. "boxing-doc-2026")
-	Group              string
-	Subject            string
-	Category           string   // semantic category (e.g. "Boxe")
-	Provider           string   // upstream source (e.g. "youtube")
-	Tags               []string // semantic keywords for Qdrant
-	Language           string   // BCP-47 language tag
+	Destination string // canonical destination key (e.g. "youtube-clip")
+	LocalPath   string
+	Filename    string
+	Description string
+	AssetID     string
+	ProjectID   string // canonical project umbrella (e.g. "boxing-doc-2026")
+	Group       string
+	Subject     string
+	Category    string   // semantic category (e.g. "Boxe")
+	Provider    string   // upstream source (e.g. "youtube")
+	Tags        []string // semantic keywords for Qdrant
+	Language    string   // BCP-47 language tag
 }
 
 // PublishResult is the use-case-owned wire shape for a Drive publish outcome.

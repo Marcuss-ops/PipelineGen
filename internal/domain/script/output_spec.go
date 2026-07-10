@@ -31,7 +31,7 @@
 // PR-1 (June 2026): HasAnyPostprocessor already OR'd all 5 flags;
 // unchanged in PR-3 (still uses .AsBool() per side).
 //
-// No durable field uses interface{}, any, or map[string]any.
+// No durable field uses any, any, or map[string]any.
 package script
 
 import (

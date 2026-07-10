@@ -84,6 +84,14 @@ func (p *ClipBindingsProcessor) Process(
 		SynthesizedScenes: res.SynthesizedScenes,
 		Warnings:          res.Warnings,
 	}
+	if len(result.SynthesizedScenes) > 0 && len(input.SpecScene.Scenes) > 0 {
+		for i := range result.SynthesizedScenes {
+			if i >= len(input.SpecScene.Scenes) {
+				break
+			}
+			result.SynthesizedScenes[i].Bindings = input.SpecScene.Scenes[i].Bindings
+		}
+	}
 	// When the synthesized list is non-nil, mutate the input
 	// envelope so the downstream document/persistence processors
 	// observe the synthesized scene list (matches the

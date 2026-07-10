@@ -120,8 +120,8 @@ type Service struct {
 	ollama       youtubeports.OllamaClientPort
 
 	// Capacity-bound semaphores configured via ConcurrencyConfig.
-	videoExtractSem  chan struct{}
-	ollamaSem        chan struct{}
+	videoExtractSem chan struct{}
+	ollamaSem       chan struct{}
 
 	// P1.3: Pattern 0 port for reading on-disk transcript files.
 	transcriptReader TranscriptReader

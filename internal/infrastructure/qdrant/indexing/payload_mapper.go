@@ -147,6 +147,6 @@ func (m *PayloadMapper) AssetToPoint(ctx context.Context, asset *AssetData, sche
 // QDRANT-001 (June 2026) closure: drive_link is NEVER in the payload;
 // the airlock strips it from AssetData.DriveLink → IndexDocument (no
 // field there) → wire.
-func BuildPayload(asset *AssetData, schema *schema.IndexSchema) map[string]interface{} {
+func BuildPayload(asset *AssetData, schema *schema.IndexSchema) map[string]any {
 	return BuildPayloadFromDocument(assetToIndexDocumentNoValidate(asset, schema), schema)
 }

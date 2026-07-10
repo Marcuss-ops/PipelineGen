@@ -8,8 +8,8 @@
 //
 // Sibling files in the parent_* family (post-split canonical layout):
 //   - parent_aggregator.go (slim orchestrator) — deps + struct + interface
-//     + NewParentAggregator + Start + Tick + var _ compile-time pin
-//     + isKnownTypedParentState whitelist.
+//   - NewParentAggregator + Start + Tick + var _ compile-time pin
+//   - isKnownTypedParentState whitelist.
 //   - parent_aggregator_aggregate.go (sibling) — aggregateOne (per-parent
 //     aggregation loop).
 //   - parent_aggregator_finalize.go (this file) — finalizeParent (per-parent

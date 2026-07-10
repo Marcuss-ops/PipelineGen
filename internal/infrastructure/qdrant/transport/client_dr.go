@@ -187,7 +187,7 @@ func (c *Client) RestoreSnapshot(ctx context.Context, collection, snapshotURL st
 	if snapshotURL == "" {
 		return fmt.Errorf("qdrant.Client.RestoreSnapshot: snapshotURL must not be empty")
 	}
-	body := map[string]interface{}{
+	body := map[string]any{
 		"location": snapshotURL,
 	}
 	url := fmt.Sprintf("%s/collections/%s/snapshots/recover", c.baseURL, collection)
@@ -217,7 +217,7 @@ func (c *Client) OverwritePayload(ctx context.Context, collection string, payloa
 	if len(payloads) == 0 {
 		return nil
 	}
-	body := map[string]interface{}{
+	body := map[string]any{
 		"points": payloads,
 		"merge":  true,
 	}

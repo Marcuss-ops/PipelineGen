@@ -90,7 +90,7 @@ func (r *assetRowScanner) populate(a *AssetData) {
 	// Parse metadata JSON.
 	a.MetadataJSON = r.metaJSON.String
 	if a.MetadataJSON != "" && a.MetadataJSON != "{}" {
-		var m map[string]interface{}
+		var m map[string]any
 		if err := json.Unmarshal([]byte(a.MetadataJSON), &m); err == nil {
 			a.Metadata = m
 		}

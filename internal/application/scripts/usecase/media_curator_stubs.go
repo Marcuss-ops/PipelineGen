@@ -39,8 +39,8 @@ var _ = ErrCurateNoClips // sentinel is co-located in source_resolver_curate.go
 // hint) resolution path.
 type MediaCurator struct {
 	log         *zap.Logger
-	clipBuilder interface{}
-	clipSearch  interface{}
+	clipBuilder any
+	clipSearch  any
 }
 
 // CurateRequest is the request envelope for MediaCurator.Curate.

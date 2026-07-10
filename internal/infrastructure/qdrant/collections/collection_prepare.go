@@ -51,17 +51,17 @@ func (cm *CollectionManager) PrepareCandidate(ctx context.Context, candidate str
 
 // createPhysicalCollection creates the collection with vector config from the manifest.
 func (cm *CollectionManager) createPhysicalCollection(ctx context.Context, name string) error {
-	vectors := make(map[string]interface{})
-	sparseVectors := make(map[string]interface{})
+	vectors := make(map[string]any)
+	sparseVectors := make(map[string]any)
 
 	for _, v := range cm.schema.DenseVectors {
-		vectors[v.Channel] = map[string]interface{}{
+		vectors[v.Channel] = map[string]any{
 			"size":     v.Dimensions,
 			"distance": v.Distance,
 		}
 	}
 	for _, v := range cm.schema.SparseVectors {
-		sv := map[string]interface{}{}
+		sv := map[string]any{}
 		if v.Modifier != "" {
 			sv["modifier"] = v.Modifier
 		}

@@ -84,7 +84,7 @@ func classify(sqliteSet map[string]AssetSnapshot, qdrantSet map[string]pointWith
 // pointWithID pairs a point's ID with its payload for classification.
 type pointWithID struct {
 	ID      string
-	Payload map[string]interface{}
+	Payload map[string]any
 }
 
 // classifyPair applies the priority-ordered checks to a single
@@ -210,7 +210,7 @@ func classifyPair(assetID string, snap AssetSnapshot, p pointWithID, schema Sche
 	return nil
 }
 
-func stringFromPayload(p map[string]interface{}, key string) (string, bool) {
+func stringFromPayload(p map[string]any, key string) (string, bool) {
 	if p == nil {
 		return "", false
 	}
@@ -222,7 +222,7 @@ func stringFromPayload(p map[string]interface{}, key string) (string, bool) {
 	return s, s != ""
 }
 
-func stringFromPayloadOrEmpty(p map[string]interface{}, key string) string {
+func stringFromPayloadOrEmpty(p map[string]any, key string) string {
 	s, _ := stringFromPayload(p, key)
 	return s
 }

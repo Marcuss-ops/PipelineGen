@@ -18,11 +18,11 @@ import (
 // passed via q.Limit. It returns `totalItems` distinct candidates
 // so the backend has enough items for both page 1 and page 2.
 type limitCapturingBackend struct {
-	name      string
+	name       string
 	totalItems []Candidate
 
-	mu          sync.Mutex
-	seenLimits  []int
+	mu         sync.Mutex
+	seenLimits []int
 }
 
 func (b *limitCapturingBackend) Name() string { return b.name }

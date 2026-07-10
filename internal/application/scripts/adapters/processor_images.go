@@ -17,8 +17,10 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
+	domainasset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
@@ -31,7 +33,8 @@ import (
 // from ImageGenService.SearchAndDownload. The single SourceURL field
 // is the public URL of the generated/uploaded asset.
 type ImageResult struct {
-	SourceURL string
+	SourceURL   string
+	DriveFileID string
 }
 
 // ImageGenService is the canonical port for image generation.
@@ -46,6 +49,10 @@ type ImageGenService interface {
 // the parallel scene fan-out starts.
 type imagePrewarmer interface {
 	TriggerPrewarm(ctx context.Context, jobID string, count int)
+}
+
+type smartImageGenService interface {
+	GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*domainasset.ImageAsset, error)
 }
 
 // ImageProcessor generates scene images via ImageGenService.
@@ -220,15 +227,49 @@ func runImageSceneFanout(
 				}
 			}()
 
-			asset, err := gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
+			var (
+				asset *domainasset.ImageAsset
+				err   error
+			)
+			if smartGen, ok := any(gen).(smartImageGenService); ok {
+				// Prefer the AI-generated image path so the scene
+				// binding ends up with the Drive-backed asset link.
+				asset, err = smartGen.GenerateSmartImage(
+					ctx,
+					sceneName,
+					query,
+					plan.Style,
+					[]string{sceneText, query},
+					[]string{sceneName, plan.ID},
+					1024,
+					1024,
+					plan.Model,
+					false,
+				)
+				if err != nil || asset == nil {
+					var fallback *ImageResult
+					fallback, err = gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
+					if err == nil && fallback != nil {
+						asset = &domainasset.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
+					} else {
+						asset = nil
+					}
+				}
+			} else {
+				var fallback *ImageResult
+				fallback, err = gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
+				if err == nil && fallback != nil {
+					asset = &domainasset.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
+				}
+			}
 			if err != nil {
 				out.warning = fmt.Sprintf("image generation failed for scene %d: %v", i, err)
 				outcomes[i] = out
 				return
 			}
-
 			if asset != nil {
-				out.image.URL = asset.SourceURL
+				out.image.URL = canonicalSceneImageURL(asset)
+				out.image.DriveFileID = asset.DriveFileID
 			}
 			outcomes[i] = out
 		}()
@@ -243,4 +284,18 @@ func fallbackSceneText(sceneText string, i int) string {
 		return sceneText
 	}
 	return fmt.Sprintf("Scene %d", i+1)
+}
+
+func canonicalSceneImageURL(asset *domainasset.ImageAsset) string {
+	if asset == nil {
+		return ""
+	}
+	url := strings.TrimSpace(asset.SourceURL)
+	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
+		return url
+	}
+	if asset.DriveFileID != "" {
+		return fmt.Sprintf("https://drive.google.com/file/d/%s/view", asset.DriveFileID)
+	}
+	return url
 }

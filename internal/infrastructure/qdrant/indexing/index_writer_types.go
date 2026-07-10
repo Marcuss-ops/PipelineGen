@@ -68,27 +68,27 @@ type AssetData struct {
 	// SourceProvider/Origin/Destination) + LLM enrichment block (Event/
 	// Round/Scene/Subject/Entities) + workflow/provenance block
 	// (WorkflowID/RunFingerprint/ChunkIndex/TotalChunks/PolicyVersion/JobID).
-	Title          string                 `json:"title,omitempty"`
-	Description    string                 `json:"description,omitempty"`
-	Summary        string                 `json:"summary,omitempty"`
-	SourceURL      string                 `json:"source_url,omitempty"`
-	SourceVideoID  string                 `json:"source_video_id,omitempty"`
-	SourceProvider string                 `json:"source_provider,omitempty"`
-	Origin         string                 `json:"origin,omitempty"`
-	Destination    string                 `json:"destination,omitempty"`
-	Event          string                 `json:"event,omitempty"`
-	Round          int                    `json:"round,omitempty"`
-	Scene          string                 `json:"scene,omitempty"`
-	Subject        string                 `json:"subject,omitempty"`
-	Entities       []string               `json:"entities,omitempty"`
-	WorkflowID     string                 `json:"workflow_id,omitempty"`
-	RunFingerprint string                 `json:"run_fingerprint,omitempty"`
-	ChunkIndex     int                    `json:"chunk_index,omitempty"`
-	TotalChunks    int                    `json:"total_chunks,omitempty"`
-	PolicyVersion  string                 `json:"policy_version,omitempty"`
-	JobID          string                 `json:"job_id,omitempty"`
-	MetadataJSON   string                 `json:"-"`
-	Metadata       map[string]interface{} `json:"-"`
+	Title          string         `json:"title,omitempty"`
+	Description    string         `json:"description,omitempty"`
+	Summary        string         `json:"summary,omitempty"`
+	SourceURL      string         `json:"source_url,omitempty"`
+	SourceVideoID  string         `json:"source_video_id,omitempty"`
+	SourceProvider string         `json:"source_provider,omitempty"`
+	Origin         string         `json:"origin,omitempty"`
+	Destination    string         `json:"destination,omitempty"`
+	Event          string         `json:"event,omitempty"`
+	Round          int            `json:"round,omitempty"`
+	Scene          string         `json:"scene,omitempty"`
+	Subject        string         `json:"subject,omitempty"`
+	Entities       []string       `json:"entities,omitempty"`
+	WorkflowID     string         `json:"workflow_id,omitempty"`
+	RunFingerprint string         `json:"run_fingerprint,omitempty"`
+	ChunkIndex     int            `json:"chunk_index,omitempty"`
+	TotalChunks    int            `json:"total_chunks,omitempty"`
+	PolicyVersion  string         `json:"policy_version,omitempty"`
+	JobID          string         `json:"job_id,omitempty"`
+	MetadataJSON   string         `json:"-"`
+	Metadata       map[string]any `json:"-"`
 	// Embeddings are populated by the mapper from DB columns.
 	TextVector       []float32 `json:"-"`
 	TranscriptVector []float32 `json:"-"`

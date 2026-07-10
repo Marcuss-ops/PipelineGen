@@ -245,7 +245,7 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	// PR 4: VectorPointDeleter port satisfied directly by runtime.Writer
 	// (compile-time assertion in internal/infrastructure/qdrant/index_writer.go
 	// pins the conformance: `_ jobsoutbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`).
-	// No runtime `interface{}` cast needed.
+	// No runtime `any` cast needed.
 	if runtime != nil {
 		qd.QdrantDeleter = runtime.Writer
 	}

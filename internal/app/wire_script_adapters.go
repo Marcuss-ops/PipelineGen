@@ -284,7 +284,7 @@ var _ usecase.DriveCheckService = (*driveCheckServiceAdapter)(nil)
 //
 // The adapter bridges the typed appjobs.Service.Enqueue(ctx,
 // *job.EnqueueRequest) (*job.Job, error) to the interface-based
-// usecase.JobEnqueueService.Enqueue(ctx, interface{}) (interface{}, error)
+// usecase.JobEnqueueService.Enqueue(ctx, any) (any, error)
 // expected by the artlist background job enqueue path.
 //
 // godlike/06 SSOT: this is the canonical SOLE adapter between the
@@ -296,7 +296,7 @@ type jobsEnqueueServiceAdapter struct {
 }
 
 // Enqueue satisfies usecase.JobEnqueueService.
-func (a *jobsEnqueueServiceAdapter) Enqueue(ctx context.Context, req interface{}) (interface{}, error) {
+func (a *jobsEnqueueServiceAdapter) Enqueue(ctx context.Context, req any) (any, error) {
 	if a == nil || a.svc == nil {
 		return nil, fmt.Errorf("jobsEnqueueServiceAdapter: jobs service not wired")
 	}

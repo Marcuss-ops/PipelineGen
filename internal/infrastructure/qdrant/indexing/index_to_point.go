@@ -30,7 +30,7 @@ func (m *PayloadMapper) IndexDocumentToPoint(doc *IndexDocument, idxSchema *sche
 	if doc.AssetID == "" {
 		return nil, fmt.Errorf("index document AssetID must not be empty")
 	}
-	vectors := make(map[string]interface{})
+	vectors := make(map[string]any)
 	for channel, artifact := range doc.Embeddings {
 		switch channel {
 		case ChannelText, ChannelTranscript, ChannelVisual, ChannelAudio:
@@ -47,7 +47,7 @@ func (m *PayloadMapper) IndexDocumentToPoint(doc *IndexDocument, idxSchema *sche
 				}
 				continue
 			}
-			vectors[string(channel)] = map[string]interface{}{
+			vectors[string(channel)] = map[string]any{
 				"text":  doc.SearchText,
 				"model": artifact.Model,
 			}

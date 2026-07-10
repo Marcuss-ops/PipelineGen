@@ -117,11 +117,11 @@ type CreatorRuntime struct {
 
 	// VoiceoverEngine generates per-scene voiceover audio via Ollama TTS.
 	// Typed-nil when the TTS backend is not configured.
-	VoiceoverEngine interface{} // Blocco 3.x: wire real voiceover.Service or narrow port (VO-DECOMPOSITION-2026-07-04)
+	VoiceoverEngine any // Blocco 3.x: wire real voiceover.Service or narrow port (VO-DECOMPOSITION-2026-07-04)
 
 	// ImageGenerator creates AI images for script scenes.
 	// Typed-nil when image generation is not configured.
-	ImageGenerator interface{} // Blocco 3.x: wire real image generator or narrow port (VO-DECOMPOSITION-2026-07-04)
+	ImageGenerator any // Blocco 3.x: wire real image generator or narrow port (VO-DECOMPOSITION-2026-07-04)
 
 	// OllamaClient is the raw HTTP client for Ollama (used by voiceover
 	// and image generation engines when they are wired).

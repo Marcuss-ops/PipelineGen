@@ -14,7 +14,7 @@ import (
 )
 
 // GenerateOneUseCase orchestrates the unified pipeline for a single
-// generation item. All dependencies are typed — no interface{} on
+// generation item. All dependencies are typed — no any on
 // the public surface.
 type GenerateOneUseCase struct {
 	cfg             adapters.NormalizationConfig

@@ -55,10 +55,10 @@ type MediaCurator struct {
 	// req.HintClipIDs. Set via SetClipSearchPort from the composition
 	// root when Qdrant is enabled.
 	serverURL     string
-	clipsRepo     interface{} // *assets.ClipsRepository (avoid import cycle)
-	clipBuilder   interface{}
-	generateOneUC interface{}
-	clipSearch    interface{}
+	clipsRepo     any // *assets.ClipsRepository (avoid import cycle)
+	clipBuilder   any
+	generateOneUC any
+	clipSearch    any
 	log           *zap.Logger
 }
 
@@ -75,7 +75,7 @@ type MediaCurator struct {
 // clipsRepo, clipBuilder, log all set; generateOneUC + clipSearch are
 // late-bound via SetGenerateOneUC / SetClipSearchPort setters (the
 // composition root stamps them when those bundles are available).
-func NewMediaCurator(serverURL string, clipsRepo interface{}, clipBuilder interface{}, log *zap.Logger) *MediaCurator {
+func NewMediaCurator(serverURL string, clipsRepo any, clipBuilder any, log *zap.Logger) *MediaCurator {
 	return &MediaCurator{
 		serverURL:   serverURL,
 		clipsRepo:   clipsRepo,
@@ -85,12 +85,12 @@ func NewMediaCurator(serverURL string, clipsRepo interface{}, clipBuilder interf
 }
 
 // SetClipSearchPort attaches the optional semantic-search port
-// (clipSearch leg). Accepts interface{} so callers can pass any
+// (clipSearch leg). Accepts any so callers can pass any
 // concrete ClipSearchPort (qdrant.NewClipSearchAdapter, a
 // clipSearchPortAdapter bridge to usecase.ClipSearchPort, or a test
 // fake) without forcing MediaCurator to import the typed port
 // packages.
-func (m *MediaCurator) SetClipSearchPort(port interface{}) {
+func (m *MediaCurator) SetClipSearchPort(port any) {
 	if m == nil {
 		return
 	}
@@ -120,7 +120,7 @@ type CurateRequest struct {
 	// pre-resolved clip IDs from upstream sources, replacing the deleted
 	// Qdrant semantic-search leg.
 	HintClipIDs []string
-	// PJ-CURATE-1 (June 2026): Search opt-in to the interface{}.
+	// PJ-CURATE-1 (June 2026): Search opt-in to the any.
 	Search bool
 	// PJ-CURATE-1: AllowTextOnly opts back into the legacy
 	// text-only fallback when both port and hint list are empty.

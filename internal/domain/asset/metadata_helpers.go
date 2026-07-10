@@ -155,9 +155,9 @@ func MetadataStringSliceText(meta map[string]any, key string) string {
 
 // ── Internal aliases (keep existing unexported callers working) ──────────
 
-func metadataString(meta map[string]any, key string) string  { return MetadataString(meta, key) }
-func metadataBool(meta map[string]any, key string) bool      { return MetadataBool(meta, key) }
-func metadataFloat(meta map[string]any, key string) float64  { return MetadataFloat(meta, key) }
+func metadataString(meta map[string]any, key string) string { return MetadataString(meta, key) }
+func metadataBool(meta map[string]any, key string) bool     { return MetadataBool(meta, key) }
+func metadataFloat(meta map[string]any, key string) float64 { return MetadataFloat(meta, key) }
 func metadataStringSlice(meta map[string]any, key string) []string {
 	return MetadataStringSlice(meta, key)
 }

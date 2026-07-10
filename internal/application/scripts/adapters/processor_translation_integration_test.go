@@ -215,7 +215,7 @@ func TestTranslationWiredPipeline_HappyPath(t *testing.T) {
 	}
 	if len(input.SpecScene.Scenes) != 1 {
 		t.Fatalf("expected 1 scene post-Process, got %d", len(input.SpecScene.Scenes))
-	}	// Process() takes input by value — in-place mutations to
+	} // Process() takes input by value — in-place mutations to
 	// input.SpecScene and input.Text are invisible to the caller.
 	// The translated content surfaces via result.TranslatedText +
 	// result.TranslatedSpecScene (PR-TRANSLATION-PIPELINE-2026-07-09

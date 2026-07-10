@@ -293,7 +293,7 @@ func registerScriptDocs(registry *module.Registry, log *zap.Logger, cfg *config.
 				OllamaModel: cfg.External.OllamaModel,
 				ScriptDir:   scriptDir,
 			})
-		if adapterErr != nil {
+			if adapterErr != nil {
 				if adapterErr != nil {
 					log.Warn("script-docs: failed to create ReAct adapter, falling back to nil port",
 						zap.Error(adapterErr))

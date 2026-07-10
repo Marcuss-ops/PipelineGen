@@ -3,7 +3,7 @@
 // After normalization, validation, and source resolution, every
 // GenerationItemV2 produces exactly one ResolvedGenerationPlan.
 //
-// No durable field uses interface{}, any, or map[string]any.
+// No durable field uses any, any, or map[string]any.
 package script
 
 // ResolvedGenerationPlan is the fully resolved, validated plan that

@@ -310,10 +310,10 @@ func (a *semanticAssetSearchAdapter) searchAssetsStock(ctx context.Context, q po
 		VectorName:  a.vectorName,
 		Limit:       limit,
 		MinScore:    minScore,
-		Filter: map[string]interface{}{
-			"must": []map[string]interface{}{
-				{"key": "source", "match": map[string]interface{}{"value": "stock"}},
-				{"key": "lifecycle_state", "match": map[string]interface{}{"value": "ACTIVE"}},
+		Filter: map[string]any{
+			"must": []map[string]any{
+				{"key": "source", "match": map[string]any{"value": "stock"}},
+				{"key": "lifecycle_state", "match": map[string]any{"value": "ACTIVE"}},
 			},
 		},
 	})

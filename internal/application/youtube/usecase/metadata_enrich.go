@@ -317,9 +317,9 @@ func (s *Service) resolveExistingMetadata(existing *asset.Asset, cleanedTranscri
 			zap.String("clip_id", existing.ID))
 		cm := &tagutil.CanonicalClipMetadata{
 			Summary:          existing.GetMetadataString("clip_summary"),
-		Topics:           asset.MetadataStringSlice(existing.Metadata, "topics"),
-		Speakers:         asset.MetadataStringSlice(existing.Metadata, "speakers"),
-		MentionedPeople:  asset.MetadataStringSlice(existing.Metadata, "mentioned_people"),
+			Topics:           asset.MetadataStringSlice(existing.Metadata, "topics"),
+			Speakers:         asset.MetadataStringSlice(existing.Metadata, "speakers"),
+			MentionedPeople:  asset.MetadataStringSlice(existing.Metadata, "mentioned_people"),
 			Hook:             existing.GetMetadataString("hook"),
 			QualityScore:     asset.MetadataFloat(existing.Metadata, "quality_score"),
 			CleanTitle:       existing.GetMetadataString("clean_title"),
@@ -461,5 +461,3 @@ func buildVideoURL(clipID string, existing *asset.Asset) string {
 	}
 	return ""
 }
-
-

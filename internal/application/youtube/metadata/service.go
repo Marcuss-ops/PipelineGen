@@ -28,21 +28,22 @@
 //     calls the builder + writes via ClipMetadataWriter
 //     (NOT direct assetRepo.Upsert — the verdict's P1 #15
 //     fail-closed posture on raw repo writes).
-//// PR-YOUTUBE-METADATA-SPLIT (July 2026): decomposed the original
+//
+// // PR-YOUTUBE-METADATA-SPLIT (July 2026): decomposed the original
 // 837-LoC monolithic service.go into single-purpose files per
 // AGENTS.md Pattern 5:
 //
 //   - service.go               — slim orchestrator: MetadataDeps +
-//                                 MetadataService struct + NewMetadataService
+//     MetadataService struct + NewMetadataService
 //   - service_enrich.go        — GenerateClipMetadata + FallbackMetadata +
-//                                 fallbackMetadata + DeriveFallbackSourceVersion +
-//                                 EnrichClip
+//     fallbackMetadata + DeriveFallbackSourceVersion +
+//     EnrichClip
 //   - quality_scoring.go       — IsSponsorSegment + CalculateQualityScore +
-//                                 CountWords + Sha256Short
+//     CountWords + Sha256Short
 //   - metadata_extraction.go   — BuildFallbackSearchText +
-//                                 parseClipTimestamps + atoiOrZero
+//     parseClipTimestamps + atoiOrZero
 //   - enrichment.go            — WriteClipMetadataFile +
-//                                 ym*Canonical helpers
+//     ym*Canonical helpers
 package metadata
 
 import (

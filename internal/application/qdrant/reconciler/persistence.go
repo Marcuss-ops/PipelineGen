@@ -12,12 +12,12 @@ import (
 // filesystem:
 //
 //	oldWrite := writeFileDefault
-//	writeFileDefault = func(p string, v interface{}) error { ... }
+//	writeFileDefault = func(p string, v any) error { ... }
 //	defer func() { writeFileDefault = oldWrite }()
 //
 // Tests MAY rely on this for golden-file comparisons but production
 // callers should leave it untouched.
-var writeFileDefault = func(path string, v interface{}) error {
+var writeFileDefault = func(path string, v any) error {
 	if path == "" {
 		return nil
 	}

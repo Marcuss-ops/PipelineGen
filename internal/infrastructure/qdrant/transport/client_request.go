@@ -24,7 +24,7 @@ import (
 	"strings"
 )
 
-func (c *Client) doJSON(ctx context.Context, method, url string, body interface{}) (*http.Response, error) {
+func (c *Client) doJSON(ctx context.Context, method, url string, body any) (*http.Response, error) {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)

@@ -22,13 +22,13 @@ import (
 
 // DocumentsService creates Google Docs from script content.
 type DocumentsService struct {
-	docClient       interface{}
+	docClient       any
 	log             *zap.Logger
 	defaultFolderID string
 }
 
 // NewDocumentsService creates a new DocumentsService.
-func NewDocumentsService(docClient interface{}, log interface{}, driveFolderID string) *DocumentsService {
+func NewDocumentsService(docClient any, log any, driveFolderID string) *DocumentsService {
 	var logger *zap.Logger
 	if l, ok := log.(*zap.Logger); ok {
 		logger = l

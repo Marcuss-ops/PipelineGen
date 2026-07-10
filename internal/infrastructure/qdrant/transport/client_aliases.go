@@ -98,8 +98,8 @@ func (c *Client) GetAliasTarget(ctx context.Context, alias string) (string, erro
 }
 
 // UpdateAliases performs a batched alias update (create/delete/switch).
-func (c *Client) UpdateAliases(ctx context.Context, actions []map[string]interface{}) error {
-	body := map[string]interface{}{
+func (c *Client) UpdateAliases(ctx context.Context, actions []map[string]any) error {
+	body := map[string]any{
 		"actions": actions,
 	}
 	url := fmt.Sprintf("%s/collections/aliases", c.baseURL)
@@ -117,7 +117,7 @@ func (c *Client) UpdateAliases(ctx context.Context, actions []map[string]interfa
 
 // CreateAlias creates an alias pointing to a target collection.
 func (c *Client) CreateAlias(ctx context.Context, alias, target string) error {
-	return c.UpdateAliases(ctx, []map[string]interface{}{
+	return c.UpdateAliases(ctx, []map[string]any{
 		{
 			"create_alias": map[string]string{
 				"alias_name":      alias,
@@ -129,15 +129,15 @@ func (c *Client) CreateAlias(ctx context.Context, alias, target string) error {
 
 // SwitchAlias atomically changes an alias from oldTarget to newTarget.
 func (c *Client) SwitchAlias(ctx context.Context, alias, oldTarget, newTarget string) error {
-	actions := []map[string]interface{}{}
+	actions := []map[string]any{}
 	if oldTarget != "" {
-		actions = append(actions, map[string]interface{}{
+		actions = append(actions, map[string]any{
 			"delete_alias": map[string]string{
 				"alias_name": alias,
 			},
 		})
 	}
-	actions = append(actions, map[string]interface{}{
+	actions = append(actions, map[string]any{
 		"create_alias": map[string]string{
 			"alias_name":      alias,
 			"collection_name": newTarget,

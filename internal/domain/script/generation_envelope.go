@@ -7,7 +7,7 @@
 // A single-item envelope maps to the unified /generate flow.
 // A multi-item envelope maps to batch generation.
 //
-// No durable field uses interface{}, any, or map[string]any.
+// No durable field uses any, any, or map[string]any.
 package script
 
 import (

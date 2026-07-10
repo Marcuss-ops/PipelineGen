@@ -243,11 +243,11 @@ func (v *ReindexVerifier) runFilterSmoke(ctx context.Context, collection string)
 		return false
 	}
 
-	filter := map[string]interface{}{
-		"must": []map[string]interface{}{
+	filter := map[string]any{
+		"must": []map[string]any{
 			{
 				"key":   "source",
-				"match": map[string]interface{}{"value": sourceValue},
+				"match": map[string]any{"value": sourceValue},
 			},
 		},
 	}

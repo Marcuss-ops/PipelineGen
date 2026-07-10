@@ -5,7 +5,7 @@
 //
 // Rules:
 //   - No map[string]any
-//   - No interface{}
+//   - No any
 //   - No client-controlled filename
 //   - No string strategy
 //   - force_regenerate boolean

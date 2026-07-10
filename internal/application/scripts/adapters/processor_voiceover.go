@@ -165,7 +165,7 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 //
 // Step 7 / PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28 M2 typed-port
 // remediation (June 2026): both methods now return the canonical
-// typed *voiceover.VoiceoverResult (NOT interface{}). The Process body
+// typed *voiceover.VoiceoverResult (NOT any). The Process body
 // reads result.Path + result.DriveLink directly — no type assertion,
 // no extractVoiceoverPaths helper. Companion back-compat alias
 // `domain.VoiceoverResult = domain.Result` lives at
@@ -187,7 +187,7 @@ type VoiceoverService interface {
 // concrete *voiceover.Service's Generate and GenerateWithDestination methods
 // already return the typed *voiceover.VoiceoverResult (post-Step 7 M2 typed
 // return). Drift in either side of this contract now fails the BUILD at this
-// line instead of silently returning interface{} / panicking at runtime —
+// line instead of silently returning any / panicking at runtime —
 // AGENTS.md Pattern 0 (port abstraction layer, June 2026) "compile-time
 // assertions catch signature drift at compile, not at first panic runtime".
 var _ VoiceoverService = (*voiceover.Service)(nil)

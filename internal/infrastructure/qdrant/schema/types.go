@@ -30,7 +30,7 @@
 //	search_types.go          SearchRequest + HybridSearchRequest + SparseQueryVector
 //	                          + SearchResult + ScrollResult + ScrollPoint
 //	                          + DeadLetterChecker + GoldenQueryRunner
-//	                          + Filter marker (inline map[string]interface{})
+//	                          + Filter marker (inline map[string]any)
 //	error types:             APIError + sentinel errors → errors.go (PR1)
 //
 // Co-located files: client.go + client_*.go (PR2), errors.go (PR1),
@@ -49,9 +49,9 @@ import "github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
 // Point is a single Qdrant point ready for upsert.
 // Note: the Vectors field uses the Qdrant REST API key "vector" (singular).
 type Point struct {
-	ID      string                 `json:"id"`
-	Vectors map[string]interface{} `json:"vector"`
-	Payload map[string]interface{} `json:"payload"`
+	ID      string         `json:"id"`
+	Vectors map[string]any `json:"vector"`
+	Payload map[string]any `json:"payload"`
 }
 
 // ── DR type aliases + PointPayload ─────────────────────────────────────
@@ -68,6 +68,6 @@ type SnapshotDescription = qdrantdr.SnapshotDescription
 // would null vectors on partial payload, which was the prior bug
 // the reaper commit 07292503 fixed in the qdrant.reaper path).
 type PointPayload struct {
-	ID      string                 `json:"id"`
-	Payload map[string]interface{} `json:"payload"`
+	ID      string         `json:"id"`
+	Payload map[string]any `json:"payload"`
 }

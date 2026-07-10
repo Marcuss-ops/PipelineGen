@@ -127,5 +127,3 @@ func (r *HandlerRegistry) Get(eventType string) (Handler, bool) {
 	h, ok := r.handlers[eventType]
 	return h, ok
 }
-
-

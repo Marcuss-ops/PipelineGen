@@ -142,7 +142,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	//
 	// Wave 16 (June 2026): typed-port direct assignment per
 	// AGENTS.md Pattern 0. The previous
-	// `interface{}(repos.ClipsRepo).(jobsoutbox.AssetSourceChecker)`
+	// `any(repos.ClipsRepo).(jobsoutbox.AssetSourceChecker)`
 	// raw cast is replaced because *assets.ClipsRepository
 	// statically implements the port (compile-time assertion at
 	// internal/infrastructure/database/sqlite/assets/clips_repository.go).
@@ -182,7 +182,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// PR 4 (June 2026, refactor/single-qdrant-runtime): wire
 	// qd.QdrantDeleter (outbox.VectorPointDeleter; == qd.Runtime.Writer
 	// when Qdrant is enabled) directly into outbox.Deps.VectorPointDeleter.
-	// The previous `interface{}` cast `qd.QdrantDeleter.(jobsoutbox.QdrantDeleter)`
+	// The previous `any` cast `qd.QdrantDeleter.(jobsoutbox.QdrantDeleter)`
 	// is gone: the compile-time assertion at
 	// internal/infrastructure/qdrant/index_writer.go pins the
 	// conformance (`_ jobsoutbox.VectorPointDeleter = (*qdrant.IndexWriter)(nil)`),

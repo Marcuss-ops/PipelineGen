@@ -33,9 +33,9 @@ import (
 // this fn preserves the invariant. The freeze test in
 // composition_test.go::TestComposition_FrozenQdrantIndexDocumentCanonicalTypes
 // + the wire-level test below pin both halves of the invariant.
-func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) map[string]interface{} {
+func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) map[string]any {
 	if doc == nil {
-		return map[string]interface{}{}
+		return map[string]any{}
 	}
 	semanticTitle := doc.Metadata.SemanticTitle
 	if semanticTitle == "" {
@@ -61,7 +61,7 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	if len(entities) == 0 {
 		entities = mergeStringSlices(doc.Metadata.People, doc.Metadata.Topics, doc.Metadata.SearchKeywords)
 	}
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"asset_id":        doc.AssetID,
 		"lifecycle_state": string(doc.LifecycleState),
 		"source":          doc.Metadata.Source,

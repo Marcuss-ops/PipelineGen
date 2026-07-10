@@ -155,7 +155,7 @@ func (v *ReindexVerifier) verifyScrollAndCanonical(ctx context.Context, target s
 //
 // Returns true if ANY per-channel mismatch was found (so the caller can
 // bump the global VersionMismatch counter).
-func (v *ReindexVerifier) verifyPerChannelVersions(payload map[string]interface{}, report *schema.SwitchReport) bool {
+func (v *ReindexVerifier) verifyPerChannelVersions(payload map[string]any, report *schema.SwitchReport) bool {
 	pointMismatched := false
 
 	if v.schema == nil {
@@ -216,7 +216,7 @@ func computeMissingOrphan(sqliteSet, qdrantIDs map[string]bool, report *schema.S
 // validatePayloadMinimum checks that a Qdrant point's payload contains the
 // minimum required fields (asset_id, name, source). Returns a human-readable
 // issue string, or empty string if the payload is valid.
-func validatePayloadMinimum(payload map[string]interface{}, pointID string) string {
+func validatePayloadMinimum(payload map[string]any, pointID string) string {
 	if payload == nil {
 		return fmt.Sprintf("point %s: payload is nil", pointID)
 	}

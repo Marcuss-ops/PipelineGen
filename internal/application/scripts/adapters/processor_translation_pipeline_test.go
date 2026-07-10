@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
 )
@@ -130,10 +130,10 @@ func TestPipeline_TranslationFeedsVoiceoverProcessor(t *testing.T) {
 
 	// Plan: translate to Italian, run translation then voiceover.
 	plan := &scriptpkg.ResolvedGenerationPlan{
-		ID:         "test-pipeline",
-		Language:   "en",
+		ID:          "test-pipeline",
+		Language:    "en",
 		TranslateTo: "it",
-		Title:      "Boxing Story",
+		Title:       "Boxing Story",
 		Postprocessors: []string{
 			string(ProcessorTranslation),
 			string(ProcessorVoiceover),

@@ -68,7 +68,7 @@ type PointsSelector interface {
 	// Filter returns true if the point should have its payload
 	// redacted. The Reaper calls this for every scrolled point
 	// before deciding whether to include it in the overwrite batch.
-	Filter(payload map[string]interface{}) bool
+	Filter(payload map[string]any) bool
 }
 
 // KeySelector matches points that carry any of the configured
@@ -79,7 +79,7 @@ type KeySelector struct {
 
 // Filter returns true if payload contains at least one of the
 // configured Keys.
-func (s *KeySelector) Filter(payload map[string]interface{}) bool {
+func (s *KeySelector) Filter(payload map[string]any) bool {
 	if payload == nil || len(s.Keys) == 0 {
 		return false
 	}
@@ -405,7 +405,7 @@ func persistReaperAudit(ctx context.Context, db *sql.DB, r *ReaperResult) error 
 // jsonMarshal marshals v to a JSON string. Two call sites (audit
 // keys_redacted_json + errors_json) — using encoding/json directly
 // keeps the import surface minimal.
-func jsonMarshal(v interface{}) (string, error) {
+func jsonMarshal(v any) (string, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return "", err
@@ -415,12 +415,12 @@ func jsonMarshal(v interface{}) (string, error) {
 
 // redactPayload returns a copy of payload with the given keys removed.
 // The second return value is true when at least one key was stripped.
-func redactPayload(payload map[string]interface{}, keys []string) (map[string]interface{}, bool) {
+func redactPayload(payload map[string]any, keys []string) (map[string]any, bool) {
 	if payload == nil {
 		return nil, false
 	}
 	stripped := false
-	cleaned := make(map[string]interface{}, len(payload))
+	cleaned := make(map[string]any, len(payload))
 	for k, v := range payload {
 		redact := false
 		for _, rk := range keys {

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 
-
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -24,7 +23,6 @@ const (
 	// Single-mode outcomes (one item, len(env.Items)==1).
 	OutcomeSingleSuccess Outcome = "SINGLE_SUCCESS"
 	OutcomeSingleFailure Outcome = "SINGLE_FAILURE"
-
 
 	// Cancellation observed at any phase (Issue 6 / P1).
 	OutcomeCanceled Outcome = "CANCELED"
@@ -75,5 +73,3 @@ func ClassifySingleOutcome(result *domainScript.GenerationResult, err error) Dia
 	}
 	return Diagnostic{Outcome: OutcomeSingleSuccess}
 }
-
-

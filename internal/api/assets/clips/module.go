@@ -52,7 +52,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
@@ -60,6 +59,7 @@ import (
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"

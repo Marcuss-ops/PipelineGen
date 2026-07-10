@@ -82,7 +82,7 @@ func (s *ImageStorageService) SearchAndDownload(ctx context.Context, subjectSlug
 	}
 
 	key := "search:" + slug + ":" + lang
-	result, err, _ := s.dedup.Do(key, func() (interface{}, error) {
+	result, err, _ := s.dedup.Do(key, func() (any, error) {
 		return s.searchAndDownloadInner(ctx, slug, displayName, query, lang, tags, subject)
 	})
 	if err != nil {

@@ -240,7 +240,7 @@ func (c *LocatorCleaner) CleanLocators(ctx context.Context, apply bool) (*schema
 // hasKey returns true if the payload map contains the given key
 // (regardless of the value). A legacy key present but empty is
 // still eligible for cleanup.
-func hasKey(payload map[string]interface{}, key string) bool {
+func hasKey(payload map[string]any, key string) bool {
 	if payload == nil {
 		return false
 	}

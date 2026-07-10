@@ -261,7 +261,7 @@ func (s *Searcher) resolveCollection(ctx context.Context) (string, error) {
 	// Slow path: singleflight-deduplicated refresh.
 	// Only ONE goroutine per alias actually calls GetAliasTarget;
 	// the rest get the result from the singleflight group.
-	result, err, _ := s.sfGroup.Do(s.schema.RuntimeAlias, func() (interface{}, error) {
+	result, err, _ := s.sfGroup.Do(s.schema.RuntimeAlias, func() (any, error) {
 		// Double-check: another goroutine may have populated the
 		// cache between our RUnlock and the singleflight callback
 		// execution (e.g. a prior singleflight call completed).

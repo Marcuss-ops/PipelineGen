@@ -25,7 +25,7 @@ type Points struct {
 // PointSnapshot is the per-point shape needed by the scanner.
 type PointSnapshot struct {
 	ID      string
-	Payload map[string]interface{}
+	Payload map[string]any
 }
 
 // QdrantLister is the Qdrant-side read port. Implementations scroll a
@@ -112,7 +112,7 @@ func (filesystemReportWriter) Write(path string, report *ReconcileReport) error 
 // writeJSONFile is a tiny helper indirection so internal/scanner_test
 // can construct an in-memory equivalent without depending on the
 // filesystem.
-var writeJSONFile = func(path string, v interface{}) error {
+var writeJSONFile = func(path string, v any) error {
 	return writeFileDefault(path, v)
 }
 

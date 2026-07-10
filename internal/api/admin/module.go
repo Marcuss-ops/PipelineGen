@@ -43,8 +43,8 @@ type AdminDescriptor struct {
 	Module api.Module
 }
 
-func (d *AdminDescriptor) Name() string             { return d.Module.Name() }
-func (d *AdminDescriptor) Enabled() bool            { return d.Module.Enabled() }
+func (d *AdminDescriptor) Name() string                       { return d.Module.Name() }
+func (d *AdminDescriptor) Enabled() bool                      { return d.Module.Enabled() }
 func (d *AdminDescriptor) RegisterRoutes(rg *gin.RouterGroup) { d.Module.RegisterRoutes(rg) }
 
 // Build composes the Admin HTTP capability from the typed dependencies.

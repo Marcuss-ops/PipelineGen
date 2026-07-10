@@ -93,7 +93,7 @@ func (m *Asset) UsableFor() []string {
 	switch arr := v.(type) {
 	case []string:
 		return arr
-	case []interface{}:
+	case []any:
 		result := make([]string, len(arr))
 		for i, item := range arr {
 			if s, ok := item.(string); ok {
@@ -123,7 +123,7 @@ func (m *Asset) AvoidFor() []string {
 	switch arr := v.(type) {
 	case []string:
 		return arr
-	case []interface{}:
+	case []any:
 		result := make([]string, len(arr))
 		for i, item := range arr {
 			if s, ok := item.(string); ok {

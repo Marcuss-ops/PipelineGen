@@ -170,10 +170,10 @@ func WireAssets(
 	// Pre-Step-7, ClipsDescriptor did NOT implement DescriptorJobs so this
 	// slot was never invoked — the bulk_upload_youtube_clips handler was
 	// never registered and the worker could never claim those jobs.
-	// clipsDesc is *ClipsDescriptor (concrete); wrap in interface{} for
+	// clipsDesc is *ClipsDescriptor (concrete); wrap in any for
 	// the type assertion (mirrors registerGenerationCapability pattern
 	// where genDesc is already api.Descriptor).
-	if dj, ok := interface{}(clipsDesc).(module.DescriptorJobs); ok {
+	if dj, ok := any(clipsDesc).(module.DescriptorJobs); ok {
 		if err := dj.RegisterJobHandlers(jobs.Service); err != nil {
 			log.Warn("failed to register clips job handlers", zap.Error(err))
 		}

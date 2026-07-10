@@ -249,7 +249,6 @@ func (r *Runner) WithBroker(cp CompletionPort) *Runner {
 	return r
 }
 
-
 // buildWorkers constructs the worker pool with the attached Registry
 // wired onto each Worker (via Worker.WithRegistry). Called by Start;
 // kept package-private so tests can assert the binding without

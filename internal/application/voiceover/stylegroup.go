@@ -26,7 +26,7 @@
 // DB wire compat: stored in the metadata JSON column (no
 // dedicated column). The meta["style_group"] = styleGroup
 // assignment works without explicit conversion (typed value IS
-// a string at the interface{} level).
+// a string at the any level).
 
 package voiceover
 

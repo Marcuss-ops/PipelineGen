@@ -15,23 +15,25 @@ type stageURLRecordingRunner struct {
 	stager assets.SourceStager
 }
 
-func (r *stageURLRecordingRunner) Cfg() OrchestratorConfig                                      { return OrchestratorConfig{} }
-func (r *stageURLRecordingRunner) RunInput() *RunInput                                          { return &RunInput{} }
-func (r *stageURLRecordingRunner) JobID() string                                                { return "stage-url-test" }
-func (r *stageURLRecordingRunner) PolicyVersion() string                                        { return "v1" }
-func (r *stageURLRecordingRunner) Planner() ClipPlanner                                         { return nil }
-func (r *stageURLRecordingRunner) SourceStager() assets.SourceStager                            { return r.stager }
-func (r *stageURLRecordingRunner) Cutter() VideoCutter                                          { return nil }
-func (r *stageURLRecordingRunner) Renderer() StockRenderer                                      { return nil }
-func (r *stageURLRecordingRunner) Builder() ManifestBuilder                                     { return nil }
-func (r *stageURLRecordingRunner) Writer() TransactionalAssetWriter                             { return nil }
-func (r *stageURLRecordingRunner) Projection() ProjectionPort                                   { return nil }
-func (r *stageURLRecordingRunner) SourceDurationProbe() SourceDurationProbe                     { return nil }
-func (r *stageURLRecordingRunner) ArtifactPreparation() finalization.ArtifactPreparationService { return nil }
-func (r *stageURLRecordingRunner) JobFinalizer() finalization.JobFinalizer                      { return nil }
-func (r *stageURLRecordingRunner) RunFingerprint() string                                       { return "stage-url-test" }
-func (r *stageURLRecordingRunner) Log() *zap.Logger                                             { return zap.NewNop() }
-func (r *stageURLRecordingRunner) State() *runState                                             { return r.state }
+func (r *stageURLRecordingRunner) Cfg() OrchestratorConfig                  { return OrchestratorConfig{} }
+func (r *stageURLRecordingRunner) RunInput() *RunInput                      { return &RunInput{} }
+func (r *stageURLRecordingRunner) JobID() string                            { return "stage-url-test" }
+func (r *stageURLRecordingRunner) PolicyVersion() string                    { return "v1" }
+func (r *stageURLRecordingRunner) Planner() ClipPlanner                     { return nil }
+func (r *stageURLRecordingRunner) SourceStager() assets.SourceStager        { return r.stager }
+func (r *stageURLRecordingRunner) Cutter() VideoCutter                      { return nil }
+func (r *stageURLRecordingRunner) Renderer() StockRenderer                  { return nil }
+func (r *stageURLRecordingRunner) Builder() ManifestBuilder                 { return nil }
+func (r *stageURLRecordingRunner) Writer() TransactionalAssetWriter         { return nil }
+func (r *stageURLRecordingRunner) Projection() ProjectionPort               { return nil }
+func (r *stageURLRecordingRunner) SourceDurationProbe() SourceDurationProbe { return nil }
+func (r *stageURLRecordingRunner) ArtifactPreparation() finalization.ArtifactPreparationService {
+	return nil
+}
+func (r *stageURLRecordingRunner) JobFinalizer() finalization.JobFinalizer { return nil }
+func (r *stageURLRecordingRunner) RunFingerprint() string                  { return "stage-url-test" }
+func (r *stageURLRecordingRunner) Log() *zap.Logger                        { return zap.NewNop() }
+func (r *stageURLRecordingRunner) State() *runState                        { return r.state }
 
 var _ StepRunner = (*stageURLRecordingRunner)(nil)
 
@@ -55,7 +57,7 @@ func TestStockStageSourcesStep_CanonicalizesYouTubeURL(t *testing.T) {
 		state: &runState{
 			Plan: []ClipPlan{
 				{
-					SourceID:      "https://www.youtube.com/watch?v=dgB9UHHapq4&pp=ugUEEgJlbg%3D%3D",
+					SourceID:       "https://www.youtube.com/watch?v=dgB9UHHapq4&pp=ugUEEgJlbg%3D%3D",
 					SourceProvider: SourceProviderYouTube,
 				},
 			},
