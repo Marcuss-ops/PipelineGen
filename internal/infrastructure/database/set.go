@@ -150,7 +150,7 @@ func (s *DatabaseSet) Migrate(log *zap.Logger) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// TODO #8 (June 2026): scope-aware migrations. Each DB receives its
+	// Scope-aware migrations: each DB receives its
 	// canonical scope target ("primary" / "observability"); the runner
 	// skips out-of-scope migrations before the checksum check, so
 	// migration 109 (ALTER TABLE media_assets …) is never attempted

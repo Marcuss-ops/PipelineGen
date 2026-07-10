@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 // migrations dir. Scope is the parsed target-DB list from the file's
 // `-- database:` header directive (default: "all" if absent).
 //
-// TODO #8 (June 2026): scope-aware migrations. The runner reads each
+// Scope-aware migrations: the runner reads each
 // file's first non-blank SQL comment line for the optional header
 // `-- database: primary|observability|all` (comma-separated, default
 // "all"). When the runner's targetDB does not match a migration's scope,
@@ -51,7 +51,7 @@ type migrationFile struct {
 // runner rejects files whose version is already in the ledger but whose
 // checksum differs from the recorded one.
 //
-// TODO #8 (June 2026): scope-aware migrations. targetDB names the
+// Scope-aware migrations: targetDB names the
 // canonical DB the receiver represents ("primary" or "observability" in
 // the canonical DatabaseSet; "all" for tests / fixtures that don't
 // care). Migrations whose `-- database:` header directive excludes
@@ -90,7 +90,7 @@ func RunMigrationsOnDB(dbPath string, log *zap.Logger, targetDir, targetDB strin
 // and RunMigrationsOnDB. See RunMigrations for the targetDB parameter's
 // meaning.
 //
-// TODO #8 (June 2026): scope-aware migrations. The loop below skips
+// Scope-aware migrations: the loop below skips
 // migrations whose `-- database:` header excludes targetDB BEFORE the
 // checksum check, so the ledger never gains an entry for an out-of-scope
 // file. Migration 109 carries a one-time checksum shim — see below —
@@ -127,7 +127,7 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 	// Apply pending migrations
 	appliedCount := 0
 	for _, m := range migrations {
-		// TODO #8 (June 2026): skip out-of-scope migrations BEFORE the
+		// Skip out-of-scope migrations BEFORE the
 		// checksum check. A primary-only migration must NEVER land on
 		// the observability ledger, regardless of whether its checksum
 		// matches. The skip is silent at INFO level (operators
@@ -150,8 +150,7 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 		checksum := sha256Hex(content)
 
 		if prev, ok := applied[m.version]; ok {
-			if prev.checksum != checksum {
-				// TODO #8 (June 2026): one-time checksum upgrade
+			if prev.checksum != checksum {					// One-time checksum upgrade
 				// shim. Migration 109 was edited to prepend the
 				// `-- database: primary` header directive, which
 				// changes its SHA-256 checksum. Existing primary
@@ -165,7 +164,7 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 				// applied invariant (the SHA-256 ledger is the
 				// canonical audit trail for everything else).
 				if m.version == 109 && targetDB == "primary" {
-					// TODO #8 (June 2026): the shim ONLY fires when
+					// The shim ONLY fires when
 					// the file content carries the magic marker
 					// `-- TODO-8-SCOPE-FLAG-RECONCILE-109`. Without
 					// the marker, an unexpected modify of migration
@@ -179,7 +178,7 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 					if !strings.Contains(string(content), shimMarker) {
 						return fmt.Errorf(
 							"storage: migration %03d (%s) checksum mismatch — "+
-								"missing TODO #8 shim marker %q in file. The shim "+
+								"missing shim marker %q in file. The shim "+
 								"only fires when the marker is present, so an "+
 								"unexpected modify of 109 surfaces as a hard error "+
 								"instead of silently rewriting the ledger. To "+
