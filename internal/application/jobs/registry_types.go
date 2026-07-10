@@ -149,12 +149,9 @@ const (
 	TypeYouTubeRebuildST       = job.TypeYouTubeRebuildST
 	TypeScriptGenerate         = job.TypeScriptGenerate
 	TypeBulkUploadYouTubeClips = job.TypeBulkUploadYouTubeClips
-
-	// Deprecated: use TypeBulkUploadYouTubeClips. Kept for backward-compat.
-	TypeBulUploadYouTubeClips = job.TypeBulkUploadYouTubeClips
-	TypeDriveFolderSync       = job.TypeDriveFolderSync
-	TypeMediaCurate           = job.TypeMediaCurate
-	TypeVoiceoverPromo        = job.TypeVoiceoverPromo
+	TypeDriveFolderSync        = job.TypeDriveFolderSync
+	TypeMediaCurate            = job.TypeMediaCurate
+	TypeVoiceoverPromo         = job.TypeVoiceoverPromo
 	// TypeVoiceoverGenerateItem is the per-language child job scheduled by the
 	// parent voiceover.generate handler via FanoutVoiceoversUseCase
 	// (PR-VOICEOVER-PARENT-CHILD-FANOUT, June 2026). Concurrency is

@@ -68,19 +68,12 @@ func (a *clipsJobsPortAdapter) Enqueue(ctx context.Context, req clips.JobsEnqueu
 }
 
 // ── clipOpsSourceResolverAdapter ────────────────────────────────────────
-
-// clipOpsSourceResolverAdapter wraps a single clips.ClipRepositoryPort.
-// Collapse (June 2026): SourceResolver eliminated — all clip-type sources
-// share the same concrete repo in production.
-type clipOpsSourceResolverAdapter struct {
-	clips clips.ClipRepositoryPort
-}
-
-var _ clips.SourceResolverPort = (*clipOpsSourceResolverAdapter)(nil)
-
-func (a *clipOpsSourceResolverAdapter) ResolveRepo(source string) clips.ClipRepositoryPort {
-	if a == nil {
-		return nil
-	}
-	return a.clips
-}
+//
+// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the clipOpsSourceResolverAdapter
+// is REMOVED. The composition root at wire_assets_clips.go::buildClipsBundle
+// now passes the canonical clipsAdapterBundle.ClipsRepo directly to
+// NewClipOpsService as its `clipRepo` argument. The 2 production adapters
+// (sourceResolverAdapter in clips_adapters_index.go + clipOpsSourceResolverAdapter
+// in this file) and the SourceResolverPort interface are all retired in
+// this wave — see the comment block above the clipsAdapterBundle struct
+// declaration in clips_adapters_index.go for the full rationale.

@@ -257,13 +257,6 @@ type ClipHashPort interface {
 	MD5File(path string) (string, error)
 }
 
-// SourceResolverPort is the canonical application-side narrow
-// surface of *artifacts.SourceResolver. Returns ClipRepositoryPort
-// (NEVER the concrete type), so callers can stay port-pure.
-type SourceResolverPort interface {
-	ResolveRepo(source string) ClipRepositoryPort
-}
-
 // VectorStorePort was retired. The vector
 // capability was deleted.
 

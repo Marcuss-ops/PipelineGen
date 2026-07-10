@@ -32,16 +32,14 @@ import (
 
 // ── Local port stubs (different package from application/clips) ───────────────
 
-type handlerSourceResolver struct {
-	repos map[string]appclips.ClipRepositoryPort
-}
-
-func (r *handlerSourceResolver) ResolveRepo(s string) appclips.ClipRepositoryPort {
-	if r == nil {
-		return nil
-	}
-	return r.repos[s]
-}
+// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): handlerSourceResolver
+// REMOVED. All clip-type sources share a single canonical handlerClipsRepo
+// (defined immediately below); tests inject it directly into
+// appclips.NewClipOpsService's first (clipRepo) slot. The per-source
+// discriminator is now encoded at the test-fixture layer via the source
+// string passed to Verify/Cleanup — the service's static switch in
+// isKnownCleanupSource expands to cover all canonical clip-type sources
+// (see clip_ops_reconcile.go in the application package).
 
 type handlerClipsRepo struct{ clips []*asset.Asset }
 
@@ -214,8 +212,7 @@ func TestHandler_Cleanup_200_ReportsOrphan(t *testing.T) {
 	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
 	repo := &handlerClipsRepo{clips: []*asset.Asset{clip}}
 	jobsRP := &handlerJobsPort{nextID: "job-rp"}
-	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{"youtube": repo}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, jobsRP, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(repo, nil, nil, nil, jobsRP, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -296,8 +293,7 @@ func TestHandler_Cleanup_200_QueryDeepOverridesBody(t *testing.T) {
 // bad-request signal), not 500 or 503. The S1b post-cutover
 // layer routes the typed ErrInvalidSource sentinel into 400.
 func TestHandler_Cleanup_400_InvalidSource(t *testing.T) {
-	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, &handlerJobsPort{}, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(nil, nil, nil, nil, &handlerJobsPort{}, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 
@@ -382,8 +378,7 @@ func TestHandler_VerifyClip_200_ResponseShape(t *testing.T) {
 	clip := &asset.Asset{ID: "v-1", Name: "foo"}
 	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
 	repo := &handlerClipsRepo{clips: []*asset.Asset{clip}}
-	resolver := &handlerSourceResolver{repos: map[string]appclips.ClipRepositoryPort{"youtube": repo}}
-	svc := appclips.NewClipOpsService(resolver, nil, nil, nil, nil, nil, zap.NewNop())
+	svc := appclips.NewClipOpsService(repo, nil, nil, nil, nil, nil, zap.NewNop())
 	h := newOpsHandler(t, svc)
 	r := newOpsRouter(t, h)
 

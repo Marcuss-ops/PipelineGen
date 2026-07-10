@@ -247,7 +247,7 @@ fi
 #
 # PR-B (June 2026) closes the 4 script-related constants only. The
 # remaining literal constants in internal/application/jobs/registry.go
-# (TypeBulUploadYouTubeClips, TypeDriveFolderSync) and the other keys in
+# (TypeBulkUploadYouTubeClips, TypeDriveFolderSync) and the other keys in
 # internal/application/jobs/worker.go's timeout registry are intentionally
 # out of PR-B scope and will be folded in a separate wave.
 #

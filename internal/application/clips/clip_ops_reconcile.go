@@ -49,13 +49,21 @@ func (s *ClipOpsService) Reconcile(ctx context.Context, source, folderID string)
 }
 
 // isKnownCleanupSource returns true when src (already
-// lowercase-normalized by the caller) matches one of the
-// canonical static global cleanup scopes or resolves via
-// s.sourceResolver to a registered clip repo.
+// lowercase-normalized by the caller) is one of the canonical
+// clip-type source names. PR-CLIPS-DAPTER-RESOLVER-RETIRE (July
+// 2026): the resolver check is removed — all clip-type sources
+// route to the canonical clipRepo via the per-call source filter;
+// the static switch is now the SOLE canonical discriminator.
 func (s *ClipOpsService) isKnownCleanupSource(src string) bool {
 	switch src {
-	case "all", "voiceover", "images":
+	case "all",
+		"voiceover",
+		"images",
+		"youtube",
+		"artlist",
+		"clips",
+		"stock":
 		return true
 	}
-	return s.sourceResolver != nil && s.sourceResolver.ResolveRepo(src) != nil
+	return false
 }

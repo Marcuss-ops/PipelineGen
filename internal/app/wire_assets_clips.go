@@ -194,7 +194,14 @@ func buildClipsBundle(
 		appjobs.Compose(),
 	)
 	clipOpsSvc := appclips.NewClipOpsService(
-		clipsOpsPorts.SourceResolver,
+		// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the retired
+		// SourceResolver is GONE — `clipsOpsPorts.ClipsRepo` is the
+		// canonical-clip-side repo consumed by ClipOpsService.clipRepo.
+		// The per-source discriminator moves to query-layer filters on
+		// the canonical repos; the port-swap approach the resolver
+		// enabled is no longer needed (all clip-type sources share the
+		// same canonical repo in production).
+		clipsOpsPorts.ClipsRepo,
 		clipsOpsPorts.VoiceoverRepo,
 		clipsOpsPorts.ImagesRepo,
 		clipsOpsPorts.DriveUploader,
