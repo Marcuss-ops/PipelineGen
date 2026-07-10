@@ -6,15 +6,10 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	clips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"go.uber.org/zap"
 )
 
 // clipsIndexerAdapter wraps *clipindexer.Service to satisfy
@@ -185,90 +180,64 @@ func clipToAssetNode(clip *asset.Asset) *assets.AssetNode {
 	}
 }
 
-// PG-005 (June 2026): newClipsAdapterBundle is the canonical
-// composition-root constructor for the clips API deps. It returns
-// a bundle of typed ports so module_assets.go can hand them to
-// clipsapi.NewHandler in a single struct literal. Nil-tolerant —
-// production wiring passes all concrete deps; tests can pass nil
-// for any subset and observe the matching `if h.xy != nil` short-
-// circuit behaviour the handler code has long relied on.
-
-// clipsAdapterBundle holds the canonical typed ports consumed by
-// the clips API handlers + the ClipOpsService.
+// PR-CLIPS-DAPTER-BUNDLE-SLIM (July 2026): clipsAdapterBundle (10-field)
+// and newClipsAdapterBundle (14-arg ctor) are RETIRED. The canonical
+// build is now buildClipOpsPorts(clipRepo, jobs) — strict 2-arg per
+// the user spec. The 5 port fields on clipsOpsPorts are the ONLY
+// ones ClipOpsService consumes; every other field on the legacy
+// bundle (Cfg + StockRepo + ArtlistRepo + MetaWriter + ClipIndexer +
+// HashSvc + TreeBuilderSvc) was either dead-weight on the bundle struct
+// or consumed inline at the wire_assets_clips.go::buildClipsBundle
+// call site. The RetiredSurfaceADT section below documents the
+// godlike/06 SSOT one-canonical-owner-per-fact invariants so future
+// refactors don't reintroduce the dead ports.
 //
-// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the SourceResolver field
-// is REMOVED. The bundle's ClipsRepo IS the canonical clip-side repo
-// surface — `ClipOpsService` consumes it directly as its `clipRepo`
-// field. The StockRepo + ArtlistRepo aliases (formerly injected as
-// duplicated ports to satisfy the 3-slot resolver contract) stay on
-// the bundle for handler-side consumption but no longer route through
-// any port-selection logic.
-type clipsAdapterBundle struct {
-	Cfg            clips.ClipConfigPort
-	ClipsRepo      clips.ClipRepositoryPort
-	StockRepo      clips.ClipRepositoryPort
-	ArtlistRepo    clips.ClipRepositoryPort
-	VoiceoverRepo  clips.VoiceoverRepositoryPort
-	ImagesRepo     clips.ImageRepositoryPort
-	DriveUploader  clips.ClipDriveUploaderPort
-	MetaWriter     clips.ClipMetaWriterPort
-	ClipIndexer    clips.ClipIndexerPort
-	HashSvc        clips.ClipHashPort
-	TreeBuilderSvc clips.ClipTreeBuilderPort
+// RetiredSurfaceADT (godlike/06 SSOT one-canonical-owner-per-fact,
+// preserved for surgical-migration tracking):
+//   - clipsAdapterBundle.Cfg → unused on the bundle; clipOpsService
+//     untyped paths construct newClipsCfgAdapter inline.
+//   - clipsAdapterBundle.StockRepo / ArtlistRepo → NEVER USED (dead
+//     per PR-CLIPS-DAPTER-RESOLVER-RETIRE). The per-source discriminator
+//     moved to QUERY-layer filters on the canonical repos.
+//   - clipsAdapterBundle.MetaWriter / ClipIndexer / HashSvc /
+//     TreeBuilderSvc → consumed inline by bulkUploadWorker +
+//     UploadUseCase + ReuploadUseCase construction sites at
+//     wire_assets_clips.go::buildClipsBundle. Each call site
+//     constructs these adapters fresh for nil-tolerance semantics;
+//     caching them on the bundle would over-allocate without benefit.
+
+// clipsOpsPorts holds ONLY the 5 typed ports that ClipOpsService
+// consumes. JobFacades is narrowed from *appjobs.Service (the canonical
+// job-broker facade type) to clips.JobsServicePort (the narrow
+// use-case surface) via newClipsJobsPortAdapter inline so
+// ClipOpsService stays typed-port-monomorphic per AGENTS.md Pattern 0
+// + godlike/06 SSOT (one canonical owner per port contract).
+type clipsOpsPorts struct {
+	clipRepo      clips.ClipRepositoryPort
+	voiceoverRepo clips.VoiceoverRepositoryPort
+	imageRepo     clips.ImageRepositoryPort
+	driveUploader clips.ClipDriveUploaderPort
+	jobsPort      clips.JobsServicePort
 }
 
-// newClipsAdapterBundle wires the 10 concrete deps into typed ports.
-// PG-034 (June 2026): vectorSvc arg removed — Qdrant capability deleted.
-// PR-DEADC-CLIPS-FOLDER-MEMORY-PORT-RETIRE (July 2026): folderMemSvc
-// arg removed — the dead-code ClipFolderMemoryPort adapter surface was
-// never invoked by any consumer (the canonical *foldermemory.Service
-// consumer lives at internal/api/assets/clips/handler.go:76, NOT in
-// the clips package). The composition root at
-// `internal/app/wire_assets_clips.go::buildClipsBundle` no longer
-// threads folderMemSvc into this constructor.
+// buildClipOpsPorts is the canonical SLIM constructor per the user
+// spec literal for PR-CLIPS-DAPTER-BUNDLE-SLIM (July 2026). Strict
+// 2-arg surface: clipRepo (canonical clip-side repo port) + jobs
+// (the JobsBundle aggregator, polluted with the 4 cross-domain deps
+// per the godlike/06 SSOT pollute-at-the-bundle-stem trade-off). The
+// 5 fields of clipsOpsPorts are constructed inline in one place
+// (this function) so the dead-weight surface stays gone in lockstep.
 //
-// The configuration/log parameters are only retained for future
-// adapters that need them; today's 10 adapters are bootstrap-pure.
-func newClipsAdapterBundle(
-	cfg *config.Config,
-	log *zap.Logger,
-	artlistRepo *assets.ClipsRepository,
-	clipsRepo *assets.ClipsRepository,
-	stockRepo *assets.ClipsRepository,
-	voiceoverRepo *assets.VoiceoversRepository,
-	imagesRepo *assets.ImagesRepository,
-	driveUp *drive.Uploader,
-	lifecycle drive.FileLifecycle,
-	metaWriter semantic.MetadataWriterPort,
-	clipIndexer *clipindexer.Service,
-	assetTreeSvc *assettree.Service,
-	_ /* vectorSvc removed PG-034 */ any,
-	timeouts appjobs.TimeoutResolver,
-) clipsAdapterBundle {
-	_ = log // reserved for future adapters that need a logger
-	artPort := newClipsRepoAdapter(artlistRepo)
-	clpPort := newClipsRepoAdapter(clipsRepo)
-	stockPort := newClipsRepoAdapter(stockRepo)
-	return clipsAdapterBundle{
-		// HC-1 (June 2026): pass the typed TimeoutResolver (canonical
-		// impl: jobs.Compose() — *jobs.Registry) to the cfg adapter so
-		// the bulk_upload worker can resolve per-job-type timeouts
-		// through the typed port instead of the pre-HC-1 hard-coded
-		// 2*time.Hour literal in bulk_upload_worker.go.
-		Cfg: newClipsCfgAdapter(cfg, timeouts),
-		// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): SourceResolver
-		// removed (the resolver is gone — see comment above the clipsAdapterBundle
-		// struct declaration). ClipsRepo below is the canonical clip-side repo
-		// surface consumed directly by ClipOpsService.clipRepo.
-		ClipsRepo:      clpPort,
-		StockRepo:      stockPort,
-		ArtlistRepo:    artPort,
-		VoiceoverRepo:  newVoiceoverRepoAdapter(voiceoverRepo),
-		ImagesRepo:     newImageRepoAdapter(imagesRepo),
-		DriveUploader:  newClipsDriveAdapter(driveUp, driveUp, lifecycle), // P1-5 CUTOVER: FileLifecycle.Trash replaces Admin.TrashFile
-		MetaWriter:     newClipMetaWriterAdapter(metaWriter),
-		ClipIndexer:    newClipsIndexerAdapter(clipIndexer),
-		HashSvc:        newClipsHashAdapter(),
-		TreeBuilderSvc: newClipsAssetTreeAdapter(assetTreeSvc),
+// Nil-tolerance per godlike/07 minimum-blast-radius: drives off the
+// typed-port constructors which are themselves nil-tolerant; any nil
+// dep surfaces as a typed error at first use, never silent-success
+// in production.
+func buildClipOpsPorts(clipRepo clips.ClipRepositoryPort, jobs *JobsBundle) clipsOpsPorts {
+	return clipsOpsPorts{
+		clipRepo:      clipRepo,
+		voiceoverRepo: newVoiceoverRepoAdapter(jobs.VoiceoverRepo),
+		imageRepo:     newImageRepoAdapter(jobs.ImagesRepo),
+		driveUploader: newClipsDriveAdapter(jobs.DriveUploader, jobs.DriveUploader, jobs.DriveLifecycle),
+		jobsPort:      newClipsJobsPortAdapter(jobs.Facade),
 	}
 }

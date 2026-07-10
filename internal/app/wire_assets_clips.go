@@ -184,36 +184,27 @@ func buildClipsBundle(
 	// 2026): pass the typed TimeoutResolver (canonical impl:
 	// appjobs.Compose() — *jobs.Registry) so the cfg adapter in the
 	// bundle has the timeouts port wired.
-	clipsOpsPorts := newClipsAdapterBundle(
-		cfg, log,
-		deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.ClipsRepo,
-		deps.Core.VoiceoverRepo, deps.Core.ImageRepo,
-		driveUploader, lifecycle, metaWriter, deps.Search.ClipIndexerService,
-		// PR-DEADC-CLIPS-FOLDER-MEMORY-PORT-RETIRE (July 2026): the
-		// `folderMemSvc` arg is REMOVED from newClipsAdapterBundle —
-		// the dead-code `clips.ClipFolderMemoryPort` adapter surface
-		// was never invoked by any consumer. The canonical
-		// `*foldermemory.Service` consumer at
-		// internal/api/assets/clips/handler.go:76 is PRESERVED (the
-		// real OpsHandler consumer); folderMemSvc is still threaded
-		// into the clipsapi.Build deps literal below.
-		deps.Core.AssetTreeService,
-		nil, // vectorSvc removed PG-034
-		appjobs.Compose(),
-	)
+	// PR-CLIPS-DAPTER-BUNDLE-SLIM (July 2026): buildClipOpsPorts is the
+	// strict 2-arg canonical constructor (clipRepo, jobs). The 4
+	// cross-domain deps (VoiceoverRepo + ImagesRepo + DriveUploader +
+	// DriveLifecycle) are pulled off JobsBundle (polluted per the
+	// godlike/06 SSOT pollute-at-the-bundle-stem trade-off; see
+	// internal/app/module_jobs.go for the JobsBundle surfacing).
+	// The clipsDispatcherPort and metaWriter + deps.Core.AssetTreeService
+	// construction sites stay INLINE here — the buildClipOpsPorts
+	// contract is strictly minimal per the user spec literal.
+	clipsOpsPorts := buildClipOpsPorts(newClipsRepoAdapter(deps.Core.ClipsRepo), jobs)
 	clipOpsSvc := appclips.NewClipOpsService(
-		// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the retired
-		// SourceResolver is GONE — `clipsOpsPorts.ClipsRepo` is the
-		// canonical-clip-side repo consumed by ClipOpsService.clipRepo.
-		// The per-source discriminator moves to query-layer filters on
-		// the canonical repos; the port-swap approach the resolver
-		// enabled is no longer needed (all clip-type sources share the
-		// same canonical repo in production).
-		clipsOpsPorts.ClipsRepo,
-		clipsOpsPorts.VoiceoverRepo,
-		clipsOpsPorts.ImagesRepo,
-		clipsOpsPorts.DriveUploader,
-		newClipsJobsPortAdapter(jobs.Facade),
+		// The clipsOpsPorts struct fields map 1:1 to ClipOpsService
+		// deps per the canonical surface contract. SourceResolver
+		// (retired in PR-CLIPS-DAPTER-RESOLVER-RETIRE) and the 5-dead-
+		// weight fields (Cfg / StockRepo / ArtlistRepo / MetaWriter /
+		// HashSvc / TreeBuilderSvc) are no longer threaded.
+		clipsOpsPorts.clipRepo,
+		clipsOpsPorts.voiceoverRepo,
+		clipsOpsPorts.imageRepo,
+		clipsOpsPorts.driveUploader,
+		clipsOpsPorts.jobsPort,
 		clipsDispatcherPort,
 		log,
 	)

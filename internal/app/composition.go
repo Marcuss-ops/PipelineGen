@@ -56,7 +56,10 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if dbs.jobs != nil {
 		jobsDB = dbs.jobs
 	}
-	jobs, err := BuildJobsBundle(jobsDB, log)
+	// PR-CLIPS-DAPTER-BUNDLE-SLIM (July 2026): 4 cross-domain deps
+	// threaded into JobsBundle pollution so buildClipOpsPorts(clipRepo, jobs)
+	// stays strict 2-arg at the wire_assets_clips.go:187 call site.
+	jobs, err := BuildJobsBundle(jobsDB, log, repos.VoiceoverRepo, repos.ImageRepo, driveBundle.driveUploader, driveBundle.Lifecycle)
 	if err != nil {
 		return nil, fmt.Errorf("compose jobs: %w", err)
 	}
