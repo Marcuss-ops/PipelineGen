@@ -25,6 +25,12 @@
 //     default; --apply is the operator-explicit opt-in.
 //   - dr-qdrant                   (cmd/admin/dr_qdrant.go) — QDRANT-005C PR3:
 //     list-snapshots / take-snapshot / restore-snapshot / apply-retention.
+//   - fullimages-migrate          (cmd/admin/fullimages_migrate.go) — PR-LEGACY-CLEANUP-FULLIMAGES-DOWNSTREAM-MIGRATION:
+//     operator-facing migration CLI for the fullimages video→image
+//     rename (LEGACY-CLEANUP-5-ITEM-ORCHESTRATION Item 5, Option B
+//     verdict, shipped 2026-07-10). Default = dry-run; --apply writes
+//     the canonical text replacements (URL, JSON, Go type/field/method)
+//     to disk. Hermetic: pure filesystem scan, no live-stack dependency.
 //   - list-drive-folder           (cmd/admin/list_drive_folder.go)
 //   - reset-video-ai              (cmd/admin/reset_video_ai.go)
 //   - sync-all-drive              (cmd/admin/cleanup.go)
@@ -89,6 +95,7 @@ var availableCommands = []string{
 	"unify-catalogs",
 	"backfill-asset-embeddings",
 	"backfill-visual-embeddings",
+	"fullimages-migrate",
 	"verify-artlist-pipeline",
 }
 
@@ -162,6 +169,8 @@ func main() {
 		err = runDB(args)
 	case "dr-qdrant":
 		err = runDrQdrant(args)
+	case "fullimages-migrate":
+		err = runFullImagesMigrate(args)
 	case "drive-bootstrap":
 		err = runDriveBootstrap(args)
 	case "drive-doctor":

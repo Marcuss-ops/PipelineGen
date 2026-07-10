@@ -171,11 +171,32 @@ go build -o pipelinegen ./cmd/server/
 - Clips: `POST /api/clips/search`, `GET /api/clips/info`
 - Media assets: `GET /api/media/search`, `GET /api/media/diagnostics`
 - Voiceover: `POST /api/media/voiceover/generate`
+- Fullimages (still-image generation, video MP4 pipeline retired 2026-07-10): `POST /api/fullimages/image/generate`
 - System: `GET /api/system/doctor`
 
 ## Job System
 
 PipelineGen uses a unified job system for long-running operations. Jobs are stored in `data/media/media.db.sqlite` and processed by background workers. Track job progress through `/api/jobs` endpoints.
+
+### Fullimages migration (video→image)
+
+The pre-2026-07-10 `fullimages` surface generated MP4s via a Ken Burns
+effect. The **Option B verdict (2026-07-10)** collapsed the MP4 pipeline
+to a still-image pipeline:
+
+- **Endpoint**: `POST /api/fullimages/image/generate` (was `POST /api/fullimages/video/generate`).
+- **Response field**: `images[]` (was `videos[]`).
+- **Response element type**: `SectionImage` (was `SectionVideo`); the
+  canonical `ImagePath` field (was `VideoPath`).
+
+For operator-side migrations, see the canonical runbook at
+[`docs/operations/fullimages-migration-runbook.md`](./docs/operations/fullimages-migration-runbook.md)
+and the `fullimages-migrate` admin CLI:
+
+```bash
+./admin fullimages-migrate --target-dir ~/ops/scripts --exts .sh,.py,.md,.yaml
+# default = dry-run (no writes); add --apply to write the canonical text replacements
+```
 
 ## Project Structure
 
