@@ -45,6 +45,8 @@ curl -X POST http://localhost:8080/api/fullimages/image/generate -d '{"topic":"b
 echo "$response" | jq '.images[] | .ImagePath'
 ```
 
+_(The CLI handles all 9 pattern classes automatically — see table below.)_
+
 The 9 pattern classes the CLI scans for:
 
 | Class        | Old literal → New literal                          |
