@@ -9,6 +9,8 @@
 package main
 
 import (
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -274,5 +276,276 @@ func TestRunFullImagesMigrate_EmptyExts(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "at least one extension") {
 		t.Errorf("error message should mention 'at least one extension'; got: %v", err)
+	}
+}
+
+// TestSplitExtsCSV_EmptyInput pins the canonical empty-input behavior
+// (returns nil, not an empty slice — JSON serialization omits the
+// field via the `omitempty`-equivalent nil check in the report builder).
+func TestSplitExtsCSV_EmptyInput(t *testing.T) {
+	got := splitExtsCSV("")
+	if got != nil {
+		t.Errorf("expected nil for empty input, got %v", got)
+	}
+}
+
+// TestSplitExtsCSV_DedupAndNormalize pins the canonical parsing
+// contract: trim whitespace, normalize to lower-case + leading dot,
+// deduplicate, preserve input order.
+func TestSplitExtsCSV_DedupAndNormalize(t *testing.T) {
+	got := splitExtsCSV(".sh, .py ,sh,PY,.sh,go")
+	want := []string{".sh", ".py", ".go"} // .sh dedup'd (3x), .py case-normalized + dedup'd (2x), .go normalized
+	if len(got) != len(want) {
+		t.Fatalf("got %v (%d items), want %v (%d items)", got, len(got), want, len(want))
+	}
+	for i, v := range want {
+		if got[i] != v {
+			t.Errorf("got[%d]=%q, want %q", i, got[i], v)
+		}
+	}
+}
+
+// TestBuildFullimagesMigrateJSONReport_EmptyReport pins the canonical
+// JSON schema for the no-hits case: empty files array, null
+// per_class_totals, null warnings, mode=dry-run, applied_files_count=0.
+func TestBuildFullimagesMigrateJSONReport_EmptyReport(t *testing.T) {
+	rep := buildFullimagesMigrateJSONReport(
+		"/tmp/no-such-dir",
+		[]string{".sh", ".py"},
+		false,
+		map[string]map[string]int{},
+		fullimagesMigratePatterns,
+		nil,
+		0,
+	)
+	if rep.Meta.TargetDir != "/tmp/no-such-dir" {
+		t.Errorf("meta.target_dir=%q, want /tmp/no-such-dir", rep.Meta.TargetDir)
+	}
+	if rep.Meta.Mode != "dry-run" {
+		t.Errorf("meta.mode=%q, want dry-run", rep.Meta.Mode)
+	}
+	if len(rep.Files) != 0 {
+		t.Errorf("expected empty files array, got %d files", len(rep.Files))
+	}
+	if rep.Totals.FilesWithHits != 0 || rep.Totals.TotalMatches != 0 {
+		t.Errorf("expected zero totals, got %+v", rep.Totals)
+	}
+	if rep.PerClassTotals != nil {
+		t.Errorf("per_class_totals should be nil for empty report, got %v", rep.PerClassTotals)
+	}
+	if rep.Warnings != nil {
+		t.Errorf("warnings should be nil for empty report, got %v", rep.Warnings)
+	}
+	if rep.AppliedFilesCount != 0 {
+		t.Errorf("applied_files_count should be 0 for dry-run, got %d", rep.AppliedFilesCount)
+	}
+	if len(rep.Patterns) != len(fullimagesMigratePatterns) {
+		t.Errorf("patterns should surface the canonical table verbatim, got %d want %d",
+			len(rep.Patterns), len(fullimagesMigratePatterns))
+	}
+}
+
+// TestBuildFullimagesMigrateJSONReport_DetailedReport pins the
+// canonical JSON schema for the multi-file multi-class case: sorted
+// files array, per_class_totals aggregated, totals correct.
+func TestBuildFullimagesMigrateJSONReport_DetailedReport(t *testing.T) {
+	fileHits := map[string]map[string]int{
+		"/tmp/foo.sh": {
+			"URL":     2,
+			"Go-type": 1,
+		},
+		"/tmp/bar.md": {
+			"JSON-bracket": 3,
+		},
+	}
+	rep := buildFullimagesMigrateJSONReport(
+		"/tmp",
+		[]string{".sh", ".md"},
+		false,
+		fileHits,
+		fullimagesMigratePatterns,
+		nil,
+		0,
+	)
+	if rep.Totals.FilesWithHits != 2 {
+		t.Errorf("totals.files_with_hits=%d, want 2", rep.Totals.FilesWithHits)
+	}
+	if rep.Totals.TotalMatches != 6 { // 2+1+3
+		t.Errorf("totals.total_matches=%d, want 6", rep.Totals.TotalMatches)
+	}
+	// Sorted file order: bar.md < foo.sh
+	if len(rep.Files) != 2 || rep.Files[0].Path != "/tmp/bar.md" || rep.Files[1].Path != "/tmp/foo.sh" {
+		t.Errorf("files not sorted: %+v", rep.Files)
+	}
+	if rep.PerClassTotals["URL"] != 2 || rep.PerClassTotals["Go-type"] != 1 || rep.PerClassTotals["JSON-bracket"] != 3 {
+		t.Errorf("per_class_totals mismatch: %+v", rep.PerClassTotals)
+	}
+	// Per-file hits must include the full per-class map (not the
+	// per_class_totals aggregate).
+	if rep.Files[1].Hits["URL"] != 2 || rep.Files[1].Hits["Go-type"] != 1 {
+		t.Errorf("foo.sh hits mismatch: %+v", rep.Files[1].Hits)
+	}
+	if rep.Files[1].TotalMatches != 3 {
+		t.Errorf("foo.sh total_matches=%d, want 3", rep.Files[1].TotalMatches)
+	}
+}
+
+// TestBuildFullimagesMigrateJSONReport_ApplyMode pins the mode +
+// applied_files_count contract for the --apply invocation.
+func TestBuildFullimagesMigrateJSONReport_ApplyMode(t *testing.T) {
+	rep := buildFullimagesMigrateJSONReport(
+		"/tmp",
+		[]string{".sh"},
+		true,
+		map[string]map[string]int{"/tmp/x.sh": {"URL": 1}},
+		fullimagesMigratePatterns,
+		nil,
+		3, // simulated apply count (may exceed fileHits size if some files had 0 matches but were touched)
+	)
+	if rep.Meta.Mode != "apply" {
+		t.Errorf("meta.mode=%q, want apply", rep.Meta.Mode)
+	}
+	if rep.AppliedFilesCount != 3 {
+		t.Errorf("applied_files_count=%d, want 3", rep.AppliedFilesCount)
+	}
+}
+
+// TestBuildFullimagesMigrateJSONReport_Warnings pins that the
+// warnings array is populated when warnings are provided (operator
+// sees the per-file access errors in the JSON report).
+func TestBuildFullimagesMigrateJSONReport_Warnings(t *testing.T) {
+	rep := buildFullimagesMigrateJSONReport(
+		"/tmp",
+		[]string{".sh"},
+		false,
+		map[string]map[string]int{},
+		fullimagesMigratePatterns,
+		[]string{"cannot access /tmp/locked: permission denied (skipped)"},
+		0,
+	)
+	if rep.Warnings == nil {
+		t.Fatalf("warnings should be populated when warnings provided")
+	}
+	if len(rep.Warnings) != 1 || rep.Warnings[0] != "cannot access /tmp/locked: permission denied (skipped)" {
+		t.Errorf("warnings mismatch: %v", rep.Warnings)
+	}
+}
+
+// TestRunFullImagesMigrate_JSONOutput_Empty pins the end-to-end
+// --json path: valid JSON, no NOTICE banner on stdout, mode=dry-run
+// when no --apply.
+func TestRunFullImagesMigrate_JSONOutput_Empty(t *testing.T) {
+	dir := t.TempDir()
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+
+	if err := runFullImagesMigrate([]string{"--target-dir", dir, "--exts", ".sh", "--json"}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	w.Close()
+	out, _ := io.ReadAll(r)
+
+	// Must be valid JSON
+	var rep fullimagesMigrateJSONReport
+	if err := json.Unmarshal(out, &rep); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput:\n%s", err, out)
+	}
+	// Must NOT contain the NOTICE banner
+	if strings.Contains(string(out), "NOTICE:") {
+		t.Errorf("--json output should not contain NOTICE banner; got:\n%s", out)
+	}
+	// Must be the no-hits shape
+	if rep.Meta.Mode != "dry-run" {
+		t.Errorf("meta.mode=%q, want dry-run", rep.Meta.Mode)
+	}
+	if len(rep.Files) != 0 {
+		t.Errorf("expected empty files, got %d", len(rep.Files))
+	}
+}
+
+// TestRunFullImagesMigrate_JSONOutput_Detailed pins the end-to-end
+// --json path with matches: valid JSON, totals correct, files
+// sorted, per-class aggregate present. The seeded source uses
+// `fullimages/video/generate` (URL-partial match) — NOT the full
+// `api/fullimages/video/generate` (which would also trigger the
+// URL-partial substring match, complicating the per-class assertion).
+func TestRunFullImagesMigrate_JSONOutput_Detailed(t *testing.T) {
+	dir := t.TempDir()
+	src := `curl fullimages/video/generate && jq '.videos[0] .path' && echo SectionVideo`
+	target := filepath.Join(dir, "test.sh")
+	if err := os.WriteFile(target, []byte(src), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+
+	if err := runFullImagesMigrate([]string{"--target-dir", dir, "--exts", ".sh", "--json"}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	w.Close()
+	out, _ := io.ReadAll(r)
+
+	var rep fullimagesMigrateJSONReport
+	if err := json.Unmarshal(out, &rep); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput:\n%s", err, out)
+	}
+	if rep.Totals.FilesWithHits != 1 {
+		t.Errorf("totals.files_with_hits=%d, want 1", rep.Totals.FilesWithHits)
+	}
+	if rep.Totals.TotalMatches != 3 { // URL-partial + JSON-bracket + Go-type
+		t.Errorf("totals.total_matches=%d, want 3", rep.Totals.TotalMatches)
+	}
+	if len(rep.Files) != 1 || rep.Files[0].Path != target {
+		t.Errorf("files mismatch: %+v", rep.Files)
+	}
+	// All 3 hit classes must be in the per-file hits map
+	if rep.Files[0].Hits["URL-partial"] != 1 || rep.Files[0].Hits["JSON-bracket"] != 1 || rep.Files[0].Hits["Go-type"] != 1 {
+		t.Errorf("foo.sh hits mismatch: %+v", rep.Files[0].Hits)
+	}
+}
+
+// TestRunFullImagesMigrate_JSONOutput_Apply pins the end-to-end
+// --json + --apply path: JSON includes applied_files_count > 0
+// AND the file was actually modified (cross-checks the apply side
+// effect).
+func TestRunFullImagesMigrate_JSONOutput_Apply(t *testing.T) {
+	dir := t.TempDir()
+	src := `api/fullimages/video/generate`
+	target := filepath.Join(dir, "test.sh")
+	if err := os.WriteFile(target, []byte(src), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() { os.Stdout = old }()
+
+	if err := runFullImagesMigrate([]string{"--target-dir", dir, "--exts", ".sh", "--json", "--apply"}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	w.Close()
+	out, _ := io.ReadAll(r)
+
+	var rep fullimagesMigrateJSONReport
+	if err := json.Unmarshal(out, &rep); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\noutput:\n%s", err, out)
+	}
+	if rep.Meta.Mode != "apply" {
+		t.Errorf("meta.mode=%q, want apply", rep.Meta.Mode)
+	}
+	if rep.AppliedFilesCount != 1 {
+		t.Errorf("applied_files_count=%d, want 1", rep.AppliedFilesCount)
+	}
+	// File was actually modified
+	got, _ := os.ReadFile(target)
+	if !strings.Contains(string(got), "api/fullimages/image/generate") {
+		t.Errorf("file was not modified by --apply; got %q", got)
 	}
 }
