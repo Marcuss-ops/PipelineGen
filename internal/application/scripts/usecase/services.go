@@ -134,13 +134,18 @@ type AssocSearchService interface {
 // historically passed `nil`; the only file with a non-`nil` type-assertion
 // path was internal/app/wire_script_curation.go::imageGenSvcAdapter,
 // where the `extra.([]string)` cast branches into a `tags` arg for
-// GenerateSmartImage. That cast NEVER fired (no caller passed non-nil
-// extra at composition time), so the entire any channel was
-// untraffic — dropping it preserves byte-equivalent behaviour and
-// satisfies godlike/06 SSOT (no operator-of-untyped-traffic).
+// GenerateSceneImage (formerly GenerateSmartImage; renamed by
+// PR-DEADC-IMAGES-IMAGE-GEN-SERVICE-INTERFACE-CONTRACT on 2026-07-10
+// to disambiguate the script-layer usecase port from the canonical
+// *images.Service.GenerateSmartImage production surface at
+// internal/application/images/service_generated.go). That cast NEVER
+// fired (no caller passed non-nil extra at composition time), so the
+// entire any channel was untraffic — dropping it preserves
+// byte-equivalent behaviour and satisfies godlike/06 SSOT (no
+// operator-of-untyped-traffic).
 type ImageGenService interface {
 	SearchAndDownload(ctx context.Context, name, description, query, language string) (*asset.ImageAsset, error)
-	GenerateSmartImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*asset.ImageAsset, error)
+	GenerateSceneImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*asset.ImageAsset, error)
 }
 
 // VoiceoverService narrows voiceover operations.

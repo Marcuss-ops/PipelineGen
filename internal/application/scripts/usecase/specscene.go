@@ -81,7 +81,7 @@ func enrichSingleEntity(ctx context.Context, svc ClipServices, name string) Scri
 
 	aiCtx, aiCancel := context.WithTimeout(ctx, 60*time.Second)
 	defer aiCancel()
-	aiAsset, aiErr := svc.ImgSvc.GenerateSmartImage(aiCtx, name,
+	aiAsset, aiErr := svc.ImgSvc.GenerateSceneImage(aiCtx, name,
 		"Portrait or representative image of "+name,
 		"realistic",
 		[]string{"Portrait or representative image of " + name},

@@ -17,7 +17,7 @@ func (*testImageGenSvc) SearchAndDownload(_ context.Context, _, _, _, _ string) 
 	return &asset.ImageAsset{SourceURL: "test://stub"}, nil
 }
 
-func (*testImageGenSvc) GenerateSmartImage(_ context.Context, _, _, _ string, _, _ []string, _, _ int, _ string, _ bool) (*asset.ImageAsset, error) {
+func (*testImageGenSvc) GenerateSceneImage(_ context.Context, _, _, _ string, _, _ []string, _, _ int, _ string, _ bool) (*asset.ImageAsset, error) {
 	return nil, nil
 }
 
