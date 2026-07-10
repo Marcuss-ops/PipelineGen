@@ -44,7 +44,6 @@ func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service, jo
 //	POST /sync                   → Sync
 //	POST /generate               → Generate (legacy compatibility)
 //	POST /batch-generate         → GenerateBatch (async job system)
-//	POST /animate                → Animate (not implemented)
 func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	// Step 10 (territory-separated search + generate endpoints).
 	// /search is REPLACED by TerritorySearch (defaults to
@@ -62,6 +61,5 @@ func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/sync", h.Sync)
 	r.POST("/generate", h.Generate)
 	r.POST("/batch-generate", h.GenerateBatch)
-	r.POST("/animate", h.Animate)
 	// POST /webhook/remote retired; see docs/archive/image-legacy.md §1
 }

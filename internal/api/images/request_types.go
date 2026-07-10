@@ -77,10 +77,3 @@ type GenerateBatchItem struct {
 	// Tags are metadata labels to attach to the generated asset.
 	Tags []string `json:"tags,omitempty"`
 }
-
-// AnimateRequest is the JSON body for POST /api/images/animate
-// (image animation — not implemented, NVIDIA capability removed).
-type AnimateRequest struct {
-	ImageHash string `json:"image_hash" binding:"required"`
-	Duration  int    `json:"duration"`
-}
