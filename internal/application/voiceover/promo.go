@@ -134,7 +134,7 @@ type promoVoiceoverAdapter struct {
 // ErrPromoVoiceoverGeneration (callers can errors.Is).
 func (a *promoVoiceoverAdapter) Generate(ctx context.Context, cmd domainvo.GenerateVoiceoverCommand) (*domainvo.Result, error) {
 	if a == nil || a.executor == nil {
-		return nil, fmt.Errorf("promoVoiceoverAdapter: executor not wired (composition root must inject VoiceoverItemExecutor)")
+		return nil, fmt.Errorf("%w: executor not wired (composition root must inject VoiceoverItemExecutor)", ErrPromoVoiceoverGeneration)
 	}
 
 	normalized := cmd.Normalize()

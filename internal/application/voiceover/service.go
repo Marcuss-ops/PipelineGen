@@ -197,7 +197,18 @@ type VoiceoverIntegrationDeps struct {
 }
 
 // NewService constructs a voiceover.Service from grouped dependency bundles.
+//
+// P0-#3 (July 2026): the canonical per-item use case (ProcessItem)
+// is mandatory at composition time. A nil ProcessItem would silently
+// disable the promo path at runtime (GeneratePromo's runtime check
+// would surface a typed error on first call, but only at first call).
+// P0-#3 promotes this to a fail-closed composition-time requirement
+// (godlike/07 NO-FAKE-AVAILABILITY) so the missing wire-up is fixed
+// at boot rather than at first promo call.
 func NewService(deps VoiceoverDeps) *Service {
+	if deps.Integration.ProcessItem == nil {
+		panic("voiceover.NewService: ProcessItem is required (P0-#3 — the canonical per-item use case ProcessVoiceoverItemUseCase must be wired via build_bundles_voiceover.go)")
+	}
 	return &Service{
 		cfg:                deps.Core.Cfg,
 		voiceoverRepo:      deps.Persistence.Repo,

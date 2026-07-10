@@ -52,7 +52,7 @@ func buildDomainAssetServices(
 		outbox.Dispatcher,
 	)
 
-	booksSvc, err := buildBooksService(cfg, dbs, log, voiceoverSvc, drive.Publisher, drive.driveUploader)
+	booksSvc, err := buildBooksService(cfg, dbs, log, voiceoverProcessItem, drive.Publisher, drive.driveUploader)
 	if err != nil {
 		return fmt.Errorf("compose domains: books transformer: %w", err)
 	}
