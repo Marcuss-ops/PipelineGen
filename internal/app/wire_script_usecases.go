@@ -45,7 +45,10 @@
 //   - internal/application/scripts/jobs: GenerateJobHandler,
 //     ScriptGenerateItemPayload, FanoutItemBroker port.
 //   - internal/application/scripts/ports: VoiceoverGroupsAdapter.
-//   - internal/application/voiceover: GroupsResolver.
+//   - internal/application/assets/destination: Resolver (canonical
+//     concrete post-2026-07-22 PR-VOICEOVER-GROUPSRESOLVER-RETIRE;
+//     retired the legacy type-alias shim at
+//     internal/application/voiceover/groups_resolver.go).
 //   - internal/application/jobs: appjobs.Service (Enqueue surface).
 //   - internal/domain/job: EnqueueRequest, TypeScriptGenerateItem.
 //   - internal/domain/script: GenerationItemV2, Preset.
@@ -57,13 +60,13 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -109,7 +112,7 @@ func buildScriptUseCases(
 	// ── Voiceover group → folder routing ────────────────────────
 	voRootID := strings.TrimSpace(cfg.Drive.VoiceoverFolder())
 	if voRootID != "" && root.Search != nil && root.Search.AssetTreeService != nil {
-		if gr, grErr := voiceover.NewGroupsResolver(root.Search.AssetTreeService, log); grErr == nil {
+		if gr, grErr := destination.NewResolver(root.Search.AssetTreeService, log); grErr == nil {
 			voAdapter := scriptports.NewVoiceoverGroupsAdapter(gr)
 			oneUC.SetVoiceoverRouting(voAdapter, voRootID)
 			log.Info("wireScriptFlow: voiceover_group -> folder_id resolver wired (fix/voiceover-group-resolver)",

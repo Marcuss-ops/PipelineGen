@@ -9,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -42,7 +43,7 @@ func BuildVoiceoverDestination(
 	resolveFolder func(ctx context.Context, input, defaultRootID string) (string, error),
 	log *zap.Logger,
 	title, voiceoverFolderID, voiceoverGroup, voRootID string,
-	groupsResolver *voiceover.GroupsResolver,
+	groupsResolver *destination.Resolver,
 ) *voiceover.DestinationRequest {
 	voiceoverFolderID = clips.ExtractDriveFolderID(strings.TrimSpace(voiceoverFolderID))
 	voRootID = clips.ExtractDriveFolderID(strings.TrimSpace(voRootID))
@@ -71,7 +72,7 @@ func BuildVoiceoverDestination(
 				SubfolderName:   subfolderName,
 				CreateSubfolder: true,
 			}
-		case err != nil && !errors.Is(err, voiceover.ErrGroupNotFound):
+		case err != nil && !errors.Is(err, destination.ErrNotFound):
 			if log != nil {
 				log.Warn("groups_resolver lookup failed unexpectedly, falling back to Drive deep-search",
 					zap.String("voiceover_group", voiceoverGroup),
