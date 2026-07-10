@@ -15,10 +15,19 @@
 //     Record + Repository types (Service struct fields,
 //     usecase.go method receivers). AGENTS.md Pattern 8 — only
 //     ports for the application layer.
-//   - Back-compat hooks: voiceover/types.go re-exports Repository
-//   - VoiceoverRecord as type aliases so legacy call sites
-//     referencing voiceover.VoiceoverRepository / voiceover.
-//     VoiceoverRecord still compile after P1-2.
+//   - Canonical home + retirement history (PR-VOICEOVER-ALIASES-RETIRE,
+//     July 2026): the legacy voiceover.VoiceoverRepository +
+//     voiceover.VoiceoverRecord root-package aliases were retired
+//     (see voiceover/types.go lockstep comments). All callers now
+//     reference persistence.Repository + persistence.VoiceoverRecord
+//     directly per godlike/06 SSOT one-canonical-owner-per-fact.
+//     Future PR-VOICEOVER-ALIASES-RETIRE-C ships the canonical archcheck
+//     forward-prevention gate that bans future re-introduction of
+//     the legacy aliases (canonical PR-ID in
+//     architecture/waves/wave_p1_high.yaml; the gate's exact file
+//     path is at the discretion of that PR's implementer so this
+//     forward-pointer cannot become a no-fake-availability liability
+//     if Sub-PR C's path differs from any earlier speculation).
 //
 // Concrete adapter ownership: the production implementation
 // wrapping *sqassets.VoiceoversRepository lives in
