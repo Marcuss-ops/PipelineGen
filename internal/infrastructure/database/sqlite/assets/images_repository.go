@@ -5,15 +5,15 @@
 // AGENTS.md Pattern 5:
 //
 //   - images_repository.go           — slim orchestrator: struct +
-//                                       constructor + DB() +
-//                                       normalizeTags + scanImageAssetFromRow
+//     constructor + DB() +
+//     normalizeTags + scanImageAssetFromRow
 //   - images_repository_crud.go      — CRUD operations: AddImage, GetByID,
-//                                       GetByHash, Delete, Upsert*, Update*,
-//                                       GetSubjectBySlugOrAlias, etc.
+//     GetByHash, Delete, Upsert*, Update*,
+//     GetSubjectBySlugOrAlias, etc.
 //   - images_repository_search.go    — search/list: ListImagesBySubject
-//                                       (deprecated) + ListImages (FASE 6)
+//     (deprecated) + ListImages (FASE 6)
 //   - images_repository_aggregate.go — aggregate: ListImagesByOrigin +
-//                                       ListAll + limit constants
+//     ListAll + limit constants
 package assets
 
 import (
