@@ -89,16 +89,16 @@ func scanImageAssetFromRow(s interface {
 	var img asset.ImageAsset
 	var tagsJSON, metaJSON, createdAtStr sql.NullString
 	var name, origin, provider sql.NullString
-	var url sql.NullString
+	var url, driveLink sql.NullString
 	var fileHash, localPath, driveFileID sql.NullString
 
-	err := s.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &origin, &provider)
+	err := s.Scan(&img.SlugID, &name, &url, &tagsJSON, &metaJSON, &createdAtStr, &fileHash, &localPath, &driveFileID, &driveLink, &origin, &provider)
 	if err != nil {
 		return nil, err
 	}
 
 	img.Description = name.String
-	img.SourceURL = url.String
+	img.SourceURL = canonicalImageSourceURL(url.String, driveLink.String, driveFileID.String)
 	img.Hash = fileHash.String
 	img.PathRel = localPath.String
 	img.DriveFileID = driveFileID.String
@@ -130,4 +130,17 @@ func scanImageAssetFromRow(s interface {
 	}
 
 	return &img, nil
+}
+
+func canonicalImageSourceURL(url, driveLink, driveFileID string) string {
+	if trimmed := strings.TrimSpace(url); trimmed != "" {
+		return trimmed
+	}
+	if trimmed := strings.TrimSpace(driveLink); trimmed != "" {
+		return trimmed
+	}
+	if trimmed := strings.TrimSpace(driveFileID); trimmed != "" {
+		return fmt.Sprintf("https://drive.google.com/file/d/%s/view", trimmed)
+	}
+	return ""
 }

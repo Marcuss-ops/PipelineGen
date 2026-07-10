@@ -85,6 +85,7 @@ type BatchRequest struct {
 	// new buildRequestID(). Populated by ProcessOneVoiceoverUseCase from
 	// the child command's RequestID.
 	RequestID string `json:"request_id,omitempty"`
+	Project   string `json:"project,omitempty"`
 }
 
 func (r *BatchRequest) PayloadMap() map[string]any {
@@ -133,6 +134,9 @@ func (r *BatchRequest) PayloadMap() map[string]any {
 	if len(r.Metadata) > 0 {
 		payload["metadata"] = r.Metadata
 	}
+	if r.Project != "" {
+		payload["project"] = r.Project
+	}
 	return payload
 }
 
@@ -177,6 +181,7 @@ type DestinationRequest struct {
 	// Typed (StyleGroup) per PR-VO-TYPED-PRIMITIVES — JSON wire
 	// shape is byte-equivalent with the pre-refactor string field.
 	StyleGroup StyleGroup `json:"style_group,omitempty"`
+	Project    string     `json:"project,omitempty"`
 }
 
 // Validate runs the security-relevant bounds-checks on a request that

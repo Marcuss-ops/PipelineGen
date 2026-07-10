@@ -49,10 +49,17 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 	if topic == "" {
 		topic = item.Title
 	}
+	title := item.Title
+	if title == "" {
+		title = topic
+	}
+	if title == "" {
+		title = "Untitled Script"
+	}
 
 	plan := scriptpkg.ResolvedGenerationPlan{
 		ID:                  item.ID,
-		Title:               item.Title,
+		Title:               title,
 		Topic:               topic,
 		Language:            item.Language,
 		Tone:                item.Tone,

@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func TestGenerationService_GenerateSmartImage_FallsBackWhenPrimaryFails(t *testing.T) {
+func TestGenerationService_GenerateSmartImage_FailsClosedWhenPrimaryFails(t *testing.T) {
 	store := testImageService(t)
 	store.cfg = &config.Config{Drive: config.DriveConfig{ImagesRootFolder: "images-root"}}
 	store.publisher = &fakePublisher{
@@ -27,16 +27,10 @@ func TestGenerationService_GenerateSmartImage_FallsBackWhenPrimaryFails(t *testi
 		[]string{"smoke"},
 		512, 512, "", false,
 	)
-	if err != nil {
-		t.Fatalf("GenerateSmartImage returned error: %v", err)
+	if err == nil {
+		t.Fatal("expected GenerateSmartImage to fail closed when the primary provider fails")
 	}
-	if got == nil {
-		t.Fatal("GenerateSmartImage returned nil asset")
-	}
-	if got.SourceURL != "https://drive.google.com/file/d/drive-file-fallback/view" {
-		t.Fatalf("SourceURL = %q, want drive link", got.SourceURL)
-	}
-	if got.Provider != "google-slides" {
-		t.Fatalf("Provider = %q, want google-slides", got.Provider)
+	if got != nil {
+		t.Fatalf("GenerateSmartImage returned asset %+v, want nil on fail-closed path", got)
 	}
 }

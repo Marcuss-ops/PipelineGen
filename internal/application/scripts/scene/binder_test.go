@@ -91,29 +91,25 @@ func TestSceneAssetBinder_BindClips_NilPlan(t *testing.T) {
 
 // TestSceneAssetBinder_BindClips_NoClipEvidence covers the
 // plan.ClipEvidence==nil OR AcceptedClipIDs==empty branches.
-// Post null-safety fix: the binder no longer early-returns on nil
-// ClipEvidence — it continues processing (Changed=true) but binds
-// zero clips since AcceptedClipIDs is empty.
+// When scenes already exist but there is no clip evidence, the
+// binder is a no-op (Changed=false) — there is nothing to bind
+// and the scenes are already present from the upstream LLM step.
+// This preserves the godlike/07 NO-FAKE-AVAILABILITY contract:
+// Changed=true only when actual mutations occur.
 func TestSceneAssetBinder_BindClips_NoClipEvidence(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	// ClipEvidence==nil branch — binder processes but binds nothing.
+	// ClipEvidence==nil branch — scenes exist, nothing to bind → no-op.
 	scenes := makeScenes(3)
 	res := b.BindClips(scenes, "text", &scriptpkg.ResolvedGenerationPlan{})
-	assert.Equal(t, true, res.Changed, "binder returns Changed=true even with nil ClipEvidence")
-	// Verify no clip bindings were populated.
-	for i, s := range scenes {
-		assert.Nil(t, s.Bindings.Clip, "scene %d must have nil Clip binding when ClipEvidence is nil", i)
-	}
-	// AcceptedClipIDs empty branch — same behavior.
+	assert.Equal(t, false, res.Changed, "binder returns Changed=false when scenes exist and ClipEvidence is nil (no-op)")
+	assert.Nil(t, res.SynthesizedScenes)
+	// AcceptedClipIDs empty branch — same no-op behavior.
 	scenes2 := makeScenes(3)
 	res = b.BindClips(scenes2, "text", &scriptpkg.ResolvedGenerationPlan{
 		ClipEvidence: &scriptpkg.ClipEvidence{},
 	})
-	assert.Equal(t, true, res.Changed, "binder returns Changed=true even with empty AcceptedClipIDs")
-	for i, s := range scenes2 {
-		assert.Nil(t, s.Bindings.Clip, "scene %d must have nil Clip binding when AcceptedClipIDs is empty", i)
-	}
+	assert.Equal(t, false, res.Changed, "binder returns Changed=false when scenes exist and AcceptedClipIDs is empty (no-op)")
 }
 
 // TestSceneAssetBinder_BindClips_OneToOneBinding covers the
@@ -226,7 +222,7 @@ func TestSceneAssetBinder_BindClips_ProseFallbackEmptyText(t *testing.T) {
 func TestSceneAssetBinder_BindClips_ProseFallbackNoClipEvidence(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	
+
 	// Case 1: no clip evidence, NumClips = 0, default fallback n = sentences (3)
 	const prose = "First sentence here. Second sentence here. Third sentence here."
 	plan := &scriptpkg.ResolvedGenerationPlan{

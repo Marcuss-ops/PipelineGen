@@ -184,6 +184,26 @@ func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 				RequireSubpath: true,
 				ConflictPolicy: ConflictOverwrite, // latest PDF/DOCX wins
 			},
+			// DestinationClipMetadata (P0-#1 atomic-RMW cutover, July 2026):
+			// canonical policy for the per-folder metadata.json sidecar
+			// that backs UpdateCumulativeMetadataJSON. The sidecar lives
+			// in the clip's already-resolved folder (no path-builder
+			// nesting — the caller threads folderID via RootFolderOverride
+			// so the publisher uses the override directly), and the
+			// ConflictPolicy is ConflictOverwrite because the sidecar is a
+			// regenerable ledger (the latest merged entries win). RequireSubpath
+			// is false because the override path is the entire destination
+			// (no further nesting). godlike/06 SSOT: the PathBuilder returns
+			// an empty slice (mirrors DestinationAdmin) so the publisher
+			// uses RootFolderOverride verbatim without trying to nest
+			// under a default root.
+			DestinationClipMetadata: {
+				RootFolderID:   "", // caller-provided via RootFolderOverride
+				Namespace:      "", // no namespace — lives in the resolved clip folder
+				PathBuilder:    ClipMetadataPath, // returns [] to signal "use override verbatim"
+				RequireSubpath: false,             // override IS the destination folder
+				ConflictPolicy: ConflictOverwrite, // latest metadata.json wins (atomic RMW guarantees no data loss)
+			},
 			DestinationAdmin: {
 				RootFolderID:   cfg.Drive.RootFolder(),
 				Namespace:      "admin",
@@ -460,5 +480,24 @@ func DocumentPath(req PublishRequest) ([]string, error) {
 // Returns an empty slice — admin uploads land directly in the root
 // folder. RequireSubpath is false for this destination.
 func AdminPath(_ PublishRequest) ([]string, error) {
+	return nil, nil
+}
+
+// ClipMetadataPath (P0-#1 atomic-RMW cutover, July 2026) builds the
+// path for the per-folder metadata.json sidecar. Returns an empty slice
+// to signal that the Publisher should use RootFolderOverride verbatim
+// (the caller is updating an existing per-folder sidecar whose Drive
+// folder is already known — there's no canonical sub-path to nest
+// under). The destination is registered with RequireSubpath=false so
+// the empty-slice return does NOT trigger the publisher's
+// "no-subpath" rejection.
+//
+// godlike/06 SSOT: this builder is the single canonical owner of the
+// "use override verbatim" decision for clip metadata. Any future
+// caller that wants a per-clip subfolder (e.g. a future
+// "per-clip metadata.json" requirement) would either change this
+// builder to return a non-empty slice OR introduce a new
+// DestinationKey rather than mutating the override semantics here.
+func ClipMetadataPath(_ PublishRequest) ([]string, error) {
 	return nil, nil
 }

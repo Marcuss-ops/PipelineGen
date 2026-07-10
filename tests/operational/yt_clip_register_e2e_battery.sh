@@ -102,7 +102,7 @@ api_call() {
     local method="$1" url_path="$2" body="$3" out_file="$4"
     shift 4
     local http
-    http=$(curl -sS --max-time 60 \
+    http=$(curl -sS --max-time 120 \
         -X "$method" \
         -H "$AUTH" \
         -H "Content-Type: application/json" \

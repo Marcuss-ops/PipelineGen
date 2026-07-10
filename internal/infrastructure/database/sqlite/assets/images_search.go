@@ -16,7 +16,7 @@ import (
 // FASE 1B: reads origin + provider first-class columns (migration 115).
 func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*asset.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
 		WHERE source = 'image' AND file_hash = ?
 		LIMIT 1
@@ -29,7 +29,7 @@ func (r *ImagesRepository) GetImageByHash(ctx context.Context, hash string) (*as
 // FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) GetByID(ctx context.Context, id any) (*asset.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
 		WHERE source = 'image' AND id = ?
 		LIMIT 1
@@ -48,12 +48,12 @@ func (r *ImagesRepository) Delete(ctx context.Context, id any) error {
 // FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) (*asset.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
-		WHERE source = 'image' AND (drive_file_id = ? OR url LIKE ?)
+		WHERE source = 'image' AND (drive_file_id = ? OR drive_link LIKE ? OR url LIKE ?)
 		LIMIT 1
 	`
-	row := r.db.QueryRowContext(ctx, query, fileID, "%"+fileID+"%")
+	row := r.db.QueryRowContext(ctx, query, fileID, "%"+fileID+"%", "%"+fileID+"%")
 	return scanImageAssetFromRow(row)
 }
 
@@ -67,7 +67,7 @@ func (r *ImagesRepository) GetByDriveFileID(ctx context.Context, fileID string) 
 // FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID string) ([]asset.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
 		WHERE source = 'image' AND json_extract(metadata_json, '$.subject_id') = ?
 		ORDER BY created_at DESC
@@ -94,7 +94,7 @@ func (r *ImagesRepository) ListImagesBySubject(ctx context.Context, subjectID st
 // FASE 1B: reads origin + provider columns (migration 115).
 func (r *ImagesRepository) ListAll(ctx context.Context) ([]*asset.ImageAsset, error) {
 	query := `
-		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider
+		SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, drive_link, origin, provider
 		FROM media_assets
 		WHERE source = 'image'
 		ORDER BY created_at DESC

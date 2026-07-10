@@ -91,6 +91,10 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 
 	normalizeBatchRequest(req)
 
+	if s.log != nil {
+		s.log.Info("GenerateBatch entry", zap.String("project", req.Project), zap.Any("destination", req.Destination))
+	}
+
 	if req.Destination == nil && s.cfg != nil && s.cfg.Drive.VoiceoverFolder() != "" {
 		req.Destination = &DestinationRequest{
 			FolderID: s.cfg.Drive.VoiceoverFolder(),

@@ -152,7 +152,8 @@ func (h *GenerateJobHandler) handleSingle(
 	}
 	progressFn := appjobs.SafeProgressFn(tools)
 	tracker := usecase.NewProgressTracker(progressFn, env.Items[0].ID)
-	result, err := h.one.Execute(ctx, env.Items[0], env.Preset, tracker)
+	execCtx := context.WithValue(ctx, "script_job_id", j.ID)
+	result, err := h.one.Execute(execCtx, env.Items[0], env.Preset, tracker)
 	diag := ClassifySingleOutcome(result, err)
 	if diag.Outcome == OutcomeCanceled {
 		if h.log != nil {

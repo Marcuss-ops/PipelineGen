@@ -53,11 +53,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
 
@@ -331,77 +329,16 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		out.Error = "no_local_payload: TTSProvider + AudioPostProcessor produced no local path"
 		return out, fmt.Errorf("%s", out.Error)
 	}
-	uploadPath := out.CleanedPath
-	if uploadPath == "" {
-		uploadPath = out.LocalPath
-	}
-
-	// Stage 3: VoiceoverPublisher.Publish — populates Drive URLs.
-	//
-	// PR-VO-USECASE-PROCESS-DRY (July 2026) review-fix #3: the
-	// pre-DRY per-item path explicitly injected `style_group` into
-	// metaBuf when `!dest.StyleGroup.IsEmpty()`. The new shared
-	// ProcessSegmentUseCase centralises this logic so BOTH the batch
-	// and per-item paths consistently surface `style_group` in
-	// the meta JSON. Without this block, the per-item path's
-	// meta column would lose the `style_group` field, breaking
-	// downstream consumers that read it.
-	metaBuf := map[string]any{
-		"text_hash":    cmd.TextHash,
-		"text_preview": textutil.Truncate(cmd.Text, 100),
-		"language":     cmd.Language,
-		"voice":        out.Voice,
-		"strategy":     cmd.Strategy,
-		"cleaned_path": out.CleanedPath,
-	}
-	if cmd.Dest != nil && !cmd.Dest.StyleGroup.IsEmpty() {
-		metaBuf["style_group"] = cmd.Dest.StyleGroup
-	}
-	mergeUserMetadata(metaBuf, cmd.Dest, cmd.Metadata, u.deps.Logger)
-	metaJSON, _ := json.Marshal(metaBuf)
-
-	// FASE 3 (July 2026): derive the deterministic idempotency key
-	// from the canonical triple (jobID + language + textHash). When
-	// JobID is empty (pre-FASE-3 callers), the key is left empty —
-	// the finalizer's Step 0 idempotency gate is skipped so legacy
-	// callers continue to rely on the Step 1 dedupe gate (Drive
-	// file ID lookup) alone. This avoids false-positive collisions
-	// between distinct legacy requests with the same language+textHash
-	// originating from different batch contexts.
-	var idemKey string
-	if cmd.JobID != "" {
-		idemKey = BuildVoiceoverIdempotencyKey(cmd.JobID, cmd.Language, cmd.TextHash)
-	}
-
-	// PR-VO-LANGUAGE-PROJECT-PROPAGATION (July 2026): Language and
-	// Project MUST be forwarded to VoiceoverPublishCommand so the
-	// adapter's semantic-first path (req.ProjectID + req.Language)
-	// builds the canonical {project}/{language}/ Drive subpath via
-	// VoiceoverPath. Before this fix, both fields were silently
-	// dropped — the adapter would fall back to cmd.ID as ProjectID
-	// (graceful degradation, but wrong folder tree) or fail-closed
-	// on empty Language (ErrVoiceoverPublishLanguageRequired).
-	emitPublish := stageLog(log, cmd.RequestID, cmd.ID, cmd.Project, "publish", string(cmd.Language))
-	fileID, err := u.deps.Publisher.Publish(ctx, VoiceoverPublishCommand{
-		ID:             cmd.ID,
-		LocalPath:      uploadPath,
-		Filename:       cmd.Filename,
-		FolderID:       cmd.Dest.FolderID,
-		Project:        cmd.Project,
-		Language:       string(cmd.Language),
-		IdempotencyKey: idemKey,
-	})
+	// Stage 3: VoiceoverPublisher.Publish — delegates to publishStage
+	// (process_segment_publish.go) for metadata building + idempotency
+	// key derivation + Drive upload.
+	pub, err := u.publishStage(ctx, cmd, out, log)
 	if err != nil {
-		emitPublish("failed")
 		observability.DriveUploadFailuresTotal.Inc()
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.Error = fmt.Sprintf("upload_failed: %v", err)
 		return out, err
 	}
-	emitPublish("completed")
-	out.DriveFileID = fileID
-	out.DriveLink = CanonicalDriveWebURL(fileID)
-	out.DownloadLink = CanonicalDriveDownloadURL(fileID)
 
 	// Stage 4: BeginTx + Finalize + Commit (delegated to finalizer).
 	// PR-VO-USECASE-PROCESS-DRY migration: the batch path now
@@ -421,7 +358,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	defer func() { _ = tx.Rollback() }() // safe after Commit
 
 	finalizeCmd := &FinalizeCommand{
-		IdempotencyKey: idemKey,
+		IdempotencyKey: pub.IdemKey,
 		JobID:          cmd.JobID,
 		ID:             cmd.ID,
 		RequestID:      cmd.RequestID,
@@ -431,7 +368,7 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		Voice:          out.Voice,
 		Filename:       cmd.Filename,
 		Strategy:       cmd.Strategy,
-		MetaJSON:       metaJSON,
+		MetaJSON:       pub.MetaJSON,
 		LocalPath:      out.LocalPath,
 		CleanedPath:    out.CleanedPath,
 		FileHash:       out.FileHash,
@@ -451,6 +388,9 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 		emitFinalize("failed")
 		observability.VoiceoverJobsTotal.WithLabelValues("failed").Inc()
 		out.Error = fmt.Sprintf("finalize_failed: %v", err)
+
+		// Rollback the transaction immediately to release the connection pool lock
+		_ = tx.Rollback()
 
 		// FASE 4 (July 2026): orphan-cleanup path — when Drive upload
 		// succeeded (Stage 3) but DB finalize failed (Stage 4), the
@@ -494,76 +434,4 @@ func (u *ProcessSegmentUseCase) Execute(ctx context.Context, cmd *ProcessSegment
 	return out, nil
 }
 
-// enqueueOrphanCleanup opens a SEPARATE tx and enqueues a
-// voiceover.cleanup.requested outbox event for an orphaned Drive file
-// (FASE 4, July 2026). Called ONLY from the Finalize-failure path
-// when Stage 3 succeeded (DriveFileID is non-empty) and
-// TxOutboxEnqueuer is wired.
-//
-// The caller's Finalize tx was rolled back (defer in Execute), so
-// this method opens a FRESH tx via VoiceoverRepository.BeginTx for
-// the cleanup event. The cleanup tx is committed independently — a
-// failure here does NOT change the original finalize_failed error
-// (godlike/07 typed-error contract: the caller sees the Finalize
-// error, not the cleanup error).
-//
-// Cleanup event fields:
-//   - voiceoverID: cmd.ID (the voiceover row that was never inserted)
-//   - oldDriveFileID: "" (no prior row existed)
-//   - newDriveFileID: driveFileID (the orphaned Drive file to trash)
-//   - oldLocalPaths: [localPath, cleanedPath] (local temp files)
-//
-// godlike/07 NO-FAKE-AVAILABILITY: every failure in this method
-// is logged at Warn level but does NOT propagate to the caller.
-// The original Finalize error IS the canonical job outcome; the
-// cleanup event is a best-effort recovery path. The background
-// orphan sweeper (orphan_sweeper.go) is the safety net.
-func (u *ProcessSegmentUseCase) enqueueOrphanCleanup(ctx context.Context, voiceoverID, driveFileID, localPath, cleanedPath string) {
-	log := u.deps.Logger
-	cleanupTx, txErr := u.deps.VoiceoverRepository.BeginTx(ctx)
-	if txErr != nil {
-		log.Warn("FASE 4 orphan-cleanup: BeginTx failed; orphan sweeper will recover",
-			zap.String("voiceover_id", voiceoverID),
-			zap.String("drive_file_id", driveFileID),
-			zap.Error(txErr),
-		)
-		return
-	}
-	defer func() { _ = cleanupTx.Rollback() }()
-
-	var oldLocalPaths []string
-	if localPath != "" {
-		oldLocalPaths = append(oldLocalPaths, localPath)
-	}
-	if cleanedPath != "" && cleanedPath != localPath {
-		oldLocalPaths = append(oldLocalPaths, cleanedPath)
-	}
-
-	if err := u.deps.TxOutboxEnqueuer.EnqueueCleanupEvent(ctx, cleanupTx,
-		voiceoverID,
-		"",            // oldDriveFileID — no prior row existed
-		driveFileID,   // newDriveFileID — the orphaned Drive file
-		oldLocalPaths, // local temp files to remove
-	); err != nil {
-		log.Warn("FASE 4 orphan-cleanup: EnqueueCleanupEvent failed; orphan sweeper will recover",
-			zap.String("voiceover_id", voiceoverID),
-			zap.String("drive_file_id", driveFileID),
-			zap.Error(err),
-		)
-		return
-	}
-
-	if err := cleanupTx.Commit(); err != nil {
-		log.Warn("FASE 4 orphan-cleanup: cleanup tx commit failed; orphan sweeper will recover",
-			zap.String("voiceover_id", voiceoverID),
-			zap.String("drive_file_id", driveFileID),
-			zap.Error(err),
-		)
-		return
-	}
-
-	log.Debug("FASE 4 orphan-cleanup: enqueued voiceover.cleanup.requested for orphaned Drive file",
-		zap.String("voiceover_id", voiceoverID),
-		zap.String("drive_file_id", driveFileID),
-	)
-}
+// enqueueOrphanCleanup is defined in process_segment_orphan.go.

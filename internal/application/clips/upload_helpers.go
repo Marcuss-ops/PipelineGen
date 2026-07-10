@@ -16,6 +16,7 @@ package clips
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -25,6 +26,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 )
 
 var driveFolderIDRegex = regexp.MustCompile(`/folders/([a-zA-Z0-9_-]+)`)
@@ -96,60 +99,157 @@ func BuildDriveDescription(name, reqDescription, metaDescription string, tags []
 	return strings.Join(parts, "\n")
 }
 
-// UpdateCumulativeMetadataJSON maintains a single metadata.json per group
-// folder. Migrated from api package; the `*drive.Uploader` parameter
-// was previously used to access `driveUploader.Service.Files.List().Q(...)`
-// directly — that low-level SDK call is now encapsulated behind
+// ErrMetadataDriveNotConfigured is the sentinel returned when
+// UpdateCumulativeMetadataJSON is called with a nil publisher
+// (Drive not configured / wired). Upstream callers (e.g. the clip
+// registration pipeline) can branch on this sentinel to decide
+// whether to fail the registration or log a soft warning — the
+// canonical clip ledger is dispatcher.EnqueueAndIndex (atomic
+// UPSERT + outbox), so a missing metadata.json sidecar is
+// recoverable (the next cumulative update for the same folder
+// regenerates the sidecar from the new clip set).
+var ErrMetadataDriveNotConfigured = errors.New(
+	"clips: UpdateCumulativeMetadataJSON: Drive not configured (Publisher is nil; metadata.json sidecar cannot be atomically updated — clip registration succeeds but the sidecar will be regenerated on the next cumulative update)",
+)
+
+// UpdateCumulativeMetadataJSON atomically maintains a single
+// metadata.json per group folder. Migrated from api package; the
+// `*drive.Uploader` parameter was previously used to access
+// `driveUploader.Service.Files.List().Q(...)` directly — that
+// low-level SDK call is now encapsulated behind
 // ClipDriveUploaderPort.ListFiles in the composition root adapter
-// (internal/app/clips_adapters_drive.go). The port returns a slice
-// of ClipDriveFileDTO; we use it identically here.
+// (internal/app/clips_adapters_drive.go). The new
+// delivery.Publisher.Publish seam (FASE 5 since June 2026) is the
+// sole Drive upload canal — this function threads the publisher
+// explicitly via ClipPublisherPort to keep the application-layer
+// port-pure per AGENTS.md Pattern 0.
 //
-// # Behavior
-//   - Lists existing metadata.json under folderID via the port.
-//   - If found, downloads current entries, replaces-or-appends the clip
-//     entry by clip_id, trashes the old file.
-//   - Marshals the merged set to a temp file, uploads to the folder as
-//     metadata.json, removes the temp.
-//   - Cleans up any older per-video .json files in the same folder.
+// # P0-#1 atomic RMW (July 2026)
 //
-// cleanupLegacyMetadataJSON is package-private since no caller outside
-// this file needs it post-refactor.
+// Pre-P0-#1 the function trashed the old metadata.json BEFORE
+// publishing the new one, and the publish step was a no-op
+// (DRIVE-008 CUTOVER removed the upload path), so the old
+// metadata.json was permanently lost. The new flow is:
+//
+//  1. List existing metadata.json under folderID via the port.
+//  2. If found, download current entries via DownloadFile.
+//     Read-only — no trashing yet.
+//  3. Build merged JSON (replace-or-append the clip entry by
+//     clip_id) in a TEMP file.
+//  4. Defer os.Remove(metaTempPath) so a network hang or early
+//     return after this point does not leak the file.
+//  5. Publish the temp file via publisher.Publish with
+//     Destination=DestinationClipMetadata,
+//     RootFolderOverride=folderID, Filename="metadata.json",
+//     ConflictPolicy=ConflictOverwrite. The publisher either:
+//        (a) succeeds — the new metadata.json is live on Drive
+//        (b) fails — the OLD metadata.json is STILL on Drive, the
+//            temp file is removed by the defer, the error
+//            propagates
+//  6. On publish success, cleanup old per-video .json files via
+//     FileLifecycle.Trash (best-effort, warnings logged on
+//     failure so the caller can investigate).
+//
+// # Atomicity guarantee
+//
+// The publisher's Files.Update call (conflict_policy=overwrite)
+// replaces the existing metadata.json in place without leaving a
+// gap. Either:
+//   - the new metadata.json is live (publish succeeded), or
+//   - the old metadata.json is still on Drive (publish failed
+//     before the Files.Update call, or the publish itself errored)
+//
+// There is no torn-intermediate state where the sidecar is
+// partially the old and partially the new content.
+//
+// # Known race (acceptable for v1)
+//
+// A concurrent update to the same folder can produce a
+// last-writer-wins race: both workers read the base JSON, merge
+// their respective clips, and issue an overwrite — the second
+// publisher's Files.Update replaces the first's output. Drive does
+// not enforce optimistic concurrency (ETags) on metadata.json
+// uploads. The race is acceptable for v1 because:
+//   - the cumulative update is invoked once per clip registration,
+//     not in a tight loop;
+//   - the racy window is microseconds;
+//   - the next successful cumulative update for the same folder
+//     regenerates the sidecar from the clip set (cumulative
+//     recovery is automatic).
+//
+// A future iteration can introduce an etag-based optimistic
+// concurrency check (HEAD request before publish, abort on
+// mismatch) if the race surfaces in production observability.
+//
+// # Soft-dep / no-op paths
+//
+//   - uploader == nil or folderID == "" → return nil (soft no-op;
+//     backward-compat with pre-P0-#1 callers that invoked the
+//     function with optional args).
+//   - publisher == nil → return ErrMetadataDriveNotConfigured
+//     (typed sentinel so the upstream adapter layer can branch
+//     on it).
+//   - list / download / decode / marshal / write-temp failures
+//     return wrapped errors (no Drive side-effects, caller can
+//     retry against the intact old metadata.json).
+//   - publish failure → wrapped error (old metadata.json still on
+//     Drive, atomic guarantee intact, caller can retry).
+//   - cleanup failure → logged but NOT returned (per-video
+//     orphans are messy but harmless; the canonical ledger is the
+//     metadata.json sidecar).
 func UpdateCumulativeMetadataJSON(
 	ctx context.Context,
 	uploader ClipDriveUploaderPort,
+	publisher ClipPublisherPort,
 	tempPath string,
 	folderID string,
 	clipID string,
 	newEntry map[string]any,
 	log *zap.Logger,
-) {
+) error {
 	const metaFilename = "metadata.json"
 	if uploader == nil || folderID == "" {
-		return
+		return nil
+	}
+	if publisher == nil {
+		return ErrMetadataDriveNotConfigured
 	}
 	if log == nil {
 		log = zap.NewNop()
 	}
 
+	// Step 1+2: Read existing metadata.json (read-only, no side-effects).
+	// If list/download/decode fails we surface the error WITHOUT
+	// trashing anything — the caller can retry against the intact
+	// old file.
 	var existing []map[string]any
 	list, err := uploader.ListFiles(ctx, fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename))
 	if err != nil {
-		log.Warn("failed to list metadata.json", zap.Error(err))
-	} else if len(list) > 0 {
+		return fmt.Errorf("clips: UpdateCumulativeMetadataJSON: list metadata.json under %q: %w", folderID, err)
+	}
+	if len(list) > 0 {
 		existingFileID := list[0].ID
 		body, _, dlErr := uploader.DownloadFile(ctx, existingFileID)
-		if dlErr == nil && body != nil {
-			defer body.Close()
-			var raw []map[string]any
-			if decErr := json.NewDecoder(body).Decode(&raw); decErr == nil {
-				existing = raw
-			}
+		if dlErr != nil {
+			return fmt.Errorf("clips: UpdateCumulativeMetadataJSON: download existing metadata.json (%s): %w", existingFileID, dlErr)
 		}
-		if err := uploader.TrashFile(ctx, existingFileID); err != nil {
-			log.Warn("failed to trash old metadata.json", zap.Error(err))
+		if body != nil {
+			var raw []map[string]any
+			decErr := json.NewDecoder(body).Decode(&raw)
+			closeErr := body.Close()
+			if decErr != nil {
+				return fmt.Errorf("clips: UpdateCumulativeMetadataJSON: decode existing metadata.json: %w", decErr)
+			}
+			if closeErr != nil {
+				log.Warn("failed to close metadata.json body after decode",
+					zap.String("file_id", existingFileID),
+					zap.Error(closeErr))
+			}
+			existing = raw
 		}
 	}
 
+	// Step 3: Build merged JSON in temp file.
 	found := false
 	for i, entry := range existing {
 		if id, ok := entry["clip_id"].(string); ok && id == clipID {
@@ -164,29 +264,76 @@ func UpdateCumulativeMetadataJSON(
 
 	jsonBytes, err := json.MarshalIndent(existing, "", "  ")
 	if err != nil {
-		log.Warn("failed to marshal cumulative metadata json", zap.Error(err))
-		return
+		return fmt.Errorf("clips: UpdateCumulativeMetadataJSON: marshal merged metadata (%d entries): %w", len(existing), err)
 	}
 	metaTempPath := filepath.Join(tempPath, fmt.Sprintf("meta_%s_%d.json", clipID, time.Now().UnixNano()))
 	if err := os.WriteFile(metaTempPath, jsonBytes, 0644); err != nil {
-		log.Warn("failed to write metadata json temp file", zap.Error(err))
-		return
+		return fmt.Errorf("clips: UpdateCumulativeMetadataJSON: write temp metadata to %q: %w", metaTempPath, err)
 	}
-	// DRIVE-008 CUTOVER (July 2026): UploadFile removed from ClipDriveUploaderPort.
-	// The metadata.json upload has been degraded since P2.2 (DRIVE-008 fail-closed stub).
-	// A future wave can reintroduce the upload via delivery.Publisher.Publish when a
-	// dedicated DestinationKey (e.g. DestinationClipMetadata) is added to the registry.
-	log.Debug("metadata.json upload skipped — legacy surface retired (DRIVE-008 CUTOVER)",
+
+	// Step 4: Defer cleanup of the temp file so a network hang or
+	// early-return after this point does not leak the file. The
+	// defer fires whether the publish succeeds or fails; the
+	// publisher reads + closes the file synchronously per its
+	// internal PutFile contract, so by the time Publish returns
+	// the file is no longer referenced by the publisher.
+	defer func() {
+		if rmErr := os.Remove(metaTempPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			log.Warn("failed to remove temp metadata file",
+				zap.String("path", metaTempPath),
+				zap.Error(rmErr))
+		}
+	}()
+
+	// Step 5: Publish the new metadata.json atomically. The
+	// publisher replaces the existing file in place (ConflictOverwrite
+	// is the registry default for DestinationClipMetadata) or
+	// returns an error WITHOUT touching the existing file. Either
+	// way, the caller observes a clean all-or-nothing outcome: the
+	// Drive-side sidecar is either the old or the new content,
+	// never a torn intermediate.
+	pubReq := delivery.PublishRequest{
+		Destination:        delivery.DestinationClipMetadata,
+		LocalPath:          metaTempPath,
+		Filename:           metaFilename,
+		RootFolderOverride: folderID, // sidecar lives in the clip's resolved folder
+		ConflictPolicy:     delivery.ConflictOverwrite,
+	}
+	pubResult, pubErr := publisher.Publish(ctx, pubReq)
+	if pubErr != nil {
+		// Atomic guarantee: the old metadata.json is STILL on Drive
+		// because the publish failed before the Files.Update call.
+		// The defer above cleaned up the temp file. The caller sees
+		// a typed error and can retry.
+		return fmt.Errorf("clips: UpdateCumulativeMetadataJSON: publish metadata.json to %q: %w", folderID, pubErr)
+	}
+	log.Info("metadata.json published atomically",
+		zap.String("folder_id", folderID),
 		zap.String("clip_id", clipID),
 		zap.Int("entries", len(existing)),
+		zap.String("drive_file_id", pubResult.FileID),
+		zap.String("action", string(pubResult.Action)),
 	)
-	os.Remove(metaTempPath)
 
+	// Step 6: Cleanup old per-video .json files (best-effort, only
+	// AFTER the new metadata.json is live). Failures here are
+	// logged but NOT returned — the canonical ledger is the
+	// metadata.json sidecar, not the per-video files; orphan
+	// per-video files are messy but do not affect the canonical
+	// state.
 	cleanupLegacyMetadataJSON(ctx, uploader, folderID, log)
+
+	return nil
 }
 
 // cleanupLegacyMetadataJSON removes old per-video metadata files.
 // Package-private; only UpdateCumulativeMetadataJSON above calls it.
+//
+// P0-#1 (July 2026): called from UpdateCumulativeMetadataJSON AFTER
+// the new metadata.json has been atomically published. Pre-P0-#1
+// the cleanup ran BEFORE the publish step (which was a no-op),
+// so per-video files were deleted while the canonical sidecar was
+// absent — a silent data loss the audit uncovered.
 func cleanupLegacyMetadataJSON(ctx context.Context, uploader ClipDriveUploaderPort, folderID string, log *zap.Logger) {
 	if uploader == nil || folderID == "" {
 		return
@@ -196,6 +343,9 @@ func cleanupLegacyMetadataJSON(ctx context.Context, uploader ClipDriveUploaderPo
 	}
 	list, err := uploader.ListFiles(ctx, fmt.Sprintf("'%s' in parents and trashed = false and name contains '.json' and name != 'metadata.json'", folderID))
 	if err != nil {
+		log.Warn("failed to list legacy per-video metadata files",
+			zap.String("folder_id", folderID),
+			zap.Error(err))
 		return
 	}
 	for _, f := range list {

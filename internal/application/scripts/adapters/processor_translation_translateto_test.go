@@ -15,24 +15,26 @@ import (
 	"go.uber.org/zap"
 )
 
-// recordingTranslator captures the language passed to Translate so
+// translatetoRecorder captures the language passed to Translate so
 // the test can assert which target language the processor resolved.
-type recordingTranslator struct {
+// (renamed from recordingTranslator to avoid collision with the
+// more comprehensive recordingTranslator in processor_translation_test.go).
+type translatetoRecorder struct {
 	lastLang string
 }
 
-func (r *recordingTranslator) Translate(_ context.Context, text, lang string) (string, error) {
+func (r *translatetoRecorder) Translate(_ context.Context, text, lang string) (string, error) {
 	r.lastLang = lang
 	return "tradotto: " + text, nil
 }
 
 // stubTranslationUseCase implements ports.TranslationUseCase for
 // this test file. It delegates to the embedded translator port so
-// the recordingTranslator can capture the target language. The
+// the translatetoRecorder can capture the target language. The
 // implementation mimics the real TranslateScriptSpec: calls the
 // translator for each text field and returns the translated envelope.
 type stubTranslationUseCase struct {
-	translator *recordingTranslator
+	translator *translatetoRecorder
 }
 
 func (s *stubTranslationUseCase) TranslateScriptSpec(
@@ -72,8 +74,8 @@ func (s *stubTranslationUseCase) TranslateScriptSpec(
 // regression guard for Bug 1: when a request specifies
 // {language:"en", translate_to:"it"} with no Languages array,
 // the processor MUST translate to "it", NOT to "en".
-func TestTranslationProcessor_UsesPlanTranslateTo(t *testing.T) {
-	rec := &recordingTranslator{}
+func TestTranslationProcessor_UsesPlanTranslateTo_ViaUseCase(t *testing.T) {
+	rec := &translatetoRecorder{}
 	proc := NewTranslationProcessor(
 		rec,
 		nil, // metrics: nil → noop fallback
@@ -115,8 +117,8 @@ func TestTranslationProcessor_UsesPlanTranslateTo(t *testing.T) {
 // TestTranslationProcessor_TranslateToTakesPrecedenceOverLanguages
 // verifies that plan.TranslateTo takes priority over plan.Languages[0]
 // when both are set.
-func TestTranslationProcessor_TranslateToTakesPrecedenceOverLanguages(t *testing.T) {
-	rec := &recordingTranslator{}
+func TestTranslationProcessor_TranslateToTakesPrecedenceOverLanguages_ViaUseCase(t *testing.T) {
+	rec := &translatetoRecorder{}
 	proc := NewTranslationProcessor(
 		rec,
 		nil,
@@ -153,8 +155,8 @@ func TestTranslationProcessor_TranslateToTakesPrecedenceOverLanguages(t *testing
 
 // TestTranslationProcessor_FallsBackToLanguagesWhenTranslateToEmpty
 // verifies the fallback chain: TranslateTo="" → Languages[0] → Language.
-func TestTranslationProcessor_FallsBackToLanguagesWhenTranslateToEmpty(t *testing.T) {
-	rec := &recordingTranslator{}
+func TestTranslationProcessor_FallsBackToLanguagesWhenTranslateToEmpty_ViaUseCase(t *testing.T) {
+	rec := &translatetoRecorder{}
 	proc := NewTranslationProcessor(
 		rec,
 		nil,
@@ -202,8 +204,8 @@ func TestTranslationProcessor_FallsBackToLanguagesWhenTranslateToEmpty(t *testin
 //
 // This is Bug 2 from the user's analysis: the translation must feed
 // into the voiceover pipeline.
-func TestTranslationProcessor_TranslatedTextReachesOutput(t *testing.T) {
-	rec := &recordingTranslator{}
+func TestTranslationProcessor_TranslatedTextReachesOutput_ViaUseCase(t *testing.T) {
+	rec := &translatetoRecorder{}
 	proc := NewTranslationProcessor(
 		rec,
 		nil,

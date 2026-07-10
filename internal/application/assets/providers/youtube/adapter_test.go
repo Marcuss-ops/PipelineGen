@@ -522,3 +522,62 @@ func TestNewAdapter_NilService_SearchReturnsErrSourceNotWired(t *testing.T) {
 		t.Errorf("expected ErrSourceNotWired, got %v", err)
 	}
 }
+
+// ── NoAudio propagation ─────────────────────────────────────────────
+
+// TestFetch_NoAudio_True_MapsToKeepAudioFalse locks the critical
+// adapter-layer mapping: when providers.FetchRequest.NoAudio is true,
+// the underlying VideoCutRequest.KeepAudio MUST be false (inverted)
+// so ffmpeg's -an flag strips the audio stream.
+//
+// Regression guard for PR-YT-NO-AUDIO-THREAD (July 2026): pre-fix,
+// KeepAudio was hardcoded to true regardless of NoAudio, so the audio
+// track was never stripped even when the API caller set no_audio=true.
+func TestFetch_NoAudio_True_MapsToKeepAudioFalse(t *testing.T) {
+	ff := &fakeFetcher{
+		result: &youtubesrcports.VideoCutResult{
+			LocalPath: "/tmp/yt_noaudio.mp4",
+			Metadata: &youtubesrcports.DownloaderMetadata{
+				Title: "No Audio Clip",
+			},
+		},
+	}
+	a := newFetchAdapterWith(&fakeSearcher{}, ff)
+	_, err := a.Fetch(context.Background(), providers.FetchRequest{
+		AssetID:   "test-noaudio",
+		SourceRef: "https://www.youtube.com/watch?v=abc",
+		NoAudio:   true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ff.lastReq.KeepAudio {
+		t.Errorf("expected KeepAudio=false when NoAudio=true, got KeepAudio=true")
+	}
+}
+
+// TestFetch_NoAudio_False_MapsToKeepAudioTrue locks the backward-
+// compatible default: when NoAudio is false (zero-value), KeepAudio
+// MUST be true (audio preserved).
+func TestFetch_NoAudio_False_MapsToKeepAudioTrue(t *testing.T) {
+	ff := &fakeFetcher{
+		result: &youtubesrcports.VideoCutResult{
+			LocalPath: "/tmp/yt_withaudio.mp4",
+			Metadata: &youtubesrcports.DownloaderMetadata{
+				Title: "With Audio Clip",
+			},
+		},
+	}
+	a := newFetchAdapterWith(&fakeSearcher{}, ff)
+	_, err := a.Fetch(context.Background(), providers.FetchRequest{
+		AssetID:   "test-withaudio",
+		SourceRef: "https://www.youtube.com/watch?v=abc",
+		NoAudio:   false,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ff.lastReq.KeepAudio {
+		t.Errorf("expected KeepAudio=true when NoAudio=false (default), got KeepAudio=false")
+	}
+}

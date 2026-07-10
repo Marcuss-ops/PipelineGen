@@ -6,38 +6,51 @@ import time
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from velox_client import VeloxClient
 
-token = os.getenv("VELOX_ADMIN_TOKEN", "d6e31eb8d805b0cc91ef439aae42658b2838531b1de35b804f6932ca439c077d")
-client = VeloxClient("http://127.0.0.1:8000", token)
+token = os.getenv("VELOX_ADMIN_TOKEN", "test-admin-token-12345")
+image_style = os.getenv("SCRIPT_IMAGE_STYLE", "cinematic")
+
+base_url = os.getenv("VELOX_MASTER_URL")
+if not base_url:
+    api_base = os.getenv("API_BASE", "127.0.0.1:8080")
+    if "://" not in api_base:
+        base_url = f"http://{api_base}"
+    else:
+        base_url = api_base
+
+client = VeloxClient(base_url, token)
 
 payload = {
     "version": 2,
     "preset": "custom",
-    "correlation_id": "test_script_with_images_correlation_roma_v7",
+    "correlation_id": f"test_script_with_images_correlation_roma_v7_{time.time_ns()}",
     "items": [
         {
             "id": "test-item-images-roma-v7",
             "title": "Antica Roma",
             "language": "it",
             "tone": "informative",
-            "style": "whiteboard",
+            "style": image_style,
             "source": {
                 "type": "text",
                 "topic": "L'Antica Roma: l'ascesa della Repubblica, i grandi imperatori e il Colosseo."
             },
             "output": {
                 "generate_scene_images": "enabled",
-                "save_to_db": True
+                "save_to_db": False
             }
         }
     ]
 }
 
 print("Submitting script generation request with images...")
+print(f"Using base URL: {base_url}")
+print(f"Using image style: {image_style}")
 try:
+    request_id = f"req-img-test-{time.time_ns()}"
     resp = client.submit_async(
         "api/script/generate",
         payload,
-        req_id=f"req-img-test-{int(time.time())}"
+        req_id=request_id
     )
     print("Response received:", json.dumps(resp, indent=2))
     job_id = resp.get("job_id") or resp.get("id")
@@ -53,6 +66,25 @@ try:
         if current_status in ("completed", "failed", "cancelled", "SUCCEEDED", "FAILED"):
             print("Job finished. Final response:")
             print(json.dumps(status, indent=2))
+
+            result = status.get("result") or {}
+            output = result.get("output") or {}
+            specscene = output.get("specscene") or {}
+            scenes = specscene.get("scenes") or []
+            print("\nScene image bindings:")
+            for scene in scenes:
+                bindings = scene.get("bindings") or {}
+                image = bindings.get("image") or {}
+                print(
+                    f"- scene[{scene.get('index', '?')}] id={scene.get('id', '')} "
+                    f"text={scene.get('text', '')!r} "
+                    f"image_url={image.get('url', '')!r} "
+                    f"image_status={image.get('status', '')!r}"
+                )
+
+            if scenes and not all((scene.get("bindings") or {}).get("image", {}).get("url") for scene in scenes):
+                print("ERROR: One or more scenes are missing image URLs.")
+                sys.exit(1)
             
             output_file = "test_script_with_images_result.json"
             with open(output_file, "w") as f:

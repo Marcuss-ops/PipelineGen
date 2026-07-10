@@ -23,10 +23,13 @@ package render
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,6 +37,7 @@ import (
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
 )
 
 // ffmpegIntegrationTimeout bounds per-test wall-clock for Cut + Probe
@@ -104,6 +108,160 @@ func newCtxTimeout(parent context.Context, t *testing.T) (context.Context, conte
 		parent = context.Background()
 	}
 	return context.WithTimeout(parent, ffmpegIntegrationTimeout)
+}
+
+// ── Composition-root injection chain test (no real ffmpeg needed) ───
+
+// cutterCaptureRunner is a test-local ProcessRunner that captures
+// the argv passed to it without spawning a real subprocess. Used
+// to verify the full injection chain:
+// FFmpegCutter.WithRunner → ffmpeg.Processor.WithRunner → ProcessRunner.Run
+type cutterCaptureRunner struct {
+	mu   sync.Mutex
+	argv [][]string // captured argv per invocation
+}
+
+func (r *cutterCaptureRunner) Run(_ context.Context, _ string, args []string, _ process.Options) (*process.Result, error) {
+	r.mu.Lock()
+	r.argv = append(r.argv, append([]string(nil), args...))
+	r.mu.Unlock()
+	return &process.Result{ExitCode: 0}, nil
+}
+
+func (r *cutterCaptureRunner) hasArg(flag string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, argv := range r.argv {
+		for _, a := range argv {
+			if a == flag {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *cutterCaptureRunner) hasArgSubstring(substr string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, argv := range r.argv {
+		for _, a := range argv {
+			if strings.Contains(a, substr) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *cutterCaptureRunner) invocationCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.argv)
+}
+
+// TestFFmpegCutter_InjectionChain_NoAudio_True verifies the full
+// composition-root injection chain when NoAudio=true:
+// FFmpegCutter.WithRunner → ffmpeg.Processor.WithRunner →
+// captureRunner receives -an in the argv.
+//
+// This is a hermetic test (zero real ffmpeg needed) that locks
+// the Pattern 0 ProcessRunner injection contract end-to-end.
+func TestFFmpegCutter_InjectionChain_NoAudio_True(t *testing.T) {
+	runner := &cutterCaptureRunner{}
+	cutter := NewFFmpegCutter("ffmpeg", zap.NewNop()).WithRunner(runner)
+
+	_, _ = cutter.Cut(context.Background(), stockpipeline.CutRequest{
+		SourcePath: "/tmp/source.mp4",
+		Jobs: []stockpipeline.CutJob{
+			{StartSec: 0, EndSec: 5, OutputPath: "/tmp/out.mp4"},
+		},
+		NoAudio: true,
+		Codec:   "libx264",
+		Preset:  "veryfast",
+		CRF:     18,
+		Logger:  zap.NewNop(),
+	})
+
+	if !runner.hasArg("-an") {
+		t.Errorf("NoAudio=true: expected -an in argv; got none (invocations=%d)", runner.invocationCount())
+	}
+	if runner.hasArg("-c:a") {
+		t.Errorf("NoAudio=true: expected no -c:a in argv; found it (invocations=%d)", runner.invocationCount())
+	}
+}
+
+// TestFFmpegCutter_InjectionChain_NoAudio_False verifies the full
+// composition-root injection chain when NoAudio=false:
+// FFmpegCutter.WithRunner → ffmpeg.Processor.WithRunner →
+// captureRunner receives -c:a aac but NOT -an.
+func TestFFmpegCutter_InjectionChain_NoAudio_False(t *testing.T) {
+	runner := &cutterCaptureRunner{}
+	cutter := NewFFmpegCutter("ffmpeg", zap.NewNop()).WithRunner(runner)
+
+	_, _ = cutter.Cut(context.Background(), stockpipeline.CutRequest{
+		SourcePath: "/tmp/source.mp4",
+		Jobs: []stockpipeline.CutJob{
+			{StartSec: 0, EndSec: 5, OutputPath: "/tmp/out.mp4"},
+		},
+		NoAudio: false,
+		Codec:   "libx264",
+		Preset:  "veryfast",
+		CRF:     18,
+		Logger:  zap.NewNop(),
+	})
+
+	if runner.hasArg("-an") {
+		t.Errorf("NoAudio=false: expected no -an in argv; found it (invocations=%d)", runner.invocationCount())
+	}
+	// The cutter's fallback path calls CutReencode which adds -c:a aac
+	if !runner.hasArgSubstring("aac") {
+		t.Errorf("NoAudio=false: expected aac in argv; got none (invocations=%d)", runner.invocationCount())
+	}
+}
+
+// TestFFmpegCutter_InjectionChain_WithRunnerReturnsSamePointer
+// verifies that WithRunner returns the SAME *FFmpegCutter (fluent
+// chaining contract) and that the custom runner is used, not a
+// default runner.
+func TestFFmpegCutter_InjectionChain_WithRunnerReturnsSamePointer(t *testing.T) {
+	runner := &cutterCaptureRunner{}
+	original := NewFFmpegCutter("ffmpeg", zap.NewNop())
+	returned := original.WithRunner(runner)
+
+	if original != returned {
+		t.Errorf("WithRunner must return the same *FFmpegCutter pointer for fluent chaining; got different pointers")
+	}
+}
+
+// TestFFmpegCutter_InjectionChain_DefaultRunner_NoMock
+// verifies that NewFFmpegCutter uses the default process.Run
+// runner (not a mock) when WithRunner is NOT called. This locks
+// the production default so a future refactor cannot silently
+// replace it with a no-op.
+func TestFFmpegCutter_InjectionChain_DefaultRunner_NoMock(t *testing.T) {
+	cutter := NewFFmpegCutter("ffmpeg", zap.NewNop())
+	// Verify the internal processor has the default runner by
+	// checking that calling Cut with a non-existent source
+	// produces an error (the default runner tries to exec ffmpeg
+	// which fails on a missing file — a no-op mock would succeed).
+	_, err := cutter.Cut(context.Background(), stockpipeline.CutRequest{
+		SourcePath: "/nonexistent/source.mp4",
+		Jobs: []stockpipeline.CutJob{
+			{StartSec: 0, EndSec: 5, OutputPath: "/tmp/out.mp4"},
+		},
+		NoAudio: true,
+		Codec:   "libx264",
+		Preset:  "ultrafast",
+		CRF:     18,
+		Logger:  zap.NewNop(),
+	})
+	// The default runner spawns a real ffmpeg which will fail
+	// because the source file doesn't exist. If err is nil, the
+	// runner was silently replaced with a no-op mock.
+	if err == nil {
+		t.Errorf("default runner should fail on nonexistent source; got nil error (runner may be a no-op mock)")
+	}
 }
 
 // ── Real FFmpeg: full-batch cut + ffprobe validation ──────────────────
@@ -394,6 +552,193 @@ func BenchmarkFFmpegCutter_20MB(b *testing.B) {
 			b.Fatalf("mai-nil invariant violated: got %d items, want 4", len(batch.Items))
 		}
 	}
+}
+
+// ── Real FFmpeg: full-pipeline E2E (30s source, 3 clips, audio-aware) ──
+
+// TestFFmpegCutter_RealFFmpeg_FullPipelineE2E exercises the stock
+// pipeline end-to-end with a realistic 30-second synthetic source
+// (video + audio), cutting 3 clips of 5 seconds each and verifying
+// every output via ffprobe (duration > 0, video stream present,
+// non-zero file size). This is the canonical "does the whole thing
+// work on a real video" smoke.
+func TestFFmpegCutter_RealFFmpeg_FullPipelineE2E(t *testing.T) {
+	ffmpegPath := hasFFmpegAndFFprobe(t)
+	ctx, cancel := newCtxTimeout(context.Background(), t)
+	defer cancel()
+
+	dir := t.TempDir()
+
+	// Step 1: Generate a 30s synthetic source with video + audio.
+	sourcePath := filepath.Join(dir, "source_30s.mp4")
+	cmd := exec.Command(ffmpegPath,
+		"-y", "-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "testsrc=duration=30:size=640x480:rate=24",
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=30",
+		"-pix_fmt", "yuv420p",
+		"-c:v", "libx264", "-preset", "ultrafast",
+		"-c:a", "aac", "-b:a", "128k",
+		"-shortest",
+		sourcePath,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("source generation failed: %v\nffmpeg output:\n%s", err, string(out))
+	}
+
+	// Verify source via ffprobe.
+	sourceInfo, err := probeFile(t, sourcePath)
+	if err != nil {
+		t.Fatalf("ffprobe source failed: %v", err)
+	}
+	if sourceInfo.duration < 29.0 {
+		t.Fatalf("source duration too short: got %.2fs, want >=29s", sourceInfo.duration)
+	}
+	if !sourceInfo.hasVideo {
+		t.Fatal("source must have a video stream")
+	}
+	if !sourceInfo.hasAudio {
+		t.Fatal("source must have an audio stream")
+	}
+	t.Logf("source: duration=%.2fs video=%v audio=%v size=%d bytes", sourceInfo.duration, sourceInfo.hasVideo, sourceInfo.hasAudio, sourceInfo.size)
+
+	// Step 2: Cut 3 clips (5s each) via FFmpegCutter.
+	cutter := NewFFmpegCutter(ffmpegPath, zap.NewNop())
+	clips := []struct {
+		name    string
+		start   float64
+		end     float64
+		noAudio bool
+	}{
+		{"clip_0_5s_audio.mp4", 0, 5, false},
+		{"clip_10_15s_silent.mp4", 10, 15, true},
+		{"clip_20_25s_audio.mp4", 20, 25, false},
+	}
+
+	// NOTE: NoAudio is a per-batch flag (not per-clip), so we need 2
+	// separate batches to test both the audio and silent paths.
+
+	// Batch A: clips WITH audio (0-5s, 20-25s)
+	batchA, errA := cutter.Cut(ctx, stockpipeline.CutRequest{
+		SourcePath: sourcePath,
+		Jobs: []stockpipeline.CutJob{
+			{StartSec: 0, EndSec: 5, OutputPath: filepath.Join(dir, clips[0].name)},
+			{StartSec: 20, EndSec: 25, OutputPath: filepath.Join(dir, clips[2].name)},
+		},
+		NoAudio: false,
+		Codec:   "libx264",
+		Preset:  "ultrafast",
+		CRF:     18,
+		Logger:  zap.NewNop(),
+	})
+	t.Logf("batch A (audio): err=%v items=%s", errA, summarizeBatch(batchA))
+
+	// Batch B: clip WITHOUT audio (10-15s)
+	batchB, errB := cutter.Cut(ctx, stockpipeline.CutRequest{
+		SourcePath: sourcePath,
+		Jobs: []stockpipeline.CutJob{
+			{StartSec: 10, EndSec: 15, OutputPath: filepath.Join(dir, clips[1].name)},
+		},
+		NoAudio: true,
+		Codec:   "libx264",
+		Preset:  "ultrafast",
+		CRF:     18,
+		Logger:  zap.NewNop(),
+	})
+	t.Logf("batch B (no-audio): err=%v items=%s", errB, summarizeBatch(batchB))
+
+	// Step 3: Verify ALL 3 output clips via ffprobe.
+	for _, c := range clips {
+		clipPath := filepath.Join(dir, c.name)
+		info, probeErr := probeFile(t, clipPath)
+		if probeErr != nil {
+			t.Errorf("clip %s: ffprobe failed: %v", c.name, probeErr)
+			continue
+		}
+
+		// Duration should be ~5s (±0.5s for keyframe rounding).
+		if info.duration < 4.0 || info.duration > 6.0 {
+			t.Errorf("clip %s: duration=%.2fs, want 4.0-6.0s", c.name, info.duration)
+		}
+		if !info.hasVideo {
+			t.Errorf("clip %s: missing video stream", c.name)
+		}
+		if info.size < 1000 {
+			t.Errorf("clip %s: size=%d bytes, want >=1000", c.name, info.size)
+		}
+
+		// Audio presence must match NoAudio flag.
+		if c.noAudio && info.hasAudio {
+			t.Errorf("clip %s: NoAudio=true but ffprobe found audio stream", c.name)
+		}
+		if !c.noAudio && !info.hasAudio {
+			t.Errorf("clip %s: NoAudio=false but ffprobe found NO audio stream", c.name)
+		}
+
+		t.Logf("clip %s: duration=%.2fs video=%v audio=%v size=%d bytes ✅",
+			c.name, info.duration, info.hasVideo, info.hasAudio, info.size)
+	}
+}
+
+// probeInfo holds ffprobe-extracted metadata for a single file.
+type probeInfo struct {
+	duration float64
+	hasVideo bool
+	hasAudio bool
+	size     int64
+} // ffprobeOutput is a minimal struct for unmarshalling ffprobe's JSON output.
+// Only format.duration and stream codec_type are needed for test assertions.
+type ffprobeOutput struct {
+	Streams []ffprobeStreamOutput `json:"streams"`
+	Format  ffprobeFormatOutput   `json:"format"`
+}
+
+type ffprobeStreamOutput struct {
+	CodecType string `json:"codec_type"`
+}
+
+type ffprobeFormatOutput struct {
+	Duration string `json:"duration"`
+}
+
+// probeFile runs ffprobe on a file and returns stream/format metadata.
+// Uses json.Unmarshal for robust parsing that handles whitespace
+// variations in ffprobe's JSON output.
+func probeFile(t *testing.T, path string) (probeInfo, error) {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		return probeInfo{}, fmt.Errorf("stat: %w", err)
+	}
+	out, err := exec.Command("ffprobe",
+		"-v", "quiet",
+		"-print_format", "json",
+		"-show_format", "-show_streams",
+		"-i", path,
+	).CombinedOutput()
+	if err != nil {
+		return probeInfo{}, fmt.Errorf("ffprobe: %w\n%s", err, string(out))
+	}
+	var probe ffprobeOutput
+	if err := json.Unmarshal(out, &probe); err != nil {
+		return probeInfo{}, fmt.Errorf("ffprobe json parse: %w", err)
+	}
+	info := probeInfo{size: fi.Size()}
+	// Parse duration robustly — ffprobe may emit "N/A" for some streams.
+	if _, parseErr := fmt.Sscanf(probe.Format.Duration, "%f", &info.duration); parseErr != nil {
+		return probeInfo{}, fmt.Errorf("ffprobe duration parse %q: %w", probe.Format.Duration, parseErr)
+	}
+	if info.duration <= 0 {
+		return probeInfo{}, fmt.Errorf("ffprobe returned non-positive duration %.2f (raw: %q)", info.duration, probe.Format.Duration)
+	}
+	for _, s := range probe.Streams {
+		switch s.CodecType {
+		case "video":
+			info.hasVideo = true
+		case "audio":
+			info.hasAudio = true
+		}
+	}
+	return info, nil
 }
 
 // generateSyntheticSourceBench is the *testing.B equivalent of

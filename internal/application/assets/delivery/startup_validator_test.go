@@ -26,6 +26,7 @@ package delivery
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -61,11 +62,46 @@ func (f *fakeStartupRootsProbe) ProbeFolderAccess(_ context.Context, rootID stri
 // here rather than at runtime).
 var _ StartupRootsProbe = (*fakeStartupRootsProbe)(nil)
 
+// countNonEmptyRoots returns the number of registered destinations
+// whose RootFolderID is non-empty. The startup validator probes
+// these via ProbeFolderAccess; destinations with empty roots are
+// routed to Skipped instead. The P0-#1 DestinationClipMetadata
+// sidecar (no own root — its root is the clip folder owned by
+// DestinationYouTubeClip) lives in the Skipped bucket.
+//
+// This helper is the single source of truth for the per-test count
+// assertions so the test suite stays in lockstep with the registry
+// when new destinations are added (P0-#1 surfaced a pre-existing
+// stale-count issue where SoundEffectSidecar and Document had been
+// added without updating the hardcoded `Len(..., 10)` assertions).
+func countNonEmptyRoots(reg *DestinationRegistry) int {
+	n := 0
+	for _, k := range reg.Keys() {
+		p, err := reg.Resolve(k)
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(p.RootFolderID) != "" {
+			n++
+		}
+	}
+	return n
+}
+
 // startupTestRegistry builds a registry with non-empty roots for every
 // canonical destination, via the canonical public constructor
 // (NewDestinationRegistry + a populated cfg.Drive). This matches the
 // testRegistry helper in internal/infrastructure/drive/publisher_test.go
 // and stays in the same public path that production code uses.
+//
+// Note: DestinationClipMetadata (P0-#1 atomic-RMW cutover, July 2026)
+// is registered with RootFolderID="" because its root is supplied by
+// the caller via RootFolderOverride (the clip's already-resolved
+// folder). The startup validator correctly classifies it as Skipped
+// (it does not own its own Drive root — that ownership lives on
+// DestinationYouTubeClip, which is already validated). Tests in this
+// file therefore expect exactly one Skipped entry on startupTestRegistry:
+// [DestinationClipMetadata].
 func startupTestRegistry() *DestinationRegistry {
 	return NewDestinationRegistry(&config.Config{
 		Drive: config.DriveConfig{
@@ -141,11 +177,22 @@ func TestDriveRootsValidator_AllPass_P1_3(t *testing.T) {
 	require.NotNil(t, report)
 	require.False(t, report.HasFailures(), "AllPass: HasFailures must be false")
 	require.Empty(t, report.FailedDestinations(), "AllPass: FailedDestinations must be empty")
-	require.Empty(t, report.Skipped, "AllPass: Skipped must be empty (all roots non-empty)")
-	require.Len(t, report.PerDestination, 10, "AllPass: all 10 destinations probed")
+	// P0-#1 (July 2026): DestinationClipMetadata has RootFolderID=""
+	// (its root is the clip's folder, owned by DestinationYouTubeClip,
+	// already validated). Validator must classify it as Skipped, not
+	// probe. Exactly one Skipped entry expected here.
+	require.ElementsMatch(t, []DestinationKey{DestinationClipMetadata}, report.Skipped,
+		"AllPass: DestinationClipMetadata (no own root, sidecar of YouTubeClip) MUST be Skipped")
+	// P0-#1 dynamic count: derive expected PerDestination size from the
+	// registry (12 destinations, 1 with empty root → 11 in PerDestination).
+	// Locking to countNonEmptyRoots(reg) so future registry additions
+	// don't silently desync the test from production.
+	require.Len(t, report.PerDestination, countNonEmptyRoots(reg),
+		"AllPass: every non-empty-root destination MUST be probed exactly once (dynamic count via countNonEmptyRoots)")
 
-	// Every probe was called exactly once.
-	require.Len(t, probe.probeCalls, 10, "AllPass: all 10 roots probed once each")
+	// Every probe was called exactly once for every non-empty root.
+	require.Len(t, probe.probeCalls, countNonEmptyRoots(reg),
+		"AllPass: every non-empty root probed once each (dynamic count)")
 	for _, r := range report.PerDestination {
 		require.NoError(t, r.Err, "AllPass: per-destination Err must be nil for %q", r.Destination)
 		require.GreaterOrEqual(t, r.Elapsed.Microseconds(), int64(0), "AllPass: Elapsed must be recorded per probe")
@@ -171,7 +218,8 @@ func TestDriveRootsValidator_AllFail_P1_3(t *testing.T) {
 	require.True(t, report.HasFailures(), "AllFail: HasFailures must be true")
 
 	failed := report.FailedDestinations()
-	require.Len(t, failed, 10, "AllFail: every reachable root must be in FailedDestinations")
+	require.Len(t, failed, countNonEmptyRoots(reg),
+		"AllFail: every reachable root must be in FailedDestinations (dynamic count via countNonEmptyRoots)")
 
 	// Per-destination errors surface with the typed chain.
 	for _, r := range failed {
@@ -217,8 +265,10 @@ func TestDriveRootsValidator_PartialFail_P1_3(t *testing.T) {
 	require.Equal(t, []DestinationKey{DestinationVoiceover}, failed,
 		"PartialFail: only the voiceover root should be in FailedDestinations")
 
-	// Sanity: 10 probes total (every destination probed even when one fails).
-	require.Len(t, report.PerDestination, 10)
+	// Sanity: every non-empty-root destination is probed even when one fails.
+	// Dynamic count: one root (voiceover) is set up to fail; the rest succeed.
+	require.Len(t, report.PerDestination, countNonEmptyRoots(reg),
+		"PartialFail: every non-empty-root destination probed (dynamic count)")
 	successCount := 0
 	for _, p := range report.PerDestination {
 		if p.Destination == DestinationVoiceover {
@@ -228,7 +278,10 @@ func TestDriveRootsValidator_PartialFail_P1_3(t *testing.T) {
 			successCount++
 		}
 	}
-	require.Equal(t, 9, successCount, "PartialFail: 9 destinations succeeded")
+	// Success count = total non-empty roots - 1 (voiceover failed).
+	// Dynamic via countNonEmptyRoots to stay in lockstep with the registry.
+	require.Equal(t, countNonEmptyRoots(reg)-1, successCount,
+		"PartialFail: all destinations except voiceover MUST succeed (dynamic count)")
 }
 
 // ── Test 4: EmptySkipped (empty RootFolderID is skipped, not failed) ─
@@ -248,11 +301,13 @@ func TestDriveRootsValidator_EmptySkipped_P1_3(t *testing.T) {
 
 	// The Artlist destination is in Skipped (empty root). Admin is also
 	// skipped because its RootFolder() returns MediaRootFolder which is
-	// empty in this registry. The other 8 are in PerDestination.
-	require.ElementsMatch(t, []DestinationKey{DestinationArtlist, DestinationAdmin}, report.Skipped,
-		"EmptySkipped: DestinationArtlist + DestinationAdmin (empty roots) MUST be in Skipped")
-	require.Len(t, report.PerDestination, 8,
-		"EmptySkipped: 8 non-empty roots probed (Artlist + Admin excluded)")
+	// empty in this registry. ClipMetadata is also Skipped (its root
+	// is the clip folder, owned by DestinationYouTubeClip; no own root
+	// to probe). The other non-empty-root destinations are in PerDestination.
+	require.ElementsMatch(t, []DestinationKey{DestinationArtlist, DestinationAdmin, DestinationClipMetadata}, report.Skipped,
+		"EmptySkipped: DestinationArtlist + DestinationAdmin + DestinationClipMetadata (empty/no-own-root) MUST be in Skipped")
+	require.Len(t, report.PerDestination, countNonEmptyRoots(reg),
+		"EmptySkipped: every non-empty-root destination MUST be probed (dynamic count via countNonEmptyRoots)")
 
 	// Verify NO probe call was made for the empty Artlist root
 	// (validator MUST skip it before invoking ProbeFolderAccess).
@@ -312,7 +367,8 @@ func TestDriveRootsValidator_AllFailReportShape_P1_3(t *testing.T) {
 	// Every reachable root failed → all in FailedDestinations AND
 	// every row has Err set (the per-destination error chain).
 	failed := report.FailedDestinations()
-	require.Len(t, failed, 10, "AllFailReportShape: every reachable root must fail")
+	require.Len(t, failed, countNonEmptyRoots(reg),
+		"AllFailReportShape: every reachable root must fail (dynamic count via countNonEmptyRoots)")
 	require.True(t, report.HasFailures())
 
 	for _, r := range report.PerDestination {

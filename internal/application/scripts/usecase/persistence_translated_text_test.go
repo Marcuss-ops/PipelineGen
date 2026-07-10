@@ -14,7 +14,7 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-func TestBuildGenerationResult_PrefersTranslatedOutput(t *testing.T) {
+func TestBuildGenerationResult_PrefersTranslatedOutput_StandaloneCases(t *testing.T) {
 	engineResult := &EngineResult{
 		Output: scriptpkg.ModelScriptOutputV1{
 			Text: "Original English text.",
@@ -109,5 +109,77 @@ func TestBuildGenerationResult_FallsBackToOriginalWhenPostResultNil(t *testing.T
 
 	if result.Output.Text != "Original text." {
 		t.Errorf("expected original text when postResult is nil, got %q", result.Output.Text)
+	}
+}
+
+func TestBuildGenerationResult_StripsVoiceoverLocalPathAndKeepsImages(t *testing.T) {
+	engineResult := &EngineResult{
+		Output: scriptpkg.ModelScriptOutputV1{
+			Text: "Original English text.",
+			SpecScene: scriptpkg.SpecSceneOutput{
+				Version: 1,
+				Scenes: []scriptpkg.SpecScene{
+					{ID: "scene-1", Index: 0, Text: "Original English scene."},
+				},
+			},
+		},
+		WordCount: 3,
+	}
+
+	postResult := &adapters.PipelineResult{
+		FinalSpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{
+				{
+					ID:    "scene-1",
+					Index: 0,
+					Text:  "Original English scene.",
+					Bindings: scriptpkg.SceneBindings{
+						Voiceover: &scriptpkg.VoiceoverBinding{
+							Status:    "completed",
+							Link:      "https://drive.google.com/file/d/voice-1/view",
+							LocalPath: "/tmp/voice-1.mp3",
+						},
+					},
+				},
+			},
+		},
+		Scenes: []adapters.SceneImage{
+			{
+				Index: 0,
+				URL:   "https://drive.google.com/file/d/image-1/view",
+			},
+		},
+	}
+
+	item := scriptpkg.GenerationItemV2{ID: "test-item"}
+	plan := scriptpkg.ResolvedGenerationPlan{
+		Title:    "Test",
+		Language: "en",
+	}
+	timings := scriptpkg.GenerationTimings{}
+
+	result := buildGenerationResult(item, plan, engineResult, postResult, timings)
+
+	if result.Output.SpecScene.Scenes[0].Bindings.Voiceover == nil {
+		t.Fatal("expected voiceover binding in final result")
+	}
+	if got := result.Output.SpecScene.Scenes[0].Bindings.Voiceover.LocalPath; got != "" {
+		t.Fatalf("expected voiceover local_path to be stripped from API result, got %q", got)
+	}
+	if got := result.Output.SpecScene.Scenes[0].Bindings.Voiceover.Link; got != "https://drive.google.com/file/d/voice-1/view" {
+		t.Fatalf("expected voiceover link to survive in API result, got %q", got)
+	}
+	if result.Output.SpecScene.Scenes[0].Bindings.Image == nil {
+		t.Fatal("expected image binding in final result")
+	}
+	if got := result.Output.SpecScene.Scenes[0].Bindings.Image.LocalPath; got != "" {
+		t.Fatalf("expected image local_path to be stripped from API result, got %q", got)
+	}
+	if got := result.Output.SpecScene.Scenes[0].Bindings.Image.URL; got != "https://drive.google.com/file/d/image-1/view" {
+		t.Fatalf("expected image url to survive in API result, got %q", got)
+	}
+	if got := result.Output.SpecScene.Scenes[0].Bindings.Image.Status; got != "generated" {
+		t.Fatalf("expected image status generated in API result, got %q", got)
 	}
 }

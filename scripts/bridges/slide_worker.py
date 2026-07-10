@@ -24,6 +24,7 @@ Single-profile model:
 """
 
 import argparse
+import io
 import json
 import os
 import queue
@@ -35,6 +36,8 @@ import traceback
 from datetime import datetime, timezone
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+from storage_utils import choose_storage_candidate, save_storage_snapshot, storage_looks_usable
+from PIL import Image
 
 MASTER_STORAGE = "data/google_slides_storage.json"
 PROFILE_DIR = "data/google_slides_session_profile"
@@ -58,6 +61,37 @@ def _error(request_id: str | None, msg: str) -> None:
     if request_id:
         payload["id"] = request_id
     _respond(payload)
+
+
+def _save_image_bytes(image_bytes: bytes, output_path: str) -> str:
+    """Save image bytes using the format implied by the output file extension."""
+    ext = os.path.splitext(output_path)[1].lower().lstrip(".")
+    if not ext:
+        ext = "png"
+
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        if ext in {"jpg", "jpeg"}:
+            img = img.convert("RGB")
+            img.save(output_path, format="JPEG", quality=95)
+            return "jpeg"
+
+        if ext == "png":
+            if img.mode not in {"RGB", "RGBA"}:
+                img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
+            img.save(output_path, format="PNG")
+            return "png"
+
+        if ext == "webp":
+            if img.mode not in {"RGB", "RGBA"}:
+                img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
+            img.save(output_path, format="WEBP")
+            return "webp"
+
+        # Unknown extension: default to PNG to keep the output deterministic.
+        if img.mode not in {"RGB", "RGBA"}:
+            img = img.convert("RGBA" if "A" in img.getbands() else "RGB")
+        img.save(output_path, format="PNG")
+        return "png"
 
 
 # ── ProfileWorker (one thread = one browser = one profile) ─────────────────
@@ -87,6 +121,7 @@ class ProfileWorker(threading.Thread):
         self.context = None
         self.page = None
         self._warmed = threading.Event()
+        self._warmup_error: str | None = None
         self._running = True
         self._generation_count = 0
         self._max_generations_before_page_recycle = 20
@@ -127,23 +162,34 @@ class ProfileWorker(threading.Thread):
                 ],
             )
 
-        # Load session cookies if available
-        cookie_path = f"{MASTER_STORAGE}.profile_{self.profile_id}"
-        if not os.path.exists(cookie_path):
-            cookie_path = MASTER_STORAGE
-
-        if os.path.exists(cookie_path):
+        # Prefer the most recent usable storage snapshot, falling back to backups
+        # if the primary file was overwritten by a logged-out session.
+        cookie_path, sdata = choose_storage_candidate(
+            f"{MASTER_STORAGE}.profile_{self.profile_id}",
+            MASTER_STORAGE,
+            f"{MASTER_STORAGE}.profile_{self.profile_id}.backup",
+            f"{MASTER_STORAGE}.backup",
+        )
+        if cookie_path and sdata:
             try:
-                with open(cookie_path) as f:
-                    sdata = json.load(f)
-                    if "cookies" in sdata and sdata["cookies"]:
-                        self.context.add_cookies(sdata["cookies"])
-                        _log(f"[profile-{self.profile_id}] warmup: loaded session cookies from {cookie_path}")
+                if "cookies" in sdata and sdata["cookies"]:
+                    self.context.add_cookies(sdata["cookies"])
+                    _log(f"[profile-{self.profile_id}] warmup: loaded session cookies from {cookie_path}")
+                self._restore_storage_state(sdata)
             except Exception as e:
                 _log(f"[profile-{self.profile_id}] warmup: failed to load cookies from {cookie_path}: {e}")
 
-        _log(f"[profile-{self.profile_id}] warmup: navigating to slides.new...")
+        # Quick auth probe: fail fast before opening the full Slides UI.
         self.page = self.context.new_page()
+        try:
+            self.page.goto("https://docs.google.com/presentation/create", wait_until="domcontentloaded", timeout=15000)
+        except PlaywrightTimeout:
+            _log(f"[profile-{self.profile_id}] warmup: auth probe timed out — continuing")
+
+        if "accounts.google.com" in self.page.url:
+            raise Exception("login required: user is logged out (please run scripts/bridges/login.py to sign in)")
+
+        _log(f"[profile-{self.profile_id}] warmup: navigating to slides.new...")
         try:
             self.page.goto("https://slides.new", wait_until="load", timeout=30000)
         except PlaywrightTimeout:
@@ -155,6 +201,64 @@ class ProfileWorker(threading.Thread):
         self._warmed.set()
         _log(f"[profile-{self.profile_id}] warmup: ready")
 
+    def _restore_storage_state(self, sdata: dict) -> None:
+        """Restore origin localStorage entries saved by Playwright storage_state()."""
+        origins = sdata.get("origins") or []
+        if not origins:
+            return
+
+        for origin_state in origins:
+            origin = origin_state.get("origin")
+            local_storage = origin_state.get("localStorage") or []
+            if not origin or not local_storage:
+                continue
+            page = None
+            try:
+                page = self.context.new_page()
+                page.goto(origin, wait_until="domcontentloaded", timeout=30000)
+                page.evaluate(
+                    """(entries) => {
+                        for (const item of entries) {
+                            if (item && item.name !== undefined && item.value !== undefined) {
+                                localStorage.setItem(item.name, item.value);
+                            }
+                        }
+                    }""",
+                    local_storage,
+                )
+                _log(
+                    f"[profile-{self.profile_id}] warmup: restored localStorage for {origin}"
+                )
+            except Exception as e:
+                _log(
+                    f"[profile-{self.profile_id}] warmup: failed restoring localStorage for {origin}: {e}"
+                )
+            finally:
+                try:
+                    if page is not None:
+                        page.close()
+                except Exception:
+                    pass
+
+    def _persist_storage_state(self, request_id: str | None = None, reason: str = "auto-save") -> None:
+        """Persist the current storage state only if it still looks authenticated."""
+        if not self.context:
+            return
+        if self.page and "accounts.google.com" in self.page.url:
+            _log(f"[profile-{self.profile_id}] {reason}: skip save, browser is on accounts.google.com")
+            return
+        storage = self.context.storage_state()
+        if not storage_looks_usable(storage):
+            _log(f"[profile-{self.profile_id}] {reason}: skip save, storage snapshot looks empty")
+            return
+        save_storage_snapshot(MASTER_STORAGE, storage, backup_path=f"{MASTER_STORAGE}.backup")
+        profile_storage_path = f"{MASTER_STORAGE}.profile_{self.profile_id}"
+        save_storage_snapshot(profile_storage_path, storage, backup_path=f"{profile_storage_path}.backup")
+        if request_id:
+            _log(f"[profile-{self.profile_id}][{request_id}] {reason}: saved session snapshot")
+        else:
+            _log(f"[profile-{self.profile_id}] {reason}: saved session snapshot")
+
     # ── Main loop ──────────────────────────────────────────────────────
 
     def run(self) -> None:
@@ -162,8 +266,9 @@ class ProfileWorker(threading.Thread):
         try:
             self.warmup()
         except Exception as e:
+            self._warmup_error = str(e)
+            self._warmed.set()
             _log(f"[profile-{self.profile_id}] warmup failed: {e}")
-            self._warmed.clear()
             return  # thread exits — main thread will detect via health check
 
         while self._running:
@@ -182,14 +287,7 @@ class ProfileWorker(threading.Thread):
         _log(f"[profile-{self.profile_id}] shutting down...")
         try:
             if self.context:
-                storage = self.context.storage_state()
-                os.makedirs(os.path.dirname(MASTER_STORAGE) or ".", exist_ok=True)
-                with open(MASTER_STORAGE, "w") as f:
-                    json.dump(storage, f, indent=2)
-                storage_path = f"{MASTER_STORAGE}.profile_{self.profile_id}"
-                with open(storage_path, "w") as f:
-                    json.dump(storage, f, indent=2)
-                _log(f"[profile-{self.profile_id}] saved session to {MASTER_STORAGE} and {storage_path}")
+                self._persist_storage_state(reason="shutdown-save")
         except Exception as e:
             _log(f"[profile-{self.profile_id}] failed to save storage: {e}")
 
@@ -384,12 +482,11 @@ class ProfileWorker(threading.Thread):
                             response = self.page.request.get(src, timeout=15000)
                             if response.status == 200:
                                 image_bytes = response.body()
-                                with open(output_path, "wb") as f:
-                                    f.write(image_bytes)
+                                saved_format = _save_image_bytes(image_bytes, output_path)
                                 elapsed = (time.time() - t0) * 1000
                                 _log(
                                     f"[profile-{self.profile_id}][{request_id}] SUCCESS → "
-                                    f"{output_path} ({len(image_bytes)} bytes, {elapsed:.0f}ms)"
+                                    f"{output_path} ({len(image_bytes)} bytes, {saved_format}, {elapsed:.0f}ms)"
                                 )
                                 saved = True
                                 break
@@ -412,12 +509,19 @@ class ProfileWorker(threading.Thread):
                     with self.page.expect_download(timeout=15000) as download_info:
                         png_item.click(timeout=5000)
                     download = download_info.value
-                    download.save_as(output_path)
-                    image_bytes = open(output_path, "rb").read()
+                    temp_download_path = output_path + ".download"
+                    download.save_as(temp_download_path)
+                    with open(temp_download_path, "rb") as f:
+                        image_bytes = f.read()
+                    saved_format = _save_image_bytes(image_bytes, output_path)
+                    try:
+                        os.remove(temp_download_path)
+                    except Exception:
+                        pass
                     elapsed = (time.time() - t0) * 1000
                     _log(
                         f"[profile-{self.profile_id}][{request_id}] fallback saved → "
-                        f"{output_path} ({len(image_bytes)} bytes, {elapsed:.0f}ms)"
+                        f"{output_path} ({len(image_bytes)} bytes, {saved_format}, {elapsed:.0f}ms)"
                     )
                     saved = True
                 except Exception as fe:
@@ -432,15 +536,7 @@ class ProfileWorker(threading.Thread):
 
             # Auto-save cookies to ensure session persists across runs/restarts
             try:
-                if self.context:
-                    storage = self.context.storage_state()
-                    os.makedirs(os.path.dirname(MASTER_STORAGE) or ".", exist_ok=True)
-                    with open(MASTER_STORAGE, "w") as f:
-                        json.dump(storage, f, indent=2)
-                    profile_storage_path = f"{MASTER_STORAGE}.profile_{self.profile_id}"
-                    with open(profile_storage_path, "w") as f:
-                        json.dump(storage, f, indent=2)
-                    _log(f"[profile-{self.profile_id}][{request_id}] auto-saved session cookies")
+                self._persist_storage_state(request_id=request_id, reason="auto-save")
             except Exception as se:
                 _log(f"[profile-{self.profile_id}][{request_id}] failed to auto-save cookies: {se}")
 
@@ -524,6 +620,9 @@ class SlideDispatcher:
         if not self.profiles[0]._warmed.wait(timeout=30):
             _log("slide_worker: profile-0 warmup timed out")
             return {"status": "error", "error": "profile-0 warmup timed out"}
+        if self.profiles[0]._warmup_error:
+            _log(f"slide_worker: profile-0 warmup failed immediately: {self.profiles[0]._warmup_error}")
+            return {"status": "error", "error": self.profiles[0]._warmup_error}
         _log("slide_worker: profile ready")
         return {"status": "ready", "profiles": 1}
 

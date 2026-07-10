@@ -33,6 +33,16 @@ type YTDLPDownloader struct {
 	runner ProcessRunner
 }
 
+func (d *YTDLPDownloader) run(ctx context.Context, args []string, opts process.Options) (*process.Result, error) {
+	return d.runner.Run(ctx, d.path, args, opts)
+}
+
+func shouldForceNoPlaylist(url string) bool {
+	return strings.Contains(url, "youtube.com") ||
+		strings.Contains(url, "youtu.be") ||
+		strings.Contains(url, "artlist")
+}
+
 // ProcessRunner is the Pattern 0 port for executing external processes.
 // godlike/06 SSOT: this port lives in the downloader package (mirrors
 // the metadata/subtitle adapter's ProcessRunnerPort pattern); the
@@ -151,7 +161,10 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		return fmt.Errorf("invalid URL: %w", err)
 	}
 
-	args := []string{"--no-playlist"}
+	args := []string{}
+	if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
+		args = append(args, "--no-playlist")
+	}
 
 	// Blocco 5 (July 2026): BaseArgs centralizes cookies, JS runtime,
 	// --no-warnings, and --extractor-args. Format selection is via
@@ -209,7 +222,7 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		timeout = 10 * time.Minute
 	}
 
-	_, err := d.runner.Run(ctx, d.path, args, process.Options{
+	_, err := d.run(ctx, args, process.Options{
 		Timeout:        timeout,
 		CombinedOutput: true,
 	})
@@ -256,7 +269,10 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 		outputTemplate = outputTemplate + ".%(ext)s"
 	}
 
-	args := []string{"--no-playlist"}
+	args := []string{}
+	if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
+		args = append(args, "--no-playlist")
+	}
 	args = append(args, d.cmdBuilder.BaseArgs(req.URL, req.UseCookies)...)
 	args = append(args, d.cmdBuilder.FormatArg(true)...)
 	args = d.addExternalDownloaderArgs(args)
@@ -278,7 +294,7 @@ func (d *YTDLPDownloader) DownloadRange(ctx context.Context, req *DownloadReques
 	args = append(args, "-o", outputTemplate)
 	args = append(args, req.URL)
 
-	_, err := d.runner.Run(ctx, d.path, args, process.Options{
+	_, err := d.run(ctx, args, process.Options{
 		Timeout:        10 * time.Minute,
 		CombinedOutput: true,
 	})
@@ -338,7 +354,10 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 		} else {
 			outputTemplate = fmt.Sprintf("%s_%03d.%%(ext)s", basePath, i+1)
 		}
-		args := []string{"--no-playlist"}
+		args := []string{}
+		if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
+			args = append(args, "--no-playlist")
+		}
 		args = append(args, d.cmdBuilder.BaseArgs(req.URL, req.UseCookies)...)
 		args = append(args, d.cmdBuilder.FormatArg(true)...)
 		args = d.addExternalDownloaderArgs(args)
@@ -357,7 +376,7 @@ func (d *YTDLPDownloader) DownloadSections(ctx context.Context, req *DownloadReq
 		args = append(args, "-o", outputTemplate)
 		args = append(args, req.URL)
 
-		_, err := d.runner.Run(ctx, d.path, args, process.Options{
+		_, err := d.run(ctx, args, process.Options{
 			Timeout:        10 * time.Minute,
 			CombinedOutput: true,
 		})
