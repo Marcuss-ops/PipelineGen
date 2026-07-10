@@ -14,15 +14,24 @@ import (
 // TestGenerate_Returns410_AfterPR_AUDIT_3: PR-AUDIT-3 (2026-07-09)
 // retired the legacy POST /api/images/generate endpoint to HTTP 410
 // Gone, matching the legacy script-route precedent. The handler
-// MUST NOT call GenerateSmartImage — every invocation returns 410
-// with the canonical deprecation payload pointing to the replacement
-// endpoint POST /api/images/generated/generate.
+// MUST NOT call the canonical *images.Service.GenerateSmartImage
+// (the production typed surface at
+// internal/application/images/service_generated.go) nor the
+// usecase.ImageGenService.GenerateSceneImage port (renamed from
+// GenerateSmartImage by PR-DEADC-IMAGES-IMAGE-GEN-SERVICE-INTERFACE-CONTRACT,
+// 2026-07-10; canonical typed port at
+// internal/application/scripts/usecase/services.go) — every
+// invocation returns 410 with the canonical deprecation payload
+// pointing to the replacement endpoint
+// POST /api/images/generated/generate.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: a future regression that
-// re-activates the handler (calling GenerateSmartImage again) would
-// surface as a test failure — the counter increments on every 410
-// call (godlike/07 observability) so operators can track the 7-day
-// sustained-zero gate via rate(legacy_images_generate_total[7d]).
+// re-activates the handler (calling either GenerateSmartImage on
+// the *images.Service surface OR GenerateSceneImage on the
+// usecase.ImageGenService port) would surface as a test failure —
+// the counter increments on every 410 call (godlike/07
+// observability) so operators can track the 7-day sustained-zero
+// gate via rate(legacy_images_generate_total[7d]).
 func TestGenerate_Returns410_AfterPR_AUDIT_3(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
