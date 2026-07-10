@@ -217,13 +217,6 @@ type ClipIndexerPort interface {
 	BatchReindex(ctx context.Context, source, mediaType string, limit int) (*ClipIndexBatchResultDTO, error)
 }
 
-// ClipFolderMemoryPort is the canonical narrow surface of
-// *foldermemory.Service. Empty-marker for now because the handler
-// stores the dependency but does not call any method on it.
-// Once a future consumer appears, add LoadManifest/SaveManifest/
-// UpdateManifestTXT/ComputeManifestStats one PR at a time.
-type ClipFolderMemoryPort any
-
 // ClipConfigPort is the canonical clips-side narrow surface of
 // *config.Config. Each method exposes exactly the field the handler
 // reads (Pattern 0: never return the whole *Config).
