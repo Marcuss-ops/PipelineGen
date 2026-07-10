@@ -62,6 +62,13 @@ type sourcingFetchAdapter struct {
 	registry *providers.Registry
 }
 
+// Compile-time pin: sourcingFetchAdapter satisfies sourcing.FetchProviderPort.
+// PR-CLIP-DECOM-5 (July 2026): drift in the Fetch signature surfaces as a
+// build failure, not a runtime panic. NoAudio forwarding is the 4th adapter
+// layer in the YouTube fetch chain (usecase.FetchRequest → sourcing.FetchRequest
+// → providers.FetchRequest → ffmpeg.Processor).
+var _ sourcing.FetchProviderPort = (*sourcingFetchAdapter)(nil)
+
 func (a *sourcingFetchAdapter) Fetch(ctx context.Context, req sourcing.FetchRequest) (*sourcing.FetchedAsset, error) {
 	if a.registry == nil {
 		return nil, fmt.Errorf("register fetch provider registry not configured")

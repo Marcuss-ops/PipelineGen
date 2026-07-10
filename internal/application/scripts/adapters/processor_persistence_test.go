@@ -44,6 +44,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -131,16 +132,14 @@ func (f *idemFakeRepo) FindScriptByIdempotencyKey(_ context.Context, _, _, _ str
 
 // SaveManifestV2 (PR 1, SCRIPT-DOWNSTREAM-CUTOVER wave) records the
 // canonical NEW-mode manifest envelope + scriptID so TDD tests can
-// assert the canonical NEW-mode write seam. The port owns the typed
-// contract (godlike/06 SSOT) — the mock matches the port signature
-// (typed *scriptpkg.ManifestV2) and marshals internally to mirror the
-// production adapter's json.Marshal seam.
-func (f *idemFakeRepo) SaveManifestV2(_ context.Context, scriptID int64, manifest *scriptpkg.ManifestV2) error {
+// assert the canonical NEW-mode write seam. The mock matches the port
+// signature (ScriptManifestJSON = []byte, pre-marshalled JSON) and
+// stores the raw bytes so TDD tests can unmarshal + assert shape.
+func (f *idemFakeRepo) SaveManifestV2(_ context.Context, scriptID int64, manifest ports.ScriptManifestJSON) error {
 	f.saveManifestCalls.Add(1)
 	f.lastManifestScriptID = scriptID
-	if manifest != nil {
-		bytes, _ := json.Marshal(manifest)
-		f.lastManifest = bytes
+	if len(manifest) > 0 {
+		f.lastManifest = manifest
 	}
 	return nil
 }
@@ -386,6 +385,7 @@ func TestPersistence_PersistsSpecSceneJSON(t *testing.T) {
 	assert.Contains(t, repo.lastRec.SpecScene, "scene-0")
 	assert.Contains(t, repo.lastRec.SpecScene, `"version":1`)
 	assert.Contains(t, repo.lastRec.SpecScene, `"scenes":`)
+	assert.NotContains(t, repo.lastRec.SpecScene, `"local_path":`)
 	assert.Empty(t, repo.lastRec.TimelineJSON, "TimelineJSON slot must remain empty under PR 6")
 }
 
@@ -643,6 +643,7 @@ func TestPersistence_SpecSceneJSON_CanonicalRoundTrip(t *testing.T) {
 	require.NotNil(t, s1.Bindings.Image)
 	assert.Equal(t, "img-789", s1.Bindings.Image.ImageID)
 	assert.Equal(t, "generated", s1.Bindings.Image.Status)
+	assert.Empty(t, s1.Bindings.Image.LocalPath, "image local_path must be stripped before persistence")
 
 	// Scene 2 — stock binding.
 	s2 := restored.Scenes[2]
@@ -650,6 +651,8 @@ func TestPersistence_SpecSceneJSON_CanonicalRoundTrip(t *testing.T) {
 	require.NotNil(t, s2.Bindings.Stock)
 	assert.Equal(t, "stock-456", s2.Bindings.Stock.AssetID)
 	assert.Equal(t, 0.92, s2.Bindings.Stock.Score)
+	require.NotNil(t, s0.Bindings.Voiceover)
+	assert.Empty(t, s0.Bindings.Voiceover.LocalPath, "voiceover local_path must be stripped before persistence")
 
 	// Orthogonal: TimelineJSON slot still empty (PR 6 contract).
 	assert.Empty(t, repo.lastRec.TimelineJSON, "TimelineJSON must remain empty under PR 6")

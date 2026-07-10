@@ -100,6 +100,70 @@ func TestDownloadAndHashClip_HappyPath(t *testing.T) {
 	}
 }
 
+// ── Test 1b: NoAudio propagation ─────────────────────────────────────
+
+// TestDownloadAndHashClip_NoAudio_ForwardsToFetcher locks the
+// critical use-case-layer propagation: when DownloadAndHashCommand.NoAudio
+// is true, the FetchRequest forwarded to the fetcher MUST also carry
+// NoAudio=true. This is the second of three adapter layers where
+// the flag must survive.
+//
+// Regression guard for PR-YT-NO-AUDIO-THREAD (July 2026): pre-fix,
+// DownloadAndHashCommand had no NoAudio field, so the flag was
+// silently dropped at this boundary.
+func TestDownloadAndHashClip_NoAudio_ForwardsToFetcher(t *testing.T) {
+	fetcher := &stubFetcher{
+		result: &FetchedAsset{
+			LocalPath: "/tmp/downloads/noaudio.mp4",
+			AssetID:   "noaudio-123",
+			Name:      "No Audio Test",
+		},
+	}
+	hasher := &stubHasher{hash: "deadbeef"}
+
+	cmd := DownloadAndHashCommand{
+		VideoID:   "noaudio-123",
+		SourceRef: "https://www.youtube.com/watch?v=noaudio",
+		NoAudio:   true,
+	}
+
+	_, err := DownloadAndHashClip(context.Background(), fetcher, hasher, cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !fetcher.lastReq.NoAudio {
+		t.Errorf("expected fetcher.FetchRequest.NoAudio=true when cmd.NoAudio=true, got false")
+	}
+}
+
+// TestDownloadAndHashClip_NoAudio_False_ForwardsFalse locks the
+// backward-compatible default: when cmd.NoAudio is false (zero-value),
+// FetchRequest.NoAudio MUST also be false.
+func TestDownloadAndHashClip_NoAudio_False_ForwardsFalse(t *testing.T) {
+	fetcher := &stubFetcher{
+		result: &FetchedAsset{
+			LocalPath: "/tmp/downloads/withaudio.mp4",
+			AssetID:   "withaudio-456",
+			Name:      "With Audio Test",
+		},
+	}
+	hasher := &stubHasher{hash: "cafebabe"}
+
+	cmd := DownloadAndHashCommand{
+		VideoID:   "withaudio-456",
+		SourceRef: "https://www.youtube.com/watch?v=withaudio",
+		NoAudio:   false,
+	}
+
+	_, err := DownloadAndHashClip(context.Background(), fetcher, hasher, cmd)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fetcher.lastReq.NoAudio {
+		t.Errorf("expected fetcher.FetchRequest.NoAudio=false when cmd.NoAudio=false (default), got true")
+	}
+}
+
 // ── Test 2: nil fetcher → typed error ────────────────────────────────────
 
 func TestDownloadAndHashClip_NilFetcher_ReturnsError(t *testing.T) {

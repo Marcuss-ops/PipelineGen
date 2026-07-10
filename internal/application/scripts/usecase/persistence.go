@@ -42,6 +42,7 @@ func buildGenerationResult(
 	if postResult != nil && len(postResult.FinalSpecScene.Scenes) > 0 {
 		specScene = postResult.FinalSpecScene
 	}
+	specScene = sanitizeSpecSceneOutputForResponse(specScene)
 
 	// PR-TRANSLATION-PIPELINE-2026-07-09: prefer translated text over
 	// the engine's original output when the TranslationProcessor
@@ -129,7 +130,6 @@ func buildGenerationResult(
 					}
 					sc.Bindings.Voiceover.Status = v.Status
 					sc.Bindings.Voiceover.Link = v.Link
-					sc.Bindings.Voiceover.LocalPath = v.LocalPath
 				}
 			}
 		}
@@ -149,4 +149,34 @@ func buildGenerationResult(
 
 	result.Source = sourceTrace
 	return result
+}
+
+// sanitizeSpecSceneOutputForResponse returns a deep copy of the
+// canonical SpecSceneOutput with production-local voiceover paths
+// stripped from the API-facing surface. The internal pipeline keeps
+// LocalPath for downstream persistence and diagnostics; only the
+// emitted result hides it.
+func sanitizeSpecSceneOutputForResponse(in scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput {
+	if len(in.Scenes) == 0 {
+		return in
+	}
+
+	out := in
+	out.Scenes = append([]scriptpkg.SpecScene(nil), in.Scenes...)
+	for i := range out.Scenes {
+		img := out.Scenes[i].Bindings.Image
+		if img != nil {
+			imgCopy := *img
+			imgCopy.LocalPath = ""
+			out.Scenes[i].Bindings.Image = &imgCopy
+		}
+		vo := out.Scenes[i].Bindings.Voiceover
+		if vo == nil {
+			continue
+		}
+		voCopy := *vo
+		voCopy.LocalPath = ""
+		out.Scenes[i].Bindings.Voiceover = &voCopy
+	}
+	return out
 }

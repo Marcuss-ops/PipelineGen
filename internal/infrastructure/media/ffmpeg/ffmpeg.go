@@ -18,16 +18,35 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
+// ── ProcessRunner port (Pattern 0) ────────────────────────────────────
+
+// ProcessRunner abstracts subprocess execution for testability.
+// Production wires defaultProcessRunner; tests swap captureRunner mocks.
+type ProcessRunner interface {
+	Run(ctx context.Context, name string, args []string, opts process.Options) (*process.Result, error)
+}
+
+// defaultProcessRunner delegates to process.Run (production path).
+type defaultProcessRunner struct{}
+
+func (d defaultProcessRunner) Run(ctx context.Context, name string, args []string, opts process.Options) (*process.Result, error) {
+	return process.Run(ctx, name, args, opts)
+}
+
+// Compile-time pin: defaultProcessRunner satisfies ProcessRunner.
+var _ ProcessRunner = defaultProcessRunner{}
+
 // ── Processor ───────────────────────────────────────────────────────────
 
 // Processor handles FFmpeg operations.
 type Processor struct {
-	path string
+	path   string
+	runner ProcessRunner
 }
 
 // NewProcessor creates a new FFmpeg Processor with the given binary path.
 func NewProcessor(ffmpegPath string) *Processor {
-	return &Processor{path: ffmpegPath}
+	return &Processor{path: ffmpegPath, runner: defaultProcessRunner{}}
 }
 
 // NewFromConfig creates a new FFmpeg Processor using the config's resolved ffmpeg path.
@@ -36,11 +55,19 @@ func NewFromConfig(cfg *config.Config) *Processor {
 	if path == "" {
 		path = "ffmpeg"
 	}
-	return &Processor{path: path}
+	return &Processor{path: path, runner: defaultProcessRunner{}}
 }
 
 // Path returns the configured ffmpeg binary path.
 func (p *Processor) Path() string { return p.path }
+
+// WithRunner replaces the default subprocess runner with a custom implementation.
+// Returns the receiver for fluent chaining. Used by tests to inject a capture
+// runner so ffmpeg argv can be asserted without spawning a real subprocess.
+func (p *Processor) WithRunner(r ProcessRunner) *Processor {
+	p.runner = r
+	return p
+}
 
 // ── Type aliases — canonical definitions in ffmpeg/types (PR6-B, June 2026) ──
 
@@ -78,7 +105,7 @@ func (p *Processor) CutCopy(ctx context.Context, input, output, start, end strin
 		args = append(args, "-an")
 	}
 	args = append(args, output)
-	_, err := process.Run(ctx, p.path, args, process.Options{
+	_, err := p.runner.Run(ctx, p.path, args, process.Options{
 		Timeout: 10 * time.Minute,
 	})
 	return err
@@ -92,7 +119,7 @@ func (p *Processor) MergeInputs(ctx context.Context, inputs []string, output str
 	}
 	if len(inputs) == 1 {
 		// Single input: just copy/normalize
-		_, err := process.Run(ctx, p.path, []string{
+		_, err := p.runner.Run(ctx, p.path, []string{
 			"-y", "-hide_banner", "-loglevel", "warning",
 			"-i", inputs[0],
 			"-c", "copy",
@@ -125,7 +152,7 @@ func (p *Processor) MergeInputs(ctx context.Context, inputs []string, output str
 	}
 	tmpFile.Close()
 
-	_, err = process.Run(ctx, p.path, []string{
+	_, err = p.runner.Run(ctx, p.path, []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
 		"-f", "concat",
 		"-safe", "0",
@@ -196,7 +223,7 @@ func (p *Processor) ExtractFrame(ctx context.Context, input, output string, time
 		output,
 	}
 
-	_, err := process.Run(ctx, p.path, args, process.Options{
+	_, err := p.runner.Run(ctx, p.path, args, process.Options{
 		Timeout: 10 * time.Minute,
 	})
 	return err
@@ -217,7 +244,7 @@ func (p *Processor) RemuxHLS(ctx context.Context, inputURL, output string) error
 		output,
 	}
 
-	_, err := process.Run(ctx, p.path, args, process.Options{
+	_, err := p.runner.Run(ctx, p.path, args, process.Options{
 		Timeout: 15 * time.Minute,
 	})
 	return err

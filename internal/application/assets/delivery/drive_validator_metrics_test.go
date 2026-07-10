@@ -183,16 +183,19 @@ func TestDriveRootsValidator_MetricsIntegration_P1_4(t *testing.T) {
 		t.Fatal("ValidateDriveRoots: report nil despite error")
 	}
 
-	// 10 unique rows materialize (one per registry.Keys(), since the
-	// validator emits Probes on every iteration step — skipped,
-	// success, failure alike). The exact breakdown depends on
-	// resolver behaviour for which destinations have empty resolved
-	// folders under cfg.Drive = startupEmptyRootRegistry, so we
-	// don't commit to a specific success/failure/skipped split in
-	// the comment — the cardinality pin below is what matters for
-	// drift detection.
-	if got := testutil.CollectAndCount(metrics.Probes); got != 10 {
-		t.Errorf("Probes series count = %v, want 10 (one per registry.Keys())", got)
+	// One Probes series materializes per registry.Keys() — the
+	// validator emits observeProbe on every iteration step
+	// (skipped, success, failure alike) so dashboards can
+	// distinguish intentionally-disabled (skipped) from
+	// configured-but-broken (failure). The exact breakdown
+	// depends on resolver behaviour for which destinations have
+	// empty resolved folders under cfg.Drive = startupEmptyRootRegistry.
+	// P0-#1 (July 2026): dynamic count via len(reg.Keys()) keeps
+	// the test in lockstep with the registry when new destinations
+	// are added (SoundEffectSidecar, Document, ClipMetadata).
+	if got := testutil.CollectAndCount(metrics.Probes); got != len(reg.Keys()) {
+		t.Errorf("Probes series count = %v, want %d (one per registry.Keys(), dynamic count)",
+			got, len(reg.Keys()))
 	}
 
 	// Per-key assertions via label-aware testutil.

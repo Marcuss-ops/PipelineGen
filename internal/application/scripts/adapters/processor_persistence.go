@@ -111,12 +111,18 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 		}, nil
 	}
 
+	// Persist a response-safe copy of the typed SpecScene. The
+	// runtime result already strips local filesystem paths for API
+	// responses; the scripts table must store the same sanitized
+	// shape so DB readers never observe ephemeral temp paths.
+	specScene := sanitizeSpecSceneOutputForPersistence(input.SpecScene)
+
 	// PR 5 fields: persist the canonical typed output fields on
 	// the script row. PR 5 lives in the same migration window as
 	// PR 1 (engine decodes payload into canonical V1), so the
 	// downstream specscene is fully typed by the time we reach
 	// the persistence leg.
-	specSceneJSON, specJSONErr := json.Marshal(input.SpecScene)
+	specSceneJSON, specJSONErr := json.Marshal(specScene)
 	if specJSONErr != nil {
 		return nil, fmt.Errorf("%w: persistence processor: specscene marshal failed: %w", scriptpkg.ErrPostprocessFailed, specJSONErr)
 	}
@@ -240,4 +246,30 @@ func computeIdempotencyKey(plan *scriptpkg.ResolvedGenerationPlan) string {
 	)
 	sum := sha256.Sum256([]byte(tuple))
 	return hex.EncodeToString(sum[:])[:16]
+}
+
+// sanitizeSpecSceneOutputForPersistence returns a deep copy of the
+// typed specscene with ephemeral local filesystem paths removed from
+// image and voiceover bindings before persistence.
+func sanitizeSpecSceneOutputForPersistence(in scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput {
+	out := in
+	if len(in.Scenes) == 0 {
+		return out
+	}
+	out.Scenes = make([]scriptpkg.SpecScene, len(in.Scenes))
+	for i, scene := range in.Scenes {
+		outScene := scene
+		if scene.Bindings.Voiceover != nil {
+			v := *scene.Bindings.Voiceover
+			v.LocalPath = ""
+			outScene.Bindings.Voiceover = &v
+		}
+		if scene.Bindings.Image != nil {
+			img := *scene.Bindings.Image
+			img.LocalPath = ""
+			outScene.Bindings.Image = &img
+		}
+		out.Scenes[i] = outScene
+	}
+	return out
 }

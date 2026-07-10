@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 	"github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	"go.uber.org/zap"
@@ -234,8 +235,17 @@ func (s *Service) processLanguage(
 	// Per-language voice override (moved from synthesizeStage).
 	voice := voiceOverrideFor(req, language)
 
+	jobID := ""
+	if val, ok := ctx.Value("script_job_id").(string); ok {
+		jobID = val
+	}
+	if jobID == "" {
+		jobID = corid.FromContext(ctx)
+	}
+
 	cmd := &ProcessSegmentCommand{
 		ID:             id,
+		JobID:          jobID,
 		RequestID:      requestID,
 		TextHash:       TextHash(textHash),
 		Text:           req.Text,
@@ -246,6 +256,7 @@ func (s *Service) processLanguage(
 		Metadata:       req.Metadata,
 		RemoveSilence:  removeSilence,
 		Dest:           &processDest,
+		Project:        req.Project,
 		ShouldSwap:     shouldSwap,
 		OldDriveFileID: oldDriveFileID,
 		OldLocalPath:   oldLocalPath,

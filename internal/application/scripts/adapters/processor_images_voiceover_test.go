@@ -106,6 +106,7 @@ func (f *blockingImageGen) SearchAndDownload(_ context.Context, sceneName, _, _,
 type generatedPriorityImageGen struct {
 	searchCalls atomic.Int32
 	genCalls    atomic.Int32
+	lastPrompts []string
 }
 
 func (f *generatedPriorityImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*adapterspkg.ImageResult, error) {
@@ -115,6 +116,7 @@ func (f *generatedPriorityImageGen) SearchAndDownload(_ context.Context, sceneNa
 
 func (f *generatedPriorityImageGen) GenerateSmartImage(_ context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error) {
 	f.genCalls.Add(1)
+	f.lastPrompts = append([]string(nil), prompts...)
 	return &asset.ImageAsset{
 		SourceURL:   "google-slides/" + subject + ".png",
 		DriveFileID: "drive-" + subject,
@@ -257,7 +259,22 @@ func TestImageProcessorPrefersGeneratedImagePath(t *testing.T) {
 	t.Parallel()
 	gen := &generatedPriorityImageGen{}
 	proc := adapterspkg.NewImageProcessor(gen, zap.NewNop())
-	model := nScenesModel(1)
+	model := &scriptpkg.ModelScriptOutputV1{
+		SchemaVersion: 1,
+		Text:          "Generated script.",
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{
+				{
+					ID:    "scene-0",
+					Index: 0,
+					Title: "Ancient Rome at dawn",
+					Text:  "Long narrative about the early Republic and the Roman hills.",
+					Kind:  scriptpkg.SceneImage,
+				},
+			},
+		},
+	}
 	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -267,6 +284,9 @@ func TestImageProcessorPrefersGeneratedImagePath(t *testing.T) {
 	assert.Equal(t, int32(1), gen.genCalls.Load(), "GenerateSmartImage should be preferred when available")
 	assert.Equal(t, int32(0), gen.searchCalls.Load(), "SearchAndDownload should not be used when generation is available")
 	assert.Equal(t, "https://drive.google.com/file/d/drive-scene-0/view", result.SceneImages[0].URL)
+	require.Len(t, gen.lastPrompts, 2)
+	assert.Equal(t, "Ancient Rome at dawn", gen.lastPrompts[0], "scene title should lead the prompt list")
+	assert.Equal(t, "Long narrative about the early Republic and the Roman hills.", gen.lastPrompts[1], "full scene text should remain available as secondary context")
 }
 
 func TestImageProcessorPartialFailure(t *testing.T) {

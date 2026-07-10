@@ -198,6 +198,15 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) {
 }
 
 func (s *Service) GenerateWithDestination(ctx context.Context, text, language, filename string, dest *DestinationRequest) (*VoiceoverResult, error) {
+	project := "default"
+	if dest != nil && dest.Project != "" {
+		project = dest.Project
+	}
+
+	if s.log != nil {
+		s.log.Info("GenerateWithDestination: project selected", zap.String("project", project), zap.Any("dest", dest))
+	}
+
 	req := &BatchRequest{
 		Text:             text,
 		Languages:        []Language{Language(language)},
@@ -205,6 +214,7 @@ func (s *Service) GenerateWithDestination(ctx context.Context, text, language, f
 		RemoveSilence:    ptrutil.Bool(false),
 		Strategy:         "replace",
 		Destination:      dest,
+		Project:          project,
 	}
 	resp, err := s.GenerateBatch(ctx, req)
 	if err != nil {

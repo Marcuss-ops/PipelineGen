@@ -2,7 +2,6 @@ package ollama
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -23,11 +22,6 @@ import (
 // need a value that changes between calls.
 var randomSeed = func() int {
 	return int(rand.Int63())
-}
-
-type TranslationCache interface {
-	Get(ctx context.Context, text, targetLanguage string) (string, bool)
-	Set(ctx context.Context, text, targetLanguage, translated string) error
 }
 
 type Generator struct {
@@ -202,26 +196,9 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		options["top_p"] = req.TopP
 	}
 
-	// P0.2 (June 2026): when the caller requests the structured
-	// V1 script contract (OutputModeScriptV1), force Ollama into
-	// native JSON-mode so the model response is constrained to
-	// syntactically valid JSON.
-	//
-	// Format is a TOP-LEVEL body field on `/api/chat`. Putting it
-	// in `options` would be silently wrong because Ollama treats
-	// `options`-nested keys as model parameters (temperature, seed…)
-	// — a `format` there is ignored. See types.ChatRequest.Format
-	// + client_core.go::doChatRequest for the wire wiring.
-	//
 	// PR-3 (LLM-PLAIN-TEXT-CONTRACT wave, July 2026): the inline
-	// JSON-mode trigger collapsed into resolveGenerationFormat. The
-	// pure helper takes the request by value (Go value semantics
-	// structurally prevents mutation; see
-	// TestResolveGenerationFormat_NoInputMutation) and returns the
-	// canonical Ollama Format value per the 4-case decision tree
-	// documented there. Canonical PlainText path returns nil (no
-	// JSON constraint); legacy ScriptV1 path with empty caller
-	// Format auto-fills "json"; caller-supplied Format always wins.
+	// JSON-mode trigger collapsed into resolveGenerationFormat.
+	// See generate_format.go for the canonical 4-case decision tree.
 	req.Format = resolveGenerationFormat(req)
 
 	result, err := g.client.Chat(ctx, messages, options, req.Format)
@@ -237,104 +214,6 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		Model:       req.Model,
 		Prompt:      prompts.BuildTextPrompt(&req),
 	}, nil
-}
-
-// resolveGenerationFormat returns the canonical Ollama wire-shape Format
-// value for a text-generation request.
-//
-// LLM-PLAIN-TEXT-CONTRACT wave (PR-3, July 2026): this pure helper
-// replaces an inline conditional that was previously hard-coded in
-// (*Generator).GenerateScript. The 3 logical branches implement the
-// 4-case decision tree (2 OutputMode values × 2 Format presence values):
-//
-//  1. OutputMode != OutputModeScriptV1 (PlainText or empty):
-//     return nil — Ollama stays in prose mode, no JSON constraint.
-//     This is the canonical post-PR-2 path for the script pipeline:
-//     engine_generate.go sets OutputModePlainText unconditionally,
-//     and downstream SceneSynthesizer + scene binder derive structured
-//     fields from the raw prose (no JSON envelope on the wire).
-//
-//  2. OutputMode == OutputModeScriptV1 AND caller-supplied Format empty:
-//     return json.RawMessage(`"json"`) — force Ollama into native
-//     JSON-mode so the model response is constrained to syntactically
-//     valid JSON. This is the legacy defence for deprecated active
-//     callers that still pass OutputModeScriptV1 in their current
-//     request payload. Pre-wave callers were never updated to
-//     PlainText; without this fallback the LLM emits prose and
-//     downstream jsonextract decoders immediately raise
-//     ErrModelOutputMalformed on the model output.
-//     (Note: cached pre-wave rows skip GenerateScript entirely via
-//     TranslateText.* cache fast-path; this fallback does NOT defend
-//     cache hits, only the active GenerateScript call surface.)
-//
-//  3. OutputMode == OutputModeScriptV1 AND caller-supplied Format
-//     non-empty (cases 4 of the 2x2 grid):
-//     return req.Format verbatim (passthrough). Test rigs and future
-//     non-script callers opt out of the auto-fill by pre-setting Format.
-//
-// Native json-mode does NOT enforce a schema — the plainTextInstruction
-// prompt suffix does that (see engine_prompt.go). The wire-format
-// trigger here is the FIRST half of the V1 contract defence.
-//
-// Format is a TOP-LEVEL body field on Ollama's `/api/chat` endpoint —
-// it is NOT inside `options` (where Ollama would silently ignore it as
-// a non-model parameter). See types.ChatRequest.Format and
-// client_core.go::doChatRequest for the canonical wire wiring.
-//
-// Pure function (value parameter via Go semantics). A future refactor
-// that flips to *types.TextGenerationRequest and mutates req would
-// surface above the call site because req.Format is aliased both ways
-// (the helper itself would still compile, but the caller-observable
-// effect would leak). TestResolveGenerationFormat_NoInputMutation is
-// the observable per-call guarantee.
-func resolveGenerationFormat(req types.TextGenerationRequest) json.RawMessage {
-	if len(req.Format) > 0 {
-		return req.Format
-	}
-	if req.OutputMode == types.OutputModeScriptV1 {
-		return json.RawMessage(`"json"`)
-	}
-	return nil
-}
-
-// estimateDurationSeconds estimates speech duration from word count using WordsPerMinute (140 WPM)
-func estimateDurationSeconds(wordCount int) int {
-	if wordCount <= 0 {
-		return 0
-	}
-	return (wordCount * 60) / types.WordsPerMinute
-}
-
-func setTextDefaults(req *types.TextGenerationRequest) {
-	types.ApplyDefaults(req)
-}
-
-// SearchQueryForScript builds a web search query from the script request.
-// Returns empty string if the request doesn't benefit from web search
-// (e.g. when the source text is substantial enough on its own).
-func SearchQueryForScript(req types.TextGenerationRequest) string {
-	// Skip web search if the source text is substantial (user already provided context)
-	if len(strings.TrimSpace(req.SourceText)) > 500 {
-		return ""
-	}
-
-	// Use the title/topic as the primary search query
-	query := strings.TrimSpace(req.Title)
-	if query == "" {
-		query = strings.TrimSpace(req.Prompt)
-	}
-	if query == "" {
-		q := strings.TrimSpace(req.SourceText)
-		if len(q) > 200 {
-			q = q[:200]
-		}
-		query = q
-	}
-	if query == "" {
-		return ""
-	}
-
-	return client.SearchQueryFromTopic(query)
 }
 
 func (g *Generator) RegenerateScript(ctx context.Context, req types.RegenerationRequest) (*types.GenerationResult, error) {
@@ -355,200 +234,4 @@ func (g *Generator) RegenerateScript(ctx context.Context, req types.Regeneration
 		Model:       req.Model,
 		Prompt:      req.OriginalScript,
 	}, nil
-}
-
-// languageNames maps ISO 639-1 codes to full language names for the LLM prompt.
-// Using short codes like "it" is ambiguous ("Translate this text to it") and the
-// LLM often ignores them, defaulting to Spanish. Full names disambiguate.
-var languageNames = map[string]string{
-	"en": "English", "it": "Italian", "es": "Spanish",
-	"fr": "French", "de": "German", "pt": "Portuguese",
-	"nl": "Dutch", "pl": "Polish", "ru": "Russian",
-	"ja": "Japanese", "ko": "Korean", "zh": "Chinese",
-	"ar": "Arabic", "tr": "Turkish", "sv": "Swedish",
-	"da": "Danish", "fi": "Finnish", "no": "Norwegian",
-	"cs": "Czech", "hu": "Hungarian", "ro": "Romanian",
-	"el": "Greek", "he": "Hebrew", "th": "Thai",
-	"vi": "Vietnamese", "id": "Indonesian", "ms": "Malay",
-	"uk": "Ukrainian", "hr": "Croatian", "sr": "Serbian",
-	"bg": "Bulgarian", "sk": "Slovak", "sl": "Slovenian",
-	"lt": "Lithuanian", "lv": "Latvian", "et": "Estonian",
-	"ca": "Catalan", "gl": "Galician", "eu": "Basque",
-}
-
-// translateLanguageName converts an ISO 639-1 code to a full language name.
-// Returns the original string if no mapping exists.
-func translateLanguageName(code string) string {
-	if name, ok := languageNames[strings.ToLower(strings.TrimSpace(code))]; ok {
-		return name
-	}
-	return code
-}
-
-// TranslateText translates text using the Generator's model (or metadataModel if set).
-// The model override is passed via options["model"] which Client.Chat supports.
-func (g *Generator) TranslateText(ctx context.Context, text, targetLanguage string) (string, error) {
-	return g.TranslateTextWithModel(ctx, text, targetLanguage, "")
-}
-
-// TranslateTextWithModel translates text using the specified model.
-// If model is empty, falls back to g.metadataModel, then the default client model.
-func (g *Generator) TranslateTextWithModel(ctx context.Context, text, targetLanguage, model string) (string, error) {
-	if g.client == nil {
-		return "", fmt.Errorf("ollama client not initialized")
-	}
-
-	// ── Translation Cache: check L1 (memory) + L2 (SQLite) ──
-	if g.translationCache != nil {
-		if cached, ok := g.translationCache.Get(ctx, text, targetLanguage); ok {
-			logger.Info("translation cache HIT",
-				zap.String("lang", targetLanguage),
-				zap.Int("text_len", len(text)),
-			)
-			return cached, nil
-		}
-	}
-
-	// Calculate a generous num_predict based on source text length so the
-	// model cannot ramble indefinitely and produce philosophical essays
-	// instead of faithful translations. 1 char ≈ 0.25 tokens on average;
-	// we allow 4x the char length as token budget to handle verbose languages
-	// like German, capped at 4096 to avoid runaway generation.
-	sourceLen := len([]rune(text))
-	predictLimit := sourceLen * 4
-	if predictLimit < 512 {
-		predictLimit = 512 // minimum for very short texts
-	}
-	if predictLimit > 4096 {
-		predictLimit = 4096 // hard cap — no essay-writing
-	}
-
-	// Use full language name in the prompt to avoid LLM ambiguity with short codes.
-	// e.g. "it" is confused with the English pronoun "it" → LLM defaults to Spanish.
-	langName := translateLanguageName(targetLanguage)
-
-	var systemPrompt, userPrompt string
-	if cfg := prompts.Get(); cfg != nil {
-		s, u, err := cfg.RenderTranslation(text, targetLanguage)
-		if err == nil {
-			systemPrompt, userPrompt = s, u
-		}
-	}
-	if systemPrompt == "" {
-		systemPrompt = "You are a professional translator. CRITICAL RULES: 1. Translate the text LITERALLY — do NOT expand, explain, philosophize, or add any content. 2. Return ONLY the translated text — no intros, no conclusions, no meta-commentary. 3. Preserve the original structure, paragraphs, lists, and formatting. 4. If you don't know a word, keep it in the original language rather than guessing. 5. Do NOT write essays, do NOT generate philosophical analysis."
-		userPrompt = fmt.Sprintf("Translate this text to %s faithfully. No additions, no explanations, no creative writing.\n\nTEXT TO TRANSLATE:\n%s", langName, text)
-	}
-
-	messages := []types.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: userPrompt},
-	}
-
-	options := map[string]any{
-		"num_predict": predictLimit,
-		"temperature": 0.1, // low temperature for faithful translation
-	}
-	// Pass model override to Chat if a metadata model is configured.
-	if effectiveModel := g.resolveModel(model); effectiveModel != "" {
-		options["model"] = effectiveModel
-	}
-
-	result, err := g.client.Chat(ctx, messages, options, nil)
-	if err != nil {
-		return "", fmt.Errorf("translation failed: %w", err)
-	}
-
-	translated := strings.TrimSpace(result)
-
-	// ── Translation Cache: store result ──
-	if g.translationCache != nil && translated != "" {
-		if storeErr := g.translationCache.Set(ctx, text, targetLanguage, translated); storeErr != nil {
-			logger.Warn("failed to store translation in cache", zap.Error(storeErr))
-		} else {
-			logger.Info("translation cache STORE",
-				zap.String("lang", targetLanguage),
-				zap.Int("text_len", len(text)),
-			)
-		}
-	}
-
-	return translated, nil
-}
-
-// SetTranslationCache attaches a translation cache to the Generator.
-// All subsequent TranslateText calls will check the cache first.
-func (g *Generator) SetTranslationCache(cache TranslationCache) {
-	g.translationCache = cache
-}
-
-// GenerateVideoMetadata generates YouTube metadata using the Generator's default model.
-// To use a lighter model, call GenerateVideoMetadataWithModel.
-func (g *Generator) GenerateVideoMetadata(ctx context.Context, title string) (string, []string, error) {
-	return g.GenerateVideoMetadataWithModel(ctx, title, "")
-}
-
-// GenerateVideoMetadataWithModel generates YouTube metadata using the specified model.
-// If model is empty, falls back to g.metadataModel, then the Generator's default model.
-func (g *Generator) GenerateVideoMetadataWithModel(ctx context.Context, title string, model string) (string, []string, error) {
-	if g.client == nil {
-		return "", nil, fmt.Errorf("ollama client not initialized")
-	}
-
-	var systemPrompt, userPrompt string
-	if cfg := prompts.Get(); cfg != nil {
-		s, u, err := cfg.RenderVideoMetadata(title)
-		if err == nil {
-			systemPrompt, userPrompt = s, u
-		}
-	}
-	if systemPrompt == "" {
-		systemPrompt = "You are a professional video optimizer. Provide metadata strictly in English based on the given title."
-		userPrompt = fmt.Sprintf(`Given the video title: "%s"
-
-Generate:
-1. A concise, professional, engaging video description (1 to 2 lines max) in English. Do not write intros or greetings, start directly.
-2. A list of 5 to 8 generic keywords/tags in English relevant to the topic.
-
-You must respond ONLY with a raw JSON object matching the following structure:
-{
-  "description": "Engaging description of the video...",
-  "tags": ["tag1", "tag2", "tag3"]
-}`, title)
-	}
-
-	messages := []types.Message{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: userPrompt},
-	}
-
-	opts := map[string]any{}
-	if effectiveModel := g.resolveModel(model); effectiveModel != "" {
-		opts["model"] = effectiveModel
-	}
-	result, err := g.client.Chat(ctx, messages, opts, nil)
-	if err != nil {
-		return "", nil, fmt.Errorf("metadata generation failed: %w", err)
-	}
-
-	// Clean code blocks or extra text if any, and parse the json
-	cleanJSON := result
-	if idx := strings.Index(cleanJSON, "{"); idx != -1 {
-		cleanJSON = cleanJSON[idx:]
-	}
-	if idx := strings.LastIndex(cleanJSON, "}"); idx != -1 {
-		cleanJSON = cleanJSON[:idx+1]
-	}
-
-	type MetadataResponse struct {
-		Description string   `json:"description"`
-		Tags        []string `json:"tags"`
-	}
-
-	var meta MetadataResponse
-	if err := json.Unmarshal([]byte(cleanJSON), &meta); err != nil {
-		// Fallback parse logic if LLM failed to return valid JSON
-		return strings.TrimSpace(result), []string{}, nil
-	}
-
-	return meta.Description, meta.Tags, nil
 }

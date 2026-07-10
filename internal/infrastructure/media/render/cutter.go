@@ -90,6 +90,15 @@ func NewFFmpegCutterOnlyCut(ffmpegPath string, log *zap.Logger) *FFmpegCutter {
 // Compile-time check that FFmpegCutter satisfies VideoCutter.
 var _ stockpipeline.VideoCutter = (*FFmpegCutter)(nil)
 
+// WithRunner replaces the underlying ffmpeg.Processor's subprocess runner.
+// Returns the receiver for fluent chaining. Used by composition-root tests
+// to inject a capture runner through the full injection chain:
+// FFmpegCutter → ffmpeg.Processor → ProcessRunner.
+func (c *FFmpegCutter) WithRunner(r ffmpeg.ProcessRunner) *FFmpegCutter {
+	c.proc.WithRunner(r)
+	return c
+}
+
 // toInternalCutJobs adapts the neutral stockpipeline.CutJob list to the
 // ffmpeg package's CutJob struct (which the existing Processor expects).
 func toInternalCutJobs(jobs []stockpipeline.CutJob) []ffmpeg.CutJob {

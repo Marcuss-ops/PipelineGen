@@ -72,7 +72,7 @@ func (d *YTDLPDownloader) ListChannelVideos(ctx context.Context, req ListChannel
 
 	args = append(args, req.ChannelURL)
 
-	result, err := process.Run(ctx, d.path, args, process.Options{
+	result, err := d.run(ctx, args, process.Options{
 		Timeout: 60 * time.Second,
 	})
 	if err != nil {
@@ -91,9 +91,10 @@ func (d *YTDLPDownloader) ListChannelVideos(ctx context.Context, req ListChannel
 			continue
 		}
 		var info VideoInfo
-		if err := json.Unmarshal([]byte(line), &info); err == nil {
-			videos = append(videos, info)
+		if err := json.Unmarshal([]byte(line), &info); err != nil {
+			return nil, fmt.Errorf("failed to parse yt-dlp channel listing line %q: %w", line, err)
 		}
+		videos = append(videos, info)
 	}
 
 	return videos, nil
@@ -124,7 +125,7 @@ func (d *YTDLPDownloader) GetVideoMetadata(ctx context.Context, videoURL string)
 
 	args = append(args, videoURL)
 
-	result, err := process.Run(ctx, d.path, args, process.Options{
+	result, err := d.run(ctx, args, process.Options{
 		Timeout: 30 * time.Second,
 	})
 	if err != nil {
@@ -186,7 +187,7 @@ func (d *YTDLPDownloader) ListChannel(ctx context.Context, channelURL string, li
 		channelURL,
 	}
 
-	result, err := process.Run(ctx, d.path, args, process.Options{
+	result, err := d.run(ctx, args, process.Options{
 		Timeout: 60 * time.Second,
 	})
 	if err != nil {
@@ -206,9 +207,10 @@ func (d *YTDLPDownloader) ListChannel(ctx context.Context, channelURL string, li
 			continue
 		}
 		var info VideoInfo
-		if err := json.Unmarshal([]byte(line), &info); err == nil {
-			videos = append(videos, info)
+		if err := json.Unmarshal([]byte(line), &info); err != nil {
+			return nil, fmt.Errorf("failed to parse yt-dlp channel listing line %q: %w", line, err)
 		}
+		videos = append(videos, info)
 	}
 
 	return videos, nil

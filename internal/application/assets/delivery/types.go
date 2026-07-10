@@ -56,7 +56,21 @@ const (
 	// a separate concern from the audio's skip policy.
 	DestinationSoundEffectSidecar DestinationKey = "sound_effect_sidecar"
 	DestinationDocument           DestinationKey = "document"
-	DestinationAdmin              DestinationKey = "admin"
+	// DestinationClipMetadata (P0-#1 atomic-RMW cutover, July 2026):
+	// canonical destination for the per-folder metadata.json sidecar
+	// that backs UpdateCumulativeMetadataJSON. The sidecar lives in
+	// the clip's already-resolved folder (no path-builder nesting —
+	// the caller threads folderID via RootFolderOverride), and the
+	// ConflictPolicy is ConflictOverwrite because the sidecar is a
+	// regenerable ledger (the latest merged entries win, and a
+	// pre-F2.9 P0-#1 bug was trashing the old sidecar before the new
+	// one was published — this destination plus the new
+	// read-modify-write flow via delivery.Publisher.Publish closes
+	// that hole). godlike/06 SSOT: one canonical owner per fact
+	// (the sidecar's overwrite policy is a separate concern from
+	// the clip's immutable skip policy).
+	DestinationClipMetadata DestinationKey = "clip_metadata"
+	DestinationAdmin       DestinationKey = "admin"
 )
 
 // ConflictPolicy controls what happens when a file with the same name

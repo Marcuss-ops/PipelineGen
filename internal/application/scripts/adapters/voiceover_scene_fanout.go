@@ -30,6 +30,7 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
@@ -93,15 +94,22 @@ func RunVoiceoverSceneFanout(ctx context.Context, gen VoiceoverService, language
 			}
 		}()
 
+		// Suffix the parent script job ID in context with the scene index to satisfy
+		// the unique index (job_id, language) on the voiceovers table.
+		itemCtx := ctx
+		if val, ok := ctx.Value("script_job_id").(string); ok && val != "" {
+			itemCtx = context.WithValue(ctx, "script_job_id", fmt.Sprintf("%s:scene:%d", val, item.SceneIndex))
+		}
+
 		// Both call paths return the typed *voiceover.VoiceoverResult
 		// (post-Step 7 M2 typed-return refactor, June 2026) — no
 		// type assertion, no extractVoiceoverPaths helper.
 		var result *voiceover.VoiceoverResult
 		var err error
 		if item.Destination != nil {
-			result, err = gen.GenerateWithDestination(ctx, item.Text, language, item.Filename, item.Destination)
+			result, err = gen.GenerateWithDestination(itemCtx, item.Text, language, item.Filename, item.Destination)
 		} else {
-			result, err = gen.Generate(ctx, item.Text, language, item.Filename)
+			result, err = gen.Generate(itemCtx, item.Text, language, item.Filename)
 		}
 		if err != nil {
 			out.Status = "failed"

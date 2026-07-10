@@ -64,6 +64,7 @@ var fase4TestSchema = []string{
 		local_path TEXT NOT NULL DEFAULT '',
 		relative_path TEXT NOT NULL DEFAULT '',
 		drive_file_id TEXT NOT NULL DEFAULT '',
+		drive_link TEXT NOT NULL DEFAULT '',
 		lifecycle_state TEXT NOT NULL DEFAULT 'STAGING',
 		metadata_json TEXT NOT NULL DEFAULT '',
 		origin TEXT NOT NULL DEFAULT '',
@@ -316,11 +317,11 @@ func (e *errScanner) Scan(dest ...any) error {
 // selectImageAssetProjection is the canonical SELECT projection that
 // the 5 production call sites share (GetImageByHash / GetByID /
 // GetByDriveFileID / ListImagesBySubject / ListAll all use the same
-// 11-column list). DRY-ing it into a constant so the property tests
+// 12-column list). DRY-ing it into a constant so the property tests
 // stay aligned with production code.
-const selectImageAssetProjection = `SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, origin, provider FROM media_assets`
+const selectImageAssetProjection = `SELECT id, name, url, tags, metadata_json, created_at, file_hash, local_path, drive_file_id, drive_link, origin, provider FROM media_assets`
 
-// seedFullImageAsset inserts a media_assets row with all 11 columns
+// seedFullImageAsset inserts a media_assets row with all 12 columns
 // populated so the property tests have a non-trivial fixture. Used by
 // TestScanImageAssetFromRow_RowVsRowsEquivalence only.
 func seedFullImageAsset(t *testing.T, db *sql.DB, id, hash string) {
@@ -505,6 +506,42 @@ func TestScanImageAssetFromRow_ImageUsesDriveLinkWhenAvailable(t *testing.T) {
 	}
 
 	want := "https://drive.google.com/file/d/drive-file-123/view"
+	if got.SourceURL != want {
+		t.Fatalf("SourceURL = %q, want %q", got.SourceURL, want)
+	}
+}
+
+// TestScanImageAssetFromRow_ImageUsesDriveLinkWhenURLEmpty pins the
+// historical record shape we already have in production: some image
+// rows were written with drive_link populated and url empty. The
+// reader must surface the public Drive link as SourceURL so downstream
+// scene bindings keep a clickable URL.
+func TestScanImageAssetFromRow_ImageUsesDriveLinkWhenURLEmpty(t *testing.T) {
+	db := testDB(t)
+	_, err := db.ExecContext(context.Background(), `
+		INSERT INTO media_assets (id, source, name, url, drive_link, file_hash, origin, provider)
+		VALUES (?, 'image', ?, ?, ?, ?, ?, ?)
+	`,
+		"img-drive-link-only",
+		"AI generated image",
+		"",
+		"https://drive.google.com/file/d/drive-file-999/view",
+		"hash-drive-link-only",
+		"generated",
+		"google-slides",
+	)
+	if err != nil {
+		t.Fatalf("seed image row: %v", err)
+	}
+
+	got, err := scanImageAssetFromRow(
+		db.QueryRowContext(context.Background(), selectImageAssetProjection+` WHERE id = ?`, "img-drive-link-only"),
+	)
+	if err != nil {
+		t.Fatalf("scanImageAssetFromRow: %v", err)
+	}
+
+	want := "https://drive.google.com/file/d/drive-file-999/view"
 	if got.SourceURL != want {
 		t.Fatalf("SourceURL = %q, want %q", got.SourceURL, want)
 	}

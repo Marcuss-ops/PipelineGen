@@ -2,6 +2,7 @@ package downloader
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -305,4 +306,69 @@ func TestDownload_DelegatesToBaseArgs(t *testing.T) {
 	}
 	assert.Equal(t, 1, noWarningsCount,
 		"--no-warnings must appear exactly once (BaseArgs() is the SOLE owner; no manual re-declaration)")
+}
+
+func TestListChannelVideos_UsesRunnerAndParsesJSON(t *testing.T) {
+	setupTestAllowlist(t)
+	d, runner := newTestDownloader(t, "")
+	runner.result = &process.Result{
+		ExitCode: 0,
+		Stdout: strings.Join([]string{
+			`{"id":"one","title":"First","view_count":10,"duration":1.5}`,
+			`{"id":"two","title":"Second","view_count":20,"duration":2.5}`,
+			"",
+		}, "\n"),
+	}
+
+	videos, err := d.ListChannelVideos(context.Background(), ListChannelVideosRequest{
+		ChannelURL:  "https://www.youtube.com/@example",
+		PlaylistEnd: 2,
+		DateAfter:   "20240101",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, runner.calls)
+	require.Equal(t, d.Path(), runner.path)
+	require.Len(t, videos, 2)
+	assert.Equal(t, "one", videos[0].ID)
+	assert.Equal(t, "Second", videos[1].Title)
+	assert.Equal(t, int64(20), videos[1].Views)
+}
+
+func TestListChannelVideos_FailsOnInvalidJSONLine(t *testing.T) {
+	setupTestAllowlist(t)
+	d, runner := newTestDownloader(t, "")
+	runner.result = &process.Result{
+		ExitCode: 0,
+		Stdout:   "{\"id\":\"one\"}\nnot-json\n",
+	}
+
+	videos, err := d.ListChannelVideos(context.Background(), ListChannelVideosRequest{
+		ChannelURL: "https://www.youtube.com/@example",
+	})
+	require.Error(t, err)
+	require.Nil(t, videos)
+	require.Equal(t, 1, runner.calls)
+	require.Contains(t, err.Error(), "failed to parse yt-dlp channel listing line")
+}
+
+func TestGetVideoMetadata_UsesRunner(t *testing.T) {
+	setupTestAllowlist(t)
+	d, runner := newTestDownloader(t, "")
+	metaJSON := map[string]any{
+		"id":          "abc123",
+		"title":       "Video",
+		"description": "desc",
+		"duration":    12.5,
+	}
+	b, err := json.Marshal(metaJSON)
+	require.NoError(t, err)
+	runner.result = &process.Result{ExitCode: 0, Stdout: string(b)}
+
+	meta, err := d.GetVideoMetadata(context.Background(), "https://www.youtube.com/watch?v=abc123")
+	require.NoError(t, err)
+	require.Equal(t, 1, runner.calls)
+	require.Equal(t, d.Path(), runner.path)
+	require.NotNil(t, meta)
+	assert.Equal(t, "abc123", meta.ID)
+	assert.Equal(t, "Video", meta.Title)
 }

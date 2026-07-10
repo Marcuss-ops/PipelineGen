@@ -20,6 +20,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 	"go.uber.org/zap"
@@ -60,6 +61,12 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		return nil, fmt.Errorf("%w: voiceover processor: VoiceoverService not configured", scriptpkg.ErrPostprocessFailed)
 	}
 
+	if val, ok := ctx.Value("script_job_id").(string); !ok || val == "" {
+		if parentJobID := corid.FromContext(ctx); parentJobID != "" {
+			ctx = context.WithValue(ctx, "script_job_id", parentJobID)
+		}
+	}
+
 	// PR 9: scenes sourced from canonical typed MSOV1.
 	scenes := specScenesFromInput(input)
 	if len(scenes) == 0 {
@@ -74,7 +81,10 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		return &PostProcessResult{}, nil
 	}
 
-	language := plan.Language
+	language := plan.TranslateTo
+	if language == "" {
+		language = plan.Language
+	}
 	if language == "" {
 		language = defaults.DefaultScriptConfig().DefaultLanguage
 	}
@@ -107,9 +117,9 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 			safeTitle = "scene"
 		}
 		filename := fmt.Sprintf("%s_%s_%s.mp3", safeTitle, safeSceneID, language)
-		var dest *voiceover.DestinationRequest
+		dest := &voiceover.DestinationRequest{Project: safeTitle}
 		if plan.VoiceoverFolderID != "" {
-			dest = &voiceover.DestinationRequest{FolderID: plan.VoiceoverFolderID}
+			dest.FolderID = plan.VoiceoverFolderID
 		} else if plan.VoiceoverGroup != "" && p.log != nil {
 			p.log.Warn("voiceover processor: voiceover_group set but not resolved to folder_id — falling back to default folder",
 				zap.String("voiceover_group", plan.VoiceoverGroup))

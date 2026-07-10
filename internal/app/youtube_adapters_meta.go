@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -22,19 +23,82 @@ type sourcingMetadataAdapter struct {
 	cfg       *config.Config
 	admin     driveutil.Admin
 	reader    driveutil.Reader
-	lifecycle driveutil.FileLifecycle // P1-3-BACKFILL (July 2026): routed through FileLifecycle where available
+	lifecycle driveutil.FileLifecycle  // P1-3-BACKFILL (July 2026): routed through FileLifecycle where available
+	publisher  delivery.Publisher        // P0-#1 atomic-RMW (July 2026): threaded to UpdateCumulativeMetadataJSON for atomic publish
 	log       *zap.Logger
 }
 
+// UpdateCumulativeJSON delegates to appclips.UpdateCumulativeMetadataJSON
+// with the atomic-RMW flow (P0-#1 cutover, July 2026). The pre-P0-#1
+// implementation trashed the old metadata.json BEFORE publishing the new
+// one (which was silently skipped), permanently losing the sidecar. The
+// new flow reads the old file, builds the merged JSON, and publishes
+// the new file via delivery.Publisher.Publish with ConflictOverwrite —
+// the publisher's atomic Files.Update replaces the existing sidecar in
+// place or returns an error WITHOUT touching the existing file. The
+// per-video cleanup runs only AFTER the new sidecar is live.
+//
+// Returns:
+//   - nil when admin or cfg is nil (soft no-op, backward compat).
+//   - appclips.ErrMetadataDriveNotConfigured when publisher is nil
+//     (Drive not configured; the clip registration pipeline can
+//     branch on this sentinel via errors.Is to decide whether to
+//     fail or log a soft warning).
+//   - Any error propagated from appclips.UpdateCumulativeMetadataJSON
+//     (list / download / decode / marshal / write-temp / publish).
 func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, tempDir, folderID, clipID string, entry map[string]any) error {
 	if a.admin == nil || a.cfg == nil {
 		return nil
 	}
-	// DRIVE-008 CUTOVER (July 2026): UploadFile removed from ClipDriveUploaderPort.
-	// P1-3-BACKFILL: pass lifecycle through so TrashFile routes via FileLifecycle.Trash.
-	// When lifecycle is nil (legacy construction), the graceful fallback to Admin.TrashFile applies.
-	appclips.UpdateCumulativeMetadataJSON(ctx, newClipsDriveAdapter(a.admin, a.reader, a.lifecycle), a.cfg.Storage.TempPath(), folderID, clipID, entry, a.log)
-	return nil
+	// P0-#1 (July 2026): the function now returns real errors. The
+	// pre-fix adapter hard-returned nil which masked the silent
+	// data-loss window in production. Upstream callers
+	// (e.g. internal/application/assets/sourcing/youtube/register_helpers.go)
+	// currently `_ = s.metadata.UpdateCumulativeJSON(...)` so the
+	// returned error is observed at the adapter boundary but not
+	// propagated to the registration handler. The registration
+	// handler continues to succeed (the canonical clip ledger is
+	// dispatcher.EnqueueAndIndex, not the Drive sidecar), and the
+	// error is logged here at the adapter for observability.
+	//
+	// If the publisher is nil (Drive not configured at composition
+	// time), surface the typed sentinel so the upstream caller can
+	// branch on errors.Is if it wants to fail-closed in the future.
+	if a.publisher == nil {
+		return appclips.ErrMetadataDriveNotConfigured
+	}
+	// P0-#1: thread the publisher so the new function can perform
+	// the atomic-RMW publish via delivery.Publisher.Publish with
+	// ConflictOverwrite. The pre-fix adapter constructed the
+	// uploader-only flow and silently skipped the upload step
+	// (DRIVE-008 CUTOVER) — the root cause of the data-loss bug.
+	err := appclips.UpdateCumulativeMetadataJSON(
+		ctx,
+		newClipsDriveAdapter(a.admin, a.reader, a.lifecycle),
+		a.publisher, // P0-#1: previously missing — the new function takes a publisher param
+		a.cfg.Storage.TempPath(),
+		folderID,
+		clipID,
+		entry,
+		a.log,
+	)
+	if err != nil {
+		// Log the error at the adapter boundary so operators see it
+		// even when the upstream caller `_ =`-ignores the return
+		// value. Use Info level for the soft-skip (Drive not
+		// configured) and Error for everything else.
+		if err == appclips.ErrMetadataDriveNotConfigured {
+			a.log.Debug("sourcingMetadataAdapter: metadata.json sidecar update skipped (Drive not configured)",
+				zap.String("folder_id", folderID),
+				zap.String("clip_id", clipID))
+		} else {
+			a.log.Error("sourcingMetadataAdapter: metadata.json sidecar update failed",
+				zap.String("folder_id", folderID),
+				zap.String("clip_id", clipID),
+				zap.Error(err))
+		}
+	}
+	return err
 }
 
 // ── zapSourcingLogger ─────────────────────────────────────────────────

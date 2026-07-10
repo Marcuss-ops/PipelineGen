@@ -129,15 +129,10 @@ func (g *GenerationService) GenerateSmartImage(
 	if err == nil {
 		return assetOut, nil
 	}
-	if fallback, fbErr := g.generateFallbackGeneratedImage(ctx, subject, topic, style, prompts, tags, width, height, model, skipDrive, err); fbErr == nil {
-		if g.log != nil {
-			g.log.Warn("GenerateSmartImage: primary provider failed, used local fallback image",
-				zap.Error(err),
-				zap.String("subject", subject),
-				zap.String("topic", topic))
-		}
-		return fallback, nil
-	}
+	// Fail closed: Chrome/Slides generation must not pretend success
+	// by synthesising a local PNG when the real provider is unavailable.
+	// Callers that need a degraded path must opt into it explicitly
+	// rather than receiving fake Chrome-backed output.
 	return nil, err
 }
 

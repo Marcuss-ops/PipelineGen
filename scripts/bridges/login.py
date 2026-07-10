@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import os
-import json
 import sys
 from playwright.sync_api import sync_playwright
+from storage_utils import save_storage_snapshot, storage_looks_usable
 
 MASTER_STORAGE = "data/google_slides_storage.json"
 PROFILE_DIR = "data/google_slides_session_profile"
@@ -40,14 +40,17 @@ def main():
             sys.exit(1)
             
         storage = context.storage_state()
-        
-        # Save both to MASTER_STORAGE and profile storage
-        with open(MASTER_STORAGE, "w") as f:
-            json.dump(storage, f, indent=2)
-            
+
+        if "accounts.google.com" in page.url or not storage_looks_usable(storage):
+            print("Sessione non salvata: il login non risulta completato o lo snapshot è vuoto.")
+            context.close()
+            sys.exit(1)
+
+        # Save both to MASTER_STORAGE and profile storage, preserving backups.
+        save_storage_snapshot(MASTER_STORAGE, storage, backup_path=f"{MASTER_STORAGE}.backup")
+
         profile_storage_path = f"{MASTER_STORAGE}.profile_0"
-        with open(profile_storage_path, "w") as f:
-            json.dump(storage, f, indent=2)
+        save_storage_snapshot(profile_storage_path, storage, backup_path=f"{profile_storage_path}.backup")
             
         print("==================================================================")
         print(f"✅ Sessione salvata con successo!")

@@ -239,7 +239,7 @@ func runImageSceneFanout(
 					sceneName,
 					query,
 					plan.Style,
-					[]string{sceneText, query},
+					[]string{query, sceneText},
 					[]string{sceneName, plan.ID},
 					1024,
 					1024,

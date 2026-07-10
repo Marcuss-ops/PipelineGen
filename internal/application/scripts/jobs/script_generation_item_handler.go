@@ -160,7 +160,14 @@ func (h *ScriptGenerateItemJobHandler) HandleJob(
 	// tracker is canonically accepted by GenerateOneUseCase.Execute.
 	tracker := (*usecase.ProgressTracker)(nil)
 
-	res, err := h.oneUC.Execute(ctx, item, preset, tracker)
+	execCtx := ctx
+	if parentJobID != "" && parentJobID != "unknown" {
+		execCtx = context.WithValue(ctx, "script_job_id", parentJobID)
+	} else if j.ID != "" {
+		execCtx = context.WithValue(ctx, "script_job_id", j.ID)
+	}
+
+	res, err := h.oneUC.Execute(execCtx, item, preset, tracker)
 	if err != nil {
 		h.logger.Error("script.generate_item execution failure",
 			zap.String("job_id", j.ID),
