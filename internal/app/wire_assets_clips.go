@@ -189,7 +189,15 @@ func buildClipsBundle(
 		deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.ClipsRepo,
 		deps.Core.VoiceoverRepo, deps.Core.ImageRepo,
 		driveUploader, lifecycle, metaWriter, deps.Search.ClipIndexerService,
-		folderMemSvc, deps.Core.AssetTreeService,
+		// PR-DEADC-CLIPS-FOLDER-MEMORY-PORT-RETIRE (July 2026): the
+		// `folderMemSvc` arg is REMOVED from newClipsAdapterBundle —
+		// the dead-code `clips.ClipFolderMemoryPort` adapter surface
+		// was never invoked by any consumer. The canonical
+		// `*foldermemory.Service` consumer at
+		// internal/api/assets/clips/handler.go:76 is PRESERVED (the
+		// real OpsHandler consumer); folderMemSvc is still threaded
+		// into the clipsapi.Build deps literal below.
+		deps.Core.AssetTreeService,
 		nil, // vectorSvc removed PG-034
 		appjobs.Compose(),
 	)

@@ -12,7 +12,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
@@ -69,27 +68,17 @@ func (a *clipsIndexerAdapter) BatchReindex(ctx context.Context, source, mediaTyp
 	}, nil
 }
 
-// ── Folder memory adapter (empty marker) ─────────────────────────
-
-// clipsFolderMemoryAdapter wraps *foldermemory.Service to satisfy
-// clips.ClipFolderMemoryPort. The interface is currently empty —
-// the handler stores the dependency but does not call any method,
-// and the adapter is the seam that future consumers extend with
-// LoadManifest / SaveManifest / UpdateManifestTXT /
-// ComputeManifestStats as needed (one PR at a time).
-type clipsFolderMemoryAdapter struct {
-	inner *foldermemory.Service
-}
-
-// Compile-time assertion: clipsFolderMemoryAdapter satisfies clips.ClipFolderMemoryPort.
-var _ clips.ClipFolderMemoryPort = (*clipsFolderMemoryAdapter)(nil)
-
-func newClipsFolderMemoryAdapter(svc *foldermemory.Service) clips.ClipFolderMemoryPort {
-	if svc == nil {
-		return nil
-	}
-	return &clipsFolderMemoryAdapter{inner: svc}
-}
+// PR-DEADC-CLIPS-FOLDER-MEMORY-PORT-RETIRE (July 2026): the
+// `clipsFolderMemoryAdapter` + `newClipsFolderMemoryAdapter` + the
+// `clips.ClipFolderMemoryPort` interface + the `FolderMemSvc` field on
+// clipsAdapterBundle are all REMOVED. The empty-marker
+// ClipFolderMemoryPort (interface{}) was never invoked by any handler
+// or use case; the canonical `*foldermemory.Service` consumer at
+// `internal/api/assets/clips/handler.go:76::FolderMemSvc *foldermemory.Service`
+// is PRESERVED (the real OpsHandler consumer, not the dead-code port
+// adapter). Future typed-port additions must land as a new
+// `clips.<X>Port` interface + concrete adapter per godlike/06 SSOT
+// one-canonical-owner-per-fact.
 
 // ── Hash adapter ─────────────────────────────────────────────────
 
@@ -224,16 +213,22 @@ type clipsAdapterBundle struct {
 	DriveUploader  clips.ClipDriveUploaderPort
 	MetaWriter     clips.ClipMetaWriterPort
 	ClipIndexer    clips.ClipIndexerPort
-	FolderMemSvc   clips.ClipFolderMemoryPort
 	HashSvc        clips.ClipHashPort
 	TreeBuilderSvc clips.ClipTreeBuilderPort
 }
 
-// newClipsAdapterBundle wires the 11 concrete deps into typed ports.
+// newClipsAdapterBundle wires the 10 concrete deps into typed ports.
 // PG-034 (June 2026): vectorSvc arg removed — Qdrant capability deleted.
+// PR-DEADC-CLIPS-FOLDER-MEMORY-PORT-RETIRE (July 2026): folderMemSvc
+// arg removed — the dead-code ClipFolderMemoryPort adapter surface was
+// never invoked by any consumer (the canonical *foldermemory.Service
+// consumer lives at internal/api/assets/clips/handler.go:76, NOT in
+// the clips package). The composition root at
+// `internal/app/wire_assets_clips.go::buildClipsBundle` no longer
+// threads folderMemSvc into this constructor.
 //
 // The configuration/log parameters are only retained for future
-// adapters that need them; today's 11 adapters are bootstrap-pure.
+// adapters that need them; today's 10 adapters are bootstrap-pure.
 func newClipsAdapterBundle(
 	cfg *config.Config,
 	log *zap.Logger,
@@ -246,7 +241,6 @@ func newClipsAdapterBundle(
 	lifecycle drive.FileLifecycle,
 	metaWriter semantic.MetadataWriterPort,
 	clipIndexer *clipindexer.Service,
-	folderMemSvc *foldermemory.Service,
 	assetTreeSvc *assettree.Service,
 	_ /* vectorSvc removed PG-034 */ any,
 	timeouts appjobs.TimeoutResolver,
@@ -274,7 +268,6 @@ func newClipsAdapterBundle(
 		DriveUploader:  newClipsDriveAdapter(driveUp, driveUp, lifecycle), // P1-5 CUTOVER: FileLifecycle.Trash replaces Admin.TrashFile
 		MetaWriter:     newClipMetaWriterAdapter(metaWriter),
 		ClipIndexer:    newClipsIndexerAdapter(clipIndexer),
-		FolderMemSvc:   newClipsFolderMemoryAdapter(folderMemSvc),
 		HashSvc:        newClipsHashAdapter(),
 		TreeBuilderSvc: newClipsAssetTreeAdapter(assetTreeSvc),
 	}
