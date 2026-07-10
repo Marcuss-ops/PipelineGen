@@ -34,6 +34,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	scriptdocsinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/scriptdocs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -273,8 +274,29 @@ func registerSearchQueriesCapability(registry *module.Registry, log *zap.Logger,
 // script-flow routes (both are script-domain surfaces). Mirrors
 // the registerScripts placement at Step 3.
 func registerScriptDocs(registry *module.Registry, log *zap.Logger, cfg *config.Config) error {
+	// Wire the concrete ReActPort adapter when Ollama URL is configured.
+	// If adapter construction fails (misconfigured), fall back to nil port
+	// (handler returns 503 ErrReActNotWired per godlike/07 fail-closed).
+	var reactPort scriptdocsapi.ReActPort
+	if cfg.External.OllamaURL != "" {
+		adapter, adapterErr := scriptdocsinfra.NewAdapter(scriptdocsinfra.AdapterConfig{
+			OllamaURL:   cfg.External.OllamaURL,
+			OllamaModel: cfg.External.OllamaModel,
+			ScriptDir:   ".", // current working directory (project root)
+		})
+		if adapterErr != nil {
+			log.Warn("script-docs: failed to create ReAct adapter, falling back to nil port",
+				zap.Error(adapterErr))
+		} else {
+			reactPort = adapter
+			log.Info("script-docs: ReAct adapter wired (Python bridge via Ollama)",
+				zap.String("ollama_url", cfg.External.OllamaURL),
+				zap.String("ollama_model", cfg.External.OllamaModel))
+		}
+	}
+
 	scriptDocsDesc, err := scriptdocsapi.Build(scriptdocsapi.Dependencies{
-		Port:        nil, // forward-pointer: composition root wires a concrete adapter on CUTOVER
+		Port:        reactPort,
 		EnabledFunc: func() bool { return cfg.Features.ScriptDocsEnabled },
 		ModuleOpts:  nil, // no per-feature middleware (matches the script pattern)
 		Logger:      log,

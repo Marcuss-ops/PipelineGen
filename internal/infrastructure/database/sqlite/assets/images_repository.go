@@ -19,6 +19,7 @@ package assets
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -103,6 +104,9 @@ func scanImageAssetFromRow(s interface {
 	img.DriveFileID = driveFileID.String
 	img.Origin = asset.ImageOrigin(origin.String)
 	img.Provider = asset.ImageProvider(provider.String)
+	if driveFileID.String != "" && !strings.Contains(img.SourceURL, "drive.google.com/") {
+		img.SourceURL = fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveFileID.String)
+	}
 
 	if createdAtStr.Valid {
 		img.CreatedAt = timeutil.ParseRFC3339(createdAtStr.String)

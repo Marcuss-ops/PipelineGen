@@ -231,6 +231,19 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		if err := jobsoutbox.RegisterCoreHandlers(eventsRegistry, log, qd.ClipIndexerService, outboxDeps); err != nil {
 			return nil, nil, fmt.Errorf("BuildOutboxBundle: register core outbox handlers (fail-closed): %w", err)
 		}
+	} else {
+		// Dev / qdrant-off mode: still register a no-op asset.index.requested
+		// consumer so image-generation jobs do not dead-letter their indexing
+		// event. The handler preserves the envelope validation + supersede
+		// checks but routes the final IndexClip call to a no-op concrete.
+		sourceQuerier := jobsoutbox.SourceVersionQuerier(nil)
+		if repos != nil && repos.ClipsRepo != nil {
+			sourceQuerier = repos.ClipsRepo
+		}
+		if err := eventsRegistry.Register(jobsoutbox.NewIndexingHandler(noopIndexClipper{}, sourceQuerier, log)); err != nil {
+			return nil, nil, fmt.Errorf("BuildOutboxBundle: register qdrant-off indexing handler: %w", err)
+		}
+		log.Info("outbox indexing handler registered in no-op mode because qdrant is disabled")
 	}
 	// Optional handlers: best-effort. Missing deps here are logged
 	// and skipped; missing deps do NOT abort boot (delivery,
@@ -287,6 +300,10 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		EventsPool:     eventsPool,
 	}, startClosure, nil
 }
+
+type noopIndexClipper struct{}
+
+func (noopIndexClipper) IndexClip(context.Context, string) error { return nil }
 
 // startOutboxEventsPool performs the side-effecting outbox events pool
 // initialisation.

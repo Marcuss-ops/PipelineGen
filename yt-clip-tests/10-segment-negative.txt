@@ -1,7 +1,1 @@
-HTTP/1.1 400 Bad Request
-Content-Type: application/json; charset=utf-8
-X-Request-Id: 20260709-155400-146bde4c934c6381
-Date: Thu, 09 Jul 2026 15:54:00 GMT
-Content-Length: 221
-
 {"error":"seconds_per_segment must be supplied via /api/media/register-batch (single-clip endpoint emits one clip_id; fan-out is the batch's job). See PR-YT-SECONDS-PER-SEGMENT-WIRE for the canonical surface.","ok":false}

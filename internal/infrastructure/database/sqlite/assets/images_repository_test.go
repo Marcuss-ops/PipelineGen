@@ -475,6 +475,41 @@ func TestScanImageAssetFromRow_SwallowMalformedJSON(t *testing.T) {
 	}
 }
 
+// TestScanImageAssetFromRow_ImageUsesDriveLinkWhenAvailable pins the
+// output-normalization rule for image assets: once a Drive file id is
+// present, the canonical SourceURL exposed to callers is the Drive
+// web-view link rather than the original upload URL.
+func TestScanImageAssetFromRow_ImageUsesDriveLinkWhenAvailable(t *testing.T) {
+	db := testDB(t)
+	_, err := db.ExecContext(context.Background(), `
+		INSERT INTO media_assets (id, source, name, url, file_hash, drive_file_id, origin, provider)
+		VALUES (?, 'image', ?, ?, ?, ?, ?, ?)
+	`,
+		"img-drive-link",
+		"AI generated image",
+		"https://example.com/original.png",
+		"hash-drive-link",
+		"drive-file-123",
+		"generated",
+		"google-slides",
+	)
+	if err != nil {
+		t.Fatalf("seed image row: %v", err)
+	}
+
+	got, err := scanImageAssetFromRow(
+		db.QueryRowContext(context.Background(), selectImageAssetProjection+` WHERE id = ?`, "img-drive-link"),
+	)
+	if err != nil {
+		t.Fatalf("scanImageAssetFromRow: %v", err)
+	}
+
+	want := "https://drive.google.com/file/d/drive-file-123/view"
+	if got.SourceURL != want {
+		t.Fatalf("SourceURL = %q, want %q", got.SourceURL, want)
+	}
+}
+
 // ── PR-GENERATED-SEARCH-FIX (July 2026) TDD coverage ────────────────────
 //
 // Canonical read seam for the generated territory at

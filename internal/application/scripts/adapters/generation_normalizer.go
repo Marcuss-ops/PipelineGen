@@ -311,6 +311,9 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 	if item == nil {
 		return
 	}
+	isUnsetToggle := func(t scriptpkg.Toggle) bool {
+		return t == scriptpkg.ToggleDefault || t == ""
+	}
 	switch preset {
 	case scriptpkg.PresetCustom:
 		// §6 row 1: custom | none | none.
@@ -325,7 +328,7 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 		// via OutputSpec Toggle tri-state contract — caller-explicit
 		// ToggleDisabled is preserved through ApplyPreset because the
 		// assignment only runs when caller left field at ToggleDefault).
-		if item.Output.GenerateSceneImages == scriptpkg.ToggleDefault {
+		if isUnsetToggle(item.Output.GenerateSceneImages) {
 			item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
 		}
 		if item.ScriptParams.SentencesPerImage <= 0 {
@@ -346,10 +349,10 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 		// config > safety — entities, metadata and document remain
 		// caller-controlled. Toggle tri-state: caller-explicit
 		// ToggleDisabled survives (no override on opt-out).
-		if item.Output.GenerateSceneImages == scriptpkg.ToggleDefault {
+		if isUnsetToggle(item.Output.GenerateSceneImages) {
 			item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
 		}
-		if item.Output.GenerateVoiceover == scriptpkg.ToggleDefault {
+		if isUnsetToggle(item.Output.GenerateVoiceover) {
 			item.Output.GenerateVoiceover = scriptpkg.ToggleEnabled
 		}
 	case scriptpkg.PresetCatalog:

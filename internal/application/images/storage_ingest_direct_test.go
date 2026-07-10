@@ -9,9 +9,11 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
 
@@ -22,6 +24,19 @@ type noopSubjectTags struct{}
 
 func (n *noopSubjectTags) ExtractSubjectAndTags(_ context.Context, _ string) (string, []string, error) {
 	return "", nil, nil
+}
+
+type fakePublisher struct {
+	fileID string
+	link   string
+}
+
+func (f *fakePublisher) Publish(_ context.Context, _ delivery.PublishRequest) (*delivery.PublishResult, error) {
+	return &delivery.PublishResult{FileID: f.fileID, WebViewLink: f.link}, nil
+}
+
+func (f *fakePublisher) ResolveFolder(_ context.Context, _ delivery.PublishRequest) (string, error) {
+	return "folder-1", nil
 }
 
 // testImageService creates a minimal ImageStorageService for testing
@@ -80,6 +95,17 @@ func testImageService(t *testing.T) *ImageStorageService {
 			search_query TEXT DEFAULT '',
 			retrieved_at TEXT DEFAULT '',
 			provider TEXT DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS generated_image_details (
+			asset_id TEXT PRIMARY KEY,
+			prompt_original TEXT DEFAULT '',
+			prompt_resolved TEXT DEFAULT '',
+			style_id TEXT DEFAULT '',
+			style_version TEXT DEFAULT '',
+			model TEXT DEFAULT '',
+			seed TEXT DEFAULT '',
+			generation_job_id TEXT DEFAULT '',
+			source_hash TEXT DEFAULT ''
 		)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
@@ -169,6 +195,49 @@ func TestIngestDirect_DispatcherNil_NoPanic(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("ingestDirect with nil dispatcher returned nil result")
+	}
+}
+
+// TestIngestDirect_GeneratedImage_StoresDriveLinkAsSourceURL verifies that
+// generated images persist the Drive web link as the canonical SourceURL
+// once upload succeeds. The provider label still flows into Provider.
+func TestIngestDirect_GeneratedImage_StoresDriveLinkAsSourceURL(t *testing.T) {
+	svc := testImageService(t)
+	svc.cfg = &config.Config{Drive: config.DriveConfig{ImagesRootFolder: "images-root"}}
+	svc.publisher = &fakePublisher{
+		fileID: "drive-file-123",
+		link:   "https://drive.google.com/file/d/drive-file-123/view",
+	}
+
+	ctx := context.Background()
+	content := []byte{0xFF, 0xD8, 0xFF, 0xE0}
+	hash := "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+
+	result, err := svc.ingestDirect(
+		ctx,
+		"test-slug",
+		"",
+		"",
+		content,
+		"test.jpg",
+		"google-slides",
+		"Generated image for test",
+		nil,
+		hash,
+		false,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("ingestDirect returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("ingestDirect returned nil result")
+	}
+	if result.SourceURL != "https://drive.google.com/file/d/drive-file-123/view" {
+		t.Fatalf("SourceURL = %q, want drive web link", result.SourceURL)
+	}
+	if result.Provider != "google-slides" {
+		t.Fatalf("Provider = %q, want google-slides", result.Provider)
 	}
 }
 

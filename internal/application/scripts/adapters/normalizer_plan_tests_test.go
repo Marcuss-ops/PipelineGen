@@ -408,13 +408,14 @@ func TestApplyPresetFullMedia_OverridesOnlyZeroValues(t *testing.T) {
 		t.Error("full_media (scenario A): preset must enable ONLY the caller-zero field (GenerateVoiceover)")
 	}
 
-	// Scenario B (symmetric): images=Disabled, voiceover=Enabled → preset enables images only.
+	// Scenario B (symmetric): images=Disabled, voiceover=Enabled → preset must
+	// preserve the caller's explicit opt-out and leave images disabled.
 	item2 := clipsItem()
 	item2.Output.GenerateSceneImages = scriptpkg.ToggleDisabled
 	item2.Output.GenerateVoiceover = scriptpkg.ToggleEnabled
 	scripts.ApplyPreset(&item2, scriptpkg.PresetFullMedia)
-	if !item2.Output.GenerateSceneImages.AsBool() {
-		t.Error("full_media (scenario B): preset must enable GenerateSceneImages when only that field is zero")
+	if item2.Output.GenerateSceneImages.AsBool() {
+		t.Error("full_media (scenario B): caller-explicit GenerateSceneImages=disabled must survive the preset")
 	}
 	if !item2.Output.GenerateVoiceover.AsBool() {
 		t.Error("full_media (scenario B): caller-set GenerateVoiceover must remain true")

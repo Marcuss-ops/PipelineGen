@@ -20,6 +20,7 @@ package assets
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -159,6 +160,13 @@ func ScanMediaAsset(s MediaAssetScanner) (*asset.Asset, error) {
 	}
 	if lifecycle.Valid {
 		a.LifecycleState = asset.LifecycleState(lifecycle.String)
+	}
+
+	// Image assets canonicalize their external URL to the Drive web link
+	// once the file has been published. This preserves the original
+	// source in metadata while surfacing the link users can actually open.
+	if driveFileIDNull.String != "" && !strings.Contains(a.SourceURL, "drive.google.com/") {
+		a.SourceURL = fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveFileIDNull.String)
 	}
 
 	// Legacy fallback: drive_folder_id → folder_id.
