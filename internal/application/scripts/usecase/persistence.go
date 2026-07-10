@@ -5,10 +5,11 @@
 package usecase
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -89,7 +90,7 @@ func buildGenerationResult(
 	if postResult != nil {
 		result.Artifacts.Entities = postResult.Entities
 		if postResult.Entities != nil {
-			if raw, err := scriptdto.SerializeEntityResultRoundTrip(postResult.Entities); err == nil {
+			if raw, err := SerializeEntityResultRoundTrip(postResult.Entities); err == nil {
 				result.Artifacts.EntitiesJSON = raw
 			}
 		}
@@ -149,6 +150,38 @@ func buildGenerationResult(
 
 	result.Source = sourceTrace
 	return result
+}
+
+// ── Entity-result serializer (PR-LEGACY-CLEANUP-2026-07-10 Item 2) ──
+
+// SerializeEntityResultRoundTrip preserves the typed entity result
+// as JSON for legacy read-only compatibility. It never mutates the
+// source of truth.
+//
+// godlike/06 SSOT: the helper used to live at
+// internal/application/scripts/dto/compat_types.go as the canonical
+// (export-named) SerializeEntityResultRoundTrip. After PR-LEGACY-
+// CLEANUP-2026-07-10 Item 2 retired the entire dto/compat_types.go
+// file + the PostProcessArtifact ` = any` alias, the helper moved
+// here to preserve the export-named wire-shape contract.
+//
+// The single canonical caller in production code is
+// buildGenerationResult in this file (call site at line ~92).
+// The export name is preserved so that any future migration can
+// reach the helper without changing the import path again; per the
+// pre-Item-2 forensic rg, the prior dto-path had zero external
+// callers, so the export is forward-looking contract stability,
+// not backward-compat. If a future agent introduces a non-canonical
+// caller, this goddoc must be updated to list the new caller.
+func SerializeEntityResultRoundTrip(res *scriptpkg.EntityResult) (string, error) {
+	if res == nil {
+		return "", nil
+	}
+	raw, err := json.Marshal(res)
+	if err != nil {
+		return "", fmt.Errorf("serialize entity result: %w", err)
+	}
+	return string(raw), nil
 }
 
 // sanitizeSpecSceneOutputForResponse returns a deep copy of the

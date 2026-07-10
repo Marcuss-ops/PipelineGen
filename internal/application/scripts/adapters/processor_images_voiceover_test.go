@@ -8,12 +8,18 @@
 // Step 1 (June 2026 drift fix): corrected import alias from bare
 // `scripts` (root package, which has none of these types) to
 // adapterspkg (the adapters subpackage where PostProcessResult,
-// NewImageProcessor, NewVoiceoverProcessor, ImageGenService,
-// VoiceoverService, ImageResult all live). Updated Process()
-// call signatures to match the canonical (ctx, plan, ProcessInput)
-// shape. Replaced PostProcessArtifact (nonexistent type) with
-// PostProcessResult. Updated fakeImageGen return type to
-// *adapterspkg.ImageResult.
+// ProcessInput, NewImageProcessor, NewVoiceoverProcessor,
+// ImageGenService, VoiceoverService, ImageResult all live).
+// Updated Process() call signatures to match the canonical
+// (ctx, plan, ProcessInput) shape. Updated fakeImageGen return
+// type to *adapterspkg.ImageResult.
+//
+// PR-LEGACY-CLEANUP-2026-07-10 Item 2: the obsolete `PostProcessArtifact`
+// type alias (the historical accumulator name, never used in
+// production code, with a single test-reference at this line) was
+// retired alongside `internal/application/scripts/dto/compat_types.go`.
+// The canonical surface is now `adapterspkg.PostProcessResult`
+// (still imported above).
 package adapters_test
 
 import (
