@@ -127,9 +127,17 @@ type VoiceoverSceneItem struct {
 // ── generateSceneVoiceovers ──────────────────────────────────────────────────
 
 // GenerateSceneVoiceovers generates voiceovers for each scene item.
+//
+// P0-#3 final closure (July 2026): the `voExecutor` parameter is now
+// `voiceover.VoiceoverItemExecutor` (the canonical narrow port per
+// AGENTS.md Pattern 0). The legacy `*voiceover.Service` concrete
+// parameter is RETIRED — the production concrete implementation
+// (`*voiceover.ProcessVoiceoverItemUseCase`) is injected at
+// composition time in `internal/app/build_bundles_voiceover.go`.
+// Test stubs implement the single Execute method.
 func GenerateSceneVoiceovers(
 	ctx context.Context,
-	voService *voiceover.Service,
+	voExecutor voiceover.VoiceoverItemExecutor,
 	scenes []VoiceoverSceneItem,
 	language string,
 	destReq *voiceover.DestinationRequest,
@@ -137,7 +145,7 @@ func GenerateSceneVoiceovers(
 	onProgress func(pct int, msg string),
 	basePct, pctRange int,
 ) int {
-	if voService == nil || destReq == nil || len(scenes) == 0 {
+	if voExecutor == nil || destReq == nil || len(scenes) == 0 {
 		return 0
 	}
 	// AGENTS.md §7 post-write save ctx — voiceover job helper writes
@@ -158,7 +166,10 @@ func GenerateSceneVoiceovers(
 			Destination: destReq,
 		})
 	}
-	outcomes := adapterspkg.RunVoiceoverSceneFanout(voCtx, voService, language, inputs, 4)
+	// P0-#3 final closure (July 2026): the fanout now takes the
+	// canonical VoiceoverItemExecutor port; real failures surface as
+	// typed Go errors per scene (no Result{OK:false} masking).
+	outcomes := adapterspkg.RunVoiceoverSceneFanout(voCtx, voExecutor, language, inputs, 4)
 	successCount := adapterspkg.CountCompletedSceneOutcomes(outcomes)
 	if log != nil {
 		for _, out := range outcomes {

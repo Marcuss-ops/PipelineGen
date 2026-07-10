@@ -1,4 +1,4 @@
-// Package adapters — voiceover_scene_fanout.go (PR 9 follow-up, June 2026).
+// Package adapters — voiceover_scene_fanout.go (P0-#3 final closure, July 2026).
 //
 // Canonical per-scene voiceover fanout for the voiceover postprocessor
 // and the async job worker path. Two consumers drive the same fanout:
@@ -9,6 +9,19 @@
 //   - internal/application/scripts/jobs/job_helpers.go
 //     (async job worker path; the same fanout feeds the canonical
 //     outbox event payload shape).
+//
+// Port cutover (P0-#3 final closure, July 2026): the legacy local
+// `VoiceoverService` interface (Generate + GenerateWithDestination,
+// positional signature) is RETIRED. The fanout now delegates to the
+// canonical `voiceover.VoiceoverItemExecutor` port — the SAME per-item
+// pipeline the voiceover.generate_item child job and the
+// promoVoiceoverAdapter already route through (P0-#3 commits f2779494b
+// + 6e2634d82). The "Generate" vs "GenerateWithDestination" branch
+// (the per-item Destination-nil dispatch) is COLLAPSED: the use case's
+// `ResolveDestinationWithFallback` correctly handles `cmd.Destination
+// == nil` via the canonical DefaultFolderResolver fallback, so the
+// caller doesn't need a port-level branch. Result: one method, one
+// type system surface, no per-caller dispatch logic.
 //
 // Why pkg/concurrent.ParallelMap (over .Map or .WithContext + SafeGo):
 //
@@ -31,9 +44,11 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
 
 // VoiceoverSceneInput is the canonical per-scene fanout input.
@@ -42,8 +57,11 @@ import (
 // pre-sanitised via voiceover.SanitizeBasename to reject path
 // separators and unsafe characters. Destination is the optional typed
 // routing request (FolderID / Group / SubfolderName + StyleGroup); nil
-// means "no destination override" (caller-supplied or config-level
-// fallback).
+// means "no destination override" — the per-item use case's
+// `ResolveDestinationWithFallback` (canonical PR 6 P0.2, June 2026)
+// short-circuits to "missing_folder_id" so the use case still
+// fail-closes (no /tmp fallback, no silent write to the default root
+// when no destination is wired at composition time).
 type VoiceoverSceneInput struct {
 	SceneIndex  int
 	Text        string
@@ -55,8 +73,9 @@ type VoiceoverSceneInput struct {
 // carries the canonical compiled string ("completed" or "failed"; the
 // processor's ProcessorBestEffort policy is the source of truth for
 // this string). On success Link + LocalPath carry the production
-// concrete values from the typed *voiceover.VoiceoverResult (post-PR 7
-// M2 typed-return refactor — no any / no type assertions).
+// concrete values from the typed *voiceover.VoiceoverItemResult
+// (post-P0-#3 cutover; same fields as the legacy *VoiceoverResult
+// after the per-item fanout migration).
 type SceneOutcome struct {
 	SceneIndex int
 	Status     string
@@ -67,8 +86,16 @@ type SceneOutcome struct {
 }
 
 // RunVoiceoverSceneFanout fans out a slice of VoiceoverSceneInput to
-// the canonical VoiceoverService port with bounded concurrency,
-// returning one *SceneOutcome per input (in the SAME slice order).
+// the canonical voiceover.VoiceoverItemExecutor port with bounded
+// concurrency, returning one *SceneOutcome per input (in the SAME
+// slice order).
+//
+// P0-#3 cutover (July 2026): the executor is the canonical narrow
+// port (AGENTS.md Pattern 0 — port abstraction layer, June 2026). The
+// concrete production implementation is
+// *voiceover.ProcessVoiceoverItemUseCase (constructed once at
+// composition time in `build_bundles_voiceover.go`). Test doubles
+// inject stubs that record invocations + per-call results.
 //
 // Per-scene failures do NOT abort the batch — canonical
 // ProcessorBestEffort semantics: each failure surfaces as a
@@ -78,14 +105,31 @@ type SceneOutcome struct {
 //
 // Concurrency is clamped to >= 1 so an invalid caller arg (0 or
 // negative) doesn't crash ParallelMap's goroutine pool.
-func RunVoiceoverSceneFanout(ctx context.Context, gen VoiceoverService, language string, items []VoiceoverSceneInput, concurrency int) []*SceneOutcome {
+//
+// RequestID strategy: pre-computed ONCE per batch from
+// `ctx.Value("script_job_id")` → `corid.FromContext(ctx)` → fallback
+// to a synthetic `scene-fanout-<timestamp>` ID. The same value is
+// threaded into every per-item GenerateVoiceoverItemCommand as both
+// RequestID and ParentJobID (mirrors the promo path's
+// `req.RequestID == req.ParentJobID` convention — see
+// `voiceover/promo_test.go::TestPromoVoiceoverAdapter_P0_3_Contract`).
+// The per-item use case treats ParentJobID as the parent job
+// identifier for aggregator correlation, so the synchronous
+// scene_fanout uses the same value to satisfy that invariant. The
+// per-item textHash (computed via `voiceover.ComputeTextHash`) varies
+// per scene, so the (ParentJobID, Language, TextHash) tuple remains
+// unique across siblings even though ParentJobID is shared — no DB
+// collision risk.
+func RunVoiceoverSceneFanout(ctx context.Context, executor voiceover.VoiceoverItemExecutor, language string, items []VoiceoverSceneInput, concurrency int) []*SceneOutcome {
 	if concurrency < 1 {
 		concurrency = 1
 	}
+	requestID := resolveSceneFanoutRequestID(ctx)
+
 	return concurrent.ParallelMap(items, concurrency, func(idx int, item VoiceoverSceneInput) *SceneOutcome {
 		out := &SceneOutcome{SceneIndex: item.SceneIndex}
 		// Per-item panic-recover: a misbehaving fake (e.g. nil-typed
-		// service, malformed Destination) surfaces as a failed outcome
+		// executor, malformed Destination) surfaces as a failed outcome
 		// rather than crashing ParallelMap's goroutine pool.
 		defer func() {
 			if r := recover(); r != nil {
@@ -94,35 +138,95 @@ func RunVoiceoverSceneFanout(ctx context.Context, gen VoiceoverService, language
 			}
 		}()
 
-		// Suffix the parent script job ID in context with the scene index to satisfy
-		// the unique index (job_id, language) on the voiceovers table.
-		itemCtx := ctx
-		if val, ok := ctx.Value("script_job_id").(string); ok && val != "" {
-			itemCtx = context.WithValue(ctx, "script_job_id", fmt.Sprintf("%s:scene:%d", val, item.SceneIndex))
+		// Per-item text fingerprint: 16-hex-char SHA-256 prefix per
+		// voiceover/texthash.go::ComputeTextHash. Pre-computed here so
+		// the per-item use case's finalizer writes the same value into
+		// the voiceovers.text_hash column — matches the canonical
+		// shape from the voiceover.generate_item child job path.
+		textHash := voiceover.ComputeTextHash(item.Text)
+
+		// Build the canonical per-item command. The SAME shape the
+		// voiceover.generate_item job handler and the
+		// promoVoiceoverAdapter build (per voiceover/command.go).
+		itemCmd := &voiceover.GenerateVoiceoverItemCommand{
+			ParentJobID:   requestID, // same as RequestID — sync path, no dispatcher
+			RequestID:     requestID,
+			Text:          item.Text,
+			Language:      voiceover.Language(language),
+			Filename:      item.Filename,
+			TextHash:      textHash,
+			Destination:   item.Destination, // nil-safe at the use case boundary
+			Strategy:      "replace",        // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
+			RemoveSilence: false,            // canonical default (matches pre-P0-#3 Service.GenerateWithDestination default)
 		}
 
-		// Both call paths return the typed *voiceover.VoiceoverResult
-		// (post-Step 7 M2 typed-return refactor, June 2026) — no
-		// type assertion, no extractVoiceoverPaths helper.
-		var result *voiceover.VoiceoverResult
-		var err error
-		if item.Destination != nil {
-			result, err = gen.GenerateWithDestination(itemCtx, item.Text, language, item.Filename, item.Destination)
-		} else {
-			result, err = gen.Generate(itemCtx, item.Text, language, item.Filename)
-		}
+		// Execute the per-item pipeline (TTS → publish → finalize).
+		// Real failures surface as typed Go errors (no Result{OK:false}
+		// masking — the per-item use case is the canonical
+		// fail-closed-by-error surface, same contract as
+		// voiceover/promo.go's promoVoiceoverAdapter).
+		result, err := executor.Execute(ctx, itemCmd)
 		if err != nil {
 			out.Status = "failed"
 			out.Error = err.Error()
 			return out
 		}
+
+		// Per-item use case returns (result, nil) on success. The
+		// canonical partial-failure shape — Status: StatusFailed with
+		// Error populated — is the FAILURE PATH and surfaces as the
+		// `err != nil` branch above. Defense-in-depth: if a future
+		// refactor relaxes that contract and returns (partialResult,
+		// nil) with result.Status == StatusFailed, surface the inline
+		// error string here so the canonical SceneOutcome.Error
+		// channel still carries the partial-failure signal to the
+		// processor's warning collector.
+		if result != nil && result.Status == voiceover.StatusFailed {
+			out.Status = "failed"
+			if result.Error != "" {
+				out.Error = result.Error
+			} else {
+				out.Error = "voiceover item returned StatusFailed with empty error"
+			}
+			return out
+		}
+
 		out.Status = "completed"
 		if result != nil {
 			out.Link = result.DriveLink
-			out.LocalPath = result.Path
+			out.LocalPath = result.LocalPath
 		}
 		return out
 	})
+}
+
+// resolveSceneFanoutRequestID derives a stable per-batch RequestID
+// from the request context. The synchronous scene_fanout has no
+// dispatcher to generate a canonical correlation ID, so we fall
+// through three sources in priority order:
+//
+//  1. `ctx.Value("script_job_id")` — set by the postprocessor
+//     processor_voiceover.go (which forwards corid.FromContext
+//     when the value is absent) and by the script job worker.
+//  2. `corid.FromContext(ctx)` — the canonical request correlation
+//     ID middleware (pkg/corid).
+//  3. `scene-fanout-<unix-nano>` — synthetic fallback. NEVER call
+//     voiceover.buildRequestID here: that helper generates a
+//     different ID on every call, which would disconnect the
+//     per-scene children from each other in the voiceovers table
+//     (the audit P0.1 pattern: API request_id (A) → fanout
+//     generates B → children lose correlation). The synthetic
+//     fallback uses time.Now().UnixNano() so the value is
+//     deterministic for a given run, distinct across runs, and
+//     traceable in logs (it carries the run start time).
+func resolveSceneFanoutRequestID(ctx context.Context) string {
+	if val, ok := ctx.Value("script_job_id").(string); ok && val != "" {
+		return val
+	}
+	if cid := corid.FromContext(ctx); cid != "" {
+		return cid
+	}
+	return fmt.Sprintf("scene-fanout-%d", time.Now().UnixNano())
 }
 
 // CountCompletedSceneOutcomes returns the count of outcomes whose

@@ -21,23 +21,39 @@ import (
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
+// fakeVoiceoverGen is a voiceover.VoiceoverItemExecutor stub used by
+// the E2E fullmedia test.
+//
+// P0-#3 final closure (July 2026): the legacy VoiceoverService port
+// (Generate + GenerateWithDestination) is RETIRED. The stub now
+// implements the single canonical Execute method with a typed
+// *voiceover.GenerateVoiceoverItemCommand, returning a
+// *voiceover.VoiceoverItemResult.
 type fakeVoiceoverGen struct {
 	calls int
 }
 
-func (f *fakeVoiceoverGen) Generate(_ context.Context, text, lang, filename string) (*voiceover.VoiceoverResult, error) {
-	return f.GenerateWithDestination(context.Background(), text, lang, filename, nil)
-}
-
-func (f *fakeVoiceoverGen) GenerateWithDestination(_ context.Context, _text, _lang, filename string, _ *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
+func (f *fakeVoiceoverGen) Execute(_ context.Context, item *voiceover.GenerateVoiceoverItemCommand) (*voiceover.VoiceoverItemResult, error) {
 	f.calls++
-	return &voiceover.VoiceoverResult{
-		OK:          true,
-		Path:        "/tmp/" + filename,
-		DriveLink:   "https://drive.google.com/file/d/" + filename + "/view",
-		DriveFileID: filename,
+	if item == nil {
+		return &voiceover.VoiceoverItemResult{
+			Status: voiceover.StatusFailed,
+			Error:  "nil GenerateVoiceoverItemCommand",
+		}, nil
+	}
+	return &voiceover.VoiceoverItemResult{
+		Status:      voiceover.StatusCompleted,
+		Language:    item.Language,
+		Filename:    item.Filename,
+		LocalPath:   "/tmp/" + item.Filename,
+		DriveLink:   "https://drive.google.com/file/d/" + item.Filename + "/view",
+		DriveFileID: item.Filename,
 	}, nil
 }
+
+// Compile-time assertion (AGENTS.md Pattern 0): fakeVoiceoverGen must
+// structurally satisfy voiceover.VoiceoverItemExecutor.
+var _ voiceover.VoiceoverItemExecutor = (*fakeVoiceoverGen)(nil)
 
 func TestGenerateE2E_FullMedia_BindsImagesAndVoiceoverWithoutLocalPaths(t *testing.T) {
 	t.Parallel()

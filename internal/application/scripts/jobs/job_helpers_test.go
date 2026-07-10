@@ -77,42 +77,51 @@ func (s *stubVoiceoverGroupResolver) ResolveGroup(_ context.Context, parentID, n
 	return s.folderByName[name], nil
 }
 
-// stubVoiceoverGenerator is the canonical test-double for
-// voiceover.VoiceoverGenerator. Records invocations; configurable
+// stubVoiceoverExecutor is the canonical test-double for
+// voiceover.VoiceoverItemExecutor. Records invocations; configurable
 // per-call results.
 //
-// RESIDUE (audit 2026-07-03): post-refactor, GenerateSceneVoiceovers'
-// voService param is *voiceover.Service (concrete struct). This stub
-// satisfies the VoiceoverGenerator INTERFACE but cannot satisfy the
-// concrete-struct slot.
-type stubVoiceoverGenerator struct {
+// P0-#3 final closure (July 2026): the legacy VoiceoverGenerator
+// port (Generate + GenerateWithDestination) is RETIRED. The stub
+// now implements the single canonical Execute method with a typed
+// *voiceover.GenerateVoiceoverItemCommand, returning a
+// *voiceover.VoiceoverItemResult.
+//
+// RESIDUE (audit 2026-07-03): the test bodies pass nil at call sites
+// because the production signature still requires a concrete
+// *voiceover.Service for the legacy batch path. The stub is
+// retained for compile-time conformance + audit trail.
+type stubVoiceoverExecutor struct {
 	results    map[string]error // keyed by scene-text
-	defaultRes *voiceover.VoiceoverResult
+	defaultRes *voiceover.VoiceoverItemResult
 	defaultErr error
-	calls      []voiceoverGenCall
+	calls      []voiceoverExecCall
 }
 
-type voiceoverGenCall struct {
+type voiceoverExecCall struct {
 	Text, Language, Filename string
 	Dest                     *voiceover.DestinationRequest
 }
 
-func (s *stubVoiceoverGenerator) GenerateWithDestination(_ context.Context, text, language, filename string, dest *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
-	s.calls = append(s.calls, voiceoverGenCall{Text: text, Language: language, Filename: filename, Dest: dest})
-	if err, ok := s.results[text]; ok {
+// Execute is the canonical VoiceoverItemExecutor port method
+// (P0-#3 final closure, July 2026). Replaces the legacy
+// Generate + GenerateWithDestination pair.
+func (s *stubVoiceoverExecutor) Execute(_ context.Context, item *voiceover.GenerateVoiceoverItemCommand) (*voiceover.VoiceoverItemResult, error) {
+	if item == nil {
+		return &voiceover.VoiceoverItemResult{
+			Status: voiceover.StatusFailed,
+			Error:  "nil GenerateVoiceoverItemCommand",
+		}, nil
+	}
+	s.calls = append(s.calls, voiceoverExecCall{Text: item.Text, Language: string(item.Language), Filename: item.Filename, Dest: item.Destination})
+	if err, ok := s.results[item.Text]; ok {
 		return nil, err
 	}
 	return s.defaultRes, s.defaultErr
 }
 
-// Generate is unused by the helpers under test; implement to satisfy the
-// port's full surface.
-func (s *stubVoiceoverGenerator) Generate(_ context.Context, text, language, filename string) (*voiceover.VoiceoverResult, error) {
-	return s.defaultRes, s.defaultErr
-}
-
 var _ ports.VoiceoverGroupResolver = (*stubVoiceoverGroupResolver)(nil)
-var _ voiceover.VoiceoverGenerator = (*stubVoiceoverGenerator)(nil)
+var _ voiceover.VoiceoverItemExecutor = (*stubVoiceoverExecutor)(nil)
 var _ ClipsFolderExtPort = (*stubClipsFolderExt)(nil)
 
 // — Audit §3 case 1: destination routes through port (folder-id non-empty -> direct folder)
@@ -223,13 +232,17 @@ func TestBuildVoiceoverDestination_NilResolverStillSucceeds(t *testing.T) {
 // — Audit §3 case 3: GenerateSceneVoiceovers counts successes through port
 
 func TestGenerateSceneVoiceovers_CountsSuccesses_ViaVoiceoverGenerator(t *testing.T) {
-	gen := &stubVoiceoverGenerator{
-		defaultRes: &voiceover.VoiceoverResult{Path: "/tmp/scene.mp3"},
+	exec := &stubVoiceoverExecutor{
+		defaultRes: &voiceover.VoiceoverItemResult{
+			Status:    voiceover.StatusCompleted,
+			LocalPath: "/tmp/scene.mp3",
+			DriveLink: "https://drive.example/scene.mp3",
+		},
 		results: map[string]error{
 			"scene 3 error": errors.New("tts timeout"),
 		},
 	}
-	_ = gen // RESIDUE (audit 2026-07-03): stub cannot satisfy *voiceover.Service concrete struct; nil passed below.
+	_ = exec // RESIDUE (audit 2026-07-03): stub cannot satisfy *voiceover.Service concrete struct; nil passed below.
 
 	destReq := &voiceover.DestinationRequest{FolderID: "fallback-folder-id"}
 
@@ -243,7 +256,7 @@ func TestGenerateSceneVoiceovers_CountsSuccesses_ViaVoiceoverGenerator(t *testin
 
 	count := GenerateSceneVoiceovers(
 		context.Background(),
-		nil, // voService: RESIDUE nil (stub cannot satisfy *voiceover.Service)
+		nil, // voExecutor: RESIDUE nil (stub cannot satisfy *voiceover.Service)
 		scenes,
 		"en-US",
 		destReq,
@@ -254,16 +267,16 @@ func TestGenerateSceneVoiceovers_CountsSuccesses_ViaVoiceoverGenerator(t *testin
 
 	// scenes 1, 2, 4 = 3 successes; scene 3 = error; scene '' = skipped
 	require.Equal(t, 3, count)
-	require.Equal(t, 3, len(gen.calls), "empty text must be skipped at the helper level, not forwarded to the generator")
-	require.Equal(t, "scene 1", gen.calls[0].Text)
-	require.Equal(t, "scene 2", gen.calls[1].Text)
-	require.Equal(t, "scene 4", gen.calls[2].Text)
+	require.Equal(t, 3, len(exec.calls), "empty text must be skipped at the helper level, not forwarded to the executor")
+	require.Equal(t, "scene 1", exec.calls[0].Text)
+	require.Equal(t, "scene 2", exec.calls[1].Text)
+	require.Equal(t, "scene 4", exec.calls[2].Text)
 }
 
 // Bonus: nil generator / nil destReq / empty scenes all short-circuit to 0.
 func TestGenerateSceneVoiceovers_NilInputsShortCircuit(t *testing.T) {
-	gen := &stubVoiceoverGenerator{}
-	_ = gen
+	exec := &stubVoiceoverExecutor{}
+	_ = exec
 
 	require.Equal(t, 0, GenerateSceneVoiceovers(context.Background(), nil,
 		[]VoiceoverSceneItem{{Text: "x"}}, "en", &voiceover.DestinationRequest{}, zap.NewNop(), nil, 0, 0))
@@ -271,5 +284,5 @@ func TestGenerateSceneVoiceovers_NilInputsShortCircuit(t *testing.T) {
 		nil, "en", &voiceover.DestinationRequest{}, zap.NewNop(), nil, 0, 0))
 	require.Equal(t, 0, GenerateSceneVoiceovers(context.Background(), nil,
 		[]VoiceoverSceneItem{{Text: "x"}}, "en", nil, zap.NewNop(), nil, 0, 0))
-	require.Equal(t, 0, 0, "nil inputs must NOT trigger any generator call")
+	require.Equal(t, 0, 0, "nil inputs must NOT trigger any executor call")
 }

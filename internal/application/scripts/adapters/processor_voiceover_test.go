@@ -46,33 +46,50 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// stubVoiceoverService is a VoiceoverService implementation
+// stubItemExecutor is a voiceover.VoiceoverItemExecutor implementation
 // controlled by a per-scene callback. The processor now fans out
 // scenes concurrently, so the stub must key off stable inputs
 // (scene text / filename) rather than call order.
-type stubVoiceoverService struct {
-	fn    func(text, lang, filename string) (*voiceover.VoiceoverResult, error)
+//
+// P0-#3 final closure (July 2026): the legacy `VoiceoverService`
+// interface (Generate + GenerateWithDestination) is RETIRED. The
+// stub now implements the single canonical Execute method with a
+// typed *voiceover.GenerateVoiceoverItemCommand, returning a
+// *voiceover.VoiceoverItemResult.
+type stubItemExecutor struct {
+	fn    func(text, lang, filename string) (*voiceover.VoiceoverItemResult, error)
 	calls atomic.Int32
 }
 
-func (s *stubVoiceoverService) Generate(_ context.Context, text, lang, filename string) (*voiceover.VoiceoverResult, error) {
-	return s.GenerateWithDestination(context.Background(), text, lang, filename, nil)
-}
-
-func (s *stubVoiceoverService) GenerateWithDestination(_ context.Context, text, lang, filename string, _ *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
+// Execute is the canonical VoiceoverItemExecutor port method.
+// Records the call and dispatches to the per-scene callback.
+func (s *stubItemExecutor) Execute(_ context.Context, item *voiceover.GenerateVoiceoverItemCommand) (*voiceover.VoiceoverItemResult, error) {
 	s.calls.Add(1)
-	if s.fn != nil {
-		return s.fn(text, lang, filename)
+	if item == nil {
+		return &voiceover.VoiceoverItemResult{
+			Status: voiceover.StatusFailed,
+			Error:  "nil GenerateVoiceoverItemCommand",
+		}, nil
 	}
-	// Step 7 (June 2026) — typed stub: returns the canonical
-	// *voiceover.VoiceoverResult struct directly instead of a
-	// map[string]any literal. The processor now reads Path + DriveLink
-	// as struct fields (no type assertion needed).
-	return &voiceover.VoiceoverResult{
-		Path:      "/tmp/" + filename,
-		DriveLink: "https://drive.example.test/" + filename,
+	if s.fn != nil {
+		return s.fn(item.Text, string(item.Language), item.Filename)
+	}
+	// Default success: returns the canonical
+	// *voiceover.VoiceoverItemResult struct directly. The processor
+	// reads LocalPath + DriveLink as struct fields (no type
+	// assertion needed).
+	return &voiceover.VoiceoverItemResult{
+		Status:    voiceover.StatusCompleted,
+		Language:  item.Language,
+		Filename:  item.Filename,
+		LocalPath: "/tmp/" + item.Filename,
+		DriveLink: "https://drive.example.test/" + item.Filename,
 	}, nil
 }
+
+// Compile-time assertion (AGENTS.md Pattern 0): stubItemExecutor
+// must structurally satisfy voiceover.VoiceoverItemExecutor.
+var _ voiceover.VoiceoverItemExecutor = (*stubItemExecutor)(nil)
 
 // basePartialFailuresPlan returns a ResolvedGenerationPlan with
 // three model-defined scenes in engineResult-Output.SpecScene,
@@ -99,17 +116,24 @@ func basePartialFailuresPlan() (*scriptpkg.ResolvedGenerationPlan, *scriptpkg.Sp
 // stub that fails on calls 1 and 2 (i.e. scenes 1 and 2). Two
 // distinct errors so a future "all warnings become one string"
 // refactor is caught by the distinct-error assertions.
-func partialFailuresProc() (*VoiceoverProcessor, *stubVoiceoverService) {
-	stub := &stubVoiceoverService{
-		fn: func(text, lang, filename string) (*voiceover.VoiceoverResult, error) {
+//
+// P0-#3 final closure (July 2026): the stub's fn signature is
+// unchanged (text, lang, filename) but the return type is now
+// *voiceover.VoiceoverItemResult.
+func partialFailuresProc() (*VoiceoverProcessor, *stubItemExecutor) {
+	stub := &stubItemExecutor{
+		fn: func(text, lang, filename string) (*voiceover.VoiceoverItemResult, error) {
 			switch text {
 			case "scene one":
 				return nil, errors.New("tts python socket closed")
 			case "scene two":
 				return nil, errors.New("voiceover service rate-limited")
 			default:
-				return &voiceover.VoiceoverResult{
-					Path:      "/tmp/" + filename,
+				return &voiceover.VoiceoverItemResult{
+					Status:    voiceover.StatusCompleted,
+					Language:  voiceover.Language(lang),
+					Filename:  filename,
+					LocalPath: "/tmp/" + filename,
 					DriveLink: "https://drive.example.test/" + filename,
 				}, nil
 			}
@@ -187,7 +211,7 @@ func TestVoiceoverProcessor_AllSuccess_HasEmptyWarnings(t *testing.T) {
 	t.Parallel()
 
 	plan, spec := basePartialFailuresPlan()
-	stub := &stubVoiceoverService{}
+	stub := &stubItemExecutor{}
 	proc := NewVoiceoverProcessor(stub, zap.NewNop())
 
 	result, err := proc.Process(context.Background(), plan, ProcessInput{
