@@ -299,3 +299,53 @@ func (a *clipJobEnqueuerAdapter) EnqueueClip(ctx context.Context, cmd sourcing.R
 
 // Compile-time assertion: clipJobEnqueuerAdapter satisfies batch.ClipJobEnqueuer.
 var _ batch.ClipJobEnqueuer = (*clipJobEnqueuerAdapter)(nil)
+
+// ── wireSourcingAtomic (PR-SOURCING-ADAPTER-FAIL-CLOSED, July 2026) ──
+
+// wireSourcingAtomic is the canonical fail-fast-at-composition gate for the
+// SourcingAtomicPort wiring decision. It enforces the godlike/07 contract
+// that a misconfiguration must surface at BOOT, NOT at first
+// /api/media/register call (which would manifest as the pre-fix silent-success
+// class — sourcingMetadataAdapter.UpdateCumulativeJSON / sourcingEnrichmentAdapter.EnrichAndIndex
+// returned nil even when the handler was unwired, masking the composition
+// bug from upstream callers).
+//
+// Returns:
+//   - nil + sourcing.ErrSourcingCapabilitiesRequired when cfg.Features.MediaDriveRequired
+//     is true but the handler is nil (composition-time invariant violation;
+//     the canonical Drive-required-but-not-configured failure class).
+//   - nil + sourcing.ErrSourcingCapabilitiesDisabled when the handler is nil
+//     AND cfg.Features.MediaDriveRequired is false. Composition may continue
+//     without sourcing capabilities (the canonical Drive-not-required-for-this-deployment
+//     mode), but the gate surfaces the typed error so the deferred-at-runtime
+//     fail-closed path is explicit (not a silent no-op).
+//   - handler + nil on the success path: the original port is returned
+//     as-is (caller's existing wiring is preserved byte-identically).
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: this gate lives ONLY at
+// internal/app/assets_register_sourcing.go (the canonical composition-root
+// surface for the sourcing façade). Callers MUST call it on the
+// SourcingAtomicPort-shaped wiring decision BEFORE consuming the port
+// in newAssetRegisterService — the forward-pointer for integration is
+// PR-SOURCING-WIRE-INTEGRATION (deadline 2026-08-15) which will thread
+// the gate through the actual façade composition site.
+//
+// Trip-typed-error contract (godlike/07): the returned errors are wrapped
+// via fmt.Errorf with %w so callers can probe with errors.Is(err,
+// sourcing.ErrSourcingCapabilitiesRequired) or errors.Is(err,
+// sourcing.ErrSourcingCapabilitiesDisabled) per the canonical typed-error
+// contract — never via raw string match.
+//
+// Threading-pattern compatibility: this gate is independent of the
+// SourcingAtomicPort concrete implementation (interface-only argument +
+// struct{} + cfg) so it is testable in isolation with zero infrastructure
+// dependencies.
+func wireSourcingAtomic(cfg *config.Config, h sourcing.SourcingAtomicPort) (sourcing.SourcingAtomicPort, error) {
+	if h == nil {
+		if cfg != nil && cfg.Features.MediaDriveRequired {
+			return nil, fmt.Errorf("sourcing: wireSourcingAtomic: %w (handler nil but cfg.Features.MediaDriveRequired=true)", sourcing.ErrSourcingCapabilitiesRequired)
+		}
+		return nil, fmt.Errorf("sourcing: wireSourcingAtomic: %w (handler nil)", sourcing.ErrSourcingCapabilitiesDisabled)
+	}
+	return h, nil
+}
