@@ -3833,3 +3833,62 @@
     owner_capability: internal/application/scripts/ports
     status: pending
     deadline: '2026-08-08'
+- id: LEGACY-CLEANUP-5-ITEM-ORCHESTRATION-2026-07-10
+  status: shipped
+  exit_signal: true
+  deadline: '2026-08-15'
+  owner_capability: internal/api/images + internal/application/images + internal/application/scripts + architecture/deprecations
+  description: '5-Item wave closure: (1) retire POST /api/images/animate + AnimateRequest + NVIDIA docs; (2) retire PostProcessArtifact
+    alias + compat_types.go; (3) eliminate vector_search: config block; (4) archive status: removed deprecations to architecture/archive/deprecations_removed_2026-07-10.yaml;
+    (5) fullimages Option B CUTOVER: rename SectionVideo->SectionImage + delete 3 orphan functions + delete MP4 cache sidecar.
+    All 5 Items shipped on origin/main with verified ship_shas (git branch -r --contains returns origin/main for all). Wave-flip
+    to status: shipped + exit_signal: true per §6 + §10 of architecture/action-plans/2026-07-10-legacy-cleanup-5-item-orchestration.md.
+    NOTE: wave_p1_high.yaml is a LIST (not a dict) due to the pre-existing PRE-EXISTING-YAML-PARSE-2026-07-04 carry-forward;
+    this entry is appended as a new list item per the file''s actual structure (PyYAML successfully parses the list). Audit-pin
+    closure for the pre-existing parse carry-forward is documented in commits 089f893d7 + 2ebb24e.'
+  linked_issues:
+  - id: PR-LEGACY-CLEANUP-2026-07-10-Item-1
+    owner_capability: internal/api/images
+    status: shipped
+    ship_sha: 4ebf1bfdf3ce82836262433e536136d81744b79b
+    ship_date: '2026-07-10'
+  - id: PR-LEGACY-CLEANUP-2026-07-10-Item-1-lockstep
+    owner_capability: internal/api/images
+    status: shipped
+    ship_sha: a57bbd85789f7f49f9651d6f479db34a258a8671
+    ship_date: '2026-07-10'
+  - id: PR-LEGACY-CLEANUP-2026-07-10-Item-2
+    owner_capability: internal/application/scripts
+    status: shipped
+    ship_sha: fefaa7d48cd35eb944f28e3211111a9a390b8018
+    ship_date: '2026-07-10'
+  - id: PR-LEGACY-CLEANUP-2026-07-10-Item-3
+    owner_capability: config
+    status: shipped
+    ship_sha: cc8225e68eed5c601bf4286bd85dc64e28bb4106
+    ship_date: '2026-07-10'
+  - id: PR-DEPRECATIONS-ARCHIVE-2026-07-10-Item-4
+    owner_capability: architecture/deprecations
+    status: shipped
+    ship_sha: b7d73a18335234cf34d27cdaf9cac25c0d3a96bc
+    ship_date: '2026-07-10'
+  - id: PR-DEPRECATIONS-ARCHIVE-2026-07-10-Item-4-lockstep
+    owner_capability: architecture/deprecations
+    status: shipped
+    ship_sha: 7e25e58a946c09afc9db6796c2210494184c1aee
+    ship_date: '2026-07-10'
+  - id: PR-FULLIMAGES-OPTION-B-Item-5-source
+    owner_capability: internal/application/images
+    status: shipped
+    ship_sha: b95aceadbc24693c65f320eaf89234739439e3d7
+    ship_date: '2026-07-10'
+  - id: PR-FULLIMAGES-OPTION-B-Item-5-initial-lockstep
+    owner_capability: internal/application/images
+    status: shipped
+    ship_sha: b8052911b837891dfc4e0f5039caa25dac784929
+    ship_date: '2026-07-10'
+  - id: PR-FULLIMAGES-OPTION-B-Item-5-NIT-fix
+    owner_capability: internal/application/images
+    status: shipped
+    ship_sha: 37bc38eeeb88183ea1d928b234cf615e26393729
+    ship_date: '2026-07-10'
