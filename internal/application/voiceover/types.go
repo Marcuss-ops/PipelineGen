@@ -3,8 +3,6 @@ package voiceover
 import (
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
-	promoTypes "github.com/Marcuss-ops/PipelineGen/internal/application/workflow/promo"
 	pathutil "github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )
 
@@ -281,26 +279,34 @@ type ResolvedDestination struct {
 	StyleGroup StyleGroup
 }
 
-// Promo types moved to workflow/promo (PR 6, June 2026).
-// Type aliases preserve backward compatibility.
-
-// PromoRequest is the promo workflow request.
-// Deprecated: use promo.Request directly.
-type PromoRequest = promoTypes.Request
-
-// DefaultPromoLanguages returns the 13 promo voiceover languages.
-// Deprecated: use translation.DefaultPromoLanguages directly.
-var DefaultPromoLanguages = translation.DefaultPromoLanguages
-
-// ALIAS REMOVED Fase 9 step 3: see architecture/deprecations.yaml#TRANSLATION-UNIFY (migration_phase: BACKFILL / status: contract-half).
-
-// PromoResult holds the result of a single promo voiceover generation.
-// Deprecated: use promo.Result directly.
-type PromoResult = promoTypes.Result
-
-// PromoResponse aggregates all promo voiceover results.
-// Deprecated: use promo.Response directly.
-type PromoResponse = promoTypes.Response
+// PR-VOICEOVER-ALIASES-RETIRE Sub-PR B (July 2026): the canonical
+// promo workflow types moved into internal/application/workflow/promo/
+// in the PR 6 wave (June 2026). The legacy voiceover.PromoRequest +
+// voiceover.PromoResult + voiceover.PromoResponse + voiceover.
+// DefaultPromoLanguages aliases have been RETIRED — all callers now
+// reference `promo.Request` / `promo.Result` / `promo.Response` /
+// `translation.DefaultPromoLanguages` directly per godlike/06 SSOT
+// one-canonical-owner-per-fact. Future PR-VOICEOVER-ALIASES-RETIRE-C
+// ships the canonical archcheck forward-prevention gate that bans
+// future re-introduction of these aliases (canonical PR-ID in
+// architecture/waves/wave_p1_high.yaml; the gate's exact file path is
+// at the discretion of that PR's implementer so this forward-pointer
+// cannot become a no-fake-availability liability if Sub-PR C's actual
+// path differs from any earlier speculation).
+//
+// Import-hygiene note: the `translation` + `promo` Go imports were
+// removed TOGETHER with the 4 retired aliases (this Sub-PR B commit).
+// Do NOT re-add them — `translation.DefaultPromoLanguages` canonical
+// owner is the `translation` subpackage (imported where needed) and
+// `PromoRequest`/`PromoResult`/`PromoResponse` canonical owner is the
+// `workflow/promo` subpackage (imported as `promo` per the natural
+// Go-idiomatic convention established by code-reviewer NIT-1 on
+// this closure — see `voiceover/job_handler.go` and `voiceover/promo.go`
+// for caller-side usage). Re-importing these packages here would
+// silently re-enable the alias surface that the canonical-home PRs
+// retired; per godlike/06 SSOT one-canonical-owner-per-fact every
+// alias is a load-bearing drift surface that the archcheck forward-
+// prevention gate in PR-VOICEOVER-ALIASES-RETIRE-C is designed to ban.
 
 // PromoRequestPayloadMap RETIRED 2026-07-10 (PR-DEADC-PROD-PROMOREQUEST-PAYLOAD-MAP-RETIRE).
 // Zero production callers (verified via rg 'PromoRequestPayloadMap' internal/ — only 2 hits

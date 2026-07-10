@@ -66,7 +66,7 @@ var ErrPromoVoiceoverGeneration = errors.New("voiceover promo: per-item generati
 // error so the missing wire-up is fixed before deploy (godlike/07
 // NO-FAKE-AVAILABILITY: a misconfigured composition root must NOT
 // silently fall back to a no-op promo generation).
-func (s *Service) GeneratePromo(ctx context.Context, req *PromoRequest) (*PromoResponse, error) {
+func (s *Service) GeneratePromo(ctx context.Context, req *promo.Request) (*promo.Response, error) {
 	if s.translator == nil {
 		return nil, fmt.Errorf("translator not configured")
 	}
