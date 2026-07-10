@@ -208,6 +208,107 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	return nil
 }
 
+// ── Postprocessor clip-search adapter structs (composition-root-local) ──
+
+// artlistClipSearchAdapter wraps usecase.SearchArtlistClips into the
+// adapters.ArtlistClipSearcher port. This adapter lives in the
+// composition root (NOT in the adapters package) to avoid a circular
+// import: adapters cannot import usecase.
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: this is the canonical
+// SOLE adapter between ArtlistClipSearcher and SearchArtlistClips.
+type artlistClipSearchAdapter struct {
+	svc usecase.ClipServices
+}
+
+// SearchClips satisfies adapters.ArtlistClipSearcher.
+func (a *artlistClipSearchAdapter) SearchClips(ctx context.Context, title string, phrases []string) []adapters.ArtlistClipMatch {
+	if a == nil {
+		return nil
+	}
+	suggestions := usecase.SearchArtlistClips(ctx, a.svc, title, phrases)
+	if len(suggestions) == 0 {
+		return nil
+	}
+
+	// Convert usecase.ScriptArtlistClipSuggestion → adapters.ArtlistClipMatch.
+	// adapters cannot import usecase types directly, so we convert at
+	// the composition-root boundary.
+	matches := make([]adapters.ArtlistClipMatch, 0, len(suggestions))
+	for _, s := range suggestions {
+		m := adapters.ArtlistClipMatch{
+			Phrase:           s.Phrase,
+			FolderLink:       s.FolderLink,
+			FolderName:       s.FolderName,
+			FolderID:         s.FolderID,
+			TranslationError: s.TranslationError,
+		}
+		for _, c := range s.Clips {
+			m.ClipNames = append(m.ClipNames, c.Name)
+			m.ClipDriveLinks = append(m.ClipDriveLinks, c.DriveLink)
+		}
+		matches = append(matches, m)
+	}
+	return matches
+}
+
+var _ adapters.ArtlistClipSearcher = (*artlistClipSearchAdapter)(nil)
+
+// ── ClipServices adapter structs (composition-root-local) ─────────────────
+
+// driveCheckServiceAdapter wraps drive.Uploader.FileIsNotTrashed into
+// usecase.DriveCheckService. This adapter lives in the composition
+// root (NOT in the adapters or usecase packages) to avoid import cycles.
+//
+// godlike/06 SSOT: this is the canonical SOLE adapter between the
+// drive.Uploader and the usecase.DriveCheckService port.
+type driveCheckServiceAdapter struct {
+	up interface {
+		FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
+	}
+}
+
+// FileIsNotTrashed satisfies usecase.DriveCheckService.
+func (a *driveCheckServiceAdapter) FileIsNotTrashed(ctx context.Context, fileID string) (bool, error) {
+	if a == nil || a.up == nil {
+		return false, fmt.Errorf("driveCheckServiceAdapter: drive uploader not wired")
+	}
+	return a.up.FileIsNotTrashed(ctx, fileID)
+}
+
+var _ usecase.DriveCheckService = (*driveCheckServiceAdapter)(nil)
+
+// jobsEnqueueServiceAdapter wraps appjobs.Service.Enqueue into
+// usecase.JobEnqueueService. This adapter lives in the composition
+// root (NOT in the adapters or usecase packages) to avoid import cycles.
+//
+// The adapter bridges the typed appjobs.Service.Enqueue(ctx,
+// *job.EnqueueRequest) (*job.Job, error) to the interface-based
+// usecase.JobEnqueueService.Enqueue(ctx, interface{}) (interface{}, error)
+// expected by the artlist background job enqueue path.
+//
+// godlike/06 SSOT: this is the canonical SOLE adapter between the
+// jobs.Service and the usecase.JobEnqueueService port.
+type jobsEnqueueServiceAdapter struct {
+	svc interface {
+		Enqueue(ctx context.Context, req *jobpkg.EnqueueRequest) (*jobpkg.Job, error)
+	}
+}
+
+// Enqueue satisfies usecase.JobEnqueueService.
+func (a *jobsEnqueueServiceAdapter) Enqueue(ctx context.Context, req interface{}) (interface{}, error) {
+	if a == nil || a.svc == nil {
+		return nil, fmt.Errorf("jobsEnqueueServiceAdapter: jobs service not wired")
+	}
+	typedReq, ok := req.(*jobpkg.EnqueueRequest)
+	if !ok {
+		return nil, fmt.Errorf("jobsEnqueueServiceAdapter: req is %T, want *job.EnqueueRequest", req)
+	}
+	return a.svc.Enqueue(ctx, typedReq)
+}
+
+var _ usecase.JobEnqueueService = (*jobsEnqueueServiceAdapter)(nil)
+
 // ── Composition validation: required processors MUST register ────────
 
 // requiredProcessorNames is the canonical list of postprocessor names
