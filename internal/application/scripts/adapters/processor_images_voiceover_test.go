@@ -125,22 +125,42 @@ func (f *generatedPriorityImageGen) GenerateSmartImage(_ context.Context, subjec
 
 // ── Voiceover processor fakes ─────────────────────────────────────
 
+// fakeVoiceoverGen is a voiceover.VoiceoverItemExecutor stub used by
+// the image+voiceover processor tests.
+//
+// P0-#3 final closure (July 2026): the legacy VoiceoverService port
+// (Generate + GenerateWithDestination) is RETIRED. The stub now
+// implements the single canonical Execute method with a typed
+// *voiceover.GenerateVoiceoverItemCommand, returning a
+// *voiceover.VoiceoverItemResult.
 type fakeVoiceoverGen struct {
-	fn    func(text, lang, filename string) (*voiceover.VoiceoverResult, error)
+	fn    func(text, lang, filename string) (*voiceover.VoiceoverItemResult, error)
 	calls atomic.Int32
 }
 
-func (f *fakeVoiceoverGen) Generate(_ context.Context, text, lang, filename string) (*voiceover.VoiceoverResult, error) {
-	return f.GenerateWithDestination(context.Background(), text, lang, filename, nil)
+func (f *fakeVoiceoverGen) Execute(_ context.Context, item *voiceover.GenerateVoiceoverItemCommand) (*voiceover.VoiceoverItemResult, error) {
+	f.calls.Add(1)
+	if item == nil {
+		return &voiceover.VoiceoverItemResult{
+			Status: voiceover.StatusFailed,
+			Error:  "nil GenerateVoiceoverItemCommand",
+		}, nil
+	}
+	if f.fn != nil {
+		return f.fn(item.Text, string(item.Language), item.Filename)
+	}
+	return &voiceover.VoiceoverItemResult{
+		Status:    voiceover.StatusCompleted,
+		Language:  item.Language,
+		Filename:  item.Filename,
+		DriveLink: "http://default.example/" + item.Filename,
+		LocalPath: "/tmp/" + item.Filename,
+	}, nil
 }
 
-func (f *fakeVoiceoverGen) GenerateWithDestination(_ context.Context, text, lang, filename string, _ *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
-	f.calls.Add(1)
-	if f.fn != nil {
-		return f.fn(text, lang, filename)
-	}
-	return &voiceover.VoiceoverResult{DriveLink: "http://default.example/" + filename, Path: "/tmp/" + filename}, nil
-}
+// Compile-time assertion (AGENTS.md Pattern 0): fakeVoiceoverGen must
+// structurally satisfy voiceover.VoiceoverItemExecutor.
+var _ voiceover.VoiceoverItemExecutor = (*fakeVoiceoverGen)(nil)
 
 // ── Helpers ───────────────────────────────────────────────────────
 
@@ -386,10 +406,13 @@ func TestVoiceoverProcessorNilModel(t *testing.T) {
 func TestVoiceoverProcessorSuccess(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{
-		fn: func(text, lang, filename string) (*voiceover.VoiceoverResult, error) {
-			return &voiceover.VoiceoverResult{
+		fn: func(text, lang, filename string) (*voiceover.VoiceoverItemResult, error) {
+			return &voiceover.VoiceoverItemResult{
+				Status:    voiceover.StatusCompleted,
+				Language:  voiceover.Language(lang),
+				Filename:  filename,
 				DriveLink: "http://vo.mp3",
-				Path:      "/tmp/" + filename,
+				LocalPath: "/tmp/" + filename,
 			}, nil
 		},
 	}
@@ -409,13 +432,16 @@ func TestVoiceoverProcessorSuccess(t *testing.T) {
 func TestVoiceoverProcessorPartialFailure(t *testing.T) {
 	t.Parallel()
 	gen := &fakeVoiceoverGen{
-		fn: func(text, lang, filename string) (*voiceover.VoiceoverResult, error) {
+		fn: func(text, lang, filename string) (*voiceover.VoiceoverItemResult, error) {
 			if text == "Second scene narration." {
 				return nil, errors.New("synthesis timeout")
 			}
-			return &voiceover.VoiceoverResult{
+			return &voiceover.VoiceoverItemResult{
+				Status:    voiceover.StatusCompleted,
+				Language:  voiceover.Language(lang),
+				Filename:  filename,
 				DriveLink: "http://vo1.mp3",
-				Path:      "/tmp/" + filename,
+				LocalPath: "/tmp/" + filename,
 			}, nil
 		},
 	}

@@ -116,12 +116,26 @@ func registerScriptPostProcessors(
 	// Fase 2 Spina Dorsale (July 2026) — re-enabled 2026-07-08:
 	// inline voiceover postprocessor coexists with the downstream
 	// voiceover.generate job.
-	if root.Domains != nil && root.Domains.VoiceoverService != nil {
-		voProc := adapters.NewVoiceoverProcessor(root.Domains.VoiceoverService, log)
+	//
+	// P0-#3 final closure (July 2026): the processor now consumes the
+	// canonical voiceover.VoiceoverItemExecutor port (the per-item
+	// use case the voiceover.generate_item child job + the
+	// promoVoiceoverAdapter already route through). The composition
+	// root passes `root.Domains.VoiceoverProcessItem` (the
+	// *ProcessVoiceoverItemUseCase concrete wired in
+	// build_bundles_voiceover.go), NOT the legacy
+	// `root.Domains.VoiceoverService`. The VoiceoverService bundle
+	// field is RETAINED for downstream consumers (jobs.voiceover
+	// async paths, the `processLanguage` batch fallback) that still
+	// depend on the legacy Generate/GenerateWithDestination port,
+	// but the inline postprocessor path is now exclusively the
+	// narrow-port surface.
+	if root.Domains != nil && root.Domains.VoiceoverProcessItem != nil {
+		voProc := adapters.NewVoiceoverProcessor(root.Domains.VoiceoverProcessItem, log)
 		if !ppReg.Register(voProc) {
 			return fmt.Errorf("register voiceover processor: composition bug or duplicate name")
 		}
-		log.Info("VoiceoverProcessor (inline scene voiceovers) successfully registered")
+		log.Info("VoiceoverProcessor (inline scene voiceovers) successfully registered (P0-#3: consumes VoiceoverItemExecutor port)")
 	}
 
 	// PR 7 (June 2026): register ClipBindingsProcessor so the

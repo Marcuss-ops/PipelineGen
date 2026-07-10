@@ -9,6 +9,17 @@
 // Each generated voiceover maps to a model-defined scene with
 // stable indexes.
 //
+// P0-#3 final closure (July 2026): the local `VoiceoverService`
+// interface (Generate + GenerateWithDestination, positional signature)
+// is RETIRED. The processor now depends on the canonical
+// `voiceover.VoiceoverItemExecutor` port (single Execute method with a
+// typed *voiceover.GenerateVoiceoverItemCommand). The same per-item
+// pipeline the voiceover.generate_item child job and the
+// promoVoiceoverAdapter already route through. Composition root wires
+// *voiceover.ProcessVoiceoverItemUseCase (the concrete
+// VoiceoverItemExecutor implementation) via
+// `internal/app/wire_script_postprocess.go::registerScriptPostProcessors`.
+//
 // Partial failures are collected — the processor does NOT abort on
 // first error. No-op when plan has no ClipEvidence or when the model
 // output has zero scenes.
@@ -26,24 +37,41 @@ import (
 	"go.uber.org/zap"
 )
 
-// VoiceoverProcessor generates scene voiceovers via VoiceoverService.
-// Uses engineResult.Output.SpecScene.Scenes to drive per-scene
-// voiceover generation (PR 9 contract).
+// VoiceoverProcessor generates scene voiceovers via the canonical
+// voiceover.VoiceoverItemExecutor port. Uses
+// engineResult.Output.SpecScene.Scenes to drive per-scene voiceover
+// generation (PR 9 contract).
+//
+// P0-#3 final closure (July 2026): the `gen` field is now
+// `voiceover.VoiceoverItemExecutor` (the narrow typed port). The
+// production concrete wired at composition time is
+// *voiceover.ProcessVoiceoverItemUseCase (see
+// `internal/app/build_bundles_voiceover.go::buildVoiceoverService`).
+// Test doubles inject stubs that record invocations.
 type VoiceoverProcessor struct {
-	gen VoiceoverService
+	gen voiceover.VoiceoverItemExecutor
 	log *zap.Logger
 }
 
 // NewVoiceoverProcessor creates a VoiceoverProcessor.
 // gen must be non-nil (enforced at registration time by wire_script.go).
-func NewVoiceoverProcessor(gen VoiceoverService, log *zap.Logger) *VoiceoverProcessor {
+//
+// P0-#3 final closure (July 2026): the `gen` parameter is now
+// `voiceover.VoiceoverItemExecutor` (the canonical narrow port). The
+// previous `VoiceoverService` interface (Generate + GenerateWithDestination)
+// is RETIRED. Production wiring passes
+// `root.Domains.VoiceoverProcessItem` (the *ProcessVoiceoverItemUseCase
+// from the composition root). Test stubs implement the single
+// `Execute(ctx, *GenerateVoiceoverItemCommand) (*VoiceoverItemResult, error)`
+// method.
+func NewVoiceoverProcessor(gen voiceover.VoiceoverItemExecutor, log *zap.Logger) *VoiceoverProcessor {
 	return &VoiceoverProcessor{gen: gen, log: log}
 }
 
 func (p *VoiceoverProcessor) Name() ProcessorName { return ProcessorVoiceover }
 
 // Policy classifies voiceover as ProcessorBestEffort: a missing
-// voiceover service (typed adapter nil at composition time) or a
+// voiceover executor (typed adapter nil at composition time) or a
 // runtime TTS failure degrades into a Warning, not a hard failure.
 // Voiceover is an auxiliary deliverable; per PR 2 spec: "voiceover =
 // configurabile" (best-effort is the safe default). The plan arg is
@@ -56,6 +84,12 @@ func (p *VoiceoverProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Process
 // directly from engineResult.Output.SpecScene.Scenes (validated by
 // ValidateAndEnrichSpecScene); no paragraph-splitting helper is
 // used.
+//
+// P0-#3 final closure (July 2026): the per-item Execute call is the
+// canonical narrow-port surface — the SAME pipeline the
+// voiceover.generate_item child job and the promoVoiceoverAdapter
+// route through. Real failures surface as typed Go errors (no
+// Result{OK:false} masking).
 func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.gen == nil {
 		return nil, fmt.Errorf("%w: voiceover processor: VoiceoverService not configured", scriptpkg.ErrPostprocessFailed)
@@ -132,6 +166,9 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 		})
 	}
 
+	// P0-#3 final closure (July 2026): the fanout now takes the
+	// canonical voiceover.VoiceoverItemExecutor port (the field
+	// `p.gen`); real failures surface as typed Go errors per scene.
 	outcomes := RunVoiceoverSceneFanout(ctx, p.gen, language, items, 4)
 	voiceovers := make([]SceneVoiceover, 0, len(outcomes))
 	var warnings []string
@@ -166,38 +203,14 @@ func (p *VoiceoverProcessor) Process(ctx context.Context, plan *scriptpkg.Resolv
 	}, nil
 }
 
-// ── Typed port (production adapter: voiceover.Service) ───────────────────
-
-// VoiceoverService is the canonical port for voiceover generation.
-// Production implementations live in internal/application/voiceover/
-// (concrete *voiceover.Service); stubs live in adapters/_ in
-// test fixtures (processor_voiceover_test.go + processor_images_voiceover_test.go).
-//
-// Step 7 / PR-VOICEOVER-STREAM-SUPERSESSION-2026-06-28 M2 typed-port
-// remediation (June 2026): both methods now return the canonical
-// typed *voiceover.VoiceoverResult (NOT any). The Process body
-// reads result.Path + result.DriveLink directly — no type assertion,
-// no extractVoiceoverPaths helper. Companion back-compat alias
-// `domain.VoiceoverResult = domain.Result` lives at
-// internal/domain/voiceover/result.go for waves-cross safety during
-// Wave 21 PR-G.2 BACKFILL settlement (deadline 2026-07-10).
-//
-// GenerateWithDestination is needed by VoiceoverProcessor when the
-// plan carries a voiceover destination (folder_id or resolved group).
-// Both production and test fakes must satisfy it.
-type VoiceoverService interface {
-	Generate(ctx context.Context, text, lang, filename string) (*voiceover.VoiceoverResult, error)
-	GenerateWithDestination(ctx context.Context, text, lang, filename string, dest *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error)
-}
-
-// Compile-time assertion: *voiceover.Service satisfies adapters.VoiceoverService
-// directly. Step 9 / PR-VOICEOVER-TYPED-PORT-RECOVERY-PHASE2 / B-3 CUTOVER
-// (June 2026): deletes the previous `voiceoverSvcAdapter` wrapper that lived
-// in internal/app/wire_script.go. The structural match holds because the
-// concrete *voiceover.Service's Generate and GenerateWithDestination methods
-// already return the typed *voiceover.VoiceoverResult (post-Step 7 M2 typed
-// return). Drift in either side of this contract now fails the BUILD at this
-// line instead of silently returning any / panicking at runtime —
-// AGENTS.md Pattern 0 (port abstraction layer, June 2026) "compile-time
-// assertions catch signature drift at compile, not at first panic runtime".
-var _ VoiceoverService = (*voiceover.Service)(nil)
+// Compile-time assertion (AGENTS.md Pattern 0, June 2026): the
+// canonical production concrete *voiceover.ProcessVoiceoverItemUseCase
+// must structurally satisfy voiceover.VoiceoverItemExecutor. Drift
+// between the production concrete's Execute signature and the port
+// contract triggers a compile error here, not a silent runtime
+// dispatch to a different surface. The same assertion is also pinned
+// in process_voiceover_item.go (where the use case is defined); this
+// is a redundant consumer-site drift detector so a future change to
+// either side surfaces a build failure at the call site, not deep in
+// the use case package.
+var _ voiceover.VoiceoverItemExecutor = (*voiceover.ProcessVoiceoverItemUseCase)(nil)

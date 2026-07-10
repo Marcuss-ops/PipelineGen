@@ -56,9 +56,13 @@ func (pipelineTransUCStub) TranslateScriptSpec(
 	return out, nil, nil
 }
 
-// pipelineVOStub records the text passed to Generate/GenerateWithDestination
-// so the test can assert it received Italian (not English) text.
-// Mutex-protected because RunVoiceoverSceneFanout uses concurrent.ParallelMap.
+// pipelineVOStub records the text passed to Execute so the test can
+// assert it received Italian (not English) text. Mutex-protected
+// because RunVoiceoverSceneFanout uses concurrent.ParallelMap.
+//
+// P0-#3 final closure (July 2026): the legacy VoiceoverService port
+// (Generate + GenerateWithDestination) is RETIRED. The stub now
+// implements the single canonical Execute method.
 type pipelineVOStub struct {
 	mu            sync.Mutex
 	capturedTexts []string
@@ -70,15 +74,26 @@ func (s *pipelineVOStub) capture(text string) {
 	s.capturedTexts = append(s.capturedTexts, text)
 }
 
-func (s *pipelineVOStub) Generate(_ context.Context, text, _, _ string) (*voiceover.VoiceoverResult, error) {
-	s.capture(text)
-	return &voiceover.VoiceoverResult{DriveLink: "https://drive.example/vo.mp3", Path: "/tmp/vo.mp3"}, nil
+func (s *pipelineVOStub) Execute(_ context.Context, item *voiceover.GenerateVoiceoverItemCommand) (*voiceover.VoiceoverItemResult, error) {
+	if item == nil {
+		return &voiceover.VoiceoverItemResult{
+			Status: voiceover.StatusFailed,
+			Error:  "nil GenerateVoiceoverItemCommand",
+		}, nil
+	}
+	s.capture(item.Text)
+	return &voiceover.VoiceoverItemResult{
+		Status:    voiceover.StatusCompleted,
+		Language:  item.Language,
+		Filename:  item.Filename,
+		DriveLink: "https://drive.example/vo.mp3",
+		LocalPath: "/tmp/vo.mp3",
+	}, nil
 }
 
-func (s *pipelineVOStub) GenerateWithDestination(_ context.Context, text, _, _ string, _ *voiceover.DestinationRequest) (*voiceover.VoiceoverResult, error) {
-	s.capture(text)
-	return &voiceover.VoiceoverResult{DriveLink: "https://drive.example/vo.mp3", Path: "/tmp/vo.mp3"}, nil
-}
+// Compile-time assertion (AGENTS.md Pattern 0): pipelineVOStub must
+// structurally satisfy voiceover.VoiceoverItemExecutor.
+var _ voiceover.VoiceoverItemExecutor = (*pipelineVOStub)(nil)
 
 // pipelineClassifyStub always returns ReasonUnknown (matches the noop
 // classifier behavior; sufficient for the pipeline integration test).
