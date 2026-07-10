@@ -26,8 +26,6 @@ package drive
 
 import (
 	"context"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 )
 
 // DriveVerifierAdapter verifies Google Drive links via the Drive API.
@@ -64,9 +62,12 @@ func (v *DriveVerifierAdapter) VerifyDriveLink(ctx context.Context, driveLink st
 	return v.reader.FileIsNotTrashed(ctx, fileID)
 }
 
-// Compile-time assertion: DriveVerifierAdapter satisfies the
-// artifacts.DriveVerifier port. Importing artifacts directly is
-// safe here (drive → artifacts): artifacts does NOT import drive anymore
-// (PR2.7 stripped the verifier.go's drive + driveupload + driveapi
-// imports). One-direction ⊆ cyclic-free.
-var _ artifacts.DriveVerifier = (*DriveVerifierAdapter)(nil)
+// Compile-time pin (Pattern 0): local anonymous interface avoids the
+// artifacts → assetindex → sqlite/assets → drive → artifacts cycle.
+// Full-port assertion enforced at the composition root.
+//
+// NOTE: if artifacts.DriveVerifier gains a second method, this local
+// assertion won't catch the drift — the composition-root pin will.
+var _ interface {
+	VerifyDriveLink(ctx context.Context, driveLink string) (bool, error)
+} = (*DriveVerifierAdapter)(nil)

@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 )
@@ -221,7 +220,7 @@ func typedNotFoundIfZeroRows(res sql.Result, target, voiceoverID string) error {
 	}
 	if rows == 0 {
 		return fmt.Errorf("%w (target=%s, voiceover_id=%s)",
-			scripts.ErrUploadIntentNotFound, target, voiceoverID)
+			ErrUploadIntentNotFound, target, voiceoverID)
 	}
 	return nil
 }
@@ -619,13 +618,13 @@ func TestUploadIntentUseCase_FailFastGuards(t *testing.T) {
 	}
 }
 
-// Sanity: scripts.ErrUploadIntentNotFound (the production sentinel)
-// is imported correctly — not a compile-time regression tripwire.
+// Sanity: ErrUploadIntentNotFound (the application-layer sentinel)
+// is non-nil and has the expected text — not a compile-time regression tripwire.
 func TestUploadIntentUseCase_SentinelImportSanity(t *testing.T) {
-	if scripts.ErrUploadIntentNotFound == nil {
-		t.Fatal("scripts.ErrUploadIntentNotFound must be non-nil (production sentinel)")
+	if ErrUploadIntentNotFound == nil {
+		t.Fatal("ErrUploadIntentNotFound must be non-nil (application-layer sentinel)")
 	}
-	if !strings.Contains(scripts.ErrUploadIntentNotFound.Error(), "row not found") {
-		t.Errorf("sentinel text unexpected: %q", scripts.ErrUploadIntentNotFound.Error())
+	if !strings.Contains(ErrUploadIntentNotFound.Error(), "row not found") {
+		t.Errorf("sentinel text unexpected: %q", ErrUploadIntentNotFound.Error())
 	}
 }

@@ -23,6 +23,10 @@ func (f *fakeBackend) Generate(_ context.Context, req PortGenerateRequest) (*Por
 	return f.result, nil
 }
 
+func (f *fakeBackend) TriggerPrewarm(_ context.Context, _ string, _ int) {
+	// no-op stub for ImageGeneratorPort contract
+}
+
 func TestGenerationRegistry_DefaultsToGoogleSlidesNanoBananaPro(t *testing.T) {
 	backend := &fakeBackend{result: &PortGeneratedImage{Data: []byte("png-bytes"), Format: "png"}}
 	registry := NewDefaultProviderRegistry(zap.NewNop(), backend)

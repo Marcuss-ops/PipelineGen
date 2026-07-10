@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"go.uber.org/zap"
@@ -62,7 +61,7 @@ func (m *sweepMockRepo) MarkFailed(ctx context.Context, voiceoverID, reason stri
 	if !m.markFailedFound {
 		// Mirror the production concrete's wrap format so
 		// isUploadIntentNotFound(...) returns true via errors.Is.
-		return fmt.Errorf("%w (target=failed, voiceover_id=%s)", scripts.ErrUploadIntentNotFound, voiceoverID)
+		return fmt.Errorf("%w (target=failed, voiceover_id=%s)", ErrUploadIntentNotFound, voiceoverID)
 	}
 	return nil
 }
