@@ -3,7 +3,7 @@
 //
 // PG-003 (June 2026): the sfx handler previously imported four concrete
 // infrastructure types (*assets.ClipsRepository, *drive.Uploader,
-// *semantic.MetadataWriter, *drive.Resolver) which violated AGENTS.md
+// semantic.MetadataWriterPort, *drive.Resolver) which violated AGENTS.md
 // Pattern 0 (typed ports). These ports replace those reach-throughs.
 // Concrete adapters live in internal/app/adapters_soundeffect.go and
 // implement compile-time `var _ <Port> = (*<Adapter>)(nil)` assertions.

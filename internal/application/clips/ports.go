@@ -5,7 +5,7 @@
 // internal/api/assets/clips/** reached through 6 concrete
 // internal/infrastructure/* types (*config.Config,
 // *assets.ClipsRepository, *assets.VoiceoversRepository,
-// *assets.ImagesRepository, *drive.Uploader, *semantic.MetadataWriter,
+// *assets.ImagesRepository, *drive.Uploader, semantic.MetadataWriterPort,
 // *clipindexer.Service, *foldermemory.Service) plus a raw hashutil
 // helper. Per AGENTS.md Pattern 0 + PG-005 ticket scope, every
 // infrastructure-shaped dependency now flows through a typed port
@@ -197,7 +197,7 @@ type ClipDriveUploaderPort interface {
 }
 
 // ClipMetaWriterPort is the canonical narrow surface of
-// *semantic.MetadataWriter. GeneratePayload returns the parsed
+// semantic.MetadataWriterPort. GeneratePayload returns the parsed
 // payload + status string; matches the existing EnrichUseCase
 // signature so the use case can swap to the port without semantic
 // drift.

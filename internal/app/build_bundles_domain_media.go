@@ -48,23 +48,32 @@ func buildDomainMediaServices(
 	mutationsDisp mutations.AssetMutationDispatcher,
 	bundle *DomainBundle,
 ) (
-	voMetaWriter *semantic.MetadataWriter,
+	voMetaWriter semantic.MetadataWriterPort,
 	clipWriter *assets.ClipAtomicWriterAdapter,
 	err error,
 ) {
-	voMetaWriter = semantic.NewMetadataWriter(
-		cfg.Paths.PythonScriptsDir,
-		cfg.Storage.TempPath(),
-		cfg.External.OllamaURL,
-		cfg.External.OllamaModel,
-		log,
-	)
+	// P0-#2 (July 2026): the composition root no longer constructs
+	// semantic.NewMetadataWriter(...) (the retired fake concrete). The
+	// metadata writer capability is now wired ONLY via the
+	// semantic.MetadataWriterPort port — the production composition
+	// passes nil when the real semantic tagger is absent. Consumers
+	// nil-check the port at the call site (e.g., buildVoiceoverService
+	// returns an error on nil, SemanticEnricher.Enrich returns an
+	// error on nil, MetadataService.tagImageMetadata returns
+	// (nil, nil) on nil). godlike/07 NO-FAKE-AVAILABILITY: nil is the
+	// correct signal for 'this capability is not available' — callers
+	// cannot accidentally observe a synthetic Payload from a disabled
+	// stub. The real implementation (P0.18 follow-up) will replace
+	// this nil with a real *ollama.TaggerAdapter that structurally
+	// satisfies semantic.MetadataWriterPort.
+	voMetaWriter = nil
 
 	clipProcessor := pkgffmpeg.NewFromConfig(cfg)
 	videoPipeline := videomuscles.NewPipeline(cfg, log, clipProcessor)
 	videoPipelineAdapter := ytinfra.NewVideoPipelineAdapter(videoPipeline)
 
 	folderMemSvc := foldermemory.NewService(log, repos.ClipsRepo)
+	_ = voMetaWriter // P0-#2: voMetaWriter is nil in production (no real semantic tagger); retained on the return tuple for forward-compat with future real-implementation wiring
 	metaFetcher := ytinfra.NewMetadataFetcherAdapter(cfg, nil)
 	youtubePubAdapter := NewYouTubePublisherDriveAdapter(drive.Publisher, log)
 	youtubeCache := ytcache.NewService(ytcache.Deps{DB: repos.ClipsRepo.DB(), Log: log})

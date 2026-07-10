@@ -65,13 +65,13 @@ func (a *sfxClipsRepoAdapter) Upsert(ctx context.Context, clip *asset.Asset) err
 
 // ── Semantic writer adapter ──────────────────────────────────────────
 
-// sfxSemanticWriterAdapter wraps *semantic.MetadataWriter to satisfy
+// sfxSemanticWriterAdapter wraps semantic.MetadataWriterPort to satisfy
 // sfxports.SemanticMetadataWriterPort. Translates between the narrow
 // sfxports.MetadataWriteRequest / MetadataWriteResponse DTOs and the
 // concrete semantic.WriteRequest / *semantic.WriteResult (with inner
 // *Payload).
 type sfxSemanticWriterAdapter struct {
-	w *semantic.MetadataWriter
+	w semantic.MetadataWriterPort
 }
 
 // Compile-time assertion: sfxSemanticWriterAdapter satisfies sfxports.SemanticMetadataWriterPort.

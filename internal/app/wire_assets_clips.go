@@ -59,7 +59,7 @@ func buildClipsBundle(
 	lifecycle driveutil.FileLifecycle,
 	assetRepo asset.Repository,
 	searchAggregator *search.Aggregator,
-	metaWriter *semantic.MetadataWriter,
+	metaWriter semantic.MetadataWriterPort,
 	folderMemSvc *foldermemory.Service,
 	deletionSvc *deletion.DeletionService,
 	idemHandler gin.HandlerFunc,

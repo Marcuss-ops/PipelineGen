@@ -29,7 +29,7 @@
 // sfxports.* ports (ClipRepositoryPort / DriveUploaderPort /
 // SemanticMetadataWriterPort / DestinationResolverPort /
 // DispatcherPort / PublisherPort) — the concrete
-// *assets.ClipsRepository + *drive.Uploader + *semantic.MetadataWriter
+// *assets.ClipsRepository + *drive.Uploader + semantic.MetadataWriterPort
 // + *drive.Resolver reach-throughs are now hidden behind adapter
 // structs in `internal/app/adapters_infra.go`. The Build contract
 // consumes these typed-port interfaces as flat Dependencies
@@ -108,7 +108,7 @@ type Dependencies struct {
 	// MetaWriter is the canonical
 	// sfxports.SemanticMetadataWriterPort (PG-003, June 2026).
 	// In production, the sfxSemanticWriterAdapter wraps
-	// *semantic.MetadataWriter. OPTIONAL — the handler
+	// semantic.MetadataWriterPort. OPTIONAL — the handler
 	// nil-checks at request time and falls back to inline
 	// tag/searchText defaults when nil.
 	MetaWriter sfxports.SemanticMetadataWriterPort

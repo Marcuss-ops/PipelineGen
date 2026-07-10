@@ -247,8 +247,8 @@ func buildImagesService(
 	driveUploader *drive.Uploader, clipsRepo *sqassets.ClipsRepository, artlistRepo *sqassets.ClipsRepository,
 	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
 	mediaStore *drive.Store, publisher delivery.Publisher, imageRepo *sqassets.ImagesRepository,
-	voMetaWriter *semantic.MetadataWriter, ingestSvc *ingest.Service, dispatcher *outbox.Dispatcher,
-) (*imgservice.Service, *semantic.MetadataWriter) {
+	voMetaWriter semantic.MetadataWriterPort, ingestSvc *ingest.Service, dispatcher *outbox.Dispatcher,
+) (*imgservice.Service, semantic.MetadataWriterPort) {
 	_ = ctx
 	_ = artlistRepo
 	const destinationsYAMLPath = "config/image_destinations.yaml"

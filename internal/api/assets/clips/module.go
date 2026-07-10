@@ -117,7 +117,7 @@ type Dependencies struct {
 
 	// MetaWriter handles semantic metadata JSON generation.
 	// MANDATORY — used by Ingest sub-handler + clip_action.
-	MetaWriter *semantic.MetadataWriter
+	MetaWriter semantic.MetadataWriterPort
 
 	// ClipIndexer is the qdrant-fed clip indexer.
 	// MANDATORY — used by ReindexClip / BatchReindex.

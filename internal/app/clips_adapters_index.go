@@ -244,7 +244,7 @@ func newClipsAdapterBundle(
 	imagesRepo *assets.ImagesRepository,
 	driveUp *drive.Uploader,
 	lifecycle drive.FileLifecycle,
-	metaWriter *semantic.MetadataWriter,
+	metaWriter semantic.MetadataWriterPort,
 	clipIndexer *clipindexer.Service,
 	folderMemSvc *foldermemory.Service,
 	assetTreeSvc *assettree.Service,

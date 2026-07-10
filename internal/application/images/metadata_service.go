@@ -18,7 +18,7 @@ import (
 // It is the canonical owner of metaWriter (semantic.MetadataWriter) and
 // all metadata-related operations for images, videos, and audio clips.
 type MetadataService struct {
-	metaWriter *semantic.MetadataWriter
+	metaWriter semantic.MetadataWriterPort
 	publisher  delivery.Publisher
 	tempDir    string
 	log        *zap.Logger

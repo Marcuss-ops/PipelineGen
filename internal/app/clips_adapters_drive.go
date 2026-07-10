@@ -121,19 +121,19 @@ func (a *clipsDriveAdapter) ListFiles(ctx context.Context, query string) ([]clip
 
 // ── Meta writer adapter ──────────────────────────────────────────
 
-// clipMetaWriterAdapter wraps *semantic.MetadataWriter to satisfy
+// clipMetaWriterAdapter wraps semantic.MetadataWriterPort to satisfy
 // clips.ClipMetaWriterPort. GeneratePayload translates the narrowed
 // ClipMetaWriteRequest → concrete semantic.WriteRequest at the
 // adapter boundary, executes the call, and projects the result onto
 // ClipMetaPayload so callers never import the SDK.
 type clipMetaWriterAdapter struct {
-	inner *semantic.MetadataWriter
+	inner semantic.MetadataWriterPort
 }
 
 // Compile-time assertion: clipMetaWriterAdapter satisfies clips.ClipMetaWriterPort.
 var _ clips.ClipMetaWriterPort = (*clipMetaWriterAdapter)(nil)
 
-func newClipMetaWriterAdapter(w *semantic.MetadataWriter) clips.ClipMetaWriterPort {
+func newClipMetaWriterAdapter(w semantic.MetadataWriterPort) clips.ClipMetaWriterPort {
 	if w == nil {
 		return nil
 	}

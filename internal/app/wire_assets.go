@@ -150,7 +150,14 @@ func WireAssets(
 		zap.Int("backends", len(searchBackends.All())))
 
 	folderMemSvc := foldermemory.NewService(log, deps.Core.ClipsRepo)
-	metaWriter := semantic.NewMetadataWriter(cfg.Paths.PythonScriptsDir, cfg.Storage.TempPath(), cfg.External.OllamaURL, cfg.External.OllamaModel, log)
+	// P0-#2 (July 2026): the sfx capability is the canonical
+	// graceful-degradation consumer (the handler logs the error and
+	// continues). Wire the explicit nop so sfxSemanticWriterAdapter
+	// receives a non-nil port and the handler's h.metaWriter != nil
+	// check fires the Write call (which returns the typed sentinel
+	// and gets logged). Other consumers (clips, voiceover) get nil
+	// from their respective composition-root sites.
+	metaWriter := semantic.NewNopMetadataWriter(log)
 	deletionSvc := deletion.NewDeletionService(deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.VoiceoverRepo, deps.Core.ImageRepo, driveUploader, deps.Core.AssetTreeService, deps.Core.AssetIndexService, dispatcher, nil, nil, log)
 
 	var idemHandler gin.HandlerFunc = func(c *gin.Context) { c.Next() }
@@ -255,7 +262,7 @@ func buildSoundeffectBundle(
 	cfg *config.Config,
 	log *zap.Logger,
 	deps *AssetsModuleDeps,
-	metaWriter *semantic.MetadataWriter,
+	metaWriter semantic.MetadataWriterPort,
 	driveUploader *driveutil.Uploader,
 	dispatcher *outbox.Dispatcher,
 ) (*assetsfx.SoundeffectDescriptor, error) {
