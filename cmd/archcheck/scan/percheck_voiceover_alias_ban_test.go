@@ -2,7 +2,7 @@
 // percheck_voiceover_alias_ban.go forward-prevention gate
 // (PR-VOICEOVER-ALIASES-RETIRE Sub-PR C, ship_date 2026-07-10).
 //
-// The 9 tests below lock the canonical contract established by
+// The 12 canonical scanner tests below lock the contract established by
 // percheck_player_client_check + percheck_root_override_check
 // precedents, extended here to 6 retired-alias literals:
 //
@@ -28,7 +28,7 @@
 //
 // The permute-item tests are NOT included because the retired
 // alias set has 6 entries (one per alias); permuting them as
-// separate cases would be 6× duplication. The 10-case set above
+// separate cases would be 6× duplication. The 11-case set above
 // already covers the critical invocation profiles without
 // permuting across aliases — the per-alias iteration is a code-
 // motion concern (no semantic test value).
@@ -71,7 +71,7 @@ func writeFixtureAliasBan(t *testing.T, root, relPath, content string) string {
 }
 
 // newEmptyReportAliasBan returns the canonical empty report fixture
-// used by all 7 tests below. Per-package naming (mirrors the
+// used by all 12 tests below. Per-package naming (mirrors the
 // writeFixtureAliasBan rationale above).
 //
 // Mirrors percheck_player_client_test.go::newEmptyReport (canonical
