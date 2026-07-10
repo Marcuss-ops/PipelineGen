@@ -19,7 +19,7 @@
 //
 // declared explicitly with a linked_issue cross-ref; see
 // architecture/current.yaml#ART-001.linked_issues (godlike/07 EXPAND-phase
-// discipline). The 3 repo fields (AssetProcRepo / AssetVerRepo / AssetLocRepo)
+// discipline). The 2 repo fields (AssetProcRepo / AssetVerRepo)
 // are now WIRED via sqassets.NewAssetStoreSQLite (PRIORITÀ ASSOLUTA — nil would
 // panic in run_orchestrator_stages.go); the 3 searcher fields
 // (ScraperSearcher / PixabaySearcher / PexelsSearcher) are now WIRED inline from
@@ -185,17 +185,19 @@ func WireArtlist(
 	// AssetProcRepo + AssetVerRepo are MANDATORY — called in
 	// run_orchestrator_stages.go (Start/Fail/Complete + Append); nil would
 	// panic on any real /run invocation (PRIORITÀ ASSOLUTA per la matrice
-	// Frequenza×Complessità). AssetLocRepo is a free bonus (zero call sites
-	// today but cheap to wire now).
+	// Frequenza×Complessità).
 	//
-	// godlike/06 SSOT: the canonical adapter factories live on
-	// *assets.AssetStoreSQLite.ProcessingRepository() / .VersionRepository() /
-	// .LocationRepository() (processing_queries.go / version_queries.go /
-	// location_queries.go).
+	// PR-DEADC-ARTLIST-ASSET-LOC-REPO-RETIRE (2026-07-10): AssetLocRepo
+	// retired per `architecture/action-plans/2026-07-10-dead-code-p1-p2-cleanup.md#§3-Phase-C`.
+	// assetSQLiteStore.LocationRepository() remains available for future
+	// callers but is no longer wired into the artlist service (zero
+	// call sites in service.go after retirement). godlike/06 SSOT:
+	// the canonical adapter factories still live on
+	// *assets.AssetStoreSQLite.ProcessingRepository() / .VersionRepository()
+	// (processing_queries.go / version_queries.go).
 	assetSQLiteStore := assets.NewAssetStoreSQLite(bundle.DB.DB, log)
 	assetProcRepo := assetSQLiteStore.ProcessingRepository()
 	assetVerRepo := assetSQLiteStore.VersionRepository()
-	assetLocRepo := assetSQLiteStore.LocationRepository()
 
 	// PR-ARTLIST-PERSIST-FIX (2026-07-04): mandatory RunRepository
 	// wiring (godlike/07 fail-closed) via the composition-root
@@ -312,7 +314,6 @@ func WireArtlist(
 			JobsSvc:           bundle.Jobs.Service,
 			AssetProcRepo:     assetProcRepo,
 			AssetVerRepo:      assetVerRepo,
-			AssetLocRepo:      assetLocRepo,
 		},
 	})
 	if err != nil {

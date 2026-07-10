@@ -89,8 +89,15 @@ type ServicePorts struct {
 // point. MediaProcessor, AssetDestResolver, JobsSvc
 // are cross-cutting domain services that already implement interfaces
 // in internal/core but whose concrete instances the application holds
-// directly. AssetProcRepo / AssetVerRepo / AssetLocRepo are the
-// canonical asset-lifecycle repositories from internal/domain/asset.
+// directly. AssetProcRepo / AssetVerRepo are the canonical
+// asset-lifecycle repositories from internal/domain/asset.
+//
+// PR-DEADC-ARTLIST-ASSET-LOC-REPO-RETIRE (2026-07-10): AssetLocRepo
+// retired per `architecture/action-plans/2026-07-10-dead-code-p1-p2-cleanup.md#§3-Phase-C`.
+// asset.LocationRepository remains a canonical asset-package type
+// (in case of future need) but the artlist service-layer field is
+// removed (rg-verified zero call sites in service.go or any
+// non-test file).
 //
 // ArtlistDB was removed (PR2.6): after the media.db.sqlite unification,
 // MainDB is the only DB handle in the system.
@@ -111,7 +118,6 @@ type ServiceDependencies struct {
 	JobsSvc           jobs.Service
 	AssetProcRepo     asset.ProcessingRepository
 	AssetVerRepo      asset.VersionRepository
-	AssetLocRepo      asset.LocationRepository
 }
 
 // ServiceDeps is the canonical constructor input for artlist.Service.
@@ -208,9 +214,6 @@ type Service struct {
 	assetProcessing asset.ProcessingRepository
 	assetVersions   asset.VersionRepository
 
-	// Asset locations: canonical source of truth for local/drive paths.
-	assetLocRepo asset.LocationRepository
-
 	// stager is the shared SourceStager port (Step 9/12 wire-up). Optional.
 	stager assets.SourceStager
 
@@ -281,7 +284,6 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		liveCache:         newPersistentLiveSearchCache(deps.MainDB, deps.Log),
 		assetProcessing:   deps.AssetProcRepo,
 		assetVersions:     deps.AssetVerRepo,
-		assetLocRepo:      deps.AssetLocRepo,
 		stager:            deps.Stager,
 		isLiveProbe:       deps.IsLiveProbe,
 		runRepo:           deps.RunRepository,
