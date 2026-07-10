@@ -123,6 +123,20 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 	}
 
 	// Try persistent worker first.
+	// BUG-FIX (2026-07-10): 3 interacting bugs caused the voiceover
+	// pipeline hang:
+	//   1. Missing defer p.mu.Unlock() — panic in ensureStarted or
+	//      sendSynthesizeRequest poisoned the mutex permanently
+	//   2. ensureStarted() blocked indefinitely on scanner.Scan()
+	//      when Python stdout was buffered (no PYTHONUNBUFFERED=1)
+	//   3. No timeout on PORT line reading — Python crash or buffer
+	//      stall left the goroutine hanging forever
+	//
+	// The fix splits the lock scope: ensureStarted runs under p.mu
+	// (serialises startup), then the mutex is released before the
+	// legacy fallback (which does NOT need p.mu since each legacy
+	// call spawns its own subprocess). sendSynthesizeRequest runs
+	// under p.mu because the Python HTTP server is single-threaded.
 	p.mu.Lock()
 	if err := p.ensureStarted(ctx); err != nil {
 		p.mu.Unlock()
@@ -131,7 +145,11 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		return p.generateLegacy(ctx, input, safeName)
 	}
 
-	result, err := p.sendSynthesizeRequest(ctx, &AudioInput{
+	// NOTE: p.mu is held here. sendSynthesizeRequest accesses the
+	// single-threaded Python HTTP server, so serialisation is needed.
+	// defer ensures unlock even on panic (BUG-FIX #1).
+	defer p.mu.Unlock()
+	return p.sendSynthesizeRequest(ctx, &AudioInput{
 		Text:          input.Text,
 		Language:      input.Language,
 		Voice:         input.Voice,
@@ -139,8 +157,6 @@ func (p *Processor) Generate(ctx context.Context, input *AudioInput) (*AudioResu
 		OutputDir:     input.OutputDir,
 		RemoveSilence: input.RemoveSilence,
 	})
-	p.mu.Unlock()
-	return result, err
 }
 
 // generateLegacy is the pre-P0-#1 spawn-per-call path. Retained as

@@ -220,6 +220,33 @@ func TestSceneAssetBinder_BindClips_ProseFallbackEmptyText(t *testing.T) {
 	assert.Equal(t, false, res.Changed)
 }
 
+// TestSceneAssetBinder_BindClips_ProseFallbackNoClipEvidence covers the
+// case where scenes are empty and clip evidence is missing or empty,
+// verifying that scenes are still synthesized based on sentences and NumClips.
+func TestSceneAssetBinder_BindClips_ProseFallbackNoClipEvidence(t *testing.T) {
+	t.Parallel()
+	b := scene.NewSceneAssetBinder(zap.NewNop())
+	
+	// Case 1: no clip evidence, NumClips = 0, default fallback n = sentences (3)
+	const prose = "First sentence here. Second sentence here. Third sentence here."
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SentencesPerImage: 1, // should split to 3 scenes
+	}
+	res := b.BindClips(nil, prose, plan)
+	require.Equal(t, true, res.Changed)
+	require.Len(t, res.SynthesizedScenes, 3)
+	assert.Nil(t, res.SynthesizedScenes[0].Bindings.Clip)
+	assert.Contains(t, res.Warnings[0], "bound 0/0 clips")
+
+	// Case 2: no clip evidence, NumClips = 2, forces n = 2 scenes
+	plan2 := &scriptpkg.ResolvedGenerationPlan{
+		NumClips: 2,
+	}
+	res2 := b.BindClips(nil, prose, plan2)
+	require.Equal(t, true, res2.Changed)
+	require.Len(t, res2.SynthesizedScenes, 2)
+}
+
 // ── BindStock ──────────────────────────────────────────────────────────
 
 // TestSceneAssetBinder_BindStock_NilSearch is the canonical composition-time
