@@ -415,3 +415,79 @@ func TestCurateResolver_SearchHitsAndClipHints_Dedup(t *testing.T) {
 	// The builder was called with the unique, dedup'd set.
 	// fakePackForIDs confirms the resolver passed exactly {A,B,C}.
 }
+
+// ── PR-DEADC-CURATION-MED-CURATOR-RETIRE migration contract ────────────
+//
+// The retired internal/application/scripts/usecase/media_curator_test.go
+// tested the contract via the stub MediaCurator (deleted in this PR).
+// The canonical CurateSourceResolver must satisfy the same errors.Is
+// contract on the same sentinel (ErrCurateNoClips at line 58 of
+// source_resolver_curate.go). The 2 tests below migrate the contract
+// from the stub-era tests onto the canonical surface.
+//
+// Per code-reviewer MUST-FIX #1: the typed envelope contract is locked
+// alongside the sentinel probe — a future refactor that drops the
+// `Inner:` field on SourceResolutionError would silently drift the
+// wire-shape; the errors.As probe catches that regression.
+//
+// Per code-reviewer SHOULD-FIX #3: the HintClipIDs success test now
+// asserts the positive contract (resolved.ClipEvidence has the
+// expected clips) so a regression that produces empty results without
+// an error would surface as a test failure.
+func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
+	t.Parallel()
+	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs(nil)})
+	r.SetClipSearchPort(&fakeClipSearch{hits: nil})
+	_, err := r.Resolve(context.Background(), srcSpec("no-results", nil, true, false), makeTestResCtx())
+	if err == nil {
+		t.Fatal("expected error when no clips resolve and AllowTextOnly=false, got nil")
+	}
+	// Lock the sentinel-level contract (the deleted stub-era test
+	// also probed this via errors.Is(err, ErrCurateNoClips)).
+	if !errors.Is(err, ErrCurateNoClips) {
+		t.Fatalf("expected errors.Is(err, ErrCurateNoClips)=true, got err=%v", err)
+	}
+	// Lock the typed envelope contract (code-reviewer MUST-FIX #1):
+	// a future refactor that drops the `Inner:` field on
+	// SourceResolutionError would surface here.
+	var srcErr *scriptpkg.SourceResolutionError
+	if !errors.As(err, &srcErr) {
+		t.Fatalf("expected *scriptpkg.SourceResolutionError, got %T", err)
+	}
+	if srcErr.ResultCount != 0 {
+		t.Errorf("expected ResultCount=0, got %d", srcErr.ResultCount)
+	}
+}
+
+func TestCurateResolver_HintClipIDsOnly_DoesNotSurfaceErrCurateNoClips(t *testing.T) {
+	t.Parallel()
+	ids := []string{"A", "B", "C"}
+	r := makeTestCurateResolver(&fakeClipBuilder{
+		ev:         makePackForIDs(ids),
+		sourceText: "hint clip text",
+	})
+	// No port wired — HintClipIDs-only mode.
+	resolved, err := r.Resolve(context.Background(), srcSpec("", ids, false, false), makeTestResCtx())
+	if err != nil {
+		t.Fatalf("expected no error on HintClipIDs success path, got %v", err)
+	}
+	// Negative contract: the sentinel MUST NOT surface on the
+	// HintClipIDs success path (the deleted stub-era test also
+	// probed this via errors.Is(err, ErrCurateNoClips) == false).
+	if errors.Is(err, ErrCurateNoClips) {
+		t.Fatal("HintClipIDs-resolved path MUST NOT surface ErrCurateNoClips")
+	}
+	// Positive contract (code-reviewer SHOULD-FIX #3): the resolver
+	// MUST propagate the HintClipIDs to the builder — a regression
+	// that produces empty results without an error would surface
+	// here.
+	if resolved.ClipEvidence == nil {
+		t.Fatal("expected non-nil ClipEvidence on HintClipIDs success path")
+	}
+	if got := len(resolved.ClipEvidence.AcceptedClipIDs); got != len(ids) {
+		t.Errorf("expected %d clips in ClipEvidence, got %d", len(ids), got)
+	}
+	if resolved.SourceText != "hint clip text" {
+		t.Errorf("expected source text 'hint clip text', got %q", resolved.SourceText)
+	}
+}
