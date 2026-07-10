@@ -135,6 +135,10 @@ func TestGenerateE2E_GenerateSceneImages_BindsBindingImageStatus(t *testing.T) {
 	// regression tests).
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
 	require.True(t, ppReg.Register(imgProc), "images proc must register")
+	require.True(t, ppReg.Register(&stubPostProcessor{
+		name:   "persistence",
+		result: &adapters.PostProcessResult{Changed: true},
+	}), "persistence proc must register")
 	ppReg.Freeze()
 
 	// ── Use case: text-only plan path (Source.Type=SourceText)
@@ -243,6 +247,10 @@ func TestGenerateE2E_GenerateSceneImages_SingleScene_PinsStatus(t *testing.T) {
 	imgSvc := newFakeImageGenSvc(cannedURL)
 	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
 	require.True(t, ppReg.Register(adapters.NewImageProcessor(imgSvc, zap.NewNop())))
+	require.True(t, ppReg.Register(&stubPostProcessor{
+		name:   "persistence",
+		result: &adapters.PostProcessResult{Changed: true},
+	}), "persistence proc must register")
 	ppReg.Freeze()
 
 	uc := NewGenerateOneUseCase(

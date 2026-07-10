@@ -1,7 +1,1 @@
-HTTP/1.1 400 Bad Request
-Content-Type: application/json; charset=utf-8
-X-Request-Id: 20260709-154858-1a0d2845ba4f6bce
-Date: Thu, 09 Jul 2026 15:48:58 GMT
-Content-Length: 61
-
 {"error":"invalid YouTube URL: not a YouTube URL","ok":false}

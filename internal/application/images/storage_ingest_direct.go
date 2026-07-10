@@ -92,6 +92,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	}
 
 	var driveFileID string
+	storedSourceURL := source
 	if s.mediaStore != nil && !skipDrive {
 		if req.DriveRootOverride == "" {
 			if s.log != nil {
@@ -101,11 +102,14 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 					zap.String("slug", slug))
 			}
 		} else {
-			fileID, _, uploadErr := s.publishToDrive(ctx, req, dest.LocalPath)
+			fileID, webLink, uploadErr := s.publishToDrive(ctx, req, dest.LocalPath)
 			if uploadErr != nil {
 				s.log.Warn("Drive upload failed", zap.Error(uploadErr))
 			} else {
 				driveFileID = fileID
+				if strings.TrimSpace(webLink) != "" {
+					storedSourceURL = webLink
+				}
 				if !skipMetadata && metaResult != nil {
 					s.meta.uploadImageMetadata(ctx, style, slug, metaResult)
 				}
@@ -129,7 +133,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		SubjectID:    slug,
 		Hash:         hash,
 		PathRel:      dest.RelativePath,
-		SourceURL:    source,
+		SourceURL:    storedSourceURL,
 		Description:  description,
 		DriveFileID:  driveFileID,
 		Width:        width,
