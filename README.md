@@ -196,6 +196,9 @@ and the `fullimages-migrate` admin CLI:
 ```bash
 ./admin fullimages-migrate --target-dir ~/ops/scripts --exts .sh,.py,.md,.yaml
 # default = dry-run (no writes); add --apply to write the canonical text replacements
+
+# --json output mode (automation harnesses, jq, CI pipelines, monitoring scrapers)
+./admin fullimages-migrate --target-dir ~/ops/scripts --exts .sh,.py,.md,.yaml --json
 ```
 
 ## Project Structure

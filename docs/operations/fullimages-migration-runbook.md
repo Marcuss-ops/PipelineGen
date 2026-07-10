@@ -130,6 +130,78 @@ For other noisy directories, scope the scan with `--target-dir`:
 ./admin fullimages-migrate --target-dir ~/ops/scripts/prod --exts .sh --apply
 ```
 
+### §2.5 — JSON output mode (automation harnesses)
+
+For CI pipelines, monitoring scrapers, and operator dashboards that
+need to consume the migration report programmatically, add `--json`:
+
+```bash
+./admin fullimages-migrate \
+  --target-dir ~/ops/scripts \
+  --exts .sh,.py,.md,.yaml \
+  --json
+```
+
+**Output** (valid JSON, no NOTICE banner on stdout):
+
+```json
+{
+  "meta": {
+    "target_dir": "/home/operator/ops/scripts",
+    "exts": [".sh", ".py", ".md", ".yaml"],
+    "mode": "dry-run",
+    "timestamp": "2026-07-10T12:34:56.789Z"
+  },
+  "patterns": [
+    {"class": "URL",         "old": "api/fullimages/video/generate", "new": "api/fullimages/image/generate", "description": "REST endpoint path"},
+    {"class": "URL-partial", "old": "fullimages/video/generate",     "new": "fullimages/image/generate",     "description": "REST endpoint path (partial)"},
+    ...
+  ],
+  "totals": {
+    "files_with_hits": 3,
+    "total_matches": 7
+  },
+  "per_class_totals": {
+    "URL": 2,
+    "JSON-bracket": 1,
+    "Go-type": 2
+  },
+  "files": [
+    {
+      "path": "/home/operator/ops/scripts/legacy_video_gen.sh",
+      "total_matches": 2,
+      "hits": {"URL": 1, "Go-type": 1}
+    }
+  ],
+  "warnings": [],
+  "applied_files_count": 0
+}
+```
+
+The `--json` mode is **mutually exclusive with the human-readable path**:
+it suppresses the NOTICE banner + per-file WARN stderr lines
+(collected in the `warnings` JSON field instead), so stdout is
+machine-parseable end-to-end. Combine with `--apply` to get
+`applied_files_count > 0` in the response.
+
+**jq examples**:
+
+```bash
+# List every file with old patterns (sorted, diff-friendly)
+./admin fullimages-migrate --target-dir . --exts .sh,.py --json | jq '.files[].path'
+
+# Count files needing migration (for CI gate: fail if > 0)
+./admin fullimages-migrate --target-dir . --exts .sh,.py --json | jq '.totals.files_with_hits'
+
+# Per-class aggregate (for monitoring dashboard)
+./admin fullimages-migrate --target-dir . --exts .sh,.py --json | jq '.per_class_totals'
+
+# Apply + report (combined)
+./admin fullimages-migrate --target-dir . --exts .sh,.py --json --apply | jq '{mode: .meta.mode, applied: .applied_files_count, total: .totals.total_matches}'
+```
+
+### §2.6 — Before/after concrete example
+
 ### §2.5 — Before/after concrete example
 
 **Before** (`legacy_fullimages.sh`):

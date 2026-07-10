@@ -33,9 +33,17 @@
 // any file outside the `--exts` allowlist; the apply path writes
 // bytes-equivalent to the dry-run report (same line count, no
 // formatting changes).
+//
+// Output formats:
+//   - Default: human-readable report to stdout (operator-facing)
+//   - --json: structured JSON to stdout (automation-harness facing),
+//     suitable for `jq`/CI pipelines/monitoring scrapers. Suppresses
+//     the human-readable NOTICE banner + per-file WARN stderr lines
+//     (collected in the `warnings` JSON field instead).
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -43,6 +51,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // fullimagesMigratePattern is the canonical per-class rename table.
@@ -53,6 +62,59 @@ type fullimagesMigratePattern struct {
 	Old      string // old literal to search for
 	New      string // new literal to write
 	Filename string // human-readable description for the report
+}
+
+// fullimagesMigrateJSONReport is the canonical JSON output schema
+// (godlike/06 SSOT — automation-harness surface).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the schema is stable, additive-only,
+// and is the single canonical contract for CI pipelines + monitoring
+// scrapers that consume the migration report. New fields MAY be added
+// (additive); existing fields MUST NOT be renamed or repurposed.
+//
+//	{
+//	  "meta": {"target_dir": "...", "exts": [".sh", ".py"],
+//	//          "mode": "dry-run"|"apply", "timestamp": "RFC3339"},
+//	  "patterns": [{"class", "old", "new", "description"}],
+//	  "totals": {"files_with_hits": N, "total_matches": N},
+//	  "per_class_totals": {"ClassName": N},
+//	  "files": [{"path", "total_matches", "hits": {"ClassName": N}}],
+//	  "warnings": ["cannot access X: Y (skipped)"],
+//	  "applied_files_count": 0   // only meaningful when mode=="apply"
+//	}
+type fullimagesMigrateJSONReport struct {
+	Meta              fullimagesMigrateJSONMeta         `json:"meta"`
+	Patterns          []fullimagesMigrateJSONPattern    `json:"patterns"`
+	Totals            fullimagesMigrateJSONTotals       `json:"totals"`
+	PerClassTotals    map[string]int                    `json:"per_class_totals"`
+	Files             []fullimagesMigrateJSONFileResult `json:"files"`
+	Warnings          []string                          `json:"warnings"`
+	AppliedFilesCount int                               `json:"applied_files_count"`
+}
+
+type fullimagesMigrateJSONMeta struct {
+	TargetDir string    `json:"target_dir"`
+	Exts      []string  `json:"exts"`
+	Mode      string    `json:"mode"` // "dry-run" or "apply"
+	Timestamp time.Time `json:"timestamp"`
+}
+
+type fullimagesMigrateJSONPattern struct {
+	Class       string `json:"class"`
+	Old         string `json:"old"`
+	New         string `json:"new"`
+	Description string `json:"description"`
+}
+
+type fullimagesMigrateJSONTotals struct {
+	FilesWithHits int `json:"files_with_hits"`
+	TotalMatches  int `json:"total_matches"`
+}
+
+type fullimagesMigrateJSONFileResult struct {
+	Path         string         `json:"path"`
+	TotalMatches int            `json:"total_matches"`
+	Hits         map[string]int `json:"hits"`
 }
 
 var fullimagesMigratePatterns = []fullimagesMigratePattern{
@@ -125,14 +187,19 @@ func runFullImagesMigrate(args []string) error {
 	apply := flagSet.Bool("apply", false, "Write the text replacements to disk (default: dry-run only)")
 	targetDir := flagSet.String("target-dir", ".", "Directory to scan (hermetic: local filesystem only)")
 	extsFlag := flagSet.String("exts", ".sh,.py,.js,.md,.yaml,.yml,.json,.go", "Comma-separated file extensions to scan (default: operator-script + doc + go)")
+	jsonOut := flagSet.Bool("json", false, "Output a structured JSON report to stdout (automation-harness facing, suitable for jq/CI/scrapers). Suppresses the NOTICE banner + per-file WARN stderr lines (collected in the JSON `warnings` field instead)")
 	if err := flagSet.Parse(args); err != nil {
 		return err
 	}
 
-	fmt.Println("NOTICE: fullimages video→image migration (LEGACY-CLEANUP-5-ITEM-ORCHESTRATION Item 5, Option B)")
-	fmt.Println("NOTICE: shipped 2026-07-10; CLI: `fullimages-migrate [--apply] [--target-dir DIR] [--exts CSV]`")
-	fmt.Println("NOTICE: default = dry-run (no writes); --apply writes text replacements to disk")
-	fmt.Println()
+	// Notices: human-readable output only. --json mode suppresses them
+	// to keep stdout clean for automation harnesses.
+	if !*jsonOut {
+		fmt.Println("NOTICE: fullimages video→image migration (LEGACY-CLEANUP-5-ITEM-ORCHESTRATION Item 5, Option B)")
+		fmt.Println("NOTICE: shipped 2026-07-10; CLI: `fullimages-migrate [--apply] [--target-dir DIR] [--exts CSV] [--json]`")
+		fmt.Println("NOTICE: default = dry-run (no writes); --apply writes text replacements to disk")
+		fmt.Println()
+	}
 
 	// Validate --target-dir early
 	absDir, err := filepath.Abs(*targetDir)
@@ -168,11 +235,16 @@ func runFullImagesMigrate(args []string) error {
 	type fileHitsMap = map[string]map[string]int
 	fileHits := make(fileHitsMap)
 
+	// Collect warnings during the walk (per-file access errors). The
+	// human-readable output prints these to stderr at the end; the
+	// --json output embeds them in the `warnings` field.
+	var warnings []string
+
 	walkErr := filepath.WalkDir(absDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			// Don't abort the whole walk on a single permission error;
 			// record the skip and continue (operator-visible in the report).
-			fmt.Fprintf(os.Stderr, "WARN: cannot access %q: %v (skipped)\n", path, err)
+			warnings = append(warnings, fmt.Sprintf("cannot access %q: %v (skipped)", path, err))
 			return nil
 		}
 		if d.IsDir() {
@@ -189,7 +261,7 @@ func runFullImagesMigrate(args []string) error {
 		}
 		content, err := os.ReadFile(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "WARN: cannot read %q: %v (skipped)\n", path, err)
+			warnings = append(warnings, fmt.Sprintf("cannot read %q: %v (skipped)", path, err))
 			return nil
 		}
 		// Skip the CLI itself to avoid self-matching (the patterns
@@ -214,16 +286,47 @@ func runFullImagesMigrate(args []string) error {
 		return fmt.Errorf("walk failed: %w", walkErr)
 	}
 
-	// Render the dry-run report.
-	report := buildFullimagesMigrateReport(absDir, fileHits, fullimagesMigratePatterns)
-	fmt.Print(report)
-
-	// Apply (if requested)
+	// Apply (if requested) — done BEFORE rendering so the JSON
+	// report's `applied_files_count` reflects the actual write count.
+	var appliedCount int
 	if *apply {
-		appliedCount, applyErr := applyFullimagesMigrate(fileHits, fullimagesMigratePatterns)
+		var applyErr error
+		appliedCount, applyErr = applyFullimagesMigrate(fileHits, fullimagesMigratePatterns)
 		if applyErr != nil {
 			return fmt.Errorf("apply failed: %w", applyErr)
 		}
+	}
+
+	// Branch output format: --json for automation harnesses, default
+	// human-readable for operators. The two formats are mutually
+	// exclusive (--json suppresses the NOTICE banner + WARN stderr
+	// lines per godlike/07 NO-FAKE-AVAILABILITY: keep stdout
+	// machine-parseable).
+	if *jsonOut {
+		// Parse the CSV --exts into a JSON-friendly []string for the
+		// schema. The set (extSet) is the canonical filter; the slice
+		// preserves the operator's input order.
+		extsList := splitExtsCSV(*extsFlag)
+		report := buildFullimagesMigrateJSONReport(absDir, extsList, *apply, fileHits, fullimagesMigratePatterns, warnings, appliedCount)
+		out, err := json.MarshalIndent(report, "", "  ")
+		if err != nil {
+			return fmt.Errorf("json marshal failed: %w", err)
+		}
+		fmt.Println(string(out))
+		return nil
+	}
+
+	// Human-readable path (default).
+	if len(warnings) > 0 {
+		fmt.Fprintln(os.Stderr, "WARNINGS:")
+		for _, w := range warnings {
+			fmt.Fprintf(os.Stderr, "  %s\n", w)
+		}
+		fmt.Fprintln(os.Stderr)
+	}
+	report := buildFullimagesMigrateReport(absDir, fileHits, fullimagesMigratePatterns)
+	fmt.Print(report)
+	if *apply {
 		fmt.Printf("\nAPPLIED: %d file(s) updated\n", appliedCount)
 		fmt.Println("NOTICE: please re-run your downstream tests to confirm the migration.")
 	} else {
@@ -303,6 +406,122 @@ func buildFullimagesMigrateReport(rootDir string, fileHits map[string]map[string
 		}
 	}
 	return b.String()
+}
+
+// splitExtsCSV parses the --exts CSV string into a JSON-friendly
+// []string (preserves the operator's input order, deduplicates,
+// normalizes to lower-case + leading-dot). Pure function (no side
+// effects) per godlike/06 SSOT testability.
+func splitExtsCSV(csv string) []string {
+	if csv == "" {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var out []string
+	for _, e := range strings.Split(csv, ",") {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		if !strings.HasPrefix(e, ".") {
+			e = "." + e
+		}
+		e = strings.ToLower(e)
+		if seen[e] {
+			continue
+		}
+		seen[e] = true
+		out = append(out, e)
+	}
+	return out
+}
+
+// buildFullimagesMigrateJSONReport composes the canonical JSON report
+// (godlike/06 SSOT — automation-harness surface). Pure function (no
+// side effects) so it can be tested in isolation. The schema is
+// stable, additive-only (see the type doc above).
+func buildFullimagesMigrateJSONReport(
+	rootDir string,
+	exts []string,
+	apply bool,
+	fileHits map[string]map[string]int,
+	patterns []fullimagesMigratePattern,
+	warnings []string,
+	appliedCount int,
+) fullimagesMigrateJSONReport {
+	mode := "dry-run"
+	if apply {
+		mode = "apply"
+	}
+
+	// Patterns: surface the canonical table verbatim (additive; future
+	// patterns extend the table, never replace).
+	patOut := make([]fullimagesMigrateJSONPattern, 0, len(patterns))
+	for _, p := range patterns {
+		patOut = append(patOut, fullimagesMigrateJSONPattern{
+			Class:       p.Class,
+			Old:         p.Old,
+			New:         p.New,
+			Description: p.Filename,
+		})
+	}
+
+	// Files: sorted by path for stable, diff-friendly output.
+	paths := make([]string, 0, len(fileHits))
+	for p := range fileHits {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
+	filesOut := make([]fullimagesMigrateJSONFileResult, 0, len(paths))
+	perClass := make(map[string]int)
+	totalMatches := 0
+	for _, path := range paths {
+		hits := fileHits[path]
+		fileTotal := 0
+		// Stable per-class ordering (mirrors the human-readable path).
+		for _, p := range patterns {
+			if n, ok := hits[p.Class]; ok && n > 0 {
+				fileTotal += n
+				perClass[p.Class] += n
+			}
+		}
+		totalMatches += fileTotal
+		filesOut = append(filesOut, fullimagesMigrateJSONFileResult{
+			Path:         path,
+			TotalMatches: fileTotal,
+			Hits:         hits,
+		})
+	}
+
+	// When no files match, omit the per-class map entirely (empty
+	// object is the canonical "no hits" signal for downstream consumers).
+	var perClassOut map[string]int
+	if len(perClass) > 0 {
+		perClassOut = perClass
+	}
+
+	// When no warnings, omit the warnings array entirely (empty array
+	// would be noise for the canonical happy-path consumers).
+	var warningsOut []string
+	if len(warnings) > 0 {
+		warningsOut = warnings
+	}
+
+	return fullimagesMigrateJSONReport{
+		Meta: fullimagesMigrateJSONMeta{
+			TargetDir: rootDir,
+			Exts:      exts,
+			Mode:      mode,
+			Timestamp: time.Now().UTC(),
+		},
+		Patterns:          patOut,
+		Totals:            fullimagesMigrateJSONTotals{FilesWithHits: len(filesOut), TotalMatches: totalMatches},
+		PerClassTotals:    perClassOut,
+		Files:             filesOut,
+		Warnings:          warningsOut,
+		AppliedFilesCount: appliedCount,
+	}
 }
 
 // applyFullimagesMigrate writes the text replacements to disk for every

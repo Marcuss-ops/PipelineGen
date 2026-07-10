@@ -23,7 +23,77 @@ go build -o admin ./cmd/admin/
 
 # Custom file extensions
 ./admin fullimages-migrate --exts .sh,.py,.md
+
+# JSON output (for automation harnesses / jq / CI pipelines / monitoring scrapers)
+./admin fullimages-migrate --target-dir /path/to/operator/repo --json
+./admin fullimages-migrate --target-dir /path/to/operator/repo --json --apply | tee migration-report.json
 ```
+
+## JSON Output Mode (`--json`)
+
+For CI pipelines, monitoring scrapers, or any automation that needs to
+parse the report programmatically, pass `--json` to get a stable
+structured JSON envelope to stdout (instead of the human-readable
+table). Per godlike/07 NO-FAKE-AVAILABILITY, `--json`:
+
+- Suppresses the `NOTICE:` banner (keeps stdout machine-parseable)
+- Suppresses per-file `WARN:` lines on stderr (collected in the JSON
+  `warnings` field instead)
+- Emits one `{"meta": ..., "patterns": ..., "totals": ..., "files": ..., "warnings": ...}`
+  object with a **stable, additive-only** schema (godlike/06 SSOT)
+
+### Canonical schema (godlike/06 SSOT — automation-harness surface)
+
+```json
+{
+  "meta": {
+    "target_dir": "/path/to/operator/repo",
+    "exts": [".sh", ".py", ".md"],
+    "mode": "dry-run",
+    "timestamp": "2026-07-10T15:32:18.514Z"
+  },
+  "patterns": [
+    {"class": "URL", "old": "api/fullimages/video/generate", "new": "api/fullimages/image/generate", "description": "REST endpoint path"},
+    ... (all 9 pattern classes surfaced verbatim)
+  ],
+  "totals": {"files_with_hits": 3, "total_matches": 7},
+  "per_class_totals": {"URL": 2, "JSON-bracket": 3, "Go-type": 1, "Go-field": 1},
+  "files": [
+    {"path": "/path/to/operator/repo/scripts/build.sh", "total_matches": 3, "hits": {"URL": 1, "JSON-bracket": 1, "Go-type": 1}},
+    ... (sorted by path)
+  ],
+  "warnings": ["cannot access /path/to/locked: permission denied (skipped)"],
+  "applied_files_count": 0
+}
+```
+
+### Example: pipe to `jq` for a one-line summary
+
+```bash
+./admin fullimages-migrate --target-dir . --json | jq '.totals'
+# → {"files_with_hits": 3, "total_matches": 7}
+
+./admin fullimages-migrate --target-dir . --json | jq '.files[] | .path'
+# → "/abs/path/to/script-a.sh"
+# → "/abs/path/to/script-b.md"
+# → "/abs/path/to/main.go"
+
+./admin fullimages-migrate --target-dir . --json --apply | jq '.applied_files_count'
+# → 3   (use as a CI gate: must equal expected migration scope)
+```
+
+### Example: gate a CI job on zero hits (post-migration)
+
+```bash
+hits=$(./admin fullimages-migrate --target-dir . --json | jq '.totals.total_matches')
+if [ "$hits" -gt 0 ]; then
+  echo "Migration incomplete: $hits old patterns remain" >&2
+  ./admin fullimages-migrate --target-dir . --json | jq '.files[]'
+  exit 1
+fi
+```
+
+The full JSON schema is documented in §2.6 of the canonical runbook.
 
 ## CLI Before/After Example (condensed)
 
