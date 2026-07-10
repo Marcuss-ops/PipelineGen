@@ -16,6 +16,7 @@ package app
 
 import (
 	"fmt"
+	"path/filepath"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/admin"
@@ -279,19 +280,30 @@ func registerScriptDocs(registry *module.Registry, log *zap.Logger, cfg *config.
 	// (handler returns 503 ErrReActNotWired per godlike/07 fail-closed).
 	var reactPort scriptdocsapi.ReActPort
 	if cfg.External.OllamaURL != "" {
-		adapter, adapterErr := scriptdocsinfra.NewAdapter(scriptdocsinfra.AdapterConfig{
-			OllamaURL:   cfg.External.OllamaURL,
-			OllamaModel: cfg.External.OllamaModel,
-			ScriptDir:   ".", // current working directory (project root)
-		})
-		if adapterErr != nil {
-			log.Warn("script-docs: failed to create ReAct adapter, falling back to nil port",
-				zap.Error(adapterErr))
+		// Resolve the project root to an absolute path so the Python bridge
+		// script is found regardless of the server's working directory
+		// (systemd, Docker, nohup may set CWD to /).
+		scriptDir, scriptDirErr := filepath.Abs(".")
+		if scriptDirErr != nil {
+			log.Warn("script-docs: failed to resolve project root, falling back to nil port",
+				zap.Error(scriptDirErr))
 		} else {
-			reactPort = adapter
-			log.Info("script-docs: ReAct adapter wired (Python bridge via Ollama)",
-				zap.String("ollama_url", cfg.External.OllamaURL),
-				zap.String("ollama_model", cfg.External.OllamaModel))
+			adapter, adapterErr := scriptdocsinfra.NewAdapter(scriptdocsinfra.AdapterConfig{
+				OllamaURL:   cfg.External.OllamaURL,
+				OllamaModel: cfg.External.OllamaModel,
+				ScriptDir:   scriptDir,
+			})
+		if adapterErr != nil {
+				if adapterErr != nil {
+					log.Warn("script-docs: failed to create ReAct adapter, falling back to nil port",
+						zap.Error(adapterErr))
+				} else {
+					reactPort = adapter
+					log.Info("script-docs: ReAct adapter wired (Python bridge via Ollama)",
+						zap.String("ollama_url", cfg.External.OllamaURL),
+						zap.String("ollama_model", cfg.External.OllamaModel))
+				}
+			}
 		}
 	}
 
