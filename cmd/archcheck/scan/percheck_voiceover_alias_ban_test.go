@@ -71,7 +71,7 @@ func writeFixtureAliasBan(t *testing.T, root, relPath, content string) string {
 }
 
 // newEmptyReportAliasBan returns the canonical empty report fixture
-// used by all 12 tests below. Per-package naming (mirrors the
+// used by all 12 canonical scanner tests below. Per-package naming (mirrors the
 // writeFixtureAliasBan rationale above).
 //
 // Mirrors percheck_player_client_test.go::newEmptyReport (canonical
