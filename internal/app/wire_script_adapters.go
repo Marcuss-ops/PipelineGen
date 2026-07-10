@@ -193,12 +193,12 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	}
 
 	// (c) At least one worker in the cluster is configured to claim
-	//     script.generate. Forward-looking TODO: when JobsBundle
+	//     script.generate. Forward-looking: when JobsBundle
 	//     exposes a WorkerTypes field, uncomment the check below.
 	//     Until then, the operator must rely on Worker.ExportTypes
 	//     runtime audit.
 	if log != nil {
-		log.Info("validateScriptGenerateWiring: WorkerTypes not exposed yet; (c) check skipped (forward-looking TODO)",
+		log.Info("validateScriptGenerateWiring: WorkerTypes not exposed yet; (c) check skipped (forward-looking)",
 			zap.String("job_type", jobpkg.TypeScriptGenerate))
 	}
 	if log != nil {

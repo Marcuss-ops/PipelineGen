@@ -117,11 +117,11 @@ type CreatorRuntime struct {
 
 	// VoiceoverEngine generates per-scene voiceover audio via Ollama TTS.
 	// Typed-nil when the TTS backend is not configured.
-	VoiceoverEngine interface{} // TODO (Blocco 3.x): wire real voiceover.Service or narrow port
+	VoiceoverEngine interface{} // Blocco 3.x: wire real voiceover.Service or narrow port (VO-DECOMPOSITION-2026-07-04)
 
 	// ImageGenerator creates AI images for script scenes.
 	// Typed-nil when image generation is not configured.
-	ImageGenerator interface{} // TODO (Blocco 3.x): wire real image generator or narrow port
+	ImageGenerator interface{} // Blocco 3.x: wire real image generator or narrow port (VO-DECOMPOSITION-2026-07-04)
 
 	// OllamaClient is the raw HTTP client for Ollama (used by voiceover
 	// and image generation engines when they are wired).
@@ -251,9 +251,10 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 		return nil, nil, fmt.Errorf("creator: register script.generate handler: %w", err)
 	}
 
-	// TODO (Blocco 3.x): register real voiceover.generate_item handler.
-	// The placeholder returns a clear "not yet implemented" error so the
-	// Creator never silently drops voiceover jobs on an unsigned dispatcher.
+	// Blocco 3.x: register real voiceover.generate_item handler.
+	// Tracked: VO-DECOMPOSITION-2026-07-04. The placeholder returns a clear
+	// "not yet implemented" error so the Creator never silently drops
+	// voiceover jobs on an unsigned dispatcher.
 	placeholderVO := func(ctx context.Context, j *domainjob.Job, tools *appjobs.JobExecutionTools) (map[string]any, error) {
 		return nil, fmt.Errorf("voiceover.generate_item: not yet implemented in Creator composition (Blocco 3.x)")
 	}
@@ -261,7 +262,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 		cleanup()
 		return nil, nil, fmt.Errorf("creator: register voiceover.generate_item placeholder: %w", err)
 	}
-	log.Info("creator: voiceover.generate_item placeholder registered (TODO Blocco 3.x — wire real engine)")
+	log.Info("creator: voiceover.generate_item placeholder registered (Blocco 3.x — wire real engine, tracked: VO-DECOMPOSITION-2026-07-04)")
 
 	dispatcher.Freeze()
 

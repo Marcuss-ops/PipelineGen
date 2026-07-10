@@ -216,7 +216,7 @@ func (h *WorkersBrokerHandler) Complete(c *gin.Context) {
 // per the PublishAndCompleteUseCase surface at
 // internal/application/jobs/completion/publish_and_complete_use_case.go
 // (the EXPAND-phase canonical; handler-wiring to the use case is
-// the BACKFILL phase, forward-pointer TODO(P0-COMPL-5-HANDLER-WIRE)).
+// the BACKFILL phase, forward-pointer P0-COMPL-5-HANDLER-WIRE).
 //
 // CRITICAL CONTRACT (godlike/07 no-fake-availability): the body
 // MUST NOT contain local Creator paths. The asset transport
@@ -289,7 +289,7 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 	// canonical envelope conversion (StagedArtifactReference → PublishedArtifact
 	// with Drive FileID/link/checksum post-publish) is the future BACKFILL
 	// phase via PublishAndCompleteUseCase.Execute (forward-pointer
-	// TODO(P0-COMPL-5-HANDLER-WIRE)).
+	// P0-COMPL-5-HANDLER-WIRE).
 	stagedBytes, marshalErr := json.Marshal(req.StagedArtifacts)
 	if marshalErr != nil {
 		apiutil.BadRequest(c, fmt.Sprintf("staged_artifacts marshal: %v", marshalErr))
