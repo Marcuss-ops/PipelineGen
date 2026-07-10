@@ -111,8 +111,13 @@ ENVELOPE=$(jq -n \
 # Capture POST_TS BEFORE the curl POST (godlike/07 NO-FAKE-AVAILABILITY):
 # server can write rows with created_at=now during the POST itself;
 # capturing AFTER curl risks rows with created_at earlier than POST_TS.
-POST_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+# NOTE: assumes server TZ is UTC (SQLite datetime('now') returns local time).
+# Format must match SQLite datetime() output: YYYY-MM-DD HH:MM:SS (no T, no Z).
+POST_TS=$(date -u +'%Y-%m-%d %H:%M:%S')
 printf '  POST timestamp (UTC): %s\n' "$POST_TS"
+
+# SQL-escape single quotes in TOPIC for safe interpolation in sqlite3 calls.
+TOPIC_ESC=$(printf '%s' "$TOPIC" | sed "s/'/''/g")
 
 # Use smoke_curl from lib/common.sh for consistent token redaction + body capture
 smoke_curl POST "/api/script/generate" --data "$ENVELOPE" >/dev/null
@@ -180,12 +185,16 @@ assert_pass() { printf '  %sOK: %s%s\n' "$GREEN" "$1" "$RESET"; }
 assert_fail() { printf '  %sFAIL: %s%s\n' "$RED" "$1" "$RESET" >&2; FAILURES+=("$1"); }
 
 # A1: scripts table — at least 1 row with the req_id as idempotency_key
-SCRIPT_COUNT=$(sqlite3 "$SMOKE_DB" \
-  "SELECT COUNT(*) FROM scripts WHERE idempotency_key='$REQ_ID'" 2>/dev/null) || SCRIPT_COUNT="ERR"
-if [[ "$SCRIPT_COUNT" == "ERR" || "$SCRIPT_COUNT" == "0" ]]; then
-    assert_fail "A1: scripts table has 0 rows for req_id=$REQ_ID (expected ≥1)"
+# A1: scripts table — lookup by topic + created_at (persistence processor derives
+# idempotency_key as SHA hash of generation input, NOT from correlation_id).
+SCRIPT_ROW=$(sqlite3 "$SMOKE_DB" \
+  "SELECT id, idempotency_key FROM scripts WHERE topic='$TOPIC_ESC' AND created_at > '$POST_TS' ORDER BY created_at DESC LIMIT 1" 2>/dev/null) || SCRIPT_ROW=""
+SCRIPT_ID="${SCRIPT_ROW%%|*}"  # field 1 (id)
+SCRIPT_IDEM_KEY="${SCRIPT_ROW#*|}"  # field 2 (idempotency_key)
+if [[ -z "$SCRIPT_ID" ]]; then
+    assert_fail "A1: scripts table has 0 rows for topic='$TOPIC' created_after=$POST_TS (expected ≥1)"
 else
-    assert_pass "A1: scripts table has $SCRIPT_COUNT row(s) for req_id=$REQ_ID"
+    assert_pass "A1: scripts table has row id=$SCRIPT_ID (idem=${SCRIPT_IDEM_KEY:0:16}…) for topic='$TOPIC'"
 fi
 
 # A2: voiceovers table — at least 1 row linked to the job
@@ -205,7 +214,7 @@ fi
 # High-confidence Italian markers that do NOT collide with English:
 #   della/dello/questo/questa/pugilato/nella/nello/gli/degli/dalle/sono
 VO_TEXT=$(sqlite3 "$SMOKE_DB" \
-  "SELECT COALESCE(text, '') FROM voiceovers WHERE job_id='$JOB_ID' LIMIT 1" 2>/dev/null) || VO_TEXT=""
+  "SELECT COALESCE(text_preview, '') FROM voiceovers WHERE job_id='$JOB_ID' LIMIT 1" 2>/dev/null) || VO_TEXT=""
 if [[ -z "$VO_TEXT" ]]; then
     assert_fail "A3: voiceover text is empty for job_id=$JOB_ID (TTS did not produce text)"
 else
@@ -230,7 +239,7 @@ fi
 
 # A4: scripts.specscene is non-empty (translated or original SpecScene persisted)
 SPECSCENE=$(sqlite3 "$SMOKE_DB" \
-  "SELECT COALESCE(specscene, '') FROM scripts WHERE idempotency_key='$REQ_ID' LIMIT 1" 2>/dev/null) || SPECSCENE=""
+  "SELECT COALESCE(specscene, '') FROM scripts WHERE id='$SCRIPT_ID' LIMIT 1" 2>/dev/null) || SPECSCENE=""
 SPEC_LEN=$(printf '%s' "$SPECSCENE" | wc -c | tr -d ' ')
 if [[ "$SPEC_LEN" -gt 10 ]]; then
     assert_pass "A4: scripts.specscene populated ($SPEC_LEN bytes)"
