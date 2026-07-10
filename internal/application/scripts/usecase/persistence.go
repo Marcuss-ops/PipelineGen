@@ -5,6 +5,8 @@
 package usecase
 
 import (
+	"strings"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptdto "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/dto"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -41,6 +43,16 @@ func buildGenerationResult(
 		specScene = postResult.FinalSpecScene
 	}
 
+	// PR-TRANSLATION-PIPELINE-2026-07-09: prefer translated text over
+	// the engine's original output when the TranslationProcessor
+	// succeeded. Without this, the API response always shows the
+	// original (e.g. English) text even when translation to Italian
+	// was requested and completed.
+	outputText := engineResult.Output.Text
+	if postResult != nil && strings.TrimSpace(postResult.TranslatedText) != "" {
+		outputText = postResult.TranslatedText
+	}
+
 	result := &scriptpkg.GenerationResult{
 		ItemID:   item.ID,
 		ScriptID: scriptIDFromPostprocess,
@@ -48,7 +60,7 @@ func buildGenerationResult(
 		Language: plan.Language,
 		Model:    engineResult.Model,
 		Output: scriptpkg.ScriptOutput{
-			Text:      engineResult.Output.Text,
+			Text:      outputText,
 			WordCount: engineResult.WordCount,
 			SpecScene: specScene,
 		},
