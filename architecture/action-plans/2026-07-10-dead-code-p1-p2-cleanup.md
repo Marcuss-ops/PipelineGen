@@ -33,7 +33,6 @@ User pasted 9 forensic items from `architecture/action-plans/2026-07-09-dead-cod
 - **Verified-zero interfaces/empty-ports on origin/main HEAD** (per forensic sweep):
   - `ClipFolderMemoryPort any` (1 empty port, item 5)
   - `TreePortsAnyPlaceholders`: 1 in `node_scraper/node_modules` (excluded), 0 in `internal/`
-- **`.Skip` markers in tests**: 49 (item 7 surface concern, `t.Skipf` ratio 13/49 already aligned with the codebase convention of "static-literal=t.Skip, dynamic-arg=t.Skipf")
 - **TODO/FIXME markers**: 53 (`LOGIC-SIMPLIFICATION-DEAD-CODE-2026-07-09` action plan §3.C carries this forward)
 - **`var _ Port = (*Adapter)(nil)` compile-time pins**: 171 (canonical Pattern 0 discipline — DO NOT reduce per godlike/06 SSOT one-canonical-owner-per-fact)
 - **`interface{}` survivors**: 180 (`LOGIC-SIMPLIFICATION-DEAD-CODE-2026-07-09` action plan §3.C carries forward)
@@ -71,7 +70,7 @@ User pasted 9 forensic items from `architecture/action-plans/2026-07-09-dead-cod
 
 ---
 
-### §4 — Phase B P0 (deadline 2026-07-22)
+### §4 — Phase B P0 high (deadline 2026-07-22)
 
 #### §4.PR-3: `PR-DEADC-QDRANT-ROLLBACK-ALIAS-RETIRE` (Item 8 / 0.5 day)
 
