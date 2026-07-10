@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ func (r *stubProcessVoRepo) BeginTx(ctx context.Context) (*sql.Tx, error) {
 	return r.db.BeginTx(ctx, nil)
 }
 
-func (r *stubProcessVoRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *VoiceoverRecord) error {
+func (r *stubProcessVoRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO voiceovers (
 			id, request_id, text_hash, text_preview, language, voice, filename,
@@ -105,7 +107,7 @@ func (r *stubProcessVoRepo) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id str
 	return err
 }
 
-func (r *stubProcessVoRepo) PreReadByID(_ context.Context, _ string) (*VoiceoverRecord, error) {
+func (r *stubProcessVoRepo) PreReadByID(_ context.Context, _ string) (*persistence.VoiceoverRecord, error) {
 	return nil, nil
 }
 
@@ -134,7 +136,7 @@ func (r *stubProcessVoRepo) FindByIdempotencyKeyTx(ctx context.Context, tx *sql.
 	return matchedID, nil
 }
 
-var _ VoiceoverRepository = (*stubProcessVoRepo)(nil)
+var _ persistence.Repository = (*stubProcessVoRepo)(nil)
 
 type stubProcessFinalizer struct {
 	calls     []*FinalizeCommand

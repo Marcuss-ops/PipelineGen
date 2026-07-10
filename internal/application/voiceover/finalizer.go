@@ -49,6 +49,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"go.uber.org/zap"
 )
 
@@ -225,7 +226,7 @@ type FinalizeResult struct {
 // concrete finalizer. All ports are optional (nil-safe) except
 // voiceoverRepo which is mandatory (INSERT/DELETE are always needed).
 type voiceoverFinalizerDeps struct {
-	VoiceoverRepo    VoiceoverRepository         // mandatory
+	VoiceoverRepo    persistence.Repository      // mandatory
 	Outbox           TxOutboxEnqueuer            // nil-safe (skip index + cleanup)
 	LifecycleService LifecycleProjectionUpserter // nil-safe (skip media_assets)
 	Logger           *zap.Logger                 // nil-safe via zap.NewNop()
@@ -298,7 +299,7 @@ func newVoiceoverFinalizer(deps voiceoverFinalizerDeps) *voiceoverFinalizer {
 // Returns VoiceoverFinalizer so the composition root can inject an
 // interface — test doubles swap the concrete without churn.
 func NewVoiceoverFinalizer(
-	voRepo VoiceoverRepository,
+	voRepo persistence.Repository,
 	outbox TxOutboxEnqueuer,
 	lifecycleSvc LifecycleProjectionUpserter,
 	log *zap.Logger,

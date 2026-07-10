@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"go.uber.org/zap"
 )
 
@@ -60,7 +61,7 @@ type ProcessVoiceoverItemDeps struct {
 	DestinationResolver DestinationResolver
 	AudioPostProcessor  AudioPostProcessor
 	Publisher           VoiceoverPublisher
-	VoiceoverRepository VoiceoverRepository
+	VoiceoverRepository persistence.Repository
 	// DefaultFolderResolver is OPTIONAL (nil-safe). When item.Destination
 	// is nil, Execute calls DefaultFolderResolver.Resolve(ctx) to obtain
 	// the configured default Voiceover folder. When nil OR the resolver

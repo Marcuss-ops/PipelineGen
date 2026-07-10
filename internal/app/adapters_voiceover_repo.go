@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
@@ -37,7 +36,7 @@ var _ persistence.Repository = (*useCaseRepoAdapter)(nil)
 // ─────────────────────────────────────────────────────────────────────
 // VoiceoverRepository adapter.
 //
-// Implements voiceover.VoiceoverRepository.InsertTx + DeleteByIDTx via
+// Implements persistence.Repository.InsertTx + DeleteByIDTx via
 // tx.ExecContext on the canonical voiceovers table schema (mirrors
 // the column set in *assets.VoiceoversRepository.Upsert to avoid
 // schema drift). PreReadByID surfaces real (non-stub) rows to the
@@ -136,12 +135,12 @@ func (a *useCaseRepoAdapter) CountByDriveFileIDTx(
 // (string-form timestamps for JSON round-trip via job.Payload) to
 // the infrastructure-layer Record (time.Time for SQLite-native + a
 // DurationSeconds field for forward-compatibility). The two struct
-// shapes are NOT identical: voiceover.VoiceoverRecord is the wire
+// shapes are NOT identical: persistence.VoiceoverRecord is the wire
 // shape (string timestamps), assets.Record is the SQLite shape
 // (time.Time). Keeping the conversion localized here means a future
 // schema migration does NOT require touching the converter again —
 // the assets.Record surface IS the canonical column set.
-func (a *useCaseRepoAdapter) toInfraRecord(rec *voiceover.VoiceoverRecord) *sqassets.Record {
+func (a *useCaseRepoAdapter) toInfraRecord(rec *persistence.VoiceoverRecord) *sqassets.Record {
 	if rec == nil {
 		return nil
 	}
@@ -182,7 +181,7 @@ func (a *useCaseRepoAdapter) toInfraRecord(rec *voiceover.VoiceoverRecord) *sqas
 // fromInfraRecord is the inverse of toInfraRecord — used by
 // PreReadByID to surface a real (non-stub) row to the use case so
 // the post-commit cleanup goroutine can capture orphan paths.
-func (a *useCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *voiceover.VoiceoverRecord {
+func (a *useCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *persistence.VoiceoverRecord {
 	if r == nil {
 		return nil
 	}
@@ -194,7 +193,7 @@ func (a *useCaseRepoAdapter) fromInfraRecord(r *sqassets.Record) *voiceover.Voic
 	if !r.UpdatedAt.IsZero() {
 		updatedAt = timeutil.FormatRFC3339(r.UpdatedAt)
 	}
-	return &voiceover.VoiceoverRecord{
+	return &persistence.VoiceoverRecord{
 		ID:        r.ID,
 		RequestID: r.RequestID,
 		// PR-VO-TYPED-PRIMITIVES (July 2026): the persistence layer
@@ -244,7 +243,7 @@ func parseRFC3339OrNow(s string) time.Time {
 	return time.Now()
 }
 
-func (a *useCaseRepoAdapter) InsertTx(ctx context.Context, tx *sql.Tx, rec *voiceover.VoiceoverRecord) error {
+func (a *useCaseRepoAdapter) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
 	if rec == nil {
 		return fmt.Errorf("useCaseRepoAdapter.InsertTx: nil record")
 	}
@@ -294,7 +293,7 @@ func (a *useCaseRepoAdapter) FindByIdempotencyKeyTx(
 	return matchedID, nil
 }
 
-func (a *useCaseRepoAdapter) PreReadByID(ctx context.Context, id string) (*voiceover.VoiceoverRecord, error) {
+func (a *useCaseRepoAdapter) PreReadByID(ctx context.Context, id string) (*persistence.VoiceoverRecord, error) {
 	if id == "" {
 		return nil, fmt.Errorf("useCaseRepoAdapter.PreReadByID: empty id")
 	}

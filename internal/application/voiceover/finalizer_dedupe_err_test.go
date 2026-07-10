@@ -30,6 +30,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -57,7 +59,7 @@ func (r *recordingDedupeErrRepo) BeginTx(_ context.Context) (*sql.Tx, error) {
 	panic("recordingDedupeErrRepo.BeginTx: NOT expected (caller owns the tx; finalizer.Finalize receives it as a parameter)")
 }
 
-func (r *recordingDedupeErrRepo) InsertTx(_ context.Context, _ *sql.Tx, _ *VoiceoverRecord) error {
+func (r *recordingDedupeErrRepo) InsertTx(_ context.Context, _ *sql.Tx, _ *persistence.VoiceoverRecord) error {
 	r.insertCalls++
 	return nil
 }
@@ -67,7 +69,7 @@ func (r *recordingDedupeErrRepo) DeleteByIDTx(_ context.Context, _ *sql.Tx, _ st
 	return nil
 }
 
-func (r *recordingDedupeErrRepo) PreReadByID(_ context.Context, _ string) (*VoiceoverRecord, error) {
+func (r *recordingDedupeErrRepo) PreReadByID(_ context.Context, _ string) (*persistence.VoiceoverRecord, error) {
 	return nil, nil
 }
 
@@ -83,7 +85,7 @@ func (r *recordingDedupeErrRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sq
 	return "", sql.ErrNoRows
 }
 
-var _ VoiceoverRepository = (*recordingDedupeErrRepo)(nil)
+var _ persistence.Repository = (*recordingDedupeErrRepo)(nil)
 
 // recordingOutbox counts enqueue calls; both MUST be 0 on the
 // dedupe-error path.

@@ -57,6 +57,8 @@ import (
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -206,7 +208,7 @@ func (a *e2eRepoAdapter) CountByDriveFileIDTx(
 	return matchedID, count, nil
 }
 
-func (a *e2eRepoAdapter) InsertTx(ctx context.Context, tx *sql.Tx, rec *VoiceoverRecord) error {
+func (a *e2eRepoAdapter) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
 	if rec == nil {
 		return errNilRecord
 	}
@@ -260,7 +262,7 @@ func (a *e2eRepoAdapter) FindByIdempotencyKeyTx(ctx context.Context, tx *sql.Tx,
 	return matchedID, nil
 }
 
-func (a *e2eRepoAdapter) PreReadByID(ctx context.Context, id string) (*VoiceoverRecord, error) {
+func (a *e2eRepoAdapter) PreReadByID(ctx context.Context, id string) (*persistence.VoiceoverRecord, error) {
 	r, err := a.repo.PreReadByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -268,7 +270,7 @@ func (a *e2eRepoAdapter) PreReadByID(ctx context.Context, id string) (*Voiceover
 	if r == nil {
 		return nil, nil
 	}
-	return &VoiceoverRecord{
+	return &persistence.VoiceoverRecord{
 		ID:           r.ID,
 		RequestID:    r.RequestID,
 		TextHash:     r.TextHash,

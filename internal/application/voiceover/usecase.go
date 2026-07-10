@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 )
@@ -74,7 +75,7 @@ type UseCaseDeps struct {
 	DestinationResolver   DestinationResolver
 	AudioPostProcessor    AudioPostProcessor
 	Publisher             VoiceoverPublisher
-	VoiceoverRepository   VoiceoverRepository
+	VoiceoverRepository   persistence.Repository
 	Logger                *zap.Logger
 	DefaultFolderResolver VoiceoverDefaultFolderResolver
 	// Finalizer is the unified finalization port (P0.4 Fase 3a).

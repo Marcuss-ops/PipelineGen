@@ -1810,7 +1810,7 @@ func (r *stubVoRepoFailSecondBeginTx) BeginTx(ctx context.Context) (*sql.Tx, err
 	return r.stubProcessVoRepo.BeginTx(ctx)
 }
 
-var _ VoiceoverRepository = (*stubVoRepoFailSecondBeginTx)(nil)
+var _ persistence.Repository = (*stubVoRepoFailSecondBeginTx)(nil)
 
 // ────────────────────────────────────────────────────────────────────────────
 // Test 19: FASE 4 — enqueueOrphanCleanup BeginTx failure → Warn log
@@ -2262,7 +2262,7 @@ func (r *stubFailingInsertRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *p
 	return r.insertErr
 }
 
-var _ VoiceoverRepository = (*stubFailingInsertRepo)(nil)
+var _ persistence.Repository = (*stubFailingInsertRepo)(nil)
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Test 23: FASE 6 — E2E orphan-cleanup with real finalizer + InsertTx failure
