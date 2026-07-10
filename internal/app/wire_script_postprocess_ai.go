@@ -12,8 +12,10 @@
 //     calls registerAIBackedProcessors after inline registrations.
 //   - internal/application/scripts/adapters: NewEntitiesProcessor,
 //     NewMetadataProcessor, NewTranslationProcessor, NewStockAssociationProcessor,
-//     NewClipSearchProcessor, NewUnavailableEntityExtractionAdapter,
-//     NewUnavailableMetadataGenerationAdapter, NewUnavailableArtlistClipSearcher
+//     NewClipSearchProcessor
+//     (PR-LEGACY-UNAVAILABLE-CLIPSEARCH + PR-LEGACY-UNAVAILABLE-ENTITY-METADATA, 2026-07-10:
+//     NewUnavailable* constructors no longer called from this file — processors
+//     are skipped entirely when backend is absent)
 //   - internal/application/scripts/usecase: NewTranslationUseCaseAdapter,
 //     NewTranslationReasonClassifierAdapter, SearchArtlistClips, ClipServices
 //   - internal/infrastructure/ai/ollama/adapters: NewOllamaEntityExtractorAdapter,
@@ -71,11 +73,11 @@ func registerAIBackedProcessors(
 		}
 	}
 	if entityAdapter == nil {
-		entityAdapter = adapters.NewUnavailableEntityExtractionAdapter()
-		log.Warn("EntitiesProcessor: Ollama backend not available; falling back to unavailable adapter (entities will produce warnings)")
-	}
-	if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter)) {
-		return fmt.Errorf("register entities processor: composition bug")
+		log.Warn("EntitiesProcessor: Ollama backend not available; postprocessor not registered (entities will be skipped)")
+	} else {
+		if !ppReg.Register(adapters.NewEntitiesProcessor(entityAdapter)) {
+			return fmt.Errorf("register entities processor: composition bug")
+		}
 	}
 
 	// ── Metadata ─────────────────────────────────────────────────────
@@ -85,11 +87,11 @@ func registerAIBackedProcessors(
 		log.Info("MetadataProcessor wired with real Ollama backend (ollama.Generator)")
 	}
 	if metadataAdapter == nil {
-		metadataAdapter = adapters.NewUnavailableMetadataGenerationAdapter()
-		log.Warn("MetadataProcessor: Ollama backend not available; falling back to unavailable adapter (metadata will produce warnings)")
-	}
-	if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
-		return fmt.Errorf("register metadata processor: composition bug")
+		log.Warn("MetadataProcessor: Ollama backend not available; postprocessor not registered (metadata will be skipped)")
+	} else {
+		if !ppReg.Register(adapters.NewMetadataProcessor(metadataAdapter)) {
+			return fmt.Errorf("register metadata processor: composition bug")
+		}
 	}
 
 	// ── Translation ──────────────────────────────────────────────────
@@ -133,8 +135,8 @@ func registerAIBackedProcessors(
 	// ── ClipSearch ───────────────────────────────────────────────────
 	// ClipSearchProcessor wires OllamaTranslator so that artlist_phrases
 	// extracted by EntitiesProcessor trigger actual Artlist clip searches.
-	// Falls back to unavailable adapter when root.AI.OllamaTranslator
-	// is not wired.
+	// PR-LEGACY-UNAVAILABLE-CLIPSEARCH (2026-07-10): when OllamaTranslator
+	// is nil, the processor is skipped entirely — no unavailable adapter.
 	var clipSearchAdapter adapters.ArtlistClipSearcher
 	if root.AI != nil && root.AI.OllamaTranslator != nil {
 		clipSvc := usecase.ClipServices{
