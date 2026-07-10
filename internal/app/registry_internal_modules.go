@@ -30,7 +30,6 @@ import (
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/embeddings"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -212,20 +211,21 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		return fmt.Errorf("wire registry: scraper: %w", err)
 	}
 
-	// Step 7 — FullImages (bundle-driven; ImageService + MediaStore).
+	// Step 7 — FullImages (bundle-driven; ImageService + ImagesDir).
+	//
+	// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase): the
+	// pre-CUTOVER 4-field bundle (ImageService + FfmpegProc + Publisher
+	// + ImagesDir) is REDUCED to 2 fields (ImageService + ImagesDir)
+	// — the retired FfmpegProc + Publisher deps were ONLY consumed
+	// by the now-retired Ken Burns video pipeline inside
+	// mediafullimages.NewService.
 	var imagesDir string
 	if cfg != nil {
 		imagesDir = cfg.Storage.ImagesPath()
 	}
-	var ffmpegProc *ffmpeg.Processor
-	if cfg != nil {
-		ffmpegProc = ffmpeg.NewFromConfig(cfg)
-	}
 
 	fullImgBundle := &FullImagesBundle{
 		ImageService: root.Domains.ImageService,
-		FfmpegProc:   ffmpegProc,
-		Publisher:    root.Drive.Publisher,
 		ImagesDir:    imagesDir,
 	}
 

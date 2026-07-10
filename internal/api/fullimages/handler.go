@@ -1,22 +1,21 @@
 // Package fullimages (api/fullimages) — FullImagesHandler lives here.
 //
-// PR-IMG-LEGACY-6 (IMAGES-LEGACY-CLEANUP-2026-07-06 wave, 2026-07-06,
-// CUTOVER phase, deadline 2026-08-22): this file was MOVED from
-// `internal/api/images/handler_full.go` to its canonical dedicated
-// package. The pre-PR location was a temporary absorption from the
-// original `internal/api/fullimages/` package (PR3 Wave 14, June 2026)
-// — that absorption is now reversed; the package has its own home
-// again so the public REST URL stays at /api/fullimages/video/generate
-// (per gen_api_docs.go entry) and the api/images package no longer
-// carries a public fullimages surface.
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, IMAGES-LEGACY-CLEANUP
+// wave, CUTOVER phase, deadline 2026-09-01): the public REST URL is
+// RENAMED from /api/fullimages/video/generate to
+// /api/fullimages/image/generate, and the FullImagesResponse wire
+// shape is RENAMED from {videos: [...]} to {images: [...]}. This is
+// a hard breaking change per Option B (consumer awareness note in
+// commit message; no 410-Gone literal shim — clients reading
+// `response.videos[...]` will break).
 //
-// Architecture (post-move):
-//   - api/fullimages/Handler    (this file, public surface)
-//   - api/images/Handler        (sibling, NO fullimages surface)
+// Architecture (post-CUTOVER):
+//   - api/fullimages/Handler   (this file, public surface, /image/generate)
+//   - api/images/Handler       (sibling, NO fullimages surface)
 //
 // The two handlers coexist as sibling route modules registered on
 // different /api/* prefixes. The system router mounts api/fullimages
-// at /api/fullimages (handler.RegisterRoutes does r.POST("/video/generate",
+// at /api/fullimages (handler.RegisterRoutes does r.POST("/image/generate",
 // h.GenerateFullImages) on a /api/fullimages prefix group).
 package fullimages
 
@@ -28,9 +27,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
-// FullImagesHandler exposes the FullImages endpoint under /fullimages/video/generate.
-// Generates one image per section — no entity extraction, no asset
-// association. Pure image generation per section using Google/NVIDIA AI.
+// FullImagesHandler exposes the FullImages endpoint under /fullimages/image/generate.
+//
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase): the
+// pre-CUTOVER godoc referenced `/fullimages/video/generate`; the
+// route is RENAMED to `/image/generate`. Generates one image per
+// section — no entity extraction, no asset association. Pure image
+// generation per section using Google/NVIDIA AI.
 type FullImagesHandler struct {
 	service *mediafullimages.Service
 }
@@ -43,13 +46,18 @@ func NewFullImagesHandler(svc *mediafullimages.Service) *FullImagesHandler {
 // RegisterRoutes registers the route on the provided RouterGroup.
 // The System module mounts this handler on a dedicated /api/fullimages
 // prefix group (sibling of the /api/images prefix group used by
-// ImagesHandler). The route path is intentionally /video/generate so
-// the resulting public URL is /api/fullimages/video/generate.
+// ImagesHandler). The route path is intentionally /image/generate so
+// the resulting public URL is /api/fullimages/image/generate
+// (post-PR-IMAGES-FULLIMAGES-IMAGE-ONLY CUTOVER phase).
 func (h *FullImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
-	r.POST("/video/generate", h.GenerateFullImages)
+	r.POST("/image/generate", h.GenerateFullImages)
 }
 
-// FullImagesRequest is the JSON body for POST /api/fullimages/video/generate.
+// FullImagesRequest is the JSON body for POST /api/fullimages/image/generate.
+//
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase): the
+// pre-CUTOVER godoc referenced /api/fullimages/video/generate; the
+// route is RENAMED to /api/fullimages/image/generate.
 type FullImagesRequest struct {
 	Topic    string                    `json:"topic"    binding:"required"`
 	Language string                    `json:"language"  binding:"required"`
@@ -58,11 +66,20 @@ type FullImagesRequest struct {
 
 // FullImagesResponse wraps the canonical mediafullimages.Result so
 // the handler layer doesn't re-expose the application-layer type.
+//
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase): the
+// pre-CUTOVER {videos: [...]} wire shape is RENAMED to
+// {images: [...]} (canonical SectionImage slice, json tag "images").
+// Wire-shape breaking change per Option B.
 type FullImagesResponse struct {
-	Videos []mediafullimages.SectionVideo `json:"videos"`
+	Images []mediafullimages.SectionImage `json:"images"`
 }
 
-// GenerateFullImages handles POST /api/fullimages/video/generate.
+// GenerateFullImages handles POST /api/fullimages/image/generate.
+//
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase): the
+// pre-CUTOVER route was /api/fullimages/video/generate; the route is
+// RENAMED to /api/fullimages/image/generate.
 //
 // godlike/07 typed-error contract: the application-layer errors flow
 // back via errors.Is probes (e.g. mediafullimages.ErrNoImageGenerated)
@@ -93,7 +110,7 @@ func (h *FullImagesHandler) GenerateFullImages(c *gin.Context) {
 	zap.L().Info("fullimages: response sent",
 		zap.String("topic", req.Topic),
 		zap.String("language", req.Language),
-		zap.Int("section_count", len(result.Videos)),
+		zap.Int("section_count", len(result.Images)),
 	)
-	apiutil.OK(c, FullImagesResponse{Videos: result.Videos})
+	apiutil.OK(c, FullImagesResponse{Images: result.Images})
 }

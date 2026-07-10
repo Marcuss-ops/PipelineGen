@@ -259,7 +259,12 @@ var routeDescriptions = map[string]string{
 	"POST /api/drive/move":          "Move Drive files",
 
 	// ── Fullimages ───────────────────────────────────────────
-	"POST /api/fullimages/video/generate": "Generate full video images",
+	//
+	// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase):
+	// the pre-CUTOVER route was /api/fullimages/video/generate; the
+	// route is RENAMED to /api/fullimages/image/generate. Wire-shape
+	// breaking change per Option B.
+	"POST /api/fullimages/image/generate": "Generate one image per section (fullimages image-only pipeline)",
 
 	// ── Static file serving ──────────────────────────────────
 	"GET /assets/*filepath":                   "Serve static assets from data dir",

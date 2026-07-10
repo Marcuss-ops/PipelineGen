@@ -55,17 +55,17 @@ func TestSafeFolderName_PreservesSpaces(t *testing.T) {
 	}
 }
 
-func TestSectionVideo_StyleField(t *testing.T) {
-	v := SectionVideo{SectionIndex: 0, Title: "Castle", Style: "medievale", DriveLink: "https://drive.google.com/"}
-	if v.Style != "medievale" {
-		t.Fatalf("expected style 'medievale', got %q", v.Style)
+func TestSectionImage_StyleField(t *testing.T) {
+	img := SectionImage{SectionIndex: 0, Title: "Castle", Style: "medievale", DriveLink: "https://drive.google.com/"}
+	if img.Style != "medievale" {
+		t.Fatalf("expected style 'medievale', got %q", img.Style)
 	}
 }
 
-func TestSectionVideo_Error(t *testing.T) {
-	v := SectionVideo{SectionIndex: 0, Title: "Castle", Style: "medievale", Error: "NVIDIA API failed"}
-	if v.Error != "NVIDIA API failed" {
-		t.Fatalf("expected error preserved, got %q", v.Error)
+func TestSectionImage_Error(t *testing.T) {
+	img := SectionImage{SectionIndex: 0, Title: "Castle", Style: "medievale", Error: "image generation failed"}
+	if img.Error != "image generation failed" {
+		t.Fatalf("expected error preserved, got %q", img.Error)
 	}
 }
 
@@ -76,13 +76,13 @@ func TestSection_StyleField(t *testing.T) {
 	}
 }
 
-func TestResult_Videos(t *testing.T) {
-	r := Result{Videos: []SectionVideo{
+func TestResult_Images(t *testing.T) {
+	r := Result{Images: []SectionImage{
 		{SectionIndex: 0, Title: "Castle", Style: "medievale"},
 		{SectionIndex: 1, Title: "Knight", Style: "medievale"},
 	}}
-	if len(r.Videos) != 2 {
-		t.Fatalf("expected 2 videos, got %d", len(r.Videos))
+	if len(r.Images) != 2 {
+		t.Fatalf("expected 2 images, got %d", len(r.Images))
 	}
 }
 
