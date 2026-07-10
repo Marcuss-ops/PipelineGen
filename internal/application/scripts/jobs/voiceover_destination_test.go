@@ -22,8 +22,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
 
@@ -65,9 +65,9 @@ func newVoiceoverResolver(t *testing.T, db *sql.DB) scriptports.VoiceoverGroupRe
 	repo, err := assets.NewAssetTreeRepository(db, zap.NewNop())
 	require.NoError(t, err)
 	svc := assettree.NewService(repo, zap.NewNop())
-	resolver, err := voiceover.NewGroupsResolver(svc, zap.NewNop())
+	resolver, err := destination.NewResolver(svc, zap.NewNop())
 	require.NoError(t, err)
-	// Refactor 1 (June 2026): wrap concrete *voiceover.GroupsResolver into
+	// Refactor 1 (June 2026): wrap concrete *destination.Resolver into
 	// the canonical scripts/ports.VoiceoverGroupResolver port adapter.
 	return scriptports.NewVoiceoverGroupsAdapter(resolver)
 }
@@ -106,7 +106,9 @@ func TestBuildVoiceoverDestinationResolvesGroupFromDB(t *testing.T) {
 
 	// RESIDUE (audit 2026-07-03): the previously-passed
 	// scriptports.VoiceoverGroupResolver (interface) cannot satisfy
-	// the post-refactor *voiceover.GroupsResolver (= *destination.Resolver)
+	// the post-refactor *destination.Resolver concrete struct (was
+	// *voiceover.GroupsResolver pre-PR-VOICEOVER-GROUPSRESOLVER-RETIRE
+	// via the now-retired type-alias shim at groups_resolver.go).
 	// concrete-struct slot — destination.Resolver has PRIVATE fields
 	// (svc *assettree.Service, log *zap.Logger) per
 	// internal/application/assets/destination/resolver.go. Test preserved

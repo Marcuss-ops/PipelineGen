@@ -9,7 +9,9 @@
 //
 // Audit 2026-07-03 pre-existing test-drift cleanup: post-refactor,
 // BuildVoiceoverDestination's groupsResolver slot demands a
-// *voiceover.GroupsResolver (= *destination.Resolver) concrete struct
+// *destination.Resolver concrete struct (was *voiceover.GroupsResolver
+// pre-PR-VOICEOVER-GROUPSRESOLVER-RETIRE via the now-retired type-
+// alias shim at internal/application/voiceover/groups_resolver.go).
 // pointer; GenerateSceneVoiceovers' voService slot demands a
 // *voiceover.Service concrete struct pointer. The test stubs do NOT
 // satisfy these concrete-struct shapes; nil is passed at call sites,
@@ -57,12 +59,15 @@ func (s *stubClipsFolderExt) ExtractDriveFolderID(raw string) string {
 // ports.VoiceoverGroupResolver. Returns a canned folder ID for matching
 // (parentID, name); returns ErrVoiceoverGroupNotFound for unknown names.
 //
-// RESIDUE (audit 2026-07-03): post-refactor, the production groupsResolver
-// param is *destination.Resolver (concrete struct pointer with PRIVATE
-// fields svc *assettree.Service + log *zap.Logger). This stub satisfies
-// the ports.VoiceoverGroupResolver INTERFACE but cannot satisfy the
-// concrete-struct slot. Bound to _ in tests 2/3 for declared-and-not-used
-// suppression; nil is passed at call sites.
+// RESIDUE (audit 2026-07-03): post-refactor, the production
+// groupsResolver param is *destination.Resolver (concrete struct
+// pointer with PRIVATE fields svc *assettree.Service + log *zap.Logger).
+// This stub satisfies the ports.VoiceoverGroupResolver INTERFACE but
+// cannot construct a *destination.Resolver concrete-struct pointer
+// directly. Bound to _ in tests 2/3 for declared-and-not-used
+// suppression; nil is passed at call sites. PR-VOICEOVER-GROUPSRESOLVER-
+// RETIRE (July 2026) retired the voiceover.GroupsResolver type-alias
+// shim — but the RESIDUE concrete-struct-vs-interface gap remains.
 type stubVoiceoverGroupResolver struct {
 	folderByName map[string]string
 	errByName    map[string]error

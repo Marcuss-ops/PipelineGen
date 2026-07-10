@@ -40,6 +40,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 )
 
@@ -61,7 +62,7 @@ import (
 //     nil-tolerance warning path).
 type FacadeHandler struct {
 	voService       *voiceover.Service
-	groupsResolver  *voiceover.GroupsResolver
+	groupsResolver  *destination.Resolver
 	publisher       delivery.Publisher
 	documentCreator DocumentCreator
 	log             *zap.Logger
@@ -75,7 +76,7 @@ type FacadeHandler struct {
 // fallback per godlike/06 SSOT).
 func NewFacadeHandler(
 	voService *voiceover.Service,
-	groupsResolver *voiceover.GroupsResolver,
+	groupsResolver *destination.Resolver,
 	publisher delivery.Publisher,
 	documentCreator DocumentCreator,
 	log *zap.Logger,
@@ -102,7 +103,7 @@ func (fh *FacadeHandler) GetVoiceoverService() *voiceover.Service {
 
 // GetGroupsResolver returns the script-side groups resolver (asset-
 // tree-backed folder group picker). Typed-nil-tolerant.
-func (fh *FacadeHandler) GetGroupsResolver() *voiceover.GroupsResolver {
+func (fh *FacadeHandler) GetGroupsResolver() *destination.Resolver {
 	return fh.groupsResolver
 }
 
