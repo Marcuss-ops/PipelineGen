@@ -357,7 +357,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		log,
 	)
 
-	var healthSvc interface{}
+	var healthSvc any
 	if root != nil && root.Utility != nil {
 		healthSvc = root.Utility.HealthService
 	}
@@ -388,7 +388,7 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 
 	// HIGH #7 (July 2026): construct QdrantHealthHandler for /qdrant/live
 	// and /qdrant/ready. nil-safe when Qdrant is disabled.
-	var qdrantHealth interface{}
+	var qdrantHealth any
 	if cfg.Qdrant.Enabled && root != nil && root.Process != nil &&
 		root.Process.CollectionManager != nil && root.Process.QdrantSearcher != nil {
 		var embedder search.TextEmbedder

@@ -21,7 +21,7 @@ func parseMetadataJSON(asset *AssetData) {
 	if asset.Metadata != nil || asset.MetadataJSON == "" {
 		return
 	}
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal([]byte(asset.MetadataJSON), &m); err == nil {
 		asset.Metadata = m
 	}
@@ -117,7 +117,7 @@ func buildSearchTextInput(asset *AssetData) appsearchtext.SearchTextInput {
 // fmtIntMetadata reads a numeric metadata_json key and returns its
 // decimal string representation. Returns "" when the key is absent or
 // zero (omitempty contract: Round=0 is not written to metadata_json).
-func fmtIntMetadata(meta map[string]interface{}, key string) string {
+func fmtIntMetadata(meta map[string]any, key string) string {
 	if meta == nil {
 		return ""
 	}
@@ -143,7 +143,7 @@ func fmtIntMetadata(meta map[string]interface{}, key string) string {
 
 // fmtFloatMetadata reads a float64-typed metadata_json key and returns its
 // string representation. Returns "" when the key is absent or zero.
-func fmtFloatMetadata(meta map[string]interface{}, key string) string {
+func fmtFloatMetadata(meta map[string]any, key string) string {
 	if meta == nil {
 		return ""
 	}
@@ -163,10 +163,10 @@ func fmtFloatMetadata(meta map[string]interface{}, key string) string {
 }
 
 // flattenMetadataSlice reads a metadata_json key that may be either a
-// []interface{} or a plain string, and returns a space-joined string.
+// []any or a plain string, and returns a space-joined string.
 // Used by buildSearchTextInput to convert speakers/mentioned_people arrays
 // into a format the searchtext strategies can consume from Additional.
-func flattenMetadataSlice(meta map[string]interface{}, key string) string {
+func flattenMetadataSlice(meta map[string]any, key string) string {
 	if meta == nil {
 		return ""
 	}
@@ -177,7 +177,7 @@ func flattenMetadataSlice(meta map[string]interface{}, key string) string {
 	switch val := v.(type) {
 	case string:
 		return val
-	case []interface{}:
+	case []any:
 		parts := make([]string, 0, len(val))
 		for _, item := range val {
 			if s, ok := item.(string); ok && s != "" {

@@ -9,32 +9,32 @@
 //
 // 4 tests pin the contract:
 //
-//   1. TestCodecIDForPayload_ByteStable — pins the canonical
-//      discriminator output (`empty` / `json.v1`) across 1000
-//      invocations and across 6 distinct payloads. A future drift
-//      on the discriminator surfaces as a build failure (the
-//      test asserts byte-stable identity).
+//  1. TestCodecIDForPayload_ByteStable — pins the canonical
+//     discriminator output (`empty` / `json.v1`) across 1000
+//     invocations and across 6 distinct payloads. A future drift
+//     on the discriminator surfaces as a build failure (the
+//     test asserts byte-stable identity).
 //
-//   2. TestTxContext_HasSevenMethods — pins the canonical 7-method
-//      surface (GetJob + UpdateJobToSucceededCAS +
-//      InsertResultOnConflict + GetPriorArtifactHashes +
-//      PersistArtifactMap + InsertOutboxEnvelope + InsertAssetLocations).
-//      A future refactor that drops OR renames a method MUST update
-//      this test (compile-time drift detection).
+//  2. TestTxContext_HasSevenMethods — pins the canonical 7-method
+//     surface (GetJob + UpdateJobToSucceededCAS +
+//     InsertResultOnConflict + GetPriorArtifactHashes +
+//     PersistArtifactMap + InsertOutboxEnvelope + InsertAssetLocations).
+//     A future refactor that drops OR renames a method MUST update
+//     this test (compile-time drift detection).
 //
-//   3. TestRowTypes_IdentityStable — pins the 5 row types
-//      (JobRow + PriorArtifactHash + ArtifactMapEntry +
-//      OutboxEnvelope + AssetLocationEntry) which BOTH services
-//      share. A future drift on any of these structs is a build
-//      failure if a downstream caller assumes the field shape.
+//  3. TestRowTypes_IdentityStable — pins the 5 row types
+//     (JobRow + PriorArtifactHash + ArtifactMapEntry +
+//     OutboxEnvelope + AssetLocationEntry) which BOTH services
+//     share. A future drift on any of these structs is a build
+//     failure if a downstream caller assumes the field shape.
 //
-//   4. TestPrimitives_AliasesResolve — pins the Go-level type
-//      alias back-compat: `completion.CompleteJobTxRunner`
-//      resolves identity-equal to `internal.CompleteJobTxRunner`.
-//      This is the load-bearing assertion that prevents a future
-//      refactor from accidentally creating TWO competing
-//      primitive sets (one in the public package, one in the
-//      internal subpackage).
+//  4. TestPrimitives_AliasesResolve — pins the Go-level type
+//     alias back-compat: `completion.CompleteJobTxRunner`
+//     resolves identity-equal to `internal.CompleteJobTxRunner`.
+//     This is the load-bearing assertion that prevents a future
+//     refactor from accidentally creating TWO competing
+//     primitive sets (one in the public package, one in the
+//     internal subpackage).
 package internal_test
 
 import (

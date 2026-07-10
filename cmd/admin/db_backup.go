@@ -51,7 +51,7 @@ func runDBBackup(ctx context.Context, args []string) error {
 		return err
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"path":         r.Path,
 		"src":          srcPath,
 		"size_bytes":   r.SizeBytes,

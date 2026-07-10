@@ -180,7 +180,7 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		tags,
 		imageGenWidth,
 		imageGenHeight,
-		"", // empty resolves to the sole canonical model: nano-banana-pro
+		"",    // empty resolves to the sole canonical model: nano-banana-pro
 		false, // skipDrive = false, we WANT to upload the image to Drive!
 	)
 	if err != nil || imageAsset == nil {

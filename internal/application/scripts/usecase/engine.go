@@ -64,7 +64,7 @@ import (
 // without depending on concrete implementations.
 //
 // AZIONE 4 (July 2026): ollamaGen and memorySvc fields changed
-// from interface{} to the typed narrow interfaces
+// from any to the typed narrow interfaces
 // scriptOllamaGenerator and memoryGateChecker. Type assertions
 // in Generate() removed — the compiler enforces the contract.
 //

@@ -264,4 +264,3 @@ func mandatoryFieldGate(dest delivery.DestinationKey, segments []string) string 
 // test assertions like `strings.HasPrefix(folderID, stubModePrefix)`
 // serve as regression guards detecting accidental stub-mode revival.
 const stubModePrefix = "stub-shift:"
-

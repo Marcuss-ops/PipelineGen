@@ -67,7 +67,7 @@ type ClipSearchService interface {
 
 // AssociationService narrows association operations.
 type AssociationService interface {
-	BuildCandidates(ctx context.Context, req interface{}) (interface{}, error)
+	BuildCandidates(ctx context.Context, req any) (any, error)
 }
 
 // DriveCheckService narrows drive check operations.
@@ -77,7 +77,7 @@ type DriveCheckService interface {
 
 // ImageSearchService narrows image search operations.
 type ImageSearchService interface {
-	Search(ctx context.Context, query string, limit int) ([]interface{}, error)
+	Search(ctx context.Context, query string, limit int) ([]any, error)
 }
 
 // TextTranslationService is now a Go type alias for the canonical
@@ -94,12 +94,12 @@ type TextTranslationService = translation.LegacyTextTranslationService
 
 // JobEnqueueService narrows job enqueue operations.
 type JobEnqueueService interface {
-	Enqueue(ctx context.Context, req interface{}) (interface{}, error)
+	Enqueue(ctx context.Context, req any) (any, error)
 }
 
 // HarvestService narrows harvest operations.
 type HarvestService interface {
-	EnqueueHarvest(ctx context.Context, req interface{}, maxClips int, profile string) (interface{}, error)
+	EnqueueHarvest(ctx context.Context, req any, maxClips int, profile string) (any, error)
 }
 
 // RealtimeSearchService narrows realtime search operations.
@@ -127,7 +127,7 @@ type AssocSearchService interface {
 
 // ImageGenService narrows image search + generation operations.
 //
-// PR C8 (July 2026): the `extra interface{}` zombie parameter was
+// PR C8 (July 2026): the `extra any` zombie parameter was
 // removed from SearchAndDownload. Both production callers
 // (internal/application/scripts/usecase/flow_helpers.go::enrichSingleEntity
 // and internal/application/scripts/adapters/processor_images.go::Process)
@@ -135,7 +135,7 @@ type AssocSearchService interface {
 // path was internal/app/wire_script_curation.go::imageGenSvcAdapter,
 // where the `extra.([]string)` cast branches into a `tags` arg for
 // GenerateSmartImage. That cast NEVER fired (no caller passed non-nil
-// extra at composition time), so the entire interface{} channel was
+// extra at composition time), so the entire any channel was
 // untraffic — dropping it preserves byte-equivalent behaviour and
 // satisfies godlike/06 SSOT (no operator-of-untyped-traffic).
 type ImageGenService interface {
@@ -145,7 +145,7 @@ type ImageGenService interface {
 
 // VoiceoverService narrows voiceover operations.
 // PR 5 (June 2026): typed port — takes domain.GenerateVoiceoverCommand,
-// returns *domain.VoiceoverResult. No more interface{}.
+// returns *domain.VoiceoverResult. No more any.
 type VoiceoverService interface {
 	Generate(ctx context.Context, cmd domain.GenerateVoiceoverCommand) (*domain.Result, error)
 }

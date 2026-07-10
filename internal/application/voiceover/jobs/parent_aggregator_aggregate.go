@@ -8,8 +8,8 @@
 //
 // Sibling files in the parent_* family (post-split canonical layout):
 //   - parent_aggregator.go (slim orchestrator) — deps + struct + interface
-//     + NewParentAggregator + Start + Tick + var _ compile-time pin
-//     + isKnownTypedParentState whitelist.
+//   - NewParentAggregator + Start + Tick + var _ compile-time pin
+//   - isKnownTypedParentState whitelist.
 //   - parent_aggregator_aggregate.go (this file) — aggregateOne (per-parent
 //     aggregation loop: deserialise parent result + read-side preference for
 //     typed parent_state_typed column + StateMachine.Transition loop with

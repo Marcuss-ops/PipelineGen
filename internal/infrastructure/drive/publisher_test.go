@@ -1672,7 +1672,7 @@ func TestPublisher_Voiceover_3LanguageMatrix_DistinctSubpaths(t *testing.T) {
 		expected, ok := expectedSegments[lang]
 		require.True(t, ok, "Unexpected language segment %q in EnsureFolder call", lang)
 		require.Equal(t, expected, call.segments,
-				"EnsureFolder segments for %q MUST be [{project}, {lang}]", lang)
+			"EnsureFolder segments for %q MUST be [{project}, {lang}]", lang)
 		seen[lang] = true
 	}
 	require.Len(t, seen, 3,
@@ -1685,10 +1685,10 @@ func TestPublisher_Voiceover_3LanguageMatrix_DistinctSubpaths(t *testing.T) {
 		"3 languages MUST produce 3 uploads")
 
 	// (4) Each upload lands in the SAME sub-folder ID (fake returns
-		//     the same result for all calls — in production, each language
-		//     would have a different folder ID from Drive).
+	//     the same result for all calls — in production, each language
+	//     would have a different folder ID from Drive).
 	for i, call := range files.uploadCalls {
 		require.Equal(t, "vo-sub-folder-id", call.folderID,
-				"Upload %d (%s) must land in the resolved sub-folder", i, call.filename)
+			"Upload %d (%s) must land in the resolved sub-folder", i, call.filename)
 	}
 }

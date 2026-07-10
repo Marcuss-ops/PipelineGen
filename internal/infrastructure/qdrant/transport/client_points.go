@@ -29,7 +29,7 @@ func (c *Client) UpsertPoints(ctx context.Context, collection string, points []s
 		return nil
 	}
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"points": points,
 	}
 	url := fmt.Sprintf("%s/collections/%s/points?wait=true", c.baseURL, collection)
@@ -55,7 +55,7 @@ func (c *Client) DeletePoints(ctx context.Context, collection string, ids []stri
 	if len(ids) == 0 {
 		return nil
 	}
-	body := map[string]interface{}{
+	body := map[string]any{
 		"points": ids,
 	}
 	url := fmt.Sprintf("%s/collections/%s/points/delete?wait=true", c.baseURL, collection)
@@ -122,7 +122,7 @@ func (c *Client) DeletePayloadKeys(ctx context.Context, collection string, keys 
 	if len(keys) == 0 || len(pointIDs) == 0 {
 		return nil
 	}
-	body := map[string]interface{}{
+	body := map[string]any{
 		"keys":   keys,
 		"points": pointIDs,
 	}

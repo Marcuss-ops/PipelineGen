@@ -92,7 +92,7 @@ type Adapter struct {
 	mediaRoot     string             // cfg.Drive.MediaRootFolder (cached for rootForDestination fallback)
 	cfg           config.DriveConfig // per-destination root resolution (DoD #5)
 	log           resolverLogger
-	folderEnsurer FolderEnsurer      // real Drive folder creation (nil → ErrFolderEnsurerNotWired at call-time)
+	folderEnsurer FolderEnsurer // real Drive folder creation (nil → ErrFolderEnsurerNotWired at call-time)
 }
 
 // NewAdapter creates a fail-closed resolver adapter wired to the

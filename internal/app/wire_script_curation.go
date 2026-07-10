@@ -5,7 +5,7 @@
 // *imgservice.Service signature (which returns *asset.ImageAsset
 // and takes tags []string as the search-input carrier) into the
 // canonical usecase.ImageGenService typed-port shape (which
-// returns *adapters.ImageResult and takes interface{} for the
+// returns *adapters.ImageResult and takes any for the
 // extra-input carrier).
 //
 // Curation scope per FASE 2.A spec: "media_curator, scene_builder,
@@ -91,7 +91,7 @@ func (a *imageGenSvcAdapter) SearchAndDownload(ctx context.Context, name, descri
 	if !strings.HasPrefix(url, "http") && imgAsset.DriveFileID != "" {
 		url = fmt.Sprintf("https://drive.google.com/file/d/%s/view", imgAsset.DriveFileID)
 	}
-	return &adapters.ImageResult{SourceURL: url}, nil
+	return &adapters.ImageResult{SourceURL: url, DriveFileID: imgAsset.DriveFileID}, nil
 }
 
 // TriggerPrewarm forwards the warmup signal to the concrete image

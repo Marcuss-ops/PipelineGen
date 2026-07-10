@@ -12,7 +12,7 @@
 //     SwitchReport shape they participate in building)
 //
 // Filter maps inside SearchRequest/HybridSearchRequest stay inline
-// `map[string]interface{}` — there is no dedicated Filter/Condition/Match
+// `map[string]any` — there is no dedicated Filter/Condition/Match
 // type in the codebase, hence filter_types.go is a (separate) doc-only
 // marker pointing at the inline shape.
 package schema
@@ -23,11 +23,11 @@ import "context"
 
 // SearchRequest is a canonical ANN search request.
 type SearchRequest struct {
-	QueryVector []float32              `json:"vector"`
-	VectorName  string                 `json:"vector_name"`
-	Limit       int                    `json:"limit"`
-	MinScore    float64                `json:"min_score,omitempty"`
-	Filter      map[string]interface{} `json:"filter,omitempty"`
+	QueryVector []float32      `json:"vector"`
+	VectorName  string         `json:"vector_name"`
+	Limit       int            `json:"limit"`
+	MinScore    float64        `json:"min_score,omitempty"`
+	Filter      map[string]any `json:"filter,omitempty"`
 
 	// Convenience filter fields — set directly instead of building a Filter map.
 	// If Filter is also set, the combination is implementation-defined.
@@ -68,10 +68,10 @@ type HybridSearchRequest struct {
 	// orchestrators should set SparseText and let Qdrant handle
 	// tokenization against the model configured on the sparse
 	// channel.
-	SparseQueryVector *SparseQueryVector     `json:"sparse_query_vector,omitempty"`
-	Limit             int                    `json:"limit"`
-	MinScore          float64                `json:"min_score,omitempty"`
-	Filter            map[string]interface{} `json:"filter,omitempty"`
+	SparseQueryVector *SparseQueryVector `json:"sparse_query_vector,omitempty"`
+	Limit             int                `json:"limit"`
+	MinScore          float64            `json:"min_score,omitempty"`
+	Filter            map[string]any     `json:"filter,omitempty"`
 
 	// Convenience filter fields.
 	Source    string `json:"-"`
@@ -102,10 +102,10 @@ type SparseQueryVector struct {
 // go through delivery.Signer.BuildAuthorizedURL per asset.
 type SearchResult struct {
 	// Raw Qdrant fields.
-	ID      string                 `json:"id"`
-	Score   float64                `json:"score"`
-	Payload map[string]interface{} `json:"payload,omitempty"`
-	Version int64                  `json:"version,omitempty"`
+	ID      string         `json:"id"`
+	Score   float64        `json:"score"`
+	Payload map[string]any `json:"payload,omitempty"`
+	Version int64          `json:"version,omitempty"`
 
 	// Derived convenience fields (populated from Payload).
 	AssetID        string   `json:"asset_id,omitempty"`
@@ -139,8 +139,8 @@ type ScrollResult struct {
 
 // ScrollPoint is a single Qdrant point returned by the scroll API.
 type ScrollPoint struct {
-	ID      string                 `json:"id"`
-	Payload map[string]interface{} `json:"payload"`
+	ID      string         `json:"id"`
+	Payload map[string]any `json:"payload"`
 }
 
 // ── Verifier ports (used by ReindexVerifier + SwitchReport gaps) ─────

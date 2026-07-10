@@ -30,6 +30,7 @@ import (
 
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -100,6 +101,24 @@ func (f *blockingImageGen) SearchAndDownload(_ context.Context, sceneName, _, _,
 	<-f.release
 	f.inFlight.Add(-1)
 	return &adapterspkg.ImageResult{SourceURL: "http://img/" + sceneName}, nil
+}
+
+type generatedPriorityImageGen struct {
+	searchCalls atomic.Int32
+	genCalls    atomic.Int32
+}
+
+func (f *generatedPriorityImageGen) SearchAndDownload(_ context.Context, sceneName, _, _, _ string) (*adapterspkg.ImageResult, error) {
+	f.searchCalls.Add(1)
+	return &adapterspkg.ImageResult{SourceURL: "http://search/" + sceneName}, nil
+}
+
+func (f *generatedPriorityImageGen) GenerateSmartImage(_ context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error) {
+	f.genCalls.Add(1)
+	return &asset.ImageAsset{
+		SourceURL:   "google-slides/" + subject + ".png",
+		DriveFileID: "drive-" + subject,
+	}, nil
 }
 
 // ── Voiceover processor fakes ─────────────────────────────────────
@@ -232,6 +251,22 @@ func TestImageProcessorSuccess(t *testing.T) {
 	require.NotNil(t, result)
 	require.Len(t, result.SceneImages, 1)
 	assert.Equal(t, "http://img1.jpg", result.SceneImages[0].URL)
+}
+
+func TestImageProcessorPrefersGeneratedImagePath(t *testing.T) {
+	t.Parallel()
+	gen := &generatedPriorityImageGen{}
+	proc := adapterspkg.NewImageProcessor(gen, zap.NewNop())
+	model := nScenesModel(1)
+	result, err := proc.Process(context.Background(), planWithLanguage("en"), processInputFromModel(model))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	require.NotNil(t, result)
+	require.Len(t, result.SceneImages, 1)
+	assert.Equal(t, int32(1), gen.genCalls.Load(), "GenerateSmartImage should be preferred when available")
+	assert.Equal(t, int32(0), gen.searchCalls.Load(), "SearchAndDownload should not be used when generation is available")
+	assert.Equal(t, "https://drive.google.com/file/d/drive-scene-0/view", result.SceneImages[0].URL)
 }
 
 func TestImageProcessorPartialFailure(t *testing.T) {

@@ -4,9 +4,9 @@
 // canonical SOLE owner of the HC-1 typed timeout port surface:
 //
 //   - TimeoutMap     : the type-keyed snapshot of every registered
-//                      job-type timeout (returned by (*Registry).Compose()).
+//     job-type timeout (returned by (*Registry).Compose()).
 //   - TimeoutResolver: the typed port both worker.go and the
-//                      bulk_upload config-port consume.
+//     bulk_upload config-port consume.
 //
 // Lookup paths preserved: jobs.TimeoutMap, jobs.TimeoutResolver, and any
 // `reg.Compose()[j.Type]` snapshot pattern resolve identically pre/post

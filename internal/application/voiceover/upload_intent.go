@@ -320,7 +320,7 @@ func (u *UploadIntentUseCase) Execute(ctx context.Context, voiceoverID, localPat
 		// Forward-pointer: PR-VO-SEMANTIC-PUBLISH (deadline TBD).
 		// When it lands, the upstream caller fills these fields.
 		ProjectID: "",
-		Style:   "",
+		Style:     "",
 	})
 	if err != nil {
 		if mfErr := u.deps.Repo.MarkFailed(ctx, voiceoverID,

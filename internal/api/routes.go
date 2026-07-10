@@ -63,9 +63,9 @@ type Router struct {
 	outboxHandler      InternalOutboxRouter
 	mediasearchHandler InternalMediaSearchRouter
 	ctx                context.Context
-	healthSvc          interface{} // *systemhealth.Service; interface{} keeps the router infra-clean.
+	healthSvc          any // *systemhealth.Service; any keeps the router infra-clean.
 	readyChecker       *systemhealth.ReadyChecker
-	qdrantHealth       interface{}              // *transport.QdrantHealthHandler; interface{} keeps the router infra-clean.
+	qdrantHealth       any                      // *transport.QdrantHealthHandler; any keeps the router infra-clean.
 	modelsHandler      *transport.ModelsHandler // Task 10: /models endpoint (E5 + SigLIP model probes).
 }
 
@@ -162,9 +162,9 @@ func (r *Router) SetContext(ctx context.Context) {
 }
 
 // SetHealthService wires the application-layer health.Service into the router.
-// The concrete type is *systemhealth.Service but the field is interface{}
+// The concrete type is *systemhealth.Service but the field is any
 // so this file stays free of infrastructure imports (PR1 Health boundary, June 2026).
-func (r *Router) SetHealthService(svc interface{}) {
+func (r *Router) SetHealthService(svc any) {
 	r.healthSvc = svc
 }
 
@@ -178,7 +178,7 @@ func (r *Router) SetReadyChecker(rc *systemhealth.ReadyChecker) {
 // SetQdrantHealthHandler wires the QdrantHealthHandler for
 // /qdrant/live and /qdrant/ready (HIGH #7, July 2026).
 // nil-safe: if not wired the routes simply won't register.
-func (r *Router) SetQdrantHealthHandler(h interface{}) {
+func (r *Router) SetQdrantHealthHandler(h any) {
 	r.qdrantHealth = h
 }
 

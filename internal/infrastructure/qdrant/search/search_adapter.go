@@ -209,7 +209,7 @@ func searchResultToVectorSearchResult(r schema.SearchResult) appsearch.VectorSea
 		switch v := raw.(type) {
 		case []string:
 			sr.Tags = append([]string(nil), v...)
-		case []interface{}:
+		case []any:
 			sr.Tags = make([]string, len(v))
 			for i, item := range v {
 				sr.Tags[i] = fmt.Sprint(item)
@@ -221,7 +221,7 @@ func searchResultToVectorSearchResult(r schema.SearchResult) appsearch.VectorSea
 }
 
 // payloadString extracts a string value from a Qdrant payload map.
-func payloadString(payload map[string]interface{}, key string) string {
+func payloadString(payload map[string]any, key string) string {
 	if payload == nil {
 		return ""
 	}

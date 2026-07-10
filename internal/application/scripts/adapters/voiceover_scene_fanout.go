@@ -55,7 +55,7 @@ type VoiceoverSceneInput struct {
 // processor's ProcessorBestEffort policy is the source of truth for
 // this string). On success Link + LocalPath carry the production
 // concrete values from the typed *voiceover.VoiceoverResult (post-PR 7
-// M2 typed-return refactor — no interface{} / no type assertions).
+// M2 typed-return refactor — no any / no type assertions).
 type SceneOutcome struct {
 	SceneIndex int
 	Status     string

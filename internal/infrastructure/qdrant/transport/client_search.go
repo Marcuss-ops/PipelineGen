@@ -38,7 +38,7 @@ import (
 // decodeSearchResults — both endpoints return the same
 // `result: []pointEntry` JSON envelope.
 func (c *Client) SearchPoints(ctx context.Context, collection string, req schema.SearchRequest) ([]schema.SearchResult, error) {
-	body := map[string]interface{}{
+	body := map[string]any{
 		"query":        req.QueryVector,
 		"limit":        req.Limit,
 		"with_payload": true,
@@ -127,7 +127,7 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 		overfetch = 50 // floor so RRF has enough candidates to rank
 	}
 
-	prefetch := []map[string]interface{}{
+	prefetch := []map[string]any{
 		{
 			"query": req.DenseVector,
 			"using": req.DenseVectorName,
@@ -166,14 +166,14 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 		// is configured at the collection level. Using `query` with
 		// a bare string causes Qdrant to return 400 "Expected some
 		// form of vector, id, or a type of query".
-		prefetch = append(prefetch, map[string]interface{}{
+		prefetch = append(prefetch, map[string]any{
 			"document": req.SparseText,
 			"using":    req.SparseVectorName,
 			"limit":    overfetch,
 		})
 	} else if req.SparseQueryVector != nil {
-		prefetch = append(prefetch, map[string]interface{}{
-			"query": map[string]interface{}{
+		prefetch = append(prefetch, map[string]any{
+			"query": map[string]any{
 				"indices": req.SparseQueryVector.Indices,
 				"values":  req.SparseQueryVector.Values,
 			},
@@ -185,16 +185,16 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 	// Optional transcript channel — only included when a dedicated transcript
 	// vector is available (QDRANT-005 follow-up territory).
 	if req.TranscriptVector != nil && req.TranscriptVectorName != "" {
-		prefetch = append(prefetch, map[string]interface{}{
+		prefetch = append(prefetch, map[string]any{
 			"query": req.TranscriptVector,
 			"using": req.TranscriptVectorName,
 			"limit": overfetch,
 		})
 	}
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"prefetch":     prefetch,
-		"query":        map[string]interface{}{"fusion": "rrf"},
+		"query":        map[string]any{"fusion": "rrf"},
 		"limit":        req.Limit,
 		"with_payload": true,
 	}
@@ -246,10 +246,10 @@ func (c *Client) decodeSearchResults(resp *http.Response) ([]schema.SearchResult
 	}
 
 	type pointEntry struct {
-		ID      string                 `json:"id"`
-		Score   float64                `json:"score"`
-		Payload map[string]interface{} `json:"payload,omitempty"`
-		Version int64                  `json:"version,omitempty"`
+		ID      string         `json:"id"`
+		Score   float64        `json:"score"`
+		Payload map[string]any `json:"payload,omitempty"`
+		Version int64          `json:"version,omitempty"`
 	}
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxAPIBodyBytes))
@@ -354,7 +354,7 @@ func envelopeContainsPoints(body []byte) bool {
 // was retired; re-introducing it would require a deliberate
 // operator override (see the trailing comment block above
 // HybridSearchPoints).
-func (c *Client) executeQuery(ctx context.Context, collection string, body map[string]interface{}) ([]schema.SearchResult, error) {
+func (c *Client) executeQuery(ctx context.Context, collection string, body map[string]any) ([]schema.SearchResult, error) {
 	url := fmt.Sprintf("%s/collections/%s/points/query", c.baseURL, collection)
 	resp, err := c.doJSON(ctx, http.MethodPost, url, body)
 	if err != nil {

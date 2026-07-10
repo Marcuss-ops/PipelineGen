@@ -55,8 +55,8 @@ func (c *Client) GetCollection(ctx context.Context, name string) (*schema.Collec
 }
 
 // CreateCollection creates a new collection with the given vector parameters.
-func (c *Client) CreateCollection(ctx context.Context, name string, vectors map[string]interface{}, sparseVectors map[string]interface{}) error {
-	body := map[string]interface{}{
+func (c *Client) CreateCollection(ctx context.Context, name string, vectors map[string]any, sparseVectors map[string]any) error {
+	body := map[string]any{
 		"vectors": vectors,
 	}
 	if len(sparseVectors) > 0 {
@@ -139,7 +139,7 @@ func (c *Client) ListCollections(ctx context.Context) ([]string, error) {
 
 // CreatePayloadIndex creates a payload field index.
 func (c *Client) CreatePayloadIndex(ctx context.Context, collection, field, fieldType string) error {
-	body := map[string]interface{}{
+	body := map[string]any{
 		"field_name": field,
 		"field_type": fieldType,
 	}

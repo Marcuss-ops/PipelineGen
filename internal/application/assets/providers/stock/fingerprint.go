@@ -207,7 +207,7 @@ func (s *Sampler) ShuffleStrings(slice []string) {
 }
 
 // ShuffleStruct is a generic Shuffle in place over a slice of *T
-// (interface {} covers arbitrary element types via rand's interface{}).
+// (interface {} covers arbitrary element types via rand's any).
 // For per-source clip-window ordering, callers pass []VideoSource{}
 // or []int{} or []string{}. This helper unifies the dispatch.
 func ShuffleStruct[T any](s *Sampler, slice []T) {

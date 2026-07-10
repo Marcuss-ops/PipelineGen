@@ -37,7 +37,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 

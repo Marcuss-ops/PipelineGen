@@ -128,21 +128,21 @@ func TestRegisterHandlers_NilSvc_ReturnsErrMissingDeps(t *testing.T) {
 				return (&clipindexer.Service{}).RegisterJobHandler(svc)
 			},
 		},
-	// images — *images.Service{} is the canonical, sole canonical
-	// RegisterHandler entry point for image.generate.google
-	// post-IMAGES-SHIM-REMOVAL (851c5a93, 2026-07-04): the
-	// facade composition-root surface. GenerationService no
-	// longer exposes a direct RegisterHandler — its JobHandler
-	// registration is owned by *images.Service at composition
-	// time (godlike/06 SSOT, one canonical facade).
-	// Q17-IMAGES-REGISTERHANDLER-REGRESSION in
-	// architecture/issues.yaml tracks this state.
-	{
-		name: "images.Service.RegisterHandler (image.generate.google via facade, post-IMAGES-SHIM-REMOVAL canonical)",
-		call: func(svc *jobs.Service) error {
-			return (&images.Service{}).RegisterHandler(svc)
+		// images — *images.Service{} is the canonical, sole canonical
+		// RegisterHandler entry point for image.generate.google
+		// post-IMAGES-SHIM-REMOVAL (851c5a93, 2026-07-04): the
+		// facade composition-root surface. GenerationService no
+		// longer exposes a direct RegisterHandler — its JobHandler
+		// registration is owned by *images.Service at composition
+		// time (godlike/06 SSOT, one canonical facade).
+		// Q17-IMAGES-REGISTERHANDLER-REGRESSION in
+		// architecture/issues.yaml tracks this state.
+		{
+			name: "images.Service.RegisterHandler (image.generate.google via facade, post-IMAGES-SHIM-REMOVAL canonical)",
+			call: func(svc *jobs.Service) error {
+				return (&images.Service{}).RegisterHandler(svc)
+			},
 		},
-	},
 		// stockpipeline — 1 method.
 		{
 			name: "stockpipeline.Service.RegisterHandler (media.stock)",

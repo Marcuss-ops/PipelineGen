@@ -122,9 +122,9 @@ func (p *qdrantSemanticSearchPort) SearchByText(ctx context.Context, query strin
 // qdrantPayloadStr reads a string-valued key from a Qdrant payload
 // map. Lives here (composition-root) because its only consumer is
 // qdrantSemanticSearchPort.SearchByText; promoting it to the
-// qdrant/ package would force a `map[string]interface{}` accessor
+// qdrant/ package would force a `map[string]any` accessor
 // onto the infra layer for a single call site.
-func qdrantPayloadStr(payload map[string]interface{}, key string) string {
+func qdrantPayloadStr(payload map[string]any, key string) string {
 	if payload == nil {
 		return ""
 	}

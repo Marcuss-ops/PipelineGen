@@ -6,10 +6,10 @@
 //
 // Usage:
 //
-//	go run ./cmd/admin drive-doctor [--json]
+//		go run ./cmd/admin drive-doctor [--json]
 //
-//   --json    Output as JSON (default: human-readable table)
-//   --db-path Override canonical SQLite DB path
+//	  --json    Output as JSON (default: human-readable table)
+//	  --db-path Override canonical SQLite DB path
 //
 // godlike/06 SSOT (one canonical owner per fact): the doctor CLI is a
 // READ-ONLY diagnostic surface. It never writes to Drive or the catalog.
@@ -179,5 +179,3 @@ func printDoctorText(cfg *config.Config, report doctorReport) {
 	}
 	fmt.Println()
 }
-
-

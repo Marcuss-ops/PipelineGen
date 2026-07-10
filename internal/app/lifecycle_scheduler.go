@@ -40,7 +40,7 @@ import (
 )
 
 // schedulerDeps holds the composition-root dependencies required to
-// build the scheduler-mode startup steps. Typed, not interface{}:
+// build the scheduler-mode startup steps. Typed, not any:
 // mirrors the jobRunnerDeps + workerDeps pattern.
 type schedulerDeps struct {
 	cfg  *config.Config

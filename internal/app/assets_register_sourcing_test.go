@@ -337,13 +337,13 @@ func (f *fakeAdmin) GetOrCreateFolder(ctx context.Context, name, parentID string
 	}
 	return "fake-folder-id", nil
 }
-func (f *fakeAdmin) GetFolderName(context.Context, string) (string, error)     { return "", nil }
-func (f *fakeAdmin) TrashFolder(context.Context, string) error                 { return nil }
-func (f *fakeAdmin) DeleteFolder(context.Context, string) error                { return nil }
-func (f *fakeAdmin) TrashFile(context.Context, string) error                   { return nil }
-func (f *fakeAdmin) DeleteFile(context.Context, string) error                  { return nil }
-func (f *fakeAdmin) MoveFile(context.Context, string, string, string) error    { return nil }
-func (f *fakeAdmin) RenameFile(context.Context, string, string) error          { return nil }
+func (f *fakeAdmin) GetFolderName(context.Context, string) (string, error)  { return "", nil }
+func (f *fakeAdmin) TrashFolder(context.Context, string) error              { return nil }
+func (f *fakeAdmin) DeleteFolder(context.Context, string) error             { return nil }
+func (f *fakeAdmin) TrashFile(context.Context, string) error                { return nil }
+func (f *fakeAdmin) DeleteFile(context.Context, string) error               { return nil }
+func (f *fakeAdmin) MoveFile(context.Context, string, string, string) error { return nil }
+func (f *fakeAdmin) RenameFile(context.Context, string, string) error       { return nil }
 func (f *fakeAdmin) UploadFile(context.Context, string, string, string) (*driveutil.UploadResult, error) {
 	return nil, nil
 }
@@ -428,7 +428,7 @@ func TestResolverFolderEnsurer_HappyPath(t *testing.T) {
 
 // TestResolverFolderEnsurer_EmptySegmentSkipped pins the EnsureFolderPath
 // contract that empty-string segments are silently skipped (not passed to
-// admin.GetOrCreateFolder). EnsureFolder(ctx, root, 'Boxe', '', 'mike-tyson')
+// admin.GetOrCreateFolder). EnsureFolder(ctx, root, 'Boxe', ”, 'mike-tyson')
 // must produce exactly 2 calls — the empty segment in position 2 is a no-op.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: this test locks the skip behavior so a

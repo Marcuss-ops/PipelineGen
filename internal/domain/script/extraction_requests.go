@@ -10,7 +10,7 @@
 //	generated script text → EntityExtractionRequest → EntityExtractor port → *EntityResult
 //	generated script text → MetadataGenerationRequest → MetadataGenerator port → []VideoMetadata
 //
-// No durable field uses interface{}, any, or map[string]any.
+// No durable field uses any, any, or map[string]any.
 package script
 
 // Entity is one item extracted by the entities processor.

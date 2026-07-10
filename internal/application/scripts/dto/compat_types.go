@@ -26,13 +26,13 @@ import (
 )
 
 // PostProcessArtifact is the historical accumulator name used by tests and
-// several processors. It aliases the canonical interface{}.
+// several processors. It aliases the canonical any.
 //
 // godlike/06 SSOT: this alias remains because it documents the
 // pre-PR-3 accumulator shape. New code MUST use typed ports
 // (adapters.EntityExtractor / adapters.MetadataGenerator) rather
-// than interface{}-shaped postprocessors.
-type PostProcessArtifact = interface{}
+// than any-shaped postprocessors.
+type PostProcessArtifact = any
 
 // SerializeEntityResultRoundTrip preserves the typed entity result as JSON for
 // legacy read-only compatibility. It never mutates the source of truth.

@@ -35,7 +35,7 @@
 //   - The "typed" qualifier follows the W15 helper-split convention: a
 //     typed deps struct (jobRunnerDeps) feeds typed helpers that produce
 //     the canonical concrete types (*appjobs.Runner, StartupStep). No
-//     `interface{}` carriers, no anonymous-only construction site.
+//     `any` carriers, no anonymous-only construction site.
 //   - The runner is the canonical *appjobs.Runner (no struct shadow or
 //     adapter), and the step is the canonical StartupStep (no lifecycle
 //     abstraction drift).
@@ -57,7 +57,7 @@ import (
 )
 
 // jobRunnerDeps holds the composition-root dependencies required to
-// build the job runner and its lifecycle step. Typed, not interface{}:
+// build the job runner and its lifecycle step. Typed, not any:
 // every field is a concrete pointer that callers must provide.
 type jobRunnerDeps struct {
 	root *ComposeRoot

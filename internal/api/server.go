@@ -27,7 +27,7 @@ import (
 // the readiness barrier can be EXTENDED at runtime by callers that
 // wire dependencies after the lifecycle is constructed (e.g. the
 // Qdrant probe in cmd/server/main.go: now done via AddProbe instead of
-// silently failing through a type-assertion interface{} downsizing).
+// silently failing through a type-assertion any downsizing).
 // Implementations MUST accept AddProbe calls BEFORE Start runs.
 type LifecycleManager interface {
 	Start(ctx context.Context) error
@@ -88,11 +88,11 @@ type ServerDeps struct {
 	Registry  *Registry
 	Handlers  InternalHandlers
 	Lifecycle LifecycleManager
-	Health    interface{}
+	Health    any
 	Ready     *systemhealth.ReadyChecker
 	// QdrantHealth is the HIGH #7 handler for /qdrant/live and /qdrant/ready.
 	// Concrete type: *transport.QdrantHealthHandler; nil-safe when Qdrant is disabled.
-	QdrantHealth interface{}
+	QdrantHealth any
 	// ModelsSidecarURL is the Python embedding server URL for the /models endpoint
 	// (Task 10, July 2026). When empty, /models returns "sidecar not configured".
 	// Default: ClipIndexer.ServerURL (typically http://127.0.0.1:8001).

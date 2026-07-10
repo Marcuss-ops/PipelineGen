@@ -76,7 +76,7 @@ func runDBRotate(ctx context.Context, args []string) error {
 		return fmt.Errorf("rotate: %w", err)
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"cutoff":          r.Cutoff.Format(time.RFC3339),
 		"offloaded_to":    r.OffloadedTo,
 		"offloaded_rows":  r.OffloadedRows,

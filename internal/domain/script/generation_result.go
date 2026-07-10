@@ -22,7 +22,7 @@
 // raw JSON read-only mirror is still emitted for legacy consumers
 // but new writers MUST populate `Entities` directly.
 //
-// No durable field uses interface{}, any, or map[string]any.
+// No durable field uses any, any, or map[string]any.
 package script
 
 // EnvelopeVersion is the canonical schema_version of the
@@ -200,7 +200,7 @@ type GenerationTimings struct {
 // The legacy `Single` field is GONE. Single-item runs and
 // multi-item runs now emit the same canonical shape.
 //
-// No durable field uses interface{}, any, or map[string]any.
+// No durable field uses any, any, or map[string]any.
 type GenerationEnvelopeResult struct {
 	// Version tracks the envelope schema_version. Bumped when the
 	// shape changes incompatibly. Always EnvelopeVersion (2)

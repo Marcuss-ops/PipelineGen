@@ -99,7 +99,7 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 		},
 	}
 	// Wave 16 (June 2026): WireAssets realtimeSvc is typed
-	// `assetsapi.RealtimeMatcher` (no more `interface{}` carrier).
+	// `assetsapi.RealtimeMatcher` (no more `any` carrier).
 	// Pass-through is direct: DomainBundle.RealtimeMatcher → WireAssets
 	// (typed-to-typed, no auto-bridge required).
 	//

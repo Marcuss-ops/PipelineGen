@@ -368,10 +368,10 @@ func TestSemanticBackend_IsAdmin_PropagatesIsSystem_ANN(t *testing.T) {
 	b := newSemanticBackend(reg, vs, mr, del)
 
 	q := search.Query{
-		Text:   "admin query",
-		Mode:   search.SearchModeANN,
-		Limit:  5,
-		Actor:  search.Actor{IsAdmin: true},
+		Text:  "admin query",
+		Mode:  search.SearchModeANN,
+		Limit: 5,
+		Actor: search.Actor{IsAdmin: true},
 	}
 	_, err := b.Search(context.Background(), q)
 	if err != nil {
@@ -410,10 +410,10 @@ func TestSemanticBackend_IsAdmin_PropagatesIsSystem_Hybrid(t *testing.T) {
 	b := newSemanticBackend(reg, vs, mr, del)
 
 	q := search.Query{
-		Text:   "admin hybrid query",
-		Mode:   search.SearchModeHybrid,
-		Limit:  5,
-		Actor:  search.Actor{IsAdmin: true},
+		Text:  "admin hybrid query",
+		Mode:  search.SearchModeHybrid,
+		Limit: 5,
+		Actor: search.Actor{IsAdmin: true},
 	}
 	_, err := b.Search(context.Background(), q)
 	if err != nil {
@@ -451,10 +451,10 @@ func TestSemanticBackend_NonAdmin_IsSystemFalse(t *testing.T) {
 	b := newSemanticBackend(reg, vs, mr, del)
 
 	q := search.Query{
-		Text:   "tenant query",
-		Mode:   search.SearchModeANN,
-		Limit:  5,
-		Actor:  search.Actor{WorkspaceID: "tenant-42", IsAdmin: false},
+		Text:  "tenant query",
+		Mode:  search.SearchModeANN,
+		Limit: 5,
+		Actor: search.Actor{WorkspaceID: "tenant-42", IsAdmin: false},
 	}
 	_, err := b.Search(context.Background(), q)
 	if err != nil {
@@ -484,10 +484,10 @@ func TestCompileSemanticFilters_IsAdminMapping(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		actor          search.Actor
-		wantIsSystem   bool
-		wantWorkspace  string
+		name          string
+		actor         search.Actor
+		wantIsSystem  bool
+		wantWorkspace string
 	}{
 		{
 			name:          "admin with empty workspace",
@@ -524,7 +524,7 @@ func TestCompileSemanticFilters_IsAdminMapping(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			q := search.Query{Actor: tt.actor}
-		scope, filter := compileSemanticFilters(q)
+			scope, filter := compileSemanticFilters(q)
 
 			if scope.IsSystem != tt.wantIsSystem {
 				t.Errorf("IsSystem = %v, want %v", scope.IsSystem, tt.wantIsSystem)

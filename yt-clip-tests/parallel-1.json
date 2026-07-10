@@ -1,1 +1,1 @@
-{"error":"usecase.DownloadAndHashClip: fetch: youtube fetch: failed to download youtube clip: section 0: resolveDownloadedSegmentPath: no output file found for template \"data/tmp/raw_jNQXAC9IVRw.%(ext)s\" (globbed 0 candidates)","ok":false}
+{"error":"Unauthorized","ok":false}

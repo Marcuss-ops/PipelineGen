@@ -114,7 +114,7 @@ func buildGenerationResult(
 					if sc.Bindings.Image == nil {
 						sc.Bindings.Image = &scriptpkg.ImageBinding{}
 					}
-					sc.Bindings.Image.URL = s.URL
+					sc.Bindings.Image.URL = adapters.SceneImageDriveLink(s)
 					sc.Bindings.Image.Status = "generated"
 				}
 			}

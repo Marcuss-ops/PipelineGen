@@ -6,12 +6,12 @@
 //
 // Usage:
 //
-//	go run ./cmd/admin drive-bootstrap --root "ROOT_FOLDER_ID" [--apply]
+//		go run ./cmd/admin drive-bootstrap --root "ROOT_FOLDER_ID" [--apply]
 //
-//   --root    Drive folder ID of the unified media root (required)
-//   --apply   Actually create folders (default: dry-run, prints what
-//             would be created)
-//   --db-path Override canonical SQLite DB path
+//	  --root    Drive folder ID of the unified media root (required)
+//	  --apply   Actually create folders (default: dry-run, prints what
+//	            would be created)
+//	  --db-path Override canonical SQLite DB path
 //
 // Canonical 10 subdirectories:
 //

@@ -120,7 +120,7 @@ func UpdateCumulativeMetadataJSON(
 	tempPath string,
 	folderID string,
 	clipID string,
-	newEntry map[string]interface{},
+	newEntry map[string]any,
 	log *zap.Logger,
 ) {
 	const metaFilename = "metadata.json"
@@ -131,7 +131,7 @@ func UpdateCumulativeMetadataJSON(
 		log = zap.NewNop()
 	}
 
-	var existing []map[string]interface{}
+	var existing []map[string]any
 	list, err := uploader.ListFiles(ctx, fmt.Sprintf("'%s' in parents and trashed = false and name = '%s'", folderID, metaFilename))
 	if err != nil {
 		log.Warn("failed to list metadata.json", zap.Error(err))
@@ -140,7 +140,7 @@ func UpdateCumulativeMetadataJSON(
 		body, _, dlErr := uploader.DownloadFile(ctx, existingFileID)
 		if dlErr == nil && body != nil {
 			defer body.Close()
-			var raw []map[string]interface{}
+			var raw []map[string]any
 			if decErr := json.NewDecoder(body).Decode(&raw); decErr == nil {
 				existing = raw
 			}

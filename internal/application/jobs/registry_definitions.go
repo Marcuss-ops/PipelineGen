@@ -10,9 +10,9 @@
 // canonical SOLE owner of:
 //
 //   - The Wave 19 / P1-9 canonical policy constants (DefaultQueue
-//     + DefaultConcurrency) — the single source of truth for
+//   - DefaultConcurrency) — the single source of truth for
 //     default routing / concurrency values. The typed accessors
-//     + Compose()'s applyDefaults pass both reference these
+//   - Compose()'s applyDefaults pass both reference these
 //     constants so a future rename (e.g. "primary" instead of
 //     "default") is a one-line change.
 //   - The 3-file-split breadcrumb (per d44e0239 precedent) so

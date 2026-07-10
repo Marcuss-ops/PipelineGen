@@ -21,11 +21,11 @@ type ScriptInsights struct {
 	ImportantPhrases       []string
 	SpecialNames           []string
 	ArtlistPhrases         []string
-	ArtlistClipSuggestions interface{}
-	EntityImages           interface{}
-	RecommendedDriveFolder interface{}
-	PhraseClipSuggestions  interface{}
-	IntroClips             interface{}
+	ArtlistClipSuggestions any
+	EntityImages           any
+	RecommendedDriveFolder any
+	PhraseClipSuggestions  any
+	IntroClips             any
 }
 
 // ScriptInsightBuilder builds structured ScriptInsights from extracted entities.

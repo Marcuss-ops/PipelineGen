@@ -19,19 +19,19 @@ const (
 
 // Job represents a background task in the Google Accounting service
 type Job struct {
-	ID          string                 `json:"id,omitempty"`
-	JobID       string                 `json:"job_id,omitempty"`
-	Status      JobStatus              `json:"status"`
-	Result      map[string]interface{} `json:"result,omitempty"`
-	Error       string                 `json:"error,omitempty"`
-	Progress    int                    `json:"progress,omitempty"`
-	CurrentStep string                 `json:"current_step,omitempty"`
-	Attempts    int                    `json:"attempts,omitempty"`
-	LastLog     string                 `json:"last_log,omitempty"`
-	FilePath    string                 `json:"file_path,omitempty"`
-	Files       []string               `json:"files,omitempty"`
-	CreatedAt   float64                `json:"created_at,omitempty"`
-	UpdatedAt   float64                `json:"updated_at,omitempty"`
+	ID          string         `json:"id,omitempty"`
+	JobID       string         `json:"job_id,omitempty"`
+	Status      JobStatus      `json:"status"`
+	Result      map[string]any `json:"result,omitempty"`
+	Error       string         `json:"error,omitempty"`
+	Progress    int            `json:"progress,omitempty"`
+	CurrentStep string         `json:"current_step,omitempty"`
+	Attempts    int            `json:"attempts,omitempty"`
+	LastLog     string         `json:"last_log,omitempty"`
+	FilePath    string         `json:"file_path,omitempty"`
+	Files       []string       `json:"files,omitempty"`
+	CreatedAt   float64        `json:"created_at,omitempty"`
+	UpdatedAt   float64        `json:"updated_at,omitempty"`
 }
 
 // GenerateRequest is the shared request structure for video generation

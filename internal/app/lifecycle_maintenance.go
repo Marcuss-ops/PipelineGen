@@ -42,7 +42,7 @@ import (
 )
 
 // maintenanceDeps holds the composition-root dependencies required to
-// build the maintenance-mode startup steps. Typed, not interface{}:
+// build the maintenance-mode startup steps. Typed, not any:
 // mirrors the jobRunnerDeps + workerDeps + schedulerDeps pattern.
 type maintenanceDeps struct {
 	cfg  *config.Config

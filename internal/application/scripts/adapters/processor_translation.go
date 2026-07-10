@@ -127,9 +127,9 @@ func (p *TranslationProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Proce
 
 // Process executes the translation flow for the plan's primary
 // target language. Priority order (PR-TRANSLATION-PIPELINE-2026-07-09):
-//   1. plan.TranslateTo  (explicit user request via OutputSpec.TranslateTo)
-//   2. plan.Languages[0] (first language in the languages array)
-//   3. plan.Language      (legacy single-language field)
+//  1. plan.TranslateTo  (explicit user request via OutputSpec.TranslateTo)
+//  2. plan.Languages[0] (first language in the languages array)
+//  3. plan.Language      (legacy single-language field)
 //
 // The processor builds a *ModelScriptOutputV1 envelope from
 // input.Text + input.SpecScene (with the canonical SchemaVersion

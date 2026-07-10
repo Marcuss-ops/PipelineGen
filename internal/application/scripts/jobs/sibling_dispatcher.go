@@ -38,10 +38,11 @@
 //
 // PR-DISPATCHER-SPLIT (July 2026): decomposed into 2 files per AGENTS.md
 // Pattern 5:
-//   sibling_dispatcher.go           — types + constructor + simple methods
-//                                      (this file)
-//   sibling_dispatcher_dispatch.go  — DispatchSiblings + buildSiblingCommand
-//                                      + toSiblingPayload
+//
+//	sibling_dispatcher.go           — types + constructor + simple methods
+//	                                   (this file)
+//	sibling_dispatcher_dispatch.go  — DispatchSiblings + buildSiblingCommand
+//	                                   + toSiblingPayload
 package jobs
 
 import (

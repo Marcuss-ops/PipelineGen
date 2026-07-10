@@ -15,7 +15,7 @@
 //
 // PR 3 (June 2026): the typed ports were introduced to replace the
 // legacy PostGenFunc callback + GenerationSpec bridge. Previously
-// entities and metadata processors consumed an opaque interface{};
+// entities and metadata processors consumed an opaque any;
 // the PR 3 typed ports enable compile-time audits.
 //
 // godlike/06 SSOT: the typed ports EntityExtractor +

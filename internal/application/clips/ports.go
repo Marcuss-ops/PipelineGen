@@ -222,7 +222,7 @@ type ClipIndexerPort interface {
 // stores the dependency but does not call any method on it.
 // Once a future consumer appears, add LoadManifest/SaveManifest/
 // UpdateManifestTXT/ComputeManifestStats one PR at a time.
-type ClipFolderMemoryPort interface{}
+type ClipFolderMemoryPort any
 
 // ClipConfigPort is the canonical clips-side narrow surface of
 // *config.Config. Each method exposes exactly the field the handler

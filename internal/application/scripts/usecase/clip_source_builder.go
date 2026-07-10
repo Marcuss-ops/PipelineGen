@@ -41,8 +41,8 @@ type typedClipResolverPort interface {
 
 type ClipSourceBuilder struct {
 	clipsRepo    typedClipResolverPort
-	ollamaClient interface{} // *client.Client
-	reranker     interface{}
+	ollamaClient any // *client.Client
+	reranker     any
 	log          *zap.Logger
 }
 
@@ -81,7 +81,7 @@ type ClipGenerationOptions struct {
 // per-type dispatch replaces the legacy heuristic fallback).
 func NewClipSourceBuilder(
 	clipsRepo typedClipResolverPort,
-	ollamaClient interface{},
+	ollamaClient any,
 	log *zap.Logger,
 ) *ClipSourceBuilder {
 	return &ClipSourceBuilder{
@@ -91,7 +91,7 @@ func NewClipSourceBuilder(
 	}
 }
 
-func (c *ClipSourceBuilder) SetReranker(r interface{}) { c.reranker = r }
+func (c *ClipSourceBuilder) SetReranker(r any) { c.reranker = r }
 
 // excerptMaxRunes is the rune-budget for the per-clip transcript excerpt
 // appended to the assembled source text.

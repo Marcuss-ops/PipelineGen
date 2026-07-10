@@ -49,7 +49,7 @@ const textHashLen = 16
 // with the pre-PR-VO-TYPED-PRIMITIVES string field.
 //
 // Conversion semantics: a TextHash value IS a string at the
-// interface{} level (Go's named-type rules) so the metaBuf-style
+// any level (Go's named-type rules) so the metaBuf-style
 // `meta["text_hash"] = textHash` assignment + JSON marshalling + DB
 // binding all work without explicit conversion. The typed surface
 // is the compile-time guarantee; the wire surface is unchanged.

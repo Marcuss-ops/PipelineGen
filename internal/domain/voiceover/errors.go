@@ -3,7 +3,7 @@ package voiceover
 import "errors"
 
 // Canonical sentinel errors for the voiceover use case. Every call site
-// uses errors.Is to branch on these — no string matching, no interface{}
+// uses errors.Is to branch on these — no string matching, no any
 // casting.
 var (
 	// ErrTextRequired is returned when GenerateVoiceoverCommand.Text is empty.

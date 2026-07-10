@@ -60,7 +60,7 @@ type VoiceoverSynthesisResult struct {
 // ────────────────────────────────────────────────────────────────────
 //
 // Result is the canonical, fully-typed output of a voiceover generation.
-// Every call site receives this struct — no interface{}, no map[string]any.
+// Every call site receives this struct — no any, no map[string]any.
 //
 // Fields map 1:1 to the lifecycle steps of the use case:
 //

@@ -26,8 +26,8 @@ import (
 //
 // QDRANT-003 (June 2026): used by VerifyReindex to compare Qdrant point
 // IDs against SQLite assets for missing/orphan detection.
-func (c *Client) ScrollPoints(ctx context.Context, collection string, offset string, limit int, filter map[string]interface{}) (*schema.ScrollResult, error) {
-	body := map[string]interface{}{
+func (c *Client) ScrollPoints(ctx context.Context, collection string, offset string, limit int, filter map[string]any) (*schema.ScrollResult, error) {
+	body := map[string]any{
 		"limit":        limit,
 		"with_payload": true,
 		"with_vector":  false,
@@ -54,8 +54,8 @@ func (c *Client) ScrollPoints(ctx context.Context, collection string, offset str
 	}
 
 	type scrollPoint struct {
-		ID      string                 `json:"id"`
-		Payload map[string]interface{} `json:"payload,omitempty"`
+		ID      string         `json:"id"`
+		Payload map[string]any `json:"payload,omitempty"`
 	}
 	var result struct {
 		Result struct {

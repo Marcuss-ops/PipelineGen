@@ -24,7 +24,7 @@
 //
 // 6-file split (PR-SPLIT-VO-PARENT-AGG, P2, deadline 2026-08-08):
 //   - parent_aggregator.go (this file) — THIN orchestrator: AggregatorDeps
-//     + AggregatorJobsService + var _ pin + ParentAggregator struct +
+//   - AggregatorJobsService + var _ pin + ParentAggregator struct +
 //     NewParentAggregator + Start + Tick + isKnownTypedParentState.
 //   - parent_aggregator_aggregate.go — aggregateOne (per-parent
 //     deserialise → StateMachine.Transition loop → VoiceoverAggregateResult
@@ -36,7 +36,7 @@
 //   - parent_state_machine.go — domainToVoiceoverParentState
 //     (the 5-state → 4-state wire-shape mapping).
 //   - parent_eligibility.go — cache (§15.2) + IsParentAwaitingAggregation gate
-//     + ZeroChildrenAggregateResult short-circuit.
+//   - ZeroChildrenAggregateResult short-circuit.
 package jobs
 
 import (

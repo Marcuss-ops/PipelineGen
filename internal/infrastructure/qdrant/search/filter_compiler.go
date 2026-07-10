@@ -59,7 +59,7 @@ import (
 // REST body. Tests pin the byte shape — if Qdrant ever rejects
 // the projection, the regression is loud at unit-test time, not
 // at first production search.
-func CompileQdrantFilter(scope appsearch.SearchScope, filter appsearch.AssetFilter) (map[string]interface{}, error) {
+func CompileQdrantFilter(scope appsearch.SearchScope, filter appsearch.AssetFilter) (map[string]any, error) {
 	if !scope.IsSystem {
 		if scope.WorkspaceID == "" {
 			return nil, fmt.Errorf("qdrant.CompileQdrantFilter: SearchScope.WorkspaceID is required (set IsSystem=true for admin/reconcile/snapshot paths)")
@@ -69,14 +69,14 @@ func CompileQdrantFilter(scope appsearch.SearchScope, filter appsearch.AssetFilt
 		}
 	}
 
-	must := make([]map[string]interface{}, 0, 6)
+	must := make([]map[string]any, 0, 6)
 
 	// 1. Workspace isolation clause (PR 5 §8): always-on unless
 	//    scope.IsSystem marks this as a cross-workspace admin call.
 	if !scope.IsSystem {
-		must = append(must, map[string]interface{}{
+		must = append(must, map[string]any{
 			"key":   "workspace_id",
-			"match": map[string]interface{}{"value": scope.WorkspaceID},
+			"match": map[string]any{"value": scope.WorkspaceID},
 		})
 	}
 
@@ -107,17 +107,17 @@ func CompileQdrantFilter(scope appsearch.SearchScope, filter appsearch.AssetFilt
 	}
 	must = append(must, lifecycleClauses(lifecycle)...)
 
-	return map[string]interface{}{"must": must}, nil
+	return map[string]any{"must": must}, nil
 }
 
 // matchClause is the canonical wire shape for an equality predicate.
 // Centralised so the key naming stays consistent across every filter
 // built by this file — if a future PR renames a payload key, the
 // migration lives here once.
-func matchClause(key, value string) map[string]interface{} {
-	return map[string]interface{}{
+func matchClause(key, value string) map[string]any {
+	return map[string]any{
 		"key":   key,
-		"match": map[string]interface{}{"value": value},
+		"match": map[string]any{"value": value},
 	}
 }
 
@@ -127,8 +127,8 @@ func matchClause(key, value string) map[string]interface{} {
 // matching = OR within the must pair = ANDisjunction across must
 // clauses). Future "include soft-deleted" admin paths can pass
 // {"ACTIVE", "DELETE_PENDING"} without code changes here.
-func lifecycleClauses(states []string) []map[string]interface{} {
-	out := make([]map[string]interface{}, 0, len(states))
+func lifecycleClauses(states []string) []map[string]any {
+	out := make([]map[string]any, 0, len(states))
 	for _, s := range states {
 		out = append(out, matchClause("lifecycle_state", s))
 	}

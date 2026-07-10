@@ -95,7 +95,7 @@ type HealthProber interface {
 //     probes + LIFO stop). Resolves to *ServerLifecycle via the
 //     composition root but typed as the api-module interface so this
 //     file stays free of infra dependencies.
-//   - HealthService: typed as interface{} to allow the downstream
+//   - HealthService: typed as any to allow the downstream
 //     router handler to perform safe type assertion. The concrete
 //     type is *systemhealth.Service; see internal/api/routes.go's
 //     SetHealthService for the safe-assertion pattern.
@@ -128,8 +128,8 @@ type AppDeps struct {
 	QdrantProbe HealthProber
 	// QdrantHealth is the HIGH #7 handler for /qdrant/live and /qdrant/ready.
 	// Concrete type: *transport.QdrantHealthHandler; nil-safe when Qdrant is disabled.
-	QdrantHealth  interface{}
+	QdrantHealth  any
 	Lifecycle     module.LifecycleManager
-	HealthService interface{}
+	HealthService any
 	ReadyChecker  *systemhealth.ReadyChecker
 }

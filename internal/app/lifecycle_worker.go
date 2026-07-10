@@ -35,7 +35,7 @@ import (
 )
 
 // workerDeps holds the composition-root dependencies required to build
-// the worker-mode startup steps. Typed, not interface{}: every field
+// the worker-mode startup steps. Typed, not any: every field
 // is a concrete pointer that callers must provide. Mirrors the
 // jobRunnerDeps pattern in lifecycle_job_runner.go (PR4.8, June 2026).
 // cfg is added so buildWorkerSteps can gate voiceover-by-default-off
