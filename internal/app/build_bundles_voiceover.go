@@ -342,6 +342,15 @@ func buildVoiceoverService(
 	// present. The adapter uses dbs.main.DB for post-commit SELECTs.
 	postCommitVerifier := newVoiceoverPostCommitVerifierAdapter(dbs.main.DB)
 
+	// P0-#3 (July 2026): wire the canonical per-item voiceover use
+	// case into the legacy Service so GeneratePromo can route
+	// through it. processItemUseCase was already constructed above
+	// (Step 8/12 — BLOC5.4 cutover); the field is now consumed by
+	// the Service's promo path via the promoVoiceoverAdapter
+	// (voiceover/promo.go). When the wire-up is skipped (the
+	// destResolver==nil branch above), processItemUseCase is nil
+	// and Service.GeneratePromo surfaces a typed error — fail-closed
+	// per godlike/07 NO-FAKE-AVAILABILITY.
 	voService := voiceover.NewService(voiceover.VoiceoverDeps{
 		Core:        voiceover.VoiceoverCoreDeps{Cfg: cfg, Log: log, OutputDir: voDir},
 		Persistence: voiceover.VoiceoverPersistenceDeps{Repo: voRepoAdapter},
@@ -357,6 +366,7 @@ func buildVoiceoverService(
 			Finalizer:          finalizer,
 			PostCommitVerifier: postCommitVerifier,
 			ProcessSegment:     processSeg,
+			ProcessItem:        processItemUseCase, // P0-#3 (July 2026): the canonical per-item use case the promo path routes through
 		},
 	})
 	// pylint: disable=unused

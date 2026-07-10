@@ -106,19 +106,20 @@ func TestVoiceoverBatch_NotInProducesArtifactsMap(t *testing.T) {
 //
 // The promo pipeline's per-item path goes through:
 //
-//	Service.GeneratePromo → promo.NewGenerator → voiceoverGenBridge →
-//	Service.GenerateWithDestination → per-item path →
+//	Service.GeneratePromo → promo.NewGenerator → promoVoiceoverAdapter →
+//	ProcessVoiceoverItemUseCase.Execute → ProcessSegmentUseCase.Execute →
 //	voiceover.Finalizer.Finalize → tx.Commit
 //
-// (See internal/application/voiceover/promo.go + service.go:130-148.)
-// The bridge calls Service.GenerateWithDestination which invokes
-// Service.GenerateBatch (per-language) and that path uses finalizeStage
-// → Finalize (per-item tx). The artifact-persistence contract is
-// therefore IDENTICAL to the batch pipeline: voiceovers +
-// media_assets + outbox events written INSIDE the caller's tx BEFORE
-// the broker's mark-SUCCEEDED call.
+// (See internal/application/voiceover/promo.go + service.go. P0-#3
+// cutover July 2026: the legacy voiceoverGenBridge → Service.
+// GenerateWithDestination route was replaced by promoVoiceoverAdapter
+// → ProcessVoiceoverItemUseCase.Execute, the SAME per-item use case
+// the voiceover.generate + voiceover.generate_item job paths use.
+// The artifact-persistence contract is therefore IDENTICAL to the
+// batch pipeline: voiceovers + media_assets + outbox events written
+// INSIDE the caller's tx BEFORE the broker's mark-SUCCEEDED call.
 func TestVoiceoverPromo_RoutesToLegacyComplete(t *testing.T) {
-	const wantDescription = "Voiceover promo generation (translate + generate) (per-item artifacts persisted inside the per-item caller-owned tx via Service.GeneratePromo → promo.NewGenerator → voiceoverGenBridge → Service.GenerateWithDestination → per-item path → voiceover.Finalizer.Finalize → tx.Commit; broker's legacy Complete is the canonical mark-SUCCEEDED seam)"
+	const wantDescription = "Voiceover promo generation (translate + generate) (per-item artifacts persisted inside the per-item caller-owned tx via Service.GeneratePromo → promo.NewGenerator → promoVoiceoverAdapter → ProcessVoiceoverItemUseCase.Execute → ProcessSegmentUseCase.Execute → voiceover.Finalizer.Finalize → tx.Commit; broker's legacy Complete is the canonical mark-SUCCEEDED seam)"
 
 	reg := appjobs.Compose()
 	if reg == nil {

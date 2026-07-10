@@ -97,6 +97,24 @@ type Service struct {
 	// synthesizeStage/destinationStage/finalizeStage inline. The same
 	// runner is shared with the per-item use case path.
 	processSeg *ProcessSegmentUseCase
+	// processItem is the canonical per-item use case that the promo
+	// workflow routes through (P0-#3, July 2026). Replaces the legacy
+	// voiceoverGenBridge which called Service.GenerateWithDestination
+	// (a positional API that masked failures via Result{OK:false}).
+	//
+	// The promo path (Service.GeneratePromo) constructs a
+	// promoVoiceoverAdapter (see promo.go) that adapts the workflow's
+	// domainvo.GenerateVoiceoverCommand to this use case's typed
+	// GenerateVoiceoverItemCommand. Real failures surface as a typed Go
+	// error wrapping ErrPromoVoiceoverGeneration — no more silent
+	// Result{OK:false}.
+	//
+	// Mandatory (fail-fast): a nil processItem at construction time
+	// would silently disable the promo path at runtime (the legacy
+	// "soft no-op" pattern). P0-#3 promotes this to a hard
+	// composition-time requirement so the missing wire-up is fixed
+	// before deploy.
+	processItem VoiceoverItemExecutor
 }
 
 // ALIAS REMOVED Fase 9 step 3: see architecture/deprecations.yaml#TRANSLATION-UNIFY (migration_phase: BACKFILL / status: contract-half)
@@ -167,6 +185,15 @@ type VoiceoverIntegrationDeps struct {
 	// batch path delegates to ProcessSegmentUseCase.Execute instead of
 	// calling synthesizeStage/destinationStage/finalizeStage inline.
 	ProcessSegment *ProcessSegmentUseCase
+	// ProcessItem is the canonical per-item voiceover use case that
+	// the promo workflow routes through (P0-#3, July 2026). Wired in
+	// build_bundles_voiceover.go from the same adapter surface the
+	// legacy Service consumes. MANDATORY — a nil processItem at
+	// construction time would silently disable the promo path;
+	// GeneratePromo surfaces a typed error so the missing wire-up is
+	// visible at the first promo call rather than as a hidden soft
+	// no-op.
+	ProcessItem VoiceoverItemExecutor
 }
 
 // NewService constructs a voiceover.Service from grouped dependency bundles.
@@ -184,6 +211,7 @@ func NewService(deps VoiceoverDeps) *Service {
 		finalizer:          deps.Integration.Finalizer,
 		postCommitVerifier: deps.Integration.PostCommitVerifier,
 		processSeg:         deps.Integration.ProcessSegment,
+		processItem:        deps.Integration.ProcessItem,
 	}
 }
 
