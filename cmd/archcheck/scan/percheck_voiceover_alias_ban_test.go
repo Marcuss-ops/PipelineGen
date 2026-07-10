@@ -2,22 +2,14 @@
 // percheck_voiceover_alias_ban.go forward-prevention gate
 // (PR-VOICEOVER-ALIASES-RETIRE Sub-PR C, ship_date 2026-07-10).
 //
-// The 7 tests below lock the canonical contract established by
+// The 9 tests below lock the canonical contract established by
 // percheck_player_client_check + percheck_root_override_check
 // precedents, extended here to 6 retired-alias literals:
 //
-//  1. Canonical-exemption (voiceover/types.go in SkipFiles)
-//  2. Test-file exemption (*_test.go)
-//  3. Production-code violation detection (SeverityError)
-//  4. Comment-only WARN (default mode: productionOnly=false)
-//  5. Comment-only SILENCED in productionOnly mode (operator
-//     auditability of the "zero production-code hits" claim)
-//  6. Skip-dir exemption via the two-tier SkipDirs +
-//     SkipPathPrefixes mechanism (.git / vendor / cmd/archcheck/scan)
-//  7. Real-fixture: a walk over a real .go file tree that does
-//     not contain any retired alias reports ZERO violations +
-//     ZERO warnings (end-to-end smoke for the gate's fail-closed
-//     semantics on trunk)
+//  1. Canonical-narrative-README residue-accounting
+//     (voiceover/types.go generates 0 violations + 6 warnings —
+//     per-godlike/07 NO-FAKE-AVAILABILITY residue accounting on
+//     intentional documentation references; delibera
 //
 // The permute-item tests are NOT included because the retired
 // alias set has 6 entries (one per alias); permuting them as
@@ -88,37 +80,54 @@ func newTestPolicyAliasBan() *policy.Policy {
 // Test 1 — Canonical-exemption (voiceover/types.go in SkipFiles)
 // -------------------------------------------------------------------
 
-// Per godlike/06 SSOT one-canonical-owner-per-fact: voiceover/types.go
-// holds the canonical narrative-annotation surface for the 6
-// retired aliases (the Sub-PR A goddoc deliberately mentions them
-// by name to prevent future re-introduction). The SkipFiles
-// allow-list makes this the SINGLE legitimate production-code
-// site that may reference the retired aliases. The scanner mirrors
-// the percheck_player_client.go canonical-exempt precedent: the
-// file is FULLY EXEMPT (returns nil at the WalkDir callback), so
-// the gate produces ZERO violations AND ZERO warnings.
+// Per godlike/07 residue-accounting (the CORRECT model for this gate,
+// per the Sub-PR C design reconciliation): voiceover/types.go holds
+// the canonical narrative-annotation surface for the 6 retired
+// aliases (the Sub-PR A+B goddoc deliberately mentions them by name
+// to prevent future re-introduction). The scanner DOES NOT skip
+// this file at the WalkDir-level (that would create a silent
+// coverage hole — godlike/07 NO-FAKE-AVAILABILITY prefers operator
+// noise over silent gaps).
 //
-// This lock ensures a future agent who removes voiceover/types.go
-// from the allow-list will surface a NON-ZERO violations count
-// from the canonical narrative README (the fallback flag — every
-// comment-line mention of the retired aliases becomes a real hit
-// because the WalkDir no longer short-circuits at this file path).
+// Instead the scanner is set up to produce:
+//   - 0 Violations  (no production-code references to the 6 retired aliases)
+//   - 6 Warnings   (residue accounting — 1 per alias, comment-only mentions)
+//
+// This DIVERGES deliberately from percheck_player_client.go's
+// full-skip precedent at first glance, but achieves the same
+// goal: the canonical narrative README never generates false-
+// positive Violations. The difference is that the canonical
+// narrative stays AUDITABLE (operator scans see 1 warning per
+// alias in the residue accounting) — godlike/07 prefers blowing
+// the whistle over silent gaps.
+//
+// This lock ensures a future agent who re-introduces a production-
+// code reference (e.g. `type VoiceoverRecord struct{}`) inside
+// voiceover/types.go will surface a 1-Violation signal rather than
+// being silently allowed past the gate (Test 8 covers this case
+// explicitly). The agent who removes the comment-only residue
+// accounting will surface a 0-violations AND 0-warnings delta
+// (silent-success anti-pattern).
 func TestScanVoiceoverAliasBan_CanonicalFileExempt(t *testing.T) {
 	root := t.TempDir()
 
-	// Canonical narrative README — has ALL 6 retired aliases (the
-	// godlike/06 SSOT retirement-annotation contract).
+	// Canonical narrative README — has ALL 6 retired aliases as
+	// PACKAGE-PREFIXED comments (1 per line) so the per-alias walker
+	// emits exactly 6 warnings in deterministic residue-accounting
+	// order. Non-package-prefixed mentions ("VoiceoverRecord"
+	// without the "voiceover." prefix) do NOT match the literals
+	// and are excluded from the count.
 	writeFixtureAliasBan(t, root, "internal/application/voiceover/types.go", `package voiceover
 
 // Canonical narrative README for the 6 retired aliases (Sub-PR A
 // + Sub-PR B retirement contracts).
 //
 // The voiceover package MUST NOT define any of:
-//   - VoiceoverRecord (canonical: persistence.VoiceoverRecord)
-//   - VoiceoverRepository (canonical: ports.VoiceoverRepository)
-//   - PromoRequest (canonical: workflow/promo.Request)
-//   - PromoResult (canonical: workflow/promo.Result)
-//   - PromoResponse (canonical: workflow/promo.Response)
+//   - voiceover.VoiceoverRecord (canonical: persistence.VoiceoverRecord)
+//   - voiceover.VoiceoverRepository (canonical: ports.VoiceoverRepository)
+//   - voiceover.PromoRequest (canonical: workflow/promo.Request)
+//   - voiceover.PromoResult (canonical: workflow/promo.Result)
+//   - voiceover.PromoResponse (canonical: workflow/promo.Response)
 //   - voiceover.DefaultPromoLanguages (canonical: translation.DefaultPromoLanguages)
 
 type BatchRequest struct{ Items []string }
@@ -128,18 +137,22 @@ type BatchResponse struct{ OK bool }
 	r := newEmptyReportAliasBan()
 	ScanVoiceoverAliasBan(root, newTestPolicyAliasBan(), r, false)
 
-	// Per percheck_player_client.go canonical-exempt precedent: the
-	// file is FULLY EXEMPT — WalkDir returns nil, so neither the
-	// line-by-line scan nor the comment classifier runs. Zero
-	// violations AND zero warnings. This is the canonical semantic
-	// of the allow-list: an exclusive single source-of-truth that
-	// is honored by completely skipping the file (not by promoting
-	// violations to warnings).
+	// 0 violations: no production-code reference to any of the 6
+	// retired aliases inside voiceover/types.go (only comment-only).
 	if len(r.Violations) != 0 {
-		t.Fatalf("expected 0 violations for canonical-exempt voiceover/types.go, got %d: %+v", len(r.Violations), r.Violations)
+		t.Fatalf("expected 0 violations for canonical narrative README (residue-accounting model), got %d: %+v", len(r.Violations), r.Violations)
 	}
-	if len(r.Warnings) != 0 {
-		t.Fatalf("expected 0 warnings for canonical-exempt voiceover/types.go (per percheck_player_client.go precedent — full file exempt yields 0 violations AND 0 warnings), got %d: %+v", len(r.Warnings), r.Warnings)
+	// 6 warnings: residue-accounting — one per retired alias, since
+	// the fixture has all 6 package-prefixed mentions inside
+	// comment-only lines. Deterministic 6 = 6 aliases × 1 ref per line.
+	if got := len(r.Warnings); got != 6 {
+		t.Fatalf("expected exactly 6 warnings (one per retired alias in residue-accounting), got %d: %+v", got, r.Warnings)
+	}
+	// Each warning must carry the percheck_voiceover_alias_ban prefix.
+	for _, w := range r.Warnings {
+		if !strings.HasPrefix(w, "percheck_voiceover_alias_ban: ") {
+			t.Fatalf("expected warning prefix 'percheck_voiceover_alias_ban: ', got %q", w)
+		}
 	}
 }
 
@@ -378,7 +391,82 @@ func X() voiceover.VoiceoverRecord { return voiceover.VoiceoverRecord{} }
 }
 
 // -------------------------------------------------------------------
-// Test 7 — Real-fixture end-to-end smoke (clean trunk → 0 hits)
+// Test 8 — No-coverage-hole safety contract
+// -------------------------------------------------------------------
+
+// Per godlike/07 NO-FAKE-AVAILABILITY, the residue-accounting
+// model (Test 1's contract) MUST NOT create a silent coverage
+// hole: if a future agent re-introduces a production-code alias
+// reference inside voiceover/types.go, the gate MUST surface a
+// Violation. Test 7's clean fixture proves the negative case;
+// Test 8 proves the positive case — both surfaces are gated.
+//
+// This is the load-bearing safety property distinguishing
+// residue-accounting from full-skip: full-skip silently drops
+// the file at WalkDir-zero-holes, but residue-accounting keeps
+// the gate armed against future re-introduction in either model.
+func TestScanVoiceoverAliasBan_NoCoverageHoleInCanonicalFile(t *testing.T) {
+	root := t.TempDir()
+
+	// Fixture: voiceover/types.go contains BOTH:
+	//   - the canonical narrative comments (6 package-prefixed
+	//     reference lines)
+	//   - a production-code re-introduction (1 type alias of
+	//     voiceover.VoiceoverRecord, mimicking a future smuggle
+	//     agent)
+	// Expected scan output:
+	//   - 1 Violation (the type alias declaration line)
+	//   - 6 Warnings (the 6 comment-line mentions)
+	//   - The 2 counts are INDEPENDENT: residue-accounting covers
+	//     production-code violations (SeverityError) AND comment-
+	//     only mentions (SeverityWarn) on the same file path.
+	writeFixtureAliasBan(t, root, "internal/application/voiceover/types.go", `package voiceover
+
+// Canonical narrative README for the 6 retired aliases:
+//   - voiceover.VoiceoverRecord (canonical: persistence.VoiceoverRecord)
+//   - voiceover.VoiceoverRepository (canonical: ports.VoiceoverRepository)
+//   - voiceover.PromoRequest (canonical: workflow/promo.Request)
+//   - voiceover.PromoResult (canonical: workflow/promo.Result)
+//   - voiceover.PromoResponse (canonical: workflow/promo.Response)
+//   - voiceover.DefaultPromoLanguages (canonical: translation.DefaultPromoLanguages)
+
+type BatchRequest struct{ Items []string }
+type BatchResponse struct{ OK bool }
+
+// SMUGGLED production-code re-introduction (the load-bearing test
+// signal for the no-coverage-hole property). The non-comment line
+// below references one of the retired proxy aliases; the gate MUST
+// surface this as a SeverityError Violation despite this file's
+// role as the canonical narrative README.
+var _ = voiceover.VoiceoverRecord
+`)
+
+	r := newEmptyReportAliasBan()
+	ScanVoiceoverAliasBan(root, newTestPolicyAliasBan(), r, false)
+
+	// 1 violation: the production-code `type VoiceoverRecord` on
+	// the bottom of voiceover/types.go is the load-bearing test
+	// signal. A future regression that silently re-introduced this
+	// pattern would surface as 0 violations here (a silent
+	// coverage hole) — which this test explicitly catches.
+	if got := len(r.Violations); got != 1 {
+		t.Fatalf("expected exactly 1 violation (smuggled production-code alias), got %d: %+v", got, r.Violations)
+	}
+	v := r.Violations[0]
+	if filepath.Base(v.File) != "types.go" || !strings.Contains(v.File, "voiceover") {
+		t.Fatalf("expected violation for internal/application/voiceover/types.go, got %q", v.File)
+	}
+	if !strings.Contains(v.Note, "VoiceoverRecord") {
+		t.Fatalf("expected Violation.Note to mention the alias type, got %q", v.Note)
+	}
+	// 6 warnings: residue-accounting for the 6 comment-line mentions.
+	if got := len(r.Warnings); got != 6 {
+		t.Fatalf("expected exactly 6 warnings (residue-accounting for 6 comment-line mentions), got %d: %+v", got, r.Warnings)
+	}
+}
+
+// -------------------------------------------------------------------
+// Test 9 — Real-fixture end-to-end smoke (clean trunk → 0 hits)
 // -------------------------------------------------------------------
 
 // End-to-end smoke over a fixture tree that does NOT contain any
