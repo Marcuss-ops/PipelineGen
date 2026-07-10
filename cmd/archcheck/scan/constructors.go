@@ -44,7 +44,7 @@ import (
 // node-scraper, examples, scripts). When pol.MaxConstructorDeps <= 0
 // the function is a no-op (the policy opts out of the rule family).
 //
-// Phase 1 (June 2026): implements the TODO formerly at the call site
+// Phase 1 (June 2026): implements the rule formerly at the call site
 // per docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md §"Complexity
 // budgets". Extracted from cmd/archcheck/main.go in FASE 1.C PR3.
 func ScanConstructors(root string, pol *policy.Policy, r *report.Report) {

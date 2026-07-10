@@ -61,7 +61,7 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) error {
 // invocation time, so the composition root does not have to thread a
 // fifth dep through ServiceDeps for this job type specifically.
 //
-// TODO(wave14-followup): interface alignment between orchestrator runtime
+// Interface alignment between orchestrator runtime
 // fields and the ytjobs.RebuildDeps struct (specifically ClipIndexerPort
 // vs jobs.ClipIndexer, plus the meta any closure-cast to
 // *youtubeports.DownloaderMetadata) needs verification once a real

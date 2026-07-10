@@ -73,7 +73,7 @@ func probeConfig(cfg DoctorConfig) ProbeReceipt {
 // mTLS, the check opts out cleanly.
 //
 // Today DoctorConfig returns false for both sides (canonical
-// Config lacks the sub-structs; see config_adapter.go TODO). When
+// Config lacks the sub-structs; see config_adapter.go). When
 // the adapter becomes a pass-through, this probe automatically
 // activates.
 func probeCert(cfg DoctorConfig) ProbeReceipt {

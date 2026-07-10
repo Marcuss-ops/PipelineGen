@@ -27,7 +27,7 @@
 //
 // History note: the prior version of this file carried a long
 // "Pre-PR-Queue-Split cleanup history" comment block referencing
-// QueueNotifier as a struct + TODO assertions in repository_commands.go.
+// QueueNotifier as a struct + assertions in repository_commands.go.
 // That history was rendered stale by the Pattern-0 struct→interface
 // refactor in queue_notifier.go (June 2026, codex/qdrant-app-writers-
 // fail-closed followup). The current doc-comment captures the live
@@ -69,10 +69,10 @@ type QueueNotifier = sqljobs.QueueNotifier
 // port contract is verified both at the consumer (here, application
 // tier) and at the wiring site (composition root).
 //
-// TODO (zero-baseline ticket `dup-assertion-queue-notifier`): collapse
-// to a single assertion at the composition-root site once the worker
-// lifecycle lands its constructor-mock removal (target: 2026-08-01,
-// owner: jobs-tier, tracked in architecture/current.yaml#follow_up_tickets).
-// Until then the second assertion here is the documented transitional
-// baseline per AGENTS.md zero-baseline rule.
+// Forward-pointer (deadline 2026-08-01, owner: jobs-tier): collapse to a
+// single assertion at the composition-root site once the worker lifecycle
+// lands its constructor-mock removal. Tracked in
+// architecture/current.yaml#follow_up_tickets. Until then the second
+// assertion here is the documented transitional baseline per AGENTS.md
+// zero-baseline rule.
 var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)

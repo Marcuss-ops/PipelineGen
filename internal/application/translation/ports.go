@@ -142,7 +142,7 @@ type TranslationCommand struct {
 	// Unknown keys are ignored without error (forward-compat). Empty
 	// map is the default; nil is treated identically to empty.
 	//
-	// TODO(hints): the 5 documented keys above are convention only —
+	// The 5 documented keys above are convention only —
 	// no constants are exposed in this package yet. A future PR
 	// should add `internal/application/translation/hints.go` with
 	// `HintPreserveFormatting = "preserve_formatting"` consts (and the

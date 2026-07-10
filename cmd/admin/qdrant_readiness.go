@@ -60,10 +60,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// qdrantReadinessReport is the production-grade TODO 14 readiness gate
+// qdrantReadinessReport is the production-grade readiness gate
 // output. `Checks` is the canonical {check-name -> "pass"|"fail"} map
 // the operational dashboard consumes; the flat fields below preserve
-// the v1 (pre-TODO-14) shape for backwards compat with ops scripts.
+// the v1 shape for backwards compat with ops scripts.
 type qdrantReadinessReport struct {
 	Ready                      bool              `json:"ready"`
 	Checks                     map[string]string `json:"checks,omitempty"`
