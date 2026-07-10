@@ -12,15 +12,15 @@
     "no_effects": true,
     "no_transitions": true,
     "endpoint": "POST /api/stock/run",
-    "generated_at": "2026-07-09T10:16:09Z"
+    "generated_at": "2026-07-09T09:20:18Z"
   },
   "rounds": [
     {
       "index": 0,
       "label": "Round_1_La_fase_di_studio",
       "start": "00:00:32",
-      "end": "start+60s",
-      "description": "La fase di studio e la velocit\u00e0 di Pacquiao. Pacquiao mette subito in mostra la sua mobilit\u00e0 e rapidit\u00e0 di gambe, lavorando molto con il jab da mancino per prendere le misure. Broner mantiene una guardia molto larga e fatica a prendergli il tempo.",
+      "end": "00:01:32",
+      "description": "Inizio del match. Pacquiao mette subito in mostra la sua mobilit\u00e0 e rapidit\u00e0 di gambe, lavorando molto con il jab da mancino per prendere le misure. Broner mantiene una guardia molto larga e fatica a prendergli il tempo.",
       "payload": {
         "direct_urls": [
           "https://www.youtube.com/watch?v=RRJvrDKunyA"
@@ -100,7 +100,7 @@
           }
         ],
         "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-        "subfolder": "Pacquiao Vs Broner/Round_1_La_fase_di_studio",
+        "subfolder": "Pacquiao Vs Broner/Round_1_La_fase_di_studio/00-00-32_to_00-01-32",
         "folder_name": "Round_1_La_fase_di_studio",
         "total_minutes": 2,
         "clip_duration": 5,
@@ -109,7 +109,7 @@
         "no_transitions": true,
         "metadata": {
           "title": "Pacquiao vs Broner \u2014 Round 1 La fase di studio",
-          "description": "La fase di studio e la velocit\u00e0 di Pacquiao. Pacquiao mette subito in mostra la sua mobilit\u00e0 e rapidit\u00e0 di gambe, lavorando molto con il jab da mancino per prendere le misure. Broner mantiene una guardia molto larga e fatica a prendergli il tempo.",
+          "description": "Inizio del match. Pacquiao mette subito in mostra la sua mobilit\u00e0 e rapidit\u00e0 di gambe, lavorando molto con il jab da mancino per prendere le misure. Broner mantiene una guardia molto larga e fatica a prendergli il tempo.",
           "tags": [
             "boxing",
             "pacquiao",
@@ -125,8 +125,8 @@
       "index": 1,
       "label": "Round_2_Posizionamento_e_scambi",
       "start": "00:04:07",
-      "end": "start+60s",
-      "description": "Il posizionamento e i primi scambi. Entrambi i pugili cercano di guadagnare la posizione con il piede avanzato. Pacquiao accelera il ritmo con combinazioni veloci, mentre Broner risponde principalmente di rimessa spingendo via l'avversario.",
+      "end": "00:05:07",
+      "description": "Entrambi i pugili cercano di guadagnare la posizione con il piede avanzato. Pacquiao accelera il ritmo con combinazioni veloci, mentre Broner risponde principalmente di rimessa spingendo via l'avversario.",
       "payload": {
         "direct_urls": [
           "https://www.youtube.com/watch?v=RRJvrDKunyA"
@@ -206,7 +206,7 @@
           }
         ],
         "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-        "subfolder": "Pacquiao Vs Broner/Round_2_Posizionamento_e_scambi",
+        "subfolder": "Pacquiao Vs Broner/Round_2_Posizionamento_e_scambi/00-04-07_to_00-05-07",
         "folder_name": "Round_2_Posizionamento_e_scambi",
         "total_minutes": 2,
         "clip_duration": 5,
@@ -215,7 +215,7 @@
         "no_transitions": true,
         "metadata": {
           "title": "Pacquiao vs Broner \u2014 Round 2 Posizionamento e scambi",
-          "description": "Il posizionamento e i primi scambi. Entrambi i pugili cercano di guadagnare la posizione con il piede avanzato. Pacquiao accelera il ritmo con combinazioni veloci, mentre Broner risponde principalmente di rimessa spingendo via l'avversario.",
+          "description": "Entrambi i pugili cercano di guadagnare la posizione con il piede avanzato. Pacquiao accelera il ritmo con combinazioni veloci, mentre Broner risponde principalmente di rimessa spingendo via l'avversario.",
           "tags": [
             "boxing",
             "pacquiao",
@@ -231,8 +231,8 @@
       "index": 2,
       "label": "Round_5_Miglior_momento_Broner",
       "start": "00:10:28",
-      "end": "start+60s",
-      "description": "Il miglior momento di Broner. Broner riesce a trovare maggiore continuit\u00e0 con il diretto destro, colpendo il mento di Pacquiao in un paio di occasioni. Pacquiao risponde con un potente gancio sinistro al corpo prima di riprendere il controllo del ritmo a fine round.",
+      "end": "00:11:28",
+      "description": "Broner riesce a trovare maggiore continuit\u00e0 con il diretto destro, colpendo il mento di Pacquiao in un paio di occasioni. Pacquiao risponde con un potente gancio sinistro al corpo prima di riprendere il controllo del ritmo a fine round.",
       "payload": {
         "direct_urls": [
           "https://www.youtube.com/watch?v=RRJvrDKunyA"
@@ -312,7 +312,7 @@
           }
         ],
         "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-        "subfolder": "Pacquiao Vs Broner/Round_5_Miglior_momento_Broner",
+        "subfolder": "Pacquiao Vs Broner/Round_5_Miglior_momento_Broner/00-10-28_to_00-11-28",
         "folder_name": "Round_5_Miglior_momento_Broner",
         "total_minutes": 2,
         "clip_duration": 5,
@@ -321,7 +321,7 @@
         "no_transitions": true,
         "metadata": {
           "title": "Pacquiao vs Broner \u2014 Round 5 Miglior momento Broner",
-          "description": "Il miglior momento di Broner. Broner riesce a trovare maggiore continuit\u00e0 con il diretto destro, colpendo il mento di Pacquiao in un paio di occasioni. Pacquiao risponde con un potente gancio sinistro al corpo prima di riprendere il controllo del ritmo a fine round.",
+          "description": "Broner riesce a trovare maggiore continuit\u00e0 con il diretto destro, colpendo il mento di Pacquiao in un paio di occasioni. Pacquiao risponde con un potente gancio sinistro al corpo prima di riprendere il controllo del ritmo a fine round.",
           "tags": [
             "boxing",
             "pacquiao",
@@ -337,8 +337,8 @@
       "index": 3,
       "label": "Round_7_Broner_barcolla",
       "start": "00:16:33",
-      "end": "start+60s",
-      "description": "Il momento chiave: Broner barcolla. Il round pi\u00f9 spettacolare del match. Pacquiao mette a segno una serie di colpi durissimi, tra cui un potente montante e un sinistro che scuotono visibilmente Broner. Broner \u00e8 costretto a legare ed \u00e8 quasi sul punto di andare KO mentre Pacquiao lo tempesta di colpi all'angolo.",
+      "end": "00:17:33",
+      "description": "Il round pi\u00f9 spettacolare del match. Pacquiao mette a segno una serie di colpi durissimi, tra cui un potente montante e un sinistro che scuotono visibilmente Broner. Broner \u00e8 costretto a legare ed \u00e8 quasi sul punto di andare KO mentre Pacquiao lo tempesta di colpi all'angolo.",
       "payload": {
         "direct_urls": [
           "https://www.youtube.com/watch?v=RRJvrDKunyA"
@@ -418,7 +418,7 @@
           }
         ],
         "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-        "subfolder": "Pacquiao Vs Broner/Round_7_Broner_barcolla",
+        "subfolder": "Pacquiao Vs Broner/Round_7_Broner_barcolla/00-16-33_to_00-17-33",
         "folder_name": "Round_7_Broner_barcolla",
         "total_minutes": 2,
         "clip_duration": 5,
@@ -427,7 +427,7 @@
         "no_transitions": true,
         "metadata": {
           "title": "Pacquiao vs Broner \u2014 Round 7 Broner barcolla",
-          "description": "Il momento chiave: Broner barcolla. Il round pi\u00f9 spettacolare del match. Pacquiao mette a segno una serie di colpi durissimi, tra cui un potente montante e un sinistro che scuotono visibilmente Broner. Broner \u00e8 costretto a legare ed \u00e8 quasi sul punto di andare KO mentre Pacquiao lo tempesta di colpi all'angolo.",
+          "description": "Il round pi\u00f9 spettacolare del match. Pacquiao mette a segno una serie di colpi durissimi, tra cui un potente montante e un sinistro che scuotono visibilmente Broner. Broner \u00e8 costretto a legare ed \u00e8 quasi sul punto di andare KO mentre Pacquiao lo tempesta di colpi all'angolo.",
           "tags": [
             "boxing",
             "pacquiao",
@@ -443,8 +443,8 @@
       "index": 4,
       "label": "Round_9_Pacquiao_all_attacco",
       "start": "00:21:16",
-      "end": "start+60s",
-      "description": "Pacquiao ancora all'attacco. Un altro ottimo round per il filippino. Pacquiao intercetta Broner con un potente gancio sinistro d'incontro che lo fa arretrare vistosamente sui tacchi, costringendolo nuovamente a subire una raffica di colpi all'angolo.",
+      "end": "00:22:16",
+      "description": "Un altro ottimo round per il filippino. Pacquiao intercetta Broner con un potente gancio sinistro d'incontro che lo fa arretrare vistosamente sui tacchi, costringendolo nuovamente a subire una raffica di colpi all'angolo.",
       "payload": {
         "direct_urls": [
           "https://www.youtube.com/watch?v=RRJvrDKunyA"
@@ -524,7 +524,7 @@
           }
         ],
         "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-        "subfolder": "Pacquiao Vs Broner/Round_9_Pacquiao_all_attacco",
+        "subfolder": "Pacquiao Vs Broner/Round_9_Pacquiao_all_attacco/00-21-16_to_00-22-16",
         "folder_name": "Round_9_Pacquiao_all_attacco",
         "total_minutes": 2,
         "clip_duration": 5,
@@ -533,7 +533,7 @@
         "no_transitions": true,
         "metadata": {
           "title": "Pacquiao vs Broner \u2014 Round 9 Pacquiao all attacco",
-          "description": "Pacquiao ancora all'attacco. Un altro ottimo round per il filippino. Pacquiao intercetta Broner con un potente gancio sinistro d'incontro che lo fa arretrare vistosamente sui tacchi, costringendolo nuovamente a subire una raffica di colpi all'angolo.",
+          "description": "Un altro ottimo round per il filippino. Pacquiao intercetta Broner con un potente gancio sinistro d'incontro che lo fa arretrare vistosamente sui tacchi, costringendolo nuovamente a subire una raffica di colpi all'angolo.",
           "tags": [
             "boxing",
             "pacquiao",
@@ -549,8 +549,8 @@
       "index": 5,
       "label": "Round_10_11_Controllo_Pacquiao",
       "start": "00:23:02",
-      "end": "start+60s",
-      "description": "Il controllo di Pacquiao e la mancanza di iniziativa di Broner. Viene evidenziato il divario nei colpi portati: Pacquiao domina per volume, mentre Broner lancia pochissimi destri, facendo sospettare un infortunio alla mano. Al Round 11 le statistiche mostrano 109 colpi a segno per Pacquiao contro i soli 49 di Broner.",
+      "end": "00:24:02",
+      "description": "Viene evidenziato il divario nei colpi portati: Pacquiao domina per volume, mentre Broner lancia pochissimi destri, facendo sospettare un infortunio alla mano. Al Round 11 le statistiche mostrano 109 colpi a segno per Pacquiao contro i soli 49 di Broner.",
       "payload": {
         "direct_urls": [
           "https://www.youtube.com/watch?v=RRJvrDKunyA"
@@ -630,7 +630,7 @@
           }
         ],
         "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-        "subfolder": "Pacquiao Vs Broner/Round_10_11_Controllo_Pacquiao",
+        "subfolder": "Pacquiao Vs Broner/Round_10_11_Controllo_Pacquiao/00-23-02_to_00-24-02",
         "folder_name": "Round_10_11_Controllo_Pacquiao",
         "total_minutes": 2,
         "clip_duration": 5,
@@ -639,7 +639,7 @@
         "no_transitions": true,
         "metadata": {
           "title": "Pacquiao vs Broner \u2014 Round 10 11 Controllo Pacquiao",
-          "description": "Il controllo di Pacquiao e la mancanza di iniziativa di Broner. Viene evidenziato il divario nei colpi portati: Pacquiao domina per volume, mentre Broner lancia pochissimi destri, facendo sospettare un infortunio alla mano. Al Round 11 le statistiche mostrano 109 colpi a segno per Pacquiao contro i soli 49 di Broner.",
+          "description": "Viene evidenziato il divario nei colpi portati: Pacquiao domina per volume, mentre Broner lancia pochissimi destri, facendo sospettare un infortunio alla mano. Al Round 11 le statistiche mostrano 109 colpi a segno per Pacquiao contro i soli 49 di Broner.",
           "tags": [
             "boxing",
             "pacquiao",
@@ -655,8 +655,8 @@
       "index": 6,
       "label": "Round_12_Finale",
       "start": "00:27:37",
-      "end": "start+60s",
-      "description": "Il finale del match. Negli ultimi 30 secondi Broner non mostra l'urgenza di dover recuperare lo svantaggio e Pacquiao controlla agevolmente fino al suono della campana finale.",
+      "end": "00:28:37",
+      "description": "Negli ultimi 30 secondi Broner non mostra l'urgenza di dover recuperare lo svantaggio e Pacquiao controlla agevolmente fino al suono della campana finale.",
       "payload": {
         "direct_urls": [
           "https://www.youtube.com/watch?v=RRJvrDKunyA"
@@ -736,7 +736,7 @@
           }
         ],
         "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-        "subfolder": "Pacquiao Vs Broner/Round_12_Finale",
+        "subfolder": "Pacquiao Vs Broner/Round_12_Finale/00-27-37_to_00-28-37",
         "folder_name": "Round_12_Finale",
         "total_minutes": 2,
         "clip_duration": 5,
@@ -745,7 +745,7 @@
         "no_transitions": true,
         "metadata": {
           "title": "Pacquiao vs Broner \u2014 Round 12 Finale",
-          "description": "Il finale del match. Negli ultimi 30 secondi Broner non mostra l'urgenza di dover recuperare lo svantaggio e Pacquiao controlla agevolmente fino al suono della campana finale.",
+          "description": "Negli ultimi 30 secondi Broner non mostra l'urgenza di dover recuperare lo svantaggio e Pacquiao controlla agevolmente fino al suono della campana finale.",
           "tags": [
             "boxing",
             "pacquiao",
@@ -761,8 +761,8 @@
       "index": 7,
       "label": "Verdetto_Unanime",
       "start": "00:28:47",
-      "end": "start+60s",
-      "description": "Annuncio del verdetto ufficiale. I giudici assegnano una netta decisione unanime a favore di Manny Pacquiao (117-111, 116-112, 116-112), che conserva il titolo mondiale WBA dei pesi welter.",
+      "end": "00:29:47",
+      "description": "I giudici assegnano una netta decisione unanime a favore di Manny Pacquiao (117-111, 116-112, 116-112), che conserva il titolo mondiale WBA dei pesi welter.",
       "payload": {
         "direct_urls": [
           "https://www.youtube.com/watch?v=RRJvrDKunyA"
@@ -842,7 +842,7 @@
           }
         ],
         "folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-        "subfolder": "Pacquiao Vs Broner/Verdetto_Unanime",
+        "subfolder": "Pacquiao Vs Broner/Verdetto_Unanime/00-28-47_to_00-29-47",
         "folder_name": "Verdetto_Unanime",
         "total_minutes": 2,
         "clip_duration": 5,
@@ -851,7 +851,7 @@
         "no_transitions": true,
         "metadata": {
           "title": "Pacquiao vs Broner \u2014 Verdetto Unanime",
-          "description": "Annuncio del verdetto ufficiale. I giudici assegnano una netta decisione unanime a favore di Manny Pacquiao (117-111, 116-112, 116-112), che conserva il titolo mondiale WBA dei pesi welter.",
+          "description": "I giudici assegnano una netta decisione unanime a favore di Manny Pacquiao (117-111, 116-112, 116-112), che conserva il titolo mondiale WBA dei pesi welter.",
           "tags": [
             "boxing",
             "pacquiao",

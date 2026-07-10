@@ -1,102 +1,129 @@
 {
-  "run_at": "2026-07-09T10:40:28Z",
+  "run_at": "2026-07-09T09:24:07Z",
   "base_url": "http://127.0.0.1:8000",
   "drive_folder_id": "1J-zIuqroF0rkTrKxU-tmZu9e5rN20ggV",
-  "results": [
-    {
-      "round": 0,
-      "label": "Round_1_La_fase_di_studio",
-      "http_status": 200,
-      "job_id": "job_1783592169488096739_13b9df16",
-      "response": {
-        "job_id": "job_1783592169488096739_13b9df16",
-        "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783592169488096739_13b9df16/full"
-      },
-      "final_status": "SUCCEEDED"
-    },
-    {
-      "round": 1,
-      "label": "Round_2_Posizionamento_e_scambi",
-      "http_status": 200,
-      "job_id": "job_1783592237630523341_86e27f5a",
-      "response": {
-        "job_id": "job_1783592237630523341_86e27f5a",
-        "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783592237630523341_86e27f5a/full"
-      },
-      "final_status": "SUCCEEDED"
-    },
-    {
-      "round": 2,
-      "label": "Round_5_Miglior_momento_Broner",
-      "http_status": 200,
-      "job_id": "job_1783592356903677522_e0a9986e",
-      "response": {
-        "job_id": "job_1783592356903677522_e0a9986e",
-        "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783592356903677522_e0a9986e/full"
-      },
-      "final_status": "TIMEOUT"
-    },
-    {
-      "round": 3,
-      "label": "Round_7_Broner_barcolla",
-      "http_status": 200,
-      "job_id": "job_1783592539699198503_4edb8894",
-      "response": {
-        "job_id": "job_1783592539699198503_4edb8894",
-        "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783592539699198503_4edb8894/full"
-      },
-      "final_status": "TIMEOUT"
-    },
-    {
-      "round": 4,
-      "label": "Round_9_Pacquiao_all_attacco",
-      "http_status": 200,
-      "job_id": "job_1783592724413888058_1d45f9bd",
-      "response": {
-        "job_id": "job_1783592724413888058_1d45f9bd",
-        "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783592724413888058_1d45f9bd/full"
-      },
-      "final_status": "TIMEOUT"
-    },
-    {
-      "round": 5,
-      "label": "Round_10_11_Controllo_Pacquiao",
-      "http_status": 200,
-      "job_id": "job_1783592906791189213_ddec6136",
-      "response": {
-        "job_id": "job_1783592906791189213_ddec6136",
-        "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783592906791189213_ddec6136/full"
-      },
-      "final_status": "TIMEOUT"
-    },
-    {
-      "round": 6,
-      "label": "Round_12_Finale",
-      "http_status": 200,
-      "job_id": "job_1783593089146419806_5d80e229",
-      "response": {
-        "job_id": "job_1783593089146419806_5d80e229",
-        "message": "Stock pipeline job enqueued",
-        "status_url": "/api/jobs/job_1783593089146419806_5d80e229/full"
-      },
-      "final_status": "TIMEOUT"
-    },
-    {
-      "round": 7,
-      "label": "Verdetto_Unanime",
-      "http_status": 401,
-      "job_id": "",
-      "response": {
+  "submits": [
+    [
+      0,
+      "",
+      401,
+      {
         "error": "Unauthorized",
         "ok": false
       },
-      "error": "HTTP Error 401: Unauthorized"
-    }
+      "HTTP Error 401: Unauthorized"
+    ],
+    [
+      1,
+      "",
+      401,
+      {
+        "error": "Unauthorized",
+        "ok": false
+      },
+      "HTTP Error 401: Unauthorized"
+    ],
+    [
+      2,
+      "",
+      401,
+      {
+        "error": "Unauthorized",
+        "ok": false
+      },
+      "HTTP Error 401: Unauthorized"
+    ],
+    [
+      3,
+      "",
+      401,
+      {
+        "error": "Unauthorized",
+        "ok": false
+      },
+      "HTTP Error 401: Unauthorized"
+    ],
+    [
+      4,
+      "",
+      401,
+      {
+        "error": "Unauthorized",
+        "ok": false
+      },
+      "HTTP Error 401: Unauthorized"
+    ],
+    [
+      5,
+      "",
+      401,
+      {
+        "error": "Unauthorized",
+        "ok": false
+      },
+      "HTTP Error 401: Unauthorized"
+    ],
+    [
+      6,
+      "",
+      401,
+      {
+        "error": "Unauthorized",
+        "ok": false
+      },
+      "HTTP Error 401: Unauthorized"
+    ],
+    [
+      7,
+      "",
+      401,
+      {
+        "error": "Unauthorized",
+        "ok": false
+      },
+      "HTTP Error 401: Unauthorized"
+    ]
+  ],
+  "poll_results": [
+    [
+      0,
+      "",
+      "NO_JOB_ID"
+    ],
+    [
+      4,
+      "",
+      "NO_JOB_ID"
+    ],
+    [
+      1,
+      "",
+      "NO_JOB_ID"
+    ],
+    [
+      3,
+      "",
+      "NO_JOB_ID"
+    ],
+    [
+      2,
+      "",
+      "NO_JOB_ID"
+    ],
+    [
+      5,
+      "",
+      "NO_JOB_ID"
+    ],
+    [
+      6,
+      "",
+      "NO_JOB_ID"
+    ],
+    [
+      7,
+      "",
+      "NO_JOB_ID"
+    ]
   ]
 }
