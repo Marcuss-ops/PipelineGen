@@ -42,6 +42,17 @@ from PIL import Image
 MASTER_STORAGE = "data/google_slides_storage.json"
 PROFILE_DIR = "data/google_slides_session_profile"
 
+# ── Prompt cleanup constants (godlike/07 minimum-blast-radius) ────────────
+#
+# Google Slides rejects prompts longer than ~150 chars; the exact limit is
+# undocumented but the empirical ceiling is conservative. The constant is
+# defined at module scope so future tightening can be a single-line edit
+# AND so the runtime invariant "final prompt length <= MAX_PROMPT_LEN" is
+# auditable from one place.
+MAX_PROMPT_LEN = 150
+PROMPT_ELLIPSIS = "..."
+PROMPT_TARGET_LEN = MAX_PROMPT_LEN - len(PROMPT_ELLIPSIS)  # 147 (leaves room for "...")
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 def _log(msg: str) -> None:
@@ -346,6 +357,36 @@ class ProfileWorker(threading.Thread):
         request_id = req["id"]
         prompt = req["prompt"]
         output_path = req["output"]
+
+        # Clean the prompt (first sentence AND must finish within MAX_PROMPT_LEN chars).
+        # The MUST-FIX from the prior code-reviewer verified two failure modes were present in
+        # the pre-fix logic:
+        #   1. `prompt[:150].rsplit(' ', 1)[0]` returns the full 150-char slice when no space
+        #      is present (rsplit with no match yields the whole input). Appending "..." then
+        #      produced a 153-char string that violated the 150-char ceiling.
+        #   2. When a space was found inside `prompt[:150]`, the truncation + "..." summed
+        #      to AT MOST 153 chars (149 cut + 3 ellipsis) — also over the cap.
+        # The post-fix invariant is: the FINAL prompt length is bounded by MAX_PROMPT_LEN
+        # unconditionally, regardless of whether a space exists in the truncated range.
+        # Branch-A <= PROMPT_TARGET_LEN + len(ELLIPSIS) = MAX_PROMPT_LEN (word-boundary cut).
+        # Branch-B = PROMPT_TARGET_LEN + len(ELLIPSIS)        = MAX_PROMPT_LEN (hard cut).
+        # else-branch = MAX_PROMPT_LEN                         (no periods).
+        original_prompt = prompt
+        sentences = [s.strip() for s in prompt.split('.') if s.strip()]
+        if sentences:
+            prompt = sentences[0]
+            if len(prompt) > MAX_PROMPT_LEN:
+                truncated = prompt[:PROMPT_TARGET_LEN]
+                last_space = truncated.rfind(' ')
+                if last_space != -1:
+                    # Word-boundary cut (post-strip guarantees first char is not a space).
+                    prompt = truncated[:last_space] + PROMPT_ELLIPSIS
+                else:
+                    # No space in the truncated range — hard truncate to MAX_PROMPT_LEN.
+                    prompt = truncated + PROMPT_ELLIPSIS
+        else:
+            prompt = prompt[:MAX_PROMPT_LEN]
+        _log(f"[profile-{self.profile_id}][{request_id}] cleaned prompt from '{original_prompt[:40]}...' to '{prompt}' (len={len(prompt)})")
 
         os.makedirs(os.path.dirname(os.path.abspath(output_path)) or ".", exist_ok=True)
         t0 = time.time()
