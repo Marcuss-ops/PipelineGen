@@ -17,7 +17,7 @@
 // today, which is the failsafe default for cert probing — the
 // probes opt out cleanly when MTLS is not wired.
 //
-// TODO(RW-PROD-016 follow-up): once canonical Config grows
+// Forward-pointer (deadline 2026-09-01, owner: platform/config, tracked: RW-PROD-016): once canonical Config grows
 //
 //	type WorkersConfig struct { ... + MTLSConfig MTLSConfig `yaml:"mtls"` }
 //	type ServerConfig struct { ... + TLSConfig TLSConfig `yaml:"tls"` }
@@ -92,7 +92,7 @@ type configDoctorAdapter struct {
 // Compile-time assertion: the runtime adapter satisfies the port.
 // Once canonical Config grows Server.TLS / Workers.MTLS we also
 // add `var _ DoctorConfig = (*config.Config)(nil)` to mark the
-// seam as fixed. See the package doc for the TODO+timeline.
+// seam as fixed. See the package doc for the forward-pointer timeline.
 var _ DoctorConfig = (*configDoctorAdapter)(nil)
 
 // NewDoctorConfig returns a DoctorConfig that reads through the

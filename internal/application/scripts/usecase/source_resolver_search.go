@@ -36,7 +36,7 @@ type SemanticSearchResult struct {
 // SearchSourceResolver resolves SourceSearch sources by performing
 // semantic search and building ClipEvidence via ClipSourceBuilder.
 //
-// TODO(PR-followup): unit tests currently only exercise Phase 1
+// Unit tests currently only exercise Phase 1
 // (search port error paths); Phase 2 (ClipSourceBuilder context
 // assembly) needs a testable fake ClipSourceBuilder. Same gap
 // exists in CatalogSourceResolver tests.

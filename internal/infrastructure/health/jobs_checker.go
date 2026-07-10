@@ -20,7 +20,7 @@ import (
 // RunnerProbe means "only DB reachability is verified" — suitable
 // for admin CLIs and test environments where no broker is running.
 //
-// codex/health-ready-contract (June 2026): resolves the TODO at the
+// codex/health-ready-contract (June 2026): resolves the issue at the
 // original line 52 — "inject a real runner heartbeat/liveness port
 // that proves the broker loop is alive".
 type RunnerProbe func(ctx context.Context) error

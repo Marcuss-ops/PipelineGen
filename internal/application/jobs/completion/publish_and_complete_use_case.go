@@ -290,7 +290,7 @@ func (u *PublishAndCompleteUseCase) Execute(
 // SHA gate). A future commit will thread the staged.Resolver lookup through
 // to populate LocalPath (the on-disk file source) once the
 // StagedArtifactReference -> media_assets lookup is canonicalized in
-// P0-COMPL-5-WIRE-NAMING followups (forward-pointer TODO(P0-COMPL-5-RESOLVER)).
+// P0-COMPL-5-WIRE-NAMING followups (forward-pointer P0-COMPL-5-RESOLVER, deadline 2026-08-15, owner: completion).
 func refToVerifiedArtifact(ref *remote.StagedArtifactReference, jobID string) finalization.VerifiedArtifact {
 	return finalization.VerifiedArtifact{
 		ArtifactID:     ref.ArtifactID,

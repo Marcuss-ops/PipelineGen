@@ -72,7 +72,7 @@ func (s *SQLiteDB) RunMigrations(log *zap.Logger, targetDir, targetDB string) er
 // scripts (e.g. seed_fixture). See RunMigrations for the targetDB
 // parameter's meaning.
 //
-// TODO #8 (June 2026): scope-aware migrations.
+// Scope-aware migrations (June 2026): targetDB selects the canonical DB.
 func RunMigrationsOnDB(dbPath string, log *zap.Logger, targetDir, targetDB string) error {
 	if log == nil {
 		log = zap.NewNop()
@@ -150,7 +150,7 @@ func migrateAll(db queryable, log *zap.Logger, targetDir, targetDB string) error
 		checksum := sha256Hex(content)
 
 		if prev, ok := applied[m.version]; ok {
-			if prev.checksum != checksum {					// One-time checksum upgrade
+			if prev.checksum != checksum { // One-time checksum upgrade
 				// shim. Migration 109 was edited to prepend the
 				// `-- database: primary` header directive, which
 				// changes its SHA-256 checksum. Existing primary

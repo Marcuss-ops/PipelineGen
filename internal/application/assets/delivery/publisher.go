@@ -20,7 +20,7 @@ import "context"
 //	  - ingest lifecycle services     → Publisher injected at composition
 //	  - media processor               → Publisher injected at composition
 //
-//	Still bypassing delivery.Publisher (TODO markers in place):
+//	Still bypassing delivery.Publisher (tracked by Pattern 12):
 //	  - drive/store.go::UploadToDrive       → used by images package (P0-2 added Publisher fallback chain)
 //	  - jobs/worker/runner.go               → assetClient.UploadFile (worker artifacts, different concern)
 //

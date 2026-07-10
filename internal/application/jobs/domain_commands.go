@@ -54,7 +54,7 @@ type CompleteWithArtifactsCommand struct {
 	// lives on the PublishAndCompleteUseCase surface at
 	// internal/application/jobs/completion/publish_and_complete_use_case.go
 	// (the EXPAND-phase canonical; handler-wiring to the use case is
-	// the BACKFILL phase, forward-pointer TODO(P0-COMPL-5-HANDLER-WIRE)).
+	// the BACKFILL phase, forward-pointer P0-COMPL-5-HANDLER-WIRE, deadline 2026-08-15, owner: completion).
 	// For now this field continues to carry json.RawMessage on the
 	// worker-side pipeline for byte-stability with the legacy wire.
 	StagedArtifacts json.RawMessage `json:"staged_artifacts"`

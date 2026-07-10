@@ -267,7 +267,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	// per the canonical resolution rules (Publisher must handle
 	// empty Subject). A real caller that knows a meaningful Subject
 	// (artlist asset UUID, YouTube video ID) populates it explicitly
-	// via a follow-up F2.9 field plumb (TODO tracked in
+	// via a follow-up F2.9 field plumb (tracked in
 	// architecture/current.yaml).
 	//
 	// DownloadLink strict policy (reviewer-feedback Q2): NO
@@ -303,8 +303,7 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 			Filename:           result.Filename,
 			Description:        fmt.Sprintf("PipelineGen processed: %s (id=%s)", input.Name, input.ID),
 			AssetID:            input.ID,
-			Group:              input.Term, // artlist search term (PathBuilder input)
-			Subject:            "",         // empty by design — see doc above (TODO F2.9: explicit Subject plumb)
+			Group:              input.Term, // artlist search term (PathBuilder input)Subject: "", // empty by design — see doc above (F2.9: explicit Subject plumb)
 			RootFolderOverride: input.FolderID,
 		}
 		pubRes, pubErr := p.publisher.Publish(ctx, pubReq)

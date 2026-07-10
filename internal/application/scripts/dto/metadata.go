@@ -56,7 +56,7 @@ type MetadataTranslator = translation.LegacyMetadataTranslator
 //
 // Phase 1c Commit 2/4 (June 2026): NormalizeLanguages (now lives in
 // the same package — dto/language_helpers.go) is the canonical
-// helper called here. The pre-Phase-1c FIXME referred to
+// helper called here. The pre-Phase-1c note referred to
 // the helper being "moved to scripts/adapters/" — Phase 1c Commit 2/4
 // moves it DOWN to dto, eliminating the dto→adapters import-cycle
 // risk and keeping the helper canonical to the package that consumes

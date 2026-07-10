@@ -283,7 +283,7 @@ func (s *SQLiteAssetStore) FetchAssetBatch(ctx context.Context, afterID string, 
 // ListAssetsForReconcile returns the minimum asset payload needed by the
 // admin-side `cmd/admin/reconcile_qdrant.go` reconcile dry-run.
 //
-// Implements the SQL scan (June 2026 follow-up to TODO 16, QDRANT-005
+// Implements the SQL scan (June 2026 follow-up to QDRANT-005
 // closure): selects id + workspace_id + lifecycle_state (with a
 // COALESCE fallback through status and 'ACTIVE') + content_hash
 // (extracted from metadata_json) from media_assets. Filters out

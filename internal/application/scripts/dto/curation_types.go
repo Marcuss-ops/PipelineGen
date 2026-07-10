@@ -65,7 +65,7 @@ type MediaCurator struct {
 // NewMediaCurator is the canonical constructor for the scriptdto
 // MediaCurator (wave-13 owner: internal/application/scripts).
 //
-// TODO #8 (drift-fix PR, June 2026): the constructor was previously
+// Drift-fix PR (June 2026): the constructor was previously
 // inferred removed by a parallel capability refactor — re-introduced
 // here as the minimal-scope fix to unblock wire_script.go's
 // `mediaCurator = scriptdto.NewMediaCurator(...)` call site, which is
