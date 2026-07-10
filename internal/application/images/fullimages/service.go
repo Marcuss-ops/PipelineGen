@@ -2,90 +2,110 @@ package fullimages
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
 
-// Section describes a single text part for which a video should be generated.
+// Section describes a single text part for which an image should be generated.
 type Section struct {
 	Title string `json:"title" binding:"required" example:"Castello Medievale"`
 	Text  string `json:"text"  example:"Descrizione della scena..."`
 	Style string `json:"style" example:"medievale"`
 }
 
-// SectionVideo holds the result for one generated video.
-type SectionVideo struct {
+// SectionImage holds the result for one generated image.
+//
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase, IMAGES-LEGACY-CLEANUP
+// wave): the pre-CUTOVER `SectionVideo` type is RENAMED. The `VideoPath`
+// field becomes `ImagePath` (the path on disk is to a generated IMAGE,
+// not a Ken Burns MP4). Wire-shape breaking change per Option B — see
+// the commit message for the consumer awareness note.
+type SectionImage struct {
 	SectionIndex int    `json:"section_index"`
 	Title        string `json:"title"`
 	Style        string `json:"style,omitempty"`
 	DriveLink    string `json:"drive_link,omitempty"`
 	DriveFileID  string `json:"drive_file_id,omitempty"`
-	VideoPath    string `json:"video_path,omitempty"`
+	ImagePath    string `json:"image_path,omitempty"`
 	Error        string `json:"error,omitempty"`
 }
 
-// Result wraps all section videos into a single response.
+// Result wraps all section images into a single response.
+//
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase): the
+// pre-CUTOVER `Videos` field (json: "videos") is RENAMED to `Images`
+// (json: "images"). Wire-shape breaking change per Option B.
 type Result struct {
-	Videos []SectionVideo `json:"videos"`
+	Images []SectionImage `json:"images"`
 }
 
-// Service generates one video per text section.
+// Service generates one image per text section.
+//
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase): the
+// pre-CUTOVER 5-field struct (imgService + ffmpegProc + publisher +
+// imagesDir + log) is REDUCED to 3 fields (imgService + imagesDir +
+// log). The `ffmpegProc` + `publisher` fields were ONLY consumed by
+// the now-retired Ken Burns video pipeline (processGeneratedVideo /
+// uploadAndFinish / publishToDrive / cacheMeta / cachePath /
+// saveCacheSidecar / loadCacheSidecar) which generated MP4s. The
+// image-only path consumes ONLY `s.imgService.GenerateSmartImage`
+// (which performs the Drive upload internally via the skipDrive=false
+// contract) — no FFmpeg or external Publisher is needed at this layer.
 type Service struct {
 	imgService *imgservice.Service
-	ffmpegProc *ffmpeg.Processor
-	publisher  delivery.Publisher
 	imagesDir  string
 	log        *zap.Logger
 }
 
-// NewService creates a FullImages video-generation service.
-func NewService(imgService *imgservice.Service, ffmpegProc *ffmpeg.Processor, publisher delivery.Publisher, imagesDir string, log *zap.Logger) *Service {
+// NewService creates a FullImages image-generation service.
+//
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase): the
+// pre-CUTOVER 5-arg signature
+// (imgService, ffmpegProc, publisher, imagesDir, log) is REPLACED
+// with this 3-arg signature. The `ffmpegProc` + `publisher` args
+// were ONLY consumed by the now-retired Ken Burns video pipeline.
+func NewService(imgService *imgservice.Service, imagesDir string, log *zap.Logger) *Service {
 	return &Service{
 		imgService: imgService,
-		ffmpegProc: ffmpegProc,
-		publisher:  publisher,
 		imagesDir:  imagesDir,
 		log:        log,
 	}
 }
 
 const (
-	videoGenTimeout = 5 * time.Minute
 	imageGenWidth   = 1344
 	imageGenHeight  = 768
-	videoDuration   = 7
-	videoMaxWorkers = 3
-
-	videoOutWidth  = 1920
-	videoOutHeight = 1080
+	imageMaxWorkers = 3
 )
 
-// GenerateForSections produces one video per section in parallel.
+// GenerateForSections produces one image per section in parallel.
+//
+// PR-IMAGES-FULLIMAGES-IMAGE-ONLY (2026-07-10, CUTOVER phase): the
+// pre-CUTOVER `generateOneVideo` per-section call is RENAMED to
+// `generateOneImage`. The pre-CUTOVER cache-pre-check
+// (`os.Stat(videoPath)` + `loadCacheSidecar`) is RETIRED — the
+// imgservice layer performs its own per-asset caching keyed on the
+// content hash, and the canonical image-asset writer preserves
+// idempotency on re-generation.
 func (s *Service) GenerateForSections(ctx context.Context, sections []Section, topic, language string) (*Result, error) {
 	if len(sections) == 0 {
 		return nil, fmt.Errorf("at least one section is required")
 	}
 
-	s.log.Info("fullimages: starting video generation",
+	s.log.Info("fullimages: starting image generation",
 		zap.Int("section_count", len(sections)),
 		zap.String("topic", topic),
 	)
 
-	results := make([]SectionVideo, len(sections))
-	sem := make(chan struct{}, videoMaxWorkers)
+	results := make([]SectionImage, len(sections))
+	sem := make(chan struct{}, imageMaxWorkers)
 	var wg sync.WaitGroup
 
 	for i, sec := range sections {
@@ -106,7 +126,7 @@ func (s *Service) GenerateForSections(ctx context.Context, sections []Section, t
 			arg.Sem <- struct{}{}
 			defer func() { <-arg.Sem }()
 
-			results[arg.Idx] = s.generateOneVideo(ctx, arg.Sec, arg.Topic, arg.Idx)
+			results[arg.Idx] = s.generateOneImage(ctx, arg.Sec, arg.Topic, arg.Idx)
 		})
 	}
 
@@ -119,19 +139,27 @@ func (s *Service) GenerateForSections(ctx context.Context, sections []Section, t
 		}
 	}
 
-	s.log.Info("fullimages: video generation complete",
+	s.log.Info("fullimages: image generation complete",
 		zap.Int("total", len(sections)),
 		zap.Int("success", okCount),
 		zap.Int("failed", len(sections)-okCount),
 	)
 
-	return &Result{Videos: results}, nil
+	return &Result{Images: results}, nil
 }
 
-// generateOneVideo generates the source image exclusively through Google
-// Slides, then converts it to a Ken Burns MP4.
-func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic string, idx int) SectionVideo {
-	ctx, cancel := context.WithTimeout(ctx, videoGenTimeout)
+// generateOneImage generates the source image through the canonical
+// imgservice.GenerateSmartImage path (which performs the Drive upload
+// via the skipDrive=false contract).
+//
+// Per-section safety timeout: 5 minutes. PR-IMAGES-FULLIMAGES-IMAGE-ONLY
+// (2026-07-10, CUTOVER phase) inlines this constant at the callsite per
+// godlike/07 minimum-blast-radius — the pre-CUTOVER `videoGenTimeout`
+// const was retired with the Ken Burns video pipeline; no
+// `imageGenTimeout` const is invented (honor the "delete 4 video-only
+// constants" user spec literal).
+func (s *Service) generateOneImage(ctx context.Context, sec Section, topic string, idx int) SectionImage {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
 	subject := sec.Title
@@ -140,33 +168,12 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 	}
 	style := strings.TrimSpace(sec.Style)
 	prompts := buildSectionPrompts(sec, topic)
-	prompt := pickBestPrompt(prompts, subject, topic)
-	genID := hashutil.MD5String(prompt)[:12]
 
-	videoDir := filepath.Join(s.imagesDir, style, genID)
-	videoName := genID + ".mp4"
-	videoPath := filepath.Join(videoDir, videoName)
-
-	if _, err := os.Stat(videoPath); err == nil {
-		s.log.Info("fullimages: video already exists, returning cached",
-			zap.Int("section", idx),
-			zap.String("video_path", videoPath),
-		)
-		driveLink, driveFileID := loadCacheSidecar(videoPath)
-		return SectionVideo{
-			SectionIndex: idx,
-			Title:        sec.Title,
-			Style:        style,
-			DriveLink:    driveLink,
-			DriveFileID:  driveFileID,
-			VideoPath:    videoPath,
-		}
-	}
-
-	s.log.Info("fullimages: generating source image with Google Slides",
+	s.log.Info("fullimages: generating source image",
 		zap.Int("section", idx),
 		zap.String("subject", subject),
 		zap.String("style", style),
+		zap.Int("prompt_count", len(prompts)),
 	)
 
 	tags := []string{subject, "style:" + style}
@@ -183,12 +190,12 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		false, // skipDrive = false, we WANT to upload the image to Drive!
 	)
 	if err != nil || imageAsset == nil {
-		errMsg := "Google Slides image generation failed"
+		errMsg := "image generation failed"
 		if err != nil {
 			errMsg = err.Error()
 		}
 		s.log.Error("fullimages: no image could be generated", zap.Int("section", idx), zap.Error(err))
-		return SectionVideo{SectionIndex: idx, Title: sec.Title, Style: style, Error: errMsg}
+		return SectionImage{SectionIndex: idx, Title: sec.Title, Style: style, Error: errMsg}
 	}
 
 	s.log.Info("fullimages: image ready",
@@ -203,8 +210,12 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		imagePath = filepath.Join(filepath.Dir(s.imagesDir), imageAsset.PathRel)
 	}
 	if imagePath == "" {
-		s.log.Error("fullimages: image file not found on disk", zap.String("imagesDir", s.imagesDir), zap.String("mediaDir", filepath.Dir(s.imagesDir)), zap.String("pathRel", imageAsset.PathRel))
-		return SectionVideo{
+		s.log.Error("fullimages: image file not found on disk",
+			zap.String("imagesDir", s.imagesDir),
+			zap.String("mediaDir", filepath.Dir(s.imagesDir)),
+			zap.String("pathRel", imageAsset.PathRel),
+		)
+		return SectionImage{
 			SectionIndex: idx,
 			Title:        sec.Title,
 			Style:        style,
@@ -212,145 +223,12 @@ func (s *Service) generateOneVideo(ctx context.Context, sec Section, topic strin
 		}
 	}
 
-	return SectionVideo{
+	return SectionImage{
 		SectionIndex: idx,
 		Title:        sec.Title,
 		Style:        style,
 		DriveLink:    s.imgService.FormatDriveLink(imageAsset.DriveFileID),
 		DriveFileID:  imageAsset.DriveFileID,
-		VideoPath:    imagePath,
+		ImagePath:    imagePath,
 	}
-}
-
-// processGeneratedVideo handles a video file already generated by an external
-// compatibility caller. New generation does not use this path.
-func (s *Service) processGeneratedVideo(ctx context.Context, sec Section, idx int, tempPath, genID, style, prompt string) SectionVideo {
-	videoDir := filepath.Join(s.imagesDir, style, genID)
-	videoName := genID + ".mp4"
-	videoPath := filepath.Join(videoDir, videoName)
-
-	if err := os.MkdirAll(videoDir, 0755); err != nil {
-		return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to create dir: %v", err)}
-	}
-
-	if tempPath != videoPath {
-		if err := os.Rename(tempPath, videoPath); err != nil {
-			input, readErr := os.ReadFile(tempPath)
-			if readErr != nil {
-				return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to move video: %v", readErr)}
-			}
-			if writeErr := os.WriteFile(videoPath, input, 0644); writeErr != nil {
-				return SectionVideo{SectionIndex: idx, Title: sec.Title, Error: fmt.Sprintf("failed to write video: %v", writeErr)}
-			}
-		}
-	}
-
-	return s.uploadAndFinish(ctx, sec, idx, videoPath, videoName, genID, style, prompt)
-}
-
-// uploadAndFinish handles the final Drive upload and result packaging.
-func (s *Service) uploadAndFinish(ctx context.Context, sec Section, idx int, videoPath, videoName, genID, style, prompt string) SectionVideo {
-	// P0-2 (July 2026): check publisher — the canonical path.
-	// The legacy mediaStore fallback was retired per godlike/07.
-	if s.publisher == nil {
-		return SectionVideo{
-			SectionIndex: idx,
-			Title:        sec.Title,
-			Style:        style,
-			VideoPath:    videoPath,
-		}
-	}
-
-	req := drive.AssetDestinationRequest{
-		Source:    "fullimages",
-		MediaType: drive.MediaTypeImageVideo,
-		Style:     style,
-		Subject:   genID,
-		Hash:      genID,
-		Ext:       filepath.Ext(videoName),
-	}
-
-	fileID, webLink, err := s.publishToDrive(ctx, req, videoPath)
-	if err != nil {
-		s.log.Error("fullimages: Drive upload failed", zap.Int("section", idx), zap.Error(err))
-		saveCacheSidecar(videoPath, "", "")
-		return SectionVideo{
-			SectionIndex: idx,
-			Title:        sec.Title,
-			Style:        style,
-			VideoPath:    videoPath,
-			Error:        fmt.Sprintf("Drive upload failed: %v", err),
-		}
-	}
-
-	saveCacheSidecar(videoPath, webLink, fileID)
-
-	if err := s.imgService.RegisterVideoAsset(ctx, videoPath, prompt, "ken-burns", style, videoDuration, fileID, webLink); err != nil {
-		s.log.Warn("fullimages: failed to register video asset in DB", zap.Error(err))
-	}
-
-	return SectionVideo{
-		SectionIndex: idx,
-		Title:        sec.Title,
-		Style:        style,
-		DriveLink:    webLink,
-		DriveFileID:  fileID,
-		VideoPath:    videoPath,
-	}
-}
-
-type cacheMeta struct {
-	DriveLink   string `json:"drive_link,omitempty"`
-	DriveFileID string `json:"drive_file_id,omitempty"`
-}
-
-func cachePath(videoPath string) string {
-	return videoPath + ".cache.json"
-}
-
-func saveCacheSidecar(videoPath, driveLink, driveFileID string) {
-	p := cachePath(videoPath)
-	data, err := json.Marshal(cacheMeta{DriveLink: driveLink, DriveFileID: driveFileID})
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(p, data, 0644)
-}
-
-func loadCacheSidecar(videoPath string) (string, string) {
-	p := cachePath(videoPath)
-	data, err := os.ReadFile(p)
-	if err != nil {
-		return "", ""
-	}
-	var m cacheMeta
-	if err := json.Unmarshal(data, &m); err != nil {
-		return "", ""
-	}
-	return m.DriveLink, m.DriveFileID
-}
-
-// publishToDrive is the P0-2 canonical bridge for fullimages video uploads.
-// Routes through delivery.Publisher.Publish. The legacy mediaStore.UploadToDrive
-// fallback was RETIRED per P0-2 godlike/07 closure (July 2026).
-func (s *Service) publishToDrive(ctx context.Context, req drive.AssetDestinationRequest, filePath string) (string, string, error) {
-	if s == nil {
-		return "", "", fmt.Errorf("fullimages.Service.publishToDrive: nil receiver")
-	}
-	if s.publisher == nil {
-		return "", "", fmt.Errorf("fullimages.Service.publishToDrive: publisher not configured (P0-2 godlike/07: nil publisher fail-closed)")
-	}
-	result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
-		Destination:    delivery.DestinationImage,
-		LocalPath:      filePath,
-		Filename:       filepath.Base(filePath),
-		Style:          req.Style,
-		Subject:        req.Subject,
-		Group:          req.Subject,
-		ConflictPolicy: delivery.ConflictSkip,
-	})
-	if err != nil {
-		return "", "", fmt.Errorf("fullimages publishToDrive: %w", err)
-	}
-	return result.FileID, result.WebViewLink, nil
 }
