@@ -21,10 +21,9 @@ import (
 
 // Section describes a single text part for which a video should be generated.
 type Section struct {
-	Title  string `json:"title" binding:"required" example:"Castello Medievale"`
-	Text   string `json:"text"  example:"Descrizione della scena..."`
-	Style  string `json:"style" example:"medievale"`
-	Engine string `json:"engine,omitempty"` // Deprecated: generation always uses Google Slides + Ken Burns.
+	Title string `json:"title" binding:"required" example:"Castello Medievale"`
+	Text  string `json:"text"  example:"Descrizione della scena..."`
+	Style string `json:"style" example:"medievale"`
 }
 
 // SectionVideo holds the result for one generated video.
