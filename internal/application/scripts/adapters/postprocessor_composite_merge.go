@@ -101,6 +101,10 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	// synthesises scenes at a time, so a simple overwrite keeps the
 	// invariant simple.
 	if len(src.SynthesizedScenes) > 0 {
+		var prevScenes []scriptpkg.SpecScene
+		if currentInput != nil {
+			prevScenes = append([]scriptpkg.SpecScene(nil), currentInput.SpecScene.Scenes...)
+		}
 		dst.SynthesizedScenes = src.SynthesizedScenes
 		// Issue #1 (June 2026) WRITE-BACK. The registry passes
 		// the same `input` ProcessInput to every processor in
@@ -116,6 +120,12 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 		// an empty SpecScene row.
 		if currentInput != nil {
 			currentInput.SpecScene.Scenes = src.SynthesizedScenes
+			for i := range currentInput.SpecScene.Scenes {
+				if i >= len(prevScenes) {
+					break
+				}
+				currentInput.SpecScene.Scenes[i].Bindings = prevScenes[i].Bindings
+			}
 		}
 	}
 	// PR-CLIP-SEARCH-WIRING (July 2026): propagate Artlist clip
