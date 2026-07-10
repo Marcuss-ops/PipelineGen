@@ -5,7 +5,7 @@
 # end-to-end pipeline. Exercises the full chain:
 #
 #   POST /api/script/generate (GenerationEnvelopeV2, translate_to="it",
-#                               generate_voiceover="enabled")
+#                               generate_voiceover=true|false via GENERATE_VOICEOVER env var)
 #   → TranslationProcessor → mergePostProcessResult write-back →
 #     VoiceoverProcessor receives Italian text → TTS → Drive upload →
 #     voiceovers table populated with translated content.
@@ -29,10 +29,11 @@
 #
 # Overridable env vars:
 #   BASE / ENV_FILE / DB_PATH / SMOKE_DB / TOPIC / LANGUAGE / TRANSLATE_TO /
-#   SMOKE_POLL_TIMEOUT_SECONDS
+#   GENERATE_VOICEOVER / SMOKE_POLL_TIMEOUT_SECONDS
 #
 # Usage:
 #   bash tests/operational/translation_voiceover_smoke.sh
+#   GENERATE_VOICEOVER=false bash tests/operational/translation_voiceover_smoke.sh  # translation-only
 #   BASE=http://10.0.0.1:8000 bash tests/operational/translation_voiceover_smoke.sh
 #   bash tests/operational/translation_voiceover_smoke.sh --dry
 
@@ -55,6 +56,7 @@ SMOKE_DB="${SMOKE_DB:-data/media/media.db.sqlite}"
 TOPIC="${TOPIC:-boxing championship highlights}"
 LANGUAGE="${LANGUAGE:-en}"
 TRANSLATE_TO="${TRANSLATE_TO:-it}"
+GENERATE_VOICEOVER="${GENERATE_VOICEOVER:-true}"
 REQ_ID="tx_vo_$(date +%s)_$$"
 POLL_ITERATIONS="${POLL_ITERATIONS:-100}"   # 100 × 3s = 5min max
 POLL_SLEEP_S="${POLL_SLEEP_S:-3}"
@@ -62,7 +64,7 @@ POLL_SLEEP_S="${POLL_SLEEP_S:-3}"
 # Dry-run short-circuit (lib/common.sh sets DRY_RUN from --dry flag)
 if [[ "$DRY_RUN" == "1" ]]; then
     echo "DRY RUN: would POST GenerationEnvelopeV2 to $SMOKE_API_BASE/api/script/generate"
-    echo "  topic=$TOPIC language=$LANGUAGE translate_to=$TRANSLATE_TO generate_voiceover=enabled"
+    echo "  topic=$TOPIC language=$LANGUAGE translate_to=$TRANSLATE_TO generate_voiceover=$GENERATE_VOICEOVER"
     echo "  req_id=$REQ_ID"
     exit 0
 fi
@@ -84,13 +86,16 @@ fi
 printf '  %sOK: DB exists (%s)%s\n' "$GREEN" "$SMOKE_DB" "$RESET"
 
 # ── Phase 2: Enqueue GenerationEnvelopeV2 ───────────────────────────
-smoke_log_section "Phase 2: POST /api/script/generate (translate_to=$TRANSLATE_TO, generate_voiceover=enabled)"
+VO_LABEL="$GENERATE_VOICEOVER"
+[[ "$VO_LABEL" == "true" ]] && VO_LABEL="enabled" || VO_LABEL="disabled"
+smoke_log_section "Phase 2: POST /api/script/generate (translate_to=$TRANSLATE_TO, generate_voiceover=$VO_LABEL)"
 
 ENVELOPE=$(jq -n \
   --arg rid "$REQ_ID" \
   --arg topic "$TOPIC" \
   --arg lang "$LANGUAGE" \
   --arg tx "$TRANSLATE_TO" \
+  --argjson generate_voiceover "$GENERATE_VOICEOVER" \
   '{
     version: 2,
     preset: "custom",
@@ -101,7 +106,7 @@ ENVELOPE=$(jq -n \
       source: { type: "text", topic: $topic },
       output: {
         languages: [$lang],
-        generate_voiceover: true,
+        generate_voiceover: $generate_voiceover,
         translate_to: $tx,
         save_to_db: true
       }
@@ -184,7 +189,6 @@ declare -a FAILURES=()
 assert_pass() { printf '  %sOK: %s%s\n' "$GREEN" "$1" "$RESET"; }
 assert_fail() { printf '  %sFAIL: %s%s\n' "$RED" "$1" "$RESET" >&2; FAILURES+=("$1"); }
 
-# A1: scripts table — at least 1 row with the req_id as idempotency_key
 # A1: scripts table — lookup by topic + created_at (persistence processor derives
 # idempotency_key as SHA hash of generation input, NOT from correlation_id).
 SCRIPT_ROW=$(sqlite3 "$SMOKE_DB" \
@@ -197,44 +201,45 @@ else
     assert_pass "A1: scripts table has row id=$SCRIPT_ID (idem=${SCRIPT_IDEM_KEY:0:16}…) for topic='$TOPIC'"
 fi
 
-# A2: voiceovers table — at least 1 row linked to the job
-VO_COUNT=$(sqlite3 "$SMOKE_DB" \
-  "SELECT COUNT(*) FROM voiceovers WHERE job_id='$JOB_ID'" 2>/dev/null) || VO_COUNT="ERR"
-if [[ "$VO_COUNT" == "ERR" || "$VO_COUNT" == "0" ]]; then
-    assert_fail "A2: voiceovers table has 0 rows for job_id=$JOB_ID (expected ≥1)"
+# A2: voiceovers table — at least 1 row linked to the job (SKIP when voiceover disabled)
+VO_COUNT="0"
+if [[ "$GENERATE_VOICEOVER" == "true" ]]; then
+    VO_COUNT=$(sqlite3 "$SMOKE_DB" \
+      "SELECT COUNT(*) FROM voiceovers WHERE job_id='$JOB_ID'" 2>/dev/null) || VO_COUNT="ERR"
+    if [[ "$VO_COUNT" == "ERR" || "$VO_COUNT" == "0" ]]; then
+        assert_fail "A2: voiceovers table has 0 rows for job_id=$JOB_ID (expected ≥1)"
+    else
+        assert_pass "A2: voiceovers table has $VO_COUNT row(s) for job_id=$JOB_ID"
+    fi
 else
-    assert_pass "A2: voiceovers table has $VO_COUNT row(s) for job_id=$JOB_ID"
+    assert_pass "A2: voiceovers skipped (generate_voiceover=false)"
 fi
 
-# A3: voiceover text contains Italian markers — translation write-back propagated
-# to the voiceover pipeline. This is the LOAD-BEARING assertion: if the voiceover
-# text is purely English, TranslationProcessor → mergePostProcessResult →
-# VoiceoverProcessor chain is broken.
-#
-# High-confidence Italian markers that do NOT collide with English:
-#   della/dello/questo/questa/pugilato/nella/nello/gli/degli/dalle/sono
-VO_TEXT=$(sqlite3 "$SMOKE_DB" \
-  "SELECT COALESCE(text_preview, '') FROM voiceovers WHERE job_id='$JOB_ID' LIMIT 1" 2>/dev/null) || VO_TEXT=""
-if [[ -z "$VO_TEXT" ]]; then
-    assert_fail "A3: voiceover text is empty for job_id=$JOB_ID (TTS did not produce text)"
-else
-    HAS_ITALIAN=0
-    # High-confidence Italian function/content words (no English collision)
-    if printf '%s' "$VO_TEXT" | grep -qEi '\b(della|dello|dalla|dalle|questo|questa|pugilato|nella|nello|degli|sono|siamo)\b'; then
-        HAS_ITALIAN=1
-    fi
-    # Also accept the "tradotto:" marker from the test stub (defensive for test stacks)
-    if printf '%s' "$VO_TEXT" | grep -q 'tradotto:'; then
-        HAS_ITALIAN=1
-    fi
-    if [[ "$HAS_ITALIAN" == "1" ]]; then
-        assert_pass "A3: voiceover text contains Italian markers (translation write-back propagated)"
+# A3: voiceover text contains Italian markers (SKIP when voiceover disabled)
+if [[ "$GENERATE_VOICEOVER" == "true" ]]; then
+    VO_TEXT=$(sqlite3 "$SMOKE_DB" \
+      "SELECT COALESCE(text_preview, '') FROM voiceovers WHERE job_id='$JOB_ID' LIMIT 1" 2>/dev/null) || VO_TEXT=""
+    if [[ -z "$VO_TEXT" ]]; then
+        assert_fail "A3: voiceover text is empty for job_id=$JOB_ID (TTS did not produce text)"
     else
-        assert_fail "A3: voiceover text has NO Italian markers — TranslationProcessor → mergePostProcessResult → VoiceoverProcessor chain may be broken"
-        printf '%s  canonical fix: PR-VOICEOVER-POSTPROCESSOR-REENABLE (voiceover processor registration gap)%s\n' "$RED" "$RESET" >&2
-        printf '%s  see also: PR-TRANSLATE-SCRIPT-SPEC-PR5-PR6 (translation propagation fix)%s\n' "$RED" "$RESET" >&2
-        printf '%s  see also: processor_translation_voiceover_merge_test.go (hermetic TDD lock)%s\n' "$RED" "$RESET" >&2
+        HAS_ITALIAN=0
+        if printf '%s' "$VO_TEXT" | grep -qEi '\b(della|dello|dalla|dalle|questo|questa|pugilato|nella|nello|degli|sono|siamo)\b'; then
+            HAS_ITALIAN=1
+        fi
+        if printf '%s' "$VO_TEXT" | grep -q 'tradotto:'; then
+            HAS_ITALIAN=1
+        fi
+        if [[ "$HAS_ITALIAN" == "1" ]]; then
+            assert_pass "A3: voiceover text contains Italian markers (translation write-back propagated)"
+        else
+            assert_fail "A3: voiceover text has NO Italian markers — TranslationProcessor → mergePostProcessResult → VoiceoverProcessor chain may be broken"
+            printf '%s  canonical fix: PR-VOICEOVER-POSTPROCESSOR-REENABLE (voiceover processor registration gap)%s\n' "$RED" "$RESET" >&2
+            printf '%s  see also: PR-TRANSLATE-SCRIPT-SPEC-PR5-PR6 (translation propagation fix)%s\n' "$RED" "$RESET" >&2
+            printf '%s  see also: processor_translation_voiceover_merge_test.go (hermetic TDD lock)%s\n' "$RED" "$RESET" >&2
+        fi
     fi
+else
+    assert_pass "A3: voiceover text skipped (generate_voiceover=false)"
 fi
 
 # A4: scripts.specscene is non-empty (translated or original SpecScene persisted)
@@ -275,6 +280,7 @@ echo "  req_id:         $REQ_ID"
 echo "  job_id:         $JOB_ID"
 echo "  translate_to:   $TRANSLATE_TO"
 echo "  language:       $LANGUAGE"
+echo "  voiceover:      $GENERATE_VOICEOVER"
 echo "  voiceovers:     $VO_COUNT"
 echo "  specscene:      ${SPEC_LEN:-0} bytes"
 echo "  outbox_events:  $OUTBOX_COUNT"
