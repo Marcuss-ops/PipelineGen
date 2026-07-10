@@ -58,7 +58,9 @@ func FormatSec(sec float64) string {
 
 // CutCopy performs a fast segment cut using FFmpeg stream copy mode (-c copy).
 // This is much faster than re-encoding but requires start/end to align with keyframes.
-func (p *Processor) CutCopy(ctx context.Context, input, output, start, end string) error {
+// When noAudio is true, the audio stream is stripped from the output (-an) without
+// re-encoding the video stream.
+func (p *Processor) CutCopy(ctx context.Context, input, output, start, end string, noAudio bool) error {
 	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
 	if start != "" {
 		args = append(args, "-ss", start)
@@ -71,8 +73,11 @@ func (p *Processor) CutCopy(ctx context.Context, input, output, start, end strin
 		"-c", "copy",
 		"-avoid_negative_ts", "make_zero",
 		"-reset_timestamps", "1",
-		output,
 	)
+	if noAudio {
+		args = append(args, "-an")
+	}
+	args = append(args, output)
 	_, err := process.Run(ctx, p.path, args, process.Options{
 		Timeout: 10 * time.Minute,
 	})

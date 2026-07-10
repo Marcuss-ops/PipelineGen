@@ -44,6 +44,7 @@ func (a *fetcherAdapter) Fetch(ctx context.Context, req usecase.FetchRequest) (*
 		SourceRef:    req.SourceRef,
 		SegmentStart: req.SegmentStart,
 		SegmentEnd:   req.SegmentEnd,
+		NoAudio:      req.NoAudio,
 	})
 	if err != nil {
 		return nil, err

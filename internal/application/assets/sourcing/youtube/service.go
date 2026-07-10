@@ -134,6 +134,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 			SourceRef:    md.RawURL,
 			SegmentStart: time.Duration(md.StartSec * float64(time.Second)),
 			SegmentEnd:   time.Duration(md.EndSec * float64(time.Second)),
+			NoAudio:      cmd.NoAudio,
 		})
 	if err != nil {
 		return nil, err

@@ -160,6 +160,11 @@ type FetchRequest struct {
 	SegmentStart time.Duration
 	// SegmentEnd is the optional end offset. 0 means "to the end of the asset".
 	SegmentEnd time.Duration
+	// NoAudio, when true, requests the fetched asset to have its audio
+	// track stripped. Threads from RegisterClipCommand.NoAudio through
+	// the provider boundary. Zero-value false = keep audio (backward
+	// compatible default).
+	NoAudio bool
 }
 
 // FetchedAsset carries the result of a successful Fetch.

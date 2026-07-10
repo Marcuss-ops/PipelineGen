@@ -230,8 +230,8 @@ func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*provi
 		Start:      startSec,
 		Duration:   durationSec,
 		OutputName: safeName,
-		KeepAudio:  true,
-		Normalize:  false, // raw fetch — caller normalizes downstream
+		KeepAudio:  !req.NoAudio, // inverted: NoAudio=true → KeepAudio=false → ffmpeg strips audio
+		Normalize:  false,        // raw fetch — caller normalizes downstream
 		Strategy:   "replace",
 	}
 

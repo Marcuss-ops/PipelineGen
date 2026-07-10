@@ -79,6 +79,7 @@ func (a *sourcingFetchAdapter) Fetch(ctx context.Context, req sourcing.FetchRequ
 			SourceRef:    req.SourceRef,
 			SegmentStart: req.SegmentStart,
 			SegmentEnd:   req.SegmentEnd,
+			NoAudio:      req.NoAudio,
 		})
 		if err != nil {
 			return nil, err
