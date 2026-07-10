@@ -530,7 +530,7 @@ if [[ "$HTTP11" == "200" || "$HTTP11" == "201" ]]; then
         log_fail "no_audio: local file not found at $NO_AUD_PATH"
     fi
 else
-    log_fail "no_audio expected 200/201, got $HTTP11 (temp file may be cleaned up between tests — known server-side issue)"
+    log_fail "no_audio expected 200/201, got $HTTP11 (no_audio ffmpeg path uses deterministic temp name per video ID — server-side bug)"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════
