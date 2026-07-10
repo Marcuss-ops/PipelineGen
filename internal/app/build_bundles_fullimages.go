@@ -15,7 +15,7 @@
 // godlike/06 SSOT (one canonical owner per fact): the
 // `internal/api/fullimages/` package is the SOLE owner of the
 // public fullimages wire-shape (FullImagesRequest / FullImagesResponse
-// / FullImagesHandler / ErrEngineRetired). The composition root is
+// / FullImagesHandler). The composition root is
 // the SOLE owner of the wire-up of the application-layer service
 // to the HTTP handler. No other package re-exports these types.
 //
@@ -131,7 +131,7 @@ func WireFullImages(bundle *FullImagesBundle, cfg *config.Config, log *zap.Logge
 
 	// godlike/06 SSOT: the public HTTP handler is the canonical SOLE
 	// owner of the wire-shape (FullImagesRequest / FullImagesResponse
-	// / FullImagesHandler / ErrEngineRetired) — all 4 live in
+	// / FullImagesHandler) — all 4 live in
 	// internal/api/fullimages/handler.go.
 	handler := fullimagesapi.NewFullImagesHandler(svc)
 

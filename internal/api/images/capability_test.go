@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	fullimagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/fullimages"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 )
 
@@ -72,7 +71,12 @@ func TestGenerate_Returns410_AfterPR_AUDIT_3(t *testing.T) {
 // TestGenerateFullImages_Returns501_WhenVideoAIRequestedButNotImplemented
 // REMOVED (June 2026 PR cleanup): CapVideoAI capability was deleted.
 // The video_ai capability gate in the handler has been removed.
-
+//
+// TestGenerateFullImages_GoogleVidsEngine_ReturnsBadRequest
+// REMOVED (PR-LEGACY-ENGINE-FIELD-RETIRE, 2026-07-10): Engine field
+// and ErrEngineRetired sentinel retired per the legacy cleanup action
+// plan. The engine-gating loop in handler.go no longer exists.
+/*
 // TestGenerateFullImages_GoogleVidsEngine_ReturnsBadRequest — locks
 // the PR-IMG-LEGACY-4 (IMAGES-LEGACY-CLEANUP-2026-07-06 wave, EXPAND phase,
 // deadline 2026-08-15) contract: when a section requests Engine="google-vids"
@@ -206,3 +210,4 @@ func TestGenerateFullImages_GoogleVidsEngine_ReturnsBadRequest(t *testing.T) {
 		})
 	}
 }
+*/
