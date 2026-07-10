@@ -69,44 +69,10 @@ func TestCollectionManager_SwitchAlias(t *testing.T) {
 	assert.Equal(t, "media_assets_v3_new", createAlias["collection_name"])
 }
 
-func TestCollectionManager_RollbackAlias(t *testing.T) {
-	t.Parallel()
-
-	var mu sync.Mutex
-	var aliasActions []map[string]interface{}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-
-		if r.Method == http.MethodPost && r.URL.Path == "/collections/aliases" {
-			var body map[string]interface{}
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-			actions, _ := body["actions"].([]interface{})
-			for _, a := range actions {
-				aliasActions = append(aliasActions, a.(map[string]interface{}))
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"result": true,
-				"status": "ok",
-			})
-			return
-		}
-		http.NotFound(w, r)
-	}))
-	defer srv.Close()
-
-	idxSchema := schema.DefaultV3Schema()
-	client := transport.NewClient(&schema.Config{BaseURL: srv.URL, Timeout: 5}, zap.NewNop())
-	cm := NewCollectionManager(client, idxSchema, zap.NewNop())
-
-	err := cm.RollbackAlias(context.Background(), "media_assets_v3_broken", "media_assets_v3_previous")
-	require.NoError(t, err)
-
-	require.Len(t, aliasActions, 2)
-	assert.Equal(t, "media_assets_v3_previous", aliasActions[1]["create_alias"].(map[string]interface{})["collection_name"])
-}
+// (TestCollectionManager_RollbackAlias retired — PR-DEADC-QDRANT-ROLLBACK-ALIAS-RETIRE 2026-07-10;
+//  the wrapper it tested was also retired — see collection_rollback.go. The
+//  canonical typed-port contract is RollbackCandidate, tested via the
+//  integration surface at internal/infrastructure/qdrant/collections/collection_manager_bluegreen_test.go.)
 
 func TestCollectionManager_EnsureSchema_CreatesNew(t *testing.T) {
 	t.Parallel()
