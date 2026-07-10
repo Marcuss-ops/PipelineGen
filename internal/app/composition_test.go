@@ -287,7 +287,7 @@ func TestComposition_NilObligatory_BuildJobsBundle(t *testing.T) {
 	// handle directly. Underlying *sql.DB is reached via the
 	// embedded `.DB` accessor only for callers (e.g.
 	// clipindexer.NewService) that have not yet been migrated.
-	bundle, err := BuildJobsBundle(sqliteDB, zaptest.NewLogger(t))
+	bundle, err := BuildJobsBundle(sqliteDB, zaptest.NewLogger(t), nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, bundle)
 	require.NotNil(t, bundle.Repo)
@@ -792,7 +792,7 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, qd.QdrantDeleter)
 
-	jobsBundle, err := BuildJobsBundle(dbs.main, log)
+	jobsBundle, err := BuildJobsBundle(dbs.main, log, nil, nil, nil, nil)
 	require.NoError(t, err)
 
 	// Force a nil AssetDeleter dep at the BuildOutboxBundle call site
