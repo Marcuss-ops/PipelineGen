@@ -189,7 +189,7 @@ type DomainBundle struct {
 	IngestService                   *ingest.Service
 	BooksService                    *books.Service
 	LessonsService                  *lessonsSvc.Service
-	MetaWriter                      *semantic.MetadataWriter
+	MetaWriter                      semantic.MetadataWriterPort
 	RealtimeMatcher                 assetsapi.RealtimeMatcher
 	RealtimeSearch                  scriptcore.RealtimeSearchService
 	AutotagService                  *autotag.Service

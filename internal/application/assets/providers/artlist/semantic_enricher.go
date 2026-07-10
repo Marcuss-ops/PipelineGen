@@ -80,7 +80,7 @@ var enrichMetaMu sync.Mutex
 type SemanticEnricher struct {
 	repo       AssetStore
 	indexer    Indexer
-	metaWriter *semantic.MetadataWriter
+	metaWriter semantic.MetadataWriterPort
 	log        *zap.Logger
 	// dispatcher is the canonical media_index_outbox dispatcher used by
 	// Enrich() to combine UpsertClip + indexed-Qdrant in a single tx.
@@ -112,8 +112,9 @@ type SemanticEnricher struct {
 }
 
 // NewSemanticEnricher crea un enricher pronto per il package artlist.
-// Usa semantic.MetadataWriter (chiamato GeneratePayload) invece di chiamare Tagger() direttamente,
-// per garantire che tutto il metadata passi dal percorso centralizzato.
+// Usa semantic.MetadataWriterPort (chiamato GeneratePayload) invece di
+// chiamare Tagger() direttamente, per garantire che tutto il metadata
+// passi dal percorso centralizzato.
 //
 // F2.11 (June 2026): the `driveManager` parameter was replaced by
 // `publisher delivery.Publisher + reader drivepkg.Reader` (the canonical
@@ -133,10 +134,18 @@ type SemanticEnricher struct {
 // IsEnabled matching the port).
 // PR2.7 → F2.11: driveUploader/driverManager replaced by
 // publisher + reader (canonical ports). Pass nil for reader in tests.
+//
+// P0-#2 (July 2026): the `metaWriter` parameter type is now
+// `semantic.MetadataWriterPort` (the canonical narrow typed surface),
+// NOT `semantic.MetadataWriterPort` (the retired fake concrete). The
+// production composition root passes `nil` when the real semantic
+// tagger is absent; tests pass `semantic.NewNopMetadataWriter(log)`
+// for the explicit-nop path. The Enrich method already nil-checks
+// `e.metaWriter == nil` so both paths are fail-closed.
 func NewSemanticEnricher(
 	repo AssetStore,
 	indexer Indexer,
-	metaWriter *semantic.MetadataWriter,
+	metaWriter semantic.MetadataWriterPort,
 	publisher delivery.Publisher,
 	reader drivepkg.Reader,
 	dispatcher Dispatcher,

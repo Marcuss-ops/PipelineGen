@@ -145,7 +145,7 @@ func TestIngestDirect_TagImageMetadataFailure_IsNonFatal(t *testing.T) {
 	// Wire the Phase 1.2 disabled MetadataWriter stub — Write() returns
 	// ErrSemanticMetadataWriterDisabled, which causes tagImageMetadata to fail.
 	svc.meta = &MetadataService{
-		metaWriter: &semantic.MetadataWriter{},
+		metaWriter: semantic.NewNopMetadataWriter(zap.NewNop()), // P0-#2: nop implementation of the MetadataWriterPort
 		log:        zap.NewNop(),
 	}
 

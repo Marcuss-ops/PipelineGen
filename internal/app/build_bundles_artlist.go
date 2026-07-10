@@ -105,7 +105,7 @@ func WireArtlist(
 	dispatcher *outbox.Dispatcher,
 	reader drivepkg.Reader,
 	lifecycle drivepkg.FileLifecycle,
-	metaWriter *semantic.MetadataWriter,
+	metaWriter semantic.MetadataWriterPort,
 	destResolver asset.Resolver,
 ) (*ArtlistWiring, error) {
 	_ = ctx
@@ -166,7 +166,7 @@ func WireArtlist(
 	)
 
 	// godlike/06 SSOT: SemanticEnricher is the canonical app-layer wrapper for
-	// *semantic.MetadataWriter; its Enrich(ctx, clip, term) signature matches
+	// semantic.MetadataWriterPort; its Enrich(ctx, clip, term) signature matches
 	// artlist.MetadataWriter.Enrich exactly (semantic_enricher.go:147). The 8
 	// constructor args are all DIRECT receivers — no shim layer.
 	semanticEnricher := artlistPkg.NewSemanticEnricher(

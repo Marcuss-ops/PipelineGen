@@ -71,7 +71,7 @@ func buildVoiceoverService(
 	assetIndexService *assetindex.Service,
 	clipIndexerService *clipindexer.Service, // PR-VO-A3: no longer injects clipIndexFn into voiceover.Service; retained on the signature only because other voiceover paths still reach the indexer directly.
 	destResolver asset.Resolver,
-	metaWriter *semantic.MetadataWriter,
+	metaWriter semantic.MetadataWriterPort,
 	translationPort translation.TranslationPort, // Fase 9 step 4 CUTOVER: *translation.OllamaTranslator satisfies this port; the bare *ollama.Generator.TranslateText direct-call closure is RETIRED.
 	outboxDispatcher *outbox.Dispatcher,
 ) (*voiceover.Service, *assets.VoiceoversRepository, voiceover.VoiceoverItemExecutor, *audioasset.Processor) {

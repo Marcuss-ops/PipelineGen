@@ -65,7 +65,7 @@ type Deps struct {
 	DriveAdmin       drive.Admin
 	MediaProcessor   asset.Processor
 	AssetTreeSvc     *assettree.Service
-	MetaWriter       *semantic.MetadataWriter
+	MetaWriter       semantic.MetadataWriterPort
 	ClipIndexer      *clipindexer.Service
 	JobsSvc          jobservice.Service
 	Cfg              *config.Config
@@ -226,7 +226,7 @@ func enrichUCOrLocal(
 	shared *appclips.EnrichUseCase,
 	repo asset.Repository,
 	indexer *clipindexer.Service,
-	mw *semantic.MetadataWriter,
+	mw semantic.MetadataWriterPort,
 	log *zap.Logger,
 ) *appclips.EnrichUseCase {
 	if shared != nil {

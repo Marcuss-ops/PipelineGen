@@ -37,7 +37,7 @@ func buildDomainAssetServices(
 	ai *AIBundle,
 	outbox *OutboxBundle,
 	mutationsDisp mutations.AssetMutationDispatcher,
-	voMetaWriter *semantic.MetadataWriter,
+	voMetaWriter semantic.MetadataWriterPort,
 	bundle *DomainBundle,
 ) error {
 	if outbox == nil || outbox.Dispatcher == nil {

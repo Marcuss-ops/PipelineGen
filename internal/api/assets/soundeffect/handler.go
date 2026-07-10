@@ -2,7 +2,7 @@
 //
 // PG-003 (June 2026): handler now depends on typed sfxports ports rather
 // than concrete *assets.ClipsRepository, *drive.Uploader,
-// *semantic.MetadataWriter, *drive.Resolver. Composition root (in
+// semantic.MetadataWriterPort, *drive.Resolver. Composition root (in
 // internal/app/module_assets.go) injects the adapters — see
 // internal/app/adapters_soundeffect.go for the concrete implementations.
 package soundeffect

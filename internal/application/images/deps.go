@@ -57,7 +57,7 @@ type ImagesStorageDeps struct {
 // ImagesGenAIDeps holds AI-generation dependencies (LLM, metadata, styles, image gen).
 type ImagesGenAIDeps struct {
 	LLMGen        *ollama.Generator
-	MetaWriter    *semantic.MetadataWriter
+	MetaWriter    semantic.MetadataWriterPort
 	StyleRegistry *generation.StyleRegistry
 	ImageGen      ImageGenerator
 }

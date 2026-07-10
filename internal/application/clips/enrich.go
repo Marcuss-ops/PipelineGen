@@ -17,7 +17,7 @@ import (
 type EnrichUseCase struct {
 	assetRepo   asset.Repository
 	clipIndexer *clipindexer.Service
-	metaWriter  *semantic.MetadataWriter
+	metaWriter  semantic.MetadataWriterPort
 	log         *zap.Logger
 }
 
@@ -25,7 +25,7 @@ type EnrichUseCase struct {
 func NewEnrichUseCase(
 	repo asset.Repository,
 	indexer *clipindexer.Service,
-	mw *semantic.MetadataWriter,
+	mw semantic.MetadataWriterPort,
 	log *zap.Logger,
 ) *EnrichUseCase {
 	return &EnrichUseCase{
