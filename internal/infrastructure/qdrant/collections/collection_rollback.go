@@ -26,8 +26,8 @@ func (cm *CollectionManager) SwitchAlias(ctx context.Context, oldTarget, newTarg
 	return cm.RollbackCandidate(ctx, oldTarget, newTarget)
 }
 
-// RollbackAlias switches the alias back to oldTarget.
-// DEPRECATED: use RollbackCandidate directly.
-func (cm *CollectionManager) RollbackAlias(ctx context.Context, currentTarget, rollbackTarget string) error {
-	return cm.RollbackCandidate(ctx, currentTarget, rollbackTarget)
-}
+// (RollbackAlias retired — PR-DEADC-QDRANT-ROLLBACK-ALIAS-RETIRE 2026-07-10;
+//  3-line thin wrapper over RollbackCandidate with zero callers in
+//  production + zero callers in tests after the test deletion. The
+//  canonical typed-port contract is RollbackCandidate(currentTarget,
+//  rollbackTarget). See CHANGELOG.md ## Unreleased for the closure entry.)
