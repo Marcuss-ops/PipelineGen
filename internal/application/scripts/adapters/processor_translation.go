@@ -126,9 +126,10 @@ func (p *TranslationProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Proce
 }
 
 // Process executes the translation flow for the plan's primary
-// target language (plan.Languages[0], falling back to plan.Language
-// when plan.Languages is empty per the canonical processor_metadata.go
-// pattern).
+// target language. Priority order (PR-TRANSLATION-PIPELINE-2026-07-09):
+//   1. plan.TranslateTo  (explicit user request via OutputSpec.TranslateTo)
+//   2. plan.Languages[0] (first language in the languages array)
+//   3. plan.Language      (legacy single-language field)
 //
 // The processor builds a *ModelScriptOutputV1 envelope from
 // input.Text + input.SpecScene (with the canonical SchemaVersion
@@ -137,8 +138,8 @@ func (p *TranslationProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Proce
 // mutates input.SpecScene.Scenes + input.Text with the translated
 // surface (in-place per the ClipBindingsProcessor precedent). On
 // translator success, the result is a non-empty PostProcessResult
-// with Changed=true + the warnings channel (preserved verbatim per
-// the typed-error contract).
+// with Changed=true + TranslatedText + TranslatedSpecScene + the
+// warnings channel (preserved verbatim per the typed-error contract).
 //
 // Failure modes (all surface as warnings + bounded-reason metrics
 // + Changed=false; pipeline continues with the un-translated
@@ -178,10 +179,20 @@ func (p *TranslationProcessor) Process(
 		}, nil
 	}
 
-	// Resolve target language (plan.Languages[0] with plan.Language fallback).
+	// Resolve target language. Priority order:
+	//   1. plan.TranslateTo  (explicit user request via OutputSpec.TranslateTo)
+	//   2. plan.Languages[0] (first language in the languages array)
+	//   3. plan.Language      (legacy single-language field)
+	//
+	// Bug-fix (PR-TRANSLATION-PIPELINE-2026-07-09): TranslateTo was
+	// previously ignored entirely — the processor resolved from
+	// plan.Languages[0] → plan.Language, so a request with
+	// {language:"en", translate_to:"it"} (no languages array) would
+	// self-translate to English instead of Italian.
 	targetLang := ""
 	if plan != nil {
-		if len(plan.Languages) > 0 {
+		targetLang = strings.TrimSpace(plan.TranslateTo)
+		if targetLang == "" && len(plan.Languages) > 0 {
 			targetLang = strings.TrimSpace(plan.Languages[0])
 		}
 		if targetLang == "" {

@@ -165,8 +165,24 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	}
 	if strings.TrimSpace(src.TranslatedText) != "" {
 		dst.TranslatedText = src.TranslatedText
+		// PR-TRANSLATION-PIPELINE-2026-07-09 WRITE-BACK:
+		// propagate translated text into currentInput so
+		// downstream processors (VoiceoverProcessor, DocumentProcessor)
+		// read the translated content instead of the original.
+		// Without this, VoiceoverProcessor generates TTS from
+		// the original (English) text instead of the translated
+		// (Italian) text.
+		if currentInput != nil {
+			currentInput.Text = src.TranslatedText
+		}
 	}
 	if len(src.TranslatedSpecScene.Scenes) > 0 {
 		dst.TranslatedSpecScene = src.TranslatedSpecScene
+		// PR-TRANSLATION-PIPELINE-2026-07-09 WRITE-BACK:
+		// propagate translated SpecScene into currentInput so
+		// downstream processors see translated scene text.
+		if currentInput != nil {
+			currentInput.SpecScene = src.TranslatedSpecScene
+		}
 	}
 }
