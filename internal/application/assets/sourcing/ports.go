@@ -292,6 +292,83 @@ var (
 	)
 )
 
+// ── Sourcing atomic port (PR-SOURCING-ADAPTER-FAIL-CLOSED, July 2026) ──
+
+// SourcingAtomicPort is the COMBINED canonical Pattern-0 typed surface
+// for the two post-registration flows: async enrichment + Qdrant indexing
+// (EnrichAndIndex) + metadata sidecar upload (UpdateCumulativeJSON).
+// Centralizes the fail-closed contract so a single composition-root
+// wiring decision (via wireSourcingAtomic) gates BOTH operations —
+// pre-PR-SOURCING-ADAPTER-FAIL-CLOSED they were 2 independent fail-open
+// paths each returning nil on unwired, masking the silent-success class
+// from upstream callers (clip registration would succeed without ever
+// triggering the Qdrant index request OR the metadata sidecar write).
+//
+// godlike/06 SSOT one-canonical-owner-per-fact: this port lives ONLY
+// at internal/application/assets/sourcing/ports.go (the canonical
+// typed-contract surface per the codebase's Pattern-0 discipline).
+// Concrete adapters live at internal/app/youtube_adapters_meta.go
+// (sourcingMetadataAdapter + sourcingEnrichmentAdapter are the canonical
+// pair implementing this surface).
+//
+// godlike/07 typed-error contract (NO-FAKE-AVAILABILITY): implementations
+// MUST return ErrSourcingUpdateCumulativeDisabled when the metadata
+// sidecar handler is unwired at composition time AND ErrSourcingEnrichAndIndexDisabled
+// when the enrichment handler is unwired at composition time. Returning
+// nil (the pre-fix silent-success class) is a godlike/07 violation.
+type SourcingAtomicPort interface {
+	EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error
+	UpdateCumulativeJSON(ctx context.Context, tempDir, folderID, clipID string, entry map[string]any) error
+}
+
+// Typed-error contract (PR-SOURCING-ADAPTER-FAIL-CLOSED, July 2026):
+// the three sentinel error values below are the canonical fail-closed
+// surface for the sourcing atomic-capabilities wiring. downstream
+// callers MUST probe via errors.Is(err, ErrSourcing*Disabled) etc.
+// — never via raw string matches.
+var (
+	// ErrSourcingUpdateCumulativeDisabled surfaces when the
+	// upstream caller invokes UpdateCumulativeJSON on an
+	// adapter whose admin or cfg was nil at composition time
+	// (the canonical Drive-not-configured / composition-bug path).
+	// Caller MUST branch on errors.Is to decide whether to log
+	// a soft warning (clip ledger at dispatcher is sufficient)
+	// or fail-closed at the application layer.
+	ErrSourcingUpdateCumulativeDisabled = errors.New(
+		"sourcing: UpdateCumulativeJSON: handler disabled at composition root (admin or cfg nil — composition bug)",
+	)
+
+	// ErrSourcingEnrichAndIndexDisabled surfaces when the
+	// upstream caller invokes EnrichAndIndex on an adapter
+	// whose enrichment handler was nil at composition time.
+	// Caller MUST branch on errors.Is to decide whether to
+	// fall back to dispatch-only (Qdrant index detached) or
+	// fail-closed at the application layer.
+	ErrSourcingEnrichAndIndexDisabled = errors.New(
+		"sourcing: EnrichAndIndex: handler disabled at composition root (clips handler nil — composition bug)",
+	)
+
+	// ErrSourcingCapabilitiesRequired surfaces at composition
+	// time when cfg.Features.MediaDriveRequired == true but the
+	// SourcingAtomicPort is nil. This is the load-bearing
+	// fail-fast-at-composition contract: a misconfiguration must
+	// surface at boot, NOT at first /api/media/register call
+	// (godlike/07 fail-fast-at-boot > fail-slow-at-first-call).
+	ErrSourcingCapabilitiesRequired = errors.New(
+		"sourcing: SourcingAtomic capabilities required at composition (cfg.Features.MediaDriveRequired=true but handler nil)",
+	)
+
+	// ErrSourcingCapabilitiesDisabled surfaces at composition
+	// time when cfg.Features.MediaDriveRequired == false AND the
+	// SourcingAtomicPort is nil. Composition may continue without
+	// sourcing capabilities (the canonical Drive-not-required-for-this-deployment
+	// mode), but the caller sees a typed error so the deferred-at-runtime
+	// fail-closed path is explicit (not a silent no-op).
+	ErrSourcingCapabilitiesDisabled = errors.New(
+		"sourcing: SourcingAtomic capabilities disabled (Drive not required — handler intentionally unwired)",
+	)
+)
+
 // LocationResolverPort resolves a canonical semantic-location DTO
 // into a concrete Drive folder ID for a given destination.
 //

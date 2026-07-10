@@ -11,6 +11,7 @@ import (
 
 	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	sourcing "github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -23,8 +24,8 @@ type sourcingMetadataAdapter struct {
 	cfg       *config.Config
 	admin     driveutil.Admin
 	reader    driveutil.Reader
-	lifecycle driveutil.FileLifecycle  // P1-3-BACKFILL (July 2026): routed through FileLifecycle where available
-	publisher  delivery.Publisher        // P0-#1 atomic-RMW (July 2026): threaded to UpdateCumulativeMetadataJSON for atomic publish
+	lifecycle driveutil.FileLifecycle // P1-3-BACKFILL (July 2026): routed through FileLifecycle where available
+	publisher delivery.Publisher      // P0-#1 atomic-RMW (July 2026): threaded to UpdateCumulativeMetadataJSON for atomic publish
 	log       *zap.Logger
 }
 
@@ -39,16 +40,30 @@ type sourcingMetadataAdapter struct {
 // per-video cleanup runs only AFTER the new sidecar is live.
 //
 // Returns:
-//   - nil when admin or cfg is nil (soft no-op, backward compat).
+//   - sourcing.ErrSourcingUpdateCumulativeDisabled when admin or cfg
+//     is nil (fail-closed at the adapter boundary; PR-SOURCING-ADAPTER-FAIL-CLOSED
+//     July 2026 — pre-fix this was a silent-success nil return, masking
+//     composition bugs from upstream callers).
 //   - appclips.ErrMetadataDriveNotConfigured when publisher is nil
 //     (Drive not configured; the clip registration pipeline can
 //     branch on this sentinel via errors.Is to decide whether to
 //     fail or log a soft warning).
 //   - Any error propagated from appclips.UpdateCumulativeMetadataJSON
 //     (list / download / decode / marshal / write-temp / publish).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the adapter is the canonical SOLE owner
+// of the fail-closed return at the adapter boundary; upstream callers MUST
+// probe via errors.Is(err, sourcing.ErrSourcingUpdateCumulativeDisabled)
+// — NEVER assume a nil return means "no-op succeeded".
 func (a *sourcingMetadataAdapter) UpdateCumulativeJSON(ctx context.Context, tempDir, folderID, clipID string, entry map[string]any) error {
 	if a.admin == nil || a.cfg == nil {
-		return nil
+		// PR-SOURCING-ADAPTER-FAIL-CLOSED (July 2026): fail-closed
+		// pre-return — replaces the pre-fix silent-success nil.
+		// The canonical composition-time invariant is admin AND cfg
+		// both non-nil; if either is nil, the canonical wiring path
+		// was bypassed and the caller MUST observe the failure as a
+		// typed-sentinel rather than as a no-op success.
+		return sourcing.ErrSourcingUpdateCumulativeDisabled
 	}
 	// P0-#1 (July 2026): the function now returns real errors. The
 	// pre-fix adapter hard-returned nil which masked the silent
@@ -128,7 +143,13 @@ type sourcingEnrichmentAdapter struct {
 
 func (a *sourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error {
 	if a.handler == nil {
-		return nil
+		// PR-SOURCING-ADAPTER-FAIL-CLOSED (July 2026): fail-closed
+		// pre-return — replaces the pre-fix silent-success nil.
+		// The canonical composition-time invariant is handler non-nil;
+		// if nil, the canonical wiring path was bypassed and the caller
+		// MUST observe the failure as a typed-sentinel rather than as
+		// a no-op success (godlike/07 NO-FAKE-AVAILABILITY).
+		return sourcing.ErrSourcingEnrichAndIndexDisabled
 	}
 	clip := &asset.Asset{
 		ID:        clipID,
