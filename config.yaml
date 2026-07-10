@@ -199,8 +199,3 @@ voiceover:
 # port (Ollama) is not wired. Default false for dev mode.
 translation:
   required: false
-
-vector_search:
-  enabled: true
-  url: "http://127.0.0.1:6333"
-  collection: "media_assets"
