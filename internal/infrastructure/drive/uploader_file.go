@@ -182,7 +182,7 @@ func (u *Uploader) FileIsNotTrashed(ctx context.Context, fileID string) (bool, e
 
 	file, err := u.Service.Files.Get(fileID).Fields("id", "trashed").Context(ctx).Do()
 	if err != nil {
-		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "notFound") {
+		if DriveIsNotFound(err) {
 			return false, nil
 		}
 		return false, err
@@ -202,8 +202,7 @@ func (u *Uploader) FileExists(ctx context.Context, fileID string) (bool, error) 
 
 	_, err := u.Service.Files.Get(fileID).Fields("id", "trashed").Context(ctx).Do()
 	if err != nil {
-		// Check if it's a 404
-		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "notFound") {
+		if DriveIsNotFound(err) {
 			return false, nil
 		}
 		return false, err

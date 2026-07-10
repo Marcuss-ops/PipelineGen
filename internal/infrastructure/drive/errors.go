@@ -13,7 +13,12 @@
 // folder-manager dependency surface.
 package drive
 
-import "errors"
+import (
+	"errors"
+	"net/http"
+
+	"google.golang.org/api/googleapi"
+)
 
 // ErrAmbiguousDriveFolder is the canonical sentinel returned when
 // a Drive Files.List query finds more than one non-trashed folder
@@ -93,6 +98,52 @@ var ErrDriveListNil = errors.New("drive: Files.List returned nil result with nil
 // migration is the typed-error contract that user-spec asked for in the
 // PR-VO-SUBFOLDER follow-up.
 var ErrPathBuilderIncompleteForOverride = errors.New("drive: PathBuilder incomplete but RootFolderOverride is set (direct-to-root fallback)")
+
+// DriveIsNotFound is the canonical typed classifier for Google Drive
+// HTTP 404 (file/folder not found) responses. Replaces the legacy
+// strings.Contains(err.Error(), "404") || "notFound" anti-pattern
+// previously embedded inline in FileIsNotTrashed + FileExists
+// (PR-DRIVE-ERROR-TYPED closure, July 2026). The probe is a pure
+// function (no sentinel): callers use the boolean return directly
+// rather than probing with errors.Is.
+//
+// godlike/07 typed-error contract (per AGENTS.md §godlike/07 + the
+// canonical googleapi.Error probe pattern documented in
+// internal/application/jobs/outbox/voiceover_cleanup.go::isDriveNotFoundError):
+// (a) errors.As walks the wrap chain so callers need NOT manually
+// unwrap fmt.Errorf %w — the helper handles any wrap depth;
+// (b) non-*googleapi.Error (plain errors.New, custom typed errors,
+// nil) returns false — the predicate is strictly typed, never a
+// substring-match fallback;
+// (c) nil error returns false (nil-tolerance per godlike/07 so
+// callers don't have to nil-guard before invoking).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the pre-PR string-match
+// (`strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "notFound")`)
+// was the canonical godlike/07-forbidden substring anti-pattern —
+// the typo "404" could match the body of a non-404 error message
+// (e.g. a server-error log line that contained "404" in
+// debug output), and the "notFound" check would miss HTTP 404
+// responses that didn't include the literal substring (e.g.
+// localized Drive API error envelopes). The typed probe +
+// Code == http.StatusNotFound probe is the canonical fix.
+//
+// Production callers (post-PR): FileIsNotTrashed + FileExists
+// (internal/infrastructure/drive/uploader_file.go) delegate here;
+// Other call-sites (verifier_adapter.go, document_builder.go,
+// reconcile.go) consume the (fileID) (bool, error) return shapes
+// unchanged (godlike/07 minimum-blast-radius — port signatures
+// preserved across the closure).
+func DriveIsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	var gerr *googleapi.Error
+	if !errors.As(err, &gerr) {
+		return false
+	}
+	return gerr.Code == http.StatusNotFound
+}
 
 // ErrDriveUploaderNotConfigured is the canonical sentinel returned by
 // Store.UploadToDrive when the legacy Store was constructed without a
