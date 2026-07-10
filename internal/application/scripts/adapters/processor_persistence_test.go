@@ -130,12 +130,18 @@ func (f *idemFakeRepo) FindScriptByIdempotencyKey(_ context.Context, _, _, _ str
 }
 
 // SaveManifestV2 (PR 1, SCRIPT-DOWNSTREAM-CUTOVER wave) records the
-// pre-marshalled manifest bytes + scriptID so TDD tests can assert
-// the canonical NEW-mode write seam.
-func (f *idemFakeRepo) SaveManifestV2(_ context.Context, scriptID int64, manifest []byte) error {
+// canonical NEW-mode manifest envelope + scriptID so TDD tests can
+// assert the canonical NEW-mode write seam. The port owns the typed
+// contract (godlike/06 SSOT) — the mock matches the port signature
+// (typed *scriptpkg.ManifestV2) and marshals internally to mirror the
+// production adapter's json.Marshal seam.
+func (f *idemFakeRepo) SaveManifestV2(_ context.Context, scriptID int64, manifest *scriptpkg.ManifestV2) error {
 	f.saveManifestCalls.Add(1)
 	f.lastManifestScriptID = scriptID
-	f.lastManifest = append([]byte(nil), manifest...)
+	if manifest != nil {
+		bytes, _ := json.Marshal(manifest)
+		f.lastManifest = bytes
+	}
 	return nil
 }
 

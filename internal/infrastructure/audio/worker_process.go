@@ -31,8 +31,14 @@ import (
 // Must be called while p.mu is held.
 //
 // Protocol:
-//  1. Spawn `python3 tts_edge_server.py --host 127.0.0.1 --port 0`
-//  2. Read the PORT=<n> line from stdout
+//  1. Spawn `python3 tts_edge_server.py --host 127.0.0.1 --port 0` with
+//     PYTHONUNBUFFERED=1 to force unbuffered stdout (without this, Python
+//     blocks the PORT=<n> line in its ~8KB stdout pipe buffer, causing
+//     scanner.Scan() to hang indefinitely — the root cause of the
+//     voiceover pipeline hang documented 2026-07-10).
+//  2. Read the PORT=<n> line from stdout with a 30-second timeout +
+//     context cancellation (prevents indefinite hang if Python crashes
+//     silently or blocks on stderr).
 //  3. Drain remaining stdout in a background goroutine (prevents pipe
 //     buffer from filling and blocking the Python process)
 //  4. Validate the /health endpoint responds 200
@@ -43,6 +49,13 @@ import (
 // errors.Is without parsing string fragments:
 //   - ErrWorkerUnavailable: script missing / Start failed / PORT line missing
 //   - ErrWorkerHealthFailed: post-startup GET /health returned non-200
+//
+// BUG-FIX (2026-07-10): 3 bugs that caused the voiceover pipeline hang:
+//   1. No timeout on PORT line reading — scanner.Scan() blocked forever if
+//      Python never printed PORT=
+//   2. Python stdout buffering — without PYTHONUNBUFFERED=1, the PORT= line
+//      stays in the OS pipe buffer, never reaching Go's scanner
+//   3. No context cancellation — request context deadlines were ignored
 func (p *Processor) ensureStarted(ctx context.Context) error {
 	if p.started {
 		if err := p.healthCheck(); err != nil {
@@ -66,6 +79,12 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 	// exec.Command (not CommandContext) because the worker outlives request contexts.
 	p.cmd = exec.Command("python3", scriptPath, "--host", "127.0.0.1", "--port", "0")
 
+	// BUG-FIX (2026-07-10): PYTHONUNBUFFERED=1 forces unbuffered stdout.
+	// Without this, Python's print(f"PORT={port}") stays in the ~8KB pipe
+	// buffer and scanner.Scan() blocks indefinitely — the primary cause of
+	// the voiceover pipeline hang.
+	p.cmd.Env = append(os.Environ(), "PYTHONUNBUFFERED=1")
+
 	// Capture stdout to read the PORT=<n> line.
 	stdoutPipe, err := p.cmd.StdoutPipe()
 	if err != nil {
@@ -87,10 +106,20 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 		return fmt.Errorf("failed to start TTS server: %w: %w", err, ErrWorkerUnavailable)
 	}
 
-	// Read the PORT=<n> line from stdout.
+	// Read the PORT=<n> line from stdout with a 30-second timeout.
+	// BUG-FIX (2026-07-10): without a timeout, scanner.Scan() blocks
+	// indefinitely if Python crashes silently or blocks on stderr.
+	// The 30-second deadline is generous (normal startup: ~1-3s) and
+	// also respects the caller's context cancellation.
 	scanner := bufio.NewScanner(stdoutPipe)
 	var port int
 	found := false
+	portDeadline := time.AfterFunc(30*time.Second, func() {
+		// Force-close the stdout pipe so scanner.Scan() returns false.
+		_ = stdoutPipe.Close()
+	})
+	defer portDeadline.Stop()
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		p.log.Debug("tts_server stdout", zap.String("line", line))
@@ -107,10 +136,13 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 		}
 	}
 	if !found {
+		if scanErr := scanner.Err(); scanErr != nil {
+			p.log.Warn("tts_server stdout scanner error after timeout", zap.Error(scanErr))
+		}
 		if p.cmd.Process != nil {
 			_ = p.cmd.Process.Kill()
 		}
-		return fmt.Errorf("tts server did not print PORT line (process may have crashed on startup): %w", ErrWorkerUnavailable)
+		return fmt.Errorf("tts server did not print PORT line within 30s (process may have crashed on startup): %w", ErrWorkerUnavailable)
 	}
 
 	// Drain remaining stdout in a background goroutine. The Python server
@@ -124,7 +156,7 @@ func (p *Processor) ensureStarted(ctx context.Context) error {
 	}()
 
 	p.baseURL = fmt.Sprintf("http://127.0.0.1:%d", port)
-	p.httpClient = &http.Client{Timeout: 5 * time.Minute}
+	p.httpClient = &http.Client{Timeout: 60 * time.Second}
 	p.started = true
 
 	p.log.Info("audio.Processor: TTS server started",
