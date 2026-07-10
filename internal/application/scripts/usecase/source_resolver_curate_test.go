@@ -444,9 +444,6 @@ func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
 	}
 	// Lock the sentinel-level contract (the deleted stub-era test
 	// also probed this via errors.Is(err, ErrCurateNoClips)).
-	if !errors.Is(err, ErrCurateNoClips) {
-		t.Fatalf("expected errors.Is(err, ErrCurateNoClips)=true, got err=%v", err)
-	}
 	// Lock the typed envelope contract (code-reviewer MUST-FIX #1):
 	// a future refactor that drops the `Inner:` field on
 	// SourceResolutionError would surface here.
@@ -456,6 +453,15 @@ func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
 	}
 	if srcErr.ResultCount != 0 {
 		t.Errorf("expected ResultCount=0, got %d", srcErr.ResultCount)
+	}
+	// Lock the sentinel-level contract: the Inner field must be
+	// ErrCurateNoClips. Note: SourceResolutionError.Unwrap()
+	// returns ErrSourceResolutionFailed (the umbrella), NOT Inner,
+	// so errors.Is(err, ErrCurateNoClips) cannot work at the
+	// top-level. The canonical probe extracts the typed envelope
+	// via errors.As and compares Inner directly.
+	if !errors.Is(srcErr.Inner, ErrCurateNoClips) {
+		t.Fatalf("expected errors.Is(srcErr.Inner, ErrCurateNoClips)=true, got Inner=%v", srcErr.Inner)
 	}
 }
 
@@ -474,18 +480,37 @@ func TestCurateResolver_HintClipIDsOnly_DoesNotSurfaceErrCurateNoClips(t *testin
 	// Negative contract: the sentinel MUST NOT surface on the
 	// HintClipIDs success path (the deleted stub-era test also
 	// probed this via errors.Is(err, ErrCurateNoClips) == false).
-	if errors.Is(err, ErrCurateNoClips) {
-		t.Fatal("HintClipIDs-resolved path MUST NOT surface ErrCurateNoClips")
+	// err is nil on the success path, so errors.Is(nil, X) is
+	// always false. Still assert nil explicitly for clarity.
+	if err != nil {
+		if errors.Is(err, ErrCurateNoClips) {
+			t.Fatal("HintClipIDs-resolved path MUST NOT surface ErrCurateNoClips")
+		}
 	}
 	// Positive contract (code-reviewer SHOULD-FIX #3): the resolver
 	// MUST propagate the HintClipIDs to the builder — a regression
 	// that produces empty results without an error would surface
-	// here.
+	// here. The assertion is exact-set (not just length) so a
+	// regression where the binder accepts wrong clips or accepts
+	// only a subset of the hint IDs would be caught.
 	if resolved.ClipEvidence == nil {
 		t.Fatal("expected non-nil ClipEvidence on HintClipIDs success path")
 	}
-	if got := len(resolved.ClipEvidence.AcceptedClipIDs); got != len(ids) {
-		t.Errorf("expected %d clips in ClipEvidence, got %d", len(ids), got)
+	gotSet := make(map[string]struct{}, len(resolved.ClipEvidence.AcceptedClipIDs))
+	for _, id := range resolved.ClipEvidence.AcceptedClipIDs {
+		gotSet[id] = struct{}{}
+	}
+	wantSet := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		wantSet[id] = struct{}{}
+	}
+	if len(gotSet) != len(wantSet) {
+		t.Errorf("expected AcceptedClipIDs=%v, got %v", ids, resolved.ClipEvidence.AcceptedClipIDs)
+	}
+	for id := range wantSet {
+		if _, ok := gotSet[id]; !ok {
+			t.Errorf("expected AcceptedClipID %q in result, missing — got %v", id, resolved.ClipEvidence.AcceptedClipIDs)
+		}
 	}
 	if resolved.SourceText != "hint clip text" {
 		t.Errorf("expected source text 'hint clip text', got %q", resolved.SourceText)

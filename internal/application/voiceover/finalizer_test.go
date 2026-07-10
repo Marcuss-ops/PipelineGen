@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -90,7 +92,7 @@ func (r *finalizerTestRepo) BeginTx(ctx context.Context) (*sql.Tx, error) {
 	return r.db.BeginTx(ctx, nil)
 }
 
-func (r *finalizerTestRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *VoiceoverRecord) error {
+func (r *finalizerTestRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO voiceovers (
 			id, request_id, text_hash, text_preview, language, voice, filename,
@@ -112,7 +114,7 @@ func (r *finalizerTestRepo) DeleteByIDTx(ctx context.Context, tx *sql.Tx, id str
 	return err
 }
 
-func (r *finalizerTestRepo) PreReadByID(_ context.Context, _ string) (*VoiceoverRecord, error) {
+func (r *finalizerTestRepo) PreReadByID(_ context.Context, _ string) (*persistence.VoiceoverRecord, error) {
 	return nil, nil
 }
 
@@ -127,7 +129,7 @@ func (r *finalizerTestRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx,
 	return "", sql.ErrNoRows
 }
 
-var _ VoiceoverRepository = (*finalizerTestRepo)(nil)
+var _ persistence.Repository = (*finalizerTestRepo)(nil)
 
 // ─────────────────────────────────────────────────────────────────────
 // Path B: Service.finalizeStage → Finalizer
@@ -588,7 +590,7 @@ type recordingFinalizerRepo struct {
 	findByIdempotencyKeyErr       error
 
 	// Recorded calls.
-	inserted          []*VoiceoverRecord
+	inserted          []*persistence.VoiceoverRecord
 	deleted           []string
 	countByDriveCalls int
 	findByIdemCalls   int
@@ -610,7 +612,7 @@ func (r *recordingFinalizerRepo) FindByIdempotencyKeyTx(ctx context.Context, tx 
 	return r.findByIdempotencyKeyMatchedID, r.findByIdempotencyKeyErr
 }
 
-func (r *recordingFinalizerRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *VoiceoverRecord) error {
+func (r *recordingFinalizerRepo) InsertTx(ctx context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
 	r.inserted = append(r.inserted, rec)
 	return nil
 }
@@ -620,7 +622,7 @@ func (r *recordingFinalizerRepo) DeleteByIDTx(ctx context.Context, tx *sql.Tx, i
 	return nil
 }
 
-var _ VoiceoverRepository = (*recordingFinalizerRepo)(nil)
+var _ persistence.Repository = (*recordingFinalizerRepo)(nil)
 
 // payloadRecordingOutbox records EnqueueIndexEvent + EnqueueCleanupEvent
 // calls so FASE 2 tests can assert the exact payload fields.

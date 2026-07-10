@@ -55,6 +55,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	"go.uber.org/zap"
 )
@@ -174,7 +175,7 @@ type ProcessSegmentDeps struct {
 	TTSProvider         TTSProvider
 	AudioPostProcessor  AudioPostProcessor // nil-safe
 	Publisher           VoiceoverPublisher
-	VoiceoverRepository VoiceoverRepository
+	VoiceoverRepository persistence.Repository
 	Finalizer           VoiceoverFinalizer // mandatory (P0.4 Fase 3a)
 	TxOutboxEnqueuer    TxOutboxEnqueuer   // optional (FASE 4 orphan-cleanup path; nil-safe)
 	Logger              *zap.Logger

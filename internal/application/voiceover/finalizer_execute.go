@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"go.uber.org/zap"
 )
 
@@ -141,7 +142,7 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		textPreview = textPreview[:100]
 	}
 
-	rec := &VoiceoverRecord{
+	rec := &persistence.VoiceoverRecord{
 		ID:             cmd.ID,
 		RequestID:      cmd.RequestID,
 		TextHash:       cmd.TextHash,

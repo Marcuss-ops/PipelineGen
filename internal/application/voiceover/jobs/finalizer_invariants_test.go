@@ -67,6 +67,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -252,7 +253,7 @@ func (s *txRecordingVoiceoverRepo) BeginTx(ctx context.Context) (*sql.Tx, error)
 	return s.db.BeginTx(ctx, nil)
 }
 
-func (s *txRecordingVoiceoverRepo) InsertTx(_ context.Context, tx *sql.Tx, rec *voiceover.VoiceoverRecord) error {
+func (s *txRecordingVoiceoverRepo) InsertTx(_ context.Context, tx *sql.Tx, rec *persistence.VoiceoverRecord) error {
 	s.lastTx = tx
 	s.insertN++
 	_, err := tx.ExecContext(context.Background(), `
@@ -277,7 +278,7 @@ func (s *txRecordingVoiceoverRepo) DeleteByIDTx(_ context.Context, tx *sql.Tx, _
 	return nil
 }
 
-func (s *txRecordingVoiceoverRepo) PreReadByID(_ context.Context, _ string) (*voiceover.VoiceoverRecord, error) {
+func (s *txRecordingVoiceoverRepo) PreReadByID(_ context.Context, _ string) (*persistence.VoiceoverRecord, error) {
 	// The production finalizer does NOT call PreReadByID (the dedupe
 	// gate uses CountByDriveFileIDTx). This stub is present only to
 	// satisfy the persistence.Repository interface contract; callers
@@ -303,7 +304,7 @@ func (s *txRecordingVoiceoverRepo) FindByIdempotencyKeyTx(_ context.Context, _ *
 	return "", sql.ErrNoRows
 }
 
-var _ voiceover.VoiceoverRepository = (*txRecordingVoiceoverRepo)(nil)
+var _ persistence.Repository = (*txRecordingVoiceoverRepo)(nil)
 
 // openInvariantsTestDB opens an in-memory SQLite with the canonical
 // voiceovers table schema. The finalizer's Step 3 InsertTx writes to
