@@ -167,11 +167,11 @@ func registerAIBackedProcessors(
 		)
 	}
 	if clipSearchAdapter == nil {
-		clipSearchAdapter = adapters.NewUnavailableArtlistClipSearcher()
-		log.Warn("ClipSearchProcessor: OllamaTranslator not available; falling back to unavailable adapter (clip_search will produce empty results)")
-	}
-	if !ppReg.Register(adapters.NewClipSearchProcessor(clipSearchAdapter)) {
-		return fmt.Errorf("register clip_search processor: composition bug")
+		log.Warn("ClipSearchProcessor: OllamaTranslator not available; postprocessor not registered (clip_search will be skipped)")
+	} else {
+		if !ppReg.Register(adapters.NewClipSearchProcessor(clipSearchAdapter)) {
+			return fmt.Errorf("register clip_search processor: composition bug")
+		}
 	}
 
 	return nil
