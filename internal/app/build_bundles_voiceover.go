@@ -273,68 +273,64 @@ func buildVoiceoverService(
 	// block above: ~line 110). When destResolver is NOT supplied (typical
 	// of `internal/app/*_test.go` stub-bootstrap helpers, which exercise
 	// the composition root without standing up the full asset.Resolver
-	// chain), the use case construction is SKIPPED and processItemUseCase
-	// returns nil; the canonical fail-fast contracts of
-	// newUseCaseDestResolverAdapter + voiceover.NewProcessVoiceoverItemUseCase
-	// are preserved (no adapter-side nil-tolerance). The handler
-	// (voiceoverjobs.NewGenerateItemJobHandler) is bound to the typed
-	// VoiceoverItemExecutor port — a nil use case surfaces as a
-	// Handler-Register-time error, not a mid-dispatch panic. This is
-	// the minimum-scope fix for Step 8/12 wiring: the production
-	// composition root path supplies a real destResolver so the warning
-	// never fires in operator environments.
-	var processItemUseCase voiceover.VoiceoverItemExecutor
+	// chain), a nil-tolerant nopDestinationResolver is wired so the
+	// ProcessVoiceoverItemUseCase constructor's
+	// `if deps.DestinationResolver == nil { panic }` check passes.
+	// The use case's Execute tolerates a resolver that returns
+	// (nil, nil) via the canonical "missing_folder_id" short-circuit
+	// in ResolveDestinationWithFallback — the production semantics
+	// are preserved (a request without an explicit Destination always
+	// fails closed, regardless of whether the resolver is real or
+	// nop).
+	//
+	// P0-#3 (July 2026): processItemUseCase is now ALWAYS constructed
+	// (not gated on destResolver != nil) because the NewService
+	// composition-time fail-fast panics when ProcessItem is nil. The
+	// use case itself tolerates nil DestinationResolver + nil
+	// DefaultFolderResolver via the canonical short-circuit path.
+	var destResolverAdapter voiceover.DestinationResolver
+	var defaultFolderResolver voiceover.VoiceoverDefaultFolderResolver
 	if destResolver != nil {
-		// Adapter: DestinationResolver port — wraps destResolver
-		// (asset.Resolver). Forward Group + StyleGroup to the resolver;
-		// mirror StyleGroup verbatim on the returned ResolvedDestination.
-		destResolverAdapter := newUseCaseDestResolverAdapter(destResolver)
-
-		// Adapter (E1 cutover): VoiceoverPublisher port — wraps
-		// driveUploader.Admin() directly. The legacy AssetLifecycle
-		// adapter (useCaseLifecycleAdapter wrapping voLifecycle) is
-		// retired; Publisher does NOT write to SQLite, does NOT run a
-		// dedupe gate, does NOT touch media_assets (finalizeStage
-		// owns the per-item tx).
-		// FASE 8: wrapped with rate-limiting + retry (same instance
-		// as the batch path's voPublisher above — shared semaphore).
-		publisherAdapter := voPublisher
-
-		// Adapter: AudioPostProcessor port — silence-removal bridge
-		// built on the canonical ffmpeg.RemoveSilence closure. Nil-safe
-		// at the use case boundary (only invoked when RemoveSilence == true).
-		audioAdapter := newUseCaseAudioAdapter(log)
-
-		// The use case satisfies voiceover.VoiceoverItemExecutor
-		// structurally — compile-time assertion in process_voiceover_item.go
-		// pins the conformance.
-
-		// P0.2 nil-destination fallback (July 2026): wire the
-		// DefaultFolderResolver from the configured Voiceover folder
-		// so a nil-Destination request resolves to the operator-
-		// configured default rather than failing with missing_
-		// destination. Nil-safe: newUseCaseDefaultFolderResolverAdapter
-		// returns ("", "", false) when no folder is configured.
-		defaultFolderResolver := newUseCaseDefaultFolderResolverAdapter(
+		destResolverAdapter = newUseCaseDestResolverAdapter(destResolver)
+		defaultFolderResolver = newUseCaseDefaultFolderResolverAdapter(
 			cfg.Drive.VoiceoverFolder(),
 			voDir,
 		)
-
-		processItemUseCase = voiceover.NewProcessVoiceoverItemUseCase(voiceover.ProcessVoiceoverItemDeps{
-			TTSProvider:           ttsProvider,
-			DestinationResolver:   destResolverAdapter,
-			AudioPostProcessor:    audioAdapter,
-			Publisher:             publisherAdapter,
-			VoiceoverRepository:   voRepoAdapter,
-			DefaultFolderResolver: defaultFolderResolver,
-			Finalizer:             finalizer,
-			OutputDir:             voDir,
-			Logger:                log,
-		})
-		log.Info("voiceover.processVoiceoverItemUseCase wired (Step 8/12 — child pipeline for voiceover.generate_item jobs)")
 	} else {
-		log.Warn("voiceover: skipping ProcessVoiceoverItemUseCase wire-up (Step 8/12); destResolver is nil — VoiceoverItemExecutor port returns nil; handler registration will fail-fast (NewGenerateItemJobHandler panic-on-nil useCase) at composition time in production paths that exercise the typed port")
+		destResolverAdapter = nopDestinationResolver{}
+		log.Warn("voiceover: using nopDestinationResolver (no asset.Resolver wired); processItemUseCase will fail-closed with missing_folder_id for requests without explicit Destination (typical of internal/app/*_test.go stub-bootstrap helpers)")
 	}
+
+	// Adapter (E1 cutover): VoiceoverPublisher port — wraps
+	// driveUploader.Admin() directly. The legacy AssetLifecycle
+	// adapter (useCaseLifecycleAdapter wrapping voLifecycle) is
+	// retired; Publisher does NOT write to SQLite, does NOT run a
+	// dedupe gate, does NOT touch media_assets (finalizeStage
+	// owns the per-item tx).
+	// FASE 8: wrapped with rate-limiting + retry (same instance
+	// as the batch path's voPublisher above — shared semaphore).
+	publisherAdapter := voPublisher
+
+	// Adapter: AudioPostProcessor port — silence-removal bridge
+	// built on the canonical ffmpeg.RemoveSilence closure. Nil-safe
+	// at the use case boundary (only invoked when RemoveSilence == true).
+	audioAdapter := newUseCaseAudioAdapter(log)
+
+	// The use case satisfies voiceover.VoiceoverItemExecutor
+	// structurally — compile-time assertion in process_voiceover_item.go
+	// pins the conformance.
+	processItemUseCase := voiceover.NewProcessVoiceoverItemUseCase(voiceover.ProcessVoiceoverItemDeps{
+		TTSProvider:           ttsProvider,
+		DestinationResolver:   destResolverAdapter,
+		AudioPostProcessor:    audioAdapter,
+		Publisher:             publisherAdapter,
+		VoiceoverRepository:   voRepoAdapter,
+		DefaultFolderResolver: defaultFolderResolver,
+		Finalizer:             finalizer,
+		OutputDir:             voDir,
+		Logger:                log,
+	})
+	log.Info("voiceover.processVoiceoverItemUseCase wired (Step 8/12 — child pipeline for voiceover.generate_item jobs)")
 
 	// P0.4 Fase 4a (July 2026): wire the post-commit SQL verifier.
 	// After the tx commits, finalizeStage calls Verify to confirm both
@@ -374,6 +370,43 @@ func buildVoiceoverService(
 	log.Info("Voiceover service initialized", zap.String("python_scripts_dir", cfg.Paths.PythonScriptsDir))
 
 	return voService, voRepo, processItemUseCase, audioProcessor
+}
+
+// nopDestinationResolver is a nil-tolerant DestinationResolver used
+// by the composition root when no asset.Resolver is wired (typical
+// of `internal/app/*_test.go` stub-bootstrap helpers that exercise
+// the composition root without the full asset resolution chain).
+//
+// The ProcessVoiceoverItemUseCase constructor panics on nil
+// DestinationResolver (a composition-time fail-closed guard), so the
+// composition root cannot pass a literal nil interface. The nop
+// resolver returns (nil, nil) — a value that the downstream
+// ResolveDestinationWithFallback function correctly maps to the
+// canonical "missing_folder_id" short-circuit, so the use case
+// surfaces a typed failure on every Execute call rather than
+// silently falling back to /tmp or some other unspecified
+// destination.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: this is a TEST-BOOTSTRAP-ONLY
+// degradation. Production composition root paths always wire a
+// real asset.Resolver (the `else` branch in
+// buildVoiceoverService logs a Warn so operators see the
+// dev-mode shortcut). The Warn + the "missing_folder_id" failure
+// mode together preserve the no-fake-availability invariant: a
+// misconfigured composition root fails loud, not silent.
+type nopDestinationResolver struct{}
+
+// Compile-time assertion (AGENTS.md Pattern 0): the nop resolver
+// must structurally satisfy the narrow voiceover.DestinationResolver
+// port so a future port drift triggers a compile error here.
+var _ voiceover.DestinationResolver = nopDestinationResolver{}
+
+// Resolve is the canonical nop implementation: returns (nil, nil) so
+// the use case's ResolveDestinationWithFallback short-circuits to
+// "missing_folder_id" via the canonical Rule 2 + Rule 3 path
+// (destReq == nil AND defaultResolver is nil → return nil).
+func (nopDestinationResolver) Resolve(_ context.Context, _ *voiceover.DestinationRequest) (*voiceover.ResolvedDestination, error) {
+	return nil, nil
 }
 
 // wireVoiceoverJobBindings registers voiceover.generate (Catena A P0) +

@@ -157,7 +157,7 @@ func (s *Service) ProcessBookFromDrive(ctx context.Context, req *ProcessFromDriv
 		BookResult: bookResult,
 	}
 
-	if req.GenerateVoiceover && s.voiceoverSvc != nil {
+	if req.GenerateVoiceover && s.voiceoverExecutor != nil {
 		s.log.Info("generating voiceover from book output",
 			zap.String("output_path", bookResult.OutputPath),
 		)
@@ -176,30 +176,49 @@ func (s *Service) ProcessBookFromDrive(ctx context.Context, req *ProcessFromDriv
 
 		filename := fmt.Sprintf("book_voiceover_%s.mp3", filepath.Base(bookResult.OutputPath))
 
-		var voResult *voiceover.VoiceoverResult
+		// P0-#3 (July 2026): map the books-to-voiceover request to the
+		// canonical per-item command (same shape the
+		// voiceover.generate + voiceover.generate_item job paths use).
+		// The books path is synchronous within ProcessBookFromDrive
+		// (it does not enqueue a child job), so the dispatcher-assigned
+		// parent job ID is not available; use a stable synthetic ID
+		// (Validate requires non-empty ParentJobID + RequestID).
+		var dest *voiceover.DestinationRequest
 		if req.VoiceoverFolderID != "" {
-			voResult, err = s.voiceoverSvc.GenerateWithDestination(ctx, string(outputContent), voiceoverLang, filename, &voiceover.DestinationRequest{
+			dest = &voiceover.DestinationRequest{
+				Kind:     "explicit",
 				FolderID: req.VoiceoverFolderID,
-			})
-		} else {
-			voResult, err = s.voiceoverSvc.Generate(ctx, string(outputContent), voiceoverLang, filename)
+			}
 		}
-
+		itemCmd := &voiceover.GenerateVoiceoverItemCommand{
+			ParentJobID:   "books-process-from-drive",
+			RequestID:     "books-process-from-drive",
+			Text:          string(outputContent),
+			Language:      voiceover.Language(voiceoverLang),
+			Filename:      filename,
+			TextHash:      voiceover.ComputeTextHash(string(outputContent)),
+			Destination:   dest,
+			Strategy:      "replace",
+			RemoveSilence: false,
+		}
+		voResult, err := s.voiceoverExecutor.Execute(ctx, itemCmd)
 		if err != nil {
+			// Typed-error contract: real failures surface as a Go error
+			// (the per-item use case returns *PipelineError wrapping
+			// the stage-specific failure). No more
+			// `voResult.OK` / `voResult.Error` field check.
 			result.VoiceoverError = fmt.Sprintf("voiceover generation failed: %v", err)
 			s.log.Warn("voiceover generation failed", zap.Error(err))
-		} else if voResult != nil && voResult.OK {
-			result.VoiceoverPath = voResult.Path
+		} else if voResult != nil {
+			result.VoiceoverPath = voResult.LocalPath
 			result.VoiceoverDriveLink = voResult.DriveLink
 			result.VoiceoverDriveID = voResult.DriveFileID
 			s.log.Info("voiceover generated successfully",
-				zap.String("path", voResult.Path),
+				zap.String("path", voResult.LocalPath),
 				zap.String("drive_link", voResult.DriveLink),
 			)
-		} else if voResult != nil && !voResult.OK {
-			result.VoiceoverError = fmt.Sprintf("voiceover generation returned error: %s", voResult.Error)
 		}
-	} else if req.GenerateVoiceover && s.voiceoverSvc == nil {
+	} else if req.GenerateVoiceover && s.voiceoverExecutor == nil {
 		result.VoiceoverError = "voiceover service not configured"
 	}
 
