@@ -122,7 +122,7 @@ type Repository interface {
 //
 // Schema source-of-truth: internal/infrastructure/database/sqlite/
 // assets/voiceovers_repository.go::Record. The two struct shapes
-// are NOT identical: voiceover.VoiceoverRecord is the wire shape
+// are NOT identical: persistence.VoiceoverRecord is the wire shape
 // (string timestamps), assets.Record is the SQLite shape
 // (time.Time). Keeping the conversion local to the adapter means
 // a future schema migration requires only ONE place (the
