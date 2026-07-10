@@ -32,9 +32,13 @@ import (
 // in the P1-2 wave (June 2026). The legacy VoiceoverRepository +
 // VoiceoverRecord aliases have been RETIRED — all callers now reference
 // `persistence.Repository` + `persistence.VoiceoverRecord` directly
-// per godlike/06 SSOT one-canonical-owner-per-fact. The archcheck
-// forward-prevention gate `cmd/archcheck/scan/percheck_voiceover_alias_ban.go`
-// blocks any future re-introduction of these aliases.
+// per godlike/06 SSOT one-canonical-owner-per-fact. Future
+// PR-VOICEOVER-ALIASES-RETIRE-C ships the canonical archcheck forward-
+// prevention gate that bans future re-introduction of these aliases
+// (canonical PR-ID in architecture/waves/wave_p1_high.yaml; the gate's
+// exact file path is at the discretion of that PR's implementer so this
+// forward-pointer cannot become a no-fake-availability liability
+// if Sub-PR C's actual path differs from any earlier speculation).
 
 // ── Enums (Status, FailureCode, CompletionState) live in types_enums.go ──
 
