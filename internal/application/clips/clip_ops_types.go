@@ -21,24 +21,34 @@ type ReconcileResult struct {
 // Reconcile / Cleanup / VerifyClip. Construction via NewClipOpsService;
 // every required port is passed in.
 //
+// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the `sourceResolver`
+// field is REMOVED — all clip-type sources share a single canonical
+// repo, and the per-source discriminator moves to the query layer
+// rather than a runtime port-swap. The new `clipRepo` field holds
+// the canonical ClipRepositoryPort the service uses for all sources.
+//
 // S1d (June 2026): the `dispatcher` field is added so the service can
 // route fix-hash recovery through the canonical AssetMutationDispatcher port.
 type ClipOpsService struct {
-	sourceResolver SourceResolverPort
-	voiceoverRepo  VoiceoverRepositoryPort
-	imagesRepo     ImageRepositoryPort
-	driveUploader  ClipDriveUploaderPort
-	jobs           JobsServicePort
-	dispatcher     ClipIndexDispatcherPort
-	log            *zap.Logger
+	clipRepo      ClipRepositoryPort
+	voiceoverRepo VoiceoverRepositoryPort
+	imagesRepo    ImageRepositoryPort
+	driveUploader ClipDriveUploaderPort
+	jobs          JobsServicePort
+	dispatcher    ClipIndexDispatcherPort
+	log           *zap.Logger
 }
 
 // NewClipOpsService constructs the canonical service. Pass nil for
 // ports that callers don't use (test fixtures, partial deployments);
 // the corresponding service methods will internal-error / no-op per
 // the legacy semantics.
+//
+// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): clipRepo replaces the
+// retired sourceResolver as the canonical repo source — the service
+// queries it directly per-call rather than swapping repos at runtime.
 func NewClipOpsService(
-	sourceResolver SourceResolverPort,
+	clipRepo ClipRepositoryPort,
 	voiceoverRepo VoiceoverRepositoryPort,
 	imagesRepo ImageRepositoryPort,
 	driveUploader ClipDriveUploaderPort,
@@ -50,13 +60,13 @@ func NewClipOpsService(
 		log = zap.NewNop()
 	}
 	return &ClipOpsService{
-		sourceResolver: sourceResolver,
-		voiceoverRepo:  voiceoverRepo,
-		imagesRepo:     imagesRepo,
-		driveUploader:  driveUploader,
-		jobs:           jobs,
-		dispatcher:     dispatcher,
-		log:            log,
+		clipRepo:      clipRepo,
+		voiceoverRepo: voiceoverRepo,
+		imagesRepo:    imagesRepo,
+		driveUploader: driveUploader,
+		jobs:          jobs,
+		dispatcher:    dispatcher,
+		log:           log,
 	}
 }
 
@@ -162,13 +172,18 @@ type FixHashReport struct {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-// resolveRepo looks up the canonical repo for a source via the
-// SourceResolverPort. Returns nil if the source is unknown.
+// resolveRepo returns the canonical clip repo for any clip-type source.
+//
+// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the retired
+// SourceResolverPort layer is GONE — all clip-type sources share the
+// same canonical ClipRepositoryPort. The source discriminator now
+// lives at the QUERY layer (the repo methods take `source` as a
+// per-call filter parameter), not at port-selection time. The
+// signature is preserved (still takes source + returns the repo)
+// so existing callers stay compile-equivalent during the wave.
 func (s *ClipOpsService) resolveRepo(source string) ClipRepositoryPort {
-	if s.sourceResolver == nil {
-		return nil
-	}
-	return s.sourceResolver.ResolveRepo(source)
+	_ = source // kept for caller-compat; the per-source discriminator is canonical at the query layer
+	return s.clipRepo
 }
 
 // voiceoverDTOToClip inverts the projection from voiceover DTO into

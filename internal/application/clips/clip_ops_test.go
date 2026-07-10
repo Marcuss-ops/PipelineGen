@@ -22,14 +22,14 @@ import (
 
 // ── Port stubs (minimal happy-defaults) ──────────────────────────────────────
 
-type testSourceResolver struct{ repos map[string]ClipRepositoryPort }
-
-func (r *testSourceResolver) ResolveRepo(s string) ClipRepositoryPort {
-	if r == nil {
-		return nil
-	}
-	return r.repos[s]
-}
+// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): testSourceResolver REMOVED.
+// All clip-type sources share a single canonical clips.ClipRepositoryPort;
+// tests inject the stubRepo (still defined below) directly into ClipOpsService
+// via the first positional argument of NewClipOpsService (formerly the
+// sourceResolver slot). The per-source discriminator is now encoded at the
+// test fixture layer via the source string passed to Verify/Cleanup —
+// the service's static switch in isKnownCleanupSource expands to cover all
+// canonical clip-type sources (see clip_ops_reconcile.go).
 
 type stubRepo struct {
 	clips []*asset.Asset
@@ -299,8 +299,11 @@ func TestClipOps_Cleanup_YoutubeDryRun_ReportsOrphanWithoutDelete(t *testing.T) 
 	clip := &asset.Asset{ID: "yt-orphan", Name: "foo"}
 	clip.SetLocalPath("/this/path/does/not/exist/foo.mp4")
 	repo := &stubRepo{clips: []*asset.Asset{clip}}
-	resolver := &testSourceResolver{repos: map[string]ClipRepositoryPort{"youtube": repo}}
-	svc := NewClipOpsService(resolver, nil, nil, nil, nil, nil, zap.NewNop())
+	// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the retired resolver
+	// is GONE — the canonical clipRepo is injected directly into
+	// NewClipOpsService's first (clipRepo) slot. Source discriminator
+	// now lives in the static switch in isKnownCleanupSource.
+	svc := NewClipOpsService(repo, nil, nil, nil, nil, nil, zap.NewNop())
 
 	report, err := svc.Cleanup(context.Background(), CleanupInput{
 		Source: "youtube",
@@ -349,8 +352,12 @@ func TestClipOps_Verify_EmptyClipID_ReturnsFalseOK(t *testing.T) {
 // TestClipOps_Verify_InvalidSource_AddsInvalidSourceIssue pins
 // the unknown-source marker.
 func TestClipOps_Verify_InvalidSource_AddsInvalidSourceIssue(t *testing.T) {
-	resolver := &testSourceResolver{repos: map[string]ClipRepositoryPort{}}
-	svc := NewClipOpsService(resolver, nil, nil, nil, nil, nil, zap.NewNop())
+	// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the retired resolver
+	// is GONE — nil clipRepo for this test (the resolver used to
+	// return nil for unknown sources; the static-switch discriminator
+	// in isKnownCleanupSource now detects "not-a-source" without
+	// needing the clipRepo to be queried at all).
+	svc := NewClipOpsService(nil, nil, nil, nil, nil, nil, zap.NewNop())
 	report := svc.Verify(context.Background(), "not-a-source", "x-1")
 	require.NotNil(t, report)
 	require.False(t, report.OK)
@@ -409,8 +416,11 @@ func TestVerify_HashInfoSeparateFromIssues(t *testing.T) {
 	fixture.SetDriveLink("https://drive.google.com/file/d/no-md5")
 
 	repo := &stubRepo{clips: []*asset.Asset{fixture}}
-	resolver := &testSourceResolver{repos: map[string]ClipRepositoryPort{"youtube": repo}}
-	svc := NewClipOpsService(resolver, nil, nil, nil, nil, nil, zap.NewNop())
+	// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the retired resolver
+	// is GONE — canonical clipRepo is `repo` injected directly. Verify's
+	// source-discriminator happens entirely in isKnownCleanupSource's
+	// static switch now.
+	svc := NewClipOpsService(repo, nil, nil, nil, nil, nil, zap.NewNop())
 
 	t.Run("read_only_no_clip_mutation", func(t *testing.T) {
 		report := svc.Verify(context.Background(), "youtube", "yt-verify-1")

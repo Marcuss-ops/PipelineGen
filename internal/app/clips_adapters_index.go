@@ -111,26 +111,17 @@ func (a *clipsHashAdapter) MD5File(path string) (string, error) {
 }
 
 // ── Source resolver adapter ──────────────────────────────────────
-
-// sourceResolverAdapter wraps a single *assets.ClipsRepository via
-// clips.ClipRepositoryPort — all clip-type sources share the same
-// concrete repo in production. Collapse (June 2026): SourceResolver
-// eliminated; the 3-way switch is replaced by a single-port passthrough.
-type sourceResolverAdapter struct {
-	clips clips.ClipRepositoryPort
-}
-
-// Compile-time assertion: sourceResolverAdapter satisfies clips.SourceResolverPort.
-var _ clips.SourceResolverPort = (*sourceResolverAdapter)(nil)
-
-func newSourceResolverAdapter(clipsRepo clips.ClipRepositoryPort) clips.SourceResolverPort {
-	return &sourceResolverAdapter{clips: clipsRepo}
-}
-
-// ResolveRepo returns the canonical clips port for any clip-type source.
-func (r *sourceResolverAdapter) ResolveRepo(source string) clips.ClipRepositoryPort {
-	return r.clips
-}
+//
+// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the sourceResolverAdapter
+// is REMOVED. All clip-type sources share a single canonical clips.ClipRepositoryPort
+// in production; the per-source discriminator moves to the QUERY layer
+// (the repo methods accept `source` as a filter parameter), not at
+// port-selection time the resolver enabled before. The 2 production
+// adapters (sourceResolverAdapter in this file + clipOpsSourceResolverAdapter
+// in clips_adapters_ops.go) and the SourceResolverPort interface are
+// all retired in this wave — the canonical-clip-repo distillation is
+// now exposed directly via `clipsOpsPorts.ClipsRepo` in the composition
+// root at wire_assets_clips.go::buildClipsBundle.
 
 // ── Vector store adapter ─────────────────────────────────────────
 //
@@ -213,9 +204,18 @@ func clipToAssetNode(clip *asset.Asset) *assets.AssetNode {
 // for any subset and observe the matching `if h.xy != nil` short-
 // circuit behaviour the handler code has long relied on.
 
+// clipsAdapterBundle holds the canonical typed ports consumed by
+// the clips API handlers + the ClipOpsService.
+//
+// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): the SourceResolver field
+// is REMOVED. The bundle's ClipsRepo IS the canonical clip-side repo
+// surface — `ClipOpsService` consumes it directly as its `clipRepo`
+// field. The StockRepo + ArtlistRepo aliases (formerly injected as
+// duplicated ports to satisfy the 3-slot resolver contract) stay on
+// the bundle for handler-side consumption but no longer route through
+// any port-selection logic.
 type clipsAdapterBundle struct {
 	Cfg            clips.ClipConfigPort
-	SourceResolver clips.SourceResolverPort
 	ClipsRepo      clips.ClipRepositoryPort
 	StockRepo      clips.ClipRepositoryPort
 	ArtlistRepo    clips.ClipRepositoryPort
@@ -261,8 +261,11 @@ func newClipsAdapterBundle(
 		// the bulk_upload worker can resolve per-job-type timeouts
 		// through the typed port instead of the pre-HC-1 hard-coded
 		// 2*time.Hour literal in bulk_upload_worker.go.
-		Cfg:            newClipsCfgAdapter(cfg, timeouts),
-		SourceResolver: newSourceResolverAdapter(clpPort),
+		Cfg: newClipsCfgAdapter(cfg, timeouts),
+		// PR-CLIPS-DAPTER-RESOLVER-RETIRE (July 2026): SourceResolver
+		// removed (the resolver is gone — see comment above the clipsAdapterBundle
+		// struct declaration). ClipsRepo below is the canonical clip-side repo
+		// surface consumed directly by ClipOpsService.clipRepo.
 		ClipsRepo:      clpPort,
 		StockRepo:      stockPort,
 		ArtlistRepo:    artPort,
