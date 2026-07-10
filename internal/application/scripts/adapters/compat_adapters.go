@@ -153,23 +153,13 @@ func (unavailableMetadataGenerationAdapter) GenerateMetadata(_ context.Context, 
 	return nil, ErrMetadataGeneratorUnavailable
 }
 
-// ── ArtlistClipSearcher typed-fail adapter ──────────────────────────────
-
-// unavailableArtlistClipSearcher is the canonical fail-closed
-// implementation of ArtlistClipSearcher. Returns an empty slice on
-// every SearchClips call (BestEffort — clip search is never a hard
-// gate; nil backend → empty results).
-type unavailableArtlistClipSearcher struct{}
-
-// NewUnavailableArtlistClipSearcher returns the canonical fail-closed
-// ArtlistClipSearcher. The returned adapter is safe for concurrent use
-// and carries no state.
-func NewUnavailableArtlistClipSearcher() ArtlistClipSearcher {
-	return unavailableArtlistClipSearcher{}
-}
-
-// SearchClips implements ArtlistClipSearcher. Returns nil on every
-// call (BestEffort semantics — empty results, not an error).
-func (unavailableArtlistClipSearcher) SearchClips(_ context.Context, _ string, _ []string) []ArtlistClipMatch {
-	return nil
-}
+// ── ArtlistClipSearcher: no unavailable adapter (PR-LEGACY-UNAVAILABLE-CLIPSEARCH, 2026-07-10) ──
+//
+// The unavailableArtlistClipSearcher was retired per godlike/07
+// NO-FAKE-AVAILABILITY: the adapter returned nil on every SearchClips
+// call — a silent-success that was indistinguishable from "no clips
+// found." Post PR-LEGACY-UNAVAILABLE-CLIPSEARCH, the composition root
+// SKIPS ClipSearchProcessor registration entirely when OllamaTranslator
+// is nil (matching the TranslationProcessor pattern). The
+// ArtlistClipSearcher port + ArtlistClipMatch type are preserved —
+// still consumed by the real adapter when the backend IS wired.
