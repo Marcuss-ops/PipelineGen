@@ -128,14 +128,14 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 		// Cut the specific segment from the pre-downloaded file using ffmpeg -c copy (instant)
 		startStr := p.formatTime(req.Start)
 		endStr := p.formatTime(req.Start + req.Duration)
-		rawFile = filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("cut_%s.mp4", req.OutputName))
+		rawFile = p.tempCutPath(req.OutputName)
 
 		if err := p.clipProcess.CutCopy(ctx, req.PreDownloadedPath, rawFile, startStr, endStr); err != nil {
 			return nil, fmt.Errorf("failed to cut segment from pre-downloaded file: %w", err)
 		}
 	} else {
 		// Download the specific section using yt-dlp
-		tempVideoPath := filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("raw_%s.mp4", req.OutputName))
+		tempVideoPath := p.tempRawPath(req.OutputName)
 
 		startStr := p.formatTime(req.Start)
 		endStr := p.formatTime(req.Start + req.Duration)
@@ -258,6 +258,19 @@ func (p *Pipeline) hasYouTubeCookies() bool {
 	}
 	_, err := os.Stat(cookiesPath)
 	return err == nil
+}
+
+// tempRawPath returns a unique temp file path for yt-dlp downloads.
+// The random suffix prevents concurrent requests for the same video ID
+// from colliding (e.g. normal download + no_audio download on same video).
+func (p *Pipeline) tempRawPath(outputName string) string {
+	return filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("raw_%s_%s.mp4", outputName, fileutil.RandomString(8)))
+}
+
+// tempCutPath returns a unique temp file path for pre-downloaded video cuts.
+// Same random-suffix contract as tempRawPath.
+func (p *Pipeline) tempCutPath(outputName string) string {
+	return filepath.Join(p.cfg.Storage.TempPath(), fmt.Sprintf("cut_%s_%s.mp4", outputName, fileutil.RandomString(8)))
 }
 
 func (p *Pipeline) formatTime(sec float64) string {
