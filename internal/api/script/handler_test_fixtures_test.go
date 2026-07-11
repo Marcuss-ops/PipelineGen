@@ -109,8 +109,22 @@ func (f *fakeSubmissionService) Submit(ctx context.Context, req opsapp.SubmitReq
 		UpdatedAt:             time.Unix(0, int64(f.nextJobIndex)),
 		SupersedesOperationID: "",
 	}
+	// FASE 2 close-out: stub the canonical Job so the handler's
+	// canonical-status branch (handler_generate_handler.go)
+	// reads a non-nil job.Status on both replay and fresh-
+	// submit. The fake's canonical contract is "always QUEUED"
+	// — the canonical-state-on-replay contract is locked by
+	// generation_submission_service_test.go (which uses a
+	// real jobs.SQLiteStore-backed JobGetter and observes a
+	// worker-style UPDATE).
+	fakeJob := &job.Job{
+		ID:     jobID,
+		Type:   req.JobType,
+		Status: job.StatusQueued,
+	}
 	res := &opsapp.SubmitResult{
 		Operation:   op,
+		Job:         fakeJob,
 		IsSupersede: req.ForceRefresh && existingResultHasOperation(f.records[key]),
 	}
 	if req.ForceRefresh {
@@ -271,7 +285,11 @@ func newFASE2OperationsServiceForTest() *opsapp.Service {
 	jobsStore := sqlitejobs.NewSQLiteStore(db, zap.NewNop())
 	outboxRepo := outboxevents.NewRepository(db)
 	txMgr := &dbTxManagerForTest{db: db}
-	return opsapp.NewService(opsRepo, jobsStore, outboxRepo, txMgr, zap.NewNop())
+	// FASE 2 close-out: jobsStore satisfies the JobGetter port
+	// natively (its Get(ctx, id) method matches the port shape).
+	// Wired twice — once as JobEnqueuer (CreateInTx use) and
+	// once as JobGetter (canonical-state-on-replay read).
+	return opsapp.NewService(opsRepo, jobsStore, jobsStore, outboxRepo, txMgr, zap.NewNop())
 }
 
 // dbTxManagerForTest wraps *sql.DB to satisfy the operations.TxManager

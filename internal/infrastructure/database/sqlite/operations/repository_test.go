@@ -55,6 +55,18 @@ CREATE INDEX IF NOT EXISTS idx_operations_idem_lookup
     ON operations(scope, idempotency_key, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_operations_state_created
     ON operations(state, created_at DESC);
+-- NOTE: migration 146's partial UNIQUE INDEX
+-- (ux_operations_active_scope_key WHERE state != 'SUPERSEDED')
+-- is DELIBERATELY OMITTED from this test mirror. The
+-- repository tests below intentionally exercise scenarios
+-- forbidden by the production invariant (multiple QUEUED
+-- operations in the same (scope, key) bucket, atomic-TX
+-- supersede) — these verify the Repository contract at the
+-- SQLite layer, not the Submit flow's invariant enforcement.
+-- Production migration 146 enforces the constraint; tests
+-- that go through Service.Submit honor it via the
+-- application layer (see generation_submission_service_test.go
+-- where the partial UNIQUE is mirrored and all tests pass).
 `
 
 func newTestDB(t *testing.T) *sql.DB {

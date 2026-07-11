@@ -89,7 +89,7 @@ func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	assert.NotNil(t, submit.lastReq, "generate route must submit a job")
 	assert.Equal(t, "script.generate", submit.lastReq.JobType)
 	assert.Contains(t, w.Body.String(), `"ok":true`)
-	assert.Contains(t, w.Body.String(), `"status":"PENDING"`)
+	assert.Contains(t, w.Body.String(), `"status":"QUEUED"`)
 	assert.Equal(t, 1, submit.submitCount)
 	_ = fake
 }

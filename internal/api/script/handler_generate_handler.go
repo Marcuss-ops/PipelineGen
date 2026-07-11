@@ -221,6 +221,15 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 	if res != nil && res.IsIdempotencyHit {
 		c.Writer.Header().Set("X-Idempotency-Replay", "true")
 	}
+	// FASE 2 close-out: surface the canonical live Job.Status
+	// on replay and on fresh-submit alike (the spec wants
+	// "lo stato del job canonico, non più una copia HTTP 202").
+	// The Job field is populated by the submission service via
+	// JobGetter on replay; on fresh-submit it carries the
+	// freshly-INSERTed Job in QUEUED state.
+	if res != nil && res.Job != nil && res.Job.Status != "" {
+		status = string(res.Job.Status)
+	}
 	jobID := ""
 	if res != nil && res.Operation != nil {
 		jobID = res.Operation.JobID

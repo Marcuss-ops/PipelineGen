@@ -66,6 +66,9 @@ CREATE TABLE operations (
 );
 CREATE INDEX idx_operations_idem_lookup
     ON operations(scope, idempotency_key, created_at DESC);
+CREATE UNIQUE INDEX ux_operations_active_scope_key
+    ON operations(scope, idempotency_key)
+    WHERE state != 'SUPERSEDED';
 
 CREATE TABLE jobs (
     id TEXT PRIMARY KEY,
@@ -188,7 +191,11 @@ func newFASE2Service(t *testing.T) *fase2TestEnv {
 	jobsStore := sqlitejobs.NewSQLiteStore(db, zap.NewNop())
 	outboxRepo := outboxevents.NewRepository(db)
 	txMgr := newDBTxManager(db)
-	svc := operations.NewService(ops, newJobsRepoAdapter(jobsStore), outboxRepo, txMgr, nil)
+	// FASE 2 close-out: jobsStore satisfies the JobGetter port
+	// natively (its Get(ctx, id) method matches the port shape).
+	// Wired twice — as JobEnqueuer (CreateInTx use) and as
+	// JobGetter (canonical-state-on-replay read).
+	svc := operations.NewService(ops, newJobsRepoAdapter(jobsStore), jobsStore, outboxRepo, txMgr, nil)
 	return &fase2TestEnv{
 		Service: svc,
 		DB:      db,
@@ -439,4 +446,64 @@ func TestSubmit_IdempotencyHit_ReturnsSameOperation_NoNewWrites(t *testing.T) {
 		string(req.Scope), req.IdempotencyKey,
 	).Scan(&opCount))
 	assert.Equal(t, 1, opCount, "idempotency hit must NOT commit a new operations row")
+}
+
+// ── Test 4: canonical job-state on replay (FASE 2 close-out) ──
+
+// TestSubmit_IdempotencyHit_ReadsCanonicalJobState pins the FASE 2
+// close-out contract: on idempotency hit, Submit returns the canonical
+// live Job state (post-worker UPDATEd, NOT the stale QUEUED deposited
+// at Submit commit). This is the user-spec requirement: "leggendo lo
+// stato del job canonico, non più una copia HTTP 202".
+func TestSubmit_IdempotencyHit_ReadsCanonicalJobState(t *testing.T) {
+	env := newFASE2Service(t)
+	req := canonicalSubmitRequest(
+		domainops.ScopeScriptGenerate,
+		"key-canonical-1",
+		makeHashFASE2("body-canonical-1"),
+	)
+	req.OperationID = "op-canonical-1"
+	req.JobID = "job-canonical-1"
+
+	// First Submit creates the operation + job (status=QUEUED).
+	first, err := env.Service.Submit(context.Background(), req)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	require.NotNil(t, first.Job, "fresh submit MUST return the canonical Job")
+	require.Equal(t, job.StatusQueued, first.Job.Status,
+		"fresh submit returns the freshly-INSERTed Job in QUEUED state")
+	require.Equal(t, "job-canonical-1", first.Job.ID)
+
+	// Simulate worker progress: directly UPDATE the jobs row's
+	// status to SUCCEEDED (the canonical live state).
+	_, dbErr := env.DB.Exec(
+		`UPDATE jobs SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
+		string(job.StatusSucceeded),
+		time.Now().UTC().Format(time.RFC3339),
+		time.Now().UTC().Format(time.RFC3339),
+		"job-canonical-1",
+	)
+	require.NoError(t, dbErr, "direct job-status UPDATE for canonical-state setup")
+
+	// Second Submit with the same (scope, key, hash) — replay.
+	// Empty req.OperationID + req.JobID so the service generates
+	// fresh IDs and the self-reference guard (req.OperationID ==
+	// prior.OperationID && req.OperationID != "") does not fire.
+	// A real idempotent retry never re-supplies the IDs that the
+	// first call already committed (those belong to the canonical
+	// prior operation).
+	req2 := req
+	req2.OperationID = ""
+	req2.JobID = ""
+	second, err := env.Service.Submit(context.Background(), req2)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	require.True(t, second.IsIdempotencyHit)
+	require.NotNil(t, second.Job,
+		"replay MUST return the canonical live Job state (FASE 2 close-out contract)")
+	// The canonical state MUST be observed: SUCCEEDED,
+	// NOT the stale QUEUED.
+	require.Equal(t, job.StatusSucceeded, second.Job.Status,
+		"replay MUST surface the canonical live Job.Status, not the stale QUEUED")
+	require.False(t, second.IsSupersede)
 }
