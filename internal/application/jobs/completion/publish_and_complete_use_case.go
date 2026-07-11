@@ -90,6 +90,20 @@ var ErrPublishAndCompleteUseCasePrepareFailed = errors.New(
 	"completion: PublishAndCompleteUseCase.Prepare failed for at least one StagedArtifactReference",
 )
 
+// ErrUnmappedCompletionDestination is the typed sentinel returned when a
+// StagedArtifactReference.Destination is not in the canonical 9-key set
+// (image, youtube_clip, voiceover, script, document, book, stock, artlist,
+// sound_effect) AND therefore cannot be projected to a typed VerifiedArtifact
+// .Kind / .Source pair. FASE 3 of the audit (July 2026) explicitly
+// forbids any destination->Kind/Source auto-cast — unknown destination
+// is a HARD error, not a silent fallback to KindDocument (the pre-FASE-3
+// code mapped ANY unknown destination to Document, which produced
+// mis-routed KindDocument rows on media_assets). The HTTP layer maps to
+// 400 / 422 — the caller fixes the production request and retries.
+var ErrUnmappedCompletionDestination = errors.New(
+	"completion: unknown destination for Kind/Source projection (godlike/07 NO-FAKE-AVAILABILITY — no silent auto-cast to KindDocument; rejected StagedArtifactReference)",
+)
+
 // PublishAndCompleteUseCase is the canonical Sender-side conversion +
 // orchestration surface for the complete-with-artifacts HTTP endpoint.
 //
@@ -235,9 +249,27 @@ func (u *PublishAndCompleteUseCase) Execute(
 	// Each call internally drives validate + sha256 recompute + Drive
 	// upload + Location envelope population (godlike/06 SSOT: Prepare IS the
 	// canonical publish-pipeline seam post-P0-COMPL-4).
+	//
+	// FASE 3 (July 2026): the projection step (refToVerifiedArtifact)
+	// returns typed errors for unknown/destination-mismatched refs (see
+	// ErrUnmappedCompletionDestination). The loop propagates these as
+	// a per-artifact prepare failure so the HTTP layer can map to a
+	// 4xx with the destination named in the error message — the
+	// caller fixes the request and retries.
 	published := make([]*finalization.PublishedArtifact, 0, len(staged))
 	for i, ref := range staged {
-		verified := refToVerifiedArtifact(ref, req.JobID)
+		verified, projErr := refToVerifiedArtifact(ref, req.JobID)
+		if projErr != nil {
+			u.log.Warn("PublishAndCompleteUseCase: destination cannot be projected (FASE 3 NO-FAKE-AVAILABILITY)",
+				zap.Int("index", i),
+				zap.String("artifact_id", ref.ArtifactID),
+				zap.String("destination", ref.Destination),
+				zap.Error(projErr))
+			return nil, fmt.Errorf(
+				"PublishAndCompleteUseCase.Execute: destination unmapped at index [%d] for artifact_id=%q: %w",
+				i, ref.ArtifactID, projErr,
+			)
+		}
 		prepResult, prepErr := u.preparation.Prepare(ctx, verified)
 		if prepErr != nil {
 			u.log.Warn("PublishAndCompleteUseCase: prepare failed",
@@ -284,6 +316,14 @@ func (u *PublishAndCompleteUseCase) Execute(
 // on-disk LocalPath + SHA256 are looked up server-side via media_assets in
 // the concrete adapter — not on the wire).
 //
+// FASE 3 (July 2026): the function NOW returns (VerifiedArtifact, error).
+// Unknown destinations are rejected at the projection boundary rather
+// than silently auto-casting to KindDocument (the pre-FASE-3 anti-pattern
+// documented in Piano d'Azione §3). Errors are typed
+// ErrUnmappedCompletionDestination so the HTTP layer can map to a
+// 4xx code with operator-auditable diagnostic. Caller MUST supply a
+// destination in the canonical 9-key set (see kindFromDestination below).
+//
 // Honest scope-lock (godlike/07): the projection here is intentionally a
 // STUB — the SourceVersion, IdempotencyKey, and SHA256 carry minimal info
 // (the prepare pipeline recomputes on-disk per the godlike/07 fail-closed
@@ -291,10 +331,18 @@ func (u *PublishAndCompleteUseCase) Execute(
 // to populate LocalPath (the on-disk file source) once the
 // StagedArtifactReference -> media_assets lookup is canonicalized in
 // P0-COMPL-5-WIRE-NAMING followups (forward-pointer P0-COMPL-5-RESOLVER, deadline 2026-08-15, owner: completion).
-func refToVerifiedArtifact(ref *remote.StagedArtifactReference, jobID string) finalization.VerifiedArtifact {
+func refToVerifiedArtifact(ref *remote.StagedArtifactReference, jobID string) (finalization.VerifiedArtifact, error) {
+	kind, err := kindFromDestination(ref.Destination)
+	if err != nil {
+		return finalization.VerifiedArtifact{}, fmt.Errorf("%w: artifact_id=%q destination=%q", err, ref.ArtifactID, ref.Destination)
+	}
+	source, err := sourceFromDestination(ref.Destination)
+	if err != nil {
+		return finalization.VerifiedArtifact{}, fmt.Errorf("%w: artifact_id=%q destination=%q", err, ref.ArtifactID, ref.Destination)
+	}
 	return finalization.VerifiedArtifact{
 		ArtifactID:     ref.ArtifactID,
-		Kind:           kindFromDestination(ref.Destination),
+		Kind:           kind,
 		Filename:       ref.ArtifactID, // canonical fallback; resolver populates real filename
 		MIMEType:       "application/octet-stream",
 		LocalPath:      "",         // forward-pointer: lookup from media_assets via staged.Resolver
@@ -303,59 +351,90 @@ func refToVerifiedArtifact(ref *remote.StagedArtifactReference, jobID string) fi
 		SourceVersion:  1,
 		Requirement:    finalization.ArtifactRequirementRequired,
 		IdempotencyKey: ref.ArtifactID, // minimal hint; canonical derivation post-resolver
-		Source:         sourceFromDestination(ref.Destination),
-	}
+		Source:         source,
+	}, nil
 }
 
 // kindFromDestination maps the canonical 9-key destination directory
 // (internal/domain/remote/staged_artifact_reference.go::CanonicalDestinationKeys)
-// to the canonical finalization.ArtifactKind enum. Unmapped keys fall
-// back to finalization.KindDocument (the safe default; godlike/07
-// no-fake-availability: signal mapping uncertainty via typed default vs
-// silent zero-value).
-func kindFromDestination(dest string) finalization.ArtifactKind {
+// to the canonical finalization.ArtifactKind enum. FASE 3 (July 2026):
+// the function NOW returns error — unmapped destinations are a HARD error
+// (auto-cast to KindDocument is FORBIDDEN, godlike/07 NO-FAKE-AVAILABILITY).
+// The 9 explicit mappings are:
+//
+//	image         → KindImage
+//	youtube_clip  → KindVideo        (P0.6 cutover; was previously mis-routed to KindDocument)
+//	voiceover     → KindAudio        (P0.6 cutover; was previously mis-routed to KindDocument)
+//	script        → KindScript
+//	document      → KindDocument     (only ONE true document destination)
+//	book          → KindDocument     (text content; canonical mapping per FASE 3)
+//	stock         → KindVideo        (default video kind; per-stock.kind override is a forward-pointer)
+//	artlist       → KindVideo        (catalog clips; Audiolist video kind, FASE 3)
+//	sound_effect   → KindSoundEffect  (was previously mis-routed to KindDocument)
+//
+// Pre-FASE-3 behavior was `default: return KindDocument` which silently
+// mis-routed YouTube clips, voiceover audio, stock videos, and artlist
+// clips into the media_assets media_type=document column. The user-spec
+// line "rimuovi la conversione VerifiedArtifact→stato guidata da dest
+// sconosciute (non più auto-cast a \"document\")" is the canonical fix:
+// every destination maps to ITS OWN kind, unknown destinations fail
+// closed.
+func kindFromDestination(dest string) (finalization.ArtifactKind, error) {
 	switch dest {
 	case "image":
-		return finalization.KindImage
+		return finalization.KindImage, nil
 	case "youtube_clip":
-		return finalization.KindVideo
+		return finalization.KindVideo, nil
 	case "voiceover":
-		return finalization.KindAudio
+		return finalization.KindAudio, nil
 	case "script":
-		return finalization.KindScript
-	case "document", "book", "stock", "artlist", "sound_effect":
-		return finalization.KindDocument
+		return finalization.KindScript, nil
+	case "document":
+		return finalization.KindDocument, nil
+	case "book":
+		return finalization.KindDocument, nil
+	case "stock":
+		return finalization.KindVideo, nil
+	case "artlist":
+		return finalization.KindVideo, nil
+	case "sound_effect":
+		return finalization.KindSoundEffect, nil
 	default:
-		return finalization.KindDocument
+		return "", fmt.Errorf("%w: destination=%q not in canonical 9-key set", ErrUnmappedCompletionDestination, dest)
 	}
 }
 
 // sourceFromDestination maps the canonical destination key to the
-// content source identity written to media_assets.source. PR-SOURCE-FIX
-// (July 2026): without this mapping, AssetTxFinalizer falls back to
-// string(a.Location.Action) which is "created" — the publish action,
-// not the content source.
-func sourceFromDestination(dest string) string {
+// content source identity written to media_assets.source. FASE 3
+// (July 2026): the function NOW returns error — unknown destinations
+// are a HARD error. Pre-FASE-3 behavior was `default: return dest` which
+// propagated the destination string verbatim into media_assets.source
+// (stash for an unrecognised destination), bypassing the canonical
+// source enum (voiceover|image|youtube|script|document|book|stock|artlist|
+// sound_effect). The IndexingHandler's Qdrant payload builder reads
+// media_assets.source as the semantic `origin` slot — a stash value
+// like "drives" produces off-spec downstream behaviour.
+func sourceFromDestination(dest string) (string, error) {
 	switch dest {
 	case "youtube_clip":
-		return "youtube"
+		return "youtube", nil
 	case "voiceover":
-		return "voiceover"
+		return "voiceover", nil
 	case "image":
-		return "image"
+		return "image", nil
 	case "script":
-		return "script"
+		return "script", nil
 	case "document":
-		return "document"
+		return "document", nil
 	case "book":
-		return "book"
+		return "book", nil
 	case "stock":
-		return "stock"
+		return "stock", nil
 	case "artlist":
-		return "artlist"
+		return "artlist", nil
 	case "sound_effect":
-		return "sound_effect"
+		return "sound_effect", nil
 	default:
-		return dest
+		return "", fmt.Errorf("%w: destination=%q not in canonical 9-key source set", ErrUnmappedCompletionDestination, dest)
 	}
 }
