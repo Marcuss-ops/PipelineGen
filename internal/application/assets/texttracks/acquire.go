@@ -205,11 +205,18 @@ func (s *AcquireService) Acquire(ctx context.Context, cmd AcquireCommand) (*Acqu
 	if s.whisper != nil && cmd.LocalPath != "" {
 		det, err := s.whisper.TranscribeAudioWithDetection(ctx, cmd.LocalPath)
 		if err != nil {
+			// godlike/07 diagnostics: wrap the inner error
+			// with %w (not %v) so operators can distinguish
+			// ErrStubTranscript (Fase 5 placeholder) from a
+			// real Whisper hardware failure via
+			// errors.Is(returnedErr, youtube.ErrStubTranscript).
+			// ErrNoSourceAcquired remains the canonical
+			// surface for the BackfillService.
 			s.log.Warn("acquire: Whisper failed; chain exhausted",
 				zap.String("asset_id", cmd.AssetID),
 				zap.String("local_path", cmd.LocalPath),
 				zap.Error(err))
-			return nil, fmt.Errorf("%w: whisper: %v", ErrNoSourceAcquired, err)
+			return nil, fmt.Errorf("%w: whisper: %w", ErrNoSourceAcquired, err)
 		}
 		if det.Text != "" {
 			// Normalize the detected language. The concrete

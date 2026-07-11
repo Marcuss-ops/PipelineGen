@@ -9,6 +9,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	"go.uber.org/zap"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
+	ytinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -113,13 +115,38 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	// gemma-memory-sweeper (internal/app/lifecycle.go:393).
 	engine := usecase.NewEngine(scriptGen, nil, log)
 
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
+	// WhisperTranscriber adapter is the SOLE canonical concrete
+	// for the WhisperTranscriber interface
+	// (internal/infrastructure/youtube/ports.go). Constructed
+	// here so the AIBundle can expose it for the backfill
+	// CLI's 5-priority chain (priority 5: Whisper fallback).
+	// The adapter spawns scripts/bridges/whisper_transcriber.py
+	// via subprocess and parses its JSON output into the
+	// typed asset.TranscriptResult. The concrete instance
+	// satisfies BOTH the infrastructure-layer interface
+	// AND the application-layer youtubeports.WhisperTranscriberPort
+	// (structural subset). DefaultTimeout is left at 0 — the
+	// adapter's constructor applies the canonical 5-minute
+	// default (see ytinfra.WhisperTranscriberConfig).
+	whisperAdapter, wErr := ytinfra.NewWhisperTranscriberAdapter(ytinfra.WhisperTranscriberConfig{}, log)
+	if wErr != nil {
+		// godlike/07 fail-closed: surface the typed error.
+		// The composition root MUST NOT register a
+		// half-wired AIBundle — operators see a hard fail
+		// at startup, not silent gaps at runtime.
+		return nil, fmt.Errorf("compose ai: whisper transcriber: %w", wErr)
+	}
+	log.Info("WhisperTranscriber adapter configured (Fase 5)")
+
 	return &AIBundle{
-		OllamaClient:      ollamaClient,
-		OllamaEmbedClient: ollamaEmbedClient,
-		Reranker:          rerankerClient,
-		ScriptGen:         scriptGen,
-		OllamaTranslator:  ollamaTranslator,
-		MemoryRepo:        adapters.NewRepository(dbs.main.DB),
-		ScriptEngine:      engine,
+		OllamaClient:       ollamaClient,
+		OllamaEmbedClient:  ollamaEmbedClient,
+		Reranker:           rerankerClient,
+		ScriptGen:          scriptGen,
+		OllamaTranslator:   ollamaTranslator,
+		MemoryRepo:         adapters.NewRepository(dbs.main.DB),
+		ScriptEngine:       engine,
+		WhisperTranscriber: whisperAdapter,
 	}, nil
 }
