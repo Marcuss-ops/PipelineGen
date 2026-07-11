@@ -680,9 +680,14 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 		Type:    appjobs.TypeMediaReindex,
 		Payload: json.RawMessage(`{}`),
 	}, &appjobs.JobTools{
-		Progress:    func(int, string) {},
-		Event:       func(string, string, map[string]any) {},
-		IsCancelled: func() bool { return false },
+		// FASE 4(b) (July 2026): IsCancelled REMOVED from the
+		// domain JobExecutionTools struct. Replay handler
+		// observes cancellation via the per-handler ctx passed
+		// by Runner (jobCtx), not via a callback. The handler
+		// here is a no-op on a fresh context.Background() so no
+		// cancel-probe is needed.
+		Progress: func(int, string) {},
+		Event:    func(string, string, map[string]any) {},
 	})
 	require.NoError(t, err, "replay of media.reindex with same payload must succeed (idempotency)")
 	require.EqualValues(t, 0, j2Result["total"],

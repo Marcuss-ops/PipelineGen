@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,6 +25,20 @@ import (
 // The full production wiring (WireServices) always produces a non-nil
 // ReadyChecker via root.Utility.ReadyChecker → AppDeps.ReadyChecker.
 func TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal(t *testing.T) {
+	// Change working directory to the project root so the
+	// hardcoded relative path "scripts/bridges/whisper_transcriber.py"
+	// inside NewWhisperTranscriberAdapter resolves successfully.
+	// The adapter fails-closed (godlike/07 no-fake-availability) on
+	// os.Stat failure, so the test's working directory MUST be the
+	// repo root (NOT internal/app/ where `go test` runs by default).
+	// t.Cleanup restores the original cwd so subsequent tests
+	// in this package are not poisoned.
+	origDir, _ := os.Getwd()
+	if err := os.Chdir("../.."); err != nil {
+		t.Fatalf("chdir to project root: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
 	cfg := &config.Config{
 		Server: config.ServerConfig{
 			Host: "127.0.0.1", Port: 0, GinMode: "test",
@@ -35,17 +50,36 @@ func TestProductionHealthWiring_ReadyCheckerIsNilForWireMinimal(t *testing.T) {
 		Security: config.SecurityConfig{},
 		// pythontransformer fail-closed posture (godlike/07
 		// no-fake-availability): NewSubprocessTransformer
-		// panics on empty cfg.Books.ScriptPath AND on
-		// cfg.Books.Enabled=false. The fixture wires both
-		// fields so WireMinimal can complete composition
-		// without triggering the fail-closed gate. The
-		// books.Service.enabled flag remains the runtime
-		// per-request gate; the test never invokes the
-		// books service so the Enabled=true value is a
-		// no-op at test time.
+		// panics on empty cfg.Books.ScriptPath, empty
+		// cfg.Books.PythonBin, OR on cfg.Books.Enabled=false.
+		// The fixture wires all three fields so WireMinimal
+		// can complete composition without triggering the
+		// fail-closed gate. The books.Service.enabled flag
+		// remains the runtime per-request gate; the test
+		// never invokes the books service so the
+		// Enabled=true value is a no-op at test time.
 		Books: config.BooksConfig{
 			ScriptPath: "scripts/bridges/book_summarizer.py",
+			PythonBin:  "python3",
 			Enabled:    true,
+		},
+		// texttracks.NewMaterializer fail-closed posture (godlike/07
+		// no-fake-availability): rejects empty SourceLanguage AND
+		// empty MaterializeLanguages. The fixture sets both to their
+		// canonical defaults (matches the config yaml defaults at
+		// internal/platform/config/media.go) so WireMinimal can
+		// complete composition without triggering the fail-closed
+		// gates. The test never exercises the translation path, so
+		// these values are purely non-empty sentinels. A future
+		// refactor (see code-reviewer-minimax-m3 feedback on this
+		// commit) may add a `minimal bool` flag to NewComposition
+		// so WireMinimal skips optional bundles entirely; today the
+		// fixture walks the canonical-default surface.
+		Media: config.MediaConfig{
+			Multilingual: config.MultilingualConfig{
+				SourceLanguage:       "en",
+				MaterializeLanguages: []string{"en"},
+			},
 		},
 	}
 	log := zap.NewNop()

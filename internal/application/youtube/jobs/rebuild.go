@@ -89,7 +89,13 @@ func HandleRebuildSearchTextJob(deps RebuildDeps, ctx context.Context, j *job.Jo
 	)
 
 	for _, clipID := range clipIDs {
-		if tools.IsCancelled != nil && tools.IsCancelled() {
+		// FASE 4(b) (July 2026): the tools.IsCancelled callback is
+		// REMOVED from domain/job.JobExecutionTools (the pre-Fase-4
+		// 2-second IsCancelled-poll goroutine is gone). Handlers
+		// observe cancellation natively via ctx.Err() at their
+		// next phase boundary. The break-on-cancel pattern below
+		// uses ctx.Err() as the canonical cancellation probe.
+		if ctx.Err() != nil {
 			break
 		}
 
