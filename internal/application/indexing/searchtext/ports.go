@@ -13,6 +13,18 @@ package searchtext
 
 import "context"
 
+// TextTrackEntry carries a single localized text resource for
+// inclusion in the search text. Strategies iterate over TextTracks
+// to build multilingual embeddings.
+type TextTrackEntry struct {
+	// LanguageCode is the BCP-47 language tag (e.g. "en", "it", "pt-BR").
+	LanguageCode string
+	// Text is the localized text content (transcript, description, etc.).
+	Text string
+	// TextKind classifies the content ("transcript", "description", etc.).
+	TextKind string
+}
+
 // SearchTextInput carries every field that a strategy might use to
 // assemble the canonical search text for an asset. Fields that are
 // not applicable to a given source are left at their zero values;
@@ -72,6 +84,11 @@ type SearchTextInput struct {
 	// OriginProvider is the originating service (e.g. "dall-e", "midjourney",
 	// "stable-diffusion"). Used by Image, GeneratedImage.
 	OriginProvider string
+
+	// TextTracks carries localized text resources (transcripts,
+	// descriptions) from asset_text_tracks. Used by YouTube for
+	// multilingual embedding construction.
+	TextTracks []TextTrackEntry
 
 	// Additional is a free-form map for source-specific extras. Strategies
 	// may inspect keys they document; unknown keys are ignored silently.
