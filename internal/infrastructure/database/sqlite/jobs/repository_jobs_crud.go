@@ -77,6 +77,72 @@ func scanJobColumns(s scanner, j *job.Job) error {
 	return nil
 }
 
+// CreateInTx inserts a new job row inside the caller's transaction.
+// Used by FASE 2 `GenerationSubmissionService.Submit` to commit the
+// operation + job + outbox_event atomically in a single TX.
+//
+// godlike/06 SSOT: this method is the SOLE canonical path for
+// inserting a job row inside a caller-owned *sql.Tx. The pre-FASE-2
+// `Service.Enqueue` opens its own TX internally; FASE 2's
+// canonical atomic-TX shape requires the TX to be external so
+// the operations + outbox_events writes participate in the same
+// COMMIT.
+//
+// godlike/07 minimum-blast-radius: CreateInTx does NOT call
+// queueChanged (the canonical immediate-wake signal). The queue
+// wake is deferred to the caller's post-COMMIT step (the
+// FASE 2 service calls queueChanged after `tx.Commit()` returns
+// nil; for the FASE 2 atomic path, the workers pick up the new
+// job at the next poll tick — operators rely on the canonical
+// 1-5s poll interval as the latency floor for FASE 2 Submits).
+//
+// Thread safety: the caller's *sql.Tx is exclusive to the
+// connection that began it; no other goroutine touches the
+// same row in the same TX. SQLite single-writer semantics
+// apply at the connection level.
+func (r *SQLiteStore) CreateInTx(ctx context.Context, tx *sql.Tx, j *job.Job) error {
+	if tx == nil {
+		return fmt.Errorf("jobs.CreateInTx: tx is nil (caller MUST supply the open *sql.Tx)")
+	}
+
+	query := `
+		INSERT INTO jobs (id, type, status, priority, project, video_name, active_key,
+			correlation_id, payload_json, result_json, progress, error, retry_count, max_retries,
+			worker_id, lease_id, lease_expiry, created_at, updated_at, started_at, completed_at, cancelled_at, revision)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	payloadJSON := string(j.Payload)
+	if payloadJSON == "" || payloadJSON == "null" {
+		payloadJSON = "{}"
+	}
+	resultJSON := string(j.Result)
+	if resultJSON == "" || resultJSON == "null" {
+		resultJSON = "{}"
+	}
+
+	revision := j.Revision
+	if revision <= 0 {
+		revision = 1
+	}
+
+	_, err := tx.ExecContext(ctx, query,
+		j.ID, j.Type, j.Status, j.Priority, j.Project, j.VideoName, j.ActiveKey,
+		j.CorrelationID,
+		payloadJSON, resultJSON, j.Progress, j.Error,
+		j.RetryCount, j.MaxRetries, j.WorkerID, j.LeaseID,
+		timeutil.FormatPtrRFC3339(j.LeaseExpiry),
+		timeutil.FormatRFC3339(j.CreatedAt), timeutil.FormatRFC3339(j.UpdatedAt),
+		timeutil.FormatPtrRFC3339(j.StartedAt), timeutil.FormatPtrRFC3339(j.CompletedAt), nil, revision)
+	if err != nil {
+		return fmt.Errorf("jobs.CreateInTx: %w", err)
+	}
+	// Intentionally NOT calling r.queueChanged() — see doc comment
+	// above (godlike/07 minimum-blast-radius: queue wake is the
+	// caller's post-COMMIT concern).
+	return nil
+}
+
 // Create inserts a new job row.
 //
 // PR-Polling / ADR-0002 §D6.5 (June 2026): wake every sleeping Worker
