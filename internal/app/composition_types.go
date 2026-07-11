@@ -78,10 +78,11 @@ type IOpaqueStartFunc func() error
 type ComposeRoot struct {
 	DB *storage.SQLiteDB
 
-	Drive   *DriveBundle
-	Repos   *RepoBundle
-	Search  *SearchBundle
-	Process *ProcessBundle
+	Drive      *DriveBundle
+	Repos      *RepoBundle
+	Search     *SearchBundle
+	Process    *ProcessBundle
+	TextTracks *TextTrackBundle
 
 	AI      *AIBundle
 	Domains *DomainBundle

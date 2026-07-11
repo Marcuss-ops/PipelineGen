@@ -78,23 +78,6 @@ func (h *MaterializeJobHandler) HandleJob(
 	reports := make(map[string]*MaterializationReport, len(cmd.TextKinds))
 	totalDuration := time.Duration(0)
 
-	// Per-call override: if the payload specifies target_languages,
-	// they REPLACE the configured MaterializeLanguages for this call.
-	if len(cmd.TargetLanguages) > 0 {
-		// The materializer uses its own per-call source_language
-		// override (cmd.SourceLanguage) — we mutate the
-		// resolverCfg's MaterializeLanguages only.
-		// Since resolverCfg is value-copied at construction, we
-		// build a per-call override via the materializer's
-		// per-call path. Today the materializer uses
-		// m.resolverCfg as the base; we accept that an empty
-		// override leaves the base alone. For Fase 3, the
-		// target_languages override is honoured via the
-		// materializer's per-call Materialize() call (which
-		// itself does NOT mutate the resolver config; the
-		// payload-level override is applied by future PRs).
-	}
-
 	progressPer := 100 / (len(cmd.TextKinds) + 1)
 	pf(progressPer, fmt.Sprintf("fan-out to %d kind(s)", len(cmd.TextKinds)))
 
@@ -107,8 +90,11 @@ func (h *MaterializeJobHandler) HandleJob(
 			})
 		}
 
+		// Thread the payload-level target_languages override
+		// into the per-call Materialize invocation. Empty
+		// means "use the materializer's configured set".
 		rep, err := h.materializer.Materialize(
-			ctx, cmd.AssetID, cmd.SourceLanguage, cmd.SourceTextHash, kind,
+			ctx, cmd.AssetID, cmd.SourceLanguage, cmd.SourceTextHash, kind, cmd.TargetLanguages,
 		)
 		if err != nil {
 			classified := h.classifyError(err)
