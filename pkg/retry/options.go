@@ -116,15 +116,32 @@ func DefaultOptions() Options {
 // get the documented sane-default surface without per-field checks
 // scattered through the orchestrator.
 //
-// Fields NOT coalesced:
-//   - IsRetryable: zero value (nil) is semantically meaningful — "always
-//     retry" — and is NOT coalesced into a sentinel predicate.
+// Fields NOT coalesced via a callback-changer:
 //   - OnRetry: zero value (nil) is the canonical "no observability callback"
 //     surface; coalescing would silently make production callers opt
 //     into telemetry they did not request.
 //   - Clock: zero value (nil) is handled by ClockFromOptions (which
 //     itself falls through to RealClock{}); coalescing here would
 //     diverge from sleepDuration's downstream ClockFromOptions call.
+//
+// Fase 6(a) strict change (no backward-compatible default): when
+// IsRetryable is nil, norm sets it to a FAIL-CLOSED no-retry predicate
+// (returns false unconditionally). Pre-Fase-6 the zero-value was
+// "always retry" (DoWithValue's `if opts.IsRetryable != nil` check
+// skipped the predicate on nil), which silently retried terminal
+// failures (auth-revoked, missing-handler, validation) up to
+// MaxAttempts. The Fase 6(a) user spec explicitly forbids
+// "IsRetryable==nil means retry always": nil MUST be fail-closed
+// noop, NEVER "retry everything". Callers who want the legacy
+// behaviour MUST pass an explicit predicate.
+//
+// Migration path: any retry.Do / retry.DoWithValue site that does NOT
+// pass IsRetryable today MUST be updated to pass an explicit
+// predicate (typically retry.IsTransient for the existing
+// substring-path surface, or a typed-only Decision() call in
+// Push 6.1.x follow-ups). The fail-closed default is intentional:
+// unknown predicates are safer than retry-on-everything during
+// the migration window.
 func norm(o Options) Options {
 	if o.MaxAttempts <= 0 {
 		o.MaxAttempts = 3
@@ -138,8 +155,29 @@ func norm(o Options) Options {
 	if o.BackoffFactor <= 0 {
 		o.BackoffFactor = 2.0
 	}
+	if o.IsRetryable == nil {
+		// godlike/07 fail-closed (Fase 6(a), July 2026): nil predicate
+		// MUST NOT mean "retry always". The default predicates against
+		// every error (retryable = false) so the caller gets back the
+		// FIRST attempt's error verbatim without retrying. Push 6.1.x
+		// callers MUST pass an explicit IsRetryable: classifier,
+		// matching the typed-only adapter surface.
+		o.IsRetryable = neverRetry
+	}
 	return o
 }
+
+// neverRetry is the canonical fail-closed no-retries predicate.
+// Used by norm when IsRetryable is nil. Production callers MUST NOT
+// depend on this default; it exists only so a forgotten IsRetryable
+// doesn't accidentally retry every error.
+//
+// godlike/07 NO-FAKE-AVAILABILITY rationale: a production caller that
+// passes Options{IsRetryable: nil} and gets neverRetry as the
+// default is still functional — first-attempt's error is surfaced,
+// no retries are burned on terminal shapes. The default is a SAFETY
+// VALVE, not a feature.
+func neverRetry(error) bool { return false }
 
 // ── exponential backoff + bounded jitter ───────────────────────────────────
 

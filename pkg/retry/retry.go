@@ -198,6 +198,15 @@ func DoWithValue[T any](ctx context.Context, fn func() (T, error), opts Options)
 
 		lastErr = err
 
+		// Fase 6(a) (July 2026): norm() guarantees opts.IsRetryable
+		// is non-nil — a nil field is fail-closed (coalesced to
+		// neverRetry, options.go). The `!= nil` guard below is
+		// belt-and-suspenders: it preserves the pre-Fase-6 contract
+		// for direct callers who bypass norm() (none in production,
+		// but tests sometimes construct Options without norm()). The
+		// Fase 6(a) user spec forbids "IsRetryable==nil means retry
+		// always" — the fail-closed norm + this nil-guard combine to
+		// guarantee that.
 		if opts.IsRetryable != nil && !opts.IsRetryable(err) {
 			var zero T
 			return zero, err

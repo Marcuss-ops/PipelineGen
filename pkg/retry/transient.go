@@ -49,6 +49,10 @@
 //	These are the substring-path fallback. Where possible, prefer typed
 //	wrapping (1+3) for new code; the substring path is retained as a
 //	safety net for raw SDK errors not yet tagged at the typed layer.
+//	⚠️ LEGACY (Fase 6a, July 2026): the substring path is the
+//	last-resort fallback only; new code MUST register a typed Classifier
+//	via decision.go::RegisterClassifier. Phase 6 Push 6.1.x compiles
+//	this catalog out behind a //go:build tag.
 //
 // Anything that needs a transient-classifier MUST route through this
 // file. CI gate (Check N, July 2026 audit) bans substring-match retry
@@ -166,6 +170,12 @@ type RetryableError interface {
 //   - err.Error() contains one of the canonical transient-infrastructure
 //     substrings (timeout, connection refused, 429, 503, etc.).
 //
+// ⚠️  LEGACY classifier (Fase 6(a), July 2026). The substring path is
+// retained for backward-compat migration only; new code MUST NOT pass
+// retry.IsTransient as the IsRetryable predicate. Use retry.Decision
+// (typed-only walker, decision.go) or register a typed Classifier.
+// Push 6.1.x follow-ups compile out the substring path entirely.
+//
 // Decision order (typed wins over substring):
 //  1. nil → false
 //  2. RetryableError interface → IsRetryable() (typed authoritative path)
@@ -173,12 +183,15 @@ type RetryableError interface {
 //  4. Substring fallback against transientSubstrings
 //  5. Everything else → false
 //
-// This is the single canonical "should I retry this?" predicate for
-// the whole codebase. Callers that previously implemented their own
-// substring matcher (monitor.isTransientEnqueueError,
-// tagutil.IsTransientDownloadError, youtube/usecase.IsTransientExtractionError)
-// should migrate to this function and, where typed wrapping is feasible,
-// use WrapTransient.
+// This function is the LEGACY single-substring-fallback "should I retry
+// this?" predicate. Push 6.1.x follow-ups retire this function from the
+// production classification path; the canonical typed surface is
+// retry.Decision (decision.go) + RegisterClassifier. Callers that
+// previously implemented their own substring matcher (monitor.
+// isTransientEnqueueError, tagutil.IsTransientDownloadError,
+// youtube/usecase.IsTransientExtractionError) should migrate to the
+// typed Decision surface and, where typed wrapping is feasible,
+// continue to use WrapTransient.
 func IsTransient(err error) bool {
 	if err == nil {
 		return false
