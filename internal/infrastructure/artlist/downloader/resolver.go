@@ -183,6 +183,18 @@ func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 	if strings.TrimSpace(req.SourceRef) == "" {
 		return nil, fmt.Errorf("%w: source ref required", artapp.ErrEmpty)
 	}
+	if strings.TrimSpace(req.Filename) == "" {
+		return nil, fmt.Errorf("%w: filename required", artapp.ErrEmpty)
+	}
+	if filepath.IsAbs(req.Filename) {
+		return nil, fmt.Errorf("%w: filename must not be absolute", artapp.ErrInvalidResponse)
+	}
+	if cleaned := filepath.Clean(req.Filename); cleaned != req.Filename || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return nil, fmt.Errorf("%w: filename must not escape destination", artapp.ErrInvalidResponse)
+	}
+	if strings.TrimSpace(req.DestinationID) == "" {
+		return nil, fmt.Errorf("%w: destination id required", artapp.ErrEmpty)
+	}
 
 	// Acquisition-mode gate. This is the single canonical place where
 	// automatic Artlist downloads are allowed or rejected.
@@ -214,32 +226,35 @@ func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 	}
 	// Record the audit row before performing the actual download so
 	// that another concurrent download cannot squeeze in between the
-	// count and the eventual record.
-	if auditErr := r.cfg.AuditRepository.RecordDownload(ctx, artapp.DownloadAuditRecord{
+	// count and the eventual record. The row starts as pending and is
+	// updated to succeeded/failed after the transport completes.
+	auditID, auditErr := r.cfg.AuditRepository.RecordDownload(ctx, artapp.DownloadAuditRecord{
 		AssetID:     firstNonEmpty(req.ClipID, req.Filename, req.SourceRef),
 		ExternalURL: req.SourceRef,
 		AccountID:   r.cfg.AccountID,
 		Provider:    "artlist",
-	}); auditErr != nil {
+		Status:      artapp.DownloadAuditStatusPending,
+	})
+	if auditErr != nil {
 		r.limitMu.Unlock()
 		return nil, fmt.Errorf("artlist resolver: failed to record download audit: %w", auditErr)
 	}
 	r.limitMu.Unlock()
-	if strings.TrimSpace(req.Filename) == "" {
-		return nil, fmt.Errorf("%w: filename required", artapp.ErrEmpty)
-	}
-	if filepath.IsAbs(req.Filename) {
-		return nil, fmt.Errorf("%w: filename must not be absolute", artapp.ErrInvalidResponse)
-	}
-	if cleaned := filepath.Clean(req.Filename); cleaned != req.Filename || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
-		return nil, fmt.Errorf("%w: filename must not escape destination", artapp.ErrInvalidResponse)
-	}
-	if strings.TrimSpace(req.DestinationID) == "" {
-		return nil, fmt.Errorf("%w: destination id required", artapp.ErrEmpty)
+
+	// Helper to finalize the audit row. Captures the auditID by value.
+	markAudit := func(status artapp.DownloadAuditStatus) {
+		if updateErr := r.cfg.AuditRepository.UpdateDownloadStatus(ctx, auditID, status); updateErr != nil && r.log != nil {
+			r.log.Warn("resolver: failed to update download audit status",
+				zap.String("audit_id", auditID),
+				zap.String("status", string(status)),
+				zap.Error(updateErr),
+			)
+		}
 	}
 
 	outPath := filepath.Join(req.DestinationID, req.Filename)
 	if mkErr := os.MkdirAll(req.DestinationID, 0o755); mkErr != nil {
+		markAudit(artapp.DownloadAuditStatusFailed)
 		return nil, fmt.Errorf("%w: mkdir destination: %v", artapp.ErrUnavailable, mkErr)
 	}
 
@@ -286,8 +301,11 @@ func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 	}, opts)
 
 	if err != nil {
+		markAudit(artapp.DownloadAuditStatusFailed)
 		return nil, mapError(err, path == downloadPathYTDLP)
 	}
+
+	markAudit(artapp.DownloadAuditStatusSucceeded)
 
 	info, statErr := os.Stat(outPath)
 	if statErr != nil {

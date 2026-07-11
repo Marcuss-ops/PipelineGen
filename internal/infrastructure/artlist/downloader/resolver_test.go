@@ -3,6 +3,7 @@ package downloader
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,20 +19,40 @@ import (
 
 // fakeAuditRepository is a test double for artlist.DownloadAuditRepository.
 type fakeAuditRepository struct {
-	records []artapp.DownloadAuditRecord
+	records []fakeAuditRecord
 	limit   int
 }
 
-func (f *fakeAuditRepository) RecordDownload(_ context.Context, rec artapp.DownloadAuditRecord) error {
-	f.records = append(f.records, rec)
-	return nil
+type fakeAuditRecord struct {
+	id     string
+	rec    artapp.DownloadAuditRecord
+	status artapp.DownloadAuditStatus
+}
+
+func (f *fakeAuditRepository) RecordDownload(_ context.Context, rec artapp.DownloadAuditRecord) (string, error) {
+	id := fmt.Sprintf("audit-%d", len(f.records))
+	f.records = append(f.records, fakeAuditRecord{id: id, rec: rec, status: rec.Status})
+	return id, nil
+}
+
+func (f *fakeAuditRepository) UpdateDownloadStatus(_ context.Context, id string, status artapp.DownloadAuditStatus) error {
+	for i := range f.records {
+		if f.records[i].id == id {
+			f.records[i].status = status
+			return nil
+		}
+	}
+	return fmt.Errorf("audit row %s not found", id)
 }
 
 func (f *fakeAuditRepository) CountDailyDownloads(_ context.Context, _, _ string) (int, error) {
-	if f.limit >= 0 {
-		return len(f.records), nil
+	count := 0
+	for _, r := range f.records {
+		if r.status != artapp.DownloadAuditStatusFailed {
+			count++
+		}
 	}
-	return len(f.records), nil
+	return count, nil
 }
 
 func TestResolver_Download_ManualImportBlocksDownload(t *testing.T) {
@@ -84,8 +105,8 @@ func TestResolver_Download_AuthorizedAPIDailyLimitEnforced(t *testing.T) {
 
 	// Pre-seed two audit rows to simulate a consumed quota.
 	audit.records = append(audit.records,
-		artapp.DownloadAuditRecord{AssetID: "a"},
-		artapp.DownloadAuditRecord{AssetID: "b"},
+		fakeAuditRecord{id: "audit-a", rec: artapp.DownloadAuditRecord{AssetID: "a"}, status: artapp.DownloadAuditStatusSucceeded},
+		fakeAuditRecord{id: "audit-b", rec: artapp.DownloadAuditRecord{AssetID: "b"}, status: artapp.DownloadAuditStatusSucceeded},
 	)
 
 	_, err := r.Download(context.Background(), artapp.DownloadRequest{
@@ -120,9 +141,10 @@ func TestResolver_Download_AuthorizedAPIRecordsAuditBeforeDownload(t *testing.T)
 
 	require.Error(t, err)
 	require.Len(t, audit.records, 1)
-	assert.Equal(t, "clip.mp4", audit.records[0].AssetID)
-	assert.Equal(t, "acct-1", audit.records[0].AccountID)
-	assert.Equal(t, "artlist", audit.records[0].Provider)
+	assert.Equal(t, "clip.mp4", audit.records[0].rec.AssetID)
+	assert.Equal(t, "acct-1", audit.records[0].rec.AccountID)
+	assert.Equal(t, "artlist", audit.records[0].rec.Provider)
+	assert.Equal(t, artapp.DownloadAuditStatusFailed, audit.records[0].status)
 }
 
 func TestResolver_Download_AuthorizedAPIHappyPathRecordsAudit(t *testing.T) {
@@ -154,8 +176,9 @@ func TestResolver_Download_AuthorizedAPIHappyPathRecordsAudit(t *testing.T) {
 	assert.Equal(t, filepath.Join(dir, "clip.mp4"), result.LocalPath)
 	assert.Equal(t, int64(len(content)), result.Bytes)
 	require.Len(t, audit.records, 1)
-	assert.Equal(t, "clip.mp4", audit.records[0].AssetID)
-	assert.Equal(t, server.URL+"/clip.mp4", audit.records[0].ExternalURL)
+	assert.Equal(t, "clip.mp4", audit.records[0].rec.AssetID)
+	assert.Equal(t, server.URL+"/clip.mp4", audit.records[0].rec.ExternalURL)
+	assert.Equal(t, artapp.DownloadAuditStatusSucceeded, audit.records[0].status)
 }
 
 func TestResolver_Download_AuthorizedAPILimitAllowsDownload(t *testing.T) {
