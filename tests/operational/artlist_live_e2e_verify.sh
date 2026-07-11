@@ -222,9 +222,7 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
   ROOT_FOLDER_ID        = ${ROOT_FOLDER_ID:-<empty — warning>}
   SEARCH_TERM           = '${SEARCH_TERM}'
   LIMIT                 = ${LIMIT}
-  EXPECTED_GATE_MATCHES = ${EXPECTED_GATE_MATCHES:-28}
-                              (env override; positive integer; default 28
-                               matches gate11_scraper_failure_test.go meta-anchor)
+  EXPECTED_GATE_MATCHES = ${EXPECTED_GATE_MATCHES:-28} (positive integer; default 28; env override)
 [INFO] Plan — 9 verification points (executed per produced asset; in order):
   1. PASS   scraper /search probe (term, limit) returns >= 1 candidate
             WARN  if 0 candidates (fallback may still work)
