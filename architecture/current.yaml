@@ -1,22 +1,3 @@
-# PR-CURRENT-YAML-PARSE-FIX-PART-7 (2026-07-08): architecture/current.yaml is
-# now a 4-line INDEX pointing to the per-band wave-tracker files. The original
-# 8,729-line monolithic file (MD5 5af5ade839cdfdc020d75ca92e6df886) is split
-# into 4 per-band files under architecture/waves/ for incremental yaml.safe_load.
-# Bands 1-3 (P0/P1/P2) parse cleanly; Band 4 (P3 low + drift) still contains
-# the LONG-FILES-DECOMPOSITION-2026-07-06 nesting drift at its original
-# line ~6838 — see architecture/waves/wave_p3_low_and_audit.yaml for the
-# active umbrella + forward-pointer PR-CURRENT-YAML-PARSE-FIX-PART-8.
-#
-# The original monolithic file is preserved at architecture/current.yaml.bak
-# (identical MD5) for rollback. Delete the .bak in a follow-up PR once
-# PART-8 fixes Band 4.
-#
-# Consumers (scripts/ci-architectural-checks.sh line 76 + 85-99) MUST iterate
-# the 4 band files rather than reading this index. The hardcoded path list
-# lives in the script per godlike/07 minimum-blast-radius (no dynamic index
-# parsing = no fragile awk/grep dependency).
-bands:
-  - architecture/waves/wave_p0_critical.yaml
-  - architecture/waves/wave_p1_high.yaml
-  - architecture/waves/wave_p2_medium.yaml
-  - architecture/waves/wave_p3_low_and_audit.yaml
+# Active architecture exceptions consumed by CI.
+# Add only unresolved, currently accepted debt. Completed work belongs in Git history.
+[]
