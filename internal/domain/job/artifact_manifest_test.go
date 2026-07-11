@@ -114,6 +114,52 @@ func TestArtifactManifest_Validate_Nil(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nil manifest")
 	}
+	// FASE 1 close-out typed-error contract: nil receiver MUST
+	// surface the typed job.ErrArtifactManifestInvalid sentinel.
+	if !errors.Is(err, ErrArtifactManifestInvalid) {
+		t.Errorf("nil receiver should wrap ErrArtifactManifestInvalid, got %T: %v", err, err)
+	}
+}
+
+// TestArtifactManifest_Validate_EmptySchemaVersion_TypedSentinel pins
+// the FASE 1 close-out typed-error contract on the schema_version
+// branch. The pre-FASE-1 raw-error format is now wrapped with
+// ErrArtifactManifestInvalid.
+func TestArtifactManifest_Validate_EmptySchemaVersion_TypedSentinel(t *testing.T) {
+	m := &ArtifactManifest{
+		SchemaVersion: "",
+		Artifacts: []Artifact{
+			{ID: "x", Kind: ArtifactKindScriptJSON, Path: "/x", Filename: "x", Required: true},
+		},
+	}
+	err := m.Validate()
+	if err == nil {
+		t.Fatal("expected error for empty schema_version")
+	}
+	if !strings.Contains(err.Error(), "schema_version") {
+		t.Errorf("error should mention schema_version, got: %v", err)
+	}
+	if !errors.Is(err, ErrArtifactManifestInvalid) {
+		t.Errorf("empty schema_version should wrap ErrArtifactManifestInvalid, got %T: %v", err, err)
+	}
+}
+
+// TestArtifactManifest_ToRemote_NilManifest_TypedSentinel pins the
+// FASE 1 close-out typed-error contract on the nil-receiver branch
+// of ToRemote. The pre-FASE-1 raw-error format is now wrapped with
+// ErrArtifactManifestInvalid.
+func TestArtifactManifest_ToRemote_NilManifest_TypedSentinel(t *testing.T) {
+	var m *ArtifactManifest
+	result, err := m.ToRemote(nil)
+	if err == nil {
+		t.Fatal("ToRemote(nil receiver) should return error")
+	}
+	if result != nil {
+		t.Errorf("ToRemote(nil receiver) should return nil RemoteArtifactManifest, got %+v", result)
+	}
+	if !errors.Is(err, ErrArtifactManifestInvalid) {
+		t.Errorf("nil receiver should wrap ErrArtifactManifestInvalid, got %T: %v", err, err)
+	}
 }
 
 func TestArtifactManifest_Validate_EmptySchemaVersion(t *testing.T) {
@@ -176,6 +222,20 @@ func TestArtifactManifest_Validate_RequiredArtifactEmptyPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "required but path is empty") {
 		t.Errorf("error should mention required + path, got: %v", err)
+	}
+	// FASE 1 close-out: the required-but-empty-path case MUST
+	// surface the typed job.ErrRequiredArtifactMissing sentinel
+	// so producer-side callers (extractStagedArtifacts + the
+	// publisher-side CompleteWithArtifacts spine) can branch
+	// via errors.Is without string-matching.
+	if !errors.Is(err, ErrRequiredArtifactMissing) {
+		t.Errorf("error should wrap ErrRequiredArtifactMissing, got %T: %v", err, err)
+	}
+	// The job-package alias for the finalization canonical sentinel
+	// must resolve identically (same pointer per godlike/06 SSOT
+	// re-export contract).
+	if !errors.Is(err, ErrRequiredArtifactMissing) {
+		t.Errorf("error should wrap job.ErrRequiredArtifactMissing alias, got %T: %v", err, err)
 	}
 }
 
@@ -770,6 +830,12 @@ func TestToRemote_RequiredMissing_RejectsBeforeEmit(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "job_M:script") {
 		t.Errorf("error should mention the missing artefact ID; got: %v", err)
+	}
+	// FASE 1 close-out typed-error contract: the required-missing
+	// ToRemote error MUST wrap the typed job.ErrRequiredArtifactMissing
+	// sentinel so callers can errors.Is without string-matching.
+	if !errors.Is(err, ErrRequiredArtifactMissing) {
+		t.Errorf("error should wrap ErrRequiredArtifactMissing, got %T: %v", err, err)
 	}
 }
 
