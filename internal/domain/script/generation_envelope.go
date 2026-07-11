@@ -216,7 +216,7 @@ func (e *GenerationEnvelopeV2) Validate() error {
 			}
 		}
 
-		if item.Source.GroundingPolicy != "" && !isClipSourceType(item.Source.Type) {
+		if item.Source.GroundingPolicy != "" && !IsClipSourceType(item.Source.Type) {
 			return &PlanInvalidError{
 				ItemID: item.ID,
 				Details: []string{
@@ -245,9 +245,9 @@ func isKnownSourceType(st SourceType) bool {
 	return false
 }
 
-// isClipSourceType returns true for source types that may carry
+// IsClipSourceType returns true for source types that may carry
 // clip evidence.
-func isClipSourceType(st SourceType) bool {
+func IsClipSourceType(st SourceType) bool {
 	switch st {
 	case SourceClips, SourceCatalog, SourceSearch, SourceCurate:
 		return true

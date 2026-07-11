@@ -59,6 +59,11 @@ type NormalizationConfig struct {
 	LogSourceTextPreview bool
 	// SourceTextPreviewChars caps the preview length in characters.
 	SourceTextPreviewChars int
+
+	// WordsPerSecondClipEvidence is the max source_text words supported
+	// per second of resolved clip evidence duration. 0 disables the
+	// SOURCE_TEXT_EXCEEDS_CLIP_EVIDENCE check.
+	WordsPerSecondClipEvidence float64
 }
 
 // NormalizeItem applies the precedence chain to a single

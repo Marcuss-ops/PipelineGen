@@ -42,6 +42,55 @@ import (
 	"go.uber.org/zap"
 )
 
+// enforceClipEvidenceTextSupport rejects source_text that exceeds
+// what the resolved clip evidence duration can support. It only
+// applies to clip-based sources when the caller provided source_text
+// and WordsPerSecondClipEvidence is configured.
+func enforceClipEvidenceTextSupport(plan *scriptpkg.ResolvedGenerationPlan, cfg adapters.NormalizationConfig) error {
+	if cfg.WordsPerSecondClipEvidence <= 0 {
+		return nil
+	}
+	if plan.ClipEvidence == nil || len(plan.ClipEvidence.ClipDetails) == 0 {
+		return nil
+	}
+	if plan.SourceText == "" {
+		return nil
+	}
+	if !scriptpkg.IsClipSourceType(scriptpkg.SourceType(plan.SourceKind)) {
+		return nil
+	}
+
+	var totalSeconds float64
+	for _, detail := range plan.ClipEvidence.ClipDetails {
+		if detail.EndMs > detail.StartMs {
+			totalSeconds += float64(detail.EndMs-detail.StartMs) / 1000.0
+		}
+	}
+	if totalSeconds <= 0 {
+		return nil
+	}
+
+	words := countWords(plan.SourceText)
+	maxWords := int(totalSeconds * cfg.WordsPerSecondClipEvidence)
+	if words <= maxWords {
+		return nil
+	}
+
+	return &scriptpkg.PayloadValidationError{
+		Code:      "SOURCE_TEXT_EXCEEDS_CLIP_EVIDENCE",
+		Message:   "source_text word count exceeds what the available clip evidence duration can support",
+		Stage:     "plan.validation",
+		Retryable: false,
+		Extra: map[string]any{
+			"actual_words":     words,
+			"max_words":        maxWords,
+			"evidence_seconds": totalSeconds,
+			"words_per_second": cfg.WordsPerSecondClipEvidence,
+			"source_type":      plan.SourceKind,
+		},
+	}
+}
+
 // Execute runs the full pipeline for one item and returns a typed
 // GenerationResult. Progress is reported through the tracker when
 // non-nil.
@@ -153,6 +202,14 @@ func (uc *GenerateOneUseCase) Execute(
 		}
 	}
 	plan.CacheKey = scriptpkg.BuildCacheKey(&plan)
+
+	// ── Phase 4b: Clip evidence support check ───────────────────────
+	// For clip-based sources, the caller-provided source_text must not
+	// exceed what the resolved clip evidence duration can support.
+	if err := enforceClipEvidenceTextSupport(&plan, uc.cfg); err != nil {
+		return nil, uc.logPhaseError(item, "plan_validation", scriptpkg.ErrPlanInvalid, err, tracker)
+	}
+
 	timings.PlanBuildMs = time.Since(planStart).Milliseconds()
 	if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
 		tracker.TrackEvent("clip_evidence.built", "Clip evidence assembled into plan", map[string]any{

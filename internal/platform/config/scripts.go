@@ -92,6 +92,12 @@ type ScriptsConfig struct {
 	// MaxSourceTextToTargetWordsRatio caps source_text words / target_words.
 	MaxSourceTextToTargetWordsRatio float64 `yaml:"max_source_text_to_target_words_ratio" env:"VELOX_SCRIPTS_MAX_SOURCE_TEXT_TO_TARGET_WORDS_RATIO" default:"5.0"`
 
+	// WordsPerSecondClipEvidence is the max source_text words supported
+	// per second of resolved clip evidence duration. Used to reject
+	// source_text that exceeds what the clip evidence can plausibly
+	// support (SOURCE_TEXT_EXCEEDS_CLIP_EVIDENCE).
+	WordsPerSecondClipEvidence float64 `yaml:"words_per_second_clip_evidence" env:"VELOX_SCRIPTS_WORDS_PER_SECOND_CLIP_EVIDENCE" default:"2.5"`
+
 	// LogSourceTextPreview controls whether a short preview of the
 	// source_text is included in structured logs. When false, only
 	// hash, length and token estimates are logged.
