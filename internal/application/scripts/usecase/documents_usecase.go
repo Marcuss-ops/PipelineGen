@@ -40,8 +40,10 @@ func NewDocumentsService(docClient any, log any, driveFolderID string) *Document
 	}
 }
 
-// CreateDoc creates a Google Doc.
-func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string, resolveFolder adapters.FolderResolver, driveFolderID string) (docLink, docID string) {
+// CreateDoc creates or reuses a Google Doc. When idempotencyKey is
+// non-empty, an existing doc tagged with that key is returned unless
+// forceRefresh is true, in which case the existing doc is updated.
+func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string, resolveFolder adapters.FolderResolver, driveFolderID, idempotencyKey string, forceRefresh bool) (docLink, docID string) {
 	if d == nil {
 		return "", ""
 	}
@@ -59,14 +61,23 @@ func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string,
 		}
 	}
 	if d.log != nil {
-		d.log.Info("CreateDoc: calling DocClient.CreateDoc",
+		d.log.Info("CreateDoc: calling DocClient.CreateDocIdempotent",
 			zap.String("title", title),
-			zap.String("folderID", folderID))
+			zap.String("folderID", folderID),
+			zap.String("idempotencyKey", idempotencyKey),
+			zap.Bool("forceRefresh", forceRefresh))
 	}
-	doc, err := client.CreateDoc(ctx, title, content, folderID)
+
+	var doc *drive.Doc
+	var err error
+	if idempotencyKey != "" {
+		doc, err = client.CreateDocIdempotent(ctx, title, content, folderID, idempotencyKey, forceRefresh)
+	} else {
+		doc, err = client.CreateDoc(ctx, title, content, folderID)
+	}
 	if err != nil {
 		if d.log != nil {
-			d.log.Warn("CreateDoc: DocClient.CreateDoc error", zap.Error(err))
+			d.log.Warn("CreateDoc: DocClient doc creation error", zap.Error(err))
 		}
 		return "", ""
 	}
@@ -77,6 +88,24 @@ func (d *DocumentsService) CreateDoc(ctx context.Context, title, content string,
 		return "", ""
 	}
 	return doc.URL, doc.ID
+}
+
+// UpdateDoc overwrites the content of an existing Google Doc.
+func (d *DocumentsService) UpdateDoc(ctx context.Context, docID, title, content string) error {
+	if d == nil {
+		return ErrDocumentCreationFailed
+	}
+	client, ok := d.docClient.(drive.DocClient)
+	if !ok || client == nil {
+		if d.log != nil {
+			d.log.Warn("UpdateDoc: DocClient type assertion failed or nil")
+		}
+		return ErrDocumentCreationFailed
+	}
+	if d.log != nil {
+		d.log.Info("UpdateDoc: calling DocClient.UpdateDoc", zap.String("docID", docID))
+	}
+	return client.UpdateDoc(ctx, docID, title, content)
 }
 
 // ErrDocumentCreationFailed is the sentinel for "CreateDoc returned
@@ -122,7 +151,7 @@ func (u *DocumentsUseCase) BuildAndCreate(
 	if svc == nil {
 		return "", "", ErrDocumentCreationFailed
 	}
-	link, id := svc.CreateDoc(ctx, title, content, resolveFolder, driveFolderID)
+	link, id := svc.CreateDoc(ctx, title, content, resolveFolder, driveFolderID, "", false)
 	if link == "" {
 		return "", "", ErrDocumentCreationFailed
 	}

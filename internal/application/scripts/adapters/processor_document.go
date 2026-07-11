@@ -24,13 +24,18 @@ import (
 // when no rewriting is needed.
 type FolderResolver = func(ctx context.Context, folderID string, fallback string) (string, error)
 
-// DocumentsService is the minimal CreateDoc signature the
+// DocumentsService is the minimal document-service contract the
 // DocumentsProcessor relies on. Production wiring injects the
-// concrete *usecase.DocumentsService (whose CreateDoc method set
-// satisfies this interface) — verified at composition time via
-// direct pointer assignment.
+// concrete *usecase.DocumentsService (whose method set satisfies
+// this interface) — verified at composition time via direct pointer
+// assignment.
 type DocumentsService interface {
-	CreateDoc(ctx context.Context, title, content string, resolveFolder FolderResolver, driveFolderID string) (link, id string)
+	// CreateDoc creates a Google Doc. idempotencyKey is used to
+	// avoid duplicate documents on retry; forceRefresh forces an
+	// update of an existing doc instead of reusing it.
+	CreateDoc(ctx context.Context, title, content string, resolveFolder FolderResolver, driveFolderID, idempotencyKey string, forceRefresh bool) (link, id string)
+	// UpdateDoc overwrites the content of an existing Google Doc.
+	UpdateDoc(ctx context.Context, docID, title, content string) error
 }
 
 // DocumentProcessor creates a Google Doc from the generated script.
@@ -129,15 +134,66 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	// When it runs before, the inputs stay nil (byte-equivalent to
 	// pre-PR behavior). Future reordering of the postprocessor list
 	// to place document last would unlock full rendering.
-	htmlContent := BuildGenerationDocumentHTML(model, docTitle, plan.Language, input.Entities, input.Metadata, true)
+	// Render the document twice: first without the final doc_id so
+	// we can create the file, then again with the provenance block
+	// filled in and update the file content.
+	htmlContent := BuildGenerationDocumentHTML(model, docTitle, plan.Language, input.Entities, input.Metadata, true, input.Provenance)
 
-	link, id := p.docsSvc.CreateDoc(ctx, docTitle, htmlContent, p.resolveFolder, plan.DriveFolderID)
+	idempotencyKey := plan.CacheKey
+	if idempotencyKey == "" {
+		idempotencyKey = plan.ID
+	}
+	link, id := p.docsSvc.CreateDoc(ctx, docTitle, htmlContent, p.resolveFolder, plan.DriveFolderID, idempotencyKey, plan.ForceRefresh)
 	if link == "" {
 		return nil, fmt.Errorf("%w: document processor: Google Doc creation returned empty link", scriptpkg.ErrPostprocessFailed)
+	} // Fill the provenance block with the real doc_id/doc_link and
+	// rewrite the document body so it contains the complete
+	// provenance metadata.
+	if input.Provenance != nil {
+		input.Provenance.DocID = id
+		input.Provenance.DocLink = link
+		input.Provenance.RequestedMode = requestedModeForPlan(plan)
+		input.Provenance.UsedMode = usedModeForInput(plan, input)
+		input.Provenance.FallbackUsed = input.Provenance.RequestedMode != input.Provenance.UsedMode
+		htmlWithProv := BuildGenerationDocumentHTML(model, docTitle, plan.Language, input.Entities, input.Metadata, true, input.Provenance)
+		if err := p.docsSvc.UpdateDoc(ctx, id, docTitle, htmlWithProv); err != nil {
+			return &PostProcessResult{
+				DocLink:  link,
+				DocID:    id,
+				Warnings: []string{fmt.Sprintf("document provenance rewrite failed: %v", err)},
+			}, nil
+		}
 	}
 
 	return &PostProcessResult{
 		DocLink: link,
 		DocID:   id,
 	}, nil
+}
+
+// requestedModeForPlan returns the generation mode requested by the
+// caller. Clip-aware sources request "clip_native"; everything else
+// is treated as a prose generation.
+func requestedModeForPlan(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
+		return "clip_native"
+	}
+	switch plan.SourceKind {
+	case "clips", "catalog", "search", "curate":
+		return "clip_native"
+	}
+	return "prose"
+}
+
+// usedModeForInput returns the mode that actually produced the output.
+// A clip-aware source that ends up with no scenes is considered a
+// prose fallback; otherwise it is clip_native.
+func usedModeForInput(plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) string {
+	if requestedModeForPlan(plan) != "clip_native" {
+		return "prose"
+	}
+	if len(input.SpecScene.Scenes) > 0 {
+		return "clip_native"
+	}
+	return "prose"
 }

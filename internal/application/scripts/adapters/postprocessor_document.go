@@ -202,4 +202,11 @@ type ProcessInput struct {
 	// when non-empty. Nil until the metadata processor runs.
 	// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026).
 	Metadata []scriptpkg.VideoMetadata
+
+	// Provenance carries the provisional generation provenance block.
+	// The document processor fills DocID/DocLink after creating or
+	// updating the Google Doc and embeds the complete block into the
+	// document HTML. Populated by GenerateOneUseCase before Run.
+	// PR-PROVENANCE (July 2026).
+	Provenance *scriptpkg.GenerationProvenance
 }
