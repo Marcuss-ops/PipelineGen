@@ -67,8 +67,13 @@ set -euo pipefail
 # Config (override via env)
 # ============================================================
 HOST="${VELOX_HOST:-127.0.0.1}"
-PORT="${VELOX_PORT:-8000}"
-BASE_URL="http://${HOST}:${PORT}"
+# PIPELINE_PORT — canonical port for PipelineGen's HTTP listener.
+# Source of truth: config.example.yaml `server.port` (default 8000 per
+# Operational Readiness PR, June 2026). Backward-compat VELOX_PORT is
+# preserved for sibling-script consistency. Override at runtime via
+# PIPELINE_PORT=NNNN (or VELOX_PORT=NNNN for legacy callers).
+[ -n "$PIPELINE_PORT" ] || PIPELINE_PORT="${VELOX_PORT:-8000}"
+BASE_URL="http://${HOST}:${PIPELINE_PORT}"
 
 SCRAPER_URL="${ARTLIST_SCRAPER_SERVER_URL:-http://127.0.0.1:9123}"
 QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
