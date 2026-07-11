@@ -73,6 +73,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -98,6 +99,22 @@ type ResolverConfig struct {
 	// ScraperTimeout is the per-request timeout for the POST to
 	// <ScraperURL>/download. Default: 5m.
 	ScraperTimeout time.Duration
+
+	// AcquisitionMode controls whether automatic downloads are allowed.
+	// manual_import blocks all downloads; authorized_api enforces the
+	// daily limit and records an audit row for every fetch.
+	AcquisitionMode artapp.ArtlistAcquisitionMode
+
+	// AccountID identifies the account for rate-limit and audit tracking.
+	AccountID string
+
+	// DailyDownloadLimit is the maximum number of automatic downloads
+	// allowed per account per day. 0 disables automatic downloads.
+	DailyDownloadLimit int
+
+	// AuditRepository persists download events and answers daily-count
+	// queries. Required when AcquisitionMode is authorized_api.
+	AuditRepository artapp.DownloadAuditRepository
 }
 
 // Resolver is the unified Artlist download routing surface. It owns the
@@ -112,6 +129,11 @@ type Resolver struct {
 	// metrics is optional — nil disables emission (nil-safe per
 	// incDownloadPath guard).
 	metrics *Metrics
+	// limitMu serializes the daily-limit check + audit insert so that
+	// concurrent downloads in the same process cannot overshoot the
+	// configured limit. Cross-process races are still possible; the
+	// limit is best-effort across multiple replicas.
+	limitMu sync.Mutex
 }
 
 // NewResolver constructs a Resolver by composing yt-dlp + HTTPDownloader
@@ -152,10 +174,57 @@ func NewResolver(cfg *config.Config, resolverCfg ResolverConfig, log *zap.Logger
 // Routes through the unified resolvePath ladder and delegates to the
 // selected transport. Retries non-4xx transport failures with the
 // configured backoff policy.
+//
+// Acquisition-mode enforcement (P0 legal/compliance, July 2026):
+//   - manual_import: automatic downloads are rejected immediately.
+//   - authorized_api: the daily per-account limit is checked before
+//     every download; successful fetches are audited.
 func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*artapp.DownloadResult, error) {
 	if strings.TrimSpace(req.SourceRef) == "" {
 		return nil, fmt.Errorf("%w: source ref required", artapp.ErrEmpty)
 	}
+
+	// Acquisition-mode gate. This is the single canonical place where
+	// automatic Artlist downloads are allowed or rejected.
+	mode := r.cfg.AcquisitionMode.Normalize()
+	if !mode.AllowsAutomaticDownload() {
+		return nil, artapp.ErrManualImportActive
+	}
+
+	// Daily limit gate. A limit of 0 means automatic downloads are
+	// disabled even in authorized_api mode.
+	if r.cfg.DailyDownloadLimit <= 0 {
+		return nil, artapp.ErrAutomaticDownloadsDisabled
+	}
+	if r.cfg.AuditRepository == nil {
+		return nil, fmt.Errorf("%w: audit repository required for authorized_api mode", artapp.ErrUnavailable)
+	}
+
+	// Serialize the limit check + audit insert so concurrent downloads
+	// in the same process cannot overshoot the daily quota.
+	r.limitMu.Lock()
+	count, err := r.cfg.AuditRepository.CountDailyDownloads(ctx, "artlist", r.cfg.AccountID)
+	if err != nil {
+		r.limitMu.Unlock()
+		return nil, fmt.Errorf("artlist resolver: daily download count failed: %w", err)
+	}
+	if count >= r.cfg.DailyDownloadLimit {
+		r.limitMu.Unlock()
+		return nil, artapp.ErrDailyDownloadLimitExceeded
+	}
+	// Record the audit row before performing the actual download so
+	// that another concurrent download cannot squeeze in between the
+	// count and the eventual record.
+	if auditErr := r.cfg.AuditRepository.RecordDownload(ctx, artapp.DownloadAuditRecord{
+		AssetID:     firstNonEmpty(req.ClipID, req.Filename, req.SourceRef),
+		ExternalURL: req.SourceRef,
+		AccountID:   r.cfg.AccountID,
+		Provider:    "artlist",
+	}); auditErr != nil {
+		r.limitMu.Unlock()
+		return nil, fmt.Errorf("artlist resolver: failed to record download audit: %w", auditErr)
+	}
+	r.limitMu.Unlock()
 	if strings.TrimSpace(req.Filename) == "" {
 		return nil, fmt.Errorf("%w: filename required", artapp.ErrEmpty)
 	}
@@ -191,7 +260,7 @@ func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 		IsRetryable:    retry.IsTransient,
 	}
 
-	_, err := retry.DoWithValue(ctx, func() (struct{}, error) {
+	_, err = retry.DoWithValue(ctx, func() (struct{}, error) {
 		switch path {
 		case downloadPathScraper:
 			r.metrics.incDownloadPath(PathBrowser)
@@ -224,10 +293,21 @@ func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 	if statErr != nil {
 		return nil, fmt.Errorf("%w: stat result: %v", artapp.ErrEmptyResult, statErr)
 	}
+
 	return &artapp.DownloadResult{
 		LocalPath: outPath,
 		Bytes:     info.Size(),
 	}, nil
+}
+
+// firstNonEmpty returns the first non-empty string in values.
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // downloadPath is the enum of transport choices.
