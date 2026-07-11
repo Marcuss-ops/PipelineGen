@@ -353,19 +353,26 @@ if [[ "${SKIP_HERMETICS:-0}" != "1" ]]; then
     log_info "=== HERMETIC GATES (no Artlist downloads) ==="
 
     # ── Precondition: gate test matrix integrity ──
-    # The spec claims exactly 7 gate test files under
-    # internal/application/assets/providers/artlist/ (the gate0X_test.go
-    # series). The regex ^TestGate[0-9]+_ is the canonical prefix for
-    # every gate test function across those files. If the count
-    # diverges from 7, it means either:
+    # Spec source of truth: TestGate12_PreflightAllGatesPass in
+    # gate11_scraper_failure_test.go enumerates exactly 28 gate test
+    # function names in its expectedGateTests array (across 12 distinct
+    # gate numbers 01-12, with several gates sharing files — e.g.
+    # Gate 11 and the Gate 12 meta-anchor both live in
+    # gate11_scraper_failure_test.go). The regex ^TestGate[0-9]+_
+    # matches every such function across the
+    # internal/application/assets/providers/artlist/ package;
+    # `go test -list` returns one line per matching function.
+    # EXPECTED_GATE_MATCHES=28 enforces 1:1 numerical parity between
+    # the meta-anchor spec and runtime. Any divergence means:
     #
-    #   (a) a new gate0X_test.go file was added → update EXPECTED_GATE_MATCHES
-    #       AND the gate test suite (meta-anchor TestGate12_PreflightAllGatesPass
-    #       in gate11_scraper_failure_test.go lists the spec entries);
-    #   (b) a gate0X_test.go file was removed → likewise update both;
-    #   (c) a test was renamed → check the prefix still matches;
-    #   (d) a phantom test exists (function naming TestGateNN_* but no
-    #       backing gateNN_*.go file) → fix the orphan.
+    #   (a) a new gate test function added → update BOTH
+    #       EXPECTED_GATE_MATCHES (this script) AND the meta-anchor's
+    #       expectedGateTests (gate11_scraper_failure_test.go);
+    #   (b) a gate test function removed → likewise update both;
+    #   (c) a test function was renamed → verify the prefix still
+    #       matches the ^TestGate[0-9]+_ convention;
+    #   (d) phantom test exists (prefix matches but the meta-anchor
+    #       has no entry for it) → fix the orphan or add the entry.
     #
     # Fail closed with exit 2 BEFORE running the full `go test -run` so
     # the operator pays the cheap list-discovery cost (~1s) up front
@@ -375,7 +382,11 @@ if [[ "${SKIP_HERMETICS:-0}" != "1" ]]; then
     # run below) — preserved as an escape hatch for ad-hoc ops.
     GATE_LIST_OUTPUT=$(go test -list '^TestGate[0-9]+_' \
         ./internal/application/assets/providers/artlist/... 2>&1 || true)
-    EXPECTED_GATE_MATCHES=7
+    # 28 matches the meta-anchor's expectedGateTests array length in
+    # gate11_scraper_failure_test.go (one entry per TestGateXX_*
+    # function declared in that file). Update both together when the
+    # gate test matrix grows or shrinks.
+    EXPECTED_GATE_MATCHES=28
     # Count lines that begin with "TestGate" — the `go test -list`
     # output's status line ("ok <pkg> 0.001s") never starts with that
     # prefix, so the filter is unambiguous. `|| true` keeps `set -e`
