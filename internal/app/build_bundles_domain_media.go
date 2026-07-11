@@ -148,8 +148,8 @@ func buildDomainMediaServices(
 		VideoPipeline:      videoPipelineAdapter,
 		Hash:               hashAdapter,
 		DriveFolderMgr:     youtubePubAdapter,
-		Writer:             clipWriter,     // legacy Stripe for non-localized callers
-		LocalizedWriter:    clipWriter,     // Phase 2.b atomic super-tx (clipWriter satisfies both ports — see clip_atomic_writer.go compile-time assertion)
+		Writer:             clipWriter, // legacy Stripe for non-localized callers
+		LocalizedWriter:    clipWriter, // Phase 2.b atomic super-tx (clipWriter satisfies both ports — see clip_atomic_writer.go compile-time assertion)
 		ClipMetadataWriter: clipMetadataWriter,
 		MetadataService:    clipMetadataService,
 		SegmentsSvc:        youtube.NewSegmentsService(),

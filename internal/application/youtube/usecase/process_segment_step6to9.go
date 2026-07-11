@@ -218,10 +218,10 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		}
 
 		superCmd := localized.CommitLocalizedClipCommand{
-			Clip:         clipAsset,
-			TextTracks:   tracks,
-			TimedTracks:  timedTracks,
-			IndexEvent:   event,
+			Clip:                   clipAsset,
+			TextTracks:             tracks,
+			TimedTracks:            timedTracks,
+			IndexEvent:             event,
 			RequireTranscriptReady: false, // TODO Fase 5 wires the policy once media.multilingual.* is read from cfg (see AGENTS.md)
 		}
 

@@ -463,6 +463,7 @@ func bundleToTextTracks(clipID string, bundle *asset.ResolvedTextBundle, kind as
 //     bundle-only.
 //
 // Pre-conditions (audit 2026-07-11 §2.c):
+//
 //   - Each Cue has StartMs >= 0, EndMs >= StartMs, Text != "".
 //     The writer validates these again (defence in depth), but
 //     early surfacing here keeps the writer's typed errors
