@@ -17,7 +17,7 @@
 #   2.  media.artlist job enqueued via POST /api/artlist/run and terminal SUCCEEDED
 #   3.  artlist_download_audit.status = 'succeeded' for the resulting asset
 #   4.  media_assets row: source='artlist'
-#                              + lifecycle_state in {PUBLISHED, ACTIVE}
+#                              + lifecycle_state = 'PUBLISHED'
 #                              + drive_file_id non-empty
 #                              + drive_link non-empty
 #                              + download_link non-empty
@@ -32,7 +32,7 @@
 #   7.  Qdrant scroll on alias ${COLLECTION}: at least one point with
 #                                  payload.asset_id == ${ASSET_ID}
 #   8.  Qdrant payload: source='artlist', media_type='video',
-#                                  lifecycle_state in {PUBLISHED, ACTIVE}
+#                                  lifecycle_state = 'PUBLISHED'
 #   9.  POST /api/media/search with sources=['artlist'] returns the asset
 #
 # Prerequisites (fail-closed):
@@ -392,10 +392,10 @@ for AID in ${ASSET_IDS}; do
         || tap "source=artlist" 0 "got '${SRC}'"
     [[ "${MTYPE}" == "video" ]] && tap "media_type=video" 1 "" \
         || tap "media_type=video" 0 "got '${MTYPE}'"
-    if [[ "${LSTATE}" == "PUBLISHED" || "${LSTATE}" == "ACTIVE" ]]; then
-        tap "lifecycle_state in {PUBLISHED,ACTIVE}" 1 "got '${LSTATE}'"
+    if [[ "${LSTATE}" == "PUBLISHED" ]]; then
+        tap "lifecycle_state=PUBLISHED" 1 "got '${LSTATE}'"
     else
-        tap "lifecycle_state in {PUBLISHED,ACTIVE}" 0 "got '${LSTATE}'"
+        tap "lifecycle_state=PUBLISHED" 0 "got '${LSTATE}'"
     fi
     [[ -n "${DFID}"     ]] && tap "drive_file_id valorizzato" 1 "" \
         || tap "drive_file_id valorizzato" 0 "got empty"
@@ -498,10 +498,10 @@ for AID in ${ASSET_IDS}; do
             [[ "${PAYLOAD_MT}" == "video" ]] \
                 && tap "Qdrant payload media_type=video" 1 "" \
                 || tap "Qdrant payload media_type=video" 0 "got '${PAYLOAD_MT}'"
-            if [[ "${PAYLOAD_LS}" == "PUBLISHED" || "${PAYLOAD_LS}" == "ACTIVE" ]]; then
-                tap "Qdrant payload lifecycle_state in {PUBLISHED,ACTIVE}" 1 "got '${PAYLOAD_LS}'"
+            if [[ "${PAYLOAD_LS}" == "PUBLISHED" ]]; then
+                tap "Qdrant payload lifecycle_state=PUBLISHED" 1 "got '${PAYLOAD_LS}'"
             else
-                tap "Qdrant payload lifecycle_state in {PUBLISHED,ACTIVE}" 0 "got '${PAYLOAD_LS}'"
+                tap "Qdrant payload lifecycle_state=PUBLISHED" 0 "got '${PAYLOAD_LS}'"
             fi
         fi
     fi
