@@ -7,6 +7,7 @@ package script
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // ── Sentinels ───────────────────────────────────────────────────────
@@ -84,6 +85,12 @@ var ErrMetadataGeneratorUnavailable = errors.New("generation: metadata generator
 // package declares a duplicate. Future typed-sentinel additions for
 // the script generation capability MUST be sibling entries here.
 var ErrScriptGenerationFailed = errors.New("generation: script generation failed")
+
+// ErrClipNativePlanningFailed means a clip-native source could not be
+// planned without falling back to prose and the fallback policy was
+// strict (or unset). Introduced for the strict clip-native pipeline
+// (July 2026).
+var ErrClipNativePlanningFailed = errors.New("generation: clip-native planning failed")
 
 // ── Typed structs ───────────────────────────────────────────────────
 
@@ -213,3 +220,39 @@ func (e *PayloadValidationError) Error() string {
 }
 
 func (e *PayloadValidationError) Unwrap() error { return ErrPlanInvalid }
+
+// ClipNativePlanningError carries the structured details behind
+// ErrClipNativePlanningFailed. It surfaces when a clip-native source
+// cannot produce a scene-per-clip plan and the fallback policy does
+// not allow prose fallback.
+type ClipNativePlanningError struct {
+	Code    string
+	ItemID  string
+	Policy  string
+	Reason  string
+	Details []string
+}
+
+func (e *ClipNativePlanningError) Error() string {
+	if e == nil {
+		return ErrClipNativePlanningFailed.Error()
+	}
+	code := e.Code
+	if code == "" {
+		code = "CLIP_NATIVE_PLANNING_FAILED"
+	}
+	msg := fmt.Sprintf("%s code=%s item=%q policy=%q reason=%q",
+		ErrClipNativePlanningFailed.Error(), code, e.ItemID, e.Policy, e.Reason)
+	if len(e.Details) > 0 {
+		msg += "; " + strings.Join(e.Details, "; ")
+	}
+	return msg
+}
+
+func (e *ClipNativePlanningError) Unwrap() error { return ErrClipNativePlanningFailed }
+
+// IsClipNativePlanningFailed reports whether err is (or wraps)
+// ErrClipNativePlanningFailed.
+func IsClipNativePlanningFailed(err error) bool {
+	return errors.Is(err, ErrClipNativePlanningFailed)
+}

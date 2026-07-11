@@ -92,6 +92,9 @@ func BuildPlan(item scriptpkg.GenerationItemV2) scriptpkg.ResolvedGenerationPlan
 		// OutputSpec.TranslateTo into the resolved plan so the
 		// TranslationProcessor reads a single source (the plan).
 		TranslateTo: item.Output.TranslateTo,
+		// FallbackPolicy controls whether clip-native generation may
+		// fall back to prose when the model does not emit scenes.
+		FallbackPolicy: item.Source.FallbackPolicy,
 	}
 
 	// Build postprocessor list from output flags.

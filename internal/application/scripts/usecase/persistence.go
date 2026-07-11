@@ -61,6 +61,7 @@ func buildGenerationResult(
 		Title:    plan.Title,
 		Language: plan.Language,
 		Model:    engineResult.Model,
+		Status:   "SUCCEEDED",
 		Output: scriptpkg.ScriptOutput{
 			Text:      outputText,
 			WordCount: engineResult.WordCount,

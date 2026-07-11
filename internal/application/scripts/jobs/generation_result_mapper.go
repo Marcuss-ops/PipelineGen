@@ -35,6 +35,7 @@ package jobs
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -49,7 +50,7 @@ import (
 // rather than a typed zero-empty-value pass.
 func buildSingleSuccessEnvelope(itemID string, single *domainScript.GenerationResult) domainScript.GenerationEnvelopeResult {
 	if single == nil {
-		return buildSingleFailureEnvelope(itemID, "nil generation result")
+		return buildSingleFailureEnvelope(itemID, errors.New("nil generation result"))
 	}
 	return domainScript.GenerationEnvelopeResult{
 		Version: domainScript.EnvelopeVersion,
@@ -69,13 +70,23 @@ func buildSingleSuccessEnvelope(itemID string, single *domainScript.GenerationRe
 // buildSingleFailureEnvelope captures a per-item failure in the
 // canonical envelope shape. Same schema-version, same summary counts,
 // same per-item Error field.
-func buildSingleFailureEnvelope(itemID string, errMsg string) domainScript.GenerationEnvelopeResult {
+func buildSingleFailureEnvelope(itemID string, err error) domainScript.GenerationEnvelopeResult {
+	errMsg := ""
+	errCode := ""
+	if err != nil {
+		errMsg = err.Error()
+		var cne *domainScript.ClipNativePlanningError
+		if errors.As(err, &cne) && cne != nil && cne.Code != "" {
+			errCode = cne.Code
+		}
+	}
 	return domainScript.GenerationEnvelopeResult{
 		Version: domainScript.EnvelopeVersion,
 		OK:      false,
 		Items: []domainScript.GenerationEnvelopeItem{{
-			ItemID: itemID,
-			Error:  errMsg,
+			ItemID:    itemID,
+			Error:     errMsg,
+			ErrorCode: errCode,
 		}},
 		Summary: domainScript.GenerationEnvelopeSummary{
 			Total:     1,

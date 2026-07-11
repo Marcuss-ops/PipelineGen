@@ -219,7 +219,7 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, lo
 
 		// Wire index_languages from config into the PayloadMapper so
 		// youtubeStrategy can filter TextTracks by configured languages.
-		if langs := cfg.Media.Multilingual.IndexLanguages; len(langs) > 0 {
+		if langs := cfg.Multilingual.IndexLanguages; len(langs) > 0 {
 			runtime.Mapper.SetIndexLanguages(strings.Join(langs, ","))
 		}
 		// Wire TextTrackRepository so the PayloadMapper can populate
