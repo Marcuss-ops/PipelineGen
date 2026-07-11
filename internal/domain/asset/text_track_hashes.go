@@ -7,7 +7,14 @@ package asset
 // godlike/06 SSOT (one canonical owner per fact):
 //   - The SHA-256 input formula for TextHash    → THIS file
 //   - The SHA-256 input formula for SourceVersion → THIS file
-//   - The Normalize() canonicalisation for both hashes → THIS file
+//   - The NormalizeForHash() canonicalisation for both hashes → THIS file
+//
+// NB: this file's `NormalizeForHash` is intentionally distinct from
+// the BCP-47 `Normalize(code string) (string, error)` in bcp47.go —
+// they normalise different things (free-form text vs BCP-47 locale
+// tags) and have different signatures. Callers MUST NOT collapse the
+// two: a text payload that happens to be a locale code goes through
+// NormalizeForHash for hashing, not through Normalize.
 //
 // godlike/07 honest lock: the SQLite repository accepts TextHash and
 // SourceVersion VERBATIM (it does not compute them — see
@@ -37,10 +44,10 @@ import (
 // MUST invalidate on real content changes, not on incidental
 // casing drift from the upstream provider).
 //
-// godlike/06 SSOT: callers MUST call Normalize before passing a
+// godlike/06 SSOT: callers MUST call NormalizeForHash before passing a
 // text payload to TextHash. Inline `strings.ToLower(TrimSpace(s))`
 // duplicates must NOT exist elsewhere.
-func Normalize(text string) string {
+func NormalizeForHash(text string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(text))), " ")
 }
 
@@ -66,7 +73,7 @@ func TextHash(text, language string, kind TextTrackKind) string {
 		language = "und" // BCP-47 "undetermined" — never silently default to "en"
 	}
 	payload := strings.Join([]string{
-		Normalize(text),
+		NormalizeForHash(text),
 		language,
 		string(kind),
 	}, "|")

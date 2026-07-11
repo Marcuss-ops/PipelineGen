@@ -141,6 +141,52 @@ func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []as
 	return nil
 }
 
+// FindReady is the READY-only typed lookup the resolver uses for
+// ResolveLanguage + ResolveBestAvailable (PR-PY-CLIPS-CORRETTE-TRADOTTE
+// Fase 1.b, July 2026). It returns a single text track for the
+// given (asset, language, kind) triple, filtered to status=READY.
+// Returns (nil, nil) when no row exists OR when the row exists but
+// is in a non-READY status (PENDING/FAILED). The READY-only filter
+// is the Fase 4 video-pipeline contract: a non-READY track is not
+// authoritative, and the pipeline surfaces
+// ErrClipTextTrackNotReady rather than using a stale row.
+//
+// godlike/06 SSOT: the underlying SQL is identical to Find
+// (same column shape) plus a `status = 'ready'` predicate. The
+// domain-level "filter to READY" decision is owned by this method
+// so callers (resolver) MUST NOT re-implement a status-check
+// inline.
+func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+	if assetID == "" {
+		return nil, fmt.Errorf("text_track_repository.FindReady: AssetID is required")
+	}
+	if languageCode == "" {
+		return nil, fmt.Errorf("text_track_repository.FindReady: LanguageCode is required")
+	}
+	row := r.db.QueryRowContext(ctx,
+		`SELECT id, asset_id, language_code, text_kind,
+		        text_content,
+		        source_type, source_language_code, is_original,
+		        provider, model_name, model_version,
+		        text_hash, source_version,
+		        confidence, status,
+		        created_at, updated_at
+		 FROM asset_text_tracks
+		 WHERE asset_id = ? AND language_code = ? AND text_kind = ?
+		   AND status = ?`,
+		assetID, languageCode, string(kind), string(asset.TextTrackReady),
+	)
+
+	t, err := scanTextTrack(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("text_track_repository.FindReady: %w", err)
+	}
+	return t, nil
+}
+
 // Find returns a single text track for the given (asset, language, kind)
 // triple. Returns (nil, nil) when no row exists.
 func (r *TextTrackRepositorySQLite) Find(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {

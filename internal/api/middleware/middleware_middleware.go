@@ -168,24 +168,22 @@ func WorkerAuth(sec middleware.AuthSecurityPort, log *zap.Logger) gin.HandlerFun
 				zap.Bool("has_credential", token != ""))
 		}
 
+		// PR-B defense-in-depth: ONLY worker tokens are accepted on
+		// /internal/v1/*. Admin tokens (whether delivered via
+		// X-Velox-Admin-Token or Authorization: Bearer) MUST be
+		// rejected — otherwise a leaked admin token can claim
+		// worker jobs remotely, and the server/worker separation
+		// becomes cosmetic. This is a load-bearing security
+		// invariant pinned by TestWorkerAuth_RejectsAdminToken;
+		// touching it requires re-validating the threat model.
 		if compareTokens(token, expected) {
 			c.Set("is_worker", true)
 			c.Next()
 			return
 		}
 
-		// Admin tokens also accepted on internal endpoints — the
-		// handler layer decides workspace scope (admin principals
-		// get IsSystem=true via extractActor → compileSemanticFilters
-		// → CompileQdrantFilter skips workspace clause).
-		if compareTokens(token, sec.AdminToken()) {
-			c.Set("is_admin", true)
-			c.Next()
-			return
-		}
-
 		if log != nil {
-			log.Warn("WorkerAuth rejected request (neither worker nor admin token)",
+			log.Warn("WorkerAuth rejected request (token did not match configured worker token)",
 				zap.String("path", c.Request.URL.Path),
 				zap.Bool("has_credential", token != ""),
 				zap.String("client_ip", c.ClientIP()))
