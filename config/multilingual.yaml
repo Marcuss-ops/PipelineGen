@@ -26,6 +26,17 @@ media:
     # chain surfaces ErrLanguageUndeterminable PRE-STEP-9
     # if no chain level surfaces a real BCP-47 language.
     require_language_certainty: false
+    # PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): when
+    # true, the YouTube segment pipeline's Step 9 super-tx
+    # fails pre-tx with ErrClipLocaleNotReady if no
+    # transcript-origin READY track is in the command's
+    # TextTracks. False (canonical post-Fase-1.c default)
+    # commits every well-formed clip; operators backfill
+    # missing transcripts via the Fase 5 admin command
+    # (cmd/admin/text_tracks_backfill.go). Flip to true
+    # after a successful backfill pass to harden the
+    # pipeline.
+    require_transcript_ready: false
     # One-time migration switch for the Fase 4 video-pipeline
     # cutover. False (post-cutover canonical default) removes
     # the legacy metadata_json["transcript"] fallback path.

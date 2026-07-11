@@ -165,7 +165,38 @@ type ProcessSegmentDeps struct {
 	// adapter (internal/infrastructure/observability.Step10
 	// MetricsAdapter).
 	Step10Metrics youtubeports.Step10MetricsRecorder
-	Log           *zap.Logger
+
+	// RequireTranscriptReady is the Fase 5
+	// (PR-PY-CLIPS-CORRETTE-TRADOTTE, July 2026) wire-up of
+	// the pre-existing
+	// localized.CommitLocalizedClipCommand.RequireTranscriptReady
+	// policy gate. When true, Step 9 of
+	// process_segment_step6to9 sets RequireTranscriptReady=true
+	// on the super-tx; the writer then fails PRE-TX with
+	// localized.ErrClipLocaleNotReady if no transcript-origin
+	// READY track is present in the command's TextTracks.
+	// When false (the canonical post-Fase-1.c default), the
+	// writer commits even with no transcript — operators can
+	// backfill via the Fase 5 admin command
+	// (cmd/admin/text_tracks_backfill.go).
+	//
+	// Composition wires this from
+	// cfg.Media.Multilingual.RequireTranscriptReady at
+	// build_bundles_domain_media.go so the policy is read from
+	// the canonical config and stays in sync with the
+	// multilingual.yaml SSOT.
+	//
+	// godlike/07 fail-closed: when true and no transcript is
+	// ready, the writer's typed error surfaces as
+	// localized.IsClipLocaleNotReady in the orchestrator's
+	// step6to9 error branch — the clip is NOT persisted
+	// (the tx rolled back pre-commit), and the use case returns
+	// a typed *ExtractionError (FailureCodeWriterFailed,
+	// retryable=false) so the operator can decide whether to
+	// backfill or relax the policy.
+	RequireTranscriptReady bool
+
+	Log *zap.Logger
 }
 
 // Validate enforces the 5 REQUIRED-port panic-check invariant. Called
