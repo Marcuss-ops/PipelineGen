@@ -22,19 +22,27 @@ import (
 // ── Alias cache unit tests (QDRANT-ALIAS-CACHE, July 2026) ──────────
 
 // aliasCacheTestServer returns an httptest.Server that serves a GetAliasTarget
-// response. callCount is incremented on every GET to /collections/<alias>/aliases
-// so tests can assert exactly how many wire calls were made.
+// response. callCount is incremented on every GET to the global
+// `/aliases` endpoint (per PR-ALIAS-RESOLVE-FIX, 2026-07-04 — transport
+// no longer reads `/collections/{alias}/aliases` for alias resolution).
+// The response uses the canonical Qdrant envelope
+// `{"result": {"aliases": [{alias_name, collection_name}]}}` so the
+// primary decoder exercises the live path; relying on the legacy
+// flat-shape fallback would make these tests silently break the day
+// someone removes the migration-window decoder.
 func aliasCacheTestServer(t *testing.T, targetCollection string) (*httptest.Server, *int32) {
 	t.Helper()
 	var callCount int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_current/aliases" {
+		if r.Method == http.MethodGet && r.URL.Path == "/aliases" {
 			atomic.AddInt32(&callCount, 1)
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"result": []map[string]interface{}{
-					{
-						"alias_name":      "media_assets_current",
-						"collection_name": targetCollection,
+				"result": map[string]interface{}{
+					"aliases": []map[string]interface{}{
+						{
+							"alias_name":      "media_assets_current",
+							"collection_name": targetCollection,
+						},
 					},
 				},
 			})
@@ -257,19 +265,25 @@ func TestCollectionManager_PromoteCandidate_InvalidatesSearchCache(t *testing.T)
 		defer mu.Unlock()
 
 		switch {
-		// Alias target check — initially no alias, then returns the new candidate.
-		// Track call count so we can verify cache invalidation via observable behaviour.
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_current/aliases":
+		// Alias target check (PR-ALIAS-RESOLVE-FIX, 2026-07-04): transport
+		// resolves aliases via the GLOBAL `/aliases` endpoint, NOT the
+		// collection-prefixed `/collections/{alias}/aliases`. We intercept
+		// the live endpoint and emit the canonical Qdrant envelope
+		// `{"result": {"aliases": [...]}}`. Track call count so the
+		// test can verify cache-invalidation via observable behaviour.
+		case r.Method == http.MethodGet && r.URL.Path == "/aliases":
 			atomic.AddInt32(&aliasTargetCallCount, 1)
 			if !collectionCreated {
 				http.NotFound(w, r)
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"result": []map[string]interface{}{
-					{
-						"alias_name":      "media_assets_current",
-						"collection_name": "media_assets_v3_minimal",
+				"result": map[string]interface{}{
+					"aliases": []map[string]interface{}{
+						{
+							"alias_name":      "media_assets_current",
+							"collection_name": "media_assets_v3_minimal",
+						},
 					},
 				},
 			})
