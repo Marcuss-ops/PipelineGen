@@ -86,7 +86,15 @@ try:
                 print("ERROR: One or more scenes are missing image URLs.")
                 sys.exit(1)
             
-            output_file = "test_script_with_images_result.json"
+            # Status is also already printed above via
+            # json.dumps(status) so the operator sees it on stdout.
+            # The on-disk copy is written under /tmp/ so the
+            # transient run artifact does not re-enter the working
+            # tree (this file was committed in a60de6da5 and deleted
+            # by AGENTS.md evidence-dump ratchet in a60e77198).
+            # /tmp/test_script_with_images_result.json matches the
+            # existing /tmp/*.out gitignore pattern.
+            output_file = "/tmp/test_script_with_images_result.json"
             with open(output_file, "w") as f:
                 json.dump(status, f, indent=2)
             print(f"Result saved to {output_file}")
