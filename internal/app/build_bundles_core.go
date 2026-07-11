@@ -54,10 +54,28 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.main.DB)
 	sqRepo := sqassets.NewSearchQueriesRepository(dbs.main.DB)
 	var idempotencyStore middleware.IdempotencyStore = idemsqlite.NewSQLiteRepository(dbs.main.DB)
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): TextTrackRepo
+	// is the canonical Fase 2.a / Fase 4 TextTrackRepository used by
+	// the video pipeline + the AcquireService backfill CLI. It MUST
+	// be wired at the RepoBundle composition root (BuildRepoBundle)
+	// so every consumer (BuildTextTrackBundle, BuildDomainBundle, the
+	// AcquireService wiring in composition.go) sees a non-nil
+	// dependency. The pre-PR scattered construction in
+	// build_bundles_domain_media.go::buildDomainMedia and
+	// build_process_qdrant.go::buildQdrantDeps is now superseded by
+	// this canonical SSOT (this is the canonical owner for ALL
+	// repositories wired into RepoBundle). godlike/07 fail-closed:
+	// BuildTextTrackBundle rejects nil TextTrackRepo so the test
+	// fixture MUST exercise this path.
+	textTrackRepo, err := sqassets.NewTextTrackRepository(dbs.main.DB, log)
+	if err != nil {
+		return nil, fmt.Errorf("init text track repository: %w", err)
+	}
 	return &RepoBundle{
 		ScriptsRepo: scriptsRepo, ImageRepo: imageRepo, VoiceoverRepo: voiceoverRepo,
 		MonitorsRepo: monitorsRepo, ClipsRepo: clipsRepo, Assets: assetsSvc,
 		CatalogRepo: catalogRepo, SQRepo: sqRepo, IdempotencyStore: idempotencyStore,
+		TextTrackRepo: textTrackRepo,
 	}, nil
 }
 

@@ -198,8 +198,13 @@ func (s *Service) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobT
 	)
 
 	for _, clipID := range clipIDs {
-		// Check for cancellation
-		if tools.IsCancelled != nil && tools.IsCancelled() {
+		// FASE 4(b) (July 2026): cancellation propagates via ctx.Err() —
+		// the typed kerneljob.RenewLeaseResult.State (CancelRequested)
+		// → renewLeaseLoopWith calls jobCancel(jobCtx) → ctx.Done().
+		// The pre-Fase-4 IsCancelled callback (which polled a 2-second
+		// cancel-watcher goroutine) was REMOVED from the JobTools struct
+		// in FASE 4(b) as redundant with native context cancellation.
+		if ctx.Err() != nil {
 			break
 		}
 

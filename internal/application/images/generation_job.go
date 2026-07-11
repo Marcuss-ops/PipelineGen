@@ -83,7 +83,12 @@ func (h *JobHandler) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.J
 		zap.String("correlation_id", j.CorrelationID),
 	)
 
-	if tools.IsCancelled != nil && tools.IsCancelled() {
+	// FASE 4(b) (July 2026): cancel signal is observed via ctx.Err()
+	// rather than the pre-Fase-4 tools.IsCancelled callback (which
+	// polled a 2-second cancel-watcher goroutine REMOVED in FASE 4(b)).
+	// The typed kerneljob.RenewLeaseResult.State (CancelRequested)
+	// → renewLeaseLoopWith calls jobCancel(jobCtx) → ctx.Done().
+	if ctx.Err() != nil {
 		return nil, fmt.Errorf("image.generate.google: job %s was cancelled before execution started", j.ID)
 	}
 

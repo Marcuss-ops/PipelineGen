@@ -145,12 +145,12 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		return nil, fmt.Errorf("drive_folder_id is required (enqueue path should have resolved it)")
 	}
 
-	cancelled := func() bool {
-		if tools == nil || tools.IsCancelled == nil {
-			return false
-		}
-		return tools.IsCancelled()
-	}
+	// FASE 4(b) (July 2026): cancel-signal is observed via ctx.Err() —
+	// see internal/domain/job/handler.go for the canonical rationale
+	// (the pre-Fase-4 IsCancelled callback was REMOVED in FASE 4(b)
+	// because the typed kerneljob.RenewLeaseResult.State →
+	// renewLeaseLoopWith → jobCancel(jobCtx) propagation is now
+	// native context cancellation).
 
 	if tools != nil && tools.Progress != nil {
 		tools.Progress(2, fmt.Sprintf("Scanning %s", payload.LocalFolder))
@@ -229,7 +229,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	}
 
 	for i := range candidates {
-		if cancelled() {
+		if ctx.Err() != nil {
 			log.Warn("job cancelled by caller", zap.Int("remaining", total-i))
 			break
 		}

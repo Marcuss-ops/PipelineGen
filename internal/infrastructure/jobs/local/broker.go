@@ -144,14 +144,34 @@ func (b *Broker) Renew(ctx context.Context, cmd appjobs.RenewCommand) (*appjobs.
 	if err := b.ensureLease(ctx, cmd.JobID, cmd.WorkerID, cmd.LeaseID, cmd.ExpectedRevision); err != nil {
 		return nil, err
 	}
-	if err := b.jobs.RenewLease(ctx, cmd.JobID, cmd.WorkerID, cmd.LeaseTTL); err != nil {
+	// FASE 4(b) (July 2026): kernel/job.Store::RenewLease now returns
+	// the typed kerneljob.RenewLeaseResult envelope (Continue |
+	// CancelRequested | LeaseLost). The pre-Fase-4 `error`-only
+	// return is gone. The local Broker.Renew consumes the typed
+	// result to surface the post-renewal lease expiry in the
+	// returned *appjobs.Lease; on LeaseStateLeaseLost / err != nil
+	// the function falls through to the existing failure paths
+	// (the LeaseLost typed sentinel is errors.Is-compatible with
+	// sqljobs.ErrLeaseLost via the SQL adapter's `%w` wrap).
+	res, err := b.jobs.RenewLease(ctx, cmd.JobID, cmd.WorkerID, cmd.LeaseTTL)
+	if err != nil {
 		return nil, err
+	}
+	// FASE 4(b) (July 2026): use the typed RenewLeaseResult.NewLeaseExpiry
+	// (the canonical post-renewal expiry returned by the SQL UPDATE) as the
+	// authoritative source of ExpiresAt — replacing the previous
+	// time.Now().UTC().Add(cmd.LeaseTTL) which drifted by the SQL
+	// roundtrip latency. The Get below is still required for the Job
+	// snapshot + LeaseID (not in the typed result envelope).
+	expiresAt := time.Now().UTC().Add(cmd.LeaseTTL)
+	if res.NewLeaseExpiry != nil {
+		expiresAt = *res.NewLeaseExpiry
 	}
 	j, err := b.jobs.Get(ctx, cmd.JobID)
 	if err != nil || j == nil {
 		return nil, err
 	}
-	return &appjobs.Lease{Job: j, LeaseID: j.LeaseID, ExpiresAt: time.Now().UTC().Add(cmd.LeaseTTL)}, nil
+	return &appjobs.Lease{Job: j, LeaseID: j.LeaseID, ExpiresAt: expiresAt}, nil
 }
 
 // Progress routes through the coalescer when configured; falls back
