@@ -155,6 +155,15 @@ func buildDomainMediaServices(
 	// resolver now consumes cfg.Media.Multilingual.RequireLanguageCertainty
 	// so the policy gate (asset.ErrLanguageUndeterminable pre-Step-9
 	// on full-miss chain) is plumbed end-to-end.
+	//
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
+	// SubtitleFetcherAdapter is ALSO exposed on the
+	// DomainBundle so composition.go can wire it into the
+	// AcquireService (backfill CLI 5-priority chain —
+	// priorities 3+4: YouTube subtitles). The narrow
+	// texttracks.SubtitlesPort interface is a structural
+	// subset of the full youtubeports.SubtitleFetcherPort.
+	bundle.SubtitleFetcher = subtitleFetcherAdapter
 	textTrackResolver := &youtube.TextTrackResolver{
 		Repo:      textTrackRepo,
 		Subtitles: subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)		// Transcriber field RETIRED in PR-PY-CLIPS-CORRETTE-TRADOTTE

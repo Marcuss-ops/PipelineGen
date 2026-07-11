@@ -1,23 +1,41 @@
 // Package app — build_bundles_texttracks.go: composition glue for
-// the TextTrackMaterializer + the asset.text.materialize job handler.
+// the TextTrackMaterializer + the asset.text.materialize job handler
+// + the AcquireService (Fase 5).
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026).
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): added
+// AcquireService to the bundle so the backfill CLI can trigger
+// the full 5-priority chain (DB → local VTT/SRT → YouTube subs →
+// Whisper) when the source track is missing.
 package app
 
 import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // TextTrackBundle groups the materializer + the broker-facing
-// job handler.
+// job handler + the acquire service (Fase 5).
 type TextTrackBundle struct {
-	Materializer *texttracks.Materializer
-	JobHandler   *texttracks.MaterializeJobHandler
+	Materializer   *texttracks.Materializer
+	JobHandler     *texttracks.MaterializeJobHandler
+	AcquireService *texttracks.AcquireService
+}
+
+// AcquirePorts groups the two ports the AcquireService needs.
+// The composition root derives them from the existing
+// build_bundles_domain_media.go (SubtitleFetcherAdapter) and
+// the AIBundle (WhisperTranscriberAdapter). Wrapping them in a
+// single struct keeps the BuildTextTrackBundle signature
+// stable when more ports are added in a future Fase.
+type AcquirePorts struct {
+	Subtitles youtubeports.SubtitleFetcherPort
+	Whisper   youtubeports.WhisperTranscriberPort
 }
 
 // BuildTextTrackBundle constructs the canonical bundle.
@@ -29,6 +47,7 @@ func BuildTextTrackBundle(
 	repos *RepoBundle,
 	ai *AIBundle,
 	outbox *OutboxBundle,
+	acquirePorts *AcquirePorts,
 	log *zap.Logger,
 ) (*TextTrackBundle, error) {
 	if repos == nil || repos.TextTrackRepo == nil {
@@ -65,9 +84,50 @@ func BuildTextTrackBundle(
 	}
 
 	handler := texttracks.NewMaterializeJobHandler(materializer, log)
+
+	// AcquireService (Fase 5): wraps the SubtitleFetcherPort
+	// + WhisperTranscriberPort into a single typed surface for
+	// the backfill CLI. Both ports are OPTIONAL — the
+	// AcquireService silently skips a nil port (the chain
+	// falls through to the next priority). This preserves
+	// backward compat: dev/test compositions can pass a nil
+	// AcquirePorts to get a backfill CLI that only does
+	// translation fan-out (no source acquisition).
+	var acquireService *texttracks.AcquireService
+	if acquirePorts != nil {
+		// texttracks.SubtitlesPort is a NARROW interface
+		// (only FetchSegmentSubtitles). The concrete
+		// *ytinfra.SubtitleFetcherAdapter satisfies both
+		// the narrow texttracks interface AND the full
+		// youtubeports.SubtitleFetcherPort — we just pass
+		// the same instance to the narrow type assertion
+		// (structural typing in Go).
+		var subsPort texttracks.SubtitlesPort
+		if acquirePorts.Subtitles != nil {
+			if sp, ok := acquirePorts.Subtitles.(texttracks.SubtitlesPort); ok {
+				subsPort = sp
+			} else {
+				return nil, fmt.Errorf("compose texttracks: acquirePorts.Subtitles does not satisfy texttracks.SubtitlesPort (got %T)", acquirePorts.Subtitles)
+			}
+		}
+		var whispPort texttracks.WhisperPort
+		if acquirePorts.Whisper != nil {
+			if wp, ok := acquirePorts.Whisper.(texttracks.WhisperPort); ok {
+				whispPort = wp
+			} else {
+				return nil, fmt.Errorf("compose texttracks: acquirePorts.Whisper does not satisfy texttracks.WhisperPort (got %T)", acquirePorts.Whisper)
+			}
+		}
+		acquireService, err = texttracks.NewAcquireService(subsPort, whispPort, log)
+		if err != nil {
+			return nil, fmt.Errorf("compose texttracks: acquire service: %w", err)
+		}
+	}
+
 	return &TextTrackBundle{
-		Materializer: materializer,
-		JobHandler:   handler,
+		Materializer:   materializer,
+		JobHandler:     handler,
+		AcquireService: acquireService,
 	}, nil
 }
 

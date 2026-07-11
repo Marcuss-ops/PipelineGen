@@ -135,7 +135,7 @@ func executeDoctor(ctx context.Context, cfg *config.Config, log *zap.Logger, jso
 	}
 
 	if jsonOut {
-		printJSON(report)
+		printDriveDoctorJSON(report)
 	} else {
 		printDoctorText(cfg, report)
 	}
@@ -153,7 +153,11 @@ func formatStatuses(s map[string]int) string {
 	return strings.Join(parts, ", ")
 }
 
-func printJSON(report doctorReport) {
+// printDriveDoctorJSON is the local JSON helper. Named to avoid
+// the redeclaration with text_tracks_backfill.go's
+// printTextTracksBackfillJSON (which takes a different struct
+// type and is package-wide).
+func printDriveDoctorJSON(report doctorReport) {
 	b, _ := json.MarshalIndent(report, "", "  ")
 	fmt.Println(string(b))
 }
