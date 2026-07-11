@@ -26,7 +26,10 @@ package artlist
 import (
 	"context"
 	"errors"
+	"os/exec"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -344,9 +347,19 @@ func TestGate11_ScraperFailureNoDispatch(t *testing.T) {
 //
 // godlike/06 SSOT: the canonical list of gate tests lives here.
 // UPDATE THIS LIST when adding or removing gate tests.
+//
+// REINFORCEMENT (2026-07-11): the meta-anchor previously asserted only
+// on a hardcoded `expectedGateTests` slice — which silently passed even
+// when the spec diverged from reality (the historical gate06/07/10
+// phantom-debt: 7 tests were declared in the spec but never implemented
+// for weeks, and the static `assert.Len(t, expectedGateTests, 28, ...)`
+// still passed). The reinforcement runs `go test -list "^TestGate" .`
+// at runtime and verifies the actual test names match the spec. If
+// any expected test is missing from the runtime list, the meta-anchor
+// fails closed with a per-test error message identifying the phantom.
 func TestGate12_PreflightAllGatesPass(t *testing.T) {
-	// Enumerate the expected gate tests. When a new gate test is
-	// added, append its name here and update the count below.
+	// The canonical spec of expected gate tests. When a new gate test
+	// is added, append its name here AND verify the count below.
 	expectedGateTests := []string{
 		// Gate 01 — Happy path
 		"TestGate01_ArtlistFullRun_HappyPath",
@@ -401,17 +414,62 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 		"TestGate12_PreflightAllGatesPass",
 	}
 
-	// UPDATE THIS COUNT when adding gate tests.
-	assert.Len(t, expectedGateTests, 28,
-		"Gate test matrix count changed — update the count and the list above when adding/removing gate tests")
-
-	// Verify no duplicates (copy-paste error defense).
-	seen := map[string]bool{}
+	// 1. Static contract: the spec itself has no duplicates (a
+	//    copy-paste error here would silently halve the assertions).
+	seenExpected := map[string]bool{}
 	for _, name := range expectedGateTests {
-		assert.False(t, seen[name], "duplicate gate test name: %s", name)
-		seen[name] = true
+		assert.False(t, seenExpected[name], "duplicate gate test name in spec: %s", name)
+		seenExpected[name] = true
 	}
 
-	t.Logf("Gate 12 preflight: %d gate tests enumerated, all expected to pass", len(expectedGateTests))
-	t.Logf("Run 'go test -run \"^TestGate\" -count=1 ./internal/application/assets/providers/artlist/...' to verify")
+	// 2. Runtime contract: run `go test -list` and parse the actual
+	//    gate tests present in the package. The relative target "."
+	//    resolves to the current package's directory (the test runs
+	//    with the package dir as CWD by `go test` convention).
+	//    10s timeout: `go test -list` is sub-second in normal
+	//    conditions; 10s is generous enough to survive cold caches.
+	//    Fails closed if `go` is not on PATH or the subprocess errors.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "go", "test", "-list", "^TestGate", ".")
+	// CombinedOutput (not Output) so stderr is captured: when the
+	// package has build errors, the error message lands on stderr
+	// and is essential for debugging. The `require.NoError` failure
+	// message must include both streams to be actionable.
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "failed to run 'go test -list ^TestGate .' — is 'go' on PATH? Combined output: %s", string(out))
+
+	// 3. Parse runtime reality: extract lines starting with "TestGate"
+	//    (the "ok ... 0.001s" status line is filtered out by prefix).
+	actualTests := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "TestGate") {
+			actualTests[line] = true
+		}
+	}
+
+	// 4. Runtime count must match the spec count. A divergence here
+	//    means the spec is stale (a new test was added without
+	//    updating the list, or a test was removed without updating
+	//    the count).
+	assert.Len(t, actualTests, len(expectedGateTests),
+		"Runtime gate test count diverged from spec: expected %d tests, got %d at runtime. "+
+			"Update the expectedGateTests list above when adding/removing gate tests. "+
+			"Actual list: %v", len(expectedGateTests), len(actualTests), actualTests)
+
+	// 5. Per-test presence check: every spec entry must exist at
+	//    runtime. This catches the historical phantom-debt (gate06/07/10
+	//    were declared in the spec for weeks but never implemented)
+	//    with a precise per-test error message.
+	for _, expectedName := range expectedGateTests {
+		assert.True(t, actualTests[expectedName],
+			"phantom test detected: spec entry %q is missing from runtime — "+
+				"either the test was never implemented (add the test file) or it was renamed (update the spec). "+
+				"Actual list at runtime: %v", expectedName, actualTests)
+	}
+
+	t.Logf("Gate 12 preflight: verified %d implemented tests at runtime against spec (all present)", len(actualTests))
+	t.Logf("Run 'go test -run \"^TestGate\" -count=1 ./internal/application/assets/providers/artlist/...' to execute the full suite")
 }
