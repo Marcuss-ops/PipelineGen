@@ -42,6 +42,7 @@ const (
 	StatusQueued             = kerneljob.StatusQueued
 	StatusLeased             = kerneljob.StatusLeased
 	StatusRunning            = kerneljob.StatusRunning
+	StatusWaitingChildren    = kerneljob.StatusWaitingChildren
 	StatusFinalizing         = kerneljob.StatusFinalizing
 	StatusRetryWait          = kerneljob.StatusRetryWait
 	StatusSucceeded          = kerneljob.StatusSucceeded
