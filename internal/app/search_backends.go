@@ -36,6 +36,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -45,8 +46,16 @@ import (
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
+
+type rerankerClient interface {
+	IsEnabled() bool
+	Weight() float64
+	TopK() int
+	Rerank(ctx context.Context, query string, candidates []reranker.Candidate) ([]reranker.Result, error)
+}
 
 // ── Composition bridge ─────────────────────────────────────────────────
 //
@@ -82,6 +91,7 @@ type SearchBackendBuildOpts struct {
 	VectorStore assetsearch.VectorStorePort
 	MediaRepo   search.MediaReadRepository
 	Delivery    search.AssetDeliveryService
+	Reranker    rerankerClient
 }
 
 // BuildSearchBackends registers backends in a fresh BackendRegistry,
@@ -144,6 +154,7 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 			mediaReader: opts.MediaRepo,
 			delivery:    opts.Delivery,
 			log:         log,
+			reranker:    opts.Reranker,
 		}
 		if err := reg.Register(semantic); err != nil {
 			log.Error("BuildSearchBackends: semantic backend register failed (fail-closed)", zap.Error(err))

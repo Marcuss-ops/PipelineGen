@@ -227,6 +227,7 @@ func runImageSceneFanout(
 				}
 			}()
 
+			cleanedSubject := cleanPromptForSubject(query)
 			var (
 				asset *domainasset.ImageAsset
 				err   error
@@ -236,7 +237,7 @@ func runImageSceneFanout(
 				// binding ends up with the Drive-backed asset link.
 				asset, err = smartGen.GenerateSmartImage(
 					ctx,
-					sceneName,
+					cleanedSubject,
 					query,
 					plan.Style,
 					[]string{query, sceneText},
@@ -248,7 +249,7 @@ func runImageSceneFanout(
 				)
 				if err != nil || asset == nil {
 					var fallback *ImageResult
-					fallback, err = gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
+					fallback, err = gen.SearchAndDownload(ctx, cleanedSubject, sceneText, query, language)
 					if err == nil && fallback != nil {
 						asset = &domainasset.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
 					} else {
@@ -257,7 +258,7 @@ func runImageSceneFanout(
 				}
 			} else {
 				var fallback *ImageResult
-				fallback, err = gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
+				fallback, err = gen.SearchAndDownload(ctx, cleanedSubject, sceneText, query, language)
 				if err == nil && fallback != nil {
 					asset = &domainasset.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
 				}
@@ -298,4 +299,25 @@ func canonicalSceneImageURL(asset *domainasset.ImageAsset) string {
 		return fmt.Sprintf("https://drive.google.com/file/d/%s/view", asset.DriveFileID)
 	}
 	return url
+}
+
+func cleanPromptForSubject(prompt string) string {
+	parts := strings.Split(prompt, ".")
+	var first string
+	if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+		first = strings.TrimSpace(parts[0])
+	} else {
+		first = strings.TrimSpace(prompt)
+	}
+	if len(first) > 100 {
+		// Truncate at space to avoid word cuts
+		lastSpace := strings.LastIndex(first[:100], " ")
+		if lastSpace > 50 {
+			first = first[:lastSpace]
+		} else {
+			first = first[:100]
+		}
+	}
+	// remove characters that are invalid in filenames/slugs if any, but Google Drive allows most
+	return first
 }

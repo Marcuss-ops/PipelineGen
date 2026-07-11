@@ -62,7 +62,6 @@ func registerAIBackedProcessors(
 	root *ComposeRoot,
 	cfg *config.Config,
 	log *zap.Logger,
-	metaModel string,
 ) error {
 	// ── Entities ──────────────────────────────────────────────────────
 	var entityAdapter adapters.EntityExtractor
@@ -141,7 +140,6 @@ func registerAIBackedProcessors(
 	if root.AI != nil && root.AI.OllamaTranslator != nil {
 		clipSvc := usecase.ClipServices{
 			TranslationPort: root.AI.OllamaTranslator,
-			MetadataModel:   metaModel,
 			Logger:          log,
 			ArtlistFolder:   cfg.Drive.ArtlistFolder(),
 		}

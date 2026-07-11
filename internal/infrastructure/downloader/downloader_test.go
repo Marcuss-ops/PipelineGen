@@ -308,6 +308,30 @@ func TestDownload_DelegatesToBaseArgs(t *testing.T) {
 		"--no-warnings must appear exactly once (BaseArgs() is the SOLE owner; no manual re-declaration)")
 }
 
+// TestDownload_FileURL_CopiesLocalSource is the hermetic replay path
+// guard: file:// URLs MUST bypass yt-dlp and copy the local file into
+// the requested output template. This is the fast path used by the
+// stock pipeline replay when the source media already exists on disk.
+func TestDownload_FileURL_CopiesLocalSource(t *testing.T) {
+	d, runner := newTestDownloader(t, "")
+
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.mp4")
+	require.NoError(t, os.WriteFile(sourcePath, []byte("local-source-bytes"), 0o644))
+
+	outputPath := filepath.Join(tmpDir, "output.mp4")
+	err := d.Download(context.Background(), &DownloadRequest{
+		URL:        "file://" + sourcePath,
+		OutputPath: outputPath,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 0, runner.calls, "file:// download must not spawn yt-dlp")
+
+	data, readErr := os.ReadFile(outputPath + ".mp4")
+	require.NoError(t, readErr)
+	assert.Equal(t, "local-source-bytes", string(data))
+}
+
 func TestListChannelVideos_UsesRunnerAndParsesJSON(t *testing.T) {
 	setupTestAllowlist(t)
 	d, runner := newTestDownloader(t, "")

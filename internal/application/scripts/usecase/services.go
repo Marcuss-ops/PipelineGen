@@ -1,20 +1,22 @@
 // Package scripts — service interfaces extracted from types.go (PG-029, June 2026).
 //
-// Fase 9 step 2 (Spina Dorsale, July 2026): the two translation
-// service interfaces (TextTranslationService + TranslatorService)
-// are now Go type-aliases for the canonical godlike/06 SSOT
-// declarations in internal/application/translation/legacy.go
-// (godlike/07 EXPAND window + alias-before-removal pattern). The
-// new canonical concrete OllamaTranslator
-// (internal/application/translation/ollama_translator.go) satisfies
-// TranslationPort + all 3 legacy aliases, so production wiring
-// constructs one concrete and routes every consumer through it.
+// PR-DEADC-SCRIPTS-CLIP-SERVICES-PER-USE-CASE-DEP-BAGS Step 1+2 (July 2026):
+// retired 6 dual-field legacy surfaces from ClipServices
+// (Association + DriveCheck + Translation + JobEnqueue + Harvest +
+// Translator) + the dead MetadataModel field (wired at composition
+// time but with 0 readers in any use-case site). The canonical
+// Fase 9 step-2 surface TranslationPort remains the SOLE owner of
+// the translation contract; the new canonical Modern-side surfaces
+// (AssocSvc + DriveSvc + JobsSvc + HarvestSvc) remain the SOLE
+// owner of the post-Phase-2 contracts.
 //
-// A new `TranslationPort translation.TranslationPort` field is
-// added to ClipServices; see services.go::artlistSearchPhrase in
-// flow_helpers.go for the first migrated caller. Other callers
-// continue to use the legacy `Translation` / `Translator` fields
-// during the godlike/07 EXPAND window.
+// The legacy `TextTranslationService` + `TranslatorService` type
+// aliases in internal/application/translation/legacy.go remain
+// in place for the godlike/07 EXPAND-window grace period (one
+// sole concrete *OllamaTranslator satisfies BOTH the canonical
+// TranslationPort AND the legacy aliases); the godlike/07
+// CUTOVER-phase removal is forward-pointer
+// architecture/deprecations.yaml#TRANSLATION-LEGACY-SERVICES-MIGRATION.
 package usecase
 
 import (
@@ -29,28 +31,26 @@ import (
 // ── ClipServices ─────────────────────────────────────────────────────────
 
 // ClipServices bundles all service dependencies for clip-related functions.
+//
+// Post-PR-DEADC-SCRIPTS-CLIP-SERVICES-PER-USE-CASE-DEP-BAGS Step 1+2 (July 2026):
+// the 6 dual-field legacy surfaces (Association + DriveCheck + Translation +
+// JobEnqueue + Harvest + Translator) are RETIRED. The Modern-side
+// counterparts (AssocSvc + DriveSvc + TranslationPort + JobsSvc + HarvestSvc)
+// are the canonical owners of their respective contracts.
 type ClipServices struct {
 	ClipSearch  ClipSearchService
-	Association AssociationService
-	DriveCheck  DriveCheckService
 	ImageSearch ImageSearchService
-	Translation TextTranslationService
-	JobEnqueue  JobEnqueueService
-	Harvest     HarvestService
 	Voiceover   VoiceoverService
 	RealtimeSvc RealtimeSearchService
 	HarvestSvc  HarvestService
 	Logger      *zap.Logger
-	Translator  TranslatorService
 	// TranslationPort is the canonical Fase 9 step 2 surface. New
-	// consumers (e.g. flow_helpers.go::artlistSearchPhrase) call
-	// svc.TranslationPort.Translate(ctx, cmd) directly. The legacy
-	// `Translation` + `Translator` fields above stay populated for
-	// the godlike/07 EXPAND window and continue to satisfy existing
-	// callers until CUTOVER. Nil is tolerated by every caller (each
-	// is guarded against nil before invocation).
+	// consumers (e.g. flow_helpers_artlist.go::phraseTranslatorAdapter.Translate)
+	// call svc.TranslationPort.Translate(ctx, cmd) directly. Nil is
+	// tolerated by the caller (fail-closed: returns typed error per
+	// godlike/07 NO-FAKE-AVAILABILITY — never a silent fallback to the
+	// original phrase).
 	TranslationPort translation.TranslationPort
-	MetadataModel   string
 	AssocSvc        AssocSearchService
 	DriveSvc        DriveCheckService
 	JobsSvc         JobEnqueueService

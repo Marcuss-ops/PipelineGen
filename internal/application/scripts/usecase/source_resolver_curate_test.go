@@ -442,8 +442,17 @@ func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no clips resolve and AllowTextOnly=false, got nil")
 	}
+<<<<<<< Updated upstream
 	// Lock the sentinel-level contract (the deleted stub-era test
 	// also probed this via errors.Is(err, ErrCurateNoClips)).
+||||||| constructed merge base
+	// Lock the sentinel-level contract (the deleted stub-era test
+	// also probed this via errors.Is(err, ErrCurateNoClips)).
+	if !errors.Is(err, ErrCurateNoClips) {
+		t.Fatalf("expected errors.Is(err, ErrCurateNoClips)=true, got err=%v", err)
+	}
+=======
+>>>>>>> Stashed changes
 	// Lock the typed envelope contract (code-reviewer MUST-FIX #1):
 	// a future refactor that drops the `Inner:` field on
 	// SourceResolutionError would surface here.
@@ -454,6 +463,7 @@ func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
 	if srcErr.ResultCount != 0 {
 		t.Errorf("expected ResultCount=0, got %d", srcErr.ResultCount)
 	}
+<<<<<<< Updated upstream
 	// Lock the sentinel-level contract: the Inner field must be
 	// ErrCurateNoClips. Note: SourceResolutionError.Unwrap()
 	// returns ErrSourceResolutionFailed (the umbrella), NOT Inner,
@@ -463,6 +473,18 @@ func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
 	if !errors.Is(srcErr.Inner, ErrCurateNoClips) {
 		t.Fatalf("expected errors.Is(srcErr.Inner, ErrCurateNoClips)=true, got Inner=%v", srcErr.Inner)
 	}
+||||||| constructed merge base
+=======
+	// Lock the sentinel-level contract: the Inner field must be
+	// ErrCurateNoClips. Note: SourceResolutionError.Unwrap() returns
+	// ErrSourceResolutionFailed (the umbrella), NOT Inner, so
+	// errors.Is(err, ErrCurateNoClips) would always be false.
+	// The canonical probe is to unwrap the typed envelope and
+	// compare Inner directly.
+	if !errors.Is(srcErr.Inner, ErrCurateNoClips) {
+		t.Fatalf("expected errors.Is(srcErr.Inner, ErrCurateNoClips)=true, got Inner=%v", srcErr.Inner)
+	}
+>>>>>>> Stashed changes
 }
 
 func TestCurateResolver_HintClipIDsOnly_DoesNotSurfaceErrCurateNoClips(t *testing.T) {

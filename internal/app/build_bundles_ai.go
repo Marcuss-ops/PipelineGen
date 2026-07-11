@@ -17,6 +17,7 @@ import (
 	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	sqlitescripts "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -53,6 +54,24 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 		log.Info("SearXNG web search enabled for LLM context",
 			zap.String("searxng_url", cfg.External.SearxngURL),
 			zap.Int("max_results", cfg.External.SearxngMaxResults),
+		)
+	}
+
+	var rerankerClient *reranker.Client
+	if cfg.Reranker.Enabled {
+		rerankerClient = reranker.NewClient(reranker.Config{
+			Enabled:   cfg.Reranker.Enabled,
+			URL:       cfg.Reranker.URL,
+			Model:     cfg.Reranker.Model,
+			TopK:      cfg.Reranker.TopK,
+			TimeoutMs: cfg.Reranker.TimeoutMs,
+			Weight:    cfg.Reranker.Weight,
+		})
+		log.Info("reranker client configured",
+			zap.Bool("enabled", cfg.Reranker.Enabled),
+			zap.String("url", cfg.Reranker.URL),
+			zap.String("model", cfg.Reranker.Model),
+			zap.Int("top_k", cfg.Reranker.TopK),
 		)
 	}
 
@@ -97,6 +116,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	return &AIBundle{
 		OllamaClient:      ollamaClient,
 		OllamaEmbedClient: ollamaEmbedClient,
+		Reranker:          rerankerClient,
 		ScriptGen:         scriptGen,
 		OllamaTranslator:  ollamaTranslator,
 		MemoryRepo:        adapters.NewRepository(dbs.main.DB),

@@ -177,6 +177,13 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 				allTerminal = false
 				continue
 			}
+			if childJob == nil {
+				a.deps.Logger.Warn("ParentAggregator: child job not found (nil)",
+					zap.String("parent_job_id", j.ID),
+					zap.String("child_job_id", childID))
+				allTerminal = false
+				continue
+			}
 			status = childJob.Status
 			if status == job.StatusQueued || status == job.StatusLeased || status == job.StatusRunning || status == job.StatusFinalizing || status == job.StatusRetryWait {
 				allTerminal = false

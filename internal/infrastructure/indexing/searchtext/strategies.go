@@ -12,13 +12,12 @@ import (
 // slice so callers and tests can introspect the contract (single
 // canonical owner per fact — godlike/06 SSOT).
 var stockChunkStrategyAdditionalKeys = []string{
-	"event",      // boxing-event / fight name (e.g. "Pacquiao vs Broner")
-	"round",      // round number within the event (e.g. "3")
-	"subject",    // canonical subject of the clip (e.g. "Mike Tyson")
-	"action",     // action verb / phrase (e.g. "lands a left hook")
-	"source_url", // original source URL (e.g. YouTube watch link)
-	"start_sec",  // clip start in seconds (e.g. "12.5")
-	"end_sec",    // clip end in seconds (e.g. "35.0")
+	"event",     // boxing-event / fight name (e.g. "Pacquiao vs Broner")
+	"round",     // round number within the event (e.g. "3")
+	"subject",   // canonical subject of the clip (e.g. "Mike Tyson")
+	"action",    // action verb / phrase (e.g. "lands a left hook")
+	"start_sec", // clip start in seconds (e.g. "12.5")
+	"end_sec",   // clip end in seconds (e.g. "35.0")
 }
 
 // Truncation limits for long text fields. Transcripts and descriptions
@@ -47,13 +46,13 @@ const (
 // the full set of available SearchTextInput fields:
 //
 //	title + transcript + channel + description + tags + detected_entities +
-//	hook + source_url + speakers + mentioned_people
+//	hook + speakers + mentioned_people
 //
 // Fields that are not applicable (zero-value) are silently dropped.
 // The strategy reads Additional keys for YouTube-specific metadata_json
 // fields that don't have a dedicated SearchTextInput slot:
 //
-//	hook, source_url, speakers, mentioned_people
+//	hook, speakers, mentioned_people
 //
 // godlike/06 SSOT: this function is the SOLE canonical owner of the
 // YouTube search_text format for the Qdrant BM25 indexing path.
@@ -62,7 +61,6 @@ func youtubeStrategy(input appsearchtext.SearchTextInput) string {
 
 	// Additional fields from metadata_json (populated by PayloadMapper).
 	hook := strings.TrimSpace(add["hook"])
-	sourceURL := strings.TrimSpace(add["source_url"])
 	speakers := strings.TrimSpace(add["speakers"])
 	mentionedPeople := strings.TrimSpace(add["mentioned_people"])
 
@@ -74,7 +72,6 @@ func youtubeStrategy(input appsearchtext.SearchTextInput) string {
 		joinTags(input.Tags),
 		joinTags(input.DetectedEntities),
 		hook,
-		sourceURL,
 		speakers,
 		mentionedPeople,
 	)
@@ -145,8 +142,8 @@ func generatedImageStrategy(input appsearchtext.SearchTextInput) string {
 //	"Stock video from {event} round {N}. {subject} {action}.
 //	 Segment {start}s to {end}s. Tags: {tags}."
 //
-// Stock-specific fields (event, round, subject, action, source_url,
-// start_sec, end_sec) are read from SearchTextInput.Additional under
+// Stock-specific fields (event, round, subject, action, start_sec,
+// end_sec) are read from SearchTextInput.Additional under
 // the keys listed in stockChunkStrategyAdditionalKeys. Title, Tags
 // and Category come from the typed top-level fields so the consumer
 // (e.g. the finalizer in
@@ -167,7 +164,6 @@ func stockChunkStrategy(input appsearchtext.SearchTextInput) string {
 	roundN := strings.TrimSpace(add["round"])
 	subject := strings.TrimSpace(add["subject"])
 	action := strings.TrimSpace(add["action"])
-	sourceURL := strings.TrimSpace(add["source_url"])
 	startSec := strings.TrimSpace(add["start_sec"])
 	endSec := strings.TrimSpace(add["end_sec"])
 
@@ -197,13 +193,7 @@ func stockChunkStrategy(input appsearchtext.SearchTextInput) string {
 		seg4 = "Tags: " + joinTags(input.Tags)
 	}
 
-	// ── Segment 5: "Source: {source_url}" ────────────────────────
-	var seg5 string
-	if sourceURL != "" {
-		seg5 = "Source: " + sourceURL
-	}
-
-	return joinNonEmpty(" ", prefix, seg1, seg2, seg3, seg4, seg5)
+	return joinNonEmpty(" ", prefix, seg1, seg2, seg3, seg4)
 }
 
 // composeStockHeader renders "Stock video from {event} round {N}".

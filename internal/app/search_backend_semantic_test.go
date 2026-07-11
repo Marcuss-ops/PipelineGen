@@ -19,6 +19,7 @@ import (
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 )
 
 // ── Mock types ─────────────────────────────────────────────────────────
@@ -101,6 +102,43 @@ func (m *mockDelivery) BuildAuthorizedURL(_ context.Context, _ search.Actor, ass
 	return "https://cdn.example/" + assetID, nil
 }
 
+type mockReranker struct {
+	enabled bool
+	weight  float64
+	topK    int
+	results []reranker.Result
+	err     error
+	called  int
+	lastQ   string
+	lastIDs []string
+}
+
+func (m *mockReranker) IsEnabled() bool { return m != nil && m.enabled }
+func (m *mockReranker) Weight() float64 {
+	if m == nil || m.weight <= 0 {
+		return 0.35
+	}
+	return m.weight
+}
+func (m *mockReranker) TopK() int {
+	if m == nil || m.topK <= 0 {
+		return 30
+	}
+	return m.topK
+}
+func (m *mockReranker) Rerank(_ context.Context, query string, candidates []reranker.Candidate) ([]reranker.Result, error) {
+	m.called++
+	m.lastQ = query
+	m.lastIDs = make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		m.lastIDs = append(m.lastIDs, c.ID)
+	}
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.results, nil
+}
+
 // newSemanticBackend builds a semanticSearchBackend from mocks.
 func newSemanticBackend(reg *mockEmbeddingRegistry, vs *mockVectorStore, mr *mockMediaReader, del *mockDelivery) *semanticSearchBackend {
 	return &semanticSearchBackend{
@@ -110,6 +148,12 @@ func newSemanticBackend(reg *mockEmbeddingRegistry, vs *mockVectorStore, mr *moc
 		delivery:    del,
 		log:         nil, // nil-log exercises the warn() nil guard
 	}
+}
+
+func newSemanticBackendWithReranker(reg *mockEmbeddingRegistry, vs *mockVectorStore, mr *mockMediaReader, del *mockDelivery, rk *mockReranker) *semanticSearchBackend {
+	b := newSemanticBackend(reg, vs, mr, del)
+	b.reranker = rk
+	return b
 }
 
 // ── Test 1: ANN search ─────────────────────────────────────────────────
@@ -341,6 +385,63 @@ func TestSemanticBackendFiltersLifecycle(t *testing.T) {
 	if reg.callsByChan[search.ChannelText] != 1 {
 		t.Errorf("expected exactly 1 EmbedQuery on ChannelText, got %d",
 			reg.callsByChan[search.ChannelText])
+	}
+}
+
+// ── Test 6b: reranker reorders top candidates ─────────────────────────
+
+func TestSemanticBackendRerankerReordersTopCandidates(t *testing.T) {
+	reg := &mockEmbeddingRegistry{vec: []float32{0.9, 0.8}}
+	vs := &mockVectorStore{
+		annRes: []assetsearch.VectorSearchResult{
+			{AssetID: "asset-1", Score: 0.95},
+			{AssetID: "asset-2", Score: 0.90},
+		},
+	}
+	mr := &mockMediaReader{
+		assets: []search.MediaAsset{
+			{ID: "asset-1", Name: "First Clip", Source: "youtube", MediaType: "video", SearchText: "Pacquiao pressure round 7"},
+			{ID: "asset-2", Name: "Second Clip", Source: "youtube", MediaType: "video", SearchText: "Pacquiao hurts Broner near ropes"},
+		},
+	}
+	rk := &mockReranker{
+		enabled: true,
+		weight:  0.5,
+		topK:    2,
+		results: []reranker.Result{
+			{ID: "asset-2", RerankScore: 0.98},
+			{ID: "asset-1", RerankScore: 0.10},
+		},
+	}
+	del := &mockDelivery{}
+	b := newSemanticBackendWithReranker(reg, vs, mr, del, rk)
+
+	q := search.Query{
+		Text:  "Pacquiao near the ropes",
+		Mode:  search.SearchModeANN,
+		Limit: 2,
+		Filters: search.Filters{
+			Source: "youtube",
+		},
+	}
+	candidates, err := b.Search(context.Background(), q)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rk.called != 1 {
+		t.Fatalf("expected reranker to be called once, got %d", rk.called)
+	}
+	if len(rk.lastIDs) != 2 {
+		t.Fatalf("expected two rerank candidates, got %d", len(rk.lastIDs))
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("expected 2 candidates, got %d", len(candidates))
+	}
+	if candidates[0].AssetID != "asset-2" {
+		t.Fatalf("expected reranker to move asset-2 first, got %q", candidates[0].AssetID)
+	}
+	if candidates[0].Score < candidates[1].Score {
+		t.Fatalf("expected adjusted scores to be ranked descending, got %+v", candidates)
 	}
 }
 

@@ -89,7 +89,6 @@ func TestYoutubeStrategy(t *testing.T) {
 		Tags:        []string{"boxing", "press conference"},
 		Additional: map[string]string{
 			"hook":             "Ti spacco il culo!",
-			"source_url":       "https://www.youtube.com/watch?v=abc123",
 			"speakers":         "Adrien Broner Manny Pacquiao",
 			"mentioned_people": "Floyd Mayweather",
 		},
@@ -102,7 +101,6 @@ func TestYoutubeStrategy(t *testing.T) {
 		"Video description here.",
 		"boxing press conference",
 		"Ti spacco il culo!",
-		"https://www.youtube.com/watch?v=abc123",
 		"Adrien Broner Manny Pacquiao",
 		"Floyd Mayweather",
 	)
@@ -267,13 +265,12 @@ func TestStockChunkStrategy_HappyPath(t *testing.T) {
 		Category: "Boxe",
 		Tags:     []string{"boxing", "training", "match"},
 		Additional: map[string]string{
-			"event":      "Pacquiao vs Broner",
-			"round":      "3",
-			"subject":    "Mike Tyson",
-			"action":     "lands a left hook",
-			"source_url": "https://youtube.com/watch?v=abc123",
-			"start_sec":  "12.5",
-			"end_sec":    "35.0",
+			"event":     "Pacquiao vs Broner",
+			"round":     "3",
+			"subject":   "Mike Tyson",
+			"action":    "lands a left hook",
+			"start_sec": "12.5",
+			"end_sec":   "35.0",
 		},
 	}
 	got := stockChunkStrategy(input)
@@ -285,7 +282,6 @@ func TestStockChunkStrategy_HappyPath(t *testing.T) {
 		"lands a left hook",
 		"Segment 12.5s to 35.0s",
 		"Tags: boxing training match",
-		"Source: https://youtube.com/watch?v=abc123",
 	)
 }
 
@@ -378,7 +374,7 @@ func TestStockChunkStrategy_MultiSegment(t *testing.T) {
 }
 
 func TestStockChunkStrategy_SourceURLOmitted(t *testing.T) {
-	// source_url empty → the "Source:" labelled segment is dropped.
+	// Stock search_text must not leak source URL noise.
 	input := appsearchtext.SearchTextInput{
 		AssetID: "stock-5",
 		Source:  "stock",
@@ -392,8 +388,8 @@ func TestStockChunkStrategy_SourceURLOmitted(t *testing.T) {
 		},
 	}
 	got := stockChunkStrategy(input)
-	if strings.Contains(got, "Source:") {
-		t.Errorf("missing source_url must drop the 'Source:' label; got %q", got)
+	if strings.Contains(got, "http://") || strings.Contains(got, "https://") {
+		t.Errorf("stock search_text must not include source URL noise; got %q", got)
 	}
 }
 
@@ -457,10 +453,10 @@ func TestStockChunkStrategy_RoundOnlyHeader(t *testing.T) {
 // caught here. Mirrors the godlike/06 SSOT discipline of pinning
 // canonical-source-of-truth declarations.
 //
-// Coverage scope: the table-driven loop below covers the 5
-// single-source-of-truth keys (event/round/subject/action/
-// source_url). The Segment-bound pair (start_sec + end_sec) is
-// covered separately by TestStockChunkStrategy_SegmentDropOnPartialEndpoints
+// Coverage scope: the table-driven loop below covers the 4
+// single-source-of-truth keys (event/round/subject/action).
+// The Segment-bound pair (start_sec + end_sec) is covered
+// separately by TestStockChunkStrategy_SegmentDropOnPartialEndpoints
 // because the godlike/07 NO-FAKE-AVAILABILITY contract on those
 // keys is asymmetric (BOTH must be present, OR the segment is
 // dropped) and does not fit the per-key single-population pattern.
@@ -474,7 +470,6 @@ func TestStockChunkStrategy_AdditionalKeysContract(t *testing.T) {
 		{"round", "9", "Stock video, round 9"},
 		{"subject", "Subject-Y", "Subject-Y"},
 		{"action", "Action-Z", "Action-Z"},
-		{"source_url", "https://example.com/v", "Source: https://example.com/v"},
 		// start_sec + end_sec are tested together in SegmentBoth below
 		// to lock the godlike/07 NO-FAKE-AVAILABILITY contract.
 	}
@@ -614,11 +609,11 @@ func TestRegistryDispatch_AllSources(t *testing.T) {
 				Title: "YT Title", Transcript: "transcript", Channel: "ch", Description: "desc",
 				Tags: []string{"boxing"},
 				Additional: map[string]string{
-					"hook": "hook text", "source_url": "https://youtu.be/x",
+					"hook":     "hook text",
 					"speakers": "Speaker A", "mentioned_people": "Person B",
 				},
 			},
-			want: []string{"YT Title", "transcript", "ch", "desc", "boxing", "hook text", "https://youtu.be/x", "Speaker A", "Person B"},
+			want: []string{"YT Title", "transcript", "ch", "desc", "boxing", "hook text", "Speaker A", "Person B"},
 		},
 		{
 			name:   "artlist",
@@ -791,7 +786,7 @@ func TestYoutubeStrategy_NilAdditional_NoPanic(t *testing.T) {
 // TestYoutubeStrategy_FullBronerPacquiaoClip pins the canonical
 // PR-YT-DOD-10 contract: the search_text for a YouTube clip MUST
 // contain title, summary (=Description), hook, topics (=Tags),
-// transcript, source_url, speakers, and mentioned_people — NOT
+// transcript, speakers, and mentioned_people — NOT
 // just the filename.
 //
 // This mirrors the real Broner-Pacquiao clip (vdC5GXxS-qU [146-155])
@@ -807,7 +802,6 @@ func TestYoutubeStrategy_FullBronerPacquiaoClip(t *testing.T) {
 		Tags:        []string{"boxing", "trash talk", "press conference"},
 		Additional: map[string]string{
 			"hook":             "Ti sto per spaccare il culo, non preoccuparti di Floyd! Pensa a me!",
-			"source_url":       "https://www.youtube.com/watch?v=vdC5GXxS-qU",
 			"speakers":         "Adrien Broner Manny Pacquiao",
 			"mentioned_people": "Floyd Mayweather",
 		},
@@ -820,7 +814,6 @@ func TestYoutubeStrategy_FullBronerPacquiaoClip(t *testing.T) {
 		"Ti sto per spaccare il culo, non preoccuparti di Floyd! Pensa a me!",
 		"boxing trash talk press conference",
 		"I'm gonna whoop your ass! Don't worry about Floyd, worry about me!",
-		"https://www.youtube.com/watch?v=vdC5GXxS-qU",
 		"Adrien Broner Manny Pacquiao",
 		"Floyd Mayweather",
 		"SHOWTIME Sports",
@@ -840,14 +833,12 @@ func TestYoutubeStrategy_AdditionalFieldsOnly(t *testing.T) {
 		AssetID: "yt-addonly-1",
 		Source:  "youtube",
 		Additional: map[string]string{
-			"hook":       "Check this out!",
-			"source_url": "https://youtu.be/xyz",
+			"hook": "Check this out!",
 		},
 	}
 	got := youtubeStrategy(input)
 	mustContainAll(t, got,
 		"Check this out!",
-		"https://youtu.be/xyz",
 	)
 }
 
@@ -861,7 +852,7 @@ func TestYoutubeStrategy_Idempotent(t *testing.T) {
 		Description: "Desc",
 		Tags:        []string{"a", "b"},
 		Additional: map[string]string{
-			"hook": "Hook", "source_url": "https://x.com",
+			"hook": "Hook",
 		},
 	}
 	first := youtubeStrategy(input)

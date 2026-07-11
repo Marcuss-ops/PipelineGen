@@ -40,6 +40,8 @@ import (
 
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	searchprofile "github.com/Marcuss-ops/PipelineGen/internal/application/search/profile"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 )
 
 // Canonical vector names for the semantic backend. Mirrors the
@@ -91,6 +93,7 @@ type semanticSearchBackend struct {
 	mediaReader search.MediaReadRepository
 	delivery    search.AssetDeliveryService
 	log         *zap.Logger
+	reranker    rerankerClient
 }
 
 // Compile-time assertion: semanticSearchBackend satisfies the
@@ -256,6 +259,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 
 	// ── 9. Post-hydration filters + signed URLs ────────────────
 	candidates := make([]search.Candidate, 0, len(assets))
+	assetsByID := make(map[string]search.MediaAsset, len(assets))
 	for _, a := range assets {
 		// Tag filter: AND semantics (every filter tag must
 		// be present on the asset).
@@ -269,6 +273,7 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		if q.Filters.DurationMsMin > 0 && a.DurationMs < q.Filters.DurationMsMin {
 			continue
 		}
+		assetsByID[a.ID] = a
 
 		// Signed delivery URL. Admin users access files directly
 		// and don't need signed URLs — the signer requires a
@@ -298,7 +303,15 @@ func (b *semanticSearchBackend) Search(ctx context.Context, q search.Query) ([]s
 		})
 	}
 
-	return candidates, nil
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	if adjusted, ok := b.rerankCandidates(ctx, q, candidates, assetsByID); ok {
+		candidates = adjusted
+	}
+
+	return search.RankByScore(candidates), nil
 }
 
 // ── Filter compilation ────────────────────────────────────────────────
@@ -350,6 +363,75 @@ func (b *semanticSearchBackend) warn(msg string, fields ...zap.Field) {
 		return
 	}
 	b.log.Warn(msg, fields...)
+}
+
+func (b *semanticSearchBackend) rerankCandidates(ctx context.Context, q search.Query, candidates []search.Candidate, assetsByID map[string]search.MediaAsset) ([]search.Candidate, bool) {
+	if b.reranker == nil || !b.reranker.IsEnabled() || len(candidates) == 0 {
+		return nil, false
+	}
+
+	prof := searchprofile.Resolve(q.Filters.Source)
+	topK := b.reranker.TopK()
+	if prof.RerankTopK > 0 && (topK <= 0 || prof.RerankTopK < topK) {
+		topK = prof.RerankTopK
+	}
+	if topK <= 0 || topK > len(candidates) {
+		topK = len(candidates)
+	}
+
+	ordered := search.RankByScore(candidates)
+	requestCandidates := make([]reranker.Candidate, 0, topK)
+	for _, cand := range ordered[:topK] {
+		asset, ok := assetsByID[cand.AssetID]
+		if !ok {
+			continue
+		}
+		assetProfile := searchprofile.Resolve(asset.Source)
+		requestCandidates = append(requestCandidates, reranker.Candidate{
+			ID:          cand.AssetID,
+			Text:        searchprofile.CandidateText(assetProfile, asset.Name, asset.Category, asset.Language, asset.SearchText, asset.Tags, asset.Source, asset.MediaType),
+			QdrantScore: float64Ptr(cand.Score),
+		})
+	}
+	if len(requestCandidates) == 0 {
+		return nil, false
+	}
+
+	results, err := b.reranker.Rerank(ctx, q.Text, requestCandidates)
+	if err != nil {
+		b.warn("semantic backend: reranker failed; keeping Qdrant order",
+			zap.Error(err),
+		)
+		return nil, false
+	}
+	if len(results) == 0 {
+		return nil, false
+	}
+
+	rawScores := make(map[string]float64, len(results))
+	for _, r := range results {
+		rawScores[r.ID] = r.RerankScore
+	}
+	normalized := reranker.NormalizeScores(rawScores)
+	weight := b.reranker.Weight()
+	if weight <= 0 {
+		weight = 0.35
+	}
+	weight = prof.BlendWeight(weight)
+
+	updated := make([]search.Candidate, len(candidates))
+	copy(updated, candidates)
+	for i := range updated {
+		if rerankScore, ok := normalized[updated[i].AssetID]; ok {
+			updated[i].Score = reranker.MixedScore(updated[i].Score, rerankScore, weight)
+		}
+	}
+
+	return updated, true
+}
+
+func float64Ptr(v float64) *float64 {
+	return &v
 }
 
 // ── Tag matching ──────────────────────────────────────────────────────
