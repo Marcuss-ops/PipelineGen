@@ -144,6 +144,21 @@ func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string
 // ── RequeueExpiredLeases ────────────────────────────────────────────────
 
 // RequeueExpiredLeases reclaims leased/running jobs with expired leases.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5.b (July 2026, surfaced by
+// lifecycle_p1b_test.go): the previous implementation iterated over
+// the SELECT rows handle WHILE calling requeueSingle → BeginTx, which
+// held a SQLite SHARED read lock on the database for the entire loop.
+// The subsequent BeginTx (for the per-row UPDATE) needed a RESERVED
+// write lock; in non-WAL deployments (and in the P1.B test fixture,
+// which uses a tempfile without WAL) this deadlocked with rows-affected=0.
+//
+// godlike/07 fail-closed: the fix drains the SELECT into a local slice
+// and CLOSES the rows handle BEFORE invoking requeueSingle. This
+// releases the SHARED lock so each per-row BeginTx can acquire its
+// RESERVED lock without contention. The fix is correctness-preserving
+// in WAL mode (the per-row requeue semantics are unchanged) and is
+// the only configuration that works in non-WAL deployments.
 func (r *SQLiteStore) RequeueExpiredLeases(ctx context.Context, now time.Time, limit int) ([]RequeueResult, error) {
 	nowStr := timeutil.FormatRFC3339(now)
 	rows, err := r.db.QueryContext(ctx,
@@ -154,16 +169,31 @@ func (r *SQLiteStore) RequeueExpiredLeases(ctx context.Context, now time.Time, l
 	if err != nil {
 		return nil, fmt.Errorf("requeueExpired: select: %w", err)
 	}
-	defer rows.Close()
 
-	var results []RequeueResult
+	// Buffer the targets to memory and close the rows handle BEFORE
+	// invoking requeueSingle. This releases the SQLite SHARED read
+	// lock so the per-row BeginTx in requeueSingle can acquire its
+	// RESERVED write lock without contention.
+	type reqItem struct {
+		jobID      string
+		retryCount int
+		maxRetries int
+		revision   int
+	}
+	var items []reqItem
 	for rows.Next() {
-		var jobID string
-		var retryCount, maxRetries, revision int
-		if err := rows.Scan(&jobID, &retryCount, &maxRetries, &revision); err != nil {
+		var item reqItem
+		if err := rows.Scan(&item.jobID, &item.retryCount, &item.maxRetries, &item.revision); err != nil {
+			rows.Close()
 			return nil, fmt.Errorf("requeueExpired: scan: %w", err)
 		}
-		results = append(results, r.requeueSingle(ctx, jobID, retryCount, maxRetries, revision, now))
+		items = append(items, item)
+	}
+	rows.Close()
+
+	var results []RequeueResult
+	for _, item := range items {
+		results = append(results, r.requeueSingle(ctx, item.jobID, item.retryCount, item.maxRetries, item.revision, now))
 	}
 	return results, nil
 }
@@ -199,8 +229,19 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 			 lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
 			 WHERE id = ? AND status = ? AND lease_expiry < ? AND revision = ?`,
 			targetStatus, nowStr, jobID, currentStatus, nowStr, revision)
-		if err != nil || mustRowsAffected(res) == 0 {
-			return RequeueResult{JobID: jobID, Error: "rows affected 0"}
+		// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5.b (July 2026, surfaced by
+		// lifecycle_p1b_test.go): split the error check so a SQL exec
+		// error (e.g. "database is locked") is surfaced verbatim in
+		// RequeueResult.Error instead of being masked as the generic
+		// "rows affected 0". Operators need the actual error to
+		// diagnose reclaim failures; the previous one-line check
+		// collapsed both cases and made lock-contention debugging
+		// impossible.
+		if err != nil {
+			return RequeueResult{JobID: jobID, Error: fmt.Sprintf("requeue update: %v", err)}
+		}
+		if mustRowsAffected(res) == 0 {
+			return RequeueResult{JobID: jobID, Error: "rows affected 0 (CAS fence: status/lease_expiry/revision mismatch)"}
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 			evtID, jobID, eventType, eventMsg, "{}", nowStr); err != nil {
@@ -217,8 +258,14 @@ func (r *SQLiteStore) requeueSingle(ctx context.Context, jobID string, retryCoun
 		 worker_id = '', lease_id = '', lease_expiry = NULL, revision = revision + 1, updated_at = ?
 		 WHERE id = ? AND status = ? AND lease_expiry < ? AND revision = ?`,
 		nowStr, "max retries exhausted (reaper)", nowStr, jobID, currentStatus, nowStr, revision)
-	if err != nil || mustRowsAffected(res) == 0 {
-		return RequeueResult{JobID: jobID, Error: "rows affected 0"}
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5.b (July 2026): same split as
+	// the under-max-retries block above — surface the SQL error verbatim
+	// instead of masking it as the generic "rows affected 0".
+	if err != nil {
+		return RequeueResult{JobID: jobID, Error: fmt.Sprintf("requeue exhausted update: %v", err)}
+	}
+	if mustRowsAffected(res) == 0 {
+		return RequeueResult{JobID: jobID, Error: "rows affected 0 (CAS fence: status/lease_expiry/revision mismatch)"}
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		evtID, jobID, "job_failed", "Max retries exhausted", "{}", nowStr); err != nil {
