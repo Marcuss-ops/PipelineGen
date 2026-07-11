@@ -204,21 +204,34 @@ func (h *GenerateJobHandler) handleSingle(
 	}
 	artifacts, persistErr := adapters.PersistGeneratedArtifacts(ctx, j.ID, result, h.log)
 	if persistErr != nil {
+		// FASE 1 (c) — typed-error contract (audit 2026-07-03 P0 #4
+		// criterion "la persistenza locale fallisce"): the handler MUST
+		// NOT swallow persistence failure as a silent drop. The error
+		// is non-nil so the worker's Fail/DeadLetter path takes over
+		// (mirrors the CompletionPort error branch + the FASE 1 (c)
+		// worker manifest-extract branch).
 		if h.log != nil {
-			h.log.Warn("handleSingle: persistence failed — manifest not injected; typed envelope still propagates",
+			h.log.Error("handleSingle: artifact persistence failed — failing job (typed-error contract FASE 1 c)",
 				zap.String("job_id", j.ID),
 				zap.Error(persistErr))
 		}
-		return mapped, nil
+		return mapped, fmt.Errorf("script.generate: artifact persistence: %w", persistErr)
 	}
 	manifest := buildManifestFromArtifacts(j.ID, artifacts)
 	if vErr := manifest.Validate(); vErr != nil {
+		// FASE 1 (c) — typed-error contract (criterion "il manifest non è
+		// decodificabile" + "hash, dimensione o tipo non corrispondono"):
+		// a manifest that fails Validate is a hard handler bug and the
+		// job MUST NOT reach SUCCEEDED. Surface the typed
+		// ErrArtifactManifestInvalid sentinel (FASE 1 c) for the worker
+		// Fail/DeadLetter path; the audit timeline records the typed
+		// code + the validation sub-error in the message.
 		if h.log != nil {
-			h.log.Warn("handleSingle: manifest validation failed — typed envelope only",
+			h.log.Error("handleSingle: manifest validation failed — failing job (typed-error contract FASE 1 c)",
 				zap.String("job_id", j.ID),
 				zap.Error(vErr))
 		}
-		return mapped, nil
+		return mapped, fmt.Errorf("script.generate: artifact manifest: %w: %v", scriptpkg.ErrArtifactManifestInvalid, vErr)
 	}
 	// Merge the C10 dual-shape typed envelope (Data + Artifacts) into
 	// the broker handlerResult map. MergeTypedExecutionEnvelope is
