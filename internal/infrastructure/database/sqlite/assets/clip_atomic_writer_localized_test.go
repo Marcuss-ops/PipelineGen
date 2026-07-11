@@ -328,10 +328,10 @@ func TestCommitClipTextAndIndexEvent_RollbackOnBadCue(t *testing.T) {
 
 	// Assert every surface is empty (rollback complete).
 	for tbl, where := range map[string]string{
-		"media_assets":            "id = ?",
-		"asset_text_tracks":       "asset_id = ?",
+		"media_assets":              "id = ?",
+		"asset_text_tracks":         "asset_id = ?",
 		"asset_text_track_segments": "track_id IN (SELECT id FROM asset_text_tracks WHERE asset_id = ?)",
-		"outbox_events":           "aggregate_id = ?",
+		"outbox_events":             "aggregate_id = ?",
 	} {
 		var count int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM `+tbl+` WHERE `+where, clipID).Scan(&count); err != nil {
@@ -425,10 +425,10 @@ func TestCommitClipTextAndIndexEvent_LocaleNotReady_MissingLang(t *testing.T) {
 		TextTracks: []asset.TextTrack{
 			makeTrackForTest(clipID, "en", "Hello", asset.TextTrackTranscript, asset.TextSourceProvided),
 		},
-		TimedTracks:   []localized.TimedTextTrack{},
-		IndexEvent:    youtubeports.IndexEventPayload{Type: outboxevents.EventAssetIndexRequested},
+		TimedTracks:                    []localized.TimedTextTrack{},
+		IndexEvent:                     youtubeports.IndexEventPayload{Type: outboxevents.EventAssetIndexRequested},
 		RequireAllLanguagesBeforeVideo: true,
-		PreferredLanguages:              []string{"en", "it", "es"},
+		PreferredLanguages:             []string{"en", "it", "es"},
 	}
 
 	err := adapter.CommitClipTextAndIndexEvent(context.Background(), cmd)

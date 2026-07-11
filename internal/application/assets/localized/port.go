@@ -100,7 +100,7 @@ type CommitLocalizedClipCommand struct {
 	// transcript-existence invariant; this is the per-language
 	// coverage invariant. Both are evaluated pre-tx.
 	RequireAllLanguagesBeforeVideo bool
-	PreferredLanguages              []string
+	PreferredLanguages             []string
 }
 
 // TimedTextTrack groups timed cues for a single asset_text_tracks
