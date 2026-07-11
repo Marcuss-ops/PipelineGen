@@ -1,73 +1,75 @@
 // Package script — handler_generate_handler.go is the thin HTTP transport
 // for POST /api/script/generate. It owns only the fields it needs
-// (jobsSvc, log, registry) — 3 fields instead of the 22-field
-// ScriptFlowHandler God Object.
+// (submissionSvc, log, caps, validator) - 4 fields instead of the
+// 22-field ScriptFlowHandler God Object.
 //
 // AZIONE 1 (July 2026): extracted from ScriptFlowHandler per the
 // ScriptFlowHandler God Object decomposition action plan. The
 // Generate method binds the JSON body into a GenerationEnvelopeV2
-// and delegates to the package-level enqueueEnvelopeFn.
+// and delegates to the application submission service contract
+// declared in internal/application/operations.
 //
-// All business logic lives in GenerateOneUseCase / GenerateManyUseCase;
-// this handler is responsible only for:
+// FASE 2 (July 2026): the pre-FASE-2 package-level enqueueEnvelopeFn
+// is REMOVED. HandlerGenerate now talks to the canonical
+// GenerationSubmissionService via the generationSubmitter interface
+// (declared in handler_deps.go); the adapter pattern keeps the
+// HTTP-layer narrow port decoupled from the application concrete
+// Service type.
+//
+// All business logic lives in the application submission service and
+// the generation use cases; this handler is responsible only for:
 //   - JSON binding
 //   - error-to-HTTP mapping
 //   - JSON serialisation
 package script
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	mw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // HandlerGenerate is the narrow HTTP handler for script generation.
-// It owns exactly the 4 fields it needs — no more, no less.
+// It owns exactly the 4 fields it needs - no more, no less.
 // Constructed by NewScriptFlowHandler alongside the legacy
 // ScriptFlowHandler; wired by RegisterRoutes as the handler for
 // POST /api/script/generate.
 //
-// SCRIPTCONTRACT-2026-07-08 PR-2: the new `caps PreflightCaps` field
-// carries the composition-time postprocessor availability into the
-// per-request preflight gate (see `requireRequestedProcessors` in
-// postprocessor_preflight.go). godlike/06 SSOT: PreflightCaps is
-// the SOLE canonical flat-deps surface; the 3 bool fields map 1:1
-// to the root.Domains.VoiceoverService + root.Domains.ImageService
-// + root.Drive.DocClient composition checks. The composition root
-// (internal/app/wire_script.go) builds PreflightCaps at startup;
-// the handler carries the frozen value to the request seam.
+// godlike/06 SSOT: the canonical `generationSubmitter` interface
+// lives in handler_deps.go (the construction seam per its file
+// comment); this file CONSUMES it via the `submitter` field.
+// Defining the interface here would create a duplicate declaration
+// and a build error in the same package.
 type HandlerGenerate struct {
-	jobsSvc   jobservice.Service
+	submitter generationSubmitter
 	log       *zap.Logger
-	registry  *appjobs.Registry
 	caps      PreflightCaps
 	validator *usecase.PayloadValidator
-	store     mw.IdempotencyStore
 }
 
 // NewHandlerGenerate constructs the handler from the canonical deps.
-// All four fields are nil-tolerant at construction time; the
-// Generate method's nil-guards on jobsSvc return 503 at request time.
-// The `caps` field is a flat struct — zero-value is the
-// conservative default (all false, fail-closed for any user-requested
-// processor; this is intentional per godlike/07 NO-FAKE-AVAILABILITY:
-// a misconfigured deployment cannot accidentally accept voiceover
-// requests).
+// All fields except the submitter are nil-tolerant at construction
+// time; the Generate method's nil-guard on submitter returns 503 at
+// request time.
 func NewHandlerGenerate(
-	jobsSvc jobservice.Service,
+	submitter generationSubmitter,
 	log *zap.Logger,
-	registry *appjobs.Registry,
 	caps PreflightCaps,
 	validator *usecase.PayloadValidator,
-	store mw.IdempotencyStore,
 ) *HandlerGenerate {
 	if log == nil {
 		log = zap.NewNop()
@@ -76,12 +78,10 @@ func NewHandlerGenerate(
 		validator = usecase.NewDefaultPayloadValidator()
 	}
 	return &HandlerGenerate{
-		jobsSvc:   jobsSvc,
+		submitter: submitter,
 		log:       log,
-		registry:  registry,
 		caps:      caps,
 		validator: validator,
-		store:     store,
 	}
 }
 
@@ -102,8 +102,8 @@ func (h *HandlerGenerate) GenerateRoute(r *gin.RouterGroup) {
 // Generate handles POST /api/script/generate.
 //
 // Body: a GenerationEnvelopeV2 JSON object.
-//   - Single item  → async enqueue
-//   - Multiple items → async enqueue (batch)
+//   - Single item  → async submission
+//   - Multiple items → async submission (batch)
 //
 // Response:
 //   - Async: {"ok":true, "job_id":"...", "status":"QUEUED", "status_url":"..."}
@@ -143,7 +143,94 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 		return
 	}
 
-	// P0 #4 (June 2026): delegate to the centralized enqueue path.
-	// Uses the package-level enqueueEnvelopeFn shared with legacy adapters.
-	enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry, h.caps, h.store)
+	if h.submitter == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "operations service not initialized"})
+		return
+	}
+
+	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if idempotencyKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":    false,
+			"error": "Idempotency-Key header is required",
+			"code":  "IDEMPOTENCY_KEY_REQUIRED",
+		})
+		return
+	}
+	if !isValidIdempotencyKey(idempotencyKey) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":    false,
+			"error": "Idempotency-Key must be printable ASCII and at most 255 characters",
+			"code":  "INVALID_IDEMPOTENCY_KEY",
+		})
+		return
+	}
+
+	payload, err := json.Marshal(env)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "failed to marshal generation payload"})
+		return
+	}
+	fingerprint := adapters.BuildEnvelopeIdentity(&env)
+	if fingerprint == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":    false,
+			"error": "invalid generation payload identity",
+			"code":  "INVALID_PAYLOAD",
+		})
+		return
+	}
+	sum := sha256.Sum256([]byte(fingerprint))
+	requestHash := hex.EncodeToString(sum[:])
+
+	submitCtx, cancel := context.WithTimeout(c.Request.Context(), enqueueTimeout)
+	defer cancel()
+
+	res, err := h.submitter.Submit(submitCtx, opsapp.SubmitRequest{
+		Scope:          domainops.ScopeScriptGenerate,
+		IdempotencyKey: idempotencyKey,
+		RequestHash:    requestHash,
+		ForceRefresh:   env.ForceRefresh,
+		JobType:        jobpkg.TypeScriptGenerate,
+		JobPayload:     payload,
+		JobPriority:    0,
+		JobMaxRetries:  3,
+	})
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "JOB_ENQUEUE_TIMEOUT"})
+			return
+		}
+		if errors.Is(err, domainops.ErrIdempotencyConflict) {
+			c.JSON(http.StatusConflict, gin.H{
+				"ok":    false,
+				"error": "Idempotency-Key reused with different payload",
+				"code":  "IDEMPOTENCY_KEY_CONFLICT",
+			})
+			return
+		}
+		status := mapErrorToHTTP(err)
+		c.JSON(status, gin.H{
+			"ok":    false,
+			"error": "operations submission failed",
+		})
+		return
+	}
+
+	status := "PENDING"
+	if res != nil && res.IsIdempotencyHit {
+		c.Writer.Header().Set("X-Idempotency-Replay", "true")
+	}
+	jobID := ""
+	if res != nil && res.Operation != nil {
+		jobID = res.Operation.JobID
+	}
+	if jobID == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "operations submission returned empty job_id"})
+		return
+	}
+
+	resp := GenerateResponse{}
+	resp.async(jobID, status, "/api/jobs/"+jobID+"/full", "")
+	c.JSON(http.StatusAccepted, resp)
 }

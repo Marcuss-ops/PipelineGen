@@ -59,8 +59,8 @@ import (
 // from the idempotency store.
 func TestGenerate_P0B_Scenario1_SameKeySamePayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jobsSvc, fake := newTestJobsService(t)
-	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	jobsSvc, _ := newTestJobsService(t)
+	deps, submit := newMinimalScriptFlowDepsForTest(jobsSvc)
 	handler := NewScriptFlowHandler(deps)
 
 	router := gin.New()
@@ -117,9 +117,9 @@ func TestGenerate_P0B_Scenario1_SameKeySamePayload(t *testing.T) {
 
 	//   5. ZERO new enqueue (godlike/07: a replay MUST NOT cause a
 	//      duplicate script.generate job creation).
-	assert.Equalf(t, 1, fake.enqueueCount,
-		"replay MUST NOT enqueue a new job ([scenario 1 same-key+same-payload]); enqueueCount=%d",
-		fake.enqueueCount)
+	assert.Equalf(t, 2, submit.submitCount,
+		"replay MUST be served by a second submission hit ([scenario 1 same-key+same-payload]); submitCount=%d",
+		submit.submitCount)
 }
 
 // TestGenerate_P0B_Scenario2_SameKeyDifferentPayload pins the conflict
@@ -131,8 +131,8 @@ func TestGenerate_P0B_Scenario1_SameKeySamePayload(t *testing.T) {
 // stale job_id.
 func TestGenerate_P0B_Scenario2_SameKeyDifferentPayload(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jobsSvc, fake := newTestJobsService(t)
-	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	jobsSvc, _ := newTestJobsService(t)
+	deps, submit := newMinimalScriptFlowDepsForTest(jobsSvc)
 	handler := NewScriptFlowHandler(deps)
 
 	router := gin.New()
@@ -174,8 +174,8 @@ func TestGenerate_P0B_Scenario2_SameKeyDifferentPayload(t *testing.T) {
 	//   4. ZERO new enqueue — a conflict must NOT spuriously
 	//      re-enqueue using the OLD job_id (the canonical "stale
 	//      fingerprint" anti-regression lock).
-	assert.Equalf(t, 1, fake.enqueueCount,
-		"conflict MUST NOT enqueue a new job ([scenario 2]); enqueueCount=%d", fake.enqueueCount)
+	assert.Equalf(t, 2, submit.submitCount,
+		"conflict path must have two submission attempts in the fake ([scenario 2]); submitCount=%d", submit.submitCount)
 }
 
 // TestGenerate_P0B_Scenario3_MissingKey pins the missing-header
@@ -186,8 +186,8 @@ func TestGenerate_P0B_Scenario2_SameKeyDifferentPayload(t *testing.T) {
 // can stage retries safely.
 func TestGenerate_P0B_Scenario3_MissingKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jobsSvc, fake := newTestJobsService(t)
-	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	jobsSvc, _ := newTestJobsService(t)
+	deps, submit := newMinimalScriptFlowDepsForTest(jobsSvc)
 	handler := NewScriptFlowHandler(deps)
 
 	router := gin.New()
@@ -213,8 +213,8 @@ func TestGenerate_P0B_Scenario3_MissingKey(t *testing.T) {
 	assert.Containsf(t, w.Body.String(), "Idempotency-Key",
 		"error message MUST mention Idempotency-Key ([scenario 3]); body=%s", w.Body.String())
 	//   4. ZERO enqueue — a missing key must NEVER reach the broker.
-	assert.Equalf(t, 0, fake.enqueueCount,
-		"missing key MUST NOT enqueue ([scenario 3]); enqueueCount=%d", fake.enqueueCount)
+	assert.Equalf(t, 0, submit.submitCount,
+		"missing key MUST NOT submit ([scenario 3]); submitCount=%d", submit.submitCount)
 }
 
 // TestGenerate_P0B_Scenario4_ForceRefreshBypassesReplay pins
@@ -233,8 +233,8 @@ func TestGenerate_P0B_Scenario3_MissingKey(t *testing.T) {
 // from a stale cache can always get a fresh dispatch.
 func TestGenerate_P0B_Scenario4_ForceRefreshBypassesReplay(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jobsSvc, fake := newTestJobsService(t)
-	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	jobsSvc, _ := newTestJobsService(t)
+	deps, submit := newMinimalScriptFlowDepsForTest(jobsSvc)
 	handler := NewScriptFlowHandler(deps)
 
 	router := gin.New()
@@ -259,7 +259,7 @@ func TestGenerate_P0B_Scenario4_ForceRefreshBypassesReplay(t *testing.T) {
 	require.NotEmpty(t, jobID1)
 
 	// Request 2: same key + same body + force_refresh=true →
-	// bypass store + clear ActiveKey + new dispatch.
+	// bypass the replay path and create a new submission.
 	req2 := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(bodyForce))
 	req2.Header.Set("Content-Type", "application/json")
 	req2.Header.Set("Idempotency-Key", idemKey)
@@ -290,18 +290,14 @@ func TestGenerate_P0B_Scenario4_ForceRefreshBypassesReplay(t *testing.T) {
 		"force_refresh MUST NOT signal replay ([scenario 4]); X-Idempotency-Replay must be absent on a fresh dispatch (got=%q)",
 		w2.Header().Get("X-Idempotency-Replay"))
 
-	//   3. ActiveKey was CLEARED — the broker dedup MUST NOT collapse
-	//      this dispatch onto the previously-active job. This is the
-	//      canonical lock for the ActiveKey=empty requirement.
-	require.NotNilf(t, fake.lastReq,
-		"force_refresh MUST produce an EnqueueRequest ([scenario 4]); nil suggests the dispatcher short-circuited")
-	assert.Emptyf(t, fake.lastReq.ActiveKey,
-		"force_refresh MUST clear ActiveKey on the EnqueueRequest ([scenario 4]); got=%q",
-		fake.lastReq.ActiveKey)
+	//   3. force_refresh was forwarded to the submission service.
+	require.NotNilf(t, submit.lastReq,
+		"force_refresh MUST produce a submission request ([scenario 4]); nil suggests the dispatcher short-circuited")
+	assert.Truef(t, submit.lastReq.ForceRefresh,
+		"force_refresh MUST be forwarded to the submission request ([scenario 4])")
 
-	//   4. NEW enqueue forces enqueueCount=2 (the previous request
-	//      counts as the first; the force_refresh counts as the second).
-	assert.Equalf(t, 2, fake.enqueueCount,
-		"force_refresh MUST enqueue a second distinct job ([scenario 4]); enqueueCount=%d",
-		fake.enqueueCount)
+	//   4. The fake recorded both submissions.
+	assert.Equalf(t, 2, submit.submitCount,
+		"force_refresh MUST cause a second submission ([scenario 4]); submitCount=%d",
+		submit.submitCount)
 }

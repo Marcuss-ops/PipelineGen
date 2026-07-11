@@ -9,8 +9,8 @@
 //     accepted; NEVER 500 — the failure is client-caused).
 //  2. Structured error response: ok=false + error envelope containing
 //     the typed code AND a recognisable human-readable detail.
-//  3. ZERO jobs enqueued in the broker (fakeJobsService.enqueueCount == 0
-//     AND fakeJobsService.lastReq == nil) — the godlike/07 NO-FAKE-AVAILABILITY
+//  3. ZERO submissions made to the submission service (fakeSubmissionService.submitCount == 0
+//     AND fakeSubmissionService.lastReq == nil) — the godlike/07 NO-FAKE-AVAILABILITY
 //     contract: a malformed request MUST NOT reach the job layer.
 //
 // godlike/07 fail-closed rationale: the validator (handler_generate_handler.go
@@ -165,8 +165,8 @@ func TestGenerate_ValidationContract_V2RejectionPaths(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			jobsSvc, fake := newTestJobsService(t)
-			deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+			jobsSvc, _ := newTestJobsService(t)
+			deps, submit := newMinimalScriptFlowDepsForTest(jobsSvc)
 			handler := NewScriptFlowHandler(deps)
 
 			router := gin.New()
@@ -232,15 +232,11 @@ func TestGenerate_ValidationContract_V2RejectionPaths(t *testing.T) {
 				w.Body.String())
 
 			// P0.A invariant 3: NO JOB enqueued (godlike/07 fail-closed).
-			// The validator runs BEFORE enqueueEnvelopeFn so the broker
-			// must not see a malformed envelope. The single canonical
-			// signal is enqueueCount == 0; check fakeJobsService.Enqueue
-			// in handler_test_fixtures_test.go to confirm lastReq is
-			// set atomically with enqueueCount++, so the single
-			// assertion is sufficient (no need to dual-pin both fields).
-			assert.Equalf(t, 0, fake.enqueueCount,
-				"V2 contract violation MUST NOT enqueue a job; enqueueCount=%d body=%s",
-				fake.enqueueCount, w.Body.String())
+			// The validator runs BEFORE submission, so the fake submitter
+			// must remain untouched.
+			assert.Equalf(t, 0, submit.submitCount,
+				"V2 contract violation MUST NOT submit a job; submitCount=%d body=%s",
+				submit.submitCount, w.Body.String())
 		})
 	}
 }
@@ -271,8 +267,8 @@ func TestGenerate_ValidationContract_MalformedJSONReturns400(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			jobsSvc, fake := newTestJobsService(t)
-			deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+			jobsSvc, _ := newTestJobsService(t)
+			deps, submit := newMinimalScriptFlowDepsForTest(jobsSvc)
 			handler := NewScriptFlowHandler(deps)
 
 			router := gin.New()
@@ -293,9 +289,9 @@ func TestGenerate_ValidationContract_MalformedJSONReturns400(t *testing.T) {
 			assert.Contains(t, w.Body.String(), "invalid payload",
 				"error must surface the binding failure; body=%s",
 				w.Body.String())
-			assert.Equal(t, 0, fake.enqueueCount,
-				"malformed JSON must NOT enqueue; enqueueCount=%d",
-				fake.enqueueCount)
+			assert.Equal(t, 0, submit.submitCount,
+				"malformed JSON must NOT submit; submitCount=%d",
+				submit.submitCount)
 		})
 	}
 }
