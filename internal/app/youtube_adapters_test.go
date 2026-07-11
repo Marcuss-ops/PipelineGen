@@ -48,6 +48,14 @@ func TestYouTubeComposition_ValidDepsBuildSuccessfully(t *testing.T) {
 		AssetRepo:      &stubAssetRepo{},
 		VideoPipeline:  &stubVideoPipeline{},
 		MediaProcessor: &stubMediaProcessor{},
+		// PR-GODOBJ-1 (July 2026): NewService internally constructs
+		// an ExtractionService which panics on nil ProcessSeg
+		// (godlike/07 fail-closed). The test fixture must wire a
+		// minimal ProcessYouTubeSegmentUseCase with stub ports for
+		// the 5 required deps (Cache/VideoPipeline/Hash/Writer/
+		// SegmentsSvc). The stubs are never invoked in this test
+		// (only NewService's construction is exercised).
+		ProcessSeg: stubProcessYouTubeSegmentUseCase(t),
 	}
 
 	err := youtubeapp.ValidateServiceDeps(deps)
@@ -63,6 +71,52 @@ func TestYouTubeComposition_ValidDepsBuildSuccessfully(t *testing.T) {
 	transcript, err := svc.TranscribeAudio(context.Background(), "/tmp/test.wav")
 	assert.NoError(t, err, "TranscribeAudio should no-op when no whisper wired")
 	assert.Empty(t, transcript)
+} // stubProcessYouTubeSegmentUseCase builds a minimal
+// *ProcessYouTubeSegmentUseCase with no-op stubs for the 5
+// required ports (Cache/VideoPipeline/Hash/Writer/SegmentsSvc).
+// Used by composition tests that exercise NewService's
+// construction path without actually invoking the per-segment
+// pipeline. The stubs satisfy the interface signatures so
+// ProcessSegmentDeps.Validate() does not panic.
+func stubProcessYouTubeSegmentUseCase(t *testing.T) *youtubeapp.ProcessYouTubeSegmentUseCase {
+	t.Helper()
+	return youtubeapp.NewProcessYouTubeSegmentUseCase(youtubeapp.ProcessSegmentDeps{
+		Cache:         &stubClipCachePort{},
+		VideoPipeline: &stubVideoPipelinePort{},
+		Hash:          &stubHashServicePort{},
+		Writer:        &stubClipAtomicWriterPort{},
+		SegmentsSvc:   youtubeapp.NewSegmentsService(),
+		Log:           zap.NewNop(),
+	})
+}
+
+// ── ProcessSeg stub ports (PR-GODOBJ-1 composition-test fix) ────
+//
+// Each stub satisfies the EXACT interface signature from
+// internal/application/youtube/ports/ports.go so the compile-time
+// type check at NewProcessYouTubeSegmentUseCase passes.
+
+type stubClipCachePort struct{}
+
+func (s *stubClipCachePort) GetExisting(_ context.Context, _ string) (*youtubetypes.ExtractItem, bool, error) {
+	return nil, false, nil
+}
+
+type stubVideoPipelinePort struct{}
+
+func (s *stubVideoPipelinePort) DownloadAndCutYouTubeVideo(_ context.Context, _ youtubeports.VideoCutRequest) (*youtubeports.VideoCutResult, error) {
+	return &youtubeports.VideoCutResult{}, nil
+}
+
+type stubHashServicePort struct{}
+
+func (s *stubHashServicePort) MD5String(_ string) string        { return "" }
+func (s *stubHashServicePort) MD5File(_ string) (string, error) { return "", nil }
+
+type stubClipAtomicWriterPort struct{}
+
+func (s *stubClipAtomicWriterPort) CommitClipAndIndexEvent(_ context.Context, _ string, _ youtubetypes.ClipAsset, _ youtubeports.IndexEventPayload) error {
+	return nil
 }
 
 // TestYouTubeComposition_AllRequiredDepsRejectsNil validates that every
