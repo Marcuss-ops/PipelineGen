@@ -45,6 +45,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ── Test 2: StrategyReplace bypasses the cache ─────────────────────
@@ -536,6 +537,10 @@ var _ ytmetadata.ClipMetadataBuilder = errBuilder{}
 type noopWriter struct{} //nolint:unused — ctor-required only; errBuilder errors before writer is called
 
 func (noopWriter) UpdateClipMetadataAndRequestIndex(_ context.Context, _ string, _ youtubetypes.CanonicalClipMetadata) error {
+	return nil
+}
+
+func (noopWriter) UpdateClipMetadataTextsAndRequestIndex(_ context.Context, _ string, _ youtubetypes.CanonicalClipMetadata, _ []asset.TextTrack) error {
 	return nil
 }
 

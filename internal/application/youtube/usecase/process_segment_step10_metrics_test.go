@@ -39,6 +39,7 @@ import (
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // step10MetricsMock satisfies the Step10MetricsRecorder port shape
@@ -75,6 +76,10 @@ var _ ytmetadata.ClipMetadataBuilder = errMetadataBuilder{}
 type noopMetadataWriter struct{}
 
 func (noopMetadataWriter) UpdateClipMetadataAndRequestIndex(_ context.Context, _ string, _ youtubetypes.CanonicalClipMetadata) error {
+	return nil
+}
+
+func (noopMetadataWriter) UpdateClipMetadataTextsAndRequestIndex(_ context.Context, _ string, _ youtubetypes.CanonicalClipMetadata, _ []asset.TextTrack) error {
 	return nil
 }
 
