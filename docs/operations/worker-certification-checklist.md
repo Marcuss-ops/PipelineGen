@@ -1,8 +1,5 @@
 # Checklist di certificazione per worker remoto
 
-> Estratto operativo del runbook `04-remote-worker-production-readiness-tickets.md`,
-> sezioni 5 (scheda finale) e 6 (regola di ammissione).
-
 Owner: ops/infra + worker maintainer.
 Reviewer richiesto: almeno un reviewer di runtime e uno di security.
 
