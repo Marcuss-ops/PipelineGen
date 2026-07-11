@@ -124,6 +124,20 @@ type MultilingualConfig struct {
 	// ErrClipLocaleNotReady if a non-und language was never resolved.
 	RequireLanguageCertainty bool `yaml:"require_language_certainty" default:"false"`
 
+	// RequireTranscriptReady is the Fase 5 (PR-PY-CLIPS-CORRETTE-TRADOTTE,
+	// July 2026) wire-up of the pre-existing
+	// localized.CommitLocalizedClipCommand.RequireTranscriptReady
+	// policy gate. When true, the YouTube segment pipeline's
+	// Step 9 super-tx fails PRE-TX with
+	// localized.ErrClipLocaleNotReady if no transcript-origin
+	// READY track is present in the command's TextTracks.
+	// Default false preserves the Fase 2.b atomic-super-tx
+	// behaviour (every well-formed clip is persisted; backfill
+	// is decoupled from clip-write). Operators flip to true
+	// after a successful Fase 5 admin backfill pass to harden
+	// the pipeline (cmd/admin/text_tracks_backfill.go).
+	RequireTranscriptReady bool `yaml:"require_transcript_ready" default:"false"`
+
 	// MigrationFallbackLegacyMetadata is the one-time migration
 	// switch for the Fase 4 video-pipeline cutover
 	// (PR-PY-CLIPS-CORRETTE-TRADOTTE, July 2026). When true, the
