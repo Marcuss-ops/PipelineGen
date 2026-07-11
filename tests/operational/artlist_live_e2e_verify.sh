@@ -58,7 +58,9 @@
 # DRY RUN (does NOT consume an Artlist download — print plan and exit):
 #   DRY_RUN=1 VELOX_ADMIN_TOKEN='...' bash tests/operational/artlist_live_e2e_verify.sh
 #
-# Skip the hermetic gates pre-run:
+# Skip the hermetic gates pre-run AND its precondition (gate-test matrix
+# integrity check that runs first inside the same guard and exits 2 on
+# divergence — see the HERMETIC GATES block below):
 #   SKIP_HERMETICS=1 bash tests/operational/artlist_live_e2e_verify.sh
 
 set -euo pipefail
@@ -90,7 +92,7 @@ Env-var overrides (see Config block below for the full list):
   QDRANT_API_KEY / QDRANT_URL   Qdrant endpoint + auth
   ARTLIST_SCRAPER_SERVER_URL    Node-scraper URL
   VELOX_DATA_DIR                Path to media.db.sqlite
-  SKIP_HERMETICS=1              Bypass the go test '^TestGate' pre-run
+  SKIP_HERMETICS=1              Bypass hermetic gate precondition + '^TestGate' run
 
 Examples:
   $0 --help
@@ -239,7 +241,7 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
               the produced asset_id
             WARN  if no artlist results (embedding pipeline may be stale;
             Qdrant scroll is the canonical truth)
-[INFO] Skip-able: SKIP_HERMETICS=1 bypasses the go test '^TestGate' pre-run.
+[INFO] Skip-able: SKIP_HERMETICS=1 bypasses BOTH the hermetic gate precondition (matrix-integrity check) AND the go test '^TestGate' run.
 [INFO] Cost: zero Artlist downloads, zero DB writes, zero Drive writes.
 [INFO] Verdict JSON would be written to: ${LAST_JSON}
 EOF
