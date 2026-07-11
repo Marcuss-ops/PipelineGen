@@ -157,8 +157,12 @@ func buildDomainMediaServices(
 	// on full-miss chain) is plumbed end-to-end.
 	textTrackResolver := &youtube.TextTrackResolver{
 		Repo:                     textTrackRepo,
-		Subtitles:                subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)
-		Transcriber:              nil,                   // no concrete whisper wired in production composition; resolver.AcquireSegmentText skips priority 5 when nil (Fase 1.b will add the adapter)
+		Subtitles:                subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)		// Transcriber field RETIRED in PR-PY-CLIPS-CORRETTE-TRADOTTE
+		// Fase 1.c (July 2026). The Whisper fallback is now
+		// exclusively owned by TextTrackResolver (which holds its
+		// own Transcriber reference wired above). Removing the
+		// duplicated direct use in Step 10 eliminates the
+		// double-Whisper regression.
 		Log:                      log,
 		RequireLanguageCertainty: cfg.Multilingual.RequireLanguageCertainty,
 	}

@@ -39,6 +39,7 @@ import (
 	"go.uber.org/zap"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ProcessYouTubeSegmentUseCase is the canonical per-segment pipeline.
@@ -140,13 +141,38 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 
 	// Steps 6-9 — subtitle slicing (Step 6) + Whisper fallback (Step 7) +
 	// Drive upload (Step 8) + canonical ClipAsset Writer commit (Step 9).
-	if err := u.step6to9_SubtitlesDriveWriter(ctx, cmd, &out, clipID, startSec, endSec, localPath, fileHash, policyVer); err != nil {
+	//
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c (July 2026): the
+	// returned *asset.ResolvedTextBundle is the canonical
+	// transcript bundle acquired by the 5-priority chain
+	// (TextTrackResolver). It is threaded into Step 10 so Step 10
+	// does NOT re-invoke Whisper on the same audio file. The
+	// bundle can be nil when TextTrackResolver is nil OR all 5
+	// priorities failed; Step 10's contract is fail-closed on
+	// nil bundle (empty transcript, empty cues, no error).
+	bundle, err := u.step6to9_SubtitlesDriveWriter(ctx, cmd, &out, clipID, startSec, endSec, localPath, fileHash, policyVer)
+	if err != nil {
 		return out, err
 	}
 
-	// Step 10 — canonical metadata enrichment via typed Transcriber port
-	// + MetadataService (or no-op when either is nil).
-	if err := u.step10_MetadataEnrich(ctx, cmd, clipID, localPath, duration); err != nil {
+	// Step 10 — metadata enrichment using the resolved
+	// transcript (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c, July 2026):
+	// no Transcriber invocation, no filesystem read; the
+	// transcript + languageCode + cues are sourced from the
+	// ResolvedTextBundle acquired at Step 6-9. A nil bundle
+	// degrades gracefully to empty strings (the metadata
+	// service's downstream contract is unchanged).
+	var (
+		step10Transcript  string
+		step10Language    string
+		step10Cues        []asset.TimedCue
+	)
+	if bundle != nil && !bundle.IsEmpty() {
+		step10Transcript = bundle.PlainText
+		step10Language = bundle.LanguageCode
+		step10Cues = bundle.Cues
+	}
+	if err := u.step10_MetadataEnrich(ctx, cmd, clipID, duration, step10Transcript, step10Language, step10Cues); err != nil {
 		return out, err
 	}
 

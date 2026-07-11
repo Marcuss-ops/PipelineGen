@@ -60,9 +60,14 @@ type ProcessSegmentDeps struct {
 	// Subtitles is an OPTIONAL subtitle-fetcher port
 	// (Step 6). nil → Step 6 silently skips.
 	Subtitles youtubeports.SubtitleFetcherPort
-	// Transcriber is the OPTIONAL Whisper fallback port for
-	// Step 7 (audio-only fallback). nil → Step 7 silently skips.
-	Transcriber youtubeports.WhisperTranscriberPort
+	// Transcriber field RETIRED in PR-PY-CLIPS-CORRETTE-TRADOTTE
+	// Fase 1.c (July 2026). The Whisper fallback at Step 7 is
+	// now exclusively owned by TextTrackResolver (which holds
+	// its own Transcriber reference wired at composition time).
+	// Removing the duplicated direct use in Step 10 eliminates
+	// the double-Whisper regression (Step 7 was invoking
+	// Transcriber via the resolver; Step 10 was also calling it
+	// directly on the same audio file).
 	// Hash is the SHA-256 port required by Step 5 (file hash
 	// fail-closed gate). nil MUST panic (Validate() #3).
 	Hash youtubeports.HashServicePort
