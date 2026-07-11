@@ -13,11 +13,14 @@ package script
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	mw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
@@ -30,9 +33,15 @@ func init() { gin.SetMode(gin.TestMode) }
 // HTTP paths return 200); the remaining methods return errors so the
 // handler's nil/503 short-circuits are exercised without touching real
 // infrastructure.
+//
+// P0 idempotency: Enqueue also mimics the real job broker's
+// FindActiveByKey dedup by returning the same job.ID for repeated
+// calls with the same non-empty ActiveKey.
 type fakeJobsService struct {
-	lastReq   *job.EnqueueRequest
-	nextJobID string
+	lastReq      *job.EnqueueRequest
+	nextJobID    string
+	enqueueCount int
+	activeKeys   map[string]string
 }
 
 // Compile-time assertion: fakeJobsService satisfies job.Service.
@@ -40,10 +49,26 @@ var _ job.Service = (*fakeJobsService)(nil)
 
 func (f *fakeJobsService) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
 	f.lastReq = req
+	f.enqueueCount++
+
+	// P0 idempotency: mimic FindActiveByKey dedup for non-empty ActiveKey.
+	if req.ActiveKey != "" {
+		if f.activeKeys == nil {
+			f.activeKeys = make(map[string]string)
+		}
+		if existingID, ok := f.activeKeys[req.ActiveKey]; ok {
+			return &job.Job{ID: existingID, Status: job.StatusQueued, Type: req.Type}, nil
+		}
+	}
+
 	if f.nextJobID == "" {
 		f.nextJobID = "job-123"
 	}
-	return &job.Job{ID: f.nextJobID, Status: job.StatusQueued, Type: req.Type}, nil
+	id := f.nextJobID
+	if req.ActiveKey != "" {
+		f.activeKeys[req.ActiveKey] = id
+	}
+	return &job.Job{ID: id, Status: job.StatusQueued, Type: req.Type}, nil
 }
 
 func (f *fakeJobsService) Get(ctx context.Context, id string) (*job.Job, error) {
@@ -123,8 +148,65 @@ func newMinimalScriptFlowDepsForTest(jobs job.Service) ScriptFlowDeps {
 				DocumentEnabled:  true,
 			},
 			Validator: usecase.NewDefaultPayloadValidator(),
+			Store:     newInMemoryIdempotencyStore(),
 		},
 	}
+}
+
+// inMemoryIdempotencyStore is a minimal in-memory implementation of
+// middleware.IdempotencyStore for handler-level tests.
+type inMemoryIdempotencyStore struct {
+	mu      sync.RWMutex
+	records map[string]*mw.IdempotencyRecord
+}
+
+func newInMemoryIdempotencyStore() mw.IdempotencyStore {
+	return &inMemoryIdempotencyStore{records: make(map[string]*mw.IdempotencyRecord)}
+}
+
+func (s *inMemoryIdempotencyStore) TryInsert(ctx context.Context, key, bodyHash string) (*mw.IdempotencyRecord, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.records[key]; ok {
+		return nil, true, nil
+	}
+	rec := &mw.IdempotencyRecord{
+		Key:       key,
+		BodyHash:  bodyHash,
+		Status:    "in_flight",
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+	s.records[key] = rec
+	return rec, false, nil
+}
+
+func (s *inMemoryIdempotencyStore) Complete(ctx context.Context, key string, responseStatus int, responseBody []byte, responseContentType string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.records[key]
+	if !ok {
+		return mw.ErrIdempotencyKeyNotFound
+	}
+	rec.Status = "completed"
+	rec.ResponseStatus = responseStatus
+	rec.ResponseBody = responseBody
+	rec.ResponseCT = responseContentType
+	return nil
+}
+
+func (s *inMemoryIdempotencyStore) Get(ctx context.Context, key string) (*mw.IdempotencyRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	rec, ok := s.records[key]
+	if !ok {
+		return nil, mw.ErrIdempotencyKeyNotFound
+	}
+	return rec, nil
+}
+
+func (s *inMemoryIdempotencyStore) DeleteExpired(ctx context.Context, now time.Time) (int, error) {
+	return 0, nil
 }
 
 // stubJobStatsReader satisfies appjobs.JobStatsReader with a

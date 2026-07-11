@@ -36,6 +36,12 @@ type GenerationEnvelopeV2 struct {
 	// through logs and job metadata.
 	CorrelationID string `json:"correlation_id,omitempty"`
 
+	// ForceRefresh bypasses the idempotency store and active-key
+	// dedup for this envelope. When true, a brand-new script.generate
+	// job is always enqueued, even if the same Idempotency-Key has
+	// an active or completed record.
+	ForceRefresh bool `json:"force_refresh,omitempty"`
+
 	// Items is the list of generation items. Must contain at least
 	// one entry. For single-item generation, use one item. For
 	// batch generation, use multiple items — each is independently

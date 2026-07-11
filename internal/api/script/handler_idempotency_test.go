@@ -1,26 +1,3 @@
-// Package script -- handler_idempotency_test.go pins Issue 5 / P1's
-// handler-side Idempotency-Key contract.
-//
-// What this test exercises:
-//
-//  1. POST /api/script/generate with a GenerationEnvelopeV2 body AND
-//     an Idempotency-Key HTTP header.
-//  2. The handler reads the header (Stripe / AWS-SQS convention),
-//     whitespace-trims it, and stamps it onto the
-//     GenerateEnqueueRequest.ActiveKey field (which is already wired
-//     through to broker via EnqueueGenerationJob).
-//  3. fakeJobsService (defined in handler_test.go in the same
-//     package) captures the resulting *job.EnqueueRequest; the test
-//     asserts capturedActiveKey equals the original header value.
-//
-// Non-trivial interior: handler_generate.go used to drop the header.
-// The test is the regression guard for the Issue 5 fix.
-//
-// Header-wins precedence is the canonical rule: even if a future PR
-// adds an idempotency_key JSON body field, the header must take
-// priority. This test pins the header-only path today; a sibling
-// body-field test can land in lockstep when / if the body field
-// ships.
 package script
 
 import (
@@ -33,130 +10,251 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// captureActiveKeyFromHandler runs against an in-process httptest server
-// the same way the Issue-1 canned-job handler test routes the smoke
-// path. Returns the captured EnqueueRequest's ActiveKey verbatim so
-// the caller can assert on the real routing outcome (instead of
-// mocking the helper).
-func captureActiveKeyFromHandler(t *testing.T, idempotencyKey string) string {
-	t.Helper()
+// TestGenerate_ActiveKeyReturnsSameJobID verifies that two requests
+// with different Idempotency-Keys but the same payload derive the
+// same ActiveKey and therefore return the same active job_id.
+func TestGenerate_ActiveKeyReturnsSameJobID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jobsSvc, _ := newTestJobsService(t)
+	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	handler := NewScriptFlowHandler(deps)
 
-	parentSvc, fake := newTestJobsService(t)
-	handler := NewScriptFlowHandler(newMinimalScriptFlowDepsForTest(parentSvc))
 	router := gin.New()
-	rg := router.Group("/api/script")
-	handler.RegisterRoutes(rg)
+	handler.RegisterRoutes(router.Group("/api/script"))
 
-	server := httptest.NewServer(router)
-	defer server.Close()
+	body := `{"version":2,"preset":"custom","items":[{"id":"item-1","source":{"type":"text","topic":"test"},"script_params":{"target_words":100}}]}`
 
-	// Minimal valid envelope body -- the handler runs env.Validate(),
-	// which accepts any non-empty Title + Source.Text-shaped item.
-	body := map[string]any{
-		"version": 2,
-		"preset":  "custom",
-		"items": []map[string]any{
-			{
-				"id":    "idempotency-test",
-				"title": "Idempotency Test Item",
-				"script_params": map[string]any{
-					"target_words": 150,
-				},
-				"source": map[string]any{
-					"type":        "text",
-					"topic":       "idempotency",
-					"source_text": "idempotency fixture",
-				},
-			},
-		},
-	}
-	raw, err := json.Marshal(body)
-	require.NoError(t, err, "test envelope must marshal cleanly")
+	req1 := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("Idempotency-Key", "idem-active-1")
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	require.Equal(t, http.StatusAccepted, w1.Code)
 
-	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/script/generate", bytes.NewReader(raw))
-	require.NoError(t, err)
-	req.Header.Set("Content-Type", "application/json")
-	if idempotencyKey != "" {
-		req.Header.Set("Idempotency-Key", idempotencyKey)
-	}
+	var resp1 map[string]any
+	require.NoError(t, json.Unmarshal(w1.Body.Bytes(), &resp1))
+	jobID1 := resp1["job_id"]
+	require.NotEmpty(t, jobID1)
 
-	resp, err := http.DefaultClient.Do(req)
-	require.NoError(t, err)
-	defer resp.Body.Close()
+	// Different Idempotency-Key, same payload → same ActiveKey → same job.
+	req2 := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Idempotency-Key", "idem-active-2")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	require.Equal(t, http.StatusAccepted, w2.Code)
 
-	// The handler returns 200 with { ok, job_id, status, status_url };
-	// validation/auth failures would return 4xx with { ok:false, error }.
-	// Both are valid here -- the load-bearing invariant is that the
-	// fake's captured EnqueueRequest reflects whatever the handler
-	// passed through.
-	if resp.StatusCode != http.StatusOK {
-		// bodies other than 200 may still have flowed through the
-		// helper if the body validated; assert on the captured
-		// request regardless and let the test consumer decide.
-		t.Logf("unexpected status %d; checking captured request anyway", resp.StatusCode)
-	}
-
-	require.NotNil(t, fake.lastReq,
-		"handler must have called jobsSvc.Enqueue at least once; got nil lastReq")
-	return fake.lastReq.ActiveKey
+	var resp2 map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp2))
+	assert.Equal(t, jobID1, resp2["job_id"], "same payload must derive same ActiveKey and return same active job_id")
 }
 
-// TestHandler_AcceptsIdempotencyKey is the canonical Issue 5 / P1
-// handler-side contract pin. Footer contract:
-//
-//   - handler reads header `Idempotency-Key`;
-//   - whitespace-trims it;
-//   - sets it on GenerateEnqueueRequest.ActiveKey;
-//   - EnqueueGenerationJob forwards it into the broker's
-//     EnqueueRequest.ActiveKey.
-//
-// The test asserts against fakeJobsService.lastReq.ActiveKey after
-// the helper round-trip -- the value the broker would receive --
-// so the contract is pinned at the closest observable seam.
-func TestHandler_AcceptsIdempotencyKey(t *testing.T) {
-	t.Parallel()
+func TestGenerate_IdempotencyKeyRequired(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jobsSvc, _ := newTestJobsService(t)
+	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	handler := NewScriptFlowHandler(deps)
 
-	cases := []struct {
-		name string
-		raw  string // header value as the client sent it
-		want string // expected ActiveKey the broker sees
-		setH bool   // whether to send the Idempotency-Key header at all
-	}{
-		{
-			name: "header canonical value",
-			raw:  "test-key-12345",
-			want: "test-key-12345",
-			setH: true,
-		},
-		{
-			name: "header whitespace trimmed",
-			raw:  "  test-key-with-padding  ",
-			want: "test-key-with-padding",
-			setH: true,
-		},
-		{
-			name: "absent header leaves ActiveKey empty",
-			raw:  "",
-			want: "",
-			setH: false,
-		},
-	}
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/script"))
 
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	body := `{"version":2,"preset":"custom","items":[{"id":"item-1","source":{"type":"text","topic":"test"},"script_params":{"target_words":100}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	// No Idempotency-Key header
 
-			var header string
-			if tc.setH {
-				header = tc.raw
-			}
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
 
-			got := captureActiveKeyFromHandler(t, header)
-			assert.Equal(t, tc.want, got,
-				"Issue 5 / P1: handler must map Idempotency-Key header to broker EnqueueRequest.ActiveKey (verbatim after trim)")
-		})
-	}
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "IDEMPOTENCY_KEY_REQUIRED")
+}
+
+func TestGenerate_IdempotencyReplayReturnsSameJobID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jobsSvc, fake := newTestJobsService(t)
+	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	handler := NewScriptFlowHandler(deps)
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/script"))
+
+	body := `{"version":2,"preset":"custom","items":[{"id":"item-1","source":{"type":"text","topic":"test"},"script_params":{"target_words":100}}]}`
+	idemKey := "idem-replay-1"
+
+	req1 := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("Idempotency-Key", idemKey)
+
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	require.Equal(t, http.StatusAccepted, w1.Code)
+
+	var resp1 map[string]any
+	require.NoError(t, json.Unmarshal(w1.Body.Bytes(), &resp1))
+	jobID1 := resp1["job_id"]
+	require.NotEmpty(t, jobID1)
+
+	// Second request with same key and same payload should replay cached response
+	req2 := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Idempotency-Key", idemKey)
+
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	require.Equal(t, http.StatusAccepted, w2.Code)
+	assert.Equal(t, "true", w2.Header().Get("X-Idempotency-Replay"))
+
+	var resp2 map[string]any
+	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &resp2))
+	assert.Equal(t, jobID1, resp2["job_id"])
+
+	// Ensure the job service was only enqueued once
+	assert.Equal(t, 1, fake.enqueueCount, "expected only one enqueue for idempotent replay")
+}
+
+func TestGenerate_IdempotencyConflictDifferentPayload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jobsSvc, _ := newTestJobsService(t)
+	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	handler := NewScriptFlowHandler(deps)
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/script"))
+
+	idemKey := "idem-conflict-1"
+	body1 := `{"version":2,"preset":"custom","items":[{"id":"item-1","source":{"type":"text","topic":"test"},"script_params":{"target_words":100}}]}`
+	body2 := `{"version":2,"preset":"custom","items":[{"id":"item-1","source":{"type":"text","topic":"different"},"script_params":{"target_words":100}}]}`
+
+	req1 := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body1))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("Idempotency-Key", idemKey)
+
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	require.Equal(t, http.StatusAccepted, w1.Code)
+
+	req2 := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Idempotency-Key", idemKey)
+
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	require.Equal(t, http.StatusConflict, w2.Code)
+	assert.Contains(t, w2.Body.String(), "IDEMPOTENCY_KEY_CONFLICT")
+}
+
+// TestGenerate_ForceRefreshTrue_BypassesIdempotencyStore verifies that
+// force_refresh=true skips the idempotency store replay and creates a
+// new job even when the same Idempotency-Key already has a completed
+// record.
+func TestGenerate_ForceRefreshTrue_BypassesIdempotencyStore(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jobsSvc, fake := newTestJobsService(t)
+	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	handler := NewScriptFlowHandler(deps)
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/script"))
+
+	idemKey := "idem-force-refresh-1"
+	body := `{"version":2,"preset":"custom","items":[{"id":"item-1","source":{"type":"text","topic":"test"},"script_params":{"target_words":100}}]}`
+
+	// First request: create a completed idempotency record.
+	req1 := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("Idempotency-Key", idemKey)
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	require.Equal(t, http.StatusAccepted, w1.Code)
+
+	// Second request with force_refresh=true and the same key must
+	// bypass the store and enqueue a new job.
+	forceBody := `{"version":2,"preset":"custom","force_refresh":true,"items":[{"id":"item-1","source":{"type":"text","topic":"test"},"script_params":{"target_words":100}}]}`
+	req2 := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(forceBody))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Idempotency-Key", idemKey)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	require.Equal(t, http.StatusAccepted, w2.Code)
+	assert.Equal(t, 2, fake.enqueueCount, "force_refresh=true should enqueue a new job despite existing idempotency record")
+}
+
+// TestGenerate_ForceRefreshTrue_ActiveKeyEmpty verifies that
+// force_refresh=true clears the ActiveKey so the job broker cannot
+// dedup against an active job.
+func TestGenerate_ForceRefreshTrue_ActiveKeyEmpty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jobsSvc, fake := newTestJobsService(t)
+	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	handler := NewScriptFlowHandler(deps)
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/script"))
+
+	body := `{"version":2,"preset":"custom","force_refresh":true,"items":[{"id":"item-1","source":{"type":"text","topic":"test"},"script_params":{"target_words":100}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "idem-force-refresh-2")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusAccepted, w.Code)
+	require.NotNil(t, fake.lastReq)
+	assert.Empty(t, fake.lastReq.ActiveKey, "force_refresh=true must clear ActiveKey")
+}
+
+// TestGenerate_ForceRefreshFalse_ActiveKeySet verifies the default
+// path (force_refresh omitted/false) still derives and sets the
+// ActiveKey for job-level dedup.
+func TestGenerate_ForceRefreshFalse_ActiveKeySet(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jobsSvc, fake := newTestJobsService(t)
+	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	handler := NewScriptFlowHandler(deps)
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/script"))
+
+	body := `{"version":2,"preset":"custom","items":[{"id":"item-1","source":{"type":"text","topic":"test"},"script_params":{"target_words":100}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "idem-force-refresh-3")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusAccepted, w.Code)
+	require.NotNil(t, fake.lastReq)
+	assert.Contains(t, fake.lastReq.ActiveKey, "script.generate:")
+}
+
+func TestGenerate_ActiveKeyDerivedFromFingerprint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	jobsSvc, fake := newTestJobsService(t)
+	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	handler := NewScriptFlowHandler(deps)
+
+	router := gin.New()
+	handler.RegisterRoutes(router.Group("/api/script"))
+
+	body := `{"version":2,"preset":"custom","items":[{"id":"item-1","source":{"type":"text","topic":"test"},"script_params":{"target_words":100}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "idem-active-key-1")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusAccepted, w.Code)
+
+	require.NotNil(t, fake.lastReq)
+	require.True(t, len(fake.lastReq.ActiveKey) > 0, "ActiveKey should be set")
+	assert.Contains(t, fake.lastReq.ActiveKey, "script.generate:")
+
+	var env scriptpkg.GenerationEnvelopeV2
+	require.NoError(t, json.Unmarshal([]byte(body), &env))
+	wantActiveKey := "script.generate:" + adapters.BuildEnvelopeIdentity(&env)
+	assert.Equal(t, wantActiveKey, fake.lastReq.ActiveKey)
 }

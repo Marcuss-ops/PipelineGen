@@ -35,6 +35,10 @@ func BuildItemIdentity(item scriptpkg.GenerationItemV2) string {
 // this is the item identity; for multi-item envelopes it delegates to
 // the canonical BuildFingerprint so envelope identity uses the same
 // hashing path as every other generation fingerprint.
+//
+// Control flags that only affect idempotency/cache behavior (e.g.
+// ForceRefresh) are intentionally ignored so the identity reflects
+// only the content that determines the generated script.
 func BuildEnvelopeIdentity(env *scriptpkg.GenerationEnvelopeV2) string {
 	if env == nil || len(env.Items) == 0 {
 		return ""
