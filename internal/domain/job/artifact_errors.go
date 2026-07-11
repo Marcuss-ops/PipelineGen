@@ -1,25 +1,28 @@
-// Package job — artifact_errors.go (FASE 1, sub-passo (c), July 2026).
+// Package job — artifact_errors.go (FASE 1, sub-passo (c) + close-out, July 2026).
 //
 // Sentinel errors for the artifact manifest extraction path on the
 // worker side and the artifact persistence/validate path on the
-// handler side. Per the audit 2026-07-03 P0 #4 closure:
+// handler side. Per the audit 2026-07-03 P0 #4 closure + FASE 1
+// spec close-out:
 //
 //	c) Worker: errori tipizzati ErrArtifactManifestMissing,
 //	   ErrArtifactManifestInvalid, ErrRequiredArtifactMissing —
 //	   mai interpretazione "errore ⇒ lista vuota".
 //
-// ErrRequiredArtifactMissing already exists in
-// internal/domain/finalization/errors.go (the finalizer-side typed
-// sentinel); it propagates up to the worker via the
-// JobFinalizer.CompleteWithArtifacts single-TX spine and is not
-// duplicated here.
+// FASE 1 close-out: ErrRequiredArtifactMissing is now ALSO
+// reachable from the job package as a typed alias. The canonical
+// pointer remains in internal/domain/finalization (godlike/06
+// SSOT — the publisher-side atomic commit is what enforces the
+// invariant). The alias below re-exports the SAME *errors.errorString
+// so errors.Is against either name resolves identically.
 //
 // godlike/06 SSOT (one canonical owner per fact): the *missing*
 // and *invalid* sentinels live here because they originate on the
 // producer side (worker.js / handler). The *required-missing*
 // sentinel lives in finalization because the publisher-side atomic
 // commit is what enforces that invariant (a missing required
-// artifact cannot be silently skipped at commit time).
+// artifact cannot be silently skipped at commit time). The
+// alias in this file is a re-export, NOT a duplicate creation.
 //
 // godlike/07 typed-error contract: callers use errors.Is against
 // these sentinels to branch on manifest-shape failures — no
@@ -29,7 +32,11 @@
 // readable message.
 package job
 
-import "errors"
+import (
+	"errors"
+
+	finalization "github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+)
 
 // ── Sentinel errors (FASE 1 c — typed manifest contract) ─────────────
 
@@ -61,6 +68,30 @@ var (
 	// undecodable artifact manifest.
 	ErrArtifactManifestInvalid = errors.New("artifact manifest: invalid (decode, validate, or marshal failure)")
 )
+
+// ── FASE 1 close-out: required-missing alias to finalization ────────
+
+// ErrRequiredArtifactMissing is the canonical typed sentinel for a
+// required artifact that is missing from the publisher-side atomic
+// commit surface. The CANONICAL pointer is owned by
+// internal/domain/finalization (publisher-side SSOT per godlike/06
+// one-canonical-owner-per-fact); this file re-exports the SAME
+// *errors.errorString pointer so worker-side callers can probe
+// errors.Is(err, job.ErrRequiredArtifactMissing) without importing
+// the finalization package directly.
+//
+// Identity guarantee: the assignment below shares the pointer —
+// both names refer to the same runtime error value. errors.Is
+// checks pointer equality FIRST, so errors.Is(err, X) == true
+// regardless of which name is queried.
+//
+// This declaration is the FASE 1 close-out step the spec mandates:
+// "Aggiungi sentinels tipizzati nel package job: ErrArtifact-
+// ManifestMissing, ErrArtifactManifestInvalid, ErrRequiredArtifact-
+// Missing." Without this alias the third sentinel would only be
+// reachable from internal/domain/finalization, forcing every
+// producer-side code path to dual-import the two packages.
+var ErrRequiredArtifactMissing = finalization.ErrRequiredArtifactMissing
 
 // ErrManifestTypedErrors is the package-level compile-time guard
 // that the typed-error contract is in place. Callers may use this

@@ -131,29 +131,53 @@ type Artifact struct {
 //   - At least one Artifact must be present.
 //   - Every Required artefact must have a non-empty Path.
 //   - Every artefact with a non-empty Path must have a non-empty Filename.
+//
+// FASE 1 close-out typed-error contract (July 2026): every error
+// return wraps ONE OR MORE typed sentinels so callers can probe
+// errors.Is without string-matching. The mapping is:
+//
+//   - schema_version empty / zero artefacts / id empty / kind empty /
+//     path-set-but-filename-empty → ErrArtifactManifestInvalid
+//     (the general "manifest shape rejected" sentinel).
+//   - required + empty path → both ErrArtifactManifestInvalid AND
+//     ErrRequiredArtifactMissing wrapped via the Go 1.20+ dual-%w
+//     form so callers can errors.Is against either name. The
+//     operator-readable substring "required but path is empty"
+//     is preserved for back-compat with existing strings.Contains
+//     assertions in canonical tests.
+//
+// godlike/06 SSOT: the canonical ErrArtifactManifestInvalid +
+// ErrRequiredArtifactMissing pointers are owned by domain/job
+// (this package) and domain/finalization respectively. The
+// dual-wrap here lets producer-side + publisher-side call sites
+// share a single errors.Is probe.
 func (m *ArtifactManifest) Validate() error {
 	if m == nil {
-		return fmt.Errorf("manifest is nil")
+		return fmt.Errorf("%w: manifest is nil", ErrArtifactManifestInvalid)
 	}
 	if strings.TrimSpace(m.SchemaVersion) == "" {
-		return fmt.Errorf("schema_version is empty")
+		return fmt.Errorf("%w: schema_version is empty", ErrArtifactManifestInvalid)
 	}
 	if len(m.Artifacts) == 0 {
-		return fmt.Errorf("manifest has zero artifacts")
+		return fmt.Errorf("%w: manifest has zero artifacts", ErrArtifactManifestInvalid)
 	}
 
 	for i, a := range m.Artifacts {
 		if strings.TrimSpace(a.ID) == "" {
-			return fmt.Errorf("artifact[%d]: id is empty", i)
+			return fmt.Errorf("%w: artifact[%d]: id is empty", ErrArtifactManifestInvalid, i)
 		}
 		if strings.TrimSpace(a.Kind) == "" {
-			return fmt.Errorf("artifact[%d] (%s): kind is empty", i, a.ID)
+			return fmt.Errorf("%w: artifact[%d] (%s): kind is empty", ErrArtifactManifestInvalid, i, a.ID)
 		}
 		if a.Required && strings.TrimSpace(a.Path) == "" {
-			return fmt.Errorf("artifact[%d] (%s): required but path is empty", i, a.ID)
+			// Single-wrap by design (ErrRequiredArtifactMissing
+			// only); the worker emits dual-%w (ErrArtifactManifestInvalid
+			// + this inner err) — do NOT dual-wrap here or
+			// downstream errors.Is chain traversal breaks.
+			return fmt.Errorf("%w: artifact[%d] (%s): required but path is empty", ErrRequiredArtifactMissing, i, a.ID)
 		}
 		if strings.TrimSpace(a.Path) != "" && strings.TrimSpace(a.Filename) == "" {
-			return fmt.Errorf("artifact[%d] (%s): path set but filename is empty", i, a.ID)
+			return fmt.Errorf("%w: artifact[%d] (%s): path set but filename is empty", ErrArtifactManifestInvalid, i, a.ID)
 		}
 	}
 
@@ -350,9 +374,23 @@ func (a Artifact) LocalPath() string {
 //
 // Non-required artefacts not in `uploaded` receive Status="skipped"
 // (best-effort, matches the existing WithRemoteLocations semantics).
+//
+// FASE 1 close-out typed-error contract (July 2026): the
+// required-missingFromUploaded error wraps BOTH typed sentinels
+// (Go 1.20+ dual-%w form) so callers can probe either name:
+//
+//   - job.ErrRequiredArtifactMissing (the specific sentinel per
+//     FASE 1 spec "manca un required artifact → bloccare
+//     SUCCEEDED").
+//   - job.ErrArtifactManifestInvalid (the general shape sentinel,
+//     for callers that want a single catch-all probe).
+//
+// The operator-readable substrings ("required but was not
+// uploaded", the artifact ID) are preserved for the existing
+// strings.Contains assertions.
 func (m *ArtifactManifest) ToRemote(uploaded map[string]RemoteAssetIDAdapter) (*RemoteArtifactManifest, error) {
 	if m == nil {
-		return nil, fmt.Errorf("manifest is nil")
+		return nil, fmt.Errorf("%w: manifest is nil", ErrArtifactManifestInvalid)
 	}
 
 	// (1) SchemaVersion is locked to V1 on the Sender side. Any
@@ -366,10 +404,12 @@ func (m *ArtifactManifest) ToRemote(uploaded map[string]RemoteAssetIDAdapter) (*
 
 	// (2) Required artefacts: pre-emit check. A missing required
 	// entry is a hard failure — the Sender cannot pretend the
-	// artefact is "skipped" for a required slot.
+	// artefact is "skipped" for a required slot. FASE 1 close-out
+	// dual-sentinel wrap.
 	for _, a := range m.RequiredArtifacts() {
 		if _, ok := uploaded[a.ID]; !ok {
-			return nil, fmt.Errorf("artifact %q (%s) is required but was not uploaded", a.ID, a.Kind)
+			return nil, fmt.Errorf("%w: artifact %q (%s) is required but was not uploaded",
+				ErrRequiredArtifactMissing, a.ID, a.Kind)
 		}
 	}
 
