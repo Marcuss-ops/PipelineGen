@@ -20,14 +20,14 @@ import (
 
 // ── SQL receivers (migrated from types_media.go) ──────────────────────
 
-// UpsertLocation inserts or replaces a location record.
+// UpsertLocation inserts or replaces a location record and populates loc.ID.
 func (s *AssetStoreSQLite) UpsertLocation(ctx context.Context, loc *asset.Location) error {
 	now := timeutil.FormatRFC3339(time.Now())
 	isPrimary := 0
 	if loc.IsPrimary {
 		isPrimary = 1
 	}
-	_, err := s.db.ExecContext(ctx, `
+	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO asset_locations
 			(asset_id, location_kind, uri, external_id, web_view_link, download_url,
 			 mime_type, file_size_bytes, file_hash, is_primary, created_at, updated_at)
@@ -47,6 +47,14 @@ func (s *AssetStoreSQLite) UpsertLocation(ctx context.Context, loc *asset.Locati
 		loc.MimeType, loc.FileSizeBytes, loc.FileHash, isPrimary, now, now)
 	if err != nil {
 		return fmt.Errorf("assets.UpsertLocation(%s, %s): %w", loc.AssetID, loc.LocationKind, err)
+	}
+	// Populate the generated ID for new records. SQLite's last_insert_rowid
+	// returns the row ID of the most recent insert; for UPDATE-via-CONFLICT
+	// it returns the existing row ID when sqlite3_last_insert_rowid() is
+	// called after the upsert, which is the behavior of the mattn driver.
+	loc.ID, err = res.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("assets.UpsertLocation(%s, %s): last insert id: %w", loc.AssetID, loc.LocationKind, err)
 	}
 	return nil
 }

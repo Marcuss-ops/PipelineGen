@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jsonextract"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
@@ -81,6 +82,9 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	}
 
 	if e.log != nil {
+		// Log source text metrics without ever logging the raw text.
+		// SourceTextLogFields emits only hash, length, token estimate
+		// and an optional preview.
 		e.log.Info("engine: dispatching script generation",
 			zap.String("title", title),
 			zap.String("topic", topic),
@@ -91,7 +95,8 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 			zap.Int("min_words", minWords),
 			zap.Bool("use_memory", useMemory),
 			zap.Bool("force_refresh", skipMemory),
-			zap.Bool("save_to_db", saveToDB))
+			zap.Bool("save_to_db", saveToDB),
+			zap.Any("source_text", SourceTextLogFields(sourceText, adapters.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})))
 	}
 
 	// Memory gate: check if we have a cached result.

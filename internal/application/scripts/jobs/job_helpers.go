@@ -9,9 +9,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
@@ -43,7 +43,7 @@ func BuildVoiceoverDestination(
 	resolveFolder func(ctx context.Context, input, defaultRootID string) (string, error),
 	log *zap.Logger,
 	title, voiceoverFolderID, voiceoverGroup, voRootID string,
-	groupsResolver *destination.Resolver,
+	groupsResolver ports.VoiceoverGroupResolver,
 ) *voiceover.DestinationRequest {
 	voiceoverFolderID = clips.ExtractDriveFolderID(strings.TrimSpace(voiceoverFolderID))
 	voRootID = clips.ExtractDriveFolderID(strings.TrimSpace(voRootID))
@@ -58,21 +58,21 @@ func BuildVoiceoverDestination(
 	}
 
 	if groupsResolver != nil && strings.TrimSpace(voiceoverGroup) != "" {
-		entry, err := groupsResolver.ResolveByName(ctx, voRootID, voiceoverGroup)
+		folderID, err := groupsResolver.ResolveGroup(ctx, voRootID, voiceoverGroup)
 		switch {
-		case err == nil && entry.FolderID != "":
+		case err == nil && folderID != "":
 			if log != nil {
 				log.Info("routed voiceover via DB groups_resolver",
 					zap.String("voiceover_group", voiceoverGroup),
-					zap.String("folder_id", entry.FolderID),
+					zap.String("folder_id", folderID),
 					zap.String("parent_id", voRootID))
 			}
 			return &voiceover.DestinationRequest{
-				FolderID:        entry.FolderID,
+				FolderID:        folderID,
 				SubfolderName:   subfolderName,
 				CreateSubfolder: true,
 			}
-		case err != nil && !errors.Is(err, destination.ErrNotFound):
+		case err != nil && !errors.Is(err, ports.ErrVoiceoverGroupNotFound):
 			if log != nil {
 				log.Warn("groups_resolver lookup failed unexpectedly, falling back to Drive deep-search",
 					zap.String("voiceover_group", voiceoverGroup),
