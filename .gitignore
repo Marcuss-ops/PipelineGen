@@ -206,6 +206,15 @@ local.env
 # the entire `scripts/archcheck/` tree (the W1 PR1 regression surfaced this).
 /archcheck
 
+# Qdrant reindex binary (built locally from cmd/admin/reindex_qdrant*.go).
+# Anchored with leading '/' so the pattern matches only the root-level
+# build artifact. Without the anchor, gitignore would match any PATH
+# COMPONENT named that way, which could recursively exclude future source
+# trees with the same path component. 58.8MB ELF executable (dynamically
+# linked, includes debug info); not a test fixture (zero Go/MD/sh/py/yaml
+# references repo-wide — same forward-prevention pattern as /archcheck).
+/_reindex_qdrant
+
 # Docker secrets (never commit tokens)
 secrets/
 
