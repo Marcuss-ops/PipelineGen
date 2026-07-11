@@ -341,12 +341,24 @@ var ErrDailyDownloadLimitExceeded = errors.New("artlist: daily download limit ex
 // positive limit.
 var ErrAutomaticDownloadsDisabled = errors.New("artlist: automatic downloads are disabled (daily limit is 0)")
 
+// DownloadAuditStatus is the lifecycle state of an audited download.
+// Only non-failed rows count against the daily limit, but every row
+// (including failed) is retained for compliance forensics.
+type DownloadAuditStatus string
+
+const (
+	DownloadAuditStatusPending   DownloadAuditStatus = "pending"
+	DownloadAuditStatusSucceeded DownloadAuditStatus = "succeeded"
+	DownloadAuditStatusFailed    DownloadAuditStatus = "failed"
+)
+
 // DownloadAuditRecord is a single audited download event.
 type DownloadAuditRecord struct {
 	AssetID      string
 	ExternalURL  string
 	AccountID    string
 	Provider     string
+	Status       DownloadAuditStatus
 	DownloadedAt string
 }
 
@@ -354,10 +366,16 @@ type DownloadAuditRecord struct {
 // records. It is the canonical port used by the downloader to enforce
 // daily per-account limits and to keep an audit trail of every fetch.
 type DownloadAuditRepository interface {
-	// RecordDownload persists a download audit row.
-	RecordDownload(ctx context.Context, rec DownloadAuditRecord) error
-	// CountDailyDownloads returns the number of downloads recorded for
-	// the given provider/account on the current UTC day.
+	// RecordDownload persists a download audit row and returns its
+	// generated ID. The row is created with status pending so the
+	// daily-limit check stays race-free.
+	RecordDownload(ctx context.Context, rec DownloadAuditRecord) (string, error)
+	// UpdateDownloadStatus updates the status of an existing audit row.
+	UpdateDownloadStatus(ctx context.Context, id string, status DownloadAuditStatus) error
+	// CountDailyDownloads returns the number of non-failed downloads
+	// recorded for the given provider/account on the current UTC day.
+	// Pending rows are counted so concurrent downloads cannot overshoot
+	// the quota; failed rows are excluded.
 	CountDailyDownloads(ctx context.Context, provider, accountID string) (int, error)
 }
 
