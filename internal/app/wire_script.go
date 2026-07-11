@@ -75,8 +75,6 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
@@ -226,19 +224,25 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		zap.Bool("images_enabled", preflightCaps.ImagesEnabled),
 		zap.Bool("document_enabled", preflightCaps.DocumentEnabled))
 
+	submissionSvc, err := buildScriptSubmissionService(root, log)
+	if err != nil {
+		return fmt.Errorf("wireScriptFlow: build script submission service: %w", err)
+	}
+
 	scriptDeps := scriptapi.Dependencies{
 		Generate: scriptapi.GenerateDeps{
-			Jobs:      root.Jobs.Facade,
-			Log:       log,
-			Registry:  appjobs.Compose(),
-			Caps:      preflightCaps,
-			Validator: usecase.NewPayloadValidator(cfg.Scripts),
-			Store:     root.Repos.IdempotencyStore,
+			Submission: submissionSvc,
+			Log:        log,
+			Caps:       preflightCaps,
+			Validator:  usecase.NewPayloadValidator(cfg.Scripts),
 		},
+		// FASE 2 (July 2026): JobsDeps.Registry is RETIRED. The
+		// canonical MaxRetries lookup moved into
+		// GenerationSubmissionService at composition time; JobsHandler
+		// now owns only the GetJobStatus surface.
 		Jobs: scriptapi.JobsDeps{
-			Jobs:     root.Jobs.Facade,
-			Log:      log,
-			Registry: appjobs.Compose(),
+			Jobs: root.Jobs.Facade,
+			Log:  log,
 		},
 		ClipsSearcher: clipsSearcher,
 		AdminToken:    adminToken,

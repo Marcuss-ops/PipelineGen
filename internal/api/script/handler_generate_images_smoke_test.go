@@ -25,18 +25,17 @@ import (
 func TestHandlerGenerate_SmokeSceneImagesPayload(t *testing.T) {
 	t.Parallel()
 
-	jobsSvc, fake := newTestJobsService(t)
+	jobsSvc, _ := newTestJobsService(t)
+	deps, submit := newMinimalScriptFlowDepsForTest(jobsSvc)
 	handler := NewHandlerGenerate(
-		jobsSvc,
+		submit,
 		zap.NewNop(),
-		nil,
 		PreflightCaps{
 			VoiceoverEnabled: true,
 			ImagesEnabled:    true,
 			DocumentEnabled:  true,
 		},
 		usecase.NewDefaultPayloadValidator(),
-		nil,
 	)
 
 	router := gin.New()
@@ -74,14 +73,14 @@ func TestHandlerGenerate_SmokeSceneImagesPayload(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusAccepted, rec.Code)
-	require.NotNil(t, fake.lastReq, "handler must enqueue a job")
-	require.Equal(t, "script.generate", fake.lastReq.Type)
+	require.NotNil(t, submit.lastReq, "handler must submit a job")
+	require.Equal(t, "script.generate", submit.lastReq.JobType)
 
 	var env scriptpkg.GenerationEnvelopeV2
-	payload, ok := fake.lastReq.Payload.(json.RawMessage)
-	require.True(t, ok, "payload handed to the job queue must be json.RawMessage")
+	payload := submit.lastReq.JobPayload
 	require.NoError(t, json.Unmarshal(payload, &env))
 	require.Len(t, env.Items, 1)
 	require.True(t, env.Items[0].Output.GenerateSceneImages.AsBool(),
 		"payload handed to the job queue must preserve generate_scene_images=true")
+	_ = deps
 }

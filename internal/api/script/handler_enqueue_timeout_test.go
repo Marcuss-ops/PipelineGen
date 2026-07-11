@@ -11,54 +11,29 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
+	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
 )
 
-// slowJobsService is a test double that blocks until the provided
-// context is cancelled or the timeout fires. It is used to exercise
-// the JOB_ENQUEUE_TIMEOUT path.
-type slowJobsService struct {
+type slowSubmissionService struct {
 	blockDuration time.Duration
 }
 
-var _ job.Service = (*slowJobsService)(nil)
+var _ interface {
+	Submit(context.Context, opsapp.SubmitRequest) (*opsapp.SubmitResult, error)
+} = (*slowSubmissionService)(nil)
 
-func (s *slowJobsService) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
+func (s *slowSubmissionService) Submit(ctx context.Context, req opsapp.SubmitRequest) (*opsapp.SubmitResult, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-time.After(s.blockDuration):
-		return &job.Job{ID: "job-slow", Status: job.StatusQueued, Type: req.Type}, nil
+		return &opsapp.SubmitResult{
+			Operation: &domainops.Operation{JobID: "job-slow"},
+		}, nil
 	}
-}
-
-func (s *slowJobsService) Get(ctx context.Context, id string) (*job.Job, error) {
-	return nil, nil
-}
-
-func (s *slowJobsService) Cancel(ctx context.Context, id string) error {
-	return nil
-}
-
-func (s *slowJobsService) List(ctx context.Context, filter job.Filter) ([]job.Job, error) {
-	return nil, nil
-}
-
-func (s *slowJobsService) IsTerminal(status job.Status) bool {
-	return status.IsTerminal()
-}
-
-func (s *slowJobsService) RegisterHandler(jobType string, handler any) error {
-	return nil
-}
-
-func (s *slowJobsService) ListEvents(ctx context.Context, jobID string) ([]job.Event, error) {
-	return nil, nil
-}
-
-func (s *slowJobsService) Retry(ctx context.Context, id string) (*job.Job, error) {
-	return nil, nil
 }
 
 // TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns503 pins the P0 async
@@ -73,11 +48,19 @@ func TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns503(t *testing.T) {
 	enqueueTimeout = 50 * time.Millisecond
 	defer func() { enqueueTimeout = originalTimeout }()
 
-	jobsSvc := &slowJobsService{blockDuration: 5 * time.Second}
-	handler := NewScriptFlowHandler(newMinimalScriptFlowDepsForTest(jobsSvc))
+	handler := NewHandlerGenerate(
+		&slowSubmissionService{blockDuration: 5 * time.Second},
+		zap.NewNop(),
+		PreflightCaps{
+			VoiceoverEnabled: true,
+			ImagesEnabled:    true,
+			DocumentEnabled:  true,
+		},
+		nil,
+	)
 	router := gin.New()
 	rg := router.Group("/api/script")
-	handler.RegisterRoutes(rg)
+	handler.GenerateRoute(rg)
 
 	req := httptest.NewRequest("POST", "/api/script/generate", strings.NewReader(`{"version":2,"preset":"custom","items":[{"id":"timeout-test","title":"Timeout Test","language":"en","script_params":{"target_words":150},"source":{"type":"text","topic":"timeout","source_text":"timeout fixture"}}]}`))
 	req.Header.Set("Content-Type", "application/json")

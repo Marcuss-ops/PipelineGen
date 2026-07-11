@@ -14,6 +14,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -25,10 +26,11 @@ import (
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -48,6 +50,81 @@ type fakeJobsService struct {
 	nextJobID    string
 	enqueueCount int
 	activeKeys   map[string]string
+}
+
+// fakeSubmissionService is the test double for the canonical
+// application-layer submission service. It records the last request
+// and reproduces the idempotency / force-refresh semantics used by the
+// HTTP handler tests.
+type fakeSubmissionService struct {
+	mu           sync.Mutex
+	lastReq      *opsapp.SubmitRequest
+	submitCount  int
+	nextJobIndex int
+	records      map[string]*opsapp.SubmitResult
+}
+
+var _ interface {
+	Submit(context.Context, opsapp.SubmitRequest) (*opsapp.SubmitResult, error)
+} = (*fakeSubmissionService)(nil)
+
+func (f *fakeSubmissionService) Submit(ctx context.Context, req opsapp.SubmitRequest) (*opsapp.SubmitResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	copyReq := req
+	f.lastReq = &copyReq
+	f.submitCount++
+
+	if f.records == nil {
+		f.records = make(map[string]*opsapp.SubmitResult)
+	}
+	key := string(req.Scope) + "|" + req.IdempotencyKey
+	if existing, ok := f.records[key]; ok {
+		if !req.ForceRefresh {
+			if existing.Operation != nil && existing.Operation.RequestHash == req.RequestHash {
+				return &opsapp.SubmitResult{Operation: existing.Operation, IsIdempotencyHit: true}, nil
+			}
+			return nil, domainops.ErrIdempotencyConflict
+		}
+	}
+
+	f.nextJobIndex++
+	jobID := req.JobID
+	if jobID == "" {
+		jobID = fmt.Sprintf("job-fake-%d", f.nextJobIndex)
+	}
+	opID := req.OperationID
+	if opID == "" {
+		opID = fmt.Sprintf("op-fake-%d", f.nextJobIndex)
+	}
+	op := &domainops.Operation{
+		OperationID:           opID,
+		Scope:                 req.Scope,
+		IdempotencyKey:        req.IdempotencyKey,
+		RequestHash:           req.RequestHash,
+		JobID:                 jobID,
+		State:                 domainops.StateQueued,
+		CreatedAt:             time.Unix(0, int64(f.nextJobIndex)),
+		UpdatedAt:             time.Unix(0, int64(f.nextJobIndex)),
+		SupersedesOperationID: "",
+	}
+	res := &opsapp.SubmitResult{
+		Operation:   op,
+		IsSupersede: req.ForceRefresh && existingResultHasOperation(f.records[key]),
+	}
+	if req.ForceRefresh {
+		if prior := f.records[key]; prior != nil && prior.Operation != nil {
+			op.SupersedesOperationID = prior.Operation.OperationID
+			res.IsSupersede = true
+		}
+	}
+	f.records[key] = res
+	return res, nil
+}
+
+func existingResultHasOperation(res *opsapp.SubmitResult) bool {
+	return res != nil && res.Operation != nil
 }
 
 // Compile-time assertion: fakeJobsService satisfies job.Service.
@@ -119,12 +196,10 @@ func newTestJobsService(t *testing.T) (job.Service, *fakeJobsService) {
 
 // newMinimalScriptFlowDepsForTest returns the canonical minimal
 // ScriptFlowDeps for unit tests (PR-script-deps-slim, July 2026):
-// the slim 5-field bag with Jobs + Generate populated. Generate is
-// populated to the all-caps-enabled conservative default so the
-// SCRIPTCONTRACT-2026-07-08 PR-2 preflight gate (handler_enqueue.go
-// ::enqueueEnvelopeFn) short-circuits to the enqueue path instead
-// of 503-fail-closing on any user envelope that doesn't request
-// voiceover/document/images (the canonical 99% of test envelopes).
+// the slim bag with Jobs + Generate populated. Generate is wired to
+// a fake submission service that reproduces the canonical submission
+// semantics (fresh submit, replay, conflict, force-refresh) without
+// touching SQLite.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: this is the canonical test
 // fixture; weakening the preflight gate by zero-value caps would
@@ -147,12 +222,13 @@ func newTestJobsService(t *testing.T) (job.Service, *fakeJobsService) {
 //
 // Other fields (Legacy, ClipsSearcher, AdminToken) default to zero
 // values — tests that need a populated dep supply it explicitly.
-func newMinimalScriptFlowDepsForTest(jobs job.Service) ScriptFlowDeps {
-	return ScriptFlowDeps{
+func newMinimalScriptFlowDepsForTest(jobs job.Service) (ScriptFlowDeps, *fakeSubmissionService) {
+	submitter := &fakeSubmissionService{}
+	deps := ScriptFlowDeps{
 		Jobs: JobsDeps{Jobs: jobs},
 		Generate: GenerateDeps{
-			Jobs: jobs,
-			Log:  zap.NewNop(),
+			Submission: submitter,
+			Log:        zap.NewNop(),
 			// SCRIPTCONTRACT-2026-07-08 PR-2: zero-value caps would
 			// make the preflight gate 503 on any user envelope that
 			// requests voiceover/document/images. The canonical test
@@ -167,10 +243,10 @@ func newMinimalScriptFlowDepsForTest(jobs job.Service) ScriptFlowDeps {
 				ImagesEnabled:    true,
 				DocumentEnabled:  true,
 			},
-			Validator:  usecase.NewDefaultPayloadValidator(),
-			Operations: newFASE2OperationsServiceForTest(),
+			Validator: usecase.NewDefaultPayloadValidator(),
 		},
 	}
+	return deps, submitter
 }
 
 // newFASE2OperationsServiceForTest constructs a real

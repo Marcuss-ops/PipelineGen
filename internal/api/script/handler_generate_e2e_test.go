@@ -16,8 +16,8 @@ import (
 // to /api/script/generate are accepted without data races or panics.
 func TestGenerate_Concurrency(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	jobsSvc, fake := newTestJobsService(t)
-	deps := newMinimalScriptFlowDepsForTest(jobsSvc)
+	jobsSvc, _ := newTestJobsService(t)
+	deps, submit := newMinimalScriptFlowDepsForTest(jobsSvc)
 	handler := NewScriptFlowHandler(deps)
 
 	router := gin.New()
@@ -35,7 +35,7 @@ func TestGenerate_Concurrency(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			// Vary the topic per goroutine so each request derives a
-			// distinct ActiveKey and enqueues a distinct job.
+			// distinct request hash and submits a distinct job.
 			body := `{"version":2,"preset":"custom","items":[{"id":"item-` + strconv.Itoa(idx) + `","source":{"type":"text","topic":"concurrency-` + strconv.Itoa(idx) + `"},"script_params":{"target_words":100}}]}`
 			req := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewBufferString(body))
 			req.Header.Set("Content-Type", "application/json")
@@ -56,5 +56,5 @@ func TestGenerate_Concurrency(t *testing.T) {
 		}
 	}
 	assert.Equal(t, n, accepted, "all concurrent requests must be accepted")
-	assert.Equal(t, n, fake.enqueueCount, "each concurrent request must enqueue a distinct job")
+	assert.Equal(t, n, submit.submitCount, "each concurrent request must submit a distinct job")
 }

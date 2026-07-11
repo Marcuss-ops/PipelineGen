@@ -40,9 +40,9 @@
 //     dependency on *ComposeRoot (which would create a circular
 //     import: `internal/app` already imports `internal/api/script`).
 //   - The HTTP integration is a single function-call addition
-//     in `handler_enqueue.go::enqueueEnvelopeFn` and a 1-arg
-//     addition to `NewHandlerGenerate`; no other surface
-//     contract changes.
+//     inside `handler_generate_handler.go::HandlerGenerate.Generate`
+//     before the submission path; no other surface contract
+//     changes.
 package script
 
 import (

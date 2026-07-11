@@ -19,7 +19,8 @@ func TestScriptRoutes_Compatibility(t *testing.T) {
 	t.Parallel()
 
 	jobsSvc, _ := newTestJobsService(t)
-	handler := NewScriptFlowHandler(newMinimalScriptFlowDepsForTest(jobsSvc))
+	deps, _ := newMinimalScriptFlowDepsForTest(jobsSvc)
+	handler := NewScriptFlowHandler(deps)
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -72,7 +73,8 @@ func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	t.Parallel()
 
 	jobsSvc, fake := newTestJobsService(t)
-	handler := NewScriptFlowHandler(newMinimalScriptFlowDepsForTest(jobsSvc))
+	deps, submit := newMinimalScriptFlowDepsForTest(jobsSvc)
+	handler := NewScriptFlowHandler(deps)
 	router := gin.New()
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
@@ -84,11 +86,12 @@ func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusAccepted, w.Code)
-	assert.NotNil(t, fake.lastReq, "generate route must enqueue a job")
-	assert.Equal(t, "script.generate", fake.lastReq.Type)
-	assert.Contains(t, fake.lastReq.ActiveKey, "script.generate:")
+	assert.NotNil(t, submit.lastReq, "generate route must submit a job")
+	assert.Equal(t, "script.generate", submit.lastReq.JobType)
 	assert.Contains(t, w.Body.String(), `"ok":true`)
 	assert.Contains(t, w.Body.String(), `"status":"PENDING"`)
+	assert.Equal(t, 1, submit.submitCount)
+	_ = fake
 }
 
 // ── RequireAdminToken middleware ──────────────────────────────────────────

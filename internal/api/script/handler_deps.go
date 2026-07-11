@@ -30,8 +30,7 @@ package script
 import (
 	"context"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	mw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
@@ -51,11 +50,8 @@ type AutoHarvestService interface {
 // /generate handler. Each field is required by the canonical
 // POST /api/script/generate route:
 //
-//   - Jobs: the async job broker (script.generate child-job fan-out).
+//   - Submission: the canonical submission service.
 //   - Log: structured logger.
-//   - Registry: the canonical job-type registry used by
-//     EnqueueGenerationJob to source MaxRetries via
-//     registry.DefaultMaxRetries(jType).
 //   - Caps: SCRIPTCONTRACT-2026-07-08 PR-2 PreflightCaps. The
 //     flat composition-time postprocessor-availability surface.
 //     Built by the composition root from root.Domains.VoiceoverService
@@ -65,12 +61,10 @@ type AutoHarvestService interface {
 //   - Validator: config-aware payload validator for
 //     POST /api/script/generate.
 type GenerateDeps struct {
-	Jobs      jobservice.Service
-	Log       *zap.Logger
-	Registry  *appjobs.Registry
-	Caps      PreflightCaps
-	Validator *usecase.PayloadValidator
-	Store     mw.IdempotencyStore
+	Submission generationSubmitter
+	Log        *zap.Logger
+	Caps       PreflightCaps
+	Validator  *usecase.PayloadValidator
 }
 
 // JobsDeps groups the canonical constructor inputs for the
@@ -79,18 +73,18 @@ type GenerateDeps struct {
 // like a status-query repo stay scoped to /jobs/* without
 // polluting /generate).
 //
-// SCRIPTCONTRACT-2026-07-08 PR-2: JobsDeps intentionally does NOT
-// have a Caps field. The preflight surface lives ONLY on
-// GenerateDeps.Caps (the canonical SOLE owner). JobsHandler receives
-// the preflight caps as a per-call parameter from
-// ScriptFlowHandler.enqueueEnvelope (the canonical thread surface).
-// godlike/06 SSOT: there is exactly ONE PreflightCaps instance per
-// ScriptFlowHandler; storing it on JobsDeps would duplicate the
-// canonical value and invite drift.
+// FASE 2 (July 2026): the Registry field is RETIRED. The pre-FASE-2
+// Registry thread fed the package-level enqueueEnvelopeFn for
+// MaxRetries lookup; the FASE 2 path is GenerationSubmissionService
+// which reads the registry independently at composition time. JobsDeps
+// now carries only the JobService port + the canonical logger.
 type JobsDeps struct {
-	Jobs     jobservice.Service
-	Log      *zap.Logger
-	Registry *appjobs.Registry
+	Jobs jobservice.Service
+	Log  *zap.Logger
+}
+
+type generationSubmitter interface {
+	Submit(ctx context.Context, req opsapp.SubmitRequest) (*opsapp.SubmitResult, error)
 }
 
 // ScriptFlowDeps is the slim top-level bag assembled by Build.
@@ -147,9 +141,9 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 	// root (internal/app/wire_script.go) builds it at startup from
 	// root.Domains.VoiceoverService / root.Domains.ImageService /
 	// root.Drive.DocClient. The canonical source is
-	// `deps.Generate.Caps`; ScriptFlowHandler.caps carries it to
-	// the request seam (enqueueEnvelopeFn) and to the legacy-
-	// adapter thin-delegator path (h.jobs.EnqueueEnvelope).
+	// `deps.Generate.Caps`; the HandlerGenerate consumes it on
+	// the request seam and the validator's preflight is purely
+	// deterministic (no I/O).
 	caps := deps.Generate.Caps
 
 	return &ScriptFlowHandler{
@@ -158,28 +152,25 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		clipsSearcher: deps.ClipsSearcher,
 		caps:          caps,
 
-		// AZIONE 1 (July 2026): construct the 5-field HandlerGenerate
+		// AZIONE 1 (July 2026): construct the 4-field HandlerGenerate
 		// alongside the slim ScriptFlowHandler. POST /generate
 		// delegates to h.gen.Generate(c).
-		gen: NewHandlerGenerate(deps.Generate.Jobs, deps.Generate.Log, deps.Generate.Registry, caps, deps.Generate.Validator, deps.Generate.Store),
+		gen: NewHandlerGenerate(deps.Generate.Submission, deps.Generate.Log, caps, deps.Generate.Validator),
 
-		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 3-field
-		// JobsHandler. POST /api/script/jobs/:id mounts via
-		// JobsHandler.RegisterJobRoutes; legacy adapters' h.enqueueEnvelope
-		// thin-delegates to JobsHandler.EnqueueEnvelope (which
-		// takes caps as a per-call parameter from h.caps).
-		jobs: NewJobsHandler(deps.Jobs.Jobs, deps.Jobs.Log, deps.Jobs.Registry),
+		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 2-field
+		// JobsHandler. GET /api/script/jobs/:id mounts via
+		// JobsHandler.RegisterJobRoutes; the legacy EnqueueEnvelope
+		// adapter is REMOVED in FASE 2 (the route was never
+		// registered, so the deletion is dead code).
+		jobs: NewJobsHandler(deps.Jobs.Jobs, deps.Jobs.Log),
 	}
 }
 
-// Compile-time guard: jobservice.Service + *appjobs.Registry
-// surface drift in NewJobsHandler / NewHandlerGenerate signatures
-// (godlike/06 SSOT — no separate sentinel needed; constructor
-// calls fail-closed at build time).
-var (
-	_ jobservice.Service = jobservice.Service(nil)
-	_ *appjobs.Registry  = (*appjobs.Registry)(nil)
-)
+// Compile-time guard: jobservice.Service surfaces drift in
+// NewJobsHandler / NewHandlerGenerate signatures (godlike/06 SSOT —
+// no separate sentinel needed; constructor calls fail-closed at
+// build time).
+var _ jobservice.Service = jobservice.Service(nil)
 
 // Compile-time guard: NewJobsHandler + NewHandlerGenerate accept
 // jobservice.Service + *appjobs.Registry; drift in either signature
