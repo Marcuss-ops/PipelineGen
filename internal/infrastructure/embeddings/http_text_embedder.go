@@ -60,8 +60,8 @@ func NewHTTPTextEmbedder(serverURL string) coreembedding.Embedder {
 // {"embedding": [...], "dimensions": 768, "model": "<name>",
 // "model_version": "<version>", "error": ""}. Graceful fallback: when
 // the sidecar is not yet updated and returns only {"embedding": [...]},
-// we set Model="" and ModelVersion="" (documented in architecture/qdrant/
-// 002-sidecar-envelope-ripple.md§Trade-off).
+// we set Model="" and ModelVersion="" (the trade-off
+// documented in the QDRANT-001b closure ticket).
 //
 // Error wrapping includes the original HTTP status code and body so
 // production observability can correlate embedder failures with
