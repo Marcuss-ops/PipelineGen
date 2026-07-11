@@ -115,16 +115,32 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
 	// AcquireService (local VTT/SRT → YouTube subs → Whisper
 	// chain) is wired via the SubtitleFetcherPort exposed
-	// on the DomainBundle. WhisperTranscriberPort is left
-	// nil for now — a follow-up commit (Fase 5.b) adds the
-	// Whisper adapter to the AIBundle and wires it here.
+	// on the DomainBundle + the WhisperTranscriber adapter
+	// constructed by BuildAIBundle. The narrow
+	// texttracks.SubtitlesPort / texttracks.WhisperPort
+	// interfaces are STRUCTURAL subsets of the full
+	// youtubeports ports; the type assertion in
+	// BuildTextTrackBundle is a no-op at runtime.
 	acquirePorts := &AcquirePorts{
 		Subtitles: domains.SubtitleFetcher,
-		Whisper:   nil, // Fase 5.b: wire WhisperTranscriberPort from AIBundle
+		Whisper:   ai.WhisperTranscriber,
 	}
 	textTracks, err := BuildTextTrackBundle(cfg, repos, ai, outbox, acquirePorts, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose texttracks: %w", err)
+	}
+
+	// FASE 3 Spina Dorsale (Push 3.1b, July 2026): wire the
+	// staging.StoreService + artifact_stages Repository. Placed
+	// LAST in NewComposition (after BuildTextTrackBundle) because
+	// the bundle has minimal deps (only dbs.main.DB + cfg +
+	// log) — no risk of breaking the existing 12-bundle
+	// aggregation. The forward-pointer publisher worker pool
+	// (Push 3.1c) will consume root.Staging.Store to drain
+	// the outbox into the canonical artifact_stages table.
+	staging, err := BuildStagingBundle(dbs, cfg, log)
+	if err != nil {
+		return nil, fmt.Errorf("compose staging: %w", err)
 	}
 
 	// Wire the script.generate readiness probe when any script feature is
@@ -176,6 +192,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		Sync:    sync,
 		Maint:   maint,
 		Utility: utility,
+		Staging: staging,
 
 		DriveStart:  driveStart,
 		OutboxStart: outboxStart,
