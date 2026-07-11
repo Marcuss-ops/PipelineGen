@@ -726,6 +726,7 @@ func TestDurableIndexing_FinalizerWrites_HandlerDoesNotSupersede(t *testing.T) {
 		INSERT INTO outbox_events
 		    (event_type, aggregate_id, aggregate_type, payload_json, event_key, status)
 		VALUES (?, ?, '', ?, ?, 'pending')
+		ON CONFLICT(event_key) WHERE event_key != '' DO NOTHING
 	`, events2[0].EventType, events2[0].AggregateID, string(events2[0].Payload), events2[0].EventKey)
 	if err != nil {
 		t.Fatalf("insert outbox event (v2): %v", err)
@@ -846,6 +847,7 @@ func TestDurableIndexing_FinalizerWrites_HandlerDoesNotSupersede(t *testing.T) {
 		INSERT INTO outbox_events
 		    (event_type, aggregate_id, aggregate_type, payload_json, event_key, status)
 		VALUES (?, ?, '', ?, ?, 'pending')
+		ON CONFLICT(event_key) WHERE event_key != '' DO NOTHING
 	`, events3[0].EventType, events3[0].AggregateID, string(events3[0].Payload), events3[0].EventKey)
 	if err != nil {
 		t.Fatalf("insert outbox event (v3): %v", err)
