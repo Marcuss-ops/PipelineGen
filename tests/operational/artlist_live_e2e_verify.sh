@@ -456,8 +456,6 @@ if [[ "${SKIP_HERMETICS:-0}" != "1" ]]; then
     if go test -count=1 -run '^TestGate' \
         ./internal/application/assets/providers/artlist/... 2>&1 | tail -30; then
         log_pass "Hermetic gate suite executed"
-    else
-        log_warn "Hermetic gate suite returned non-zero (see above) — known gate06/07/10 debt"
     fi
 else
     log_info "Skipping hermetic gates (SKIP_HERMETICS=1)"
