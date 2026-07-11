@@ -514,7 +514,9 @@ func TestResolveOriginal_EmptyPayloadReturnsNil(t *testing.T) {
 
 func TestResolveOriginal_NormalizesLanguage(t *testing.T) {
 	// godlike/07: language code is BCP-47 normalized. Uppercase
-	// "EN-US" → "en-US". Empty → "und".
+	// "EN-US" → "en-US". Empty → "und". Underscore-separated
+	// locales (e.g. "pt_BR") are REJECTED per Fase 1.b strict
+	// BCP-47 enforcement (BCP-47 strictly uses hyphen, not underscore).
 	resolver := newTestResolver(&stubRepo{}, nil, nil)
 	cases := []struct {
 		in   string
@@ -523,7 +525,6 @@ func TestResolveOriginal_NormalizesLanguage(t *testing.T) {
 		{"EN-US", "en-US"},
 		{"EN", "en"},
 		{"pt-BR", "pt-BR"},
-		{"pt_BR", "pt-BR"},
 		{"", "und"},
 	}
 	for _, c := range cases {
@@ -535,6 +536,24 @@ func TestResolveOriginal_NormalizesLanguage(t *testing.T) {
 		}
 		if bundle == nil || bundle.LanguageCode != c.want {
 			t.Errorf("ResolveOriginal(%q) LanguageCode = %+v, want %q", c.in, bundle, c.want)
+		}
+	}
+}
+
+// TestResolveOriginal_RejectsUnderscoreLanguage pins the Fase 1.b
+// strict BCP-47 enforcement: underscore-separated locales like
+// "pt_BR" are REJECTED (BCP-47 strictly uses hyphen, not underscore).
+// This is the user-spec requirement "Rifiutare varianti miste tipo
+// pt_br" — mixed variants with non-BCP-47 separators.
+func TestResolveOriginal_RejectsUnderscoreLanguage(t *testing.T) {
+	resolver := newTestResolver(&stubRepo{}, nil, nil)
+	underscoreInputs := []string{"pt_BR", "en_US", "pt_br", "en_us", "it_IT"}
+	for _, in := range underscoreInputs {
+		_, err := resolver.ResolveOriginal(context.Background(), "yt_phase1b_underscore", []youtubetypes.LocalizedClipText{
+			{LanguageCode: in, Transcript: "x"},
+		})
+		if err == nil {
+			t.Errorf("ResolveOriginal(%q) MUST return error (underscore separator rejected); got nil", in)
 		}
 	}
 }

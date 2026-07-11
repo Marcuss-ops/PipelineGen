@@ -29,11 +29,8 @@ func TestNormalize_AcceptsCanonicalAndVariants(t *testing.T) {
 		{"en-US-lowercase", "en-us", "en-US"},
 		{"en-US-uppercase", "EN-US", "en-US"},
 		{"en-US-mixed", "En-Us", "en-US"},
-		{"en-US-underscore", "en_US", "en-US"},
 		{"en-GB-canonical", "en-GB", "en-GB"},
 		{"pt-BR", "pt-BR", "pt-BR"},
-		{"pt-BR-underscore", "pt_BR", "pt-BR"},
-		{"pt-BR-lowercase-underscore", "pt_br", "pt-BR"},
 		{"pt-BR-uppercase", "PT-BR", "pt-BR"},
 		{"it-trim", "  it  ", "it"},
 		{"it-IT-canonical", "it-IT", "it-IT"},
@@ -84,6 +81,12 @@ func TestNormalize_RejectsMalformed(t *testing.T) {
 		"english-US",   // full language name + region
 		"  portuguese  ", // full name with whitespace
 		"pt-BR-Maringá", // 3-part with city
+		"en_US",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected (BCP-47 strictly uses hyphen)
+		"pt_BR",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
+		"pt_br",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
+		"en_us",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
+		"it_IT",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
+		"es_ES",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
 	}
 	for _, in := range cases {
 		t.Run("reject_"+in, func(t *testing.T) {
