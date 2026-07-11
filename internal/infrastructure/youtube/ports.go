@@ -66,10 +66,52 @@ type SubtitleFetcher interface {
 	FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*asset.ResolvedTextBundle, error)
 }
 
+// TranscriptResult is the canonical Whisper transcription output.
+// The plain string-only return of the legacy TranscribeAudio method
+// could not surface the detected language or the per-cue confidence,
+// so a typed-result sibling method (TranscribeAudioWithDetection) is
+// added to both the application-layer WhisperTranscriberPort and
+// the infrastructure-layer WhisperTranscriber interface.
+//
+// godlike/06 SSOT (one canonical owner per fact): TranscriptResult
+// is defined in internal/domain/asset/transcript_result.go so the
+// application-layer port and the infrastructure-layer port BOTH
+// reference the same type without import cycles. The canonical
+// contract is:
+//   - Text: the canonical transcript plaintext (post-language-
+//     detection). Empty when the model returned an empty
+//     transcription (still a non-error signal — caller falls
+//     through).
+//   - DetectedLanguage: the BCP-47 language code Whisper detected
+//     for the audio. The concrete adapter MUST normalize via the
+//     canonical asset.Normalize helper and collapse unknown/empty
+//     to "und" (BCP-47 undetermined) per godlike/07
+//     no-fake-availability.
+//   - Confidence: per-clip average probability [0.0, 1.0]; nil
+//     when the underlying model does not report one.
+
 // WhisperTranscriber is the local-transcription fallback when no official
 // VTT subtitles are available.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): a typed-result
+// sibling method (TranscribeAudioWithDetection) is added to surface
+// DetectedLanguage + Confidence. The legacy plain-string
+// TranscribeAudio method is RETAINED for back-compat with the
+// Service.TranscribeAudio shim and the Step 10 metadata path; the
+// canonical 5-level chain (TextTrackResolver.AcquireSegmentText
+// priority 5) calls the new method so the resolver can apply the
+// RequireLanguageCertainty policy gate.
 type WhisperTranscriber interface {
 	TranscribeAudio(ctx context.Context, localPath string) (string, error)
+	// TranscribeAudioWithDetection returns the typed result
+	// including the model's DetectedLanguage + Confidence.
+	// Implementations MUST:
+	//   - Normalize DetectedLanguage to BCP-47 (lang or lang-region).
+	//   - Collapse unknown/empty DetectedLanguage to "und".
+	//   - Return (asset.TranscriptResult{Text: ""}, nil) on empty
+	//     transcription (NOT an error — caller falls through).
+	//   - Return a typed error only on I/O / model failures.
+	TranscribeAudioWithDetection(ctx context.Context, localPath string) (asset.TranscriptResult, error)
 }
 
 // ClipFiles is the on-disk media-file manager: writes metadata, writes

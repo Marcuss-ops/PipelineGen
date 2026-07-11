@@ -10,6 +10,17 @@
 // Uses the canonical e2e fixture stack: in-memory SQLite + mock Qdrant
 // REST surrogate + production adapters. TextTrackRepository is wired
 // into the PayloadMapper via SetTextTrackQuerier + SetIndexLanguages.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the legacy
+// 2-level `Resolver.Resolve(ctx, clipID, payloadTexts)` method
+// (which returned a result envelope with Found/Transcript/LanguageCode/
+// Source) is RETIRED. The typed `ResolveOriginal` (priority 1) +
+// `ResolveBestAvailable` (priority 2) are the SOLE canonical surfaces.
+// The migration is mechanical: result.Found → bundle != nil,
+// result.Transcript → bundle.PlainText, result.LanguageCode →
+// bundle.LanguageCode, result.Source → bundle.SourceType. The
+// Save signature (ctx, clipID, transcript, source, languageCode)
+// is UNCHANGED.
 package e2e
 
 import (
@@ -99,6 +110,13 @@ CREATE TABLE IF NOT EXISTS asset_text_tracks (
 //   - Save persists to asset_text_tracks (row created)
 //   - TextTrackResolver resolves from DB on second call (Priority 2)
 //   - Whisper transcriber is NOT needed (resolver short-circuits)
+//
+// Fase 1.b (PR-PY-CLIPS-CORRETTE-TRADOTTE): the legacy
+// `Resolver.Resolve(ctx, clipID, payloadTexts)` is RETIRED. The
+// migration uses the typed methods:
+//   - ResolveOriginal (priority 1) returns *asset.ResolvedTextBundle
+//   - ResolveBestAvailable (priority 2) returns *asset.TextTrack
+//   - A non-existent clip returns (nil, nil) from ResolveBestAvailable
 func TestE2E_TextTrack_ResolverPayloadHitAndPersist(t *testing.T) {
 	fx := newTextTrackFixture(t, "media_assets_current")
 	ctx := context.Background()
@@ -116,19 +134,24 @@ func TestE2E_TextTrack_ResolverPayloadHitAndPersist(t *testing.T) {
 		},
 	}
 
-	result, err := fx.Resolver.Resolve(ctx, clipID, payloadTexts)
-	require.NoError(t, err, "Resolve must not error")
-	require.True(t, result.Found,
+	// Fase 1.b typed method: ResolveOriginal returns a non-nil
+	// *asset.ResolvedTextBundle on payload hit. The legacy envelope
+	// shape (result.Found/Transcript/LanguageCode/Source) is
+	// replaced by bundle field access (PlainText/LanguageCode/SourceType).
+	bundle, err := fx.Resolver.ResolveOriginal(ctx, clipID, payloadTexts)
+	require.NoError(t, err, "ResolveOriginal must not error")
+	require.NotNil(t, bundle,
 		"Priority 1: resolver must find transcript in payload Texts[]")
-	require.Equal(t, "Broner yells at Pacquiao — stop worrying about Floyd", result.Transcript,
+	require.Equal(t, "Broner yells at Pacquiao — stop worrying about Floyd", bundle.PlainText,
 		"Priority 1: transcript must match payload text")
-	require.Equal(t, "en", result.LanguageCode,
+	require.Equal(t, "en", bundle.LanguageCode,
 		"Priority 1: language must match payload language_code")
-	require.Equal(t, asset.TextSourceProvided, result.Source,
+	require.Equal(t, asset.TextSourceProvided, bundle.SourceType,
 		"Priority 1: source must be 'provided' (from payload)")
 
 	// ── Save persists to asset_text_tracks ────────────────────────
-	err = fx.Resolver.Save(ctx, clipID, result.Transcript, result.Source, result.LanguageCode)
+	// Save signature is UNCHANGED: (ctx, clipID, transcript, source, languageCode).
+	err = fx.Resolver.Save(ctx, clipID, bundle.PlainText, bundle.SourceType, bundle.LanguageCode)
 	require.NoError(t, err, "Save must succeed")
 
 	// Verify DB row.
@@ -147,20 +170,23 @@ func TestE2E_TextTrack_ResolverPayloadHitAndPersist(t *testing.T) {
 	// ── Priority 2: resolve from DB (no payload needed) ───────────
 	// Resolver defaults to "en" for DB lookup when no payload texts
 	// are provided. Since we saved with "en", this will find it.
-	result2, err := fx.Resolver.Resolve(ctx, clipID, nil)
-	require.NoError(t, err, "Resolve from DB must not error")
-	require.True(t, result2.Found,
+	// Fase 1.b: ResolveBestAvailable is the canonical typed lookup.
+	row2, err := fx.Resolver.ResolveBestAvailable(ctx, clipID, []string{"en"}, asset.TextTrackTranscript)
+	require.NoError(t, err, "ResolveBestAvailable from DB must not error")
+	require.NotNil(t, row2,
 		"Priority 2: resolver must find transcript in DB")
-	require.Equal(t, "Broner yells at Pacquiao — stop worrying about Floyd", result2.Transcript,
+	require.Equal(t, "Broner yells at Pacquiao — stop worrying about Floyd", row2.TextContent,
 		"Priority 2: transcript must match DB content")
-	require.Equal(t, "en", result2.LanguageCode,
+	require.Equal(t, "en", row2.LanguageCode,
 		"Priority 2: language must match DB language_code")
 
-	// ── Empty payload + empty DB → Found=false ────────────────────
-	result3, err := fx.Resolver.Resolve(ctx, "yt_nonexistent_clip", nil)
-	require.NoError(t, err, "Resolve for missing clip must not error")
-	require.False(t, result3.Found,
-		"Resolver must return Found=false for clip with no payload and no DB row")
+	// ── Empty payload + empty DB → nil row ────────────────────────
+	// Fase 1.b: a non-existent clipID returns (nil, nil) from
+	// ResolveBestAvailable (no DB row, no payload, no Whisper).
+	row3, err := fx.Resolver.ResolveBestAvailable(ctx, "yt_nonexistent_clip", []string{"en"}, asset.TextTrackTranscript)
+	require.NoError(t, err, "ResolveBestAvailable for missing clip must not error")
+	require.Nil(t, row3,
+		"Resolver must return nil for clip with no payload and no DB row")
 }
 
 // ── Test 2: Qdrant receives multilingual search text ──────────────────
