@@ -221,6 +221,24 @@ type IndexedMetadata struct {
 	CreatedAt string
 	UpdatedAt string
 	DeletedAt string
+
+	// ── Text track projection (lightweight, no full transcripts) ────
+
+	// OriginalLanguage is the BCP-47 language code of the original
+	// transcript (e.g. "en").
+	OriginalLanguage string
+
+	// AvailableLanguages is the list of BCP-47 language codes for
+	// which text tracks exist.
+	AvailableLanguages []string
+
+	// TranscriptAvailable is true when at least one READY transcript
+	// exists in asset_text_tracks.
+	TranscriptAvailable bool
+
+	// TextTracksVersion is a short hash of the sorted text track
+	// hashes for change detection.
+	TextTracksVersion string
 }
 
 // EmbeddingArtifact is the OBSERVED provenance record for a single
