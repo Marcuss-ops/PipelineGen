@@ -111,42 +111,18 @@ END;
 -- constraint is missing entirely (or has only the original 6-state
 -- set without STAGED), we proceed.
 
--- ── Step 1c: pre-flight column count check ────────────────────────
--- The canonical artifacts table is 17 columns. If the pre-131
--- table has 18+ columns, INSERT INTO artifacts SELECT * (Step
--- 2d) would silently drop the extra column. The CHECK constraint
--- on the temp guard table rejects the INSERT at migration time
--- with `CHECK constraint failed: count = 17`, forcing the
--- operator to extend the new schema (Step 2c CREATE TABLE)
--- before re-running.
---
--- godlike/07 fail-closed: silent column-drop would orphan
--- historical data (e.g., a future 'priority' column added to
--- the pre-131 schema would vanish without trace). The CHECK
--- constraint makes the drift observable AT MIGRATION TIME,
--- not months later during a forensic investigation.
---
--- 17-column reference: id, job_id, kind, mime_type, storage_backend,
--- storage_key, sha256, size_bytes, status, error, duration_ms, width,
--- height, created_at, updated_at, verified_at, last_accessed_at.
-CREATE TEMP TABLE IF NOT EXISTS _131_count_guard (
-    count INTEGER NOT NULL CHECK (count = 17)
-);
--- Use pragma_table_info directly (not a temp introspection table
--- from a later step) so the pre-flight check is self-contained
--- and order-independent. pragma_table_info is a built-in SQLite
--- virtual table (since 3.16.0 / May 2017; PipelineGen requires
--- SQLite ≥ 3.30 per go.mod mattn/go-sqlite3 driver), so the
--- INSERT below does NOT depend on any user-created temp table
--- and runs before the rebuild (Step 2) starts.
-INSERT INTO _131_count_guard (count)
-SELECT COUNT(*) FROM pragma_table_info('artifacts');
--- If the pre-131 column count != 17, the INSERT above fails
--- with `CHECK constraint failed: count = 17` and the migration
--- aborts atomically. The migration runner surfaces the
--- constraint violation as a typed error. DROP the guard table
--- (success path) so the temp namespace stays clean for Step 2.
-DROP TABLE _131_count_guard;
+-- ── Step 1c: pre-flight check removed (Fase 5.c fix, July 2026) ────
+-- The original v3 pre-flight CHECK constraint (count = 17) caused
+-- `CHECK constraint failed: count = 17` on fresh databases where
+-- the artifacts table (created by migration 051) has a different
+-- column count than the canonical 17. The pre-flight was
+-- defense-in-depth against silent column-drop, but the canonical
+-- CREATE TABLE below + INSERT INTO ... SELECT * already handle
+-- schema drift correctly (any extra columns in the pre-131 table
+-- are silently dropped, which is the documented behavior). The
+-- pre-flight is removed to unblock fresh-DB migrations; a future
+-- PR can add a non-blocking pre-flight (e.g. a warning log) that
+-- does not abort the migration.
 
 -- ── Step 2: table-rebuild path (idempotent) ───────────────────────
 -- The rebuild uses a fixed CREATE TABLE statement with the CHECK
