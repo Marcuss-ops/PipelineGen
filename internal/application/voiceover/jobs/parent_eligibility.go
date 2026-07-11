@@ -134,17 +134,32 @@ func IsParentAwaitingAggregation(pr *VoiceoverParentResult) bool {
 // ZeroChildrenAggregateResult is the canonical aggregate for the
 // zero-children short-circuit. When a parent has no enqueued
 // children (e.g. all child enqueues failed at dispatch time), the
-// canonical aggregate is voiceover.ParentPartialSuccess with
-// TotalChildren=0. The aggregator's aggregateOne short-circuits to
-// this state without constructing a domain StateMachine (which
-// requires ≥1 child).
+// canonical aggregate is voiceover.ParentFailed with TotalChildren=0.
+// The aggregator's aggregateOne short-circuits to this state without
+// constructing a domain StateMachine (which requires ≥1 child).
+//
+// FASE 4 (July 2026) spec close-out: zero children created = FAILED
+// terminal (not partial_success). The pre-FASE-4 mapping
+// (ParentPartialSuccess) was a “no children complete is partial”
+// pre-P0.5 audit pinning that conflated dispatch-failure (zero
+// enqueued) with partial-success (mixed terminal). The two states
+// are SEMANTICALLY DISTINCT: dispatch-failure is a true terminal
+// (no children will EVER run); partial-success is a mixed-terminal
+// state where some children succeeded. Mapping zero-enqueued
+// to partial-success was a false-positive terminal leak: the
+// operator dashboard treated "0 enqueued" as "some succeeded",
+// masking the dispatch bug. Per FASE 4 spec, this branch
+// correctly maps to ParentFailed (canonical "all children
+// definitively failed" terminal per parent_state.go:62 + 78).
 //
 // godlike/07 fail-closed: this helper exists so the zero-children
 // branch is a single named surface, not an inline literal in
-// aggregateOne. No logic drift from the pre-PR version.
+// aggregateOne. Future contributors MUST NOT re-introduce the
+// pre-FASE-4 ParentPartialSuccess mapping — it would re-open the
+// dispatch-failure-as-partial-success false-positive terminal.
 func ZeroChildrenAggregateResult() VoiceoverAggregateResult {
 	return VoiceoverAggregateResult{
-		ParentState:         voiceover.ParentPartialSuccess,
+		ParentState:         voiceover.ParentFailed,
 		TotalChildren:       0,
 		StateMachineVersion: 0,
 	}

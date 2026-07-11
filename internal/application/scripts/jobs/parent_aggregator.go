@@ -234,10 +234,21 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 	}
 	childIDs = filtered
 
-	// Edge case: zero children enqueued → PartialSuccess immediately.
+	// Edge case: zero children enqueued → FAILED terminal immediately.
+	//
+	// FASE 4 (July 2026) spec close-out: zero children created =
+	// FAILED terminal (not partial_success). The pre-FASE-4 mapping
+	// (ScriptParentPartialSuccess) conflated dispatch-failure (zero
+	// enqueued) with partial-success (mixed terminal) — two
+	// semantically distinct states. The pre-FASE-4 mapping was a
+	// false-positive terminal leak that masked dispatch failures
+	// in the operator dashboard. The canonical terminal for "no
+	// children enqueued" is ScriptParentFailedTerminal (per the
+	// 5-state machine; the constant is already declared in this
+	// file at line 138-139).
 	if len(childIDs) == 0 {
 		a.finalizeParent(ctx, j.ID, ScriptAggregateResult{
-			ParentState:    ScriptParentPartialSuccess,
+			ParentState:    ScriptParentFailedTerminal,
 			TotalItems:     0,
 			ParentRevision: j.Revision,
 		})

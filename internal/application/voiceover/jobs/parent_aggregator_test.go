@@ -1077,6 +1077,80 @@ func TestAcceptance_RequiredFlagPropagatedFromChildPayload(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// FASE 4 close-out (July 2026): zero children → ParentFailed
+// ─────────────────────────────────────────────────────────────────
+
+// TestZeroChildren_AggregatorReturnsParentFailed pins the FASE 4
+// sub-task 4 spec close-out for the voiceover aggregator: when a
+// parent has zero enqueued children (e.g. all child enqueues
+// failed at dispatch time), the aggregator MUST finalise the
+// parent as ParentFailed (not ParentPartialSuccess). The pre-FASE-4
+// mapping (ParentPartialSuccess) conflated dispatch failure
+// (zero enqueued) with partial-success (mixed terminal) — two
+// semantically distinct states. The pre-FASE-4 mapping was a
+// false-positive terminal leak that masked dispatch failures in
+// the operator dashboard. FASE 4 spec mandates ParentFailed (the
+// canonical "all children definitively failed" terminal per
+// parent_state.go:62 + 78).
+//
+// godlike/06 SSOT: this test exercises the full aggregateOne path
+// (not just the ZeroChildrenAggregateResult helper) so the
+// contract is locked at the aggregator boundary, not at the
+// helper. A regression in aggregateOne that re-introduced the
+// pre-FASE-4 short-circuit logic would fail this test.
+func TestZeroChildren_AggregatorReturnsParentFailed(t *testing.T) {
+	stub := &stubAggregatorJobsService{
+		parentJob: &job.Job{
+			ID:     "parent-zero-fase4",
+			Type:   job.TypeVoiceoverGenerate,
+			Status: job.StatusSucceeded,
+			Result: makeParentResult([]string{}), // ZERO children enqueued
+		},
+		childJobs: map[string]*job.Job{}, // no children at all
+	}
+
+	agg := NewParentAggregator(AggregatorDeps{
+		JobsSvc:      stub,
+		Logger:       zap.NewNop(),
+		PollInterval: 30 * time.Second,
+	})
+	agg.Tick(context.Background())
+
+	// The aggregator must have called FinalizeAggregateParent (not
+	// silently skipped). The contract is "terminal flip on zero
+	// children", NOT "no-op on zero children".
+	require.Contains(t, stub.flipped, "parent-zero-fase4",
+		"FASE 4: aggregator must call FinalizeAggregateParent on zero-children aggregate")
+
+	got := stub.flipped["parent-zero-fase4"]
+
+	// Assert 1: targetStatus = StatusFailed (not StatusSucceeded).
+	// The pre-FASE-4 mapping would have set StatusSucceeded (via
+	// ParentPartialSuccess → no terminal-flip path). FASE 4 mandates
+	// StatusFailed.
+	assert.Equal(t, job.StatusFailed, got.targetStatus,
+		"FASE 4: zero-children aggregate MUST flip broker-status to FAILED (not SUCCEEDED via partial_success)")
+
+	// Assert 2: parent_state in result = "failed" (not "partial_success").
+	// This is the wire-compat pin — operator dashboards read this
+	// field to surface dispatch failures.
+	ps, _ := got.result["parent_state"].(string)
+	assert.Equal(t, "failed", ps,
+		"FASE 4: zero-children aggregate MUST emit parent_state=%q in result (not %q)",
+		"failed", "partial_success")
+
+	// Assert 3: errMsg is non-empty (operator forensic marker).
+	// finalizeParent populates errMsg when targetStatus = FAILED.
+	assert.NotEmpty(t, got.errMsg,
+		"FASE 4: zero-children FAILED flip must carry a non-empty errMsg (audit forensics)")
+
+	// Assert 4: total_children = 0 (the canonical ZeroChildrenAggregateResult
+	// helper sets this; the aggregator must propagate it through).
+	assert.Equal(t, 0, got.result["total_children"],
+		"FASE 4: zero-children aggregate must report total_children=0 in result")
+}
+
+// ─────────────────────────────────────────────────────────────────
 // §15.7 Parent aggregator crash: version CAS conflict recovery
 // ─────────────────────────────────────────────────────────────────
 
