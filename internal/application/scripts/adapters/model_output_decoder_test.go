@@ -127,21 +127,28 @@ func TestScannerStrictFencedWithLeadingText(t *testing.T) {
 	}
 }
 
-// ── ModeStrict: bare prose is an error (no hidden fallback) ─────────
+// ── ModeStrict: bare prose is the PRIMARY path (PR-5 LLM-PLAIN-TEXT
+// contract). It is wrapped into a canonical V1 envelope, not an error.
 
 func TestScannerStrictBareProse(t *testing.T) {
 	raw := []byte("This is just plain prose, no JSON at all.")
 
-	_, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
-	if err == nil {
-		t.Fatal("ModeStrict: bare prose must produce an error (no hidden fallback)")
+	output, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
+	if err != nil {
+		t.Fatalf("ModeStrict: bare prose must be wrapped, got error: %v", err)
 	}
-	if !errors.Is(err, scriptpkg.ErrModelOutputMalformed) {
-		t.Errorf("expected ErrModelOutputMalformed, got %v", err)
+	if output.Text != string(raw) {
+		t.Errorf("text: got %q, want %q", output.Text, string(raw))
+	}
+	if len(output.SpecScene.Scenes) != 0 {
+		t.Errorf("expected 0 scenes for plain prose, got %d", len(output.SpecScene.Scenes))
 	}
 }
 
-// ── ModeStrict: malformed JSON rejected ─────────────────────────────
+// ── ModeStrict: malformed JSON-shaped input rejected ────────────────
+// Non-JSON input is treated as plain prose (PR-5 primary path) and
+// therefore succeeds; only inputs that look like JSON but fail to
+// decode/validate produce an error.
 
 func TestScannerStrictMalformedJSON(t *testing.T) {
 	tests := []struct {
@@ -150,7 +157,6 @@ func TestScannerStrictMalformedJSON(t *testing.T) {
 	}{
 		{"unclosed brace", []byte(`{"schema_version": 1, "text": "bad"`)},
 		{"trailing comma", []byte(`{"schema_version": 1, "text": "bad",}`)},
-		{"not JSON at all", []byte(`not json`)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -159,6 +165,17 @@ func TestScannerStrictMalformedJSON(t *testing.T) {
 				t.Fatal("expected error for malformed JSON in ModeStrict")
 			}
 		})
+	}
+}
+
+func TestScannerStrictPlainTextNotJSONSucceeds(t *testing.T) {
+	raw := []byte(`not json`)
+	output, err := jsonextract.NewScanner(jsonextract.ModeStrict).Scan(raw, "test")
+	if err != nil {
+		t.Fatalf("expected plain text to wrap, got error: %v", err)
+	}
+	if output.Text != string(raw) {
+		t.Errorf("text: got %q, want %q", output.Text, string(raw))
 	}
 }
 

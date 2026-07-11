@@ -63,6 +63,9 @@ var knownCapabilities = []struct {
 	{name: "qdrant_health", prefix: "/qdrant/"},
 	{name: "admin", prefix: "/api/drive"},
 	{name: "clips", prefix: "/api/clips"},
+	// script mounts under /api/script/* (ScriptFlow module, prefix
+	// "/script" beneath routes.go's `api := engine.Group("/api")`).
+	{name: "script", prefix: "/api/script"},
 }
 
 // RouteInfo is the minimal projection of a gin RouteInfo the

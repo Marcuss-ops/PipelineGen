@@ -19,20 +19,19 @@
 //   - wire_assets_search.go      — buildSearchBundle
 //   - wire_assets_voiceover.go   — buildVoiceoverBundle
 //
-// The voiceoverSvc + voiceoverSync + realtimeSvc + maintenanceSvc
-// params are retained in the WireAssets signature for the typed-port
-// chain (godlike/07 framework) even though the body no longer
-// references them — see PR4d-chunk2 (June 2026) for the historical
-// rationale. In Go, unused function parameters are permitted by the
-// language spec, so no `_ =` discard is needed.
-//
-// PR-WIRE-ASSETS-CAPABILITY-SPLIT (2026-07-04, deadline 2026-08-15): the
-// YAGNI `catalogRepo "may reuse"` param from the pre-split signature
-// (was at position 8) is removed; the caller in registry_assets.go is
-// updated to drop the `root.Repos.CatalogRepo` argument. The
-// appsearch.Service consumer that "may reuse" catalogRepo was deleted
-// in Wave 21 PR 10 (June 2026) and the catalogRepo param survived as
-// dead code; the per-capability split is the right place to retire it.
+// PR-WIRE-ASSETS-CAPABILITY-SPLIT (2026-07-04, deadline 2026-08-15):
+//   - Body is a linear pipeline of 7 build*Bundle calls (5 file-extracted +
+//     2 inline soundeffect + register). Each capability build is
+//     fail-closed (returns the typed-NIL-safe descriptor or an error).
+//   - The YAGNI `catalogRepo "may reuse"` param from the pre-split
+//     signature (was at position 8) is REMOVED; the caller in
+//     registry_assets.go is updated to drop the `root.Repos.CatalogRepo`
+//     argument. The appsearch.Service consumer that "may reuse" catalogRepo
+//     was deleted in Wave 21 PR 10 (June 2026) and the catalogRepo param
+//     survived as dead code until this split.
+//   - The four legacy typed-port params (voiceoverSvc, voiceoverSync,
+//     realtimeSvc, maintenanceSvc) were also removed; they had become
+//     dead weight after their consumers were retired.
 package app
 
 import (
@@ -45,11 +44,8 @@ import (
 	assetregister "github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
-	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
-	voiceoverpkg "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
@@ -74,19 +70,14 @@ import (
 //   - Every descriptor type-assertion goes through ClassifyDepGet
 //     (DepRequired in all 7 sites — production fail-closed).
 //
-// PR4d-chunk2 (June 2026): takes *AssetsModuleDeps + 6 narrow direct args
-// (catalogRepo removed by this PR; 4 legacy params retained for
-// godlike/07 typed-port framework).
+// // PR4d-chunk2 (June 2026): takes *AssetsModuleDeps + 2 narrow direct args
+// (catalogRepo and 4 legacy params removed by this PR).
 func WireAssets(
 	cfg *config.Config,
 	log *zap.Logger,
 	deps *AssetsModuleDeps,
 	jobs *JobsBundle,
 	lifecycle driveutil.FileLifecycle,
-	voiceoverSvc *voiceoverpkg.Service, // legacy, retained per godlike/07 framework
-	voiceoverSync *voiceoverreconcile.Service, // legacy, retained per godlike/07 framework
-	realtimeSvc assetsapi.RealtimeMatcher, // legacy, retained per godlike/07 framework
-	maintenanceSvc *maintenance.Service, // legacy, retained per godlike/07 framework
 	providerRegistry *providers.Registry,
 	dispatcher *outbox.Dispatcher,
 ) (*AssetsWiring, error) {
@@ -167,7 +158,20 @@ func WireAssets(
 
 	// (2) Build capability bundles (linear pipeline; order matches the
 	// canonical *Descriptor flow used by assetsapi.NewModule below)
-	clipsDesc, err := buildClipsBundle(cfg, log, deps, jobs, dispatcher, driveUploader, lifecycle, assetRepo, searchAggregator, metaWriter, folderMemSvc, deletionSvc, idemHandler)
+	clipsDesc, err := buildClipsBundle(buildClipsParams{
+		Cfg:              cfg,
+		Log:              log,
+		Deps:             deps,
+		Jobs:             jobs,
+		Dispatcher:       dispatcher,
+		DriveUploader:    driveUploader,
+		AssetRepo:        assetRepo,
+		SearchAggregator: searchAggregator,
+		MetaWriter:       metaWriter,
+		FolderMemSvc:     folderMemSvc,
+		DeletionSvc:      deletionSvc,
+		IdemHandler:      idemHandler,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: clips: %w", err)
 	}

@@ -30,8 +30,14 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	}
 
 	// Step 2: Root override.
+	// DestinationFolderID is the canonical application-layer way to
+	// pin the target folder for sidecar destinations (e.g.
+	// DestinationClipMetadata). RootFolderOverride is the legacy
+	// admin-CLI escape hatch kept for backward compatibility.
 	rootFolderID := policy.RootFolderID
-	if override := strings.TrimSpace(req.RootFolderOverride); override != "" {
+	if destFolder := strings.TrimSpace(req.DestinationFolderID); destFolder != "" {
+		rootFolderID = destFolder
+	} else if override := strings.TrimSpace(req.RootFolderOverride); override != "" {
 		rootFolderID = override
 	}
 

@@ -99,6 +99,7 @@ func buildClipAsset(
 			Duration: out.Item.Duration,
 		},
 		Metadata: md,
+		Texts:    cmd.Segment.Texts,
 	}
 }
 

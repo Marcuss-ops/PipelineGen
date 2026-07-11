@@ -47,7 +47,11 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 		_ = r.workspace.Cleanup(lease.Job.ID)
 	}()
 
-	tools := NewTools(r.broker, r.repo, r.workerID, r.sessionID, lease.Job, jobDir, r.assetClient)
+	var store eventStore
+	if s, ok := r.broker.(eventStore); ok {
+		store = s
+	}
+	tools := NewTools(r.broker, store, r.workerID, r.sessionID, lease.Job, jobDir, r.assetClient)
 
 	// Start lease renewal loop (W1 Phase 7).
 	renewCtx, renewCancel := context.WithCancel(jobCtx)

@@ -83,6 +83,14 @@ func (f *fakeFFmpeg) ExtractFrame(ctx context.Context, input, output string, tim
 	return os.WriteFile(output, []byte("fake-frame"), 0o644)
 }
 
+func (f *fakeFFmpeg) GenerateProxy(ctx context.Context, input, output string) error {
+	return os.WriteFile(output, []byte("fake-proxy"), 0o644)
+}
+
+func (f *fakeFFmpeg) GenerateStoryboard(ctx context.Context, input, output string, intervalFrames, cols, rows int) error {
+	return os.WriteFile(output, []byte("fake-storyboard"), 0o644)
+}
+
 // ── fakePublisher (F2.8 stub for delivery.Publisher) ──
 //
 // Returns a PublishResult populating all 5 fields the assertion

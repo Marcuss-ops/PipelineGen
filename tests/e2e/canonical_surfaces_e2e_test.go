@@ -65,10 +65,6 @@ import (
 func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 	fx := newE2EFixture(t, "media_assets_current")
 
-	// PR-YT-DOD-10: add search_text column to the E2E schema.
-	_, err := fx.DB.Exec(`ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT ''`)
-	require.NoError(t, err, "search_text column must exist per migration 059/062")
-
 	// ── Surface 1: DriveDestination ──────────────────────────────────
 
 	t.Run("DriveDestination", func(t *testing.T) {

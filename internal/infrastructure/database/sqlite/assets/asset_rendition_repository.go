@@ -208,5 +208,3 @@ func scanAssetRendition(row interface{ Scan(dest ...any) error }) (*asset.AssetR
 	rend.UpdatedAt = timeutil.ParseRFC3339(updatedAt)
 	return &rend, nil
 }
-
-

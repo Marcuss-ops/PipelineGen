@@ -6,7 +6,7 @@
 //
 // Topology (godlike/06 SSOT — each file owns EXACTLY ONE capability):
 //
-//   - (A) THIS FILE: orchestrator — all With* setters + all 13
+//   - (A) THIS FILE: orchestrator — all With* setters + all 14
 //     run*Check runners + formatNanos helper. Owns NO checker
 //     interfaces, concretes, or NewX constructors.
 //
@@ -159,6 +159,25 @@ func (r *ReadyChecker) WithOllamaChecker(oc OllamaChecker) *ReadyChecker {
 func (r *ReadyChecker) WithOutboxChecker(obc OutboxChecker) *ReadyChecker {
 	r.outboxChecker = obc
 	return r
+}
+
+// WithScriptGenerateCheck attaches the script.generate readiness checker.
+// nil checker means the check is opted out.
+func (r *ReadyChecker) WithScriptGenerateCheck(sgc ScriptGenerateChecker) *ReadyChecker {
+	r.scriptGenerateCheck = sgc
+	return r
+}
+
+// SetScriptRouteMounted wires the route-mounted probe for script.generate.
+// The transport layer calls this after the gin engine is fully built.
+func (r *ReadyChecker) SetScriptRouteMounted(fn func() bool) {
+	if r == nil {
+		return
+	}
+	r.scriptRouteMounted = fn
+	if c, ok := r.scriptGenerateCheck.(*CompositeScriptGenerateChecker); ok {
+		c.SetRouteMounted(fn)
+	}
 }
 
 // ── Private check runners (orchestrator-owned, single source of truth) ─
@@ -394,6 +413,22 @@ func (r *ReadyChecker) runOutboxCheck(ctx context.Context, resp *HealthResponse)
 		resp.Status = "unhealthy"
 	} else {
 		resp.Checks["outbox"] = CheckResult{"ok": true, "duration_ms": elapsed, "outbox_worker_active": true}
+	}
+}
+
+func (r *ReadyChecker) runScriptGenerateCheck(ctx context.Context, resp *HealthResponse) {
+	if r.scriptGenerateCheck == nil {
+		resp.Checks["script_generate"] = CheckResult{"ok": true, "applicable": false, "duration_ms": int64(0)}
+		return
+	}
+	start := time.Now()
+	result := r.scriptGenerateCheck.CheckScriptGenerate(ctx)
+	elapsed := time.Since(start).Milliseconds()
+	result["duration_ms"] = elapsed
+	resp.Checks["script_generate"] = result
+	if ok, _ := result["ok"].(bool); !ok {
+		resp.OK = false
+		resp.Status = "unhealthy"
 	}
 }
 

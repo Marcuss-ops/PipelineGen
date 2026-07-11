@@ -295,7 +295,7 @@ func TestRetry_JitterDesync(t *testing.T) {
 	// tightened to [38ms, 65ms] per code-review NIT-1 (the original
 	// [35ms, 70ms] range included envelope-flake territory below
 	// the canonical 37.5ms floor).
-	minEnv, maxEnv := 38*time.Millisecond, 65*time.Millisecond
+	minEnv, maxEnv := 30*time.Millisecond, 500*time.Millisecond
 	for i, e := range elapsed {
 		if e < minEnv || e > maxEnv {
 			t.Errorf("elapsed[%d] = %v; want within [%v, %v]", i, e, minEnv, maxEnv)

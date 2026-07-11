@@ -159,6 +159,10 @@ func (r *SQLiteStore) List(ctx context.Context, filter job.Filter) ([]job.Job, e
 		query += ` AND worker_id = ?`
 		args = append(args, filter.WorkerID)
 	}
+	if filter.CorrelationID != nil && *filter.CorrelationID != "" {
+		query += ` AND correlation_id = ?`
+		args = append(args, *filter.CorrelationID)
+	}
 
 	query += ` ORDER BY created_at DESC`
 	if filter.Limit > 0 {

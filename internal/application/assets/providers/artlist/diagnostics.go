@@ -35,24 +35,6 @@ type dispatchBridge struct {
 	log        *zap.Logger
 }
 
-// newDispatchBridge returns a bridge wired to the Service's current
-// upstream dependencies. Returns an error if the dispatcher is nil.
-//
-// PR2.5: pulls ports (assetStore, indexer, dispatcher) from the
-// surrounding Service. The legacy concrete fields are gone; this is
-// the only path the rest of the package uses.
-func (s *Service) newDispatchBridge() (*dispatchBridge, error) {
-	if s.dispatcher == nil {
-		return nil, fmt.Errorf("artlist: dispatcher is required — production wiring must provide it")
-	}
-	return &dispatchBridge{
-		dispatcher: s.dispatcher,
-		assetStore: s.assetStore,
-		indexer:    s.indexer,
-		log:        s.log,
-	}, nil
-}
-
 // Dispatch routes clip persistence and indexing through the canonical
 // media_index_outbox dispatcher (atomic upsert + outbox enqueue).
 //
@@ -107,8 +89,10 @@ func (d *DiagnosticsService) Diagnostics(ctx context.Context, term string) (*Dia
 		// consolidation. HasArtlistDB still reports the main DB ready
 		// state (the field name is part of the public Diagnostics
 		// response shape and stays for backwards compatibility).
-		HasArtlistDB: d.svc.mainDB != nil,
-		MainDBReady:  d.svc.mainDB != nil,
+		// The DB readiness is now derived from the wired AssetStore port
+		// rather than a raw *sql.DB handle.
+		HasArtlistDB: d.svc.assetStore != nil,
+		MainDBReady:  d.svc.assetStore != nil,
 	}
 
 	if d.svc.assetStore != nil {

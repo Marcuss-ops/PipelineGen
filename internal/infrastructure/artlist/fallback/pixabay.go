@@ -35,7 +35,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // Pixabay is an HTTP-clamped implementation of artlist.Searcher
@@ -176,13 +178,28 @@ func (p *Pixabay) decode(body []byte, term string, limit int) ([]artapp.Candidat
 		if title == "" {
 			title = term
 		}
-		out = append(out, artapp.Candidate{
+		bestURL := firstNonEmpty(hit.Videos.Large.URL, hit.Videos.Medium.URL, hit.Videos.Small.URL)
+		rendition := providerassets.ProviderRendition{
+			Kind:      "master",
+			Container: "mp4",
+			URL:       bestURL,
+		}
+
+		pa := providerassets.ProviderAsset{
+			Provider:   p.SourceName,
+			ExternalID: fmt.Sprintf("%d", hit.ID),
 			ID:         fmt.Sprintf("pixabay-%d", hit.ID),
 			Title:      fmt.Sprintf("Pixabay: %s", title),
-			SourceRef:  videoURL,
 			PageURL:    hit.PageURL,
+			PreviewURL: hit.PageURL,
+			SourceRef:  videoURL,
 			SourceName: p.SourceName,
-		})
+			MediaType:  asset.MediaTypeClip,
+			Keywords:   splitTags(hit.Tags),
+			Renditions: []providerassets.ProviderRendition{rendition},
+		}
+
+		out = append(out, pa)
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("%w: no usable videos", artapp.ErrEmptyResult)
@@ -235,4 +252,17 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// splitTags splits a comma-separated tag string into trimmed tokens.
+func splitTags(tags string) []string {
+	parts := strings.Split(tags, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

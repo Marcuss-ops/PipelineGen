@@ -448,18 +448,16 @@ func TestWireFormat_StagedArtifactsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("remarshal: %v", err)
 	}
-	var reEnvelope struct {
-		StagedArtifacts []*remote.StagedArtifactReference `json:"staged_artifacts"`
-	}
-	if err := json.Unmarshal(reMarshaled, &reEnvelope); err != nil {
+	var reArtifacts []*remote.StagedArtifactReference
+	if err := json.Unmarshal(reMarshaled, &reArtifacts); err != nil {
 		t.Fatalf("re-unmarshal: %v", err)
 	}
-	if len(reEnvelope.StagedArtifacts) != 2 {
-		t.Errorf("round-trip length: got %d, want 2", len(reEnvelope.StagedArtifacts))
+	if len(reArtifacts) != 2 {
+		t.Errorf("round-trip length: got %d, want 2", len(reArtifacts))
 	}
-	if reEnvelope.StagedArtifacts[0].ArtifactID != envelope.StagedArtifacts[0].ArtifactID {
+	if reArtifacts[0].ArtifactID != envelope.StagedArtifacts[0].ArtifactID {
 		t.Errorf("round-trip ArtifactID drift: got %q want %q",
-			reEnvelope.StagedArtifacts[0].ArtifactID, envelope.StagedArtifacts[0].ArtifactID)
+			reArtifacts[0].ArtifactID, envelope.StagedArtifacts[0].ArtifactID)
 	}
 }
 

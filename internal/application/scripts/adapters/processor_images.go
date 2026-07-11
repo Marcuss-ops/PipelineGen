@@ -249,7 +249,7 @@ func runImageSceneFanout(
 				)
 				if err != nil || asset == nil {
 					var fallback *ImageResult
-					fallback, err = gen.SearchAndDownload(ctx, cleanedSubject, sceneText, query, language)
+					fallback, err = gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
 					if err == nil && fallback != nil {
 						asset = &domainasset.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
 					} else {
@@ -258,7 +258,7 @@ func runImageSceneFanout(
 				}
 			} else {
 				var fallback *ImageResult
-				fallback, err = gen.SearchAndDownload(ctx, cleanedSubject, sceneText, query, language)
+				fallback, err = gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
 				if err == nil && fallback != nil {
 					asset = &domainasset.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
 				}

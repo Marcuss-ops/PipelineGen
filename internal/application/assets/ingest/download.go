@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -58,21 +57,11 @@ func (s *Service) acquireLocalPath(ctx context.Context, kind Kind, req *Request)
 }
 
 func (s *Service) downloadToFile(ctx context.Context, remoteURL, dstPath string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, remoteURL, nil)
+	body, err := s.downloader.Download(ctx, remoteURL)
 	if err != nil {
-		return fmt.Errorf("failed to create download request: %w", err)
+		return err
 	}
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to download media: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("download failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
+	defer body.Close()
 
 	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
 		return fmt.Errorf("failed to create destination dir: %w", err)
@@ -84,7 +73,7 @@ func (s *Service) downloadToFile(ctx context.Context, remoteURL, dstPath string)
 	}
 	defer out.Close()
 
-	if _, err := io.Copy(out, resp.Body); err != nil {
+	if _, err := io.Copy(out, body); err != nil {
 		return fmt.Errorf("failed to write downloaded file: %w", err)
 	}
 

@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -59,6 +60,8 @@ func TestPayloadValidator_SourceTextTooManyChars(t *testing.T) {
 	assert.Equal(t, "SOURCE_TEXT_TOO_LARGE", pve.Code)
 	assert.Equal(t, 32, pve.Extra["actual_chars"])
 	assert.Equal(t, 10, pve.Extra["max_chars"])
+	assert.Contains(t, pve.Extra["limits"], "chars")
+	assert.NotContains(t, pve.Error(), "this source text is way too long")
 }
 
 func TestPayloadValidator_SourceTextTooManyBytes(t *testing.T) {
@@ -86,6 +89,7 @@ func TestPayloadValidator_SourceTextTooManyBytes(t *testing.T) {
 	assert.Equal(t, "SOURCE_TEXT_TOO_LARGE", pve.Code)
 	assert.Equal(t, 32, pve.Extra["actual_bytes"])
 	assert.Equal(t, 10, pve.Extra["max_bytes"])
+	assert.Contains(t, pve.Extra["limits"], "bytes")
 }
 
 func TestPayloadValidator_SourceTextExceedsTargetRatio(t *testing.T) {
@@ -141,6 +145,69 @@ func TestPayloadValidator_TokenEstimate(t *testing.T) {
 	assert.Equal(t, "SOURCE_TEXT_TOO_LARGE", pve.Code)
 	assert.NotNil(t, pve.Extra["actual_tokens"])
 	assert.Equal(t, 2, pve.Extra["max_tokens"])
+	assert.Contains(t, pve.Extra["limits"], "tokens")
+}
+
+func TestPayloadValidator_SourceTextExceedsMultipleLimits(t *testing.T) {
+	v := NewPayloadValidator(config.ScriptsConfig{
+		MaxSourceTextChars:  5,
+		MaxSourceTextBytes:  5,
+		MaxSourceTextTokens: 1,
+	})
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID:    "multi-limit",
+				Title: "Multi Limit",
+				Source: scriptpkg.SourceSpec{
+					Type:       scriptpkg.SourceText,
+					SourceText: "this source text is way too long",
+				},
+				ScriptParams: scriptpkg.ScriptSpec{TargetWords: 150},
+			},
+		},
+	}
+
+	err := v.ValidateEnvelope(env)
+	require.Error(t, err)
+	var pve *scriptpkg.PayloadValidationError
+	require.ErrorAs(t, err, &pve)
+	assert.Equal(t, "SOURCE_TEXT_TOO_LARGE", pve.Code)
+	limits, ok := pve.Extra["limits"].([]string)
+	require.True(t, ok)
+	assert.Contains(t, limits, "chars")
+	assert.Contains(t, limits, "bytes")
+	assert.Contains(t, limits, "tokens")
+}
+
+func TestPayloadValidator_SourceTextTooLargeDoesNotLeakText(t *testing.T) {
+	v := NewPayloadValidator(config.ScriptsConfig{MaxSourceTextChars: 5})
+	secret := "this source text contains a secret 12345"
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID:    "leak-check",
+				Title: "Leak Check",
+				Source: scriptpkg.SourceSpec{
+					Type:       scriptpkg.SourceText,
+					SourceText: secret,
+				},
+				ScriptParams: scriptpkg.ScriptSpec{TargetWords: 150},
+			},
+		},
+	}
+
+	err := v.ValidateEnvelope(env)
+	require.Error(t, err)
+	var pve *scriptpkg.PayloadValidationError
+	require.ErrorAs(t, err, &pve)
+	assert.Equal(t, "SOURCE_TEXT_TOO_LARGE", pve.Code)
+	assert.NotContains(t, pve.Error(), secret)
+	assert.NotContains(t, fmt.Sprintf("%+v", pve.Extra), secret)
 }
 
 func TestPayloadValidator_DuplicateClipIDs(t *testing.T) {

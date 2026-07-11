@@ -51,11 +51,11 @@ import (
 //   - ErrWorkerHealthFailed: post-startup GET /health returned non-200
 //
 // BUG-FIX (2026-07-10): 3 bugs that caused the voiceover pipeline hang:
-//   1. No timeout on PORT line reading — scanner.Scan() blocked forever if
-//      Python never printed PORT=
-//   2. Python stdout buffering — without PYTHONUNBUFFERED=1, the PORT= line
-//      stays in the OS pipe buffer, never reaching Go's scanner
-//   3. No context cancellation — request context deadlines were ignored
+//  1. No timeout on PORT line reading — scanner.Scan() blocked forever if
+//     Python never printed PORT=
+//  2. Python stdout buffering — without PYTHONUNBUFFERED=1, the PORT= line
+//     stays in the OS pipe buffer, never reaching Go's scanner
+//  3. No context cancellation — request context deadlines were ignored
 func (p *Processor) ensureStarted(ctx context.Context) error {
 	if p.started {
 		if err := p.healthCheck(); err != nil {

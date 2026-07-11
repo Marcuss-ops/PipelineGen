@@ -18,92 +18,107 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
+// buildDomainAssetServicesParams groups the dependencies required to
+// construct the voiceover, books, ingest, images, lessons, and
+// voiceover-sync services.
+//
+// PR-YAGNI-DOMAIN-ASSETS-WIRING (July 2026): replaces the 14 positional
+// arguments of buildDomainAssetServices with a single struct.
+type buildDomainAssetServicesParams struct {
+	ctx           context.Context
+	cfg           *config.Config
+	dbs           *databases
+	log           *zap.Logger
+	drive         *DriveBundle
+	repos         *RepoBundle
+	search        *SearchBundle
+	process       *ProcessBundle
+	ai            *AIBundle
+	outbox        *OutboxBundle
+	mutationsDisp mutations.AssetMutationDispatcher
+	voMetaWriter  semantic.MetadataWriterPort
+	bundle        *DomainBundle
+}
+
 // buildDomainAssetServices constructs the voiceover, books, ingest,
 // images, lessons, and voiceover-sync services and populates the
 // DomainBundle with them.
 //
 // godlike/06 SSOT: each service constructor is the SOLE canonical
 // owner of its composition.
-func buildDomainAssetServices(
-	ctx context.Context,
-	cfg *config.Config,
-	dbs *databases,
-	log *zap.Logger,
-	drive *DriveBundle,
-	repos *RepoBundle,
-	search *SearchBundle,
-	process *ProcessBundle,
-	ai *AIBundle,
-	outbox *OutboxBundle,
-	mutationsDisp mutations.AssetMutationDispatcher,
-	voMetaWriter semantic.MetadataWriterPort,
-	bundle *DomainBundle,
-) error {
-	if outbox == nil || outbox.Dispatcher == nil {
+func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
+	if params.outbox == nil || params.outbox.Dispatcher == nil {
 		return fmt.Errorf("compose domains: outbox.Dispatcher is required (PR-VO-A3 voiceover indexing handoff)")
 	}
-	voiceoverSvc, voiceoverRepo, voiceoverProcessItem, audioProcessor := buildVoiceoverService(ctx, cfg, dbs, log,
-		drive.driveUploader,
-		drive.Publisher,
-		search.AssetIndexService, process.ClipIndexerService,
-		drive.DestResolver,
-		voMetaWriter, ai.OllamaTranslator,
-		outbox.Dispatcher,
+	voiceoverSvc, voiceoverRepo, voiceoverProcessItem, audioProcessor := buildVoiceoverService(params.ctx, params.cfg, params.dbs, params.log,
+		params.drive.driveUploader,
+		params.drive.Publisher,
+		params.search.AssetIndexService, params.process.ClipIndexerService,
+		params.drive.DestResolver,
+		params.voMetaWriter, params.ai.OllamaTranslator,
+		params.outbox.Dispatcher,
 	)
 
-	booksSvc, err := buildBooksService(cfg, dbs, log, voiceoverProcessItem, drive.Publisher, drive.driveUploader)
+	booksSvc, err := buildBooksService(params.cfg, params.dbs, params.log, voiceoverProcessItem, params.drive.Publisher, params.drive.driveUploader)
 	if err != nil {
 		return fmt.Errorf("compose domains: books transformer: %w", err)
 	}
 
-	ingestSvc := buildIngestService(cfg, log, dbs, drive.driveUploader, drive.Publisher, repos, search, mutationsDisp)
+	ingestSvc := buildIngestService(params.cfg, params.log, params.dbs, params.drive.driveUploader, params.drive.Publisher, params.repos, params.search, params.mutationsDisp)
 
-	imageSvc, metaWriter := buildImagesService(ctx, cfg, log,
-		drive.driveUploader, repos.ClipsRepo, repos.ClipsRepo,
-		drive.StyleRegistry, ai.ScriptGen,
-		drive.MediaStore, drive.Publisher, repos.ImageRepo,
-		voMetaWriter, ingestSvc,
-		outbox.Dispatcher,
-	)
+	imageSvc, metaWriter := buildImagesService(buildImagesParams{
+		Cfg:           params.cfg,
+		Log:           params.log,
+		DriveUploader: params.drive.driveUploader,
+		ClipsRepo:     params.repos.ClipsRepo,
+		StyleRegistry: params.drive.StyleRegistry,
+		ScriptGen:     params.ai.ScriptGen,
+		MediaStore:    params.drive.MediaStore,
+		Publisher:     params.drive.Publisher,
+		ImageRepo:     params.repos.ImageRepo,
+		VOMetaWriter:  params.voMetaWriter,
+		IngestSvc:     ingestSvc,
+		Dispatcher:    params.outbox.Dispatcher,
+	})
 
-	autotagSvc := autotag.NewService(dbs.main.DB, repos.Assets.Repository(), process.VLMClient, nil, log)
+	autotagSvc := autotag.NewService(params.dbs.main.DB, params.repos.Assets.Repository(), params.process.VLMClient, nil, params.log)
 
-	docPublisher := drive.DocPublisher
+	docPublisher := params.drive.DocPublisher
 	lessonsS := lessonsSvc.NewService(
 		&lessonsSvc.LessonsConfig{
-			Enabled:             cfg.Lessons.Enabled,
-			DefaultModel:        cfg.Lessons.DefaultModel,
-			DefaultTone:         cfg.Lessons.DefaultTone,
-			DefaultLanguage:     cfg.Lessons.DefaultLanguage,
-			DefaultImageModel:   cfg.Lessons.DefaultImageModel,
-			MaxParallelChapters: cfg.Lessons.MaxParallelChapters,
-			OllamaURL:           cfg.External.OllamaURL,
+			Enabled:             params.cfg.Lessons.Enabled,
+			DefaultModel:        params.cfg.Lessons.DefaultModel,
+			DefaultTone:         params.cfg.Lessons.DefaultTone,
+			DefaultLanguage:     params.cfg.Lessons.DefaultLanguage,
+			DefaultImageModel:   params.cfg.Lessons.DefaultImageModel,
+			MaxParallelChapters: params.cfg.Lessons.MaxParallelChapters,
+			OllamaURL:           params.cfg.External.OllamaURL,
 		},
-		ai.ScriptGen, imageSvc, docPublisher, log,
+		params.ai.ScriptGen, imageSvc, docPublisher, params.log,
 	)
-	log.Info("Lessons service initialized", zap.Bool("enabled", cfg.Lessons.Enabled))
+	params.log.Info("Lessons service initialized", zap.Bool("enabled", params.cfg.Lessons.Enabled))
 
 	var vosyncSvc *voiceoverreconcile.Service
-	if voFolder := cfg.Drive.VoiceoverFolder(); voFolder != "" && voiceoverRepo != nil {
-		vosyncSvc = voiceoverreconcile.NewService(drive.driveUploader, voiceoverRepo, search.AssetTreeService, voFolder, log)
-		log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
+	if voFolder := params.cfg.Drive.VoiceoverFolder(); voFolder != "" && voiceoverRepo != nil {
+		vosyncSvc = voiceoverreconcile.NewService(params.drive.driveUploader, voiceoverRepo, params.search.AssetTreeService, voFolder, params.log)
+		params.log.Info("Voiceover sync service initialized", zap.String("root_folder_id", voFolder))
 	}
 
-	bundle.VoiceoverService = voiceoverSvc
-	bundle.VoiceoverSync = vosyncSvc
-	bundle.VoiceoverProcessItem = voiceoverProcessItem
-	bundle.ImageService = imageSvc
-	bundle.IngestService = ingestSvc
-	bundle.BooksService = booksSvc
-	bundle.LessonsService = lessonsS
-	bundle.MetaWriter = metaWriter
-	bundle.AudioProcessor = audioProcessor
+	params.bundle.VoiceoverService = voiceoverSvc
+	params.bundle.VoiceoverSync = vosyncSvc
+	params.bundle.VoiceoverProcessItem = voiceoverProcessItem
+	params.bundle.ImageService = imageSvc
+	params.bundle.IngestService = ingestSvc
+	params.bundle.BooksService = booksSvc
+	params.bundle.LessonsService = lessonsS
+	params.bundle.MetaWriter = metaWriter
+	params.bundle.AudioProcessor = audioProcessor
 
 	// Realtime + Assoc stubs (package-removed or unwired).
-	bundle.RealtimeMatcher = nil
-	bundle.RealtimeSearch = nil
-	bundle.AutotagService = autotagSvc
-	bundle.AssocService = nil
+	params.bundle.RealtimeMatcher = nil
+	params.bundle.RealtimeSearch = nil
+	params.bundle.AutotagService = autotagSvc
+	params.bundle.AssocService = nil
 
 	_ = assetsapi.RealtimeMatcher(nil)
 	_ = usecase.RealtimeSearchService(nil)

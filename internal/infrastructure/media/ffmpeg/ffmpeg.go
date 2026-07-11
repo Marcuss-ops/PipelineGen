@@ -249,3 +249,47 @@ func (p *Processor) RemuxHLS(ctx context.Context, inputURL, output string) error
 	})
 	return err
 }
+
+// GenerateProxy creates a 720p H.264/AAC proxy from the input file.
+func (p *Processor) GenerateProxy(ctx context.Context, input, output string) error {
+	args := []string{
+		"-y", "-hide_banner", "-loglevel", "warning",
+		"-i", input,
+		"-vf", "scale=-2:720",
+		"-c:v", "libx264", "-crf", "23", "-preset", "fast",
+		"-c:a", "aac", "-b:a", "128k",
+		"-movflags", "+faststart",
+		output,
+	}
+	_, err := p.runner.Run(ctx, p.path, args, process.Options{
+		Timeout: 30 * time.Minute,
+	})
+	return err
+}
+
+// GenerateStoryboard creates a tiled sprite of key frames from the input file.
+// It extracts one frame every intervalFrames frames and tiles them into a grid.
+func (p *Processor) GenerateStoryboard(ctx context.Context, input, output string, intervalFrames, cols, rows int) error {
+	if intervalFrames <= 0 {
+		intervalFrames = 10
+	}
+	if cols <= 0 {
+		cols = 5
+	}
+	if rows <= 0 {
+		rows = 5
+	}
+	tileFilter := fmt.Sprintf("select=not(mod(n\\,%d)),scale=160:-1,tile=%dx%d", intervalFrames, cols, rows)
+	args := []string{
+		"-y", "-hide_banner", "-loglevel", "warning",
+		"-i", input,
+		"-frames", "1",
+		"-q:v", "2",
+		"-vf", tileFilter,
+		output,
+	}
+	_, err := p.runner.Run(ctx, p.path, args, process.Options{
+		Timeout: 10 * time.Minute,
+	})
+	return err
+}

@@ -101,8 +101,13 @@ func (h *JobsHandler) Get(c *gin.Context) {
 		apiutil.NotFound(c, "job not found")
 		return
 	}
+	if j == nil {
+		apiutil.NotFound(c, "job not found")
+		return
+	}
 
-	apiutil.OK(c, gin.H{"job": j})
+	events, _ := h.service.ListEvents(c.Request.Context(), id)
+	apiutil.OK(c, h.buildJobResponse(j, events))
 }
 
 func (h *JobsHandler) List(c *gin.Context) {
@@ -117,6 +122,9 @@ func (h *JobsHandler) List(c *gin.Context) {
 	}
 	if workerID := c.Query("worker_id"); workerID != "" {
 		filter.WorkerID = workerID
+	}
+	if correlationID := c.Query("correlation_id"); correlationID != "" {
+		filter.CorrelationID = &correlationID
 	}
 	if limit := c.Query("limit"); limit != "" {
 		filter.Limit, _ = strconv.Atoi(limit)
@@ -223,8 +231,6 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 		events = eventsList
 	}
 
-	retryable := j.CanRetry()
-
 	// PR-ERROR-SURFACING (2026-07-04): godlike/06 SSOT between `/api/jobs` (LIST)
 	// and `/api/jobs/{id}/full` (GET) — both endpoints MUST surface the canonical
 	// job.Error field at TOP-level so a polled `/full` does not silently drop
@@ -243,20 +249,49 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 	// continues to expose `job.error` (unchanged), so callers using the
 	// nested path keep working. The new top-level `error` is the canonical
 	// surface for /full parity with /api/jobs LIST.
-	apiutil.OK(c, gin.H{
-		"id":       j.ID,
-		"type":     j.Type,
-		"status":   j.Status,
-		"progress": j.Progress,
-		"error":    j.Error,
-		// current_step is preserved as j.Status for backward compatibility with
-		// clients that already poll /full. A real "current step" (last event
-		// message or workflow node) will be wired in a follow-up; do not remove
-		// the field without bumping the API contract.
-		"current_step": j.Status,
-		"events":       events,
-		"result":       j.Result,
-		"retryable":    retryable,
-		"job":          j,
-	})
+	apiutil.OK(c, h.buildJobResponse(j, events))
+}
+
+// buildJobResponse assembles the canonical enriched job status shape
+// shared by GET /api/jobs/{id} and GET /api/jobs/{id}/full.
+// It derives current_stage from the most recent timeline event and
+// surfaces any events whose type is "warning".
+func (h *JobsHandler) buildJobResponse(j *domainjob.Job, events []domainjob.Event) gin.H {
+	currentStage := string(j.Status)
+	warnings := make([]gin.H, 0)
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type != "" && events[i].Type != "warning" {
+			currentStage = events[i].Type
+			break
+		}
+	}
+	for _, e := range events {
+		if e.Type == "warning" {
+			warnings = append(warnings, gin.H{
+				"event_id": e.ID,
+				"message":  e.Message,
+				"data":     e.Data,
+			})
+		}
+	}
+
+	return gin.H{
+		"id":             j.ID,
+		"type":           j.Type,
+		"status":         j.Status,
+		"correlation_id": j.CorrelationID,
+		"current_stage":  currentStage,
+		"current_step":   j.Status,
+		"progress":       j.Progress,
+		"warnings":       warnings,
+		"result":         j.Result,
+		"error":          j.Error,
+		"created_at":     j.CreatedAt,
+		"started_at":     j.StartedAt,
+		"updated_at":     j.UpdatedAt,
+		"timeline":       events,
+		"events":         events,
+		"retryable":      j.CanRetry(),
+		"job":            j,
+	}
 }

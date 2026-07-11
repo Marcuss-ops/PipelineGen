@@ -5,18 +5,18 @@
 // The forbidden pattern is a void-returning Register* method whose
 // argument list contains a `jobs.Service` reference:
 //
-//   func (h *X) Register(svc *jobs.Service) {     /* VOID return */
-//       log.Warn("not implemented yet, silently doing nothing")   // FAILS THE GATE
-//   }
+//	func (h *X) Register(svc *jobs.Service) {     /* VOID return */
+//	    log.Warn("not implemented yet, silently doing nothing")   // FAILS THE GATE
+//	}
 //
 // The canonical P1 #1 contract is:
 //
-//   func (h *X) Register(svc *jobs.Service) error {  /* error return */
-//       if svc == nil {
-//           return fmt.Errorf("...: %w", appjobs.ErrMissingDeps)
-//       }
-//       ...
-//   }
+//	func (h *X) Register(svc *jobs.Service) error {  /* error return */
+//	    if svc == nil {
+//	        return fmt.Errorf("...: %w", appjobs.ErrMissingDeps)
+//	    }
+//	    ...
+//	}
 //
 // This fixture is intentionally built to trip the Check 50 regex
 // (single-line signature, jobs.Service arg, void return). The

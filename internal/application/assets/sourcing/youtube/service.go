@@ -219,5 +219,21 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 	related := s.findRelated(ctx, md.Name, cmd.Category, cmd.Tags)
 
 	// ── 10. Build result ────────────────────────────────────────────
-	return s.buildResult(md, clipID, fileHash, driveFilename, fetched.LocalPath, uploadResult, deliveryStatus, indexed, transcript, detectedLang, related, cmd, targetFolderID, group, videoSlug), nil
+	return s.buildResult(buildResultInput{
+		MD:             md,
+		ClipID:         clipID,
+		FileHash:       fileHash,
+		DriveFilename:  driveFilename,
+		LocalPath:      fetched.LocalPath,
+		UploadResult:   uploadResult,
+		DeliveryStatus: deliveryStatus,
+		Indexed:        indexed,
+		Transcript:     transcript,
+		DetectedLang:   detectedLang,
+		Related:        related,
+		Cmd:            cmd,
+		TargetFolderID: targetFolderID,
+		Group:          group,
+		VideoSlug:      videoSlug,
+	}), nil
 }

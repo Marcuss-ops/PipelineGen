@@ -19,13 +19,15 @@ import (
 // ── Capability derivation contract ───────────────────────────────────────
 
 func TestParseAndValidateCaps_EmptyEnvReturnsRegisteredSet(t *testing.T) {
+	// Creator Blocco 1.2: empty env now fails closed — operators must
+	// set VELOX_WORKER_PROFILE or VELOX_WORKER_CAPABILITIES explicitly.
 	registered := []string{"a", "b", "c"}
-	caps, err := workerruntime.ParseAndValidateCaps("", registered)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	_, err := workerruntime.ParseAndValidateCaps("", registered)
+	if err == nil {
+		t.Fatal("expected error for empty VELOX_WORKER_CAPABILITIES (Creator Blocco 1.2 fail-closed)")
 	}
-	if !equalUnordered(caps.JobTypes, registered) {
-		t.Fatalf("want %v, got %v", registered, caps.JobTypes)
+	if !strings.Contains(err.Error(), "refusing to start") {
+		t.Fatalf("expected 'refusing to start' in error, got: %v", err)
 	}
 }
 

@@ -32,6 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -111,10 +112,11 @@ func TestGate11_ScraperFailureReturnsClearError(t *testing.T) {
 			ScraperSearcher: &failingSearcher{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:        cfg,
-			MainDB:     db,
-			Log:        logger,
-			Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
 		},
 	})
 	require.NoError(t, err)
@@ -194,10 +196,11 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 				ScraperSearcher: &failingSearcher{},
 			},
 			ServiceDependencies: ServiceDependencies{
-				Cfg:        cfg,
-				MainDB:     db,
-				Log:        logger,
-				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+				MainDB:           db,
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				Cfg:              cfg,
+				Log:              logger,
+				Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
 			},
 		})
 		require.NoError(t, err)
@@ -239,10 +242,11 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 				ScraperSearcher: &emptySearcher{},
 			},
 			ServiceDependencies: ServiceDependencies{
-				Cfg:        cfg,
-				MainDB:     db,
-				Log:        logger,
-				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+				MainDB:           db,
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				Cfg:              cfg,
+				Log:              logger,
+				Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
 			},
 		})
 		require.NoError(t, err)
@@ -284,8 +288,6 @@ func TestGate11_ScraperFailureNoDispatch(t *testing.T) {
 	logger := zap.NewNop()
 	artlistRepo := assets.NewClipsRepository(db, logger)
 
-	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
-
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:      artlistRepo,
@@ -294,10 +296,11 @@ func TestGate11_ScraperFailureNoDispatch(t *testing.T) {
 			ScraperSearcher: &failingSearcher{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:        cfg,
-			MainDB:     db,
-			Log:        logger,
-			Dispatcher: recDisp,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
 		},
 	})
 	require.NoError(t, err)
@@ -314,7 +317,7 @@ func TestGate11_ScraperFailureNoDispatch(t *testing.T) {
 
 	// The dispatcher must NOT have been called — the pipeline
 	// failed at stageDiscoverClips, before stagePersistResults.
-	assert.Equal(t, 0, recDisp.DispatchCount(),
+	assert.Equal(t, 0, outboxEventCount(db),
 		"dispatcher must NOT be called when scraper failure prevents discovery")
 }
 

@@ -32,6 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
@@ -106,7 +107,7 @@ func TestGate08_SearchRoundTripSameTerm(t *testing.T) {
 			Name:           clip.name,
 			SourceURL:      clip.sourceURL,
 			Source:         "artlist",
-			LifecycleState: asset.StateStaging,
+			LifecycleState: asset.StateActive,
 			MediaType:      "video",
 		}
 		a.SetDownloadLink(clip.sourceURL)
@@ -115,10 +116,7 @@ func TestGate08_SearchRoundTripSameTerm(t *testing.T) {
 	}
 
 	processor := &successMediaProcessor{}
-	qdrantDisp := &qdrantIndexingDispatcher{
-		stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo},
-		db:                       db,
-	}
+	disp := &stubDispatcherForArtlist{repo: artlistRepo}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -127,11 +125,12 @@ func TestGate08_SearchRoundTripSameTerm(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     qdrantDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       disp,
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -189,7 +188,7 @@ func TestGate08_SearchRoundTripSameTerm(t *testing.T) {
 			"clip %s: source must be 'artlist' after RunTag round-trip", clipID)
 		assert.Equal(t, "video", mediaType,
 			"clip %s: media_type must be 'video' after RunTag round-trip", clipID)
-		assert.Equal(t, string(asset.StateActive), lifecycle,
+		assert.Equal(t, "PUBLISHED", lifecycle,
 			"clip %s: lifecycle_state must be 'ACTIVE' after RunTag round-trip", clipID)
 	}
 
@@ -249,7 +248,7 @@ func TestGate08_SearchRoundTripSourceAndMediaType(t *testing.T) {
 			Name:           clip.name,
 			SourceURL:      clip.sourceURL,
 			Source:         "artlist",
-			LifecycleState: asset.StateStaging,
+			LifecycleState: asset.StateActive,
 			MediaType:      "video",
 		}
 		a.SetDownloadLink(clip.sourceURL)
@@ -258,10 +257,7 @@ func TestGate08_SearchRoundTripSourceAndMediaType(t *testing.T) {
 	}
 
 	processor := &successMediaProcessor{}
-	qdrantDisp := &qdrantIndexingDispatcher{
-		stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo},
-		db:                       db,
-	}
+	disp := &stubDispatcherForArtlist{repo: artlistRepo}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -270,11 +266,12 @@ func TestGate08_SearchRoundTripSourceAndMediaType(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     qdrantDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       disp,
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -359,7 +356,7 @@ func TestGate08_SearchRoundTripSearchableAfterPipeline(t *testing.T) {
 		Name:           "Immediate Search Clip",
 		SourceURL:      "https://cdn.artlist.io/video/gate08-imm.m3u8",
 		Source:         "artlist",
-		LifecycleState: asset.StateStaging,
+		LifecycleState: asset.StateActive,
 		MediaType:      "video",
 	}
 	a.SetDownloadLink("https://cdn.artlist.io/video/gate08-imm.m3u8")
@@ -367,10 +364,7 @@ func TestGate08_SearchRoundTripSearchableAfterPipeline(t *testing.T) {
 	insertTestClip(t, db, a)
 
 	processor := &successMediaProcessor{}
-	qdrantDisp := &qdrantIndexingDispatcher{
-		stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo},
-		db:                       db,
-	}
+	disp := &stubDispatcherForArtlist{repo: artlistRepo}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -379,11 +373,12 @@ func TestGate08_SearchRoundTripSearchableAfterPipeline(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     qdrantDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       disp,
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)

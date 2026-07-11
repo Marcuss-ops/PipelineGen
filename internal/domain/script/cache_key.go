@@ -4,11 +4,11 @@
 // EXPLICITLY includes script-text inputs:
 //   - SourceFingerprint (resolved source aggregates)
 //   - Language, Tone, Style, Model
-//   - TargetWords / Duration / MinWords
-//   - NumClips / SegmentWords / SegmentTopics
-//   - PromptVersion, PromptProfile
+//   - TargetWords
+//   - PromptVersion, PlannerVersion (PromptProfile)
 //   - SourceKind (text|clip|catalog|search)
 //   - Guidelines (real editorial guidelines)
+//   - GroundingPolicy
 //
 // EXPLICITLY excludes output flags (they don't change the text):
 //   - SaveToDB (transport)
@@ -17,6 +17,9 @@
 //     ExtractEntities / GenerateMetadata (postprocessors)
 //   - OutputFmt, Languages (postprocessing-only)
 //   - ForceRefresh (cache-bypass control, not identity)
+//   - Segment sizing (NumClips, SegmentWords, SegmentTopics) —
+//     these affect scene planning but are not part of the canonical
+//     text-identity fingerprint.
 //
 // The PR 2 acceptance criteria:
 //   - same request -> same CacheKey (deterministic)
@@ -27,76 +30,20 @@
 //   - fingerprint must NOT appear in the rendered prompt body
 package script
 
-import (
-	"crypto/sha256"
-	"encoding/hex"
-	"strconv"
-	"strings"
-)
-
 // BuildCacheKey returns the deterministic cache key for a plan.
 // Two plans that produce identical script text MUST return the
 // same CacheKey so the memory gate serves an exact hit. Output
 // flags that don't change the text are deliberately excluded
 // so toggling "GenerateDocument" doesn't invalidate the cache.
 //
+// This function is a thin wrapper around the canonical
+// BuildFingerprint. All fingerprint logic lives in fingerprint.go;
+// this wrapper preserves the existing call sites.
+//
 // Returns an empty string when plan is nil.
 func BuildCacheKey(plan *ResolvedGenerationPlan) string {
 	if plan == nil {
 		return ""
 	}
-
-	h := sha256.New()
-
-	add := func(key, val string) {
-		if val == "" {
-			return
-		}
-		h.Write([]byte(key))
-		h.Write([]byte{'='})
-		h.Write([]byte(val))
-		h.Write([]byte{'|'})
-	}
-
-	addInt := func(key string, n int) {
-		if n <= 0 {
-			return
-		}
-		add(key, strconv.Itoa(n))
-	}
-
-	// Script-text inputs only. Order is fixed for determinism; do
-	// NOT reorder without bumping a cache-version suffix.
-	add("fingerprint", plan.SourceFingerprint)
-	add("lang", plan.Language)
-	add("tone", plan.Tone)
-	add("style", plan.Style)
-	add("model", plan.Model)
-	add("kind", plan.SourceKind)
-	add("guidelines", plan.Guidelines)
-	addInt("tw", plan.TargetWords)
-	addInt("dur", plan.Duration)
-	addInt("min", plan.MinWords)
-	addInt("clips_n", plan.NumClips)
-	addInt("segment_words", plan.SegmentWords)
-	if len(plan.SegmentTopics) > 0 {
-		topics := make([]string, 0, len(plan.SegmentTopics))
-		for _, topic := range plan.SegmentTopics {
-			if trimmed := strings.TrimSpace(topic); trimmed != "" {
-				topics = append(topics, trimmed)
-			}
-		}
-		if len(topics) > 0 {
-			add("segment_topics", strings.Join(topics, ","))
-		}
-	}
-	add("prompt_v", plan.PromptVersion)
-	add("profile", plan.PromptProfile)
-
-	sum := h.Sum(nil)
-	// First 16 hex chars (64 bits) is the canonical cache address,
-	// matching the convention in generation_identity.go's
-	// BuildItemIdentity so consumers see one shape across the
-	// codebase.
-	return hex.EncodeToString(sum[:])[:16]
+	return BuildFingerprint(FingerprintInputFromPlan(plan))
 }

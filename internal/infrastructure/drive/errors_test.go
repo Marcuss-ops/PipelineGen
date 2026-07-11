@@ -39,7 +39,7 @@ func TestDriveIsNotFound_OtherHTTPStatus(t *testing.T) {
 		http.StatusForbidden,           // 403
 		http.StatusBadGateway,          // 502
 		http.StatusUnauthorized,        // 401
-		http.StatusTooManyRequests,      // 429
+		http.StatusTooManyRequests,     // 429
 	}
 	for _, code := range cases {
 		err := makeGoogleAPIError(code, "some Drive error")

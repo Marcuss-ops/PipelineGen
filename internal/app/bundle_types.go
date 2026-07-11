@@ -39,6 +39,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -103,6 +104,16 @@ type ArtlistBundle struct {
 type ArtlistWiring struct {
 	Module  api.Module
 	Service *artlistPkg.Service
+	// ProviderAssets is the unified registry for external catalog adapters
+	// (Artlist, Pexels, Pixabay). It is wired in WireArtlist and frozen
+	// before the module is returned.
+	ProviderAssets *providerassets.Registry
+	// LicenseRepo and ReleaseRepo expose the compliance repositories for
+	// license/release tracking. They are wired in WireArtlist.
+	LicenseRepo asset.LicenseRepository
+	ReleaseRepo asset.ReleaseRepository
+	// RenditionRepo exposes the asset rendition repository. Wired in WireArtlist.
+	RenditionRepo asset.RenditionRepository
 }
 
 // StockBundle is the capability bundle for the stock-pipeline module.

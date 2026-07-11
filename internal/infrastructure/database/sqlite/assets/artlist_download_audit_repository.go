@@ -10,7 +10,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -28,11 +30,33 @@ const (
 // application-layer record. Fields map 1:1 onto the
 // artlist_download_audit table columns.
 type DownloadAuditRecord struct {
-	AssetID     string
-	ExternalURL string
-	AccountID   string
-	Provider    string
-	Status      DownloadAuditStatus
+	AssetID      string
+	ExternalURL  string
+	AccountID    string
+	Provider     string
+	Status       DownloadAuditStatus
+	DownloadedAt string
+	LicenseID    string
+	ReleaseID    string
+	ProjectID    string
+	DownloadedBy string
+}
+
+// DownloadAuditRow is a read-model for a single audit row, including the
+// license/release/project tracking fields.
+type DownloadAuditRow struct {
+	ID           string
+	Provider     string
+	AccountID    string
+	AssetID      string
+	ExternalURL  string
+	Status       DownloadAuditStatus
+	DownloadedAt string
+	LicenseID    string
+	ReleaseID    string
+	ProjectID    string
+	DownloadedBy string
+	CreatedAt    string
 }
 
 // DownloadAuditRepository is the LOCAL interface for the SQLite concrete.
@@ -42,6 +66,11 @@ type DownloadAuditRepository interface {
 	RecordDownload(ctx context.Context, rec DownloadAuditRecord) (string, error)
 	UpdateDownloadStatus(ctx context.Context, id string, status DownloadAuditStatus) error
 	CountDailyDownloads(ctx context.Context, provider, accountID string) (int, error)
+	ListByAsset(ctx context.Context, assetID string) ([]DownloadAuditRow, error)
+	ListByLicense(ctx context.Context, licenseID string) ([]DownloadAuditRow, error)
+	ListByRelease(ctx context.Context, releaseID string) ([]DownloadAuditRow, error)
+	ListByProject(ctx context.Context, projectID string) ([]DownloadAuditRow, error)
+	ListByDownloader(ctx context.Context, downloadedBy string) ([]DownloadAuditRow, error)
 }
 
 // ArtlistDownloadAuditRepository is the SQLite-backed implementation of
@@ -80,10 +109,15 @@ func (r *ArtlistDownloadAuditRepository) RecordDownload(ctx context.Context, rec
 	}
 
 	id := uuid.New().String()
+	downloadedAt := rec.DownloadedAt
+	if downloadedAt == "" {
+		downloadedAt = timeutil.FormatRFC3339(time.Now())
+	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO artlist_download_audit (id, provider, account_id, asset_id, external_url, status)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO artlist_download_audit (id, provider, account_id, asset_id, external_url, status, downloaded_at, license_id, release_id, project_id, downloaded_by)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, rec.Provider, rec.AccountID, rec.AssetID, rec.ExternalURL, string(rec.Status),
+		downloadedAt, rec.LicenseID, rec.ReleaseID, rec.ProjectID, rec.DownloadedBy,
 	)
 	if err != nil {
 		r.log.Error("artlist_download_audit_repository.RecordDownload failed",
@@ -114,6 +148,93 @@ func (r *ArtlistDownloadAuditRepository) UpdateDownloadStatus(ctx context.Contex
 		return fmt.Errorf("artlist_download_audit_repository.UpdateDownloadStatus: %w", err)
 	}
 	return nil
+}
+
+// ListByAsset returns all audit rows for a given asset.
+func (r *ArtlistDownloadAuditRepository) ListByAsset(ctx context.Context, assetID string) ([]DownloadAuditRow, error) {
+	if assetID == "" {
+		return nil, errors.New("artlist_download_audit_repository.ListByAsset: assetID is required")
+	}
+	return r.listByAssetID(ctx, assetID)
+}
+
+// ListByLicense returns all audit rows linked to a given license.
+func (r *ArtlistDownloadAuditRepository) ListByLicense(ctx context.Context, licenseID string) ([]DownloadAuditRow, error) {
+	if licenseID == "" {
+		return nil, errors.New("artlist_download_audit_repository.ListByLicense: licenseID is required")
+	}
+	return r.listByLicenseID(ctx, licenseID)
+}
+
+// ListByRelease returns all audit rows linked to a given release.
+func (r *ArtlistDownloadAuditRepository) ListByRelease(ctx context.Context, releaseID string) ([]DownloadAuditRow, error) {
+	if releaseID == "" {
+		return nil, errors.New("artlist_download_audit_repository.ListByRelease: releaseID is required")
+	}
+	return r.listByReleaseID(ctx, releaseID)
+}
+
+// ListByProject returns all audit rows for a given project.
+func (r *ArtlistDownloadAuditRepository) ListByProject(ctx context.Context, projectID string) ([]DownloadAuditRow, error) {
+	if projectID == "" {
+		return nil, errors.New("artlist_download_audit_repository.ListByProject: projectID is required")
+	}
+	return r.listByProjectID(ctx, projectID)
+}
+
+// ListByDownloader returns all audit rows for a given downloader principal.
+func (r *ArtlistDownloadAuditRepository) ListByDownloader(ctx context.Context, downloadedBy string) ([]DownloadAuditRow, error) {
+	if downloadedBy == "" {
+		return nil, errors.New("artlist_download_audit_repository.ListByDownloader: downloadedBy is required")
+	}
+	return r.listByDownloadedBy(ctx, downloadedBy)
+}
+
+func (r *ArtlistDownloadAuditRepository) listByAssetID(ctx context.Context, assetID string) ([]DownloadAuditRow, error) {
+	const query = `SELECT id, provider, account_id, asset_id, external_url, status, downloaded_at, license_id, release_id, project_id, downloaded_by, created_at FROM artlist_download_audit WHERE asset_id = ? ORDER BY created_at DESC`
+	return r.scanRows(ctx, query, assetID)
+}
+
+func (r *ArtlistDownloadAuditRepository) listByLicenseID(ctx context.Context, licenseID string) ([]DownloadAuditRow, error) {
+	const query = `SELECT id, provider, account_id, asset_id, external_url, status, downloaded_at, license_id, release_id, project_id, downloaded_by, created_at FROM artlist_download_audit WHERE license_id = ? ORDER BY created_at DESC`
+	return r.scanRows(ctx, query, licenseID)
+}
+
+func (r *ArtlistDownloadAuditRepository) listByReleaseID(ctx context.Context, releaseID string) ([]DownloadAuditRow, error) {
+	const query = `SELECT id, provider, account_id, asset_id, external_url, status, downloaded_at, license_id, release_id, project_id, downloaded_by, created_at FROM artlist_download_audit WHERE release_id = ? ORDER BY created_at DESC`
+	return r.scanRows(ctx, query, releaseID)
+}
+
+func (r *ArtlistDownloadAuditRepository) listByProjectID(ctx context.Context, projectID string) ([]DownloadAuditRow, error) {
+	const query = `SELECT id, provider, account_id, asset_id, external_url, status, downloaded_at, license_id, release_id, project_id, downloaded_by, created_at FROM artlist_download_audit WHERE project_id = ? ORDER BY created_at DESC`
+	return r.scanRows(ctx, query, projectID)
+}
+
+func (r *ArtlistDownloadAuditRepository) listByDownloadedBy(ctx context.Context, downloadedBy string) ([]DownloadAuditRow, error) {
+	const query = `SELECT id, provider, account_id, asset_id, external_url, status, downloaded_at, license_id, release_id, project_id, downloaded_by, created_at FROM artlist_download_audit WHERE downloaded_by = ? ORDER BY created_at DESC`
+	return r.scanRows(ctx, query, downloadedBy)
+}
+
+func (r *ArtlistDownloadAuditRepository) scanRows(ctx context.Context, query string, value string) ([]DownloadAuditRow, error) {
+	rows, err := r.db.QueryContext(ctx, query, value)
+	if err != nil {
+		return nil, fmt.Errorf("artlist_download_audit_repository.listBy: %w", err)
+	}
+	defer rows.Close()
+
+	var out []DownloadAuditRow
+	for rows.Next() {
+		var row DownloadAuditRow
+		if err := rows.Scan(
+			&row.ID, &row.Provider, &row.AccountID, &row.AssetID, &row.ExternalURL,
+			&row.Status, &row.DownloadedAt, &row.LicenseID, &row.ReleaseID,
+			&row.ProjectID, &row.DownloadedBy, &row.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("artlist_download_audit_repository.listBy scan: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }
 
 // CountDailyDownloads returns the number of non-failed downloads

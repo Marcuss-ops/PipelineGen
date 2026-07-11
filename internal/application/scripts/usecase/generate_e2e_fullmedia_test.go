@@ -103,10 +103,10 @@ func TestGenerateE2E_FullMedia_BindsImagesAndVoiceoverWithoutLocalPaths(t *testi
 		Source: scriptpkg.SourceSpec{
 			Type:       scriptpkg.SourceText,
 			Topic:      "full media",
-			SourceText: "Check both scene images and voiceover in the final generated script.",
+			SourceText: "Narrative covering distinct scenes opening narration closing narration. Check both scene images and voiceover in the final generated script.",
 		},
 		ScriptParams: scriptpkg.ScriptSpec{
-			TargetWords: 180,
+			TargetWords: 16,
 		},
 		Output: scriptpkg.OutputSpec{
 			GenerateSceneImages: scriptpkg.ToggleEnabled,

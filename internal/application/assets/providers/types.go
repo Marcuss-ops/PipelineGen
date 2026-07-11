@@ -23,6 +23,7 @@ package providers
 import (
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
@@ -129,19 +130,9 @@ type SearchResult struct {
 }
 
 // Candidate is a single search hit normalized at the boundary.
-// The provider returns the literal representation of what it found;
-// asset canonicalization happens downstream in the ingest use case.
-type Candidate struct {
-	SourceName   string
-	SourceRef    string
-	Title        string
-	PreviewURL   string
-	ThumbnailURL string
-	MediaType    asset.MediaType
-	Duration     time.Duration
-	PublishedAt  *time.Time
-	Score        float64
-}
+// It is an alias for the canonical providerassets.ProviderAsset so
+// that all provider adapters share one rich model.
+type Candidate = providerassets.ProviderAsset
 
 // FetchRequest drives the binary download for a known candidate.
 // The Provider MUST NOT decide the destination itself: the caller

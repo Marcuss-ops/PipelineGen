@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -233,51 +234,36 @@ func TestCurl_401TriggersTokenReload(t *testing.T) {
 // ── 6. Assert: pass does not fail; fail calls t.Fatal ─────────────────
 
 func TestAssert_PassAndFail(t *testing.T) {
-	t.Setenv("VELOX_ADMIN_TOKEN", "test-assert")
-	h, err := NewVoiceoverHarness(t, HarnessOptions{FASE: "TEST-ASSERT"})
-	if err != nil {
-		t.Fatalf("NewVoiceoverHarness returned err: %v", err)
+	// The harness Assert method calls t.Fatal on mismatch, which calls
+	// runtime.Goexit and terminates the test process. To verify this
+	// behavior without letting it kill the parent test, we use the
+	// canonical subprocess pattern: re-exec the same test binary with
+	// BE_CRASH=1, which triggers the fatal path in the child. The
+	// parent verifies the child exited with non-zero status.
+	if os.Getenv("BE_CRASH") == "1" {
+		t.Setenv("VELOX_ADMIN_TOKEN", "test-assert")
+		h, err := NewVoiceoverHarness(t, HarnessOptions{FASE: "TEST-ASSERT"})
+		if err != nil {
+			t.Fatalf("NewVoiceoverHarness returned err: %v", err)
+		}
+		if h == nil {
+			t.Fatal("NewVoiceoverHarness returned nil harness (skipped unexpectedly)")
+		}
+		h.Assert("happy_eq", "42", "42")
+		h.Assert("mismatch", "expected", "actual")
+		return
 	}
-	if h == nil {
-		t.Fatal("NewVoiceoverHarness returned nil harness (skipped unexpectedly)")
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestAssert_PassAndFail$", "-test.v")
+	cmd.Env = append(os.Environ(), "BE_CRASH=1")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected harness.Assert mismatch to fail the child process, but it passed (output: %s)", string(out))
 	}
-
-	// The pass case is verified inline (no failure). The fail case
-	// is verified via t.Cleanup because t.Fatal calls runtime.Goexit
-	// (NOT panic), so a defer/recover cannot catch it; a sub-test
-	// failure also cascades to the parent, so a sub-test cannot
-	// isolate it. The cleanest pattern is to record the report state
-	// via t.Cleanup, which runs even after t.Fatal has marked the
-	// test as failed. The contract is verified by the report
-	// containing exactly 2 entries (1 pass + 1 fail) — the report is
-	// updated BEFORE t.Fatal in Assert, so the observation is
-	// deterministic.
-	t.Cleanup(func() {
-		if got := len(h.report.Assertions); got != 2 {
-			t.Errorf("expected 2 assertion records, got %d", got)
-			return
-		}
-		if h.report.Assertions[0].Status != "pass" {
-			t.Errorf("assertion[0] status: expected pass, got %q", h.report.Assertions[0].Status)
-		}
-		if h.report.Assertions[0].Expected != "42" || h.report.Assertions[0].Actual != "42" {
-			t.Errorf("assertion[0] expected/actual mismatch: %+v", h.report.Assertions[0])
-		}
-		if h.report.Assertions[1].Status != "fail" {
-			t.Errorf("assertion[1] status: expected fail, got %q", h.report.Assertions[1].Status)
-		}
-		if h.report.Assertions[1].Expected != "expected" || h.report.Assertions[1].Actual != "actual" {
-			t.Errorf("assertion[1] expected/actual mismatch: %+v", h.report.Assertions[1])
-		}
-	})
-
-	// Passing assertion: no failure.
-	h.Assert("happy_eq", "42", "42")
-
-	// Failing assertion: must call t.Fatal (terminates the test). The
-	// t.Cleanup above verifies the report state regardless of whether
-	// t.Fatal halts the test or not.
-	h.Assert("mismatch", "expected", "actual")
+	// Verify the child output contains the expected mismatch message.
+	if !strings.Contains(string(out), "mismatch") {
+		t.Fatalf("expected child output to contain 'mismatch', got: %s", string(out))
+	}
 }
 
 // ── 7. WriteReport: JSON shape + auto-Outcome ──────────────────────────

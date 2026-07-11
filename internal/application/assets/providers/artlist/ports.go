@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
@@ -67,20 +68,14 @@ var (
 )
 
 // Candidate is the application-level representation of a search hit.
-// It is intentionally narrower than providers.Candidate so ports stay
-// decoupled from the asset registry adapter.
+// It is now the canonical providerassets.ProviderAsset so all provider
+// adapters share one rich, provider-agnostic model.
 //
 // NOTE: the richer SearchRequest (Term/Limit/PreferDB) lives in
 // dto_search.go and normalizeSearchTerm lives in run_helpers.go —
 // pre-existing call sites already reference them and the ports reuse
 // the same types so HTTP transport stays compatible.
-type Candidate struct {
-	ID         string
-	Title      string
-	SourceRef  string // primary URL (HLS/m3u8 or progressive)
-	PageURL    string // human-friendly page link
-	SourceName string
-}
+type Candidate = providerassets.ProviderAsset
 
 // Searcher performs a live search. Implementations include Node/Playwright
 // scraper, Pixabay HTTP, Pexels HTTP, in-DB LIKE.
@@ -360,6 +355,10 @@ type DownloadAuditRecord struct {
 	Provider     string
 	Status       DownloadAuditStatus
 	DownloadedAt string
+	LicenseID    string
+	ReleaseID    string
+	ProjectID    string
+	DownloadedBy string
 }
 
 // DownloadAuditRepository persists and queries Artlist download audit

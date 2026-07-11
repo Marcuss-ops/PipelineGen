@@ -173,7 +173,7 @@ func (h *YouTubeClipHandler) Stats(c *gin.Context) {
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":              true,
+		"ok":               true,
 		"total_candidates": aggRes.Total,
 		"providers":        aggRes.ProviderErrors,
 	})

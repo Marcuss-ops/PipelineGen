@@ -27,7 +27,7 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	maintenance "github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -43,20 +43,16 @@ import (
 //
 // Sets wiring.Assets on success.
 func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring) error {
+	maintRepo := sqliteassets.NewMaintenanceRepository(root.DB.DB, log)
 	maintenanceSvc := maintenance.NewService(cfg, log,
 		root.Search.AssetIndexService,
 		root.Search.AssetTreeService,
 		root.Maint.DeletionSvc,
 		root.Jobs.Service,
-		root.DB.DB,
+		maintRepo,
 	)
 	if err := maintenanceSvc.RegisterHandler(); err != nil {
 		log.Warn("failed to register maintenance handler", zap.Error(err))
-	}
-
-	var voiceoverService *voiceover.Service
-	if root.Domains.VoiceoverService != nil {
-		voiceoverService = root.Domains.VoiceoverService
 	}
 
 	// P0-2 commit 1 (June 2026): AssetsBundle renamed to
@@ -109,7 +105,7 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 	// appsearch.Service consumer that "may reuse" catalogRepo was
 	// deleted in Wave 21 PR 10 (June 2026) and the param survived as
 	// dead code until this split.
-	aw, err := WireAssets(cfg, log, assetsDeps, root.Jobs, root.Drive.Lifecycle, voiceoverService, root.Domains.VoiceoverSync, root.Domains.RealtimeMatcher, maintenanceSvc, root.Search.ProviderRegistry, root.Outbox.Dispatcher)
+	aw, err := WireAssets(cfg, log, assetsDeps, root.Jobs, root.Drive.Lifecycle, root.Search.ProviderRegistry, root.Outbox.Dispatcher)
 	if err != nil || aw == nil {
 		return nil
 	}

@@ -390,6 +390,18 @@ func (r *Router) Setup() *gin.Engine {
 	healthHandler.SetWireRegistry(wireReg)
 	transport.SyncWireCapabilityMounted(wireReg)
 
+	// Wire the script.generate route-mounted probe into the readiness
+	// checker so the script_generate check can fail closed when the
+	// /api/script capability is not mounted.
+	if r.readyChecker != nil {
+		r.readyChecker.SetScriptRouteMounted(func() bool { return wireReg.IsMounted("script") })
+	}
+
+	// GET /api/capabilities — expose mounted capabilities and version.
+	// Mounted after the wire registry is built so it reflects the
+	// actual routed surface.
+	api.GET("/capabilities", transport.NewCapabilitiesHandler(wireReg, "", "v2").Capabilities)
+
 	return engine
 }
 

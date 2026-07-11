@@ -31,6 +31,7 @@ import (
 	"context"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	mw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
@@ -69,6 +70,7 @@ type GenerateDeps struct {
 	Registry  *appjobs.Registry
 	Caps      PreflightCaps
 	Validator *usecase.PayloadValidator
+	Store     mw.IdempotencyStore
 }
 
 // JobsDeps groups the canonical constructor inputs for the
@@ -161,7 +163,7 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		// AZIONE 1 (July 2026): construct the 5-field HandlerGenerate
 		// alongside the slim ScriptFlowHandler. POST /generate
 		// delegates to h.gen.Generate(c).
-		gen: NewHandlerGenerate(deps.Generate.Jobs, deps.Generate.Log, deps.Generate.Registry, caps, deps.Generate.Validator),
+		gen: NewHandlerGenerate(deps.Generate.Jobs, deps.Generate.Log, deps.Generate.Registry, caps, deps.Generate.Validator, deps.Generate.Store),
 
 		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 3-field
 		// JobsHandler. POST /api/script/jobs/:id mounts via

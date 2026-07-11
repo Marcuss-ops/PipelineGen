@@ -38,6 +38,7 @@ func init() { gin.SetMode(gin.TestMode) }
 // FindActiveByKey dedup by returning the same job.ID for repeated
 // calls with the same non-empty ActiveKey.
 type fakeJobsService struct {
+	mu           sync.Mutex
 	lastReq      *job.EnqueueRequest
 	nextJobID    string
 	enqueueCount int
@@ -48,6 +49,9 @@ type fakeJobsService struct {
 var _ job.Service = (*fakeJobsService)(nil)
 
 func (f *fakeJobsService) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
 	f.lastReq = req
 	f.enqueueCount++
 

@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
@@ -156,7 +157,7 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 			Name:           clip.name,
 			SourceURL:      clip.sourceURL,
 			Source:         "artlist",
-			LifecycleState: asset.StateStaging,
+			LifecycleState: asset.StateActive,
 			MediaType:      "video",
 		}
 		a.SetDownloadLink(clip.sourceURL)
@@ -165,7 +166,6 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 	}
 
 	processor := &successMediaProcessor{}
-	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -174,11 +174,12 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     recDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -213,7 +214,7 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 
 	assert.Equal(t, 2, resp.Processed, "both clips should be processed")
 	assert.Equal(t, 0, resp.Failed, "no clips should fail")
-	assert.Equal(t, 2, recDisp.DispatchCount(), "both clips should be dispatched")
+	assert.Equal(t, 2, outboxEventCount(db), "finalizer should emit 2 outbox events")
 
 	// Gate 3: SQLite Drive columns verified
 	for _, clipID := range []string{"gate02-clip-1", "gate02-clip-2"} {
@@ -276,7 +277,7 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 		Name:           "Drive Failure Clip",
 		SourceURL:      "https://cdn.artlist.io/video/gate09.m3u8",
 		Source:         "artlist",
-		LifecycleState: asset.StateStaging,
+		LifecycleState: asset.StateActive,
 		MediaType:      "video",
 	}
 	a.SetDownloadLink("https://cdn.artlist.io/video/gate09.m3u8")
@@ -284,7 +285,6 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 	insertTestClip(t, db, a)
 
 	processor := &driveFailureProcessor{}
-	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -293,11 +293,12 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     recDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -329,7 +330,7 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 	assert.Equal(t, 0, resp.Failed, "Failed must be 0 (processor returned success)")
 
 	// Dispatcher MUST NOT have been called
-	assert.Equal(t, 0, recDisp.DispatchCount(), "dispatcher must NOT be called when Drive fields are missing")
+	assert.Equal(t, 0, outboxEventCount(db), "finalizer must NOT emit outbox event when Drive fields are missing")
 
 	// SQLite: lifecycle_state should still be STAGING (not ACTIVE)
 	var lifecycleState string
@@ -392,7 +393,7 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 			Name:           clip.name,
 			SourceURL:      clip.sourceURL,
 			Source:         "artlist",
-			LifecycleState: asset.StateStaging,
+			LifecycleState: asset.StateActive,
 			MediaType:      "video",
 		}
 		a.SetDownloadLink(clip.sourceURL)
@@ -401,7 +402,6 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 	}
 
 	processor := &partialDriveProcessor{}
-	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -410,11 +410,12 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     recDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -435,7 +436,7 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 	require.Len(t, resp.Items, 2)
 
 	// Only 1 dispatcher call (for the clip with Drive fields)
-	assert.Equal(t, 1, recDisp.DispatchCount(), "only 1 clip should be dispatched (the one with Drive fields)")
+	assert.Equal(t, 1, outboxEventCount(db), "finalizer should emit 1 outbox event for the clip with Drive fields")
 
 	// SQLite: OK clip should be ACTIVE with Drive fields; FAIL clip should still be STAGING
 	var okLifecycle, okDriveLink, okDriveFileID string
@@ -446,7 +447,7 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 		FROM media_assets WHERE id = ?
 	`, "gate09-mixed-ok").Scan(&okLifecycle, &okDriveLink, &okDriveFileID)
 	require.NoError(t, err)
-	assert.Equal(t, string(asset.StateActive), okLifecycle, "OK clip should be ACTIVE")
+	assert.Equal(t, "PUBLISHED", okLifecycle, "OK clip should be PUBLISHED")
 	assert.NotEmpty(t, okDriveLink, "OK clip should have drive_link")
 	assert.NotEmpty(t, okDriveFileID, "OK clip should have drive_file_id")
 
@@ -458,7 +459,7 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 		FROM media_assets WHERE id = ?
 	`, "gate09-mixed-fail").Scan(&failLifecycle, &failDriveLink, &failDriveFileID)
 	require.NoError(t, err)
-	assert.Equal(t, string(asset.StateStaging), failLifecycle, "FAIL clip should still be STAGING")
+	assert.Equal(t, string(asset.StateStaging), failLifecycle, "FAIL clip should remain in pre-run state")
 	assert.Empty(t, failDriveLink, "FAIL clip should have empty drive_link")
 	assert.Empty(t, failDriveFileID, "FAIL clip should have empty drive_file_id")
 }
@@ -530,7 +531,7 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 			Name:           clip.name,
 			SourceURL:      clip.sourceURL,
 			Source:         "artlist",
-			LifecycleState: asset.StateStaging,
+			LifecycleState: asset.StateActive,
 			MediaType:      "video",
 		}
 		a.SetDownloadLink(clip.sourceURL)
@@ -542,7 +543,6 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 	// The gate05-hash- prefix is the canonical pattern from
 	// successMediaProcessor.Process in gate01_happy_path_test.go.
 	processor := &successMediaProcessor{}
-	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -551,11 +551,12 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     recDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -572,12 +573,12 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 
 	// ── Gate 5: Contract 1 — dispatch count equals processed count ──
 	assert.Equal(t, 3, resp.Processed, "all 3 clips should be processed")
-	assert.Equal(t, 3, recDisp.DispatchCount(), "dispatcher should be called exactly once per processed clip")
+	assert.Equal(t, 3, outboxEventCount(db), "dispatcher should be called exactly once per processed clip")
 
 	// ── Gate 5: Contract 2 — per-clip content hash verification ──
 	expectedClipIDs := []string{"gate05-clip-a", "gate05-clip-b", "gate05-clip-c"}
 	for _, clipID := range expectedClipIDs {
-		dispatchedHash := recDisp.ContentHashFor(clipID)
+		dispatchedHash := outboxSourceVersionFor(db, clipID)
 		assert.NotEmpty(t, dispatchedHash, "clip %s should have been dispatched", clipID)
 
 		// successMediaProcessor sets FileHash = "gate01-hash-" + input.ID
@@ -600,14 +601,20 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 		assert.NotEmpty(t, driveLink, "SQLite: clip %s should have non-empty drive_link after dispatch", clipID)
 	}
 
-	// ── Gate 5: Contract 4 — no duplicate dispatches ──
-	// Each clip ID should appear exactly once in the dispatch log.
+	// ── Gate 5: Contract 4 — no duplicate outbox events ──
+	// Each clip ID should appear exactly once in outbox_events.
 	seen := map[string]int{}
-	for _, cid := range recDisp.DispatchedClipIDs() {
+	rows, err := db.Query(`SELECT aggregate_id FROM outbox_events WHERE event_type = 'asset.index.requested'`)
+	require.NoError(t, err)
+	defer rows.Close()
+	for rows.Next() {
+		var cid string
+		require.NoError(t, rows.Scan(&cid))
 		seen[cid]++
 	}
+	require.NoError(t, rows.Err())
 	for _, clipID := range expectedClipIDs {
-		assert.Equal(t, 1, seen[clipID], "clip %s should be dispatched exactly once (no duplicates)", clipID)
+		assert.Equal(t, 1, seen[clipID], "clip %s should have exactly one outbox event (no duplicates)", clipID)
 	}
 }
 
@@ -665,7 +672,7 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 			Name:           clip.name,
 			SourceURL:      clip.sourceURL,
 			Source:         "artlist",
-			LifecycleState: asset.StateStaging,
+			LifecycleState: asset.StateActive,
 			MediaType:      "video",
 		}
 		a.SetDownloadLink(clip.sourceURL)
@@ -676,7 +683,6 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 	// partialDriveProcessor gives Drive fields only to "gate05-ok"
 	// (the ID-suffix check covers -ok but not -nodrive).
 	processor := &partialDriveProcessor{}
-	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -685,11 +691,12 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     recDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -706,14 +713,14 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 
 	// Only gate05-ok has Drive fields → dispatched; gate05-nodrive skipped
 	assert.Equal(t, 1, resp.Processed)
-	assert.Equal(t, 1, recDisp.DispatchCount())
+	assert.Equal(t, 1, outboxEventCount(db))
 
 	// The OK clip was dispatched with the correct hash
-	assert.NotEmpty(t, recDisp.ContentHashFor("gate05-ok"),
+	assert.NotEmpty(t, outboxSourceVersionFor(db, "gate05-ok"),
 		"gate05-ok should have been dispatched with a content hash")
 
 	// The no-drive clip was NOT dispatched
-	assert.Empty(t, recDisp.ContentHashFor("gate05-nodrive"),
+	assert.Empty(t, outboxSourceVersionFor(db, "gate05-nodrive"),
 		"gate05-nodrive should NOT have been dispatched (no Drive fields)")
 
 	// SQLite: OK clip has Drive link, no-drive clip doesn't

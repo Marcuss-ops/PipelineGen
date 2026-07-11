@@ -11,7 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	artapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // pexelsVideoFile mirrors the inline JSON shape used both for
@@ -132,28 +134,51 @@ func (p *Pexels) decode(body []byte, term string, limit int) ([]artapp.Candidate
 
 	out := make([]artapp.Candidate, 0, len(payload.Videos))
 	for _, video := range payload.Videos {
-		videoURL := bestPexelsVideoURL(video.VideoFiles)
+		videoURL, rendition := bestPexelsVideoRendition(video.VideoFiles)
 		if videoURL == "" {
 			continue
 		}
 
 		// Bake user attribution into the title per PR2.4 design
-		// decision: keep the Candidate narrow (PR2.1 minimalism)
-		// instead of widening it with an Author field. The legacy
-		// provider_pexels.go in the application layer used the same
-		// technique; preserved here for behavioural parity.
+		// decision. The canonical ProviderAsset keeps Creator as a
+		// separate field, so we no longer need to stuff the author
+		// into the title.
 		title := term
 		if video.User.Name != "" {
 			title = fmt.Sprintf("%s by %s", term, video.User.Name)
 		}
 
-		out = append(out, artapp.Candidate{
-			ID:         fmt.Sprintf("pexels-%d", video.ID),
-			Title:      fmt.Sprintf("Pexels: %s", title),
-			SourceRef:  videoURL,
-			PageURL:    video.URL,
-			SourceName: p.SourceName,
-		})
+		pa := providerassets.ProviderAsset{
+			Provider:     p.SourceName,
+			ExternalID:   fmt.Sprintf("%d", video.ID),
+			ID:           fmt.Sprintf("pexels-%d", video.ID),
+			Title:        fmt.Sprintf("Pexels: %s", title),
+			Creator:      video.User.Name,
+			PageURL:      video.URL,
+			PreviewURL:   video.URL,
+			ThumbnailURL: video.Image,
+			SourceRef:    videoURL,
+			SourceName:   p.SourceName,
+			MediaType:    asset.MediaTypeClip,
+			DurationMs:   int64(video.Duration) * 1000,
+		}
+		if rendition.Width > 0 && rendition.Height > 0 {
+			pa.Width = rendition.Width
+			pa.Height = rendition.Height
+			pa.FPSNumerator = rendition.FPSNumerator
+			pa.FPSDenominator = rendition.FPSDenominator
+			pa.Orientation = orientationFor(rendition.Width, rendition.Height)
+		}
+		if rendition.URL != "" {
+			pa.Renditions = []providerassets.ProviderRendition{{
+				Kind:      "master",
+				Container: "mp4",
+				Width:     rendition.Width,
+				Height:    rendition.Height,
+				URL:       rendition.URL,
+			}}
+		}
+		out = append(out, pa)
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("%w: no usable videos", artapp.ErrEmptyResult)
@@ -164,14 +189,15 @@ func (p *Pexels) decode(body []byte, term string, limit int) ([]artapp.Candidate
 	return out, nil
 }
 
-// bestPexelsVideoURL picks the highest-resolution progressive MP4
-// from Pexels' video_files list.
+// bestPexelsVideoRendition picks the highest-resolution progressive MP4
+// from Pexels' video_files list and returns both its URL and a full
+// rendition descriptor.
 //
 // The legacy heuristic (provider_pexels.go::bestPexelsVideoURL)
 // preferred HD first, then SD, then low, with progressive MP4 only.
 // We keep that policy byte-for-byte so the new infra impl returns
 // the same URLs the old code did.
-func bestPexelsVideoURL(files []pexelsVideoFile) string {
+func bestPexelsVideoRendition(files []pexelsVideoFile) (string, providerassets.ProviderRendition) {
 	const (
 		prefHDWidth, prefHDHeight = 1920, 1080
 		prefSDWidth, prefSDHeight = 1280, 720
@@ -201,5 +227,34 @@ func bestPexelsVideoURL(files []pexelsVideoFile) string {
 			fallback = f.Link
 		}
 	}
-	return firstNonEmpty(bestHD, bestSD, bestLow, fallback)
+
+	url := firstNonEmpty(bestHD, bestSD, bestLow, fallback)
+	for _, f := range files {
+		if f.Link == url {
+			return url, providerassets.ProviderRendition{
+				Kind:           "master",
+				Container:      "mp4",
+				Width:          f.Width,
+				Height:         f.Height,
+				FPSNumerator:   int(f.FPS * 1000),
+				FPSDenominator: 1000,
+				URL:            f.Link,
+			}
+		}
+	}
+	return url, providerassets.ProviderRendition{}
+}
+
+// orientationFor returns a canonical orientation label from pixel dimensions.
+func orientationFor(width, height int) string {
+	if width == 0 || height == 0 {
+		return ""
+	}
+	if width == height {
+		return "square"
+	}
+	if width > height {
+		return "landscape"
+	}
+	return "portrait"
 }

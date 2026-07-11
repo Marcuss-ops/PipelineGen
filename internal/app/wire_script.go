@@ -233,6 +233,7 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			Registry:  appjobs.Compose(),
 			Caps:      preflightCaps,
 			Validator: usecase.NewPayloadValidator(cfg.Scripts),
+			Store:     root.Repos.IdempotencyStore,
 		},
 		Jobs: scriptapi.JobsDeps{
 			Jobs:     root.Jobs.Facade,

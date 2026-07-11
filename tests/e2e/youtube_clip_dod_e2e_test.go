@@ -120,13 +120,6 @@ var bronerPacquiaoClips = []dod12ClipSpec{
 func TestE2E_YouTubeClip_DoD12_BronerPacquiao(t *testing.T) {
 	fx := newE2EFixture(t, "media_assets_current")
 
-	// PR-YT-DOD-10: add search_text column — the youTubeE2EDB schema
-	// (qdrant_e2e_youtube_test.go) predates the search_text column
-	// addition. The production media_assets table has this column
-	// per migration 059/062; the E2E schema MUST mirror production.
-	_, err := fx.DB.Exec(`ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT ''`)
-	require.NoError(t, err, "search_text column must exist per migration 059/062 (PR-YT-DOD-10)")
-
 	for i, c := range bronerPacquiaoClips {
 		t.Run(fmt.Sprintf("Clip%d_%s", i+1, c.name), func(t *testing.T) {
 			assetID := fmt.Sprintf("yt_vdC5GXxS-qU_%d_%d_v1", c.startSec, c.endSec)

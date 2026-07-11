@@ -72,6 +72,7 @@ func BuildGenerationDocumentHTML(
 	entities *scriptpkg.EntityResult,
 	metadata []scriptpkg.VideoMetadata,
 	includeSpecSceneBlock bool,
+	provenance ...*scriptpkg.GenerationProvenance,
 ) string {
 	if model == nil {
 		return ""
@@ -250,6 +251,22 @@ func BuildGenerationDocumentHTML(
 				}
 				b.WriteString("</p>")
 			}
+		}
+	}
+
+	// ── Provenance block ──────────────────────────────────────────────
+	// Embed the generation provenance as a machine-readable JSON block
+	// inside a hidden HTML comment and as a visible last-section for operators.
+	if len(provenance) > 0 && provenance[0] != nil {
+		raw, err := json.MarshalIndent(provenance[0], "", "  ")
+		if err == nil {
+			b.WriteString("<!-- PIPELINEGEN-PROVENANCE: ")
+			b.WriteString(html.EscapeString(string(raw)))
+			b.WriteString(" -->")
+
+			b.WriteString("<h2>Technical Provenance</h2><pre>")
+			b.WriteString(html.EscapeString(string(raw)))
+			b.WriteString("</pre>")
 		}
 	}
 

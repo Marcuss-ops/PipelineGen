@@ -242,43 +242,55 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voic
 	return booksSvc, nil
 }
 
-func buildImagesService(
-	ctx context.Context, cfg *config.Config, log *zap.Logger,
-	driveUploader *drive.Uploader, clipsRepo *sqassets.ClipsRepository, artlistRepo *sqassets.ClipsRepository,
-	styleRegistry *generation.StyleRegistry, scriptGen *ollama.Generator,
-	mediaStore *drive.Store, publisher delivery.Publisher, imageRepo *sqassets.ImagesRepository,
-	voMetaWriter semantic.MetadataWriterPort, ingestSvc *ingest.Service, dispatcher *outbox.Dispatcher,
-) (*imgservice.Service, semantic.MetadataWriterPort) {
-	_ = ctx
-	_ = artlistRepo
+// buildImagesParams groups the dependencies required to wire the images service.
+//
+// PR-YAGNI-IMAGES-WIRING (July 2026): replaces the 14 positional arguments
+// of buildImagesService with a single struct. The previous signature carried
+// two unused parameters (ctx, artlistRepo) that are now removed entirely.
+type buildImagesParams struct {
+	Cfg           *config.Config
+	Log           *zap.Logger
+	DriveUploader *drive.Uploader
+	ClipsRepo     *sqassets.ClipsRepository
+	StyleRegistry *generation.StyleRegistry
+	ScriptGen     *ollama.Generator
+	MediaStore    *drive.Store
+	Publisher     delivery.Publisher
+	ImageRepo     *sqassets.ImagesRepository
+	VOMetaWriter  semantic.MetadataWriterPort
+	IngestSvc     *ingest.Service
+	Dispatcher    *outbox.Dispatcher
+}
+
+func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic.MetadataWriterPort) {
 	const destinationsYAMLPath = "config/image_destinations.yaml"
-	destResolver, err := destinations.NewYamlResolver(destinationsYAMLPath, cfg.Drive.ImagesFolder())
+	destResolver, err := destinations.NewYamlResolver(destinationsYAMLPath, params.Cfg.Drive.ImagesFolder())
 	if err != nil {
-		log.Warn("destinations.NewYamlResolver failed; ImageStorageService.destResolver will be nil",
+		params.Log.Warn("destinations.NewYamlResolver failed; ImageStorageService.destResolver will be nil",
 			zap.String("yaml_path", destinationsYAMLPath), zap.Error(err))
 		destResolver = nil
 	}
 	imageService := imgservice.NewService(imgservice.ImagesDeps{
-		Core: imgservice.ImagesCoreDeps{Cfg: cfg, Log: log},
+		Core: imgservice.ImagesCoreDeps{Cfg: params.Cfg, Log: params.Log},
 		Storage: imgservice.ImagesStorageDeps{
-			ImageRepo: imageRepo, ClipsRepo: clipsRepo, DriveReader: driveUploader,
-			MediaStore: mediaStore, Publisher: publisher, DestResolver: destResolver,
+			ImageRepo: params.ImageRepo, ClipsRepo: params.ClipsRepo, DriveReader: params.DriveUploader,
+			MediaStore: params.MediaStore, Publisher: params.Publisher, DestResolver: destResolver,
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
-			LLMGen: scriptGen, MetaWriter: voMetaWriter, StyleRegistry: styleRegistry,
+			LLMGen: params.ScriptGen, MetaWriter: params.VOMetaWriter, StyleRegistry: params.StyleRegistry,
 			ImageGen: imgservice.NewChromeImageProviderPool(
-				cfg.Paths.PythonScriptsDir,
-				cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations,
-				log,
+				params.Cfg.Paths.PythonScriptsDir,
+				params.Cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations,
+				params.Log,
 			),
 		},
 		External: imgservice.ImagesExternalDeps{
-			IngestSvc: ingestSvc, Dispatcher: dispatcher, VeloxBaseURL: cfg.External.VeloxBaseURL,
+			IngestSvc: params.IngestSvc, Dispatcher: params.Dispatcher, VeloxBaseURL: params.Cfg.External.VeloxBaseURL,
 			GACfg: imgservice.GoogleAccountingConfig{
-				ServerURL: cfg.GoogleAccounting.ServerURL, DownloadDir: cfg.GoogleAccounting.DownloadDir,
-				VidsProjectID: cfg.GoogleAccounting.VidsProjectID,
+				ServerURL: params.Cfg.GoogleAccounting.ServerURL, DownloadDir: params.Cfg.GoogleAccounting.DownloadDir,
+				VidsProjectID: params.Cfg.GoogleAccounting.VidsProjectID,
 			},
 		},
 	})
-	return imageService, voMetaWriter
+	return imageService, params.VOMetaWriter
 }

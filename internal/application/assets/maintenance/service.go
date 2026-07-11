@@ -2,12 +2,12 @@ package maintenance
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -39,7 +39,7 @@ type Service struct {
 	deletionSvc    *deletion.DeletionService
 	jobsSvc        *appjobs.Service
 	driveFileCheck DriveFileChecker
-	dbs            []*sql.DB
+	repos          []assets.MaintenanceRepository
 	// deepCleanupBatch caps how many rows per pass to keep the maintenance
 	// job from monopolising the DB. Zero means use the default.
 	deepCleanupBatch int
@@ -53,7 +53,7 @@ func NewService(
 	assetTreeSvc *assettree.Service,
 	deletionSvc *deletion.DeletionService,
 	jobsSvc *appjobs.Service,
-	dbs ...*sql.DB,
+	repos ...assets.MaintenanceRepository,
 ) *Service {
 	return &Service{
 		cfg:           cfg,
@@ -62,7 +62,7 @@ func NewService(
 		assetTreeSvc:  assetTreeSvc,
 		deletionSvc:   deletionSvc,
 		jobsSvc:       jobsSvc,
-		dbs:           dbs,
+		repos:         repos,
 	}
 }
 

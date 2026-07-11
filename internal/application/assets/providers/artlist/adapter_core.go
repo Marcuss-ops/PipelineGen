@@ -119,15 +119,21 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 
 	candidates := make([]providers.Candidate, 0, len(resp.Clips))
 	for i := range resp.Clips {
-		asset := &resp.Clips[i]
+		clip := &resp.Clips[i]
 		candidates = append(candidates, providers.Candidate{
+			Provider:     a.Name(),
+			ExternalID:   clip.ID,
+			ID:           clip.ID,
+			Title:        clip.Name,
+			PageURL:      clip.ClipPageURL,
+			PreviewURL:   clip.ClipPageURL,
+			ThumbnailURL: clip.ThumbnailURL,
+			SourceRef:    clip.SourceURL,
 			SourceName:   a.Name(),
-			SourceRef:    asset.ID,
-			Title:        asset.Name,
-			PreviewURL:   asset.ClipPageURL,
-			ThumbnailURL: asset.ThumbnailURL,
-			MediaType:    asset.MediaType,
-			Duration:     asset.Duration,
+			MediaType:    clip.MediaType,
+			Duration:     clip.Duration,
+			DurationMs:   clip.Duration.Milliseconds(),
+			Keywords:     clip.Tags,
 			PublishedAt:  nil, // artlist DB record may carry CreatedAt but not publish time
 			Score:        0,
 		})

@@ -188,51 +188,106 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 		}
 	}
 
-	// Step 2: Process/Normalize. Caller-provided LocalPath cleanup skipped
-	// below (Step 9/12 wire-up): the stager owns the staged file lifecycle.
-	processedPath, err = p.processStep(ctx, input, actualRawPath, processedPath)
-	if err != nil {
+	// Rendition layout (July 2026): preserve immutable master and generate
+	// mezzanine/proxy/thumbnail/storyboard renditions. The canonical
+	// processed file becomes the mezzanine.
+	if input.RenditionLayout {
+		renditions, err := p.processRenditions(ctx, input, actualRawPath)
+		if err != nil {
+			if input.LocalPath == "" {
+				_ = os.Remove(actualRawPath)
+			}
+			result.Error = fmt.Sprintf("rendition processing failed: %v", err)
+			return result, err
+		}
+		result.Renditions = renditions
+
+		// The mezzanine is the canonical processed output.
+		mezzanine := p.findRendition(renditions, asset.RenditionKindMezzanine)
+		if mezzanine == nil {
+			if input.LocalPath == "" {
+				_ = os.Remove(actualRawPath)
+			}
+			result.Error = "mezzanine rendition missing after processing"
+			return result, fmt.Errorf("%s", result.Error)
+		}
+		processedPath = mezzanine.LocalPath
+		result.FileHash = mezzanine.FileHash
+		result.LocalPath = mezzanine.LocalPath
+		result.Filename = mezzanine.Filename
+
+		// Perceptual deduplication on the mezzanine.
+		duplicateID, _ := p.checkPHashDeduplication(ctx, input.ID, processedPath)
+		if duplicateID != "" {
+			p.log.Info("perceptual duplicate found", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
+			result.DuplicateOf = duplicateID
+			if existing, err := p.registry.GetMedia(ctx, duplicateID); err == nil && existing != nil {
+				result.DriveLink = existing.DriveLink
+				result.DriveFileID = existing.DriveFileID
+				result.DownloadLink = existing.DownloadLink
+				result.Status = "duplicate"
+
+				// Clean up local files to avoid duplicate drive.
+				_ = os.Remove(actualRawPath)
+				_ = os.Remove(processedPath)
+
+				p.log.Info("Reusing Drive details from duplicate asset", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
+				return result, nil
+			}
+		}
+
+		// Remove the temporary downloaded raw file; the immutable master
+		// copy under OutputDir/master/ is the preserved source.
 		if input.LocalPath == "" {
 			_ = os.Remove(actualRawPath)
 		}
-		result.Error = fmt.Sprintf("process failed: %v", err)
-		return result, err
-	}
+	} else {
+		// Step 2: Process/Normalize. Caller-provided LocalPath cleanup skipped
+		// below (Step 9/12 wire-up): the stager owns the staged file lifecycle.
+		processedPath, err = p.processStep(ctx, input, actualRawPath, processedPath)
+		if err != nil {
+			if input.LocalPath == "" {
+				_ = os.Remove(actualRawPath)
+			}
+			result.Error = fmt.Sprintf("process failed: %v", err)
+			return result, err
+		}
 
-	// Perceptual deduplication.
-	duplicateID, _ := p.checkPHashDeduplication(ctx, input.ID, processedPath)
-	if duplicateID != "" {
-		p.log.Info("perceptual duplicate found", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
-		result.DuplicateOf = duplicateID
-		if existing, err := p.registry.GetMedia(ctx, duplicateID); err == nil && existing != nil {
-			result.DriveLink = existing.DriveLink
-			result.DriveFileID = existing.DriveFileID
-			result.DownloadLink = existing.DownloadLink
-			result.Status = "duplicate"
+		// Perceptual deduplication.
+		duplicateID, _ := p.checkPHashDeduplication(ctx, input.ID, processedPath)
+		if duplicateID != "" {
+			p.log.Info("perceptual duplicate found", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
+			result.DuplicateOf = duplicateID
+			if existing, err := p.registry.GetMedia(ctx, duplicateID); err == nil && existing != nil {
+				result.DriveLink = existing.DriveLink
+				result.DriveFileID = existing.DriveFileID
+				result.DownloadLink = existing.DownloadLink
+				result.Status = "duplicate"
 
-			// Clean up local files to avoid duplicate drive.
-			_ = os.Remove(actualRawPath)
+				// Clean up local files to avoid duplicate drive.
+				_ = os.Remove(actualRawPath)
+				_ = os.Remove(processedPath)
+
+				p.log.Info("Reusing Drive details from duplicate asset", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
+				return result, nil
+			}
+		}
+
+		// Step 3: Hash. Caller-provided LocalPath cleanup skipped below
+		// (Step 9/12 wire-up): the stager owns the staged file lifecycle.
+		fileHash, err := p.hashStep(ctx, processedPath)
+		if err != nil {
+			if input.LocalPath == "" {
+				_ = os.Remove(actualRawPath)
+			}
 			_ = os.Remove(processedPath)
-
-			p.log.Info("Reusing Drive details from duplicate asset", zap.String("id", input.ID), zap.String("duplicate_of", duplicateID))
-			return result, nil
+			result.Error = fmt.Sprintf("hash failed: %v", err)
+			return result, err
 		}
+		result.FileHash = fileHash
+		result.LocalPath = processedPath
+		result.Filename = filepath.Base(processedPath)
 	}
-
-	// Step 3: Hash. Caller-provided LocalPath cleanup skipped below
-	// (Step 9/12 wire-up): the stager owns the staged file lifecycle.
-	fileHash, err := p.hashStep(ctx, processedPath)
-	if err != nil {
-		if input.LocalPath == "" {
-			_ = os.Remove(actualRawPath)
-		}
-		_ = os.Remove(processedPath)
-		result.Error = fmt.Sprintf("hash failed: %v", err)
-		return result, err
-	}
-	result.FileHash = fileHash
-	result.LocalPath = processedPath
-	result.Filename = filepath.Base(processedPath)
 
 	// Step 4: Canonical Drive upload via delivery.Publisher.
 	//
@@ -342,12 +397,24 @@ func (p *Processor) Process(ctx context.Context, input *asset.ProcessInput) (*as
 	// Cleanup raw file after processing.
 	// Skip when LocalPath was caller-provided (Step 9/12 wire-up): the
 	// caller (e.g. shared SourceStager) owns the staged file's lifecycle.
-	if input.LocalPath == "" {
+	// Also skip in rendition layout mode: the master rendition is the
+	// preserved raw source and must remain on disk.
+	if input.LocalPath == "" && !input.RenditionLayout {
 		_ = os.Remove(actualRawPath)
 	}
 
 	result.Status = "processed"
 	return result, nil
+}
+
+// findRendition returns the first rendition with the given kind, or nil.
+func (p *Processor) findRendition(renditions []asset.RenditionOutput, kind asset.RenditionKind) *asset.RenditionOutput {
+	for i := range renditions {
+		if renditions[i].Kind == kind {
+			return &renditions[i]
+		}
+	}
+	return nil
 }
 
 // setupDirectories creates temp and save directories, returning their paths.

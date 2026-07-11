@@ -2,6 +2,56 @@
 // Code-motion split from internal/domain/finalization/types.go (674 LOC, LONG-FILES-DECOMPOSITION-2026-07-06 P0 critical band slice, 2026-07-06).
 package finalization
 
+// AssetRenditionLocation describes a single technical variant of a
+// published artifact (master, mezzanine, proxy, thumbnail, storyboard,
+// etc.) so that AssetFinalizerTx can persist it as an asset_locations
+// row and a matching asset_renditions row inside the same transaction.
+type AssetRenditionLocation struct {
+	// Kind is the semantic role of this rendition, e.g. "master",
+	// "mezzanine", "proxy", "thumbnail", "storyboard".
+	Kind string `json:"kind"`
+
+	// Provider identifies the storage backend (e.g. "local", "drive", "s3").
+	Provider string `json:"provider"`
+
+	// FileID is the provider-specific file identifier, if any.
+	FileID string `json:"file_id,omitempty"`
+
+	// URI is the physical location of the rendition (e.g. local path).
+	URI string `json:"uri"`
+
+	// WebViewLink is the human-readable URL to view the file.
+	WebViewLink string `json:"web_view_link,omitempty"`
+
+	// DownloadLink is the direct download URL for the file.
+	DownloadLink string `json:"download_link,omitempty"`
+
+	// MimeType is the IANA media type.
+	MimeType string `json:"mime_type,omitempty"`
+
+	// SizeBytes is the file size in bytes.
+	SizeBytes int64 `json:"size_bytes,omitempty"`
+
+	// FileHash is the SHA-256 digest of the rendition content.
+	FileHash string `json:"file_hash,omitempty"`
+
+	// Width and Height are the pixel dimensions.
+	Width  int `json:"width,omitempty"`
+	Height int `json:"height,omitempty"`
+
+	// FPS is the frame rate.
+	FPS float64 `json:"fps,omitempty"`
+
+	// Bitrate is the average bitrate in bits per second.
+	Bitrate int64 `json:"bitrate,omitempty"`
+
+	// Container is the file container, e.g. "mp4", "mov".
+	Container string `json:"container,omitempty"`
+
+	// Codec is the video/audio codec, e.g. "h264".
+	Codec string `json:"codec,omitempty"`
+}
+
 // PublishedArtifact represents an artifact that has been successfully
 // published to a remote location. It extends VerifiedArtifact with
 // the canonical AssetLocation.
@@ -70,4 +120,12 @@ type PublishedArtifact struct {
 	// Location is the canonical descriptor of where the artifact was
 	// published.
 	Location AssetLocation `json:"location"`
+
+	// Renditions are additional technical variants (master, mezzanine,
+	// proxy, thumbnail, storyboard, etc.) that should be persisted
+	// alongside the primary artifact. The canonical AssetFinalizerTx
+	// writes each rendition as an asset_locations row and a matching
+	// asset_renditions row inside the same transaction.
+	// Optional — when empty, only the primary Location is written.
+	Renditions []AssetRenditionLocation `json:"renditions,omitempty"`
 }

@@ -75,7 +75,9 @@ func TestEnqueue_CorrelationLookupTimeoutDoesNotBlockCreate(t *testing.T) {
 
 	reg := newWiringRegistry(t, time.Minute, 3)
 	broker := &correlationTimeoutBroker{}
-	svc, err := NewService(broker, NewDispatcher(), zap.NewNop(), reg)
+	// nil dispatcher: this test exercises the correlation-lookup
+	// timeout fallback, not handler registration.
+	svc, err := NewService(broker, nil, zap.NewNop(), reg)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

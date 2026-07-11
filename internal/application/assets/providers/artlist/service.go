@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -110,14 +111,29 @@ type ServicePorts struct {
 //     site, which keeps the test fixtures terse.
 type ServiceDependencies struct {
 	Cfg               *config.Config
-	MainDB            *sql.DB
 	Log               *zap.Logger
+	MainDB            *sql.DB
 	Dispatcher        Dispatcher
 	MediaProcessor    asset.Processor
 	AssetDestResolver asset.Resolver
 	JobsSvc           jobs.Service
 	AssetProcRepo     asset.ProcessingRepository
 	AssetVerRepo      asset.VersionRepository
+	// AssetFinalizerTx is the canonical transactional asset finalizer
+	// (Wave C / July 2026). Artlist uses it to write media_assets,
+	// asset_versions, asset_locations, and asset_renditions inside a
+	// single transaction, replacing the legacy dispatchBridge path.
+	AssetFinalizerTx finalization.AssetFinalizerTx
+	// LocationRepository persists physical asset locations (Wave C).
+	// Wired from sqlite/assets.AssetStoreSQLite.LocationRepository().
+	// Optional — when nil, stagePersistResults skips recording
+	// rendition locations (godlike/07 graceful degradation).
+	LocationRepository asset.LocationRepository
+	// RenditionRepository persists generated rendition metadata.
+	// Wired from sqlite/assets.NewAssetRenditionRepository.
+	// Optional — when nil, stagePersistResults skips recording
+	// renditions (godlike/07 graceful degradation).
+	RenditionRepository asset.RenditionRepository
 }
 
 // ServiceDeps is the canonical constructor input for artlist.Service.
@@ -164,9 +180,8 @@ type ServiceDeps struct {
 // through delivery.Publisher (write surface) + drive.Reader (read
 // surface) per DRIVE-005 closure's "one owner per fact" rule.
 type Service struct {
-	cfg    *config.Config
-	mainDB *sql.DB
-	log    *zap.Logger
+	cfg *config.Config
+	log *zap.Logger
 
 	// L1: in-memory cache per risultati live (evita rilanci di Playwright per term già ricercati di recente)
 	liveCache *liveSearchCache
@@ -214,6 +229,15 @@ type Service struct {
 	assetProcessing asset.ProcessingRepository
 	assetVersions   asset.VersionRepository
 
+	// assetFinalizer is the canonical transactional asset finalizer.
+	// It writes media_assets, asset_versions, asset_locations, and
+	// asset_renditions inside the caller's transaction.
+	assetFinalizer finalization.AssetFinalizerTx
+
+	// mainDB is the canonical SQLite handle used to open the
+	// transaction passed to assetFinalizer.
+	mainDB *sql.DB
+
 	// stager is the shared SourceStager port (Step 9/12 wire-up). Optional.
 	stager assets.SourceStager
 
@@ -229,6 +253,14 @@ type Service struct {
 	// composition: NewService rejects nil with
 	// ErrRunRepositoryUnavailable (fail-closed).
 	runRepo RunRepository
+
+	// locationRepo persists physical asset locations (Wave C / July 2026).
+	// Used by stagePersistResults to record rendition locations.
+	locationRepo asset.LocationRepository
+
+	// renditionRepo persists asset rendition metadata (July 2026).
+	// Used by stagePersistResults to record generated renditions.
+	renditionRepo asset.RenditionRepository
 
 	// searchStrategy controls the Pexels/Pixabay fallback chain
 	// (PR-AUDIT-5, July 2026). Wired from deps.SearchStrategy.
@@ -267,7 +299,6 @@ func NewService(deps ServiceDeps) (*Service, error) {
 	}
 	s := &Service{
 		cfg:               deps.Cfg,
-		mainDB:            deps.MainDB,
 		log:               deps.Log,
 		assetStore:        deps.AssetStore,
 		indexer:           deps.Indexer,
@@ -281,12 +312,16 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		pixabaySearcher:   deps.PixabaySearcher,
 		pexelsSearcher:    deps.PexelsSearcher,
 		searchStrategy:    deps.SearchStrategy,
-		liveCache:         newPersistentLiveSearchCache(deps.MainDB, deps.Log),
+		liveCache:         newLiveSearchCache(),
 		assetProcessing:   deps.AssetProcRepo,
 		assetVersions:     deps.AssetVerRepo,
+		assetFinalizer:    deps.AssetFinalizerTx,
+		mainDB:            deps.MainDB,
 		stager:            deps.Stager,
 		isLiveProbe:       deps.IsLiveProbe,
 		runRepo:           deps.RunRepository,
+		locationRepo:      deps.LocationRepository,
+		renditionRepo:     deps.RenditionRepository,
 	}
 
 	// Inizializza i componenti delegati

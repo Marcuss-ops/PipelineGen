@@ -199,12 +199,12 @@ type expectedColumn struct {
 
 // liveColumn is the row shape returned by PRAGMA table_info.
 type liveColumn struct {
-	cid        int
-	Name       string
-	Type       string
-	notnull    int
-	dfltValue  sql.NullString
-	pk         int
+	cid       int
+	Name      string
+	Type      string
+	notnull   int
+	dfltValue sql.NullString
+	pk        int
 }
 
 // extractExpectedSchema parses every migration file in migrationsDir

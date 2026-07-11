@@ -34,6 +34,9 @@ func TestVoiceoverC3DriveFolderInvalid(t *testing.T) {
 	if os.Getenv("VELOX_ADMIN_TOKEN") == "" {
 		t.Skip("VELOX_ADMIN_TOKEN not set; skipping live voiceover C3 test")
 	}
+	if _, err := os.Stat("data/media/media.db.sqlite"); os.IsNotExist(err) {
+		t.Skip("SMOKE_DB data/media/media.db.sqlite missing; skipping test")
+	}
 
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {

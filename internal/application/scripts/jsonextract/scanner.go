@@ -152,10 +152,17 @@ func (s *Scanner) Scan(raw []byte, source string) (*scriptpkg.ModelScriptOutputV
 	// decoder. godlike/07 NO-FAKE-AVAILABILITY: legacy-JSON detection
 	// is owned by ParsePlainTextFresh (single typed-sentinel surface).
 	if s.Mode == ModeStrict {
+		// PR-5 LLM-PLAIN-TEXT contract: strict mode first tries to
+		// extract a canonical V1 JSON envelope. When extraction
+		// succeeds, the decoded/validated result (or its error) is
+		// returned directly — no silent fallback to plain prose.
+		// When extraction fails, JSON-shaped input is an hard error;
+		// non-JSON input falls through to the plain-prose primary path.
 		if extractErr == nil {
-			if output, err := decodeV1(jsonBytes); err == nil {
-				return output, nil
-			}
+			return decodeV1(jsonBytes)
+		}
+		if isLegacyJSONShape(string(raw)) {
+			return nil, fmt.Errorf("%w: %v", scriptpkg.ErrModelOutputMalformed, extractErr)
 		}
 		// PRIMARY path: plain prose (fresh-mode LLM contract).
 		return ParsePlainTextFresh(raw)

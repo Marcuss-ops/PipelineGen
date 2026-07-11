@@ -45,13 +45,8 @@ func newTextTrackFixture(t *testing.T, collection string) *textTrackFixture {
 	t.Helper()
 	fx := newE2EFixture(t, collection)
 
-	// Add search_text column (migration 059/062) — the base youTubeE2EDB
-	// schema predates this column. Mirror the DoD12 E2E pattern.
-	_, err := fx.DB.Exec(`ALTER TABLE media_assets ADD COLUMN search_text TEXT NOT NULL DEFAULT ''`)
-	require.NoError(t, err, "search_text column must exist per migration 059/062")
-
 	// Add asset_text_tracks table (migration 137 DDL).
-	_, err = fx.DB.Exec(`
+	_, err := fx.DB.Exec(`
 CREATE TABLE IF NOT EXISTS asset_text_tracks (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     asset_id            TEXT NOT NULL,

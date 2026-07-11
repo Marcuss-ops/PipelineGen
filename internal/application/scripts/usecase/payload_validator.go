@@ -93,55 +93,65 @@ func (v *PayloadValidator) validateItem(item scriptpkg.GenerationItemV2, ref str
 	return nil
 }
 
+// sourceTextMetrics holds the measured dimensions of a source_text.
+// It is intentionally limited to counts; the raw text is never stored
+// here so that metrics helpers cannot accidentally log the full text.
+type sourceTextMetrics struct {
+	chars  int
+	bytes  int
+	tokens int
+	words  int
+}
+
+// measureSourceText computes byte, character, estimated token and word
+// counts for the supplied text. The original text is not retained.
+func measureSourceText(text string) sourceTextMetrics {
+	return sourceTextMetrics{
+		chars:  utf8.RuneCountInString(text),
+		bytes:  len(text),
+		tokens: estimateTokens(text),
+		words:  countWords(text),
+	}
+}
+
 func (v *PayloadValidator) validateSourceText(item scriptpkg.GenerationItemV2, ref string) error {
 	sourceText := strings.TrimSpace(item.Source.SourceText)
 	if sourceText == "" {
 		return nil
 	}
 
-	chars := utf8.RuneCountInString(sourceText)
-	if v.maxSourceTextChars > 0 && chars > v.maxSourceTextChars {
+	m := measureSourceText(sourceText)
+
+	// Build a single SOURCE_TEXT_TOO_LARGE error that surfaces every
+	// exceeded limit together with the actual and maximum values. The
+	// raw source text is intentionally omitted from the error payload
+	// and from any log fields to avoid leaking caller data.
+	if exceeded := v.exceededSourceTextLimits(m); len(exceeded) > 0 {
+		extra := map[string]any{
+			"actual_chars":  m.chars,
+			"actual_bytes":  m.bytes,
+			"actual_tokens": m.tokens,
+		}
+		if v.maxSourceTextChars > 0 {
+			extra["max_chars"] = v.maxSourceTextChars
+		}
+		if v.maxSourceTextBytes > 0 {
+			extra["max_bytes"] = v.maxSourceTextBytes
+		}
+		if v.maxSourceTextTokens > 0 {
+			extra["max_tokens"] = v.maxSourceTextTokens
+		}
+		extra["limits"] = exceeded
 		return &scriptpkg.PayloadValidationError{
 			Code:      "SOURCE_TEXT_TOO_LARGE",
-			Message:   "source_text exceeds maximum character limit",
+			Message:   "source_text exceeds configured limits (chars/bytes/tokens)",
 			Stage:     "request.validation",
 			Retryable: false,
-			Extra: map[string]any{
-				"actual_chars": chars,
-				"max_chars":    v.maxSourceTextChars,
-			},
+			Extra:     extra,
 		}
 	}
 
-	bytes := len(sourceText)
-	if v.maxSourceTextBytes > 0 && bytes > v.maxSourceTextBytes {
-		return &scriptpkg.PayloadValidationError{
-			Code:      "SOURCE_TEXT_TOO_LARGE",
-			Message:   "source_text exceeds maximum byte limit",
-			Stage:     "request.validation",
-			Retryable: false,
-			Extra: map[string]any{
-				"actual_bytes": bytes,
-				"max_bytes":    v.maxSourceTextBytes,
-			},
-		}
-	}
-
-	tokens := estimateTokens(sourceText)
-	if v.maxSourceTextTokens > 0 && tokens > v.maxSourceTextTokens {
-		return &scriptpkg.PayloadValidationError{
-			Code:      "SOURCE_TEXT_TOO_LARGE",
-			Message:   "source_text exceeds maximum estimated token limit",
-			Stage:     "request.validation",
-			Retryable: false,
-			Extra: map[string]any{
-				"actual_tokens": tokens,
-				"max_tokens":    v.maxSourceTextTokens,
-			},
-		}
-	}
-
-	words := countWords(sourceText)
+	words := m.words
 	targetWords := item.ScriptParams.TargetWords
 	if v.maxSourceTextToTargetWordsRatio > 0 && targetWords > 0 && float64(words) > v.maxSourceTextToTargetWordsRatio*float64(targetWords) {
 		return &scriptpkg.PayloadValidationError{
@@ -161,10 +171,26 @@ func (v *PayloadValidator) validateSourceText(item scriptpkg.GenerationItemV2, r
 	return nil
 }
 
+func (v *PayloadValidator) exceededSourceTextLimits(m sourceTextMetrics) []string {
+	var exceeded []string
+	if v.maxSourceTextChars > 0 && m.chars > v.maxSourceTextChars {
+		exceeded = append(exceeded, "chars")
+	}
+	if v.maxSourceTextBytes > 0 && m.bytes > v.maxSourceTextBytes {
+		exceeded = append(exceeded, "bytes")
+	}
+	if v.maxSourceTextTokens > 0 && m.tokens > v.maxSourceTextTokens {
+		exceeded = append(exceeded, "tokens")
+	}
+	return exceeded
+}
+
 // estimateTokens returns a rough token estimate for the supplied
 // text. The heuristic is ~4 characters per token for Latin scripts
 // and ~1.5 characters per token for CJK scripts. This is intentionally
-// cheap and dependency-free.
+// cheap and dependency-free; the value reported in
+// SOURCE_TEXT_TOO_LARGE errors is an estimate, not a real tokenizer
+// count.
 func estimateTokens(s string) int {
 	if s == "" {
 		return 0

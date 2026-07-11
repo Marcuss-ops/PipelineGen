@@ -40,7 +40,21 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	}
 
 	// ── Assets domain: voiceover, books, ingest, images, lessons ──
-	if err := buildDomainAssetServices(ctx, cfg, dbs, log, drive, repos, search, process, ai, outbox, mutationsDisp, voMetaWriter, bundle); err != nil {
+	if err := buildDomainAssetServices(buildDomainAssetServicesParams{
+		ctx:           ctx,
+		cfg:           cfg,
+		dbs:           dbs,
+		log:           log,
+		drive:         drive,
+		repos:         repos,
+		search:        search,
+		process:       process,
+		ai:            ai,
+		outbox:        outbox,
+		mutationsDisp: mutationsDisp,
+		voMetaWriter:  voMetaWriter,
+		bundle:        bundle,
+	}); err != nil {
 		return nil, fmt.Errorf("compose domains (assets): %w", err)
 	}
 

@@ -137,15 +137,14 @@ var ErrMetadataDriveNotConfigured = errors.New(
 //  3. Build merged JSON (replace-or-append the clip entry by
 //     clip_id) in a TEMP file.
 //  4. Defer os.Remove(metaTempPath) so a network hang or early
-//     return after this point does not leak the file.
-//  5. Publish the temp file via publisher.Publish with
+//     return after this point does not leak the file.	//  5. Publish the temp file via publisher.Publish with
 //     Destination=DestinationClipMetadata,
-//     RootFolderOverride=folderID, Filename="metadata.json",
+//     DestinationFolderID=folderID, Filename="metadata.json",
 //     ConflictPolicy=ConflictOverwrite. The publisher either:
-//        (a) succeeds — the new metadata.json is live on Drive
-//        (b) fails — the OLD metadata.json is STILL on Drive, the
-//            temp file is removed by the defer, the error
-//            propagates
+//     (a) succeeds — the new metadata.json is live on Drive
+//     (b) fails — the OLD metadata.json is STILL on Drive, the
+//     temp file is removed by the defer, the error
+//     propagates
 //  6. On publish success, cleanup old per-video .json files via
 //     FileLifecycle.Trash (best-effort, warnings logged on
 //     failure so the caller can investigate).
@@ -293,11 +292,11 @@ func UpdateCumulativeMetadataJSON(
 	// Drive-side sidecar is either the old or the new content,
 	// never a torn intermediate.
 	pubReq := delivery.PublishRequest{
-		Destination:        delivery.DestinationClipMetadata,
-		LocalPath:          metaTempPath,
-		Filename:           metaFilename,
-		RootFolderOverride: folderID, // sidecar lives in the clip's resolved folder
-		ConflictPolicy:     delivery.ConflictOverwrite,
+		Destination:         delivery.DestinationClipMetadata,
+		LocalPath:           metaTempPath,
+		Filename:            metaFilename,
+		DestinationFolderID: folderID, // sidecar lives in the clip's resolved folder
+		ConflictPolicy:      delivery.ConflictOverwrite,
 	}
 	pubResult, pubErr := publisher.Publish(ctx, pubReq)
 	if pubErr != nil {

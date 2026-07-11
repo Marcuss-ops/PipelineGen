@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+
 	"go.uber.org/zap"
 )
 
@@ -83,29 +83,27 @@ func (o *RunOrchestratorService) stageBuildProcessInputs(ctx context.Context, re
 
 		outputDir := ""
 		if o.svc.cfg != nil {
-			termSlug := textutil.SafeName(resp.Term)
-			if len(termSlug) > 20 {
-				termSlug = termSlug[:20]
-			}
-			genID := fmt.Sprintf("%s_%s", termSlug, hashutil.MD5String(resp.Term)[:8])
-			outputDir = filepath.Join(o.svc.cfg.Storage.DataDir, "media", "artlist", "general", genID)
+			externalID := DeriveExternalAssetID(item.ClipID, sourceURL)
+			layout := NewStorageLayout(o.svc.cfg.Storage.DataDir, "artlist", externalID)
+			outputDir = layout.BaseDir()
 		}
 
 		rootFolderID := defaults.String(req.RootFolderID, o.svc.cfg.Drive.ArtlistFolder())
 
 		processInput := &asset.ProcessInput{
-			ID:          item.ClipID,
-			Name:        item.Name,
-			SourceURL:   sourceURL,
-			ClipPageURL: clip.ClipPageURL,
-			Term:        resp.Term,
-			OutputDir:   outputDir,
-			Filename:    item.Name + ".mp4",
-			FolderID:    resp.TagFolderID,
-			Duration:    req.ClipDuration,
-			Width:       req.Width,
-			Height:      req.Height,
-			DriveFileID: item.DriveFileID,
+			ID:              item.ClipID,
+			Name:            item.Name,
+			SourceURL:       sourceURL,
+			ClipPageURL:     clip.ClipPageURL,
+			Term:            resp.Term,
+			OutputDir:       outputDir,
+			Filename:        item.Name + ".mp4",
+			FolderID:        resp.TagFolderID,
+			Duration:        req.ClipDuration,
+			Width:           req.Width,
+			Height:          req.Height,
+			DriveFileID:     item.DriveFileID,
+			RenditionLayout: true,
 			Metadata: map[string]any{
 				"source":         "artlist",
 				"strategy":       req.Strategy,
@@ -257,23 +255,6 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 				}
 			}
 
-			// Track asset version: create version record for the processed file.
-			if o.svc.assetVersions != nil && result.FileHash != "" {
-				fileSize := fileSizeFromPath(result.LocalPath)
-				v := &asset.Version{
-					AssetID:       arg.w.item.ClipID,
-					FileHash:      result.FileHash,
-					FileSizeBytes: fileSize,
-					MimeType:      "video/mp4",
-					MetadataJSON:  `{"pipeline":"artlist","source":"download","createdBy":"artlist-pipeline"}`,
-				}
-				if err := o.svc.assetVersions.Append(ctx, v); err != nil {
-					o.svc.log.Warn("asset_versions.Append failed",
-						zap.String("clip_id", arg.w.item.ClipID),
-						zap.Error(err))
-				}
-			}
-
 			arg.w.item.Status = defaults.String(result.Status, "processed")
 			arg.w.item.Filename = result.Filename
 			arg.w.item.LocalPath = result.LocalPath
@@ -281,13 +262,14 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 			arg.w.item.DriveLink = result.DriveLink
 			arg.w.item.DriveFileID = result.DriveFileID
 			arg.w.item.DownloadLink = result.DownloadLink
+			arg.w.item.Renditions = result.Renditions
 			// PR-ARTLIST-PERSIST-FIX (2026-07-04): ps.resp.Processed++ is
 			// intentionally moved out of stageProcessBatch. The counter is
 			// now the canonical "items actually persisted to media_assets"
 			// tally and is incremented in stagePersistResults AFTER a
-			// successful bridge.Dispatch. The pre-fix code incremented
-			// here BEFORE persist was attempted, producing fake-success
-			// when stagePersistResults could not write through.
+			// successful finalizer call. The pre-fix code incremented here
+			// BEFORE persist was attempted, producing fake-success when
+			// stagePersistResults could not write through.
 			ps.resp.Items = append(ps.resp.Items, arg.w.item)
 		})
 	}
@@ -296,34 +278,61 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 	return nil
 }
 
-// stagePersistResults updates the DB records with pipeline results for each processed clip.
-// Routing goes through dispatchBridge so the canonical-vs-legacy decision
-// lives in one place. See dispatch_bridge.go for canonical semantics.
-//
-// PR-ARTLIST-PERSIST-FIX (2026-07-04): the prior implementation
-// silently no-op'd (`continue`) when the clip was absent in media_assets,
-// which was the source of the /api/artlist/run fake-success bug. The
-// fixed flow now:
-//  1. If the clip is in media_assets → hydrate it from item metadata
-//     (existing behaviour) and dispatch.
-//  2. If the clip is NOT in media_assets (the bug case) → build a new
-//     *asset.Asset from item metadata, hydrate it, and dispatch (the
-//     outbox dispatcher EnqueueAndIndex is upsert-safe, so this collapses
-//     to an INSERT-on-absent + INDEX-pair under the hood). The clip is
-//     no longer silently dropped.
-//  3. AFTER a successful bridge.Dispatch, increment resp.Processed —
-//     this is the canonical godlike/07 counter (items actually
-//     persisted to media_assets; the prior code incremented counter
-//     during stageProcessBatch BEFORE persist was verified, producing
-//     fake-success when stagePersistResults failed silently).
-func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *RunTagResponse) {
-	if o.svc.assetStore == nil {
-		return
+// persistRenditions records each generated rendition as an
+// asset_locations row + asset_renditions row. The location is marked
+// as primary only for the mezzanine (the canonical edited master).
+func (o *RunOrchestratorService) persistRenditions(ctx context.Context, assetID string, renditions []asset.RenditionOutput) error {
+	if o.svc.locationRepo == nil || o.svc.renditionRepo == nil {
+		return nil
 	}
+	for _, r := range renditions {
+		if r.LocalPath == "" {
+			continue
+		}
+		loc := &asset.Location{
+			AssetID:       assetID,
+			LocationKind:  asset.LocationKindLocal,
+			URI:           r.LocalPath,
+			MimeType:      r.MimeType,
+			FileSizeBytes: r.SizeBytes,
+			FileHash:      r.FileHash,
+			IsPrimary:     r.Kind == asset.RenditionKindMezzanine,
+		}
+		if err := o.svc.locationRepo.Upsert(ctx, loc); err != nil {
+			return fmt.Errorf("upsert location for %s/%s: %w", assetID, r.Kind, err)
+		}
 
-	bridge, err := o.svc.newDispatchBridge()
-	if err != nil {
-		o.svc.log.Warn("stagePersistResults: dispatcher not wired (cannot persist)", zap.Error(err))
+		rend := &asset.AssetRendition{
+			AssetID:    assetID,
+			LocationID: &loc.ID,
+			Kind:       r.Kind,
+			Container:  r.Container,
+			Codec:      r.Codec,
+			Width:      r.Width,
+			Height:     r.Height,
+			FPS:        r.FPS,
+			Bitrate:    r.Bitrate, SHA256: r.FileHash,
+			SizeBytes: r.SizeBytes,
+		}
+		if _, err := o.svc.renditionRepo.Create(ctx, rend); err != nil {
+			return fmt.Errorf("create rendition for %s/%s: %w", assetID, r.Kind, err)
+		}
+	}
+	return nil
+}
+
+// stagePersistResults persists each processed clip through the canonical
+// AssetFinalizerTx. This replaces the legacy dispatchBridge path and
+// writes media_assets, asset_versions, asset_locations, and
+// asset_renditions inside a single SQLite transaction per clip.
+//
+// PR-ARTLIST-FINALIZER (July 2026): the legacy dispatchBridge +
+// persistRenditions custom writer are retired. Artlist now uses the
+// same AssetFinalizerTx as every other capability, ensuring the ledger
+// tables are written by one canonical implementation.
+func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *RunTagResponse) {
+	if o.svc.assetFinalizer == nil || o.svc.mainDB == nil {
+		o.svc.log.Warn("stagePersistResults: asset finalizer or main DB not wired (cannot persist)")
 		return
 	}
 
@@ -332,18 +341,11 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 		if item.Status == "media_process_failed" || item.Status == "dry_run" {
 			continue
 		}
+
 		// PR-ARTLIST-DOD-GATE-02 (2026-07-07): Drive field gate.
 		// Skip items whose processor returned Status="processed" but
 		// left Drive fields empty — the processor's Drive upload step
-		// failed silently. Without this gate, stagePersistResults would
-		// write a clip row with empty drive_link / drive_file_id and
-		// increment Processed for a clip that was never actually
-		// uploaded (godlike/07 no-fake-availability violation).
-		//
-		// PR-ARTLIST-DOD-GATE-09 (2026-07-07): mark the item as
-		// "drive_upload_failed" so the caller can distinguish
-		// "processor succeeded but Drive upload failed" from
-		// "processor itself failed" (media_process_failed).
+		// failed silently.
 		if item.DriveFileID == "" || item.DriveLink == "" {
 			o.svc.log.Warn("stagePersistResults: skipping clip with missing Drive fields",
 				zap.String("clip_id", item.ClipID),
@@ -353,98 +355,99 @@ func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *
 			item.Error = "Drive upload failed: missing Drive fields after processing"
 			continue
 		}
-		existingClip, err := o.svc.assetStore.Get(ctx, item.ClipID)
+
+		// PR-ARTLIST-HASH-FIX (July 2026): reject assets without a real
+		// SHA-256. The legacy fallback (clipID:source) is retired per
+		// the hash-system refactor.
+		if item.FileHash == "" {
+			o.svc.log.Warn("stagePersistResults: skipping clip with missing SHA-256",
+				zap.String("clip_id", item.ClipID))
+			item.Status = "hash_missing"
+			item.Error = "SHA-256 missing after processing"
+			continue
+		}
+
+		artifact := o.buildPublishedArtifact(item)
+
+		tx, err := o.svc.mainDB.BeginTx(ctx, nil)
 		if err != nil {
-			o.svc.log.Warn("stagePersistResults: artlistRepo.GetClip failed",
+			o.svc.log.Warn("stagePersistResults: begin tx failed",
 				zap.String("clip_id", item.ClipID), zap.Error(err))
 			continue
 		}
-		var clip *asset.Asset
-		if existingClip == nil {
-			// PR-ARTLIST-PERSIST-FIX (2026-07-04): bug fix #2 — when
-			// the clip is absent in media_assets, build it from the
-			// item metadata so the dispatch path is upsert-safe
-			// instead of silently no-op-dropping the persist.
-			clip = buildAssetFromRunTagItem(*item)
-			o.svc.log.Info("stagePersistResults: clip absent in DB; creating new asset from item metadata",
-				zap.String("clip_id", item.ClipID))
-		} else {
-			clip = existingClip
-		}
-		clip.SetLocalPath(item.LocalPath)
-		clip.SetDriveLink(item.DriveLink)
-		clip.SetDriveFileID(item.DriveFileID)
-		clip.SetFileHash(item.FileHash)
-		// PR-ARTLIST-SOURCE-VERSION-FIX (2026-07-09): when the media
-		// processor returned an empty FileHash, the outbox dispatcher
-		// would emit an asset.index.requested event with source_version="",
-		// which the IndexingHandler's supersede gate dead-letters (161
-		// dead-letter events as of 2026-07-09). Compute a deterministic
-		// fallback hash from clipID+source so the supersede gate has a
-		// content fingerprint to compare across retries.
-		if clip.FileHash() == "" {
-			fallbackHash := hashutil.SHA256String(clip.ID + ":" + string(clip.Source))
-			clip.SetFileHash(fallbackHash)
-			item.FileHash = fallbackHash // keep response item in sync with dispatched hash
-			o.svc.log.Warn("stagePersistResults: FileHash empty after processing; computed fallback from clipID+source",
-				zap.String("clip_id", clip.ID),
-				zap.String("fallback_hash_prefix", fallbackHash[:12]),
-			)
-		}
-		clip.SetDownloadLink(item.DownloadLink)
-		clip.SetMetadataString("status", "processed")
-		clip.LifecycleState = asset.StateActive
-		clip.Source = "artlist"
-		clip.MediaType = "video" // ensure media_type is always set for Artlist clips
-		if err := bridge.Dispatch(ctx, clip, clip.FileHash()); err != nil {
-			o.svc.log.Warn("stagePersistResults: dispatch failed",
-				zap.String("clip_id", clip.ID), zap.Error(err))
+
+		_, _, err = o.svc.assetFinalizer.FinalizeAsset(ctx, assetfinalizer.WrapTx(tx), artifact)
+		if err != nil {
+			_ = tx.Rollback()
+			o.svc.log.Warn("stagePersistResults: finalizer failed",
+				zap.String("clip_id", item.ClipID), zap.Error(err))
+			item.Status = "persist_failed"
+			item.Error = err.Error()
 			continue
 		}
-		// PR-ARTLIST-PERSIST-FIX (2026-07-04): increment Processed ONLY
-		// after a successful bridge.Dispatch — this is the canonical
-		// counter (items actually persisted via the outbox dispatcher).
-		// The pre-fix code incremented the counter in stageProcessBatch
-		// BEFORE persist was attempted, producing fake-success when
-		// stagePersistResults could not write through.
+
+		if err := tx.Commit(); err != nil {
+			o.svc.log.Warn("stagePersistResults: commit failed",
+				zap.String("clip_id", item.ClipID), zap.Error(err))
+			item.Status = "persist_failed"
+			item.Error = err.Error()
+			continue
+		}
+
 		resp.Processed++
 	}
 }
 
-// buildAssetFromRunTagItem synthesises a minimal *asset.Asset from a
-// processed RunTagItem so the dispatch path can upsert a brand-new
-// clip (PR-ARTLIST-PERSIST-FIX bug fix #2).
-//
-// godlike/06 SSOT: this is the SINGLE construction site that maps a
-// RunTagItem onto an *asset.Asset for the dispatch path. Future
-// field additions belong here, not at the call site.
-//
-// godlike/07 no-fake-availability: the constructor sets the canonical
-// defaults (Source="artlist", MediaType="video", LifecycleState=
-// asset.StateActive) so the outbox dispatcher has enough context to
-// index the clip even when the caller omitted them.
-//
-// Asset has no public NewAsset() constructor (verified 2026-07-04 via
-// internal/domain/asset/asset_types.go) — direct struct literal
-// initialization is the canonical path. The typed SetDownloadLink
-// helper populates the metadata-derived field consistently with
-// stagePersistResults's pre-fix branch.
-func buildAssetFromRunTagItem(item RunTagItem) *asset.Asset {
-	clip := &asset.Asset{
-		ID:             item.ClipID,
-		Source:         "artlist",
-		Name:           item.Name,
-		MediaType:      "video",
-		LifecycleState: asset.StateActive,
+// buildPublishedArtifact maps a processed RunTagItem into the canonical
+// finalization.PublishedArtifact consumed by AssetFinalizerTx.
+func (o *RunOrchestratorService) buildPublishedArtifact(item *RunTagItem) finalization.PublishedArtifact {
+	artifact := finalization.PublishedArtifact{
+		ArtifactID:  item.ClipID,
+		Kind:        finalization.KindVideo,
+		Filename:    item.Filename,
+		MIMEType:    "video/mp4",
+		SizeBytes:   fileSizeFromPath(item.LocalPath),
+		SHA256:      item.FileHash,
+		Source:      "artlist",
+		Description: item.Name,
+		Location: finalization.AssetLocation{
+			Provider:     "drive",
+			FileID:       item.DriveFileID,
+			WebViewLink:  item.DriveLink,
+			DownloadLink: item.DownloadLink,
+			FolderID:     o.svc.cfg.Drive.ArtlistFolder(),
+			Action:       finalization.PublishCreated,
+		},
+		ArtifactMetadata: map[string]any{
+			"source":   "artlist",
+			"status":   "processed",
+			"filename": item.Filename,
+		},
 	}
-	clip.SetDownloadLink(item.DownloadLink)
-	return clip
+
+	for _, r := range item.Renditions {
+		artifact.Renditions = append(artifact.Renditions, finalization.AssetRenditionLocation{
+			Kind:      string(r.Kind),
+			Provider:  "local",
+			URI:       r.LocalPath,
+			MimeType:  r.MimeType,
+			SizeBytes: r.SizeBytes,
+			FileHash:  r.FileHash,
+			Width:     r.Width,
+			Height:    r.Height,
+			FPS:       r.FPS,
+			Bitrate:   r.Bitrate,
+			Container: r.Container,
+			Codec:     r.Codec,
+		})
+	}
+
+	return artifact
 }
 
-// stageIndexAsync is a no-op. The canonical dispatcher (required) handles
-// indexing atomically in stagePersistResults via Dispatch. This stage
-// exists only as a documented no-op for callers that used to rely on the
-// legacy SafeGoFunc(Indexer.IndexClip) path.
+// stageIndexAsync is a no-op. The canonical AssetFinalizerTx emits the
+// outbox event inside stagePersistResults, so no async indexing stage
+// is required.
 func (o *RunOrchestratorService) stageIndexAsync(_ context.Context, _ *RunTagResponse) {
 }
 

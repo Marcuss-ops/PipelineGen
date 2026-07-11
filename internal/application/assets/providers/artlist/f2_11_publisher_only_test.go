@@ -134,7 +134,6 @@ func TestDestinationService_PublisherOnly_F2_11(t *testing.T) {
 	// the parent Service per its current contract.
 	svc := &Service{
 		cfg:       nil,
-		mainDB:    nil,
 		log:       zap.NewNop(),
 		publisher: pub,
 	}
@@ -203,7 +202,6 @@ func TestDestinationService_NilPublisherPanic_F2_11(t *testing.T) {
 
 	svc := &Service{
 		cfg:       nil,
-		mainDB:    nil,
 		log:       zap.NewNop(),
 		publisher: nil, // typed-nil bypasses Service.NewService (only reachable in test fixtures)
 	}

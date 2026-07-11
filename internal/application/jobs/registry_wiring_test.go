@@ -221,7 +221,7 @@ func TestService_ResolveMaxRetries_RegisteredTypeUsesRegistryDefault(t *testing.
 	t.Parallel()
 	reg := newWiringRegistry(t, time.Minute, 5)
 
-	svc, err := NewService(nil /* repo: typed-only test */, NewDispatcher(), zap.NewNop(), reg)
+	svc, err := NewService(nakedJobBroker{}, NewDispatcher(), zap.NewNop(), reg)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestService_ResolveMaxRetries_UnregisteredType_ReturnsErrMaxRetriesUnknown(
 	t.Parallel()
 	reg := newWiringRegistry(t, time.Minute, 5)
 
-	svc, err := NewService(nil, NewDispatcher(), zap.NewNop(), reg)
+	svc, err := NewService(nakedJobBroker{}, NewDispatcher(), zap.NewNop(), reg)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestService_ResolveMaxRetries_UnregisteredType_ReturnsErrMaxRetriesUnknown(
 func TestService_ResolveMaxRetries_PreservesExplicitValue(t *testing.T) {
 	t.Parallel()
 	reg := newWiringRegistry(t, time.Minute, 5)
-	svc, err := NewService(nil, NewDispatcher(), zap.NewNop(), reg)
+	svc, err := NewService(nakedJobBroker{}, NewDispatcher(), zap.NewNop(), reg)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestService_ResolveMaxRetries_PreservesExplicitValue(t *testing.T) {
 func TestService_ResolveMaxRetries_PreservesNegativeSentinel(t *testing.T) {
 	t.Parallel()
 	reg := newWiringRegistry(t, time.Minute, 5)
-	svc, err := NewService(nil, NewDispatcher(), zap.NewNop(), reg)
+	svc, err := NewService(nakedJobBroker{}, NewDispatcher(), zap.NewNop(), reg)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

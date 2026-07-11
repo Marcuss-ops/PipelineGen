@@ -164,10 +164,10 @@ func TestGenerateE2E_GenerateSceneImages_BindsBindingImageStatus(t *testing.T) {
 		Source: scriptpkg.SourceSpec{
 			Type:       scriptpkg.SourceText,
 			Topic:      "Scene image binding canonical shape",
-			SourceText: "Verify that an image postprocessor populates scene bindings.image.status on the SpecScene envelope.",
+			SourceText: "Narrative covering distinct scenes opening narration conflict resolution. Verify that an image postprocessor populates scene bindings.image.status on the SpecScene envelope.",
 		},
 		ScriptParams: scriptpkg.ScriptSpec{
-			TargetWords: 240,
+			TargetWords: 24,
 		},
 		Output: scriptpkg.OutputSpec{
 			// GenerateSceneImages=true → plan.Postprocessors
@@ -269,9 +269,9 @@ func TestGenerateE2E_GenerateSceneImages_SingleScene_PinsStatus(t *testing.T) {
 		Source: scriptpkg.SourceSpec{
 			Type:       scriptpkg.SourceText,
 			Topic:      "Single scene image binding",
-			SourceText: "One scene → one image binding.",
+			SourceText: "Solo narration. One scene → one image binding.",
 		},
-		ScriptParams: scriptpkg.ScriptSpec{TargetWords: 60},
+		ScriptParams: scriptpkg.ScriptSpec{TargetWords: 8},
 		Output: scriptpkg.OutputSpec{
 			GenerateSceneImages: scriptpkg.ToggleEnabled,
 			SaveToDB:            false,

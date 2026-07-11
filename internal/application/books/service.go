@@ -121,7 +121,7 @@ type Service struct {
 	publisher         PublisherPort
 	reader            drive.Reader
 	voiceoverExecutor voiceover.VoiceoverItemExecutor // P0-#3 (July 2026): canonical per-item use case port, replaces voiceover.VoiceoverGenerator.
-	transformer       BookTransformer // Phase 7: downstream port (pythontransformer.SubprocessTransformer)
+	transformer       BookTransformer                 // Phase 7: downstream port (pythontransformer.SubprocessTransformer)
 }
 
 // NewService constructs a books.Service. Publisher + Reader +

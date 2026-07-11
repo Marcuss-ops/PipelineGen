@@ -465,6 +465,7 @@ func youTubeE2EDB(t *testing.T) *sql.DB {
 		drive_file_id TEXT, drive_link TEXT, download_link TEXT,
 		local_path TEXT, file_hash TEXT,
 		folder_id TEXT, folder_path TEXT,
+		search_text TEXT NOT NULL DEFAULT '',
 		source_version TEXT NOT NULL DEFAULT '',
 		lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
 		metadata_json TEXT NOT NULL DEFAULT '{}',
@@ -1000,10 +1001,11 @@ func TestE2E_Qdrant_DiscoverSearchViaTranscript(t *testing.T) {
 		// from production-shape behavior (the SearchTextBuilder
 		// strategies rewrite asset.SearchText via YouTube strategy,
 		// so payload.search_text may not carry our injected marker).
-		var req map[string]interface{}
-		_ = json.Unmarshal(body, &req)
-		name, _ := req["vector_name"].(string)
-		if name != "transcript" {
+		// Support varying JSON forms by verifying the raw body contains the
+		// requested vector identifier. The JSON field may be nested (e.g.
+		// inside "prefetch" or "query" for /points/query), so a substring
+		// check is more robust than parsing the top-level object.
+		if !strings.Contains(string(body), `"transcript"`) {
 			return nil
 		}
 		out := make([]schema.SearchResult, 0, len(points))

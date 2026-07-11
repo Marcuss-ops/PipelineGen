@@ -2,7 +2,6 @@ package maintenance
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
@@ -111,7 +111,7 @@ func orphanSuppressed(alreadyStr, prev string, now time.Time) (bool, suppression
 // intentionally left to deletion.DeletionService.CleanupOrphanFiles.
 func (s *Service) runDeepCleanup(ctx context.Context, dryRun bool) (map[string]any, error) {
 	c := &deepCleanupCounters{}
-	if len(s.dbs) == 0 {
+	if len(s.repos) == 0 {
 		return c.ToMap(), nil
 	}
 	batch := s.deepCleanupBatch
@@ -124,45 +124,32 @@ func (s *Service) runDeepCleanup(ctx context.Context, dryRun bool) (map[string]a
 	}
 	now := time.Now().UTC()
 
-	for dbIdx, db := range s.dbs {
-		if db == nil {
+	for dbIdx, repo := range s.repos {
+		if repo == nil {
 			continue
 		}
-		s.scanDBOrphans(ctx, dbIdx, db, batch, driveBatch, dryRun, now, c)
+		s.scanDBOrphans(ctx, dbIdx, repo, batch, driveBatch, dryRun, now, c)
 	}
 	return c.ToMap(), nil
 }
 
 // scanDBOrphans runs both the local and Drive passes for a single database.
-// Embedding defer rows.Close() inside this method avoids the defer-in-loop
-// footgun that runDeepCleanup would have if it owned the rows handle.
 func (s *Service) scanDBOrphans(
 	ctx context.Context,
 	dbIdx int,
-	db *sql.DB,
+	repo assets.MaintenanceRepository,
 	batch, driveBatch int,
 	dryRun bool,
 	now time.Time,
 	c *deepCleanupCounters,
 ) {
 	// ── Pass 1: local file existence ──────────────────────────────────
-	// local_path is a canonical column (migration 059). orphan_locale /
-	// orphan_detected_at stay in JSON because they are deep_cleanup's
-	// state-machine markers, not columns on the schema.
-	localRows, err := db.QueryContext(ctx, `
-		SELECT id, COALESCE(local_path, '') AS lp,
-		       COALESCE(json_extract(metadata_json, '$.orphan_locale'), 0) AS already,
-		       COALESCE(json_extract(metadata_json, '$.orphan_detected_at'), '') AS prev
-		FROM media_assets
-		WHERE deleted_at IS NULL
-		  AND COALESCE(local_path, '') != ''
-		LIMIT ?`, batch)
+	localCandidates, err := repo.ScanLocalOrphans(ctx, batch)
 	if err != nil {
 		s.log.Warn("deep_cleanup local query failed", zap.Int("db_index", dbIdx), zap.Error(err))
 		return
 	}
-	defer localRows.Close()
-	s.scanLocalOrphans(ctx, dbIdx, db, localRows, dryRun, now, c)
+	s.scanLocalOrphans(ctx, dbIdx, repo, localCandidates, dryRun, now, c)
 
 	// ── Pass 2: Drive file existence (optional) ───────────────────────
 	if s.driveFileCheck == nil {
@@ -170,58 +157,47 @@ func (s *Service) scanDBOrphans(
 			zap.Int("db_index", dbIdx))
 		return
 	}
-	if err := s.scanDriveOrphans(ctx, dbIdx, db, driveBatch, dryRun, now, c); err != nil {
+	if err := s.scanDriveOrphans(ctx, dbIdx, repo, driveBatch, dryRun, now, c); err != nil {
 		s.log.Warn("deep_cleanup drive pass failed", zap.Int("db_index", dbIdx), zap.Error(err))
 	}
 }
 
-// scanLocalOrphans iterates the rows returned by the local-pass query and
+// scanLocalOrphans iterates the candidates returned by the local-pass query and
 // stamps metadata_json with orphan_locale=1 when the file on disk is gone.
-// Caller is responsible for closing the rows handle.
 func (s *Service) scanLocalOrphans(
 	ctx context.Context,
 	dbIdx int,
-	db *sql.DB,
-	rows *sql.Rows,
+	repo assets.MaintenanceRepository,
+	candidates []assets.LocalOrphanCandidate,
 	dryRun bool,
 	now time.Time,
 	c *deepCleanupCounters,
 ) {
-	for rows.Next() {
-		var id, lp, alreadyStr, prev string
-		if err := rows.Scan(&id, &lp, &alreadyStr, &prev); err != nil {
-			continue
-		}
-		if muted, reason := orphanSuppressed(alreadyStr, prev, now); muted {
+	for _, cand := range candidates {
+		if muted, reason := orphanSuppressed(cand.AlreadyOrphan, cand.PrevDetectedAt, now); muted {
 			c.SkippedRecent++
 			s.log.Debug("deep_cleanup suppressed",
 				zap.Int("db_index", dbIdx),
-				zap.String("asset_id", id),
-				zap.String("local_path", lp),
+				zap.String("asset_id", cand.ID),
+				zap.String("local_path", cand.LocalPath),
 				zap.String("reason", reason.String()))
 			continue
 		}
-		if _, statErr := os.Stat(lp); statErr == nil {
+		if _, statErr := os.Stat(cand.LocalPath); statErr == nil {
 			continue // local file present
 		}
 		c.LocalDetected++
 		s.log.Info("orphan_locale detected",
 			zap.Int("db_index", dbIdx),
-			zap.String("asset_id", id),
-			zap.String("local_path", lp),
+			zap.String("asset_id", cand.ID),
+			zap.String("local_path", cand.LocalPath),
 			zap.Bool("dry_run", dryRun))
 		if dryRun {
 			continue
 		}
-		if _, uerr := db.ExecContext(ctx,
-			`UPDATE media_assets SET metadata_json = json_set(json_set(json_set(COALESCE(metadata_json,'{}'), '$.orphan_locale', 1), '$.orphan_reason', 'local_missing'), '$.orphan_detected_at', ?) WHERE id = ?`,
-			now.Format(time.RFC3339), id); uerr == nil {
+		if err := repo.MarkLocalOrphan(ctx, cand.ID, now); err == nil {
 			c.LocalMarked++
 		}
-	}
-	if err := rows.Err(); err != nil {
-		s.log.Warn("deep_cleanup local rows iteration errored",
-			zap.Int("db_index", dbIdx), zap.Error(err))
 	}
 }
 
@@ -231,7 +207,7 @@ func (s *Service) scanLocalOrphans(
 func (s *Service) scanDriveOrphans(
 	ctx context.Context,
 	dbIdx int,
-	db *sql.DB,
+	repo assets.MaintenanceRepository,
 	driveBatch int,
 	dryRun bool,
 	now time.Time,
@@ -240,38 +216,26 @@ func (s *Service) scanDriveOrphans(
 	driveCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	rows, err := db.QueryContext(driveCtx, `
-		SELECT id, COALESCE(drive_link, '') AS dl,
-		       COALESCE(json_extract(metadata_json, '$.orphan_drive'), 0) AS already,
-		       COALESCE(json_extract(metadata_json, '$.orphan_detected_at'), '') AS prev
-		FROM media_assets
-		WHERE deleted_at IS NULL
-		  AND COALESCE(drive_link, '') != ''
-		LIMIT ?`, driveBatch)
+	candidates, err := repo.ScanDriveOrphans(driveCtx, driveBatch)
 	if err != nil {
 		return fmt.Errorf("drive query: %w", err)
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var id, dl, alreadyStr, prev string
-		if err := rows.Scan(&id, &dl, &alreadyStr, &prev); err != nil {
-			continue
-		}
-		if muted, reason := orphanSuppressed(alreadyStr, prev, now); muted {
+	for _, cand := range candidates {
+		if muted, reason := orphanSuppressed(cand.AlreadyOrphan, cand.PrevDetectedAt, now); muted {
 			c.SkippedRecent++
 			s.log.Debug("deep_cleanup drive pass suppressed",
 				zap.Int("db_index", dbIdx),
-				zap.String("asset_id", id),
-				zap.String("drive_link", dl),
+				zap.String("asset_id", cand.ID),
+				zap.String("drive_link", cand.DriveLink),
 				zap.String("reason", reason.String()))
 			continue
 		}
-		fileID, ferr := urlutil.FileIDFromDriveLink(dl)
+		fileID, ferr := urlutil.FileIDFromDriveLink(cand.DriveLink)
 		if ferr != nil {
 			s.log.Debug("drive_link unparseable, skipping",
-				zap.String("asset_id", id),
-				zap.String("drive_link", dl),
+				zap.String("asset_id", cand.ID),
+				zap.String("drive_link", cand.DriveLink),
 				zap.Error(ferr))
 			continue
 		}
@@ -281,8 +245,8 @@ func (s *Service) scanDriveOrphans(
 		ok, checkErr := s.driveFileCheck.FileIsNotTrashed(driveCtx, fileID)
 		if checkErr != nil {
 			s.log.Warn("Drive orphan check errored",
-				zap.String("asset_id", id),
-				zap.String("drive_link", dl),
+				zap.String("asset_id", cand.ID),
+				zap.String("drive_link", cand.DriveLink),
 				zap.Error(checkErr))
 			continue
 		}
@@ -292,21 +256,15 @@ func (s *Service) scanDriveOrphans(
 		c.DriveDetected++
 		s.log.Info("orphan_drive detected",
 			zap.Int("db_index", dbIdx),
-			zap.String("asset_id", id),
-			zap.String("drive_link", dl),
+			zap.String("asset_id", cand.ID),
+			zap.String("drive_link", cand.DriveLink),
 			zap.Bool("dry_run", dryRun))
 		if dryRun {
 			continue
 		}
-		if _, uerr := db.ExecContext(driveCtx,
-			`UPDATE media_assets SET metadata_json = json_set(json_set(json_set(COALESCE(metadata_json,'{}'), '$.orphan_drive', 1), '$.orphan_reason', 'drive_trashed'), '$.orphan_detected_at', ?) WHERE id = ?`,
-			now.Format(time.RFC3339), id); uerr == nil {
+		if err := repo.MarkDriveOrphan(driveCtx, cand.ID, now); err == nil {
 			c.DriveMarked++
 		}
-	}
-	if err := rows.Err(); err != nil {
-		s.log.Warn("deep_cleanup drive rows iteration errored",
-			zap.Int("db_index", dbIdx), zap.Error(err))
 	}
 	return nil
 }
