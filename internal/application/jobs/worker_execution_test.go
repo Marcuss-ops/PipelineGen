@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
@@ -39,7 +40,10 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 		job.ManifestKey: manifestToRawJSON(t, manifest),
 	}
 
-	raw := extractStagedArtifacts(result, "script.generate")
+	raw, extractErr := extractStagedArtifacts(result, "script.generate")
+	if extractErr != nil {
+		t.Fatalf("expected nil err for valid manifest, got %v", extractErr)
+	}
 
 	if string(raw) == "[]" {
 		t.Fatal("expected non-empty staged artifacts for a valid manifest")
@@ -97,7 +101,10 @@ func TestExtractStagedArtifacts_HappyPath(t *testing.T) {
 }
 
 func TestExtractStagedArtifacts_NilResult(t *testing.T) {
-	raw := extractStagedArtifacts(nil, "script.generate")
+	raw, extractErr := extractStagedArtifacts(nil, "script.generate")
+	if extractErr != nil {
+		t.Fatalf("expected nil err for nil result, got %v", extractErr)
+	}
 
 	if string(raw) != "[]" {
 		t.Fatalf("expected empty array for nil result, got %s", string(raw))
@@ -110,7 +117,10 @@ func TestExtractStagedArtifacts_NoManifestKey(t *testing.T) {
 		"data":           map[string]any{"score": 0.95},
 	}
 
-	raw := extractStagedArtifacts(result, "image.generate.google")
+	raw, extractErr := extractStagedArtifacts(result, "image.generate.google")
+	if extractErr != nil {
+		t.Fatalf("expected nil err when __artifact_manifest key is absent (back-compat: empty result OK), got %v", extractErr)
+	}
 
 	if string(raw) != "[]" {
 		t.Fatalf("expected empty array when __artifact_manifest key is absent, got %s", string(raw))
@@ -129,7 +139,10 @@ func TestExtractStagedArtifacts_EmptyArtifactsList(t *testing.T) {
 		job.ManifestKey: manifestToRawJSON(t, manifest),
 	}
 
-	raw := extractStagedArtifacts(result, "script.generate")
+	raw, extractErr := extractStagedArtifacts(result, "script.generate")
+	if extractErr != nil {
+		t.Fatalf("expected nil err for empty manifest (back-compat: empty result OK), got %v", extractErr)
+	}
 
 	if string(raw) != "[]" {
 		t.Fatalf("expected empty array for manifest with zero artifacts, got %s", string(raw))
@@ -137,15 +150,21 @@ func TestExtractStagedArtifacts_EmptyArtifactsList(t *testing.T) {
 }
 
 func TestExtractStagedArtifacts_MalformedManifest(t *testing.T) {
-	// __artifact_manifest key exists but the value is not valid JSON.
+	// FASE 1 (c) — typed-error contract: a malformed manifest
+	// surfaces job.ErrArtifactManifestInvalid (the typed sentinel)
+	// instead of the legacy silent-drop `[]` fallback. The worker
+	// fails the job on this path so a malformed manifest can never
+	// silently reach SUCCEEDED.
 	result := map[string]any{
 		job.ManifestKey: "not-valid-json",
 	}
 
-	raw := extractStagedArtifacts(result, "books.process")
-
-	if string(raw) != "[]" {
-		t.Fatalf("expected empty array for malformed manifest, got %s", string(raw))
+	raw, extractErr := extractStagedArtifacts(result, "books.process")
+	if extractErr == nil {
+		t.Fatalf("expected typed ErrArtifactManifestInvalid for malformed manifest, got nil err (raw=%s)", string(raw))
+	}
+	if !errors.Is(extractErr, job.ErrArtifactManifestInvalid) {
+		t.Fatalf("expected errors.Is(extractErr, ErrArtifactManifestInvalid), got %T: %v", extractErr, extractErr)
 	}
 }
 

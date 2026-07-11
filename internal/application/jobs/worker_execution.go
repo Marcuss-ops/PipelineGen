@@ -104,8 +104,20 @@ func startCancelWatcher(jobCtx context.Context, jobCancel context.CancelFunc, is
 
 // extractStagedArtifacts reads the __artifact_manifest from the handler
 // result map and converts it to the JSON wire format consumed by
-// CompleteWithArtifactsCommand.StagedArtifacts. When no manifest is
-// present, returns an empty JSON array (byte-stable "no manifest" sentinel).
+// CompleteWithArtifactsCommand.StagedArtifacts.
+//
+// FASE 1 (c) — typed-error contract (audit 2026-07-03 P0 #4 closure):
+// the function now returns (json.RawMessage, error) so a malformed
+// manifest surfaces a typed job.ErrArtifactManifestInvalid sentinel
+// instead of silently swallowing into a `[]` empty array. The caller
+// (runJob) fails the job with the typed message so a malformed
+// manifest can NEVER reach SUCCEEDED.
+//
+// Empty-but-valid manifests (manifest.Artifacts == 0 case) still
+// return json.RawMessage("[]") without error — a handler that
+// legitimately produces zero files with a well-formed empty
+// envelope is allowed per the audit's existing audit-trail path
+// (registry.ArtifactPolicy.RequireManifest=false producers).
 //
 // The mapping from job.Artifact → finalization.PublishedArtifact:
 //
@@ -118,10 +130,16 @@ func startCancelWatcher(jobCtx context.Context, jobCancel context.CancelFunc, is
 //	local_path  → (discarded — the Sender never sees local paths)
 //	required    → requirement (bool → ArtifactRequirement enum)
 //	source      → source (PR-SOURCE-FIX: derived from jobType prefix)
-func extractStagedArtifacts(result map[string]any, jobType string) json.RawMessage {
+func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMessage, error) {
 	manifest, err := job.Decode(result)
-	if err != nil || manifest == nil || len(manifest.Artifacts) == 0 {
-		return json.RawMessage("[]")
+	if err != nil {
+		// Malformed manifest — typed error per FASE 1 (c). Caller
+		// fails the job; the broker MUST NOT mark SUCCEEDED for a
+		// job whose artifact manifest cannot be decoded.
+		return nil, fmt.Errorf("artifact-producing job %q: %w: %v", jobType, job.ErrArtifactManifestInvalid, err)
+	}
+	if manifest == nil || len(manifest.Artifacts) == 0 {
+		return json.RawMessage("[]"), nil
 	}
 
 	published := make([]finalization.PublishedArtifact, 0, len(manifest.Artifacts))
@@ -151,11 +169,13 @@ func extractStagedArtifacts(result map[string]any, jobType string) json.RawMessa
 		})
 	}
 
-	raw, err := json.Marshal(published)
-	if err != nil {
-		return json.RawMessage("[]")
+	raw, marshalErr := json.Marshal(published)
+	if marshalErr != nil {
+		// Marshal failure on the PublishedArtifact conversion shape —
+		// typed error per FASE 1 (c). Caller fails the job.
+		return nil, fmt.Errorf("artifact-producing job %q: PublishedArtifact marshal: %w: %v", jobType, job.ErrArtifactManifestInvalid, marshalErr)
 	}
-	return json.RawMessage(raw)
+	return json.RawMessage(raw), nil
 }
 
 func (w *Worker) runJob(parent context.Context, j *job.Job) {
@@ -396,10 +416,42 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		// so the broker's CompleteWithArtifacts can persist the artifact
 		// metadata atomically with the job SUCCEEDED transition.
 		//
-		// When no manifest is present, StagedArtifacts stays empty ([])
-		// — the broker still marks the job SUCCEEDED via the single-TX
-		// spine, just without artifact metadata.
-		stagedArtifacts := extractStagedArtifacts(result, j.Type)
+		// FASE 1 (c) — typed-error contract: a manifest decode/marshal
+		// failure surfaces a typed job.ErrArtifactManifestInvalid. The
+		// decode-error / marshal-error path FAILS the job (audit 2026-07-03
+		// P0 #4 criterion "il manifest non è decodificabile") — a
+		// malformed manifest MUST NOT silently reach SUCCEEDED.
+		//
+		// Empty-but-valid manifests (returned as json.RawMessage("[]"))
+		// still ride the normal CompleteWithArtifacts path.
+		stagedArtifacts, extractErr := extractStagedArtifacts(result, j.Type)
+		if extractErr != nil {
+			// FASE 1 (c): the typed manifest error is a hard handler
+			// fault (decode/marshal failure). Mirror the CompletionPort
+			// error branch: fail the job + dead-letter, so a malformed
+			// manifest is observable in the audit timeline and the broker
+			// never marks SUCCEEDED.
+			manifestErr := fmt.Sprintf("artifact manifest extract failed for artifact-producing job %q: %v", j.Type, extractErr)
+			w.log.Error("worker: artifact manifest extract failed — failing job (FASE 1 c typed-error contract)",
+				zap.String("job_id", j.ID),
+				zap.String("job_type", j.Type),
+				zap.Error(extractErr))
+			if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, finalRevision, manifestErr); failErr != nil {
+				if errors.Is(failErr, sqljobs.ErrLeaseLost) {
+					w.log.Warn("lease lost during fail-after-manifest-extract-error",
+						zap.String("job_id", j.ID))
+				} else {
+					w.log.Error("failed to mark artifact-producing job as failed (after manifest extract error)",
+						zap.String("job_id", j.ID),
+						zap.Error(failErr))
+				}
+			}
+			if dlqErr := w.repo.DeadLetter(finalizationCtx, j.ID, manifestErr); dlqErr != nil {
+				w.log.Warn("failed to dead-letter job after manifest extract error",
+					zap.String("job_id", j.ID), zap.Error(dlqErr))
+			}
+			return
+		}
 
 		cmd := CompleteWithArtifactsCommand{
 			WorkerID:         w.id,
