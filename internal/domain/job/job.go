@@ -194,4 +194,36 @@ const (
 
 	// TypeImageGenerateGoogle is the job type for Google Slides image generation.
 	TypeImageGenerateGoogle = "image.generate.google"
+
+	// ── PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026) ────────────────
+
+	// TypeAssetTextMaterialize is the canonical job type for
+	// the text-track materialization pipeline. Scheduled by
+	// callers (YouTube acquisition chain, admin backfill CLI)
+	// when an asset needs translation fan-out into the
+	// configured MultilingualConfig.MaterializeLanguages set.
+	//
+	// The handler is internal/application/assets/texttracks/jobs.go;
+	// it delegates to TextTrackMaterializer.Materialize(ctx,
+	// assetID, sourceLang, sourceTextHash, kind), which
+	// performs the canonical (a-h) pipeline (read source
+	// READY track → skip-already-READY → translate via
+	// TranslationPort → save READY → emit asset.index.requested
+	// outbox event for Qdrant reindex).
+	//
+	// Idempotency is enforced at TWO levels:
+	//   1. Per-language skip in the materializer: a READY
+	//      track with the same (source_version, model_version)
+	//      is skipped (idempotency at the fan-out loop level).
+	//   2. Outbox event_key dedup: a re-emitted
+	//      asset.text.translate:<...> key collapses to a
+	//      single outbox row (idempotency at the broker level).
+	//
+	// godlike/06 SSOT: this constant is the single canonical
+	// declaration; wire_texttracks.go + jobs.go + the
+	// materializer main loop all reference it. 2h timeout
+	// covers a 6-language fan-out
+	// (it/en/es/pt-BR/fr/de) × per-language translation
+	// round-trip (3-15s each on ollama).
+	TypeAssetTextMaterialize = "asset.text.materialize"
 )
