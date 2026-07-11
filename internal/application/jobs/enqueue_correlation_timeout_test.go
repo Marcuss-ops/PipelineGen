@@ -3,12 +3,14 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 type correlationTimeoutBroker struct {
@@ -66,6 +68,17 @@ func (m *correlationTimeoutBroker) RenewLease(_ context.Context, _ string, _ str
 }
 func (m *correlationTimeoutBroker) DeadLetter(_ context.Context, _ string, _ string) error {
 	return nil
+}
+
+// FinalizeAttempt is a Push 4.6 stub — the canonical FinalizeAttempt is
+// not exercised by this test (correlation-lookup-timeout fallback path).
+// Push 4.6 (kernel-job-cutover) replaces this stub with a typed test
+// double that records the FinalizeAttemptCommand as the
+// Push 4.2 contract mandates for terminal-decision testing. Stub
+// returns errors.New to fail-fast if a future regression accidentally
+// exercises this codepath through the mock (godlike/07 fail-closed).
+func (m *correlationTimeoutBroker) FinalizeAttempt(_ context.Context, _ kerneljob.FinalizeAttemptCommand) (kerneljob.FinalizeAttemptResult, error) {
+	return kerneljob.FinalizeAttemptResult{}, errors.New("correlationTimeoutBroker.FinalizeAttempt: Push 4.6 stub (not exercised by TestEnqueue_CorrelationLookupTimeoutDoesNotBlockCreate)")
 }
 
 var _ job.JobBroker = (*correlationTimeoutBroker)(nil)

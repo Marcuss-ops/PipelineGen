@@ -50,14 +50,19 @@ import (
 )
 
 // ErrLeaseLost is the canonical lease-lost sentinel for the application
-// layer. Re-exports the SQLite-layer sentinel so callers can probe
+// layer. Re-exports the canonical domain-layer sentinel so callers can probe
 // via errors.Is(err, appjobs.ErrLeaseLost) (wire_decoder.go, client_test.go)
-// or errors.Is(err, sqljobs.ErrLeaseLost) (worker_execution.go, runner.go).
-// Both probes are equivalent — the same error value satisfies both.
+// or errors.Is(err, domjob.ErrLeaseLost) (the canonical home at
+// internal/domain/job/errors.go); both probes are equivalent — the same
+// error value satisfies both.
 //
-// godlike/06 SSOT: sqljobs.ErrLeaseLost is the canonical owner (declared
-// in internal/infrastructure/database/sqlite/jobs/store.go); this var is
-// a typed re-export for application-layer consumers.
+// godlike/06 SSOT (post-Fase-5(a), July 2026): the CANONICAL home of
+// ErrLeaseLost is `internal/domain/job/errors.go` (declared with
+// `errors.New("...")` for stable identity). The SQLite-layer
+// (`internal/infrastructure/database/sqlite/jobs/store.go`) and this
+// application-layer re-export are both typed aliases of the canonical
+// value. Identity is preserved across all 3 import paths; the .Error()
+// message returns the domjob-formatted text (canonical surface).
 //
 // Errors.Is(err, ErrLeaseLost) is the canonical probe.
 var ErrLeaseLost = sqljobs.ErrLeaseLost

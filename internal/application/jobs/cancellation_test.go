@@ -43,6 +43,7 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // TestStartCancelWatcher_PollsUntilCancelFires verifies the
@@ -268,6 +269,21 @@ func (m *mockCancelBroker) Complete(_ context.Context, _ string, _ string, _ str
 	m.finalizeOp = "Complete"
 	m.completeRev = expectedRevision
 	return nil
+}
+
+// FinalizeAttempt is a Push 4.6 stub (godlike/06 SSOT kernel-job-cutover
+// follow-up). The cancellation tests exercise Worker.runJob's cancel path
+// via legacy Complete / Fail / ScheduleRetry path — FinalizeAttempt is
+// not in the test path. Push 4.6 replaces this stub with a typed test
+// double that records the FinalizeAttemptCommand per the Push 4.2
+// canonical contract. Stub returns errors.New to fail-fast if a future
+// regression accidentally exercises this codepath through the mock
+// (godlike/07 fail-closed).
+func (m *mockCancelBroker) FinalizeAttempt(_ context.Context, _ kerneljob.FinalizeAttemptCommand) (kerneljob.FinalizeAttemptResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.finalizeOp = "FinalizeAttempt"
+	return kerneljob.FinalizeAttemptResult{}, errors.New("mockCancelBroker.FinalizeAttempt: Push 4.6 stub (cancel-path uses legacy Complete/Fail/ScheduleRetry)")
 }
 
 // TestWorker_CancelsRunningJobOnCancelSignal is the canonical
