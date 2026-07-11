@@ -1,3 +1,0 @@
-# github.com/Marcuss-ops/PipelineGen/cmd/admin
-# [github.com/Marcuss-ops/PipelineGen/cmd/admin]
-vet: cmd/admin/benchmark.go:11:2: "os" imported and not used
