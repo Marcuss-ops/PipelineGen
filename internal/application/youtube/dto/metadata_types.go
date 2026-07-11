@@ -240,4 +240,27 @@ type CanonicalClipMetadata struct {
 	// ContentHash is the file content hash (FileHash / MD5 of the
 	// local clip). The canonical ingest-time fingerprint.
 	ContentHash string `json:"content_hash,omitempty"`
+
+	// ── Text track projection (lightweight, no full transcripts) ────
+
+	// OriginalLanguage is the BCP-47 language code of the original
+	// transcript (e.g. "en"). Populated from asset_text_tracks where
+	// is_original=1, or from the source language in the payload.
+	OriginalLanguage string `json:"original_language,omitempty"`
+
+	// AvailableLanguages is the list of BCP-47 language codes for
+	// which text tracks exist (e.g. ["en", "it", "pt-BR"]).
+	// Stored as a JSON array in metadata_json so consumers can
+	// check available translations without querying asset_text_tracks.
+	AvailableLanguages []string `json:"available_languages,omitempty"`
+
+	// TranscriptAvailable is true when at least one READY transcript
+	// exists in asset_text_tracks for this clip. Replaces the old
+	// pattern of checking TranscriptPath != "".
+	TranscriptAvailable bool `json:"transcript_available,omitempty"`
+
+	// TextTracksVersion is a short hash of the sorted text track
+	// hashes, used by consumers to detect when translations changed
+	// without re-querying asset_text_tracks.
+	TextTracksVersion string `json:"text_tracks_version,omitempty"`
 }

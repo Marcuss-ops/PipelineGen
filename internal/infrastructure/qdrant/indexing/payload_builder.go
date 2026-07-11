@@ -242,6 +242,19 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	if doc.Metadata.Description != "" {
 		payload["description"] = doc.Metadata.Description
 	}
+	// ── Text track projection (lightweight, no full transcripts) ──
+	if doc.Metadata.OriginalLanguage != "" {
+		payload["original_language"] = doc.Metadata.OriginalLanguage
+	}
+	if len(doc.Metadata.AvailableLanguages) > 0 {
+		payload["available_languages"] = doc.Metadata.AvailableLanguages
+	}
+	if doc.Metadata.TranscriptAvailable {
+		payload["transcript_available"] = true
+	}
+	if doc.Metadata.TextTracksVersion != "" {
+		payload["text_tracks_version"] = doc.Metadata.TextTracksVersion
+	}
 	return payload
 }
 

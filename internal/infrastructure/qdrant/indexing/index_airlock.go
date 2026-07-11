@@ -229,6 +229,11 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			CreatedAt:                asset.CreatedAt,
 			UpdatedAt:                asset.UpdatedAt,
 			DeletedAt:                asset.DeletedAt,
+			// ── Text track projection ──
+			OriginalLanguage:  assetpkg.MetadataString(asset.Metadata, "original_language"),
+			AvailableLanguages: assetpkg.MetadataStringSlice(asset.Metadata, "available_languages"),
+			TranscriptAvailable: metadataBool(asset.Metadata, "transcript_available"),
+			TextTracksVersion:  assetpkg.MetadataString(asset.Metadata, "text_tracks_version"),
 		},
 		Embeddings: map[VectorChannel]EmbeddingArtifact{},
 	}
@@ -374,6 +379,20 @@ func cleanDrivePath(path string) string {
 		return ""
 	}
 	return filepath.ToSlash(path)
+}
+
+// metadataBool reads a boolean value from the metadata map.
+// Returns false when the key is absent or not a boolean.
+func metadataBool(meta map[string]any, key string) bool {
+	if meta == nil {
+		return false
+	}
+	v, ok := meta[key]
+	if !ok {
+		return false
+	}
+	b, ok := v.(bool)
+	return b && ok
 }
 
 // intOrFallback returns the top-level AssetData field if non-zero,

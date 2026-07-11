@@ -239,6 +239,19 @@ func updateMediaAssetsMetadataTx(
 	if m.SearchVisibility != "" {
 		meta["search_visibility"] = m.SearchVisibility
 	}
+	// ── Text track projection (lightweight, no full transcripts) ──
+	if m.OriginalLanguage != "" {
+		meta["original_language"] = m.OriginalLanguage
+	}
+	if len(m.AvailableLanguages) > 0 {
+		meta["available_languages"] = m.AvailableLanguages
+	}
+	if m.TranscriptAvailable {
+		meta["transcript_available"] = true
+	}
+	if m.TextTracksVersion != "" {
+		meta["text_tracks_version"] = m.TextTracksVersion
+	}
 
 	metaJSON, err := json.Marshal(meta)
 	if err != nil {
