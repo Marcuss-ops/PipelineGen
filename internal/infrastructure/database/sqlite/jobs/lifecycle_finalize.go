@@ -148,7 +148,7 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 		progress = 100, worker_id = '', lease_id = '', lease_expiry = NULL,
 		revision = revision + 1, updated_at = ?
 	WHERE id = ?
-		AND status IN ('RUNNING','FINALIZING','SUCCEEDED')
+		AND status IN ('WAITING_CHILDREN','RUNNING','FINALIZING','SUCCEEDED')
 		AND json_extract(result_json,'$.parent_state') IN ('waiting_children','partial_success')`
 	args := []any{string(targetStatus), nowStr, errMsg, errMsg, resultJSON, parentStateTyped, nowStr, id}
 	if expectedVersion > 0 {
@@ -189,7 +189,7 @@ func (r *SQLiteStore) FinalizeAggregateParent(ctx context.Context, id string, ta
 		// bumping above; here we return the typed ErrAggregateCASConflict for
 		// caller errors.Is()-probe intake. The Retry path (queue→requeued) is
 		// not a flip race and does NOT bump a separate counter.
-		return fmt.Errorf("%w: parent %q status=%q not in (RUNNING|FINALIZING|SUCCEEDED), or parent_state not awaiting", domainremote.ErrAggregateCASConflict, id, currentStatus)
+		return fmt.Errorf("%w: parent %q status=%q not in (WAITING_CHILDREN|RUNNING|FINALIZING|SUCCEEDED), or parent_state not awaiting", domainremote.ErrAggregateCASConflict, id, currentStatus)
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))

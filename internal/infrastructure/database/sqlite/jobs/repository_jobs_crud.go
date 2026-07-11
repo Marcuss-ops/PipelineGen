@@ -241,9 +241,18 @@ func (r *SQLiteStore) ListAwaitingAggregation(ctx context.Context, parentType st
 	}
 	// PR-P1.2-SQL-DUAL-WRITE: typed column is PRIMARY; JSON is
 	// SECONDARY fallback ONLY when typed is empty.
+	//
+	// FASE 1 (July 2026): added WAITING_CHILDREN to the broker-status
+	// tail of the query. The canonical post-fan-out parent lifecycle
+	// now elevates waiting-children to a first-class broker status
+	// (kernel/job.StatusWaitingChildren) so the aggregator finds
+	// parents that have NOT yet been flipped to SUCCEEDED by the
+	// worker. The pre-FASE-1 brokers RUNNING/FINALIZING/SUCCEEDED
+	// are retained for back-compat with rows whose parent_state
+	// = waiting_children was carried solely in the JSON result column.
 	query := `SELECT ` + jobColumns + ` FROM jobs
 WHERE type = ?
-  AND status IN ('RUNNING','FINALIZING','SUCCEEDED')
+  AND status IN ('WAITING_CHILDREN','RUNNING','FINALIZING','SUCCEEDED')
   AND (parent_state_typed = 'waiting_children'
        OR (parent_state_typed = '' AND json_extract(result_json,'$.parent_state') = 'waiting_children'))
 ORDER BY created_at DESC

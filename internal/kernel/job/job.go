@@ -20,17 +20,33 @@ import (
 
 // ── Status lifecycle (canonical) ────────────────────────────────────
 
-// Status is the canonical 8-state job lifecycle.
+// Status is the canonical extended-state job lifecycle.
 //
-//	queued → leased → running → finalizing → succeeded
-//	                            ↘ retry_wait → queued
-//	                            ↘ failed / cancelled
+//	queued → leased → running → waiting_children → finalizing → succeeded
+//	                                                       ↘ retry_wait → queued
+//	                                                       ↘ failed / cancelled
+//
+// FASE 1 (July 2026): StatusWaitingChildren is the canonical broker
+// surface for the parent-aggregation window. Pre-FASE-1 wait-for-children
+// was conveyed only via the application-level parent_state (job.Result
+// ["parent_state"]) plus the typed parent_state_typed column, with the
+// broker status stuck at RUNNING/FINALIZING/SUCCEEDED. Elevating the
+// wait to a first-class broker status removes the silent-success
+// failure mode where a parent was marked SUCCEEDED even though no
+// child had been aggregated yet.
+//
+// Canonical sequence (audit 2026-07-03 P0 #4 closure):
+//
+//	QUEUED → RUNNING → WAITING_CHILDREN (worker fan-out complete)
+//	WAITING_CHILDREN → FINALIZING (aggregator: all children terminal)
+//	FINALIZING → SUCCEEDED | PARTIALLY_SUCCEEDED | FAILED | CANCELLED
 type Status string
 
 const (
 	StatusQueued             Status = "QUEUED"
 	StatusLeased             Status = "LEASED"
 	StatusRunning            Status = "RUNNING"
+	StatusWaitingChildren    Status = "WAITING_CHILDREN"
 	StatusFinalizing         Status = "FINALIZING"
 	StatusRetryWait          Status = "RETRY_WAIT"
 	StatusSucceeded          Status = "SUCCEEDED"
@@ -62,7 +78,7 @@ func (s Status) IsActive() bool {
 // Valid returns true if s is a known job status.
 func (s Status) Valid() bool {
 	switch s {
-	case StatusQueued, StatusLeased, StatusRunning, StatusFinalizing, StatusRetryWait,
+	case StatusQueued, StatusLeased, StatusRunning, StatusWaitingChildren, StatusFinalizing, StatusRetryWait,
 		StatusSucceeded, StatusPartiallySucceeded, StatusIndexPending, StatusFailed, StatusCancelled:
 		return true
 	}
