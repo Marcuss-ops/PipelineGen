@@ -10,6 +10,7 @@ import (
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -110,7 +111,12 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 
 // ── RenewLease ───────────────────────────────────────────────────────────
 
-// RenewLease extends an existing lease for a running or finalizing job.
+// RenewLease extends an existing lease for a running or finalizing job
+// and atomically reports the post-renewal lease state (Fase 4(b),
+// July 2026). The single SQL UPDATE + RETURNING clause composes the
+// lease extension with the cancellation check in ONE round-trip,
+// eliminating the pre-Fase-4 per-job 2-second IsCancelled-poll
+// goroutine at worker_execution.go::startCancelWatcher.
 //
 // JOBS-T01-SQLITE-REPO (P0, 2026-07-15) signature-drift fix: the
 // previous UPDATE silently bumped `revision = revision + 1`, which
@@ -122,23 +128,89 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 // invariant is that revision is bumped ONLY on fenced state
 // transitions (Complete / Fail / ScheduleRetry / Cancel / Retry /
 // FinalizeAggregateParent), NOT on lease extensions.
-func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string, leaseTTL time.Duration) error {
+//
+// LeaseState routing (godlike/06 SSOT, three-way filter):
+//   - 0 rows updated → LeaseStateLeaseLost (lease stolen / expired /
+//     reaped; no longer matches the worker_id fence). Companion
+//     error returns the canonical ErrLeaseLost so callers can
+//     errors.Is probe the pre-Fase-4 sentinel symmetrically.
+//   - 1 row updated AND cancelled_at IS NOT NULL → LeaseStateCancelRequested.
+//     The cancelled_at column is set by Cancel() at the canonical
+//     Cancel primitive (kernel/job/store.go::Cancel); the renew-loop
+//     picks it up here WITHOUT a separate SELECT (no lost-update race
+//     between the renewal transaction and the operator-set
+//     cancelled_at column).
+//   - 1 row updated AND cancelled_at IS NULL → LeaseStateContinue.
+//     The post-renewal lease_expiry + revision are surfaced via the
+//     RETURNING clause for the worker's "must renew by" snapshot.
+//
+// godlike/07 fail-closed: the three-way filter runs INSIDE a single
+// SQL statement so the row state observed here is the same as the
+// row state used for the UPDATE — no SELECT-then-UPDATE race window
+// where a concurrent Cancel could land between the two statements.
+func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string, leaseTTL time.Duration) (kerneljob.RenewLeaseResult, error) {
 	newExpiry := time.Now().Add(leaseTTL)
-	res, err := r.db.ExecContext(ctx,
+	// Use QueryRowContext (not ExecContext) so we can read the
+	// RETURNING columns; rows-affected comes from the same row.
+	var (
+		stateW    string
+		revisionW int
+		expiryStr string
+	)
+	err := r.db.QueryRowContext(ctx,
 		`UPDATE jobs SET lease_expiry = ?, updated_at = ?
 		 WHERE id = ? AND status IN ('RUNNING', 'FINALIZING')
-		 AND worker_id = ?`,
+		 AND worker_id = ?
+		 RETURNING
+		   CASE WHEN cancelled_at IS NOT NULL THEN 'cancel_requested' ELSE 'continue' END,
+		   revision,
+		   lease_expiry`,
 		timeutil.FormatRFC3339(newExpiry), timeutil.FormatRFC3339(time.Now()),
 		id, workerID,
-	)
+	).Scan(&stateW, &revisionW, &expiryStr)
 	if err != nil {
-		return fmt.Errorf("RenewLease: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			// 0 rows updated — lease stolen, expired, or reaped.
+			return kerneljob.RenewLeaseResult{
+				State: kerneljob.LeaseStateLeaseLost,
+			}, fmt.Errorf("%w: renew lease", ErrLeaseLost)
+		}
+		return kerneljob.RenewLeaseResult{}, fmt.Errorf("RenewLease: %w", err)
 	}
-	affected, _ := res.RowsAffected()
-	if affected == 0 {
-		return fmt.Errorf("%w: renew lease", ErrLeaseLost)
+	// Decode the state.
+	state := kerneljob.LeaseState(stateW)
+	if !state.IsValid() {
+		// Defensive: the SQL CASE expression can only emit
+		// 'cancel_requested' or 'continue' (or omit the row for
+		// lease_lost). An unknown value would be a SQL adapter
+		// regression; surface it as a typed error so operators
+		// see the diagnostic instead of a silent LeaseStateContinue
+		// default that would mask cancellation.
+		return kerneljob.RenewLeaseResult{}, fmt.Errorf("RenewLease: unknown lease state %q from SQL RETURNING", stateW)
 	}
-	return nil
+	// Decode the post-renewal expiry for the Continue branch.
+	var newExpiryPtr *time.Time
+	if state == kerneljob.LeaseStateContinue {
+		// Use ParseRFC3339Ptr (the canonical timeutil helper that
+		// returns *time.Time for the lease_expiry column; the
+		// previous code called timeutil.ParseRFC3339 which does
+		// not exist — the canonical surface is ParseRFC3339Ptr
+		// for nullable + ParseRFC3339 for non-nullable; the
+		// expiryStr from SQL RETURNING is never NULL, so either
+		// is safe. ParseRFC3339Ptr returns nil on parse error
+		// (no error return) so the nil-check below surfaces the
+		// diagnostic.
+		t := timeutil.ParseRFC3339Ptr(expiryStr)
+		if t == nil {
+			return kerneljob.RenewLeaseResult{}, fmt.Errorf("RenewLease: parse lease_expiry %q: invalid RFC3339", expiryStr)
+		}
+		newExpiryPtr = t
+	}
+	return kerneljob.RenewLeaseResult{
+		State:          state,
+		NewLeaseExpiry: newExpiryPtr,
+		JobRevision:    revisionW,
+	}, nil
 }
 
 // ── RequeueExpiredLeases ────────────────────────────────────────────────
