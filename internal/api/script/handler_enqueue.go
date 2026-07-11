@@ -11,6 +11,7 @@ package script
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -20,6 +21,8 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	mw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -55,6 +58,7 @@ func enqueueEnvelopeFn(
 	log *zap.Logger,
 	registry *appjobs.Registry,
 	caps PreflightCaps,
+	store mw.IdempotencyStore,
 ) {
 	if err := env.Validate(); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid envelope: " + err.Error()})
@@ -97,13 +101,75 @@ func enqueueEnvelopeFn(
 		return
 	}
 
+	// Strong idempotency contract for script.generate:
+	//   - Idempotency-Key header is required.
+	//   - ActiveKey is derived as "script.generate:<fingerprint>".
+	//   - Same payload + same key → cached response (completed) or same job_id (active).
+	//   - Same key + different payload → 409 IDEMPOTENCY_KEY_CONFLICT.
+	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	if idempotencyKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":    false,
+			"error": "Idempotency-Key header is required",
+			"code":  "IDEMPOTENCY_KEY_REQUIRED",
+		})
+		return
+	}
+	if !isValidIdempotencyKey(idempotencyKey) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"ok":    false,
+			"error": "Idempotency-Key must be printable ASCII and at most 255 characters",
+			"code":  "INVALID_IDEMPOTENCY_KEY",
+		})
+		return
+	}
+
+	fingerprint := adapters.BuildEnvelopeIdentity(&env)
+	activeKey := "script.generate:" + fingerprint
+
+	// P0 strong idempotency: force_refresh bypasses both the
+	// idempotency-store replay and the active-key dedup, forcing a
+	// brand-new job regardless of prior active or completed records.
+	forceRefresh := env.ForceRefresh
+
+	if store != nil && !forceRefresh {
+		ctx := c.Request.Context()
+		_, exists, err := store.TryInsert(ctx, idempotencyKey, fingerprint)
+		if err != nil {
+			log.Error("idempotency store unavailable", zap.String("key", idempotencyKey), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "idempotency store unavailable"})
+			return
+		}
+		if exists {
+			record, gerr := store.Get(ctx, idempotencyKey)
+			if gerr != nil {
+				log.Error("idempotency store lookup failed", zap.String("key", idempotencyKey), zap.Error(gerr))
+				c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "idempotency store lookup failed"})
+				return
+			}
+			if record.BodyHash != fingerprint {
+				c.JSON(http.StatusConflict, gin.H{
+					"ok":    false,
+					"error": "Idempotency-Key reused with different payload",
+					"code":  "IDEMPOTENCY_KEY_CONFLICT",
+				})
+				return
+			}
+			if record.Status == "completed" {
+				c.Writer.Header().Set("X-Idempotency-Replay", "true")
+				c.Data(record.ResponseStatus, record.ResponseCT, record.ResponseBody)
+				return
+			}
+			// in_flight: fall through to enqueue; the job service's
+			// FindActiveByKey on activeKey will return the same job_id.
+		}
+	}
+
 	req := jobs.NewGenerateEnqueueRequest(env)
-	// P0 #4 (June 2026): read Idempotency-Key header for retry-safe
-	// dedup — same logic as the canonical /generate handler. Header
-	// wins over any body field; trim is defensive so whitespace-only
-	// headers don't produce phantom dedup keys.
-	if idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key")); idempotencyKey != "" {
-		req.ActiveKey = idempotencyKey
+	if forceRefresh {
+		req.ActiveKey = ""
+	} else {
+		req.ActiveKey = activeKey
 	}
 	// Issue 4 (June 2026, P1): pass registry so MaxRetries is sourced
 	// from registry.DefaultMaxRetries(script.generate) instead of the
@@ -138,5 +204,29 @@ func enqueueEnvelopeFn(
 	// job is "PENDING" (the job is persisted and will be picked up by the
 	// worker queue). The canonical job-store status remains QUEUED.
 	resp.async(enqueuedJob.ID, "PENDING", "/api/jobs/"+enqueuedJob.ID+"/full", "")
+
+	// P0: force_refresh jobs are intentionally not cached; do not
+	// overwrite any existing idempotency record.
+	if store != nil && !forceRefresh {
+		respBytes, _ := json.Marshal(resp)
+		if cerr := store.Complete(c.Request.Context(), idempotencyKey, http.StatusAccepted, respBytes, "application/json"); cerr != nil {
+			log.Warn("idempotency store complete failed", zap.String("key", idempotencyKey), zap.Error(cerr))
+		}
+	}
+
 	c.JSON(http.StatusAccepted, resp)
+}
+
+// isValidIdempotencyKey mirrors the validation in the generic Gin
+// idempotency middleware: printable ASCII only, max 255 characters.
+func isValidIdempotencyKey(key string) bool {
+	if len(key) == 0 || len(key) > 255 {
+		return false
+	}
+	for _, r := range key {
+		if r < 0x20 || r > 0x7E {
+			return false
+		}
+	}
+	return true
 }
