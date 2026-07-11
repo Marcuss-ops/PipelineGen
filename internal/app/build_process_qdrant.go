@@ -171,7 +171,7 @@ func initQdrantProcessSubsystems(
 	log.Info("QDRANT-004 PR4: VectorStorePort sourced from single QdrantRuntime.SearchAdapter (BuildProcessBundle)")
 	return
 }
-func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*QdrantDeps, error) {
+func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, repos *RepoBundle, log *zap.Logger) (*QdrantDeps, error) {
 	_ = ctx
 
 	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): canonical
@@ -224,11 +224,17 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, lo
 		}
 		// Wire TextTrackRepository so the PayloadMapper can populate
 		// SearchTextInput.TextTracks at search-text construction time.
-		if ttRepo, ttErr := sqassets.NewTextTrackRepository(dbs.main.DB, log); ttErr == nil {
-			runtime.Mapper.SetTextTrackQuerier(ttRepo)
+		// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
+		// TextTrackRepository is now sourced from the canonical
+		// RepoBundle.TextTrackRepo (wired in BuildRepoBundle). The
+		// pre-PR local construction is removed so every consumer
+		// (BuildTextTrackBundle, BuildRepoBundle, this Qdrant
+		// PayloadMapper, the TextTrackResolver in buildDomainMediaServices)
+		// shares the SAME instance.
+		if repos != nil && repos.TextTrackRepo != nil {
+			runtime.Mapper.SetTextTrackQuerier(repos.TextTrackRepo)
 		} else {
-			log.Warn("buildQdrantDeps: TextTrackRepository unavailable; multilingual TextTracks disabled in search text",
-				zap.Error(ttErr))
+			log.Warn("buildQdrantDeps: TextTrackRepository nil in RepoBundle; multilingual TextTracks disabled in search text")
 		}
 		// PR 3 fix/qdrant-outbox-fail-closed (#3 from verdict Qdrant):
 		// IndexWriter is now constructed when Qdrant is enabled, regardless

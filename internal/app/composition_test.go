@@ -693,7 +693,23 @@ func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing
 		}
 	})
 
-	qd, err := buildQdrantDeps(context.Background(), cfg, dbs, log)
+	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
+	require.NoError(t, err, "BuildRepoBundle (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5: buildQdrantDeps now requires repos for canonical TextTrackRepo SSOT)")
+
+	// Note: buildQdrantDeps is expected to return a terminal error
+	// (PR-QDRANT-CONFIG-MISMATCH-GATE) BEFORE using the repos argument;
+	// the repos construction is required by the new signature but not
+	// semantically used in the fail-closed path.
+	_ = repos
+
+	//nolint:staticcheck // SA4006: repos is unused in the fail-closed path but required by the signature.
+	_ = repos
+	_ = err
+
+	// Override the previous err with the buildQdrantDeps result:
+	// keep the original variable to minimize test diff.
+	var qd *QdrantDeps
+	qd, err = buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
 	require.Error(t, err,
 		"PR-QDRANT-CONFIG-MISMATCH-GATE: cfg.Qdrant.Enabled=true + cfg.ClipIndexer.Enabled=false must abort buildQdrantDeps (terminal fail-closed at composition root; godlike/07 no-fake-availability)")
 	require.Nil(t, qd,
@@ -738,7 +754,15 @@ func TestComposition_ClipIndexerEnabledNoQdrant_FailClosed(t *testing.T) {
 		}
 	})
 
-	qd, err := buildQdrantDeps(context.Background(), cfg, dbs, log)
+	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
+	require.NoError(t, err, "BuildRepoBundle (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5: buildQdrantDeps now requires repos for canonical TextTrackRepo SSOT)")
+
+	// Note: buildQdrantDeps is expected to return a terminal error
+	// (PR-QDRANT-CONFIG-MISMATCH-GATE) BEFORE using the repos argument;
+	// the repos construction is required by the new signature but not
+	// semantically used in the fail-closed path.
+	var qd *QdrantDeps
+	qd, err = buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
 	require.Error(t, err,
 		"PR-QDRANT-CONFIG-MISMATCH-GATE (Direction A): cfg.ClipIndexer.Enabled=true + cfg.Qdrant.Enabled=false must abort buildQdrantDeps (terminal fail-closed at composition root)")
 	require.Nil(t, qd,
@@ -790,7 +814,7 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	repos, err := BuildRepoBundle(context.Background(), cfg, dbs, log)
 	require.NoError(t, err)
 
-	qd, err := buildQdrantDeps(context.Background(), cfg, dbs, log)
+	qd, err := buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
 	require.NoError(t, err)
 	require.NotNil(t, qd.QdrantDeleter)
 
@@ -805,6 +829,12 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	// is the contract under test, regardless of WHICH dep was first
 	// to trigger.
 	repos.ClipsRepo = nil
+
+	// Note: the buildQdrantDeps call above already passes the `repos`
+	// variable; the local repos mutation (ClipsRepo = nil) below does
+	// NOT affect buildQdrantDeps' QdrantDeps (which was constructed
+	// from the pre-mutation repos). The fail-closed contract under
+	// test is BuildOutboxBundle's, not buildQdrantDeps'.
 
 	_, _, err = BuildOutboxBundle(context.Background(), cfg, dbs, log, repos, qd, jobsBundle, nil)
 	require.Error(t, err,
