@@ -1,8 +1,8 @@
 package asset_test
 
-// text_track_hashes_test.go pins the canonical Normalize / TextHash /
-// SourceVersion formulas as behavioural contracts. If any of these
-// tests fail, the canonical namespace for materialised
+// text_track_hashes_test.go pins the canonical NormalizeForHash /
+// TextHash / SourceVersion formulas as behavioural contracts. If any
+// of these tests fail, the canonical namespace for materialised
 // asset_text_tracks has drifted and the FOREIGN idempotency keys are
 // at risk (godlike/06 SSOT).
 //
@@ -17,7 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
-func TestNormalize_StripsAndFoldsCase(t *testing.T) {
+func TestNormalizeForHash_StripsAndFoldsCase(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
@@ -27,9 +27,9 @@ func TestNormalize_StripsAndFoldsCase(t *testing.T) {
 		{"", ""},
 	}
 	for _, tc := range cases {
-		got := asset.Normalize(tc.in)
+		got := asset.NormalizeForHash(tc.in)
 		if got != tc.want {
-			t.Errorf("Normalize(%q) = %q, want %q", tc.in, got, tc.want)
+			t.Errorf("NormalizeForHash(%q) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }
