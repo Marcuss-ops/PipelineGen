@@ -859,7 +859,11 @@ func TestComposition_FrozenQdrantReconcilerDeleted(t *testing.T) {
 func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
 	chdirToProjectRoot(t)
 
-	const file = "internal/infrastructure/qdrant/index_document.go"
+	// PR 6 #1: the canonical wire-shape file lives in the
+	// internal/infrastructure/qdrant/indexing/ subpackage (the
+	// canonical Mapper/Writer/Artifact surface). The freeze test
+	// pins the path + the canonical type declarations inside it.
+	const file = "internal/infrastructure/qdrant/indexing/index_document.go"
 	src, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatalf("PR 6 #1: canonical wire-shape file %s must exist (created in refactor/qdrant-index-document): %v", file, err)
@@ -894,8 +898,14 @@ func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
 	}
 
 	// BuildPayloadFromDocument (the canonical writer-side payload
-	// emitter) must exist exactly once in payload_mapper.go.
-	b, err := os.ReadFile("internal/infrastructure/qdrant/payload_mapper.go")
+	// emitter) must exist exactly once. The declaration lives in
+	// internal/infrastructure/qdrant/indexing/payload_builder.go
+	// (godlike/06 SSOT: one canonical owner per fact); the
+	// payload_mapper.go sister file in the same package holds the
+	// airlock helpers + the per-channel reference. The freeze test
+	// pins the declaration site so a future split across multiple
+	// files MUST update this freeze-test alongside.
+	b, err := os.ReadFile("internal/infrastructure/qdrant/indexing/payload_builder.go")
 	require.NoError(t, err, "read canonical qdrant payload mapper")
 	emitterCount := strings.Count(string(b), "func BuildPayloadFromDocument")
 	require.Equalf(t, 1, emitterCount,
