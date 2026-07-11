@@ -143,3 +143,25 @@ func effectiveClipIDs(plan scriptpkg.ResolvedGenerationPlan) []string {
 	}
 	return clipIDs
 }
+
+// provisionalModeInfo returns the best-effort mode info available
+// before postprocessing. It is used to pre-fill the provenance block
+// so result.Provenance always carries requested/used mode even when
+// the document processor does not run. The document processor may
+// overwrite these fields with the final post-walk values.
+func provisionalModeInfo(plan scriptpkg.ResolvedGenerationPlan, engineResult *EngineResult) *scriptpkg.GenerationModeInfo {
+	if plan.SourceKind != string(scriptpkg.SourceClips) {
+		return nil
+	}
+	usedMode := "clip_native"
+	fallbackUsed := false
+	if len(engineResult.Output.SpecScene.Scenes) == 0 {
+		usedMode = "prose"
+		fallbackUsed = true
+	}
+	return &scriptpkg.GenerationModeInfo{
+		RequestedMode: "clip_native",
+		UsedMode:      usedMode,
+		FallbackUsed:  fallbackUsed,
+	}
+}

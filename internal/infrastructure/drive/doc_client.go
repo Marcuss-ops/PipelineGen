@@ -30,6 +30,7 @@ func googleDocsEditURL(docID string) string {
 // without re-declaring the struct.
 type DocClient interface {
 	CreateDoc(ctx context.Context, title, content, folderID string) (*Doc, error)
+	CreateDocIdempotent(ctx context.Context, title, content, folderID, idempotencyKey string, forceRefresh bool) (*Doc, error)
 	ShareDoc(ctx context.Context, docID, email, role string) error
 	ListRecentDocs(ctx context.Context, folderID string, limit int) ([]Doc, error)
 	UpdateDoc(ctx context.Context, docID, title, content string) error
@@ -105,6 +106,90 @@ func (d *DocClientImpl) CreateDoc(ctx context.Context, title, content, folderID 
 		URL:     googleDocsEditURL(created.DocumentId),
 		Content: content,
 	}, nil
+}
+
+// CreateDocIdempotent creates a Google Doc only once for a given
+// idempotency key. When a doc with the same key already exists, it
+// returns the existing doc unless forceRefresh is true, in which case
+// the existing doc content is overwritten. The key is stored as a Drive
+// app property named "pipelinegen_generation_id".
+func (d *DocClientImpl) CreateDocIdempotent(ctx context.Context, title, content, folderID, idempotencyKey string, forceRefresh bool) (*Doc, error) {
+	if idempotencyKey == "" {
+		return d.CreateDoc(ctx, title, content, folderID)
+	}
+
+	existing, err := d.findDocByIdempotencyKey(ctx, folderID, idempotencyKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup existing doc: %w", err)
+	}
+
+	if existing != nil {
+		if !forceRefresh {
+			return existing, nil
+		}
+		if err := d.UpdateDoc(ctx, existing.ID, title, content); err != nil {
+			return nil, fmt.Errorf("failed to refresh existing doc: %w", err)
+		}
+		existing.Title = title
+		existing.Content = content
+		return existing, nil
+	}
+
+	doc, err := d.CreateDoc(ctx, title, content, folderID)
+	if err != nil {
+		return nil, err
+	}
+	if err := d.setAppProperty(ctx, doc.ID, "pipelinegen_generation_id", idempotencyKey); err != nil {
+		// Non-fatal: the doc exists but we could not tag it. Log is
+		// not available here, so surface as a wrapped error but still
+		// return the created doc so callers do not lose the link.
+		return doc, fmt.Errorf("doc created but idempotency tag failed: %w", err)
+	}
+	return doc, nil
+}
+
+func (d *DocClientImpl) findDocByIdempotencyKey(ctx context.Context, folderID, key string) (*Doc, error) {
+	if d.driveService == nil {
+		return nil, fmt.Errorf("drive service not initialized")
+	}
+	// Escape single quotes in the key to keep the Drive query valid.
+	safeKey := strings.ReplaceAll(key, "'", "\\'")
+	q := fmt.Sprintf("appProperties has { key='pipelinegen_generation_id' and value='%s' }", safeKey)
+	if folderID != "" {
+		q = fmt.Sprintf("'%s' in parents and %s", folderID, q)
+	}
+
+	files, err := d.driveService.Files.List().
+		Q(q).
+		PageSize(1).
+		Fields("files(id, name, webViewLink)").
+		Context(ctx).
+		Do()
+	if err != nil {
+		return nil, fmt.Errorf("failed to search doc by idempotency key: %w", err)
+	}
+	if len(files.Files) == 0 {
+		return nil, nil
+	}
+	f := files.Files[0]
+	return &Doc{
+		ID:    f.Id,
+		Title: f.Name,
+		URL:   googleDocsEditURL(f.Id),
+	}, nil
+}
+
+func (d *DocClientImpl) setAppProperty(ctx context.Context, docID, key, value string) error {
+	if d.driveService == nil {
+		return fmt.Errorf("drive service not initialized")
+	}
+	_, err := d.driveService.Files.Update(docID, &drive.File{
+		AppProperties: map[string]string{key: value},
+	}).Fields("id").Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to set app property: %w", err)
+	}
+	return nil
 }
 
 func (d *DocClientImpl) insertContent(ctx context.Context, docID, content string) error {

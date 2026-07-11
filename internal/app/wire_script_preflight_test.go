@@ -45,6 +45,9 @@ type stubDocClient struct{}
 func (s *stubDocClient) CreateDoc(ctx context.Context, title, content, folderID string) (*drive.Doc, error) {
 	return nil, nil
 }
+func (s *stubDocClient) CreateDocIdempotent(ctx context.Context, title, content, folderID, idempotencyKey string, forceRefresh bool) (*drive.Doc, error) {
+	return nil, nil
+}
 func (s *stubDocClient) ShareDoc(ctx context.Context, docID, email, role string) error {
 	return nil
 }

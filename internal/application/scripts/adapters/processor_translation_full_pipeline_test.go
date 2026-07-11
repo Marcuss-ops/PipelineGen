@@ -44,11 +44,15 @@ type stubFullPipelineDocSvc struct {
 	capturedFolder  string
 }
 
-func (s *stubFullPipelineDocSvc) CreateDoc(_ context.Context, title, content string, _ FolderResolver, driveFolderID string) (string, string) {
+func (s *stubFullPipelineDocSvc) CreateDoc(_ context.Context, title, content string, _ FolderResolver, driveFolderID, idempotencyKey string, forceRefresh bool) (string, string) {
 	s.capturedTitle = title
 	s.capturedContent = content
 	s.capturedFolder = driveFolderID
 	return "https://drive.example/doc-full-pipeline", "doc-fp-id-001"
+}
+
+func (s *stubFullPipelineDocSvc) UpdateDoc(_ context.Context, docID, title, content string) error {
+	return nil
 }
 
 // TestPipeline_FullChain_TranslationSpecSceneSurvival exercises the

@@ -191,6 +191,12 @@ func (uc *GenerateOneUseCase) Execute(
 	// ── Phase 6: Postprocess ────────────────────────────────────────
 	timings.PostprocessMs = make(map[string]int64)
 	var postResult *adapters.PipelineResult
+	// Provenance block (without doc_id/doc_link) is built before
+	// postprocessing so the document processor can embed it and fill
+	// the document identifiers after creating/updating the Google Doc.
+	modeInfo := provisionalModeInfo(plan, engineResult)
+	provenance := buildProvenance(plan, engineResult, modeInfo)
+
 	if uc.ppReg != nil {
 		for _, pp := range plan.Postprocessors {
 			tracker.PhasePostprocess(pp)
@@ -202,6 +208,7 @@ func (uc *GenerateOneUseCase) Execute(
 			ModelUsed:   engineResult.Model,
 			CacheStatus: engineResult.CacheStatus,
 			SourceTrace: engineResult.ClipEvidence,
+			Provenance:  provenance,
 		}
 		var ppErr error
 		postResult, ppErr = uc.ppReg.Run(ctx, &plan, procInput)
@@ -233,6 +240,26 @@ func (uc *GenerateOneUseCase) Execute(
 	// mode reports SUCCEEDED_WITH_WARNINGS instead of failing.
 	if err := enforceClipNativeContract(result, item, plan, engineResult, postResult); err != nil {
 		return nil, uc.logPhaseError(item, "clip_native", scriptpkg.ErrClipNativePlanningFailed, err)
+	}
+
+	// ── Phase 8: Surface provenance ─────────────────────────────────
+	// The provenance pointer was populated by the document processor
+	// with doc_id/doc_link (and possibly refined mode fields). Surface
+	// it on the result before the quality gate so a failing gate still
+	// returns the provenance block.
+	result.Provenance = provenance
+
+	// ── Phase 9: Editorial quality gate ────────────────────────────
+	// Always populate result.Quality. When the gate fails, return
+	// the result alongside the typed error so the failure envelope
+	// can still surface the quality block.
+	quality, qErr := evaluateQualityGate(result, item, plan)
+	if quality != nil {
+		result.Quality = quality
+	}
+	if qErr != nil {
+		result.Status = "FAILED_QUALITY_GATE"
+		return result, uc.logPhaseError(item, "quality_gate", scriptpkg.ErrQualityGateFailed, qErr)
 	}
 
 	timings.TotalMs = time.Since(startAll).Milliseconds()

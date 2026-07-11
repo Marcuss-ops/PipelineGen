@@ -13,9 +13,16 @@ import (
 )
 
 type fakeDocClient struct {
-	createDocErr error
-	lastTitle    string
-	calls        int
+	createDocErr        error
+	createIdempotentErr error
+	updateDocErr        error
+	lastTitle           string
+	calls               int
+	idempotentCalls     int
+	updateCalls         int
+	lastIdempotencyKey  string
+	lastForceRefresh    bool
+	lastUpdateDocID     string
 }
 
 func (f *fakeDocClient) CreateDoc(ctx context.Context, title, content, folderID string) (*drive.Doc, error) {
@@ -27,12 +34,25 @@ func (f *fakeDocClient) CreateDoc(ctx context.Context, title, content, folderID 
 	return &drive.Doc{ID: "doc-123", URL: "https://docs.example.com/doc-123"}, nil
 }
 
+func (f *fakeDocClient) CreateDocIdempotent(ctx context.Context, title, content, folderID, idempotencyKey string, forceRefresh bool) (*drive.Doc, error) {
+	f.idempotentCalls++
+	f.lastTitle = title
+	f.lastIdempotencyKey = idempotencyKey
+	f.lastForceRefresh = forceRefresh
+	if f.createIdempotentErr != nil {
+		return nil, f.createIdempotentErr
+	}
+	return &drive.Doc{ID: "doc-" + idempotencyKey, URL: "https://docs.example.com/doc-" + idempotencyKey}, nil
+}
+
 func (f *fakeDocClient) ShareDoc(ctx context.Context, docID, email, role string) error { return nil }
 func (f *fakeDocClient) ListRecentDocs(ctx context.Context, folderID string, limit int) ([]drive.Doc, error) {
 	return nil, nil
 }
 func (f *fakeDocClient) UpdateDoc(ctx context.Context, docID, title, content string) error {
-	return nil
+	f.updateCalls++
+	f.lastUpdateDocID = docID
+	return f.updateDocErr
 }
 
 func TestDocumentsUseCase_NilUseCase(t *testing.T) {
@@ -165,4 +185,40 @@ func TestDocumentsUseCase_FolderResolverCalledOnce(t *testing.T) {
 	_, _, err := uc.BuildAndCreate(context.Background(), "T", "content", resolveFolder, "f")
 	require.NoError(t, err)
 	assert.Equal(t, 1, callCount, "FolderResolver must be called exactly once")
+}
+
+func TestDocumentsService_CreateDoc_Idempotent(t *testing.T) {
+	t.Parallel()
+	fc := &fakeDocClient{}
+	svc := NewDocumentsService(fc, zap.NewNop(), "root")
+
+	link, id := svc.CreateDoc(context.Background(), "Title", "content", nil, "folder", "key-123", false)
+	require.NotEmpty(t, link)
+	require.NotEmpty(t, id)
+	assert.Equal(t, 1, fc.idempotentCalls, "CreateDocIdempotent must be called when idempotencyKey is set")
+	assert.Equal(t, "key-123", fc.lastIdempotencyKey)
+	assert.False(t, fc.lastForceRefresh)
+}
+
+func TestDocumentsService_CreateDoc_ForceRefresh(t *testing.T) {
+	t.Parallel()
+	fc := &fakeDocClient{}
+	svc := NewDocumentsService(fc, zap.NewNop(), "root")
+
+	link, id := svc.CreateDoc(context.Background(), "Title", "content", nil, "folder", "key-456", true)
+	require.NotEmpty(t, link)
+	require.NotEmpty(t, id)
+	assert.Equal(t, "key-456", fc.lastIdempotencyKey)
+	assert.True(t, fc.lastForceRefresh)
+}
+
+func TestDocumentsService_UpdateDoc(t *testing.T) {
+	t.Parallel()
+	fc := &fakeDocClient{}
+	svc := NewDocumentsService(fc, zap.NewNop(), "root")
+
+	err := svc.UpdateDoc(context.Background(), "doc-123", "Title", "content")
+	require.NoError(t, err)
+	assert.Equal(t, 1, fc.updateCalls)
+	assert.Equal(t, "doc-123", fc.lastUpdateDocID)
 }

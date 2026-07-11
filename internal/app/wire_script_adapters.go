@@ -128,7 +128,7 @@ func (d *docCreatorImpl) CreateDoc(ctx context.Context, title, content, folderID
 	resolveFolder := func(ctx context.Context, input, defaultRootID string) (string, error) {
 		return input, nil // raw ID assumed (caller resolved beforehand)
 	}
-	return docsSvc.CreateDoc(ctx, title, content, resolveFolder, folderID)
+	return docsSvc.CreateDoc(ctx, title, content, resolveFolder, folderID, "", false)
 }
 
 // ── Composition validation: script.generate wiring must be complete ───
