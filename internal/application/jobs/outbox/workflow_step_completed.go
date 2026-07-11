@@ -31,6 +31,14 @@ func (h *WorkflowStepCompletedHandler) EventType() string {
 	return outboxevents.EventWorkflowStepCompleted
 }
 
+// IdempotencyKey implements outboxevents.Handler (Fase 6(c) Push 6.2).
+// Static canonical form: `<event_type>.audit.v1` — schema_version literal
+// is implicit (audit-only payload shape, not versioned). Operator can
+// identify the handler class by the shape.
+func (h *WorkflowStepCompletedHandler) IdempotencyKey() string {
+	return outboxevents.EventWorkflowStepCompleted + ".audit.v1"
+}
+
 // workflowStepPayload is the schema of workflow.step.* payloads.
 // Both completed and failed share this shape; status is the differentiator.
 type workflowStepPayload struct {

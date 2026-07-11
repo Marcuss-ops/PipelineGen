@@ -213,6 +213,23 @@ func (h *DriveDeleteHandler) EventType() string {
 	return DriveDeleteEventType
 }
 
+// IdempotencyKey implements outboxevents.Handler (Fase 6(c) Push 6.2,
+// July 2026). Static canonical form: `<event_type>.<schema_version>` so
+// the HandlerRegistry.Register fail-closed panic fires at init time if
+// a future refactor forgets the declaration. per-event idempotency
+// keys flow through the envelope's IdempotencyKey field and do NOT
+// substitute this static handler-class declaration.
+//
+// Note on interpretation: IdempotencyKey() is a STATIC handler-class
+// identifier — it does NOT change per-event. Per-event dedup keys live
+// in the outbox_events.event_key column (driven by the payload's
+// IdempotencyKey field) and are surfaced separately. The static shape
+// here is the canonical SSOT entry used by the metrics namespace and
+// Register-time fail-closed panic (godlike/06).
+func (h *DriveDeleteHandler) IdempotencyKey() string {
+	return DriveDeleteEventType + "." + DriveDeleteRequestSchemaVersion
+}
+
 // Handle parses the v1 envelope, performs the BEFORE-Drive stamp +
 // the Drive API call + the AFTER-Drive advance-and-emit. Returns
 // nil on success (including idempotent skip). Returns a typed
