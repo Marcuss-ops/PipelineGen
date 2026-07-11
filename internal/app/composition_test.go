@@ -90,6 +90,7 @@ func minimalConfig(dataDir string) *config.Config {
 		ClipIndexer: config.ClipIndexerConfig{Enabled: false},
 		Reranker:    config.RerankerConfig{Enabled: false},
 		Drive:       config.DriveConfig{},
+		Books:       config.BooksConfig{ScriptPath: "scripts/bridges/book_summarizer.py"},
 		Jobs: config.JobsConfig{
 			EnableBackgroundJobs: false, // suppress lifecycle spawners
 		},
@@ -349,6 +350,7 @@ var frozenZeroSpawnBuilders = []string{
 	"BuildSyncBundle",
 	"BuildMaintBundle",
 	"BuildUtilityBundle",
+	"BuildStockBundle",
 }
 
 // Regex detectors used to enumerate and count goroutine-spawn sites
@@ -774,7 +776,7 @@ func TestComposition_QdrantEnabledMissingAssetDeleter_FailClosed(t *testing.T) {
 	dataDir := t.TempDir()
 	cfg := minimalConfig(dataDir)
 	cfg.Qdrant.Enabled = true
-	cfg.ClipIndexer.Enabled = false
+	cfg.ClipIndexer.Enabled = true
 	log := zaptest.NewLogger(t)
 
 	dbs, err := initDatabases(cfg, log)
