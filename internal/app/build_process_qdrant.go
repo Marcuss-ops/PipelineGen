@@ -30,6 +30,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -214,6 +215,20 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, lo
 		})
 		if rerr != nil {
 			return nil, fmt.Errorf("buildQdrantDeps: qdrant.NewRuntime: %w", rerr)
+		}
+
+		// Wire index_languages from config into the PayloadMapper so
+		// youtubeStrategy can filter TextTracks by configured languages.
+		if langs := cfg.Media.Multilingual.IndexLanguages; len(langs) > 0 {
+			runtime.Mapper.SetIndexLanguages(strings.Join(langs, ","))
+		}
+		// Wire TextTrackRepository so the PayloadMapper can populate
+		// SearchTextInput.TextTracks at search-text construction time.
+		if ttRepo, ttErr := sqassets.NewTextTrackRepository(dbs.main.DB, log); ttErr == nil {
+			runtime.Mapper.SetTextTrackQuerier(ttRepo)
+		} else {
+			log.Warn("buildQdrantDeps: TextTrackRepository unavailable; multilingual TextTracks disabled in search text",
+				zap.Error(ttErr))
 		}
 		// PR 3 fix/qdrant-outbox-fail-closed (#3 from verdict Qdrant):
 		// IndexWriter is now constructed when Qdrant is enabled, regardless

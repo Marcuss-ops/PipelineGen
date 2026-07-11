@@ -27,6 +27,7 @@ import (
 	"go.uber.org/zap"
 
 	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
+	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 )
 
@@ -37,6 +38,19 @@ type PayloadMapper struct {
 	store           AssetStore
 	log             *zap.Logger
 	searchTextBuild appsearchtext.SearchTextBuilder // optional; nil → fall back to asset.SearchText
+
+	// indexLanguages is the comma-separated BCP-47 language codes from
+	// config (cfg.Media.Multilingual.IndexLanguages). Injected into
+	// SearchTextInput.Additional["index_languages"] so the
+	// youtubeStrategy can filter TextTracks by configured languages.
+	indexLanguages string
+
+	// textTrackQuerier fetches text tracks from the asset_text_tracks
+	// table. When non-nil, resolveSearchText populates
+	// SearchTextInput.TextTracks so the youtubeStrategy can
+	// concatenate multilingual transcripts. nil → TextTracks stay
+	// empty (backwards-compatible for admin CLI / tests).
+	textTrackQuerier TextTrackQuerier
 }
 
 // NewPayloadMapper creates a PayloadMapper. The SearchTextBuilder is
@@ -50,6 +64,15 @@ func NewPayloadMapper(store AssetStore, log *zap.Logger) *PayloadMapper {
 	}
 }
 
+// TextTrackQuerier is the narrow port the PayloadMapper uses to fetch
+// text tracks from asset_text_tracks at search-text construction time.
+// The concrete *assets.TextTrackRepositorySQLite satisfies this via
+// the domain-level asset.TextTrackRepository; we define a narrower
+// interface here to avoid pulling the full domain port surface.
+type TextTrackQuerier interface {
+	ListByAsset(ctx context.Context, assetID string) ([]assetpkg.TextTrack, error)
+}
+
 // SetSearchTextBuilder wires the canonical SearchTextBuilder port. When
 // non-nil, assetToIndexDocumentNoValidate / AssetToIndexDocument delegate
 // BM25 search-text construction to the builder (per-source strategies:
@@ -59,6 +82,21 @@ func NewPayloadMapper(store AssetStore, log *zap.Logger) *PayloadMapper {
 // mapper uses asset.SearchText directly.
 func (m *PayloadMapper) SetSearchTextBuilder(b appsearchtext.SearchTextBuilder) {
 	m.searchTextBuild = b
+}
+
+// SetIndexLanguages stores the comma-separated BCP-47 language codes
+// that the youtubeStrategy uses to filter TextTracks. Called from the
+// composition root (buildQdrantDeps) after NewRuntime.
+func (m *PayloadMapper) SetIndexLanguages(langs string) {
+	m.indexLanguages = langs
+}
+
+// SetTextTrackQuerier wires the text-track querier port so
+// resolveSearchText can populate SearchTextInput.TextTracks for
+// multilingual search-text construction. nil → TextTracks stay
+// empty (backwards-compatible for admin CLI / tests).
+func (m *PayloadMapper) SetTextTrackQuerier(q TextTrackQuerier) {
+	m.textTrackQuerier = q
 }
 
 // FetchAsset delegates to the AssetStore.
