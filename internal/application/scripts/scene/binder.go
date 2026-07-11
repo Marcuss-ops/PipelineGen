@@ -29,6 +29,7 @@ package scene
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -96,6 +97,86 @@ func NewSceneAssetBinder(log *zap.Logger) *SceneAssetBinder {
 	return &SceneAssetBinder{log: log, sync: NewSceneSynthesizer()}
 }
 
+// buildScenesFromClipEvidence deterministically constructs one
+// SpecScene per accepted clip using the clip's transcript,
+// description and metadata as primary evidence. It is the
+// canonical clip-native scene builder used for source.type == clips.
+//
+// The returned scenes are ordered to match
+// plan.ClipEvidence.AcceptedClipIDs. Each scene binds its clip
+// via scene.Bindings.Clip. If ClipDetails is missing for a clip,
+// the scene text falls back to the clip name.
+func buildScenesFromClipEvidence(plan *scriptpkg.ResolvedGenerationPlan) []scriptpkg.SpecScene {
+	if plan == nil || plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0 {
+		return nil
+	}
+
+	ev := plan.ClipEvidence
+	clipIDs := ev.AcceptedClipIDs
+	if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
+		clipIDs = clipIDs[:plan.NumClips]
+	}
+
+	scenes := make([]scriptpkg.SpecScene, len(clipIDs))
+	for i, clipID := range clipIDs {
+		detail, ok := ev.ClipDetails[clipID]
+		if !ok {
+			// Fall back to the assembled evidence if the detail map
+			// is not populated (legacy paths / tests).
+			detail = scriptpkg.ClipDetail{
+				Name:      ev.ClipNames[clipID],
+				DriveLink: ev.DriveLinks[clipID],
+			}
+		}
+
+		text := strings.TrimSpace(detail.Transcript)
+		if text == "" {
+			text = strings.TrimSpace(detail.Description)
+		}
+		if text == "" {
+			text = detail.Name
+		}
+		if text == "" {
+			text = fmt.Sprintf("Scene %d", i+1)
+		}
+
+		kind := scriptpkg.SceneClip
+		if len(clipIDs) >= 3 {
+			if i == 0 {
+				kind = scriptpkg.SceneIntro
+			} else if i == len(clipIDs)-1 {
+				kind = scriptpkg.SceneOutro
+			}
+		}
+
+		binding := &scriptpkg.ClipBinding{
+			ClipID:    clipID,
+			ClipTitle: detail.Name,
+			DriveLink: detail.DriveLink,
+			StartMs:   detail.StartMs,
+			EndMs:     detail.EndMs,
+		}
+		if binding.DriveLink == "" {
+			binding.DriveLink = ev.DriveLinks[clipID]
+		}
+		if binding.ClipTitle == "" {
+			binding.ClipTitle = ev.ClipNames[clipID]
+		}
+
+		scenes[i] = scriptpkg.SpecScene{
+			ID:    fmt.Sprintf("scene-%s", clipID),
+			Index: i,
+			Text:  text,
+			Title: detail.Name,
+			Kind:  kind,
+			Bindings: scriptpkg.SceneBindings{
+				Clip: binding,
+			},
+		}
+	}
+	return scenes
+}
+
 // BindClips assigns clips from ClipEvidence.AcceptedClipIDs to the
 // canonical order. Honors the prose-fallback heuristic when
 // SpecScene.Scenes is empty + cleaned text is non-empty (FASE 3
@@ -122,26 +203,54 @@ func (b *SceneAssetBinder) BindClips(
 
 	heuristicEngaged := false
 
-	// FASE 3 (June 2026) — prose-fallback heuristic. When the
-	// resolution cycle landed on prose without any SpecScene.scenes
-	// (small local models such as gemma2:2b / gemma4:e4b commonly
-	// emit a single intro paragraph and ignore the
-	// structured-output schema), the caller still passed clip_ids.
-	// Without scenes, the binder has nothing to attach clips to,
-	// so it returns empty and the job surfaces a "clip_bindings:
-	// empty output" warning. Synthesise N scenes from text so the
-	// binder can attach clips 1:1.
+	// P0 (July 2026): for source.type == clips, scenes are built
+	// directly from the resolved clip evidence. The engine-emitted
+	// scene list is replaced by the clip-native scene plan so that
+	// transcription, timestamps and metadata are the primary
+	// evidence. Prose fallback is eliminated for the clips path;
+	// if clip evidence is unavailable, the pipeline fails explicitly
+	// downstream with CLIP_NATIVE_PLAN_UNAVAILABLE.
+	if plan.SourceKind == string(scriptpkg.SourceClips) {
+		clipBuiltScenes := buildScenesFromClipEvidence(plan)
+		if len(clipBuiltScenes) > 0 {
+			scenes = clipBuiltScenes
+			heuristicEngaged = true
+			if b.log != nil {
+				b.log.Info("clip_bindings: built scenes from clip evidence",
+					zap.Int("scenes", len(scenes)))
+			}
+		}
+	}
+
+	// FASE 3 (June 2026) — prose-fallback heuristic. Kept only for
+	// non-clips clip-aware sources (catalog/search/curate) where
+	// the model does not emit structured scenes. For source.type ==
+	// clips the heuristic above takes precedence.
 	if len(scenes) == 0 {
 		cleanedText := cleanProseFallbackText(text)
 		if cleanedText == "" {
 			return BindClipsResult{}
 		}
-		n := 8 // Fallback to 8 scenes if no clips are accepted
+		// Determine the target scene count. When clip evidence is
+		// present, bind one scene per accepted clip (capped by
+		// NumClips). Otherwise fall back to NumClips, then to a
+		// sentence-derived count so prose-fallback still produces
+		// scenes even when no clips were resolved.
+		//
+		// SentencesPerImage is an image-layout parameter borrowed
+		// here as a prose-segmentation heuristic; it avoids a
+		// zero-scene fallback when neither clip evidence nor
+		// NumClips is available.
+		n := 0
 		if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
 			n = len(plan.ClipEvidence.AcceptedClipIDs)
 		}
-		if plan.NumClips > 0 && plan.NumClips < n {
+		if plan.NumClips > 0 && (n == 0 || plan.NumClips < n) {
 			n = plan.NumClips
+		}
+		if n <= 0 && plan.SentencesPerImage > 0 {
+			sentences := splitProseSentences(cleanedText)
+			n = (len(sentences) + plan.SentencesPerImage - 1) / plan.SentencesPerImage
 		}
 		synthesized := b.sync.FromProse(cleanedText, n)
 		if len(synthesized) == 0 {
@@ -174,6 +283,11 @@ func (b *SceneAssetBinder) BindClips(
 		}
 	}
 
+	// No clips to bind and no heuristic engaged → this is a no-op.
+	if len(clipIDs) == 0 && !heuristicEngaged {
+		return BindClipsResult{}
+	}
+
 	// One clip per scene — no modulo cycling. Extra scenes beyond
 	// the clip count get no binding. This surfaces LLM output
 	// mismatches (more scenes than clips) instead of silently
@@ -187,10 +301,15 @@ func (b *SceneAssetBinder) BindClips(
 		clipID := clipIDs[i]
 		driveLink := plan.ClipEvidence.DriveLinks[clipID]
 
-		scenes[i].Bindings.Clip = &scriptpkg.ClipBinding{
-			ClipID:    clipID,
-			DriveLink: driveLink,
+		// Always bind the canonical clip ID and drive link. If a
+		// clip-built binding already exists, preserve its enriched
+		// fields (title, timestamps) while overwriting any stale
+		// clip ID that the model may have emitted.
+		if scenes[i].Bindings.Clip == nil {
+			scenes[i].Bindings.Clip = &scriptpkg.ClipBinding{}
 		}
+		scenes[i].Bindings.Clip.ClipID = clipID
+		scenes[i].Bindings.Clip.DriveLink = driveLink
 	}
 
 	// P0 #2: extra scenes beyond the clip count get no binding.
@@ -211,11 +330,20 @@ func (b *SceneAssetBinder) BindClips(
 	result := BindClipsResult{Changed: true}
 	if heuristicEngaged {
 		result.SynthesizedScenes = scenes
-		result.Warnings = []string{
-			"clip_bindings: prose-fallback synthesised " +
-				itoaLen(len(scenes)) + " scenes; bound " +
-				itoaLen(bindCount) + "/" +
-				itoaLen(len(clipIDs)) + " clips",
+		if plan.SourceKind == string(scriptpkg.SourceClips) {
+			result.Warnings = []string{
+				"clip_bindings: built " +
+					itoaLen(len(scenes)) + " scenes from clip evidence; bound " +
+					itoaLen(bindCount) + "/" +
+					itoaLen(len(clipIDs)) + " clips",
+			}
+		} else {
+			result.Warnings = []string{
+				"clip_bindings: prose-fallback synthesised " +
+					itoaLen(len(scenes)) + " scenes; bound " +
+					itoaLen(bindCount) + "/" +
+					itoaLen(len(clipIDs)) + " clips",
+			}
 		}
 	}
 	return result

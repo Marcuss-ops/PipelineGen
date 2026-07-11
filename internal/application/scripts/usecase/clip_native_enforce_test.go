@@ -69,36 +69,42 @@ func TestEnforceClipNativeContract_StrictMissingBindingFails(t *testing.T) {
 	}
 }
 
-func TestEnforceClipNativeContract_AllowProseFallbackSucceedsWithWarnings(t *testing.T) {
+func TestEnforceClipNativeContract_ClipEvidenceBuildsScenesWithoutFallback(t *testing.T) {
 	plan := clipNativePlan(scriptpkg.FallbackPolicyAllowProse, []string{"c1"})
-	engineResult := engineResultWithScenes([]string{}) // no scenes
+	engineResult := engineResultWithScenes([]string{}) // no scenes from model
 	postResult := &adapters.PipelineResult{
-		SynthesizedScenes: []scriptpkg.SpecScene{{ID: "s1", Index: 0, Text: "fallback"}},
-		FinalSpecScene:    scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{ID: "s1", Index: 0, Text: "fallback"}}},
+		SynthesizedScenes: []scriptpkg.SpecScene{{ID: "scene-c1", Index: 0, Text: "clip evidence", Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{ClipID: "c1"}}}},
+		FinalSpecScene:    scriptpkg.SpecSceneOutput{Version: 1, Scenes: []scriptpkg.SpecScene{{ID: "scene-c1", Index: 0, Text: "clip evidence", Bindings: scriptpkg.SceneBindings{Clip: &scriptpkg.ClipBinding{ClipID: "c1"}}}}},
 	}
 
 	result := &scriptpkg.GenerationResult{}
 	if err := enforceClipNativeContract(result, clipNativeItem(), plan, engineResult, postResult); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Status != scriptpkg.ItemStatusSucceededWithWarnings {
-		t.Errorf("expected status %s, got %q", scriptpkg.ItemStatusSucceededWithWarnings, result.Status)
+	if result.Status != scriptpkg.ItemStatusSucceeded {
+		t.Errorf("expected status %s, got %q", scriptpkg.ItemStatusSucceeded, result.Status)
 	}
-	if result.ModeInfo == nil || !result.ModeInfo.FallbackUsed || result.ModeInfo.UsedMode != "prose" {
-		t.Errorf("expected prose fallback mode info, got %+v", result.ModeInfo)
+	if result.ModeInfo == nil || result.ModeInfo.FallbackUsed || result.ModeInfo.UsedMode != "clip_native" {
+		t.Errorf("expected no fallback mode info, got %+v", result.ModeInfo)
 	}
-	if len(result.Warnings) == 0 {
-		t.Error("expected warnings")
+}
+
+func TestEnforceClipNativeContract_NoClipEvidenceFailsWithPlanUnavailable(t *testing.T) {
+	plan := clipNativePlan(scriptpkg.FallbackPolicyStrict, []string{})
+	plan.ClipEvidence = nil
+	engineResult := engineResultWithScenes([]string{}) // no scenes
+	postResult := &adapters.PipelineResult{}
+
+	result := &scriptpkg.GenerationResult{}
+	err := enforceClipNativeContract(result, clipNativeItem(), plan, engineResult, postResult)
+	if err == nil {
+		t.Fatal("expected error when no clip evidence is available")
 	}
-	foundCode := false
-	for _, w := range result.Warnings {
-		if strings.Contains(w, "CLIP_NATIVE_PLAN_UNAVAILABLE") {
-			foundCode = true
-			break
-		}
+	if !scriptpkg.IsClipNativePlanningFailed(err) {
+		t.Errorf("expected ClipNativePlanningFailed, got %T", err)
 	}
-	if !foundCode {
-		t.Errorf("expected warning with CLIP_NATIVE_PLAN_UNAVAILABLE, got %v", result.Warnings)
+	if !strings.Contains(err.Error(), "CLIP_NATIVE_PLAN_UNAVAILABLE") {
+		t.Errorf("expected error to contain CLIP_NATIVE_PLAN_UNAVAILABLE, got %v", err)
 	}
 }
 

@@ -216,6 +216,127 @@ func TestSceneAssetBinder_BindClips_ProseFallbackEmptyText(t *testing.T) {
 	assert.Equal(t, false, res.Changed)
 }
 
+// TestSceneAssetBinder_BindClips_ClipEvidenceBuildsScenes covers the P0
+// clip-native path: when SourceKind == clips, scenes are built directly
+// from clip evidence using transcript/description/name as primary evidence.
+func TestSceneAssetBinder_BindClips_ClipEvidenceBuildsScenes(t *testing.T) {
+	t.Parallel()
+	b := scene.NewSceneAssetBinder(zap.NewNop())
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceClips),
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
+			ClipDetails: map[string]scriptpkg.ClipDetail{
+				"clip-a": {Transcript: "transcript a", Description: "desc a", Name: "name a", DriveLink: "https://drive/a", StartMs: 0, EndMs: 1000, Tags: []string{"tag1"}},
+				"clip-b": {Description: "desc b", Name: "name b", DriveLink: "https://drive/b", StartMs: 1000, EndMs: 2000},
+				"clip-c": {Name: "name c", DriveLink: "https://drive/c", StartMs: 2000, EndMs: 3000},
+			},
+			DriveLinks: map[string]string{
+				"clip-a": "https://drive/a",
+				"clip-b": "https://drive/b",
+				"clip-c": "https://drive/c",
+			},
+		},
+	}
+
+	res := b.BindClips(nil, "any prose", plan)
+	require.Equal(t, true, res.Changed)
+	require.Len(t, res.SynthesizedScenes, 3)
+	require.Len(t, res.Warnings, 1)
+	assert.Contains(t, res.Warnings[0], "built 3 scenes from clip evidence")
+
+	// Transcript priority.
+	assert.Equal(t, "transcript a", res.SynthesizedScenes[0].Text)
+	// Description fallback.
+	assert.Equal(t, "desc b", res.SynthesizedScenes[1].Text)
+	// Name fallback.
+	assert.Equal(t, "name c", res.SynthesizedScenes[2].Text)
+
+	// Intro/outro kind assignment for >=3 clips.
+	assert.Equal(t, scriptpkg.SceneIntro, res.SynthesizedScenes[0].Kind)
+	assert.Equal(t, scriptpkg.SceneClip, res.SynthesizedScenes[1].Kind)
+	assert.Equal(t, scriptpkg.SceneOutro, res.SynthesizedScenes[2].Kind)
+
+	// Bindings populated.
+	assert.Equal(t, "clip-a", res.SynthesizedScenes[0].Bindings.Clip.ClipID)
+	assert.Equal(t, "https://drive/a", res.SynthesizedScenes[0].Bindings.Clip.DriveLink)
+	assert.Equal(t, "name a", res.SynthesizedScenes[0].Bindings.Clip.ClipTitle)
+	assert.Equal(t, int64(0), res.SynthesizedScenes[0].Bindings.Clip.StartMs)
+	assert.Equal(t, int64(1000), res.SynthesizedScenes[0].Bindings.Clip.EndMs)
+}
+
+// TestSceneAssetBinder_BindClips_ClipEvidenceNumClipsCap verifies that
+// NumClips caps the number of clip-built scenes.
+func TestSceneAssetBinder_BindClips_ClipEvidenceNumClipsCap(t *testing.T) {
+	t.Parallel()
+	b := scene.NewSceneAssetBinder(zap.NewNop())
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceClips),
+		NumClips:   2,
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
+			ClipDetails: map[string]scriptpkg.ClipDetail{
+				"clip-a": {Name: "name a"},
+				"clip-b": {Name: "name b"},
+				"clip-c": {Name: "name c"},
+			},
+		},
+	}
+
+	res := b.BindClips(nil, "any prose", plan)
+	require.Equal(t, true, res.Changed)
+	require.Len(t, res.SynthesizedScenes, 2)
+	assert.Equal(t, "name a", res.SynthesizedScenes[0].Text)
+	assert.Equal(t, "name b", res.SynthesizedScenes[1].Text)
+}
+
+// TestSceneAssetBinder_BindClips_ClipEvidenceLegacyFallback verifies that
+// clip-built scenes fall back to ClipNames/DriveLinks when ClipDetails
+// is not populated.
+func TestSceneAssetBinder_BindClips_ClipEvidenceLegacyFallback(t *testing.T) {
+	t.Parallel()
+	b := scene.NewSceneAssetBinder(zap.NewNop())
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceClips),
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{"clip-a"},
+			ClipNames: map[string]string{
+				"clip-a": "legacy name",
+			},
+			DriveLinks: map[string]string{
+				"clip-a": "https://drive/legacy",
+			},
+		},
+	}
+
+	res := b.BindClips(nil, "any prose", plan)
+	require.Equal(t, true, res.Changed)
+	require.Len(t, res.SynthesizedScenes, 1)
+	assert.Equal(t, "legacy name", res.SynthesizedScenes[0].Text)
+	assert.Equal(t, "clip-a", res.SynthesizedScenes[0].Bindings.Clip.ClipID)
+	assert.Equal(t, "https://drive/legacy", res.SynthesizedScenes[0].Bindings.Clip.DriveLink)
+}
+
+// TestSceneAssetBinder_BindClips_ClipEvidenceEmptyNoProseFallback verifies
+// that the clips path does NOT fall back to prose when clip evidence is
+// empty; instead it returns Changed=false so downstream enforcement can
+// fail with CLIP_NATIVE_PLAN_UNAVAILABLE.
+func TestSceneAssetBinder_BindClips_ClipEvidenceEmptyNoProseFallback(t *testing.T) {
+	t.Parallel()
+	b := scene.NewSceneAssetBinder(zap.NewNop())
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceClips),
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			AcceptedClipIDs: []string{},
+		},
+	}
+
+	res := b.BindClips(nil, "some prose that should be ignored", plan)
+	assert.Equal(t, false, res.Changed)
+	assert.Nil(t, res.SynthesizedScenes)
+	assert.Nil(t, res.Warnings)
+}
+
 // TestSceneAssetBinder_BindClips_ProseFallbackNoClipEvidence covers the
 // case where scenes are empty and clip evidence is missing or empty,
 // verifying that scenes are still synthesized based on sentences and NumClips.
