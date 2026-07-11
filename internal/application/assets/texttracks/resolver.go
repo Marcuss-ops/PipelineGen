@@ -75,12 +75,20 @@ func (r *Resolver) FindSourceTrack(ctx context.Context) (*asset.TextTrack, error
 		}
 	}
 	if track.Status != asset.TextTrackReady {
+		// Surface the union of available languages for the
+		// same (asset, kind) so the operator dashboard can
+		// see "what's actually READY" without a second
+		// round-trip. Errors from ListReadyLanguages are
+		// non-fatal (the operator falls back to the empty
+		// list).
+		langs, _ := r.repo.ListReadyLanguages(ctx, r.sourceID, r.kind)
 		return nil, &ErrTrackNotReady{
-			AssetID:           r.sourceID,
-			SourceLanguage:    r.cfg.SourceLanguage,
-			TextKind:          r.kind,
-			CurrentStatus:     track.Status,
-			AvailableStatuses: []asset.TextTrackStatus{track.Status},
+			AssetID:            r.sourceID,
+			SourceLanguage:     r.cfg.SourceLanguage,
+			TextKind:           r.kind,
+			CurrentStatus:      track.Status,
+			AvailableStatuses:  []asset.TextTrackStatus{track.Status},
+			AvailableLanguages: langs,
 		}
 	}
 	return track, nil

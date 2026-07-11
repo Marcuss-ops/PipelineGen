@@ -226,7 +226,7 @@ func TestMaterialize_SkipsAlreadyReadyMatchingKey(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
 
-	rep, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash(srcText), asset.TextTrackTranscript)
+	rep, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash(srcText), asset.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
@@ -286,7 +286,7 @@ func TestMaterialize_RetranslatesWhenSourceVersionChanged(t *testing.T) {
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
 	srcHash := texttracks.ComputeSourceTextHash("hello world v2")
-	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript)
+	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestMaterialize_ConcurrentSameKey_NoCorruption(t *testing.T) {
 		idx := i
 		go func() {
 			defer wg.Done()
-			_, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript)
+			_, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
 			if err != nil {
 				if idx == 0 {
 					err1 = err
@@ -366,7 +366,7 @@ func TestMaterialize_NoSourceTrack_Terminal(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
-	_, err := m.Materialize(ctx, "asset-1", "en", "abc123", asset.TextTrackTranscript)
+	_, err := m.Materialize(ctx, "asset-1", "en", "abc123", asset.TextTrackTranscript, nil)
 	if err == nil {
 		t.Fatal("expected ErrNoSourceTrack, got nil")
 	}
@@ -392,7 +392,7 @@ func TestMaterialize_SourceNotReady_Terminal(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
-	_, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript)
+	_, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
 	if err == nil {
 		t.Fatal("expected ErrTrackNotReady, got nil")
 	}
@@ -412,7 +412,7 @@ func TestMaterialize_EmptyAssetID_Terminal(t *testing.T) {
 	tr := &fakeTranslator{}
 	ob := &fakeOutbox{}
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
-	_, err := m.Materialize(ctx, "", "en", "abc", asset.TextTrackTranscript)
+	_, err := m.Materialize(ctx, "", "en", "abc", asset.TextTrackTranscript, nil)
 	if err == nil {
 		t.Fatal("expected ErrInvalidMaterializeRequest, got nil")
 	}
@@ -435,7 +435,7 @@ func TestMaterialize_TranslationFailure_RecordedInReport(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
 
-	rep, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript)
+	rep, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: expected nil error (per-language failures are in report), got %v", err)
 	}
@@ -466,7 +466,7 @@ func TestMaterialize_OutboxFailure_ReturnsError(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it"}, "model-v1", "prompt-v1")
 
-	_, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript)
+	_, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
 	if err == nil {
 		t.Fatal("expected error from outbox failure, got nil")
 	}
@@ -486,7 +486,7 @@ func TestMaterialize_ExcludesSourceLanguage(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
 
-	rep, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript)
+	rep, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash("hello world"), asset.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}

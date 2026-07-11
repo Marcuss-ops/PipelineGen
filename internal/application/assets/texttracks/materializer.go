@@ -103,12 +103,21 @@ func NewMaterializer(
 }
 
 // Materialize runs the (a-f) pipeline for a single (asset, kind) pair.
+//
+// targetLanguagesOverride is the optional caller override for
+// the target language set. Empty / nil means "use the configured
+// MultilingualConfig.MaterializeLanguages" (the canonical
+// default). A non-empty value REPLACES the configured set
+// (operators can backfill into a single language without
+// editing config). The source_language is preserved from the
+// per-call sourceLanguageCode arg.
 func (m *Materializer) Materialize(
 	ctx context.Context,
 	assetID string,
 	sourceLanguageCode string,
 	sourceTextHash string,
 	kind asset.TextTrackKind,
+	targetLanguagesOverride []string,
 ) (*MaterializationReport, error) {
 	start := time.Now()
 
@@ -130,6 +139,9 @@ func (m *Materializer) Materialize(
 
 	perCallCfg := m.resolverCfg
 	perCallCfg.SourceLanguage = sourceLanguageCode
+	if len(targetLanguagesOverride) > 0 {
+		perCallCfg.MaterializeLanguages = append([]string{}, targetLanguagesOverride...)
+	}
 
 	report := &MaterializationReport{
 		AssetID:               assetID,
