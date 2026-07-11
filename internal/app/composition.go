@@ -107,6 +107,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 
 	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
 
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026): the
+	// texttracks materializer + job handler. Constructed
+	// after OutboxBundle (needs outbox.EventsRepo) and
+	// AIBundle (needs OllamaTranslator).
+	textTracks, err := BuildTextTrackBundle(cfg, repos, ai, outbox, log)
+	if err != nil {
+		return nil, fmt.Errorf("compose texttracks: %w", err)
+	}
+
 	// Wire the script.generate readiness probe when any script feature is
 	// enabled. It needs the health Service (for db/jobs sub-checks),
 	// Ollama, Drive, document service, and (later, at route-build time)
@@ -138,12 +147,16 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if err := wireClipIndexerJobBinding(process, jobs); err != nil {
 		return nil, fmt.Errorf("compose clipindexer late-binding: %w", err)
 	}
+	if err := wireTextTrackJobBindings(textTracks, jobs); err != nil {
+		return nil, fmt.Errorf("compose texttracks late-binding: %w", err)
+	}
 	root := &ComposeRoot{
-		DB:      dbs.main,
-		Drive:   driveBundle,
-		Repos:   repos,
-		Search:  search,
-		Process: process,
+		DB:         dbs.main,
+		Drive:      driveBundle,
+		Repos:      repos,
+		Search:     search,
+		Process:    process,
+		TextTracks: textTracks,
 
 		AI:      ai,
 		Domains: domains,
