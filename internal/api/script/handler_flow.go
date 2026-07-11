@@ -35,10 +35,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
-
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // DriveFolderClient abstracts folder creation for Drive resolution.
@@ -67,43 +63,21 @@ type DocumentCreator interface {
 // ScriptFlowHandler is the slim struct-literal-friendly HTTP
 // orchestrator. Fields are partitioned into 3 groups:
 //
-//  1. **Domain primitives** (clipsSearcher) — used by
-//     SearchClipsByName thin path.
-//  2. **Auth primitive** (adminToken) — consumed by EnableAuth +
-//     AdminToken (the AdminTokenProvider interface satisfaction
-//     locked by middleware_auth.go's compile-time assertion).
-//  3. **Delegation pointers** (gen + jobs) — sub-handlers that own
+//  1. Domain primitives (clipsSearcher) — used by SearchClipsByName.
+//  2. Auth primitive (adminToken) — consumed by EnableAuth + AdminToken.
+//  3. Delegation pointers (gen + jobs) — sub-handlers that own
 //     canonical impls of POST /generate, /jobs/:id.
-//  4. **Operating envelope** (jobsSvc + registry + log + caps) — used by:
-//     - jobsSvc + registry: enqueueEnvelope fallback path on the
-//     godlike/07 minimum-blast-radius test fixtures
-//     (PR-SCRIPT-JOBS-EXTRACT).
-//     - log: universal; every per-method logger.
-//     - caps: SCRIPTCONTRACT-2026-07-08 PR-2 PreflightCaps, the
-//     flat composition-time postprocessor-availability surface.
-//     Mirrored to h.gen + h.jobs at construction time; the field
-//     here is the canonical owner of the top-level preflight
-//     surface for the legacy-adapter thin-delegator path
-//     (h.enqueueEnvelope nil-jobs fallback).
+//  4. Operating envelope (log + caps) — universal logger + PreflightCaps.
+//
+// FASE 2 (July 2026): jobsSvc + registry fields are REMOVED.
+// The FASE 2 enqueue path is owned by h.gen.operations + h.jobs.operations.
 type ScriptFlowHandler struct {
-	// Domain primitives
 	clipsSearcher ClipSearcher
-
-	// Auth primitive — locked by middleware_auth.go's
-	// var _ AdminTokenProvider = (*ScriptFlowHandler)(nil).
-	adminToken string
-
-	// Delegation pointers — canonical owners live in their files:
-	//   - gen    → handler_generate_handler.go
-	//   - jobs   → handler_jobs.go
-	gen  *HandlerGenerate
-	jobs *JobsHandler
-
-	// Operating envelope
-	jobsSvc  jobservice.Service
-	log      *zap.Logger
-	registry *appjobs.Registry
-	caps     PreflightCaps
+	adminToken    string
+	gen           *HandlerGenerate
+	jobs          *JobsHandler
+	log           *zap.Logger
+	caps          PreflightCaps
 }
 
 // jobsRegisterRoutes mounts /api/script/jobs/:id via JobsHandler.
@@ -136,25 +110,15 @@ func (h *ScriptFlowHandler) AdminToken() string {
 	}
 	return h.adminToken
 }
+// SearchClipsByName is the canonical handler for
+// GET /api/script/clips/search?q= discovery endpoint.
+// Canonical implementation lives in handler_clip_search.go
+// (godlike/06 SSOT: one owner per fact). This file retains
+// the RegisterRoutes mount point only.
 
-// enqueueEnvelope thin delegator. Canonical impl on
-// JobsHandler.EnqueueEnvelope (handler_jobs.go) per
-// PR-SCRIPT-JOBS-EXTRACT. The nil-jobs fallback preserves the
-// godlike/07 minimum-blast-radius test-fixture contract (struct-
-// literal fixtures rely on direct enqueueEnvelopeFn dispatch).
-//
-// SCRIPTCONTRACT-2026-07-08 PR-2: the `h.caps` field is the
-// canonical preflight surface; both the nil-jobs fallback path
-// AND the JobsHandler.EnqueueEnvelope dispatch thread h.caps to
-// enqueueEnvelopeFn. godlike/06 SSOT: there is exactly ONE
-// PreflightCaps instance per ScriptFlowHandler (set in
-// NewScriptFlowHandler); both the canonical live /generate path
-// (HandlerGenerate.Generate) and the legacy-adapter thin-delegator
-// path (this method) share it.
-func (h *ScriptFlowHandler) enqueueEnvelope(c *gin.Context, env domainScript.GenerationEnvelopeV2) {
-	if h.jobs == nil {
-		enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry, h.caps, nil)
-		return
-	}
-	h.jobs.EnqueueEnvelope(c, env, h.caps)
-}
+// FASE 2 (July 2026): the pre-FASE-2 `enqueueEnvelope` thin
+// delegator is REMOVED. Legacy adapter routes are no longer
+// mounted (see RegisterRoutes above; the only active routes
+// are /generate via h.gen and /jobs/:id via h.jobsRegisterRoutes).
+// The dead-code purge removes the un-reachable delegator per
+// godlike/07 minimum-blast-radius.

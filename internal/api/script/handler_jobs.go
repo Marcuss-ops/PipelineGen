@@ -30,6 +30,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -111,6 +112,24 @@ func (jh *JobsHandler) RegisterJobRoutes(r *gin.RouterGroup, auth AdminTokenProv
 func (jh *JobsHandler) EnqueueEnvelope(c *gin.Context, env domainScript.GenerationEnvelopeV2, caps PreflightCaps) {
 	enqueueEnvelopeFn(c, env, jh.jobsSvc, jh.log, jh.registry, caps, nil)
 }
+
+// JobSha256Hex is a small helper used by test fixtures that
+// compute the FASE 2 request_hash from the envelope identity.
+// Local to the package to avoid cross-file helper imports in
+// the slim per-handler struct pattern.
+
+// jobEnvelopeIdentity is a thin wrapper around
+// adapters.BuildEnvelopeIdentity used by EnqueueEnvelope.
+// Kept local so the import surface stays minimal.
+func jobEnvelopeIdentity(env *domainScript.GenerationEnvelopeV2) string {
+	return adapters.BuildEnvelopeIdentity(env)
+}
+
+// compile-time guards
+var (
+	_ jobservice.Service = jobservice.Service(nil)
+	_ *appjobs.Registry  = (*appjobs.Registry)(nil)
+)
 
 // GetJobStatus is the canonical handler for GET /api/script/jobs/:id.
 // Returns the current job snapshot (status + progress + error + result).

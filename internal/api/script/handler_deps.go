@@ -154,8 +154,6 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 
 	return &ScriptFlowHandler{
 		log:           log,
-		jobsSvc:       deps.Jobs.Jobs,
-		registry:      deps.Jobs.Registry,
 		adminToken:    deps.AdminToken,
 		clipsSearcher: deps.ClipsSearcher,
 		caps:          caps,
