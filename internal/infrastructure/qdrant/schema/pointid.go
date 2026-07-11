@@ -24,8 +24,6 @@
 // identity `AssetIDPrefix + id` form). The duplicate was deleted
 // during the rebase conflict resolution; this file is now the SOLE
 // declaration of AssetIDToQdrantPointID across the qdrant package.
-// Add a G8 gate (see ../architecture/qdrant/001-sidecar-and-pointid.md)
-// that asserts EXACTLY 1 declaration in pointid.go.
 package schema
 
 import "github.com/google/uuid"
@@ -36,8 +34,8 @@ import "github.com/google/uuid"
 // (the URL- and DNS-anchored variants), so any assetID string hashed
 // under our namespace cannot collide with another project's UUIDv5
 // derivation. We name these here descriptively rather than referencing
-// the public symbols so the anti-regression gate #4 (see
-// architecture/qdrant/001) cannot false-positive on the doc string.
+// the public symbols so the QDRANT-001 anti-regression gates
+// cannot false-positive on the doc string.
 //
 // Changing this constant is a destructive migration: every existing
 // Qdrant point would silently disappear from the index because the
