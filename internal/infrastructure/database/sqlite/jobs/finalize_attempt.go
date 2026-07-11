@@ -13,14 +13,14 @@
 // ScheduleRetry / DeadLetter) WILL be REMOVED at Push 4.6 (caller
 // migration). Until then they remain on the SQLiteStore + kernel.Store so
 // pre-Fase-4 callers continue compiling. Push 4.6 will:
-//   1. Re-route local.Broker.Fail/Complete/ScheduleRetry/DeadLetter +
-//      remote.Client.Fail/Complete/ScheduleRetry/DeadLetter to
-//      delegate to SQLiteStore.FinalizeAttempt (this file).
-//   2. Update the 60+ mockBroker test stubs (handler_workers_test.go,
-//      worker_registry_e2e_test.go, runner_test.go, etc.) to use
-//      FinalizeAttempt semantics.
-//   3. Remove the kernel.Store.{Complete,Fail,ScheduleRetry,DeadLetter}
-//      interface methods (HARMBREAK).
+//  1. Re-route local.Broker.Fail/Complete/ScheduleRetry/DeadLetter +
+//     remote.Client.Fail/Complete/ScheduleRetry/DeadLetter to
+//     delegate to SQLiteStore.FinalizeAttempt (this file).
+//  2. Update the 60+ mockBroker test stubs (handler_workers_test.go,
+//     worker_registry_e2e_test.go, runner_test.go, etc.) to use
+//     FinalizeAttempt semantics.
+//  3. Remove the kernel.Store.{Complete,Fail,ScheduleRetry,DeadLetter}
+//     interface methods (HARMBREAK).
 //
 // This push adds FinalizeAttempt as the canonical surface but PRESERVES
 // the legacy methods for the migration window. Single-mergeable scope
@@ -28,25 +28,25 @@
 //
 // # Single-tx flow (9 steps)
 //
-//	1. SELECT jobs row (status, worker_id, lease_id, revision, max_retries,
-//	   retry_count, type, correlation_id)  — carries CAS-fence + retry-
-//	   limit decision data + DLQ-archive columns.
-//	2. Validate Outcome + Outcome-specific precondition (Succeeded
-//	   requires Result; FailedPermanent/ScheduleRetry require ErrorMessage).
-//	3. Compute target status (with retry-exhaustion downgrade logic for
-//	   ScheduleRetry → atomic downgrade to FAILED when retry_count
-//	   already at max_retries).
-//	4. UPDATE jobs SET status/revision/lock-clear + outcome-specific
-//	   columns (result_json + progress only for Succeeded;
-//	   retry_count += 1 only for upgrade-allowed ScheduleRetry).
-//	5. (optional) INSERT INTO dead_letter_jobs (when DLQPayload non-nil
-//	   AND Outcome ∈ {FailedPermanent, ScheduleRetry-downgraded-to-Failed}).
-//	6. (optional) UPDATE artifact_stages SET state (when ArtifactState
-//	   non-nil; rejection on terminal-state already-terminals).
-//	7. (optional) INSERT INTO outbox_events × N (one per cmd.OutboxEvents
-//	   entry; ON CONFLICT(event_key) DO NOTHING idempotency).
-//	8. (optional) INSERT INTO job_events audit row (when EventType non-empty).
-//	9. COMMIT — single atomic commit.
+//  1. SELECT jobs row (status, worker_id, lease_id, revision, max_retries,
+//     retry_count, type, correlation_id)  — carries CAS-fence + retry-
+//     limit decision data + DLQ-archive columns.
+//  2. Validate Outcome + Outcome-specific precondition (Succeeded
+//     requires Result; FailedPermanent/ScheduleRetry require ErrorMessage).
+//  3. Compute target status (with retry-exhaustion downgrade logic for
+//     ScheduleRetry → atomic downgrade to FAILED when retry_count
+//     already at max_retries).
+//  4. UPDATE jobs SET status/revision/lock-clear + outcome-specific
+//     columns (result_json + progress only for Succeeded;
+//     retry_count += 1 only for upgrade-allowed ScheduleRetry).
+//  5. (optional) INSERT INTO dead_letter_jobs (when DLQPayload non-nil
+//     AND Outcome ∈ {FailedPermanent, ScheduleRetry-downgraded-to-Failed}).
+//  6. (optional) UPDATE artifact_stages SET state (when ArtifactState
+//     non-nil; rejection on terminal-state already-terminals).
+//  7. (optional) INSERT INTO outbox_events × N (one per cmd.OutboxEvents
+//     entry; ON CONFLICT(event_key) DO NOTHING idempotency).
+//  8. (optional) INSERT INTO job_events audit row (when EventType non-empty).
+//  9. COMMIT — single atomic commit.
 //
 // godlike/06 SSOT: this method is the SINGLE canonical writer of terminal
 // state transitions out of {SUCCEEDED, FAILED, RETRY_WAIT}. The legacy
@@ -71,9 +71,9 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -95,13 +95,20 @@ import (
 //     Type or EventKey (would violate event_key UNIQUE idempotency).
 //   - ErrFinalizeAttemptDLQIncompatible  — DLQPayload supplied with
 //     OutcomeSucceeded (incompatible — DLQ is for terminal failure).
+// Fase 5(a) canonical-home alignment (July 2026): the 6 sentinels
+// below are thin re-export aliases of the canonical declarations at
+// `internal/domain/job/errors.go`. Identity is preserved (same
+// `error` value); Push 4.2 callers (`errors.Is(err,
+// jobs.ErrFinalizeAttemptOutcomeInvalid)`) compile and probe
+// unchanged. The `.Error()` message returns the domjob-formatted
+// text (canonical surface).
 var (
-	ErrFinalizeAttemptOutcomeInvalid     = errors.New("FinalizeAttempt: outcome not in canonical enum")
-	ErrFinalizeAttemptResultMissing      = errors.New("FinalizeAttempt: SUCCEEDED outcome requires non-empty Result")
-	ErrFinalizeAttemptErrorMissing       = errors.New("FinalizeAttempt: non-SUCCEEDED outcome requires non-empty ErrorMessage")
-	ErrFinalizeAttemptArtifactStale      = errors.New("FinalizeAttempt: artifact-state patch stale (row missing, job-id mismatch, or already-terminal state)")
-	ErrFinalizeAttemptOutboxEventMissing = errors.New("FinalizeAttempt: outbox event missing required Type or EventKey")
-	ErrFinalizeAttemptDLQIncompatible    = errors.New("FinalizeAttempt: DLQPayload is only valid with FAILED_PERMANENT or SCHEDULE_RETRY outcomes")
+	ErrFinalizeAttemptOutcomeInvalid     = job.ErrFinalizeAttemptOutcomeInvalid
+	ErrFinalizeAttemptResultMissing      = job.ErrFinalizeAttemptResultMissing
+	ErrFinalizeAttemptErrorMissing       = job.ErrFinalizeAttemptErrorMissing
+	ErrFinalizeAttemptArtifactStale      = job.ErrFinalizeAttemptArtifactStale
+	ErrFinalizeAttemptOutboxEventMissing = job.ErrFinalizeAttemptOutboxEventMissing
+	ErrFinalizeAttemptDLQIncompatible    = job.ErrFinalizeAttemptDLQIncompatible
 )
 
 // FinalizeAttempt is the canonical consolidated terminal-decision primitive.
@@ -377,11 +384,11 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 
 	// godlike/06 SSOT: returned struct is the canonical post-commit surface.
 	return kerneljob.FinalizeAttemptResult{
-		JobID:                cmd.JobID,
-		FinalStatus:          targetStatus,
-		NewRevision:          revision + 1,
-		DLQRecorded:          dlqRecorded,
-		OutboxEventsWritten:  outboxWritten,
+		JobID:               cmd.JobID,
+		FinalStatus:         targetStatus,
+		NewRevision:         revision + 1,
+		DLQRecorded:         dlqRecorded,
+		OutboxEventsWritten: outboxWritten,
 	}, nil
 }
 
