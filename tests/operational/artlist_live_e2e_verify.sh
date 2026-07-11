@@ -349,6 +349,67 @@ fi
 # ============================================================
 if [[ "${SKIP_HERMETICS:-0}" != "1" ]]; then
     log_info "=== HERMETIC GATES (no Artlist downloads) ==="
+
+    # ── Precondition: gate test matrix integrity ──
+    # The spec claims exactly 7 gate test files under
+    # internal/application/assets/providers/artlist/ (the gate0X_test.go
+    # series). The regex ^TestGate[0-9]+_ is the canonical prefix for
+    # every gate test function across those files. If the count
+    # diverges from 7, it means either:
+    #
+    #   (a) a new gate0X_test.go file was added → update EXPECTED_GATE_MATCHES
+    #       AND the gate test suite (meta-anchor TestGate12_PreflightAllGatesPass
+    #       in gate11_scraper_failure_test.go lists the spec entries);
+    #   (b) a gate0X_test.go file was removed → likewise update both;
+    #   (c) a test was renamed → check the prefix still matches;
+    #   (d) a phantom test exists (function naming TestGateNN_* but no
+    #       backing gateNN_*.go file) → fix the orphan.
+    #
+    # Fail closed with exit 2 BEFORE running the full `go test -run` so
+    # the operator pays the cheap list-discovery cost (~1s) up front
+    # instead of waiting ~30s for the test run to surface the same
+    # drift via a non-zero exit + WARN line that the script tolerates.
+    # Skip via SKIP_HERMETICS=1 (same mechanism that bypasses the test
+    # run below) — preserved as an escape hatch for ad-hoc ops.
+    GATE_LIST_OUTPUT=$(go test -list '^TestGate[0-9]+_' \
+        ./internal/application/assets/providers/artlist/... 2>&1 || true)
+    EXPECTED_GATE_MATCHES=7
+    # Count lines that begin with "TestGate" — the `go test -list`
+    # output's status line ("ok <pkg> 0.001s") never starts with that
+    # prefix, so the filter is unambiguous. `|| true` keeps `set -e`
+    # from killing the script on grep's "no matches" exit code (1);
+    # we then guard against the empty-string case via the default
+    # expansion below.
+    ACTUAL_GATE_MATCHES=$(printf '%s\n' "${GATE_LIST_OUTPUT}" \
+        | grep -c '^TestGate' || true)
+    ACTUAL_GATE_MATCHES=${ACTUAL_GATE_MATCHES:-0}
+
+    if [[ "${ACTUAL_GATE_MATCHES}" -ne "${EXPECTED_GATE_MATCHES}" ]]; then
+        echo "[ERROR] $(date '+%H:%M:%S') Hermetic gate precondition FAILED — aborting before test run" >&2
+        echo "[ERROR]   expected: ${EXPECTED_GATE_MATCHES} gate test match(es)" >&2
+        echo "[ERROR]   command:   go test -list '^TestGate[0-9]+_' ./internal/application/assets/providers/artlist/..." >&2
+        echo "[ERROR]   actual:    ${ACTUAL_GATE_MATCHES}" >&2
+        if [[ "${ACTUAL_GATE_MATCHES}" -gt 0 ]]; then
+            echo "[ERROR]   actual matches:" >&2
+            printf '%s\n' "${GATE_LIST_OUTPUT}" \
+                | grep '^TestGate' | sed 's/^/[ERROR]     /' >&2
+        else
+            echo "[ERROR]   actual matches: (none — either no tests match the regex," >&2
+            echo "[ERROR]                    or 'go test -list' failed with a build error;" >&2
+            echo "[ERROR]                    full output above from the command.)" >&2
+        fi
+        echo "[ERROR] Diagnosis: a gate0X_test.go file was added/removed, a test" >&2
+        echo "[ERROR] function was renamed (lost the ^TestGate[0-9]+_ prefix)," >&2
+        echo "[ERROR] or a phantom test exists (function with TestGateNN_" >&2
+        echo "[ERROR] naming but no backing gateNN_*.go file)." >&2
+        echo "[ERROR] Action: update EXPECTED_GATE_MATCHES (this script) AND" >&2
+        echo "[ERROR] expectedGateTests (gate11_scraper_failure_test.go) so the" >&2
+        echo "[ERROR] spec and runtime stay in sync." >&2
+        echo "[ERROR] (Or pass SKIP_HERMETICS=1 if this divergence is intentional.)" >&2
+        exit 2
+    fi
+    log_info "Hermetic gate precondition OK: expected=${EXPECTED_GATE_MATCHES} actual=${ACTUAL_GATE_MATCHES}"
+
     log_info "Running: go test -count=1 -run '^TestGate' ./internal/application/assets/providers/artlist/..."
     if go test -count=1 -run '^TestGate' \
         ./internal/application/assets/providers/artlist/... 2>&1 | tail -30; then
