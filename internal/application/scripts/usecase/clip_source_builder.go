@@ -17,6 +17,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -191,6 +192,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		canonicalIDs     []string
 		clipNames        []string
 		clipToCanonical  = make(map[string]string, len(uniqueIDs))
+		clipDetails      = make(map[string]scriptpkg.ClipDetail, len(uniqueIDs))
 		sourceTextWriter strings.Builder
 	)
 	for _, id := range uniqueIDs {
@@ -239,6 +241,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		clipToCanonical[clip.ID] = id
 		clipNames = append(clipNames, clipDisplayName(clip, id))
 		appendClipSourceText(&sourceTextWriter, id, clip)
+		appendClipDetail(clipDetails, id, clip)
 	}
 
 	// P0 #3: when DriveLink is required and ALL resolved clips
@@ -271,6 +274,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		excludedClips,
 		missingClipIDs,
 		strings.TrimSpace(sourceTextWriter.String()),
+		clipDetails,
 	)
 
 	if c.log != nil {
@@ -389,6 +393,44 @@ func clipTranscript(clip *asset.Asset) string {
 	return clip.GetMetadataString("clean_transcript")
 }
 
+// appendClipDetail populates the per-clip detail map with the
+// primary evidence used for clip-native scene construction.
+func appendClipDetail(details map[string]scriptpkg.ClipDetail, id string, clip *asset.Asset) {
+	if details == nil || clip == nil {
+		return
+	}
+	desc := strings.TrimSpace(clip.SearchText)
+	if desc == "" {
+		desc = strings.TrimSpace(clip.GetMetadataString("description"))
+	}
+	transcript := clipTranscript(clip)
+	startMs := parseMetadataMs(clip.GetMetadataString("start_ms"))
+	endMs := parseMetadataMs(clip.GetMetadataString("end_ms"))
+	details[id] = scriptpkg.ClipDetail{
+		Name:        clipDisplayName(clip, id),
+		Description: desc,
+		Transcript:  transcript,
+		Tags:        append([]string(nil), clip.Tags...),
+		StartMs:     startMs,
+		EndMs:       endMs,
+		DriveLink:   clip.DriveLink(),
+	}
+}
+
+// parseMetadataMs parses a metadata string as milliseconds.
+// Non-numeric or empty values return 0.
+func parseMetadataMs(s string) int64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	ms, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return ms
+}
+
 // dedupTrimmedClipIDs trims + dedupes the input clip ID list.
 // Returns an error on empty post-trim result (caller-friendly
 // failure mode). Extracted from BuildClipContext so the
@@ -435,6 +477,7 @@ func buildClipEvidence(
 	excludedClips []scriptpkg.ExcludedClip,
 	missingClipIDs []scriptpkg.MissingClipID,
 	sourceText string,
+	clipDetails map[string]scriptpkg.ClipDetail,
 ) *scriptpkg.ClipEvidence {
 	clipDriveLinks := make(map[string]string, len(clips))
 	for _, clip := range clips {
@@ -463,6 +506,7 @@ func buildClipEvidence(
 		ClipNames:         clipNameMap,
 		Excluded:          excludedClips,
 		MissingClipIDs:    missingClipIDs,
+		ClipDetails:       clipDetails,
 	}
 	// Preserve nil for JSON omitempty.
 	if len(ev.MissingClipIDs) == 0 {

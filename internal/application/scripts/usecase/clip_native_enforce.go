@@ -43,15 +43,6 @@ func enforceClipNativeContract(
 	fallbackUsed := false
 	var warnings []string
 
-	// Detect prose fallback: the binder synthesised scenes because
-	// the model emitted none.
-	if postResult != nil && len(postResult.SynthesizedScenes) > 0 && len(engineResult.Output.SpecScene.Scenes) == 0 {
-		fallbackUsed = true
-		usedMode = "prose"
-		warnings = append(warnings,
-			"[CLIP_NATIVE_PLAN_UNAVAILABLE] clip_native: prose fallback was used because the model did not emit scenes")
-	}
-
 	// Determine the final scene list after postprocessing.
 	finalScenes := engineResult.Output.SpecScene.Scenes
 	if postResult != nil && len(postResult.FinalSpecScene.Scenes) > 0 {
@@ -59,6 +50,19 @@ func enforceClipNativeContract(
 	}
 
 	clipIDs := effectiveClipIDs(plan)
+
+	// P0 (July 2026): for source.type == clips, scenes must be built
+	// directly from clip evidence. If no scenes were produced, the
+	// clip-native plan is unavailable.
+	if len(finalScenes) == 0 && plan.SourceKind == string(scriptpkg.SourceClips) {
+		return &scriptpkg.ClipNativePlanningError{
+			Code:    "CLIP_NATIVE_PLAN_UNAVAILABLE",
+			ItemID:  item.ID,
+			Policy:  policy,
+			Reason:  "no scenes could be built from clip evidence",
+			Details: []string{"clip_native: no scenes produced and no valid clip evidence available"},
+		}
+	}
 
 	// 1 clip = 1 scene.
 	if len(finalScenes) != len(clipIDs) {

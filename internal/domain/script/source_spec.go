@@ -335,6 +335,32 @@ type ClipEvidence struct {
 	// generation fingerprint so transcript changes invalidate cached
 	// results. The order matches AcceptedClipIDs.
 	ClipTranscriptHashes []string `json:"clip_transcript_hashes,omitempty"`
+
+	// ClipDetails holds per-clip evidence used to build scenes
+	// directly from clip-native sources. It is populated by the
+	// clip source builder and consumed by the scene binder when
+	// the model does not emit a structured scene breakdown.
+	ClipDetails map[string]ClipDetail `json:"clip_details,omitempty"`
+}
+
+// ClipDetail carries the primary evidence for a single accepted
+// clip. It is the canonical source of truth for clip-native scene
+// construction (transcription, timestamps, metadata).
+type ClipDetail struct {
+	// Name is the human-readable clip title or filename.
+	Name string `json:"name,omitempty"`
+	// Description is the clip description or search text.
+	Description string `json:"description,omitempty"`
+	// Transcript is the canonical transcript excerpt for the clip.
+	Transcript string `json:"transcript,omitempty"`
+	// Tags are the clip tags.
+	Tags []string `json:"tags,omitempty"`
+	// StartMs is the optional clip start offset in milliseconds.
+	StartMs int64 `json:"start_ms,omitempty"`
+	// EndMs is the optional clip end offset in milliseconds.
+	EndMs int64 `json:"end_ms,omitempty"`
+	// DriveLink is the Google Drive URL for the clip.
+	DriveLink string `json:"drive_link,omitempty"`
 }
 
 // ExcludedClip records a clip that was filtered out during resolution
