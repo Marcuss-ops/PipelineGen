@@ -189,15 +189,17 @@ func p0iBuildLengthToleranceOrchestrator(t *testing.T, targetWords int) (*Genera
 	return uc, item, targetWords
 }
 
-// p0iToleranceWindow returns the canonical tolerance window
-// for a given target_words. Mirrors the quality gate's
-// minTargetWordsRatio=0.80 / maxTargetWordsRatio=1.20
-// constants. Returns (lower, upper) as integers (truncated).
-func p0iToleranceWindow(targetWords int) (int, int) {
-	lower := int(float64(targetWords) * 0.80)
-	upper := int(float64(targetWords) * 1.20)
-	return lower, upper
-}
+// p0iToleranceWindow was REMOVED in PR-P0.I fix 2: the
+// user-spec windows ([120,190], [320,500], [800,1200]) do
+// not exactly match the quality gate's 1.20 ratio windows
+// ([120,180], [320,480], [800,1200]) for target=150 and
+// target=400. The user spec is the authoritative source for
+// the P0.I test contract, so the tolerance windows are now
+// hardcoded directly in the test cases (see the `cases`
+// table in TestLengthTolerance_P0I) rather than computed
+// from the quality gate's constants. This decouples the
+// test from the quality gate's implementation and pins the
+// exact user-spec contract.
 
 // TestLengthTolerance_P0I pins the target-words tolerance
 // contract for /api/script/generate across 3 canonical
@@ -227,12 +229,13 @@ func TestLengthTolerance_P0I(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name  string
-		words int
+		name        string
+		words       int
+		lower, upper int
 	}{
-		{"Target150_Accepts120To190", 150},
-		{"Target400_Accepts320To500", 400},
-		{"Target1000_Accepts800To1200", 1000},
+		{"Target150_Accepts120To190", 150, 120, 190},
+		{"Target400_Accepts320To500", 400, 320, 500},
+		{"Target1000_Accepts800To1200", 1000, 800, 1200},
 	}
 
 	for _, tc := range cases {
@@ -241,7 +244,7 @@ func TestLengthTolerance_P0I(t *testing.T) {
 			t.Parallel()
 
 			uc, item, target := p0iBuildLengthToleranceOrchestrator(t, tc.words)
-			lower, upper := p0iToleranceWindow(target)
+			lower, upper := tc.lower, tc.upper
 
 			result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
 
