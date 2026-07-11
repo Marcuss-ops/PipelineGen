@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -34,6 +35,7 @@ func TestHandlerGenerate_SmokeSceneImagesPayload(t *testing.T) {
 			ImagesEnabled:    true,
 			DocumentEnabled:  true,
 		},
+		usecase.NewDefaultPayloadValidator(),
 	)
 
 	router := gin.New()
@@ -48,6 +50,9 @@ func TestHandlerGenerate_SmokeSceneImagesPayload(t *testing.T) {
 				"id": "smoke-scene-images",
 				"title": "Smoke Scene Images",
 				"language": "en",
+				"script_params": {
+					"target_words": 150
+				},
 				"source": {
 					"type": "text",
 					"topic": "smoke scene images",

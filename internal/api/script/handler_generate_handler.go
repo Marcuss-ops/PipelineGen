@@ -16,12 +16,14 @@
 package script
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -42,10 +44,11 @@ import (
 // (internal/app/wire_script.go) builds PreflightCaps at startup;
 // the handler carries the frozen value to the request seam.
 type HandlerGenerate struct {
-	jobsSvc  jobservice.Service
-	log      *zap.Logger
-	registry *appjobs.Registry
-	caps     PreflightCaps
+	jobsSvc   jobservice.Service
+	log       *zap.Logger
+	registry  *appjobs.Registry
+	caps      PreflightCaps
+	validator *usecase.PayloadValidator
 }
 
 // NewHandlerGenerate constructs the handler from the canonical deps.
@@ -61,15 +64,20 @@ func NewHandlerGenerate(
 	log *zap.Logger,
 	registry *appjobs.Registry,
 	caps PreflightCaps,
+	validator *usecase.PayloadValidator,
 ) *HandlerGenerate {
 	if log == nil {
 		log = zap.NewNop()
 	}
+	if validator == nil {
+		validator = usecase.NewDefaultPayloadValidator()
+	}
 	return &HandlerGenerate{
-		jobsSvc:  jobsSvc,
-		log:      log,
-		registry: registry,
-		caps:     caps,
+		jobsSvc:   jobsSvc,
+		log:       log,
+		registry:  registry,
+		caps:      caps,
+		validator: validator,
 	}
 }
 
@@ -102,10 +110,32 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 		return
 	}
 
-	// Structural validation before enqueue.
-	if err := env.Validate(); err != nil {
+	// Structural + config-aware validation before enqueue.
+	if err := h.validator.ValidateEnvelope(&env); err != nil {
+		var pve *scriptpkg.PayloadValidationError
+		if errors.As(err, &pve) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"ok": false,
+				"error": gin.H{
+					"code":      pve.Code,
+					"message":   pve.Message,
+					"stage":     pve.Stage,
+					"retryable": pve.Retryable,
+					"extra":     pve.Extra,
+				},
+			})
+			return
+		}
 		status := mapErrorToHTTP(err)
-		c.JSON(status, gin.H{"ok": false, "error": err.Error()})
+		c.JSON(status, gin.H{
+			"ok": false,
+			"error": gin.H{
+				"code":      "INVALID_PAYLOAD",
+				"message":   err.Error(),
+				"stage":     "request.validation",
+				"retryable": false,
+			},
+		})
 		return
 	}
 

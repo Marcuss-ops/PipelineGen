@@ -61,6 +61,9 @@ func captureActiveKeyFromHandler(t *testing.T, idempotencyKey string) string {
 			{
 				"id":    "idempotency-test",
 				"title": "Idempotency Test Item",
+				"script_params": map[string]any{
+					"target_words": 150,
+				},
 				"source": map[string]any{
 					"type":        "text",
 					"topic":       "idempotency",

@@ -78,6 +78,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -227,10 +228,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	scriptDeps := scriptapi.Dependencies{
 		Generate: scriptapi.GenerateDeps{
-			Jobs:     root.Jobs.Facade,
-			Log:      log,
-			Registry: appjobs.Compose(),
-			Caps:     preflightCaps,
+			Jobs:      root.Jobs.Facade,
+			Log:       log,
+			Registry:  appjobs.Compose(),
+			Caps:      preflightCaps,
+			Validator: usecase.NewPayloadValidator(cfg.Scripts),
 		},
 		Jobs: scriptapi.JobsDeps{
 			Jobs:     root.Jobs.Facade,

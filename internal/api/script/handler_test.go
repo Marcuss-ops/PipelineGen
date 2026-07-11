@@ -77,7 +77,7 @@ func TestScriptFlowAsyncRoutes_EnqueueJobs(t *testing.T) {
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
 
-	req := httptest.NewRequest("POST", "/api/script/generate", strings.NewReader(`{"version":2,"preset":"custom","items":[{"id":"job-1","title":"Observability","language":"it","source":{"type":"text","topic":"observability","source_text":"observability fixture"}}]}`))
+	req := httptest.NewRequest("POST", "/api/script/generate", strings.NewReader(`{"version":2,"preset":"custom","items":[{"id":"job-1","title":"Observability","language":"it","script_params":{"target_words":150},"source":{"type":"text","topic":"observability","source_text":"observability fixture"}}]}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", "req-123")
 	w := httptest.NewRecorder()

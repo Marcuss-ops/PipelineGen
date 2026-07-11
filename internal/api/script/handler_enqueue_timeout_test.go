@@ -79,7 +79,7 @@ func TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns503(t *testing.T) {
 	rg := router.Group("/api/script")
 	handler.RegisterRoutes(rg)
 
-	req := httptest.NewRequest("POST", "/api/script/generate", strings.NewReader(`{"version":2,"preset":"custom","items":[{"id":"timeout-test","title":"Timeout Test","language":"en","source":{"type":"text","topic":"timeout","source_text":"timeout fixture"}}]}`))
+	req := httptest.NewRequest("POST", "/api/script/generate", strings.NewReader(`{"version":2,"preset":"custom","items":[{"id":"timeout-test","title":"Timeout Test","language":"en","script_params":{"target_words":150},"source":{"type":"text","topic":"timeout","source_text":"timeout fixture"}}]}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
