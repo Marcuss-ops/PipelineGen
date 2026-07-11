@@ -78,6 +78,34 @@ type GenerationResult struct {
 
 	// Warnings (non-fatal per-postprocessor)
 	Warnings []string `json:"warnings,omitempty"`
+
+	// Status is the canonical per-item outcome status. It is
+	// "SUCCEEDED" for a clean generation and
+	// "SUCCEEDED_WITH_WARNINGS" when a clip-native generation
+	// used the prose fallback (fallback_policy=allow_prose).
+	Status string `json:"status,omitempty"`
+
+	// ModeInfo describes the requested vs actual generation mode
+	// for clip-aware sources. Populated when the source involved
+	// clips so callers can detect fallback usage.
+	ModeInfo *GenerationModeInfo `json:"mode_info,omitempty"`
+}
+
+// GenerationModeInfo describes the requested and actual generation
+// mode for a clip-aware generation item.
+type GenerationModeInfo struct {
+	// RequestedMode is the mode the caller requested. For
+	// source.type=clips this is always "clip_native".
+	RequestedMode string `json:"requested_mode"`
+
+	// UsedMode is the mode that actually produced the output.
+	// It is "clip_native" when the model emitted scenes and
+	// "prose" when the prose-fallback heuristic was used.
+	UsedMode string `json:"used_mode"`
+
+	// FallbackUsed is true when the pipeline fell back to prose
+	// because the model did not produce a 1:1 clip-to-scene plan.
+	FallbackUsed bool `json:"fallback_used"`
 }
 
 // ScriptOutput is the canonical embedded output of script generation.
@@ -230,9 +258,10 @@ type GenerationEnvelopeResult struct {
 // Any field addition must update both the canonical type and the
 // alias declaration below.
 type GenerationEnvelopeItem struct {
-	ItemID string            `json:"item_id"`
-	Result *GenerationResult `json:"result,omitempty"`
-	Error  string            `json:"error,omitempty"`
+	ItemID    string            `json:"item_id"`
+	Result    *GenerationResult `json:"result,omitempty"`
+	Error     string            `json:"error,omitempty"`
+	ErrorCode string            `json:"error_code,omitempty"`
 }
 
 // GenerateManyItemResult is the canonical alias for the

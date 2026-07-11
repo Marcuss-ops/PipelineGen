@@ -99,6 +99,17 @@ type ResolvedGenerationPlan struct {
 	// row only when the model output is structurally identical.
 	SourceKind string `json:"source_kind,omitempty"`
 
+	// GroundingPolicy is the clip-grounding policy used when the
+	// source involved clips. It is part of the generation fingerprint
+	// so policy changes invalidate cached results.
+	GroundingPolicy string `json:"grounding_policy,omitempty"`
+
+	// FallbackPolicy is the clip-fallback policy used when the
+	// source involved clips. It controls whether the pipeline is
+	// allowed to fall back to prose when clip-native planning cannot
+	// produce scenes.
+	FallbackPolicy string `json:"fallback_policy,omitempty"`
+
 	// ── Prompt versioning ─────────────────────────────────────────────
 	PromptVersion       string `json:"prompt_version,omitempty"`
 	EditorPromptVersion string `json:"editor_prompt_version,omitempty"`

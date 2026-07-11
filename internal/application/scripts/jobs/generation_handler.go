@@ -151,7 +151,15 @@ func (h *GenerateJobHandler) handleSingle(
 		return nil, err
 	}
 	progressFn := appjobs.SafeProgressFn(tools)
+	eventFn := appjobs.SafeEventFn(tools)
 	tracker := usecase.NewProgressTracker(progressFn, env.Items[0].ID)
+	tracker.SetEventFn(eventFn)
+	eventFn("request.validated", "script.generate request validated", map[string]any{
+		"job_id":  j.ID,
+		"item_id": env.Items[0].ID,
+		"preset":  string(env.Preset),
+	})
+
 	execCtx := context.WithValue(ctx, "script_job_id", j.ID)
 	result, err := h.one.Execute(execCtx, env.Items[0], env.Preset, tracker)
 	diag := ClassifySingleOutcome(result, err)
@@ -169,7 +177,7 @@ func (h *GenerateJobHandler) handleSingle(
 				zap.String("job_id", j.ID),
 				zap.Error(diag.Err))
 		}
-		mapped, mapErr := toMap(buildSingleFailureEnvelope(env.Items[0].ID, err.Error()))
+		mapped, mapErr := toMap(buildSingleFailureEnvelope(env.Items[0].ID, err))
 		if mapErr != nil {
 			return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
 		}

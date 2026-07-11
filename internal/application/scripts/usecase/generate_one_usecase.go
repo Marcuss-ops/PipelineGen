@@ -80,7 +80,7 @@ func (uc *GenerateOneUseCase) Execute(
 		return nil, uc.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err)
 	}
 	tracker.TrackEvent("request.validated", "Generation request validated", map[string]any{
-		"item_id": item.ID,
+		"item_id":     item.ID,
 		"source_type": string(item.Source.Type),
 	})
 
@@ -95,14 +95,15 @@ func (uc *GenerateOneUseCase) Execute(
 		if resolveErr != nil {
 			return nil, uc.logPhaseError(item, "source_resolve", scriptpkg.ErrSourceResolutionFailed, resolveErr)
 		}
-	}		timings.SourceResolveMs = time.Since(sourceStart).Milliseconds()
-		if resolved != nil && resolved.ClipEvidence != nil && len(resolved.ClipEvidence.AcceptedClipIDs) > 0 {
-			tracker.TrackEvent("clips.hydrated", "Clip source material hydrated", map[string]any{
-				"item_id":     item.ID,
-				"clip_count":  len(resolved.ClipEvidence.AcceptedClipIDs),
-				"clip_ids":    resolved.ClipEvidence.AcceptedClipIDs,
-			})
-		}
+	}
+	timings.SourceResolveMs = time.Since(sourceStart).Milliseconds()
+	if resolved != nil && resolved.ClipEvidence != nil && len(resolved.ClipEvidence.AcceptedClipIDs) > 0 {
+		tracker.TrackEvent("clips.hydrated", "Clip source material hydrated", map[string]any{
+			"item_id":    item.ID,
+			"clip_count": len(resolved.ClipEvidence.AcceptedClipIDs),
+			"clip_ids":   resolved.ClipEvidence.AcceptedClipIDs,
+		})
+	}
 
 	// ── Phase 4: Build plan ─────────────────────────────────────────
 	tracker.PhaseBuildPlan()
@@ -136,8 +137,8 @@ func (uc *GenerateOneUseCase) Execute(
 		if resolved.Type != "" {
 			plan.SourceKind = string(resolved.Type)
 		}
-		if resolved.GroundingPolicy != "" {
-			plan.GroundingPolicy = resolved.GroundingPolicy
+		if item.Source.GroundingPolicy != "" {
+			plan.GroundingPolicy = item.Source.GroundingPolicy
 		}
 	}
 	plan.CacheKey = scriptpkg.BuildCacheKey(&plan)
@@ -175,15 +176,15 @@ func (uc *GenerateOneUseCase) Execute(
 	timings.EngineMs = time.Since(engineStart).Milliseconds()
 	tracker.PhaseGenerateDone()
 	tracker.TrackEvent("script.written", "Script text generated", map[string]any{
-		"item_id":     item.ID,
-		"word_count":  engineResult.WordCount,
-		"model":       engineResult.Model,
+		"item_id":      item.ID,
+		"word_count":   engineResult.WordCount,
+		"model":        engineResult.Model,
 		"cache_status": engineResult.CacheStatus,
 	})
-	if len(engineResult.Output.SpecScene) > 0 {
+	if len(engineResult.Output.SpecScene.Scenes) > 0 {
 		tracker.TrackEvent("scenes.built", "Scenes built from generated script", map[string]any{
-			"item_id":      item.ID,
-			"scene_count":  len(engineResult.Output.SpecScene),
+			"item_id":     item.ID,
+			"scene_count": len(engineResult.Output.SpecScene.Scenes),
 		})
 	}
 
@@ -225,6 +226,15 @@ func (uc *GenerateOneUseCase) Execute(
 
 	// ── Phase 7: Build result ───────────────────────────────────────
 	result := buildGenerationResult(item, plan, engineResult, postResult, timings)
+
+	// ── Phase 7b: Enforce clip-native contract ─────────────────────
+	// Strict clip-native sources must produce exactly one scene per
+	// accepted clip and bind every accepted clip. Explicit fallback
+	// mode reports SUCCEEDED_WITH_WARNINGS instead of failing.
+	if err := enforceClipNativeContract(result, item, plan, engineResult, postResult); err != nil {
+		return nil, uc.logPhaseError(item, "clip_native", scriptpkg.ErrClipNativePlanningFailed, err)
+	}
+
 	timings.TotalMs = time.Since(startAll).Milliseconds()
 	result.Timings = timings
 	if result.Artifacts.Document != nil && (result.Artifacts.Document.DocID != "" || result.Artifacts.Document.DocLink != "") {
