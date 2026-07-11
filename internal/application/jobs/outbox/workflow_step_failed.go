@@ -33,6 +33,13 @@ func (h *WorkflowStepFailedHandler) EventType() string {
 	return outboxevents.EventWorkflowStepFailed
 }
 
+// IdempotencyKey implements outboxevents.Handler (Fase 6(c) Push 6.2).
+// Static canonical form: `<event_type>.audit.v1`. mirror of
+// WorkflowStepCompletedHandler; both share the audit-only shape.
+func (h *WorkflowStepFailedHandler) IdempotencyKey() string {
+	return outboxevents.EventWorkflowStepFailed + ".audit.v1"
+}
+
 // Handle parses the payload and emits an ERROR-level audit log.
 // Returns nil on parse success — the failure itself is a terminal
 // outbox event, not a handler failure.

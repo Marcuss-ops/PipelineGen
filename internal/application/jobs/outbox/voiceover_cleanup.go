@@ -160,6 +160,14 @@ func (h *VoiceoverCleanupHandler) EventType() string {
 	return outboxevents.EventVoiceoverCleanupRequested
 }
 
+// IdempotencyKey implements outboxevents.Handler (Fase 6(c) Push 6.2).
+// Static canonical form: `<event_type>.<schema_version>` so the
+// HandlerRegistry.Register fail-closed panic fires at init time if
+// a future refactor forgets the declaration.
+func (h *VoiceoverCleanupHandler) IdempotencyKey() string {
+	return outboxevents.EventVoiceoverCleanupRequested + "." + VoiceoverCleanupSchemaVersion
+}
+
 // Handle parses the v1 envelope, performs the no-op gate
 // (old==new|both-empty), then deletes the OLD Drive file (only when
 // old != new AND old != "") and removes the OLD local audio paths.

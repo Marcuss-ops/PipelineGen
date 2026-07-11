@@ -26,6 +26,16 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
+// MetadataExportRequestSchemaVersion is the canonical, EXACT string
+// the MetadataExportHandler accepts. Producers MUST send
+// "asset.metadata_export.requested.v1" literally. Mismatch is
+// TERMINAL — no retry — so producers upgrade instead of silently
+// retrying on what looks like a routine failure. Mirrors the
+// DriveDeleteRequestSchemaVersion / VoiceoverCleanupSchemaVersion
+// pattern, and is the canonical entry for IdempotencyKey() so the
+// suffix shape stays consistent across handlers.
+const MetadataExportRequestSchemaVersion = "asset.metadata_export.requested.v1"
+
 // MetadataExportHandler is the canonical outboxevents.Handler for
 // asset.metadata_export.requested.v1 events. Composition root
 // constructs ONE instance and registers it via HandlerRegistry.
@@ -71,6 +81,24 @@ func NewMetadataExportHandler(deps HandlerDeps) *MetadataExportHandler {
 // internal/application/jobs/outbox/indexing.go.
 func (h *MetadataExportHandler) EventType() string {
 	return outboxevents.EventAssetMetadataExportRequested
+}
+
+// IdempotencyKey implements outboxevents.Handler (Fase 6(c) Push 6.2,
+// July 2026). Static canonical form: `<event_type>.v1` so the
+// HandlerRegistry.Register fail-closed panic fires at init time if
+// a future refactor forgets the declaration. Per-event idempotency
+// keys flow through the envelope's IdempotencyKey field and do NOT
+// substitute this static handler-class declaration.
+//
+// Note on interpretation (godlike/06 SSOT): IdempotencyKey() is a
+// STATIC handler-class identifier — it does NOT change per-event.
+// Per-event dedup keys live in the outbox_events.event_key column
+// (driven by the payload's IdempotencyKey field) and are surfaced
+// separately. The static shape here is the canonical SSOT entry
+// used by the metrics namespace and the Register-time fail-closed
+// panic.
+func (h *MetadataExportHandler) IdempotencyKey() string {
+	return outboxevents.EventAssetMetadataExportRequested + "." + MetadataExportRequestSchemaVersion
 }
 
 // Handle is the canonical event-processing entry point. Parses the v1

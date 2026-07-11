@@ -139,6 +139,16 @@ func (h *ProviderSyncHandler) EventType() string {
 	return outboxevents.EventProviderSyncRequested
 }
 
+// IdempotencyKey declares the canonical handler-level idempotency
+// identity for provider.sync.requested events. Static — derived from
+// the schema_version literal — so the HandlerRegistry.Register
+// fail-closed panic can fire at init time if a future refactor
+// forgets the declaration. Mirrors IndexingHandler.IdempotencyKey
+// (godlike/06 SSOT — one canonical owner per fact).
+func (h *ProviderSyncHandler) IdempotencyKey() string {
+	return outboxevents.EventProviderSyncRequested + "." + providerSyncSchemaVersion
+}
+
 func (h *ProviderSyncHandler) validate(r *providerSyncRequest) error {
 	if r.SchemaVersion != providerSyncSchemaVersion {
 		return fmt.Errorf("provider.sync.requested: schema_version mismatch (got %q, want %q)", r.SchemaVersion, providerSyncSchemaVersion)
