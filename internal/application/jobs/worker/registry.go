@@ -261,15 +261,13 @@ func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType strin
 			}
 			return ok
 		},
-		// FASE 0.2 silent-drop rewrite: the worker.Tools has no
-		// typed-event port today (forward-pointer: PR-Worker-Typed-
-		// Event-Port), so the Event closure is by construction losing
-		// every emit attempt. Counter-bump on every call so the
-		// operator dashboard surfaces this as a metric — godlike/07
-		// no-fake-availability (the prior no-op closure had zero
-		// observability).
-		Event: func(string, string, map[string]any) {
-			observability.WorkerEventDropsTotal.WithLabelValues(jobType).Inc()
+		// FASE 0.2 silent-drop rewrite: Event is forwarded to the
+		// broker facade's typed event port. Errors are counted but
+		// not propagated — event emission must never fail the job.
+		Event: func(eventType, message string, data map[string]any) {
+			if err := t.Event(ctx, eventType, message, data); err != nil {
+				observability.WorkerEventDropsTotal.WithLabelValues(jobType).Inc()
+			}
 		},
 	}
 }

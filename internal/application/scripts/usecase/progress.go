@@ -28,18 +28,40 @@ import "fmt"
 // percent is 0-100; message is a human-readable description.
 type ProgressFn func(percent int, message string)
 
+// EventFn is the callback signature for timeline events.
+type EventFn func(eventType string, message string, data map[string]any)
+
 // ProgressTracker emits progress updates through the pipeline phases.
 // It is safe for concurrent use when the underlying ProgressFn is
 // goroutine-safe.
 type ProgressTracker struct {
-	fn   ProgressFn
-	item string // item ID or name for log context
+	fn      ProgressFn
+	eventFn EventFn
+	item    string // item ID or name for log context
 }
 
 // NewProgressTracker creates a ProgressTracker. fn may be nil
 // (updates are silently dropped).
 func NewProgressTracker(fn ProgressFn, item string) *ProgressTracker {
 	return &ProgressTracker{fn: fn, item: item}
+}
+
+// SetEventFn wires an event callback. Callers may pass nil to
+// disable event emission; the tracker remains nil-safe.
+func (p *ProgressTracker) SetEventFn(fn EventFn) {
+	if p == nil {
+		return
+	}
+	p.eventFn = fn
+}
+
+// TrackEvent emits a typed timeline event if a callback is configured.
+// A nil receiver or nil callback is a no-op.
+func (p *ProgressTracker) TrackEvent(eventType, message string, data map[string]any) {
+	if p == nil || p.eventFn == nil {
+		return
+	}
+	p.eventFn(eventType, message, data)
 }
 
 // Emit sends a progress update if a callback is configured.

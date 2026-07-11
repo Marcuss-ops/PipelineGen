@@ -79,6 +79,10 @@ func (uc *GenerateOneUseCase) Execute(
 	if err := ValidateItem(item); err != nil {
 		return nil, uc.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err)
 	}
+	tracker.TrackEvent("request.validated", "Generation request validated", map[string]any{
+		"item_id": item.ID,
+		"source_type": string(item.Source.Type),
+	})
 
 	// ── Phase 3: Resolve source ─────────────────────────────────────
 	tracker.PhaseResolveSource()
@@ -91,8 +95,14 @@ func (uc *GenerateOneUseCase) Execute(
 		if resolveErr != nil {
 			return nil, uc.logPhaseError(item, "source_resolve", scriptpkg.ErrSourceResolutionFailed, resolveErr)
 		}
-	}
-	timings.SourceResolveMs = time.Since(sourceStart).Milliseconds()
+	}		timings.SourceResolveMs = time.Since(sourceStart).Milliseconds()
+		if resolved != nil && resolved.ClipEvidence != nil && len(resolved.ClipEvidence.AcceptedClipIDs) > 0 {
+			tracker.TrackEvent("clips.hydrated", "Clip source material hydrated", map[string]any{
+				"item_id":     item.ID,
+				"clip_count":  len(resolved.ClipEvidence.AcceptedClipIDs),
+				"clip_ids":    resolved.ClipEvidence.AcceptedClipIDs,
+			})
+		}
 
 	// ── Phase 4: Build plan ─────────────────────────────────────────
 	tracker.PhaseBuildPlan()
@@ -126,9 +136,23 @@ func (uc *GenerateOneUseCase) Execute(
 		if resolved.Type != "" {
 			plan.SourceKind = string(resolved.Type)
 		}
+		if resolved.GroundingPolicy != "" {
+			plan.GroundingPolicy = resolved.GroundingPolicy
+		}
 	}
 	plan.CacheKey = scriptpkg.BuildCacheKey(&plan)
 	timings.PlanBuildMs = time.Since(planStart).Milliseconds()
+	if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
+		tracker.TrackEvent("clip_evidence.built", "Clip evidence assembled into plan", map[string]any{
+			"item_id":    item.ID,
+			"clip_count": len(plan.ClipEvidence.AcceptedClipIDs),
+		})
+	}
+	tracker.TrackEvent("narrative.planned", "Generation plan built", map[string]any{
+		"item_id":      item.ID,
+		"source_kind":  plan.SourceKind,
+		"target_words": plan.TargetWords,
+	})
 
 	if uc.ppReg != nil {
 		if err := uc.ppReg.ValidateRequested(plan.Postprocessors); err != nil {
@@ -150,6 +174,18 @@ func (uc *GenerateOneUseCase) Execute(
 	}
 	timings.EngineMs = time.Since(engineStart).Milliseconds()
 	tracker.PhaseGenerateDone()
+	tracker.TrackEvent("script.written", "Script text generated", map[string]any{
+		"item_id":     item.ID,
+		"word_count":  engineResult.WordCount,
+		"model":       engineResult.Model,
+		"cache_status": engineResult.CacheStatus,
+	})
+	if len(engineResult.Output.SpecScene) > 0 {
+		tracker.TrackEvent("scenes.built", "Scenes built from generated script", map[string]any{
+			"item_id":      item.ID,
+			"scene_count":  len(engineResult.Output.SpecScene),
+		})
+	}
 
 	// ── Phase 6: Postprocess ────────────────────────────────────────
 	timings.PostprocessMs = make(map[string]int64)
@@ -179,12 +215,25 @@ func (uc *GenerateOneUseCase) Execute(
 		if postResult != nil && len(postResult.StageDurations) > 0 {
 			timings.PostprocessMs = maps.Clone(postResult.StageDurations)
 		}
+		if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
+			tracker.TrackEvent("clips.bound", "Clip bindings applied", map[string]any{
+				"item_id":    item.ID,
+				"clip_count": len(plan.ClipEvidence.AcceptedClipIDs),
+			})
+		}
 	}
 
 	// ── Phase 7: Build result ───────────────────────────────────────
 	result := buildGenerationResult(item, plan, engineResult, postResult, timings)
 	timings.TotalMs = time.Since(startAll).Milliseconds()
 	result.Timings = timings
+	if result.Artifacts.Document != nil && (result.Artifacts.Document.DocID != "" || result.Artifacts.Document.DocLink != "") {
+		tracker.TrackEvent("document.created", "Output document created", map[string]any{
+			"item_id":  item.ID,
+			"doc_id":   result.Artifacts.Document.DocID,
+			"doc_link": result.Artifacts.Document.DocLink,
+		})
+	}
 
 	if resolved != nil && len(resolved.SearchResults) > 0 {
 		result.Source.SearchResults = resolved.SearchResults
@@ -200,6 +249,13 @@ func (uc *GenerateOneUseCase) Execute(
 			zap.String("cache_status", result.Cache.Status),
 			zap.Int64("total_ms", timings.TotalMs))
 	}
+
+	tracker.TrackEvent("job.completed", "Script generation completed", map[string]any{
+		"item_id":    item.ID,
+		"status":     "success",
+		"total_ms":   timings.TotalMs,
+		"word_count": result.Output.WordCount,
+	})
 
 	return result, nil
 }
