@@ -93,6 +93,7 @@ Env-var overrides (see Config block below for the full list):
   ARTLIST_SCRAPER_SERVER_URL    Node-scraper URL
   VELOX_DATA_DIR                Path to media.db.sqlite
   SKIP_HERMETICS=1              Bypass hermetic gate precondition + '^TestGate' run
+  EXPECTED_GATE_MATCHES=N       Override expected gate match count (positive integer; default: 28)
 
 Examples:
   $0 --help
@@ -162,6 +163,19 @@ CURL_TIMEOUT="${CURL_TIMEOUT:-30}"
 
 LAST_JSON="${LAST_JSON:-/tmp/artlist_live_e2e_last_run.json}"
 
+# Expected count of TestGateXX_* function names matching the meta-anchor's
+# expectedGateTests array in gate11_scraper_failure_test.go (default: 28,
+# matches the current authoritative spec). Override at the call site via
+# env var EXPECTED_GATE_MATCHES=N when the gate test matrix legitimately
+# grows OR shrinks BUT the script + meta-anchor aren't both updated yet.
+# Validated as a positive integer at use time (see HERMETIC GATES
+# precondition block); invalid overrides exit 2 with a clear message
+# rather than fall back silently — fail-closed, consistent with the
+# rest of the script. Empty/unset falls back to default 28 via the
+# :-operator; non-integer-like overrides are caught by the regex
+# validation in the precondition block.
+EXPECTED_GATE_MATCHES="${EXPECTED_GATE_MATCHES:-28}"
+
 # Tally
 PASS=0; WARN=0; FAIL=0
 ASSET_VERDICTS=() # per-asset pass/warn/fail strings
@@ -208,6 +222,9 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
   ROOT_FOLDER_ID        = ${ROOT_FOLDER_ID:-<empty — warning>}
   SEARCH_TERM           = '${SEARCH_TERM}'
   LIMIT                 = ${LIMIT}
+  EXPECTED_GATE_MATCHES = ${EXPECTED_GATE_MATCHES:-28}
+                              (env override; positive integer; default 28
+                               matches gate11_scraper_failure_test.go meta-anchor)
 [INFO] Plan — 9 verification points (executed per produced asset; in order):
   1. PASS   scraper /search probe (term, limit) returns >= 1 candidate
             WARN  if 0 candidates (fallback may still work)
@@ -242,6 +259,7 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
             WARN  if no artlist results (embedding pipeline may be stale;
             Qdrant scroll is the canonical truth)
 [INFO] Skip-able: SKIP_HERMETICS=1 bypasses BOTH the hermetic gate precondition (matrix-integrity check) AND the go test '^TestGate' run.
+[INFO] Override:   EXPECTED_GATE_MATCHES=N sets the expected gate match count (positive integer; default 28 matches gate11_scraper_failure_test.go meta-anchor's expectedGateTests array length).
 [INFO] Cost: zero Artlist downloads, zero DB writes, zero Drive writes.
 [INFO] Verdict JSON would be written to: ${LAST_JSON}
 EOF
@@ -382,11 +400,24 @@ if [[ "${SKIP_HERMETICS:-0}" != "1" ]]; then
     # run below) — preserved as an escape hatch for ad-hoc ops.
     GATE_LIST_OUTPUT=$(go test -list '^TestGate[0-9]+_' \
         ./internal/application/assets/providers/artlist/... 2>&1 || true)
-    # 28 matches the meta-anchor's expectedGateTests array length in
-    # gate11_scraper_failure_test.go (one entry per TestGateXX_*
-    # function declared in that file). Update both together when the
-    # gate test matrix grows or shrinks.
-    EXPECTED_GATE_MATCHES=28
+    # Variable EXPECTED_GATE_MATCHES was set in the Config block above
+    # with default 28 matching the meta-anchor's expectedGateTests
+    # array length in gate11_scraper_failure_test.go. Override at the
+    # call site: EXPECTED_GATE_MATCHES=N bash $(basename "$0").
+    #
+    # Validate the override as a positive integer before comparing
+    # against ACTUAL_GATE_MATCHES. Pattern ^[1-9][0-9]*$ rejects
+    # "0", "-5", "12.5", "abc", " 12", "12 ", "05" (leading zero) and
+    # any other non-positive-integer form. Empty falls through to the
+    # default 28 via the :-operator in the Config block; the regex
+    # below catches the remaining malformed override modes. Fail-closed
+    # (exit 2) so the operator spots typos at the call site immediately.
+    if ! [[ "${EXPECTED_GATE_MATCHES}" =~ ^[1-9][0-9]*$ ]]; then
+        echo "[ERROR] $(date '+%H:%M:%S') ENV var EXPECTED_GATE_MATCHES='${EXPECTED_GATE_MATCHES}' is invalid — must be a positive integer (no leading zero, no decimals, no sign, no whitespace)." >&2
+        echo "[ERROR] Example valid override: EXPECTED_GATE_MATCHES=12 bash $(basename "$0")" >&2
+        echo "[ERROR] Default 28 matches gate11_scraper_failure_test.go meta-anchor's expectedGateTests array length." >&2
+        exit 2
+    fi
     # Count lines that begin with "TestGate" — the `go test -list`
     # output's status line ("ok <pkg> 0.001s") never starts with that
     # prefix, so the filter is unambiguous. `|| true` keeps `set -e`
