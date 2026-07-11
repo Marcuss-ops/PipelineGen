@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
@@ -109,6 +110,8 @@ Rules:
 		userContent = req.WebContext + "\n" + userContent
 	}
 
+	userContent = applyGroundingPolicy(req.GroundingPolicy, userContent)
+
 	return []types.Message{
 		{Role: "system", Content: BuildSystemPrompt(req.Language, req.Tone)},
 		{Role: "user", Content: userContent},
@@ -169,21 +172,19 @@ func BuildTextPrompt(req *types.TextGenerationRequest) string {
 	sanitizedSource := types.SanitizeInput(req.SourceText)
 	sanitizedTitle := types.SanitizeInput(req.Title)
 
-	var mainPrompt string
+	var taskBody string
 	if cfg := Get(); cfg != nil {
 		rendered, err := cfg.RenderScriptGeneration(
 			req.Duration, durationMinutes, sanitizedTitle, req.Tone,
 			sanitizedSource, targetWords,
 		)
 		if err == nil {
-			mainPrompt = BuildSystemPrompt(req.Language, req.Tone) + "\n\n" + rendered
+			taskBody = rendered
 		}
 	}
 
-	if mainPrompt == "" {
-		mainPrompt = fmt.Sprintf(`%s
-
-TASK: Write a true NARRATIVE DOCUMENTARY of %d seconds (about %d minutes).
+	if taskBody == "" {
+		taskBody = fmt.Sprintf(`TASK: Write a true NARRATIVE DOCUMENTARY of %d seconds (about %d minutes).
 
 VIDEO TITLE: %s
 NARRATIVE STYLE: %s
@@ -201,17 +202,39 @@ STRICT QUALITY REQUIREMENTS (FAILURE IS NOT AN OPTION):
 7. NO STAGE DIRECTIONS: Do not include descriptions of shots, music, or tone in brackets.
 
 SCRIPT:`,
-			BuildSystemPrompt(req.Language, req.Tone),
 			req.Duration, durationMinutes, sanitizedTitle, req.Tone,
 			sanitizedSource, durationMinutes, targetWords,
 		)
 	}
 
+	// Apply grounding policy to the task body so it sits after the
+	// system prompt once that is prepended.
+	taskBody = applyGroundingPolicy(req.GroundingPolicy, taskBody)
+
 	if req.Prompt != "" && req.Prompt != req.SourceText {
-		mainPrompt = prependOverriding(req.Prompt) + mainPrompt
+		taskBody = prependOverriding(req.Prompt) + taskBody
 	}
 
-	return mainPrompt
+	return BuildSystemPrompt(req.Language, req.Tone) + "\n\n" + taskBody
+}
+
+// applyGroundingPolicy prepends policy-specific grounding instructions
+// to the user prompt when a policy is set. It controls how the model
+// weights source_text against clip evidence.
+func applyGroundingPolicy(policy string, content string) string {
+	var instruction string
+	switch policy {
+	case scriptpkg.GroundingPolicyClipsPrimary:
+		instruction = "GROUNDING POLICY — CLIPS PRIMARY: The supplied clip evidence is the MAIN source of information. The reference input (source_text) is only supporting context. Anchor the narrative primarily on what is visible or described in the clips. Do not invent scenes, dialogue, or events not supported by the clip evidence."
+	case scriptpkg.GroundingPolicySourcePrimary:
+		instruction = "GROUNDING POLICY — SOURCE PRIMARY: The reference input (source_text) is the MAIN source of information. The supplied clips are only visual support. Anchor the narrative primarily on the written source text. Clips may illustrate the text but must not contradict it."
+	case scriptpkg.GroundingPolicyBalanced:
+		instruction = "GROUNDING POLICY — BALANCED: Give equal weight to the reference input (source_text) and the supplied clip evidence. The final narrative must represent both sources fairly and must not ignore either. Reconcile any contradiction in favor of the source_text."
+	}
+	if instruction == "" {
+		return content
+	}
+	return instruction + "\n\n" + content
 }
 
 // prependOverriding builds the overriding instructions block from config or fallback.

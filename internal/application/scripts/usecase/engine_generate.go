@@ -162,16 +162,17 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	builtPrompt += plainTextInstruction
 
 	ollamaReq := ollamatypes.TextGenerationRequest{
-		Language:    language,
-		Tone:        tone,
-		Model:       model,
-		Prompt:      builtPrompt,
-		SourceText:  sourceText,
-		Title:       title,
-		MinWords:    minWords,
-		MaxChars:    plan.MaxChars,
-		ClipIDs:     clipIDs,
-		Temperature: plan.Temperature,
+		Language:        language,
+		Tone:            tone,
+		Model:           model,
+		Prompt:          builtPrompt,
+		SourceText:      sourceText,
+		Title:           title,
+		MinWords:        minWords,
+		MaxChars:        plan.MaxChars,
+		ClipIDs:         clipIDs,
+		Temperature:     plan.Temperature,
+		GroundingPolicy: plan.GroundingPolicy,
 		// LLM-PLAIN-TEXT-CONTRACT wave (PR-2, July 2026): flip
 		// from OutputModeScriptV1 to the canonical OutputModePlainText
 		// default. The engine ships raw narrative prose; the
