@@ -166,31 +166,45 @@ func TestQdrantDoD4Assertions_AggregatorContract(t *testing.T) {
 			defer qdrantSrv.Close()
 
 			// ── POINT 1 ── Poll /api/assets/clips/<id> until INDEXED+ACTIVE.
-			// Per cmd/admin/seed_test_asset/seed.go::waitForIndex SSOT (poll
-			// pattern with bounded total wall time + ok-on-first-match exit).
 			if err := pollIndexState(t, pipelineSrv.URL+"/api/assets/clips/"+tc.assetID, tc.failPoint1Timeout); err != nil {
-				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 1 failed (poll /api/assets/clips/<id> until INDEXED+ACTIVE): %v", err)
+				if tc.failPoint1Timeout {
+					return // Expected drift caught
+				}
+				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 1 failed: %v", err)
+			} else if tc.failPoint1Timeout {
+				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 1 passed unexpectedly during drift test")
 			}
 
 			// ── POINT 2 ── Scroll Qdrant for the asset_id; assert len(points)==1.
-			// Per cmd/admin/seed_test_asset/seed.go::verifyQdrantScroll SSOT
-			// (filter{must:{key,match:{value}}}). dr-point2 returns empty body.
 			payload, err := scrollAssetByID(t, qdrantSrv.URL, tc.assetID, tc.failPoint2ZeroHits)
 			if err != nil {
-				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 2 failed (POST /points/scroll filter asset_id): %v", err)
+				if tc.failPoint2ZeroHits {
+					return // Expected drift caught
+				}
+				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 2 failed: %v", err)
+			} else if tc.failPoint2ZeroHits {
+				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 2 passed unexpectedly during drift test")
 			}
 
-			// ── POINT 3 ── Payload completeness check (asset_id + source +
-			// media_type + lifecycle_state=ACTIVE + search_text). dr-point3
-			// strips the configured key from the payload before the JSON marshal.
+			// ── POINT 3 ── Payload completeness check.
 			if err := assertPayloadComplete(payload, tc.assetID, tc.missingPayloadKey); err != nil {
-				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 3 failed (payload completeness): %v", err)
+				if tc.missingPayloadKey != "" {
+					return // Expected drift caught
+				}
+				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 3 failed: %v", err)
+			} else if tc.missingPayloadKey != "" {
+				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 3 passed unexpectedly during drift test")
 			}
 
 			// ── POINT 4 ── Hybrid search returns >= 1 hit with matching asset_id
 			// AND score > 0.5. dr-point4 emits a max-score below threshold.
-			if err := hybridSearchMatch(t, pipelineSrv.URL, tc.assetID, tc.point4MaxScore); err != nil {
-				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 4 failed (POST /internal/v1/media/search): %v", err)
+			if err := hybridSearchMatch(t, pipelineSrv.URL, tc.assetID); err != nil {
+				if tc.point4MaxScore < 0.5 {
+					return // Expected drift caught
+				}
+				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 4 failed: %v", err)
+			} else if tc.point4MaxScore < 0.5 {
+				t.Fatalf("QDRANT-DOD-4-ASSERTIONS point 4 passed unexpectedly during drift test")
 			}
 		})
 	}
@@ -324,7 +338,7 @@ func assertPayloadComplete(payload map[string]interface{}, expectedAssetID, miss
 // ::getAssetStatus SSOT. Asserts >= 1 item AND max score > 0.5 AND
 // at least 1 item carries the matching asset_id (otherwise the hit
 // is for a different asset, not the seed we are validating).
-func hybridSearchMatch(t *testing.T, pipelineURL, expectedAssetID string, maxScore float64) error {
+func hybridSearchMatch(t *testing.T, pipelineURL, expectedAssetID string) error {
 	t.Helper()
 	searchBody := `{"mode": "hybrid", "text": "semantic search dog", "limit": 10}`
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost,
@@ -363,11 +377,11 @@ func hybridSearchMatch(t *testing.T, pipelineURL, expectedAssetID string, maxSco
 			hi = item.Score
 		}
 	}
-	if hi <= maxScore {
-		return fmt.Errorf("max score %.3f <= drift-injected ceiling %.3f (would fail canonical > 0.5 threshold)", hi, maxScore)
-	}
-	if maxScore < 0.5 {
-		return fmt.Errorf("drift case expected max score < 0.5; got %.3f which would have PASSED the canonical threshold", hi)
+	// Use the canonical 0.5 threshold directly (decoupled from the
+	// mock's returned score which lives in tc.point4MaxScore).
+	const scoreThreshold = 0.5
+	if hi <= scoreThreshold {
+		return fmt.Errorf("max score %.3f <= canonical threshold %.3f", hi, scoreThreshold)
 	}
 	return nil
 }

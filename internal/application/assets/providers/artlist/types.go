@@ -70,6 +70,11 @@ type RunTagItem struct {
 	LocalPath    string `json:"local_path,omitempty"`
 	FileHash     string `json:"file_hash,omitempty"`
 	Error        string `json:"error,omitempty"`
+	// Renditions carries the generated technical variants for this clip.
+	// Populated by stageProcessBatch and consumed by stagePersistResults
+	// to persist asset_locations + asset_renditions via the canonical
+	// AssetFinalizerTx.
+	Renditions []asset.RenditionOutput `json:"-"`
 }
 
 // RunTagResponse represents the result of the full tag pipeline.

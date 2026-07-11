@@ -230,10 +230,10 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			UpdatedAt:                asset.UpdatedAt,
 			DeletedAt:                asset.DeletedAt,
 			// ── Text track projection ──
-			OriginalLanguage:  assetpkg.MetadataString(asset.Metadata, "original_language"),
-			AvailableLanguages: assetpkg.MetadataStringSlice(asset.Metadata, "available_languages"),
+			OriginalLanguage:    assetpkg.MetadataString(asset.Metadata, "original_language"),
+			AvailableLanguages:  assetpkg.MetadataStringSlice(asset.Metadata, "available_languages"),
 			TranscriptAvailable: metadataBool(asset.Metadata, "transcript_available"),
-			TextTracksVersion:  assetpkg.MetadataString(asset.Metadata, "text_tracks_version"),
+			TextTracksVersion:   assetpkg.MetadataString(asset.Metadata, "text_tracks_version"),
 		},
 		Embeddings: map[VectorChannel]EmbeddingArtifact{},
 	}

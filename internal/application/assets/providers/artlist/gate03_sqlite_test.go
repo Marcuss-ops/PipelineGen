@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -154,11 +155,12 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 			RunRepository: runRepo,
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     &stubDispatcherForArtlist{repo: artlistRepo},
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -235,7 +237,7 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 
 		assert.Equal(t, "artlist", source, "clip %s: source must be 'artlist'", clipID)
 		assert.Equal(t, "video", mediaType, "clip %s: media_type must be 'video'", clipID)
-		assert.Equal(t, "ACTIVE", lifecycleState, "clip %s: lifecycle_state must be 'ACTIVE'", clipID)
+		assert.Equal(t, "PUBLISHED", lifecycleState, "clip %s: lifecycle_state must be 'PUBLISHED'", clipID)
 		assert.NotEmpty(t, driveLink, "clip %s: drive_link must be non-empty", clipID)
 		assert.NotEmpty(t, fileHash, "clip %s: file_hash must be non-empty", clipID)
 		assert.NotEmpty(t, driveFileID, "clip %s: drive_file_id must be non-empty", clipID)
@@ -274,10 +276,11 @@ func TestGate03_ArtlistRunsNotRecordedWhenDiscoveryFails(t *testing.T) {
 			ScraperSearcher: &failingSearcher{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:        cfg,
-			MainDB:     db,
-			Log:        logger,
-			Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
 		},
 	})
 	require.NoError(t, err)
@@ -342,7 +345,7 @@ func assetForID(id, name, sourceURL string) *asset.Asset {
 		Name:           name,
 		SourceURL:      sourceURL,
 		Source:         "artlist",
-		LifecycleState: asset.StateStaging,
+		LifecycleState: asset.StateActive,
 		MediaType:      "video",
 	}
 	a.SetDownloadLink(sourceURL)

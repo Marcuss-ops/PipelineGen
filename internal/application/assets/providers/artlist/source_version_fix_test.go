@@ -5,12 +5,11 @@
 //
 // Root cause: mediaProcessor returned empty FileHash for some Artlist clips,
 // stagePersistResults dispatched with empty contentHash, and the IndexingHandler
-// dead-lettered the events (source_version required for supersede gate).
+// dead-lettered the events (source_version="" is terminal).
 //
-// Fix (2-layer defense):
-//  1. Dispatcher.EnqueueAndIndex now rejects empty contentHash (fail-closed).
-//  2. stagePersistResults computes a deterministic fallback hash from
-//     clipID+source when item.FileHash is empty.
+// Fix: stagePersistResults is now fail-closed — it rejects assets with an
+// empty SHA-256 and never emits an outbox event. The fallback hash path has
+// been retired; every persisted asset must carry a real content hash.
 package artlist
 
 import (
@@ -21,9 +20,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -38,7 +37,7 @@ func (f *emptyHashMediaProcessor) Process(_ context.Context, input *asset.Proces
 		ID:           input.ID,
 		Filename:     input.ID + "_processed.mp4",
 		LocalPath:    input.OutputDir + "/" + input.ID + "_processed.mp4",
-		FileHash:     "", // THE BUG: empty FileHash
+		FileHash:     "", // empty SHA-256
 		DriveLink:    "https://drive.google.com/file/d/" + input.ID + "-drive/view",
 		DriveFileID:  input.ID + "-drive-id",
 		DownloadLink: input.SourceURL,
@@ -46,12 +45,11 @@ func (f *emptyHashMediaProcessor) Process(_ context.Context, input *asset.Proces
 	}, nil
 }
 
-// TestSourceVersionFix_FallbackHashComputedWhenFileHashEmpty verifies that
-// stagePersistResults computes a deterministic fallback SHA256 hash from
-// clipID+source when the media processor returns an empty FileHash.
-// This prevents the IndexingHandler supersede gate from dead-lettering
-// the outbox event (source_version="" is terminal).
-func TestSourceVersionFix_FallbackHashComputedWhenFileHashEmpty(t *testing.T) {
+// TestSourceVersionFix_EmptyHashRejected verifies that stagePersistResults
+// is fail-closed: when the media processor returns an empty FileHash the
+// clip is marked as "hash_missing", no outbox event is emitted, and no
+// row is written to media_assets by the AssetFinalizerTx.
+func TestSourceVersionFix_EmptyHashRejected(t *testing.T) {
 	ctx := context.Background()
 	tmp := t.TempDir()
 
@@ -96,12 +94,6 @@ func TestSourceVersionFix_FallbackHashComputedWhenFileHashEmpty(t *testing.T) {
 
 	processor := &emptyHashMediaProcessor{}
 
-	// recordingDispatcherForArtlist from gate01_happy_path_test.go records
-	// every EnqueueAndIndex call including contentHash.
-	recDisp := &recordingDispatcherForArtlist{
-		stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo},
-	}
-
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
 			AssetStore:    artlistRepo,
@@ -109,11 +101,12 @@ func TestSourceVersionFix_FallbackHashComputedWhenFileHashEmpty(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     recDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -128,41 +121,28 @@ func TestSourceVersionFix_FallbackHashComputedWhenFileHashEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 
-	// The clip should be processed successfully even though FileHash was empty.
-	assert.Equal(t, 1, resp.Processed, "clip should be processed despite empty FileHash from processor")
-	assert.Equal(t, 0, resp.Failed)
-
-	// The dispatcher should have been called (fallback hash computed).
-	require.Equal(t, 1, recDisp.DispatchCount(), "dispatcher must be called once")
-
-	// Verify the fallback hash is the deterministic SHA256 of clipID+source.
-	expectedHash := hashutil.SHA256String("sv-fix-clip-1" + ":artlist")
-	actualHash := recDisp.ContentHashFor("sv-fix-clip-1")
-	assert.NotEmpty(t, actualHash, "contentHash dispatched must be non-empty (fallback computed)")
-	assert.Equal(t, expectedHash, actualHash,
-		"fallback hash must be deterministic SHA256 of clipID+source")
-
-	// Verify the fallback hash is also written to the item's FileHash.
+	// The clip is NOT processed — fail-closed on empty SHA-256.
+	assert.Equal(t, 0, resp.Processed, "clip with empty FileHash must NOT be processed")
+	assert.Equal(t, 1, resp.Failed, "clip with empty FileHash must be counted as failed")
 	require.Len(t, resp.Items, 1)
-	assert.Equal(t, expectedHash, resp.Items[0].FileHash,
-		"item.FileHash must be the fallback hash after stagePersistResults")
+	assert.Equal(t, "hash_missing", resp.Items[0].Status,
+		"item status must be 'hash_missing' when SHA-256 is empty")
+	assert.Contains(t, resp.Items[0].Error, "SHA-256 missing",
+		"item error must explain the missing SHA-256")
 
-	t.Logf("Source-version fix verified: fallback hash=%s for clip=%s", actualHash[:12], "sv-fix-clip-1")
-}
+	// No outbox event should be emitted.
+	assert.Equal(t, 0, outboxEventCount(db),
+		"no asset.index.requested outbox event should be emitted for rejected clip")
 
-// TestSourceVersionFix_DeterministicAcrossRetries verifies that the
-// fallback hash is deterministic — the same clipID+source always
-// produces the same hash, so retries don't create duplicate Qdrant points.
-func TestSourceVersionFix_DeterministicAcrossRetries(t *testing.T) {
-	// The fallback computation: SHA256(clipID + ":" + source)
-	h1 := hashutil.SHA256String("my-clip:artlist")
-	h2 := hashutil.SHA256String("my-clip:artlist")
-	h3 := hashutil.SHA256String("my-clip:youtube")
+	// media_assets row should remain in its pre-run state (STAGING after
+	// discovery, because the finalizer never ran).
+	var lifecycleState string
+	err = db.QueryRow("SELECT lifecycle_state FROM media_assets WHERE id = ?", "sv-fix-clip-1").Scan(&lifecycleState)
+	require.NoError(t, err)
+	assert.Equal(t, string(asset.StateStaging), lifecycleState,
+		"media_assets row must remain STAGING when finalizer is skipped")
 
-	assert.Equal(t, h1, h2, "same input must produce same hash (deterministic)")
-	assert.NotEqual(t, h1, h3, "different source must produce different hash")
-	assert.NotEmpty(t, h1, "hash must be non-empty")
-	assert.Len(t, h1, 64, "SHA256 hex digest must be 64 chars")
+	t.Log("Source-version fix verified: empty SHA-256 is rejected, no outbox event emitted")
 }
 
 // Compile-time: emptyHashMediaProcessor satisfies the Processor port.

@@ -67,11 +67,12 @@ func (r *TextSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSp
 	}
 
 	resolved := &scriptpkg.ResolvedSource{
-		Type:       scriptpkg.SourceText,
-		Topic:      topic,
-		Title:      title,
-		SourceText: assembled.String(),
-		Language:   resCtx.Language,
+		Type:            scriptpkg.SourceText,
+		Topic:           topic,
+		Title:           title,
+		SourceText:      assembled.String(),
+		Language:        resCtx.Language,
+		GroundingPolicy: src.GroundingPolicy,
 	}
 	resolved.Fingerprint = BuildClipFingerprint(src, nil)
 	return resolved, nil

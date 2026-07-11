@@ -321,9 +321,12 @@ func TestReuploadExecute_PublishesWithAutoDerivedFields(t *testing.T) {
 	if req.Subject != "f29-video.mp4" {
 		t.Errorf("Subject = %q, want %q (filename per-file identity)", req.Subject, "f29-video.mp4")
 	}
-	// The resolved folder must be threaded into the publish request.
-	if req.RootFolderOverride == "" {
-		t.Errorf("RootFolderOverride = %q, want non-empty resolved folder ID", req.RootFolderOverride)
+	// PR-P12-CLIPS-AND-BOOKS: RootFolderOverride is retired; the
+	// publisher resolves the target folder via DestinationRegistry +
+	// DestinationPolicy.RootFolderID. The publish request must NOT
+	// carry a RootFolderOverride.
+	if req.RootFolderOverride != "" {
+		t.Errorf("RootFolderOverride = %q, want \"\" (RETIRED)", req.RootFolderOverride)
 	}
 	// ConflictPolicy preserved (reupload semantics)
 	if req.ConflictPolicy != delivery.ConflictOverwrite {
@@ -379,8 +382,9 @@ func TestReuploadExecute_ArtlistSourceSetsArtlistDestination(t *testing.T) {
 	if req.Subject != "f29-video.mp4" {
 		t.Errorf("Subject = %q, want %q (per-file identity)", req.Subject, "f29-video.mp4")
 	}
-	if req.RootFolderOverride == "" {
-		t.Errorf("RootFolderOverride = %q, want non-empty resolved folder ID", req.RootFolderOverride)
+	// PR-P12-CLIPS-AND-BOOKS: RootFolderOverride is retired.
+	if req.RootFolderOverride != "" {
+		t.Errorf("RootFolderOverride = %q, want \"\" (RETIRED)", req.RootFolderOverride)
 	}
 }
 
@@ -456,11 +460,11 @@ func TestReuploadResolveFolder_OmitsSubjectAndOverride(t *testing.T) {
 	if clip.FolderID() == "" {
 		t.Error("clip.FolderID is empty after resolveFolder path; the resolved folder was not propagated to the clip")
 	}
-	// The Publish call must carry the resolved folder override and
-	// the canonical per-file subject.
+	// The Publish call must NOT carry RootFolderOverride (RETIRED)
+	// and must carry the canonical per-file subject.
 	req := pub.lastPublishRequest
-	if req.RootFolderOverride == "" {
-		t.Errorf("Publish.RootFolderOverride = %q, want non-empty resolved folder ID", req.RootFolderOverride)
+	if req.RootFolderOverride != "" {
+		t.Errorf("Publish.RootFolderOverride = %q, want \"\" (RETIRED)", req.RootFolderOverride)
 	}
 	if req.Subject != "sub.mp4" {
 		t.Errorf("Publish.Subject = %q, want %q (per-file identity)", req.Subject, "sub.mp4")

@@ -32,16 +32,14 @@ package artlist
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
@@ -65,75 +63,6 @@ import (
 // produces a real outbox_events row that can be SELECTed from the
 // canonical SQLite table. The test does NOT simulate outbox emission
 // with an in-memory map — it writes to the real table.
-type outboxEmittingDispatcher struct {
-	stubDispatcherForArtlist
-	mu    sync.Mutex
-	db    *sql.DB
-	calls []string // dispatched clip IDs
-}
-
-// EnqueueAndIndex implements the Dispatcher port. It delegates to the
-// inner stubDispatcherForArtlist for the media_assets upsert, then
-// writes an outbox_events row with event_type='asset.index.requested'.
-func (o *outboxEmittingDispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error {
-	// Step 1: UPSERT media_assets (canonical write path).
-	if err := o.stubDispatcherForArtlist.EnqueueAndIndex(ctx, clip, contentHash); err != nil {
-		return err
-	}
-
-	// Step 2: INSERT outbox_events (mirrors production Dispatcher).
-	// The production envelope is asset.index.requested.v1 with fields:
-	//   asset_id, source_version, event_id, operation, idempotency_key, ...
-	// For the test contract, we verify the minimum required fields:
-	//   - event_type = 'asset.index.requested'
-	//   - aggregate_id = clip.ID
-	//   - aggregate_type = 'media_asset'
-	//   - payload_json contains asset_id matching the clip
-	payload := map[string]string{
-		"asset_id":       clip.ID,
-		"source":         string(clip.Source),
-		"media_type":     string(clip.MediaType),
-		"operation":      "UPSERT",
-		"schema_version": "asset.index.requested.v1",
-		"source_version": contentHash,
-	}
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("outboxEmittingDispatcher: marshal payload for %s: %w", clip.ID, err)
-	}
-
-	eventKey := fmt.Sprintf("index:%s:%s", clip.ID, contentHash)
-
-	if o.db != nil {
-		if _, err := o.db.ExecContext(ctx,
-			`INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, status, created_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))`,
-			"asset.index.requested",
-			clip.ID,
-			"media_asset",
-			string(payloadJSON),
-			eventKey,
-		); err != nil {
-			return fmt.Errorf("outboxEmittingDispatcher: insert outbox event for %s: %w", clip.ID, err)
-		}
-	}
-
-	o.mu.Lock()
-	o.calls = append(o.calls, clip.ID)
-	o.mu.Unlock()
-
-	return nil
-}
-
-// DispatchCount returns the number of clips dispatched.
-func (o *outboxEmittingDispatcher) DispatchCount() int {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	return len(o.calls)
-}
-
-// Compile-time assertion: satisfies the Dispatcher port.
-var _ Dispatcher = (*outboxEmittingDispatcher)(nil)
 
 // ────────────────────────────────────────────────────────────
 // Gate 04: Outbox Emission — asset.index.requested per clip
@@ -216,7 +145,7 @@ func TestGate04_OutboxEventEmittedPerClip(t *testing.T) {
 			Name:           clip.name,
 			SourceURL:      clip.sourceURL,
 			Source:         "artlist",
-			LifecycleState: asset.StateStaging,
+			LifecycleState: asset.StateActive,
 			MediaType:      "video",
 		}
 		a.SetDownloadLink(clip.sourceURL)
@@ -226,10 +155,7 @@ func TestGate04_OutboxEventEmittedPerClip(t *testing.T) {
 
 	processor := &successMediaProcessor{}
 
-	outboxDisp := &outboxEmittingDispatcher{
-		stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo},
-		db:                       db,
-	}
+	stubDisp := &stubDispatcherForArtlist{repo: artlistRepo}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -238,11 +164,12 @@ func TestGate04_OutboxEventEmittedPerClip(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     outboxDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       stubDisp,
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -308,7 +235,7 @@ func TestGate04_OutboxEventEmittedPerClip(t *testing.T) {
 			clipID, eventType, aggregateID, status, payload["asset_id"], payload["source"])
 	}
 
-	assert.Equal(t, 2, outboxDisp.DispatchCount(),
+	assert.Equal(t, 2, outboxEventCount(db),
 		"dispatcher must be called once per clip")
 
 	t.Log("Gate 04: Outbox emission contract verified — asset.index.requested event per clip")
@@ -374,7 +301,7 @@ func TestGate04_OutboxEventPayloadContainsSourceArtlist(t *testing.T) {
 			Name:           clip.name,
 			SourceURL:      clip.sourceURL,
 			Source:         "artlist",
-			LifecycleState: asset.StateStaging,
+			LifecycleState: asset.StateActive,
 			MediaType:      "video",
 		}
 		a.SetDownloadLink(clip.sourceURL)
@@ -384,10 +311,7 @@ func TestGate04_OutboxEventPayloadContainsSourceArtlist(t *testing.T) {
 
 	processor := &successMediaProcessor{}
 
-	outboxDisp := &outboxEmittingDispatcher{
-		stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo},
-		db:                       db,
-	}
+	stubDisp := &stubDispatcherForArtlist{repo: artlistRepo}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -396,11 +320,12 @@ func TestGate04_OutboxEventPayloadContainsSourceArtlist(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     outboxDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       stubDisp,
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -490,10 +415,7 @@ func TestGate04_OutboxEventNotEmittedWhenNoClips(t *testing.T) {
 
 	// No clip_search_terms, no pre-populated clips — the DB is empty.
 
-	outboxDisp := &outboxEmittingDispatcher{
-		stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo},
-		db:                       db,
-	}
+	stubDisp := &stubDispatcherForArtlist{repo: artlistRepo}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -503,10 +425,11 @@ func TestGate04_OutboxEventNotEmittedWhenNoClips(t *testing.T) {
 			ScraperSearcher: &emptySearcher{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:        cfg,
-			MainDB:     db,
-			Log:        logger,
-			Dispatcher: outboxDisp,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       stubDisp,
 		},
 	})
 	require.NoError(t, err)
@@ -529,7 +452,7 @@ func TestGate04_OutboxEventNotEmittedWhenNoClips(t *testing.T) {
 		"outbox_events must be empty when no clips were discovered — no phantom events")
 
 	// Dispatcher was never called (pipeline failed at discovery).
-	assert.Equal(t, 0, outboxDisp.DispatchCount(),
+	assert.Equal(t, 0, outboxEventCount(db),
 		"dispatcher must NOT be called when discovery finds no clips")
 
 	t.Log("Gate 04: Negative contract — zero outbox events when no clips discovered")

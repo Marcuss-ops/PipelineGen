@@ -2,12 +2,13 @@ package maintenance
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 )
 
 // RunCleanup performs a full system cleanup.
@@ -73,31 +74,27 @@ func (s *Service) RunCleanup(ctx context.Context, deep bool, dryRun bool) (map[s
 	}
 
 	// 4. DB retention / WAL checkpoint / VACUUM
-	if len(s.dbs) > 0 && !dryRun {
+	if len(s.repos) > 0 && !dryRun {
 		s.log.Info("Running database optimization and cleanup tasks")
-		for i, db := range s.dbs {
-			if db == nil {
+		for i, repo := range s.repos {
+			if repo == nil {
 				continue
 			}
-			s.runDBOptimize(ctx, i, db, results)
+			s.runDBOptimize(ctx, i, repo, results)
 		}
 	}
 
 	return results, nil
 }
 
-// runDBOptimize runs retention + WAL checkpoint + VACUUM for a single DB.
+// runDBOptimize runs retention + WAL checkpoint + VACUUM for a single repository.
 // Pulled out of RunCleanup to keep that function a phase-by-phase runbook.
-func (s *Service) runDBOptimize(ctx context.Context, i int, db *sql.DB, results map[string]any) {
+func (s *Service) runDBOptimize(ctx context.Context, i int, repo assets.MaintenanceRepository, results map[string]any) {
 	s.log.Info("Optimizing database", zap.Int("db_index", i))
 
 	// Run logs retention deletion (only succeeds on the DB containing api_requests).
-	// The days modifier is bound via ? to avoid string interpolation in SQL.
-	retentionQuery := "DELETE FROM api_requests WHERE ts < datetime('now', ?)"
-	res, err := db.ExecContext(ctx, retentionQuery, fmt.Sprintf("-%d days", s.cfg.Jobs.RetentionDays))
-	var rowsAffected int64
-	if err == nil && res != nil {
-		rowsAffected, _ = res.RowsAffected()
+	rowsAffected, err := repo.DeleteOldAPIRequests(ctx, s.cfg.Jobs.RetentionDays)
+	if err == nil {
 		s.log.Info("API request logs retention cleanup completed", zap.Int("db_index", i), zap.Int64("rows_deleted", rowsAffected))
 		if i == 0 {
 			results["api_requests_deleted"] = rowsAffected
@@ -113,7 +110,7 @@ func (s *Service) runDBOptimize(ctx context.Context, i int, db *sql.DB, results 
 	// (allowed values: PASSIVE, FULL, RESTART, TRUNCATE).
 	checkpointMode := validateCheckpointMode(os.Getenv("WAL_CHECKPOINT_MODE"))
 	s.log.Info("Executing WAL checkpoint", zap.Int("db_index", i), zap.String("mode", checkpointMode))
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("PRAGMA wal_checkpoint(%s)", checkpointMode)); err != nil {
+	if err := repo.WALCheckpoint(ctx, checkpointMode); err != nil {
 		s.log.Warn("WAL checkpoint failed", zap.Int("db_index", i), zap.Error(err))
 	} else {
 		s.log.Info("WAL checkpoint completed", zap.Int("db_index", i))
@@ -121,9 +118,9 @@ func (s *Service) runDBOptimize(ctx context.Context, i int, db *sql.DB, results 
 
 	// Reclaim unused space (VACUUM)
 	s.log.Info("Executing database VACUUM", zap.Int("db_index", i))
-	if _, err := db.ExecContext(ctx, "PRAGMA incremental_vacuum(500)"); err != nil {
+	if err := repo.IncrementalVacuum(ctx, 500); err != nil {
 		s.log.Debug("Incremental vacuum skipped/failed, falling back to full VACUUM", zap.Int("db_index", i), zap.Error(err))
-		if _, err := db.ExecContext(ctx, "VACUUM"); err != nil {
+		if err := repo.FullVacuum(ctx); err != nil {
 			s.log.Warn("Full VACUUM failed", zap.Int("db_index", i), zap.Error(err))
 		} else {
 			s.log.Info("Full VACUUM completed", zap.Int("db_index", i))

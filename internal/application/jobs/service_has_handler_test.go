@@ -23,6 +23,8 @@ import (
 	"context"
 	"testing"
 
+	"go.uber.org/zap"
+
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
@@ -46,7 +48,7 @@ func TestService_HasHandler(t *testing.T) {
 	if err := dispatcher.Register(job.TypeScriptGenerate, fakeHandler); err != nil {
 		t.Fatalf("register fake handler: %v", err)
 	}
-	svc, err := NewService(nil, dispatcher, nil, nil)
+	svc, err := NewService(nakedJobBroker{}, dispatcher, zap.NewNop(), Compose())
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -116,7 +118,7 @@ func TestService_HasHandler_AfterRegister_ReflectsNewState(t *testing.T) {
 	t.Parallel()
 
 	dispatcher2 := NewDispatcher()
-	svc, err := NewService(nil, dispatcher2, nil, nil)
+	svc, err := NewService(nakedJobBroker{}, dispatcher2, zap.NewNop(), Compose())
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}

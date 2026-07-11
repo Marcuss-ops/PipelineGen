@@ -280,7 +280,7 @@ func Run(ctx context.Context, cfgPath string) error {
 		zap.String("source", MasterURLSource(masterURL)),
 	)
 
-	if err := PreflightMasterHealth(masterURL); err != nil {
+	if err := PreflightMasterHealth(ctx, masterURL); err != nil {
 		log.Error("master /health pre-flight failed",
 			zap.String("master_url", masterURL),
 			zap.Duration("timeout", preflightTimeout),
@@ -289,6 +289,16 @@ func Run(ctx context.Context, cfgPath string) error {
 		return fmt.Errorf("worker /health pre-flight: %w", err)
 	}
 	log.Info("master /health pre-flight passed", zap.String("master_url", masterURL))
+
+	if err := PreflightMasterScriptGenerateReady(ctx, masterURL); err != nil {
+		log.Error("master /ready script_generate pre-flight failed",
+			zap.String("master_url", masterURL),
+			zap.Duration("timeout", preflightTimeout),
+			zap.Error(err),
+		)
+		return fmt.Errorf("worker /ready script_generate pre-flight: %w", err)
+	}
+	log.Info("master /ready script_generate pre-flight passed", zap.String("master_url", masterURL))
 
 	// Detect profile BEFORE building composition — the Creator uses a
 	// minimal graph (no DB, Drive, Qdrant, Repos).

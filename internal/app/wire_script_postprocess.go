@@ -149,7 +149,7 @@ func registerScriptPostProcessors(
 
 	// AI-backed processors (entities, metadata, translation,
 	// stock_association, clip_search) — see wire_script_postprocess_ai.go.
-	if err := registerAIBackedProcessors(ppReg, root, cfg, log, metaModel); err != nil {
+	if err := registerAIBackedProcessors(ppReg, root, cfg, log); err != nil {
 		return err
 	}
 

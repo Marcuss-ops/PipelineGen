@@ -129,7 +129,8 @@ func TestMaintenancePruning(t *testing.T) {
 	)
 
 	// 5. Create Maintenance Service with our in-memory DB
-	svc := NewService(cfg, logger, idxSvc, treeSvc, deletionSvc, nil, db)
+	maintRepo := assets.NewMaintenanceRepository(db, logger)
+	svc := NewService(cfg, logger, idxSvc, treeSvc, deletionSvc, nil, maintRepo)
 
 	// 6. Run the cleanup job
 	cleanupResults, cleanupErr := svc.RunCleanup(ctx, false, false)

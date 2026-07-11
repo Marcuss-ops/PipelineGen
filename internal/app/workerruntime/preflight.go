@@ -5,11 +5,12 @@
 //  1. Master URL resolution (ResolveMasterURL, NormalizeURL,
 //     MasterURLSource) — the canonical $VELOX_MASTER_URL >
 //     cfg.External.VeloxMasterURL > http://127.0.0.1:<port>
-//     precedence chain from cmd/worker/main.go. Moved verbatim.
+//     precedence chain originally from cmd/worker/main.go.
 //
-//  2. /health pre-flight loop (PreflightMasterHealth) — the
-//     30s tight-bounded poll-so-master-is-up loop from
-//     cmd/worker/main.go. Moved verbatim.
+//  2. Master readiness pre-flight loops (PreflightMasterHealth and
+//     PreflightMasterScriptGenerateReady) — tight-bounded polls that
+//     wait for the master to become live and for the script_generate
+//     readiness sub-check to pass before the worker starts claiming jobs.
 //
 // Deliberately no fall-back to /api/system/doctor: the /health
 // endpoint is the canonical liveness signal, and a worker that
@@ -19,7 +20,9 @@ package workerruntime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -91,14 +94,6 @@ func MasterURLSource(resolved string) string {
 // worker that pretends the master is healthy because /doctor
 // (a heavier endpoint) happened to come up does NOT have the
 // right semantics. /health is the canonical liveness signal.
-// PreflightMasterHealth polls <masterURL>/health every preflightInterval
-// up to preflightTimeout. Returns nil on the first 200; returns
-// error on deadline with the last seen failure.
-//
-// We deliberately do NOT fall back to /api/system/doctor: a
-// worker that pretends the master is healthy because /doctor
-// (a heavier endpoint) happened to come up does NOT have the
-// right semantics. /health is the canonical liveness signal.
 //
 // Implementation: uses pkg/retry.Do with a custom IsRetryable
 // predicate that returns TRUE on ANY non-OK fn-returned error,
@@ -112,11 +107,11 @@ func MasterURLSource(resolved string) string {
 // so the retry loop keeps spinning until the ctx deadline fires
 // (vs bailing out at the canonical 3 default); ctx cancellation
 // short-circuits before we hit MaxAttempts.
-func PreflightMasterHealth(masterURL string) error {
+func PreflightMasterHealth(ctx context.Context, masterURL string) error {
 	healthURL := strings.TrimRight(masterURL, "/") + "/health"
 	client := &http.Client{Timeout: preflightHTTPClient}
 
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(preflightTimeout))
+	probeCtx, cancel := context.WithTimeout(ctx, preflightTimeout)
 	defer cancel()
 
 	walk := func() error {
@@ -131,30 +126,7 @@ func PreflightMasterHealth(masterURL string) error {
 		return nil
 	}
 
-	err := retry.Do(ctx, walk, retry.Options{
-		IsRetryable: func(err error) bool {
-			// Preserve the "wait until 200 OK or deadline" semantic:
-			// any non-OK fn-returned error keeps the retry loop spinning;
-			// ctx deadline (30s budget) is what actually stops the loop.
-			return err != nil
-		},
-		// Constant 1s backoff to preserve the original time.Sleep(1s)
-		// tight-poll cadence exactly. BackoffFactor=1.0 disables
-		// exponential growth; InitialBackoff=MaxBackoff=preflightInterval
-		// clamps the sleep envelope. JitterFraction=0 because preflight is
-		// operator-visible (every attempt logged) and bounded to 30s;
-		// thundering-herd concerns do not apply here.
-		InitialBackoff: preflightInterval,
-		MaxBackoff:     preflightInterval,
-		BackoffFactor:  1.0,
-		JitterFraction: 0,
-		// Size MaxAttempts at the full preflight budget + 2 headroom so
-		// the loop keeps spinning until ctx deadline fires (vs bailing
-		// out at the canonical 3 default). At 1s per attempt in a 30s
-		// budget this is 32 attempts; ctx cancellation short-circuits
-		// before we hit it.
-		MaxAttempts: int(preflightTimeout/preflightInterval) + 2,
-	})
+	err := retry.Do(probeCtx, walk, preflightRetryOptions())
 
 	if err == nil {
 		return nil
@@ -164,6 +136,116 @@ func PreflightMasterHealth(masterURL string) error {
 	// matchers) stay stable across the refactor.
 	return fmt.Errorf("master /health did not return 200 within %s: %w (url=%s)",
 		preflightTimeout, err, healthURL)
+}
+
+// PreflightMasterScriptGenerateReady polls <masterURL>/ready and verifies
+// the script_generate readiness sub-check before the worker attempts to
+// claim script.generate jobs. It reuses the same 30s / 1s retry budget as
+// PreflightMasterHealth so a master that is still initialising has time
+// to become ready.
+//
+// Semantics:
+//   - If /ready reports ok=false, the preflight fails.
+//   - If the script_generate check is absent or applicable=false, the
+//     preflight passes (feature disabled or master predates the check).
+//   - If script_generate is applicable and ok=true, the preflight passes.
+//   - If script_generate is applicable and ok=false, the preflight retries
+//     until the 30s budget expires.
+func PreflightMasterScriptGenerateReady(ctx context.Context, masterURL string) error {
+	readyURL := strings.TrimRight(masterURL, "/") + "/ready"
+	client := &http.Client{Timeout: preflightHTTPClient}
+
+	probeCtx, cancel := context.WithTimeout(ctx, preflightTimeout)
+	defer cancel()
+
+	var lastErr error
+	walk := func() error {
+		lastErr = nil
+		resp, err := client.Get(readyURL)
+		if err != nil {
+			lastErr = err
+			return err
+		}
+		defer closeBody(resp.Body)
+
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusServiceUnavailable {
+			lastErr = fmt.Errorf("/ready returned %d", resp.StatusCode)
+			return lastErr
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			lastErr = fmt.Errorf("read /ready body: %w", err)
+			return lastErr
+		}
+
+		var r struct {
+			OK     bool   `json:"ok"`
+			Status string `json:"status"`
+			Checks map[string]struct {
+				OK         bool   `json:"ok"`
+				Applicable bool   `json:"applicable"`
+				Error      string `json:"error"`
+				Note       string `json:"note"`
+			} `json:"checks"`
+		}
+		if err := json.Unmarshal(body, &r); err != nil {
+			lastErr = fmt.Errorf("parse /ready body: %w", err)
+			return lastErr
+		}
+
+		if !r.OK {
+			lastErr = fmt.Errorf("/ready reported unhealthy (status=%s)", r.Status)
+			return lastErr
+		}
+
+		sg, ok := r.Checks["script_generate"]
+		if !ok {
+			// Master predates the script_generate readiness check or the
+			// feature is not mounted; treat as not applicable.
+			return nil
+		}
+		if !sg.Applicable {
+			return nil
+		}
+		if !sg.OK {
+			msg := "/ready script_generate check failed"
+			if sg.Error != "" {
+				msg += ": " + sg.Error
+			} else if sg.Note != "" {
+				msg += " (" + sg.Note + ")"
+			}
+			lastErr = fmt.Errorf("%s", msg)
+			return lastErr
+		}
+		return nil
+	}
+
+	err := retry.Do(probeCtx, walk, preflightRetryOptions())
+	if err == nil {
+		return nil
+	}
+	if lastErr == nil {
+		lastErr = err
+	}
+	return fmt.Errorf("master /ready script_generate did not become ready within %s: %w (url=%s)",
+		preflightTimeout, lastErr, readyURL)
+}
+
+// preflightRetryOptions returns the retry configuration shared by the
+// master preflight probes. It preserves the original 1s tight-poll
+// cadence and 30s total budget.
+func preflightRetryOptions() retry.Options {
+	return retry.Options{
+		IsRetryable: func(err error) bool {
+			return err != nil
+		},
+		InitialBackoff: preflightInterval,
+		MaxBackoff:     preflightInterval,
+		BackoffFactor:  1.0,
+		JitterFraction: 0,
+		MaxAttempts:    int(preflightTimeout/preflightInterval) + 2,
+	}
 }
 
 // closeBody is an interface-typed wrapper around resp.Body.Close().

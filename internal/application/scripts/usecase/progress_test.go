@@ -172,6 +172,52 @@ func TestProgressTracker_PhaseHelper_NilSafe(t *testing.T) {
 		"phase helper on nil receiver must not panic")
 }
 
+// TestProgressTracker_EventForwarding pins the event callback
+// contract: SetEventFn wires a callback; TrackEvent forwards the
+// event type, message, and data; nil tracker or nil callback is a
+// no-op.
+func TestProgressTracker_EventForwarding(t *testing.T) {
+	t.Parallel()
+
+	observed := make(chan struct {
+		et string
+		m  string
+		d  map[string]any
+	}, 1)
+
+	rec := &recordingProgressFn{}
+	tracker := NewProgressTracker(rec.record, "event-item")
+	tracker.SetEventFn(func(eventType, message string, data map[string]any) {
+		observed <- struct {
+			et string
+			m  string
+			d  map[string]any
+		}{eventType, message, data}
+	})
+
+	tracker.TrackEvent("narrative.planned", "plan built", map[string]any{"words": 120})
+
+	got := <-observed
+	assert.Equal(t, "narrative.planned", got.et)
+	assert.Equal(t, "plan built", got.m)
+	assert.Equal(t, 120, got.d["words"])
+}
+
+// TestProgressTracker_EventNilSafe confirms that TrackEvent on a nil
+// receiver or with a nil callback does not panic.
+func TestProgressTracker_EventNilSafe(t *testing.T) {
+	t.Parallel()
+
+	var p *ProgressTracker
+	assert.NotPanics(t, func() { p.TrackEvent("x", "y", nil) },
+		"TrackEvent on nil receiver must not panic")
+
+	rec := &recordingProgressFn{}
+	tracker := NewProgressTracker(rec.record, "no-event")
+	assert.NotPanics(t, func() { tracker.TrackEvent("x", "y", nil) },
+		"TrackEvent with nil callback must not panic")
+}
+
 // TestProgressTracker_HappyPath_PhaseMethodsEmit confirms the
 // happy path on a real (non-nil) tracker wires the Phase* methods
 // to the recording callback. Each Phase* call must produce exactly

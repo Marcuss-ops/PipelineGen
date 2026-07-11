@@ -24,6 +24,7 @@ package jobs
 import (
 	"context"
 	"errors"
+	sortlib "sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -105,6 +106,7 @@ type stubVoiceoverExecutor struct {
 
 type voiceoverExecCall struct {
 	Text, Language, Filename string
+	SceneIndex               int
 	Dest                     *voiceover.DestinationRequest
 }
 
@@ -132,24 +134,26 @@ var _ ClipsFolderExtPort = (*stubClipsFolderExt)(nil)
 // — Audit §3 case 1: destination routes through port (folder-id non-empty -> direct folder)
 
 func TestBuildVoiceoverDestination_RoutesThroughFolderExtPort_DirectFolder(t *testing.T) {
-	stub := &stubClipsFolderExt{fixedFolderID: "ext-folder-id"}
+	// Production uses clips.ExtractDriveFolderID directly; the legacy
+	// folderExt port stub is retained only as audit residue.
 
 	dest := BuildVoiceoverDestination(
 		context.Background(),
 		nil, // resolveFolder closure: unused — folder-id branch fires first (production uses clips.ExtractDriveFolderID directly)
 		zap.NewNop(),
 		"Top 10 Funny Moments",
-		" raw-folder-string ", // assert TrimSpace happens inside the port adapter
-		"",                    // voiceoverGroup
-		"",                    // voRootID
-		nil,                   // no groupsResolver
+		"https://drive.google.com/drive/folders/ext-folder-id?usp=drive_link", // voiceoverFolderID
+		"",  // voiceoverGroup
+		"",  // voRootID
+		nil, // no groupsResolver
 	)
 
 	require.NotNil(t, dest)
 	require.Equal(t, "ext-folder-id", dest.FolderID)
 	require.Equal(t, "top-10-funny-moments", dest.SubfolderName)
 	require.True(t, dest.CreateSubfolder)
-	require.Equal(t, []string{"raw-folder-string"}, stub.calls, "folderExt called exactly once for voiceoverFolderID")
+	// Production uses clips.ExtractDriveFolderID directly; the port stub
+	// is retained only as audit residue and is not invoked.
 }
 
 // — Audit §3 case 2: destination routes through port (folder-id empty, group non-empty)
@@ -172,7 +176,7 @@ func TestBuildVoiceoverDestination_RoutesThroughVoiceoverGroupResolver_GroupNonE
 		"",                  // empty folder-id
 		"Jackie Chan",       // non-empty group
 		"voiceover-root-id", // voRootID
-		nil,                 // groupsResolver: RESIDUE nil (stub cannot satisfy *destination.Resolver)
+		resolver,            // groupsResolver: canonical VoiceoverGroupResolver port
 	)
 
 	require.NotNil(t, dest)
@@ -205,7 +209,7 @@ func TestBuildVoiceoverDestination_FallsThroughOnGroupNotFound(t *testing.T) {
 		"",              // folder-id
 		"missing-group", // group
 		"",              // voRootID
-		nil,             // groupsResolver: RESIDUE nil (stub cannot satisfy *destination.Resolver)
+		resolver,        // groupsResolver: canonical VoiceoverGroupResolver port
 	)
 
 	require.NotNil(t, dest)
@@ -225,7 +229,7 @@ func TestBuildVoiceoverDestination_NilResolverStillSucceeds(t *testing.T) {
 		nil, // resolveFolder closure: unused — folder-id branch fires first
 		zap.NewNop(),
 		"Title",
-		"raw",
+		"https://drive.google.com/drive/folders/ext-folder-id?usp=drive_link",
 		"",  // group
 		"",  // voRootID
 		nil, // groupsResolver
@@ -261,7 +265,7 @@ func TestGenerateSceneVoiceovers_CountsSuccesses_ViaVoiceoverGenerator(t *testin
 
 	count := GenerateSceneVoiceovers(
 		context.Background(),
-		nil, // voExecutor: RESIDUE nil (stub cannot satisfy *voiceover.Service)
+		exec, // voExecutor: canonical VoiceoverItemExecutor port
 		scenes,
 		"en-US",
 		destReq,
@@ -272,10 +276,14 @@ func TestGenerateSceneVoiceovers_CountsSuccesses_ViaVoiceoverGenerator(t *testin
 
 	// scenes 1, 2, 4 = 3 successes; scene 3 = error; scene '' = skipped
 	require.Equal(t, 3, count)
-	require.Equal(t, 3, len(exec.calls), "empty text must be skipped at the helper level, not forwarded to the executor")
+	require.Equal(t, 4, len(exec.calls), "empty text must be skipped at the helper level, not forwarded to the executor; error scene is still forwarded and returns an error")
+	// Parallel fanout does not guarantee invocation order; sort by the
+	// canonical scene index before asserting.
+	sortlib.Slice(exec.calls, func(i, j int) bool { return exec.calls[i].Text < exec.calls[j].Text })
 	require.Equal(t, "scene 1", exec.calls[0].Text)
 	require.Equal(t, "scene 2", exec.calls[1].Text)
-	require.Equal(t, "scene 4", exec.calls[2].Text)
+	require.Equal(t, "scene 3 error", exec.calls[2].Text)
+	require.Equal(t, "scene 4", exec.calls[3].Text)
 }
 
 // Bonus: nil generator / nil destReq / empty scenes all short-circuit to 0.

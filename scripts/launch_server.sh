@@ -1,27 +1,58 @@
 #!/usr/bin/env bash
-# Launch PipelineGen server fully detached from terminal
+# Launch PipelineGen server fully detached from terminal.
+#
+# Environment (all optional):
+#   PIPELINEGEN_BIN  path to server binary (default: ./pipelinegen)
+#   VELOX_PORT       listen port (default: 8000)
+#   VELOX_HOST       bind host (default: 127.0.0.1)
+#
+# Writes the launched PID to /tmp/pipelinegen.pid and logs to
+# /tmp/pipelinegen.log.
 set -euo pipefail
 
-cd /home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored
+cd "$(dirname "$0")/.."
 
-# Kill any existing server
-pkill -9 -f './pipelinegen' 2>/dev/null || true
+PIPELINEGEN_BIN="${PIPELINEGEN_BIN:-./pipelinegen}"
+PORT="${VELOX_PORT:-8000}"
+HOST="${VELOX_HOST:-127.0.0.1}"
+HEALTH_HOST="${VELOX_HEALTH_HOST:-127.0.0.1}"
+PID_FILE="${PIPELINEGEN_PID_FILE:-/tmp/pipelinegen.${PORT}.pid}"
+LOG_FILE="${PIPELINEGEN_LOG_FILE:-/tmp/pipelinegen.${PORT}.log}"
+
+export VELOX_HOST="$HOST"
+export VELOX_PORT="$PORT"
+
+# Kill any existing server on this port, preferring the stored PID file.
+if [ -f "$PID_FILE" ]; then
+    old_pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        kill -TERM -"$old_pid" 2>/dev/null || true
+        sleep 1
+        kill -KILL -"$old_pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+fi
+pkill -9 -f "$(basename "$PIPELINEGEN_BIN")" 2>/dev/null || true
 sleep 1
 
-# Ensure port is free
-fuser -k 8000/tcp 2>/dev/null || true
+# Ensure port is free.
+fuser -k "${PORT}/tcp" 2>/dev/null || true
 sleep 1
 
-# Launch fully detached via setsid
-setsid ./pipelinegen --mode all </dev/null >/tmp/pipelinegen.log 2>&1 &
+# Launch fully detached. Prefer setsid (Linux); fall back to nohup on macOS.
+if command -v setsid >/dev/null 2>&1; then
+  setsid "$PIPELINEGEN_BIN" --mode all </dev/null >"$LOG_FILE" 2>&1 &
+else
+  nohup "$PIPELINEGEN_BIN" --mode all </dev/null >"$LOG_FILE" 2>&1 &
+fi
 PID=$!
-echo "$PID" > /tmp/pipelinegen.pid
-echo "Launched PID=$PID"
+echo "$PID" > "$PID_FILE"
+echo "Launched PID=$PID on ${HOST}:${PORT}"
 
-# Wait for startup (max 15s)
+# Wait for startup (max 15s).
 for i in $(seq 1 15); do
   sleep 1
-  HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8000/health 2>/dev/null || echo "000")
+  HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://${HEALTH_HOST}:${PORT}/health" 2>/dev/null || echo "000")
   if [[ "$HTTP" == "200" ]]; then
     echo "Server healthy after ${i}s (HTTP $HTTP)"
     exit 0
@@ -29,5 +60,5 @@ for i in $(seq 1 15); do
 done
 
 echo "WARN: server not healthy after 15s"
-tail -5 /tmp/pipelinegen.log
+tail -5 "$LOG_FILE"
 exit 1

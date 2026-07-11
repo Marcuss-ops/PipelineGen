@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -96,10 +97,11 @@ func TestService_SearchersAccessor_ReturnsInjectedSearchers(t *testing.T) {
 			PexelsSearcher:  pexelsSearcher,
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:        cfg,
-			MainDB:     db,
-			Log:        logger,
-			Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
 		},
 	})
 	require.NoError(t, err)

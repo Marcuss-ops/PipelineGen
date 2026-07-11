@@ -224,9 +224,7 @@ func TestTextResolverResolveSuccess(t *testing.T) {
 	if resolved.SourceText == "" {
 		t.Error("source_text should not be empty")
 	}
-	// BuildItemIdentity (underlying fingerprint) is a Phase 1b stub
-	// returning empty string — the assertion is skipped until the
-	// canonical implementation lands.
+	// BuildItemIdentity uses the canonical GenerationFingerprintInput.
 	_ = resolved.Fingerprint
 	if resolved.ClipEvidence != nil {
 		t.Error("text source should not have clip evidence")
@@ -536,15 +534,16 @@ func TestCatalogSearchResultType(t *testing.T) {
 
 // ── PR 5: parity — Catalog and Search share Phase 2 hydration ──────
 
-// TestCatalogSearchParity_EquivalentFingerprint verifies that Catalog
-// and Search resolvers compute the same fingerprint for the same
-// SourceSpec + evidence pair. The shared buildResolvedClipSource
-// helper (source_resolver_shared.go) calls BuildClipFingerprint
-// which uses BuildItemIdentity — excluding SourceType from the hash.
-func TestCatalogSearchParity_EquivalentFingerprint(t *testing.T) {
-	// Two SourceSpecs that differ only in Type should produce the
-	// same identity (fingerprint ignores Type, only considers
-	// content-affecting fields). Same query, same sizing.
+// TestCatalogSearchParity_SourceTypeChangesIdentity verifies that
+// Catalog and Search resolvers compute different fingerprints when
+// the SourceSpec differs only by Type. The canonical
+// GenerationFingerprintInput includes SourceType because the
+// retrieval subsystem (catalog vs search) is part of the request
+// identity, even when the query and sizing parameters are identical.
+func TestCatalogSearchParity_SourceTypeChangesIdentity(t *testing.T) {
+	// Two SourceSpecs that differ only in Type should produce
+	// different identities — SourceType is a canonical fingerprint
+	// field per the GenerationFingerprintInput contract.
 	catalogSrc := scriptpkg.SourceSpec{
 		Type:             scriptpkg.SourceCatalog,
 		Query:            "AI future",
@@ -562,25 +561,14 @@ func TestCatalogSearchParity_EquivalentFingerprint(t *testing.T) {
 		OrderingStrategy: "relevance",
 	}
 
-	// buildResolvedClipSource calls BuildClipFingerprint(src, evidence).
-	// Since fingerprint uses BuildItemIdentity which includes src.Query,
-	// src.TranscriptPolicy, src.OrderingStrategy etc., the same content
-	// should produce the same fingerprint regardless of Type.
-	//
-	// We test this by constructing two items with the same content fields
-	// and verifying BuildItemIdentity matches.
-	catItem := scriptpkg.GenerationItemV2{
-		Source: catalogSrc,
-	}
-	searchItem := scriptpkg.GenerationItemV2{
-		Source: searchSrc,
-	}
+	catItem := scriptpkg.GenerationItemV2{Source: catalogSrc}
+	searchItem := scriptpkg.GenerationItemV2{Source: searchSrc}
 
-	catID := scripts.BuildItemIdentity(catItem)
-	searchID := scripts.BuildItemIdentity(searchItem)
+	catID := adapterspkg.BuildItemIdentity(catItem)
+	searchID := adapterspkg.BuildItemIdentity(searchItem)
 
-	if catID != searchID {
-		t.Errorf("catalog and search should produce same identity for same content:\n  catalog: %s\n  search:  %s", catID, searchID)
+	if catID == searchID {
+		t.Errorf("catalog and search should produce different identities when SourceType differs:\n  catalog: %s\n  search:  %s", catID, searchID)
 	}
 }
 

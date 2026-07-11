@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -30,7 +29,7 @@ type Pipeline struct {
 type Service struct {
 	cfg        *config.Config
 	log        *zap.Logger
-	client     *http.Client
+	downloader assets.MediaDownloader
 	driveAdmin drive.Admin
 	pipelines  map[Kind]*Pipeline
 	imagesDir  string
@@ -52,11 +51,11 @@ type Service struct {
 // canonical PENDING stamp fires immediately on ingest success
 // (godlike/06 SSOT: every freshly-ingested row gets explicit
 // enrich_state).
-func NewService(cfg *config.Config, log *zap.Logger, driveAdmin drive.Admin, pipelines map[Kind]*Pipeline, enrichState *enrichment.EnrichStateMachine) *Service {
+func NewService(cfg *config.Config, log *zap.Logger, driveAdmin drive.Admin, downloader assets.MediaDownloader, pipelines map[Kind]*Pipeline, enrichState *enrichment.EnrichStateMachine) *Service {
 	return &Service{
 		cfg:         cfg,
 		log:         log,
-		client:      &http.Client{Timeout: 90 * time.Second},
+		downloader:  downloader,
 		driveAdmin:  driveAdmin,
 		pipelines:   pipelines,
 		imagesDir:   cfg.Storage.ImagesPath(),

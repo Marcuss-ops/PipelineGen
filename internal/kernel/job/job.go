@@ -73,11 +73,12 @@ func (s Status) Valid() bool {
 
 // Filter narrows job queries. All fields are optional; nil/zero means "don't filter".
 type Filter struct {
-	Status   *Status
-	Type     *string
-	WorkerID string
-	Limit    int
-	Offset   int
+	Status        *Status
+	Type          *string
+	WorkerID      string
+	CorrelationID *string
+	Limit         int
+	Offset        int
 }
 
 // ── Canonical Job entity (kernel, ≥2-capability) ───────────────────

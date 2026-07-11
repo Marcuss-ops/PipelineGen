@@ -28,30 +28,30 @@
 // ═══════════ File index ═════════════════════════════════════════════════════
 //
 //   - retry.go        — orchestrator: Do, DoWithValue, RetryAfterError.
-//                       Slim (~160 LoC). Owns the canonical retry-loop
-//                       surface that callers consume.
+//     Slim (~160 LoC). Owns the canonical retry-loop
+//     surface that callers consume.
 //   - transient.go    — typed classifier: TransientInfrastructureError,
-//                       transientSubstrings, RetryableError, IsTransient,
-//                       IsTransientString, WrapTransient. Owns the
-//                       taxonomy + the canonical "should I retry?"
-//                       predicate + the typed-wrap helper.
+//     transientSubstrings, RetryableError, IsTransient,
+//     IsTransientString, WrapTransient. Owns the
+//     taxonomy + the canonical "should I retry?"
+//     predicate + the typed-wrap helper.
 //   - options.go      — configuration knobs: Options struct,
-//                       RetryOptions alias, DefaultOptions, norm
-//                       (defensive coalesce), sleepDuration (exponential
-//                       backoff + bounded jitter math).
+//     RetryOptions alias, DefaultOptions, norm
+//     (defensive coalesce), sleepDuration (exponential
+//     backoff + bounded jitter math).
 //   - errors.go       — error category taxonomy: ErrorCategory enum,
-//                       Classify(err) → (category, retryable bool),
-//                       Retryable(err) shortcut, 7 typed category
-//                       constants (ErrNetwork/ErrTimeout/ErrLockBusy/
-//                       ErrValidation/ErrMissingHandler/ErrBadPayload/
-//                       ErrUnknown). Audit P1 #2, July 2026.
+//     Classify(err) → (category, retryable bool),
+//     Retryable(err) shortcut, 7 typed category
+//     constants (ErrNetwork/ErrTimeout/ErrLockBusy/
+//     ErrValidation/ErrMissingHandler/ErrBadPayload/
+//     ErrUnknown). Audit P1 #2, July 2026.
 //   - clock.go        — injectable time source: Clock interface,
-//                       RealClock, ClockFromOptions picker, Sleep helper.
-//                       FASE 3.8, July 2026.
+//     RealClock, ClockFromOptions picker, Sleep helper.
+//     FASE 3.8, July 2026.
 //   - google_api_error.go — typed *GoogleAPIError envelope + 6 sentinels
-//                       (ErrGoogleAPIThrottled/Server/Permission/NotFound/
-//                       Client/Unknown) + ClassifyGoogleAPIError +
-//                       parseRetryAfter. P1.5, July 2026.
+//     (ErrGoogleAPIThrottled/Server/Permission/NotFound/
+//     Client/Unknown) + ClassifyGoogleAPIError +
+//     parseRetryAfter. P1.5, July 2026.
 //
 // Pre-PR-SPLIT-RETRY-PKG: retry.go was 559 LoC and held all 6
 // capabilities above in one file. The split preserves godlike/06

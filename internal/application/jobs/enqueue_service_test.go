@@ -41,7 +41,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -49,7 +48,6 @@ import (
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 )
 
@@ -78,7 +76,7 @@ func TestNewService_NilRegistry_ReturnsErrRegistryRequired(t *testing.T) {
 func TestNewService_HappyPath_ReturnsService(t *testing.T) {
 	t.Parallel()
 	reg := newWiringRegistry(t, 1*time.Minute, 7)
-	svc, err := NewService(nil /* repo: typed-only test */, NewDispatcher(), zap.NewNop(), reg)
+	svc, err := NewService(nakedJobBroker{}, NewDispatcher(), zap.NewNop(), reg)
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
@@ -88,8 +86,8 @@ func TestNewService_HappyPath_ReturnsService(t *testing.T) {
 	if svc.registry != reg {
 		t.Errorf("svc.registry != passed reg")
 	}
-	if svc.repo != nil {
-		t.Errorf("svc.repo should be nil (test skips real repo), got %v", svc.repo)
+	if svc.repo == nil {
+		t.Errorf("svc.repo should be non-nil, got nil")
 	}
 }
 
@@ -109,7 +107,9 @@ func TestEnqueue_HappyPath_PopulatesMaxRetriesFromRegistry(t *testing.T) {
 
 	store.SetProducesArtifacts(reg.ProducesArtifactsMap())
 
-	svc, err := NewService(store, NewDispatcher(), zap.NewNop(), reg)
+	// nil dispatcher skips the handler-registration gate; this test
+	// exercises MaxRetries resolution, not handler wiring.
+	svc, err := NewService(store, nil, zap.NewNop(), reg)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -156,7 +156,9 @@ func TestEnqueue_ExistingCorrelationID_DedupReturnsExisting(t *testing.T) {
 
 	store.SetProducesArtifacts(reg.ProducesArtifactsMap())
 
-	svc, err := NewService(store, NewDispatcher(), zap.NewNop(), reg)
+	// nil dispatcher skips the handler-registration gate; this test
+	// exercises correlation-id dedup, not handler wiring.
+	svc, err := NewService(store, nil, zap.NewNop(), reg)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -358,14 +360,7 @@ func TestEnqueue_UniqueProbe_WrapPath_PreservesErrUniqueConstraintViolation(t *t
 // runs isolated.
 func newSqliteStoreForTest(t *testing.T) (*sqljobs.SQLiteStore, func()) {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := storage.OpenSQLiteDB(dbPath, zap.NewNop())
-	if err != nil {
-		t.Fatalf("OpenSQLiteDB(%q): %v", dbPath, err)
-	}
-	store := sqljobs.NewSQLiteStore(db.DB, zap.NewNop())
-	cleanup := func() {
-		_ = db.Close()
-	}
-	return store, cleanup
+	db := setupTestDB(t)
+	store := sqljobs.NewSQLiteStore(db, zap.NewNop())
+	return store, func() {}
 }

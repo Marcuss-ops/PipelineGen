@@ -317,6 +317,55 @@ func TestBuildGenerationDocumentHTML_IncludeSpecSceneBlockTrue_AppendsDebugBlock
 	}
 }
 
+// TestBuildGenerationDocumentHTML_RendersTechnicalProvenance verifies that
+// when a non-nil GenerationProvenance is supplied, the renderer emits both
+// the hidden HTML comment and a visible "Technical Provenance" section
+// containing the JSON-serialised provenance fields.
+func TestBuildGenerationDocumentHTML_RendersTechnicalProvenance(t *testing.T) {
+	t.Parallel()
+
+	prov := &scriptpkg.GenerationProvenance{
+		SourceType:     "text",
+		SourceTextHash: "sha256:abc123",
+		ClipIDs:        []string{"clip-1", "clip-2"},
+		RequestedMode:  "clip_native",
+		UsedMode:       "prose",
+		FallbackUsed:   true,
+		Model:          "llama3:70b",
+		PromptVersion:  "v2.1",
+		PlannerVersion: "v1.0",
+		DocID:          "doc-123",
+		DocLink:        "https://docs.google.com/document/d/doc-123/edit",
+	}
+
+	html := adapters.BuildGenerationDocumentHTML(
+		&scriptpkg.ModelScriptOutputV1{SchemaVersion: 1, Text: "Body."},
+		"Script",
+		"en",
+		nil, nil,
+		false,
+		prov,
+	)
+
+	for _, want := range []string{
+		"<!-- PIPELINEGEN-PROVENANCE:",
+		"<h2>Technical Provenance</h2>",
+		"<pre>",
+		"sha256:abc123",
+		"clip-1",
+		"clip-2",
+		"clip_native",
+		"prose",
+		"llama3:70b",
+		"v2.1",
+		"doc-123",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("expected HTML to contain %q; not found", want)
+		}
+	}
+}
+
 // TestBuildGenerationDocumentHTML_IncludeSpecSceneBlockFalse_DoesNotEmitDebugBlock
 // pins the canonical production default: with includeSpecSceneBlock
 // =false, no <h2>SpecScene JSON</h2><pre>...</pre> debug block is

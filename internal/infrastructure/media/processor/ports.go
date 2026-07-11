@@ -20,4 +20,6 @@ type VideoProcessor interface {
 	RemuxHLS(ctx context.Context, sourceURL, outputPath string) error
 	Probe(ctx context.Context, path string) (*ffmpeg.MediaInfo, error)
 	ExtractFrame(ctx context.Context, input, output string, timestamp float64) error
+	GenerateProxy(ctx context.Context, input, output string) error
+	GenerateStoryboard(ctx context.Context, input, output string, intervalFrames, cols, rows int) error
 }

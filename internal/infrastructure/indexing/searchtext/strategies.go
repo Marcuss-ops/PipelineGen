@@ -80,7 +80,7 @@ func youtubeStrategy(input appsearchtext.SearchTextInput) string {
 		if tt.TextKind != "transcript" || tt.Text == "" || tt.Text == input.Transcript {
 			continue
 		}
-		if len(indexLangs) > 0 && !indexLangs[tt.LanguageCode] {
+		if len(indexLangs) > 0 && !indexLangs[strings.ToLower(tt.LanguageCode)] {
 			continue
 		}
 		transcriptParts = append(transcriptParts, truncate(tt.Text, maxTranscriptChars))

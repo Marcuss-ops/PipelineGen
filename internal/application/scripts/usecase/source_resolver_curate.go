@@ -189,12 +189,13 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 			}
 		}
 		return &scriptpkg.ResolvedSource{
-			Type:          scriptpkg.SourceCurate,
-			Topic:         query,
-			Title:         resCtx.Title,
-			Language:      resCtx.Language,
-			SourceText:    "",
-			SearchResults: searchResults,
+			Type:            scriptpkg.SourceCurate,
+			Topic:           query,
+			Title:           resCtx.Title,
+			Language:        resCtx.Language,
+			SourceText:      "",
+			SearchResults:   searchResults,
+			GroundingPolicy: src.GroundingPolicy,
 		}, nil
 	}
 
@@ -238,12 +239,13 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	}
 
 	return &scriptpkg.ResolvedSource{
-		Type:          scriptpkg.SourceCurate,
-		Topic:         query,
-		Title:         title,
-		Language:      resCtx.Language,
-		SourceText:    sourceText,
-		ClipEvidence:  clipEvidence,
-		SearchResults: searchResults,
+		Type:            scriptpkg.SourceCurate,
+		Topic:           query,
+		Title:           title,
+		Language:        resCtx.Language,
+		SourceText:      sourceText,
+		ClipEvidence:    clipEvidence,
+		SearchResults:   searchResults,
+		GroundingPolicy: src.GroundingPolicy,
 	}, nil
 }

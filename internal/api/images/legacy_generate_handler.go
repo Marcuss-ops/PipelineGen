@@ -16,11 +16,11 @@
 package images
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 )
 
 // legacyImagesGenerateTotal is the typed invocation counter for the
@@ -46,22 +46,6 @@ const (
 	canonicalImagesGenerateEndpoint = "POST /api/images/generated/generate"
 )
 
-// legacyDeprecationPayload is the canonical HTTP 410 body shape for
-// retired legacy image-generation routes. SSOT per PR-AUDIT-3
-// (godlike/06): the body shape lives here so the JSON wire contract
-// is verifiable from a single canonical source. Mirrors
-// LegacyDeprecationPayload in handler_legacy_deprecation.go.
-//
-// Fields are NOT omitempty so the wire shape carries the canonical
-// set verbatim — operators' chrome tests look for these specific keys.
-type legacyDeprecationPayload struct {
-	OK                   bool   `json:"ok"`
-	Error                string `json:"error"`
-	CanonicalEndpoint    string `json:"canonical_endpoint"`
-	RemovalDate          string `json:"removal_date"`
-	DeprecationNoticeRef string `json:"deprecation_notice_ref"`
-}
-
 // Generate handles POST /api/images/generate — RETIRED legacy
 // synchronous AI image generation. Returns HTTP 410 Gone per
 // PR-AUDIT-3 (godlike/07 no-fake-availability: the handler MUST NOT
@@ -76,14 +60,7 @@ type legacyDeprecationPayload struct {
 func (h *ImagesHandler) Generate(c *gin.Context) {
 	legacyImagesGenerateTotal.Inc()
 
-	c.Header("X-Deprecated", "true")
-	c.Header("X-Deprecation-Notice",
-		canonicalImagesGenerateEndpoint+" is the canonical endpoint. "+
-			"This route will be removed on "+deprecationRemovalDateImages+".")
-
-	c.AbortWithStatusJSON(http.StatusGone, legacyDeprecationPayload{
-		OK:                   false,
-		Error:                "This endpoint has been retired. Use " + canonicalImagesGenerateEndpoint + " instead.",
+	transport.Respond410Gone(c, transport.DeprecationNotice{
 		CanonicalEndpoint:    canonicalImagesGenerateEndpoint,
 		RemovalDate:          deprecationRemovalDateImages,
 		DeprecationNoticeRef: "PR-AUDIT-3 (2026-07-09): legacy /api/images/generate retired to 410 Gone",

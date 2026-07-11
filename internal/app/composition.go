@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -105,6 +106,25 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	}
 
 	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
+
+	// Wire the script.generate readiness probe when any script feature is
+	// enabled. It needs the health Service (for db/jobs sub-checks),
+	// Ollama, Drive, document service, and (later, at route-build time)
+	// the /api/script route.
+	if utility.ReadyChecker != nil && utility.HealthService != nil && anyScriptFeatureEnabled(cfg) {
+		scriptChecker := systemhealth.NewScriptGenerateChecker(
+			utility.HealthService,
+			systemhealth.NewOllamaChecker(func(ctx context.Context) bool {
+				return ai.OllamaClient != nil && ai.OllamaClient.CheckHealth(ctx)
+			}),
+			systemhealth.NewDriveFolderChecker(driveBundle.Publisher),
+			cfg.Drive.ScriptsGenFolder(),
+			systemhealth.NewPublisherChecker(driveBundle.Publisher),
+			func() bool { return driveBundle.DocClient != nil },
+			func(jobType string) bool { return jobs.Service != nil && jobs.Service.HasHandler(jobType) },
+		)
+		utility.ReadyChecker.WithScriptGenerateCheck(scriptChecker)
+	}
 
 	if err := wireYoutubeCatalogJobBindings(sync, domains, jobs); err != nil {
 		return nil, fmt.Errorf("compose catalogsync/youtube late-binding: %w", err)

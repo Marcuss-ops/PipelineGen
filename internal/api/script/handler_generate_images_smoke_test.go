@@ -36,6 +36,7 @@ func TestHandlerGenerate_SmokeSceneImagesPayload(t *testing.T) {
 			DocumentEnabled:  true,
 		},
 		usecase.NewDefaultPayloadValidator(),
+		nil,
 	)
 
 	router := gin.New()
@@ -67,6 +68,7 @@ func TestHandlerGenerate_SmokeSceneImagesPayload(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/script/generate", bytes.NewReader(raw))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "idem-smoke-scene-images")
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)

@@ -92,6 +92,11 @@ var ErrScriptGenerationFailed = errors.New("generation: script generation failed
 // (July 2026).
 var ErrClipNativePlanningFailed = errors.New("generation: clip-native planning failed")
 
+// ErrQualityGateFailed means the editorial quality gate rejected the
+// generated script. The failure details are carried by
+// QualityGateError.
+var ErrQualityGateFailed = errors.New("generation: editorial quality gate failed")
+
 // ── Typed structs ───────────────────────────────────────────────────
 
 // NoSourceError carries the structured reason behind ErrNoSource.
@@ -256,3 +261,30 @@ func (e *ClipNativePlanningError) Unwrap() error { return ErrClipNativePlanningF
 func IsClipNativePlanningFailed(err error) bool {
 	return errors.Is(err, ErrClipNativePlanningFailed)
 }
+
+// QualityGateError carries the structured details behind
+// ErrQualityGateFailed. It surfaces which editorial checks failed
+// and the computed quality metrics.
+type QualityGateError struct {
+	Code    string
+	ItemID  string
+	Reasons []string
+	Quality GenerationQuality
+}
+
+func (e *QualityGateError) Error() string {
+	if e == nil {
+		return ErrQualityGateFailed.Error()
+	}
+	code := e.Code
+	if code == "" {
+		code = "QUALITY_GATE_FAILED"
+	}
+	msg := fmt.Sprintf("%s: code=%s item=%q", ErrQualityGateFailed.Error(), code, e.ItemID)
+	if len(e.Reasons) > 0 {
+		msg += "; " + strings.Join(e.Reasons, "; ")
+	}
+	return msg
+}
+
+func (e *QualityGateError) Unwrap() error { return ErrQualityGateFailed }

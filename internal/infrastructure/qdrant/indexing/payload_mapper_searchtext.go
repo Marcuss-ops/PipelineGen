@@ -237,11 +237,11 @@ func (m *PayloadMapper) resolveSearchText(ctx context.Context, asset *AssetData)
 				entries := make([]appsearchtext.TextTrackEntry, 0, len(tracks))
 				for _, t := range tracks {
 					if t.TextContent != "" && t.Status == assetpkg.TextTrackReady {
-					entries = append(entries, appsearchtext.TextTrackEntry{
-						LanguageCode: t.LanguageCode,
-						Text:         t.TextContent,
-						TextKind:     string(t.TextKind),
-					})
+						entries = append(entries, appsearchtext.TextTrackEntry{
+							LanguageCode: t.LanguageCode,
+							Text:         t.TextContent,
+							TextKind:     string(t.TextKind),
+						})
 					}
 				}
 				if len(entries) > 0 {

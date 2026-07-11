@@ -954,8 +954,8 @@ func TestBuildItemIdentityDeterministic(t *testing.T) {
 	item := textItem()
 	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
-	id1 := scripts.BuildItemIdentity(item)
-	id2 := scripts.BuildItemIdentity(item)
+	id1 := adapters.BuildItemIdentity(item)
+	id2 := adapters.BuildItemIdentity(item)
 
 	if id1 != id2 {
 		t.Errorf("identity not deterministic: %q vs %q", id1, id2)
@@ -972,8 +972,8 @@ func TestBuildItemIdentityDifferentItems(t *testing.T) {
 	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
 	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
-	id1 := scripts.BuildItemIdentity(item1)
-	id2 := scripts.BuildItemIdentity(item2)
+	id1 := adapters.BuildItemIdentity(item1)
+	id2 := adapters.BuildItemIdentity(item2)
 
 	if id1 == id2 {
 		t.Error("items with different source text should have different identities")
@@ -996,8 +996,8 @@ func TestBuildItemIdentityIgnoresOutputFlags(t *testing.T) {
 	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
 	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
-	id1 := scripts.BuildItemIdentity(item1)
-	id2 := scripts.BuildItemIdentity(item2)
+	id1 := adapters.BuildItemIdentity(item1)
+	id2 := adapters.BuildItemIdentity(item2)
 
 	if id1 != id2 {
 		t.Errorf("identity should ignore output flags: %q vs %q", id1, id2)
@@ -1016,8 +1016,8 @@ func TestBuildItemIdentityClipIDOrderStable(t *testing.T) {
 	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
 	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
-	id1 := scripts.BuildItemIdentity(item1)
-	id2 := scripts.BuildItemIdentity(item2)
+	id1 := adapters.BuildItemIdentity(item1)
+	id2 := adapters.BuildItemIdentity(item2)
 
 	if id1 != id2 {
 		t.Errorf("identity should be stable regardless of clip ID order: %q vs %q", id1, id2)
@@ -1029,7 +1029,7 @@ func TestBuildItemIdentityNilSafety(t *testing.T) {
 	// isn't possible at the Go level. But empty items should still
 	// produce a stable identity.
 	item := scriptpkg.GenerationItemV2{}
-	id := scripts.BuildItemIdentity(item)
+	id := adapters.BuildItemIdentity(item)
 	if id == "" {
 		t.Error("empty item should still produce a non-empty identity")
 	}
@@ -1045,7 +1045,7 @@ func TestBuildEnvelopeIdentitySingleItem(t *testing.T) {
 	}
 
 	envID := adapters.BuildEnvelopeIdentity(env)
-	itemID := scripts.BuildItemIdentity(item)
+	itemID := adapters.BuildItemIdentity(item)
 
 	if envID != itemID {
 		t.Errorf("single-item envelope identity should equal item identity: %q vs %q",
@@ -1073,10 +1073,10 @@ func TestBuildEnvelopeIdentityMultiItem(t *testing.T) {
 	}
 
 	// Multi-item identity should differ from any single-item identity.
-	if envID == scripts.BuildItemIdentity(item1) {
+	if envID == adapters.BuildItemIdentity(item1) {
 		t.Error("multi-item identity should not equal item1 identity")
 	}
-	if envID == scripts.BuildItemIdentity(item2) {
+	if envID == adapters.BuildItemIdentity(item2) {
 		t.Error("multi-item identity should not equal item2 identity")
 	}
 }

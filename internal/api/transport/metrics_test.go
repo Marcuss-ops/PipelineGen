@@ -45,10 +45,13 @@ func TestSyncWireCapabilityMounted_AllCapabilitiesMounted(t *testing.T) {
 	reg := NewWireRegistry([]RouteInfo{
 		{Method: "POST", Path: "/api/stock-pipeline/run"},
 		{Method: "POST", Path: "/api/artlist/sync"},
-		{Method: "POST", Path: "/api/voiceover/generate"},
+		{Method: "POST", Path: "/api/media/voiceover/generate"},
+		{Method: "POST", Path: "/api/script/generate"},
 		{Method: "POST", Path: "/api/youtube/clip-extract"},
 		{Method: "POST", Path: "/api/register/from-youtube"},
 		{Method: "POST", Path: "/api/storage/sync"},
+		{Method: "POST", Path: "/api/drive/admin"},
+		{Method: "POST", Path: "/api/clips/upload"},
 		{Method: "POST", Path: "/internal/v1/media/search"},
 		{Method: "GET", Path: "/qdrant/live"},
 	})

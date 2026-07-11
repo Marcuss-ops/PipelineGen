@@ -128,7 +128,7 @@ func TestFingerprintInputFromSource_TextAssemblesSourceText(t *testing.T) {
 
 	assert.Equal(t, "text", input.SourceType)
 	assert.NotEmpty(t, input.SourceTextHash)
-	assert.Contains(t, input.SourceTextHash, ":")
+	assert.Len(t, input.SourceTextHash, 64, "source text hash must be a 64-char SHA-256 hex digest")
 	assert.Equal(t, "Keep it factual.", input.Guidelines)
 }
 
@@ -155,11 +155,11 @@ func TestFingerprintInputFromSource_ClipsUsesEvidence(t *testing.T) {
 
 func TestFingerprintInputFromPlan_WiresGroundingPolicy(t *testing.T) {
 	plan := script.ResolvedGenerationPlan{
-		Language:        "en",
-		SourceKind:      "clips",
+		Language:          "en",
+		SourceKind:        "clips",
 		SourceFingerprint: "fp-abc",
-		GroundingPolicy: "loose",
-		PromptProfile:   "default-v1",
+		GroundingPolicy:   "loose",
+		PromptProfile:     "default-v1",
 		ClipEvidence: &script.ClipEvidence{
 			AcceptedClipIDs:      []string{"clip-a"},
 			ClipTranscriptHashes: []string{"hash-a"},

@@ -34,6 +34,50 @@ import (
 //  1. nil *JobExecutionTools — nilPf must be a callable no-op.
 //  2. &{Progress: nil}       — nilProgressPf must be a callable no-op.
 //  3. &{Progress: real}      — realPf must forward 1:1 to the inner closure.
+//
+// TestSafeEventFn_NilTools_NoOp mirrors the SafeProgressFn contract
+// for the Event callback. Event emission must be nil-tolerant so
+// handlers can call it unconditionally.
+func TestSafeEventFn_NilTools_NoOp(t *testing.T) {
+	// Posture 1: nil *JobExecutionTools.
+	nilFn := SafeEventFn(nil)
+	if nilFn == nil {
+		t.Fatalf("SafeEventFn(nil) returned nil closure — must return a safe no-op callable")
+	}
+	nilFn("test", "no-op", map[string]any{"x": 1})
+
+	// Posture 2: nil Event field.
+	nilEventFn := SafeEventFn(&JobExecutionTools{Event: nil})
+	if nilEventFn == nil {
+		t.Fatalf("SafeEventFn(&{Event: nil}) returned nil — must return a no-op callable")
+	}
+	nilEventFn("test", "no-op", nil)
+
+	// Posture 3: non-nil Event — forwards 1:1.
+	observed := make(chan struct {
+		et string
+		m  string
+		d  map[string]any
+	}, 1)
+	realFn := SafeEventFn(&JobExecutionTools{
+		Event: func(eventType, message string, data map[string]any) {
+			observed <- struct {
+				et string
+				m  string
+				d  map[string]any
+			}{eventType, message, data}
+		},
+	})
+	if realFn == nil {
+		t.Fatalf("SafeEventFn(&{Event: real}) returned nil — must return the wrapped closure")
+	}
+	realFn("clips.hydrated", "clips ok", map[string]any{"n": 3})
+	got := <-observed
+	if got.et != "clips.hydrated" || got.m != "clips ok" || got.d["n"] != 3 {
+		t.Fatalf("forwarded Event mismatch: got {%q, %q, %v}; want {clips.hydrated, clips ok, map[n:3]}", got.et, got.m, got.d)
+	}
+}
+
 func TestSafeProgressFn_NilTools_NoOp(t *testing.T) {
 	// Posture 1: nil *JobExecutionTools.
 	nilPf := SafeProgressFn(nil)

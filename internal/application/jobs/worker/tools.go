@@ -113,9 +113,17 @@ type AssetClient interface {
 //     by Complete/Fail/Progress/ExpectedRevision (runLease main
 //     goroutine and external callers). atomic.Int64 is REQUIRED
 //     here. -race tests will fail loudly if regressed to plain int.
+//
+// eventStore is the narrow port needed to persist timeline events.
+// The concrete broker (local or remote) may or may not implement it;
+// when it does not, event emission becomes a no-op.
+type eventStore interface {
+	AddEvent(ctx context.Context, jobID string, eventType string, message string, data map[string]any) error
+}
+
 type Tools struct {
 	broker      appjobs.Broker
-	store       domainjob.Store
+	store       eventStore
 	workerID    string
 	sessionID   string
 	jobID       string
@@ -130,7 +138,7 @@ type Tools struct {
 // compatible with struct literals in Go pre-1.19; the Load/Store
 // pattern is preferred. The single Store here is the only publish
 // of the initial revision; subsequent Stores come from Renew.
-func NewTools(broker appjobs.Broker, store domainjob.Store, workerID, sessionID string, j *domainjob.Job, workspace string, assetClient AssetClient) *Tools {
+func NewTools(broker appjobs.Broker, store eventStore, workerID, sessionID string, j *domainjob.Job, workspace string, assetClient AssetClient) *Tools {
 	t := &Tools{
 		broker:      broker,
 		store:       store,

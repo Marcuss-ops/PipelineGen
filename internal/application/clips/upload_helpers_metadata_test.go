@@ -68,7 +68,7 @@ import (
 // per-video files). ResolveFolder is included for completeness so
 // the publisher compiles against the full delivery.Publisher
 // surface — the metadata flow does not call ResolveFolder directly
-// because it threads the folder ID via RootFolderOverride.
+// because it threads the folder ID via DestinationFolderID.
 //
 // PublishErr / PublishResult let each test drive a different
 // outcome (success / failure) without rewriting the fake.
@@ -94,7 +94,7 @@ func (f *fakeMetadataPublisher) Publish(ctx context.Context, req delivery.Publis
 	return &delivery.PublishResult{
 		FileID:      "stub-file-id",
 		WebViewLink: "https://drive.google.com/file/d/stub-file-id/view",
-		FolderID:    req.RootFolderOverride,
+		FolderID:    req.DestinationFolderID,
 		Destination: req.Destination,
 		Action:      delivery.PublishActionUpdated,
 	}, nil
@@ -113,7 +113,7 @@ func (f *fakeMetadataPublisher) ResolveFolder(ctx context.Context, req delivery.
 //   - ExistingEntries: what ListFiles returns for the metadata.json query
 //   - ExistingLegacy:  what ListFiles returns for the per-video .json query
 //   - ExistingBody:    the bytes DownloadFile returns for the
-//                      metadata.json (read by the function during RMW)
+//     metadata.json (read by the function during RMW)
 type fakeMetadataUploader struct {
 	mu sync.Mutex
 
@@ -266,14 +266,14 @@ func TestUpdateCumulativeMetadataJSON_PublishFailurePreservesOldFile_P0_1(t *tes
 		"P0-#1 atomic-RMW: publish failure MUST NOT trash the old metadata.json (old sidecar MUST remain on Drive so the caller can retry)")
 
 	// Publisher was called exactly once with the canonical
-	// DestinationClipMetadata + RootFolderOverride shape.
+	// DestinationClipMetadata + DestinationFolderID shape.
 	require.Equal(t, 1, pub.PublishCalls)
 	require.Equal(t, delivery.DestinationClipMetadata, pub.LastPublishReq.Destination,
 		"P0-#1: the metadata.json sidecar MUST route through DestinationClipMetadata (registry-driven destination)")
 	require.Equal(t, "metadata.json", pub.LastPublishReq.Filename,
 		"P0-#1: the sidecar filename MUST be 'metadata.json' (per-clip-folder convention)")
-	require.Equal(t, "parent-folder-id", pub.LastPublishReq.RootFolderOverride,
-		"P0-#1: the sidecar MUST land in the clip's resolved folder via RootFolderOverride")
+	require.Equal(t, "parent-folder-id", pub.LastPublishReq.DestinationFolderID,
+		"P0-#1: the sidecar MUST land in the clip's resolved folder via DestinationFolderID")
 	require.Equal(t, delivery.ConflictOverwrite, pub.LastPublishReq.ConflictPolicy,
 		"P0-#1: the sidecar MUST be atomic-overwritten (ConflictOverwrite is the DestinationClipMetadata default in the registry)")
 

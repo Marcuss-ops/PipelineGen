@@ -23,6 +23,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	mw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -49,6 +50,7 @@ type HandlerGenerate struct {
 	registry  *appjobs.Registry
 	caps      PreflightCaps
 	validator *usecase.PayloadValidator
+	store     mw.IdempotencyStore
 }
 
 // NewHandlerGenerate constructs the handler from the canonical deps.
@@ -65,6 +67,7 @@ func NewHandlerGenerate(
 	registry *appjobs.Registry,
 	caps PreflightCaps,
 	validator *usecase.PayloadValidator,
+	store mw.IdempotencyStore,
 ) *HandlerGenerate {
 	if log == nil {
 		log = zap.NewNop()
@@ -78,6 +81,7 @@ func NewHandlerGenerate(
 		registry:  registry,
 		caps:      caps,
 		validator: validator,
+		store:     store,
 	}
 }
 
@@ -141,5 +145,5 @@ func (h *HandlerGenerate) Generate(c *gin.Context) {
 
 	// P0 #4 (June 2026): delegate to the centralized enqueue path.
 	// Uses the package-level enqueueEnvelopeFn shared with legacy adapters.
-	enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry, h.caps)
+	enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry, h.caps, h.store)
 }

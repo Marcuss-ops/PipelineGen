@@ -109,7 +109,7 @@ func (jh *JobsHandler) RegisterJobRoutes(r *gin.RouterGroup, auth AdminTokenProv
 // Delegates to the package-level enqueueEnvelopeFn so the async
 // path stays single-implementation (godlike/06 SSOT).
 func (jh *JobsHandler) EnqueueEnvelope(c *gin.Context, env domainScript.GenerationEnvelopeV2, caps PreflightCaps) {
-	enqueueEnvelopeFn(c, env, jh.jobsSvc, jh.log, jh.registry, caps)
+	enqueueEnvelopeFn(c, env, jh.jobsSvc, jh.log, jh.registry, caps, nil)
 }
 
 // GetJobStatus is the canonical handler for GET /api/script/jobs/:id.

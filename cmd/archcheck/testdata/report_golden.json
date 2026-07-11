@@ -89,24 +89,24 @@
     ]
   },
   "summary": {
-    "total_violations": 68,
+    "total_violations": 53,
     "by_reason": {
       "agent_playbook_doc_missing": 1,
       "ci_gates_doc_missing": 1,
-      "constructor_deps": 8,
+      "constructor_deps": 9,
       "data_ownership_doc_missing": 1,
-      "file_size": 12,
+      "file_size": 10,
       "legacy_policy_doc_missing": 1,
       "percheck_monitor_infra_import": 1,
-      "percheck_root_override_ban": 6,
-      "percheck_type_redecl": 18,
+      "percheck_root_override_ban": 1,
+      "percheck_type_redecl": 8,
       "pkg_size": 5,
       "removal_doc_missing": 1,
-      "struct_deps": 12,
+      "struct_deps": 13,
       "thin_command": 1
     },
     "by_severity": {
-      "error": 25,
+      "error": 10,
       "warn": 43
     }
   },
@@ -120,8 +120,16 @@
       "severity": "warn"
     },
     {
+      "file": "cmd/admin/fullimages_migrate.go",
+      "actual_lines": 563,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
       "file": "cmd/admin/main.go",
-      "actual_lines": 205,
+      "actual_lines": 214,
       "max_lines": 200,
       "matched_rule": "cmd_main_max_lines",
       "rule": "thin_command",
@@ -168,16 +176,8 @@
       "severity": "warn"
     },
     {
-      "file": "internal/api/admin/handler_drive_canary.go",
-      "line": 112,
-      "matched_rule": "root_override_forward_prevention_gate",
-      "rule": "percheck_root_override_ban",
-      "severity": "error",
-      "note": "forbidden `RootFolderOverride` in application/api layer; godlike/06 SSOT requires every caller outside internal/infrastructure/ and cmd/admin/ to route through delivery.Publisher.Publish / ResolveFolder with a typed DestinationKey. RootFolderOverride is the infrastructure-layer escape hatch (FASE B1 forward-prevention gate, July 2026). See internal/infrastructure/drive/publisher.go for the canonical Publisher implementation."
-    },
-    {
       "file": "internal/api/assets/clips/handler.go",
-      "line": 50,
+      "line": 61,
       "actual_count": 24,
       "allowed_count": 8,
       "matched_rule": "max_struct_deps",
@@ -206,14 +206,6 @@
       "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
     },
     {
-      "file": "internal/api/assets/youtube/youtube_handlers.go",
-      "actual_lines": 550,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
       "file": "internal/app/assets_core.go",
       "line": 73,
       "actual_count": 9,
@@ -225,7 +217,7 @@
     },
     {
       "file": "internal/app/bootstrap.go",
-      "line": 84,
+      "line": 108,
       "actual_count": 10,
       "allowed_count": 8,
       "matched_rule": "max_struct_deps",
@@ -234,8 +226,8 @@
       "note": "struct AppDeps has 10 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
-      "file": "internal/app/build_bundles_domain.go",
-      "actual_lines": 510,
+      "file": "internal/app/build_bundles_artlist.go",
+      "actual_lines": 508,
       "max_lines": 500,
       "matched_rule": "max_lines_per_file",
       "rule": "file_size",
@@ -243,13 +235,21 @@
     },
     {
       "file": "internal/app/build_bundles_stock.go",
-      "line": 72,
-      "actual_count": 14,
+      "line": 75,
+      "actual_count": 15,
       "allowed_count": 8,
       "matched_rule": "max_struct_deps",
       "rule": "struct_deps",
       "severity": "warn",
-      "note": "struct StockBundleDeps has 14 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
+      "note": "struct StockBundleDeps has 15 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
+    },
+    {
+      "file": "internal/app/build_bundles_voiceover.go",
+      "actual_lines": 527,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
     },
     {
       "file": "internal/application/assets/deletion/deletion.go",
@@ -260,6 +260,14 @@
       "rule": "constructor_deps",
       "severity": "warn",
       "note": "func New\u003cX\u003e(...) has 13 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "internal/application/assets/delivery/registry.go",
+      "actual_lines": 503,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
     },
     {
       "file": "internal/application/assets/lifecycle/service.go",
@@ -283,7 +291,7 @@
     },
     {
       "file": "internal/application/assets/monitor/youtube_discoveries_test.go",
-      "line": 64,
+      "line": 65,
       "matched_rule": "monitor_infra_import_ban",
       "rule": "percheck_monitor_infra_import",
       "severity": "error",
@@ -291,7 +299,7 @@
     },
     {
       "file": "internal/application/assets/providers/artlist/semantic_enricher.go",
-      "line": 126,
+      "line": 145,
       "actual_count": 9,
       "allowed_count": 8,
       "matched_rule": "max_constructor_deps",
@@ -301,29 +309,13 @@
     },
     {
       "file": "internal/application/assets/providers/artlist/service.go",
-      "line": 99,
-      "actual_count": 9,
+      "line": 112,
+      "actual_count": 11,
       "allowed_count": 8,
       "matched_rule": "max_struct_deps",
       "rule": "struct_deps",
       "severity": "warn",
-      "note": "struct ServiceDependencies has 9 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
-    },
-    {
-      "file": "internal/application/assets/providers/stock/enrichment/handler.go",
-      "actual_lines": 596,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
-      "file": "internal/application/assets/providers/stock/enrichment/llm_client.go",
-      "actual_lines": 621,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
+      "note": "struct ServiceDependencies has 11 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
       "file": "internal/application/assets/providers/stock/stockpipeline/orchestrator_constructor.go",
@@ -336,14 +328,6 @@
       "note": "func New\u003cX\u003e(...) has 10 parameters (max 8); split into smaller constructors or use a config struct"
     },
     {
-      "file": "internal/application/assets/providers/stock/stockpipeline/render_ports.go",
-      "actual_lines": 569,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
       "file": "internal/application/assets/providers/stock/stockpipeline/service_types.go",
       "line": 97,
       "actual_count": 9,
@@ -354,22 +338,6 @@
       "note": "struct Deps has 9 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
-      "file": "internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go",
-      "actual_lines": 615,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
-      "file": "internal/application/assets/providers/stock/stockpipeline/step_publish.go",
-      "actual_lines": 713,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
       "file": "internal/application/assets/sourcing/youtube/service.go",
       "line": 69,
       "actual_count": 9,
@@ -378,46 +346,6 @@
       "rule": "constructor_deps",
       "severity": "warn",
       "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
-    },
-    {
-      "file": "internal/application/assets/sourcing/youtube/usecase/publish_drive.go",
-      "line": 89,
-      "matched_rule": "root_override_forward_prevention_gate",
-      "rule": "percheck_root_override_ban",
-      "severity": "error",
-      "note": "forbidden `RootFolderOverride` in application/api layer; godlike/06 SSOT requires every caller outside internal/infrastructure/ and cmd/admin/ to route through delivery.Publisher.Publish / ResolveFolder with a typed DestinationKey. RootFolderOverride is the infrastructure-layer escape hatch (FASE B1 forward-prevention gate, July 2026). See internal/infrastructure/drive/publisher.go for the canonical Publisher implementation."
-    },
-    {
-      "file": "internal/application/assets/sourcing/youtube/usecase/publish_drive.go",
-      "line": 132,
-      "matched_rule": "root_override_forward_prevention_gate",
-      "rule": "percheck_root_override_ban",
-      "severity": "error",
-      "note": "forbidden `RootFolderOverride` in application/api layer; godlike/06 SSOT requires every caller outside internal/infrastructure/ and cmd/admin/ to route through delivery.Publisher.Publish / ResolveFolder with a typed DestinationKey. RootFolderOverride is the infrastructure-layer escape hatch (FASE B1 forward-prevention gate, July 2026). See internal/infrastructure/drive/publisher.go for the canonical Publisher implementation."
-    },
-    {
-      "file": "internal/application/clips/bulk_upload_clip_pub.go",
-      "line": 83,
-      "matched_rule": "root_override_forward_prevention_gate",
-      "rule": "percheck_root_override_ban",
-      "severity": "error",
-      "note": "forbidden `RootFolderOverride` in application/api layer; godlike/06 SSOT requires every caller outside internal/infrastructure/ and cmd/admin/ to route through delivery.Publisher.Publish / ResolveFolder with a typed DestinationKey. RootFolderOverride is the infrastructure-layer escape hatch (FASE B1 forward-prevention gate, July 2026). See internal/infrastructure/drive/publisher.go for the canonical Publisher implementation."
-    },
-    {
-      "file": "internal/application/clips/bulk_upload_sidecar_pub.go",
-      "line": 71,
-      "matched_rule": "root_override_forward_prevention_gate",
-      "rule": "percheck_root_override_ban",
-      "severity": "error",
-      "note": "forbidden `RootFolderOverride` in application/api layer; godlike/06 SSOT requires every caller outside internal/infrastructure/ and cmd/admin/ to route through delivery.Publisher.Publish / ResolveFolder with a typed DestinationKey. RootFolderOverride is the infrastructure-layer escape hatch (FASE B1 forward-prevention gate, July 2026). See internal/infrastructure/drive/publisher.go for the canonical Publisher implementation."
-    },
-    {
-      "file": "internal/application/clips/bulk_upload_sidecar_pub.go",
-      "line": 89,
-      "matched_rule": "root_override_forward_prevention_gate",
-      "rule": "percheck_root_override_ban",
-      "severity": "error",
-      "note": "forbidden `RootFolderOverride` in application/api layer; godlike/06 SSOT requires every caller outside internal/infrastructure/ and cmd/admin/ to route through delivery.Publisher.Publish / ResolveFolder with a typed DestinationKey. RootFolderOverride is the infrastructure-layer escape hatch (FASE B1 forward-prevention gate, July 2026). See internal/infrastructure/drive/publisher.go for the canonical Publisher implementation."
     },
     {
       "file": "internal/application/jobs/outbox/registry.go",
@@ -431,7 +359,7 @@
     },
     {
       "file": "internal/application/jobs/worker.go",
-      "line": 150,
+      "line": 152,
       "actual_count": 9,
       "allowed_count": 8,
       "matched_rule": "max_constructor_deps",
@@ -440,12 +368,22 @@
       "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
     },
     {
-      "file": "internal/application/system/health/readyz_checkers.go",
-      "actual_lines": 780,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
+      "file": "internal/application/voiceover/ports_publication.go",
+      "line": 97,
+      "matched_rule": "root_override_forward_prevention_gate",
+      "rule": "percheck_root_override_ban",
+      "severity": "error",
+      "note": "forbidden `RootFolderOverride` in application/api layer; godlike/06 SSOT requires every caller outside internal/infrastructure/ and cmd/admin/ to route through delivery.Publisher.Publish / ResolveFolder with a typed DestinationKey. RootFolderOverride is the infrastructure-layer escape hatch (FASE B1 forward-prevention gate, July 2026). See internal/infrastructure/drive/publisher.go for the canonical Publisher implementation."
+    },
+    {
+      "file": "internal/application/voiceover/process_voiceover_item.go",
+      "line": 59,
+      "actual_count": 9,
+      "allowed_count": 8,
+      "matched_rule": "max_struct_deps",
+      "rule": "struct_deps",
+      "severity": "warn",
+      "note": "struct ProcessVoiceoverItemDeps has 9 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
       "file": "internal/application/youtube/usecase/extract_important_clips.go",
@@ -468,22 +406,14 @@
       "note": "struct ExtractionDeps has 9 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
-      "file": "internal/application/youtube/usecase/process_segment.go",
-      "actual_lines": 614,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
-      "file": "internal/application/youtube/usecase/process_segment.go",
-      "line": 64,
-      "actual_count": 14,
+      "file": "internal/application/youtube/usecase/process_segment_deps.go",
+      "line": 50,
+      "actual_count": 15,
       "allowed_count": 8,
       "matched_rule": "max_struct_deps",
       "rule": "struct_deps",
       "severity": "warn",
-      "note": "struct ProcessSegmentDeps has 14 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
+      "note": "struct ProcessSegmentDeps has 15 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
       "file": "internal/application/youtube/usecase/service.go",
@@ -496,6 +426,40 @@
       "note": "struct ServiceDeps has 21 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
+      "file": "internal/domain/asset/clip_identity.go",
+      "line": 126,
+      "actual_count": 9,
+      "allowed_count": 8,
+      "matched_rule": "max_constructor_deps",
+      "rule": "constructor_deps",
+      "severity": "warn",
+      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
+    },
+    {
+      "file": "internal/infrastructure/artlist/downloader/resolver.go",
+      "actual_lines": 533,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/assets/clip_metadata_writer.go",
+      "actual_lines": 548,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
+      "file": "internal/infrastructure/qdrant/indexing/payload_builder.go",
+      "actual_lines": 501,
+      "max_lines": 500,
+      "matched_rule": "max_lines_per_file",
+      "rule": "file_size",
+      "severity": "warn"
+    },
+    {
       "file": "tests/operational/voiceover_harness.go",
       "actual_lines": 628,
       "max_lines": 500,
@@ -505,7 +469,7 @@
     },
     {
       "package": "cmd/admin",
-      "actual_count": 55,
+      "actual_count": 57,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
@@ -513,7 +477,7 @@
     },
     {
       "package": "internal/app",
-      "actual_count": 107,
+      "actual_count": 113,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
@@ -521,7 +485,7 @@
     },
     {
       "package": "internal/application/assets/providers/stock/stockpipeline",
-      "actual_count": 43,
+      "actual_count": 52,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
@@ -529,22 +493,15 @@
     },
     {
       "package": "internal/application/images",
-      "actual_count": 42,
+      "actual_count": 45,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
       "severity": "warn"
     },
     {
-      "package": "internal/completion",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "completion.Service (count=2 in same package); sites: internal/application/assets/completion/publish_verified.go:175:6, internal/application/jobs/completion/complete_job_service.go:64:6"
-    },
-    {
       "package": "internal/infrastructure/database/sqlite/assets",
-      "actual_count": 47,
+      "actual_count": 53,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
@@ -555,7 +512,7 @@
       "matched_rule": "same_package_duplicate_type_declarations",
       "rule": "percheck_type_redecl",
       "severity": "error",
-      "note": "job.JobBroker (count=2 in same package); sites: internal/domain/job/store.go:41:2, internal/kernel/job/store.go:118:6"
+      "note": "job.Job (count=2 in same package); sites: internal/domain/job/job.go:29:2, internal/kernel/job/job.go:90:6"
     },
     {
       "package": "internal/job",
@@ -576,7 +533,14 @@
       "matched_rule": "same_package_duplicate_type_declarations",
       "rule": "percheck_type_redecl",
       "severity": "error",
-      "note": "job.Job (count=2 in same package); sites: internal/domain/job/job.go:29:2, internal/kernel/job/job.go:89:6"
+      "note": "job.JobBroker (count=2 in same package); sites: internal/domain/job/store.go:41:2, internal/kernel/job/store.go:118:6"
+    },
+    {
+      "package": "internal/job",
+      "matched_rule": "same_package_duplicate_type_declarations",
+      "rule": "percheck_type_redecl",
+      "severity": "error",
+      "note": "job.Event (count=2 in same package); sites: internal/domain/job/job.go:31:2, internal/kernel/job/job.go:158:6"
     },
     {
       "package": "internal/job",
@@ -584,13 +548,6 @@
       "rule": "percheck_type_redecl",
       "severity": "error",
       "note": "job.Filter (count=2 in same package); sites: internal/domain/job/job.go:27:2, internal/kernel/job/job.go:75:6"
-    },
-    {
-      "package": "internal/job",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "job.Event (count=2 in same package); sites: internal/domain/job/job.go:31:2, internal/kernel/job/job.go:157:6"
     },
     {
       "package": "internal/job",
@@ -605,73 +562,11 @@
       "rule": "percheck_type_redecl",
       "severity": "error",
       "note": "job.Status (count=2 in same package); sites: internal/domain/job/job.go:25:2, internal/kernel/job/job.go:28:6"
-    },
-    {
-      "package": "internal/maintenance",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "maintenance.Service (count=2 in same package); sites: internal/application/assets/maintenance/service.go:34:6, internal/application/qdrant/maintenance/service.go:90:6"
-    },
-    {
-      "package": "internal/reconciler",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "reconciler.Metrics (count=2 in same package); sites: internal/application/assets/deletion/reconciler/ports.go:105:6, internal/application/qdrant/reconciler/ports.go:139:6"
-    },
-    {
-      "package": "internal/reconciler",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "reconciler.Service (count=2 in same package); sites: internal/application/assets/deletion/reconciler/service.go:34:6, internal/application/qdrant/reconciler/service.go:71:6"
-    },
-    {
-      "package": "internal/reconciler",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "reconciler.ServiceDeps (count=2 in same package); sites: internal/application/assets/deletion/reconciler/service.go:53:6, internal/application/qdrant/reconciler/service.go:94:6"
-    },
-    {
-      "package": "internal/translation",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "translation.ModelPolicy (count=2 in same package); sites: internal/application/translation/ports.go:281:6, internal/domain/translation/translation.go:67:6"
-    },
-    {
-      "package": "internal/translation",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "translation.TranslationCommand (count=2 in same package); sites: internal/application/translation/ports.go:120:6, internal/domain/translation/translation.go:88:6"
-    },
-    {
-      "package": "internal/translation",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "translation.TranslationResult (count=2 in same package); sites: internal/application/translation/ports.go:224:6, internal/domain/translation/translation.go:115:6"
-    },
-    {
-      "package": "internal/voiceover",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "voiceover.VoiceoverItem (count=2 in same package); sites: internal/api/assets/voiceover/types.go:78:6, internal/application/voiceover/command.go:63:6"
-    },
-    {
-      "package": "internal/youtube",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "youtube.YouTubeStager (count=2 in same package); sites: internal/application/assets/providers/youtube/stager_adapter.go:72:6, internal/application/youtube/stager_adapter.go:30:6"
     }
   ],
   "grandfathered_known": null,
   "warnings": [
+    "Check 54: 1 ARCH-ALLOWLIST: monitor-infra-import site(s) in internal/application/assets/monitor/youtube_discoveries_test.go (each entry requires explicit owner + deadline per AGENTS.md §7; verify currency at promote-to-zero pass)",
     "Check N (player_client=): 1 comment-only reference(s) in cmd/archcheck/runner.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check N (player_client=): 1 comment-only reference(s) in internal/app/lifecycle_scheduler.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check N (player_client=): 2 comment-only reference(s) in internal/application/transcripts/ytdlp_subtitles.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
@@ -683,12 +578,19 @@
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/lifecycle/service_voiceover.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/providers/stock/stockpipeline/util.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/sourcing/youtube/adapters.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/sourcing/youtube/usecase/publish_drive.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 2 comment-only reference(s) in internal/application/books/job_handler.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
-    "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/clips/bulk_upload_sidecar_pub.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/clips/bulk_upload_clip_pub.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "Check B1 (RootFolderOverride): 3 comment-only reference(s) in internal/application/clips/bulk_upload_sidecar_pub.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/clips/bulk_upload_worker.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 4 comment-only reference(s) in internal/application/clips/reupload_usecase.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/clips/upload/usecase.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
-    "Check B1 (RootFolderOverride): 2 comment-only reference(s) in internal/application/voiceover/ports.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
-    "Check B1 (RootFolderOverride): 3 comment-only reference(s) in internal/application/voiceover/upload_intent.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)"
+    "Check B1 (RootFolderOverride): 3 comment-only reference(s) in internal/application/voiceover/upload_intent.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "percheck_voiceover_alias_ban: internal/application/voiceover/persistence/doc.go:20 comment-only reference \"voiceover.VoiceoverRecord\": canonical: persistence.VoiceoverRecord (internal/application/voiceover/persistence/repository.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR A (8dde7a5d7) retired this alias.",
+    "percheck_voiceover_alias_ban: internal/application/voiceover/persistence/doc.go:19 comment-only reference \"voiceover.VoiceoverRepository\": canonical: ports.VoiceoverRepository (internal/application/voiceover/ports.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR A (8dde7a5d7) retired this alias.",
+    "percheck_voiceover_alias_ban: internal/application/voiceover/job_handler.go:54 comment-only reference \"voiceover.PromoRequest\": canonical: workflow/promo.Request (internal/application/workflow/promo/generate.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR B (f14b96d19) retired this alias.",
+    "percheck_voiceover_alias_ban: internal/application/voiceover/types.go:284 comment-only reference \"voiceover.PromoRequest\": canonical: workflow/promo.Request (internal/application/workflow/promo/generate.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR B (f14b96d19) retired this alias.",
+    "percheck_voiceover_alias_ban: internal/application/voiceover/types.go:285 comment-only reference \"voiceover.PromoResult\": canonical: workflow/promo.Result (internal/application/workflow/promo/generate.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR B (f14b96d19) retired this alias.",
+    "percheck_voiceover_alias_ban: internal/application/voiceover/types.go:285 comment-only reference \"voiceover.PromoResponse\": canonical: workflow/promo.Response (internal/application/workflow/promo/generate.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR B (f14b96d19) retired this alias."
   ]
 }

@@ -218,23 +218,23 @@ type textTrackScanner interface {
 func scanTextTrack(s textTrackScanner) (*asset.TextTrack, error) {
 	var t asset.TextTrack
 	var (
-		id              int64
-		assetID         string
-		languageCode    string
-		textKind        string
-		textContent     string
-		sourceType      string
-		sourceLangCode  string
-		isOriginal      int
-		provider        string
-		modelName       string
-		modelVersion    string
-		textHash        string
-		sourceVersion   string
-		confidence      sql.NullFloat64
-		status          string
-		createdAtStr    string
-		updatedAtStr    string
+		id             int64
+		assetID        string
+		languageCode   string
+		textKind       string
+		textContent    string
+		sourceType     string
+		sourceLangCode string
+		isOriginal     int
+		provider       string
+		modelName      string
+		modelVersion   string
+		textHash       string
+		sourceVersion  string
+		confidence     sql.NullFloat64
+		status         string
+		createdAtStr   string
+		updatedAtStr   string
 	)
 
 	err := s.Scan(

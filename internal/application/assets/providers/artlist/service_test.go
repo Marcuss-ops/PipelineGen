@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -39,12 +40,117 @@ const artlistTestSchema = drive.CanonicalMediaAssetsSchema + `
 		term TEXT NOT NULL,
 		PRIMARY KEY (clip_id, term)
 	);
+
+	CREATE TABLE IF NOT EXISTS asset_locations (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+		location_kind TEXT NOT NULL,
+		uri TEXT NOT NULL,
+		external_id TEXT NOT NULL DEFAULT '',
+		web_view_link TEXT NOT NULL DEFAULT '',
+		download_url TEXT NOT NULL DEFAULT '',
+		mime_type TEXT NOT NULL DEFAULT '',
+		file_size_bytes INTEGER NOT NULL DEFAULT 0,
+		file_hash TEXT NOT NULL DEFAULT '',
+		is_primary INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		UNIQUE (asset_id, location_kind)
+	);
+
+	CREATE TABLE IF NOT EXISTS asset_versions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+		version_number INTEGER NOT NULL,
+		source_uri TEXT NOT NULL DEFAULT '',
+		file_hash TEXT NOT NULL DEFAULT '',
+		file_size_bytes INTEGER NOT NULL DEFAULT 0,
+		mime_type TEXT NOT NULL DEFAULT '',
+		metadata_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL DEFAULT '',
+		UNIQUE (asset_id, version_number)
+	);
+
+	CREATE TABLE IF NOT EXISTS asset_renditions (
+		id TEXT PRIMARY KEY,
+		asset_id TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+		location_id INTEGER,
+		kind TEXT NOT NULL DEFAULT 'master',
+		container TEXT,
+		codec TEXT,
+		width INTEGER,
+		height INTEGER,
+		fps REAL,
+		bitrate INTEGER,
+		color_space TEXT,
+		sha256 TEXT,
+		size_bytes INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT DEFAULT (datetime('now')),
+		updated_at TEXT DEFAULT (datetime('now')),
+		FOREIGN KEY (location_id) REFERENCES asset_locations(id) ON DELETE SET NULL
+	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS ux_asset_renditions_asset_kind
+		ON asset_renditions (asset_id, kind);
+
+	CREATE TABLE IF NOT EXISTS outbox_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		event_type TEXT NOT NULL,
+		aggregate_id TEXT NOT NULL DEFAULT '',
+		aggregate_type TEXT NOT NULL DEFAULT '',
+		payload_json TEXT NOT NULL DEFAULT '',
+		event_key TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'pending',
+		attempt_count INTEGER NOT NULL DEFAULT 0,
+		max_attempts INTEGER NOT NULL DEFAULT 10,
+		last_error TEXT NOT NULL DEFAULT '',
+		next_attempt_at TEXT,
+		worker_id TEXT NOT NULL DEFAULT '',
+		lease_id TEXT NOT NULL DEFAULT '',
+		lease_expiry TEXT,
+		completed_at TEXT,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
+		ON outbox_events(event_key);
 `
 
 // createTestDB creates a temporary SQLite database for testing
 func createTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	return drive.NewTestDBWithSchema(t, artlistTestSchema)
+}
+
+// outboxEventCount returns the number of asset.index.requested outbox
+// events emitted by the canonical AssetFinalizerTx during a run.
+func outboxEventCount(db *sql.DB) int {
+	var count int
+	_ = db.QueryRow(`
+		SELECT COUNT(*) FROM outbox_events
+		WHERE event_type = 'asset.index.requested'
+	`).Scan(&count)
+	return count
+}
+
+// outboxSourceVersionFor returns the source_version stored in the
+// asset.index.requested outbox event for the given clip ID.
+func outboxSourceVersionFor(db *sql.DB, clipID string) string {
+	var payload string
+	_ = db.QueryRow(`
+		SELECT payload_json FROM outbox_events
+		WHERE event_type = 'asset.index.requested' AND aggregate_id = ?
+		ORDER BY id DESC LIMIT 1
+	`, clipID).Scan(&payload)
+	var envelope map[string]any
+	if err := json.Unmarshal([]byte(payload), &envelope); err != nil {
+		return ""
+	}
+	if v, ok := envelope["source_version"].(string); ok {
+		return v
+	}
+	return ""
 }
 
 // insertTestClip inserts a test clip into the database
@@ -123,10 +229,11 @@ func TestArtlistServiceCreation(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:        cfg,
-			MainDB:     db,
-			Log:        logger,
-			Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
 		},
 	})
 	if err != nil {
@@ -155,10 +262,11 @@ func TestArtlistSearchRequest(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:        cfg,
-			MainDB:     db,
-			Log:        logger,
-			Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
 		},
 	})
 
@@ -435,11 +543,12 @@ func TestArtlistRunTagMediaProcessorFailure(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     &stubDispatcherForArtlist{repo: artlistRepo},
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -519,11 +628,12 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     &stubDispatcherForArtlist{repo: artlistRepo},
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -609,11 +719,12 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     &stubDispatcherForArtlist{repo: artlistRepo},
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)

@@ -101,6 +101,12 @@ type ProcessInput struct {
 	DriveFileID      string
 	ClipPageURL      string
 	Metadata         map[string]any
+	// RenditionLayout (July 2026) signals that the processor should
+	// store generated files under rendition-kind subdirectories
+	// (master, mezzanine, proxy, thumbnail, storyboard) inside
+	// OutputDir and return them in ProcessResult.Renditions.
+	// When false, the legacy flat layout is preserved.
+	RenditionLayout bool
 }
 
 // ProcessResult contains the result of processing an asset.
@@ -123,6 +129,10 @@ type ProcessInput struct {
 // PublishAction is "string" (NOT typed delivery.PublishAction) so
 // the domain layer stays free of delivery-package imports (AGENTS.md
 // Pattern 8: domain is the bottom of the import graph).
+//
+// Rendition storage (July 2026): Renditions carries the generated
+// technical variants (master, mezzanine, proxy, thumbnail, storyboard)
+// so callers can persist them into asset_locations + asset_renditions.
 type ProcessResult struct {
 	ID            string
 	Filename      string
@@ -137,4 +147,26 @@ type ProcessResult struct {
 	Status        string
 	Error         string
 	DuplicateOf   string
+	// Renditions lists the generated technical variants for this asset.
+	// Empty for processors that have not been updated to the rendition
+	// contract; callers must treat nil/empty as "only the canonical
+	// LocalPath/Filename/FileHash are available".
+	Renditions []RenditionOutput
+}
+
+// RenditionOutput describes a single generated technical variant of an asset.
+type RenditionOutput struct {
+	Kind       RenditionKind
+	LocalPath  string
+	Filename   string
+	FileHash   string
+	SizeBytes  int64
+	MimeType   string
+	Width      int
+	Height     int
+	FPS        float64
+	Bitrate    int64
+	Container  string
+	Codec      string
+	ColorSpace string
 }

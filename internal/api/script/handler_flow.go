@@ -153,7 +153,7 @@ func (h *ScriptFlowHandler) AdminToken() string {
 // path (this method) share it.
 func (h *ScriptFlowHandler) enqueueEnvelope(c *gin.Context, env domainScript.GenerationEnvelopeV2) {
 	if h.jobs == nil {
-		enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry, h.caps)
+		enqueueEnvelopeFn(c, env, h.jobsSvc, h.log, h.registry, h.caps, nil)
 		return
 	}
 	h.jobs.EnqueueEnvelope(c, env, h.caps)

@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
@@ -58,57 +59,6 @@ func (f *successMediaProcessor) Process(_ context.Context, input *asset.ProcessI
 		PublishAction: "created",
 		Status:        "processed",
 	}, nil
-}
-
-// recordingDispatcherForArtlist wraps the canonical stubDispatcherForArtlist
-// and records every EnqueueAndIndex call so the test can assert outbox
-// emission counts and per-clip content hashes.
-type recordingDispatcherForArtlist struct {
-	stubDispatcherForArtlist
-	mu    sync.Mutex
-	calls []dispatchCall
-}
-
-type dispatchCall struct {
-	clipID      string
-	contentHash string
-}
-
-func (r *recordingDispatcherForArtlist) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error {
-	r.mu.Lock()
-	r.calls = append(r.calls, dispatchCall{clipID: clip.ID, contentHash: contentHash})
-	r.mu.Unlock()
-	return r.stubDispatcherForArtlist.EnqueueAndIndex(ctx, clip, contentHash)
-}
-
-func (r *recordingDispatcherForArtlist) DispatchCount() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return len(r.calls)
-}
-
-func (r *recordingDispatcherForArtlist) DispatchedClipIDs() []string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	ids := make([]string, len(r.calls))
-	for i, c := range r.calls {
-		ids[i] = c.clipID
-	}
-	return ids
-}
-
-// ContentHashFor returns the content hash that was passed to
-// EnqueueAndIndex for the given clip ID, or empty string if the
-// clip was never dispatched. Safe for concurrent use.
-func (r *recordingDispatcherForArtlist) ContentHashFor(clipID string) string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, c := range r.calls {
-		if c.clipID == clipID {
-			return c.contentHash
-		}
-	}
-	return ""
 }
 
 // TestGate01_ArtlistFullRun_HappyPath exercises the full 6-stage pipeline
@@ -186,7 +136,7 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 			Name:           clip.name,
 			SourceURL:      clip.sourceURL,
 			Source:         "artlist",
-			LifecycleState: asset.StateStaging,
+			LifecycleState: asset.StateActive,
 			MediaType:      "video",
 		}
 		a.SetDownloadLink(clip.sourceURL)
@@ -195,7 +145,6 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 	}
 
 	processor := &successMediaProcessor{}
-	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -204,11 +153,12 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     recDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -265,7 +215,7 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 
 		assert.Equal(t, "artlist", source, "clip %s source should be 'artlist'", clipID)
 		assert.Equal(t, "video", mediaType, "clip %s media_type should be 'video'", clipID)
-		assert.Equal(t, string(asset.StateActive), lifecycleState, "clip %s lifecycle_state should be ACTIVE", clipID)
+		assert.Equal(t, "PUBLISHED", lifecycleState, "clip %s lifecycle_state should be ACTIVE", clipID)
 		assert.NotEmpty(t, driveLink, "clip %s drive_link should be non-empty", clipID)
 		assert.NotEmpty(t, fileHash, "clip %s file_hash should be non-empty", clipID)
 		assert.NotEmpty(t, driveFileID, "clip %s drive_file_id should be non-empty", clipID)
@@ -275,11 +225,8 @@ func TestGate01_ArtlistFullRun_HappyPath(t *testing.T) {
 	}
 
 	// ── Gate 4: outbox dispatcher was called ──
-	assert.Equal(t, 3, recDisp.DispatchCount(), "dispatcher should have received exactly 3 EnqueueAndIndex calls")
-	for _, dispatchedID := range recDisp.DispatchedClipIDs() {
-		assert.Contains(t, []string{"gate01-clip-1", "gate01-clip-2", "gate01-clip-3"}, dispatchedID,
-			"dispatched clip ID %s should be one of the expected clips", dispatchedID)
-	}
+	assert.Equal(t, 3, outboxEventCount(db), "finalizer should emit exactly 3 outbox events")
+
 }
 
 // TestGate01_ArtlistFullRun_MediaProcessorInputs verifies that the
@@ -336,7 +283,7 @@ func TestGate01_ArtlistFullRun_MediaProcessorInputs(t *testing.T) {
 			Name:           clip.name,
 			SourceURL:      clip.sourceURL,
 			Source:         "artlist",
-			LifecycleState: asset.StateStaging,
+			LifecycleState: asset.StateActive,
 			MediaType:      "video",
 		}
 		a.SetDownloadLink(clip.sourceURL)
@@ -345,7 +292,6 @@ func TestGate01_ArtlistFullRun_MediaProcessorInputs(t *testing.T) {
 	}
 
 	processor := &successMediaProcessor{}
-	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -354,11 +300,12 @@ func TestGate01_ArtlistFullRun_MediaProcessorInputs(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:            cfg,
-			MainDB:         db,
-			Log:            logger,
-			Dispatcher:     recDisp,
-			MediaProcessor: processor,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			MediaProcessor:   processor,
 		},
 	})
 	require.NoError(t, err)
@@ -430,10 +377,11 @@ func TestGate01_ArtlistFullRun_ZeroCandidates(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:        cfg,
-			MainDB:     db,
-			Log:        logger,
-			Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
 		},
 	})
 	require.NoError(t, err)
@@ -498,14 +446,12 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 		Name:           "Dry Run Clip",
 		SourceURL:      "https://cdn.artlist.io/video/dry-run.m3u8",
 		Source:         "artlist",
-		LifecycleState: asset.StateStaging,
+		LifecycleState: asset.StateActive,
 		MediaType:      "video",
 	}
 	a.SetDownloadLink("https://cdn.artlist.io/video/dry-run.m3u8")
 	a.SetMetadataString("index_state", string(asset.StateDiscovered))
 	insertTestClip(t, db, a)
-
-	recDisp := &recordingDispatcherForArtlist{stubDispatcherForArtlist: stubDispatcherForArtlist{repo: artlistRepo}}
 
 	svc, err := NewService(ServiceDeps{
 		ServicePorts: ServicePorts{
@@ -514,10 +460,11 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			Cfg:        cfg,
-			MainDB:     db,
-			Log:        logger,
-			Dispatcher: recDisp,
+			MainDB:           db,
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			Cfg:              cfg,
+			Log:              logger,
+			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
 		},
 	})
 	require.NoError(t, err)
@@ -540,7 +487,7 @@ func TestGate01_ArtlistFullRun_DryRun(t *testing.T) {
 	assert.Equal(t, "dry_run", resp.Items[0].Status)
 	assert.Empty(t, resp.Items[0].DriveFileID, "DriveFileID should be empty in dry-run")
 	assert.Empty(t, resp.Items[0].FileHash, "FileHash should be empty in dry-run")
-	assert.Equal(t, 0, recDisp.DispatchCount(), "dispatcher should NOT be called in dry-run")
+	assert.Equal(t, 0, outboxEventCount(db), "dispatcher should NOT be called in dry-run")
 }
 
 // Compile-time: successMediaProcessor satisfies the Processor port.

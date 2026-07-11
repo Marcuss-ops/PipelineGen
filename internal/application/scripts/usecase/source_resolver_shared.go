@@ -75,11 +75,12 @@ func buildResolvedClipSource(
 	}
 
 	return &scriptpkg.ResolvedSource{
-		Type:         p.sourceType,
-		Topic:        title,
-		Title:        title,
-		SourceText:   sourceText,
-		ClipEvidence: evidence,
-		Fingerprint:  fingerprint,
+		Type:            p.sourceType,
+		Topic:           title,
+		Title:           title,
+		SourceText:      sourceText,
+		ClipEvidence:    evidence,
+		Fingerprint:     fingerprint,
+		GroundingPolicy: src.GroundingPolicy,
 	}, nil
 }

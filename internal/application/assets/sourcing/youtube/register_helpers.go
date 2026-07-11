@@ -249,31 +249,54 @@ func (s *Service) findRelated(ctx context.Context, name, category string, tags [
 	return related
 }
 
+// buildResultInput groups the parameters for buildResult.
+//
+// PR-YAGNI-BUILDRESULT (July 2026): replaces the 15 positional arguments
+// with a single struct, removing the parameter-sprawl hazard while keeping
+// the assembly logic identical.
+type buildResultInput struct {
+	MD             *usecase.ResolvedMetadata
+	ClipID         string
+	FileHash       string
+	DriveFilename  string
+	LocalPath      string
+	UploadResult   *sourcing.DriveUploadResult
+	DeliveryStatus asset.AssetPublishStatus
+	Indexed        bool
+	Transcript     string
+	DetectedLang   string
+	Related        map[string]any
+	Cmd            sourcing.RegisterClipCommand
+	TargetFolderID string
+	Group          string
+	VideoSlug      string
+}
+
 // buildResult assembles the final RegisterClipResult.
-func (s *Service) buildResult(md *usecase.ResolvedMetadata, clipID, fileHash, driveFilename, localPath string, uploadResult *sourcing.DriveUploadResult, deliveryStatus asset.AssetPublishStatus, indexed bool, transcript, detectedLang string, related map[string]any, cmd sourcing.RegisterClipCommand, targetFolderID, group, videoSlug string) *sourcing.RegisterClipResult {
+func (s *Service) buildResult(input buildResultInput) *sourcing.RegisterClipResult {
 	res := &sourcing.RegisterClipResult{
-		OK: true, ClipID: clipID, VideoID: md.VideoID,
-		Name: md.Name, Filename: driveFilename, DurationSec: md.Duration,
-		FileHash: fileHash, Source: md.Source, Category: cmd.Category,
-		Tags: cmd.Tags, LocalPath: localPath,
-		Indexed: indexed, IndexingStatus: IndexStatus(indexed),
-		Transcribed: transcript != "", Language: detectedLang,
-		RelatedClips: related,
+		OK: true, ClipID: input.ClipID, VideoID: input.MD.VideoID,
+		Name: input.MD.Name, Filename: input.DriveFilename, DurationSec: input.MD.Duration,
+		FileHash: input.FileHash, Source: input.MD.Source, Category: input.Cmd.Category,
+		Tags: input.Cmd.Tags, LocalPath: input.LocalPath,
+		Indexed: input.Indexed, IndexingStatus: IndexStatus(input.Indexed),
+		Transcribed: input.Transcript != "", Language: input.DetectedLang,
+		RelatedClips: input.Related,
 	}
-	if uploadResult != nil {
-		res.DriveLink = uploadResult.WebViewLink
-		res.DriveFileID = uploadResult.FileID
+	if input.UploadResult != nil {
+		res.DriveLink = input.UploadResult.WebViewLink
+		res.DriveFileID = input.UploadResult.FileID
 	}
 	// DoD #8 (July 2026): populate Drive folder metadata so API
 	// callers see where the asset landed on Drive without re-querying
 	// media_assets. targetFolderID comes from the Publisher (PublishClipToDrive
 	// returns the resolved folder_id).
-	res.DriveFolderID = targetFolderID
-	if targetFolderID != "" && group != "" && videoSlug != "" {
-		res.DrivePath = fmt.Sprintf("clips/%s/%s", group, videoSlug)
+	res.DriveFolderID = input.TargetFolderID
+	if input.TargetFolderID != "" && input.Group != "" && input.VideoSlug != "" {
+		res.DrivePath = fmt.Sprintf("clips/%s/%s", input.Group, input.VideoSlug)
 	}
-	res.DeliveryStatus = deliveryStatus
-	if deliveryStatus == asset.AssetPublishFailed {
+	res.DeliveryStatus = input.DeliveryStatus
+	if input.DeliveryStatus == asset.AssetPublishFailed {
 		res.RetryScheduled = true
 		res.Message = "asset registered locally; Drive upload failed — retry scheduled"
 	}

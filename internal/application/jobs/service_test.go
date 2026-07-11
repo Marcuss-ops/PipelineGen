@@ -47,7 +47,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 		updated_at TEXT NOT NULL,
 		started_at TEXT,
 		completed_at TEXT,
-		cancelled_at TEXT
+		cancelled_at TEXT,
+		parent_state_typed TEXT NOT NULL DEFAULT ''
 	);
 	CREATE INDEX IF NOT EXISTS idx_jobs_status_priority ON jobs(status, priority DESC, created_at ASC);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_active_key ON jobs(active_key) WHERE active_key != '';
@@ -80,7 +81,24 @@ func setupTestService(t *testing.T) (*Service, *sqljobs.SQLiteStore, func()) {
 	t.Helper()
 	db := setupTestDB(t)
 	store := sqljobs.NewSQLiteStore(db, zap.NewNop())
-	svc, err := NewService(store, nil, zap.NewNop(), nil)
+	reg := Compose()
+	// Register ad-hoc test job types so the fail-closed Enqueue gate
+	// (handler check + typed MaxRetries lookup) does not reject the
+	// arbitrary types used by these tests.
+	testTypes := []RegistryEntry{
+		{Type: "test_job", Description: "test job", DefaultMaxRetries: 1},
+		{Type: "unknown_type", Description: "unknown type", DefaultMaxRetries: 1},
+		{Type: "concurrent_job", Description: "concurrent job", DefaultMaxRetries: 1},
+		{Type: "idem_test", Description: "idempotency test", DefaultMaxRetries: 1},
+		{Type: "rescue_test", Description: "rescue test", DefaultMaxRetries: 1},
+		{Type: "concurrent_idem", Description: "concurrent idempotency test", DefaultMaxRetries: 1},
+	}
+	for _, e := range testTypes {
+		if err := reg.Register(e); err != nil {
+			t.Fatalf("register test type %q: %v", e.Type, err)
+		}
+	}
+	svc, err := NewService(store, nil, zap.NewNop(), reg)
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
 	}
@@ -500,9 +518,13 @@ func TestEnqueueRescuePathMultiService(t *testing.T) {
 	// but NOT the in-process enqueueMu.
 	storeA := sqljobs.NewSQLiteStore(db, zap.NewNop())
 	storeB := sqljobs.NewSQLiteStore(db, zap.NewNop())
-	svcA, errA := NewService(storeA, nil, zap.NewNop(), nil)
+	reg := Compose()
+	if err := reg.Register(RegistryEntry{Type: "rescue_test", Description: "rescue test", DefaultMaxRetries: 1}); err != nil {
+		t.Fatalf("register rescue_test: %v", err)
+	}
+	svcA, errA := NewService(storeA, nil, zap.NewNop(), reg)
 	require.NoError(t, errA)
-	svcB, errB := NewService(storeB, nil, zap.NewNop(), nil)
+	svcB, errB := NewService(storeB, nil, zap.NewNop(), reg)
 	require.NoError(t, errB)
 
 	// Both contexts carry the same correlation_id so the (type, correlation_id)

@@ -112,6 +112,18 @@ var canonicalJobTypes = []string{
 	job.TypeVoiceoverGenerate,      // domain/job/job.go
 	job.TypeVoiceoverGenerateItem,  // domain/job/job.go
 	TypeImageGenerateGoogle,        // application/jobs/registry.go (FASE 2 / June 2026)
+	// Spina Dorsale Fase 2 / PR-BATCH-REGISTER-ASYNC / PR-GEMMA-EXTRACT-IMPORTANT
+	// downstream job types registered in registry_script.go, registry_stock.go,
+	// registry_media.go, and registry_extraction.go.
+	TypeAssetsResolve,               // domain/job/job.go
+	TypeDocumentGenerate,            // domain/job/job.go
+	TypeImagesGenerate,              // domain/job/job.go
+	TypeClipRegister,                // domain/job/job.go
+	TypeMediaStockRLMEnrich,         // domain/job/job.go
+	TypeScriptGenerateItem,          // domain/job/job.go
+	TypeScriptImageSibling,          // domain/job/job.go
+	TypeScriptVoiceoverSibling,      // domain/job/job.go
+	TypeYouTubeClipExtractImportant, // domain/job/job.go
 }
 
 // sortedCanonicalTypes returns the canonical list sorted ascending

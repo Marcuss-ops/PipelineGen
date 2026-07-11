@@ -62,6 +62,9 @@ type Repository interface {
 
 // LocationRepository is the contract for asset_locations persistence.
 type LocationRepository interface {
+	// Upsert inserts or updates a location record and returns its ID.
+	// The concrete implementation populates loc.ID when the record is
+	// created or updated.
 	Upsert(ctx context.Context, loc *Location) error
 	GetPrimary(ctx context.Context, assetID string) (*Location, error)
 	ListByAsset(ctx context.Context, assetID string) ([]*Location, error)

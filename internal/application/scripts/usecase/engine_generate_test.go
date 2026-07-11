@@ -41,11 +41,11 @@ import (
 //   - buildGenerationResult(...) MUST produce result.Output.Text = "Sconfiggerò."
 //
 // Variant coverage (single test enumerates 3 cases inline for hermetic clarity):
-//   1) Happy path: postResult.TranslatedText non-empty → Output.Text MUST = it.
-//   2) Fallback: postResult.TranslatedText is empty → Output.Text MUST = en
-//      (pre-fix already does this; post-fix MUST preserve this behaviour).
-//   3) nil-postResult (defensive nil-tolerance guarantee): Output.Text MUST = en
-//      (the engineResult is the only source when postResult is unwired).
+//  1. Happy path: postResult.TranslatedText non-empty → Output.Text MUST = it.
+//  2. Fallback: postResult.TranslatedText is empty → Output.Text MUST = en
+//     (pre-fix already does this; post-fix MUST preserve this behaviour).
+//  3. nil-postResult (defensive nil-tolerance guarantee): Output.Text MUST = en
+//     (the engineResult is the only source when postResult is unwired).
 func TestBuildGenerationResult_PrefersTranslatedOutput(t *testing.T) {
 	// ── Arrange (canonical scenario, every case reuses these constants) ──
 	const english = "I will defeat you."

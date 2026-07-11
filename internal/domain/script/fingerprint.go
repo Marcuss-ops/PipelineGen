@@ -90,9 +90,10 @@ func BuildFingerprint(input GenerationFingerprintInput) string {
 	// fixed above.
 	raw, err := json.Marshal(input)
 	if err != nil {
-		// JSON marshaling of this struct cannot fail in practice,
-		// but guard against future changes.
-		panic("script.BuildFingerprint: " + err.Error())
+		// JSON marshaling of this struct cannot fail in practice.
+		// Return a sentinel value rather than panicking so callers
+		// still get a stable (if degenerate) 16-hex fingerprint.
+		return "ffffffffffffffff"
 	}
 
 	sum := sha256.Sum256(raw)
@@ -122,7 +123,7 @@ func FingerprintInputFromSource(src SourceSpec, ev *ClipEvidence) GenerationFing
 	} else if src.Type == SourceText {
 		input.SourceTextHash = sha256Hex(assembleSourceText(src))
 	} else {
-		input.SourceTextHash = sha256Hex(src.SourceText)
+		input.SourceTextHash = sha256Hex(sourceTextOrQuery(src))
 	}
 
 	return input
@@ -134,17 +135,17 @@ func FingerprintInputFromSource(src SourceSpec, ev *ClipEvidence) GenerationFing
 func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprintInput {
 	input := GenerationFingerprintInput{
 		ContractVersion: 1,
-		SourceType:        plan.SourceKind,
-		SourceTextHash:    plan.SourceFingerprint,
-		Language:          plan.Language,
-		Tone:              plan.Tone,
-		Style:             plan.Style,
-		Guidelines:        plan.Guidelines,
-		TargetWords:       plan.TargetWords,
-		Model:             plan.Model,
-		PromptVersion:     plan.PromptVersion,
-		PlannerVersion:    plan.PromptProfile,
-		GroundingPolicy:   plan.GroundingPolicy,
+		SourceType:      plan.SourceKind,
+		SourceTextHash:  plan.SourceFingerprint,
+		Language:        plan.Language,
+		Tone:            plan.Tone,
+		Style:           plan.Style,
+		Guidelines:      plan.Guidelines,
+		TargetWords:     plan.TargetWords,
+		Model:           plan.Model,
+		PromptVersion:   plan.PromptVersion,
+		PlannerVersion:  plan.PromptProfile,
+		GroundingPolicy: plan.GroundingPolicy,
 	}
 
 	if plan.ClipEvidence != nil {
@@ -179,10 +180,21 @@ func FingerprintInputFromItem(item GenerationItemV2) GenerationFingerprintInput 
 	if item.Source.Type == SourceText {
 		input.SourceTextHash = sha256Hex(assembleSourceText(item.Source))
 	} else {
-		input.SourceTextHash = sha256Hex(item.Source.SourceText)
+		input.SourceTextHash = sha256Hex(sourceTextOrQuery(item.Source))
 	}
 
 	return input
+}
+
+// sourceTextOrQuery returns the canonical source text for non-text
+// sources. When SourceText is empty, the query is the content that
+// will be resolved (e.g. catalog/search query), so it participates
+// in the identity.
+func sourceTextOrQuery(src SourceSpec) string {
+	if src.SourceText != "" {
+		return src.SourceText
+	}
+	return src.Query
 }
 
 // assembleSourceText returns the canonical text assembly for a text

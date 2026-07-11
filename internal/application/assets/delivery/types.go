@@ -60,7 +60,7 @@ const (
 	// canonical destination for the per-folder metadata.json sidecar
 	// that backs UpdateCumulativeMetadataJSON. The sidecar lives in
 	// the clip's already-resolved folder (no path-builder nesting —
-	// the caller threads folderID via RootFolderOverride), and the
+	// the caller threads folderID via DestinationFolderID), and the
 	// ConflictPolicy is ConflictOverwrite because the sidecar is a
 	// regenerable ledger (the latest merged entries win, and a
 	// pre-F2.9 P0-#1 bug was trashing the old sidecar before the new
@@ -70,7 +70,7 @@ const (
 	// (the sidecar's overwrite policy is a separate concern from
 	// the clip's immutable skip policy).
 	DestinationClipMetadata DestinationKey = "clip_metadata"
-	DestinationAdmin       DestinationKey = "admin"
+	DestinationAdmin        DestinationKey = "admin"
 )
 
 // ConflictPolicy controls what happens when a file with the same name
@@ -212,6 +212,17 @@ type PublishRequest struct {
 	// and an explicit Overwrite must use the named constant.
 	ConflictPolicy ConflictPolicy `json:"conflict_policy,omitempty"`
 
+	// DestinationFolderID is the explicit Drive folder ID where the
+	// publisher should place the file. It is used by sidecar flows
+	// (e.g. DestinationClipMetadata) where the caller already knows
+	// the resolved folder and the destination has no fixed root.
+	//
+	// When non-empty, it takes precedence over the registry's
+	// RootFolderID for the destination. When empty, the publisher
+	// falls back to RootFolderOverride (legacy admin escape hatch)
+	// and then to the registry root.
+	DestinationFolderID string `json:"destination_folder_id,omitempty"`
+
 	// RootFolderOverride, when non-empty, overrides the root folder ID
 	// that the DestinationRegistry would normally resolve for this
 	// destination. This is a backward-compat escape hatch for the
@@ -220,7 +231,8 @@ type PublishRequest struct {
 	//
 	// P1 (July 2026): narrowed scope to admin CLI only. Callers in
 	// internal/application/** that pass RootFolderOverride should
-	// migrate to DestinationKey + registry-driven path builders.
+	// migrate to DestinationKey + registry-driven path builders or
+	// DestinationFolderID.
 	//
 	// Deprecated: will be removed once all callers migrate to
 	// DestinationKey-only routing (FASE 9 cleanup).

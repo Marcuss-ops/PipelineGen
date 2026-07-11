@@ -39,6 +39,26 @@ import (
 	"go.uber.org/zap"
 )
 
+// buildClipsParams groups the dependencies required to wire the clips
+// capability bundle.
+//
+// PR-YAGNI-CLIPS-WIRING (July 2026): replaces the 14 positional arguments
+// of buildClipsBundle with a single struct.
+type buildClipsParams struct {
+	Cfg              *config.Config
+	Log              *zap.Logger
+	Deps             *AssetsModuleDeps
+	Jobs             *JobsBundle
+	Dispatcher       *outbox.Dispatcher
+	DriveUploader    *driveutil.Uploader
+	AssetRepo        asset.Repository
+	SearchAggregator *search.Aggregator
+	MetaWriter       semantic.MetadataWriterPort
+	FolderMemSvc     *foldermemory.Service
+	DeletionSvc      *deletion.DeletionService
+	IdemHandler      gin.HandlerFunc
+}
+
 // buildClipsBundle constructs the canonical *clipsapi.ClipsDescriptor
 // by:
 //  1. Constructing the dispatcher adapters (clipsDispatcherPort +
@@ -49,21 +69,7 @@ import (
 //  4. Type-asserting the returned api.Descriptor to the concrete
 //     *clipsapi.ClipsDescriptor (the descriptor exposes the raw
 //     *Handler via .Handler for the one non-HTTP consumer: register)
-func buildClipsBundle(
-	cfg *config.Config,
-	log *zap.Logger,
-	deps *AssetsModuleDeps,
-	jobs *JobsBundle,
-	dispatcher *outbox.Dispatcher,
-	driveUploader *driveutil.Uploader,
-	lifecycle driveutil.FileLifecycle,
-	assetRepo asset.Repository,
-	searchAggregator *search.Aggregator,
-	metaWriter semantic.MetadataWriterPort,
-	folderMemSvc *foldermemory.Service,
-	deletionSvc *deletion.DeletionService,
-	idemHandler gin.HandlerFunc,
-) (*clipsapi.ClipsDescriptor, error) {
+func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error) {
 	// (1) Dispatcher adapters
 	//
 	// PR12c (June 2026): wire the dispatcher's port, NOT the concrete
@@ -72,8 +78,8 @@ func buildClipsBundle(
 	// when dispatcher is nil the handler falls back to raw repo.UpsertClip
 	// via the `if h.dispatcher != nil` guard in UpdateClip.
 	var clipsDispatcherPort appclips.ClipIndexDispatcherPort
-	if dispatcher != nil {
-		clipsDispatcherPort = &clipsDispatcherAdapter{disp: dispatcher}
+	if params.Dispatcher != nil {
+		clipsDispatcherPort = &clipsDispatcherAdapter{disp: params.Dispatcher}
 	}
 	// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): wire the
 	// canonical mutations.AssetMutationDispatcher SSOT for the wider
@@ -81,7 +87,7 @@ func buildClipsBundle(
 	// constructed inside NewHandler). Strict fail-closed — composition
 	// errors when dispatcher is nil, mirroring WireArtlist's strict
 	// composition-time check (QDRANT-002 PR7 invariant).
-	mutationsDisp, err := newMutationsDispatcherAdapter(dispatcher)
+	mutationsDisp, err := newMutationsDispatcherAdapter(params.Dispatcher)
 	if err != nil {
 		return nil, fmt.Errorf("clips: mutations dispatcher: %w", err)
 	}
@@ -96,7 +102,7 @@ func buildClipsBundle(
 	//   (b) the media.enrich worker registered below, which the
 	//       handlers now enqueue to instead of spawning goroutines
 	//       with context.WithoutCancel.
-	enrichUC := appclips.NewEnrichUseCase(assetRepo, deps.Search.ClipIndexerService, metaWriter, log)
+	enrichUC := appclips.NewEnrichUseCase(params.AssetRepo, params.Deps.Search.ClipIndexerService, params.MetaWriter, params.Log)
 
 	// (2b) BulkUploadWorker (W14 PR2 slice 3, June 2026)
 	//
@@ -113,13 +119,13 @@ func buildClipsBundle(
 	// pre-HC-1 hard-coded context.WithTimeout(ctx, 2*time.Hour) in
 	// bulk_upload_worker.go::HandleJob).
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
-		deps.Delivery.Publisher,
-		newClipsRepoAdapter(deps.Core.ClipsRepo),
-		newClipsIndexerAdapter(deps.Search.ClipIndexerService),
+		params.Deps.Delivery.Publisher,
+		newClipsRepoAdapter(params.Deps.Core.ClipsRepo),
+		newClipsIndexerAdapter(params.Deps.Search.ClipIndexerService),
 		newClipsHashAdapter(),
-		newClipsCfgAdapter(cfg, appjobs.Compose()),
+		newClipsCfgAdapter(params.Cfg, appjobs.Compose()),
 		mutationsDisp,
-		log,
+		params.Log,
 	)
 
 	// (2c) Upload UseCase (P1.5, June 2026 CUTOVER)
@@ -137,14 +143,14 @@ func buildClipsBundle(
 	// time. F2.9 (June 2026): DriveUploader dropped — Publisher is
 	// the single canonical Drive-write canal.
 	uploadUC, err := appupload.NewUseCase(appupload.UseCaseDeps{
-		Artifact:      NewArtifactServiceAdapter(deps.Core.ArtifactService),
-		Publisher:     deps.Delivery.Publisher,
+		Artifact:      NewArtifactServiceAdapter(params.Deps.Core.ArtifactService),
+		Publisher:     params.Deps.Delivery.Publisher,
 		Dispatcher:    clipsDispatcherPort,
-		Config:        newClipsCfgAdapter(cfg, appjobs.Compose()),
-		TreeBuilder:   newClipsAssetTreeAdapter(deps.Core.AssetTreeService),
-		JobsSvc:       jobs.Facade,
+		Config:        newClipsCfgAdapter(params.Cfg, appjobs.Compose()),
+		TreeBuilder:   newClipsAssetTreeAdapter(params.Deps.Core.AssetTreeService),
+		JobsSvc:       params.Jobs.Facade,
 		ProcessRunner: processRunnerAdapter,
-		Log:           log,
+		Log:           params.Log,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("clips: upload.NewUseCase: %w", err)
@@ -161,17 +167,17 @@ func buildClipsBundle(
 	// cfg audit — empty PathMarker for a source disables dynamic
 	// resolution for that source (clip.FolderID() is then required).
 	reuploadFolderRoots := map[string]appclips.ReuploadFolderRoot{
-		"clips":   {RootID: cfg.Drive.ClipsFolder(), PathMarker: cfg.Storage.YoutubeClipsPath()},
-		"youtube": {RootID: cfg.Drive.ClipsFolder(), PathMarker: cfg.Storage.YoutubeClipsPath()},
-		"artlist": {RootID: cfg.Drive.ArtlistFolder(), PathMarker: cfg.Storage.ArtlistPath()},
-		"stock":   {RootID: cfg.Drive.StockFolder(), PathMarker: cfg.Storage.FullPath("stock")},
+		"clips":   {RootID: params.Cfg.Drive.ClipsFolder(), PathMarker: params.Cfg.Storage.YoutubeClipsPath()},
+		"youtube": {RootID: params.Cfg.Drive.ClipsFolder(), PathMarker: params.Cfg.Storage.YoutubeClipsPath()},
+		"artlist": {RootID: params.Cfg.Drive.ArtlistFolder(), PathMarker: params.Cfg.Storage.ArtlistPath()},
+		"stock":   {RootID: params.Cfg.Drive.StockFolder(), PathMarker: params.Cfg.Storage.FullPath("stock")},
 	}
 	reuploadUC := appclips.NewReuploadUseCase(
-		assetRepo,
-		deps.Delivery.Publisher,
+		params.AssetRepo,
+		params.Deps.Delivery.Publisher,
 		clipsDispatcherPort,
 		reuploadFolderRoots,
-		log,
+		params.Log,
 	)
 
 	// (2e) ClipOpsService (PR 2, June 2026)
@@ -193,7 +199,7 @@ func buildClipsBundle(
 	// The clipsDispatcherPort and metaWriter + deps.Core.AssetTreeService
 	// construction sites stay INLINE here — the buildClipOpsPorts
 	// contract is strictly minimal per the user spec literal.
-	clipsOpsPorts := buildClipOpsPorts(newClipsRepoAdapter(deps.Core.ClipsRepo), jobs)
+	clipsOpsPorts := buildClipOpsPorts(newClipsRepoAdapter(params.Deps.Core.ClipsRepo), params.Jobs)
 	clipOpsSvc := appclips.NewClipOpsService(
 		// The clipsOpsPorts struct fields map 1:1 to ClipOpsService
 		// deps per the canonical surface contract. SourceResolver
@@ -206,7 +212,7 @@ func buildClipsBundle(
 		clipsOpsPorts.driveUploader,
 		clipsOpsPorts.jobsPort,
 		clipsDispatcherPort,
-		log,
+		params.Log,
 	)
 
 	// (3) Canonical Build call
@@ -220,30 +226,30 @@ func buildClipsBundle(
 	// (newAssetRegisterService → sourcingEnrichmentAdapter →
 	// handler.EnrichAndIndexClip).
 	descriptor, err := clipsapi.Build(clipsapi.Dependencies{
-		ClipsRepo:        deps.Core.ClipsRepo,
-		AssetRepo:        assetRepo,
-		DeletionSvc:      deletionSvc,
-		DriveAdmin:       driveUploader,
-		MediaProcessor:   deps.Core.MediaProcessor,
-		AssetTreeSvc:     deps.Core.AssetTreeService,
-		MetaWriter:       metaWriter,
-		ClipIndexer:      deps.Search.ClipIndexerService,
-		JobsSvc:          jobs.Facade,
-		Cfg:              cfg,
-		Log:              log,
-		VoiceoverRepo:    deps.Core.VoiceoverRepo,
-		ImagesRepo:       deps.Core.ImageRepo,
-		FolderMemSvc:     folderMemSvc,
+		ClipsRepo:        params.Deps.Core.ClipsRepo,
+		AssetRepo:        params.AssetRepo,
+		DeletionSvc:      params.DeletionSvc,
+		DriveAdmin:       params.DriveUploader,
+		MediaProcessor:   params.Deps.Core.MediaProcessor,
+		AssetTreeSvc:     params.Deps.Core.AssetTreeService,
+		MetaWriter:       params.MetaWriter,
+		ClipIndexer:      params.Deps.Search.ClipIndexerService,
+		JobsSvc:          params.Jobs.Facade,
+		Cfg:              params.Cfg,
+		Log:              params.Log,
+		VoiceoverRepo:    params.Deps.Core.VoiceoverRepo,
+		ImagesRepo:       params.Deps.Core.ImageRepo,
+		FolderMemSvc:     params.FolderMemSvc,
 		ProcessRunner:    processRunnerAdapter,
 		Dispatcher:       clipsDispatcherPort,
 		EnrichUC:         enrichUC,
-		SearchSvc:        searchAggregator,
+		SearchSvc:        params.SearchAggregator,
 		BulkUploadWorker: bulkUploadWorker,
 		ClipOpsService:   clipOpsSvc,
 		UploadUC:         uploadUC,
 		ReuploadUC:       reuploadUC, // F2.9: wired via delivery.Publisher (was nil pre-F2.9)
-		Publisher:        deps.Delivery.Publisher,
-		Idempotency:      idemHandler,
+		Publisher:        params.Deps.Delivery.Publisher,
+		Idempotency:      params.IdemHandler,
 		EnabledFunc:      func() bool { return true },
 	})
 	if err != nil {
@@ -262,7 +268,7 @@ func buildClipsBundle(
 	// assetsapi.NewModule call in wire_assets.go accepts it).
 	desc, ok := descriptor.(*clipsapi.ClipsDescriptor)
 	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper. Also adds the missing `desc == nil` post-assertion check (the other 6 descriptor sites already had it; this site had only `!ok` — the inconsistency this PR fixes).
-	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: clips (got %T, want *clipsapi.ClipsDescriptor)", descriptor), !ok || desc == nil, DepRequired, log); err != nil {
+	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: clips (got %T, want *clipsapi.ClipsDescriptor)", descriptor), !ok || desc == nil, DepRequired, params.Log); err != nil {
 		return nil, err
 	}
 	return desc, nil

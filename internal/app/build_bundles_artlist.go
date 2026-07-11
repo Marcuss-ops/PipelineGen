@@ -54,8 +54,12 @@ import (
 	"fmt"
 
 	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets/adapters"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+
 	scripts_usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -227,6 +231,22 @@ func WireArtlist(
 	artlistDownloadAuditAdapter := NewArtlistDownloadAuditAdapter(artlistDownloadAuditRepo)
 	_ = (artlistPkg.DownloadAuditRepository)(artlistDownloadAuditAdapter) // compile-time pin surface
 
+	// License, release and rendition compliance repositories. They share the
+	// same media.db.sqlite handle and are exposed on ArtlistWiring for use by
+	// handlers and audit tooling.
+	licenseRepo, err := assets.NewAssetLicenseRepository(bundle.DB.DB, log)
+	if err != nil {
+		return nil, fmt.Errorf("WireArtlist: NewAssetLicenseRepository: %w", err)
+	}
+	releaseRepo, err := assets.NewAssetReleaseRepository(bundle.DB.DB, log)
+	if err != nil {
+		return nil, fmt.Errorf("WireArtlist: NewAssetReleaseRepository: %w", err)
+	}
+	renditionRepo, err := assets.NewAssetRenditionRepository(bundle.DB.DB, log)
+	if err != nil {
+		return nil, fmt.Errorf("WireArtlist: NewAssetRenditionRepository: %w", err)
+	}
+
 	// Stager (SourceStager port, Step 9/12): wraps the Artlist Downloader
 	// so run_orchestrator_stages.go can use the canonical SourceStager
 	// contract instead of falling through to the legacy mediaProcessor
@@ -277,6 +297,22 @@ func WireArtlist(
 		}
 	}
 
+	// PR-ARTLIST-SEARCHERS (2026-07-04): construct the public-stock
+	// searchers once and reuse them both for the legacy fallback chain
+	// inside artlist.Service and for the new unified providerassets
+	// registry. This avoids duplicate HTTP clients and keeps the two
+	// surfaces observationally equivalent.
+	pexelsSearcher := fallback.NewPexels(fallback.Config{
+		APIKey:     cfg.External.PexelsAPIKey,
+		BaseURL:    cfg.External.PexelsBaseURL,
+		SourceName: "pexels",
+	})
+	pixabaySearcher := fallback.NewPixabay(fallback.Config{
+		APIKey:     cfg.External.PixabayAPIKey,
+		BaseURL:    cfg.External.PixabayBaseURL,
+		SourceName: "pixabay",
+	})
+
 	// 19-field ServiceDeps literal via nested named-struct init (8 ServicePorts
 	// + 11 ServiceDependencies). 3 forward-pointer nil fields tagged with
 	// linked_issue id per architecture/current.yaml#ART-001.linked_issues
@@ -296,39 +332,33 @@ func WireArtlist(
 				ScraperDir: cfg.External.NodeScraperDir,
 				ScriptName: "artlist_search.js",
 			}, log),
-			PixabaySearcher: fallback.NewPixabay(fallback.Config{
-				APIKey:     cfg.External.PixabayAPIKey,
-				BaseURL:    cfg.External.PixabayBaseURL,
-				SourceName: "pixabay",
-			}),
-			PexelsSearcher: fallback.NewPexels(fallback.Config{
-				APIKey:     cfg.External.PexelsAPIKey,
-				BaseURL:    cfg.External.PexelsBaseURL,
-				SourceName: "pexels",
-			}),
-			Stager:      artlistStager,
-			IsLiveProbe: isLiveProbe,
+			PixabaySearcher: pixabaySearcher,
+			PexelsSearcher:  pexelsSearcher,
+			Stager:          artlistStager,
+			IsLiveProbe:     isLiveProbe,
 			// PR-ARTLIST-PERSIST-FIX (2026-07-04): mandatory
 			// RunRepository port wiring (godlike/07 fail-closed).
 			// The concrete in sqlite/assets/ is wrapped via the
 			// canonical artlistRunsRepoAdapter (composition-root,
 			// owns the import-cycle pin) so the ServicePorts field
 			// sees the canonical port type, not the infra-side
-			// local Record interface.
-			RunRepository:  artlistRunsAdapter,
+			// local Record interface.			RunRepository:  artlistRunsAdapter,
 			SearchStrategy: artlistPkg.ArtlistSearchStrategy(cfg.External.ArtlistSearchStrategy),
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
 			// ServiceDependencies (10) — 10 DIRECT.
 			Cfg:               cfg,
-			MainDB:            bundle.DB.DB,
 			Log:               log,
+			MainDB:            bundle.DB.DB,
 			Dispatcher:        dispatcher,
 			MediaProcessor:    bundle.MediaProcessor,
 			AssetDestResolver: destResolver,
 			JobsSvc:           bundle.Jobs.Service,
 			AssetProcRepo:     assetProcRepo,
 			AssetVerRepo:      assetVerRepo,
+			// PR-ARTLIST-FINALIZER (July 2026): canonical transactional
+			// asset finalizer. Replaces the legacy dispatchBridge path.
+			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(log),
 		},
 	})
 	if err != nil {
@@ -379,11 +409,29 @@ func WireArtlist(
 		return nil, fmt.Errorf("WireArtlist: artlist.Build returned unexpected descriptor type %T (want *artlistapi.ArtlistDescriptor)", descriptor)
 	}
 
+	// ProviderAssets registry: unified catalog surface for Artlist,
+	// Pexels and Pixabay. The registry is frozen before the module
+	// is returned so no provider can be added or removed at runtime.
+	providerAssetsRegistry := providerassets.NewRegistry()
+	artlistAdapter := adapters.NewSearchProviderAdapter("artlist", artlistPkg.NewAdapter(service))
+	_ = providerAssetsRegistry.Register(artlistAdapter)
+	_ = providerAssetsRegistry.Register(adapters.NewSearcherAdapter("pexels", pexelsSearcher))
+	_ = providerAssetsRegistry.Register(adapters.NewSearcherAdapter("pixabay", pixabaySearcher))
+	providerAssetsRegistry.Freeze()
+
 	log.Info("WireArtlist: ART-001 reversal wiring complete",
 		zap.String("descriptor_name", ad.Name()),
+		zap.Strings("provider_assets", providerAssetsRegistry.Names()),
 		zap.Bool("godlike_06_ssot", true),
 	)
-	return &ArtlistWiring{Module: ad.Module, Service: ad.Service}, nil
+	return &ArtlistWiring{
+		Module:         ad.Module,
+		Service:        ad.Service,
+		ProviderAssets: providerAssetsRegistry,
+		LicenseRepo:    licenseRepo,
+		ReleaseRepo:    releaseRepo,
+		RenditionRepo:  renditionRepo,
+	}, nil
 }
 
 // artlistProcessorDownloadAdapter bridges the processor's narrow

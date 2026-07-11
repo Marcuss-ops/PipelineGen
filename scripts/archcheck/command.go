@@ -41,10 +41,10 @@ const (
 	// baseline from the current actual state and exits 0. Activated
 	// by `--seed-baseline`. Short-circuits any check dispatch.
 	ModeSeedBaseline
-// ModeSymbolRefs runs the architecture-symbol CI gate (action
-// P0-5 slice 4/4 of the cleanup plan, June 2026): walks
-// architecture/*.yaml,
-// extracts Go-like path tokens, and prints findings to
+	// ModeSymbolRefs runs the architecture-symbol CI gate (action
+	// P0-5 slice 4/4 of the cleanup plan, June 2026): walks
+	// architecture/*.yaml,
+	// extracts Go-like path tokens, and prints findings to
 	// stderr. Exits 1 when any reference is unresolved. Activated
 	// by `--symbol-refs`. Backed by runSymbolRefsChecks (in
 	// scripts/archcheck/symbol_refs.go).

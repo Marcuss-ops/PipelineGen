@@ -137,7 +137,16 @@ func executeReconcile(ctx context.Context, cfg *config.Config, log *zap.Logger, 
 	}
 
 	// Phase 1: Recursively scan starting from root.
-	if err := reconcileFolder(ctx, uploader, catalogRepo, rootID, "", "", 0, maxDepth, namespaceSet, &results, &discovered, &errors, true); err != nil {
+	env := &reconcileEnv{
+		Reader:       uploader,
+		Repo:         catalogRepo,
+		MaxDepth:     maxDepth,
+		NamespaceSet: namespaceSet,
+		Results:      &results,
+		Discovered:   &discovered,
+		Errors:       &errors,
+	}
+	if err := reconcileFolder(ctx, env, rootID, "", "", 0, true); err != nil {
 		return fmt.Errorf("drive-reconcile: %w", err)
 	}
 
@@ -163,28 +172,37 @@ func executeReconcile(ctx context.Context, cfg *config.Config, log *zap.Logger, 
 	return nil
 }
 
+// reconcileEnv holds the shared dependencies and mutable state for
+// reconcileFolder. It is passed by pointer so that recursive calls
+// operate on the same result counters and slice.
+type reconcileEnv struct {
+	Reader       drive.Reader
+	Repo         *sqlitedelivery.Repository
+	MaxDepth     int
+	NamespaceSet map[string]string
+	Results      *[]reconcileResult
+	Discovered   *int
+	Errors       *int
+}
+
 // reconcileFolder recursively scans a Drive folder and populates the catalog.
 // When isRoot is true, the folder itself is not cataloged — only its children.
 // Uses drive.Reader for ListFiles access.
 func reconcileFolder(
 	ctx context.Context,
-	reader drive.Reader,
-	repo *sqlitedelivery.Repository,
+	env *reconcileEnv,
 	folderID, parentPath, parentNamespace string,
-	depth, maxDepth int,
-	namespaceSet map[string]string,
-	results *[]reconcileResult,
-	discovered, errors *int,
+	depth int,
 	isRoot bool,
 ) error {
-	if depth > maxDepth {
+	if depth > env.MaxDepth {
 		return nil
 	}
 
-	files, err := reader.ListFiles(ctx, folderID)
+	files, err := env.Reader.ListFiles(ctx, folderID)
 	if err != nil {
-		*errors++
-		*results = append(*results, reconcileResult{
+		*env.Errors++
+		*env.Results = append(*env.Results, reconcileResult{
 			Path:  parentPath,
 			Depth: depth,
 			Error: fmt.Sprintf("list folder %s: %v", folderID, err),
@@ -207,7 +225,7 @@ func reconcileFolder(
 		namespace := ""
 
 		if isRoot {
-			if d, ok := namespaceSet[f.Name]; ok {
+			if d, ok := env.NamespaceSet[f.Name]; ok {
 				dest = d
 				namespace = f.Name
 			}
@@ -239,19 +257,19 @@ func reconcileFolder(
 				Source:         sqlitedelivery.SourceDiscovered,
 				Status:         sqlitedelivery.StatusActive,
 			}
-			if _, upsertErr := repo.Upsert(ctx, nil, entry); upsertErr != nil {
+			if _, upsertErr := env.Repo.Upsert(ctx, nil, entry); upsertErr != nil {
 				result.Error = fmt.Sprintf("catalog write: %v", upsertErr)
-				*errors++
+				*env.Errors++
 			} else {
 				result.Source = "cataloged"
-				*discovered++
+				*env.Discovered++
 			}
 		} else {
 			result.Source = "discovered"
-			*discovered++
+			*env.Discovered++
 		}
 
-		*results = append(*results, result)
+		*env.Results = append(*env.Results, result)
 
 		// Print progress.
 		icon := "📁"
@@ -266,7 +284,7 @@ func reconcileFolder(
 		}
 
 		// Recurse into subdirectories (non-fatal).
-		_ = reconcileFolder(ctx, reader, repo, f.ID, childPath, namespace, depth+1, maxDepth, namespaceSet, results, discovered, errors, false)
+		_ = reconcileFolder(ctx, env, f.ID, childPath, namespace, depth+1, false)
 	}
 
 	return nil

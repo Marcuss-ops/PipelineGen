@@ -301,4 +301,12 @@ type ClipAsset struct {
 	Coordinates   ClipAssetCoordinates
 	Metadata      CanonicalClipMetadata
 	PolicyVersion string
+	// Texts carries the payload-provided localized texts (transcripts,
+	// descriptions, etc.) that the ClipAtomicWriter persists as
+	// asset_text_tracks in the same transaction as media_assets.
+	// When non-empty, the writer converts them to domain TextTrack
+	// rows and upserts them atomically. This eliminates the race
+	// where a separate TextTrackResolver.Save() call could fail
+	// silently after Step 9 committed.
+	Texts []LocalizedClipText `json:"texts,omitempty"`
 }

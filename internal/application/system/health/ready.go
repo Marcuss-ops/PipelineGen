@@ -51,6 +51,10 @@ type ReadyChecker struct {
 	driveFolderID  string                  // target folder for folder-access check
 	publisherCheck PublisherChecker        // delivery.Publisher is non-nil
 	destClipCheck  DestinationClipChecker  // DestinationYouTubeClip registered
+
+	// Script-generation readiness check (July 2026).
+	scriptGenerateCheck ScriptGenerateChecker
+	scriptRouteMounted  func() bool
 }
 
 // NewReadyChecker wraps the canonical *Service with the readiness policy.
@@ -97,12 +101,17 @@ func (r *ReadyChecker) CheckReady(ctx context.Context) HealthResponse {
 	r.runPublisherCheck(&resp)
 	r.runDestinationClipCheck(&resp)
 
-	// FASE 6: run severe readiness checks (temp, tts, drive_root, ollama, outbox).
+	// FASE 6: run severe readiness checks (temp, tts, drive_root, ollama, outbox,
+	// script_generate).
 	r.runTempPathCheck(&resp)
 	r.runTTSCheck(ctx, &resp)
 	r.runDriveRootCheck(ctx, &resp)
 	r.runOllamaCheck(ctx, &resp)
 	r.runOutboxCheck(ctx, &resp)
+
+	// Script-generation readiness: database, job registry/worker, Ollama,
+	// document service, Drive, and the /api/script route.
+	r.runScriptGenerateCheck(ctx, &resp)
 
 	return resp
 }

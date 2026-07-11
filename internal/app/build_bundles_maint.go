@@ -15,6 +15,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
+	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -30,9 +31,10 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		nil, // completionTxRunner (Blocco 3.1 commit 3/3 — pre-commit-4/3 wiring forward-pointer)
 		log,
 	)
+	maintRepo := sqliteassets.NewMaintenanceRepository(dbs.main.DB, log)
 	maintenanceSvc := maintenance.NewService(cfg, log,
 		search.AssetIndexService, search.AssetTreeService, deletionSvc,
-		jobs.Service, dbs.main.DB,
+		jobs.Service, maintRepo,
 	)
 	// Registries-and-SSOT (June 2026): this is the canonical site for
 	// the `system.cleanup` job-type registration. Spec §"Uniqueness"
