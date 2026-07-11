@@ -52,6 +52,10 @@ func buildSingleSuccessEnvelope(itemID string, single *domainScript.GenerationRe
 	if single == nil {
 		return buildSingleFailureEnvelope(itemID, errors.New("nil generation result"))
 	}
+	// P0: ensure a clean success item is strictly marked SUCCEEDED.
+	if single.Status == "" || single.Status == domainScript.ItemStatusSucceeded {
+		single.Status = domainScript.ItemStatusSucceeded
+	}
 	return domainScript.GenerationEnvelopeResult{
 		Version: domainScript.EnvelopeVersion,
 		OK:      true,
@@ -69,8 +73,9 @@ func buildSingleSuccessEnvelope(itemID string, single *domainScript.GenerationRe
 
 // buildSingleFailureEnvelope captures a per-item failure in the
 // canonical envelope shape. Same schema-version, same summary counts,
-// same per-item Error field.
-func buildSingleFailureEnvelope(itemID string, err error) domainScript.GenerationEnvelopeResult {
+// same per-item Error field. When result is non-nil it is preserved
+// so callers can inspect partial outputs such as the quality block.
+func buildSingleFailureEnvelope(itemID string, err error, result ...*domainScript.GenerationResult) domainScript.GenerationEnvelopeResult {
 	errMsg := ""
 	errCode := ""
 	if err != nil {
@@ -79,12 +84,26 @@ func buildSingleFailureEnvelope(itemID string, err error) domainScript.Generatio
 		if errors.As(err, &cne) && cne != nil && cne.Code != "" {
 			errCode = cne.Code
 		}
+		var qge *domainScript.QualityGateError
+		if errors.As(err, &qge) && qge != nil {
+			// Surface the stable quality-gate code so callers can
+			// distinguish editorial failures from other failures.
+			errCode = qge.Code
+			if errCode == "" {
+				errCode = "QUALITY_GATE_FAILED"
+			}
+		}
+	}
+	r := firstResult(result)
+	if r != nil && r.Status == "" {
+		r.Status = domainScript.ItemStatusFailed
 	}
 	return domainScript.GenerationEnvelopeResult{
 		Version: domainScript.EnvelopeVersion,
 		OK:      false,
 		Items: []domainScript.GenerationEnvelopeItem{{
 			ItemID:    itemID,
+			Result:    r,
 			Error:     errMsg,
 			ErrorCode: errCode,
 		}},
@@ -94,6 +113,16 @@ func buildSingleFailureEnvelope(itemID string, err error) domainScript.Generatio
 			Failed:    1,
 		},
 	}
+}
+
+// firstResult returns the first non-nil result from a variadic slice.
+func firstResult(results []*domainScript.GenerationResult) *domainScript.GenerationResult {
+	for _, r := range results {
+		if r != nil {
+			return r
+		}
+	}
+	return nil
 }
 
 // singleEnvelopeResult was the PR-7-pre thin wrapper; preserved as a

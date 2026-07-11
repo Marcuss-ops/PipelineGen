@@ -49,7 +49,7 @@ func enforceClipNativeContract(
 		fallbackUsed = true
 		usedMode = "prose"
 		warnings = append(warnings,
-			"clip_native: prose fallback was used because the model did not emit scenes")
+			"[CLIP_NATIVE_PLAN_UNAVAILABLE] clip_native: prose fallback was used because the model did not emit scenes")
 	}
 
 	// Determine the final scene list after postprocessing.
@@ -65,7 +65,7 @@ func enforceClipNativeContract(
 		msg := fmt.Sprintf("clip_native: scene count (%d) does not match clip count (%d)",
 			len(finalScenes), len(clipIDs))
 		if policy == scriptpkg.FallbackPolicyAllowProse {
-			warnings = append(warnings, msg)
+			warnings = append(warnings, "[CLIP_NATIVE_PLAN_UNAVAILABLE] "+msg)
 		} else {
 			return &scriptpkg.ClipNativePlanningError{
 				Code:    "CLIP_NATIVE_PLANNING_FAILED",
@@ -94,7 +94,7 @@ func enforceClipNativeContract(
 		msg := fmt.Sprintf("clip_native: accepted clips not bound to scenes: %s",
 			strings.Join(missing, ", "))
 		if policy == scriptpkg.FallbackPolicyAllowProse {
-			warnings = append(warnings, msg)
+			warnings = append(warnings, "[CLIP_NATIVE_PLAN_UNAVAILABLE] "+msg)
 		} else {
 			return &scriptpkg.ClipNativePlanningError{
 				Code:    "CLIP_NATIVE_PLANNING_FAILED",
@@ -123,10 +123,10 @@ func enforceClipNativeContract(
 		FallbackUsed:  fallbackUsed,
 	}
 	if fallbackUsed || len(warnings) > 0 {
-		result.Status = "SUCCEEDED_WITH_WARNINGS"
+		result.Status = scriptpkg.ItemStatusSucceededWithWarnings
 		result.Warnings = append(result.Warnings, warnings...)
 	} else {
-		result.Status = "SUCCEEDED"
+		result.Status = scriptpkg.ItemStatusSucceeded
 	}
 	return nil
 }

@@ -31,6 +31,20 @@ package script
 // payload so callers can deserialise against multiple versions.
 const EnvelopeVersion = 2
 
+// Per-item terminal statuses for GenerationResult.Status.
+// SUCCEEDED is strict: it is only emitted when the requested
+// generation path was fully respected. SUCCEEDED_WITH_WARNINGS
+// is emitted when a fallback was used. PARTIALLY_SUCCEEDED is
+// reserved for batch/partial outcomes where some artifacts were
+// produced but the item cannot be considered fully successful.
+// FAILED is the terminal failure status.
+const (
+	ItemStatusSucceeded             = "SUCCEEDED"
+	ItemStatusSucceededWithWarnings = "SUCCEEDED_WITH_WARNINGS"
+	ItemStatusPartiallySucceeded    = "PARTIALLY_SUCCEEDED"
+	ItemStatusFailed                = "FAILED"
+)
+
 // GenerationResult is the canonical output of a single generation
 // item. It carries the generated script, postprocessor outputs,
 // and timing metadata. The caller matches it to the original
@@ -80,15 +94,28 @@ type GenerationResult struct {
 	Warnings []string `json:"warnings,omitempty"`
 
 	// Status is the canonical per-item outcome status. It is
-	// "SUCCEEDED" for a clean generation and
-	// "SUCCEEDED_WITH_WARNINGS" when a clip-native generation
-	// used the prose fallback (fallback_policy=allow_prose).
+	// ItemStatusSucceeded for a clean generation,
+	// ItemStatusSucceededWithWarnings when a clip-native generation
+	// used the prose fallback (fallback_policy=allow_prose),
+	// ItemStatusPartiallySucceeded for partial/batch outcomes, and
+	// ItemStatusFailed for terminal failures.
 	Status string `json:"status,omitempty"`
 
 	// ModeInfo describes the requested vs actual generation mode
 	// for clip-aware sources. Populated when the source involved
 	// clips so callers can detect fallback usage.
 	ModeInfo *GenerationModeInfo `json:"mode_info,omitempty"`
+
+	// Quality carries the editorial quality gate outcome. It is
+	// always populated so callers can inspect the per-item quality
+	// metrics even when the gate passes.
+	Quality *GenerationQuality `json:"quality,omitempty"`
+
+	// Provenance carries the complete generation provenance block
+	// (doc_id, doc_link, source_type, source_text_hash, clip_ids,
+	// requested_mode, used_mode, fallback_used, model, prompt_version,
+	// planner_version).
+	Provenance *GenerationProvenance `json:"provenance,omitempty"`
 }
 
 // GenerationModeInfo describes the requested and actual generation
@@ -106,6 +133,81 @@ type GenerationModeInfo struct {
 	// FallbackUsed is true when the pipeline fell back to prose
 	// because the model did not produce a 1:1 clip-to-scene plan.
 	FallbackUsed bool `json:"fallback_used"`
+}
+
+// GenerationProvenance records the complete provenance metadata for
+// a single generation item and the document it produced.
+type GenerationProvenance struct {
+	// DocID is the Google Doc document ID.
+	DocID string `json:"doc_id,omitempty"`
+
+	// DocLink is the Google Doc edit URL.
+	DocLink string `json:"doc_link,omitempty"`
+
+	// SourceType is the canonical source type ("text", "clips",
+	// "catalog", "search", "curate").
+	SourceType string `json:"source_type,omitempty"`
+
+	// SourceTextHash is the SHA-256 hex digest of the source text
+	// and clip evidence assembled text used for generation.
+	SourceTextHash string `json:"source_text_hash,omitempty"`
+
+	// ClipIDs lists the accepted clip IDs used in generation.
+	ClipIDs []string `json:"clip_ids,omitempty"`
+
+	// RequestedMode is the requested generation mode (e.g.
+	// "clip_native" for source.type=clips).
+	RequestedMode string `json:"requested_mode,omitempty"`
+
+	// UsedMode is the actual generation mode ("clip_native" or
+	// "prose").
+	UsedMode string `json:"used_mode,omitempty"`
+
+	// FallbackUsed is true when the pipeline fell back to prose.
+	FallbackUsed bool `json:"fallback_used,omitempty"`
+
+	// Model is the LLM model used for generation.
+	Model string `json:"model,omitempty"`
+
+	// PromptVersion is the prompt version used for generation.
+	PromptVersion string `json:"prompt_version,omitempty"`
+
+	// PlannerVersion is the planner version used for generation.
+	PlannerVersion string `json:"planner_version,omitempty"`
+}
+
+// GenerationQuality records the editorial quality gate outcome for a
+// single generation item. It is always populated so callers can
+// inspect the metrics regardless of whether the gate passed.
+type GenerationQuality struct {
+	// LanguageRequested is the target language from the plan.
+	LanguageRequested string `json:"language_requested"`
+
+	// LanguageDetected is the language detected from the generated
+	// text by the lightweight stop-word heuristic.
+	LanguageDetected string `json:"language_detected"`
+
+	// SourceTextCoverage is the ratio (0..1) of generated content
+	// words that appear in the source text or clip evidence.
+	SourceTextCoverage float64 `json:"source_text_coverage"`
+
+	// ClipEvidenceCoverage is the ratio (0..1) of accepted clips
+	// that are bound to a scene. For non-clip sources this is 1.0.
+	ClipEvidenceCoverage float64 `json:"clip_evidence_coverage"`
+
+	// UnsupportedClaims is the count of named entities in the
+	// generated text that do not appear in the source text or clip
+	// evidence.
+	UnsupportedClaims int `json:"unsupported_claims"`
+
+	// TargetWords is the requested target word count.
+	TargetWords int `json:"target_words"`
+
+	// ActualWords is the actual generated word count.
+	ActualWords int `json:"actual_words"`
+
+	// Passed is true when every quality gate check passed.
+	Passed bool `json:"passed"`
 }
 
 // ScriptOutput is the canonical embedded output of script generation.

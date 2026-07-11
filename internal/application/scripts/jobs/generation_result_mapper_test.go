@@ -44,3 +44,22 @@ func TestBuildSingleFailureEnvelope_WrappedClipNativePlanningError_SetsErrorCode
 		t.Errorf("expected error_code CLIP_NATIVE_PLANNING_FAILED, got %q", env.Items[0].ErrorCode)
 	}
 }
+
+func TestBuildSingleFailureEnvelope_PreservesResultAndMarksFailed(t *testing.T) {
+	result := &domainScript.GenerationResult{ItemID: "item-1", Status: ""}
+	env := buildSingleFailureEnvelope("item-1", fmt.Errorf("failure"), result)
+	if env.Items[0].Result == nil {
+		t.Fatal("expected preserved result")
+	}
+	if env.Items[0].Result.Status != domainScript.ItemStatusFailed {
+		t.Errorf("expected status %s, got %q", domainScript.ItemStatusFailed, env.Items[0].Result.Status)
+	}
+}
+
+func TestBuildSingleSuccessEnvelope_StrictSucceed(t *testing.T) {
+	result := &domainScript.GenerationResult{ItemID: "item-1"}
+	env := buildSingleSuccessEnvelope("item-1", result)
+	if env.Items[0].Result.Status != domainScript.ItemStatusSucceeded {
+		t.Errorf("expected status %s, got %q", domainScript.ItemStatusSucceeded, env.Items[0].Result.Status)
+	}
+}
