@@ -3,6 +3,7 @@ package security
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -41,6 +42,22 @@ func ValidateDownloadURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("invalid url: %w", err)
+	}
+
+	// file:// is allowed for local replays and hermetic stock runs.
+	// Keep the existing injection checks above so only a canonical
+	// absolute path can pass through this branch.
+	if u.Scheme == "file" {
+		if u.Path == "" {
+			return fmt.Errorf("file url has no path")
+		}
+		if !filepath.IsAbs(u.Path) {
+			return fmt.Errorf("file url path must be absolute")
+		}
+		if u.Fragment != "" {
+			return fmt.Errorf("url must not contain a fragment")
+		}
+		return nil
 	}
 
 	// Only allow http/https schemes

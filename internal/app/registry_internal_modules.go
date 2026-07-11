@@ -131,11 +131,17 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		}
 	}
 
+	var rerankerPort rerankerClient
+	if root.AI != nil && root.AI.Reranker != nil {
+		rerankerPort = root.AI.Reranker
+	}
+
 	_, _, searchAgg := registerSearchBackend(log, providerReg, root.Repos.ClipsRepo, wiring,
 		embeddingReg,         // embeddings: EmbeddingChannelRegistry from Ollama pipeline
 		vectorStoreForSearch, // vectorStore: Qdrant SearchAdapter from Process bundle
 		mediaRepo,            // mediaRepo: ClipsRepository → MediaReadRepository
 		deliveryPort,         // delivery: HMAC Signer for signed URLs
+		rerankerPort,         // reranker: optional CrossEncoder post-retrieval stage
 	)
 	_ = searchAgg // for symmetry with pre-PR4 inline pattern; the var stays nil when providerReg is nil
 	wiring.idempotencyHandler = idemHandler

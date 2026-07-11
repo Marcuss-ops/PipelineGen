@@ -35,6 +35,28 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 )
 
+// Typed sentinels (godlike/07 typed-error contract). Each sentinel
+// has a domain-prefixed name (ArtlistTranslation*) so callers can
+// probe via errors.Is(err, ErrArtlistTranslationX) for "is this a
+// translation config bug or a translator failure?".
+//
+// Per PR-DEADC-SCRIPTS-CLIP-SERVICES-PER-USE-CASE-DEP-BAGS Step 1+2
+// code-reviewer MUST-FIX #1: bare errors.New failed the typed-error
+// contract (callers could not probe the error class). The 2 sentinels
+// below are reachable via errors.Is and document the 2 failure modes
+// of the canonical TranslationPort path.
+var (
+	// ErrArtlistTranslationUnavailable signals a missing
+	// TranslationPort on ClipServices — composition root misconfig.
+	ErrArtlistTranslationUnavailable = errors.New("artlist translation unavailable: TranslationPort not wired")
+
+	// ErrArtlistTranslationEmpty signals a translator success with
+	// empty TranslatedText — provider is misconfigured or returned
+	// a no-op. godlike/07 NO-FAKE-AVAILABILITY: never silent empty
+	// success.
+	ErrArtlistTranslationEmpty = errors.New("artlist translation returned empty text")
+)
+
 // SearchArtlistClips translates each candidate phrase and returns
 // per-phrase artlist suggestions. Thin wrapper around the canonical
 // artlist_phrase.PhraseAssetSearchService (PR-POSTPROCESSOR-
@@ -116,14 +138,20 @@ func convertPhraseMatchClips(hits []ports.AssetSearchHit) []ScriptAssetSuggestio
 // ── Internal adapters (wrap ClipServices → artlist_phrase ports) ─────────
 
 // phraseTranslatorAdapter wraps ClipServices into the canonical
-// artlist_phrase.PhraseTranslator port. Implements the 3-tier
-// fallback: TranslationPort → Translator → Translation. Pre-PR
-// the equivalent logic was in artlistSearchPhrase
-// (flow_helpers_artlist.go, retired in PHASE-4 Commit 1).
+// artlist_phrase.PhraseTranslator port. Single path: TranslationPort
+// (Phase 1+2 closure, July 2026, retired the legacy
+// Translation/Translator 2-tier fallback). Pre-PR the equivalent
+// logic was in artlistSearchPhrase (flow_helpers_artlist.go,
+// retired in PHASE-4 Commit 1).
 //
 // godlike/06 SSOT: the adapter is internal to the usecase package;
 // the canonical PhraseTranslator port lives at
 // internal/application/scripts/artlist_phrase/ports.go.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a nil TranslationPort returns a
+// typed error (never silently empty text + auto-fallback to the
+// original phrase). Callers surface the error per PhraseMatch
+// wire shape (see artlist_phrase.PhraseMatch.TranslationError).
 type phraseTranslatorAdapter struct {
 	svc ClipServices
 }
@@ -134,60 +162,25 @@ func (a *phraseTranslatorAdapter) Translate(ctx context.Context, phrase string) 
 		return "", errors.New("artlist search phrase is empty")
 	}
 
-	if a.svc.TranslationPort != nil {
-		res, err := a.svc.TranslationPort.Translate(ctx, translation.TranslationCommand{
-			SourceLang: "auto",
-			TargetLang: "en",
-			Text:       phrase,
-		})
-		if err != nil {
-			if a.svc.Logger != nil {
-				a.svc.Logger.Warn("artlist translation failed via TranslationPort", zap.String("phrase", phrase), zap.Error(err))
-			}
-			return "", err
-		}
-		translated := strings.TrimSpace(res.TranslatedText)
-		if translated == "" {
-			return "", errors.New("artlist translation returned empty text")
-		}
-		return translated, nil
+	if a.svc.TranslationPort == nil {
+		return "", ErrArtlistTranslationUnavailable
 	}
-
-	if a.svc.Translator != nil {
-		model := strings.TrimSpace(a.svc.MetadataModel)
-		if model == "" {
-			model = "default"
+	res, err := a.svc.TranslationPort.Translate(ctx, translation.TranslationCommand{
+		SourceLang: "auto",
+		TargetLang: "en",
+		Text:       phrase,
+	})
+	if err != nil {
+		if a.svc.Logger != nil {
+			a.svc.Logger.Warn("artlist translation failed via TranslationPort", zap.String("phrase", phrase), zap.Error(err))
 		}
-		translated, err := a.svc.Translator.TranslateTextWithModel(ctx, phrase, "en", model)
-		if err != nil {
-			if a.svc.Logger != nil {
-				a.svc.Logger.Warn("artlist translation failed via TranslatorService", zap.String("phrase", phrase), zap.Error(err))
-			}
-			return "", err
-		}
-		translated = strings.TrimSpace(translated)
-		if translated == "" {
-			return "", errors.New("artlist translation returned empty text")
-		}
-		return translated, nil
+		return "", err
 	}
-
-	if a.svc.Translation != nil {
-		translated, err := a.svc.Translation.TranslateText(ctx, phrase, "en")
-		if err != nil {
-			if a.svc.Logger != nil {
-				a.svc.Logger.Warn("artlist translation failed via TextTranslationService", zap.String("phrase", phrase), zap.Error(err))
-			}
-			return "", err
-		}
-		translated = strings.TrimSpace(translated)
-		if translated == "" {
-			return "", errors.New("artlist translation returned empty text")
-		}
-		return translated, nil
+	translated := strings.TrimSpace(res.TranslatedText)
+	if translated == "" {
+		return "", ErrArtlistTranslationEmpty
 	}
-
-	return "", errors.New("artlist translation unavailable: no translator service wired")
+	return translated, nil
 }
 
 // DefaultArtlistMinScore is the canonical fallback minimum score

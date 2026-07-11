@@ -1,6 +1,7 @@
 package security
 
 import (
+	"path/filepath"
 	"testing"
 )
 
@@ -45,19 +46,27 @@ func TestValidateDownloadURL_FlagInjection(t *testing.T) {
 }
 
 func TestValidateDownloadURL_Scheme(t *testing.T) {
+	tmp := filepath.Join("/tmp", "validate-download-url.mp4")
 	tests := []struct {
 		name string
 		url  string
+		want bool
 	}{
-		{"ftp", "ftp://example.com/video.mp4"},
-		{"file", "file:///etc/passwd"},
-		{"javascript", "javascript:alert(1)"},
-		{"data", "data:text/plain;base64,x"},
+		{"ftp", "ftp://example.com/video.mp4", true},
+		{"file", "file:///etc/passwd", false},
+		{"file_relative", "file://relative/path.mp4", false},
+		{"javascript", "javascript:alert(1)", true},
+		{"data", "data:text/plain;base64,x", true},
+		{"file_absolute_path", "file://" + tmp, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := ValidateDownloadURL(tt.url); err == nil {
+			err := ValidateDownloadURL(tt.url)
+			if tt.want && err == nil {
 				t.Errorf("expected error for %s scheme", tt.name)
+			}
+			if !tt.want && err != nil {
+				t.Errorf("unexpected error for %s scheme: %v", tt.name, err)
 			}
 		})
 	}

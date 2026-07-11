@@ -47,6 +47,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/reranker"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
@@ -172,6 +173,7 @@ type QdrantDeps struct {
 type AIBundle struct {
 	OllamaClient      *client.Client
 	OllamaEmbedClient *client.Client // dedicated embedding client (separate model from chat)
+	Reranker          *reranker.Client
 	ScriptGen         *ollama.Generator
 	OllamaTranslator  *translation.OllamaTranslator
 	MemoryRepo        *adapters.Repository

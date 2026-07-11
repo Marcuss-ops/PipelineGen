@@ -4,9 +4,11 @@
 // moved out of wire_script.go. The adapter bridges the concrete
 // *imgservice.Service signature (which returns *asset.ImageAsset
 // and takes tags []string as the search-input carrier) into the
-// canonical usecase.ImageGenService typed-port shape (which
-// returns *adapters.ImageResult and takes any for the
-// extra-input carrier).
+// canonical adapters.ImageGenService typed-port shape (which
+// returns *adapters.ImageResult). This is the only canonical
+// bridge between the composition-root concrete service and the
+// application-layer typed-port interface consumed by
+// adapters.ImageProcessor.
 //
 // Curation scope per FASE 2.A spec: "media_curator, scene_builder,
 // evidence_builder, clip_source_builder". Today the COMPLETE
@@ -16,8 +18,21 @@
 // internal/application/scripts/dto.MediaCurator. This file owns
 // the composition-root-local adapter (imageGenSvcAdapter) that
 // is the seam between the concrete imgservice service and the
-// usecase layer's typed ImageGenService — i.e. the "curation"
-// surface where application logic meets infrastructure.
+// consumer's typed ImageGenService — i.e. the "curation" surface
+// where application logic meets infrastructure.
+//
+// DEADC-2026-07-10 / PR-DEADC-IMAGES-IMAGE-GEN-SERVICE-INTERFACE-CONTRACT
+// (Phase F P2): the previous always-error GenerateSmartImage
+// method was REMOVED from this adapter. The shim no longer
+// pretends to implement usecase.ImageGenService (which it never
+// structurally did — the 10-arg usecase GenerateSmartImage had
+// a different signature than the consumer's smartImageGenService
+// type-assertion target). The shim now ONLY implements the
+// adapters.ImageGenService interface (single method:
+// SearchAndDownload) + the optional imagePrewarmer interface
+// (TriggerPrewarm). The composition root injects the canonical
+// *images.Service directly; the shim is a pure, non-broken
+// type-bridge.
 //
 // Package boundary: same `package app` as wire_script.go.
 // Promoting it to a sub-package would force wire_script.go to
@@ -26,11 +41,13 @@
 // clips_adapters_*.go + adapters_infra.go convention.
 //
 // Cross-references:
-//   - internal/app/wire_script.go: the caller (wireScriptFlow
-//     constructs & uses imageGenSvcAdapter inline in the image
-//     processor registration block).
-//   - internal/application/scripts/adapters: ImageGenService
-//     typed-port shape (the consumer of this adapter).
+//   - internal/app/wire_script_postprocess.go: the caller
+//     (registerScriptPostProcessors constructs & uses
+//     imageGenSvcAdapter inline in the image processor
+//     registration block at line ~109).
+//   - internal/application/scripts/adapters/processor_images.go:
+//     the consumer (adapters.ImageGenService + imagePrewarmer
+//     typed-port shapes).
 //   - internal/application/images: *imgservice.Service (the
 //     concrete implementation the adapter wraps).
 //   - internal/domain/asset: ImageAsset (the concrete result
@@ -47,16 +64,32 @@ import (
 )
 
 // imageGenSvcAdapter adapts *imgservice.Service →
-// usecase.ImageGenService.
+// adapters.ImageGenService (the canonical typed port consumed by
+// adapters.ImageProcessor).
 //
-// The adapter tries AI image generation (GenerateSmartImage) first,
-// and returns an error if it fails — NO web search fallback.
-// The concrete SearchAndDownload path (Wikipedia/SearXNG/DuckDuckGo)
-// is intentionally NOT used: the caller wants AI-generated images.
+// The adapter invokes AI image generation (GenerateSmartImage) via
+// the wrapped concrete service and bridges the result shape
+// (*asset.ImageAsset) into the consumer's typed-port shape
+// (*adapters.ImageResult). On failure the error is propagated.
+// The concrete SearchAndDownload path of *imgservice.Service (a
+// Wikipedia/SearXNG/DuckDuckGo web-search fallback) is intentionally
+// NOT used: the caller wants AI-generated images.
+//
+// DEADC-2026-07-10 / PR-DEADC-IMAGES-IMAGE-GEN-SERVICE-INTERFACE-CONTRACT
+// (Phase F P2): the previous always-error GenerateSmartImage
+// method was REMOVED — the shim no longer claims to implement
+// usecase.ImageGenService (which it never structurally did, since
+// the 10-arg usecase GenerateSmartImage had a different signature
+// than the consumer's smartImageGenService type-assertion target).
+// The shim now ONLY implements adapters.ImageGenService (single
+// method: SearchAndDownload) + the optional imagePrewarmer
+// interface (TriggerPrewarm). The composition root injects the
+// canonical *images.Service directly; the shim is a pure,
+// non-broken type-bridge.
 type imageGenSvcAdapter struct {
 	svc interface {
+		GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error)
 		SearchAndDownload(ctx context.Context, name, description, query, language string, tags []string) (*asset.ImageAsset, error)
-		GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts []string, tags []string, width, height int, model string, skipDrive bool) (*asset.ImageAsset, error)
 		TriggerPrewarm(ctx context.Context, jobID string, count int)
 	}
 }
@@ -104,22 +137,22 @@ func (a *imageGenSvcAdapter) TriggerPrewarm(ctx context.Context, jobID string, c
 	a.svc.TriggerPrewarm(ctx, jobID, count)
 }
 
-// GenerateSmartImage is the second method on usecase.ImageGenService.
-// It's intentionally NOT routed through the concrete *imgservice.Service
-// (the concrete service doesn't expose a structurally-equivalent
-// method that satisfies SearchAndDownload's typed-port contract).
-// The image processor (adapter.NewImageProcessor) calls
-// SearchAndDownload on every plan that requests images;
-// GenerateSmartImage is reserved for future scripts-and-image
-// flows and returns a typed error so the runtime preflight surfaces
-// the "not supported through ImageProcessor" gap loudly instead of
-// silently dropping the call.
-func (a *imageGenSvcAdapter) GenerateSmartImage(ctx context.Context, name, description, style string, prompts, tags []string, width, height int, extra string, flag bool) (*asset.ImageAsset, error) {
-	return nil, fmt.Errorf("GenerateSmartImage not supported through ImageProcessor")
-}
+// Compile-time assertions: imageGenSvcAdapter satisfies the canonical
+// adapters.ImageGenService typed port (single method: SearchAndDownload)
+// AND the optional imagePrewarmer interface (TriggerPrewarm). Drift in
+// either interface breaks the build immediately rather than panicking
+// on the first script request that requests images.
+var (
+	_ adapters.ImageGenService = (*imageGenSvcAdapter)(nil)
+	_ imagePrewarmer           = (*imageGenSvcAdapter)(nil)
+)
 
-// Compile-time assertion: imageGenSvcAdapter satisfies the canonical
-// usecase.ImageGenService typed port. Drift here breaks the build
-// immediately rather than panicking on the first script request
-// that requests images.
-var _ adapters.ImageGenService = (*imageGenSvcAdapter)(nil)
+// imagePrewarmer mirrors the typed-port interface declared in
+// internal/application/scripts/adapters/processor_images.go. The
+// shim satisfies this interface so the consumer's
+// prewarmer, ok := p.gen.(imagePrewarmer) type-assertion idiom works
+// without requiring app to import the adapters package (which
+// would create a circular import: app → adapters → app).
+type imagePrewarmer interface {
+	TriggerPrewarm(ctx context.Context, jobID string, count int)
+}

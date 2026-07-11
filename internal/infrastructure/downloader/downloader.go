@@ -6,6 +6,8 @@ package downloader
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -161,6 +163,10 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		return fmt.Errorf("invalid URL: %w", err)
 	}
 
+	if parsed, err := url.Parse(req.URL); err == nil && parsed.Scheme == "file" {
+		return d.downloadLocalFile(req, parsed)
+	}
+
 	args := []string{}
 	if req.NoPlaylist || shouldForceNoPlaylist(req.URL) {
 		args = append(args, "--no-playlist")
@@ -238,6 +244,58 @@ func (d *YTDLPDownloader) Download(ctx context.Context, req *DownloadRequest) er
 		return fmt.Errorf("download succeeded but output file not found: %w", resolveErr)
 	}
 	if verifyErr := d.verifier.VerifyFile(resolvedPath); verifyErr != nil {
+		return verifyErr
+	}
+	return nil
+}
+
+func (d *YTDLPDownloader) downloadLocalFile(req *DownloadRequest, parsed *url.URL) error {
+	if parsed == nil {
+		return fmt.Errorf("file url parse failed")
+	}
+	sourcePath := parsed.Path
+	if sourcePath == "" {
+		return fmt.Errorf("file url has no path")
+	}
+
+	outputTemplate := req.OutputPath
+	if !strings.Contains(outputTemplate, "%(ext)s") {
+		outputTemplate = outputTemplate + ".%(ext)s"
+	}
+	dstPath := strings.TrimSuffix(outputTemplate, ".%(ext)s")
+	ext := filepath.Ext(sourcePath)
+	if ext == "" {
+		ext = ".mp4"
+	}
+	finalPath := dstPath + ext
+
+	outputDir := filepath.Dir(finalPath)
+	if outputDir != "." && outputDir != "" {
+		if err := os.MkdirAll(outputDir, 0o755); err != nil {
+			return fmt.Errorf("create output dir: %w", err)
+		}
+	}
+
+	src, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("open source file %q: %w", sourcePath, err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(finalPath)
+	if err != nil {
+		return fmt.Errorf("create output file %q: %w", finalPath, err)
+	}
+	if _, err := io.Copy(dst, src); err != nil {
+		dst.Close()
+		_ = os.Remove(finalPath)
+		return fmt.Errorf("copy source file %q to %q: %w", sourcePath, finalPath, err)
+	}
+	if err := dst.Close(); err != nil {
+		_ = os.Remove(finalPath)
+		return fmt.Errorf("close output file %q: %w", finalPath, err)
+	}
+	if verifyErr := d.verifier.VerifyFile(finalPath); verifyErr != nil {
 		return verifyErr
 	}
 	return nil

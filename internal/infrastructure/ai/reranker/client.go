@@ -95,6 +95,23 @@ func (c *Client) IsEnabled() bool {
 	return c != nil && c.enabled && c.cfg.URL != ""
 }
 
+// Weight returns the configured blend weight used when mixing
+// Qdrant and reranker scores.
+func (c *Client) Weight() float64 {
+	if c == nil {
+		return 0
+	}
+	return c.cfg.Weight
+}
+
+// TopK returns the configured rerank candidate budget.
+func (c *Client) TopK() int {
+	if c == nil {
+		return 0
+	}
+	return c.cfg.TopK
+}
+
 // Rerank sends candidates to the CrossEncoder and returns them reordered by relevance.
 // Returns nil, error on failure — caller should fall back to original Qdrant ordering.
 func (c *Client) Rerank(ctx context.Context, query string, candidates []Candidate) ([]Result, error) {

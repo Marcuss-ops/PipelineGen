@@ -260,92 +260,229 @@ func buildEmbeddingText(doc *IndexDocument, semanticTitle string) string {
 		return ""
 	}
 	parts := make([]string, 0, 12)
+	source := strings.ToLower(strings.TrimSpace(doc.Metadata.Source))
+
 	if semanticTitle != "" {
 		parts = append(parts, semanticTitle)
 	}
-	if doc.Metadata.Summary != "" && doc.Metadata.Summary != semanticTitle {
-		parts = append(parts, doc.Metadata.Summary)
-	}
-	if doc.Metadata.Description != "" {
-		parts = append(parts, doc.Metadata.Description)
-	}
-	if doc.Metadata.Hook != "" {
-		parts = append(parts, "hook: "+doc.Metadata.Hook)
-	}
-	if doc.Metadata.Event != "" {
-		parts = append(parts, "event: "+doc.Metadata.Event)
-	}
-	if doc.Metadata.Scene != "" {
-		parts = append(parts, "scene: "+doc.Metadata.Scene)
-	}
-	if doc.Metadata.Subject != "" {
-		parts = append(parts, "subject: "+doc.Metadata.Subject)
-	}
-	if doc.Metadata.SourceProvider != "" || doc.Metadata.Source != "" {
-		source := firstNonEmpty(doc.Metadata.SourceProvider, doc.Metadata.Source)
-		if source != "" {
-			parts = append(parts, "source: "+source)
+
+	switch source {
+	case "youtube":
+		if doc.Metadata.Summary != "" && doc.Metadata.Summary != semanticTitle {
+			parts = append(parts, doc.Metadata.Summary)
 		}
-	}
-	if doc.Metadata.Origin != "" {
-		parts = append(parts, "origin: "+doc.Metadata.Origin)
-	}
-	if doc.Metadata.Destination != "" {
-		parts = append(parts, "destination: "+doc.Metadata.Destination)
-	}
-	if doc.Metadata.SourceURL != "" {
-		parts = append(parts, "source_url: "+doc.Metadata.SourceURL)
-	}
-	if doc.Metadata.SourceVideoID != "" {
-		parts = append(parts, "source_video_id: "+doc.Metadata.SourceVideoID)
-	}
-	if doc.Metadata.PolicyVersion != "" {
-		parts = append(parts, "policy_version: "+doc.Metadata.PolicyVersion)
-	}
-	if doc.Metadata.JobID != "" {
-		parts = append(parts, "job_id: "+doc.Metadata.JobID)
-	}
-	if doc.Metadata.WorkflowID != "" {
-		parts = append(parts, "workflow_id: "+doc.Metadata.WorkflowID)
-	}
-	if doc.Metadata.RunFingerprint != "" {
-		parts = append(parts, "run_fingerprint: "+doc.Metadata.RunFingerprint)
-	}
-	if doc.Metadata.ChunkIndex > 0 || doc.Metadata.TotalChunks > 0 {
-		parts = append(parts, "chunk_index: "+strconv.Itoa(doc.Metadata.ChunkIndex))
-	}
-	if doc.Metadata.TotalChunks > 0 {
-		parts = append(parts, "total_chunks: "+strconv.Itoa(doc.Metadata.TotalChunks))
-	}
-	if doc.Metadata.Category != "" {
-		parts = append(parts, "category: "+doc.Metadata.Category)
-	}
-	if doc.Metadata.Language != "" {
-		parts = append(parts, "language: "+doc.Metadata.Language)
-	}
-	if len(doc.Metadata.Topics) > 0 {
-		parts = append(parts, "topics: "+strings.Join(doc.Metadata.Topics, ", "))
-	}
-	if len(doc.Metadata.Speakers) > 0 {
-		parts = append(parts, "speakers: "+strings.Join(doc.Metadata.Speakers, ", "))
-	}
-	if len(doc.Metadata.MentionedPeople) > 0 {
-		parts = append(parts, "mentioned_people: "+strings.Join(doc.Metadata.MentionedPeople, ", "))
-	}
-	if len(doc.Metadata.Entities) > 0 {
-		parts = append(parts, "entities: "+strings.Join(doc.Metadata.Entities, ", "))
-	}
-	if len(doc.Metadata.SearchKeywords) > 0 {
-		parts = append(parts, "search_keywords: "+strings.Join(doc.Metadata.SearchKeywords, ", "))
-	}
-	if len(doc.Metadata.Tags) > 0 {
-		parts = append(parts, "tags: "+strings.Join(doc.Metadata.Tags, ", "))
-	}
-	if doc.Metadata.DurationSec > 0 {
-		parts = append(parts, "duration_sec: "+strconv.Itoa(doc.Metadata.DurationSec))
-	}
-	if doc.SearchText != "" {
-		parts = append(parts, "search_text: "+doc.SearchText)
+		if doc.Metadata.Description != "" {
+			parts = append(parts, doc.Metadata.Description)
+		}
+		if doc.Metadata.Hook != "" {
+			parts = append(parts, "hook: "+doc.Metadata.Hook)
+		}
+		if doc.Metadata.Event != "" {
+			parts = append(parts, "event: "+doc.Metadata.Event)
+		}
+		if doc.Metadata.Scene != "" {
+			parts = append(parts, "scene: "+doc.Metadata.Scene)
+		}
+		if doc.Metadata.Subject != "" {
+			parts = append(parts, "subject: "+doc.Metadata.Subject)
+		}
+		if doc.Metadata.SourceProvider != "" || doc.Metadata.Source != "" {
+			provider := firstNonEmpty(doc.Metadata.SourceProvider, doc.Metadata.Source)
+			if provider != "" {
+				parts = append(parts, "source: "+provider)
+			}
+		}
+		if doc.Metadata.Origin != "" {
+			parts = append(parts, "origin: "+doc.Metadata.Origin)
+		}
+		if doc.Metadata.Destination != "" {
+			parts = append(parts, "destination: "+doc.Metadata.Destination)
+		}
+		if doc.Metadata.SourceVideoID != "" {
+			parts = append(parts, "source_video_id: "+doc.Metadata.SourceVideoID)
+		}
+		if doc.Metadata.PolicyVersion != "" {
+			parts = append(parts, "policy_version: "+doc.Metadata.PolicyVersion)
+		}
+		if doc.Metadata.WorkflowID != "" {
+			parts = append(parts, "workflow_id: "+doc.Metadata.WorkflowID)
+		}
+		if doc.Metadata.RunFingerprint != "" {
+			parts = append(parts, "run_fingerprint: "+doc.Metadata.RunFingerprint)
+		}
+		if doc.Metadata.JobID != "" {
+			parts = append(parts, "job_id: "+doc.Metadata.JobID)
+		}
+		if doc.Metadata.ChunkIndex > 0 || doc.Metadata.TotalChunks > 0 {
+			parts = append(parts, "chunk_index: "+strconv.Itoa(doc.Metadata.ChunkIndex))
+		}
+		if doc.Metadata.TotalChunks > 0 {
+			parts = append(parts, "total_chunks: "+strconv.Itoa(doc.Metadata.TotalChunks))
+		}
+		if doc.Metadata.Category != "" {
+			parts = append(parts, "category: "+doc.Metadata.Category)
+		}
+		if doc.Metadata.Language != "" {
+			parts = append(parts, "language: "+doc.Metadata.Language)
+		}
+		if len(doc.Metadata.Topics) > 0 {
+			parts = append(parts, "topics: "+strings.Join(doc.Metadata.Topics, ", "))
+		}
+		if len(doc.Metadata.Speakers) > 0 {
+			parts = append(parts, "speakers: "+strings.Join(doc.Metadata.Speakers, ", "))
+		}
+		if len(doc.Metadata.MentionedPeople) > 0 {
+			parts = append(parts, "mentioned_people: "+strings.Join(doc.Metadata.MentionedPeople, ", "))
+		}
+		if len(doc.Metadata.Entities) > 0 {
+			parts = append(parts, "entities: "+strings.Join(doc.Metadata.Entities, ", "))
+		}
+		if len(doc.Metadata.SearchKeywords) > 0 {
+			parts = append(parts, "search_keywords: "+strings.Join(doc.Metadata.SearchKeywords, ", "))
+		}
+		if len(doc.Metadata.Tags) > 0 {
+			parts = append(parts, "tags: "+strings.Join(doc.Metadata.Tags, ", "))
+		}
+	case "stock":
+		if doc.Metadata.Summary != "" && doc.Metadata.Summary != semanticTitle {
+			parts = append(parts, doc.Metadata.Summary)
+		}
+		if doc.Metadata.Description != "" {
+			parts = append(parts, doc.Metadata.Description)
+		}
+		if doc.Metadata.Event != "" {
+			parts = append(parts, "event: "+doc.Metadata.Event)
+		}
+		if doc.Metadata.Round > 0 {
+			parts = append(parts, "round: "+strconv.Itoa(doc.Metadata.Round))
+		}
+		if doc.Metadata.Scene != "" {
+			parts = append(parts, "scene: "+doc.Metadata.Scene)
+		}
+		if doc.Metadata.Subject != "" {
+			parts = append(parts, "subject: "+doc.Metadata.Subject)
+		}
+		if doc.Metadata.Destination != "" {
+			parts = append(parts, "destination: "+doc.Metadata.Destination)
+		}
+		if doc.Metadata.SourceProvider != "" {
+			parts = append(parts, "source_provider: "+doc.Metadata.SourceProvider)
+		}
+		if doc.Metadata.Origin != "" {
+			parts = append(parts, "origin: "+doc.Metadata.Origin)
+		}
+		if doc.Metadata.PolicyVersion != "" {
+			parts = append(parts, "policy_version: "+doc.Metadata.PolicyVersion)
+		}
+		if doc.Metadata.WorkflowID != "" {
+			parts = append(parts, "workflow_id: "+doc.Metadata.WorkflowID)
+		}
+		if doc.Metadata.RunFingerprint != "" {
+			parts = append(parts, "run_fingerprint: "+doc.Metadata.RunFingerprint)
+		}
+		if doc.Metadata.JobID != "" {
+			parts = append(parts, "job_id: "+doc.Metadata.JobID)
+		}
+		if doc.Metadata.ChunkIndex > 0 || doc.Metadata.TotalChunks > 0 {
+			parts = append(parts, "chunk_index: "+strconv.Itoa(doc.Metadata.ChunkIndex))
+		}
+		if doc.Metadata.TotalChunks > 0 {
+			parts = append(parts, "total_chunks: "+strconv.Itoa(doc.Metadata.TotalChunks))
+		}
+		if doc.Metadata.Category != "" {
+			parts = append(parts, "category: "+doc.Metadata.Category)
+		}
+		if len(doc.Metadata.Topics) > 0 {
+			parts = append(parts, "topics: "+strings.Join(doc.Metadata.Topics, ", "))
+		}
+		if len(doc.Metadata.Entities) > 0 {
+			parts = append(parts, "entities: "+strings.Join(doc.Metadata.Entities, ", "))
+		}
+		if len(doc.Metadata.SearchKeywords) > 0 {
+			parts = append(parts, "search_keywords: "+strings.Join(doc.Metadata.SearchKeywords, ", "))
+		}
+		if len(doc.Metadata.Tags) > 0 {
+			parts = append(parts, "tags: "+strings.Join(doc.Metadata.Tags, ", "))
+		}
+		if doc.Metadata.DurationSec > 0 {
+			parts = append(parts, "duration_sec: "+strconv.Itoa(doc.Metadata.DurationSec))
+		}
+	default:
+		if doc.Metadata.Summary != "" && doc.Metadata.Summary != semanticTitle {
+			parts = append(parts, doc.Metadata.Summary)
+		}
+		if doc.Metadata.Description != "" {
+			parts = append(parts, doc.Metadata.Description)
+		}
+		if doc.Metadata.Hook != "" {
+			parts = append(parts, "hook: "+doc.Metadata.Hook)
+		}
+		if doc.Metadata.Event != "" {
+			parts = append(parts, "event: "+doc.Metadata.Event)
+		}
+		if doc.Metadata.Scene != "" {
+			parts = append(parts, "scene: "+doc.Metadata.Scene)
+		}
+		if doc.Metadata.Subject != "" {
+			parts = append(parts, "subject: "+doc.Metadata.Subject)
+		}
+		if doc.Metadata.SourceProvider != "" || doc.Metadata.Source != "" {
+			provider := firstNonEmpty(doc.Metadata.SourceProvider, doc.Metadata.Source)
+			if provider != "" {
+				parts = append(parts, "source: "+provider)
+			}
+		}
+		if doc.Metadata.Origin != "" {
+			parts = append(parts, "origin: "+doc.Metadata.Origin)
+		}
+		if doc.Metadata.Destination != "" {
+			parts = append(parts, "destination: "+doc.Metadata.Destination)
+		}
+		if doc.Metadata.PolicyVersion != "" {
+			parts = append(parts, "policy_version: "+doc.Metadata.PolicyVersion)
+		}
+		if doc.Metadata.WorkflowID != "" {
+			parts = append(parts, "workflow_id: "+doc.Metadata.WorkflowID)
+		}
+		if doc.Metadata.RunFingerprint != "" {
+			parts = append(parts, "run_fingerprint: "+doc.Metadata.RunFingerprint)
+		}
+		if doc.Metadata.JobID != "" {
+			parts = append(parts, "job_id: "+doc.Metadata.JobID)
+		}
+		if doc.Metadata.ChunkIndex > 0 || doc.Metadata.TotalChunks > 0 {
+			parts = append(parts, "chunk_index: "+strconv.Itoa(doc.Metadata.ChunkIndex))
+		}
+		if doc.Metadata.TotalChunks > 0 {
+			parts = append(parts, "total_chunks: "+strconv.Itoa(doc.Metadata.TotalChunks))
+		}
+		if doc.Metadata.Category != "" {
+			parts = append(parts, "category: "+doc.Metadata.Category)
+		}
+		if doc.Metadata.Language != "" {
+			parts = append(parts, "language: "+doc.Metadata.Language)
+		}
+		if len(doc.Metadata.Topics) > 0 {
+			parts = append(parts, "topics: "+strings.Join(doc.Metadata.Topics, ", "))
+		}
+		if len(doc.Metadata.Speakers) > 0 {
+			parts = append(parts, "speakers: "+strings.Join(doc.Metadata.Speakers, ", "))
+		}
+		if len(doc.Metadata.MentionedPeople) > 0 {
+			parts = append(parts, "mentioned_people: "+strings.Join(doc.Metadata.MentionedPeople, ", "))
+		}
+		if len(doc.Metadata.Entities) > 0 {
+			parts = append(parts, "entities: "+strings.Join(doc.Metadata.Entities, ", "))
+		}
+		if len(doc.Metadata.SearchKeywords) > 0 {
+			parts = append(parts, "search_keywords: "+strings.Join(doc.Metadata.SearchKeywords, ", "))
+		}
+		if len(doc.Metadata.Tags) > 0 {
+			parts = append(parts, "tags: "+strings.Join(doc.Metadata.Tags, ", "))
+		}
+		if doc.Metadata.DurationSec > 0 {
+			parts = append(parts, "duration_sec: "+strconv.Itoa(doc.Metadata.DurationSec))
+		}
 	}
 	return strings.Join(parts, ". ")
 }
