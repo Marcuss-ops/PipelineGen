@@ -69,17 +69,18 @@ func (e *ErrUnsupportedLanguage) Is(target error) bool {
 // ErrTrackNotReady is the terminal sentinel for a materialization
 // request whose source track is in a non-READY status.
 type ErrTrackNotReady struct {
-	AssetID           string
-	SourceLanguage    string
-	TextKind          asset.TextTrackKind
-	CurrentStatus     asset.TextTrackStatus
-	AvailableStatuses []asset.TextTrackStatus
+	AssetID            string
+	SourceLanguage     string
+	TextKind           asset.TextTrackKind
+	CurrentStatus      asset.TextTrackStatus
+	AvailableStatuses  []asset.TextTrackStatus
+	AvailableLanguages []string
 }
 
 func (e *ErrTrackNotReady) Error() string {
 	return fmt.Sprintf(
-		"texttracks: source track not READY (asset=%s kind=%s source=%s status=%s available=%v)",
-		e.AssetID, e.TextKind, e.SourceLanguage, e.CurrentStatus, e.AvailableStatuses,
+		"texttracks: source track not READY (asset=%s kind=%s source=%s status=%s ready_languages=%v)",
+		e.AssetID, e.TextKind, e.SourceLanguage, e.CurrentStatus, e.AvailableLanguages,
 	)
 }
 

@@ -141,6 +141,27 @@ type MultilingualConfig struct {
 	// required to re-enable the legacy path; the migration is
 	// not a silent background fallback.
 	MigrationFallbackLegacyMetadata bool `yaml:"migration_fallback_legacy_metadata" default:"false"`
+
+	// TranslationPolicy controls the application-layer model
+	// selection passed to the TranslationPort for the
+	// TextTrackMaterializer (Fase 3, PR-PY-CLIPS-CORRETTE-TRADOTTE,
+	// July 2026). Maps onto the canonical `domain.ModelPolicy`
+	// enum values:
+	//   - "auto"    → server default (translation.TranslationPort
+	//                 resolves the model from source/target
+	//                 language pair + content length)
+	//   - "fast"    → fast model (e.g. ollama gemma3:4b)
+	//   - "quality" → quality model (e.g. ollama llama3:70b)
+	//
+	// Default "auto" — matches the pre-Fase-3 server-default
+	// behaviour. Operators wanting explicit control set this to
+	// "fast" or "quality" in config/multilingual.yaml.
+	//
+	// godlike/07 fail-closed: an invalid value is a startup
+	// error (the composition root validates against the
+	// domain.ModelPolicy enum at boot time, not a silent
+	// fallback to "auto").
+	TranslationPolicy string `yaml:"translation_policy" default:"auto"`
 }
 
 // JobsConfig holds job-related configuration.
