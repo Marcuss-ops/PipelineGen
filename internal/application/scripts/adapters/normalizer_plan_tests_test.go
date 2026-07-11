@@ -968,7 +968,7 @@ func TestBuildItemIdentityDeterministic(t *testing.T) {
 func TestBuildItemIdentityDifferentItems(t *testing.T) {
 	item1 := textItem()
 	item2 := textItem()
-	item2.Title = "Different Title"
+	item2.Source.SourceText = "Different source text that changes the generated script."
 	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
 	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
 
@@ -976,7 +976,7 @@ func TestBuildItemIdentityDifferentItems(t *testing.T) {
 	id2 := scripts.BuildItemIdentity(item2)
 
 	if id1 == id2 {
-		t.Error("items with different titles should have different identities")
+		t.Error("items with different source text should have different identities")
 	}
 }
 
