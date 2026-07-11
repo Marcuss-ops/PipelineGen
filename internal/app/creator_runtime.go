@@ -226,14 +226,17 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	// Build the minimal dependency chain for script.generate:
 	//   Engine -> GenerateOneUseCase -> GenerateManyUseCase -> GenerateJobHandler
 	normCfg := adapters.NormalizationConfig{
-		DefaultLanguage:          "en",
-		DefaultTone:              "professional",
-		DefaultDurationSeconds:   600,
-		OllamaModel:              cfg.External.OllamaModel,
-		MinWordFloor:             200,
-		DefaultSentencesPerImage: 10,
-		DefaultImagesPerScene:    2,
-		MaxBatchWorkers:          4,
+		DefaultLanguage:            "en",
+		DefaultTone:                "professional",
+		DefaultDurationSeconds:     600,
+		OllamaModel:                cfg.External.OllamaModel,
+		MinWordFloor:               200,
+		DefaultSentencesPerImage:   10,
+		DefaultImagesPerScene:      2,
+		MaxBatchWorkers:            4,
+		LogSourceTextPreview:       cfg.Scripts.LogSourceTextPreview,
+		SourceTextPreviewChars:     cfg.Scripts.SourceTextPreviewChars,
+		WordsPerSecondClipEvidence: cfg.Scripts.WordsPerSecondClipEvidence,
 	}
 	sourceReg := adapters.NewSourceRegistry(log)
 	generateOne := usecase.NewGenerateOneUseCase(normCfg, sourceReg, engine, ppReg, log)

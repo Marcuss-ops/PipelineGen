@@ -94,22 +94,23 @@ func buildScriptSourceResolvers(
 				}))
 			}
 		}
-	}
-
-	// ── Normalization config ───────────────────────────────────────
+	} // ── Normalization config ───────────────────────────────────────
 	normCfg := adapters.NormalizationConfig{
-		DefaultLanguage:          cfg.Scripts.DefaultLanguage,
-		DefaultTone:              cfg.Scripts.DefaultTone,
-		DefaultDurationSeconds:   cfg.Scripts.DefaultDurationSeconds,
-		OllamaModel:              cfg.External.OllamaModel,
-		ChannelID:                cfg.Scripts.ChannelID,
-		MinWordFloor:             cfg.Scripts.MinWordFloor,
-		PromptVersion:            "v1",
-		EditorPromptVersion:      "v1",
-		QAPromptVersion:          "v1",
-		DefaultSentencesPerImage: 10,
-		DefaultImagesPerScene:    2,
-		MaxBatchWorkers:          cfg.Scripts.MaxBatchWorkers,
+		DefaultLanguage:            cfg.Scripts.DefaultLanguage,
+		DefaultTone:                cfg.Scripts.DefaultTone,
+		DefaultDurationSeconds:     cfg.Scripts.DefaultDurationSeconds,
+		OllamaModel:                cfg.External.OllamaModel,
+		ChannelID:                  cfg.Scripts.ChannelID,
+		MinWordFloor:               cfg.Scripts.MinWordFloor,
+		PromptVersion:              "v1",
+		EditorPromptVersion:        "v1",
+		QAPromptVersion:            "v1",
+		DefaultSentencesPerImage:   10,
+		DefaultImagesPerScene:      2,
+		MaxBatchWorkers:            cfg.Scripts.MaxBatchWorkers,
+		LogSourceTextPreview:       cfg.Scripts.LogSourceTextPreview,
+		SourceTextPreviewChars:     cfg.Scripts.SourceTextPreviewChars,
+		WordsPerSecondClipEvidence: cfg.Scripts.WordsPerSecondClipEvidence,
 	}
 
 	// ── Source registry (5 resolvers) ──────────────────────────────

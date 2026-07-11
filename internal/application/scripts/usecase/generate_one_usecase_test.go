@@ -379,6 +379,105 @@ func TestGenerateOneUseCase_LogsAndReturnsTypedError_OnValidateFailure(t *testin
 		"SCRIPT-T03-USECASE: log must include the phase 'validate'")
 }
 
+// ── Clip evidence text support (P1) ──
+
+func TestEnforceClipEvidenceTextSupport_AllowedWithinBudget(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceClips),
+		SourceText: "one two three four five",
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			ClipDetails: map[string]scriptpkg.ClipDetail{
+				"clip-1": {StartMs: 0, EndMs: 10000},
+			},
+		},
+	}
+	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
+	if err := enforceClipEvidenceTextSupport(plan, cfg); err != nil {
+		t.Fatalf("expected no error for source_text within clip evidence budget, got %v", err)
+	}
+}
+
+func TestEnforceClipEvidenceTextSupport_ExceedsBudget(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceClips),
+		SourceText: "one two three four five six seven eight nine ten eleven twelve",
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			ClipDetails: map[string]scriptpkg.ClipDetail{
+				"clip-1": {StartMs: 0, EndMs: 2000},
+			},
+		},
+	}
+	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
+	err := enforceClipEvidenceTextSupport(plan, cfg)
+	require.Error(t, err)
+	var pve *scriptpkg.PayloadValidationError
+	require.ErrorAs(t, err, &pve)
+	assert.Equal(t, "SOURCE_TEXT_EXCEEDS_CLIP_EVIDENCE", pve.Code)
+	assert.Equal(t, 12, pve.Extra["actual_words"])
+	assert.Equal(t, 5, pve.Extra["max_words"])
+	assert.Equal(t, 2.0, pve.Extra["evidence_seconds"])
+	assert.Equal(t, 2.5, pve.Extra["words_per_second"])
+}
+
+func TestEnforceClipEvidenceTextSupport_DisabledWhenZero(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceClips),
+		SourceText: "one two three four five six seven eight nine ten eleven twelve",
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			ClipDetails: map[string]scriptpkg.ClipDetail{
+				"clip-1": {StartMs: 0, EndMs: 1000},
+			},
+		},
+	}
+	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 0}
+	require.NoError(t, enforceClipEvidenceTextSupport(plan, cfg))
+}
+
+func TestEnforceClipEvidenceTextSupport_SumsMultipleClips(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceClips),
+		SourceText: "one two three four five six seven eight nine ten",
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			ClipDetails: map[string]scriptpkg.ClipDetail{
+				"clip-1": {StartMs: 0, EndMs: 2000},
+				"clip-2": {StartMs: 0, EndMs: 2000},
+			},
+		},
+	}
+	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
+	if err := enforceClipEvidenceTextSupport(plan, cfg); err != nil {
+		t.Fatalf("expected no error when total clip duration supports source_text, got %v", err)
+	}
+}
+
+func TestEnforceClipEvidenceTextSupport_IgnoresTextSource(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceText),
+		SourceText: "one two three four five six seven eight nine ten eleven twelve",
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			ClipDetails: map[string]scriptpkg.ClipDetail{
+				"clip-1": {StartMs: 0, EndMs: 1000},
+			},
+		},
+	}
+	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
+	require.NoError(t, enforceClipEvidenceTextSupport(plan, cfg))
+}
+
+func TestEnforceClipEvidenceTextSupport_NoSourceText(t *testing.T) {
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		SourceKind: string(scriptpkg.SourceClips),
+		SourceText: "",
+		ClipEvidence: &scriptpkg.ClipEvidence{
+			ClipDetails: map[string]scriptpkg.ClipDetail{
+				"clip-1": {StartMs: 0, EndMs: 1000},
+			},
+		},
+	}
+	cfg := adapters.NormalizationConfig{WordsPerSecondClipEvidence: 2.5}
+	require.NoError(t, enforceClipEvidenceTextSupport(plan, cfg))
+}
+
 // ── Event emission coverage (July 2026) ──
 
 // TestGenerateOneUseCase_EmitsCanonicalEvents pins the job-event
