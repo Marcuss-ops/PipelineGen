@@ -206,8 +206,12 @@ type ScriptSpec struct {
 	PromptVersion       string   `json:"prompt_version,omitempty"`
 	EditorPromptVersion string   `json:"editor_prompt_version,omitempty"`
 	QAPromptVersion     string   `json:"qa_prompt_version,omitempty"`
-	ForceRefresh        bool     `json:"force_refresh,omitempty"`
-	UseMemory           bool     `json:"use_memory,omitempty"`
+	// PlannerVersion is the scene-planning algorithm version. It is
+	// part of the generation fingerprint so changes to the planner
+	// invalidate cached results.
+	PlannerVersion string `json:"planner_version,omitempty"`
+	ForceRefresh   bool   `json:"force_refresh,omitempty"`
+	UseMemory      bool   `json:"use_memory,omitempty"`
 }
 
 // ── OutputSpec ─────────────────────────────────────────────────────

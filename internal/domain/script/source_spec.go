@@ -58,7 +58,12 @@ type SourceSpec struct {
 	// ── Clip pipeline options ─────────────────────────────────────────
 	TranscriptPolicy string `json:"transcript_policy,omitempty"`
 	OrderingStrategy string `json:"ordering_strategy,omitempty"`
-	ForceRefresh     bool   `json:"force_refresh,omitempty"`
+	// GroundingPolicy is the canonical clip-grounding policy used
+	// when building the model-facing prompt. It is part of the
+	// generation fingerprint so policy changes invalidate cached
+	// results.
+	GroundingPolicy string `json:"grounding_policy,omitempty"`
+	ForceRefresh    bool   `json:"force_refresh,omitempty"`
 
 	// ── Curation source (SourceCurate) ────────────────────────────────
 	// Search enables the semantic search leg (Qdrant via ClipSearchPort).
@@ -291,6 +296,12 @@ type ClipEvidence struct {
 	// post-resolution quality/filtering step): MissingClipIDs
 	// records lookup outcomes; Excluded records filter outcomes.
 	MissingClipIDs []MissingClipID `json:"missing_clip_ids,omitempty"`
+
+	// ClipTranscriptHashes is the ordered list of SHA-256 hashes of
+	// the transcript text for each accepted clip. It is part of the
+	// generation fingerprint so transcript changes invalidate cached
+	// results. The order matches AcceptedClipIDs.
+	ClipTranscriptHashes []string `json:"clip_transcript_hashes,omitempty"`
 }
 
 // ExcludedClip records a clip that was filtered out during resolution
