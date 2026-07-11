@@ -36,6 +36,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // step6to9_SubtitlesDriveWriter is the canonical owner of Steps 6-9.
@@ -58,8 +59,41 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	fileHash string,
 	policyVer string,
 ) error {
-	// Step 6 — SliceSubtitles (cache hit per Commit G).
-	if u.deps.Subtitles != nil {
+	// txtPath is the canonical transcript file path referenced by a
+	// CROSS-PACKAGE consumer (clipindexer.lookupTranscriptPath reads
+	// `local_path -> TrimSuffix(Ext) + ".txt"` for Qdrant transcript
+	// embedding). Computed once so all code paths (resolver, subtitles,
+	// Whisper) write to the same location.
+	txtPath := strings.TrimSuffix(localPath, filepath.Ext(localPath)) + ".txt"
+
+	// Step 6a — TextTrackResolver priority-chain lookup.
+	// Checks payload texts and DB before falling through to subtitles
+	// or Whisper. Reduces redundant transcription costs.
+	resolvedTranscript := ""
+	resolved := false
+	if u.deps.TextTrackResolver != nil {
+		result, rErr := u.deps.TextTrackResolver.Resolve(ctx, clipID, cmd.Segment.Texts)
+		if rErr != nil {
+			u.deps.Log.Warn("text track resolver failed (falling through to subtitles/whisper)",
+				zap.String("clip_id", clipID), zap.Error(rErr))
+		} else if result.Found && result.Transcript != "" {
+			resolvedTranscript = result.Transcript
+			resolved = true
+			_ = os.WriteFile(txtPath, []byte(resolvedTranscript), 0o644)
+			u.deps.Log.Info("transcript resolved via TextTrackResolver (payload/db hit)",
+				zap.String("clip_id", clipID),
+				zap.String("language", result.LanguageCode))
+			// If resolved from payload (not already in DB), persist for
+			// future reuse so the next run can skip the payload check.
+			if result.Source == asset.TextSourceProvided {
+				_ = u.deps.TextTrackResolver.Save(ctx, clipID, resolvedTranscript, asset.TextSourceProvided, result.LanguageCode)
+			}
+		}
+	}
+
+	// Step 6b — SliceSubtitles (only when resolver didn't find a transcript).
+	// Step 7  — Whisper fallback (only when subtitles also failed).
+	if !resolved && u.deps.Subtitles != nil {
 		if subErr := u.deps.Subtitles.SliceSubtitles(
 			ctx, cmd.VideoID, startSec, endSec, localPath,
 		); subErr != nil {
@@ -86,17 +120,25 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 					// typed port
 					// (godlike/06 SSOT forward-pointer:
 					// PR-CLIPINDEXER-TRANSCRIPT-TYPED-PORT).
-					txtPath := strings.TrimSuffix(localPath, filepath.Ext(localPath)) + ".txt"
 					_ = os.WriteFile(txtPath, []byte(transcript), 0o644)
 					u.deps.Log.Info("whisper fallback transcribed clip",
 						zap.String("clip_id", clipID),
 						zap.String("txt_path", txtPath))
+					// Persist transcript for future reuse.
+					if u.deps.TextTrackResolver != nil {
+						_ = u.deps.TextTrackResolver.Save(ctx, clipID, transcript, asset.TextSourceWhisper, "en")
+					}
 				} else if wErr != nil {
 					u.deps.Log.Warn("whisper fallback failed",
 						zap.String("clip_id", clipID), zap.Error(wErr))
 				}
 			}
 		}
+		// NOTE: SliceSubtitles does NOT write a .txt file (it writes .vtt
+		// to the subtitle cache dir). Persisting the subtitle transcript to
+		// asset_text_tracks is deferred until clipindexer migrates to a
+		// typed port (godlike/06 SSOT forward-pointer:
+		// PR-CLIPINDEXER-TRANSCRIPT-TYPED-PORT).
 	}
 
 	// Step 8 — DriveUploadFileIfChanged.
@@ -141,14 +183,14 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	// We surface this as "processed_but_index_blocked" — the clip
 	// was written to the DB but no new indexing event was created.
 	if u.deps.Writer != nil {
-		asset := buildClipAsset(clipID, cmd, *out, fileHash, policyVer)
+		clipAsset := buildClipAsset(clipID, cmd, *out, fileHash, policyVer)
 		event := youtubeports.IndexEventPayload{
 			Type:        "asset.index.requested",
 			AggregateID: clipID,
 			CreatedAt:   time.Now().UTC(),
 		}
 		if wErr := u.deps.Writer.CommitClipAndIndexEvent(
-			ctx, clipID, asset, event,
+			ctx, clipID, clipAsset, event,
 		); wErr != nil {
 			// BLOCKER #4: terminal outbox conflict → processed_but_index_blocked.
 			// The clip row was committed; the index event was suppressed by

@@ -112,6 +112,14 @@ type ProcessSegmentDeps struct {
 	// true. When nil, the validation step is silently skipped
 	// (pre-existing hash + stat checks remain).
 	FFProbe youtubeports.FFProbePort
+	// TextTrackResolver is the OPTIONAL priority-chain resolver for
+	// localized text tracks. When non-nil, it checks the API payload
+	// and the DB before falling through to YouTube subtitles or Whisper,\t// reducing redundant transcription costs. After a transcript is
+	// obtained from subtitles or Whisper, the caller invokes Save to
+	// persist it for future reuse.
+	// nil → skip resolver and proceed directly to subtitles/Whisper.
+	TextTrackResolver *TextTrackResolver
+
 	// Step10Metrics is the optional metrics-recorder port for
 	// the partial-state Step 10 failure counter
 	// (PR-PY-STEP10-FAIL-LOG-OBSEVE-PARITY, July 2026). When
