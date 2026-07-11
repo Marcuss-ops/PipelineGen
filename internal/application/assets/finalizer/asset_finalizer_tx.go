@@ -106,11 +106,24 @@ func (s *AssetTxFinalizer) FinalizeAsset(
 	// idempotency_key are REQUIRED by the handler).
 	eventID := uuid.NewString()
 	eventKey := fmt.Sprintf("index:%s:%s", artifact.ArtifactID, artifact.SHA256)
+	// Compute source + media_type for the outbox payload, mirroring
+	// the fallback logic used in upsertMediaAsset for the media_assets
+	// row. The gate04 outbox test asserts these fields are populated
+	// in the JSON envelope consumed by the dispatcher worker + Qdrant
+	// indexer; without this fix the JSON silently omitted them and the
+	// test failed with payload["source"]=nil, payload["media_type"]=nil.
+	sourceStr := artifact.Source
+	if sourceStr == "" {
+		sourceStr = string(artifact.Location.Action)
+	}
+	mediaTypeStr := kindToMediaType(artifact.Kind)
 	indexPayload, err := json.Marshal(map[string]any{
 		"schema_version":  outboxevents.ReindexEnvelopeV1Schema,
 		"event_id":        eventID,
 		"asset_id":        artifact.ArtifactID,
 		"operation":       "UPSERT",
+		"source":          sourceStr,
+		"media_type":      mediaTypeStr,
 		"source_version":  artifact.SHA256,
 		"idempotency_key": eventKey,
 	})
@@ -498,7 +511,7 @@ func (s *AssetTxFinalizer) insertOutboxEvent(
 	`,
 		event.EventType,
 		event.AggregateID,
-		"asset",
+		"media_asset",
 		string(event.Payload),
 		event.EventKey,
 		nowStr,
