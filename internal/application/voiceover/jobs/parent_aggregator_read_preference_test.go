@@ -136,7 +136,11 @@ func TestParentAggregator_AggregateOne_FallsBackToJSONWhenTypedEmpty(t *testing.
 	agg, _ := newReadPreferenceAggregator(parent, nil)
 	_ = agg.aggregateOne(context.Background(), *parent)
 	// Zero children → finalizeParent is called with ZeroChildrenAggregateResult
-	// (ParentPartialSuccess) per the existing aggregateOne short-circuit.
+	// (ParentFailed per FASE 4 close-out, July 2026) per the existing
+	// aggregateOne short-circuit. The previous comment said
+	// "ParentPartialSuccess" — that mapping was a pre-FASE-4 dispatch-
+	// failure-as-partial-success false-positive terminal leak; FASE 4
+	// spec close-out changed the canonical terminal to ParentFailed.
 	if _, ok := agg.deps.JobsSvc.(*stubAggregatorJobsService).flipped[parentID]; !ok {
 		t.Errorf("aggregateOne: parent with empty typed column + JSON parent_state=%q was NOT flipped via FinalizeAggregateParent; the JSON fallback should engage (BACKFILL-window contract regression)",
 			"waiting_children")

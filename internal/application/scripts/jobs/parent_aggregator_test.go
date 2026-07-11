@@ -654,10 +654,17 @@ func TestFinalizeAggregateParent_ReplayIdempotentAfterAlreadyTerminal(t *testing
 	}
 }
 
-// Test 11 (NEW): zero children enqueued → PartialSuccess immediately
-// without querying any child jobs. The aggregator short-circuits
-// when parentResult.ChildJobIDs is empty after filtering.
-func TestScriptParentBrokerStatusSUCCEEDEDWhenZeroChildren(t *testing.T) {
+// Test 11 (FASE 4 close-out, July 2026): zero children enqueued →
+// FAILED terminal immediately, without querying any child jobs. The
+// aggregator short-circuits when parentResult.ChildJobIDs is empty
+// after filtering. FASE 4 spec: zero children created = FAILED terminal
+// (not partial_success). The pre-FASE-4 mapping conflated dispatch
+// failure (zero enqueued) with partial-success (mixed terminal) —
+// two semantically distinct states. The canonical terminal for "no
+// children enqueued" is ScriptParentFailedTerminal (per the 5-state
+// machine). This test pins that the aggregator emits the canonical
+// P0 #4 aggregate marker in errMsg for audit forensics.
+func TestScriptParentBrokerStatusIsFAILEDWhenZeroChildren(t *testing.T) {
 	stub := buildParentStub("parent-zero", map[string]job.Status{}, map[string]bool{})
 
 	agg := NewScriptParentAggregator(ScriptAggregatorDeps{
@@ -668,14 +675,23 @@ func TestScriptParentBrokerStatusSUCCEEDEDWhenZeroChildren(t *testing.T) {
 
 	rec, ok := stub.flipped["parent-zero"]
 	if !ok {
-		t.Fatal("P0 #4: aggregator must call FinalizeAggregateParent on zero-children aggregate")
+		t.Fatal("FASE 4: aggregator must call FinalizeAggregateParent on zero-children aggregate")
 	}
-	if rec.targetStatus != job.StatusSucceeded {
-		t.Errorf("P0 #4: zero-children aggregate MUST flip broker-status to SUCCEEDED (partial_success), got %s",
+	if rec.targetStatus != job.StatusFailed {
+		t.Errorf("FASE 4: zero-children aggregate MUST flip broker-status to FAILED (not partial_success), got %s",
 			rec.targetStatus)
 	}
-	if rec.errMsg != "" {
-		t.Errorf("P0 #4: zero-children flip must carry empty errMsg, got %q", rec.errMsg)
+	if rec.result == nil {
+		t.Fatal("FASE 4: result map must be captured for zero-children FAILED assertion")
+	}
+	ps, _ := rec.result["parent_state"].(string)
+	if ps != string(ScriptParentFailedTerminal) {
+		t.Errorf("FASE 4: zero-children aggregate MUST emit parent_state=%q in result, got %q",
+			ScriptParentFailedTerminal, ps)
+	}
+	if !strings.Contains(rec.errMsg, "script aggregate: all child jobs definitively failed") {
+		t.Errorf("FASE 4: zero-children FAILED flip must carry canonical aggregate marker, got %q",
+			rec.errMsg)
 	}
 }
 
