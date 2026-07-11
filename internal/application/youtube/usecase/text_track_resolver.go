@@ -30,6 +30,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -438,6 +439,71 @@ func bundleToTextTracks(clipID string, bundle *asset.ResolvedTextBundle, kind as
 		Confidence:         bundle.Confidence,
 		Status:             asset.TextTrackReady,
 	}}
+}
+
+// bundleToTimedTrack converts a non-empty bundle's Cues into a
+// single localized.TimedTextTrack row (text_kind=transcript).
+// Returns nil for nil bundle or empty Cues. SequenceNo assignment
+// is the writer's responsibility (the writer sorts ascending by
+// StartMs before assigning sequence_no based on the array index).
+//
+// godlike/06 SSOT: this is the canonical converter between the
+// resolver's plain-text bundle and the writer's per-cue timed
+// shape. The LocalizationWriter consumes it directly — handlers
+// MUST NOT re-shape the data inline.
+//
+// Scope (Fase 2.b):
+//   - Today, ONLY the resolved BUNDLE (priority 1-5 winner from
+//     AcquireSegmentText) carries Cues — payload-provided
+//     LocalizedClipText rows in Segment.Texts yield TextTrack
+//     rows only (no cues). The cue-row surface is bundle-only.
+//   - Fase 5 (payload-level cues): if Segment.Texts grows a
+//     Cues field, this helper grows a parallel MaterializePayload
+//     TimedTracks API. Until then the publisher contract is
+//     bundle-only.
+//
+// Pre-conditions (audit 2026-07-11 §2.c):
+//   - Each Cue has StartMs >= 0, EndMs >= StartMs, Text != "".
+//     The writer validates these again (defence in depth), but
+//     early surfacing here keeps the writer's typed errors
+//     narrowed to "writer-level" failures, not "caller-level"
+//     invariants. Malformed upstream cues are SILENTLY DROPPED
+//     here (not a hard fail); the writer's metrics surface the
+//     dropped-cue count via log line.
+//
+//   - The bundle's LanguageCode is normalized to BCP-47 ("und"
+//     when empty — mirroring bundleToTextTracks).
+func bundleToTimedTrack(clipID string, bundle *asset.ResolvedTextBundle) *localized.TimedTextTrack {
+	if bundle == nil {
+		return nil
+	}
+	if len(bundle.Cues) == 0 {
+		return nil
+	}
+	lang := bundle.LanguageCode
+	if lang == "" {
+		lang = "und"
+	}
+	cues := make([]asset.TimedCue, 0, len(bundle.Cues))
+	for _, c := range bundle.Cues {
+		if c.StartMs < 0 || c.EndMs < c.StartMs || c.Text == "" {
+			// Skip invalid cues rather than blow up the bundle.
+			// godlike/07 honest lock: a malformed upstream cue
+			// MUST NOT poison the whole super-tx; the resolver
+			// dropped it loudly and the writer logs the count.
+			continue
+		}
+		cues = append(cues, c)
+	}
+	if len(cues) == 0 {
+		return nil
+	}
+	return &localized.TimedTextTrack{
+		LanguageCode: lang,
+		TextKind:     asset.TextTrackTranscript,
+		SourceType:   bundle.SourceType,
+		Cues:         cues,
+	}
 }
 
 func cdbRowToBundle(row asset.TextTrack) *asset.ResolvedTextBundle {

@@ -32,6 +32,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
@@ -68,11 +69,28 @@ type ProcessSegmentDeps struct {
 	// DriveFolderMgr is the OPTIONAL Drive-folder management
 	// port. nil → Drive upload step uses StageSource fallback.
 	DriveFolderMgr youtubeports.DriveFolderManagerPort
-	// Writer is the ClipAtomicWriter port required by Step 9
-	// (canonical ClipAsset commit to media_assets). nil MUST
-	// panic (Validate() #4) — pre-Commit-1 silently wrote
-	// nothing and returned "processed".
+	// Writer is the legacy ClipAtomicWriter port (legacy Step 9
+	// commit). Retained for callers that DO NOT carry localized
+	// text (announcement / stock-without-i18n paths). For the
+	// canonical localized super-tx path (PR-PY-CLIPS-CORRETTE-TRADOTTE
+	// Fase 2.b, July 2026) the YouTube segment pipeline uses
+	// LocalizedWriter. Both ports are satisfied by the same concrete
+	// *ClipAtomicWriterAdapter; composition wires both to the same
+	// instance. nil MUST panic (Validate() #4) — pre-Commit-1
+	// silently wrote nothing and returned "processed".
 	Writer youtubeports.ClipAtomicWriter
+	// LocalizedWriter is the SOLE canonical surface for the
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.b atomic super-tx
+	// (clip + text tracks + cues + outbox in ONE SQLite tx).
+	// Step 6-9 of the YouTube pipeline now uses this port
+	// instead of the legacy Writer + TextTrackResolver.SaveMany
+	// pair. The concrete instance is the SAME
+	// *ClipAtomicWriterAdapter as Writer (the adapter satisfies
+	// both ports — see clip_atomic_writer.go compile-time
+	// assertion). nil port is a fail-closed wiring gap; the
+	// step6to9 path mirrors the BLOCKER #4 partial-state pattern
+	// when CommitClipTextAndIndexEvent returns a typed error.
+	LocalizedWriter localized.LocalizedClipWriter
 	// SegmentsSvc is the per-domain *SegmentsService (Step 1
 	// timestamp parsing + Step 2 fingerprint extraction). nil
 	// MUST panic (Validate() #5).
@@ -166,6 +184,24 @@ func (d ProcessSegmentDeps) Validate() {
 	if d.Hash == nil {
 		panic("usecase.NewProcessYouTubeSegmentUseCase: Hash port is required (composition must wire hashutil.NewHashAdapter)")
 	}
+	// godlike/07 fail-closed at composition boot: Writer is REQUIRED.
+	// LocalizedWriter is RECOMMENDED but NOT a panic-checked required
+	// field today — production composition (internal/app/
+	// build_bundles_domain_media.go) wires BOTH Writer and
+	// LocalizedWriter to the same concrete ClipAtomicWriterAdapter
+	// instance. Tests that exercise failure paths (process_segment_*
+	// failfast/correttezza/extraction_stubs tests) only wire Writer
+	// because the test doesn't exercise the LocalizedWriter path.
+	// step6to9.go's downgrade branch (else if u.deps.Writer != nil)
+	// makes the test paths safe: a nil LocalizedWriter cleanly falls
+	// back to the legacy CommitClipAndIndexEvent path, which is
+	// identical to the pre-Fase 2.b behavior. Promoting the
+	// LocalizedWriter nil-check to a panic would force every Writer-
+	// stubbed test to add a LocalizedWriter stub; that breach in
+	// blast-radius is not justified by the production-side win.
+	// godlike/06 SSOT: the Fase 2.b canonical path is
+	// LocalizedWriter. Composition MUST wire it (paths that don't
+	// will silently take the legacy downgrade).
 	if d.Writer == nil {
 		panic("usecase.NewProcessYouTubeSegmentUseCase: Writer port is required — composition must wire ClipAtomicWriterAdapter (PR-C P0 #3 fail-closed; pre-Commit-1 silently wrote nothing and returned 'processed')")
 	}

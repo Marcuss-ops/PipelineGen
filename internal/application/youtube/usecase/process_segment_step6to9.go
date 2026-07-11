@@ -1,6 +1,6 @@
 // Package usecase — process_segment_step6to9.go: canonical owner of
 // Steps 6-9 (transcript acquisition + Drive upload + canonical
-// ClipAsset writer commit + post-commit text-track materialisation).
+// localized-clip atomic super-tx).
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - Step 6 transcript acquisition lives ONLY in
@@ -12,16 +12,15 @@
 //     directly — the central resolver owns that decision. The Step 10
 //     removal happens in Fase 1.c; this step already delegates.
 //   - Step 8 Drive upload lives ONLY here.
-//   - Step 9 canonical ClipAsset writer commit + ErrOutboxTerminalConflict
-//     handling lives ONLY here.
-//   - Step 9.5 (Fase 1.a) materialises all text tracks AFTER the
-//     clip row exists in media_assets (FK fix). Atomic same-tx write
-//     is scope of Fase 2.b; Fase 1.a uses post-step-9 persistence
-//     as a safe interim pattern.
-//
-// godlike/07 no-fake-availability: every non-typed propagation here
-// emits an explicit `u.deps.Log.{Warn,Error}` so operator dashboards
-// never see a silent retryable/terminal classification.
+//   - Step 9 super-tx lives ONLY here. PR-PY-CLIPS-CORRETTE-TRADOTTE
+//     Fase 2.b (July 2026) collapsed legacy Step 9 (clip only) +
+//     Step 9.5 (text tracks separate write) into ONE atomic call
+//     to LocalizedClipWriter.CommitClipTextAndIndexEvent. The
+//     single super-tx writes media_assets + asset_text_tracks +
+//     asset_text_track_segments + outbox_events in ONE
+//     SQLite transaction; any failure rolls back EVERY surface,
+//     eliminating the Fase 1.a "clip persisted but text-pending"
+//     partial-state window.
 package usecase
 
 import (
@@ -35,6 +34,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/localized"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -48,16 +48,18 @@ import (
 // populated `out.Item.Status="failed"` + `out.Item.Error` +
 // `out.Error`. The `processed_but_index_blocked` status path
 // (BLOCKER #4 closure) mutates the status without returning an
-// error (the clip IS safe; the indexing event is the only thing
-// not written).
+// error (the clip + tracks + cues ARE safe; only the index event
+// was suppressed).
 //
-// Post-Step-9 partial-state path (Fase 1.a):
-//
-//	When the text-track materialisation fails AFTER the clip row
-//	was safely committed, the status mutates to
-//	"processed_but_text_pending" and the function returns nil
-//	(mirrors BLOCKER #4). Operator dashboards see the partial-state
-//	class WITHOUT weakening the clip-commit guarantee.
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.b (July 2026):
+// the legacy two-step pattern (Step 9 commits clip + outbox,
+// Step 9.5 commits text tracks separately) is REPLACED by ONE
+// atomic super-tx that writes media_assets +
+// asset_text_tracks + asset_text_track_segments + outbox_events
+// in the SAME SQLite transaction. Failure paths collapse into a
+// single typed error from the writer; the prior
+// "clip persisted but text-pending" partial-state window is now
+// ARCHITECTURALLY IMPOSSIBLE.
 func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	ctx context.Context,
 	cmd youtubetypes.ProcessSegmentCommand,
@@ -96,9 +98,10 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		})
 		if acqErr != nil {
 			// Non-fatal — a Whisper failure must NOT kill the pipeline.
-			// Log + clear bundle; continue to Steps 8-9. The clip will
-			// be persisted with no transcript (so future re-runs can
-			// backfill via Fase 5 text-tracks admin command).
+			// Log + clear bundle; continue to Steps 8-9. The clip + an
+			// empty text-track set will be persisted atomically
+			// (the writer's policy validation is skipped when
+			// RequireTranscriptReady=false, which is the default).
 			u.deps.Log.Warn("text track acquisition failed (Whisper fallback returned an error); continuing with empty bundle — clip will be persisted without text tracks; backfill via Fase 5 admin command",
 				zap.String("clip_id", clipID), zap.Error(acqErr))
 			bundle = nil
@@ -126,6 +129,19 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			out.Item.DriveFileID = upRes.FileID
 			out.Item.DriveLink = upRes.WebViewLink
 		} else if upErr != nil {
+			// godlike/07 observability: if a transcript bundle was
+			// acquired BEFORE the Drive upload failed, surface that
+			// the bundle was discarded (re-acquired on next retry).
+			// Without this log line, operators cannot distinguish
+			// "transcript was never acquired" from "transcript was
+			// acquired and dropped due to upstream failure".
+			if bundle != nil && !bundle.IsEmpty() {
+				u.deps.Log.Warn("text bundle dropped due to upstream Drive upload failure; transcript will be re-acquired on the next retry — no atomic super-tx executed",
+					zap.String("clip_id", clipID),
+					zap.String("bundle_language", bundle.LanguageCode),
+					zap.Int("bundle_cues", len(bundle.Cues)),
+					zap.Error(upErr))
+			}
 			retryable := IsTransientExtractionError(upErr)
 			if retryable {
 				u.deps.Log.Warn("drive upload transient failure (will be classified retryable by parent)",
@@ -146,94 +162,142 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	out.DriveFileID = out.Item.DriveFileID
 	out.DriveLink = out.Item.DriveLink
 
-	// Step 9 — ClipAtomicWriter. Build the canonical ClipAsset
-	// and delegate to the writer, which owns the outbox envelope
-	// exclusively. The caller MUST NOT supply a custom payload
-	// (Blocco 1.1: the previous ad-hoc payload caused every
-	// indexing event to land in dead_letter because the consumer
-	// requires the canonical BuildReindexEnvelopeV1 shape).
+	// Step 9 — localized atomic super-tx
+	// (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.b, July 2026).
 	//
-	// BLOCKER #4 closure (audit 2026-07-03): when the outbox event
-	// is suppressed by an existing terminal row (dead_letter or
-	// superseded), the writer returns ErrOutboxTerminalConflict.
-	// We surface this as "processed_but_index_blocked" — the clip
-	// was written to the DB but no new indexing event was created.
-	if u.deps.Writer != nil {
+	// Replaces the Fase 1.a two-step pattern (CommitClipAndIndexEvent
+	// THEN TextTrackResolver.SaveMany separately) with ONE cold
+	// call:
+	//
+	//   LocalizedClipWriter.CommitClipTextAndIndexEvent:
+	//     BEGIN
+	//     UPSERT media_assets
+	//     UPSERT asset_text_tracks (RETURNING id for FK)
+	//     BATCH INSERT asset_text_track_segments (in seq_no order)
+	//     INSERT outbox_events
+	//     COMMIT
+	//
+	// Any failure rolls back ALL FOUR surfaces — the previous
+	// "clip persisted but text-pending" partial-state window is
+	// architecturally impossible.
+	//
+	// Append order is INTENTIONALLY PAYLOAD-FIRST, BUNDLE-LAST
+	// (preserved from Fase 1.a): SQLite's ON
+	// CONFLICT(asset_id, language_code, text_kind) DO UPDATE is
+	// last-write-wins per-batch, so the chain's selected primary
+	// bundle (priority 1-5 winner) overrides any payload row that
+	// happens to share the same (lang, kind) key. Other-kind
+	// payload rows (title/summary/description) never collide with
+	// the bundle's transcript row (different kinds → independent
+	// keys).
+	//
+	// godlike/06 SSOT: the chain's selection is the authoritative
+	// source — flipping the order here would silently demote
+	// priority 2-5 wins back to the payload (audit 2026-07-11 §2.b).
+	if u.deps.LocalizedWriter != nil {
 		clipAsset := buildClipAsset(clipID, cmd, *out, fileHash, policyVer)
 		event := youtubeports.IndexEventPayload{
 			Type:        "asset.index.requested",
 			AggregateID: clipID,
 			CreatedAt:   time.Now().UTC(),
 		}
-		if wErr := u.deps.Writer.CommitClipAndIndexEvent(
-			ctx, clipID, clipAsset, event,
-		); wErr != nil {
+
+		var tracks []asset.TextTrack
+		if len(cmd.Segment.Texts) > 0 && u.deps.TextTrackResolver != nil {
+			tracks = append(tracks,
+				u.deps.TextTrackResolver.MaterializePayloadTexts(clipID, cmd.Segment.Texts)...)
+		}
+		if bundle != nil && !bundle.IsEmpty() {
+			tracks = append(tracks,
+				bundleToTextTracks(clipID, bundle, asset.TextTrackTranscript)...)
+		}
+
+		var timedTracks []localized.TimedTextTrack
+		if tt := bundleToTimedTrack(clipID, bundle); tt != nil {
+			timedTracks = append(timedTracks, *tt)
+		}
+
+		superCmd := localized.CommitLocalizedClipCommand{
+			Clip:         clipAsset,
+			TextTracks:   tracks,
+			TimedTracks:  timedTracks,
+			IndexEvent:   event,
+			RequireTranscriptReady: false, // TODO Fase 5 wires the policy once media.multilingual.* is read from cfg (see AGENTS.md)
+		}
+
+		if wErr := u.deps.LocalizedWriter.CommitClipTextAndIndexEvent(ctx, superCmd); wErr != nil {
+			// BLOCKER #4 closure (audit 2026-07-03): when the outbox
+			// row insert is suppressed by an existing terminal row
+			// (dead_letter or superseded), the writer returns
+			// ErrOutboxTerminalConflict. The clip + tracks + cues
+			// ARE safe (committed atomically per Fase 2.b); only
+			// the index event was blocked. We surface
+			// "processed_but_index_blocked" — mirrors the BLOCKER #4
+			// schema without breaking the new atomically-durable text
+			// tracks guarantee.
+			if errors.Is(wErr, youtubeports.ErrOutboxTerminalConflict) {
+				out.Item.Status = "processed_but_index_blocked"
+				out.Status = "processed_but_index_blocked"
+				u.deps.Log.Warn("clip + tracks + cues committed but index blocked by terminal outbox row (BLOCKER #4)",
+					zap.String("clip_id", clipID),
+					zap.Error(wErr))
+				return nil
+			}
+			// godlike/07 typed-error contract: a policy violation
+			// (ErrClipLocaleNotReady) gets the same fail-closed
+			// treatment as a generic writer failure. The terminal
+			// state is reached without partial row visibility
+			// (the writer rolled back the tx before the error
+			// surfaced).
+			if localized.IsClipLocaleNotReady(wErr) {
+				typed := NewExtractionError(
+					FailureCodeWriterFailed,
+					false,
+					fmt.Sprintf("writer rejected locale-not-ready: %v", wErr),
+					wErr,
+				)
+				u.deps.Log.Error("writer rejected locale-not-ready policy (Fase 2.b atomic tx rolled back; no rows visible)",
+					zap.String("clip_id", clipID), zap.Error(wErr))
+				return u.fail(out, typed)
+			}
+			typed := NewExtractionError(FailureCodeWriterFailed, false,
+				fmt.Sprintf("localized writer failed: %v", wErr), wErr)
+			u.deps.Log.Error("localized writer terminal failure (Fase 2.b atomic tx rolled back; no rows visible)",
+				zap.String("clip_id", clipID), zap.Error(wErr))
+			return u.fail(out, typed)
+		}
+		out.IndexedRequestID = event.AggregateID
+		u.deps.Log.Info("localized clip super-tx committed",
+			zap.String("clip_id", clipID),
+			zap.Int("text_tracks", len(tracks)),
+			zap.Int("timed_tracks", len(timedTracks)))
+	} else if u.deps.Writer != nil {
+		// Downgrade path: when composition did NOT wire
+		// LocalizedWriter (legacy bundle only), fall back to the
+		// legacy CommitClipAndIndexEvent. This branch MUST NOT be
+		// hit in production — composition always wires both
+		// instance-to-instance — but it's retained for the
+		// dev/legacy composition root paths.
+		clipAsset := buildClipAsset(clipID, cmd, *out, fileHash, policyVer)
+		event := youtubeports.IndexEventPayload{
+			Type:        "asset.index.requested",
+			AggregateID: clipID,
+			CreatedAt:   time.Now().UTC(),
+		}
+		if wErr := u.deps.Writer.CommitClipAndIndexEvent(ctx, clipID, clipAsset, event); wErr != nil {
 			if errors.Is(wErr, youtubeports.ErrOutboxTerminalConflict) {
 				out.Item.Status = "processed_but_index_blocked"
 				out.Status = "processed_but_index_blocked"
 				u.deps.Log.Warn("clip committed but index blocked by terminal outbox row (BLOCKER #4)",
 					zap.String("clip_id", clipID),
 					zap.Error(wErr))
-				// Continue to Step 9.5 — text tracks should still be
-				// materialised even if the index event was blocked.
-			} else {
-				typed := NewExtractionError(FailureCodeWriterFailed, false,
-					fmt.Sprintf("writer failed: %v", wErr), wErr)
-				return u.fail(out, typed)
-			}
-		} else {
-			out.IndexedRequestID = event.AggregateID
-		}
-	}
-
-	// Step 9.5 — Materialise all text tracks AFTER the clip row exists
-	// (Fase 1.a FK fix). Mirrors the BLOCKER #4 partial-state pattern:
-	// a save failure is logged loudly + status mutated, pipeline does
-	// NOT fail. The clip + outbox event (when Step 9 succeeded) are
-	// already persisted safely; missing text tracks are a backfill
-	// concern (Fase 5 admin command).
-	//
-	// Append order is INTENTIONALLY PAYLOAD-FIRST, BUNDLE-LAST: SQLite's
-	// ON CONFLICT(asset_id, language_code, text_kind) DO UPDATE is
-	// last-write-wins per-batch, so the chain's selected primary
-	// bundle (priority 1-5 winner) overrides any payload row that
-	// happens to share the same (lang, kind) key. Other-kind payload
-	// rows (title/summary/description) never collide with the
-	// bundle's transcript row (different kinds → independent keys).
-	// godlike/06 SSOT: the chain's selection is the authoritative
-	// source — flipping the order here would silently demote priority
-	// 2-5 wins back to the payload (audit 2026-07-11 §2.b).
-	if u.deps.TextTrackResolver != nil {
-		var tracks []asset.TextTrack
-		if len(cmd.Segment.Texts) > 0 {
-			tracks = append(tracks,
-				u.deps.TextTrackResolver.MaterializePayloadTexts(clipID, cmd.Segment.Texts)...)
-		}
-		if bundle != nil && !bundle.IsEmpty() {
-			tracks = append(tracks, bundleToTextTracks(clipID, bundle, asset.TextTrackTranscript)...)
-		}
-		if len(tracks) > 0 {
-			if saveErr := u.deps.TextTrackResolver.SaveMany(ctx, tracks); saveErr != nil {
-				// godlike/07 honest lock: typed partial-state event,
-				// not a hard fail. The clip is durable; backfill is a
-				// separate admin step (Fase 5).
-				u.deps.Log.Error("text track save failed AFTER clip write; clip is fully persisted; backfill via Fase 5 text-tracks admin command",
-					zap.String("clip_id", clipID),
-					zap.Int("rows_attempted", len(tracks)),
-					zap.Error(saveErr))
-				// Compose partial-state status. If Step 9 already set
-				// processed_but_index_blocked, we surface text-pending
-				// alongside (multi-axis partial-state).
-				if out.Item.Status != "processed_but_index_blocked" {
-					out.Item.Status = "processed_but_text_pending"
-					out.Status = "processed_but_text_pending"
-				}
 				return nil
 			}
-			u.deps.Log.Info("text tracks materialised",
-				zap.String("clip_id", clipID),
-				zap.Int("rows_committed", len(tracks)))
+			typed := NewExtractionError(FailureCodeWriterFailed, false,
+				fmt.Sprintf("writer failed: %v", wErr), wErr)
+			return u.fail(out, typed)
 		}
+		out.IndexedRequestID = event.AggregateID
 	}
 
 	return nil
