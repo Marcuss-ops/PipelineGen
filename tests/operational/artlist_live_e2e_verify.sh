@@ -218,8 +218,7 @@ SCRAPER_PROBE=$(curl -s --max-time "${SCROLL_TIMEOUT}" -X POST "${SCRAPER_URL}/s
 SCRAPER_OK=$(echo "${SCRAPER_PROBE}" | jq -r '.ok           // false')
 SCRAPER_CLIPS=$(echo "${SCRAPER_PROBE}" | jq -r '.clips        | length // 0' 2>/dev/null || echo "0")
 
-if [[ "${SCRAPER_OK}" != "true" ]]; then
-    SCRAPER_ERR=$(echo "${SCRAPER_PROBE}" | jq -r '.error // "<no .error field>"\')
+if [[ "${SCRAPER_OK}" != "true" ]]; then    SCRAPER_ERR=$(echo "${SCRAPER_PROBE}" | jq -r '.error // "<no .error field>"')
     log_fail "scraper /search returned ok=false: ${SCRAPER_ERR}"
 elif [[ "${SCRAPER_CLIPS}" -ge 1 ]]; then
     log_pass "scraper /search returned ${SCRAPER_CLIPS} candidate(s) — job enqueue may proceed"
