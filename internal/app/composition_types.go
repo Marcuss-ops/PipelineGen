@@ -41,6 +41,7 @@ import (
 	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
+	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -194,6 +195,18 @@ type AIBundle struct {
 // DomainBundle is everything media-specific that lives at the application layer.
 type DomainBundle struct {
 	YoutubeClipService *youtube.Service
+
+	// SubtitleFetcher is the canonical YouTube subtitle-fetcher
+	// adapter (Fase 5: wired into the AcquireService for the
+	// backfill CLI's 5-priority chain — priorities 3+4). The
+	// composition root constructs it in
+	// build_bundles_domain_media.go and exposes it here so
+	// composition.go can pass it to BuildTextTrackBundle as
+	// part of AcquirePorts. The narrow texttracks.SubtitlesPort
+	// interface is a STRUCTURAL subset of
+	// youtubeports.SubtitleFetcherPort — the type assertion
+	// in BuildTextTrackBundle is a no-op at runtime.
+	SubtitleFetcher youtubeports.SubtitleFetcherPort
 
 	ExtractImportantClipsJobHandler *youtube.ExtractImportantClipsJobHandler // PR-GEMMA-EXTRACT-IMPORTANT Step 7: canonical broker handler registered with jobs.Service via wireYoutubeCatalogJobBindings (godlike/06 SSOT — the use case + adapters remain private construction-time deps, not exposed on DomainBundle)
 	VoiceoverService                *voiceover.Service

@@ -111,7 +111,18 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	// texttracks materializer + job handler. Constructed
 	// after OutboxBundle (needs outbox.EventsRepo) and
 	// AIBundle (needs OllamaTranslator).
-	textTracks, err := BuildTextTrackBundle(cfg, repos, ai, outbox, log)
+	//
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
+	// AcquireService (local VTT/SRT → YouTube subs → Whisper
+	// chain) is wired via the SubtitleFetcherPort exposed
+	// on the DomainBundle. WhisperTranscriberPort is left
+	// nil for now — a follow-up commit (Fase 5.b) adds the
+	// Whisper adapter to the AIBundle and wires it here.
+	acquirePorts := &AcquirePorts{
+		Subtitles: domains.SubtitleFetcher,
+		Whisper:   nil, // Fase 5.b: wire WhisperTranscriberPort from AIBundle
+	}
+	textTracks, err := BuildTextTrackBundle(cfg, repos, ai, outbox, acquirePorts, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose texttracks: %w", err)
 	}
