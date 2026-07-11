@@ -68,12 +68,20 @@ func (uc *GenerateOneUseCase) logPhaseError(
 	phase string,
 	sentinel error,
 	err error,
+	tracker *ProgressTracker,
 ) error {
 	if uc.log != nil {
 		uc.log.Warn("generate-one: phase failed",
 			zap.String("item_id", item.ID),
 			zap.String("phase", phase),
 			zap.Error(err))
+	}
+	if tracker != nil {
+		tracker.TrackEvent("stage.failed", "Pipeline stage failed", map[string]any{
+			"item_id": item.ID,
+			"phase":   phase,
+			"error":   err.Error(),
+		})
 	}
 	return fmt.Errorf("%w: %w: %w", scriptpkg.ErrScriptGenerationFailed, sentinel, err)
 }

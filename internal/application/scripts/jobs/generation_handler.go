@@ -154,11 +154,19 @@ func (h *GenerateJobHandler) handleSingle(
 	eventFn := appjobs.SafeEventFn(tools)
 	tracker := usecase.NewProgressTracker(progressFn, env.Items[0].ID)
 	tracker.SetEventFn(eventFn)
-	eventFn("request.validated", "script.generate request validated", map[string]any{
+	eventFn("job.created", "Script generation job created", map[string]any{
 		"job_id":  j.ID,
 		"item_id": env.Items[0].ID,
 		"preset":  string(env.Preset),
 	})
+
+	// Log source text metrics without ever logging the raw text.
+	if h.log != nil {
+		h.log.Info("script.generate: item source text metrics",
+			zap.String("job_id", j.ID),
+			zap.String("item_id", env.Items[0].ID),
+			zap.Any("source_text", usecase.SourceTextLogFields(env.Items[0].Source.SourceText, adapters.NormalizationConfig{LogSourceTextPreview: true, SourceTextPreviewChars: 80})))
+	}
 
 	execCtx := context.WithValue(ctx, "script_job_id", j.ID)
 	result, err := h.one.Execute(execCtx, env.Items[0], env.Preset, tracker)
@@ -177,7 +185,12 @@ func (h *GenerateJobHandler) handleSingle(
 				zap.String("job_id", j.ID),
 				zap.Error(diag.Err))
 		}
-		mapped, mapErr := toMap(buildSingleFailureEnvelope(env.Items[0].ID, err))
+		eventFn("job.failed", "Script generation failed", map[string]any{
+			"job_id":  j.ID,
+			"item_id": env.Items[0].ID,
+			"error":   diag.Err.Error(),
+		})
+		mapped, mapErr := toMap(buildSingleFailureEnvelope(env.Items[0].ID, err, result))
 		if mapErr != nil {
 			return nil, fmt.Errorf("generate job handler: marshal envelope: %w", mapErr)
 		}
@@ -238,6 +251,12 @@ func (h *GenerateJobHandler) handleBatch(
 	if err := h.checkPipelineCtx(ctx, "multi-item-pre-execute"); err != nil {
 		return nil, err
 	}
+	eventFn := appjobs.SafeEventFn(tools)
+	eventFn("job.created", "Script generation batch job created", map[string]any{
+		"job_id":     j.ID,
+		"item_count": len(env.Items),
+		"preset":     string(env.Preset),
+	})
 	return h.handleBatchFanout(ctx, j, env, tools)
 }
 
@@ -261,6 +280,11 @@ func (h *GenerateJobHandler) handleBatchFanout(
 				zap.String("job_id", j.ID),
 				zap.Error(err))
 		}
+		eventFn := appjobs.SafeEventFn(tools)
+		eventFn("job.failed", "Script generation batch failed", map[string]any{
+			"job_id": j.ID,
+			"error":  err.Error(),
+		})
 		return nil, fmt.Errorf("script.generate fanout: %w", err)
 	}
 

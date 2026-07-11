@@ -91,6 +91,15 @@ type ScriptsConfig struct {
 	MaxSourceTextTokens int `yaml:"max_source_text_tokens" env:"VELOX_SCRIPTS_MAX_SOURCE_TEXT_TOKENS" default:"10000"`
 	// MaxSourceTextToTargetWordsRatio caps source_text words / target_words.
 	MaxSourceTextToTargetWordsRatio float64 `yaml:"max_source_text_to_target_words_ratio" env:"VELOX_SCRIPTS_MAX_SOURCE_TEXT_TO_TARGET_WORDS_RATIO" default:"5.0"`
+
+	// LogSourceTextPreview controls whether a short preview of the
+	// source_text is included in structured logs. When false, only
+	// hash, length and token estimates are logged.
+	LogSourceTextPreview bool `yaml:"log_source_text_preview" env:"VELOX_SCRIPTS_LOG_SOURCE_TEXT_PREVIEW" default:"true"`
+
+	// SourceTextPreviewChars caps the source_text preview length in
+	// characters when LogSourceTextPreview is true. 0 falls back to 80.
+	SourceTextPreviewChars int `yaml:"source_text_preview_chars" env:"VELOX_SCRIPTS_SOURCE_TEXT_PREVIEW_CHARS" default:"80"`
 }
 
 // WithDefaults returns a copy of ScriptsConfig with zero-values replaced by
@@ -160,6 +169,9 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.MaxSourceTextToTargetWordsRatio <= 0 {
 		s.MaxSourceTextToTargetWordsRatio = 5.0
+	}
+	if s.SourceTextPreviewChars <= 0 {
+		s.SourceTextPreviewChars = 80
 	}
 	return s
 }

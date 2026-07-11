@@ -77,7 +77,7 @@ func (uc *GenerateOneUseCase) Execute(
 	// ── Phase 2: Validate ───────────────────────────────────────────
 	tracker.PhaseValidate()
 	if err := ValidateItem(item); err != nil {
-		return nil, uc.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err)
+		return nil, uc.logPhaseError(item, "validate", scriptpkg.ErrPlanInvalid, err, tracker)
 	}
 	tracker.TrackEvent("request.validated", "Generation request validated", map[string]any{
 		"item_id":     item.ID,
@@ -93,15 +93,26 @@ func (uc *GenerateOneUseCase) Execute(
 		resCtx := buildResolutionContext(item)
 		resolved, resolveErr = uc.registry.Resolve(ctx, item.Source, resCtx)
 		if resolveErr != nil {
-			return nil, uc.logPhaseError(item, "source_resolve", scriptpkg.ErrSourceResolutionFailed, resolveErr)
+			return nil, uc.logPhaseError(item, "source_resolve", scriptpkg.ErrSourceResolutionFailed, resolveErr, tracker)
 		}
 	}
 	timings.SourceResolveMs = time.Since(sourceStart).Milliseconds()
-	if resolved != nil && resolved.ClipEvidence != nil && len(resolved.ClipEvidence.AcceptedClipIDs) > 0 {
-		tracker.TrackEvent("clips.hydrated", "Clip source material hydrated", map[string]any{
-			"item_id":    item.ID,
-			"clip_count": len(resolved.ClipEvidence.AcceptedClipIDs),
-			"clip_ids":   resolved.ClipEvidence.AcceptedClipIDs,
+	if resolved != nil && resolved.ClipEvidence != nil {
+		if len(resolved.ClipEvidence.AcceptedClipIDs) > 0 {
+			tracker.TrackEvent("clips.hydrated", "Clip source material hydrated", map[string]any{
+				"item_id":    item.ID,
+				"clip_count": len(resolved.ClipEvidence.AcceptedClipIDs),
+				"clip_ids":   resolved.ClipEvidence.AcceptedClipIDs,
+			})
+		}
+		missingCount := len(resolved.ClipEvidence.MissingClipIDs)
+		excludedCount := len(resolved.ClipEvidence.Excluded)
+		tracker.TrackEvent("clips.validated", "Clip source material validated", map[string]any{
+			"item_id":        item.ID,
+			"clip_count":     len(resolved.ClipEvidence.AcceptedClipIDs),
+			"missing_count":  missingCount,
+			"excluded_count": excludedCount,
+			"valid":          missingCount == 0 && excludedCount == 0,
 		})
 	}
 
@@ -112,7 +123,7 @@ func (uc *GenerateOneUseCase) Execute(
 		ctx, item, uc.voGroupResolver, uc.voRootID, uc.log,
 	)
 	if resolveVOErr != nil {
-		return nil, uc.logPhaseError(item, "voiceover_resolve", scriptpkg.ErrVoiceoverResolveFailed, resolveVOErr)
+		return nil, uc.logPhaseError(item, "voiceover_resolve", scriptpkg.ErrVoiceoverResolveFailed, resolveVOErr, tracker)
 	}
 	item = resolvedItem
 	plan := BuildPlan(item)
@@ -157,7 +168,7 @@ func (uc *GenerateOneUseCase) Execute(
 
 	if uc.ppReg != nil {
 		if err := uc.ppReg.ValidateRequested(plan.Postprocessors); err != nil {
-			return nil, uc.logPhaseError(item, "registry_validate", scriptpkg.ErrPlanInvalid, err)
+			return nil, uc.logPhaseError(item, "registry_validate", scriptpkg.ErrPlanInvalid, err, tracker)
 		}
 	}
 
@@ -171,18 +182,18 @@ func (uc *GenerateOneUseCase) Execute(
 			Phase:  "engine",
 			Inner:  fmt.Errorf("ollama generation failed: %w", engineErr),
 		}
-		return nil, uc.logPhaseError(item, "engine", scriptpkg.ErrGenerationFailed, genErr)
+		return nil, uc.logPhaseError(item, "engine", scriptpkg.ErrGenerationFailed, genErr, tracker)
 	}
 	timings.EngineMs = time.Since(engineStart).Milliseconds()
 	tracker.PhaseGenerateDone()
-	tracker.TrackEvent("script.written", "Script text generated", map[string]any{
+	tracker.TrackEvent("script.generated", "Script text generated", map[string]any{
 		"item_id":      item.ID,
 		"word_count":   engineResult.WordCount,
 		"model":        engineResult.Model,
 		"cache_status": engineResult.CacheStatus,
 	})
 	if len(engineResult.Output.SpecScene.Scenes) > 0 {
-		tracker.TrackEvent("scenes.built", "Scenes built from generated script", map[string]any{
+		tracker.TrackEvent("scenes.created", "Scenes created from generated script", map[string]any{
 			"item_id":     item.ID,
 			"scene_count": len(engineResult.Output.SpecScene.Scenes),
 		})
@@ -218,7 +229,7 @@ func (uc *GenerateOneUseCase) Execute(
 				Processor: "registry",
 				Inner:     ppErr,
 			}
-			return nil, uc.logPhaseError(item, "postprocess", scriptpkg.ErrPostprocessFailed, ppErrStruct)
+			return nil, uc.logPhaseError(item, "postprocess", scriptpkg.ErrPostprocessFailed, ppErrStruct, tracker)
 		}
 		if postResult != nil && len(postResult.StageDurations) > 0 {
 			timings.PostprocessMs = maps.Clone(postResult.StageDurations)
@@ -239,7 +250,7 @@ func (uc *GenerateOneUseCase) Execute(
 	// accepted clip and bind every accepted clip. Explicit fallback
 	// mode reports SUCCEEDED_WITH_WARNINGS instead of failing.
 	if err := enforceClipNativeContract(result, item, plan, engineResult, postResult); err != nil {
-		return nil, uc.logPhaseError(item, "clip_native", scriptpkg.ErrClipNativePlanningFailed, err)
+		return nil, uc.logPhaseError(item, "clip_native", scriptpkg.ErrClipNativePlanningFailed, err, tracker)
 	}
 
 	// ── Phase 8: Surface provenance ─────────────────────────────────
@@ -257,9 +268,20 @@ func (uc *GenerateOneUseCase) Execute(
 	if quality != nil {
 		result.Quality = quality
 	}
+	if quality != nil {
+		tracker.TrackEvent("quality.checked", "Editorial quality gate checked", map[string]any{
+			"item_id":                item.ID,
+			"passed":                 quality.Passed,
+			"source_text_coverage":   quality.SourceTextCoverage,
+			"clip_evidence_coverage": quality.ClipEvidenceCoverage,
+			"unsupported_claims":     quality.UnsupportedClaims,
+			"actual_words":           quality.ActualWords,
+			"target_words":           quality.TargetWords,
+		})
+	}
 	if qErr != nil {
 		result.Status = "FAILED_QUALITY_GATE"
-		return result, uc.logPhaseError(item, "quality_gate", scriptpkg.ErrQualityGateFailed, qErr)
+		return result, uc.logPhaseError(item, "quality_gate", scriptpkg.ErrQualityGateFailed, qErr, tracker)
 	}
 
 	timings.TotalMs = time.Since(startAll).Milliseconds()
@@ -285,6 +307,15 @@ func (uc *GenerateOneUseCase) Execute(
 			zap.Int("word_count", result.Output.WordCount),
 			zap.String("cache_status", result.Cache.Status),
 			zap.Int64("total_ms", timings.TotalMs))
+	}
+
+	// Log source text metrics once at completion. The raw source text
+	// is never logged; only hash, length, token estimate and an
+	// optional preview are emitted.
+	if uc.log != nil {
+		uc.log.Info("generate-one: source text metrics",
+			zap.String("item_id", item.ID),
+			zap.Any("source_text", SourceTextLogFields(plan.SourceText, uc.cfg)))
 	}
 
 	tracker.TrackEvent("job.completed", "Script generation completed", map[string]any{

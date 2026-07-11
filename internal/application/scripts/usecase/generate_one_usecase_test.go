@@ -105,10 +105,10 @@ func itemForTimingsTest() scriptpkg.GenerationItemV2 {
 			// SourceText length is well above any sensible
 			// validator minimum so ValidateItem succeeds even
 			// if the validator enforces one.
-			SourceText: "A canonical test about per-stage postprocessor duration plumbing.",
+			SourceText: "This is a generated script with multiple sentences and narrative depth. A canonical test about per-stage postprocessor duration plumbing.",
 		},
 		ScriptParams: scriptpkg.ScriptSpec{
-			TargetWords: 120,
+			TargetWords: 12,
 		},
 		Output: scriptpkg.OutputSpec{
 			// Required-class procs the test exercises:
@@ -377,6 +377,88 @@ func TestGenerateOneUseCase_LogsAndReturnsTypedError_OnValidateFailure(t *testin
 		"SCRIPT-T03-USECASE: log must include the item_id")
 	assert.Equal(t, "validate", fields["phase"],
 		"SCRIPT-T03-USECASE: log must include the phase 'validate'")
+}
+
+// ── Event emission coverage (July 2026) ──
+
+// TestGenerateOneUseCase_EmitsCanonicalEvents pins the job-event
+// contract: a successful Execute must emit the canonical timeline
+// events in order. The test uses a text-only item so source
+// resolution is a no-op and the event list is deterministic.
+func TestGenerateOneUseCase_EmitsCanonicalEvents(t *testing.T) {
+	t.Parallel()
+
+	gen := &fakeOllamaGen{}
+	e := buildTestEngine(gen, nil)
+
+	ppReg := adapters.NewPostProcessorRegistry(zap.NewNop())
+	ppReg.Register(&stubPostProcessor{
+		name:   "persistence",
+		result: &adapters.PostProcessResult{Changed: true},
+	})
+	ppReg.Freeze()
+
+	uc := NewGenerateOneUseCase(
+		adapters.NormalizationConfig{},
+		nil, e, ppReg, zap.NewNop(),
+	)
+
+	item := scriptpkg.GenerationItemV2{
+		ID:    "event-test-item",
+		Title: "Event Test",
+		Source: scriptpkg.SourceSpec{
+			Type:       scriptpkg.SourceText,
+			Topic:      "event test",
+			SourceText: "This is a generated script with multiple sentences and narrative depth for event testing.",
+		},
+		ScriptParams: scriptpkg.ScriptSpec{TargetWords: 12},
+		Output: scriptpkg.OutputSpec{
+			SaveToDB: false,
+		},
+	}
+
+	var events []struct {
+		Type    string
+		Message string
+		Data    map[string]any
+	}
+	tracker := NewProgressTracker(nil, item.ID)
+	tracker.SetEventFn(func(eventType, message string, data map[string]any) {
+		events = append(events, struct {
+			Type    string
+			Message string
+			Data    map[string]any
+		}{Type: eventType, Message: message, Data: data})
+	})
+
+	_, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), tracker)
+	require.NoError(t, err)
+
+	var eventTypes []string
+	for _, e := range events {
+		eventTypes = append(eventTypes, e.Type)
+	}
+	want := []string{
+		"request.validated",
+		"narrative.planned",
+		"script.generated",
+		"scenes.created",
+		"quality.checked",
+		"job.completed",
+	}
+	require.Equal(t, want, eventTypes, "canonical event sequence must match")
+
+	// Every event must carry the item_id so downstream observability can
+	// correlate timeline entries with the generation item.
+	for _, e := range events {
+		require.Equal(t, item.ID, e.Data["item_id"], "event %q must carry item_id", e.Type)
+	}
+
+	// Text-only items should not emit clip-related events.
+	for _, e := range events {
+		require.NotContains(t, []string{"clips.hydrated", "clips.validated", "clip_evidence.built", "clips.bound"}, e.Type,
+			"text-only item must not emit clip event %q", e.Type)
+	}
 }
 
 // ── PR-ERROR-SURFACING commit-5 (2026-07-04): umbrella coverage ──

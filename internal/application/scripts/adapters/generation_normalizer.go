@@ -52,6 +52,13 @@ type NormalizationConfig struct {
 
 	// ── Batch defaults ────────────────────────────────────────────────
 	MaxBatchWorkers int // default: 4; 0 → default; <0 → unbounded
+
+	// ── Source text logging redaction ────────────────────────────────
+	// LogSourceTextPreview controls whether a short preview of the
+	// source_text is included in structured logs.
+	LogSourceTextPreview bool
+	// SourceTextPreviewChars caps the preview length in characters.
+	SourceTextPreviewChars int
 }
 
 // NormalizeItem applies the precedence chain to a single
