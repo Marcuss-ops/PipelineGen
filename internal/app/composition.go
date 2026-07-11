@@ -70,7 +70,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose ai: %w", err)
 	}
 
-	qdrantDeps, err := buildQdrantDeps(ctx, cfg, dbs, log)
+	qdrantDeps, err := buildQdrantDeps(ctx, cfg, dbs, repos, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose qdrant deps: %w", err)
 	}

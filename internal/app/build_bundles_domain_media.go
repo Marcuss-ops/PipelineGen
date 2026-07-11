@@ -145,10 +145,14 @@ func buildDomainMediaServices(
 	// TextTrackRepository + TextTrackResolver: priority-chain lookup
 	// for localized text tracks. Reduces redundant Whisper invocations
 	// by checking the API payload and the DB before falling through.
-	textTrackRepo, err := assets.NewTextTrackRepository(dbs.main.DB, log)
-	if err != nil {
-		return nil, nil, fmt.Errorf("compose domains: text track repository: %w", err)
-	}
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
+	// TextTrackRepository is now sourced from the canonical
+	// RepoBundle.TextTrackRepo (wired in BuildRepoBundle). The
+	// pre-PR local construction is removed so every consumer
+	// (BuildTextTrackBundle, BuildRepoBundle, the Qdrant
+	// PayloadMapper, the TextTrackResolver here) shares the SAME
+	// instance — a future refactor that read from a stray local
+	// copy would silently corrupt text-track state.
 	// Compile-time pin: TextTrackRepositorySQLite satisfies asset.TextTrackRepository.
 	var _ asset.TextTrackRepository = (*assets.TextTrackRepositorySQLite)(nil)
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the
@@ -165,7 +169,7 @@ func buildDomainMediaServices(
 	// subset of the full youtubeports.SubtitleFetcherPort.
 	bundle.SubtitleFetcher = subtitleFetcherAdapter
 	textTrackResolver := &youtube.TextTrackResolver{
-		Repo:      textTrackRepo,
+		Repo:      repos.TextTrackRepo,
 		Subtitles: subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)		// Transcriber field RETIRED in PR-PY-CLIPS-CORRETTE-TRADOTTE
 		// Fase 1.c (July 2026). The Whisper fallback is now
 		// exclusively owned by TextTrackResolver (which holds its

@@ -59,14 +59,14 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	// the video pipeline + the AcquireService backfill CLI. It MUST
 	// be wired at the RepoBundle composition root (BuildRepoBundle)
 	// so every consumer (BuildTextTrackBundle, BuildDomainBundle, the
-	// AcquireService wiring in composition.go) sees a non-nil
+	// AcquireService wiring in composition.go, the Qdrant
+	// PayloadMapper in buildQdrantDeps) sees the SAME non-nil
 	// dependency. The pre-PR scattered construction in
-	// build_bundles_domain_media.go::buildDomainMedia and
-	// build_process_qdrant.go::buildQdrantDeps is now superseded by
-	// this canonical SSOT (this is the canonical owner for ALL
-	// repositories wired into RepoBundle). godlike/07 fail-closed:
-	// BuildTextTrackBundle rejects nil TextTrackRepo so the test
-	// fixture MUST exercise this path.
+	// build_bundles_domain_media.go::buildDomainMediaServices and
+	// build_process_qdrant.go::buildQdrantDeps is now removed — both
+	// callers consume repos.TextTrackRepo from this bundle. godlike/07
+	// fail-closed: BuildTextTrackBundle rejects nil TextTrackRepo so
+	// the test fixture MUST exercise this path.
 	textTrackRepo, err := sqassets.NewTextTrackRepository(dbs.main.DB, log)
 	if err != nil {
 		return nil, fmt.Errorf("init text track repository: %w", err)
