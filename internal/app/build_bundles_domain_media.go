@@ -156,8 +156,8 @@ func buildDomainMediaServices(
 	// so the policy gate (asset.ErrLanguageUndeterminable pre-Step-9
 	// on full-miss chain) is plumbed end-to-end.
 	textTrackResolver := &youtube.TextTrackResolver{
-		Repo:                     textTrackRepo,
-		Subtitles:                subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)		// Transcriber field RETIRED in PR-PY-CLIPS-CORRETTE-TRADOTTE
+		Repo:      textTrackRepo,
+		Subtitles: subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)		// Transcriber field RETIRED in PR-PY-CLIPS-CORRETTE-TRADOTTE
 		// Fase 1.c (July 2026). The Whisper fallback is now
 		// exclusively owned by TextTrackResolver (which holds its
 		// own Transcriber reference wired above). Removing the
@@ -180,7 +180,9 @@ func buildDomainMediaServices(
 		SegmentPolicy:      youtubetypes.DefaultSegmentPolicy(),
 		Step10Metrics:      observability.NewStep10MetricsAdapter(),
 		TextTrackResolver:  textTrackResolver,
-		Log:                log,
+		// Fase 5: see MultilingualConfig.RequireTranscriptReady.
+		RequireTranscriptReady: cfg.Media.Multilingual.RequireTranscriptReady,
+		Log:                    log,
 	})
 
 	youtubeDeps := youtube.ServiceDeps{
