@@ -24,20 +24,39 @@ package dto
 // It is serialized as JSON (metadata_<clip_id>.json) next to the clip MP4 and
 // uploaded to Drive alongside the video file.
 
+// LocalizedClipText carries a single localized text resource
+// (transcript, description, summary, or title) for a clip segment.
+// It is the wire format accepted by the extraction API and is
+// converted to domain TextTrack rows during the YouTube write path.
+type LocalizedClipText struct {
+	LanguageCode       string  `json:"language_code"`
+	SourceLanguageCode string  `json:"source_language_code,omitempty"`
+	Transcript         string  `json:"transcript,omitempty"`
+	Description        string  `json:"description,omitempty"`
+	Summary            string  `json:"summary,omitempty"`
+	Title              string  `json:"title,omitempty"`
+	SourceType         string  `json:"source_type"`
+	IsOriginal         bool    `json:"is_original,omitempty"`
+	ModelName          string  `json:"model_name,omitempty"`
+	ModelVersion       string  `json:"model_version,omitempty"`
+	Confidence         float64 `json:"confidence,omitempty"`
+}
+
 // Segment represents a time-bounded clip segment with metadata
 // extracted from the segment analysis pipeline.
 type Segment struct {
-	Start            string   `json:"start"`
-	End              string   `json:"end"`
-	Name             string   `json:"name"`
-	Tags             []string `json:"tags,omitempty"`
-	Summary          string   `json:"summary,omitempty"`
-	Topics           []string `json:"topics,omitempty"`
-	Speakers         []string `json:"speakers,omitempty"`
-	MentionedPeople  []string `json:"mentioned_people,omitempty"`
-	Hook             string   `json:"hook,omitempty"`
-	QualityScore     float64  `json:"quality_score,omitempty"`
-	SearchVisibility string   `json:"search_visibility,omitempty"`
+	Start            string              `json:"start"`
+	End              string              `json:"end"`
+	Name             string              `json:"name"`
+	Tags             []string            `json:"tags,omitempty"`
+	Summary          string              `json:"summary,omitempty"`
+	Topics           []string            `json:"topics,omitempty"`
+	Speakers         []string            `json:"speakers,omitempty"`
+	MentionedPeople  []string            `json:"mentioned_people,omitempty"`
+	Hook             string              `json:"hook,omitempty"`
+	QualityScore     float64             `json:"quality_score,omitempty"`
+	SearchVisibility string              `json:"search_visibility,omitempty"`
+	Texts            []LocalizedClipText `json:"texts,omitempty"`
 }
 
 // ── PR5 Phase 3: Extraction DTOs moved from parent package ──────────────
