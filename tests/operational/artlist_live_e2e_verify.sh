@@ -64,6 +64,70 @@
 set -euo pipefail
 
 # ============================================================
+# CLI argument parsing
+# ============================================================
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [--dry-run] [--help]
+
+  --dry-run    Print the verification plan (ports, queries, expected
+               PASS/WARN/FAIL for each of the 9 verification points) and
+               exit. Does NOT enqueue a real Artlist job, does NOT
+               consume any Artlist download quota, does NOT pollute the
+               DB. Optionally runs light read-only preflight probes
+               (server /ready, scraper /health, Qdrant /collections,
+               SQLite file present) when VELOX_ADMIN_TOKEN is set, to
+               give the operator signal on environment reachability.
+               Same effect as the legacy DRY_RUN=1 env var.
+
+  --help, -h   Show this help and exit.
+
+Env-var overrides (see Config block below for the full list):
+  PIPELINE_PORT / VELOX_PORT    HTTP listener port (canonical 8000)
+  VELOX_ADMIN_TOKEN             PipelineGen admin bearer token
+  SEARCH_TERM / LIMIT           Artlist search query + asset count
+  ROOT_FOLDER_ID                Drive destination folder
+  QDRANT_API_KEY / QDRANT_URL   Qdrant endpoint + auth
+  ARTLIST_SCRAPER_SERVER_URL    Node-scraper URL
+  VELOX_DATA_DIR                Path to media.db.sqlite
+  SKIP_HERMETICS=1              Bypass the go test '^TestGate' pre-run
+
+Examples:
+  $0 --help
+  DRY_RUN=1 VELOX_ADMIN_TOKEN='...' SEARCH_TERM='boxing training' \\
+      bash $0
+  $0 --dry-run
+
+EOF
+}
+
+# Parse CLI args. Unknown args => error + usage to stderr + exit 2.
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run)
+            DRY_RUN=1
+            shift
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --)
+            shift; break ;;
+        -*)
+            echo "[ERROR] Unknown option: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+        *)
+            echo "[ERROR] Unexpected positional arg: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+# ============================================================
 # Config (override via env)
 # ============================================================
 HOST="${VELOX_HOST:-127.0.0.1}"
@@ -72,7 +136,10 @@ HOST="${VELOX_HOST:-127.0.0.1}"
 # Operational Readiness PR, June 2026). Backward-compat VELOX_PORT is
 # preserved for sibling-script consistency. Override at runtime via
 # PIPELINE_PORT=NNNN (or VELOX_PORT=NNNN for legacy callers).
-[ -n "$PIPELINE_PORT" ] || PIPELINE_PORT="${VELOX_PORT:-8000}"
+# Use ${PIPELINE_PORT:-} (not bare $PIPELINE_PORT) so set -u does not
+# trip when the script is invoked in --dry-run with an empty env, the
+# exact use case the dry-run mode was added for.
+[ -n "${PIPELINE_PORT:-}" ] || PIPELINE_PORT="${VELOX_PORT:-8000}"
 BASE_URL="http://${HOST}:${PIPELINE_PORT}"
 
 SCRAPER_URL="${ARTLIST_SCRAPER_SERVER_URL:-http://127.0.0.1:9123}"
@@ -122,37 +189,73 @@ require_tool() {
 # ============================================================
 # DRY_RUN: print plan, no real cycle
 # ============================================================
+# Triggered by either:
+#   - CLI flag:  --dry-run
+#   - Env var:   DRY_RUN=1
+# No real Artlist job enqueued, no quota consumed, no DB/Drive writes.
 if [[ "${DRY_RUN:-0}" == "1" ]]; then
-    echo "[INFO] artlist_live_e2e_verify.sh — DRY RUN MODE (no real download, no enqueue)"
-    echo "[INFO] Effective config:"
-    echo "  BASE_URL              = ${BASE_URL}"
-    echo "  SCRAPER_URL           = ${SCRAPER_URL}"
-    echo "  QDRANT_URL            = ${QDRANT_URL}/collections/${COLLECTION}"
-    echo "  QDRANT_API_KEY        = ${QDRANT_API_KEY:+<set>}${QDRANT_API_KEY:-<empty>}"
-    echo "  DB_PATH               = ${DB_PATH}"
-    echo "  TOKEN (VELOX_ADMIN)   = ${TOKEN:+<set>}${TOKEN:-<empty>}"
-    echo "  ROOT_FOLDER_ID        = ${ROOT_FOLDER_ID:-<empty — warning>}"
-    echo "  SEARCH_TERM           = '${SEARCH_TERM}'"
-    echo "  LIMIT                 = ${LIMIT}"
-    echo "[INFO] Plan (in order):"
-    echo "  1. preflight: server /ready, scraper /health, Qdrant /collections, sqlite3 exists"
-    echo "  2. hermetic gates (SKIP_HERMETICS=1 to bypass): go test -run '^TestGate' ./internal/application/assets/providers/artlist/..."
-    echo "  3. POST /api/artlist/run (term, limit, dry_run=false, root_folder_id)"
-    echo "  4. Poll /api/jobs/\${JID}/full until SUCCEEDED"
-    echo "  5. For each asset in result.items: 9 verification points"
-    echo "  6. POST /api/media/search (sources=['artlist']) must include asset_id(s)"
-    echo "  7. Write JSON machine-readable verdict to ${LAST_JSON}"
-    echo
-    # Even in dry-run we run preflight probes to give the operator signal
+    cat <<EOF
+[INFO] artlist_live_e2e_verify.sh — DRY RUN MODE (no real download, no enqueue)
+[INFO] Effective config:
+  BASE_URL              = ${BASE_URL}
+  SCRAPER_URL           = ${SCRAPER_URL}
+  QDRANT_URL            = ${QDRANT_URL}/collections/${COLLECTION}
+  QDRANT_API_KEY        = ${QDRANT_API_KEY:+<set>}${QDRANT_API_KEY:-<empty>}
+  DB_PATH               = ${DB_PATH}
+  TOKEN (VELOX_ADMIN)   = ${TOKEN:+<set>}${TOKEN:-<empty>}
+  ROOT_FOLDER_ID        = ${ROOT_FOLDER_ID:-<empty — warning>}
+  SEARCH_TERM           = '${SEARCH_TERM}'
+  LIMIT                 = ${LIMIT}
+[INFO] Plan — 9 verification points (executed per produced asset; in order):
+  1. PASS   scraper /search probe (term, limit) returns >= 1 candidate
+            WARN  if 0 candidates (fallback may still work)
+            FAIL  if scraper returns ok=false
+  2. PASS   POST /api/artlist/run returns run_id (job enqueued)
+            FAIL  on empty/null run_id
+  3. PASS   job terminal status == SUCCEEDED within ~$((POLL_INTERVAL * POLL_MAX))s
+            FAIL  on FAILED or timeout
+  4. PASS   artlist_download_audit.status == 'succeeded' (latest row for asset_id)
+            FAIL  on 'pending'/'failed' or no row
+  5. PASS   media_assets row exists with:
+              source='artlist', media_type='video', lifecycle_state='PUBLISHED',
+              index_state='INDEXED',
+              + drive_file_id, drive_link, download_link, file_hash,
+                source_version all non-empty
+            FAIL  on any missing field or wrong value
+  6. PASS   Drive Files.Get via POST /api/drive/resolve-by-id returns:
+              ok=true, resolved_count >= 1, name non-empty,
+              size > 0, trashed=false
+            FAIL  on missing or trashed file
+  7. PASS   outbox_events.status IN ('completed','superseded') for
+              event_type='asset.index.requested', aggregate_id=asset_id
+            FAIL  on 'pending' or no row
+  8. PASS   Qdrant scroll on ${COLLECTION} returns >= 1 point with:
+              payload.asset_id == asset_id,
+              payload.source == 'artlist',
+              payload.media_type == 'video',
+              payload.lifecycle_state == 'PUBLISHED'
+            FAIL  on missing point or wrong payload field
+  9. PASS   POST /api/media/search with sources=['artlist'] returns
+              the produced asset_id
+            WARN  if no artlist results (embedding pipeline may be stale;
+            Qdrant scroll is the canonical truth)
+[INFO] Skip-able: SKIP_HERMETICS=1 bypasses the go test '^TestGate' pre-run.
+[INFO] Cost: zero Artlist downloads, zero DB writes, zero Drive writes.
+[INFO] Verdict JSON would be written to: ${LAST_JSON}
+EOF
+
+    # Light read-only preflight probes when a token is available —
+    # gives the operator zero-cost signal on environment reachability.
     if [[ -n "${TOKEN}" ]]; then
+        echo
         echo "[INFO] Light preflight probes (read-only):"
         if curl -s --max-time 3 "${BASE_URL}/ready" | jq -e '.status == "ready"' >/dev/null 2>&1; then
             echo "  server /ready: ok"
         else
             echo "  server /ready: NOT OK"
         fi
-        if curl -s --max-time 3 "${SCRAPER_URL}/health" >/dev/null 2>&1; then
-            echo "  scraper /health: reachable"
+        if curl -s --max-time 3 "${SCRAPER_URL}/health" | jq -e '.ok == true' >/dev/null 2>&1; then
+            echo "  scraper /health: ok"
         else
             echo "  scraper /health: NOT REACHABLE"
         fi
@@ -161,7 +264,17 @@ if [[ "${DRY_RUN:-0}" == "1" ]]; then
         else
             echo "  Qdrant /collections: NOT REACHABLE"
         fi
+        if [[ -f "${DB_PATH}" ]]; then
+            echo "  SQLite media.db.sqlite: present (${DB_PATH})"
+        else
+            echo "  SQLite media.db.sqlite: NOT FOUND (${DB_PATH})"
+        fi
+    else
+        echo
+        echo "[INFO] VELOX_ADMIN_TOKEN is empty — skipping preflight probes (set it to enable them)."
     fi
+
+    echo
     echo "[INFO] Exit 0 (dry-run is read-only)."
     exit 0
 fi
