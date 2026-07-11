@@ -18,6 +18,15 @@
 # Usage:
 #   VELOX_ADMIN_TOKEN='...' bash tests/operational/artlist_preflight_smoke.sh
 
+# Cross-reference: this script is a sibling of artlist_live_e2e_verify.sh
+# which enforces the gate test count (EXPECTED_GATE_MATCHES) against the
+# meta-anchor's expectedGateTests array in:
+#   internal/application/assets/providers/artlist/gate11_scraper_failure_test.go
+# If you add or remove gate tests, update BOTH the meta-anchor AND
+# EXPECTED_GATE_MATCHES in artlist_live_e2e_verify.sh. This script does
+# NOT enforce the gate count contract — see artlist_live_e2e_verify.sh
+# for the canonical HERMETIC GATES precondition.
+
 set -euo pipefail
 
 HOST="${VELOX_HOST:-127.0.0.1}"
