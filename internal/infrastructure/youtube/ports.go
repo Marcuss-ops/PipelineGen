@@ -13,7 +13,11 @@
 //	(internal/app/dependencies.go) wire the concrete adapters.
 package youtube
 
-import "context"
+import (
+	"context"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+)
 
 // TimedEntry represents a parsed subtitle cue. The values are in seconds.
 type TimedEntry struct {
@@ -48,6 +52,18 @@ type ProcessRunnerPort interface {
 type SubtitleFetcher interface {
 	FetchFullVTT(ctx context.Context, videoURL string) ([]TimedEntry, error)
 	SliceSubtitles(ctx context.Context, videoID string, startSec, endSec int, outputPath string) error
+	// FetchSegmentSubtitles returns the canonical typed subtitle
+	// track for [startSec, endSec] as an asset.ResolvedTextBundle
+	// (plaintext + per-cue timings + detected language). This is the
+	// typed surface used by TextTrackResolver.AcquireSegmentText
+	// (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a, July 2026).
+	//
+	// Implementation contract: probe manual subtitles first (priority
+	// 3 per the doc), fall back to auto-generated (priority 4). Empty
+	// Cues + empty PlainText is a valid "no subtitles" signal (NOT an
+	// error). Fetch and parse errors are typed (network, VTT
+	// malformed) and propagated verbatim.
+	FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*asset.ResolvedTextBundle, error)
 }
 
 // WhisperTranscriber is the local-transcription fallback when no official

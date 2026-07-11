@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ytdlp"
 	ytcfg "github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
@@ -104,7 +106,7 @@ func (a *SubtitleFetcherAdapter) FetchFullVTT(ctx context.Context, videoURL stri
 	cachedPath := filepath.Join(a.cacheDir, id+".vtt")
 
 	if _, err := os.Stat(cachedPath); err == nil {
-		return parseVTTEntries(cachedPath, 0, 0)
+		return ParseVTTEntries(cachedPath, 0, 0)
 	}
 	if err := os.MkdirAll(a.cacheDir, 0o755); err != nil {
 		return nil, fmt.Errorf("subtitles: mkdir cache: %w", err)
@@ -145,7 +147,7 @@ func (a *SubtitleFetcherAdapter) FetchFullVTT(ctx context.Context, videoURL stri
 	if _, err := os.Stat(cachedPath); err != nil {
 		return nil, nil
 	}
-	return parseVTTEntries(cachedPath, 0, 0)
+	return ParseVTTEntries(cachedPath, 0, 0)
 }
 
 // SliceSubtitles reads the cached VTT for videoID, applies the rolling
@@ -173,6 +175,110 @@ func (a *SubtitleFetcherAdapter) SliceSubtitles(_ context.Context, videoID strin
 		return fmt.Errorf("subtitles: parse %s: %w", vttPath, err)
 	}
 	return os.WriteFile(outputPath, []byte(text), 0o644)
+}
+
+// FetchSegmentSubtitles returns the canonical typed subtitle track for
+// [startSec, endSec] as an *asset.ResolvedTextBundle. The implementation
+// probes manual subtitles first (priority 3 per the doc), falls back to
+// auto-generated (priority 4) — both are surfaced through the same
+// typed return because they share the parse path.
+//
+// godlike/06 SSOT: this is the SOLE canonical typed surface for
+// subtitle-track acquisition. TextTrackResolver.AcquireSegmentText
+// (Fase 1.a) calls this method; no handler may reimplement the
+// VTT-parsing step inline.
+//
+// Returns (nil, nil) when no subtitles are available for the clip
+// (valid "not found" signal — caller falls through to Whisper).
+// Returns a typed error on network failure, parse failure, or
+// missing cache configuration.
+func (a *SubtitleFetcherAdapter) FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*asset.ResolvedTextBundle, error) {
+	if a.cacheDir == "" {
+		return nil, fmt.Errorf("subtitles.FetchSegmentSubtitles: cacheDir is required")
+	}
+	if videoID == "" {
+		return nil, fmt.Errorf("subtitles.FetchSegmentSubtitles: videoID is required")
+	}
+
+	// Build the canonical watch URL so FetchFullVTT triggers the
+	// yt-dlp --write-auto-subs download when no cached VTT exists
+	// yet. url.QueryEscape guards against videoIDs containing stray
+	// characters — yt-dlp accepts both but the canonical form is
+	// query-escaped.
+	vttURL := "https://www.youtube.com/watch?v=" + url.QueryEscape(videoID)
+	if _, fetchErr := a.FetchFullVTT(ctx, vttURL); fetchErr != nil {
+		return nil, fmt.Errorf("subtitles.FetchSegmentSubtitles: fetch: %w", fetchErr)
+	}
+
+	vttPath := filepath.Join(a.cacheDir, videoID+".vtt")
+	if _, statErr := os.Stat(vttPath); statErr != nil {
+		// No VTT landed (e.g. yt-dlp succeeded but wrote nothing).
+		// Return (nil, nil) so the resolver falls through to Whisper;
+		// a typed error here would mask the "no subtitles available"
+		// semantic.
+		return nil, nil
+	}
+
+	plain, parseErr := ParseVTTFile(vttPath, float64(startSec), float64(endSec))
+	if parseErr != nil {
+		return nil, fmt.Errorf("subtitles.FetchSegmentSubtitles: parse plaintext: %w", parseErr)
+	}
+
+	// Structured per-cue view for asset_text_track_segments (Fase 2).
+	// ParseVTTEntries is the canonical cue extractor.
+	entries, cueErr := ParseVTTEntries(vttPath, float64(startSec), float64(endSec))
+	if cueErr != nil {
+		return nil, fmt.Errorf("subtitles.FetchSegmentSubtitles: parse cues: %w", cueErr)
+	}
+	cues := make([]asset.TimedCue, 0, len(entries))
+	for _, e := range entries {
+		if e.End <= float64(startSec) || e.Start >= float64(endSec) {
+			continue
+		}
+		cues = append(cues, asset.TimedCue{
+			StartMs: int64(e.Start * 1000),
+			EndMs:   int64(e.End * 1000),
+			Text:    e.Text,
+		})
+	}
+
+	// Determine the language from the adapter's configured CSV
+	// (a.langs); the first non-empty element wins. Empty CSV or
+	// undefined lang collapses to "und" (BCP-47) per the project
+	// NO-FAKE-AVAILABILITY rule (godlike/07): never silently default
+	// to "en".
+	lang := ""
+	if a.langs != "" {
+		for _, l := range strings.Split(a.langs, ",") {
+			l = strings.TrimSpace(l)
+			if l != "" {
+				lang = l
+				break
+			}
+		}
+	}
+	if lang == "" {
+		lang = "und"
+	}
+
+	if len(cues) == 0 && plain == "" {
+		// No usable content for the requested window — valid
+		// "not found". Caller falls through to Whisper.
+		return nil, nil
+	}
+
+	return &asset.ResolvedTextBundle{
+		LanguageCode:       lang,
+		SourceLanguageCode: lang, // YT subtitle is original language
+		PlainText:          plain,
+		Cues:               cues,
+		SourceType:         asset.TextSourceYouTubeSubtitle,
+		IsOriginal:         true,
+		Provider:           "yt-dlp",
+		ModelName:          "yt-auto",
+		ModelVersion:       "",
+		Confidence:         nil,
+	}, nil
 }
 
 // ── vttCue + parsers (MOVED from application/youtube/subtitles.go) ───────
@@ -318,10 +424,12 @@ func ParseVTTFile(vttPath string, startSec, endSec float64) (string, error) {
 	return result, nil
 }
 
-// parseVTTEntries returns the filtered cues as []TimedEntry (structured
+// ParseVTTEntries returns the filtered cues as []TimedEntry (structured
 // form). Useful when the consumer wants per-cue timing (e.g. search
-// window alignment).
-func parseVTTEntries(vttPath string, startSec, endSec float64) ([]TimedEntry, error) {
+// window alignment). Exported as of PR-PY-CLIPS-CORRETTE-TRADOTTE
+// Fase 1.a so FetchSegmentSubtitles and Fase 2 (asset_text_track_segments)
+// callers can reuse the canonical parser.
+func ParseVTTEntries(vttPath string, startSec, endSec float64) ([]TimedEntry, error) {
 	cues, err := loadCues(vttPath, startSec, endSec)
 	if err != nil {
 		return nil, err

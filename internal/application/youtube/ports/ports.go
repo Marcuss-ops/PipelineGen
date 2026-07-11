@@ -165,6 +165,17 @@ type ClipIndexerPort interface {
 
 type SubtitleFetcherPort interface {
 	SliceSubtitles(ctx context.Context, videoID string, startSec, endSec int, outputPath string) error
+	// FetchSegmentSubtitles returns the canonical typed subtitle track
+	// for [startSec, endSec]: plaintext + per-cue timings (asset.TimedCue)
+	// + detected language code. The implementation probes manual
+	// subtitles first then auto-generated fallback; nil/empty result is
+	// a valid "not found" (NOT an error). Fetch errors are typed (network
+	// failure, parse error, etc.) and propagated verbatim.
+	//
+	// godlike/06 SSOT: returns *asset.ResolvedTextBundle so the resolver
+	// can forward the typed result without re-parsing the VTT inline.
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a.
+	FetchSegmentSubtitles(ctx context.Context, videoID string, startSec, endSec int) (*asset.ResolvedTextBundle, error)
 }
 
 type WhisperTranscriberPort interface {
