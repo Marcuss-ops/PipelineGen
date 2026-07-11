@@ -697,17 +697,9 @@ func TestComposition_QdrantEnabledNoClipIndexer_WriterAndDeleterWired(t *testing
 	require.NoError(t, err, "BuildRepoBundle (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5: buildQdrantDeps now requires repos for canonical TextTrackRepo SSOT)")
 
 	// Note: buildQdrantDeps is expected to return a terminal error
-	// (PR-QDRANT-CONFIG-MISMATCH-GATE) BEFORE using the repos argument;
-	// the repos construction is required by the new signature but not
-	// semantically used in the fail-closed path.
-	_ = repos
-
-	//nolint:staticcheck // SA4006: repos is unused in the fail-closed path but required by the signature.
-	_ = repos
-	_ = err
-
-	// Override the previous err with the buildQdrantDeps result:
-	// keep the original variable to minimize test diff.
+	// (PR-QDRANT-CONFIG-MISMATCH-GATE) BEFORE reading the repos
+	// argument; the repos construction is required by the new
+	// signature but is not semantically used in the fail-closed path.
 	var qd *QdrantDeps
 	qd, err = buildQdrantDeps(context.Background(), cfg, dbs, repos, log)
 	require.Error(t, err,
