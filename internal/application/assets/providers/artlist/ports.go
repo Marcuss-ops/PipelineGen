@@ -324,6 +324,43 @@ var ErrRunRepositoryUnavailable = errors.New(
 	"artlist: RunRepository port unavailable at composition — production must wire artlist_runs_repository (godlike/07 no-fake-availability: aggregate stats write is mandatory for /api/artlist/run honesty)",
 )
 
+// ErrManualImportActive is returned by the download path when the
+// operator has configured acquisition_mode=manual_import. Automatic
+// downloads are not allowed in this mode; users must import files
+// manually and the pipeline ingests them afterwards.
+var ErrManualImportActive = errors.New("artlist: acquisition_mode is manual_import; automatic downloads are not allowed")
+
+// ErrDailyDownloadLimitExceeded is returned when an automatic download
+// would exceed the configured ArtlistDailyDownloadLimit for the current
+// account/day. The operator must raise the limit or wait until tomorrow.
+var ErrDailyDownloadLimitExceeded = errors.New("artlist: daily download limit exceeded")
+
+// ErrAutomaticDownloadsDisabled is returned when acquisition_mode is
+// authorized_api but the daily download limit is configured as 0,
+// which disables automatic downloads until the operator sets a
+// positive limit.
+var ErrAutomaticDownloadsDisabled = errors.New("artlist: automatic downloads are disabled (daily limit is 0)")
+
+// DownloadAuditRecord is a single audited download event.
+type DownloadAuditRecord struct {
+	AssetID      string
+	ExternalURL  string
+	AccountID    string
+	Provider     string
+	DownloadedAt string
+}
+
+// DownloadAuditRepository persists and queries Artlist download audit
+// records. It is the canonical port used by the downloader to enforce
+// daily per-account limits and to keep an audit trail of every fetch.
+type DownloadAuditRepository interface {
+	// RecordDownload persists a download audit row.
+	RecordDownload(ctx context.Context, rec DownloadAuditRecord) error
+	// CountDailyDownloads returns the number of downloads recorded for
+	// the given provider/account on the current UTC day.
+	CountDailyDownloads(ctx context.Context, provider, accountID string) (int, error)
+}
+
 // ArtlistSearchStrategy is the typed strategy for the Pexels/Pixabay fallback
 // chain (PR-AUDIT-5, July 2026). The strategy controls which searchers are
 // included in the live-search fallback chain at composition time.

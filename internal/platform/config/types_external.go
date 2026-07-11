@@ -105,6 +105,31 @@ type ExternalConfig struct {
 	// are active at boot time.
 	ArtlistSearchStrategy string `yaml:"artlist_search_strategy" env:"ARTLIST_SEARCH_STRATEGY" default:"artlist_only"`
 
+	// ArtlistAcquisitionMode controls whether Artlist assets are acquired
+	// automatically or imported manually. Canonical values:
+	//
+	//   manual_import — PipelineGen does NOT download automatically. Users
+	//                     download assets from Artlist and place them in the
+	//                     import folder; the pipeline ingests them and records
+	//                     provenance. This is the default (godlike/07 fail-closed).
+	//   authorized_api  — Automatic search+download is allowed, typically under
+	//                     an Enterprise/API agreement. Subject to the daily
+	//                     download limit configured below.
+	//
+	// Default: manual_import.
+	ArtlistAcquisitionMode string `yaml:"artlist_acquisition_mode" env:"ARTLIST_ACQUISITION_MODE" default:"manual_import"`
+
+	// ArtlistAccountID is the logical account identifier used for rate-limit
+	// and audit tracking. Single-tenant deployments can leave it as "default";
+	// multi-tenant setups can scope downloads per account.
+	ArtlistAccountID string `yaml:"artlist_account_id" env:"ARTLIST_ACCOUNT_ID" default:"default"`
+
+	// ArtlistDailyDownloadLimit is the maximum number of Artlist assets that
+	// can be downloaded automatically per account per day. A value of 0 means
+	// automatic downloads are disabled (default). Operators must set a positive
+	// value to enable automatic downloads in authorized_api mode.
+	ArtlistDailyDownloadLimit int `yaml:"artlist_daily_download_limit" env:"ARTLIST_DAILY_DOWNLOAD_LIMIT" default:"0"`
+
 	// PR-011 (July 2026): Stock RLM/LLM enrichment pass.
 	//
 	// StockEnrichmentEnabled gates the canonical enrichment pipeline

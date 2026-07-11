@@ -216,6 +216,17 @@ func WireArtlist(
 	artlistRunsAdapter := NewArtlistRunsRepoAdapter(artlistRunsRepo)
 	_ = (artlistPkg.RunRepository)(artlistRunsAdapter) // compile-time pin surface
 
+	// P0 (July 2026): download audit repository for rate-limit and
+	// compliance tracking. Constructed from the same media.db.sqlite
+	// handle and bridged to the artlist port via the composition-root
+	// adapter.
+	artlistDownloadAuditRepo, err := assets.NewArtlistDownloadAuditRepository(bundle.DB.DB, log)
+	if err != nil {
+		return nil, fmt.Errorf("WireArtlist: NewArtlistDownloadAuditRepository: %w", err)
+	}
+	artlistDownloadAuditAdapter := NewArtlistDownloadAuditAdapter(artlistDownloadAuditRepo)
+	_ = (artlistPkg.DownloadAuditRepository)(artlistDownloadAuditAdapter) // compile-time pin surface
+
 	// Stager (SourceStager port, Step 9/12): wraps the Artlist Downloader
 	// so run_orchestrator_stages.go can use the canonical SourceStager
 	// contract instead of falling through to the legacy mediaProcessor
@@ -242,7 +253,11 @@ func WireArtlist(
 	// /metrics). All 4 path labels (PathBrowser / PathYTDLP / PathHTTP /
 	// PathHLS) are now fired by the unified resolver.
 	artlistDownloader := downloader.NewResolver(cfg, downloader.ResolverConfig{
-		ScraperURL: cfg.External.ArtlistScraperServerURL,
+		ScraperURL:         cfg.External.ArtlistScraperServerURL,
+		AcquisitionMode:    artlistPkg.ArtlistAcquisitionMode(cfg.External.ArtlistAcquisitionMode),
+		AccountID:          cfg.External.ArtlistAccountID,
+		DailyDownloadLimit: cfg.External.ArtlistDailyDownloadLimit,
+		AuditRepository:    artlistDownloadAuditAdapter,
 	}, log, downloader.NewMetrics())
 	// Compile-time pin lives in the infra package.
 	_ = (artlistPkg.Downloader)(artlistDownloader)
