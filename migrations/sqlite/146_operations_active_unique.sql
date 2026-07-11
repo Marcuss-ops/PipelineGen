@@ -1,0 +1,43 @@
+-- 146_operations_active_unique.sql
+--
+-- FASE 2 close-out (July 2026 audit, Godlike SSOT pin): adds the
+-- canonical partial UNIQUE INDEX that enforces "at most one
+-- ACTIVE operation per (scope, idempotency_key)" while leaving
+-- the force_refresh path free to mark the prior as SUPERSEDED
+-- and insert a new op with the same (scope, key) tuple.
+--
+-- Why PARTIAL (WHERE state != 'SUPERSEDED'):
+--   Migration 145 explicitly omitted any UNIQUE constraint
+--   because force_refresh legitimately writes a new row with
+--   the same (scope, key) tuple (pointing supersedes_* at the
+--   prior). A naïve UNIQUE on (scope, key) would 409 the
+--   force_refresh path. The partial index here fits the
+--   force_refresh's prior-UPDATE-+-new-INSERT atomic shape
+--   under SQLite: when the prior is flipped to SUPERSEDED in
+--   the same TX, it falls out of the active set, the new
+--   INSERT proceeds, the COMMIT holds. Constraint satisfied.
+--
+-- godlike/06 SSOT: this index is the SOLE canonical DB-level
+-- constraint enforcing the FASE 2 invariant. The application-
+-- layer `submitMu` mutex + `GetLatestForKey` lookup remain
+-- the primary safety net for the canonical `Submit` path; the
+-- partial UNIQUE index is the belt-and-braces against future
+-- direct callers that bypass `Service.Submit` (admin scripts,
+-- data backfills, future SQL callers).
+--
+-- godlike/07 fail-closed: a duplicate-active INSERT raises
+-- SQLITE_CONSTRAINT_UNIQUE at COMMIT time, which surfaces to
+-- the caller as a typed `ErrDuplicateActiveOperation` (or, in
+-- absence of a typed adapter, the raw `*sqlite3.Error`).
+-- The submission service's prior UPDATE (force_refresh path)
+-- guarantees the partial index sees only one ACTIVE row per
+-- (scope, key) at COMMIT time, so the constraint never fires
+-- for the canonical flow.
+--
+-- Idempotent: CREATE UNIQUE INDEX IF NOT EXISTS. Drift would
+-- surface as `index ux_operations_active_scope_key already
+-- exists` on re-apply (handled by SQLite's IF NOT EXISTS).
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_operations_active_scope_key
+    ON operations(scope, idempotency_key)
+    WHERE state != 'SUPERSEDED';

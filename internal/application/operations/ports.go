@@ -122,3 +122,29 @@ type TxManager interface {
 	// all 3 atomic operations (operations + jobs + outbox).
 	BeginTx(ctx context.Context) (*sql.Tx, error)
 }
+
+// JobGetter is the canonical narrow port for reading a single
+// Job row by ID. The submission service pulls the canonical
+// live Job state on the idempotency-hit replay path AFTER
+// reading the Operation row, so the HTTP layer can surface
+// the canonical Job.Status on replay (instead of a cached
+// pre-FASE-2 snapshot — which is the user-spec semantic:
+// "leggendo lo stato del job canonico, non più una copia
+// HTTP 202").
+//
+// godlike/07 minimum-blast-radius: the port is intentionally
+// narrow (just Get) — the submission service does NOT need
+// the full jobs.Service surface (Enqueue, List, Cancel,
+// etc.). The canonical concrete adapter is the existing
+// `*jobs.SQLiteStore.Get(ctx, id)` — the SQLite store
+// satisfies this port natively; no adapter wrap is needed at
+// the composition root.
+//
+// Read is OUTSIDE the caller's transaction (the port
+// signature has no `tx` parameter): the canonical live Job
+// state is what the caller wants on replay, NOT a TX-stale
+// snapshot. Concurrent updates by workers are observed on
+// the next read.
+type JobGetter interface {
+	Get(ctx context.Context, id string) (*job.Job, error)
+}

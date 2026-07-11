@@ -154,6 +154,15 @@ type SubmitRequest struct {
 //     for a new operation).
 type SubmitResult struct {
 	Operation        *domainops.Operation
+	// Job is the canonical live Job state. On fresh submission
+	// and supersede paths, this is the Job just INSERTed in the
+	// atomic TX (no extra DB read needed). On the idempotency-
+	// hit path, the Job is fetched OUTSIDE the TX via JobGetter
+	// so the caller observes the canonical post-terminal Job
+	// state (e.g. SUCCEEDED, FAILED) instead of a stale QUEUED
+	// snapshot. May be nil if JobGetter fails (logged as a typed
+	// warn; caller treats as advisory).
+	Job              *job.Job
 	IsIdempotencyHit bool
 	IsSupersede      bool
 }
@@ -164,15 +173,16 @@ type SubmitResult struct {
 // exported entry point (`Submit`); all other methods are
 // unexported helpers.
 type Service struct {
-	ops      OperationsRepository
-	jobs     JobEnqueuer
-	outbox   OutboxEmitter
-	txMgr    TxManager
-	jobIDGen func() string
-	opIDGen  func() string
-	log      *zap.Logger
-	submitMu sync.Mutex
-	nowFunc  func() time.Time // injectable for tests; defaults to time.Now
+	ops       OperationsRepository
+	jobs      JobEnqueuer
+	jobGetter JobGetter
+	outbox    OutboxEmitter
+	txMgr     TxManager
+	jobIDGen  func() string
+	opIDGen   func() string
+	log       *zap.Logger
+	submitMu  sync.Mutex
+	nowFunc   func() time.Time // injectable for tests; defaults to time.Now
 }
 
 // NewService constructs the canonical submission service.
@@ -181,9 +191,12 @@ type Service struct {
 // dep panics at construction time (composition-bug detection).
 // The caller owns the service's lifecycle — the composition
 // root in `internal/app` is the SOLE constructor caller.
+// jobGetter supplies canonical live Job state on the
+// idempotency-hit replay path (FASE 2 close-out).
 func NewService(
 	ops OperationsRepository,
 	jobs JobEnqueuer,
+	jobGetter JobGetter,
 	outbox OutboxEmitter,
 	txMgr TxManager,
 	log *zap.Logger,
@@ -193,6 +206,9 @@ func NewService(
 	}
 	if jobs == nil {
 		panic("operations.NewService: JobEnqueuer is nil (composition bug)")
+	}
+	if jobGetter == nil {
+		panic("operations.NewService: JobGetter is nil (composition bug)")
 	}
 	if outbox == nil {
 		panic("operations.NewService: OutboxEmitter is nil (composition bug)")
@@ -204,14 +220,15 @@ func NewService(
 		log = zap.NewNop()
 	}
 	return &Service{
-		ops:      ops,
-		jobs:     jobs,
-		outbox:   outbox,
-		txMgr:    txMgr,
-		jobIDGen: defaultJobIDGen,
-		opIDGen:  defaultOperationIDGen,
-		log:      log,
-		nowFunc:  time.Now,
+		ops:       ops,
+		jobs:      jobs,
+		jobGetter: jobGetter,
+		outbox:    outbox,
+		txMgr:     txMgr,
+		jobIDGen:  defaultJobIDGen,
+		opIDGen:   defaultOperationIDGen,
+		log:       log,
+		nowFunc:   time.Now,
 	}
 }
 
@@ -325,12 +342,34 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult,
 		// No prior — fresh submission. Falls through to INSERT.
 	case !req.ForceRefresh && prior.RequestHash == req.RequestHash:
 		// Idempotency hit — same key, same hash, no force_refresh.
+		//
+		// FASE 2 close-out: read canonical live Job state via
+		// JobGetter so the HTTP layer surfaces the canonical
+		// post-terminal Job.Status on replay (no longer a stale
+		// QUEUED snapshot from the prior operation row). A
+		// JobGetter failure is treated as advisory (typed warn
+		// logged; SubmitResult.Job is nil; caller proceeds with
+		// the Operation only — the canonical job snapshot is
+		// still available via GET /api/jobs/{id}/full).
 		s.log.Info("operations.Submit: idempotency hit",
 			zap.String("operation_id", prior.OperationID),
 			zap.String("scope", string(req.Scope)),
 			zap.String("idempotency_key", req.IdempotencyKey),
 		)
-		return &SubmitResult{Operation: prior, IsIdempotencyHit: true}, nil
+		var canonicalJob *job.Job
+		canonicalJob, jobErr := s.jobGetter.Get(ctx, prior.JobID)
+		if jobErr != nil {
+			s.log.Warn("operations.Submit: canonical job lookup failed on replay",
+				zap.String("operation_id", prior.OperationID),
+				zap.String("job_id", prior.JobID),
+				zap.Error(jobErr),
+			)
+		}
+		return &SubmitResult{
+			Operation:        prior,
+			Job:              canonicalJob,
+			IsIdempotencyHit: true,
+		}, nil
 	case !req.ForceRefresh && prior.RequestHash != req.RequestHash:
 		// 409 IDEMPOTENCY_CONFLICT — same key, different hash.
 		// No DB write. Caller (HTTP layer) maps to 409.
@@ -470,6 +509,7 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*SubmitResult,
 
 	return &SubmitResult{
 		Operation:   newOp,
+		Job:         newJob,
 		IsSupersede: newOp.SupersedesOperationID != "",
 	}, nil
 }
