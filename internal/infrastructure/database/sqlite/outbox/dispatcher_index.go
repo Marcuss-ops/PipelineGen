@@ -30,7 +30,12 @@ import (
 // the event_key for deduplication, so duplicate ingestions are safe.
 //
 // Folders (clip.IsFolder == true) MUST be filtered by the caller before
-// calling — vector indexing of folders is meaningless.
+// calling — vector indexing of folders is meaningless. The folder branch
+// is checked BEFORE the contentHash guard because folders have no
+// FileHash by design (godlike/07 no-fake-availability: a folder does
+// not have a content fingerprint, and we MUST NOT reject folder upserts
+// with "contentHash is required" — that would be a fail-loud error for
+// a valid input shape).
 func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, contentHash string) error {
 	if d == nil {
 		return errors.New("outbox.Dispatcher is nil")
@@ -47,10 +52,13 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 	if clip == nil || clip.ID == "" {
 		return errors.New("clip with non-empty ID is required")
 	}
-	if contentHash == "" {
-		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for clip %s (supersede gate cannot function without a content fingerprint — callers must set file_hash before dispatching)", clip.ID)
-	}
-	// Folders are not vector-indexable.
+	// Folders are not vector-indexable. This branch MUST come before
+	// the contentHash guard (folders do not have a file_hash by
+	// design — rejecting them on contentHash="" would be a fail-loud
+	// error for a valid input shape). The folder path writes ONLY to
+	// media_assets and explicitly skips the outbox INSERT (per
+	// godlike/07 no-fake-availability: we MUST NOT produce indexing
+	// events for assets that the indexer cannot process).
 	if clip.IsFolder() {
 		return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
 			if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
@@ -63,6 +71,13 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 			}
 			return nil
 		})
+	}
+	// Non-folder clips: contentHash is REQUIRED for the v1 envelope's
+	// event_key (supersede gate cannot function without a content
+	// fingerprint). This guard intentionally lives AFTER the IsFolder
+	// branch so folder upserts are not rejected with a contentHash error.
+	if contentHash == "" {
+		return fmt.Errorf("outbox.Dispatcher.EnqueueAndIndex: contentHash is required for non-folder clip %s (supersede gate cannot function without a content fingerprint — callers must set file_hash before dispatching)", clip.ID)
 	}
 
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
