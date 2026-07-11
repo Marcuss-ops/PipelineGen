@@ -99,21 +99,39 @@ func (s *Searcher) Search(ctx context.Context, req schema.SearchRequest) ([]sche
 // HybridSearch performs a hybrid dense + sparse search via the Qdrant
 // Query API with RRF fusion.
 //
+// Sparse source acceptance (PR2, June 2026): the Searcher accepts
+// EITHER of two sparse payloads when SparseVectorName is set:
+//
+//   - schema.SparseQueryVector (legacy, pre-PR2) — a pre-tokenised
+//     {indices, values} vector produced by a client-side BM25
+//     encoder. Reserved for diagnostic and bulk-from-csv callers.
+//   - SparseText (PR2 server-side) — a raw query string that Qdrant
+//     1.18+ runs BM25 inference on server-side. This is the live
+//     orchestration path.
+//
+// The Searcher accepts both so the orchestration layer can choose
+// the path without bearing translation responsibility.
+//
 // QDRANT-004 PR1 (June 2026): fail-closed contract. A hybrid request
-// MUST carry BOTH a non-empty SparseVectorName and a non-nil
-// schema.SparseQueryVector. The orchestrator is expected to enforce this
+// MUST supply at least one sparse payload AND a non-empty
+// SparseVectorName. The orchestrator is expected to enforce this
 // upstream (ErrHybridRequiresSparse at the application layer); the
-// Searcher enforces it AGAIN here as a defence-in-depth so a future
+// Searcher enforces it AGAIN here as defence-in-depth so a future
 // caller cannot accidentally send a malformed hybrid request and
 // receive a silently-degraded ANN result. ANN is a separate mode
 // (schema.SearchRequest); use Search for explicit dense-only retrieval.
 //
 // Errors:
-//   - transport.ErrSparseRequired (deepest guard): the caller asked for hybrid
-//     but did not supply either the sparse channel name or the sparse
-//     query vector. Maps to HTTP 422 from the handler.
+//   - transport.ErrSparseRequired (deepest guard): the caller asked for
+//     hybrid without a sparse channel name OR without ANY sparse payload.
+//     Maps to HTTP 422 from the handler.
 //   - transport.ErrVectorDimensionMismatch: dense channel dimension mismatch
 //     with the schema.IndexSchema.
+//   - "dense vector must not be nil": the dense payload was absent.
+//
+// Validation order is dense-nil → dense-dim-mismatch → sparse-name-empty →
+// sparse-source-empty so a wrong-dim dense payload fails with the precise
+// typed error instead of being masked by a sparse-source complaint.
 func (s *Searcher) HybridSearch(ctx context.Context, req schema.HybridSearchRequest) ([]schema.SearchResult, error) {
 	if req.DenseVector == nil {
 		return nil, fmt.Errorf("dense vector must not be nil for hybrid search")
@@ -122,18 +140,13 @@ func (s *Searcher) HybridSearch(ctx context.Context, req schema.HybridSearchRequ
 		req.Limit = 20
 	}
 
-	// Fail-closed for hybrid: reject before paying for any Qdrant
-	// call. Previously this branch fell back to ANN silently; that
-	// silently mislabelled dense-only results as "hybrid" and
-	// produced inflated-but-misleading RRF scores.
-	if strings.TrimSpace(req.SparseVectorName) == "" {
-		return nil, &transport.ErrSparseRequired{Channel: "(empty)"}
-	}
-	if req.SparseQueryVector == nil {
-		return nil, &transport.ErrSparseRequired{Channel: req.SparseVectorName}
-	}
-
-	// Validate dense vector dimensions.
+	// Validate dense vector dimensions FIRST so a wrong-dim dense
+	// request fails with the precise typed error rather than
+	// masking it behind a sparse-required error. The dense channel
+	// is the primary artefact: if its dimensions are wrong it
+	// cannot produce any meaningful hybrid rank, so callers can
+	// debug the dense shape without first having to attach a
+	// sparse source to disambiguate the failure.
 	spec := s.schema.GetDense(req.DenseVectorName)
 	if spec != nil && len(req.DenseVector) != spec.Dimensions {
 		return nil, &transport.ErrVectorDimensionMismatch{
@@ -142,6 +155,19 @@ func (s *Searcher) HybridSearch(ctx context.Context, req schema.HybridSearchRequ
 			Actual:   len(req.DenseVector),
 			AssetID:  "(query)",
 		}
+	}
+
+	// Fail-closed for hybrid: reject before paying for any Qdrant
+	// call. Accept EITHER the legacy schema.SparseQueryVector OR the
+	// PR2 server-side SparseText (which lets Qdrant 1.18+ run BM25
+	// inference). Both are recognised here so the orchestration
+	// layer can choose which path to drive without changing the
+	// Searcher's fail-closed contract.
+	if strings.TrimSpace(req.SparseVectorName) == "" {
+		return nil, &transport.ErrSparseRequired{Channel: "(empty)"}
+	}
+	if req.SparseQueryVector == nil && req.SparseText == "" {
+		return nil, &transport.ErrSparseRequired{Channel: req.SparseVectorName}
 	}
 
 	start := time.Now()

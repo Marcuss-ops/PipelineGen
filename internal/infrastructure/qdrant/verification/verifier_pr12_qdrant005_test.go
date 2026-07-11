@@ -119,7 +119,19 @@ func TestReindexVerifier_PerChannelVersionMismatch_PresentMatch(t *testing.T) {
 // TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallbackFail
 // — migration-window penalty. A point with only legacy
 // embedding_version (no per-channel keys) bumps every per-channel
-// counter (QDRANT-005 closure kept). No legacy rescue.
+// counter for the channels declared in DefaultV3Schema. No legacy
+// rescue path (QDRANT-005 closure kept): the global
+// embedding_version field is no longer consulted.
+//
+// YAGNI / reactivation note (July 2026): the "audio" channel is
+// intentionally NOT enumerated among the asserted channels because
+// DefaultV3Schema declares it YAGNI (the CLAP-HTSAT audio model
+// runtime service is not deployed — see schema.go YAGNI commentary
+// at the audio EmbeddingSpec). If a future migration uncomments
+// the audio channel with a non-empty ModelVersion, the verifier
+// loop will start iterating it and this test will need to be
+// re-extended to assert the audio counter. Until then, asserting
+// "audio" here would be aspirational rather than load-bearing.
 func TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallbackFail(t *testing.T) {
 	t.Parallel()
 	canonicalID := qdrantSchema.AssetIDToQdrantPointID("asset-1")
@@ -140,10 +152,11 @@ func TestReindexVerifier_PerChannelVersionMismatch_AbsentLegacyFallbackFail(t *t
 
 	report, err := v.VerifyReindex(context.Background(), "media_assets_v3", 1)
 	require.NoError(t, err)
+	// Assert only channels declared in DefaultV3Schema.DenseVectors
+	// with non-empty ModelVersion. The "audio" channel is YAGNI.
 	assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["text"], 1)
 	assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["transcript"], 1)
 	assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["visual"], 1)
-	assert.GreaterOrEqual(t, report.VersionMismatchPerChannel["audio"], 1)
 	assert.False(t, report.Ready)
 }
 

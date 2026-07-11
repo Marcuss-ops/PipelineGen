@@ -78,15 +78,21 @@ func WithHermeticCollection(
 		t.Fatalf("hermetic: CreateCollection(%q): %v", name, err)
 	}
 
-	// Teardown: delete the collection even on panic so stale
-	// collections don't accumulate in the Qdrant instance.
-	t.Cleanup(func() {
+	// Teardown (synchronous): delete the collection AFTER the
+	// callback returns — even on panic so stale collections don't
+	// accumulate in the Qdrant instance. Using `defer` instead of
+	// t.Cleanup ties the delete to the helper's own return path,
+	// so callers can synchronously observe the post-callback
+	// "collection deleted" flag (and so a CreateCollection failure
+	// aborts before scheduling a delete). `defer` still runs on
+	// panic (just like t.Cleanup), so the contract is preserved.
+	defer func() {
 		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cleanCancel()
 		if err := client.DeleteCollection(cleanCtx, name); err != nil {
 			t.Logf("hermetic: DeleteCollection(%q) on cleanup: %v (may need manual deletion)", name, err)
 		}
-	})
+	}()
 
 	fn(ctx, name, cm)
 }

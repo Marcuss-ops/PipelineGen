@@ -160,16 +160,26 @@ func (c *Client) HybridSearchPoints(ctx context.Context, collection string, req 
 		model = schema.DefaultSparseModel
 	}
 	if req.SparseText != "" {
-		// Server-side BM25 inference: Qdrant 1.18+ expects the raw
-		// query text in the `document` key (NOT `query`) for
-		// server-side inference in prefetch blocks. The BM25 model
-		// is configured at the collection level. Using `query` with
-		// a bare string causes Qdrant to return 400 "Expected some
-		// form of vector, id, or a type of query".
+		// PR2 wire shape (SparseText → server-side BM25 inference):
+		//
+		//   { "query": { "text": <text>, "model": <model> },
+		//     "using": <sparse_ch>, "limit": <prefetch_N> }
+		//
+		// Qdrant 1.18+ runs BM25 server-side inference when the
+		// sparse channel is configured for it and the prefetch
+		// carries `{ text, model }` inside `query`. Forwarding
+		// the model name on every call guarantees the wire is
+		// unambiguous and protects against collection-level
+		// model serials silently diverging from the caller's
+		// contract. (The legacy raw-vector fallback below
+		// preserves the diagnostic / bulk-from-csv path.)
 		prefetch = append(prefetch, map[string]any{
-			"document": req.SparseText,
-			"using":    req.SparseVectorName,
-			"limit":    overfetch,
+			"query": map[string]any{
+				"text":  req.SparseText,
+				"model": model,
+			},
+			"using": req.SparseVectorName,
+			"limit": overfetch,
 		})
 	} else if req.SparseQueryVector != nil {
 		prefetch = append(prefetch, map[string]any{

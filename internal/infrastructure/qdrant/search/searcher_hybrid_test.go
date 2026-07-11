@@ -110,16 +110,21 @@ func testDense768() []float32 {
 
 // ── Test 1: SparseText-only request succeeds and uses "document" key ─
 
-// TestSearcher_HybridSearch_SparseTextOnly_UsesDocumentKey is the
-// primary regression guard: after the fix that changed sparse prefetch
-// from {"query": raw_text} to {"document": raw_text} for Qdrant 1.18+
-// server-side BM25 inference, a SparseText-only request MUST:
+// TestSearcher_HybridSearch_SparseTextOnly_UsesPR2QuerySubBlock is the
+// primary regression guard for the PR2 server-side BM25 wire
+// contract. A SparseText-only request MUST:
 //
 //  1. NOT be rejected by the Searcher's validation (SparseQueryVector is nil
 //     but SparseText is non-empty — the PR2 contract accepts EITHER).
-//  2. Pass "document" (not "query") in the sparse prefetch block on the wire.
+//  2. Forward SparseText to Qdrant via the nested PR2 query sub-block
+//     `{"query": {"text": <text>, "model": <model>}, "using": <sparse_ch>}`.
+//     The pre-PR2 implementation used a top-level `document` key;
+//     that contract is GONE and these tests guard against regressing
+//     to it. The pre-PR2 path is exercised separately by the
+//     `LegacySparseVector` test and by the legacy raw-vector branch
+//     of the transport.
 //  3. Return the hit from the canned response.
-func TestSearcher_HybridSearch_SparseTextOnly_UsesDocumentKey(t *testing.T) {
+func TestSearcher_HybridSearch_SparseTextOnly_UsesPR2QuerySubBlock(t *testing.T) {
 	t.Parallel()
 
 	mock := &hybridSearchMock{}
@@ -146,18 +151,34 @@ func TestSearcher_HybridSearch_SparseTextOnly_UsesDocumentKey(t *testing.T) {
 	assert.Equal(t, "hit-1", hits[0].ID)
 	assert.InDelta(t, 0.85, hits[0].Score, 0.001)
 
-	// Verify the wire shape uses "document" (not "query") for the sparse
-	// prefetch block. This is the exact regression that motivated this test.
+	// Verify the PR2 wire shape (server-side BM25 inference):
+	// the sparse prefetch block carries `{ "query": { "text": <text>,
+	// "model": <model> } }` so Qdrant 1.18+ runs BM25 inference
+	// server-side. This is the exact regression that motivated
+	// this test — the pre-PR2 implementation forwarded raw text
+	// in `document` (which required a collection-level model
+	// config) and could fail on channels without one.
 	mock.mu.Lock()
 	queryBody := append([]byte(nil), mock.lastQuery...)
 	mock.mu.Unlock()
 
-	assert.True(t, bytes.Contains(queryBody, []byte(`"document"`)),
-		"sparse prefetch must use 'document' key for server-side BM25; got: %s", string(queryBody))
+	// Use three independent substring assertions instead of an
+	// adjacent `"query":{"text":"..."` substring, because Go's
+	// encoding/json sorts map keys alphabetically on marshal and
+	// the inner `{"text": ..., "model": ...}` map will serialize
+	// as `{"model": ..., "text": ...}` (m<t). Independent
+	// substrings still guarantee the three required keys live in
+	// the wire while staying robust to enc-decoder ordering.
+	assert.True(t, bytes.Contains(queryBody, []byte(`"query":`)),
+		"sparse prefetch must include a nested query block for server-side BM25; got: %s", string(queryBody))
+	assert.True(t, bytes.Contains(queryBody, []byte(`"text":"boxing training gym"`)),
+		"SparseText must be propagated to the wire; got: %s", string(queryBody))
+	assert.True(t, bytes.Contains(queryBody, []byte(`"model":"qdrant/bm25"`)),
+		"sparse prefetch must pin the BM25 model on the wire; got: %s", string(queryBody))
 	assert.False(t, bytes.Contains(queryBody, []byte(`"indices"`)),
 		"SparseText-only path must NOT emit raw sparse vector indices; got: %s", string(queryBody))
-	assert.True(t, bytes.Contains(queryBody, []byte(`"boxing training gym"`)),
-		"SparseText must be propagated to the wire; got: %s", string(queryBody))
+	assert.False(t, bytes.Contains(queryBody, []byte(`"document":`)),
+		"SparseText path must NOT use the pre-PR2 'document' key; got: %s", string(queryBody))
 	assert.True(t, bytes.Contains(queryBody, []byte(`"fusion":"rrf"`)),
 		"hybrid search must use RRF fusion; got: %s", string(queryBody))
 	assert.True(t, bytes.Contains(queryBody, []byte(`"using":"bm25_text"`)),
@@ -350,11 +371,20 @@ func TestSearcher_HybridSearch_BothSources_SparseTextWins(t *testing.T) {
 	queryBody := append([]byte(nil), mock.lastQuery...)
 	mock.mu.Unlock()
 
-	// SparseText must win: "document" key present, "indices" absent.
-	assert.True(t, bytes.Contains(queryBody, []byte(`"document"`)),
-		"SparseText must take precedence; got: %s", string(queryBody))
+	// SparseText must win: PR2 query.{text, model} keys present,
+	// `"indices"` absent. Independent substrings (NOT adjacent)
+	// because Go's encoding/json sorts map keys alphabetically
+	// on marshal — the inner map serialises as
+	// `{"model": ..., "text": ...}` (m<t), so an adjacent
+	// `"query":{"text":...` substring would not match.
+	assert.True(t, bytes.Contains(queryBody, []byte(`"query":`)),
+		"SparseText must take precedence on the wire; got: %s", string(queryBody))
+	assert.True(t, bytes.Contains(queryBody, []byte(`"text":"boxing training"`)),
+		"SparseText must be propagated; got: %s", string(queryBody))
+	assert.True(t, bytes.Contains(queryBody, []byte(`"model":"qdrant/bm25"`)),
+		"SparseText path must pin the BM25 model on the wire; got: %s", string(queryBody))
 	assert.False(t, bytes.Contains(queryBody, []byte(`"indices"`)),
 		"when SparseText wins, raw vector must NOT appear; got: %s", string(queryBody))
-	assert.True(t, bytes.Contains(queryBody, []byte(`"boxing training"`)),
-		"SparseText must be propagated; got: %s", string(queryBody))
+	assert.False(t, bytes.Contains(queryBody, []byte(`"document":`)),
+		"PR2 SparseText path must NOT use the pre-PR2 'document' key; got: %s", string(queryBody))
 }
