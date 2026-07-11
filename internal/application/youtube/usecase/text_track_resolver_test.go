@@ -79,16 +79,40 @@ func (s *stubRepo) Find(_ context.Context, assetID, languageCode string, kind as
 // Fase 1.b). The stub returns the row when status=READY and ignores
 // PENDING/FAILED rows (matches the production contract: a non-READY
 // row is not authoritative, the resolver surfaces nil).
-func (s *stubRepo) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the signature
+// changed from `(*TextTrack, error)` to `(*TextTrack, []TimedCue, error)`
+// to match the canonical port surface. The timed cues are returned
+// alongside the track (nil here, since the stub stores no cues).
+func (s *stubRepo) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
 	for i := range s.rows {
 		if s.rows[i].AssetID == assetID &&
 			s.rows[i].LanguageCode == languageCode &&
 			s.rows[i].TextKind == kind &&
 			s.rows[i].Status == asset.TextTrackReady {
-			return &s.rows[i], nil
+			return &s.rows[i], nil, nil
 		}
 	}
-	return nil, nil
+	return nil, nil, nil
+}
+
+// ListReadyLanguages returns the sorted set of language codes
+// for which a READY track exists. PR-PY-CLIPS-CORRETTE-TRADOTTE
+// Fase 4 (July 2026): added to satisfy the canonical port surface.
+func (s *stubRepo) ListReadyLanguages(_ context.Context, assetID string, kind asset.TextTrackKind) ([]string, error) {
+	seen := map[string]struct{}{}
+	var out []string
+	for i := range s.rows {
+		if s.rows[i].AssetID == assetID &&
+			s.rows[i].TextKind == kind &&
+			s.rows[i].Status == asset.TextTrackReady {
+			if _, ok := seen[s.rows[i].LanguageCode]; !ok {
+				seen[s.rows[i].LanguageCode] = struct{}{}
+				out = append(out, s.rows[i].LanguageCode)
+			}
+		}
+	}
+	return out, nil
 }
 
 func (s *stubRepo) ListByAsset(_ context.Context, assetID string) ([]asset.TextTrack, error) {

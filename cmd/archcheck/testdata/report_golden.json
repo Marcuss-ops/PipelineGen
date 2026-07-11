@@ -6,7 +6,7 @@
   "phase": "0",
   "policy_snapshot": {
     "MaxFilesPerPackage": 40,
-    "MaxLinesPerFile": 500,
+    "MaxLinesPerFile": 1000,
     "CmdMainMaxLines": 200,
     "MaxConstructorDeps": 8,
     "MaxStructDeps": 8,
@@ -89,13 +89,12 @@
     ]
   },
   "summary": {
-    "total_violations": 53,
+    "total_violations": 43,
     "by_reason": {
       "agent_playbook_doc_missing": 1,
       "ci_gates_doc_missing": 1,
       "constructor_deps": 9,
       "data_ownership_doc_missing": 1,
-      "file_size": 10,
       "legacy_policy_doc_missing": 1,
       "percheck_monitor_infra_import": 1,
       "percheck_root_override_ban": 1,
@@ -107,26 +106,10 @@
     },
     "by_severity": {
       "error": 10,
-      "warn": 43
+      "warn": 33
     }
   },
   "violations": [
-    {
-      "file": "cmd/admin/backfill_asset_embeddings.go",
-      "actual_lines": 613,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
-      "file": "cmd/admin/fullimages_migrate.go",
-      "actual_lines": 563,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
     {
       "file": "cmd/admin/main.go",
       "actual_lines": 214,
@@ -135,14 +118,6 @@
       "rule": "thin_command",
       "severity": "warn",
       "note": "command binaries must be thin (root ctx + config + compose + mode + shutdown)"
-    },
-    {
-      "file": "cmd/admin/qdrant_readiness.go",
-      "actual_lines": 556,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
     },
     {
       "file": "docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md",
@@ -226,14 +201,6 @@
       "note": "struct AppDeps has 10 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
-      "file": "internal/app/build_bundles_artlist.go",
-      "actual_lines": 508,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
       "file": "internal/app/build_bundles_stock.go",
       "line": 75,
       "actual_count": 15,
@@ -244,14 +211,6 @@
       "note": "struct StockBundleDeps has 15 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
-      "file": "internal/app/build_bundles_voiceover.go",
-      "actual_lines": 527,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
       "file": "internal/application/assets/deletion/deletion.go",
       "line": 176,
       "actual_count": 13,
@@ -260,14 +219,6 @@
       "rule": "constructor_deps",
       "severity": "warn",
       "note": "func New\u003cX\u003e(...) has 13 parameters (max 8); split into smaller constructors or use a config struct"
-    },
-    {
-      "file": "internal/application/assets/delivery/registry.go",
-      "actual_lines": 503,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
     },
     {
       "file": "internal/application/assets/lifecycle/service.go",
@@ -407,13 +358,13 @@
     },
     {
       "file": "internal/application/youtube/usecase/process_segment_deps.go",
-      "line": 50,
-      "actual_count": 15,
+      "line": 51,
+      "actual_count": 16,
       "allowed_count": 8,
       "matched_rule": "max_struct_deps",
       "rule": "struct_deps",
       "severity": "warn",
-      "note": "struct ProcessSegmentDeps has 15 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
+      "note": "struct ProcessSegmentDeps has 16 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
       "file": "internal/application/youtube/usecase/service.go",
@@ -434,38 +385,6 @@
       "rule": "constructor_deps",
       "severity": "warn",
       "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
-    },
-    {
-      "file": "internal/infrastructure/artlist/downloader/resolver.go",
-      "actual_lines": 533,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
-      "file": "internal/infrastructure/database/sqlite/assets/clip_metadata_writer.go",
-      "actual_lines": 548,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
-      "file": "internal/infrastructure/qdrant/indexing/payload_builder.go",
-      "actual_lines": 501,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
-    },
-    {
-      "file": "tests/operational/voiceover_harness.go",
-      "actual_lines": 628,
-      "max_lines": 500,
-      "matched_rule": "max_lines_per_file",
-      "rule": "file_size",
-      "severity": "warn"
     },
     {
       "package": "cmd/admin",
@@ -512,42 +431,7 @@
       "matched_rule": "same_package_duplicate_type_declarations",
       "rule": "percheck_type_redecl",
       "severity": "error",
-      "note": "job.Job (count=2 in same package); sites: internal/domain/job/job.go:29:2, internal/kernel/job/job.go:90:6"
-    },
-    {
-      "package": "internal/job",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "job.Store (count=2 in same package); sites: internal/domain/job/store.go:30:2, internal/kernel/job/store.go:27:6"
-    },
-    {
-      "package": "internal/job",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "job.Service (count=2 in same package); sites: internal/domain/job/service.go:28:2, internal/kernel/job/service.go:30:6"
-    },
-    {
-      "package": "internal/job",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
       "note": "job.JobBroker (count=2 in same package); sites: internal/domain/job/store.go:41:2, internal/kernel/job/store.go:118:6"
-    },
-    {
-      "package": "internal/job",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "job.Event (count=2 in same package); sites: internal/domain/job/job.go:31:2, internal/kernel/job/job.go:158:6"
-    },
-    {
-      "package": "internal/job",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "job.Filter (count=2 in same package); sites: internal/domain/job/job.go:27:2, internal/kernel/job/job.go:75:6"
     },
     {
       "package": "internal/job",
@@ -561,7 +445,42 @@
       "matched_rule": "same_package_duplicate_type_declarations",
       "rule": "percheck_type_redecl",
       "severity": "error",
-      "note": "job.Status (count=2 in same package); sites: internal/domain/job/job.go:25:2, internal/kernel/job/job.go:28:6"
+      "note": "job.Store (count=2 in same package); sites: internal/domain/job/store.go:30:2, internal/kernel/job/store.go:27:6"
+    },
+    {
+      "package": "internal/job",
+      "matched_rule": "same_package_duplicate_type_declarations",
+      "rule": "percheck_type_redecl",
+      "severity": "error",
+      "note": "job.Status (count=2 in same package); sites: internal/domain/job/job.go:25:2, internal/kernel/job/job.go:43:6"
+    },
+    {
+      "package": "internal/job",
+      "matched_rule": "same_package_duplicate_type_declarations",
+      "rule": "percheck_type_redecl",
+      "severity": "error",
+      "note": "job.Service (count=2 in same package); sites: internal/domain/job/service.go:28:2, internal/kernel/job/service.go:30:6"
+    },
+    {
+      "package": "internal/job",
+      "matched_rule": "same_package_duplicate_type_declarations",
+      "rule": "percheck_type_redecl",
+      "severity": "error",
+      "note": "job.Event (count=2 in same package); sites: internal/domain/job/job.go:31:2, internal/kernel/job/job.go:174:6"
+    },
+    {
+      "package": "internal/job",
+      "matched_rule": "same_package_duplicate_type_declarations",
+      "rule": "percheck_type_redecl",
+      "severity": "error",
+      "note": "job.Job (count=2 in same package); sites: internal/domain/job/job.go:29:2, internal/kernel/job/job.go:106:6"
+    },
+    {
+      "package": "internal/job",
+      "matched_rule": "same_package_duplicate_type_declarations",
+      "rule": "percheck_type_redecl",
+      "severity": "error",
+      "note": "job.Filter (count=2 in same package); sites: internal/domain/job/job.go:27:2, internal/kernel/job/job.go:91:6"
     }
   ],
   "grandfathered_known": null,

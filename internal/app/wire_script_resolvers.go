@@ -93,6 +93,21 @@ func buildScriptSourceResolvers(
 					TimeoutMs: cfg.Reranker.TimeoutMs,
 				}))
 			}
+			// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
+			// cut the video pipeline over to TextTrackReader.
+			// `root.Repos.TextTrackRepo` is the canonical
+			// *TextTrackRepositorySQLite wired in the
+			// composition root; the sub-interface
+			// (scriptports.TextTrackReader) is the typed
+			// surface consumed by ClipSourceBuilder. The
+			// legacy metadata_json fallback is gated on
+			// `cfg.Media.Multilingual.MigrationFallbackLegacyMetadata`.
+			if root.Repos.TextTrackRepo != nil {
+				clipSourceBuilder.ConfigureTextTrackReader(
+					root.Repos.TextTrackRepo,
+					cfg.Media.Multilingual.MigrationFallbackLegacyMetadata,
+				)
+			}
 		}
 	} // ── Normalization config ───────────────────────────────────────
 	normCfg := adapters.NormalizationConfig{

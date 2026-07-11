@@ -143,25 +143,32 @@ func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []as
 
 // FindReady is the READY-only typed lookup the resolver uses for
 // ResolveLanguage + ResolveBestAvailable (PR-PY-CLIPS-CORRETTE-TRADOTTE
-// Fase 1.b, July 2026). It returns a single text track for the
-// given (asset, language, kind) triple, filtered to status=READY.
-// Returns (nil, nil) when no row exists OR when the row exists but
-// is in a non-READY status (PENDING/FAILED). The READY-only filter
-// is the Fase 4 video-pipeline contract: a non-READY track is not
-// authoritative, and the pipeline surfaces
-// ErrClipTextTrackNotReady rather than using a stale row.
+// Fase 1.b, July 2026) AND the Fase 4 ClipSourceBuilder video-pipeline
+// cutover. It returns a single text track PLUS its timed cues (if the
+// source carried per-segment timing) for the given (asset, language,
+// kind) triple, filtered to status=READY.
+//
+// Return contract (Fase 4, matches the domain port):
+//   (track, cues, nil)  — track found and READY; cues is nil when
+//                         the source is payload-text, full-text, or
+//                         Whisper (no per-segment timing persisted).
+//   (nil, nil, nil)     — no row OR row in non-READY status
+//                         (PENDING/FAILED). The READY-only filter
+//                         is the canonical contract: a non-READY
+//                         row is not authoritative.
+//   (nil, nil, err)     — repository-level error.
 //
 // godlike/06 SSOT: the underlying SQL is identical to Find
 // (same column shape) plus a `status = 'ready'` predicate. The
 // domain-level "filter to READY" decision is owned by this method
 // so callers (resolver) MUST NOT re-implement a status-check
 // inline.
-func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID string, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
 	if assetID == "" {
-		return nil, fmt.Errorf("text_track_repository.FindReady: AssetID is required")
+		return nil, nil, fmt.Errorf("text_track_repository.FindReady: AssetID is required")
 	}
 	if languageCode == "" {
-		return nil, fmt.Errorf("text_track_repository.FindReady: LanguageCode is required")
+		return nil, nil, fmt.Errorf("text_track_repository.FindReady: LanguageCode is required")
 	}
 	row := r.db.QueryRowContext(ctx,
 		`SELECT id, asset_id, language_code, text_kind,
@@ -179,12 +186,94 @@ func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID strin
 
 	t, err := scanTextTrack(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("text_track_repository.FindReady: %w", err)
+		return nil, nil, fmt.Errorf("text_track_repository.FindReady: %w", err)
 	}
-	return t, nil
+
+	// Fase 4: fetch the cues for this track. Returns nil (not
+	// an error) when the track has no per-segment timing rows
+	// (the consumer can distinguish "no row" from "row with no
+	// cues" via the parent *TextTrack nil-check).
+	cues, cueErr := r.findCuesForTrackID(ctx, t.ID)
+	if cueErr != nil {
+		return nil, nil, fmt.Errorf("text_track_repository.FindReady: cues: %w", cueErr)
+	}
+	return t, cues, nil
+}
+
+// findCuesForTrackID returns the timed cues for a given track_id,
+// sorted ascending by sequence_no (1-based; sequence_no is assigned
+// at persist time by the writer, not at read time). Returns nil
+// (not an empty slice — the domain port contract requires nil for
+// "no cues", not a zero-length slice) when the track has no
+// per-segment rows.
+//
+// Caller MUST pass a valid track_id (the FK ON DELETE CASCADE
+// ensures orphan rows are impossible).
+func (r *TextTrackRepositorySQLite) findCuesForTrackID(ctx context.Context, trackID int64) ([]asset.TimedCue, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT start_ms, end_ms, text
+		 FROM asset_text_track_segments
+		 WHERE track_id = ?
+		 ORDER BY sequence_no ASC`,
+		trackID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("findCuesForTrackID: query: %w", err)
+	}
+	defer rows.Close()
+
+	var cues []asset.TimedCue // nil when no rows (matches domain port contract)
+	for rows.Next() {
+		var c asset.TimedCue
+		if scanErr := rows.Scan(&c.StartMs, &c.EndMs, &c.Text); scanErr != nil {
+			return nil, fmt.Errorf("findCuesForTrackID: scan: %w", scanErr)
+		}
+		cues = append(cues, c)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("findCuesForTrackID: rows: %w", err)
+	}
+	return cues, nil
+}
+
+// ListReadyLanguages enumerates the sorted set of language codes
+// for which a READY text track exists for the given (asset, kind).
+// Returns an empty slice (not nil) when no READY tracks exist.
+//
+// godlike/06 SSOT: this is the SOLE canonical "what READY languages
+// does this clip have?" query. The require_all_before_video policy
+// gate and the video pipeline's backfill CLI consume it.
+func (r *TextTrackRepositorySQLite) ListReadyLanguages(ctx context.Context, assetID string, kind asset.TextTrackKind) ([]string, error) {
+	if assetID == "" {
+		return nil, fmt.Errorf("text_track_repository.ListReadyLanguages: AssetID is required")
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT DISTINCT language_code
+		 FROM asset_text_tracks
+		 WHERE asset_id = ? AND text_kind = ? AND status = ?
+		 ORDER BY language_code ASC`,
+		assetID, string(kind), string(asset.TextTrackReady),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("text_track_repository.ListReadyLanguages: query: %w", err)
+	}
+	defer rows.Close()
+
+	languages := make([]string, 0)
+	for rows.Next() {
+		var lang string
+		if scanErr := rows.Scan(&lang); scanErr != nil {
+			return nil, fmt.Errorf("text_track_repository.ListReadyLanguages: scan: %w", scanErr)
+		}
+		languages = append(languages, lang)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("text_track_repository.ListReadyLanguages: rows: %w", err)
+	}
+	return languages, nil
 }
 
 // Find returns a single text track for the given (asset, language, kind)

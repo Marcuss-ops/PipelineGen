@@ -12,6 +12,17 @@
 // blank-line) is extracted into an appendClipSourceText helper.
 // The main loop becomes a linear orchestrator that wires the
 // helpers together with early returns on missing clips.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the per-clip
+// loop now calls `c.resolveTranscript(ctx, ...)` EXACTLY ONCE
+// (previously called twice — once in appendClipSourceText, once
+// in appendClipDetail). The resolved transcript string +
+// *asset.TextTrack are captured in the per-clip accumulator;
+// the append helpers receive the pre-resolved transcript via
+// a parameter (no second round-trip). The resolved track feeds
+// the 3 new ClipEvidence fingerprint fields (LanguageCode,
+// TextTrackVersion, TranscriptHash) populated by
+// buildClipEvidence from the FIRST non-nil track.
 package usecase
 
 import (
@@ -21,6 +32,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
@@ -29,12 +41,6 @@ import (
 
 // ── ClipSourceBuilder ───────────────────────────────────────────────────
 
-// typedClipResolverPort is the typed resolver interface that
-// ClipSourceBuilder consumes. It replaces the legacy clipsResolverPort
-// (GetClip + GetByDriveFileID heuristic) with explicit per-type dispatch.
-// *assets.ClipsRepository satisfies it in production via its
-// ResolveByMediaAssetID / ResolveByDriveFileID methods. Unit tests
-// inject a hand-rolled stub.
 type typedClipResolverPort interface {
 	ResolveByMediaAssetID(ctx context.Context, id string) (*asset.Asset, error)
 	ResolveByDriveFileID(ctx context.Context, fileID string) ([]*asset.Asset, error)
@@ -45,6 +51,23 @@ type ClipSourceBuilder struct {
 	ollamaClient any // *client.Client
 	reranker     any
 	log          *zap.Logger
+	// textTrackReader is the canonical Fase 4 read surface for
+	// the video pipeline (PR-PY-CLIPS-CORRETTE-TRADOTTE, July
+	// 2026). Nil = legacy metadata_json transcript path (pre-Fase
+	// 4 behavior, retained for back-compat with tests that
+	// don't wire a TextTrackReader). Production wiring calls
+	// `ConfigureTextTrackReader(reader, legacyFallback)` at
+	// composition time to cut over to the canonical
+	// `asset_text_tracks` read.
+	textTrackReader ports.TextTrackReader
+	// legacyFallback gates the metadata_json transcript fallback
+	// in resolveTranscript. False (post-cutover default) means
+	// a missing/non-READY text track surfaces
+	// `*ErrTextTrackNotReady` to the caller. True (migration
+	// window) means the legacy metadata_json path is the
+	// fallback so operators can keep pre-cutover clips rendered
+	// while the backfill CLI populates `asset_text_tracks`.
+	legacyFallback bool
 }
 
 type ClipGenerationOptions struct {
@@ -64,22 +87,12 @@ type ClipGenerationOptions struct {
 	MinQualityScore    float64
 	MinTranscriptWords int
 	// RequireDriveLink controls whether clips without a Drive link
-	// are excluded from the resolved set. When true (caller wants
-	// document or scene images), clips without DriveLink go into
-	// excludedClips. When false (text-only generation), missing
-	// DriveLink is tolerated.
-	// P0 #3 (June 2026).
+	// are excluded from the resolved set.
 	RequireDriveLink bool
 }
 
 // NewClipSourceBuilder creates a ClipSourceBuilder backed by the
-// supplied typed clip resolver. In production, the concrete
-// *assets.ClipsRepository (satisfying typedClipResolverPort) is wired
-// by internal/app/wire_script.go. Unit tests pass a hand-rolled
-// stub directly — no separate test-only constructor is needed.
-//
-// NewClipSourceBuilder accepts the typed clip resolver (explicit
-// per-type dispatch replaces the legacy heuristic fallback).
+// supplied typed clip resolver.
 func NewClipSourceBuilder(
 	clipsRepo typedClipResolverPort,
 	ollamaClient any,
@@ -94,29 +107,30 @@ func NewClipSourceBuilder(
 
 func (c *ClipSourceBuilder) SetReranker(r any) { c.reranker = r }
 
-// excerptMaxRunes is the rune-budget for the per-clip transcript excerpt
-// appended to the assembled source text.
+// ConfigureTextTrackReader wires the canonical Fase 4 read
+// surface (TextTrackReader) and sets the metadata_json fallback
+// flag. The composition root calls this exactly once at
+// startup, after NewClipSourceBuilder.
 //
-// A4 (June 2026): this constant replaced an inline byte-budget of 500 (the
-// old `excerpt[:500]` cut). Byte-truncation on multi-byte UTF-8 input (CJK
-// ideographs, supplementary-plane emoji, accented Latin) silently splits
-// codepoints and emits invalid bytes downstream. The fingerprint is unaffected — it never read this constant — and
-// BuildClipContext now truncates by RUNES via truncateExcerpt.
+// godlike/06 SSOT: the call site is
+// `internal/app/wire_script_resolvers.go::buildScriptSourceResolvers`.
+// A nil reader preserves the legacy metadata_json path (for
+// back-compat with tests); a non-nil reader + flag combination
+// is the canonical cutover contract.
 //
-// A7 (forthcoming) will wire opts.TranscriptPolicy to a documented mode
-// (full | sentence_window | keyword_window) and *replace* this hard-coded
-// budget at the same call site. The constant is the single point of
-// governance until then.
+// godlike/07 minimum-blast-radius: the setter is additive —
+// the 4-arg NewClipSourceBuilder signature is preserved so
+// existing test files compile unchanged.
+func (c *ClipSourceBuilder) ConfigureTextTrackReader(r ports.TextTrackReader, legacyFallback bool) {
+	c.textTrackReader = r
+	c.legacyFallback = legacyFallback
+}
+
 const excerptMaxRunes = 500
 
 // truncateExcerpt returns s if its rune count is at most maxRunes;
 // otherwise it returns s truncated to exactly maxRunes runes followed by
-// the U+2026 HORIZONTAL ELLIPSIS. Truncation snaps to rune boundaries so
-// the result is always well-formed UTF-8 and never splits a multi-byte
-// codepoint.
-//
-// A4 (June 2026). Bounded iteration (no full []rune(s) materialization) so
-// very large transcripts (multi-MB) stay cheap.
+// the U+2026 HORIZONTAL ELLIPSIS.
 func truncateExcerpt(s string, maxRunes int) string {
 	if maxRunes <= 0 {
 		return ""
@@ -135,28 +149,17 @@ func truncateExcerpt(s string, maxRunes int) string {
 }
 
 // BuildClipContext resolves the supplied clip IDs into assets, builds
-// the per-clip source text (CLIP header + Description + Transcript +
-// Tags) and assembles the canonical *scriptpkg.ClipEvidence surface
-// that downstream postprocessors (Document / Voiceover / Stock / etc.)
-// consume.
+// the per-clip source text and assembles the canonical
+// *scriptpkg.ClipEvidence surface.
 //
-// Returns:
-//   - ev: the assembled *ClipEvidence (AcceptedClipIDs + DriveLinks
-//   - clipNames + Excluded + MissingClipIDs, etc.)
-//   - title: the resolved narrative title (from opts.Title, default
-//     "script" if opts is nil or empty)
-//   - sourceText: the full per-clip source text (same as ev.AssembledText
-//     for backward-compat with callers that don't read from ev)
-//   - error: typed failure on no-clips-found / all-clips-excluded /
-//     nil-receiver / nil-repo
-//
-// Cyclomatic complexity: was 43 (pre-PR-REFACTOR-P1-CYCLOMATIC), now
-// ≤15. The 2-phase resolution (media-asset-id → drive-file-id
-// fallback) is extracted into resolveOneClip; the per-clip source
-// text assembly is extracted into appendClipSourceText; the
-// post-loop DriveLinks + ClipNames + evidence-assemble steps are
-// extracted into 3 single-purpose helpers. The main function is a
-// linear orchestrator with early returns on missing clips.
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the per-clip
+// loop calls c.resolveTranscript EXACTLY ONCE per clip and threads
+// the resolved transcript + *asset.TextTrack through the
+// accumulator. The 3 new ClipEvidence fingerprint fields
+// (LanguageCode, TextTrackVersion, TranscriptHash) are populated
+// by buildClipEvidence from the FIRST non-nil resolved track
+// (per-evidence language convention; multi-clip evidences
+// carry the language of the first resolved clip).
 func (c *ClipSourceBuilder) BuildClipContext(
 	ctx context.Context,
 	clipIDs []string,
@@ -175,24 +178,25 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	}
 
 	requireDriveLink := optsRequireDriveLink(opts)
+	language := optsResolveLanguage(opts)
 
-	// Per-clip resolution + source-text accumulation.
-	//
-	// Each iteration calls resolveOneClip (2-phase media-asset-id →
-	// drive-file-id fallback) + handles the 3 distinct resolution
-	// outcomes (resolved, missing-by-DriveLink, missing-by-NotFound)
-	// uniformly via the typed missingReason return. The
-	// per-clip source-text assembly is delegated to
-	// appendClipSourceText so the main loop stays linear.
 	var (
-		renderableIDs    []string
-		missingClipIDs   []scriptpkg.MissingClipID
-		excludedClips    []scriptpkg.ExcludedClip
-		clips            []*asset.Asset
-		canonicalIDs     []string
-		clipNames        []string
-		clipToCanonical  = make(map[string]string, len(uniqueIDs))
-		clipDetails      = make(map[string]scriptpkg.ClipDetail, len(uniqueIDs))
+		renderableIDs   []string
+		missingClipIDs  []scriptpkg.MissingClipID
+		excludedClips   []scriptpkg.ExcludedClip
+		clips           []*asset.Asset
+		canonicalIDs    []string
+		clipNames       []string
+		clipToCanonical = make(map[string]string, len(uniqueIDs))
+		clipDetails     = make(map[string]scriptpkg.ClipDetail, len(uniqueIDs))
+		// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
+		// resolvedTracks is the per-clip accumulator for the
+		// 3 new fingerprint fields. Keyed by the canonical
+		// clip ID (the REQUESTED ID, not clip.ID). The
+		// post-loop buildClipEvidence call reads the
+		// FIRST non-nil entry to populate the evidence-level
+		// fingerprint.
+		resolvedTracks   = make(map[string]*asset.TextTrack, len(uniqueIDs))
 		sourceTextWriter strings.Builder
 	)
 	for _, id := range uniqueIDs {
@@ -210,12 +214,6 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			return nil, "", "", fmt.Errorf("clip source builder: unknown resolve reason %q for id %q", reason, id)
 		}
 
-		// Issue #2 (June 2026) bucket flip: route
-		// missing-DriveLink to MissingClipIDs (not ExcludedClip).
-		// The two distinct resolution outcomes — (a) asset
-		// exists but is unrenderable into Drive-consuming
-		// surfaces vs (b) asset was filtered by a quality gate
-		// — are now distinguishable in dashboards.
 		if requireDriveLink && clip.DriveLink() == "" {
 			missingClipIDs = append(missingClipIDs, scriptpkg.MissingClipID{
 				ClipID: id,
@@ -228,10 +226,6 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			continue
 		}
 
-		// Track DriveLink-bearing subset of AcceptedClipIDs
-		// (RenderableClipIDs). Document / image / voiceover
-		// renderers iterate this set instead of the broader
-		// AcceptedClipIDs.
 		if clip.DriveLink() != "" {
 			renderableIDs = append(renderableIDs, id)
 		}
@@ -240,12 +234,37 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		canonicalIDs = append(canonicalIDs, id)
 		clipToCanonical[clip.ID] = id
 		clipNames = append(clipNames, clipDisplayName(clip, id))
-		appendClipSourceText(&sourceTextWriter, id, clip)
-		appendClipDetail(clipDetails, id, clip)
+
+		// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
+		// resolveTranscript is called EXACTLY ONCE per clip.
+		// The signature is (string, *asset.TextTrack, error) —
+		// transcript string first, resolved track second,
+		// error third. The resolved transcript feeds both
+		// the assembled source text (via appendClipSourceText)
+		// and the per-clip ClipDetail.Transcript (via
+		// appendClipDetail). The resolved *asset.TextTrack
+		// feeds the 3 new fingerprint fields (via the
+		// resolvedTracks accumulator + buildClipEvidence).
+		transcript, track, resolveErr := c.resolveTranscript(ctx, clip.ID, language, clip)
+		if resolveErr != nil && c.log != nil {
+			// godlike/07 minimum-blast-radius: the typed
+			// error is logged but NOT propagated (the
+			// existing BuildClipContext signature is
+			// preserved; strict-error surfacing lands in
+			// a follow-up PR that threads the error up
+			// to the HTTP handler).
+			c.log.Warn("clip source builder: text track resolve returned error (continuing with empty transcript)",
+				zap.String("clip_id", id),
+				zap.String("language", language),
+				zap.Error(resolveErr))
+		}
+		c.appendClipSourceText(&sourceTextWriter, id, clip, transcript)
+		c.appendClipDetail(clipDetails, id, clip, transcript)
+		if track != nil {
+			resolvedTracks[id] = track
+		}
 	}
 
-	// P0 #3: when DriveLink is required and ALL resolved clips
-	// were excluded (lacked DriveLink), fail with a clear error.
 	if len(clips) == 0 && len(excludedClips) > 0 {
 		return nil, "", "", fmt.Errorf("clip source builder: all %d resolved clips lack drive links", len(excludedClips))
 	}
@@ -260,11 +279,6 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		}
 	}
 
-	// P1 #9 (June 2026): NarrativePlan / NarrativeSection removed —
-	// dead code that set plan.Title but was never consumed past
-	// buildResolvedClipSource extracting that single field. The
-	// resolved title is returned directly as a string.
-
 	ev := buildClipEvidence(
 		canonicalIDs,
 		clipNames,
@@ -275,6 +289,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		missingClipIDs,
 		strings.TrimSpace(sourceTextWriter.String()),
 		clipDetails,
+		resolvedTracks,
 	)
 
 	if c.log != nil {
@@ -287,13 +302,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	return ev, title, sourceTextWriter.String(), nil
 }
 
-// clipResolveReason is the typed return value of resolveOneClip
-// (replaces the 3-branch "if clip == nil { missing; continue }"
-// pattern in the main loop with a single typed enum dispatch).
-// godlike/07 typed-error contract: the reason is a closed enum
-// (no unbounded strings); the main loop's switch is exhaustive
-// (default branch returns a typed error so a future agent adding
-// a new reason cannot silently drop the case).
+// clipResolveReason is the typed return value of resolveOneClip.
 type clipResolveReason string
 
 const (
@@ -301,22 +310,7 @@ const (
 	clipResolveNotFound clipResolveReason = "not_found"
 )
 
-// resolveOneClip performs the 2-phase media-asset-id → drive-file-id
-// fallback. Returns the resolved *asset.Asset (may be nil if the
-// clip is genuinely missing) + a strongly-typed reason string
-// (clipResolveOK / clipResolveNotFound). The main loop's switch
-// dispatches uniformly on the reason.
-//
-// Issue #2 (June 2026) bucket flip: clipResolveNotFound covers
-// BOTH the media-asset-id lookup miss AND the drive-file-id
-// fallback miss (a single typed enum entry suffices because the
-// downstream consumer is MissingClipReasonNotFound in both cases
-// — the bucket split happens later when the requireDriveLink gate
-// emits MissingClipReasonDriveNotFound separately).
 func (c *ClipSourceBuilder) resolveOneClip(ctx context.Context, id string) (*asset.Asset, clipResolveReason) {
-	// Typed dispatch: first try the canonical media_assets.id column;
-	// if not found, try drive_file_id. The two-phase fallback preserves
-	// existing behavior while using the typed ResolveBy* methods.
 	clip, err := c.clipsRepo.ResolveByMediaAssetID(ctx, id)
 	if err != nil && c.log != nil {
 		c.log.Warn("clip source builder: failed to fetch clip by media asset id",
@@ -343,9 +337,6 @@ func (c *ClipSourceBuilder) resolveOneClip(ctx context.Context, id string) (*ass
 	return clip, clipResolveOK
 }
 
-// clipDisplayName returns the canonical display name for a clip
-// (Name → Filename → ID fallback chain). Extracted from the main
-// loop to shrink the per-iteration body.
 func clipDisplayName(clip *asset.Asset, id string) string {
 	if name := strings.TrimSpace(clip.Name); name != "" {
 		return name
@@ -358,21 +349,21 @@ func clipDisplayName(clip *asset.Asset, id string) string {
 
 // appendClipSourceText writes the per-clip source text block
 // (CLIP header + Description + Transcript + Tags + blank-line
-// terminator) to the source-text writer. Extracted from the main
-// loop so the per-iteration body is a single 1-line call.
-func appendClipSourceText(w *strings.Builder, id string, clip *asset.Asset) {
+// terminator) to the source-text writer.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the
+// transcript string is PRE-RESOLVED by the caller (the main
+// per-clip loop calls resolveTranscript exactly once and
+// threads the result through). This method does NOT call
+// resolveTranscript itself.
+func (c *ClipSourceBuilder) appendClipSourceText(w *strings.Builder, id string, clip *asset.Asset, transcript string) {
 	w.WriteString(fmt.Sprintf("CLIP %s: %s\n", id, clipDisplayName(clip, id)))
 	if searchText := strings.TrimSpace(clip.SearchText); searchText != "" {
 		w.WriteString(fmt.Sprintf("  Description: %s\n", searchText))
 	} else if desc := strings.TrimSpace(clip.GetMetadataString("description")); desc != "" {
 		w.WriteString(fmt.Sprintf("  Description: %s\n", desc))
 	}
-	if transcript := clipTranscript(clip); transcript != "" {
-		// A4 (June 2026): rune-safe truncation; the helper
-		// snaps to rune boundaries and appends U+2026,
-		// replacing the old byte-index cut (excerpt[:500])
-		// that split multi-byte codepoints. See
-		// truncateExcerpt above.
+	if transcript != "" {
 		excerpt := truncateExcerpt(transcript, excerptMaxRunes)
 		w.WriteString(fmt.Sprintf("  Transcript: %s\n", excerpt))
 	}
@@ -382,28 +373,19 @@ func appendClipSourceText(w *strings.Builder, id string, clip *asset.Asset) {
 	w.WriteString("\n")
 }
 
-// clipTranscript returns the canonical transcript string for a
-// clip, preferring clean_transcript over raw transcript. Extracted
-// from appendClipSourceText so the per-call field-access pattern
-// stays linear.
-func clipTranscript(clip *asset.Asset) string {
-	if t := clip.GetMetadataString("transcript"); t != "" {
-		return t
-	}
-	return clip.GetMetadataString("clean_transcript")
-}
-
 // appendClipDetail populates the per-clip detail map with the
 // primary evidence used for clip-native scene construction.
-func appendClipDetail(details map[string]scriptpkg.ClipDetail, id string, clip *asset.Asset) {
-	if details == nil || clip == nil {
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the
+// transcript string is PRE-RESOLVED by the caller.
+func (c *ClipSourceBuilder) appendClipDetail(details map[string]scriptpkg.ClipDetail, id string, clip *asset.Asset, transcript string) {
+	if details == nil || clip == nil || c == nil {
 		return
 	}
 	desc := strings.TrimSpace(clip.SearchText)
 	if desc == "" {
 		desc = strings.TrimSpace(clip.GetMetadataString("description"))
 	}
-	transcript := clipTranscript(clip)
 	startMs := parseMetadataMs(clip.GetMetadataString("start_ms"))
 	endMs := parseMetadataMs(clip.GetMetadataString("end_ms"))
 	details[id] = scriptpkg.ClipDetail{
@@ -417,8 +399,6 @@ func appendClipDetail(details map[string]scriptpkg.ClipDetail, id string, clip *
 	}
 }
 
-// parseMetadataMs parses a metadata string as milliseconds.
-// Non-numeric or empty values return 0.
 func parseMetadataMs(s string) int64 {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -431,10 +411,6 @@ func parseMetadataMs(s string) int64 {
 	return ms
 }
 
-// dedupTrimmedClipIDs trims + dedupes the input clip ID list.
-// Returns an error on empty post-trim result (caller-friendly
-// failure mode). Extracted from BuildClipContext so the
-// per-iteration loop doesn't carry the dedup + filter logic.
 func dedupTrimmedClipIDs(clipIDs []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(clipIDs))
 	uniqueIDs := make([]string, 0, len(clipIDs))
@@ -455,8 +431,6 @@ func dedupTrimmedClipIDs(clipIDs []string) ([]string, error) {
 	return uniqueIDs, nil
 }
 
-// optsRequireDriveLink returns the canonical requireDriveLink
-// value from opts (defaults to true per the caller's contract).
 func optsRequireDriveLink(opts *ClipGenerationOptions) bool {
 	if opts == nil {
 		return true
@@ -464,11 +438,24 @@ func optsRequireDriveLink(opts *ClipGenerationOptions) bool {
 	return opts.RequireDriveLink
 }
 
+func optsResolveLanguage(opts *ClipGenerationOptions) string {
+	if opts == nil {
+		return ""
+	}
+	return strings.TrimSpace(opts.Language)
+}
+
 // buildClipEvidence assembles the canonical *scriptpkg.ClipEvidence
-// surface from the per-loop accumulators. Extracted so the main
-// loop's post-processing is a single 1-line call. The nil-for-
-// JSON-omitempty preservation guards are preserved verbatim from
-// the pre-PR inline code.
+// surface from the per-loop accumulators.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): takes the
+// per-clip resolvedTracks map (keyed by canonical clip ID) and
+// populates the 3 new fingerprint fields (LanguageCode,
+// TextTrackVersion, TranscriptHash) from the FIRST non-nil
+// track. godlike/07 minimum-blast-radius: the fingerprint is
+// per-evidence, not per-clip; the "first" track is the
+// canonical choice when multiple clips resolve (matches the
+// existing per-evidence language convention).
 func buildClipEvidence(
 	canonicalIDs, clipNames []string,
 	clipToCanonical map[string]string,
@@ -478,6 +465,7 @@ func buildClipEvidence(
 	missingClipIDs []scriptpkg.MissingClipID,
 	sourceText string,
 	clipDetails map[string]scriptpkg.ClipDetail,
+	resolvedTracks map[string]*asset.TextTrack,
 ) *scriptpkg.ClipEvidence {
 	clipDriveLinks := make(map[string]string, len(clips))
 	for _, clip := range clips {
@@ -497,6 +485,23 @@ func buildClipEvidence(
 		}
 	}
 
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): populate
+	// the 3 new fingerprint fields from the FIRST non-nil
+	// resolved track. When no track is available (legacy
+	// path, missing-track path, mixed-with-no-ready), the
+	// fields are left empty (the per-evidence fingerprint
+	// inherits the per-clip fingerprint only when at least
+	// one clip has a READY track).
+	var lang, version, hash string
+	for _, id := range canonicalIDs {
+		if t, ok := resolvedTracks[id]; ok && t != nil {
+			lang = t.LanguageCode
+			version = t.SourceVersion
+			hash = t.TextHash
+			break
+		}
+	}
+
 	ev := &scriptpkg.ClipEvidence{
 		AcceptedClipIDs:   canonicalIDs,
 		RenderableClipIDs: renderableIDs,
@@ -507,8 +512,10 @@ func buildClipEvidence(
 		Excluded:          excludedClips,
 		MissingClipIDs:    missingClipIDs,
 		ClipDetails:       clipDetails,
+		LanguageCode:      lang,
+		TextTrackVersion:  version,
+		TranscriptHash:    hash,
 	}
-	// Preserve nil for JSON omitempty.
 	if len(ev.MissingClipIDs) == 0 {
 		ev.MissingClipIDs = nil
 	}
