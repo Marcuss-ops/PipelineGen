@@ -1,8 +1,9 @@
 package usecase_test
 
-// text_track_resolver_test.go pins the Fase 1.a contract for
-// TextTrackResolver (PR-PY-CLIPS-CORRETTE-TRADOTTE, July 2026):
+// text_track_resolver_test.go pins the Fase 1.a + Fase 1.b contract
+// for TextTrackResolver (PR-PY-CLIPS-CORRETTE-TRADOTTE, July 2026):
 //
+// Fase 1.a:
 //  1. The priority chain (AcquireSegmentText) covers all 5 levels and
 //     short-circuits correctly.
 //  2. Whisper is NEVER called when payload/DB/subtitle win.
@@ -15,6 +16,23 @@ package usecase_test
 //     canonical TextHash + SourceVersion populated.
 //  6. Save rejects an empty Source (no silent classify-as-provided).
 //
+// Fase 1.b (BCP-47 + language detection, this commit):
+//  7. ResolveOriginal/ResolveLanguage/ResolveBestAvailable are the
+//     SOLE canonical typed lookups (no `Find(ctx, "en", ...)` residue).
+//  8. Whisper priority 5 uses TranscribeAudioWithDetection — the
+//     resolver consumes DetectedLanguage + Confidence.
+//  9. RequireLanguageCertainty policy gate fires
+//     asset.ErrLanguageUndeterminable pre-Step-9 when the chain
+//     exhausts without surfacing a real BCP-47 language.
+//  10. Subtitle language is filtered against PreferredLanguages
+//     before the bundle is accepted (Fase 1.b: the port surfaces
+//     any language it found; the resolver's policy is to discard
+//     the bundle when its LanguageCode is NOT in
+//     PreferredLanguages and fall through to Whisper).
+//  11. The resolver NEVER substitutes "en" for an empty/unknown
+//     input. All language codes flow through asset.Normalize
+//     (BCP-47 canonical; empty → "und").
+//
 // Drift from any of the above MUST FAIL the test, not regress silently.
 // All assertions use the asset.TextTrack field shape (TextHash,
 // SourceVersion) defined in internal/domain/asset/text_track.go and
@@ -22,6 +40,7 @@ package usecase_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"go.uber.org/zap"
@@ -50,6 +69,22 @@ func (s *stubRepo) Find(_ context.Context, assetID, languageCode string, kind as
 		if s.rows[i].AssetID == assetID &&
 			s.rows[i].LanguageCode == languageCode &&
 			s.rows[i].TextKind == kind {
+			return &s.rows[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// FindReady is the canonical Fase 1.b READY-only lookup (PR-PY-CLIPS-CORRETTE-TRADOTTE
+// Fase 1.b). The stub returns the row when status=READY and ignores
+// PENDING/FAILED rows (matches the production contract: a non-READY
+// row is not authoritative, the resolver surfaces nil).
+func (s *stubRepo) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, error) {
+	for i := range s.rows {
+		if s.rows[i].AssetID == assetID &&
+			s.rows[i].LanguageCode == languageCode &&
+			s.rows[i].TextKind == kind &&
+			s.rows[i].Status == asset.TextTrackReady {
 			return &s.rows[i], nil
 		}
 	}
@@ -85,12 +120,21 @@ func (s *stubSubtitles) FetchSegmentSubtitles(_ context.Context, _ string, _, _ 
 	return s.bundle, nil
 }
 
-// stubTranscriber records TranscribeAudio invocations and returns
-// deterministic text.
+// stubTranscriber records TranscribeAudio + TranscribeAudioWithDetection
+// invocations and returns deterministic output.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: the new typed method
+// (TranscribeAudioWithDetection) is the canonical chain surface.
+// The legacy plain-string method is RETAINED on the port for
+// back-compat with the Step 10 metadata path.
 type stubTranscriber struct {
 	text  string
 	err   error
 	calls int
+	// det overrides the legacy `text` field for the typed
+	// TranscribeAudioWithDetection method (Fase 1.b). nil means
+	// the stub returns TranscriptResult{Text: text, DetectedLanguage: ""}.
+	det *asset.TranscriptResult
 }
 
 func (s *stubTranscriber) TranscribeAudio(_ context.Context, _ string) (string, error) {
@@ -99,6 +143,17 @@ func (s *stubTranscriber) TranscribeAudio(_ context.Context, _ string) (string, 
 		return "", s.err
 	}
 	return s.text, nil
+}
+
+func (s *stubTranscriber) TranscribeAudioWithDetection(_ context.Context, _ string) (asset.TranscriptResult, error) {
+	s.calls++
+	if s.err != nil {
+		return asset.TranscriptResult{}, s.err
+	}
+	if s.det != nil {
+		return *s.det, nil
+	}
+	return asset.TranscriptResult{Text: s.text, DetectedLanguage: ""}, nil
 }
 
 // Compile-time guarantees that the stubs satisfy the ports the
@@ -118,7 +173,7 @@ func newTestResolver(repo *stubRepo, subs *stubSubtitles, trans *stubTranscriber
 	}
 }
 
-// ── AcquireSegmentText: priority chain ───────────────────────────────────
+// ── AcquireSegmentText: priority chain (Fase 1.a) ───────────────────────
 
 func TestAcquireSegmentText_PayloadWins(t *testing.T) {
 	resolver := newTestResolver(&stubRepo{}, nil, nil)
@@ -183,7 +238,8 @@ func TestAcquireSegmentText_DBWinsWhenPayloadEmpty(t *testing.T) {
 	}}
 	resolver := newTestResolver(repo, nil, nil)
 	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
-		ClipID: "yt_phase1a_003",
+		ClipID:           "yt_phase1a_003",
+		PreferredLanguages: []string{"it", "en"},
 	})
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -211,7 +267,9 @@ func TestAcquireSegmentText_SubtitlesWinAndWhisperNotCalled(t *testing.T) {
 	resolver := newTestResolver(&stubRepo{}, subs, trans)
 
 	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
-		ClipID: "yt_phase1a_004", VideoID: "v004", LocalPath: "/tmp/x.mp4",
+		ClipID:    "yt_phase1a_004",
+		VideoID:   "v004",
+		LocalPath: "/tmp/x.mp4",
 	})
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -228,12 +286,19 @@ func TestAcquireSegmentText_SubtitlesWinAndWhisperNotCalled(t *testing.T) {
 }
 
 func TestAcquireSegmentText_WhisperFallbackWhenOthersEmpty(t *testing.T) {
+	// Fase 1.b: stubTranscriber uses TranscribeAudioWithDetection
+	// internally (the resolver calls the typed method on priority
+	// 5). The stub returns TranscriptResult{Text: "Whisper text",
+	// DetectedLanguage: ""} which the resolver normalizes to
+	// "und" (BCP-47 undetermined).
 	subs := &stubSubtitles{bundle: nil} // valid "not found"
 	trans := &stubTranscriber{text: "Whisper text"}
 	resolver := newTestResolver(&stubRepo{}, subs, trans)
 
 	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
-		ClipID: "yt_phase1a_005", VideoID: "v005", LocalPath: "/tmp/x.mp4",
+		ClipID:    "yt_phase1a_005",
+		VideoID:   "v005",
+		LocalPath: "/tmp/x.mp4",
 	})
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -242,13 +307,37 @@ func TestAcquireSegmentText_WhisperFallbackWhenOthersEmpty(t *testing.T) {
 		t.Fatalf("Whisper fallback should fire; got %+v", bundle)
 	}
 	if bundle.LanguageCode != "und" {
-		t.Fatalf("Whisper should report LanguageCode=%q (Fase 1.b will surface DetectedLanguage), got %q", "und", bundle.LanguageCode)
+		t.Fatalf("Whisper with empty DetectedLanguage should normalize to %q, got %q", "und", bundle.LanguageCode)
 	}
 	if bundle.SourceType != asset.TextSourceWhisper {
 		t.Fatalf("SourceType = %q, want %q", bundle.SourceType, asset.TextSourceWhisper)
 	}
 	if trans.calls != 1 {
 		t.Fatalf("Whisper should be called exactly once, got %d", trans.calls)
+	}
+}
+
+// TestAcquireSegmentText_WhisperDetectsLanguage is the Fase 1.b typed-
+// port test: the Whisper stub returns a non-empty DetectedLanguage,
+// and the resolver's AcquireSegmentText propagates it (normalized
+// via the canonical bcp47.Normalize helper).
+func TestAcquireSegmentText_WhisperDetectsLanguage(t *testing.T) {
+	subs := &stubSubtitles{bundle: nil}
+	trans := &stubTranscriber{det: &asset.TranscriptResult{
+		Text:             "Buongiorno a tutti",
+		DetectedLanguage: "IT", // uppercase → normalize to "it"
+	}}
+	resolver := newTestResolver(&stubRepo{}, subs, trans)
+	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:    "yt_phase1b_det_001",
+		VideoID:   "v_det_001",
+		LocalPath: "/tmp/x.mp4",
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if bundle == nil || bundle.LanguageCode != "it" {
+		t.Fatalf("Whisper DetectedLanguage=IT should normalize to %q, got %+v", "it", bundle)
 	}
 }
 
@@ -260,7 +349,9 @@ func TestAcquireSegmentText_SubtitleErrorFallsThroughToWhisper(t *testing.T) {
 	resolver := newTestResolver(&stubRepo{}, subs, trans)
 
 	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
-		ClipID: "yt_phase1a_006", VideoID: "v006", LocalPath: "/tmp/x.mp4",
+		ClipID:    "yt_phase1a_006",
+		VideoID:   "v006",
+		LocalPath: "/tmp/x.mp4",
 	})
 	if err != nil {
 		t.Fatalf("subtitle error should NOT bubble; got %v", err)
@@ -273,7 +364,9 @@ func TestAcquireSegmentText_SubtitleErrorFallsThroughToWhisper(t *testing.T) {
 func TestAcquireSegmentText_NilWhenAllLevelsFail(t *testing.T) {
 	resolver := newTestResolver(&stubRepo{}, &stubSubtitles{bundle: nil}, &stubTranscriber{text: ""})
 	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
-		ClipID: "yt_phase1a_007", VideoID: "v007", LocalPath: "/tmp/x.mp4",
+		ClipID:    "yt_phase1a_007",
+		VideoID:   "v007",
+		LocalPath: "/tmp/x.mp4",
 	})
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -283,7 +376,233 @@ func TestAcquireSegmentText_NilWhenAllLevelsFail(t *testing.T) {
 	}
 }
 
-// ── MaterializePayloadTexts: all kinds, hashes populated ────────────────
+// ── Fase 1.b: ErrLanguageUndeterminable policy gate ─────────────────────
+
+// TestAcquireSegmentText_RequireLanguageCertaintyFiresError is the
+// godlike/07 fail-closed policy gate: when the chain exhausts AND
+// RequireLanguageCertainty=true, the resolver MUST surface
+// asset.ErrLanguageUndeterminable (pre-Step-9) instead of degrading
+// to (nil, nil).
+func TestAcquireSegmentText_RequireLanguageCertaintyFiresError(t *testing.T) {
+	resolver := &usecase.TextTrackResolver{
+		Repo:                     &stubRepo{},
+		Subtitles:                &stubSubtitles{bundle: nil},
+		Transcriber:              &stubTranscriber{text: ""}, // Whisper returns no language
+		Log:                      zap.NewNop(),
+		RequireLanguageCertainty: true,
+	}
+	_, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:    "yt_phase1b_cer_001",
+		VideoID:   "v_cer_001",
+		LocalPath: "/tmp/x.mp4",
+	})
+	if err == nil {
+		t.Fatal("RequireLanguageCertainty=true with full-miss chain MUST return ErrLanguageUndeterminable")
+	}
+	if !asset.IsLanguageUndeterminable(err) {
+		t.Fatalf("err must be errors.As-probeable as *asset.ErrLanguageUndeterminable; got %T %v", err, err)
+	}
+}
+
+// TestAcquireSegmentText_NoCertaintySilentlyDegrades is the negative
+// case: RequireLanguageCertainty=false preserves the pre-Fase-1.b
+// behavior (chain miss → (nil, nil), no error).
+func TestAcquireSegmentText_NoCertaintySilentlyDegrades(t *testing.T) {
+	resolver := newTestResolver(&stubRepo{}, &stubSubtitles{bundle: nil}, &stubTranscriber{text: ""})
+	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:    "yt_phase1b_cer_002",
+		VideoID:   "v_cer_002",
+		LocalPath: "/tmp/x.mp4",
+	})
+	if err != nil {
+		t.Fatalf("RequireLanguageCertainty=false should NOT fire; got %v", err)
+	}
+	if bundle != nil {
+		t.Fatalf("expected (nil, nil) on full miss; got %+v", bundle)
+	}
+}
+
+// ── Fase 1.b: Subtitle language filtered against PreferredLanguages ─────
+
+// TestAcquireSegmentText_SubtitleLanguageNotInPreferredFallsThrough
+// is the Fase 1.b filtering contract: the SubtitleFetcherPort
+// surfaces whatever language it found (e.g. "en" from a video with
+// only English subs); the resolver filters against
+// PreferredLanguages and falls through to Whisper when the
+// surface doesn't match.
+func TestAcquireSegmentText_SubtitleLanguageNotInPreferredFallsThrough(t *testing.T) {
+	subs := &stubSubtitles{bundle: &asset.ResolvedTextBundle{
+		LanguageCode: "en",
+		PlainText:    "English subs",
+		SourceType:   asset.TextSourceYouTubeSubtitle,
+		IsOriginal:   true,
+	}}
+	trans := &stubTranscriber{det: &asset.TranscriptResult{
+		Text:             "Texto en español",
+		DetectedLanguage: "es",
+	}}
+	resolver := newTestResolver(&stubRepo{}, subs, trans)
+	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:             "yt_phase1b_filter_001",
+		VideoID:            "v_filt_001",
+		LocalPath:          "/tmp/x.mp4",
+		PreferredLanguages: []string{"it", "es"}, // "en" NOT in list
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if bundle == nil {
+		t.Fatal("Whisper should fire after subtitle-language filter rejection; got nil bundle")
+	}
+	if bundle.SourceType != asset.TextSourceWhisper {
+		t.Fatalf("expected Whisper (SourceType=%q), got %q", asset.TextSourceWhisper, bundle.SourceType)
+	}
+	if bundle.LanguageCode != "es" {
+		t.Fatalf("Whisper DetectedLanguage=es should normalize to %q, got %q", "es", bundle.LanguageCode)
+	}
+}
+
+// ── Fase 1.b: ResolveOriginal/ResolveLanguage/ResolveBestAvailable ─────
+
+func TestResolveOriginal_PayloadWins(t *testing.T) {
+	resolver := newTestResolver(&stubRepo{}, nil, nil)
+	bundle, err := resolver.ResolveOriginal(context.Background(), "yt_phase1b_001", []youtubetypes.LocalizedClipText{
+		{LanguageCode: "en", Transcript: "Hello"},
+	})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if bundle == nil || bundle.PlainText != "Hello" {
+		t.Fatalf("ResolveOriginal should fire on payload; got %+v", bundle)
+	}
+}
+
+func TestResolveOriginal_EmptyPayloadReturnsNil(t *testing.T) {
+	resolver := newTestResolver(&stubRepo{}, nil, nil)
+	bundle, err := resolver.ResolveOriginal(context.Background(), "yt_phase1b_002", nil)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if bundle != nil {
+		t.Fatalf("expected (nil, nil) on empty payload; got %+v", bundle)
+	}
+}
+
+func TestResolveOriginal_NormalizesLanguage(t *testing.T) {
+	// godlike/07: language code is BCP-47 normalized. Uppercase
+	// "EN-US" → "en-US". Empty → "und".
+	resolver := newTestResolver(&stubRepo{}, nil, nil)
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"EN-US", "en-US"},
+		{"EN", "en"},
+		{"pt-BR", "pt-BR"},
+		{"pt_BR", "pt-BR"},
+		{"", "und"},
+	}
+	for _, c := range cases {
+		bundle, err := resolver.ResolveOriginal(context.Background(), "yt_phase1b_003", []youtubetypes.LocalizedClipText{
+			{LanguageCode: c.in, Transcript: "x"},
+		})
+		if err != nil {
+			t.Fatalf("ResolveOriginal(%q) err: %v", c.in, err)
+		}
+		if bundle == nil || bundle.LanguageCode != c.want {
+			t.Errorf("ResolveOriginal(%q) LanguageCode = %+v, want %q", c.in, bundle, c.want)
+		}
+	}
+}
+
+func TestResolveOriginal_RejectsMalformedLanguage(t *testing.T) {
+	resolver := newTestResolver(&stubRepo{}, nil, nil)
+	_, err := resolver.ResolveOriginal(context.Background(), "yt_phase1b_004", []youtubetypes.LocalizedClipText{
+		{LanguageCode: "portuguese", Transcript: "x"},
+	})
+	if err == nil {
+		t.Fatal("malformed language code MUST return error; got nil")
+	}
+}
+
+func TestResolveLanguage_DBFindsReady(t *testing.T) {
+	repo := &stubRepo{rows: []asset.TextTrack{
+		{
+			AssetID:      "yt_phase1b_005",
+			LanguageCode: "it",
+			TextKind:     asset.TextTrackTranscript,
+			TextContent:  "Ciao",
+			Status:       asset.TextTrackReady,
+		},
+	}}
+	resolver := newTestResolver(repo, nil, nil)
+	row, err := resolver.ResolveLanguage(context.Background(), "yt_phase1b_005", "it", asset.TextTrackTranscript)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if row == nil || row.TextContent != "Ciao" {
+		t.Fatalf("ResolveLanguage should find the it row; got %+v", row)
+	}
+}
+
+func TestResolveLanguage_IgnoresNonReady(t *testing.T) {
+	// godlike/07: PENDING/FAILED rows are not authoritative. The
+	// resolver must NOT surface a non-READY row even when the row
+	// exists (Fase 4 video-pipeline contract).
+	repo := &stubRepo{rows: []asset.TextTrack{
+		{
+			AssetID:      "yt_phase1b_006",
+			LanguageCode: "it",
+			TextKind:     asset.TextTrackTranscript,
+			TextContent:  "PENDING",
+			Status:       asset.TextTrackPending,
+		},
+	}}
+	resolver := newTestResolver(repo, nil, nil)
+	row, err := resolver.ResolveLanguage(context.Background(), "yt_phase1b_006", "it", asset.TextTrackTranscript)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if row != nil {
+		t.Fatalf("non-READY row MUST be treated as not-found; got %+v", row)
+	}
+}
+
+func TestResolveBestAvailable_PicksFirst(t *testing.T) {
+	repo := &stubRepo{rows: []asset.TextTrack{
+		{
+			AssetID:      "yt_phase1b_007",
+			LanguageCode: "es",
+			TextKind:     asset.TextTrackTranscript,
+			TextContent:  "Hola",
+			Status:       asset.TextTrackReady,
+		},
+	}}
+	resolver := newTestResolver(repo, nil, nil)
+	row, err := resolver.ResolveBestAvailable(context.Background(), "yt_phase1b_007",
+		[]string{"it", "es", "fr"}, asset.TextTrackTranscript)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if row == nil || row.LanguageCode != "es" {
+		t.Fatalf("ResolveBestAvailable should pick 'es' from preferred list; got %+v", row)
+	}
+}
+
+func TestResolveBestAvailable_EmptyListReturnsNil(t *testing.T) {
+	resolver := newTestResolver(&stubRepo{rows: []asset.TextTrack{
+		{AssetID: "yt_phase1b_008", LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextContent: "x", Status: asset.TextTrackReady},
+	}}, nil, nil)
+	row, err := resolver.ResolveBestAvailable(context.Background(), "yt_phase1b_008", nil, asset.TextTrackTranscript)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if row != nil {
+		t.Fatalf("empty PreferredLanguages should NOT probe DB; got %+v", row)
+	}
+}
+
+// ── MaterializePayloadTexts: all kinds, hashes populated (Fase 1.a) ─────
 
 func TestMaterializePayloadTexts_AllFourKinds(t *testing.T) {
 	resolver := newTestResolver(&stubRepo{}, nil, nil)
@@ -350,7 +669,7 @@ func TestMaterializePayloadTexts_HashesAreStableAcrossCalls(t *testing.T) {
 	}
 }
 
-// ── Save: empty language → "und"; empty Source → error ───────────────────
+// ── Save: empty language → "und"; empty Source → error (Fase 1.a) ──────
 
 func TestSave_DefaultsEmptyLanguageToUnd(t *testing.T) {
 	repo := &stubRepo{}
@@ -409,3 +728,33 @@ type stubError struct{}
 func (stubError) Error() string { return "stub" }
 
 func errStub() error { return stubError{} }
+
+// ensureIsErrLanguageUndeterminable_GoldenMessage pins the godlike/07
+// honest-lock contract: the typed error MUST carry the assetID
+// verbatim so operator dashboards can correlate to the right clip.
+func TestErrLanguageUndeterminable_AssetIDPropagated(t *testing.T) {
+	// Indirect pin: simulate the policy-gate path and ensure the
+	// returned error is probeable AND carries the assetID.
+	resolver := &usecase.TextTrackResolver{
+		Repo:                     &stubRepo{},
+		Subtitles:                &stubSubtitles{bundle: nil},
+		Transcriber:              &stubTranscriber{text: ""},
+		Log:                      zap.NewNop(),
+		RequireLanguageCertainty: true,
+	}
+	_, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
+		ClipID:    "yt_pin_001",
+		VideoID:   "v_pin_001",
+		LocalPath: "/tmp/x.mp4",
+	})
+	if !asset.IsLanguageUndeterminable(err) {
+		t.Fatalf("expected ErrLanguageUndeterminable; got %T %v", err, err)
+	}
+	var typed *asset.ErrLanguageUndeterminable
+	if !errors.As(err, &typed) {
+		t.Fatalf("errors.As must probe the typed error; got %T", err)
+	}
+	if typed.AssetID != "yt_pin_001" {
+		t.Fatalf("AssetID = %q, want %q", typed.AssetID, "yt_pin_001")
+	}
+}

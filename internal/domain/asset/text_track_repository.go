@@ -29,4 +29,15 @@ type TextTrackRepository interface {
 	// language_code, text_kind. Returns an empty slice (not nil) when no
 	// tracks exist.
 	ListByAsset(ctx context.Context, assetID string) ([]TextTrack, error)
+
+	// FindReady is the canonical typed lookup the resolver uses for
+	// ResolveLanguage + ResolveBestAvailable (PR-PY-CLIPS-CORRETTE-TRADOTTE
+	// Fase 1.b, July 2026). It returns a single text track for the
+	// given (asset, language, kind) triple, filtered to status=READY.
+	// Returns (nil, nil) when no row exists OR when the row exists
+	// but is in a non-READY status (PENDING/FAILED). The READY-only
+	// filter is the Fase 4 video-pipeline contract: a non-READY track
+	// is not authoritative, and the pipeline surfaces
+	// ErrClipTextTrackNotReady rather than using a stale row.
+	FindReady(ctx context.Context, assetID string, languageCode string, kind TextTrackKind) (*TextTrack, error)
 }

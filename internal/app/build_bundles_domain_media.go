@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -95,10 +96,24 @@ func buildDomainMediaServices(
 	hashAdapter := hashutil.NewHashAdapter()
 
 	// UseCookies=false: public video segmentation (n-challenge path via monitor).
+	//
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the
+	// SubtitleFetcherAdapter no longer silently defaults to "en,en-US".
+	// The default-languages list is the config-driven
+	// cfg.Media.Multilingual.MaterializeLanguages (BCP-47 list,
+	// comma-separated), normalized via the canonical asset.Normalize
+	// helper. Empty config collapses to "" (NOT "en") so the
+	// acquisition chain surfaces "und" (BCP-47 undetermined) per
+	// godlike/07 no-fake-availability. The acquisition chain
+	// (TextTrackResolver.AcquireSegmentText) consumes this list as
+	// the PreferredLanguages fan-out order and as the
+	// SubtitleFetcherAdapter --sub-langs CSV (yt-dlp probes them
+	// top-to-bottom).
+	subtitleLanguagesCSV := buildBcp47CSV(cfg.Multilingual.MaterializeLanguages)
 	subtitleFetcherAdapter := ytinfra.NewSubtitleFetcherAdapter(
 		ytinfra.SubtitleCacheConfig{
 			YTDLPPath:    cfg.External.ResolvedYtdlpPath(),
-			DefaultLangs: "en,en-US",
+			DefaultLangs: subtitleLanguagesCSV,
 			CacheDir:     cfg.Storage.SubtitlesPath(),
 		},
 		nil,
@@ -136,11 +151,16 @@ func buildDomainMediaServices(
 	}
 	// Compile-time pin: TextTrackRepositorySQLite satisfies asset.TextTrackRepository.
 	var _ asset.TextTrackRepository = (*assets.TextTrackRepositorySQLite)(nil)
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the
+	// resolver now consumes cfg.Media.Multilingual.RequireLanguageCertainty
+	// so the policy gate (asset.ErrLanguageUndeterminable pre-Step-9
+	// on full-miss chain) is plumbed end-to-end.
 	textTrackResolver := &youtube.TextTrackResolver{
-		Repo:        textTrackRepo,
-		Subtitles:   subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)
-		Transcriber: nil,                    // no concrete whisper wired in production composition; resolver.AcquireSegmentText skips priority 5 when nil (Fase 1.b will add the adapter)
-		Log:         log,
+		Repo:                     textTrackRepo,
+		Subtitles:                subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)
+		Transcriber:              nil,                   // no concrete whisper wired in production composition; resolver.AcquireSegmentText skips priority 5 when nil (Fase 1.b will add the adapter)
+		Log:                      log,
+		RequireLanguageCertainty: cfg.Multilingual.RequireLanguageCertainty,
 	}
 
 	processSeg := youtube.NewProcessYouTubeSegmentUseCase(youtube.ProcessSegmentDeps{
@@ -199,4 +219,28 @@ func buildDomainMediaServices(
 	bundle.YoutubeClipService = youtube.NewService(youtubeDeps)
 
 	return voMetaWriter, clipWriter, nil
+}
+
+// buildBcp47CSV normalizes a config-driven BCP-47 list into the
+// comma-separated string yt-dlp's --sub-langs expects (e.g.
+// "it,en,es,pt-BR,fr,de"). godlike/07 NO-FAKE-AVAILABILITY: empty
+// or invalid entries are SILENTLY SKIPPED — the helper MUST NOT
+// default to "en" or any other language. Empty input collapses to
+// an empty string (which is the canonical "no preference" signal
+// at the SubtitleFetcherAdapter layer; FetchSegmentSubtitles
+// surfaces "und" when no langs are configured).
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026). The helper
+// is the single canonical conversion point; callers MUST NOT
+// re-implement CSV joining inline.
+func buildBcp47CSV(codes []string) string {
+	var out []string
+	for _, raw := range codes {
+		normalized, err := asset.Normalize(raw)
+		if err != nil || normalized == "und" {
+			continue
+		}
+		out = append(out, normalized)
+	}
+	return strings.Join(out, ",")
 }

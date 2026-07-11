@@ -41,6 +41,16 @@ type SubtitleFetcherAdapter struct {
 }
 
 // SubtitleCacheConfig configures the adapter.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the constructor
+// no longer silently defaults DefaultLangs to "en,en-US" — an empty
+// DefaultLangs is the canonical "no preference" signal. The YouTube
+// acquisition chain is now driven by the config-driven
+// MultilingualConfig.MaterializeLanguages list (forwarded at wire-time
+// from internal/app/build_bundles_domain_media.go). The
+// godlike/07 no-fake-availability invariant is preserved: the chain
+// never substitutes "en" for an empty input; empty collapses to the
+// BCP-47 "und" marker (see FetchSegmentSubtitles).
 type SubtitleCacheConfig struct {
 	YTDLPPath    string
 	DefaultLangs string
@@ -75,9 +85,16 @@ func NewSubtitleFetcherAdapter(cfg SubtitleCacheConfig, runner ProcessRunnerPort
 	if runner == nil {
 		runner = NewProcessRunnerAdapter()
 	}
-	if cfg.DefaultLangs == "" {
-		cfg.DefaultLangs = "en,en-US"
-	}
+	// godlike/07 no-fake-availability: empty DefaultLangs is the
+	// canonical "no preference" signal — it collapses to the BCP-47
+	// "und" marker at FetchSegmentSubtitles time. The pre-Fase-1.b
+	// fallback to "en,en-US" is REMOVED; callers MUST plumb the
+	// config-driven list from internal/app/build_bundles_domain_media.go
+	// (cfg.Media.Multilingual.MaterializeLanguages) into DefaultLangs
+	// at wire-time. The acquisition chain surfaces
+	// ErrLanguageUndeterminable when the resolved language is "und"
+	// AND the policy (cfg.Media.Multilingual.RequireLanguageCertainty)
+	// demands certainty.
 	if cmdBuilder == nil {
 		cmdBuilder = ytdlp.NewCommandBuilder(&ytcfg.Config{})
 	}

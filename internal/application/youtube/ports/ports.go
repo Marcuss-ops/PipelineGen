@@ -180,6 +180,24 @@ type SubtitleFetcherPort interface {
 
 type WhisperTranscriberPort interface {
 	TranscribeAudio(ctx context.Context, audioPath string) (string, error)
+	// TranscribeAudioWithDetection returns the typed result
+	// including the model's DetectedLanguage + Confidence
+	// (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b, July 2026). The
+	// canonical TranscriptResult type lives in
+	// internal/domain/asset (godlike/06 SSOT — one canonical owner
+	// per fact) so both this application-layer port and the
+	// infrastructure-layer WhisperTranscriber (in
+	// internal/infrastructure/youtube/ports.go) reference the
+	// same shape.
+	//
+	// godlike/07 no-fake-availability: the concrete adapter MUST
+	// normalize DetectedLanguage to BCP-47 (lang or lang-region)
+	// and collapse unknown/empty to "und" via the canonical
+	// bcp47.Normalize helper. The 5-level chain in
+	// TextTrackResolver.AcquireSegmentText (priority 5) calls
+	// this method so the resolver can apply the
+	// RequireLanguageCertainty policy gate.
+	TranscribeAudioWithDetection(ctx context.Context, audioPath string) (asset.TranscriptResult, error)
 }
 
 type ClipFilesPort interface {
