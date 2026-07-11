@@ -62,10 +62,12 @@ func (f *fakeClipBuilder) BuildClipContext(_ context.Context, _ []string, _ *Cli
 type recordClipBuilder struct {
 	fakeClipBuilder
 	lastOpts *ClipGenerationOptions
+	lastIDs  []string
 }
 
 func (r *recordClipBuilder) BuildClipContext(_ context.Context, ids []string, opts *ClipGenerationOptions) (*scriptpkg.ClipEvidence, string, string, error) {
 	r.lastOpts = opts
+	r.lastIDs = ids
 	return r.fakeClipBuilder.BuildClipContext(context.Background(), ids, opts)
 }
 
@@ -414,6 +416,18 @@ func TestCurateResolver_SearchHitsAndClipHints_Dedup(t *testing.T) {
 	}
 	// The builder was called with the unique, dedup'd set.
 	// fakePackForIDs confirms the resolver passed exactly {A,B,C}.
+	if rec.lastOpts == nil {
+		t.Fatal("expected builder called")
+	}
+	want := []string{"A", "B", "C"}
+	if len(rec.lastIDs) != len(want) {
+		t.Fatalf("expected %d clip ids, got %d: %v", len(want), len(rec.lastIDs), rec.lastIDs)
+	}
+	for i, id := range want {
+		if rec.lastIDs[i] != id {
+			t.Errorf("expected clip id %q at index %d, got %q", id, i, rec.lastIDs[i])
+		}
+	}
 }
 
 // ── PR-DEADC-CURATION-MED-CURATOR-RETIRE migration contract ────────────
@@ -441,19 +455,7 @@ func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
 	_, err := r.Resolve(context.Background(), srcSpec("no-results", nil, true, false), makeTestResCtx())
 	if err == nil {
 		t.Fatal("expected error when no clips resolve and AllowTextOnly=false, got nil")
-	}
-<<<<<<< Updated upstream
-	// Lock the sentinel-level contract (the deleted stub-era test
-	// also probed this via errors.Is(err, ErrCurateNoClips)).
-||||||| constructed merge base
-	// Lock the sentinel-level contract (the deleted stub-era test
-	// also probed this via errors.Is(err, ErrCurateNoClips)).
-	if !errors.Is(err, ErrCurateNoClips) {
-		t.Fatalf("expected errors.Is(err, ErrCurateNoClips)=true, got err=%v", err)
-	}
-=======
->>>>>>> Stashed changes
-	// Lock the typed envelope contract (code-reviewer MUST-FIX #1):
+	} // Lock the typed envelope contract (code-reviewer MUST-FIX #1):
 	// a future refactor that drops the `Inner:` field on
 	// SourceResolutionError would surface here.
 	var srcErr *scriptpkg.SourceResolutionError
@@ -463,7 +465,6 @@ func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
 	if srcErr.ResultCount != 0 {
 		t.Errorf("expected ResultCount=0, got %d", srcErr.ResultCount)
 	}
-<<<<<<< Updated upstream
 	// Lock the sentinel-level contract: the Inner field must be
 	// ErrCurateNoClips. Note: SourceResolutionError.Unwrap()
 	// returns ErrSourceResolutionFailed (the umbrella), NOT Inner,
@@ -473,18 +474,6 @@ func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
 	if !errors.Is(srcErr.Inner, ErrCurateNoClips) {
 		t.Fatalf("expected errors.Is(srcErr.Inner, ErrCurateNoClips)=true, got Inner=%v", srcErr.Inner)
 	}
-||||||| constructed merge base
-=======
-	// Lock the sentinel-level contract: the Inner field must be
-	// ErrCurateNoClips. Note: SourceResolutionError.Unwrap() returns
-	// ErrSourceResolutionFailed (the umbrella), NOT Inner, so
-	// errors.Is(err, ErrCurateNoClips) would always be false.
-	// The canonical probe is to unwrap the typed envelope and
-	// compare Inner directly.
-	if !errors.Is(srcErr.Inner, ErrCurateNoClips) {
-		t.Fatalf("expected errors.Is(srcErr.Inner, ErrCurateNoClips)=true, got Inner=%v", srcErr.Inner)
-	}
->>>>>>> Stashed changes
 }
 
 func TestCurateResolver_HintClipIDsOnly_DoesNotSurfaceErrCurateNoClips(t *testing.T) {
