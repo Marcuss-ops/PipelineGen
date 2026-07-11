@@ -32,12 +32,39 @@ type TextTrackRepository interface {
 
 	// FindReady is the canonical typed lookup the resolver uses for
 	// ResolveLanguage + ResolveBestAvailable (PR-PY-CLIPS-CORRETTE-TRADOTTE
-	// Fase 1.b, July 2026). It returns a single text track for the
-	// given (asset, language, kind) triple, filtered to status=READY.
-	// Returns (nil, nil) when no row exists OR when the row exists
-	// but is in a non-READY status (PENDING/FAILED). The READY-only
-	// filter is the Fase 4 video-pipeline contract: a non-READY track
-	// is not authoritative, and the pipeline surfaces
-	// ErrClipTextTrackNotReady rather than using a stale row.
-	FindReady(ctx context.Context, assetID string, languageCode string, kind TextTrackKind) (*TextTrack, error)
+	// Fase 1.b, July 2026) AND for the ClipSourceBuilder video-pipeline
+	// cutover (Fase 4, July 2026). It returns a single text track
+	// for the given (asset, language, kind) triple, filtered to
+	// status=READY, PLUS the timed cues if the source carried
+	// per-segment timing (VTT-derived rows).
+	//
+	// Return contract (Fase 4):
+	//   (track, cues, nil) — track found and READY; cues is nil
+	//                        when the source is payload-text,
+	//                        DB-stored full-text, or Whisper.
+	//   (nil, nil, nil)    — no row OR row in non-READY status
+	//                        (PENDING / FAILED). The READY-only
+	//                        filter is the canonical contract: a
+	//                        non-READY row is not authoritative,
+	//                        and the pipeline surfaces
+	//                        ErrTextTrackNotReady rather than
+	//                        using a stale row.
+	//   (nil, nil, err)    — repository-level error.
+	FindReady(ctx context.Context, assetID string, languageCode string, kind TextTrackKind) (*TextTrack, []TimedCue, error)
+
+	// ListReadyLanguages enumerates the sorted set of language
+	// codes for which a READY text track exists for the given
+	// (asset, kind). Populates the `AvailableLanguages` field of
+	// `*ErrTextTrackNotReady` so operator dashboards surface
+	// "what's actually READY" without requiring a second
+	// round-trip. Returns an empty slice (not nil) when no
+	// READY tracks exist.
+	//
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): this method
+	// was promoted to the canonical port surface so the video
+	// pipeline (ClipSourceBuilder) and the backfill CLI (Fase 5)
+	// can share one canonical sub-surface (TextTrackReader). The
+	// concrete SQLite implementation lives in
+	// `internal/infrastructure/database/sqlite/assets/`.
+	ListReadyLanguages(ctx context.Context, assetID string, kind TextTrackKind) ([]string, error)
 }

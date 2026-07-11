@@ -207,7 +207,7 @@ func (r *TextTrackResolver) ResolveLanguage(ctx context.Context, clipID, languag
 		// the language-validation gate; we surface (nil, nil).
 		return nil, nil
 	}
-	row, err := r.Repo.FindReady(ctx, clipID, lang, kind)
+	row, _, err := r.Repo.FindReady(ctx, clipID, lang, kind)
 	if err != nil {
 		return nil, fmt.Errorf("text_track_resolver.ResolveLanguage: db: %w", err)
 	}
@@ -263,7 +263,7 @@ func (r *TextTrackResolver) ResolveBestAvailable(ctx context.Context, clipID str
 			// useful probe target.
 			continue
 		}
-		row, err := r.Repo.FindReady(ctx, clipID, lang, kind)
+		row, _, err := r.Repo.FindReady(ctx, clipID, lang, kind)
 		if err != nil {
 			return nil, fmt.Errorf("text_track_resolver.ResolveBestAvailable: db: %w", err)
 		}

@@ -123,6 +123,16 @@ type RepoBundle struct {
 	CatalogRepo      *catalog.Repository
 	SQRepo           *assets.SearchQueriesRepository
 	IdempotencyStore mwidem.IdempotencyStore
+	// TextTrackRepo is the canonical Fase 2.a / Fase 4
+	// TextTrackRepository used by the video pipeline
+	// (ClipSourceBuilder.ConfigureTextTrackReader) and the
+	// TextTrackResolver (Fase 1.b). The composition root
+	// wires the *assets.TextTrackRepositorySQLite here so
+	// both consumers can share one canonical surface.
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): added
+	// so the cutover wiring
+	// (`root.Repos.TextTrackRepo`) compiles.
+	TextTrackRepo asset.TextTrackRepository
 }
 
 // SearchBundle holds the asset metadata search/index pair and resolver.

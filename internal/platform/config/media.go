@@ -123,6 +123,24 @@ type MultilingualConfig struct {
 	// the writer (CommitClipTextAndIndexEvent) ALSO surfaces
 	// ErrClipLocaleNotReady if a non-und language was never resolved.
 	RequireLanguageCertainty bool `yaml:"require_language_certainty" default:"false"`
+
+	// MigrationFallbackLegacyMetadata is the one-time migration
+	// switch for the Fase 4 video-pipeline cutover
+	// (PR-PY-CLIPS-CORRETTE-TRADOTTE, July 2026). When true, the
+	// ClipSourceBuilder keeps the legacy `metadata_json["transcript"]`
+	// / `metadata_json["clean_transcript"]` fallback path active
+	// for clips whose `asset_text_tracks` row is missing or
+	// non-READY. When false (the canonical post-cutover default),
+	// the legacy path is REMOVED: the video pipeline reads
+	// transcripts EXCLUSIVELY from `asset_text_tracks` and
+	// surfaces `*ErrTextTrackNotReady` when no READY track is
+	// available for the caller's target language.
+	//
+	// Default false (post-cutover).
+	// godlike/07 fail-closed: an explicit operator opt-in is
+	// required to re-enable the legacy path; the migration is
+	// not a silent background fallback.
+	MigrationFallbackLegacyMetadata bool `yaml:"migration_fallback_legacy_metadata" default:"false"`
 }
 
 // JobsConfig holds job-related configuration.

@@ -341,6 +341,38 @@ type ClipEvidence struct {
 	// clip source builder and consumed by the scene binder when
 	// the model does not emit a structured scene breakdown.
 	ClipDetails map[string]ClipDetail `json:"clip_details,omitempty"`
+
+	// LanguageCode is the BCP-47 code of the resolved text track
+	// the video pipeline read from `asset_text_tracks` for the
+	// caller's target language. PR-PY-CLIPS-CORRETTE-TRADOTTE
+	// Fase 4 (July 2026): added so the generation fingerprint
+	// can evolve when the resolved language changes (e.g. a
+	// backfill populates the Italian track and the next
+	// `script.generate` call resolves to "it" instead of "en").
+	// Empty when the video pipeline ran in legacy metadata_json
+	// fallback mode (pre-Fase 4) or when no READY track was found.
+	LanguageCode string `json:"language_code,omitempty"`
+
+	// TextTrackVersion is the source_version of the resolved
+	// text track (e.g. "v1.0", or a model-version-derived
+	// string). PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
+	// added so the generation fingerprint evolves when the
+	// translation re-derives (a re-translation bumps
+	// source_version). Distinct from the per-row
+	// `TextTrack.SourceVersion` field on the domain model:
+	// this is the resolved value carried by the evidence.
+	TextTrackVersion string `json:"text_track_version,omitempty"`
+
+	// TranscriptHash is the per-row text_hash of the resolved
+	// text track (canonical SHA-256 of the text_content). PR-PY-
+	// CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): added so the
+	// generation fingerprint evolves when the text_content
+	// changes (a re-translation rewrites the row, bumps the
+	// hash, invalidates the cached generation result). This is
+	// distinct from the per-clip ClipTranscriptHashes slice:
+	// this single field is the canonical "what version of the
+	// resolved language did we read" hash.
+	TranscriptHash string `json:"transcript_hash,omitempty"`
 }
 
 // ClipDetail carries the primary evidence for a single accepted

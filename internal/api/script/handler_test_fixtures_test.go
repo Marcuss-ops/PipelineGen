@@ -12,17 +12,22 @@ package script
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	mw "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
+	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 )
 
@@ -129,6 +134,17 @@ func newTestJobsService(t *testing.T) (job.Service, *fakeJobsService) {
 // wired" — production wiring is the SOLE owner of the real
 // composition-time contract (see internal/app/wire_script.go).
 //
+// FASE 2 (July 2026): the fixture now constructs a real
+// `*opsapp.Service` backed by an in-memory SQLite + the 3
+// canonical FASE 2 schemas (operations, jobs, outbox_events).
+// This lets handler-level tests exercise the full
+// Operations.Submit path (atomic-TX commit, idempotency hit,
+// force_refresh supersede) without pulling the full
+// composition root. Tests that want a nil operations service
+// (to verify the 503 "operations service not initialised"
+// fail-closed path) set `Generate.Operations` to nil after
+// calling the fixture.
+//
 // Other fields (Legacy, ClipsSearcher, AdminToken) default to zero
 // values — tests that need a populated dep supply it explicitly.
 func newMinimalScriptFlowDepsForTest(jobs job.Service) ScriptFlowDeps {
@@ -151,67 +167,117 @@ func newMinimalScriptFlowDepsForTest(jobs job.Service) ScriptFlowDeps {
 				ImagesEnabled:    true,
 				DocumentEnabled:  true,
 			},
-			Validator: usecase.NewDefaultPayloadValidator(),
-			Store:     newInMemoryIdempotencyStore(),
+			Validator:  usecase.NewDefaultPayloadValidator(),
+			Operations: newFASE2OperationsServiceForTest(),
 		},
 	}
 }
 
-// inMemoryIdempotencyStore is a minimal in-memory implementation of
-// middleware.IdempotencyStore for handler-level tests.
-type inMemoryIdempotencyStore struct {
-	mu      sync.RWMutex
-	records map[string]*mw.IdempotencyRecord
-}
-
-func newInMemoryIdempotencyStore() mw.IdempotencyStore {
-	return &inMemoryIdempotencyStore{records: make(map[string]*mw.IdempotencyRecord)}
-}
-
-func (s *inMemoryIdempotencyStore) TryInsert(ctx context.Context, key, bodyHash string) (*mw.IdempotencyRecord, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.records[key]; ok {
-		return nil, true, nil
+// newFASE2OperationsServiceForTest constructs a real
+// `*opsapp.Service` backed by an in-memory SQLite + the 3
+// canonical FASE 2 schemas. The test fixture is the canonical
+// SOLE owner of the in-memory test DB lifecycle (the helper
+// uses t.Cleanup to close the DB at test exit).
+//
+// godlike/06 SSOT: the 3 schemas are the SOLE canonical shapes
+// the Service touches. Drift between this schema and the
+// production migrations would surface as SQL errors at INSERT
+// time (NOT a silent mismatch).
+func newFASE2OperationsServiceForTest() *opsapp.Service {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		panic("newFASE2OperationsServiceForTest: open in-memory SQLite: " + err.Error())
 	}
-	rec := &mw.IdempotencyRecord{
-		Key:       key,
-		BodyHash:  bodyHash,
-		Status:    "in_flight",
-		CreatedAt: time.Now(),
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+	if _, err := db.Exec(schemasFASE2ForTest); err != nil {
+		panic("newFASE2OperationsServiceForTest: apply FASE 2 schemas: " + err.Error())
 	}
-	s.records[key] = rec
-	return rec, false, nil
+	opsRepo := sqliteops.NewSQLiteRepository(db)
+	jobsStore := sqlitejobs.NewSQLiteStore(db, zap.NewNop())
+	outboxRepo := outboxevents.NewRepository(db)
+	txMgr := &dbTxManagerForTest{db: db}
+	return opsapp.NewService(opsRepo, jobsStore, outboxRepo, txMgr, zap.NewNop())
 }
 
-func (s *inMemoryIdempotencyStore) Complete(ctx context.Context, key string, responseStatus int, responseBody []byte, responseContentType string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	rec, ok := s.records[key]
-	if !ok {
-		return mw.ErrIdempotencyKeyNotFound
-	}
-	rec.Status = "completed"
-	rec.ResponseStatus = responseStatus
-	rec.ResponseBody = responseBody
-	rec.ResponseCT = responseContentType
-	return nil
+// dbTxManagerForTest wraps *sql.DB to satisfy the operations.TxManager
+// port. Mirrors the production sqlTxManager in
+// internal/app/build_bundles_operations.go but is inlined here to
+// avoid the test package importing the production composition root.
+type dbTxManagerForTest struct {
+	db *sql.DB
 }
 
-func (s *inMemoryIdempotencyStore) Get(ctx context.Context, key string) (*mw.IdempotencyRecord, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	rec, ok := s.records[key]
-	if !ok {
-		return nil, mw.ErrIdempotencyKeyNotFound
-	}
-	return rec, nil
+func (m *dbTxManagerForTest) BeginTx(ctx context.Context) (*sql.Tx, error) {
+	return m.db.BeginTx(ctx, nil)
 }
 
-func (s *inMemoryIdempotencyStore) DeleteExpired(ctx context.Context, now time.Time) (int, error) {
-	return 0, nil
-}
+// schemasFASE2ForTest is the inline mirror of migrations/sqlite/092
+// (outbox_events), 145 (operations), and the canonical jobs
+// table from `internal/infrastructure/database/sqlite/jobs`. Kept
+// in lockstep with the production migrations.
+const schemasFASE2ForTest = `
+CREATE TABLE operations (
+    operation_id            TEXT PRIMARY KEY,
+    scope                   TEXT NOT NULL,
+    idempotency_key         TEXT NOT NULL,
+    request_hash            TEXT NOT NULL,
+    job_id                  TEXT NOT NULL,
+    state                   TEXT NOT NULL,
+    created_at              TEXT NOT NULL,
+    updated_at              TEXT NOT NULL,
+    supersedes_operation_id TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_operations_idem_lookup
+    ON operations(scope, idempotency_key, created_at DESC);
+
+CREATE TABLE jobs (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'QUEUED',
+    priority INTEGER NOT NULL DEFAULT 0,
+    project TEXT NOT NULL DEFAULT '',
+    video_name TEXT NOT NULL DEFAULT '',
+    active_key TEXT NOT NULL DEFAULT '',
+    correlation_id TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    result_json TEXT NOT NULL DEFAULT '{}',
+    progress INTEGER NOT NULL DEFAULT 0,
+    error TEXT NOT NULL DEFAULT '',
+    retry_count INTEGER NOT NULL DEFAULT 0,
+    max_retries INTEGER NOT NULL DEFAULT 0,
+    worker_id TEXT NOT NULL DEFAULT '',
+    lease_id TEXT NOT NULL DEFAULT '',
+    lease_expiry TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    cancelled_at TEXT,
+    revision INTEGER NOT NULL DEFAULT 1,
+    parent_state_typed TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE outbox_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    aggregate_id TEXT NOT NULL DEFAULT '',
+    aggregate_type TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL DEFAULT '',
+    event_key TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 10,
+    last_error TEXT NOT NULL DEFAULT '',
+    next_attempt_at TEXT,
+    worker_id TEXT NOT NULL DEFAULT '',
+    lease_id TEXT NOT NULL DEFAULT '',
+    lease_expiry TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX ux_outbox_events_event_key
+    ON outbox_events(event_key);
+`
 
 // stubJobStatsReader satisfies appjobs.JobStatsReader with a
 // no-op GetStats. Used in test wiring where the stats reader
