@@ -1,0 +1,32 @@
+# PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026):
+# canonical multilingual materialization policy.
+#
+# godlike/06 SSOT: this file is the SINGLE canonical source
+# for the BCP-47-driven materialization policy.
+
+media:
+  multilingual:
+    enabled: true
+    source_language: "en"
+    materialize_languages:
+      - "it"
+      - "en"
+      - "es"
+      - "pt-BR"
+      - "fr"
+      - "de"
+    index_languages:
+      - "it"
+      - "en"
+      - "es"
+    # Translation policy: "auto" | "fast" | "quality"
+    # Maps onto translation.TranslationPort's ModelPolicy.
+    translation_policy: "auto"
+    # Fail-closed gate: when true, the YouTube acquisition
+    # chain surfaces ErrLanguageUndeterminable PRE-STEP-9
+    # if no chain level surfaces a real BCP-47 language.
+    require_language_certainty: false
+    # One-time migration switch for the Fase 4 video-pipeline
+    # cutover. False (post-cutover canonical default) removes
+    # the legacy metadata_json["transcript"] fallback path.
+    migration_fallback_legacy_metadata: false
