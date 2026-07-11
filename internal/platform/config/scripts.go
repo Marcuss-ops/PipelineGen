@@ -81,6 +81,16 @@ type ScriptsConfig struct {
 	// in engine.Generate. These run in a background context so they survive
 	// HTTP disconnection.
 	SaveTimeoutSeconds int `yaml:"save_timeout_seconds" env:"VELOX_SCRIPTS_SAVE_TIMEOUT" default:"30"`
+
+	// ── Source text limits for /api/script/generate ────────────────────
+	// MaxSourceTextChars caps the source_text field length in characters.
+	MaxSourceTextChars int `yaml:"max_source_text_chars" env:"VELOX_SCRIPTS_MAX_SOURCE_TEXT_CHARS" default:"50000"`
+	// MaxSourceTextBytes caps the source_text field length in bytes.
+	MaxSourceTextBytes int `yaml:"max_source_text_bytes" env:"VELOX_SCRIPTS_MAX_SOURCE_TEXT_BYTES" default:"100000"`
+	// MaxSourceTextTokens caps the estimated token count for source_text.
+	MaxSourceTextTokens int `yaml:"max_source_text_tokens" env:"VELOX_SCRIPTS_MAX_SOURCE_TEXT_TOKENS" default:"10000"`
+	// MaxSourceTextToTargetWordsRatio caps source_text words / target_words.
+	MaxSourceTextToTargetWordsRatio float64 `yaml:"max_source_text_to_target_words_ratio" env:"VELOX_SCRIPTS_MAX_SOURCE_TEXT_TO_TARGET_WORDS_RATIO" default:"5.0"`
 }
 
 // WithDefaults returns a copy of ScriptsConfig with zero-values replaced by
@@ -138,6 +148,18 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.SaveTimeoutSeconds <= 0 {
 		s.SaveTimeoutSeconds = 30
+	}
+	if s.MaxSourceTextChars <= 0 {
+		s.MaxSourceTextChars = 50000
+	}
+	if s.MaxSourceTextBytes <= 0 {
+		s.MaxSourceTextBytes = 100000
+	}
+	if s.MaxSourceTextTokens <= 0 {
+		s.MaxSourceTextTokens = 10000
+	}
+	if s.MaxSourceTextToTargetWordsRatio <= 0 {
+		s.MaxSourceTextToTargetWordsRatio = 5.0
 	}
 	return s
 }

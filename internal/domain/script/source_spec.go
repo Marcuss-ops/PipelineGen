@@ -31,6 +31,30 @@ const (
 	SourceCurate SourceType = "curate"
 )
 
+// Canonical grounding policies for clip-aware generation.
+const (
+	// GroundingPolicyClipsPrimary means the output must stay anchored
+	// to clip evidence; no unsupported claims are allowed.
+	GroundingPolicyClipsPrimary = "clips_primary"
+	// GroundingPolicySourcePrimary means source_text is the main source
+	// and clips are used only as visual support.
+	GroundingPolicySourcePrimary = "source_primary"
+	// GroundingPolicyBalanced means clip evidence and source_text have
+	// equal weight.
+	GroundingPolicyBalanced = "balanced"
+)
+
+// Canonical fallback policies for clip-aware generation.
+const (
+	// FallbackPolicyStrict means the job fails when clip-native
+	// planning cannot produce scenes from the provided clips.
+	FallbackPolicyStrict = "strict"
+	// FallbackPolicyAllowProse means a prose fallback is permitted
+	// when clip-native planning fails; the result must carry
+	// SUCCEEDED_WITH_WARNINGS and declare the fallback.
+	FallbackPolicyAllowProse = "allow_prose"
+)
+
 // SourceSpec declares where script-generation input comes from.
 // Exactly one source type must be active; the resolver validates
 // that the corresponding fields are populated.
@@ -63,7 +87,11 @@ type SourceSpec struct {
 	// generation fingerprint so policy changes invalidate cached
 	// results.
 	GroundingPolicy string `json:"grounding_policy,omitempty"`
-	ForceRefresh    bool   `json:"force_refresh,omitempty"`
+	// FallbackPolicy is the canonical fallback policy for clip-aware
+	// generation. It controls whether the pipeline is allowed to fall
+	// back to prose when clip-native planning cannot produce scenes.
+	FallbackPolicy string `json:"fallback_policy,omitempty"`
+	ForceRefresh   bool   `json:"force_refresh,omitempty"`
 
 	// ── Curation source (SourceCurate) ────────────────────────────────
 	// Search enables the semantic search leg (Qdrant via ClipSearchPort).
@@ -203,6 +231,11 @@ type ResolvedSource struct {
 	// SearchResults holds the raw search results when the source
 	// involved semantic or catalog search. Nil otherwise.
 	SearchResults []SearchResultItem `json:"search_results,omitempty"`
+
+	// GroundingPolicy is the clip-grounding policy used when the
+	// source involved clips. It is part of the generation fingerprint
+	// so policy changes invalidate cached results.
+	GroundingPolicy string `json:"grounding_policy,omitempty"`
 
 	// Fingerprint is a deterministic hash of the resolved source
 	// inputs, used for memory-gate caching and idempotency.

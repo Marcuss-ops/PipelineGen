@@ -17,6 +17,8 @@ func mapErrorToHTTP(err error) int {
 		return http.StatusBadRequest
 	case errors.Is(err, scriptpkg.ErrValidation):
 		return http.StatusBadRequest
+	case errors.Is(err, scriptpkg.ErrPlanInvalid):
+		return http.StatusBadRequest
 	case errors.Is(err, scriptpkg.ErrUnavailable):
 		return http.StatusServiceUnavailable
 	case errors.Is(err, scriptpkg.ErrConflict):

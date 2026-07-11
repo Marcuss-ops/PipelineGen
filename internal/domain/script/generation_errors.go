@@ -186,3 +186,30 @@ func (e *PlanInvalidError) Error() string {
 }
 
 func (e *PlanInvalidError) Unwrap() error { return ErrPlanInvalid }
+
+// PayloadValidationError carries a stable machine-readable code and
+// optional structured context for a payload validation failure.
+// It is the canonical surface for 400 Bad Request responses on
+// POST /api/script/generate.
+type PayloadValidationError struct {
+	// Code is the stable error code (e.g. "SOURCE_TEXT_TOO_LARGE").
+	Code string
+	// Message is a human-readable description.
+	Message string
+	// Stage is the pipeline stage where the validation failed.
+	Stage string
+	// Retryable is false for validation errors (the caller must fix
+	// the payload).
+	Retryable bool
+	// Extra carries structured context (e.g. actual_chars, max_chars).
+	Extra map[string]any
+}
+
+func (e *PayloadValidationError) Error() string {
+	if e == nil {
+		return ErrPlanInvalid.Error()
+	}
+	return fmt.Sprintf("%s: code=%s message=%s", ErrPlanInvalid.Error(), e.Code, e.Message)
+}
+
+func (e *PayloadValidationError) Unwrap() error { return ErrPlanInvalid }

@@ -31,6 +31,7 @@ import (
 	"context"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"go.uber.org/zap"
@@ -60,11 +61,14 @@ type AutoHarvestService interface {
 //   - root.Domains.ImageService + root.Drive.DocClient. Zero-value
 //     is the conservative default (all false, fail-closed for any
 //     user-requested processor).
+//   - Validator: config-aware payload validator for
+//     POST /api/script/generate.
 type GenerateDeps struct {
-	Jobs     jobservice.Service
-	Log      *zap.Logger
-	Registry *appjobs.Registry
-	Caps     PreflightCaps
+	Jobs      jobservice.Service
+	Log       *zap.Logger
+	Registry  *appjobs.Registry
+	Caps      PreflightCaps
+	Validator *usecase.PayloadValidator
 }
 
 // JobsDeps groups the canonical constructor inputs for the
@@ -154,10 +158,10 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		clipsSearcher: deps.ClipsSearcher,
 		caps:          caps,
 
-		// AZIONE 1 (July 2026): construct the 4-field HandlerGenerate
+		// AZIONE 1 (July 2026): construct the 5-field HandlerGenerate
 		// alongside the slim ScriptFlowHandler. POST /generate
 		// delegates to h.gen.Generate(c).
-		gen: NewHandlerGenerate(deps.Generate.Jobs, deps.Generate.Log, deps.Generate.Registry, caps),
+		gen: NewHandlerGenerate(deps.Generate.Jobs, deps.Generate.Log, deps.Generate.Registry, caps, deps.Generate.Validator),
 
 		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 3-field
 		// JobsHandler. POST /api/script/jobs/:id mounts via

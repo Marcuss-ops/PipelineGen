@@ -13,6 +13,7 @@ package script
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 )
 
 // GenerationEnvelopeV2 is the canonical top-level request for all
@@ -89,9 +90,14 @@ type GenerationItemV2 struct {
 // semantic defaults):
 //   - Version must be 2.
 //   - Items must be non-empty.
-//   - Each item's Source.Type must be non-empty.
+//   - Each item's Source.Type must be non-empty and known.
 //   - Each item's Source must have the corresponding fields
 //     (text → topic; clips → clip_ids; catalog/search → query).
+//   - Duplicate clip IDs are rejected.
+//   - target_words must be > 0.
+//   - Language must be supported.
+//   - Grounding / fallback policies must be valid and compatible
+//     with the source type.
 func (e *GenerationEnvelopeV2) Validate() error {
 	if e.Version != 2 {
 		return &PlanInvalidError{
@@ -116,6 +122,14 @@ func (e *GenerationEnvelopeV2) Validate() error {
 				},
 			}
 		}
+		if !isKnownSourceType(item.Source.Type) {
+			return &PlanInvalidError{
+				ItemID: item.ID,
+				Details: []string{
+					ref + ": unknown source type " + string(item.Source.Type),
+				},
+			}
+		}
 		switch item.Source.Type {
 		case SourceText:
 			if item.Source.Topic == "" && item.Source.SourceText == "" {
@@ -135,6 +149,22 @@ func (e *GenerationEnvelopeV2) Validate() error {
 					},
 				}
 			}
+			if empty := firstEmpty(item.Source.ClipIDs); empty != -1 {
+				return &PlanInvalidError{
+					ItemID: item.ID,
+					Details: []string{
+						ref + ": clip_ids cannot be empty or whitespace-only",
+					},
+				}
+			}
+			if dup := firstDuplicate(item.Source.ClipIDs); dup != "" {
+				return &PlanInvalidError{
+					ItemID: item.ID,
+					Details: []string{
+						ref + ": duplicate clip_id " + dup,
+					},
+				}
+			}
 		case SourceCatalog, SourceSearch:
 			if item.Source.Query == "" {
 				return &PlanInvalidError{
@@ -144,9 +174,164 @@ func (e *GenerationEnvelopeV2) Validate() error {
 					},
 				}
 			}
+			if item.Source.MaxClips <= 0 {
+				return &PlanInvalidError{
+					ItemID: item.ID,
+					Details: []string{
+						ref + ": " + string(item.Source.Type) + " source requires max_clips > 0",
+					},
+				}
+			}
+		}
+
+		if item.Language != "" && !IsSupportedLanguage(item.Language) {
+			return &PlanInvalidError{
+				ItemID: item.ID,
+				Details: []string{
+					ref + ": unsupported language " + item.Language,
+				},
+			}
+		}
+
+		if item.Source.GroundingPolicy != "" && !isValidGroundingPolicy(item.Source.GroundingPolicy) {
+			return &PlanInvalidError{
+				ItemID: item.ID,
+				Details: []string{
+					ref + ": invalid grounding_policy " + item.Source.GroundingPolicy,
+				},
+			}
+		}
+		if item.Source.FallbackPolicy != "" && !isValidFallbackPolicy(item.Source.FallbackPolicy) {
+			return &PlanInvalidError{
+				ItemID: item.ID,
+				Details: []string{
+					ref + ": invalid fallback_policy " + item.Source.FallbackPolicy,
+				},
+			}
+		}
+
+		if item.Source.GroundingPolicy != "" && !isClipSourceType(item.Source.Type) {
+			return &PlanInvalidError{
+				ItemID: item.ID,
+				Details: []string{
+					ref + ": grounding_policy is only compatible with clip-based sources",
+				},
+			}
+		}
+		if item.Source.FallbackPolicy != "" && item.Source.Type != SourceClips {
+			return &PlanInvalidError{
+				ItemID: item.ID,
+				Details: []string{
+					ref + ": fallback_policy is only compatible with source.type=clips",
+				},
+			}
 		}
 	}
 	return nil
+}
+
+// isKnownSourceType returns true for the canonical source types.
+func isKnownSourceType(st SourceType) bool {
+	switch st {
+	case SourceText, SourceClips, SourceCatalog, SourceSearch, SourceCurate:
+		return true
+	}
+	return false
+}
+
+// isClipSourceType returns true for source types that may carry
+// clip evidence.
+func isClipSourceType(st SourceType) bool {
+	switch st {
+	case SourceClips, SourceCatalog, SourceSearch, SourceCurate:
+		return true
+	}
+	return false
+}
+
+// firstEmpty returns the index of the first empty-or-whitespace-only
+// string in the slice, or -1 when all values are non-empty.
+func firstEmpty(ids []string) int {
+	for i, id := range ids {
+		if strings.TrimSpace(id) == "" {
+			return i
+		}
+	}
+	return -1
+}
+
+// firstDuplicate returns the first duplicate string in the slice,
+// or "" when all values are unique.
+func firstDuplicate(ids []string) string {
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			return id
+		}
+		seen[id] = struct{}{}
+	}
+	return ""
+}
+
+// isValidGroundingPolicy returns true for the canonical policies.
+func isValidGroundingPolicy(p string) bool {
+	switch p {
+	case GroundingPolicyClipsPrimary, GroundingPolicySourcePrimary, GroundingPolicyBalanced:
+		return true
+	}
+	return false
+}
+
+// isValidFallbackPolicy returns true for the canonical policies.
+func isValidFallbackPolicy(p string) bool {
+	switch p {
+	case FallbackPolicyStrict, FallbackPolicyAllowProse:
+		return true
+	}
+	return false
+}
+
+// SupportedLanguages is the canonical allowlist of target output
+// languages for script generation. ISO 639-1 two-letter codes.
+var SupportedLanguages = []string{
+	"aa", "ab", "af", "am", "ar", "as", "ay", "az", "ba", "be",
+	"bg", "bh", "bi", "bn", "bo", "br", "bs", "ca", "ce", "ch",
+	"co", "cr", "cs", "cv", "cy", "da", "de", "dv", "dz", "ee",
+	"el", "en", "eo", "es", "et", "eu", "fa", "ff", "fi", "fj",
+	"fo", "fr", "fy", "ga", "gd", "gl", "gn", "gu", "gv", "ha",
+	"he", "hi", "ho", "hr", "ht", "hu", "hy", "hz", "ia", "id",
+	"ie", "ig", "ii", "ik", "io", "is", "it", "iu", "ja", "jv",
+	"ka", "kg", "ki", "kj", "kk", "kl", "km", "kn", "ko", "kr",
+	"ks", "ku", "kv", "kw", "ky", "la", "lb", "lg", "li", "ln",
+	"lo", "lt", "lu", "lv", "mg", "mh", "mi", "mk", "ml", "mn",
+	"mr", "ms", "mt", "my", "na", "nb", "nd", "ne", "ng", "nl",
+	"nn", "no", "nr", "nv", "ny", "oc", "oj", "om", "or", "os",
+	"pa", "pi", "pl", "ps", "pt", "qu", "rm", "rn", "ro", "ru",
+	"rw", "sa", "sc", "sd", "se", "sg", "si", "sk", "sl", "sm",
+	"sn", "so", "sq", "sr", "ss", "st", "su", "sv", "sw", "ta",
+	"te", "tg", "th", "ti", "tk", "tl", "tn", "to", "tr", "ts",
+	"tt", "tw", "ty", "ug", "uk", "ur", "uz", "ve", "vi", "vo",
+	"wa", "wo", "xh", "yi", "yo", "za", "zh", "zu",
+}
+
+// IsSupportedLanguage returns true when code is a supported ISO 639-1
+// language code. Empty string is treated as supported (caller will
+// apply the configured default language).
+func IsSupportedLanguage(code string) bool {
+	code = strings.ToLower(strings.TrimSpace(code))
+	if code == "" {
+		return true
+	}
+	for _, lang := range SupportedLanguages {
+		if lang == code {
+			return true
+		}
+	}
+	return false
 }
 
 // DecodeEnvelopeV2 unmarshals raw JSON into a GenerationEnvelopeV2

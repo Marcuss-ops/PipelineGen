@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 )
@@ -121,6 +122,7 @@ func newMinimalScriptFlowDepsForTest(jobs job.Service) ScriptFlowDeps {
 				ImagesEnabled:    true,
 				DocumentEnabled:  true,
 			},
+			Validator: usecase.NewDefaultPayloadValidator(),
 		},
 	}
 }
