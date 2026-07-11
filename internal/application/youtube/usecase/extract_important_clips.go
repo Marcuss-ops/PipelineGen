@@ -180,7 +180,7 @@ func (uc *ExtractImportantClipsUseCase) Execute(ctx context.Context, cmd Extract
 
 	lang := cmd.Language
 	if lang == "" {
-		lang = "en"
+		lang = "und"
 	}
 	transcript, err := uc.subtitles.FetchTranscript(ctx, cmd.VideoID, lang)
 	if err != nil || transcript == nil {

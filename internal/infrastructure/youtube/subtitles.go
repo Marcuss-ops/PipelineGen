@@ -260,18 +260,44 @@ func (a *SubtitleFetcherAdapter) FetchSegmentSubtitles(ctx context.Context, vide
 	}
 
 	// Determine the language from the adapter's configured CSV
-	// (a.langs); the first non-empty element wins. Empty CSV or
+	// (a.langs); the first non-empty element that BCP-47-normalizes
+	// to a real language (NOT "und") wins. Empty CSV or
 	// undefined lang collapses to "und" (BCP-47) per the project
 	// NO-FAKE-AVAILABILITY rule (godlike/07): never silently default
 	// to "en".
+	//
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the
+	// assignment is wrapped in asset.Normalize to enforce strict
+	// BCP-47 (reject underscore separators like "pt_BR", "en_US").
+	// Without this wrapper, a malformed CSV entry would propagate
+	// to the ResolvedTextBundle.LanguageCode and cause
+	// TextTrackResolver.AcquireSegmentText → languageInList to
+	// call Normalize (which now rejects underscores) → silently
+	// discard the valid subtitle track and fall through to Whisper.
 	lang := ""
 	if a.langs != "" {
 		for _, l := range strings.Split(a.langs, ",") {
 			l = strings.TrimSpace(l)
-			if l != "" {
-				lang = l
-				break
+			if l == "" {
+				continue
 			}
+			// Normalize to enforce strict BCP-47. A malformed
+			// entry (e.g. "pt_BR") is rejected and skipped; the
+			// loop advances to the next CSV entry.
+			norm, nErr := asset.Normalize(l)
+			if nErr != nil || norm == "und" {
+				// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026):
+				// operator-visible Warn to stderr for malformed
+				// BCP-47 entries (e.g. "pt_BR" with underscore).
+				// The loop advances to the next CSV entry. Future
+				// long-term refactor: add a *zap.Logger field to
+				// SubtitleFetcherAdapter to match the convention
+				// used by TextTrackResolver and other adapters.
+				fmt.Fprintf(os.Stderr, "subtitles: skipping malformed BCP-47 entry %q (err=%v, use hyphen not underscore); falling through to next CSV entry\n", l, nErr)
+				continue
+			}
+			lang = norm
+			break
 		}
 	}
 	if lang == "" {

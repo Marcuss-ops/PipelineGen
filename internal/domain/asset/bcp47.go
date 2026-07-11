@@ -135,6 +135,18 @@ func Normalize(code string) (string, error) {
 	if strings.TrimSpace(code) == "" {
 		return "und", nil
 	}
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): strict
+	// BCP-47 enforcement. Underscore is NOT a valid BCP-47
+	// separator (BCP-47 strictly uses HYPHEN-MINUS U+002D).
+	// POSIX locales use underscore, but that's a non-BCP-47
+	// convention. The user spec mandates rejection of mixed
+	// variants like "pt_br", "en_US", "POR" (3-letter), and
+	// "portuguese" (full name). The first two of those are
+	// underscore-separated; we reject them here. The other two
+	// are rejected by the localeutil regex below.
+	if strings.Contains(code, "_") {
+		return "", fmt.Errorf("bcp47.Normalize: underscore separator not allowed in BCP-47 (use hyphen instead): %q", code)
+	}
 	// localeutil.Parse trims whitespace internally and rejects any
 	// 3-letter/multi-part input. The empty case is already handled
 	// above; this is the strict path.
