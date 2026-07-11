@@ -1,8 +1,0 @@
-# github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist
-internal/application/assets/providers/artlist/adapter.go:42:35: undefined: SearchRequest
-internal/application/assets/providers/artlist/adapter.go:42:52: undefined: SearchResponse
-internal/application/assets/providers/artlist/adapter.go:57:22: undefined: Service
-internal/application/assets/providers/artlist/adapter.go:102:13: undefined: SearchRequest
-# github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist
-# [github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist]
-vet: internal/application/assets/providers/artlist/adapter.go:42:35: undefined: SearchRequest
