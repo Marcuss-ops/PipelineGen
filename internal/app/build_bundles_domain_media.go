@@ -137,8 +137,10 @@ func buildDomainMediaServices(
 	// Compile-time pin: TextTrackRepositorySQLite satisfies asset.TextTrackRepository.
 	var _ asset.TextTrackRepository = (*assets.TextTrackRepositorySQLite)(nil)
 	textTrackResolver := &youtube.TextTrackResolver{
-		Repo: textTrackRepo,
-		Log:  log,
+		Repo:        textTrackRepo,
+		Subtitles:   subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)
+		Transcriber: nil,                    // no concrete whisper wired in production composition; resolver.AcquireSegmentText skips priority 5 when nil (Fase 1.b will add the adapter)
+		Log:         log,
 	}
 
 	processSeg := youtube.NewProcessYouTubeSegmentUseCase(youtube.ProcessSegmentDeps{
