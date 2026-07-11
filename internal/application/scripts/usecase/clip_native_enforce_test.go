@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
@@ -16,8 +17,8 @@ func TestEnforceClipNativeContract_StrictSuccess(t *testing.T) {
 	if err := enforceClipNativeContract(result, clipNativeItem(), plan, engineResult, postResult); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Status != "SUCCEEDED" {
-		t.Errorf("expected status SUCCEEDED, got %q", result.Status)
+	if result.Status != scriptpkg.ItemStatusSucceeded {
+		t.Errorf("expected status %s, got %q", scriptpkg.ItemStatusSucceeded, result.Status)
 	}
 	if result.ModeInfo == nil || result.ModeInfo.FallbackUsed {
 		t.Errorf("expected no fallback, got %+v", result.ModeInfo)
@@ -80,14 +81,24 @@ func TestEnforceClipNativeContract_AllowProseFallbackSucceedsWithWarnings(t *tes
 	if err := enforceClipNativeContract(result, clipNativeItem(), plan, engineResult, postResult); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Status != "SUCCEEDED_WITH_WARNINGS" {
-		t.Errorf("expected status SUCCEEDED_WITH_WARNINGS, got %q", result.Status)
+	if result.Status != scriptpkg.ItemStatusSucceededWithWarnings {
+		t.Errorf("expected status %s, got %q", scriptpkg.ItemStatusSucceededWithWarnings, result.Status)
 	}
 	if result.ModeInfo == nil || !result.ModeInfo.FallbackUsed || result.ModeInfo.UsedMode != "prose" {
 		t.Errorf("expected prose fallback mode info, got %+v", result.ModeInfo)
 	}
 	if len(result.Warnings) == 0 {
 		t.Error("expected warnings")
+	}
+	foundCode := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "CLIP_NATIVE_PLAN_UNAVAILABLE") {
+			foundCode = true
+			break
+		}
+	}
+	if !foundCode {
+		t.Errorf("expected warning with CLIP_NATIVE_PLAN_UNAVAILABLE, got %v", result.Warnings)
 	}
 }
 
@@ -100,8 +111,8 @@ func TestEnforceClipNativeContract_AllowProseMismatchSucceedsWithWarnings(t *tes
 	if err := enforceClipNativeContract(result, clipNativeItem(), plan, engineResult, postResult); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if result.Status != "SUCCEEDED_WITH_WARNINGS" {
-		t.Errorf("expected status SUCCEEDED_WITH_WARNINGS, got %q", result.Status)
+	if result.Status != scriptpkg.ItemStatusSucceededWithWarnings {
+		t.Errorf("expected status %s, got %q", scriptpkg.ItemStatusSucceededWithWarnings, result.Status)
 	}
 }
 
