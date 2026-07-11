@@ -105,6 +105,7 @@ func projectRoot() string {
 	}
 	// thisFile = .../internal/domain/asset/bcp47_hardcoded_en_test.go
 	// projectRoot = .../  (three levels up)
+	// depth invariant: internal/domain/asset/<this_file> → 3 levels up = project root. If this file is moved, the walk depth must be updated in lockstep or the scope scanner will silently scan the wrong paths.
 	return filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", "..", ".."))
 }
 
