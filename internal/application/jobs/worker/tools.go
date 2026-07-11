@@ -115,6 +115,7 @@ type AssetClient interface {
 //     here. -race tests will fail loudly if regressed to plain int.
 type Tools struct {
 	broker      appjobs.Broker
+	store       domainjob.Store
 	workerID    string
 	sessionID   string
 	jobID       string
@@ -129,9 +130,10 @@ type Tools struct {
 // compatible with struct literals in Go pre-1.19; the Load/Store
 // pattern is preferred. The single Store here is the only publish
 // of the initial revision; subsequent Stores come from Renew.
-func NewTools(broker appjobs.Broker, workerID, sessionID string, j *domainjob.Job, workspace string, assetClient AssetClient) *Tools {
+func NewTools(broker appjobs.Broker, store domainjob.Store, workerID, sessionID string, j *domainjob.Job, workspace string, assetClient AssetClient) *Tools {
 	t := &Tools{
 		broker:      broker,
+		store:       store,
 		workerID:    workerID,
 		sessionID:   sessionID,
 		jobID:       j.ID,
@@ -153,6 +155,18 @@ func (t *Tools) Progress(ctx context.Context, progress int, message string) erro
 		Progress:         progress,
 		Message:          message,
 	})
+}
+
+// Event records a typed timeline event for the in-flight job.
+// It is a thin wrapper around the canonical job.Store.AddEvent port
+// so handlers can emit observability events without touching SQLite
+// directly. Errors are logged but not propagated — event emission
+// must never fail the job.
+func (t *Tools) Event(ctx context.Context, eventType, message string, data map[string]any) error {
+	if t.store == nil {
+		return nil
+	}
+	return t.store.AddEvent(ctx, t.jobID, eventType, message, data)
 }
 
 func (t *Tools) IsCancelled(ctx context.Context) (bool, error) {

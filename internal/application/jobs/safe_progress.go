@@ -44,3 +44,17 @@ func SafeProgressFn(tools *JobTools) func(progress int, message string) {
 	}
 	return tools.Progress
 }
+
+// SafeEventFn returns a nil-safe event callback function.
+//
+// Mirrors SafeProgressFn: when tools or tools.Event is nil, the
+// returned closure is a no-op so handlers can emit events without
+// per-call nil checks. Errors from the underlying event port are
+// intentionally swallowed at the callback boundary; event emission
+// must never fail a job.
+func SafeEventFn(tools *JobTools) func(eventType, message string, data map[string]any) {
+	if tools == nil || tools.Event == nil {
+		return func(eventType, message string, data map[string]any) {}
+	}
+	return tools.Event
+}
