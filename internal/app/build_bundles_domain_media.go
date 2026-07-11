@@ -13,6 +13,7 @@ import (
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -126,6 +127,20 @@ func buildDomainMediaServices(
 
 	// Compile-time pin: Step10MetricsRecorder port ↔ Step10MetricsAdapter.
 	var _ youtubeports.Step10MetricsRecorder = (*observability.Step10MetricsAdapter)(nil)
+	// TextTrackRepository + TextTrackResolver: priority-chain lookup
+	// for localized text tracks. Reduces redundant Whisper invocations
+	// by checking the API payload and the DB before falling through.
+	textTrackRepo, err := assets.NewTextTrackRepository(dbs.main.DB, log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("compose domains: text track repository: %w", err)
+	}
+	// Compile-time pin: TextTrackRepositorySQLite satisfies asset.TextTrackRepository.
+	var _ asset.TextTrackRepository = (*assets.TextTrackRepositorySQLite)(nil)
+	textTrackResolver := &youtube.TextTrackResolver{
+		Repo: textTrackRepo,
+		Log:  log,
+	}
+
 	processSeg := youtube.NewProcessYouTubeSegmentUseCase(youtube.ProcessSegmentDeps{
 		Cache:              clipCache,
 		VideoPipeline:      videoPipelineAdapter,
@@ -137,6 +152,7 @@ func buildDomainMediaServices(
 		SegmentsSvc:        youtube.NewSegmentsService(),
 		SegmentPolicy:      youtubetypes.DefaultSegmentPolicy(),
 		Step10Metrics:      observability.NewStep10MetricsAdapter(),
+		TextTrackResolver:  textTrackResolver,
 		Log:                log,
 	})
 

@@ -218,6 +218,37 @@ func (m *PayloadMapper) resolveSearchText(ctx context.Context, asset *AssetData)
 	}
 	if m.searchTextBuild != nil {
 		input := buildSearchTextInput(asset)
+
+		// Inject index_languages from config so youtubeStrategy can
+		// filter TextTracks by configured languages.
+		if m.indexLanguages != "" {
+			if input.Additional == nil {
+				input.Additional = make(map[string]string)
+			}
+			if _, exists := input.Additional["index_languages"]; !exists {
+				input.Additional["index_languages"] = m.indexLanguages
+			}
+		}
+
+		// Populate TextTracks from the DB so youtubeStrategy can
+		// concatenate multilingual transcripts for BM25 search text.
+		if m.textTrackQuerier != nil && asset.ID != "" {
+			if tracks, err := m.textTrackQuerier.ListByAsset(ctx, asset.ID); err == nil && len(tracks) > 0 {
+				entries := make([]appsearchtext.TextTrackEntry, 0, len(tracks))
+				for _, t := range tracks {
+					if t.TextContent != "" && t.Status == assetpkg.TextTrackReady {
+						entries = append(entries, appsearchtext.TextTrackEntry{
+							LanguageCode: t.LanguageCode,
+							Text:         t.TextContent,
+						})
+					}
+				}
+				if len(entries) > 0 {
+					input.TextTracks = entries
+				}
+			}
+		}
+
 		text, err := m.searchTextBuild.Build(ctx, input)
 		if err != nil {
 			if m.log != nil {
