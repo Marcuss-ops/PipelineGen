@@ -47,6 +47,7 @@ import (
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
@@ -324,6 +325,157 @@ func buildMetadataPayload(
 		return "", fmt.Errorf("marshal payload: %w", err)
 	}
 	return string(out), nil
+}
+
+// UpdateClipMetadataTextsAndRequestIndex extends the metadata write
+// to also persist text tracks in the same atomic transaction. When
+// textTracks is non-empty, each track is upserted on the
+// UNIQUE(asset_id, language_code, text_kind) constraint so the
+// Qdrant re-indexer always sees the latest transcripts.
+//
+// When textTracks is empty, the method delegates directly to
+// UpdateClipMetadataAndRequestIndex (no extra work).
+func (w *ClipMetadataWriterAdapter) UpdateClipMetadataTextsAndRequestIndex(
+	ctx context.Context,
+	clipID string,
+	m youtubetypes.CanonicalClipMetadata,
+	textTracks []asset.TextTrack,
+) error {
+	if len(textTracks) == 0 {
+		return w.UpdateClipMetadataAndRequestIndex(ctx, clipID, m)
+	}
+
+	if w == nil || w.db == nil || w.box == nil {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: adapter not wired")
+	}
+	if clipID == "" {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: clipID is required")
+	}
+	if m.ClipID == "" {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: CanonicalClipMetadata.ClipID is required")
+	}
+	if m.ClipID != clipID {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: clipID %q != CanonicalClipMetadata.ClipID %q",
+			clipID, m.ClipID)
+	}
+
+	// 1) Begin tx
+	tx, err := w.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// 2) UPDATE media_assets.metadata_json
+	nowStr := w.now().UTC().Format(time.RFC3339)
+	if err := updateMediaAssetsMetadataTx(ctx, tx, clipID, m, nowStr); err != nil {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: update media_assets: %w", err)
+	}
+
+	// 3) UPSERT asset_text_tracks
+	if err := upsertTextTracksInTx(ctx, tx, textTracks, nowStr); err != nil {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: upsert text tracks: %w", err)
+	}
+
+	// 4) Build outbox event
+	eventKey := buildMetadataEventKey(clipID, m.SourceVersion)
+	payload, err := buildMetadataPayload(clipID, m, nowStr)
+	if err != nil {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: build payload: %w", err)
+	}
+
+	// 5) INSERT outbox_events (tx-bound)
+	enqResult, err := w.box.Enqueue(
+		ctx,
+		tx,
+		outboxevents.EventAssetIndexRequested,
+		clipID,
+		"media_asset",
+		payload,
+		eventKey,
+	)
+	if err != nil {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: outbox enqueue: %w", err)
+	}
+
+	// 6) Commit
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: commit: %w", err)
+	}
+	committed = true
+
+	if w.log != nil {
+		if !enqResult.Inserted && isTerminalOutboxStatus(enqResult.ExistingStatus) {
+			w.log.Warn("ClipMetadataWriterAdapter: metadata+texts outbox event suppressed by existing terminal row",
+				zap.String("clip_id", clipID),
+				zap.String("event_key", eventKey),
+				zap.Int64("existing_event_id", enqResult.EventID),
+				zap.String("existing_status", enqResult.ExistingStatus))
+		} else {
+			w.log.Debug("ClipMetadataWriterAdapter: metadata + text tracks + index event committed",
+				zap.String("clip_id", clipID),
+				zap.String("event_key", eventKey),
+				zap.Int("text_track_count", len(textTracks)),
+				zap.Bool("outbox_inserted", enqResult.Inserted))
+		}
+	}
+	return nil
+}
+
+// upsertTextTracksInTx persists a batch of text tracks inside the
+// caller's transaction. Uses INSERT ON CONFLICT DO UPDATE on the
+// UNIQUE(asset_id, language_code, text_kind) constraint.
+func upsertTextTracksInTx(ctx context.Context, tx *sql.Tx, tracks []asset.TextTrack, nowStr string) error {
+	if len(tracks) == 0 {
+		return nil
+	}
+
+	stmt, err := tx.PrepareContext(ctx, upsertTextTrackSQL)
+	if err != nil {
+		return fmt.Errorf("upsertTextTracksInTx: prepare: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, t := range tracks {
+		var confidence sql.NullFloat64
+		if t.Confidence != nil {
+			confidence = sql.NullFloat64{Float64: *t.Confidence, Valid: true}
+		}
+		isOriginal := 0
+		if t.IsOriginal {
+			isOriginal = 1
+		}
+		status := string(t.Status)
+		if status == "" {
+			status = string(asset.TextTrackReady)
+		}
+
+		if _, err := stmt.ExecContext(ctx,
+			t.AssetID,
+			t.LanguageCode,
+			string(t.TextKind),
+			t.TextContent,
+			string(t.SourceType),
+			t.SourceLanguageCode,
+			isOriginal,
+			t.Provider,
+			t.ModelName,
+			t.ModelVersion,
+			t.TextHash,
+			t.SourceVersion,
+			confidence,
+			status,
+		); err != nil {
+			return fmt.Errorf("upsertTextTracksInTx: exec (asset=%s lang=%s kind=%s): %w",
+				t.AssetID, t.LanguageCode, t.TextKind, err)
+		}
+	}
+	return nil
 }
 
 // ── Compile-time assertion ──────────────────────────────────────────

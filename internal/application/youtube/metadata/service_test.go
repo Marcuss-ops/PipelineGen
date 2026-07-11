@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // stubBuilder is a test double for ClipMetadataBuilder.
@@ -52,6 +53,10 @@ func (s *stubWriter) UpdateClipMetadataAndRequestIndex(_ context.Context, clipID
 	s.lastClip = clipID
 	s.lastMeta = m
 	return s.returnErr
+}
+
+func (s *stubWriter) UpdateClipMetadataTextsAndRequestIndex(_ context.Context, clipID string, m youtubetypes.CanonicalClipMetadata, _ []asset.TextTrack) error {
+	return s.UpdateClipMetadataAndRequestIndex(context.Background(), clipID, m)
 }
 
 // ── GenerateClipMetadata tests ──────────────────────────────────────────

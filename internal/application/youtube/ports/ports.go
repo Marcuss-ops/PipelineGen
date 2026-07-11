@@ -272,6 +272,17 @@ var ErrOutboxTerminalConflict = errors.New("outbox: event suppressed by existing
 // -Upsert path is removed per the fail-closed posture.
 type ClipMetadataWriter interface {
 	UpdateClipMetadataAndRequestIndex(ctx context.Context, clipID string, m youtubetypes.CanonicalClipMetadata) error
+
+	// UpdateClipMetadataTextsAndRequestIndex extends the metadata write
+	// to also persist text tracks (transcripts, descriptions, etc.) in
+	// the same atomic transaction. This ensures Qdrant never sees a
+	// clip without its associated text tracks.
+	//
+	// When textTracks is empty, the method behaves identically to
+	// UpdateClipMetadataAndRequestIndex (the text track upsert is
+	// skipped). This preserves backward compatibility with callers
+	// that don't carry text tracks.
+	UpdateClipMetadataTextsAndRequestIndex(ctx context.Context, clipID string, m youtubetypes.CanonicalClipMetadata, textTracks []asset.TextTrack) error
 }
 
 // ── ffprobe validation port (audit 2026-07-03 BLOCKER #3) ───────────────
