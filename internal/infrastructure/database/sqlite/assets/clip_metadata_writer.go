@@ -37,9 +37,13 @@ package assets
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -327,6 +331,44 @@ func buildMetadataPayload(
 	return string(out), nil
 }
 
+// ComputeContentHashWithTextTracks computes a deterministic content
+// hash that includes text track hashes. This ensures Qdrant re-indexes
+// when a translation is added or corrected, even when the MP4 file
+// hasn't changed.
+//
+// Formula: SHA256(file_hash + "|" + sorted(text_track_hashes))
+// where sorted means ascending by (language_code, text_kind).
+// When no text tracks exist, the hash is just SHA256(file_hash)
+// which matches the existing content_hash behavior.
+func ComputeContentHashWithTextTracks(fileHash string, textTracks []asset.TextTrack) string {
+	if len(textTracks) == 0 {
+		return fileHash
+	}
+
+	// Sort by (language_code, text_kind) for determinism.
+	sorted := make([]asset.TextTrack, len(textTracks))
+	copy(sorted, textTracks)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].LanguageCode != sorted[j].LanguageCode {
+			return sorted[i].LanguageCode < sorted[j].LanguageCode
+		}
+		return sorted[i].TextKind < sorted[j].TextKind
+	})
+
+	var b strings.Builder
+	b.WriteString(fileHash)
+	b.WriteString("|")
+	for _, t := range sorted {
+		if t.TextHash != "" {
+			b.WriteString(t.TextHash)
+			b.WriteString(";")
+		}
+	}
+
+	h := sha256.Sum256([]byte(b.String()))
+	return hex.EncodeToString(h[:])
+}
+
 // UpdateClipMetadataTextsAndRequestIndex extends the metadata write
 // to also persist text tracks in the same atomic transaction. When
 // textTracks is non-empty, each track is upserted on the
@@ -359,7 +401,15 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataTextsAndRequestIndex(
 			clipID, m.ClipID)
 	}
 
-	// 1) Begin tx
+	// 1) Compute combined content hash including text tracks.
+	// This ensures the source_version changes when translations
+	// are added, triggering Qdrant re-index via the outbox event.
+	if m.ContentHash != "" {
+		m.ContentHash = ComputeContentHashWithTextTracks(m.ContentHash, textTracks)
+		m.SourceVersion = m.ContentHash
+	}
+
+	// 2) Begin tx
 	tx, err := w.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: begin tx: %w", err)
@@ -371,25 +421,25 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataTextsAndRequestIndex(
 		}
 	}()
 
-	// 2) UPDATE media_assets.metadata_json
+	// 3) UPDATE media_assets.metadata_json
 	nowStr := w.now().UTC().Format(time.RFC3339)
 	if err := updateMediaAssetsMetadataTx(ctx, tx, clipID, m, nowStr); err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: update media_assets: %w", err)
 	}
 
-	// 3) UPSERT asset_text_tracks
+	// 4) UPSERT asset_text_tracks
 	if err := upsertTextTracksInTx(ctx, tx, textTracks, nowStr); err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: upsert text tracks: %w", err)
 	}
 
-	// 4) Build outbox event
+	// 5) Build outbox event
 	eventKey := buildMetadataEventKey(clipID, m.SourceVersion)
 	payload, err := buildMetadataPayload(clipID, m, nowStr)
 	if err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: build payload: %w", err)
 	}
 
-	// 5) INSERT outbox_events (tx-bound)
+	// 6) INSERT outbox_events (tx-bound)
 	enqResult, err := w.box.Enqueue(
 		ctx,
 		tx,
@@ -403,7 +453,7 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataTextsAndRequestIndex(
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: outbox enqueue: %w", err)
 	}
 
-	// 6) Commit
+	// 7) Commit
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: commit: %w", err)
 	}

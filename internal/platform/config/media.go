@@ -63,6 +63,12 @@ type MultilingualConfig struct {
 	Enabled            bool     `yaml:"enabled" default:"false"`
 	SourceLanguage     string   `yaml:"source_language" default:"en"`
 	TranslateLanguages []string `yaml:"translate_languages" default:"it, es, fr, de"`
+	// IndexLanguages defines which BCP-47 language codes are included
+	// in the Qdrant search_text for multilingual embedding. The
+	// SearchTextBuilder concatenates transcripts/descriptions from
+	// these languages so the E5 multilingual model can match queries
+	// in any supported language. Defaults to source_language only.
+	IndexLanguages []string `yaml:"index_languages" default:"en"`
 }
 
 // JobsConfig holds job-related configuration.

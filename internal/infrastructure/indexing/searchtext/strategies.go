@@ -64,9 +64,31 @@ func youtubeStrategy(input appsearchtext.SearchTextInput) string {
 	speakers := strings.TrimSpace(add["speakers"])
 	mentionedPeople := strings.TrimSpace(add["mentioned_people"])
 
+	// Multilingual transcripts: append translations from TextTracks.
+	// The original transcript is always included first; translations
+	// from configured index_languages follow so the E5 multilingual
+	// embedding model can match queries in any supported language.
+	// When IndexLanguages is set in Additional, only tracks matching
+	// those languages are included (prevents embedding pollution from
+	// languages the operator didn't configure).
+	indexLangs := parseIndexLanguages(add["index_languages"])
+	var transcriptParts []string
+	if input.Transcript != "" {
+		transcriptParts = append(transcriptParts, truncate(input.Transcript, maxTranscriptChars))
+	}
+	for _, tt := range input.TextTracks {
+		if tt.TextKind != "transcript" || tt.Text == "" || tt.Text == input.Transcript {
+			continue
+		}
+		if len(indexLangs) > 0 && !indexLangs[tt.LanguageCode] {
+			continue
+		}
+		transcriptParts = append(transcriptParts, truncate(tt.Text, maxTranscriptChars))
+	}
+
 	return joinNonEmpty(" ",
 		input.Title,
-		truncate(input.Transcript, maxTranscriptChars),
+		joinNonEmpty(" ", transcriptParts...),
 		input.Channel,
 		truncate(input.Description, maxDescriptionChars),
 		joinTags(input.Tags),
@@ -216,6 +238,20 @@ func composeStockHeader(event, roundN string) string {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
+
+// parseIndexLanguages parses a comma-separated list of language codes
+// into a lookup map. Empty input yields an empty map. Whitespace is
+// trimmed from each code.
+func parseIndexLanguages(s string) map[string]bool {
+	langs := make(map[string]bool)
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(strings.ToLower(p))
+		if p != "" {
+			langs[p] = true
+		}
+	}
+	return langs
+}
 
 // joinNonEmpty joins non-empty strings with the given separator.
 // Empty strings are silently skipped.
