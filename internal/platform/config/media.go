@@ -1,5 +1,27 @@
 package config
 
+// MediaConfig groups all media-pipeline configuration (multilingual
+// settings, text-track acquisition, future media-runtime knobs) under a
+// single namespace so the Config struct stays tree-readable. The
+// nested Multilingual field mirrors the top-level Multilingual on
+// Config (kept for back-compat with the pre-Fase-1.b callers); both
+// shapes carry the same canonical MultilingualConfig so YAML drift
+// between media.multilingual.* and multilingual.* keys is a
+// follow-up concern, not a blocker for the Go-level wiring.
+//
+// godlike/06 SSOT: this struct is the canonical namespace for media-
+// pipeline configuration. New media-runtime knobs (subtitle format,
+// transcript format, evidence-support toggles, etc.) MUST be added
+// here, not as flat top-level fields on Config.
+type MediaConfig struct {
+	// Multilingual holds the canonical BCP-47-driven language
+	// policy for the YouTube acquisition chain. The top-level
+	// Config.Multilingual field is retained for back-compat; this
+	// nested field is the SSOT path for new callers
+	// (buildDomainMediaServices consumes cfg.Media.Multilingual.*).
+	Multilingual MultilingualConfig `yaml:"multilingual"`
+}
+
 // ClipIndexerConfig holds configuration for the ClipIndexer service.
 // It provides the URL and script path for the Python-based indexing pipeline.
 type ClipIndexerConfig struct {
@@ -59,6 +81,16 @@ type LessonsConfig struct {
 // When enabled, the semantic tagger will translate key metadata fields
 // (search_text, tags, subjects, mood) into the configured languages
 // at ingest time via Ollama, storing translations in metadata.json.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): three new fields
+// (MaterializeLanguages, RequireLanguageCertainty, SourceLanguage
+// re-default) shift the YouTube acquisition chain from a hardcoded
+// "en" default to a config-driven, BCP-47-normalized language list.
+// godlike/06 SSOT: this struct is the SINGLE canonical source for the
+// project's "languages we materialize translations for" set. Tests +
+// CLI + admin backfill + TextTrackMaterializer job + YouTube acquisition
+// chain all reference MultilingualConfig.MaterializeLanguages (or the
+// asset.SupportedLanguages whitelist derived from it).
 type MultilingualConfig struct {
 	Enabled            bool     `yaml:"enabled" default:"false"`
 	SourceLanguage     string   `yaml:"source_language" default:"en"`
@@ -69,6 +101,28 @@ type MultilingualConfig struct {
 	// these languages so the E5 multilingual model can match queries
 	// in any supported language. Defaults to source_language only.
 	IndexLanguages []string `yaml:"index_languages" default:"en"`
+	// MaterializeLanguages is the CANONICAL set of languages the
+	// YouTube acquisition chain probes for subtitles + the
+	// TextTrackMaterializer (Fase 3) materializes translations for.
+	// The chain uses this list as the SubtitleFetcherAdapter
+	// preferred-languages list (priority order: top-to-bottom in
+	// the comma-separated CSV). godlike/07 honest lock: the chain
+	// MUST NOT fall back to "en" when this list is empty — empty
+	// surfaces as "und" (BCP-47 undetermined) and the resolver
+	// surfaces ErrLanguageUndeterminable when RequireLanguage
+	// Certainty is set. Default mirrors the canonical
+	// asset.SupportedLanguages whitelist: it, en, es, pt-BR, fr, de.
+	MaterializeLanguages []string `yaml:"materialize_languages" default:"it, en, es, pt-BR, fr, de"`
+	// RequireLanguageCertainty, when true, makes the YouTube
+	// acquisition chain (TextTrackResolver.AcquireSegmentText) fail
+	// with asset.ErrLanguageUndeterminable PRE-STEP-9 if no chain
+	// level (1: payload, 2: DB READY, 3+4: YT subtitles, 5: Whisper)
+	// surfaces a real BCP-47 language. Default false preserves the
+	// pre-Fase-1.b behavior where the chain degrades to "und" silently.
+	// godlike/07 fail-closed at the policy gate: when this is true
+	// the writer (CommitClipTextAndIndexEvent) ALSO surfaces
+	// ErrClipLocaleNotReady if a non-und language was never resolved.
+	RequireLanguageCertainty bool `yaml:"require_language_certainty" default:"false"`
 }
 
 // JobsConfig holds job-related configuration.

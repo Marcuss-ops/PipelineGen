@@ -391,6 +391,23 @@ func (s *stubTranscriber) TranscribeAudio(_ context.Context, audioPath string) (
 	return s.text, s.err
 }
 
+// TranscribeAudioWithDetection is the typed-port surface added in
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026). The stub
+// records the audioPath and returns TranscriptResult{Text: s.text,
+// DetectedLanguage: ""} (the empty DetectedLanguage collapses to
+// "und" via the canonical bcp47.Normalize helper at the resolver
+// layer). Mirrors the production contract in
+// internal/application/youtube/usecase/text_track_resolver_test.go
+// (stubTranscriber.TranscribeAudioWithDetection).
+func (s *stubTranscriber) TranscribeAudioWithDetection(_ context.Context, audioPath string) (asset.TranscriptResult, error) {
+	s.calls++
+	s.lastAudioPath = audioPath
+	if s.err != nil {
+		return asset.TranscriptResult{}, s.err
+	}
+	return asset.TranscriptResult{Text: s.text, DetectedLanguage: ""}, nil
+}
+
 // compile-time assertion: stubTranscriber satisfies WhisperTranscriberPort.
 var _ youtubeports.WhisperTranscriberPort = (*stubTranscriber)(nil)
 

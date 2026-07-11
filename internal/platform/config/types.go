@@ -144,6 +144,13 @@ type Config struct {
 	VLM              VLMConfig                  `yaml:"vlm"`
 	Lessons          LessonsConfig              `yaml:"lessons"`
 	Multilingual     MultilingualConfig         `yaml:"multilingual"`
+	// Media is the canonical namespace for media-pipeline configuration
+	// (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b, July 2026). The nested
+	// Media.Multilingual is the SSOT path consumed by the YouTube
+	// acquisition chain (buildDomainMediaServices). The top-level
+	// Multilingual field is retained for back-compat with pre-Fase-1.b
+	// callers; both shapes carry the same MultilingualConfig type.
+	Media            MediaConfig                `yaml:"media"`
 	Scripts          ScriptsConfig              `yaml:"scripts"`
 	Outbox           OutboxConfig               `yaml:"outbox"`
 	Qdrant           QdrantConfig               `yaml:"qdrant"`
