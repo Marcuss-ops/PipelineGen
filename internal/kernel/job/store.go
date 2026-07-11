@@ -83,6 +83,24 @@ type Store interface {
 	// RenewLease extends the lease expiry for a running job owned by workerID.
 	RenewLease(ctx context.Context, id string, workerID string, leaseTTL time.Duration) error
 
+	// FinalizeAttempt is the canonical consolidated terminal-decision
+	// primitive introduced by Fase 4(a) (July 2026). It collapses the
+	// four sibling paths (Complete / Fail / ScheduleRetry — plus
+	// optional DLQ archive + artifact_state patch + outbox event
+	// emission) into ONE atomic SQLite transaction. The full typed
+	// contract lives in FinalizeAttemptCommand (this package) +
+	// FinalizeAttemptResult; godlike/06 SSOT discipline: this method
+	// is the SINGLE canonical writer of terminal state transitions
+	// out of {SUCCEEDED, FAILED, RETRY_WAIT}.
+	//
+	// Pre-Fase-4 callers used Complete/Fail/ScheduleRetry separately;
+	// those methods remain on the Store interface (compat) and
+	// delegates to FinalizeAttempt internally. The dedicated
+	// Fail/DeadLetter/ScheduleRetry paths land via the lower-level
+	// CompletedFromOutcome gateway in Push 4.6 (caller migration).
+	// Additive introduction only.
+	FinalizeAttempt(ctx context.Context, cmd FinalizeAttemptCommand) (FinalizeAttemptResult, error)
+
 	// DeadLetter archives a job that exhausted retries into the dead_letter_jobs table.
 	DeadLetter(ctx context.Context, id string, errMsg string) error
 }
