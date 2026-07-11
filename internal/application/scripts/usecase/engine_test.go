@@ -241,6 +241,30 @@ func TestEngineGenerate_WithClips(t *testing.T) {
 	assert.Equal(t, "https://drive.google.com/a", result.ClipEvidence.DriveLinks["clip-a"])
 }
 
+func TestEngineGenerate_PassesGroundingPolicyToRequest(t *testing.T) {
+	t.Parallel()
+	gen := &fakeOllamaGen{}
+	e := buildTestEngine(gen, nil)
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		Title:           "Grounding Policy Wiring",
+		Topic:           "Policy Test",
+		Language:        "en",
+		Tone:            "documentary",
+		Model:           "llama3:8b",
+		Mode:            "text",
+		RenderedPrompt:  "Write about policy.",
+		GroundingPolicy: scriptpkg.GroundingPolicySourcePrimary,
+	}
+
+	_, err := e.Generate(context.Background(), plan)
+	require.NoError(t, err)
+
+	captured := gen.capturedReq.Load()
+	require.NotNil(t, captured)
+	assert.Equal(t, scriptpkg.GroundingPolicySourcePrimary, captured.GroundingPolicy)
+}
+
 func TestEngineGenerate_AppendsClipGroundingInstructions(t *testing.T) {
 	t.Parallel()
 	gen := &fakeOllamaGen{}

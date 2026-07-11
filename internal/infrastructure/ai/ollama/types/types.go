@@ -65,6 +65,12 @@ type TextGenerationRequest struct {
 	Options         map[string]any
 	WebContext      string // Optional: pre-fetched web search results injected into the prompt
 
+	// GroundingPolicy controls how source_text and clip evidence
+	// interact in the model prompt. Values: clips_primary,
+	// source_primary, balanced. Empty means no special grounding
+	// instructions are appended.
+	GroundingPolicy string
+
 	// OutputMode declares the contractual shape the caller requires.
 	// See OutputModePlainText (canonical) and OutputModeScriptV1
 	// (backward-compat). When empty, the wire request behaves as
