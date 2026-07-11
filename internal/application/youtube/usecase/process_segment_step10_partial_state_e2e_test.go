@@ -223,22 +223,27 @@ func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(
 		rowID            string
 		rowSource        string
 		rowFileHash      string
-		rowLocalPath     string
 		rowSourceVersion string
 		rowSearchText    string
 		rowState         string
 	)
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c (July 2026): the
+	// local_path column is RETIRED from the E2E assertion surface.
+	// step10 no longer threads localPath (per user spec); clip_id
+	// is the canonical lookup key — operators JOIN with media_assets
+	// to retrieve the local_path for manual re-extract.
 	err := db.QueryRowContext(context.Background(),
-		`SELECT id, source, file_hash, local_path, source_version, search_text, lifecycle_state
+		`SELECT id, source, file_hash, source_version, search_text, lifecycle_state
 		   FROM media_assets WHERE id = ?`,
 		expectedClipID,
-	).Scan(&rowID, &rowSource, &rowFileHash, &rowLocalPath, &rowSourceVersion, &rowSearchText, &rowState)
+	).Scan(&rowID, &rowSource, &rowFileHash, &rowSourceVersion, &rowSearchText, &rowState)
 	require.NoError(t, err, "media_assets row must be durably present after Step 9 commit "+
 		"(E2E partial-state contract: Step 9 wrote the row before Step 10 failed)")
 	require.Equal(t, expectedClipID, rowID, "row.id must match canonical clipID format")
 	require.Equal(t, "youtube", rowSource, "row.source must be the canonical 'youtube' string")
 	require.NotEmpty(t, rowFileHash, "row.file_hash must be non-empty (Step 5 hash result)")
-	require.Equal(t, realPath, rowLocalPath, "row.local_path must match the real file path")
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c: local_path assertion
+	// retired; clip_id is the canonical lookup key.
 	require.NotEmpty(t, rowSourceVersion, "row.source_version must be non-empty (BLOCKER #2 closure: source_version is written to the column, not just the outbox envelope)")
 	require.Equal(t, "ACTIVE", rowState, "row.lifecycle_state must be 'ACTIVE' (canonical PR-C lifecycle)")
 
@@ -335,8 +340,9 @@ func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(
 	}
 	require.Equal(t, expectedClipID, fields["clip_id"],
 		"Warn log must carry canonical clip_id (yt_<videoID>_<startSec>_<endSec>_<policyVer>)")
-	require.Equal(t, realPath, fields["local_path"],
-		"Warn log must carry local_path so operators can re-extract the metadata")
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c: local_path field
+	// retired from step10's Warn log; clip_id is the canonical
+	// lookup key for operator dashboards.
 	require.Equal(t, string(FailureCodeMetadataFailed), fields["failure_code"],
 		"Warn log must carry canonical failure_code for dashboard aggregation")
 }

@@ -60,6 +60,17 @@ import (
 // single typed error from the writer; the prior
 // "clip persisted but text-pending" partial-state window is now
 // ARCHITECTURALLY IMPOSSIBLE.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c (July 2026):
+// the return signature is EXTENDED to surface the resolved
+// ResolvedTextBundle to the orchestrator. Step 10's metadata
+// enrichment now consumes (transcript, languageCode, cues)
+// from the bundle instead of re-invoking Whisper. The bundle
+// can be nil when no track was acquired (TextTrackResolver
+// nil OR all 5 priorities failed); Step 10's contract is
+// fail-closed on nil bundle (empty transcript, empty cues)
+// so the metadata service's downstream behavior is unchanged
+// (empty transcript → low quality score, no crash).
 func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	ctx context.Context,
 	cmd youtubetypes.ProcessSegmentCommand,
@@ -70,7 +81,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	localPath string,
 	fileHash string,
 	policyVer string,
-) error {
+) (*asset.ResolvedTextBundle, error) {
 	// txtPath is the canonical transcript file path referenced by a
 	// CROSS-PACKAGE consumer — clipindexer.lookupTranscriptPath reads
 	// `local_path -> TrimSuffix(Ext) + ".txt"` for Qdrant transcript
@@ -156,7 +167,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 				fmt.Sprintf("drive upload failed: %v", upErr),
 				upErr,
 			)
-			return u.fail(out, typed)
+			return nil, u.fail(out, typed)
 		}
 	}
 	out.DriveFileID = out.Item.DriveFileID
@@ -241,7 +252,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 				u.deps.Log.Warn("clip + tracks + cues committed but index blocked by terminal outbox row (BLOCKER #4)",
 					zap.String("clip_id", clipID),
 					zap.Error(wErr))
-				return nil
+				return bundle, nil
 			}
 			// godlike/07 typed-error contract: a policy violation
 			// (ErrClipLocaleNotReady) gets the same fail-closed
@@ -258,13 +269,13 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 				)
 				u.deps.Log.Error("writer rejected locale-not-ready policy (Fase 2.b atomic tx rolled back; no rows visible)",
 					zap.String("clip_id", clipID), zap.Error(wErr))
-				return u.fail(out, typed)
+				return nil, u.fail(out, typed)
 			}
 			typed := NewExtractionError(FailureCodeWriterFailed, false,
 				fmt.Sprintf("localized writer failed: %v", wErr), wErr)
 			u.deps.Log.Error("localized writer terminal failure (Fase 2.b atomic tx rolled back; no rows visible)",
 				zap.String("clip_id", clipID), zap.Error(wErr))
-			return u.fail(out, typed)
+			return nil, u.fail(out, typed)
 		}
 		out.IndexedRequestID = event.AggregateID
 		u.deps.Log.Info("localized clip super-tx committed",
@@ -289,16 +300,15 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 				out.Item.Status = "processed_but_index_blocked"
 				out.Status = "processed_but_index_blocked"
 				u.deps.Log.Warn("clip committed but index blocked by terminal outbox row (BLOCKER #4)",
-					zap.String("clip_id", clipID),
-					zap.Error(wErr))
-				return nil
+					zap.String("clip_id", clipID), zap.Error(wErr))
+				return bundle, nil
 			}
 			typed := NewExtractionError(FailureCodeWriterFailed, false,
 				fmt.Sprintf("writer failed: %v", wErr), wErr)
-			return u.fail(out, typed)
+			return nil, u.fail(out, typed)
 		}
 		out.IndexedRequestID = event.AggregateID
 	}
 
-	return nil
+	return bundle, nil
 }

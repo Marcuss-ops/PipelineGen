@@ -365,152 +365,29 @@ func TestBuildClipAsset_CanonicalShape(t *testing.T) {
 	}
 }
 
-// ── Test 7: Step 10 typed-port transcript source (PR-PY-STEP10-PORT-M3) ─
+// ── Test 7: Step 10 transcript source — RETIRED (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c, July 2026) ─
 //
-// Code-reviewer M3 followup (commit a9789158 audit): Step 10's
-// os.ReadFile(localPath+".txt") filesystem-coupled read is replaced
-// with u.deps.Transcriber.TranscribeAudio(ctx, localPath) — the
-// canonical WhisperTranscriberPort already wired to the use case.
-// These tests pin the typed-port contract: the legacy .txt tempfile
-// path is RETIRED; godlike/06 SSOT preserves the canonical port as
-// the SOLE plaintext-transcript surface.
-
-// stubTranscriber satisfies WhisperTranscriberPort. Records the
-// audioPath passed on each call and returns a canned response so the
-// transcript-flow can be observed downstream.
-type stubTranscriber struct {
-	calls         int
-	lastAudioPath string
-	text          string
-	err           error
-}
-
-func (s *stubTranscriber) TranscribeAudio(_ context.Context, audioPath string) (string, error) {
-	s.calls++
-	s.lastAudioPath = audioPath
-	return s.text, s.err
-}
-
-// TranscribeAudioWithDetection is the typed-port surface added in
-// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026). The stub
-// records the audioPath and returns TranscriptResult{Text: s.text,
-// DetectedLanguage: ""} (the empty DetectedLanguage collapses to
-// "und" via the canonical bcp47.Normalize helper at the resolver
-// layer). Mirrors the production contract in
-// internal/application/youtube/usecase/text_track_resolver_test.go
-// (stubTranscriber.TranscribeAudioWithDetection).
-func (s *stubTranscriber) TranscribeAudioWithDetection(_ context.Context, audioPath string) (asset.TranscriptResult, error) {
-	s.calls++
-	s.lastAudioPath = audioPath
-	if s.err != nil {
-		return asset.TranscriptResult{}, s.err
-	}
-	return asset.TranscriptResult{Text: s.text, DetectedLanguage: ""}, nil
-}
-
-// compile-time assertion: stubTranscriber satisfies WhisperTranscriberPort.
-var _ youtubeports.WhisperTranscriberPort = (*stubTranscriber)(nil)
-
-// TestProcessSegment_Step10_ReadsTranscriptFromTypedPort_TranscriberWired
-// pins: when the Transcriber port is wired, Step 10 MUST invoke it
-// exactly once per Execute with the resolved localPath as the
-// audioPath. The metadata field flowing into EnrichClip is sourced
-// from the port's text response.
+// The M3 typed-port surface (Step 10 directly invoking
+// u.deps.Transcriber.TranscribeAudio) is RETIRED. Step 10 is now
+// pure metadata-enrichment over the ResolvedTextBundle returned
+// by Step 6-9; it does NOT call any Transcriber. The 3
+// TestProcessSegment_Step10_ReadsTranscriptFromTypedPort_*
+// tests + stubTranscriber type + compile-time assertion are
+// deleted.
 //
-// MetadataService is intentionally left nil — the M3 pin is the
-// typed-port contract, not the MetadataService handoff (which is
-// covered by ytmetadata.MetadataService unit tests).
-func TestProcessSegment_Step10_ReadsTranscriptFromTypedPort_TranscriberWired(t *testing.T) {
-	realPath := filepath.Join(t.TempDir(), "clip.mp4")
-	_ = os.WriteFile(realPath, []byte("fake audio bytes"), 0o644)
-	tport := &stubTranscriber{text: "fallback transcript content from port"}
-
-	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
-		d := validProcessSegmentDeps()
-		d.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-		// testStubHash returns ("stubhash", nil) — non-empty fileHash
-		// satisfies Step 5's fail-closed gate so Execute reaches
-		// Step 10's typed-port Transcriber call.
-		d.Hash = testStubHash{}
-		d.Transcriber = tport
-		return d
-	}())
-	cmd := youtubetypes.ProcessSegmentCommand{
-		VideoID: "abc",
-		Segment: youtubetypes.Segment{Start: "0:00", End: "0:10", Name: "Test"},
-		Index:   0,
-		OutDir:  t.TempDir(),
-	}
-	out, err := uc.Execute(context.Background(), cmd)
-	require.NoError(t, err, "Step 10 typed-port call must not bubble Transcriber errors to Execute")
-	require.Equal(t, "processed", out.Status)
-
-	if tport.calls != 1 {
-		t.Errorf("Transcriber.TranscribeAudio call count: want 1, got %d", tport.calls)
-	}
-	if tport.lastAudioPath != realPath {
-		t.Errorf("Transcriber received audioPath: want %q, got %q", realPath, tport.lastAudioPath)
-	}
-}
-
-// TestProcessSegment_Step10_ReadsTranscriptFromTypedPort_TranscriberNil
-// pins the nil-port graceful-skip path: when u.deps.Transcriber is
-// nil (the port was never wired at composition), Step 10 falls
-// back to empty transcript with no panic — preserves the prior
-// nil-skip semantic that the MetadataService also follows.
-func TestProcessSegment_Step10_ReadsTranscriptFromTypedPort_TranscriberNil(t *testing.T) {
-	realPath := filepath.Join(t.TempDir(), "clip.mp4")
-	_ = os.WriteFile(realPath, []byte("fake audio bytes"), 0o644)
-
-	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
-		d := validProcessSegmentDeps()
-		d.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-		d.Hash = testStubHash{} // non-empty so Step 5 passes
-		d.Transcriber = nil     // intentionally nil
-		return d
-	}())
-	cmd := youtubetypes.ProcessSegmentCommand{
-		VideoID: "abc",
-		Segment: youtubetypes.Segment{Start: "0:00", End: "0:10", Name: "Test"},
-		Index:   0,
-		OutDir:  t.TempDir(),
-	}
-	out, err := uc.Execute(context.Background(), cmd)
-	require.NoError(t, err, "nil Transcriber must not fail Execute")
-	require.Equal(t, "processed", out.Status, "Execute must surface as processed regardless of transcript path")
-}
-
-// TestProcessSegment_Step10_ReadsTranscriptFromTypedPort_TranscriberError
-// pins the typed-error graceful-swallow contract: a Transcriber
-// port error is logged at Warn level + transcript falls back to
-// empty string. Execute does NOT propagate the error — that would
-// regress the Step 9 media_assets + outbox surface (the prior
-// M3 path also swallowed the .txt read failure but with a
-// silent-success signal that hid the missing-transcript problem).
-// The new path at least logs the Warn so operators can spot it.
-func TestProcessSegment_Step10_ReadsTranscriptFromTypedPort_TranscriberError(t *testing.T) {
-	realPath := filepath.Join(t.TempDir(), "clip.mp4")
-	_ = os.WriteFile(realPath, []byte("fake audio bytes"), 0o644)
-	tport := &stubTranscriber{err: errors.New("simulated whisper timeout")}
-
-	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
-		d := validProcessSegmentDeps()
-		d.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-		d.Hash = testStubHash{} // non-empty so Step 5 passes
-		d.Transcriber = tport
-		return d
-	}())
-	cmd := youtubetypes.ProcessSegmentCommand{
-		VideoID: "abc",
-		Segment: youtubetypes.Segment{Start: "0:00", End: "0:10", Name: "Test"},
-		Index:   0,
-		OutDir:  t.TempDir(),
-	}
-	out, err := uc.Execute(context.Background(), cmd)
-	require.NoError(t, err, "Transcriber error must not fail Execute (graceful swallow + empty transcript)")
-	require.Equal(t, "processed", out.Status)
-	require.Equal(t, 1, tport.calls, "Transcriber must still be invoked even when it errors")
-}
+// The replacement is `process_segment_fase1c_test.go` which
+// pins the new contract hermetically:
+//   - TestStep10_DoesNotInvokeTranscriber: Step 10 alone
+//     (0 Transcriber calls when MetadataService is nil)
+//   - TestExecute_CacheMiss_TranscriberInvokedAtMostOnce:
+//     end-to-end pipeline (≤ 1 Transcriber call — only Step 7's
+//     priority-5 fallback fires)
+//   - TestExecute_CacheHit_TranscriberNotInvoked: cache hit
+//     produces 0 Transcriber calls (orchestrator short-circuits)
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the typed-port surface is
+// retired at the use-case boundary. Step 7's Whisper fallback
+// remains in TextTrackResolver.AcquireSegmentText (priority 5).
 
 // log_silence is a Nop logger reference; the process_segment tests
 // inject validProcessSegmentDeps().Log = zap.NewNop().
@@ -637,7 +514,12 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog(t *testing.T) {
 		}
 	}
 	require.Equal(t, "yt_abc_0_10_v1", fields["clip_id"], "Warn log must carry canonical clip_id (yt_<videoID>_<startSec>_<endSec>_<policyVer> format)")
-	require.Equal(t, realPath, fields["local_path"], "Warn log must carry local_path so operators can re-extract")
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c (July 2026): the
+	// local_path field was RETIRED from step10's Warn log. Step 10's
+	// new signature has no localPath parameter (per user spec);
+	// the clip_id is the canonical lookup key for operator
+	// dashboards — operators JOIN with media_assets to retrieve the
+	// local_path when a manual re-extract is needed.
 	require.Equal(t, string(FailureCodeMetadataFailed), fields["failure_code"], "Warn log must carry canonical failure_code")
 }
 
@@ -741,7 +623,11 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_PartialState(t *testing.T) {
 		}
 	}
 	require.Equal(t, "yt_abc_0_10_v1", fields["clip_id"])
-	require.Equal(t, realPath, fields["local_path"])
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.c (July 2026): the
+	// local_path field was RETIRED from step10's Warn log. The
+	// clip_id is the canonical lookup key — operators JOIN with
+	// media_assets to retrieve the local_path for manual
+	// re-extract.
 	require.Equal(t, string(FailureCodeMetadataFailed), fields["failure_code"])
 }
 
