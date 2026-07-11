@@ -25,10 +25,60 @@ package artlist
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 )
+
+// ErrQdrantUnavailable is the canonical typed sentinel for Gate 10
+// Qdrant-failure tests. Matches the real-world error a caller would
+// receive when the Qdrant cluster is down, unreachable, or returns
+// a non-2xx response on the upsert endpoint. The artlist pipeline
+// must treat this as a NON-FATAL side-effect (the clip is still
+// processed; the run still reports OK; the index_state simply stays
+// in DISCOVERED/INDEXING/INDEXING_FAILED rather than transitioning
+// to INDEXED).
+var ErrQdrantUnavailable = errors.New("qdrant unavailable: simulated indexing failure (network or 5xx)")
+
+// failingDispatcherForArtlist is a Gate 10 test double that wraps
+// stubDispatcherForArtlist (which does the canonical media_assets
+// upsert) and returns ErrQdrantUnavailable from EnqueueAndIndex to
+// simulate a Qdrant indexing failure during the dispatch step.
+//
+// All other Dispatcher methods (SaveDiscoveredAsset, EnqueueAndRestore,
+// EnqueueAndDelete) are inherited unchanged from the embedded stub
+// via Go struct embedding (anonymous field promotes all methods).
+//
+// PRODUCTION CODE MUST NOT USE THIS TYPE. Its sole purpose is to
+// verify the fail-soft contract documented in Gate 10:
+//
+//   - index_state must NOT transition to INDEXED when Qdrant fails
+//   - Processed count must be unaffected by the Qdrant failure
+//   - The Artlist run overall must NOT fail closed
+type failingDispatcherForArtlist struct {
+	stubDispatcherForArtlist
+}
+
+// Compile-time: failingDispatcherForArtlist satisfies the Dispatcher
+// port (via embedded stubDispatcherForArtlist). Drift at the port
+// signature surfaces as a build failure.
+var _ Dispatcher = (*failingDispatcherForArtlist)(nil)
+
+// EnqueueAndIndex simulates a Qdrant indexing failure: the canonical
+// media_assets upsert that the embedded stub would do is SKIPPED
+// (because the production code's contract is that the upsert+outbox
+// pair happens in a single atomic transaction, and the test exercises
+// the failure path at the Qdrant-upsert boundary, AFTER the atomic
+// pair succeeds). Returns ErrQdrantUnavailable to let the caller
+// observe the failure without crashing.
+//
+// godlike/07 no-fake-availability: returning a typed error that
+// matches what a real Qdrant failure would produce (connection
+// refused, 503, timeout) — NOT a generic "fail" string.
+func (f *failingDispatcherForArtlist) EnqueueAndIndex(_ context.Context, _ *asset.Asset, _ string) error {
+	return ErrQdrantUnavailable
+}
 
 // stubDispatcherForArtlist is the test-only Dispatcher adapter used by
 // artlist-package tests. Production code MUST NOT construct this type.
