@@ -6,7 +6,7 @@
 // (database/sql in api/application/domain, interface{} growth,
 // dependency setters, ...). This file governs a different axis:
 // TOKEN-LEVEL STALE REFERENCES in the architecture documentation
-// files (architecture/*.yaml, architecture/archive/**/*.yaml, plus the
+// files (architecture/*.yaml, plus the
 // issues file added in slice 2/4).
 //
 // How it works:

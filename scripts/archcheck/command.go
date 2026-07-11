@@ -41,10 +41,10 @@ const (
 	// baseline from the current actual state and exits 0. Activated
 	// by `--seed-baseline`. Short-circuits any check dispatch.
 	ModeSeedBaseline
-	// ModeSymbolRefs runs the architecture-symbol CI gate (action
-	// P0-5 slice 4/4 of the cleanup plan, June 2026): walks
-	// architecture/*.yaml + architecture/archive/**/*.yaml,
-	// extracts Go-like path tokens, and prints findings to
+// ModeSymbolRefs runs the architecture-symbol CI gate (action
+// P0-5 slice 4/4 of the cleanup plan, June 2026): walks
+// architecture/*.yaml,
+// extracts Go-like path tokens, and prints findings to
 	// stderr. Exits 1 when any reference is unresolved. Activated
 	// by `--symbol-refs`. Backed by runSymbolRefsChecks (in
 	// scripts/archcheck/symbol_refs.go).
@@ -92,7 +92,7 @@ func ParseCommandLine(args []string, errSink io.Writer) (*Config, error) {
 	ratchet := fs.Bool("ratchet", false, "run the ratchet architectural gate (allowlist + baseline)")
 	futureRatchet := fs.Bool("future-ratchet", false, "additionally run Phase 0 PR-A baseline-on-baseline rules (grace cycle before promotion to required)")
 	seedBaseline := fs.Bool("seed-baseline", false, "explicitly seed scripts/archcheck/phase0_baseline.json from current actual state and exit 0 (operator-only; intended once per minor cycle at PR-A bootstrapping)")
-	symbolRefs := fs.Bool("symbol-refs", false, "run the architecture-symbol CI gate: walk architecture/*.yaml + architecture/archive/**/*.yaml and emit a Finding per unresolved Go-path reference (action P0-5 slice 4/4 of the cleanup plan)")
+	symbolRefs := fs.Bool("symbol-refs", false, "run the architecture-symbol CI gate: walk architecture/*.yaml and emit a Finding per unresolved Go-path reference (action P0-5 slice 4/4 of the cleanup plan)")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err

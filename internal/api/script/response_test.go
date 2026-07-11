@@ -79,12 +79,12 @@ func TestGenerateResponse_AsyncHelper_PopulatedAllFields(t *testing.T) {
 	t.Parallel()
 
 	resp := GenerateResponse{}
-	resp.async("job-abc-123", "QUEUED", "/api/jobs/job-abc-123/full", "Document Title")
+	resp.async("job-abc-123", "PENDING", "/api/jobs/job-abc-123/full", "Document Title")
 	got, err := json.Marshal(resp)
 	if err != nil {
 		t.Fatalf("json.Marshal err: %v", err)
 	}
-	want := `{"ok":true,"job_id":"job-abc-123","status":"QUEUED","status_url":"/api/jobs/job-abc-123/full","doc_title":"Document Title"}`
+	want := `{"ok":true,"job_id":"job-abc-123","status":"PENDING","status_url":"/api/jobs/job-abc-123/full","doc_title":"Document Title"}`
 	if string(got) != want {
 		t.Fatalf("async JSON\n  got  = %s\n  want = %s", string(got), want)
 	}
@@ -97,7 +97,7 @@ func TestGenerateResponse_AsyncHelper_DocTitleEmpty_OmitsKey(t *testing.T) {
 	t.Parallel()
 
 	resp := GenerateResponse{}
-	resp.async("job-abc-123", "QUEUED", "/api/jobs/job-abc-123/full", "")
+	resp.async("job-abc-123", "PENDING", "/api/jobs/job-abc-123/full", "")
 
 	body, err := json.Marshal(resp)
 	if err != nil {
@@ -106,7 +106,7 @@ func TestGenerateResponse_AsyncHelper_DocTitleEmpty_OmitsKey(t *testing.T) {
 	if strings.Contains(string(body), "doc_title") {
 		t.Fatalf("doc_title should be omitted on empty value; got %s", string(body))
 	}
-	want := `{"ok":true,"job_id":"job-abc-123","status":"QUEUED","status_url":"/api/jobs/job-abc-123/full"}`
+	want := `{"ok":true,"job_id":"job-abc-123","status":"PENDING","status_url":"/api/jobs/job-abc-123/full"}`
 	if string(body) != want {
 		t.Fatalf("async JSON (empty doc_title)\n  got  = %s\n  want = %s", string(body), want)
 	}
@@ -122,7 +122,7 @@ func TestGenerateResponse_NoLegacySyncKeys(t *testing.T) {
 	t.Parallel()
 
 	resp := GenerateResponse{}
-	resp.async("job-id-99", "QUEUED", "/api/jobs/job-id-99/full", "Doc-Title")
+	resp.async("job-id-99", "PENDING", "/api/jobs/job-id-99/full", "Doc-Title")
 	body, err := json.Marshal(resp)
 	if err != nil {
 		t.Fatalf("json.Marshal err: %v", err)
@@ -169,7 +169,7 @@ func TestGenerateResponse_AsyncHelper_ValuesReceiver_NoNilPanic(t *testing.T) {
 	// auto-takes the address. The test confirms no panic and OK=true
 	// gets set on the receiver.
 	resp := GenerateResponse{}
-	resp.async("job-z", "QUEUED", "/api/jobs/job-z/full", "")
+	resp.async("job-z", "PENDING", "/api/jobs/job-z/full", "")
 	if !resp.OK {
 		t.Fatalf("async() should set OK=true; resp.OK=%v", resp.OK)
 	}

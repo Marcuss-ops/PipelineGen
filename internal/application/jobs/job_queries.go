@@ -49,7 +49,7 @@ func (s *Service) List(ctx context.Context, filter job.Filter) ([]job.Job, error
 
 // ListAwaitingAggregation returns parent jobs awaiting aggregation
 // (parent_state = waiting_children, broker status IN RUNNING/
-// FINALIZING/SUCCEEDED) filtered by parentType. See voiceover.md §10.5.
+// FINALIZING/SUCCEEDED) filtered by parentType.
 //
 // Commit 3 P0 #4: parentType parameter scopes the query so script
 // and voiceover aggregators don't cross-pollinate. Only waiting_children

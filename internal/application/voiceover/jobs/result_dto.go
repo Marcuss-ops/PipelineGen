@@ -16,12 +16,6 @@
 // VoiceoverAggregateResult is the output of the aggregation loop:
 // what the aggregator has computed and is about to persist via
 // FinalizeAggregateParent.
-//
-// voiceover.md §12 reference:
-//
-//	VoiceoverParentResult → §12.4
-//	VoiceoverItemResult   → VoiceoverChildResult (this file)
-//	VoiceoverAggregateResult → §13 migration phases
 package jobs
 
 import "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"

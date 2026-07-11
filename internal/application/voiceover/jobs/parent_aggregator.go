@@ -87,7 +87,7 @@ type AggregatorDeps struct {
 // FASE 3 (July 2026): ListAwaitingAggregation replaces the generic
 // List(type=voiceover.generate) + in-memory JSON filter. The new
 // method uses an optimized SQL query with idx_jobs_type_status
-// index + json_extract WHERE clause (voiceover.md §10.5).
+// index + json_extract WHERE clause.
 type AggregatorJobsService interface {
 	List(ctx context.Context, filter job.Filter) ([]job.Job, error)
 	Get(ctx context.Context, id string) (*job.Job, error)
@@ -188,7 +188,7 @@ func (a *ParentAggregator) Start(ctx context.Context) {
 }
 
 // Tick performs one aggregation sweep. Uses the optimized
-// ListAwaitingAggregation query (voiceover.md §10.5) which filters
+// ListAwaitingAggregation query which filters
 // parent_state via json_extract in SQL rather than loading all
 // voiceover.generate jobs and filtering in Go memory.
 // Errors on individual parents are logged and skipped — a failed

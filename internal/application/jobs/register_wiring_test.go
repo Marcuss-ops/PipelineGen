@@ -192,7 +192,7 @@ func TestErrMissingDeps_IsExportedSentinel(t *testing.T) {
 // ── §15.9 Registrazione incompleta (July 2026) ─────────────────────
 //
 // TestValidateHandlerCompleteness_DetectsMissingChildHandler pins the
-// voiceover.md §15.9 acceptance criterion: when the voiceover.generate
+// Acceptance criterion: when the voiceover.generate
 // parent handler is registered but voiceover.generate_item is missing,
 // the server MUST NOT start (ValidateHandlerCompleteness must return
 // an error so the composition root can fail-closed at boot).

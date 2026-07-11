@@ -10,9 +10,11 @@
 package script
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -22,6 +24,11 @@ import (
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+// enqueueTimeout is the maximum time the handler waits for the job
+// broker to accept a script.generate job. It is a package-level var so
+// tests can temporarily shorten it without rebuilding the binary.
+var enqueueTimeout = 10 * time.Second
 
 // enqueueEnvelopeFn is the canonical enqueue path for all script generation
 // routes. It validates the envelope, runs the SCRIPTCONTRACT-2026-07-08
@@ -101,8 +108,21 @@ func enqueueEnvelopeFn(
 	// Issue 4 (June 2026, P1): pass registry so MaxRetries is sourced
 	// from registry.DefaultMaxRetries(script.generate) instead of the
 	// pre-Issue-4 hard-coded 3-retry fallback.
-	enqueuedJob, err := jobs.EnqueueGenerationJob(c.Request.Context(), jobsSvc, req, log, registry)
+	//
+	// P0 async contract: enqueue must return quickly. A short timeout
+	// prevents the POST from blocking if the job broker is congested.
+	enqueueCtx, cancel := context.WithTimeout(c.Request.Context(), enqueueTimeout)
+	defer cancel()
+
+	enqueuedJob, err := jobs.EnqueueGenerationJob(enqueueCtx, jobsSvc, req, log, registry)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"ok":    false,
+				"error": "JOB_ENQUEUE_TIMEOUT",
+			})
+			return
+		}
 		// RED-6 (SCRIPT-T03-001): route typed client-validation failures to
 		// 4xx via canonical mapper (godlike/06 SSOT one-owner-per-fact in
 		// canonical_errors.go). Stays 500 with obfuscated message for any
@@ -114,6 +134,9 @@ func enqueueEnvelopeFn(
 	}
 
 	resp := GenerateResponse{}
-	resp.async(enqueuedJob.ID, string(enqueuedJob.Status), "/api/jobs/"+enqueuedJob.ID+"/full", "")
-	c.JSON(http.StatusOK, resp)
+	// P0 async contract: the client-facing status for a freshly accepted
+	// job is "PENDING" (the job is persisted and will be picked up by the
+	// worker queue). The canonical job-store status remains QUEUED.
+	resp.async(enqueuedJob.ID, "PENDING", "/api/jobs/"+enqueuedJob.ID+"/full", "")
+	c.JSON(http.StatusAccepted, resp)
 }
