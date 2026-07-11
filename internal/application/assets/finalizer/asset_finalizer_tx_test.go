@@ -101,6 +101,17 @@ func setupTestDB(t *testing.T) *sql.DB {
 			created_at TEXT NOT NULL DEFAULT '',
 			updated_at TEXT NOT NULL DEFAULT ''
 		)`,
+		// Partial UNIQUE INDEX on event_key — required by
+		// AssetTxFinalizer.insertOutboxEvent's
+		// `ON CONFLICT(event_key) WHERE event_key != '' DO NOTHING`.
+		// Mirrors the codebase's partial-index pattern
+		// (idx_jobs_active_key, idx_artifacts_sha256): the
+		// uniqueness triggers only when event_key is non-empty,
+		// so one-shot inserts with event_key='' are NOT
+		// uniqueness-constrained. This is the fail-closed
+		// idempotency contract for re-finalization.
+		`CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
+			ON outbox_events(event_key) WHERE event_key != ''`,
 		`CREATE TABLE IF NOT EXISTS job_events (
 			id TEXT PRIMARY KEY,
 			job_id TEXT NOT NULL,

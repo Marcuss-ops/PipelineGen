@@ -219,19 +219,26 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 			folder_id, folder_path, lifecycle_state, index_state,
 			metadata_json, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PUBLISHED', 'INDEXING_PENDING', ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			filename = excluded.filename,
-			media_type = excluded.media_type,
-			file_hash = excluded.file_hash,
-			drive_file_id = excluded.drive_file_id,
-			drive_link = excluded.drive_link,
-			download_link = excluded.download_link,
-			folder_id = excluded.folder_id,
-			folder_path = excluded.folder_path,
-			lifecycle_state = excluded.lifecycle_state,
-			index_state = excluded.index_state,
-			metadata_json = excluded.metadata_json,
-			updated_at = excluded.updated_at
+	ON CONFLICT(id) DO UPDATE SET
+		filename = excluded.filename,
+		media_type = excluded.media_type,
+		file_hash = excluded.file_hash,
+		drive_file_id = excluded.drive_file_id,
+		drive_link = excluded.drive_link,
+		download_link = excluded.download_link,
+		folder_id = excluded.folder_id,
+		folder_path = excluded.folder_path,
+		lifecycle_state = excluded.lifecycle_state,
+		-- index_state is INTENTIONALLY omitted from the ON CONFLICT
+		-- DO UPDATE clause (godlike/06 SSOT): a re-finalization must
+		-- NOT clobber a state the clipindexer has already transitioned
+		-- (INDEXING / INDEXED / INDEX_FAILED). Only the clipindexer
+		-- owns the index_state column after the initial INSERT. The
+		-- fresh INSERT path still sets 'INDEXING_PENDING' so the
+		-- clipindexer downstream has a non-DISCOVERED state to advance
+		-- from; the DO UPDATE path leaves any prior transition intact.
+		metadata_json = excluded.metadata_json,
+		updated_at = excluded.updated_at
 	`,
 		a.ArtifactID,
 		sourceStr,
