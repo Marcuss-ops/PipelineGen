@@ -66,7 +66,7 @@ func TestHandlerGenerate_SmokeSceneImagesPayload(t *testing.T) {
 
 	router.ServeHTTP(rec, req)
 
-	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, http.StatusAccepted, rec.Code)
 	require.NotNil(t, fake.lastReq, "handler must enqueue a job")
 	require.Equal(t, "script.generate", fake.lastReq.Type)
 

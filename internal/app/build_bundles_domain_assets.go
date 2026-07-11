@@ -13,7 +13,6 @@ import (
 
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/autotag"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -69,12 +68,7 @@ func buildDomainAssetServices(
 
 	autotagSvc := autotag.NewService(dbs.main.DB, repos.Assets.Repository(), process.VLMClient, nil, log)
 
-	// drive.DocClient (*drive.DocClientImpl) satisfies delivery.DocPublisher;
-	// compile-time pin in delivery/doc_publisher.go locks conformance.
-	docPublisher, ok := drive.DocClient.(delivery.DocPublisher)
-	if !ok {
-		return fmt.Errorf("compose domains: lessons: drive.DocClient does not satisfy delivery.DocPublisher (P1-6 migration incomplete)")
-	}
+	docPublisher := drive.DocPublisher
 	lessonsS := lessonsSvc.NewService(
 		&lessonsSvc.LessonsConfig{
 			Enabled:             cfg.Lessons.Enabled,
