@@ -1,3 +1,4 @@
+// Pure-I/O reachability helpers (httpFetch/httpPostJSON/httpGetProbe) on *AdminSystemProber; cross-stage probes (probeScraperDeep/ProbeAll) remain in system_prober.go (godlike/06 SSOT Commit B).
 package diagnostics
 
 import (

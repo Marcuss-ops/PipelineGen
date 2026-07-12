@@ -1,3 +1,4 @@
+// Single canonical owner of artlist persistence methods persistRenditions/stagePersistResults/buildPublishedArtifact + fileSizeFromPath. Receiver *RunOrchestratorService remains in service.go (godlike/06 SSOT Commit C).
 package artlist
 
 import (

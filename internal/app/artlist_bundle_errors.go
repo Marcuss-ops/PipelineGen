@@ -1,3 +1,4 @@
+// Single canonical owner of ErrArtlistConsumerRegistrationFailed + ErrArtlistDepMissing + DepKind constants (godlike/06 SSOT Commit A; gates fail-closed at composition).
 package app
 
 import (

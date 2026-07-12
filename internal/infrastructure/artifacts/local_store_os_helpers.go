@@ -1,3 +1,4 @@
+// OS/syscall/fs isolation layer: RecoverOrphans + workspaceTotalBytes (methods on *LocalStore) + top-level syscallStatfs. Stage pipeline remains in local_store.go (godlike/06 SSOT Commit B).
 package artifacts
 
 import (
