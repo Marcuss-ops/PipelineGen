@@ -327,7 +327,10 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 
 	// Processed MUST be 0 — the gate in stagePersistResults skipped it
 	assert.Equal(t, 0, resp.Processed, "Processed must be 0 when Drive fields are missing")
-	assert.Equal(t, 0, resp.Failed, "Failed must be 0 (processor returned success)")
+	// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): the missing-Drive-fields
+	// clip is now correctly counted as Failed (no longer a silent drop).
+	// See run_orchestrator_stages.go stagePersistResults Drive-gate branch.
+	assert.Equal(t, 1, resp.Failed, "PR-ARTLIST-OUTCOME-ACCOUNTING: missing-Drive-fields clip counts as Failed")
 
 	// Dispatcher MUST NOT have been called
 	assert.Equal(t, 0, outboxEventCount(db), "finalizer must NOT emit outbox event when Drive fields are missing")
@@ -432,7 +435,12 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 
 	// ── Per-item discrimination ──
 	assert.Equal(t, 1, resp.Processed, "only 1 clip (the one with Drive fields) should be Processed")
-	assert.Equal(t, 0, resp.Failed, "no clips should be marked failed (processor returned success for both)")
+	// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): the missing-Drive-fields
+	// clip is now correctly counted as Failed in this mixed batch. Pre-PR
+	// this clip was a silent drop with no Failed tally — the operator never
+	// noticed the gap. See run_orchestrator_stages.go stagePersistResults
+	// Drive-gate branch.
+	assert.Equal(t, 1, resp.Failed, "PR-ARTLIST-OUTCOME-ACCOUNTING: missing-Drive-fields clip counts as Failed in mixed batch")
 	require.Len(t, resp.Items, 2)
 
 	// Only 1 dispatcher call (for the clip with Drive fields)
