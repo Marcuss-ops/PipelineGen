@@ -114,9 +114,9 @@ type Config struct {
 type LocalStore struct {
 	workspace string
 
-	maxArtifactBytes int64
+	maxArtifactBytes  int64
 	maxWorkspaceBytes int64
-	minFreeBytes int64
+	minFreeBytes      int64
 
 	statfsFn func(path string) (freeBytes int64, err error)
 
@@ -166,11 +166,11 @@ func NewLocalStore(cfg Config) (*LocalStore, error) {
 	}
 
 	s := &LocalStore{
-		workspace:        cfg.Workspace,
-		maxArtifactBytes: cfg.MaxArtifactBytes,
+		workspace:         cfg.Workspace,
+		maxArtifactBytes:  cfg.MaxArtifactBytes,
 		maxWorkspaceBytes: cfg.MaxWorkspaceBytes,
-		minFreeBytes:     cfg.MinFreeBytes,
-		statfsFn:         cfg.statfsFn,
+		minFreeBytes:      cfg.MinFreeBytes,
+		statfsFn:          cfg.statfsFn,
 	}
 
 	// Eagerly walk the workspace to populate the cached counter
@@ -199,6 +199,7 @@ var _ staging.Stager = (*LocalStore)(nil)
 //  7. os.Rename .partial/<id>.tmp → <workspace>/<id>.
 //  8. workspace-dir fsync so the rename is durable.
 //  9. Update atomic counter.
+//
 // 10. Build StagedReceipt.
 func (s *LocalStore) Stage(ctx context.Context, in staging.StageInput) (*staging.StagedReceipt, error) {
 	if err := ctxErr(ctx); err != nil {

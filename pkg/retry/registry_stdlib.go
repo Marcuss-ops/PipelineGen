@@ -129,20 +129,20 @@ func codeAsErrno(code int) (syscall.Errno, bool) {
 // (URL-parsing-level).
 //
 // Decision order (typed-first, no substring):
-//   1. nil OR non-*url.Error → (zero, false) — pass to next classifier
-//   2. Inner error implements net.Error with Timeout()==true →
-//      RetryDecision{ErrTimeout, Retryable: true, SafeMessage: ...}
-//   3. Inner error implements net.Error with Temporary()==true →
-//      RetryDecision{ErrNetwork, Retryable: true, SafeMessage: ...}
-//   4. Inner error is context.DeadlineExceeded → ErrTimeout + terminal
-//      (the per-call ctx is canonical; caller decides whether to bind
-//      the ctx to a retry budget). For most retry loops, this is
-//      retryable=true so an upstream timeout propagates back into a
-//      retry.
-//   5. URL parse error shape ("parse <url>: ...") → ErrValidation +
-//      terminal (URL never changes on retry; retrying with the same
-//      URL produces the same parse failure).
-//   6. Anything else → ErrUnknown + terminal (conservative).
+//  1. nil OR non-*url.Error → (zero, false) — pass to next classifier
+//  2. Inner error implements net.Error with Timeout()==true →
+//     RetryDecision{ErrTimeout, Retryable: true, SafeMessage: ...}
+//  3. Inner error implements net.Error with Temporary()==true →
+//     RetryDecision{ErrNetwork, Retryable: true, SafeMessage: ...}
+//  4. Inner error is context.DeadlineExceeded → ErrTimeout + terminal
+//     (the per-call ctx is canonical; caller decides whether to bind
+//     the ctx to a retry budget). For most retry loops, this is
+//     retryable=true so an upstream timeout propagates back into a
+//     retry.
+//  5. URL parse error shape ("parse <url>: ...") → ErrValidation +
+//     terminal (URL never changes on retry; retrying with the same
+//     URL produces the same parse failure).
+//  6. Anything else → ErrUnknown + terminal (conservative).
 func classifyURLError(err error) (RetryDecision, bool) {
 	var ue *url.Error
 	if !errors.As(err, &ue) {

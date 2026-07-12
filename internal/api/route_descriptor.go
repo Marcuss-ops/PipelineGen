@@ -41,23 +41,23 @@ import (
 // Field meaning:
 //   - Method       — HTTP verb (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS).
 //   - Path         — canonical route path string. Includes the canonical
-//                    prefix; engine group-folding resolves the runtime
-//                    prefix at Setup time.
+//     prefix; engine group-folding resolves the runtime
+//     prefix at Setup time.
 //   - Handler      — The actual gin.HandlerFunc. Handlers that wrap
-//                    layered middleware (rate-limit / workspace-scope)
-//                    must compose those middlewares INSIDE the Handler
-//                    so the descriptor remains the SSOT.
+//     layered middleware (rate-limit / workspace-scope)
+//     must compose those middlewares INSIDE the Handler
+//     so the descriptor remains the SSOT.
 //   - AuthPolicy   — admin-only / worker-only / anonymous / internal.
 //   - Capability   — Canonical short id of the owning capability, used
-//                    by the /api/capabilities endpoint + by the
-//                    capability_inventory.yaml cross-reference.
+//     by the /api/capabilities endpoint + by the
+//     capability_inventory.yaml cross-reference.
 //   - Description  — Human-readable summary line for ACTIVE_API_GENERATED.md.
 //   - RequestType  — Go type name of the request envelope (e.g.
-//                    "GenerateRequest" or "GenerateBatchRequest"). Empty
-//                    when the route accepts an empty body.
+//     "GenerateRequest" or "GenerateBatchRequest"). Empty
+//     when the route accepts an empty body.
 //   - ResponseType — Go type name of the response envelope (e.g.
-//                    "GenerateResponse" or "JobStatusResponse"). Empty
-//                    when the route does not return a structured body.
+//     "GenerateResponse" or "JobStatusResponse"). Empty
+//     when the route does not return a structured body.
 type RouteDescriptor struct {
 	Method       string
 	Path         string
@@ -81,9 +81,9 @@ type ginHandlerFunc = gin.HandlerFunc
 //   - admin       — RequireAdminToken (X-Velox-Admin-Token header check).
 //   - worker      — WorkerAuth (rejects admin tokens; worker tokens only).
 //   - anonymous   — no auth (e.g. /health, /qdrant/live, /qdrant/ready,
-//                   /ready, /internal/v1/media/liveness).
+//     /ready, /internal/v1/media/liveness).
 //   - internal    — server-to-server workerbroker (the WorkerAuth
-//                   group at /internal/v1/*).
+//     group at /internal/v1/*).
 type AuthPolicy string
 
 const (

@@ -149,14 +149,15 @@ func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []as
 // kind) triple, filtered to status=READY.
 //
 // Return contract (Fase 4, matches the domain port):
-//   (track, cues, nil)  — track found and READY; cues is nil when
-//                         the source is payload-text, full-text, or
-//                         Whisper (no per-segment timing persisted).
-//   (nil, nil, nil)     — no row OR row in non-READY status
-//                         (PENDING/FAILED). The READY-only filter
-//                         is the canonical contract: a non-READY
-//                         row is not authoritative.
-//   (nil, nil, err)     — repository-level error.
+//
+//	(track, cues, nil)  — track found and READY; cues is nil when
+//	                      the source is payload-text, full-text, or
+//	                      Whisper (no per-segment timing persisted).
+//	(nil, nil, nil)     — no row OR row in non-READY status
+//	                      (PENDING/FAILED). The READY-only filter
+//	                      is the canonical contract: a non-READY
+//	                      row is not authoritative.
+//	(nil, nil, err)     — repository-level error.
 //
 // godlike/06 SSOT: the underlying SQL is identical to Find
 // (same column shape) plus a `status = 'ready'` predicate. The

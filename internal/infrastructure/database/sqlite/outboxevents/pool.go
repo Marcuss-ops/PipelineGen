@@ -16,19 +16,19 @@
 //
 // Post-Push-6.2 changes (Fase 6(c), July 2026):
 //
-//   1. computeNextAttempt signature: ↦ (eventID int64, attemptCount int).
-//      The jitter rand source is `eventID*31 + int64(attemptCount)` so
-//      divergent events at the same attempt desync — the canonical
-//      fix for the pre-fix "all workers wake at once" storm.
+//  1. computeNextAttempt signature: ↦ (eventID int64, attemptCount int).
+//     The jitter rand source is `eventID*31 + int64(attemptCount)` so
+//     divergent events at the same attempt desync — the canonical
+//     fix for the pre-fix "all workers wake at once" storm.
 //
-//   2. observability metrics (5 collectors in
-//      internal/infrastructure/observability/metrics_outbox.go):
-//        - OutboxLagSeconds           (gauge)   : per-event_type lag
-//        - OutboxDispatchDurationSeconds (hist) : per-event_type+outcome
-//        - OutboxReclaimTotal         (counter) : successful reclaims
-//        - OutboxDLQTotal             (counter) : dead_letter increments
-//        - OutboxRetriesTotal         (counter) : MarkFailed increments
-//                                              labelled reason=transient|terminal
+//  2. observability metrics (5 collectors in
+//     internal/infrastructure/observability/metrics_outbox.go):
+//     - OutboxLagSeconds           (gauge)   : per-event_type lag
+//     - OutboxDispatchDurationSeconds (hist) : per-event_type+outcome
+//     - OutboxReclaimTotal         (counter) : successful reclaims
+//     - OutboxDLQTotal             (counter) : dead_letter increments
+//     - OutboxRetriesTotal         (counter) : MarkFailed increments
+//     labelled reason=transient|terminal
 //
 // godlike/06 SSOT preserved:
 //   - BackoffCap default 30min, computed BEFORE jitter (Blocco 5 fix).

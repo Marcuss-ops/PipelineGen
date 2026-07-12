@@ -16,18 +16,18 @@
 //
 // This file declares ONLY the typed surface (FinalizeAttemptOutcome
 // enum, FinalizeAttemptCommand struct, FinalizeAttemptResult struct,
-// ArtifactStatePatch struct, OutboxEventSpec struct). The 
+// ArtifactStatePatch struct, OutboxEventSpec struct). The
 // store-interface surface changes land in Push 4.2; today the
 // canonical kernel.Store interface still has Complete/Fail/ScheduleRetry
 // alongside this typed surface so callers can migrate incrementally.
 //
 // godlike/02 kernel rule: this file imports only context / encoding/json
-// / time; cross-package types are NOT imported here — Status, Job, 
+// / time; cross-package types are NOT imported here — Status, Job,
 // Filter, Event remain intra-package canonical owners. The optional
-// ArtifactStatePatch + OutboxEventSpec structs are typed-narrow 
-// mirrors of the canonical domain/artifact.ArtifactStageState and 
+// ArtifactStatePatch + OutboxEventSpec structs are typed-narrow
+// mirrors of the canonical domain/artifact.ArtifactStageState and
 // outboxevents.Event shapes; godlike/06 SSOT drift is caught at the
-// SQL-layer fence in Push 4.5 (the SQL adapter rejects kind/state 
+// SQL-layer fence in Push 4.5 (the SQL adapter rejects kind/state
 // combinations that don't round-trip through the domain namespaces).
 package job
 
@@ -40,10 +40,10 @@ import (
 // FinalizeAttemptOutcome is the enum of terminal decisions the
 // canonical FinalizeAttempt primitive may emit.
 //
-// godlike/06 SSOT: the wire values align 1:1 with the canonical 
-// job.Status set (SUCCEEDED / FAILED / RETRY_WAIT) — no 
-// translation table is needed between the FinalizeAttemptOutcome 
-// enum and the SQL-layer Status union, so the existing CHECK 
+// godlike/06 SSOT: the wire values align 1:1 with the canonical
+// job.Status set (SUCCEEDED / FAILED / RETRY_WAIT) — no
+// translation table is needed between the FinalizeAttemptOutcome
+// enum and the SQL-layer Status union, so the existing CHECK
 // constraint on jobs.status is reused without a new migration.
 //
 // godlike/07 fail-closed: FinalizeAttemptOutcome values are
@@ -76,7 +76,7 @@ const (
 	// DLQPayload (see FinalizeAttemptCommand.DLQPayload below);
 	// DLQPayload non-empty means "also write to dead_letter_jobs
 	// in the SAME tx". The two decisions are intentionally
-	// orthogonal so callers can SUCCEEDED-with-DLQ-snapshot, 
+	// orthogonal so callers can SUCCEEDED-with-DLQ-snapshot,
 	// FAILED-with-DLQ-snapshot, or any other combination.
 	OutcomeFailedPermanent FinalizeAttemptOutcome = "FAILED_PERMANENT"
 
@@ -108,7 +108,7 @@ const (
 // without importing the domain package. The Drift between
 // ArtifactStatePatch.NewState and the canonical artifact_stages.state
 // CHECK constraint is enforced at the SQL-layer fence in Push 4.5
-// (unknown states are rejected with ErrUnknownArtifactState; 
+// (unknown states are rejected with ErrUnknownArtifactState;
 // forwarded via the typed-out ErrArtifactStale sentinel when the
 // artifact row is locked by another writer).
 type ArtifactStatePatch struct {
@@ -130,22 +130,22 @@ type ArtifactStatePatch struct {
 // OutboxEventSpec is the typed-in-kernel surface for a single outbox
 // event emitted by FinalizeAttempt in the SAME tx as the job status
 // transition. The canonical outbox is at
-// internal/infrastructure/database/sqlite/outboxevents and its 
+// internal/infrastructure/database/sqlite/outboxevents and its
 // domain mirror at internal/domain/outboxevents; this struct is the
 // typed-narrow kernel surface that bridges the two namespaces without
 // the kernel importing either.
 //
 // godlike/06 SSOT: the worker producing the outbox event remains the
-// canonical actor; the outbox event's caller-supplied fields 
+// canonical actor; the outbox event's caller-supplied fields
 // (Type, EventKey, Payload) MUST round-trip through the canonical
 // outbox_events table columns verbatim. Drift between OutboxEventSpec
 // and outbox_events columns is caught at the SQL-layer fence in Push
 // 4.5 (e.g. an unknown Type is rejected via ErrUnknownOutboxEventType
 // before the INSERT).
 type OutboxEventSpec struct {
-	// Type is the outbox event type (mirrors outbox_events.type 
+	// Type is the outbox event type (mirrors outbox_events.type
 	// column wire-string). Required, non-empty. The canonical
-	// enum of values lives in 
+	// enum of values lives in
 	// internal/domain/outboxevents/types.go (P1 SSOT discipline).
 	Type string
 
@@ -155,8 +155,8 @@ type OutboxEventSpec struct {
 	// idempotency contract).
 	EventKey string
 
-	// Payload is the typed event payload (json.RawMessage for 
-	// byte-stability across wire boundaries). nil indicates 
+	// Payload is the typed event payload (json.RawMessage for
+	// byte-stability across wire boundaries). nil indicates
 	// "write '{}'".
 	Payload json.RawMessage
 }
@@ -178,10 +178,10 @@ type OutboxEventSpec struct {
 //
 // Fence contract: (WorkerID, LeaseID, ExpectedRevision) is the
 // minimal set of CAS guards for the lease-renewed window. The
-// canonical lease-fence error surface (ErrLeaseLost, 
-// ErrTransitionConflict) is reused; the worker calling 
-// FinalizeAttempt MUST update its ExpectedRevision snapshot to 
-// the returned FinalizeAttemptResult.NewRevision before the next 
+// canonical lease-fence error surface (ErrLeaseLost,
+// ErrTransitionConflict) is reused; the worker calling
+// FinalizeAttempt MUST update its ExpectedRevision snapshot to
+// the returned FinalizeAttemptResult.NewRevision before the next
 // call, OR the fence will reject with ErrTransitionConflict.
 type FinalizeAttemptCommand struct {
 	// JobID is the canonical job identifier. Required, non-empty.
@@ -204,7 +204,7 @@ type FinalizeAttemptCommand struct {
 
 	// ExpectedRevision is the revision snapshot the caller
 	// observed when it claimed the lease. Required.
-	// Must match jobs.revision at SQL-layer fence 
+	// Must match jobs.revision at SQL-layer fence
 	// (ErrTransitionConflict on mismatch).
 	//
 	// Pre-Fase-4 callers had to thread expectedRevision through
@@ -227,31 +227,31 @@ type FinalizeAttemptCommand struct {
 	//
 	// Required iff Outcome ∈ {OutcomeFailedPermanent, OutcomeScheduleRetry};
 	// ignored for OutcomeSucceeded. Empty for those outcomes is a
-	// SQL-layer precondition rejection (a transient error name 
+	// SQL-layer precondition rejection (a transient error name
 	// with an empty message is a hostile defence-in-depth trap).
 	ErrorMessage string
 
 	// Backoff is the post-OutcomeScheduleRetry re-claim delay.
 	//
 	// The SQL layer writes the backoff hint into the row's
-	// completed_at column as a far-future timestamp IF AND ONLY 
+	// completed_at column as a far-future timestamp IF AND ONLY
 	// IF Outcome == OutcomeScheduleRetry (matches the pre-Fase-4
-	// implicit backoff pattern via lease_expiry at 
-	// lifecycle_aggregation.go). Zero backoff = "no delay" 
-	// (re-claim Eligible immediately); non-zero backoff = 
+	// implicit backoff pattern via lease_expiry at
+	// lifecycle_aggregation.go). Zero backoff = "no delay"
+	// (re-claim Eligible immediately); non-zero backoff =
 	// "postpone re-claim until Backoff has elapsed since now".
 	//
 	// Ignored for OutcomeSucceeded and OutcomeFailedPermanent.
 	Backoff time.Duration
 
-	// DLQPayload is the snapshot payload written to 
+	// DLQPayload is the snapshot payload written to
 	// dead_letter_jobs IF AND ONLY IF non-nil. The contract:
-	// nil = "no DLQ archive this tx"; non-nil = "write to 
+	// nil = "no DLQ archive this tx"; non-nil = "write to
 	// dead_letter_jobs alongside the status transition, atomically".
 	//
-	// The canonical dead_letter_jobs row schema is (job_id, 
-	// job_type, correlation_id, error, payload_json, retry_count, 
-	// failed_at); DLQPayload is written to the payload_json 
+	// The canonical dead_letter_jobs row schema is (job_id,
+	// job_type, correlation_id, error, payload_json, retry_count,
+	// failed_at); DLQPayload is written to the payload_json
 	// column verbatim (bytes-stable across wire boundaries). The
 	// canonical Payload schema is forward-pointer to Push 4.5's
 	// specification — today non-nil DLQPayload is the surface
@@ -293,14 +293,14 @@ type FinalizeAttemptCommand struct {
 	// permitted for domain-specific events (e.g. "job_aggregate_completed"
 	// for phase 2 aggregators).
 	//
-	// NOTE: EventType + EventData are produced IN ADDITION TO 
+	// NOTE: EventType + EventData are produced IN ADDITION TO
 	// OutboxEvents; EventType writes to job_events (audit trail)
 	// whereas OutboxEvents writes to outbox_events (downstream
 	// fanout). Their domains do NOT overlap.
 	EventType string
 
 	// EventData is the optional job_events.data_json payload.
-	// Used only when EventType is non-empty. nil indicates 
+	// Used only when EventType is non-empty. nil indicates
 	// "write {}"; maps are JSON-encoded by the SQL layer.
 	EventData map[string]any
 }
@@ -315,7 +315,7 @@ type FinalizeAttemptCommand struct {
 //
 // godlike/07 fail-closed: every field is REQUIRED for the caller
 // to react correctly. FinalStatus is needed to decide whether to
-// emit downstream effects (e.g. aggregator notification); 
+// emit downstream effects (e.g. aggregator notification);
 // NewRevision is needed to update the lease-fence snapshot for
 // any subsequent call.
 type FinalizeAttemptResult struct {
@@ -330,14 +330,14 @@ type FinalizeAttemptResult struct {
 	// OutcomeSucceeded this is StatusSucceeded. When the SQL-layer
 	// retry-exhaustion downgrade fires (OutcomeScheduleRetry with
 	// retry_count already at max_retries), FinalStatus reflects
-	// the post-downgrade state (StatusFailed) and not the 
+	// the post-downgrade state (StatusFailed) and not the
 	// caller-supplied outcome.
 	FinalStatus Status
 
 	// NewRevision is the post-commit revision. The worker's
 	// expectedRevision on subsequent calls MUST be updated to
 	// this value before the next call, OR the lease-fence
-	// will reject. Mirrors the pre-Fase-4 invariant that 
+	// will reject. Mirrors the pre-Fase-4 invariant that
 	// revision is bumped on every fenced state transition.
 	NewRevision int
 
@@ -347,8 +347,8 @@ type FinalizeAttemptResult struct {
 	// this boolean is the canonical post-commit projection.
 	// Always false in current ops because DLQ archiving is a
 	// separate post-Finalize step (kept distinct from terminal
-	// decisions per godlike/07 minimum-blast-radius). 
-	// Forward-pointer for future Fase 5 expansion: a single 
+	// decisions per godlike/07 minimum-blast-radius).
+	// Forward-pointer for future Fase 5 expansion: a single
 	// call to FinalizeAttempt with DLQPayload=non-nil bumps
 	// this to true atomically.
 	DLQRecorded bool
@@ -360,21 +360,21 @@ type FinalizeAttemptResult struct {
 	// each insert succeeded.
 	//
 	// godlike/06 SSOT: the IDs are the canonical outbox_events.id
-	// values (the SQL-layer generates `evt_<unix_nano>_<hex>` 
+	// values (the SQL-layer generates `evt_<unix_nano>_<hex>`
 	// strings, mirroring the pre-Fase-4 job_events pattern).
 	// Callers MUST NOT re-query the outbox to "verify" — these
 	// IDs are the source of truth.
 	OutboxEventsWritten []string
 }
 
-// FinalizeAttemptFn is the typed signature of the canonical 
+// FinalizeAttemptFn is the typed signature of the canonical
 // FinalizeAttempt primitive. Matches the kernel.Store.FinalizeAttempt
 // signature once the interface is updated in Push 4.2.
 //
 // godlike/06 SSOT: this faithful signature mirror is the canonical
 // declaration site; the surface in Push 4.2's interface change MUST
-// use this exact signature (no field-name changes; no added 
-// parameters; no removed parameters). Drift between the typedef and 
+// use this exact signature (no field-name changes; no added
+// parameters; no removed parameters). Drift between the typedef and
 // the interface declaration is a build-failure at the adapter's
 // compile-time assertion `var _ Store = (*Adapter)(nil)`.
 type FinalizeAttemptFn func(ctx context.Context, cmd FinalizeAttemptCommand) (FinalizeAttemptResult, error)

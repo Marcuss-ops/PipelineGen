@@ -5,6 +5,7 @@
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026).
 //
 // Pipeline (canonical):
+//
 //	a. Read source text track READY in asset_text_tracks.
 //	b. For each candidate target language, find existing target
 //	   track. If READY + matching MaterializationKey → SKIP.
@@ -24,9 +25,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"go.uber.org/zap"
 )
 
@@ -42,15 +43,15 @@ type OutboxEnqueuer interface {
 
 // MaterializationReport is the canonical return value.
 type MaterializationReport struct {
-	AssetID               string                `json:"asset_id"`
-	Kind                  asset.TextTrackKind   `json:"kind"`
-	SourceLanguage        string                `json:"source_language"`
-	SourceTextHash        string                `json:"source_text_hash"`
-	CreatedLanguages      []string              `json:"created_languages"`
-	SkippedLanguages      []string              `json:"skipped_languages"`
-	RetranslatedLanguages []string              `json:"retranslated_languages"`
-	FailedLanguages       map[string]string     `json:"failed_languages"`
-	Duration              time.Duration         `json:"duration"`
+	AssetID               string              `json:"asset_id"`
+	Kind                  asset.TextTrackKind `json:"kind"`
+	SourceLanguage        string              `json:"source_language"`
+	SourceTextHash        string              `json:"source_text_hash"`
+	CreatedLanguages      []string            `json:"created_languages"`
+	SkippedLanguages      []string            `json:"skipped_languages"`
+	RetranslatedLanguages []string            `json:"retranslated_languages"`
+	FailedLanguages       map[string]string   `json:"failed_languages"`
+	Duration              time.Duration       `json:"duration"`
 }
 
 func (r *MaterializationReport) HasFailures() bool {
@@ -64,11 +65,11 @@ func (r *MaterializationReport) TotalProcessed() int {
 
 // Materializer is the canonical application-layer service.
 type Materializer struct {
-	repo       asset.TextTrackRepository
-	translator translation.TranslationPort
-	outbox     OutboxEnqueuer
+	repo        asset.TextTrackRepository
+	translator  translation.TranslationPort
+	outbox      OutboxEnqueuer
 	resolverCfg ResolverConfig
-	log        *zap.Logger
+	log         *zap.Logger
 }
 
 func NewMaterializer(

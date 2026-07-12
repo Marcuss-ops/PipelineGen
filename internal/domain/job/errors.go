@@ -7,13 +7,13 @@
 // Pre-Fase-5 distribution (forward-pointer to Push 5.2 cutover):
 //
 //   - ErrLeaseLost          → internal/infrastructure/database/sqlite/jobs/repository_commands.go
-//                              (Phase A.2 re-export alias; same identity as canonical decl)
+//     (Phase A.2 re-export alias; same identity as canonical decl)
 //   - ErrTransitionConflict → internal/infrastructure/database/sqlite/jobs/repository_commands.go
-//                              (Phase A.2 re-export alias; same identity as canonical decl)
+//     (Phase A.2 re-export alias; same identity as canonical decl)
 //   - ErrJobNotFound        → internal/infrastructure/database/sqlite/jobs/repository_commands.go
-//                              (Phase A.2 re-export alias; same identity as canonical decl)
+//     (Phase A.2 re-export alias; same identity as canonical decl)
 //   - ErrFinalizeAttempt*   → internal/infrastructure/database/sqlite/jobs/finalize_attempt.go
-//                              (Push 4.2 decls; migrated to canonical home)
+//     (Push 4.2 decls; migrated to canonical home)
 //
 // godlike/06 SSOT lockstep: the re-export aliases above MUST stay
 // in lockstep with the canonical declarations in this file. The

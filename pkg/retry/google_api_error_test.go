@@ -321,55 +321,55 @@ func (e *fakeRetryAfterError) RetryAfterDuration() time.Duration {
 func isRetryableAlways(error) bool { return true }
 
 func TestDoWithValue_HonorsRetryAfter(t *testing.T) {
-	t.Parallel()		// Iteration 1 → nil (success path, loop ends). Retry-after is
-		// irrelevant on success; this confirms the success path is
-		// unaffected by the new check.
-		//
-		// Fase 6(a) Push 6.1 (July 2026): explicit IsRetryable required.
-		// Pre-Fase-6 the test relied on IsRetryable==nil → retry-always;
-		// spec (b) forbids that semantic — IsRetryable==nil MUST
-		// fail-closed via neverRetry. isRetryableAlways is the test-only
-		// helper preserving the legacy "retry everything" surface for
-		// this retry-after-wait mediation test.
-		{
-			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-			defer cancel()
-			_, err := DoWithValue(ctx, func() (struct{}, error) {
-				return struct{}{}, nil
-			}, Options{
-				MaxAttempts:    3,
-				InitialBackoff: 1 * time.Second,
-				JitterFraction: 0, // deterministic for assertion
-				IsRetryable:    isRetryableAlways,
-			})
-			require.NoError(t, err)
-		}		// Iteration 2 → first call returns RetryAfterError with
-		// suggested=2s (greater than computed 1s backoff); the loop
-		// exits after RetryAfter-wait because the next ctx.Deadline
-		// triggers before the retry happens. We assert the loop
-		// waits at least the suggested 2s rather than burning the
-		// 1s default backoff.
-		//
-		// Fase 6(a) Push 6.1: explicit IsRetryable required (see
-		// Iteration 1 comment for spec rationale).
-		{
-			retryAfter := 2 * time.Second
-			ctx, cancel := context.WithTimeout(context.Background(),
-				retryAfter+100*time.Millisecond)
-			defer cancel()
+	t.Parallel() // Iteration 1 → nil (success path, loop ends). Retry-after is
+	// irrelevant on success; this confirms the success path is
+	// unaffected by the new check.
+	//
+	// Fase 6(a) Push 6.1 (July 2026): explicit IsRetryable required.
+	// Pre-Fase-6 the test relied on IsRetryable==nil → retry-always;
+	// spec (b) forbids that semantic — IsRetryable==nil MUST
+	// fail-closed via neverRetry. isRetryableAlways is the test-only
+	// helper preserving the legacy "retry everything" surface for
+	// this retry-after-wait mediation test.
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+		_, err := DoWithValue(ctx, func() (struct{}, error) {
+			return struct{}{}, nil
+		}, Options{
+			MaxAttempts:    3,
+			InitialBackoff: 1 * time.Second,
+			JitterFraction: 0, // deterministic for assertion
+			IsRetryable:    isRetryableAlways,
+		})
+		require.NoError(t, err)
+	} // Iteration 2 → first call returns RetryAfterError with
+	// suggested=2s (greater than computed 1s backoff); the loop
+	// exits after RetryAfter-wait because the next ctx.Deadline
+	// triggers before the retry happens. We assert the loop
+	// waits at least the suggested 2s rather than burning the
+	// 1s default backoff.
+	//
+	// Fase 6(a) Push 6.1: explicit IsRetryable required (see
+	// Iteration 1 comment for spec rationale).
+	{
+		retryAfter := 2 * time.Second
+		ctx, cancel := context.WithTimeout(context.Background(),
+			retryAfter+100*time.Millisecond)
+		defer cancel()
 
-			callStart := time.Now()
-			_, err := DoWithValue(ctx, func() (struct{}, error) {
-				return struct{}{}, &fakeRetryAfterError{
-					suggested: retryAfter,
-					msg:       "synthetic 429",
-				}
-			}, Options{
-				MaxAttempts:    3,
-				InitialBackoff: 100 * time.Millisecond, // computed would be 100ms
-				JitterFraction: 0,
-				IsRetryable:    isRetryableAlways,
-			})
+		callStart := time.Now()
+		_, err := DoWithValue(ctx, func() (struct{}, error) {
+			return struct{}{}, &fakeRetryAfterError{
+				suggested: retryAfter,
+				msg:       "synthetic 429",
+			}
+		}, Options{
+			MaxAttempts:    3,
+			InitialBackoff: 100 * time.Millisecond, // computed would be 100ms
+			JitterFraction: 0,
+			IsRetryable:    isRetryableAlways,
+		})
 		callElapsed := time.Since(callStart)
 		require.Error(t, err, "first attempt error must propagate")
 		// The retry happened for at least retryAfter (sleep would
@@ -378,28 +378,28 @@ func TestDoWithValue_HonorsRetryAfter(t *testing.T) {
 		require.GreaterOrEqual(t, callElapsed, retryAfter-50*time.Millisecond,
 			"DoWithValue must honor RetryAfterError's suggested duration (≥%v, got %v)",
 			retryAfter, callElapsed)
-	}		// Iteration 3 → first call returns RetryAfterError with
-		// suggested=50ms (LESS than computed 500ms backoff); the loop
-		// uses the computed backoff (NO retry-after extension because
-		// suggested < computed).
-		//
-		// Fase 6(a) Push 6.1: explicit IsRetryable required.
-		{
-			ctx, cancel := context.WithTimeout(context.Background(),
-				500*time.Millisecond+50*time.Millisecond)
-			defer cancel()
+	} // Iteration 3 → first call returns RetryAfterError with
+	// suggested=50ms (LESS than computed 500ms backoff); the loop
+	// uses the computed backoff (NO retry-after extension because
+	// suggested < computed).
+	//
+	// Fase 6(a) Push 6.1: explicit IsRetryable required.
+	{
+		ctx, cancel := context.WithTimeout(context.Background(),
+			500*time.Millisecond+50*time.Millisecond)
+		defer cancel()
 
-			_, err := DoWithValue(ctx, func() (struct{}, error) {
-				return struct{}{}, &fakeRetryAfterError{
-					suggested: 50 * time.Millisecond, // smaller than computed 500ms
-					msg:       "synthetic 429 small",
-				}
-			}, Options{
-				MaxAttempts:    3,
-				InitialBackoff: 500 * time.Millisecond, // computed backoff dominates
-				JitterFraction: 0,
-				IsRetryable:    isRetryableAlways,
-			})
+		_, err := DoWithValue(ctx, func() (struct{}, error) {
+			return struct{}{}, &fakeRetryAfterError{
+				suggested: 50 * time.Millisecond, // smaller than computed 500ms
+				msg:       "synthetic 429 small",
+			}
+		}, Options{
+			MaxAttempts:    3,
+			InitialBackoff: 500 * time.Millisecond, // computed backoff dominates
+			JitterFraction: 0,
+			IsRetryable:    isRetryableAlways,
+		})
 		require.Error(t, err)
 		// Cancel fires while in the sleep; loop ends with ctx error.
 		// We don't pin exact elapsed time — the contract is that

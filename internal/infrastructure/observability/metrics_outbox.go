@@ -9,16 +9,16 @@
 // Cardinality (bounded):
 //   - event_type: currently 8 canonical strings
 //     (asset.index.requested, asset.index.delete_requested,
-//      asset.drive.delete_requested, asset.index.restore_requested,
-//      delivery.requested, asset.metadata_export.requested,
-//      provider.sync.requested, voiceover.cleanup.requested,
-//      workflow.step.*, asset.published) — every domain
+//     asset.drive.delete_requested, asset.index.restore_requested,
+//     delivery.requested, asset.metadata_export.requested,
+//     provider.sync.requested, voiceover.cleanup.requested,
+//     workflow.step.*, asset.published) — every domain
 //     grows with new event-type additions, but the catalog is
 //     finite.
 //   - reason label on Retries: 2 values (transient|terminal).
 //   - outcome label on Duration: 3 values (ok|err|dlq).
-//   Total series: ~8 × (2 + 3) = 40 per labelled metric, plus 2
-//   unlabelled gauges (lag, reclaim). Bounded; no fan-out risk.
+//     Total series: ~8 × (2 + 3) = 40 per labelled metric, plus 2
+//     unlabelled gauges (lag, reclaim). Bounded; no fan-out risk.
 //
 // Failure mode (godlike/07 NO-FAKE-AVAILABILITY):
 //   - Collectors are declared at package init via promauto.New*.

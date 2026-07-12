@@ -3,22 +3,22 @@
 // Hermetic test for the typed-only retry-decision surface introduced
 // in decision.go. The test pins the Fase-6(a) user-spec contract:
 //
-//   (a) Decision() walks the registered Classifier chain in init order
-//       and returns the first match. No classifier → zero-value + false.
+//	(a) Decision() walks the registered Classifier chain in init order
+//	    and returns the first match. No classifier → zero-value + false.
 //
-//   (b) norm() fail-closes IsRetryable==nil to neverRetry. The legacy
-//       "skip the predicate entirely" semantic is GONE; pass an explicit
-//       predicate or get no-retry default.
+//	(b) norm() fail-closes IsRetryable==nil to neverRetry. The legacy
+//	    "skip the predicate entirely" semantic is GONE; pass an explicit
+//	    predicate or get no-retry default.
 //
-//   (c) RegisterClassifier panics on nil at init (godlike/07 fail-closed
-//       at observable boundary).
+//	(c) RegisterClassifier panics on nil at init (godlike/07 fail-closed
+//	    at observable boundary).
 //
-//   (d) Decision walker panics on final=true with empty Class /
-//       SafeMessage (godlike/07 fail-closed at observable boundary).
+//	(d) Decision walker panics on final=true with empty Class /
+//	    SafeMessage (godlike/07 fail-closed at observable boundary).
 //
-//   (e) ResetClassifiersForTest isolates per-test state. Calling
-//       ResetClassifiersForTest at test start + t.Cleanup isolates
-//       hermetic tests from the global chain.
+//	(e) ResetClassifiersForTest isolates per-test state. Calling
+//	    ResetClassifiersForTest at test start + t.Cleanup isolates
+//	    hermetic tests from the global chain.
 //
 // The tests register local fakeErr / typedErr helpers via the canonical
 // Classifier signature and never consult the substring-fallback path
