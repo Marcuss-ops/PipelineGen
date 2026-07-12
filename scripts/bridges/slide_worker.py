@@ -1391,15 +1391,19 @@ class ProfileWorker(threading.Thread):
         if "accounts.google.com" in self.page.url:
             return {"id": request_id, "status": "error", "error": "login required: user is logged out (please run scripts/bridges/login.py to sign in)", "profile": self.profile_id}
 
-        # P2: candidate snapshot at the start (baseline before the
-        # user clicked "Create"): captures left-over candidates from a
-        # prior partial run.
-        baseline_candidates = _extract_candidates(self.page)
-        _log_diag(
-            request_id, self.profile_id, "start",
-            url=self.page.url,
-            candidates_baseline=len(baseline_candidates),
-        )
+        # P0.4 / candidate-baseline: the canonical baseline snapshot is
+        # taken just before submit (further down at the "Refresh the
+        # baseline after the sidebar has fully expanded" comment), AFTER
+        # the image-mode tab + ratio dropdown have populated the panel,
+        # so `_extract_candidates(max_keep=200)` captures the real
+        # pre-submit gallery state rather than whatever the worker
+        # found at the start of the request (which can be stale UI
+        # state from the prior partial run, before the sidebar has
+        # expanded). Emitting `candidates_baseline` in the JSONL twice
+        # — once at `start` with the stale snapshot, once at
+        # `candidate_found` with the refreshed snapshot — was producing
+        # operator-confusing diagnostics; the latter is the canonical
+        # single source.
 
         try:
             _prepare_editor_surface(self.page)
