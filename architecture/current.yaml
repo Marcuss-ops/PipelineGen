@@ -126,7 +126,7 @@
     - id: PRE-EXISTING-5-ASSETS-ARTLIST
       note: internal/application/assets/providers/artlist::TestSearch_CandidateTranslation_RoundTrip
     - id: PRE-EXISTING-6-STOCKPIPELINE
-      note: stock/stockpipeline::TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope + TestSourcingNoLegacyIndexingStrings
+      note: stock/stockpipeline::TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope (CLOSED by commit 4498d97f9; aggregate_type='media_asset' canonical SSOT one-shape-across-producers); TestSourcingNoLegacyIndexingStrings OBSOLETE on PURE main (test removed in earlier waves; `grep -rn 'func Test' 'Sourcing' internal/application/assets/providers/stock/` returns zero matches — no fix needed, hypothesis untestable by absence-of-target)
     - id: PRE-EXISTING-7-USECASE-TRANSLATION
       note: internal/application/scripts/usecase/multilingual_persistence_p1f_test.go::TestMissingTranslation_FallbackWithExplicitWarning
     - id: PRE-EXISTING-8-USECASE-CACHE-FINGERPRINT
