@@ -274,7 +274,7 @@ issues:
   #     cleanup decision in this entry's follow_up.
   - id: P0-BOT-DRAIN-CONCERNS
     title: "Post-bot-drain audit -- 3 concerns from code-reviewer + forward-pointer delivery"
-    status: in_progress
+    status: resolved
     severity: p1
     owner_capability: "internal/application/images (chrome_provider cluster) + scripts/bridges/slide_worker_runtime + internal/application/qdrant/legacyaudit"
     follow_up:

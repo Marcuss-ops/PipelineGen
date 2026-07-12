@@ -26,9 +26,7 @@ type ttsHealthResult struct {
 // CLI probe for the persistent TTS worker (audioasset.Processor at
 // internal/infrastructure/audio::worker_health.go). The canonical
 // instance lives inside the running pipelinegen process and is not
-// reachable from outside this binary; we probe the worker's HTTP /health
-// surface directly (the canonical public surface, mirrored by the
-// chrome_provider precedent at internal/application/images/chrome_provider.go).
+// reachable from outside this binary; we probe the worker's HTTP /health	// surface directly (the canonical public surface).
 //
 // Default exit code is 0; the printable Result.Reachable conveys the
 // verdict. Operators parse JSON with `jq '.reachable'` to wire this into

@@ -43,7 +43,7 @@
   deadline: "2026-09-15T00:00:00Z"
   rationale: |
     Carry-forward list of pre-existing build/test failures cataloged
-    during the slide_worker refactor wave (commits 1-9, July 2026).
+    during the legacy refactor wave (commits 1-9, July 2026).
     Original 10 entries (9 remaining open) reproduce on PURE main (zero coupling to wave
     commits 1-9) and were individually diagnosed + ratified by
     Commit 7b's diagnostic (usecase TestMissingTranslation_FallbackWithExplicitWarning +
@@ -67,8 +67,7 @@
     these failures do NOT block wave commits 1-9 (each landed with
     explicit CARRY-FORWARD awareness commit message annotation):
     failures are out-of-scope to the wave's refactor scope
-    (slide_worker + processor_images + chrome_provider +
-    postprocessor_composite_merge + sync_generation). MUST be
+    (postprocessor_composite_merge + sync_generation). MUST be
     closed before PR-G CUTOVER phase (WAVE-21 deadline
     2026-08-01) AND before WAVE-22 deadline 2026-09-15.
 
@@ -87,8 +86,8 @@
     ratified + PRE-EXISTING-12-FORMAT-DRIFT closed by Commit F (`gofmt -w` on
     12 files = 11 idempotent + 1 semantic). At Commit F execution time all 11
     PRE-EXISTING-10 files were ALREADY gofmt-clean (`gofmt -l .` empty for
-    that surface) — the slide_worker-wave-pre-flight + Commit 9b/9c catalog-
-    extension format-drift had resolved itself by intermediate commits between
+    that surface) — the wave-pre-flight + Commit 9b/9c catalog-extension
+    format-drift had resolved itself by intermediate commits between
     catalog-instantiation and Commit F; `gofmt -w` was applied idempotently to
     the 11 for git-provenance (captures verified-clean-at-commit-boundary state
     on origin/main). The 12th file (PRE-EXISTING-12's scope:

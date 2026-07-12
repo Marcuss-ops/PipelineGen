@@ -33,8 +33,7 @@ import (
 // first Generate() call. When the worker is unavailable (Python not
 // installed, server script not deployed, startup failure), Generate
 // falls back to the legacy spawn-per-call path for backward compat.
-//
-// Fields added (mirrors ChromeImageProvider, PR-CHROME-PROVIDER-SPLIT):
+// // Fields added (VO-DECOMPOSITION P0 #1 lazy worker state):
 //   - mu sync.Mutex — serialises HTTP calls to the single-threaded Python server
 //   - cmd *exec.Cmd — the running subprocess (nil when not started)
 //   - baseURL string — "http://127.0.0.1:<port>" discovered from stdout
@@ -87,7 +86,7 @@ var _ processorShape = (*Processor)(nil)
 //
 // VO-DECOMPOSITION P0 #1 (July 2026): the persistent worker is NOT
 // started at construction time — it's lazily initialised on the first
-// Generate() call (mirrors ChromeImageProvider lazy-init pattern).
+// Generate() call.
 func NewProcessor(
 	pythonScriptsDir string,
 	log *zap.Logger,
