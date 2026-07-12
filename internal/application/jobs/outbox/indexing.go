@@ -243,6 +243,20 @@ func (h *IndexingHandler) EventType() string {
 	return outboxevents.EventAssetIndexRequested
 }
 
+// IdempotencyKey declares the canonical handler-level idempotency
+// identity for asset.index.requested events. Static — derived from
+// the schema_version literal — so the HandlerRegistry.Register
+// fail-closed panic can fire at init time if a future refactor
+// forgets the declaration.
+//
+// godlike/06 SSOT: this string shape is the canonical handler-class
+// identity surfaced via outbox.IdempotencyKey; per-event idempotency
+// keys live in the envelope's IdempotencyKey field (parsed at
+// Handle-time) and DO NOT replace this static declaration.
+func (h *IndexingHandler) IdempotencyKey() string {
+	return outboxevents.EventAssetIndexRequested + "." + IndexRequestSchemaVersion
+}
+
 // Historical note: the legacy readSourceVersion helper was removed in
 // PR 11 (June 2026). Both producer and consumer route through
 // assets.SourceVersionFor (internal/infrastructure/database/sqlite/assets/source_version.go).

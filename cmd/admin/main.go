@@ -92,6 +92,7 @@ var availableCommands = []string{
 	"sync-all-drive",
 	"sync-outros",
 	"test-youtube",
+	"text-tracks-backfill",
 	"unify-catalogs",
 	"backfill-asset-embeddings",
 	"backfill-visual-embeddings",
@@ -147,6 +148,8 @@ func main() {
 		err = runSyncAllDrive(args)
 	case "test-youtube":
 		err = runTestYouTube(args)
+	case "text-tracks-backfill":
+		err = runTextTracksBackfill(args)
 	case "verify-artlist-pipeline":
 		err = runVerifyArtlistPipeline(args)
 

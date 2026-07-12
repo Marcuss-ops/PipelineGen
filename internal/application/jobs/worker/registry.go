@@ -229,12 +229,21 @@ func (r *Registry) Dispatch(ctx context.Context, j *domainjob.Job, tools *Tools)
 func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType string) *domainjob.JobExecutionTools {
 	if t == nil {
 		return &domainjob.JobExecutionTools{
-			Progress:    func(int, string) {},
-			Event:       func(string, string, map[string]any) {},
-			IsCancelled: func() bool { return false },
+			Progress: func(int, string) {},
+			Event:    func(string, string, map[string]any) {},
 		}
 	}
 	return &domainjob.JobExecutionTools{
+		// FASE 4(b) (July 2026): the IsCancelled closure is REMOVED.
+		// The pre-Fase-4 2-second IsCancelled-poll goroutine
+		// (startCancelWatcher at worker_execution.go) is gone; cancel
+		// now propagates through the typed
+		// kerneljob.RenewLeaseResult.State observation in
+		// renewLeaseLoopWith. The dispatch seam here is the canonical
+		// translation from worker.Tools to domainob.JobExecutionTools
+		// — without IsCancelled, the only 2 callbacks remaining are
+		// Progress and Event. Handlers observe cancellation natively
+		// via ctx.Err() at their next phase boundary.
 		Progress: func(progress int, message string) {
 			// FASE 0.2 silent-drop rewrite: error-checked emit with
 			// counter telemetry (NOT log emit because the closure
@@ -246,20 +255,6 @@ func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType strin
 				return
 			}
 			observability.WorkerProgressEmittedTotal.WithLabelValues(jobType, "success").Inc()
-		},
-		IsCancelled: func() bool {
-			// FASE 0.2 silent-drop rewrite: previously dropped the
-			// broker error (`ok, _ := t.IsCancelled(ctx)`) and returned
-			// `ok` regardless — godlike/07 violation. Post-PR:
-			// fail-closed to `false` on broker error so we do NOT
-			// prematurely branch into the cancellation path on a
-			// transient error; counter bumps to alert operators.
-			ok, err := t.IsCancelled(ctx)
-			if err != nil {
-				observability.WorkerProgressErrorsTotal.WithLabelValues(jobType, "is_cancelled_check_failed").Inc()
-				return false
-			}
-			return ok
 		},
 		// FASE 0.2 silent-drop rewrite: Event is forwarded to the
 		// broker facade's typed event port. Errors are counted but

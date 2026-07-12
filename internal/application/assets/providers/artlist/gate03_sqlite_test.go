@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
@@ -187,9 +186,6 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 	jobTools := &jobs.JobTools{
 		Progress: func(progress int, message string) {},
 		Event:    func(eventType string, message string, data map[string]any) {},
-		IsCancelled: func() bool {
-			return false
-		},
 	}
 
 	result, err := svc.HandleJob(ctx, job, jobTools)
@@ -304,9 +300,8 @@ func TestGate03_ArtlistRunsNotRecordedWhenDiscoveryFails(t *testing.T) {
 	}
 
 	jobTools := &jobs.JobTools{
-		Progress:    func(progress int, message string) {},
-		Event:       func(eventType string, message string, data map[string]any) {},
-		IsCancelled: func() bool { return false },
+		Progress: func(progress int, message string) {},
+		Event:    func(eventType string, message string, data map[string]any) {},
 	}
 
 	// HandleJob should return an error (scraper failure).

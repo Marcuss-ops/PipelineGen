@@ -150,10 +150,10 @@ type Config struct {
 	// acquisition chain (buildDomainMediaServices). The top-level
 	// Multilingual field is retained for back-compat with pre-Fase-1.b
 	// callers; both shapes carry the same MultilingualConfig type.
-	Media            MediaConfig                `yaml:"media"`
-	Scripts          ScriptsConfig              `yaml:"scripts"`
-	Outbox           OutboxConfig               `yaml:"outbox"`
-	Qdrant           QdrantConfig               `yaml:"qdrant"`
+	Media   MediaConfig   `yaml:"media"`
+	Scripts ScriptsConfig `yaml:"scripts"`
+	Outbox  OutboxConfig  `yaml:"outbox"`
+	Qdrant  QdrantConfig  `yaml:"qdrant"`
 }
 
 // AuthSecurityPort compatibility helpers. These keep the application-layer

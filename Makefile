@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main verify-format test-qdrant-fixtures test-qdrant-fixtures-down
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main verify-format test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -564,3 +564,43 @@ regenerate-token:
 # Re-run `make fmt` (alias for `go fmt ./...`) after the fix.
 verify-format:
 	@test -z "$$(gofmt -l .)" || { echo "❌ Files not formatted:"; gofmt -l .; exit 1; }
+
+# ─── Governance regeneration targets (Fase 7, Push 7, July 2026) ──────
+#
+# regen-current-yaml — re-emits architecture/current.yaml from the
+# canonical hand-curated entries + the runtime registry capture at
+# architecture/routes.yaml. The binary at cmd/admin/regen-current-yaml
+# constructs the composition surface in-process WITHOUT calling
+# gin.Engine.Run — godlike/07 NO-FAKE-AVAILABILITY contract.
+#
+# Usage:
+#   make regen-current-yaml                         # writes to stdout (default)
+#   make regen-current-yaml OUT=architecture/current.yaml   # writes to file
+regen-current-yaml:
+	@OUT=$${OUT:-}; \
+	if [ -z "$$OUT" ]; then \
+	    $(GO) run ./cmd/admin/regen-current-yaml --dry-run; \
+	else \
+	    $(GO) run ./cmd/admin/regen-current-yaml --out="$$OUT"; \
+	fi
+
+# regen-routes-yaml — convenience target that calls the AST pre-step
+# binary scripts/admin/generate_routes_yaml.go (the canonical capture
+# surface that cmd/admin/regen-current-yaml reads). If the binary is
+# not present yet (future PR), this target surfaces the canonical error.
+regen-routes-yaml:
+	@if [ -f scripts/admin/generate_routes_yaml.go ]; then \
+	    $(GO) run ./scripts/admin/generate_routes_yaml.go > architecture/routes.yaml; \
+	    echo "✅ regen-routes-yaml wrote architecture/routes.yaml"; \
+	else \
+	    echo "❌ scripts/admin/generate_routes_yaml.go not present — current hand-routes.yaml is authoritative until Push 7(a) lands." >&2; \
+	    exit 1; \
+	fi
+
+# archcheck-strict — invokes go run ./cmd/archcheck --strict which is
+# the gate-promoted Phase-0 governance check. Used by CI + locally as
+# the failure-mode baseline for promote-to-enforce-zero ratchets.
+# Mirrors scripts/ci-architectural-checks.sh with the --strict flag
+# applied (any violation = non-zero exit).
+archcheck-strict:
+	@$(GO) run ./cmd/archcheck --strict

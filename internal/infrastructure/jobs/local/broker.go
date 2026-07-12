@@ -13,7 +13,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 )
 
 type Broker struct {
@@ -441,7 +440,7 @@ func (b *Broker) ensureLease(ctx context.Context, jobID, workerID, leaseID strin
 		return errors.New("job not found")
 	}
 	if j.WorkerID != workerID || j.LeaseID != leaseID || j.Revision != expectedRevision {
-		return sqljobs.ErrLeaseLost
+		return domainjob.ErrLeaseLost
 	}
 	return nil
 }

@@ -17,6 +17,8 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	apiMw "github.com/Marcuss-ops/PipelineGen/internal/api/middleware"
 
+	artifactfinalize "github.com/Marcuss-ops/PipelineGen/internal/application/artifact_finalize"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
@@ -37,6 +39,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptcore "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	stagingsvc "github.com/Marcuss-ops/PipelineGen/internal/application/staging"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	translation "github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -67,6 +70,8 @@ import (
 	qdrantmaintenance "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/maintenance"
 	qdrantsearch "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
 )
 
 // IOpaqueStartFunc is the opaque type for deferred initialisation closures
@@ -92,6 +97,35 @@ type ComposeRoot struct {
 	Sync    *SyncBundle
 	Maint   *MaintBundle
 	Utility *UtilityBundle
+
+	// Staging is the FASE 3 Spina Dorsale staging bundle
+	// (Push 3.1b, July 2026). Exposes the application-layer
+	// `staging.Store` port (the Stage service the publisher
+	// worker pool will call) + the `artifact.Repository` port
+	// (the canonical single-writer of the artifact_stages table;
+	// the publisher worker + finalizer will consume it directly
+	// for Mark* state transitions). Construction lives in
+	// internal/app/build_bundles_staging.go::BuildStagingBundle.
+	Staging *StagingBundle
+
+	// Finalizer is the FASE 3 Spina Dorsale finalizer bundle
+	// (Push 3.1d, July 2026). Exposes the application-layer
+	// `artifact_finalize.Finalizer` port — the typed contract
+	// that closes the publication saga's Finalize step by
+	// scanning artifact_stages for a job_id (Repository.ListByJob)
+	// and flipping every PUBLISHED row to SUCCEEDED via the
+	// fenced Repository.MarkSucceeded primitive. The Finalizer
+	// consumes the SAME artifact.Repository port that
+	// Staging.Repository exposes (no second DB lookup; the typed
+	// port is the canonical cursor to the same
+	// *artifactstages.Repository concrete — godlike/06 SSOT).
+	// Construction lives in
+	// internal/app/build_bundles_artifact_finalize.go::
+	// BuildArtifactFinalizeBundle (runs AFTER BuildStagingBundle).
+	// Publisher worker pool integration (Push 3.1c, forward-pointer)
+	// will drain the outbox + invoke root.Finalizer.Finalize
+	// after each per-artifact MarkPublished to close the saga.
+	Finalizer *FinalizerBundle
 
 	DriveStart            IOpaqueStartFunc
 	OutboxStart           IOpaqueStartFunc
@@ -190,6 +224,16 @@ type AIBundle struct {
 	OllamaTranslator  *translation.OllamaTranslator
 	MemoryRepo        *adapters.Repository
 	ScriptEngine      *scriptcore.Engine
+	// WhisperTranscriber is the concrete Whisper adapter
+	// (Fase 5: wired into the AcquireService for the backfill
+	// CLI's 5-priority chain — priority 5: Whisper fallback).
+	// The narrow texttracks.WhisperPort interface is a
+	// STRUCTURAL subset of youtubeports.WhisperTranscriberPort
+	// (single method TranscribeAudioWithDetection); the type
+	// assertion in BuildTextTrackBundle is a no-op at runtime.
+	// nil when Whisper is not configured (the chain silently
+	// skips priority 5).
+	WhisperTranscriber youtubeports.WhisperTranscriberPort
 }
 
 // DomainBundle is everything media-specific that lives at the application layer.
@@ -261,4 +305,71 @@ type AssetsWiring struct {
 	InternalMediaHandler *assetstorage.Handler
 	SearchAggregator     *search.Aggregator
 	SearchFanOut         search.SearchFanOut
+}
+
+// StagingBundle owns the FASE 3 Spina Dorsale staging step
+// (Push 3.1b, July 2026). The Store is the application-layer port
+// the publisher worker pool drains the outbox into (forward-pointer
+// to Push 3.1c); the Repository is the canonical single-writer of
+// the artifact_stages table (the publisher worker + finalizer will
+// call Mark* on this port to record PUBLISHED → SUCCEEDED /
+// FAILED_PERMANENT transitions). The Workspace field is the
+// resolved absolute path so downstream consumers (admin tools,
+// observability dashboards) can surface the canonical root without
+// re-reading config.
+//
+// godlike/06 SSOT: this is the SINGLE canonical staging bundle;
+// the composition root instantiates it ONCE in NewComposition and
+// hands the typed ports to downstream consumers via the ComposeRoot
+// field. No caller (worker, finalizer, admin tool) should construct
+// a second instance or read the workspace dir independently.
+type StagingBundle struct {
+	// Store is the application-layer FASE 3 staging port. The
+	// publisher worker pool drains the outbox event into Store.Stage
+	// to persist a new STAGED row + local file. The concrete is the
+	// canonical *staging.StoreService; the field is typed as the
+	// port so future mock-injection (test stubs) is type-safe.
+	Store stagingsvc.Store
+
+	// Repository is the canonical single-writer of the
+	// artifact_stages table (the artifact.Repository port).
+	// Exposed here for the publisher worker (MarkPublished) +
+	// finalizer (MarkSucceeded / MarkFailedPermanent) to call
+	// Mark* state transitions without round-tripping through the
+	// application layer.
+	Repository artifact.Repository
+
+	// Workspace is the resolved absolute path of the staging
+	// workspace (the input to StoreService.Stage). Exposed for
+	// observability + admin tooling; consumers MUST NOT use this
+	// to construct files (the Store is the SOLE writer).
+	Workspace string
+}
+
+// FinalizerBundle owns the FASE 3 Spina Dorsale finalization
+// step (Push 3.1d, July 2026). The Finalizer is the
+// application-layer port that closes the publication saga's
+// Finalize step — a read scan via Repository.ListByJob for a
+// given job_id + a fenced-CAS write loop via Repository.
+// MarkSucceeded, gated on "all REQUIRED artifacts for the job
+// are in PUBLISHED state" (FASE 3 (b) fail-closed: any missing
+// required artifact trips ErrArtifactRequiredMissing).
+//
+// godlike/06 SSOT: this is the SINGLE canonical finalizer
+// bundle; the composition root instantiates it ONCE in
+// NewComposition and hands the typed port to downstream
+// consumers via the ComposeRoot.Finalizer field. No caller
+// (publisher worker pool, admin tool, test stub) should
+// construct a second instance or call the artifact.Repository
+// Mark* primitives directly — every consumer reaches the typed
+// port via this bundle.
+//
+// The Finalizer field is typed as the artifact_finalize.Finalizer
+// INTERFACE (not the concrete pointer) so future mock-injection
+// (test stubs in 3.1c / 3.1d extensions) is type-safe without
+// re-wiring the bundle. The compile-time conformance anchor is
+// `var _ Finalizer = (*finalizerService)(nil)` in
+// internal/application/artifact_finalize/service.go.
+type FinalizerBundle struct {
+	Finalizer artifactfinalize.Finalizer
 }

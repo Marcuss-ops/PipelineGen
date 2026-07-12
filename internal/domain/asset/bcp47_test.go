@@ -59,6 +59,7 @@ func TestNormalize_AcceptsCanonicalAndVariants(t *testing.T) {
 // change to accept a previously-rejected input is a deliberate
 // architectural change that must update the SSOT comment in bcp47.go.
 func TestNormalize_RejectsMalformed(t *testing.T) {
+	// "pt_br" intentionally NOT here — 2+_+2 IS a valid BCP-47 pair (see TestNormalize_AcceptsCanonicalAndVariants {pt-BR-lowercase-underscore}); the Rejects list must stay consistent with the Accepts list.
 	cases := []string{
 		"portuguese",   // full language name
 		"english",      // full language name

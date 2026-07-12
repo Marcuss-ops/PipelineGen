@@ -41,31 +41,58 @@
 // a generic "failed to create job" 5xx, with no diagnostic signal
 // pointing at the rescue logic. The typed probe is invariant against
 // driver string changes — the rescue path is the canonical contract.
+// Package jobs — errors.go (PR-jobs-retry-contract, July 2026).
+//
+// Canonical SSOT surface (godlike/06 one-canonical-owner-per-fact):
+//
+//   - ErrRegistryRequired            — composition-root fail-closed gate
+//     for the *Service constructor; enforced
+//     at NewService() startup so a nil-registry
+//     wiring surfaces immediately as a typed
+//     error rather than failing silently on
+//     first Enqueue (godlike/07).
+//
+//   - ErrMaxRetriesUnknown           — strict typed lookup error returned by
+//     Registry.GetMaxRetries when the jobType
+//     is not registered. Propagates through
+//     resolveMaxRetries() so Enqueue rejects
+//     the request with the typed sentinel
+//     instead of silently defaulting to the
+//     legacy 3-retry safety net (which is
+//     REMOVED in this PR — godlike/07
+//     no-fake-availability).
+//
+//   - ErrUniqueConstraintViolation   — typed probe for the
+//     (job.type, job.correlation_id)
+//     SQLite UNIQUE-constraint rescue path in
+//     Enqueue(). Set when the typed
+//     `errors.As(sqlite3.Error, &sqliteErr)`
+//     && `sqliteErr.ExtendedCode==sqlite3.ErrConstraintUnique`
+//     probe fires on the Create() error;
+//     the rescue path then attempts to
+//     surface the existing job before
+//     classifying the error.
+//
+// godlike/07 NO-FAKE-AVAILABILITY rationale (against the pre-PR shape):
+// the pre-PR enqueue_service.go used `strings.Contains(err.Error(),
+// "UNIQUE constraint")` (String-compare trap). A future mattn/go-sqlite3
+// driver version changing the error string (e.g. uppercasing or
+// translating into a different locale) would silently disable the
+// rescue path without any test surfacing the regression — the rescue
+// would never fire, every concurrency-collision Enqueue would return
+// a generic "failed to create job" 5xx, with no diagnostic signal
+// pointing at the rescue logic. The typed probe is invariant against
+// driver string changes — the rescue path is the canonical contract.
+//
+// Fase 5(b) cutover (July 2026): the application-layer
+// `appjobs.ErrLeaseLost` re-export alias was removed (its only purpose
+// was a back-compat shim for the pre-Fase-5(a) assignment chain
+// appjobs ← sqljobs ← domjob). The canonical home is
+// `internal/domain/job/errors.go`; callers probe via
+// `errors.Is(err, domjob.ErrLeaseLost)`.
 package jobs
 
-import (
-	"errors"
-
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
-)
-
-// ErrLeaseLost is the canonical lease-lost sentinel for the application
-// layer. Re-exports the canonical domain-layer sentinel so callers can probe
-// via errors.Is(err, appjobs.ErrLeaseLost) (wire_decoder.go, client_test.go)
-// or errors.Is(err, domjob.ErrLeaseLost) (the canonical home at
-// internal/domain/job/errors.go); both probes are equivalent — the same
-// error value satisfies both.
-//
-// godlike/06 SSOT (post-Fase-5(a), July 2026): the CANONICAL home of
-// ErrLeaseLost is `internal/domain/job/errors.go` (declared with
-// `errors.New("...")` for stable identity). The SQLite-layer
-// (`internal/infrastructure/database/sqlite/jobs/store.go`) and this
-// application-layer re-export are both typed aliases of the canonical
-// value. Identity is preserved across all 3 import paths; the .Error()
-// message returns the domjob-formatted text (canonical surface).
-//
-// Errors.Is(err, ErrLeaseLost) is the canonical probe.
-var ErrLeaseLost = sqljobs.ErrLeaseLost
+import "errors"
 
 // ErrRegistryRequired is returned by NewService(repo, dispatcher, log, reg)
 // when reg is nil. Composition-root contract — fail-closed at startup.

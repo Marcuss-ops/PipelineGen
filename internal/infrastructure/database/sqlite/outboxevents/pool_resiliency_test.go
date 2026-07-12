@@ -72,7 +72,8 @@ type testHandler struct {
 	handleCalls atomic.Int32
 }
 
-func (h *testHandler) EventType() string { return h.eventType }
+func (h *testHandler) EventType() string       { return h.eventType }
+func (h *testHandler) IdempotencyKey() string   { return h.eventType + ".test.v1" }
 func (h *testHandler) Handle(ctx context.Context, evt Event) error {
 	h.handleCalls.Add(1)
 	return h.handleFn(ctx, evt)
@@ -165,7 +166,7 @@ func TestPool_TransientFailure_BackoffIsCapped(t *testing.T) {
 
 	var prevDelay time.Duration
 	for attempt := 1; attempt <= 10; attempt++ {
-		next := pool.computeNextAttempt(attempt)
+		next := pool.computeNextAttempt(1, attempt)
 		delay := next.Sub(clock.Now())
 		if delay <= 0 {
 			t.Errorf("attempt %d: delay=%v should be positive", attempt, delay)
@@ -179,7 +180,7 @@ func TestPool_TransientFailure_BackoffIsCapped(t *testing.T) {
 		prevDelay = delay
 	}
 
-	nextHigh := pool.computeNextAttempt(20)
+	nextHigh := pool.computeNextAttempt(1, 20)
 	delayHigh := nextHigh.Sub(clock.Now())
 	if delayHigh > cfg.BackoffCap {
 		t.Errorf("attempt 20: delay=%v exceeds cap=%v", delayHigh, cfg.BackoffCap)
@@ -278,7 +279,7 @@ func TestComputeNextAttempt_GrowsExponentially(t *testing.T) {
 		{4, 8 * time.Minute},
 		{5, 16 * time.Minute},
 	} {
-		delay := pool.computeNextAttempt(tc.attempt).Sub(clock.Now())
+		delay := pool.computeNextAttempt(1, tc.attempt).Sub(clock.Now())
 		if delay < tc.wantMin {
 			t.Errorf("attempt %d: delay=%v < expected %v", tc.attempt, delay, tc.wantMin)
 		}
@@ -293,7 +294,7 @@ func TestComputeNextAttempt_CappedAtBackoffCap(t *testing.T) {
 	pool := NewPool("backoff-cap", nil, nil, zap.NewNop(), cfg)
 	pool.clock = clock
 
-	delay := pool.computeNextAttempt(10).Sub(clock.Now())
+	delay := pool.computeNextAttempt(1, 10).Sub(clock.Now())
 	if delay > cfg.BackoffCap {
 		t.Errorf("delay=%v exceeds cap=%v", delay, cfg.BackoffCap)
 	}
@@ -310,7 +311,7 @@ func TestComputeNextAttempt_WithJitter(t *testing.T) {
 
 	base := 4 * time.Minute
 	jitterRange := time.Duration(float64(base) * 0.2)
-	delay := pool.computeNextAttempt(3).Sub(clock.Now())
+	delay := pool.computeNextAttempt(1, 3).Sub(clock.Now())
 
 	if delay < base-jitterRange || delay > base+jitterRange {
 		t.Errorf("delay=%v not in [%v, %v]", delay, base-jitterRange, base+jitterRange)

@@ -50,13 +50,13 @@ func (r *SQLiteStore) ScheduleRetry(ctx context.Context, id string, workerID, le
 	if mustRowsAffected(res) == 0 {
 		// PR-F: ScheduleRetry does NOT route through validateOwnership
 		// (its fenced UPDATE carries the CAS check inline). Bump here on
-		// the routed ErrTransitionConflict return. Distinct from the
+		// the routed job.ErrTransitionConflict return. Distinct from the
 		// err-typed branch above (which returns a wrapped error, not
-		// ErrTransitionConflict) and from Retry's "max retries exhausted"
+		// job.ErrTransitionConflict) and from Retry's "max retries exhausted"
 		// recursion into Fail (which uses method="fail" via the
 		// validateOwnership path).
 		observability.JobTransitionConflictTotal.WithLabelValues("schedule_retry").Inc()
-		return ErrTransitionConflict
+		return job.ErrTransitionConflict
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
@@ -94,11 +94,11 @@ func (r *SQLiteStore) Cancel(ctx context.Context, id string) error {
 			return nil
 		}
 		// PR-F: Cancel does not route through validateOwnership; bump
-		// here before returning ErrTransitionConflict. The terminal-state
+		// here before returning job.ErrTransitionConflict. The terminal-state
 		// short-circuit above (return nil) is NOT a conflict and
 		// intentionally not counted.
 		observability.JobTransitionConflictTotal.WithLabelValues("cancel").Inc()
-		return ErrTransitionConflict
+		return job.ErrTransitionConflict
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
@@ -154,11 +154,11 @@ func (r *SQLiteStore) Retry(ctx context.Context, id string) (*job.Job, error) {
 	}
 	if mustRowsAffected(res) == 0 {
 		// PR-F: Retry does not route through validateOwnership; bump
-		// here before returning ErrTransitionConflict. Distinct from
+		// here before returning job.ErrTransitionConflict. Distinct from
 		// the inner c.ErrPath branches (retries-exhausted / invalid
 		// status) which return pre-wrapped errors.
 		observability.JobTransitionConflictTotal.WithLabelValues("retry").Inc()
-		return nil, ErrTransitionConflict
+		return nil, job.ErrTransitionConflict
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", time.Now().UnixNano(), hashutil.RandomString(6))

@@ -114,6 +114,19 @@ func (h *AssetPublishedHandler) EventType() string {
 	return outboxevents.EventAssetPublished
 }
 
+// IdempotencyKey declares the canonical handler-level idempotency
+// identity for asset.published events (Fase 6(c) Push 6.2,
+// July 2026). Static — schema_version literal — surfacing the
+// event_type + schema-shape pair as a stable handler-class
+// identifier for SQL ON CONFLICT(event_key) dedup + observability
+// grouping. godlike/06 SSOT: the schema_version constant
+// (outboxevents.SchemaVersionAssetPublished) is the canonical
+// authority for the ".v1" suffix here — drift is structurally
+// impossible because both literals share the same canonical source.
+func (h *AssetPublishedHandler) IdempotencyKey() string {
+	return outboxevents.EventAssetPublished + "." + outboxevents.SchemaVersionAssetPublished
+}
+
 // ComposeSearchText composes the canonical semantic search text for
 // the asset_published handler. The formatted output mirrors the
 // user-spec literal:

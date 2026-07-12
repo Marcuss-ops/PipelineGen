@@ -42,7 +42,6 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"go.uber.org/zap"
 )
 
@@ -232,7 +231,7 @@ func TestRunner_uploadManifest_NonNotExistStatErrorsBubble(t *testing.T) {
 
 // stubLeaseBroker is the mock appjobs.Broker used by the P0 #5
 // integration test. Renew returns renewErr on every call
-// (typically sqljobs.ErrLeaseLost) so the renewal loop
+// (typically job.ErrLeaseLost) so the renewal loop
 // surfaces the error. Complete and Fail record every invocation
 // so the test can assert they were/were-not called. All other
 // methods are no-ops.
@@ -358,7 +357,7 @@ var _ appjobs.Broker = (*stubLeaseBroker)(nil)
 // original renewErr).
 func TestPostRenewFailClosedCheck_LeaseLost_ReturnsErrLeaseLostDuringRun(t *testing.T) {
 	renewErrs := make(chan error, 1)
-	renewErrs <- sqljobs.ErrLeaseLost
+	renewErrs <- job.ErrLeaseLost
 
 	err := postRenewFailClosedCheck(renewErrs)
 	if err == nil {
@@ -367,8 +366,8 @@ func TestPostRenewFailClosedCheck_LeaseLost_ReturnsErrLeaseLostDuringRun(t *test
 	if !errors.Is(err, ErrLeaseLostDuringRun) {
 		t.Errorf("err = %v, want errors.Is(err, ErrLeaseLostDuringRun)", err)
 	}
-	if !errors.Is(err, sqljobs.ErrLeaseLost) {
-		t.Errorf("err = %v, want errors.Is(err, sqljobs.ErrLeaseLost) (Go 1.20+ multi-%%w)", err)
+	if !errors.Is(err, job.ErrLeaseLost) {
+		t.Errorf("err = %v, want errors.Is(err, job.ErrLeaseLost) (Go 1.20+ multi-%%w)", err)
 	}
 }
 
@@ -414,7 +413,7 @@ func TestPostRenewFailClosedCheck_Timeout_ReturnsNil(t *testing.T) {
 
 // TestRunLease_RenewalError_NoCompleteCall (P0 #5) — verifies
 // that when the renewal loop reports an error (typically
-// sqljobs.ErrLeaseLost), the runner returns ErrLeaseLostDuringRun
+// job.ErrLeaseLost), the runner returns ErrLeaseLostDuringRun
 // BEFORE calling tools.Complete. This pins the "no phantom
 // Complete on a reassigned lease" contract at the integration
 // level (the helper tests pin the typed-error contract; this
@@ -470,7 +469,7 @@ func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
 	// time.Sleep-based layout (where mock came after handler) so
 	// the closure compiles without `undefined: mock`.
 	mock := &stubLeaseBroker{
-		renewErr: sqljobs.ErrLeaseLost,
+		renewErr: job.ErrLeaseLost,
 		renewed:  make(chan struct{}),
 	}
 
@@ -522,8 +521,8 @@ func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
 	if !errors.Is(err, ErrLeaseLostDuringRun) {
 		t.Errorf("err = %v, want errors.Is(err, ErrLeaseLostDuringRun)", err)
 	}
-	if !errors.Is(err, sqljobs.ErrLeaseLost) {
-		t.Errorf("err = %v, want errors.Is(err, sqljobs.ErrLeaseLost) (Go 1.20+ multi-%%w)", err)
+	if !errors.Is(err, job.ErrLeaseLost) {
+		t.Errorf("err = %v, want errors.Is(err, job.ErrLeaseLost) (Go 1.20+ multi-%%w)", err)
 	}
 
 	// CRITICAL (P0 #5): Complete must NOT have been called when

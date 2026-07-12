@@ -210,6 +210,17 @@ func (h *DeliveryHandler) EventType() string {
 	return outboxevents.EventDeliveryRequested
 }
 
+// IdempotencyKey implements outboxevents.Handler (Fase 6(c) Push 6.2).
+// Static canonical form: `<event_type>.<delivery_schema_version>` so
+// the HandlerRegistry.Register fail-closed panic fires at init
+// time if a future refactor forgets the declaration. per-event
+// idempotency keys flow through the envelope's IdempotencyKey
+// field (the receiver's dedup key) and do NOT substitute this
+// static declaration.
+func (h *DeliveryHandler) IdempotencyKey() string {
+	return outboxevents.EventDeliveryRequested + "." + deliverySchemaVersion
+}
+
 // Validates the v1 envelope strictly. Returns nil on success; ONE of
 // the typed terminal errors (ErrSchemaVersionMismatch / ErrUnsupportedProvider)
 // for hard contract violations.

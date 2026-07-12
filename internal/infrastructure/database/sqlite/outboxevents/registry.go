@@ -92,6 +92,20 @@ const SchemaVersionAssetPublished = "asset.published.v1"
 
 type Handler interface {
 	EventType() string
+	// IdempotencyKey declares the canonical handler-level identifier
+	// used for SQL ON CONFLICT(event_key) dedup + observability
+	// grouping. godlike/07 fail-closed: every Handler MUST return a
+	// non-empty value; an empty return fails-fast at Register via
+	// panic so a missing handler identity is impossible to ship to
+	// production.
+	//
+	// The convention is a stable string shaped `<event_type>.<scheme>`
+	// (e.g. "asset.index.requested.v1"). The key is NOT the per-event
+	// idempotency key in the envelope's payload — those are
+	// producer-supplied and unique-per-event; this is the
+	// handler-side canonical declaration that ties a handler class
+	// to a dedup / metrics namespace.
+	IdempotencyKey() string
 	Handle(ctx context.Context, evt Event) error
 }
 
@@ -113,6 +127,14 @@ func (r *HandlerRegistry) Register(h Handler) error {
 	key := h.EventType()
 	if key == "" {
 		return fmt.Errorf("handler event type is empty")
+	}
+	// Fase 6(c) Push 6.2 (July 2026): every handler MUST declare an
+	// idempotency_key at registration time. Empty panic-at-init
+	// (godlike/07 fail-closed at observable boundary) so a handler
+	// without an idempotency identity is impossible to ship.
+	idemKey := h.IdempotencyKey()
+	if idemKey == "" {
+		panic(fmt.Sprintf("outboxevents.HandlerRegistry.Register: handler for %q returned empty IdempotencyKey() (godlike/07 fail-closed at init)", key))
 	}
 	if _, exists := r.handlers[key]; exists {
 		return fmt.Errorf("handler already registered for %s", key)

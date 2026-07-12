@@ -1,12 +1,14 @@
-// Package jobs — worker_execution.go (PR7 split, June 2026).
+// Package jobs — worker_execution.go (PR7 split, June 2026; FASE 4
+// LeaseState integration + cancel-watcher removal, July 2026).
 //
 // Job execution + finalisation extracted from worker.go. Owns:
 //
 //  1. func (w *Worker) runJob — the per-job dispatcher pipeline:
 //     parent ctx → correlation-id enriched ctx → timeout-bounded
 //     jobCtx (per Worker.jobTimeoutFor) → Dispatcher.Dispatch →
-//     finalisation (ScheduleRetry / Fail / DeadLetter / Complete
-//     with retry-backoff math + lease-id + revision snapshot).
+//     finalisation (the legacy 4 separate calls ScheduleRetry /
+//     Fail / DeadLetter / Complete are still in place today; they
+//     land via FinalizeAttempt in Cut B of the FASE 4 close-out).
 //
 // CRITICAL INVARIANT: the finalizationCtx MUST stay
 // `context.WithTimeout(context.Background(), 30*time.Second)` —
@@ -20,19 +22,21 @@
 // timeout or by the outer worker Stop. This invariant MUST be
 // preserved byte-for-byte across PR7.
 //
-// Issue 6 (June 2026, P1): added `startCancelWatcher` helper +
-// integration in runJob so user-initiated cancellation via the
-// broker (Cancel route -> Job.Status = CANCELLED) propagates
-// into jobCtx — handlers that poll ctx.Err() at phase boundaries
-// can short-circuit Ollama / voiceover / image generation calls
-// instead of continuing for the full job-timeout. The 2-second
-// poll interval balances latency-to-cancel against IsCancelled's
-// DB hit; the watcher exits when jobCtx becomes Done (which
-// happens naturally via `defer jobCancel()` regardless of whether
-// the cancel was driven by watcher or timeout).
+// FASE 4(b) (July 2026) — startCancelWatcher REMOVED: the
+// pre-Fase-4 2-second IsCancelled-poll goroutine is gone.
+// Cancellation now propagates through the typed
+// kerneljob.RenewLeaseResult.State return value (Continue |
+// CancelRequested | LeaseLost) on every lease-renewal tick —
+// the renewLeaseLoopWith helper observes LeaseStateCancelRequested
+// and calls jobCancel on the worker jobCtx. Handlers that poll
+// ctx.Err() at phase boundaries short-circuit the same way they
+// did under the pre-Fase-4 polling model; the canonical
+// propagation seam is now native context cancellation rather
+// than a callback.
 //
-// Mechanical split, zero behavior change for the finalizationCtx.
-// ONLY relocated + import-redistributed.
+// Mechanical split + FASE 4(b) cancel-watcher removal. Zero
+// behavior change for the finalizationCtx. ONLY relocated +
+// import-redistributed.
 package jobs
 
 import (
@@ -46,61 +50,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
 )
-
-// cancelPollInterval is the polling cadence for the cancel-watcher
-// goroutine. IsCancelled hits the database (w.repo.Get(jobCtx, ...))
-// so the interval must balance responsiveness against DB load —
-// 2 seconds matches the canonical lease-renewal cadence
-// (RunnerConfig.LeaseTTL / 5) and stays well below the canonical
-// 60-minute script.generate timeout so handlers observe the cancel
-// signal long before the timeout fires.
-//
-// Issue 6 (June 2026, P1): hard-coded here rather than exposed as
-// a WorkerConfig knob; the interval is operational-tunable via a
-// follow-up PR if real-world telemetry shows the chosen cadence
-// is wrong, but a single shared constant across all job types is
-// the simpler principled default.
-const cancelPollInterval = 2 * time.Second
-
-// startCancelWatcher spawns a goroutine that polls isCancelled and
-// calls jobCancel when the check returns true. The watcher exits
-// when jobCtx becomes Done — which the caller covers via
-// `defer jobCancel()`, so the goroutine always has a clean exit
-// path. Nil-tolerant isCancelled (test fixtures) is a no-op spawn.
-//
-// Issue 6 (June 2026, P1): extracted into a helper so the cancel
-// wiring can be unit-tested without spinning up the full Worker
-// machinery. Spawning the goroutine directly inside runJob would
-// make the test depend on the broker-claim loop and timing
-// (flaky); this helper lets TestStartCancelWatcher pin the
-// polling semantics in isolation before the end-to-end test
-// (TestWorker_CancelsRunningJobOnCancelSignal) covers the
-// envelope through Worker.runJob.
-func startCancelWatcher(jobCtx context.Context, jobCancel context.CancelFunc, isCancelled func() bool) {
-	if isCancelled == nil {
-		return
-	}
-	go func() {
-		ticker := time.NewTicker(cancelPollInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-jobCtx.Done():
-				return
-			case <-ticker.C:
-				if isCancelled() {
-					jobCancel()
-					return
-				}
-			}
-		}
-	}()
-}
 
 // extractStagedArtifacts reads the __artifact_manifest from the handler
 // result map and converts it to the JSON wire format consumed by
@@ -303,10 +256,20 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	jobCtx, jobCancel := context.WithTimeout(ctx, w.jobTimeoutFor(j.Type))
 	defer jobCancel()
 
-	// Lease renewal.
+	// Lease renewal — FASE 4(b) typed LeaseState integration:
+	// the renew-loop now inspects the typed
+	// kerneljob.RenewLeaseResult.State on every tick and calls
+	// jobCancel on LeaseStateCancelRequested. This replaces the
+	// pre-Fase-4 2-second IsCancelled-poll goroutine (the
+	// startCancelWatcher + cancelPollInterval pair REMOVED from
+	// this file in FASE 4(b)). The cancel signal propagates
+	// through native context cancellation: handlers that poll
+	// ctx.Err() at phase boundaries short-circuit the same way
+	// they did under the pre-Fase-4 polling model.
 	stopLease := make(chan struct{})
 	leaseDone := make(chan struct{})
-	go w.renewLeaseLoop(jobCtx, j.ID, stopLease, leaseDone)
+	go w.renewLeaseLoopWith(jobCtx, j.ID, stopLease, leaseDone,
+		renewLeaseLoopOpts{jobCancel: jobCancel})
 	defer func() {
 		close(stopLease)
 		<-leaseDone
@@ -354,33 +317,14 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 				return
 			}
 		},
-		IsCancelled: func() bool {
-			domJob, err := w.repo.Get(jobCtx, j.ID)
-			if err != nil {
-				// FASE 0.2 silent-drop rewrite: previously
-				// swallowed err entirely (godlike/07 violation).
-				// Post-PR we surface the IsCancelled check failure
-				// via the counter (WorkerProgressErrors is the
-				// canonical signal surface for runtime telemetry
-				// failures) and fail-closed to `false` so a
-				// transient broker/DB error does NOT prematurely
-				// trip the cancellation branch.
-				observability.WorkerProgressErrorsTotal.WithLabelValues(j.Type, "is_cancelled_check_failed").Inc()
-				return false
-			}
-			return domJob != nil && domJob.Status == job.StatusCancelled
-		},
 	}
 
-	// Issue 6 (June 2026, P1): hook the cancel-watcher BEFORE
-	// Dispatcher.Dispatch so any handler entry that observes
-	// ctx.Err() can short-circuit the pipeline (Ollama / voiceover
-	// / image generation calls). Watcher exits when jobCtx becomes
-	// Done — covered by `defer jobCancel()` so goroutine has a
-	// clean exit regardless of whether the cancel was triggered by
-	// the watcher or by the timeout. Nil isCancelled (test
-	// fixtures that bypass the registry) is a no-op.
-	startCancelWatcher(jobCtx, jobCancel, tools.IsCancelled)
+	// FASE 4(b) (July 2026): the startCancelWatcher call site is
+	// REMOVED. Cancellation propagates through the typed
+	// renewLeaseLoopWith LeaseState observation (see above). The
+	// pre-Fase-4 IsCancelled callback that wrapped w.repo.Get() is
+	// no longer part of the JobTools struct (domain/job/handler.go
+	// ::JobExecutionTools).
 
 	result, dispatchErr := w.dispatcher.Dispatch(jobCtx, j, tools)
 
@@ -419,7 +363,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			// server-side backoff via available_at. No intermediate
 			// "failed" state — avoids false alerting.
 			if retryErr := w.repo.ScheduleRetry(finalizationCtx, j.ID, workerID, leaseID, finalRevision, dispatchErr.Error(), backoff); retryErr != nil {
-				if errors.Is(retryErr, sqljobs.ErrLeaseLost) {
+				if errors.Is(retryErr, job.ErrLeaseLost) {
 					w.log.Warn("lease lost during ScheduleRetry — another worker claimed this job",
 						zap.String("job_id", j.ID))
 				} else {
@@ -432,7 +376,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 		}
 
 		if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, finalRevision, dispatchErr.Error()); failErr != nil {
-			if errors.Is(failErr, sqljobs.ErrLeaseLost) {
+			if errors.Is(failErr, job.ErrLeaseLost) {
 				w.log.Warn("lease lost during fail (exhausted retries)",
 					zap.String("job_id", j.ID))
 			} else {
@@ -484,7 +428,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 				zap.Error(fmt.Errorf("worker.CompletionPort unset (call WithBroker(cp) at composition time)")))
 			if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, finalRevision,
 				fmt.Sprintf("worker.CompletionPort not wired for artifact-producing job %q; call WithBroker(cp) on the Worker constructor", j.Type)); failErr != nil {
-				if errors.Is(failErr, sqljobs.ErrLeaseLost) {
+				if errors.Is(failErr, job.ErrLeaseLost) {
 					w.log.Warn("lease lost during fail-after-missing-broker",
 						zap.String("job_id", j.ID))
 				} else {
@@ -524,7 +468,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 				zap.String("job_type", j.Type),
 				zap.Error(extractErr))
 			if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, finalRevision, manifestErr); failErr != nil {
-				if errors.Is(failErr, sqljobs.ErrLeaseLost) {
+				if errors.Is(failErr, job.ErrLeaseLost) {
 					w.log.Warn("lease lost during fail-after-manifest-extract-error",
 						zap.String("job_id", j.ID))
 				} else {
@@ -565,7 +509,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 			// the operator can see WHY the job never reached SUCCEEDED.
 			if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, finalRevision,
 				completionErr); failErr != nil {
-				if errors.Is(failErr, sqljobs.ErrLeaseLost) {
+				if errors.Is(failErr, job.ErrLeaseLost) {
 					w.log.Warn("lease lost during fail-after-completion-error",
 						zap.String("job_id", j.ID))
 				} else {
@@ -589,7 +533,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 	}
 
 	if completeErr := w.repo.Complete(finalizationCtx, j.ID, workerID, leaseID, finalRevision, mapToRawMessage(result)); completeErr != nil {
-		if errors.Is(completeErr, sqljobs.ErrLeaseLost) {
+		if errors.Is(completeErr, job.ErrLeaseLost) {
 			w.log.Warn("lease lost during complete — another worker claimed this job",
 				zap.String("job_id", j.ID))
 		} else if errors.Is(completeErr, domainremote.ErrCompleteJobPathViolation) {
@@ -607,7 +551,7 @@ func (w *Worker) runJob(parent context.Context, j *job.Job) {
 				zap.Error(completeErr))
 			if failErr := w.repo.Fail(finalizationCtx, j.ID, workerID, leaseID, finalRevision,
 				fmt.Sprintf("legacy Worker cannot complete artifact-producing job %q: %v", j.Type, completeErr)); failErr != nil {
-				if errors.Is(failErr, sqljobs.ErrLeaseLost) {
+				if errors.Is(failErr, job.ErrLeaseLost) {
 					w.log.Warn("lease lost during fail-after-artifact-gate",
 						zap.String("job_id", j.ID))
 				} else {

@@ -224,8 +224,10 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		}
 
 		var timedTracks []localized.TimedTextTrack
-		if tt := bundleToTimedTrack(clipID, bundle); tt != nil {
-			timedTracks = append(timedTracks, *tt)
+		if u.deps.TextTrackResolver != nil {
+			if tt := u.deps.TextTrackResolver.bundleToTimedTrack(clipID, bundle); tt != nil {
+				timedTracks = append(timedTracks, *tt)
+			}
 		}
 
 		superCmd := localized.CommitLocalizedClipCommand{

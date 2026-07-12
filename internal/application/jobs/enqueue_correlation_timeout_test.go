@@ -63,8 +63,16 @@ func (m *correlationTimeoutBroker) SetProgress(_ context.Context, _ string, _ in
 func (m *correlationTimeoutBroker) AddEvent(_ context.Context, _ string, _, _ string, _ map[string]any) error {
 	return nil
 }
-func (m *correlationTimeoutBroker) RenewLease(_ context.Context, _ string, _ string, _ time.Duration) error {
-	return nil
+// FASE 4(b) (July 2026): the canonical kerneljob.Store.RenewLease
+// signature now returns the typed RenewLeaseResult envelope
+// (LeaseStateContinue | CancelRequested | LeaseLost). The pre-Fase-4
+// `error`-only return is gone. The stub returns LeaseStateContinue
+// (the worker continues renewing) so the existing
+// TestEnqueue_CorrelationLookupTimeoutDoesNotBlockCreate assertion
+// is unaffected — the test exercises the correlation-lookup path,
+// not the renew-loop path.
+func (m *correlationTimeoutBroker) RenewLease(_ context.Context, _ string, _ string, _ time.Duration) (kerneljob.RenewLeaseResult, error) {
+	return kerneljob.RenewLeaseResult{State: kerneljob.LeaseStateContinue}, nil
 }
 func (m *correlationTimeoutBroker) DeadLetter(_ context.Context, _ string, _ string) error {
 	return nil

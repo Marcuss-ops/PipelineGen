@@ -42,7 +42,7 @@ Payload:
   "topic": "${TOPIC}",
   "title": "${TITLE}",
   "tone": "explanatory",
-  "model": "gemma2:2b",
+  "model": "gemma4:e4b",
   "target_words": 300,
   "save_to_db": false,
   "force_refresh": false,
@@ -66,7 +66,7 @@ PAYLOAD=$(jq -n \
     --arg title "$TITLE" \
     '{
         topic:$topic, title:$title,
-        tone:"explanatory", model:"gemma2:2b",
+        tone:"explanatory", model:"gemma4:e4b",
         target_words:300,
         save_to_db:false, force_refresh:false,
         extract_entities:false, generate_scene_images:false, generate_metadata:false

@@ -31,6 +31,20 @@
 //     NOTHING for outbox_events, and ON CONFLICT(id) DO UPDATE
 //     for media_assets — exactly 1 of each row remains.
 //
+//  6. Orphan TimedTextTrack rejection: a TimedTextTrack with no
+//     matching TextTrack row is rejected with a typed error before
+//     any rows are written.
+//
+//  7. Different FileHash emits second outbox row (supersede gate):
+//     a second CommitClipTextAndIndexEvent with a different
+//     FileHash on the same ClipAsset.ID produces a NEW
+//     outbox_events row (the canonical content-hash supersede
+//     pattern) while asset_text_tracks collapses to 1 row via
+//     ON CONFLICT(asset_id, language_code, text_kind) DO UPDATE.
+//     media_assets.source_version is updated to the LATEST
+//     FileHash so the clipindexer CAS fence reads the freshest
+//     content.
+//
 // Schema: minimal in-memory SQLite with the production-faithful
 // subset of media_assets + asset_text_tracks +
 // asset_text_track_segments + outbox_events. FK constraints
@@ -576,10 +590,134 @@ func TestCommitClipTextAndIndexEvent_OrphanTimedTrackRejected(t *testing.T) {
 		"error must identify the orphan-timed-track rejection: got %v", err)
 }
 
+// ── Test 7: different FileHash → 2 outbox rows (super-tx supersede) ─
+
+// TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow
+// pins the content-hash supersede contract for the localized
+// atomic super-tx (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.b,
+// July 2026). Mirrors TestClipAtomicWriter_DifferentFileHashEmitsSecondRow
+// in clip_atomic_writer_test.go (the legacy non-text-tracks
+// stripe) at the super-tx stripe: two calls to
+// CommitClipTextAndIndexEvent with a different FileHash on the
+// same ClipAsset.ID must produce TWO outbox_events rows.
+//
+// Why two rows (not one) on a different FileHash:
+//   - deriveSourceVersion(clipID, fileHash, policyVersion) returns
+//     fileHash (when non-empty) → different FileHash → different
+//     sourceVersion.
+//   - BuildReindexEnvelopeV1 builds eventKey as
+//     "reconcile:reindex:<assetID>:<schema>:<sourceVersion>" →
+//     different sourceVersion → different eventKey.
+//   - The outbox UPSERT uses ON CONFLICT(event_key) DO NOTHING,
+//     so a different eventKey INSERTs a fresh row.
+//
+// The supersede gate downstream (clipindexer.IndexingHandler
+// source_version check) fires on the new row, replacing the old
+// content. asset_text_tracks collapses via
+// ON CONFLICT(asset_id, language_code, text_kind) DO UPDATE so
+// still 1 track per (lang, kind) tuple; media_assets.source_version
+// is updated to the LATEST FileHash (the source the clipindexer
+// CAS fence reads).
+func TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow(t *testing.T) {
+	db := newLocalizedWriterDB(t)
+	box := outboxevents.NewRepository(db)
+	adapter := NewClipAtomicWriterAdapter(db, box, nil)
+
+	const clipID = "yt_localized_supersede_001_10_60_v1"
+	fileHashA := sha256Hex("localized-supersede-content-A")
+	fileHashB := sha256Hex("localized-supersede-content-B")
+	clipAssetA := makeClipAssetForTest(clipID, "localized_supersede_001", fileHashA)
+	clipAssetB := makeClipAssetForTest(clipID, "localized_supersede_001", fileHashB)
+
+	// makeCmd builds a fresh command for each call. The text track
+	// content differs (A vs B) so the TextHash + TextTrack.SourceVersion
+	// also differ — defensive against future writers that derive
+	// sourceVersion from the TextTrack rather than from cmd.Clip.FileHash.
+	makeCmd := func(clipAsset youtubetypes.ClipAsset, content string) localized.CommitLocalizedClipCommand {
+		return localized.CommitLocalizedClipCommand{
+			Clip: clipAsset,
+			TextTracks: []asset.TextTrack{
+				makeTrackForTest(clipID, "en", content, asset.TextTrackTranscript, asset.TextSourceProvided),
+			},
+			TimedTracks: []localized.TimedTextTrack{
+				{
+					LanguageCode: "en",
+					TextKind:     asset.TextTrackTranscript,
+					SourceType:   asset.TextSourceProvided,
+					Cues: []asset.TimedCue{
+						{StartMs: 0, EndMs: 2200, Text: content},
+					},
+				},
+			},
+			IndexEvent: youtubeports.IndexEventPayload{Type: outboxevents.EventAssetIndexRequested},
+		}
+	}
+	ctx := context.Background()
+
+	if err := adapter.CommitClipTextAndIndexEvent(ctx, makeCmd(clipAssetA, "Content A")); err != nil {
+		t.Fatalf("first call (content-A): %v", err)
+	}
+	if err := adapter.CommitClipTextAndIndexEvent(ctx, makeCmd(clipAssetB, "Content B")); err != nil {
+		t.Fatalf("second call (content-B): %v", err)
+	}
+
+	// Supersede gate: 2 outbox rows (one per sourceVersion).
+	var outCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM outbox_events WHERE aggregate_id = ?`, clipID).Scan(&outCount); err != nil {
+		t.Fatalf("count outbox: %v", err)
+	}
+	if outCount != 2 {
+		t.Errorf("outbox_events count after different content: want 2 got %d (supersede gate collapsed — FileHash-derived sourceVersion MUST differ)", outCount)
+	}
+
+	// Sanity: two distinct event_keys (the canonical differentiator).
+	rows, err := db.Query(`SELECT event_key FROM outbox_events WHERE aggregate_id = ? ORDER BY id ASC`, clipID)
+	if err != nil {
+		t.Fatalf("query event_keys: %v", err)
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			t.Fatalf("scan event_key: %v", err)
+		}
+		keys = append(keys, k)
+	}
+	if len(keys) != 2 {
+		t.Fatalf("expected 2 distinct keys, got %v", keys)
+	}
+	if keys[0] == keys[1] {
+		t.Errorf("different FileHash MUST produce different event_keys; both rows had %q", keys[0])
+	}
+
+	// media_assets.source_version reflects the LATEST content
+	// (ON CONFLICT(id) DO UPDATE). The clipindexer CAS fence
+	// reads this column.
+	var sv string
+	if err := db.QueryRow(`SELECT source_version FROM media_assets WHERE id = ?`, clipID).Scan(&sv); err != nil {
+		t.Fatalf("read source_version: %v", err)
+	}
+	if sv != fileHashB {
+		t.Errorf("media_assets.source_version: want %q (latest) got %q", fileHashB, sv)
+	}
+
+	// asset_text_tracks collapses to 1 row
+	// (ON CONFLICT(asset_id, language_code, text_kind) DO UPDATE).
+	var trackCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM asset_text_tracks WHERE asset_id = ?`, clipID).Scan(&trackCount); err != nil {
+		t.Fatalf("count asset_text_tracks: %v", err)
+	}
+	if trackCount != 1 {
+		t.Errorf("asset_text_tracks: want 1 (ON CONFLICT collapse) got %d", trackCount)
+	}
+}
+
 // ── End of Fase 2.b atomic-super-tx tests ───────────────────────────
 // All helpers (makeClipAssetForTest, makeTrackForTest,
 // newLocalizedWriterDB) live at the top of the file. The 7 tests above
 // cover the canonical super-tx surface: happy path, atomic rollback
 // on bad cue (deferred tx.Rollback), ErrClipLocaleNotReady before
-// BeginTx, missing-language coverage, idempotent replay overlap, and
-// orphan-timed-track rejection.
+// BeginTx, missing-language coverage, idempotent replay overlap,
+// orphan-timed-track rejection, and the content-hash supersede gate
+// (different FileHash → 2 outbox rows).

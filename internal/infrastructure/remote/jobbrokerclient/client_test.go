@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	domjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Compile-time pin (godlike/06 SSOT discipline): the test
@@ -134,7 +135,7 @@ func TestClient_CompleteWithArtifacts_HappyPath(t *testing.T) {
 // the godlike/07 typed-error contract: when the server-side handler
 // returns the typed-error envelope {kind:"lease_lost",...}, the
 // client wraps the sentinel via fmt.Errorf(...: %w, ErrLeaseLost)
-// so upstream callers use errors.Is(err, appjobs.ErrLeaseLost) over
+// so upstream callers use errors.Is(err, domjob.ErrLeaseLost) over
 // both in-process (*local.Broker) and remote (this Client) worker
 // executions.
 //
@@ -160,8 +161,8 @@ func TestClient_CompleteWithArtifacts_LeaseMismatchTypedError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-nil err when server emits lease_lost envelope")
 	}
-	if !errors.Is(err, appjobs.ErrLeaseLost) {
-		t.Errorf("expected errors.Is(err, appjobs.ErrLeaseLost); got %v (chain not wrapping sentinel)", err)
+	if !errors.Is(err, domjob.ErrLeaseLost) {
+		t.Errorf("expected errors.Is(err, domjob.ErrLeaseLost); got %v (chain not wrapping sentinel)", err)
 	}
 	// Stray body should ALSO bubble up via the wrap-chain (godlike/07
 	// no-fake-availability: the canonical error message carries

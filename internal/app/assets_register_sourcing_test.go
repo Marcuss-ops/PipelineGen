@@ -24,6 +24,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Test fixtures ──────────────────────────────────────────────────
@@ -102,12 +103,23 @@ func (s *stubJobBroker) AddEvent(ctx context.Context, id, eventType, message str
 	panic("stubJobBroker.AddEvent: unexpected call — Service.Enqueue does not call AddEvent")
 }
 
-func (s *stubJobBroker) RenewLease(ctx context.Context, id, workerID string, leaseTTL time.Duration) error {
+// FASE 4(b) (July 2026): the canonical kerneljob.Store.RenewLease
+// signature now returns the typed RenewLeaseResult envelope
+// (LeaseStateContinue | CancelRequested | LeaseLost). The pre-Fase-4
+// `error`-only return is gone. The stub still panics on dispatch
+// (Enqueue does not call RenewLease), but the signature MUST match
+// the canonical Store surface for the compile-time pin
+// `var _ jobdomain.JobBroker = (*stubJobBroker)(nil)` to hold.
+func (s *stubJobBroker) RenewLease(ctx context.Context, id, workerID string, leaseTTL time.Duration) (kerneljob.RenewLeaseResult, error) {
 	panic("stubJobBroker.RenewLease: unexpected call — Service.Enqueue does not call RenewLease")
 }
 
 func (s *stubJobBroker) DeadLetter(ctx context.Context, id, errMsg string) error {
 	panic("stubJobBroker.DeadLetter: unexpected call — Service.Enqueue does not call DeadLetter")
+}
+
+func (s *stubJobBroker) FinalizeAttempt(ctx context.Context, cmd kerneljob.FinalizeAttemptCommand) (kerneljob.FinalizeAttemptResult, error) {
+	panic("stubJobBroker.FinalizeAttempt: unexpected call — Service.Enqueue does not call FinalizeAttempt")
 }
 
 // Compile-time assertion: stubJobBroker satisfies jobdomain.JobBroker.

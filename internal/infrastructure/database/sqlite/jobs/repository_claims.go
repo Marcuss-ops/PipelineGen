@@ -24,7 +24,7 @@ import (
 // supersession by PR-Queue-Split-claimMu cleanup, June 2026): the previous
 // `claimMu` application-level mutex is REMOVED. Two workers racing the
 // same row serialise on SQLite's WAL + the `AND revision = ?` CAS gate in
-// Start() — the loser sees rows-affected=0 → ErrTransitionConflict,
+// Start() — the loser sees rows-affected=0 → job.ErrTransitionConflict,
 // surfaced as an error to the caller (treated as "not claimed, retry
 // next iteration"). Empty queue remains (nil, nil) for ErrNoRows on the
 // initial SELECT.
@@ -96,7 +96,7 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 	}
 	affected, _ := res.RowsAffected()
 	if affected == 0 {
-		return nil, ErrTransitionConflict
+		return nil, job.ErrTransitionConflict
 	}
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))
 	if _, err := r.db.ExecContext(ctx,
@@ -132,7 +132,7 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 // LeaseState routing (godlike/06 SSOT, three-way filter):
 //   - 0 rows updated → LeaseStateLeaseLost (lease stolen / expired /
 //     reaped; no longer matches the worker_id fence). Companion
-//     error returns the canonical ErrLeaseLost so callers can
+//     error returns the canonical job.ErrLeaseLost so callers can
 //     errors.Is probe the pre-Fase-4 sentinel symmetrically.
 //   - 1 row updated AND cancelled_at IS NOT NULL → LeaseStateCancelRequested.
 //     The cancelled_at column is set by Cancel() at the canonical
@@ -173,7 +173,7 @@ func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string
 			// 0 rows updated — lease stolen, expired, or reaped.
 			return kerneljob.RenewLeaseResult{
 				State: kerneljob.LeaseStateLeaseLost,
-			}, fmt.Errorf("%w: renew lease", ErrLeaseLost)
+			}, fmt.Errorf("%w: renew lease", job.ErrLeaseLost)
 		}
 		return kerneljob.RenewLeaseResult{}, fmt.Errorf("RenewLease: %w", err)
 	}
