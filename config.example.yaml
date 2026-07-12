@@ -63,7 +63,7 @@ external:
   pexels_base_url: "https://api.pexels.com/v1"
   # Artlist scraper optimizations
   artlist_live_search_cache_ttl_hours: 24    # Level 1: in-memory cache TTL (0=disabled)
-  artlist_scraper_server_url: ""             # Level 3: set to "http://localhost:9123" when server is running (PR-ARTLIST-CONFIG-PREFIX July 2026: bound from env VELOX_ARTLIST_SCRAPER_SERVER_URL)
+  artlist_scraper_server_url: "http://127.0.0.1:9123"             # Level 3: scraper server on host (PR-ARTLIST-CONFIG-PREFIX July 2026: bound from env VELOX_ARTLIST_SCRAPER_SERVER_URL; canonical IPv4 loopback 127.0.0.1, port 9123)
   # PR-ARTLIST-AUTHORIZED-BY-DEFAULT (P1, July 2026): the historical
   # godlike/07 fail-closed default `manual_import` was FLIPPED to
   # `authorized_api` so a fresh deploy of PipelineGen is immediately
@@ -90,7 +90,7 @@ drive:
   stock_root_folder: ""
   clips_root_folder: ""
   voiceover_root_folder: ""
-  artlist_root_folder: ""
+  artlist_root_folder: "1Dj3-BlM9LcJr3dh3I4VxEDuMBbaBwwSE"  # canonical Drive root for Artlist output (FOLLOWUP-ARTLIST-ROOT, July 2026)
   # AI-generated images need a Drive root even when the style preset is empty.
   # This points the default script image flow at the canonical realistic bucket.
   images_root_folder: "1b5iP5aHekJUL1FB9ZC-WGkWxoDULyU9X"
@@ -170,9 +170,9 @@ concurrency:
 
 features:
   # Stable modules - enable as needed
-  artlist_enabled: false
+  artlist_enabled: true
   youtube_enabled: false
-  drive_enabled: false
+  drive_enabled: true
   # Experimental modules - default to false
   script_docs_enabled: false
   script_clips_enabled: false
@@ -204,8 +204,8 @@ google_accounting:
 # can boot and serve /api/script/generate without external vector-store
 # readiness. Production deployments can flip both back on via env.
 qdrant:
-  enabled: false
+  enabled: true
   base_url: "http://127.0.0.1:6333"
   api_key: ""  # override via VELOX_QDRANT_API_KEY env var (AGENTS.md secrets policy)
 clip_indexer:
-  enabled: false
+  enabled: true
