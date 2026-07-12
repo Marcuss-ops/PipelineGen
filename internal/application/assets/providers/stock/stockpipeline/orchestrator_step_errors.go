@@ -115,4 +115,17 @@ var (
 	// mode (JobFinalizer nil) so existing fixture tests remain green.
 	// PR-STOCK-RESUME-STATE-LOSS (July 2026).
 	ErrStockFinalizeStateLost = errors.New("stock.finalize: JobFinalizer wired but Published empty — upstream state lost (likely resume-after-crash)")
+
+	// ErrFinalizerAbsent is raised when StockFinalizeStep.Run reaches
+	// Phase 3+4 without a JobFinalizer wired, closing the silent-success
+	// trap where the step previously returned nil ("test-fixture mode")
+	// even on production wiring gaps. The production symmetric gate
+	// (validateStockSymmetricGate in build_bundles_stock.go) is the
+	// upstream enforcement of this invariant at boot time; this
+	// sentinel is the in-step body fail-closed (godlike/07
+	// no-fake-availability). Test fixtures MUST wire a stubJobFinalizer
+	// to satisfy the StepRunner interface contract — there is no
+	// longer a "test-fixture mode" silent-success skip path.
+	// PR-STOCK-FINALIZER-ABSENT-FAILCLOSED (July 2026).
+	ErrFinalizerAbsent = errors.New("stock.finalize: JobFinalizer absent")
 )
