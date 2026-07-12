@@ -12,34 +12,34 @@
 // exactly one E2E capability concern:
 //
 //  14. TestIsValidAudioFormat_MP3FrameSync — FASE 2 audio format
-//      validation helper (MP3 frame sync + WAV RIFF header).
+//     validation helper (MP3 frame sync + WAV RIFF header).
 //
 //  15. TestProcessSegmentUseCase_Execute_Stage3_Publisher_EmptyProject
-//      — FASE 2 contract #5 (Publisher empty Project verbatim).
+//     — FASE 2 contract #5 (Publisher empty Project verbatim).
 //
 //  16. TestProcessSegmentUseCase_Execute_FASE4_DriveUploadOK_FinalizeFail_EmitsCleanup
-//      — FASE 4 happy-orphan-cleanup contract (cleanup event in separate tx).
+//     — FASE 4 happy-orphan-cleanup contract (cleanup event in separate tx).
 //
 //  17. TestProcessSegmentUseCase_Execute_FASE4_Stage0Failure_NoCleanupEvent
-//      — FASE 4 nil-guard (Stage 0 short-circuit, no Drive upload, no cleanup).
+//     — FASE 4 nil-guard (Stage 0 short-circuit, no Drive upload, no cleanup).
 //
 //  18. TestProcessSegmentUseCase_Execute_FASE4_NilOutboxEnqueuer_NoPanic
-//      — FASE 4 nil-safe (orphan-cleanup path silently skipped).
+//     — FASE 4 nil-safe (orphan-cleanup path silently skipped).
 //
 //  19. TestProcessSegmentUseCase_Execute_FASE4_OrphanCleanupBeginTxFail_Warns
-//      — FASE 4 BeginTx-failure path (Warn log, no cleanup event).
+//     — FASE 4 BeginTx-failure path (Warn log, no cleanup event).
 //
 //  20. TestProcessSegmentUseCase_Execute_FASE4_OrphanCleanupEnqueueFail_Warns
-//      — FASE 4 EnqueueCleanupEvent-failure path (Warn log, tx rolled back).
+//     — FASE 4 EnqueueCleanupEvent-failure path (Warn log, tx rolled back).
 //
 //  21. TestProcessSegmentUseCase_Execute_FASE5_E2E_RealFinalizer_HappyPath
-//      — FASE 5 E2E with REAL voiceoverFinalizer (row in SQLite).
+//     — FASE 5 E2E with REAL voiceoverFinalizer (row in SQLite).
 //
 //  22. TestProcessSegmentUseCase_Execute_FASE5_E2E_IdempotencyReplay
-//      — FASE 5 E2E idempotency replay with real finalizer.
+//     — FASE 5 E2E idempotency replay with real finalizer.
 //
 //  23. TestProcessSegmentUseCase_Execute_FASE6_E2E_OrphanCleanup_RealFinalizer
-//      — FASE 6 E2E orphan-cleanup with real finalizer + InsertTx failure.
+//     — FASE 6 E2E orphan-cleanup with real finalizer + InsertTx failure.
 //
 // godlike/07 minimum-blast-radius: zero production code changes.
 // Inline test-only helpers (mp3SyncPatterns, wavRIFFHeader,

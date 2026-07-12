@@ -184,4 +184,3 @@ func TestProcessSegmentUseCase_DRY_Wiring_SourceGrep(t *testing.T) {
 			"%s MUST hold a *ProcessSegmentUseCase field (godlike/06 delegation anchor)", f.path)
 	}
 }
-
