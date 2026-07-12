@@ -98,8 +98,21 @@ func (ss *SearchService) Search(ctx context.Context, req *SearchRequest) (*Searc
 }
 
 // SearchLive esegue una ricerca live tramite la Searcher fallback chain.
-func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int) ([]Candidate, error) {
-	return ss.searchLiveWithFallbacks(ctx, term, limit)
+//
+// preferRemote (PR-P2-SEARCH-LIVE, July 2026): when true, the chain is
+// reordered to make the Node ScraperSearcher the PRIMARY provider and
+// drop BOTH the local DB-level cache (DBSearcher, indexed terms) AND
+// the in-memory TTL cache (CachedSearcher wrapper around the scraper).
+// Other remote providers gated by SearchStrategy (Pixabay, Pexels)
+// stay in the chain because they remain genuinely remote fallbacks
+// (not local cache). preferRemote=false preserves the legacy
+// cache-first semantics: DBSearcher (level 1 fast path) →
+// CachedScraper (level 2) → Pixabay/Pexels (per strategy).
+//
+// godlike/06 SSOT: the chain-order decision lives at the canonical
+// buildSearcherChain resolver — this method only threads the flag.
+func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int, preferRemote bool) ([]Candidate, error) {
+	return ss.searchLiveWithFallbacks(ctx, term, limit, preferRemote)
 }
 
 // SearchLiveAndSave esegue una ricerca live e salva i risultati nel database.
@@ -109,7 +122,12 @@ func (ss *SearchService) SearchLive(ctx context.Context, term string, limit int)
 func (ss *SearchService) SearchLiveAndSave(ctx context.Context, originalTerm string, limit int) (*SearchResponse, error) {
 	s := ss.service
 	normalizedTerm := normalizeSearchTerm(originalTerm)
-	candidates, err := ss.SearchLive(ctx, normalizedTerm, limit)
+	// PR-P2-SEARCH-LIVE: SearchLiveAndSave is the orchestrator path
+	// (DiscoverAndQueueRun + run_orchestrator_stages::stageDiscoverClips);
+	// it intentionally preserves the legacy cache-first semantics so
+	// repeated orchestrator runs hit the local cache instead of
+	// re-issuing scraper requests on every retry. preferRemote=false.
+	candidates, err := ss.SearchLive(ctx, normalizedTerm, limit, false)
 	if err != nil {
 		return nil, err
 	}
@@ -302,11 +320,23 @@ func (ss *SearchService) SearchClips(ctx context.Context, term string) []*asset.
 
 // searchLiveWithFallbacks orchestrates the fallback chain using the
 // Searcher port. Implementations come from infrastructure:
-//   - DB: in-memory indexed terms (fast)
-//   - CachedSearcher: wraps infrastructure/scraper with L1/L2 cache
+//   - DB: in-memory indexed terms (fast) — INCLUDED ONLY when preferRemote=false
+//   - CachedSearcher: wraps infrastructure/scraper with L1/L2 cache — INCLUDED ONLY when preferRemote=false
+//   - ScraperSearcher: Node Playwright HTTP scraper (PR-P2-SEARCH-LIVE: PRIMARY when preferRemote=true)
 //   - Pixabay HTTP (free fallback)
 //   - Pexels HTTP (free fallback)
-func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term string, limit int) ([]Candidate, error) {
+//
+// preferRemote (PR-P2-SEARCH-LIVE, July 2026): when true, the chain
+// drops DBSearcher + CachedSearcher wrapper entirely so the
+// ScraperSearcher is the FIRST consulted provider. Pixabay/Pexels
+// stay as genuine remote fallbacks (per SearchStrategy). When false,
+// the legacy cache-first chain (DBSearcher → CachedScraper → other
+// remotes) is preserved.
+//
+// godlike/06 SSOT: chain-ordering decisions live at the canonical
+// buildSearcherChain resolver; this method only threads the flag
+// through and surfaces the prefer_remote dimension in error logs.
+func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term string, limit int, preferRemote bool) ([]Candidate, error) {
 	normalizedTerm := normalizeSearchTerm(term)
 	if normalizedTerm == "" {
 		return nil, fmt.Errorf("term is required")
@@ -321,21 +351,22 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 		limit = 50
 	}
 
-	chain := ss.buildSearcherChain()
+	chain := ss.buildSearcherChain(preferRemote)
 	if chain == nil {
 		return nil, fmt.Errorf("no search providers configured")
 	}
 
-	candidates, err := chain.Search(ctx, SearchRequest{Term: normalizedTerm, Limit: limit})
+	candidates, err := chain.Search(ctx, SearchRequest{Term: normalizedTerm, Limit: limit, PreferRemote: preferRemote})
 	if err != nil {
 		ss.service.log.Warn("all search providers failed",
 			zap.String("term", term),
+			zap.Bool("prefer_remote", preferRemote),
 			zap.Error(err),
 		)
 		return nil, err
 	}
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("no results from any search provider for %q", normalizedTerm)
+		return nil, fmt.Errorf("no results from any search provider for %q (prefer_remote=%t)", normalizedTerm, preferRemote)
 	}
 	return candidates, nil
 }
@@ -344,22 +375,56 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 // configuration. Infrastructure searchers are injected here so the application
 // layer stays decoupled from concrete implementations.
 //
-// PR-AUDIT-5 (July 2026): the strategy resolver (ResolveSearcherChain) now
-// controls which infra searchers are included. Only the DB searcher is always
-// appended; scraper/pixabay/pexels are gated by the wired SearchStrategy.
-func (ss *SearchService) buildSearcherChain() *SearcherFallbackChain {
+// PR-AUDIT-5 (July 2026): the strategy resolver (ResolveSearcherChain)
+// controls which infra searchers are included. Only the DB searcher is
+// always appended; scraper/pixabay/pexels are gated by the wired
+// SearchStrategy.
+//
+// PR-P2-SEARCH-LIVE (July 2026): preferRemote is the operator-facing
+// flag that LOWERS the chain to REMOTE providers only. Both the local
+// DB-level cache (DBSearcher) AND the in-memory TTL cache
+// (CachedSearcher wrapper around the scraper) are DROPPED when
+// preferRemote=true per user-spec contract: "salta la cache locale
+// e interroga sempre Artlist come provider primario. Mantieni la
+// cache locale come fallback SOLO se prefer_remote=false".
+//
+//	Chain ordering under the two modes:
+//
+//	preferRemote=false:
+//	  [DBSearcher, CachedSearcher(scraper), ...pixabay/pexels per strategy]
+//
+//	preferRemote=true:
+//	  [ScraperSearcher(raw), ...pixabay/pexels per strategy]
+//	  — NO DBSearcher, NO CachedSearcher wrapper.
+//
+// Pixabay/Pexels STAY as fallbacks in BOTH modes because they remain
+// genuinely remote (not local cache). With preferRemote=true and the
+// scraper returning empty results or an error, the chain loops to
+// pixabay/pexels via SearcherFallbackChain.Search — but the
+// DBSearcher is intentionally NOT reached, so the operator sees the
+// remote-fallback semantic instead of a stale DB hit.
+//
+// godlike/06 SSOT: this resolver is the SINGLE canonical owner of
+// the chain-order decision across BOTH modes. Callers MUST NOT
+// hand-roll their own chain ordering; they pass the flag and read
+// the canonical ordering here.
+func (ss *SearchService) buildSearcherChain(preferRemote bool) *SearcherFallbackChain {
 	s := ss.service
 
 	var searchers []Searcher
 
-	// Level 1: DB search (fast, indexed) — always included.
-	if s.assetStore != nil {
+	// Level 1: DB search (fast, indexed) — INCLUDED ONLY when
+	// preferRemote=false (PR-P2-SEARCH-LIVE, July 2026). With
+	// preferRemote=true the local DB cache is DROPPED entirely per
+	// user-spec contract ("salta la cache locale"). Operators
+	// forcing the scraper to be primary MUST NOT see stale DB hits
+	// (godlike/07 no-fake-availability).
+	if !preferRemote && s.assetStore != nil {
 		searchers = append(searchers, NewDBSearcher(s.assetStore))
 	}
 
-	// Levels 2-4: infrastructure searchers gated by the canonical strategy
-	// resolver (PR-AUDIT-5, godlike/06 SSOT). The resolver translates
-	// the operator-chosen strategy into an ordered []Searcher.
+	// Levels 2-*: infrastructure searchers gated by the canonical
+	// strategy resolver (PR-AUDIT-5, godlike/06 SSOT).
 	strategy := ss.searchStrategy
 	if !strategy.IsValid() {
 		strategy = DefaultArtlistSearchStrategy
@@ -367,10 +432,16 @@ func (ss *SearchService) buildSearcherChain() *SearcherFallbackChain {
 
 	infraSearchers := ResolveSearcherChain(strategy, s.scraperSearcher, s.pixabaySearcher, s.pexelsSearcher)
 
-	// Wrap scraper with CachedSearcher if present (the resolver already
-	// decided to include it; we just add the caching layer).
+	// Wrap scraper with CachedSearcher ONLY when preferRemote=false
+	// AND the scraper is gating-allowed by the strategy resolver
+	// (PR-P2-SEARCH-LIVE, July 2026). With preferRemote=true the
+	// CachedSearcher wrapper is dropped entirely so the scraper is
+	// invoked on EVERY request (BYPASS-TTL). Without this, cached
+	// hits would mask real scraper failures (godlike/07
+	// no-fake-availability) AND the operator would never see fresh
+	// results even though the endpoint advertises "live" semantics.
 	for _, searcher := range infraSearchers {
-		if searcher == s.scraperSearcher {
+		if !preferRemote && searcher == s.scraperSearcher {
 			ttlHours := 24
 			if s.cfg != nil && s.cfg.External.ArtlistLiveSearchCacheTTLHours > 0 {
 				ttlHours = s.cfg.External.ArtlistLiveSearchCacheTTLHours

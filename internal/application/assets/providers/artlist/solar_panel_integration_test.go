@@ -172,7 +172,10 @@ func TestSolarPanelSearch(t *testing.T) {
 
 	// ── 2. Live search (fake scraper) ──
 	fmt.Println("\n=== 2. Live Search: 'solar panel' ===")
-	liveResp, err := svc.SearchLive(ctx, "solar panel", 5)
+	// PR-P2-SEARCH-LIVE: this pre-existing test exercises the legacy
+	// cache-first semantics on the orchestrator path; PreferRemote=false
+	// explicitly preserves that pre-PR behavior.
+	liveResp, err := svc.SearchLive(ctx, "solar panel", 5, false)
 	require.NoError(t, err)
 	fmt.Printf("  Clips returned: %d\n", len(liveResp))
 	for i, c := range liveResp {
