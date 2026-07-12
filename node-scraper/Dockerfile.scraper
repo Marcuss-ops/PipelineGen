@@ -79,8 +79,15 @@ EXPOSE 9123
 
 # Default ARTLIST_PORT matches docs/images/GEMINI.md and
 # config.example.yaml's `artlist_scraper_server_url` field comment.
+# P3 (July 2026): ARTLIST_SCRAPER_BIND defaults to '0.0.0.0' so the
+# container is reachable from sibling services on the docker-compose
+# `backend` bridge; the loopback default '127.0.0.1' made /health
+# unreachable from pipelinegen-server. Operators that need a
+# loopback-only scraper (unit tests, single-tenant dev) override
+# ARTLIST_SCRAPER_BIND=127.0.0.1 in the deployable env file.
 ENV PORT=9123 \
     ARTLIST_PORT=9123 \
+    ARTLIST_SCRAPER_BIND=0.0.0.0 \
     PERSISTENT=1
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
