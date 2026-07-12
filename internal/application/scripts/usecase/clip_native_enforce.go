@@ -110,7 +110,43 @@ func enforceClipNativeContract(
 		}
 	}
 
-	// Strict mode must never use prose fallback.
+	// P0.G KNOWN GAP fix (July 2026, surfaced by
+	// TestFallbackPolicy_P0G_AllowProse_SucceedsWithWarnings):
+	// when fallback_policy="allow_prose" AND at least one
+	// branchable check (scene-count mismatch, unbound clips)
+	// fired a warning, the canonical clip-native mode is being
+	// degraded to prose fallback. Surface this in ModeInfo so
+	// diagnostics dashboards can distinguish a fully-conformant
+	// clip-native run from a degraded allow_prose run.
+	//
+	// godlike/06 SSOT: this is the SOLE mutation site for the
+	// (usedMode, fallbackUsed) pair under the allow_prose policy.
+	// A future refactor that adds another branchable check MUST
+	// either fire a warning AND let this single mutation gate the
+	// mode flip, OR extend this gate with the new check's name.
+	// The pre-fix code declared usedMode="clip_native" and
+	// fallbackUsed=false at function entry and never mutated
+	// them — the test verified expected values "prose"/true
+	// red, surfacing this gap.
+	if policy == scriptpkg.FallbackPolicyAllowProse && len(warnings) > 0 {
+		usedMode = "prose"
+		fallbackUsed = true
+	}
+
+	// Strict mode must never use prose fallback. The guard fires
+	// only when a previous mutation set fallbackUsed=true under a
+	// non-allow_prose policy; today only this branchable block
+	// can set that flag (the document processor + other paths
+	// that consume ModeInfo do not write it).
+	if fallbackUsed && policy != scriptpkg.FallbackPolicyAllowProse {
+		return &scriptpkg.ClipNativePlanningError{
+			Code:    "CLIP_NATIVE_PLANNING_FAILED",
+			ItemID:  item.ID,
+			Policy:  policy,
+			Reason:  "prose fallback not allowed",
+			Details: []string{"clip_native: prose fallback was used but fallback_policy is strict"},
+		}
+	}
 	if fallbackUsed && policy != scriptpkg.FallbackPolicyAllowProse {
 		return &scriptpkg.ClipNativePlanningError{
 			Code:    "CLIP_NATIVE_PLANNING_FAILED",
