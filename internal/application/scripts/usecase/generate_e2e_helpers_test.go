@@ -18,8 +18,10 @@ import (
 // It maps clip IDs to *asset.Asset and can be configured to fail or
 // return missing assets for specific IDs.
 type fakeClipResolver struct {
-	mu    sync.RWMutex
-	clips map[string]*asset.Asset
+	mu         sync.RWMutex
+	clips      map[string]*asset.Asset
+	mediaCalls []string
+	driveCalls []string
 }
 
 func newFakeClipResolver() *fakeClipResolver {
@@ -33,8 +35,9 @@ func (r *fakeClipResolver) AddClip(a *asset.Asset) {
 }
 
 func (r *fakeClipResolver) ResolveByMediaAssetID(ctx context.Context, id string) (*asset.Asset, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.mediaCalls = append(r.mediaCalls, id)
 	if a, ok := r.clips[id]; ok {
 		return a, nil
 	}
@@ -42,8 +45,9 @@ func (r *fakeClipResolver) ResolveByMediaAssetID(ctx context.Context, id string)
 }
 
 func (r *fakeClipResolver) ResolveByDriveFileID(ctx context.Context, id string) ([]*asset.Asset, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.driveCalls = append(r.driveCalls, id)
 	if a, ok := r.clips[id]; ok {
 		return []*asset.Asset{a}, nil
 	}

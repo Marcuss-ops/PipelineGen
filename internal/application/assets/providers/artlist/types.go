@@ -210,6 +210,36 @@ type Stats struct {
 	OK                bool `json:"ok"`
 	ClipsTotal        int  `json:"clips_total"`
 	ArtlistClipsTotal int  `json:"artlist_clips_total"`
+} // ProbeStage is one named sub-step of a multi-stage probe (Fase 7 /
+// Commit B, July 2026 — the artlist Scraper probe is the first user,
+// but the wire shape is generic so future probes can re-use it).
+//
+// godlike/06 SSOT: ProbeStage is the SINGLE canonical name for
+// per-stage probe outcomes. The aggregate ProbeResult.OK MUST equal
+// the logical AND of all Stages[i].OK (no aggregate is ever OK=true
+// when any stage failed — godlike/07 fail-closed). The Stages slice
+// is surfaced via JSON so operators can pinpoint EXACTLY which
+// stage failed without grepping the JSON for substrings.
+//
+// ProbeStage.Error is the verbatim underlying error (no truncation,
+// no wrapping) so operators can grep for canonical patterns like
+// "stage_3_real_query: search returned 0 clips".
+type ProbeStage struct {
+	// Name is the canonical stage identifier. Operators grep on it.
+	// Canonical values for the Scraper probe: "stage_1_chromium_started",
+	// "stage_2_session_valid", "stage_3_real_query".
+	Name string `json:"name"`
+	// OK is the per-stage verdict: true iff this stage passed.
+	OK bool `json:"ok"`
+	// Error is the verbatim underlying failure when OK=false. Empty
+	// when OK=true.
+	Error string `json:"error,omitempty"`
+	// Detail is the operator-facing diagnostic (e.g. "browser_running=true,
+	// pid=42, last_search_at=2026-07-12T10:30:00Z"). Surfaced verbatim.
+	Detail string `json:"detail,omitempty"`
+	// ElapsedMs is the per-stage wall-clock budget so operators see
+	// slow stages independently.
+	ElapsedMs int64 `json:"elapsed_ms"`
 }
 
 // ProbeResult is the canonical wire-by-wire probe outcome (Fase 2,
@@ -221,6 +251,15 @@ type Stats struct {
 // per-probe `ElapsedMs` so operators reading the JSON can spot slow
 // probes (e.g. Qdrant probe taking 4.5s on an 8-of-10 probes endpoint).
 //
+// Stages (Fase 7 / Commit B, July 2026): when the probe is multi-stage
+// (e.g. the Scraper probe runs 3 sub-steps), `Stages` carries the
+// per-stage verdict. The aggregate `OK` MUST equal the logical AND of
+// all `Stages[i].OK`; `Error` is the typed error of the FIRST failing
+// stage (operators walk Stages in order to find the actual failure
+// point). The aggregate `ElapsedMs` is the sum of per-stage budgets
+// (with HTTP roundtrip overlap); `Stages[i].ElapsedMs` reflects each
+// stage's own wall-clock.
+//
 // godlike/07 invariant: probes MUST be real reachability checks (HTTP
 // /health, exec.LookPath + binary version probe, db.PingContext +
 // BEGIN IMMEDIATE/ROLLBACK, FolderManagerPort.ProbeFolderAccess, etc).
@@ -230,10 +269,11 @@ type Stats struct {
 // is: "could a probe-read show a real `Error` string with a real
 // underlying error message if the dep is genuinely broken?"
 type ProbeResult struct {
-	OK        bool   `json:"ok"`
-	Error     string `json:"error,omitempty"`
-	Detail    string `json:"detail,omitempty"`
-	ElapsedMs int64  `json:"elapsed_ms"`
+	OK        bool         `json:"ok"`
+	Error     string       `json:"error,omitempty"`
+	Detail    string       `json:"detail,omitempty"`
+	ElapsedMs int64        `json:"elapsed_ms"`
+	Stages    []ProbeStage `json:"stages,omitempty"`
 }
 
 // LatestRunSummary is the per-run summary surfaced in

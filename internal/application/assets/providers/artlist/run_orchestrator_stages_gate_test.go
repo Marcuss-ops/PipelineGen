@@ -18,9 +18,9 @@ import (
 // timing invariant: the resolver's gate fires BEFORE the
 // mediaProcessor.Process path is reached.
 type gateBlockFakeStager_SUTStageSource struct {
-	err           error
-	stageCalls    atomic.Int32
-	cleanupCalls  atomic.Int32
+	err          error
+	stageCalls   atomic.Int32
+	cleanupCalls atomic.Int32
 }
 
 var _ assets.SourceStager = (*gateBlockFakeStager_SUTStageSource)(nil)
@@ -100,10 +100,10 @@ func TestStageProcessBatch_GateBlockShortCircuit_AcquisitionMode(t *testing.T) {
 	orchestrator := &RunOrchestratorService{svc: svc}
 
 	resp := &RunTagResponse{
-		OK:        true,
-		Term:      "test",
-		Found:     1,
-		Items:     []RunTagItem{},
+		OK:    true,
+		Term:  "test",
+		Found: 1,
+		Items: []RunTagItem{},
 	}
 	workItem := clipWork{
 		item: RunTagItem{
@@ -192,6 +192,7 @@ func TestStageProcessBatch_GateBlockShortCircuit_AcquisitionMode(t *testing.T) {
 //   - arg.w.item.Error   = procErr.Error()
 //   - ps.resp.Failed     += 1
 //   - ps.resp.Items      = append(...)
+//
 // The test pins ALL FOUR invariants so any future refactor that breaks
 // the negative path (e.g. by accidently matching ALL errors as
 // gate-blocks) fires the assertion loudly.
@@ -213,10 +214,10 @@ func TestStageProcessBatch_NonGateBlockError_FallsThroughToMediaProcessor(t *tes
 	orchestrator := &RunOrchestratorService{svc: svc}
 
 	resp := &RunTagResponse{
-		OK:        true,
-		Term:      "test",
-		Found:     1,
-		Items:     []RunTagItem{},
+		OK:    true,
+		Term:  "test",
+		Found: 1,
+		Items: []RunTagItem{},
 	}
 	workItem := clipWork{
 		item: RunTagItem{

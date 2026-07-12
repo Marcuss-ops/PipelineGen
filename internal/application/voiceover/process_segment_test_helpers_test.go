@@ -22,14 +22,14 @@
 //
 // Stubs owned here (canonical SSOT list — 10 types total):
 //   - 8 port stubs:
-//     * stubTxOutboxEnqueuer (FASE 4 + FASE 6 tests; per-item reuse)
-//     * stubLifecycleProjectionUpserter (FASE 5 E2E tests)
-//     * stubIdempotencyVoRepo (FASE 3 idempotency tests)
-//     * stubVoRepoFailSecondBeginTx (FASE 4 BeginTx-failure path)
-//     * stubFailingInsertRepo (FASE 6 E2E InsertTx-failure path)
-//     * recordingDestResolver (TestResolveDestinationWithFallback)
-//     * stubDefaultFolderResolver (TestResolveDestinationWithFallback)
-//     * sqliteErrorStub (finalizer dedupe-gate typed-sentinel probe)
+//   - stubTxOutboxEnqueuer (FASE 4 + FASE 6 tests; per-item reuse)
+//   - stubLifecycleProjectionUpserter (FASE 5 E2E tests)
+//   - stubIdempotencyVoRepo (FASE 3 idempotency tests)
+//   - stubVoRepoFailSecondBeginTx (FASE 4 BeginTx-failure path)
+//   - stubFailingInsertRepo (FASE 6 E2E InsertTx-failure path)
+//   - recordingDestResolver (TestResolveDestinationWithFallback)
+//   - stubDefaultFolderResolver (TestResolveDestinationWithFallback)
+//   - sqliteErrorStub (finalizer dedupe-gate typed-sentinel probe)
 //   - 2 helper struct types: indexEventCall, cleanupEventCall
 //     (mirror stubs' recorder payloads; only used by stubTxOutboxEnqueuer
 //     and asserted through the struct fields, not by name)

@@ -12,13 +12,13 @@
 // exactly one idempotency invariant at the usecase boundary:
 //
 //  11. TestProcessSegmentUseCase_Execute_FASE3_Idempotency_SameJobNoDuplicates
-//      — same job retried 2x produces 1 DB insert (idempotency gate fires).
+//     — same job retried 2x produces 1 DB insert (idempotency gate fires).
 //
 //  12. TestProcessSegmentUseCase_Execute_FASE3_Idempotency_DifferentJobsSeparate
-//      — different jobs with same text produce 2 inserts (no cross-job collision).
+//     — different jobs with same text produce 2 inserts (no cross-job collision).
 //
 //  13. TestProcessSegmentUseCase_Execute_FASE3_Idempotency_LegacyEmptyJobID
-//      — legacy callers (empty JobID) skip the idempotency gate (back-compat).
+//     — legacy callers (empty JobID) skip the idempotency gate (back-compat).
 //
 // godlike/07 minimum-blast-radius: zero production code changes.
 // All three tests use stubIdempotencyVoRepo (which extends the canonical
