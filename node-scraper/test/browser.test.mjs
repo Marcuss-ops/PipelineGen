@@ -22,6 +22,7 @@ import {
   closeBrowserHandle,
   evaluateBrowserPreflight,
 } from '../src/artlist/browser.js';
+import { computeHealthVerdict } from '../src/artlist/health.js';
 
 // pickChromeExecutable priority 1: explicit CHROME_EXECUTABLE wins.
 test('pickChromeExecutable: explicit CHROME_EXECUTABLE always wins', () => {
@@ -292,4 +293,102 @@ test('evaluateBrowserPreflight CHROME_EXECUTABLE takes precedence even when path
       else process.env[k] = v;
     }
   }
+});
+
+// ---------- PR-HEALTHCHECK-FAILFAST (P2, July 2026): computeHealthVerdict ----------
+//
+// computeHealthVerdict is the pure-function module that the /health handler
+// delegates to. Each test below pins one ax-axis of the 3-predicate
+// healthy logic:
+//   healthy := browser != null
+//           && !last_launch_error
+//           && recentSessionAlive (= now - lastSessionAliveAt <= window)
+
+// Case 1: all-healthy inputs.
+test('computeHealthVerdict: all-positive state yields healthy=true', () => {
+  const now = Date.now();
+  const v = computeHealthVerdict({
+    browser: { _stub: true },
+    lastLaunchError: null,
+    lastSessionAliveAt: new Date(now - 30_000).toISOString(),
+    now,
+    freshnessWindowMs: 60_000,
+  });
+  assert.equal(v.healthy, true);
+  assert.equal(v.browserRunning, true);
+  assert.equal(v.recentSessionAlive, true);
+});
+
+// Case 2: lastSessionAliveAt STALE (> window) -> recentSessionAlive=false -> healthy=false.
+test('computeHealthVerdict: stale lastSessionAliveAt flips recentSessionAlive=false', () => {
+  const now = Date.now();
+  const v = computeHealthVerdict({
+    browser: { _stub: true },
+    lastLaunchError: null,
+    lastSessionAliveAt: new Date(now - 90_000).toISOString(), // 90s ago
+    now,
+    freshnessWindowMs: 60_000, // window is 60s
+  });
+  assert.equal(v.healthy, false, 'healthy must be false when lastSessionAliveAt is older than the fresh window');
+  assert.equal(v.browserRunning, true, 'browserRunning stays true (browser != null)');
+  assert.equal(v.recentSessionAlive, false, 'recentSessionAlive must be false past the window');
+});
+
+// Case 3: lastLaunchError non-null -> healthy=false regardless of other state.
+test('computeHealthVerdict: lastLaunchError non-null makes healthy=false', () => {
+  const v = computeHealthVerdict({
+    browser: { _stub: true },
+    lastLaunchError: 'puppeteer.launch failed: missing binary',
+    lastSessionAliveAt: new Date().toISOString(),
+  });
+  assert.equal(v.healthy, false);
+  assert.equal(v.browserRunning, true);
+  assert.equal(v.recentSessionAlive, true);
+});
+
+// Case 4: browser null -> browserRunning=false -> healthy=false (boot pre-warmup).
+test('computeHealthVerdict: null browser makes browserRunning=false', () => {
+  const v = computeHealthVerdict({
+    browser: null,
+    lastLaunchError: null,
+    lastSessionAliveAt: null,
+  });
+  assert.equal(v.healthy, false);
+  assert.equal(v.browserRunning, false);
+  assert.equal(v.recentSessionAlive, false, 'null timestamp also means not recent');
+});
+
+// Case 5: all-negative inputs (default fallback for defensiveness).
+test('computeHealthVerdict: empty/zero input is safe', () => {
+  const v = computeHealthVerdict({});
+  assert.equal(v.healthy, false);
+  assert.equal(v.browserRunning, false);
+  assert.equal(v.recentSessionAlive, false);
+});
+
+// Case 6: edge of the fresh window -- exactly at the boundary -- still recent.
+// (now - lastSessionAliveAt === window_ms is the boundary; verdict stays true on the
+// inclusive side per `now - X <= window_ms` semantics.)
+test('computeHealthVerdict: exactly at the boundary of freshness window is recent', () => {
+  const now = 1_000_000_000_000;
+  const v = computeHealthVerdict({
+    browser: { _stub: true },
+    lastLaunchError: null,
+    lastSessionAliveAt: new Date(now - 60_000).toISOString(),
+    now,
+    freshnessWindowMs: 60_000,
+  });
+  assert.equal(v.healthy, true);
+  assert.equal(v.recentSessionAlive, true);
+});
+
+// Case 7: malformed/unparsable lastSessionAliveAt -> recentSessionAlive=false.
+test('computeHealthVerdict: malformed lastSessionAliveAt yields recentSessionAlive=false', () => {
+  const v = computeHealthVerdict({
+    browser: { _stub: true },
+    lastLaunchError: null,
+    lastSessionAliveAt: 'this-is-not-a-date',
+  });
+  assert.equal(v.recentSessionAlive, false, 'malformed timestamp must not be treated as recent');
+  assert.equal(v.healthy, false);
 });
