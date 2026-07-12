@@ -225,11 +225,35 @@ func WireArtlist(
 	// Phase 2 follow-up surfaces BrowserURL/SessionURL/DownloaderURL
 	// in cfg.
 	systemProber := &diagnostics.AdminSystemProber{
-		Log:           log,
+		Log: log,
+		// Commit 1: 4 upstream probes wired.
 		ScraperURL:    cfg.External.ArtlistScraperServerURL,
 		BrowserURL:    "", // Commit 2 follow-up: cfg.External.ArtlistBrowserURL
 		SessionURL:    "", // Commit 2 follow-up: cfg.External.ArtlistSessionURL
 		DownloaderURL: "", // Commit 2 follow-up: cfg.External.ArtlistDownloaderURL
+		// Commit 2: 2 capability probes wired.
+		//
+		// godlike/06 SSOT: ffmpeg path comes from cfg.External.FfmpegPath
+		// with an empty-string fallback. The prober interprets an empty
+		// FFmpegBinaryPath as "use exec.LookPath("ffmpeg") to honour $PATH"
+		// (matches the precedent in
+		// internal/application/clips/upload/usecase.go line 361 +
+		// cutter_test.go line 60 which use exec.LookPath directly on the
+		// bare "ffmpeg" / "ffprobe" names).
+		FFmpegBinaryPath: cfg.External.FfmpegPath,
+		FFmpegRunner:     diagnostics.DefaultRunner{},
+		// Drive folder probe: ProbeFolderAccess remains nil in Commit 2
+		// because the canonical delivery.Publisher interface does not
+		// expose ProbeFolderAccess today. A follow-up commit lifts the
+		// method onto the canonical publisher port; until then the probe
+		// honestly fails with Error="drive_folder_probe_unwired".
+		//
+		// ProbeFolderRootID IS populated (ResolveRootFolderID reads
+		// cfg.Drive.ArtlistFolder()) so once ProbeFolderAccess is wired
+		// the probe can run immediately with no composition-root code
+		// change beyond replacing nil with a real closure.
+		ProbeFolderAccess: nil,
+		ProbeFolderRootID: artlistPkg.ResolveRootFolderID(cfg),
 	}
 
 	// godlike/06 SSOT: SemanticEnricher is the canonical app-layer wrapper for
