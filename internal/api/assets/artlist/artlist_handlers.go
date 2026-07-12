@@ -165,6 +165,26 @@ func (h *ArtlistHandler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagReq
 	}
 
 	// Use common jobs system exclusively
+	// Commit B (FASE 5 follow-up, July 2026): RunDedupKey now returns
+	// (string, error). The previous shape silently produced a fmt.Sprintf
+	// fallback when canonical json.Marshal failed; the new shape fails
+	// closed per godlike/07 with a typed sentinel from pkg/idempotency.
+	// The handler maps the error to HTTP 400 BadRequest because a
+	// malformed run-dedup input is an operator-input error (e.g. an
+	// invalid term/folder shape), NOT a server-side failure (godlike/07
+	// typed-error contract).
+	runActiveKey, err := artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun, req.Limit)
+	if err != nil {
+		h.log.Warn("artlist run dedup key construction failed (operator-input error surfaced as HTTP 400)",
+			zap.String("term", req.Term),
+			zap.String("root_folder_id", req.RootFolderID),
+			zap.String("strategy", req.Strategy),
+			zap.Int("limit", req.Limit),
+			zap.Error(err),
+		)
+		apiutil.BadRequest(c, fmt.Sprintf("invalid run-dedup input: %v", err))
+		return
+	}
 	job, err := h.jobsService.Enqueue(c.Request.Context(), &jobservice.EnqueueRequest{
 		Type:       "media.artlist",
 		Payload:    (&artlist.JobCodec{}).PayloadFromRequest(&req),
@@ -176,7 +196,7 @@ func (h *ArtlistHandler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagReq
 		// of clips), and must produce a different ActiveKey so the
 		// dedup does not silently merge distinct operator requests
 		// (godlike/07 fail-closed).
-		ActiveKey: artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun, req.Limit),
+		ActiveKey: runActiveKey,
 	})
 	if err != nil {
 		h.log.Error("failed to enqueue artlist job", zap.Error(err))

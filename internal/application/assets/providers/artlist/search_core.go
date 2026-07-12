@@ -314,7 +314,24 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 		// the same ActiveKey as an orchestrator replay — the dedup
 		// unifies across entry points when the canonical
 		// (normalized) request identity is identical.
-		runActiveKey := RunDedupKey(normalizedTerm, driveFolderID, "", false, limit)
+		// Commit B (FASE 5 follow-up, July 2026): RunDedupKey now
+		// returns (string, error). The orchestrator propagates the
+		// error to its caller so a malformed normalized term/folder
+		// doesn't produce a silent fallback. The upstream handler
+		// MUST have normalized the request before reaching here;
+		// an error here is a programming bug, surfaced via the
+		// typed sentinels in pkg/idempotency (ErrInvalidRunForDedup
+		// or ErrInvalidSegment).
+		runActiveKey, dedupErr := RunDedupKey(normalizedTerm, driveFolderID, "", false, limit)
+		if dedupErr != nil {
+			s.log.Warn("artlist run dedup key construction failed in orchestrator (godlike/07 fail-closed)",
+				zap.String("term", normalizedTerm),
+				zap.String("root_folder_id", driveFolderID),
+				zap.Int("limit", limit),
+				zap.Error(dedupErr),
+			)
+			return liveResp, nil, dedupErr
+		}
 		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
 			Type:       "media.artlist",
 			Payload:    (&JobCodec{}).PayloadFromRequest(&RunTagRequest{Term: normalizedTerm, Limit: limit, RootFolderID: driveFolderID}),

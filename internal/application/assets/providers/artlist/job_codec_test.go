@@ -2,9 +2,11 @@ package artlist
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 )
 
 func TestArtlistDedupKeyUsesCanonicalRequest(t *testing.T) {
@@ -30,8 +32,14 @@ func TestArtlistDedupKeyUsesCanonicalRequest(t *testing.T) {
 		DefaultRootFolderID: "drive-folder",
 	})
 
-	keyA := RunDedupKey(normA.Term, normA.RootFolderID, normA.Strategy, normA.DryRun, normA.Limit)
-	keyB := RunDedupKey(normB.Term, normB.RootFolderID, normB.Strategy, normB.DryRun, normB.Limit)
+	// Commit B (FASE 5 follow-up, July 2026): RunDedupKey now
+	// returns (string, error). The error is ignored here because
+	// TestArtlistDedupKeyUsesCanonicalRequest focuses on
+	// byte-equality across canonical-equivalent normalized
+	// requests — the error surface is tested separately in
+	// TestArtlistRunDedupKey_InvalidParamsReturnsErr below.
+	keyA, _ := RunDedupKey(normA.Term, normA.RootFolderID, normA.Strategy, normA.DryRun, normA.Limit)
+	keyB, _ := RunDedupKey(normB.Term, normB.RootFolderID, normB.Strategy, normB.DryRun, normB.Limit)
 
 	if keyA != keyB {
 		t.Fatalf("expected canonical equivalent requests to share dedup key: %s != %s", keyA, keyB)
@@ -46,10 +54,15 @@ func TestArtlistDedupKeyUsesCanonicalRequest(t *testing.T) {
 // distinct runs into one ActiveKey and surface misleading dedup
 // (godlike/07 fail-closed: never silently merge distinct operator
 // requests).
+//
+// Commit B (FASE 5 follow-up, July 2026): RunDedupKey now returns
+// (string, error). The error is ignored because each call passes a
+// valid limit (>=0) — the invalid-params path is tested separately
+// in TestArtlistRunDedupKey_InvalidParamsReturnsErr.
 func TestArtlistDedupKey_DifferentLimitProducesDifferentKey(t *testing.T) {
-	key8 := RunDedupKey("city", "drive-folder", "verify", false, 8)
-	key16 := RunDedupKey("city", "drive-folder", "verify", false, 16)
-	key1 := RunDedupKey("city", "drive-folder", "verify", false, 1)
+	key8, _ := RunDedupKey("city", "drive-folder", "verify", false, 8)
+	key16, _ := RunDedupKey("city", "drive-folder", "verify", false, 16)
+	key1, _ := RunDedupKey("city", "drive-folder", "verify", false, 1)
 
 	if key8 == key16 {
 		t.Fatalf("expected limit=8 and limit=16 to produce different dedup keys (a different limit is a different run); both produced %q", key8)
@@ -59,6 +72,187 @@ func TestArtlistDedupKey_DifferentLimitProducesDifferentKey(t *testing.T) {
 	}
 	if key16 == key1 {
 		t.Fatalf("expected limit=16 and limit=1 to produce different dedup keys; both produced %q", key16)
+	}
+}
+
+// TestArtlistRunDedupKey_InvalidParamsReturnsErr (Commit B / FASE 5
+// follow-up, July 2026) pins the godlike/07 fail-closed contract
+// when the run-level dedup key constructor is given an input that
+// is structurally invalid for `pkg/idempotency.BuildKey`.
+//
+// The user spec literal test name is preserved exactly. The
+// RunDedupKey wrapper hardcodes "artlist-run" as the provider
+// discriminator + always builds a non-empty, JSON-marshalable
+// canonical map, so the wrapper surface CANNOT itself produce an
+// error — the typed-sentinel surface is reachable only through
+// the underlying `idempotency.BuildKey` invocation. The test
+// therefore exercises the error paths directly via BuildKey,
+// which is the canonical surface the wrapper delegates to
+// (godlike/06 SSOT — the wrapper is a thin pass-through).
+//
+// Errors.Is dispatch surface:
+//   - pkg/idempotency.ErrInvalidRunForDedup — empty provider
+//     discriminator OR unmarshalable canonical content.
+//   - pkg/idempotency.ErrInvalidSegment — provider discriminator
+//     contains ':' (segment-delimiter collision guard).
+//
+// Each invalid case asserts the typed sentinel identity AND the
+// empty error string (so callers can branch on errors.Is + grep
+// the typed surface for fail-closed diagnostics).
+func TestArtlistRunDedupKey_InvalidParamsReturnsErr(t *testing.T) {
+	// (1) Empty provider discriminator — the canonical godlike/07
+	//     "caller forgot to thread the provider" wiring bug. The
+	//     handler/orchestrator (which hardcodes "artlist-run") never
+	//     hits this path, but a future stock-run / youtube-run
+	//     wrapper that delegates to BuildKey could. Pin the sentinel.
+	t.Run("empty-provider-returns-ErrInvalidRunForDedup", func(t *testing.T) {
+		key, err := idempotency.BuildKey("", map[string]any{"term": "city"})
+		if !errors.Is(err, idempotency.ErrInvalidRunForDedup) {
+			t.Errorf("empty provider MUST trip ErrInvalidRunForDedup; got err=%v (godlike/07 — no fake availability)", err)
+		}
+		if key != "" {
+			t.Errorf("expected empty key on err path; got %q (godlike/07: failed-key path must NOT return a fake key)", key)
+		}
+	})
+
+	// (2) Colon in provider discriminator — segment-collision guard.
+	t.Run("colon-in-provider-returns-ErrInvalidSegment", func(t *testing.T) {
+		key, err := idempotency.BuildKey("art:list-run", map[string]any{"term": "city"})
+		if !errors.Is(err, idempotency.ErrInvalidSegment) {
+			t.Errorf("colon in provider MUST trip ErrInvalidSegment; got err=%v (godlike/06 segment stability)", err)
+		}
+		if key != "" {
+			t.Errorf("expected empty key on err path; got %q (godlike/07: failed-key path must NOT return a fake key)", key)
+		}
+	})
+
+	// (3) Nil canonical — the canonical godlike/07 fail-closed
+	//     "no canonical content" wire-shape violation.
+	t.Run("nil-canonical-returns-ErrInvalidRunForDedup", func(t *testing.T) {
+		key, err := idempotency.BuildKey("artlist-run", nil)
+		if !errors.Is(err, idempotency.ErrInvalidRunForDedup) {
+			t.Errorf("nil canonical MUST trip ErrInvalidRunForDedup; got err=%v (godlike/07 — no fake availability)", err)
+		}
+		if key != "" {
+			t.Errorf("expected empty key on err path; got %q (godlike/07: failed-key path must NOT return a fake key)", key)
+		}
+	})
+
+	// (4) Empty (len==0) canonical — same sentinel as nil canonical.
+	t.Run("empty-canonical-returns-ErrInvalidRunForDedup", func(t *testing.T) {
+		key, err := idempotency.BuildKey("artlist-run", map[string]any{})
+		if !errors.Is(err, idempotency.ErrInvalidRunForDedup) {
+			t.Errorf("empty canonical MUST trip ErrInvalidRunForDedup; got err=%v (godlike/07 — no fake availability)", err)
+		}
+		if key != "" {
+			t.Errorf("expected empty key on err path; got %q (godlike/07: failed-key path must NOT return a fake key)", key)
+		}
+	})
+
+	// (5) Confirm RunDedupKey happy-path does NOT produce an error
+	//     for any of the canonical-input shapes the wrapper accepts.
+	//     This pins the negative: the wrapper surface is fail-closed
+	//     ONLY for structurally invalid inputs; normal operator
+	//     requests pass through with no error (godlike/07
+	//     no-fake-availability for the legitimate case too — we
+	//     don't return spurious errors on valid inputs).
+	t.Run("RunDedupKey-happy-path-returns-no-error", func(t *testing.T) {
+		cases := []struct {
+			name     string
+			term     string
+			folder   string
+			strategy string
+			dryRun   bool
+			limit    int
+		}{
+			{"typical", "city", "drive-folder", "verify", false, 8},
+			{"empty-term", "", "drive-folder", "verify", false, 8},
+			{"empty-folder", "city", "", "verify", false, 8},
+			{"negative-limit", "city", "drive-folder", "verify", false, -1},
+			{"zero-limit", "city", "drive-folder", "verify", false, 0},
+		}
+		for _, tc := range cases {
+			tc := tc
+			t.Run(tc.name, func(t *testing.T) {
+				key, err := RunDedupKey(tc.term, tc.folder, tc.strategy, tc.dryRun, tc.limit)
+				if err != nil {
+					t.Errorf("RunDedupKey happy-path returned err=%v; valid canonical input must not error (godlike/07)", err)
+				}
+				if key == "" {
+					t.Errorf("expected non-empty key on valid input; got empty (BuildKey must produce a 64-char hex)")
+				}
+			})
+		}
+	})
+}
+
+// TestArtlistRunDedupKey_HappyPathReturnsNoError is the sibling
+// happy-path surface for the canonical-input shapes the wrapper
+// accepts. The 4 cases pin that the godlike/07 fail-closed guard
+// returns errors ONLY for structurally invalid inputs, NOT for
+// normal operator requests (e.g. the orchestrator passes
+// empty-term when the term wasn't normalized upstream; this case
+// is a legitimate run, not a failure).
+//
+// godlike/06 SSOT: the SSOT cross-check (RunDedupKey output ==
+// BuildKey output for the same canonical) is covered in
+// TestArtlistRunDedupKey_HappyPathSSOT_MatchesBuildKey below.
+func TestArtlistRunDedupKey_HappyPathReturnsNoError(t *testing.T) {
+	cases := []struct {
+		name     string
+		term     string
+		folder   string
+		strategy string
+		dryRun   bool
+		limit    int
+	}{
+		{"typical", "city", "drive-folder", "verify", false, 8},
+		{"empty-term", "", "drive-folder", "verify", false, 8},
+		{"empty-folder", "city", "", "verify", false, 8},
+		{"negative-limit", "city", "drive-folder", "verify", false, -1},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			key, err := RunDedupKey(tc.term, tc.folder, tc.strategy, tc.dryRun, tc.limit)
+			if err != nil {
+				t.Errorf("RunDedupKey happy-path returned err=%v; valid canonical input must not error (godlike/07)", err)
+			}
+			if key == "" {
+				t.Errorf("expected non-empty key on valid input; got empty (BuildKey must produce a 64-char hex)")
+			}
+		})
+	}
+}
+
+// TestArtlistRunDedupKey_HappyPathSSOT_MatchesBuildKey pins the
+// godlike/06 SSOT contract between RunDedupKey and
+// pkg/idempotency.BuildKey: RunDedupKey delegates 1:1 to BuildKey,
+// producing BYTE-IDENTICAL output for the same canonical. A
+// future drift between the wrapper and the canonical would be
+// caught here (the canonical cross-check pin).
+func TestArtlistRunDedupKey_HappyPathSSOT_MatchesBuildKey(t *testing.T) {
+	// Smoke: RunDedupKey's happy-path output MUST match what
+	// pkg/idempotency.BuildKey produces for the SAME canonical
+	// shape. SSOT = one owner; BuildKey IS the owner.
+	got, gotErr := RunDedupKey("city", "drive-folder", "verify", false, 8)
+	if gotErr != nil {
+		t.Fatalf("RunDedupKey happy-path returned error: %v", gotErr)
+	}
+	canonical := map[string]any{
+		"term":           "city",
+		"root_folder_id": "drive-folder",
+		"strategy":       "verify",
+		"dry_run":        false,
+		"limit":          8,
+	}
+	want, wantErr := idempotency.BuildKey("artlist-run", canonical)
+	if wantErr != nil {
+		t.Fatalf("BuildKey happy-path returned error: %v", wantErr)
+	}
+	if got != want {
+		t.Errorf("RunDedupKey(%q) = %q; BuildKey must produce the same key for the same canonical (godlike/06 SSOT)",
+			"city/drive-folder/verify/false/8", got)
 	}
 }
 

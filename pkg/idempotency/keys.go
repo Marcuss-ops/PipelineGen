@@ -84,7 +84,10 @@
 package idempotency
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -131,6 +134,22 @@ var (
 	// (e.g. "sha256:abc", "planner:abc:0") — see the SEGMENT
 	// DELIMITER section in the package doc.
 	ErrInvalidSegment = errors.New("idempotency: ':' is reserved as the segment delimiter (godlike/06 — applies to ROUTING fields only; data fields clipID/source_version/sha256 may carry ':' as a scheme prefix)")
+	// ErrInvalidRunForDedup — BuildKey's typed sentinel for
+	// run-level dedup inputs (FASE 5 Commit B / Commit B
+	// follow-up, July 2026). Triggered when the provider
+	// discriminator is empty, when the canonical map is
+	// empty (no segment values to hash), or when JSON
+	// marshaling of the canonical map fails. Distinct from
+	// ErrEmptyProvider/ErrInvalidSegment because the
+	// run-level key shape is GENERAL (the canonical map
+	// carries an arbitrary set of segments — provider +
+	// term + folder + strategy + dry_run + limit, where
+	// each caller picks its own canonical segment set).
+	// The sentinel is per-provider-discovery so callers
+	// outside the artlist package can rely on it for OTHER
+	// run-level dedup keys (e.g. future stock-commodity
+	// "stock-run" or "youtube-run" BuildKey callers).
+	ErrInvalidRunForDedup = errors.New("idempotency: invalid run-level dedup input — provider must be non-empty, canonical map must carry at least one segment, and the canonical map must be JSON-marshalable (godlike/07 — no fake availability; see pkg/idempotency.BuildKey)")
 )
 
 // errInvalidSegment returns a per-field invalidSegmentError for
@@ -320,4 +339,112 @@ func OutboxKey(eventType, provider, clipID, sourceVersion string) (string, error
 		return "", ErrEmptySourceVersion
 	}
 	return eventType + ":" + provider + ":" + clipID + ":" + sourceVersion, nil
+}
+
+// BuildKey constructs a run-level dedup key from a provider-type
+// discriminator + a canonical map of segments (FASE 5 Commit B
+// follow-up, July 2026). The canonical map shape is GENERAL — each
+// caller (artlist.RunDedupKey, future stock.RunDedupKey, future
+// youtube.RunDedupKey) builds its own canonical segment set
+// (term/folder_id/strategy/dry_run/limit for artlist; etc.).
+//
+// Return shape: a 64-character lowercase SHA-256 hex string of the
+// canonical map's JSON-marshaled bytes. This matches the bytes
+// produced by the legacy artlist.runDedupKey private helper (commit
+// 9 ship-gate trajectory) so in-flight jobs already queued with the
+// legacy hash key will MATCH across the migration — godlike/06 SSOT
+// keeps the storage-layer UNIQUE constraint on `jobs.active_key`
+// byte-stable.
+//
+// Why JSON marshaling for the canonical map (not ':'-delimited
+// concatenation like AssetKey/JobKey/OutboxKey):
+//   - The canonical map shape is GENERAL: callers pick the segment
+//     set per provider-type. Adopting the AssetKey/JobKey-style
+//     would force a 1:1 positional-string API that pins the segment
+//     list at the package level — the opposite of "GENERAL
+//     canonical-map" contract.
+//   - JSON produces a deterministic byte sequence for a given
+//     map[string]any content (Go's encoding/json sorts map keys
+//     alphabetically — verified by Go stdlib spec). The SHA-256
+//     hash on top of that byte sequence is byte-stable across
+//     call sites and across runs.
+//   - The legacy artlist.runDedupKey used the EXACT same
+//     canonical-map + json.Marshal + sha256 pipeline; migrating
+//     to BuildKey preserves the legacy byte-stable output.
+//
+// Fail-closed guards (godlike/07 — no fake availability):
+//   - provider == ""                          → ErrInvalidRunForDedup
+//   - len(canonical) == 0                     → ErrInvalidRunForDedup
+//   - strings.Contains(provider, ":")        → ErrInvalidSegment
+//     (a provider discriminator like "art:list-run" would be
+//     ambiguous with the ':' segment delimiter used by the
+//     3 canonical positional constructors; reject it)
+//   - json.Marshal(canonical) != nil          → ErrInvalidRunForDedup
+//     (the legacy runDedupKey had a fmt.Sprintf fallback for this
+//     case; the new BuildKey fails closed per godlike/07 — a
+//     non-marshalable canonical is a programming error in the
+//     caller, not a transient UX situation)
+//
+// godlike/06 SSOT rationale: BuildKey is the SINGLE canonical
+// surface for run-level dedup keys (provider-type discriminator +
+// canonical map → SHA-256 hex). Per-provider packages (artlist,
+// future stock, future youtube) MUST delegate to BuildKey via
+// `idempotency.BuildKey("<provider>-run", canonical)`. Ad-hoc
+// concatenation in the caller package would defeat the byte-stable
+// cross-package unification that lets the kernel job broker's
+// UNIQUE on `jobs.active_key` collapse distinct operator requests
+// across entry points (handler enqueue + orchestrator
+// DiscoverAndQueueRun). The legacy artlist.runDedupKey is REMOVED
+// in Commit B.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: every validation step rejects
+// potentially-fake inputs with a typed sentinel. The sentinel
+// hierarchy is:
+//
+//	ErrInvalidRunForDedup   → the higher-level sentinel for the
+//	                         run-level input surface.
+//	ErrInvalidSegment       → re-used from the 3 positional
+//	                         constructors; a provider
+//	                         discriminator containing ':' is
+//	                         structurally ambiguous (segment
+//	                         delimiter collision).
+//
+// Both satisfy errors.Is dispatch so a caller can branch on either
+// level of the chain.
+func BuildKey(provider string, canonical map[string]any) (string, error) {
+	if provider == "" {
+		return "", ErrInvalidRunForDedup
+	}
+	if strings.Contains(provider, ":") {
+		// Same segment-collision guard as the positional
+		// constructors; a provider like "art:list-run" would
+		// silently produce a 2-prefix-segment key that any
+		// future ':'-splitter would misparse. The guard is
+		// strictly about provider DISCRIMINATOR stability, not
+		// data field stability — the positional AssetKey/JobKey/
+		// OutboxKey constructors exempt data fields from this
+		// guard (e.g. "sha256:abc" is allowed as a data field);
+		// BuildKey's provider parameter IS a routing field, so
+		// the guard applies.
+		return "", errInvalidSegment("provider")
+	}
+	if len(canonical) == 0 {
+		return "", ErrInvalidRunForDedup
+	}
+	// encoding/json sorts map keys alphabetically (Go stdlib
+	// contract for map[string]any). The sorted JSON bytes are
+	// deterministic across runs — the SHA-256 on top is
+	// byte-stable across processes.
+	raw, err := json.Marshal(canonical)
+	if err != nil {
+		// A non-marshalable canonical map is the canonical
+		// "caller produced an unrepresentable value" case
+		// (e.g. a func or chan inside the map). godlike/07
+		// forbids silent fallback — the caller MUST fix the
+		// canonical shape. The legacy runDedupKey had a
+		// fmt.Sprintf fallback path; BuildKey fails closed.
+		return "", ErrInvalidRunForDedup
+	}
+	sum := sha256.Sum256(raw)
+	return fmt.Sprintf("%x", sum), nil
 }
