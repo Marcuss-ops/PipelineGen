@@ -87,17 +87,6 @@ func buildCleanup(dbs *databases, root *ComposeRoot, jobs *backgroundJobs, cance
 				}
 			})
 		}
-		// Chrome image worker (slide_worker.py).
-		if root != nil && root.Domains != nil && root.Domains.ImageService != nil {
-			wg.Add(1)
-			concurrent.SafeGo("cleanup-chrome-worker", func() {
-				defer wg.Done()
-				if err := root.Domains.ImageService.StopChromeProvider(); err != nil {
-					log.Warn("chrome worker stop returned error", zap.Error(err))
-				}
-			})
-		}
-
 		if root != nil && root.Outbox != nil && root.Outbox.EventsPool != nil {
 			const eventsPoolStopTimeout = 4 * time.Second
 			wg.Add(1)
