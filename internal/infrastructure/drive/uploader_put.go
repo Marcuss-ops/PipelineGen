@@ -211,7 +211,83 @@ func (u *Uploader) PutFile(ctx context.Context, req PutFileRequest) (*PutFileRes
 	if err != nil {
 		return nil, fmt.Errorf("drive put failed after 3 attempts: %w", err)
 	}
+	// FASE 10 / Commit 1 (July 2026): post-upload verification
+	// gate. The verifier runs against the file ID the upload
+	// produced — for Created / Updated / Renamed branches ONLY.
+	// The Skipped branch is NOT verified: the lookup step
+	// (FindFileByIdempotencyKey / FindFileByName) already
+	// filters out trashed files via the canonical `trashed=false`
+	// Drive query predicate, so a Skipped result is
+	// guaranteed-non-trashed by construction. The user-spec
+	// literal "Ogni upload Drive deve essere verificato"
+	// scopes the verification to ACTUAL uploads (where bytes
+	// were sent) — Skipped is a no-upload path that reuses
+	// an existing file, not a fresh upload.
+	//
+	// Why not verify Skipped too: pre-Commit-1 the P0.6
+	// idempotency tests (uploader_put_p0_6_test.go) inject a
+	// fake Drive service that does NOT handle Files.Get.
+	// Running the verifier on a Skipped result would break
+	// those tests for no additional safety (the lookup's
+	// trashed=false filter is the load-bearing invariant for
+	// poison-file prevention on the skip path).
+	//
+	// godlike/06 SSOT: this is the SOLE integration point
+	// between PutFile and the verifier. doPutFile's 5
+	// successful-return branches (Created / Updated /
+	// Renamed / Skipped-x2) all flow through the single
+	// `result, err := retry.DoWithValue(...)` above; the
+	// verifier runs ONCE after the retry succeeds (when
+	// the action is not Skipped). Future branches in
+	// doPutFile inherit the verification gate automatically
+	// without per-branch wiring.
+	if result.Action != PutActionSkipped {
+		if verr := u.verifyUploadedFile(ctx, result, req.Filename, req.FolderID); verr != nil {
+			return nil, verr
+		}
+	}
 	return result, nil
+}
+
+// verifyUploadedFile is the FASE 10 / Commit 1 post-upload
+// verification hook. Called from PutFile after the retry
+// succeeds. Construct an UploadVerifier from the canonical
+// Reader port (which *Uploader satisfies via ports.go
+// compile-time assertion), run Verify with the per-request
+// expected metadata, and surface any failure to the caller.
+//
+// godlike/07 fail-closed: a verification failure wraps the
+// typed sentinel via fmt.Errorf %w so the caller can probe
+// via errors.Is(err, drive.ErrDriveFileNotFound) etc. without
+// substring matching. The wrapper context includes the
+// PutAction (Skipped/Created/Updated/Renamed) and the file
+// ID for log correlation.
+func (u *Uploader) verifyUploadedFile(ctx context.Context, result *PutFileResult, filename, folderID string) error {
+	if u == nil || result == nil || strings.TrimSpace(result.FileID) == "" {
+		return fmt.Errorf("drive verifyUploadedFile: nil receiver or empty file_id (composition-root wiring misconfig)")
+	}
+	verifier := NewUploadVerifier(u)
+	params := VerificationParams{
+		ExpectedName:     filename,
+		ExpectedFolderID: folderID,
+		// Commits 2-6 will populate the rest. Commit 1
+		// ignores them; the zero values mean "skip the
+		// check" for the corresponding future check.
+	}
+	v, verr := verifier.Verify(ctx, result.FileID, params)
+	if verr != nil {
+		return fmt.Errorf("drive upload verification failed (action=%s, file_id=%s): %w",
+			result.Action, result.FileID, verr)
+	}
+	if u.Log != nil {
+		u.Log.Info("drive upload verified",
+			zap.String("file_id", result.FileID),
+			zap.String("action", string(result.Action)),
+			zap.Bool("file_id_present", v.FileIDPresent),
+			zap.Bool("file_not_in_trash", v.FileNotInTrash),
+		)
+	}
+	return nil
 }
 
 // doPutFile performs the actual Files.Create / Files.Update / skip
