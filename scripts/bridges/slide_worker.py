@@ -48,6 +48,7 @@ import io
 import json
 import os
 import queue
+import re
 import signal
 import sys
 import threading
@@ -433,12 +434,12 @@ def _dismiss_start_dialog(page) -> bool:
     if page is None:
         return False
     try:
-        # Fast path: some builds expose the tile as a visible text node
-        # or button outside the modal wrapper. Try these first because
-        # they are the least brittle selectors.
+        # Fast path: button-scoped text-match selectors. Scoped to
+        # buttons (not any text node) so we don't accidentally match
+        # the page title or a navigation bar item. Some Builds
+        # expose the start-dialog tile as a button named "Images"
+        # or "Immagini" outside any modal wrapper.
         for selector in [
-            'text="Images"',
-            'text="Immagini"',
             'button:has-text("Images")',
             'button:has-text("Immagini")',
         ]:
@@ -447,7 +448,29 @@ def _dismiss_start_dialog(page) -> bool:
                 if tile.is_visible():
                     _log(f"[_dismiss_start_dialog] fast-path tile selector matched: {selector}")
                     tile.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1200)
+                    page.wait_for_timeout(3500)
+                    return True
+            except Exception:
+                continue
+
+        # Fallback: accessibility-tree role-based lookup. Catches
+        # builds where the tile uses aria-role="button" + an
+        # aria-label or accessible-name of "Images" but the visible
+        # text differs (icon-only button). Strict role name match
+        # (case-insensitive via re.I) so we don't accidentally hit
+        # other role="button" elements like top-bar nav.
+        # Note: this fallback is intentionally AFTER the button:has-text
+        # selector path. Both paths early-return True on success; the
+        # modal-walk path remains the canonical handler for the case
+        # where neither selector matches (an "Iniziamo a creare" modal
+        # with non-button-named tiles).
+        for role_name in [re.compile(r"Images", re.I), re.compile(r"Immagini", re.I)]:
+            try:
+                tile = page.get_by_role("button", name=role_name).first
+                if tile.is_visible():
+                    _log(f"[_dismiss_start_dialog] fast-path role button matched: {role_name.pattern}")
+                    tile.click(force=True, timeout=5000)
+                    page.wait_for_timeout(3500)
                     return True
             except Exception:
                 continue
@@ -475,7 +498,7 @@ def _dismiss_start_dialog(page) -> bool:
                 ).first
                 if images_card.is_visible():
                     images_card.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1200)
+                    page.wait_for_timeout(3500)
                     return True
             except Exception as e:
                 _log(f"[_dismiss_start_dialog] Images card click failed: {e}")
