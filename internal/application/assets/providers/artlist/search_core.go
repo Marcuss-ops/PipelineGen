@@ -410,7 +410,23 @@ func (ss *SearchService) searchLiveWithFallbacks(ctx context.Context, term strin
 	if len(candidates) == 0 {
 		return nil, fmt.Errorf("no results from any search provider for %q (prefer_remote=%t)", normalizedTerm, preferRemote)
 	}
-	return candidates, nil
+
+	// Fase 7 / Commit C (July 2026) — apply the canonical 8-predicate
+	// relevance filter. godlike/07 fail-closed: the filter can
+	// honestly return 0 results (NEVER pads with random clips).
+	// See relevance_filter.go for the full predicate catalog +
+	// godlike/06 SSOT rationale. The filter is the SINGLE
+	// canonical post-chain gate; downstream code (orchestrator,
+	// handler) sees only the filtered slice.
+	filterReq := DefaultFilterRequestForTerm(normalizedTerm)
+	// Honor the caller's limit at the filter boundary so the
+	// post-filter slice matches the operator's requested page
+	// size even when the upstream chain returned more (e.g. the
+	// chain returns 50 candidates; the operator asked for 8).
+	filterReq.Limit = limit
+	filtered, filterStats := DefaultRelevanceFilter(filterReq, candidates)
+	LogFilterStats(ss.service.log, filterReq, filterStats)
+	return filtered, nil
 }
 
 // buildSearcherChain constructs the Searcher fallback chain from the service
