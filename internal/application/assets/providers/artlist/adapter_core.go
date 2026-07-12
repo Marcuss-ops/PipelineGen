@@ -128,7 +128,7 @@ func (a *Adapter) Search(ctx context.Context, req providers.SearchRequest) (prov
 			PageURL:      clip.ClipPageURL,
 			PreviewURL:   clip.ClipPageURL,
 			ThumbnailURL: clip.ThumbnailURL,
-			SourceRef:    clip.SourceURL,
+			SourceRef:    clip.ID,
 			SourceName:   a.Name(),
 			MediaType:    clip.MediaType,
 			Duration:     clip.Duration,
