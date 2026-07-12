@@ -13,15 +13,14 @@
 // wrap per godlike/07 typed-error contract).
 //
 // 11 tests under this header cover:
-//
-//	4 PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE tests (typed sentinel +
-//	  resolveDestination dual-return shape + Publish swallow + success
-//	  path nil-err pair)
-//	3 PR-VO-SUBFOLDER tests (Voiceover subpath under override +
-//	  PathBuilderFailOverride FallsBack + PathBuilderFailsNoOverride
-//	  ReturnsError)
-//	4 DoD 9 PathBuilder tests (CategoryBoxe + IsDeterministicAcrossRetries +
-//	  SanitisesSpecialCharacters + WithRootFolderOverride UsesSingleLeaf)
+//   4 PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE tests (typed sentinel +
+//     resolveDestination dual-return shape + Publish swallow + success
+//     path nil-err pair)
+//   3 PR-VO-SUBFOLDER tests (Voiceover subpath under override +
+//     PathBuilderFailOverride FallsBack + PathBuilderFailsNoOverride
+//     ReturnsError)
+//   4 DoD 9 PathBuilder tests (CategoryBoxe + IsDeterministicAcrossRetries +
+//     SanitisesSpecialCharacters + WithRootFolderOverride UsesSingleLeaf)
 //
 // These tests FAIL on regression only if:
 //   - ErrPathBuilderIncompleteForOverride sentinel is dropped or wrapped

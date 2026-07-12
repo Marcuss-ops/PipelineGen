@@ -10,10 +10,9 @@
 // the canonical segment-sanitiser (preserves alphanum + hyphen verbatim).
 //
 // 1 test under this header covers:
-//
-//	3 Publish calls with (it-IT, pt-BR, en-US) against the same project
-//	MUST produce 3 DISTINCT EnsureFolder calls with distinct
-//	{project}/{language} segments.
+//   3 Publish calls with (it-IT, pt-BR, en-US) against the same project
+//   MUST produce 3 DISTINCT EnsureFolder calls with distinct
+//   {project}/{language} segments.
 //
 // These tests FAIL on regression only if:
 //   - PathBuilder is short-circuited when RootFolderOverride is set
