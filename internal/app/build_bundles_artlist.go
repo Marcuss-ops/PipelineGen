@@ -51,6 +51,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	artlistapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist"
@@ -550,9 +551,33 @@ func validateArtlistScraperURL(cfg *config.Config) error {
 	return nil
 }
 
+// ErrArtlistConsumerRegistrationFailed is the typed sentinel the
+// composition caller (registerArtlist) reads to abort boot when the
+// Artlist job handler fails to bind to the jobs dispatcher. The
+// sentinel wraps the underlying RegisterHandler error so operator
+// log-lines and tests can branch on intent (godlike/06 SSOT).
+//
+// PR-P2-FAILCLOSED-JOB (July 2026): the previous wire-bond step
+// silently log.Warn'd + continued (a godlike/07 fake-availability
+// violation — media.artlist jobs would have queued to dead-letter
+// forever). The composition caller MUST abort on this error rather
+// than mask it; defining the sentinel here keeps the SSOT single-
+// source for both the gate error and the abort-contract test.
+var ErrArtlistConsumerRegistrationFailed = errors.New("artlist: consumer-job registration failed at composition — production must abort boot (godlike/07 no-fake-availability)")
+
 // WireArtlistJobBindings registers the Artlist job handler with the jobs dispatcher.
 // Extracted from WireArtlist so the late-binding has a dedicated composition surface
 // (mirrors wireYoutubeCatalogJobBindings precedent in build_bundles_youtube.go).
+//
+// godlike/07 no-fake-availability (PR-P2-FAILCLOSED-JOB, July 2026):
+// any non-nil error from artlistSvc.RegisterHandler is wrapped with
+// ErrArtlistConsumerRegistrationFailed so the upstream composition
+// caller `registerArtlist` (registry_internal_modules.go) aborts boot
+// with the typed sentinel — the previous silent-Warn + continue path
+// was a fake-availability violation (media.artlist jobs would queue
+// to dead-letter forever without a consumer). The composition-time
+// fail-closed contract is the user-spec literal:
+// "fallisci l'avvio con un typed error (no warning silenzioso)".
 func WireArtlistJobBindings(artlistSvc *artlistPkg.Service, jobsBundle *JobsBundle) error {
 	if artlistSvc == nil {
 		return fmt.Errorf("WireArtlistJobBindings: artlistSvc is nil")
@@ -560,5 +585,19 @@ func WireArtlistJobBindings(artlistSvc *artlistPkg.Service, jobsBundle *JobsBund
 	if jobsBundle == nil || jobsBundle.Service == nil {
 		return fmt.Errorf("WireArtlistJobBindings: jobsBundle.Service is nil")
 	}
-	return artlistSvc.RegisterHandler(jobsBundle.Service)
+	if err := artlistSvc.RegisterHandler(jobsBundle.Service); err != nil {
+		return fmt.Errorf("%w: %w", ErrArtlistConsumerRegistrationFailed, err)
+	}
+	// PR-P2-FAILCLOSED-JOB post-bind godlike/07 verification:
+	// confirm the handler was actually bound. If the dispatcher
+	// silently dropped the Register call (nil dispatcher or
+	// handler-disabled flag), HasHandler would still return
+	// false post-call — surface as the same typed sentinel so
+	// the composition caller aborts rather than continuing with
+	// an unwired consumer.
+	if !jobsBundle.Service.HasHandler(jobdomain.TypeArtlistRun) {
+		return fmt.Errorf("%w: post-bind HasHandler(media.artlist) returned false (dispatcher silently dropped the Register call?)",
+			ErrArtlistConsumerRegistrationFailed)
+	}
+	return nil
 }

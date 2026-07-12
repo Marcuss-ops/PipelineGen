@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -92,6 +93,12 @@ func NewArtlistHandler(
 
 // RegisterRoutes wires the Artlist endpoints onto the supplied gin router
 // group. Mounts on /api/artlist/* in production.
+//
+// PR-P2-FAILCLOSED-JOB (July 2026): /job-consumer health endpoint
+// added. Always returns 200 — operators use this endpoint to confirm
+// media.artlist jobs WILL be processed by a registered worker
+// before queuing a real run (godlike/07 fail-closed: never
+// silently pad active=true when the registration failed).
 func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 	h.log.Info("Registering Artlist routes")
 
@@ -106,6 +113,7 @@ func (h *ArtlistHandler) RegisterRoutes(r *gin.RouterGroup) {
 	internalGroup := r.Group("")
 	{
 		internalGroup.GET("/diagnostics", h.Diagnostics)
+		internalGroup.GET("/job-consumer", h.JobConsumer)
 		internalGroup.POST("/recommend", h.Recommend)
 		internalGroup.POST("/sync-catalogs", h.SyncCatalogs)
 	}
@@ -234,6 +242,41 @@ func (h *ArtlistHandler) Diagnostics(c *gin.Context) {
 	}
 
 	apiutil.OK(c, resp)
+}
+
+// JobConsumer reports the Artlist job-consumer state for
+// media.artlist jobs. PR-P2-FAILCLOSED-JOB (July 2026).
+//
+// godlike/07 no-fake-availability: always 200. Operators use this
+// endpoint to confirm media.artlist jobs WILL be processed; reporting
+// `active: false` is the honest answer when composition-time
+// fail-closed aborted boot, OR when the consumer was unwired. A 503
+// here would be wrong (the endpoint IS the diagnostic that diagnoses
+// the consumer state — never itself part of the failure).
+//
+// Response shape:
+//
+//	{
+//	    "active":        bool,
+//	    "consumer_type": "media.artlist",
+//	    "detail":        string,
+//	    "latency_ms":    int64,
+//	    "ok":            true
+//	}
+func (h *ArtlistHandler) JobConsumer(c *gin.Context) {
+	start := time.Now()
+	active := false
+	detail := "artlist consumer not bound (composition-time fail-closed: media.artlist jobs will dead-letter without a worker)"
+	if h.service != nil && h.service.HasConsumer() {
+		active = true
+		detail = "artlist consumer bound + active for media.artlist via jobs.Service dispatcher"
+	}
+	apiutil.OK(c, gin.H{
+		"active":        active,
+		"consumer_type": jobservice.TypeArtlistRun,
+		"detail":        detail,
+		"latency_ms":    time.Since(start).Milliseconds(),
+	})
 }
 
 // SearchLive performs a live search using the Node.js scraper.

@@ -387,14 +387,18 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 
 	wiring.ArtlistSvc = artlistWiring
 
-	// Register the Artlist job handler with the jobs dispatcher so the
-	// worker can process media.artlist jobs (the HTTP /run endpoint
-	// enqueues them and the worker calls artlist.Service.HandleJob).
-	// Mirror of wireYoutubeCatalogJobBindings precedent.
+	// PR-P2-FAILCLOSED-JOB (July 2026): composition-time fail-closed
+	// contract per user spec — "fallisci l'avvio con un typed error
+	// (no warning silenzioso)". The previous pre-PR behavior was
+	// log.Warn + continue, which violated godlike/07: media.artlist
+	// jobs would queue to dead-letter forever without a consumer.
+	// The wrapper chain surfaces ErrArtlistConsumerRegistrationFailed
+	// at the top so test fixtures (TestRegisterArtlist_AbortsOnJobBindFailure)
+	// can branch on the typed sentinel. WireArtlistJobBindings already
+	// wraps the inner error with that sentinel internally.
 	if err := WireArtlistJobBindings(artlistWiring.Service, root.Jobs); err != nil {
-		log.Warn("registerArtlist: job handler registration failed (worker will retry media.artlist jobs indefinitely)",
-			zap.Error(err),
-		)
+		_ = artlistWiring.Service.Close()
+		return fmt.Errorf("wire registry: artlist: %w", err)
 	}
 
 	log.Info("registerArtlist: ART-001 reversal milestone complete",
