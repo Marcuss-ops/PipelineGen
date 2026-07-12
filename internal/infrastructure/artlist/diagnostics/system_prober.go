@@ -1,52 +1,67 @@
-// Package diagnostics — system_prober.go (Phase 2 / Fase 2, July 2026).
+// Package diagnostics — system_prober.go: canonical owner of the
+// artlist.SystemProber port concrete + the 2 compile-time pins
+// (Step 4 / commit 9b follow-up, July 2026).
 //
-// AdminSystemProber is the canonical godlike/06 SSOT concrete for the
-// artlist.SystemProber port declared in
-// internal/application/assets/providers/artlist/diagnostics.go.
+// AdminSystemProber is the SINGLE canonical owner of "how does the
+// 10-probe diagnostics battery run?" (godlike/06 SSOT). The 551-LOC
+// file was split into 5 seams (per-probe-group) in Step 4:
+//
+//   - system_prober.go (CANONICAL, this file): the AdminSystemProber
+//     struct, the ProbeAll entry point, the DefaultRunner type, the
+//     FFmpegRunner interface, the 2 compile-time pins, the
+//     DefaultProbeTimeout const.
+//   - system_prober_http.go: 4 real upstream probes (scraper 3-stage
+//     deep + browser + session + downloader via httpGetProbe) + their
+//     6 helpers + the Stage3ProbeTerm + Stage2SessionFreshnessWindow
+//     consts.
+//   - system_prober_stubs.go: the stubFailSet helper used by the
+//     application-layer stubSystemProber fallback + ProbeAll's
+//     "nil receiver" branch.
+//   - system_prober_ffmpeg.go: probeFFmpeg + Renderer interface +
+//     FFmpegVersionProbeTimeout const.
+//   - system_prober_drive.go: probeDriveFolder.
+//
+// godlike/06 SSOT: every file lives in `package diagnostics`. Cross-file
+// symbol resolution is package-internal; no new exports, no API
+// surface change.
 //
 // godlike/07 NO-FAKE-AVAILABILITY §22 contract: every probe is a real
 // reachability check (HTTP /health, exec.LookPath, db.PingContext +
-// write-readiness, etc). Object-existence pointer checks (e.g.
-// `if s.scraper != nil`) are FORBIDDEN — the diagnostic endpoint must
-// NEVER report a passing probe without actually exercising the
-// dependency. The benchmark is: "could a probe-read show a real Error
-// string with the verbatim underlying failure if the dep is genuinely
-// broken?"
+// write-readiness, etc). Object-existence pointer checks are
+// FORBIDDEN — the diagnostic endpoint must NEVER report a passing
+// probe without actually exercising the dependency.
 //
 // Commit progression (Phase 2 / Fase 2 wire-by-wire rewrite):
-//   - Commit 1 (THIS FILE): 4 upstream probes (scraper / browser /
-//     session / downloader) implemented as real HTTP reachability
-//     checks. The remaining 6 probes (ffmpeg_binary, drive_folder,
-//     sqlite_writable, outbox_dispatcher, qdrant_reachable,
-//     embedding_provider) return honest stub-failure ProbeResults
-//     with Error="probe_queued_for_subsequent_commit" markers.
+//   - Commit 1 (Fase 2 / Commit B, July 2026): 4 upstream probes
+//     (scraper / browser / session / downloader) implemented as real
+//     HTTP reachability checks. The remaining 6 probes
+//     (ffmpeg_binary, drive_folder, sqlite_writable,
+//     outbox_dispatcher, qdrant_reachable, embedding_provider) return
+//     honest stub-failure ProbeResults with
+//     Error="probe_queued_for_subsequent_commit" markers.
 //   - Commit 2: 2 capability probes (ffmpeg_binary + drive_folder)
 //     replaced with real implementations.
 //   - Commit 3: 4 infra probes (sqlite_writable + outbox_dispatcher
 //   - qdrant_reachable + embedding_provider) replaced with real
 //     implementations.
 //   - Commit 4: LatestRun + LastError + CountBySource('artlist')
-//     wired via DiagnosticsService.Diagnostics
-//     (RunRepository.LatestRun + ClipsRepository.CountBySource).
-//   - Commit 5: per-probe wire-by-wire tests + no-aggregated-OK invariant.
+//     wired via DiagnosticsService.Diagnostics.
+//   - Commit 5: per-probe wire-by-wire tests + no-aggregated-OK
+//     invariant.
 //
 // Per-probe execution is sequential (no goroutine pool). godlike/07
-// prefers sequential for audit simplicity: trace order matches probe
-// order in the JSON output, and a single slow probe cannot starve the
-// others while it waits on a worker pool slot.
+// prefers sequential for audit simplicity: trace order matches
+// probe order in the JSON output, and a single slow probe cannot
+// starve the others while it waits on a worker pool slot.
 package diagnostics
 
 import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"os/exec"
-	"strconv"
-	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -59,54 +74,12 @@ import (
 // http_live_probe.go::DefaultProbeTimeout) and by
 // internal/infrastructure/artlist/health/probe.go::DefaultProbeTimeout
 // (60s cadence scraper health probe at 5s per attempt).
-const DefaultProbeTimeout = 5 * time.Second
-
-// Stage3ProbeTerm is the canonical Stage-3 probe search term. The
-// term is chosen to be popular across the production Artlist
-// catalogue (cinematic b-roll is ubiquitous; the live-probe battery
-// confirms at least one hit at the live-battery cadence). Choosing
-// an unfamiliar term and accepting `clips.length == 0` would
-// silently pass a scraper that returns ok=true with empty results
-// — a godlike/07 §22 fake-availability violation.
 //
-// godlike/06 SSOT: this constant is the SINGLE canonical probe term.
-// Within the package, every Stage-3 call uses this constant verbatim.
-// godlike/07 fail-closed: if a future change wants a different
-// probe term, update this constant in lockstep with the live-probe
-// battery's documented expected-term list — drift between the
-// probe term and the live battery would mask regressions.
-const Stage3ProbeTerm = "cinematic"
-
-// Stage2SessionFreshnessWindow is the canonical Stage-2 freshness
-// window for last_session_alive_at. The Node scraper emits freshness
-// every 30s (HB_INTERVAL_MS) and considers itself stale at 60s
-// (HB_FRESH_WINDOW_MS). We probe at 90s to allow one heartbeat miss
-// + transport roundtrip + clock skew between the Go probe and the
-// Node scraper. Tightening to 60s would mirror the Node scraper's
-// internal verdict; widening to 120s would let two consecutive
-// heartbeats miss before we alarm — both are out of scope for this
-// commit. Operators wanting tighter windows can override via
-// AdminSystemProber.Stage2FreshnessWindow (forward-compat knob).
-const Stage2SessionFreshnessWindow = 90 * time.Second
-
-// FFmpegVersionProbeTimeout is the per-probe FFmpeg `-version`
-// invocation budget. 2s — ffmpeg -version is a fast startup probe
-// (no media processing, just version banner emission); 5s would be
-// overkill and would risk hanging the entire diagnostics endpoint
-// pile-up if FFmpeg is installed but misconfigured.
-const FFmpegVersionProbeTimeout = 2 * time.Second
-
-// Renderer is the minimal interface AdminSystemProber needs from the
-// asset.Processor cross-cutting dependency to probe FFmpeg binary
-// presence/version. The concrete is ffmpeg.NewProcessor; we declare a
-// narrow 1-method port here to keep the SystemProber decoupled from
-// the cross-cutting asset.Processor surface (godlike/06 Pattern 0:
-// smallest-port-possible). Wired in Commit 2 (ffmpeg_binary probe).
-type Renderer interface {
-	// FFmpegBinaryPath returns the resolved path to the ffmpeg binary,
-	// or "" when no ffmpeg is available on the host.
-	FFmpegBinaryPath() string
-}
+// godlike/06 SSOT: this is the canonical DefaultProbeTimeout for the
+// diagnostics package; both ProbeAll (canonical, this file) and
+// probeDriveFolder (system_prober_drive.go) reference this constant.
+// Co-locating with ProbeAll keeps the shared budget discoverable.
+const DefaultProbeTimeout = 5 * time.Second
 
 // FFmpegRunner is the canonical godlike/06 port for the ffmpeg
 // `-version` subprocess invocation (PR-P2-DIAGNOSTICS-REALE Commit 2,
@@ -122,6 +95,13 @@ type Renderer interface {
 // stub to assert argv without spawning a real subprocess.
 //
 // godlike/06 Pattern 0 + AGENTS.md §Pattern 4: smallest-port-possible.
+//
+// FFmpegRunner lives in the canonical file (not the ffmpeg file)
+// because the compile-time pin `var _ FFmpegRunner = DefaultRunner{}`
+// must live where the impl lives (DefaultRunner is canonical, see
+// below) — drift between the interface and the impl surfaces as a
+// build failure in this file rather than as a runtime panic in the
+// ffmpeg probe.
 type FFmpegRunner interface {
 	Run(ctx context.Context, name string, args []string) (stdout []byte, err error)
 }
@@ -171,8 +151,10 @@ type AdminSystemProber struct {
 	ProbeFolderRootID string
 
 	// Renderer (asset.Processor) — used by ffmpeg_binary probe in
-	// Commit 2. Nil-safe (Renderer.FFmpegBinaryPath is the only method
-	// called; comment in Commit 2 implementation).
+	// Commit 2. The interface is declared in system_prober_ffmpeg.go
+	// (Pattern 0: keep interface with its sole consumer); same-package
+	// resolution makes the cross-file reference transparent at compile
+	// time.
 	Renderer Renderer
 
 	// FFmpegRunner is the subprocess runner for the ffmpeg -version
@@ -204,6 +186,11 @@ type AdminSystemProber struct {
 	// bare "ffmpeg" / "ffprobe" names).
 	FFmpegBinaryPath string
 }
+
+// Compile-time pin (Pattern 0 + AGENTS.md §Pattern 4 + godlike/06
+// SSOT). Drift in the SystemProber port signature surfaces here as a
+// build failure rather than as a runtime panic on first dispatch.
+var _ artlist.SystemProber = (*AdminSystemProber)(nil)
 
 // ProbeAll implements artlist.SystemProber. Returns an artlist.ProbeSet
 // with all 10 fields populated — per-probe failures are encoded
@@ -691,155 +678,3 @@ func (DefaultRunner) Run(ctx context.Context, name string, args []string) ([]byt
 // Compile-time pin: DefaultRunner satisfies FFmpegRunner. Drift
 // surfaces as a build failure rather than a runtime panic.
 var _ FFmpegRunner = DefaultRunner{}
-
-// probeFFmpeg returns the canonical ffmpeg_binary probe result.
-// Two-step reachability check: (a) exec.LookPath("ffmpeg") honours
-// $PATH when FFmpegBinaryPath is empty; (b) `ffmpeg -version` is
-// invoked with a 2s timeout to verify the binary actually runs and
-// emits the canonical `ffmpeg version X.Y.Z` banner.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: the probe verifies both PATH
-// presence AND runtime execution — distinguishable from a simple
-// `which ffmpeg` shell out that would silently succeed on a stale
-// binary that fails to launch.
-//
-// Errors are surfaced faithfully (string concatenation with the
-// underlying exec.LookPath / Run error verbatim) so operators can
-// grep for the canonical failure patterns (e.g.
-// "exec.LookPath(\"ffmpeg\") failed: exec: \"ffmpeg\": executable
-// file not found in $PATH").
-func (p *AdminSystemProber) probeFFmpeg(ctx context.Context) artlist.ProbeResult {
-	start := time.Now()
-
-	ffmpegPath := strings.TrimSpace(p.FFmpegBinaryPath)
-	if ffmpegPath == "" {
-		// Fall back to exec.LookPath("ffmpeg") to honour $PATH —
-		// matches the precedent set by
-		// internal/application/clips/upload/usecase.go line 361 +
-		// cutter_test.go line 60 which use exec.LookPath directly
-		// on the bare "ffmpeg" / "ffprobe" names.
-		resolved, err := exec.LookPath("ffmpeg")
-		if err != nil {
-			return artlist.ProbeResult{
-				OK:        false,
-				Error:     "ffmpeg_binary_not_found",
-				Detail:    "exec.LookPath(\"ffmpeg\") failed: " + err.Error() + " (operator must install ffmpeg on the host or set AdminSystemProber.FFmpegBinaryPath explicitly)",
-				ElapsedMs: time.Since(start).Milliseconds(),
-			}
-		}
-		ffmpegPath = resolved
-	}
-
-	// Resolve the runner (test fixtures swap a stub; production
-	// wires DefaultRunner) and run ffmpeg -version with a 2s
-	// per-probe timeout.
-	runner := p.FFmpegRunner
-	if runner == nil {
-		runner = DefaultRunner{}
-	}
-	verCtx, verCancel := context.WithTimeout(ctx, FFmpegVersionProbeTimeout)
-	defer verCancel()
-
-	stdout, err := runner.Run(verCtx, ffmpegPath, []string{"-version"})
-	if err != nil {
-		return artlist.ProbeResult{
-			OK:        false,
-			Error:     "ffmpeg_version_probe_failed",
-			Detail:    "ffmpeg -version invocation failed: " + err.Error(),
-			ElapsedMs: time.Since(start).Milliseconds(),
-		}
-	}
-
-	// Parse the version banner. ffmpeg -version output starts with
-	// `ffmpeg version X.Y.Z ...`. If the banner is missing the
-	// `ffmpeg` substring the binary at this path is not actually
-	// FFmpeg (operator mis-config, wrong path); surface honestly
-	// rather than silently OK.
-	banner := strings.TrimSpace(string(stdout))
-	if !strings.Contains(banner, "ffmpeg") {
-		return artlist.ProbeResult{
-			OK:        false,
-			Error:     "ffmpeg_version_unparseable",
-			Detail:    "ffmpeg -version output did not contain 'ffmpeg' header (binary at " + ffmpegPath + " is not FFmpeg?): " + banner,
-			ElapsedMs: time.Since(start).Milliseconds(),
-		}
-	}
-
-	firstLine := banner
-	if idx := strings.Index(banner, "\n"); idx >= 0 {
-		firstLine = banner[:idx]
-	}
-	return artlist.ProbeResult{
-		OK:        true,
-		Detail:    "ffmpeg binary=" + ffmpegPath + ", banner=\"" + firstLine + "\", elapsed=" + time.Since(start).String(),
-		ElapsedMs: time.Since(start).Milliseconds(),
-	}
-}
-
-// ── Drive folder probe (Commit 2, July 2026: real implementation)───
-
-// probeDriveFolder returns the canonical drive_folder probe result.
-// Calls the ProbeFolderAccess closure injected from the composition
-// root against the configured Artlist Drive root (resolve via
-// artlist.ResolveRootFolderID(cfg)). nil-safe in three layers:
-//
-//   - ProbeFolderAccess == nil: composition-time wiring gap, surface
-//     Error="drive_folder_probe_unwired" honestly rather than fake-OK.
-//   - ProbeFolderRootID == "": operator did not configure the root
-//     folder, surface Error="drive_folder_root_not_configured" with
-//     the operator-fix hint (cfg.Drive.ArtlistFolder()).
-//   - ProbeFolderAccess returns non-nil error: surface the verbatim
-//     error message from the underlying probe call.
-//
-// Forward-pointer (post-Commit 2): the canonical
-// delivery.Publisher interface (in
-// internal/application/assets/delivery/publisher.go) does not expose
-// ProbeFolderAccess today — a follow-up commit will lift it onto
-// the canonical publisher port surface so the prober can call it
-// without the composition root needing to construct an ad-hoc
-// closure. Until then the probe remains honest with
-// Error="drive_folder_probe_unwired".
-func (p *AdminSystemProber) probeDriveFolder(ctx context.Context) artlist.ProbeResult {
-	start := time.Now()
-
-	if p.ProbeFolderAccess == nil {
-		return artlist.ProbeResult{
-			OK:        false,
-			Error:     "drive_folder_probe_unwired",
-			Detail:    "composition root did not inject ProbeFolderAccess closure (canonical delivery.Publisher interface does not expose ProbeFolderAccess today; forward-pointer to a follow-up commit that lifts ProbeFolderAccess onto the canonical publisher port)",
-			ElapsedMs: time.Since(start).Milliseconds(),
-		}
-	}
-
-	rootID := strings.TrimSpace(p.ProbeFolderRootID)
-	if rootID == "" {
-		return artlist.ProbeResult{
-			OK:        false,
-			Error:     "drive_folder_root_not_configured",
-			Detail:    "composition root passed empty ProbeFolderRootID (cfg.Drive.ArtlistFolder() returned empty; operator must configure cfg.Drive.ArtlistRootFolder for the diagnostics endpoint to probe folder reachability)",
-			ElapsedMs: time.Since(start).Milliseconds(),
-		}
-	}
-
-	timeout := p.ProbeTimeout
-	if timeout <= 0 {
-		timeout = DefaultProbeTimeout
-	}
-	probeCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	if err := p.ProbeFolderAccess(probeCtx, rootID); err != nil {
-		return artlist.ProbeResult{
-			OK:        false,
-			Error:     "drive_folder_unreachable",
-			Detail:    "ProbeFolderAccess(" + rootID + ") returned: " + err.Error(),
-			ElapsedMs: time.Since(start).Milliseconds(),
-		}
-	}
-
-	return artlist.ProbeResult{
-		OK:        true,
-		Detail:    "drive folder probe ok: rootID=" + rootID + ", elapsed=" + time.Since(start).String(),
-		ElapsedMs: time.Since(start).Milliseconds(),
-	}
-}
