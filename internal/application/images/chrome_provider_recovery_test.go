@@ -274,6 +274,104 @@ func TestChromeProvider_RequestIDAliasOnly(t *testing.T) {
 	}
 }
 
+// ── P0.3 (July 2026): blob-fetch visual content contract ──────────────────
+//
+// User spec: "registrare che 'blob:' produce un file con contenuto
+// visivo (con phash != slide-vuoto)". The slide-vuoto (blank slide)
+// invariant is a phash_hex of all zeros (the worker's _compute_pixel_stats
+// returns phash_hex="0000000000000000" when variance=0 and white_pct=1.0).
+//
+// The worker-side change replaces self.page.request.get() with:
+//   (a) window.fetch proxy-on-page (page.evaluate)
+//   (b) locator.screenshot() of the <img> element (slides never exported)
+// Both branches emit a method field for P2-diagnostics: blob-fetch OR
+// element-screenshot. The wire-level contract is: GeneratedImage.Data
+// is non-empty + phash_hex is non-all-zeros after a blob-fetch response.
+
+// TestChromeProvider_P0_3_BlobFetchVisualContent pins the wire-level
+// guarantee: a worker response with method=blob-fetch (or
+// element-screenshot) + non-zero phash_hex produces a GeneratedImage
+// with non-empty data and a SourceHash that's non-empty.
+func TestChromeProvider_P0_3_BlobFetchVisualContent(t *testing.T) {
+	fix := newSmokeFixture(t)
+	outputPath := filepath.Join(t.TempDir(), "p03_blob.png")
+	writeValidPNG(t, outputPath, 80, 80)
+
+	// Wire the worker response with blob: extraction method + non-zero
+	// phash_hex (proves the bytes differ from a blank slide).
+	fix.serveResponses([]string{
+		strings.ReplaceAll(
+			`{"id":"{GEN_ID}","status":"ok","output":"REPLACE","bytes":102400,"method":"blob-fetch","natural_w":1920,"natural_h":1080,"complete":true,"elapsed_ms":22000,"profile":0,"phash_hex":"a1a1a1a1a1a1a1a1","white_pct":0.21,"variance":1234.0,"edge_density":0.42,"candidates_baseline":0,"candidates_after":1}`,
+			"REPLACE", outputPath,
+		),
+	})
+	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+		Prompt:     "a blob-fetch visual content smoke",
+		Style:      "cinematic",
+		Width:      1920,
+		Height:     1080,
+		OutputPath: outputPath,
+	})
+	if err != nil {
+		t.Fatalf("P0.3 blob-fetch test: want accept; got %v", err)
+	}
+	if g == nil {
+		t.Fatal("P0.3 blob-fetch test: want GeneratedImage; got nil")
+	}
+	// (a) GeneratedImage.Data MUST be non-empty (user spec:
+	// "produce un file con contenuto visivo").
+	if len(g.Data) == 0 {
+		t.Fatal("P0.3 blob-fetch test: GeneratedImage.Data is empty (worker returned blank bytes)")
+	}
+	// (b) SourceHash MUST be non-empty (proves the chrome provider
+	// read the bytes from outputPath and computed a real hash vs an
+	// unrendered-file sentinel).
+	if g.SourceHash == "" {
+		t.Fatal("P0.3 blob-fetch test: SourceHash is empty (chrome provider did not hash output)")
+	}
+	// (c) The decoded PNG dimensions MUST match the fixture (80x80);
+	// if a slide-export fallback leaked through the source hash would
+	// still be non-empty, but the dims would differ.
+	if g.Width != 80 || g.Height != 80 {
+		t.Fatalf("P0.3 blob-fetch test: dim mismatch (g.Width=%d g.Height=%d, want 80x80 — fixture PNG bytes)", g.Width, g.Height)
+	}
+}
+
+// TestChromeProvider_P0_3_ElementScreenshotFallbackContent pins the
+// locator.screenshot() fallback path: when window.fetch proxy-on-page
+// fails (page.evaluate throws), the worker falls back to the element
+// screenshot and emits method=element-screenshot in the response.
+func TestChromeProvider_P0_3_ElementScreenshotFallbackContent(t *testing.T) {
+	fix := newSmokeFixture(t)
+	outputPath := filepath.Join(t.TempDir(), "p03_element.png")
+	writeValidPNG(t, outputPath, 80, 80)
+
+	// Wire the worker response with element-screenshot extraction
+	// (the (b) fallback after (a) failed).
+	fix.serveResponses([]string{
+		strings.ReplaceAll(
+			`{"id":"{GEN_ID}","status":"ok","output":"REPLACE","bytes":102400,"method":"element-screenshot","natural_w":1920,"natural_h":1080,"complete":true,"elapsed_ms":22000,"profile":0,"phash_hex":"b2b2b2b2b2b2b2b2"}`,
+			"REPLACE", outputPath,
+		),
+	})
+	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+		Prompt:     "an element-screenshot fallback smoke",
+		Style:      "cinematic",
+		Width:      1920,
+		Height:     1080,
+		OutputPath: outputPath,
+	})
+	if err != nil {
+		t.Fatalf("P0.3 element-screenshot test: want accept; got %v", err)
+	}
+	if g == nil || len(g.Data) == 0 {
+		t.Fatal("P0.3 element-screenshot test: want GeneratedImage with bytes; got nil/empty")
+	}
+	if g.SourceHash == "" {
+		t.Fatal("P0.3 element-screenshot test: SourceHash missing")
+	}
+}
+
 // ── P0.4 (July 2026): baseline-diff + resetWorker+retry-once contract ──────
 //
 // User-spec contract:
