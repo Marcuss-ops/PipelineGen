@@ -192,13 +192,15 @@ func TestCollectionManager_EnsureSchema_AlreadyCompatible(t *testing.T) {
 		defer mu.Unlock()
 
 		switch {
-		// Alias target check — returns the physical collection.
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_current/aliases":
+		// Alias target check — canonical /aliases endpoint (PR-ALIAS-RESOLVE-FIX 2026-07-04).
+		case r.Method == http.MethodGet && r.URL.Path == "/aliases":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"result": []map[string]interface{}{
-					{
-						"alias_name":      "media_assets_current",
-						"collection_name": "media_assets_v3_e5_768",
+				"result": map[string]interface{}{
+					"aliases": []map[string]interface{}{
+						{
+							"alias_name":      "media_assets_current",
+							"collection_name": "media_assets_v3_e5_768",
+						},
 					},
 				},
 			})
@@ -229,6 +231,12 @@ func TestCollectionManager_EnsureSchema_AlreadyCompatible(t *testing.T) {
 		case r.Method == http.MethodPut && r.URL.Path == "/collections/media_assets_v3_e5_768":
 			createCalls++
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": true})
+		// PromoteCandidate's POST /collections/aliases (create_alias action) — success.
+		case r.Method == http.MethodPost && r.URL.Path == "/collections/aliases":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"result": true,
+				"status": "ok",
+			})
 		default:
 			http.NotFound(w, r)
 		}
