@@ -40,7 +40,14 @@ func (f *gateBlockFakeStager_SUTStageSource) Cleanup(_ context.Context, _ *asset
 // NEVER called; if the gate-block short-circuit regresses
 // (e.g. orchestrator forgets to `return` after short-circuit), Process
 // gets called and the typed sentinel surfaces in the test output.
-type panickingMediaProcessor_MustNotBeCalled struct{}
+//
+// processCalls is the atomic call counter — assertions on
+// processCalls.Load() make the short-circuit-vs-fall-through contract
+// explicit (positive test pin: processCalls==0; negative test pin:
+// processCalls==1).
+type panickingMediaProcessor_MustNotBeCalled struct {
+	processCalls atomic.Int32
+}
 
 var _ asset.Processor = (*panickingMediaProcessor_MustNotBeCalled)(nil)
 
@@ -49,6 +56,7 @@ var errProcessorShouldNotBeCalled = errors.New(
 )
 
 func (p *panickingMediaProcessor_MustNotBeCalled) Process(_ context.Context, _ *asset.ProcessInput) (*asset.ProcessResult, error) {
+	p.processCalls.Add(1)
 	return nil, errProcessorShouldNotBeCalled
 }
 
@@ -127,36 +135,45 @@ func TestStageProcessBatch_GateBlockShortCircuit_AcquisitionMode(t *testing.T) {
 	assert.Equal(t, int32(1), fakeStager.stageCalls.Load(),
 		"the stager MUST be invoked exactly once per pipeline item")
 
-	// 2. mediaProcessor.Process was NOT called (short-circuit fired).
-	assert.NotEqual(t, errProcessorShouldNotBeCalled,
-		errors.Unwrap(err),
-		"mediaProcessor.Process MUST NOT be invoked on a typed gate-block (a godlike/07 fake-availability regression)")
+	// 1b. mediaProcessor.Process was NEVER called (the short-circuit
+	// fired BEFORE reaching mediaProcessor). The atomic call
+	// counter is the direct pin (NICE-TO-HAVE from the code
+	// reviewer: makes the short-circuit contract explicit).
+	assert.Equal(t, int32(0), proc.processCalls.Load(),
+		"mediaProcessor.Process MUST NOT be invoked on a typed gate-block (a godlike/07 fake-availability regression; the orchestrator MUST return early after gateBlockShortCircuit fires)")
 
-	// 3. resp.Failed bumped exactly once.
+	// 2. resp.Failed bumped exactly once.
 	assert.Equal(t, 1, ps.resp.Failed,
 		"resp.Failed MUST be bumped exactly once by gateBlockShortCircuit (the canonical tally operators read on /api/artlist/runs/:id)")
 
-	// 4. resp.Items contains exactly the blocked item.
+	// 3. resp.Items contains exactly the blocked item.
 	require.Len(t, ps.resp.Items, 1,
 		"resp.Items MUST contain exactly the blocked item (no transport-layer append)")
 
-	// 5. The blocked item's Status is the canonical "blocked_mode".
+	// 4. The blocked item's Status is the canonical "blocked_mode".
 	blocked := ps.resp.Items[0]
 	assert.Equal(t, "blocked_mode", blocked.Status,
 		"RunTagItem.Status MUST be the canonical \"blocked_mode\" wire string (per-item audit grep-ability)")
 	assert.Equal(t, workItem.item.ClipID, blocked.ClipID,
 		"the appended item MUST carry the original ClipID")
 
-	// 6. The blocked item's Error carries the typed-sentinel text.
+	// 5. The blocked item's Error carries the typed-sentinel text.
 	assert.Contains(t, blocked.Error, "manual_import",
 		"RunTagItem.Error MUST carry the typed-sentinel text verbatim (errors.Is walks the wrap chain)")
 
-	// 7. cleaned-up via SourceStager short-circuit (Cleanup is
-	// ONLY invoked on the happy-path (staged != nil); typed gate-
-	// block short-circuit returns BEFORE Cleanup, which is correct
-	// because typed gate-block does NOT create a staged file).
+	// 6. SourceStager.Cleanup was NOT called (the typed gate-block
+	// short-circuit returns BEFORE the staged-asset cleanup defer
+	// fires, which is correct because a typed gate-block does NOT
+	// create a staged file to clean up).
 	assert.Equal(t, int32(0), fakeStager.cleanupCalls.Load(),
 		"Cleanup MUST NOT be invoked on a typed gate-block (short-circuit returns BEFORE the staged-asset cleanup defer)")
+
+	// 7. resp.OK remains true (godlike/07 fail-closed: the
+	// short-circuit MUST NOT mutate the gate verdict on the
+	// over-arching resp.OK; EvaluateRunState derives the verdict
+	// from the per-bucket counts).
+	require.True(t, ps.resp.OK,
+		"resp.OK MUST remain true (a typed gate-block is recorded in per-bucket counts; the verdict machinery in EvaluateRunState derives the final status — a gate-block is NOT a fake-success)")
 }
 
 // TestStageProcessBatch_NonGateBlockError_FallsThroughToMediaProcessor
@@ -226,26 +243,31 @@ func TestStageProcessBatch_NonGateBlockError_FallsThroughToMediaProcessor(t *tes
 	require.NoError(t, err,
 		"stageProcessBatch MUST return nil even when mediaProcessor.Process errors (the per-clip failure is recorded in item.Status; the historic contract is preserved)")
 
-	// Invariant 1: classifier was NOT triggered — mediaProcessor.Process
-	// WAS called (the panickingMediaProcessor glyph surfaces its
-	// typed sentinel via procErr).
+	// Invariant 1: stager was called exactly once.
 	assert.Equal(t, int32(1), fakeStager.stageCalls.Load(),
 		"the stager MUST be invoked exactly once per pipeline item")
 
-	// Invariant 2: classifier returned gateBlockNone — the
-	// orchestrator continued to mediaProcessor.Process (which is
-	// what produced the procErr that fed the historic branch).
-	// This is the negative test for classifyGateBlock: only KNOWN
-	// sentinels MUST be intercepted; unrelated errors MUST flow
-	// through unchanged.
+	// Invariant 2: mediaProcessor.Process WAS called exactly once
+	// (the unrelated error fell through to mediaProcessor instead of
+	// short-circuiting; the panicking producer surfaces its typed
+	// sentinel via procErr). Direct call-count pin: also confirms the
+	// short-circuit-vs-fall-through contract (negative test pin).
+	assert.Equal(t, int32(1), proc.processCalls.Load(),
+		"mediaProcessor.Process MUST be invoked exactly once for an unrelated error (the orchestrator MUST fall through to mediaProcessor for non-gate-block errors)")
 
 	// Invariant 3: historic media_process_failed branch fired.
 	require.Len(t, ps.resp.Items, 1,
 		"resp.Items MUST contain exactly one item (the media_process_failed branch appended it; not the short-circuit)")
 	require.Equal(t, "media_process_failed", ps.resp.Items[0].Status,
 		"the item MUST carry Status=\"media_process_failed\" (NOT \"blocked_mode\": the unrelated error does NOT classify as a gate-block)")
-	assert.Contains(t, ps.resp.Items[0].Error, "transport-layer",
-		"the item MUST carry the underlying procErr.Error() verbatim (the typed sentinel from panickingMediaProcessor)")
+	// Substring check: panickingMediaProcessor surfaces its typed
+	// sentinel in procErr.Error(); invariant 2's call-count
+	// assertion guarantees panickingMediaProcessor.Process WAS the
+	// source. Asserting on the producer's signal text (NOT the
+	// stager's transport-layer text) makes the negative pin correct:
+	// the historic branch fed procErr into item.Error verbatim.
+	assert.Contains(t, ps.resp.Items[0].Error, "Process was invoked",
+		"item.Error MUST carry the procErr.Error() verbatim from panickingMediaProcessor (the historic branch feeds procErr into item.Error; the stager's unrelated error goes to log.Warn, NOT to item.Error)")
 
 	// Invariant 4: resp.Failed bumped by 1 (the historic branch
 	// bumped it; not the short-circuit which would have also bumped
@@ -258,4 +280,10 @@ func TestStageProcessBatch_NonGateBlockError_FallsThroughToMediaProcessor(t *tes
 	// without entering the staged-asset lifecycle.
 	assert.Equal(t, int32(0), fakeStager.cleanupCalls.Load(),
 		"Cleanup MUST NOT be invoked on a transport-layer error (no staged asset was created before mediaProcessor.Process was called)")
+
+	// Invariant 6: resp.OK remains true (godlike/07 fail-closed:
+	// the historic branch MUST NOT mutate resp.OK; EvaluateRunState
+	// derives the verdict from the per-bucket counts).
+	require.True(t, ps.resp.OK,
+		"resp.OK MUST remain true (a transport-layer error is recorded in per-bucket counts; the verdict machinery in EvaluateRunState derives the final status — a transport-layer error is NOT a fake-success)")
 }
