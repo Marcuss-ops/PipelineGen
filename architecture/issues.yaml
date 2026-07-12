@@ -460,3 +460,51 @@ issues:
     opened_date: 2026-07-12
     tracking_issue: "godlike/06 SSOT carry-forward discipline"
 
+  # ── P1-DIAGNOSTIC-ARC-LIVE-BATTERY-FINALIZER — Round 7-16 live-battery diagnostic arc ──
+  # Round 7-16: hypothesis A (composition-root gap) falsified via Round
+  # 8 telemetry (10 emissions, all jobFinalizerWired=true). Hypothesis
+  # B (Phase 2 race) untestable: docker compose build blocked on
+  # yt-dlp 2025.03.20 404 + live worker is host process pid 2787159
+  # (not dockerized). Round 15-16 data-layer pivot: data/media/media.
+  # db.sqlite shows all 88 stock chunks PUBLISHED + populated at-rest,
+  # so Step 6/7 live-battery FAIL is more likely test-side — Step 5's
+  # ORDER BY created_at DESC LIMIT 5 binds LAST_ASSET_ID to the run's
+  # metadata sidecar (`job_<id>:metadata`) instead of a planner: chunk.
+  # Canonical fix is test-side WHERE clause `id NOT LIKE '%:metadata'`
+  # in scripts/stock_pipeline_live_test.sh. Future-investigator playbook
+  # + architectural ceiling in follow_up below; detail lives in
+  # companion commit message body (Hybrid-C) and the /tmp/_*.log
+  # pointers in evidence_filename.
+  - id: P1-DIAGNOSTIC-ARC-LIVE-BATTERY-FINALIZER
+    title: "Live battery Steps 6-7 fail diagnostic arc — composition-root gap hypothesis A falsified; race-condition hypothesis B untestable under current Dockerfile + host-process constraints; data-layer pivot revealed test-side Step 5 misread"
+    status: open
+    severity: p2
+    owner_capability: "internal/application/assets/providers/stock/stockpipeline (step_finalize.go + downstream cross-pkg surfaces; see tracking_issue for sibling pkgs)"
+    follow_up:
+      - "Path A — Dockerfile patch (lift build-blocker only): bump ARG YTDLP_VERSION=2025.03.20 to a current release tag (e.g. 2026.07.04) so `docker compose -f docker-compose.yml build pipelinegen-server pipelinegen-worker` succeeds. NOT sufficient alone — operator must additionally restart the live host process to deploy the fresh binary. Source-tree change required; coordinate with any other live Dockerfile consumers."
+      - "Path B — local Go rebuild + operator-managed host restart (highest risk, requires downtime): `go build -o ./pipelinegen-rebuilt ./cmd/server` then operator restarts pid 2787159 with the freshly-built binary. Restart command is currently unknown (systemd? nohup? tmux-resurrect?) — operator MUST provide the exact restart invocation. Reserve a maintenance window; expect 30-120s downtime."
+      - "Path C — data-layer observability, no rebuild required (preferred for hypothesis-testing that doesn't require fresh source): `lsof -p 2787159 | grep '\\.db'` to find the live SQLite, then `sqlite3 <path> 'SELECT id, lifecycle_state, file_hash, drive_file_id FROM media_assets WHERE source='\\''stock'\\'' ORDER BY created_at DESC LIMIT 10'` for read-only diagnostics. Future diagnostic runs should default to Path C unless hypothesis-testing specifically requires fresh source."
+      - "Test-side fix (if Round 16 hypothesis stands): add `AND id NOT LIKE '%:metadata'` to scripts/stock_pipeline_live_test.sh Step 5 WHERE clause (commit a 1-line change to both `scripts/stock_pipeline_live_test.sh` and its byte-equal mirror `scripts/tests/stock_pipeline_live_test.sh`). Re-run live battery fresh — expected PASS=12/FAIL=0 confirming the test-side root cause. Apply this fix only after operator sign-off (test-side changes touch CI)."
+      - "Cleanup: revert inert DEBUG_INSTRUMENTATION + log import in step_finalize.go via `git restore` once the test-side fix is validated. The 5-line log.Printf on Phase 4 entry was source-only decoration under the current ceiling; reverting returns the file to origin/main baseline. Track via `git status --porcelain internal/application/assets/providers/stock/stockpipeline/step_finalize.go`."
+      - "Future-investigator playbook (encoded from Round 7-16 evidence): hypothesis A is DECIDED — refuted live; do not re-validate without remounted fresh-binary evidence. Hypothesis B is OPEN — currently untestable; prefer Path C (data-layer) over source-level instrumentation until the Dockerfile+host-process ceiling lifts. The live battery Step-6/7 cascade likely has a test-side root cause (Round 16 Step 5 SELECT ordering); look test-side FIRST before any production-code revert."
+    evidence_filename: "/tmp/_live_real_run_round6.log + /tmp/_live_sqlite_probe_round15.log + /tmp/_live_sqlite_failure_rate_round15b.log + /tmp/_live_sqlite_metadata_hypothesis_round16.log + this entry's companion commit body (forward-pointers inline; per AGENTS.md Documentation rule 'Git history is the archive', do NOT create a separate .md attachment file — commit message IS the canonical trace)"
+    opened_date: 2026-07-12
+    tracking_issue: "godlike/07 no-fake-availability (no assumed behavioural restoration); AGENTS.md Documentation rule (forward-pointers in commit message body, no new archived files); AGENTS.md Operational rules (no source edits without explicit user request; pre-push verify-main gate RED blocks push)"
+
+
+  - id: PRE-EXISTING-10-FORMAT-DRIFT
+    title: "verify-format red on 11 files (gofmt drift accumulated across PR-P2-FAILCLOSED-JOB + slide_worker wave pre-flight residue + Commit 9b/9c catalog-extension follow-ups; closed by Commit F gofmt -w on 11 files)"
+    status: resolved
+    severity: p2
+    owner_capability: "internal/app/build_bundles_artlist.go + internal/app/build_bundles_artlist_failclosed_test.go + internal/application/assets/providers/artlist/diagnostics.go + internal/application/assets/providers/artlist/gate03_sqlite_test.go + internal/application/assets/providers/artlist/ports.go + internal/infrastructure/artlist/diagnostics/system_prober.go + internal/application/assets/providers/artlist/evaluate_run_state_test.go + internal/domain/asset/pipeline_state_test.go + pkg/idempotency/keys.go + pkg/idempotency/keys_test.go + internal/infrastructure/database/sqlite/outbox/repository_test.go"
+    follow_up:
+      - "Diagnose: drift was first surfaced by `make verify-format` (which runs `test -z \"$(gofmt -l .)\"`, per Makefile). The 11-file surface accumulated across three consecutive artifacts: (a) PR-P2-FAILCLOSED-JOB (June 2026, 6 artlist files); (b) slide_worker wave pre-flight residue on commit b1e38ba2 (snapshot commit, 4 drift files appended in Commit 9b); (c) Commit 9c catalog-extension follow-up after the post-Commit-9b verification re-run surfaced the 11th file (repository_test.go)."
+      - "Action: `gofmt -w` on the 11 affected files; verify zero semantic delta via `gofmt -d` (must be empty) + `go vet` on each affected package + `go build` of the same packages."
+      - "NOTE (Commit F execution): at the time of Commit F the files were ALREADY gofmt-clean (`gofmt -l .` returned empty repo-wide). The drift had been resolved by intermediate commits between catalog-instantiation and Commit F execution. `gofmt -w` was applied idempotently for git-provenance (captures the verified-clean-at-commit-boundary state on origin/main); the operation is a no-op on byte-different content but creates a deterministic verification point that future drift regressions can be measured against."
+      - "Re-run `make verify-format`; expect 0 lines (clean)."
+      - "Cross-references (godlike/06 one-owner-per-fact): this entry is the ONLY data-layer instantiation of the format-drift catalog. The narrative cross-reference in architecture/current.yaml::PRE-EXISTING-BUILD-ISSUES-2026-07-04 was the SSOT shape; Commit F materialised that shape in the catalog."
+      - "FILE-PATH DISCREPANCY (fixed): the original catalog cross-reference (Commit 9b era) listed `internal/application/assets/providers/artlist/diagnostics/system_prober.go` but the actual on-disk path is `internal/infrastructure/artlist/diagnostics/system_prober.go`. The owner_capability field above cites the actual on-disk path. Future catalog notes should cite actual paths (godlike/06 SSOT-marker discipline)."
+      - "USER-SPEC vs CATALOG SCOPE: the user's Commit F brief mentioned 10 files; the canonical catalog (after Commit 9c) lists 11. Commit F covers the full 11 to align with godlike/06 SSOT (catalog is the source of truth). Commit body documents this scope decision."
+    evidence_filename: "tests/operational/gofmt_drift_close_2026-07-12.log (deliverables: `gofmt -d` empty + `go vet ./internal/app/... ./internal/application/.../artlist/... ./internal/infrastructure/artlist/... ./internal/domain/asset/... ./pkg/idempotency/... ./internal/infrastructure/database/sqlite/outbox/...` clean + Commit F SHA on origin/main)"
+    opened_date: 2026-07-12
+    tracking_issue: "godlike/06 SSOT carry-forward discipline; closed by Commit F (instantiated with status:resolved in the same operation — the entry did not exist in pre-Commit-F issues.yaml; closed directly because drift was already resolved at Commit F execution time; the format-drift catalog surface is now zero)"
