@@ -1,30 +1,31 @@
-// Package adapters — postprocessor_composite_merge_test.go: Phase 1 B2 TDD regression guard.
+// Package adapters — postprocessor_composite_merge_test.go: Phase 1 regression guards.
 //
-// TestMergePostProcessResult_PropagatesTranslatedToCurrentInput pins the
-// canonical contract that mergePostProcessResult MUST propagate the
-// translated surface (`src.TranslatedText` + `src.TranslatedSpecScene`)
-// into `currentInput` so the NEXT post-processor (e.g. document builder)
-// observes the translated text/scenes — otherwise the document builder
-// would re-emit the pre-translation English surface even though
-// `dst.TranslatedText` correctly carries the Italian translation.
+// Two regression guards in this file:
 //
-// Pre-fix bug (B2):
-//   - Production code at internal/application/scripts/adapters/postprocessor_composite_merge.go
-//     writes `dst.TranslatedText` + `dst.TranslatedSpecScene` from src
-//     (PipelineResult-aggregate perspective) BUT does NOT write
-//     `src.TranslatedText` into `currentInput.Text` (in-place propagation
-//     for the NEXT-stage postprocessor perspective).
-//   - Symptom: subsequent postprocessors (e.g. DocumentProcessor) read
-//     `currentInput.Text` (English) instead of the translated surface,
-//     producing a document whose body matches the INPUT, not the OUTPUT.
+//   - TestMergePostProcessResult_PropagatesTranslatedToCurrentInput (Phase 1, B2):
+//     pins the canonical in-place propagation of `src.TranslatedText` +
+//     `src.TranslatedSpecScene` into the next-stage `currentInput.Text` +
+//     `currentInput.SpecScene.Scenes[i].Text` so document/persistence read
+//     the translated surface, not the pre-translation English surface.
 //
-// Post-fix expectation:
-//   - `mergePostProcessResult(src, currentInput)` MUST also write
-//     `src.TranslatedText` → `currentInput.Text` AND
-//     `src.TranslatedSpecScene` (per-scene Text) → `currentInput.SpecScene.Scenes[i].Text`
-//     so the next post-processor in the chain reads the translated surface.
+//   - TestMergePostProcessResult_ImageBinding_FailClosed (Commit 7, July 2026):
+//     pins the fail-closed bind rule that ONLY an outcome with a populated
+//     SceneImageDriveLink promotes to "generated" + URL="<link>". Every
+//     other case (FAILED / SKIPPED / SUCCEEDED-with-empty-DriveLink) terminates
+//     with Status="failed" and URL="" per godlike/07 NO-FAKE-AVAILABILITY.
 //
-// This test MUST FAIL on current production code (it confirms the bug).
+// Pre-fix bug (commit 7):
+//   - postprocessor_composite_merge.go bound `sc.Bindings.Image.Status = "generated"`
+//     UNCONDITIONALLY whenever the SceneImages buffer was non-empty, even
+//     when the underlying image URL / DriveFileID were empty (e.g. when
+//     the per-scene image call returned no asset). This produced a stream
+//     of FALSE successes — empty images declared generated.
+//
+// Post-fix expectation (commit 7):
+//   - A SceneImage with a non-empty SceneImageDriveLink (URL or Drive-link
+//     fallback) promotes to "generated" + URL populated.
+//   - A SceneImage with NO link (e.g. failed/skipped/deferred) terminates
+//     with Status="failed" + URL="" (the honest answer).
 package adapters
 
 import (
@@ -139,5 +140,181 @@ func TestMergePostProcessResult_PropagatesTranslatedToCurrentInput(t *testing.T)
 		t.Errorf("dst.TranslatedText = %q, want %q "+
 			"(regression guard: existing dst-level propagation must remain intact)",
 			dst.TranslatedText, translatedText)
+	}
+}
+
+// TestMergePostProcessResult_ImageBinding_FailClosed (Commit 7, July 2026) is the
+// canonical regression guard for the fail-closed image-bind rule.
+//
+// Scenario: the CLI / API surfaces scene-image bindings to operator dashboards
+// and to the document / persistence postprocessors downstream of the image
+// postprocessor. Pre-fix, EVERY scene bound to the merge's `src.SceneImages`
+// got `Bindings.Image.Status = "generated"` regardless of whether the
+// underlying image was populated. Today this is the source of "false
+// successes" — empty images declared generated.
+//
+// Post-fix:
+//   - A SceneImage whose SceneImageDriveLink helper returns a non-empty
+//     URL (either via .URL or via the DriveFileID fallback) → bound with
+//     Status="generated" and URL populated.
+//   - A SceneImage whose SceneImageDriveLink helper returns "" (no URL,
+//     no DriveFileID, or both empty) → bound with Status="failed" and
+//     URL="" — the honest answer per godlike/07 NO-FAKE-AVAILABILITY.
+//
+// Note on test-fixture architecture: src.SceneImages in production today
+// carries []SceneImage (NOT the typed []SceneImageOutcome from Commit 6).
+// The fail-closed rule is enforced via the proxy "non-empty DriveLink"
+// (which is the only canonical signal available on SceneImage today).
+// A future commit that wires []SceneImageOutcome through the merge can
+// replace this proxy with the explicit Status comparison
+// (outcome.Status == SceneImageSucceeded ...) at the same site.
+//
+// This test is table-driven across the 3 spec case surfaces:
+//
+//  1. FAILED outcome (URL empty + DriveFileID empty)                 → Status="failed", URL=""
+//  2. SUCCEEDED-with-empty-DriveLink outcome (functionally same     → Status="failed", URL=""
+//     as case 1 in current implementation)
+//  3. SUCCEEDED-with-non-empty-DriveLink outcome (URL populated      → Status="generated", URL=<link>
+//     or DriveFileID populated)
+func TestMergePostProcessResult_ImageBinding_FailClosed(t *testing.T) {
+	const sceneText = "the canonical pre-fix empty image (URL & DriveFileID both empty)"
+
+	tests := []struct {
+		name              string
+		sceneImage        SceneImage
+		wantStatus        string
+		wantURL           string
+		wantStatusIsValid bool
+	}{
+		{
+			// Case 1 (spec): outcome failed → Status="failed" + URL empty.
+			name:              "case1_failed_outcome: empty URL + empty DriveFileID -> failed",
+			sceneImage:        SceneImage{Index: 0, Text: sceneText, URL: "", DriveFileID: ""},
+			wantStatus:        string(scriptpkg.ImageStatusFailed),
+			wantURL:           "",
+			wantStatusIsValid: true,
+		},
+		{
+			// Case 2 (spec): outcome succeeded con DriveLink="" → Status="failed" + URL empty.
+			// In current implementation (SceneImage has no Status field),
+			// case 2 is functionally identical to case 1 — the proxy
+			// "non-empty DriveLink" cannot distinguish "failed" from
+			// "succeeded-without-link". Both terminate with "failed".
+			// Naming the two cases distinctly documents the spec'd intent
+			// and guards the rule under future refactors that may split
+			// the two cases (e.g. if SceneImage acquires a .Status field).
+			name:              "case2_succeeded_with_empty_link: empty URL + empty DriveFileID -> failed (proxy indistinguishable from case1 today)",
+			sceneImage:        SceneImage{Index: 0, Text: sceneText, URL: "", DriveFileID: ""},
+			wantStatus:        string(scriptpkg.ImageStatusFailed),
+			wantURL:           "",
+			wantStatusIsValid: true,
+		},
+		{
+			// Case 3 (spec): outcome succeeded con DriveLink valorizzata
+			// → Status="generated" + URL uguale al link.
+			// Use a real-looking .URL (HTTPS SourceURL) so SceneImageDriveLink
+			// returns the URL directly (no Drive-link fallback needed).
+			name:              "case3_succeeded_with_link: HTTPS URL populated -> generated + URL preserved",
+			sceneImage:        SceneImage{Index: 0, Text: sceneText, URL: "https://drive.google.com/file/d/abc123/view", DriveFileID: "abc123"},
+			wantStatus:        string(scriptpkg.ImageStatusGenerated),
+			wantURL:           "https://drive.google.com/file/d/abc123/view",
+			wantStatusIsValid: true,
+		},
+		{
+			// DriveFileID-only fallback: case 3 covers "URL populated"
+			// but a separate scenario is "URL empty + DriveFileID set"
+			// (workshop of the Drive-link fallback path inside
+			// SceneImageDriveLink). This is also SUCCEEDED-with-link
+			// and must promote to "generated" + URL via Drive-link
+			// fallback.
+			name:              "case3_variant_drive_fallback: empty URL + DriveFileID set -> generated + URL via Drive-link fallback",
+			sceneImage:        SceneImage{Index: 0, Text: sceneText, URL: "", DriveFileID: "abc123"},
+			wantStatus:        string(scriptpkg.ImageStatusGenerated),
+			wantURL:           "https://drive.google.com/file/d/abc123/view",
+			wantStatusIsValid: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// ── Arrange ────────────────────────────────────────────────────
+			currentInput := &ProcessInput{
+				Text: "",
+				SpecScene: scriptpkg.SpecSceneOutput{
+					Version: 1,
+					Scenes: []scriptpkg.SpecScene{
+						{
+							Index: tt.sceneImage.Index,
+							Kind:  scriptpkg.SceneImage,
+							Text:  tt.sceneImage.Text,
+							Bindings: scriptpkg.SceneBindings{
+								// Pre-fix pre-existing Image binding on the
+								// dst-side currentInput.SpecScene.Scenes[i]
+								// (this is what mergePostProcessResult writes
+								// back into). Start it nil so the merge must
+								// initialise it via `if sc.Bindings.Image == nil`.
+								Image: nil,
+							},
+						},
+					},
+				},
+			}
+
+			src := &PostProcessResult{
+				SceneImages: []SceneImage{tt.sceneImage},
+			}
+
+			dst := &PipelineResult{}
+
+			// ── Act ───────────────────────────────────────────────────────
+			mergePostProcessResult(dst, src, currentInput)
+
+			// ── Assert ────────────────────────────────────────────────────
+			sc := &currentInput.SpecScene.Scenes[0]
+
+			// The binding MUST be initialised (the merge code path
+			// initialises via `if sc.Bindings.Image == nil`).
+			if sc.Bindings.Image == nil {
+				t.Fatalf("sc.Bindings.Image unexpectedly nil post-merge (mergePostProcessResult must initialise it)")
+			}
+
+			// Status: must match the spec’d case.
+			if sc.Bindings.Image.Status != tt.wantStatus {
+				t.Errorf("sc.Bindings.Image.Status = %q, want %q "+
+					"(commit 7 fail-closed rule: only DriveLink-populated "+
+					"outcomes promote to %q)",
+					sc.Bindings.Image.Status, tt.wantStatus, scriptpkg.ImageStatusGenerated)
+			}
+
+			// URL: must equal the canonical DriveLink result.
+			if sc.Bindings.Image.URL != tt.wantURL {
+				t.Errorf("sc.Bindings.Image.URL = %q, want %q "+
+					"(commit 7 fail-closed rule: URL must equal SceneImageDriveLink "+
+					"when promoted to 'generated', and must be empty when failed)",
+					sc.Bindings.Image.URL, tt.wantURL)
+			}
+
+			// Status validity (defense-in-depth): the emitted Status
+			// MUST be a valid ImageBindingStatus per binding_status.go.
+			if tt.wantStatusIsValid {
+				status := scriptpkg.ImageBindingStatus(sc.Bindings.Image.Status)
+				if !status.Valid() {
+					t.Errorf("sc.Bindings.Image.Status = %q is NOT a valid "+
+						"ImageBindingStatus per binding_status.go::Valid",
+						sc.Bindings.Image.Status)
+				}
+			}
+
+			// dst.Scenes must contain the SceneImage (existing surface).
+			if len(dst.Scenes) != 1 {
+				t.Fatalf("dst.Scenes length = %d, want 1 (existing dst-level "+
+					"SceneImages propagation must remain intact post-fix)",
+					len(dst.Scenes))
+			}
+			if dst.Scenes[0].Index != tt.sceneImage.Index {
+				t.Errorf("dst.Scenes[0].Index = %d, want %d",
+					dst.Scenes[0].Index, tt.sceneImage.Index)
+			}
+		})
 	}
 }

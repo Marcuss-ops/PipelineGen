@@ -83,8 +83,47 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 				if sc.Bindings.Image == nil {
 					sc.Bindings.Image = &scriptpkg.ImageBinding{}
 				}
-				sc.Bindings.Image.URL = SceneImageDriveLink(s)
-				sc.Bindings.Image.Status = "generated"
+				// PR-PROCESSOR-FAILCLOSED-IMG-BINDING (commit 7,
+				// July 2026): fail-closed bind rule. Only an
+				// implicitly-succeeded outcome (i.e. the SceneImage
+				// has a non-empty SceneImageDriveLink) promotes to
+				// "generated" with URL populated. Every other case
+				// (FAILED / SKIPPED / SUCCEEDED-without-link) terminates
+				// with Status="failed" and URL=""
+				// (godlike/07 NO-FAKE-AVAILABILITY: an empty URL
+				// is the honest answer for a non-promoted binding;
+				// pre-fix this block UNCONDITIONALLY set
+				// Status="generated" whenever SceneImages was
+				// populated, which produced false successes when
+				// the underlying image was empty / Drive-deferred).
+				//
+				// Architecture note: src.SceneImages is the
+				// stream-surface ([]SceneImage) emitted today by
+				// (*ImageProcessor).Process, NOT the typed
+				// []SceneImageOutcome introduced in Commit 6.
+				// The fail-closed rule therefore uses the canonical
+				// proxy "non-empty DriveLink" for "implicitly
+				// succeeded". A future commit wiring
+				// []SceneImageOutcome through the merge can replace
+				// this proxy with the typed Status comparison
+				// (outcome.Status == SceneImageSucceeded && ...)
+				// at the same site (the user spec writes this
+				// pseudocode; we honor its INTENT here).
+				//
+				// Out-of-scope: the same bug pre-exists at
+				// internal/application/scripts/usecase/persistence.go
+				// line ~121 (buildGenerationResult); the user spec
+				// scoped this Commit 7 to postprocessor_composite_merge.go
+				// only, so persistence.go is documented as a
+				// wave follow-up rather than touched here.
+				driveLink := SceneImageDriveLink(s)
+				if strings.TrimSpace(driveLink) != "" {
+					sc.Bindings.Image.URL = driveLink
+					sc.Bindings.Image.Status = string(scriptpkg.ImageStatusGenerated)
+				} else {
+					sc.Bindings.Image.URL = ""
+					sc.Bindings.Image.Status = string(scriptpkg.ImageStatusFailed)
+				}
 			}
 		}
 	}

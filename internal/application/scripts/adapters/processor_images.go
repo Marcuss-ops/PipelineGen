@@ -137,5 +137,24 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 			zap.Strings("warnings", warnings))
 	}
 
-	return &PostProcessResult{SceneImages: images}, nil
+	// PR-IMAGE-WARNINGS-PROPAGATION (commit 7, July 2026):
+	// Include accumulated partial-failure warnings in the returned
+	// PostProcessResult.Warnings so mergePostProcessResult's
+	// existing src.Warnings -> dst.Warnings propagation path
+	// carries them into the aggregate PipelineResult (the API
+	// response surface + operator dashboard metric counts).
+	//
+	// godlike/07 NO-FAKE-AVAILABILITY pre-fix: warnings were only
+	// logged via zap.Warn above; the aggregate PipelineResult.Warnings
+	// slot stayed empty so the operator dashboard could never count
+	// image partial-fails at the per-pipeline level, mimicking
+	// "success-with-quiet-soft-fails" (a soft-fail with no
+	// observable propagation target).
+	//
+	// Per-Run the warning surface is bounded — there is only ever
+	// one image processor per pipeline, so duplicate-aggregation
+	// is not a real concern. PostProcessResult.Warnings may
+	// already carry translation-processor warnings for the same
+	// Run; appending here keeps both surfaces visible.
+	return &PostProcessResult{SceneImages: images, Warnings: warnings}, nil
 }
