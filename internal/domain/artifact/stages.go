@@ -18,8 +18,9 @@
 // consolidation is deferred to a dedicated PR.
 //
 // godlike/06 SSOT: this package is the SOLE canonical owner of
-// `ArtifactStage`, `ArtifactStageState`, `Requirement`, and the
-// typed error sentinels. Repository implementations in
+// `ArtifactStage`, `ArtifactStageState`, `Requirement`, the typed
+// error sentinels, and the `Repository` port. Repository
+// implementations in
 // `internal/infrastructure/database/sqlite/artifact_stages/` and
 // the application service in
 // `internal/application/staging/` consume ONLY the types
@@ -35,7 +36,9 @@
 package artifact
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -224,6 +227,22 @@ var ErrInvalidArtifactStageState = errors.New("artifact_stages: invalid state (n
 // writes an out-of-set Requirement value.
 var ErrInvalidRequirement = errors.New("artifact_stages: invalid requirement (not in canonical Requirement set)")
 
+// ErrInvalidArtifactStageID is returned by the repository when a
+// caller supplies an empty Stage.ID. godlike/07 fail-closed: a
+// 0-length primary key would surface as a raw SQLite UNIQUE-
+// constraint violation (opaque to the typed-error contract); the
+// pre-TX gate catches the case BEFORE the INSERT.
+var ErrInvalidArtifactStageID = errors.New("artifact_stages: ID is required (caller must supply a non-empty canonical id)")
+
+// ErrInvalidJobID is returned by the repository when a caller
+// supplies an empty Stage.JobID. godlike/07 fail-closed: a stage
+// row with an empty FK-by-convention JobID would orphan the
+// artifact (the finalizer's ListByJob(jobID) query would skip
+// the row, leaving the job without the artifact's contribution
+// to the required-vs-optional accounting). The pre-TX gate
+// catches the case BEFORE the INSERT.
+var ErrInvalidJobID = errors.New("artifact_stages: JobID is required (caller must supply a non-empty canonical job_id)")
+
 // ErrArtifactStageNotFound is returned by Repository.GetByID when no
 // row matches the given id. The HTTP layer maps it to 404.
 var ErrArtifactStageNotFound = errors.New("artifact_stages: stage not found")
@@ -265,6 +284,19 @@ var ErrArtifactStageIDCollision = errors.New("artifact_stages: ID collision (sam
 // for "empty artifact is invalid".
 var ErrArtifactStageEmpty = errors.New("artifact_stages: empty artifact (0 bytes — caller must supply non-empty content)")
 
+// ErrTerminalStateRejection is the canonical repository-level
+// sentinel for fenced Mark* UPDATE mismatches. The repository
+// disambiguates "row absent" (ErrArtifactStageNotFound) from
+// "row already terminal" (ErrTerminalStateRejection) via a post-
+// UPDATE SELECT probe.
+//
+// godlike/07 fail-closed: never silently accept a fence-mismatch
+// as success. The application-layer Service (Push 3.1b) maps
+// this to the kernel-level ErrArtifactStale.
+var ErrTerminalStateRejection = errors.New("artifact_stages: terminal-state fence rejected the transition (row already SUCCEEDED or FAILED_PERMANENT)")
+
+// ── Wrap helpers ───────────────────────────────────────────────────
+
 // WrapArtifactStageNotFound attaches the missing stage id to
 // ErrArtifactStageNotFound for operator-audit logging. The returned
 // error wraps the canonical sentinel so errors.Is probes still
@@ -298,7 +330,63 @@ type wrappedError struct {
 func (e wrappedError) Error() string { return e.sentinel.Error() + ": " + e.msg }
 func (e wrappedError) Unwrap() error { return e.sentinel }
 
-// Unused `time` import guard — kept explicit so the linter does not
-// add a "unused import" annotation when the file is edited to
-// drop the Time field temporarily.
-var _ = time.Time{}
+// ── Repository — canonical persistence port (Push 3.1a) ────────────────
+
+// Repository is the canonical persistence port for the
+// `artifact_stages` SQLite table (migration 147). The infrastructure
+// concrete lives at
+// `internal/infrastructure/database/sqlite/artifact_stages/repository.go`
+// and is the SINGLE writer of the per-publication record.
+//
+// godlike/06 SSOT: this interface is the SOLE canonical surface for
+// FASE 3 saga persistence. Application-layer code (staging.Store in
+// Push 3.1b, publisher worker pool, finalizer) consumes the port;
+// the SQL-layer concrete is built at the composition root.
+//
+// godlike/07 fail-closed: every Mark* method fences the UPDATE on
+// `state NOT IN ('SUCCEEDED', 'FAILED_PERMANENT')` so a stale
+// leaseholder cannot silently re-patch a terminal row. The
+// repository's ErrTerminalStateRejection sentinel is the typed-error
+// surface for this fence; the application-layer Service (Push 3.1b)
+// maps it to the canonical kernel-level ErrArtifactStale.
+type Repository interface {
+	// Insert appends a new ArtifactStage row. Pre-TX validation
+	// rejects: empty ID (ErrInvalidArtifactStageID), out-of-set
+	// State (ErrInvalidArtifactStageState), out-of-set Requirement
+	// (ErrInvalidRequirement), zero size (ErrArtifactStageEmpty),
+	// empty hash (ErrArtifactStageHashMismatch).
+	Insert(ctx context.Context, stage *ArtifactStage) error
+
+	// GetByID returns the canonical stage row for the given id.
+	// Returns ErrArtifactStageNotFound when the row is absent.
+	GetByID(ctx context.Context, id string) (*ArtifactStage, error)
+
+	// ListByJob returns all stages for a given job_id, ordered by
+	// created_at ASC (the canonical finalizer scan order). Uses the
+	// idx_artifact_stages_job_state composite index.
+	ListByJob(ctx context.Context, jobID string) ([]ArtifactStage, error)
+
+	// ListByState returns up to limit stages in the given state,
+	// ordered by created_at ASC (publisher worker drain order).
+	// Uses the idx_artifact_stages_state_created composite index.
+	// Out-of-set state returns ErrInvalidArtifactStageState.
+	ListByState(ctx context.Context, state ArtifactStageState, limit int) ([]ArtifactStage, error)
+
+	// MarkPublished transitions a non-terminal stage to PUBLISHED,
+	// populating published_location (JSON-marshalled) + published_at.
+	// Fenced CAS rejects already-terminal rows with
+	// ErrTerminalStateRejection.
+	MarkPublished(ctx context.Context, id, publishedLocation string, publishedAt time.Time) error
+
+	// MarkSucceeded transitions a non-terminal stage to SUCCEEDED.
+	// Fenced CAS.
+	MarkSucceeded(ctx context.Context, id string) error
+
+	// MarkFailedPermanent transitions a non-terminal stage to
+	// FAILED_PERMANENT, populating last_error. Fenced CAS.
+	MarkFailedPermanent(ctx context.Context, id, lastError string) error
+
+	// IncrementAttemptCount bumps attempt_count by 1 (publisher
+	// worker retry counter). Fenced CAS on non-terminal state.
+	IncrementAttemptCount(ctx context.Context, id string) error
+}
