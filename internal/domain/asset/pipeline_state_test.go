@@ -409,8 +409,17 @@ func TestSanitizeSafeMessage_StripsControlChars(t *testing.T) {
 		{"ff-stripped", "before\x0cafter", "beforeafter"},
 		{"mixed-newline-tab-cr", "a\nb\tc\rd", "a b\tc d"},
 		{"escape-stripped", "before\x1bafter", "beforeafter"},
-		{"c1-nel-stripped", "before\x85after", "beforeafter"},
-		{"c1-uni-sep-stripped", "before\x9cafter", "beforeafter"},
+		// C1 controls MUST be written as \u0085 / \u009C (valid
+		// UTF-8 = 2 bytes 0xC2 0x85 / 0xC2 0x9C). The \x85 /
+		// \x9C form is INVALID UTF-8 (those bytes are
+		// continuation bytes, not standalone runes); Go's
+		// range-over-string yields utf8.RuneError (U+FFFD)
+		// for invalid sequences, and U+FFFD is NOT a control
+		// char — the sanitizer would preserve it. The \u0085
+		// form below is the correct way to test the C1
+		// contract.
+		{"c1-nel-stripped", "before\u0085after", "beforeafter"},
+		{"c1-uni-sep-stripped", "before\u009cafter", "beforeafter"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
