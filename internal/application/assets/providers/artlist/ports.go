@@ -356,11 +356,24 @@ var ErrRunRepositoryUnavailable = errors.New(
 	"artlist: RunRepository port unavailable at composition — production must wire artlist_runs_repository (godlike/07 no-fake-availability: aggregate stats write is mandatory for /api/artlist/run honesty)",
 )
 
-// ErrManualImportActive is returned by the download path when the
+// ErrAcquisitionModeBlocked is returned by the download path when the
 // operator has configured acquisition_mode=manual_import. Automatic
 // downloads are not allowed in this mode; users must import files
 // manually and the pipeline ingests them afterwards.
-var ErrManualImportActive = errors.New("artlist: acquisition_mode is manual_import; automatic downloads are not allowed")
+//
+// Fase 6 / Commit 1 (July 2026) — the sentinel was renamed from
+// ErrManualImportActive to match the user-spec literal. The semantics
+// are identical: a download attempt in manual_import mode MUST fail
+// closed with this typed error, the failure MUST be surfaced in the
+// per-item audit (RunTagItem.Status = "blocked_mode") and the run
+// state aggregate (resp.Failed++ so EvaluateRunState verdicts
+// PARTIAL_SUCCESS / FAILED on partial / total block).
+//
+// godlike/07 fail-closed: the resolver MUST surface this sentinel
+// verbatim via errors.Is so callers (stager_adapter.go, run_orch
+// stages, diagnostic handlers) branch on intent. Silent skip is
+// forbidden — the block is observable, not speculative.
+var ErrAcquisitionModeBlocked = errors.New("artlist: acquisition_mode is manual_import; automatic downloads are not allowed (Fase 6 / Commit 1)")
 
 // ErrDailyDownloadLimitExceeded is returned when an automatic download
 // would exceed the configured ArtlistDailyDownloadLimit for the current
