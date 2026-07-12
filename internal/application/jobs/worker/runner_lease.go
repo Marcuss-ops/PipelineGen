@@ -73,33 +73,38 @@ var ErrLeaseLostDuringRun = errors.New("worker Runner: lease lost during run (re
 //     flake on slow CI (the original CI flake in runner_test.go:383
 //     was the symptom that led to P0 #6 ticket creation).
 //
-// retry.Do configuration:
+// retry.Do configuration (tight fast-retry budget):
 //   - MaxAttempts:    5 — bounded inner retry budget so a sustained
-//     broker outage exits the inner loop with the last error
-//     within ~60 seconds; the OUTER for-loop continues claim
-//     attempts forever (matches pre-P0 #6 "try forever" intent).
-//   - InitialBackoff: 2 seconds — byte-equivalent with the pre-P0 #6
-//     fixed 2s settle wait (first retry fires after 2s).
-//   - MaxBackoff:     30 seconds — exponential saturation cap; 5
-//     attempts at 2s/4s/8s/16s/30s = ~60s worst-case before the
-//     outer for-loop takes over.
+//     broker outage exits the inner loop within ~5 seconds; the
+//     OUTER for-loop continues claim attempts forever (matches
+//     pre-P0 #6 "try forever" intent).
+//   - InitialBackoff: 200ms — fast first retry so broker-flap
+//     scenarios don't stall the worker for seconds (vs the pre-P0 #6
+//     fixed 2s settle wait, which absorbed transient broker hiccups
+//     but stalled for the same 2s on persistent outages).
+//   - MaxBackoff:     2s — exponential saturation cap; 5 attempts
+//     at 200ms/400ms/800ms/1.6s/2s = ~5s worst-case inner budget
+//     before the outer for-loop takes over.
 //   - BackoffFactor:  2.0 — canonical exponential doubling.
 //   - JitterFraction: 0 — deterministic timing for the integration
 //     test (no thundering-herd randomness in test assertions).
-//   - IsRetryable:    custom predicate mirroring the pre-P0 #6
-//     "retry everything except W1 Phase 5 startup misconfig" intent.
-//     The post-FASE-6-Cut-6.1.D pkg/retry.IsTransient is a PURE
-//     TYPED PROBE (no substring fallback) so passing it directly
-//     would BREAK pre-P0 #6 semantics — every broker error except
-//     typed-retryable shapes would fail-closed. The custom
-//     predicate replicates the canonical ErrNoWorkerCapabilities
-//     gate and routes all other broker errors as retryable.
+//   - IsRetryable:    retry.IsTransient — the canonical pkg/retry
+//     pure-typed-probe predicate. Post-FASE-6-Cut-6.1.D returns
+//     true ONLY for: (a) errors with a RetryableError interface
+//     implementer reporting IsRetryable() == true, OR (b) errors
+//     wrapping a *TransientInfrastructureError carrier. Non-typed
+//     broker errors fail-closed at first attempt. The post-Do
+//     `errors.Is(err, ErrNoWorkerCapabilities)` check below
+//     explicitly handles the W1 Phase 5 startup-misconfig surface
+//     so the typed-retryable path and the typed-startup-misconfig
+//     path are independently probeable.
 //
-// godlike/07 NO-FAKE-AVAILABILITY: the IsRetryable predicate
-// explicitly returns `false` for ErrNoWorkerCapabilities so the
-// first attempt's typed sentinel surfaces at the post-Do error
-// check (`errors.Is(err, ErrNoWorkerCapabilities)` immediately
-// after retry.Do); no retry on a startup misconfig.
+// godlike/07 NO-FAKE-AVAILABILITY: ErrNoWorkerCapabilities is a
+// TYPED NON-TRANSIENT sentinel (no RetryableError implementer);
+// retry.IsTransient returns false at first attempt → retry.Do
+// returns the typed sentinel → outer code's errors.Is match
+// surfaces ErrNoWorkerCapabilities for the W1 Phase 5
+// loud-error-and-return contract. NO retry on a startup misconfig.
 func (r *Runner) Run(ctx context.Context) error {
 	if r.registry == nil {
 		r.registry = NewRegistry()
@@ -122,25 +127,11 @@ func (r *Runner) Run(ctx context.Context) error {
 			return claimErr
 		}, retry.Options{
 			MaxAttempts:    5,
-			InitialBackoff: 2 * time.Second,
-			MaxBackoff:     30 * time.Second,
+			InitialBackoff: 200 * time.Millisecond,
+			MaxBackoff:     2 * time.Second,
 			BackoffFactor:  2.0,
 			JitterFraction: 0,
-			IsRetryable: func(err error) bool {
-				// W1 Phase 5: ErrNoWorkerCapabilities is a STARTUP
-				// misconfiguration, not a transient broker failure.
-				// Retrying would spam logs forever; surface immediately
-				// so the process supervisor restarts with fresh caps
-				// (matches pre-P0 #6 `errors.Is(err, ErrNoWorkerCapabilities)`
-				// check that returned err instead of sleeping + retrying).
-				if errors.Is(err, appjobs.ErrNoWorkerCapabilities) {
-					return false
-				}
-				// All other broker errors: transient round-trip
-				// failure, retry per the canonical "claim loop tries
-				// forever" intent.
-				return true
-			},
+			IsRetryable:    retry.IsTransient,
 		})
 		if err != nil {
 			// pre-P0 #6 contract preserved: ErrNoWorkerCapabilities
