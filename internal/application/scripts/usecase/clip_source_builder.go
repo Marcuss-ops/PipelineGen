@@ -28,6 +28,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -62,15 +63,21 @@ type ClipSourceBuilder struct {
 }
 
 type ClipGenerationOptions struct {
-	Language           string
-	Tone               string
-	Style              string
-	Title              string
-	Model              string
-	TargetWords        int
-	NumClips           int
-	SegmentWords       int
-	SegmentTopics      []string
+	Language      string
+	Tone          string
+	Style         string
+	Title         string
+	Model         string
+	TargetWords   int
+	NumClips      int
+	SegmentWords  int
+	SegmentTopics []string
+	// Segments carries the per-block payload. Populated by the
+	// curate / clips resolvers via SourceResolutionContext.
+	// Currently unread at this layer; FASE 3 (engine_prompt.go)
+	// reads plan.Segments directly when rendering per-segment
+	// prompt blocks.
+	Segments           []scriptpkg.ScriptSegment
 	SourceText         string
 	TranscriptPolicy   string
 	OrderingStrategy   string
@@ -171,25 +178,15 @@ func (c *ClipSourceBuilder) BuildClipContext(
 
 	requireDriveLink := optsRequireDriveLink(opts)
 	language := optsResolveLanguage(opts)
+	orderingStrategy := ""
+	if opts != nil {
+		orderingStrategy = strings.TrimSpace(opts.OrderingStrategy)
+	}
 
 	var (
-		renderableIDs   []string
-		missingClipIDs  []scriptpkg.MissingClipID
-		excludedClips   []scriptpkg.ExcludedClip
-		clips           []*asset.Asset
-		canonicalIDs    []string
-		clipNames       []string
-		clipToCanonical = make(map[string]string, len(uniqueIDs))
-		clipDetails     = make(map[string]scriptpkg.ClipDetail, len(uniqueIDs))
-		// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
-		// resolvedTracks is the per-clip accumulator for the
-		// 3 new fingerprint fields. Keyed by the canonical
-		// clip ID (the REQUESTED ID, not clip.ID). The
-		// post-loop buildClipEvidence call reads the
-		// FIRST non-nil entry to populate the evidence-level
-		// fingerprint.
-		resolvedTracks   = make(map[string]*asset.TextTrack, len(uniqueIDs))
-		sourceTextWriter strings.Builder
+		missingClipIDs []scriptpkg.MissingClipID
+		excludedClips  []scriptpkg.ExcludedClip
+		records        = make([]clipContextRecord, 0, len(uniqueIDs))
 	)
 	for _, id := range uniqueIDs {
 		clip, reason := c.resolveOneClip(ctx, id)
@@ -218,15 +215,6 @@ func (c *ClipSourceBuilder) BuildClipContext(
 			continue
 		}
 
-		if clip.DriveLink() != "" {
-			renderableIDs = append(renderableIDs, id)
-		}
-
-		clips = append(clips, clip)
-		canonicalIDs = append(canonicalIDs, id)
-		clipToCanonical[clip.ID] = id
-		clipNames = append(clipNames, clipDisplayName(clip, id))
-
 		// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
 		// resolveTranscript is called EXACTLY ONCE per clip.
 		// The signature is (string, *asset.TextTrack, error) —
@@ -250,18 +238,57 @@ func (c *ClipSourceBuilder) BuildClipContext(
 				zap.String("language", language),
 				zap.Error(resolveErr))
 		}
-		c.appendClipSourceText(&sourceTextWriter, id, clip, transcript)
-		c.appendClipDetail(clipDetails, id, clip, transcript)
-		if track != nil {
-			resolvedTracks[id] = track
-		}
+		records = append(records, clipContextRecord{
+			id:         id,
+			clip:       clip,
+			transcript: transcript,
+			track:      track,
+		})
 	}
 
-	if len(clips) == 0 && len(excludedClips) > 0 {
+	if len(records) == 0 && len(excludedClips) > 0 {
 		return nil, "", "", fmt.Errorf("clip source builder: all %d resolved clips lack drive links", len(excludedClips))
 	}
-	if len(clips) == 0 {
+	if len(records) == 0 {
 		return nil, "", "", fmt.Errorf("clip source builder: no clips found for the provided IDs")
+	}
+
+	if orderingStrategy == "chronological" {
+		sort.SliceStable(records, func(i, j int) bool {
+			return chronologicalSortKey(records[i].clip, records[i].id) < chronologicalSortKey(records[j].clip, records[j].id)
+		})
+	}
+
+	var (
+		renderableIDs   []string
+		clips           []*asset.Asset
+		canonicalIDs    []string
+		clipNames       []string
+		clipToCanonical = make(map[string]string, len(records))
+		clipDetails     = make(map[string]scriptpkg.ClipDetail, len(records))
+		// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026):
+		// resolvedTracks is the per-clip accumulator for the
+		// 3 new fingerprint fields. Keyed by the canonical
+		// clip ID (the REQUESTED ID, not clip.ID). The
+		// post-loop buildClipEvidence call reads the
+		// FIRST non-nil entry to populate the evidence-level
+		// fingerprint.
+		resolvedTracks   = make(map[string]*asset.TextTrack, len(records))
+		sourceTextWriter strings.Builder
+	)
+	for _, record := range records {
+		if record.clip.DriveLink() != "" {
+			renderableIDs = append(renderableIDs, record.id)
+		}
+		clips = append(clips, record.clip)
+		canonicalIDs = append(canonicalIDs, record.id)
+		clipToCanonical[record.clip.ID] = record.id
+		clipNames = append(clipNames, clipDisplayName(record.clip, record.id))
+		c.appendClipSourceText(&sourceTextWriter, record.id, record.clip, record.transcript)
+		c.appendClipDetail(clipDetails, record.id, record.clip, record.transcript)
+		if record.track != nil {
+			resolvedTracks[record.id] = record.track
+		}
 	}
 
 	title := "script"
@@ -292,6 +319,35 @@ func (c *ClipSourceBuilder) BuildClipContext(
 	}
 
 	return ev, title, sourceTextWriter.String(), nil
+}
+
+type clipContextRecord struct {
+	id         string
+	clip       *asset.Asset
+	transcript string
+	track      *asset.TextTrack
+}
+
+func chronologicalSortKey(clip *asset.Asset, id string) int64 {
+	if clip != nil {
+		if n := clip.GetMetadataInt("start_ms"); n != 0 {
+			return int64(n)
+		}
+	}
+	for i := 0; i < len(id); i++ {
+		if id[i] < '0' || id[i] > '9' {
+			continue
+		}
+		j := i + 1
+		for j < len(id) && id[j] >= '0' && id[j] <= '9' {
+			j++
+		}
+		if n, err := strconv.ParseInt(id[i:j], 10, 64); err == nil {
+			return n
+		}
+		i = j - 1
+	}
+	return int64(^uint64(0) >> 1)
 }
 
 // clipResolveReason is the typed return value of resolveOneClip.

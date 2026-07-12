@@ -45,14 +45,15 @@ type ResolvedGenerationPlan struct {
 	ClipEvidence *ClipEvidence `json:"clip_evidence,omitempty"`
 
 	// ── Sizing ────────────────────────────────────────────────────────
-	TargetWords       int      `json:"target_words,omitempty"`
-	Duration          int      `json:"duration,omitempty"`
-	MinWords          int      `json:"min_words,omitempty"`
-	NumClips          int      `json:"num_clips,omitempty"`
-	SegmentWords      int      `json:"segment_words,omitempty"`
-	SegmentTopics     []string `json:"segment_topics,omitempty"`
-	SentencesPerImage int      `json:"sentences_per_image,omitempty"`
-	ImagesPerScene    int      `json:"images_per_scene,omitempty"`
+	TargetWords       int             `json:"target_words,omitempty"`
+	Duration          int             `json:"duration,omitempty"`
+	MinWords          int             `json:"min_words,omitempty"`
+	NumClips          int             `json:"num_clips,omitempty"`
+	SegmentWords      int             `json:"segment_words,omitempty"`
+	SegmentTopics     []string        `json:"segment_topics,omitempty"`
+	Segments          []ScriptSegment `json:"segments,omitempty"`
+	SentencesPerImage int             `json:"sentences_per_image,omitempty"`
+	ImagesPerScene    int             `json:"images_per_scene,omitempty"`
 
 	// ── Style ─────────────────────────────────────────────────────────
 	Style string `json:"style,omitempty"`

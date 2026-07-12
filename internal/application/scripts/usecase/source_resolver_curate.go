@@ -209,6 +209,7 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		NumClips:           resCtx.NumClips,
 		SegmentWords:       resCtx.SegmentWords,
 		SegmentTopics:      append([]string(nil), resCtx.SegmentTopics...),
+		Segments:           append([]scriptpkg.ScriptSegment(nil), resCtx.Segments...),
 		TranscriptPolicy:   src.TranscriptPolicy,
 		OrderingStrategy:   src.OrderingStrategy,
 		MinQualityScore:    ptrutil.DerefOr(src.MinQualityScore, 0.0),
