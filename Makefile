@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main verify-format test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-main verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -564,6 +564,70 @@ regenerate-token:
 # Re-run `make fmt` (alias for `go fmt ./...`) after the fix.
 verify-format:
 	@test -z "$$(gofmt -l .)" || { echo "❌ Files not formatted:"; gofmt -l .; exit 1; }
+
+# test-imports — Cleanup Plan followup (Jul 2026): the canonical
+# post-fix-up autofix step for unused imports. Runs `goimports -w` on
+# every _test.go under internal/ to canonicalize import blocks
+# (alphabetize, drop unused, dedupe), then re-runs `goimports -l -d`
+# as the verify gate — non-canonical files fail the chain.
+#
+# Why a SEPARATE target (autofix + verify, not verify-only):
+#   - Unused imports in test files block `go build` and `go test`. The
+#     autofix `-w` pass resolves the latent drift in one command.
+#   - The verify `goimports -l -d` after the autofix is the gate — it
+#     lists any file where goimports would still change something, so
+#     the target fails closed if the autofix pass couldn't canonicalize
+#     the file (e.g., a docstring reference to an import that no longer
+#     exists).
+#   - This single target would have caught the E.1.x cascade of 10
+#     unused imports across 3 sister test files at authoring time —
+#     not after ~4 fix-up rounds of hand-written str_replace.
+#
+# Auto-install: `go install golang.org/x/tools/cmd/goimports@latest`
+# follows the same canonical install path as other Go-managed tools
+# (golangci-lint, cosign, govulncheck). Single-shot install; the
+# binary lives under $(go env GOPATH)/bin. To avoid the Make recipe
+# subshell-isolation trap (each `@` line is a fresh shell whose PATH
+# may NOT include GOPATH/bin), the entire recipe is one collapsed
+# shell invocation with `;` chaining. The GOBIN path is bound
+# EXPLICITLY ("$$GOBIN/goimports") so the binary resolution is
+# deterministic — a system-installed stale goimports at
+# /usr/local/bin cannot silently win a `command -v goimports`
+# race and bypass the canonical install, eliminating version-skew
+# drift across dev machines. Reviewer's trade-off acknowledged:
+# `@latest` is unpinned; pin to a tagged version (e.g. @v0.30.0)
+# once known-good to fence alphabetization-drift in future releases.
+#
+# Scope: `_test.go` under internal/ ONLY — production code is left
+# untouched. Production-code autofix would risk mid-PR import churn
+# impacting type inference and is intentionally separated.
+#
+# Wire-up note (NOT applied here): once stabilized, add to the
+# verify-main chain as a pre-step alongside verify-format — order:
+# verify-format → test-imports (autofix in place) → tidy-check → ...
+# The autofix happens in-tree, so a green verify-main implies
+# `git diff` is empty on goimports canonicalization.
+test-imports:
+	@GOBIN=$$($(GO) env GOPATH)/bin; \
+	GOIMPORTS="$$GOBIN/goimports"; \
+	if [ ! -x "$$GOIMPORTS" ]; then \
+	    echo "→ Installing goimports (canonical) into $$GOBIN..."; \
+	    $(GO) install golang.org/x/tools/cmd/goimports@latest || { echo "❌ install failed"; exit 1; }; \
+	    if [ ! -x "$$GOIMPORTS" ]; then \
+	        echo "❌ goimports install did not produce expected binary at $$GOIMPORTS"; \
+	        exit 1; \
+	    fi; \
+	fi; \
+	echo "→ goimports -w (autofix) on every _test.go under internal/ via $$GOIMPORTS..."; \
+	find internal/ -name '*_test.go' -type f -print0 | xargs -0 -r -n1 "$$GOIMPORTS" -w; \
+	echo "→ goimports -l -d (verify; non-empty = non-zero exit)..."; \
+	bad=$$(find internal/ -name '*_test.go' -type f -print0 | xargs -0 -r "$$GOIMPORTS" -l -d 2>&1); \
+	if [ -n "$$bad" ]; then \
+	    echo "❌ Files not goimports-canonical:"; \
+	    echo "$$bad"; \
+	    exit 1; \
+	fi; \
+	echo "✅ all test files goimports-canonical"
 
 # ─── Governance regeneration targets (Fase 7, Push 7, July 2026) ──────
 #
