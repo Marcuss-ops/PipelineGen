@@ -100,6 +100,7 @@ Per action plan §4 ("Failure diagnosis table") + per-probe FAIL mappings from P
 | Job terminal status: `FAILED stock.extract_clips` | `PR-STOCK-CUTTER` | `internal/infrastructure/media/render/cutter.go` | ffmpeg cutter / path-finder diagnostic |
 | Job terminal status: `FAILED stock.compose_chunks` | `PR-STOCK-RENDERER` | `internal/infrastructure/media/render/renderer.go` | ffmpeg compose diagnostic |
 | Job terminal status: `FAILED stock.finalize` (production gate) | `PR-STOCK-FINALIZER-PUBLISHER-RACE` | `internal/application/assets/providers/stock/stockpipeline/upload_orchestration.go` | Publisher ↔ Finalizer race / out-of-order wire |
+| Job terminal status: stuck, never terminal (job_id returned but state never advances past step ladder) | `PR-STOCK-ORCHESTRATOR-HANDLE-JOB` | `internal/application/assets/providers/stock/stockpipeline/job_handler.go::HandleJob` | Handler execution hang / orchestrator stuck mid-ladder (canonical 6-step `RunResilient` never returns terminal state) |
 | `SUCCEEDED` but `media_assets` empty | `PR-STOCK-FINALIZE-PROJECTION` | `internal/application/assets/providers/stock/stockpipeline/finalizer_gates.go` | Finalizer/projection asset incomplete |
 | `media_assets` OK but search empty | `PR-STOCK-OUTBOX-QDRANT-INDEX` | `internal/application/jobs/outbox/delivery.go` | Outbox delivery / Qdrant indexing best-effort silent-fail |
 | `outbox_events.status='failed'` (transient retry-able) | `PR-STOCK-OUTBOX-RETRY-EXHAUSTED` | `internal/infrastructure/database/sqlite/outboxevents/repository.go::MarkFailed` (line 252) | Pre-condition side: `attempt_count >= max_attempts` check + `RequeueExpiredLeases` scheduling |
@@ -162,6 +163,7 @@ Per action plan §6 + §7 (godlike/06 SSOT one canonical owner per fact). Each P
 | `PR-STOCK-CUTTER` | `internal/infrastructure/media/render/cutter.go` | forward-pointer |
 | `PR-STOCK-RENDERER` | `internal/infrastructure/media/render/renderer.go` | forward-pointer |
 | `PR-STOCK-FINALIZER-PUBLISHER-RACE` | `internal/application/assets/providers/stock/stockpipeline/upload_orchestration.go` | forward-pointer |
+| `PR-STOCK-ORCHESTRATOR-HANDLE-JOB` | `internal/application/assets/providers/stock/stockpipeline/job_handler.go::HandleJob` | forward-pointer |
 | `PR-STOCK-FINALIZE-PROJECTION` | `internal/application/assets/providers/stock/stockpipeline/finalizer_gates.go` | forward-pointer |
 | `PR-STOCK-OUTBOX-QDRANT-INDEX` | `internal/application/jobs/outbox/delivery.go` | forward-pointer |
 | `PR-STOCK-OUTBOX-RETRY-EXHAUSTED` | `internal/infrastructure/database/sqlite/outboxevents/repository.go` | forward-pointer |
@@ -237,3 +239,178 @@ Per CANONICAL.md §1 (3-surface godlike/06 SSOT lockstep):
 - (c) Phase I (this runbook) maintains lockstep with `architecture/action-plans/2026-07-05-stock-e2e-battery.md`
 
 Failure → no flip; consult `architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04` for the 6-item carry-forward (NOT regressions of this wave).
+
+---
+
+## §10 — Stock Pipeline live battery (single-script 12-step probe layer)
+
+This section registers a SECOND operator-facing entry point — the single-script live battery that sequence-asserts search -> direct URL -> finalize -> download -> unified-search in one bash pass. It sits beside §1-§9 (9-phase 14-point battery) as a faster single-operator smoke. Distinct ownership, distinct artifact dir, NOT a duplicate of §1-§9.
+
+**⚠ PRE-LAUNCH DISCLOSURE (godlike/07 NO-FAKE-AVAILABILITY)**: the live battery itself has not yet completed a clean end-to-end run against the current `origin/main` binary (pre-flight Go is RED on `TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope` — Qdrant finalize preflight, OUT-OF-SCOPE for this runbook). The script + workflow are registered in **record-only mode**: operators may invoke them, expect non-zero exit until the pre-flight gate is green.
+
+**Canonical ship gate (no-substitute)**: this runbook's §10 is an operator-facing secondary entry point; the canonical ship gate for the parent wave `architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05` is STILL §2's 14-point battery, fired via `bash tests/operational/stock_e2e_full_battery.sh` aggregator with `WRAPPER_BOOKKEEPING=1` once 14/14 PASS. A §10 green run is evidence of the same surface end-to-end, **NOT a substitute for §2's 14-point battery**. The wave-tracker entry MUST remain `status: pending + exit_signal: false` until §2 ship-gate fires — §10 PASS alone does NOT flip the wave. (Per godlike/06 SSOT: one canonical ship-gate per wave; per godlike/07 NO-FAKE-AVAILABILITY: cross-section lockstep between runbook + wave-tracker + aggregator is mandatory. See `scripts/ci-architectural-checks.sh` Check `NoAutoTriggerLiveBattery` for the machine-enforced invariant of §10.6.)
+
+### §10.1 — Purpose + scope (golden path vs hermetic smokes)
+
+- **§1-§9** = the 9-phase hermetic battery (`tests/operational/stock_e2e_*_smoke.sh` + aggregator). Each phase is its own shell script; cumulative verdict = 14 sub-assertions. SRE-grade; canonical ship gate.
+- **§10** = the **single-script 12-step live battery** (`scripts/stock_pipeline_live_test.sh`). One bash entry, sequential 12 steps (HEALTH > /run empty-body > /search-and-run > /run direct_urls > /run youtube_url > /run search_queries > JOB poll > MP4 probe > Drive URL probe > DB asset lookup > unified search > Qdrant hits). Operators can run it cold with one env-var set (`YOUTUBE_URL`) and a fresh admin token.
+
+The two are **not duplicates**: §1 covers facts at per-route / per-DB-table level across 8 separate probes; §10 covers the same surface end-to-end in ONE stream with NO hermeticity assumption.
+
+### §10.2 — Canonical paths + env-var contract
+
+**Canonical paths**:
+- **Source (one source of truth)**: `scripts/stock_pipeline_live_test.sh` — byte-identical, edited ONLY here per godlike/06 SSOT.
+- **Registered copy**: `scripts/tests/stock_pipeline_live_test.sh` — `cp -p` mirror registered under `scripts/tests/`; regenerated from source via `cp -p` (preserves mode + mtime). SHA256-equal at every commit (verified by `cmp -s` per §10.8).
+- **Workflow canonical**: `workflows/test_stock_pipeline_live.yaml` — `workflow_dispatch`-only, no `on: pull_request` / no `on: push` so CI never auto-runs the live battery.
+- **Runbook canonical**: `docs/operations/stock-e2e-runbook.md#§10` (this section).
+
+**Env-var contract** (defaults shown — override at invocation):
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `BASE` | `http://127.0.0.1:8000` | PipelineGen server base URL |
+| `VELOX_PORT` | `8000` | Health-check port (used by workflow pre-flight) |
+| `DB_PATH` | `data/media/media.db.sqlite` | SQLite canonical store (used by workflow pre-flight) |
+| `QDRANT_URL` | `http://127.0.0.1:6333` | Vector store (used by STEP 11 unified search) |
+| `QDRANT_COLLECTION` | `media_assets_current` | Collection name |
+| `YOUTUBE_URL` | _(REQUIRED, no default)_ | Operator-supplied; MUST be a fresh URL the dev cache has NOT pre-fetched. NEVER use `RRJvrDKunyA` (cache-shadow). Suggested fresh IDs: `jNQXAC9IVRw` ("Me at the zoo", 19s). |
+| `QUERY` | _(empty)_ | ytsearch term (only used in RUN_SEARCH=1 mode) |
+| `RUN_SEARCH` | `0` | `1` = ytsearch branch (STEP 2 enabled); `0` = skip |
+| `RUN_DIRECT` | `1` | `1` = direct URL branch (STEP 3-4 enabled); `0` = skip |
+| `REQUIRE_QDRANT` | `1` | `1` = STEP 11 must find ≥1 hit; `0` = best-effort |
+| `MIN_MP4_BYTES` | `65536` | Pass threshold for STEP 7 (MP4 probe) |
+| `JOB_POLL_TIMEOUT` | `300` | Total seconds waiting for job terminal state |
+| `JOB_POLL_INTERVAL` | `10` | Seconds between `/jobs/<id>/full` polls |
+| `STOCK_DRIVE_FOLDER_ID` | _(unset — server uses canonical Drive upload folder from `internal/infrastructure/remote/drive` config)_ | Optional folder override; if unset, the server reads the canonical Drive folder from its bound config (typically `STOCK_DRIVE_FOLDER_ID` env or `config/routing.yaml`'s `stock.drive_folder_id`). |
+| `VELOX_ADMIN_TOKEN` | _(REQUIRED)_ | Bearer token for `/api/stock-pipeline/*` + `/api/jobs/*` |
+
+**Defaults grep-verified 2026-07-12**: every default in this table was confirmed against `scripts/stock_pipeline_live_test.sh` defaults block (lines 42-53) via `grep -nE '^:? *(QDRANT_URL|QDRANT_COLLECTION|BASE|VELOX_PORT|DB_PATH|YOUTUBE_URL|QUERY|RUN_SEARCH|RUN_DIRECT|REQUIRE_QDRANT|MIN_MP4_BYTES|JOB_POLL_TIMEOUT|JOB_POLL_INTERVAL|STOCK_DRIVE_FOLDER_ID)=' scripts/stock_pipeline_live_test.sh`. Drift detection: re-run this grep on any operator commit that touches the script's defaults block. SSOT regression here MUST update BOTH the script and this runbook atomically (per godlike/06 lockstep).
+
+### §10.3 — Artifact directory + log layout
+
+All artifacts persist to `/tmp/stock-pipeline-live-test/` (re-created clean every run).
+
+```
+/tmp/stock-pipeline-live-test/
+├── preflight_health.txt            # pre-STEP 1 gate — GET /health body (operator curls /health BEFORE STEP 1 fires)
+├── step1_empty_body.txt            # STEP 1 — POST /run with empty {} body response (route-aliveness probe)
+├── step3_attempt1_*                # STEP 3 attempt 1 (search_queries or direct_urls)
+├── step3_attempt2_url_response.json
+├── step3_attempt3_youtube_url_response.json
+├── step3_attempt4_queries_response.json
+├── step3_attempt5_*                # last attempt fallback
+├── job_<id>_poll.json              # last polled job status snapshot
+├── job_<id>_final.json             # terminal state
+├── mp4_dl_<id>.mp4                 # downloaded MP4 (if STEP 7 succeeded)
+├── ffprobe_<id>.json               # STEP 8 ffprobe output snapshot
+├── drive_url_<id>.json             # STEP 9 Drive URL probe response
+├── db_asset_<id>.json              # STEP 10 media_assets row (canonical receipt)
+├── unified_search_<id>.json        # STEP 11 unified search response
+├── qdrant_hits_<id>.json           # STEP 12 Qdrant direct hits
+└── stock_pipeline_run.log          # full stdout transcript
+```
+
+**Operator handoff**: after every run, copy `/tmp/stock-pipeline-live-test/` (or zip and attach to operator ticket) BEFORE `rm -rf` — the directory is wiped on next invocation.
+
+### §10.4 — Exit codes + verdict grammar
+
+- `exit 0` → all asserted steps PASS (no FAIL/SKIP-exceeded thresholds).
+- `exit 1` → ≥1 step FAILED; consult `[FAIL]` lines + artifact dir.
+- `exit 2` → environment prerequisite missing (token unset, server unreachable, yt-dlp absent, etc.). Halts BEFORE any step.
+
+**Verdict line grammar**: script emits one final `VERDICT pass=<n> fail=<n> job=<id-or-none> asset=<id-or-none> qdrant_hits=<n>` line. Operators (or `workflows/test_stock_pipeline_live.yaml`'s `report_verdict` step) anchor on this line for ticket paste.
+
+### §10.5 — Triage table (layer ⇄ failure ⇄ file ⇄ forward-pointer)
+
+When the battery emits `[FAIL]`, the canonical owner file is the diagnostic target. Per godlike/06 SSOT, edit ONLY that file (NOT this runbook, NOT the script).
+
+| Layer | [FAIL] observed on STEP | Canonical owner file | Forward-pointer |
+|-------|--------------------------|----------------------|-----------------|
+| Route | STEP 1 / STEP 2 / STEP 3 | `internal/api/assets/stock/handler.go::RegisterRoutes` | `PR-STOCK-ROUTE-REGISTRATION` |
+| Validation (key shape) | STEP 3 attempts 2-4 (HTTP 400 "invalid key") | `internal/api/assets/stock/handler_run.go::RunStockPipeline` | `PR-STOCK-PREFLIGHT-VALIDATION` |
+| Composition / nil-tolerance | STEP 3 attempt 1 ⇄ HTTP 503 | `internal/app/build_bundles_stock.go::WireStock` | `PR-STOCK-COMPOSITION-WIRE` |
+| Job / broker Enqueue (hang at submit) | STEP 3 attempt-N HTTP 000 / "no job_id" — handler accepted the request but never returned a job_id | `internal/infrastructure/database/sqlite/jobs/repository.go::Create` (+ `internal/application/jobs/enqueue_service.go`) | `PR-STOCK-COMPOSITION-WIRE` (envelope) |
+| Job / handler HandleJob (hang at execute) | STEP 4 polling timeout AFTER job_id was returned — terminal state (`SUCCEEDED` / `FAILED`) never reached | `internal/application/assets/providers/stock/stockpipeline/job_handler.go::HandleJob` (+ `orchestrator_run.go::RunResilient`) | `PR-STOCK-ORCHESTRATOR-HANDLE-JOB` |
+| Source staging | STEP 5 final state FAILED at `stock.stage_sources` | `internal/application/assets/providers/stock/stockpipeline/stager_adapter.go` | `PR-STOCK-STAGER-WIRE` |
+| Cutter / ffmpeg | STEP 7 zero-size OR STEP 8 ffprobe failed | `internal/infrastructure/media/render/cutter.go` | `PR-STOCK-CUTTER` |
+| Renderer / ffmpeg compose | STEP 5 final state FAILED at `stock.compose_chunks` | `internal/infrastructure/media/render/renderer.go` | `PR-STOCK-RENDERER` |
+| Finalize + Publisher | STEP 5 final state FAILED at `stock.finalize` | `internal/application/assets/providers/stock/stockpipeline/upload_orchestration.go` | `PR-STOCK-FINALIZER-PUBLISHER-RACE` |
+| Asset projection (DB) | STEP 10 "asset not found" | `internal/application/assets/providers/stock/stockpipeline/finalizer_gates.go` | `PR-STOCK-FINALIZE-PROJECTION` |
+| Outbox / Qdrant index | STEP 11 ≥1 hit expected but empty | `internal/application/jobs/outbox/delivery.go` | `PR-STOCK-OUTBOX-QDRANT-INDEX` |
+| Unified search | STEP 11 source field != stock | `internal/infrastructure/qdrant/search/indexing.go::IndexAsset` | `PR-STOCK-OUTBOX-QDRANT-INDEX` |
+| Download handler | STEP 7 HTTP 404 | `internal/api/assets/stock/handler.go::DownloadClip` | `PR-STOCK-DOWNLOAD-ROUTE-REGISTRATION` |
+| Qdrant hits (direct) | STEP 12 `REQUIRE_QDRANT=1` ⇄ 0 hits | `internal/infrastructure/qdrant/projection/port.go` | `PR-STOCK-OUTBOX-QDRANT-INDEX` |
+
+The two distinct JOB-layer rows encode TWO separate failure modes:
+- **(hang at submit)** = broker/Enqueue never returned a job_id (downstream of STEP 3 attempt-1 with valid key shape).
+- **(hang at execute)** = broker returned a job_id BUT the orchestrator/handle-job never reached a terminal state (downstream of STEP 4 polling).
+
+These are distinct sub-surfaces with distinct owner files and distinct forward-pointers. Lockstep with §3 + §5 row additions of `PR-STOCK-ORCHESTRATOR-HANDLE-JOB`.
+
+### §10.6 — CI policy: NO AUTO-TRIGGER on PR or push
+
+Per `AGENTS.md ## Operational rules` + the live script's side-effect surface (yt-dlp + Drive writes + Qdrant mutations): the workflow MUST be `workflow_dispatch`-only. The current YAML (`workflows/test_stock_pipeline_live.yaml`) has no `on:` block besides manual dispatch — verified at registration (re-verify after any edits).
+
+**Machine enforcement**: `scripts/ci-architectural-checks.sh` Check `NoAutoTriggerLiveBattery` (\u2192 wire-up by same PR that registered this runbook) rg-scans `.github/workflows/*.{yml,yaml}` for any auto-trigger block mentioning the live battery, AND scans `workflows/*.yaml` (excluding the canonical `test_stock_pipeline_live.yaml`) for any reference to the live battery. ANY hit fails the gate. The canonical workflow itself is also checked: it MUST NOT declare `kind: schedule|push|pull_request` under `triggers:`.
+
+A grep guard (documentation mirror of the CI check):
+
+```bash
+git grep -l 'stock_pipeline_live_test.sh' .github/workflows/ 2>/dev/null \
+    && echo 'GUARD FAIL: live battery referenced in .github/workflows/' \
+    && exit 1
+echo 'GUARD OK: live battery NOT referenced in .github/workflows/'
+```
+
+If the guard ever fails, the canonical fix is to remove the auto-trigger reference (per godlike/07 minimum-blast-radius) — NOT to soften the guard.
+
+### §10.7 — Cache-shadowed ID callout (single known case + canonical discovery procedure)
+
+The dev cache keeps a small handful of special YouTube IDs that mask wiring regressions. Operators MUST avoid cache-shadowed IDs in `YOUTUBE_URL` and run the canonical discovery procedure below to confirm reachability + non-cached status.
+
+**Single known case (explicit cache-shadow)**:
+
+- `RRJvrDKunyA` — cache-shadow candidate: the dev-side cache pre-fetches this ID and silently bypasses `yt-dlp` (hard-refused; NEVER use for live battery runs).
+
+**Canonical discovery procedure** (for any other ID the operator considers):
+
+```bash
+# 1. Confirm reachability + duration + non-cached status.
+yt-dlp --no-warnings --skip-download \
+    --print '%(id)s | %(duration)ss | %(title)s' \
+    '<candidate-url>'
+
+# 2. Confirm the duration is reasonable for the battery (≥10s, ≤600s recommended).
+#    - too short → STEP 7/8 may not have enough content for cutter/ffprobe assertions
+#    - too long  → STEP 4 polling tail may exceed JOB_POLL_TIMEOUT=300
+
+# 3. Suggested canonical fresh IDs (NOT cache-shadowed; verified by past runs):
+#    - jNQXAC9IVRw (Jawed Karim's first-ever YouTube upload "Me at the zoo", 19s)
+#    - dQw4w9WgXcQ ("Never Gonna Give You Up", 213s; rarely cache-shadowed)
+```
+
+**Why this section is single-callout, not a list**: the dev cache is session-scoped; the only ID observed to be hard-cache-shadowed is `RRJvrDKunyA`. Any other ID flagged cache-shadowed AFTER this runbook is published MUST add to `docs/operations/stock-e2e-cache-known.txt` (gated by §10.8 byte-equivalence discipline) — operators treat that file as the live source-of-truth for cache-shadow discoveries, NOT this section.
+
+### §10.8 — Maintenance + drift detection
+
+Per godlike/06 SSOT, the source script and the registered copy must remain byte-identical at every commit:
+
+```bash
+# Regenerate the registered copy from the source.
+cp -p scripts/stock_pipeline_live_test.sh scripts/tests/stock_pipeline_live_test.sh
+
+# Verify byte-equivalence (POSIX-portable: cmp -s works on macOS / BSD / CI Linux).
+# GNU-only alternatives like `diff -q <(sha256sum ...)` were rejected because
+# sha256sum is non-portable; cmp is in POSIX.1-2008.
+if cmp -s scripts/stock_pipeline_live_test.sh scripts/tests/stock_pipeline_live_test.sh; then
+    echo 'OK: source-of-truth is byte-equivalent to registered copy'
+else
+    echo 'DRIFT: registered copy stale; regenerate via cp -p above'
+    exit 1
+fi
+```
+
+Wire the `cmp -s` equivalence check into `make verify-main` (or `scripts/ci-architectural-checks.sh`) as a machine-enforced invariant — per godlike/06 SSOT, machine-enforced invariants trump prose documentation.
+
+**Wave-tracker coupling**: `architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05` does NOT gain a new child entry for §10 — §10 is a side artifact of the same wave, not a new wave. If a future wave lifts §10 into a first-class surface, it would get its own `STOCK-E2E-LIVE-BATTERY-<date>` entry per the slim-schema ratchet.
