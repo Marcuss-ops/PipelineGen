@@ -78,7 +78,17 @@ type ExternalConfig struct {
 	WebSearchTimeoutSeconds int    `yaml:"web_search_timeout_seconds" env:"SEARXNG_TIMEOUT" default:"15"`
 
 	// Artlist scraper optimizations
-	ArtlistScraperServerURL        string `yaml:"artlist_scraper_server_url" env:"ARTLIST_SCRAPER_SERVER_URL" default:""`
+	// (PR-ARTLIST-CONFIG-PREFIX, July 2026): env var renamed from the
+	// bare ARTLIST_SCRAPER_SERVER_URL to VELOX_-prefixed form so it
+	// matches docker-compose.yml + the Velox internal-services naming
+	// convention (VELOX_MASTER_URL, VELOX_NODE_SCRAPER_DIR, ...). The
+	// YAML key `artlist_scraper_server_url` is unchanged for backward
+	// compatibility with existing config.example.yaml consumers.
+	// godlike/07 fail-closed: cutover is pure (no fallback to the bare
+	// name); validateArtlistScraperURL in internal/app/build_bundles_artlist.go
+	// surfaces the missing env at boot with the new VELOX_-prefixed
+	// escape-hatch instructions in the error message.
+	ArtlistScraperServerURL        string `yaml:"artlist_scraper_server_url" env:"VELOX_ARTLIST_SCRAPER_SERVER_URL" default:""`
 	ArtlistLiveSearchCacheTTLHours int    `yaml:"artlist_live_search_cache_ttl_hours" env:"ARTLIST_CACHE_TTL_HOURS" default:"24"`
 
 	// Artlist cookies path for yt-dlp (July 2026): replaces the hardcoded

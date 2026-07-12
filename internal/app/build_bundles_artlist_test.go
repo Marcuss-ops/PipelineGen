@@ -34,9 +34,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -438,8 +438,8 @@ func TestValidateArtlistScraperURL_EnabledAndEmptyURL_ReturnsError(t *testing.T)
 		"error must name the failing field (the URL was missing)")
 	assert.Contains(t, err.Error(), "ART-002 P0.1",
 		"error must cite the wave-tracker anchor for audit-traceability")
-	assert.Contains(t, err.Error(), "ARTLIST_SCRAPER_SERVER_URL",
-		"error must name the env var operators must set")
+	assert.Contains(t, err.Error(), "VELOX_ARTLIST_SCRAPER_SERVER_URL",
+		"error must name the env var operators must set (PR-ARTLIST-CONFIG-PREFIX July 2026 cutover from bare ARTLIST_SCRAPER_SERVER_URL)")
 	assert.Contains(t, err.Error(), "VELOX_FEATURE_ARTLIST_ENABLED=false",
 		"error must include the disable escape hatch for operators who don't need the feature")
 }
