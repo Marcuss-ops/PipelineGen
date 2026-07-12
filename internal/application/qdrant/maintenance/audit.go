@@ -51,20 +51,20 @@ func (s *Service) Audit(ctx context.Context, opts AuditOptions) error {
 		s.log.Warn("qdrant-maintenance: classify returned with errors; printing partial report", zap.Error(err))
 		if opts.JSON && report != nil {
 			b, _ := json.Marshal(report)
-			fmt.Println(string(b))
+			fmt.Fprintln(s.cliWriter, string(b))
 		}
 		return err
 	}
 
 	if opts.JSON {
 		b, _ := json.Marshal(report)
-		fmt.Println(string(b))
+		fmt.Fprintln(s.cliWriter, string(b))
 		return nil
 	}
 
-	fmt.Println("=== qdrant-maintenance audit ===")
-	fmt.Println(legacyaudit.StringifyReport(report))
-	fmt.Println("\nRe-run with 'repair-locators' to strip legacy payload keys,")
-	fmt.Println("or 'delete-invalid' to dispatch canonical outbox DELETE events for non-locator findings.")
+	fmt.Fprintln(s.cliWriter, "=== qdrant-maintenance audit ===")
+	fmt.Fprintln(s.cliWriter, legacyaudit.StringifyReport(report))
+	fmt.Fprintln(s.cliWriter, "\nRe-run with 'repair-locators' to strip legacy payload keys,")
+	fmt.Fprintln(s.cliWriter, "or 'delete-invalid' to dispatch canonical outbox DELETE events for non-locator findings.")
 	return nil
 }
