@@ -143,6 +143,32 @@ DIAG_FILE = (
 # only until `_maybe_recycle_page` triggers (every 20 successful runs).
 SLIDE_WORKER_REFRESH_EVERY = max(1, int(os.environ.get("SLIDE_WORKER_REFRESH_EVERY") or "1"))
 
+# ── Candidate-locator canonical form (July 2026) ──────────────────────────
+#
+# CANDIDATE_LOCATOR_SELECTOR: the canonical Playwright locator fragment
+# for sniffing AI-generated image candidates from the Google Slides
+# Nano Banana gallery. Centralised here so selector tweaks land in ONE
+# place — previously duplicated across _extract_candidates + the polling
+# loop in _generate, with silent-drift risk as the Slides DOM tree
+# evolves across builds.
+#
+#   .docs-content-library-image-generation-item img
+#       — tree-level container for the Slides image-generation panel
+#   img.docs-image-synthesis-item
+#       — element-level class pinned in P0.4.A on AI-synthesised items
+#   img[src*="googleusercontent"]
+#       — host-bucket filter for any googleusercontent-served candidate
+#   img
+#       — broad-scope fallback so late-loaded gallery children are seen
+#
+# Bit-for-bit identical to the previous inline fragments; refactor only.
+CANDIDATE_LOCATOR_SELECTOR = (
+    '.docs-content-library-image-generation-item img, '
+    'img.docs-image-synthesis-item, '
+    'img[src*="googleusercontent"], '
+    'img'
+)
+
 
 def _iso8601_utc_ms() -> str:
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
@@ -363,12 +389,7 @@ def _extract_candidates(page, max_keep: int = 8) -> list:
     if page is None:
         return []
     try:
-        locators = page.locator(
-            '.docs-content-library-image-generation-item img, '
-            'img.docs-image-synthesis-item, '
-            'img[src*="googleusercontent"], '
-            'img'
-        ).all()
+        locators = page.locator(CANDIDATE_LOCATOR_SELECTOR).all()
         out = []
         for img in locators[:max_keep]:
             try:
@@ -1407,12 +1428,7 @@ class ProfileWorker(threading.Thread):
             while waited < max_wait:
                 self.page.wait_for_timeout(poll_interval * 1000)
                 waited += poll_interval
-                imgs_check = self.page.locator(
-                    '.docs-content-library-image-generation-item img, '
-                    'img.docs-image-synthesis-item, '
-                    'img[src*="googleusercontent"], '
-                    'img'
-                ).all()
+                imgs_check = self.page.locator(CANDIDATE_LOCATOR_SELECTOR).all()
                 total_located = len(imgs_check)
                 _log(
                     f"[profile-{self.profile_id}][{request_id}] poll t={waited}s located={total_located} filtered_out={total_filtered_out}"
