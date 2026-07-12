@@ -1,45 +1,61 @@
 // Package outbox (repository_test.go) — unit tests for the canonical
-// event_key constructor (indexEventKey). The PR 5
-// (QDRANT-full-content-hash, June 2026) fix replaces an inline
-// Sprintf that called shortHashPrefix(contentHash); two distinct
-// content hashes that shared the first 12 chars collapsed into the
-// same event_key → the worker's supersede gate closed the (correct)
-// newer event in favour of the (stale) older one. These tests pin
-// the full-hash contract against two such colliding hashes.
+// outbox event_key constructor. Fase 5 / Commit 2 (July 2026)
+// replaced the legacy 5-segment indexEventKey helper (which
+// included clipindexer model/version/collection segments) with
+// the canonical 4-segment idempotency.OutboxKey (eventType:
+// provider:clipID:sourceVersion). These tests pin:
 //
-// White-box (`package outbox`) so the test can call the unexported
-// indexEventKey helper directly. No DB or external state required:
-// the helper is a pure function of (assetID, contentHash) and the
-// canonical clipindexer global state, which are compile-time
-// constants in the test binary.
+//  1. The 4-segment shape: eventType:provider:clipID:sourceVersion.
+//  2. The PR 5 gate (QDRANT-full-content-hash, June 2026): the
+//     FULL content hash is preserved in the key — two hashes that
+//     share their shortHashPrefix (first 12 chars) MUST still
+//     produce DISTINCT event_keys, otherwise the outbox_events
+//     UNIQUE constraint collapses them and the supersede gate
+//     closes the wrong event.
+//  3. Determinism: identical inputs produce identical keys
+//     (the dedup-gate enabler).
+//  4. Provider-segment distinctness: same clipID with different
+//     providers MUST produce different event_keys (so a
+//     YouTube clip and an Artlist clip with the same string ID
+//     don't collide in the outbox).
+//
+// White-box (`package outbox`) so the test can call the
+// canonical idempotency.OutboxKey directly. No DB or external
+// state required: the key is a pure function of the inputs.
 package outbox
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 )
 
-// TestIndexEventKey_DistinguishesHashesSamePrefix is the PR 5 gate:
-// the canonical contract is that two hashes whose first 12 chars
-// match MUST still produce DIFFERENT event_keys — otherwise the
-// outbox_events UNIQUE constraint collapses them to a single row
-// and the worker's supersede gate closes the wrong event.
+// TestOutboxKey_DistinguishesHashesSamePrefix is the PR 5 gate
+// (QDRANT-full-content-hash, June 2026) carried forward into
+// the Commit 2 wire-in: the canonical contract is that two
+// hashes whose first 12 chars match MUST still produce
+// DIFFERENT event_keys — otherwise the outbox_events UNIQUE
+// constraint collapses them to a single row and the worker's
+// supersede gate closes the wrong event.
 //
-// The PR 5 fix replaces `shortHashPrefix(contentHash)` (which
-// truncates to 12 chars) with the FULL content hash in event_key
-// construction. The pre-PR-5 code generated the same event_key for
-// the two hashes below; the post-PR-5 code generates two distinct
-// event_keys, each containing its own FULL hash substring.
+// The pre-PR-5 code generated the same event_key for the two
+// hashes below; the canonical OutboxKey preserves the FULL
+// source_version in the key, so two hashes that share their
+// shortHashPrefix still produce distinct keys (the unique
+// suffix of each hash lives in the trailing portion of the
+// key).
 //
 // Why these specific hashes: they differ ONLY in chars 13..end
-// (the suffix). shortHashPrefix returns the identical first 12 chars
-// for both, so the pre-fix code collapsed them — the gate symptom.
-// Post-fix, both full hashes land in the event_key under test.
-func TestIndexEventKey_DistinguishesHashesSamePrefix(t *testing.T) {
+// (the suffix). shortHashPrefix returns the identical first 12
+// chars for both, so a pre-fix collision would have collapsed
+// them — the gate symptom. Post-fix, both full hashes land in
+// the event_key under test.
+func TestOutboxKey_DistinguishesHashesSamePrefix(t *testing.T) {
 	const (
 		assetID = "asset-event-key"
+		provider = "artlist"
 		hashA   = "abcdef12345611111111111111111111111111111111111111"
 		hashB   = "abcdef12345622222222222222222222222222222222222222"
 	)
@@ -50,29 +66,38 @@ func TestIndexEventKey_DistinguishesHashesSamePrefix(t *testing.T) {
 		t.Fatalf("test setup is wrong: the two hashes must share their shortHashPrefix output for the test to be meaningful (got prefixA=%q prefixB=%q)", prefixA, prefixB)
 	}
 
-	keyA := indexEventKey(assetID, hashA)
-	keyB := indexEventKey(assetID, hashB)
+	keyA, errA := idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested, provider, assetID, hashA,
+	)
+	if errA != nil {
+		t.Fatalf("OutboxKey A: %v", errA)
+	}
+	keyB, errB := idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested, provider, assetID, hashB,
+	)
+	if errB != nil {
+		t.Fatalf("OutboxKey B: %v", errB)
+	}
 
-	// (1) Distinctness: a regression to shortHashPrefix in event_key
-	// would produce identical event_keys here. The exact equality
-	// check is the load-bearing assertion — collision-free
-	// event_keys are the entire point of PR 5.
+	// (1) Distinctness: a regression to shortHashPrefix in
+	// event_key would produce identical event_keys here. The
+	// exact equality check is the load-bearing assertion —
+	// collision-free event_keys are the entire point of PR 5.
 	if keyA == keyB {
 		t.Fatalf(
-			"QDRANT-full-content-hash (PR 5) regression: indexEventKey must "+
+			"QDRANT-full-content-hash (PR 5) regression: OutboxKey must "+
 				"produce DISTINCT event_keys for two hashes that share the same "+
 				"first-12-chars prefix (shortHashPrefix would have collapsed them). "+
-				"Got keyA == keyB == %q — the inline construction is still using "+
-				"shortHashPrefix(contentHash). Replace it with the FULL content hash.",
+				"Got keyA == keyB == %q — the dispatcher is still using the truncated prefix.",
 			keyA,
 		)
 	}
 
 	// (2) Full-hash inclusion: the unique-suffix portion of each
-	// hash (After the 12-char prefix) MUST appear somewhere in the
-	// event_key. The first 12 chars are shared and therefore NOT a
-	// reliable witness — only the suffix proves the full hash
-	// reached the key.
+	// hash (after the 12-char prefix) MUST appear somewhere in
+	// the event_key. The first 12 chars are shared and therefore
+	// NOT a reliable witness — only the suffix proves the full
+	// hash reached the key.
 	suffixA := hashA[len(prefixA):]
 	suffixB := hashB[len(prefixB):]
 	if !strings.Contains(keyA, suffixA) {
@@ -83,85 +108,151 @@ func TestIndexEventKey_DistinguishesHashesSamePrefix(t *testing.T) {
 	}
 }
 
-// TestIndexEventKey_Shape pins the canonical event_key shape so a
-// future refactor that splits the format string (e.g. moves to a
-// struct key, or omits the collection_version suffix) trips the
-// shape assertion instead of silently breaking the outbox UNIQUE
-// constraint.
+// TestOutboxKey_Shape pins the canonical 4-segment event_key
+// shape so a future refactor that splits the format string
+// (e.g. moves to a struct key, or re-adds infra-level
+// segments) trips the shape assertion instead of silently
+// breaking the outbox UNIQUE constraint.
 //
 // The accepted shape is:
 //
-//	"index:<asset_id>:<full_content_hash>:<embedding_model>:<embedding_version>:<collection_version>"
+//	"<event_type>:<provider>:<clip_id>:<source_version>"
 //
-// Matches the legacy media_index_outbox unique-key semantics for
-// migration continuity (the prior outbox_events table that
-// repository.go replaced was keyed on the same tuple).
-func TestIndexEventKey_Shape(t *testing.T) {
+// eventType is the dispatch-routing prefix (e.g.
+// "asset.index.requested"). The infra-level fields
+// (model/version/collection) from the legacy 5-segment
+// shape are intentionally OMITTED — they're not part of
+// the dedup identity (a model change must not break dedup,
+// per the Commit 2 design rationale).
+func TestOutboxKey_Shape(t *testing.T) {
 	const (
+		provider    = "artlist"
 		assetID     = "asset-shape"
 		contentHash = "1111111111111111111111111111111111111111"
 	)
-	key := indexEventKey(assetID, contentHash)
+	key, err := idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested, provider, assetID, contentHash,
+	)
+	if err != nil {
+		t.Fatalf("OutboxKey: %v", err)
+	}
 
 	parts := strings.Split(key, ":")
-	// 6 segments: ["index", assetID, contentHash, model, version, collection]
-	if len(parts) != 6 {
-		t.Fatalf("event_key shape: expected 6 colon-separated segments, got %d in %q", len(parts), key)
+	// 4 segments: [eventType, provider, clipID, sourceVersion].
+	// The legacy 5-segment shape had 6 segments
+	// ([index, assetID, contentHash, model, version, collection]);
+	// the regression guard is the segment-count assertion below.
+	if len(parts) != 4 {
+		t.Fatalf("event_key shape: expected 4 colon-separated segments, got %d in %q (legacy 5-segment shape returned 6; if you see 6 the wire-shape rollback to indexEventKey happened)", len(parts), key)
 	}
-	if parts[0] != "index" {
-		t.Errorf("event_key shape: first segment must be %q (the event_type prefix), got %q", "index", parts[0])
+	if parts[0] != outboxevents.EventAssetIndexRequested {
+		t.Errorf("event_key shape: first segment must be event_type %q, got %q", outboxevents.EventAssetIndexRequested, parts[0])
 	}
-	if parts[1] != assetID {
-		t.Errorf("event_key shape: second segment must be assetID %q, got %q", assetID, parts[1])
+	if parts[1] != provider {
+		t.Errorf("event_key shape: second segment must be provider %q, got %q", provider, parts[1])
 	}
-	if parts[2] != contentHash {
-		t.Errorf("event_key shape: third segment must be the FULL contentHash %q, got %q (got shortHashPrefix instead?)", contentHash, parts[2])
+	if parts[2] != assetID {
+		t.Errorf("event_key shape: third segment must be clipID %q, got %q", assetID, parts[2])
 	}
-	// The remaining three segments are clipindexer compile-time
-	// constants; just confirm they are non-empty so a future
-	// clipindexer config-loader change that accidentally returns
-	// "" doesn't silently collapse distinct assets.
-	if parts[3] != clipindexer.EmbeddingModel() || parts[3] == "" {
-		t.Errorf("event_key shape: 4th segment must be clipindexer.EmbeddingModel() %q (non-empty), got %q", clipindexer.EmbeddingModel(), parts[3])
+	if parts[3] != contentHash {
+		t.Errorf("event_key shape: fourth segment must be the FULL source_version %q, got %q (got shortHashPrefix instead?)", contentHash, parts[3])
 	}
-	if parts[4] != clipindexer.EmbeddingModelVersion() || parts[4] == "" {
-		t.Errorf("event_key shape: 5th segment must be clipindexer.EmbeddingModelVersion() %q (non-empty), got %q", clipindexer.EmbeddingModelVersion(), parts[4])
-	}
-	if parts[5] != clipindexer.CollectionVersion() || parts[5] == "" {
-		t.Errorf("event_key shape: 6th segment must be clipindexer.CollectionVersion() %q (non-empty), got %q", clipindexer.CollectionVersion(), parts[5])
+	// Regression guard: the legacy 5-segment shape used an
+	// "index:" prefix. If a future refactor accidentally
+	// re-introduces the legacy helper, this assertion fires.
+	if strings.HasPrefix(key, "index:") {
+		t.Errorf("event_key must NOT use the legacy 5-segment 'index:' prefix; got %q (Commit 2 wire-in regression)", key)
 	}
 }
 
-// TestIndexEventKey_HashesShortAndLong confirms the helper works
+// TestOutboxKey_HashesShortAndLong confirms the helper works
 // on both edge cases: a content hash SHORT enough that
-// shortHashPrefix returns the WHOLE string, and a hash LONG enough
-// that the prefix differs from the full hash. The PR 5 contract is
-// that the event_key contains the FULL hash in both cases. The
-// pre-PR-5 code returned keyA == keyB if both hashes shared the
-// 12-char prefix, regardless of length.
-func TestIndexEventKey_HashesShortAndLong(t *testing.T) {
-	const assetID = "asset-edge"
+// shortHashPrefix returns the WHOLE string, and a hash LONG
+// enough that the prefix differs from the full hash. The PR 5
+// contract is that the event_key contains the FULL hash in
+// both cases. The pre-PR-5 code returned keyA == keyB if both
+// hashes shared the 12-char prefix, regardless of length.
+func TestOutboxKey_HashesShortAndLong(t *testing.T) {
+	const (
+		assetID  = "asset-edge"
+		provider = "artlist"
+	)
 
-	// Long hash A & B (50 chars, same first 12, different suffix).
+	// Long hash A & B (22 chars, same first 12, different suffix).
 	longA := "abcdef123456" + "AAAAAAAAAA"
 	longB := "abcdef123456" + "BBBBBBBBBB"
 	// Sanity: the prefix is identical.
 	if shortHashPrefix(longA) != shortHashPrefix(longB) {
 		t.Fatalf("test setup: longA/longB shortHashPrefix must match (test fixture)")
 	}
-	keyLongA := indexEventKey(assetID, longA)
-	keyLongB := indexEventKey(assetID, longB)
+	keyLongA, errA := idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested, provider, assetID, longA,
+	)
+	if errA != nil {
+		t.Fatalf("OutboxKey longA: %v", errA)
+	}
+	keyLongB, errB := idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested, provider, assetID, longB,
+	)
+	if errB != nil {
+		t.Fatalf("OutboxKey longB: %v", errB)
+	}
 	if keyLongA == keyLongB {
 		t.Errorf("long hashes with same 12-char prefix: event_keys must differ; got keyLongA == keyLongB == %q", keyLongA)
 	}
 
-	// Short hash (≤12 chars). Both hashes below are exactly 12
-	// chars and identical → keyA MUST equal keyB (degenerate case;
-	// two truly identical hashes dedupe correctly, regardless of
-	// which length branch shortHashPrefix takes).
-	hashShortA := "abc123def456"
-	hashShortB := "abc123def456"
-	if keyA := indexEventKey(assetID, hashShortA); keyA != indexEventKey(assetID, hashShortB) {
-		t.Errorf("identical hashes: event_keys must be identical for dedupe (unexpected: keyA=%q != keyB=%q)", keyA, indexEventKey(assetID, hashShortB))
+	// Identical short hashes (≤12 chars): dedupe correctly —
+	// two truly identical source_versions must produce identical
+	// event_keys (the dedup-gate enabler).
+	const hashShort = "abc123def456"
+	keyS1, errS1 := idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested, provider, assetID, hashShort,
+	)
+	if errS1 != nil {
+		t.Fatalf("OutboxKey short: %v", errS1)
+	}
+	keyS2, errS2 := idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested, provider, assetID, hashShort,
+	)
+	if errS2 != nil {
+		t.Fatalf("OutboxKey short: %v", errS2)
+	}
+	if keyS1 != keyS2 {
+		t.Errorf("identical source_versions: event_keys must be identical for dedupe (unexpected: keyS1=%q != keyS2=%q)", keyS1, keyS2)
+	}
+}
+
+// TestOutboxKey_ProviderSegmentDistinctness pins the wire-in
+// contract: the provider segment of the event_key is part of
+// the dedup identity. A YouTube clip and an Artlist clip with
+// the same string clipID MUST produce different event_keys —
+// otherwise a cross-provider replay would collapse in the
+// outbox UNIQUE INDEX.
+func TestOutboxKey_ProviderSegmentDistinctness(t *testing.T) {
+	const (
+		clipID      = "shared-id-123"
+		contentHash = "1111111111111111111111111111111111111111"
+	)
+	ytKey, err := idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested, "youtube", clipID, contentHash,
+	)
+	if err != nil {
+		t.Fatalf("OutboxKey youtube: %v", err)
+	}
+	artKey, err := idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested, "artlist", clipID, contentHash,
+	)
+	if err != nil {
+		t.Fatalf("OutboxKey artlist: %v", err)
+	}
+	if ytKey == artKey {
+		t.Errorf("same clipID with different providers MUST produce different event_keys; both = %q", ytKey)
+	}
+	// Verify the provider segment is the differentiator.
+	if !strings.Contains(ytKey, ":youtube:") {
+		t.Errorf("YouTube event_key must contain ':youtube:' segment; got %q", ytKey)
+	}
+	if !strings.Contains(artKey, ":artlist:") {
+		t.Errorf("Artlist event_key must contain ':artlist:' segment; got %q", artKey)
 	}
 }
