@@ -466,3 +466,209 @@ func TestErrInvalidSegment_SentinelIdentity(t *testing.T) {
 	assert.Contains(t, err.Error(), "segment delimiter",
 		"err message must explain the constraint for operator grep-ability")
 }
+
+// ── BuildKey tests (FASE 5 Commit B / Commit B follow-up, July 2026) ──
+
+// TestBuildKey_HappyPath pins the canonical 64-character lowercase
+// SHA-256 hex output shape. The map content is the canonical
+// artlist run-level dedup input (term + folder_id + strategy +
+// dry_run + limit). The byte-stable output is critical: in-flight
+// jobs queued with the legacy artlist.runDedupKey hash must MATCH
+// across the migration (godlike/06 SSOT byte-stable).
+func TestBuildKey_HappyPath(t *testing.T) {
+	canonical := map[string]any{
+		"term":           "city",
+		"root_folder_id": "drive-folder",
+		"strategy":       "verify",
+		"dry_run":        false,
+		"limit":          8,
+	}
+	key, err := BuildKey("artlist-run", canonical)
+	require.NoError(t, err)
+	// SHA-256 hex = 64 lowercase chars.
+	assert.Len(t, key, 64)
+	assert.Equal(t, strings.ToLower(key), key, "BuildKey MUST return lowercase hex (operator grep-ability)")
+
+	// Byte-stability fixture (Commit B follow-up, July 2026): the
+	// NEW BuildKey output MUST produce the EXACT 64-char hex the
+	// legacy artlist.runDedupKey did for this canonical input.
+	// Otherwise in-flight jobs queued under the legacy hash would
+	// miss-dedup at the kernel job broker's UNIQUE on
+	// `jobs.active_key`. The expected hex is derived off-line via
+	// `echo -n '{"dry_run":false,"limit":8,"root_folder_id":"drive-folder","strategy":"verify","term":"city"}' | sha256sum`
+	// (Go encoding/json sorts map keys alphabetically — the
+	// canonical JSON is the sorted form, byte-exact identical to
+	// the legacy runDedupKey pipeline).
+	assert.Equal(t, "0b553b4dd6721826f37e70dc40f4863ef6ea8632272098b5a7b123781304a4cb", key,
+		"BuildKey must produce byte-stable output identical to legacy artlist.runDedupKey — any drift breaks in-flight jobs")
+
+	// Pin the canonical shape: a NEW producer with the same
+	// canonical map must produce the same key (deterministic).
+	canonical2 := map[string]any{
+		"term":           "city",
+		"root_folder_id": "drive-folder",
+		"strategy":       "verify",
+		"dry_run":        false,
+		"limit":          8,
+	}
+	key2, err := BuildKey("artlist-run", canonical2)
+	require.NoError(t, err)
+	assert.Equal(t, key, key2, "BuildKey must be deterministic (same canonical + same provider → same key)")
+}
+
+// TestBuildKey_DifferentProviderSameKey pins the deliberate
+// provider-validation-only invariant (Commit B byte-stability
+// discipline, July 2026).
+//
+// The provider parameter is the VALIDATION discriminator
+// (rejects empty provider + ':' in provider via typed sentinels)
+// but is NOT part of the hash input. Two callers with different
+// provider discriminators ("artlist-run" vs "stock-run") and
+// IDENTICAL canonical content produce IDENTICAL SHA-256 hex
+// keys.
+//
+// Why: the design verdict REQUIRED byte-stability with the legacy
+// artlist.runDedupKey to avoid breaking in-flight jobs queued
+// under the legacy hash. The legacy runDedupKey did NOT include
+// the provider discriminator in its canonical map — only the
+// 5 dedup segments (term + root_folder_id + strategy + dry_run
+// + limit). Adding the provider to the hash would have moved
+// every existing job's active_key to a different byte sequence,
+// defeating the cross-deploy dedup that the kernel job broker's
+// UNIQUE on `jobs.active_key` is supposed to preserve.
+//
+// godlike/06 SSOT rationale: the canonical identity for a
+// run-level dedup key IS the (canonical-map content). The
+// provider parameter is a SIDE-VALIDATION that ensures the
+// caller identified which provider-family owns this key shape
+// (so a caller can't accidentally invoke BuildKey with an empty
+// discriminator or a ':'-bearing one). The byte output is
+// SHA256(json.Marshal(canonical)) — provider only gates the
+// pre-hash validation, not the hash itself.
+//
+// Cross-package dedup: future stock-run / youtube-run callers
+// that delegate to BuildKey are safe from each other's in-flight
+// jobs because their canonical content will DIFFER (different
+// field set: stock uses ticker+date, youtube uses video+stage).
+// The provider validation is a wire-shape invariant, not a
+// hash-mixing key.
+func TestBuildKey_DifferentProviderSameKey(t *testing.T) {
+	canonical := map[string]any{
+		"term": "city",
+	}
+	a, _ := BuildKey("artlist-run", canonical)
+	b, _ := BuildKey("stock-run", canonical)
+	c, _ := BuildKey("youtube-run", canonical)
+	assert.Equal(t, a, b, "provider validation only — same canonical content MUST produce same hash (byte-stability with legacy runDedupKey)")
+	assert.Equal(t, a, c, "provider validation only — same canonical content MUST produce same hash (byte-stability with legacy runDedupKey)")
+	assert.Equal(t, b, c, "provider validation only — same canonical content MUST produce same hash (byte-stability with legacy runDedupKey)")
+}
+
+// TestBuildKey_DifferentCanonicalDifferentKey pins that each
+// canonical-segment-field is part of the identity. A future
+// refactor that drops one segment would be caught here.
+func TestBuildKey_DifferentCanonicalDifferentKey(t *testing.T) {
+	base := map[string]any{"term": "city", "limit": 8}
+	a, _ := BuildKey("artlist-run", base)
+	b, _ := BuildKey("artlist-run", map[string]any{"term": "city", "limit": 16})
+	c, _ := BuildKey("artlist-run", map[string]any{"term": "ocean", "limit": 8})
+	d, _ := BuildKey("artlist-run", map[string]any{"term": "city", "limit": 8, "strategy": "verify"})
+	assert.NotEqual(t, a, b, "different limit → different key")
+	assert.NotEqual(t, a, c, "different term → different key")
+	assert.NotEqual(t, a, d, "extra segment → different key")
+}
+
+// TestBuildKey_EmptyProvider_ReturnsErrInvalidRunForDedup pins
+// the fail-closed guard: a missing provider discriminator is the
+// canonical "caller forgot to thread the provider" wiring bug.
+func TestBuildKey_EmptyProvider_ReturnsErrInvalidRunForDedup(t *testing.T) {
+	_, err := BuildKey("", map[string]any{"term": "city"})
+	assert.ErrorIs(t, err, ErrInvalidRunForDedup,
+		"empty provider MUST trip ErrInvalidRunForDedup (godlike/07 no fake availability)")
+}
+
+// TestBuildKey_NilCanonical_ReturnsErrInvalidRunForDedup pins
+// the empty-canonical guard. A nil canonical OR an empty
+// (len==0) canonical are distinct code paths but produce the
+// same sentinel.
+func TestBuildKey_NilCanonical_ReturnsErrInvalidRunForDedup(t *testing.T) {
+	_, err := BuildKey("artlist-run", nil)
+	assert.ErrorIs(t, err, ErrInvalidRunForDedup,
+		"nil canonical MUST trip ErrInvalidRunForDedup (operator-input error)")
+
+	_, err = BuildKey("artlist-run", map[string]any{})
+	assert.ErrorIs(t, err, ErrInvalidRunForDedup,
+		"empty canonical MUST trip ErrInvalidRunForDedup (operator-input error)")
+}
+
+// TestBuildKey_ColonInProvider_ReturnsErrInvalidSegment pins the
+// provider-discriminator segment-collision guard. The provider
+// parameter IS a routing field (BuildKey is the canonical for the
+// run-level discriminator); a ':' would silently produce a key
+// that any future ':'-splitter would misparse.
+func TestBuildKey_ColonInProvider_ReturnsErrInvalidSegment(t *testing.T) {
+	_, err := BuildKey("art:list-run", map[string]any{"term": "city"})
+	assert.ErrorIs(t, err, ErrInvalidSegment,
+		"colon in provider discriminator MUST trip ErrInvalidSegment (godlike/06 segment stability)")
+}
+
+// TestBuildKey_ByteStableAcrossMapKeyOrder pins the canonical
+// determinism invariant: Go's encoding/json sorts map keys
+// alphabetically (stdlib contract for map[string]any), so two
+// callers that build the SAME canonical content with DIFFERENT
+// insertion orderings MUST get the same SHA-256 hex.
+func TestBuildKey_ByteStableAcrossMapKeyOrder(t *testing.T) {
+	a := map[string]any{}
+	a["term"] = "city"
+	a["limit"] = 8
+	a["root_folder_id"] = "drive-folder"
+
+	b := map[string]any{}
+	b["root_folder_id"] = "drive-folder"
+	b["term"] = "city"
+	b["limit"] = 8
+
+	c := map[string]any{}
+	c["limit"] = 8
+	c["root_folder_id"] = "drive-folder"
+	c["term"] = "city"
+
+	keyA, _ := BuildKey("artlist-run", a)
+	keyB, _ := BuildKey("artlist-run", b)
+	keyC, _ := BuildKey("artlist-run", c)
+
+	assert.Equal(t, keyA, keyB, "BuildKey must be byte-stable across insertion order (1)")
+	assert.Equal(t, keyA, keyC, "BuildKey must be byte-stable across insertion order (2)")
+}
+
+// TestBuildKey_DoesNotPanicOnMarshalableSubset pins the canonical
+// happy path for each segment type the canonical map can carry
+// (bool, int, string). The contract: BuildKey MUST accept any
+// JSON-marshalable combination without panicking (godlike/07).
+func TestBuildKey_DoesNotPanicOnMarshalableSubset(t *testing.T) {
+	cases := []map[string]any{
+		{"term": "city"},
+		{"term": "city", "limit": 0},      // limit=0 is allowed (operator typed 0 → canonical 0)
+		{"term": "city", "dry_run": true}, // bool canonical
+		{"term": "", "limit": 8},          // empty DATA string allowed (operator fallback)
+	}
+	for i, c := range cases {
+		key, err := BuildKey("artlist-run", c)
+		assert.NoError(t, err, "case %d should not error", i)
+		assert.Len(t, key, 64, "case %d must return 64-char hex", i)
+	}
+}
+
+// TestErrInvalidRunForDedup_Type pins typed-sentinel identity
+// (errors.Is dispatchable). Callers branch on errors.Is so the
+// sentinel MUST be value-identity, not fmt.Errorf %w.
+func TestErrInvalidRunForDedup_Type(t *testing.T) {
+	var err error = ErrInvalidRunForDedup
+	if !errors.Is(err, ErrInvalidRunForDedup) {
+		t.Errorf("ErrInvalidRunForDedup must be a typed sentinel (errors.Is identity)")
+	}
+	assert.Contains(t, err.Error(), "no fake availability",
+		"err message must contain 'no fake availability' for grep-ability")
+	assert.Contains(t, err.Error(), "BuildKey",
+		"err message must point the caller to BuildKey as the canonical owner")
+}
