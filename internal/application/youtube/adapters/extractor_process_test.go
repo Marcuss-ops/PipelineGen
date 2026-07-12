@@ -127,18 +127,21 @@ func TestCleanClipName_UnicodeTruncation(t *testing.T) {
 // ===== retry.IsTransient download-taxonomy tests =====
 //
 // Azione 2/8 of Step 7 (July 2026): migrated from
-// tagutil.IsTransientDownloadError to retry.IsTransient. The
-// canonical-taxonomy transient cases below are EXACTLY what
-// pkg/retry.transientSubstrings declares — keep the two in sync by
-// only adding/removing cases here when pkg/retry itself changes.
+// tagutil.IsTransientDownloadError to retry.IsTransient.
 //
-// Permanent cases (Video unavailable, Private video, sign-in, etc.)
-// preserve the historical behavior: none of those substrings match
-// the canonical transient taxonomy, so retry.IsTransient returns
-// false. This test guard pins that semantic — if a future pkg/retry
-// taxonomy expansion accidentally starts matching a "permanent" string,
-// `TestRetry_IsTransient_DownloadTaxonomy/permanent:<x>` will surface
-// the regression.
+// FASE 6 Cut 6.1.D (July 2026): production retry.IsTransient became
+// a pure typed probe (RetryableError interface + *TransientInfrastructureError
+// carrier via errors.As). The pre-cut substring taxonomy is REMOVED
+// from production; the 13 "transient"Fixture cases below wrap their
+// error in *retry.TransientInfrastructureError so retry.IsTransient
+// returns true via typed-probe #2 — the canonical SDK-boundary
+// emission shape (same envelope retry.WrapTransient produces).
+//
+// Permanent cases remain raw strings; the typed probe does NOT
+// substring-match, so retry.IsTransient returns false. This test
+// guard pins the "raw = fail-closed terminal" semantic; any future
+// surface change that starts classifying a "permanent" string by
+// default would surface here.
 
 func TestRetry_IsTransient_DownloadTaxonomy(t *testing.T) {
 	transient := []string{
@@ -158,7 +161,7 @@ func TestRetry_IsTransient_DownloadTaxonomy(t *testing.T) {
 	}
 	for _, msg := range transient {
 		t.Run("transient: "+msg, func(t *testing.T) {
-			if !retry.IsTransient(errors.New(msg)) {
+			if !retry.IsTransient(&retry.TransientInfrastructureError{Err: errors.New(msg)}) {
 				t.Errorf("expected transient for %q", msg)
 			}
 		})
@@ -247,9 +250,13 @@ func TestRetry_PermanentErrorFailsImmediately(t *testing.T) {
 
 func TestRetry_ExhaustsRetries(t *testing.T) {
 	calls := 0
+	// FASE 6 Cut 6.1.D: production retry.IsTransient is a pure typed
+	// probe; raw errors.New() no longer classifies. Wrap the
+	// simulated transient-shape error in *TransientInfrastructureError
+	// (canonical SDK-boundary emission shape via retry.WrapTransient).
 	err := retry.Do(context.Background(), func() error {
 		calls++
-		return errors.New("connection reset")
+		return &retry.TransientInfrastructureError{Err: errors.New("connection reset")}
 	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: retry.IsTransient})
 	if err == nil {
 		t.Fatal("expected error")
@@ -262,12 +269,20 @@ func TestRetry_ExhaustsRetries(t *testing.T) {
 func TestRetry_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	calls := 0
+	// FASE 6 Cut 6.1.D (July 2026): production retry.IsTransient is a
+	// pure typed probe (errors.As on *retry.TransientInfrastructureError
+	// + RetryableError interface). The pre-FASE-6 substring taxonomy is
+	// REMOVED from production; raw `errors.New("timeout")` no longer
+	// classifies as transient. The canonical fixture envelope is
+	// *retry.TransientInfrastructureError (typed carrier #2 in the
+	// Decision walker) — same shape production callers emit at the
+	// SDK boundary via retry.WrapTransient.
 	err := retry.Do(ctx, func() error {
 		calls++
 		if calls == 1 {
 			cancel() // cancel after first attempt
 		}
-		return errors.New("timeout")
+		return &retry.TransientInfrastructureError{Err: errors.New("timeout")}
 	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: retry.IsTransient})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
@@ -454,12 +469,18 @@ func TestYouTubeCutRequest_OutputDirEmpty(t *testing.T) {
 // ===== Backoff timing tests =====
 
 func TestRetry_BackoffTiming(t *testing.T) {
-	// Verify that backoff occurs (default: 1s + 2s for 3 attempts)
+	// Verify that backoff occurs (default: 1s + 2s for 3 attempts with ±25% jitter = ~2.25-3.75s envelope)
 	calls := 0
 	start := time.Now()
+	// FASE 6 Cut 6.1.D (July 2026): fixture wraps the simulated
+	// transient error in *retry.TransientInfrastructureError because
+	// production retry.IsTransient is a pure typed probe post-Cut 6.1.D
+	// (no substring fallback). Raw `errors.New("timeout")` no longer
+	// classifies as transient; the typed envelope is the canonical
+	// SDK-boundary emission shape.
 	err := retry.Do(context.Background(), func() error {
 		calls++
-		return errors.New("timeout")
+		return &retry.TransientInfrastructureError{Err: errors.New("timeout")}
 	}, retry.RetryOptions{MaxAttempts: 3, IsRetryable: retry.IsTransient})
 	elapsed := time.Since(start)
 
