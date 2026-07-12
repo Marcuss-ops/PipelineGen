@@ -59,6 +59,20 @@ from datetime import datetime, timezone
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 from storage_utils import choose_storage_candidate, save_storage_snapshot, storage_looks_usable
 from PIL import Image
+from slide_worker_runtime.config import (
+    MASTER_STORAGE, PROFILE_DIR, P2_DIAGNOSTICS_DIR, DIAG_FILE,
+    SLIDE_WORKER_REFRESH_EVERY, CANDIDATE_LOCATOR_SELECTOR,
+)
+from slide_worker_runtime.protocol import (
+    parse_request, validate_generate_request,
+    write_response as _respond, write_error as _error,
+    GenerateRequest, WorkerResponse,
+)
+from slide_worker_runtime.diagnostics import (
+    _iso8601_utc_ms, _log, _log_diag, _screenshot_on_failure, DiagnosticsSink,
+)
+from slide_worker_runtime.image_quality import _save_image_bytes, _compute_pixel_stats, PixelStats
+
 
 MASTER_STORAGE = "data/google_slides_storage.json"
 PROFILE_DIR = "data/google_slides_session_profile"
