@@ -389,6 +389,195 @@ func TestPayloadValidator_ClipsSourceWithoutClipIDs(t *testing.T) {
 	assert.Contains(t, pie.Details[0], "clips source requires at least one clip_id")
 }
 
+// ── PR-CS-1 / FASE 6 (DoD #8): ScriptSegment validation ─────────────
+
+func TestPayloadValidator_TargetWordsZeroWithSegmentsAllowed(t *testing.T) {
+	t.Parallel()
+	v := NewDefaultPayloadValidator()
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID:    "zero-with-segments",
+				Title: "Zero With Segments",
+				Source: scriptpkg.SourceSpec{
+					Type:  scriptpkg.SourceText,
+					Topic: "topic",
+				},
+				ScriptParams: scriptpkg.ScriptSpec{
+					TargetWords: 0,
+					Segments: []scriptpkg.ScriptSegment{
+						{Topic: "intro", TargetWords: 80},
+						{Topic: "body", TargetWords: 200},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, v.ValidateEnvelope(env))
+}
+
+func TestPayloadValidator_SegmentsEmpty(t *testing.T) {
+	t.Parallel()
+	v := NewDefaultPayloadValidator()
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID:    "segments-empty",
+				Title: "Segments Empty",
+				Source: scriptpkg.SourceSpec{
+					Type:  scriptpkg.SourceText,
+					Topic: "x",
+				},
+				ScriptParams: scriptpkg.ScriptSpec{
+					TargetWords: 100,
+					// Explicit present-empty (caller wrote `segments: []`);
+					// distinct from absent which silently defaults.
+					Segments: []scriptpkg.ScriptSegment{},
+				},
+			},
+		},
+	}
+	err := v.ValidateEnvelope(env)
+	require.Error(t, err)
+	var pie *scriptpkg.PlanInvalidError
+	require.ErrorAs(t, err, &pie)
+	assert.Contains(t, pie.Details[0], "segments must not be empty")
+}
+
+func TestPayloadValidator_SegmentsAndSegmentTopicsMutex(t *testing.T) {
+	t.Parallel()
+	v := NewDefaultPayloadValidator()
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID:    "mutex",
+				Title: "Mutex",
+				Source: scriptpkg.SourceSpec{
+					Type:  scriptpkg.SourceText,
+					Topic: "x",
+				},
+				ScriptParams: scriptpkg.ScriptSpec{
+					TargetWords:   100,
+					SegmentTopics: []string{"a", "b"},
+					Segments: []scriptpkg.ScriptSegment{
+						{Topic: "x"},
+					},
+				},
+			},
+		},
+	}
+	err := v.ValidateEnvelope(env)
+	require.Error(t, err)
+	var pie *scriptpkg.PlanInvalidError
+	require.ErrorAs(t, err, &pie)
+	assert.Contains(t, pie.Details[0], "cannot both be set")
+}
+
+func TestPayloadValidator_SegmentTopicEmpty(t *testing.T) {
+	t.Parallel()
+	v := NewDefaultPayloadValidator()
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID:    "topic-empty",
+				Title: "Topic Empty",
+				Source: scriptpkg.SourceSpec{
+					Type:  scriptpkg.SourceText,
+					Topic: "x",
+				},
+				ScriptParams: scriptpkg.ScriptSpec{
+					TargetWords: 100,
+					Segments: []scriptpkg.ScriptSegment{
+						{Topic: "intro"},
+						{Topic: ""},    // blank → fail
+						{Topic: "   "}, // whitespace-only also fails (TrimSpace check)
+					},
+				},
+			},
+		},
+	}
+	err := v.ValidateEnvelope(env)
+	require.Error(t, err)
+	var pie *scriptpkg.PlanInvalidError
+	require.ErrorAs(t, err, &pie)
+	assert.Contains(t, pie.Details[0], "topic is required")
+	// Index 1 is the first blank one — operator-clarity invariant.
+	assert.Contains(t, pie.Details[0], "[1]")
+}
+
+func TestPayloadValidator_TooManySegments(t *testing.T) {
+	t.Parallel()
+	// Default cap comes from WithDefaults → MaxSegmentsCap=50.
+	v := NewDefaultPayloadValidator()
+	segments := make([]scriptpkg.ScriptSegment, 51)
+	for i := range segments {
+		segments[i] = scriptpkg.ScriptSegment{Topic: fmt.Sprintf("topic_%d", i)}
+	}
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID:    "too-many",
+				Title: "Too Many",
+				Source: scriptpkg.SourceSpec{
+					Type:  scriptpkg.SourceText,
+					Topic: "x",
+				},
+				ScriptParams: scriptpkg.ScriptSpec{
+					TargetWords: 100,
+					Segments:    segments,
+				},
+			},
+		},
+	}
+	err := v.ValidateEnvelope(env)
+	require.Error(t, err)
+	var pve *scriptpkg.PayloadValidationError
+	require.ErrorAs(t, err, &pve)
+	assert.Equal(t, "TOO_MANY_SEGMENTS", pve.Code)
+	assert.Equal(t, 51, pve.Extra["actual_segments"])
+	assert.Equal(t, 50, pve.Extra["max_segments_cap"])
+}
+
+func TestPayloadValidator_HappyPathFourSegments(t *testing.T) {
+	t.Parallel()
+	v := NewDefaultPayloadValidator()
+	env := &scriptpkg.GenerationEnvelopeV2{
+		Version: 2,
+		Preset:  scriptpkg.PresetCustom,
+		Items: []scriptpkg.GenerationItemV2{
+			{
+				ID:    "happy",
+				Title: "Happy Path",
+				Source: scriptpkg.SourceSpec{
+					Type:  scriptpkg.SourceText,
+					Topic: "Pacquiao vs Broner",
+				},
+				ScriptParams: scriptpkg.ScriptSpec{
+					// TargetWords omitted (=0) — valid because each
+					// segment carries its own per-block budget.
+					Segments: []scriptpkg.ScriptSegment{
+						{Topic: "Introduzione", TargetWords: 80},
+						{Topic: "Contesto", TargetWords: 200},
+						{Topic: "Evento", TargetWords: 400},
+						{Topic: "Conclusione", TargetWords: 120},
+					},
+				},
+			},
+		},
+	}
+	require.NoError(t, v.ValidateEnvelope(env))
+}
+
 func TestPayloadValidator_LongSourceTextWithinLimit(t *testing.T) {
 	v := NewPayloadValidator(config.ScriptsConfig{MaxSourceTextChars: 100})
 	env := &scriptpkg.GenerationEnvelopeV2{

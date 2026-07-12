@@ -25,6 +25,9 @@ type PayloadValidator struct {
 	maxSourceTextBytes              int
 	maxSourceTextTokens             int
 	maxSourceTextToTargetWordsRatio float64
+	// maxSegmentsCap caps the number of ScriptSegment entries
+	// accepted on a single item. PR-CS-1 / FASE 6 (DoD #8).
+	maxSegmentsCap int
 }
 
 // NewPayloadValidator builds a validator from the supplied config.
@@ -36,6 +39,7 @@ func NewPayloadValidator(cfg config.ScriptsConfig) *PayloadValidator {
 		maxSourceTextBytes:              cfg.MaxSourceTextBytes,
 		maxSourceTextTokens:             cfg.MaxSourceTextTokens,
 		maxSourceTextToTargetWordsRatio: cfg.MaxSourceTextToTargetWordsRatio,
+		maxSegmentsCap:                  cfg.MaxSegmentsCap,
 	}
 }
 
@@ -75,7 +79,27 @@ func (v *PayloadValidator) ValidateEnvelope(env *scriptpkg.GenerationEnvelopeV2)
 }
 
 func (v *PayloadValidator) validateItem(item scriptpkg.GenerationItemV2, ref string) error {
-	if item.ScriptParams.TargetWords <= 0 {
+	// PR-CS-1 / FASE 6 (DoD #8): structural ScriptSegment shape —
+	// run BEFORE config-aware checks so the handler path catches
+	// mutex/empty/topic violations as HTTP 400 INVALID_PAYLOAD
+	// without falling through into source_text ratio limits. The
+	// validation order is intentional: structural > semantic >
+	// config-aware. Delegates to validateScriptSegmentShape
+	// (godlike/06 SSoT single canonical owner in
+	// generation_validator.go).
+	if details := validateScriptSegmentShape(item.ScriptParams, ref); len(details) > 0 {
+		return &scriptpkg.PlanInvalidError{
+			ItemID:  item.ID,
+			Details: details,
+		}
+	}
+
+	// PR-CS-1 / FASE 6 (DoD #8): target_words <= 0 is allowed when
+	// the caller supplied ≥1 ScriptSegment (each per-block carries
+	// its own TargetWords). Existing logic preserved verbatim — same
+	// Code (INVALID_TARGET_WORDS), same Message, same Extra — only
+	// the conjunction `&& len(Segments) == 0` is added.
+	if item.ScriptParams.TargetWords <= 0 && len(item.ScriptParams.Segments) == 0 {
 		return &scriptpkg.PayloadValidationError{
 			Code:      "INVALID_TARGET_WORDS",
 			Message:   "target_words must be > 0",
@@ -87,8 +111,33 @@ func (v *PayloadValidator) validateItem(item scriptpkg.GenerationItemV2, ref str
 		}
 	}
 
+	if err := v.validateSegmentsCap(item); err != nil {
+		return err
+	}
+
 	if err := v.validateSourceText(item, ref); err != nil {
 		return err
+	}
+	return nil
+}
+
+// validateSegmentsCap rejects oversized Segments payloads per the
+// operator cap MaxSegmentsCap (config-aware). PR-CS-1 / FASE 6
+// (DoD #8). Wire: HTTP 400 with Code="TOO_MANY_SEGMENTS" when
+// len(Segments) > cap. A zero cap disables the gate (used by
+// legacy wiring paths); WithDefaults sets it to 50 in production.
+func (v *PayloadValidator) validateSegmentsCap(item scriptpkg.GenerationItemV2) error {
+	sp := item.ScriptParams
+	if v.maxSegmentsCap > 0 && len(sp.Segments) > v.maxSegmentsCap {
+		return &scriptpkg.PayloadValidationError{
+			Code:    "TOO_MANY_SEGMENTS",
+			Message: fmt.Sprintf("script_params.segments has too many entries (max %d)", v.maxSegmentsCap),
+			Stage:   "request.validation",
+			Extra: map[string]any{
+				"actual_segments":  len(sp.Segments),
+				"max_segments_cap": v.maxSegmentsCap,
+			},
+		}
 	}
 	return nil
 }

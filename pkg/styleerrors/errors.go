@@ -103,3 +103,58 @@ var ErrEmptyPrompt = errors.New("styleerrors: prompt and style suffix are both e
 // is an explicit caller-supplied intent that must be honoured, not
 // silently absorbed.
 var ErrStyleVersionMismatch = errors.New("styleerrors: style version does not match caller-supplied pin")
+
+// ── PR-CS-1 / FASE 6 (July 2026, DoD #8) ───────────────────────────────
+// Script-segment validation sentinels. Per godlike/06 SSOT, this
+// file is the canonical SSoT for fail-closed validation sentinels
+// across the script generation pipeline. Payload-layer validators
+// wire these into HTTP 400 responses via *scriptpkg.PayloadValidationError
+// (Code field, e.g. "TOO_MANY_SEGMENTS") and *scriptpkg.PlanInvalidError
+// (Details list, mapped to code="INVALID_PAYLOAD"). The ApplyStyle
+// sentinels above are unchanged; the script sentinels below are
+// ADDITIVE and live alongside them.
+
+// ErrSegmentsEmpty — caller explicitly sends `segments: []` on the
+// wire (present-but-empty payload). Distinct from "segments field
+// absent" (silent default, caller may have meant to omit). DoD #8
+// fail-closed: do not silently coerce to the legacy SegmentTopics
+// path when the caller was explicit. Wire: invalid `segments`
+// shape → 400 with detail "script_params.segments must not be empty
+// when present".
+var ErrSegmentsEmpty = errors.New("styleerrors: script_params.segments must not be empty when present")
+
+// ErrSegmentTopicEmpty — per-block Topic is blank or whitespace-only
+// for at least one ScriptSegment. Each per-block Topic is required
+// at runtime (validator enforces non-empty). The validator surfaces
+// the index in the error message so the operator can identify the
+// offending row. Wire: 400 INVALID_PAYLOAD with detail like
+// "script_params.segments[3].topic is required".
+var ErrSegmentTopicEmpty = errors.New("styleerrors: script_params.segments[i].topic is required")
+
+// ErrSegmentsAndTopicTopicsBothSet — runtime mutex between the new
+// Segments field (per-block payload, PR-CS-1) and the legacy
+// SegmentTopics alias. Callers MUST pick ONE; both set is a
+// malformed request. Wire: 400 INVALID_PAYLOAD with detail
+// "script_params.segment_topics and script_params.segments cannot
+// both be set".
+var ErrSegmentsAndTopicTopicsBothSet = errors.New("styleerrors: script_params.segment_topics and script_params.segments cannot both be set")
+
+// ErrTargetWordsNotPositive — target_words <= 0 AND segments is
+// absent (canonical "single-target mode"). In the new Segments
+// mode the target is per-block, so the validator accepts
+// TargetWords=0 when len(Segments) > 0; this sentinel fires only
+// when no segments are present AND no target was supplied.
+// Existing logic kept verbatim per user spec ("mantiene invariata
+// logica esistente"): same Code (INVALID_TARGET_WORDS) + same
+// message ("target_words must be > 0"), only the pre-condition
+// `len(Segments)==0` is added to the conjunction.
+var ErrTargetWordsNotPositive = errors.New("styleerrors: script_params.target_words must be > 0 when no segments are present")
+
+// ErrTooManySegments — len(Segments) exceeds the operator cap
+// MaxSegmentsCap (default 50, configurable via
+// VELOX_SCRIPTS_MAX_SEGMENTS_CAP). The canonical cap lives in
+// config.ScriptsConfig; this sentinel surfaces the typed identity
+// so retries + classifiers can dispatch via errors.Is. Wire: 400
+// PayloadValidationError Code="TOO_MANY_SEGMENTS" with extra
+// {actual_segments, max_segments_cap}.
+var ErrTooManySegments = errors.New("styleerrors: script_params.segments has too many entries")
