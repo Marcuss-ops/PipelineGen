@@ -6,14 +6,21 @@
 //
 // Pre-Fase-5 distribution (forward-pointer to Push 5.2 cutover):
 //
-//   - ErrLeaseLost          → internal/infrastructure/database/sqlite/jobs/store.go:14
-//                              (canonical sqlite self-decl; kept as re-export alias)
-//   - ErrTransitionConflict → internal/infrastructure/database/sqlite/jobs/store.go:18
-//                              (single-decl; kept as re-export alias)
-//   - ErrJobNotFound        → internal/infrastructure/database/sqlite/jobs/repository.go
-//                              (single-decl)
+//   - ErrLeaseLost          → internal/infrastructure/database/sqlite/jobs/repository_commands.go
+//                              (Phase A.2 re-export alias; same identity as canonical decl)
+//   - ErrTransitionConflict → internal/infrastructure/database/sqlite/jobs/repository_commands.go
+//                              (Phase A.2 re-export alias; same identity as canonical decl)
+//   - ErrJobNotFound        → internal/infrastructure/database/sqlite/jobs/repository_commands.go
+//                              (Phase A.2 re-export alias; same identity as canonical decl)
 //   - ErrFinalizeAttempt*   → internal/infrastructure/database/sqlite/jobs/finalize_attempt.go
 //                              (Push 4.2 decls; migrated to canonical home)
+//
+// godlike/06 SSOT lockstep: the re-export aliases above MUST stay
+// in lockstep with the canonical declarations in this file. The
+// Phase A.2 cutover (July 2026, surfaced by the P0.F regression)
+// re-established the sqlite-side aliases in `repository_commands.go`
+// (the file already had an `Errors` var block, so the cutover landed
+// there rather than creating a new errors.go file).
 //
 // godlike/07 typed-error contract discipline: every sentinel below is a
 // `var X = errors.New("...")` so callers branch reactively via
@@ -21,18 +28,23 @@
 //
 // Errors.Is(err, domjob.ErrX) is the canonical probe.
 //
-// Fase 5(b) cutover (NO caller migration in this push):
+// Fase 5(b) cutover (COMPLETED, July 2026 — surfaced by P0.F regression):
 //
-//   - internal/infrastructure/database/sqlite/jobs/store.go will
-//     alias `var ErrLeaseLost = domjob.ErrLeaseLost` and drop the
-//     canonical local decl (same identity, no callers break).
+//   - internal/infrastructure/database/sqlite/jobs/repository_commands.go
+//     re-exports `var ErrLeaseLost = domjob.ErrLeaseLost` +
+//     `var ErrTransitionConflict = domjob.ErrTransitionConflict` +
+//     `var ErrJobNotFound = domjob.ErrJobNotFound` (same identity,
+//     no callers break). The `package jobs` consumers
+//     (lifecycle_*.go, finalize_attempt.go) continue to reference
+//     the names unprefixed with no migration required.
 //   - internal/infrastructure/database/sqlite/outboxevents/repository.go
 //     and internal/infrastructure/database/sqlite/assets/channels_repository.go
 //     will remain local — outbox + channels are typed differently
 //     (no canonical lease-lost contract shared with job-layer).
-//   - internal/application/jobs/errors.go will drop the
-//     `dbjobs.ErrLeaseLost` re-export alias in favor of
-//     `domjob.ErrLeaseLost` directly.
+//   - internal/application/jobs/errors.go re-exports the
+//     `dbjobs.ErrLeaseLost` alias as application-jobs-side sugar
+//     (no caller migration — the alias was retained for forward-
+//     compat when the camada migration completes).
 package job
 
 import "errors"

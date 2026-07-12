@@ -1,34 +1,40 @@
-// Package jobs sentinels — error values returned by the canonical
-// SQLite-backed job store. The Store interface that previously lived
-// here was retired in Wave 17.1.2 (June 2026); the contract now lives
-// in internal/domain/job.Store and *SQLiteStore is the only in-tree
-// implementation.
+// Package jobs — sqlite-backed job store (formerly sentinels).
 //
-// Fase 5(a) canonical-home alignment (July 2026): the 2 sentinels
-// below are now thin re-export aliases of the canonical declarations
-// at `internal/domain/job/errors.go`. Identity is preserved (same
-// `error` value), so pre-Fase-5 callers (`appjobs.ErrLeaseLost`,
-// `errors.Is(err, jobs.ErrLeaseLost)`) compile and probe unchanged.
-// The `.Error()` message returns the domjob-formatted text (canonical
-// surface); the legacy fmt.Errorf-formatted text is no longer the
-// authoritative message. See godlike/06 SSOT rationale in the
-// domain-side file header.
+// Wave 17.1.2 (June 2026) removed the legacy Store interface; the
+// contract now lives in internal/domain/job.Store and *SQLiteStore
+// is the only in-tree implementation.
+//
+// P0.F regression-surface synergy (July 2026): the typed sentinels
+// `ErrLeaseLost`, `ErrTransitionConflict`, and `ErrJobNotFound` that
+// used to live at store.go:14,18 are now re-exported as godlike/06
+// SSOT-compliant aliases in `repository_commands.go` (same package,
+// top-of-file `var (...)` block). Phase A.1 cutover (June 2026) moved
+// the canonical decls to `internal/domain/job/errors.go`; Phase A.2
+// (July 2026) re-establishes the sqlite-side aliases so internal
+// callers (lifecycle_*.go, finalize_attempt.go) can continue
+// referencing the names unprefixed without re-declaring them as
+// `errors.New(...)` (which would create identity drift and break
+// `errors.Is` probes that cross-cut both import paths).
+//
+// Identity was preserved across the cutover: `errors.Is(err, jobs.ErrLeaseLost)`
+// (the in-package alias at repository_commands.go) and
+// `errors.Is(err, domjob.ErrLeaseLost)` (the canonical decl at
+// internal/domain/job/errors.go) probe the SAME sentinel (same `error`
+// value). External callers that previously imported
+// `sqljobs.ErrLeaseLost` from this package can switch to either:
+//   - `domjob.ErrLeaseLost` (canonical, recommended for cross-package callers)
+//   - `jobs.ErrLeaseLost` (in-package, equivalent identity)
+//
+// `ErrFinalizeAttempt*` sentinels are re-exported as canonical aliases
+// at `finalize_attempt.go` (canonical impl-site aliases per
+// finalize_attempt.go::64-71). The local aliases are split between
+// `repository_commands.go` (general-purpose ErrLeaseLost /
+// ErrTransitionConflict / ErrJobNotFound / ErrInvalidState) and
+// `finalize_attempt.go` (impl-site-specific FinalizeAttempt').
+//
+// This file is intentionally empty of `var ()` declarations — the
+// canonical SSOT surface is owned by `repository_commands.go` and
+// `finalize_attempt.go`. New typed sentinels MUST be added at one of
+// those two files (not here) to keep the lockstep invariant with
+// `internal/domain/job/errors.go`.
 package jobs
-
-import (
-	domjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-)
-
-// ErrLeaseLost is the canonical Fase 5(a) re-export of
-// `domjob.ErrLeaseLost`. Returned by worker-originated operations
-// when the supplied lease_id no longer matches the job's current
-// lease. Same `error` value as `domjob.ErrLeaseLost` —
-// `errors.Is(err, jobs.ErrLeaseLost) == errors.Is(err, domjob.ErrLeaseLost)`.
-var ErrLeaseLost = domjob.ErrLeaseLost
-
-// ErrTransitionConflict is the canonical Fase 5(a) re-export of
-// `domjob.ErrTransitionConflict`. Returned when the current status
-// of the job does not match the expected status (concurrent
-// modification via the CAS-fence on revision). Same `error` value
-// as `domjob.ErrTransitionConflict`.
-var ErrTransitionConflict = domjob.ErrTransitionConflict

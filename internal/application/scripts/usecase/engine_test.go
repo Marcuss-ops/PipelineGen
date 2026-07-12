@@ -131,7 +131,34 @@ func defaultFakeResult() *ollamatypes.GenerationResult {
 // from Engine, so all 3-arg buildTestEngine call sites are cleaned
 // up. Engine no longer accesses persistence — that role belongs to
 // PersistenceProcessor exclusively.
-func buildTestEngine(gen *fakeOllamaGen, mem *fakeMemoryGate) *Engine {
+//
+// P0.F regression-surface synergy (July 2026): the memoryGate
+// parameter is typed as the narrow `memoryGateChecker` interface
+// (engine.go) rather than the concrete `*fakeMemoryGate`. This
+// unblocks p2aMemoryGate (a sync.Mutex-backed thread-safe fake
+// declared in cache_race_p2a_test.go) which fails the canonical
+// `cannot use mem (variable of type *p2aMemoryGate) as
+// *fakeMemoryGate value` build error when concurrency tests
+// invoke buildTestEngine. The original typing was load-bearing
+// only for the in-package fakeMemoryGate happy path; widening
+// to the interface is godlike/06 SSOT-correct (the canonical
+// memorySvc field on Engine is itself typed memoryGateChecker,
+// so the buildTestEngine seam now matches the production seam).
+//
+// godlike/07 fail-closed nil-semantics caveat (per code-reviewer
+// feedback, July 2026): passing nil to `mem` sets `e.memorySvc`
+// to a TRUE nil-interface (type+value both nil; the previous
+// concrete `*fakeMemoryGate` typing held a typed-nil-pointer in
+// the interface slot, which made `e.memorySvc != nil` return
+// TRUE and would have called a nil-pointer-deref panic on
+// memory-path execution). Now `e.memorySvc == nil` is correctly
+// false-equivalent: tests that exercise NON-MEMORY paths
+// (`UseMemory=false` or `ForceRefresh=true`) can safely pass
+// `nil` and the engine short-circuits past the memory-gate
+// read entirely. Tests asserting memory-path behavior MUST
+// pass a non-nil `mem` (a `*fakeMemoryGate{}` or `*p2aMemoryGate{}`)
+// so the engine's memorySvc != nil check fires correctly.
+func buildTestEngine(gen *fakeOllamaGen, mem memoryGateChecker) *Engine {
 	return &Engine{
 		ollamaGen: gen,
 		memorySvc: mem,
