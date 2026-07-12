@@ -21,6 +21,19 @@
 //	  the dispatch target (asset.index.requested.v1 vs
 //	  asset.drive.delete_requested.v1).
 //
+// SEGMENT DELIMITER
+//
+// The 4-tuple is delimited by ':' (the codebase convention from
+// existing key shapes — see BuildIndexEventKey in
+// domain/asset/clip_identity.go which uses ':' as the segment
+// separator; see also ArtifactIdempotencyKey in
+// domain/remote/idempotency.go which uses ':' in the same way).
+// Every constructor REJECTS inputs containing ':' via the
+// ErrInvalidSegment guard so the segment-count contract is
+// enforceable rather than convention-based. A provider like
+// "art:list" would otherwise silently produce a 5-segment key
+// that any downstream parser splitting on ':' would misparse.
+//
 // godlike/06 SSOT (Fase 5 user spec — Stabilisci la chiave
 // canonica di idempotenza):
 //
@@ -37,15 +50,19 @@
 //
 //	Every constructor rejects empty inputs with a typed error
 //	(ErrEmptyProvider, ErrEmptyClipID, ErrEmptySourceVersion,
-//	ErrEmptySHA256, ErrEmptyEventType). The dedup guarantees
-//	depend on the keys being COMPLETE — a silently-hashed-empty
-//	input is the silent-loss anti-pattern the gates exist to
-//	prevent. The user spec literal "Niente dipendenza dal solo
-//	titolo" is enforced by the function signature: none of the
-//	3 constructors takes a title or name parameter.
+//	ErrEmptySHA256, ErrEmptyEventType, ErrInvalidSegment). The
+//	dedup guarantees depend on the keys being COMPLETE — a
+//	silently-hashed-empty input is the silent-loss anti-pattern
+//	the gates exist to prevent. The user spec literal "Niente
+//	dipendenza dal solo titolo" is enforced by the function
+//	signature: none of the 3 constructors takes a title or
+//	name parameter.
 package idempotency
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // Typed sentinels for the fail-closed guards. Callers branch
 // on errors.Is to surface a typed diagnostic in operator logs.
@@ -74,7 +91,46 @@ var (
 	// ErrEmptyEventType — event_type is required for OutboxKey
 	// (the dispatch target disambiguator).
 	ErrEmptyEventType = errors.New("idempotency: event_type is required for OutboxKey (godlike/07 — no fake availability)")
+	// ErrInvalidSegment — an input contains ':', the reserved
+	// segment delimiter. The constructor rejects the input
+	// rather than silently producing a mis-parsable key.
+	// The godlike/06 contract: a downstream parser that splits
+	// on ':' (the canonical segment delimiter) MUST see exactly
+	// 4/3/4 segments for AssetKey/JobKey/OutboxKey. A provider
+	// like "art:list" would otherwise silently produce a
+	// 5-segment key that any ':'-splitter would misparse.
+	ErrInvalidSegment = errors.New("idempotency: ':' is reserved as the segment delimiter (godlike/06 — fix the caller; the canonical provider/clipID/source_version/sha256/event_type values must not contain ':')")
 )
+
+// validateSegment checks that the segment value does not
+// contain the reserved ':' delimiter. Used by all 3
+// constructors to enforce the segment-count contract.
+func validateSegment(field, value string) error {
+	if strings.Contains(value, ":") {
+		return errInvalidSegment(field)
+	}
+	return nil
+}
+
+func errInvalidSegment(field string) error {
+	return &invalidSegmentError{field: field}
+}
+
+// invalidSegmentError wraps ErrInvalidSegment with a per-field
+// diagnostic. errors.Is(invalidSegmentError, ErrInvalidSegment)
+// is true so callers can branch on the typed sentinel; the
+// Error() method adds the field name for operator triage.
+type invalidSegmentError struct {
+	field string
+}
+
+func (e *invalidSegmentError) Error() string {
+	return "idempotency: '" + e.field + "' contains ':' (reserved segment delimiter; godlike/06 — fix the caller)"
+}
+
+func (e *invalidSegmentError) Is(target error) bool {
+	return target == ErrInvalidSegment
+}
 
 // AssetKey constructs the canonical media_assets row identity.
 // The 4-tuple (provider, clipID, sourceVersion, sha256File) is
@@ -108,14 +164,26 @@ var (
 // and the sha256 is computed. The writer rejects AssetKey
 // calls with an empty sha256File.
 func AssetKey(provider, clipID, sourceVersion, sha256File string) (string, error) {
+	if err := validateSegment("provider", provider); err != nil {
+		return "", err
+	}
 	if provider == "" {
 		return "", ErrEmptyProvider
+	}
+	if err := validateSegment("clip_id", clipID); err != nil {
+		return "", err
 	}
 	if clipID == "" {
 		return "", ErrEmptyClipID
 	}
+	if err := validateSegment("source_version", sourceVersion); err != nil {
+		return "", err
+	}
 	if sourceVersion == "" {
 		return "", ErrEmptySourceVersion
+	}
+	if err := validateSegment("sha256", sha256File); err != nil {
+		return "", err
 	}
 	if sha256File == "" {
 		return "", ErrEmptySHA256
@@ -139,11 +207,20 @@ func AssetKey(provider, clipID, sourceVersion, sha256File string) (string, error
 // for: media_assets row identity + outbox events that have
 // already computed the file sha256.
 func JobKey(provider, clipID, sourceVersion string) (string, error) {
+	if err := validateSegment("provider", provider); err != nil {
+		return "", err
+	}
 	if provider == "" {
 		return "", ErrEmptyProvider
 	}
+	if err := validateSegment("clip_id", clipID); err != nil {
+		return "", err
+	}
 	if clipID == "" {
 		return "", ErrEmptyClipID
+	}
+	if err := validateSegment("source_version", sourceVersion); err != nil {
+		return "", err
 	}
 	if sourceVersion == "" {
 		return "", ErrEmptySourceVersion
@@ -174,14 +251,26 @@ func JobKey(provider, clipID, sourceVersion string) (string, error) {
 // domain/asset/clip_identity.go comment that flags the
 // infra-layer indexEventKey as a future refactor target).
 func OutboxKey(eventType, provider, clipID, sourceVersion string) (string, error) {
+	if err := validateSegment("event_type", eventType); err != nil {
+		return "", err
+	}
 	if eventType == "" {
 		return "", ErrEmptyEventType
+	}
+	if err := validateSegment("provider", provider); err != nil {
+		return "", err
 	}
 	if provider == "" {
 		return "", ErrEmptyProvider
 	}
+	if err := validateSegment("clip_id", clipID); err != nil {
+		return "", err
+	}
 	if clipID == "" {
 		return "", ErrEmptyClipID
+	}
+	if err := validateSegment("source_version", sourceVersion); err != nil {
+		return "", err
 	}
 	if sourceVersion == "" {
 		return "", ErrEmptySourceVersion
