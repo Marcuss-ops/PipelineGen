@@ -124,11 +124,7 @@ func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 	p.log.Info("ChromeImageProvider: worker process started",
 		zap.Int("pid", p.cmd.Process.Pid))
 
-	// Send warmup command and wait for "ready".
-	if err := p.writeJSON(map[string]any{"action": "warmup"}); err != nil {
-		return fmt.Errorf("warmup request failed: %w", err)
-	}
-
+	// Wait for the automatic startup "ready" response.
 	resp, err := p.readRawResponse()
 	if err != nil {
 		return fmt.Errorf("warmup response failed: %w", err)
