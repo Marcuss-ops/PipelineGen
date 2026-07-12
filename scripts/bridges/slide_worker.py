@@ -439,38 +439,43 @@ def _dismiss_start_dialog(page) -> bool:
         # the page title or a navigation bar item. Some Builds
         # expose the start-dialog tile as a button named "Images"
         # or "Immagini" outside any modal wrapper.
-        for selector in [
-            'button:has-text("Images")',
-            'button:has-text("Immagini")',
-        ]:
+        # Fast path: accessibility-tree role-based lookup. Catches
+        # builds where the tile is exposed as a button with accessible
+        # name "Images" or "Immagini". This is the most reliable match
+        # when the DOM contains hidden duplicates.
+        for role_name in [re.compile(r"Images", re.I), re.compile(r"Immagini", re.I)]:
             try:
-                tile = page.locator(selector).first
-                if tile.is_visible():
-                    _log(f"[_dismiss_start_dialog] fast-path tile selector matched: {selector}")
+                tiles = page.get_by_role("button", name=role_name)
+                for idx in range(tiles.count()):
+                    tile = tiles.nth(idx)
+                    if not tile.is_visible():
+                        continue
+                    _log(f"[_dismiss_start_dialog] fast-path role button matched: {role_name.pattern} idx={idx}")
                     tile.click(force=True, timeout=5000)
-                    page.wait_for_timeout(3500)
+                    if _wait_for_prompt_surface(page, timeout_ms=7000):
+                        return True
+                    page.wait_for_timeout(1000)
                     return True
             except Exception:
                 continue
 
-        # Fallback: accessibility-tree role-based lookup. Catches
-        # builds where the tile uses aria-role="button" + an
-        # aria-label or accessible-name of "Images" but the visible
-        # text differs (icon-only button). Strict role name match
-        # (case-insensitive via re.I) so we don't accidentally hit
-        # other role="button" elements like top-bar nav.
-        # Note: this fallback is intentionally AFTER the button:has-text
-        # selector path. Both paths early-return True on success; the
-        # modal-walk path remains the canonical handler for the case
-        # where neither selector matches (an "Iniziamo a creare" modal
-        # with non-button-named tiles).
-        for role_name in [re.compile(r"Images", re.I), re.compile(r"Immagini", re.I)]:
+        for selector in [
+            'button[data-view-id="insert-generated-image"]',
+            'button[aria-controls="insert-generated-image"]',
+            'button:has-text("Images")',
+            'button:has-text("Immagini")',
+        ]:
             try:
-                tile = page.get_by_role("button", name=role_name).first
-                if tile.is_visible():
-                    _log(f"[_dismiss_start_dialog] fast-path role button matched: {role_name.pattern}")
+                tiles = page.locator(selector)
+                for idx in range(tiles.count()):
+                    tile = tiles.nth(idx)
+                    if not tile.is_visible():
+                        continue
+                    _log(f"[_dismiss_start_dialog] fast-path tile selector matched: {selector} idx={idx}")
                     tile.click(force=True, timeout=5000)
-                    page.wait_for_timeout(3500)
+                    if _wait_for_prompt_surface(page, timeout_ms=7000):
+                        return True
+                    page.wait_for_timeout(1000)
                     return True
             except Exception:
                 continue
@@ -493,13 +498,25 @@ def _dismiss_start_dialog(page) -> bool:
             # if the card click fails, fall through to the close/escape
             # path instead of blocking generation.
             try:
-                images_card = dialog.locator(
-                    'text="Images", text="Immagini", button:has-text("Images"), button:has-text("Immagini")'
-                ).first
-                if images_card.is_visible():
-                    images_card.click(force=True, timeout=5000)
-                    page.wait_for_timeout(3500)
-                    return True
+                for selector in [
+                    'button[data-view-id="insert-generated-image"]',
+                    'button[aria-controls="insert-generated-image"]',
+                    'button:has-text("Images")',
+                    'button:has-text("Immagini")',
+                    'text="Images"',
+                    'text="Immagini"',
+                ]:
+                    images_cards = dialog.locator(selector)
+                    for idx in range(images_cards.count()):
+                        images_card = images_cards.nth(idx)
+                        if not images_card.is_visible():
+                            continue
+                        _log(f"[_dismiss_start_dialog] modal tile selector matched: {selector} idx={idx}")
+                        images_card.click(force=True, timeout=5000)
+                        if _wait_for_prompt_surface(page, timeout_ms=7000):
+                            return True
+                        page.wait_for_timeout(1000)
+                        return True
             except Exception as e:
                 _log(f"[_dismiss_start_dialog] Images card click failed: {e}")
 
@@ -546,6 +563,31 @@ def _prepare_editor_surface(page) -> None:
     except Exception as e:
         _log(f"[_prepare_editor_surface] Escape pre-clear failed: {e}")
     _dismiss_start_dialog(page)
+
+
+def _wait_for_prompt_surface(page, timeout_ms: int = 15000) -> bool:
+    """Wait for the visible textarea that hosts the Nano Banana prompt."""
+    if page is None:
+        return False
+    ta = page.locator('textarea:visible').first
+    try:
+        ta.wait_for(state="visible", timeout=timeout_ms)
+        return True
+    except PlaywrightTimeout:
+        try:
+            for role_name in [re.compile(r"Images", re.I), re.compile(r"Immagini", re.I)]:
+                tile = page.get_by_role("button", name=role_name).first
+                if tile.is_visible():
+                    _log(f"[_wait_for_prompt_surface] retrying via visible tile: {role_name.pattern}")
+                    tile.click(force=True, timeout=5000)
+                    ta.wait_for(state="visible", timeout=timeout_ms)
+                    return True
+        except Exception as e:
+            _log(f"[_wait_for_prompt_surface] visible-tile retry failed: {e}")
+        return False
+    except Exception as e:
+        _log(f"[_wait_for_prompt_surface] wait failed: {e}")
+        return False
 
 
 def _check_169_selected(page, ratio: str = "16:9") -> bool:
@@ -1028,35 +1070,15 @@ class ProfileWorker(threading.Thread):
             ta = self.page.locator('textarea:visible').first
             panel_open = False
             try:
-                if ta.is_visible():
-                    panel_open = True
+                panel_open = ta.is_visible()
             except Exception:
-                pass
+                panel_open = False
 
             if not panel_open:
-                _log(f"[profile-{self.profile_id}][{request_id}] clicking insert-generated-image...")
-                btn = self.page.locator(
-                    'button.insert-generated-image, '
-                    '[data-view-id="insert-generated-image"], '
-                    'div[role="button"]:has-text("Nano Banana Pro"), '
-                    'button:has-text("Nano Banana Pro")'
-                ).last
-                try:
-                    btn.click(force=True, timeout=5000)
-                except PlaywrightTimeout:
-                    _log(f"[profile-{self.profile_id}][{request_id}] first click timed out — recovery")
-                    try:
-                        self.page.keyboard.press("Escape")
-                        self.page.wait_for_timeout(500)
-                    except Exception:
-                        pass
-                    btn.click(force=True, timeout=5000)
-
-                try:
-                    ta.wait_for(state="visible", timeout=25000)
-                except PlaywrightTimeout:
-                    _log(f"[profile-{self.profile_id}][{request_id}] click confirmed but textarea not found — recovery")
-                    raise
+                panel_open = _wait_for_prompt_surface(self.page, timeout_ms=15000)
+                if not panel_open:
+                    raise PlaywrightTimeout("prompt surface did not become visible after selecting Images")
+                ta = self.page.locator('textarea:visible').first
 
             # Step 1.5: Switch to Immagine/Image tab.
             image_mode_active = False
@@ -1081,15 +1103,9 @@ class ProfileWorker(threading.Thread):
                 _log(f"[profile-{self.profile_id}][{request_id}] textarea not visible — recovery")
                 self._fresh_page()
                 _prepare_editor_surface(self.page)
-                btn2 = self.page.locator(
-                    'button.insert-generated-image, '
-                    '[data-view-id="insert-generated-image"], '
-                    'div[role="button"]:has-text("Nano Banana Pro"), '
-                    'button:has-text("Nano Banana Pro")'
-                ).last
-                btn2.click(force=True, timeout=5000)
+                if not _wait_for_prompt_surface(self.page, timeout_ms=15000):
+                    raise PlaywrightTimeout("prompt surface did not become visible after recovery")
                 ta = self.page.locator('textarea:visible').first
-                ta.wait_for(state="visible", timeout=25000)
 
             # P1.1 (July 2026): if the caller supplies prompt_suffix, the worker
             # appends it to the composed prompt in the textarea fill. The
