@@ -327,82 +327,121 @@ func TestErrEmptySHA256_HintsJobKey(t *testing.T) {
 		"err message must hint that JobKey is the pre-download alternative")
 }
 
-// ── ':' delimiter-collision guards (Commit 1 follow-up) ──────────
+// ── ':' delimiter-collision guards (Commit 1 follow-up + Commit 2 fix-up) ──
 
-// TestAssetKey_ColonInInput_Rejected pins the MUST-FIX
-// follow-up to Commit 1: any input containing the reserved
-// ':' delimiter is REJECTED with ErrInvalidSegment. A
-// provider like "art:list" would otherwise silently produce
-// a 5-segment key that any ':'-splitter would misparse.
-// The error must be errors.Is(ErrInvalidSegment) so callers
-// can branch on the typed sentinel.
-func TestAssetKey_ColonInInput_Rejected(t *testing.T) {
+// TestAssetKey_ColonInProvider_Rejected pins the colon-collision
+// guard on the ROUTING field (provider). A provider like
+// "art:list" would otherwise silently produce a 5-segment key
+// that any ':'-splitter would misparse.
+func TestAssetKey_ColonInProvider_Rejected(t *testing.T) {
+	_, err := AssetKey("art:list", "abc", "v1", "deadbeef")
+	assert.Error(t, err, "AssetKey MUST reject a provider containing ':'")
+	assert.ErrorIs(t, err, ErrInvalidSegment,
+		"the rejection MUST be a typed ErrInvalidSegment (errors.Is dispatchable)")
+	assert.Contains(t, err.Error(), "provider",
+		"err message must name the offending field for operator triage")
+}
+
+// TestAssetKey_ColonInDataFields_Allowed pins the Commit 2
+// follow-up relaxation: the data fields (clipID, sourceVersion,
+// sha256File) are opaque and may legitimately contain ':' as a
+// scheme prefix. Rejecting them would be a production-silent
+// bug — stock pipeline clipIDs are "planner:<hash>:<index>" and
+// source_versions are conventionally "sha256:<hex>".
+func TestAssetKey_ColonInDataFields_Allowed(t *testing.T) {
 	cases := []struct {
-		name              string
-		provider, clipID  string
-		sourceVersion     string
-		sha256File        string
-		colonField        string
+		name           string
+		clipID         string
+		sourceVersion  string
+		sha256File     string
 	}{
-		{"colon-in-provider", "art:list", "abc", "v1", "deadbeef", "provider"},
-		{"colon-in-clipID", "artlist", "ab:c", "v1", "deadbeef", "clip_id"},
-		{"colon-in-source_version", "artlist", "abc", "v:1", "deadbeef", "source_version"},
-		{"colon-in-sha256", "artlist", "abc", "v1", "dead:beef", "sha256"},
+		{"planner-prefix-clipID", "planner:abc123:0", "v1", "deadbeef"},
+		{"sha256-prefix-sourceVersion", "abc", "sha256:abc123", "deadbeef"},
+		{"sha256-prefix-sha256File", "abc", "v1", "sha256:deadbeef"},
+		{"planner-prefix-and-sha256", "planner:abc:0", "sha256:abc", "sha256:beef"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := AssetKey(c.provider, c.clipID, c.sourceVersion, c.sha256File)
-			assert.Error(t, err, "AssetKey MUST reject inputs containing ':'")
-			assert.ErrorIs(t, err, ErrInvalidSegment,
-				"the rejection MUST be a typed ErrInvalidSegment (errors.Is dispatchable)")
-			assert.Contains(t, err.Error(), c.colonField,
-				"err message must name the offending field for operator triage")
+			got, err := AssetKey("artlist", c.clipID, c.sourceVersion, c.sha256File)
+			assert.NoError(t, err, "data fields may legitimately contain ':'")
+			assert.NotEmpty(t, got, "key must be constructed even when data fields contain ':'")
 		})
 	}
 }
 
-// TestJobKey_ColonInInput_Rejected mirrors the AssetKey test
-// for the 3-tuple JobKey.
-func TestJobKey_ColonInInput_Rejected(t *testing.T) {
+// TestJobKey_ColonInProvider_Rejected pins the colon-collision
+// guard on the ROUTING field (provider) for the 3-tuple JobKey.
+func TestJobKey_ColonInProvider_Rejected(t *testing.T) {
+	_, err := JobKey("art:list", "abc", "v1")
+	assert.Error(t, err, "JobKey MUST reject a provider containing ':'")
+	assert.ErrorIs(t, err, ErrInvalidSegment)
+	assert.Contains(t, err.Error(), "provider")
+}
+
+// TestJobKey_ColonInDataFields_Allowed mirrors the AssetKey
+// acceptance test for the 3-tuple JobKey.
+func TestJobKey_ColonInDataFields_Allowed(t *testing.T) {
 	cases := []struct {
-		name                          string
-		provider, clipID, sourceVer  string
-		colonField                    string
+		name          string
+		clipID        string
+		sourceVersion string
 	}{
-		{"colon-in-provider", "art:list", "abc", "v1", "provider"},
-		{"colon-in-clipID", "artlist", "ab:c", "v1", "clip_id"},
-		{"colon-in-source_version", "artlist", "abc", "v:1", "source_version"},
+		{"planner-prefix-clipID", "planner:abc123:0", "v1"},
+		{"sha256-prefix-sourceVersion", "abc", "sha256:abc123"},
+		{"both-with-colon", "planner:abc:0", "sha256:abc"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := JobKey(c.provider, c.clipID, c.sourceVer)
-			assert.Error(t, err, "JobKey MUST reject inputs containing ':'")
+			got, err := JobKey("artlist", c.clipID, c.sourceVersion)
+			assert.NoError(t, err, "data fields may legitimately contain ':'")
+			assert.NotEmpty(t, got)
+		})
+	}
+}
+
+// TestOutboxKey_ColonInRoutingFields_Rejected pins the
+// colon-collision guard on the ROUTING fields (eventType,
+// provider). Both must be segment-count-stable for the
+// outbox dispatcher routing.
+func TestOutboxKey_ColonInRoutingFields_Rejected(t *testing.T) {
+	cases := []struct {
+		name       string
+		eventType  string
+		provider   string
+		colonField string
+	}{
+		{"colon-in-event_type", "asset.index:requested.v1", "artlist", "event_type"},
+		{"colon-in-provider", "asset.index.requested.v1", "art:list", "provider"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := OutboxKey(c.eventType, c.provider, "abc", "v1")
+			assert.Error(t, err, "OutboxKey MUST reject a routing field containing ':'")
 			assert.ErrorIs(t, err, ErrInvalidSegment)
 			assert.Contains(t, err.Error(), c.colonField)
 		})
 	}
 }
 
-// TestOutboxKey_ColonInInput_Rejected mirrors the JobKey test
-// for the 4-tuple OutboxKey (with event_type as the
-// disambiguator prefix).
-func TestOutboxKey_ColonInInput_Rejected(t *testing.T) {
+// TestOutboxKey_ColonInDataFields_Allowed pins the Commit 2
+// follow-up relaxation for the 4-tuple OutboxKey. The data
+// fields (clipID, sourceVersion) are opaque and may
+// legitimately contain ':' as a scheme prefix.
+func TestOutboxKey_ColonInDataFields_Allowed(t *testing.T) {
 	cases := []struct {
-		name                                          string
-		eventType, provider, clipID, sourceVersion   string
-		colonField                                    string
+		name          string
+		clipID        string
+		sourceVersion string
 	}{
-		{"colon-in-event_type", "asset.index:requested.v1", "artlist", "abc", "v1", "event_type"},
-		{"colon-in-provider", "asset.index.requested.v1", "art:list", "abc", "v1", "provider"},
-		{"colon-in-clipID", "asset.index.requested.v1", "artlist", "ab:c", "v1", "clip_id"},
-		{"colon-in-source_version", "asset.index.requested.v1", "artlist", "abc", "v:1", "source_version"},
+		{"planner-prefix-clipID", "planner:abc123:0", "v1"},
+		{"sha256-prefix-sourceVersion", "abc", "sha256:abc123"},
+		{"both-with-colon", "planner:abc:0", "sha256:abc"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := OutboxKey(c.eventType, c.provider, c.clipID, c.sourceVersion)
-			assert.Error(t, err, "OutboxKey MUST reject inputs containing ':'")
-			assert.ErrorIs(t, err, ErrInvalidSegment)
-			assert.Contains(t, err.Error(), c.colonField)
+			got, err := OutboxKey("asset.index.requested.v1", "artlist", c.clipID, c.sourceVersion)
+			assert.NoError(t, err, "data fields may legitimately contain ':'")
+			assert.NotEmpty(t, got)
 		})
 	}
 }

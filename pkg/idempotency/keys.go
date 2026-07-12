@@ -28,11 +28,35 @@
 // domain/asset/clip_identity.go which uses ':' as the segment
 // separator; see also ArtifactIdempotencyKey in
 // domain/remote/idempotency.go which uses ':' in the same way).
-// Every constructor REJECTS inputs containing ':' via the
-// ErrInvalidSegment guard so the segment-count contract is
-// enforceable rather than convention-based. A provider like
-// "art:list" would otherwise silently produce a 5-segment key
-// that any downstream parser splitting on ':' would misparse.
+//
+// The ErrInvalidSegment guard applies ONLY to the routing fields
+// (eventType, provider) — the two segments that are part of the
+// dispatch-routing identity and MUST be segment-count-stable so
+// a downstream parser that splits on ':' (e.g. an outbox router
+// that reads the provider segment) doesn't misparse. A provider
+// like "art:list" or an event_type like "asset.index:requested"
+// would otherwise silently produce a key with the wrong
+// segment count.
+//
+// The guard does NOT apply to the data fields (clipID,
+// sourceVersion, sha256File) — these are opaque identifiers
+// that legitimately contain ':' as a SCHEME PREFIX, not a
+// segment delimiter:
+//   - sourceVersion often carries a 'sha256:' prefix
+//     (e.g. "sha256:deadbeef..."), per the convention in
+//     tests/e2e/qdrant_e2e_youtube_test.go::testSourceVersionFor
+//   - clipID for the stock pipeline is "planner:<hash>:<index>"
+//     (per internal/application/assets/providers/stock/.../
+//     planner.go::buildClipPlan)
+//   - sha256File may carry a "sha256:<hex>" prefix in some
+//     upstream adapters
+//
+// Rejecting these inputs would be a production-silent bug —
+// the canonical key constructor would fail-closed on inputs
+// that the upstream pipeline legitimately produces. The
+// data-field keys are opaque (no downstream parser splits on
+// ':' to read clipID or sourceVersion) so the segment-count
+// drift is benign.
 //
 // godlike/06 SSOT (Fase 5 user spec — Stabilisci la chiave
 // canonica di idempotenza):
@@ -69,49 +93,58 @@ import (
 // All sentinels carry the canonical "no fake availability"
 // reason text for grep-ability.
 var (
-	// ErrEmptyProvider — provider is required for every key.
-	// A missing provider is the canonical "wiring bug" case
-	// (the caller forgot to thread the provider through).
-	ErrEmptyProvider = errors.New("idempotency: provider is required (godlike/07 — no fake availability)")
-	// ErrEmptyClipID — clip_id is required for every key.
-	// A missing clip_id is the canonical "no fake identity"
-	// case (the caller would otherwise hash a phantom row).
-	ErrEmptyClipID = errors.New("idempotency: clip_id is required (godlike/07 — no fake availability)")
-	// ErrEmptySourceVersion — source_version is required for
-	// every key. A missing source_version is the canonical
-	// "stale CAS fence" case (the worker didn't read the
-	// current source_version before enqueueing).
-	ErrEmptySourceVersion = errors.New("idempotency: source_version is required (godlike/07 — no fake availability)")
-	// ErrEmptySHA256 — sha256(file) is required for AssetKey
-	// (the row identity). A missing sha256 is the canonical
-	// "download not yet complete" case — the caller should
-	// use JobKey until the file is downloaded and the
-	// sha256 is computed.
-	ErrEmptySHA256 = errors.New("idempotency: sha256 file digest is required for AssetKey (use JobKey until the file is downloaded)")
-	// ErrEmptyEventType — event_type is required for OutboxKey
-	// (the dispatch target disambiguator).
-	ErrEmptyEventType = errors.New("idempotency: event_type is required for OutboxKey (godlike/07 — no fake availability)")
-	// ErrInvalidSegment — an input contains ':', the reserved
-	// segment delimiter. The constructor rejects the input
-	// rather than silently producing a mis-parsable key.
-	// The godlike/06 contract: a downstream parser that splits
-	// on ':' (the canonical segment delimiter) MUST see exactly
-	// 4/3/4 segments for AssetKey/JobKey/OutboxKey. A provider
-	// like "art:list" would otherwise silently produce a
-	// 5-segment key that any ':'-splitter would misparse.
-	ErrInvalidSegment = errors.New("idempotency: ':' is reserved as the segment delimiter (godlike/06 — fix the caller; the canonical provider/clipID/source_version/sha256/event_type values must not contain ':')")
+// ErrEmptyProvider — provider is required for every key.
+// A missing provider is the canonical "wiring bug" case
+// (the caller forgot to thread the provider through).
+ErrEmptyProvider = errors.New("idempotency: provider is required (godlike/07 — no fake availability)")
+// ErrEmptyClipID — clip_id is required for every key.
+// A missing clip_id is the canonical "no fake identity"
+// case (the caller would otherwise hash a phantom row).
+ErrEmptyClipID = errors.New("idempotency: clip_id is required (godlike/07 — no fake availability)")
+// ErrEmptySourceVersion — source_version is required for
+// every key. A missing source_version is the canonical
+// "stale CAS fence" case (the worker didn't read the
+// current source_version before enqueueing).
+ErrEmptySourceVersion = errors.New("idempotency: source_version is required (godlike/07 — no fake availability)")
+// ErrEmptySHA256 — sha256(file) is required for AssetKey
+// (the row identity). A missing sha256 is the canonical
+// "download not yet complete" case — the caller should
+// use JobKey until the file is downloaded and the
+// sha256 is computed.
+ErrEmptySHA256 = errors.New("idempotency: sha256 file digest is required for AssetKey (use JobKey until the file is downloaded)")
+// ErrEmptyEventType — event_type is required for OutboxKey
+// (the dispatch target disambiguator).
+ErrEmptyEventType = errors.New("idempotency: event_type is required for OutboxKey (godlike/07 — no fake availability)")
+// ErrInvalidSegment — a ROUTING field (eventType, provider)
+// contains ':', the reserved segment delimiter. The
+// constructor rejects the input rather than silently
+// producing a mis-parsable key. The godlike/06 contract:
+// a downstream parser that splits on ':' (the canonical
+// segment delimiter) MUST see exactly 4/3/4 segments for
+// AssetKey/JobKey/OutboxKey. A provider like "art:list"
+// would otherwise silently produce a 5-segment key that
+// any ':'-splitter would misparse.
+//
+// NOTE: the guard applies ONLY to the routing fields. The
+// data fields (clipID, sourceVersion, sha256File) are opaque
+// and may legitimately contain ':' as a scheme prefix
+// (e.g. "sha256:abc", "planner:abc:0") — see the SEGMENT
+// DELIMITER section in the package doc.
+ErrInvalidSegment = errors.New("idempotency: ':' is reserved as the segment delimiter (godlike/06 — applies to ROUTING fields only; data fields clipID/source_version/sha256 may carry ':' as a scheme prefix)")
 )
 
-// validateSegment checks that the segment value does not
-// contain the reserved ':' delimiter. Used by all 3
-// constructors to enforce the segment-count contract.
-func validateSegment(field, value string) error {
-	if strings.Contains(value, ":") {
-		return errInvalidSegment(field)
-	}
-	return nil
+// errInvalidSegmentFor returns a per-field invalidSegmentError
+// for the colon-collision guard on the routing fields (eventType,
+// provider). Callers use the typed sentinel via errors.Is to
+// branch on the failure mode.
+func errInvalidSegmentFor(field string) error {
+	return &invalidSegmentError{field: field}
 }
 
+// errInvalidSegment (alias for errInvalidSegmentFor) returns a
+// per-field invalidSegmentError for the colon-collision guard.
+// Retained for backward compat with code that already uses the
+// short form.
 func errInvalidSegment(field string) error {
 	return &invalidSegmentError{field: field}
 }
@@ -144,9 +177,28 @@ func (e *invalidSegmentError) Is(target error) bool {
 // separator; see also ArtifactIdempotencyKey in
 // domain/remote/idempotency.go which uses ':' in the same way).
 //
-// Empty inputs are rejected with a typed error so the gates
+// Field rules (see the SEGMENT DELIMITER section in the package
+// doc for the routing/data split rationale):
+//   - provider  : ROUTING field — empty rejected with
+//                 ErrEmptyProvider; ':' rejected with
+//                 ErrInvalidSegment.
+//   - clipID    : DATA field    — empty rejected with
+//                 ErrEmptyClipID; ':' ALLOWED (stock planner
+//                 IDs and sha256-prefixed IDs legitimately
+//                 use ':' as a scheme prefix).
+//   - sourceVer : DATA field    — empty rejected with
+//                 ErrEmptySourceVersion; ':' ALLOWED (sha256
+//                 source_version is conventionally
+//                 "sha256:<hex>").
+//   - sha256File: DATA field    — empty rejected with
+//                 ErrEmptySHA256; ':' ALLOWED.
+//
+// Empty inputs are rejected with a typed sentinel so the gates
 // downstream (UNIQUE on media_assets.id, scraper dedup, etc.)
-// cannot be silently bypassed by a half-wired caller.
+// cannot be silently bypassed by a half-wired caller. The
+// checks are INLINED (not delegated to a helper) so the typed
+// sentinel identity is preserved — errors.Is(returnedErr,
+// ErrEmptyProvider) MUST be true per godlike/07.
 //
 // Invariant: JobKey(p, c, s) is a strict prefix of
 // AssetKey(p, c, s, h) when the sha256 segment is appended.
@@ -164,26 +216,17 @@ func (e *invalidSegmentError) Is(target error) bool {
 // and the sha256 is computed. The writer rejects AssetKey
 // calls with an empty sha256File.
 func AssetKey(provider, clipID, sourceVersion, sha256File string) (string, error) {
-	if err := validateSegment("provider", provider); err != nil {
-		return "", err
-	}
 	if provider == "" {
 		return "", ErrEmptyProvider
 	}
-	if err := validateSegment("clip_id", clipID); err != nil {
-		return "", err
+	if strings.Contains(provider, ":") {
+		return "", errInvalidSegmentFor("provider")
 	}
 	if clipID == "" {
 		return "", ErrEmptyClipID
 	}
-	if err := validateSegment("source_version", sourceVersion); err != nil {
-		return "", err
-	}
 	if sourceVersion == "" {
 		return "", ErrEmptySourceVersion
-	}
-	if err := validateSegment("sha256", sha256File); err != nil {
-		return "", err
 	}
 	if sha256File == "" {
 		return "", ErrEmptySHA256
@@ -198,8 +241,19 @@ func AssetKey(provider, clipID, sourceVersion, sha256File string) (string, error
 //
 //	"provider+clip_id+source_version per i job/outbox"
 //
-// Empty inputs are rejected with typed errors (same
-// godlike/07 fail-closed discipline as AssetKey).
+// Field rules (see the SEGMENT DELIMITER section in the package
+// doc for the routing/data split rationale):
+//   - provider  : ROUTING field — empty rejected with
+//                 ErrEmptyProvider; ':' rejected with
+//                 ErrInvalidSegment.
+//   - clipID    : DATA field    — empty rejected with
+//                 ErrEmptyClipID; ':' ALLOWED.
+//   - sourceVer : DATA field    — empty rejected with
+//                 ErrEmptySourceVersion; ':' ALLOWED.
+//
+// Empty inputs are rejected with typed sentinels (same
+// godlike/07 fail-closed discipline as AssetKey). The checks
+// are INLINED so the typed sentinel identity is preserved.
 //
 // Use JobKey for: outbox events that don't have a file
 // fingerprint yet (e.g. the discovery event at job creation,
@@ -207,20 +261,14 @@ func AssetKey(provider, clipID, sourceVersion, sha256File string) (string, error
 // for: media_assets row identity + outbox events that have
 // already computed the file sha256.
 func JobKey(provider, clipID, sourceVersion string) (string, error) {
-	if err := validateSegment("provider", provider); err != nil {
-		return "", err
-	}
 	if provider == "" {
 		return "", ErrEmptyProvider
 	}
-	if err := validateSegment("clip_id", clipID); err != nil {
-		return "", err
+	if strings.Contains(provider, ":") {
+		return "", errInvalidSegmentFor("provider")
 	}
 	if clipID == "" {
 		return "", ErrEmptyClipID
-	}
-	if err := validateSegment("source_version", sourceVersion); err != nil {
-		return "", err
 	}
 	if sourceVersion == "" {
 		return "", ErrEmptySourceVersion
@@ -238,8 +286,18 @@ func JobKey(provider, clipID, sourceVersion string) (string, error) {
 // asset; the same asset can have multiple event_keys for
 // different event_types in the outbox.
 //
-// Empty event_type is rejected with ErrEmptyEventType (the
-// other 3 empty-input guards mirror AssetKey / JobKey).
+// Field rules (see the SEGMENT DELIMITER section in the package
+// doc for the routing/data split rationale):
+//   - eventType  : ROUTING field — empty rejected with
+//                  ErrEmptyEventType; ':' rejected with
+//                  ErrInvalidSegment (eventType is the
+//                  routing segment — must be segment-stable).
+//   - provider   : ROUTING field — empty rejected; ':' rejected.
+//   - clipID     : DATA field    — empty rejected; ':' ALLOWED.
+//   - sourceVer  : DATA field    — empty rejected; ':' ALLOWED.
+//
+// Empty inputs are rejected with typed sentinels. The checks
+// are INLINED so the typed sentinel identity is preserved.
 //
 // OutboxKey is the canonical surface for the "Qdrant upsert
 // outbox key" mentioned in the user spec. The existing
@@ -251,26 +309,20 @@ func JobKey(provider, clipID, sourceVersion string) (string, error) {
 // domain/asset/clip_identity.go comment that flags the
 // infra-layer indexEventKey as a future refactor target).
 func OutboxKey(eventType, provider, clipID, sourceVersion string) (string, error) {
-	if err := validateSegment("event_type", eventType); err != nil {
-		return "", err
-	}
 	if eventType == "" {
 		return "", ErrEmptyEventType
 	}
-	if err := validateSegment("provider", provider); err != nil {
-		return "", err
+	if strings.Contains(eventType, ":") {
+		return "", errInvalidSegmentFor("event_type")
 	}
 	if provider == "" {
 		return "", ErrEmptyProvider
 	}
-	if err := validateSegment("clip_id", clipID); err != nil {
-		return "", err
+	if strings.Contains(provider, ":") {
+		return "", errInvalidSegmentFor("provider")
 	}
 	if clipID == "" {
 		return "", ErrEmptyClipID
-	}
-	if err := validateSegment("source_version", sourceVersion); err != nil {
-		return "", err
 	}
 	if sourceVersion == "" {
 		return "", ErrEmptySourceVersion

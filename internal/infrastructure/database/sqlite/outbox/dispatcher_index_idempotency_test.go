@@ -50,21 +50,24 @@ func (r *recordingOutboxEventsRepo) Enqueue(_ context.Context, _ *sql.Tx, eventT
 // Compile-time guard.
 var _ outboxEnqueuer = (*recordingOutboxEventsRepo)(nil)
 
-// txMgrCapture is a TxManager that records the *sql.Tx the dispatcher
+// txMgrRun is a TxManager that records the *sql.Tx the dispatcher
 // passes to the closure (always nil in these tests because the fake
 // doesn't open a real tx; the value is only used to satisfy the
 // interface). The InTransaction callback runs the fn synchronously
 // with a nil tx — which is acceptable because fakeClips.UpsertClipTx
 // ignores the tx in these tests.
-type txMgrCapture struct{}
+//
+// Named `txMgrRun` (not `txMgrCapture`) to avoid clashing with the
+// same-named pointer-receiver type in delete_envelope_test.go.
+type txMgrRun struct{}
 
-func (txMgrCapture) InTransaction(ctx context.Context, fn func(tx *sql.Tx) error) error {
+func (*txMgrRun) InTransaction(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	return fn(nil)
 }
-func (txMgrCapture) DB() *sql.DB { return nil }
+func (*txMgrRun) DB() *sql.DB { return nil }
 
 // Compile-time guard.
-var _ TxManager = txMgrCapture{}
+var _ TxManager = (*txMgrRun)(nil)
 
 // ── SaveDiscoveredAsset: JobKey stamping ───────────────────────────────
 
@@ -79,7 +82,7 @@ func TestSaveDiscoveredAsset_StampsJobKeyIntoMetadata(t *testing.T) {
 	d := &Dispatcher{
 		clips:            clips,
 		outboxEventsRepo: rec,
-		txmgr:            txMgrCapture{},
+		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
 	}
 	clip := &asset.Asset{
@@ -119,7 +122,7 @@ func TestSaveDiscoveredAsset_DifferentProvidersProduceDifferentJobKeys(t *testin
 	d := &Dispatcher{
 		clips:            &fakeClips{},
 		outboxEventsRepo: rec,
-		txmgr:            txMgrCapture{},
+		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
 	}
 	a := &asset.Asset{ID: "x", Source: asset.Source("artlist")}
@@ -152,7 +155,7 @@ func TestEnqueueAndIndex_UsesOutboxKeyShape(t *testing.T) {
 	d := &Dispatcher{
 		clips:            clips,
 		outboxEventsRepo: rec,
-		txmgr:            txMgrCapture{},
+		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
 	}
 	clip := &asset.Asset{
@@ -198,7 +201,7 @@ func TestEnqueueAndIndex_SameInputsSameEventKey(t *testing.T) {
 	d := &Dispatcher{
 		clips:            &fakeClips{},
 		outboxEventsRepo: rec,
-		txmgr:            txMgrCapture{},
+		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
 	}
 	clip := &asset.Asset{
@@ -232,7 +235,7 @@ func TestEnqueueAndIndex_DifferentContentHashDifferentEventKey(t *testing.T) {
 	d := &Dispatcher{
 		clips:            &fakeClips{},
 		outboxEventsRepo: rec,
-		txmgr:            txMgrCapture{},
+		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
 	}
 	clip := &asset.Asset{ID: "artlist_xyz", Source: asset.Source("artlist")}
@@ -256,7 +259,7 @@ func TestEnqueueAndIndex_ProviderFromClipSource(t *testing.T) {
 	d := &Dispatcher{
 		clips:            &fakeClips{},
 		outboxEventsRepo: rec,
-		txmgr:            txMgrCapture{},
+		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
 	}
 	const contentHash = "sha256:cafecafe"
@@ -290,7 +293,7 @@ func TestEnqueueIndexEvent_UsesOutboxKeyShape(t *testing.T) {
 	d := &Dispatcher{
 		clips:            &fakeClips{},
 		outboxEventsRepo: rec,
-		txmgr:            txMgrCapture{},
+		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
 	}
 	const assetID = "vo_voiceover_xyz"
@@ -337,7 +340,7 @@ func TestEnqueueIndexEvent_ProviderInferredFromAssetIDPrefix(t *testing.T) {
 			d := &Dispatcher{
 				clips:            &fakeClips{},
 				outboxEventsRepo: rec,
-				txmgr:            txMgrCapture{},
+				txmgr:            &txMgrRun{},
 				log:              zap.NewNop(),
 			}
 			const contentHash = "sha256:1234"
@@ -364,7 +367,7 @@ func TestEnqueueIndexEvent_UnknownPrefixFailsClosed(t *testing.T) {
 	d := &Dispatcher{
 		clips:            &fakeClips{},
 		outboxEventsRepo: rec,
-		txmgr:            txMgrCapture{},
+		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
 	}
 	err := d.EnqueueIndexEvent(context.Background(), nil, "weird_unknown_xyz", "sha256:1234")
@@ -391,7 +394,7 @@ func TestEnqueueAndIndex_AndEnqueueIndexEvent_ProduceSameEventKey(t *testing.T) 
 	d := &Dispatcher{
 		clips:            &fakeClips{},
 		outboxEventsRepo: rec,
-		txmgr:            txMgrCapture{},
+		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
 	}
 	const assetID = "yt_vid_0_60_v1" // DetectSourceFromAssetID → "youtube"
