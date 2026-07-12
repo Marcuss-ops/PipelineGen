@@ -95,15 +95,15 @@ def get_txt_content(local_path, name=None):
                     try:
                         with open(txt_file, "r", encoding="utf-8", errors="ignore") as f:
                             return f.read().strip()
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"Error reading s_dir txt file {txt_file}: {e}")
                 try:
                     for found_p in s_dir.rglob(f"{base_name}.txt"):
                         if found_p.exists():
                             with open(found_p, "r", encoding="utf-8", errors="ignore") as f:
                                 return f.read().strip()
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Error reading rglob txt files under {s_dir}: {e}")
     return ""
 
 def normalize_text(text):
