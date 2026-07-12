@@ -37,7 +37,7 @@
 //     predicate + the typed-wrap helper.
 //   - options.go      — configuration knobs: Options struct,
 //     RetryOptions alias, DefaultOptions, norm
-//     (defensive coalesce), sleepDuration (exponential
+//     (defensive coalesce), BackoffFor (exponential
 //     backoff + bounded jitter math).
 //   - errors.go       — error category taxonomy: ErrorCategory enum,
 //     Classify(err) → (category, retryable bool),
@@ -216,7 +216,7 @@ func DoWithValue[T any](ctx context.Context, fn func() (T, error), opts Options)
 			if opts.OnRetry != nil {
 				opts.OnRetry(i, err)
 			}
-			sleep := sleepDuration(i, opts)
+			sleep := BackoffFor(i, opts)
 			// P1.5 (July 2026): honor the Retry-After hint at the
 			// pre-sleep point. Google API 429/503 responses carry
 			// Retry-After that often exceeds the static exponential

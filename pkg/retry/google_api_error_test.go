@@ -292,7 +292,7 @@ func TestGoogleAPIError_IsRetryable_SatisfiesInterface(t *testing.T) {
 // the retry-loop integration test. The retry.DoWithValue call returns
 // this error from the second attempt onwards (first attempt returns
 // nil to enter the retry path). The classifier observes the
-// suggested duration; sleepDuration sees re.RetryAfterDuration().
+// suggested duration; BackoffFor sees re.RetryAfterDuration().
 //
 // Why a fake vs *GoogleAPIError: simpler than constructing a
 // real *googleapi.Error; the canonical surface is verified above.
