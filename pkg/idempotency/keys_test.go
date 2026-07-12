@@ -326,3 +326,104 @@ func TestErrEmptySHA256_HintsJobKey(t *testing.T) {
 	assert.Contains(t, err.Error(), "JobKey",
 		"err message must hint that JobKey is the pre-download alternative")
 }
+
+// ── ':' delimiter-collision guards (Commit 1 follow-up) ──────────
+
+// TestAssetKey_ColonInInput_Rejected pins the MUST-FIX
+// follow-up to Commit 1: any input containing the reserved
+// ':' delimiter is REJECTED with ErrInvalidSegment. A
+// provider like "art:list" would otherwise silently produce
+// a 5-segment key that any ':'-splitter would misparse.
+// The error must be errors.Is(ErrInvalidSegment) so callers
+// can branch on the typed sentinel.
+func TestAssetKey_ColonInInput_Rejected(t *testing.T) {
+	cases := []struct {
+		name              string
+		provider, clipID  string
+		sourceVersion     string
+		sha256File        string
+		colonField        string
+	}{
+		{"colon-in-provider", "art:list", "abc", "v1", "deadbeef", "provider"},
+		{"colon-in-clipID", "artlist", "ab:c", "v1", "deadbeef", "clip_id"},
+		{"colon-in-source_version", "artlist", "abc", "v:1", "deadbeef", "source_version"},
+		{"colon-in-sha256", "artlist", "abc", "v1", "dead:beef", "sha256"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := AssetKey(c.provider, c.clipID, c.sourceVersion, c.sha256File)
+			assert.Error(t, err, "AssetKey MUST reject inputs containing ':'")
+			assert.ErrorIs(t, err, ErrInvalidSegment,
+				"the rejection MUST be a typed ErrInvalidSegment (errors.Is dispatchable)")
+			assert.Contains(t, err.Error(), c.colonField,
+				"err message must name the offending field for operator triage")
+		})
+	}
+}
+
+// TestJobKey_ColonInInput_Rejected mirrors the AssetKey test
+// for the 3-tuple JobKey.
+func TestJobKey_ColonInInput_Rejected(t *testing.T) {
+	cases := []struct {
+		name                          string
+		provider, clipID, sourceVer  string
+		colonField                    string
+	}{
+		{"colon-in-provider", "art:list", "abc", "v1", "provider"},
+		{"colon-in-clipID", "artlist", "ab:c", "v1", "clip_id"},
+		{"colon-in-source_version", "artlist", "abc", "v:1", "source_version"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := JobKey(c.provider, c.clipID, c.sourceVer)
+			assert.Error(t, err, "JobKey MUST reject inputs containing ':'")
+			assert.ErrorIs(t, err, ErrInvalidSegment)
+			assert.Contains(t, err.Error(), c.colonField)
+		})
+	}
+}
+
+// TestOutboxKey_ColonInInput_Rejected mirrors the JobKey test
+// for the 4-tuple OutboxKey (with event_type as the
+// disambiguator prefix).
+func TestOutboxKey_ColonInInput_Rejected(t *testing.T) {
+	cases := []struct {
+		name                                          string
+		eventType, provider, clipID, sourceVersion   string
+		colonField                                    string
+	}{
+		{"colon-in-event_type", "asset.index:requested.v1", "artlist", "abc", "v1", "event_type"},
+		{"colon-in-provider", "asset.index.requested.v1", "art:list", "abc", "v1", "provider"},
+		{"colon-in-clipID", "asset.index.requested.v1", "artlist", "ab:c", "v1", "clip_id"},
+		{"colon-in-source_version", "asset.index.requested.v1", "artlist", "abc", "v:1", "source_version"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := OutboxKey(c.eventType, c.provider, c.clipID, c.sourceVersion)
+			assert.Error(t, err, "OutboxKey MUST reject inputs containing ':'")
+			assert.ErrorIs(t, err, ErrInvalidSegment)
+			assert.Contains(t, err.Error(), c.colonField)
+		})
+	}
+}
+
+// TestErrInvalidSegment_SentinelIdentity pins the typed-
+// sentinel identity for the colon-collision guard. The
+// invalidSegmentError type implements Is(target error) so
+// errors.Is(perFieldError, ErrInvalidSegment) is true. This
+// lets callers branch on the sentinel without depending on
+// the per-field error type.
+func TestErrInvalidSegment_SentinelIdentity(t *testing.T) {
+	_, err := AssetKey("art:list", "abc", "v1", "deadbeef")
+	require.Error(t, err)
+	// errors.Is dispatch: the per-field error wraps the typed
+	// sentinel via the Is() method.
+	if !errors.Is(err, ErrInvalidSegment) {
+		t.Errorf("invalidSegmentError MUST satisfy errors.Is(err, ErrInvalidSegment)")
+	}
+	// The Error() method adds the field name for operator triage.
+	assert.Contains(t, err.Error(), "provider",
+		"err message must name the offending field")
+	assert.Contains(t, err.Error(), "segment delimiter",
+		"err message must explain the constraint for operator grep-ability")
+}
