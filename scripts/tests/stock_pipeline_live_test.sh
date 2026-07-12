@@ -67,7 +67,7 @@ if [ -z "$TOKEN" ]; then
 fi
 
 MISSING=()
-for v in DB_PATH; do [ -f "$v" ] || MISSING+=("$v (file not found)"); done
+[ -f "$DB_PATH" ] || MISSING+=("DB_PATH (file not found)")
 # Soft-fail on optionals: Q-drant/YOUTUBE_URL/QUERY are validated against mode.
 require_youtube=0
 require_query=0
@@ -345,7 +345,7 @@ fi
 # ─── STEP 5: SQLite canonical ─────────────────────────────────────────────
 log ""
 log "── STEP 5/12  media_assets row with source='stock' ──"
-S5_SQL="SELECT id, filename, COALESCE('') as folder_id, index_state, lifecycle_state, \
+S5_SQL="SELECT id, filename, '' as folder_id, index_state, lifecycle_state, \
         CASE WHEN file_hash='' THEN '-' ELSE substr(file_hash,1,12)||'...' END as file_hash, \
         CASE WHEN drive_file_id='' THEN '-' ELSE substr(drive_file_id,1,12)||'...' END as drive_file_id \
     FROM media_assets WHERE source='stock' \
@@ -373,7 +373,7 @@ else
     S6_SQL="SELECT CASE WHEN file_hash=''     THEN '<empty>' ELSE file_hash     END, \
                    CASE WHEN drive_file_id='' THEN '<empty>' ELSE drive_file_id END, \
                    CASE WHEN drive_file_id='' THEN ''        ELSE 'https://drive.google.com/file/d/'||drive_file_id||'/view' END AS drive_link, \
-                   COALESCE('') as mime, lifecycle_state, index_state, source \
+                   '' as mime, lifecycle_state, index_state, source \
               FROM media_assets WHERE id='$LAST_ASSET_ID';"
     sqlite3 -line "$DB_PATH" "$S6_SQL" \
         >"$OUT_DIR/step6_asset_attributes.txt" 2>"$OUT_DIR/step6_asset_attributes.err" || true
@@ -484,7 +484,7 @@ log ""
 log "── STEP 9/12  GET /api/media/search returns the asset ──"
 S9_TERM="${QUERY:-$(sqlite3 "$DB_PATH" "SELECT filename FROM media_assets WHERE id='${LAST_ASSET_ID:-}' LIMIT 1;" 2>/dev/null || true)}"
 S9_PAYLOAD=$(jq -nc --arg t "${S9_TERM:-stock}" --arg id "${LAST_ASSET_ID:-}" \
-    '{query:$t, filters:{source:["stock"]}, limit:10}')
+    '{query:$t, filters:{source:"stock"}, limit:10}')
 S9_HTTP=$(http_post "$BASE/api/media/search" \
     "$OUT_DIR/step9_unified_search.json" "$S9_PAYLOAD")
 case "$S9_HTTP" in
