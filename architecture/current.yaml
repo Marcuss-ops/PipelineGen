@@ -50,7 +50,13 @@
     TestCacheFingerprint_P1A_PerFieldMutationSensitivity/segment_topics) +
     Commit 9's ship gate (TestWalPragmas_PreservesAllThreePragmas +
     internal/app/composition + assets/monitor + assets/providers + artlist +
-    stockpipeline + cmd/archcheck + format-drift on 6 artlist files).
+    stockpipeline + cmd/archcheck + format-drift on 6 artlist files) +
+    Commit 9b catalog-extension follow-up (4 drift files appended to
+    PRE-EXISTING-10-FORMAT-DRIFT after the verification re-run surfaced
+    them on July 12 2026: evaluate_run_state_test.go +
+    pipeline_state_test.go + pkg/idempotency/keys.go +
+    pkg/idempotency/keys_test.go; carrying the verify-format surface
+    from 6 → 10 unformatted files).
     Per godlike/06 SSOT + the user's option (a) decision on Commit 8,
     these failures do NOT block wave commits 1-9 (each landed with
     explicit CARRY-FORWARD awareness commit message annotation):
@@ -72,7 +78,7 @@
     detail (in architecture/issues.yaml::PRE-EXISTING-{1..10}).
   cross_refs:
     issues_catalog: "architecture/issues.yaml::PRE-EXISTING-{1..10}"
-    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate"]
+    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate", "commit 9b catalog-extension"]
     ci_gate: "scripts/ci-architectural-checks.sh::Check 63 (zero-baseline stale-entry detection)"
   follow_up_tickets:
     - id: PRE-EXISTING-1-WAL-PRAGMAS
@@ -94,7 +100,7 @@
     - id: PRE-EXISTING-9-ARCHCHECK-SNAPSHOT
       note: cmd/archcheck::TestSnapshot
     - id: PRE-EXISTING-10-FORMAT-DRIFT
-      note: verify-format red on 6 artlist files (build_bundles_artlist.go + build_bundles_artlist_failclosed_test.go + artlist/diagnostics.go + artlist/gate03_sqlite_test.go + artlist/ports.go + artlist/diagnostics/system_prober.go)
+      note: verify-format red on 10 files (6 original artlist + 4 drift additions: evaluate_run_state_test.go + pipeline_state_test.go + pkg/idempotency/keys.go + pkg/idempotency/keys_test.go; full file list in PRE-EXISTING-10-FORMAT-DRIFT owner_capability)
 
 - id: WAVE-20-QDRANT-005D-HYGIENE
   status: in_progress

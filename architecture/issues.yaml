@@ -461,16 +461,16 @@ issues:
     tracking_issue: "godlike/06 SSOT carry-forward discipline"
 
   - id: PRE-EXISTING-10-FORMAT-DRIFT
-    title: "verify-format red on 6 artlist files (gofmt -l flags: internal/app/build_bundles_artlist.go + build_bundles_artlist_failclosed_test.go + artlist/diagnostics.go + artlist/gate03_sqlite_test.go + artlist/ports.go + artlist/diagnostics/system_prober.go)"
+    title: "verify-format red on 10 files (6 original artlist + 4 drift: evaluate_run_state_test.go + pipeline_state_test.go + pkg/idempotency/keys.go + pkg/idempotency/keys_test.go)"
     status: open
     severity: p2
-    owner_capability: "internal/app/build_bundles_artlist* + internal/application/assets/providers/artlist/* + internal/infrastructure/artlist/diagnostics/system_prober.go"
+    owner_capability: "internal/app/build_bundles_artlist* + internal/application/assets/providers/artlist/* + internal/infrastructure/artlist/diagnostics/system_prober.go + internal/application/assets/providers/artlist/evaluate_run_state_test.go + internal/domain/asset/pipeline_state_test.go + pkg/idempotency/keys.go + pkg/idempotency/keys_test.go"
     follow_up:
-      - "Diagnostic: pre-existing format-drift from PR-P2-FAILCLOSED-JOB (July 2026) + slide_worker wave pre-flight residue (b1e38ba2 snapshot commit). The 6 files were modified but never gofmt-formatted before commit."
-      - "Action: `gofmt -w` on all 6 files; verify no semantic delta beyond whitespace alignment; commit as separate `chore(format): gofmt -w on 6 artlist files (PRE-EXISTING-10 close-out)` chore commit."
-      - "Re-run `make verify-main`; expect verify-format gate to flip green for these 6 files (the gate runs gofmt -l across the entire repo)."
+      - "Diagnostic: pre-existing format-drift from PR-P2-FAILCLOSED-JOB (July 2026) + slide_worker wave pre-flight residue (b1e38ba2 snapshot commit) + 4 additional unformatted files surfaced by Commit 9 ship-gate verification re-run on July 12 2026. Total 10 files: 6 original artlist + 4 drift additions."
+      - "Action: `gofmt -w` on all 10 files; verify no semantic delta beyond whitespace alignment; commit as separate `chore(format): gofmt -w on 10 files (PRE-EXISTING-10 close-out)` chore commit."
+      - "Re-run `make verify-main`; expect verify-format gate to flip green for all 10 files (the gate runs gofmt -l across the entire repo)."
       - "Architecture audit: confirm no production behavior is altered (gofmt -w is whitespace-only by spec)."
     evidence_filename: "tests/operational/make_verify_main_2026-07-12.log"
     opened_date: 2026-07-12
-    tracking_issue: "godlike/06 SSOT carry-forward discipline; ratified by Commit 9 ship gate (verify-format subprocess failure)"
+    tracking_issue: "godlike/06 SSOT carry-forward discipline; ratified by Commit 9 ship gate (verify-format subprocess failure); extended from 6 to 10 files by Commit 9b catalog-extension follow-up (July 12 2026)"
 
