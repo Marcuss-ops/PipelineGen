@@ -72,7 +72,11 @@ func TestEnginePrompt_BuildSegmentInstructions_SingleSegment_NoSourceText_OmitsS
 		"Target words: 80",
 		"Write one continuous narrative",
 	})
-	mustNotContain(t, got, []string{
+	// Footer legitimately bans the literal "Source text:" token
+	// (see "Do not print segment titles (SEGMENT 1, Topic:,
+	// Source text:) in the output"). Scope the assertion to the
+	// SEGMENT block only, before the footer.
+	mustNotContain(t, blockOnly(t, got), []string{
 		"Source text:",
 	})
 }
@@ -139,8 +143,11 @@ func TestEnginePrompt_BuildSegmentInstructions_WhitespaceSourceText_OmitsSourceL
 		},
 	}
 	got := buildSegmentInstructions(plan)
-	if strings.Contains(got, "Source text:") {
-		t.Errorf("whitespace-only source_text MUST omit Source text: line, got %q", got)
+	// Footer legitimately bans the literal "Source text:" token
+	// as a label example; scope the assertion to the SEGMENT block
+	// only via the blockOnly helper.
+	if strings.Contains(blockOnly(t, got), "Source text:") {
+		t.Errorf("whitespace-only source_text MUST omit Source text: line, got block:\n%s", blockOnly(t, got))
 	}
 }
 
@@ -206,6 +213,22 @@ func TestEnginePrompt_BuildSegmentInstructions_FooterContainsDoDRules(t *testing
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+
+// blockOnly extracts the per-segment block portion of the prompt,
+// before the canonical footer marker, so that narrow "MUST NOT
+// contain" assertions don't accidentally match the footer
+// (which legitimately bans "Source text:" as a labelled token — see
+// "Do not print segment titles (SEGMENT 1, Topic:, Source text:) in
+// the output"). The footer marker is the literal
+// "\n\nWrite one continuous narrative" emitted exactly once.
+func blockOnly(t *testing.T, full string) string {
+	t.Helper()
+	block, _, ok := strings.Cut(full, "\n\nWrite one continuous narrative")
+	if !ok {
+		t.Fatalf("prompt did not contain the canonical footer marker; got:\n%s", full)
+	}
+	return block
+}
 
 func mustContain(t *testing.T, haystack string, needles []string) {
 	t.Helper()
