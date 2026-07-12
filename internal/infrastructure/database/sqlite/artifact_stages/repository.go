@@ -17,13 +17,21 @@
 //     the typed sentinels (ErrInvalidArtifactStageState /
 //     ErrInvalidRequirement / ErrArtifactStageEmpty /
 //     ErrArtifactStageHashMismatch) WITHOUT touching the DB.
-//   - Fenced CAS: every Mark* method gates the UPDATE on
-//     `state NOT IN ('SUCCEEDED', 'FAILED_PERMANENT')` so a stale
-//     leaseholder cannot silently re-patch a terminal row. The
-//     disambiguation logic distinguishes "row absent" (NotFound)
-//     from "row already terminal" (TerminalStateRejection) via a
-//     post-UPDATE SELECT probe (single round-trip when the
-//     UPDATE succeeds; two when it doesn't).
+//   - Fenced CAS: each Mark* method gates the UPDATE on a
+//     per-method state-fence that reflects what is terminal for
+//     that method's target. MarkPublished uses the broadest
+//     fence — `state NOT IN ('PUBLISHED','SUCCEEDED','FAILED_PERMANENT')`
+//     — because a re-publish from PUBLISHED would silently
+//     duplicate the Drive upload. The other Mark* methods
+//     (MarkSucceeded / MarkFailedPermanent / IncrementAttemptCount)
+//     fence only on truly-terminal states —
+//     `state NOT IN ('SUCCEEDED','FAILED_PERMANENT')` — because
+//     PUBLISHED is the canonical transitional state awaited by the
+//     finalizer (PUBLISHED → SUCCEEDED via finalizer scan). The
+//     disambiguation probe distinguishes "row absent" (NotFound)
+//     from "row already terminal" (TerminalStateRejection) —
+//     single round-trip on the success path, two on the failure
+//     path (post-UPDATE SELECT probe).
 //   - All timestamps are UTC + RFC3339Nano per PipelineGen SSOT.
 //
 // Implementation notes (Push 3.1a follow-up): the 8 methods are
@@ -68,6 +76,27 @@ func NewRepository(db *sql.DB) *Repository {
 		db:    db,
 		nowFn: func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// SetNowFn overrides the clock source used by Insert / Mark*
+// operations for CreatedAt + UpdatedAt + PublishedAt column
+// writing. Production code never calls this — time.Now() is the
+// canonical source via NewRepository's default. The seam exists
+// ONLY to enable hermetic test replay for time-sensitive paths
+// (e.g., publish_drive/handler_integration_test.go's
+// deterministic-clock assertions on published_at + updated_at).
+//
+// godlike/06 SSOT: the field `nowFn` is unexported (per Go
+// convention); external test packages cannot field-assign it.
+// The public SetNowFn is the canonical seam for crossing the
+// package boundary without exporting the field itself.
+//
+// godlike/07 fail-closed: callers MUST supply non-nil fn; nil
+// would panic at the first r.now() call (forward-pointer — a
+// future hardening could error-return, but for now the
+// panic-on-nil surfaces the misuse immediately at boot/test).
+func (r *Repository) SetNowFn(fn func() time.Time) {
+	r.nowFn = fn
 }
 
 // ── Pre-TX validation helpers ────────────────────────────────────────────
@@ -302,7 +331,7 @@ func (r *Repository) MarkPublished(ctx context.Context, id, publishedLocation st
 	now := r.now()
 	publishedAt = publishedAt.UTC()
 	res, err := r.db.ExecContext(ctx,
-		`UPDATE artifact_stages SET state = 'PUBLISHED', published_location = ?, published_at = ?, updated_at = ? WHERE id = ? AND state NOT IN ('SUCCEEDED', 'FAILED_PERMANENT')`,
+		`UPDATE artifact_stages SET state = 'PUBLISHED', published_location = ?, published_at = ?, updated_at = ? WHERE id = ? AND state NOT IN ('PUBLISHED', 'SUCCEEDED', 'FAILED_PERMANENT')`,
 		publishedLocation, timeutil.FormatRFC3339Nano(publishedAt), timeutil.FormatRFC3339Nano(now), id)
 	if err != nil {
 		return fmt.Errorf("artifact_stages.MarkPublished (id=%s): %w", id, err)
@@ -311,9 +340,9 @@ func (r *Repository) MarkPublished(ctx context.Context, id, publishedLocation st
 }
 
 // ── MarkSucceeded ───────────────────────────────────────────────────────
-
 func (r *Repository) MarkSucceeded(ctx context.Context, id string) error {
 	now := r.now()
+	// Fence rationale: PUBLISHED intentionally NOT fenced — transitional state for the finalizer’s PUBLISHED→SUCCEEDED promotion (see repository.go package doc).
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE artifact_stages SET state = 'SUCCEEDED', updated_at = ? WHERE id = ? AND state NOT IN ('SUCCEEDED', 'FAILED_PERMANENT')`,
 		timeutil.FormatRFC3339Nano(now), id)
@@ -324,9 +353,9 @@ func (r *Repository) MarkSucceeded(ctx context.Context, id string) error {
 }
 
 // ── MarkFailedPermanent ─────────────────────────────────────────────────
-
 func (r *Repository) MarkFailedPermanent(ctx context.Context, id, lastError string) error {
 	now := r.now()
+	// Fence rationale: PUBLISHED intentionally NOT fenced — transitional state for the finalizer’s PUBLISHED→SUCCEEDED promotion (see repository.go package doc).
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE artifact_stages SET state = 'FAILED_PERMANENT', last_error = ?, updated_at = ? WHERE id = ? AND state NOT IN ('SUCCEEDED', 'FAILED_PERMANENT')`,
 		lastError, timeutil.FormatRFC3339Nano(now), id)
@@ -336,10 +365,94 @@ func (r *Repository) MarkFailedPermanent(ctx context.Context, id, lastError stri
 	return r.checkFencedCAS(ctx, res, id, "MarkFailedPermanent")
 }
 
-// ── IncrementAttemptCount ───────────────────────────────────────────────
+// ── InsertWithOutbox ───────────────────────────────────────────────────
 
+// InsertWithOutbox atomically writes a new artifact_stages row AND
+// co-emits a corresponding outbox_events row in a SINGLE SQLite
+// transaction. The event_key convention is
+// `stage:<jobID>:<stageID>` so consumers can dedupe re-deliveries
+// via the ux_outbox_events_event_key unique index.
+//
+// godlike/07 atomicity: BOTH inserts commit together or NEITHER
+// commits. A partial commit would orphan an event without its
+// stage row (or vice versa); the TX wrapper + defer-rollback
+// prevents this. Returns the canonical event_key on success so
+// application-layer services can log it for observability.
+//
+// The deferred Rollback() is a no-op if the TX has already been
+// committed (Commit() detaches the deferred allocation) —
+// idiomatic Go pattern. A nil-driver error path (e.g.
+// sql.ErrConnDone after ctx cancel) surfaces via the wrapped
+// ExecContext error, which preserves errors.Is(err, ctx.Err())
+// chains for the caller.
+func (r *Repository) InsertWithOutbox(ctx context.Context, stage *artifact.ArtifactStage, eventType string, payload []byte) (string, error) {
+	if err := validateForWrite(stage); err != nil {
+		return "", err
+	}
+	if eventType == "" {
+		return "", fmt.Errorf("%w: eventType is required (cannot be empty)", artifact.ErrOutboxEmit)
+	}
+	if len(payload) == 0 {
+		return "", fmt.Errorf("%w: payload is required (cannot be empty bytes)", artifact.ErrOutboxEmit)
+	}
+
+	now := r.now()
+	if stage.CreatedAt.IsZero() {
+		stage.CreatedAt = now
+	}
+	stage.UpdatedAt = now
+
+	eventKey := fmt.Sprintf("stage:%s:%s", stage.JobID, stage.ID)
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("artifact_stages.InsertWithOutbox: begin tx (id=%s): %w", stage.ID, err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	// 1. INSERT INTO artifact_stages (canonical column set).
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO artifact_stages (`+selectColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		stage.ID, stage.JobID, stage.LocalPath, stage.Hash, stage.Size, stage.Mime,
+		string(stage.Requirement), stage.Destination, string(stage.State),
+		stage.AttemptCount, stage.LastError, stage.PublishedLocation,
+		timeutil.FormatPtrRFC3339Nano(stage.PublishedAt),
+		timeutil.FormatRFC3339Nano(stage.CreatedAt),
+		timeutil.FormatRFC3339Nano(stage.UpdatedAt),
+	); err != nil {
+		return "", fmt.Errorf("artifact_stages.InsertWithOutbox: insert stage (id=%s): %w", stage.ID, err)
+	}
+
+	// 2. INSERT INTO outbox_events (event_type + payload + event_key).
+	//    aggregate_type='artifact_stage' so consumers can filter by
+	//    stage aggregate. created_at + updated_at populated for
+	//    canonical observability.
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		eventType, stage.ID, "artifact_stage", string(payload),
+		eventKey, "pending",
+		timeutil.FormatRFC3339Nano(now), timeutil.FormatRFC3339Nano(now),
+	); err != nil {
+		// godlike/07 typed wrap: callers errors.Is-probe ErrOutboxEmit.
+		return "", fmt.Errorf("%w: insert outbox event (event_key=%q event_type=%q): %v", artifact.ErrOutboxEmit, eventKey, eventType, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("artifact_stages.InsertWithOutbox: commit (event_key=%q): %w", eventKey, err)
+	}
+	committed = true
+	return eventKey, nil
+}
+
+// ── IncrementAttemptCount ───────────────────────────────────────────────
 func (r *Repository) IncrementAttemptCount(ctx context.Context, id string) error {
 	now := r.now()
+	// Fence rationale: PUBLISHED intentionally NOT fenced — transitional state for the finalizer’s PUBLISHED→SUCCEEDED promotion (see repository.go package doc).
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE artifact_stages SET attempt_count = attempt_count + 1, updated_at = ? WHERE id = ? AND state NOT IN ('SUCCEEDED', 'FAILED_PERMANENT')`,
 		timeutil.FormatRFC3339Nano(now), id)

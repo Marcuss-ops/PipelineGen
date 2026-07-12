@@ -169,6 +169,13 @@ type StageReceipt struct {
 	Hash      string
 	Size      int64
 	LocalPath string
+	// EventKey is the canonical event_key of the outbox event
+	// atomically co-emitted with the artifact_stages row via
+	// Repository.InsertWithOutbox (Push 3.1c). Empty on plain
+	// legacy Insert paths (forward-pointer); populated whenever
+	// the Service uses InsertWithOutbox. Form:
+	// `stage:<JobID>:<ID>`.
+	EventKey  string
 	CreatedAt time.Time
 }
 

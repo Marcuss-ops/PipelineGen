@@ -40,6 +40,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -190,7 +191,7 @@ func (s *StoreService) Stage(ctx context.Context, req StageRequest) (*StageRecei
 
 	// Step 5: quota/disk check (forward-pointer stub). A real
 	// enforcement (syscall.Statfs + workspace accounting) lands
-	// in Push 3.1c. The stub is intentionally fail-OPEN: it
+	// in a follow-up push. The stub is intentionally fail-OPEN: it
 	// returns nil so the pipeline can proceed; the forward-
 	// pointer enforcement will REJECT oversized writes with
 	// artifact.ErrQuotaExceeded + artifact.ErrDiskSpaceLow.
@@ -199,8 +200,13 @@ func (s *StoreService) Stage(ctx context.Context, req StageRequest) (*StageRecei
 	// "the stub was always meant to be replaced").
 	_ = ctx // quota check will use ctx for cancellation
 
-	// Step 6: Repository.Insert. On any failure, the local
-	// file is removed (no orphan).
+	// Step 6: TX-aware commit via Repository.InsertWithOutbox.
+	// godlike/07 atomicity: the artifact_stages row + the
+	// outbox follow-up event commit together or NEITHER commits.
+	// Push 3.1c closes the forward-pointer documented at the top
+	// of this file: Stage.Stage now emits `artifact.staged.v1`
+	// atomically with the row INSERT so a downstream Drive-
+	// upload handler can drain the event and proceed.
 	now := s.clock()
 	stage := &artifact.ArtifactStage{
 		ID:           stageID,
@@ -216,9 +222,19 @@ func (s *StoreService) Stage(ctx context.Context, req StageRequest) (*StageRecei
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	if err := s.repo.Insert(ctx, stage); err != nil {
+	payload, payloadErr := s.buildStageEventPayload(stage)
+	if payloadErr != nil {
+		// godlike/07 fail-closed: payload-encoding failure is a
+		// programming error (TypedPayload has only stdlib types)
+		// — not a recoverable runtime fault. Remove the file
+		// (no orphan) + surface the typed error.
 		_ = os.Remove(localPath)
-		return nil, fmt.Errorf("staging.Stage: repo.Insert (id=%s): %w", stageID, err)
+		return nil, fmt.Errorf("staging.Stage: build typed payload (id=%s): %w", stageID, payloadErr)
+	}
+	eventKey, err := s.repo.InsertWithOutbox(ctx, stage, EventTypeArtifactStaged, payload)
+	if err != nil {
+		_ = os.Remove(localPath)
+		return nil, fmt.Errorf("staging.Stage: repo.InsertWithOutbox (id=%s): %w", stageID, err)
 	}
 
 	return &StageReceipt{
@@ -226,8 +242,56 @@ func (s *StoreService) Stage(ctx context.Context, req StageRequest) (*StageRecei
 		Hash:      hashHex,
 		Size:      written,
 		LocalPath: localPath,
+		EventKey:  eventKey,
 		CreatedAt: now,
 	}, nil
+}
+
+// ── Outbox event payload ────────────────────────────────────────────────
+
+// EventTypeArtifactStaged is the canonical event_type emitted
+// by Store.Stage after a successful stage. The canonical name
+// convention is `<aggregate>.<action>.<version>`; the
+// follow-up consumer is the Drive-upload handler (Push 3.1e
+// forward-pointer) which drains `artifact.staged.v1` events.
+const EventTypeArtifactStaged = "artifact.staged.v1"
+
+// TypedStageEventPayload is the canonical event payload emitted
+// by Store.Stage. Fields are intentionally narrow: the
+// downstream Drive-upload consumer needs only the four pieces
+// of identity to resolve the destination + perform a content
+// re-read (or trust-stage-by-hash). A future schema evolution
+// adds fields backward-compatibly (forward-pointer).
+type TypedStageEventPayload struct {
+	StageID     string `json:"stage_id"`
+	JobID       string `json:"job_id"`
+	LocalPath   string `json:"local_path"`
+	Hash        string `json:"hash"`
+	Size        int64  `json:"size"`
+	Mime        string `json:"mime"`
+	Requirement string `json:"requirement"`
+	Destination string `json:"destination"`
+	EmittedAt   string `json:"emitted_at"` // RFC3339Nano — UTC, canonical
+}
+
+// buildStageEventPayload constructs the canonical artifact.staged.v1
+// payload from a freshly-staged `*artifact.ArtifactStage`. The
+// EmittedAt is the same UTC instant the artifact row's
+// UpdatedAt was set to (single-clock ordering invariant: the
+// outbox event + artifact row share CreatedAt/UpdatedAt).
+func (s *StoreService) buildStageEventPayload(stage *artifact.ArtifactStage) ([]byte, error) {
+	payload := TypedStageEventPayload{
+		StageID:     stage.ID,
+		JobID:       stage.JobID,
+		LocalPath:   stage.LocalPath,
+		Hash:        stage.Hash,
+		Size:        stage.Size,
+		Mime:        stage.Mime,
+		Requirement: string(stage.Requirement),
+		Destination: stage.Destination,
+		EmittedAt:   stage.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	}
+	return json.Marshal(payload)
 }
 
 // ── Safe-path helper (defense-in-depth) ───────────────────────────────
