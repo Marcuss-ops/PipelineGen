@@ -17,25 +17,25 @@
 // Concern-route map (godlike/06 SSOT — each file owns ONE concern):
 //
 //   - chrome_provider_ids.go        — correlation-token generators
-//                                     (generateUUIDv4 + generateRequestID).
+//     (generateUUIDv4 + generateRequestID).
 //   - chrome_provider_retry.go      — retry-once seam
-//                                     (shouldRetryWorkerFailure + retryGenerationOnce).
+//     (shouldRetryWorkerFailure + retryGenerationOnce).
 //   - chrome_provider_request.go    — payload composition + path resolution
-//                                     (buildWorkerGenerateRequest + resolveOutputPath).
+//     (buildWorkerGenerateRequest + resolveOutputPath).
 //   - chrome_provider_response.go   — worker-error handling
-//                                     (handleWorkerError + readGeneratedOutput + cleanupFailedOutput).
+//     (handleWorkerError + readGeneratedOutput + cleanupFailedOutput).
 //   - chrome_provider_validation.go — post-success observability + content validation
-//                                     (validateGeneratedOutput + decodeGeneratedDimensions +
-//                                      buildGeneratedImage + logGenerationDiagnostics +
-//                                      computeGenerationLogContext + GenerationLogContext +
-//                                      ComposedPrompt + isWellFormedPhashHex).
+//     (validateGeneratedOutput + decodeGeneratedDimensions +
+//     buildGeneratedImage + logGenerationDiagnostics +
+//     computeGenerationLogContext + GenerationLogContext +
+//     ComposedPrompt + isWellFormedPhashHex).
 //   - slide_worker_process.go       — subprocess lifecycle happy path
-//                                     (ensureStarted + Stop).
+//     (ensureStarted + Stop).
 //   - slide_worker_recovery.go      — dead-process detection + state reset
-//                                     (isDeadWorkerError + resetWorker).
+//     (isDeadWorkerError + resetWorker).
 //   - slide_worker_protocol.go      — JSONL wire layer
-//                                     (writeJSON + readResponse + readRawResponse +
-//                                      workerResponse + mapToStruct; UNCHANGED).
+//     (writeJSON + readResponse + readRawResponse +
+//     workerResponse + mapToStruct; UNCHANGED).
 //
 // godlike/07 no-fake-availability invariants (preserved byte-byte from
 // pre-extraction):
@@ -214,11 +214,11 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req GenerateImag
 	// GenerationLogContext + logGenerationDiagnostics split handles
 	// the same observation surface via SSOT field shapes.
 	composedTyped := ComposedPrompt{
-		Composed:         composed.Composed,
-		ComposedLen:      composed.ComposedLen,
-		StyleAffix:       composed.StyleAffix,
-		NegativeAffix:    composed.NegativeAffix,
-		WasCompressed:    composed.WasCompressed,
+		Composed:      composed.Composed,
+		ComposedLen:   composed.ComposedLen,
+		StyleAffix:    composed.StyleAffix,
+		NegativeAffix: composed.NegativeAffix,
+		WasCompressed: composed.WasCompressed,
 	}
 	logCtx, _ := computeGenerationLogContext(
 		requestID, generationID, req, composedTyped,

@@ -47,11 +47,11 @@ import (
 // godlike/06 SSOT: the field names here MUST stay byte-byte
 // aligned with the prompt_composer.go return value.
 type ComposedPrompt struct {
-	Composed         string
-	ComposedLen      int
-	StyleAffix       string
-	NegativeAffix    string
-	WasCompressed    bool
+	Composed      string
+	ComposedLen   int
+	StyleAffix    string
+	NegativeAffix string
+	WasCompressed bool
 }
 
 // GenerationLogContext bundles the post-success observability
@@ -65,46 +65,46 @@ type ComposedPrompt struct {
 // adding a field requires a paired audit-rule update.
 type GenerationLogContext struct {
 	// Identity.
-	RequestID     string
-	GenerationID  string
+	RequestID    string
+	GenerationID string
 
 	// Composition audit (P1.2).
-	Prompt                string
-	Style                 string
-	RawPromptLen          int
-	ComposedLen           int
-	StyleAffixLen         int
-	NegativeAffixLen      int
-	ComposedDirty         bool
+	Prompt           string
+	Style            string
+	RawPromptLen     int
+	ComposedLen      int
+	StyleAffixLen    int
+	NegativeAffixLen int
+	ComposedDirty    bool
 
 	// Result dimensions.
-	Bytes         int
-	ReqWidth      int
-	ReqHeight     int
-	RealWidth     int
-	RealHeight    int
-	RatioMatch    bool
-	NaturalW      int
-	NaturalH      int
+	Bytes             int
+	ReqWidth          int
+	ReqHeight         int
+	RealWidth         int
+	RealHeight        int
+	RatioMatch        bool
+	NaturalW          int
+	NaturalH          int
 	CandidateComplete bool
-	ElapsedMS     int64
+	ElapsedMS         int64
 
 	// Candidate-side diagnostics (P2 replication).
-	Method              string
-	CandidatesBaseline  int
-	CandidatesAfter     int
-	CandidatesReported  int
-	ImageModeActive     bool
-	RatioSelected       string
-	PromptOriginal      string
-	PromptDOM           string
-	ScreenshotPath      string
+	Method             string
+	CandidatesBaseline int
+	CandidatesAfter    int
+	CandidatesReported int
+	ImageModeActive    bool
+	RatioSelected      string
+	PromptOriginal     string
+	PromptDOM          string
+	ScreenshotPath     string
 
 	// Worker stats (canonical primary source from PIL pass).
-	WorkerPhashHex     string
-	WorkerWhitePct     float64
-	WorkerVariance     float64
-	WorkerEdgeDensity  float64
+	WorkerPhashHex    string
+	WorkerWhitePct    float64
+	WorkerVariance    float64
+	WorkerEdgeDensity float64
 
 	// Go-side recompute (cross-validation).
 	GoRecomputePhashHex string
@@ -114,8 +114,8 @@ type GenerationLogContext struct {
 
 	// Parity (THE shape-check; bit-equality is intentionally NOT asserted
 	// because worker and Go use different sampling strides).
-	PhashParityOK   bool
-	ComputeStatsOK  bool
+	PhashParityOK  bool
+	ComputeStatsOK bool
 }
 
 // validateGeneratedOutput runs the post-extraction content
@@ -361,4 +361,3 @@ func computeGenerationLogContext(
 		ComputeStatsOK:      statsErr == nil,
 	}, statsErr
 }
-

@@ -163,20 +163,14 @@ func Classify(ctx context.Context, scanner QdrantScanner, collection string, max
 			}
 		}
 
-		// Page termination: when ScrollPoints returns fewer than
-		// pageSize entries, we're at the tail. The production scanner
-		// returns pageSize+1 sentinel for end-of-collection detection
-		// (the Qdrant REST contract returns NextOffset="" specifically
-		// for the LAST page; the caller walks until empty).
-		if len(points) < pageSize {
-			break
-		}
-		// Cursor advance: in production the scanner embeds NextOffset
-		// in the slice header offset (mirrors qdrant.ScrollResult).
-		// For the port-defined scanner the caller supplies its own
-		// NextOffsetExtractor; we use a small interface assertion here
-		// so the production wiring drops the cursor through qdrant.Client.ScrollPoints
-		// and tests can drive with an inline NextOffsetExtractor.
+		// Page termination: the Qdrant REST contract signals
+		// end-of-collection via NextOffset="" (see
+		// https://api.qdrant.tech/api-reference/points/scroll-points).
+		// The page size is a HINT to the server, not a termination
+		// signal — relying on `len(points) < pageSize` fires
+		// prematurely when a page returns fewer points than the
+		// request limit (e.g., a collection with 250 points when
+		// pageSize=500). The cursor is the sole canonical signal.
 		if ex, ok := scanner.(NextOffsetExtractor); ok {
 			next := ex.NextOffset(points)
 			if next == "" {

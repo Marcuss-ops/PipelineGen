@@ -25,7 +25,6 @@ import (
 	"os"
 	"strings"
 	"syscall"
-
 )
 
 // isDeadWorkerError detects errors caused by a dead worker
@@ -33,19 +32,19 @@ import (
 // recoverable by relaunching.
 //
 // Detection ladder (each rung adds an additional probe):
-//   1. nil fast-path: a nil error is never a dead-worker
-//      signal (return false immediately).
-//   2. String sniff: "broken pipe" / "stdout closed
-//      unexpectedly" / "scanner" / "stdin is nil" /
-//      "token too long" — matches the canonical wrap
-//      shapes from the writer/reader pipeline.
-//   3. EPIPE probe: a zero-byte write to stdin triggers a
-//      syscall.EPIPE if the pipe is torn. Tolerates
-//      os.ErrClosed + "closed pipe" + "file already closed".
-//   4. ProcessState check: p.cmd.ProcessState.Exited() —
-//      only fires AFTER the OS reaped the child, so this
-//      final rung catches the "process crashed silently"
-//      case where the pipe probe didn't trip.
+//  1. nil fast-path: a nil error is never a dead-worker
+//     signal (return false immediately).
+//  2. String sniff: "broken pipe" / "stdout closed
+//     unexpectedly" / "scanner" / "stdin is nil" /
+//     "token too long" — matches the canonical wrap
+//     shapes from the writer/reader pipeline.
+//  3. EPIPE probe: a zero-byte write to stdin triggers a
+//     syscall.EPIPE if the pipe is torn. Tolerates
+//     os.ErrClosed + "closed pipe" + "file already closed".
+//  4. ProcessState check: p.cmd.ProcessState.Exited() —
+//     only fires AFTER the OS reaped the child, so this
+//     final rung catches the "process crashed silently"
+//     case where the pipe probe didn't trip.
 //
 // Must be called while p.mu is held.
 func (p *ChromeImageProvider) isDeadWorkerError(err error) bool {
