@@ -511,26 +511,28 @@ LAST_MP4_PATH="$OUT_DIR/step10_clip.mp4"
 # signed Drive URL. Without -L curl writes a 0-byte body and the
 # ffprobe step then fails with a misleading "no video stream"
 # diagnostic. --retry handles transient disconnects on the redirect.
-S10_HTTP=$(curl -sS -L --max-redirs 5 --max-time 120 \
+# Single curl: -o writes the (potentially-MB) MP4 body to disk once;
+# -w writes a 2-line meta template (http_code + redirects) to stdout,
+# redirected into step10_curl_meta.txt — eliminating the prior 2-curl
+# design (which fetched the body twice, doubling egress bytes on this
+# route). Awk pulls back the values for the case statement below;
+# ${VAR:-default} preserves the curl-failure 'HTTP 000' sentinel for
+# grep-able FAIL-line parity with the original || echo pattern.
+# gains: ~50% bandwidth on the clips/:id/download route.
+curl -sS -L --max-redirs 5 --max-time 120 \
     --retry 3 --retry-delay 1 \
     -X POST \
     -H "X-Velox-Admin-Token: $TOKEN" \
     -o "$LAST_MP4_PATH" \
-    -w '%{http_code}' \
-    "$BASE/api/stock-pipeline/clips/$LAST_ASSET_ID/download" 2>/dev/null \
-    || echo "000")
-S10_REDIRECTS=$(curl -sS -L --max-redirs 5 --max-time 120 \
-    --retry 3 --retry-delay 1 \
-    -X POST \
-    -H "X-Velox-Admin-Token: $TOKEN" \
-    -o /dev/null \
-    -w '%{num_redirects}\n' \
-    "$BASE/api/stock-pipeline/clips/$LAST_ASSET_ID/download" 2>/dev/null \
-    || echo "0")
-printf 'redirects=%s\nhttp_code=%s\n' "$S10_REDIRECTS" "$S10_HTTP" \
-    > "$OUT_DIR/step10_curl_meta.txt"
+    -w 'http_code=%{http_code}\nredirects=%{num_redirects}\n' \
+    "$BASE/api/stock-pipeline/clips/$LAST_ASSET_ID/download" \
+    > "$OUT_DIR/step10_curl_meta.txt" 2>/dev/null || true
+S10_HTTP=$(awk -F= '/^http_code=/{print $2; exit}' "$OUT_DIR/step10_curl_meta.txt")
+S10_HTTP="${S10_HTTP:-000}"  # sentinel fallback for curl-failure (preserves 'HTTP 000' grepability)
+S10_REDIRECTS=$(awk -F= '/^redirects=/{print $2; exit}' "$OUT_DIR/step10_curl_meta.txt")
+S10_REDIRECTS="${S10_REDIRECTS:-0}"
 case "$S10_HTTP" in
-    200|206) pass "clip downloaded via $S10_HTTP → $LAST_MP4_PATH" ;;
+    200|206) pass "clip downloaded via $S10_HTTP → $LAST_MP4_PATH (redirects=$S10_REDIRECTS)" ;;
     *)      fail "GET clips/:id/download returned HTTP $S10_HTTP" ;;
 esac
 
