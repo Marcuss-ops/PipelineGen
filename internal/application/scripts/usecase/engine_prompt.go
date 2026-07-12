@@ -59,7 +59,6 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 		}
 		if len(topics) > 0 {
 			extra = append(extra, "Segment topics:\n"+strings.Join(topics, "\n"))
-			RecordScriptGenerationBranch("b", plan.Language)
 		}
 	}
 
@@ -124,7 +123,6 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 	b.WriteString("Target words are budget guidance, not exact count.\n")
 	b.WriteString("Do not print segment titles (SEGMENT 1, Topic:, Source text:) in the output.\n")
 	b.WriteString("Do not include markers like clip_id, accepted_clip_ids, JSON, Markdown code fences, schema_version, or specscene. Output only the script text.\n")
-	RecordScriptGenerationBranch("a", plan.Language)
 	return b.String()
 }
 
