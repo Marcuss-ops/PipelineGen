@@ -388,6 +388,6 @@ func TestCacheRace_2WorkersDifferentFingerprints_2IndependentEntries(t *testing.
 	// bound acknowledges the per-worker scanner-fallback retry pattern
 	// in engine_generate.go (ModeStrict -> ModeCompatibility; the same
 	// GenerateScript result is re-used but the test mock counts it).
-	assert.LessOrEqual(t, gen.calls.Load(), int64(4),
+	assert.LessOrEqual(t, gen.calls.Load(), int32(4),
 		"ollama call count is bounded (<= 4 for 2 different-fingerprint workers; PRE-EXISTING-7 PART 4 documented)")
 }
