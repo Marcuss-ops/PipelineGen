@@ -60,9 +60,14 @@ package images
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"image"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,11 +75,52 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/visual_validate"
 	"go.uber.org/zap"
 )
 
-// Compile-time assertion: ChromeImageProvider implements ImageGenerator.
+// generateRequestID returns a 16-byte hex string usable as the worker
+// generation_id correlation field. crypto/rand gives genuine entropy
+// without pulling in google/uuid.
+func generateRequestID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Fallback: nanosecond timestamp + PID — always non-empty
+		// even on a /dev/urandom failure (extremely rare).
+		return fmt.Sprintf("ts-%d-%d", time.Now().UnixNano(), os.Getpid())
+	}
+	return hex.EncodeToString(b[:])
+} // Compile-time assertion: ChromeImageProvider implements ImageGenerator.
 var _ ImageGenerator = (*ChromeImageProvider)(nil)
+
+// isWellFormedPhashHex is the shape-only check used by the P2
+// phash_parity_ok field. Returns true when s is exactly 16 chars of
+// lowercase hex (the canonical encoding emitted by
+// fmt.Sprintf("%016x", uint64) on both the worker side and the Go
+// ComputeStats side). An empty string, a string with the wrong
+// length, or any non-lowercase-hex character fails the shape check.
+//
+// godlike/07 observability (P2 review, July 2026): this is NOT a
+// bit-equality check. The worker and Go use different sampling
+// strides, so the two pHash uint64 values rarely coincide. The parity
+// field is a cheap "is the diagnostic shape sane?" smoke detector;
+// bit-level tampering detection is left to operators inspecting the
+// two hex strings in the audit log.
+func isWellFormedPhashHex(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for i := 0; i < 16; i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9':
+		case c >= 'a' && c <= 'f':
+		default:
+			return false
+		}
+	}
+	return true
+}
 
 // ChromeImageProvider implements ImageGenerator by delegating to the
 // persistent Playwright-based Python worker that automates Google Slides AI
@@ -176,12 +222,24 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req GenerateImag
 		outputPath = filepath.Join(os.TempDir(), fmt.Sprintf("slide_gen_%s.png", requestID))
 	}
 
-	// Send the generate request over stdin.
+	// P1.1 wire-up (July 2026): the worker now expects an extended
+	// payload with negative_prompt, style_id, width, height, and a
+	// generation_id correlation token. The Python side embeds
+	// negative_prompt into the prompt text (Slides UI has one field),
+	// uses width/height for the 16:9 selection, and echoes the
+	// generation_id + natural dims (resp.NaturalW/H) back in the
+	// response so the Go side can correlate logs.
+	generationID := requestID + "-" + generateRequestID()[:8]
 	workerReq := map[string]any{
-		"action": "generate",
-		"id":     requestID,
-		"prompt": req.Prompt,
-		"output": outputPath,
+		"action":          "generate",
+		"id":              requestID,
+		"generation_id":   generationID,
+		"prompt":          req.Prompt,
+		"negative_prompt": req.NegativePrompt,
+		"style_id":        req.Style,
+		"width":           req.Width,
+		"height":          req.Height,
+		"output":          outputPath,
 	}
 	if err := p.writeJSON(workerReq); err != nil {
 		if p.isDeadWorkerError(err) {
@@ -226,13 +284,16 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req GenerateImag
 		if errMsg == "" {
 			errMsg = "unknown worker error"
 		}
-		// Classify the error for typed retry decisions (FASE 10).
-		// PR-CHROME-PROVIDER-SPLIT (2026-07-04): the pre-split
-		// `if resp.Profile != nil { p.cooldowns[*resp.Profile] = ... }` block
-		// is REMOVED. The classified error is propagated to the caller as
-		// before; only the per-profile cooldown bookkeeping is retired
-		// (godlike/07 no-fake-availability — single-profile policy has no
+		// Classify the error for typed retry decisions (FASE 10). The
+		// pre-split `cooldowns[*resp.Profile]` block is RETIRED per
+		// godlike/07 no-fake-availability (single-profile policy has no
 		// per-profile routing to spread the load onto).
+		//
+		// P0+P1 (July 2026): ClassifyError now matches errblankorplaceholder
+		// and errgenerationtimeout as typed sentinels, in addition to
+		// errnoimagecandidate (P0.1). The SAME gofail-closed os.Remove
+		// applies to all of them — the caller never sees a GeneratedImage
+		// and the file is gone.
 		return nil, ClassifyError(errMsg)
 	}
 
@@ -242,22 +303,143 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req GenerateImag
 		return nil, fmt.Errorf("chrome provider: failed to read generated image at %s: %w", outputPath, err)
 	}
 
+	// P0.2 visual_validate pass — FAIL-CLOSED on blank/placeholder.
+	//
+	// godlike/07 contract (P0.2, July 2026): the worker claimed
+	// status=ok with valid bytes; we cannot trust those bytes without
+	// content validation. The worker could have surfaced a slide-export
+	// from a stale panel, an old blob: with no real content, or a
+	// near-white render the model didn't reject. The content validator
+	// decodes the PNG and asserts white_pct, variance, and pHash
+	// distance-from-blank invariants.
+	//
+	// Path: on validation failure, the file is removed AND the typed
+	// ERR is wrapped in the canonical images.ErrImageGenBlankOrPlaceholder
+	// sentinel so callers (retry policy, audit logs, the smoke test)
+	// can errors.Is-probe the package's typed sentinel surface. The
+	// visual_validate.ErrBlankOrPlaceholder is preserved in the wrap
+	// chain for fine-grained errors.As probes.
+	if valErr := visual_validate.Validate(outputPath, req.Style); valErr != nil {
+		if rmErr := os.Remove(outputPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			p.log.Warn("ChromeImageProvider: cleanup outputPath after visual_validate failure",
+				zap.String("output_path", outputPath), zap.Error(rmErr))
+		}
+		return nil, fmt.Errorf("%w (validator: %v)", ErrImageGenBlankOrPlaceholder, valErr)
+	}
+
+	// Decode real dimensions from the PNG header (cheap). ChromeImageProvider
+	// previously reported `req.Width/Height` — a lie when the worker
+	// produced e.g. a 1280x720 image despite a 1920x1080 request. Real
+	// dims are now what `GeneratedImage.Width/Height` carries; the
+	// requested w/h are preserved in the log line so operators can
+	// audit requested-vs-actual ratio drift without code changes.
+	realW, realH := req.Width, req.Height
+	if cfg, _, decErr := image.DecodeConfig(bytes.NewReader(data)); decErr == nil {
+		realW, realH = cfg.Width, cfg.Height
+	}
+	ratioMatch := true
+	if req.Width > 0 && req.Height > 0 && realW > 0 && realH > 0 {
+		reqRatio := float64(req.Width) / float64(req.Height)
+		realRatio := float64(realW) / float64(realH)
+		ratioMatch = math.Abs(reqRatio-realRatio) < 0.05
+	}
+
 	format := "png"
+
+	// P2 (July 2026): replicate the worker's diagnostic stats in the
+	// structured Zap log. visual_validate.ComputeStats re-runs the
+	// pixel pass on the Go side so the log records both the worker's
+	// numbers (CANONICAL, primary source) and the Go-side recompute
+	// (defensive cross-validation).
+	//
+	// godlike/07 observability revision (P2 review, July 2026): the
+	// pre-fix strict `workerPhash == goRecomputePhash` parity check
+	// was misleading because Go's pHash uses full-iteration
+	// step-bounds sampling while the Python worker's _compute_pixel_stats
+	// uses a 16-stride pre-sample then 8x8 downsample — the two
+	// routines do NOT land on the same physical pixels for non-trivial
+	// images, so bit-equality would surface as `phash_parity_ok=false`
+	// for every real image even when both sides are canonical-correct.
+	// The post-fix contract is a SHAPE check: both hex strings are
+	// well-formed (length 16, lowercase hex digits). Operators can
+	// still eyeball the two strings in audit logs to detect a tampered
+	// extraction (rare; would require a swap between worker save and
+	// Go read).
+	pixelStats, statsErr := visual_validate.ComputeStats(outputPath)
+	workerPhash := resp.PhashHex
+	goRecomputePhash := ""
+	phashParityOK := false
+	if statsErr == nil {
+		goRecomputePhash = pixelStats.PHashHex
+		phashParityOK = isWellFormedPhashHex(workerPhash) && isWellFormedPhashHex(goRecomputePhash)
+	}
+
 	p.log.Info("ChromeImageProvider: generated image",
 		zap.String("request_id", requestID),
+		zap.String("generation_id", generationID),
+		zap.String("method", resp.Method),
+		zap.String("style", req.Style),
 		zap.String("prompt", req.Prompt),
 		zap.Int("bytes", len(data)),
+		zap.Int("req_width", req.Width),
+		zap.Int("req_height", req.Height),
+		zap.Int("real_width", realW),
+		zap.Int("real_height", realH),
+		zap.Bool("ratio_match", ratioMatch),
+		zap.Int("natural_w", resp.NaturalW),
+		zap.Int("natural_h", resp.NaturalH),
+		zap.Bool("candidate_complete", resp.Complete),
 		zap.Int64("elapsed_ms", resp.ElapsedMS),
+
+		// P2 diagnostic replication (worker.primary, Go.recompute).
+		zap.Int("candidates_baseline", resp.CandidatesBaseline),
+		zap.Int("candidates_after", resp.CandidatesAfter),
+		zap.Int("candidates_reported", len(resp.Candidates)),
+		zap.Bool("image_mode_active", resp.ImageModeActive),
+		zap.String("ratio_selected", resp.RatioSelected),
+		zap.String("prompt_original", resp.PromptOriginal),
+		zap.String("prompt_dom", resp.PromptDOM),
+		zap.String("screenshot_path", resp.ScreenshotPath),
+
+		// Worker-side PIL stats (canonical primary source).
+		zap.String("worker_phash_hex", workerPhash),
+		zap.Float64("worker_white_pct", resp.WhitePct),
+		zap.Float64("worker_variance", resp.Variance),
+		zap.Float64("worker_edge_density", resp.EdgeDensity),
+
+		// Go-side recompute (cross-validation).
+		zap.String("go_phash_hex", goRecomputePhash),
+		zap.Float64("go_white_pct", pixelStats.WhitePct),
+		zap.Float64("go_variance", pixelStats.Variance),
+		zap.Float64("go_edge_density", pixelStats.EdgeDensity),
+
+		// Shape-parity flag: true iff BOTH sides produced a
+		// well-formed 16-char lowercase hex pHash string.
+		// Bit-equality is intentionally NOT asserted (worker
+		// and Go use different sampling strides).
+		zap.Bool("phash_parity_ok", phashParityOK),
+		zap.Bool("compute_stats_ok", statsErr == nil),
 	)
 
-	// ── Compute idempotency SourceHash (FASE 10) ────────────────────
-	sourceHash := ComputeSourceHash("google-slides", req.Prompt, req.Style, req.Width, req.Height, generated.CanonicalGoogleSlidesModel)
+	// If the Go-side stats fail to compute (e.g. file removed between
+	// ext and compute), we still surface the value in the log via
+	// compute_stats_ok=false. We do NOT fail the generation — the
+	// worker is canonical and Validate already passed.
+	if statsErr != nil {
+		p.log.Warn("ChromeImageProvider: visual_validate.ComputeStats recompute failed (worker stats remain canonical)",
+			zap.String("output_path", outputPath), zap.Error(statsErr))
+	}
+
+	// SourceHash uses REAL dims (so a 1920x1080 request that comes back
+	// 1280x720 reuses the same hash as a direct 1280x720 request — the
+	// downstream ingestion path is dim-correct).
+	sourceHash := ComputeSourceHash("google-slides", req.Prompt, req.Style, realW, realH, generated.CanonicalGoogleSlidesModel)
 
 	return &GeneratedImage{
 		Data:       data,
 		Format:     format,
-		Width:      req.Width,
-		Height:     req.Height,
+		Width:      realW,
+		Height:     realH,
 		PromptUsed: req.Prompt,
 		Provider:   "google-slides",
 		SourceHash: sourceHash,
