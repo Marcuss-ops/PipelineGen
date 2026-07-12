@@ -26,6 +26,15 @@
 // the media_assets_pipeline_events migration (129) and the writer
 // (clips_lifecycle_events.go::AppendPipelineEvent) store verbatim.
 //
+// godlike/06 forward-pointer: a future pkg/safemessage package
+// (Commit 6+) will own URL/email/API-key PII detection layered on
+// top of SanitizeSafeMessage. SanitizeSafeMessage is the
+// ASCII-control baseline; the dedicated sanitizer is layered on
+// top via `safemessage.Sanitize(s) string` which calls
+// SanitizeSafeMessage first then applies the PII/secret rules.
+// The wire shape (TEXT column + JSON key "safe_message") is
+// stable across both layers.
+//
 // godlike/07 NO-FAKE-AVAILABILITY: every state transition is a
 // typed event written to media_assets_pipeline_events. There is
 // no "implicit" transition; the writer is the only path that
@@ -221,8 +230,25 @@ func (s PipelineState) String() string { return string(s) }
 // FAILED → <previous-non-terminal>; the wire shape
 // (media_assets_pipeline_events) supports it without migration.
 func (s PipelineState) IsValidTransition(to PipelineState) bool {
+	// Zero-value from-state guard (godlike/07 fail-closed,
+	// stricter than the existing state machines): a caller
+	// that hasn't initialized a PipelineState and calls
+	// IsValidTransition must NOT get a silent false-positive.
+	// Placed BEFORE the self-loop check so the guard also
+	// rejects the (zero, zero) self-loop — stricter than
+	// UploadState.IsValidTransition and
+	// WorkflowState.IsValidTransition (which allow
+	// (zero, zero) = true via the self-loop). The stricter
+	// semantic is the godlike/07 fail-closed contract: an
+	// uninitialized state must not silently pass any
+	// IsValidTransition check. The regression test
+	// TestPipelineState_ZeroValueFromStateRejected pins the
+	// guard verbatim.
+	if !s.Valid() {
+		return false
+	}
 	if s == to {
-		return true // idempotent self-loop
+		return true // idempotent self-loop (both must be valid canonical)
 	}
 	if !to.Valid() {
 		return false // unknown target state
@@ -314,10 +340,25 @@ const MaxSafeMessageLen = 1024
 //
 // Pure function: no I/O, no global state. The unit test
 // SanitizeSafeMessage_StripsControlChars + ..._CollapsesSpaces
-// + ..._LengthCap + ..._PreservesUnicode pin the rules verbatim.
+// + ..._LengthCap + ..._PreservesUnicode + ..._ShortCircuitsOnLongInput
+// pin the rules verbatim.
 func SanitizeSafeMessage(s string) string {
 	if s == "" {
 		return ""
+	}
+	// Step 0: short-circuit on long inputs. A worker that
+	// pipes a multi-MB ffmpeg log into safe_message would
+	// otherwise pay O(n) allocation across the two Builder
+	// passes before the length cap. Pre-truncating to 4× the
+	// cap bounds the work to ~4096 chars without changing
+	// the wire shape (the final step still truncates to
+	// MaxSafeMessageLen with the marker). The 4× constant is
+	// empirically chosen: large enough that the control-strip
+	// + space-collapse passes don't lose information that the
+	// cap-with-marker step would have surfaced anyway, small
+	// enough to bound allocation in the hot path.
+	if len(s) > MaxSafeMessageLen*4 {
+		s = s[:MaxSafeMessageLen*4]
 	}
 	// Step 1: control char strip + newline/CR replacement.
 	// Pre-allocate the builder with the original length to
