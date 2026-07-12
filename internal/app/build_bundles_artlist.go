@@ -342,7 +342,17 @@ func WireArtlist(
 			// canonical artlistRunsRepoAdapter (composition-root,
 			// owns the import-cycle pin) so the ServicePorts field
 			// sees the canonical port type, not the infra-side
-			// local Record interface.			RunRepository:  artlistRunsAdapter,
+			// local Record interface.
+			//
+			// ART-002 P0 fix (July 2026): the line that follows
+			// MUST stay outside the comment block; a previous
+			// refactor collapsed it onto the same source line as
+			// `local Record interface. ...` which Go's parser
+			// silently consumed as comment text — that swallowed
+			// the wiring and forced artlist.NewService to fail with
+			// ErrRunRepositoryUnavailable, leaving /api/artlist/*
+			// unmounted on main.
+			RunRepository:  artlistRunsAdapter,
 			SearchStrategy: artlistPkg.ArtlistSearchStrategy(cfg.External.ArtlistSearchStrategy),
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{

@@ -1,7 +1,8 @@
-// Package jobs — worker_lease.go (PR7 split, June 2026; FASE 4(b)
-// LeaseState integration, July 2026; Cut 6.3 fix, July 2026).
+// Package jobs — worker_execution_heartbeat.go (worker_execution.go
+// split, July 2026; previously worker_lease.go since PR7 split, June
+// 2026; FASE 4(b) LeaseState integration + Cut 6.3 fix, July 2026).
 //
-// Lease renewal ticker extracted from worker.go. Owns:
+// Heartbeat (lease renewal ticker) extracted from worker.go. Owns:
 //
 //  1. func (w *Worker) renewLeaseLoop — ticker-driven loop that
 //     periodically calls w.repo.RenewLease(ctx, jobID, w.id,
@@ -14,15 +15,15 @@
 //
 // ACQUIRE/RELEASE: lease acquire is the broker path (ClaimNext at the
 // top of worker.go::Start's poll loop) and lease release is the
-// finalisation hooks inside worker_execution.go::runJob (the
-// consolidated FinalizeAttempt / ScheduleRetry / Fail / DeadLetter /
-// Complete / CompleteWithArtifacts paths — all accept leaseID + revision
-// as parameters and atomically transition the row out of running state,
-// implicitly releasing the lease as part of the SQL UPDATE). So the
-// "acquire/renew/release" lifecycle spans worker.go (acquire via
-// ClaimNext), worker_lease.go (renew here, with the typed LeaseState
-// cancel-flag integration), and worker_execution.go (release implicitly
-// in the finalisation hooks). NO new abstraction is added — the renew
+// finalisation hooks inside worker_execution_result.go::finalizeJob (the
+// consolidated ScheduleRetry / Fail / DeadLetter / CompleteWithArtifacts
+// paths — all accept leaseID + revision as parameters and atomically
+// transition the row out of running state, implicitly releasing the
+// lease as part of the SQL UPDATE). So the "acquire/renew/release"
+// lifecycle spans worker.go (acquire via ClaimNext),
+// worker_execution_heartbeat.go (renew here, with the typed LeaseState
+// cancel-flag integration), and worker_execution_result.go (release
+// implicitly in the finalisation hooks). NO new abstraction is added — the renew
 // ticker is the ONLY piece that lives full-time while a job is executing.
 //
 // FASE 4(b) (July 2026) LeaseState integration:
