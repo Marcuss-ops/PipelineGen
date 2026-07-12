@@ -32,7 +32,6 @@ package texttracks
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -174,10 +173,40 @@ func (f *MaterializeFanOut) EnqueueMaterializeOne(
 		payload.TextKinds = append(payload.TextKinds, string(k))
 	}
 
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("texttracks.fanout: marshal payload: %w", err)
-	}
+	// godlike/06 SSOT payload contract (July 2026 fix):
+	//
+	// The canonical broker path (application/jobs.Service.Enqueue)
+	// is responsible for marshaling the typed payload into the
+	// canonical payload_json wire format. Passing the STRUCT
+	// directly into *job.EnqueueRequest.Payload (an `any` field)
+	// lets Service.Enqueue's single `json.Marshal(req.Payload)`
+	// call produce the JSON object bytes that the
+	// MaterializeJobHandler's `json.Unmarshal(j.Payload, &cmd)`
+	// expects.
+	//
+	// PRE-FIX behaviour (Latent bug caught by Fase 3 e2e):
+	// `json.Marshal(payload) → []byte` then assigning the
+	// []byte to `req.Payload any` carried the []byte through the
+	// interface as a `[]byte` value. Service.Enqueue's subsequent
+	// `json.Marshal(req.Payload)` then base64-encoded the []byte
+	// (Go's canonical `[]byte → base64-string` JSON behavior),
+	// and the broker wrote the base64 string to the payload_json
+	// column. The worker's MaterializeJobHandler then refused to
+	// decode the base64 string into the MaterializeJobPayload
+	// struct with: `cannot unmarshal string into Go value of type
+	// texttracks.MaterializeJobPayload`.
+	//
+	// POST-FIX: pass `payload` (the struct) directly. The broker
+	// marshals it exactly once into a JSON object (`{...}`),
+	// which round-trips cleanly through SQLite TEXT storage and
+	// the handler's canonical decode path.
+	//
+	// godlike/07 minimum-blast-radius: this fix is a 1-line
+	// production change in the post-publish enqueue helper. The
+	// canonical broker marshaling path is untouched (no caller
+	// of jobs.Service.Enqueue had relied on the pre-fix
+	// double-marshal behavior — the only consumer was the fanout
+	// helper itself).
 
 	// ActiveKey dedupes at the broker. Per-(asset, kind)
 	// idempotency is NOT encoded here because the materialize
@@ -198,9 +227,9 @@ func (f *MaterializeFanOut) EnqueueMaterializeOne(
 		zap.String("active_key", activeKey),
 	)
 
-	_, err = f.jobs.Enqueue(ctx, &job.EnqueueRequest{
+	_, err := f.jobs.Enqueue(ctx, &job.EnqueueRequest{
 		Type:      job.TypeAssetTextMaterialize,
-		Payload:   payloadJSON,
+		Payload:   payload,
 		ActiveKey: activeKey,
 	})
 	if err != nil {

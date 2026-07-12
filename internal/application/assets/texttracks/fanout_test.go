@@ -17,6 +17,17 @@
 // the (Type, Payload, ActiveKey) tuple directly through a
 // in-package stub. No *appjobs.Service / DB / dispatcher
 // ceremony.
+//
+// POST-FIX PRODUCER CONTRACT (godlike/06 SSOT, July 2026):
+// the fanout hands the broker a typed struct
+// (texttracks.MaterializeJobPayload) — NOT pre-marshaled
+// bytes — so the broker's canonical Service.Enqueue can
+// perform the SINGLE json.Marshal(req.Payload) that derives
+// the SQLite payload_json bytes. The pre-fix design
+// (pre-marshal → []byte → broker re-marshals → base64-stripped
+// JSON string → cannot unmarshal on the worker side) is the
+// regression this test pins AGAINST, via the stubEnqueuer
+// contract panic and the marshal→unmarshal wire-shape probe.
 package texttracks_test
 
 import (
@@ -48,9 +59,14 @@ type stubEnqueuer struct {
 // enqueueJob is the minimal snapshot the test asserts against.
 // We don't record the full *job.Job (the fanout doesn't read
 // the response) — just the dispatch contract.
+//
+// POST-FIX (godlike/06): Payload is `any` (the post-fix producer
+// contract hands the broker a typed struct — the broker
+// marshals it once via Service.Enqueue). The probes inspect
+// fields directly + marshal locally for the wire-shape pin.
 type enqueueJob struct {
 	Type      string
-	Payload   []byte
+	Payload   any
 	ActiveKey string
 }
 
@@ -58,12 +74,16 @@ func (s *stubEnqueuer) Enqueue(_ context.Context, req *job.EnqueueRequest) (*job
 	atomic.AddInt32(&s.calls, 1)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// *job.EnqueueRequest.Payload is `any` (the canonical union of
-	// map[string]any, raw bytes, or typed structs). The fanout
-	// sends raw []byte; assert HARD-FAIL (not silent nil) so a
-	// future contributor changing the fanout's payload contract
-	// (e.g. to map[string]any) trips this test immediately rather
-	// than passing with malformed recorded state.
+	// POST-FIX PRODUCER CONTRACT (godlike/06 SSOT): the fanout
+	// hands the broker a typed texttracks.MaterializeJobPayload
+	// struct (NOT pre-marshaled []byte, NOT map[string]any).
+	// The broker's canonical Service.Enqueue performs the
+	// SINGLE json.Marshal(req.Payload) that writes payload_json
+	// to SQLite. A type assertion mismatch here means a future
+	// contributor changed the fanout contract and re-introduced
+	// the double-marshal base64-encoding regression. HARD-FAIL
+	// on contract violation rather than silently recording the
+	// wrong shape.
 	//
 	// godlike/07 fail-closed: the stub does NOT take *testing.T
 	// (the MaterializeEnqueuer surface is broker-typed, not
@@ -72,14 +92,13 @@ func (s *stubEnqueuer) Enqueue(_ context.Context, req *job.EnqueueRequest) (*job
 	// surfaces as a FAIL line — louder than t.Fatalf and bounded
 	// to test-process scope, with zero surface-area impact on
 	// the production broker.
-	pb, ok := req.Payload.([]byte)
+	ps, ok := req.Payload.(texttracks.MaterializeJobPayload)
 	if !ok {
-		panic("stubEnqueuer.Enqueue: expected []byte Payload shape (fanout producer contract regression: producer must marshal a typed struct or raw bytes)")
+		panic("stubEnqueuer.Enqueue: expected texttracks.MaterializeJobPayload struct Payload (fanout producer contract regression: producer must hand the broker a typed struct, NOT pre-marshaled bytes — pre-marshal design caused base64 double-encoding regression on July 2026)")
 	}
-	payloadCopy := append([]byte(nil), pb...)
 	s.recorded = append(s.recorded, enqueueJob{
 		Type:      req.Type,
-		Payload:   payloadCopy,
+		Payload:   ps,
 		ActiveKey: req.ActiveKey,
 	})
 	if s.hookErr != nil {
@@ -133,28 +152,52 @@ func TestFanOut_EnqueueMaterializeOne_Success(t *testing.T) {
 		t.Fatalf("ActiveKey = %q, want %q", last.ActiveKey, wantActiveKey)
 	}
 
-	// Payload JSON shape.
-	var p texttracks.MaterializeJobPayload
-	if err := json.Unmarshal(last.Payload, &p); err != nil {
-		t.Fatalf("payload unmarshal: %v", err)
+	// Payload field assertions (post-fix producer contract hands
+	// the broker a typed struct; probes inspect fields directly).
+	ps, ok := last.Payload.(texttracks.MaterializeJobPayload)
+	if !ok {
+		t.Fatalf("Payload type = %T, want texttracks.MaterializeJobPayload", last.Payload)
 	}
-	if p.AssetID != assetID {
-		t.Fatalf("AssetID = %q, want %q", p.AssetID, assetID)
+	if ps.AssetID != assetID {
+		t.Fatalf("AssetID = %q, want %q", ps.AssetID, assetID)
 	}
-	if p.SourceLanguage != lang {
-		t.Fatalf("SourceLanguage = %q, want %q", p.SourceLanguage, lang)
+	if ps.SourceLanguage != lang {
+		t.Fatalf("SourceLanguage = %q, want %q", ps.SourceLanguage, lang)
 	}
-	if p.SourceTextHash != hashVal {
-		t.Fatalf("SourceTextHash = %q, want %q", p.SourceTextHash, hashVal)
+	if ps.SourceTextHash != hashVal {
+		t.Fatalf("SourceTextHash = %q, want %q", ps.SourceTextHash, hashVal)
 	}
-	if len(p.TextKinds) != 1 || p.TextKinds[0] != string(asset.TextTrackTranscript) {
-		t.Fatalf("TextKinds = %v, want [%q]", p.TextKinds, asset.TextTrackTranscript)
+	if len(ps.TextKinds) != 1 || ps.TextKinds[0] != string(asset.TextTrackTranscript) {
+		t.Fatalf("TextKinds = %v, want [%q]", ps.TextKinds, asset.TextTrackTranscript)
 	}
-	if p.TargetLanguages != nil && len(p.TargetLanguages) > 0 {
-		// omitempty: nil target_languages serializes as []byte
-		// absent — the runtime Enqueue call MUST NOT pre-populate
-		// a target override from the fanout helper.
-		t.Fatalf("TargetLanguages unexpected non-empty: %v", p.TargetLanguages)
+	if ps.TargetLanguages != nil && len(ps.TargetLanguages) > 0 {
+		// omitempty: nil target_languages is absent in the
+		// JSON wire form — the fanout MUST NOT pre-populate
+		// a target override from the helper.
+		t.Fatalf("TargetLanguages unexpected non-empty: %v", ps.TargetLanguages)
+	}
+
+	// Wire-shape pin (godlike/06 SSOT): the CANONICAL broker
+	// marshaler produces the expected JSON tag shape that
+	// flows into SQLite payload_json and round-trips through
+	// the worker. We marshal the struct locally and inspect
+	// the raw keys — protects against future struct-tag drift
+	// (e.g. someone renaming AssetID PascalCase to camelCase,
+	// breaking the worker's json.Unmarshal into MaterializeJobPayload).
+	wireBytes, err := json.Marshal(ps)
+	if err != nil {
+		t.Fatalf("payload marshal: %v", err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(wireBytes, &raw); err != nil {
+		t.Fatalf("wire-shape map unmarshal: %v", err)
+	}
+	for _, wantKey := range []string{
+		"asset_id", "source_language", "source_text_hash", "text_kinds",
+	} {
+		if _, ok := raw[wantKey]; !ok {
+			t.Fatalf("wire shape missing %q key (struct tag drift; the worker json.Unmarshal into MaterializeJobPayload will fail at runtime)", wantKey)
+		}
 	}
 }
 
@@ -274,18 +317,36 @@ func TestFanOut_EnqueueMaterializeOne_MultipleKindsPreserved(t *testing.T) {
 		t.Fatalf("EnqueueMaterializeOne returned error: %v", err)
 	}
 	last := stub.last()
-	var p texttracks.MaterializeJobPayload
-	if err := json.Unmarshal(last.Payload, &p); err != nil {
-		t.Fatalf("payload unmarshal: %v", err)
+	ps, ok := last.Payload.(texttracks.MaterializeJobPayload)
+	if !ok {
+		t.Fatalf("Payload type = %T, want texttracks.MaterializeJobPayload", last.Payload)
 	}
-	if len(p.TextKinds) != len(kinds) {
-		t.Fatalf("TextKinds len = %d, want %d", len(p.TextKinds), len(kinds))
+	if len(ps.TextKinds) != len(kinds) {
+		t.Fatalf("TextKinds len = %d, want %d", len(ps.TextKinds), len(kinds))
 	}
 	for i, k := range kinds {
-		if i >= len(p.TextKinds) || p.TextKinds[i] != string(k) {
+		if i >= len(ps.TextKinds) || ps.TextKinds[i] != string(k) {
 			t.Fatalf("TextKinds[%d] = %q, want %q", i,
-				safeIndex(p.TextKinds, i), string(k))
+				safeIndex(ps.TextKinds, i), string(k))
 		}
+	}
+
+	// Wire-shape pin: the multiple-kinds list survives the
+	// canonical broker marshaler round-trip. Same marshaler
+	// the broker uses, same json.RawMessage probe that Probe
+	// 1 uses — keeping wire-shape coverage parallel between
+	// probes reduces drift risk.
+	wireBytes, err := json.Marshal(ps)
+	if err != nil {
+		t.Fatalf("payload marshal: %v", err)
+	}
+	var rt texttracks.MaterializeJobPayload
+	if err := json.Unmarshal(wireBytes, &rt); err != nil {
+		t.Fatalf("payload round-trip unmarshal: %v", err)
+	}
+	if len(rt.TextKinds) != len(kinds) {
+		t.Fatalf("round-trip TextKinds len = %d, want %d (kinds list corrupted by marshal)",
+			len(rt.TextKinds), len(kinds))
 	}
 }
 
