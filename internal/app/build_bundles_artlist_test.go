@@ -9,17 +9,17 @@
 //     the Publisher mandatory gate runs FIRST in the fail-closed ladder —
 //     even when the Dispatcher wire-up is non-nil, the Publisher nil
 //     short-circuit fires before the Dispatcher check.
+//   - TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute: regression test
+//     for the ART-002 P0 (July 2026) collapsed-comment bug — confirms that
+//     when the 4 mandatory composition gates are satisfied, WireArtlist
+//     returns a non-nil wiring with Module + Service properly populated so
+//     /api/artlist/* routes are mounted.
 //
-// A happy-path "all gates up" test would require deeper SQLite + Jobs
-// fixtures (out of scope for this unit-test layer per FASE-6 EXPAND-phase
-// discipline; tracked as a follow-up if/when a TestWireArtlist_HappyPath
-// task is added to the wave-tracker). For this PR the two failure-mode
-// tests above are the contract-layer TDD coverage.
-//
-// Both tests use httptest.Server to mock /api/artlist/stats — this is the
-// live-probe endpoint that WireArtlist pings via NewHTTPSelfLoopProbe.
-// The HTTPSelfLoopProbe adapter is *DIRECTLY* tested by the unit tests
-// in internal/application/assets/providers/artlist/http_live_probe_test.go;
+// Both failure-mode tests use httptest.Server to mock /api/artlist/stats —
+// this is the live-probe endpoint that WireArtlist pings via
+// NewHTTPSelfLoopProbe. The HTTPSelfLoopProbe adapter is *DIRECTLY* tested
+// by the unit tests in
+// internal/application/assets/providers/artlist/http_live_probe_test.go;
 // this test file focuses on the COMPOSITION wiring path.
 package app
 
@@ -33,9 +33,87 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
+
+// artlistCompositionSchema: minimal DDL subset needed by WireArtlist to
+// construct every canonical asset run repository on an in-memory SQLite
+// handle. Mirrors the column reconciliation in
+// migrations/sqlite/001_velox_core.sql:46-62 (artlist_runs) + the
+// companion tables touched by sqassets.NewAssetStoreSQLite (PR4d-chunk2).
+// We deliberately keep this fixture tight: WireArtlist only *constructs*
+// the repos during the wiring path (it does NOT call them), so any
+// constraint violation triggered at construction is enough to fail the
+// test loudly — a future PR that adds a column-level query at
+// construction time would surface here as a schema compat test failure.
+const artlistCompositionSchema = `
+	CREATE TABLE IF NOT EXISTS artlist_runs (
+		id              TEXT PRIMARY KEY,
+		term            TEXT NOT NULL,
+		status          TEXT NOT NULL DEFAULT 'queued',
+		root_folder_id  TEXT,
+		tag_folder_id   TEXT,
+		requested_count INTEGER DEFAULT 0,
+		found_count     INTEGER DEFAULT 0,
+		processed_count INTEGER DEFAULT 0,
+		skipped_count   INTEGER DEFAULT 0,
+		failed_count    INTEGER DEFAULT 0,
+		error_message   TEXT,
+		created_at      TEXT DEFAULT (datetime('now')),
+		updated_at      TEXT DEFAULT (datetime('now'))
+	);
+
+	CREATE TABLE IF NOT EXISTS media_assets (
+		id              TEXT PRIMARY KEY,
+		name            TEXT,
+		source          TEXT,
+		source_url      TEXT,
+		media_type      TEXT,
+		lifecycle_state TEXT,
+		metadata_json   TEXT DEFAULT '{}',
+		file_hash       TEXT DEFAULT '',
+		drive_link      TEXT DEFAULT '',
+		drive_file_id   TEXT DEFAULT '',
+		download_link   TEXT DEFAULT '',
+		local_path      TEXT DEFAULT '',
+		created_at      TEXT,
+		updated_at      TEXT
+	);
+
+	CREATE TABLE IF NOT EXISTS clip_search_terms (
+		clip_id TEXT NOT NULL,
+		term    TEXT NOT NULL,
+		PRIMARY KEY (clip_id, term)
+	);
+`
+
+// stubPublisherForArtlistComposition is the in-test
+// delivery.Publisher stub. Mirrors the F2.11 audit-pin precedent
+// (internal/infrastructure/drive/artifact_publisher_adapter_test.go)
+// so WireArtlist's mandatory publisher gate #1 fires through to the
+// downstream Builder without panicking on a missing config.
+type stubPublisherForArtlistComposition struct{}
+
+func (s *stubPublisherForArtlistComposition) Publish(_ context.Context, req delivery.PublishRequest) (*delivery.PublishResult, error) {
+	return &delivery.PublishResult{
+		FileID:      "stub-artlist-publish-file-id",
+		FolderID:    "stub-artlist-publish-folder-id",
+		Destination: req.Destination,
+	}, nil
+}
+
+func (s *stubPublisherForArtlistComposition) ResolveFolder(_ context.Context, _ delivery.PublishRequest) (string, error) {
+	return "stub-artlist-resolve-folder-id", nil
+}
+
+// Compile-time assertion: stubPublisherForArtlistComposition satisfies
+// delivery.Publisher. Mirrors the AGENTS.md Pattern 0 discipline used
+// by the other test fixtures in this package.
+var _ delivery.Publisher = (*stubPublisherForArtlistComposition)(nil)
 
 // TestWireArtlist_PublisherGate_FailsClosed: confirms the 4-gate UPFRONT
 // ladder returns a typed error when bundle.Publisher is nil — all
@@ -185,6 +263,157 @@ func TestValidateArtlistScraperURL_EnabledAndValidURL_ReturnsNil(t *testing.T) {
 	err := validateArtlistScraperURL(cfg)
 	assert.NoError(t, err,
 		"enabled Artlist + valid Node scraper URL must pass gate #5 silently")
+}
+
+// ---------- ART-002 P0 (July 2026): composition happy-path regression ----------
+//
+// TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute: regression test for
+// the collapsed-comment bug PR-ARTLIST-PERSIST-FIX suffered before
+// (the comment swallowed `RunRepository: artlistRunsAdapter,` on the
+// same source line). Before the fix, artlist.NewService returned
+// ErrRunRepositoryUnavailable and Wiring returned nil; /api/artlist/*
+// routes were unmounted. After the fix, NewService succeeds and the
+// returned wiring is non-nil with Module + Service populated.
+//
+// Scope:
+//   - 4 mandatory composition gates all up (Publisher, Dispatcher,
+//     ClipsRepo, Jobs.Service)
+//   - gate #5 (scraper URL) satisfied via cfg.Features.ArtlistEnabled
+//   - cfg.External.ArtlistScraperServerURL
+//   - Real SQLite (in-memory via storage.NewSQLiteDB), real
+//     ClipsRepository built on the same *sql.DB, real appjobs.Service
+//     built via BuildJobsBundle (composition-root helper) so the test
+//     exercises the SAME construction chain as production rather than
+//     skipping it via a hand-rolled fake.
+//
+// What this test does NOT assert:
+//   - Drive write semantics (stub Publisher short-circuits)
+//   - Real outbox dispatch (empty literal outbox.Dispatcher{} matches
+//     the precedent set by the 2 negative-path tests above; the
+//     composer's NewService constructor does not dispatch at
+//     construction time)
+//   - HTTP routing per se (composition-level only). The downstream
+//     /api/artlist/stats live probe merely returns 200 to
+//     satisfy the NewHTTPSelfLoopProbe construction path.
+//
+// Co-deps the test relies on:
+//   - storage.NewSQLiteDB + artlistCompositionSchema
+//   - assets.NewClipsRepository (audio/file/clip columns kept loose
+//     because WireArtlist only constructs the repo, never queries it
+//     in this test — see gate01_happy_path_test.go for the heavier
+//     integration variant)
+//   - BuildJobsBundle (composition-root's canonical Jobs builder) so
+//     TestsErrRegistryRequired / ErrLogRequired / ErrRepoRequired are
+//     caught by the helper rather than by ad-hoc assertions here
+func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
+	// Mock the IsLiveProbe target so NewHTTPSelfLoopProbe wiring
+	// succeeds (its Probe(ctx) is not exercised in this test, but
+	// the wiring construction itself reads from the served endpoint
+	// to validate the URL).
+	statsSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/artlist/stats", r.URL.Path,
+			"IsLiveProbe must target the canonical /api/artlist/stats endpoint (godlike/06 SSOT)")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true,"clips_total":0,"runs_total":0}`))
+	}))
+	defer statsSrv.Close()
+
+	// Real SQLite (file-backed, tempdir-scoped) with the minimal
+	// regression schema. Tests the production *storage.SQLiteDB wrap
+	// (bundle.DB.DB is reached via .DB field promotion).
+	sqliteDB, err := storage.NewSQLiteDB(t.TempDir(), "artlist_compose_test.db", zap.NewNop())
+	require.NoError(t, err, "storage.NewSQLiteDB should succeed against a tempdir-backed file")
+	defer sqliteDB.Close()
+	_, err = sqliteDB.Exec(artlistCompositionSchema)
+	require.NoError(t, err, "artlistCompositionSchema must apply cleanly")
+
+	log := zap.NewNop()
+
+	// Real ClipsRepository on the same *sql.DB (satisfies
+	// artlist.AssetStore port directly via Pattern 0 compile-time pin
+	// established in build_bundles_artlist.go).
+	clipsRepo := assets.NewClipsRepository(sqliteDB.DB, log)
+	require.NotNil(t, clipsRepo, "assets.NewClipsRepository must return a non-nil concrete on a fresh schema")
+
+	// Real JobsBundle through the composition-root's canonical
+	// BuildJobsBundle helper. The 4 trailing args (voiceoverRepo,
+	// imagesRepo, driveUploader, driveLifecycle) are nil-tolerant per
+	// the helper's documented contract.
+	jobsBundle, err := BuildJobsBundle(sqliteDB, log, nil, nil, nil, nil)
+	require.NoError(t, err, "BuildJobsBundle must succeed against the in-memory SQLite")
+	require.NotNil(t, jobsBundle.Service, "JobsBundle.Service must be populated so WireArtlist gate #4 passes")
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{Port: 8080},
+		External: config.ExternalConfig{
+			VeloxBaseURL:            statsSrv.URL,
+			ArtlistScraperServerURL: "http://artlist-scraper:9123",
+		},
+		Features: config.FeaturesConfig{ArtlistEnabled: true},
+	}
+
+	bundle := &ArtlistBundle{
+		DB:             sqliteDB,
+		ClipsRepo:      clipsRepo,
+		Publisher:      &stubPublisherForArtlistComposition{},
+		Jobs:           jobsBundle,
+		MediaProcessor: nil, // optional; nil-tolerant in WireArtlist's MediaProcessor bridge
+	}
+
+	// WireArtlist mandatory call shape (8 args). The 3 ComposeRoot
+	// receiver-fields not surfaced on ArtlistBundle (reader, lifecycle,
+	// metaWriter) and the destResolver port are passed nil — every
+	// downstream consumer in NewService / SemanticEnricher is
+	// nil-tolerant at construction (they DEFER their dispatch to
+	// runtime methods which this test does not exercise).
+	wiring, err := WireArtlist(
+		context.Background(),
+		log,
+		cfg,
+		bundle,
+		&outbox.Dispatcher{}, // gate #2: empty literal (Matches the 2 negative-path tests above)
+		nil,                  // reader: nil-tolerant (NewSemanticEnricher stores the field, only used at runtime)
+		nil,                  // lifecycle: nil-tolerant
+		nil,                  // metaWriter: nil-tolerant (P0-#2 fail-closed path; tests opt out)
+		nil,                  // destResolver: nil-tolerant (only used by DestinationService at runtime)
+	)
+
+	// The regression assertion: pre-fix the error chain wrapped
+	// ErrRunRepositoryUnavailable (the bug closed silently left
+	// /api/artlist/* unmounted). Post-fix it does NOT appear, and
+	// WireArtlist returns a fully-populated *ArtlistWiring.
+	require.NoError(t, err,
+		"WireArtlist must succeed when all 4 mandatory composition gates are up — the run-repo field is no longer swallowed by a comment (ART-002 P0 fix, July 2026)")
+	require.NotNil(t, wiring,
+		"wiring must be non-nil so registerArtlist can promote it into the registry")
+
+	// Routes-mount proof: wiring.Module is the api.Module returned by
+	// the NewRouteModule construction; its non-nil presence is
+	// what triggers tryRegisterModuleStrict to mount /api/artlist/* in
+	// production.
+	require.NotNil(t, wiring.Module,
+		"wiring.Module must be non-nil so /api/artlist/* routes get registered by tryRegisterModuleStrict")
+	require.Contains(t, wiring.Module.Name(), "artlist",
+		"module name must identify the capability so route-prefix /api/artlist/* maps correctly")
+
+	// Service proof: wiring.Service is the canonical *artlist.Service
+	// built via artlist.NewService. Its NON-NIL presence confirms
+	// RunRepository was actually wired in (the bug chain would have
+	// returned nil here via NewService's ErrRunRepositoryUnavailable).
+	require.NotNil(t, wiring.Service,
+		"wiring.Service must be non-nil — confirms Artlist.NewService did NOT fail on ErrRunRepositoryUnavailable")
+	assert.NotNil(t, wiring.ProviderAssets,
+		"ProviderAssets registry must be wired + frozen for search fan-out")
+	assert.NotNil(t, wiring.LicenseRepo,
+		"LicenseRepo must be wired so the compliance manifests endpoint works")
+	assert.NotNil(t, wiring.ReleaseRepo,
+		"ReleaseRepo must be wired so the release manifest endpoint works")
+	assert.NotNil(t, wiring.RenditionRepo,
+		"RenditionRepo must be wired so the rendition metadata endpoint works")
+
+	if wiring.Service != nil {
+		_ = wiring.Service.Close()
+	}
 }
 
 // TestValidateArtlistScraperURL_EnabledAndEmptyURL_ReturnsError: the
