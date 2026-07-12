@@ -739,23 +739,19 @@ func TestArtlistFailedDownloadMarksJobFailed(t *testing.T) {
 		Payload:   payload,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
-	}
-
-	// Create JobTools for testing
+	} // Create JobTools for testing.
 	jobTools := &jobs.JobTools{
 		Progress: func(progress int, message string) {
 			// Mock progress update
 		},
 		Event: func(eventType string, message string, data map[string]any) {
 			// Mock event
-		},
-		// FASE 4(b) (July 2026): IsCancelled field REMOVED from
-		// domain/job.JobExecutionTools. The pre-Fase-4 polling
-		// projection is gone; cancel propagates through native
-		// context cancellation (ctx.Err()) and the typed
-		// renewLeaseLoopWith LeaseState observation. The test
-		// fixture no longer needs to stub the IsCancelled field.
-			return false
+			// FASE 4(b) (July 2026): IsCancelled field REMOVED from
+			// domain/job.JobExecutionTools. The pre-Fase-4 polling
+			// projection is gone; cancel propagates through native
+			// context cancellation (ctx.Err()) and the typed
+			// renewLeaseLoopWith LeaseState observation. The test
+			// fixture no longer needs to stub the IsCancelled field.
 		},
 	}
 

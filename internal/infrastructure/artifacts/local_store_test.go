@@ -252,11 +252,11 @@ func TestLocalStore_Stage_InvalidArtifactIDRejected(t *testing.T) {
 	s, _ := NewLocalStore(Config{Workspace: tmp, MinFreeBytes: 1})
 
 	cases := []string{
-		"",                         // empty
-		"no-prefix",                // wrong format
-		"../etc/passwd",            // path traversal
-		"art_/etc/passwd",          // embedded slash
-		"art_a\nb",                 // embedded newline
+		"",                                // empty
+		"no-prefix",                       // wrong format
+		"../etc/passwd",                   // path traversal
+		"art_/etc/passwd",                 // embedded slash
+		"art_a\nb",                        // embedded newline
 		"art_" + strings.Repeat("a", 300), // too long
 	}
 	for _, id := range cases {
@@ -382,11 +382,11 @@ func TestLocalStore_Stage_HashVerifierMismatchRejected(t *testing.T) {
 	s, _ := NewLocalStore(Config{Workspace: tmp, MinFreeBytes: 1})
 	payload := []byte("integrity-test-payload\n")
 	_, err := s.Stage(context.Background(), staging.StageInput{
-		ArtifactID:      "art_test_hashverify_bad",
-		MIME:            "text/plain",
-		SizeBytes:       int64(len(payload)),
-		ExpectedSHA256:  "deadbeef" + strings.Repeat("0", 56), // 64 hex chars total
-		Content:         bytes.NewReader(payload),
+		ArtifactID:     "art_test_hashverify_bad",
+		MIME:           "text/plain",
+		SizeBytes:      int64(len(payload)),
+		ExpectedSHA256: "deadbeef" + strings.Repeat("0", 56), // 64 hex chars total
+		Content:        bytes.NewReader(payload),
 	})
 	if err == nil {
 		t.Fatal("want hash mismatch error, got nil")
@@ -587,7 +587,7 @@ func TestLocalStore_Stage_WorkspaceTotalCounterAdvances(t *testing.T) {
 // environments leak 0775 from the parent directory; without this
 // normalize, arbitrary tests would intermittently fail with:
 //
-//   "workspace=... perm rejected: perm=0775 want 0700"
+//	"workspace=... perm rejected: perm=0775 want 0700"
 //
 // Helper is white-box (package artifacts) so tests share the same
 // pre-conditions for the production-grade verifyPermission0700

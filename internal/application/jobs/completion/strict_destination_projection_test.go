@@ -65,14 +65,14 @@ func TestKindFromDestination_StrictMode_LocksCutoverFromKindDocument(t *testing.
 		want    finalization.ArtifactKind
 		cutover bool // true = the FASE 3 cutover away from KindDocument
 	}{
-		{dest: "image", want: finalization.KindImage, cutover: false},     // already KindImage in pre-FASE-3
-		{dest: "youtube_clip", want: finalization.KindVideo, cutover: true}, // was KindDocument
-		{dest: "voiceover", want: finalization.KindAudio, cutover: true},    // was KindDocument
-		{dest: "script", want: finalization.KindScript, cutover: false},   // already KindScript
-		{dest: "document", want: finalization.KindDocument, cutover: false}, // already KindDocument
-		{dest: "book", want: finalization.KindDocument, cutover: false},    // canonical Document
-		{dest: "stock", want: finalization.KindVideo, cutover: true},        // was KindDocument
-		{dest: "artlist", want: finalization.KindVideo, cutover: true},      // was KindDocument
+		{dest: "image", want: finalization.KindImage, cutover: false},             // already KindImage in pre-FASE-3
+		{dest: "youtube_clip", want: finalization.KindVideo, cutover: true},       // was KindDocument
+		{dest: "voiceover", want: finalization.KindAudio, cutover: true},          // was KindDocument
+		{dest: "script", want: finalization.KindScript, cutover: false},           // already KindScript
+		{dest: "document", want: finalization.KindDocument, cutover: false},       // already KindDocument
+		{dest: "book", want: finalization.KindDocument, cutover: false},           // canonical Document
+		{dest: "stock", want: finalization.KindVideo, cutover: true},              // was KindDocument
+		{dest: "artlist", want: finalization.KindVideo, cutover: true},            // was KindDocument
 		{dest: "sound_effect", want: finalization.KindSoundEffect, cutover: true}, // was KindDocument
 	}
 	if got, want := len(cases), 9; got != want {
@@ -124,8 +124,8 @@ func TestKindFromDestination_StrictMode_LocksCutoverFromKindDocument(t *testing.
 //     "almost-canonical" typo.
 func TestKindFromDestination_StrictMode_RejectsUnknownDestination(t *testing.T) {
 	cases := []string{
-		"drives",   // canonical typo (extra 's')
-		"",         // empty / unset
+		"drives",    // canonical typo (extra 's')
+		"",          // empty / unset
 		"documentx", // almost-canonical
 		"video",     // plausible-but-not-canonical (no "video" in 9-key)
 	}
@@ -202,8 +202,8 @@ func TestSourceFromDestination_StrictMode_LocksCanonicalSourceEnum(t *testing.T)
 // silent stash).
 func TestSourceFromDestination_StrictMode_RejectsUnknownDestination(t *testing.T) {
 	cases := []string{
-		"drives",   // typo
-		"",         // empty
+		"drives",    // typo
+		"",          // empty
 		"documentx", // almost-canonical
 	}
 	for _, dest := range cases {
@@ -221,5 +221,3 @@ func TestSourceFromDestination_StrictMode_RejectsUnknownDestination(t *testing.T
 		})
 	}
 }
-
-

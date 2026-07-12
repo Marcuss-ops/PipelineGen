@@ -262,7 +262,7 @@ func TestAcquireSegmentText_DBWinsWhenPayloadEmpty(t *testing.T) {
 	}}
 	resolver := newTestResolver(repo, nil, nil)
 	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
-		ClipID:           "yt_phase1a_003",
+		ClipID:             "yt_phase1a_003",
 		PreferredLanguages: []string{"it", "en"},
 	})
 	if err != nil {

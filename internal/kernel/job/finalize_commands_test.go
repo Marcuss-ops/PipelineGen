@@ -1,5 +1,5 @@
 // Package job — finalize_commands_test.go: hermetic validation for the
-// canonical FinalizeAttempt typed surface (Fase 4(a)) and the 
+// canonical FinalizeAttempt typed surface (Fase 4(a)) and the
 // LeaseState / RenewLeaseResult typed surface (Fase 4(b)).
 //
 // godlike/06 SSOT discipline: this file declares the canonical
@@ -68,7 +68,7 @@ func TestFinalizeAttemptOutcome_IsValidRejectsUnknown(t *testing.T) {
 
 // ── LeaseState enum-coverage tests ──────────────────────────────────────
 
-// TestLeaseState_AllDistinct verifies the canonical 
+// TestLeaseState_AllDistinct verifies the canonical
 // LeaseStateContinue / LeaseStateCancelRequested / LeaseStateLeaseLost
 // three values are pairwise distinct.
 func TestLeaseState_AllDistinct(t *testing.T) {
@@ -120,10 +120,10 @@ func TestRenewLeaseResult_NewExpiry(t *testing.T) {
 	future := now.Add(30 * time.Second)
 
 	cases := []struct {
-		name        string
-		result      RenewLeaseResult
-		wantOK      bool
-		wantTime    time.Time
+		name     string
+		result   RenewLeaseResult
+		wantOK   bool
+		wantTime time.Time
 	}{
 		{
 			name:     "ContinueWithFutureExpiry",
@@ -138,19 +138,19 @@ func TestRenewLeaseResult_NewExpiry(t *testing.T) {
 			wantTime: now,
 		},
 		{
-			name:     "ContinueWithNilExpiry",
-			result:   RenewLeaseResult{State: LeaseStateContinue, NewLeaseExpiry: nil},
-			wantOK:   false,
+			name:   "ContinueWithNilExpiry",
+			result: RenewLeaseResult{State: LeaseStateContinue, NewLeaseExpiry: nil},
+			wantOK: false,
 		},
 		{
-			name:     "CancelRequestedEvenWithExpirySet",
-			result:   RenewLeaseResult{State: LeaseStateCancelRequested, NewLeaseExpiry: &future},
-			wantOK:   false,
+			name:   "CancelRequestedEvenWithExpirySet",
+			result: RenewLeaseResult{State: LeaseStateCancelRequested, NewLeaseExpiry: &future},
+			wantOK: false,
 		},
 		{
-			name:     "LeaseLostEvenWithExpirySet",
-			result:   RenewLeaseResult{State: LeaseStateLeaseLost, NewLeaseExpiry: &future},
-			wantOK:   false,
+			name:   "LeaseLostEvenWithExpirySet",
+			result: RenewLeaseResult{State: LeaseStateLeaseLost, NewLeaseExpiry: &future},
+			wantOK: false,
 		},
 		{
 			name:   "EmptyResult",
@@ -184,7 +184,7 @@ func TestRenewLeaseResult_NewExpiry(t *testing.T) {
 //
 // godlike/06 SSOT: a future push that drops one of these fields
 // (or adds a non-canonical field) MUST update this test; a silent
-// removal of a canonical field would be detected at the next 
+// removal of a canonical field would be detected at the next
 // database-write attempt rather than at compile-time.
 func TestFinalizeAttemptCommand_AllFieldsPopulated(t *testing.T) {
 	cmd := FinalizeAttemptCommand{
@@ -221,11 +221,11 @@ func TestFinalizeAttemptCommand_AllFieldsPopulated(t *testing.T) {
 // a field MUST update this test.
 func TestFinalizeAttemptResult_AllFieldsPopulated(t *testing.T) {
 	res := FinalizeAttemptResult{
-		JobID:                "job-1234",
-		FinalStatus:          StatusSucceeded,
-		NewRevision:          43,
-		DLQRecorded:          false,
-		OutboxEventsWritten:  []string{"evt_1_abc"},
+		JobID:               "job-1234",
+		FinalStatus:         StatusSucceeded,
+		NewRevision:         43,
+		DLQRecorded:         false,
+		OutboxEventsWritten: []string{"evt_1_abc"},
 	}
 	if res.JobID != "job-1234" {
 		t.Errorf("JobID field not populated correctly")

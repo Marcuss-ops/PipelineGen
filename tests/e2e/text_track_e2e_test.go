@@ -89,6 +89,29 @@ CREATE TABLE IF NOT EXISTS asset_text_tracks (
 )`)
 	require.NoError(t, err, "CREATE TABLE asset_text_tracks must succeed")
 
+	// Add asset_text_track_segments table (migration 14X DDL).
+	// Bucket-B closure (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3):
+	// the text-track e2e resolver's Priority 2 lookup walks
+	// asset_text_track_segments via findCuesForTrackID. The hardcoded
+	// hermetic DDL must mirror the production migration
+	// (migrations/sqlite/1410427846_create_asset_text_track_segments.sql)
+	// so failures here are NOT obscured by feature drift between fixture
+	// and production schema. Foreign-key ON DELETE CASCADE preserves the
+	// production delete contract: removing an asset_text_tracks.parent
+	// cascades to its segments (godlike/06 SSOT — fixture is HERMETICALLY
+	// BYTE-EQUIVALENT to the canonical production SUBSET; any drift surfaces
+	// here at e2e time, not silently at production runtime).
+	_, err = fx.DB.Exec(`
+CREATE TABLE IF NOT EXISTS asset_text_track_segments (
+    id TEXT PRIMARY KEY,
+    track_id TEXT NOT NULL,
+    start_ms INTEGER NOT NULL,
+    end_ms INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    FOREIGN KEY(track_id) REFERENCES asset_text_tracks(id) ON DELETE CASCADE
+)`)
+	require.NoError(t, err, "CREATE TABLE asset_text_track_segments must succeed")
+
 	// Construct TextTrackRepository from the same in-memory DB.
 	ttRepo, err := clipwriter.NewTextTrackRepository(fx.DB, fx.Log)
 	require.NoError(t, err, "NewTextTrackRepository must succeed")

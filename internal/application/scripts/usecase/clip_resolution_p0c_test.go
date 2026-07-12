@@ -5,21 +5,21 @@
 // resolution path end-to-end at the use-case boundary. The suite runs
 // 7 canonical regression scenarios per the user spec:
 //
-//   1. 8 valid IDs          → AcceptedClipIDs=8, MissingClipIDs=0
-//   2. 1 missing ID         → AcceptedClipIDs=N-1, MissingClipIDs has the
-//                             missing ID with reason="not_found"
-//   3. ALL missing IDs      → use case fails with ErrSourceResolutionFailed
-//                             + message contains "no clips found"
-//   4. ID passed as media_assets.id → resolves via the canonical PK
-//   5. ID passed as drive_file_id  → resolves via the 2-phase fallback
-//                             (ResolveByMediaAssetID returns nil, then
-//                             ResolveByDriveFileID matches → the
-//                             USER-SUPPLIED drive file ID is the
-//                             canonical key in AcceptedClipIDs)
-//   6. Clip WITHOUT DriveLink → behavior matrix by RequireDriveLink:
-//                             - true  → MissingClipIDs reason="drivenotfound"
-//                             - false → kept in AcceptedClipIDs
-//   7. Clip with LifecycleState != ACTIVE → KNOWN GAP (see below)
+//  1. 8 valid IDs          → AcceptedClipIDs=8, MissingClipIDs=0
+//  2. 1 missing ID         → AcceptedClipIDs=N-1, MissingClipIDs has the
+//     missing ID with reason="not_found"
+//  3. ALL missing IDs      → use case fails with ErrSourceResolutionFailed
+//     + message contains "no clips found"
+//  4. ID passed as media_assets.id → resolves via the canonical PK
+//  5. ID passed as drive_file_id  → resolves via the 2-phase fallback
+//     (ResolveByMediaAssetID returns nil, then
+//     ResolveByDriveFileID matches → the
+//     USER-SUPPLIED drive file ID is the
+//     canonical key in AcceptedClipIDs)
+//  6. Clip WITHOUT DriveLink → behavior matrix by RequireDriveLink:
+//     - true  → MissingClipIDs reason="drivenotfound"
+//     - false → kept in AcceptedClipIDs
+//  7. Clip with LifecycleState != ACTIVE → KNOWN GAP (see below)
 //
 // Architecture: HYBRID — the bulk of the suite runs at the
 // ClipSourceBuilder.BuildClipContext layer (no Ollama fake, no
@@ -66,6 +66,7 @@ import (
 // key ONLY resolves via the fallback path:
 //   - byMediaID[id]   == nil          (the request is NOT a canonical PK)
 //   - byDriveFile[id] == &Asset{...} (the request IS a Drive File ID)
+//
 // This is the only way to drive the 2-phase fallback through
 // ClipSourceBuilder.resolveOneClip without instrumentation of the
 // production repo.
@@ -164,10 +165,10 @@ func TestClipResolution_P0C_BuilderLayer_FullCoverage(t *testing.T) {
 			clipIDs: []string{"c1", "c2", "c3", "c4", "c5", "c6", "c7", "missing-9"},
 			opts:    &ClipGenerationOptions{},
 			want: want{
-				acceptedCount:   7,
-				missingCount:    1,
-				wantInAccepted:  []string{"c1", "c2", "c3", "c4", "c5", "c6", "c7"},
-				wantInMissing:   []string{"missing-9"},
+				acceptedCount:  7,
+				missingCount:   1,
+				wantInAccepted: []string{"c1", "c2", "c3", "c4", "c5", "c6", "c7"},
+				wantInMissing:  []string{"missing-9"},
 				wantMissingReasons: map[string]string{
 					"missing-9": scriptpkg.MissingClipReasonNotFound,
 				},
@@ -204,10 +205,10 @@ func TestClipResolution_P0C_BuilderLayer_FullCoverage(t *testing.T) {
 			clipIDs: []string{"c1", "c2"},
 			opts:    &ClipGenerationOptions{RequireDriveLink: true},
 			want: want{
-				acceptedCount:   1,
-				missingCount:    1,
-				wantInAccepted:  []string{"c2"},
-				wantInMissing:   []string{"c1"},
+				acceptedCount:  1,
+				missingCount:   1,
+				wantInAccepted: []string{"c2"},
+				wantInMissing:  []string{"c1"},
 				wantMissingReasons: map[string]string{
 					"c1": scriptpkg.MissingClipReasonDriveNotFound,
 				},
@@ -230,7 +231,7 @@ func TestClipResolution_P0C_BuilderLayer_FullCoverage(t *testing.T) {
 				acceptedCount:   1,
 				missingCount:    0,
 				wantInAccepted:  []string{"c1"}, // kept despite lacking DriveLink
-				driveLinksCount: 0,             // no clip carries DriveLink in this case
+				driveLinksCount: 0,              // no clip carries DriveLink in this case
 			},
 		},
 		{
@@ -396,11 +397,11 @@ func TestClipResolution_P0C_DriveFileIDFallback(t *testing.T) {
 		driveID    = "user-drive-id-X"
 	)
 	a := &asset.Asset{
-		ID:         internalID,
-		Name:       "Pacquiao vs Broner — Round 1",
-		MediaType:  asset.MediaTypeClip,
+		ID:             internalID,
+		Name:           "Pacquiao vs Broner — Round 1",
+		MediaType:      asset.MediaTypeClip,
 		LifecycleState: asset.StateActive,
-		Metadata:   make(asset.Metadata),
+		Metadata:       make(asset.Metadata),
 	}
 	a.SetDriveFileID(driveID)
 	a.SetDriveLink("https://drive.google.com/file/d/" + driveID + "/view")

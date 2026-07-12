@@ -72,8 +72,8 @@ type testHandler struct {
 	handleCalls atomic.Int32
 }
 
-func (h *testHandler) EventType() string       { return h.eventType }
-func (h *testHandler) IdempotencyKey() string   { return h.eventType + ".test.v1" }
+func (h *testHandler) EventType() string      { return h.eventType }
+func (h *testHandler) IdempotencyKey() string { return h.eventType + ".test.v1" }
 func (h *testHandler) Handle(ctx context.Context, evt Event) error {
 	h.handleCalls.Add(1)
 	return h.handleFn(ctx, evt)

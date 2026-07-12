@@ -622,4 +622,3 @@ func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 // + TestFinalizer_NoPublishOnFailure along with the canonical
 // "no per-job polling cycles" goal that FASE 6 (Cut 6.3 worker
 // typed-LeaseState + Cut 6.5 typed-JobCompletionBus) establishes.
-

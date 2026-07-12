@@ -110,9 +110,9 @@ func p0jBuildClipEvidenceForTopics(clipIDs []string) *scriptpkg.ClipEvidence {
 // the plan's clip-grounding section).
 func p0jBuildPlanWithTopics(clipIDs []string, topics []string) *scriptpkg.ResolvedGenerationPlan {
 	return &scriptpkg.ResolvedGenerationPlan{
-		NumClips:          len(clipIDs),
-		SegmentTopics:     append([]string(nil), topics...),
-		ClipEvidence:      p0jBuildClipEvidenceForTopics(clipIDs),
+		NumClips:      len(clipIDs),
+		SegmentTopics: append([]string(nil), topics...),
+		ClipEvidence:  p0jBuildClipEvidenceForTopics(clipIDs),
 	}
 }
 
@@ -127,14 +127,14 @@ func TestSegmentTopics_P0J_EightClipsEightTopics_CorrectOrder(t *testing.T) {
 	t.Parallel()
 
 	topics := []string{
-		"Opening scene",      // topic 1 → opening
-		"Rising action",      // topic 2
-		"Conflict setup",     // topic 3
-		"Climax",             // topic 4
-		"Falling action",     // topic 5
-		"Twist",              // topic 6
-		"Resolution",         // topic 7
-		"Closing scene",      // topic 8 → closing
+		"Opening scene",  // topic 1 → opening
+		"Rising action",  // topic 2
+		"Conflict setup", // topic 3
+		"Climax",         // topic 4
+		"Falling action", // topic 5
+		"Twist",          // topic 6
+		"Resolution",     // topic 7
+		"Closing scene",  // topic 8 → closing
 	}
 	plan := p0jBuildPlanWithTopics(p0jClipIDsEight, topics)
 	prompt := buildClipGroundingInstructions(plan)
@@ -195,10 +195,10 @@ func TestSegmentTopics_P0J_EightClipsFourTopics_TopicsOrdered(t *testing.T) {
 	t.Parallel()
 
 	topics := []string{
-		"Opening",      // topic 1 → opening
-		"Development",  // topic 2
-		"Climax",       // topic 3
-		"Resolution",   // topic 4 → closing
+		"Opening",     // topic 1 → opening
+		"Development", // topic 2
+		"Climax",      // topic 3
+		"Resolution",  // topic 4 → closing
 	}
 	plan := p0jBuildPlanWithTopics(p0jClipIDsEight, topics)
 	prompt := buildClipGroundingInstructions(plan)
@@ -308,7 +308,7 @@ func TestSegmentTopics_P0J_EmptyTopics_Skipped(t *testing.T) {
 
 	// (b) The prompt MUST NOT contain any numbered entries.
 	for i := 1; i <= 8; i++ {
-		numbered := strings.Index(prompt, "1. ")  // check the first numbering pattern
+		numbered := strings.Index(prompt, "1. ") // check the first numbering pattern
 		_ = numbered
 		// We don't know the exact format (the function skips ALL
 		// empty topics, so no numbered entries exist). Just verify
@@ -331,10 +331,10 @@ func TestSegmentTopics_P0J_RepeatedTopics_FormattedInOrder(t *testing.T) {
 	t.Parallel()
 
 	topics := []string{
-		"Opening",  // topic 1
-		"Climax",   // topic 2
-		"Opening",  // topic 3 (repeated)
-		"Climax",   // topic 4 (repeated)
+		"Opening", // topic 1
+		"Climax",  // topic 2
+		"Opening", // topic 3 (repeated)
+		"Climax",  // topic 4 (repeated)
 	}
 	plan := p0jBuildPlanWithTopics(p0jClipIDsEight, topics)
 	prompt := buildClipGroundingInstructions(plan)
@@ -399,14 +399,14 @@ func TestSegmentTopics_P0J_WrongOrder_PreservedAsGiven(t *testing.T) {
 	// (a) The prompt MUST render the topics in the GIVEN order
 	//     (not sorted, not validated, not reordered).
 	expectedOrder := []string{
-		"1. Closing scene",  // given first
+		"1. Closing scene", // given first
 		"2. Resolution",
 		"3. Twist",
 		"4. Falling action",
 		"5. Climax",
 		"6. Conflict setup",
 		"7. Rising action",
-		"8. Opening scene",  // given last
+		"8. Opening scene", // given last
 	}
 	prevIdx := -1
 	for i, expected := range expectedOrder {

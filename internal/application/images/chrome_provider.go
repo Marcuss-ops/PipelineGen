@@ -244,6 +244,15 @@ func (p *ChromeImageProvider) Generate(ctx context.Context, req GenerateImageReq
 	// recovery seam). The three-error retry surface is the P0.4 user
 	// spec's "resetWorker integration per timeout / whitespace /
 	// selettore ambiguo".
+	//
+	// Per-call `firstErr` capture (July-29 review-feedback): if the
+	// retry ALSO fails (e.g. the second ensureStarted cannot find
+	// slide_worker.py on a misconfigured host, or the second attempt's
+	// network flakes out), prefer the FIRST typed error for propagation
+	// to the caller. The first error carries the original failure mode
+	// (timeout / ratio / blank); the second error is layered
+	// implementation noise that obscures useful operator diagnostics.
+	firstErr := err
 	if p.isDeadWorkerError(err) || errors.Is(err, ErrImageGenRatioNotSelected) ||
 		errors.Is(err, ErrImageGenTimeout) || errors.Is(err, ErrImageGenBlankOrPlaceholder) {
 		p.log.Warn("ChromeImageProvider: recoverable worker failure, resetting and retrying once",
@@ -253,7 +262,17 @@ func (p *ChromeImageProvider) Generate(ctx context.Context, req GenerateImageReq
 			zap.Bool("is_timeout_error", errors.Is(err, ErrImageGenTimeout)),
 			zap.Bool("is_blank_placeholder_error", errors.Is(err, ErrImageGenBlankOrPlaceholder)))
 		p.resetWorker()
-		return p.generateOnce(ctx, req)
+		result2, err2 := p.generateOnce(ctx, req)
+		if err2 == nil {
+			return result2, nil
+		}
+		// Prefer the FIRST typed error for diagnostic clarity (the retry's
+		// error may be a downstream infrastructure issue — script-not-found,
+		// double-dead worker, etc. — that masks the original failure mode).
+		p.log.Warn("ChromeImageProvider: retry also failed; surfacing first error",
+			zap.Error(firstErr),
+			zap.NamedError("retry_err", err2))
+		return nil, firstErr
 	}
 	return nil, err
 }

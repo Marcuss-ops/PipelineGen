@@ -331,17 +331,17 @@ func TestE2E_LeaseExpiryNullIsAcceptedBySQLGated(t *testing.T) {
 // It covers THREE invariants in one shot — the load-bearing part of
 // user-spec Cut 6.5 step 4.
 //
-//   1. Publish fires on the SUCCEEDED tx.Commit path. The post-flip
-//      Revision assertion alone proves the SUCCEEDED path fired
-//      (handleIdempotentCompletion's no-publish early-return cannot
-//      reach the post-commit branch).
-//   2. evt.Revision = jobRow.revision + 1 — the post-flip OC counter,
-//      NOT req.Result.Attempt. A future reader changing markSucceeded's
-//      UPDATE statement to `revision = revision + 2` (silent value
-//      drift) would fail THIS assertion.
-//   3. evt.FinalStatus = jobpkg.StatusSucceeded (typed-port invariant:
-//      the Finalizer's terminal transition is shaped as a typed event,
-//      not a free-form string).
+//  1. Publish fires on the SUCCEEDED tx.Commit path. The post-flip
+//     Revision assertion alone proves the SUCCEEDED path fired
+//     (handleIdempotentCompletion's no-publish early-return cannot
+//     reach the post-commit branch).
+//  2. evt.Revision = jobRow.revision + 1 — the post-flip OC counter,
+//     NOT req.Result.Attempt. A future reader changing markSucceeded's
+//     UPDATE statement to `revision = revision + 2` (silent value
+//     drift) would fail THIS assertion.
+//  3. evt.FinalStatus = jobpkg.StatusSucceeded (typed-port invariant:
+//     the Finalizer's terminal transition is shaped as a typed event,
+//     not a free-form string).
 //
 // Sister test TestFinalizer_NoPublishOnFailure (below) covers the
 // failure-path-no-phantom-publish half of the contract.

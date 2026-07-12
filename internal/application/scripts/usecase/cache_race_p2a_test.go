@@ -157,13 +157,13 @@ func (g *p2aMemoryGate) GetEntry(key string) (*memoryGateResult, bool) {
 // TestCacheRace_2WorkersSameFingerprint_1EntryNoOverwrite pins
 // the user-spec contract:
 //
-//   1. 2 concurrent workers with the same plan (same
-//      fingerprint) → exactly 1 memory-gate entry.
-//   2. No overwrite: the entry's content is consistent (the
-//      2nd SetEntry for the same key is a no-op).
-//   3. Cache hit coherent after: a 3rd call with the same
-//      fingerprint hits the cache (memory gate is consulted,
-//      returns a deterministic result).
+//  1. 2 concurrent workers with the same plan (same
+//     fingerprint) → exactly 1 memory-gate entry.
+//  2. No overwrite: the entry's content is consistent (the
+//     2nd SetEntry for the same key is a no-op).
+//  3. Cache hit coherent after: a 3rd call with the same
+//     fingerprint hits the cache (memory gate is consulted,
+//     returns a deterministic result).
 //
 // SUT BUG 1: if the engine does NOT use singleflight, the
 // 2 concurrent workers will both invoke ollama (gen.calls=2

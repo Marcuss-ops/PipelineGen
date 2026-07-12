@@ -13,9 +13,9 @@
 //     mismatch) surface as canonical sentinels + the
 //     job_transition_conflict_total{"finalize_attempt"} counter bumps.
 //   - In-TX sub-operations:
-//       DLQ (atomic INSERT INTO dead_letter_jobs)
-//       artifact_state (atomic UPDATE artifact_stages)
-//       outbox_events (atomic INSERT batch, ON CONFLICT idempotency)
+//     DLQ (atomic INSERT INTO dead_letter_jobs)
+//     artifact_state (atomic UPDATE artifact_stages)
+//     outbox_events (atomic INSERT batch, ON CONFLICT idempotency)
 //   - Pre-TX precondition rejections (OutcomeSucceeded w/o Result,
 //     non-Succeeded w/o ErrorMessage, DLQ + Succeeded, OutboxEvent
 //     missing Type/EventKey) surface as typed sentinels.

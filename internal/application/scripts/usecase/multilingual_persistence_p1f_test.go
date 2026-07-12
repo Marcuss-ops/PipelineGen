@@ -19,38 +19,38 @@
 //
 // ATTESO per the user spec:
 //
-//  Group 1 — Cross-language consistency (TranslateScriptSpec):
-//   - Same 8-scene English script translated to it/en/es/pt
-//     must produce 4 outputs with the SAME event coverage
-//     (scene count, scene IDs, scene kinds) and SAME order
-//     (Index 0..7), with NO narrative loss (all 8 clips
-//     bound) and NO meaning change (entity markers preserved
-//     in translation).
-//   - User spec: "NON confrontare parola per parola, solo
-//     copertura eventi + item structure" — the test pins the
-//     STRUCTURAL equivalence (not byte-equality of text).
+//	Group 1 — Cross-language consistency (TranslateScriptSpec):
+//	 - Same 8-scene English script translated to it/en/es/pt
+//	   must produce 4 outputs with the SAME event coverage
+//	   (scene count, scene IDs, scene kinds) and SAME order
+//	   (Index 0..7), with NO narrative loss (all 8 clips
+//	   bound) and NO meaning change (entity markers preserved
+//	   in translation).
+//	 - User spec: "NON confrontare parola per parola, solo
+//	   copertura eventi + item structure" — the test pins the
+//	   STRUCTURAL equivalence (not byte-equality of text).
 //
-//  Group 2 — DB-hit canonical case (TextTrackResolver):
-//   - Asset has Italian READY track in DB. Request
-//     language=it. Resolver hits the DB (priority 2), returns
-//     the saved track byte-equivalent, and does NOT call
-//     Whisper, Subtitles, or any translator.
-//   - User spec: "NO chiamata traduttore, NO nuova
-//     trascrizione" — the test pins the cache-hit path
-//     end-to-end (no upstream port consulted).
+//	Group 2 — DB-hit canonical case (TextTrackResolver):
+//	 - Asset has Italian READY track in DB. Request
+//	   language=it. Resolver hits the DB (priority 2), returns
+//	   the saved track byte-equivalent, and does NOT call
+//	   Whisper, Subtitles, or any translator.
+//	 - User spec: "NO chiamata traduttore, NO nuova
+//	   trascrizione" — the test pins the cache-hit path
+//	   end-to-end (no upstream port consulted).
 //
-//  Group 3 — Missing translation policy (TextTrackResolver):
-//   - language=fr requested, no fr track in DB, no fr
-//     subtitles, no Whisper fallback. The pipeline MUST
-//     surface a typed error (ErrLanguageUndeterminable when
-//     policy requires certainty) or (nil, nil) when it
-//     doesn't, BUT in NO case call a translator with
-//     targetLang=fr.
-//   - User spec: "TEXT_TRACK_NOT_READY OPPURE fallback con
-//     warning esplicito (mai traduzione silente)" — the test
-//     pins the no-silent-translation invariant + the
-//     available-languages operator visibility
-//     (ListReadyLanguages → AvailableLanguages).
+//	Group 3 — Missing translation policy (TextTrackResolver):
+//	 - language=fr requested, no fr track in DB, no fr
+//	   subtitles, no Whisper fallback. The pipeline MUST
+//	   surface a typed error (ErrLanguageUndeterminable when
+//	   policy requires certainty) or (nil, nil) when it
+//	   doesn't, BUT in NO case call a translator with
+//	   targetLang=fr.
+//	 - User spec: "TEXT_TRACK_NOT_READY OPPURE fallback con
+//	   warning esplicito (mai traduzione silente)" — the test
+//	   pins the no-silent-translation invariant + the
+//	   available-languages operator visibility
+//	   (ListReadyLanguages → AvailableLanguages).
 //
 // SEAM CHOICE: two layers — TranslateScriptSpec (for Group 1)
 // and TextTrackResolver (for Groups 2+3). The two layers
@@ -769,9 +769,9 @@ func newP1FResolver(repo *p1fStubRepo, subs *p1fStubSubtitles, trans *p1fStubTra
 // TestCanonicalCase_ItalianReadyTrack_NoTranslatorNoWhisper pins
 // the user-spec canonical-case contract:
 //
-//   "clip originale inglese + text track italiano READY + request
-//    language=it → usa track salvato, NO chiamata traduttore, NO
-//    nuova trascrizione."
+//	"clip originale inglese + text track italiano READY + request
+//	 language=it → usa track salvato, NO chiamata traduttore, NO
+//	 nuova trascrizione."
 //
 // The asset has a READY Italian transcript in the DB. The
 // resolver MUST:

@@ -98,8 +98,8 @@ func TestIsKnownMethod_RejectsUnknown(t *testing.T) {
 
 func TestRouteDescriptor_ValidateAll_AggregatesPerField(t *testing.T) {
 	tests := []struct {
-		name    string
-		desc    RouteDescriptor
+		name     string
+		desc     RouteDescriptor
 		wantAuth bool
 		wantCap  bool
 	}{

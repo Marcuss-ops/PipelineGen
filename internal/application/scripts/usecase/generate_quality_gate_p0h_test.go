@@ -260,30 +260,31 @@ func p0hBuildPacquiaoBronerOrchestrator(t *testing.T) (*GenerateOneUseCase, scri
 //     hardcoded prose.
 //
 // Assertions (godlike/07 typed-contract):
-//   (a) Execute returns a non-nil result with no error.
-//   (b) result.Status == ItemStatusSucceeded (no fallback
-//       warnings — the contract is clean).
-//   (c) result.Quality != nil (the gate ran).
-//   (d) result.Quality.LanguageDetected == "it".
-//   (e) result.Quality.ClipEvidenceCoverage == 1.0.
-//   (f) result.Quality.UnsupportedClaims == 0.
-//   (g) result.Quality.Passed == true.
-//   (h) Positive grounding: prose mentions BOTH "pacquiao"
-//       AND "broner" (case-insensitive).
-//   (i) Negative: prose does NOT mention "mayweather" (case-
-//       insensitive).
-//   (j) Negative: prose does NOT mention "las vegas" or
-//       "mgm" (case-insensitive).
-//   (k) Negative: prose does NOT contain a fake scorecard
-//       (no "116-112", "114-113", "115-113" or judge names).
-//   (l) Negative: prose has no direct citations (no quote
-//       marks, no "ha detto", no "dichiara", no "secondo").
-//   (m) Negative: prose does NOT mention rounds outside the
-//       evidenced set (only round 1 and round 7 are in the
-//       clip evidence).
-//   (n) Negative: prose has no medical details (no
-//       "infortunio", "medico", "ospedale", "taglio",
-//       "knockout", "incidente").
+//
+//	(a) Execute returns a non-nil result with no error.
+//	(b) result.Status == ItemStatusSucceeded (no fallback
+//	    warnings — the contract is clean).
+//	(c) result.Quality != nil (the gate ran).
+//	(d) result.Quality.LanguageDetected == "it".
+//	(e) result.Quality.ClipEvidenceCoverage == 1.0.
+//	(f) result.Quality.UnsupportedClaims == 0.
+//	(g) result.Quality.Passed == true.
+//	(h) Positive grounding: prose mentions BOTH "pacquiao"
+//	    AND "broner" (case-insensitive).
+//	(i) Negative: prose does NOT mention "mayweather" (case-
+//	    insensitive).
+//	(j) Negative: prose does NOT mention "las vegas" or
+//	    "mgm" (case-insensitive).
+//	(k) Negative: prose does NOT contain a fake scorecard
+//	    (no "116-112", "114-113", "115-113" or judge names).
+//	(l) Negative: prose has no direct citations (no quote
+//	    marks, no "ha detto", no "dichiara", no "secondo").
+//	(m) Negative: prose does NOT mention rounds outside the
+//	    evidenced set (only round 1 and round 7 are in the
+//	    clip evidence).
+//	(n) Negative: prose has no medical details (no
+//	    "infortunio", "medico", "ospedale", "taglio",
+//	    "knockout", "incidente").
 func TestQualityGate_P0H_PacquiaoBroner_HallucinationFree(t *testing.T) {
 	t.Parallel()
 

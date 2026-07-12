@@ -3,12 +3,13 @@ package adapters
 import (
 	"context"
 	"errors"
-	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	tagutil "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/videomuscles"
 	youtubesubtitles "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/youtube"
