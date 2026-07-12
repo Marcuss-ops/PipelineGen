@@ -8,26 +8,26 @@
 //
 // The wrap guarantees this naturally via SQLite tx semantics:
 //
-//	1. BeginTx                    ← orchestrator
-//	2. UPDATE media_assets SET
-//	       drive_file_id, drive_link, download_link,
-//	       file_hash, source_version,
-//	       lifecycle_state='PUBLISHED',
-//	       audit fields
-//	     WHERE id = cmd.AssetID
-//	   → if the row doesn't exist OR the UPDATE fails, the
-//	   defer-Rollback below reverts the (still-uncommitted)
-//	   UPDATE. The PUBLISHED transition NEVER escapes the
-//	   rollback boundary.
-//	3. BUILD eventKey, payload = OutboxKey("asset.index.requested.v1",
-//	                                       "artlist", assetID, sourceVersion)
-//	                          + artlistPublishRequestV1 JSON
-//	4. INSERT outbox_events (...) ON CONFLICT(event_key) DO NOTHING
-//	   → if the INSERT fails (DB error, UNIQUE violation on
-//	   event_key, etc.), the defer-Rollback reverts BOTH the
-//	   UPDATE in step 2 and the (uncommitted) outbox INSERT.
-//	5. Commit                     ← orchestrator
-//	6. checkOutboxTerminalAfterCommit  ← post-commit BLOCKER #4 check
+//  1. BeginTx                    ← orchestrator
+//  2. UPDATE media_assets SET
+//     drive_file_id, drive_link, download_link,
+//     file_hash, source_version,
+//     lifecycle_state='PUBLISHED',
+//     audit fields
+//     WHERE id = cmd.AssetID
+//     → if the row doesn't exist OR the UPDATE fails, the
+//     defer-Rollback below reverts the (still-uncommitted)
+//     UPDATE. The PUBLISHED transition NEVER escapes the
+//     rollback boundary.
+//  3. BUILD eventKey, payload = OutboxKey("asset.index.requested.v1",
+//     "artlist", assetID, sourceVersion)
+//     + artlistPublishRequestV1 JSON
+//  4. INSERT outbox_events (...) ON CONFLICT(event_key) DO NOTHING
+//     → if the INSERT fails (DB error, UNIQUE violation on
+//     event_key, etc.), the defer-Rollback reverts BOTH the
+//     UPDATE in step 2 and the (uncommitted) outbox INSERT.
+//  5. Commit                     ← orchestrator
+//  6. checkOutboxTerminalAfterCommit  ← post-commit BLOCKER #4 check
 //
 // godlike/06 SSOT: this file is the SOLE canonical owner of the
 // artlist publish finalization surface. The artlist provider MUST
@@ -63,8 +63,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 )
 
 // ── Typed sentinels (godlike/07 NO-FAKE-AVAILABILITY) ──────────────
@@ -228,9 +228,9 @@ func (a *artlistPublishTxAdapter) CommitArtlistPublishTx(ctx context.Context, cm
 	// ── 3) Build event_key + payload (no SQL).
 	eventKey, err := idempotency.OutboxKey(
 		outboxevents.EventAssetIndexRequested, // "asset.index.requested.v1"
-		"artlist",                            // source provider
-		cmd.AssetID,                          // clip_id (asset_id)
-		cmd.SourceVersion,                    // source_version
+		"artlist",                             // source provider
+		cmd.AssetID,                           // clip_id (asset_id)
+		cmd.SourceVersion,                     // source_version
 	)
 	if err != nil {
 		return fmt.Errorf("artlistPublishTxAdapter.CommitArtlistPublishTx: build event_key: %w", err)
@@ -248,8 +248,8 @@ func (a *artlistPublishTxAdapter) CommitArtlistPublishTx(ctx context.Context, cm
 	enqResult, err := enqueueClipIndexEventInTx(
 		ctx, a.box, tx,
 		outboxevents.EventAssetIndexRequested, // event type
-		cmd.AssetID,                          // aggregate_id
-		cmd.AssetID,                          // asset_id (the inner id; same as aggregate for media_asset)
+		cmd.AssetID,                           // aggregate_id
+		cmd.AssetID,                           // asset_id (the inner id; same as aggregate for media_asset)
 		string(payloadJSON),
 		eventKey,
 	)
@@ -337,7 +337,7 @@ func validateArtlistPublishCommand(cmd ArtlistPublishCommand) error {
 // that doesn't exist.
 //
 // godlike/07 audit-field preservation: created_at uses
-// COALESCE(NULLIF(created_at, ''), ?) so a pre-existing insert
+// COALESCE(NULLIF(created_at, ”), ?) so a pre-existing insert
 // timestamp is preserved (the staging row is pre-inserted by the
 // drive publisher or the discovery flow; this wrap is the
 // terminal "promote to PUBLISHED" step, NOT the initial insert).
