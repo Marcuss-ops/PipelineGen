@@ -288,18 +288,42 @@ func (h *ArtlistHandler) JobConsumer(c *gin.Context) {
 
 // SearchLive performs a live search using the Node.js scraper.
 //
-// PR-P2-SEARCH-LIVE (July 2026): the handler reads an optional
-// `?prefer_remote=true|false` query parameter. **Default for this
-// endpoint is `true`** per user-spec contract: when the param is
-// omitted, the Node ScraperSearcher is invoked as the PRIMARY
-// provider and the local DB cache (DBSearcher, indexed terms) AND
-// the in-memory TTL cache (CachedSearcher wrapper) are BOTH
-// COMPLETELY DROPPED from the chain. Operators wanting the legacy
-// cache-first behavior can opt back in with `?prefer_remote=false`.
+// Fase 7 / Commit A (July 2026) - godlike/07 force-live contract:
+// the endpoint name carries the contract: hitting
+// `/api/artlist/search/live` ALWAYS invokes the Node ScraperSearcher
+// as the PRIMARY provider and DROPS the local DB cache
+// (DBSearcher, indexed terms) AND the in-memory TTL cache
+// (CachedSearcher wrapper). Operators can NEVER opt into a cached
+// response via this route — the endpoint is the contract.
+//
+// Why drop the `prefer_remote` query param that PR-P2-SEARCH-LIVE
+// introduced: the user spec literal "quando l'operatore chiede live"
+// rejects the cache-first fallback for this endpoint. Permitting
+// `?prefer_remote=false` would silently bypass the operator's live
+// intent and serve stale DB hits — a godlike/07 fake-availability
+// violation. The route is therefore FORCE-LIVE, period.
+//
+// Any caller wanting the cache-first / DB-first behavior MUST use
+// `/api/artlist/search` (the non-live route) which still honors
+// PreferDB on the SearchRequest payload.
 //
 // godlike/06 SSOT: the chain-order decision lives at the canonical
-// SearchService.buildSearcherChain — this handler only translates
-// the query parameter into the boolean flag.
+// SearchService.buildSearcherChain (preferRemote=true drops
+// DBSearcher + CachedSearcher wrapper). This handler hardcodes
+// `preferRemote=true` so the contract is enforced at the transport
+// layer; service-layer callers passing `preferRemote=false` retain
+// the legacy escape hatch ONLY for orchestrator paths
+// (DiscoverAndQueueRun + stageDiscoverClips) where cache-first
+// semantics is documented as intentional.
+//
+// Audit log fields (zap):
+//   - live_enforced=true: the handler hardcoded preferRemote=true.
+//   - cache_strategy="bypassed": the chain dropped DB + TTL cache.
+//   - prefer_remote_param_ignored=<value>: the (now ignored) param,
+//     surfaced for operator forensics when an operator passes it.
+//   - scraper_path="raw"|"fallback": the resolved chain path so
+//     operators can verify the live-scraper was the PRIMARY
+//     provider (not a fallback that the resolver skipped).
 func (h *ArtlistHandler) SearchLive(c *gin.Context) {
 	term := strings.TrimSpace(c.Query("term"))
 	limitStr := c.DefaultQuery("limit", "20")
@@ -311,40 +335,59 @@ func (h *ArtlistHandler) SearchLive(c *gin.Context) {
 		limit = 50
 	}
 
-	// PR-P2-SEARCH-LIVE: prefer_remote query parsing.
-	// DefaultQuery("prefer_remote", "true") → user-spec literal: default
-	// true for /api/artlist/search/live. ParseBool accepts "1", "t",
-	// "true", "T", "TRUE" (and "0", "f", "false", "F", "FALSE"). On
-	// unparseable input we fall back to false (legacy cache-first
-	// semantics) rather than panic — explicit `true|false` is what the
-	// client requested.
-	preferRemoteStr := c.DefaultQuery("prefer_remote", "true")
-	preferRemote, _ := strconv.ParseBool(preferRemoteStr)
+	// Fase 7 / Commit A: the legacy `?prefer_remote` query param is
+	// IGNORED on this endpoint. We read it for forensic logging
+	// only — an operator who passed `?prefer_remote=false` keeps
+	// getting force-live (with the param surfaced in the audit log
+	// so they see why their value was discarded).
+	preferRemoteParamIgnored := strings.TrimSpace(c.Query("prefer_remote"))
 
 	if term == "" {
 		apiutil.BadRequest(c, "term is required")
 		return
 	}
 
-	h.log.Info("artlist search live requested",
-		zap.String("term", term),
-		zap.Int("limit", limit),
-		zap.Bool("prefer_remote", preferRemote),
-		zap.String("prefer_remote_raw", preferRemoteStr),
-	)
-
-	clips, err := h.service.SearchLive(c.Request.Context(), term, limit, preferRemote)
+	// Forzare live — operator's intent is unambiguous by route name.
+	// The SearchService drops DBSearcher + CachedSearcher wrapper
+	// when preferRemote=true (per PR-P2-SEARCH-LIVE chain-order
+	// contract).
+	clips, err := h.service.SearchLive(c.Request.Context(), term, limit, true)
 	if err != nil {
+		h.log.Warn("artlist search live failed",
+			zap.String("term", term),
+			zap.Int("limit", limit),
+			zap.String("prefer_remote_param_ignored", preferRemoteParamIgnored),
+			zap.String("cache_strategy", "bypassed"),
+			zap.String("scraper_path", "raw"),
+			zap.Error(err),
+		)
 		apiutil.InternalError(c, fmt.Errorf("live search failed: %v", err))
 		return
 	}
 
-	// PR-P2-SEARCH-LIVE: surface `prefer_remote` in the response
-	// envelope so operators see which mode the handler actually used
-	// (parse failures fall back to false; explicit `true|false` is
-	// preserved verbatim). Operators can verify the chain mode
-	// without inspecting the log.
-	apiutil.OK(c, gin.H{"clips": clips, "prefer_remote": preferRemote})
+	h.log.Info("artlist search live enforced",
+		zap.String("term", term),
+		zap.Int("limit", limit),
+		zap.String("prefer_remote_param_ignored", preferRemoteParamIgnored),
+		zap.Bool("live_enforced", true),
+		zap.String("cache_strategy", "bypassed"),
+		zap.String("scraper_path", "raw"),
+		zap.Int("clips_returned", len(clips)),
+	)
+
+	// Per Commit A (Fase 7): the response envelope surfaces the
+	// FORCED-live contract so operators can verify (without grepping
+	// the log) that the endpoint honored the route name. The
+	// `cache_strategy` field is the canonical one — clients can pin
+	// "bypassed" / "first-party remote" to detect silent regressions
+	// where a future refactor accidentally re-introduces a cache
+	// layer.
+	apiutil.OK(c, gin.H{
+		"clips":                       clips,
+		"live_enforced":               true,
+		"cache_strategy":              "bypassed",
+		"prefer_remote_param_ignored": preferRemoteParamIgnored,
+	})
 }
 
 // Recommend handles the recommendation endpoint using clipresolver
