@@ -12,8 +12,8 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 )
 
@@ -130,7 +130,7 @@ func (h *MaterializeJobHandler) HandleJob(
 		zap.Int("kind_count", len(cmd.TextKinds)),
 		zap.Int("languages_materialized", len(result["languages_materialized"].([]string))),
 		zap.Int("languages_skipped", len(result["languages_skipped"].([]string))),
-		zap.Int("languages_failed", len(result["languages_failed"].([]string))),
+		zap.Int("languages_failed", len(result["languages_failed"].(map[string]string))),
 		zap.Int64("total_duration_ms", result["total_duration_ms"].(int64)),
 	)
 	return result, nil
