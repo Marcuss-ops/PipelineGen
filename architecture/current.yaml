@@ -57,6 +57,12 @@
     pipeline_state_test.go + pkg/idempotency/keys.go +
     pkg/idempotency/keys_test.go; carrying the verify-format surface
     from 6 → 10 unformatted files).
+    Commit 9c catalog-extension follow-up (1 uncataloged file
+    appended to PRE-EXISTING-10-FORMAT-DRIFT after the post-Commit-9b
+    verification re-run surfaced internal/infrastructure/database/sqlite/outbox/repository_test.go
+    on July 12 2026; carrying the verify-format surface from 10 → 11
+    unformatted files; catalog was genuinely under-extended between
+    Commit 9b push and the post-9b rerun that surfaced this drift).
     Per godlike/06 SSOT + the user's option (a) decision on Commit 8,
     these failures do NOT block wave commits 1-9 (each landed with
     explicit CARRY-FORWARD awareness commit message annotation):
@@ -78,7 +84,7 @@
     detail (in architecture/issues.yaml::PRE-EXISTING-{1..10}).
   cross_refs:
     issues_catalog: "architecture/issues.yaml::PRE-EXISTING-{1..10}"
-    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate", "commit 9b catalog-extension"]
+    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate", "commit 9b catalog-extension", "commit 9c catalog-extension"]
     ci_gate: "scripts/ci-architectural-checks.sh::Check 63 (zero-baseline stale-entry detection)"
   follow_up_tickets:
     - id: PRE-EXISTING-1-WAL-PRAGMAS
@@ -100,7 +106,7 @@
     - id: PRE-EXISTING-9-ARCHCHECK-SNAPSHOT
       note: cmd/archcheck::TestSnapshot
     - id: PRE-EXISTING-10-FORMAT-DRIFT
-      note: "verify-format red on 10 files (6 original artlist + 4 drift additions: evaluate_run_state_test.go + pipeline_state_test.go + pkg/idempotency/keys.go + pkg/idempotency/keys_test.go; full file list in PRE-EXISTING-10-FORMAT-DRIFT owner_capability)"
+      note: "verify-format red on 11 files (6 original artlist + 4 drift additions from Commit 9b extension [evaluate_run_state_test.go + pipeline_state_test.go + pkg/idempotency/keys.go + pkg/idempotency/keys_test.go] + 1 post-9b drift from Commit 9c extension [internal/infrastructure/database/sqlite/outbox/repository_test.go]; full file list in PRE-EXISTING-10-FORMAT-DRIFT owner_capability)"
 
 - id: WAVE-20-QDRANT-005D-HYGIENE
   status: in_progress
