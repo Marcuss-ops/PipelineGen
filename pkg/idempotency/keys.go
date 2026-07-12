@@ -133,18 +133,12 @@ ErrEmptyEventType = errors.New("idempotency: event_type is required for OutboxKe
 ErrInvalidSegment = errors.New("idempotency: ':' is reserved as the segment delimiter (godlike/06 — applies to ROUTING fields only; data fields clipID/source_version/sha256 may carry ':' as a scheme prefix)")
 )
 
-// errInvalidSegmentFor returns a per-field invalidSegmentError
-// for the colon-collision guard on the routing fields (eventType,
-// provider). Callers use the typed sentinel via errors.Is to
-// branch on the failure mode.
-func errInvalidSegmentFor(field string) error {
-	return &invalidSegmentError{field: field}
-}
 
-// errInvalidSegment (alias for errInvalidSegmentFor) returns a
-// per-field invalidSegmentError for the colon-collision guard.
-// Retained for backward compat with code that already uses the
-// short form.
+
+// errInvalidSegment returns a per-field invalidSegmentError for
+// the colon-collision guard on the routing fields (eventType,
+// provider). The 3 callers (one per constructor) use the
+// typed sentinel via errors.Is to branch on the failure mode.
 func errInvalidSegment(field string) error {
 	return &invalidSegmentError{field: field}
 }
@@ -220,7 +214,7 @@ func AssetKey(provider, clipID, sourceVersion, sha256File string) (string, error
 		return "", ErrEmptyProvider
 	}
 	if strings.Contains(provider, ":") {
-		return "", errInvalidSegmentFor("provider")
+		return "", errInvalidSegment("provider")
 	}
 	if clipID == "" {
 		return "", ErrEmptyClipID
@@ -265,7 +259,7 @@ func JobKey(provider, clipID, sourceVersion string) (string, error) {
 		return "", ErrEmptyProvider
 	}
 	if strings.Contains(provider, ":") {
-		return "", errInvalidSegmentFor("provider")
+		return "", errInvalidSegment("provider")
 	}
 	if clipID == "" {
 		return "", ErrEmptyClipID
@@ -313,13 +307,13 @@ func OutboxKey(eventType, provider, clipID, sourceVersion string) (string, error
 		return "", ErrEmptyEventType
 	}
 	if strings.Contains(eventType, ":") {
-		return "", errInvalidSegmentFor("event_type")
+		return "", errInvalidSegment("event_type")
 	}
 	if provider == "" {
 		return "", ErrEmptyProvider
 	}
 	if strings.Contains(provider, ":") {
-		return "", errInvalidSegmentFor("provider")
+		return "", errInvalidSegment("provider")
 	}
 	if clipID == "" {
 		return "", ErrEmptyClipID
