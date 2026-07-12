@@ -9,6 +9,21 @@
 // resolved transcript — no Whisper invocation, no filesystem
 // reads, no port coupling.
 //
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.c (July 2026): audit +
+// hardening of the Fase 1.c structural removal. The
+// hermetic test coverage lives in
+// process_segment_fase2c_test.go: three probes pinning
+// (a) the data-flow thread `bundle.PlainText -> step10Transcript
+// -> EnrichClip.ClipMetadataInput.Transcript` byte-for-byte,
+// (b) the empty-bundle fail-closed path (Step 6-9 returned
+// nil -> Step 10 threads "" verbatim, NEVER a Whisper
+// fallback), (c) 0 Transcriber calls on direct Step 10
+// even with TextTrackResolver + MetadataService wired.
+// Together with Fase 1.c counter assertions
+// (process_segment_fase1c_test.go): hermetic coverage at the
+// static (no Transcriber field on ProcessSegmentDeps),
+// counter, and data-flow layers.
+//
 // godlike/06 SSOT (one canonical owner per fact):
 //   - MetadataService.EnrichClip lives ONLY here
 //   - Step10Metrics.IncStep10FailAfterClip counter (Prometheus
@@ -76,6 +91,15 @@ func (u *ProcessYouTubeSegmentUseCase) step10_MetadataEnrich(
 	// the chain failed to acquire any text, the orchestrator
 	// passes transcript=""; the metadata service's downstream
 	// behavior is unchanged (low quality score, no crash).
+	//
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 2.c (audit): the
+	// transcript parameter is the SOLE source of ClipMetadataInput
+	// fields below — the use case never reaches back into the
+	// resolver nor the Transcriber port. Tests in
+	// process_segment_fase2c_test.go prove this both at the
+	// counter layer (0 Whisper invocations on direct Step 10)
+	// and at the data-flow layer (builder.last.Transcript
+	// must equal the parameter byte-for-byte).
 	_ = cues // cues are exposed for future per-segment
 	//          metadata enrichment hooks (e.g. quality-score
 	//          variance across cues). For Fase 1.c they are
