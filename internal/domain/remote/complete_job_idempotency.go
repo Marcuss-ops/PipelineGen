@@ -39,7 +39,8 @@ import (
 	"fmt"
 	"strconv"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	domainhashutil "github.com/Marcuss-ops/PipelineGen/internal/domain/remote/hashutil"
+	files "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // CompleteJobIdempotencyKey computes the deterministic
@@ -79,8 +80,35 @@ func CompleteJobIdempotencyKey(jobID string, attempt int, resultHash string) str
 	if jobID == "" || resultHash == "" || attempt < 0 {
 		return ""
 	}
-	return hashutil.SHA256String(jobID + ":" + strconv.Itoa(attempt) + ":" + resultHash)
+	return defaultCompleteJobKey(jobID, attempt, resultHash)
 }
+
+// CompleteJobIdempotencyKeyFunc is the typed-closure returned by
+// MakeCompleteJobIdempotencyKey. Callers store this as a struct
+// field populated at construction time (godlike/06 dependency injection).
+type CompleteJobIdempotencyKeyFunc func(jobID string, attempt int, resultHash string) string
+
+// MakeCompleteJobIdempotencyKey is the canonical constructor for
+// the (jobID, attempt, resultHash) triple-key derivation. Mirrors
+// the C6 MakeArtifactIdempotencyKey shape: panic-on-nil HashFunc at
+// construction (godlike/07 fail-closed); candidates receive the
+// HashFunc via constructor injection.
+func MakeCompleteJobIdempotencyKey(hash domainhashutil.HashFunc) CompleteJobIdempotencyKeyFunc {
+	if hash == nil {
+		panic("remote.MakeCompleteJobIdempotencyKey: nil HashFunc — composition root must inject files.NewSHA256Hasher (godlike/07 fail-closed at construction)")
+	}
+	return func(jobID string, attempt int, resultHash string) string {
+		if jobID == "" || resultHash == "" || attempt < 0 {
+			return ""
+		}
+		return hash(jobID + ":" + strconv.Itoa(attempt) + ":" + resultHash)
+	}
+}
+
+// defaultCompleteJobKey is the package-level production default
+// bound to the canonical infrastructure SHA-256 hasher. Mirrors
+// defaultArtifactKey for the (jobID, attempt, resultHash) surface.
+var defaultCompleteJobKey = MakeCompleteJobIdempotencyKey(files.NewSHA256Hasher())
 
 // IsValidCompleteJobIdempotencyKey returns true if `key` is a
 // well-formed key for the job_results UNIQUE column: either the
