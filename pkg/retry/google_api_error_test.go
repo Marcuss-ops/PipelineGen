@@ -450,3 +450,104 @@ func TestDoWithValue_HonorsRetryAfter_ThroughWrappedError(t *testing.T) {
 		"DoWithValue must honor RetryAfterError through fmt.Errorf %w wrapping (≥%v, got %v)",
 		retryAfter, callElapsed)
 }
+
+// ── Test: FASE 6 Cut 6.1.D — substring classifier is UNREACHABLE ────────
+//
+// TestGoogleAPIError_NoSubstringClassifierReachable pins the
+// FASE 6 Cut 6.1.D invariant: the *GoogleAPIError envelope's
+// retry classification is strictly typed. The pre-FASE-6 substring
+// fallback (transientSubstrings / IsTransientString) was REMOVED
+// from the retry classifier; a malformed-shape Unknown envelope
+// whose Body carries a transient substring ("429", "503",
+// "rate limit", etc.) MUST classify as Unknown + terminal
+// (IsRetryable==false). The classification cannot be "rescued"
+// by a substring heuristic.
+//
+// Three orthogonal invariants:
+//  1. Malformed *googleapi.Error (Code=0) with transient-looking
+//     Body substring is classified as Unknown + terminal.
+//  2. Plain (non-*googleapi.Error) cannot be type-asserted to an
+//     envelope; ClassifyGoogleAPIError Path 3 returns upstream
+//     unchanged (typed-only entry into retry classification).
+//  3. Typed classifiers (5xx range incl. 599) operate via the
+//     Kind bucket, NOT via Body substring — pin that the typed
+//     shape wins even when both paths could agree.
+func TestGoogleAPIError_NoSubstringClassifierReachable(t *testing.T) {
+	t.Parallel()
+
+	// (1) Malformed shape with transient-looking Body substring.
+	t.Run("malformed-shape-with-transient-substring-is-terminal", func(t *testing.T) {
+		t.Parallel()
+		raw := &googleapi.Error{
+			Code:    0, // off-spec, malformed response, no real status
+			Message: "synthetic test",
+			Body:    "transient-shaped body containing 429 keyword AND rate limit AND serviceUnavailable",
+		}
+		env := ClassifyGoogleAPIError(raw).(*GoogleAPIError)
+		require.Equal(t, ErrGoogleAPIUnknown, env.Kind,
+			"malformed shape (Code=0) MUST classify as Unknown — substring rescue is forbidden")
+		require.False(t, env.IsRetryable(),
+			"Unknown envelope is terminal regardless of Body substring (FASE 6 Cut 6.1.D — typed-only)")
+	})
+
+	// (2) Plain (non-*googleapi.Error) cannot reach the envelope.
+	t.Run("non-google-api-error-cannot-reach-envelope", func(t *testing.T) {
+		t.Parallel()
+		plain := errors.New("synthetic rate limit exceeded message")
+		got := ClassifyGoogleAPIError(plain)
+		require.Equal(t, plain, got,
+			"non-*googleapi.Error must pass through ClassifyGoogleAPIError Path 3 unchanged")
+
+		var env *GoogleAPIError
+		require.False(t, errors.As(got, &env),
+			"plain error MUST NOT have a *GoogleAPIError envelope — typed-only entry")
+
+		// Walk the wrap chain to confirm no envelope ever materialises.
+		wrapped := fmt.Errorf("putFile outer: %w", plain)
+		require.False(t, errors.As(wrapped, &env),
+			"fmt.Errorf %w wrap does NOT introduce an envelope")
+	})
+
+	// (3) Typed 5xx range wins via the bucket, not via the substring;
+	//     same outcome as before, but pin that the substring taxonomy
+	//     was NOT the deciding factor for the in-range case.
+	t.Run("typed-5xx-classifies-via-bucket-not-substring", func(t *testing.T) {
+		t.Parallel()
+		// 599 is in-range for the 5xx bucket (Kind=Server, retryable).
+		// The Body also contains the literal "503" substring. The
+		// typed bucket MUST be the deciding factor; a regression
+		// that re-introduces substring rescue would still pass this
+		// (because both agree), so this case alone is insufficient.
+		// Case (1) above is the load-bearing counterexample.
+		raw := &googleapi.Error{
+			Code: 599,
+			Body: "Body contains literal 503 substring",
+		}
+		env := ClassifyGoogleAPIError(raw).(*GoogleAPIError)
+		require.Equal(t, ErrGoogleAPIServer, env.Kind,
+			"599 in-range → Server bucket (typed, not substring)")
+		require.True(t, env.IsRetryable(),
+			"5xx in-range envelope is retryable via typed Kind")
+	})
+
+	// (4) Compile-time-equivalent pin: typed-path consistency check.
+	//     If a future regression re-introduces a substring fallback,
+	//     the test surface below will diverge — *GoogleAPIError's
+	//     retry classification must NEVER depend on the Body string.
+	t.Run("typed-retryable-does-not-depend-on-body-substring", func(t *testing.T) {
+		t.Parallel()
+		// 429 typed-throttled body says "OK" (no 429 substring, no
+		// throttling keyword). The typed bucket still classifies
+		// as retryable. Body is observer-data, not deciding-input.
+		raw := &googleapi.Error{
+			Code:    http.StatusTooManyRequests,
+			Message: "ok",
+			Body:    "Body with no transient substring; just lorem ipsum text",
+		}
+		env := ClassifyGoogleAPIError(raw).(*GoogleAPIError)
+		require.Equal(t, ErrGoogleAPIThrottled, env.Kind,
+			"429 + non-transient Body → Throttled bucket")
+		require.True(t, env.IsRetryable(),
+			"Throttled bucket is retryable regardless of Body substring (godlike/06 typed SSOT)")
+	})
+}
