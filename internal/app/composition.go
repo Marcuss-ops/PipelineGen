@@ -80,7 +80,39 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if driveAdmin != nil {
 		voiceoverDriver = driveAdmin
 	}
-	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver)
+
+	// FASE 3 Spina Dorsale (Push 3.1b, July 2026; 3.1c reorder).
+	// BuildStagingBundle now precedes BuildOutboxBundle so the
+	// Publisher handler can register against staging.Store at
+	// canonical wire-time. The bundle has minimal deps (only
+	// dbs.main.DB + cfg + log) so reordering is fail-safe — the
+	// JSON shape returned by BuildStagingBundle is identical to
+	// the previous post-order construction.
+	staging, err := BuildStagingBundle(dbs, cfg, log)
+	if err != nil {
+		return nil, fmt.Errorf("compose staging: %w", err)
+	}
+
+	// FASE 3 Spina Dorsale (Push 3.1c, July 2026): thread
+	// staging.Store into BuildOutboxBundle so the Publisher
+	// handler can drain artifact.publish_requested.v1 events
+	// into the canonical artifact_stages table.
+	//
+	// FASE 3 Push 3.1e (July 2026): also thread
+	// staging.Repository (the canonical artifact_stages
+	// single-writer — same concrete the Store uses, vendored
+	// through the StagingBundle.Repository field — godlike/06
+	// SSOT forbids a second DB wrapper) + driveBundle.Publisher
+	// (the canonical delivery.Publisher gateway). Together
+	// these let the DriveUploader handler drain
+	// artifact.staged.v1 events into canonical Drive + spell
+	// the JSON PublishedLocation onto the artifact_stages row.
+	//
+	// Composition ordering invariant: BuildStagingBundle MUST
+	// run before BuildOutboxBundle (StagingBundle is required
+	// by OutboxBundle — see the Push 3.1c reorder that moved
+	// it earlier in NewComposition).
+	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver, staging.Store, staging.Repository, driveBundle.Publisher)
 	if err != nil {
 		return nil, fmt.Errorf("compose outbox: %w", err)
 	}
@@ -130,19 +162,6 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose texttracks: %w", err)
 	}
 
-	// FASE 3 Spina Dorsale (Push 3.1b, July 2026): wire the
-	// staging.StoreService + artifact_stages Repository. Placed
-	// LAST in NewComposition (after BuildTextTrackBundle) because
-	// the bundle has minimal deps (only dbs.main.DB + cfg +
-	// log) — no risk of breaking the existing 12-bundle
-	// aggregation. The forward-pointer publisher worker pool
-	// (Push 3.1c) will consume root.Staging.Store to drain
-	// the outbox into the canonical artifact_stages table.
-	staging, err := BuildStagingBundle(dbs, cfg, log)
-	if err != nil {
-		return nil, fmt.Errorf("compose staging: %w", err)
-	}
-
 	// FASE 3 Spina Dorsale (Push 3.1d, July 2026): wire the
 	// artifact_finalize.Finalizer service. Placed immediately
 	// AFTER BuildStagingBundle because the Finalizer consumes
@@ -150,9 +169,9 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	// Repository exposes (no second DB lookup; the typed port
 	// is the canonical cursor to the same *artifactstages.
 	// Repository concrete — godlike/06 SSOT). The publisher
-	// worker pool integration (forward-pointer to Push 3.1c)
-	// will drain the outbox + invoke root.Finalizer.Finalize
-	// after each per-artifact MarkPublished to close the saga.
+	// worker pool integration (Push 3.1c forward-pointer, now
+	// wired) drains the outbox → root.Staging.Store.Stage on
+	// every artifact.publish_requested.v1 emission.
 	finalizer, err := BuildArtifactFinalizeBundle(staging, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose artifact_finalize: %w", err)

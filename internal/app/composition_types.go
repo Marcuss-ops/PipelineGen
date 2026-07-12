@@ -278,6 +278,39 @@ type OutboxBundle struct {
 	EventsRepo     *outboxevents.Repository
 	EventsRegistry *outboxevents.HandlerRegistry
 	EventsPool     *outboxevents.Pool
+	// Publisher is the canonical outboxevents.Handler that drains
+	// `artifact.publish_requested.v1` events into staging.Store.Stage
+	// (FASE 3 / Push 3.1c, July 2026). The concrete is registered
+	// inside BuildOutboxBundle after the canonical Qdrant if/else
+	// block (so it runs regardless of cfg.Qdrant state); the field
+	// is typed as the interface so this file does not need to
+	// import the publish_outbox package directly (separation of
+	// concerns — composition_types.go only describes WHAT is
+	// wired, not HOW). Construction lives in
+	// build_bundles_process.go::BuildOutboxBundle and consumes
+	// StagingBundle.Store as its outbox→staging port (pre-condition:
+	// the composition root must build StagingBundle before
+	// BuildOutboxBundle so the wiring is fail-closed at
+	// NewComposition time).
+	Publisher outboxevents.Handler
+	// DriveUploader is the canonical outboxevents.Handler that
+	// drains `artifact.staged.v1` events into delivery.Publisher
+	// .Publish + Repository.MarkPublished (FASE 3 / Push 3.1e,
+	// July 2026). Closes the FASE 3 Publish step end-to-end:
+	// stores a STAGED artifact on Disk → atomically emits
+	// `artifact.staged.v1` (Push 3.1c InsertWithOutbox) → this
+	// consumer drives delivery.Publisher.Publish → calls
+	// Repository.MarkPublished with a canonical JSON
+	// PublishedLocation payload. The concrete is registered in
+	// BuildOutboxBundle after the publish_outbox Publisher
+	// handler (sequenced for fail-closed reasoning); the field is
+	// typed as the interface so this file does not need to
+	// import the publish_drive package directly. Construction
+	// lives in build_bundles_process.go::BuildOutboxBundle and
+	// consumes DriveBundle.Publisher (the canonical delivery
+	// gateway) + StagingBundle.Repository (the canonical
+	// artifact_stages single-writer).
+	DriveUploader outboxevents.Handler
 }
 
 // SyncBundle owns ONLY the catalog→Drive sync.
