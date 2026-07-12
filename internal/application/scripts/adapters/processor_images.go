@@ -1,13 +1,29 @@
-// Package scripts — processor_images.go generates AI images for
-// each scene. Enabled as "images" in the plan's Postprocessors list.
+// Package adapters — processor_images.go (commit 6, July 2026):
+// scene-image generation entry point in its POST-SPLIT SLIM form.
+//
+// godlike/06 SSOT — file ownership after the commit 6 split:
+//
+//	processor_images.go              — owns ONLY ImageProcessor type +
+//	                                  NewImageProcessor + Name + Policy +
+//	                                  Process + specScenesFromInput
+//	processor_images_contracts.go    — ImageResult + ImageGenService +
+//	                                  imagePrewarmer + smartImageGenService +
+//	                                  imageSceneOutcome (internal buffer) +
+//	                                  SceneImageOutcome (NEW exported) +
+//	                                  SceneImageStatus + default*I constants
+//	processor_images_fanout.go       — defaultImageSceneConcurrency +
+//	                                  imageFanoutConcurrency +
+//	                                  runImageSceneFanout
+//	processor_images_scene.go        — resolveSceneQuery +
+//	                                  generateSceneImage + fallbackSceneText +
+//	                                  cleanPromptForSubject +
+//	                                  canonicalSceneImageURL
 //
 // PR 9 (June 2026): the legacy scene-splitters
 // (splitScriptIntoSegments / sceneCountFromPlan) were REMOVED.
 // The processor now reads scenes directly from
 // engineResult.Output.SpecScene.Scenes — the canonical structured
 // output from PR 1, validated by PR 6's ValidateAndEnrichSpecScene.
-// This eliminates the pre-V1 paragraph-splitting anti-pattern and
-// ensures each generated image maps to a model-defined scene.
 //
 // Partial failures (one scene fails) are collected — the processor
 // does NOT abort on first error. No-op when plan has no ClipEvidence
@@ -17,43 +33,12 @@ package adapters
 import (
 	"context"
 	"fmt"
-	"strings"
-	"sync"
 
-	domainasset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 
 	"go.uber.org/zap"
 )
-
-// ── Typed port (PR 9 / PR 3) ─────────────────────────────────────────────
-
-// ImageResult is the per-scene image generation outcome surfaced
-// from ImageGenService.SearchAndDownload. The single SourceURL field
-// is the public URL of the generated/uploaded asset.
-type ImageResult struct {
-	SourceURL   string
-	DriveFileID string
-}
-
-// ImageGenService is the canonical port for image generation.
-// Production implementations live in internal/application/images/
-// (concrete *images.Service); stub implementations live in adapters/.
-type ImageGenService interface {
-	SearchAndDownload(ctx context.Context, sceneName, sceneText, altText, language string) (*ImageResult, error)
-}
-
-// imagePrewarmer is the optional warmup seam used by production image
-// services that can pre-initialize their browser/session pool before
-// the parallel scene fan-out starts.
-type imagePrewarmer interface {
-	TriggerPrewarm(ctx context.Context, jobID string, count int)
-}
-
-type smartImageGenService interface {
-	GenerateSmartImage(ctx context.Context, subject, topic, style string, prompts, tags []string, width, height int, model string, skipDrive bool) (*domainasset.ImageAsset, error)
-}
 
 // ImageProcessor generates scene images via ImageGenService.
 // Uses engineResult.Output.SpecScene.Scenes to drive per-scene
@@ -85,7 +70,11 @@ func (p *ImageProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPo
 // Process generates per-scene images. PR 9 contract: scenes come
 // directly from engineResult.Output.SpecScene.Scenes (validated by
 // ValidateAndEnrichSpecScene); no paragraph-splitting helper is
-// used.
+// used. Commit 6 split: the per-scene dispatch is delegated to
+// runImageSceneFanout (processor_images_fanout.go); the per-scene
+// helpers (resolveSceneQuery, generateSceneImage, fallbackSceneText,
+// cleanPromptForSubject, canonicalSceneImageURL) live in
+// processor_images_scene.go.
 func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.gen == nil {
 		return nil, fmt.Errorf("%w: image processor: ImageGenService not configured", scriptpkg.ErrPostprocessFailed)
@@ -145,179 +134,4 @@ func specScenesFromInput(input ProcessInput) []scriptpkg.SpecScene {
 		return nil
 	}
 	return input.SpecScene.Scenes
-}
-
-type imageSceneOutcome struct {
-	image   SceneImage
-	warning string
-}
-
-const defaultImageSceneConcurrency = 4
-
-func imageFanoutConcurrency(sceneCount int) int {
-	if sceneCount < 1 {
-		return 1
-	}
-	if sceneCount < defaultImageSceneConcurrency {
-		return sceneCount
-	}
-	return defaultImageSceneConcurrency
-}
-
-func runImageSceneFanout(
-	ctx context.Context,
-	gen ImageGenService,
-	plan *scriptpkg.ResolvedGenerationPlan,
-	scenes []scriptpkg.SpecScene,
-	language string,
-) []imageSceneOutcome {
-	if len(scenes) == 0 {
-		return nil
-	}
-
-	concurrency := imageFanoutConcurrency(len(scenes))
-	outcomes := make([]imageSceneOutcome, len(scenes))
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, concurrency)
-
-	for i, scene := range scenes {
-		i, scene := i, scene
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				outcomes[i] = imageSceneOutcome{
-					image:   SceneImage{Index: i, Text: fallbackSceneText(scene.Text, i)},
-					warning: fmt.Sprintf("image generation failed for scene %d: %v", i, ctx.Err()),
-				}
-				return
-			}
-			defer func() { <-sem }()
-
-			sceneText := fallbackSceneText(scene.Text, i)
-			sceneName := fmt.Sprintf("scene-%d", i)
-			if scene.ID != "" {
-				sceneName = scene.ID
-			}
-
-			query := scene.Title
-			if query == "" {
-				query = sceneText
-			}
-			if query == "" {
-				query = plan.Topic
-			}
-			if query == "" {
-				query = plan.Title
-			}
-
-			out := imageSceneOutcome{
-				image: SceneImage{
-					Index: i,
-					Text:  sceneText,
-				},
-			}
-			defer func() {
-				if r := recover(); r != nil {
-					out.warning = fmt.Sprintf("image generation failed for scene %d: panic", i)
-					outcomes[i] = out
-				}
-			}()
-
-			cleanedSubject := cleanPromptForSubject(query)
-			var (
-				asset *domainasset.ImageAsset
-				err   error
-			)
-			if smartGen, ok := any(gen).(smartImageGenService); ok {
-				// Prefer the AI-generated image path so the scene
-				// binding ends up with the Drive-backed asset link.
-				asset, err = smartGen.GenerateSmartImage(
-					ctx,
-					cleanedSubject,
-					query,
-					plan.Style,
-					[]string{query, sceneText},
-					[]string{sceneName, plan.ID},
-					1024,
-					1024,
-					plan.Model,
-					false,
-				)
-				if err != nil || asset == nil {
-					var fallback *ImageResult
-					fallback, err = gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
-					if err == nil && fallback != nil {
-						asset = &domainasset.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
-					} else {
-						asset = nil
-					}
-				}
-			} else {
-				var fallback *ImageResult
-				fallback, err = gen.SearchAndDownload(ctx, sceneName, sceneText, query, language)
-				if err == nil && fallback != nil {
-					asset = &domainasset.ImageAsset{SourceURL: fallback.SourceURL, DriveFileID: fallback.DriveFileID}
-				}
-			}
-			if err != nil {
-				out.warning = fmt.Sprintf("image generation failed for scene %d: %v", i, err)
-				outcomes[i] = out
-				return
-			}
-			if asset != nil {
-				out.image.URL = canonicalSceneImageURL(asset)
-				out.image.DriveFileID = asset.DriveFileID
-			}
-			outcomes[i] = out
-		}()
-	}
-
-	wg.Wait()
-	return outcomes
-}
-
-func fallbackSceneText(sceneText string, i int) string {
-	if sceneText != "" {
-		return sceneText
-	}
-	return fmt.Sprintf("Scene %d", i+1)
-}
-
-func canonicalSceneImageURL(asset *domainasset.ImageAsset) string {
-	if asset == nil {
-		return ""
-	}
-	url := strings.TrimSpace(asset.SourceURL)
-	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-		return url
-	}
-	if asset.DriveFileID != "" {
-		return fmt.Sprintf("https://drive.google.com/file/d/%s/view", asset.DriveFileID)
-	}
-	return url
-}
-
-func cleanPromptForSubject(prompt string) string {
-	parts := strings.Split(prompt, ".")
-	var first string
-	if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
-		first = strings.TrimSpace(parts[0])
-	} else {
-		first = strings.TrimSpace(prompt)
-	}
-	if len(first) > 100 {
-		// Truncate at space to avoid word cuts
-		lastSpace := strings.LastIndex(first[:100], " ")
-		if lastSpace > 50 {
-			first = first[:lastSpace]
-		} else {
-			first = first[:100]
-		}
-	}
-	// remove characters that are invalid in filenames/slugs if any, but Google Drive allows most
-	return first
 }
