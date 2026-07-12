@@ -39,6 +39,15 @@
 // This file retains: qdrantReadinessReport, runQdrantReadiness,
 // appInitCompositionForReadiness, qdrantReadiness (orchestrator),
 // runOneCheck, and utility functions.
+//
+// Commit E (July 2026): the 3 SQL-pure inspection helpers
+// (inspectRequiredColumns + collectReadinessCounters + tableExists)
+// moved to qdrant_readiness_db.go (same package main). The split
+// follows the user constraint "NON spostare nulla in internal/infrastructure
+// (creerebbe interfacce morte)" — these are one-shot-CLI-only SQL
+// queries used by exactly one consumer (the readiness gate), so
+// promoting them to infrastructure would force a typed-port interface
+// with no second consumer (dead-interface anti-pattern).
 package main
 
 import (
@@ -97,6 +106,12 @@ type qdrantReadinessReport struct {
 // cfgRatePort, cfgFeaturesPort), noop stubs (readiNoopOutbox,
 // readiNoopPayload), router helpers (buildRouterWithProductionWiring,
 // engineHasPath), and compile-time assertions also live in that file.
+//
+// Commit E (July 2026) added: the 3 SQL-pure inspection helpers
+// (inspectRequiredColumns + collectReadinessCounters + tableExists)
+// now live in qdrant_readiness_db.go (same package main). The qdrantReadiness
+// orchestrator calls them by direct symbol — same package, no import
+// changes required.
 
 func runQdrantReadiness(args []string) error {
 	cfg, log, cleanup, err := appLogger()
@@ -247,6 +262,9 @@ func appInitCompositionForReadiness(ctx context.Context, cfg *config.Config, log
 // router helpers, and compile-time assertions moved to
 // qdrant_readiness_checks.go (Fase 4 Step 2, June 2026).
 // Same package main — cross-file visibility preserves all call sites.
+//
+// Commit E (July 2026) added: inspectRequiredColumns + collectReadinessCounters +
+// tableExists moved to qdrant_readiness_db.go (same package main).
 
 // ── Orchestrator: qdrantReadiness ──────────────────────────────────────
 
@@ -261,7 +279,9 @@ func qdrantReadiness(ctx context.Context, db *sql.DB, cfg *config.Config, log *z
 	deps := readinessDeps{DB: db, Cfg: cfg, Log: log, Root: root}
 
 	// Required-columns check (SQLite shape; not a production-wiring
-	// check, mirrors pre-PR-15 semantics).
+	// check, mirrors pre-PR-15 semantics). The inspection helper
+	// lives in qdrant_readiness_db.go (Commit E); the orchestrator
+	// calls it by direct symbol.
 	requiredColumns := []string{
 		"audio_embedding",
 		"youtube_video_id",
@@ -373,110 +393,9 @@ func parseVectorLen(raw string) ([]float32, int, error) {
 	return vec, len(vec), nil
 }
 
-func inspectRequiredColumns(ctx context.Context, db *sql.DB, required []string) ([]string, []string, error) {
-	rows, err := db.QueryContext(ctx, `PRAGMA table_info(media_assets)`)
-	if err != nil {
-		return nil, nil, fmt.Errorf("inspect media_assets columns: %w", err)
-	}
-	defer rows.Close()
-
-	seen := make(map[string]struct{})
-	for rows.Next() {
-		var cid int
-		var name, ctype string
-		var notNull int
-		var defaultValue sql.NullString
-		var pk int
-		if err := rows.Scan(&cid, &name, &ctype, &notNull, &defaultValue, &pk); err != nil {
-			return nil, nil, fmt.Errorf("scan pragma table_info: %w", err)
-		}
-		seen[strings.ToLower(name)] = struct{}{}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, err
-	}
-	present := make([]string, 0, len(required))
-	missing := make([]string, 0)
-	for _, col := range required {
-		if _, ok := seen[strings.ToLower(col)]; ok {
-			present = append(present, col)
-		} else {
-			missing = append(missing, col)
-		}
-	}
-	return present, missing, nil
-}
-
-func collectReadinessCounters(ctx context.Context, db *sql.DB, report *qdrantReadinessReport) error {
-	rows, err := db.QueryContext(ctx, `
-		SELECT
-			id,
-			COALESCE(media_type, ''),
-			COALESCE(local_path, ''),
-			COALESCE(embedding_json, ''),
-			COALESCE(transcript_embedding, ''),
-			COALESCE(visual_embedding, ''),
-			COALESCE(audio_embedding, ''),
-			COALESCE(status, ''),
-			COALESCE(lifecycle_state, ''),
-			COALESCE(metadata_json, '{}')
-		FROM media_assets
-		ORDER BY id`)
-	if err != nil {
-		return fmt.Errorf("readiness scan: %w", err)
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var id, mediaType, localPath, textJSON, transcriptJSON, visualJSON, audioJSON, status, lifecycleState, metaJSON string
-		if err := rows.Scan(&id, &mediaType, &localPath, &textJSON, &transcriptJSON, &visualJSON, &audioJSON, &status, &lifecycleState, &metaJSON); err != nil {
-			return fmt.Errorf("scan readiness row: %w", err)
-		}
-		_ = id
-		report.TotalAssets++
-
-		switch strings.ToLower(strings.TrimSpace(mediaType)) {
-		case "video", "audio", "image":
-		default:
-			report.NonMediaAssets++
-		}
-
-		if isChannelRequiredForMediaType("text", mediaType) {
-			if _, dim, err := parseVectorLen(textJSON); err != nil || dim != 768 {
-				report.InvalidTextVectors++
-			}
-		}
-		if isChannelRequiredForMediaType("transcript", mediaType) {
-			if _, dim, err := parseVectorLen(transcriptJSON); err != nil || dim != 768 {
-				report.InvalidTranscriptVectors++
-			}
-		}
-		if isChannelRequiredForMediaType("visual", mediaType) {
-			if _, dim, err := parseVectorLen(visualJSON); err != nil || dim != 768 {
-				report.InvalidVisualVectors++
-			}
-		}
-		if isChannelRequiredForMediaType("audio", mediaType) {
-			if _, dim, err := parseVectorLen(audioJSON); err != nil || dim != 512 {
-				report.InvalidAudioVectors++
-			}
-		}
-
-		if strings.TrimSpace(localPath) == "" {
-			report.MissingSourceFile++
-		}
-		if status != "" && !strings.EqualFold(status, lifecycleState) && lifecycleState != "" {
-			report.LegacyStatusRows++
-		}
-		if hasLegacyLocatorKey(metaJSON) {
-			report.LegacyLocatorRows++
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate readiness rows: %w", err)
-	}
-	return nil
-}
+// inspectRequiredColumns + collectReadinessCounters + tableExists
+// moved to qdrant_readiness_db.go (Commit E, July 2026). Same package
+// main — cross-file visibility preserves the orchestrator's call sites.
 
 func qdrantProbeAndSchema(ctx context.Context, cfg *config.Config, log *zap.Logger, report *qdrantReadinessReport) error {
 	client := transport.NewClient(&qdrantschema.Config{
@@ -534,14 +453,7 @@ func hasLegacyLocatorKey(metaJSON string) bool {
 	return false
 }
 
-func tableExists(ctx context.Context, db *sql.DB, name string) bool {
-	if db == nil {
-		return false
-	}
-	var count int
-	_ = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&count)
-	return count > 0
-}
+// tableExists moved to qdrant_readiness_db.go (Commit E, July 2026).
 
 func parseStrictPositiveIntFlag(arg, name string) (int, error) {
 	v := strings.TrimPrefix(arg, name+"=")

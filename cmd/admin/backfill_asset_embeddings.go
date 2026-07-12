@@ -33,6 +33,19 @@
 //	go run ./cmd/admin backfill-asset-embeddings --resume --checkpoint=./bf.json # resume
 //	go run ./cmd/admin backfill-asset-embeddings --retry-failed --checkpoint=./bf.json # retry failures
 //	go run ./cmd/admin backfill-asset-embeddings --json                    # machine-readable
+//
+// Split (Commit E, July 2026): the 2 SQL-pure candidate-fetch helpers
+// (fetchEmbeddingCandidates + fetchFailedCandidates) moved to the
+// sibling file backfill_asset_embeddings_db.go (same package main).
+// This orchestrator file retains the entry point, arg parsing, the
+// pure testable core (backfillAssetEmbeddings), the checkpoint
+// load/save helpers, and the testability interface (clipIndexer).
+//
+// The sibling stays in cmd/admin (NOT internal/infrastructure) per the
+// Commit E user constraint: "NON spostare nulla in internal/infrastructure
+// (creerebbe interfacce morte)". These are one-shot-CLI-only queries;
+// promoting them to infrastructure would force a typed-port interface
+// with no second consumer.
 package main
 
 import (
@@ -46,8 +59,6 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/app"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -319,6 +330,8 @@ func backfillAssetEmbeddings(
 	}
 
 	// ── Determine candidates ────────────────────────────────────────
+	// fetchEmbeddingCandidates + fetchFailedCandidates live in the
+	// sibling file backfill_asset_embeddings_db.go (same package main).
 	var candidates []assetEmbeddingStatus
 	var err error
 	if deps.RetryFailed && cp != nil && len(cp.FailedIDs) > 0 {
@@ -466,125 +479,6 @@ func backfillAssetEmbeddings(
 	}
 
 	return report, cp, nil
-}
-
-// ── Candidate queries ─────────────────────────────────────────────────
-
-// fetchEmbeddingCandidates queries media_assets for assets that need
-// embedding backfill. In --only-missing mode, only returns assets with
-// at least one empty embedding column.
-func fetchEmbeddingCandidates(
-	ctx context.Context,
-	db *sql.DB,
-	deps backfillEmbeddingsDeps,
-	cp *embeddingCheckpoint,
-) ([]assetEmbeddingStatus, error) {
-	query := `
-		SELECT id, COALESCE(source, ''), COALESCE(name, ''), COALESCE(media_type, ''),
-		       COALESCE(local_path, ''),
-		       CASE WHEN embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' AND embedding_json != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN transcript_embedding IS NOT NULL AND transcript_embedding != '' AND transcript_embedding != '[]' AND transcript_embedding != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN visual_embedding IS NOT NULL AND visual_embedding != '' AND visual_embedding != '[]' AND visual_embedding != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN audio_embedding IS NOT NULL AND audio_embedding != '' AND audio_embedding != '[]' AND audio_embedding != '{}' THEN 1 ELSE 0 END
-		FROM media_assets
-		WHERE media_type != 'folder'
-		  AND (deleted_at IS NULL OR deleted_at = '')`
-
-	var queryArgs []any
-
-	// Resume: start after last processed ID.
-	if cp != nil && cp.LastProcessedID != "" && deps.Resume {
-		query += ` AND id > ?`
-		queryArgs = append(queryArgs, cp.LastProcessedID)
-	}
-
-	// Source filter.
-	if deps.Source != "" {
-		query += ` AND source = ?`
-		queryArgs = append(queryArgs, deps.Source)
-	}
-
-	query += ` ORDER BY id ASC`
-
-	if deps.Limit > 0 {
-		query += ` LIMIT ?`
-		queryArgs = append(queryArgs, deps.Limit)
-	}
-
-	rows, err := db.QueryContext(ctx, query, queryArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("query embedding candidates: %w", err)
-	}
-	defer rows.Close()
-
-	var out []assetEmbeddingStatus
-	for rows.Next() {
-		var a assetEmbeddingStatus
-		var hasText, hasTranscript, hasVisual, hasAudio int
-		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &a.MediaType,
-			&a.LocalPath, &hasText, &hasTranscript, &hasVisual, &hasAudio); err != nil {
-			return nil, fmt.Errorf("scan candidate: %w", err)
-		}
-		a.HasText = hasText == 1
-		a.HasTranscript = hasTranscript == 1
-		a.HasVisual = hasVisual == 1
-		a.HasAudio = hasAudio == 1
-
-		if deps.OnlyMissing && a.HasText && a.HasTranscript && a.HasVisual && a.HasAudio {
-			continue // fully embedded, skip in --only-missing mode
-		}
-		out = append(out, a)
-	}
-	return out, rows.Err()
-}
-
-// fetchFailedCandidates returns candidate rows only for the given asset IDs.
-func fetchFailedCandidates(ctx context.Context, db *sql.DB, ids []string) ([]assetEmbeddingStatus, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-
-	placeholders := make([]string, len(ids))
-	args := make([]any, len(ids))
-	for i, id := range ids {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-
-	query := fmt.Sprintf(`
-		SELECT id, COALESCE(source, ''), COALESCE(name, ''), COALESCE(media_type, ''),
-		       COALESCE(local_path, ''),
-		       CASE WHEN embedding_json IS NOT NULL AND embedding_json != '' AND embedding_json != '[]' AND embedding_json != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN transcript_embedding IS NOT NULL AND transcript_embedding != '' AND transcript_embedding != '[]' AND transcript_embedding != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN visual_embedding IS NOT NULL AND visual_embedding != '' AND visual_embedding != '[]' AND visual_embedding != '{}' THEN 1 ELSE 0 END,
-		       CASE WHEN audio_embedding IS NOT NULL AND audio_embedding != '' AND audio_embedding != '[]' AND audio_embedding != '{}' THEN 1 ELSE 0 END
-		FROM media_assets
-		WHERE id IN (%s)
-		  AND media_type != 'folder'
-		  AND (deleted_at IS NULL OR deleted_at = '')
-		ORDER BY id ASC`, strings.Join(placeholders, ","))
-
-	rows, err := db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query failed candidates: %w", err)
-	}
-	defer rows.Close()
-
-	var out []assetEmbeddingStatus
-	for rows.Next() {
-		var a assetEmbeddingStatus
-		var hasText, hasTranscript, hasVisual, hasAudio int
-		if err := rows.Scan(&a.ID, &a.Source, &a.Name, &a.MediaType,
-			&a.LocalPath, &hasText, &hasTranscript, &hasVisual, &hasAudio); err != nil {
-			return nil, fmt.Errorf("scan failed candidate: %w", err)
-		}
-		a.HasText = hasText == 1
-		a.HasTranscript = hasTranscript == 1
-		a.HasVisual = hasVisual == 1
-		a.HasAudio = hasAudio == 1
-		out = append(out, a)
-	}
-	return out, rows.Err()
 }
 
 // ── Checkpoint I/O ────────────────────────────────────────────────────
