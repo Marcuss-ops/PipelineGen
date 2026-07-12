@@ -236,7 +236,20 @@ func (h *ArtlistHandler) Diagnostics(c *gin.Context) {
 	apiutil.OK(c, resp)
 }
 
-// SearchLive performs a live search using the Node.js scraper
+// SearchLive performs a live search using the Node.js scraper.
+//
+// PR-P2-SEARCH-LIVE (July 2026): the handler reads an optional
+// `?prefer_remote=true|false` query parameter. **Default for this
+// endpoint is `true`** per user-spec contract: when the param is
+// omitted, the Node ScraperSearcher is invoked as the PRIMARY
+// provider and the local DB cache (DBSearcher, indexed terms) AND
+// the in-memory TTL cache (CachedSearcher wrapper) are BOTH
+// COMPLETELY DROPPED from the chain. Operators wanting the legacy
+// cache-first behavior can opt back in with `?prefer_remote=false`.
+//
+// godlike/06 SSOT: the chain-order decision lives at the canonical
+// SearchService.buildSearcherChain — this handler only translates
+// the query parameter into the boolean flag.
 func (h *ArtlistHandler) SearchLive(c *gin.Context) {
 	term := strings.TrimSpace(c.Query("term"))
 	limitStr := c.DefaultQuery("limit", "20")
@@ -248,18 +261,40 @@ func (h *ArtlistHandler) SearchLive(c *gin.Context) {
 		limit = 50
 	}
 
+	// PR-P2-SEARCH-LIVE: prefer_remote query parsing.
+	// DefaultQuery("prefer_remote", "true") → user-spec literal: default
+	// true for /api/artlist/search/live. ParseBool accepts "1", "t",
+	// "true", "T", "TRUE" (and "0", "f", "false", "F", "FALSE"). On
+	// unparseable input we fall back to false (legacy cache-first
+	// semantics) rather than panic — explicit `true|false` is what the
+	// client requested.
+	preferRemoteStr := c.DefaultQuery("prefer_remote", "true")
+	preferRemote, _ := strconv.ParseBool(preferRemoteStr)
+
 	if term == "" {
 		apiutil.BadRequest(c, "term is required")
 		return
 	}
 
-	clips, err := h.service.SearchLive(c.Request.Context(), term, limit)
+	h.log.Info("artlist search live requested",
+		zap.String("term", term),
+		zap.Int("limit", limit),
+		zap.Bool("prefer_remote", preferRemote),
+		zap.String("prefer_remote_raw", preferRemoteStr),
+	)
+
+	clips, err := h.service.SearchLive(c.Request.Context(), term, limit, preferRemote)
 	if err != nil {
 		apiutil.InternalError(c, fmt.Errorf("live search failed: %v", err))
 		return
 	}
 
-	apiutil.OK(c, gin.H{"clips": clips})
+	// PR-P2-SEARCH-LIVE: surface `prefer_remote` in the response
+	// envelope so operators see which mode the handler actually used
+	// (parse failures fall back to false; explicit `true|false` is
+	// preserved verbatim). Operators can verify the chain mode
+	// without inspecting the log.
+	apiutil.OK(c, gin.H{"clips": clips, "prefer_remote": preferRemote})
 }
 
 // Recommend handles the recommendation endpoint using clipresolver

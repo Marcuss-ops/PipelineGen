@@ -183,11 +183,25 @@ type DiagnosticsResponse struct {
 	Error             string  `json:"error,omitempty"`
 }
 
-// SearchRequest represents a search request
+// SearchRequest represents a search request.
+//
+// PR-P2-SEARCH-LIVE (July 2026): PreferRemote is the operator-facing
+// opt-in flag that flips the canonical SearchService.searchLiveWithFallbacks
+// chain order so the Node ScraperSearcher is the PRIMARY provider and
+// the local DB cache (DBSearcher) + in-memory TTL cache (CachedSearcher
+// wrapper around scraper) are COMPLETELY DROPPED from the chain.
+//
+// Default behavior at the /api/artlist/search/live handler is true
+// (per user-spec contract "default per /api/artlist/search/live").
+// Internal callers (DiscoverAndQueueRun, run_orchestrator_stages::
+// stageDiscoverClips that calls SearchLiveAndSave) keep
+// PreferRemote=false so existing cache-first semantics for "discover
+// fresh content" runs is preserved.
 type SearchRequest struct {
-	Term     string `json:"term"`
-	Limit    int    `json:"limit"`
-	PreferDB bool   `json:"prefer_db"`
+	Term         string `json:"term"`
+	Limit        int    `json:"limit"`
+	PreferDB     bool   `json:"prefer_db"`
+	PreferRemote bool   `json:"prefer_remote,omitempty"`
 }
 
 // SearchResponse represents a search response with canonical asset types.

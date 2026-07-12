@@ -356,8 +356,23 @@ func (s *Service) Search(ctx context.Context, req *SearchRequest) (*SearchRespon
 }
 
 // SearchLive esegue una ricerca live tramite scraper.
-func (s *Service) SearchLive(ctx context.Context, term string, limit int) ([]Candidate, error) {
-	return s.searchService.SearchLive(ctx, term, limit)
+//
+// preferRemote (PR-P2-SEARCH-LIVE, July 2026): when true, the chain is
+// reordered so the Node ScraperSearcher is the PRIMARY provider and
+// BOTH the local DB-level cache (DBSearcher, indexed terms) AND the
+// in-memory TTL cache (CachedSearcher wrapper around scraper) are
+// COMPLETELY DROPPED from the chain.
+//
+// prefer_remote defaulting is endpoint-scoped (user spec): the
+// GET /api/artlist/search/live handler defaults to true (operator-
+// facing live-search semantics). Internal callers must pass false:
+//   - DiscoverAndQueueRun: explicit RunTag workflow → false (legacy
+//     cache-first "discover fresh content" semantics is preserved).
+//   - run_orchestrator_stages::stageDiscoverClips → SearchLiveAndSave
+//     → SearchLive: false (orchestrator retries must not re-hit the
+//     scraper for the same term).
+func (s *Service) SearchLive(ctx context.Context, term string, limit int, preferRemote bool) ([]Candidate, error) {
+	return s.searchService.SearchLive(ctx, term, limit, preferRemote)
 }
 
 // DiscoverAndQueueRun scopre clip e accoda un'esecuzione.
