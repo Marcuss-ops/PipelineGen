@@ -1,11 +1,14 @@
-// Package adapters — processor_images.go (commit 6, July 2026):
+// Package adapters — processor_images.go (commit 6, July 2026;
+// commit 6b relocation, July 2026):
 // scene-image generation entry point in its POST-SPLIT SLIM form.
 //
-// godlike/06 SSOT — file ownership after the commit 6 split:
+// godlike/06 SSOT — file ownership after the commit 6+6b split:
 //
 //	processor_images.go              — owns ONLY ImageProcessor type +
 //	                                  NewImageProcessor + Name + Policy +
-//	                                  Process + specScenesFromInput
+//	                                  Process (the spec literal
+//	                                  5-method-only constraint, now
+//	                                  strictly honored after commit 6b)
 //	processor_images_contracts.go    — ImageResult + ImageGenService +
 //	                                  imagePrewarmer + smartImageGenService +
 //	                                  imageSceneOutcome (internal buffer) +
@@ -15,9 +18,18 @@
 //	                                  imageFanoutConcurrency +
 //	                                  runImageSceneFanout
 //	processor_images_scene.go        — resolveSceneQuery +
+//	                                  specScenesFromInput (Commit 6b
+//	                                  relocation from processor_images.go) +
 //	                                  generateSceneImage + fallbackSceneText +
 //	                                  cleanPromptForSubject +
 //	                                  canonicalSceneImageURL
+//
+// Commit 6b (July 2026): specScenesFromInput was relocated from
+// processor_images.go → processor_images_scene.go per the user's
+// spec literal ("processor_images.go tiene SOLO the 5 listed
+// symbols"). Same-package call (Process → specScenesFromInput)
+// resolves via Go's same-package rules; no import surface changes
+// needed.
 //
 // PR 9 (June 2026): the legacy scene-splitters
 // (splitScriptIntoSegments / sceneCountFromPlan) were REMOVED.
@@ -74,7 +86,11 @@ func (p *ImageProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPo
 // runImageSceneFanout (processor_images_fanout.go); the per-scene
 // helpers (resolveSceneQuery, generateSceneImage, fallbackSceneText,
 // cleanPromptForSubject, canonicalSceneImageURL) live in
-// processor_images_scene.go.
+// processor_images_scene.go, and the scene-lens helper
+// (specScenesFromInput, relocated from processor_images.go in
+// commit 6b) lives there too. Process() is the SOLE caller of
+// specScenesFromInput — same-package resolution makes the call
+// transparent (no import surface change).
 func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.gen == nil {
 		return nil, fmt.Errorf("%w: image processor: ImageGenService not configured", scriptpkg.ErrPostprocessFailed)
@@ -122,16 +138,4 @@ func (p *ImageProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGe
 	}
 
 	return &PostProcessResult{SceneImages: images}, nil
-}
-
-// specScenesFromInput returns the canonical scene list from the
-// ProcessInput envelope (typed MSOV1 output). PR 9 contract: post-
-// processors consume scenes through this lens; any attempt to
-// re-derive scenes via text-splitting is a regression caught by
-// ci-architectural-checks Check 15.
-func specScenesFromInput(input ProcessInput) []scriptpkg.SpecScene {
-	if len(input.SpecScene.Scenes) == 0 {
-		return nil
-	}
-	return input.SpecScene.Scenes
 }
