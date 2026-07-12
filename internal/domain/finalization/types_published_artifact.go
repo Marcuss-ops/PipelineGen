@@ -128,4 +128,29 @@ type PublishedArtifact struct {
 	// asset_renditions row inside the same transaction.
 	// Optional — when empty, only the primary Location is written.
 	Renditions []AssetRenditionLocation `json:"renditions,omitempty"`
+
+	// ───────────────────────────────────────────────────────────────────
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): canonical
+	// post-commit materialize fan-out payload.
+	//
+	// SourceText is the human-readable text that should be translated
+	// into the configured MaterializeLanguages set after the artifact
+	// has been durably persisted. SourceTextHash is the SHA-256 of
+	// SourceText (the materialize ActiveKey uses this — callers must
+	// populate BOTH fields; an empty SourceTextHash means "no fan-out").
+	// SourceLanguage is the BCP-47 of the source text.
+	//
+	// godlike/07 minimum-blast-radius: ALL three fields are OPTIONAL.
+	// Pre-Fase-4 callers (lightweight assets without source text —
+	// pure soundeffects, image-only chunks) populate NOTHING here
+	// and the canonical FirePostCommitHooks short-circuits silently.
+	//
+	// godlike/06 SSOT: this is the canonical seam between
+	// AssetFinalizerTx (which persists the asset row) and the texttracks
+	// package (which fans out translation jobs). Callers that compute
+	// the source text at finalize time (pipeline-specific) populate
+	// these fields; the hook fires AFTER tx.Commit.
+	// ───────────────────────────────────────────────────────────────────
+	SourceTextHash string `json:"source_text_hash,omitempty"`
+	SourceLanguage string `json:"source_language,omitempty"`
 }

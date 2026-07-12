@@ -8,11 +8,14 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"go.uber.org/zap"
+
+	texttracks "github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 )
 
 // AssetTxFinalizer is the concrete implementation of
@@ -35,15 +38,140 @@ import (
 //
 // Canonical reference: Piano d'Azione Completo § 5.1–5.2.
 type AssetTxFinalizer struct {
-	log *zap.Logger
+	log    *zap.Logger
+	fanout *texttracks.MaterializeFanOut // optional nil-safe post-publish fan-out helper
 }
 
 // NewAssetTxFinalizer creates an AssetTxFinalizer.
+//
+// godlike/07 backward-compat: the constructor signature is
+// unchanged from pre-Fase-4 (log only). The fanout helper is
+// optionally attached via WithFanOut. Composition roots that
+// need post-publish fan-out MUST call WithFanOut AFTER
+// NewAssetTxFinalizer + AFTER the MaterializeFanOut is built
+// (which requires the JobsBundle to be assembled first).
+// This sequencing is the canonical SSOT order.
 func NewAssetTxFinalizer(log *zap.Logger) *AssetTxFinalizer {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &AssetTxFinalizer{log: log}
+}
+
+// WithFanOut attaches the post-publish fan-out helper. Returns
+// the receiver for fluent chaining at composition root. nil-safe
+// (passing nil clears the fan-out hook but does not delete the
+// finalizer itself; FirePostCommitHooks short-circuits to no-op
+// when fanout is nil).
+//
+// godlike/06 SSOT: this is the SOLE canonical extension seam
+// for adding fan-out to AssetTxFinalizer. Composition roots
+// MUST NOT inline the fan-out call inside FinalizeAsset (the
+// caller owns the tx; the fan-out must fire AFTER commit).
+func (s *AssetTxFinalizer) WithFanOut(fanout *texttracks.MaterializeFanOut) *AssetTxFinalizer {
+	if s == nil {
+		return s
+	}
+	s.fanout = fanout
+	return s
+}
+
+// FirePostCommitHooks is the canonical post-commit fan-out hook
+// (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4, July 2026).
+//
+// Callers (the JobFinalizer + every AssetFinalizerTx caller —
+// Stock, Artlist, Soundeffect, SlideWorker, future Video
+// re-render) MUST invoke this AFTER tx.Commit returns nil.
+// Inside the tx-bound context, the materialize job would be
+// observable to workers BEFORE the asset row is durable — a
+// TOCTOU race; firing post-commit guarantees the source row is
+// visible to the materialize handler when the worker picks up
+// the enqueued job.
+//
+// Activation gate (godlike/07 fail-closed):
+//   - artifact.SourceTextHash == "" → no fan-out (pre-Fase-4
+//     assets without source text skip silently).
+//   - artifact.SourceLanguage == "" → no fan-out (no BCP-47).
+//   - s.fanout == nil → no fan-out (disabled-mode wiring).
+//   - Any non-nil error from EnqueueMaterializeOne is logged at
+//     Warn level and swallowed — the canonical asset row +
+//     asset.index.requested outbox event are already durable;
+//     the materialize enqueue failure MUST NOT roll them back.
+//     The broker has its own retry policy for the resulting
+//     job; a future reconciliation pass can backstop missed
+//     fan-outs.
+func (s *AssetTxFinalizer) FirePostCommitHooks(
+	ctx context.Context,
+	artifact finalization.PublishedArtifact,
+) {
+	if s == nil {
+		// Nil-receiver guard (mirrors WithFanOut). Required
+		// because field access on a nil pointer receiver
+		// panics in Go. Composition roots that build a nil
+		// AssetTxFinalizer by mistake (e.g., a test seam
+		// without Log wiring) MUST NOT crash the post-commit
+		// caller path.
+		return
+	}
+	if s.fanout == nil {
+		// Disabled-mode wiring — no fan-out (godlike/07
+		// NO-FAKE-AVAILABILITY: this is observable to
+		// composition root configs that opt out of the
+		// texttracks pipeline; operators see no asset.text.materialize
+		// jobs enqueued for these assets).
+		return
+	}
+	if artifact.SourceTextHash == "" || artifact.SourceLanguage == "" {
+		// No source text available — this is the canonical
+		// fan-out precondition. Pure-audio / pure-image
+		// assets without a text source skip silently.
+		return
+	}
+	// Fire the canonical post-publish enqueue. We use the
+	// canonical kinds slice so fan-out covers transcript +
+	// description + summary (the 3 textual kinds that benefit
+	// most from translation; Title + Keywords are already
+	// short, deterministic, and don't need translation).
+	kinds := []asset.TextTrackKind{
+		asset.TextTrackTranscript,
+		asset.TextTrackDescription,
+		asset.TextTrackSummary,
+	}
+	if err := s.fanout.EnqueueMaterializeOne(
+		ctx,
+		artifact.ArtifactID,
+		artifact.SourceLanguage,
+		artifact.SourceTextHash,
+		kinds,
+	); err != nil {
+		// godlike/07 NO-FAKE-AVAILABILITY: log + swallow. The
+		// canonical asset row + outbox event are already
+		// committed; rolling back the tx would be wrong (the
+		// tx is closed). The recovery path is operator-runs
+		// `pipelinegen-admin text-tracks-backfill` which
+		// discovers the just-published asset and fans out
+		// translation fan-out for any target languages. We
+		// deliberately do NOT escalate to FAILED — the caller
+		// (StockFinalizeStep / Artlist stagePersistResults /
+		// etc.) needs the tx-Commit-success verdict clean for
+		// its own verdict-stamping path.
+		if s.log != nil {
+			s.log.Warn("AssetTxFinalizer.FirePostCommitHooks: fan-out enqueue failed (canonical asset row preserved; operator backfill will recover)",
+				zap.String("artifact_id", artifact.ArtifactID),
+				zap.String("source_language", artifact.SourceLanguage),
+				zap.String("source_text_hash", artifact.SourceTextHash),
+				zap.Error(err))
+		}
+		return
+	}
+	if s.log != nil {
+		s.log.Info("AssetTxFinalizer.FirePostCommitHooks: asset.text.materialize enqueued",
+			zap.String("artifact_id", artifact.ArtifactID),
+			zap.String("source_language", artifact.SourceLanguage),
+			zap.String("source_text_hash", artifact.SourceTextHash),
+			zap.Int("kinds_count", len(kinds)),
+		)
+	}
 }
 
 // Compile-time assertion.
