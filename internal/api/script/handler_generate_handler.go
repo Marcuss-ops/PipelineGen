@@ -16,31 +16,48 @@
 // HTTP-layer narrow port decoupled from the application concrete
 // Service type.
 //
-// All business logic lives in the application submission service and
-// the generation use cases; this handler is responsible only for:
-//   - JSON binding
-//   - error-to-HTTP mapping
-//   - JSON serialisation
+// 3-file split (July 2026): the JSON-bind, validator, idempotency-key,
+// payload-marshal, fingerprint, hash, SubmitRequest-assembly, and
+// timeout-wrap logic previously inlined inside Generate has been
+// extracted to handler_generate_request.go. The error-to-HTTP mapping
+// and 202 submission-response shaping has been extracted to
+// handler_generate_response.go. This file now owns ONLY the
+// handler surface:
+//
+//   - HandlerGenerate struct
+//   - NewHandlerGenerate (ctor + nil-tolerant defaults)
+//   - GenerateRoute (registers POST /generate on the router group)
+//   - Generate (the per-request orchestrator: ~5 logical steps)
+//
+// All business logic still lives in the application submission service
+// and the generation use cases; this handler is responsible only for:
+//   - delegating to the request-side helpers (request.go) — bind
+//     envelope, validator, nil-submitter 503, idempotency key, hash,
+//     SubmitRequest assembly, timeout-wrapped ctx + cancel
+//   - calling h.submitter.Submit (the single application-layer
+//     surface owned by this handler)
+//   - deferring the cancel() returned by the request helper so the
+//     enqueueTimeout timer is released as soon as Submit returns
+//   - delegating to the response-side helpers (response.go) — 503/409/
+//     mapped/500 error mapping OR 202 success with replay-header
+//
+// godlike/06 SSOT: the canonical `generationSubmitter` interface
+// lives in handler_deps.go (the construction seam per its file
+// comment); this file CONSUMES it via the `submitter` field.
+// Defining the interface here would create a duplicate declaration
+// and a build error in the same package.
+//
+// godlike/07 fail-closed: the empty-jobID success branch in
+// writeGenerateSubmitSuccess (response.go) returns 500 with
+// "operations submission returned empty job_id" — the handler
+// never silently accepts a missing job_id.
 package script
 
 import (
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"net/http"
-	"strings"
-
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // HandlerGenerate is the narrow HTTP handler for script generation.
@@ -48,12 +65,6 @@ import (
 // Constructed by NewScriptFlowHandler alongside the legacy
 // ScriptFlowHandler; wired by RegisterRoutes as the handler for
 // POST /api/script/generate.
-//
-// godlike/06 SSOT: the canonical `generationSubmitter` interface
-// lives in handler_deps.go (the construction seam per its file
-// comment); this file CONSUMES it via the `submitter` field.
-// Defining the interface here would create a duplicate declaration
-// and a build error in the same package.
 type HandlerGenerate struct {
 	submitter generationSubmitter
 	log       *zap.Logger
@@ -107,139 +118,33 @@ func (h *HandlerGenerate) GenerateRoute(r *gin.RouterGroup) {
 //
 // Response:
 //   - Async: {"ok":true, "job_id":"...", "status":"QUEUED", "status_url":"..."}
+//
+// The orchestrator is intentionally ~4 logical steps:
+//  1. buildGenerateSubmitRequest (request.go) → bind envelope,
+//     validator, nil-submitter 503, idempotency key, hash, SubmitRequest
+//     assembly, and timeout-wrapped ctx + cancel. NOTE: nil-submitter
+//     check is INSIDE the helper AFTER bind/validator so a malformed
+//     body still returns 400 (matches the original Generate's order).
+//  2. h.submitter.Submit → application transaction commit.
+//  3. writeGenerateSubmitError (response.go) → 503/409/mapped/500
+//     OR writeGenerateSubmitSuccess (response.go) → 202 with replay-
+//     header + canonical live Job.Status.
+//
+// godlike/07 fail-closed: every step short-circuits with a structured
+// HTTP error and never reaches the next step on failure. The cancel()
+// returned from the helper MUST be deferred to release the
+// enqueueTimeout timer as soon as Submit returns (avoiding a bounded
+// 10s timer leak if the parent ctx is not cancelled in time).
 func (h *HandlerGenerate) Generate(c *gin.Context) {
-	var env scriptpkg.GenerationEnvelopeV2
-	if err := c.ShouldBindJSON(&env); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid payload: " + err.Error()})
+	submitReq, submitCtx, cancel, ok := buildGenerateSubmitRequest(c, h.validator, h.submitter)
+	if !ok {
 		return
 	}
-
-	// Structural + config-aware validation before enqueue.
-	if err := h.validator.ValidateEnvelope(&env); err != nil {
-		var pve *scriptpkg.PayloadValidationError
-		if errors.As(err, &pve) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"ok": false,
-				"error": gin.H{
-					"code":      pve.Code,
-					"message":   pve.Message,
-					"stage":     pve.Stage,
-					"retryable": pve.Retryable,
-					"extra":     pve.Extra,
-				},
-			})
-			return
-		}
-		status := mapErrorToHTTP(err)
-		c.JSON(status, gin.H{
-			"ok": false,
-			"error": gin.H{
-				"code":      "INVALID_PAYLOAD",
-				"message":   err.Error(),
-				"stage":     "request.validation",
-				"retryable": false,
-			},
-		})
-		return
-	}
-
-	if h.submitter == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "operations service not initialized"})
-		return
-	}
-
-	idempotencyKey := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
-	if idempotencyKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":    false,
-			"error": "Idempotency-Key header is required",
-			"code":  "IDEMPOTENCY_KEY_REQUIRED",
-		})
-		return
-	}
-	if !isValidIdempotencyKey(idempotencyKey) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":    false,
-			"error": "Idempotency-Key must be printable ASCII and at most 255 characters",
-			"code":  "INVALID_IDEMPOTENCY_KEY",
-		})
-		return
-	}
-
-	payload, err := json.Marshal(env)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "failed to marshal generation payload"})
-		return
-	}
-	fingerprint := adapters.BuildEnvelopeIdentity(&env)
-	if fingerprint == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"ok":    false,
-			"error": "invalid generation payload identity",
-			"code":  "INVALID_PAYLOAD",
-		})
-		return
-	}
-	sum := sha256.Sum256([]byte(fingerprint))
-	requestHash := hex.EncodeToString(sum[:])
-
-	submitCtx, cancel := context.WithTimeout(c.Request.Context(), enqueueTimeout)
 	defer cancel()
-
-	res, err := h.submitter.Submit(submitCtx, opsapp.SubmitRequest{
-		Scope:          domainops.ScopeScriptGenerate,
-		IdempotencyKey: idempotencyKey,
-		RequestHash:    requestHash,
-		ForceRefresh:   env.ForceRefresh,
-		JobType:        jobpkg.TypeScriptGenerate,
-		JobPayload:     payload,
-		JobPriority:    0,
-		JobMaxRetries:  3,
-	})
+	res, err := h.submitter.Submit(submitCtx, submitReq)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "JOB_ENQUEUE_TIMEOUT"})
-			return
-		}
-		if errors.Is(err, domainops.ErrIdempotencyConflict) {
-			c.JSON(http.StatusConflict, gin.H{
-				"ok":    false,
-				"error": "Idempotency-Key reused with different payload",
-				"code":  "IDEMPOTENCY_KEY_CONFLICT",
-			})
-			return
-		}
-		status := mapErrorToHTTP(err)
-		c.JSON(status, gin.H{
-			"ok":    false,
-			"error": "operations submission failed",
-		})
+		writeGenerateSubmitError(c, err)
 		return
 	}
-
-	status := "PENDING"
-	if res != nil && res.IsIdempotencyHit {
-		c.Writer.Header().Set("X-Idempotency-Replay", "true")
-	}
-	// FASE 2 close-out: surface the canonical live Job.Status
-	// on replay and on fresh-submit alike (the spec wants
-	// "lo stato del job canonico, non più una copia HTTP 202").
-	// The Job field is populated by the submission service via
-	// JobGetter on replay; on fresh-submit it carries the
-	// freshly-INSERTed Job in QUEUED state.
-	if res != nil && res.Job != nil && res.Job.Status != "" {
-		status = string(res.Job.Status)
-	}
-	jobID := ""
-	if res != nil && res.Operation != nil {
-		jobID = res.Operation.JobID
-	}
-	if jobID == "" {
-		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "operations submission returned empty job_id"})
-		return
-	}
-
-	resp := GenerateResponse{}
-	resp.async(jobID, status, "/api/jobs/"+jobID+"/full", "")
-	c.JSON(http.StatusAccepted, resp)
+	writeGenerateSubmitSuccess(c, res)
 }
