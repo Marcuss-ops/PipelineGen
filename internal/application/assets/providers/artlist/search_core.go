@@ -276,9 +276,9 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 
 		// Fase 5 / Commit 3 (July 2026) — wire the canonical
 		// run-level dedup key as the ActiveKey so a replay of the
-		// same run (same term + root folder + strategy + dryRun)
-		// collapses at the kernel job broker's UNIQUE index on
-		// `jobs.active_key`. Per user-spec literal "replay stessa
+		// same run (same term + root folder + strategy + dryRun +
+		// limit) collapses at the kernel job broker's UNIQUE index
+		// on `jobs.active_key`. Per user-spec literal "replay stessa
 		// run non duplica" (dedup guarantee #2).
 		//
 		// Why NOT use the pkg/idempotency.JobKey here: the spec
@@ -286,9 +286,9 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 		// for PERSISTENT deduplication (media_assets.id + outbox_events
 		// UNIQUE constraints). Run-level ActiveKey is an EPHEMERAL
 		// job-queue concurrency lock keyed on highly specific API
-		// parameters (term + root folder + strategy + dryRun) that
-		// do not belong in a generic provider-agnostic idempotency
-		// package. artlist.RunDedupKey is the canonical surface for
+		// parameters (term + root folder + strategy + dryRun + limit)
+		// that do not belong in a generic provider-agnostic idempotency
+		// package. RunDedupKey is the canonical surface for
 		// this concern (godlike/06 SSOT); the API handler
 		// (artlist_handlers.go::enqueueArtlistRun) already uses it.
 		//
@@ -299,13 +299,22 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 		// the dedup). Setting ActiveKey makes the dedup explicit
 		// and observable.
 		//
+		// Commit 3 follow-up (July 2026): the signature now includes
+		// `limit` — a replay of the same term with a DIFFERENT limit
+		// is a DIFFERENT run, not a same-run replay. Omitting limit
+		// from the key would collapse distinct runs into one
+		// ActiveKey and surface misleading dedup (godlike/07
+		// fail-closed: never silently merge distinct operator
+		// requests).
+		//
 		// Strategy and dryRun are empty/false in the orchestrator
 		// path (the orchestrator doesn't expose them). This means
 		// an API handler replay with the same term + root folder
-		// + default strategy + dryRun=false produces the same
-		// ActiveKey as an orchestrator replay — the dedup
-		// unifies across entry points.
-		runActiveKey := artlist.RunDedupKey(normalizedTerm, driveFolderID, "", false)
+		// + default strategy + dryRun=false + same limit produces
+		// the same ActiveKey as an orchestrator replay — the dedup
+		// unifies across entry points when the canonical
+		// (normalized) request identity is identical.
+		runActiveKey := RunDedupKey(normalizedTerm, driveFolderID, "", false, limit)
 		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
 			Type:       "media.artlist",
 			Payload:    (&JobCodec{}).PayloadFromRequest(&RunTagRequest{Term: normalizedTerm, Limit: limit, RootFolderID: driveFolderID}),

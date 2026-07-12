@@ -169,7 +169,14 @@ func (h *ArtlistHandler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagReq
 		Type:       "media.artlist",
 		Payload:    (&artlist.JobCodec{}).PayloadFromRequest(&req),
 		MaxRetries: 3,
-		ActiveKey:  artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun),
+		// Fase 5 / Commit 3 follow-up (July 2026): limit is part of
+		// the canonical run identity. A replay with the same term +
+		// folder + strategy + dryRun but a DIFFERENT limit is a
+		// DIFFERENT run (the operator asked for a different number
+		// of clips), and must produce a different ActiveKey so the
+		// dedup does not silently merge distinct operator requests
+		// (godlike/07 fail-closed).
+		ActiveKey: artlist.RunDedupKey(req.Term, req.RootFolderID, req.Strategy, req.DryRun, req.Limit),
 	})
 	if err != nil {
 		h.log.Error("failed to enqueue artlist job", zap.Error(err))
