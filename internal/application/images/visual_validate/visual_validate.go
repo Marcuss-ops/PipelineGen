@@ -1,13 +1,15 @@
-// Package visual_validate implements post-extraction image-content validation.
+// Package visual_validate implements post-extraction image-content
+// validation.
 //
 // godlike/07 no-fake-availability (P0.2, July 2026): the pre-fix pipeline
-// pure-white PNG could be ingested as a valid GeneratedImage because Go
-// only checked file size + SHA-256 — both trivially pass for a blank PNG.
+// accepted a pure-white PNG as a valid GeneratedImage because Go only
+// checked file size + SHA-256 — both trivially pass for a blank PNG.
 // This package decodes the PNG and asserts three independent content
-// invariants: low near-white percentage, non-trivial variance, and pHash
-// distance from a deterministic slide-vuoto reference. A blank image
-// fails at least one of them and gets a typed ErrBlankOrPlaceholder back
-// to the caller — ChromeImageProvider.removeOutputAndFail closed-loop.
+// invariants: low near-white percentage, non-trivial variance, and
+// pHash distance from a deterministic slide-vuoto reference. A blank
+// image fails at least one of them and gets a typed
+// ErrBlankOrPlaceholder back to the caller — ChromeImageProvider's
+// removeOutputAndFail closed-loop.
 //
 // Style gating (whiteboard exception): the "whiteboard" style is allowed
 // up to 99.8% near-white because whiteboard renders legitimately have a
@@ -15,6 +17,15 @@
 // unchanged: the image MUST differ from the slide-vuoto baseline by at
 // least 6 bits (hamming distance > 5) regardless of style. Pure-white
 // images are still rejected.
+//
+// P0.2.A (July 2026, July-29 reviewer feedback): the whiteboard
+// carve-out now ALSO requires a minimum edge density
+// (minWhiteboardEdgeDensity) so a near-blank image with microscopic
+// ink dots that JUST passes the pHash distance check is fail-closed
+// (rather than passing as a "stale-reuse cache hit" by accident).
+// Additionally, the DistinctColors stat is exposed (count of unique
+// RGBA values in the image, capped at distinctColorCardinalityCap for
+// OOM safety against maliciously-large PNG inputs).
 //
 // Performance: 1024x1024 decode + 8x8 pHash + 16-stride pixel scan takes
 // <50 ms on a mid-range laptop. The worker callers run validation on
@@ -27,26 +38,42 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
 	_ "image/png" // register PNG decoder so image.Decode handles .png
 	"os"
 )
 
-// ComputeStatsResult is the canonical content-statistics envelope.
-// Exposed to the chrome_provider.go Zap log so operators can audit
-// pixel-level invariants without re-running the validator pipeline.
+// Stats is the canonical content-statistics envelope exposed to
+// chrome_provider.go Zap logs and to the wire-level test fixtures.
+//
+// Fields:
+//   - Width, Height: real pixel dimensions from image.Decode bounds
+//     (NOT the w/h the Go pipeline was told to ask for — those may
+//     be misleading if the worker truncated or resized).
+//   - WhitePct: fraction of pixels with r >= 240 && g >= 240 && b >= 240.
+//     Pure-white image → 1.000; real generated image → typically < 0.5.
+//   - Variance: per-pixel grayscale variance (0 for monochrome). Real
+//     generated images typically have variance > 100.
+//   - EdgeDensity: fraction of horizontal pixel-pairs where |Δgray| > 30.
+//     Pure-white image → 0.0; real images → in (0, 1] with structure.
+//   - DistinctColors: count of unique RGBA values in the image, bounded
+//     by distinctColorCardinalityCap. A non-blank signal even at low
+//     edge density (e.g. a 16-color flat-fill region).
+//   - PHashHex: 16-hex-char perceptive hash of the 8x8 sample grid.
 //
 // godlike/07 transparency (P2, July 2026): Stats is the SINGLE SOURCE
-// OF TRUTH for content statistics. Validate calls computeStatsRaw
+// OF TRUTH for content statistics. Validate calls analyzePixels
 // internally for threshold checks; chrome_provider and the Python
 // worker both reach into this struct to populate their respective
 // structured logs (no duplicate PIL/Go-passes).
 type Stats struct {
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
-	WhitePct    float64 `json:"white_pct"`
-	Variance    float64 `json:"variance"`
-	EdgeDensity float64 `json:"edge_density"`
-	PHashHex    string  `json:"phash_hex"`
+	Width          int     `json:"width"`
+	Height         int     `json:"height"`
+	WhitePct       float64 `json:"white_pct"`
+	Variance       float64 `json:"variance"`
+	EdgeDensity    float64 `json:"edge_density"`
+	DistinctColors int     `json:"distinct_colors"`
+	PHashHex       string  `json:"phash_hex"`
 
 	// privatePhash is the canonical uint64 pHash bit-vector. It is NOT
 	// serialised — Validate uses it for the distance-to-blank check
@@ -57,12 +84,13 @@ type Stats struct {
 
 // ComputeStats decodes the PNG at filePath and returns its content
 // statistics: dimensions, near-white ratio, grayscale variance, edge
-// density, and the 8x8 pHash in canonical 16-hex-char form. No
-// threshold checks are applied — the caller decides what to do with
-// the stats (Validate uses them for the typed sentinel; chrome_provider
-// uses them for the Zap log; the Python worker uses a parallel PIL pass
-// for its JSONL diagnostics, then mirrors the same numbers back to
-// the Go side through workerResponse stats fields).
+// density, distinct color count, and the 8x8 pHash in canonical
+// 16-hex-char form. No threshold checks are applied — the caller
+// decides what to do with the stats (Validate uses them for the typed
+// sentinel; chrome_provider uses them for the Zap log; the Python
+// worker uses a parallel PIL pass for its JSONL diagnostics, then
+// mirrors the same numbers back to the Go side through workerResponse
+// stats fields).
 //
 // godlike/07 transparency: this function is the canonical Go-side
 // source of content statistics. Validate(filePath, styleID) calls
@@ -81,70 +109,81 @@ func ComputeStats(filePath string) (Stats, error) {
 		return Stats{}, fmt.Errorf("visual_validate: decode %q (format=%s): %w", filePath, format, err)
 	}
 
-	whitePct, variance, edgeDensity := analyzePixels(img)
+	whitePct, variance, edgeDensity, distinctColors := analyzePixels(img)
 	hash := pHash(img)
 
 	return Stats{
-		Width:        img.Bounds().Dx(),
-		Height:       img.Bounds().Dy(),
-		WhitePct:     whitePct,
-		Variance:     variance,
-		EdgeDensity:  edgeDensity,
-		PHashHex:     fmt.Sprintf("%016x", hash),
-		privatePhash: hash,
+		Width:          img.Bounds().Dx(),
+		Height:         img.Bounds().Dy(),
+		WhitePct:       whitePct,
+		Variance:       variance,
+		EdgeDensity:    edgeDensity,
+		DistinctColors: distinctColors,
+		PHashHex:       fmt.Sprintf("%016x", hash),
+		privatePhash:   hash,
 	}, nil
 }
 
-// ErrBlankOrPlaceholder is the typed sentinel returned when an image fails
-// content validation. The caller (ChromeImageProvider.Generate) treats
-// this as a FAIL-CLOSED condition: the file at the canonical output_path
-// is REMOVED, the caller does NOT receive a GeneratedImage, and the
-// typed error propagates up the retry policy.
+// ErrBlankOrPlaceholder is the typed sentinel returned when an image
+// fails content validation. The caller (ChromeImageProvider.Generate)
+// treats this as a FAIL-CLOSED condition: the file at the canonical
+// output_path is REMOVED, the caller does NOT receive a
+// GeneratedImage, and the typed error propagates up the retry policy.
 //
 // Per godlike/07 fail-closed contract, a blank/white/slide-vuoto image
 // MUST NOT be considered a successful image-generation result.
 var ErrBlankOrPlaceholder = errors.New("visual_validate: blank or placeholder image detected")
 
-// StyleWhiteboard is the sentinel ID for the "whiteboard" style variant.
-// Other style IDs share the standard thresholds.
+// StyleWhiteboard is the sentinel ID for the "whiteboard" style
+// variant. Other style IDs share the standard thresholds.
 const StyleWhiteboard = "whiteboard"
 
 // Thresholds (P0.2, July 2026). Tweaked for the canonical case
 // (1920x1080 PNG generated by Google Slides AI via Nano Banana Pro):
 //   - Pure-white image: white_pct=1.000, variance=0, hash=0 (matches blank).
-//   - Real image:  white_pct typically <0.5, variance >500, hash differs.
-//   - Whiteboard: white_pct ~0.99+, variance ~50-200, hash differs.
+//   - Real image:      white_pct typically <0.5, variance >500, hash differs.
+//   - Whiteboard:      white_pct ~0.99+, variance ~50-200, hash differs.
 //
-// The values below are the upper/lower bounds that pass through.
+// The values below are the bounds at which Validate returns AC; the
+// reject thresholds are the inverses.
 //
 // Review feedback P0.2: the standard "white_pct > 0.99" matches the
 // user spec ("nessun file salvaricato >99% near-white"). Whiteboard gets
 // 0.998 heads-up so legitimate ink-on-white renders don't fail-closed.
+//
+// P0.2.A: minWhiteboardEdgeDensity floor added so whiteboard exception
+// only fires for actual ink-on-white renders (not microscopic-dot
+// stale-reuse cache hits).
+//
+// distinctColorCardinalityCap bounds the in-memory color.RGBA set so
+// maliciously-large PNG inputs cannot OOM the validator.
 const (
-	stdMaxWhitePct         = 0.99
-	whiteboardMaxWhitePct  = 0.998
-	minVariance            = 5.0
-	maxPhashDistanceSquash = 5 // <=5 same as blank; >5 different.
+	stdMaxWhitePct              = 0.99
+	whiteboardMaxWhitePct       = 0.998
+	minVariance                 = 5.0
+	maxPhashDistanceSquash      = 5     // <=5 same as blank; >5 different.
+	minWhiteboardEdgeDensity    = 0.001 // P0.2.A: whiteboard carve-out requires sparse ink.
+	distinctColorCardinalityCap = 4096  // P0.2.A: bounded distinct-color set (anti-OOM).
 )
 
-// Validate decodes the PNG at filePath and asserts it is not a blank/
-// slide-vuoto/placeholder image. The styleID parameter gates the
-// whiteboard exception. Returns nil for a content-valid PNG, otherwise a
-// typed error wrapping ErrBlankOrPlaceholder with the specific failure.
+// Validate decodes the PNG at filePath and asserts it is not a blank /
+// slide-vuoto / placeholder image. The styleID parameter gates the
+// whiteboard exception and the new edge-density floor. Returns nil for
+// a content-valid PNG, otherwise a typed error wrapping
+// ErrBlankOrPlaceholder with the specific failure cause.
 //
-// P2 (July 2026): delegates to ComputeStats for the single-pass
-// decode + metrics, then runs the threshold checks on the returned
-// Stats struct. Threshold semantics are unchanged; only the implementation
-// surface is now shared with chrome_provider.go's log replication path.
+// P0.2.A: whiteboard exception now requires BOTH white_pct <= 0.998
+// AND edge_density >= minWhiteboardEdgeDensity. Pure-white images are
+// still rejected at the pHash check regardless of style.
 func Validate(filePath string, styleID string) error {
 	stats, err := ComputeStats(filePath)
 	if err != nil {
 		return err
 	}
 
-	// Style-gated near-white threshold. Whiteboard exception is the only
-	// current carve-out: see StyleWhiteboard. New style carve-outs land
-	// as opt-in additions; default = standard thresholds.
+	// Style-gated near-white threshold. Whiteboard exception is the
+	// only current carve-out: see StyleWhiteboard. New style carve-outs
+	// land as opt-in additions; default = standard thresholds.
 	maxWhite := stdMaxWhitePct
 	if styleID == StyleWhiteboard {
 		maxWhite = whiteboardMaxWhitePct
@@ -152,6 +191,18 @@ func Validate(filePath string, styleID string) error {
 	if stats.WhitePct > maxWhite {
 		return fmt.Errorf("%w: style=%q white_pct=%.4f > %.4f (file=%s)",
 			ErrBlankOrPlaceholder, styleID, stats.WhitePct, maxWhite, filePath)
+	}
+
+	// P0.2.A: whiteboard carve-out also requires minimum edge density
+	// so a microscopically-scattered image that JUST passes the pHash
+	// check cannot fake a "stale-reuse hit" through the whiteboard
+	// exception. This catches images like vecchiaRiusata (horizontal
+	// row of dark pixels on white background) — they flip enough pHash
+	// bits but their edge density is 0 (uniform row, no horizontal
+	// transitions) so they are correctly rejected.
+	if styleID == StyleWhiteboard && stats.EdgeDensity < minWhiteboardEdgeDensity {
+		return fmt.Errorf("%w: style=%q edge_density=%.4f < %.4f (whiteboard needs sparse ink, file=%s)",
+			ErrBlankOrPlaceholder, styleID, stats.EdgeDensity, minWhiteboardEdgeDensity, filePath)
 	}
 
 	// Variance below threshold = monochrome / gray gradient / single
@@ -184,30 +235,32 @@ func Validate(filePath string, styleID string) error {
 // and JSON diagnostic dumps cannot accidentally leak the raw uint64.
 func (s Stats) MarshalJSON() ([]byte, error) {
 	type statsJSON struct {
-		Width       int     `json:"width"`
-		Height      int     `json:"height"`
-		WhitePct    float64 `json:"white_pct"`
-		Variance    float64 `json:"variance"`
-		EdgeDensity float64 `json:"edge_density"`
-		PHashHex    string  `json:"phash_hex"`
+		Width          int     `json:"width"`
+		Height         int     `json:"height"`
+		WhitePct       float64 `json:"white_pct"`
+		Variance       float64 `json:"variance"`
+		EdgeDensity    float64 `json:"edge_density"`
+		DistinctColors int     `json:"distinct_colors"`
+		PHashHex       string  `json:"phash_hex"`
 	}
 	return json.Marshal(statsJSON{
-		Width:       s.Width,
-		Height:      s.Height,
-		WhitePct:    s.WhitePct,
-		Variance:    s.Variance,
-		EdgeDensity: s.EdgeDensity,
-		PHashHex:    s.PHashHex,
+		Width:          s.Width,
+		Height:         s.Height,
+		WhitePct:       s.WhitePct,
+		Variance:       s.Variance,
+		EdgeDensity:    s.EdgeDensity,
+		DistinctColors: s.DistinctColors,
+		PHashHex:       s.PHashHex,
 	})
 }
 
 // analyzePixels iterates every pixel of the image bounds and computes
 // the exact near-white ratio + grayscale variance + horizontal-edge
-// density in a SINGLE pass over a per-row grayscale buffer (the
-// second mini-pass over horizontal diffs counts edges without
-// redoing the per-pixel image.At lookup).
+// density + distinct color count in a SINGLE pass over a per-row
+// grayscale buffer (the second mini-pass over horizontal diffs counts
+// edges without redoing the per-pixel image.At lookup).
 //
-// Returns (whitePct, variance, edgeDensity).
+// Returns (whitePct, variance, edgeDensity, distinctColors).
 //
 // Why full iteration (not stride-sampled): the earlier 16-stride
 // sampler yielded integer white_pct values (number-of-sampled-whites
@@ -221,22 +274,32 @@ func (s Stats) MarshalJSON() ([]byte, error) {
 // Full iteration gives float white_pct that correctly tracks the
 // actual visual ratio.
 //
+// distinctColors uses an in-memory map[color.RGBA]struct{} keyed by
+// the exact per-pixel RGBA. The map is bounded at
+// distinctColorCardinalityCap (4096) so a maliciously-large PNG cannot
+// OOM the validator — once the cap is hit, the loop stops the count
+// at the cap value (the canonical signal is already "many colors,
+// definitely not blank" before hitting the cap).
+//
 // Performance: 1920x1080 = 2.07M pixels with image.At() lookups is
-// ~50ms on a mid-range laptop. Acceptable for one-shot generation
-// validation; the validator runs once per image, not in a hot loop.
-func analyzePixels(img image.Image) (whitePct, variance, edgeDensity float64) {
+// ~50ms on a mid-range laptop. Add ~5ms for the per-pixel map insert
+// (113ns/op median for Go's built-in map[string]struct{}, RGBA is
+// similarly cheap). Acceptable for one-shot generation validation;
+// the validator runs once per image, not in a hot loop.
+func analyzePixels(img image.Image) (whitePct, variance, edgeDensity float64, distinctColors int) {
 	bounds := img.Bounds()
 	if bounds.Empty() {
-		return 0, 0, 0
+		return 0, 0, 0, 0
 	}
 	w := bounds.Dx()
 	h := bounds.Dy()
 	nPixels := int64(w) * int64(h)
 	if nPixels == 0 {
-		return 0, 0, 0
+		return 0, 0, 0, 0
 	}
 
 	var whiteCount, sum, sumSq int64
+	colorSet := make(map[color.RGBA]struct{}, 64) // P0.2.A: distinct-color set (bounded at distinctColorCardinalityCap)
 	gray := make([]int16, int(nPixels))
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
@@ -250,6 +313,9 @@ func analyzePixels(img image.Image) (whitePct, variance, edgeDensity float64) {
 			gray[idx] = gg
 			sum += int64(gg)
 			sumSq += int64(gg) * int64(gg)
+			if len(colorSet) < distinctColorCardinalityCap {
+				colorSet[color.RGBA{r8, g8, b8, 255}] = struct{}{}
+			}
 		}
 	}
 
@@ -275,7 +341,8 @@ func analyzePixels(img image.Image) (whitePct, variance, edgeDensity float64) {
 	mean := float64(sum) / npf
 	variance = float64(sumSq)/npf - mean*mean
 	edgeDensity = float64(edgeCount) / npf
-	return whitePct, variance, edgeDensity
+	distinctColors = len(colorSet)
+	return whitePct, variance, edgeDensity, distinctColors
 }
 
 // pHash computes an 8x8 average-hash on the input image. The result is
@@ -303,13 +370,6 @@ func pHash(img image.Image) uint64 {
 			sx := bounds.Min.X + x*stepX
 			sy := bounds.Min.Y + y*stepY
 			r, g, b, _ := img.At(sx, sy).RGBA()
-			// Pre-fix precedence bug (July 2026): the original
-			// `int(r>>8) + int(g>>8) + int(b>>8)/3` evaluated as
-			// `r8 + g8 + (b8 / 3)` — the blue channel divided by 3
-			// BEFORE the addition. The intended per-pixel grayscale
-			// is the bit-rate-correct average of all three channels,
-			// so we now parenthesise the sum so the cast applies to
-			// the full (r+g+b) aggregate before dividing by 3.
 			gray := (int(r>>8) + int(g>>8) + int(b>>8)) / 3
 			pixels[y*size+x] = gray
 			sum += gray
@@ -329,7 +389,7 @@ func pHash(img image.Image) uint64 {
 // the average-hash algorithm produces hash=0 for any uniform image
 // (mean == every pixel), the value is a compile-time constant 0.
 //
-// This function exists as the future-forward seam for an opt-in different
+// This function exists as the forward-seam for an opt-in different
 // placeholder reference. Review feedback P0.2: today the all-zero
 // reference is correct and stable; if we later choose to fingerprint
 // a specific rendered placeholder (e.g. a UI shimmer), we'd swap the

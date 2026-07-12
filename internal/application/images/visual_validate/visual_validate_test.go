@@ -22,10 +22,13 @@ func jsonMarshal(t *testing.T, v any) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-// Fixture generation: 4 programmatically-built PNGs in t.TempDir().
-// We avoid shipping binary fixtures in the repo to keep the diff small
-// and to deterministically exercise the validator's thresholds.
+// Fixture generation: 4 programmatically-built PNGs in t.TempDir()
+// (+ vecchiaRiusata as the 5th per P0.2.A spec). We avoid shipping
+// binary fixtures in the repo to keep the diff small and to
+// deterministically exercise the validator's thresholds.
 
+// writePNG encodes the given image as a PNG at the given path inside
+// the test's TempDir and returns the absolute path.
 func writePNG(t *testing.T, dir, name string, img image.Image) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
@@ -41,8 +44,8 @@ func writePNG(t *testing.T, dir, name string, img image.Image) string {
 }
 
 // pureWhite: every pixel is (255,255,255,255). The pre-fix blank
-// produced by File->Download->PNG over an empty slides.new page renders
-// closest to this. Must be REJECTED by Validate for standard style.
+// produced by File->Download->PNG over an empty slides.new page
+// renders closest to this. Must be REJECTED by Validate for any style.
 func pureWhite(w, h int) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	for y := 0; y < h; y++ {
@@ -66,13 +69,13 @@ func slideVuoto(w, h int) *image.RGBA {
 	return img
 }
 
-// realImage: a colorful gradient with structured edges. Mimics what a
-// generated image looks like in production. ACCEPTED.
+// realImage: a colorful gradient with structured edges. Mimics what
+// a generated image looks like in production. ACCEPTED under standard.
 //
 // Fix for vet.CompileError regression from earlier draft:
-// (uint8)((x*255 + y*255)/s) % 256  triggered go's "overflows uint8" check
-// because Go promotes the rhs literal 256 to uint8 in this context.
-// We now compute on ints and cast once.
+// (uint8)((x*255 + y*255)/s) % 256  triggered go's "overflows uint8"
+// check because Go promotes the rhs literal 256 to uint8 in this
+// context. We now compute on ints and cast once.
 func realImage(w, h int, seed int64) *image.RGBA {
 	r := rand.New(rand.NewSource(seed))
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
@@ -96,15 +99,23 @@ func realImage(w, h int, seed int64) *image.RGBA {
 // but pHash diverges from blank reference). Returned as *image.RGBA so
 // .SetRGBA is available — the pre-fix draft returned image.Image which
 // has no Set method.
+//
+// Dual-style contract fixture:
+//
+//	standard (white_pct > 0.99)                          → REJECTED
+//	whiteboard (white_pct <= 0.998 AND pHash dist > 5 +
+//	edge_density >= minWhiteboardEdgeDensity)            → ACCEPTED
+//
+// For 80x80 = 6400 pixels, 54 ink pixels (six 3x3 blocks) → wp = 0.9916
+// (= 1 - 54/6400), in the open interval (0.99, 0.998]. The blocks
+// are centered on pHash sample points (size=8 grid: x,y in
+// {0,10,20,...,70}); each block flips a bit in the 8x8 hash, giving
+// distance >= 6 (> 5). The 3x3 blocks also contribute horizontal-edge
+// transitions (~6 transitions per block: 3 rows × 2 transitions per
+// row), totalling 36 edges / 6400 pixels = 0.00562 edge_density,
+// comfortably above the 0.001 floor.
 func whiteboardSketch(w, h int) *image.RGBA {
 	img := pureWhite(w, h)
-	// Dual-style contract fixture:
-	//   standard (white_pct > 0.99)  -> REJECTED
-	//   whiteboard (white_pct <= 0.998 AND pHash dist > 5) -> ACCEPTED
-	// For 80x80 = 6400 pixels, 54 ink pixels (six 3x3 blocks) -> wp = 0.9916,
-	// in the open interval (0.99, 0.998]. The blocks are centered on
-	// pHash sample points (size=8 grid: x,y in {0,10,20,...,70}); each
-	// block flips a bit in the 8x8 hash, giving distance >= 6 (> 5).
 	samplePoints := []struct{ cx, cy int }{
 		{0, 0}, {10, 10}, {20, 20}, {30, 30}, {40, 40}, {50, 50},
 	}
@@ -117,6 +128,31 @@ func whiteboardSketch(w, h int) *image.RGBA {
 				}
 			}
 		}
+	}
+	return img
+}
+
+// vecchiaRiusata: P0.2.A 5th spec fixture. Simulates a stale-cached
+// image hit (old image reused from a previous caching layer).
+// Mostly-white background with a HORIZONTAL ROW of dark pixels at
+// y=0. The row flips the entire y=0 sample row of pHash bits (8 of 8
+// = distance 8 > 5 → passes pHash check). The row is uniform within
+// itself (all dark) → ZERO horizontal-edge transitions → edge_density
+// = 0 → FAILS the new whiteboard edge-density floor.
+//
+// Net effect under StyleWhiteboard: REJECTED on edge_density floor.
+// This proves the P0.2.A floor catches the stale-reuse cache-hit
+// variant that the legacy carve-out would have silently accepted.
+//
+// Properties:
+//   - white_pct ~0.9875 (≤ 0.998 → passes whiteboard carve-out)
+//   - variance ≫ 5
+//   - pHash distance = 8 (> 5 → passes pHash check)
+//   - edge_density = 0 (< 0.001 → fails new whiteboard floor)
+func vecchiaRiusata(w, h int) *image.RGBA {
+	img := pureWhite(w, h)
+	for x := 0; x < w; x++ {
+		img.SetRGBA(x, 0, color.RGBA{10, 10, 10, 255})
 	}
 	return img
 }
@@ -200,6 +236,26 @@ func TestValidate_WhiteboardSketch_Rejected_AsStandard(t *testing.T) {
 	}
 }
 
+// P0.2.A: vecchia-riusata fixture (5th spec PNG). Under StyleWhiteboard
+// the legacy carve-out would have silently accepted this image because
+// it passes the white_pct and pHash + variance checks. The new
+// minWhiteboardEdgeDensity floor catches it because its edge_density
+// is 0 (uniform horizontal row of dark pixels has zero horizontal
+// transitions). This is the regression test that PROVES the floor
+// is wired and reachable.
+func TestValidate_VecchiaRiusata_RejectedAsWhiteboard_EdgeDensityFloor(t *testing.T) {
+	dir := t.TempDir()
+	path := writePNG(t, dir, "vecchia-riusata.png", vecchiaRiusata(80, 80))
+
+	err := Validate(path, StyleWhiteboard)
+	if err == nil {
+		t.Fatal("vecchia riusata under StyleWhiteboard must reject (edge_density floor)")
+	}
+	if !errors.Is(err, ErrBlankOrPlaceholder) {
+		t.Fatalf("expected ErrBlankOrPlaceholder, got %v", err)
+	}
+}
+
 func TestValidate_FileMissing(t *testing.T) {
 	err := Validate("/nonexistent/path/file.png", "")
 	if err == nil || errors.Is(err, ErrBlankOrPlaceholder) {
@@ -250,6 +306,9 @@ func TestComputeStats_PureWhite_AllZeroSignal(t *testing.T) {
 	if stats.EdgeDensity != 0 {
 		t.Fatalf("edge_density: want 0 (uniform input); got %.4f", stats.EdgeDensity)
 	}
+	if stats.DistinctColors != 1 {
+		t.Fatalf("distinct_colors: want 1 (single RGBA value); got %d", stats.DistinctColors)
+	}
 	if stats.PHashHex != "0000000000000000" {
 		t.Fatalf("phash_hex: want all-zero (uniform input); got %q", stats.PHashHex)
 	}
@@ -285,6 +344,14 @@ func TestComputeStats_RealImage_NonZeroSignal(t *testing.T) {
 	if stats.EdgeDensity <= 0 {
 		t.Fatalf("edge_density: want >>0 for structured real image; got %.4f", stats.EdgeDensity)
 	}
+	// P0.2.A: distinct_colors must be populated and bounded.
+	if stats.DistinctColors <= 0 {
+		t.Fatalf("distinct_colors: want >0 (real image has many RGBA values); got %d", stats.DistinctColors)
+	}
+	if stats.DistinctColors > distinctColorCardinalityCap {
+		t.Fatalf("distinct_colors: want <=%d (anti-OOM cap); got %d",
+			distinctColorCardinalityCap, stats.DistinctColors)
+	}
 	if stats.PHashHex == "0000000000000000" {
 		t.Fatalf("phash_hex: want non-zero (real image never has uniform pHash); got %q", stats.PHashHex)
 	}
@@ -302,8 +369,9 @@ func TestComputeStats_MarshalJSON_OmitsPrivateField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	// The 6 canonical Stats fields should be present.
-	for _, field := range []string{`"width"`, `"height"`, `"white_pct"`, `"variance"`, `"edge_density"`, `"phash_hex"`} {
+	// The 7 canonical Stats fields should be present (P0.2.A added
+	// distinct_colors).
+	for _, field := range []string{`"width"`, `"height"`, `"white_pct"`, `"variance"`, `"edge_density"`, `"distinct_colors"`, `"phash_hex"`} {
 		if !bytes.Contains(data, []byte(field)) {
 			t.Fatalf("Marshaled Stats missing field %s: %s", field, string(data))
 		}
