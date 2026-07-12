@@ -10,6 +10,15 @@
 //   - Guidelines (real editorial guidelines)
 //   - GroundingPolicy
 //
+// PR-CS-1 / FASE 7 (DoD #9): per-block ScriptSegment payload is
+// INCLUDED. plan.Segments — each block's Topic + SourceText +
+// TargetWords with SLICE ORDER preserved verbatim. A reorder IS
+// a different identity (not a canonical no-op). This is the
+// canonical reverse of the pre-FASE-7 Segment-sizing exclusion
+// listed below (NumClips / SegmentWords / SegmentTopics remain
+// EXCLUDED — those are the legacy alias and the per-scene
+// planner dimensions, not the new per-block payload).
+//
 // EXPLICITLY excludes output flags (they don't change the text):
 //   - SaveToDB (transport)
 //   - DriveFolderID (transport)

@@ -71,6 +71,15 @@ type GenerationFingerprintInput struct {
 
 	// GroundingPolicy is the clip-grounding policy.
 	GroundingPolicy string `json:"grounding_policy"`
+
+	// PR-CS-1 / FASE 7 (July 2026, DoD #9): Segments is part of
+	// the canonical generation fingerprint. Each ScriptSegment
+	// block (Topic + SourceText + TargetWords) participates in
+	// the hash, and the SLICE ORDER is preserved verbatim
+	// (DoD #9 reverse-mapping: a reorder IS a different identity,
+	// NOT a canonical no-op). The legacy SegmentTopics alias
+	// remains EXCLUDED — see cache_key.go for the rationale.
+	Segments []ScriptSegment `json:"segments"`
 }
 
 // BuildFingerprint returns the canonical 64-bit hex fingerprint for
@@ -151,6 +160,16 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 	if plan.ClipEvidence != nil {
 		input.ClipIDs = append([]string(nil), plan.ClipEvidence.AcceptedClipIDs...)
 		input.ClipTranscriptHashes = append([]string(nil), plan.ClipEvidence.ClipTranscriptHashes...)
+	}
+
+	// PR-CS-1 / FASE 7 (DoD #9): per-block ScriptSegment payload
+	// participates in the fingerprint. The order from plan.Segments
+	// is preserved verbatim (a reorder IS a different identity,
+	// NOT a no-op). The slice is defensively copied so future
+	// in-place edits to plan.Segments do not leak into the
+	// BuildFingerprint call chain.
+	if len(plan.Segments) > 0 {
+		input.Segments = append([]ScriptSegment(nil), plan.Segments...)
 	}
 
 	return input
@@ -268,6 +287,16 @@ func cloneFingerprintInput(input GenerationFingerprintInput) GenerationFingerpri
 	}
 	if input.ClipTranscriptHashes != nil {
 		input.ClipTranscriptHashes = append([]string(nil), input.ClipTranscriptHashes...)
+	}
+	// PR-CS-1 / FASE 7 (DoD #9): defensive deep-copy of Segments.
+	// ScriptSegment is a value-struct (Topic + SourceText +
+	// TargetWords are non-pointer fields) so the append pattern
+	// copies both the slice header AND each value-struct entry
+	// (Go semantics on `append([]T(nil), src...)` for value types).
+	// Without this, BuildFingerprint's in-place SortClipIDsAndHashes
+	// (or future similar transforms) would mutate the caller's slice.
+	if input.Segments != nil {
+		input.Segments = append([]ScriptSegment(nil), input.Segments...)
 	}
 	return input
 }
