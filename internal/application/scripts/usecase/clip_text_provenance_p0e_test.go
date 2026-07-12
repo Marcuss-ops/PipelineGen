@@ -9,64 +9,64 @@
 //
 // USER-SPEC SCENARIOS (all PASS today):
 //
-//   1. only_search_text          → "CLIP <id>: <title>" header +
-//                                  "  Description: <SearchText>"
-//                                  (no Transcript / Tags blocks);
-//                                  SearchText wins over metadata.description
-//                                  per clip_source_builder.go:308-315.
+//  1. only_search_text          → "CLIP <id>: <title>" header +
+//     "  Description: <SearchText>"
+//     (no Transcript / Tags blocks);
+//     SearchText wins over metadata.description
+//     per clip_source_builder.go:308-315.
 //
-//   2. only_description          → "CLIP <id>: <title>" header +
-//                                  "  Description: <metadata.description>"
-//                                  (Description fallback when SearchText
-//                                  is empty / whitespace-only);
-//                                  no Transcript / Tags blocks.
+//  2. only_description          → "CLIP <id>: <title>" header +
+//     "  Description: <metadata.description>"
+//     (Description fallback when SearchText
+//     is empty / whitespace-only);
+//     no Transcript / Tags blocks.
 //
-//   3. only_transcript           → "CLIP <id>: <title>" header +
-//                                  "  Transcript: <metadata.transcript>"
-//                                  (uses raw `transcript` metadata when
-//                                  `clean_transcript` is absent);
-//                                  no Description / Tags blocks.
+//  3. only_transcript           → "CLIP <id>: <title>" header +
+//     "  Transcript: <metadata.transcript>"
+//     (uses raw `transcript` metadata when
+//     `clean_transcript` is absent);
+//     no Description / Tags blocks.
 //
-//   4. only_tags                 → "CLIP <id>: <title>" header +
-//                                  "  Tags: <tag1>, <tag2>, …";
-//                                  no Description / Transcript blocks.
+//  4. only_tags                 → "CLIP <id>: <title>" header +
+//     "  Tags: <tag1>, <tag2>, …";
+//     no Description / Transcript blocks.
 //
-//   5. all_fields                → all 4 blocks present
-//                                  (CLIP header + Description +
-//                                  Transcript + Tags, in that order).
+//  5. all_fields                → all 4 blocks present
+//     (CLIP header + Description +
+//     Transcript + Tags, in that order).
 //
-//   6. no_text_fields            → only "CLIP <id>: <title>" header
-//                                  (no Description / Transcript / Tags
-//                                  blocks; the resolver suppresses
-//                                  empty downstream blocks cleanly).
+//  6. no_text_fields            → only "CLIP <id>: <title>" header
+//     (no Description / Transcript / Tags
+//     blocks; the resolver suppresses
+//     empty downstream blocks cleanly).
 //
 // REGRESSION TEST CRITICO — KNOWN GAP (scenario 7):
 //
-//   When BOTH `metadata.transcript` AND `metadata.clean_transcript`
-//   are populated on the same clip, the helper
-//   (`clip_source_builder.go::clipTranscript`) prefers the raw
-//   `transcript` field over the curated `clean_transcript` field.
+//	When BOTH `metadata.transcript` AND `metadata.clean_transcript`
+//	are populated on the same clip, the helper
+//	(`clip_source_builder.go::clipTranscript`) prefers the raw
+//	`transcript` field over the curated `clean_transcript` field.
 //
-//   THIS INVERTS THE DOC-COMMENT INTENT. The helper's prologue
-//   (clip_source_builder.go:367) explicitly states "preferring
-//   clean_transcript over raw transcript", but the implementation
-//   immediately below it (clip_source_builder.go:368-373) checks
-//   `transcript` FIRST and only falls back to `clean_transcript`.
+//	THIS INVERTS THE DOC-COMMENT INTENT. The helper's prologue
+//	(clip_source_builder.go:367) explicitly states "preferring
+//	clean_transcript over raw transcript", but the implementation
+//	immediately below it (clip_source_builder.go:368-373) checks
+//	`transcript` FIRST and only falls back to `clean_transcript`.
 //
-//   Real-world impact: a clip with `transcript` containing
-//   raw ASR noise (timestamps, false starts, [music], …) and
-//   `clean_transcript` containing the curated narrative form will
-//   surface the DIRTY text into the LLM prompt and downstream
-//   scenes — degrading every consumer that runs on this evidence
-//   chain.
+//	Real-world impact: a clip with `transcript` containing
+//	raw ASR noise (timestamps, false starts, [music], …) and
+//	`clean_transcript` containing the curated narrative form will
+//	surface the DIRTY text into the LLM prompt and downstream
+//	scenes — degrading every consumer that runs on this evidence
+//	chain.
 //
-//   Per AGENTS.md ("do not add features to production code unless
-//   explicitly requested") this test pins CURRENT behavior with a
-//   loud KNOWN GAP marker. The next contributor flips both (a) the
-//   helper to prefer `clean_transcript` first and (b) the assertion
-//   to expect `testo corretto` instead of `testo sporco`. Until
-//   then, the t.Logf below documents which string actually wins
-//   so a reviewer reading CI output sees the bug immediately.
+//	Per AGENTS.md ("do not add features to production code unless
+//	explicitly requested") this test pins CURRENT behavior with a
+//	loud KNOWN GAP marker. The next contributor flips both (a) the
+//	helper to prefer `clean_transcript` first and (b) the assertion
+//	to expect `testo corretto` instead of `testo sporco`. Until
+//	then, the t.Logf below documents which string actually wins
+//	so a reviewer reading CI output sees the bug immediately.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: every scenario asserts the
 // canonical paragraph composition (presence AND absence of each
@@ -129,13 +129,13 @@ func p0eCases() []p0eParagraphCase {
 		// the makeTestClip's Name "Title " + id derivation so a
 		// reader can grep "p0e-clip-" in test output and jump
 		// straight to the scenario.
-		idOnlySearch    = "p0e-clip-search"
-		idOnlyDesc      = "p0e-clip-desc"
-		idOnlyTrans     = "p0e-clip-trans"
-		idOnlyTags      = "p0e-clip-tags"
-		idAllFields     = "p0e-clip-all"
-		idNoText        = "p0e-clip-empty"
-		idTransVsClean  = "p0e-clip-tx-vs-clean"
+		idOnlySearch   = "p0e-clip-search"
+		idOnlyDesc     = "p0e-clip-desc"
+		idOnlyTrans    = "p0e-clip-trans"
+		idOnlyTags     = "p0e-clip-tags"
+		idAllFields    = "p0e-clip-all"
+		idNoText       = "p0e-clip-empty"
+		idTransVsClean = "p0e-clip-tx-vs-clean"
 	)
 
 	return []p0eParagraphCase{
@@ -143,8 +143,8 @@ func p0eCases() []p0eParagraphCase {
 			// SCENARIO 1 — only_search_text. SearchText wins over
 			// metadata.description per the canonical fallback
 			// chain in clip_source_builder.go:308-315.
-			name:    "scenario_1_only_search_text",
-			clipID:  idOnlySearch,
+			name:        "scenario_1_only_search_text",
+			clipID:      idOnlySearch,
 			description: "SearchText set, metadata.description empty, no transcript, no tags",
 			mutate: func(c *asset.Asset) {
 				c.SearchText = "ONLY search text content — unique payload A"
@@ -165,8 +165,8 @@ func p0eCases() []p0eParagraphCase {
 		{
 			// SCENARIO 2 — only_description. SearchText empty →
 			// metadata.description is the Description fallback.
-			name:    "scenario_2_only_description",
-			clipID:  idOnlyDesc,
+			name:        "scenario_2_only_description",
+			clipID:      idOnlyDesc,
 			description: "SearchText empty, metadata.description set, no transcript, no tags",
 			mutate: func(c *asset.Asset) {
 				c.SearchText = ""
@@ -187,8 +187,8 @@ func p0eCases() []p0eParagraphCase {
 		{
 			// SCENARIO 3 — only_transcript. No transcript input
 			// field present → no Transcript block.
-			name:    "scenario_3_only_transcript",
-			clipID:  idOnlyTrans,
+			name:        "scenario_3_only_transcript",
+			clipID:      idOnlyTrans,
 			description: "SearchText empty, no description, metadata.transcript set, no tags",
 			mutate: func(c *asset.Asset) {
 				c.SearchText = ""
@@ -212,8 +212,8 @@ func p0eCases() []p0eParagraphCase {
 			// SCENARIO 4 — only_tags. Only Tags populated → only
 			// the Tags block appears (no Description because
 			// SearchText AND metadata.description are both empty).
-			name:    "scenario_4_only_tags",
-			clipID:  idOnlyTags,
+			name:        "scenario_4_only_tags",
+			clipID:      idOnlyTags,
 			description: "SearchText empty, no description, no transcript, only Tags populated",
 			mutate: func(c *asset.Asset) {
 				c.SearchText = ""
@@ -235,8 +235,8 @@ func p0eCases() []p0eParagraphCase {
 			// SCENARIO 5 — all_fields. All 4 fields populated →
 			// all 4 blocks in canonical order (CLIP header,
 			// Description, Transcript, Tags).
-			name:    "scenario_5_all_fields",
-			clipID:  idAllFields,
+			name:        "scenario_5_all_fields",
+			clipID:      idAllFields,
 			description: "SearchText + description + transcript + clean_transcript + tags all set",
 			mutate: func(c *asset.Asset) {
 				c.SearchText = "ALL search text — unique payload D1"
@@ -266,8 +266,8 @@ func p0eCases() []p0eParagraphCase {
 		{
 			// SCENARIO 6 — no_text_fields. All 4 fields empty →
 			// only the "CLIP <id>: <title>" header line survives.
-			name:    "scenario_6_no_text_fields",
-			clipID:  idNoText,
+			name:        "scenario_6_no_text_fields",
+			clipID:      idNoText,
 			description: "SearchText + description + transcript + clean_transcript + tags all empty",
 			mutate: func(c *asset.Asset) {
 				c.SearchText = ""
@@ -311,9 +311,9 @@ func p0eCases() []p0eParagraphCase {
 			//
 			// Until then, the t.Logf below surfaces which string
 			// actually wins each CI run.
-			name:           "scenario_7_transcript_vs_clean_transcript_KNOWN_GAP",
-			clipID:         idTransVsClean,
-			description:    "BOTH metadata.transcript (testo sporco) AND clean_transcript (testo corretto) set; the helper's doc-comment says clean should win but the implementation prefers raw — KNOWN GAP",
+			name:        "scenario_7_transcript_vs_clean_transcript_KNOWN_GAP",
+			clipID:      idTransVsClean,
+			description: "BOTH metadata.transcript (testo sporco) AND clean_transcript (testo corretto) set; the helper's doc-comment says clean should win but the implementation prefers raw — KNOWN GAP",
 			mutate: func(c *asset.Asset) {
 				c.SearchText = ""
 				c.SetMetadataString("description", "")
@@ -375,14 +375,16 @@ func TestClipTextProvenance_P0E_BuilderLayer_FullCoverage(t *testing.T) {
 			resolver := newFakeClipResolver()
 			resolver.AddClip(clip)
 
+			reader := &metaBackedTranscriptReader{transcripts: map[string]string{tc.clipID: p0eEffectiveTranscript(clip)}}
 			builder := NewClipSourceBuilder(resolver, nil, nil)
+			builder.ConfigureTextTrackReader(reader)
 
 			// RequireDriveLink=false (text-only path) so the
 			// resolver doesn't route the clip into MissingClipIDs
 			// when its DriveLink is stripped by some future helper
 			// tweak. This test exercises PROVENANCE, NOT the
 			// DriveLink filter (covered by the P0.C suite).
-			opts := &ClipGenerationOptions{RequireDriveLink: false}
+			opts := &ClipGenerationOptions{RequireDriveLink: false, Language: "en"}
 
 			ev, title, sourceText, err := builder.BuildClipContext(
 				context.Background(), []string{tc.clipID}, opts,
@@ -460,10 +462,12 @@ func TestClipTextProvenance_P0E_BlockStructure(t *testing.T) {
 
 	resolver := newFakeClipResolver()
 	resolver.AddClip(clip)
+	reader := &metaBackedTranscriptReader{transcripts: map[string]string{clipID: p0eEffectiveTranscript(clip)}}
 	builder := NewClipSourceBuilder(resolver, nil, nil)
+	builder.ConfigureTextTrackReader(reader)
 
 	ev, _, sourceText, err := builder.BuildClipContext(
-		context.Background(), []string{clipID}, nil,
+		context.Background(), []string{clipID}, &ClipGenerationOptions{Language: "en"},
 	)
 	require.NoError(t, err)
 	require.NotNil(t, ev)
@@ -496,3 +500,55 @@ func TestClipTextProvenance_P0E_BlockStructure(t *testing.T) {
 		idxTrans, idxTags, sourceText)
 }
 
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the P0.E
+// suite's legacy `SetMetadataString("transcript", ...)` writes
+// are NO LONGER read by resolveTranscript (strict cutover removed
+// the metadata_json fallback). To keep the P0.E scenarios
+// asserting what they always asserted (Transcript block
+// presence/absence in the assembled sourceText) without
+// rewriting every scenario's mutate function, we wrap those
+// legacy writes through the canonical TextTrackReader port via a
+// per-clip stub. The stub routes per-clip
+// metadata_json["transcript"] content back through
+// resolveTranscript's TextTrackReader.FindReady call — hermetic,
+// in-memory, no DB / Whisper involvement.
+type metaBackedTranscriptReader struct {
+	transcripts map[string]string
+}
+
+func (r *metaBackedTranscriptReader) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+	if text, ok := r.transcripts[assetID]; ok && kind == asset.TextTrackTranscript {
+		return &asset.TextTrack{
+			AssetID:       assetID,
+			LanguageCode:  languageCode,
+			TextKind:      asset.TextTrackTranscript,
+			TextContent:   text,
+			TextHash:      "p0e-stub-" + assetID,
+			SourceVersion: "v1",
+			Status:        asset.TextTrackReady,
+		}, nil, nil
+	}
+	return nil, nil, nil
+}
+
+func (r *metaBackedTranscriptReader) ListReadyLanguages(_ context.Context, assetID string, _ asset.TextTrackKind) ([]string, error) {
+	if _, ok := r.transcripts[assetID]; ok {
+		return []string{"en"}, nil
+	}
+	return nil, nil
+}
+
+// p0eEffectiveTranscript returns the transcript string that the
+// canonical pre-cutover resolver WOULD have surfaced for this
+// clip. The function exists solely to feed
+// metaBackedTranscriptReader so the scenarios' legacy
+// `SetMetadataString("transcript", ...)` writes still reach the
+// assembled sourceText through the canonical port. Mirrors
+// CURRENT (pre-cutover) per-scenario intent: raw `transcript`
+// wins (the scenario 7 KNOWN GAP is preserved by this rule).
+func p0eEffectiveTranscript(c *asset.Asset) string {
+	if raw := c.GetMetadataString("transcript"); raw != "" {
+		return raw
+	}
+	return ""
+}

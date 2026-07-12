@@ -53,21 +53,12 @@ type ClipSourceBuilder struct {
 	log          *zap.Logger
 	// textTrackReader is the canonical Fase 4 read surface for
 	// the video pipeline (PR-PY-CLIPS-CORRETTE-TRADOTTE, July
-	// 2026). Nil = legacy metadata_json transcript path (pre-Fase
-	// 4 behavior, retained for back-compat with tests that
-	// don't wire a TextTrackReader). Production wiring calls
-	// `ConfigureTextTrackReader(reader, legacyFallback)` at
-	// composition time to cut over to the canonical
-	// `asset_text_tracks` read.
+	// 2026). The canonical post-cutover contract is that this
+	// reader is ALWAYS wired by composition (production) or by
+	// test fixture. A nil reader surfaces ErrTextTrackNotReady
+	// — there is no `metadata_json[\"transcript\"]` /
+	// `metadata_json[\"clean_transcript\"]` fallback path.
 	textTrackReader ports.TextTrackReader
-	// legacyFallback gates the metadata_json transcript fallback
-	// in resolveTranscript. False (post-cutover default) means
-	// a missing/non-READY text track surfaces
-	// `*ErrTextTrackNotReady` to the caller. True (migration
-	// window) means the legacy metadata_json path is the
-	// fallback so operators can keep pre-cutover clips rendered
-	// while the backfill CLI populates `asset_text_tracks`.
-	legacyFallback bool
 }
 
 type ClipGenerationOptions struct {
@@ -108,22 +99,23 @@ func NewClipSourceBuilder(
 func (c *ClipSourceBuilder) SetReranker(r any) { c.reranker = r }
 
 // ConfigureTextTrackReader wires the canonical Fase 4 read
-// surface (TextTrackReader) and sets the metadata_json fallback
-// flag. The composition root calls this exactly once at
-// startup, after NewClipSourceBuilder.
+// surface (TextTrackReader). The composition root calls this
+// exactly once at startup, after NewClipSourceBuilder.
 //
 // godlike/06 SSOT: the call site is
 // `internal/app/wire_script_resolvers.go::buildScriptSourceResolvers`.
-// A nil reader preserves the legacy metadata_json path (for
-// back-compat with tests); a non-nil reader + flag combination
-// is the canonical cutover contract.
+// The Fase 4 contract is TextTrackReader-only — there is no
+// second parameter because there is no longer a legacy
+// `metadata_json[\"transcript\"]` fallback to gate.
 //
-// godlike/07 minimum-blast-radius: the setter is additive —
-// the 4-arg NewClipSourceBuilder signature is preserved so
-// existing test files compile unchanged.
-func (c *ClipSourceBuilder) ConfigureTextTrackReader(r ports.TextTrackReader, legacyFallback bool) {
+// godlike/07 NO-FAKE-AVAILABILITY: a nil reader surfaces the
+// lazy `*ErrTextTrackNotReady` (AssetID populated, the rest
+// empty) — this is the composition-time-validation teller:
+// production composition wires a real reader, dev/test
+// fixtures must either wire a stub or document the failure
+// mode explicitly.
+func (c *ClipSourceBuilder) ConfigureTextTrackReader(r ports.TextTrackReader) {
 	c.textTrackReader = r
-	c.legacyFallback = legacyFallback
 }
 
 const excerptMaxRunes = 500

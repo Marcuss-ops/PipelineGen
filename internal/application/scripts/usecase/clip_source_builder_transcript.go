@@ -9,17 +9,14 @@
 // transcript string is the canonical input to both the assembled
 // source text and the per-clip ClipDetail.Transcript field.
 //
-// godlike/07 NO-FAKE-AVAILABILITY: the legacy
-// `metadata_json["transcript"]` / `metadata_json["clean_transcript"]`
-// read is RETIRED by default. The fallback is gated behind the
-// `media.multilingual.migration_fallback_legacy_metadata` config
-// flag (see MultilingualConfig.MigrationFallbackLegacyMetadata).
-// When the flag is false (the post-cutover default), the legacy
-// path is REMOVED: a missing/non-READY text track surfaces the
-// typed `*ErrTextTrackNotReady` to the caller. When the flag is
-// true (one-time migration window), the legacy path is the
-// fallback so operators can keep pre-cutover clips rendered while
-// the backfill CLI populates `asset_text_tracks`.
+// godlike/07 NO-FAKE-AVAILABILITY + Fase 4 STRICT contract:
+// transcripts are read EXCLUSIVELY from `asset_text_tracks` via
+// the TextTrackReader port. There is NO `metadata_json["transcript"]`
+// / `metadata_json["clean_transcript"]` fallback path. There is
+// NO `translation.TranslationPort` runtime invocation. A missing
+// reader, a reader error, a non-READY track, or an empty language
+// selection ALL surface the typed `*ErrTextTrackNotReady` to the
+// caller — errors.As-probeable, struct-discriminated.
 
 package usecase
 
@@ -32,21 +29,23 @@ import (
 )
 
 // resolveTranscript returns the canonical transcript string +
-// the resolved *asset.TextTrack for the given clip, preferring
-// the `asset_text_tracks` row at the requested language (via
-// TextTrackReader) and falling back to the legacy
-// `metadata_json["transcript"]` /
-// `metadata_json["clean_transcript"]` ONLY when the migration
-// fallback flag is enabled.
+// the resolved *asset.TextTrack for the given clip via the
+// TextTrackReader. There is no legacy metadata_json fallback
+// (Fase 4 strict cutover) — every non-READY-or-missing path
+// returns *ErrTextTrackNotReady.
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the
 // signature is `(string, *asset.TextTrack, error)` so the
 // per-clip accumulator can capture the resolved track (needed
-// to populate the 3 new ClipEvidence fingerprint fields:
-// LanguageCode, TextTrackVersion, TranscriptHash). The legacy
-// path returns a nil track (the legacy metadata_json read has
-// no TextTrack shape); the 3 fingerprint fields are left
-// empty in that case (the pre-Fase-4 behavior).
+// to populate the 3 ClipEvidence fingerprint fields:
+// LanguageCode, TextTrackVersion, TranscriptHash). A nil track
+// is the canonical signal that the 3 fingerprint fields are
+// left empty. Strict cutover behavior: a missing/non-READY
+// track returns *ErrTextTrackNotReady, errors.As-probeable —
+// callers MUST handle this typed error explicitly. The
+// `_ = clip` mark acknowledges that the legacy metadata_json
+// read is RETIRED (Fase 4 hard cutover); the parameter is
+// retained so BuildClipContext's call site does not drift.
 //
 // godlike/07 minimum-blast-radius: the typed error is returned
 // to the caller (BuildClipContext logs it and continues with
@@ -63,48 +62,50 @@ func (c *ClipSourceBuilder) resolveTranscript(
 	language string,
 	clip *asset.Asset,
 ) (string, *asset.TextTrack, error) {
-	// Legacy path: textTrackReader is not wired. Returns
-	// ("", nil, nil) — the per-clip accumulator sees a nil
-	// track and skips the 3 fingerprint fields.
+	// Fase 4 strict cutover: textTrackReader is REQUIRED. A nil
+	// reader is a composition-time wiring gap — surface
+	// ErrTextTrackNotReady so the operator dashboard sees it
+	// (no silent no-op, no metadata_json fallback).
+	_ = clip // clip is unused after Fase 4 cutover — the legacy
+	//          `metadata_json["transcript"]` read is RETIRED.
 	if c.textTrackReader == nil {
-		return legacyMetadataTranscript(clip), nil, nil
+		return "", nil, &ErrTextTrackNotReady{
+			AssetID:            assetID,
+			RequestedLanguage:  strings.TrimSpace(language),
+			AvailableLanguages: nil,
+			MissingKind:        asset.TextTrackTranscript,
+		}
 	}
 
-	// New path: read the READY text track for the requested
+	// Strict path: read the READY text track for the requested
 	// (asset, language, kind) triple.
 	lang := strings.TrimSpace(language)
 	if lang == "" {
 		return "", nil, &ErrTextTrackNotReady{
-			AssetID:           assetID,
-			RequestedLanguage: "",
+			AssetID:            assetID,
+			RequestedLanguage:  "",
 			AvailableLanguages: nil,
-			MissingKind:       asset.TextTrackTranscript,
+			MissingKind:        asset.TextTrackTranscript,
 		}
 	}
 
 	track, _, err := c.textTrackReader.FindReady(ctx, assetID, lang, asset.TextTrackTranscript)
 	if err != nil {
-		if c.legacyFallback {
-			return legacyMetadataTranscript(clip), nil, nil
-		}
 		c.logTextTrackResolveError(assetID, lang, err)
 		return "", nil, &ErrTextTrackNotReady{
-			AssetID:           assetID,
-			RequestedLanguage: lang,
+			AssetID:            assetID,
+			RequestedLanguage:  lang,
 			AvailableLanguages: nil,
-			MissingKind:       asset.TextTrackTranscript,
+			MissingKind:        asset.TextTrackTranscript,
 		}
 	}
 	if track == nil {
-		if c.legacyFallback {
-			return legacyMetadataTranscript(clip), nil, nil
-		}
 		available := c.listReadyLanguagesBestEffort(ctx, assetID)
 		return "", nil, &ErrTextTrackNotReady{
-			AssetID:           assetID,
-			RequestedLanguage: lang,
+			AssetID:            assetID,
+			RequestedLanguage:  lang,
 			AvailableLanguages: available,
-			MissingKind:       asset.TextTrackTranscript,
+			MissingKind:        asset.TextTrackTranscript,
 		}
 	}
 
@@ -150,19 +151,12 @@ func (c *ClipSourceBuilder) logTextTrackResolveError(assetID, language string, e
 		zap.Error(err))
 }
 
-// legacyMetadataTranscript is the pre-Fase-4 transcript read
-// from `metadata_json["transcript"]` /
-// `metadata_json["clean_transcript"]`. The function is package-
-// private and is the SOLE remaining metadata_json transcript
-// reader in the codebase (post-cutover). It is invoked ONLY
-// when `MigrationFallbackLegacyMetadata` is true (the migration
-// window); the production path (flag=false) NEVER calls it.
-func legacyMetadataTranscript(clip *asset.Asset) string {
-	if clip == nil {
-		return ""
-	}
-	if t := clip.GetMetadataString("transcript"); t != "" {
-		return t
-	}
-	return clip.GetMetadataString("clean_transcript")
-}
+// Fase 4 strict cutover (PR-PY-CLIPS-CORRETTE-TRADOTTE, July 2026):
+// the legacy `metadata_json["transcript"]` /
+// `metadata_json["clean_transcript"]` read is RETIRED. There is
+// no longer a function surface in this file for it; callers that
+// require a per-clip transcript field MUST consult
+// `asset_text_tracks` via the TextTrackReader. Operators backfill
+// legacy clips via the Fase 5 admin command
+// (cmd/admin/text_tracks_backfill.go) so the strict cutover is the
+// single read path.
