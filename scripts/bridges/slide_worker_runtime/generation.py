@@ -55,6 +55,7 @@ from .diagnostics import _log_diag, _log, _screenshot_on_failure
 from .image_quality import _compute_pixel_stats, _save_image_bytes
 from .session import BrowserSession
 from .candidates import _extract_candidates as _runtime_extract_candidates
+from .dom_actions import SlidesDOM
 
 
 # ── GenerationContext (typed per-request state bundle) ────────────────────
@@ -130,444 +131,6 @@ class StepError(Exception):
         self.diag_extra.update(legacy_kwargs)
 
 
-# ── DOM-action helpers (transitional co-location; Commit 2 → runtime.dom_actions) ──
-#
-# These module-level helpers were inline in slide_worker.py before
-# Commit 4. They are NOT yet typed as a `SlidesDOM` facade — that
-# work is Commit 2. They remain module-level here so the step methods
-# below can reference them via lexical scope (no import overhead,
-# no circular-import risk between slide_worker.py and this module).
-#
-# Use these helpers directly in step methods ONLY. Do not introduce
-# new callers beyond the step methods and legacy slide_worker.py
-# surfaces. New code should route through `SlidesDOM` post-Commit 2.
-
-
-def _click_visible_button_matching(
-    page,
-    text_regexes=None,
-    *,
-    selectors: str = "button",
-    match_attrs: dict | None = None,
-    match_attrs_logic: str = "all",
-    require_visible: bool = True,
-    require_enabled: bool = False,
-    wait_ready: bool = False,
-    timeout_ms: int = 5000,
-    poll_interval_ms: int = 500,
-    do_click: bool = True,
-    use_dom_evaluate: bool = False,
-) -> bool:
-    """Best-effort find-and-(optionally)-click on a visible Playwright
-    Locator element matching text/aria regexes and any attribute
-    equality conditions. Single-shared helper that replaced six
-    near-identical pre-fix click variants.
-    """
-    if page is None:
-        return False
-    if not text_regexes and not match_attrs:
-        return False
-
-    compiled = []
-    for r in (text_regexes or []):
-        compiled.append(re.compile(r, re.IGNORECASE) if isinstance(r, str) else r)
-    match_attrs = match_attrs or {}
-    deadline = time.time() + (timeout_ms / 1000.0) if wait_ready else None
-
-    while True:
-        try:
-            ok = _scan_click_once(
-                page, compiled, selectors, match_attrs, match_attrs_logic,
-                require_visible, require_enabled, do_click, use_dom_evaluate,
-            )
-            if ok:
-                return True
-        except Exception as e:
-            _log(f"[_click_visible_button_matching] scan exception: {e}")
-        if not wait_ready:
-            return False
-        if deadline is not None and time.time() >= deadline:
-            return False
-        page.wait_for_timeout(poll_interval_ms)
-
-
-def _scan_click_once(
-    page, compiled, selectors, match_attrs, match_attrs_logic,
-    require_visible, require_enabled, do_click, use_dom_evaluate,
-) -> bool:
-    """Single scan attempt; routes by use_dom_evaluate."""
-    if use_dom_evaluate:
-        return _scan_click_dom(
-            page, compiled, selectors, match_attrs, match_attrs_logic,
-            require_visible, require_enabled, do_click,
-        )
-    return _scan_click_locator(
-        page, compiled, selectors, match_attrs, match_attrs_logic,
-        require_visible, require_enabled, do_click,
-    )
-
-
-def _scan_click_locator(
-    page, compiled, selectors, match_attrs, match_attrs_logic,
-    require_visible, require_enabled, do_click,
-) -> bool:
-    """Playwright Locator-based scan + force-click (actionable path)."""
-    candidates = page.locator(selectors)
-    try:
-        n = candidates.count()
-    except Exception as e:
-        _log(f"[_scan_click_locator] locator count failed: {e}")
-        return False
-    for i in range(n):
-        el = candidates.nth(i)
-        try:
-            if match_attrs and not _attrs_match(el, match_attrs, match_attrs_logic):
-                continue
-            if compiled and not _text_aria_match(el, compiled):
-                continue
-            if require_visible and not el.is_visible():
-                continue
-            if require_enabled and not el.is_enabled():
-                continue
-            if do_click:
-                el.click(force=True, timeout=5000)
-            return True
-        except Exception:
-            continue
-    return False
-
-
-def _scan_click_dom(
-    page, compiled, selectors, match_attrs, match_attrs_logic,
-    require_visible, require_enabled, do_click,
-) -> bool:
-    """Raw page.evaluate scan + DOM-level click (bypasses actionability)."""
-    js_pattern = "|".join(r.pattern for r in compiled)
-    return bool(page.evaluate(
-        """({selectors, textPatterns, matchAttrs, matchAttrsLogic, requireVisible, requireEnabled, doClick}) => {
-            const candidates = [...document.querySelectorAll(selectors)];
-            const rx = textPatterns ? new RegExp(textPatterns, 'i') : null;
-            for (const el of candidates) {
-                if (matchAttrs && Object.keys(matchAttrs).length > 0) {
-                    if (matchAttrsLogic === 'all') {
-                        let allHit = true;
-                        for (const k in matchAttrs) {
-                            const v = (el.getAttribute(k) || '').trim();
-                            if (!matchAttrs[k].includes(v)) { allHit = false; break; }
-                        }
-                        if (!allHit) continue;
-                    } else {
-                        let anyHit = false;
-                        for (const k in matchAttrs) {
-                            const v = (el.getAttribute(k) || '').trim();
-                            if (matchAttrs[k].includes(v)) { anyHit = true; break; }
-                        }
-                        if (!anyHit) continue;
-                    }
-                }
-                const txt = (el.textContent || '').trim();
-                const aria = (el.getAttribute('aria-label') || '').trim();
-                if (rx && !(rx.test(txt) || rx.test(aria))) continue;
-                if (requireVisible) {
-                    const visible = !!(el.offsetWidth || el.offsetHeight
-                        || el.getClientRects().length);
-                    if (!visible) continue;
-                }
-                const disabled = !!el.disabled
-                    || el.classList.contains('goog-button-disabled');
-                if (requireEnabled && disabled) continue;
-                if (doClick) el.click();
-                return true;
-            }
-            return false;
-        }""",
-        {
-            "selectors": selectors,
-            "textPatterns": js_pattern,
-            "matchAttrs": match_attrs,
-            "matchAttrsLogic": match_attrs_logic,
-            "requireVisible": require_visible,
-            "requireEnabled": require_enabled,
-            "doClick": do_click,
-        },
-    ))
-
-
-def _attrs_match(el, match_attrs: dict, logic: str) -> bool:
-    """Apply match_attrs across attribute equality checks.
-
-    `logic='any'`: OR across keys. `logic='all'`: AND across keys.
-    Within a single allowed list, equality is the test.
-    """
-    if logic == "all":
-        for k, allowed in match_attrs.items():
-            if (el.get_attribute(k) or "") not in allowed:
-                return False
-        return True
-    for k, allowed in match_attrs.items():
-        if (el.get_attribute(k) or "") in allowed:
-            return True
-    return False
-
-
-def _text_aria_match(el, compiled) -> bool:
-    """Match any compiled regex against the element's text OR aria-label."""
-    try:
-        text = (el.inner_text(timeout=500) or "").strip()
-    except Exception:
-        text = ""
-    aria = (el.get_attribute("aria-label") or "").strip()
-    return any(rgx.search(text) or rgx.search(aria) for rgx in compiled)
-
-
-def _dismiss_start_dialog(page) -> bool:
-    """Dismiss the Slides getting-started modal if it is present.
-
-    Returns True when a dialog was observed and handled.
-    """
-    if page is None:
-        return False
-    try:
-        if _click_visible_button_matching(
-            page, [r"images", r"immagini"], require_visible=True,
-        ):
-            _log("[_dismiss_start_dialog] fast-path role button matched (unified helper)")
-            if _wait_for_prompt_surface(page, timeout_ms=7000):
-                return True
-            page.wait_for_timeout(1000)
-            return True
-
-        if _click_visible_start_images_tile(page):
-            _log("[_dismiss_start_dialog] DOM click on visible Images tile succeeded")
-            if _wait_for_prompt_surface(page, timeout_ms=7000):
-                return True
-            page.wait_for_timeout(1000)
-            return True
-
-        if _click_visible_button_matching(
-            page,
-            [r"images", r"immagini"],
-            selectors='button[data-view-id="insert-generated-image"], button[aria-controls="insert-generated-image"], button',
-            match_attrs={
-                "data-view-id": ["insert-generated-image"],
-                "aria-controls": ["insert-generated-image"],
-            },
-            match_attrs_logic="any",
-            require_visible=True,
-        ):
-            _log("[_dismiss_start_dialog] fast-path tile selector matched (unified helper)")
-            if _wait_for_prompt_surface(page, timeout_ms=7000):
-                return True
-            page.wait_for_timeout(1000)
-            return True
-
-        dialogs = page.locator('div[role="dialog"], div[aria-modal="true"]').all()
-        for dialog in dialogs:
-            try:
-                txt = (dialog.inner_text(timeout=1000) or "").strip()
-            except Exception:
-                txt = ""
-            if not txt:
-                continue
-            if "Iniziamo a creare" not in txt and "Ciao" not in txt and "Images" not in txt:
-                continue
-            _log(f"[_dismiss_start_dialog] handling modal: {txt[:80]!r}")
-            try:
-                for selector in [
-                    'button[data-view-id="insert-generated-image"]',
-                    'button[aria-controls="insert-generated-image"]',
-                    'button:has-text("Images")',
-                    'button:has-text("Immagini")',
-                ]:
-                    images_cards = dialog.locator(selector)
-                    _log(f"[_dismiss_start_dialog] modal candidate count for {selector}: {images_cards.count()}")
-                    for idx in range(images_cards.count()):
-                        images_card = images_cards.nth(idx)
-                        if not images_card.is_visible():
-                            continue
-                        try:
-                            txt = (images_card.inner_text(timeout=500) or "").strip()
-                        except Exception:
-                            txt = ""
-                        _log(f"[_dismiss_start_dialog] modal tile selector matched: {selector} idx={idx}")
-                        if txt:
-                            _log(f"[_dismiss_start_dialog] modal tile text: {txt[:120]!r}")
-                        images_card.click(force=True, timeout=5000)
-                        if _wait_for_prompt_surface(page, timeout_ms=7000):
-                            return True
-                        page.wait_for_timeout(1000)
-                        return True
-            except Exception as e:
-                _log(f"[_dismiss_start_dialog] Images card click failed: {e}")
-            try:
-                close_btn = dialog.locator(
-                    'button[aria-label*="Chiudi"], button[aria-label*="Close"], '
-                    'button:has-text("×"), button:has-text("X")'
-                ).first
-                if close_btn.is_visible():
-                    close_btn.click(force=True, timeout=5000)
-                    page.wait_for_timeout(800)
-                    return True
-            except Exception as e:
-                _log(f"[_dismiss_start_dialog] close button click failed: {e}")
-            try:
-                page.keyboard.press("Escape")
-                page.wait_for_timeout(800)
-                return True
-            except Exception as e:
-                _log(f"[_dismiss_start_dialog] Escape fallback failed: {e}")
-                return True
-        return False
-    except Exception as e:
-        _log(f"[_dismiss_start_dialog] modal probe failed: {e}")
-        return False
-
-
-def _prepare_editor_surface(page) -> None:
-    """Best-effort clear of startup overlays before touching the canvas."""
-    if page is None:
-        return
-    try:
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(300)
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(300)
-    except Exception as e:
-        _log(f"[_prepare_editor_surface] Escape pre-clear failed: {e}")
-    _dismiss_start_dialog(page)
-
-
-def _wait_for_prompt_surface(page, timeout_ms: int = 15000) -> bool:
-    """Wait for the visible textarea that hosts the Nano Banana prompt."""
-    if page is None:
-        return False
-    ta = page.locator('textarea:visible').first
-    try:
-        ta.wait_for(state="visible", timeout=timeout_ms)
-        return True
-    except PlaywrightTimeout:
-        try:
-            if _click_visible_button_matching(
-                page, [r"images", r"immagini"], require_visible=True,
-            ):
-                _log("[_wait_for_prompt_surface] retrying via visible tile (unified helper)")
-                ta.wait_for(state="visible", timeout=timeout_ms)
-                return True
-        except Exception as e:
-            _log(f"[_wait_for_prompt_surface] visible-tile retry failed: {e}")
-        return False
-    except Exception as e:
-        _log(f"[_wait_for_prompt_surface] wait failed: {e}")
-        return False
-
-
-def _click_visible_start_images_tile(page) -> bool:
-    """Thin shim around _click_visible_button_matching for the
-    start-images tile."""
-    return _click_visible_button_matching(
-        page,
-        [r"images", r"immagini", r"insert-generated-image"],
-        match_attrs={
-            "data-view-id": ["insert-generated-image"],
-            "aria-controls": ["insert-generated-image"],
-        },
-        match_attrs_logic="any",
-        require_visible=False,
-        use_dom_evaluate=True,
-    )
-
-
-def _click_visible_image_mode_tab(page) -> bool:
-    """Thin shim around _click_visible_button_matching for the
-    Immagine/Image mode tab."""
-    return _click_visible_button_matching(
-        page,
-        [r"^immagine$", r"^image$", r"immagine", r"image"],
-        selectors='[role="tab"], button',
-        require_visible=False,
-        use_dom_evaluate=True,
-    )
-
-
-def _click_visible_create_button(page) -> bool:
-    """Thin shim around _click_visible_button_matching for the
-    Crea/Create button."""
-    return _click_visible_button_matching(
-        page,
-        [r"^crea$", r"^create$", r"crea", r"create"],
-        selectors='button[aria-label="Crea"], button[aria-label="Create"], button.image-synthesis-creation-button',
-        require_visible=True,
-        require_enabled=True,
-    )
-
-
-def _type_prompt_text(page, locator, text: str) -> bool:
-    """Type prompt text with real keyboard events so Google Slides updates state."""
-    if page is None or locator is None:
-        return False
-    try:
-        locator.click(force=True, timeout=5000)
-        page.keyboard.press("Control+A")
-        page.keyboard.type(text, delay=0)
-        return True
-    except Exception as e:
-        _log(f"[_type_prompt_text] keyboard typing failed: {e}")
-        try:
-            locator.fill(text)
-            return True
-        except Exception as fe:
-            _log(f"[_type_prompt_text] fallback fill failed: {fe}")
-            return False
-
-
-def _wait_for_create_button_ready(page, timeout_ms: int = 15000) -> bool:
-    """Thin shim around _click_visible_button_matching (check-only).
-    Uses raw DOM visibility (offsetWidth|offsetHeight|getClientRects)
-    — preserved byte-byte from pre-fix byte-for-byte behavior."""
-    return _click_visible_button_matching(
-        page,
-        [r"^crea$", r"^create$", r"crea", r"create"],
-        require_visible=True,
-        require_enabled=True,
-        wait_ready=True,
-        timeout_ms=timeout_ms,
-        do_click=False,
-        use_dom_evaluate=True,
-    )
-
-
-def _check_169_selected(page, ratio: str = "16:9") -> bool:
-    """P1.3: post-click verification that the requested ratio is applied.
-
-    Best-effort. False on JS evaluate failure or no match (conservative:
-    a missed selector makes the typed `ErrImageGenRatioNotSelected`
-    path the canonical signal).
-    """
-    if page is None:
-        return False
-    try:
-        selected = page.evaluate("""() => {
-            const candidates = [
-                document.querySelector('[data-selected-ratio]'),
-                document.querySelector('.ratio-button[data-active="true"]'),
-                document.querySelector('[role="radio"][aria-checked="true"][data-ratio]'),
-                document.querySelector('[class*="ratio"][class*="selected"]'),
-                document.querySelector('[aria-pressed="true"][data-ratio]'),
-                document.querySelector('[data-ratio="16:9"]'),
-            ];
-            for (const el of candidates) {
-                if (!el) continue;
-                const txt = (el.textContent || el.getAttribute('aria-label') || el.getAttribute('data-ratio') || '').trim();
-                if (txt.length > 0) return txt;
-            }
-            return '';
-        }""") or ''
-        return ratio in selected
-    except Exception as e:
-        _log(f"[_check_169_selected] DOM evaluate failed (ratio={ratio}): {e}")
-        return False
-
-
 # ── GenerationRunner ───────────────────────────────────────────────────────
 
 
@@ -596,6 +159,18 @@ class GenerationRunner:
     def __init__(self, session: BrowserSession, profile_id: int) -> None:
         self.session = session
         self.profile_id = profile_id
+
+    @property
+    def dom(self) -> SlidesDOM:
+        """Lazily constructed SlidesDOM facade bound to the current
+        session.page. Recomputed on each access so the facade
+        follows session.fresh_page()'s page reset (thinker #3).
+
+        godlike/06 SSOT: the facade is the SINGLE typed entry-point
+        for the orchestrator's DOM-bound side effects. Each access
+        is cheap (just SlidesDOM(page) — no I/O).
+        """
+        return SlidesDOM(self.session.page)
 
     # ── Private builders ──────────────────────────────────────────────
 
@@ -675,11 +250,17 @@ class GenerationRunner:
     def _step_prepare_surface(self, ctx: GenerationContext) -> None:
         """Step 1: dismiss startup modals + ensure prompt textarea visible
         + switch to Immagine/Image mode tab.
+
+        Commit 2 (dom_actions extract): delegates to
+        SlidesDOM.prepare() + get_prompt_surface() + activate_image_mode().
+        The orchestrator still owns the PlaywrightTimeout raise on
+        prompt-surface invisibility; the image-mode-tab click is
+        tolerant (a miss logs a warning and continues).
         """
         page = self.session.page
-        _prepare_editor_surface(page)
+        self.dom.prepare()
 
-        # Step 1a: ensure Gemini panel is open (textarea visible).
+        # Step 1a: ensure prompt textarea visible.
         ta = page.locator('textarea:visible').first
         panel_open = False
         try:
@@ -688,7 +269,7 @@ class GenerationRunner:
             panel_open = False
 
         if not panel_open:
-            panel_open = _wait_for_prompt_surface(page, timeout_ms=15000)
+            panel_open = self.dom.get_prompt_surface(timeout_ms=15000)
             if not panel_open:
                 raise PlaywrightTimeout(
                     "prompt surface did not become visible after selecting Images"
@@ -698,7 +279,7 @@ class GenerationRunner:
         # here logs a warning and continues — tab might already be
         # selected from a prior request.
         try:
-            if _click_visible_image_mode_tab(page):
+            if self.dom.activate_image_mode():
                 _log(
                     f"[profile-{self.profile_id}][{ctx.request_id}] image mode tab click succeeded"
                 )
@@ -719,6 +300,12 @@ class GenerationRunner:
     def _step_fill_prompt(self, ctx: GenerationContext) -> None:
         """Step 2: ensure textarea visible (with fresh_page recovery) +
         type prompt_text via keyboard events. Emits `prompt_set` diag.
+
+        Commit 2 (dom_actions extract): typing delegations to
+        SlidesDOM.set_prompt(); recovery stays here (orchestrator
+        concerns: session.fresh_page() is session-lifecycle, NOT
+        DOM-lifecycle). The SlidesDOM lazy property follows the
+        post-fresh_page page swap automatically.
         """
         page = self.session.page
         ta = page.locator('textarea:visible').first
@@ -729,14 +316,14 @@ class GenerationRunner:
                 f"[profile-{self.profile_id}][{ctx.request_id}] textarea not visible — recovery"
             )
             self.session.fresh_page()
-            _prepare_editor_surface(page)
-            if not _wait_for_prompt_surface(page, timeout_ms=15000):
+            self.dom.prepare()
+            if not self.dom.get_prompt_surface(timeout_ms=15000):
                 raise PlaywrightTimeout(
                     "prompt surface did not become visible after recovery"
                 )
             ta = page.locator('textarea:visible').first
 
-        if not _type_prompt_text(page, ta, ctx.prompt_text):
+        if not self.dom.set_prompt(ctx.prompt_text):
             raise Exception("failed to type prompt into visible textarea")
 
         # P2 phase #2: prompt_set.
@@ -755,47 +342,26 @@ class GenerationRunner:
         emits a typed `error` JSONL diag with code
         `ErrImageGenRatioNotSelected` (preserves the audit-trail code
         path) but does NOT raise.
+
+        Commit 2 (dom_actions extract): the click + verify dance
+        lives in SlidesDOM.select_ratio() which returns a typed
+        SelectRatioResult. The step method reads `warning` and emits
+        the diag; ctx.ratio_selected is set to the requested ratio
+        regardless of warning (preserves pre-fix continuation
+        policy).
         """
-        page = self.session.page
-        try:
-            prop_btn = page.locator(
-                '[aria-label="Proporzioni"], '
-                '.image-synthesis [aria-label*="Proporzi"]'
-            ).first
-            if not prop_btn.is_visible():
-                raise Exception("Proporzioni button not visible (cannot open ratio menu)")
-            prop_btn.click(force=True, timeout=3000)
-            opt_ratio = page.locator(
-                f'[role="menuitemradio"]:has-text("{ctx.ratio}"), '
-                f'[data-ratio="{ctx.ratio}"], '
-                f'*:has-text("{ctx.ratio}")'
-            ).last
-            opt_ratio.wait_for(state="visible", timeout=3000)
-            opt_ratio.click(force=True, timeout=3000)
-            page.wait_for_timeout(400)
-            ctx.ratio_selected = ctx.ratio
-            if not _check_169_selected(page, ctx.ratio):
-                _log(
-                    f"[profile-{self.profile_id}][{ctx.request_id}] warning: "
-                    f"{ctx.ratio} not confirmed in post-click selected-ratio state; continuing"
-                )
-                _log_diag(
-                    ctx.request_id, self.profile_id, "error",
-                    url=page.url,
-                    error_code="ErrImageGenRatioNotSelected",
-                    error_message=f"{ctx.ratio} not confirmed in post-click selected-ratio state",
-                )
-        except Exception as e:
+        result = self.dom.select_ratio(ctx.ratio)
+        ctx.ratio_selected = ctx.ratio
+        if result.warning:
             _log(
                 f"[profile-{self.profile_id}][{ctx.request_id}] warning: "
-                f"{ctx.ratio} selection encountered recoverable issue: {e}; continuing"
+                f"{ctx.ratio} selection encountered: {result.warning}; continuing"
             )
-            ctx.ratio_selected = ctx.ratio
             _log_diag(
                 ctx.request_id, self.profile_id, "error",
-                url=page.url,
+                url=self.session.page.url,
                 error_code="ErrImageGenRatioNotSelected",
-                error_message=f"{ctx.ratio} selection encountered: {e}",
+                error_message=result.warning,
             )
 
     # ── Step 4: ────────────────────────────────────────────────────────
@@ -831,25 +397,13 @@ class GenerationRunner:
     def _step_submit(self, ctx: GenerationContext) -> None:
         """Step 5: wait for create button to be ready + click. Emits
         `click_create` diag.
+
+        Commit 2 (dom_actions extract): the wait_ready + click +
+        fallback locator sequence consolidates into
+        SlidesDOM.submit().
         """
         page = self.session.page
-        if not _wait_for_create_button_ready(page, timeout_ms=15000):
-            _log(
-                f"[profile-{self.profile_id}][{ctx.request_id}] warning: "
-                f"create button never became enabled before submit"
-            )
-        if _click_visible_create_button(page):
-            _log(
-                f"[profile-{self.profile_id}][{ctx.request_id}] create button click succeeded"
-            )
-        else:
-            _log(
-                f"[profile-{self.profile_id}][{ctx.request_id}] create button click not found"
-            )
-            create_btn = page.locator(
-                '.image-synthesis-creation-button, button[aria-label="Crea"]'
-            ).first
-            create_btn.click(force=True, timeout=5000)
+        self.dom.submit(timeout_ms=15000)
 
         # P2 phase #3: click_create.
         _log_diag(
