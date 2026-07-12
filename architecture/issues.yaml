@@ -509,7 +509,7 @@ issues:
     opened_date: 2026-07-12
     tracking_issue: "godlike/06 SSOT carry-forward discipline; closed by Commit F (instantiated with status:resolved in the same operation — the entry did not exist in pre-Commit-F issues.yaml; closed directly because drift was already resolved at Commit F execution time; the format-drift catalog surface is now zero)"
   - id: PRE-EXISTING-11-DRIVE-TEST-COMPILE [RESOLVED]
-    title: "publisher_test_dod_language_test.go (untracked) failing to compile, blocking project-wide go test"
+    title: "publisher_test_dod_language_test.go compile error resolved (FASE 12 fix — test doubles canonical in publisher_test.go; PR-VO-3 tests pass)"
     status: open
     severity: p1
     owner_capability: "internal/infrastructure/drive (publisher_test_dod_language_test.go)"
