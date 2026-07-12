@@ -149,12 +149,15 @@ var routeDescriptions = map[string]string{
 	"GET /api/clips/diagnostics": "Clips diagnostics",
 
 	// ── Images ────────────────────────────────────────────────
-	"GET /api/images/search":      "Search images",
-	"POST /api/images/sync":       "Sync images to Drive",
-	"POST /api/images/upload":     "Upload an image",
-	"POST /api/images/generate":   "Generate AI images",
-	"POST /api/images/animate":    "Animate an image",
-	"GET /api/images/diagnostics": "Images diagnostics",
+	"GET /api/images/search":              "Search images by territory",
+	"GET /api/images/retrieved/search":    "Search retrieved images",
+	"GET /api/images/generated/search":    "Search generated images",
+	"GET /api/images/generated/styles":    "List generated image styles",
+	"POST /api/images/generated/generate": "Generate an AI image",
+	"POST /api/images/batch-generate":     "Batch generate AI images asynchronously",
+	"POST /api/images/sync":               "Sync images to Drive",
+	"POST /api/images/upload":             "Upload an image",
+	"GET /api/images/diagnostics":         "Images diagnostics",
 
 	// ── Scripts ───────────────────────────────────────────────
 	"GET /api/scripts":             "List scripts",

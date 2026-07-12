@@ -1,8 +1,7 @@
 // Package images (api/images) — generated_generate_handler.go holds
-// the POST /api/images/generated/generate handler and its request
-// DTO. This is the AI image-generation entry point scoped to the
-// generated territory — distinct from search (read) and from the
-// legacy /generate endpoint (kept for backward compat).
+// the canonical POST /api/images/generated/generate handler. This is
+// the single AI image-generation entry point on the /api/images
+// surface, distinct from generated search and style discovery.
 //
 // Per the golden rule: generated = AI-created images. This handler
 // delegates to Service.GenerateSmartImage with the canonical
@@ -18,18 +17,12 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
-) // GeneratedGenerate handles POST /api/images/generated/generate.
-// Equivalent to the legacy POST /api/images/generate — same
-// service method, same payload shape. Territory=matters for
-// the URL: callers using /generated/* opt into the Step-10
-// territory scope explicitly.
-//
-// PR-IMG-LEGACY-5 (IMAGES-LEGACY-CLEANUP-2026-07-06 wave, 2026-07-06,
-// CUTOVER phase, deadline 2026-08-22): the handler now binds the
-// canonical ImageGenerationRequest (declared in request_types.go)
-// instead of the pre-PR local duplicate of the same shape. The
-// wire-shape is unchanged; only the type identity collapsed per
-// godlike/06 SSOT (one canonical owner per fact).
+)
+
+// GeneratedGenerate handles POST /api/images/generated/generate.
+// It binds the canonical ImageGenerationRequest declared in
+// request_types.go and dispatches exactly one generated-territory
+// image-generation request.
 func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 	var req ImageGenerationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

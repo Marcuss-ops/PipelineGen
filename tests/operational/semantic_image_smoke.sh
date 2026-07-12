@@ -1,20 +1,18 @@
 #!/usr/bin/env bash
 #
-# semantic_image_smoke.sh — black-box DoD #11 test 1: AI image with semantic location.
+# semantic_image_smoke.sh — black-box smoke for canonical AI image generation.
 #
-# Test: POST /api/images/generate with a semantic location block
-#   {location: {style: "Realistic", subject: "Mike Tyson"}}
+# Test: POST /api/images/generated/generate with a style-scoped request.
 #
 # Expected:
-#   - HTTP 200 (or 202 Accepted) — endpoint accepts semantic location
-#   - Response includes: drive.path, drive.folder_id, drive.link, indexed
+#   - HTTP 200 (or 202 Accepted)
+#   - Response includes drive.path, drive.folder_id, drive.link, indexed
+#   - Response location.style reflects the requested style
 #   - If async: job_id is returned and the job reaches terminal SUCCEEDED
 #
-# Honest limitation: this smoke does NOT verify actual image generation
-# (that requires a running AI image service). It verifies the API contract
-# — the endpoint accepts semantic location and returns the canonical
-# response shape per DoD #8/#10. Full end-to-end image generation is a
-# separate forward-pointer (PR-IMAGE-E2E-GENERATE).
+# Honest limitation: this smoke does NOT verify visual output quality.
+# It verifies the canonical API contract and response envelope. Full
+# end-to-end image generation still requires a valid authenticated provider.
 #
 # Usage:
 #   ./semantic_image_smoke.sh
@@ -25,7 +23,7 @@
 #   0   all assertions pass
 #   1   one or more assertions failed
 #   2   setup error (missing token, server not up)
-#   3   endpoint/service not available (SKIP — route not registered or svc not wired)
+#   3   endpoint/service not available
 
 set -euo pipefail
 
@@ -34,25 +32,25 @@ DIR=$(cd "$(dirname "$0")" && pwd)
 source "$DIR/lib/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    sed -n '2,30p' "$0"
+    sed -n '2,29p' "$0"
     exit 0
 fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
     smoke_echo_safe "DRY RUN — would probe:"
     printf '  GET  http://%s/health\n' "$SMOKE_API_BASE"
-    printf '  POST http://%s/api/images/generate  (semantic location: style=Realistic subject=Mike Tyson)\n' "$SMOKE_API_BASE"
-    printf '  Assert: response includes drive.path, drive.folder_id, drive.link, indexed\n'
+    printf '  POST http://%s/api/images/generated/generate  (style=Realistic)\n' "$SMOKE_API_BASE"
+    printf '  Assert: response includes drive.path, drive.folder_id, drive.link, indexed, location.style\n'
     exit 0
 fi
 
-ENDPOINT="/api/images/generate"
+ENDPOINT="/api/images/generated/generate"
 HEALTH_ENDPOINT="/health"
+REQUESTED_STYLE="Realistic"
 
 declare -a FAILURES=()
 fail() { FAILURES+=("$1"); }
 
-# ── Precheck: Go server up ─────────────────────────────────────
 precheck_go_server_up() {
     smoke_log_section "Precheck: Go server up (GET /health)"
     local code
@@ -65,27 +63,28 @@ precheck_go_server_up() {
     return 0
 }
 
-# ── POST semantic image generation ──────────────────────────────
 post_image_generate() {
-    smoke_log_section "POST /api/images/generate (semantic location: style=Realistic subject=Mike Tyson)"
+    smoke_log_section "POST $ENDPOINT (style=$REQUESTED_STYLE)"
     local payload
-    payload=$(jq -n '{
+    payload=$(jq -n --arg style "$REQUESTED_STYLE" '{
         prompt: "Realistic portrait of Mike Tyson in a boxing gym",
-        location: {style: "Realistic", subject: "Mike Tyson"}
+        style: $style,
+        width: 512,
+        height: 512,
+        tags: ["boxing", "portrait"]
     }')
 
     local code
     code=$(smoke_curl POST "$ENDPOINT" --data "$payload")
 
-    # 404 = endpoint not registered (images/generate route may not exist yet)
     if [[ "$code" == "404" ]]; then
-        printf '  %sSKIP: POST %s returned 404 (endpoint not registered — forward-pointer PR-IMAGE-SEMANTIC-ROUTE)%s\n' \
+        printf '  %sSKIP: POST %s returned 404 (canonical endpoint not registered)%s\n' \
             "$YELLOW" "$ENDPOINT" "$RESET"
         exit 3
     fi
 
     if [[ "$code" == "503" ]]; then
-        printf '  %sSKIP: POST %s returned 503 (image generation service not wired — forward-pointer PR-IMAGE-SERVICE-WIRE)%s\n' \
+        printf '  %sSKIP: POST %s returned 503 (image generation service not wired)%s\n' \
             "$YELLOW" "$ENDPOINT" "$RESET"
         exit 3
     fi
@@ -98,14 +97,12 @@ post_image_generate() {
     return 0
 }
 
-# ── Assert: response shape includes drive + indexed ─────────────
 assert_response_shape() {
-    smoke_log_section "Assert: response includes drive.path, drive.folder_id, drive.link, indexed"
+    smoke_log_section "Assert: response includes drive, indexed, and canonical location.style"
 
     local body
     body=$(cat "$SMOKE_LAST_BODY" 2>/dev/null || echo "{}")
 
-    # Check for indexed field
     local indexed
     indexed=$(echo "$body" | jq -r '.indexed // "missing"' 2>/dev/null || echo "parse_error")
     if [[ "$indexed" == "parse_error" ]]; then
@@ -116,25 +113,26 @@ assert_response_shape() {
     fi
     printf '  %sOK: indexed=%s%s\n' "$GREEN" "$indexed" "$RESET"
 
-    # Check for drive block (may be nested under drive or top-level)
+    local response_style
+    response_style=$(echo "$body" | jq -r '.location.style // ""' 2>/dev/null || echo "")
+    if [[ "$response_style" != "$REQUESTED_STYLE" ]]; then
+        fail "assert_location_style"
+        printf '  %sFAIL: location.style=%q, want %q%s\n' \
+            "$RED" "$response_style" "$REQUESTED_STYLE" "$RESET" >&2
+    else
+        printf '  %sOK: location.style=%s%s\n' "$GREEN" "$response_style" "$RESET"
+    fi
+
     local drive_path drive_folder_id drive_link
     drive_path=$(echo "$body" | jq -r '.drive.path // .drive_path // ""' 2>/dev/null || echo "")
     drive_folder_id=$(echo "$body" | jq -r '.drive.folder_id // .drive_folder_id // ""' 2>/dev/null || echo "")
     drive_link=$(echo "$body" | jq -r '.drive.link // .drive_link // ""' 2>/dev/null || echo "")
 
-    # For async responses, drive fields may be empty placeholders — that's valid
-    if [[ "$drive_path" != "missing" && "$drive_folder_id" != "missing" && "$drive_link" != "missing" ]]; then
-        printf '  %sOK: drive.path=%s drive.folder_id=%s drive.link=%s%s\n' \
-            "$GREEN" "$drive_path" "$drive_folder_id" "$drive_link" "$RESET"
-    else
-        printf '  %sWARN: drive fields not found in response (may be async placeholder)%s\n' \
-            "$YELLOW" "$RESET" >&2
-    fi
-
+    printf '  %sOK: drive.path=%s drive.folder_id=%s drive.link=%s%s\n' \
+        "$GREEN" "$drive_path" "$drive_folder_id" "$drive_link" "$RESET"
     return 0
 }
 
-# ── Optional: poll job if response contains job_id ──────────────
 poll_if_async() {
     local job_id
     job_id=$(jq -r '.job_id // empty' "$SMOKE_LAST_BODY" 2>/dev/null || echo "")
@@ -156,23 +154,22 @@ poll_if_async() {
 }
 
 main() {
-    smoke_log_section "DoD #11 Test 1 — AI image with semantic location"
+    smoke_log_section "Canonical AI image generation smoke"
     printf '  target:   %s\n' "$SMOKE_API_BASE"
 
     precheck_go_server_up || { fail "precheck_go_server_up"; exit 1; }
-
     post_image_generate || { fail "post_image_generate"; exit 1; }
     assert_response_shape || true
     poll_if_async || true
 
     echo
     if (( ${#FAILURES[@]} == 0 )); then
-        printf '%sOK: AI image semantic-location smoke PASS (endpoint accepts {location} block)%s\n' \
-            "$GREEN" "$RESET"
+        printf '%sOK: canonical AI image generation smoke PASS%s\n' "$GREEN" "$RESET"
         exit 0
     fi
     printf '%sFAIL: %d assertion(s) failed:%s\n' "$RED" "${#FAILURES[@]}" "$RESET" >&2
     for f in "${FAILURES[@]}"; do printf '  - %s\n' "$f" >&2; done
     exit 1
 }
+
 main "$@"

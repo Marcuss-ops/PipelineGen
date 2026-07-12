@@ -3,9 +3,8 @@
 // own capability file; this file owns ONLY the struct, constructor,
 // and route registration. No business logic lives here.
 //
-// Golden rule: generated = AI, retrieved = stock, all = aggregator
-// only, legacy = backward-compat. Each handler file documents which
-// territory it belongs to.
+// Golden rule: generated = AI, retrieved = stock, all = aggregator.
+// Each handler file documents which territory it belongs to.
 package images
 
 import (
@@ -31,8 +30,8 @@ func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service, jo
 }
 
 // RegisterRoutes mounts every /api/images route on the given router
-// group. Territory-separated search + generate endpoints (Step 10)
-// delegate to the territory router + per-territory handler files.
+// group. Territory-separated search + generation endpoints delegate
+// to the territory router and per-territory handler files.
 //
 //	GET  /search                 → TerritorySearch (defaults to retrieved)
 //	GET  /retrieved/search       → RetrievedSearch
@@ -40,26 +39,21 @@ func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service, jo
 //	POST /generated/generate     → GeneratedGenerate
 //	GET  /generated/styles       → GeneratedStyles
 //	GET  /diagnostics            → Diagnostics
-//	POST /upload                 → Upload (legacy JSON image_url)
+//	POST /upload                 → Upload
 //	POST /sync                   → Sync
-//	POST /generate               → Generate (legacy compatibility)
 //	POST /batch-generate         → GenerateBatch (async job system)
 func (h *ImagesHandler) RegisterRoutes(r *gin.RouterGroup) {
-	// Step 10 (territory-separated search + generate endpoints).
-	// /search is REPLACED by TerritorySearch (defaults to
-	// territory=retrieved for back-compat with callers that used
-	// /search?q=X).
+	// Territory-separated search + generation endpoints.
+	// /search defaults to territory=retrieved for callers that do not
+	// select a territory explicitly.
 	r.GET("/search", h.TerritorySearch)
 	r.GET("/retrieved/search", h.RetrievedSearch)
 	r.GET("/generated/search", h.GeneratedSearch)
 	r.POST("/generated/generate", h.GeneratedGenerate)
 	r.GET("/generated/styles", h.GeneratedStyles)
 
-	// Existing endpoints (unchanged).
 	r.GET("/diagnostics", h.Diagnostics)
 	r.POST("/upload", h.Upload)
 	r.POST("/sync", h.Sync)
-	r.POST("/generate", h.Generate)
 	r.POST("/batch-generate", h.GenerateBatch)
-	// POST /webhook/remote retired; see docs/archive/image-legacy.md §1
 }

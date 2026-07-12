@@ -1,1 +1,0 @@
-{"ok":false,"error":"This endpoint has been retired. Use POST /api/images/generated/generate instead.","canonical_endpoint":"POST /api/images/generated/generate","removal_date":"2026-12-31","deprecation_notice_ref":"PR-AUDIT-3 (2026-07-09): legacy /api/images/generate retired to 410 Gone"}
