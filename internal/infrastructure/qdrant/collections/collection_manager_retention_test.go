@@ -51,7 +51,6 @@ type fakeQdrantServer struct {
 	colls        []string
 	aliasTarget  string
 	deletedColls []string
-	deletedMu    sort.Interface // just to keep imports tidy; ignored at runtime
 	aliasQueries []string
 }
 

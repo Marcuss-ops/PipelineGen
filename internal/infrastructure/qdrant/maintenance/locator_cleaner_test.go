@@ -110,10 +110,12 @@ func TestCleanLocators_PreAllocCapacityGreaterOrEqualToAffected(t *testing.T) {
 					"next_page_offset": nextOffset,
 				},
 			})
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_current/aliases":
+		case r.Method == http.MethodGet && r.URL.Path == "/aliases":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"result": []map[string]interface{}{
-					{"alias_name": "media_assets_current", "collection_name": "media_assets_v3"},
+				"result": map[string]interface{}{
+					"aliases": []map[string]interface{}{
+						{"alias_name": "media_assets_current", "collection_name": "media_assets_v3"},
+					},
 				},
 			})
 		default:
@@ -174,10 +176,12 @@ func TestCleanLocators_NoLegacyKeys_DryRun(t *testing.T) {
 					"next_page_offset": nil,
 				},
 			})
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_current/aliases":
+		case r.Method == http.MethodGet && r.URL.Path == "/aliases":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"result": []map[string]interface{}{
-					{"alias_name": "media_assets_current", "collection_name": "media_assets_v3"},
+				"result": map[string]interface{}{
+					"aliases": []map[string]interface{}{
+						{"alias_name": "media_assets_current", "collection_name": "media_assets_v3"},
+					},
 				},
 			})
 		default:
@@ -222,10 +226,12 @@ func TestCleanLocators_CountPointsError_Fallback(t *testing.T) {
 					"next_page_offset": nil,
 				},
 			})
-		case r.Method == http.MethodGet && r.URL.Path == "/collections/media_assets_current/aliases":
+		case r.Method == http.MethodGet && r.URL.Path == "/aliases":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"result": []map[string]interface{}{
-					{"alias_name": "media_assets_current", "collection_name": "media_assets_v3"},
+				"result": map[string]interface{}{
+					"aliases": []map[string]interface{}{
+						{"alias_name": "media_assets_current", "collection_name": "media_assets_v3"},
+					},
 				},
 			})
 		default:
