@@ -82,12 +82,13 @@ var (
 	ErrGoogleAPIClient = errors.New("googleapi: client error (400/401/409)")
 
 	// ErrGoogleAPIUnknown — unrecognised shape (off-spec *googleapi.Error
-	// without an in-range status code; OR non-*googleapi.Error with
-	// substring match). IsRetryable returns false on Unknown; outer
-	// retry loops that want substring-path classification can still
-	// query retry.IsTransientString on the wrapped Raw error message,
-	// OR route through retry.WrapTransient at the typed-transient
-	// boundary for full canonical coverage.
+	// without an in-range status code, OR non-*googleapi.Error that
+	// ClassifyGoogleAPIError could not type-assert). IsRetryable returns
+	// false on Unknown. Outer retry loops that want to recover a
+	// transient classification for non-typed errors MUST route through
+	// retry.WrapTransient at the typed-transient boundary — the
+	// pure-substring retry.IsTransient classifier was REMOVED in
+	// FASE 6 Cut 6.1.D (per godlike/07 typed-only taxonomy).
 	ErrGoogleAPIUnknown = errors.New("googleapi: unknown")
 )
 
@@ -131,10 +132,12 @@ type GoogleAPIError struct {
 	Body string
 
 	// Raw is the upstream error (*googleapi.Error typically).
-	// Unwrap exposes this to errors.Is/As chains so callers
-	// can still match against the legacy transient-substring
-	// taxonomy via retry.IsTransientString if they want that
-	// extra layer.
+	// Unwrap exposes this to errors.Is/As chains. Per FASE 6
+	// Cut 6.1.D, the substring-path fallback was REMOVED from the
+	// retry classifier; classification is now typed-only. Callers
+	// that want RetryAfterError continuity through wraps still
+	// get that for free via errors.As on the *GoogleAPIError
+	// envelope — Unwrap is for raw upstream-chain recovery.
 	Raw error
 }
 
@@ -176,13 +179,19 @@ func (e *GoogleAPIError) Is(target error) bool {
 
 // IsRetryable satisfies the canonical RetryableError interface,
 // which is typed-path #1 of retry.IsTransient. Throttled + Server
-// kinds are retryable; Permission, NotFound, Client are NOT
-// retryable. Unknown returns false at THIS classifier level — the
-// outer retry loop's retry.IsTransient path still has the substring
-// fallback (transientSubstrings) which would catch any retryable 429/503
-// keyword in the wrapped Raw error message if Google API semantic
-// and raw shape disagreed. The two layers compose: typed-first
-// (canonical), substring-second (defensive).
+// kinds are retryable; Permission, NotFound, Client, Unknown are
+// NOT retryable.
+//
+// FASE 6 Cut 6.1.D (July 2026): the layer-2 substring fallback
+// (transientSubstrings, delegated via retry.IsTransientString) was
+// REMOVED from the retry classifier. Classification is now
+// typed-only (godlike/07). A malformed-shape Unknown envelope is
+// therefore terminal at THIS classifier level — if the upstream
+// status code is unrecoverable from a non-*googleapi.Error shape,
+// the operator must add typed classification upstream rather than
+// relying on a substring fallback. Test
+// TestGoogleAPIError_NoSubstringClassifierReachable pins this
+// invariant.
 func (e *GoogleAPIError) IsRetryable() bool {
 	if e == nil {
 		return false

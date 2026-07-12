@@ -100,10 +100,7 @@ var ErrDriveListNil = errors.New("drive: Files.List returned nil result with nil
 var ErrPathBuilderIncompleteForOverride = errors.New("drive: PathBuilder incomplete but RootFolderOverride is set (direct-to-root fallback)")
 
 // DriveIsNotFound is the canonical typed classifier for Google Drive
-// HTTP 404 (file/folder not found) responses. Replaces the legacy
-// strings.Contains(err.Error(), "404") || "notFound" anti-pattern
-// previously embedded inline in FileIsNotTrashed + FileExists
-// (PR-DRIVE-ERROR-TYPED closure, July 2026). The probe is a pure
+// HTTP 404 (file/folder not found) responses. The probe is a pure
 // function (no sentinel): callers use the boolean return directly
 // rather than probing with errors.Is.
 //
@@ -114,21 +111,12 @@ var ErrPathBuilderIncompleteForOverride = errors.New("drive: PathBuilder incompl
 // unwrap fmt.Errorf %w — the helper handles any wrap depth;
 // (b) non-*googleapi.Error (plain errors.New, custom typed errors,
 // nil) returns false — the predicate is strictly typed, never a
-// substring-match fallback;
+// substring-match fallback (FASE 6 Cut 6.1.D closed the legacy
+// strings.Contains anti-pattern);
 // (c) nil error returns false (nil-tolerance per godlike/07 so
 // callers don't have to nil-guard before invoking).
 //
-// godlike/07 NO-FAKE-AVAILABILITY: the pre-PR string-match
-// (`strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "notFound")`)
-// was the canonical godlike/07-forbidden substring anti-pattern —
-// the typo "404" could match the body of a non-404 error message
-// (e.g. a server-error log line that contained "404" in
-// debug output), and the "notFound" check would miss HTTP 404
-// responses that didn't include the literal substring (e.g.
-// localized Drive API error envelopes). The typed probe +
-// Code == http.StatusNotFound probe is the canonical fix.
-//
-// Production callers (post-PR): FileIsNotTrashed + FileExists
+// Production callers: FileIsNotTrashed + FileExists
 // (internal/infrastructure/drive/uploader_file.go) delegate here;
 // Other call-sites (verifier_adapter.go, document_builder.go,
 // reconcile.go) consume the (fileID) (bool, error) return shapes
