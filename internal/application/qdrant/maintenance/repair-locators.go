@@ -63,31 +63,31 @@ func (s *Service) Repair(ctx context.Context, opts RepairOptions) error {
 		s.log.Error("qdrant-maintenance repair-locators failed", zap.Error(err))
 		if report != nil && opts.JSON {
 			b, _ := json.Marshal(report)
-			fmt.Println(string(b))
+			fmt.Fprintln(s.cliWriter, string(b))
 		}
 		return err
 	}
 
 	if opts.JSON {
 		b, _ := json.Marshal(report)
-		fmt.Println(string(b))
+		fmt.Fprintln(s.cliWriter, string(b))
 		return nil
 	}
 
-	fmt.Println("=== qdrant-maintenance repair-locators ===")
-	fmt.Printf("  Collection:       %s\n", report.Collection)
-	fmt.Printf("  Points scrolled:  %d\n", report.TotalPointsScrolled)
-	fmt.Printf("  With drive_link:  %d\n", report.PointsWithDriveLink)
-	fmt.Printf("  With local_path:  %d\n", report.PointsWithLocalPath)
-	fmt.Printf("  Affected (total): %d\n", report.PointsAffected)
-	fmt.Printf("  Keys removed:     %d\n", report.KeysRemoved)
-	fmt.Printf("  Batch calls:      %d\n", report.BatchCount)
+	fmt.Fprintln(s.cliWriter, "=== qdrant-maintenance repair-locators ===")
+	fmt.Fprintf(s.cliWriter, "  Collection:       %s\n", report.Collection)
+	fmt.Fprintf(s.cliWriter, "  Points scrolled:  %d\n", report.TotalPointsScrolled)
+	fmt.Fprintf(s.cliWriter, "  With drive_link:  %d\n", report.PointsWithDriveLink)
+	fmt.Fprintf(s.cliWriter, "  With local_path:  %d\n", report.PointsWithLocalPath)
+	fmt.Fprintf(s.cliWriter, "  Affected (total): %d\n", report.PointsAffected)
+	fmt.Fprintf(s.cliWriter, "  Keys removed:     %d\n", report.KeysRemoved)
+	fmt.Fprintf(s.cliWriter, "  Batch calls:      %d\n", report.BatchCount)
 	if len(report.Errors) > 0 {
-		fmt.Printf("  Errors:           %d\n", len(report.Errors))
+		fmt.Fprintf(s.cliWriter, "  Errors:           %d\n", len(report.Errors))
 		for i, e := range report.Errors {
-			fmt.Printf("    [%d] %s\n", i, e)
+			fmt.Fprintf(s.cliWriter, "    [%d] %s\n", i, e)
 		}
 	}
-	fmt.Println("\nRun 'qdrant-maintenance audit' to confirm zero LegacyLocatorPayload hits.")
+	fmt.Fprintln(s.cliWriter, "\nRun 'qdrant-maintenance audit' to confirm zero LegacyLocatorPayload hits.")
 	return nil
 }

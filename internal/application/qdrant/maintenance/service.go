@@ -32,6 +32,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 
 	"go.uber.org/zap"
 
@@ -91,6 +93,20 @@ type Service struct {
 	cfg *config.Config
 	log *zap.Logger
 
+	// cliWriter is the godlike/06 SSOT surface for CLI-UX output
+	// (formatted reports, JSON dumps, on-screen UI hints). The typed
+	// port keeps CLI-format output decoupled from zap's operator-log
+	// channel — zap writes to stderr / log-configured sinks; the
+	// cliWriter writes the byte-equivalent of the pre-split fmt.Print*
+	// surface to its injected io.Writer (default os.Stdout).
+	//
+	// godlike/07 NO-FAKE-AVAILABILITY: nil cliWriter is NEVER a
+	// silent no-op fallback — NewService fails closed by defaulting
+	// to os.Stdout when d.CliWriter is nil so the operator never
+	// loses CLI UX. Tests that want to capture output pass a
+	// bytes.Buffer via Deps.CliWriter explicitly.
+	cliWriter io.Writer
+
 	// Heavy-init fields (Audit + Delete modes only).
 	sqliteDB   *sql.DB
 	root       *app.ComposeRoot
@@ -111,9 +127,10 @@ type Service struct {
 // removed — Service.initHeavy populates the dispatcher lazily from the
 // composition root it opens for audit + delete modes.
 type Deps struct {
-	Cfg     *config.Config
-	Log     *zap.Logger
-	Cleaner QdrantCleaner
+	Cfg       *config.Config
+	Log       *zap.Logger
+	CliWriter io.Writer // optional; NewService defaults to os.Stdout when nil
+	Cleaner   QdrantCleaner
 }
 
 // NewService is the canonical fail-closed constructor for Service.
@@ -143,10 +160,20 @@ func NewService(d Deps) (*Service, error) {
 	if d.Cleaner == nil {
 		return nil, errors.New("maintenance.NewService: cleaner is nil (composition root missing QdrantCleaner port)")
 	}
+	// godlike/07 fail-closed-at-construction: nil CliWriter defaults
+	// to os.Stdout so CLI UX is byte-equivalent with the pre-split
+	// fmt.Print* surface. Tests pass an explicit bytes.Buffer to
+	// capture output; cmd/admin never passes CliWriter because the
+	// default is correct for normal operator UX (stdout).
+	cliWriter := d.CliWriter
+	if cliWriter == nil {
+		cliWriter = os.Stdout
+	}
 	return &Service{
-		cfg:     d.Cfg,
-		log:     d.Log,
-		cleaner: d.Cleaner,
+		cfg:       d.Cfg,
+		log:       d.Log,
+		cliWriter: cliWriter,
+		cleaner:   d.Cleaner,
 	}, nil
 }
 

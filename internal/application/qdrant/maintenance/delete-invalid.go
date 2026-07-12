@@ -48,7 +48,7 @@ func (s *Service) Delete(ctx context.Context, opts DeleteOptions) error {
 		s.log.Warn("qdrant-maintenance: classify returned with errors; printing partial report", zap.Error(err))
 		if opts.JSON && report != nil {
 			b, _ := json.Marshal(report)
-			fmt.Println(string(b))
+			fmt.Fprintln(s.cliWriter, string(b))
 		}
 		return err
 	}
@@ -71,19 +71,19 @@ func (s *Service) Delete(ctx context.Context, opts DeleteOptions) error {
 				"message":    "zero non-locator assets to delete — all findings are locator-only; use repair-locators",
 			}
 			b, _ := json.Marshal(out)
-			fmt.Println(string(b))
+			fmt.Fprintln(s.cliWriter, string(b))
 		} else {
-			fmt.Println("delete-invalid: zero non-locator assets to delete.")
-			fmt.Println("(All findings are locator-only; use 'repair-locators' instead.)")
+			fmt.Fprintln(s.cliWriter, "delete-invalid: zero non-locator assets to delete.")
+			fmt.Fprintln(s.cliWriter, "(All findings are locator-only; use 'repair-locators' instead.)")
 		}
 		return nil
 	}
 
 	if !opts.JSON {
-		fmt.Printf("=== qdrant-maintenance delete-invalid ===\n")
-		fmt.Println(legacyaudit.StringifyReport(report))
-		fmt.Printf("\nNon-locator assets to delete: %d\n", len(assetIDs))
-		fmt.Println("\nApplying via outbox.Dispatcher.EnqueueAndDelete (the canonical deletion path; " +
+		fmt.Fprintf(s.cliWriter, "=== qdrant-maintenance delete-invalid ===\n")
+		fmt.Fprintln(s.cliWriter, legacyaudit.StringifyReport(report))
+		fmt.Fprintf(s.cliWriter, "\nNon-locator assets to delete: %d\n", len(assetIDs))
+		fmt.Fprintln(s.cliWriter, "\nApplying via outbox.Dispatcher.EnqueueAndDelete (the canonical deletion path; "+
 			"never DELETE FROM media_assets directly)...")
 	}
 
@@ -118,13 +118,13 @@ func (s *Service) Delete(ctx context.Context, opts DeleteOptions) error {
 			"collection": report.Collection,
 		}
 		b, _ := json.Marshal(out)
-		fmt.Println(string(b))
+		fmt.Fprintln(s.cliWriter, string(b))
 	} else {
-		fmt.Printf("delete-invalid: dispatched %d canonical DELETE events to outbox_events.\n", applied)
+		fmt.Fprintf(s.cliWriter, "delete-invalid: dispatched %d canonical DELETE events to outbox_events.\n", applied)
 		if applied < len(assetIDs) {
-			fmt.Printf("  (%d skipped due to enqueue errors — check logs above)\n", len(assetIDs)-applied)
+			fmt.Fprintf(s.cliWriter, "  (%d skipped due to enqueue errors — check logs above)\n", len(assetIDs)-applied)
 		}
-		fmt.Println("Run `go run ./cmd/admin qdrant-readiness` afterwards to confirm dead_letters=0 and zero legacy audit hits.")
+		fmt.Fprintln(s.cliWriter, "Run `go run ./cmd/admin qdrant-readiness` afterwards to confirm dead_letters=0 and zero legacy audit hits.")
 	}
 	return nil
 }
