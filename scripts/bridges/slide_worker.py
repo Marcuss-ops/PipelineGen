@@ -446,11 +446,18 @@ def _dismiss_start_dialog(page) -> bool:
         for role_name in [re.compile(r"Images", re.I), re.compile(r"Immagini", re.I)]:
             try:
                 tiles = page.get_by_role("button", name=role_name)
+                _log(f"[_dismiss_start_dialog] role candidate count for {role_name.pattern}: {tiles.count()}")
                 for idx in range(tiles.count()):
                     tile = tiles.nth(idx)
                     if not tile.is_visible():
                         continue
+                    try:
+                        txt = (tile.inner_text(timeout=500) or "").strip()
+                    except Exception:
+                        txt = ""
                     _log(f"[_dismiss_start_dialog] fast-path role button matched: {role_name.pattern} idx={idx}")
+                    if txt:
+                        _log(f"[_dismiss_start_dialog] role button text: {txt[:120]!r}")
                     tile.click(force=True, timeout=5000)
                     if _wait_for_prompt_surface(page, timeout_ms=7000):
                         return True
@@ -474,11 +481,18 @@ def _dismiss_start_dialog(page) -> bool:
         ]:
             try:
                 tiles = page.locator(selector)
+                _log(f"[_dismiss_start_dialog] selector candidate count for {selector}: {tiles.count()}")
                 for idx in range(tiles.count()):
                     tile = tiles.nth(idx)
                     if not tile.is_visible():
                         continue
+                    try:
+                        txt = (tile.inner_text(timeout=500) or "").strip()
+                    except Exception:
+                        txt = ""
                     _log(f"[_dismiss_start_dialog] fast-path tile selector matched: {selector} idx={idx}")
+                    if txt:
+                        _log(f"[_dismiss_start_dialog] tile text: {txt[:120]!r}")
                     tile.click(force=True, timeout=5000)
                     if _wait_for_prompt_surface(page, timeout_ms=7000):
                         return True
@@ -512,11 +526,18 @@ def _dismiss_start_dialog(page) -> bool:
                     'button:has-text("Immagini")',
                 ]:
                     images_cards = dialog.locator(selector)
+                    _log(f"[_dismiss_start_dialog] modal candidate count for {selector}: {images_cards.count()}")
                     for idx in range(images_cards.count()):
                         images_card = images_cards.nth(idx)
                         if not images_card.is_visible():
                             continue
+                        try:
+                            txt = (images_card.inner_text(timeout=500) or "").strip()
+                        except Exception:
+                            txt = ""
                         _log(f"[_dismiss_start_dialog] modal tile selector matched: {selector} idx={idx}")
+                        if txt:
+                            _log(f"[_dismiss_start_dialog] modal tile text: {txt[:120]!r}")
                         images_card.click(force=True, timeout=5000)
                         if _wait_for_prompt_surface(page, timeout_ms=7000):
                             return True
@@ -1412,24 +1433,23 @@ class ProfileWorker(threading.Thread):
                                 )
                                 if isinstance(buffer_int_list, list) and buffer_int_list:
                                     image_bytes = bytes(buffer_int_list)
-                                    fetch_method = "blob-fetch"
-                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page succeeded ({len(image_bytes)} bytes)")                                except Exception as fe:
-                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page failed: {fe}")
-                                if not image_bytes:
-                                    try:
-                                        # locator.screenshot() captures the rendered
-                                        # <img> element without touching the slide
-                                        # page. This respects "MAI esportare la slide":
-                                        # the operation is element-scoped, not
-                                        # page-scoped. timeout=5000 bounds the
-                                        # variant where the locator selector silently
-                                        # rotates off the DOM mid-fetch; the worker
-                                        # fails fast and surfaces a typed error.
-                                        image_bytes = img.screenshot(type="png", timeout=5000)
-                                    fetch_method = "element-screenshot"
-                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback succeeded ({len(image_bytes)} bytes)")
-                                except Exception as se:
-                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback failed: {se}")
+                                    fetch_method = "blob-fetch"                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page succeeded ({len(image_bytes)} bytes)")
+                            except Exception as fe:
+                                _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page failed: {fe}")
+                            if not image_bytes:
+                                try:
+                                    # locator.screenshot() captures the rendered
+                                    # <img> element without touching the slide
+                                    # page. This respects "MAI esportare la slide":
+                                    # the operation is element-scoped, not
+                                    # page-scoped. timeout=5000 bounds the
+                                    # variant where the locator selector silently
+                                    # rotates off the DOM mid-fetch; the worker
+                                    # fails fast and surfaces a typed error.                                        image_bytes = img.screenshot(type="png", timeout=5000)
+                                        fetch_method = "element-screenshot"
+                                        _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback succeeded ({len(image_bytes)} bytes)")
+                                    except Exception as se:
+                                        _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback failed: {se}")
                         if image_bytes:
                             saved_format = _save_image_bytes(image_bytes, output_path)
                             elapsed = (time.time() - t0) * 1000
