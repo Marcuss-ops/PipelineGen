@@ -3,11 +3,7 @@ package artlist
 import (
 	"fmt"
 	"os"
-<<<<<<< HEAD
 	"strings"
-	"time"
-=======
->>>>>>> 21f3ac2e (refactor: extract types and errors (artlist/bundles))
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
