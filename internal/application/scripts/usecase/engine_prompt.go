@@ -75,6 +75,57 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 	return strings.Join(lines, "\n")
 }
 
+// buildSegmentInstructions renders the PR-CS-1 ScriptSegment blocks
+// plus the canonical DoD-driven footer (DoD #1-#5). The function
+// runs unconditionally — segments are a script-level structural
+// directive, independent of clip evidence.
+//
+// Branch A applies when len(plan.Segments) > 0. Branch B (legacy,
+// untouched) is the existing buildClipGroundingInstructions path
+// that handles plan.SegmentTopics when Segments is empty. The two
+// paths are mutually exclusive at runtime — the validator layer
+// (DoD #8 / FASE 6, separate commit) rejects input that mixes both.
+func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
+	if plan == nil || len(plan.Segments) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i, s := range plan.Segments {
+		if i > 0 {
+			b.WriteString("\n\n")
+		}
+		// Resolve target words via the canonical fallback chain:
+		// per-segment → plan.SegmentWords → plan.TargetWords → 80 default.
+		target := s.TargetWords
+		if target <= 0 {
+			target = plan.SegmentWords
+		}
+		if target <= 0 {
+			target = plan.TargetWords
+		}
+		if target <= 0 {
+			target = 80
+		}
+		fmt.Fprintf(&b, "SEGMENT %d\n", i+1)
+		fmt.Fprintf(&b, "Topic: %s\n", s.Topic)
+		fmt.Fprintf(&b, "Target words: %d", target)
+		if strings.TrimSpace(s.SourceText) != "" {
+			b.WriteString("\nSource text:\n")
+			b.WriteString(s.SourceText)
+		}
+	}
+	// Footer canonical — DoD-driven contract emitted once.
+	b.WriteString("\n\nWrite one continuous narrative.\n")
+	b.WriteString("Follow the segment order strictly (Introduzione → Contesto → Evento → Conseguenze → Conclusione). Do not skip, merge, or reorder topics.\n")
+	b.WriteString("Rewrite the supplied source text naturally, preserving every name, date, score, result, and quoted statement.\n")
+	b.WriteString("Do not invent names, dates, scores, results, or events.\n")
+	b.WriteString("If a topic has no source_text, write the segment using only the topic and the global source. Do not repeat facts from previous segments.\n")
+	b.WriteString("Target words are budget guidance, not exact count.\n")
+	b.WriteString("Do not print segment titles (SEGMENT 1, Topic:, Source text:) in the output.\n")
+	b.WriteString("Do not include markers like clip_id, accepted_clip_ids, JSON, Markdown code fences, schema_version, or specscene. Output only the script text.\n")
+	return b.String()
+}
+
 // plainTextInstruction is the prompt suffix appended unconditionally
 // for the canonical script-generation pipeline.
 //
