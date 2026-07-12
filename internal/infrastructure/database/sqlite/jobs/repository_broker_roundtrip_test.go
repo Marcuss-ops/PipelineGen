@@ -65,14 +65,27 @@ package jobs
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
+
+// P0.F regression-surface synergy (July 2026): the previously
+// imported `sqljobs "...internal/infrastructure/database/sqlite/jobs"`
+// alias is REMOVED. The alias created an import cycle at build time
+// (this test file is already in `package jobs`, so importing the
+// same package via its full path is a self-import). The pacote-local
+// symbols (ErrLeaseLost, ErrTransitionConflict) are now referenced
+// directly without the alias. This drops 3 lines from the test
+// header and resolves the load-bearing build blocker that prevented
+// the JOBS-T01-SQLITE-REPO round-trip regression suite from
+// running.
 
 // jobsTestSchema is the canonical SUBSET of the production jobs
 // + job_events tables — only the columns read or written by the
@@ -463,11 +476,17 @@ func TestBroker_RoundTrip_RenewLease_DoesNotBumpRevision(t *testing.T) {
 	}
 
 	// Exercise: RenewLease with the matching (id, workerID, newLeaseTTL).
-	// The kernel signature is RenewLease(ctx, id, workerID, leaseTTL) — no
-	// expectedRevision arg, no return value. The implementation must
-	// NOT bump the revision column.
-	if err := store.RenewLease(ctx, jobID, workerID, newLeaseTTL); err != nil {
+	// FASE 4(b) (July 2026): the kernel signature is now
+	// RenewLease(ctx, id, workerID, leaseTTL) (kerneljob.RenewLeaseResult, error)
+	// — the typed result surfaces LeaseState (Continue | CancelRequested | LeaseLost)
+	// atomically with the lease extension in a single SQL UPDATE. The implementation
+	// must NOT bump the revision column.
+	res, err := store.RenewLease(ctx, jobID, workerID, newLeaseTTL)
+	if err != nil {
 		t.Fatalf("RenewLease returned error: %v", err)
+	}
+	if res.State != kerneljob.LeaseStateContinue {
+		t.Fatalf("RenewLease on a healthy RUNNING job: expected LeaseStateContinue, got %q (typed LeaseState drift regression)", res.State)
 	}
 
 	// Post-assert: revision is UNCHANGED (the canonical signature contract).
@@ -489,5 +508,129 @@ func TestBroker_RoundTrip_RenewLease_DoesNotBumpRevision(t *testing.T) {
 	}
 	if post.LeaseExpiry.String == pre.LeaseExpiry.String {
 		t.Errorf("post-RenewLease: expected lease_expiry to be EXTENDED, got unchanged value %q", post.LeaseExpiry.String)
+	}
+}
+
+// TestBroker_RoundTrip_RenewLease_CancelledAtSet_ReturnsCancelRequested
+// pins the FASE 4(b) typed LeaseState contract for the cancel path. The
+// entire point of Cut A is to surface the cancel flag atomically through
+// the same SQL UPDATE that extends the lease — eliminating the pre-Fase-4
+// 2-second IsCancelled-poll goroutine. This test seeds a RUNNING job with
+// cancelled_at ALREADY SET (the operator-issued cancel land state) and
+// asserts that RenewLease returns (result{State: LeaseStateCancelRequested},
+// nil) — the worker must observe the cancel signal via the typed result
+// and abort the in-flight job via jobCancel (ctx.Err()).
+//
+// godlike/07 no-fake-availability: real SQL round-trip. A buggy CASE
+// expression (e.g. reading cancelled_at from the wrong table or
+// returning the wrong literal) would silently regress to
+// LeaseStateContinue and the worker would NEVER observe the cancel —
+// the entire FASE 4(b) contract would be silently broken. This test
+// is the load-bearing regression guard.
+func TestBroker_RoundTrip_RenewLease_CancelledAtSet_ReturnsCancelRequested(t *testing.T) {
+	db := newBrokerTestDB(t)
+	ctx := context.Background()
+	store := NewSQLiteStore(db, zap.NewNop())
+
+	const (
+		workerID = "worker-A"
+		leaseID  = "lease-X"
+		revision = 5
+	)
+	jobID := seedRunningJob(t, db, workerID, leaseID, revision, 30*time.Second)
+
+	// Pre-assert: status=RUNNING, cancelled_at NULL.
+	pre := readJob(t, db, jobID)
+	if pre.Status != "RUNNING" {
+		t.Fatalf("pre-condition: expected status=RUNNING, got %q", pre.Status)
+	}
+	if pre.CancelledAt.Valid {
+		t.Fatalf("pre-condition: expected cancelled_at NULL, got %q", pre.CancelledAt.String)
+	}
+
+	// Operator-side: mark the job as cancelled (the canonical
+	// pre-cancel state). RenewLease must observe this via the
+	// RETURNING CASE expression and report LeaseStateCancelRequested.
+	cancelTime := time.Now().UTC()
+	if _, err := db.ExecContext(ctx,
+		`UPDATE jobs SET cancelled_at = ?, updated_at = ? WHERE id = ?`,
+		timeutil.FormatRFC3339(cancelTime), timeutil.FormatRFC3339(time.Now()), jobID,
+	); err != nil {
+		t.Fatalf("seed cancelled_at: %v", err)
+	}
+
+	// Exercise: RenewLease on a job with cancelled_at SET.
+	res, err := store.RenewLease(ctx, jobID, workerID, 60*time.Second)
+	if err != nil {
+		t.Fatalf("RenewLease returned error: %v (typed LeaseState drift regression — should be nil error on the cancel path, only the typed result signals cancel)", err)
+	}
+	if res.State != kerneljob.LeaseStateCancelRequested {
+		t.Fatalf("RenewLease on a job with cancelled_at SET: expected LeaseStateCancelRequested, got %q (CASE expression drift regression — the pre-Fase-4 polling goroutine was supposed to be replaced by this atomic SQL path; if the CASE silently returns Continue the cancel signal is LOST)", res.State)
+	}
+
+	// Post-assert: status is still RUNNING (Cancel is an
+	// operator action with a separate state transition; RenewLease
+	// does NOT mutate status — it only surfaces the cancel flag).
+	post := readJob(t, db, jobID)
+	if post.Status != "RUNNING" {
+		t.Errorf("post-RenewLease(cancelled): expected status=RUNNING (RenewLease does not transition status), got %q", post.Status)
+	}
+}
+
+// TestBroker_RoundTrip_RenewLease_NoMatchingRow_ReturnsLeaseLost pins
+// the FASE 4(b) typed LeaseState contract for the lease-lost path.
+// When the WHERE clause filters out the row (wrong id, wrong worker_id,
+// non-RUNNING status, expired lease), the UPDATE matches 0 rows and
+// RenewLease must return (result{State: LeaseStateLeaseLost},
+// sqljobs.ErrLeaseLost) — the worker must observe the lease loss via
+// BOTH the typed result AND the errors.Is-compatible error sentinel
+// and treat the in-flight work as orphaned.
+//
+// godlike/07 no-fake-availability: real SQL round-trip on a
+// non-existent jobID. A buggy WHERE clause (e.g. missing the
+// worker_id filter) would match the wrong row and silently
+// return LeaseStateContinue on a lease that was already
+// reaped by another worker — the canonical double-claim
+// scenario. This test is the load-bearing lease-stability
+// regression guard.
+func TestBroker_RoundTrip_RenewLease_NoMatchingRow_ReturnsLeaseLost(t *testing.T) {
+	db := newBrokerTestDB(t)
+	ctx := context.Background()
+	store := NewSQLiteStore(db, zap.NewNop())
+
+	// Exercise: RenewLease on a non-existent jobID. The WHERE
+	// clause matches 0 rows, so the SQL UPDATE returns no rows
+	// and Go surfaces sql.ErrNoRows on Scan.
+	const (
+		nonExistentJobID = "job-does-not-exist"
+		workerID         = "worker-A"
+	)
+	res, err := store.RenewLease(ctx, nonExistentJobID, workerID, 60*time.Second)
+	if err == nil {
+		t.Fatalf("RenewLease on a non-existent jobID: expected error, got nil (typed LeaseState drift regression — the LeaseLost path MUST return the sqljobs.ErrLeaseLost sentinel)")
+	}
+	if !errors.Is(err, ErrLeaseLost) {
+		t.Errorf("RenewLease on a non-existent jobID: expected errors.Is(err, ErrLeaseLost) for downstream typed-sentinel matching, got %v", err)
+	}
+	if res.State != kerneljob.LeaseStateLeaseLost {
+		t.Errorf("RenewLease on a non-existent jobID: expected res.State=LeaseStateLeaseLost, got %q (typed LeaseState drift regression — the worker MUST inspect the typed result.State to surface lease loss, the error sentinel alone is insufficient)", res.State)
+	}
+
+	// Exercise: RenewLease on a RUNNING job with the WRONG workerID.
+	// The WHERE clause (id=? AND status IN ('RUNNING','FINALIZING')
+	// AND worker_id=?) must filter out the row because the workerID
+	// does not match. This pins the worker_id filter — without it,
+	// a worker could silently extend a lease that was already
+	// reaped by another worker (the canonical double-claim scenario).
+	jobID := seedRunningJob(t, db, "owner-worker", "lease-X", 5, 30*time.Second)
+	res2, err2 := store.RenewLease(ctx, jobID, "different-worker", 60*time.Second)
+	if err2 == nil {
+		t.Fatalf("RenewLease on a RUNNING job with wrong workerID: expected error, got nil (worker_id filter regression — the canonical double-claim guard)")
+	}
+	if !errors.Is(err2, ErrLeaseLost) {
+		t.Errorf("RenewLease on a RUNNING job with wrong workerID: expected errors.Is(err, ErrLeaseLost), got %v", err2)
+	}
+	if res2.State != kerneljob.LeaseStateLeaseLost {
+		t.Errorf("RenewLease on a RUNNING job with wrong workerID: expected res.State=LeaseStateLeaseLost, got %q (worker_id filter regression — typed result must report LeaseLost so the worker can abort)", res2.State)
 	}
 }

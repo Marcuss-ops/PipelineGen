@@ -10,25 +10,49 @@ import (
 )
 
 // ── Errors ──────────────────────────────────────────────────────────────
-
+//
+// godlike/06 SSOT (one canonical owner per fact) — Fase 5(b)
+// cutover (P0.F regression surface, July 2026):
+//
+//   - The CANONICAL declarations of ErrLeaseLost, ErrTransitionConflict,
+//     and ErrJobNotFound live in internal/domain/job/errors.go (Fase 5(a)
+//     homing; godlike/06 SSOT). The 3 re-export aliases below share the
+//     same `error` value with the canonical decls (`var X = job.X` is a
+//     Go var-alias, not a wrapper) so `errors.Is(err, jobs.ErrLeaseLost)`
+//     and `errors.Is(err, job.ErrLeaseLost)` probe the SAME sentinel.
+//     Identity preservation is load-bearing for tests/callers that
+//     errors.Is any of the 3 (no call-site migration required).
+//
+//   - ErrAlreadyClaimed, ErrInvalidState, ErrInvalidResultJSON stay as
+//     package-LOCAL sentinels: their failure shapes are
+//     infra-layer-specific (encode/decode of `job.Status` enum or
+//     SQLite-typed-column dual-write semantics) and have no canonical
+//     cross-package contract — promoting them to domjob would expose
+//     infra-layer detail as a domain-level public surface (noise that
+//     the Fase 5(a) cutover was designed to reduce).
+//
+// Pre-Fase-5 history (forward-prevention, NOT a code path): the
+// `ErrLeaseLost` + `ErrTransitionConflict` declarations used to live
+// in `store.go` (Wave 17.1.2 canonical-home target). Fase 5(a) moved
+// the canonical decls to domjob and Fase 5(b) was supposed to leave
+// transparent re-export aliases in the sqlite package — but the alias
+// re-export step was never completed. The half-applied cutover left
+// `lifecycle_*.go` / `finalize_attempt.go` referencing the names
+// unprefixed and the entire `internal/infrastructure/database/sqlite/jobs/`
+// package failed to build. The aliases below complete the cutover
+// correctly: re-export (not re-declare) so identity is preserved.
 var (
-	ErrAlreadyClaimed = errors.New("job already claimed by another worker")
-	ErrJobNotFound    = errors.New("job not found")
-	ErrInvalidState   = errors.New("invalid state transition")
-	// ErrInvalidResultJSON is returned by FinalizeAggregateParent when
-	// the caller-supplied result JSON cannot be parsed to extract the
-	// `parent_state` key for the typed-column dual-write (P1.2,
-	// architecture/current.yaml#PR-VO-PARENT-STATE-COLUMN). Per
-	// godlike/07 no-fake-availability the write fails-closed: a
-	// silent-swallow would let a corrupt split-brain state land on
-	// disk (the JSON key says one thing, the typed column says
-	// another). The caller errors.Is the typed sentinel for
-	// diagnostic intake; the typed column is NOT populated in this
-	// path (the deferred tx.Rollback preserves atomicity).
+	// Package-LOCAL sentinels (no canonical decl in domjob).
+	ErrAlreadyClaimed    = errors.New("job already claimed by another worker")
+	ErrInvalidState      = errors.New("invalid state transition")
 	ErrInvalidResultJSON = errors.New("finalize aggregate parent: result JSON malformed (cannot extract parent_state for typed-column dual-write)")
-	// ErrTransitionConflict and ErrLeaseLost live in store.go (Wave 17.1.2
-	// canonical home) — they are package-scope vars any file in
-	// `jobs` can reference without re-declaring or aliasing.
+
+	// Re-export aliases of internal/domain/job/errors.go (Fase 5(b) cutover
+	// completion). godlike/06 SSOT: same `error` value as canonical decl;
+	// errors.Is probes are symmetric across import paths.
+	ErrLeaseLost          = job.ErrLeaseLost
+	ErrTransitionConflict = job.ErrTransitionConflict
+	ErrJobNotFound        = job.ErrJobNotFound
 )
 
 // ── Typed Command Structs ────────────────────────────────────────────────
