@@ -274,9 +274,42 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 			resolvedFolderID = dest.FolderID
 		}
 
+		// Fase 5 / Commit 3 (July 2026) — wire the canonical
+		// run-level dedup key as the ActiveKey so a replay of the
+		// same run (same term + root folder + strategy + dryRun)
+		// collapses at the kernel job broker's UNIQUE index on
+		// `jobs.active_key`. Per user-spec literal "replay stessa
+		// run non duplica" (dedup guarantee #2).
+		//
+		// Why NOT use the pkg/idempotency.JobKey here: the spec
+		// defines 3 canonical keys (AssetKey, JobKey, OutboxKey)
+		// for PERSISTENT deduplication (media_assets.id + outbox_events
+		// UNIQUE constraints). Run-level ActiveKey is an EPHEMERAL
+		// job-queue concurrency lock keyed on highly specific API
+		// parameters (term + root folder + strategy + dryRun) that
+		// do not belong in a generic provider-agnostic idempotency
+		// package. artlist.RunDedupKey is the canonical surface for
+		// this concern (godlike/06 SSOT); the API handler
+		// (artlist_handlers.go::enqueueArtlistRun) already uses it.
+		//
+		// The Orchestrator (this function) was the LAST hold-out
+		// without ActiveKey — a replay of DiscoverAndQueueRun
+		// produced a fresh jobs row with implicit Type+Payload
+		// dedup, which is brittle (any payload byte change breaks
+		// the dedup). Setting ActiveKey makes the dedup explicit
+		// and observable.
+		//
+		// Strategy and dryRun are empty/false in the orchestrator
+		// path (the orchestrator doesn't expose them). This means
+		// an API handler replay with the same term + root folder
+		// + default strategy + dryRun=false produces the same
+		// ActiveKey as an orchestrator replay — the dedup
+		// unifies across entry points.
+		runActiveKey := artlist.RunDedupKey(normalizedTerm, driveFolderID, "", false)
 		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
 			Type:       "media.artlist",
 			Payload:    (&JobCodec{}).PayloadFromRequest(&RunTagRequest{Term: normalizedTerm, Limit: limit, RootFolderID: driveFolderID}),
+			ActiveKey:  runActiveKey,
 			MaxRetries: 3,
 		})
 		if err != nil {
