@@ -410,6 +410,22 @@ func TestGate12_PreflightAllGatesPass(t *testing.T) {
 		"TestGate11_ScraperFailureDistinctFromEmptyResults",
 		"TestGate11_ScraperFailureNoDispatch",
 
+		// Fase 6 / Commit 1 (July 2026) — gate-block classifier + short-circuit
+		// PR-TYPED-GATE-BLOCK-CLASSIFIER + handler integration tests. These
+		// were the 8 tests added during the Commit 1 (acquisition-mode
+		// block) work and are required to be present at runtime per the
+		// godlike/06 SSOT lockstep: the spec and the test suite MUST agree
+		// on the gate count (28 + 8 = 36). Drift here would silently
+		// pass the historical phantom-debt pattern.
+		"TestGateBlockClassify_AcquisitionModeBlocked",
+		"TestGateBlockClassify_DailyLimitExhaustedReserved",
+		"TestGateBlockClassify_NilReturnsNone",
+		"TestGateBlockClassify_SessionExpiredReserved",
+		"TestGateBlockClassify_UnauthorizedReserved",
+		"TestGateBlockShortCircuit_NilItemLeavesUntouched",
+		"TestGateBlockShortCircuit_StampsAuditBumpsCounter",
+		"TestGateBlockShortCircuit_UnrelatedErrorNoOp",
+
 		// Gate 12 — Preflight (this test)
 		"TestGate12_PreflightAllGatesPass",
 	}
