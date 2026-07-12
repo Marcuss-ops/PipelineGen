@@ -520,3 +520,69 @@ issues:
     evidence_filename: "stdout from make verify-main 2026-07-12 diagnostic"
     opened_date: 2026-07-12
     tracking_issue: "godlike/07 zero-legacy compilation blocker; AGENTS.md Operational rules (no source edits without explicit user request); PRE-EXISTING-7 already covers 3 of 4 sibling failures in internal/application/scripts/usecase + PRE-EXISTING-8 covers the 4th - ZERO new entries needed there"
+
+  # ── STEP-5-CLOSEOUT-TEXT-TRACK-RESOLVER-SPLIT — 6-file split ratification (July 2026) ──
+  # Step 5 of the FASE/Step split sequence (July 2026) sought to split
+  # internal/application/youtube/usecase/text_track_resolver.go (620 LOC)
+  # into 6 files by concern per the design intent declared in the file's
+  # own header comment. Verification on the local checkout confirms
+  # the 6-file structure matches the user-spec seams verbatim — every
+  # listed symbol resides in the correct leaf per the thinker-with-files-gemini
+  # 'PERFECT MATCH' verdict during Step 5's verification pass:
+  #
+  #   canonical | internal/application/youtube/usecase/text_track_resolver.go
+  #     symbol  | TextTrackResolver struct + ResolveOriginal + ResolveLanguage
+  #              + ResolveBestAvailable + AcquireSegmentText + languageInList
+  #              (slim orchestrator)
+  #   leaf 1    | .../text_track_payload.go        → resolveRawPayload
+  #   leaf 2    | .../text_track_database.go       → fetchDatabaseTrackRaw
+  #   leaf 3    | .../text_track_subtitles.go      → bundleToTimedTrack
+  #   leaf 4    | .../text_track_whisper.go        → fetchWhisperTranscriptRaw
+  #   leaf 5    | .../text_track_persistence.go    → bundleToTextTracks
+  #                                                  + cdbRowToBundle
+  #                                                  + sourceLangOf
+  #                                                  + sourceOrProvided
+  #                                                  + confidencePtr
+  #
+  # AGENTS.md Documentation rule: 'Git history is the archive.' When a
+  # split whose file structure was ALREADY on disk at the moment of
+  # Step 5's verification pass is canonically complete, the canonical
+  # close-out pattern is THIS entry — a status:resolved ratification
+  # in architecture/issues.yaml via documentation, NOT an empty
+  # code-move commit (which would only bloat git history).
+  #
+  # Companion precedent: PRE-EXISTING-10-FORMAT-DRIFT in this same
+  # file uses the identical ratification pattern (status:resolved +
+  # commit-message-body-as-archive + entry authored at close-out, not
+  # opened-then-closed). This entry joins that lineage.
+  #
+  # Verification evidence (Step 5 pass, bounded):
+  #   - go test ./internal/application/youtube/usecase/...  exit 0
+  #   - gofmt -l internal/application/youtube/usecase/      exit 0 (clean)
+  #   - symbol-distribution audit (thinker-with-files-gemini): PERFECT MATCH
+  #   - all 6 file locations on disk = the user-spec seams verbatim
+  #
+  # Future-ratification playbook (encoded for future Step-type splits):
+  # When a Step brief specifies a split whose file structure is already
+  # on disk matching the spec verbatim, the close-out pattern is:
+  #   1. Add a status:resolved entry to this file (not open / in_progress).
+  #   2. Reference the file list + symbol table in the entry body + commit
+  #      message body (commit message = canonical trace per AGENTS.md).
+  #   3. Do NOT create a separate .md attachment (zero-legacy audit
+  #      surface lives in this YAML file + git history).
+  # This prevents empty code-move commits from bloating history while
+  # still leaving a discoverable audit trail for operators reading this
+  # surface.
+  - id: STEP-5-CLOSEOUT-TEXT-TRACK-RESOLVER-SPLIT
+    title: "Step 5 close-out: text_track_resolver 6-file split ratified (2026-07-12)"
+    status: resolved
+    severity: p3
+    owner_capability: "internal/application/youtube/usecase (text_track_resolver.go + 5 leaf helpers)"
+    follow_up:
+      - "Action: this entry IS the close-out audit ratification per user spec. The commit that ships this entry is the canonical ack (commit message body carries the symbol table + verification-gate ledger per AGENTS.md 'Git history is the archive' rule). No code changes accompanying — the 6-file layout was already on disk before Step 5's verification pass."
+      - "Verify local baseline post-commit: `git log -n 5 --oneline` shows the ratification commit on local main; `go build ./...` + `go vet ./...` + `go test ./internal/application/youtube/usecase/...` continue flipping green (Step 5's bounded verification gates; the artlist/types.go fix at HEAD unblocks the full-repo gate)."
+      - "Verify origin/main baseline: this ratification commit fast-forwards cleanly onto origin/main once the local divergence flagged in the prior turn's push attempt is resolved (no SHA hard-pin here — refer to git log for the exact SHA, since a future rebase may relocate it)."
+      - "Future-ratification playbook: see PRE-EXISTING-10-FORMAT-DRIFT in this file — it is the canonical exemplar for the ratify-via-doctrine pattern (status:resolved at close-out + commit-message-body-as-archive + zero attachment files). One-pattern-per-fact discipline (godlike/06) — this entry does not re-state the playbook."
+    evidence_filename: "this entry's companion commit message body (forward-pointers inline + Step 5 spec seam table + verification-gate ledger; no separate .md attachment per AGENTS.md 'Git history is the archive')"
+    opened_date: 2026-07-12
+    tracking_issue: "godlike/06 SSOT bookkeeping rule for ratifying already-shipped splits via documentation; doctrinal precedent: PRE-EXISTING-10-FORMAT-DRIFT in this file; AGENTS.md Documentation rule ('Git history is the archive' — commit message body IS the canonical trace, no side files); companion prior fix: artlist/types.go merge-conflict resolution unblocks the full-repo gate that Step 5's bounded gates were scoped within (git log carries the SHA, no hard-pin)"
