@@ -1113,26 +1113,6 @@ class ProfileWorker(threading.Thread):
                 panel_open = False
 
             if not panel_open:
-                # Code-review fix (post-amend, July 2026): the helper-only path
-                # dropped the canonical insert-generated-image click that the
-                # pre-fix Step 1 executed. On a cold Slides.new session where
-                # neither the textarea nor a generic Images tile is visible
-                # at the time Step 1 fires, _wait_for_prompt_surface retries
-                # via role-based Images/Immagini button only — but the actual
-                # Nano Banana Pro entry button exposes different attributes
-                # (button.insert-generated-image, div[role="button"]:has-text(
-                # "Nano Banana Pro"), etc.). Click the canonical button chain
-                # FIRST, then delegate the wait to _wait_for_prompt_surface.
-                try:
-                    btn = self.page.locator(
-                        'button.insert-generated-image, '
-                        '[data-view-id="insert-generated-image"], '
-                        'div[role="button"]:has-text("Nano Banana Pro"), '
-                        'button:has-text("Nano Banana Pro")'
-                    ).last
-                    btn.click(force=True, timeout=5000)
-                except Exception as ce:
-                    _log(f"[profile-{self.profile_id}][{request_id}] canonical insert-image click skipped: {ce}")
                 panel_open = _wait_for_prompt_surface(self.page, timeout_ms=15000)
                 if not panel_open:
                     raise PlaywrightTimeout("prompt surface did not become visible after selecting Images")
@@ -1408,10 +1388,45 @@ class ProfileWorker(threading.Thread):
                                 image_bytes = response.body()
                                 fetch_method = "googleusercontent"
                         elif "blob:" in src:
-                            response = self.page.request.get(src, timeout=15000)
-                            if response.status == 200:
-                                image_bytes = response.body()
-                                fetch_method = "blob-fetch"
+                            # P0.3 (July 2026): self.page.request.get() does NOT
+                            # resolve blob: URLs because the blob: URL authority
+                            # is the page-context (not the outer Playwright
+                            # context). We replace the fragile self.page.request.get
+                            # with two new strategies per user spec:
+                            #   (a) try window.fetch(src) inside page.evaluate
+                            #       (proxy-on-page): the JS fetch() runs in the
+                            #       page context where the blob: URL has authority.
+                            #   (b) fallback to locator.screenshot() of the <img>
+                            #       element itself (NOT a page screenshot — never
+                            #       export the slide). The element screenshot
+                            #       preserves the rendered pixel content without
+                            #       depending on the blob: URL fetch succeeding.
+                            # Structured P2-diagnostics logs a method field per
+                            # branch so audit logs surface which path produced
+                            # the bytes.
+                            try:
+                                buffer_int_list = self.page.evaluate(
+                                    "url => fetch(url).then(r => r.arrayBuffer()).then(b => Array.from(new Uint8Array(b)))",
+                                    src,
+                                )
+                                if isinstance(buffer_int_list, list) and buffer_int_list:
+                                    image_bytes = bytes(buffer_int_list)
+                                    fetch_method = "blob-fetch"
+                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page succeeded ({len(image_bytes)} bytes)")
+                            except Exception as fe:
+                                _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page failed: {fe}")
+                            if not image_bytes:
+                                try:
+                                    # locator.screenshot() captures the rendered
+                                    # <img> element without touching the slide
+                                    # page. This respects "MAI esportare la slide":
+                                    # the operation is element-scoped, not
+                                    # page-scoped.
+                                    image_bytes = img.screenshot(type="png")
+                                    fetch_method = "element-screenshot"
+                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback succeeded ({len(image_bytes)} bytes)")
+                                except Exception as se:
+                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback failed: {se}")
                         if image_bytes:
                             saved_format = _save_image_bytes(image_bytes, output_path)
                             elapsed = (time.time() - t0) * 1000
