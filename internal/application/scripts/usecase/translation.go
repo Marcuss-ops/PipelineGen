@@ -324,8 +324,15 @@ func TranslateScriptSpec(
 		}
 
 		// Scene.Text translation (early return on failure).
+		// PRE-EXISTING-7 (FASE 13): use the ENRICHED baseline
+		// (scene.Text) rather than the raw inputScene.Text. The
+		// pre-translation ValidateAndEnrichSpecScene populates
+		// canonical semantic markers (Pacquiao/Broner/Round N in
+		// the canonical 8-scene Pacquiao-Broner fixture) on scene;
+		// translating scene.Text ensures the markers reach the LLM
+		// and survive translation across all 4 languages.
 		textResult, textEqualSource, textErr := translateTextSegment(
-			ctx, translator, inputScene.Text, targetLang,
+			ctx, translator, scene.Text, targetLang,
 			fmt.Sprintf("scene[%d] text", i),
 		)
 		if textErr != nil {
@@ -342,8 +349,10 @@ func TranslateScriptSpec(
 		}
 
 		// Scene.Title translation (early return on failure).
+		// PRE-EXISTING-7 (FASE 13): use the enriched baseline
+		// (scene.Title) to keep title text in lockstep with body text.
 		titleResult, titleEqualSource, titleErr := translateTextSegment(
-			ctx, translator, inputScene.Title, targetLang,
+			ctx, translator, scene.Title, targetLang,
 			fmt.Sprintf("scene[%d] title", i),
 		)
 		if titleErr != nil {

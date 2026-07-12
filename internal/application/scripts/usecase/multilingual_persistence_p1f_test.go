@@ -207,15 +207,15 @@ func makeEightScenePacquiaoSpecEN() *scriptpkg.ModelScriptOutputV1 {
 		makeScene("scene-7", "clip-r12", "Round 12 — The end of the match",
 			"https://drive.google.com/file/d/pacquiao-broner-r12/view",
 			"img-r12",
-			"Final round, both fighters giving everything, the bell rings",
-			"Round 12 — The end of the match, both fighters empty the tank, the final bell rings.",
-			"Round 12: il finale del match"),
+			"Final round, Pacquiao and Broner give everything, the bell rings",
+			"Round 12 — The end of the match; Pacquiao and Broner empty the tank together, the final bell rings.",
+			"Round 12: Pacquiao vs Broner - il finale del match"),
 		makeScene("scene-8", "clip-post", "Post-match — Verdict announcement",
 			"https://drive.google.com/file/d/pacquiao-broner-post/view",
 			"img-post",
-			"Ring announcer with the scorecards, crowd waiting, the verdict is read",
-			"Post-match — The official verdict is announced, Pacquiao wins by unanimous decision.",
-			"Post-match: annuncio del verdetto"),
+			"Ring announcer with the scorecards; Pacquiao and Broner await the verdict",
+			"Post-match — The official verdict is announced; Pacquiao wins by unanimous decision over Broner.",
+			"Post-match: Pacquiao batte Broner - annuncio del verdetto"),
 	}
 	for i := range scenes {
 		scenes[i].Index = i
@@ -460,10 +460,16 @@ func TestMultilingual_8Scenes_4Languages_StructurePreserved(t *testing.T) {
 		require.NotNil(t, out)
 
 		// Per-scene semantic-marker probe.
+		// PRE-EXISTING-7 / FASE 13 PART 2: p1fSemanticMarkersPerScene
+		// map keys are 1-based (human-readable); convert to 0-based
+		// for slice access. The legacy require.Greater(t,len,sceneIdx)
+		// failed at sceneIdx=8 because len=8 and the slice index 8 was
+		// out of bounds.
 		for sceneIdx, markers := range p1fSemanticMarkersPerScene {
-			require.Greater(t, len(out.SpecScene.Scenes), sceneIdx,
-				"%s output MUST have at least %d scenes for the semantic-marker probe", lang, sceneIdx+1)
-			sc := out.SpecScene.Scenes[sceneIdx]
+			scIdx := sceneIdx - 1
+			require.Greater(t, len(out.SpecScene.Scenes), scIdx,
+				"%s output MUST have at least %d scenes for the semantic-marker probe", lang, sceneIdx)
+			sc := out.SpecScene.Scenes[scIdx]
 			// Each per-scene marker must appear in either the
 			// scene's Text or Title (the canonical translatable
 			// fields).

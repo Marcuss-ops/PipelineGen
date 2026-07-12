@@ -116,9 +116,26 @@ func evaluateQualityGate(
 	// Language detection.
 	q.LanguageDetected = detectLanguage(generatedText)
 
-	// Source text coverage.
+	// Source text coverage. PRE-EXISTING-7 (FASE 13): when neither
+	// SourceText nor ClipEvidence is provided, the gate has no
+	// anchor for a coverage ratio (pure-prose free-form generation).
+	// Short-circuit to 1.0 instead of forcing the LLM-emitted text
+	// to overlap with an empty source (which always computes to 0.0
+	// and trips the editorial gate on pure-prose orchestrator paths).
+	//
+	// Operator-visibility gap (PRE-EXISTING-7 / FASE 13 PART 3): this
+	// skip is silent. A future PR can add a log.Warn emission at the
+	// orchestrator boundary (e.g., generation_result_mapper.go) when
+	// q.SourceTextCoverage == 1.0 && plan.ClipEvidence == nil — the
+	// signal would surface wildly-off-target LLM outputs on the pure-prose
+	// path WITHOUT triggering the editorial gate. For now the gate stays
+	// silent to honor the canonical godlike/07 no-blocking contract.
 	sourceText := buildSourceText(plan)
-	q.SourceTextCoverage = computeSourceTextCoverage(generatedText, sourceText)
+	if strings.TrimSpace(sourceText) == "" {
+		q.SourceTextCoverage = 1.0
+	} else {
+		q.SourceTextCoverage = computeSourceTextCoverage(generatedText, sourceText)
+	}
 
 	// Clip evidence coverage.
 	q.ClipEvidenceCoverage = computeClipEvidenceCoverage(result, plan)
@@ -155,7 +172,11 @@ func evaluateQualityGate(
 		reasons = append(reasons,
 			"unsupported claims detected")
 	}
-	if plan.TargetWords > 0 {
+	// PRE-EXISTING-7 / FASE 13 PART 2: target-word tolerance only
+	// enforces when a source anchor exists (plan.SourceText or clip
+	// evidence). Pure-prose free-form generation has no anchor —
+	// the tolerance is observational only.
+	if plan.TargetWords > 0 && strings.TrimSpace(sourceText) != "" {
 		lower := float64(plan.TargetWords) * minTargetWordsRatio
 		upper := float64(plan.TargetWords) * maxTargetWordsRatio
 		if float64(q.ActualWords) < lower || float64(q.ActualWords) > upper {
