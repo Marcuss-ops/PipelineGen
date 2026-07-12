@@ -66,6 +66,48 @@ export function pickChromeExecutable() {
 }
 
 /**
+ * Evaluate the browser preflight (PR-FIX-SCRAPER-BROWSER, July 2026).
+ *
+ * Returns a structured verdict describing which browser sourcing path
+ * is available. The caller (artlist_server.js::runBrowserPreflight)
+ * decides whether to fail-fast (process.exit 78) or continue. The
+ * pure-function shape keeps preflight logic hermetic to unit tests
+ * (test/browser.test.mjs) without needing to spawn child processes or
+ * mock process.exit.
+ *
+ * Decision tree (matches the documented operator resolution paths in
+ * Dockerfile.scraper + artlist_server.js::runBrowserPreflight):
+ *
+ *   1. If any of BROWSER_WS / LIGHTPANDA_WS / CHROME_WS is set,
+ *      return {ok:true, mode:'ws'}. The WS endpoint takes priority
+ *      even if a local Chromium is also installed — operators pin
+ *      the WS path when running against an external browser farm
+ *      (Lightpanda, Chrome-WS service, Playwright-on-host).
+ *   2. Else call pickChromeExecutable() (which honours CHROME_EXECUTABLE
+ *      first, then scans /usr/bin/* candidates). If a path is found,
+ *      return {ok:true, mode:'local', execPath}.
+ *   3. Else return {ok:false, mode:'none', reason:'...'} so the caller
+ *      can fail-closed at server startup.
+ *
+ * @returns {{ok: boolean, mode: 'ws'|'local'|'none', execPath?: string, reason?: string}}
+ */
+export function evaluateBrowserPreflight() {
+  const hasWs = !!(process.env.BROWSER_WS || process.env.LIGHTPANDA_WS || process.env.CHROME_WS);
+  if (hasWs) {
+    return { ok: true, mode: 'ws', reason: null };
+  }
+  const execPath = pickChromeExecutable();
+  if (execPath) {
+    return { ok: true, mode: 'local', execPath, reason: null };
+  }
+  return {
+    ok: false,
+    mode: 'none',
+    reason: 'no remote browser WS endpoint (BROWSER_WS / LIGHTPANDA_WS / CHROME_WS) AND no local Chromium/Chrome binary found',
+  };
+}
+
+/**
  * Opens browser instance (local or remote).
  *
  * Return shape extended in FASE 9 (June 2026) to carry `launchError`

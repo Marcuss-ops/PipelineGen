@@ -2,7 +2,7 @@ import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { openBrowser } from './src/artlist/browser.js';
+import { openBrowser, pickChromeExecutable, evaluateBrowserPreflight } from './src/artlist/browser.js';
 import { searchArtlist } from './artlist_search.js';
 import { downloadClipVideo } from './src/artlist/download.js';
 
@@ -238,6 +238,45 @@ function handleHealth(req, res) {
     last_launch_error: lastLaunchError,
   }));
 }
+
+// ─── Preflight (PR-FIX-SCRAPER-BROWSER, July 2026) ────────────────────────────────────────────────────────────────────
+//
+// Godlike/07 fail-closed: the scraper must NOT silently degrade to
+// "server running, every /search request returning 500 because the
+// browser cannot launch" — that mode requires operators to grep
+// docker logs to realize something is misconfigured. runBrowserPreflight
+// runs once at startup, BEFORE server.listen, and exits with EX_CONFIG
+// (78) when no browser source is reachable. The deterministic
+// exit-on-miss converts the silent-degradation foot-gun into a
+// crashloop the operator can fix in one config edit.
+//
+// Three resolution paths (logged at INFO when the preflight passes):
+//   1. WS endpoint via BROWSER_WS / LIGHTPANDA_WS / CHROME_WS
+//      (operator-pinned CDP socket for an external browser farm).
+//   2. Local Chromium/Chrome picked up via CHROME_EXECUTABLE override
+//      or the /usr/bin/{google-chrome,chromium,...} filesystem probe.
+//   3. FAIL — script exits 78 with actionable fix hints (logged at
+//      ERROR to stderr so docker logs surfaces them).
+function runBrowserPreflight() {
+  const verdict = evaluateBrowserPreflight();
+  if (verdict.ok) {
+    console.log(
+      `[artlist-server] Preflight OK (mode=${verdict.mode}` +
+      (verdict.execPath ? `, exec=${verdict.execPath}` : '') +
+      ')',
+    );
+    return;
+  }
+  console.error('[artlist-server] FATAL preflight (PR-FIX-SCRAPER-BROWSER, July 2026):');
+  console.error(`  ${verdict.reason}`);
+  console.error('  Resolution paths (pick one):');
+  console.error('    (1) apt-get install -y chromium   (or set CHROME_EXECUTABLE=/path/to/your-browser)');
+  console.error('    (2) BROWSER_WS=ws://your-cdp-endpoint   (or LIGHTPANDA_WS / CHROME_WS)');
+  console.error('  Exiting with code 78 (EX_CONFIG) so docker-compose surfaces the misconfiguration immediately.');
+  process.exit(78);
+}
+
+runBrowserPreflight();
 
 // ─── HTTP server ──────────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
