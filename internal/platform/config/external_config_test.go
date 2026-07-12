@@ -3,6 +3,7 @@ package config
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
 )
 
@@ -151,4 +152,46 @@ func TestConfigUnmarshalReadsArtlistCookiesPath(t *testing.T) {
 	if got, want := customCfg.External.ArtlistCookiesPath, "/var/lib/pipelinegen/artlist_cookies.txt"; got != want {
 		t.Fatalf("expected ArtlistCookiesPath %q, got %q", want, got)
 	}
+}
+
+// ---------- PR-ARTLIST-AUTHORIZED-BY-DEFAULT (P1, July 2026) ----------
+//
+// TestConfigDefaults_ArtlistAcquisitionIsAuthorized pins the LOAD-BEARING
+// default flip on the LOADER side (not just resolver-side). When
+// applyDefaults() runs on a fresh Config struct with no env/yaml
+// overrides, the new defaults MUST be applied verbatim:
+//
+//	ArtlistAcquisitionMode:    "authorized_api"
+//	ArtlistDailyDownloadLimit: 10
+//
+// Without this test, a future regression that flips the struct tags back
+// to manual_import / limit=0 would only be caught downstream via the
+// resolver test in internal/infrastructure/artlist/downloader/resolver_test.go
+// (which mirrors the plumb-through but does not exercise the struct tag
+// itself). The loader defaults are the canonical source of truth; pin
+// them explicitly with the testify assertion-apis (matches the convention
+// of prior tests in this file where applicable).
+func TestConfigDefaults_ArtlistAcquisitionIsAuthorized(t *testing.T) {
+	cfg := &Config{}
+	applyDefaults(cfg)
+
+	assert.Equal(t, "authorized_api", cfg.External.ArtlistAcquisitionMode,
+		"PR-ARTLIST-AUTHORIZED-BY-DEFAULT P1: loader default for ArtlistAcquisitionMode MUST be authorized_api")
+	assert.Equal(t, 10, cfg.External.ArtlistDailyDownloadLimit,
+		"PR-ARTLIST-AUTHORIZED-BY-DEFAULT P1: loader default for ArtlistDailyDownloadLimit MUST be 10")
+}
+
+// TestConfigOverride_ArtlistAcquisitionMode_ManualImport pins the env
+// override path: when ARTLIST_ACQUISITION_MODE=manual_import is set
+// EXPLICITLY, the operator's value MUST win over the P1 default
+// (godlike/06 SSOT: env > yaml > default resolution order in applyEnvVars).
+// This guards the cutover from accidentally swallowing the manual_import
+// escape hatch.
+func TestConfigOverride_ArtlistAcquisitionMode_ManualImport(t *testing.T) {
+	t.Setenv("ARTLIST_ACQUISITION_MODE", "manual_import")
+	cfg := &Config{}
+	applyDefaults(cfg)
+	applyEnvVars(cfg)
+	assert.Equal(t, "manual_import", cfg.External.ArtlistAcquisitionMode,
+		"operator opt-out via ARTLIST_ACQUISITION_MODE=manual_import MUST take precedence over the P1 default")
 }

@@ -210,3 +210,105 @@ func TestResolver_Download_AuthorizedAPILimitAllowsDownload(t *testing.T) {
 	assert.False(t, errors.Is(err, artapp.ErrManualImportActive))
 	assert.False(t, errors.Is(err, artapp.ErrAutomaticDownloadsDisabled))
 }
+
+// TestResolver_Download_AuthorizedByNewDefaults pins the resolver-side
+// end of PR-ARTLIST-AUTHORIZED-BY-DEFAULT (P1, July 2026): a fresh
+// deployment without operator overrides MUST permit downloads because
+// the loader defaults to AcquisitionMode=authorized_api AND
+// DailyDownloadLimit=10. This is the load-bearing test for the
+// P1 cutover; if either default flips back, this test fails loudly
+// alongside the config-default tests in
+// internal/platform/config/external_config_test.go.
+func TestResolver_Download_AuthorizedByNewDefaults(t *testing.T) {
+	dir := t.TempDir()
+	audit := &fakeAuditRepository{limit: 10}
+
+	// Mirror the P1 defaults verbatim (don't depend on the unexported
+	// applyDefaults helper -- the resolver test lives in package
+	// `downloader`, not `config`).
+	cfg := &config.Config{
+		External: config.ExternalConfig{
+			ArtlistAcquisitionMode:    "authorized_api",
+			ArtlistDailyDownloadLimit: 10,
+			ArtlistAccountID:          "default",
+			ArtlistScraperServerURL:   "http://artlist-scraper:9123",
+		},
+	}
+
+	r := NewResolver(cfg, ResolverConfig{
+		// Same plumb-through as build_bundles_artlist.go::WireArtlist:
+		AcquisitionMode:    artapp.ArtlistAcquisitionMode(cfg.External.ArtlistAcquisitionMode),
+		AccountID:          cfg.External.ArtlistAccountID,
+		DailyDownloadLimit: cfg.External.ArtlistDailyDownloadLimit,
+		AuditRepository:    audit,
+	}, zap.NewNop(), nil)
+
+	// Create a local file to satisfy the HTTP transport without a real server
+	// (matches the pattern from TestResolver_Download_AuthorizedAPILimitAllowsDownload).
+	src := filepath.Join(dir, "source.mp4")
+	require.NoError(t, os.WriteFile(src, []byte("fake video"), 0o644))
+
+	_, err := r.Download(context.Background(), artapp.DownloadRequest{
+		SourceRef:     "file://" + src,
+		DestinationID: filepath.Join(dir, "out"),
+		Filename:      "clip.mp4",
+	})
+
+	// The transport-layer rejection of file:// URLs is irrelevant. What
+	// matters: the resolver gates MUST NOT reject the request before
+	// it reaches the transport. With the P1 defaults, ErrManualImportActive
+	// and ErrAutomaticDownloadsDisabled MUST both be absent, audit row
+	// MUST be recorded.
+	require.Error(t, err, "transport failure expected; not asserting on transport outcome")
+	assert.False(t, errors.Is(err, artapp.ErrManualImportActive),
+		"P1 default AcquisitionMode=authorized_api MUST NOT yield ErrManualImportActive")
+	assert.False(t, errors.Is(err, artapp.ErrAutomaticDownloadsDisabled),
+		"P1 default DailyDownloadLimit=10 MUST NOT yield ErrAutomaticDownloadsDisabled")
+	assert.False(t, errors.Is(err, artapp.ErrDailyDownloadLimitExceeded),
+		"P1 default limit=10 is below the count=0 pre-seed; the limit gate MUST pass")
+	require.NotEmpty(t, audit.records,
+		"P1 defaults permit downloads; audit row MUST be recorded before transport attempt")
+	assert.Equal(t, "artlist", audit.records[0].rec.Provider)
+	assert.Equal(t, "default", audit.records[0].rec.AccountID)
+	assert.Equal(t, artapp.DownloadAuditStatusFailed, audit.records[0].status,
+		"transport-layer failure flips the audit row to failed; pre-condition is that the row exists")
+}
+
+// TestResolver_Download_ManualImportBlocksDownloadAtP1Default guards
+// the manual_import opt-out path under the new default regime: when
+// the operator EXPLICITLY sets ARTLIST_ACQUISITION_MODE=manual_import,
+// the resolver gate MUST return ErrManualImportActive EVEN THOUGH the
+// loader default is authorized_api. This protects the cutover from
+// accidentally swallowing the manual_import escape hatch.
+func TestResolver_Download_ManualImportBlocksDownloadAtP1Default(t *testing.T) {
+	dir := t.TempDir()
+	audit := &fakeAuditRepository{}
+
+	cfg := &config.Config{
+		External: config.ExternalConfig{
+			ArtlistAcquisitionMode:    "manual_import", // operator override
+			ArtlistDailyDownloadLimit: 10,              // irrelevant when manual_import
+			ArtlistAccountID:          "default",
+			ArtlistScraperServerURL:   "http://artlist-scraper:9123",
+		},
+	}
+
+	r := NewResolver(cfg, ResolverConfig{
+		AcquisitionMode:    artapp.ArtlistAcquisitionMode(cfg.External.ArtlistAcquisitionMode),
+		AccountID:          cfg.External.ArtlistAccountID,
+		DailyDownloadLimit: cfg.External.ArtlistDailyDownloadLimit,
+		AuditRepository:    audit,
+	}, zap.NewNop(), nil)
+
+	_, err := r.Download(context.Background(), artapp.DownloadRequest{
+		SourceRef:     "https://artlist.io/clip/123",
+		DestinationID: dir,
+		Filename:      "clip.mp4",
+	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, artapp.ErrManualImportActive,
+		"the manual_import override MUST escape the P1 default")
+	require.Empty(t, audit.records,
+		"manual_import gate fires before the audit row is recorded; no rows expected")
+}

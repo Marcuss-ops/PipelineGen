@@ -118,27 +118,52 @@ type ExternalConfig struct {
 	// ArtlistAcquisitionMode controls whether Artlist assets are acquired
 	// automatically or imported manually. Canonical values:
 	//
-	//   manual_import — PipelineGen does NOT download automatically. Users
-	//                     download assets from Artlist and place them in the
-	//                     import folder; the pipeline ingests them and records
-	//                     provenance. This is the default (godlike/07 fail-closed).
-	//   authorized_api  — Automatic search+download is allowed, typically under
-	//                     an Enterprise/API agreement. Subject to the daily
-	//                     download limit configured below.
+	//   manual_import   — Operator-pinned opt-out: PipelineGen does NOT
+	//                     download automatically. Users download assets
+	//                     from Artlist themselves and place them in the
+	//                     import folder; the pipeline ingests them and
+	//                     records provenance. Reserved for Artlist
+	//                     Enterprise agreements that prohibit server-side
+	//                     fetches, or for environments where the operator
+	//                     explicitly wants to enforce manual curation.
+	//   authorized_api  — Automatic search+download is allowed under an
+	//                     Enterprise/API agreement; per-day volume is
+	//                     capped by ArtlistDailyDownloadLimit below.
 	//
-	// Default: manual_import.
-	ArtlistAcquisitionMode string `yaml:"artlist_acquisition_mode" env:"ARTLIST_ACQUISITION_MODE" default:"manual_import"`
+	// Default: authorized_api (PR-ARTLIST-AUTHORIZED-BY-DEFAULT P1, July 2026).
+	// The P1 cutover flips the historical fail-closed default
+	// (manual_import) so a fresh deploy of PipelineGen is immediately
+	// useful for the Artlist-driven stock pipeline. The blast-radius
+	// cap is the daily limit (default 10, next field); operators that
+	// need to opt OUT of automatic downloads set the env var explicitly
+	//   ARTLIST_ACQUISITION_MODE=manual_import
+	// and the resolvePath gate in the downloader returns
+	// ErrManualImportActive (godlike/07 fail-closed at the resolver
+	// surface, NOT at the loader surface — the loader reports
+	// authorized_api by default + a typed error surfaces on first
+	// /run request when manual_import is active).
+	ArtlistAcquisitionMode string `yaml:"artlist_acquisition_mode" env:"ARTLIST_ACQUISITION_MODE" default:"authorized_api"`
 
 	// ArtlistAccountID is the logical account identifier used for rate-limit
 	// and audit tracking. Single-tenant deployments can leave it as "default";
 	// multi-tenant setups can scope downloads per account.
 	ArtlistAccountID string `yaml:"artlist_account_id" env:"ARTLIST_ACCOUNT_ID" default:"default"`
 
-	// ArtlistDailyDownloadLimit is the maximum number of Artlist assets that
-	// can be downloaded automatically per account per day. A value of 0 means
-	// automatic downloads are disabled (default). Operators must set a positive
-	// value to enable automatic downloads in authorized_api mode.
-	ArtlistDailyDownloadLimit int `yaml:"artlist_daily_download_limit" env:"ARTLIST_DAILY_DOWNLOAD_LIMIT" default:"0"`
+	// ArtlistDailyDownloadLimit is the maximum number of automatic Artlist
+	// downloads per account per day when AcquisitionMode=authorized_api.
+	// A value of 0 disables automatic downloads even in authorized_api mode
+	// (the resolver returns ErrAutomaticDownloadsDisabled and the audit
+	// row is not recorded).
+	//
+	// Default: 10 (PR-ARTLIST-AUTHORIZED-BY-DEFAULT P1, July 2026). The
+	// 10/day cap aligns with Artlist's per-account quota for non-Enterprise
+	// plans; operators with Enterprise agreements that permit higher
+	// volume set the env override
+	//   ARTLIST_DAILY_DOWNLOAD_LIMIT=N   (N > 0)
+	// Operators that prefer to opt out of automatic downloads entirely
+	// keep AcquisitionMode=manual_import and the value of this field
+	// becomes irrelevant (the resolver gate fires before the limit check).
+	ArtlistDailyDownloadLimit int `yaml:"artlist_daily_download_limit" env:"ARTLIST_DAILY_DOWNLOAD_LIMIT" default:"10"`
 
 	// PR-011 (July 2026): Stock RLM/LLM enrichment pass.
 	//
