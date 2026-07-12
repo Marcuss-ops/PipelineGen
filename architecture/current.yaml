@@ -100,7 +100,7 @@
     - id: PRE-EXISTING-9-ARCHCHECK-SNAPSHOT
       note: cmd/archcheck::TestSnapshot
     - id: PRE-EXISTING-10-FORMAT-DRIFT
-      note: verify-format red on 10 files (6 original artlist + 4 drift additions: evaluate_run_state_test.go + pipeline_state_test.go + pkg/idempotency/keys.go + pkg/idempotency/keys_test.go; full file list in PRE-EXISTING-10-FORMAT-DRIFT owner_capability)
+      note: "verify-format red on 10 files (6 original artlist + 4 drift additions: evaluate_run_state_test.go + pipeline_state_test.go + pkg/idempotency/keys.go + pkg/idempotency/keys_test.go; full file list in PRE-EXISTING-10-FORMAT-DRIFT owner_capability)"
 
 - id: WAVE-20-QDRANT-005D-HYGIENE
   status: in_progress
