@@ -20,11 +20,22 @@ import (
 )
 
 // TextTrackBundle groups the materializer + the broker-facing
-// job handler + the acquire service (Fase 5).
+// job handler + the acquire service (Fase 5) + the post-publish
+// fan-out helper (Fase 4).
+//
+// Fase 4 (July 2026): FanOut is the canonical post-publish
+// enqueue helper that pipeline finalizers (YouTube, Artlist,
+// Stock, Voiceover) call to schedule asset.text.materialize
+// translation jobs AFTER their canonical asset.index.requested
+// outbox emission has committed. Exposing it on the bundle
+// lets composition root thread it into every pipeline's
+// finalizer without each pipeline importing the texttracks
+// package directly.
 type TextTrackBundle struct {
 	Materializer   *texttracks.Materializer
 	JobHandler     *texttracks.MaterializeJobHandler
 	AcquireService *texttracks.AcquireService
+	FanOut         *texttracks.MaterializeFanOut
 }
 
 // AcquirePorts groups the two ports the AcquireService needs.
@@ -42,6 +53,16 @@ type AcquirePorts struct {
 //
 // godlike/07 fail-closed: a nil dep or invalid config
 // surfaces as a typed error.
+//
+// Fase 4 (July 2026): the FanOut field is left nil here so
+// existing callers do NOT need to thread a jobs.Enqueuer
+// through this constructor. Composition roots that wire
+// FanOut (e.g. production NewComposition) must call
+// WireTextTracksFanOut(textTracks, jobsService, log) AFTER
+// BuildTextTrackBundle returns. This is a godlike/07
+// backward-compatible split: the FanOut wiring is a
+// forward-only addition; tests + compositions that don't
+// need FanOut continue to work unchanged.
 func BuildTextTrackBundle(
 	cfg *config.Config,
 	repos *RepoBundle,
@@ -128,7 +149,50 @@ func BuildTextTrackBundle(
 		Materializer:   materializer,
 		JobHandler:     handler,
 		AcquireService: acquireService,
+		// FanOut is populated by WireTextTracksFanOut (called
+		// after NewComposition assembles the JobsBundle so the
+		// fan-out can reach the broker).
 	}, nil
+}
+
+// WireTextTracksFanOut populates the TextTrackBundle.FanOut
+// field with a MaterializeFanOut wired to the canonical
+// jobs broker. Composition root (internal/app/composition.go)
+// calls this AFTER BuildTextTrackBundle returns + AFTER
+// JobsBundle has been built (so the enqueuer surface is
+// available). nil-tolerant: when jobsService is nil (test
+// fixtures, disabled-mode wiring), FanOut stays nil and
+// per-pipeline finalizers gracefully skip the fan-out call.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: FanOut nil is observable
+// to the finalizer hooks as a no-op (the helper returns
+// nil error in disabled mode). Production composition MUST
+// inject a non-nil jobsService to wire active fan-out.
+//
+// godlike/06 SSOT: this is the SOLE canonical wiring site
+// for the post-publish enqueue helper. The 5 pipeline
+// finalizers (YouTube, Artlist, Stock, Voiceover, plus the
+// canonical AssetFinalizerTx post-commit hook) all reach
+// FanOut via composition-root-threaded deps; no other site
+// constructs a MaterializeFanOut.
+func WireTextTracksFanOut(
+	textTracks *TextTrackBundle,
+	jobsService texttracks.MaterializeEnqueuer,
+	log *zap.Logger,
+) {
+	if textTracks == nil {
+		return
+	}
+	if jobsService == nil {
+		// Disabled-mode wiring (test fixture or composition
+		// opt-out). Log Info so operators can identify the
+		// misconfiguration without a hard boot-time failure.
+		if log != nil {
+			log.Info("WireTextTracksFanOut: jobsService nil — FanOut disabled (per-pipeline finalizers will skip asset.text.materialize enqueue)")
+		}
+		return
+	}
+	textTracks.FanOut = texttracks.NewMaterializeFanOut(jobsService, log)
 }
 
 // wireTextTrackJobBindings registers the asset.text.materialize
