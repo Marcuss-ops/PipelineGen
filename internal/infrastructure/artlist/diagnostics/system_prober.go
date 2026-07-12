@@ -37,9 +37,13 @@
 package diagnostics
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
+	"os/exec"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -54,6 +58,13 @@ import (
 // (60s cadence scraper health probe at 5s per attempt).
 const DefaultProbeTimeout = 5 * time.Second
 
+// FFmpegVersionProbeTimeout is the per-probe FFmpeg `-version`
+// invocation budget. 2s — ffmpeg -version is a fast startup probe
+// (no media processing, just version banner emission); 5s would be
+// overkill and would risk hanging the entire diagnostics endpoint
+// pile-up if FFmpeg is installed but misconfigured.
+const FFmpegVersionProbeTimeout = 2 * time.Second
+
 // Renderer is the minimal interface AdminSystemProber needs from the
 // asset.Processor cross-cutting dependency to probe FFmpeg binary
 // presence/version. The concrete is ffmpeg.NewProcessor; we declare a
@@ -64,6 +75,24 @@ type Renderer interface {
 	// FFmpegBinaryPath returns the resolved path to the ffmpeg binary,
 	// or "" when no ffmpeg is available on the host.
 	FFmpegBinaryPath() string
+}
+
+// FFmpegRunner is the canonical godlike/06 port for the ffmpeg
+// `-version` subprocess invocation (PR-P2-DIAGNOSTICS-REALE Commit 2,
+// July 2026). 1-method interface mirroring the
+// ffmpeg.ProcessRunner port shape:
+//
+//	ffmpeg.ProcessRunner.Run(ctx, name, args, opts) (*process.Result, error)
+//
+// returns a structured *process.Result; the diagnostics-package's
+// FFmpegRunner is the narrower Read-then-Diagnose surface used by
+// the ffmpeg_binary probe (just stdout-bytes + error). Production
+// wires `DefaultRunner` (os/exec.CommandContext); tests can swap a
+// stub to assert argv without spawning a real subprocess.
+//
+// godlike/06 Pattern 0 + AGENTS.md §Pattern 4: smallest-port-possible.
+type FFmpegRunner interface {
+	Run(ctx context.Context, name string, args []string) (stdout []byte, err error)
 }
 
 // AdminSystemProber is the canonical concrete implementation of
@@ -115,6 +144,13 @@ type AdminSystemProber struct {
 	// called; comment in Commit 2 implementation).
 	Renderer Renderer
 
+	// FFmpegRunner is the subprocess runner for the ffmpeg -version
+	// probe. Production wires defaultRunner; tests can swap a stub to
+	// assert argv without spawning a real subprocess. Mirrors the
+	// ffmpeg.ProcessRunner port shape (Pattern 0 + AGENTS.md §Pattern 4:
+	// smallest-port-possible).
+	FFmpegRunner FFmpegRunner
+
 	// ProbeTimeout is the per-probe wall-clock budget. Default
 	// DefaultProbeTimeout (5s); operator override via composition
 	// root read of cfg (forward-compat; no current cfg knob).
@@ -124,6 +160,18 @@ type AdminSystemProber struct {
 	// allocates a per-instance client with ProbeTimeout. Production
 	// wires an injected client with connection pooling.
 	HTTPClient *http.Client
+
+	// FFmpegBinaryPath is the configured ffmpeg binary path.
+	//
+	// PR-P2-DIAGNOSTICS-REALE Commit 2 (July 2026): ffmpeg_binary
+	// probe is now a REAL exec.LookPath + `ffmpeg -version`
+	// reachability check. Empty FFmpegBinaryPath triggers an
+	// exec.LookPath("ffmpeg") fallback so the probe honours $PATH
+	// (matches the precedent set by
+	// internal/application/clips/upload/usecase.go line 361 +
+	// cutter_test.go line 60 which use exec.LookPath directly on
+	// the bare "ffmpeg" / "ffprobe" names).
+	FFmpegBinaryPath string
 }
 
 // ProbeAll implements artlist.SystemProber. Returns an artlist.ProbeSet
@@ -182,9 +230,12 @@ func (p *AdminSystemProber) ProbeAll(ctx context.Context) artlist.ProbeSet {
 		Browser:    browser,
 		Session:    session,
 		Downloader: downloader,
-		// Stubs — Commits 2/3/4 replace these with real probe logic.
-		FFmpegBinary:      stub("ffmpeg_binary"),
-		DriveFolder:       stub("drive_folder"),
+		// Commit 2 — 2 capability probes (REAL). ffmpeg_binary exec.LookPath +
+		// version probe. drive_folder calls the closure injected from the
+		// composition root.
+		FFmpegBinary: p.probeFFmpeg(ctx),
+		DriveFolder:  p.probeDriveFolder(ctx),
+		// Stubs — Commit 3 replaces these with real probe logic.
 		SQLiteWritable:    stub("sqlite_writable"),
 		OutboxDispatcher:  stub("outbox_dispatcher"),
 		QdrantReachable:   stub("qdrant_reachable"),
@@ -192,14 +243,16 @@ func (p *AdminSystemProber) ProbeAll(ctx context.Context) artlist.ProbeSet {
 	}
 
 	if p.Log != nil {
-		p.Log.Debug("AdminSystemProber.ProbeAll complete (Commit 1 wire-shape only; 6 stubs pending)",
+		p.Log.Debug("AdminSystemProber.ProbeAll complete (Commit 2: 6 real probes; 4 stubs pending)",
 			zap.Int("probes_total", 10),
-			zap.Int("probes_real", 4),
-			zap.Int("probes_stubbed", 6),
+			zap.Int("probes_real", 6),
+			zap.Int("probes_stubbed", 4),
 			zap.Bool("scraper_ok", set.Scraper.OK),
 			zap.Bool("browser_ok", set.Browser.OK),
 			zap.Bool("session_ok", set.Session.OK),
 			zap.Bool("downloader_ok", set.Downloader.OK),
+			zap.Bool("ffmpeg_binary_ok", set.FFmpegBinary.OK),
+			zap.Bool("drive_folder_ok", set.DriveFolder.OK),
 		)
 	}
 	return set
@@ -307,3 +360,192 @@ func stubFailSet(reason string) artlist.ProbeSet {
 // SSOT). Drift in the SystemProber port signature surfaces here as a
 // build failure rather than as a runtime panic on first dispatch.
 var _ artlist.SystemProber = (*AdminSystemProber)(nil)
+
+// ── FFmpeg binary probe (Commit 2, July 2026: real implementation)───
+
+// DefaultRunner is the production implementation of FFmpegRunner.
+// It delegates to exec.CommandContext (mirrors the canonical
+// defaultProcessRunner pattern in
+// internal/infrastructure/media/ffmpeg/ffmpeg.go). Test fixtures
+// can swap a no-op runner to assert argv without spawning a real
+// subprocess.
+//
+// godlike/06 SSOT: DefaultRunner is the EXPORTED (capital D) name
+// used by the composition root in build_bundles_artlist.go:
+// `FFmpegRunner: diagnostics.DefaultRunner{}`. Rename this type
+// with care to avoid breaking the wiring site; the lowercase form
+// `defaultRunner` is reserved for tests internal to this package.
+type DefaultRunner struct{}
+
+// Run satisfies FFmpegRunner. Returns (stdout, error) so the
+// caller can parse the version banner even on failure (ffmpeg emits
+// version header on stderr sometimes, depending on platform).
+func (DefaultRunner) Run(ctx context.Context, name string, args []string) ([]byte, error) {
+	if name == "" {
+		return nil, errors.New("DefaultRunner.Run: empty binary name (composition root forgot to set FFmpegBinaryPath?)")
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return stdout.Bytes(), errors.New(err.Error() + ": " + stderr.String())
+	}
+	return stdout.Bytes(), nil
+}
+
+// Compile-time pin: DefaultRunner satisfies FFmpegRunner. Drift
+// surfaces as a build failure rather than a runtime panic.
+var _ FFmpegRunner = DefaultRunner{}
+
+// probeFFmpeg returns the canonical ffmpeg_binary probe result.
+// Two-step reachability check: (a) exec.LookPath("ffmpeg") honours
+// $PATH when FFmpegBinaryPath is empty; (b) `ffmpeg -version` is
+// invoked with a 2s timeout to verify the binary actually runs and
+// emits the canonical `ffmpeg version X.Y.Z` banner.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the probe verifies both PATH
+// presence AND runtime execution — distinguishable from a simple
+// `which ffmpeg` shell out that would silently succeed on a stale
+// binary that fails to launch.
+//
+// Errors are surfaced faithfully (string concatenation with the
+// underlying exec.LookPath / Run error verbatim) so operators can
+// grep for the canonical failure patterns (e.g.
+// "exec.LookPath(\"ffmpeg\") failed: exec: \"ffmpeg\": executable
+// file not found in $PATH").
+func (p *AdminSystemProber) probeFFmpeg(ctx context.Context) artlist.ProbeResult {
+	start := time.Now()
+
+	ffmpegPath := strings.TrimSpace(p.FFmpegBinaryPath)
+	if ffmpegPath == "" {
+		// Fall back to exec.LookPath("ffmpeg") to honour $PATH —
+		// matches the precedent set by
+		// internal/application/clips/upload/usecase.go line 361 +
+		// cutter_test.go line 60 which use exec.LookPath directly
+		// on the bare "ffmpeg" / "ffprobe" names.
+		resolved, err := exec.LookPath("ffmpeg")
+		if err != nil {
+			return artlist.ProbeResult{
+				OK:        false,
+				Error:     "ffmpeg_binary_not_found",
+				Detail:    "exec.LookPath(\"ffmpeg\") failed: " + err.Error() + " (operator must install ffmpeg on the host or set AdminSystemProber.FFmpegBinaryPath explicitly)",
+				ElapsedMs: time.Since(start).Milliseconds(),
+			}
+		}
+		ffmpegPath = resolved
+	}
+
+	// Resolve the runner (test fixtures swap a stub; production
+	// wires DefaultRunner) and run ffmpeg -version with a 2s
+	// per-probe timeout.
+	runner := p.FFmpegRunner
+	if runner == nil {
+		runner = DefaultRunner{}
+	}
+	verCtx, verCancel := context.WithTimeout(ctx, FFmpegVersionProbeTimeout)
+	defer verCancel()
+
+	stdout, err := runner.Run(verCtx, ffmpegPath, []string{"-version"})
+	if err != nil {
+		return artlist.ProbeResult{
+			OK:        false,
+			Error:     "ffmpeg_version_probe_failed",
+			Detail:    "ffmpeg -version invocation failed: " + err.Error(),
+			ElapsedMs: time.Since(start).Milliseconds(),
+		}
+	}
+
+	// Parse the version banner. ffmpeg -version output starts with
+	// `ffmpeg version X.Y.Z ...`. If the banner is missing the
+	// `ffmpeg` substring the binary at this path is not actually
+	// FFmpeg (operator mis-config, wrong path); surface honestly
+	// rather than silently OK.
+	banner := strings.TrimSpace(string(stdout))
+	if !strings.Contains(banner, "ffmpeg") {
+		return artlist.ProbeResult{
+			OK:        false,
+			Error:     "ffmpeg_version_unparseable",
+			Detail:    "ffmpeg -version output did not contain 'ffmpeg' header (binary at " + ffmpegPath + " is not FFmpeg?): " + banner,
+			ElapsedMs: time.Since(start).Milliseconds(),
+		}
+	}
+
+	firstLine := banner
+	if idx := strings.Index(banner, "\n"); idx >= 0 {
+		firstLine = banner[:idx]
+	}
+	return artlist.ProbeResult{
+		OK:        true,
+		Detail:    "ffmpeg binary=" + ffmpegPath + ", banner=\"" + firstLine + "\", elapsed=" + time.Since(start).String(),
+		ElapsedMs: time.Since(start).Milliseconds(),
+	}
+}
+
+// ── Drive folder probe (Commit 2, July 2026: real implementation)───
+
+// probeDriveFolder returns the canonical drive_folder probe result.
+// Calls the ProbeFolderAccess closure injected from the composition
+// root against the configured Artlist Drive root (resolve via
+// artlist.ResolveRootFolderID(cfg)). nil-safe in three layers:
+//
+//   - ProbeFolderAccess == nil: composition-time wiring gap, surface
+//     Error="drive_folder_probe_unwired" honestly rather than fake-OK.
+//   - ProbeFolderRootID == "": operator did not configure the root
+//     folder, surface Error="drive_folder_root_not_configured" with
+//     the operator-fix hint (cfg.Drive.ArtlistFolder()).
+//   - ProbeFolderAccess returns non-nil error: surface the verbatim
+//     error message from the underlying probe call.
+//
+// Forward-pointer (post-Commit 2): the canonical
+// delivery.Publisher interface (in
+// internal/application/assets/delivery/publisher.go) does not expose
+// ProbeFolderAccess today — a follow-up commit will lift it onto
+// the canonical publisher port surface so the prober can call it
+// without the composition root needing to construct an ad-hoc
+// closure. Until then the probe remains honest with
+// Error="drive_folder_probe_unwired".
+func (p *AdminSystemProber) probeDriveFolder(ctx context.Context) artlist.ProbeResult {
+	start := time.Now()
+
+	if p.ProbeFolderAccess == nil {
+		return artlist.ProbeResult{
+			OK:        false,
+			Error:     "drive_folder_probe_unwired",
+			Detail:    "composition root did not inject ProbeFolderAccess closure (canonical delivery.Publisher interface does not expose ProbeFolderAccess today; forward-pointer to a follow-up commit that lifts ProbeFolderAccess onto the canonical publisher port)",
+			ElapsedMs: time.Since(start).Milliseconds(),
+		}
+	}
+
+	rootID := strings.TrimSpace(p.ProbeFolderRootID)
+	if rootID == "" {
+		return artlist.ProbeResult{
+			OK:        false,
+			Error:     "drive_folder_root_not_configured",
+			Detail:    "composition root passed empty ProbeFolderRootID (cfg.Drive.ArtlistFolder() returned empty; operator must configure cfg.Drive.ArtlistRootFolder for the diagnostics endpoint to probe folder reachability)",
+			ElapsedMs: time.Since(start).Milliseconds(),
+		}
+	}
+
+	timeout := p.ProbeTimeout
+	if timeout <= 0 {
+		timeout = DefaultProbeTimeout
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	if err := p.ProbeFolderAccess(probeCtx, rootID); err != nil {
+		return artlist.ProbeResult{
+			OK:        false,
+			Error:     "drive_folder_unreachable",
+			Detail:    "ProbeFolderAccess(" + rootID + ") returned: " + err.Error(),
+			ElapsedMs: time.Since(start).Milliseconds(),
+		}
+	}
+
+	return artlist.ProbeResult{
+		OK:        true,
+		Detail:    "drive folder probe ok: rootID=" + rootID + ", elapsed=" + time.Since(start).String(),
+		ElapsedMs: time.Since(start).Milliseconds(),
+	}
+}
