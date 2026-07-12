@@ -196,38 +196,33 @@ func IsTransient(err error) bool {
 	return false
 }
 
-// IsTransientString is DEPRECATED as of FASE 6 Cut 6.1.D (July 2026).
+// IsTransientString was REMOVED in FASE 6 Cut 6.1 (July 2026).
 //
-// Always returns false. The pre-FASE-6 substring fallback against
-// transientSubstrings was removed from production per the user spec;
-// the substring taxonomy is preserved verbatim in the TEST-ONLY
-// fixture pkg/retry/transient_legacy_test.go.
+// Rationale: per the user spec ("Rimuovi TUTTA la classificazione
+// substring dal percorso di produzione"), the pre-FASE-6 substring
+// fallback for raw error messages is REMOVED from the retry package.
+// The canonical typed-only surface is:
 //
-// The function REMAINS exported for backward compat with the 1 known
-// external caller (internal/application/youtube/jobs/classify.go).
-// Production callers MUST migrate to one of:
-//   - retry.IsTransient(err) on a *typed* error (RetryableError /
-//     TransientInfrastructureError carrier)
-//   - retry.Decision(err) for a richer Class + RetryAfter + SafeMessage
-//   - retry.WrapTransient(err) at the SDK boundary so the typed path
-//     reaches retry.IsTransient on farther-up retry loops
+//   - Registered Classifier via retry.RegisterClassifier — per-adapter
+//     classifiers inspect typed error shapes (errors.As compares
+//     against the adapter's concrete error type).
+//   - retry.IsTransient(err) on a *typed* error (RetryableError
+//     interface OR *TransientInfrastructureError carrier).
+//   - retry.Decision(err) for richer Class + RetryAfter + SafeMessage.
 //
-// The deprecation is an explicit "0 returns true" stop-gap so callers
-// expecting the legacy substring match surface as a "transient? bool"
-// see "false" instead of silently flipping to terminal. Forward-pointer
-// for migration: registered typed Classifiers for the adapter-specific
-// shapes (filesystemNotify, GoSubtitlesParser, etc.).
+// The legacy substring taxonomy itself is preserved verbatim in the
+// TEST-ONLY fixture pkg/retry/transient_legacy_test.go so tests can
+// pin the pre-FASE-6 behavior (godlike/07 no-fake-availability).
 //
-// Returns false unconditionally so the production contract is
-// observably terminal for any unmapped raw-string input.
-func IsTransientString(s string) bool {
-	_ = s
-	// FASE 6 Cut 6.1.D: removed substring matcher (returns false
-	// always). Use retry.Decision / IsTransient(err) on a typed
-	// error shape; use retry.WrapTransient at the SDK boundary to
-	// label raw SDK errors as transient at the typed layer.
-	return false
-}
+// Migration: the 1 production caller (internal/application/youtube/jobs/classify.go)
+// was migrated to an inline classifyItemError helper that matches
+// youtube-extractor-specific transient markers against the per-item
+// error string at the call site. The inline helper is NOT a generic
+// retry classifier — it's a youtube-domain-specific allowlist that
+// the package owns. Forward-pointer: a future 'youtube extractor must
+// emit typed errors' cut will replace the inline helper with a typed
+// classifier registered at init() (mirrors the Qdrant + SQLite
+// distributed registries under internal/infrastructure/).
 
 // ── WrapTransient ───────────────────────────────────────────────────────────
 

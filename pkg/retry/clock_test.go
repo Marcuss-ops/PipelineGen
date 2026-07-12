@@ -251,7 +251,13 @@ func TestDoWithValue_FakeClock_AdvancesThroughRetries(t *testing.T) {
 	var calls int
 	walk := func() (struct{}, error) {
 		calls++
-		return struct{}{}, errors.New("transient: timeout")
+		// FASE 6 Cut 6.1.D migration: production IsTransient became
+		// pure typed-probe; raw SDK strings no longer match. Wrap the
+		// walk-fn return in a *TransientInfrastructureError envelope so
+		// the IsTransient gate sees retryable=true and DoWithValue retries
+		// per the test's MaxAttempts=3 specification. Mirrors the
+		// canonical SDK-boundary contract (godlike/06 SSOT).
+		return struct{}{}, &TransientInfrastructureError{Err: errors.New("transient: timeout")}
 	}
 
 	start := time.Now()

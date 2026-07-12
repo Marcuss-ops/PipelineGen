@@ -136,6 +136,7 @@ package retry
 
 import (
 	"errors"
+	"log"
 	"sync"
 	"time"
 )
@@ -282,35 +283,63 @@ func Decision(err error) (RetryDecision, bool) {
 		if !final {
 			continue
 		}
-		// godlike/07 fail-closed: final classifier MUST populate Class.
+		// godlike/07 fail-closed contract: a final classifier MUST
+		// populate Class + SafeMessage so downstream observability can
+		// categorise the failure and audit logs can grep the SafeMessage
+		// without exposing credentials.
+		//
+		// Operational choice (FASE 6 Cut 6.1 review feedback, July 2026):
+		// a buggy classifier MUST NOT crash the production request path.
+		// We log+skip the misconfigured classifier so the walker falls
+		// through to the next classifier (or to the (zero, false) default
+		// if no other classifier matches). godlike/07 fail-closed
+		// semantics are still preserved at the typed-probe boundary —
+		// the (zero, false) return below does NOT silently classify as
+		// retryable, so retry-loop callers MUST register a correct
+		// classifier for their error shape. The classifier author who
+		// ships a misconfigured classifier sees the log line on next
+		// process restart and fixes the regression.
 		if d.Class == "" {
-			panic("retry.Decision: classifier returned final=true with empty Class (godlike/07 fail-closed at observable boundary)")
+			log.Printf("retry.Decision: classifier returned final=true with empty Class — skipping (godlike/07 fail-closed, not crash-closed). err=%v", err)
+			continue
 		}
-		// godlike/07 fail-closed: final classifier MUST populate SafeMessage.
 		if d.SafeMessage == "" {
-			panic("retry.Decision: classifier returned final=true with empty SafeMessage (godlike/07 fail-closed at observable boundary)")
+			log.Printf("retry.Decision: classifier returned final=true with empty SafeMessage — skipping (godlike/07 fail-closed, not crash-closed). err=%v", err)
+			continue
 		}
 		return d, true
 	}
-	// Typed-probe fallback (FASE 6 Cut 6.1.D, July 2026): if no
-	// registered Classifier claimed err, fall back to retry.IsTransient's
-	// pure-typed probe (RetryableError interface OR
-	// *TransientInfrastructureError carrier). The pre-FASE-6 substring
-	// path was REMOVED from the production classifier chain per the
-	// user spec ("Rimuovi TUTTA la classificazione substring dal
-	// percorso di produzione"). The substring taxonomy is preserved
-	// in the test-only fixture pkg/retry/transient_legacy_test.go for
-	// tests pinning the legacy surface. Production callers MUST register
-	// a typed Classifier (RegisterClassifier) for any custom error
-	// shape they want this walker to enumerate. The SafeMessage here
-	// intentionally surfaces the typed-probe shape so audit logs can
-	// distinguish "registered Classifier missed this adapter shape"
-	// from "no registered Classifier claimed err at all".
-	if IsTransient(err) {
+	// Tightened typed-probe fallback (FASE 6 Cut 6.1, July 2026):
+	// if no registered Classifier claimed err, probe for the typed
+	// RetryableError interface + the *TransientInfrastructureError
+	// carrier SEPARATELY so audit logs can distinguish "a typed adapter
+	// marked this retryable" from "this is a typed-transient carrier".
+	// The Retryable field on both comes from the typed shape itself, never
+	// from a substring match — the pre-FASE-6 substring path was
+	// REMOVED from production per the user spec; the substring taxonomy
+	// is preserved in the test-only fixture pkg/retry/transient_legacy_test.go.
+	//
+	// godlike/07 fail-closed contract: an error with NO registered
+	// Classifier match + NO typed RetryableError + NO TransientInfrastructureError
+	// carrier returns (zero, false). The walker does NOT silently retry
+	// unmapped shapes. Production adapters MUST register a Classifier
+	// at init() — see registry_stdlib.go (stdlib) and the distributed
+	// adapter registries under internal/infrastructure/{qdrant/transport,
+	// database/sqlite}/ for the typed-overlay surface.
+	var re RetryableError
+	if errors.As(err, &re) {
+		return RetryDecision{
+			Class:       ErrNetwork,
+			Retryable:   re.IsRetryable(),
+			SafeMessage: "typed-RetryableError interface (no registered classifier matched)",
+		}, true
+	}
+	var te *TransientInfrastructureError
+	if errors.As(err, &te) {
 		return RetryDecision{
 			Class:       ErrNetwork,
 			Retryable:   true,
-			SafeMessage: "typed-probe fallback (registered Classifier miss + RetryableError interface)",
+			SafeMessage: "TransientInfrastructureError carrier (no registered classifier matched)",
 		}, true
 	}
 	return RetryDecision{}, false
