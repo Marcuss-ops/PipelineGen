@@ -972,6 +972,132 @@ def _check_169_selected(page, ratio: str = "16:9") -> bool:
         return False
 
 
+# ── Generation step-method decomposition (July 2026) ─────────────────────────
+#
+# STAGE 3 (July 2026): split ProfileWorker._generate (~580 lines, 9 P2 diag
+# phases, 4 error codes) into 7 focused per-responsibility step methods + a
+# thin orchestrator. Each step owns its observable behaviour:
+#
+#   * `_step_prepare_surface`    — dismiss modals, ensure prompt textarea,
+#                                  switch to Immagine/Image tab.
+#   * `_step_fill_prompt`        — wait for textarea + type prompt_text; emits
+#                                  `prompt_set` diag.
+#   * `_step_select_ratio`       — open Proporzioni + click `ratio` option;
+#                                  on failure emits `error` phase diag with
+#                                  code=`ErrImageGenRatioNotSelected` and
+#                                  CONTINUES (recoverable: log-only, no
+#                                  raise — audit trail preserves code path).
+#   * `_step_refresh_baseline`   — re-extract baseline AFTER sidebar
+#                                  expansion + optional panel-clear gate.
+#   * `_step_submit`             — wait for create button + click; emits
+#                                  `click_create` diag.
+#   * `_step_poll_for_candidate` — 60s polling loop, P0.4 filter via
+#                                  CANDIDATE_LOCATOR_SELECTOR. On match
+#                                  emits transient `candidate_found` diag +
+#                                  captures metadata. On timeout raises
+#                                  StepError with code `ErrGenerationTimeout`.
+#   * `_step_extract_image`      — P0.4.A src-anchored Locator + google
+#                                  content / blob: fetch / element-screenshot
+#                                  fallback; emits richer `candidate_found` +
+#                                  `fetch_method_choice` + `saved` + `end`
+#                                  diags; on fail-closed raises StepError
+#                                  with code `ErrNoImageCandidate`.
+#
+# Why exceptions (StepError) instead of return-tuples:
+#   * Each step has a SINGLE success path + N failure paths. Return-tuple
+#     shapes force call sites to remember which tuple shape to unpack and
+#     lose per-error forensic fields (`candidates_baseline=...`,
+#     `captured_src=...`, `elapsed_ms=...`) en route to the orchestrator.
+#   * `StepError(Exception)` carries `.code` + `.diag_extra` + `.screenshot_path`
+#     + `.error_message`. The orchestrator catches it once, emits the
+#     canonical `error` JSONL phase, runs `_fresh_page`, returns typed
+#     response.
+#   * `PlaywrightTimeout` and generic `Exception` are caught successively
+#     so a timeout maps to `ErrGenerationTimeout` without string-sniffing.
+#
+# Why `_GenerationContext` dataclass:
+#   * 22+ pieces of mutable state (request fields, derived fields,
+#     image_bytes, baseline sets, matched_candidate_meta, pixel_stats).
+#     Passing each through every step signature would create fragile
+#     parameter proliferation.
+#
+# JSONL audit trail invariants:
+#   * 9 canonical P2 phases (start, prompt_set, click_create,
+#     polling_start, candidate_found ×2, fetch_method_choice, saved, end).
+#     The transient + richer pair of `candidate_found` lines is
+#     INTENTIONAL: the richer one carries `anchor_strategy` +
+#     full `candidate_records` and lands AFTER the polling break.
+#   * `error` phases — one per typed error code (logged+returned for
+#     fatal, logged-only for the recoverable ratio mis-select).
+#   * `start` ALWAYS emits BEFORE the login check (Fix B): login-failing
+#     requests still get a `start` line for forensic correlation.
+#
+# Go-side classification (Python worker does NOT emit):
+#   * `ErrImageGenPermanent` — emitted solely by chrome_provider.go's
+#     ClassifyError on the typed-retry policy.
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class _GenerationContext:
+    """Per-request mutable state bundle passed through the 7 step methods."""
+    request_id: str
+    prompt: str
+    original_prompt: str
+    prompt_text: str
+    output_path: str
+    style_id: str
+    generation_id: str
+    req_width: int
+    req_height: int
+    ratio: str
+    # Mutable fields set by steps:
+    image_mode_active: bool = False
+    ratio_selected: str = ""
+    baseline_candidates: list = field(default_factory=list)
+    baseline_src_set: set = field(default_factory=set)
+    matched_candidate_meta: Optional[dict] = None
+    natural_w: int = 0
+    natural_h: int = 0
+    complete: bool = False
+    image_bytes: bytes = b""
+    fetch_method: str = ""
+    saved: bool = False
+    saved_format: str = ""
+    candidate_records: list = field(default_factory=list)
+    pixel_stats: dict = field(default_factory=dict)
+    t0: float = 0.0
+
+
+class _StepError(Exception):
+    """Raised by a step method to surface a typed error to the orchestrator.
+
+    The orchestrator catches this once and returns the canonical typed
+    error response. `diag_extra` is merged into both the `error` JSONL
+    emission and the response dict so each error code path preserves
+    its specific forensic context.
+
+    `screenshot_path`, when passed as an empty string (""), suppresses
+    the helper's `_screenshot_on_failure` fallback (Fix D): original
+    `ErrNoImageCandidate` paths did NOT capture screenshots.
+    """
+    def __init__(self, code: str, *, screenshot_path=None,
+                 diag_extra: Optional[dict] = None,
+                 error_message: str = "", **legacy_kwargs):
+        super().__init__(f"{code}: {error_message}" if error_message else code)
+        self.code = code
+        self.screenshot_path = screenshot_path
+        self.error_message = error_message
+        self.diag_extra = dict(diag_extra or {})
+        self.diag_extra.update(legacy_kwargs)
+
+
+# Alias kept short so the refactored steps have a quieter namespace.
+StepError = _StepError
+
+
 # ── ProfileWorker (one thread = one browser = one profile) ─────────────────
 
 class ProfileWorker(threading.Thread):
@@ -1308,10 +1434,31 @@ class ProfileWorker(threading.Thread):
         except queue.Full:
             pass
 
-    # ── Generation ────────────────────────────────────────────────────
+    # ── Generation step-method decomposition (STAGE 3, July 2026) ────
+    #
+    # The 7 `_step_*` methods below each own ONE concern of the P2
+    # pipeline. Steps raise `StepError(code, **diag_extra)` for typed
+    # failures so the orchestrator's single try/except chain maps to
+    # typed responses uniformly. Steps that recover (e.g. ratio
+    # mis-select) emit a typed `error` JSONL diag for audit but do
+    # NOT raise — preserved pre-fix semantics. The
+    # `_emit_failed_response` and `_build_success_response` helpers
+    # keep the orchestrator thin: 3 except clauses (StepError,
+    # PlaywrightTimeout, generic Exception) route through one
+    # diagnostic shim.
 
-    def _generate(self, req: dict) -> dict:
-        """Execute one image generation. req = {id, prompt, prompt_original?, output, negative_prompt?, style_id?, width?, height?, ratio?, prompt_suffix?, generation_id?, extended_payload?}."""
+    def _build_generation_context(self, req: dict) -> _GenerationContext:
+        """Derive the mutable per-request state bundle from the inbound req.
+
+        P1.2 prompt-composer trust: prompt arrives WHOLE from Go, no
+        worker-side truncation. P1.1 negative-keyword auto-compose:
+        only when caller does NOT pre-compose (i.e. no
+        `[negative: do not include...]` directive).
+
+        Emits the `start` phase BEFORE the login pre-check so login-
+        failing requests still get a `start` line for forensic
+        correlation (Fix B).
+        """
         request_id = req["id"]
         prompt = req["prompt"]
         output_path = req["output"]
@@ -1320,49 +1467,36 @@ class ProfileWorker(threading.Thread):
         req_width = int(req.get("width") or 0)
         req_height = int(req.get("height") or 0)
         generation_id = req.get("generation_id", "")
-        # P1.1 (July 2026, July-29 review-feedback): the worker auto-composes
-        # `negative_keywords: avoid ...` at the end of the prompt when the
-        # caller supplies a `negative_prompt` but no explicit `prompt_suffix`.
-        # This honours the user spec literally: "Worker Python: (a) per
-        # negative/non-style usa inclusion testuale nel prompt (campo unico
-        # dell'UI Slides) — componi 'negative_keywords: avoid ...' alla fine
-        # del prompt".
-        #
-        #   auto-composed format (degenerate case):
-        #     negative_keywords: avoid {negative_prompt}
-        #
-        #   auto-composed format (multi-keyword comma-separated):
-        #     negative_keywords: avoid text, watermark, blurry
-        #
-        # Anti-double-affix guard (July-29 reviewer-feedback round-2):
-        # We skip the auto-compose when the composed `prompt` ALREADY
-        # contains a negative directive — chrome_provider.go's P1.2
-        # prompt_composer emits `[negative: do not include ...]` in the
-        # canonical path, so emitting `negative_keywords: avoid ...` on
-        # top would produce TWO directives in the DOM, contradicting
-        # the user spec's "alla fine del prompt" (single directive).
-        # The auto-compose is the FALLBACK for callers that route via a
-        # different chrome provider (e.g. a future NVIDIA Flux backend
-        # that does NOT pre-compose).
+        # P1.1 (July 2026): ratio overrides the default 16:9. Empty
+        # defaults to "16:9" — canonical P1.3 contract.
+        ratio = req.get("ratio", "") or "16:9"
+        # P1.2 (July 2026): prompt_original carries the raw user prompt
+        # for the JSONL diagnostic's `prompt_original` field. Fall back
+        # to `prompt` for backward compatibility.
+        original_prompt = req.get("prompt_original", prompt)
+
+        # P1.1 (July 2026): auto-compose `negative_keywords: avoid ...`
+        # only if caller did NOT pre-compose AND supplied an explicit
+        # `negative_prompt`. The anti-double-affix guard detects the
+        # Go-side `[negative: do not include...]` directive.
         prompt_suffix = req.get("prompt_suffix", "")
         if (not prompt_suffix and negative_prompt
                 and "[negative: do not include" not in prompt):
             prompt_suffix = f"negative_keywords: avoid {negative_prompt}"
-        # P1.1 (July 2026): ratio overrides the default 16:9 the
-        # Proporzioni dropdown selects. Empty defaults to "16:9" — the
-        # canonical P1.3 contract for mandatory 16:9 selection.
-        ratio = req.get("ratio", "") or "16:9"
 
-        # P1.2 (July 2026): prompt_original carries the raw user prompt for
-        # the JSONL diagnostic's `prompt_original` field (audit trail). When
-        # the Go side has composed the prompt via ComposePrompt (default),
-        # `prompt` is the composed form (`raw + [style: ...] + [negative: ...]`)
-        # and `prompt_original` is the raw. We fall back to `prompt` for
-        # backward compatibility with callers that haven't been migrated.
-        original_prompt = req.get("prompt_original", prompt)  # P2 + P1.2: audit-log raw prompt.
+        # P1.2: prompt_text is the canonically composed string fed to
+        # ta.fill(). strip() guard avoids double-spacing.
+        prompt_text = (prompt + " " + prompt_suffix).strip() if prompt_suffix else prompt
 
-        # P2 phase #1: start. Emit BEFORE any DOM action so the
-        # operator can correlate request receipt to phase progression.
+        # P1.2 trust-the-composer log line preserved verbatim.
+        _log(
+            f"[profile-{self.profile_id}][{request_id}] prompt accepted whole from Go "
+            f"(len={len(prompt)}, original_len={len(original_prompt)}, composed_no_truncation=true)"
+        )
+
+        # P2 phase #1: start. Emitted BEFORE any DOM action AND BEFORE
+        # the login pre-check so login-failing requests still get the
+        # receipt marker (Fix B).
         _log_diag(
             request_id, self.profile_id, "start",
             url=self.page.url if self.page else "<no-page>",
@@ -1372,607 +1506,741 @@ class ProfileWorker(threading.Thread):
             generation_id=generation_id, output_path=output_path,
         )
 
-        # P1.2 (July 2026): prompt arrives WHOLE from Go (already composed by
-        # internal/application/images/prompt_composer.go::ComposePrompt —
-        # style + negative + raw prompt in a single suffix-separated string).
-        # No first-period split, no MAX_PROMPT_LEN truncation, no `…` marker.
-        # The legacy cleanup block (kept verbatim above for reference, now
-        # deleted) used to mutate `prompt` to the first sentence and truncate
-        # to 147 chars. The P1.2 change trusts the Go-side composer to
-        # produce the canonical form and rejects the heuristic entirely.
-        # If a caller sends a comma-separated negative list, the Go side
-        # has already replaced `,` with `;` so the bracketed directive reads
-        # unambiguous. We pass `prompt` straight to ta.fill() below.
-        _log(f"[profile-{self.profile_id}][{request_id}] prompt accepted whole from Go (len={len(prompt)}, original_len={len(original_prompt)}, composed_no_truncation=true)")
+        return _GenerationContext(
+            request_id=request_id,
+            prompt=prompt,
+            original_prompt=original_prompt,
+            prompt_text=prompt_text,
+            output_path=output_path,
+            style_id=style_id,
+            generation_id=generation_id,
+            req_width=req_width,
+            req_height=req_height,
+            ratio=ratio,
+        )
 
-        os.makedirs(os.path.dirname(os.path.abspath(output_path)) or ".", exist_ok=True)
-        t0 = time.time()
+    def _step_prepare_surface(self, ctx: _GenerationContext) -> None:
+        """Step 1: dismiss startup modals + ensure prompt textarea visible
+        + switch to Immagine/Image mode tab.
 
-        if "accounts.google.com" in self.page.url:
-            return {"id": request_id, "status": "error", "error": "login required: user is logged out (please run scripts/bridges/login.py to sign in)", "profile": self.profile_id}
+        The login check is owned by the orchestrator (post-`_build_generation_context`)
+        so this step focuses on Slides DOM surface.
+        """
+        _prepare_editor_surface(self.page)
 
-        # P0.4 / candidate-baseline: the canonical baseline snapshot is
-        # taken just before submit (further down at the "Refresh the
-        # baseline after the sidebar has fully expanded" comment), AFTER
-        # the image-mode tab + ratio dropdown have populated the panel,
-        # so `_extract_candidates(max_keep=200)` captures the real
-        # pre-submit gallery state rather than whatever the worker
-        # found at the start of the request (which can be stale UI
-        # state from the prior partial run, before the sidebar has
-        # expanded). Emitting `candidates_baseline` in the JSONL twice
-        # — once at `start` with the stale snapshot, once at
-        # `candidate_found` with the refreshed snapshot — was producing
-        # operator-confusing diagnostics; the latter is the canonical
-        # single source.
+        # Step 1a: ensure Gemini panel is open (textarea visible).
+        ta = self.page.locator('textarea:visible').first
+        panel_open = False
+        try:
+            panel_open = ta.is_visible()
+        except Exception:
+            panel_open = False
+
+        if not panel_open:
+            panel_open = _wait_for_prompt_surface(self.page, timeout_ms=15000)
+            if not panel_open:
+                raise PlaywrightTimeout(
+                    "prompt surface did not become visible after selecting Images"
+                )
+
+        # Step 1b: switch to Immagine/Image tab. Tolerant: a failure
+        # here logs a warning and continues — tab might already be
+        # selected from a prior request.
+        try:
+            if _click_visible_image_mode_tab(self.page):
+                _log(
+                    f"[profile-{self.profile_id}][{ctx.request_id}] image mode tab click succeeded"
+                )
+                ctx.image_mode_active = True
+            else:
+                _log(
+                    f"[profile-{self.profile_id}][{ctx.request_id}] image mode tab click not found"
+                )
+            self.page.wait_for_timeout(1000)
+        except Exception as te:
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] warning: "
+                f"failed switching tab directly: {te}"
+            )
+
+    def _step_fill_prompt(self, ctx: _GenerationContext) -> None:
+        """Step 2: ensure textarea visible (with _fresh_page recovery) +
+        type prompt_text via keyboard events. Emits `prompt_set` diag.
+        """
+        ta = self.page.locator('textarea:visible').first
+        try:
+            ta.wait_for(state="visible", timeout=25000)
+        except PlaywrightTimeout:
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] textarea not visible — recovery"
+            )
+            self._fresh_page()
+            _prepare_editor_surface(self.page)
+            if not _wait_for_prompt_surface(self.page, timeout_ms=15000):
+                raise PlaywrightTimeout(
+                    "prompt surface did not become visible after recovery"
+                )
+            ta = self.page.locator('textarea:visible').first
+
+        if not _type_prompt_text(self.page, ta, ctx.prompt_text):
+            raise Exception("failed to type prompt into visible textarea")
+
+        # P2 phase #2: prompt_set.
+        _log_diag(
+            ctx.request_id, self.profile_id, "prompt_set",
+            url=self.page.url, prompt_dom=ctx.prompt_text,
+            image_mode_active=ctx.image_mode_active,
+        )
+
+    def _step_select_ratio(self, ctx: _GenerationContext) -> None:
+        """Step 3: open Proporzioni dropdown + click `ratio` option.
+
+        RECOVERABLE by design: a click failure or post-click mis-select
+        verification emits a typed `error` JSONL diag with code
+        `ErrImageGenRatioNotSelected` (preserves the audit-trail code
+        path) but does NOT raise. The pre-fix behavior was `except: pass`-
+        style (silently accepted the wrong ratio); we preserve that
+        continuation property while upgrading the audit trail.
+        """
+        try:
+            prop_btn = self.page.locator(
+                '[aria-label="Proporzioni"], '
+                '.image-synthesis [aria-label*="Proporzi"]'
+            ).first
+            if not prop_btn.is_visible():
+                raise Exception("Proporzioni button not visible (cannot open ratio menu)")
+            prop_btn.click(force=True, timeout=3000)
+            opt_ratio = self.page.locator(
+                f'[role="menuitemradio"]:has-text("{ctx.ratio}"), '
+                f'[data-ratio="{ctx.ratio}"], '
+                f'*:has-text("{ctx.ratio}")'
+            ).last
+            opt_ratio.wait_for(state="visible", timeout=3000)
+            opt_ratio.click(force=True, timeout=3000)
+            # Settle + verify the dropdown closed. The locator
+            # handle on opt_ratio is typically gone after the dropdown
+            # closes so we re-query via _check_169_selected (parameter-
+            # ized on the dynamic ratio variable).
+            self.page.wait_for_timeout(400)
+            ctx.ratio_selected = ctx.ratio
+            if not _check_169_selected(self.page, ctx.ratio):
+                _log(
+                    f"[profile-{self.profile_id}][{ctx.request_id}] warning: "
+                    f"{ctx.ratio} not confirmed in post-click selected-ratio state; continuing"
+                )
+                _log_diag(
+                    ctx.request_id, self.profile_id, "error",
+                    url=self.page.url,
+                    error_code="ErrImageGenRatioNotSelected",
+                    error_message=f"{ctx.ratio} not confirmed in post-click selected-ratio state",
+                )
+        except Exception as e:
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] warning: "
+                f"{ctx.ratio} selection encountered recoverable issue: {e}; continuing"
+            )
+            ctx.ratio_selected = ctx.ratio
+            _log_diag(
+                ctx.request_id, self.profile_id, "error",
+                url=self.page.url,
+                error_code="ErrImageGenRatioNotSelected",
+                error_message=f"{ctx.ratio} selection encountered: {e}",
+            )
+
+    def _step_refresh_baseline(self, ctx: _GenerationContext) -> None:
+        """Step 4: re-extract baseline AFTER sidebar expansion + optional
+        panel-clear (SLIDE_WORKER_REFRESH_EVERY gate).
+
+        The canonical baseline snapshot is taken here, AFTER the image
+        mode tab + ratio dropdown have populated the panel, so
+        `_extract_candidates(max_keep=200)` captures the real pre-
+        submit gallery state. The pre-fix start-phase snapshot was
+        stale UI from the prior partial run; the prior commit deduped
+        that away.
+        """
+        ctx.baseline_candidates = _extract_candidates(self.page, max_keep=200)
+        ctx.baseline_src_set = {c.get("src", "") for c in ctx.baseline_candidates}
+        _log(
+            f"[profile-{self.profile_id}][{ctx.request_id}] refreshed baseline "
+            f"before submit: {len(ctx.baseline_src_set)} candidate src(s)"
+        )
+
+        # P1.3 (July 2026): SLIDE_WORKER_REFRESH_EVERY gate. Best-effort
+        # cleanup; a DOM-clear failure is tolerated (the canonical
+        # clean-context invariant is re-established by `_maybe_recycle_page`
+        # on the 20th generation if needed).
+        self._refresh_count += 1
+        if self._refresh_count % SLIDE_WORKER_REFRESH_EVERY == 0:
+            cleared = _clear_image_library_panel(self.page)
+            _log_diag(
+                ctx.request_id, self.profile_id, "panel_cleared",
+                url=self.page.url, removed=cleared,
+                refresh_count=self._refresh_count,
+            )
+
+    def _step_submit(self, ctx: _GenerationContext) -> None:
+        """Step 5: wait for create button to be ready + click. Emits
+        `click_create` diag.
+        """
+        if not _wait_for_create_button_ready(self.page, timeout_ms=15000):
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] warning: "
+                f"create button never became enabled before submit"
+            )
+        if _click_visible_create_button(self.page):
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] create button click succeeded"
+            )
+        else:
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] create button click not found"
+            )
+            create_btn = self.page.locator(
+                '.image-synthesis-creation-button, button[aria-label="Crea"]'
+            ).first
+            create_btn.click(force=True, timeout=5000)
+
+        # P2 phase #3: click_create.
+        _log_diag(
+            ctx.request_id, self.profile_id, "click_create",
+            url=self.page.url, ratio_selected=ctx.ratio_selected,
+            image_mode_active=ctx.image_mode_active,
+        )
+
+    def _step_poll_for_candidate(self, ctx: _GenerationContext) -> None:
+        """Step 6: 60s poll loop. P0.4 filter rejects src-in-baseline +
+        incomplete (loading) + thumbnail (dims<64x64) candidates. On
+        match: emits transient `candidate_found` diag + captures
+        matched_candidate_meta for `_step_extract_image`. On timeout:
+        captures screenshot + emits `error` diag with code
+        `ErrGenerationTimeout` + raises StepError."""
+        # P2 phase #4: polling_start.
+        _log(
+            f"[profile-{self.profile_id}][{ctx.request_id}] waiting for AI generation "
+            f"(P0.4 filter against baseline={len(ctx.baseline_src_set)}, "
+            f"min_dims=64x64, complete=True)..."
+        )
+        _log_diag(ctx.request_id, self.profile_id, "polling_start", url=self.page.url)
+
+        max_wait = 60
+        poll_interval = 3
+        waited = 0
+        total_filtered_out = 0
+        while waited < max_wait:
+            self.page.wait_for_timeout(poll_interval * 1000)
+            waited += poll_interval
+            # CANDIDATE_LOCATOR_SELECTOR is the SINGLE canonical Playwright
+            # locator fragment — replaces earlier inline duplicates with
+            # silent-drift risk.
+            imgs_check = self.page.locator(CANDIDATE_LOCATOR_SELECTOR).all()
+            total_located = len(imgs_check)
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] poll t={waited}s "
+                f"located={total_located} filtered_out={total_filtered_out}"
+            )
+            for img in imgs_check:
+                try:
+                    src = img.get_attribute("src") or ""
+                    nw = int(img.evaluate("e => e.naturalWidth") or 0)
+                    nh = int(img.evaluate("e => e.naturalHeight") or 0)
+                    complete = bool(img.evaluate("e => e.complete") or False)
+                    if not src or src in ctx.baseline_src_set:
+                        total_filtered_out += 1
+                        continue
+                    if nw < 64 or nh < 64:
+                        total_filtered_out += 1
+                        continue
+                    if not complete:
+                        total_filtered_out += 1
+                        continue
+                    # P0.4: capture the matching candidate's metadata so
+                    # Step 7 doesn't re-extract blindly.
+                    _log(
+                        f"[profile-{self.profile_id}][{ctx.request_id}] P0.4 candidate matched: "
+                        f"src={src[:80]} dims={nw}x{nh} complete={complete} "
+                        f"(after {waited}s, filtered_out={total_filtered_out}/{total_located})"
+                    )
+                    ctx.matched_candidate_meta = {
+                        "src": src,
+                        "natural_w": nw,
+                        "natural_h": nh,
+                        "complete": complete,
+                        "locator": img,
+                    }
+                    # Transient `candidate_found` (RICH form follows in
+                    # `_step_extract_image` after anchor build).
+                    _log_diag(
+                        ctx.request_id, self.profile_id, "candidate_found",
+                        url=self.page.url, candidates_after=total_located,
+                        candidates_matched=1,
+                        candidates_filtered_out=total_filtered_out,
+                        elapsed_ms=int((time.time() - ctx.t0) * 1000),
+                    )
+                    return
+                except Exception:
+                    continue
+
+        # Timeout: emit `error` diag + raise StepError so the
+        # orchestrator's single except clause picks it up.
+        screenshot_path = _screenshot_on_failure(self.page, "ai_timeout")
+        _log_diag(
+            ctx.request_id, self.profile_id, "error",
+            url=self.page.url if self.page else "<closed>",
+            error_code="ErrGenerationTimeout",
+            error_message=f"timed out after {max_wait}s",
+            elapsed_ms=int((time.time() - ctx.t0) * 1000),
+            screenshot_path=screenshot_path or "",
+        )
+        _log(
+            f"[profile-{self.profile_id}][{ctx.request_id}] timed out waiting for AI after {max_wait}s"
+        )
+        raise StepError(
+            "ErrGenerationTimeout",
+            screenshot_path=screenshot_path,
+            diag_extra={"error_message": f"timed out after {max_wait}s"},
+            candidates_baseline=len(ctx.baseline_candidates),
+            elapsed_ms=int((time.time() - ctx.t0) * 1000),
+        )
+
+    def _step_extract_image(self, ctx: _GenerationContext) -> None:
+        """Step 7: P0.4.A src-anchored Locator + googleusercontent/blob:
+        fetch + save + emit richer `candidate_found`, `fetch_method_choice`,
+        `saved`, and `end` diags.
+
+        Failure paths (raises StepError):
+          * P0.4.A fail-closed empty-src → `ErrNoImageCandidate` (no screenshot)
+          * P0.4.A fail-looked-up vanished-candidate → `ErrNoImageCandidate` (no screenshot)
+          * no-fetch → `ErrNoImageCandidate` (no screenshot)
+        Per Fix D: the original `ErrNoImageCandidate` code paths did NOT
+        capture screenshots. The step passes `screenshot_path=""` (falsy,
+        not None) so `_emit_failed_response` skips the unsolicited
+        `no_image_candidate` screenshot capture.
+        """
+        cached_meta = ctx.matched_candidate_meta
+        if cached_meta is None:
+            # Defensive: the poll step should have raised already; if
+            # we reach the extract step without a candidate, the typed
+            # timeout path is the canonical sentinel.
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] reached Step 7 with "
+                f"matched_candidate_meta=None — defensive ErrGenerationTimeout"
+            )
+            raise StepError(
+                "ErrGenerationTimeout",
+                screenshot_path="",  # suppress unsolicited screenshot
+                diag_extra={"error_message": "no candidate on Step 7 entry"},
+            )
+
+        captured_src = cached_meta["src"]
+
+        # P0.4.A fail-closed: empty src. P0.4 filter at Step 6 would
+        # have rejected this but cover the corner case anyway.
+        if not captured_src:
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] P0.4.A fail-closed: "
+                f"matched_candidate_meta.src is empty"
+            )
+            _log_diag(
+                ctx.request_id, self.profile_id, "error",
+                url=self.page.url,
+                error_code="ErrNoImageCandidate",
+                error_message="P0.4.A: matched_candidate_meta.src is empty (no anchor)",
+                candidates_baseline=len(ctx.baseline_candidates),
+                screenshot_path="",
+            )
+            raise StepError(
+                "ErrNoImageCandidate",
+                screenshot_path="",  # Fix D
+                diag_extra={"error_message": "P0.4.A: matched_candidate_meta.src is empty (no anchor)"},
+                candidates_baseline=len(ctx.baseline_candidates),
+                candidates_after=0,
+            )
+
+        # P0.4.A src-anchored Locator: img[src="X"] resolves determin-
+        # istically regardless of DOM reordering. If the chosen img
+        # vanished between Step 6 capture and Step 7 evaluate, surface
+        # typed ErrNoImageCandidate. NO success-on-vanished.
+        src_specific = self.page.locator(f'img[src="{captured_src}"]')
+        if src_specific.count() == 0:
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] P0.4.A fail-closed: "
+                f'img[src="{captured_src[:80]}"] not found in current DOM '
+                f"(vanished mid-extraction); surfacing typed ErrNoImageCandidate"
+            )
+            _log_diag(
+                ctx.request_id, self.profile_id, "error",
+                url=self.page.url,
+                error_code="ErrNoImageCandidate",
+                error_message=(
+                    f"P0.4.A: img[src={captured_src[:80]}] not found at Step 7 "
+                    f"(DOM redraw replaced/removed the chosen candidate)"
+                ),
+                captured_src=captured_src,
+                candidates_baseline=len(ctx.baseline_candidates),
+                screenshot_path="",
+            )
+            raise StepError(
+                "ErrNoImageCandidate",
+                screenshot_path="",  # Fix D
+                diag_extra={
+                    "error_message": (
+                        f"P0.4.A: img[src={captured_src[:80]}] not found at Step 7"
+                    ),
+                },
+                captured_src=captured_src,
+                candidates_baseline=len(ctx.baseline_candidates),
+                candidates_after=0,
+            )
+
+        imgs = [src_specific]
+        candidate_records = [{
+            "src": captured_src,
+            "natural_w": cached_meta["natural_w"],
+            "natural_h": cached_meta["natural_h"],
+            "complete": cached_meta["complete"],
+        }]
+
+        # P2 phase #5 (richer form): candidate_found with anchor_strategy.
+        _log_diag(
+            ctx.request_id, self.profile_id, "candidate_found",
+            url=self.page.url,
+            candidates_baseline=len(ctx.baseline_candidates),
+            candidates_after=len(imgs), candidates=candidate_records,
+            candidates_matched=1,
+            candidates_filtered_out_cache_keys=(
+                "src_not_in_baseline", "complete_true", "min_dims_64x64"
+            ),
+            anchor_strategy="P0.4.A src-anchored (img[src=\"X\"]; survives DOM redraw)",
+        )
+        _log(
+            f"[profile-{self.profile_id}][{ctx.request_id}] P0.4 found {len(imgs)} "
+            f"matched candidate (src-anchored P0.4.A guaranteed; "
+            f"captured_src={captured_src[:80]}); canonical post-filter extract path"
+        )
+
+        # Fetch path: googleusercontent OR blob: (with proxied-fetch +
+        # element-screenshot fallback per P0.3).
+        for img in imgs:
+            try:
+                src = img.get_attribute("src") or ""
+                nw = int(img.evaluate("e => e.naturalWidth") or 0)
+                nh = int(img.evaluate("e => e.naturalHeight") or 0)
+                cmp_ = bool(img.evaluate("e => e.complete") or False)
+                ctx.natural_w, ctx.natural_h, ctx.complete = nw, nh, cmp_
+
+                if "googleusercontent" in src:
+                    response = self.page.request.get(src, timeout=15000)
+                    if response.status == 200:
+                        ctx.image_bytes = response.body()
+                        ctx.fetch_method = "googleusercontent"
+                elif "blob:" in src:
+                    # P0.3 (July 2026): self.page.request.get() does NOT
+                    # resolve blob: URLs because the blob: URL authority
+                    # is the page-context. Cascade:
+                    #   (a) window.fetch(src) inside page.evaluate —
+                    #       proxy-on-page runs in page context where
+                    #       blob: URL has authority;
+                    #   (b) img.screenshot() element-scoped — preserves
+                    #       rendered pixel content without page export.
+                    try:
+                        buffer_int_list = self.page.evaluate(
+                            "url => fetch(url).then(r => r.arrayBuffer())"
+                            ".then(b => Array.from(new Uint8Array(b)))",
+                            src, timeout=10000,
+                        )
+                        if isinstance(buffer_int_list, list) and buffer_int_list:
+                            ctx.image_bytes = bytes(buffer_int_list)
+                            ctx.fetch_method = "blob-fetch"
+                            _log(
+                                f"[profile-{self.profile_id}][{ctx.request_id}] blob: "
+                                f"window.fetch proxy-on-page succeeded "
+                                f"({len(ctx.image_bytes)} bytes)"
+                            )
+                    except Exception as fe:
+                        _log(
+                            f"[profile-{self.profile_id}][{ctx.request_id}] blob: "
+                            f"window.fetch proxy-on-page failed: {fe}"
+                        )
+                    if not ctx.image_bytes:
+                        try:
+                            ctx.image_bytes = img.screenshot(type="png", timeout=5000)
+                            ctx.fetch_method = "element-screenshot"
+                            _log(
+                                f"[profile-{self.profile_id}][{ctx.request_id}] blob: "
+                                f"element-screenshot fallback succeeded "
+                                f"({len(ctx.image_bytes)} bytes)"
+                            )
+                        except Exception as se:
+                            _log(
+                                f"[profile-{self.profile_id}][{ctx.request_id}] blob: "
+                                f"element-screenshot fallback failed: {se}"
+                            )
+
+                if ctx.image_bytes:
+                    ctx.saved_format = _save_image_bytes(ctx.image_bytes, ctx.output_path)
+                    elapsed = (time.time() - ctx.t0) * 1000
+                    _log(
+                        f"[profile-{self.profile_id}][{ctx.request_id}] SUCCESS → "
+                        f"{ctx.output_path} ({len(ctx.image_bytes)} bytes, "
+                        f"{ctx.saved_format}, {elapsed:.0f}ms, method={ctx.fetch_method})"
+                    )
+
+                    # P2 phase #6: fetch_method_choice.
+                    _log_diag(
+                        ctx.request_id, self.profile_id, "fetch_method_choice",
+                        url=self.page.url, method=ctx.fetch_method,
+                        natural_w=ctx.natural_w, natural_h=ctx.natural_h,
+                        complete=ctx.complete, elapsed_ms=int(elapsed),
+                    )
+                    # P2 phase #7: saved.
+                    _log_diag(
+                        ctx.request_id, self.profile_id, "saved",
+                        url=self.page.url, output_path=ctx.output_path,
+                        method=ctx.fetch_method, bytes=len(ctx.image_bytes),
+                        format=ctx.saved_format,
+                        natural_w=ctx.natural_w, natural_h=ctx.natural_h,
+                    )
+
+                    ctx.candidate_records = candidate_records
+                    ctx.saved = True
+
+                    # P2 phase #8: end. Emitted here so the JSONL trail
+                    # has the canonical completion marker before the
+                    # orchestrator's success response is built.
+                    ctx.pixel_stats = _compute_pixel_stats(ctx.output_path)
+                    _log_diag(
+                        ctx.request_id, self.profile_id, "end",
+                        url=self.page.url, output_path=ctx.output_path,
+                        method=ctx.fetch_method, bytes=len(ctx.image_bytes),
+                        natural_w=ctx.natural_w, natural_h=ctx.natural_h,
+                        complete=ctx.complete,
+                        image_mode_active=ctx.image_mode_active,
+                        ratio_selected=ctx.ratio_selected,
+                        prompt_original=ctx.original_prompt, prompt_dom=ctx.prompt,
+                        style_id=ctx.style_id, generation_id=ctx.generation_id,
+                        **ctx.pixel_stats,
+                    )
+                    return
+            except Exception as e:
+                _log(
+                    f"[profile-{self.profile_id}][{ctx.request_id}] extraction "
+                    f"attempt failed: {e}"
+                )
+                continue
+
+        # P0.1 fail-closed: no slide-export fallback.
+        _log_diag(
+            ctx.request_id, self.profile_id, "error",
+            url=self.page.url,
+            error_code="ErrNoImageCandidate",
+            error_message="no googleusercontent/blob candidates could be fetched",
+            candidates_after=len(imgs),
+            screenshot_path="",
+        )
+        _log(
+            f"[profile-{self.profile_id}][{ctx.request_id}] extraction failed — "
+            f"failing closed with ErrNoImageCandidate (no slide-export fallback)"
+        )
+        try:
+            os.remove(ctx.output_path)
+        except OSError:
+            pass
+        raise StepError(
+            "ErrNoImageCandidate",
+            screenshot_path="",  # Fix D
+            diag_extra={"error_message": "no googleusercontent/blob candidates could be fetched"},
+            candidates_baseline=len(ctx.baseline_candidates),
+            candidates_after=len(imgs),
+        )
+
+    def _emit_failed_response(self, ctx: _GenerationContext, code: str,
+                              *, error_message: str = "",
+                              traceback_str: str = "",
+                              **extra) -> dict:
+        """Common fail-closed shim: capture screenshot (if not provided
+        AND the caller wants one), emit `error` diag, log, run
+        `_fresh_page` recovery, return the canonical typed response
+        dict with `diag_extra` merged.
+
+        Screenshot capture rules:
+          * If `extra["screenshot_path"]` is None or absent: helper
+            synthesizes label from `code` (Fix C: ErrUnknown maps to
+            `f"exception_{type(e).__name__}"` is handled by the
+            orchestrator — the helper itself uses `f"exception_{code}"`
+            which is overridden by callers).
+          * If `extra["screenshot_path"]` is "" (empty string): helper
+            SUPPRESSES the screenshot capture (Fix D).
+          * Else: caller-provided `screenshot_path` is used verbatim.
+
+        Auxiliary rule: the helper relies on the orchestrator for
+        `ErrUnknown` because only there has the original been byte-
+        equivalent (`f"exception_{type(e).__name__}"` reads exception
+        class name).
+        """
+        screenshot_path = extra.pop("screenshot_path", None)
+        if screenshot_path is None:
+            label = {
+                "ErrGenerationTimeout": "playwright_timeout",
+                "ErrNoImageCandidate": "no_image_candidate",
+            }.get(code, f"exception_{code}")
+            screenshot_path = _screenshot_on_failure(self.page, label)
+        elif screenshot_path == "":
+            # Fix D: explicit suppression. Keep "" — the diag + response
+            # both surface as `""`, matching the pre-fix `ErrNoImageCandidate`
+            # behavior where no screenshot was captured.
+            pass
+        # Else: caller-provided path (e.g. from StepError, where the
+        # step already captured with the right label like "ai_timeout").
+
+        diag_payload = {
+            "error_code": code,
+            "error_message": error_message,
+            "screenshot_path": screenshot_path or "",
+        }
+        diag_payload.update(extra)
+        _log_diag(
+            ctx.request_id, self.profile_id, "error",
+            url=self.page.url if self.page else "<closed>",
+            **diag_payload,
+        )
+        _log(
+            f"[profile-{self.profile_id}][{ctx.request_id}] error ({code}): "
+            f"{error_message or '<no message>'}"
+        )
 
         try:
-            _prepare_editor_surface(self.page)
+            self._fresh_page()
+        except Exception:
+            pass
 
-            # Step 1: ensure Gemini panel is open.
-            ta = self.page.locator('textarea:visible').first
-            panel_open = False
-            try:
-                panel_open = ta.is_visible()
-            except Exception:
-                panel_open = False
+        elapsed_ms = int((time.time() - ctx.t0) * 1000)
+        response = {
+            "id": ctx.request_id, "status": "error",
+            "error": error_message or code, "code": code,
+            "profile": self.profile_id,
+            "elapsed_ms": elapsed_ms,
+            "screenshot_path": screenshot_path or "",
+        }
+        # Merge diag_extra into response (candidates_baseline,
+        # captured_src, candidates_after, etc.) so the JSONL round-trip
+        # is observable from the Go side without extra parsing.
+        for k, v in extra.items():
+            if k not in response:
+                response[k] = v
+        if traceback_str:
+            response["traceback"] = traceback_str
+            response["screenshot_path_in_err"] = screenshot_path or ""
+        return response
 
-            if not panel_open:
-                panel_open = _wait_for_prompt_surface(self.page, timeout_ms=15000)
-                if not panel_open:
-                    raise PlaywrightTimeout("prompt surface did not become visible after selecting Images")
-                ta = self.page.locator('textarea:visible').first
+    def _build_success_response(self, ctx: _GenerationContext) -> dict:
+        """Build the canonical ok response after a successful extract step.
 
-            # Step 1.5: Switch to Immagine/Image tab.
-            image_mode_active = False
-            ratio_selected = ""
-            try:
-                if _click_visible_image_mode_tab(self.page):
-                    _log(f"[profile-{self.profile_id}][{request_id}] image mode tab click succeeded")
-                    image_mode_active = True
-                else:
-                    _log(f"[profile-{self.profile_id}][{request_id}] image mode tab click not found")
-                self.page.wait_for_timeout(1000)
-            except Exception as te:
-                _log(f"[profile-{self.profile_id}][{request_id}] warning: failed switching tab directly: {te}")
+        Pixel stats were already computed inside `_step_extract_image`
+        (drives the `end` diag emission); we merge them into the response
+        here. `_maybe_recycle_page` and `_persist_storage_state` are
+        owned by the orchestrator (NOT the step) so worker-lifecycle
+        side effects stay centralised.
+        """
+        elapsed_ms = int((time.time() - ctx.t0) * 1000)
+        return {
+            "id": ctx.request_id, "status": "ok",
+            "output": ctx.output_path, "elapsed_ms": elapsed_ms,
+            "bytes": len(ctx.image_bytes), "profile": self.profile_id,
+            # P2 stats replication:
+            "method": ctx.fetch_method,
+            "natural_w": ctx.natural_w, "natural_h": ctx.natural_h,
+            "complete": ctx.complete,
+            "candidates_baseline": len(ctx.baseline_candidates),
+            "candidates_after": 1,
+            "candidates": ctx.candidate_records,
+            "image_mode_active": ctx.image_mode_active,
+            "ratio_selected": ctx.ratio_selected or "",
+            "prompt_original": ctx.original_prompt,
+            "prompt_dom": ctx.prompt,
+            **ctx.pixel_stats,
+        }
 
-            # Step 2: fill prompt.
-            try:
-                ta.wait_for(state="visible", timeout=25000)
-            except PlaywrightTimeout:
-                _log(f"[profile-{self.profile_id}][{request_id}] textarea not visible — recovery")
-                self._fresh_page()
-                _prepare_editor_surface(self.page)
-                if not _wait_for_prompt_surface(self.page, timeout_ms=15000):
-                    raise PlaywrightTimeout("prompt surface did not become visible after recovery")
-                ta = self.page.locator('textarea:visible').first
+    # ── Generation ────────────────────────────────────────────────────
 
-            # P1.1 (July 2026): if the caller supplies prompt_suffix, the worker
-            # appends it to the composed prompt in the textarea fill. The
-            # composed form (from P1.2's Go-side prompt_composer) is the
-            # canonical default; prompt_suffix is the user-facing escape-hatch
-            # for callers that need a custom worker-side format (e.g. the
-            # user spec's "negative_keywords: avoid ..." directive). The
-            # strip() guard avoids double-spacing when suffix is non-empty.
-            # The ternary below is the SOLE assignment — pre-fix the worker
-            # duplicated the same expression under an `if prompt_suffix:` guard
-            # right after this line (pure dead code, identical result, but it
-            # masked future divergence risk and confuses readers).
-            prompt_text = (prompt + " " + prompt_suffix).strip() if prompt_suffix else prompt
-            if not _type_prompt_text(self.page, ta, prompt_text):
-                raise Exception("failed to type prompt into visible textarea")
+    def _generate(self, req: dict) -> dict:
+        """Thin orchestrator: build ctx (emits `start`), run 7 step
+        methods in a single try/except chain. Login pre-check happens
+        AFTER the `start` emit so login-failing requests still get a
+        JSONL receipt marker (Fix B). Side effects (`_maybe_recycle_page`,
+        `_persist_storage_state`) live at the orchestrator level — NOT
+        in the steps — so worker-lifecycle is centralised.
+        """
+        ctx = self._build_generation_context(req)  # also emits `start`.
 
-            # P2 phase #2: prompt_set.
-            _log_diag(
-                request_id, self.profile_id, "prompt_set",
-                url=self.page.url, prompt_dom=prompt_text,
-                image_mode_active=image_mode_active,
-            )
-
-            # Step 3: select ratio. MANDATORY per spec (P1.3, July 2026).
-            # The pre-fix `except: pass` silently degraded to whatever
-            # ratio was already selected (often the prior request's). We
-            # now (a) raise on click failure, (b) verify the post-click
-            # selected ratio via _check_169_selected (Slides.new closes
-            # the dropdown so the original locator is unreachable), and
-            # (c) return a typed `ErrImageGenRatioNotSelected` error so
-            # the Go side can resetWorker + retry-once.
-            # P1.1 (July 2026): the `ratio` variable is honored — overrides
-            # the canonical 16:9 default from the Go side when set. Empty
-            # `ratio` from the request defaults to "16:9" (the P1.3 contract).
-            try:
-                prop_btn = self.page.locator(
-                    '[aria-label="Proporzioni"], '
-                    '.image-synthesis [aria-label*="Proporzi"]'
-                ).first
-                if not prop_btn.is_visible():
-                    raise Exception("Proporzioni button not visible (cannot open ratio menu)")
-                prop_btn.click(force=True, timeout=3000)
-                opt_ratio = self.page.locator(
-                    f'[role="menuitemradio"]:has-text("{ratio}"), '
-                    f'[data-ratio="{ratio}"], '
-                    f'*:has-text("{ratio}")'
-                ).last
-                opt_ratio.wait_for(state="visible", timeout=3000)
-                opt_ratio.click(force=True, timeout=3000)
-                # Settle + verify the dropdown closed. The locator
-                # handle on opt_ratio is typically gone after the dropdown
-                # closes so we re-query via _check_169_selected (which is
-                # parameterized on the dynamic ratio variable).
-                self.page.wait_for_timeout(400)
-                ratio_selected = ratio
-                if not _check_169_selected(self.page, ratio):
-                    _log(
-                        f"[profile-{self.profile_id}][{request_id}] warning: {ratio} not confirmed in post-click selected-ratio state; continuing"
-                    )
-            except Exception as e:
-                _log(f"[profile-{self.profile_id}][{request_id}] warning: {ratio} selection encountered recoverable issue: {e}; continuing")
-                ratio_selected = ratio
-
-            # Refresh the baseline after the sidebar has fully expanded so the
-            # image gallery and other late-loaded UI elements do not count as
-            # "new" candidates during the generation poll.
-            baseline_candidates = _extract_candidates(self.page, max_keep=200)
-            baseline_src_set = {c.get("src", "") for c in baseline_candidates}
-            _log(
-                f"[profile-{self.profile_id}][{request_id}] refreshed baseline before submit: {len(baseline_src_set)} candidate src(s)"
-            )
-
-            # P1.3 Step 3.5 (July 2026): SLIDE_WORKER_REFRESH_EVERY gate.
-            # If the gate condition is satisfied (e.g. every request when
-            # N=1, the canonical default), clear the image library panel
-            # before submit so polling counts only the new candidates
-            # generated by THIS request. The DOM clear is best-effort:
-            # on failure we still proceed to submit (failure logged), and
-            # the canonical clean-context invariant will be re-established
-            # by `_maybe_recycle_page` on the 20th generation if needed.
-            self._refresh_count += 1
-            if self._refresh_count % SLIDE_WORKER_REFRESH_EVERY == 0:
-                cleared = _clear_image_library_panel(self.page)
-                _log_diag(
-                    request_id, self.profile_id, "panel_cleared",
-                    url=self.page.url, removed=cleared,
-                    refresh_count=self._refresh_count,
-                )
-
-            # Step 4: submit (P2 phase #3: click_create).
-            if not _wait_for_create_button_ready(self.page, timeout_ms=15000):
-                _log(f"[profile-{self.profile_id}][{request_id}] warning: create button never became enabled before submit")
-            if _click_visible_create_button(self.page):
-                _log(f"[profile-{self.profile_id}][{request_id}] create button click succeeded")
-            else:
-                _log(f"[profile-{self.profile_id}][{request_id}] create button click not found")
-                create_btn = self.page.locator(
-                    '.image-synthesis-creation-button, button[aria-label="Crea"]'
-                ).first
-                create_btn.click(force=True, timeout=5000)
-            _log_diag(
-                request_id, self.profile_id, "click_create",
-                url=self.page.url, ratio_selected=ratio_selected,
-                image_mode_active=image_mode_active,
-            )
-
-            # Step 5: poll (P2 phase #4: polling_start).
-            # P0.4 (July 2026): filter candidates against the baseline so the
-            # polling break fires ONLY when a NEW candidate (not yet in the
-            # baseline src set, complete=True, dims >= 64x64) appears. This
-            # closes the contract "the second generation on the same worker
-            # does NOT inherit the first generation's image" (user P0.4 spec).
-            #
-            # Filter details:
-            #   (a) src NOT in baseline_src_set — disjoin inheritance from
-            #       prior generations still rendered in the panel;
-            #   (b) image.complete=True — block on transient loading states;
-            #   (c) naturalWidth>=64 AND naturalHeight>=64 — reject
-            #       thumbnails / icons / placeholders that look like
-            #       clickable imgs in the panel;
-            #   (d) src NOT in baseline_src_set (same as (a); redundant
-            #       guard against any future src-normalization drift).
-            #
-            # The inline filter keeps polling at 3s intervals; if NO
-            # candidate passes the filter for 60s, we return
-            # ErrGenerationTimeout (fail-closed, no fallback).
-            _log(f"[profile-{self.profile_id}][{request_id}] waiting for AI generation (P0.4 filter against baseline={len(baseline_src_set)}, min_dims=64x64, complete=True)...")
-            _log_diag(request_id, self.profile_id, "polling_start", url=self.page.url)
-            max_wait = 60
-            poll_interval = 3
-            waited = 0
-            matched_candidate_meta = None  # P0.4: {(src, nw, nh, complete)}
-            total_located = 0
-            total_filtered_out = 0
-            while waited < max_wait:
-                self.page.wait_for_timeout(poll_interval * 1000)
-                waited += poll_interval
-                imgs_check = self.page.locator(CANDIDATE_LOCATOR_SELECTOR).all()
-                total_located = len(imgs_check)
-                _log(
-                    f"[profile-{self.profile_id}][{request_id}] poll t={waited}s located={total_located} filtered_out={total_filtered_out}"
-                )
-                # P0.4: filter each located img against baseline + dim + complete.
-                for img in imgs_check:
-                    try:
-                        src = img.get_attribute("src") or ""
-                        nw = int(img.evaluate("e => e.naturalWidth") or 0)
-                        nh = int(img.evaluate("e => e.naturalHeight") or 0)
-                        complete = bool(img.evaluate("e => e.complete") or False)
-                        if not src or src in baseline_src_set:
-                            total_filtered_out += 1
-                            continue
-                        if nw < 64 or nh < 64:
-                            total_filtered_out += 1
-                            continue
-                        if not complete:
-                            total_filtered_out += 1
-                            continue
-                        # P0.4: capture the matching candidate's metadata so
-                        # Step 6 doesn't re-extract blindly.
-                        _log(f"[profile-{self.profile_id}][{request_id}] P0.4 candidate matched: src={src[:80]} dims={nw}x{nh} complete={complete} (after {waited}s, filtered_out={total_filtered_out}/{total_located})")
-                        matched_candidate_meta = {
-                            "src": src,
-                            "natural_w": nw,
-                            "natural_h": nh,
-                            "complete": complete,
-                            "locator": img,
-                        }
-                        _log_diag(
-                            request_id, self.profile_id, "candidate_found",
-                            url=self.page.url, candidates_after=total_located,
-                            candidates_matched=1,
-                            candidates_filtered_out=total_filtered_out,
-                            elapsed_ms=int((time.time() - t0) * 1000),
-                        )
-                        break
-                    except Exception:
-                        continue
-                if matched_candidate_meta is not None:
-                    break
-            else:
-                # P2 screenshot FIRST before _fresh_page so the
-                # forensic snapshot survives the page reset.
-                screenshot_path = _screenshot_on_failure(self.page, "ai_timeout")
-                _log_diag(
-                    request_id, self.profile_id, "error",
-                    url=self.page.url if self.page else "<closed>",
-                    error_code="ErrGenerationTimeout", error_message=f"timed out after {max_wait}s",
-                    elapsed_ms=int((time.time() - t0) * 1000),
-                    screenshot_path=screenshot_path or "",
-                )
-                _log(f"[profile-{self.profile_id}][{request_id}] timed out waiting for AI after {max_wait}s")
-                try:
-                    self._fresh_page()
-                except Exception:
-                    pass
-                return {
-                    "id": request_id, "status": "error", "error": "ErrGenerationTimeout",
-                    "code": "ErrGenerationTimeout", "profile": self.profile_id,
-                    "screenshot_path": screenshot_path or "",
-                    "elapsed_ms": int((time.time() - t0) * 1000),
-                }
-
-            # Step 6: extract image. P2 phase #5/6/7= candidate snapshot,
-            # fetch_method_choice, saved.
-            # P0.4 (July 2026): consume the matched_candidate_meta captured
-            # at Step 5 — we DO NOT re-locate blindly here, so the post-poll
-            # state cannot diverge from the chosen-candidate state (Slides
-            # DOM can race between poll break and Step 6 re-locator). The
-            # matched locator + cached metadata (src, natural_w, natural_h,
-            # complete) is the post-P0.4 canonical extract path. The
-            # baseline_diff filter applied in Step 5 guarantees that this
-            # single-element list is NOT inherited from a prior request.
-            if matched_candidate_meta is None:
-                # Defensive: timeout path should have already returned. If
-                # we land here, surface a typed error so the typed-retry
-                # policy on the Go side can resetWorker+retry-once.
-                err_code = "ErrGenerationTimeout"
-                _log(f"[profile-{self.profile_id}][{request_id}] reached Step 6 with matched_candidate_meta=None — defensive ErrGenerationTimeout")
-                return {
-                    "id": request_id, "status": "error", "error": err_code,
-                    "code": err_code, "profile": self.profile_id,
-                    "elapsed_ms": int((time.time() - t0) * 1000),
-                }
-            # P0.4.A (July 2026): re-anchor Step 6 to the SPECIFIC captured src
-            # instead of reusing the Step 5 nth-position Locator.
-            #
-            # Audit verdict (P0.4.A): `page.locator(...).all()` returns Locator
-            # objects (lazy / re-evaluating), NOT ElementHandles. Reusing the
-            # captured nth-K Locator at Step 6 would SILENTLY RE-RESOLVE to
-            # the element currently at nth-K of the parent selector — IF the
-            # Slides.new DOM redraws between Step 5 break and Step 6 evaluate,
-            # nth-K can shift to a different img whose src was NOT in
-            # baseline_src_set (i.e. NOT something P0.4 expected to filter).
-            # In that race the worker extracts bytes for src=Y while
-            # candidate_records still emits src=X (cached snapshot) — silent
-            # mis-extraction + audit-trail divergence.
-            #
-            # Canonical fix:
-            #   (1) build a FRESH Locator that anchors to the SPECIFIC
-            #       captured src string (`img[src="X"]`) — this resolves
-            #       deterministically regardless of DOM reordering;
-            #   (2) assert `count() > 0` — if the chosen img vanished
-            #       (DOM redrew and replaced/removed it), surface typed
-            #       ErrNoImageCandidate → chrome_provider's resetWorker
-            #       + retry-once path. NO success-on-vanished.
-            cached_meta = matched_candidate_meta
-            captured_src = cached_meta["src"]
-            if not captured_src:
-                # Defensive: should not happen — the P0.4 filter at Step 5
-                # rejects empty-src candidates. Cover the corner case anyway
-                # so we never retry on garbage state. Treat as the same
-                # typed sentinel the rest of P0.4.A would emit.
-                err_code = "ErrNoImageCandidate"
-                _log(f"[profile-{self.profile_id}][{request_id}] P0.4.A fail-closed: matched_candidate_meta.src is empty")
-                _log_diag(
-                    request_id, self.profile_id, "error",
-                    url=self.page.url, error_code=err_code,
-                    error_message="P0.4.A: matched_candidate_meta.src is empty (no anchor)",
-                )
-                try:
-                    self._fresh_page()
-                except Exception:
-                    pass
-                return {
-                    "id": request_id, "status": "error", "error": err_code,
-                    "code": err_code, "profile": self.profile_id,
-                    "candidates_baseline": len(baseline_candidates),
-                    "candidates_after": 0,
-                    "elapsed_ms": int((time.time() - t0) * 1000),
-                }
-            src_specific = self.page.locator(
-                f'img[src="{captured_src}"]'
-            )
-            if src_specific.count() == 0:
-                # P0.4.A FAIL-CLOSED: the chosen candidate vanished from
-                # the DOM between Step 5 capture and Step 6 evaluate
-                # (Slides.new component unmount, panel redraw, etc.).
-                # Typed ErrNoImageCandidate lets chrome_provider's typed
-                # retry policy decide resetWorker+retry-once vs permanent
-                # failure; the canonical contract is: NEVER silently
-                # succeed on a vanished candidate.
-                err_code = "ErrNoImageCandidate"
-                _log(
-                    f"[profile-{self.profile_id}][{request_id}] P0.4.A fail-closed: "
-                    f"img[src=\"{captured_src[:80]}\"] not found in current DOM "
-                    f"(vanished mid-extraction); surfacing typed {err_code}"
-                )
-                _log_diag(
-                    request_id, self.profile_id, "error",
-                    url=self.page.url, error_code=err_code,
-                    error_message=f"P0.4.A: img[src={captured_src[:80]}] not found at Step 6 (DOM redraw replaced/removed the chosen candidate)",
-                    captured_src=captured_src,
-                    candidates_baseline=len(baseline_candidates),
-                )
-                try:
-                    self._fresh_page()
-                except Exception:
-                    pass
-                return {
-                    "id": request_id, "status": "error", "error": err_code,
-                    "code": err_code, "profile": self.profile_id,
-                    "candidates_baseline": len(baseline_candidates),
-                    "candidates_after": 0,
-                    "captured_src": captured_src,
-                    "elapsed_ms": int((time.time() - t0) * 1000),
-                }
-            imgs = [src_specific]
-            candidate_records = [{
-                "src": captured_src,
-                "natural_w": cached_meta["natural_w"],
-                "natural_h": cached_meta["natural_h"],
-                "complete": cached_meta["complete"],
-            }]
-            _log_diag(
-                request_id, self.profile_id, "candidate_found",
-                url=self.page.url, candidates_baseline=len(baseline_candidates),
-                candidates_after=len(imgs), candidates=candidate_records,
-                candidates_matched=1,
-                candidates_filtered_out_cache_keys=("src_not_in_baseline", "complete_true", "min_dims_64x64"),
-                anchor_strategy="P0.4.A src-anchored (img[src=\"X\"]; survives DOM redraw)",
-            )
-            _log(
-                f"[profile-{self.profile_id}][{request_id}] P0.4 found {len(imgs)} matched candidate "
-                f"(src-anchored P0.4.A guaranteed; captured_src={captured_src[:80]}); "
-                f"canonical post-filter extract path"
-            )
-
-            saved = False
-            image_bytes = b""
-            fetch_method = ""
-            natural_w = 0
-            natural_h = 0
-            complete = False
-            if imgs:
-                for img in imgs:
-                    try:
-                        src = img.get_attribute("src") or ""
-                        nw = int(img.evaluate("e => e.naturalWidth") or 0)
-                        nh = int(img.evaluate("e => e.naturalHeight") or 0)
-                        cmp_ = bool(img.evaluate("e => e.complete") or False)
-                        natural_w, natural_h, complete = nw, nh, cmp_
-                        if "googleusercontent" in src:
-                            response = self.page.request.get(src, timeout=15000)
-                            if response.status == 200:
-                                image_bytes = response.body()
-                                fetch_method = "googleusercontent"
-                        elif "blob:" in src:
-                            # P0.3 (July 2026): self.page.request.get() does NOT
-                            # resolve blob: URLs because the blob: URL authority
-                            # is the page-context (not the outer Playwright
-                            # context). We replace the fragile self.page.request.get
-                            # with two new strategies per user spec:
-                            #   (a) try window.fetch(src) inside page.evaluate
-                            #       (proxy-on-page): the JS fetch() runs in the
-                            #       page context where the blob: URL has authority.
-                            #   (b) fallback to locator.screenshot() of the <img>
-                            #       element itself (NOT a page screenshot — never
-                            #       export the slide). The element screenshot
-                            #       preserves the rendered pixel content without
-                            #       depending on the blob: URL fetch succeeding.
-                            # Structured P2-diagnostics logs a method field per
-                            # branch so audit logs surface which path produced
-                            # the bytes.
-                            try:
-                                buffer_int_list = self.page.evaluate(
-                                    "url => fetch(url).then(r => r.arrayBuffer()).then(b => Array.from(new Uint8Array(b)))",
-                                    src,
-                                    timeout=10000,
-                                )
-                                if isinstance(buffer_int_list, list) and buffer_int_list:
-                                    image_bytes = bytes(buffer_int_list)
-                                    fetch_method = "blob-fetch"
-                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page succeeded ({len(image_bytes)} bytes)")
-                            except Exception as fe:
-                                _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page failed: {fe}")
-                            if not image_bytes:
-                                try:
-                                    # locator.screenshot() captures the rendered
-                                    # <img> element without touching the slide
-                                    # page. This respects "MAI esportare la slide":
-                                    # the operation is element-scoped, not
-                                    # page-scoped. timeout=5000 bounds the
-                                    # variant where the locator selector silently
-                                    # rotates off the DOM mid-fetch; the worker
-                                    # fails fast and surfaces a typed error.
-                                    image_bytes = img.screenshot(type="png", timeout=5000)
-                                    fetch_method = "element-screenshot"
-                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback succeeded ({len(image_bytes)} bytes)")
-                                except Exception as se:
-                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback failed: {se}")
-
-                            saved_format = _save_image_bytes(image_bytes, output_path)
-                            elapsed = (time.time() - t0) * 1000
-                            _log(
-                                f"[profile-{self.profile_id}][{request_id}] SUCCESS → "
-                                f"{output_path} ({len(image_bytes)} bytes, {saved_format}, {elapsed:.0f}ms, method={fetch_method})"
-                            )
-                            _log_diag(
-                                request_id, self.profile_id, "fetch_method_choice",
-                                url=self.page.url, method=fetch_method,
-                                natural_w=natural_w, natural_h=natural_h,
-                                complete=complete, elapsed_ms=int(elapsed),
-                            )
-                            # P2 phase #7: saved.
-                            _log_diag(
-                                request_id, self.profile_id, "saved",
-                                url=self.page.url, output_path=output_path,
-                                method=fetch_method, bytes=len(image_bytes),
-                                format=saved_format, natural_w=natural_w, natural_h=natural_h,
-                            )
-                            saved = True
-                            break
-                    except Exception as e:
-                        _log(f"[profile-{self.profile_id}][{request_id}] extraction attempt failed: {e}")
-
-            # P0.1 fail-closed: no slide-export fallback.
-            if not saved:
-                err_code = "ErrNoImageCandidate"
-                _log_diag(
-                    request_id, self.profile_id, "error",
-                    url=self.page.url, error_code=err_code,
-                    error_message="no googleusercontent/blob candidates could be fetched",
-                    candidates_after=len(imgs),
-                )
-                _log(f"[profile-{self.profile_id}][{request_id}] extraction failed — failing closed with ErrNoImageCandidate (no slide-export fallback)")
-                try:
-                    os.remove(output_path)
-                except OSError:
-                    pass
-                return {
-                    "id": request_id,
-                    "status": "error",
-                    "error": "ErrNoImageCandidate",
-                    "code": "ErrNoImageCandidate",
-                    "profile": self.profile_id,
-                    "candidates_baseline": len(baseline_candidates),
-                    "candidates_after": len(imgs),
-                }
-
-            self._maybe_recycle_page()
-
-            elapsed_ms = int((time.time() - t0) * 1000)
-
-            # P2 pixel stats via PIL pass (canonical primary source for the Go log replication).
-            pixel_stats = _compute_pixel_stats(output_path)
-
-            # P2 phase #8: end. Captures the canonical completion line.
-            _log_diag(
-                request_id, self.profile_id, "end",
-                url=self.page.url, output_path=output_path,
-                method=fetch_method, bytes=len(image_bytes),
-                natural_w=natural_w, natural_h=natural_h, complete=complete,
-                image_mode_active=image_mode_active, ratio_selected=ratio_selected,
-                prompt_original=original_prompt, prompt_dom=prompt,
-                style_id=style_id, generation_id=generation_id,
-                **pixel_stats,
-            )
-
-            try:
-                self._persist_storage_state(request_id=request_id, reason="auto-save")
-            except Exception as se:
-                _log(f"[profile-{self.profile_id}][{request_id}] failed to auto-save cookies: {se}")
-
+        # Login pre-check (Fix B): happens AFTER `start` emit so
+        # login-failing requests still get the receipt marker. The
+        # response shape matches the original pre-fix early-return:
+        # no canonical typed fields (no elapsed_ms/candidates_*) since
+        # the request never started running.
+        if self.page is not None and "accounts.google.com" in self.page.url:
             return {
-                "id": request_id,
-                "status": "ok",
-                "output": output_path,
-                "elapsed_ms": elapsed_ms,
-                "bytes": len(image_bytes),
+                "id": ctx.request_id, "status": "error",
+                "error": "login required: user is logged out (please run scripts/bridges/login.py to sign in)",
                 "profile": self.profile_id,
-                # P2 stats replication:
-                "method": fetch_method,
-                "natural_w": natural_w,
-                "natural_h": natural_h,
-                "complete": complete,
-                "candidates_baseline": len(baseline_candidates),
-                "candidates_after": len(imgs),
-                "candidates": candidate_records,
-                "image_mode_active": image_mode_active,
-                "ratio_selected": ratio_selected or "",
-                "prompt_original": original_prompt,
-                "prompt_dom": prompt,
-                **pixel_stats,
             }
 
+        os.makedirs(
+            os.path.dirname(os.path.abspath(ctx.output_path)) or ".", exist_ok=True
+        )
+        ctx.t0 = time.time()
+
+        try:
+            self._step_prepare_surface(ctx)
+            self._step_fill_prompt(ctx)
+            self._step_select_ratio(ctx)
+            self._step_refresh_baseline(ctx)
+            self._step_submit(ctx)
+            self._step_poll_for_candidate(ctx)
+            self._step_extract_image(ctx)
+        except StepError as e:
+            extra = dict(e.diag_extra)
+            # If the StepError captured a screenshot inline (poll
+            # timeout path uses label="ai_timeout"), surface it to the
+            # helper; otherwise the helper falls back to the code-based
+            # default label (or suppression when screenshot_path="").
+            if e.screenshot_path is not None:
+                extra.setdefault("screenshot_path", e.screenshot_path)
+            return self._emit_failed_response(
+                ctx, e.code, error_message=e.error_message, **extra,
+            )
         except PlaywrightTimeout as e:
-            elapsed_ms = int((time.time() - t0) * 1000)
-            screenshot_path = _screenshot_on_failure(self.page, "playwright_timeout")
-            _log_diag(
-                request_id, self.profile_id, "error",
-                url=self.page.url if self.page else "<closed>",
-                error_code="ErrGenerationTimeout",
-                error_message=str(e), elapsed_ms=elapsed_ms,
-                screenshot_path=screenshot_path or "",
+            return self._emit_failed_response(
+                ctx, "ErrGenerationTimeout", error_message=str(e),
             )
-            _log(f"[profile-{self.profile_id}][{request_id}] timeout after {elapsed_ms}ms: {e}")
-            try:
-                self._fresh_page()
-            except Exception:
-                pass
-            return {
-                "id": request_id, "status": "error", "error": f"timeout after {elapsed_ms}ms: {e}",
-                "code": "ErrGenerationTimeout", "profile": self.profile_id,
-                "screenshot_path": screenshot_path or "", "elapsed_ms": elapsed_ms,
-            }
         except Exception as e:
-            screenshot_path = _screenshot_on_failure(self.page, f"exception_{type(e).__name__}")
-            _log_diag(
-                request_id, self.profile_id, "error",
-                url=self.page.url if self.page else "<closed>",
-                error_code="ErrUnknown", error_message=f"{type(e).__name__}: {e}",
-                traceback=traceback.format_exc(), screenshot_path=screenshot_path or "",
+            # Fix C: capture screenshot with the original
+            # `exception_<type(e).__name__>` label BEFORE invoking the
+            # helper, so the filename matches pre-fix byte-for-byte.
+            captured_screenshot = _screenshot_on_failure(
+                self.page, f"exception_{type(e).__name__}"
             )
-            _log(f"[profile-{self.profile_id}][{request_id}] error: {traceback.format_exc()}")
-            try:
-                self._fresh_page()
-            except Exception:
-                pass
-            return {
-                "id": request_id, "status": "error",
-                "error": f"{type(e).__name__}: {e}",
-                "code": "ErrUnknown",
-                "profile": self.profile_id,
-                "screenshot_path": screenshot_path or "",
-                "screenshot_path_in_err": screenshot_path or "",
-                "traceback": traceback.format_exc(),
-            }
+            return self._emit_failed_response(
+                ctx, "ErrUnknown",
+                error_message=f"{type(e).__name__}: {e}",
+                traceback_str=traceback.format_exc(),
+                screenshot_path=captured_screenshot,
+            )
+
+        # Success path: lifecycle side effects owned by the orchestrator
+        # (NOT the steps) so worker-internal cleanup is centralised.
+        self._maybe_recycle_page()
+        try:
+            self._persist_storage_state(
+                request_id=ctx.request_id, reason="auto-save"
+            )
+        except Exception as se:
+            _log(
+                f"[profile-{self.profile_id}][{ctx.request_id}] "
+                f"failed to auto-save cookies: {se}"
+            )
+
+        return self._build_success_response(ctx)
+
 
 
 # ── Dispatcher (main thread) ───────────────────────────────────────────────
