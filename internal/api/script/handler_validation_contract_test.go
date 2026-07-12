@@ -158,6 +158,31 @@ func TestGenerate_ValidationContract_V2RejectionPaths(t *testing.T) {
 			wantCode:  "INVALID_PAYLOAD",
 			errDetail: "fallback_policy is only compatible with source.type=clips",
 		},
+		// ── PR-CS-1 / FASE 6 (DoD #8): ScriptSegment sentinel ──
+		{
+			name:      "segments_empty_present",
+			body:      `{"version":2,"preset":"custom","items":[{"source":{"type":"text","topic":"x"},"script_params":{"target_words":100,"segments":[]}}]}`,
+			wantCode:  "INVALID_PAYLOAD",
+			errDetail: "script_params.segments must not be empty",
+		},
+		{
+			name:      "segment_topic_empty",
+			body:      `{"version":2,"preset":"custom","items":[{"source":{"type":"text","topic":"x"},"script_params":{"target_words":100,"segments":[{"topic":"intro"},{"topic":""}]}}]}`,
+			wantCode:  "INVALID_PAYLOAD",
+			errDetail: "topic is required",
+		},
+		{
+			name:      "segments_and_topic_topics_both_set",
+			body:      `{"version":2,"preset":"custom","items":[{"source":{"type":"text","topic":"x"},"script_params":{"target_words":100,"segment_topics":["a","b"],"segments":[{"topic":"x"}]}}]}`,
+			wantCode:  "INVALID_PAYLOAD",
+			errDetail: "cannot both be set",
+		},
+		{
+			name:      "too_many_segments_above_cap",
+			body:      buildSegmentsJSON(51),
+			wantCode:  "TOO_MANY_SEGMENTS",
+			errDetail: "too many entries",
+		},
 	}
 
 	for _, tc := range cases {
@@ -239,6 +264,19 @@ func TestGenerate_ValidationContract_V2RejectionPaths(t *testing.T) {
 				submit.submitCount, w.Body.String())
 		})
 	}
+}
+
+// buildSegmentsJSON returns a JSON request body whose only payload
+// is `script_params.segments` with N minimal {"topic":"s"} entries.
+// Used by the too_many_segments_above_cap subtest to drive
+// MaxSegmentsCap (default 50) without writing 51 segments inline.
+// PR-CS-1 / FASE 6 (DoD #8).
+func buildSegmentsJSON(n int) string {
+	segs := make([]string, n)
+	for i := range segs {
+		segs[i] = `{"topic":"s"}`
+	}
+	return `{"version":2,"preset":"custom","items":[{"source":{"type":"text","topic":"x"},"script_params":{"target_words":100,"segments":[` + strings.Join(segs, ",") + `]}}]}`
 }
 
 // TestGenerate_ValidationContract_MalformedJSONReturns400 pins the

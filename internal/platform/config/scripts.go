@@ -106,6 +106,15 @@ type ScriptsConfig struct {
 	// SourceTextPreviewChars caps the source_text preview length in
 	// characters when LogSourceTextPreview is true. 0 falls back to 80.
 	SourceTextPreviewChars int `yaml:"source_text_preview_chars" env:"VELOX_SCRIPTS_SOURCE_TEXT_PREVIEW_CHARS" default:"80"`
+
+	// MaxSegmentsCap caps the number of ScriptSegment entries the
+	// payload validator accepts on POST /api/script/generate. Operators
+	// raise for batch generation, lower to enforce strict per-script
+	// budget. Default 50 — chosen to comfortably exceed typical
+	// 4-12-per-script ranges (news/gossip, multi-act narratives)
+	// while preventing pathological payloads from poisoning the
+	// engine prompt. PR-CS-1 / FASE 6 (DoD #8).
+	MaxSegmentsCap int `yaml:"max_segments_cap" env:"VELOX_SCRIPTS_MAX_SEGMENTS_CAP" default:"50"`
 }
 
 // WithDefaults returns a copy of ScriptsConfig with zero-values replaced by
@@ -178,6 +187,9 @@ func (s ScriptsConfig) WithDefaults() ScriptsConfig {
 	}
 	if s.SourceTextPreviewChars <= 0 {
 		s.SourceTextPreviewChars = 80
+	}
+	if s.MaxSegmentsCap <= 0 {
+		s.MaxSegmentsCap = 50
 	}
 	return s
 }
