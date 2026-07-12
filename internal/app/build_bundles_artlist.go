@@ -65,6 +65,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/fallback"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/scraper"
@@ -208,6 +209,28 @@ func WireArtlist(
 		artlistPkg.DefaultProbeTimeout,
 		log,
 	)
+
+	// godlike/06 SSOT: AdminSystemProber is the canonical concrete
+	// for artlist.SystemProber (Phase 2 / Fase 2, July 2026). The
+	// composition root owns the wiring of probe inputs (URLs,
+	// sqlite DB, dispatcher health fn, drive folder probe fn,
+	// renderer). Commit 1 (wire-shape) wires ONLY the 4 upstream
+	// probe URLs that cfg currently exposes; the remaining 6
+	// probes (ffmpeg_binary, drive_folder, sqlite_writable,
+	// outbox_dispatcher, qdrant_reachable, embedding_provider)
+	// are stubbed in the AdminSystemProber and will be replaced
+	// one-by-one in subsequent commits (Commit 2/3/4). ScraperURL
+	// is the only URL cfg exposes today; the other 3 upstream
+	// probes fail honestly with `_url_not_configured` until a
+	// Phase 2 follow-up surfaces BrowserURL/SessionURL/DownloaderURL
+	// in cfg.
+	systemProber := &diagnostics.AdminSystemProber{
+		Log:           log,
+		ScraperURL:    cfg.External.ArtlistScraperServerURL,
+		BrowserURL:    "", // Commit 2 follow-up: cfg.External.ArtlistBrowserURL
+		SessionURL:    "", // Commit 2 follow-up: cfg.External.ArtlistSessionURL
+		DownloaderURL: "", // Commit 2 follow-up: cfg.External.ArtlistDownloaderURL
+	}
 
 	// godlike/06 SSOT: SemanticEnricher is the canonical app-layer wrapper for
 	// semantic.MetadataWriterPort; its Enrich(ctx, clip, term) signature matches
@@ -427,6 +450,14 @@ func WireArtlist(
 			// unmounted on main.
 			RunRepository:  artlistRunsAdapter,
 			SearchStrategy: artlistPkg.ArtlistSearchStrategy(cfg.External.ArtlistSearchStrategy),
+			// Phase 2 / Fase 2 (July 2026): SystemProber port is the
+			// 10-probe fan-out node. Injected by composition root
+			// (canonical owner of the wire shape per godlike/06 SSOT);
+			// the concrete AdminSystemProber services probes
+			// sequentially with per-probe timeout. Commit 1 wires only
+			// the upstream probes (Commit 2/3/4 replace 6 stubs with
+			// real probe logic).
+			SystemProber: systemProber,
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
 			// ServiceDependencies (10) — 10 DIRECT.
