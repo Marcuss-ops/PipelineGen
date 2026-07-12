@@ -39,7 +39,11 @@
 #   - VELOX_ADMIN_TOKEN env var set (PipelineGen refuses default tokens in prod)
 #   - features.artlist_enabled=true, features.drive_enabled=true
 #   - qdrant.enabled=true, clip_indexer.enabled=true
-#   - ARTLIST_SCRAPER_SERVER_URL=http://127.0.0.1:9123
+#   - VELOX_ARTLIST_SCRAPER_SERVER_URL=http://127.0.0.1:9123
+#     (PR-ARTLIST-CONFIG-PREFIX July 2026: renamed from bare
+#     ARTLIST_SCRAPER_SERVER_URL; both this script + the loader
+#     config struct in internal/platform/config/types_external.go
+#     read the VELOX_-prefixed name now)
 #   - ARTLIST_ACQUISITION_MODE=authorized_api + ARTLIST_DAILY_DOWNLOAD_LIMIT > 0
 #   - VELOX_DRIVE_ARTLIST_ROOT set (or pass ROOT_FOLDER_ID=)
 #   - sqlite3 + curl + jq + go on PATH
@@ -90,7 +94,7 @@ Env-var overrides (see Config block below for the full list):
   SEARCH_TERM / LIMIT           Artlist search query + asset count
   ROOT_FOLDER_ID                Drive destination folder
   QDRANT_API_KEY / QDRANT_URL   Qdrant endpoint + auth
-  ARTLIST_SCRAPER_SERVER_URL    Node-scraper URL
+  VELOX_ARTLIST_SCRAPER_SERVER_URL Node-scraper URL (PR-ARTLIST-CONFIG-PREFIX July 2026: was ARTLIST_SCRAPER_SERVER_URL)
   VELOX_DATA_DIR                Path to media.db.sqlite
   SKIP_HERMETICS=1              Bypass hermetic gate precondition + '^TestGate' run
   EXPECTED_GATE_MATCHES=N       Override expected gate match count (positive integer; default: 28)
@@ -145,7 +149,7 @@ HOST="${VELOX_HOST:-127.0.0.1}"
 [ -n "${PIPELINE_PORT:-}" ] || PIPELINE_PORT="${VELOX_PORT:-8000}"
 BASE_URL="http://${HOST}:${PIPELINE_PORT}"
 
-SCRAPER_URL="${ARTLIST_SCRAPER_SERVER_URL:-http://127.0.0.1:9123}"
+SCRAPER_URL="${VELOX_ARTLIST_SCRAPER_SERVER_URL:-http://127.0.0.1:9123}"
 QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
 QDRANT_API_KEY="${QDRANT_API_KEY:-${VELOX_QDRANT_API_KEY:-}}"
 COLLECTION="${QDRANT_COLLECTION:-media_assets_current}"

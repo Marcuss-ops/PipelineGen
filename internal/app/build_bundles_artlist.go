@@ -136,13 +136,15 @@ func WireArtlist(
 
 	// godlike/07 fail-closed: gate #5 (ART-002 P0.1, July 2026) — config
 	// validity check. When artlist_enabled=true the Node scraper server
-	// URL MUST be configured (env ARTLIST_SCRAPER_SERVER_URL); without it
-	// the scraper constructor silently degrades to per-call exec fallback
-	// (heavier + less reliable). This gate pins the no-fake-availability
-	// contract at the composition-root layer — see validateArtlistScraperURL
+	// URL MUST be configured (env VELOX_ARTLIST_SCRAPER_SERVER_URL,
+	// PR-ARTLIST-CONFIG-PREFIX cutover from the bare
+	// ARTLIST_SCRAPER_SERVER_URL); without it the scraper constructor
+	// silently degrades to per-call exec fallback (heavier + less
+	// reliable). This gate pins the no-fake-availability contract at
+	// the composition-root layer — see validateArtlistScraperURL
 	// godoc for the underlying rationale and the two valid escape hatches
 	// (disable Artlist via VELOX_FEATURE_ARTLIST_ENABLED=false, or set
-	// ARTLIST_SCRAPER_SERVER_URL to a real Node-scraper URL).
+	// VELOX_ARTLIST_SCRAPER_SERVER_URL to a real Node-scraper URL).
 	if err := validateArtlistScraperURL(cfg); err != nil {
 		return nil, err
 	}
@@ -492,14 +494,15 @@ func (a *artlistProcessorDownloadAdapter) DownloadArtlistClip(
 // Escape hatches (documented in the returned error message):
 //
 //	(a) Disable Artlist:    VELOX_FEATURE_ARTLIST_ENABLED=false (default)
-//	(b) Configure scraper:  ARTLIST_SCRAPER_SERVER_URL=http://artlist-scraper:9123
-//	                        (docker-compose.yml production setup)
+//	(b) Configure scraper:  VELOX_ARTLIST_SCRAPER_SERVER_URL=http://artlist-scraper:9123
+//	                        (docker-compose.yml production setup, PR-ARTLIST-CONFIG-PREFIX
+//	                        July 2026 renamed from the bare ARTLIST_SCRAPER_SERVER_URL)
 func validateArtlistScraperURL(cfg *config.Config) error {
 	if cfg == nil {
 		return fmt.Errorf("WireArtlist: cfg is nil (gate #5 scraper-URL fail-closed cannot evaluate)")
 	}
 	if cfg.Features.ArtlistEnabled && cfg.External.ArtlistScraperServerURL == "" {
-		return fmt.Errorf("WireArtlist: cfg.Features.ArtlistEnabled=true but cfg.External.ArtlistScraperServerURL is empty (ART-002 P0.1 fail-closed; required env ARTLIST_SCRAPER_SERVER_URL — without it the searcher chain silently degrades to per-call exec fallback). To disable Artlist set VELOX_FEATURE_ARTLIST_ENABLED=false")
+		return fmt.Errorf("WireArtlist: cfg.Features.ArtlistEnabled=true but cfg.External.ArtlistScraperServerURL is empty (ART-002 P0.1 fail-closed; required env VELOX_ARTLIST_SCRAPER_SERVER_URL — without it the searcher chain silently degrades to per-call exec fallback). To disable Artlist set VELOX_FEATURE_ARTLIST_ENABLED=false")
 	}
 	return nil
 }
