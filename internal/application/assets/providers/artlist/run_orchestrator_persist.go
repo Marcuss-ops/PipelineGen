@@ -1,0 +1,213 @@
+package artlist
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+
+	"go.uber.org/zap"
+)
+
+// persistRenditions records each generated rendition as an
+// asset_locations row + asset_renditions row. The location is marked
+// as primary only for the mezzanine (the canonical edited master).
+func (o *RunOrchestratorService) persistRenditions(ctx context.Context, assetID string, renditions []asset.RenditionOutput) error {
+	if o.svc.locationRepo == nil || o.svc.renditionRepo == nil {
+		return nil
+	}
+	for _, r := range renditions {
+		if r.LocalPath == "" {
+			continue
+		}
+		loc := &asset.Location{
+			AssetID:       assetID,
+			LocationKind:  asset.LocationKindLocal,
+			URI:           r.LocalPath,
+			MimeType:      r.MimeType,
+			FileSizeBytes: r.SizeBytes,
+			FileHash:      r.FileHash,
+			IsPrimary:     r.Kind == asset.RenditionKindMezzanine,
+		}
+		if err := o.svc.locationRepo.Upsert(ctx, loc); err != nil {
+			return fmt.Errorf("upsert location for %s/%s: %w", assetID, r.Kind, err)
+		}
+
+		rend := &asset.AssetRendition{
+			AssetID:    assetID,
+			LocationID: &loc.ID,
+			Kind:       r.Kind,
+			Container:  r.Container,
+			Codec:      r.Codec,
+			Width:      r.Width,
+			Height:     r.Height,
+			FPS:        r.FPS,
+			Bitrate:    r.Bitrate, SHA256: r.FileHash,
+			SizeBytes: r.SizeBytes,
+		}
+		if _, err := o.svc.renditionRepo.Create(ctx, rend); err != nil {
+			return fmt.Errorf("create rendition for %s/%s: %w", assetID, r.Kind, err)
+		}
+	}
+	return nil
+}
+
+// stagePersistResults persists each processed clip through the canonical
+// AssetFinalizerTx. This replaces the legacy dispatchBridge path and
+// writes media_assets, asset_versions, asset_locations, and
+// asset_renditions inside a single SQLite transaction per clip.
+//
+// PR-ARTLIST-FINALIZER (July 2026): the legacy dispatchBridge +
+// persistRenditions custom writer are retired. Artlist now uses the
+// same AssetFinalizerTx as every other capability, ensuring the ledger
+// tables are written by one canonical implementation.
+func (o *RunOrchestratorService) stagePersistResults(ctx context.Context, resp *RunTagResponse) {
+	if o.svc.assetFinalizer == nil || o.svc.mainDB == nil {
+		o.svc.log.Warn("stagePersistResults: asset finalizer or main DB not wired (cannot persist)")
+		return
+	}
+
+	for i := range resp.Items {
+		item := &resp.Items[i]
+		if item.Status == "media_process_failed" || item.Status == "dry_run" {
+			continue
+		}
+
+		// PR-ARTLIST-DOD-GATE-02 (2026-07-07): Drive field gate.
+		// Skip items whose processor returned Status="processed" but
+		// left Drive fields empty — the processor's Drive upload step
+		// failed silently.
+		if item.DriveFileID == "" || item.DriveLink == "" {
+			o.svc.log.Warn("stagePersistResults: skipping clip with missing Drive fields",
+				zap.String("clip_id", item.ClipID),
+				zap.String("drive_file_id", item.DriveFileID),
+				zap.String("drive_link", item.DriveLink))
+			item.Status = "drive_upload_failed"
+			item.Error = "Drive upload failed: missing Drive fields after processing"
+			// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026):
+			// pre-PR the Failed counter was only bumped on media_processor
+			// failures (stageProcessBatch). Persistence-layer failures
+			// surfaced as silent drops: resp.Items held the clip but
+			// resp.Failed stayed at zero, so EvaluateRunOutcome saw a
+			// healthy run and the operator never noticed the gap.
+			resp.Failed++
+			continue
+		}
+
+		// PR-ARTLIST-HASH-FIX (July 2026): reject assets without a real
+		// SHA-256. The legacy fallback (clipID:source) is retired per
+		// the hash-system refactor.
+		if item.FileHash == "" {
+			o.svc.log.Warn("stagePersistResults: skipping clip with missing SHA-256",
+				zap.String("clip_id", item.ClipID))
+			item.Status = "hash_missing"
+			item.Error = "SHA-256 missing after processing"
+			// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): see note on
+			// the Drive field gate above. Without this bump, hash
+			// rejection is also a silent drop.
+			resp.Failed++
+			continue
+		}
+
+		artifact := o.buildPublishedArtifact(item)
+
+		tx, err := o.svc.mainDB.BeginTx(ctx, nil)
+		if err != nil {
+			o.svc.log.Warn("stagePersistResults: begin tx failed",
+				zap.String("clip_id", item.ClipID), zap.Error(err))
+			continue
+		}
+
+		_, _, err = o.svc.assetFinalizer.FinalizeAsset(ctx, assetfinalizer.WrapTx(tx), artifact)
+		if err != nil {
+			_ = tx.Rollback()
+			o.svc.log.Warn("stagePersistResults: finalizer failed",
+				zap.String("clip_id", item.ClipID), zap.Error(err))
+			item.Status = "persist_failed"
+			item.Error = err.Error()
+			// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): finalizer
+			// (Ledger writes) is part of persist, so a failure here is a
+			// persistence failure and MUST bump the Failed tally the same
+			// way the Drive field gate and hash gate do.
+			resp.Failed++
+			continue
+		}
+
+		if err := tx.Commit(); err != nil {
+			o.svc.log.Warn("stagePersistResults: commit failed",
+				zap.String("clip_id", item.ClipID), zap.Error(err))
+			item.Status = "persist_failed"
+			item.Error = err.Error()
+			// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): mirror the
+			// finalizer-failed branch above — a commit failure means the
+			// transaction could not be sealed, so the clip is accounted
+			// as a persistence failure, not a partial success.
+			resp.Failed++
+			continue
+		}
+
+		resp.Processed++
+	}
+}
+
+// buildPublishedArtifact maps a processed RunTagItem into the canonical
+// finalization.PublishedArtifact consumed by AssetFinalizerTx.
+func (o *RunOrchestratorService) buildPublishedArtifact(item *RunTagItem) finalization.PublishedArtifact {
+	artifact := finalization.PublishedArtifact{
+		ArtifactID:  item.ClipID,
+		Kind:        finalization.KindVideo,
+		Filename:    item.Filename,
+		MIMEType:    "video/mp4",
+		SizeBytes:   fileSizeFromPath(item.LocalPath),
+		SHA256:      item.FileHash,
+		Source:      "artlist",
+		Description: item.Name,
+		Location: finalization.AssetLocation{
+			Provider:     "drive",
+			FileID:       item.DriveFileID,
+			WebViewLink:  item.DriveLink,
+			DownloadLink: item.DownloadLink,
+			FolderID:     o.svc.cfg.Drive.ArtlistFolder(),
+			Action:       finalization.PublishCreated,
+		},
+		ArtifactMetadata: map[string]any{
+			"source":   "artlist",
+			"status":   "processed",
+			"filename": item.Filename,
+		},
+	}
+
+	for _, r := range item.Renditions {
+		artifact.Renditions = append(artifact.Renditions, finalization.AssetRenditionLocation{
+			Kind:      string(r.Kind),
+			Provider:  "local",
+			URI:       r.LocalPath,
+			MimeType:  r.MimeType,
+			SizeBytes: r.SizeBytes,
+			FileHash:  r.FileHash,
+			Width:     r.Width,
+			Height:    r.Height,
+			FPS:       r.FPS,
+			Bitrate:   r.Bitrate,
+			Container: r.Container,
+			Codec:     r.Codec,
+		})
+	}
+
+	return artifact
+}
+
+// fileSizeFromPath returns the file size in bytes, or 0 if the file cannot be stat'd.
+func fileSizeFromPath(path string) int64 {
+	if path == "" {
+		return 0
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return fi.Size()
+}
