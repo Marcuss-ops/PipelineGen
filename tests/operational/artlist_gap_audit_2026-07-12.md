@@ -56,9 +56,15 @@ open, severity p0/p1).
 
 ### §1 — Composition root fail-closed
 
-`PASS_CODE_NO_INFRA` — `internal/app/build_bundles_artlist.go` enforces 5
-mandatory gates UPFRONT (Publisher / Dispatcher / ClipsRepo /
-Jobs.Service + scraper-URL when artlist_enabled=true). On nil,
+`PASS_CODE_NO_INFRA` — `internal/app/build_bundles_artlist.go` enforces 6
+mandatory gates UPFRONT, broken down as **1 sanity + 4 wiring + 1 config**:
+the 1 sanity gate is `bundle == nil`; the 4 wiring gates are
+`bundle.Publisher == nil` / `dispatcher == nil` /
+`bundle.ClipsRepo == nil` / `bundle.Jobs == nil || bundle.Jobs.Service == nil`;
+and the 1 config gate is
+`cfg.Features.ArtlistEnabled && cfg.External.ArtlistScraperServerURL == ""`
+(only evaluated when `ArtlistEnabled` is true — the gate is a
+no-op otherwise). On any of the 6 nil/missing checks,
 `registerArtlist` downgrades to log.Warn + skip-route + **404 on
 `/api/artlist/*`**, NOT a typed boot abort. Pre-fix history: PR-P2-
 FAILCLOSED-JOB (July 2026) closed the silent-Warn + continue path
@@ -224,12 +230,35 @@ asserts ROLLBACK.
 ### §17 — Nessun falso successo
 
 `FAIL_CODE` — Per LAST_RUN dry-run, 0 of 9 verification points
-PASS today. The verify script's final tally prints PASS/WARN/FAIL.
-The `Processed + Skipped + Failed = Found` invariant and the
-`Processed=0 ∧ Failed>0 ⇒ FAILED` rule are NOT enforced by an
-explicit guard. The run aggregator reads counter snapshot at poll
-time, but the invariant is not asserted on completion (only on
-display).
+PASS today. Two distinct surfaces are at play, and the gap
+distinguishes them:
+
+  - **Verify-script partial-success IS already present**: the
+    `tests/operational/artlist_live_e2e_verify.sh` per-asset tally
+    prints PASS/WARN/FAIL for every clip on the operator console;
+    the godlike/07 no-fake-availability surface for an operator
+    running the script by hand is the line-level distinction
+    between full success (all PASS) and partial success (some
+    WARN/FAIL mixed in).
+  - **Run-status endpoint is MISSING**: the API surface that
+    would expose the same per-asset PASS/WARN/FAIL state
+    programmatically (e.g. `GET /api/artlist/runs/:id/status`
+    returning the counter snapshot + per-clip verdicts) is NOT
+    wired. The handler at
+    `internal/api/assets/artlist/artlist_handlers.go` exposes
+    `RunsGet` (run metadata) but not the per-asset status payload;
+    downstream consumers (dashboards, CI pre-flight, /ready
+    aggregator, the canonical `/api/artlist/diagnostics` itself)
+    have NO programmatic equivalent of the verify-script tally and
+    must re-query `media_assets` + `artlist_download_audit` +
+    `outbox_events` ad-hoc to reconstruct partial-success state.
+
+The invariants `Processed + Skipped + Failed = Found` and
+`Processed=0 ∧ Failed>0 ⇒ FAILED` are NOT enforced by an explicit
+guard on EITHER surface. The run aggregator reads the counter
+snapshot at poll time, but the invariant is asserted on display
+only (verify script, post-run), not on completion (verify script
+and any hypothetical run-status endpoint).
 
 ### §18 — Audit per ogni item
 
@@ -274,9 +303,36 @@ godlike/07 §22 violation. Routes registered per
 `docs/api/ACTIVE_API_GENERATED.md` line 19 confirm
 `/api/artlist/diagnostics` is wired, but the handler reads from
 `svc.assetStore != nil` (truthy Go objects) rather than running
-real reachability probes (scraper /health, browser probe, session
-auth, downloader auth, FFmpeg binary, Drive folder, SQLite
-writable, outbox dispatch, Qdrant reachable, embedding provider).
+real reachability probes. The canonical reachability surface
+spans **16 wires**; the audit enumerates the wire-count delta:
+
+  - **3 of 16 present, all as object-existence checks** (the
+    godlike/07 §22 violation shape — a non-nil pointer is NOT
+    evidence of liveness):
+      1. SQLite writable — `assetStore != nil` (no `db.PingContext` round-trip).
+      2. Outbox dispatch — `dispatcher != nil` (no probe of the canonical Enqueue path).
+      3. Qdrant client — `qdrant != nil` (no `qdrant.Health` round-trip).
+  - **13 of 16 missing real probes** (the godlike/07 §22
+    remediation list — each must become a typed per-symptom field
+    rather than a single `isReachable bool`):
+      1. Scraper `/health` round-trip (Node sidecar at `cfg.External.ArtlistScraperServerURL/health`).
+      2. Browser reachability (Chromium probe via `cfg.External.ChromeExecutable`).
+      3. Session auth (cookie/header probe against the Artlist login surface).
+      4. Downloader auth (account_id + daily_limit validation).
+      5. FFmpeg binary (`exec.LookPath` on `cfg.External.FFmpegPath`).
+      6. Drive folder resolution (`Files.Get` on `root_folder_id`).
+      7. Drive OAuth presence (refresh-token / service-account key validity).
+      8. `/ready` aggregator (the canonical `GET /ready` round-trip).
+      9. `ROOT_FOLDER_ID` env-var presence (and Drive-side resolution).
+      10. `VELOX_ADMIN_TOKEN` env-var presence (and `/api/admin/whoami` round-trip).
+      11. Embedding provider reachability (the canonical Embedder port probe).
+      12. Account-unauthorized detection (per §4 typed error taxonomy).
+      13. Quota-exhausted detection (per §4 typed error taxonomy).
+
+The handler MUST be split into per-symptom fields (the 16 typed
+probes above) so the 13 missing probes can be filled in
+one-at-a-time and the 3 object-existence checks can be
+downgraded to real round-trips (Phase 2 follow-up).
 
 ### §23 — Retry
 
@@ -331,6 +387,50 @@ inventory at HEAD:
 Coverage: 11 of 25 scenarios explicit; 4 of 25 implicit/weak; **10
 of 25 MISSING**.
 
+**Cross-reference — gate*_test.go family head (godlike/06 SSOT)**:
+the canonical Go test family for the artlist provider lives in
+`internal/application/assets/providers/artlist/gate0N_test.go`
+and asserts contracts that several §25 scenarios above reference
+implicitly. The 3 head files of this family are:
+
+  - **`gate04_outbox_test.go`** — covers the outbox emission
+    contract (event_type=`asset.index.requested` per processed
+    clip, aggregate_type=`media_asset`, status=`pending`, payload
+    contains `source=artlist` + `media_type=video` +
+    `operation=UPSERT`) AND the negative contract (zero outbox
+    events when no clips discovered). Pins §25 rows: **errore
+    outbox** (positive path only — the negative path / no-clips
+    case is `TestGate04_OutboxEventNotEmittedWhenNoClips` which
+    covers dispatcher-not-called; the broken-outbox-emission
+    path remains MISSING per the audit table above), **errore
+    finalizer** (partial: emission shape verified, single-tx
+    atomicity NOT verified — that's the integration-test layer).
+  - **`gate07_test.go`** — covers the search-finds-INDEXED
+    contract (`TestGate07_SearchFindsIndexedClips`: DBSearcher
+    returns 2 INDEXED clips after RunTag) AND the
+    negative-positive contract
+    (`TestGate07_DBSearcherDoesNotFilterByIndexState`:
+    DBSearcher returns ALL 4 mixed-state clips — DISCOVERED,
+    INDEXING, INDEXED, INDEXING_FAILED — proving search does not
+    filter on index_state). Pins §25 rows: **risultati duplicati**
+    (the contract that search returns the union of all clips, not
+    a de-duped subset), **query with results** (the canonical
+    search round-trip contract).
+  - **`http_live_probe_test.go`** — the test surface for the
+    `IsLiveProbe` port adapter `HTTPSelfLoopProbe` (the
+    implementation lives at
+    `internal/application/assets/providers/artlist/http_live_probe.go`;
+    the canonical test surface is referenced from
+    `internal/app/build_bundles_artlist_test.go:22` per the
+    godlike/06 SSOT comment in that file, and the probe contract
+    — 2xx → live, 4xx/5xx → not-live, transport err → not-live —
+    is what §25 "browser non disponibile" and "scraper
+    irraggiungibile" rely on). Pins §25 rows: **browser non
+    disponibile** (via the IsLiveProbe port against
+    `/api/artlist/stats`), **scraper irraggiungibile** (via the
+    same port when the composition root wires a parallel probe
+    against the scraper URL).
+
 ### §26 — Verifica end-to-end reale
 
 `FAIL_INFRA` per `PR-LIVE-VERIFY-{1,2,3,4,5}` — Verification script
@@ -349,9 +449,10 @@ Manifests as a pre-CI gate (Phase 15) once §26 runs.
 
 ### Composition root gates (build_bundles_artlist.go)
 
-5 fail-closed gates checked UPFRONT (4 wiring + 1 config):
+6 fail-closed gates checked UPFRONT (1 sanity + 4 wiring + 1 config) —
+the canonical count breakdown mirrors §1 above:
 
-1. `bundle == nil`
+1. `bundle == nil` (sanity)
 2. `bundle.Publisher == nil`
 3. `dispatcher == nil`
 4. `bundle.ClipsRepo == nil`
