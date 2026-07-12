@@ -53,6 +53,7 @@ import (
 	"errors"
 	"fmt"
 
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 )
 
@@ -71,6 +72,15 @@ type Service struct {
 	// forbidden-for-artifact-producing-jobs contract via
 	// remote.ErrCompleteJobPathViolation.
 	registry JobTypeRegistry
+	// bus (Cut 6.5, July 2026): optional JobCompletionBus port.
+	// Nil-safe — production wiring at composition root sets it via
+	// WithBus(). When non-nil, the post-TX hook in Complete fires
+	// bus.Publish(evt) on the SUCCEEDED transition so any
+	// /api/jobs/:id/wait-for-completion handler or admin CLI
+	// `--wait jobID` waiter wakes on the SAME SQL UPDATE that
+	// transitioned the row (zero polling cycles; godlike/07
+	// fail-closed dual-probe contract enforced by completionbus_test.go).
+	bus JobCompletionBus
 }
 
 // NewService is the canonical constructor. Returns
@@ -100,6 +110,25 @@ func (s *Service) WithJobTypeRegistry(reg JobTypeRegistry) *Service {
 		return nil
 	}
 	s.registry = reg
+	return s
+}
+
+// WithBus wires the JobCompletionBus port (Cut 6.5, July 2026).
+// Returns the receiver for fluent-chain composition at the
+// composition root:
+//
+//	svc, _ := completion.NewService(rx, cache).WithBus(completionbus.NewBus())
+//
+// godlike/07 minimum-blast-radius: nil receiver returns nil
+// (fluent-nil-safe-zero-value); nil bus arg is tolerated (Service
+// stays bus-less, post-TX publish no-ops). Production wiring
+// always supplies non-nil; EXPAND-phase wiring may omit while the
+// canonical Post-TX Publish hook is covered by a forward-pointer PR.
+func (s *Service) WithBus(b JobCompletionBus) *Service {
+	if s == nil {
+		return nil
+	}
+	s.bus = b
 	return s
 }
 
@@ -181,5 +210,25 @@ func (s *Service) Complete(ctx context.Context, req *remote.CompleteJobRequest) 
 	// authoritative gate (the cache is an optimisation, not the
 	// authority).
 	_ = s.cache.StoreCanonical(ctx, req.JobID, req.Attempt, req.ResultHash, outResp)
+
+	// (5) Cut 6.5 (July 2026) — Publish the completion event so any
+	// /api/jobs/:id/wait-for-completion handler or admin CLI
+	// `--wait jobID` waiter wakes on the SAME SQL UPDATE that
+	// transitioned the row to SUCCEEDED, eliminating the legacy
+	// per-job polling-loop anti-pattern. Nil-safe: production
+	// wiring always supplies non-nil; the nil-arm preserves the
+	// pre-Cut-6.5 contract so legacy tests that bypass composition
+	// (and the EXPAND-phase ENV where bus hasn't been wired yet)
+	// continue to compile + execute. The publish call is
+	// synchronous fan-out (one-shot goroutine send per captured
+	// subscriber) so it does not extend the critical-section
+	// window of the in-TX gate.
+	if s.bus != nil {
+		s.bus.Publish(JobCompletionEvent{
+			JobID:       req.JobID,
+			Attempt:     req.Attempt,
+			FinalStatus: domainjob.StatusSucceeded,
+		})
+	}
 	return outResp, nil
 }

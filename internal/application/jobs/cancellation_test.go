@@ -608,3 +608,18 @@ func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 	}
 }
 
+// ── FASE 6 Cut 6.5 typed JobCompletionBus test lives in ───────────
+//
+// internal/application/jobs/finalizer/job_finalizer_e2e_test.go
+// (the canonical Finalizer e2e surface). It cannot live in
+// cancellation_test.go because the package-level imports of
+// `internal/application/jobs` form a closed cycle when
+// cancellation_test.go imports finalizer + completion. The split
+// honors godlike/06 SSOT (one canonical owner per fact) and the
+// codebase's reuse rule (existing e2e helpers in finalizer_e2e_test.go
+// are reused; zero new helper code was introduced). See
+// TestFinalizer_PublishesTypedJobCompletionEvent_PostFlipRevision
+// + TestFinalizer_NoPublishOnFailure along with the canonical
+// "no per-job polling cycles" goal that FASE 6 (Cut 6.3 worker
+// typed-LeaseState + Cut 6.5 typed-JobCompletionBus) establishes.
+

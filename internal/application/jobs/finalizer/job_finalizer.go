@@ -56,7 +56,9 @@ import (
 	"go.uber.org/zap"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
@@ -66,11 +68,23 @@ import (
 // It holds a *sql.DB (to open transactions), an *outboxevents.Repository
 // (to enqueue outbox events), and an *AssetTxFinalizer (to write canonical
 // asset records inside the transaction).
+//
+// Cut 6.5 (July 2026): an optional completion.JobCompletionBus can be
+// attached via WithBus. When present, every SUCCESSFUL tx.Commit that
+// flips a job to SUCCEEDED publishes a typed JobCompletionEvent so
+// API/CLI handlers awaiting job completion can wake up immediately
+// instead of polling broker.Get. Nil bus is the conservative default —
+// pre-Cut-6.5 callers (and any test that doesn't care about the bus
+// surface) see zero behavior change. The bus publish runs OUTSIDE and
+// AFTER the SQL transaction (post-commit), so a publish error cannot
+// roll back the terminal job flip — the bus is a derived notification
+// channel, not part of the SQLite canonical state.
 type Finalizer struct {
 	db      *sql.DB
 	outbox  *outboxevents.Repository
 	assetTx finalization.AssetFinalizerTx
 	log     *zap.Logger
+	bus     completion.JobCompletionBus
 }
 
 // New creates a Finalizer with the given database, outbox repository,
@@ -87,6 +101,27 @@ func New(db *sql.DB, outbox *outboxevents.Repository, assetTx finalization.Asset
 		assetTx: assetTx,
 		log:     log,
 	}
+}
+
+// WithBus attaches an optional completion.JobCompletionBus to the
+// Finalizer. When set, every successful tx.Commit that flips a job
+// to SUCCEEDED publishes a typed JobCompletionEvent. When nil, the
+// post-commit Publish branch is a no-op (zero behavior change).
+//
+// Cut 6.5 rationale: the canonical artifact-producing terminal path
+// (Script.Generate, ImageGenerate, Books.Process, Lessons.Process,
+// Voiceover.* — FASE 3 Spina Dorsale) routes through THIS finalizer.
+// A second Publish hook also exists in completion.Service.Complete
+// (the new non-artifact backend). The two paths are mutually
+// exclusive per job type (FASE 3 routing decision), so the parallel
+// hook is zero double-fire risk — see Cut 6.5 commit body.
+//
+// Return value: the receiver, for fluent composition-root chaining
+// (godlike/07 minimum-blast-radius: one-shot setters that don't
+// require capturing the result variable).
+func (f *Finalizer) WithBus(bus completion.JobCompletionBus) *Finalizer {
+	f.bus = bus
+	return f
 }
 
 // Compile-time assertion: Finalizer implements finalization.JobFinalizer.
@@ -211,6 +246,68 @@ func (f *Finalizer) CompleteWithArtifacts(
 		zap.Int("outbox_events", len(allEvents)),
 		zap.Int("optional_artifact_count", len(optionalReport)),
 	)
+
+	// Cut 6.5 (July 2026): post-commit job-completion notification.
+	// The bus fires OUTSIDE and AFTER the SQLite tx.Commit — a
+	// publish error cannot roll back the terminal job flip
+	// (durable SQLite state is the canonical source of truth; the
+	// bus is a derived projection). Nil-bus is zero-op; subscribers
+	// always see the FinalizationResult.JobID + Status("SUCCEEDED")
+	// when they wake. The handleIdempotentCompletion early-return
+	// path is intentionally NOT published here: when the job was
+	// already SUCCEEDED on entry, THIS attempt did not write any
+	// new SQL state, so there is nothing to signal — the canonical
+	// publish point is the tx.Commit that flipped the status.
+	//
+	// Revision semantics (godlike/07 fail-closed): the event's
+	// Revision field is the POST-flip optimistic-concurrency counter,
+	// computed as jobRow.revision + 1 — the SQLite UPDATE in step 9
+	// (markSucceeded) writes `revision = revision + 1` atomically
+	// inside this same tx, so the post-flip value is observable
+	// from the row snapshot taken in step 3
+	// (selectJobForFinalization). NOT req.Result.Attempt — that
+	// conflates the retry counter with the row's revision counter
+	// (code-reviewer flagged in part-1 review). When attempt N
+	// matches row.revision N (the typical case at first commit), the
+	// two would numerically agree; future retry-with-revision-skip
+	// scenarios would desync them — Revision on the event payload
+	// must reflect the row's actual CC counter, not the attempt
+	// counter.
+	//
+	// godlike/07 defense-in-depth: Publish is wrapped in a deferred
+	// recover so a buggy bus implementation cannot panic the
+	// worker goroutine AFTER a successful job flip. Durable state
+	// stays correct (SQLite committed) but a panic here would leak
+	// the worker slot until reconciliation; the recover keeps the
+	// publish path best-effort and bounded.
+	//
+	// godlike/07 observable-fail-closed: a recovered panic leaves a
+	// log.Warn trace so the operator can correlate a future
+	// stuck-subscriber symptom with a bus-side implementation
+	// defect. Durable SQLite state is unchanged regardless, so the
+	// warning is observational-only (no rollback / no retry).
+	if f.bus != nil {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					f.log.Warn("finalizer: bus publish panic recovered (durable state unchanged)",
+						zap.String("job_id", req.Result.JobID),
+						zap.Any("panic", r),
+					)
+					// Forward-pointer: a metrics.FinalizerBusPanicsTotal
+					// counter is the natural promotion path; pending
+					// infra-layer wiring, the log.Warn is sufficient.
+				}
+			}()
+			f.bus.Publish(completion.JobCompletionEvent{
+				JobID:       req.Result.JobID,
+				Attempt:     req.Result.Attempt,
+				FinalStatus: domainjob.StatusSucceeded,
+				Err:         nil,
+				Revision:    jobRow.revision + 1, // post-flip integer counter
+			})
+		}()
+	}
 
 	return &finalization.FinalizationResult{
 		JobID:                  req.Result.JobID,
