@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 	"gopkg.in/yaml.v3"
 )
 
@@ -54,11 +55,38 @@ type RunTagRequest struct {
 }
 
 // RunDedupKey creates a deduplication key for artlist jobs.
+// Returns the canonical 64-char lowercase SHA-256 hex string of
+// the JSON-marshaled canonical request map (delegates to
+// pkg/idempotency.BuildKey — godlike/06 SSOT).
 //
-// Fase 5 / Commit 3 (July 2026) follow-up: the signature now
-// includes `limit` because a replay of the same run with a
-// DIFFERENT limit (e.g. limit=8 vs limit=16) is a DIFFERENT run, not
-// a same-run replay — omitting limit from the key would collapse
+// Commit B (FASE 5 follow-up, July 2026): the signature changed
+// from `string` to `(string, error)`. The previous shape silently
+// produced a fake-availability string when canonical json.Marshal
+// failed (the legacy runDedupKey had a fmt.Sprintf fallback path);
+// the new shape fails closed per godlike/07 with a typed sentinel
+// from the canonical idempotency package:
+//
+//   - pkg/idempotency.ErrInvalidRunForDedup — empty discriminator,
+//     empty canonical map, or unmarshalable canonical content.
+//   - pkg/idempotency.ErrInvalidSegment — provider discriminator
+//     contains ':' (segment-delimiter collision guard).
+//   - pkg/idempotency.ErrEmptyProvider — same as
+//     ErrInvalidRunForDedup for the empty-discriminator path,
+//     reachable only when the caller bypasses the discriminator
+//     check; surfaced via errors.Is so handlers can branch on a
+//     typed diagnostic.
+//
+// Callers (RunTagRequest across handler + orchestrator) MUST
+// handle the error: the artlist handler maps the error to
+// apiutil.BadRequest (HTTP 400) because the malformed run-dedup
+// input is an operator-input error (godlike/07), and
+// DiscoverAndQueueRun propagates the error to its caller (which
+// then logs + returns an HTTP-error envelope).
+//
+// Fase 5 / Commit 3 (July 2026) follow-up: the signature carries
+// `limit` because a replay of the same run with a DIFFERENT
+// limit (e.g. limit=8 vs limit=16) is a DIFFERENT run, not a
+// same-run replay — omitting limit from the key would collapse
 // distinct runs into one ActiveKey and surface misleading dedup.
 //
 // godlike/07 fail-closed: the limit is part of the canonical
@@ -72,9 +100,19 @@ type RunTagRequest struct {
 // The function is the SINGLE canonical surface for the run-level
 // dedup key (godlike/06 SSOT). The kernel job broker's UNIQUE index
 // on `jobs.active_key` is the storage layer; this function is the
-// identity layer.
-func RunDedupKey(term, rootFolderID, strategy string, dryRun bool, limit int) string {
-	return runDedupKey(term, rootFolderID, strategy, dryRun, limit)
+// identity layer. The underlying idempotency.BuildKey produces a
+// 64-char lowercase hex SHA-256 — byte-stable across the migration
+// from the legacy runDedupKey private helper so in-flight
+// queued jobs MATCH across deployment.
+func RunDedupKey(term, rootFolderID, strategy string, dryRun bool, limit int) (string, error) {
+	canonical := map[string]any{
+		"term":           strings.ToLower(strings.TrimSpace(term)),
+		"root_folder_id": strings.TrimSpace(rootFolderID),
+		"strategy":       strings.ToLower(strings.TrimSpace(strategy)),
+		"dry_run":        dryRun,
+		"limit":          limit,
+	}
+	return idempotency.BuildKey("artlist-run", canonical)
 }
 
 // RunTagItem represents the result for a single clip in the full pipeline.
