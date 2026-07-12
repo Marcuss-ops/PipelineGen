@@ -153,6 +153,17 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	clipIDs := extractPlanClipIDs(plan)
 
 	builtPrompt := renderedPrompt
+	// PR-CS-1 / FASE 3: ScriptSegment blocks + canonical footer are
+	// emitted BEFORE the legacy ClipGroundingInstructions so they
+	// take precedence when both are non-empty (the validator layer
+	// enforces mutual exclusion at runtime, so the two branches
+	// are effectively exclusive in production).
+	if segRules := buildSegmentInstructions(plan); segRules != "" {
+		if builtPrompt != "" {
+			builtPrompt += "\n\n"
+		}
+		builtPrompt += segRules
+	}
 	if clipRules := buildClipGroundingInstructions(plan); clipRules != "" {
 		if builtPrompt != "" {
 			builtPrompt += "\n\n"
