@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
@@ -13,18 +12,13 @@ import (
 // ──────────────────────────────────────────────────────────────────────────────
 // TestBuildClipAsset_SearchText_NotJustFilename — DoD 10 regression guard
 // (PR-YT-DOD-10-SEARCH-TEXT-CONTRACT-TDD, deadline 2026-08-01)
-// ──────────────────────────────────────────────────────────────────────────────
-
-// TestBuildClipAsset_SearchText_NotJustFilename locks the canonical DoD 10
-// contract for the YouTube clip `search_text` field. The test fails fast
-// if a future refactor regresses buildClipAsset to "filename only" or
-// strips a canonical DoD-10 segment (title/summary/hook/topics/source_url
-// /speakers/mentioned_people).
 //
-// Pure-function hermetic test: `buildClipAsset` is a package-level pure
-// function (process_segment_helpers.go:19) that composes `SearchText` via
-// `composeYouTubeClipSearchText(md, hook)` (process_segment_helpers.go:113).
-// Zero DB / network / yt-dlp stub needed.
+// Canonical (Step 1 split, July 2026): this file holds the primary DoD 10
+// contract — the HappyPath_AllCanonicalSegmentsPresent scenario. Edge cases
+// (EmptyAllFields, TitleDerivedFromSummary) are extracted to per-scenario
+// test files for SSOT isolation:
+//   - process_segment_empty_test.go        — empty inputs / dangling fragments
+//   - process_segment_title_fallback_test.go — title fallback when Name empty
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //
@@ -41,11 +35,14 @@ import (
 // `composeYouTubeClipSearchText` (title → summary → hook → topics →
 // source_url → speakers → mentioned_people). Empty values per segment
 // are dropped silently (no dangling "Tags:" or "Source:" fragment
-// leakage), verified by the `EmptyAllFields_…` subtest.
+// leakage), verified by the `EmptyAllFields_…` subtest in
+// process_segment_empty_test.go.
 //
 // Pre-existing 6-item voiceover + app build-issue carry-forward per
 // architecture/waves/wave_p1_high.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04
 // UNCHANGED — NOT regressions of this test.
+// ──────────────────────────────────────────────────────────────────────────────
+
 func TestBuildClipAsset_SearchText_NotJustFilename(t *testing.T) {
 	t.Run("HappyPath_AllCanonicalSegmentsPresent", func(t *testing.T) {
 		// Canonical Pacquiao/Broner params (mirrors action plan §2 spec).
@@ -147,70 +144,5 @@ func TestBuildClipAsset_SearchText_NotJustFilename(t *testing.T) {
 		assert.Contains(t, a.SearchText, "Floyd Mayweather",
 			"DoD 10: mentioned_people segment must be present (=MentionedPeople, person refs; "+
 				"uniquely attributable — Hook no longer overlaps post-CR fixup)")
-	})
-
-	t.Run("EmptyAllFields_EmptySearchText_NoDanglingFragments", func(t *testing.T) {
-		// godlike/07 minimum-blast-radius: when ALL inputs are empty the
-		// composer must produce an empty string — never emit "Tags:" or
-		// "Source:" labels with empty values, never echo the filename.
-		a := buildClipAsset(
-			"yt_empty_clip",
-			youtubetypes.ProcessSegmentCommand{
-				VideoURL: "",
-				VideoID:  "",
-				Segment:  youtubetypes.Segment{}, // Name/Summary/Hook/Topics/Speakers/MentionedPeople all empty
-			},
-			youtubetypes.ProcessSegmentResult{
-				Item: youtubetypes.ExtractItem{
-					LocalPath: "/tmp/empty.mp4",
-				},
-			},
-			"", "",
-		)
-
-		require.Equal(t, "", a.SearchText,
-			"all-empty inputs MUST produce empty SearchText "+
-				"(godlike/07 minimum-blast-radius: no dangling fragments; "+
-				"`deriveNormalizedGroup` returns \"\" when "+
-				"cmd.Destination is nil — delegates fallback to delivery.YouTubeClipPath (SSOT))")
-	})
-
-	t.Run("TitleDerivedFromSummary_WhenNameEmpty", func(t *testing.T) {
-		// godlike/07 typed-branch contract: when Segment.Name is empty,
-		// `buildClipAsset` falls back to Segment.Summary for md.Title
-		// (process_segment_helpers.go:53-56). Locking the fallback so a
-		// future refactor that drops the fallback surfaces as test fail.
-		cmd := youtubetypes.ProcessSegmentCommand{
-			VideoURL: "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-			VideoID:  "vdC5GXxS-qU",
-			Segment: youtubetypes.Segment{
-				Name:    "", // empty ⇒ md.Title falls back to Summary
-				Summary: "Broner rises to fame but ignores discipline.",
-			},
-		}
-		out := youtubetypes.ProcessSegmentResult{
-			Item: youtubetypes.ExtractItem{
-				LocalPath:    "/tmp/yt_test.mp4",
-				DriveFileID:  "drive-x",
-				DriveLink:    "https://drive.google.com/file/d/x/view",
-				StartSeconds: 0,
-				EndSeconds:   5,
-				Duration:     5,
-			},
-		}
-		a := buildClipAsset("yt_test", cmd, out, "sha256-x", "v1")
-
-		// Title-fallback robust invariant (CR round-2 SHOULD-FIX-2026-07-08):
-		// The fallback path puts Summary into md.Title, AND the composer
-		// ALSO appends md.Summary. So the literal substring must appear
-		// EXACTLY TWICE in SearchText — once via Title-via-fallback,
-		// once via Summary-via-direct. A regression that breaks either
-		// path surfaces as strings.Count != 2.
-		const fallbackLiteral = "Broner rises to fame but ignores discipline."
-		require.Equal(t, 2, strings.Count(a.SearchText, fallbackLiteral),
-			"DoD 10: Title fallback to Summary must surface the Summary "+
-				"content EXACTLY TWICE (once via md.Title-via-fallback, "+
-				"once via md.Summary-via-direct) — "+
-				"locks process_segment_helpers.go:53-56 fallback contract")
 	})
 }
