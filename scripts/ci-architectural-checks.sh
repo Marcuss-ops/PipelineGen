@@ -4221,3 +4221,148 @@ if [ "$ACTUAL_ORDER" != "$EXPECTED_ORDER" ]; then
 fi
 echo "OK: registerScriptPostProcessors sequence matches canonical 10-processor order"
 echo "      (Persistence->Document->Image->Voiceover->Entities->Metadata->Translation->ClipBindings->StockAssociation->ClipSearch)"
+
+
+# ── Check 69: NoAutoTriggerLiveBattery (operator-only-by-design, July 2026) ──
+# Per godlike/07 NO-FAKE-AVAILABILITY + the operator-only policy in
+# docs/operations/stock-e2e-runbook.md §10.6, the stock pipeline live battery
+# (scripts/stock_pipeline_live_test.sh) is registered for OPERATOR MANUAL-ONLY
+# invocation. The script hits yt-dlp + Drive writes + Qdrant mutations --
+# side-effect-heavy, NEVER belonging in the PR/push feedback loop. The canonical
+# workflow workflows/test_stock_pipeline_live.yaml MUST declare `triggers:`
+# with `workflow_dispatch` only. This gate enforces the policy at pre-CI time.
+# Per godlike/06 SSOT lockstep: runbook §10.6 + this gate + the canonical
+# workflow YAML form a 3-surface contract; drift is itself an SSOT regression.
+#
+# C1-REGRESSION-FIX (2026-07-12, code-reviewer verdict on v2): the v2 filter
+# chain `grep -E 'push|...' | grep -v 'workflow_dispatch'` filtered out the
+# WHOLE LINE because the line happened to contain the substring
+# `workflow_dispatch` (e.g., mixed-array case `triggers: [workflow_dispatch,
+# push]`). The v3 approach tokenizes trigger kinds with grep -Eo (extracts
+# ONLY the matched-kind tokens, not whole-line context), then sort -u to
+# produce a unique sorted set, then accepts ONLY when the resulting set is
+# exactly the single-line string `workflow_dispatch`. ANY other shape is
+# fail-closed: pure non-workflow_dispatch (e.g. "push" only), mixed array
+# (e.g. "push\nworkflow_dispatch"), multi-kind, malformed DSL, or empty.
+#
+# Allowlist: NONE. Future legitimate automation (rare) MUST add an entry to
+# docs/migrations/live-battery-auto-trigger-allowlist.txt with rationale +
+# owner + deadline per AGENTS.md §8 zero-baseline rule.
+echo "=== Check 69: NoAutoTriggerLiveBattery (godlike/07, 2026-07-12 v3 fix) ==="
+gh_off=""
+gh_workflow_dir="${REPO_ROOT}/.github/workflows"
+if [ -d "${gh_workflow_dir}" ]; then
+    gh_off=$(rg -l 'stock_pipeline_live_test\.sh' "${gh_workflow_dir}" 2>/dev/null || true)
+fi
+dsl_off=""
+dsl_workflow_dir="${REPO_ROOT}/workflows"
+internal_workflow="${dsl_workflow_dir}/test_stock_pipeline_live.yaml"
+canon_bad=""
+canon_missing=""
+if [ -d "${dsl_workflow_dir}" ]; then
+    dsl_off=$(rg -l --type yaml \
+        --glob '!test_stock_pipeline_live.yaml' \
+        'stock_pipeline_live_test\.sh' \
+        "${dsl_workflow_dir}" 2>/dev/null || true)
+    if [ -f "${internal_workflow}" ]; then
+        # 2-pass: rg captures ANY `triggers:` line at any indent. The capture
+        # is intentionally permissive; the follow-up tokenize+sort+equality
+        # check is the validator.
+        trigger=$(rg -n '^[[:space:]]*triggers:[[:space:]]' "${internal_workflow}" 2>/dev/null || true)
+        if [ -z "${trigger}" ]; then
+            canon_missing="explicit triggers: line required (godlike/07 minimum-blast-radius, §10.6)"
+        else
+            trigger_tokens=$(echo "${trigger}" \
+                | grep -Eo '(push|pull_request|schedule|workflow_call|workflow_run|workflow_dispatch)' \
+                | sort -u || true)
+            if [ -z "${trigger_tokens}" ]; then
+                canon_bad="no-recognized-trigger-kind-on-triggers-line"
+            elif [ "${trigger_tokens}" != "workflow_dispatch" ]; then
+                canon_bad="${trigger_tokens}"
+            fi
+        fi
+    fi
+fi
+if [ -n "${gh_off}${dsl_off}${canon_bad}${canon_missing}" ]; then
+    echo "FAIL: stock_pipeline_live_test.sh referenced outside the manual-only operator surface (godlike/07):"
+    [ -n "${gh_off}" ] && {
+        echo "  .github/workflows/ hits:"
+        echo "${gh_off}" | sed 's/^/    /'
+    }
+    [ -n "${dsl_off}" ] && {
+        echo "  workflows/ non-canonical hits:"
+        echo "${dsl_off}" | sed 's/^/    /'
+    }
+    [ -n "${canon_missing}" ] && {
+        echo "  canonical file MISSING triggers: line:"
+        echo "    ${canon_missing}"
+    }
+    [ -n "${canon_bad}" ] && {
+        echo "  canonical file has non-conforming trigger kinds:"
+        echo "${canon_bad}" | sed 's/^/    /'
+    }
+    echo ""
+    echo "Fix: the live battery hits yt-dlp + Drive writes + Qdrant mutations;"
+    echo "      PR/push auto-trigger is forbidden per docs/operations/stock-e2e-runbook.md §10.6."
+    echo "      The canonical surfaces are:"
+    echo "        - Internal DSL workflow: workflows/test_stock_pipeline_live.yaml (manual-only: workflow_dispatch)"
+    echo "        - Operator CLI invocation: bash scripts/stock_pipeline_live_test.sh"
+    exit 1
+fi
+echo "OK: no auto-trigger references to stock_pipeline_live_test.sh (operator-only invariant holds)"
+
+# ── Check 70: LiveBatteryCopyByteEquivalence (godlike/06 SSOT, July 2026) ──
+# Per docs/operations/stock-e2e-runbook.md §10.8, the source script
+# (scripts/stock_pipeline_live_test.sh) and the registered copy
+# (scripts/tests/stock_pipeline_live_test.sh) MUST be byte-identical at every
+# commit. Drift detection is enforced here at pre-CI time using cmp -s
+# (POSIX-portable, works on macOS/BSD/CI Linux). When they diverge:
+#   1. An operator edited the copy directly (forbidden -- see §10.2).
+#   2. The source was committed without a `cp -p` regen of the copy.
+# Either way the registered copy is stale; CI fails fast.
+#
+# M2 FIX (2026-07-12, code-reviewer verdict): prior version used GNU-specific
+# `sha256sum` for diagnostic hashes. On macOS/BSD operators running the script
+# directly (outside the CI Linux container), sha256sum is absent. The
+# portable shim below selects `sha256sum` if present, else `shasum -a 256`.
+# Mirrors the portability pattern already used by Check 33 (envTimestampIsImmutable
+# block) in this same script.
+#
+# Allowlist: NONE. SSOT has one source. Drift equals mismatch equals fail.
+hash_of() {
+    local f="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$f" 2>/dev/null | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$f" 2>/dev/null | awk '{print $1}'
+    else
+        echo "no-hash-tool-available"
+    fi
+}
+echo "=== Check 70: LiveBatteryCopyByteEquivalence (godlike/06 SSOT, \u00a710.8) ==="
+src_path="${REPO_ROOT}/scripts/stock_pipeline_live_test.sh"
+copy_path="${REPO_ROOT}/scripts/tests/stock_pipeline_live_test.sh"
+if [ ! -f "${src_path}" ]; then
+    echo "INFO: source script absent at ${src_path} (skipping byte-equivalence check; not registered)"
+elif [ ! -f "${copy_path}" ]; then
+    echo "FAIL: registered copy absent at ${copy_path} but source present -- godlike/06 SSOT lockstep requires both (\u00a710.2 canonical paths)"
+    echo "Fix: cp -p scripts/stock_pipeline_live_test.sh scripts/tests/stock_pipeline_live_test.sh"
+    exit 1
+else
+    if cmp -s "${src_path}" "${copy_path}"; then
+        echo "OK: source is byte-equivalent to registered copy"
+    else
+        src_sha=$(hash_of "${src_path}")
+        copy_sha=$(hash_of "${copy_path}")
+        echo "FAIL: source vs registered copy byte-divergence (godlike/06 SSOT \u00a710.8 lockstep broken)"
+        echo "  source:    ${src_path}  (sha256: ${src_sha})"
+        echo "  registered: ${copy_path}  (sha256: ${copy_sha})"
+        echo ""
+        echo "Fix: regenerate the registered copy from the source via the canonical"
+        echo "      cp -p command (\u00a710.2 canonical paths):"
+        echo "        cp -p scripts/stock_pipeline_live_test.sh scripts/tests/stock_pipeline_live_test.sh"
+        echo "      An SSOT edit landed on the SOURCE without the regen step; commit"
+        echo "      the cp -p regeneration in the SAME PR (godlike/06 lockstep discipline)."
+        exit 1
+    fi
+fi
