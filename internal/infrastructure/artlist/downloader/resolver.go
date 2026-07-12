@@ -2,28 +2,22 @@
 // (PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY, July 2026).
 //
 // Resolver is the SINGLE canonical owner of "how to download an Artlist
-// asset". Before this PR, the routing logic was split across two surfaces:
+// asset" (godlike/06 SSOT). The 580-LOC file was split into 3 seams in
+// Step 3 follow-up (July 2026):
 //
-//  1. Provider.Download (this package) — picked HLS (yt-dlp) vs
-//     progressive (HTTP) based on .m3u8 presence.
-//  2. processor.downloadStep (internal/infrastructure/media/processor/
-//     processor_download.go) — had its own isArtlistURL / isDirectURL /
-//     isHLSURL detection + downloadViaScraper for the Node Puppeteer
-//     fallback.
-//
-// Resolver collapses both into one canonical surface:
-//
-//   - ClipPageURL set OR Artlist-shaped URL → Node scraper /download
-//     (browser-authenticated Puppeteer session)
-//   - Direct MP4/MOV/AVI URL → HTTP progressive download
-//   - HLS (.m3u8) URL → yt-dlp with Artlist cookie impersonation
-//   - Fallback ladder: try scraper → yt-dlp → HTTP
-//
-// godlike/06 SSOT: this file is the SINGLE canonical owner of Artlist
-// download routing. Every call site (stager_adapter.go → StageSource,
-// processor_download.go → downloadStep fallback) routes through this
-// resolver. The duplicated isHLS / isDirectURL / isArtlistURL detection
-// in processor_download.go is superseded by resolvePath below.
+//   - resolver.go (CANONICAL, this file): the Resolver concrete type,
+//     the Download entry point, the resolvePath routing decision, the
+//     downloadPath enum, the ResolverConfig, the compile-time pin
+//     `var _ artapp.Downloader = (*Resolver)(nil)`. godlike/06 SSOT:
+//     the canonical owner of routing decisions + the Pattern 0 compile-
+//     time surface for the artapp.Downloader port.
+//   - resolver_url_helpers.go: pure URL classification helpers
+//     (IsArtlistURL, IsDirectMediaURL, IsHLSURL) + firstNonEmpty.
+//     No state, no I/O; callable from any package (notably
+//     internal/infrastructure/media/processor/processor_download.go uses
+//     the URL helpers in its own routing decision).
+//   - resolver_scraper.go: downloadViaScraper + downloadWithFallback
+//   - copyFile. Network I/O + filesystem ops live here.
 //
 // godlike/07 typed-error contract: every path returns the canonical
 // artlist sentinels (ErrEmpty, ErrUnavailable, ErrTimeout,
@@ -31,45 +25,15 @@
 // ErrTransportFallback) via mapError. Callers branch on errors.Is,
 // not on string-matching.
 //
-// DESIGN NOTE (cross-path fallback): when resolvePath returns a specific
-// transport (scraper / HTTP / yt-dlp), that transport is retried with
-// exponential backoff but does NOT fall through to the next transport on
-// exhaustion. This matches the legacy Provider behavior (HLS vs HTTP)
-// and the user's explicit routing rules. The cross-path ladder
-// (downloadWithFallback) only fires for the downloadPathFallback case
-// (unknown URL types). This is intentional — known Artlist URLs should
-// converge on the scraper (retryable 5xx / network blips are transient),
-// not silently degrade to yt-dlp which lacks browser cookies and would
-// produce a 403 on the same asset that the scraper would have succeeded
-// with on retry. If future operators need cross-path fallback for
-// primary routes, add a resolvePathWithFallback enum and thread it
-// through the retry.DoWithValue body.
-//
-// godlike/07 minimal-blast-radius (CUTOVER phase): the legacy Provider
-// struct in downloader.go has been RETIRED. Resolver is the SINGLE
-// canonical owner of Artlist download routing per godlike/06 SSOT.
-// The composition root (build_bundles_artlist.go) wires
-// downloader.NewResolver(...) exclusively.
-//
-// Honest scope-lock (CUTOVER, July 2026): the 3 duplicate URL helpers
-// in processor_download.go (isArtlistURL / isDirectURL / isHLSURL)
-// have been REMOVED and superseded by the exported canonical helpers
-// above. The remaining processor-specific code is:
-//   - isArtlistNumericID — retained (no Resolver equivalent; gates
-//     whether the Artlist branch fires at all)
-//   - buildArtlistClipPageURL — retained (used by the legacy
-//     downloadViaScraper fallback)
-//   - downloadViaScraper — retained as legacy fallback when
-//     p.artlistDL is nil (backward compat)
+// godlike/07 minimal-blast-radius: the Step 3 split is purely
+// organizational — zero production logic changes. All 3 files are
+// in `package downloader` so cross-file symbol resolution is
+// package-internal (no new exports, no API surface change).
 package downloader
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,6 +48,10 @@ import (
 )
 
 // Compile-time assertion: Resolver satisfies artlist.Downloader.
+// Pattern 0 SSOT pin (godlike/06) — drift in the artapp.Downloader port
+// signature surfaces as a build failure here, not a runtime panic on
+// first dispatch. Lives in the canonical file (resolver.go) per
+// godlike/06 SSOT — the pin is the canonical ownership signal.
 var _ artapp.Downloader = (*Resolver)(nil)
 
 // ResolverConfig extends the base Config with scraper-specific fields.
@@ -375,16 +343,6 @@ func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 	}, nil
 }
 
-// firstNonEmpty returns the first non-empty string in values.
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 // downloadPath is the enum of transport choices.
 type downloadPath int
 
@@ -418,173 +376,4 @@ func (r *Resolver) resolvePath(req artapp.DownloadRequest) downloadPath {
 	}
 	// Rule 4: Controlled fallback.
 	return downloadPathFallback
-}
-
-// downloadWithFallback implements the controlled ladder: scraper → yt-dlp → HTTP.
-func (r *Resolver) downloadWithFallback(ctx context.Context, req artapp.DownloadRequest, outPath string) error {
-	// Step 1: try scraper.
-	if r.cfg.ScraperURL != "" {
-		r.metrics.incDownloadPath(PathBrowser)
-		if err := r.downloadViaScraper(ctx, req, outPath); err == nil {
-			return nil
-		} else if r.log != nil {
-			r.log.Warn("resolver: scraper fallback failed, trying yt-dlp",
-				zap.String("source_ref", req.SourceRef),
-				zap.Error(err))
-		}
-	}
-
-	// Step 2: try yt-dlp.
-	r.metrics.incDownloadPath(PathYTDLP)
-	dlReq := &core_dl.DownloadRequest{
-		URL:        req.SourceRef,
-		OutputPath: outPath,
-	}
-	if err := r.ytdlp.Download(ctx, dlReq); err == nil {
-		return nil
-	} else if r.log != nil {
-		r.log.Warn("resolver: yt-dlp fallback failed, trying HTTP",
-			zap.String("source_ref", req.SourceRef),
-			zap.Error(err))
-	}
-
-	// Step 3: try HTTP as last resort.
-	r.metrics.incDownloadPath(PathHTTP)
-	httpReq := &core_dl.HTTPDownloadRequest{
-		URL:        req.SourceRef,
-		OutputPath: outPath,
-	}
-	return r.httpDl.Download(ctx, httpReq)
-}
-
-// downloadViaScraper calls the Node.js scraper /download endpoint with
-// the clip page URL for browser-authenticated download.
-//
-// Mirrors the logic in processor_download.go::downloadViaScraper but
-// owned by the downloader package (godlike/06 SSOT).
-func (r *Resolver) downloadViaScraper(ctx context.Context, req artapp.DownloadRequest, outPath string) error {
-	scraperURL := strings.TrimSuffix(r.cfg.ScraperURL, "/") + "/download"
-
-	// Use ClipPageURL if available; fall back to SourceRef.
-	clipPageURL := req.ClipPageURL
-	if clipPageURL == "" {
-		clipPageURL = req.SourceRef
-	}
-
-	// The scraper saves to output_dir with filename: {clipId}.ts (HLS) or {clipId}.mp4.
-	// We use outPath + ".mp4" to match the scraper's output convention.
-	savePath := outPath + ".mp4"
-
-	payload := map[string]any{
-		"clip_page_url": clipPageURL,
-		"clip_id":       req.ClipID,
-		"output_dir":    filepath.Dir(savePath),
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal scraper request: %w", err)
-	}
-
-	scraperCtx, cancel := context.WithTimeout(ctx, r.cfg.ScraperTimeout)
-	defer cancel()
-
-	httpReq, err := http.NewRequestWithContext(scraperCtx, http.MethodPost, scraperURL, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("create scraper request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("scraper request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("scraper returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
-	}
-
-	var result struct {
-		OK        bool   `json:"ok"`
-		LocalPath string `json:"local_path"`
-		Error     string `json:"error,omitempty"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("decode scraper response: %w", err)
-	}
-
-	if !result.OK {
-		return fmt.Errorf("scraper download failed: %s", result.Error)
-	}
-
-	if result.LocalPath == "" {
-		return fmt.Errorf("scraper returned empty local_path")
-	}
-
-	// The scraper saves to its own output path. Move/copy to our outPath.
-	if result.LocalPath != outPath {
-		if renameErr := os.Rename(result.LocalPath, outPath); renameErr != nil {
-			// Best-effort: if rename fails (cross-device), try copy.
-			if r.log != nil {
-				r.log.Warn("resolver: scraper rename failed, trying copy",
-					zap.String("from", result.LocalPath),
-					zap.String("to", outPath),
-					zap.Error(renameErr))
-			}
-			if copyErr := copyFile(result.LocalPath, outPath); copyErr != nil {
-				return fmt.Errorf("scraper: failed to move output from %q to %q: rename=%w copy=%w",
-					result.LocalPath, outPath, renameErr, copyErr)
-			}
-		}
-	}
-
-	return nil
-}
-
-// ── URL classification helpers (canonical — exported for processor_download.go) ──
-
-// IsArtlistURL checks if the URL is from Artlist's CDN.
-// Exported for use by the media processor's downloadStep fallback path
-// (PR-ARTLIST-DOWNLOAD-SURFACE-UNIFY-CUTOVER, July 2026).
-func IsArtlistURL(url string) bool {
-	u := strings.ToLower(strings.TrimSpace(url))
-	return strings.Contains(u, "artlist") || strings.Contains(u, "cdn.artlist")
-}
-
-// IsDirectMediaURL checks if the URL points to a direct progressive media file.
-func IsDirectMediaURL(url string) bool {
-	u := strings.ToLower(strings.TrimSpace(url))
-	return strings.HasSuffix(u, ".mp4") || strings.HasSuffix(u, ".mov") || strings.HasSuffix(u, ".avi")
-}
-
-// IsHLSURL checks if the URL points to an HLS playlist.
-func IsHLSURL(url string) bool {
-	return strings.Contains(strings.ToLower(strings.TrimSpace(url)), ".m3u8")
-}
-
-// copyFile copies src to dst. Used as a fallback when os.Rename fails
-// (cross-device move on some filesystems).
-func copyFile(src, dst string) error {
-	s, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-
-	d, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	// Capture the Close error — a write failure on buffered filesystems
-	// can surface only on Close, not on Write.
-	defer func() {
-		if cerr := d.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
-
-	_, err = io.Copy(d, s)
-	return err
 }
