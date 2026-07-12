@@ -173,6 +173,16 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	}
 
 	// Build ollama request from the resolved plan.
+	// PR-CS-1 FASE 14 — emit branch telemetry at the canonical
+	// orchestrator site. godlike/06 SSOT: builders must be pure;
+	// the orchestrator owns side-effects. This placement also
+	// closes the BRANCH-B telemetry gap (SegmentTopics-only plans
+	// without clip evidence) — see commit message for details.
+	if len(plan.Segments) > 0 {
+		RecordScriptGenerationBranch("a", plan.Language)
+	} else if len(plan.SegmentTopics) > 0 {
+		RecordScriptGenerationBranch("b", plan.Language)
+	}
 	clipIDs := extractPlanClipIDs(plan)
 
 	builtPrompt := renderedPrompt
