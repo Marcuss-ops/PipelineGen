@@ -617,7 +617,13 @@ def _wait_for_prompt_surface(page, timeout_ms: int = 15000) -> bool:
 
 
 def _click_visible_start_images_tile(page) -> bool:
-    """Best-effort DOM click on the visible Images/Immagini tile."""
+    """Best-effort DOM click on the Images/Immagini tile.
+
+    Google Slides keeps the getting-started card in the DOM even when
+    Playwright reports it as not visible. We therefore match by text
+    and attributes and use a direct DOM click, which is enough for the
+    internal React/DOM handler to fire.
+    """
     if page is None:
         return False
     try:
@@ -628,8 +634,6 @@ def _click_visible_start_images_tile(page) -> bool:
                 const aria = (el.getAttribute('aria-label') || '').trim();
                 const dataView = (el.getAttribute('data-view-id') || '').trim();
                 const controls = (el.getAttribute('aria-controls') || '').trim();
-                const visible = !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-                if (!visible) continue;
                 if (
                     dataView === 'insert-generated-image' ||
                     controls === 'insert-generated-image' ||
@@ -1432,8 +1436,8 @@ class ProfileWorker(threading.Thread):
                                     timeout=10000,
                                 )
                                 if isinstance(buffer_int_list, list) and buffer_int_list:
-                                    image_bytes = bytes(buffer_int_list)
-                                    fetch_method = "blob-fetch"                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page succeeded ({len(image_bytes)} bytes)")
+                                    image_bytes = bytes(buffer_int_list)                                    fetch_method = "blob-fetch"
+                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page succeeded ({len(image_bytes)} bytes)")
                             except Exception as fe:
                                 _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page failed: {fe}")
                             if not image_bytes:
@@ -1444,12 +1448,12 @@ class ProfileWorker(threading.Thread):
                                     # the operation is element-scoped, not
                                     # page-scoped. timeout=5000 bounds the
                                     # variant where the locator selector silently
-                                    # rotates off the DOM mid-fetch; the worker
-                                    # fails fast and surfaces a typed error.                                        image_bytes = img.screenshot(type="png", timeout=5000)
-                                        fetch_method = "element-screenshot"
-                                        _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback succeeded ({len(image_bytes)} bytes)")
-                                    except Exception as se:
-                                        _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback failed: {se}")
+                                    # rotates off the DOM mid-fetch; the worker                                    # fails fast and surfaces a typed error.
+                                    image_bytes = img.screenshot(type="png", timeout=5000)
+                                    fetch_method = "element-screenshot"
+                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback succeeded ({len(image_bytes)} bytes)")
+                                except Exception as se:
+                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback failed: {se}")
                         if image_bytes:
                             saved_format = _save_image_bytes(image_bytes, output_path)
                             elapsed = (time.time() - t0) * 1000
