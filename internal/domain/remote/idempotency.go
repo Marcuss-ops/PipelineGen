@@ -40,7 +40,8 @@ package remote
 import (
 	"errors"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	domainhashutil "github.com/Marcuss-ops/PipelineGen/internal/domain/remote/hashutil"
+	files "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
 // ArtifactIdempotencyKey computes the deterministic X-Idempotency-Key
@@ -79,8 +80,46 @@ func ArtifactIdempotencyKey(jobID, artifactID, sha256Hex string) string {
 		// derived from the realistic-but-corrupt "::" preimage).
 		return ""
 	}
-	return hashutil.SHA256String(jobID + ":" + artifactID + ":" + sha256Hex)
+	return defaultArtifactKey(jobID, artifactID, sha256Hex)
 }
+
+// ArtifactIdempotencyKeyFunc is the typed-closure returned by
+// MakeArtifactIdempotencyKey. Callers store this as a struct field
+// populated at construction time (godlike/06 dependency injection).
+type ArtifactIdempotencyKeyFunc func(jobID, artifactID, sha256Hex string) string
+
+// MakeArtifactIdempotencyKey is the canonical constructor binding a
+// domain/remote/hashutil.HashFunc to the artifact-idempotency-key
+// derivation. Returns a Pure + Deterministic + Header-safe closure.
+//
+// godlike/07 fail-closed: nil hash panics at construction time
+// (composition root MUST inject a non-nil HashFunc via NewSHA256Hasher,
+// or a test fake for unit-test isolation per Commit D spec literal
+// "Aggiungi un test unit con fake `HashFunc`").
+func MakeArtifactIdempotencyKey(hash domainhashutil.HashFunc) ArtifactIdempotencyKeyFunc {
+	if hash == nil {
+		panic("remote.MakeArtifactIdempotencyKey: nil HashFunc — composition root must inject files.NewSHA256Hasher (godlike/07 fail-closed at construction)")
+	}
+	return func(jobID, artifactID, sha256Hex string) string {
+		if jobID == "" || artifactID == "" || sha256Hex == "" {
+			return ""
+		}
+		return hash(jobID + ":" + artifactID + ":" + sha256Hex)
+	}
+}
+
+// defaultArtifactKey is the package-level production default bound to
+// the canonical infrastructure SHA-256 hasher. Initialised at
+// package-load via MakeArtifactIdempotencyKey so the legacy free
+// function ArtifactIdempotencyKey can delegate to it without per-call
+// construction overhead.
+//
+// godlike/06 note: the `files` (infrastructure) import in this file is
+// bounded to the package-init production default. New code SHOULD
+// prefer MakeArtifactIdempotencyKey + struct-field injection for
+// explicit hash customisation (testable with fake HashFunc per the
+// Commit D spec).
+var defaultArtifactKey = MakeArtifactIdempotencyKey(files.NewSHA256Hasher())
 
 // IsValidIdempotencyKey returns true if `key` is a well-formed
 // X-Idempotency-Key header value: either the empty marker (64-char

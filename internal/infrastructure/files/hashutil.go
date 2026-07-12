@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"time"
+
+	domainhashutil "github.com/Marcuss-ops/PipelineGen/internal/domain/remote/hashutil"
 )
 
 // RandomString generates a cryptographically random hex string of length n.
@@ -71,4 +73,28 @@ func MD5String(s string) string {
 	h := md5.New()
 	h.Write([]byte(s))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// NewSHA256Hasher returns the canonical SHA-256 hasher as a typed-port
+// HashFunc value (declared in internal/domain/remote/hashutil). The
+// function-value form keeps call-site allocation-free in the production
+// hot path (the returned value points to the existing SHA256String
+// function verbatim — Go's runtime treats function values as
+// reference types, no copy).
+//
+// godlike/06 one-owner-per-fact: this is the canonical adapter. The
+// domain layer uses the typed port (`hashutil.HashFunc`); the
+// infrastructure layer adapts to it via this function. No other
+// SHA-256-to-string adapter for the same shape should be introduced
+// without an explicit follow-up commit.
+//
+// Domain callers receive this via constructor injection:
+//
+//	derive := remote.MakeArtifactIdempotencyKey(files.NewSHA256Hasher())
+//	key := derive(jobID, artifactID, sha256Hex)
+//
+// Test callers inject a FAKE for unit-test isolation (per Commit D
+// spec literal: "Aggiungi un test unit con fake `HashFunc`").
+func NewSHA256Hasher() domainhashutil.HashFunc {
+	return SHA256String
 }
