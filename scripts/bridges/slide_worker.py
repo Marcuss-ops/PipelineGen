@@ -433,50 +433,96 @@ def _dismiss_start_dialog(page) -> bool:
     if page is None:
         return False
     try:
-        dialog = page.locator(
-            'div[role="dialog"]:has-text("Iniziamo a creare"), '
-            'div[aria-modal="true"]:has-text("Iniziamo a creare"), '
-            'div[role="dialog"]:has-text("Ciao ")'
-        ).first
-        if not dialog.is_visible():
-            return False
+        # Fast path: some builds expose the tile as a visible text node
+        # or button outside the modal wrapper. Try these first because
+        # they are the least brittle selectors.
+        for selector in [
+            'text="Images"',
+            'text="Immagini"',
+            'button:has-text("Images")',
+            'button:has-text("Immagini")',
+        ]:
+            try:
+                tile = page.locator(selector).first
+                if tile.is_visible():
+                    _log(f"[_dismiss_start_dialog] fast-path tile selector matched: {selector}")
+                    tile.click(force=True, timeout=5000)
+                    page.wait_for_timeout(1200)
+                    return True
+            except Exception:
+                continue
 
-        # Prefer the Images card because it lands the editor directly on
-        # the right surface. If the card selector fails, fall back to the
-        # close button and, finally, Escape.
-        try:
-            images_card = dialog.locator(
-                'div:has-text("Images"), button:has-text("Images")'
-            ).first
-            if images_card.is_visible():
-                images_card.click(force=True, timeout=5000)
+        dialogs = page.locator('div[role="dialog"], div[aria-modal="true"]').all()
+        for dialog in dialogs:
+            try:
+                txt = (dialog.inner_text(timeout=1000) or "").strip()
+            except Exception:
+                txt = ""
+            if not txt:
+                continue
+            if "Iniziamo a creare" not in txt and "Ciao" not in txt and "Images" not in txt:
+                continue
+
+            _log(f"[_dismiss_start_dialog] handling modal: {txt[:80]!r}")
+
+            # Prefer the Images card because it lands the editor directly
+            # on the image-generation surface. The modal is permissive:
+            # if the card click fails, fall through to the close/escape
+            # path instead of blocking generation.
+            try:
+                images_card = dialog.locator(
+                    'text="Images", text="Immagini", button:has-text("Images"), button:has-text("Immagini")'
+                ).first
+                if images_card.is_visible():
+                    images_card.click(force=True, timeout=5000)
+                    page.wait_for_timeout(1200)
+                    return True
+            except Exception as e:
+                _log(f"[_dismiss_start_dialog] Images card click failed: {e}")
+
+            try:
+                close_btn = dialog.locator(
+                    'button[aria-label*="Chiudi"], button[aria-label*="Close"], '
+                    'button:has-text("×"), button:has-text("X")'
+                ).first
+                if close_btn.is_visible():
+                    close_btn.click(force=True, timeout=5000)
+                    page.wait_for_timeout(800)
+                    return True
+            except Exception as e:
+                _log(f"[_dismiss_start_dialog] close button click failed: {e}")
+
+            try:
+                page.keyboard.press("Escape")
                 page.wait_for_timeout(800)
                 return True
-        except Exception as e:
-            _log(f"[_dismiss_start_dialog] Images card click failed: {e}")
-
-        try:
-            close_btn = dialog.locator(
-                'button[aria-label*="Chiudi"], button[aria-label*="Close"], '
-                'button:has-text("×"), button:has-text("X")'
-            ).first
-            if close_btn.is_visible():
-                close_btn.click(force=True, timeout=5000)
-                page.wait_for_timeout(500)
+            except Exception as e:
+                _log(f"[_dismiss_start_dialog] Escape fallback failed: {e}")
                 return True
-        except Exception as e:
-            _log(f"[_dismiss_start_dialog] close button click failed: {e}")
-
-        try:
-            page.keyboard.press("Escape")
-            page.wait_for_timeout(500)
-            return True
-        except Exception as e:
-            _log(f"[_dismiss_start_dialog] Escape fallback failed: {e}")
-            return True
+        return False
     except Exception as e:
         _log(f"[_dismiss_start_dialog] modal probe failed: {e}")
         return False
+
+
+def _prepare_editor_surface(page) -> None:
+    """Best-effort clear of startup overlays before touching the canvas.
+
+    Google Slides can land on a getting-started wizard that blocks the
+    prompt surface. A pair of Escape keypresses handles the common
+    modal path; _dismiss_start_dialog() then handles the remaining card
+    overlay if the wizard stays open.
+    """
+    if page is None:
+        return
+    try:
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+    except Exception as e:
+        _log(f"[_prepare_editor_surface] Escape pre-clear failed: {e}")
+    _dismiss_start_dialog(page)
 
 
 def _check_169_selected(page, ratio: str = "16:9") -> bool:
@@ -953,7 +999,7 @@ class ProfileWorker(threading.Thread):
         )
 
         try:
-            _dismiss_start_dialog(self.page)
+            _prepare_editor_surface(self.page)
 
             # Step 1: ensure Gemini panel is open.
             ta = self.page.locator('textarea:visible').first
@@ -1011,6 +1057,7 @@ class ProfileWorker(threading.Thread):
             except PlaywrightTimeout:
                 _log(f"[profile-{self.profile_id}][{request_id}] textarea not visible — recovery")
                 self._fresh_page()
+                _prepare_editor_surface(self.page)
                 btn2 = self.page.locator(
                     'button.insert-generated-image, '
                     '[data-view-id="insert-generated-image"], '
