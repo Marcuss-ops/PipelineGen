@@ -128,6 +128,14 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 			if decodeErr != nil {
 				return nil, decodeErr
 			}
+			// PR-CS-1 / FASE 4 (DoD #7): scrub non-prose artefacts
+			// (SEGMENT N / Topic: / Source text: / clip_id /
+			// accepted_clip_ids / specscene / schema_version /
+			// Markdown fences / `# ` comments) BEFORE the engine
+			// stamps provenance. Idempotent — replay-safe on the
+			// cache-hit path (sanitized text → re-sanitize is a
+			// no-op).
+			output.Text = SanitizeScriptOutput(output.Text)
 			// PR 3 (June 2026): stamp engine-side provenance
 			// fields onto the canonical typed MSOV1 so post-
 			// processors (notably PersistenceProcessor) read
@@ -227,6 +235,11 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		}
 	}
 
+	// PR-CS-1 / FASE 4 (DoD #7): scrub non-prose artefacts BEFORE
+	// stamping. Idempotent — the cache-write path ran the same
+	// scrub on the prior write and the cache-hit replay re-runs
+	// it (still a no-op on clean input).
+	output.Text = SanitizeScriptOutput(output.Text)
 	// PR 3 (June 2026): stamp engine-side provenance fields onto
 	// the canonical typed ModelScriptOutputV1 in-place so the
 	// typed walk (ppReg.Run with &engineResult.Output) reads
