@@ -1,5 +1,5 @@
 // Package jobs — worker_lease.go (PR7 split, June 2026; FASE 4(b)
-// LeaseState integration, July 2026).
+// LeaseState integration, July 2026; Cut 6.3 fix, July 2026).
 //
 // Lease renewal ticker extracted from worker.go. Owns:
 //
@@ -39,10 +39,26 @@
 //     to the finalizer (or to a non-finalize abort path in
 //     future PRs).
 //
-// Mechanical split + Fase 4(b) integration. Zero behavior change
-// for the Continue path; the CancelRequested / LeaseLost paths
-// replace the pre-Fase-4 polling goroutine with a typed signal
-// observed on every renew tick.
+// Cut 6.3 (July 2026) — leaseTTL cadence policy:
+// The renew-cadence is `w.leaseTTL / 3` (three renewals per lease
+// period). PREVIOUSLY floored at 5*time.Second to defend against a
+// hypothetical leaseTTL=1s configuration hammering the SQLite writer
+// pool; Cut 6.3 REMOVES the floor so the typed LeaseState path is
+// invariant under all leaseTTL ranges (production leaseTTL is
+// config-driven via cfg.Jobs.LeaseTTL, never <30s in production;
+// the floor was a defensive-only knob that BROKE the canonical
+// FASE 4(b) contract tests because they use leaseTTL=15ms /
+// leaseTTL=60ms to verify the typed CancelRequested / LeaseLost
+// signals propagate within a 4-second test budget).
+// godlike/07 minimum-blast-radius: the floor removal is a positive
+// test-prod parity change — the production Worker with
+// leaseTTL=30s ticks at 10s (unchanged from before Cut 6.3). The
+// defense against pathological leaseTTL values belongs in cfg layer
+// validation, not in the runtime renew-ticker.
+//
+// Mechanical split + Fase 4(b) integration + Cut 6.3 fix.
+// Net behavior change: the typed LeaseState signal now propagates
+// under all leaseTTL ranges (was broken under leaseTTL < 15s).
 package jobs
 
 import (
@@ -73,10 +89,16 @@ func (w *Worker) renewLeaseLoop(ctx context.Context, jobID string, stop <-chan s
 
 func (w *Worker) renewLeaseLoopWith(ctx context.Context, jobID string, stop <-chan struct{}, done chan<- struct{}, opts renewLeaseLoopOpts) {
 	defer close(done)
+	// Cut 6.3 (July 2026): renew cadence = leaseTTL / 3 directly, with
+	// NO floor. Previously floored at 5*time.Second to guard against a
+	// hypothetical leaseTTL=1s configuration; that floor silently
+	// broke the FASE 4(b) typed-cancel contract under leaseTTL <15s
+	// because the renew-ticker never fired within the test budget and
+	// renewHits=0. Production leaseTTL is config-driven via
+	// cfg.Jobs.LeaseTTL (always ≥30s in production deployments),
+	// so an unbounded leaseTTL/3 is safe — see package doc for the
+	// rationale + the godlike/07 fail-closed cfg layer ownership.
 	interval := w.leaseTTL / 3
-	if interval < 5*time.Second {
-		interval = 5 * time.Second
-	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
