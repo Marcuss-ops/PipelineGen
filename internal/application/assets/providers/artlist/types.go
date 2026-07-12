@@ -1,6 +1,7 @@
 package artlist
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -107,6 +108,27 @@ type RunTagResponse struct {
 // EvaluateRunOutcome evaluates whether a RunTagResponse represents a failed run.
 // This centralizes the policy logic that was previously scattered in job handlers and endpoints.
 // Returns (isFailed bool, errorMsg string).
+//
+// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): during the outcome-accounting
+// refactor stagePersistResults started incrementing resp.Failed for three
+// distinct persistence failure modes (drive_upload_failed, hash_missing,
+// persist_failed) that previously surfaced as silent drops. Two policies
+// now gate the run verdict:
+//
+//  1. Policy A (pre-existing): when all items failed (Failed > 0 with
+//     Processed == 0 and Skipped == 0) the run is unambiguously failed.
+//  2. Policy B (added in this PR; literal user spec): even with
+//     Processed > 0, if Found - (Processed + Skipped) > 0 AND Failed == 0,
+//     the run is undercounted: items showed up in the runner's view of the
+//     world (resp.Items) but were never tallied into any bucket, which is
+//     the exact silent-loss signature the spec asks us to catch.
+//
+// KNOWN LIMITATION: with the Failed == 0 guard, runs that mix explicit
+// failures AND silent drops (e.g. Found=10, Processed=5, Failed=1,
+// Skipped=0, 4 silent drops) will still pass. Operators wanting
+// stricter accounting can extend Policy B to
+// `gap := resp.Found - (resp.Processed + resp.Skipped + resp.Failed)`
+// in a follow-up PR; this PR is bound to the literal user spec.
 func EvaluateRunOutcome(resp *RunTagResponse) (bool, string) {
 	if resp == nil {
 		return true, "nil response"
@@ -118,9 +140,20 @@ func EvaluateRunOutcome(resp *RunTagResponse) (bool, string) {
 		}
 		return true, errMsg
 	}
-	// Policy: if all items failed (Failed > 0, Processed == 0, Skipped == 0), mark as failed
+	// Policy A: if all items failed (Failed > 0, Processed == 0, Skipped == 0), mark as failed
 	if resp.Failed > 0 && resp.Processed == 0 && resp.Skipped == 0 {
 		return true, "all artlist items failed"
+	}
+	// Policy B (PR-ARTLIST-OUTCOME-ACCOUNTING, July 2026): if no explicit
+	// failures were recorded but Found - (Processed + Skipped) > 0, items
+	// were silently lost (present in the runner but not tallied). Mark the
+	// run as failed with a precise diagnostic so the operator can audit.
+	if resp.Failed == 0 {
+		gap := resp.Found - (resp.Processed + resp.Skipped)
+		if gap > 0 {
+			return true, fmt.Sprintf("run undercounted: %d items silently lost (found=%d, processed=%d, skipped=%d, failed=0)",
+				gap, resp.Found, resp.Processed, resp.Skipped)
+		}
 	}
 	return false, ""
 }
