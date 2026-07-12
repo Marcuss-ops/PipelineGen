@@ -111,7 +111,10 @@ func (m *ChannelMonitor) analyzeVideo(ctx context.Context, info VideoInfo, chann
 	if metricsLabel == "" {
 		metricsLabel = "unknown"
 	}
-	m.metrics.ObserveSegmentsPerVideo(metricsLabel, len(segments))
+	// godlike/07: nil metrics port → no-op (matches package docstring contract)
+	if m.metrics != nil {
+		m.metrics.ObserveSegmentsPerVideo(metricsLabel, len(segments))
+	}
 
 	if len(segments) == 0 {
 		m.log.Info("no interesting segments found, skipping video",
@@ -120,8 +123,10 @@ func (m *ChannelMonitor) analyzeVideo(ctx context.Context, info VideoInfo, chann
 		return Analysis{}, nil
 	}
 
-	m.metrics.IncVideosWithSegments(metricsLabel)
-	m.metrics.AddSegmentsFound(metricsLabel, len(segments))
+	if m.metrics != nil {
+		m.metrics.IncVideosWithSegments(metricsLabel)
+		m.metrics.AddSegmentsFound(metricsLabel, len(segments))
+	}
 
 	// ── Step 4: Prefix category to segment names ──────────────────────
 	// So the extraction pipeline downstream renders "Comedy: Funny bit
