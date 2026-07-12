@@ -189,6 +189,12 @@ type SourceResolutionContext struct {
 	// SegmentTopics is an ordered list of topics to cover per segment.
 	SegmentTopics []string `json:"segment_topics,omitempty"`
 
+	// Segments is the per-block payload forwarded from
+	// item.ScriptParams into the resolver and ClipGenerationOptions.
+	// Resolver threads whichever the caller chose; mutex with
+	// SegmentTopics is enforced upstream at the validator layer.
+	Segments []ScriptSegment `json:"segments,omitempty"`
+
 	// RequireDriveLink tells the clip resolver whether clips MUST have
 	// a Drive link to be included in the resolved set. When false
 	// (the caller only wants text generation — no document, no scene
