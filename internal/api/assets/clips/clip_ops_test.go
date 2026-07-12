@@ -408,3 +408,56 @@ func TestHandler_VerifyClip_503_NoService(t *testing.T) {
 
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
+
+// TestClipsQueryPort_CompositionWiring pins Commit E's nil-port-503
+// fail-closed contract: when the composition root does NOT wire
+// `Deps.ClipsRepo` (either via Deps.ClipsRepo == nil OR via the
+// newClipsQueryPortAdapter helper returning nil because the
+// underlying *assets.ClipsRepository was nil), every method that
+// routes through the api/clips/ subtree MUST return HTTP 503
+// (godlike/07) instead of:
+//
+//	(a) silently succeeding with empty results,
+//	(b) propagating a 500 Internal Server Error from a nil-interface
+//	    method-dispatch panic,
+//	(c) hanging on the request goroutine.
+//
+// godlike/06 SSOT cross-check: this test exercises the contract end-to-end
+// through the canonical Handler.RegisterRoutes. The 503 sentinel is the
+// canonical fail-closed response (newClipsQueryPortAdapter returns nil
+// → Deps.ClipsRepo is the typed-nil interface → ops handler Method
+// entry does `if h.clipsRepo == nil { apiutil.Error(c, 503, ...); return }`).
+//
+// Pattern parity: existing tests `TestHandler_Cleanup_503_NoService` +
+// `TestHandler_VerifyClip_503_NoService` exercise a DIFFERENT port
+// (ClipOpsService). This test exercises the NEW ClipsQueryPort — the
+// Compiled-time assertion (var _ clips.ClipsQueryPort =
+// (*clipsRepoAdapter)(nil)) at clips_adapters_repo.go guarantees the
+// adapter satisfies the port; this test guarantees the runtime
+// fail-closed contract for the composition-wiring layer.
+func TestClipsQueryPort_CompositionWiring(t *testing.T) {
+	// Deps.ClipsRepo is the typed-nil interface (zero value for the
+	// typed-nil pointer field). Composition root at wire_assets_clips.go
+	// would have set it to a non-nil ClipsQueryPort via
+	// newClipsQueryPortAdapter(*assets.ClipsRepository), but here we
+	// simulate the failure modes (nil-repo bundle, partial deploy,
+	// test fixture) by leaving the field at the typed-zero.
+	h := NewHandler(Deps{Log: zap.NewNop()}, nil) // ClipsRepo == nil interface
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	g := r.Group("/api/clips")
+	h.RegisterRoutes(g) // installs ALL routes — OpsHandler.ListFolders included
+
+	// Hit GET /api/clips/youtube/folders which routes through
+	// OpsHandler.ListFolders which calls oh.repoForSource which
+	// returns nil because oh.clipsRepo == nil. With Commit E's
+	// nil-port-503 guard, the handler short-circuits to 503 at the
+	// entry-point BEFORE the repoForSource call.
+	req := httptest.NewRequest("GET", "/api/clips/youtube/folders", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code,
+		"Commit E nil-port-503 contract: a nil ClipsQueryPort (composition wiring bug) MUST return HTTP 503, not 200 (silent no-op), 500 (nil-method panic), or 400 (misclassified bad-request).")
+}
