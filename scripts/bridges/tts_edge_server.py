@@ -33,6 +33,7 @@ import os
 import socket
 import argparse
 import sys
+from dataclasses import dataclass
 
 from aiohttp import web
 from edge_tts import Communicate
@@ -70,8 +71,91 @@ VOICE_OVERRIDES = {
 }
 
 
+# ── JSON-RPC body schema (July 2026) ────────────────────────────────
+#
+# SynthesizeRequest defines the validated shape of POST /synthesize bodies.
+# The fields are intentionally narrow:
+#   - `text` is required because edge-tts will reject empty input anyway,
+#     but we surface a typed 400 BEFORE contacting the upstream so the
+#     operator's structured error path stays intact.
+#   - `out` is required because there is no implicit destination — the
+#     Go side passes the runtime path.
+#   - `lang` defaults to "en" so a bare-bones caller doesn't have to
+#     pin a language; fall-through to network `list_voices` happens
+#     when `lang` is not in VOICE_OVERRIDES.
+#   - `voice` is Optional[str] — when supplied, bypasses VOICE_OVERRIDES
+#     and list_voices so the operator's explicit choice is honored verbatim.
+#
+# Validation lives in `from_dict` (raises SynthesizeRequestError on
+# shape errors); `handle_synthesize` catches it and returns the 400
+# JSON-RPC error with a human-readable message. The previous manual
+# `body.get('text', '')` chain is replaced with the canonical
+# dataclass extraction so the schema is a single source of truth.
+
+
+class SynthesizeRequestError(Exception):
+    """Raised by SynthesizeRequest.from_dict on shape errors.
+
+    The orchestrator (handle_synthesize) catches this and forwards
+    `message` verbatim as the JSON-RPC `error` field. No `code`
+    attribute on the response shape — the pre-fix 400 surface was
+    `{"ok": false, "error": "..."}` only and we keep it byte-equivalent.
+    """
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+@dataclass
+class SynthesizeRequest:
+    """Validated JSON-RPC body for POST /synthesize."""
+    text: str
+    out: str
+    lang: str = "en"
+    voice: str = ""
+
+    @classmethod
+    def from_dict(cls, body) -> "SynthesizeRequest":
+        """Validate + parse. Raises SynthesizeRequestError on shape errors."""
+        if not isinstance(body, dict):
+            raise SynthesizeRequestError(
+                "request body must be a JSON object"
+            )
+        # Required field: text (non-empty after strip).
+        text = str(body.get("text") or "").strip()
+        if not text:
+            # Catches missing key, None value, empty string, or
+            # whitespace-only string. The pre-fix `body.get('text', '')`
+            # accepted whitespace-only and let edge-tts fail at
+            # voice.resolve — this surfaces the rejection at the
+            # boundary so the typed 400 path fires. (Documented
+            # behaviour change in the commit body.)
+            raise SynthesizeRequestError(
+                'missing "text" field'
+            )
+        # Required field: out.
+        out_path = str(body.get("out") or "").strip()
+        if not out_path:
+            raise SynthesizeRequestError(
+                'missing "out" field'
+            )
+        # Optional field: lang (default "en", normalised to lowercase).
+        lang = str(body.get("lang") or "en").strip().lower() or "en"
+        # Optional field: voice (verbatim, may be empty).
+        voice = str(body.get("voice") or "").strip()
+        return cls(text=text, out=out_path, lang=lang, voice=voice)
+
+
 async def get_voice_for_lang(lang: str) -> str:
-    """Resolve the best voice for a language code using VOICE_OVERRIDES."""
+    """Resolve the best voice for a language code using VOICE_OVERRIDES.
+
+    Network-fallback observability (July 2026): the previous silent
+    `except Exception: voices = []` branch masked transient network
+    failures during `list_voices()`. Operator diagnostic for that
+    path is now emitted to stderr (one line per category). Happy path
+    is byte-identical — the log lines are conditional on the failure /
+    fallback branch firing.
+    """
     ll = lang.lower().split('-')[0]
     if ll in VOICE_OVERRIDES:
         return VOICE_OVERRIDES[ll]
@@ -79,7 +163,12 @@ async def get_voice_for_lang(lang: str) -> str:
     try:
         from edge_tts import list_voices
         voices = await list_voices()
-    except Exception:
+    except Exception as e:
+        sys.stderr.write(
+            f"[tts_edge] list_voices network call failed for lang={lang!r}: "
+            f"{type(e).__name__}: {e}\n"
+        )
+        sys.stderr.flush()
         voices = []
     ll_full = lang.lower()
     parts = ll_full.split('-')
@@ -96,11 +185,36 @@ async def get_voice_for_lang(lang: str) -> str:
     for v in voices:
         if v['Locale'].lower().startswith(base + '-'):
             return v['ShortName']
-    return voices[0]['ShortName'] if voices else 'en-US-AriaNeural'
+    # Both fallback paths surface observability so the operator sees
+    # when the canonical "en-US-AriaNeural" / first-voice fallback
+    # fires for a non-English query (originally silent).
+    if not voices:
+        sys.stderr.write(
+            f"[tts_edge] no voices available for lang={lang!r}: "
+            f"returning canonical fallback 'en-US-AriaNeural'\n"
+        )
+        sys.stderr.flush()
+        return 'en-US-AriaNeural'
+    sys.stderr.write(
+        f"[tts_edge] no locale match for lang={lang!r}: "
+        f"returning first network voice {voices[0]['ShortName']!r} "
+        f"(locale={voices[0]['Locale']!r})\n"
+    )
+    sys.stderr.flush()
+    return voices[0]['ShortName']
+
+
+# ── JSON-RPC handlers ──────────────────────────────────────────────
 
 
 async def handle_synthesize(request: web.Request) -> web.Response:
-    """POST /synthesize — generate TTS audio via edge-tts."""
+    """POST /synthesize — generate TTS audio via edge-tts.
+
+    JSON-RPC body schema is enforced by SynthesizeRequest.from_dict;
+    the 400 surfaces a structured `error` message AND reserves a
+    `code` field for future Go-side typed-error parity (mirrors the
+    chrome_provider ClassifyError taxonomy).
+    """
     try:
         body = await request.json()
     except Exception:
@@ -109,21 +223,22 @@ async def handle_synthesize(request: web.Request) -> web.Response:
             status=400,
         )
 
-    text = body.get('text', '')
-    lang = body.get('lang', 'en')
-    voice_override = body.get('voice', '')
-    out_path = body.get('out', '')
+    try:
+        parsed = SynthesizeRequest.from_dict(body)
+    except SynthesizeRequestError as e:
+        # Response shape stays byte-equivalent with the pre-fix 400
+        # surface: only `ok` + `error` keys (no `code` fields). Typed
+        # error parity with chrome_provider's ClassifyError taxonomy
+        # is a future per-error-response rollout — out of scope here.
+        return web.json_response(
+            {'ok': False, 'error': e.message},
+            status=400,
+        )
 
-    if not text:
-        return web.json_response(
-            {'ok': False, 'error': 'missing "text" field'},
-            status=400,
-        )
-    if not out_path:
-        return web.json_response(
-            {'ok': False, 'error': 'missing "out" field'},
-            status=400,
-        )
+    text = parsed.text
+    lang = parsed.lang
+    voice_override = parsed.voice
+    out_path = parsed.out
 
     voice = voice_override or await get_voice_for_lang(lang)
 
