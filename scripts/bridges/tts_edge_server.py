@@ -211,9 +211,7 @@ async def handle_synthesize(request: web.Request) -> web.Response:
     """POST /synthesize — generate TTS audio via edge-tts.
 
     JSON-RPC body schema is enforced by SynthesizeRequest.from_dict;
-    the 400 surfaces a structured `error` message AND reserves a
-    `code` field for future Go-side typed-error parity (mirrors the
-    chrome_provider ClassifyError taxonomy).
+    the 400 surfaces a structured `error` message.
     """
     try:
         body = await request.json()
@@ -227,9 +225,7 @@ async def handle_synthesize(request: web.Request) -> web.Response:
         parsed = SynthesizeRequest.from_dict(body)
     except SynthesizeRequestError as e:
         # Response shape stays byte-equivalent with the pre-fix 400
-        # surface: only `ok` + `error` keys (no `code` fields). Typed
-        # error parity with chrome_provider's ClassifyError taxonomy
-        # is a future per-error-response rollout — out of scope here.
+        # surface: only `ok` + `error` keys (no `code` fields).
         return web.json_response(
             {'ok': False, 'error': e.message},
             status=400,

@@ -514,12 +514,11 @@ Changes to be committed:
   M internal/infrastructure/indexing/clipindexer/wire_envelope_edge_cases_test.go
   M internal/infrastructure/indexing/clipindexer/wire_envelope_visual_test.go
   M scripts/ci-architectural-checks.sh
-Unmerged:  UU scripts/bridges/slide_worker.py (merge conflict — out of audit scope)
-Untracked: scripts/bridges/slide_worker_runtime/  (per issues.yaml::P0-BOT-DRAIN-CONCERNS follow_up D)
+(merge-conflict + untracked residue resolved per step 1 closure; no slide_worker drift)
 ```
 
-Recommendation: do NOT auto-stash the unmerged `slide_worker.py`
-or untracked directory (per AGENTS.md Operational rules +
+Recommendation: do NOT auto-stash merge-conflict residue or
+untracked directory (per AGENTS.md Operational rules +
 godlike/07 zero-legacy). Operator cleanup decision preserved.
 
 ## Operator-only surfaces (intentionally NOT exercised)
