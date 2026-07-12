@@ -84,6 +84,35 @@ func newFakeQdrantServer(colls []string, aliasTarget string) *fakeQdrantServer {
 		_ = json.NewEncoder(w).Encode(out)
 	})
 
+	// GET /aliases → canonical envelope (PR-ALIAS-RESOLVE-FIX 2026-07-04).
+	// Production code in transport/client_aliases.go::GetAliasTarget now
+	// calls the GLOBAL /aliases endpoint, not the per-collection
+	// /collections/{alias}/aliases. Without this handler, the mock
+	// returns 404 and the active collection leaks into the eligible
+	// list, shifting the keep-2 floor by one (3 dropped instead of 2,
+	// 2 dropped instead of 1).
+	mux.HandleFunc("/aliases", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		f.aliasQueries = append(f.aliasQueries, "media_assets_current")
+		out := struct {
+			Result struct {
+				Aliases []struct {
+					AliasName      string `json:"alias_name"`
+					CollectionName string `json:"collection_name"`
+				} `json:"aliases"`
+			} `json:"result"`
+		}{}
+		out.Result.Aliases = append(out.Result.Aliases, struct {
+			AliasName      string `json:"alias_name"`
+			CollectionName string `json:"collection_name"`
+		}{AliasName: "media_assets_current", CollectionName: f.aliasTarget})
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	})
+
 	// GET /collections/{alias}/aliases OR DELETE /collections/{name}.
 	//
 	// PR 9 review fix (IMPORTANT): the previous handler dispatched on
@@ -284,5 +313,69 @@ func TestCleanupWithConfig_KeepLastN2_KeepsOneNewestColl(t *testing.T) {
 	wantDropped := prefix + "__ts_20260101_aaa"
 	if len(res.DroppedNames) != 1 || res.DroppedNames[0] != wantDropped {
 		t.Fatalf("DroppedNames = %v, want [%q] (post-fix: oldest eligible is dropped; pre-fix the newest would be dropped)", res.DroppedNames, wantDropped)
+	}
+}
+
+// TestCleanupWithConfig_FailClosed_OnAliasResolutionError verifies the
+// fail-closed contract: when /aliases returns a non-ErrCollectionNotFound
+// error (e.g. 502 Bad Gateway), CleanupWithConfig returns the wrapped
+// error and drops NOTHING. This protects the active production collection
+// from being dropped when qdrant is transiently unavailable. Mirrors
+// InspectRuntime's fail-closed pattern at collection_prepare.go:20-25.
+func TestCleanupWithConfig_FailClosed_OnAliasResolutionError(t *testing.T) {
+	schema := qdrantSchema.DefaultV3Schema()
+	prefix := schema.CanonicalName()
+	activeName := prefix + "__ts_20260601_active"
+	colls := []string{
+		activeName,                   // active alias target
+		prefix + "__ts_20260101_aaa", // eligible
+		prefix + "__ts_20260201_bbb", // eligible
+	}
+
+	// Minimal mock: 200 on /collections, 502 on /aliases (transient),
+	// 500 on /collections/{name} DELETE (so we can assert it was
+	// never reached — the fail-closed path must abort before the loop).
+	mux := http.NewServeMux()
+	var deleteCalls []string
+	mux.HandleFunc("/collections", func(w http.ResponseWriter, r *http.Request) {
+		out := struct {
+			Result struct {
+				Collections []struct {
+					Name string `json:"name"`
+				} `json:"collections"`
+			} `json:"result"`
+		}{}
+		for _, c := range colls {
+			out.Result.Collections = append(out.Result.Collections, struct {
+				Name string `json:"name"`
+			}{Name: c})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	})
+	mux.HandleFunc("/aliases", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, `{"status":{"error":"bad gateway"}}`)
+	})
+	mux.HandleFunc("/collections/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleteCalls = append(deleteCalls, strings.TrimPrefix(r.URL.Path, "/collections/"))
+		}
+		http.Error(w, "fail-closed path must abort before DELETE", http.StatusInternalServerError)
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	cm := NewCollectionManager(transport.NewClient(&qdrantSchema.Config{BaseURL: ts.URL, Timeout: 5}, zap.NewNop()), schema, zap.NewNop())
+	_, err := cm.CleanupWithConfig(context.Background(), RetentionConfig{RetentionDays: 1, KeepLastN: 3})
+
+	if err == nil {
+		t.Fatalf("CleanupWithConfig MUST return error on transient alias-resolution failure (fail-closed)")
+	}
+	if !strings.Contains(err.Error(), "resolve active target") {
+		t.Errorf("error wrapping must preserve the 'resolve active target' diagnostic prefix; got %q", err.Error())
+	}
+	if len(deleteCalls) != 0 {
+		t.Errorf("DELETE was called %d times on fail-closed path; want 0; deleteCalls=%v", len(deleteCalls), deleteCalls)
 	}
 }

@@ -2,6 +2,7 @@ package collections
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/qdrantdr"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
 
 // ── Retention ──────────────────────────────────────────────────────────
@@ -60,7 +62,28 @@ func (cm *CollectionManager) CleanupWithConfig(ctx context.Context, cfg Retentio
 	if err != nil {
 		return nil, fmt.Errorf("list collections: %w", err)
 	}
-	activeTarget, _ := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	// Fail-closed resolution of the active alias. The only acceptable
+	// non-success is `*transport.ErrCollectionNotFound` (the alias is
+	// genuinely unwritten — expected on fresh bootstrap; the sweep
+	// proceeds with activeTarget == ""). Any other error (5xx, timeout,
+	// malformed body, OOM-empty response) means the active collection
+	// is alive in qdrant but invisible to us, and proceeding would
+	// risk dropping the production write target. AGENTS.md mandate:
+	// "Fail closed with typed errors. Never represent an unavailable
+	// backend as a successful no-op." Mirrors InspectRuntime at
+	// collection_prepare.go:20-25.
+	activeTarget, err := cm.client.GetAliasTarget(ctx, cm.schema.RuntimeAlias)
+	if err != nil {
+		var notFound *transport.ErrCollectionNotFound
+		if errors.As(err, &notFound) {
+			cm.log.Warn("retention sweep: alias unwritten, treating active target as empty",
+				zap.String("alias", cm.schema.RuntimeAlias))
+		} else {
+			cm.log.Error("retention sweep: failed to resolve active alias (failing closed to prevent data loss)",
+				zap.Error(err))
+			return nil, fmt.Errorf("resolve active target: %w", err)
+		}
+	}
 	prefix := cm.schema.CanonicalName()
 
 	// Eligible: matching prefix + NOT active.
