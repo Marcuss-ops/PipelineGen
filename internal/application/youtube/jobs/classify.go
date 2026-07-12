@@ -30,9 +30,9 @@ package jobs
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // ErrExtractionTerminal is the sentinel for non-retryable extraction
@@ -67,6 +67,54 @@ func (e *PartialSuccessError) Error() string {
 }
 
 func (e *PartialSuccessError) Unwrap() error { return e.Err }
+
+// classifyItemError returns true if the youtube extractor's per-item
+// error string matches a known TRANSIENT marker. The lookup uses
+// strings.Contains (legacy substring pattern) because item.Error is a
+// raw string field populated by the extractor at item-completion
+// time; pre-FASE-6 this lived in pkg/retry.IsTransientString + the
+// canonical transientSubstrings catalog. Per FASE 6 Cut 6.1 the
+// substring classifier is REMOVED from pkg/retry (see
+// pkg/retry/transient.go); any product-internal substring matching
+// MUST be inlined at the call site. This is the youtube-extractor-
+// specific allowlist.
+//
+// Marker taxonomy (extractor-pipeline observable; matches the
+// youtube inner-download classifier patterns ytdlp + curl surface):
+//
+//   - "rate limit"           (HTTP 429 — retry-after may apply)
+//   - "503"/"504"/"5xx"      (server transient)
+//   - "timeout"             (network timeout)
+//   - "eof"                 (network EOF)
+//   - "connection refused"  (network fail)
+//
+// godlike/07 no-fake-availability: missing-mark-down-stream cases
+// (e.g. "download failed: file deleted" — terminal because the
+// file is gone) intentionally do NOT match → terminal classification,
+// the caller observes the missing-item and re-queues the entire
+// extract job instead of retrying.
+//
+// Forward-pointer Cut 6.1.F: a future 'youtube extractor must emit
+// typed errors' cut will replace this substring-matcher with a
+// typed classifier registered at init() (mirrors the Qdrant + SQLite
+// distributed registries under internal/infrastructure/).
+func classifyItemError(itemError string) bool {
+	s := strings.ToLower(itemError)
+	for _, marker := range []string{
+		"rate limit",
+		"5xx",
+		"503",
+		"504",
+		"timeout",
+		"eof",
+		"connection refused",
+	} {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	return false
+}
 
 // ClassifyExtractionResult returns nil for full success, *PartialSuccessError
 // for at-least-one Processed + at-least-one Failed, ErrExtractionRetryable
@@ -116,7 +164,7 @@ func ClassifyExtractionResult(resp *youtubetypes.ExtractResponse) error {
 		if item.Status != "failed" || item.Error == "" {
 			continue
 		}
-		if retry.IsTransientString(item.Error) {
+		if classifyItemError(item.Error) {
 			hasRetryable = true
 		}
 	}

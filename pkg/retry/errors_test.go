@@ -44,53 +44,69 @@ func TestClassify_NilReturnsUnknownFalse(t *testing.T) {
 }
 
 func TestClassify_TransientNetwork(t *testing.T) {
-	cat, retryable := Classify(errors.New("connection refused"))
+	// FASE 6 Cut 6.1.D migration: production IsTransient became pure
+	// typed-probe; Classify gates its retryable category routing on
+	// IsTransient. Raw SDK strings no longer reach Classify's LockBusy/
+	// Timeout/Network shaper unless wrapped in a typed envelope. The
+	// canonical production contract (godlike/06 SSOT) is that callers
+	// WrapTransient at the SDK boundary so the typed envelope reaches
+	// Classify. The test below mirrors the production boundary.
+	cat, retryable := Classify(&TransientInfrastructureError{Err: errors.New("connection refused")})
 	if cat != ErrNetwork || !retryable {
-		t.Errorf("Classify(connection refused) = (%q, %v); want (%q, true)", cat, retryable, ErrNetwork)
+		t.Errorf("Classify(*TE{connection refused}) = (%q, %v); want (%q, true)", cat, retryable, ErrNetwork)
 	}
 }
 
 func TestClassify_TransientRateLimit(t *testing.T) {
 	// 429 / 503 / 504 / rate-limit / quota-exceeded are all in the
 	// transient network bucket per IsTransient substring taxonomy.
-	cat, retryable := Classify(errors.New("HTTP 503 service unavailable"))
+	// Wrapped in TE so Classify's IsTransient-gated routing sees
+	// retryable=true and routes to the Network shaper.
+	cat, retryable := Classify(&TransientInfrastructureError{Err: errors.New("HTTP 503 service unavailable")})
 	if cat != ErrNetwork || !retryable {
-		t.Errorf("Classify(HTTP 503) = (%q, %v); want (%q, true)", cat, retryable, ErrNetwork)
+		t.Errorf("Classify(*TE{HTTP 503}) = (%q, %v); want (%q, true)", cat, retryable, ErrNetwork)
 	}
 }
 
 func TestClassify_TransientTimeout(t *testing.T) {
-	cat, retryable := Classify(errors.New("i/o timeout"))
+	cat, retryable := Classify(&TransientInfrastructureError{Err: errors.New("i/o timeout")})
 	if cat != ErrTimeout || !retryable {
-		t.Errorf("Classify(i/o timeout) = (%q, %v); want (%q, true)", cat, retryable, ErrTimeout)
+		t.Errorf("Classify(*TE{i/o timeout}) = (%q, %v); want (%q, true)", cat, retryable, ErrTimeout)
 	}
 }
 
 func TestClassify_TransientContextDeadline(t *testing.T) {
-	// "context deadline exceeded" is NOT in pkg/retry's canonical
-	// transientSubstrings taxonomy (which is timeout/429/503/etc. —
-	// the lowercase "deadline" is not its own substring). It therefore
-	// classifies as ErrUnknown false (NOT retryable) — per godlike/07
-	// honest-limitation: unknown shapes MUST NOT be retried by Classify
-	// alone; the caller decides via its own IsRetryable predicate.
-	cat, retryable := Classify(errors.New("context deadline exceeded"))
-	if cat != ErrUnknown || retryable {
-		t.Errorf("Classify(context deadline exceeded) = (%q, %v); want (%q, false) — deadline is NOT a transient substring (forward-pointer to future taxonomy extension)",
-			cat, retryable, ErrUnknown)
-	}
-	// Companion check: i/o timeout IS in the canonical taxonomy.
-	cat, retryable = Classify(errors.New("i/o timeout"))
+	// "context deadline exceeded" — wraps in TE so Classify's
+	// IsTransient-gated routing sees retryable=true. The pre-FASE-6
+	// substring match classified this as ErrUnknown (no "deadline"
+	// substring); post-Cut, the typed envelope routes to ErrTimeout
+	// (because Classify reads .Error() and substring-matches "timeout"
+	// after the typed gate passes — see errors.go::Classify).
+	//
+	// godlike/07 honest-limitation (FASE 6 Cut 6.1.D): this test is
+	// now asserting the TYPED-ENVELOPE-PATH behaviour of Classify, not
+	// the pre-FASE-6 raw-string behaviour. Production callers must
+	// WrapTransient at the SDK boundary so Classify's timeout-routing
+	// sees retryable=true.
+	cat, retryable := Classify(&TransientInfrastructureError{Err: errors.New("context deadline exceeded")})
 	if cat != ErrTimeout || !retryable {
-		t.Errorf("Classify(i/o timeout) = (%q, %v); want (%q, true)", cat, retryable, ErrTimeout)
+		t.Errorf("Classify(*TE{context deadline exceeded}) = (%q, %v); want (%q, true) — typed envelope must reach Classify's timeout shaper",
+			cat, retryable, ErrTimeout)
+	}
+	// Companion check: i/o timeout via typed envelope routes to ErrTimeout.
+	cat, retryable = Classify(&TransientInfrastructureError{Err: errors.New("i/o timeout")})
+	if cat != ErrTimeout || !retryable {
+		t.Errorf("Classify(*TE{i/o timeout}) = (%q, %v); want (%q, true)", cat, retryable, ErrTimeout)
 	}
 }
 
 func TestClassify_TransientLockBusy(t *testing.T) {
 	// SQLite "database is locked" — must match ErrLockBusy, NOT
 	// ErrNetwork (locks-first matcher prevents the mis-class).
-	cat, retryable := Classify(errors.New("database is locked"))
+	// Wrapped in TE so Classify's IsTransient-gated routing passes.
+	cat, retryable := Classify(&TransientInfrastructureError{Err: errors.New("database is locked")})
 	if cat != ErrLockBusy || !retryable {
-		t.Errorf("Classify(database is locked) = (%q, %v); want (%q, true)", cat, retryable, ErrLockBusy)
+		t.Errorf("Classify(*TE{database is locked}) = (%q, %v); want (%q, true)", cat, retryable, ErrLockBusy)
 	}
 }
 
@@ -141,13 +157,22 @@ func TestClassify_TypedTransientPathTakesPriority(t *testing.T) {
 }
 
 func TestRetryable_MatchesBinaryFromClassify(t *testing.T) {
+	// FASE 6 Cut 6.1.D migration: production IsTransient became pure
+	// typed-probe; Classify gates its IsTransient-gated category
+	// routing on it. Raw SDK strings no longer reach Classify's
+	// retryable category routing unless wrapped in a typed envelope.
+	// The retryable=true samples are wrapped in TE; the retryable=false
+	// samples stay raw (the domain shaper still substring-matches
+	// validation/missing-handler/raw string shapes per godlike/07
+	// no-fake-availability, so the conservative no-fake path is
+	// preserved at the test boundary).
 	samples := []struct {
 		err    error
 		expect bool
 	}{
-		{errors.New("connection refused"), true},
-		{errors.New("timeout"), true},
-		{errors.New("database is locked"), true},
+		{&TransientInfrastructureError{Err: errors.New("connection refused")}, true},
+		{&TransientInfrastructureError{Err: errors.New("timeout")}, true},
+		{&TransientInfrastructureError{Err: errors.New("database is locked")}, true},
 		{terminalValidationErr, false},
 		{errors.New("random nonsense shape"), false},
 		{nil, false},
@@ -162,12 +187,20 @@ func TestRetryable_MatchesBinaryFromClassify(t *testing.T) {
 // ── 4 retry-loop scenario tests ─────────────────────────────────────────────
 
 // (a) ctx-cancel < 1s: the retry loop's backoff sleep is interruptible
+//
+// FASE 6 Cut 6.1.D migration: production IsTransient became pure
+// typed-probe; raw SDK strings no longer match. The walk closure
+// below returns a typed *TransientInfrastructureError envelope so the
+// IsTransient gate sees retryable=true and Do retries until ctx
+// cancellation. This mirrors the canonical production contract
+// (godlike/06 SSOT): callers WrapTransient at the SDK boundary so
+// the typed envelope reaches the retry loop.
 // via `select { case <-time.After(sleep): case <-ctx.Done(): }`.
 // MaxBackoff=5s, ctx timeout=200ms → loop must exit within ~100ms-300ms,
 // NOT block on the 5s sleep.
 func TestRetry_ContextCancelFast(t *testing.T) {
 	walk := func() error {
-		return errors.New("transient: timeout")
+		return &TransientInfrastructureError{Err: errors.New("transient: timeout")}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -197,12 +230,17 @@ func TestRetry_ContextCancelFast(t *testing.T) {
 // (b) transient retry-success: a transient failure is retried until
 // success or MaxAttempts; the count of fn invocations must match the
 // declared attempt count.
+//
+// FASE 6 Cut 6.1.D migration: production IsTransient became pure
+// typed-probe. The walk closure below returns a typed envelope so
+// IsTransient sees retryable=true. Mirrors the canonical SDK
+// boundary contract.
 func TestRetry_TransientRetrySuccess(t *testing.T) {
 	var calls int
 	walk := func() error {
 		calls++
 		if calls < 2 {
-			return errors.New("transient: timeout")
+			return &TransientInfrastructureError{Err: errors.New("transient: timeout")}
 		}
 		return nil
 	}
@@ -263,8 +301,12 @@ func TestRetry_PermanentBail(t *testing.T) {
 // mitigation holds if and only if Do's internal jitter sampling
 // produces independent draws (which is its only correctness
 // invariant for the desync property).
+//
+// FASE 6 Cut 6.1.D migration: production IsTransient became pure
+// typed-probe. The walk closure returns a typed envelope so the
+// retry loop sees retryable=true and applies the jittered backoff.
 func TestRetry_JitterDesync(t *testing.T) {
-	walk := func() error { return errors.New("transient: connection refused") }
+	walk := func() error { return &TransientInfrastructureError{Err: errors.New("transient: connection refused")} }
 	opts := Options{
 		IsRetryable:    IsTransient,
 		InitialBackoff: 50 * time.Millisecond,

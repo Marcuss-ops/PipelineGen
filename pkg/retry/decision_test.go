@@ -161,10 +161,20 @@ func TestDecision_FirstMatchWins(t *testing.T) {
 	}
 }
 
-func TestDecision_FinalTrueEmptyClass_Panics(t *testing.T) {
+func TestDecision_FinalTrueEmptyClass_LogsAndSkips(t *testing.T) {
 	t.Cleanup(ResetClassifiersForTest)
-	// godlike/07 fail-closed: classifier emits final=true with empty
-	// Class → panic in the walker.
+	// FASE 6 Cut 6.1 review feedback (July 2026): a misconfigured
+	// Classifier that emits final=true with empty Class MUST NOT
+	// crash the production request path. The walker now logs+skips
+	// the buggy classifier (godlike/07 fail-closed, NOT crash-closed)
+	// and falls through to the typed-probe fallback. This test pins
+	// the new contract.
+	//
+	// Pre-Cut 6.1.x: this test was named *_Panics with a recover()
+	// assertion. The original behaviour (panic) crashed production
+	// on buggy classifier registration. The Cut 6.1 change is
+	// operational-only — same fail-closed semantics, but reachable
+	// from production servers without restarting the process.
 	RegisterClassifier(func(err error) (RetryDecision, bool) {
 		return RetryDecision{
 			// Class intentionally empty.
@@ -173,32 +183,53 @@ func TestDecision_FinalTrueEmptyClass_Panics(t *testing.T) {
 		}, true
 	})
 
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatalf("Decision: want panic on empty Class; got no panic")
-		}
-	}()
-	Decision(errors.New("empty-class test"))
+	d, ok := Decision(errors.New("empty-class test"))
+	// Walker MUST skip the buggy classifier and fall through to the
+	// typed-probe fallback. err doesn't implement RetryableError and
+	// isn't a *TransientInfrastructureError; the walker returns
+	// (zero, false) — fail-closed, NOT retryable by default.
+	if ok {
+		t.Fatalf("Decision: want ok=false after skipping buggy classifier + fail-closed typed-probe; got ok=true, d=%+v", d)
+	}
+	if d != (RetryDecision{}) {
+		t.Fatalf("Decision: want zero-value (fall-through after skip); got %+v", d)
+	}
 }
 
-func TestDecision_FinalTrueEmptySafeMessage_Panics(t *testing.T) {
+func TestDecision_FinalTrueEmptySafeMessage_LogsAndSkips(t *testing.T) {
 	t.Cleanup(ResetClassifiersForTest)
+	// FASE 6 Cut 6.1 review feedback (July 2026): a misconfigured
+	// Classifier that emits final=true with empty SafeMessage MUST
+	// NOT crash the production request path. Same operational
+	// rationale as TestDecision_FinalTrueEmptyClass_LogsAndSkips.
+	//
+	// Register TWO classifiers: the first one (buggy, no SafeMessage)
+	// SHOULD be skipped; the second one (valid, populated) is the
+	// canonical first-match-wins walker hit. The test asserts the
+	// walker picks up the second non-buggy classifier — walker is
+	// skipping on SafeMessage-and-trying-next, not skipping-on-
+	// SafeMessage-and-falling-through-silently.
+	firstCalled := false
 	RegisterClassifier(func(err error) (RetryDecision, bool) {
+		firstCalled = true
 		return RetryDecision{
 			Class:     ErrNetwork,
 			Retryable: true,
 			// SafeMessage intentionally empty.
 		}, true
 	})
+	RegisterClassifier(alwaysRetryClassifier())
 
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatalf("Decision: want panic on empty SafeMessage; got no panic")
-		}
-	}()
-	Decision(errors.New("empty-safemessage test"))
+	d, ok := Decision(errors.New("empty-safemessage test"))
+	if !firstCalled {
+		t.Fatalf("Decision: want first (buggy) classifier to be evaluated; was not called")
+	}
+	if !ok {
+		t.Fatalf("Decision: want ok=true from SECOND (valid) classifier; got false (walker did not skip-and-continue)")
+	}
+	if d.SafeMessage != "always-classify-test" {
+		t.Fatalf("Decision: want second classifier's SafeMessage; got %q (walker skipped both classifiers instead of falling through)", d.SafeMessage)
+	}
 }
 
 // ── (b) norm() fail-closed IsRetryable==nil ─────────────────────────────────
