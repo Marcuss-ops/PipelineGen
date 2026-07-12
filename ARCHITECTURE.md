@@ -97,6 +97,8 @@ Local files are staging/cache data. Google Drive is a delivery location. Applica
 
 For stock timestamp extraction, one parent timestamp maps to one Drive folder containing all child clips and one aggregated metadata file.
 
+Re-delivery on a PUBLISHED-state `artifact_stages` row is a typed no-op (`artifact.ErrTerminalStateRejection`) instead of silently overwriting `published_location` and `published_at`: `(*artifactstages.Repository).MarkPublished` gates on `state NOT IN ('PUBLISHED','SUCCEEDED','FAILED_PERMANENT')`, so a duplicate Drive upload is structurally impossible. Dashboards that counted publish-ops by overwrite volume (or by `MarkPublished` UPDATE RowsAffected) under-count — the per-row outcome is now `affected = 0`.
+
 ## Configuration and ownership
 
 - `architecture/policy.yaml` contains machine-enforced structural policy.
