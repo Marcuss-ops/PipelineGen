@@ -187,8 +187,24 @@ func TestEnqueueAndIndex_UsesOutboxKeyShape(t *testing.T) {
 	if strings.HasPrefix(got, "index:") {
 		t.Errorf("event_key must NOT use legacy 5-segment shape (prefix 'index:'); got %q", got)
 	}
-	if strings.Count(got, ":") != 3 {
-		t.Errorf("event_key must be 4-segment (eventType:provider:clipID:sourceVersion); got %q (colons=%d)", got, strings.Count(got, ":"))
+	// Segment-count assertion: the canonical shape has 4 segments
+	// separated by 3 colons. The sourceVersion may legitimately
+	// contain ':' (e.g. the conventional "sha256:<hex>" prefix),
+	// so a plain strings.Count(got, ":") is too strict — it would
+	// count the colons INSIDE the sourceVersion. We use SplitN
+	// with n=4 to split on the FIRST 3 colons only, leaving the
+	// sourceVersion as the 4th element even if it contains ':'.
+	parts := strings.SplitN(got, ":", 4)
+	if len(parts) != 4 {
+		t.Errorf("event_key must be 4-segment (eventType:provider:clipID:sourceVersion); got %q (split into %d parts)", got, len(parts))
+	}
+	// Belt-and-suspenders: the 4th element must be the FULL
+	// sourceVersion (the PR 5 QDRANT-full-content-hash gate).
+	// This pins the dedup invariant: two hashes sharing their
+	// shortHashPrefix still produce distinct keys because the
+	// unique suffix of each hash lives in this segment.
+	if len(parts) == 4 && parts[3] != contentHash {
+		t.Errorf("event_key 4th segment must be the FULL sourceVersion (PR 5 gate); want %q got %q", contentHash, parts[3])
 	}
 }
 
