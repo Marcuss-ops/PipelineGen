@@ -44,7 +44,7 @@
   rationale: |
     Carry-forward list of pre-existing build/test failures cataloged
     during the slide_worker refactor wave (commits 1-9, July 2026).
-    All 10 entries reproduce on PURE main (zero coupling to wave
+    Original 10 entries (9 remaining open) reproduce on PURE main (zero coupling to wave
     commits 1-9) and were individually diagnosed + ratified by
     Commit 7b's diagnostic (usecase TestMissingTranslation_FallbackWithExplicitWarning +
     TestCacheFingerprint_P1A_PerFieldMutationSensitivity/segment_topics) +
@@ -84,7 +84,7 @@
     detail (in architecture/issues.yaml::PRE-EXISTING-{1..10}).
   cross_refs:
     issues_catalog: "architecture/issues.yaml::PRE-EXISTING-{1..10}"
-    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate", "commit 9b catalog-extension", "commit 9c catalog-extension"]
+    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate", "commit 9b catalog-extension", "commit 9c catalog-extension", "commit 9d closeout"]
     ci_gate: "scripts/ci-architectural-checks.sh::Check 63 (zero-baseline stale-entry detection)"
   follow_up_tickets:
     - id: PRE-EXISTING-1-WAL-PRAGMAS
@@ -105,8 +105,6 @@
       note: internal/application/scripts/usecase/generate_cache_fingerprint_p1a_test.go::TestCacheFingerprint_P1A_PerFieldMutationSensitivity
     - id: PRE-EXISTING-9-ARCHCHECK-SNAPSHOT
       note: cmd/archcheck::TestSnapshot
-    - id: PRE-EXISTING-10-FORMAT-DRIFT
-      note: "verify-format red on 11 files (6 original artlist + 4 drift additions from Commit 9b extension [evaluate_run_state_test.go + pipeline_state_test.go + pkg/idempotency/keys.go + pkg/idempotency/keys_test.go] + 1 post-9b drift from Commit 9c extension [internal/infrastructure/database/sqlite/outbox/repository_test.go]; full file list in PRE-EXISTING-10-FORMAT-DRIFT owner_capability)"
 
 - id: WAVE-20-QDRANT-005D-HYGIENE
   status: in_progress

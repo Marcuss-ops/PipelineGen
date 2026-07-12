@@ -214,10 +214,10 @@ func TestWireArtlist_FailClosed_AllMandatoryGates(t *testing.T) {
 				h.cfg,
 				h.bundle,
 				h.dispatcher,
-				nil,            // reader: nil-tolerant per production happy-path
-				nil,            // lifecycle: nil-tolerant
-				nil,            // metaWriter: nil-tolerant
-				nil,            // destResolver: nil-tolerant
+				nil, // reader: nil-tolerant per production happy-path
+				nil, // lifecycle: nil-tolerant
+				nil, // metaWriter: nil-tolerant
+				nil, // destResolver: nil-tolerant
 			)
 			require.Error(t, err,
 				"Fase 1: per-dep nil MUST fail-closed at composition; gate-ordering ensures the failing dep's Kind+Field surface verbatim")

@@ -100,8 +100,8 @@ type SystemProber interface {
 // informational fields, plus the legacy assetStore term-search for
 // the term-keyed surface. NO aggregated top-level OK field — godlike/07.
 type DiagnosticsService struct {
-	svc           *Service
-	systemProber  SystemProber
+	svc          *Service
+	systemProber SystemProber
 }
 
 // NewDiagnosticsService crea un nuovo servizio diagnostico.

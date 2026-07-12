@@ -23,7 +23,7 @@
 //   - Commit 2: 2 capability probes (ffmpeg_binary + drive_folder)
 //     replaced with real implementations.
 //   - Commit 3: 4 infra probes (sqlite_writable + outbox_dispatcher
-//     + qdrant_reachable + embedding_provider) replaced with real
+//   - qdrant_reachable + embedding_provider) replaced with real
 //     implementations.
 //   - Commit 4: LatestRun + LastError + CountBySource('artlist')
 //     wired via DiagnosticsService.Diagnostics

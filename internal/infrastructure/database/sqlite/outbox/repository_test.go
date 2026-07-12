@@ -54,10 +54,10 @@ import (
 // the event_key under test.
 func TestOutboxKey_DistinguishesHashesSamePrefix(t *testing.T) {
 	const (
-		assetID = "asset-event-key"
+		assetID  = "asset-event-key"
 		provider = "artlist"
-		hashA   = "abcdef12345611111111111111111111111111111111111111"
-		hashB   = "abcdef12345622222222222222222222222222222222222222"
+		hashA    = "abcdef12345611111111111111111111111111111111111111"
+		hashB    = "abcdef12345622222222222222222222222222222222222222"
 	)
 
 	prefixA := shortHashPrefix(hashA)

@@ -43,10 +43,10 @@ func TestAssetKey_Deterministic(t *testing.T) {
 // refactor that drops one input would be caught here.
 func TestAssetKey_DifferentInputsDifferentKeys(t *testing.T) {
 	a, _ := AssetKey("artlist", "abc", "v1", "deadbeef")
-	b, _ := AssetKey("youtube", "abc", "v1", "deadbeef")  // different provider
-	c, _ := AssetKey("artlist", "xyz", "v1", "deadbeef")  // different clipID
-	d, _ := AssetKey("artlist", "abc", "v2", "deadbeef")  // different sourceVersion
-	e, _ := AssetKey("artlist", "abc", "v1", "cafebabe")  // different sha256
+	b, _ := AssetKey("youtube", "abc", "v1", "deadbeef") // different provider
+	c, _ := AssetKey("artlist", "xyz", "v1", "deadbeef") // different clipID
+	d, _ := AssetKey("artlist", "abc", "v2", "deadbeef") // different sourceVersion
+	e, _ := AssetKey("artlist", "abc", "v1", "cafebabe") // different sha256
 	assert.NotEqual(t, a, b, "different provider → different key")
 	assert.NotEqual(t, a, c, "different clip_id → different key")
 	assert.NotEqual(t, a, d, "different source_version → different key")
@@ -350,10 +350,10 @@ func TestAssetKey_ColonInProvider_Rejected(t *testing.T) {
 // source_versions are conventionally "sha256:<hex>".
 func TestAssetKey_ColonInDataFields_Allowed(t *testing.T) {
 	cases := []struct {
-		name           string
-		clipID         string
-		sourceVersion  string
-		sha256File     string
+		name          string
+		clipID        string
+		sourceVersion string
+		sha256File    string
 	}{
 		{"planner-prefix-clipID", "planner:abc123:0", "v1", "deadbeef"},
 		{"sha256-prefix-sourceVersion", "abc", "sha256:abc123", "deadbeef"},
