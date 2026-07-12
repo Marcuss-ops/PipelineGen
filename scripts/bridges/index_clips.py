@@ -132,58 +132,47 @@ def compute_embedding(text):
     embedding_cache_text[text] = emb
     return emb
 
-def process_db(db_path):
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+def _iter_clips_needing_index(conn, clip_id: str = "") -> list:
+    """Return rows from `media_assets` that need search-text / embedding indexing.
+
+    Two modes:
+      * `clip_id` provided: select that single clip (re-indexing a specific
+        clip via the CLI's `--clip-id` flag).
+      * `clip_id` empty: select every clip where `$.search_text` is NULL
+        OR `embedding_json` is NULL — the canonical "needs indexing"
+        predicate that drives full-database index sweeps.
+
+    The caller owns `conn` and remains responsible for `commit()` /
+    `close()`; this helper only stages the SELECT + fetchall.
+    """
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path, json_extract(metadata_json, '$.search_text') as existing_search_text FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.search_text') IS NULL OR embedding_json IS NULL")
-    clips = cursor.fetchall()
-    for clip in clips:
-        clip_id = clip["id"]
-        name = clip["name"] or ""
-        local_path = clip["local_path"] or ""
-        existing_search_text = clip["existing_search_text"] or ""
-        tags_str = clip["tags"] or "[]"
-        try:
-            tags = json.loads(tags_str)
-            if not isinstance(tags, list):
-                tags = []
-        except (json.JSONDecodeError, TypeError):
-            tags = []
-        
-        # Get description from associated .txt file
-        txt_desc = get_txt_content(local_path, name)
-        
-        # Use existing search_text if available (Go-side generated), otherwise generate new one
-        if existing_search_text:
-            search_text = existing_search_text
-            print(f"Using existing search_text for clip {clip_id}")
-        else:
-            search_parts = [name]
-            if txt_desc:
-                search_parts.append(txt_desc)
-            search_parts.extend(tags)
-            search_text = generate_search_text(search_parts)
-            print(f"Generated new search_text for clip {clip_id}")
-        
-        embedding = compute_embedding(normalize_text(search_text))
-        cursor.execute("UPDATE media_assets SET metadata_json = json_set(COALESCE(metadata_json,'{}'), '$.search_text', ?), embedding_json = ? WHERE id = ?", (search_text, embedding, clip_id))
-        print(f"Updated {clip_id} in {db_path}")
-    conn.commit()
-    conn.close()
+    if clip_id:
+        cursor.execute(
+            "SELECT id, name, tags, "
+            "json_extract(metadata_json, '$.local_path') as local_path, "
+            "json_extract(metadata_json, '$.search_text') as existing_search_text "
+            "FROM media_assets WHERE id = ?",
+            (clip_id,),
+        )
+    else:
+        cursor.execute(
+            "SELECT id, name, tags, "
+            "json_extract(metadata_json, '$.local_path') as local_path, "
+            "json_extract(metadata_json, '$.search_text') as existing_search_text "
+            "FROM media_assets "
+            "WHERE json_extract(COALESCE(metadata_json,'{}'), '$.search_text') IS NULL "
+            "OR embedding_json IS NULL"
+        )
+    return cursor.fetchall()
+
 
 def process_clip(db_path, clip_id, clip_name="", clip_path=""):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    # Get clip info if clip_id provided
-    if clip_id:
-        cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path, json_extract(metadata_json, '$.search_text') as existing_search_text FROM media_assets WHERE id = ?", (clip_id,))
-    else:
-        cursor.execute("SELECT id, name, tags, json_extract(metadata_json, '$.local_path') as local_path, json_extract(metadata_json, '$.search_text') as existing_search_text FROM media_assets WHERE json_extract(COALESCE(metadata_json,'{}'), '$.search_text') IS NULL OR embedding_json IS NULL")
-
-    clips = cursor.fetchall()
+    # SELECT boundary consolidated in _iter_clips_needing_index.
+    clips = _iter_clips_needing_index(conn, clip_id)
     for clip in clips:
         clip_id = clip["id"]
         name = clip["name"] or ""
