@@ -459,6 +459,13 @@ def _dismiss_start_dialog(page) -> bool:
             except Exception:
                 continue
 
+        if _click_visible_start_images_tile(page):
+            _log("[_dismiss_start_dialog] DOM click on visible Images tile succeeded")
+            if _wait_for_prompt_surface(page, timeout_ms=7000):
+                return True
+            page.wait_for_timeout(1000)
+            return True
+
         for selector in [
             'button[data-view-id="insert-generated-image"]',
             'button[aria-controls="insert-generated-image"]',
@@ -503,8 +510,6 @@ def _dismiss_start_dialog(page) -> bool:
                     'button[aria-controls="insert-generated-image"]',
                     'button:has-text("Images")',
                     'button:has-text("Immagini")',
-                    'text="Images"',
-                    'text="Immagini"',
                 ]:
                     images_cards = dialog.locator(selector)
                     for idx in range(images_cards.count()):
@@ -587,6 +592,39 @@ def _wait_for_prompt_surface(page, timeout_ms: int = 15000) -> bool:
         return False
     except Exception as e:
         _log(f"[_wait_for_prompt_surface] wait failed: {e}")
+        return False
+
+
+def _click_visible_start_images_tile(page) -> bool:
+    """Best-effort DOM click on the visible Images/Immagini tile."""
+    if page is None:
+        return False
+    try:
+        return bool(page.evaluate("""() => {
+            const candidates = [...document.querySelectorAll('button')];
+            for (const el of candidates) {
+                const txt = (el.textContent || '').trim();
+                const aria = (el.getAttribute('aria-label') || '').trim();
+                const dataView = (el.getAttribute('data-view-id') || '').trim();
+                const controls = (el.getAttribute('aria-controls') || '').trim();
+                const visible = !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                if (!visible) continue;
+                if (
+                    dataView === 'insert-generated-image' ||
+                    controls === 'insert-generated-image' ||
+                    /images/i.test(txt) ||
+                    /immagini/i.test(txt) ||
+                    /images/i.test(aria) ||
+                    /immagini/i.test(aria)
+                ) {
+                    el.click();
+                    return true;
+                }
+            }
+            return false;
+        }"""))
+    except Exception as e:
+        _log(f"[_click_visible_start_images_tile] DOM click failed: {e}")
         return False
 
 
@@ -1075,6 +1113,26 @@ class ProfileWorker(threading.Thread):
                 panel_open = False
 
             if not panel_open:
+                # Code-review fix (post-amend, July 2026): the helper-only path
+                # dropped the canonical insert-generated-image click that the
+                # pre-fix Step 1 executed. On a cold Slides.new session where
+                # neither the textarea nor a generic Images tile is visible
+                # at the time Step 1 fires, _wait_for_prompt_surface retries
+                # via role-based Images/Immagini button only — but the actual
+                # Nano Banana Pro entry button exposes different attributes
+                # (button.insert-generated-image, div[role="button"]:has-text(
+                # "Nano Banana Pro"), etc.). Click the canonical button chain
+                # FIRST, then delegate the wait to _wait_for_prompt_surface.
+                try:
+                    btn = self.page.locator(
+                        'button.insert-generated-image, '
+                        '[data-view-id="insert-generated-image"], '
+                        'div[role="button"]:has-text("Nano Banana Pro"), '
+                        'button:has-text("Nano Banana Pro")'
+                    ).last
+                    btn.click(force=True, timeout=5000)
+                except Exception as ce:
+                    _log(f"[profile-{self.profile_id}][{request_id}] canonical insert-image click skipped: {ce}")
                 panel_open = _wait_for_prompt_surface(self.page, timeout_ms=15000)
                 if not panel_open:
                     raise PlaywrightTimeout("prompt surface did not become visible after selecting Images")
