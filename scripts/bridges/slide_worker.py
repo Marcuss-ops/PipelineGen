@@ -72,6 +72,7 @@ from slide_worker_runtime.diagnostics import (
     _iso8601_utc_ms, _log, _log_diag, _screenshot_on_failure, DiagnosticsSink,
 )
 from slide_worker_runtime.image_quality import _save_image_bytes, _compute_pixel_stats, PixelStats
+from slide_worker_runtime.candidates import _extract_candidates, _clear_image_library_panel, NoImageCandidateError
 
 
 MASTER_STORAGE = "data/google_slides_storage.json"
@@ -400,65 +401,6 @@ def _extract_candidates(page, max_keep: int = 8) -> list:
     natural_h, complete} dicts. Returns [] if the page is missing or
     the DOM has zero matching elements.
     """
-    if page is None:
-        return []
-    try:
-        locators = page.locator(CANDIDATE_LOCATOR_SELECTOR).all()
-        out = []
-        for img in locators[:max_keep]:
-            try:
-                src = img.get_attribute("src") or ""
-                nw = int(img.evaluate("e => e.naturalWidth") or 0)
-                nh = int(img.evaluate("e => e.naturalHeight") or 0)
-                complete = bool(img.evaluate("e => e.complete") or False)
-                out.append({
-                    "src": src,
-                    "natural_w": nw,
-                    "natural_h": nh,
-                    "complete": complete,
-                })
-            except Exception:
-                # Skip the candidate but keep going.
-                continue
-        return out
-    except Exception as e:
-        _log(f"[_extract_candidates] {e}")
-        return []
-
-
-def _clear_image_library_panel(page) -> int:
-    """P1.3 (July 2026): DOM-level removeChildren of the images library panel.
-
-    Slides.new exposes no native one-click "delete all" button for the
-    image library; we use plain JavaScript node removal via page.evaluate.
-    The function:
-
-      1. Locates every `.docs-content-library-image-generation-item` node.
-      2. Calls node.remove() on each.
-      3. Returns the number of items removed (>= 0 on success).
-      4. Applies a 200ms settle delay so the polling loop does not race
-         with the DOM mutation (the test contract "second non vede candidati
-         della prima dopo 800ms" assumes a ~200-300ms clean-window).
-
-    Returns -1 on failure (the caller should treat this as best-effort
-    cleanup; the canonical clean-context invariant will be re-established
-    by `_maybe_recycle_page` on the 20th generation if needed).
-    """
-    if page is None:
-        return -1
-    try:
-        removed = page.evaluate("""() => {
-            const items = [...document.querySelectorAll('.docs-content-library-image-generation-item')];
-            items.forEach(n => n.remove());
-            return items.length;
-        }""") or 0
-        page.wait_for_timeout(200)
-        return int(removed)
-    except Exception as e:
-        _log(f"[_clear_image_library_panel] DOM clear failed: {e}")
-        return -1
-
-
 def _click_visible_button_matching(
     page,
     text_regexes=None,
@@ -542,7 +484,7 @@ def _scan_click_once(
     """Single scan attempt; routes by use_dom_evaluate."""
     if use_dom_evaluate:
         return _scan_click_dom(
-            page, compiled, selectors, match_attrs,
+            page, compiled, selectors, match_attrs, match_attrs_logic,
             require_visible, require_enabled, do_click,
         )
     return _scan_click_locator(
@@ -582,7 +524,7 @@ def _scan_click_locator(
 
 
 def _scan_click_dom(
-    page, compiled, selectors, match_attrs, require_visible, require_enabled, do_click,
+    page, compiled, selectors, match_attrs, match_attrs_logic, require_visible, require_enabled, do_click,
 ) -> bool:
     """Raw page.evaluate scan + DOM-level click. Bypasses actionability."""
     js_pattern = "|".join(r.pattern for r in compiled)
