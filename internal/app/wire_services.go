@@ -66,7 +66,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	security.SetAllowedHosts(hosts)
 	log.Info("Configured download host whitelist", zap.Int("hosts_count", len(hosts)))
 
-	dbs, err := initDatabases(cfg, log)
+	dbs, err := initDatabases(ctx, cfg, log)
 	if err != nil {
 		cancel()
 		return nil, nil, nil, err
@@ -99,7 +99,7 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	// "CompletionPort not wired". The WireServices caller reuses this
 	// same broker instance via type-assertion for the full
 	// appjobs.Broker surface needed by the internal worker handler.
-	workerNodesRepo := workerassets.NewWorkerNodesRepository(dbs.main.DB)
+	workerNodesRepo := workerassets.NewWorkerNodesRepository(dbs.dualPool.Writer)
 
 	progressCoalesceWindow := 100 * time.Millisecond
 	if cfg.Jobs.ProgressCoalesceWindow != "" {

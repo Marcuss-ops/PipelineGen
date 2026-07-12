@@ -41,7 +41,7 @@ func buildDomainScriptServices(
 	if err != nil {
 		return fmt.Errorf("compose domains: artifact blob store: %w", err)
 	}
-	artifactRepo := artifacts.NewSQLiteRepository(dbs.main.DB)
+	artifactRepo := artifacts.NewSQLiteRepository(dbs.dualPool.Writer)
 	bundle.ArtifactService = artifacts.NewService(artifactBlobStore, artifactRepo, log)
 	log.Info("P0.1: artifact blob service wired (content-addressed staging + verify + promote)",
 		zap.String("data_dir", cfg.Storage.DataDir))

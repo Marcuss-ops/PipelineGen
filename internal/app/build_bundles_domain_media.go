@@ -121,8 +121,8 @@ func buildDomainMediaServices(
 		false,
 	)
 	clipCache := assets.NewClipCacheAdapter(repos.ClipsRepo, log)
-	clipWriter = assets.NewClipAtomicWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
-	clipMetadataWriter := assets.NewClipMetadataWriterAdapter(dbs.main.DB, outbox.EventsRepo, log)
+	clipWriter = assets.NewClipAtomicWriterAdapter(dbs.dualPool.Writer, outbox.EventsRepo, log)
+	clipMetadataWriter := assets.NewClipMetadataWriterAdapter(dbs.dualPool.Writer, outbox.EventsRepo, log)
 	ollamaBuilder := ytinfra.NewOllamaClipMetadataBuilder(
 		ai.OllamaClient,
 		buildYouTubeRuntimeConfig(cfg).OllamaMetadataModel,
@@ -205,7 +205,7 @@ func buildDomainMediaServices(
 		VideoPipeline:  videoPipelineAdapter,
 		LifecycleService: NewLifecycleFromDeps(&LifecycleDeps{
 			Registry: artifacts.NewClipsRegistry(
-				dbs.main.DB,
+				dbs.dualPool.Writer,
 				repos.Assets.Repository(),
 				repos.Assets,
 				repos.Assets.LocationRepository(),

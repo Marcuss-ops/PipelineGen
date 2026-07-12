@@ -44,16 +44,16 @@ import (
 func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*RepoBundle, error) {
 	_ = ctx
 	_ = cfg
-	assetsStore := sqassets.NewAssetStoreSQLite(dbs.main.DB, log)
+	assetsStore := sqassets.NewAssetStoreSQLite(dbs.dualPool.Writer, log)
 	assetsSvc := asset.NewService(assetsStore, log)
-	imageRepo := sqassets.NewImagesRepository(dbs.main.DB)
-	voiceoverRepo := sqassets.NewVoiceoversRepository(dbs.main.DB)
-	monitorsRepo := sqassets.NewMonitorsRepository(dbs.main.DB)
-	clipsRepo := sqassets.NewClipsRepositoryCanonical(dbs.main.DB, log, assetsSvc.Repository())
+	imageRepo := sqassets.NewImagesRepository(dbs.dualPool.Writer)
+	voiceoverRepo := sqassets.NewVoiceoversRepository(dbs.dualPool.Writer)
+	monitorsRepo := sqassets.NewMonitorsRepository(dbs.dualPool.Writer)
+	clipsRepo := sqassets.NewClipsRepositoryCanonical(dbs.dualPool.Writer, log, assetsSvc.Repository())
 	catalogRepo := catalog.NewRepository(clipsRepo, clipsRepo, clipsRepo)
-	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.main.DB)
-	sqRepo := sqassets.NewSearchQueriesRepository(dbs.main.DB)
-	var idempotencyStore middleware.IdempotencyStore = idemsqlite.NewSQLiteRepository(dbs.main.DB)
+	scriptsRepo := sqlitescripts.NewScriptRepository(dbs.dualPool.Writer)
+	sqRepo := sqassets.NewSearchQueriesRepository(dbs.dualPool.Writer)
+	var idempotencyStore middleware.IdempotencyStore = idemsqlite.NewSQLiteRepository(dbs.dualPool.Writer)
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): TextTrackRepo
 	// is the canonical Fase 2.a / Fase 4 TextTrackRepository used by
 	// the video pipeline + the AcquireService backfill CLI. It MUST
@@ -67,7 +67,7 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 	// callers consume repos.TextTrackRepo from this bundle. godlike/07
 	// fail-closed: BuildTextTrackBundle rejects nil TextTrackRepo so
 	// the test fixture MUST exercise this path.
-	textTrackRepo, err := sqassets.NewTextTrackRepository(dbs.main.DB, log)
+	textTrackRepo, err := sqassets.NewTextTrackRepository(dbs.dualPool.Writer, log)
 	if err != nil {
 		return nil, fmt.Errorf("init text track repository: %w", err)
 	}
@@ -82,9 +82,9 @@ func BuildRepoBundle(ctx context.Context, cfg *config.Config, dbs *databases, lo
 func BuildSearchBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle) (*SearchBundle, error) {
 	_ = ctx
 	_ = cfg
-	assetIndexRepo := assetindex.NewRepository(dbs.main.DB)
+	assetIndexRepo := assetindex.NewRepository(dbs.dualPool.Writer)
 	assetIndexService := assetindex.NewService(assetIndexRepo)
-	assetTreeRepo, err := sqassets.NewAssetTreeRepository(dbs.main.DB, log)
+	assetTreeRepo, err := sqassets.NewAssetTreeRepository(dbs.dualPool.Writer, log)
 	if err != nil {
 		return nil, fmt.Errorf("init asset tree repository: %w", err)
 	}
@@ -253,7 +253,7 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voic
 	}
 	booksSvc := books.NewService(
 		&books.Config{DriveFolderID: cfg.Drive.BooksFolder()},
-		dbs.main.DB, cfg.Drive.BooksFolder(), log, voiceoverExec, publisher, reader, transformer,
+		dbs.dualPool.Writer, cfg.Drive.BooksFolder(), log, voiceoverExec, publisher, reader, transformer,
 	)
 	booksSvc.SetEnabled(cfg.Books.Enabled)
 	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))

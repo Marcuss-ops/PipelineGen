@@ -39,9 +39,9 @@ import (
 // ── Asset service initialisation ────────────────────────────────────────────
 
 func initAssetServices(dbs *databases, log *zap.Logger) (*assetindex.Service, *assettree.Service, error) {
-	assetIndexRepo := assetindex.NewRepository(dbs.main.DB)
+	assetIndexRepo := assetindex.NewRepository(dbs.dualPool.Writer)
 	assetIndexService := assetindex.NewService(assetIndexRepo)
-	assetTreeRepo, err := assets.NewAssetTreeRepository(dbs.main.DB, log)
+	assetTreeRepo, err := assets.NewAssetTreeRepository(dbs.dualPool.Writer, log)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize asset tree repository: %w", err)
 	}

@@ -20,7 +20,7 @@ import (
 func InitWorkerComposition(cfg *config.Config, log *zap.Logger) (*ComposeRoot, CleanupFunc, error) {
 	ctx := context.Background()
 
-	dbs, err := initDatabases(cfg, log)
+	dbs, err := initDatabases(ctx, cfg, log)
 	if err != nil {
 		return nil, nil, fmt.Errorf("init databases: %w", err)
 	}

@@ -31,7 +31,7 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		nil, // completionTxRunner (Blocco 3.1 commit 3/3 — pre-commit-4/3 wiring forward-pointer)
 		log,
 	)
-	maintRepo := sqliteassets.NewMaintenanceRepository(dbs.main.DB, log)
+	maintRepo := sqliteassets.NewMaintenanceRepository(dbs.dualPool.Writer, log)
 	maintenanceSvc := maintenance.NewService(cfg, log,
 		search.AssetIndexService, search.AssetTreeService, deletionSvc,
 		jobs.Service, maintRepo,

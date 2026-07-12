@@ -91,14 +91,14 @@ func buildVoiceoverService(
 	}
 
 	voDir := cfg.Storage.VoiceoversPath()
-	voRepo := assets.NewVoiceoversRepository(dbs.main.DB)
+	voRepo := assets.NewVoiceoversRepository(dbs.dualPool.Writer)
 
 	// P1-2 (June 2026): persistence.Repository adapter — wraps the
 	// production *sqassets.VoiceoversRepository + *sql.DB so the
 	// voiceover.Service can thread the PR-VO-A2 atomic swap tx
 	// through a canonical port instead of holding a *sql.DB field
 	// (the previous field was removed in P1-2 commit 1).
-	voRepoAdapter := newUseCaseRepoAdapter(voRepo, dbs.main.DB)
+	voRepoAdapter := newUseCaseRepoAdapter(voRepo, dbs.dualPool.Writer)
 
 	// Voiceover registry adapter — wraps the SQLite vo repo as a
 	// lifecycle.Registry so NewLifecycleFromDeps accepts it.
@@ -335,8 +335,8 @@ func buildVoiceoverService(
 	// P0.4 Fase 4a (July 2026): wire the post-commit SQL verifier.
 	// After the tx commits, finalizeStage calls Verify to confirm both
 	// the voiceovers row and the media_assets projection are durably
-	// present. The adapter uses dbs.main.DB for post-commit SELECTs.
-	postCommitVerifier := newVoiceoverPostCommitVerifierAdapter(dbs.main.DB)
+	// present. The adapter uses dbs.dualPool.Writer for post-commit SELECTs.
+	postCommitVerifier := newVoiceoverPostCommitVerifierAdapter(dbs.dualPool.Writer)
 
 	// P0-#3 (July 2026): wire the canonical per-item voiceover use
 	// case into the legacy Service so GeneratePromo can route
