@@ -1,14 +1,26 @@
-// Package images — slide_worker_process.go (PR-CHROME-PROVIDER-SPLIT, 2026-07-04):
+// Package images — slide_worker_process.go (PR-CHROME-PROVIDER-SPLIT, 2026-07 + commit 5):
 // subprocess lifecycle for the persistent Playwright slide_worker.py worker.
 //
-// PR-CHROME-PROVIDER-SPLIT (2026-07-04, godlike/06 + AGENTS.md Pattern 5):
-// extracted from the pre-split ~260-LoC god file into a single-purpose
-// capability file in the same package. Owns the subprocess lifecycle:
+// PR-CHROME-PROVIDER-SPLIT (commit 5, July 2026): per godlike/06 SSOT,
+// slide_worker_process.go is the SINGLE canonical owner of "the
+// happy path" subprocess lifecycle (start + warmup + quit). The
+// recovery detection (isDeadWorkerError) and state reset (resetWorker)
+// are extracted to slide_worker_recovery.go so detection logic and
+// launch/quit logic can evolve independently.
+//
+// After the split this file contains ONLY:
+//
 //   - ensureStarted(ctx) — launches the Playwright worker in single-profile
 //     mode (--profiles 1 hard-coded; the legacy numProfiles constructor
 //     arg that silently overrode this is RETIRED per godlike/07 no-fake-
-//     availability, see chrome_provider.go package doc).
+//     availability, see chrome_provider.go package doc). On launch this
+//     method DELIVERS the warmup command and waits for "ready".
 //   - Stop() — graceful quit over stdin + 5s SIGKILL fallback.
+//
+// Recovery probing (isDeadWorkerError) and state reset (resetWorker)
+// delegate to slide_worker_recovery.go. Pipe invalidation and
+// dead-process detection lives there so this file can stay focused on
+// the launch/quit happy path.
 //
 // Imports needed by this file (single-purpose slice per Pattern 5): the
 // canonical ChromeImageProvider fields (p.cmd, p.stdin, p.stdout, p.started)
@@ -19,13 +31,10 @@ package images
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
-	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -34,10 +43,12 @@ import (
 // ensureStarted launches the persistent worker if not already running.
 // Must be called while p.mu is held.
 //
-// If the worker was previously started but the process has died (broken pipe,
-// EOF on stdout, etc.), this method detects the failure, resets the worker
-// state, and relaunches the subprocess. This prevents a permanently stuck
-// provider after the Python worker crashes (OOM, SIGKILL, unhandled exception).
+// If the worker was previously started but the process has died (broken
+// pipe, EOF on stdout, etc.), this method detects the failure via
+// slide_worker_recovery.go::isDeadWorkerError, calls resetWorker
+// (also slide_worker_recovery.go), and relaunches the subprocess.
+// This prevents a permanently stuck provider after the Python worker
+// crashes (OOM, SIGKILL, unhandled exception).
 func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 	if p.started {
 		err := p.healthCheck()
@@ -66,7 +77,7 @@ func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 		zap.String("script", scriptPath))
 
 	// Create the subprocess in single-profile mode (CANONICAL POLICY).
-	// PR-CHROME-PROVIDER-SPLIT (2026-07-04): `--profiles 1` is hard-coded
+	// PR-CHROME-PROVIDER-SPLIT (2026-07): `--profiles 1` is hard-coded
 	// here. The pre-split NewChromeImageProvider(scriptsDir, numProfiles,
 	// log) accepted a numProfiles arg that this call site ignored (the
 	// arg was fake-availability per godlike/07). Single-profile is the
@@ -130,16 +141,18 @@ func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 	return nil
 }
 
-// Stop gracefully shuts down the persistent worker. Sends the quit command
-// over stdin, waits up to 5 seconds for the process to exit, then kills it.
+// Stop gracefully shuts down the persistent worker. Sends the quit
+// command over stdin, waits up to 5 seconds for the process to exit,
+// then kills it.
 //
 // Idempotent: safe to call even if the worker was never started.
 //
-// PR-CHROME-PROVIDER-SPLIT (2026-07-04): the pre-split cooldowns map
-// cleanup at the end of Stop() is REMOVED. The cooldowns field no longer
-// exists on the struct (RETIRED per godlike/07 no-fake-availability,
-// see chrome_provider.go package doc). The state-clearing sequence
-// remains: started = false (so the next Generate() call re-warms the worker).
+// PR-CHROME-PROVIDER-SPLIT (2026-07, commit 5): the pre-extraction
+// cooldowns map cleanup at the end of Stop() is REMOVED. The cooldowns
+// field no longer exists on the struct (RETIRED per godlike/07 no-fake-
+// availability, see chrome_provider.go package doc). The state-clearing
+// sequence remains: started = false (so the next Generate() call
+// re-warms the worker).
 func (p *ChromeImageProvider) Stop() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -178,89 +191,4 @@ func (p *ChromeImageProvider) Stop() error {
 	p.started = false
 	p.log.Info("ChromeImageProvider: worker stopped")
 	return nil
-}
-
-// isDeadWorkerError detects errors caused by a dead worker subprocess
-// (broken pipe, EOF, process exited). These are recoverable by relaunching.
-// Must be called while p.mu is held.
-func (p *ChromeImageProvider) isDeadWorkerError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	// Broken pipe: write to a closed stdin pipe.
-	if strings.Contains(msg, "broken pipe") {
-		return true
-	}
-	// Use the underlying syscall error for EPIPE detection.
-	// (Go wraps syscall.EPIPE in os.PathError / fs.PathError for pipe writes.)
-	if p.stdin != nil {
-		// Probe: try a zero-byte write to stdin. If the pipe is dead,
-		// this returns syscall.EPIPE.
-		_, probeErr := p.stdin.Write([]byte{0})
-		if probeErr != nil && (errors.Is(probeErr, os.ErrClosed) ||
-			probeErr == syscall.EPIPE ||
-			strings.Contains(strings.ToLower(probeErr.Error()), "broken pipe") ||
-			strings.Contains(strings.ToLower(probeErr.Error()), "closed pipe") ||
-			strings.Contains(strings.ToLower(probeErr.Error()), "file already closed")) {
-			return true
-		}
-	}
-	// stdin was nil (process exited, pipe closed, or never started).
-	if strings.Contains(msg, "stdin is nil") {
-		return true
-	}
-	// EOF / unexpected stdout close from readRawResponse.
-	if strings.Contains(msg, "stdout closed unexpectedly") {
-		return true
-	}
-	// bufio.Scanner returns "token too long" on malformed output.
-	if strings.Contains(msg, "scanner") || strings.Contains(msg, "token too long") {
-		return true
-	}
-	// Process has exited (ProcessState available).
-	if p.cmd != nil && p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited() {
-		return true
-	}
-	return false
-}
-
-// resetWorker kills the old worker process (if any) and clears all state
-// so the next ensureStarted() launches a fresh subprocess.
-// Must be called while p.mu is held.
-//
-// This is the recovery seam for broken-pipe / dead-worker detection.
-// The old process is killed (best-effort), pipes are closed, and the
-// started flag is cleared.
-//
-// Returns a channel that is closed when the background Wait() completes
-// (process fully reaped). Callers that need to know the process is gone
-// can wait on the returned channel. Callers that don't care can ignore it.
-func (p *ChromeImageProvider) resetWorker() <-chan struct{} {
-	waitDone := make(chan struct{})
-
-	if p.stdin != nil {
-		_ = p.stdin.Close()
-		p.stdin = nil
-	}
-	p.stdout = nil
-
-	if p.cmd != nil && p.cmd.Process != nil {
-		// Best-effort kill — the process may already be dead.
-		_ = p.cmd.Process.Kill()
-		// Drain the Wait() to prevent zombie. Capture cmd into a local
-		// variable because we nil p.cmd on the next line — the goroutine
-		// must not dereference p.cmd after resetWorker returns.
-		cmd := p.cmd
-		go func() {
-			_ = cmd.Wait()
-			close(waitDone)
-		}()
-	} else {
-		close(waitDone)
-	}
-	p.cmd = nil
-	p.started = false
-	p.log.Info("ChromeImageProvider: worker state reset, ready for relaunch")
-	return waitDone
 }
