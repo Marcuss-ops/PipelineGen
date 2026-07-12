@@ -508,3 +508,15 @@ issues:
     evidence_filename: "tests/operational/gofmt_drift_close_2026-07-12.log (deliverables: `gofmt -d` empty + `go vet ./internal/app/... ./internal/application/.../artlist/... ./internal/infrastructure/artlist/... ./internal/domain/asset/... ./pkg/idempotency/... ./internal/infrastructure/database/sqlite/outbox/...` clean + Commit F SHA on origin/main)"
     opened_date: 2026-07-12
     tracking_issue: "godlike/06 SSOT carry-forward discipline; closed by Commit F (instantiated with status:resolved in the same operation — the entry did not exist in pre-Commit-F issues.yaml; closed directly because drift was already resolved at Commit F execution time; the format-drift catalog surface is now zero)"
+  - id: PRE-EXISTING-11-DRIVE-TEST-COMPILE
+    title: "publisher_test_dod_language_test.go (untracked) failing to compile, blocking project-wide go test"
+    status: open
+    severity: p1
+    owner_capability: "internal/infrastructure/drive (publisher_test_dod_language_test.go)"
+    follow_up:
+      - "Diagnose the undefined 'require' compile error or missing test double symbols (fakeFolderManager, etc.) in the untracked file."
+      - "Resolve the missing dependencies (e.g., go mod tidy or stub inclusion), OR remove the untracked file if it is orphaned WIP from a prior wave."
+      - "Re-run go test -race ./... to confirm the project-wide suite compiles and runs."
+    evidence_filename: "stdout from make verify-main 2026-07-12 diagnostic"
+    opened_date: 2026-07-12
+    tracking_issue: "godlike/07 zero-legacy compilation blocker; AGENTS.md Operational rules (no source edits without explicit user request); PRE-EXISTING-7 already covers 3 of 4 sibling failures in internal/application/scripts/usecase + PRE-EXISTING-8 covers the 4th - ZERO new entries needed there"
