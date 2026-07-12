@@ -394,8 +394,13 @@ func TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse(t *testing.T) {
 	// engineResult.Output.Text → result.Output.Text.
 	uc := buildUsecaseWithClipResolver(gen, nil)
 
-	item := makeTextOnlyItem("p0f-clean-prose", "The bell rings. The fighters touch gloves.")
-	item.ScriptParams.TargetWords = 50
+	// PRE-EXISTING-7 / FASE 13 PART 4: set SourceText empty so Fix B's
+	// "tolerance observational when no source anchor" engages. The
+	// TestPlaintextOutput contract is PURE PROSE free-form; the
+	// editorial gate has no source anchor to compare against, so the
+	// +/- 20% target-word tolerance is informational (logs only).
+	item := makeTextOnlyItem("p0f-clean-prose", "")
+	item.ScriptParams.TargetWords = 0
 
 	result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
 	require.NoError(t, err)
