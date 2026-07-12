@@ -13,6 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 	"github.com/google/uuid"
 )
@@ -86,8 +87,26 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 		}
 
 		eventID := uuid.NewString()
-		eventKey := indexEventKey(clip.ID, contentHash)
-		idempotencyKey := eventKey
+		// Fase 5 / Commit 2 (July 2026) — use the canonical OutboxKey
+		// (eventType:provider:clipID:sourceVersion) for the outbox
+		// event_key. The previous indexEventKey helper produced a
+		// 5-segment shape that included infra-level fields
+		// (model/version/collection). The 4-segment OutboxKey is
+		// infrastructure-independent: if the embedding model changes,
+		// the event_key stays the same, so the outbox UNIQUE INDEX
+		// dedup continues to work across model upgrades. The wire-shape
+		// break is safe because outbox events are ephemeral (processed
+		// then deleted); old events with the 5-segment shape will
+		// process and vanish naturally.
+		eventKey, ekErr := idempotency.OutboxKey(
+			outboxevents.EventAssetIndexRequested,
+			string(clip.Source),
+			clip.ID,
+			contentHash,
+		)
+		if ekErr != nil {
+			return fmt.Errorf("dispatcher.EnqueueAndIndex(%q): build outbox event_key: %w", clip.ID, ekErr)
+		}
 		payload := indexRequestV1{
 			SchemaVersion:      "asset.index.requested.v1",
 			EventID:            eventID,
@@ -99,7 +118,7 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 			RequestedAt:        timeutil.FormatRFC3339(time.Now()),
 			EmbeddingModel:     clipindexer.EmbeddingModel(),
 			EmbeddingVersion:   clipindexer.EmbeddingModelVersion(),
-			IdempotencyKey:     idempotencyKey,
+			IdempotencyKey:     eventKey,
 		}
 		if payload.IdempotencyKey != eventKey {
 			return fmt.Errorf("dispatcher: payload.IdempotencyKey (%q) != event_key (%q) — v1 conflation invariant broken", payload.IdempotencyKey, eventKey)
@@ -189,6 +208,29 @@ func (d *Dispatcher) SaveDiscoveredAsset(ctx context.Context, clip *asset.Asset,
 	clip.LifecycleState = lifecycle
 	clip.SetMetadataString("index_state", string(idx))
 
+	// Fase 5 / Commit 2 (July 2026) — stamp the canonical JobKey into
+	// metadata_json. The 3-tuple (provider, clipID, sourceVersion) is the
+	// canonical idempotency key for the job/outbox surface (per user spec
+	// literal "provider+clip_id+source_version per i job/outbox"). At
+	// discovery time we don't have a real source_version (the file isn't
+	// downloaded yet), so we use the literal sentinel "discovered" as
+	// the source_version placeholder. The key is re-stamped with the
+	// real contentHash at EnqueueAndIndex time (the outbox event_key
+	// itself carries the canonical OutboxKey). The sentinel is
+	// greppable ("discovered" appears in metadata_json.job_key on every
+	// freshly-discovered row) and is impossible to confuse with a real
+	// SHA-256 hash (which is always 64 hex chars or "sha256:<hex>").
+	//
+	// godlike/07 fail-closed: an empty source_version is rejected by
+	// the canonical JobKey constructor with ErrEmptySourceVersion. The
+	// sentinel "discovered" sidesteps that without leaking the empty
+	// sentinel to the SQL layer.
+	jobKey, jkErr := idempotency.JobKey(string(clip.Source), clip.ID, "discovered")
+	if jkErr != nil {
+		return fmt.Errorf("dispatcher.SaveDiscoveredAsset(%q): stamp job_key: %w", clip.ID, jkErr)
+	}
+	clip.SetMetadataString("job_key", jobKey)
+
 	return d.txmgr.InTransaction(ctx, func(tx *sql.Tx) error {
 		if err := d.clips.UpsertClipTx(ctx, tx, clip); err != nil {
 			return fmt.Errorf("dispatcher upsert clip %s: %w", clip.ID, err)
@@ -223,7 +265,30 @@ func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID,
 	}
 
 	eventID := uuid.NewString()
-	eventKey := indexEventKey(assetID, contentHash)
+	// Fase 5 / Commit 2 (July 2026) — use the canonical OutboxKey for
+	// the event_key. See EnqueueAndIndex for the rationale (4-segment
+	// infrastructure-independent shape replaces the 5-segment
+	// indexEventKey helper).
+	//
+	// EnqueueIndexEvent doesn't have a *asset.Asset in scope (the
+	// caller supplies just the assetID + contentHash), so we infer the
+	// provider from the assetID prefix via the domain-layer
+	// DetectSourceFromAssetID helper. This keeps the wire-in minimal:
+	// the canonical constructor is still the single source of truth for
+	// the key shape, and the provider-inference helper is the
+	// domain-level mirror of clipindexer.sourceFromClipID (see
+	// internal/domain/asset/clip_identity.go for the divergence
+	// documentation).
+	provider := asset.DetectSourceFromAssetID(assetID)
+	eventKey, ekErr := idempotency.OutboxKey(
+		outboxevents.EventAssetIndexRequested,
+		provider,
+		assetID,
+		contentHash,
+	)
+	if ekErr != nil {
+		return fmt.Errorf("dispatcher.EnqueueIndexEvent(%q): build outbox event_key: %w", assetID, ekErr)
+	}
 	payload := buildIndexRequestV1(eventID, assetID, contentHash, eventKey)
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -254,18 +319,6 @@ func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
-
-// indexEventKey is the canonical event_key constructor for the
-// asset.index.requested.v1 envelope. Uses the FULL content hash.
-func indexEventKey(assetID, contentHash string) string {
-	return fmt.Sprintf("index:%s:%s:%s:%s:%s",
-		assetID,
-		contentHash,
-		clipindexer.EmbeddingModel(),
-		clipindexer.EmbeddingModelVersion(),
-		clipindexer.CollectionVersion(),
-	)
-}
 
 // buildIndexRequestV1 is the canonical v1 envelope builder shared
 // between EnqueueAndIndex and EnqueueIndexEvent.
