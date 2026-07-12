@@ -194,17 +194,18 @@ func TestEnqueueAndIndex_UsesOutboxKeyShape(t *testing.T) {
 	// count the colons INSIDE the sourceVersion. We use SplitN
 	// with n=4 to split on the FIRST 3 colons only, leaving the
 	// sourceVersion as the 4th element even if it contains ':'.
+	//
+	// NOTE: the byte-equality check above (got != want against
+	// idempotency.OutboxKey(...)) is the LOAD-BEARING assertion
+	// and already pins the full sourceVersion (PR 5 gate). This
+	// shape check is a minimal segment-count pin; we don't try
+	// to extract parts[3] because the position-based extraction
+	// would break for clipIDs that legitimately contain ':'
+	// (e.g. "planner:abc:0" — the data-field colon guard was
+	// relaxed in commit e8c0f1909).
 	parts := strings.SplitN(got, ":", 4)
 	if len(parts) != 4 {
 		t.Errorf("event_key must be 4-segment (eventType:provider:clipID:sourceVersion); got %q (split into %d parts)", got, len(parts))
-	}
-	// Belt-and-suspenders: the 4th element must be the FULL
-	// sourceVersion (the PR 5 QDRANT-full-content-hash gate).
-	// This pins the dedup invariant: two hashes sharing their
-	// shortHashPrefix still produce distinct keys because the
-	// unique suffix of each hash lives in this segment.
-	if len(parts) == 4 && parts[3] != contentHash {
-		t.Errorf("event_key 4th segment must be the FULL sourceVersion (PR 5 gate); want %q got %q", contentHash, parts[3])
 	}
 }
 
