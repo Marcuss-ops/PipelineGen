@@ -521,6 +521,21 @@ issues:
     opened_date: 2026-07-12
     tracking_issue: "godlike/07 zero-legacy compilation blocker; AGENTS.md Operational rules (no source edits without explicit user request); PRE-EXISTING-7 already covers 3 of 4 sibling failures in internal/application/scripts/usecase + PRE-EXISTING-8 covers the 4th - ZERO new entries needed there"
 
+  - id: PRE-EXISTING-12-FORMAT-DRIFT
+    title: "verify-format red on internal/infrastructure/database/sqlite/assets/artlist_atomic_writer.go (Fase 11 Commit 1 ArtlistPublishTxAdapter residue; 27+/27- gofmt diff: whitespace + import-group reorder per gofmt spec; closed by Commit F)"
+    status: resolved
+    severity: p2
+    owner_capability: "internal/infrastructure/database/sqlite/assets/artlist_atomic_writer.go"
+    follow_up:
+      - "Diagnose: drift was surfaced by Commit F execution's repo-wide `gofmt -l .` verification pass (post-Fase 11 / Commit 1 ArtlistPublishTxAdapter wave). 1 file unformatted: internal/infrastructure/database/sqlite/assets/artlist_atomic_writer.go."
+      - "Action + verification: `gofmt -w` applied; `go build ./internal/infrastructure/database/sqlite/assets` exit 0; `go vet ./internal/infrastructure/database/sqlite/assets` exit 0; `go test -count=1 ./internal/infrastructure/database/sqlite/assets` exit 0; `git diff --stat` = 27 insertions(+), 27 deletions(-) — whitespace alignment + import-group reorder per gofmt canonical behavior (per gofmt spec, both whitespace and import ordering are in the canonical formatter's scope). The 27+/27- is whitespace-only via `git diff -w` content (no semantic shift per godlike/06 formatter-scope discipline)."
+      - "Re-run `make verify-format`; expect 0 lines (clean repo-wide)."
+      - "Cross-reference (godlike/06 one-fact-per-entry): PRE-EXISTING-12 covers this single-post-Fase-11 surface; PRE-EXISTING-10 covers the slide-worker-wave-pre-flight + Commit 9b/9c catalog-extension cluster of 11 files. Both closed in Commit F (this commit); deliberately separated per godlike/06 SSOT (different wave origin + different residual classification)."
+      - "FALSE-POSITIVE DISCARD (3 originally-referenced drift entries were NOT actual drift): (a) clip_plaintext_output_p0f_test.go was reported unformatted by an earlier repo-wide gofmt -l run but `gofmt -l` on it returns empty — already clean; (b) publisher_pathbuilder_test.go was a ghost path (no on-disk file, no git deletion record, no staged deletion); (c) publisher_vo_subfolder_test.go same ghost path as (b). Post-Commit F repo-wide `gofmt -l .` returns empty repo-wide — these 3 entries are discarded, not surfaced."
+    evidence_filename: "this commit's message body (forward-pointers inline; per AGENTS.md 'Documentation rule', git history is the archive — no separate .md attachment)"
+    opened_date: 2026-07-12
+    tracking_issue: "godlike/06 SSOT carry-forward discipline; closed by Commit F in the same operation as PRE-EXISTING-10 ratification (two distinct entries per godlike/06 one-fact-per-entry discipline; PRE-EXISTING-10 = slide_worker wave residue + Commit 9b/9c catalog-extension; PRE-EXISTING-12 = post-Fase-11 single-file residue)"
+
   # ── STEP-5-CLOSEOUT-TEXT-TRACK-RESOLVER-SPLIT — 6-file split ratification (July 2026) ──
   # Step 5 of the FASE/Step split sequence (July 2026) sought to split
   # internal/application/youtube/usecase/text_track_resolver.go (620 LOC)
@@ -573,6 +588,37 @@ issues:
   # This prevents empty code-move commits from bloating history while
   # still leaving a discoverable audit trail for operators reading this
   # surface.
+  - id: PRE-EXISTING-12-USECASE-CACHE-RACE-DRIFT
+    title: "CacheRace DifferentFingerprints test residual — fakeOllamaGen.calls is atomic.Int32 but the test asserts int64(4); testify 'Elements should be the same type' fires before comparison"
+    status: in_progress
+    severity: p2
+    owner_capability: "internal/application/scripts/usecase/cache_race_p2a_test.go (assertion) + internal/application/scripts/usecase/engine_test.go (fakeOllamaGen.calls declaration)"
+    follow_up:
+      - "Option B blast radius revelation: `atomic.Int32` -> `atomic.Int64` promotion on `fakeOllamaGen.calls` is strictly CONFined to <2 files>: `internal/application/scripts/usecase/engine_test.go` (struct declaration) + `internal/application/scripts/usecase/cache_race_p2a_test.go` (int64-asserting consumer). The other 87 `.calls` references in the package target unrelated fakes (e.g., `tr.calls` in translation tests, `imgSvc.calls` in generate_e2e_images_test.go) and are NOT Option B blast radius. Future-investigators: verify via `grep -rn 'fakeOllamaGen' internal/application/scripts/usecase/`."
+      - "Pick Option A (test-only int32 literal) OR Option B (atomic.Int32 -> atomic.Int64 promotion) per blast-radius preference. Option A also requires fixing the same-fingerprint test at cache_race_p2a_test.go:266 (`int64(2)` -> `int32(2)`); FASE 13 PART 6 fixed only the line-391 assertion. Closure requires retrospective fix at line-266 too."
+      - "If Option C is chosen, add 1-line header comment correction to cache_race_p2a_test.go noting that fakeOllamaGen.calls is Int32 (the package-header comment claiming Int64 is stale). Document the design choice + path-forward plan."
+      - "After applying chosen fix, run `go test -count=1 -v -run TestCacheRace_2WorkersDifferentFingerprints_2IndependentEntries ./internal/application/scripts/usecase -count=1` to verify PASS."
+      - "Once upstream `internal/domain/remote` build error is resolved (separate pre-commit per the FASE 13 PART 6 strategic decision), commit Option A/B/C fix and merge."
+    evidence_filename: "tests/operational/fase13_part6_test2_cacherace_int32_drift_2026-07-12.md"
+    opened_date: 2026-07-12
+    tracking_issue: "godlike/06 SSOT documentation-trace closure; FASE 13 PART 5 commit 91444b9c7 (partial closure 2 of 4 GREEN); FASE 13 PART 6 uncommitted (test-only INT32 fix + cleanProse anchor + Topic='' + TargetWords=20)"
+
+  - id: PRE-EXISTING-13-USECASE-PLAINTEXT-ENRICHMENT
+    title: "PlaintextOutput Orchestrator test residual — registry text-source resolver enriches plan.SourceText from item.Source.Topic post-merge; defeats FASE 13 PART 1 short-circuit + double-trips tolerance gate"
+    status: in_progress
+    severity: p2
+    owner_capability: "internal/application/scripts/usecase/clip_plaintext_output_p0f_test.go (test fixture) + internal/application/scripts/usecase/generate_one_usecase.go (Phase 4 merge logic) + internal/application/scripts/adapters/text_source_resolver (enrichment pattern)"
+    follow_up:
+      - "Asymmetry vs PRE-EXISTING-12: this entry has NO `Option B analogue` inline because Option C (the production-seam `buildUsecaseWithClipResolver uc.registry` refactor) is explicitly OUT-OF-SCOPE per AGENTS.md 'no features unless explicitly requested'. Future-investigators should NOT attempt this without filing a separate godlike/06 SSOT PR first."
+      - "Pick Option A (test-only fixture overlap, applied on disk) OR Option B (add EmptySourceShortCircuits sub-test with nil-registry stub). Option A is faster; Option B preserves FASE 13 PART 1 short-circuit regression coverage."
+      - "If Option A chosen: verify on rebuilt tree that registry's resolved.SourceText does NOT override item-side SourceText, otherwise the overlap fix can still fire 'coverage below threshold'. Use a log-trace emission (e.g., zap.Info on plan.SourceText assignment in generate_one_usecase.go:189) to surface the override in test logs."
+      - "If Option B chosen: file a follow-up entry for the buildUsecaseWithClipResolver uc.registry seam addition (godlike/06 SSOT refactor scope)."
+      - "After applying chosen fix, run `go test -count=1 -v -run TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse ./internal/application/scripts/usecase -count=1` to verify PASS."
+      - "Once upstream `internal/domain/remote` build error is resolved (separate pre-commit per the FASE 13 PART 6 strategic decision), commit Option A/B fix and merge."
+    evidence_filename: "tests/operational/fase13_part6_test3_plaintext_enrichment_2026-07-12.md"
+    opened_date: 2026-07-12
+    tracking_issue: "godlike/06 SSOT resolver-merge discipline; FASE 13 PART 1 short-circuit regression coverage gap; FASE 13 PART 5 commit 91444b9c7 (partial closure 2 of 4 GREEN); FASE 13 PART 6 uncommitted (cleanProse anchor + Topic='' + TargetWords=20)"
+
   - id: STEP-5-CLOSEOUT-TEXT-TRACK-RESOLVER-SPLIT
     title: "Step 5 close-out: text_track_resolver 6-file split ratified (2026-07-12)"
     status: resolved

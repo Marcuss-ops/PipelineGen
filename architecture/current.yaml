@@ -84,22 +84,36 @@
     detail (in architecture/issues.yaml::PRE-EXISTING-{1..10}).
 
     Commit F (Commit F close-out, July 12 2026): PRE-EXISTING-10-FORMAT-DRIFT
-    closed by Commit F (`gofmt -w` on 11 files + `architecture/issues.yaml::PRE-EXISTING-10`
-    instantiated with status:resolved). At Commit F execution time all 11 files were
-    ALREADY gofmt-clean (`gofmt -l .` empty repo-wide) — the format-drift surface had
-    resolved itself by intermediate commits between catalog-instantiation and Commit F;
-    `gofmt -w` was applied idempotently for git-provenance (captures verified-clean-at-commit-boundary
-    state on origin/main). Zero semantic delta verified via `gofmt -d` empty + `go vet` +
-    `go build` on all 11 affected packages. Original user-spec mentioned 10 files; canonical
-    catalog (after Commit 9c extension) lists 11 — Commit F covers the full 11 to
-    align with godlike/06 SSOT. File-path discrepancy noted:
+    ratified + PRE-EXISTING-12-FORMAT-DRIFT closed by Commit F (`gofmt -w` on
+    12 files = 11 idempotent + 1 semantic). At Commit F execution time all 11
+    PRE-EXISTING-10 files were ALREADY gofmt-clean (`gofmt -l .` empty for
+    that surface) — the slide_worker-wave-pre-flight + Commit 9b/9c catalog-
+    extension format-drift had resolved itself by intermediate commits between
+    catalog-instantiation and Commit F; `gofmt -w` was applied idempotently to
+    the 11 for git-provenance (captures verified-clean-at-commit-boundary state
+    on origin/main). The 12th file (PRE-EXISTING-12's scope:
+    `internal/infrastructure/database/sqlite/assets/artlist_atomic_writer.go`)
+    had ACTUAL semantic drift (post-Fase 11 / Commit 1 ArtlistPublishTxAdapter
+    residue), and `gofmt -w` applied the canonical 27+/27- whitespace +
+    import-group reorder per gofmt spec. Both tickets Instantiate with
+    `status:resolved` in the same Commit F (godlike/06 ratify-via-doctrine:
+    opening + closing a ticket in one commit is admitted when the work is
+    already complete at commit time; the catalog is the SSOT, git history is
+    the archive). Original user-spec for PRE-EXISTING-10 mentioned 10 files;
+    canonical catalog (after Commit 9c extension) lists 11 — Commit F covers
+    the full 11+1=12 to align with godlike/06 SSOT. 3 originally-referenced
+    additional drift entries
+    (`clip_plaintext_output_p0f_test.go` + `publisher_pathbuilder_test.go`
+    + `publisher_vo_subfolder_test.go`) were FALSE POSITIVES discarded
+    (one was already clean on direct gofmt -l verification; two were
+    ghost path entries not on disk + no git deletion record). File-path
+    discrepancy noted:
     `internal/infrastructure/artlist/diagnostics/system_prober.go`
     was originally cataloged but the actual on-disk path is
     `internal/infrastructure/artlist/diagnostics/system_prober.go`; the entry
-    `issues.yaml::PRE-EXISTING-10` cites the actual path (godlike/06 fix-by-action).
-  cross_refs:
-    issues_catalog: "architecture/issues.yaml::PRE-EXISTING-{1..10}"
-    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate", "commit 9b catalog-extension", "commit 9c catalog-extension", "commit 9d closeout", "Commit F close-out pre-1976-12-CUTOVER", "Commit G DEBT BUDGET policy"]
+    `issues.yaml::PRE-EXISTING-10` cites the actual path (godlike/06 fix-by-action).  cross_refs:
+    issues_catalog: "architecture/issues.yaml::PRE-EXISTING-{1..10, 12}"
+    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate", "commit 9b catalog-extension", "commit 9c catalog-extension", "commit 9d closeout", "Commit F close-out (12 files: 11 idempotent + 1 semantic; PRE-EXISTING-10 ratification + PRE-EXISTING-12 close-out)", "Commit G DEBT BUDGET policy"] 
     ci_gate: "scripts/ci-architectural-checks.sh::Check 63 (zero-baseline stale-entry detection)"
   follow_up_tickets:
     - id: PRE-EXISTING-1-WAL-PRAGMAS
@@ -120,6 +134,8 @@
       note: internal/application/scripts/usecase/generate_cache_fingerprint_p1a_test.go::TestCacheFingerprint_P1A_PerFieldMutationSensitivity
     - id: PRE-EXISTING-9-ARCHCHECK-SNAPSHOT
       note: cmd/archcheck::TestSnapshot
+    - id: PRE-EXISTING-12-FORMAT-DRIFT
+      note: internal/infrastructure/database/sqlite/assets/artlist_atomic_writer.go (Fase 11 Commit 1 residue; closed by Commit F)
 
 - id: WAVE-20-QDRANT-005D-HYGIENE
   status: in_progress
