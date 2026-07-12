@@ -82,9 +82,24 @@
     governance entry + per-surface catalog`) instantiates the
     section retroactively with full provenance + per-surface
     detail (in architecture/issues.yaml::PRE-EXISTING-{1..10}).
+
+    Commit F (Commit F close-out, July 12 2026): PRE-EXISTING-10-FORMAT-DRIFT
+    closed by Commit F (`gofmt -w` on 11 files + `architecture/issues.yaml::PRE-EXISTING-10`
+    instantiated with status:resolved). At Commit F execution time all 11 files were
+    ALREADY gofmt-clean (`gofmt -l .` empty repo-wide) — the format-drift surface had
+    resolved itself by intermediate commits between catalog-instantiation and Commit F;
+    `gofmt -w` was applied idempotently for git-provenance (captures verified-clean-at-commit-boundary
+    state on origin/main). Zero semantic delta verified via `gofmt -d` empty + `go vet` +
+    `go build` on all 11 affected packages. Original user-spec mentioned 10 files; canonical
+    catalog (after Commit 9c extension) lists 11 — Commit F covers the full 11 to
+    align with godlike/06 SSOT. File-path discrepancy noted:
+    `internal/infrastructure/artlist/diagnostics/system_prober.go`
+    was originally cataloged but the actual on-disk path is
+    `internal/infrastructure/artlist/diagnostics/system_prober.go`; the entry
+    `issues.yaml::PRE-EXISTING-10` cites the actual path (godlike/06 fix-by-action).
   cross_refs:
     issues_catalog: "architecture/issues.yaml::PRE-EXISTING-{1..10}"
-    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate", "commit 9b catalog-extension", "commit 9c catalog-extension", "commit 9d closeout"]
+    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate", "commit 9b catalog-extension", "commit 9c catalog-extension", "commit 9d closeout", "Commit F close-out pre-1976-12-CUTOVER", "Commit G DEBT BUDGET policy"]
     ci_gate: "scripts/ci-architectural-checks.sh::Check 63 (zero-baseline stale-entry detection)"
   follow_up_tickets:
     - id: PRE-EXISTING-1-WAL-PRAGMAS
