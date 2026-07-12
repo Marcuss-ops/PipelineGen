@@ -74,6 +74,17 @@ type ServicePorts struct {
 	// Publisher + Dispatcher). Production wires the SQLite-backed
 	// concrete from internal/infrastructure/database/sqlite/assets.
 	RunRepository RunRepository
+	// SystemProber is the canonical godlike/06 port (Fase 2, July 2026)
+	// that fans out the 10 wire-by-wire diagnostic probes
+	// (scraper / browser / session / downloader / ffmpeg_binary /
+	// drive_folder / sqlite_writable / outbox_dispatcher /
+	// qdrant_reachable / embedding_provider). Composition root injects
+	// an *AdminSystemProber concrete from
+	// internal/infrastructure/artlist/diagnostics; tests can pass
+	// probe stubs (or rely on the fallback stubSystemProber in
+	// NewDiagnosticsService, which reports every probe as failed
+	// rather than fake-availability).
+	SystemProber SystemProber
 }
 
 // ServiceDependencies collects the cross-cutting dependencies that are
@@ -254,6 +265,15 @@ type Service struct {
 	// ErrRunRepositoryUnavailable (fail-closed).
 	runRepo RunRepository
 
+	// systemProber is the canonical godlike/06 SystemProber port
+	// (Fase 2, July 2026). nil means the diagnostics endpoint reports
+	// every probe as failed via the fallback stubSystemProber
+	// (DiagnosticsService constructor wires the fallback defensively).
+	// Composition-time wiring in build_bundles_artlist.go MUST
+	// provide a real AdminSystemProber; the fallback exists only for
+	// test fixtures / unusual composition paths.
+	systemProber SystemProber
+
 	// locationRepo persists physical asset locations (Wave C / July 2026).
 	// Used by stagePersistResults to record rendition locations.
 	locationRepo asset.LocationRepository
@@ -326,6 +346,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		stager:            deps.Stager,
 		isLiveProbe:       deps.IsLiveProbe,
 		runRepo:           deps.RunRepository,
+		systemProber:      deps.SystemProber,
 		locationRepo:      deps.LocationRepository,
 		renditionRepo:     deps.RenditionRepository,
 	}
@@ -345,7 +366,10 @@ func NewService(deps ServiceDeps) (*Service, error) {
 	s.runOrchestrator = NewRunOrchestratorService(s)
 	s.destinationService = NewDestinationService(s)
 	s.jobAdapter = NewJobAdapter(s)
-	s.diagnosticsService = NewDiagnosticsService(s)
+	// Phase 2 (Fase 2): second arg is the SystemProber port (was nil pre-Phase 2).
+	// nil falls back to stubSystemProber (every probe fails) rather than allowing
+	// the v1 fake-availability `OK: true` aggregate to leak into the v2 endpoint.
+	s.diagnosticsService = NewDiagnosticsService(s, s.systemProber)
 
 	return s, nil
 }

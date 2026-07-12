@@ -165,22 +165,118 @@ type Stats struct {
 	ArtlistClipsTotal int  `json:"artlist_clips_total"`
 }
 
-// DiagnosticsResponse reports the current Artlist wiring and database readiness.
+// ProbeResult is the canonical wire-by-wire probe outcome (Fase 2,
+// July 2026, godlike/07 NO-FAKE-AVAILABILITY §22).
+//
+// Per probe report: a single binary `OK` plus a typed `Error` (verbatim
+// from the underlying probe call), a `Detail` string (operator-facing
+// diagnostic text e.g. "ffmpeg version 6.0.1 /usr/bin/ffmpeg"), and a
+// per-probe `ElapsedMs` so operators reading the JSON can spot slow
+// probes (e.g. Qdrant probe taking 4.5s on an 8-of-10 probes endpoint).
+//
+// godlike/07 invariant: probes MUST be real reachability checks (HTTP
+// /health, exec.LookPath + binary version probe, db.PingContext +
+// BEGIN IMMEDIATE/ROLLBACK, FolderManagerPort.ProbeFolderAccess, etc).
+// An object-existence check (e.g. `if s.dispatcher != nil`) is
+// forbidden — the diagnostic endpoint must NEVER report a passing
+// probe without actually exercising the dependency. The benchmark
+// is: "could a probe-read show a real `Error` string with a real
+// underlying error message if the dep is genuinely broken?"
+type ProbeResult struct {
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	ElapsedMs int64  `json:"elapsed_ms"`
+}
+
+// LatestRunSummary is the per-run summary surfaced in
+// DiagnosticsResponse.LatestRun, sourced from the artlist_runs SQLite
+// table via RunRepository.LatestRun (canonical SSOT per Fase 2).
+// Operators see the latest run's RunID + Status + Term + Error +
+// CreatedAt without needing a separate /runs/:run_id roundtrip.
+//
+// godlike/07: when no runs exist the surface is nil (omitted from JSON);
+// operators interpret omitempty as "no runs yet, this is a fresh
+// install". Surfacing a sentinel-zero-value LatestRunSummary would
+// confuse the operator (`run_id="" + status=""` is meaningless).
+//
+// NOTE: this type is declared ONLY in ports.go (Line ~340) — types.go
+// references it for the DiagnosticsResponse.LatestRun field shape;
+// the canonical struct definition lives in ports.go alongside the
+// RunRepository interface (godlike/06 SSOT — one canonical site).
+// =============================================================
+// godlike/06 SSOT lockstep note: do NOT add this struct here —
+// keep ports.go as the SINGLE canonical declaration site.
+// =============================================================
+
+// DiagnosticsResponse reports wire-by-wire probe outcomes for the
+// Artlist module (Fase 2 rewrite, July 2026 — replaces the v1
+// audit-fail `OK: true` aggregate + `HasDriveClient/HasArtlistDB/
+// MainDBReady` object-existence checks the gap-audit §22 verdict
+// flagged as NO-FAKE-AVAILABILITY violations).
+//
+// 10 ProbeResult fields, one per dependency (scraper, browser,
+// session, downloader, ffmpeg_binary, drive_folder, sqlite_writable,
+// outbox_dispatcher, qdrant_reachable, embedding_provider).
+// Operators reading the JSON can spot which dependency is broken
+// from a single curl — no aggregate to mask the signal.
+//
+// Compatibility note (Fase 2): the legacy fields `HasDriveClient`,
+// `HasArtlistDB`, `MainDBReady` (object-existence checks) and the
+// top-level `OK` aggregate are RETIRED. The audit identified them
+// as the §22 anti-pattern; replacing them with real ProbeResult
+// fields is the canonical godlike/06 SSOT fix (one canonical
+// owner per fact: the probe itself, not a struct-pointer check).
 type DiagnosticsResponse struct {
-	OK                bool    `json:"ok"`
-	RootFolderID      string  `json:"root_folder_id,omitempty"`
-	DriveFolderID     string  `json:"drive_folder_id,omitempty"`
-	NodeScraperDir    string  `json:"node_scraper_dir,omitempty"`
-	HasDriveClient    bool    `json:"has_drive_client"`
-	HasArtlistDB      bool    `json:"has_artlist_db"`
-	MainDBReady       bool    `json:"main_db_ready"`
-	ClipsTotal        int     `json:"clips_total"`
-	ArtlistClipsTotal int     `json:"artlist_clips_total"`
-	SearchTerm        string  `json:"search_term,omitempty"`
-	MatchingClips     int     `json:"matching_clips,omitempty"`
-	EstimatedSize     int     `json:"estimated_size,omitempty"`
-	LastProcessedAt   *string `json:"last_processed_at,omitempty"`
-	Error             string  `json:"error,omitempty"`
+	// RootFolderID is the *configured* Artlist Drive root (informational;
+	// NOT a probe — that's the DriveFolder probe). Kept for operator
+	// config visibility in the same endpoint payload (no extra roundtrip).
+	RootFolderID string `json:"root_folder_id,omitempty"`
+
+	// 10 wire-by-wire probes (one per dependency). Each is a ProbeResult
+	// with binary OK + Error + Detail + ElapsedMs. The endpoint reports
+	// these regardless of the deprecated `OK` aggregate — operators
+	// walk each slot independently to find the broken dependency.
+	Scraper           ProbeResult `json:"scraper"`
+	Browser           ProbeResult `json:"browser"`
+	Session           ProbeResult `json:"session"`
+	Downloader        ProbeResult `json:"downloader"`
+	FFmpegBinary      ProbeResult `json:"ffmpeg_binary"`
+	DriveFolder       ProbeResult `json:"drive_folder"`
+	SQLiteWritable    ProbeResult `json:"sqlite_writable"`
+	OutboxDispatcher  ProbeResult `json:"outbox_dispatcher"`
+	QdrantReachable   ProbeResult `json:"qdrant_reachable"`
+	EmbeddingProvider ProbeResult `json:"embedding_provider"`
+
+	// Special informational surfaces (Fase 2): the canonical operator
+	// grip on past runs and current indexed-Artlist-clip count without
+	// roundtripping /runs/:run_id or querying Qdrant.
+	//
+	// LatestRun: omitempty — when no artlist_runs rows exist (fresh
+	// install), the field is omitted entirely. Operators interpret
+	// omitempty as "no runs yet", avoiding sentinel-zero-value noise.
+	LatestRun *LatestRunSummary `json:"latest_run,omitempty"`
+	// LastError: the error_message column of the latest artlist_runs
+	// row (empty when the latest run was successful or no runs exist).
+	// Convenience duplicate of LatestRun.Error so operators triaging
+	// "what broke?" don't have to walk a nested struct.
+	LastError         string `json:"last_error,omitempty"`
+	ClipsArtlistTotal int    `json:"clips_artlist_total"`
+
+	// Term-search surface (legacy: preserved for the term-keyed
+	// diagnostics use case where the operator wants "term X
+	// matching clip count" + LastProcessedAt. NOT a probe; reads
+	// from the existing assetStore port, no fake availability).
+	SearchTerm      string  `json:"search_term,omitempty"`
+	MatchingClips   int     `json:"matching_clips,omitempty"`
+	EstimatedSize   int     `json:"estimated_size,omitempty"`
+	LastProcessedAt *string `json:"last_processed_at,omitempty"`
+
+	// Error is reserved for fatal diagnostics failure (probe runner
+	// panicked, RunRepository not wired, etc). Operators distinguish
+	// endpoint-level errors from per-probe errors by absence of the
+	// term-search fields + presence of this string.
+	Error string `json:"error,omitempty"`
 }
 
 // SearchRequest represents a search request.

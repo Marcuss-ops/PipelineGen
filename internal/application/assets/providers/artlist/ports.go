@@ -155,6 +155,14 @@ type AssetStore interface {
 	// coexist on the port.
 	SearchClips(ctx context.Context, source string, term string) ([]*asset.Asset, error)
 	CountClips(ctx context.Context) (int, error)
+	// PR-P2-DIAGNOSTICS-REALE (July 2026): per-source count surfaced
+	// via /api/artlist/diagnostics. Sourced from the canonical
+	// ClipsRepository.CountBySource (clips_statistics.go godlike/06 SSOT).
+	// Source is required (non-empty) — empty source returns the typed
+	// errors.ErrEmptySource (mirror ErrEmptySource discipline on the
+	// artlist infrastructure port; the infra-side ErrEmptySource is
+	// the canonical sentinel, callers branch on errors.Is).
+	CountBySource(ctx context.Context, source string) (int, error)
 	LastUpdatedAtForTerm(ctx context.Context, term string) (*string, error)
 	// UpdateSearchTerms keeps the clip_search_terms index in lockstep
 	// with semantic enrichment. Called twice per fresh search hit:
@@ -307,8 +315,37 @@ type RunRecord struct {
 // producing duplicate aggregate stats. Record MUST persist even when
 // the orchestrator discovered zero candidates (the per-run aggregate
 // "found=0" row is observable truth, not silent-omit).
+//
+// PR-P2-DIAGNOSTICS-REALE (July 2026): LatestRun returns the most
+// recent run summary sorted by created_at DESC + id DESC (id breaks
+// ties when multiple rows in the same datetime('now') second). The
+// diagnostics endpoint surfaces this as LatestRun / LastError /
+// operator grip on past runs without a /runs/:run_id roundtrip.
+// Returns (nil, nil) when the artlist_runs table is empty (fresh
+// install — operators treat nil as "no runs yet", vs the
+// sentinel-zero-value LatestRunSummary shape which would confuse
+// them with `run_id="" + status=""`).
 type RunRepository interface {
 	Record(ctx context.Context, rec RunRecord) error
+
+	// LatestRun returns the most-recent run summary (sorted by
+	// created_at DESC, id DESC). Returns (nil, nil) when no runs
+	// exist. Returns a non-nil error ONLY on SQL-level failure
+	// (transport-level, table missing, permission denied); never
+	// returns an error for the empty-table case.
+	LatestRun(ctx context.Context) (*LatestRunSummary, error)
+}
+
+// LatestRunSummary is the typed read-shape of one artlist_runs row,
+// surfaced via DiagnosticsResponse.LatestRun. field names mirror
+// the canonical artlist_runs schema columns verbatim (godlike/06
+// SSOT column-level reconciliation).
+type LatestRunSummary struct {
+	RunID      string
+	Term       string
+	Status     string
+	Error      string // mirrors error_message column
+	CreatedAt  string // ISO-8601 (datetime('now') UTC)
 }
 
 // ErrRunRepositoryUnavailable is the typed sentinel NewService returns

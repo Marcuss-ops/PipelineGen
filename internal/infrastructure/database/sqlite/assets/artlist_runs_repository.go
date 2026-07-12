@@ -89,6 +89,25 @@ type RunRecord struct {
 // meet.
 type RunRepository interface {
 	Record(ctx context.Context, rec RunRecord) error
+	// LatestRun: PR-P2-DIAGNOSTICS-REALE (July 2026) — see
+	// artlist.LatestRunSummary for the canonical read-shape.
+	// Returns (nil, nil) on empty-table (fresh install); returns
+	// wrapped error on transport-level SQL failure.
+	LatestRun(ctx context.Context) (*LatestRunRow, error)
+}
+
+// LatestRunRow is the LOCAL read-shape of one artlist_runs row.
+// Stays in this package (mirrors RunRecord's local-private status)
+// to break the application-layer ↔ infrastructure-layer import
+// cycle. The composition-root adapter
+// internal/app/artlist_runs_adapter.go is the ONE place that maps
+// this struct → artlist.LatestRunSummary.
+type LatestRunRow struct {
+	RunID        string
+	Term         string
+	Status       string
+	ErrorMessage string
+	CreatedAt    string
 }
 
 // ArtlistRunsRepository is the SQLite-backed concrete implementation
@@ -186,4 +205,57 @@ func (r *ArtlistRunsRepository) Record(ctx context.Context, rec RunRecord) error
 		zap.Int("failed", rec.FailedN),
 	)
 	return nil
+}
+
+// LatestRun returns the most-recent row from artlist_runs, sorted by
+// created_at DESC with id DESC as tie-breaker. SELECT reads exactly
+// 5 columns (id, term, status, error_message, created_at) — the
+// narrow read surface for the diagnostics endpoint; the canonical
+// writer Record touches 11 columns (omit ottimistic DEFAULT columns).
+//
+// godlike/06 column-level locking: SELECT clause here must mirror
+// the artlist_runs schema verbatim. Any schema column add/drop must
+// cascade through this read shape + the adapter in
+// artlist_runs_adapter.go.
+//
+// PR-P2-DIAGNOSTICS-REALE (July 2026): the diagnostics endpoint
+// surfaces this row as DiagnosticsResponse.LatestRun + LastError +
+// Status. Selection: most recent run, irrespective of status (failed
+// runs are operator signal — sometimes the operator's most recent
+// action was a failed attempt; surfacing the success-only tail would
+// hide the real operator-visible state).
+//
+// Return contract:
+//   - (nil, nil) when the table is empty (fresh install — operator
+//     interprets nil as "no runs yet", distinct from sentinel-zero
+//     LatestRunRow struct that would manifest as `run_id=""`)
+func (r *ArtlistRunsRepository) LatestRun(ctx context.Context) (*LatestRunRow, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("artlist_runs_repository.LatestRun: nil receiver/db")
+	}
+	const stmt = `SELECT id, term, status, error_message, created_at
+		FROM artlist_runs
+		ORDER BY created_at DESC, id DESC
+		LIMIT 1`
+	row := &LatestRunRow{}
+	err := r.db.QueryRowContext(ctx, stmt).Scan(
+		&row.RunID,
+		&row.Term,
+		&row.Status,
+		&row.ErrorMessage,
+		&row.CreatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// Fresh install — no runs yet. godlike/07: surface honestly
+			// (nil, nil) rather than (LatestRunRow{}, nil) which would
+			// confuse operator dashboards with `run_id=""` strings.
+			return nil, nil
+		}
+		r.log.Warn("artlist_runs_repository.LatestRun query failed",
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("artlist_runs_repository.LatestRun: %w", err)
+	}
+	return row, nil
 }

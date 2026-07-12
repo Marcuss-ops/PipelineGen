@@ -69,6 +69,32 @@ func (r *recordingRunRepo) Last() *RunRecord {
 	return &c
 }
 
+// LatestRun returns the most-recently-recorded run as a canonical
+// LatestRunSummary (test-instrumentation convenience — matches the
+// production DiagnosticsResponse.LatestRun shape). Returns (nil, nil)
+// when no records have been recorded yet.
+//
+// CreatedAt is empty because RunRecord (test-side struct) does not
+// capture the SQLite-managed DEFAULT datetime('now') column. Tests
+// asserting on CreatedAt should pre-record explicit values via a
+// custom flow (forward-compat; not added in this PR to keep the
+// RunRecord struct footprint unchanged for the pre-existing Gate 03
+// assertions).
+func (r *recordingRunRepo) LatestRun(_ context.Context) (*LatestRunSummary, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.calls) == 0 {
+		return nil, nil
+	}
+	c := r.calls[len(r.calls)-1]
+	return &LatestRunSummary{
+		RunID: c.RunID,
+		Term:  c.Term,
+		Status: c.Status,
+		Error: c.ErrorMessage,
+	}, nil
+}
+
 // Compile-time: satisfies the RunRepository port.
 var _ RunRepository = (*recordingRunRepo)(nil)
 

@@ -29,6 +29,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	artlist "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -90,4 +91,37 @@ func (a *artlistRunsRepoAdapter) Record(ctx context.Context, rec artlist.RunReco
 		ErrorMessage: rec.ErrorMessage,
 	}
 	return a.concrete.Record(ctx, translated)
+}
+
+// LatestRun bridges the infra-layer LatestRunRow → application-layer
+// LatestRunSummary (the typed read-shape surfaced via
+// DiagnosticsResponse.LatestRun).
+//
+// godlike/06 SSOT: this is the SINGLE translation site between the
+// two struct definitions. Future renames in either surface surface
+// as a build failure at the compile-time pin above.
+//
+// (nil, nil) on empty-table: the application-layer DiagnosticsService
+// interprets nil as "no runs yet" and omits the LatestRun field from
+// the JSON response entirely (godlike/07 honest-about-fresh-install).
+func (a *artlistRunsRepoAdapter) LatestRun(ctx context.Context) (*artlist.LatestRunSummary, error) {
+	if a == nil || a.concrete == nil {
+		// Defensive: same nil-handling discipline as Record above.
+		return nil, nil
+	}
+	row, err := a.concrete.LatestRun(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("artlistRunsRepoAdapter.LatestRun: %w", err)
+	}
+	if row == nil {
+		// Empty-table (fresh install) — forward nil verbatim.
+		return nil, nil
+	}
+	return &artlist.LatestRunSummary{
+		RunID:     row.RunID,
+		Term:      row.Term,
+		Status:    row.Status,
+		Error:     row.ErrorMessage,
+		CreatedAt: row.CreatedAt,
+	}, nil
 }

@@ -166,3 +166,11 @@ var _ RunRepository = (*stubRunRepoForArtlist)(nil)
 func (s *stubRunRepoForArtlist) Record(_ context.Context, _ RunRecord) error {
 	return nil
 }
+
+// LatestRun is a no-op for tests that don't exercise the
+// diagnostics-endpoint read path. Returns (nil, nil) — equivalent
+// to "fresh install" semantics so tests asserting `LatestRun == nil`
+// see the same shape the production empty-table path produces.
+func (s *stubRunRepoForArtlist) LatestRun(_ context.Context) (*LatestRunSummary, error) {
+	return nil, nil
+}
