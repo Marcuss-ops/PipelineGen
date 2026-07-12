@@ -211,6 +211,122 @@ func TestBuildCacheKey_OnlyHexChars(t *testing.T) {
 // rendered prompt through BuildCacheKey. This is a regression
 // guard: if BuildCacheKey grew fields that include the prompt
 // body, this test would catch it.
+
+// ── PR-CS-1 / FASE 7 (DoD #9): ScriptSegment fingerprint sensitivity ──
+// 7 user-spec tests pinning the contract that every ScriptSegment
+// mutation (topic / source_text / target_words / order / count)
+// produces a different fingerprint. The 7th test pins the canonical
+// "same input → same fingerprint" cache-hit invariant so the order-
+// sensitivity work doesn't accidentally produce collisions.
+
+// baseFingerprintInput returns a fully-populated 2-segment plan
+// fingerprint input (single canonical baseline for the 7 tests).
+// PR-CS-1 / FASE 7: Slices/struct fields are intentionally NOT
+// shared between base- and mutation-test plans so a regression in
+// the defensive clone (cloneFingerprintInput) cannot accidentally
+// produce equality-under-mutation.
+func baseFingerprintInput() script.GenerationFingerprintInput {
+	return script.GenerationFingerprintInput{
+		ContractVersion: 1,
+		SourceType:      "text",
+		Language:        "en",
+		Tone:            "documentary",
+		Style:           "cinematic",
+		TargetWords:     500,
+		Model:           "llama3:8b",
+		Segments: []script.ScriptSegment{
+			{Topic: "intro", SourceText: "first source.", TargetWords: 80},
+			{Topic: "body", SourceText: "second source.", TargetWords: 200},
+		},
+	}
+}
+
+func TestFingerprint_DifferentTopic_DifferentFP(t *testing.T) {
+	t.Parallel()
+	base := baseFingerprintInput()
+	mutated := baseFingerprintInput()
+	mutated.Segments[0].Topic = "intro_REORDERED"
+	baseFP := script.BuildFingerprint(base)
+	mutFP := script.BuildFingerprint(mutated)
+	if baseFP == mutFP {
+		t.Fatalf("topic mutation MUST change fingerprint; both %q", baseFP)
+	}
+}
+
+func TestFingerprint_DifferentSourceText_DifferentFP(t *testing.T) {
+	t.Parallel()
+	base := baseFingerprintInput()
+	mutated := baseFingerprintInput()
+	mutated.Segments[1].SourceText = "DIFFERENT second source."
+	baseFP := script.BuildFingerprint(base)
+	mutFP := script.BuildFingerprint(mutated)
+	if baseFP == mutFP {
+		t.Fatalf("source_text mutation MUST change fingerprint; both %q", baseFP)
+	}
+}
+
+func TestFingerprint_DifferentTargetWords_DifferentFP(t *testing.T) {
+	t.Parallel()
+	base := baseFingerprintInput()
+	mutated := baseFingerprintInput()
+	mutated.Segments[0].TargetWords = 81
+	baseFP := script.BuildFingerprint(base)
+	mutFP := script.BuildFingerprint(mutated)
+	if baseFP == mutFP {
+		t.Fatalf("target_words mutation MUST change fingerprint; both %q", baseFP)
+	}
+}
+
+func TestFingerprint_DifferentOrder_DifferentFP(t *testing.T) {
+	t.Parallel()
+	base := baseFingerprintInput()
+	mutated := baseFingerprintInput()
+	mutated.Segments[0], mutated.Segments[1] = mutated.Segments[1], mutated.Segments[0]
+	baseFP := script.BuildFingerprint(base)
+	mutFP := script.BuildFingerprint(mutated)
+	if baseFP == mutFP {
+		t.Fatalf("segment reorder MUST change fingerprint (DoD #9 reverse); both %q", baseFP)
+	}
+}
+
+func TestFingerprint_AddedSegment_DifferentFP(t *testing.T) {
+	t.Parallel()
+	base := baseFingerprintInput()
+	mutated := baseFingerprintInput()
+	mutated.Segments = append(mutated.Segments, script.ScriptSegment{Topic: "outro", TargetWords: 60})
+	baseFP := script.BuildFingerprint(base)
+	mutFP := script.BuildFingerprint(mutated)
+	if baseFP == mutFP {
+		t.Fatalf("adding a segment MUST change fingerprint; both %q", baseFP)
+	}
+}
+
+func TestFingerprint_RemovedSegment_DifferentFP(t *testing.T) {
+	t.Parallel()
+	base := baseFingerprintInput()
+	mutated := baseFingerprintInput()
+	mutated.Segments = mutated.Segments[:1]
+	baseFP := script.BuildFingerprint(base)
+	mutFP := script.BuildFingerprint(mutated)
+	if baseFP == mutFP {
+		t.Fatalf("removing a segment MUST change fingerprint; both %q", baseFP)
+	}
+}
+
+func TestFingerprint_SameInput_SameFP(t *testing.T) {
+	t.Parallel()
+	a := baseFingerprintInput()
+	b := baseFingerprintInput()
+	fpA := script.BuildFingerprint(a)
+	fpB := script.BuildFingerprint(b)
+	if fpA != fpB {
+		t.Fatalf("identical inputs MUST produce equal fingerprints (cache hit); %q vs %q", fpA, fpB)
+	}
+	if len(fpA) != 16 {
+		t.Fatalf("fingerprint must be 16 hex chars; got %q (len=%d)", fpA, len(fpA))
+	}
+}
+
 func TestBuildCacheKey_KeyAndRenderedPromptIndependent(t *testing.T) {
 	t.Parallel()
 	p1 := basePlan()
