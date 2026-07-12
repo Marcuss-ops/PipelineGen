@@ -445,6 +445,219 @@ def _clear_image_library_panel(page) -> int:
         return -1
 
 
+def _click_visible_button_matching(
+    page,
+    text_regexes=None,
+    *,
+    selectors: str = "button",
+    match_attrs: dict | None = None,
+    match_attrs_logic: str = "all",
+    require_visible: bool = True,
+    require_enabled: bool = False,
+    wait_ready: bool = False,
+    timeout_ms: int = 5000,
+    poll_interval_ms: int = 500,
+    do_click: bool = True,
+    use_dom_evaluate: bool = False,
+) -> bool:
+    """Best-effort find-and-(optionally)-click on a visible Playwright/Locator
+    element matching text/aria regexes and any attribute-equality conditions.
+
+    Single-shared helper that replaces:
+      * _click_visible_start_images_tile
+      * _click_visible_image_mode_tab
+      * _click_visible_create_button
+      * _wait_for_create_button_ready
+      * the role-based / selector-based DOM scans inside _dismiss_start_dialog
+      * the tile-retry DOM scan inside _wait_for_prompt_surface
+
+    All six previously had near-identical structure (scan + click or scan + wait).
+    They differ only in: (a) which selector to scan, (b) which text-regex set
+    to match, (c) which attribute-equality conditions to enforce, (d) whether
+    visibility/enablement are required, (e) whether the function polls with a
+    timeout or one-shots, (f) whether the function actually clicks or just
+    checks readiness, (g) whether to use Playwright's actionability semantics
+    (Locator) or raw DOM-evaluate semantics (bypassing actionability).
+
+    Two scan paths:
+      * locator (default) — Playwright `page.locator(selectors)`, with
+        `is_visible()` + `is_enabled()` checks and a `force=True` click that
+        auto-waits up to 5s per element.
+      * dom_evaluate (opt-in) — raw `page.evaluate(...)`, scans DOM and
+        clicks via direct `el.click()`. Bypasses Playwright's actionability
+        checks. Required for elements Playwright falsely reports as
+        not-visible (e.g. Google Slides' kept-in-DOM Images card).
+
+    Behaviour flags:
+      * wait_ready=True — poll every poll_interval_ms until a match passes
+        or timeout_ms elapses.
+      * do_click=False — readiness check only; never click.
+    """
+    if page is None:
+        return False
+    if not text_regexes and not match_attrs:
+        return False
+
+    compiled = []
+    for r in (text_regexes or []):
+        compiled.append(re.compile(r, re.IGNORECASE) if isinstance(r, str) else r)
+    match_attrs = match_attrs or {}
+    deadline = time.time() + (timeout_ms / 1000.0) if wait_ready else None
+
+    while True:
+        try:
+            ok = _scan_click_once(
+                page, compiled, selectors, match_attrs, match_attrs_logic,
+                require_visible, require_enabled, do_click, use_dom_evaluate,
+            )
+            if ok:
+                return True
+        except Exception as e:
+            _log(f"[_click_visible_button_matching] scan exception: {e}")
+        if not wait_ready:
+            return False
+        if deadline is not None and time.time() >= deadline:
+            return False
+        page.wait_for_timeout(poll_interval_ms)
+
+
+def _scan_click_once(
+    page, compiled, selectors, match_attrs, match_attrs_logic,
+    require_visible, require_enabled, do_click, use_dom_evaluate,
+) -> bool:
+    """Single scan attempt; routes by use_dom_evaluate."""
+    if use_dom_evaluate:
+        return _scan_click_dom(
+            page, compiled, selectors, match_attrs,
+            require_visible, require_enabled, do_click,
+        )
+    return _scan_click_locator(
+        page, compiled, selectors, match_attrs, match_attrs_logic,
+        require_visible, require_enabled, do_click,
+    )
+
+
+def _scan_click_locator(
+    page, compiled, selectors, match_attrs, match_attrs_logic,
+    require_visible, require_enabled, do_click,
+) -> bool:
+    """Playwright Locator-based scan + force-click. Actionable elements only."""
+    candidates = page.locator(selectors)
+    try:
+        n = candidates.count()
+    except Exception as e:
+        _log(f"[_scan_click_locator] locator count failed: {e}")
+        return False
+    for i in range(n):
+        el = candidates.nth(i)
+        try:
+            if match_attrs and not _attrs_match(el, match_attrs, match_attrs_logic):
+                continue
+            if compiled and not _text_aria_match(el, compiled):
+                continue
+            if require_visible and not el.is_visible():
+                continue
+            if require_enabled and not el.is_enabled():
+                continue
+            if do_click:
+                el.click(force=True, timeout=5000)
+            return True
+        except Exception:
+            continue
+    return False
+
+
+def _scan_click_dom(
+    page, compiled, selectors, match_attrs, require_visible, require_enabled, do_click,
+) -> bool:
+    """Raw page.evaluate scan + DOM-level click. Bypasses actionability."""
+    js_pattern = "|".join(r.pattern for r in compiled)
+    return bool(page.evaluate(
+        """({selectors, textPatterns, matchAttrs, matchAttrsLogic, requireVisible, requireEnabled, doClick}) => {
+            const candidates = [...document.querySelectorAll(selectors)];
+            const rx = textPatterns ? new RegExp(textPatterns, 'i') : null;
+            for (const el of candidates) {
+                if (matchAttrs && Object.keys(matchAttrs).length > 0) {
+                    if (matchAttrsLogic === 'all') {
+                        let allHit = true;
+                        for (const k in matchAttrs) {
+                            const v = (el.getAttribute(k) || '').trim();
+                            if (!matchAttrs[k].includes(v)) { allHit = false; break; }
+                        }
+                        if (!allHit) continue;
+                    } else {
+                        // 'any' (default for callers that don't pass logic explicitly)
+                        let anyHit = false;
+                        for (const k in matchAttrs) {
+                            const v = (el.getAttribute(k) || '').trim();
+                            if (matchAttrs[k].includes(v)) { anyHit = true; break; }
+                        }
+                        if (!anyHit) continue;
+                    }
+                }
+                const txt = (el.textContent || '').trim();
+                const aria = (el.getAttribute('aria-label') || '').trim();
+                if (rx && !(rx.test(txt) || rx.test(aria))) continue;
+                // Raw-DOM rect truthiness (matches the pre-fix
+                // `_wait_for_create_button_ready` polling loop verbatim; do
+                // NOT swap for Playwright `.is_visible()` semantics — that
+                // would gate on extra actionability cues and lose the
+                // wire-by-wire equivalence the round-2 shim claims).
+                if (requireVisible) {
+                    const visible = !!(el.offsetWidth || el.offsetHeight
+                        || el.getClientRects().length);
+                    if (!visible) continue;
+                }
+                const disabled = !!el.disabled
+                    || el.classList.contains('goog-button-disabled');
+                if (requireEnabled && disabled) continue;
+                if (doClick) el.click();
+                return true;
+            }
+            return false;
+        }""",
+        {
+            "selectors": selectors,
+            "textPatterns": js_pattern,
+            "matchAttrs": match_attrs,
+            "matchAttrsLogic": match_attrs_logic,
+            "requireVisible": require_visible,
+            "requireEnabled": require_enabled,
+            "doClick": do_click,
+        },
+    ))
+
+
+def _attrs_match(el, match_attrs: dict, logic: str) -> bool:
+    """Apply match_attrs across attribute equality checks.
+
+    `logic='any'`: OR across keys (any key value matching its allowed list
+        passes the candidate).
+    `logic='all'`: AND across keys (every key value must match its allowed
+        list to pass).
+    Within a single allowed list, equality is the test (value in list).
+    """
+    if logic == "all":
+        for k, allowed in match_attrs.items():
+            if (el.get_attribute(k) or "") not in allowed:
+                return False
+        return True
+    for k, allowed in match_attrs.items():
+        if (el.get_attribute(k) or "") in allowed:
+            return True
+    return False
+
+
+def _text_aria_match(el, compiled) -> bool:
+    """Match any compiled regex against the element's text OR aria-label."""
+    try:
+        text = (el.inner_text(timeout=500) or "").strip()
+    except Exception:
+        text = ""
+    aria = (el.get_attribute("aria-label") or "").strip()
+    return any(rgx.search(text) or rgx.search(aria) for rgx in compiled)
+
+
 def _dismiss_start_dialog(page) -> bool:
     """Dismiss the Slides getting-started modal if it is present.
 
@@ -466,28 +679,21 @@ def _dismiss_start_dialog(page) -> bool:
         # builds where the tile is exposed as a button with accessible
         # name "Images" or "Immagini". This is the most reliable match
         # when the DOM contains hidden duplicates.
-        for role_name in [re.compile(r"Images", re.I), re.compile(r"Immagini", re.I)]:
-            try:
-                tiles = page.get_by_role("button", name=role_name)
-                _log(f"[_dismiss_start_dialog] role candidate count for {role_name.pattern}: {tiles.count()}")
-                for idx in range(tiles.count()):
-                    tile = tiles.nth(idx)
-                    if not tile.is_visible():
-                        continue
-                    try:
-                        txt = (tile.inner_text(timeout=500) or "").strip()
-                    except Exception:
-                        txt = ""
-                    _log(f"[_dismiss_start_dialog] fast-path role button matched: {role_name.pattern} idx={idx}")
-                    if txt:
-                        _log(f"[_dismiss_start_dialog] role button text: {txt[:120]!r}")
-                    tile.click(force=True, timeout=5000)
-                    if _wait_for_prompt_surface(page, timeout_ms=7000):
-                        return True
-                    page.wait_for_timeout(1000)
-                    return True
-            except Exception:
-                continue
+        # Migrated to _click_visible_button_matching (locator path). Single
+        # call replaces the inner role-based scan + per-tile is_visible +
+        # force-click loop, with identical observable behaviour (first
+        # matching visible role-tagged button is clicked and we then
+        # verify the prompt surface).
+        if _click_visible_button_matching(
+            page,
+            [r"images", r"immagini"],
+            require_visible=True,
+        ):
+            _log("[_dismiss_start_dialog] fast-path role button matched (unified helper)")
+            if _wait_for_prompt_surface(page, timeout_ms=7000):
+                return True
+            page.wait_for_timeout(1000)
+            return True
 
         if _click_visible_start_images_tile(page):
             _log("[_dismiss_start_dialog] DOM click on visible Images tile succeeded")
@@ -496,33 +702,24 @@ def _dismiss_start_dialog(page) -> bool:
             page.wait_for_timeout(1000)
             return True
 
-        for selector in [
-            'button[data-view-id="insert-generated-image"]',
-            'button[aria-controls="insert-generated-image"]',
-            'button:has-text("Images")',
-            'button:has-text("Immagini")',
-        ]:
-            try:
-                tiles = page.locator(selector)
-                _log(f"[_dismiss_start_dialog] selector candidate count for {selector}: {tiles.count()}")
-                for idx in range(tiles.count()):
-                    tile = tiles.nth(idx)
-                    if not tile.is_visible():
-                        continue
-                    try:
-                        txt = (tile.inner_text(timeout=500) or "").strip()
-                    except Exception:
-                        txt = ""
-                    _log(f"[_dismiss_start_dialog] fast-path tile selector matched: {selector} idx={idx}")
-                    if txt:
-                        _log(f"[_dismiss_start_dialog] tile text: {txt[:120]!r}")
-                    tile.click(force=True, timeout=5000)
-                    if _wait_for_prompt_surface(page, timeout_ms=7000):
-                        return True
-                    page.wait_for_timeout(1000)
-                    return True
-            except Exception:
-                continue
+        # Migrated to _click_visible_button_matching (locator path).
+        # Match on text + data-view-id + aria-controls in a single helper call.
+        if _click_visible_button_matching(
+            page,
+            [r"images", r"immagini"],
+            selectors='button[data-view-id="insert-generated-image"], button[aria-controls="insert-generated-image"], button',
+            match_attrs={
+                "data-view-id": ["insert-generated-image"],
+                "aria-controls": ["insert-generated-image"],
+            },
+            match_attrs_logic="any",
+            require_visible=True,
+        ):
+            _log("[_dismiss_start_dialog] fast-path tile selector matched (unified helper)")
+            if _wait_for_prompt_surface(page, timeout_ms=7000):
+                return True
+            page.wait_for_timeout(1000)
+            return True
 
         dialogs = page.locator('div[role="dialog"], div[aria-modal="true"]').all()
         for dialog in dialogs:
@@ -541,6 +738,11 @@ def _dismiss_start_dialog(page) -> bool:
             # on the image-generation surface. The modal is permissive:
             # if the card click fails, fall through to the close/escape
             # path instead of blocking generation.
+            # Modal-scoped tile scan: NOT migrated to the unified helper
+            # because it must search children of a SPECIFIC dialog Locator
+            # (not page-wide). Two-dialog ambiguity would let the helper
+            # pick the wrong tile. Kept verbatim from the pre-unification
+            # flow so behaviour is identical byte-for-byte.
             try:
                 for selector in [
                     'button[data-view-id="insert-generated-image"]',
@@ -624,13 +826,14 @@ def _wait_for_prompt_surface(page, timeout_ms: int = 15000) -> bool:
         return True
     except PlaywrightTimeout:
         try:
-            for role_name in [re.compile(r"Images", re.I), re.compile(r"Immagini", re.I)]:
-                tile = page.get_by_role("button", name=role_name).first
-                if tile.is_visible():
-                    _log(f"[_wait_for_prompt_surface] retrying via visible tile: {role_name.pattern}")
-                    tile.click(force=True, timeout=5000)
-                    ta.wait_for(state="visible", timeout=timeout_ms)
-                    return True
+            if _click_visible_button_matching(
+                page,
+                [r"images", r"immagini"],
+                require_visible=True,
+            ):
+                _log("[_wait_for_prompt_surface] retrying via visible tile (unified helper)")
+                ta.wait_for(state="visible", timeout=timeout_ms)
+                return True
         except Exception as e:
             _log(f"[_wait_for_prompt_surface] visible-tile retry failed: {e}")
         return False
@@ -640,94 +843,46 @@ def _wait_for_prompt_surface(page, timeout_ms: int = 15000) -> bool:
 
 
 def _click_visible_start_images_tile(page) -> bool:
-    """Best-effort DOM click on the Images/Immagini tile.
+    """Thin shim around _click_visible_button_matching."""
+    return _click_visible_button_matching(
+        page,
+        [r"images", r"immagini", r"insert-generated-image"],
+        match_attrs={
+            "data-view-id": ["insert-generated-image"],
+            "aria-controls": ["insert-generated-image"],
+        },
+        match_attrs_logic="any",
+        require_visible=False,
+        use_dom_evaluate=True,
+    )
 
-    Google Slides keeps the getting-started card in the DOM even when
-    Playwright reports it as not visible. We therefore match by text
-    and attributes and use a direct DOM click, which is enough for the
-    internal React/DOM handler to fire.
-    """
-    if page is None:
-        return False
-    try:
-        return bool(page.evaluate("""() => {
-            const candidates = [...document.querySelectorAll('button')];
-            for (const el of candidates) {
-                const txt = (el.textContent || '').trim();
-                const aria = (el.getAttribute('aria-label') || '').trim();
-                const dataView = (el.getAttribute('data-view-id') || '').trim();
-                const controls = (el.getAttribute('aria-controls') || '').trim();
-                if (
-                    dataView === 'insert-generated-image' ||
-                    controls === 'insert-generated-image' ||
-                    /images/i.test(txt) ||
-                    /immagini/i.test(txt) ||
-                    /images/i.test(aria) ||
-                    /immagini/i.test(aria)
-                ) {
-                    el.click();
-                    return true;
-                }
-            }
-            return false;
-        }"""))
-    except Exception as e:
-        _log(f"[_click_visible_start_images_tile] DOM click failed: {e}")
-        return False
+
 
 
 def _click_visible_image_mode_tab(page) -> bool:
-    """Best-effort click on the Image/Immagine mode tab."""
-    if page is None:
-        return False
-    try:
-        return bool(page.evaluate("""() => {
-            const candidates = [...document.querySelectorAll('[role="tab"], button')];
-            for (const el of candidates) {
-                const txt = (el.textContent || '').trim();
-                const aria = (el.getAttribute('aria-label') || '').trim();
-                if (/^immagine$/i.test(txt) || /^image$/i.test(txt) || /immagine/i.test(aria) || /image/i.test(aria)) {
-                    el.click();
-                    return true;
-                }
-            }
-            return false;
-        }"""))
-    except Exception as e:
-        _log(f"[_click_visible_image_mode_tab] DOM click failed: {e}")
-        return False
+    """Thin shim around _click_visible_button_matching."""
+    return _click_visible_button_matching(
+        page,
+        [r"^immagine$", r"^image$", r"immagine", r"image"],
+        selectors='[role="tab"], button',
+        require_visible=False,
+        use_dom_evaluate=True,
+    )
+
+
 
 
 def _click_visible_create_button(page) -> bool:
-    """Best-effort click on the creation button."""
-    if page is None:
-        return False
-    try:
-        candidates = page.locator('button, [role="button"], .image-synthesis-creation-button').all()
-        for btn in candidates:
-            try:
-                if not btn.is_visible():
-                    continue
-                txt = (btn.text_content() or "").strip()
-                aria = (btn.get_attribute("aria-label") or "").strip()
-                if (txt.lower() == "crea" or txt.lower() == "create" or
-                    "crea" in aria.lower() or "create" in aria.lower() or
-                    btn.get_attribute("data-view-id") == "image-synthesis-creation-button" or
-                    "image-synthesis-creation-button" in (btn.get_attribute("class") or "")):
-                    disabled = btn.get_attribute("disabled") or "goog-button-disabled" in (btn.get_attribute("class") or "")
-                    if disabled:
-                        _log(f"[_click_visible_create_button] candidate found but disabled: txt={txt!r} aria={aria!r}")
-                        continue
-                    _log(f"[_click_visible_create_button] clicking candidate: txt={txt!r} aria={aria!r}")
-                    btn.click(force=True, timeout=5000)
-                    return True
-            except Exception as e:
-                _log(f"[_click_visible_create_button] error processing candidate: {e}")
-                continue
-        return False
-    except Exception as e:
-        _log(f"[_click_visible_create_button] DOM click failed: {e}")
-        return False
+    """Thin shim around _click_visible_button_matching."""
+    return _click_visible_button_matching(
+        page,
+        [r"^crea$", r"^create$", r"crea", r"create"],
+        selectors='button[aria-label="Crea"], button[aria-label="Create"], button.image-synthesis-creation-button',
+        require_visible=True,
+        require_enabled=True,
+    )
+
+
 
 
 def _type_prompt_text(page, locator, text: str) -> bool:
@@ -750,32 +905,27 @@ def _type_prompt_text(page, locator, text: str) -> bool:
 
 
 def _wait_for_create_button_ready(page, timeout_ms: int = 15000) -> bool:
-    """Wait until the visible Crea/Create button becomes enabled."""
-    if page is None:
-        return False
-    deadline = time.time() + (timeout_ms / 1000.0)
-    while time.time() < deadline:
-        try:
-            ready = bool(page.evaluate("""() => {
-                const candidates = [...document.querySelectorAll('button')];
-                for (const el of candidates) {
-                    const txt = (el.textContent || '').trim();
-                    const aria = (el.getAttribute('aria-label') || '').trim();
-                    const visible = !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-                    const disabled = !!el.disabled || el.classList.contains('goog-button-disabled');
-                    if (!visible || disabled) continue;
-                    if (/^crea$/i.test(txt) || /^create$/i.test(txt) || /crea/i.test(aria) || /create/i.test(aria)) {
-                        return true;
-                    }
-                }
-                return false;
-            }"""))
-            if ready:
-                return True
-        except Exception:
-            pass
-        page.wait_for_timeout(500)
-    return False
+    """Thin shim around _click_visible_button_matching (check-only path).
+
+    Pre-fix used raw JS visibility (`offsetWidth || offsetHeight ||
+    getClientRects().length`) via DOM-evaluate; we preserve that here so
+    button-readiness semantics match byte-for-byte. A button whose rect is
+    collapsed by CSS is NOT considered ready, regardless of Playwright's
+    additional actionability cues (occlusion, hit-target geometry) that
+    the locator path would consult.
+    """
+    return _click_visible_button_matching(
+        page,
+        [r"^crea$", r"^create$", r"crea", r"create"],
+        require_visible=True,
+        require_enabled=True,
+        wait_ready=True,
+        timeout_ms=timeout_ms,
+        do_click=False,
+        use_dom_evaluate=True,
+    )
+
+
 
 
 def _check_169_selected(page, ratio: str = "16:9") -> bool:
