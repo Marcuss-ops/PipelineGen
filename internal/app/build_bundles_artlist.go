@@ -71,8 +71,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	mediaproc "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
+	mediaproc "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -155,6 +155,15 @@ func WireArtlist(
 		zap.String("root_path", "/api/artlist/*"),
 		zap.Bool("godlike_07_fail_closed", true),
 	)
+
+	// PR-HLS-AES128 followup-2 (July 2026): construct the canonical ffprobe
+	// Processor ONCE at composition scope (lifted out of the closure to
+	// avoid per-call allocation, per code-reviewer nit-1). The Processor
+	// holds only the ffmpeg-derived path; Probe runs the binary as a
+	// subprocess. Fail-closed: missing ffprobe binary yields a typed
+	// exec error from process.Run that the closure below forwards to
+	// markAudit(Failed) + ErrInvalidResponse to the caller.
+	ffmpegProc := ffmpeg.NewProcessor("")
 
 	// godlike/06 SSOT: HTTPSelfLoopProbe is the canonical app-layer wrapper
 	// for *Probe; its Probe(ctx) (bool, error) signature matches
@@ -300,12 +309,17 @@ func WireArtlist(
 		// sees the audit-status flip and an actionable log line naming
 		// ffprobe as the missing dependency.
 		PostValidator: func(ctx context.Context, path string) error {
-			mediaInfo, err := ffmpeg.NewProcessor("").Probe(ctx, path)
+			mediaInfo, err := ffmpegProc.Probe(ctx, path)
 			if err != nil {
 				return err
 			}
-			if !mediaInfo.HasVideo {
-				return fmt.Errorf("ffprobe: no video stream detected in %q (corrupt container or missing AES-128 stage upstream)", path)
+			// PR-HLS-AES128 followup-2 (reviewer nit-2): accept audio-only
+			// downloads as well as video — the spec says "file is readable"
+			// which a valid audio stream satisfies. The underlying Probe()
+			// error path still catches corrupt containers / unparseable files
+			// (godlike/07 fail-closed).
+			if !mediaInfo.HasVideo && !mediaInfo.HasAudio {
+				return fmt.Errorf("ffprobe: no media stream detected in %q (corrupt container or missing AES-128 stage upstream)", path)
 			}
 			return nil
 		},
