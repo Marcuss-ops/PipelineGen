@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // postRenewFailClosedCheckTimeout bounds the post-renewCancel
@@ -52,6 +53,53 @@ var ErrLeaseLostDuringRun = errors.New("worker Runner: lease lost during run (re
 // Run is the main claim-and-execute loop. Blocks until ctx is
 // cancelled, claiming jobs from the broker and executing them
 // via runLease.
+//
+// P0 #6 (July 2026): the claim retry path now routes through
+// pkg/retry.Do (the canonical godlike/06 SSOT surface for bounded
+// retry loops) instead of an inlined `time.Sleep(2 * time.Second)`
+// + infinite outer-loop retry. The migration settles two P0 #6
+// integration-test blockers:
+//
+//  1. **ctx-aware sleep**: pre-P0 #6 `time.Sleep(d)` ignored ctx
+//     cancellation during the 2s settle wait, so a shutdown request
+//     during the settle would block until d elapsed. retry.Do's
+//     per-retry sleep selects on `ctx.Done()` so cancellation aborts
+//     the wait immediately (godlike/07 fail-closed seam for
+//     shutdown paths).
+//
+//  2. **Deterministic test timing** (the gating P0 #6 assertion):
+//     integration tests inject `Options{Clock: myFakeClock}` so
+//     per-retry sleeps are advanced on demand — no 2s wall-clock
+//     flake on slow CI (the original CI flake in runner_test.go:383
+//     was the symptom that led to P0 #6 ticket creation).
+//
+// retry.Do configuration:
+//   - MaxAttempts:    5 — bounded inner retry budget so a sustained
+//     broker outage exits the inner loop with the last error
+//     within ~60 seconds; the OUTER for-loop continues claim
+//     attempts forever (matches pre-P0 #6 "try forever" intent).
+//   - InitialBackoff: 2 seconds — byte-equivalent with the pre-P0 #6
+//     fixed 2s settle wait (first retry fires after 2s).
+//   - MaxBackoff:     30 seconds — exponential saturation cap; 5
+//     attempts at 2s/4s/8s/16s/30s = ~60s worst-case before the
+//     outer for-loop takes over.
+//   - BackoffFactor:  2.0 — canonical exponential doubling.
+//   - JitterFraction: 0 — deterministic timing for the integration
+//     test (no thundering-herd randomness in test assertions).
+//   - IsRetryable:    custom predicate mirroring the pre-P0 #6
+//     "retry everything except W1 Phase 5 startup misconfig" intent.
+//     The post-FASE-6-Cut-6.1.D pkg/retry.IsTransient is a PURE
+//     TYPED PROBE (no substring fallback) so passing it directly
+//     would BREAK pre-P0 #6 semantics — every broker error except
+//     typed-retryable shapes would fail-closed. The custom
+//     predicate replicates the canonical ErrNoWorkerCapabilities
+//     gate and routes all other broker errors as retryable.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the IsRetryable predicate
+// explicitly returns `false` for ErrNoWorkerCapabilities so the
+// first attempt's typed sentinel surfaces at the post-Do error
+// check (`errors.Is(err, ErrNoWorkerCapabilities)` immediately
+// after retry.Do); no retry on a startup misconfig.
 func (r *Runner) Run(ctx context.Context) error {
 	if r.registry == nil {
 		r.registry = NewRegistry()
@@ -62,24 +110,48 @@ func (r *Runner) Run(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
-		lease, err := r.broker.Claim(ctx, appjobs.ClaimCommand{
-			WorkerID:        r.workerID,
-			WorkerSessionID: r.sessionID,
-			Capabilities:    r.caps,
-			WaitSeconds:     20,
+		var lease *appjobs.Lease
+		err := retry.Do(ctx, func() error {
+			var claimErr error
+			lease, claimErr = r.broker.Claim(ctx, appjobs.ClaimCommand{
+				WorkerID:        r.workerID,
+				WorkerSessionID: r.sessionID,
+				Capabilities:    r.caps,
+				WaitSeconds:     20,
+			})
+			return claimErr
+		}, retry.Options{
+			MaxAttempts:    5,
+			InitialBackoff: 2 * time.Second,
+			MaxBackoff:     30 * time.Second,
+			BackoffFactor:  2.0,
+			JitterFraction: 0,
+			IsRetryable: func(err error) bool {
+				// W1 Phase 5: ErrNoWorkerCapabilities is a STARTUP
+				// misconfiguration, not a transient broker failure.
+				// Retrying would spam logs forever; surface immediately
+				// so the process supervisor restarts with fresh caps
+				// (matches pre-P0 #6 `errors.Is(err, ErrNoWorkerCapabilities)`
+				// check that returned err instead of sleeping + retrying).
+				if errors.Is(err, appjobs.ErrNoWorkerCapabilities) {
+					return false
+				}
+				// All other broker errors: transient round-trip
+				// failure, retry per the canonical "claim loop tries
+				// forever" intent.
+				return true
+			},
 		})
 		if err != nil {
-			// W1 Phase 5: ErrNoWorkerCapabilities is a STARTUP misconfiguration,
-			// not a transient broker failure. Retrying in a 2s loop would spam
-			// logs forever; instead surface a single loud error and exit so the
-			// process supervisor restarts with fresh registered caps.
+			// pre-P0 #6 contract preserved: ErrNoWorkerCapabilities
+			// (IsRetryable returned false) surfaces here as non-nil
+			// immediately on first attempt.
 			if errors.Is(err, appjobs.ErrNoWorkerCapabilities) {
 				r.log.Error("worker has no advertised capabilities — refusing to retry",
 					zap.String("reason", "registered types did not survive parse+dedup; check VELOX_WORKER_CAPABILITIES and cmd/worker startup"))
 				return err
 			}
-			r.log.Warn("claim failed", zap.Error(err))
-			time.Sleep(2 * time.Second)
+			r.log.Warn("claim failed (retry budget exhausted)", zap.Error(err))
 			continue
 		}
 		if lease == nil || lease.Job == nil {
