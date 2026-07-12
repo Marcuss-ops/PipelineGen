@@ -43,6 +43,50 @@ import (
 	files "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
+// DEPRECATED (Commit A / FASE 5 follow-up, July 2026):
+//
+// godlike/06 SSOT — this free function is DEPRIORITIZED in favor of
+// the typed-factory pattern. Future production callers SHOULD
+// migrate to:
+//
+//	derive := remote.MakeCompleteJobIdempotencyKey(hashutil.HashFunc)
+//	service := &CompletionService{derive: derive, ...} // field injection
+//
+// (composition root wires the derive using files.NewSHA256Hasher()
+// or a test fake per the Commit D spec literal "Aggiungi un test
+// unit con fake `HashFunc`").
+//
+// The free function remains in the surface AS-IS for two reasons:
+//
+//  1. Back-compat: the existing production callers (the
+//     completion publisher + tx_outbox + helpers) thread
+//     this free function for the legacy complete-job-key
+//     derivation. Removing the free function in Commit A
+//     would force ALL callers to migrate in a single PR —
+//     godlike/06 minimum-blast-radius forbids this. The
+//     DEPRECATED note directs future migrations.
+//
+//  2. Default-priming: the package-init
+//     `defaultCompleteJobKey` (MakeCompleteJobIdempotencyKey
+//     (files.NewSHA256Hasher())) is the byte-stable
+//     production default the free function delegates to.
+//     Removing the free function would force the composition
+//     root to inject the derive into every caller manually —
+//     a refactor that belongs in a separate cleanup wave
+//     (out of Commit A scope).
+//
+// The deterministic byte format is unchanged across this
+// audit-pin (the free function continues to delegate to
+// defaultCompleteJobKey which delegates to
+// files.NewSHA256Hasher()). godlike/06 SSOT discipline: the
+// FUNCTION still produces the canonical output; the
+// RECOMMENDED path forward is the factory.
+//
+// Mirrors the ArtifactIdempotencyKey audit-pin in
+// internal/domain/remote/idempotency.go (Commit A follow-up
+// applies the FASE 5/idempotency audit-pin discipline uniformly
+// across the legacy free-function surface).
+//
 // CompleteJobIdempotencyKey computes the deterministic
 // (jobID, attempt, resultHash) idempotency-key triple for a Sender-
 // side CompleteJob call. The function is pure (no side effects, no
