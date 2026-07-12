@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS asset_text_tracks (
 CREATE TABLE IF NOT EXISTS asset_text_track_segments (
     id TEXT PRIMARY KEY,
     track_id TEXT NOT NULL,
+    sequence_no INTEGER NOT NULL DEFAULT 0,
     start_ms INTEGER NOT NULL,
     end_ms INTEGER NOT NULL,
     text TEXT NOT NULL,
