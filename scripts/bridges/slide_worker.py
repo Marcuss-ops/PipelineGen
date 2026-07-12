@@ -653,6 +653,30 @@ def _click_visible_start_images_tile(page) -> bool:
         return False
 
 
+def _click_visible_image_mode_tab(page) -> bool:
+    """Best-effort click on the Image/Immagine mode tab."""
+    if page is None:
+        return False
+    try:
+        return bool(page.evaluate("""() => {
+            const candidates = [...document.querySelectorAll('[role="tab"], button')];
+            for (const el of candidates) {
+                const txt = (el.textContent || '').trim();
+                const aria = (el.getAttribute('aria-label') || '').trim();
+                const visible = !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                if (!visible) continue;
+                if (/^immagine$/i.test(txt) || /^image$/i.test(txt) || /immagine/i.test(aria) || /image/i.test(aria)) {
+                    el.click();
+                    return true;
+                }
+            }
+            return false;
+        }"""))
+    except Exception as e:
+        _log(f"[_click_visible_image_mode_tab] DOM click failed: {e}")
+        return False
+
+
 def _check_169_selected(page, ratio: str = "16:9") -> bool:
     """P1.3 (July 2026): post-click verification that the requested ratio is applied.
 
@@ -1147,14 +1171,8 @@ class ProfileWorker(threading.Thread):
             image_mode_active = False
             ratio_selected = ""
             try:
-                tab = self.page.locator(
-                    '[role="tab"]:has-text("Immagine"), [role="tab"]:has-text("Image"), '
-                    'button:has-text("Immagine"), button:has-text("Image"), '
-                    'div:has-text("Immagine"), div:has-text("Image")'
-                ).first
-                if tab:
-                    tab.click(force=True, timeout=5000)
-                    image_mode_active = tab.is_visible() if tab else False
+                if _click_visible_image_mode_tab(self.page):
+                    image_mode_active = True
                 self.page.wait_for_timeout(1000)
             except Exception as te:
                 _log(f"[profile-{self.profile_id}][{request_id}] warning: failed switching tab directly: {te}")
@@ -1437,7 +1455,7 @@ class ProfileWorker(threading.Thread):
                                 )
                                 if isinstance(buffer_int_list, list) and buffer_int_list:
                                     image_bytes = bytes(buffer_int_list)                                    fetch_method = "blob-fetch"
-                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page succeeded ({len(image_bytes)} bytes)")
+_log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page succeeded ({len(image_bytes)} bytes)")
                             except Exception as fe:
                                 _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page failed: {fe}")
                             if not image_bytes:
@@ -1449,7 +1467,7 @@ class ProfileWorker(threading.Thread):
                                     # page-scoped. timeout=5000 bounds the
                                     # variant where the locator selector silently
                                     # rotates off the DOM mid-fetch; the worker                                    # fails fast and surfaces a typed error.
-                                    image_bytes = img.screenshot(type="png", timeout=5000)
+image_bytes = img.screenshot(type="png", timeout=5000)
                                     fetch_method = "element-screenshot"
                                     _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback succeeded ({len(image_bytes)} bytes)")
                                 except Exception as se:
