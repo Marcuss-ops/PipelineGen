@@ -37,6 +37,65 @@
 # 63, scripts/ci-architectural-checks.sh) reports stale entries as a
 # warning + the cross-ref gates promote the wave toward enforce_zero=true.
 
+- id: PRE-EXISTING-BUILD-ISSUES-2026-07-04
+  status: in_progress
+  owner: carry-forward wave-tracker (operational)
+  deadline: "2026-09-15T00:00:00Z"
+  rationale: |
+    Carry-forward list of pre-existing build/test failures cataloged
+    during the slide_worker refactor wave (commits 1-9, July 2026).
+    All 10 entries reproduce on PURE main (zero coupling to wave
+    commits 1-9) and were individually diagnosed + ratified by
+    Commit 7b's diagnostic (usecase TestMissingTranslation_FallbackWithExplicitWarning +
+    TestCacheFingerprint_P1A_PerFieldMutationSensitivity/segment_topics) +
+    Commit 9's ship gate (TestWalPragmas_PreservesAllThreePragmas +
+    internal/app/composition + assets/monitor + assets/providers + artlist +
+    stockpipeline + cmd/archcheck + format-drift on 6 artlist files).
+    Per godlike/06 SSOT + the user's option (a) decision on Commit 8,
+    these failures do NOT block wave commits 1-9 (each landed with
+    explicit CARRY-FORWARD awareness commit message annotation):
+    failures are out-of-scope to the wave's refactor scope
+    (slide_worker + processor_images + chrome_provider +
+    postprocessor_composite_merge + sync_generation). MUST be
+    closed before PR-G CUTOVER phase (WAVE-21 deadline
+    2026-08-01) AND before WAVE-22 deadline 2026-09-15.
+
+    Note on first instantiation: this entry is the FIRST canonical
+    presence of the PRE-EXISTING-BUILD-ISSUES-2026-07-04 section in
+    architecture/current.yaml. Prior references to this section
+    (e.g., in BLOCKED summaries + Commit 8 spec history) were
+    speculative — the discipline existed in principle, but the
+    documentation did not exist on disk. This commit
+    (`chore(arch): initialize PRE-EXISTING-BUILD-ISSUES-2026-07-04
+    governance entry + per-surface catalog`) instantiates the
+    section retroactively with full provenance + per-surface
+    detail (in architecture/issues.yaml::PRE-EXISTING-{1..10}).
+  cross_refs:
+    issues_catalog: "architecture/issues.yaml::PRE-EXISTING-{1..10}"
+    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate"]
+    ci_gate: "scripts/ci-architectural-checks.sh::Check 63 (zero-baseline stale-entry detection)"
+  follow_up_tickets:
+    - id: PRE-EXISTING-1-WAL-PRAGMAS
+      note: internal/infrastructure/database/sqlite/pool_test.go:132 (busy_timeout + synchronous pragmas)
+    - id: PRE-EXISTING-2-INTERNAL-APP-COMPOSITION
+      note: internal/app/composition tests (TestRecommend_MinScoreFilterWorks, TestComposition_NoGoroutinesSpawned, TestStartupIntegration, etc.)
+    - id: PRE-EXISTING-3-ASSETS-MONITOR
+      note: internal/application/assets/monitor::TestAnalyzeVideo_ScoreBelowThresholdSoftSkips
+    - id: PRE-EXISTING-4-ASSETS-PROVIDERS
+      note: internal/application/assets/providers::TestSearchAggregator_HappyPath
+    - id: PRE-EXISTING-5-ASSETS-ARTLIST
+      note: internal/application/assets/providers/artlist::TestSearch_CandidateTranslation_RoundTrip
+    - id: PRE-EXISTING-6-STOCKPIPELINE
+      note: stock/stockpipeline::TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope + TestSourcingNoLegacyIndexingStrings
+    - id: PRE-EXISTING-7-USECASE-TRANSLATION
+      note: internal/application/scripts/usecase/multilingual_persistence_p1f_test.go::TestMissingTranslation_FallbackWithExplicitWarning
+    - id: PRE-EXISTING-8-USECASE-CACHE-FINGERPRINT
+      note: internal/application/scripts/usecase/generate_cache_fingerprint_p1a_test.go::TestCacheFingerprint_P1A_PerFieldMutationSensitivity
+    - id: PRE-EXISTING-9-ARCHCHECK-SNAPSHOT
+      note: cmd/archcheck::TestSnapshot
+    - id: PRE-EXISTING-10-FORMAT-DRIFT
+      note: verify-format red on 6 artlist files (build_bundles_artlist.go + build_bundles_artlist_failclosed_test.go + artlist/diagnostics.go + artlist/gate03_sqlite_test.go + artlist/ports.go + artlist/diagnostics/system_prober.go)
+
 - id: WAVE-20-QDRANT-005D-HYGIENE
   status: in_progress
   owner: qdrant-hygiene work stream
