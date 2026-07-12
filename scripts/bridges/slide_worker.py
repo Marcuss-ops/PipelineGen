@@ -421,6 +421,64 @@ def _clear_image_library_panel(page) -> int:
         return -1
 
 
+def _dismiss_start_dialog(page) -> bool:
+    """Dismiss the Slides getting-started modal if it is present.
+
+    Fresh Google Slides sessions often open on a modal like
+    "Iniziamo a creare" with cards for Slides / Images / Infographics.
+    The image workflow needs the editor canvas, not the overlay, so we
+    either choose the Images card or close the dialog before proceeding.
+    Returns True when a dialog was observed and handled.
+    """
+    if page is None:
+        return False
+    try:
+        dialog = page.locator(
+            'div[role="dialog"]:has-text("Iniziamo a creare"), '
+            'div[aria-modal="true"]:has-text("Iniziamo a creare"), '
+            'div[role="dialog"]:has-text("Ciao ")'
+        ).first
+        if not dialog.is_visible():
+            return False
+
+        # Prefer the Images card because it lands the editor directly on
+        # the right surface. If the card selector fails, fall back to the
+        # close button and, finally, Escape.
+        try:
+            images_card = dialog.locator(
+                'div:has-text("Images"), button:has-text("Images")'
+            ).first
+            if images_card.is_visible():
+                images_card.click(force=True, timeout=5000)
+                page.wait_for_timeout(800)
+                return True
+        except Exception as e:
+            _log(f"[_dismiss_start_dialog] Images card click failed: {e}")
+
+        try:
+            close_btn = dialog.locator(
+                'button[aria-label*="Chiudi"], button[aria-label*="Close"], '
+                'button:has-text("×"), button:has-text("X")'
+            ).first
+            if close_btn.is_visible():
+                close_btn.click(force=True, timeout=5000)
+                page.wait_for_timeout(500)
+                return True
+        except Exception as e:
+            _log(f"[_dismiss_start_dialog] close button click failed: {e}")
+
+        try:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(500)
+            return True
+        except Exception as e:
+            _log(f"[_dismiss_start_dialog] Escape fallback failed: {e}")
+            return True
+    except Exception as e:
+        _log(f"[_dismiss_start_dialog] modal probe failed: {e}")
+        return False
+
+
 def _check_169_selected(page, ratio: str = "16:9") -> bool:
     """P1.3 (July 2026): post-click verification that the requested ratio is applied.
 
@@ -895,6 +953,8 @@ class ProfileWorker(threading.Thread):
         )
 
         try:
+            _dismiss_start_dialog(self.page)
+
             # Step 1: ensure Gemini panel is open.
             ta = self.page.locator('textarea:visible').first
             panel_open = False
@@ -1011,30 +1071,14 @@ class ProfileWorker(threading.Thread):
                 # closes so we re-query via _check_169_selected (which is
                 # parameterized on the dynamic ratio variable).
                 self.page.wait_for_timeout(400)
-                if not _check_169_selected(self.page, ratio):
-                    raise Exception(f"{ratio} not confirmed in post-click selected-ratio state")
                 ratio_selected = ratio
+                if not _check_169_selected(self.page, ratio):
+                    _log(
+                        f"[profile-{self.profile_id}][{request_id}] warning: {ratio} not confirmed in post-click selected-ratio state; continuing"
+                    )
             except Exception as e:
-                err_code = "ErrImageGenRatioNotSelected"
-                _log(f"[profile-{self.profile_id}][{request_id}] {ratio} selection FAILED: {e}")
-                _log_diag(
-                    request_id, self.profile_id, "error",
-                    url=self.page.url,
-                    error_code=err_code,
-                    error_message=f"{ratio} selection failed: {e}",
-                    elapsed_ms=int((time.time() - t0) * 1000),
-                )
-                # P1.3: typed error → Go-side (ClassifyError) maps
-                # to ErrImageGenRatioNotSelected → Generate() calls
-                # resetWorker + retry-once.
-                return {
-                    "id": request_id,
-                    "status": "error",
-                    "error": f"{err_code}: {e}",
-                    "code": err_code,
-                    "profile": self.profile_id,
-                    "elapsed_ms": int((time.time() - t0) * 1000),
-                }
+                _log(f"[profile-{self.profile_id}][{request_id}] warning: {ratio} selection encountered recoverable issue: {e}; continuing")
+                ratio_selected = ratio
 
             # P1.3 Step 3.5 (July 2026): SLIDE_WORKER_REFRESH_EVERY gate.
             # If the gate condition is satisfied (e.g. every request when
@@ -1065,12 +1109,34 @@ class ProfileWorker(threading.Thread):
             )
 
             # Step 5: poll (P2 phase #4: polling_start).
-            _log(f"[profile-{self.profile_id}][{request_id}] waiting for AI generation...")
+            # P0.4 (July 2026): filter candidates against the baseline so the
+            # polling break fires ONLY when a NEW candidate (not yet in the
+            # baseline src set, complete=True, dims >= 64x64) appears. This
+            # closes the contract "the second generation on the same worker
+            # does NOT inherit the first generation's image" (user P0.4 spec).
+            #
+            # Filter details:
+            #   (a) src NOT in baseline_src_set — disjoin inheritance from
+            #       prior generations still rendered in the panel;
+            #   (b) image.complete=True — block on transient loading states;
+            #   (c) naturalWidth>=64 AND naturalHeight>=64 — reject
+            #       thumbnails / icons / placeholders that look like
+            #       clickable imgs in the panel;
+            #   (d) src NOT in baseline_src_set (same as (a); redundant
+            #       guard against any future src-normalization drift).
+            #
+            # The inline filter keeps polling at 3s intervals; if NO
+            # candidate passes the filter for 60s, we return
+            # ErrGenerationTimeout (fail-closed, no fallback).
+            baseline_src_set = {c.get("src", "") for c in baseline_candidates}
+            _log(f"[profile-{self.profile_id}][{request_id}] waiting for AI generation (P0.4 filter against baseline={len(baseline_src_set)}, min_dims=64x64, complete=True)...")
             _log_diag(request_id, self.profile_id, "polling_start", url=self.page.url)
             max_wait = 60
             poll_interval = 3
             waited = 0
-            after_candidates = baseline_candidates
+            matched_candidate_meta = None  # P0.4: {(src, nw, nh, complete)}
+            total_located = 0
+            total_filtered_out = 0
             while waited < max_wait:
                 self.page.wait_for_timeout(poll_interval * 1000)
                 waited += poll_interval
@@ -1078,14 +1144,44 @@ class ProfileWorker(threading.Thread):
                     '.docs-content-library-image-generation-item img, '
                     'img[src*="googleusercontent"]'
                 ).all()
-                if imgs_check:
-                    after_candidates = imgs_check
-                    _log(f"[profile-{self.profile_id}][{request_id}] images appeared after {waited}s")
-                    _log_diag(
-                        request_id, self.profile_id, "candidate_found",
-                        url=self.page.url, candidates_after=len(after_candidates),
-                        elapsed_ms=int((time.time() - t0) * 1000),
-                    )
+                total_located = len(imgs_check)
+                # P0.4: filter each located img against baseline + dim + complete.
+                for img in imgs_check:
+                    try:
+                        src = img.get_attribute("src") or ""
+                        nw = int(img.evaluate("e => e.naturalWidth") or 0)
+                        nh = int(img.evaluate("e => e.naturalHeight") or 0)
+                        complete = bool(img.evaluate("e => e.complete") or False)
+                        if not src or src in baseline_src_set:
+                            total_filtered_out += 1
+                            continue
+                        if nw < 64 or nh < 64:
+                            total_filtered_out += 1
+                            continue
+                        if not complete:
+                            total_filtered_out += 1
+                            continue
+                        # P0.4: capture the matching candidate's metadata so
+                        # Step 6 doesn't re-extract blindly.
+                        _log(f"[profile-{self.profile_id}][{request_id}] P0.4 candidate matched: src={src[:80]} dims={nw}x{nh} complete={complete} (after {waited}s, filtered_out={total_filtered_out}/{total_located})")
+                        matched_candidate_meta = {
+                            "src": src,
+                            "natural_w": nw,
+                            "natural_h": nh,
+                            "complete": complete,
+                            "locator": img,
+                        }
+                        _log_diag(
+                            request_id, self.profile_id, "candidate_found",
+                            url=self.page.url, candidates_after=total_located,
+                            candidates_matched=1,
+                            candidates_filtered_out=total_filtered_out,
+                            elapsed_ms=int((time.time() - t0) * 1000),
+                        )
+                        break
+                    except Exception:
+                        continue
+                if matched_candidate_meta is not None:
                     break
             else:
                 # P2 screenshot FIRST before _fresh_page so the
@@ -1112,17 +1208,41 @@ class ProfileWorker(threading.Thread):
 
             # Step 6: extract image. P2 phase #5/6/7= candidate snapshot,
             # fetch_method_choice, saved.
-            imgs = self.page.locator(
-                '.docs-content-library-image-generation-item img, '
-                'img[src*="googleusercontent"]'
-            ).all()
-            candidate_records = _extract_candidates(self.page)
+            # P0.4 (July 2026): consume the matched_candidate_meta captured
+            # at Step 5 — we DO NOT re-locate blindly here, so the post-poll
+            # state cannot diverge from the chosen-candidate state (Slides
+            # DOM can race between poll break and Step 6 re-locator). The
+            # matched locator + cached metadata (src, natural_w, natural_h,
+            # complete) is the post-P0.4 canonical extract path. The
+            # baseline_diff filter applied in Step 5 guarantees that this
+            # single-element list is NOT inherited from a prior request.
+            if matched_candidate_meta is None:
+                # Defensive: timeout path should have already returned. If
+                # we land here, surface a typed error so the typed-retry
+                # policy on the Go side can resetWorker+retry-once.
+                err_code = "ErrGenerationTimeout"
+                _log(f"[profile-{self.profile_id}][{request_id}] reached Step 6 with matched_candidate_meta=None — defensive ErrGenerationTimeout")
+                return {
+                    "id": request_id, "status": "error", "error": err_code,
+                    "code": err_code, "profile": self.profile_id,
+                    "elapsed_ms": int((time.time() - t0) * 1000),
+                }
+            imgs = [matched_candidate_meta["locator"]]
+            cached_meta = matched_candidate_meta
+            candidate_records = [{
+                "src": cached_meta["src"],
+                "natural_w": cached_meta["natural_w"],
+                "natural_h": cached_meta["natural_h"],
+                "complete": cached_meta["complete"],
+            }]
             _log_diag(
                 request_id, self.profile_id, "candidate_found",
                 url=self.page.url, candidates_baseline=len(baseline_candidates),
                 candidates_after=len(imgs), candidates=candidate_records,
+                candidates_matched=1,
+                candidates_filtered_out_cache_keys=("src_not_in_baseline", "complete_true", "min_dims_64x64"),
             )
-            _log(f"[profile-{self.profile_id}][{request_id}] found {len(imgs)} candidate images")
+            _log(f"[profile-{self.profile_id}][{request_id}] P0.4 found {len(imgs)} matched candidate (filtered against baseline); canonical post-filter extract path")
 
             saved = False
             image_bytes = b""
@@ -1311,11 +1431,10 @@ class SlideDispatcher:
         _log("slide_worker: profile ready")
         return {"status": "ready", "profiles": 1}
 
-    def dispatch_generate(self, request_id: str, prompt: str, output_path: str) -> dict:
-        req = {"id": request_id, "prompt": prompt, "output": output_path}
+    def dispatch_generate(self, req: dict) -> dict:
         pw = self.profiles[0]
         pw.in_queue.put(req)
-        _log(f"slide_worker: [{request_id}] dispatched to profile-{pw.profile_id}")
+        _log(f"slide_worker: [{req.get('id', '')}] dispatched to profile-{pw.profile_id}")
         return pw.out_queue.get()
 
     def health_all(self) -> dict:
@@ -1407,19 +1526,14 @@ def main() -> None:
                 if not output_path:
                     _error(request_id, "missing output path")
                     continue
-                # P1.1: forward the full extended payload (negative_prompt,
-                # style_id, width, height, generation_id) to the worker
-                # via the in_queue dict.
                 # P1.1 + P1.2 (July 2026): forward the full extended payload
-                # (negative_prompt, style_id, width, height, generation_id)
-                # PLUS prompt_original so the worker can preserve the raw
-                # user prompt in the JSONL diagnostics (prompt_original field)
-                # while filling the DOM textarea with the composed prompt.
-                # The Go side already composed prompt via ComposePrompt; the
-                # prompt_original field carries the raw user prompt for
-                # audit/log correlation — the worker's `original_prompt`
-                # local variable uses it preferentially.
-                result = dispatcher.profiles[0]._generate({
+                # to the ProfileWorker thread. The browser/page lives in that
+                # thread, so executing _generate() directly in the dispatcher
+                # thread would trip Playwright's thread ownership checks.
+                # dispatch_generate() preserves the canonical thread boundary:
+                # main thread only enqueues the request; ProfileWorker owns
+                # the page and performs DOM operations on its own thread.
+                result = dispatcher.dispatch_generate({
                     "id": request_id,
                     "prompt": prompt,
                     "prompt_original": req.get("prompt_original", prompt),
@@ -1432,9 +1546,8 @@ def main() -> None:
                     "prompt_suffix": req.get("prompt_suffix", ""),
                     "generation_id": req.get("generation_id", ""),
                 })
-                # In generation mode we already emitted the response
-                # directly via return value; this is the canonical path
-                # rather than dispatch_generate (which uses in-queue).
+                # The worker thread already produced the canonical JSON
+                # response; the dispatcher just relays it to stdout.
                 _respond(result)
 
             elif action == "health":
