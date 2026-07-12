@@ -1,9 +1,14 @@
 package images
 
 import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -202,5 +207,197 @@ func TestEnsureStarted_DetectsDeadWorkerAndRelaunches(t *testing.T) {
 	// Verify the worker was reset (started=false) even though relaunch failed.
 	if p.started {
 		t.Fatal("ensureStarted should have reset started=false after detecting dead worker")
+	}
+}
+
+// ── ErrNoImageCandidate tests (P0.1, July 2026) ───────────────────────────
+//
+// godlike/07 FAIL-CLOSED contract: when the Python worker reports it could
+// not extract a valid candidate (no candidate, only stale results, blob:/
+// googleusercontent both unreachable), the Go side MUST:
+//   - remove any file at the canonical output_path
+//   - NOT return a GeneratedImage to the caller
+//   - surface a typed error that wraps ErrImageGenNoImageCandidate
+// so retry policies + audit logs can distinguish 'no candidate' from any
+// other terminal failure. The pre-fix code fell back to a slide-export
+// (File → Download → PNG) which produced blank/white artifacts that passed
+// byte-level validation. The tests below lock in the FAIL-CLOSED contract.
+
+// ClassifyError-pure unit tests — no process / pipe plumbing required.
+
+func TestClassifyError_ErrNoImageCandidate(t *testing.T) {
+	err := ClassifyError("ErrNoImageCandidate")
+	if err == nil {
+		t.Fatal("ClassifyError(\"ErrNoImageCandidate\") returned nil")
+	}
+	if !errors.Is(err, ErrImageGenNoImageCandidate) {
+		t.Fatalf("ClassifyError should wrap ErrImageGenNoImageCandidate; got %v", err)
+	}
+}
+
+func TestClassifyError_ErrNoImageCandidate_CaseInsensitive(t *testing.T) {
+	// Worker may emit mixed-case; ClassifyError lowers the input on the
+	// substring probe, so the surface is case-insensitive.
+	cases := []string{
+		"ErrNoImageCandidate",
+		"errnoimagecandidate",
+		"ERRNOIMAGECANDIDATE",
+		"  ErrNoImageCandidate  ",
+	}
+	for _, c := range cases {
+		err := ClassifyError(c)
+		if err == nil {
+			t.Fatalf("ClassifyError(%q) returned nil", c)
+		}
+		if !errors.Is(err, ErrImageGenNoImageCandidate) {
+			t.Fatalf("ClassifyError(%q) must wrap ErrImageGenNoImageCandidate; got %v", c, err)
+		}
+	}
+}
+
+func TestClassifyError_ErrNoImageCandidate_NotOtherSentinels(t *testing.T) {
+	err := ClassifyError("ErrNoImageCandidate")
+	// Must NOT cross-classify into other typed sentinels (the pre-fix hit
+	// the 'default' branch which mapped to ErrImageGenPermanent).
+	for _, sentinel := range []error{
+		ErrImageGenPermanent,
+		ErrImageGenNetwork,
+		ErrImageGenQuota,
+		ErrImageGenAuth,
+		ErrImageGenPolicy,
+	} {
+		if errors.Is(err, sentinel) {
+			t.Fatalf("ErrNoImageCandidate must NOT be classified as %v; got %v", sentinel, err)
+		}
+	}
+}
+
+// Integration test: the full generateOnce path wires the worker →
+// ChromeImageProvider FAIL-CLOSED contract. ensureStarted triggers
+// healthCheck (1 request/response round-trip), then generateOnce writes a
+// generate request and reads the matching-ID response. We mock both
+// round-trips with canned JSON and assert: (a) typed ErrImageGenNoImageCandidate
+// is returned, (b) any orphan file at outputPath is REMOVED, (c) the
+// caller does NOT receive a GeneratedImage.
+
+func TestGenerateOnce_ErrNoImageCandidate_FailClosedRemovesOutput(t *testing.T) {
+	stdInR, stdInW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stdin: %v", err)
+	}
+	stdOutR, stdOutW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe stdout: %v", err)
+	}
+	// Review feedback P0.1: break the test-cycle after Generate returns.
+	// Closing stdInW unblocks the drainer goroutine's bufio.Scanner
+	// (os.Pipe does not return EOF until the writer end is closed),
+	// which then closes the requestIds channel and unblocks the
+	// response-writer goroutine. Without this seam, both goroutines
+	// leak under `go test -race`.
+	t.Cleanup(func() {
+		_ = stdInW.Close()
+	})
+
+	// Background cmd so isDeadWorkerError does not trip on nil p.cmd
+	// (ProcessState nil → not exited; the stdin probe Write succeeds
+	// because stdInR is being drained by goroutine 1).
+	cmd := exec.Command("sleep", "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("sleep start: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+
+	p := &ChromeImageProvider{
+		log:     zap.NewNop(),
+		stdin:   stdInW,
+		stdout:  bufio.NewScanner(stdOutR),
+		started: true,
+		cmd:     cmd,
+	}
+
+	// Sentinel: orphan file at the canonical outputPath. The FAIL-CLOSED
+	// contract says this MUST be removed when the worker reports an error.
+	outputPath := filepath.Join(t.TempDir(), "extracted.png")
+	if err := os.WriteFile(outputPath, []byte("orphan"), 0o644); err != nil {
+		t.Fatalf("setup orphan: %v", err)
+	}
+
+	// Handshake channel: drainer goroutine forwards each request id
+	// (empty for health, populated for generate); response-writer
+	// goroutine waits until it sees a non-empty id and emits the matching
+	// error response.
+	requestIDs := make(chan string, 4)
+
+	// Goroutine 1: drain stdin. Without consumption, every provider
+	// writeJSON would block on the synchronous io.Pipe semantics.
+	go func() {
+		defer close(requestIDs)
+		scanner := bufio.NewScanner(stdInR)
+		for scanner.Scan() {
+			var req map[string]any
+			if json.Unmarshal(scanner.Bytes(), &req) != nil {
+				continue
+			}
+			id, _ := req["id"].(string)
+			select {
+			case requestIDs <- id:
+			default:
+				// channel full → drainer ahead of writer; drop.
+			}
+		}
+	}()
+
+	// Goroutine 2: serve canned responses in the order the provider expects.
+	go func() {
+		defer stdOutW.Close()
+		// 1) Health response: triggers ensureStarted → healthCheck success.
+		if _, werr := fmt.Fprintln(stdOutW, `{"status":"ok"}`); werr != nil {
+			return
+		}
+		// 2) Generate response: wait for the dynamic id from the drainer.
+		var genID string
+		for captured := range requestIDs {
+			if captured != "" { // health request has no id; skip empties
+				genID = captured
+				break
+			}
+		}
+		resp := fmt.Sprintf(
+			`{"id":"%s","status":"error","code":"ErrNoImageCandidate","error":"ErrNoImageCandidate","profile":0}`+"\n",
+			genID,
+		)
+		_, _ = stdOutW.Write([]byte(resp))
+	}()
+
+	// Run the test through the public Generate entry point so the
+	// deadWorkerError retry logic also exercises the typed-error path
+	// (it must NOT retry on ErrImageGenNoImageCandidate).
+	g, genErr := p.Generate(context.Background(), GenerateImageRequest{
+		Prompt:     "test prompt",
+		Width:      1024,
+		Height:     1024,
+		OutputPath: outputPath,
+	})
+
+	// (a) No GeneratedImage surfaced.
+	if g != nil {
+		t.Fatalf("expected nil GeneratedImage on FAIL-CLOSED ErrNoImageCandidate; got %+v", g)
+	}
+	// (b) Typed sentinel propagated.
+	if genErr == nil {
+		t.Fatalf("expected error on FAIL-CLOSED ErrNoImageCandidate; got nil")
+	}
+	if !errors.Is(genErr, ErrImageGenNoImageCandidate) {
+		t.Fatalf("expected err to wrap ErrImageGenNoImageCandidate; got %v", genErr)
+	}
+	// (c) Orphan file removed from outputPath.
+	if _, statErr := os.Stat(outputPath); statErr == nil {
+		t.Fatalf("outputPath MUST be REMOVED on FAIL-CLOSED; still exists")
+	} else if !os.IsNotExist(statErr) {
+		t.Fatalf("outputPath unexpectd stat err: %v", statErr)
 	}
 }

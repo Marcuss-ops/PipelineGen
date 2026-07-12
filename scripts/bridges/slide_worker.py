@@ -536,42 +536,35 @@ class ProfileWorker(threading.Thread):
                     except Exception as e:
                         _log(f"[profile-{self.profile_id}][{request_id}] extraction attempt failed: {e}")
 
-            # Step 7: Fallback
+            # Step 7: FAIL-CLOSED — no slide-export fallback.
+            # P0.1 (July 2026): the pre-fix 'File → Download → PNG' fallback
+            # exported the CURRENT SLIDE (often empty) as PNG. When extraction
+            # of the generated image failed, the fallback silently produced a
+            # blank/white artifact that passed the byte-level validation on
+            # the Go side. We REMOVE this fallback: if extraction fails, we
+            # surface ErrNoImageCandidate as a structured error. The Go side
+            # (chrome_provider.go) is FAIL-CLOSED — no orphan at output_path,
+            # the caller MUST NOT receive a valid GeneratedImage. Forward-
+            # pointer: a future 'extract image from DOM' cut will replace
+            # the current googleusercontent/blob fetch path with a more
+            # robust selector; the FAIL-CLOSED contract stays.
             if not saved:
-                _log(f"[profile-{self.profile_id}][{request_id}] fallback: File→Download→PNG...")
+                _log(f"[profile-{self.profile_id}][{request_id}] extraction failed — failing closed with ErrNoImageCandidate (no slide-export fallback)")
+                # Defensive cleanup: the extraction path DOES NOT write
+                # output_path on failure, but a future refactor that performs
+                # a partial write would otherwise leave an orphan. Belt +
+                # suspenders, godlike/07 FAIL-CLOSED contract.
                 try:
-                    file_menu = self.page.locator("#docs-file-menu")
-                    file_menu.click(timeout=5000)
-                    download_item = self.page.locator(
-                        '.apps-menuitem:has-text("Scarica"), '
-                        '.apps-menuitem:has-text("Download")'
-                    ).first
-                    download_item.wait_for(state="visible", timeout=5000)
-                    download_item.hover(timeout=3000)
-                    png_item = self.page.locator('.apps-menuitem:has-text("PNG")').first
-                    with self.page.expect_download(timeout=15000) as download_info:
-                        png_item.click(timeout=5000)
-                    download = download_info.value
-                    temp_download_path = output_path + ".download"
-                    download.save_as(temp_download_path)
-                    with open(temp_download_path, "rb") as f:
-                        image_bytes = f.read()
-                    saved_format = _save_image_bytes(image_bytes, output_path)
-                    try:
-                        os.remove(temp_download_path)
-                    except Exception:
-                        pass
-                    elapsed = (time.time() - t0) * 1000
-                    _log(
-                        f"[profile-{self.profile_id}][{request_id}] fallback saved → "
-                        f"{output_path} ({len(image_bytes)} bytes, {saved_format}, {elapsed:.0f}ms)"
-                    )
-                    saved = True
-                except Exception as fe:
-                    _log(f"[profile-{self.profile_id}][{request_id}] fallback failed: {fe}")
-
-            if not saved:
-                return {"id": request_id, "status": "error", "error": "no image extracted", "profile": self.profile_id}
+                    os.remove(output_path)
+                except OSError:
+                    pass
+                return {
+                    "id": request_id,
+                    "status": "error",
+                    "error": "ErrNoImageCandidate",
+                    "code": "ErrNoImageCandidate",
+                    "profile": self.profile_id,
+                }
 
             self._maybe_recycle_page()
 
