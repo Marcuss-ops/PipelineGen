@@ -381,7 +381,7 @@ func TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse(t *testing.T) {
 
 	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
 		Script:      scriptEnvelope,
-		WordCount:   20,
+		WordCount:   50,
 		EstDuration: 6,
 		Model:       "llama3:8b",
 		Prompt:      "<test prompt — not asserted>",

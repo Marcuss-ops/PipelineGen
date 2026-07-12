@@ -1385,18 +1385,28 @@ func TestMarkRejected_StateConflict(t *testing.T) {
 // maps (error → retryable bool). It is a sibling to the repository
 // retry tests; the predicate MUST decide retryable correctly so the
 // repository contract above stays ergonomic.
+//
+// FASE 6 Cut 6.1.D (July 2026): production retry.IsTransient became a
+// pure typed probe. The transient-shaped cases below wrap the simulated
+// emit-side error in *retry.TransientInfrastructureError — the
+// canonical SDK-boundary emission shape (same envelope
+// retry.WrapTransient produces at the boundary for typed markers).
+// The non-transient cases stay raw: raw strings are not classified
+// by the typed probe (no substring fallback in production), so they
+// correctly classify as terminal.
 func TestIsTransientEnqueueError(t *testing.T) {
 	cases := []struct {
 		err  error
 		want bool
 	}{
 		{nil, false},
-		{errors.New("connection refused"), true},
-		{errors.New("HTTP 503 Service Unavailable"), true},
-		{errors.New("HTTP 429 Too Many Requests"), true},
-		{errors.New("request timeout after 30s"), true},
-		{errors.New("EOF: stream closed unexpectedly"), true},
-		{errors.New("validation: missing channel_id"), false}, {errors.New("payload marshal: invalid JSON"), false},
+		{&retry.TransientInfrastructureError{Err: errors.New("connection refused")}, true},
+		{&retry.TransientInfrastructureError{Err: errors.New("HTTP 503 Service Unavailable")}, true},
+		{&retry.TransientInfrastructureError{Err: errors.New("HTTP 429 Too Many Requests")}, true},
+		{&retry.TransientInfrastructureError{Err: errors.New("request timeout after 30s")}, true},
+		{&retry.TransientInfrastructureError{Err: errors.New("EOF: stream closed unexpectedly")}, true},
+		{errors.New("validation: missing channel_id"), false},
+		{errors.New("payload marshal: invalid JSON"), false},
 	}
 	for _, tc := range cases {
 		got := retry.IsTransient(tc.err)

@@ -1,11 +1,28 @@
-// Package drive — sdk_wrap_test.go (Azione 5/8 di Step 7, July 2026)
+// Package drive — sdk_wrap_test.go (Azione 5/8 di Step 7, July 2026,
+// FASE 6 Cut 6.1.D rewrite July 2026)
 //
 // Verifies the wrap behaviour exercised by uploader.go + folder_manager.go
-// + admin.go: when a raw Drive SDK error matches the canonical retry
-// taxonomy (429, 503, rate-limit strings, etc.), retry.WrapTransient
-// promotes it to *TransientInfrastructureError so the typed path
-// (errors.As) of retry.IsTransient classifies it authoritatively
-// without depending on substring matching.
+// + admin.go: when a Drive SDK call returns a typed *googleapi.Error
+// matching the canonical retry taxonomy (429, 5xx, 408), retry.WrapTransient
+// routes it through the Decision() walker, where the registered
+// googleapi Classifier (registry_google.go) emits Retryable=true, and
+// the typed envelope *TransientInfrastructureError is produced. The
+// typed path (errors.As) of retry.IsTransient then classifies the
+// wrapped error authoritatively without depending on substring
+// matching.
+//
+// FASE 6 Cut 6.1.D (July 2026): production retry.IsTransient became a
+// PURE typed probe (RetryableError interface + *TransientInfrastructureError
+// carrier via errors.As). The pre-cut substring taxonomy is REMOVED
+// from production; raw `errors.New("googleapi: 429 ...")` strings
+// are NOT classified by the production googleapi Classifier (which
+// matches the typed `*googleapi.Error` shape via errors.As, not raw
+// strings). The legacy substring taxonomy is preserved in
+// pkg/retry/transient_legacy_test.go as a TEST-ONLY fixture for
+// back-compat pins; the unexported `classifyLegacyTransientForTest`
+// helper is only accessible from within the pkg/retry package
+// itself, so external package tests cannot opt into the legacy
+// fixture.
 //
 // The adapter-level integration (Drive SDK → *TransientInfrastructureError
 // → retry.IsTransient typed-path) is exercised by the existing drive
@@ -15,73 +32,86 @@ package drive
 
 import (
 	"errors"
-	"fmt"
 	"testing"
+
+	"google.golang.org/api/googleapi"
 
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // TestWrapSDKTransient_DriveShape_TypedPathAuthoritative locks the
-// invariant Azione 5/8 ships: every Drive-shaped transient error
-// returned through retry.WrapTransient carries a *TransientInfrastructureError
-// wrapper that the typed path (errors.As) recognises authoritatively.
+// invariant Azione 5/8 ships: every typed *googleapi.Error returned
+// from a Drive SDK call that matches the canonical transient HTTP
+// status taxonomy (429, 502, 503, 504) is wrapped by retry.WrapTransient
+// into a *TransientInfrastructureError via the registered googleapi
+// Classifier (registry_google.go), and the typed path (errors.As) of
+// retry.IsTransient classifies the wrapped envelope authoritatively.
 //
-// Pre-Azione 5/8, retry.IsTransient() was reaching these errors only
-// via substring matching (which is brittle — googleapi.Error format
-// strings drift on SDK upgrades). The wrapper makes the typed path
-// the canonical classifier, removing the substring reliance at adapter
-// call sites that have opted into the typed wrapping.
+// FASE 6 Cut 6.1.D (July 2026): the test uses REAL *googleapi.Error
+// typed values (not raw `errors.New("googleapi: 429 ...")` strings)
+// because production retry.IsTransient is now a pure typed probe
+// and the registered googleapi Classifier matches the typed
+// *googleapi.Error shape via errors.As — not raw strings. The
+// pre-FASE-6 substring-based classification path is REMOVED from
+// production; the legacy substring taxonomy is preserved in
+// pkg/retry/transient_legacy_test.go as a TEST-ONLY fixture for
+// back-compat pins, but the unexported helper is only accessible
+// from within the pkg/retry package itself, so drive-pkg tests
+// cannot opt into the legacy classifier.
+//
+// The pre-FASE-6 "Azione 8/8F" block (6 camelCase + SNAKE_CASE shape
+// checks) is REMOVED: production no longer substring-matches
+// gerr.Message — the googleapi Classifier only inspects gerr.Code
+// (HTTP status). The pre-cut surface is preserved in the legacy
+// fixture for back-compat pins.
+//
+// Forward-pointer: see pkg/retry/transient_legacy_test.go for the
+// pre-FASE-6 taxonomy (transientSubstringsLegacy slice + unexported
+// classifyLegacyTransientForTest helper). The unexported helper is
+// only accessible from within the pkg/retry package itself, so
+// drive-pkg tests cannot opt into the legacy classifier — the
+// pre-cut surface is observable in pkg/retry's own test suite only.
 func TestWrapSDKTransient_DriveShape_TypedPathAuthoritative(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name string
-		// err is a stringification-shaped drive SDK error. We don't
-		// depend on a real *googleapi.Error type — the canonical
-		// substring taxonomy is keyed on the .Error() string. The
-		// wrap is what we care about here: the wrapping layer MUST
-		// promote any substring-matching err into a typed carrier.
+		// err is a typed *googleapi.Error. The Drive SDK returns
+		// this exact type on exit (Files.Create, Files.Get, etc.).
+		// The production googleapi Classifier (registry_google.go)
+		// matches it via errors.As(err, &gerr) where gerr is
+		// *googleapi.Error. HTTP 429 → ErrGoogleAPIThrottled
+		// (retryable); HTTP 5xx → ErrGoogleAPIServer (retryable).
 		err error
 	}{
-		{"429 Too Many Requests", errors.New("googleapi: got HTTP response code 429 Too Many Requests")},
-		{"503 backendError", errors.New(`googleapi: got HTTP response code 503 with body: {"error":{"code":503,"message":"backendError"}}`)},
-		{"503 serviceUnavailable", errors.New(`googleapi: Error 503: serviceUnavailable`)},
-		{"504 Gateway Timeout", errors.New("googleapi: Error 504: Gateway Timeout")},
-		{"502 Bad Gateway", errors.New("googleapi: Error 502: Bad Gateway")},
-		{"rate limit (substring match)", errors.New("api rate limit reached")},
-		{"quota exceeded (substring match)", errors.New("quota exceeded for project")},
-		{"timeout", errors.New("deadline exceeded: timeout awaiting response")},
-		{"connection refused", errors.New("dial tcp: connection refused")},
-		{"temporarily unavailable", errors.New("backend temporarily unavailable")},
+		{"429 Too Many Requests", &googleapi.Error{Code: 429, Message: "Too Many Requests"}},
+		{"503 backendError", &googleapi.Error{Code: 503, Message: "backendError"}},
+		{"503 serviceUnavailable", &googleapi.Error{Code: 503, Message: "serviceUnavailable"}},
+		{"504 Gateway Timeout", &googleapi.Error{Code: 504, Message: "Gateway Timeout"}},
+		{"502 Bad Gateway", &googleapi.Error{Code: 502, Message: "Bad Gateway"}},
 	}
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Substring path: pre-wrap classified as transient.
-			if !retry.IsTransient(tc.err) {
-				t.Errorf("raw err %q should match canonical transient substring taxonomy", tc.err)
-			}
-
-			// Wrap: the wrapping layer MUST produce a typed carrier.
+			// Wrap: the registered googleapi Classifier must produce
+			// a typed carrier for the transient HTTP-status shape.
 			wrapped := retry.WrapTransient(tc.err)
 			var te *retry.TransientInfrastructureError
 			if !errors.As(wrapped, &te) {
-				t.Fatalf("WrapTransient(%q) did not produce *TransientInfrastructureError, got %T (%v)",
+				t.Fatalf("WrapTransient(%v) did not produce *TransientInfrastructureError, got %T (%v)",
 					tc.err, wrapped, wrapped)
 			}
 			if te.Err != tc.err {
 				t.Errorf("WrapTransient chained wrong inner: got %v want %v", te.Err, tc.err)
 			}
 
-			// Typed-path recognition: retry.IsTransient must reach this
-			// error via errors.As WITHOUT substring matching on the
-			// outer message (the outer wraps the inner via %w, so
-			// errors.As walks the chain and finds *TE).
-			var te2 *retry.TransientInfrastructureError
-			if !errors.As(wrapped, &te2) {
-				t.Errorf("errors.As failed on wrapped err: %v", wrapped)
+			// Typed-path recognition: retry.IsTransient must reach
+			// this error via errors.As (typed path #2 in
+			// transient.go::IsTransient), NOT via substring matching.
+			if !retry.IsTransient(wrapped) {
+				t.Errorf("IsTransient(wrapped) = false; want true (typed-probe path via *TransientInfrastructureError)")
 			}
 
 			// Idempotency: double-wrap does not stack wrappers. The
@@ -96,58 +126,55 @@ func TestWrapSDKTransient_DriveShape_TypedPathAuthoritative(t *testing.T) {
 		})
 	}
 
-	// Azione 8/8F di Step 7: 6 canonical Google API / gRPC error string shapes
-	// (camelCase + SNAKE_CASE) that the substring-path classifier MUST catch.
-	// Each raw err string is fed verbatim through fmt.Errorf + retry.IsTransient.
-	// The 6th shape (Resource_Exhausted) covers the gRPC SNAKE_CASE underscore form
-	// documented in the user spec NOTE: ToLower("Resource_Exhausted") ==
-	// "resource_exhausted" which matches the taxonomy entry verbatim.
+	// FASE 6 Cut 6.1.D follow-up: second loop exercising the
+	// "raw-string wrapped at the SDK boundary" path. The first loop
+	// uses typed *googleapi.Error (the SDK's native exit shape); the
+	// second loop covers non-typed emit shapes (DNS, network, raw
+	// transport errors) that the SDK can also produce. The wrap
+	// invariant is the same: a pre-wrapped
+	// *TransientInfrastructureError envelope is recognised by
+	// retry.IsTransient via errors.As (typed path #2).
+	rawWrapCases := []struct {
+		name string
+		err  error
+	}{
+		{"rate limit (raw string)", errors.New("api rate limit reached")},
+		{"quota exceeded (raw string)", errors.New("quota exceeded for project")},
+		{"timeout (raw string)", errors.New("deadline exceeded: timeout awaiting response")},
+		{"connection refused (raw string)", errors.New("dial tcp: connection refused")},
+		{"temporarily unavailable (raw string)", errors.New("backend temporarily unavailable")},
+	}
+	for _, tc := range rawWrapCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Shape 1: googleapi userRateLimitExceeded (camelCase)
-	{
-		shape, raw := "googleapi: got 403 userRateLimitExceeded", "userRateLimitExceeded"
-		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
-			t.Errorf("%s: expected IsTransient true (substring taxonomy entry userratelimitexceeded)", raw)
-		}
-		var transErr *retry.TransientInfrastructureError
-		if !errors.As(retry.WrapTransient(fmt.Errorf("%s", shape)), &transErr) {
-			t.Errorf("%s: expected WrapTransient returns *TransientInfrastructureError", raw)
-		}
-	}
-	// Shape 2: googleapi deadlineExceeded (camelCase)
-	{
-		shape, raw := "googleapi: deadlineExceeded (context deadline)", "deadlineExceeded"
-		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
-			t.Errorf("%s: expected IsTransient true (substring taxonomy entry deadlineexceeded)", raw)
-		}
-	}
-	// Shape 3: googleapi backendError (camelCase)
-	{
-		shape, raw := "googleapi: backendError (server-side transient)", "backendError"
-		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
-			t.Errorf("%s: expected IsTransient true (substring taxonomy entry backenderror)", raw)
-		}
-	}
-	// Shape 4: googleapi serviceUnavailable (camelCase)
-	{
-		shape, raw := "googleapi: serviceUnavailable (server temporarily unavailable)", "serviceUnavailable"
-		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
-			t.Errorf("%s: expected IsTransient true (substring taxonomy entry serviceunavailable)", raw)
-		}
-	}
-	// Shape 5: googleapi quotaExceeded (camelCase, distinct from spaced form 'quota exceeded')
-	{
-		shape, raw := "googleapi: quotaExceeded (per-user quota camelCase)", "quotaExceeded"
-		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
-			t.Errorf("%s: expected IsTransient true (substring taxonomy entry quotaexceeded; distinct from spaced form)", raw)
-		}
-	}
-	// Shape 6: gRPC Resource_Exhausted (SNAKE_CASE with underscore)
-	{
-		shape, raw := "rpc error: code = Resource_Exhausted (gRPC SNAKE_CASE)", "Resource_Exhausted"
-		if !retry.IsTransient(fmt.Errorf("%s", shape)) {
-			t.Errorf("%s: expected IsTransient true (gRPC snake_case form lowercased matches resource_exhausted)", raw)
-		}
+			// Pre-wrap: raw string is NOT classified by the typed
+			// probe (no substring fallback in production). This
+			// guards against accidental re-introduction of the
+			// pre-FASE-6 substring path.
+			if retry.IsTransient(tc.err) {
+				t.Errorf("raw err %q MUST NOT classify as transient post-Cut 6.1.D (no substring fallback)", tc.err)
+			}
+
+			// Pre-wrap at the SDK boundary: the canonical adapter
+			// emission shape wraps the raw err in a typed envelope.
+			envelope := &retry.TransientInfrastructureError{Err: tc.err}
+
+			// Typed-path recognition: IsTransient reaches the
+			// envelope via errors.As (typed path #2).
+			if !retry.IsTransient(envelope) {
+				t.Errorf("IsTransient(wrapped envelope) = false; want true (typed-probe path via *TransientInfrastructureError)")
+			}
+
+			// Idempotency: double-wrap on the already-typed
+			// envelope is a no-op.
+			doubleWrapped := retry.WrapTransient(envelope)
+			if doubleWrapped != envelope {
+				t.Errorf("WrapTransient(already-typed envelope) is not idempotent: got %p want %p",
+					doubleWrapped, envelope)
+			}
+		})
 	}
 }
 
@@ -156,6 +183,15 @@ func TestWrapSDKTransient_DriveShape_TypedPathAuthoritative(t *testing.T) {
 // A Drive 404 (file not found), 400 (bad request), or 403 (forbidden)
 // propagates verbatim — these are terminal errors that retry predicates
 // must NOT classify as transient.
+//
+// FASE 6 Cut 6.1.D (July 2026): the negative cases use typed
+// *googleapi.Error with terminal status codes (403, 404, 400, 401,
+// 409). The registered googleapi Classifier (registry_google.go)
+// emits Retryable=false for these (ErrGoogleAPIPermission,
+// ErrGoogleAPINotFound, ErrGoogleAPIClient), so WrapTransient does
+// NOT wrap. The two non-SDK cases (validation: missing field,
+// unparseable JSON) are raw strings the Classifier chain does not
+// match, so WrapTransient also passes them through unchanged.
 func TestWrapSDKTransient_NonTransientPassesThrough(t *testing.T) {
 	t.Parallel()
 
@@ -163,11 +199,11 @@ func TestWrapSDKTransient_NonTransientPassesThrough(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"404 Not Found", errors.New("googleapi: got HTTP response code 404 Not Found")},
-		{"400 Bad Request", errors.New("googleapi: Error 400: Bad Request — invalid query")},
-		{"403 Forbidden", errors.New("googleapi: Error 403: The user does not have sufficient permissions")},
-		{"401 Unauthorized", errors.New("googleapi: Error 401: Login Required")},
-		{"409 Conflict", errors.New("googleapi: Error 409: folder name already exists")},
+		{"404 Not Found", &googleapi.Error{Code: 404, Message: "Not Found"}},
+		{"400 Bad Request", &googleapi.Error{Code: 400, Message: "Bad Request — invalid query"}},
+		{"403 Forbidden", &googleapi.Error{Code: 403, Message: "The user does not have sufficient permissions"}},
+		{"401 Unauthorized", &googleapi.Error{Code: 401, Message: "Login Required"}},
+		{"409 Conflict", &googleapi.Error{Code: 409, Message: "folder name already exists"}},
 		{"validation: missing field", errors.New("validation: missing channel_id")},
 		{"unparseable JSON", errors.New("payload marshal: invalid JSON")},
 	}
