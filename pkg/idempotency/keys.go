@@ -448,3 +448,75 @@ func BuildKey(provider string, canonical map[string]any) (string, error) {
 	sum := sha256.Sum256(raw)
 	return fmt.Sprintf("%x", sum), nil
 }
+
+// BuildKeyString constructs a run-level dedup key from a
+// provider-type discriminator + a pre-joined raw byte sequence
+// (Commit A follow-up, July 2026).
+//
+// This is the BYTE-STABLE delegation surface for callers whose
+// canonical content is already a pre-joined byte sequence — i.e.,
+// the caller has assembled the join shape inline (e.g.
+// `chunkID + ":" + contentHash + ":" + string(version)`) and
+// needs the SAME byte-stable hash output the legacy
+// `hashutil.SHA256String(joined)` invocation produced. Typical
+// pre-Commit-A surface: `internal/application/assets/providers/
+// stock/enrichment/idempotency.go::EnrichmentIdempotencyKey`
+// (the bespoke stock RLM/LLM enrichment key constructor). After
+// migration, the caller delegates to BuildKeyString instead of
+// calling `hashutil.SHA256String` directly — godlike/06 SSOT
+// (one canonical owner for run-level key hashing), with byte-
+// stability preserved across the migration (in-flight outbox
+// events queued under the legacy hash continue to MATCH at the
+// kernel outbox event_id UNIQUE constraint).
+//
+// Difference from BuildKey (Commit B): BuildKey takes a
+// canonical map[string]any and JSON-marshals it before hashing
+// (general shape for callers that build their canonical as a
+// map). BuildKeyString takes the EXACT bytes the caller wants
+// hashed (verbatim path for callers whose canonical IS a
+// pre-joined string). Both produce a 64-char lowercase SHA-256
+// hex; the bytes fed into SHA-256 are the only difference
+// (json.Marshal(canonical) vs []byte(raw)).
+//
+// Provider validation: identical to BuildKey (empty → fail,
+// ':' in → ErrInvalidSegment via the per-field wrapper that
+// errors.Is-dispatches to ErrInvalidSegment).
+//
+// Raw validation: empty raw → ErrInvalidRunForDedup (a
+// pre-joined-but-empty byte sequence is the canonical "the
+// caller produced a structurally invalid join" wire-shape
+// signal — operators grep on the empty-marker surface to find
+// upstream wiring bugs that pre-empt an outbox-key collision).
+//
+// godlike/06 SSOT rationale: per-package run-level key
+// constructors (artlist.RunDedupKey, stock.EnrichmentIdempotencyKey,
+// future youtube.RunDedupKey, etc.) MUST delegate to one of:
+//   - BuildKey (canonical-map form, JSON-marshaled bytes)
+//   - BuildKeyString (pre-joined string form, verbatim bytes)
+//
+// Ad-hoc `hashutil.SHA256String(joined)` calls outside this
+// package are the canonical godlike/06 SSOT violation that
+// Commit A closes for the stock enrichment path. Future
+// youtube.RunDedupKey should prefer BuildKey over BuildKeyString
+// (canonical-map form is more general) unless there's a
+// similar byte-stability requirement in flight.
+//
+// godlike/07 typed-error contract: every validation step
+// returns a typed sentinel that satisfies errors.Is dispatch.
+// callers branch on errors.Is for fail-closed error handling.
+func BuildKeyString(provider, raw string) (string, error) {
+	if provider == "" {
+		return "", ErrInvalidRunForDedup
+	}
+	if strings.Contains(provider, ":") {
+		// Same segment-collision guard as BuildKey (and the
+		// positional constructors). Provider is a routing field
+		// — ':' in the discriminator is structural ambiguity.
+		return "", errInvalidSegment("provider")
+	}
+	if raw == "" {
+		return "", ErrInvalidRunForDedup
+	}
+	sum := sha256.Sum256([]byte(raw))
+	return fmt.Sprintf("%x", sum), nil
+}

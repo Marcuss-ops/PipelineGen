@@ -44,6 +44,45 @@ import (
 	files "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 )
 
+// DEPRECATED (Commit A / FASE 5 follow-up, July 2026):
+//
+// godlike/06 SSOT — this free function is DEPRIORITIZED in favor of
+// the typed-factory pattern. Future production callers SHOULD
+// migrate to:
+//
+//	derive := remote.MakeArtifactIdempotencyKey(hashutil.HashFunc)
+//	service := &ArtifactService{derive: derive, ...} // field injection
+//
+// (composition root wires the derive using files.NewSHA256Hasher()
+// or a test fake per the Commit D spec literal "Aggiungi un test
+// unit con fake `HashFunc`").
+//
+// The free function remains in the surface AS-IS for two reasons:
+//
+//  1. Back-compat: the existing 8+ production callers
+//     (creator adapter × 3 sites, publish_verified.go × 1,
+//     dedup_tdd_test.go × 1, completion_e2e_test.go × 1,
+//     publish_verified_test.go × 4, creator adapter_test.go × 2,
+//     artifact_uploader_test.go × 6) thread this free function
+//     for the legacy X-Idempotency-Key derivation. Removing the
+//     free function in Commit A would force ALL callers to migrate
+//     in a single PR — godlike/06 minimum-blast-radius forbids
+//     this. The DEPRECATED note directs future migrations.
+//
+//  2. Default-priming: the package-init `defaultArtifactKey`
+//     (MakeArtifactIdempotencyKey(files.NewSHA256Hasher())) is
+//     the byte-stable production default the free function
+//     delegates to. Removing the free function would force the
+//     composition root to inject the derive into every caller
+//     manually — a refactor that belongs in a separate cleanup
+//     wave (out of Commit A scope).
+//
+// The deterministic byte format is unchanged across this audit-pin
+// (the free function continues to delegate to defaultArtifactKey
+// which delegates to files.NewSHA256Hasher()). godlike/06 SSOT
+// discipline: the FUNCTION still produces the canonical output;
+// the RECOMMENDED path forward is the factory.
+//
 // ArtifactIdempotencyKey computes the deterministic X-Idempotency-Key
 // header value for a single artifact upload. The function is pure
 // (no side effects, no timestamp / random / UUID inputs) so retries

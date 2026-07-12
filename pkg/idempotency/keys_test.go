@@ -672,3 +672,115 @@ func TestErrInvalidRunForDedup_Type(t *testing.T) {
 	assert.Contains(t, err.Error(), "BuildKey",
 		"err message must point the caller to BuildKey as the canonical owner")
 }
+
+// ── BuildKeyString tests (Commit A follow-up, July 2026) ──
+//
+// BuildKeyString is the BYTE-STABLE delegation surface for callers
+// whose canonical content is already a pre-joined string (the
+// stock/enrichment EnrichmentIdempotencyKey migration). Tests below
+// pin: (1) happy-path byte-stability across N retries; (2) per-raw
+// identity (different raw strings → different keys); (3) provider
+// validation-only (different providers with same raw → same hash,
+// per the byte-stability-with-legacy-rationale documented on
+// BuildKey); (4) fail-closed guards (empty provider, empty raw,
+// colon-in-provider); (5) byte-identity with the legacy
+// hashutil.SHA256String helper (the load-bearing migration pin).
+
+// TestBuildKeyString_HappyPath pins the canonical 64-char hex
+// shape + byte-stability across N retries. The fixture pins a
+// known SHA-256 hex so a future drift (e.g. someone adds the
+// provider to the hash pipeline, breaking byte-equality with the
+// legacy enrichment hash) fails this test loudly.
+func TestBuildKeyString_HappyPath(t *testing.T) {
+	raw := "stock:run_1b25ac8e5470:chunk:0:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789:v1"
+	key, err := BuildKeyString("stock-enrich", raw)
+	require.NoError(t, err)
+	assert.Len(t, key, 64, "BuildKeyString must return 64-char hex")
+	assert.Equal(t, strings.ToLower(key), key, "BuildKeyString MUST return lowercase hex")
+
+	// Determinism across N retries.
+	for i := 0; i < 1000; i++ {
+		k, err := BuildKeyString("stock-enrich", raw)
+		require.NoError(t, err)
+		if k != key {
+			t.Fatalf("retry %d: key drift: got %q, want %q", i, k, key)
+		}
+	}
+
+	// Byte-stability fixture (Commit A, July 2026): the hash
+	// computed for the canonical stock-enrichment input MUST be
+	// byte-identical to what the legacy enrichment idempotency
+	// helper produced (hashutil.SHA256String(raw)). The expected
+	// hex is the SHA-256 of the 97-byte pre-joined string above.
+	// Operators verify off-line via `echo -n '<raw>' | sha256sum`.
+	assert.Equal(t, "ba93a47600b9bce576d7d7562629dc8ca01c8ff1d715284ad60c4161d6e3ccfd", key,
+		"BuildKeyString must produce byte-stable output identical to legacy stock enrichment idempotency helper (in-flight outbox events rely on this)")
+}
+
+// TestBuildKeyString_DifferentRawStringDifferentKey pins that
+// each character of the raw input is part of the identity. A
+// future refactor that drops a segment would be caught here.
+func TestBuildKeyString_DifferentRawStringDifferentKey(t *testing.T) {
+	a, _ := BuildKeyString("stock-enrich", "chunk-0")
+	b, _ := BuildKeyString("stock-enrich", "chunk-1")
+	c, _ := BuildKeyString("stock-enrich", "chunk-0:v1")
+	d, _ := BuildKeyString("stock-enrich", "chunk-0:v2")
+	assert.NotEqual(t, a, b, "different chunkID → different key")
+	assert.NotEqual(t, a, c, "different version suffix → different key")
+	assert.NotEqual(t, c, d, "different version literal → different key")
+}
+
+// TestBuildKeyString_DifferentProviderSameKey pins the deliberate
+// provider-validation-only invariant (Commit A, July 2026).
+// Identical rationale to BuildKey: provider is validation-only
+// (rejects empty + ':' via sentinels) but is NOT part of the
+// hash input. Two callers with different provider discriminators
+// ("stock-enrich" vs "youtube-enrich") and the SAME raw content
+// produce IDENTICAL SHA-256 hex keys.
+//
+// Why: byte-stability discipline. The legacy hashutil helper
+// produced `sha256.Sum256([]byte(raw))` — no provider prefix.
+// Adding the provider to the hash pipeline would have moved
+// every existing key to a different byte sequence, breaking
+// in-flight outbox events queued under the legacy hash. future
+// youtube.RunDedupKey + stock.RunDedupKey callers that delegate
+// to BuildKey / BuildKeyString are safe from each other's in-
+// flight keys because their raw content differs.
+func TestBuildKeyString_DifferentProviderSameKey(t *testing.T) {
+	raw := "chunk-0:abc:v1"
+	a, _ := BuildKeyString("stock-enrich", raw)
+	b, _ := BuildKeyString("youtube-enrich", raw)
+	c, _ := BuildKeyString("artlist-run", raw)
+	assert.Equal(t, a, b, "provider validation only — byte-stability discipline")
+	assert.Equal(t, a, c, "provider validation only — byte-stability discipline")
+	assert.Equal(t, b, c, "provider validation only — byte-stability discipline")
+}
+
+// TestBuildKeyString_EmptyProvider_ReturnsErrInvalidRunForDedup
+// pins the godlike/07 fail-closed guard for the validation-only
+// parameter.
+func TestBuildKeyString_EmptyProvider_ReturnsErrInvalidRunForDedup(t *testing.T) {
+	_, err := BuildKeyString("", "any-raw")
+	assert.ErrorIs(t, err, ErrInvalidRunForDedup)
+}
+
+// TestBuildKeyString_EmptyRaw_ReturnsErrInvalidRunForDedup pins
+// the godlike/07 fail-closed guard for the HASH input. An empty
+// raw is the canonical "caller produced an empty join" wiring
+// bug — fail-closed with ErrInvalidRunForDedup so the gap is
+// visible at the hash construction site rather than silently
+// producing a key for an empty byte sequence (which would
+// SHA-256 to a deterministic but invalid 64-char hex).
+func TestBuildKeyString_EmptyRaw_ReturnsErrInvalidRunForDedup(t *testing.T) {
+	_, err := BuildKeyString("stock-enrich", "")
+	assert.ErrorIs(t, err, ErrInvalidRunForDedup,
+		"empty raw MUST trip ErrInvalidRunForDedup (godlike/07 no fake availability)")
+}
+
+// TestBuildKeyString_ColonInProvider_ReturnsErrInvalidSegment
+// pins the segment-collision guard (same as BuildKey).
+func TestBuildKeyString_ColonInProvider_ReturnsErrInvalidSegment(t *testing.T) {
+	_, err := BuildKeyString("stock:enrich", "any-raw")
+	assert.ErrorIs(t, err, ErrInvalidSegment,
+		"colon in provider MUST trip ErrInvalidSegment (godlike/06 segment stability)")
+}

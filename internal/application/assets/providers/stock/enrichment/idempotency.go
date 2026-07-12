@@ -31,9 +31,13 @@
 //	URL-safe character set; case-insensitive per RFC 7230 even
 //	though the canonical recomputation always returns lowercase).
 //
-// Format: hashutil.SHA256String(chunkID + ":" + contentHash + ":" + string(version))
+// Format: idempotency.BuildKeyString("stock-enrich", chunkID + ":" + contentHash + ":" + string(version))
 // (colon-separated concatenation, mirroring the ArtifactIdempotencyKey
 // and CompleteJobIdempotencyKey conventions in internal/domain/remote/).
+// Commit A follow-up (July 2026): the canonical surface is now
+// pkg/idempotency.BuildKeyString (delegated from this package),
+// not a direct hashutil.SHA256String call. The byte-stable output
+// is preserved across the migration.
 //
 // The ":version:" tail segment distinguishes v1 re-enrichment
 // from a future v2 re-enrichment of the same chunk (so schema
@@ -72,7 +76,7 @@ import (
 	"errors"
 	"fmt"
 
-	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 )
 
 // EnrichmentVersion is the canonical schema-version enum for the
@@ -122,10 +126,16 @@ func (v EnrichmentVersion) IsValid() bool {
 // idempotency_key field).
 //
 // Algorithm: SHA-256 of "chunkID:contentHash:version"
-// (colon-separated concatenation), hex-encoded via
-// hashutil.SHA256String. The hashutil helper (in
-// internal/infrastructure/files/hashutil.go) is the canonical
-// leaf implementation — NOT a re-implementation here.
+// (colon-separated concatenation), hex-encoded.
+// The hash is delegated to pkg/idempotency.BuildKeyString
+// (Commit A follow-up, July 2026) — the canonical surface for
+// run-level pre-joined key derivation. The provider discriminator
+// "stock-enrich" asserts the canonical identity at the
+// composition level; the byte-stable hash input is the EXACT
+// pre-joined string the legacy helper produced, so in-flight
+// outbox events queued under the legacy hash continue to MATCH
+// at the kernel outbox event_id UNIQUE constraint across the
+// migration.
 //
 // Stability contract: the algorithm byte-format is locked at
 // PR-ENRICHMENT-IDEMPOTENCY-KEY (July 2026); future schema bumps
@@ -137,7 +147,8 @@ func (v EnrichmentVersion) IsValid() bool {
 //
 // Empty-input edge case: an empty input triple would silently
 // collapse ALL enrichments onto a single dedup slot (because
-// hashutil.SHA256String("::") is a valid 64-char hex). Per
+// idempotency.BuildKeyString("stock-enrich", "::") is a valid
+// 64-char hex). Per
 // godlike/07 no-fake-availability, we surface the empty-key
 // marker (empty string) + ErrEnrichmentIdempotencyKeyConflict.
 // Callers MUST check BOTH the returned error (errors.Is) AND
@@ -169,7 +180,10 @@ func EnrichmentIdempotencyKey(chunkID, contentHash string, version EnrichmentVer
 	if !version.IsValid() {
 		return "", fmt.Errorf("%w: version=%q is not a known EnrichmentVersion (godlike/07 no-fake-availability — schema drift signal)", ErrEnrichmentIdempotencyKeyConflict, version)
 	}
-	return hashutil.SHA256String(chunkID + ":" + contentHash + ":" + string(version)), nil
+	// Commit A follow-up: delegate to pkg/idempotency.BuildKeyString
+	// (byte-stable with legacy hashutil.SHA256String invocation
+	// — see godlike/06 SSOT docstring at the top of this file).
+	return idempotency.BuildKeyString("stock-enrich", chunkID+":"+contentHash+":"+string(version))
 }
 
 // IsValidEnrichmentIdempotencyKey returns true if `key` is a
