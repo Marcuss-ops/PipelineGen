@@ -647,7 +647,17 @@ func TestArtlistRunTagPassesExpectedAssetInput(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 1, resp.Processed)
+	require.NotNil(t, resp)
+	// PR-ARTLIST-OUTCOME-ACCOUNTING (P1, July 2026): fakeMediaProcessor
+	// returns empty Drive fields, so stagePersistResults' Drive-gate
+	// correctly rejects the clip. Under the new outcome-accounting
+	// contract this is a Failed clip (no longer a silent drop). The
+	// processor IS still called (this test's primary assertion about
+	// input routing is preserved), but no persist happens so Processed
+	// stays at 0. See run_orchestrator_stages.go stagePersistResults
+	// Drive-gate branch.
+	assert.Equal(t, 0, resp.Processed, "PR-ARTLIST-OUTCOME-ACCOUNTING: Drive gate rejects fakeMediaProcessor result with empty Drive fields")
+	assert.Equal(t, 1, resp.Failed, "PR-ARTLIST-OUTCOME-ACCOUNTING: gate rejection now bumps Failed tally")
 	require.Len(t, processor.inputs, 1)
 
 	input := processor.inputs[0]
