@@ -365,7 +365,9 @@ def _extract_candidates(page, max_keep: int = 8) -> list:
     try:
         locators = page.locator(
             '.docs-content-library-image-generation-item img, '
-            'img[src*="googleusercontent"]'
+            'img.docs-image-synthesis-item, '
+            'img[src*="googleusercontent"], '
+            'img'
         ).all()
         out = []
         for img in locators[:max_keep]:
@@ -663,8 +665,6 @@ def _click_visible_image_mode_tab(page) -> bool:
             for (const el of candidates) {
                 const txt = (el.textContent || '').trim();
                 const aria = (el.getAttribute('aria-label') || '').trim();
-                const visible = !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-                if (!visible) continue;
                 if (/^immagine$/i.test(txt) || /^image$/i.test(txt) || /immagine/i.test(aria) || /image/i.test(aria)) {
                     el.click();
                     return true;
@@ -675,6 +675,86 @@ def _click_visible_image_mode_tab(page) -> bool:
     except Exception as e:
         _log(f"[_click_visible_image_mode_tab] DOM click failed: {e}")
         return False
+
+
+def _click_visible_create_button(page) -> bool:
+    """Best-effort click on the creation button."""
+    if page is None:
+        return False
+    try:
+        candidates = page.locator('button, [role="button"], .image-synthesis-creation-button').all()
+        for btn in candidates:
+            try:
+                if not btn.is_visible():
+                    continue
+                txt = (btn.text_content() or "").strip()
+                aria = (btn.get_attribute("aria-label") or "").strip()
+                if (txt.lower() == "crea" or txt.lower() == "create" or
+                    "crea" in aria.lower() or "create" in aria.lower() or
+                    btn.get_attribute("data-view-id") == "image-synthesis-creation-button" or
+                    "image-synthesis-creation-button" in (btn.get_attribute("class") or "")):
+                    disabled = btn.get_attribute("disabled") or "goog-button-disabled" in (btn.get_attribute("class") or "")
+                    if disabled:
+                        _log(f"[_click_visible_create_button] candidate found but disabled: txt={txt!r} aria={aria!r}")
+                        continue
+                    _log(f"[_click_visible_create_button] clicking candidate: txt={txt!r} aria={aria!r}")
+                    btn.click(force=True, timeout=5000)
+                    return True
+            except Exception as e:
+                _log(f"[_click_visible_create_button] error processing candidate: {e}")
+                continue
+        return False
+    except Exception as e:
+        _log(f"[_click_visible_create_button] DOM click failed: {e}")
+        return False
+
+
+def _type_prompt_text(page, locator, text: str) -> bool:
+    """Type prompt text with real keyboard events so Google Slides updates state."""
+    if page is None or locator is None:
+        return False
+    try:
+        locator.click(force=True, timeout=5000)
+        page.keyboard.press("Control+A")
+        page.keyboard.type(text, delay=0)
+        return True
+    except Exception as e:
+        _log(f"[_type_prompt_text] keyboard typing failed: {e}")
+        try:
+            locator.fill(text)
+            return True
+        except Exception as fe:
+            _log(f"[_type_prompt_text] fallback fill failed: {fe}")
+            return False
+
+
+def _wait_for_create_button_ready(page, timeout_ms: int = 15000) -> bool:
+    """Wait until the visible Crea/Create button becomes enabled."""
+    if page is None:
+        return False
+    deadline = time.time() + (timeout_ms / 1000.0)
+    while time.time() < deadline:
+        try:
+            ready = bool(page.evaluate("""() => {
+                const candidates = [...document.querySelectorAll('button')];
+                for (const el of candidates) {
+                    const txt = (el.textContent || '').trim();
+                    const aria = (el.getAttribute('aria-label') || '').trim();
+                    const visible = !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+                    const disabled = !!el.disabled || el.classList.contains('goog-button-disabled');
+                    if (!visible || disabled) continue;
+                    if (/^crea$/i.test(txt) || /^create$/i.test(txt) || /crea/i.test(aria) || /create/i.test(aria)) {
+                        return true;
+                    }
+                }
+                return false;
+            }"""))
+            if ready:
+                return True
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
+    return False
 
 
 def _check_169_selected(page, ratio: str = "16:9") -> bool:
@@ -1172,7 +1252,10 @@ class ProfileWorker(threading.Thread):
             ratio_selected = ""
             try:
                 if _click_visible_image_mode_tab(self.page):
+                    _log(f"[profile-{self.profile_id}][{request_id}] image mode tab click succeeded")
                     image_mode_active = True
+                else:
+                    _log(f"[profile-{self.profile_id}][{request_id}] image mode tab click not found")
                 self.page.wait_for_timeout(1000)
             except Exception as te:
                 _log(f"[profile-{self.profile_id}][{request_id}] warning: failed switching tab directly: {te}")
@@ -1195,15 +1278,18 @@ class ProfileWorker(threading.Thread):
             # for callers that need a custom worker-side format (e.g. the
             # user spec's "negative_keywords: avoid ..." directive). The
             # strip() guard avoids double-spacing when suffix is non-empty.
-            if prompt_suffix:
-                ta.fill((prompt + " " + prompt_suffix).strip())
-            else:
-                ta.fill(prompt)
+            # The ternary below is the SOLE assignment — pre-fix the worker
+            # duplicated the same expression under an `if prompt_suffix:` guard
+            # right after this line (pure dead code, identical result, but it
+            # masked future divergence risk and confuses readers).
+            prompt_text = (prompt + " " + prompt_suffix).strip() if prompt_suffix else prompt
+            if not _type_prompt_text(self.page, ta, prompt_text):
+                raise Exception("failed to type prompt into visible textarea")
 
             # P2 phase #2: prompt_set.
             _log_diag(
                 request_id, self.profile_id, "prompt_set",
-                url=self.page.url, prompt_dom=prompt,
+                url=self.page.url, prompt_dom=prompt_text,
                 image_mode_active=image_mode_active,
             )
 
@@ -1247,6 +1333,15 @@ class ProfileWorker(threading.Thread):
                 _log(f"[profile-{self.profile_id}][{request_id}] warning: {ratio} selection encountered recoverable issue: {e}; continuing")
                 ratio_selected = ratio
 
+            # Refresh the baseline after the sidebar has fully expanded so the
+            # image gallery and other late-loaded UI elements do not count as
+            # "new" candidates during the generation poll.
+            baseline_candidates = _extract_candidates(self.page, max_keep=200)
+            baseline_src_set = {c.get("src", "") for c in baseline_candidates}
+            _log(
+                f"[profile-{self.profile_id}][{request_id}] refreshed baseline before submit: {len(baseline_src_set)} candidate src(s)"
+            )
+
             # P1.3 Step 3.5 (July 2026): SLIDE_WORKER_REFRESH_EVERY gate.
             # If the gate condition is satisfied (e.g. every request when
             # N=1, the canonical default), clear the image library panel
@@ -1265,10 +1360,16 @@ class ProfileWorker(threading.Thread):
                 )
 
             # Step 4: submit (P2 phase #3: click_create).
-            create_btn = self.page.locator(
-                '.image-synthesis-creation-button, button[aria-label="Crea"]'
-            ).first
-            create_btn.click(force=True, timeout=5000)
+            if not _wait_for_create_button_ready(self.page, timeout_ms=15000):
+                _log(f"[profile-{self.profile_id}][{request_id}] warning: create button never became enabled before submit")
+            if _click_visible_create_button(self.page):
+                _log(f"[profile-{self.profile_id}][{request_id}] create button click succeeded")
+            else:
+                _log(f"[profile-{self.profile_id}][{request_id}] create button click not found")
+                create_btn = self.page.locator(
+                    '.image-synthesis-creation-button, button[aria-label="Crea"]'
+                ).first
+                create_btn.click(force=True, timeout=5000)
             _log_diag(
                 request_id, self.profile_id, "click_create",
                 url=self.page.url, ratio_selected=ratio_selected,
@@ -1295,7 +1396,6 @@ class ProfileWorker(threading.Thread):
             # The inline filter keeps polling at 3s intervals; if NO
             # candidate passes the filter for 60s, we return
             # ErrGenerationTimeout (fail-closed, no fallback).
-            baseline_src_set = {c.get("src", "") for c in baseline_candidates}
             _log(f"[profile-{self.profile_id}][{request_id}] waiting for AI generation (P0.4 filter against baseline={len(baseline_src_set)}, min_dims=64x64, complete=True)...")
             _log_diag(request_id, self.profile_id, "polling_start", url=self.page.url)
             max_wait = 60
@@ -1309,9 +1409,14 @@ class ProfileWorker(threading.Thread):
                 waited += poll_interval
                 imgs_check = self.page.locator(
                     '.docs-content-library-image-generation-item img, '
-                    'img[src*="googleusercontent"]'
+                    'img.docs-image-synthesis-item, '
+                    'img[src*="googleusercontent"], '
+                    'img'
                 ).all()
                 total_located = len(imgs_check)
+                _log(
+                    f"[profile-{self.profile_id}][{request_id}] poll t={waited}s located={total_located} filtered_out={total_filtered_out}"
+                )
                 # P0.4: filter each located img against baseline + dim + complete.
                 for img in imgs_check:
                     try:
@@ -1394,10 +1499,92 @@ class ProfileWorker(threading.Thread):
                     "code": err_code, "profile": self.profile_id,
                     "elapsed_ms": int((time.time() - t0) * 1000),
                 }
-            imgs = [matched_candidate_meta["locator"]]
+            # P0.4.A (July 2026): re-anchor Step 6 to the SPECIFIC captured src
+            # instead of reusing the Step 5 nth-position Locator.
+            #
+            # Audit verdict (P0.4.A): `page.locator(...).all()` returns Locator
+            # objects (lazy / re-evaluating), NOT ElementHandles. Reusing the
+            # captured nth-K Locator at Step 6 would SILENTLY RE-RESOLVE to
+            # the element currently at nth-K of the parent selector — IF the
+            # Slides.new DOM redraws between Step 5 break and Step 6 evaluate,
+            # nth-K can shift to a different img whose src was NOT in
+            # baseline_src_set (i.e. NOT something P0.4 expected to filter).
+            # In that race the worker extracts bytes for src=Y while
+            # candidate_records still emits src=X (cached snapshot) — silent
+            # mis-extraction + audit-trail divergence.
+            #
+            # Canonical fix:
+            #   (1) build a FRESH Locator that anchors to the SPECIFIC
+            #       captured src string (`img[src="X"]`) — this resolves
+            #       deterministically regardless of DOM reordering;
+            #   (2) assert `count() > 0` — if the chosen img vanished
+            #       (DOM redrew and replaced/removed it), surface typed
+            #       ErrNoImageCandidate → chrome_provider's resetWorker
+            #       + retry-once path. NO success-on-vanished.
             cached_meta = matched_candidate_meta
+            captured_src = cached_meta["src"]
+            if not captured_src:
+                # Defensive: should not happen — the P0.4 filter at Step 5
+                # rejects empty-src candidates. Cover the corner case anyway
+                # so we never retry on garbage state. Treat as the same
+                # typed sentinel the rest of P0.4.A would emit.
+                err_code = "ErrNoImageCandidate"
+                _log(f"[profile-{self.profile_id}][{request_id}] P0.4.A fail-closed: matched_candidate_meta.src is empty")
+                _log_diag(
+                    request_id, self.profile_id, "error",
+                    url=self.page.url, error_code=err_code,
+                    error_message="P0.4.A: matched_candidate_meta.src is empty (no anchor)",
+                )
+                try:
+                    self._fresh_page()
+                except Exception:
+                    pass
+                return {
+                    "id": request_id, "status": "error", "error": err_code,
+                    "code": err_code, "profile": self.profile_id,
+                    "candidates_baseline": len(baseline_candidates),
+                    "candidates_after": 0,
+                    "elapsed_ms": int((time.time() - t0) * 1000),
+                }
+            src_specific = self.page.locator(
+                f'img[src="{captured_src}"]'
+            )
+            if src_specific.count() == 0:
+                # P0.4.A FAIL-CLOSED: the chosen candidate vanished from
+                # the DOM between Step 5 capture and Step 6 evaluate
+                # (Slides.new component unmount, panel redraw, etc.).
+                # Typed ErrNoImageCandidate lets chrome_provider's typed
+                # retry policy decide resetWorker+retry-once vs permanent
+                # failure; the canonical contract is: NEVER silently
+                # succeed on a vanished candidate.
+                err_code = "ErrNoImageCandidate"
+                _log(
+                    f"[profile-{self.profile_id}][{request_id}] P0.4.A fail-closed: "
+                    f"img[src=\"{captured_src[:80]}\"] not found in current DOM "
+                    f"(vanished mid-extraction); surfacing typed {err_code}"
+                )
+                _log_diag(
+                    request_id, self.profile_id, "error",
+                    url=self.page.url, error_code=err_code,
+                    error_message=f"P0.4.A: img[src={captured_src[:80]}] not found at Step 6 (DOM redraw replaced/removed the chosen candidate)",
+                    captured_src=captured_src,
+                    candidates_baseline=len(baseline_candidates),
+                )
+                try:
+                    self._fresh_page()
+                except Exception:
+                    pass
+                return {
+                    "id": request_id, "status": "error", "error": err_code,
+                    "code": err_code, "profile": self.profile_id,
+                    "candidates_baseline": len(baseline_candidates),
+                    "candidates_after": 0,
+                    "captured_src": captured_src,
+                    "elapsed_ms": int((time.time() - t0) * 1000),
+                }
+            imgs = [src_specific]
             candidate_records = [{
-                "src": cached_meta["src"],
+                "src": captured_src,
                 "natural_w": cached_meta["natural_w"],
                 "natural_h": cached_meta["natural_h"],
                 "complete": cached_meta["complete"],
@@ -1408,8 +1595,13 @@ class ProfileWorker(threading.Thread):
                 candidates_after=len(imgs), candidates=candidate_records,
                 candidates_matched=1,
                 candidates_filtered_out_cache_keys=("src_not_in_baseline", "complete_true", "min_dims_64x64"),
+                anchor_strategy="P0.4.A src-anchored (img[src=\"X\"]; survives DOM redraw)",
             )
-            _log(f"[profile-{self.profile_id}][{request_id}] P0.4 found {len(imgs)} matched candidate (filtered against baseline); canonical post-filter extract path")
+            _log(
+                f"[profile-{self.profile_id}][{request_id}] P0.4 found {len(imgs)} matched candidate "
+                f"(src-anchored P0.4.A guaranteed; captured_src={captured_src[:80]}); "
+                f"canonical post-filter extract path"
+            )
 
             saved = False
             image_bytes = b""
