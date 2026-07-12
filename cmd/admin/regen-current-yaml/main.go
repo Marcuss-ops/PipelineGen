@@ -43,14 +43,14 @@ import (
 // Entry is the canonical YAML row shape. Mirrors the architecture/
 // current.yaml schema defined in `gates_baseline` parity.
 type Entry struct {
-	ID               string    `yaml:"id"`
-	Status           string    `yaml:"status"`
-	Owner            string    `yaml:"owner"`
-	Deadline         time.Time `yaml:"deadline"`
-	Rationale        string    `yaml:"rationale,omitempty"`
-	FollowUpTickets  []Entry   `yaml:"follow_up_tickets,omitempty"`
-	Count            *Count    `yaml:"count,omitempty"`
-	CrossRefs        *CrossRefs `yaml:"cross_refs,omitempty"`
+	ID              string     `yaml:"id"`
+	Status          string     `yaml:"status"`
+	Owner           string     `yaml:"owner"`
+	Deadline        time.Time  `yaml:"deadline"`
+	Rationale       string     `yaml:"rationale,omitempty"`
+	FollowUpTickets []Entry    `yaml:"follow_up_tickets,omitempty"`
+	Count           *Count     `yaml:"count,omitempty"`
+	CrossRefs       *CrossRefs `yaml:"cross_refs,omitempty"`
 }
 
 // Count is the optional workload-survey struct (baseline_initial vs
@@ -64,13 +64,13 @@ type Count struct {
 // CrossRefs is the optional machine-readable pointer struct emitted
 // under waves that govern a CI gate / migration / doc.
 type CrossRefs struct {
-	GateID    string `yaml:"gate_id,omitempty"`
-	Policy    string `yaml:"policy,omitempty"`
-	CIGate    string `yaml:"ci_gate,omitempty"`
-	Migration string `yaml:"migration,omitempty"`
-	Plan      string `yaml:"plan,omitempty"`
-	FollowUp  string `yaml:"follow_up,omitempty"`
-	PreStep   string `yaml:"pre_step,omitempty"`
+	GateID         string `yaml:"gate_id,omitempty"`
+	Policy         string `yaml:"policy,omitempty"`
+	CIGate         string `yaml:"ci_gate,omitempty"`
+	Migration      string `yaml:"migration,omitempty"`
+	Plan           string `yaml:"plan,omitempty"`
+	FollowUp       string `yaml:"follow_up,omitempty"`
+	PreStep        string `yaml:"pre_step,omitempty"`
 	RuntimeCapture string `yaml:"runtime_capture,omitempty"`
 }
 
@@ -80,14 +80,14 @@ type CrossRefs struct {
 // by ID alphabetically for diff-stability.
 var canonicalHandCuratedEntries = []Entry{
 	{
-		ID:       "WAVE-20-QDRANT-005D-HYGIENE",
-		Status:   "in_progress",
-		Owner:    "qdrant-hygiene work stream",
-		Deadline: time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC),
+		ID:        "WAVE-20-QDRANT-005D-HYGIENE",
+		Status:    "in_progress",
+		Owner:     "qdrant-hygiene work stream",
+		Deadline:  time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC),
 		Rationale: "Forward-prevention half of QDRANT-RECOVERY-001 (resolved July 2026).\nOwns Check 5 (same-package duplicate-type-declaration lint) +\ndocs/architecture/godlike/duplicate-types-allowlist.txt maintenance +\nthe canonical AWK-lens switch from package-name-only to the\nGo-package-identity tuple (directory_path, package_name) to clear\nthe ~14 cross-directory same-package-NAME false-positives.\n",
 		FollowUpTickets: []Entry{
 			{
-				ID:   "ARCHCHECK-GO-MIGRATION-PHASE-1",
+				ID:        "ARCHCHECK-GO-MIGRATION-PHASE-1",
 				Rationale: "PR-ID for the AWK-lens migration; tracked under WAVE-ARCHCHECK-MIGRATION.",
 			},
 		},
@@ -98,10 +98,10 @@ var canonicalHandCuratedEntries = []Entry{
 		},
 	},
 	{
-		ID:       "WAVE-21-PR-G-SCRIPTS-SUBPKG",
-		Status:   "in_progress",
-		Owner:    "PipelineGen Agent (PR-G.1 EXPAND)",
-		Deadline: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+		ID:        "WAVE-21-PR-G-SCRIPTS-SUBPKG",
+		Status:    "in_progress",
+		Owner:     "PipelineGen Agent (PR-G.1 EXPAND)",
+		Deadline:  time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
 		Rationale: "PR-G migration phases EXPAND → BACKFILL → CUTOVER → CONTRACT\nsplits internal/application/scripts (53-file mega-package) into\nbounded subpackages (curation/generation/persistence/postprocess/\nsource/usecases) per godlike/07. Day-1 (PR-G.1 EXPAND) shipped\n2026-06-27; PR-G.2 BACKFILL is the next deliverable. Deadline\n2026-08-01 pre-WAVE-22 CUTOVER lock-in so the backfill lands before\nthe WAVE-22 source-catalog + route-manifest gates are promoted to\nenforce_zero=true (2026-09-15).\n",
 		CrossRefs: &CrossRefs{
 			Policy: "architecture/policy.yaml::max_files_per_package=40",
@@ -109,23 +109,23 @@ var canonicalHandCuratedEntries = []Entry{
 		},
 	},
 	{
-		ID:       "WAVE-22-PR-D-SERVICE-DEPS-CAP",
-		Status:   "in_progress",
-		Owner:    "PipelineGen Agent (PR-D)",
-		Deadline: time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC),
+		ID:        "WAVE-22-PR-D-SERVICE-DEPS-CAP",
+		Status:    "in_progress",
+		Owner:     "PipelineGen Agent (PR-D)",
+		Deadline:  time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC),
 		Rationale: "ServiceDeps / Deps structured-port cap (8 fields max) is\npromoted to a hard CI gate (Check 23). Current observations:\nartlist.ServiceDeps ~15 fields + a few others. Each migration\nPR must decrement the visible field count via sub-struct splits\n(e.g. StorageDeps / MediaDeps / ProviderDeps).\n",
 		CrossRefs: &CrossRefs{
-			GateID:    "C2-SERVICE-DEPS",
-			Policy:    "docs/migrations/deps-struct-allowlist.txt",
-			CIGate:    "scripts/ci-architectural-checks.sh::Check 23",
+			GateID: "C2-SERVICE-DEPS",
+			Policy: "docs/migrations/deps-struct-allowlist.txt",
+			CIGate: "scripts/ci-architectural-checks.sh::Check 23",
 		},
 	},
 	{
-		ID:       "WAVE-22-C2-C-SOURCE-CATALOG",
-		Status:   "in_progress",
-		Owner:    "PipelineGen Agent (asset-sourcing + scripts-side)",
-		Deadline: time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC),
-		Count:    &Count{BaselineInitial: 48, Current: 48, TargetZero: 0},
+		ID:        "WAVE-22-C2-C-SOURCE-CATALOG",
+		Status:    "in_progress",
+		Owner:     "PipelineGen Agent (asset-sourcing + scripts-side)",
+		Deadline:  time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC),
+		Count:     &Count{BaselineInitial: 48, Current: 48, TargetZero: 0},
 		Rationale: "Every source-kind switch / `if source == \"X\"` dispatch in production\ncode MUST live on the canonical Source Catalog (SourceCatalog.Resolve\n+ SourceRegistry.Resolve). Two canonical files own the dispatch:\ninternal/application/assets/artifacts/source_resolver.go +\ninternal/application/scripts/adapters/source_registry.go.\nThe AST gate runs with --baseline=48 to absorb transitional drift;\neach migration PR decrements the baseline until it reaches 0.\n",
 		CrossRefs: &CrossRefs{
 			GateID: "C2-C",
@@ -133,11 +133,11 @@ var canonicalHandCuratedEntries = []Entry{
 		},
 	},
 	{
-		ID:       "WAVE-22-C2-E-ROUTE-MANIFEST",
-		Status:   "in_progress",
-		Owner:    "internal/app/registry.go (composition root) + scripts/admin/generate_routes_yaml.go",
-		Deadline: time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC),
-		Count:    &Count{BaselineInitial: 171, Current: 171, TargetZero: 0},
+		ID:        "WAVE-22-C2-E-ROUTE-MANIFEST",
+		Status:    "in_progress",
+		Owner:     "internal/app/registry.go (composition root) + scripts/admin/generate_routes_yaml.go",
+		Deadline:  time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC),
+		Count:     &Count{BaselineInitial: 171, Current: 171, TargetZero: 0},
 		Rationale: "Three sources of truth for the HTTP route surface MUST agree:\n(1) architecture/routes.yaml — AST pre-step output,\n(2) docs/api/ACTIVE_API_GENERATED.md — gin runtime capture,\n(3) the code-intended routes. Drift = SSOT regression. The\nAST-vs-runtime 2-way comparator runs with --baseline=171 to\nabsorb the day-1 drift surfaced by chained-group + non-foldable\ngin method registrations. Future PR closes the 3-way loop.\n",
 		CrossRefs: &CrossRefs{
 			GateID:         "C2-E",
@@ -147,10 +147,10 @@ var canonicalHandCuratedEntries = []Entry{
 		},
 	},
 	{
-		ID:       "WAVE-CONFORMANCE-001-id-24-MONITOR-CHANNELS",
-		Status:   "in_progress",
-		Owner:    "PipelineGen Agent (category_channels work stream)",
-		Deadline: time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC),
+		ID:        "WAVE-CONFORMANCE-001-id-24-MONITOR-CHANNELS",
+		Status:    "in_progress",
+		Owner:     "PipelineGen Agent (category_channels work stream)",
+		Deadline:  time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC),
 		Rationale: "category_channels owns monitor-state (via channels.Service.\nUpsertBulk + MarkChecked + UpdateCursor). Legacy `monitored_sources`\nrows are backfilled to `category_channels`; on closure (CONTRACT\nphase), the legacy discovery-state SQL is removed atomically. Migration\n110 ships atomically with the channel-table schema consolidation.\n",
 		CrossRefs: &CrossRefs{
 			Migration: "migrations/sqlite/110_channel_consolidation.sql",

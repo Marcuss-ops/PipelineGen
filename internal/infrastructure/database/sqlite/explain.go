@@ -95,8 +95,8 @@ const FinalizeAggregateParentQueryFragment = `UPDATE jobs
 // queries that should be explained at startup MUST be added here
 // (NOT bypassed with ad-hoc log lines elsewhere).
 var startupPlanCatalog = map[string]string{
-	"jobs_list_awaiting_aggregation":  ListAwaitingAggregationQueryFragment,
-	"finalize_aggregate_parent_cas":   FinalizeAggregateParentQueryFragment,
+	"jobs_list_awaiting_aggregation": ListAwaitingAggregationQueryFragment,
+	"finalize_aggregate_parent_cas":  FinalizeAggregateParentQueryFragment,
 }
 
 // DumpStartupPlans runs EXPLAIN QUERY PLAN once per entry in the

@@ -128,10 +128,10 @@ func classifyGoogleAPIError(err error) (RetryDecision, bool) {
 // same Class shape on both surfaces (raw SDK here, wrapped envelope
 // in google_api_error.go).
 //
-//   Throttled + Server → ErrNetwork (transient infra-class)
-//   Permission + NotFound + Client → ErrValidation (terminal
-//     client-class)
-//   Unknown → ErrUnknown (conservative fail-closed)
+//	Throttled + Server → ErrNetwork (transient infra-class)
+//	Permission + NotFound + Client → ErrValidation (terminal
+//	  client-class)
+//	Unknown → ErrUnknown (conservative fail-closed)
 func retryClassFromGoogleAPIKind(kind error) ErrorCategory {
 	switch kind {
 	case ErrGoogleAPIThrottled, ErrGoogleAPIServer:

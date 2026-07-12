@@ -163,9 +163,9 @@ func (u *ProcessYouTubeSegmentUseCase) Execute(ctx context.Context, cmd youtubet
 	// degrades gracefully to empty strings (the metadata
 	// service's downstream contract is unchanged).
 	var (
-		step10Transcript  string
-		step10Language    string
-		step10Cues        []asset.TimedCue
+		step10Transcript string
+		step10Language   string
+		step10Cues       []asset.TimedCue
 	)
 	if bundle != nil && !bundle.IsEmpty() {
 		step10Transcript = bundle.PlainText

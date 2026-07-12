@@ -107,31 +107,31 @@ import (
 // contributor reflexively reordering the branches can silently break
 // the FASE 1 spec invariants:
 //
-//	1. Decode   — typed ErrArtifactManifestInvalid on JSON parse /
-//	              unexpected-type failure (dual-%w wrap chains the
-//	              inner json error alongside the typed sentinel).
-//	2. nil-check — typed ErrArtifactManifestMissing on absent
-//	              __artifact_manifest key (manifest present but
-//	              empty is NOT "missing" — empty-but-valid is a
-//	              distinct path; see step 3).
-//	3. empty-envelope — return json.RawMessage("[]") on
-//	              len(Artifacts) == 0 with a non-nil manifest.
-//	              MUST precede step 4 because ArtifactManifest.Validate()
-//	              rejects `len(Artifacts) == 0` with
-//	              ErrArtifactManifestInvalid. If step 4 ran first,
-//	              the legitimate "handler legitimately produced
-//	              zero files" path would incorrectly fail.
-//	4. Validate — typed ErrArtifactManifestInvalid on shape
-//	              violations (empty schema_version, empty id/kind,
-//	              required-but-empty-path, etc). The dual-%w
-//	              form wraps BOTH the typed sentinel AND the inner
-//	              Validate error, so errors.Is can probe either
-//	              job.ErrArtifactManifestInvalid (general) OR
-//	              job.ErrRequiredArtifactMissing (specific) via
-//	              chain traversal.
-//	5. process   — publish the typed PublishedArtifact slice via
-//	              json.Marshal; the Marshal failure path wraps
-//	              ErrArtifactManifestInvalid (dual-%w form).
+//  1. Decode   — typed ErrArtifactManifestInvalid on JSON parse /
+//     unexpected-type failure (dual-%w wrap chains the
+//     inner json error alongside the typed sentinel).
+//  2. nil-check — typed ErrArtifactManifestMissing on absent
+//     __artifact_manifest key (manifest present but
+//     empty is NOT "missing" — empty-but-valid is a
+//     distinct path; see step 3).
+//  3. empty-envelope — return json.RawMessage("[]") on
+//     len(Artifacts) == 0 with a non-nil manifest.
+//     MUST precede step 4 because ArtifactManifest.Validate()
+//     rejects `len(Artifacts) == 0` with
+//     ErrArtifactManifestInvalid. If step 4 ran first,
+//     the legitimate "handler legitimately produced
+//     zero files" path would incorrectly fail.
+//  4. Validate — typed ErrArtifactManifestInvalid on shape
+//     violations (empty schema_version, empty id/kind,
+//     required-but-empty-path, etc). The dual-%w
+//     form wraps BOTH the typed sentinel AND the inner
+//     Validate error, so errors.Is can probe either
+//     job.ErrArtifactManifestInvalid (general) OR
+//     job.ErrRequiredArtifactMissing (specific) via
+//     chain traversal.
+//  5. process   — publish the typed PublishedArtifact slice via
+//     json.Marshal; the Marshal failure path wraps
+//     ErrArtifactManifestInvalid (dual-%w form).
 //
 // Regression lock: the inner ordering is enforced by
 // TestExtractStagedArtifacts_EmptyArtifactsList (which exercises

@@ -153,7 +153,7 @@ type SubmitRequest struct {
 //     be an idempotency hit — the caller explicitly asked
 //     for a new operation).
 type SubmitResult struct {
-	Operation        *domainops.Operation
+	Operation *domainops.Operation
 	// Job is the canonical live Job state. On fresh submission
 	// and supersede paths, this is the Job just INSERTed in the
 	// atomic TX (no extra DB read needed). On the idempotency-

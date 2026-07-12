@@ -110,6 +110,7 @@ func (h *ScriptFlowHandler) AdminToken() string {
 	}
 	return h.adminToken
 }
+
 // SearchClipsByName is the canonical handler for
 // GET /api/script/clips/search?q= discovery endpoint.
 // Canonical implementation lives in handler_clip_search.go

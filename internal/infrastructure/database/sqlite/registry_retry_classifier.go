@@ -22,15 +22,15 @@
 //     difference from the snake-case-leaning ErrCorrupt/ErrSchema
 //     family) to pkg/retry.ErrorCategory:
 //
-//       BUSY (5)        → ErrLockBusy, retryable=true (concurrent writer)
-//       LOCKED (6)      → ErrLockBusy, retryable=true (cross-process file lock)
-//       FULL (13)       → ErrUnknown, retryable=false (disk full — operator state)
-//       IOERR (10)      → ErrUnknown, retryable=false (I/O fail disk-level — operator state)
-//       CORRUPT (11)    → ErrValidation, retryable=false (page corruption — manual)
-//       SCHEMA (17)     → ErrValidation, retryable=false (schema mismatch — manual)
-//       CONSTRAINT (19) → ErrValidation, retryable=false (UNIQUE/CHECK violation — program bug)
-//       READONLY (8)    → ErrValidation, retryable=false (write-to-readonly)
-//       AUTH (23)       → ErrValidation, retryable=false (authorization fail)
+//     BUSY (5)        → ErrLockBusy, retryable=true (concurrent writer)
+//     LOCKED (6)      → ErrLockBusy, retryable=true (cross-process file lock)
+//     FULL (13)       → ErrUnknown, retryable=false (disk full — operator state)
+//     IOERR (10)      → ErrUnknown, retryable=false (I/O fail disk-level — operator state)
+//     CORRUPT (11)    → ErrValidation, retryable=false (page corruption — manual)
+//     SCHEMA (17)     → ErrValidation, retryable=false (schema mismatch — manual)
+//     CONSTRAINT (19) → ErrValidation, retryable=false (UNIQUE/CHECK violation — program bug)
+//     READONLY (8)    → ErrValidation, retryable=false (write-to-readonly)
+//     AUTH (23)       → ErrValidation, retryable=false (authorization fail)
 //
 //   - Other codes (MISMATCH, RANGE, etc. — sometimes renamed across
 //     mattn/go-sqlite3 versions) are NOT claimed — the walker falls

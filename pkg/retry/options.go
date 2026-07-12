@@ -176,7 +176,7 @@ func norm(o Options) Options {
 	// passing retry.Options{IsRetryable: predicate} gets the canonical
 	// 25% desync envelope for free. Callers who genuinely want no
 	// jitter (e.g. deterministic latency assertions in CI) must pass
-	// retry.Options{JitterFraction: 0, IsRetryable: predicate} 
+	// retry.Options{JitterFraction: 0, IsRetryable: predicate}
 	// explicitly — the explicit-zero signal is preserved by the
 	// condition (zero == zero is the only escape hatch). Negative or
 	// out-of-range values are clamped by sleepDuration, not here.

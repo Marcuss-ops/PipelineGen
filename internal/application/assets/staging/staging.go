@@ -47,7 +47,7 @@ import (
 //     DURING write (NOT post-stat). This is the canonical
 //     user-spec lock — post-stat hash is forbidden.
 //   - Stage MUST write to a `.partial/<id>.tmp` file, fsync file
-//     + parent dir, atomically rename to the canonical `<id>`
+//   - parent dir, atomically rename to the canonical `<id>`
 //     path, and fsync the workspace dir so the rename is durable.
 //   - Stage MUST clean up the `.tmp` file on ANY non-success path
 //     via deferred unlink so the next Stage attempt can retry.

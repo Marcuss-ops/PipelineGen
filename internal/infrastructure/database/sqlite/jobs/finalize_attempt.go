@@ -95,6 +95,7 @@ import (
 //     Type or EventKey (would violate event_key UNIQUE idempotency).
 //   - ErrFinalizeAttemptDLQIncompatible  — DLQPayload supplied with
 //     OutcomeSucceeded (incompatible — DLQ is for terminal failure).
+//
 // Fase 5(a) canonical-home alignment (July 2026): the 6 sentinels
 // below are thin re-export aliases of the canonical declarations at
 // `internal/domain/job/errors.go`. Identity is preserved (same

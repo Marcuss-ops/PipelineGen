@@ -2,15 +2,15 @@
 // RenewLeaseResult struct (Fase 4(b), July 2026).
 //
 // Per godlike/06 SSOT (one canonical observer per fact), the
-// canonical lease-renewal primitive (kernel.Store.RenewLease) 
-// returns LeaseState so the caller can compose the lease-renewal 
-// path with concurrent cancellation in a SINGLE SQL UPDATE — 
-// eliminating the per-job ticker goroutine AND the per-job 
+// canonical lease-renewal primitive (kernel.Store.RenewLease)
+// returns LeaseState so the caller can compose the lease-renewal
+// path with concurrent cancellation in a SINGLE SQL UPDATE —
+// eliminating the per-job ticker goroutine AND the per-job
 // IsCancelled poll that pre-Fase-4 required.
 //
 // This file declares ONLY the typed surface (LeaseState enum,
 // RenewLeaseResult struct, RenewLeaseResult.NewExpiry state-
-// conditional accessor). The store-interface signature changes 
+// conditional accessor). The store-interface signature changes
 // land in Push 4.3; today the canonical kernel.Store.RenewLease
 // signature is unchanged and the post-Fase-4 workers continue to
 // log-and-continue based on error return value.
@@ -23,11 +23,11 @@ import (
 // LeaseState is the canonical typed result of a RenewLease attempt.
 //
 // godlike/07 fail-closed: the SQL-layer harness guarantees that
-// every RenewLease call lands in EXACTLY ONE of the three enum 
-// values. The LeaseState is NOT derived from a separate SELECT 
+// every RenewLease call lands in EXACTLY ONE of the three enum
+// values. The LeaseState is NOT derived from a separate SELECT
 // after-the-UPDATE (that approach would reintroduce the lost-update
 // race between the renewal transaction and the operator-set
-// cancelled_at column); instead the LeaseState is the typed 
+// cancelled_at column); instead the LeaseState is the typed
 // canonical encoding of the SQL UPDATE's three-way filter result:
 //
 //	UPDATE jobs SET lease_expiry = ?
@@ -56,8 +56,8 @@ const (
 	// LeaseStateCancelRequested — jobs.cancelled_at is NOT NULL.
 	// Caller MUST abort the in-flight job (clean shutdown, return
 	// partial state, do NOT call FinalizeAttempt on this job —
-	// terminal transitions on a cancelled job surface as 
-	// ErrAlreadyTerminal at the SQL-layer fence, godlike/07 
+	// terminal transitions on a cancelled job surface as
+	// ErrAlreadyTerminal at the SQL-layer fence, godlike/07
 	// fail-closed).
 	//
 	// Source of cancellation (operator action vs sibling pipeline
@@ -68,11 +68,11 @@ const (
 	LeaseStateCancelRequested LeaseState = "cancel_requested"
 
 	// LeaseStateLeaseLost — lease stolen by another worker, or
-	// lease expired and requeued by the reaper (row no longer 
+	// lease expired and requeued by the reaper (row no longer
 	// matches worker_id). Caller MUST treat the in-flight work
 	// as orphaned and abort. The SQL-layer harness surfaces
-	// ErrLeaseLost alongside the typed LeaseState value so 
-	// errors.Is(err, ErrLeaseLost) probes work symmetrically 
+	// ErrLeaseLost alongside the typed LeaseState value so
+	// errors.Is(err, ErrLeaseLost) probes work symmetrically
 	// with the pre-Fase-4 RenewLease failure semantics.
 	//
 	// The ErrLeaseLost companion error is the canonical sentinel
@@ -89,7 +89,7 @@ const (
 // values are zero-values; the NewExpiry() state-conditional accessor
 // shields callers from typo-driven nil-deref.
 //
-// godlike/06 SSOT (one canonical surface per fact): the 
+// godlike/06 SSOT (one canonical surface per fact): the
 // NewLeaseExpiry + JobRevision fields are populated ONLY by the
 // SQL layer's RETURNING clause in post-Push-4.3 implementations.
 // Pre-Fase-4 callers (today) ignore the typed envelope and observe
@@ -109,7 +109,7 @@ type RenewLeaseResult struct {
 	// from consulting this field on non-Continue states.
 	//
 	// Semantic mirror of pre-Fase-4 lease_expiry: the field is
-	// the SQL row's jobs.lease_expiry column after the SQL 
+	// the SQL row's jobs.lease_expiry column after the SQL
 	// UPDATE commits. Workers can use it to compute the next
 	// "must renew by" timestamp without a second roundtrip.
 	NewLeaseExpiry *time.Time
@@ -132,15 +132,15 @@ type RenewLeaseResult struct {
 }
 
 // NewExpiry returns the new lease expiry iff State == LeaseStateContinue.
-// State-conditional accessor that shields callers from typing a 
-// direct nil-deref when the renewal fell into LeaseStateLeaseLost 
-// or LeaseStateCancelRequested. Returns (time.Time{}, false) for 
+// State-conditional accessor that shields callers from typing a
+// direct nil-deref when the renewal fell into LeaseStateLeaseLost
+// or LeaseStateCancelRequested. Returns (time.Time{}, false) for
 // non-Continue states; the bool is the canonical "valid" flag.
 //
 // godlike/07 fail-closed: a worker process that reads the timestamp
 // for LeaseStateLeaseLost would proceed with jobs owned by another
-// worker — a SEV-1 blast-radius event. The accessor makes that 
-// pattern impossible to write by accident; pre-Fase-4 the 
+// worker — a SEV-1 blast-radius event. The accessor makes that
+// pattern impossible to write by accident; pre-Fase-4 the
 // equivalent pattern was `re.NewLeaseExpiry.IsZero()` which is
 // structurally identical but allowed silent-default false readings.
 func (r RenewLeaseResult) NewExpiry() (time.Time, bool) {
