@@ -40,18 +40,13 @@ func TestHLS_DecryptSegment_RoundTripExplicitIV(t *testing.T) {
 	require.Equal(t, byte(0x00), iv[0], "IV[0] must be zero-padded LEFT")
 
 	plaintextData := []byte("HLS round-trip ok!") // 18 bytes
-	plaintextWithPKCS := append(plaintextData, bytes.Repeat([]byte{byte(16-byte(18%16))}, 16-byte(18%16))...)
-	// 18 → pad to 32 (14 bytes of 0x0e). PKCS#7 always pads when input is non-multiple,
-	// but ALSO when input IS a multiple — see second test below.
-	if 18%16 != 2 {
-		t.Fatalf("test setup invariant: 18 %% 16 == 2 (got %d)", 18%16)
-	}
-	expectedPad := byte(16 - 2) // 14
-	if expectedPad != 14 {
-		t.Fatalf("test invariant: expected PKCS pad value 14 (got %d)", expectedPad)
-	}
-	for i := 0; i < int(expectedPad); i++ {
-		plaintextWithPKCS = append(plaintextWithPKCS, expectedPad)
+	// PKCS#7 pad: 18 % 16 = 2 → pad byte = 16-2 = 14, total 18+14 = 32
+	padLen := 16 - (len(plaintextData) % 16)
+	padByte := byte(padLen)
+	require.Equal(t, 14, padLen)
+	plaintextWithPKCS := append([]byte{}, plaintextData...)
+	for i := 0; i < padLen; i++ {
+		plaintextWithPKCS = append(plaintextWithPKCS, padByte)
 	}
 	require.Len(t, plaintextWithPKCS, 32)
 
