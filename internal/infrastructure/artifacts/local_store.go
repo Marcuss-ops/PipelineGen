@@ -3,10 +3,19 @@
 //
 // godlike/06 SSOT (one canonical owner per fact): this file is
 // the SOLE canonical owner of the FS-side implementation of the
-// FASE 3 (a) "ArtifactStagingStore infra­strutturale" cut. The
+// FASE 3 (a) "ArtifactStagingStore infrastrutturale" cut. The
 // typed port lives in internal/application/assets/staging. FASE 3-C
 // (a separate cut) wires the LocalStore into the per-artifact
 // outbox pipeline + the SQLite StagesRepository (3-B).
+//
+// Step 7 split (July 2026): the canonical file holds the
+// LocalStore concrete type + Config envelope + default consts +
+// constructor + compile-time pin. The Stage method (the 10-step
+// staging flow) lives in local_store_stage.go. The recovery flow
+// (RecoverOrphans + workspaceTotalBytes) lives in
+// local_store_recover.go. The 5 small private helpers
+// (syscallStatfs + syncDirBestEffort + verifyPermission0700 +
+// readFileSHAIfExists + ctxErr) live in local_store_helpers.go.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: every failure path returns a
 // typed sentinel. NO silent-success path exists for an unavailable
@@ -29,12 +38,7 @@
 package artifacts
 
 import (
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync/atomic"
