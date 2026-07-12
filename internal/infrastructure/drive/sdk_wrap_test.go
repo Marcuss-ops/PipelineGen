@@ -17,12 +17,19 @@
 // from production; raw `errors.New("googleapi: 429 ...")` strings
 // are NOT classified by the production googleapi Classifier (which
 // matches the typed `*googleapi.Error` shape via errors.As, not raw
-// strings). The legacy substring taxonomy is preserved in
-// pkg/retry/transient_legacy_test.go as a TEST-ONLY fixture for
-// back-compat pins; the unexported `classifyLegacyTransientForTest`
+// strings). For the pre-cut taxonomy surface, see the FORWARD-POINTER
+// below.
+//
+// FORWARD-POINTER: see pkg/retry/transient_legacy_test.go for the
+// pre-FASE-6 substring taxonomy (transientSubstringsLegacy slice +
+// unexported classifyLegacyTransientForTest helper). The unexported
 // helper is only accessible from within the pkg/retry package
-// itself, so external package tests cannot opt into the legacy
-// fixture.
+// itself, so drive-pkg tests cannot opt into the legacy classifier
+// — the pre-cut surface is observable in pkg/retry's own test
+// suite only. This is the SINGLE CANONICAL forward-pointer for
+// the pre-cut taxonomy across the test tree; do not duplicate it
+// in test function docs (use "see the package doc FORWARD-POINTER"
+// as a cross-reference instead).
 //
 // The adapter-level integration (Drive SDK → *TransientInfrastructureError
 // → retry.IsTransient typed-path) is exercised by the existing drive
@@ -39,39 +46,30 @@ import (
 	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
-// TestWrapSDKTransient_DriveShape_TypedPathAuthoritative locks the
-// invariant Azione 5/8 ships: every typed *googleapi.Error returned
-// from a Drive SDK call that matches the canonical transient HTTP
-// status taxonomy (429, 502, 503, 504) is wrapped by retry.WrapTransient
-// into a *TransientInfrastructureError via the registered googleapi
-// Classifier (registry_google.go), and the typed path (errors.As) of
-// retry.IsTransient classifies the wrapped envelope authoritatively.
+// TestWrapSDKTransient_TypedErrorAuthoritative locks the invariant
+// Azione 5/8 ships for the typed-SDK path: every typed *googleapi.Error
+// returned from a Drive SDK call that matches the canonical transient
+// HTTP status taxonomy (429, 502, 503, 504) is wrapped by
+// retry.WrapTransient into a *TransientInfrastructureError via the
+// registered googleapi Classifier (registry_google.go), and the typed
+// path (errors.As) of retry.IsTransient classifies the wrapped envelope
+// authoritatively.
 //
 // FASE 6 Cut 6.1.D (July 2026): the test uses REAL *googleapi.Error
 // typed values (not raw `errors.New("googleapi: 429 ...")` strings)
 // because production retry.IsTransient is now a pure typed probe
 // and the registered googleapi Classifier matches the typed
 // *googleapi.Error shape via errors.As — not raw strings. The
-// pre-FASE-6 substring-based classification path is REMOVED from
-// production; the legacy substring taxonomy is preserved in
-// pkg/retry/transient_legacy_test.go as a TEST-ONLY fixture for
-// back-compat pins, but the unexported helper is only accessible
-// from within the pkg/retry package itself, so drive-pkg tests
-// cannot opt into the legacy classifier.
-//
-// The pre-FASE-6 "Azione 8/8F" block (6 camelCase + SNAKE_CASE shape
+// pre-FASE-6 "Azione 8/8F" block (6 camelCase + SNAKE_CASE shape
 // checks) is REMOVED: production no longer substring-matches
 // gerr.Message — the googleapi Classifier only inspects gerr.Code
-// (HTTP status). The pre-cut surface is preserved in the legacy
-// fixture for back-compat pins.
+// (HTTP status). See the package doc FORWARD-POINTER for the
+// pre-cut surface location.
 //
-// Forward-pointer: see pkg/retry/transient_legacy_test.go for the
-// pre-FASE-6 taxonomy (transientSubstringsLegacy slice + unexported
-// classifyLegacyTransientForTest helper). The unexported helper is
-// only accessible from within the pkg/retry package itself, so
-// drive-pkg tests cannot opt into the legacy classifier — the
-// pre-cut surface is observable in pkg/retry's own test suite only.
-func TestWrapSDKTransient_DriveShape_TypedPathAuthoritative(t *testing.T) {
+// Companion test: TestWrapSDKTransient_RawStringWrapAuthoritative
+// covers the SDK-boundary "raw-string pre-wrapped envelope" path
+// (DNS, network, raw transport errors) that this test does not.
+func TestWrapSDKTransient_TypedErrorAuthoritative(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -125,16 +123,36 @@ func TestWrapSDKTransient_DriveShape_TypedPathAuthoritative(t *testing.T) {
 			}
 		})
 	}
+}
 
-	// FASE 6 Cut 6.1.D follow-up: second loop exercising the
-	// "raw-string wrapped at the SDK boundary" path. The first loop
-	// uses typed *googleapi.Error (the SDK's native exit shape); the
-	// second loop covers non-typed emit shapes (DNS, network, raw
-	// transport errors) that the SDK can also produce. The wrap
-	// invariant is the same: a pre-wrapped
-	// *TransientInfrastructureError envelope is recognised by
-	// retry.IsTransient via errors.As (typed path #2).
-	rawWrapCases := []struct {
+// TestWrapSDKTransient_RawStringWrapAuthoritative locks the invariant
+// for the SDK-boundary "raw-string pre-wrapped envelope" path:
+// non-typed emit shapes (DNS, network, raw transport errors) that
+// the Drive SDK can also produce are wrapped at the SDK boundary into
+// a *TransientInfrastructureError envelope, and the typed path
+// (errors.As) of retry.IsTransient classifies the envelope
+// authoritatively.
+//
+// FASE 6 Cut 6.1.D (July 2026): the negative-pin `!retry.IsTransient(tc.err)`
+// for the raw string BEFORE the wrap guards against accidental
+// re-introduction of the pre-FASE-6 substring fallback in production.
+// A pre-wrapped envelope (`&TransientInfrastructureError{Err: tc.err}`)
+// is the canonical SDK-boundary emission shape: in production, the
+// Decision() walker's Catch-all Classifier produces it via
+// retry.WrapTransient, and IsTransient then reaches the envelope
+// via errors.As (typed path #2 in transient.go::IsTransient). The
+// test below constructs the envelope directly to pin the typed-probe
+// invariant without depending on the Catch-all Classifier's exact
+// emission semantics.
+//
+// Companion test: TestWrapSDKTransient_TypedErrorAuthoritative covers
+// the typed-SDK path (typed *googleapi.Error with canonical transient
+// HTTP status) that this test does not. See the package doc
+// FORWARD-POINTER for the pre-cut surface location.
+func TestWrapSDKTransient_RawStringWrapAuthoritative(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
 		name string
 		err  error
 	}{
@@ -144,7 +162,7 @@ func TestWrapSDKTransient_DriveShape_TypedPathAuthoritative(t *testing.T) {
 		{"connection refused (raw string)", errors.New("dial tcp: connection refused")},
 		{"temporarily unavailable (raw string)", errors.New("backend temporarily unavailable")},
 	}
-	for _, tc := range rawWrapCases {
+	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
