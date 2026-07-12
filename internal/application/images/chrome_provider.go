@@ -204,6 +204,24 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req GenerateImag
 	}
 
 	if resp.Status != "ok" {
+		// godlike/07 FAIL-CLOSED contract (P0.1, July 2026): the Python
+		// worker no longer falls back to 'File → Download → PNG' — when
+		// extraction fails, it emits a structured error
+		// `{status:"error", code:"ErrNoImageCandidate"}` and does NOT
+		// write output_path. As a defensive belt-and-suspenders, we
+		// remove any file at the canonical output_path before returning
+		// the typed error. The caller MUST NOT receive a GeneratedImage
+		// when the worker reports an error: the file is removed,
+		// the typed sentinel is propagated, and the next retry sees a
+		// clean output_path. os.IsNotExist is swallowed (the canonical
+		// happy path is 'worker didn't write anything'; logging that as
+		// a warning would produce noise). Other remove errors are logged
+		// but do NOT block the typed error from propagating.
+		if rmErr := os.Remove(outputPath); rmErr != nil && !os.IsNotExist(rmErr) {
+			p.log.Warn("ChromeImageProvider: cleanup outputPath after worker error",
+				zap.String("output_path", outputPath), zap.Error(rmErr))
+		}
+
 		errMsg := resp.Error
 		if errMsg == "" {
 			errMsg = "unknown worker error"

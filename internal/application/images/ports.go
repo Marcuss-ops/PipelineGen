@@ -143,6 +143,24 @@ var ErrImageGenQuota = fmt.Errorf("image generation: quota exceeded")
 // login required). Retryable after session refresh.
 var ErrImageGenAuth = fmt.Errorf("image generation: authentication error")
 
+// ErrImageGenNoImageCandidate is the typed sentinel surfaced when the
+// Playwright worker reports it could not extract a generated image from
+// the slides.new panel (no candidate appeared, or only candidates that
+// are clearly stale/from a previous generation).
+//
+// godlike/07 FAIL-CLOSED contract (P0.1, July 2026): the pre-fix behaviour
+// had a generic 'File → Download → PNG' fallback which exported the
+// CURRENT (often empty) slide as a PNG, producing blank/white artifacts
+// that passed byte-level validation on the Go side and were ingested as
+// valid GeneratedImage rows. We REMOVE that fallback. When the worker
+// reports this error, the Go side MUST (a) remove any file at the
+// canonical output_path, (b) NOT return a GeneratedImage to the caller,
+// (c) surface the typed error so the worker / retry policy can decide
+// retry vs dead-letter (the worker may have been on a stale page; this
+// is RETRYABLE — surfaced via ErrImageGenNetwork classification in the
+// top-level retry.Decision walker via errMsg classification).
+var ErrImageGenNoImageCandidate = fmt.Errorf("image generation: no image candidate (worker reported ErrNoImageCandidate)")
+
 // ErrImageGenPolicy wraps content-policy rejections (prompt blocked by
 // provider safety filter). NOT retryable — different prompt needed.
 var ErrImageGenPolicy = fmt.Errorf("image generation: content policy rejection")
@@ -162,6 +180,26 @@ func ClassifyError(errMsg string) error {
 	case strings.Contains(lower, "policy") || strings.Contains(lower, "safety") ||
 		strings.Contains(lower, "blocked") || strings.Contains(lower, "content"):
 		return fmt.Errorf("%w: %s", ErrImageGenPolicy, errMsg)
+	case strings.Contains(lower, "errnoimagecandidate"):
+		// P0.1 (July 2026): FAIL-CLOSED typed sentinel for the 'extraction
+		// failed AND no slide-export fallback' path. The pre-fix code
+		// exposed a generic 'no image extracted' string and fell back to
+		// exporting the current slide — that produced white artifacts
+		// that passed byte-level validation. We now surface a typed
+		// sentinel so callers (and the chrome_provider fail-closed path)
+		// can distinguish 'candidate not recoverable' from any other
+		// terminal failure.
+		//
+		// Ordering rationale: this case is placed BEFORE the network/timeout
+		// case so a compound error like 'ErrNoImageCandidate: network timeout'
+		// is still classified as ErrImageGenNoImageCandidate, NOT as a
+		// retryable network error (the FAIL-CLOSED contract on the worker
+		// side is what we want to surface, not the underlying transport
+		// signal). Review feedback P0.1: a future 'sentinel-specific detection
+		// helper' cut can refactor this switch into a registry of
+		// (substring → sentinel) pairs to make the precedence explicit
+		// without the case-ordering dance.
+		return fmt.Errorf("%w: %s", ErrImageGenNoImageCandidate, errMsg)
 	case strings.Contains(lower, "network") || strings.Contains(lower, "connection") ||
 		strings.Contains(lower, "timeout") || strings.Contains(lower, "refused") ||
 		strings.Contains(lower, "dns") || strings.Contains(lower, "eof"):
