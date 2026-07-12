@@ -2,64 +2,73 @@
 // split, July 2026; previously worker_lease.go since PR7 split, June
 // 2026; FASE 4(b) LeaseState integration + Cut 6.3 fix, July 2026).
 //
-// Heartbeat (lease renewal ticker) extracted from worker.go. Owns:
+// Heartbeat (ticker-driven loop that periodically calls lease renewal
+// + propagates typed LeaseState in ctx cancellation). Owns:
 //
-//  1. func (w *Worker) renewLeaseLoop — ticker-driven loop that
-//     periodically calls w.repo.RenewLease(ctx, jobID, w.id,
-//     w.leaseTTL). Inspects the typed kerneljob.RenewLeaseResult
-//     (Fase 4(b)) so concurrent cancellation propagates through
-//     the SAME SQL UPDATE that extends the lease — no parallel
-//     2-second IsCancelled-poll goroutine is required. Returns
-//     early on stop-channel close or ctx cancellation; signals
-//     completion by closing the done channel.
+//  1. time.NewTicker cadence (Cut 6.3: leaseTTL / 3, no floor — the
+//     pre-Cut-6.3 5s floor silently broke the FASE 4(b) typed cancel
+//     contract under leaseTTL <15s).
+//
+//  2. for-select over stop / ctx.Done / ticker.C; signals completion
+//     by closing the done channel.
+//
+//  3. ctx-cancel propagation: on attemptLeaseRenewal returning
+//     shouldExit=true with result.State == LeaseStateCancelRequested,
+//     the renew-loop invokes opts.jobCancel so the handler's
+//     ctx.Err() short-circuits. This is the typed replacement for the
+//     pre-Fase-4 2-second IsCancelled-polling goroutine
+//     (startCancelWatcher + cancelPollInterval — REMOVED in FASE 4(b));
+//     the cancel signal now flows through the SAME SQL UPDATE that
+//     extends the lease, eliminating the per-job DB poll.
+//
+// Lease INTERACTION (the typed RenewLease call + state classification)
+// lives in worker_execution_lease.go::attemptLeaseRenewal. This
+// file does NOT call w.repo.RenewLease directly — every single tick
+// delegates to the lease helper, preserving the FASE 4(b)
+// single-classification-site invariant (godlike/06 SSOT).
 //
 // ACQUIRE/RELEASE: lease acquire is the broker path (ClaimNext at the
 // top of worker.go::Start's poll loop) and lease release is the
-// finalisation hooks inside worker_execution_result.go::finalizeJob (the
-// consolidated ScheduleRetry / Fail / DeadLetter / CompleteWithArtifacts
-// paths — all accept leaseID + revision as parameters and atomically
-// transition the row out of running state, implicitly releasing the
-// lease as part of the SQL UPDATE). So the "acquire/renew/release"
-// lifecycle spans worker.go (acquire via ClaimNext),
-// worker_execution_heartbeat.go (renew here, with the typed LeaseState
-// cancel-flag integration), and worker_execution_result.go (release
-// implicitly in the finalisation hooks). NO new abstraction is added — the renew
-// ticker is the ONLY piece that lives full-time while a job is executing.
+// finalisation hooks inside worker_execution_result.go::finalizeJob
+// (the consolidated ScheduleRetry / Fail / DeadLetter /
+// CompleteWithArtifacts paths — all accept leaseID + revision as
+// parameters and atomically transition the row out of running
+// state, implicitly releasing the lease as part of the SQL UPDATE).
+// So the "acquire/renew/release" lifecycle spans worker.go (acquire
+// via ClaimNext), worker_execution_heartbeat.go (ticker-driven loop
+// that delegates renew to worker_execution_lease.go), and
+// worker_execution_result.go (release implicitly in the finalisation
+// hooks). NO new abstraction is added — the renew ticker is the
+// ONLY piece that lives full-time while a job is executing.
 //
-// FASE 4(b) (July 2026) LeaseState integration:
-//   - LeaseStateContinue     → log nothing, continue.
-//   - LeaseStateCancelRequested → invoke jobCancel (the worker_ctx
-//     must be cancelled so in-flight handler calls short-circuit
-//     via ctx.Err()). This is the typed replacement for the
-//     pre-Fase-4 startCancelWatcher goroutine that polled
-//     broker.IsCancelled every 2 seconds; the cancel signal
-//     now flows through the SAME SQL UPDATE that extends the
-//     lease, eliminating the per-job DB poll.
-//   - LeaseStateLeaseLost    → log+return; the worker's
-//     finalisation path will surface the typed ErrLeaseLost
-//     to the finalizer (or to a non-finalize abort path in
-//     future PRs).
+// FASE 4(b) (July 2026) LeaseState integration (ticker half):
+//   - LeaseStateContinue    → log nothing, continue.
+//   - LeaseStateCancelRequested → invoke opts.jobCancel; loop exits
+//     (the worker jobCtx MUST be cancelled
+//     so in-flight handler calls short-circuit
+//     via ctx.Err()).
+//   - LeaseStateLeaseLost   → exit WITHOUT invoking opts.jobCancel
+//     (worker is orphaned, not cancelled;
+//     the finalizer's lease-loss probing on
+//     the SQL UPDATE handles the orphan
+//     state).
 //
-// Cut 6.3 (July 2026) — leaseTTL cadence policy:
-// The renew-cadence is `w.leaseTTL / 3` (three renewals per lease
-// period). PREVIOUSLY floored at 5*time.Second to defend against a
-// hypothetical leaseTTL=1s configuration hammering the SQLite writer
-// pool; Cut 6.3 REMOVES the floor so the typed LeaseState path is
-// invariant under all leaseTTL ranges (production leaseTTL is
-// config-driven via cfg.Jobs.LeaseTTL, never <30s in production;
-// the floor was a defensive-only knob that BROKE the canonical
-// FASE 4(b) contract tests because they use leaseTTL=15ms /
-// leaseTTL=60ms to verify the typed CancelRequested / LeaseLost
-// signals propagate within a 4-second test budget).
-// godlike/07 minimum-blast-radius: the floor removal is a positive
-// test-prod parity change — the production Worker with
-// leaseTTL=30s ticks at 10s (unchanged from before Cut 6.3). The
-// defense against pathological leaseTTL values belongs in cfg layer
-// validation, not in the runtime renew-ticker.
+// Cut 6.3 (July 2026) refresh: production leaseTTL is config-driven
+// via cfg.Jobs.LeaseTTL (always ≥30s in production); test mocks use
+// leaseTTL=15ms / 60ms to verify the typed cancel signal propagates
+// within a 4-second test budget. The renewed cadence = leaseTTL/3
+// is invariant under all leaseTTL ranges (was previously floored at
+// 5s which silently broke the FASE 4(b) contract tests under
+// leaseTTL <15s).
 //
-// Mechanical split + Fase 4(b) integration + Cut 6.3 fix.
-// Net behavior change: the typed LeaseState signal now propagates
-// under all leaseTTL ranges (was broken under leaseTTL < 15s).
+// godlike/06 SSOT single-orchestrator-invariants: transitions
+// discipline (lease → heartbeat → result) is preserved across the
+// refactor. The orchestrator worker_execution.go::runJob calls
+// `go w.renewLeaseLoopWith(...)` unchanged; the lease helper
+// worker_execution_lease.go::attemptLeaseRenewal is invoked only
+// from inside the ticker; finalizeJob in worker_execution_result.go
+// runs after the loop closes. The state machine is byte-for-byte
+// equivalent to the pre-extract version.
 package jobs
 
 import (
@@ -67,16 +76,15 @@ import (
 	"time"
 
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"go.uber.org/zap"
 )
 
 // renewLeaseLoopOpts carries the optional jobCancel callback (Fase 4(b))
-// so the renew-loop can cancel the worker jobCtx on a LeaseStateCancelRequested
-// return WITHOUT spawning a parallel IsCancelled-poll goroutine. The
-// callback is nil-tolerant for legacy call sites that do not need
-// the cancel integration (godlike/07 minimum-blast-radius: the
-// pre-Fase-4 worker.go::runJob callers that have no jobCancel func
-// continue to compile).
+// so the renew-loop can cancel the worker jobCtx on a
+// LeaseStateCancelRequested return WITHOUT spawning a parallel
+// IsCancelled-poll goroutine. The callback is nil-tolerant for
+// legacy call sites that do not need the cancel integration
+// (godlike/07 minimum-blast-radius: pre-Fase-4 callers with no
+// jobCancel continue to compile).
 type renewLeaseLoopOpts struct {
 	// jobCancel, if non-nil, is invoked when the typed lease
 	// state is LeaseStateCancelRequested. Idempotent (calling
@@ -84,21 +92,34 @@ type renewLeaseLoopOpts struct {
 	jobCancel context.CancelFunc
 }
 
+// renewLeaseLoop is the no-op-opts entry point — preserves the
+// pre-Fase-4 signature for backward compatibility with the
+// pre-refactor callers (godlike/07 minimum-blast-radius).
 func (w *Worker) renewLeaseLoop(ctx context.Context, jobID string, stop <-chan struct{}, done chan<- struct{}) {
 	w.renewLeaseLoopWith(ctx, jobID, stop, done, renewLeaseLoopOpts{})
 }
 
+// renewLeaseLoopWith drives the heartbeat ticker. The for-select
+// loop structure / ctx-cancel / stop-channel / done-channel
+// invariants are unchanged from the pre-extract version — the
+// ONLY refactor is moving the typed LeaseState classification
+// out of this loop into worker_execution_lease.go::attemptLeaseRenewal.
+//
+// FASE 4(b) propagation contract (this file's slice):
+//   - When attemptLeaseRenewal returns shouldExit=true with
+//     result.State == LeaseStateCancelRequested, the ticker loop
+//     invokes opts.jobCancel() so the handler's ctx.Err() fires.
+//   - When attemptLeaseRenewal returns shouldExit=true with
+//     result.State == LeaseStateLeaseLost, the ticker loop EXITS
+//     without invoking opts.jobCancel (worker is orphaned, not
+//     cancelled).
+//
+// godlike/07 minimum-blast-radius: the loop ticks at
+// leaseTTL/3 (Cut 6.3, NO floor); the production cadence is
+// unchanged from the pre-extract version (production
+// leaseTTL=30s → 10s heartbeat tick).
 func (w *Worker) renewLeaseLoopWith(ctx context.Context, jobID string, stop <-chan struct{}, done chan<- struct{}, opts renewLeaseLoopOpts) {
 	defer close(done)
-	// Cut 6.3 (July 2026): renew cadence = leaseTTL / 3 directly, with
-	// NO floor. Previously floored at 5*time.Second to guard against a
-	// hypothetical leaseTTL=1s configuration; that floor silently
-	// broke the FASE 4(b) typed-cancel contract under leaseTTL <15s
-	// because the renew-ticker never fired within the test budget and
-	// renewHits=0. Production leaseTTL is config-driven via
-	// cfg.Jobs.LeaseTTL (always ≥30s in production deployments),
-	// so an unbounded leaseTTL/3 is safe — see package doc for the
-	// rationale + the godlike/07 fail-closed cfg layer ownership.
 	interval := w.leaseTTL / 3
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -110,34 +131,17 @@ func (w *Worker) renewLeaseLoopWith(ctx context.Context, jobID string, stop <-ch
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			result, err := w.repo.RenewLease(ctx, jobID, w.id, w.leaseTTL)
-			// Fase 4(b): inspect the typed result.State first.
-			// The state is the canonical signal; the error return
-			// is reserved for non-lease-state failures (network,
-			// SQL). LeaseStateLeaseLost carries a companion
-			// ErrLeaseLost so callers can errors.Is probe the
-			// pre-Fase-4 sentinel symmetrically.
-			if result.State == kerneljob.LeaseStateCancelRequested {
-				w.log.Info("worker: lease renewal observed cancel_requested (Fase 4(b) typed signal); cancelling jobCtx",
-					zap.String("job_id", jobID))
-				if opts.jobCancel != nil {
+			result, shouldExit := w.attemptLeaseRenewal(ctx, jobID)
+
+			if shouldExit {
+				// Fase 4(b): Propagate context cancellation if the
+				// store affirmatively returned CancelRequested. We
+				// do NOT cancel on LeaseStateLeaseLost — the worker
+				// is orphaned, not cancelled.
+				if result.State == kerneljob.LeaseStateCancelRequested && opts.jobCancel != nil {
 					opts.jobCancel()
 				}
-				// Stop the renew loop — the handler's ctx is
-				// cancelled, the finalizer will abort the job.
 				return
-			}
-			if result.State == kerneljob.LeaseStateLeaseLost {
-				w.log.Warn("worker: lease lost during renewal (Fase 4(b) typed signal); aborting",
-					zap.String("job_id", jobID), zap.Error(err))
-				return
-			}
-			// LeaseStateContinue (or an empty state, defensively)
-			// — log non-state errors only; the typed result.State
-			// is the authoritative success signal.
-			if err != nil && result.State != kerneljob.LeaseStateContinue {
-				w.log.Warn("failed to renew lease",
-					zap.String("job_id", jobID), zap.Error(err))
 			}
 		}
 	}
