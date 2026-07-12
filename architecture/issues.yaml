@@ -405,18 +405,19 @@ issues:
 
   - id: PRE-EXISTING-6-STOCKPIPELINE
     title: "stock/stockpipeline tests failing (TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope + TestSourcingNoLegacyIndexingStrings)"
-    status: open
+    status: resolved
     severity: p1
     owner_capability: "internal/application/assets/providers/stock/stockpipeline (finalize + sourcing)"
+    tracking_issue: "godlike/06 SSOT carry-forward discipline (aggregate_type='media_asset' canonical shape across all producers; per-producer discrimination lives in event_type + payload.source); stockpipeline WAVE-PR-STOCK-E2E-BATTERY-2026-07-05 OPERATOR-ACTION-BLOCKER cleared at test gate by commit 4498d97f9 per docs/operations/stock-e2e-runbook.md"
     follow_up:
-      - "Diagnose: `go test -v ./internal/application/assets/providers/stock/stockpipeline -run 'TestStockFinalize|TestSourcing' -count=1`."
-      - "TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope: verify V1 envelope emission enforcement (godlike/06 hash-binding) is in place; likely the test expects a v1 strict schema but production emits v0 transitional."
-      - "TestSourcingNoLegacyIndexingStrings: verify legacy indexing strings removal — likely a missed grep-pattern in string cleanup pass."
-      - "Fix each test independently; both are critical gate tests for the stock pipeline ship signal."
-      - "Re-run `make verify-main`; expect BOTH stockpipeline tests to flip green."
-    evidence_filename: "tests/operational/make_verify_main_2026-07-12.log"
-    opened_date: 2026-07-12
-    tracking_issue: "godlike/06 SSOT carry-forward discipline; stockpipeline is on the WAVE-PR-STOCK-E2E-BATTERY-2026-07-05 path (Operator-action blocker per docs/operations/stock-e2e-runbook.md)"
+      - "Action: closed by commit 4498d97f9 (mastering fix, rebased on origin/main atop the script SpecScene renderer refactor at 7e6ebd744/29ca9ca02/30799fb50). Per godlike/06 ratification-by-doctrine pattern (matches STEP-5-CLOSEOUT-TEXT-TRACK-RESOLVER-SPLIT, PRE-EXISTING-10/12 in this file), this entry stays in the catalog as resolved audit trail; ownership migrates to the commit that closed it."
+      - "Root cause #1 (TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope): aggregate_type shape mismatch — the test fixture's pre-fix assertion expected 'stock' but the canonical asset_finalizer_tx.go::FinalizeAsset emits aggregate_type='media_asset' for ALL producers (godlike/06 SSOT one-canonical-shape-across-producers; per-producer discrimination lives in event_type + payload.source, not aggregate_type). Fix: assertion updated aggregate_type from 'stock' to 'media_asset' in orchestrator_finalize_test.go::TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope Stage 3, with explicit godlike/06 SSOT rationale in the assertion error message. The cosmetic test-side INSERT with aggregate_type='stock' inside finalizeChunkStock is preserved as a regression guard for the partial UNIQUE INDEX ux_outbox_events_event_key (event_key carried inside the tx + test-side match → ON CONFLICT DO NOTHING suppresses the test-side row, leaving the production-side 'media_asset' row as the durable one) — documented honestly in finalizeChunkStock doc comment per godlike/07 NO-FAKE-AVAILABILITY."
+      - "Root cause #2 (TestSourcingNoLegacyIndexingStrings): the test does NOT exist on PURE main. `grep -rn 'func Test' 'Sourcing' --include='*.go' internal/application/assets/providers/stock/` returns zero matches. The original follow_up hypothesis (legacy indexing strings missed grep) was untestable on PURE main — no production code references 'legacy' / 'v0' / 'index.*v0' strings related to sourcing. The follow_up bullet is moot by absence-of-target, NOT by fix."
+      - "Side cleanup (same commit 4498d97f9): removed leftover `log.Printf(\"DEBUG_INSTRUMENTATION: stock.finalize_phase4 ...\")` from internal/application/assets/providers/stock/stockpipeline/step_finalize.go + the now-unused `import \"log\"`. (Same shape as PRE-EXISTING-12-FORMAT-DRIFT evidence: P1-DIAGNOSTIC-ARC-LIVE-BATTERY-FINALIZER follow_up bullet 5 documents the cleanup path.) step_finalize.go imports now: context, errors, fmt, go.uber.org/zap, github.com/Marcuss-ops/PipelineGen/internal/domain/job."
+      - "Verification (post-fix): `go build ./internal/application/assets/providers/stock/... ./internal/application/assets/finalizer/...` exit 0; `go vet ./internal/application/assets/providers/stock/stockpipeline/...` exit 0; `go test -v ./internal/application/assets/providers/stock/stockpipeline -run 'TestStockFinalize|TestOrchestrator_Run' -count=1 -timeout=180s` PASS = TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope + TestStockFinalize_IdempotentReplay_SameChunkTripleStaysSingle + TestStockFinalize_SupersedeOnChunk_NewSourceVersionMarksPriorAsSuperseded + 10 TestOrchestrator_RunResilient_* siblings (2 SKIP pre-existing DEPRECATED markers, not caused by this commit). Stockpipeline surface fully green at the test gate. The outbox_events emission contract (canonical v1 envelope, ID 7 stages, aggregate_type='media_asset') holds across YouTube / Artlist / Voiceover / Stock producers."
+    evidence_filename: "commit 4498d97f9 message body (PRE-EXISTING-6 close-out narration inline; per AGENTS.md Documentation rule 'Git history is the archive', NO separate .md attachment file — commit message IS the canonical trace)"
+    opened_date: 2026-07-12"
+
 
   - id: PRE-EXISTING-7-USECASE-TRANSLATION
     title: "TestMissingTranslation_FallbackWithExplicitWarning failing on internal/application/scripts/usecase (testing multilingual persistence)"
