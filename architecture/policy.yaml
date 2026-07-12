@@ -310,10 +310,61 @@ wave_qdrant_005d_hygiene:
   follow_up_ticket: "QDRANT-RECOVERY-001 (resolved; runbook 05 removed July 2026)"
   cross_refs:
     wave: architecture/current.yaml#id-20
-    lint_gates_entry: lint_gates[check=5]
-  registration_record: |
-    Wave 20 entry (architecture/current.yaml#id-20) + this section +
-    the matching lint_gates entry were registered in the same commit
-    on origin/main per docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md
-    §"One owner per fact" (owner registration and wave entry are
-    the same fact from two views).
+    lint_gates_entry: lint_gates[check=5]    registration_record: |
+      Wave 20 entry (architecture/current.yaml#id-20) + this section +
+      the matching lint_gates entry were registered in the same commit
+      on origin/main per docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md
+      §"One owner per fact" (owner registration and wave entry are
+      the same fact from two views).
+
+# ── DEBT BUDGET (Commit G, July 2026) ──────────────────────────────────
+# Caps the cumulative open carry-forward surface. The DEBT BUDGET is the
+# forcing function that prevents PRE-EXISTING-{N} entries from
+# accumulating without a hard upper bound (a monotonic log of "tomorrow's
+# triage" entries is the canonical godlike/07 no-fake-availability
+# violation: every open entry IS an unresolved architectural risk).
+#
+# Threshold semantics:
+#   - max_pre_existing_open: 5 — the CELING of `status: open` entries
+#     whose id starts with `PRE-EXISTING-`. Incrementing this cap requires
+#     a deliberate SSOT-marker PR with explicit owner + deadline (godlike/06
+#     one-owner-per-fact). Catalog file: architecture/issues.yaml.
+#
+# Counterpart CI gate: scripts/ci-architectural-checks.sh (Check 64) is
+# the executable enforcement surface; it Fails-CLOSED (Exit 1) whenever
+# the count of `status: open` PRE-EXISTING-* entries exceeds this cap.
+# The gate does NOT count `in_progress` (transitioning an entry from
+# `open` to `in_progress` unblocks the CI without a fix — this is the
+# intended incentive for the operator to start working immediately; the
+# canonical progress discipline is `godlike/06 SSOT carry-forward`).
+#
+# Operator procedure (`docs/operations/debt-budget.md`):
+#   1. CI fail? count `open` PRE-EXISTING-* via `python3 yaml.safe_load`.
+#   2. Sort by severity (p0 > p1 > p2 > p3) then by `opened_date` (older first).
+#   3. Migrate at least one of the open entries to `resolved` (preferred)
+#      or `in_progress` (valid intermediate) by fixing the root cause.
+#      The status flip MUST be coupled with the corresponding code/operational
+#      change in the same or immediately-prior commit (one fact from two
+#      views per godlike/06 one-owner-per-fact).
+#   4. Re-run the gate. Repeat until `open` count drops to ≤ max_pre_existing_open.
+#
+# Anti-patterns (FORBIDDEN):
+#   - Renaming an entry's id from PRE-EXISTING-* to something else to
+#     sidestep the gate. The id is the human-readable contract; renaming
+#     to disguise debt is godlike/07 debt-sweeping.
+#   - Closing an entry to `resolved` without an actual fix. The evidence
+#     file (`evidence_filename`) must reference the artifact showing the
+#     fix landed (commit SHA, dry-run log, operator playbook entry).
+#   - Dropping the CI gate by env flag. AGENTS.md YAGNI doctrine +
+#     godlike/07 fail-closed: NO env flag for the gate's fail mode.
+debt_budget:
+  max_pre_existing_open: 5
+  catalog_file: architecture/issues.yaml
+  counter_id_prefix: "PRE-EXISTING-"
+  counter_status_includes: ["open"]
+  # `in_progress` is DELIBERATELY excluded: transitioning an open entry
+  # to in_progress unblocks CI, incentivising operators to start work
+  # immediately rather than letting debt rot. Once work is committed,
+  # the entry flips to `resolved`.
+  ci_gate: scripts/ci-architectural-checks.sh (Check 64)
+
