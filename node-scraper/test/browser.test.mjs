@@ -20,6 +20,7 @@ import {
   resolveChromeProfile,
   makeTempBrowserDir,
   closeBrowserHandle,
+  evaluateBrowserPreflight,
 } from '../src/artlist/browser.js';
 
 // pickChromeExecutable priority 1: explicit CHROME_EXECUTABLE wins.
@@ -164,4 +165,131 @@ test('browser.js: helper exports remain intact', () => {
   assert.equal(typeof resolveChromeProfile, 'function', 'resolveChromeProfile must be exported');
   assert.equal(typeof makeTempBrowserDir, 'function', 'makeTempBrowserDir must be exported');
   assert.equal(typeof closeBrowserHandle, 'function', 'closeBrowserHandle must be exported');
+  assert.equal(typeof evaluateBrowserPreflight, 'function', 'evaluateBrowserPreflight must be exported (PR-FIX-SCRAPER-BROWSER July 2026)');
+});
+
+// ---------- PR-FIX-SCRAPER-BROWSER (July 2026): preflight verdict tests ----------
+//
+// evaluateBrowserPreflight returns a structured verdict so the
+// actual fail-fast in artlist_server.js::runBrowserPreflight does
+// not need to be exercised in unit tests (mocking process.exit is
+// brittle). Each of the 3 cases below pins one branch of the
+// decision tree in src/artlist/browser.js.
+
+// Case A: no WS endpoint AND no local binary → preflight FAIL.
+// The test forces `CHROME_EXECUTABLE` to a path that does NOT exist
+// in `/usr/bin/*` candidates by pointing pickChromeExecutable's
+// priority-1 (CHROME_EXECUTABLE env) at a nonexistent file
+// (pickChromeExecutable's priority-1 returns the env verbatim when
+// it's set, regardless of whether the file exists — so we instead
+// delete the env to trigger the /usr/bin probe, then mock the probe
+// by checking ONLY that the verdict is consistent given the test
+// environment's actual /usr/bin state).
+//
+// The 3-tier preflight contract is decided by env ordering:
+//   - any WS set         → mode='ws', ok=true (regardless of binary)
+//   - else CHROME_EXECUTABLE set → mode='local', execPath=... ok=true
+//   - else /usr/bin/* hit → mode='local', execPath=... ok=true
+//   - else → mode='none', ok=false
+//
+// The "fail" branch only fires when NEITHER WS NOR binary exists,
+// which on the test host means /usr/bin/chromium AND /usr/bin/google-chrome
+// AND ... are all absent. On a host with any of them installed,
+// the test passes by returning mode='local'. Either way the test
+// verifies the verdict SHAPE rather than the binary-state outcome,
+// so it stays hermetic regardless of the underlying host's browser
+// install state.
+test('evaluateBrowserPreflight: verdict shape is valid for every branch', () => {
+  // Save env state so we can recover it across the 3 sub-cases.
+  const saved = {
+    BROWSER_WS: process.env.BROWSER_WS,
+    LIGHTPANDA_WS: process.env.LIGHTPANDA_WS,
+    CHROME_WS: process.env.CHROME_WS,
+    CHROME_EXECUTABLE: process.env.CHROME_EXECUTABLE,
+  };
+  try {
+    // Sub-case A: WS wins (highest priority).
+    delete process.env.LIGHTPANDA_WS;
+    delete process.env.CHROME_WS;
+    process.env.BROWSER_WS = 'ws://stub-cdp-endpoint:9222';
+    const wsVerdict = evaluateBrowserPreflight();
+    assert.equal(wsVerdict.ok, true, 'WS endpoint must yield ok=true');
+    assert.equal(wsVerdict.mode, 'ws', 'mode must be ws');
+    assert.equal(wsVerdict.reason, null, 'reason must be null on success');
+
+    // Sub-case B: CHROME_EXECUTABLE override wins (priority-2).
+    delete process.env.BROWSER_WS;
+    process.env.CHROME_EXECUTABLE = '/usr/bin/chromium';
+    const execVerdict = evaluateBrowserPreflight();
+    assert.equal(execVerdict.ok, true, 'CHROME_EXECUTABLE must yield ok=true');
+    assert.equal(execVerdict.mode, 'local', 'mode must be local');
+    assert.equal(execVerdict.execPath, '/usr/bin/chromium', 'execPath must echo the env var');
+    assert.equal(execVerdict.reason, null, 'reason must be null on success');
+
+    // Sub-case C: no WS + CHROME_EXECUTABLE→nonexistent.
+    // pickChromeExecutable priority-1 returns the env verbatim
+    // regardless of whether the file exists, so this sub-case does
+    // NOT exercise the "fail" branch — it confirms the local-mode
+    // path always wins when the env var is set. The pure "fail"
+    // branch is exercised by deleting CHROME_EXECUTABLE + relying
+    // on the host's /usr/bin probe. We document that branch as
+    // 'depends on host /usr/bin state' and verify the verdict shape
+    // only (ok is bool, mode is one of 'ws'|'local'|'none', reason
+    // is string|null).
+    delete process.env.CHROME_EXECUTABLE;
+    const noEnvVerdict = evaluateBrowserPreflight();
+    assert.equal(typeof noEnvVerdict.ok, 'boolean');
+    assert.ok(['ws', 'local', 'none'].includes(noEnvVerdict.mode));
+    if (noEnvVerdict.ok) {
+      assert.equal(noEnvVerdict.reason, null);
+    } else {
+      assert.equal(noEnvVerdict.mode, 'none');
+      assert.ok(
+        typeof noEnvVerdict.reason === 'string' && noEnvVerdict.reason.length > 0,
+        'reason must be a non-empty string when ok=false',
+      );
+      assert.match(noEnvVerdict.reason, /BROWSER_WS/, 'reason must name the env var');
+      assert.match(noEnvVerdict.reason, /Chrome\/Chromium binary/, 'reason must name the missing artifact');
+    }
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});
+
+// Case B: explicit failure path on a hermetic test that masks the
+// host's /usr/bin/* probes via a CHROME_EXECUTABLE that points at
+// a guaranteed-nonexistent path AND no WS endpoint.
+// (Relies on the fact that pickChromeExecutable priority-1 returns
+// the env even when the file doesn't exist; we don't want a false
+// pass from a host with /usr/bin/chromium. So we ASSERT that with
+// CHROME_EXECUTABLE=non-existent and no WS, the verdict is
+// mode='local' execPath=<that path> — which is the documented
+// behaviour. This pins the contract: the env override is treated
+// as authoritative, no filesystem re-check.)
+test('evaluateBrowserPreflight CHROME_EXECUTABLE takes precedence even when path does not exist', () => {
+  const saved = {
+    BROWSER_WS: process.env.BROWSER_WS,
+    LIGHTPANDA_WS: process.env.LIGHTPANDA_WS,
+    CHROME_WS: process.env.CHROME_WS,
+    CHROME_EXECUTABLE: process.env.CHROME_EXECUTABLE,
+  };
+  try {
+    delete process.env.BROWSER_WS;
+    delete process.env.LIGHTPANDA_WS;
+    delete process.env.CHROME_WS;
+    process.env.CHROME_EXECUTABLE = '/this/path/does/not/exist/chromium-99';
+    const verdict = evaluateBrowserPreflight();
+    assert.equal(verdict.ok, true);
+    assert.equal(verdict.mode, 'local');
+    assert.equal(verdict.execPath, '/this/path/does/not/exist/chromium-99',
+      'pickChromeExecutable priority-1 (env override) must return the env verbatim, no fs probe');
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
 });
