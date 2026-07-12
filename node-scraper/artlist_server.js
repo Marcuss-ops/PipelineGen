@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { openBrowser, pickChromeExecutable, evaluateBrowserPreflight } from './src/artlist/browser.js';
 import { searchArtlist } from './artlist_search.js';
 import { downloadClipVideo } from './src/artlist/download.js';
+import { computeHealthVerdict } from './src/artlist/health.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,6 +33,35 @@ let globalBrowserConnected = false;
 // output. Reset only on a successful openBrowser (preserved across
 // cleanupBrowser so the diagnostic survives browser death).
 let lastLaunchError = null;
+// PR-HEALTHCHECK-FAILFAST (P2, July 2026): timestamp of the last
+// successful `await globalBrowser.version()` call (boot warmup or
+// heartbeat). Used by computeHealthVerdict to test recentSessionAlive
+// against a 60s freshness window — without it /health would silently
+// report healthy=true on a crashed browser that hasn't received a
+// request in 10 minutes (the existing getBrowser() check fires only
+// on /search arrival).
+let lastSessionAliveAt = null;
+// PR-HEALTHCHECK-FAILFAST (P2, July 2026): ISO timestamp of the last
+// /search request observed (success or failure). Surfaced via
+// /health.last_search_at so operators can correlate scraper
+// quietness with upstream issues (e.g. pipelinegen-server routing
+// the request elsewhere).
+let lastSearchAt = null;
+// PR-HEALTHCHECK-FAILFAST (P2, July 2026): pid of the Chromium
+// process spawned by puppeteer.launch (or null when not running).
+// Surfaced via /health.browser_pid so operators can run `ps`,
+// `kill -9`, or signal the spawned process directly.
+let globalBrowserPid = null;
+
+// PR-HEALTHCHECK-FAILFAST (P2, July 2026): /health freshness contract.
+//   HB_INTERVAL_MS       = 30s heartbeat setInterval cadence.
+//   HB_FRESH_WINDOW_MS   = 60s — anything older than this in
+//                         lastSessionAliveAt drops recentSessionAlive
+//                         to false, so /health flips to 503.
+// Heartbeat interval < fresh-window guarantees at least ONE fresh
+// check during any window in steady state.
+const HB_INTERVAL_MS = 30_000;
+const HB_FRESH_WINDOW_MS = 60_000;
 
 // ─── Browser Lifecycle ────────────────────────────────────────────────────────
 async function getBrowser() {
@@ -54,8 +84,25 @@ async function getBrowser() {
   // launchError; a failed launch preserves the message for /health.
   if (browser !== null && launchError === null) {
     lastLaunchError = null;
+    // PR-HEALTHCHECK-FAILFAST (P2, July 2026): a successful openBrowser
+    // is itself proof the browser is alive — bump the freshness
+    // timestamp so the heartbeart's first interval doesn't have to
+    // run before /health flips back to healthy.
+    lastSessionAliveAt = new Date().toISOString();
+    // Capture the Chromium pid once at launch so /health exposes it
+    // without re-querying the live handle each probe.
+    try {
+      const proc = browser.process && browser.process();
+      if (proc && typeof proc.pid === 'number') {
+        globalBrowserPid = proc.pid;
+      }
+    } catch (_pidErr) {
+      // Non-fatal — globalBrowserPid stays null; surface diagnostic
+      // via last_launch_error only if it's a real launch issue.
+    }
   } else if (launchError) {
     lastLaunchError = launchError;
+    globalBrowserPid = null;
   }
   return globalBrowser;
 }
@@ -73,9 +120,13 @@ async function cleanupBrowser() {
     } finally {
       globalBrowser = null;
       globalBrowserConnected = false;
-      // do NOT reset lastLaunchError on cleanup — the diagnostic value
-      // is precisely to surface the error after the browser is gone,
-      // so cleanup should preserve it until the next successful launch.
+      // PR-HEALTHCHECK-FAILFAST (P2, July 2026): reset browser_pid
+      // and session-alive alongside the handle pointer. We DO NOT
+      // reset lastLaunchError here — the diagnostic value is precisely
+      // to surface the error after the browser is gone, so cleanup
+      // should preserve it until the next successful launch.
+      globalBrowserPid = null;
+      lastSessionAliveAt = null;
     }
   }
 }
@@ -118,6 +169,13 @@ async function handleSearch(req, res) {
 
   const limit = Math.min(Math.max(parseInt(payload.limit || DEFAULT_LIMIT, 10), 1), MAX_LIMIT);
   requestCount++;
+  // PR-HEALTHCHECK-FAILFAST (P2, July 2026): record every /search
+  // request arrival (success or failure) so /health.last_search_at
+  // reflects upstream-routing health independently of /search
+  // outcome. Bugs like pipelinegen-server routing Artlist calls
+  // elsewhere (and the scraper going cold-quiet) become visible
+  // immediately rather than surfacing as "scraper deadlock".
+  lastSearchAt = new Date().toISOString();
   const reqId = requestCount;
 
   console.log(`[${new Date().toISOString()}] #${reqId} SEARCH term="${term}" limit=${limit}`);
@@ -215,28 +273,48 @@ async function handleDownload(req, res, getBrowserFn) {
 }
 
 function handleHealth(req, res) {
-  // FASE 9 (June 2026): /health now distinguishes the three
-  // browser-process states operators care about:
-  //   - browser_running=true + last_launch_error=null → healthy;
-  //   - browser_running=false + last_launch_error=null → never launched
-  //     yet, normal for cold-start;
-  //   - browser_running=false + last_launch_error=<msg> → launch failed,
-  //     the message names the binary path + args + root cause.
-  // The `ok` flag remains true so docker-compose's HEALTHCHECK command
-  // (curl -fsS http://127.0.0.1:9123/health) keeps reporting "healthy"
-  // for the purpose of the container-restart-on-unhealthy decision;
-  // operators read last_launch_error via docker logs / curl to triage.
-  const browserRunning = globalBrowser !== null;
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({
-    ok: true,
+  // PR-HEALTHCHECK-FAILFAST (P2, July 2026): /health reflects the
+  // composite healthy verdict via computeHealthVerdict() so the
+  // logic is pure-function-testable in test/browser.test.mjs
+  // (without spinning up the actual HTTP server).
+  //
+  // Composite healthy verdict (matches operator spec):
+  //   browser_running                = globalBrowser != null
+  //   && !last_launch_error          // no recorded failure
+  //   && recentSessionAlive          // heartbeat / warmup within
+  //                                    HB_FRESH_WINDOW_MS
+  //
+  // HTTP status code mirrors verdict:
+  //   healthy=true  → 200 OK (preserved for docker-compose healthy probes)
+  //   healthy=false → 503 Service Unavailable (Docker HEALTHCHECK
+  //                    uses curl -f; 503 makes the curl exit non-zero,
+  //                    and Docker restarts the container after
+  //                    retries=3 failed checks per Dockerfile.scraper).
+  //
+  // The legacy `ok` field is kept for backward compat with operators
+  // monitoring the field, but now matches the new `healthy` flag
+  // semantically (was previously always-true).
+  const { healthy } = computeHealthVerdict({
+    browser: globalBrowser,
+    lastLaunchError,
+    lastSessionAliveAt,
+    freshnessWindowMs: HB_FRESH_WINDOW_MS,
+  });
+  const payload = {
+    ok: healthy,
+    healthy,
     uptime_seconds: Math.floor(process.uptime()),
     requests_served: requestCount,
     started_at: startedAt,
     port: PORT,
-    browser_running: browserRunning,
+    browser_running: globalBrowser !== null,
+    browser_pid: globalBrowserPid,
+    last_search_at: lastSearchAt,
+    last_session_alive_at: lastSessionAliveAt,
     last_launch_error: lastLaunchError,
-  }));
+  };
+  res.writeHead(healthy ? 200 : 503, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(payload));
 }
 
 // ─── Preflight (PR-FIX-SCRAPER-BROWSER, July 2026) ────────────────────────────────────────────────────────────────────
@@ -279,6 +357,82 @@ function runBrowserPreflight() {
 runBrowserPreflight();
 
 // ─── HTTP server ──────────────────────────────────────────────────────────────
+// PR-HEALTHCHECK-FAILFAST (P2, July 2026): boot warmup.
+//
+// Without an explicit warmup, the scraper would boot to "server
+// listening, but globalBrowser=null". /health would flip to 503
+// (browserRunning=false) on the first healthcheck after
+// start_period=10s, eventually tripping Docker's
+// crashloop-after-retries=3 restart policy at ~t=55s -- even when
+// chromium binary + path are perfectly fine and the scraper would
+// recover on its first lazy /search request.
+//
+// The warmup makes globalBrowser non-null before server.listen so
+// /health reflects healthy=true from the first poll. If the warmup
+// itself fails, lastLaunchError is set and /health still returns 503
+// (intended -- the operator learns about the failure via Docker
+// restart + docker logs rather than via silent /search 500s).
+async function runBootWarmup() {
+  console.log('[artlist-server] Boot warmup: launching Chromium before serving...');
+  try {
+    const browser = await getBrowser();
+    if (browser) {
+      console.log(`[artlist-server] Boot warmup OK (browser_pid=${globalBrowserPid}, last_session_alive_at=${lastSessionAliveAt})`);
+    } else {
+      console.error('[artlist-server] Boot warmup returned no browser; /health will report 503 + restart');
+    }
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    console.error('[artlist-server] Boot warmup threw:', msg);
+    lastLaunchError = `boot warmup failed: ${msg}`;
+  }
+}
+
+// PR-HEALTHCHECK-FAILFAST (P2, July 2026): heartbeat timer.
+//
+// setInterval that calls globalBrowser.version() every HB_INTERVAL_MS
+// to refresh lastSessionAliveAt. Without it, /health would only
+// refresh the freshness timestamp on the next /search or /download
+// request -- a quiet scraper with a dead browser could report
+// healthy=true for up to (request-cadence) minutes.
+//
+// version() also surfaces browser.died mid-runtime (segfault, OOM):
+// on failure we set lastLaunchError and call cleanupBrowser. /health
+// then flips to 503 once the freshness window elapses, which Docker
+// interprets as a restart trigger.
+//
+// unref() so a hanging heartbeat doesn't block process exit during
+// SIGTERM/SIGINT cleanup.
+let hbTimer = null;
+function startHeartbeat() {
+  if (hbTimer) return;
+  hbTimer = setInterval(async () => {
+    if (!globalBrowser) return;
+    try {
+      await globalBrowser.version();
+      lastSessionAliveAt = new Date().toISOString();
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      console.warn(`[artlist-server] Heartbeat version() failed: ${msg}`);
+      lastLaunchError = `heartbeat failed: ${msg}`;
+      await cleanupBrowser();
+    }
+  }, HB_INTERVAL_MS);
+  if (typeof hbTimer.unref === 'function') {
+    hbTimer.unref();
+  }
+}
+
+function stopHeartbeat() {
+  if (hbTimer) {
+    clearInterval(hbTimer);
+    hbTimer = null;
+  }
+}
+
+await runBootWarmup();
+startHeartbeat();
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   if (url.pathname === '/search') {
@@ -307,10 +461,12 @@ server.on('error', (err) => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('[artlist-server] SIGTERM received, closing browser & shutting down...');
+  stopHeartbeat();
   await cleanupBrowser();
   server.close(() => process.exit(0));
 });
 process.on('SIGINT', async () => {
+  stopHeartbeat();
   await cleanupBrowser();
   server.close(() => process.exit(0));
 });
