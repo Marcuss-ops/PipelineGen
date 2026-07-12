@@ -182,6 +182,16 @@ func (h *IndexDeleteHandler) EventType() string {
 	return outboxevents.EventAssetIndexDeleteRequested
 }
 
+// IdempotencyKey declares the canonical handler-level idempotency
+// identity for asset.index.delete_requested events. Static — derived
+// from the schema_version literal — so the HandlerRegistry.Register
+// fail-closed panic can fire at init time if a future refactor
+// forgets the declaration. See IndexingHandler.IdempotencyKey for the
+// SSOT rationale (godlike/06 SSOT — one canonical owner per fact).
+func (h *IndexDeleteHandler) IdempotencyKey() string {
+	return outboxevents.EventAssetIndexDeleteRequested + "." + DeleteRequestSchemaVersion
+}
+
 // Handle parses the v1 envelope, performs the idempotent delete
 // (Qdrant + SQLite soft-delete), and returns nil on success. Validation
 // failures and unsatisfiable payloads return typed terminal errors

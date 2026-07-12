@@ -292,16 +292,25 @@ func Decision(err error) (RetryDecision, bool) {
 		}
 		return d, true
 	}
-	// Legacy substring fallback (REMOVED in Push 6.1.x follow-ups):
-	// the canonical IsTransient / Classify chain is the LAST resort
-	// for unsanitized SDK errors not yet typed-wrapped. This preserves
-	// byte-stable compile-clean for pre-Fase-6 callers; migration to
-	// typed-only happens in follow-up pushes.
+	// Typed-probe fallback (FASE 6 Cut 6.1.D, July 2026): if no
+	// registered Classifier claimed err, fall back to retry.IsTransient's
+	// pure-typed probe (RetryableError interface OR
+	// *TransientInfrastructureError carrier). The pre-FASE-6 substring
+	// path was REMOVED from the production classifier chain per the
+	// user spec ("Rimuovi TUTTA la classificazione substring dal
+	// percorso di produzione"). The substring taxonomy is preserved
+	// in the test-only fixture pkg/retry/transient_legacy_test.go for
+	// tests pinning the legacy surface. Production callers MUST register
+	// a typed Classifier (RegisterClassifier) for any custom error
+	// shape they want this walker to enumerate. The SafeMessage here
+	// intentionally surfaces the typed-probe shape so audit logs can
+	// distinguish "registered Classifier missed this adapter shape"
+	// from "no registered Classifier claimed err at all".
 	if IsTransient(err) {
 		return RetryDecision{
 			Class:       ErrNetwork,
 			Retryable:   true,
-			SafeMessage: "legacy substring classification (Fase 6 follow-up)",
+			SafeMessage: "typed-probe fallback (registered Classifier miss + RetryableError interface)",
 		}, true
 	}
 	return RetryDecision{}, false

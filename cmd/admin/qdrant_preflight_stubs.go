@@ -190,8 +190,13 @@ func testHybridSearchScore(ctx context.Context, deps *preflightDeps) error {
 		return fmt.Errorf("%w: build search request: %w", ErrPreflightStackDown, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+deps.AdminToken)
-	req.Header.Set("X-Workspace-ID", "system") // preflight runs at system tier; admin token binds the principal
+	// PR-B defense-in-depth (Wave 22, June 2026): /internal/v1/* routes
+	// REJECT admin tokens at the middleware (TestWorkerAuth_RejectsAdminToken
+	// pins the contract; godlike/06 SSOT). Preflight Test 7 hits
+	// /internal/v1/media/search and MUST present a worker token — using the
+	// admin token here would 401 and fail the test with no diagnostic clue.
+	req.Header.Set("Authorization", "Bearer "+deps.WorkerToken)
+	req.Header.Set("X-Workspace-ID", "system") // preflight runs at system tier; worker token binds the principal
 	resp, err := deps.HTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: POST /internal/v1/media/search: %w", ErrPreflightStackDown, err)

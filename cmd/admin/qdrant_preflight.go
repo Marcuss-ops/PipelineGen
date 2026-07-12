@@ -75,12 +75,13 @@ var (
 
 // preflightDeps carries the resolved CLI flags + base HTTP client.
 type preflightDeps struct {
-	URL        string
-	QdrantURL  string
-	Collection string
-	AdminToken string
-	HTTPClient *http.Client
-	Log        *zap.Logger
+	URL         string
+	QdrantURL   string
+	Collection  string
+	AdminToken  string
+	WorkerToken string
+	HTTPClient  *http.Client
+	Log         *zap.Logger
 	// SeedAssetID is populated by Test 3 (asset ingested before
 	// downstream Tests 4-7 read it). Consumed by Tests 4-8, 10, 11.
 	SeedAssetID string
@@ -188,6 +189,7 @@ func runQdrantPreflight(args []string) error {
 	qdrantFlag := fs.String("qdrant-url", "http://127.0.0.1:6333", "Qdrant base URL")
 	collectionFlag := fs.String("collection", "media_assets_v3_e5_768_siglip_768", "Qdrant canonical collection name (alias resolved)")
 	tokenFlag := fs.String("admin-token", "", "Admin token (or set VELOX_ADMIN_TOKEN env var)")
+	workerTokenFlag := fs.String("worker-token", "", "Worker token (or set VELOX_WORKER_TOKEN env var); required by PR-B for /internal/v1/* routes — see godlike/06 §PR-B")
 	listFlag := fs.Bool("list", false, "Print all 11 TDD tests + exit 0 (diagnostic-only; no stack interaction)")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -215,6 +217,14 @@ func runQdrantPreflight(args []string) error {
 		return fmt.Errorf("qdrant-preflight: admin token required (--admin-token=... or set VELOX_ADMIN_TOKEN env)")
 	}
 
+	workerToken := *workerTokenFlag
+	if workerToken == "" {
+		workerToken = os.Getenv("VELOX_WORKER_TOKEN")
+	}
+	if workerToken == "" {
+		return fmt.Errorf("qdrant-preflight: worker token required (--worker-token=... or set VELOX_WORKER_TOKEN env) — PR-B defense-in-depth (Wave 22) requires a worker token for /internal/v1/* routes; admin tokens are rejected at the middleware with 401")
+	}
+
 	// Phase A fix: appLogger() returns 4 values (cfg, *zap.Logger, cleanup, error).
 	// Preflight discards cfg (no command needs it) and uses the typed cleanup
 	// callback deferred at exit. Staticcheck: cmd/admin/logger.go:30 documents
@@ -226,12 +236,13 @@ func runQdrantPreflight(args []string) error {
 	defer cleanup()
 
 	deps := &preflightDeps{
-		URL:        *urlFlag,
-		QdrantURL:  *qdrantFlag,
-		Collection: *collectionFlag,
-		AdminToken: token,
-		HTTPClient: &http.Client{}, // per-test context.WithTimeout is the only deadline (see runQdrantPreflight); a static 30s Client.Timeout would preempt Tests 4/8/11 which carry 90s/60s/5m ctx budgets
-		Log:        log,
+		URL:         *urlFlag,
+		QdrantURL:   *qdrantFlag,
+		Collection:  *collectionFlag,
+		AdminToken:  token,
+		WorkerToken: workerToken,
+		HTTPClient:  &http.Client{}, // per-test context.WithTimeout is the only deadline (see runQdrantPreflight); a static 30s Client.Timeout would preempt Tests 4/8/11 which carry 90s/60s/5m ctx budgets
+		Log:         log,
 	}
 
 	log.Info("qdrant-preflight: starting",

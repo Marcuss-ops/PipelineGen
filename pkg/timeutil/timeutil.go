@@ -71,6 +71,30 @@ func FormatPtrRFC3339(t *time.Time) any {
 	return FormatRFC3339(*t)
 }
 
+// FormatRFC3339Nano formats a time.Time as an RFC3339Nano string (includes
+// fractional seconds, trailing zeros trimmed). Returns the empty string
+// for the zero time. Pairs with ParseRFC3339Nano for nano-precision
+// round-trip — callers that need to preserve sub-second precision
+// (e.g. test fixtures seeded with time.Now().UnixNano() or
+// timeutil.Now()) MUST use this variant. Callers that emit only
+// second-precision times (e.g. canonical `datetime('now')` defaults)
+// MAY use FormatRFC3339.
+func FormatRFC3339Nano(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339Nano)
+}
+
+// FormatPtrRFC3339Nano formats a *time.Time as an RFC3339Nano string for
+// SQL parameter binding. Returns nil for a nil pointer.
+func FormatPtrRFC3339Nano(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return FormatRFC3339Nano(*t)
+}
+
 // DerefString returns the value of a *string or "" if nil.
 func DerefString(s *string) string {
 	if s == nil {

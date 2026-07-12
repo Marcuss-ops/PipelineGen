@@ -1,9 +1,9 @@
 // repository_lifecycle_test.go — PR-F / ADR-0002 §D6.7 verification.
 //
 // Unit tests on validateOwnership's counter-bump contract:
-//   - ErrTransitionConflict (revision mismatch) bumps
+//   - job.ErrTransitionConflict (revision mismatch) bumps
 //     job_transition_conflict_total{method=<name>} by exactly 1
-//   - ErrLeaseLost (worker OR lease mismatch) does NOT bump the counter
+//   - job.ErrLeaseLost (worker OR lease mismatch) does NOT bump the counter
 //     (different-worker-on-same-row is a distinct operator signal —
 //     merging it under "transition_conflict" would corrupt dashboards)
 //   - ErrInvalidState (status mismatch) does NOT bump the counter
@@ -39,7 +39,7 @@ func readConflictCounter(method string) float64 {
 }
 
 // TestValidateOwnership_RevisionMismatch_BumpsCounter locks the
-// PR-F contract: validateOwnership returns ErrTransitionConflict
+// PR-F contract: validateOwnership returns job.ErrTransitionConflict
 // exactly when the current row's revision != the worker's expected
 // revision, and the counter
 // job_transition_conflict_total{method=<name>} is incremented by 1.
@@ -53,10 +53,10 @@ func TestValidateOwnership_RevisionMismatch_BumpsCounter(t *testing.T) {
 		"worker-A", "lease-X", 6, // expected revision = 6 -> mismatch
 		job.StatusRunning)
 	if err == nil {
-		t.Fatalf("expected ErrTransitionConflict, got nil")
+		t.Fatalf("expected job.ErrTransitionConflict, got nil")
 	}
-	if !errors.Is(err, ErrTransitionConflict) {
-		t.Fatalf("expected ErrTransitionConflict, got %v (type %T)", err, err)
+	if !errors.Is(err, job.ErrTransitionConflict) {
+		t.Fatalf("expected job.ErrTransitionConflict, got %v (type %T)", err, err)
 	}
 
 	after := readConflictCounter(method)
@@ -67,7 +67,7 @@ func TestValidateOwnership_RevisionMismatch_BumpsCounter(t *testing.T) {
 
 // TestValidateOwnership_WorkerMismatch_DoesNotBumpCounter locks
 // the OPPOSITE contract for the worker-mismatch branch:
-// ErrLeaseLost is a distinct signal (different worker on the same
+// job.ErrLeaseLost is a distinct signal (different worker on the same
 // row, lease expired normally) and MUST NOT bump
 // job_transition_conflict_total. Operators alert on the per-method
 // totals to distinguish "lease-stolen" from
@@ -83,23 +83,23 @@ func TestValidateOwnership_WorkerMismatch_DoesNotBumpCounter(t *testing.T) {
 		"worker-B", "lease-X", 5, // expected worker-B -> mismatch
 		job.StatusRunning)
 	if err == nil {
-		t.Fatalf("expected ErrLeaseLost, got nil")
+		t.Fatalf("expected job.ErrLeaseLost, got nil")
 	}
-	if !errors.Is(err, ErrLeaseLost) {
-		t.Fatalf("expected ErrLeaseLost, got %v (type %T)", err, err)
+	if !errors.Is(err, job.ErrLeaseLost) {
+		t.Fatalf("expected job.ErrLeaseLost, got %v (type %T)", err, err)
 	}
 
 	after := readConflictCounter(method)
 	if delta := after - before; delta != 0.0 {
-		t.Errorf("counter MUST NOT bump on ErrLeaseLost (worker); got delta=%v", delta)
+		t.Errorf("counter MUST NOT bump on job.ErrLeaseLost (worker); got delta=%v", delta)
 	}
 }
 
 // TestValidateOwnership_LeaseMismatch_DoesNotBumpCounter is the
-// lease-mismatch twin of the worker-mismatch test. ErrLeaseLost is
+// lease-mismatch twin of the worker-mismatch test. job.ErrLeaseLost is
 // returned in both cases; the merged behaviour is "any
-// lease-related mismatch surfaces as ErrLeaseLost, never as
-// ErrTransitionConflict, and never bumps this counter".
+// lease-related mismatch surfaces as job.ErrLeaseLost, never as
+// job.ErrTransitionConflict, and never bumps this counter".
 func TestValidateOwnership_LeaseMismatch_DoesNotBumpCounter(t *testing.T) {
 	method := "test_validate_lease_mismatch"
 	before := readConflictCounter(method)
@@ -110,15 +110,15 @@ func TestValidateOwnership_LeaseMismatch_DoesNotBumpCounter(t *testing.T) {
 		"worker-A", "lease-Y", 5, // expected lease-Y -> mismatch
 		job.StatusRunning)
 	if err == nil {
-		t.Fatalf("expected ErrLeaseLost, got nil")
+		t.Fatalf("expected job.ErrLeaseLost, got nil")
 	}
-	if !errors.Is(err, ErrLeaseLost) {
-		t.Fatalf("expected ErrLeaseLost, got %v (type %T)", err, err)
+	if !errors.Is(err, job.ErrLeaseLost) {
+		t.Fatalf("expected job.ErrLeaseLost, got %v (type %T)", err, err)
 	}
 
 	after := readConflictCounter(method)
 	if delta := after - before; delta != 0.0 {
-		t.Errorf("counter MUST NOT bump on ErrLeaseLost (lease); got delta=%v", delta)
+		t.Errorf("counter MUST NOT bump on job.ErrLeaseLost (lease); got delta=%v", delta)
 	}
 }
 
@@ -130,7 +130,7 @@ func TestValidateOwnership_LeaseMismatch_DoesNotBumpCounter(t *testing.T) {
 // "lease-stolen / cross-writer race" signal — merging status errors
 // there would falsely fire that alert on legitimate state-machine
 // transitions gone wrong (which is ErrInvalidState, not
-// ErrTransitionConflict).
+// job.ErrTransitionConflict).
 func TestValidateOwnership_StatusMismatch_DoesNotBumpCounter(t *testing.T) {
 	method := "test_validate_status_mismatch"
 	before := readConflictCounter(method)

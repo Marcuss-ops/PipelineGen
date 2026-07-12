@@ -90,9 +90,9 @@ func (r *SQLiteStore) AddEvent(ctx context.Context, id string, eventType, messag
 // validateOwnership checks that the current row matches the worker's
 // expected lease + revision + status before any fenced UPDATE proceeds.
 // PR-F / ADR-0002 §D6.7 (June 2026): the function takes a `method` arg
-// so ErrTransitionConflict returns can bump the canonical
+// so job.ErrTransitionConflict returns can bump the canonical
 // job_transition_conflict_total{method=<name>} counter. The two
-// non-TransitionConflict paths (ErrInvalidState, ErrLeaseLost) do NOT
+// non-TransitionConflict paths (ErrInvalidState, job.ErrLeaseLost) do NOT
 // bump the counter — they're distinct signals
 // (worker-called-wrong-transition vs different-worker-on-same-row) and
 // merging them under "transition_conflict" would corrupt dashboard
@@ -123,14 +123,14 @@ func validateOwnership(jobID string, method string, currentStatus job.Status,
 		return fmt.Errorf("%w: status %q, expected one of %v", ErrInvalidState, currentStatus, expectedStrs)
 	}
 	if currentWorker != expectedWorker {
-		return fmt.Errorf("%w: worker %q, expected %q", ErrLeaseLost, currentWorker, expectedWorker)
+		return fmt.Errorf("%w: worker %q, expected %q", job.ErrLeaseLost, currentWorker, expectedWorker)
 	}
 	if currentLease != expectedLease {
-		return fmt.Errorf("%w: lease mismatch", ErrLeaseLost)
+		return fmt.Errorf("%w: lease mismatch", job.ErrLeaseLost)
 	}
 	if int64(currentRevision) != expectedRevision {
 		observability.JobTransitionConflictTotal.WithLabelValues(method).Inc()
-		return fmt.Errorf("%w: revision %d, expected %d", ErrTransitionConflict, currentRevision, expectedRevision)
+		return fmt.Errorf("%w: revision %d, expected %d", job.ErrTransitionConflict, currentRevision, expectedRevision)
 	}
 	return nil
 }

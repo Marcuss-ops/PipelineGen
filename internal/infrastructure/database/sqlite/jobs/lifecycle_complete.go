@@ -100,7 +100,7 @@ func (r *SQLiteStore) Complete(ctx context.Context, id string, workerID, leaseID
 		// because validateOwnership only bumps on FAILURE (early return),
 		// so by the time we reach here, validateOwnership has already passed.
 		observability.JobTransitionConflictTotal.WithLabelValues("complete").Inc()
-		return ErrTransitionConflict
+		return job.ErrTransitionConflict
 	}
 
 	// Insert event
@@ -161,7 +161,7 @@ func (r *SQLiteStore) Fail(ctx context.Context, id string, workerID, leaseID str
 		// so we never double-count. See the comment block at Complete's
 		// CAS fence for the full invariant.
 		observability.JobTransitionConflictTotal.WithLabelValues("fail").Inc()
-		return ErrTransitionConflict
+		return job.ErrTransitionConflict
 	}
 
 	evtID := fmt.Sprintf("evt_%d_%s", now.UnixNano(), hashutil.RandomString(6))

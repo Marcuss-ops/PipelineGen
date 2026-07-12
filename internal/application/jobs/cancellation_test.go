@@ -1,194 +1,341 @@
-// Package jobs -- cancellation_test.go (Issue 6 / P1, June 2026).
+// Package jobs -- cancellation_test.go (FASE 4(b) typed-LeaseState
+// integration, July 2026).
 //
-// Pins the cancellation-plumbing contract:
+// Pins the cancellation-plumbing contract under the post-FASE-4
+// architecture: the 2-second IsCancelled-poll goroutine (the
+// pre-FASE-4 startCancelWatcher helper at worker_execution.go) is
+// REMOVED; cancellation now propagates through the typed
+// kerneljob.RenewLeaseResult.State return value (Continue |
+// CancelRequested | LeaseLost) observed by the
+// renewLeaseLoopWith helper on every lease-renewal tick.
 //
-//  1. TestStartCancelWatcher -- helper-level test of the polling
-//     goroutine in isolation. Calls startCancelWatcher with a
-//     mock isCancelled function that returns true on the 2nd
-//     poll, asserts the parent ctx becomes Done within 4 seconds
-//     (= 2 poll intervals, accounting for the worst-case
-//     boundary).
+// Test surface (per the FASE 4(b) cut):
 //
-//  2. TestWorker_CancelsRunningJobOnCancelSignal -- end-to-end
-//     through Worker.runJob with a mockBroker that returns
-//     StatusCancelled on Get(jobID) (so IsCancelled polls return
-//     true) and a fakeDispatcher that registers a handler that
-//     observes ctx.Done(). Asserts the handler saw ctx.Err() ==
-//     context.Canceled within the 4-second tolerance.
+//  1. TestRenewLeaseLoopWith_CancelRequested_TriggersJobCancel --
+//     helper-level test of the typed cancel signal in isolation. A
+//     mock JobBroker returns LeaseStateCancelRequested on the
+//     first renew call; the renew-loop MUST invoke the supplied
+//     jobCancel callback (so the handler's ctx is cancelled).
 //
-// The two-tier structure lets the helper-level test pin the
-// polling cadence in isolation (no goroutine timing flakiness from
-// the broker-claim loop) while the e2e test pins the wiring through
-// real Worker.runJob. If either tier drifts, the test catches it
-// at unit cost before integration.
+//  2. TestRenewLeaseLoopWith_LeaseLost_AbortsLoop -- mock returns
+//     LeaseStateLeaseLost; the renew-loop MUST exit without
+//     invoking jobCancel (the worker is orphaned, not cancelled).
 //
-// Why 2-second polling + 4-second tolerance: cancelPollInterval
-// = 2 * time.Second is the canonical cadence chosen in
-// worker_execution.go::startCancelWatcher; handler-observation
-// within 2 tick intervals gives a deterministic upper bound on
-// the test runtime.
+//  3. TestRenewLeaseLoopWith_Continue_NoOp -- mock returns
+//     LeaseStateContinue; the renew-loop continues (no cancel,
+//     no log+return).
+//
+//  4. TestWorker_CancelsRunningJobOnCancelSignal -- end-to-end
+//     through Worker.runJob with a mockBroker whose RenewLease
+//     returns LeaseStateCancelRequested on the 2nd call. The
+//     handler observes ctx.Done() within a 4-second budget; the
+//     load-bearing signal is the handler observed ctx.Err() ==
+//     context.Canceled AND the renew-loop fired at least once.
+//
+//  5. TestWorker_UsesCurrentRevisionAtFinalization -- unchanged
+//     from the pre-FASE-4 contract (finalizer uses the latest
+//     DB revision, not the claim-time snapshot).
+//
+// Why a 4-second budget (vs the pre-FASE-4 6-second): the
+// pre-FASE-4 watcher polled at cancelPollInterval=2s; the
+// post-FASE-4 renew-loop ticks at leaseTTL/3 (≥5s in production
+// with 30s leaseTTL). To keep the test fast, the mock's
+// RenewLease returns CancelRequested on the FIRST call (so
+// the 4-second budget covers the initial-tick + a 2-second
+// slack for goroutine scheduling).
+//
+// godlike/06 SSOT: the cancellation contract is now entirely
+// typed (LeaseState enum + RenewLeaseResult envelope); the
+// pre-FASE-4 3-tier test surface (helper + helper-nil + helper-ctx-done)
+// collapses to a 3-state enum test surface in FASE 4(b) —
+// see tests 1-3 below.
 package jobs
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
-// TestStartCancelWatcher_PollsUntilCancelFires verifies the
-// goroutine polling semantics in isolation:
-//
-//   - on tick 0 (immediately after spawn): poll call recorded.
-//   - on tick 1 (after 2s): isCancelled returns true; watcher
-//     calls jobCancel; parent ctx becomes Done.
-//   - on tick 2+: no-op (watcher returned after Cancel()).
-//
-// Time tolerance: the watcher enters the select right after spawn;
-// first poll fires 2s later. Adding 1 second slack for goroutine
-// scheduling means the test asserts Done within 4 seconds.
-func TestStartCancelWatcher_PollsUntilCancelFires(t *testing.T) {
-	t.Parallel()
-
-	var pollCount int32
-	cancelTrueAfter := 1 // poll 0 = no-op, poll 1 = returns true
-
-	jobCtx, jobCancel := context.WithCancel(context.Background())
-	defer jobCancel()
-
-	startCancelWatcher(jobCtx, jobCancel, func() bool {
-		atomic.AddInt32(&pollCount, 1)
-		return atomic.LoadInt32(&pollCount) > int32(cancelTrueAfter)
-	})
-
-	// Wait up to 6 seconds for ctx to become Done. Worst case:
-	// spawn -> first tick at 2s (pollCount=1, returns false) ->
-	// second tick at 4s (pollCount=2, returns true, Cancel) ->
-	// Done. The 6s budget gives 2 seconds of slack past the
-	// second tick's exact-fire moment so the select-case race
-	// between timer.C and jobCtx.Done() reliably picks the
-	// Done case (a previous 4s budget was a real flake on
-	// the boundary: when timer.C fired at the same instant
-	// as the second poll, the select picked non-deterministically).
-	deadline := time.NewTicker(50 * time.Millisecond)
-	defer deadline.Stop()
-	timer := time.NewTimer(6 * time.Second)
-	defer timer.Stop()
-
-	for {
-		select {
-		case <-jobCtx.Done():
-			require.Equal(t, context.Canceled, jobCtx.Err(),
-				"Issue 6 / P1: watcher must cancel jobCtx with context.Canceled")
-			// Confirm the watcher polled at least twice (1 = false, 2 = true).
-			assert.GreaterOrEqual(t, atomic.LoadInt32(&pollCount), int32(2),
-				"watcher should have polled at least 2 times before firing cancel")
-			return
-		case <-timer.C:
-			t.Fatalf("cancel not fired within 6s; pollCount=%d ctx.Err=%v",
-				atomic.LoadInt32(&pollCount), jobCtx.Err())
-		case <-deadline.C:
-			// re-check ctx in next iter
-		}
-	}
+// renewLoopMockJobBroker is a minimal JobBroker used by the helper-level
+// renewLeaseLoopWith tests. Only the RenewLease method has real
+// behaviour (returns the configured result+err); every other method
+// is a no-op or panics on unexpected dispatch.
+type renewLoopMockJobBroker struct {
+	mu        sync.Mutex
+	renewFunc func(ctx context.Context, id, workerID string, leaseTTL time.Duration) (kerneljob.RenewLeaseResult, error)
+	renewHits int
 }
 
-// TestStartCancelWatcher_NilIsCancelledIsNoOp verifies the
-// nil-tolerance contract: nil isCancelled function means the
-// helper does NOT spawn a goroutine (or if it does, it short-
-// circuits). Either way, jobCtx must remain unchanged.
-func TestStartCancelWatcher_NilIsCancelledIsNoOp(t *testing.T) {
+func (m *renewLoopMockJobBroker) RenewLease(ctx context.Context, id, workerID string, leaseTTL time.Duration) (kerneljob.RenewLeaseResult, error) {
+	m.mu.Lock()
+	m.renewHits++
+	renewFunc := m.renewFunc
+	m.mu.Unlock()
+	if renewFunc == nil {
+		return kerneljob.RenewLeaseResult{State: kerneljob.LeaseStateContinue}, nil
+	}
+	return renewFunc(ctx, id, workerID, leaseTTL)
+}
+
+func (m *renewLoopMockJobBroker) hits() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.renewHits
+}
+
+// All other JobBroker methods are no-ops (the renew-loop tests do
+// not exercise the dispatcher / finalizer / claim path).
+func (m *renewLoopMockJobBroker) Create(_ context.Context, _ *job.Job) error { return nil }
+func (m *renewLoopMockJobBroker) Get(_ context.Context, _ string) (*job.Job, error) {
+	return nil, nil
+}
+func (m *renewLoopMockJobBroker) List(_ context.Context, _ job.Filter) ([]job.Job, error) {
+	return nil, nil
+}
+func (m *renewLoopMockJobBroker) FindActiveByKey(_ context.Context, _ string) (*job.Job, error) {
+	return nil, nil
+}
+func (m *renewLoopMockJobBroker) FindByTypeAndCorrelation(_ context.Context, _ string, _ string) (*job.Job, error) {
+	return nil, nil
+}
+func (m *renewLoopMockJobBroker) ListEvents(_ context.Context, _ string) ([]job.Event, error) {
+	return nil, nil
+}
+func (m *renewLoopMockJobBroker) Retry(_ context.Context, _ string) (*job.Job, error) {
+	return nil, nil
+}
+func (m *renewLoopMockJobBroker) ClaimNext(_ context.Context, _ string, _ time.Duration, _ []string) (*job.Job, error) {
+	return nil, nil
+}
+func (m *renewLoopMockJobBroker) Complete(_ context.Context, _ string, _ string, _ string, _ int, _ json.RawMessage) error {
+	return nil
+}
+func (m *renewLoopMockJobBroker) Fail(_ context.Context, _ string, _ string, _ string, _ int, _ string) error {
+	return nil
+}
+func (m *renewLoopMockJobBroker) ScheduleRetry(_ context.Context, _ string, _ string, _ string, _ int, _ string, _ time.Duration) error {
+	return nil
+}
+func (m *renewLoopMockJobBroker) Cancel(_ context.Context, _ string) error { return nil }
+func (m *renewLoopMockJobBroker) SetProgress(_ context.Context, _ string, _ int, _ string) error {
+	return nil
+}
+func (m *renewLoopMockJobBroker) AddEvent(_ context.Context, _ string, _ string, _ string, _ map[string]any) error {
+	return nil
+}
+func (m *renewLoopMockJobBroker) DeadLetter(_ context.Context, _ string, _ string) error {
+	return nil
+}
+func (m *renewLoopMockJobBroker) FinalizeAttempt(_ context.Context, _ kerneljob.FinalizeAttemptCommand) (kerneljob.FinalizeAttemptResult, error) {
+	return kerneljob.FinalizeAttemptResult{}, nil
+}
+
+var _ job.JobBroker = (*renewLoopMockJobBroker)(nil)
+
+// ── Test 1: LeaseStateCancelRequested triggers jobCancel ───────────
+
+// TestRenewLeaseLoopWith_CancelRequested_TriggersJobCancel pins the
+// FASE 4(b) typed cancel signal: when the broker's RenewLease returns
+// LeaseStateCancelRequested, the renew-loop MUST invoke the supplied
+// jobCancel callback (so the handler's ctx is cancelled) and exit.
+// Pre-FASE-4 this contract was implemented by a 2-second IsCancelled-
+// poll goroutine; FASE 4(b) folds the cancel signal into the typed
+// lease-renewal envelope.
+func TestRenewLeaseLoopWith_CancelRequested_TriggersJobCancel(t *testing.T) {
 	t.Parallel()
+
+	mock := &renewLoopMockJobBroker{
+		renewFunc: func(_ context.Context, _ string, _ string, _ time.Duration) (kerneljob.RenewLeaseResult, error) {
+			return kerneljob.RenewLeaseResult{State: kerneljob.LeaseStateCancelRequested}, nil
+		},
+	}
+
+	// Build a real Worker on the mock broker so the renew-loop is
+	// wired through the canonical receiver.
+	w := NewWorker(
+		"renew-loop-cancel-test-"+t.Name(),
+		mock,
+		nil, // dispatcher unused; the handler will be replaced with a no-op below
+		nil, // notifier unused
+		zap.NewNop(),
+		15*time.Millisecond, // leaseTTL — small so renewTTL/3 = 5ms tick
+		1*time.Millisecond,  // pollEvery — unused in the renew loop
+		BackoffConfig{},
+		nil,
+	)
 
 	jobCtx, jobCancel := context.WithCancel(context.Background())
 	defer jobCancel()
 
-	startCancelWatcher(jobCtx, jobCancel, nil) // nil-tolerant
+	stopLease := make(chan struct{})
+	leaseDone := make(chan struct{})
+	go w.renewLeaseLoopWith(jobCtx, "test-job-id", stopLease, leaseDone, renewLeaseLoopOpts{jobCancel: jobCancel})
 
-	// Sleep long enough for at least one poll tick to fire -- if
-	// the goroutine were spawned with a nil isCancelled it would
-	// panic on the first call. The test passes == no panic.
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the loop to exit (the typed signal triggers immediate exit).
+	select {
+	case <-leaseDone:
+		// good
+	case <-time.After(2 * time.Second):
+		close(stopLease)
+		<-leaseDone
+		t.Fatalf("renewLeaseLoopWith did not exit on LeaseStateCancelRequested; renewHits=%d", mock.hits())
+	}
+
+	// jobCancel MUST have been invoked — handler's ctx is now Done.
+	select {
+	case <-jobCtx.Done():
+		// good
+	default:
+		t.Fatal("LeaseStateCancelRequested: jobCtx was NOT cancelled (jobCancel was not invoked)")
+	}
+	assert.GreaterOrEqual(t, mock.hits(), 1,
+		"renewLeaseLoopWith must call RenewLease at least once before exit on CancelRequested")
+}
+
+// ── Test 2: LeaseStateLeaseLost aborts the loop (no cancel) ────────
+
+// TestRenewLeaseLoopWith_LeaseLost_AbortsLoop pins the FASE 4(b)
+// orphan-detection path: when the broker's RenewLease returns
+// LeaseStateLeaseLost (the lease was stolen, expired, or reaped),
+// the renew-loop MUST exit WITHOUT invoking jobCancel (the worker
+// is orphaned, not cancelled). Pre-FASE-4 the equivalent signal
+// was the boolean err = ErrLeaseLost return; FASE 4(b) folds it
+// into the typed envelope so callers can disambiguate Lost from
+// CancelRequested.
+func TestRenewLeaseLoopWith_LeaseLost_AbortsLoop(t *testing.T) {
+	t.Parallel()
+
+	mock := &renewLoopMockJobBroker{
+		renewFunc: func(_ context.Context, _ string, _ string, _ time.Duration) (kerneljob.RenewLeaseResult, error) {
+			return kerneljob.RenewLeaseResult{State: kerneljob.LeaseStateLeaseLost}, nil
+		},
+	}
+
+	w := NewWorker(
+		"renew-loop-leaselost-test-"+t.Name(),
+		mock,
+		nil, nil, zap.NewNop(),
+		15*time.Millisecond, 1*time.Millisecond, BackoffConfig{}, nil,
+	)
+
+	jobCtx, jobCancel := context.WithCancel(context.Background())
+	defer jobCancel()
+
+	stopLease := make(chan struct{})
+	leaseDone := make(chan struct{})
+	go w.renewLeaseLoopWith(jobCtx, "test-job-id", stopLease, leaseDone, renewLeaseLoopOpts{jobCancel: jobCancel})
+
+	select {
+	case <-leaseDone:
+		// good
+	case <-time.After(2 * time.Second):
+		close(stopLease)
+		<-leaseDone
+		t.Fatalf("renewLeaseLoopWith did not exit on LeaseStateLeaseLost; renewHits=%d", mock.hits())
+	}
+
+	// jobCancel MUST NOT have been invoked — worker is orphaned,
+	// not cancelled. ctx.Err() should still be nil.
 	assert.Nil(t, jobCtx.Err(),
-		"nil isCancelled must not affect jobCtx; should produce no goroutine that touches ctx")
+		"LeaseStateLeaseLost: jobCtx must NOT be cancelled (worker is orphaned, not cancelled)")
 }
 
-// TestStartCancelWatcher_ExitsOnCtxDone verifies the goroutine
-// exits when jobCtx becomes Done (this is the natural exit path
-// via `defer jobCancel()` in the caller / worker). Even if
-// isCancelled never returns true, the watcher must close its
-// loop when its parent ctx is cancelled.
-func TestStartCancelWatcher_ExitsOnCtxDone(t *testing.T) {
+// ── Test 3: LeaseStateContinue is a no-op ─────────────────────────
+
+// TestRenewLeaseLoopWith_Continue_NoOp pins the happy-path: when
+// the broker's RenewLease returns LeaseStateContinue (lease extended
+// successfully), the renew-loop continues ticking without invoking
+// jobCancel. The test asserts the loop has NOT exited after a
+// reasonable time budget (allowing ≥3 ticks at the 5ms tick
+// cadence).
+func TestRenewLeaseLoopWith_Continue_NoOp(t *testing.T) {
 	t.Parallel()
 
-	jobCtx, jobCancel := context.WithCancel(context.Background())
-
-	var pollHits int32
-	startCancelWatcher(jobCtx, jobCancel, func() bool {
-		atomic.AddInt32(&pollHits, 1)
-		return false // never report cancel
-	})
-
-	// Let the watcher poll once.
-	time.Sleep(2500 * time.Millisecond)
-	firstHits := atomic.LoadInt32(&pollHits)
-	assert.GreaterOrEqual(t, firstHits, int32(1),
-		"watcher should have polled at least once in 2.5s")
-
-	// Now self-cancel the parent ctx -- the watcher's
-	// jobCtx.Done() branch fires and the goroutine returns.
-	jobCancel()
-
-	// Wait for the goroutine to exit. Hard to observe directly
-	// without instrumentation; sleep + non-racy check via pollHits
-	// that does not grow after cancellation.
-	time.Sleep(1500 * time.Millisecond)
-	finalHits := atomic.LoadInt32(&pollHits)
-	// The watcher does NOT poll after jobCtx.Done() (the select
-	// branch wins), so finalHits should be approximately equal to
-	// firstHits. Allow +/-1 for a poll that may have been in
-	// flight at the moment of cancel.
-	delta := finalHits - firstHits
-	if delta < 0 {
-		delta = -delta
+	mock := &renewLoopMockJobBroker{
+		renewFunc: func(_ context.Context, _ string, _ string, _ time.Duration) (kerneljob.RenewLeaseResult, error) {
+			expiry := time.Now().Add(5 * time.Minute)
+			return kerneljob.RenewLeaseResult{
+				State:          kerneljob.LeaseStateContinue,
+				NewLeaseExpiry: &expiry,
+			}, nil
+		},
 	}
-	assert.LessOrEqual(t, delta, int32(1),
-		"watcher must exit when ctx is cancelled (poll count delta: max 1 for race window)")
+
+	w := NewWorker(
+		"renew-loop-continue-test-"+t.Name(),
+		mock,
+		nil, nil, zap.NewNop(),
+		15*time.Millisecond, 1*time.Millisecond, BackoffConfig{}, nil,
+	)
+
+	jobCtx, jobCancel := context.WithCancel(context.Background())
+	defer jobCancel()
+
+	stopLease := make(chan struct{})
+	leaseDone := make(chan struct{})
+	go w.renewLeaseLoopWith(jobCtx, "test-job-id", stopLease, leaseDone, renewLeaseLoopOpts{jobCancel: jobCancel})
+
+	// Sleep long enough for at least 3 renew ticks (15ms / 3 = 5ms tick → 25ms covers 5 ticks).
+	time.Sleep(25 * time.Millisecond)
+
+	// The loop MUST still be alive (no exit) and jobCancel MUST NOT have been called.
+	select {
+	case <-leaseDone:
+		t.Fatal("renewLeaseLoopWith exited on LeaseStateContinue — should be a no-op")
+	default:
+		// good — still alive
+	}
+	assert.Nil(t, jobCtx.Err(),
+		"LeaseStateContinue: jobCtx must remain active (no cancel)")
+	assert.GreaterOrEqual(t, mock.hits(), 1,
+		"renewLeaseLoopWith must call RenewLease at least once during the test window")
+
+	// Clean shutdown.
+	close(stopLease)
+	<-leaseDone
 }
 
-// ── End-to-end through Worker.runJob ─────────────────────────────────
+// ── End-to-end through Worker.runJob ─────────────────────────────
 
-// mockCancelBroker implements job.JobBroker + the lease + retry
-// helpers needed by Worker.runJob. The default status returned by
-// Get() is CANCELLED so the cancel-watcher polls trigger as soon
-// as the goroutine spawns. All other repo methods are no-ops;
-// finalization paths (`ScheduleRetry`, `Fail`, etc.) succeed but
-// carry no assertions -- the load-bearing signal is the handler
-// observing ctx.Done() within the 2s poll cadence.
+// mockCancelBroker implements job.JobBroker for the e2e cancel-signal
+// test. RenewLease returns the configured state per call (typically
+// CancelRequested on the 2nd tick) so the renewLeaseLoopWith observes
+// the typed cancel signal and cancels jobCtx. All other repo methods
+// are no-ops; finalization paths (ScheduleRetry / Fail / etc.) succeed
+// but carry no assertions — the load-bearing signal is the handler
+// observing ctx.Done() within the test budget.
+//
+// FASE 4(b): the pre-FASE-4 mock returned StatusCancelled on Get() so
+// the polling IsCancelled watcher would observe the cancel state.
+// The post-FASE-4 mock does NOT touch Get(); the cancel signal
+// flows through RenewLease returning CancelRequested instead.
 type mockCancelBroker struct {
-	mu            sync.Mutex
-	jobStatus     job.Status
-	revision      int
-	progressCalls int
-	eventCalls    int
-	finalizeOp    string // last finalize mutation observed
-	completeRev   int
-	getCalls      int
-	lastGetRev    int
+	mu              sync.Mutex
+	renewState      kerneljob.LeaseState
+	renewCalls      int
+	cancelAfterCall int // 0 = never; >0 = on the Nth call, set renewState to CancelRequested
+	progressCalls   int
+	eventCalls      int
+	finalizeOp      string // last finalize mutation observed
+	completeRev     int
+	getCalls        int
+	lastGetRev      int
+	jobStatus       job.Status
+	revision        int
 }
 
 func newMockCancelBroker() *mockCancelBroker {
-	return &mockCancelBroker{jobStatus: job.StatusCancelled}
+	return &mockCancelBroker{jobStatus: job.StatusRunning, renewState: kerneljob.LeaseStateContinue}
 }
 
 func (m *mockCancelBroker) Create(_ context.Context, _ *job.Job) error { return nil }
@@ -211,7 +358,7 @@ func (m *mockCancelBroker) FindActiveByKey(_ context.Context, _ string) (*job.Jo
 func (m *mockCancelBroker) FindByTypeAndCorrelation(_ context.Context, _ string, _ string) (*job.Job, error) {
 	return nil, nil
 }
-func (m *mockCancelBroker) SetProgress(_ context.Context, _ string, p int, msg string) error {
+func (m *mockCancelBroker) SetProgress(_ context.Context, _ string, p int, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.progressCalls++
@@ -226,25 +373,38 @@ func (m *mockCancelBroker) AddEvent(_ context.Context, _ string, _ string, _ str
 func (m *mockCancelBroker) List(_ context.Context, _ job.Filter) ([]job.Job, error) {
 	return nil, nil
 }
-func (m *mockCancelBroker) Cancel(_ context.Context, _ string) error            { return nil }
-func (m *mockCancelBroker) Retry(_ context.Context, _ string) (*job.Job, error) { return nil, nil }
+func (m *mockCancelBroker) Cancel(_ context.Context, _ string) error { return nil }
+func (m *mockCancelBroker) Retry(_ context.Context, _ string) (*job.Job, error) {
+	return nil, nil
+}
 func (m *mockCancelBroker) ClaimNext(_ context.Context, _ string, _ time.Duration, _ []string) (*job.Job, error) {
-	// Issue 6 / P1: ClaimNext is part of job.Store but unused by
-	// Worker.runJob's cancel-path (runJob claims via the broker
-	// claim loop, NOT inside runJob itself). Return nil to keep
-	// the test honest about which code paths it covers.
 	return nil, nil
 }
 func (m *mockCancelBroker) ListEvents(_ context.Context, _ string) ([]job.Event, error) {
 	return nil, nil
 }
-func (m *mockCancelBroker) RenewLease(_ context.Context, _ string, _ string, _ time.Duration) error {
-	return nil
+
+// RenewLease returns the configured renewState; the cancelAfterCall
+// knob flips the state to CancelRequested on the Nth call so the
+// e2e test can observe a delayed-cancel scenario.
+func (m *mockCancelBroker) RenewLease(_ context.Context, _ string, _ string, _ time.Duration) (kerneljob.RenewLeaseResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.renewCalls++
+	state := m.renewState
+	if m.cancelAfterCall > 0 && m.renewCalls >= m.cancelAfterCall {
+		state = kerneljob.LeaseStateCancelRequested
+	}
+	if state == kerneljob.LeaseStateContinue {
+		expiry := time.Now().Add(5 * time.Minute)
+		return kerneljob.RenewLeaseResult{State: state, NewLeaseExpiry: &expiry}, nil
+	}
+	return kerneljob.RenewLeaseResult{State: state}, nil
 }
 
-// finalize handlers -- record which branch runJob took (ScheduleRetry
-// vs Fail vs Complete). Asserting these is optional; the load-
-// bearing signal is the handler observing ctx.Err().
+// finalize handlers — record which branch runJob took. Asserting
+// these is optional; the load-bearing signal is the handler observing
+// ctx.Err() within the test budget.
 func (m *mockCancelBroker) ScheduleRetry(_ context.Context, _ string, _ string, _ string, _ int, _ string, _ time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -270,42 +430,35 @@ func (m *mockCancelBroker) Complete(_ context.Context, _ string, _ string, _ str
 	m.completeRev = expectedRevision
 	return nil
 }
-
-// FinalizeAttempt is a Push 4.6 stub (godlike/06 SSOT kernel-job-cutover
-// follow-up). The cancellation tests exercise Worker.runJob's cancel path
-// via legacy Complete / Fail / ScheduleRetry path — FinalizeAttempt is
-// not in the test path. Push 4.6 replaces this stub with a typed test
-// double that records the FinalizeAttemptCommand per the Push 4.2
-// canonical contract. Stub returns errors.New to fail-fast if a future
-// regression accidentally exercises this codepath through the mock
-// (godlike/07 fail-closed).
 func (m *mockCancelBroker) FinalizeAttempt(_ context.Context, _ kerneljob.FinalizeAttemptCommand) (kerneljob.FinalizeAttemptResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.finalizeOp = "FinalizeAttempt"
-	return kerneljob.FinalizeAttemptResult{}, errors.New("mockCancelBroker.FinalizeAttempt: Push 4.6 stub (cancel-path uses legacy Complete/Fail/ScheduleRetry)")
+	return kerneljob.FinalizeAttemptResult{}, nil
 }
 
-// TestWorker_CancelsRunningJobOnCancelSignal is the canonical
-// Issue 6 / P1 end-to-end pin. The mockBroker returns
-// StatusCancelled on every Get(), so IsCancelled poll reports true
-// the moment the watcher spawns. The handler blocks on
-// ctx.Done() to observe the cancellation signal -- the assertion
-// is that the handler saw ctx.Err() == context.Canceled AND the
-// watcher fired (pollCount > 0) within the 4-second tolerance.
+// TestWorker_CancelsRunningJobOnCancelSignal is the canonical FASE 4(b)
+// end-to-end pin. The mockBroker's RenewLease returns
+// LeaseStateCancelRequested on the 2nd call (cancelAfterCall=2) so the
+// renewLeaseLoopWith observes the typed cancel signal on the second
+// tick and invokes jobCancel. The handler blocks on ctx.Done() to
+// observe the cancellation; the assertion is that the handler saw
+// ctx.Err() == context.Canceled within the 4-second budget AND the
+// renew-loop fired at least once.
 //
-// Time budget: watcher polls every 2s, handler should observe
-// within 1-2 poll intervals. 4s gives generous slack for test
+// Time budget: the e2e test uses a real Worker with a small leaseTTL
+// (60ms → 20ms tick); the 2nd renew call lands within ~25ms of the
+// 1st call. The 4-second budget gives generous slack for test
 // machine scheduling.
 func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 	t.Parallel()
 
 	broker := newMockCancelBroker()
+	broker.cancelAfterCall = 2 // 1st call: Continue; 2nd call: CancelRequested
 
-	// capture variables for the handler closure.
 	var (
 		handlerSawCancel atomic.Bool
-		handlerSawErr    atomic.Value // error the handler returned
+		handlerSawErr    atomic.Value
 	)
 
 	handler := HandlerFunc(func(ctx context.Context, j *job.Job, tools *JobTools) (map[string]any, error) {
@@ -314,17 +467,10 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 			handlerSawCancel.Store(true)
 			errSentinel := ctx.Err()
 			handlerSawErr.Store(errSentinel)
-			// Return ctx.Err() so runJob hits the failed path
-			// -- this is the canonical signal that handlers will
-			// short-circuit / propagate ctx cancellation. The
-			// worker's final status is "CANCELLED" + retry
-			// attempt (the DB-side status is the source of truth
-			// from before the watcher fired; we already verified
-			// the user-press-cancel propagates into ctx).
 			return nil, ctx.Err()
 		case <-time.After(10 * time.Second):
 			handlerSawCancel.Store(false)
-			return nil, errors.New("handler timed out without observing ctx cancellation")
+			return nil, assert.AnError
 		}
 	})
 
@@ -339,8 +485,8 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 		dispatcher,
 		nil, // notifier unused in runJob's cancel path
 		zap.NewNop(),
-		5*time.Minute, // leaseTTL
-		2*time.Second, // pollEvery
+		60*time.Millisecond, // leaseTTL — small for fast renew tick (60/3 = 20ms)
+		2*time.Second,       // pollEvery
 		BackoffConfig{
 			MaxBackoff:                30 * time.Second,
 			JitterFraction:            0,
@@ -349,11 +495,6 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 		[]string{job.TypeScriptGenerate},
 	)
 
-	// Drive runJob directly. parent ctx is a background ctx; the
-	// job timeout configures the job timeout (1 minute here so it
-	// does not interfere with the cancel signal). The watcher
-	// polls every 2s; mockBroker.Get returns StatusCancelled so
-	// the FIRST poll fires Cancel and the handler exits.
 	parentCtx, parentCancel := context.WithCancel(context.Background())
 	defer parentCancel()
 
@@ -377,27 +518,31 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 	}
 
 	assert.True(t, handlerSawCancel.Load(),
-		"Issue 6 / P1: handler must observe ctx.Done() (the cancel-watcher trigger propagated into jobCtx)")
+		"FASE 4(b): handler must observe ctx.Done() (the typed LeaseStateCancelRequested signal propagated into jobCtx)")
 	capturedErr, _ := handlerSawErr.Load().(error)
 	assert.Equal(t, context.Canceled, capturedErr,
 		"handler must see ctx.Err() == context.Canceled (not DeadlineExceeded, etc.)")
 
-	// Sanity: the broker must have been polled at least once for
-	// progress (set once per runJob's lease heartbeat, plus the
-	// second set when the handler exits). The cancel-trigger path
-	// ensures the watcher polled IsCancelled at least once.
+	broker.mu.Lock()
+	defer broker.mu.Unlock()
+	assert.GreaterOrEqual(t, broker.renewCalls, 1,
+		"FASE 4(b): the renew-loop must have called RenewLease at least once before observing CancelRequested (otherwise the typed signal could not have propagated)")
 	assert.NotEmpty(t, broker.finalizeOp,
 		"worker finalisation should have been called (Cancel / Fail / Complete / ScheduleRetry / DeadLetter)")
 }
 
 // Regression: the worker must finalise with the latest DB revision
 // after the lease loop stops, not the stale claim-time snapshot.
+// FASE 4(b): unchanged from the pre-FASE-4 contract (finalizer uses
+// the latest DB revision, not the claim-time snapshot).
 func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 	t.Parallel()
 
 	broker := newMockCancelBroker()
 	broker.jobStatus = job.StatusRunning
 	broker.revision = 7
+	// renewState stays LeaseStateContinue — the worker completes
+	// the happy path without cancellation.
 
 	handler := HandlerFunc(func(ctx context.Context, j *job.Job, tools *JobTools) (map[string]any, error) {
 		return map[string]any{"ok": true}, nil
@@ -462,3 +607,4 @@ func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 		t.Fatalf("Complete expectedRevision = %d, want 7", broker.completeRev)
 	}
 }
+

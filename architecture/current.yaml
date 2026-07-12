@@ -1,3 +1,148 @@
-# Active architecture exceptions consumed by CI.
-# Add only unresolved, currently accepted debt. Completed work belongs in Git history.
-[]
+# PipelineGen — architecture/current.yaml (Fase 7(b), Push 7, July 2026).
+#
+# OPEN architectural debt. ONLY entries with status in (pending|in_progress)
+# are admitted. Closed waves belong in git history, NOT here.
+#
+# Schema per entry (godlike/06 SSOT = one canonical fact per entry):
+#   id            — short kebab identifier (PR-XXX-... or WAVE-NN-...).
+#                   Unique across entries. Stable across the wave's lifetime.
+#   status        — pending | in_progress
+#   owner         — workstream / role / wave-owner responsible for closure.
+#                   Mirrors capability_inventory.yaml::gates_baseline owner
+#                   when known.
+#   deadline      — RFC3339 UTC date (NOT datetime). Concrete day, no vague
+#                   quarters. A missed deadline is a CI signal (gating
+#                   ratchet nudges the entry toward "promote the gate
+#                   to enforce_zero=true").
+#   follow_up_tickets — optional list of follow-up PRs/tickets that
+#                       must close before the entry is removed.
+#   rationale     — optional human-readable note describing the WHY of
+#                   the debt + its blast radius if the wave stagnates.
+#   cross_refs    — optional machine-readable pointers to the related
+#                   ratchet (capability_inventory.yaml::gates_baseline.id)
+#                   + the governing CI check name.
+#
+# Regeneration contract: `go run ./cmd/admin regen-current-yaml` re-emits
+# this file from the canonical sources (gates_baseline + waves-tracker +
+# the hand-curated entries below). The hand-curated section is a
+# back-compat shell for waves that predate the gates_baseline schema;
+# migrate them to a gate_id reference as waves progress.
+#
+# Per AGENTS.md §8 zero-baseline rule: every entry here MUST carry an
+# explicit `owner` and a concrete `deadline`. Entries missing either
+# field are a forward-prevention regression — fail-closed.
+#
+# Per godlike/07 NO-FAKE-AVAILABILITY: dates that lie in the past past
+# today MUST be remediated (the wave has stagnated). The CI gate (Check
+# 63, scripts/ci-architectural-checks.sh) reports stale entries as a
+# warning + the cross-ref gates promote the wave toward enforce_zero=true.
+
+- id: WAVE-20-QDRANT-005D-HYGIENE
+  status: in_progress
+  owner: qdrant-hygiene work stream
+  deadline: "2026-08-15T00:00:00Z"
+  rationale: |
+    Forward-prevention half of QDRANT-RECOVERY-001 (resolved July 2026).
+    Owns Check 5 (same-package duplicate-type-declaration lint) +
+    docs/architecture/godlike/duplicate-types-allowlist.txt maintenance
+    + the canonical AWK-lens switch from package-name-only to the
+    Go-package-identity tuple (directory_path, package_name) to clear
+    the ~14 cross-directory same-package-NAME false-positives.
+  follow_up_tickets:
+    - id: ARCHCHECK-GO-MIGRATION-PHASE-1
+      note: PR-ID for the AWK-lens migration; tracked under WAVE-ARCHCHECK-MIGRATION.
+  cross_refs:
+    gate_id: QDRANT-005D
+    policy: architecture/policy.yaml::lint_gates[check=5]
+    ci_gate: scripts/ci-architectural-checks.sh::Check 5
+
+- id: WAVE-21-PR-G-SCRIPTS-SUBPKG
+  status: in_progress
+  owner: PipelineGen Agent (PR-G.1 EXPAND)
+  deadline: "2026-08-01T00:00:00Z"
+  rationale: |
+    PR-G migration phases EXPAND → BACKFILL → CUTOVER → CONTRACT
+    splits internal/application/scripts (53-file mega-package) into
+    bounded subpackages (curation/generation/persistence/postprocess/
+    source/usecases) per godlike/07. Day-1 (PR-G.1 EXPAND) shipped
+    2026-06-27; PR-G.2 BACKFILL is the next deliverable. Deadline
+    2026-08-01 pre-WAVE-22 CUTOVER lock-in so the backfill lands before
+    the WAVE-22 source-catalog + route-manifest gates are promoted to
+    enforce_zero=true (2026-09-15).
+  cross_refs:
+    policy: architecture/policy.yaml::max_files_per_package=40
+    plan: architecture/ownership.generated.yaml::application_scripts
+
+- id: WAVE-22-PR-D-SERVICE-DEPS-CAP
+  status: in_progress
+  owner: PipelineGen Agent (PR-D)
+  deadline: "2026-09-15T00:00:00Z"
+  rationale: |
+    The ServiceDeps / Deps structured-port cap (8 fields max) is
+    promoted to a hard CI gate (Check 23). Current observations:
+    artlist.ServiceDeps ~15 fields + a few others. Each migration
+    PR must decrement the visible field count via sub-struct splits
+    (e.g. StorageDeps / MediaDeps / ProviderDeps).
+  cross_refs:
+    gate_id: C2-SERVICE-DEPS
+    allowlist: docs/migrations/deps-struct-allowlist.txt
+    ci_gate: scripts/ci-architectural-checks.sh::Check 23
+
+- id: WAVE-22-C2-C-SOURCE-CATALOG
+  status: in_progress
+  owner: PipelineGen Agent (asset-sourcing + scripts-side)
+  deadline: "2026-09-15T00:00:00Z"
+  count:
+    baseline_initial: 48
+    current: 48
+    target_zero: 0
+  rationale: |
+    Every source-kind switch / `if source == "X"` dispatch in production
+    code MUST live on the canonical Source Catalog (SourceCatalog.Resolve
+    + SourceRegistry.Resolve). Two canonical files own the dispatch:
+    internal/application/assets/artifacts/source_resolver.go +
+    internal/application/scripts/adapters/source_registry.go.
+    The AST gate runs with --baseline=48 to absorb transitional drift;
+    each migration PR decrements the baseline until it reaches 0.
+  cross_refs:
+    gate_id: C2-C
+    enforce_zero: false
+    ci_gate: scripts/ci-architectural-checks.sh::Check 47
+
+- id: WAVE-22-C2-E-ROUTE-MANIFEST
+  status: in_progress
+  owner: internal/app/registry.go (composition root) + scripts/admin/generate_routes_yaml.go
+  deadline: "2026-09-15T00:00:00Z"
+  count:
+    baseline_initial: 171
+    current: 171
+    target_zero: 0
+  rationale: |
+    Three sources of truth for the HTTP route surface MUST agree:
+    (1) architecture/routes.yaml — AST pre-step output,
+    (2) docs/api/ACTIVE_API_GENERATED.md — gin runtime capture,
+    (3) the code-intended routes. Drift = SSOT regression. The
+    AST-vs-runtime 2-way comparator runs with --baseline=171 to
+    absorb the day-1 drift surfaced by chained-group + non-foldable
+    gin method registrations. Future PR closes the 3-way loop.
+  cross_refs:
+    gate_id: C2-E
+    enforce_zero: false
+    pre_step: scripts/admin/generate_routes_yaml.go
+    runtime_capture: cmd/admin/gen-api-docs
+    ci_gate: scripts/ci-architectural-checks.sh::Check 48
+
+- id: WAVE-CONFORMANCE-001-id-24-MONITOR-CHANNELS
+  status: in_progress
+  owner: PipelineGen Agent (category_channels work stream)
+  deadline: "2026-08-31T00:00:00Z"
+  rationale: |
+    category_channels owns monitor-state (via applier ChannelsService.
+    UpsertBulk + MarkChecked + UpdateCursor). Legacy `monitored_sources`
+    rows are backfilled to `category_channels`; on closure (CONTRACT
+    phase), the legacy discovery-state SQL is removed atomically. Migration
+    110 ships atomically with the channel-table schema consolidation.
+  cross_refs:
+    migration: migrations/sqlite/110_channel_consolidation.sql
+    plan: architecture/ownership.generated.yaml::application_assets.category_channels_owns_monitor_state
+    follow_up: docs/architecture/godlike/migration_109_rationale.md

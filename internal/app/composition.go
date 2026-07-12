@@ -143,6 +143,21 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose staging: %w", err)
 	}
 
+	// FASE 3 Spina Dorsale (Push 3.1d, July 2026): wire the
+	// artifact_finalize.Finalizer service. Placed immediately
+	// AFTER BuildStagingBundle because the Finalizer consumes
+	// the SAME artifact.Repository port that StagingBundle.
+	// Repository exposes (no second DB lookup; the typed port
+	// is the canonical cursor to the same *artifactstages.
+	// Repository concrete — godlike/06 SSOT). The publisher
+	// worker pool integration (forward-pointer to Push 3.1c)
+	// will drain the outbox + invoke root.Finalizer.Finalize
+	// after each per-artifact MarkPublished to close the saga.
+	finalizer, err := BuildArtifactFinalizeBundle(staging, log)
+	if err != nil {
+		return nil, fmt.Errorf("compose artifact_finalize: %w", err)
+	}
+
 	// Wire the script.generate readiness probe when any script feature is
 	// enabled. It needs the health Service (for db/jobs sub-checks),
 	// Ollama, Drive, document service, and (later, at route-build time)
@@ -185,14 +200,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		Process:    process,
 		TextTracks: textTracks,
 
-		AI:      ai,
-		Domains: domains,
-		Jobs:    jobs,
-		Outbox:  outbox,
-		Sync:    sync,
-		Maint:   maint,
-		Utility: utility,
-		Staging: staging,
+		AI:        ai,
+		Domains:   domains,
+		Jobs:      jobs,
+		Outbox:    outbox,
+		Sync:      sync,
+		Maint:     maint,
+		Utility:   utility,
+		Staging:   staging,
+		Finalizer: finalizer,
 
 		DriveStart:  driveStart,
 		OutboxStart: outboxStart,

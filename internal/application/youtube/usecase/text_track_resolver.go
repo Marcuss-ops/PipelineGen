@@ -673,11 +673,24 @@ func bundleToTextTracks(clipID string, bundle *asset.ResolvedTextBundle, kind as
 //     early surfacing here keeps the writer's typed errors
 //     narrowed to "writer-level" failures, not "caller-level"
 //     invariants. Malformed upstream cues are SILENTLY DROPPED
-//     here (not a hard fail); the writer's metrics surface the
-//     dropped-cue count via log line.
+//     here (not a hard fail); the resolver emits a Warn with the
+//     dropped count so operators can trace which clips are losing
+//     cues (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5.c logger plumb,
+//     July 2026).
 //   - The bundle's LanguageCode is normalized to BCP-47 ("und"
 //     when empty — mirroring bundleToTextTracks).
-func bundleToTimedTrack(clipID string, bundle *asset.ResolvedTextBundle) *localized.TimedTextTrack {
+//
+// Method receiver (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5.c): the
+// resolver's *zap.Logger is plumbed end-to-end so the dropped-cue
+// diagnostic is emitted via r.Log.Warn instead of being lost. The
+// resolver already had a Log field (Fase 1.b); this is the first
+// in-package method to consume it. Free-function callers (none
+// remain in this package after the conversion) would lose the
+// diagnostic silently.
+func (r *TextTrackResolver) bundleToTimedTrack(clipID string, bundle *asset.ResolvedTextBundle) *localized.TimedTextTrack {
+	if r == nil {
+		return nil
+	}
 	if bundle == nil {
 		return nil
 	}
@@ -689,15 +702,24 @@ func bundleToTimedTrack(clipID string, bundle *asset.ResolvedTextBundle) *locali
 		lang = "und"
 	}
 	cues := make([]asset.TimedCue, 0, len(bundle.Cues))
+	dropped := 0
 	for _, c := range bundle.Cues {
 		if c.StartMs < 0 || c.EndMs < c.StartMs || c.Text == "" {
 			// Skip invalid cues rather than blow up the bundle.
 			// godlike/07 honest lock: a malformed upstream cue
 			// MUST NOT poison the whole super-tx; the resolver
-			// dropped it loudly and the writer logs the count.
+			// drops it loudly and surfaces the count via
+			// r.Log.Warn so operators can trace which clips are
+			// losing cues (Fase 5.c logger plumb).
+			dropped++
 			continue
 		}
 		cues = append(cues, c)
+	}
+	if dropped > 0 && r.Log != nil {
+		r.Log.Warn("bundleToTimedTrack: dropped malformed cues",
+			zap.String("clip_id", clipID),
+			zap.Int("dropped", dropped))
 	}
 	if len(cues) == 0 {
 		return nil

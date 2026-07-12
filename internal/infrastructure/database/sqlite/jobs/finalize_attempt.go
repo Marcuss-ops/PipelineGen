@@ -56,7 +56,7 @@
 // godlike/07 fail-closed (no-fake-availability): each TX-internal step
 // either runs to completion or rolls back the entire transaction via
 // `defer tx.Rollback`. CAS-fence mismatches on step 4 return
-// ErrTransitionConflict / ErrLeaseLost without TX commit; stale
+// job.ErrTransitionConflict / job.ErrLeaseLost without TX commit; stale
 // artifact-state patches on step 6 surface ErrFinalizeAttemptArtifactStale;
 // outbox Events with empty Type or EventKey are rejected pre-TX. Silent-
 // default values are explicit typed sentinels, NEVER empty defaults.
@@ -182,17 +182,17 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 	// ── Step 2: CAS fence ─────────────────────────────────────────────
 	// godlike/07 fail-closed: the three CAS guards (worker_id, lease_id,
 	// revision) are evaluated against the row read in step 1. A mismatch
-	// returns the canonical ErrLeaseLost / ErrTransitionConflict typed
+	// returns the canonical job.ErrLeaseLost / job.ErrTransitionConflict typed
 	// sentinel; the TX is rolled back via the deferred Rollback().
 	if curWorkerID != cmd.WorkerID {
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: worker mismatch (current=%q want=%q)", ErrLeaseLost, curWorkerID, cmd.WorkerID)
+		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: worker mismatch (current=%q want=%q)", job.ErrLeaseLost, curWorkerID, cmd.WorkerID)
 	}
 	if curLeaseID != cmd.LeaseID {
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: lease mismatch (current=%q want=%q)", ErrLeaseLost, curLeaseID, cmd.LeaseID)
+		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: lease mismatch (current=%q want=%q)", job.ErrLeaseLost, curLeaseID, cmd.LeaseID)
 	}
 	if revision != cmd.ExpectedRevision {
 		observability.JobTransitionConflictTotal.WithLabelValues("finalize_attempt").Inc()
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: revision %d, expected %d", ErrTransitionConflict, revision, cmd.ExpectedRevision)
+		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: revision %d, expected %d", job.ErrTransitionConflict, revision, cmd.ExpectedRevision)
 	}
 
 	// ── Step 3: compute target status + outcome-specific compilation ──
@@ -280,7 +280,7 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 	affected, _ := res.RowsAffected()
 	if affected == 0 {
 		observability.JobTransitionConflictTotal.WithLabelValues("finalize_attempt").Inc()
-		return kerneljob.FinalizeAttemptResult{}, ErrTransitionConflict
+		return kerneljob.FinalizeAttemptResult{}, job.ErrTransitionConflict
 	}
 
 	// ── Step 5: optional DLQ archive ──────────────────────────────────

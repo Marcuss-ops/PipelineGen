@@ -164,6 +164,25 @@ func norm(o Options) Options {
 		// matching the typed-only adapter surface.
 		o.IsRetryable = neverRetry
 	}
+	// FASE 6(a) fix (July 2026): zero-value Options MUST apply the
+	// canonical JitterFraction=0.25, not the historical JitterFraction=0
+	// (which silently disabled jitter for callers passing retry.Options{}
+	// instead of DefaultOptions()). The JitterFraction value is the
+	// single most-missed noise-control knob: zero jitter collapses
+	// N workers in lockstep onto the same retry instant, producing the
+	// canonical "thundering-herd retry storm" pattern documented in
+	// the FASE 2 stock_e2e/02_poll_terminal.json fixture. Coalescing
+	// here — rather than ONLY in DefaultOptions() — means a caller
+	// passing retry.Options{IsRetryable: predicate} gets the canonical
+	// 25% desync envelope for free. Callers who genuinely want no
+	// jitter (e.g. deterministic latency assertions in CI) must pass
+	// retry.Options{JitterFraction: 0, IsRetryable: predicate} 
+	// explicitly — the explicit-zero signal is preserved by the
+	// condition (zero == zero is the only escape hatch). Negative or
+	// out-of-range values are clamped by sleepDuration, not here.
+	if o.JitterFraction == 0 {
+		o.JitterFraction = 0.25
+	}
 	return o
 }
 

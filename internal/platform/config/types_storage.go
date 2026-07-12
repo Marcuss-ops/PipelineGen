@@ -38,6 +38,18 @@ type StorageConfig struct {
 	// on-disk filesystem layout (voiceovers, images, youtube, etc.).
 	MediaDir string `yaml:"media_dir" env:"PIPELINEGEN_MEDIA_DIR" default:"media"`
 	TempDir  string `yaml:"temp_dir" env:"VELOX_TEMP_DIR" default:"tmp"`
+	// StagingDir is the canonical root for the FASE 3 Spina Dorsale
+	// staging workspace. The artifact_stages pipeline writes each
+	// Stage-verify request under `{StagingDir}/{job_id}/{stage_id}`;
+	// the publisher worker then reads + uploads the file to Drive
+	// before marking the row PUBLISHED. Default: `/var/lib/pipelinegen/staging`
+	// (an ABSOLUTE path, NOT relative to DataDir — staging is a
+	// production-grade durable root, distinct from the per-deployment
+	// DataDir layout). Operators MAY set this to a different path via
+	// the PIPELINEGEN_STAGING_WORKSPACE env var; a relative path is
+	// kept as-is (no DataDir prepend) so an operator-configured relative
+	// path resolves against the cwd of the running process.
+	StagingDir string `yaml:"staging_dir" env:"PIPELINEGEN_STAGING_WORKSPACE" default:"/var/lib/pipelinegen/staging"`
 }
 
 func (s StorageConfig) MediaPath() string { return s.FullPath(s.MediaDir) }
@@ -88,6 +100,26 @@ func (s StorageConfig) ImagesPath() string { return s.mediaSubPath("images") }
 // per-videoID .vtt files for SliceSubtitles lookups.
 func (s StorageConfig) SubtitlesPath() string { return s.mediaSubPath("subtitles") }
 
+// StagingPath returns the canonical FASE 3 Spina Dorsale staging
+// workspace root. If StagingDir is empty, defaults to
+// `/var/lib/pipelinegen/staging` (per the `default:` tag on the
+// struct field — the env-var loader applies it at startup; this
+// fallback covers the case where the struct is constructed in a
+// test or admin CLI without going through the env loader).
+//
+// godlike/06 SSOT: the single canonical resolution of the staging
+// workspace dir. The composition root passes the returned value to
+// staging.NewStoreService(repo, workspace); consumers downstream
+// (publisher worker pool, finalizer) MUST NOT re-resolve the path
+// independently — they receive the LocalPath via StageReceipt and
+// rely on the Service's idGen to keep paths unique.
+func (s StorageConfig) StagingPath() string {
+	if s.StagingDir == "" {
+		return "/var/lib/pipelinegen/staging"
+	}
+	return s.StagingDir
+}
+
 func (s StorageConfig) ToDatabaseStorageConfig() interface {
 	DataDir() string
 	PrimaryDBPath() string
@@ -95,6 +127,7 @@ func (s StorageConfig) ToDatabaseStorageConfig() interface {
 	WorkspaceDir() string
 	CacheDir() string
 	ExportDir() string
+	StagingDir() string
 } {
 	return storageSetAdapter{s: s}
 }
@@ -147,3 +180,4 @@ func (a storageSetAdapter) ObservabilityDBPath() string { return a.s.Observabili
 func (a storageSetAdapter) WorkspaceDir() string        { return a.s.WorkspaceFullPath() }
 func (a storageSetAdapter) CacheDir() string            { return a.s.CacheFullPath() }
 func (a storageSetAdapter) ExportDir() string           { return a.s.ExportFullPath() }
+func (a storageSetAdapter) StagingDir() string          { return a.s.StagingPath() }

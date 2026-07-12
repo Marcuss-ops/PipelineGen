@@ -30,7 +30,7 @@ import (
 	"fmt"
 	"time"
 
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	domjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 )
 
@@ -119,7 +119,7 @@ func decodeCompletionErrorEnvelope(rawBody []byte) (*remote.RemoteCompletionErro
 func kindToDomainSentinel(kind remote.ErrorKind) error {
 	switch kind {
 	case remote.ErrorKindLeaseLost:
-		return appjobs.ErrLeaseLost
+		return domjob.ErrLeaseLost
 	case remote.ErrorKindIdempotencyConflict:
 		return remote.ErrCompleteJobIdempotencyConflict
 	case remote.ErrorKindInvalidManifest:

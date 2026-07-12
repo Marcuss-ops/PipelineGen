@@ -1,3 +1,50 @@
+// Package outboxevents — pool.go (Fase 6(c) Push 6.2, July 2026).
+//
+// Worker pool that drains the canonical outbox_events table via the
+// lease-and-fence pattern (Repository.ClaimNext → RenewLease →
+// MarkCompleted / MarkFailed / MarkDeadLetter / MarkSuperseded).
+//
+// Pre-Push-6.2 behaviour (Phase 2 era):
+//
+//   - single-pass RequeueExpiredLeases every ReclaimIntervalSeconds;
+//   - exponential backoff with ±JitterFraction;
+//   - jitter seed = attemptCount alone → workers on the SAME attempt
+//     converge on the SAME jitter envelope after a lease expiry, which
+//     is the canonical thundering-herd retry storm symptom after a
+//     transient outage recovery (Lehman et al. AWS exponential-backoff
+//     & jitter write-up).
+//
+// Post-Push-6.2 changes (Fase 6(c), July 2026):
+//
+//   1. computeNextAttempt signature: ↦ (eventID int64, attemptCount int).
+//      The jitter rand source is `eventID*31 + int64(attemptCount)` so
+//      divergent events at the same attempt desync — the canonical
+//      fix for the pre-fix "all workers wake at once" storm.
+//
+//   2. observability metrics (5 collectors in
+//      internal/infrastructure/observability/metrics_outbox.go):
+//        - OutboxLagSeconds           (gauge)   : per-event_type lag
+//        - OutboxDispatchDurationSeconds (hist) : per-event_type+outcome
+//        - OutboxReclaimTotal         (counter) : successful reclaims
+//        - OutboxDLQTotal             (counter) : dead_letter increments
+//        - OutboxRetriesTotal         (counter) : MarkFailed increments
+//                                              labelled reason=transient|terminal
+//
+// godlike/06 SSOT preserved:
+//   - BackoffCap default 30min, computed BEFORE jitter (Blocco 5 fix).
+//   - Panic recovery converts panics to NewTerminalError → DLQ.
+//   - Handler-not-registered → NewTerminalError → DLQ (no burn).
+//   - processEvent timeout via per-event context.WithTimeout.
+//
+// godlike/07 NO-FAKE-AVAILABILITY:
+//   - Observability increments are unguarded (Pointer Inc/Observe
+//     calls). promauto-registered metrics are non-nil at process
+//     start; a panic at metric increment is a fundamental regression
+//     caught at runtime by the worker-loop top-level panic recover.
+//   - The metric increments are PLACED at canonical boundaries
+//     (Reclaim success / Fail / DLQ / supersede / dispatch exit) so
+//     no double-counting and no missed increments on early-return
+//     paths.
 package outboxevents
 
 import (
@@ -8,6 +55,8 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
 // ── Clock — injectable time source for testability ────────────────────
@@ -169,15 +218,24 @@ func (p *Pool) Stop(timeout time.Duration) error {
 	}
 }
 
-// computeNextAttempt returns now + jittered exponential backoff.
+// computeNextAttempt returns now + jittered exponential backoff for
+// the given (eventID, attemptCount).
 //
-// Formula: base = min(1min * 2^attemptCount, backoffCap) with
+// Fórmula: base = min(1min * 2^attemptCount, backoffCap) with
 // ±jitterFraction random jitter. The production cap is 30min.
 // Jitter defaults to ±20% when cfg.JitterFraction is zero.
 //
 // attemptCount is 1-indexed (first retry = attemptCount 1 → base 2min).
-// Exported so tests can lock the curve without deriving the formula.
-func (p *Pool) computeNextAttempt(attemptCount int) time.Time {
+// eventID is the canonical outbox_events.id (int64 autoincrement) used
+// to diversify the rand source — pre-Push-6.2 the seed was attemptCount
+// alone, so workers converging on the same attempt (post lease
+// expiration) woke up simultaneously, producing the canonical
+// thundering-herd retry storm symptom. Post-Push-6.2 the seed is
+// `eventID*31 + int64(attemptCount)` so events at the SAME attempt
+// get DIVERSE jitter envelopes — the canonical mitigation
+// (Lehman et al. AWS exponential-backoff & jitter). Exported so
+// tests can lock the curve without deriving the formula.
+func (p *Pool) computeNextAttempt(eventID int64, attemptCount int) time.Time {
 	if attemptCount < 1 {
 		attemptCount = 1
 	}
@@ -196,9 +254,16 @@ func (p *Pool) computeNextAttempt(attemptCount int) time.Time {
 	var jitter time.Duration
 	if jitterFrac > 0 {
 		jitterRange := time.Duration(float64(base) * jitterFrac)
-		// Deterministic jitter via attemptCount as seed so tests can
-		// assert the range without rand.Seed races.
-		r := rand.New(rand.NewSource(int64(attemptCount)))
+		// Push 6.2 (July 2026): jitter seed = event_id + attempt.
+		// The 31-derive factor on eventID is canonical 32-bit hash
+		// mix (Knuth multiplicative hashing) — tolerant of the
+		// int64 → uint32 truncation when event_id > UINT32_MAX.
+		// Per-event divergence: events at the SAME attempt get
+		// independent rand sources, so post-lease-expiry workers
+		// no longer converge on the same envelope (the canonical
+		// thundering-herd symptom).
+		seed := eventID*31 + int64(attemptCount)
+		r := rand.New(rand.NewSource(seed))
 		jitter = time.Duration(r.Int63n(int64(jitterRange*2)+1)) - jitterRange
 	}
 
@@ -213,6 +278,21 @@ func (p *Pool) computeNextAttempt(attemptCount int) time.Time {
 	return p.clock.Now().Add(total)
 }
 
+// parseEventCreatedAt parses the canonical outbox_events.created_at
+// RFC3339 UTC string into a time.Time. Returns zero-value on parse
+// failure so a malformed row produces a 0-second lag reading (operator
+// signal: "structural data corruption"), not a panic.
+func parseEventCreatedAt(s string) time.Time {
+	if s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
 func (p *Pool) reclaim(ctx context.Context) {
 	affected, err := p.repo.RequeueExpiredLeases(ctx)
 	if err != nil {
@@ -220,6 +300,10 @@ func (p *Pool) reclaim(ctx context.Context) {
 		return
 	}
 	if affected > 0 {
+		// Push 6.2: increment OutboxReclaimTotal only when at least
+		// one row was actually reclaimed (counter reflects real work,
+		// not merely "operation ran").
+		observability.OutboxReclaimTotal.Add(float64(affected))
 		p.log.Info("requeued expired leases", zap.Int("count", affected))
 	}
 }
@@ -243,10 +327,11 @@ func (p *Pool) pollAndProcess(ctx context.Context, workerName string) {
 	}
 }
 
-// finish calls fn to finalize the event. When p.finisher is nil (e.g.
+// finish calls fn to finalize the event AND records the dispatch
+// duration metric (Push 6.2, July 2026). When p.finisher is nil (e.g.
 // test pool without a real repo), the call is silently skipped and the
 // event remains in 'processing' — the reclaim loop will pick it up.
-func (p *Pool) finish(ctx context.Context, evt Event, claim *Claim, fn func() error, label string) {
+func (p *Pool) finish(ctx context.Context, evt Event, claim *Claim, outcome string, fn func() error, label string) {
 	if p.finisher == nil {
 		p.log.Warn("finisher is nil — event will be reclaimed",
 			zap.Int64("event_id", evt.ID),
@@ -254,7 +339,13 @@ func (p *Pool) finish(ctx context.Context, evt Event, claim *Claim, fn func() er
 			zap.String("label", label))
 		return
 	}
-	if err := fn(); err != nil {
+	start := time.Now()
+	err := fn()
+	// Push 6.2: histogram observation of the dispatch wall-clock.
+	// Observed ALWAYS (success, fail, DLQ, skipped) so dashboards
+	// see the full latency distribution rather than only-ok.
+	observability.OutboxDispatchDurationSeconds.WithLabelValues(evt.EventType, outcome).Observe(time.Since(start).Seconds())
+	if err != nil {
 		p.log.Error("failed to finalize event",
 			zap.Int64("event_id", evt.ID),
 			zap.String("label", label),
@@ -265,6 +356,21 @@ func (p *Pool) finish(ctx context.Context, evt Event, claim *Claim, fn func() er
 func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 	evt := claim.Event
 	p.log.Info("processing event", zap.Int64("event_id", evt.ID), zap.String("type", evt.EventType))
+
+	// Push 6.2: lag gauge — time between the event created_at and
+	// the moment the worker claim succeeds. Gauge is OVER-WRITTEN
+	// per event (not additive); the operator-visible "latency
+	// surface" is the latest observed lag per event_type.
+	if evt.CreatedAt != "" {
+		createdAt := parseEventCreatedAt(evt.CreatedAt)
+		if !createdAt.IsZero() {
+			lag := p.clock.Now().Sub(createdAt).Seconds()
+			if lag < 0 {
+				lag = 0
+			}
+			observability.OutboxLagSeconds.WithLabelValues(evt.EventType).Set(lag)
+		}
+	}
 
 	// ── Panic recovery (FASE 2.2, July 2026) ───────────────────────
 	// A handler panic must NOT kill the worker. Convert the panic
@@ -314,7 +420,12 @@ func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 				zap.String("type", evt.EventType),
 				zap.Int("attempt", evt.AttemptCount),
 				zap.Error(handlerErr))
-			p.finish(ctx, evt, claim, func() error {
+			// Push 6.2: superseded events count as DLQ outcome (they
+			// are terminal and reach the closed-state terminal hop).
+			// Distinct from ErrFinalizeAttempt* which still routes
+			// here as dead-letter; both are visible in dashboards.
+			observability.OutboxDLQTotal.WithLabelValues(evt.EventType).Inc()
+			p.finish(ctx, evt, claim, "dlq", func() error {
 				return p.finisher.MarkSuperseded(ctx, evt.ID, claim.LeaseID, handlerErr.Error())
 			}, "superseded")
 			return
@@ -329,7 +440,8 @@ func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 				zap.String("type", evt.EventType),
 				zap.Int("attempt", evt.AttemptCount),
 				zap.Error(handlerErr))
-			p.finish(ctx, evt, claim, func() error {
+			observability.OutboxDLQTotal.WithLabelValues(evt.EventType).Inc()
+			p.finish(ctx, evt, claim, "dlq", func() error {
 				return p.finisher.MarkDeadLetter(ctx, evt.ID, claim.LeaseID, handlerErr.Error())
 			}, "dead-letter")
 			return
@@ -340,15 +452,20 @@ func (p *Pool) processEvent(ctx context.Context, claim *Claim) {
 			zap.Int64("event_id", evt.ID),
 			zap.Int("attempt", evt.AttemptCount),
 			zap.Error(handlerErr))
-		nextAttempt := p.computeNextAttempt(evt.AttemptCount + 1)
-		p.finish(ctx, evt, claim, func() error {
+		// Push 6.2 (Fase 6c): RetriesTotal counter, single event_type
+		// label. The terminal branch above short-circuits to DLQ
+		// before this site, so every increment here is a transient
+		// retry (godlike/07 — Retries counts only transient).
+		observability.OutboxRetriesTotal.WithLabelValues(evt.EventType).Inc()
+		nextAttempt := p.computeNextAttempt(evt.ID, evt.AttemptCount+1)
+		p.finish(ctx, evt, claim, "err", func() error {
 			return p.finisher.MarkFailed(ctx, evt.ID, claim.LeaseID, handlerErr.Error(), nextAttempt)
 		}, "failed")
 		return
 	}
 
 	p.log.Info("event processed successfully", zap.Int64("event_id", evt.ID))
-	p.finish(ctx, evt, claim, func() error {
+	p.finish(ctx, evt, claim, "ok", func() error {
 		return p.finisher.MarkCompleted(ctx, evt.ID, claim.LeaseID)
 	}, "completed")
 }

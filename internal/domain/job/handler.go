@@ -64,14 +64,29 @@ import (
 // ── Canonical handler contract ───────────────────────────────────────
 
 // JobExecutionTools provides the callbacks a handler invokes to
-// report progress, emit typed events, and check for cancellation.
-// All three callbacks are nil-tolerant at the handler site via the
-// SafeProgressFn / SafeEventFn / SafeIsCancelled helpers in
-// internal/application/jobs (godlike/07 no-nil-panic contract).
+// report progress and emit typed events. Both callbacks are
+// nil-tolerant at the handler site via the SafeProgressFn /
+// SafeEventFn helpers in internal/application/jobs (godlike/07
+// no-nil-panic contract).
+//
+// FASE 4(b) (July 2026) — IsCancelled field REMOVED: the
+// pre-Fase-4 `IsCancelled func() bool` field was the handler-
+// facing projection of the per-job 2-second IsCancelled-poll
+// goroutine at worker_execution.go::startCancelWatcher. FASE 4
+// spec close-out removed the goroutine and folded the cancel
+// signal into the typed kerneljob.RenewLeaseResult.State return
+// (LeaseStateCancelRequested → renewLeaseLoop calls jobCancel).
+// Handlers now observe cancellation natively via ctx.Err() at
+// their next phase boundary (the canonical cancellation
+// pattern pre-Fase-4 handlers already used as a secondary
+// signal), so the explicit IsCancelled callback is redundant.
+// godlike/07 minimum-blast-radius: removal is breaking on
+// any handler that read tools.IsCancelled; the in-tree
+// handlers that did so were updated to use ctx.Err() as part
+// of the same FASE 4(b) cut.
 type JobExecutionTools struct {
-	Progress    func(progress int, message string)
-	Event       func(eventType string, message string, data map[string]any)
-	IsCancelled func() bool
+	Progress func(progress int, message string)
+	Event    func(eventType string, message string, data map[string]any)
 }
 
 // Result is the canonical typed return envelope for handlers.

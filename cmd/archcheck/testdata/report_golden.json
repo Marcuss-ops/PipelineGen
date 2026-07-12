@@ -396,7 +396,7 @@
     },
     {
       "package": "internal/app",
-      "actual_count": 113,
+      "actual_count": 114,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
@@ -431,7 +431,7 @@
       "matched_rule": "same_package_duplicate_type_declarations",
       "rule": "percheck_type_redecl",
       "severity": "error",
-      "note": "job.JobBroker (count=2 in same package); sites: internal/domain/job/store.go:41:2, internal/kernel/job/store.go:118:6"
+      "note": "job.JobBroker (count=2 in same package); sites: internal/domain/job/store.go:41:2, internal/kernel/job/store.go:136:6"
     },
     {
       "package": "internal/job",

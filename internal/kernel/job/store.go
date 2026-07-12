@@ -80,8 +80,31 @@ type Store interface {
 	// AddEvent records a human-readable event on the job timeline.
 	AddEvent(ctx context.Context, id string, eventType, message string, data map[string]any) error
 
-	// RenewLease extends the lease expiry for a running job owned by workerID.
-	RenewLease(ctx context.Context, id string, workerID string, leaseTTL time.Duration) error
+	// RenewLease extends the lease expiry for a running job owned by
+	// workerID and atomically reports the post-renewal lease state
+	// (Fase 4(b), July 2026). The returned RenewLeaseResult carries the
+	// typed LeaseState so the worker can compose the lease-renewal path
+	// with concurrent cancellation in a SINGLE SQL UPDATE — eliminating
+	// the per-job 2-second IsCancelled-poll goroutine (the pre-Fase-4
+	// startCancelWatcher at worker_execution.go).
+	//
+	// LeaseState semantics (godlike/06 SSOT, declared at
+	// internal/kernel/job/lease_state.go):
+	//   - LeaseStateContinue: lease extended; caller proceeds.
+	//   - LeaseStateCancelRequested: jobs.cancelled_at IS NOT NULL; caller
+	//     MUST abort the in-flight job (call jobCancel on the job ctx).
+	//   - LeaseStateLeaseLost: no rows updated (lease stolen, expired,
+	//     reaped); caller MUST treat the in-flight work as orphaned.
+	//
+	// The pre-Fase-4 callers that consumed only the error return value
+	// (treating ErrLeaseLost as a generic lease-lost signal) MUST
+	// migrate to inspect the typed result.State; the error return is
+	// reserved for non-lease-state failures (network, SQL, etc).
+	//
+	// Pre-Fase-4 signature: RenewLease(ctx, id, workerID, leaseTTL) error
+	// (Push 4.3 hard-break: returning RenewLeaseResult is the canonical
+	// surface; no V2 method, no envelope).
+	RenewLease(ctx context.Context, id string, workerID string, leaseTTL time.Duration) (RenewLeaseResult, error)
 
 	// FinalizeAttempt is the canonical consolidated terminal-decision
 	// primitive introduced by Fase 4(a) (July 2026). It collapses the

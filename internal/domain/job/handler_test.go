@@ -123,18 +123,27 @@ func TestCanonicalHandler_ReturnTypeIsResult(t *testing.T) {
 	}
 }
 
-// TestJobExecutionTools_FieldSet — pins the 3-callback envelope.
-// Adding a 4th field to the struct (godlike/07 EXPAND) is a
+// TestJobExecutionTools_FieldSet — pins the 2-callback envelope
+// (FASE 4(b), July 2026).
+//
+// Pre-Fase-4 the struct carried 3 callbacks (Progress / Event /
+// IsCancelled). FASE 4(b) removed the IsCancelled field because
+// the pre-Fase-4 2-second IsCancelled-poll goroutine (the
+// startCancelWatcher at worker_execution.go) is gone; cancel
+// now propagates through native context cancellation (ctx.Err())
+// and the typed kerneljob.RenewLeaseResult.State observation
+// (CancelRequested → renewLeaseLoopWith calls jobCancel).
+//
+// Adding a 3rd field to the struct (godlike/07 EXPAND) is a
 // future-PR decision and would be flagged by this test via
 // reflection drift — the production-pinned handler signature
-// accepts 3 callbacks only, so a new field requires either a
+// accepts 2 callbacks only, so a new field requires either a
 // new type or a godlike/07 4-phase migration.
 func TestJobExecutionTools_FieldSet(t *testing.T) {
 	rt := reflect.TypeOf(JobExecutionTools{})
 	wantFields := map[string]bool{
-		"Progress":    false,
-		"Event":       false,
-		"IsCancelled": false,
+		"Progress": false,
+		"Event":    false,
 	}
 	for i := 0; i < rt.NumField(); i++ {
 		f := rt.Field(i)
@@ -144,11 +153,11 @@ func TestJobExecutionTools_FieldSet(t *testing.T) {
 	}
 	for name, found := range wantFields {
 		if !found {
-			t.Fatalf("JobExecutionTools must carry field %q (godlike/06 SSOT — handler signature reports a 3-callback envelope)", name)
+			t.Fatalf("JobExecutionTools must carry field %q (FASE 4(b) SSOT — handler signature reports a 2-callback envelope; pre-Fase-4 IsCancelled was removed when the 2s polling goroutine was retired)", name)
 		}
 	}
-	if rt.NumField() != 3 {
-		t.Fatalf("JobExecutionTools must carry exactly 3 fields; got %d (a 4th field would break the canonical Handler signature without a godlike/07 4-phase migration)", rt.NumField())
+	if rt.NumField() != 2 {
+		t.Fatalf("JobExecutionTools must carry exactly 2 fields (FASE 4(b)); got %d (a 3rd field would break the canonical Handler signature without a godlike/07 4-phase migration)", rt.NumField())
 	}
 }
 

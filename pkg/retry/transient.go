@@ -38,21 +38,22 @@
 //	own retryability classification. Qdrant's *APIError satisfies
 //	this interface automatically (it has IsRetryable() bool).
 //
-// (5) transientSubstrings taxonomy — canonical substring fallback.
+// (5) transientSubstrings taxonomy — REMOVED FROM PRODUCTION per FASE 6
+//	Cut 6.1.D (July 2026).
 //
-//	timeouts, connection refused/reset/EOF, 429/502/503/504, rate limits,
-//	quota-exceeded, temporarily-unavailable, database-locked, sqlite-busy,
-//	plus Google API / gRPC canonical shapes (userratelimitexceeded,
-//	deadlineexceeded, backenderror, serviceunavailable, quotaexceeded,
-//	resource_exhausted).
+//	User spec: "Rimuovi TUTTA la classificazione substring (eof, 429,
+//	502, 503, 504, timeout) dal percorso di produzione di pkg/retry."
 //
-//	These are the substring-path fallback. Where possible, prefer typed
-//	wrapping (1+3) for new code; the substring path is retained as a
-//	safety net for raw SDK errors not yet tagged at the typed layer.
-//	⚠️ LEGACY (Fase 6a, July 2026): the substring path is the
-//	last-resort fallback only; new code MUST register a typed Classifier
-//	via decision.go::RegisterClassifier. Phase 6 Push 6.1.x compiles
-//	this catalog out behind a //go:build tag.
+//	The substring taxonomy previously lived in this file (transientSubstrings
+//	var + IsTransient substring loop + IsTransientString pure-substring
+//	helper). They are REMOVED from the production binary. The taxonomy is
+//	preserved as a TEST-ONLY fixture in pkg/retry/transient_legacy_test.go
+//	so tests can pin the pre-FASE-6 surface (godlike/07 no-fake-availability:
+//	legacy behavior is observable in tests, not silently lost).
+//
+//	Production classifiers MUST register a typed Classifier via
+//	decision.go::RegisterClassifier at init() — see decision.go for the
+//	canonical walker + the stdlib + internal adapter registries.
 //
 // Anything that needs a transient-classifier MUST route through this
 // file. CI gate (Check N, July 2026 audit) bans substring-match retry
@@ -64,7 +65,6 @@ package retry
 
 import (
 	"errors"
-	"strings"
 )
 
 // ── TransientInfrastructureError ────────────────────────────────────────────
@@ -103,49 +103,26 @@ func (e *TransientInfrastructureError) Unwrap() error {
 
 // ── transient-substrings taxonomy + RetryableError interface ───────────────
 
-// transientSubstrings is the canonical taxonomy of transient-infrastructure
-// error substrings. Mirrors the taxonomy previously duplicated in
-// monitor/enqueue.go::isTransientEnqueueError (removed Step 7, July 2026).
-// Azione 4/8 (July 2026) added the SQLite-canonical markers below:
+// transientSubstrings is REMOVED from production per FASE 6 Cut 6.1.D
+// (July 2026). The pre-FASE-6 taxonomy below is preserved verbatim in
+// the TEST-ONLY fixture pkg/retry/transient_legacy_test.go so tests
+// can pin the legacy fallback surface (godlike/07 no-fake-availability):
 //
-//   - "database is locked"   — SQLite busy marker (5.x: SQLITE_BUSY)
-//   - "sqlite busy"          — mattn/go-sqlite3 prefix
-//   - "connection is already closed" — sql.ErrConnDone.Error()
+//	timeouts, connection refused/reset/EOF, 429/502/503/504, rate limits,
+//	quota-exceeded, temporarily-unavailable, database-locked, sqlite-busy,
+//	plus Google API / gRPC canonical shapes
+//	(userratelimitexceeded, deadlineexceeded, backenderror,
+//	serviceunavailable, quotaexceeded, resource_exhausted).
+//
+// Production classifiers MUST register a typed Classifier via
+// decision.go::RegisterClassifier at init().
 //
 // NOTE on sqlassets.ErrStateConflict: it is a typed *logical* sentinel
 // ("row state is in conflict"). The canonical contract today is that
 // this error remains TERMINAL (callers explicitly force retryable=false
-// after `errors.Is(err, sqlassets.ErrStateConflict)`). It is therefore
-// not added to transientSubstrings — doing so would silently flip a
-// terminal logical error to a transient infra error.
-var transientSubstrings = []string{
-	"timeout",
-	"connection refused",
-	"connection reset",
-	"connection is already closed",
-	"eof",
-	"429",
-	"503",
-	"502",
-	"504",
-	"rate limit",
-	"quota exceeded",
-	"temporarily unavailable",
-	"resource temporarily unavailable",
-	"database is locked",
-	"sqlite busy",
-	// Google API / gRPC canonical shapes (Azione 8/8F di Step 7, July 2026).
-	// Each entry is the lowercase no-space form; case-insensitive matching
-	// against lowercased err.Error() accepts upstream camelCase / SNAKE_CASE
-	// shapes (userRateLimitExceeded, deadlineExceeded, backendError,
-	// serviceUnavailable, quotaExceeded, Resource_Exhausted).
-	"userratelimitexceeded",
-	"deadlineexceeded",
-	"backenderror",
-	"serviceunavailable",
-	"quotaexceeded",
-	"resource_exhausted",
-}
+// after `errors.Is(err, sqlassets.ErrStateConflict)`). The classifier
+// for sqlassets.ErrStateConflict (when added to the sqljobs package
+// init()) MUST emit RetryDecision{ErrValidation, Retryable: false}.
 
 // RetryableError is a structural interface for errors that carry their
 // own retryability classification. Any error type with an IsRetryable()
@@ -166,32 +143,35 @@ type RetryableError interface {
 
 // IsTransient returns true when err is non-nil AND either:
 //   - err implements RetryableError and IsRetryable() returns true, OR
-//   - err is (or wraps) a *TransientInfrastructureError, OR
-//   - err.Error() contains one of the canonical transient-infrastructure
-//     substrings (timeout, connection refused, 429, 503, etc.).
+//   - err is (or wraps) a *TransientInfrastructureError.
 //
-// ⚠️  LEGACY classifier (Fase 6(a), July 2026). The substring path is
-// retained for backward-compat migration only; new code MUST NOT pass
-// retry.IsTransient as the IsRetryable predicate. Use retry.Decision
-// (typed-only walker, decision.go) or register a typed Classifier.
-// Push 6.1.x follow-ups compile out the substring path entirely.
+// FASE 6 Cut 6.1.D (July 2026): production IsTransient is a PURE TYPED
+// PROBE. The pre-FASE-6 substring fallback was REMOVED from production
+// per the user spec ("Rimuovi TUTTA la classificazione substring dal
+// percorso di produzione"). The substring taxonomy is preserved in the
+// TEST-ONLY fixture pkg/retry/transient_legacy_test.go for backwards-
+// compat test fixtures; production classifiers MUST register a typed
+// Classifier via decision.go::RegisterClassifier at init().
 //
-// Decision order (typed wins over substring):
+// Decision order (typed probe, no substring):
 //  1. nil → false
 //  2. RetryableError interface → IsRetryable() (typed authoritative path)
 //  3. *TransientInfrastructureError via errors.As → true
-//  4. Substring fallback against transientSubstrings
-//  5. Everything else → false
+//  4. Everything else → false (conservative fail-closed terminal)
 //
-// This function is the LEGACY single-substring-fallback "should I retry
-// this?" predicate. Push 6.1.x follow-ups retire this function from the
-// production classification path; the canonical typed surface is
-// retry.Decision (decision.go) + RegisterClassifier. Callers that
-// previously implemented their own substring matcher (monitor.
-// isTransientEnqueueError, tagutil.IsTransientDownloadError,
-// youtube/usecase.IsTransientExtractionError) should migrate to the
-// typed Decision surface and, where typed wrapping is feasible,
-// continue to use WrapTransient.
+// This function remains the CANONICAL pure-typed-probe "should I retry
+// this?" predicate in production. Callers that want a richer shape
+// (Class + RetryAfter + SafeMessage) should use retry.Decision
+// (decision.go) which walks the registered Classifier chain.
+//
+// The classic migration path for raw SDK errors not yet wrapped is
+// to call retry.WrapTransient(err) at the call site — if the err
+// carries a typed RetryableError implementation (most modern SDKs
+// provide one), WrapTransient wraps it in *TransientInfrastructureError
+// and IsTransient returns true on the next iteration of the retry loop.
+// Errors that carry NO typed marker AND NO substring match in the
+// pre-FASE-6 surface are now treated as TERMINAL — register a typed
+// Classifier for the adapter's error shape.
 func IsTransient(err error) bool {
 	if err == nil {
 		return false
@@ -206,30 +186,46 @@ func IsTransient(err error) bool {
 	if errors.As(err, &te) {
 		return true
 	}
-	// Substring fallback.
-	lower := strings.ToLower(err.Error())
-	for _, s := range transientSubstrings {
-		if strings.Contains(lower, s) {
-			return true
-		}
-	}
+	// FASE 6 Cut 6.1.D: production IsTransient is a pure typed probe.
+	// The pre-FASE-6 substring fallback against transientSubstrings was
+	// removed from production per the user spec. The substring taxonomy
+	// lives in pkg/retry/transient_legacy_test.go as a TEST-ONLY helper
+	// for tests that pin the legacy surface; production callers MUST
+	// register a typed Classifier (decision.go::RegisterClassifier)
+	// for any custom error shape.
 	return false
 }
 
-// IsTransientString is the string-only version of IsTransient. It performs
-// the substring-fallback check against the canonical transientSubstrings
-// taxonomy without requiring an error type. Useful when the caller already
-// has an error message string (e.g., from an ExtractItem.Error field).
+// IsTransientString is DEPRECATED as of FASE 6 Cut 6.1.D (July 2026).
 //
-// Does NOT check RetryableError or TransientInfrastructureError — this
-// is a pure substring matcher. For typed errors, use IsTransient.
+// Always returns false. The pre-FASE-6 substring fallback against
+// transientSubstrings was removed from production per the user spec;
+// the substring taxonomy is preserved verbatim in the TEST-ONLY
+// fixture pkg/retry/transient_legacy_test.go.
+//
+// The function REMAINS exported for backward compat with the 1 known
+// external caller (internal/application/youtube/jobs/classify.go).
+// Production callers MUST migrate to one of:
+//   - retry.IsTransient(err) on a *typed* error (RetryableError /
+//     TransientInfrastructureError carrier)
+//   - retry.Decision(err) for a richer Class + RetryAfter + SafeMessage
+//   - retry.WrapTransient(err) at the SDK boundary so the typed path
+//     reaches retry.IsTransient on farther-up retry loops
+//
+// The deprecation is an explicit "0 returns true" stop-gap so callers
+// expecting the legacy substring match surface as a "transient? bool"
+// see "false" instead of silently flipping to terminal. Forward-pointer
+// for migration: registered typed Classifiers for the adapter-specific
+// shapes (filesystemNotify, GoSubtitlesParser, etc.).
+//
+// Returns false unconditionally so the production contract is
+// observably terminal for any unmapped raw-string input.
 func IsTransientString(s string) bool {
-	lower := strings.ToLower(s)
-	for _, token := range transientSubstrings {
-		if strings.Contains(lower, token) {
-			return true
-		}
-	}
+	_ = s
+	// FASE 6 Cut 6.1.D: removed substring matcher (returns false
+	// always). Use retry.Decision / IsTransient(err) on a typed
+	// error shape; use retry.WrapTransient at the SDK boundary to
+	// label raw SDK errors as transient at the typed layer.
 	return false
 }
 
