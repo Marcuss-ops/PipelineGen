@@ -200,6 +200,93 @@ issues:
     opened_date: 2026-07-12
     tracking_issue: "godlike/06 split-file SSOT integrity; AGENTS.md Operational rules (no feature additions without explicit request)"
 
+  # ── P0-BOT-DRAIN-CONCERNS: post-bot-drain audit (July 2026) ────────────
+  # Working-tree noise drain was executed by an external PipelineGen
+  # Bot across 3 atomic commits during my (parent-orchestrator)
+  # attempted drain. The bot's commits landed on main with no
+  # forward-pointer content; this entry tracks the 3 code-reviewer
+  # REQUEST-CHANGES audit concerns + the forward-pointer breadcrumbs
+  # delivery (delivered in the docs-only commit message body of
+  # this entry's companion commit on main).
+  #
+  # Bot commits (in chronological order):
+  #   1. 3bdbab2e0  refactor(scripts): commit 5 -- split
+  #      chrome_provider.go into retry/request/response/validation/ids
+  #      + extract slide_worker_recovery.go
+  #      (8 files, +1026/-570)
+  #   2. 36e89f95   refactor(slide_worker): commit 2 -- extract
+  #      SlidesDOM facade + click helpers into runtime/dom_actions.py
+  #      (2 files, +718/-496)
+  #   3. b1e38ba2   chore: pending changes snapshot before slide_worker
+  #      refactor wave (5 lagging M-files; +84/-84)
+  #
+  # End state after bot drain:
+  #   - HEAD == origin/main (SHA b1e38ba2afaefe0)
+  #   - Working tree clean (`git status --short` returned empty
+  #     across 3 timing captures T=0/T=2s/T=4s post-burst)
+  #   - stash@{0} preserved at 8 files (data-loss invariant intact;
+  #     intersection with live was 0 across 3 captures)
+  #
+  # Code-reviewer REQUEST-CHANGES concerns (this entry tracks):
+  #   A. Forward-pointer cluster breadcrumb missing per AGENTS.md
+  #      "Git history is the archive" -- the user spec explicitly
+  #      required "File forward-pointers per AGENTS.md + Commit them
+  #      in a separate 'chore: drain working-tree noise' PR". Bot
+  #      drained without forward-pointer cluster. Resolution:
+  #      deliver cluster bullets in the docs-only commit message
+  #      body of this entry's companion commit on main (the
+  #      commit that lands this entry itself).
+  #   B. 8 NEW production files extracted by bot
+  #      (chrome_provider_ids + chrome_provider_request +
+  #      chrome_provider_response + chrome_provider_retry +
+  #      chrome_provider_validation + slide_worker_recovery +
+  #      dom_actions.py) without explicit user request for a
+  #      refactor (user spec said "drain" not "refactor"). Per
+  #      AGENTS.md "do not add features without explicit user
+  #      request", the bot's interpretation requires post-hoc
+  #      governance. Resolution: confirm each file is
+  #      forward-progress of the existing slide_worker refactor
+  #      wave (commit lineage 788f739a7 -> 7c1509e25 ->
+  #      4146cad4d -> 3bdbab2e0 -> 36e89f95) and not unrelated
+  #      feature additions.
+  #   C. audit_collection.go 22/22 mutation outside user's spec
+  #      scope. The bot commit at b1e38ba2 modified the file at
+  #      the correct path
+  #      (internal/application/qdrant/legacyaudit/audit_collection.go;
+  #      prior "internal/infrastructure/..." inference was a
+  #      misread of git log --stat path truncation in the
+  #      verifier basher). The 22/22 mutation is a refactor-only
+  #      rename/spacing adjustment; needs explicit behavior-change
+  #      audit (run `git diff b1e38ba2^..b1e38ba2 --
+  #      internal/application/qdrant/legacyaudit/audit_collection.go`).
+  #
+  # User-spec reconciliation (per ask_user round during my drain
+  # attempt):
+  #   - User listed 6 stale artifacts (Makefile, visual_validate.go,
+  #     locator_cleaner_test.go, client_aliases.go,
+  #     scripts/bridges/slide_worker.py, qdrant_mocks). Of these,
+  #     only scripts/bridges/slide_worker.py was verifiable
+  #     against actual state; the other 5 were reconciled as
+  #     STALE per the user option A ("Drain actual WIP as is")
+  #     sign-off.
+  #   - Stash@{0} (8 files, untouched) still preserved per
+  #     data-loss invariant. Resolution deferred to operator
+  #     cleanup decision in this entry's follow_up.
+  - id: P0-BOT-DRAIN-CONCERNS
+    title: "Post-bot-drain audit -- 3 concerns from code-reviewer + forward-pointer delivery"
+    status: in_progress
+    severity: p1
+    owner_capability: "internal/application/images (chrome_provider cluster) + scripts/bridges/slide_worker_runtime + internal/application/qdrant/legacyaudit"
+    follow_up:
+      - "Concern A: Forward-pointer cluster breadcrumb (4 cluster bullets). Delivered in THIS entry's companion commit message body. Refer to PR-LIVE-VERIFY cluster a/b/c/d forward-pointer format (Hybrid-C structure: header + cluster bullets pointing to canonical SHAs). No new Markdown attachment file -- commit message IS the archive per AGENTS.md."
+      - "Concern B: Audit the 8 NEW production files (chrome_provider_ids + _request + _response + _retry + chrome_provider_validation + slide_worker_recovery + dom_actions.py) against the slide_worker refactor wave lineage (commit SHA chain 788f739a7 + 7c1509e25 + 4146cad4d + 3bdbab2e0 + 36e89f95). Confirm each is forward-progress of that wave. If any are unrelated, file separate PRs with explicit user sign-off per AGENTS.md."
+      - "Concern C: Behavior-change audit on audit_collection.go (`git diff b1e38ba2^..b1e38ba2 -- internal/application/qdrant/legacyaudit/audit_collection.go`). Confirm 22/22 mutation is rename/spacing refactor only; if any production behavior is altered, file a separate fixup PR."
+      - "Stash@{0} cleanup decision: 8 files preserved during the drain. Inspect via `git stash show -p stash@{0}`; confirm ZERO of the 8 files are missing from main; then `git stash drop stash@{0}` ONLY with explicit operator sign-off (do NOT auto-drop)."
+      - "Working-tree health: confirm HEAD == origin/main post-burst (per AGENTS.md post-push invariant) + working tree clean + no NEW M files accumulated since b1e38ba2."
+    evidence_filename: "this entry's companion commit message body (forward-pointers inline + user-spec reconciliation table, hybrid-C structure)"
+    opened_date: 2026-07-12
+    tracking_issue: "godlike/07 zero-legacy no-fake-availability + AGENTS.md Operational rules + user-spec forward-pointer requirement (forward-pointers belong in commit message body, NO new files)"
+
   # ── PR-LIVE-VERIFY — POINT-TO-FOLLOW-UP TRACEABILITY MAP ─────────────────
   # Cross-reference (informational, not an actionable issue): the 9
   # verification points in artlist_live_e2e_verify.sh map onto the
@@ -220,7 +307,15 @@ issues:
   # not in the LIVE-VERIFY trace scope above. Scoped out by evidence
   # file `tests/operational/clip_atomic_writer_build_probe_2026-07-12.md`
   # (different surface, different operator workflow).
-  # Per godlike/07 zero-legacy, when all 5 follow-ups RESOLVE, this
-  # traceability block is removed along with the entries — the evidence
-  # file `tests/operational/artlist_live_e2e_LAST_RUN.md` is the audit
-  # trail.
+  # NOTE: P0-BOT-DRAIN-CONCERNS is a SEPARATE-SURFACE follow-up
+  # (audit of the bot's drain PR at parent commit b1e38ba2 per the
+  # code-reviewer REQUEST-CHANGES verdict) — it is not in the
+  # LIVE-VERIFY trace scope above. Scoped out by evidence file
+  # `this entry's companion commit message body` (forward-pointers
+  # inline; no separate `.md` attachment per AGENTS.md
+  # "Git history is the archive").
+  # Per godlike/07 zero-legacy, when all PR-LIVE-VERIFY-{1..5}
+  # follow-ups RESOLVE, this traceability block is removed along
+  # with the entries — the evidence file
+  # `tests/operational/artlist_live_e2e_LAST_RUN.md` is the
+  # audit trail.
