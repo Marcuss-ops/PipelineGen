@@ -451,6 +451,14 @@ func TestTransientInfrastructureError_DoubleWrap(t *testing.T) {
 // typed-transient helper) gate the wrap decision.
 func TestWrapTransient(t *testing.T) {
 	t.Parallel()
+	// FASE 6 Cut 6.1.C (July 2026): WrapTransient now routes through
+	// Decision() walker. Tests that exercise boundary wrap behavior on
+	// raw SDK strings rely on the legacy substring Classifier being
+	// registered in the chain — register it once at the parent test
+	// scope (per-test-scoped, NOT global). Production goroutines never
+	// see this registration. The pre-Cut substring surface is preserved
+	// as a regression check via the canonical typed-Decision flow.
+	WithLegacyClassifier(t)
 
 	nonTransient := errors.New("validation: missing channel_id")
 
@@ -471,16 +479,21 @@ func TestWrapTransient(t *testing.T) {
 
 	t.Run("transient substring → wrapped in TransientInfrastructureError", func(t *testing.T) {
 		t.Parallel()
-		// godlike/07 honest-limitation (FASE 6 Cut 6.1.D):
-		// pre-Cut 6.1: WrapTransient wrapped on substring match.
-		// post-Cut 6.1.D: production IsTransient is pure typed-probe;
-		// WrapTransient no longer wraps raw substring-shaped errors.
-		// The pre-FASE-6 contract depended on IsTransient's substring
-		// fallback, which is now REMOVED. Forward-pointer (6.1.C):
-		// migrate WrapTransient to consult Decision() before wrapping,
-		// so registered classifiers (including ad-hoc adapters) gate
-		// the wrap decision.
-		t.Skip("FASE 6 Cut 6.1.D: WrapTransient substring-wrapping contract depends on IsTransient's substring fallback, which is REMOVED from production. Forward-pointer: 6.1.C caller migration will route WrapTransient through Decision() walker.")
+		// FASE 6 Cut 6.1.C live regression check: WrapTransient on a raw
+		// SDK string whose substring matches the legacy taxonomy returns
+		// a *TransientInfrastructureError. The legacy Classifier is
+		// registered at the parent test scope via WithLegacyClassifier,
+		// so Decision() inside WrapTransient finds it and emits Retryable=true.
+		// Production never sees this registration.
+		raw := errors.New("503 service unavailable")
+		got := WrapTransient(raw)
+		var te *TransientInfrastructureError
+		if !errors.As(got, &te) {
+			t.Fatalf("WrapTransient(raw) did not wrap: got %T (%v)", got, got)
+		}
+		if te.Err != raw {
+			t.Errorf("WrapTransient chained wrong inner: got %v want %v", te.Err, raw)
+		}
 	})
 
 	t.Run("typed passed in → unchanged (no double wrap)", func(t *testing.T) {
@@ -504,38 +517,70 @@ func TestWrapTransient(t *testing.T) {
 
 	t.Run("SQLite locked → wrapped", func(t *testing.T) {
 		t.Parallel()
-		// godlike/07 honest-limitation (FASE 6 Cut 6.1.D):
-		// pre-Cut 6.1: WrapTransient wrapped on substring "database is
-		// locked". post-Cut 6.1.D: production IsTransient does not
-		// substring-match; WrapTransient returns the raw string
-		// unchanged.
-		t.Skip("FASE 6 Cut 6.1.D: WrapTransient no longer wraps raw 'database is locked' strings. Production must WrapTransient at the SQLite boundary (typed *sqlite3.Error envelope) — see internal/infrastructure/database/sqlite/registry_retry_classifier.go for the canonical typed-probe surface.")
+		// FASE 6 Cut 6.1.C live regression check: WrapTransient on a
+		// raw "sqlite: database is locked" string matches the legacy
+		// taxonomy ("database is locked" substring) via Decision(), so it
+		// returns a *TransientInfrastructureError. Production callers
+		// should emit typed *sqlite3.Error at the SDK boundary (the
+		// SQLite Classifier is registered at init() and gates production
+		// shape authoritatively); this subtest pins the pre-cut boundary
+		// fallback for backward-compat through Decision's classifier
+		// chain.
+		sqliteLocked := errors.New("sqlite: database is locked")
+		got := WrapTransient(sqliteLocked)
+		var te *TransientInfrastructureError
+		if !errors.As(got, &te) {
+			t.Fatalf("WrapTransient(sqliteLocked) did not wrap: got %T (%v)", got, got)
+		}
+		if te.Err != sqliteLocked {
+			t.Errorf("WrapTransient chained wrong inner: got %v want %v", te.Err, sqliteLocked)
+		}
 	})
 
 	t.Run("sql.ErrConnDone → wrapped", func(t *testing.T) {
 		t.Parallel()
-		// godlike/07 honest-limitation (FASE 6 Cut 6.1.D):
-		// pre-Cut 6.1: WrapTransient wrapped on substring "connection
-		// is already closed" (sql.ErrConnDone.Error()). post-Cut 6.1.D:
-		// production IsTransient does not substring-match; WrapTransient
-		// returns sql.ErrConnDone unchanged.
-		//
-		// Production callers must WrapTransient at the database/sql
-		// boundary with a typed envelope (e.g. an explicit retryable
-		// sentinel returned by the call site) — sql.ErrConnDone itself
-		// does NOT carry a typed RetryableError interface today.
-		t.Skip("FASE 6 Cut 6.1.D: WrapTransient no longer wraps raw sql.ErrConnDone. Forward-pointer: typed-Envelope wrap at database/sql call sites.")
+		// FASE 6 Cut 6.1.C live regression check: WrapTransient on the
+		// stdlib sql.ErrConnDone sentinel (whose Error() string matches
+		// the legacy "connection is already closed" substring) returns
+		// a *TransientInfrastructureError via Decision() + legacy
+		// Classifier. Production callers should emit typed envelopes at
+		// the database/sql boundary — sql.ErrConnDone itself does NOT
+		// carry a typed RetryableError interface today; this subtest pins
+		// the pre-cut boundary fallback for backward-compat through
+		// Decision's classifier chain.
+		got := WrapTransient(sql.ErrConnDone)
+		var te *TransientInfrastructureError
+		if !errors.As(got, &te) {
+			t.Fatalf("WrapTransient(sql.ErrConnDone) did not wrap: got %T (%v)", got, got)
+		}
 	})
 
 	t.Run("IsTransient composes after WrapTransient", func(t *testing.T) {
 		t.Parallel()
-		// godlike/07 honest-limitation (FASE 6 Cut 6.1.D): this subtest
-		// asserts (a) the wrapped envelope is transient via typed probe
-		// (continues to pass) AND (b) the raw string "database is
-		// locked" is transient via substring fallback (FAILS post-Cut).
-		// The (b) assertion was the pre-FASE-6 substring surface; only
-		// the typed-probe half remains observable.
-		t.Skip("FASE 6 Cut 6.1.D: pre-FASE-6 substring fallback for raw 'database is locked' is REMOVED from production. Typed-probe behavior (wrapped → transient) continues to be exercised by TestTransientInfrastructureError_IsTransientAuthoritative.")
+		// FASE 6 Cut 6.1.C live regression check: after WrapTransient
+		// (which now routes through Decision+legacy Classifier when the
+		// legacy Classifier is registered in test scope), the wrapped
+		// envelope is classified as transient by production IsTransient
+		// via the typed *TransientInfrastructureError carrier (typed
+		// path #2).
+		//
+		// The pre-Cut 6.1 assertion that raw_err is also transient via
+		// substring fallback is REMOVED in production (Cut 6.1.D). The
+		// post-Cut invariant is: callers must WrapTransient at the SDK
+		// boundary (with the legacy Classifier-or-equivalent registered
+		// for backward-compat tests) so the resulting typed envelope
+		// reaches IsTransient authoritatively. Production IsTransient
+		// does NOT substring-match raw strings; raw_string alone → false.
+		raw := errors.New("sqlite: database is locked")
+		wrapped := WrapTransient(raw)
+		if !IsTransient(wrapped) {
+			t.Error("IsTransient should match wrapped envelope via typed carrier path #2")
+		}
+		// Forward-pointer: production callers must WrapTransient at the
+		// SDK boundary for the typed envelope to reach IsTransient. The
+		// pre-Cut raw-string-substring assertion is intentionally
+		// removed (see the commit-body migration note for the audit
+		// trail).
 	})
 }
 
