@@ -26,6 +26,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -42,7 +43,8 @@ import (
 type fakeRepository struct {
 	mu        sync.Mutex
 	rows      map[string]*artifact.ArtifactStage
-	insertErr error // optional injected error
+	events    []capturedEvent // append-only log of InsertWithOutbox events
+	insertErr error           // optional injected error
 }
 
 func newFakeRepository() *fakeRepository {
@@ -62,6 +64,40 @@ func (f *fakeRepository) Insert(_ context.Context, stage *artifact.ArtifactStage
 	cp := *stage
 	f.rows[stage.ID] = &cp
 	return nil
+}
+
+// Push 3.1c: the TX-aware Stage commit goes through
+// InsertWithOutbox instead of Insert. The stub records the
+// emitted event_type + payload + canonical event_key so
+// service_test.go can assert the artifact.staged.v1 emission
+// without spinning up SQLite.
+func (f *fakeRepository) InsertWithOutbox(_ context.Context, stage *artifact.ArtifactStage, eventType string, payload []byte) (string, error) {
+	if f.insertErr != nil {
+		return "", f.insertErr
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, exists := f.rows[stage.ID]; exists {
+		return "", artifact.ErrArtifactStageIDCollision
+	}
+	cp := *stage
+	f.rows[stage.ID] = &cp
+	f.events = append(f.events, capturedEvent{
+		EventType: eventType,
+		EventKey:  fmt.Sprintf("stage:%s:%s", stage.JobID, stage.ID),
+		Payload:   append([]byte(nil), payload...),
+	})
+	return fmt.Sprintf("stage:%s:%s", stage.JobID, stage.ID), nil
+}
+
+// capturedEvent is the per-call InsertWithOutbox record kept
+// by fakeRepository for test assertions on emitted outbox
+// events (event_type, payload, canonical event_key). Concurrency-
+// safe via fakeRepository.mu.
+type capturedEvent struct {
+	EventType string
+	EventKey  string
+	Payload   []byte
 }
 
 func (f *fakeRepository) GetByID(_ context.Context, id string) (*artifact.ArtifactStage, error) {

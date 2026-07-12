@@ -284,6 +284,13 @@ var ErrArtifactStageIDCollision = errors.New("artifact_stages: ID collision (sam
 // for "empty artifact is invalid".
 var ErrArtifactStageEmpty = errors.New("artifact_stages: empty artifact (0 bytes — caller must supply non-empty content)")
 
+// ErrOutboxEmit is returned by Repository.InsertWithOutbox when
+// the TX-co-emitted outbox_events INSERT fails (event_key
+// collision, schema drift, table unavailable). godlike/07 fail-
+// closed: a partial-commit is NEVER acceptable; the TX is rolled
+// back atomically and the artifact_stages row is NOT persisted.
+var ErrOutboxEmit = errors.New("artifact_stages: outbox event INSERT failed (TX rolled back; artifact_stages row not persisted)")
+
 // ErrTerminalStateRejection is the canonical repository-level
 // sentinel for fenced Mark* UPDATE mismatches. The repository
 // disambiguates "row absent" (ErrArtifactStageNotFound) from
@@ -389,4 +396,23 @@ type Repository interface {
 	// IncrementAttemptCount bumps attempt_count by 1 (publisher
 	// worker retry counter). Fenced CAS on non-terminal state.
 	IncrementAttemptCount(ctx context.Context, id string) error
+
+	// InsertWithOutbox atomically writes a new ArtifactStage row
+	// AND enqueues a corresponding outbox event in the SAME
+	// transaction (godlike/07 atomicity: BOTH rows commit together
+	// or NEITHER commits; a partial-commit state would orphan an
+	// event without its stage row, or vice versa).
+	//
+	// The emitted event has event_type=eventType, payload=payload,
+	// event_key=`stage:<JobID>:<ID>` (canonical pattern from the
+	// outbox_events ux_outbox_events_event_key unique index). The
+	// event_key is returned to the caller so the application-layer
+	// service can log it for observability.
+	//
+	// Returns ErrOutboxEmit if the outbox INSERT fails (the TX is
+	// rolled back, the artifact_stages row is NOT persisted).
+	// Forward-pointer: a future push may add InsertWithLedger
+	// (3-table TX for observability) without breaking this
+	// signature; today's contract is the 2-table shape.
+	InsertWithOutbox(ctx context.Context, stage *ArtifactStage, eventType string, payload []byte) (eventKey string, err error)
 }

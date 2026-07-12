@@ -65,6 +65,41 @@ CREATE INDEX IF NOT EXISTS idx_artifact_stages_dest
     ON artifact_stages(destination);
 `
 
+// canonicalOutboxDDL is the verbatim DDL from
+// migrations/sqlite/092_create_outbox_events.sql. Pinned here
+// so drift between the test schema and the production schema
+// is caught at the first INSERT (column-count vs DDL mismatch
+// surfaces as a SQL syntax error → easy to diagnose in a
+// test). The ux_outbox_events_event_key UNIQUE index is the
+// essential piece for the rollback-rollback test
+// (TestRepository_InsertWithOutbox_OutboxFailure_RollsBackArtifactRow)
+// — pre-seeding a colliding event_key triggers the same
+// constraint rejection production code would see on a real
+// duplicate publish_request emission.
+const canonicalOutboxDDL = `
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type      TEXT NOT NULL,
+    aggregate_id    TEXT NOT NULL DEFAULT '',
+    aggregate_type  TEXT NOT NULL DEFAULT '',
+    payload_json    TEXT NOT NULL DEFAULT '',
+    event_key       TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL DEFAULT 'pending',
+    attempt_count   INTEGER NOT NULL DEFAULT 0,
+    max_attempts    INTEGER NOT NULL DEFAULT 10,
+    last_error      TEXT NOT NULL DEFAULT '',
+    next_attempt_at TEXT,
+    worker_id       TEXT NOT NULL DEFAULT '',
+    lease_id        TEXT NOT NULL DEFAULT '',
+    lease_expiry    TEXT,
+    completed_at    TEXT,
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key
+    ON outbox_events(event_key);
+`
+
 // setupTestDB creates an in-memory SQLite with the canonical 147
 // schema. Cleanup is automatic via t.Cleanup.
 //
@@ -84,6 +119,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(canonicalDDL); err != nil {
 		t.Fatalf("apply canonical DDL: %v", err)
+	}
+	if _, err := db.Exec(canonicalOutboxDDL); err != nil {
+		t.Fatalf("apply canonical outbox DDL: %v", err)
 	}
 	return db
 }
@@ -396,6 +434,50 @@ func TestRepository_MarkPublished_RejectsOnTerminalState(t *testing.T) {
 	}
 }
 
+// TestRepository_MarkPublished_RejectsOnPublishedState pins the
+// Path-B invariant: MarkPublished on a row already in PUBLISHED
+// state MUST return ErrTerminalStateRejection (not silently
+// overwrite published_location/published_at). The fence is the
+// broadest of the Mark* methods (state NOT IN
+// (`PUBLISHED','SUCCEEDED','FAILED_PERMANENT')) because re-publishing
+// from PUBLISHED would silently duplicate-upload to Drive (the
+// Publisher worker has the cross-session dedup IdempotencyKey,
+// but a duplicate CAS still costs a Drive-side PutFile call before
+// the fence fires). Pre-Path-B (Push 3.1a baseline), this test
+// would have FAILED — the baseline fence was missing 'PUBLISHED'
+// and a second drain on a PUBLISHED row silently overwrote.
+func TestRepository_MarkPublished_RejectsOnPublishedState(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewRepository(db)
+	repo.nowFn = func() time.Time { return nowFixed }
+	ctx := context.Background()
+
+	s := validStage()
+	if err := repo.Insert(ctx, s); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+	// First MarkPublished: STAGED → PUBLISHED (happy path).
+	if err := repo.MarkPublished(ctx, s.ID, `{"kind":"drive","uri":"first"}`, nowFixed); err != nil {
+		t.Fatalf("first MarkPublished: %v", err)
+	}
+	// Second MarkPublished on the now-PUBLISHED row: MUST be rejected.
+	if err := repo.MarkPublished(ctx, s.ID, `{"kind":"drive","uri":"second"}`, nowFixed); !errors.Is(err, artifact.ErrTerminalStateRejection) {
+		t.Errorf("MarkPublished on PUBLISHED: err = %v, want ErrTerminalStateRejection (Path-B invariant: re-deliveries on PUBLISHED state are typed no-ops, not silent overwrites)", err)
+	}
+	// PublishedLocation MUST NOT have been overwritten by the
+	// rejected second call (the canonical 'first' uri remains).
+	got, err := repo.GetByID(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("GetByID post-rejection: %v", err)
+	}
+	if got.PublishedLocation != `{"kind":"drive","uri":"first"}` {
+		t.Errorf("PublishedLocation = %q, want canonical first-write value (rejected Call must NOT have overwritten)", got.PublishedLocation)
+	}
+	if got.State != artifact.StatePublished {
+		t.Errorf("State = %q, want PUBLISHED (terminal-state rejection must preserve the existing row state)", got.State)
+	}
+}
+
 func TestRepository_MarkPublished_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -596,10 +678,227 @@ func TestRepository_MarkPublished_NanoPrecisionRoundTrip(t *testing.T) {
 			got.PublishedAt, got.PublishedAt.Nanosecond(), nanoPublishedAt, nanoPublishedAt.Nanosecond())
 	}
 	// UpdatedAt re-assertion is intentionally omitted: the
-	// Insert test already covers UpdatedAt round-trip; this
-	// test's unique value-add is the PublishedAt path. Keeping
+	// Insert test already covers UpdatedAt round-trip; this		// test's unique value-add is the PublishedAt path. Keeping
 	// coverage surface disjoint keeps the regression-sentinel
 	// signal unambiguous (a future regression that breaks ONLY
 	// PublishedAt round-trip points straight at the Mark*
 	// write path).
+}
+
+// ── InsertWithOutbox (FASE 3 / Push 3.1c hermetic TX tests) ────────
+//
+// These tests are the canonical SQLite-anchored regression
+// sentinels for the InsertWithOutbox atomicity contract.
+// They use real SQLite (in-memory) with the canonical
+// production DDLs (artifact_stages migration 147 + outbox_events
+// migration 092, including the ux_outbox_events_event_key
+// UNIQUE index). The atomicity contract is the entire point of
+// the 2-table TX primitive — a regression in the TX wrapper
+// (e.g., switching to two independent Exec calls) would
+// silently orphan events from their rows or vice versa; this
+// test block fails LOUD on any such drift.
+
+// eventTypeForTest is a neutral event_type used by the
+// InsertWithOutbox hermetic tests. Production uses the
+// `artifact.staged.v1` constant (Push 3.1c emitter) but the
+// repository contract is "store the supplied bytes verbatim"
+// so the test uses a separate value to avoid coupling the
+// repository test to the application's event_type catalog.
+const eventTypeForTest = "artifact.test.staged.v1"
+
+// payloadForTest is the canonical payload byte slice for
+// the InsertWithOutbox hermetic tests. Arbitrary well-formed
+// JSON to verify the repository stores the bytes verbatim
+// (no shape-interpretation, no field reordering).
+var payloadForTest = []byte(`{"stage_id":"art-test-1","hash":"sha256abc","size":4096}`)
+
+// TestRepository_InsertWithOutbox_HappyPath_AtomicCommit pins
+// the 2-table atomic commit contract: BOTH the artifact_stages
+// row AND the co-emitted outbox_events row commit together in
+// a single SQLite TX. The test reads back via two independent
+// paths (artifact.Repository.GetByID for the stage row +
+// db.QueryRowContext for the outbox row) so a regression that
+// commits ONE but not the OTHER surfaces immediately.
+func TestRepository_InsertWithOutbox_HappyPath_AtomicCommit(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewRepository(db)
+	repo.nowFn = func() time.Time { return nowFixed }
+	ctx := context.Background()
+
+	stage := validStage()
+	eventKey, err := repo.InsertWithOutbox(ctx, stage, eventTypeForTest, payloadForTest)
+	if err != nil {
+		t.Fatalf("InsertWithOutbox happy: unexpected error: %v", err)
+	}
+
+	// 1. Returned eventKey MUST match the canonical convention
+	//    `stage:<jobID>:<stageID>` (the producer-side dedupe
+	//    anchor for downstream consumers).
+	const wantEventKey = "stage:job-test-1:art-test-1"
+	if eventKey != wantEventKey {
+		t.Errorf("returned eventKey = %q, want %q", eventKey, wantEventKey)
+	}
+
+	// 2. artifact_stages row IS persisted (full row readable
+	//    via GetByID; this is the same path the finalizer
+	//    uses to scan the saga's per-job contributions).
+	got, err := repo.GetByID(ctx, stage.ID)
+	if err != nil {
+		t.Fatalf("GetByID after InsertWithOutbox: %v (artifact row MUST be persisted)", err)
+	}
+	if got.State != artifact.StateStaged {
+		t.Errorf("artifact_stages.State = %q, want STAGED", got.State)
+	}
+	if !got.CreatedAt.Equal(nowFixed) {
+		t.Errorf("artifact_stages.CreatedAt = %v, want %v (UTC clock source)", got.CreatedAt, nowFixed)
+	}
+	if !got.UpdatedAt.Equal(nowFixed) {
+		t.Errorf("artifact_stages.UpdatedAt = %v, want %v (UTC clock source)", got.UpdatedAt, nowFixed)
+	}
+
+	// 3. outbox_events row IS persisted with the canonical
+	//    fields. Direct SQL probe (vs the application-layer
+	//    outbox.Repository abstraction) so a regression in
+	//    ANY of column-name + value-mapping surfaces here.
+	var (
+		gotEventType, gotAggregateID, gotAggregateType, gotPayloadJSON, gotEventKey, gotStatus, gotCreatedAt string
+	)
+	row := db.QueryRowContext(ctx,
+		`SELECT event_type, aggregate_id, aggregate_type, payload_json, event_key, status, created_at
+		   FROM outbox_events WHERE event_key = ?`, wantEventKey)
+	if err := row.Scan(&gotEventType, &gotAggregateID, &gotAggregateType, &gotPayloadJSON, &gotEventKey, &gotStatus, &gotCreatedAt); err != nil {
+		t.Fatalf("SELECT outbox_events row after InsertWithOutbox: %v (outbox row MUST be persisted)", err)
+	}
+	if gotEventType != eventTypeForTest {
+		t.Errorf("outbox event_type = %q, want %q", gotEventType, eventTypeForTest)
+	}
+	if gotAggregateID != stage.ID {
+		t.Errorf("outbox aggregate_id = %q, want %q (FK-by-convention to artifact_stages row)", gotAggregateID, stage.ID)
+	}
+	if gotAggregateType != "artifact_stage" {
+		t.Errorf("outbox aggregate_type = %q, want %q (canonical aggregate namespace)", gotAggregateType, "artifact_stage")
+	}
+	if gotPayloadJSON != string(payloadForTest) {
+		t.Errorf("outbox payload_json = %q, want %q (verbatim round-trip)", gotPayloadJSON, string(payloadForTest))
+	}
+	if gotEventKey != wantEventKey {
+		t.Errorf("outbox event_key = %q, want %q", gotEventKey, wantEventKey)
+	}
+	if gotStatus != "pending" {
+		t.Errorf("outbox status = %q, want %q (initial state of the consumer drain loop)", gotStatus, "pending")
+	}
+	if gotCreatedAt != nowFixed.UTC().Format(time.RFC3339Nano) {
+		t.Errorf("outbox created_at = %q, want %q (canonical RFC3339Nano UTC)", gotCreatedAt, nowFixed.UTC().Format(time.RFC3339Nano))
+	}
+
+	// 4. Total outbox_events row count for the canonical
+	//    event_key MUST be exactly 1 (no duplicate emission).
+	var rowCount int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM outbox_events WHERE event_key = ?`, wantEventKey).Scan(&rowCount); err != nil {
+		t.Fatalf("COUNT outbox_events: %v", err)
+	}
+	if rowCount != 1 {
+		t.Errorf("outbox_events row count for event_key=%q = %d, want 1", wantEventKey, rowCount)
+	}
+}
+
+// TestRepository_InsertWithOutbox_OutboxFailure_RollsBackArtifactRow
+// pins the atomicity-in-the-OTHER-direction contract: when the
+// outbox_events INSERT fails (here: UNIQUE constraint collision
+// on event_key — the canonical unique-index
+// ux_outbox_events_event_key rejects the duplicate), the
+// co-emitted artifact_stages row MUST be rolled back together
+// so NEITHER commits. The test asserts both contract halves:
+//   - errors.Is(err, ErrOutboxEmit) → typed-error surface
+//   - returned eventKey == "" → no successful commit happened
+//   - GetByID returns ErrArtifactStageNotFound → row was ROLLED BACK
+//   - direct COUNT(*) probe == 0 → DB-side confirmation
+//
+// A partial-commit state (artifact row WITHOUT follow-up event)
+// would silently orphan the stage from the saga's publisher +
+// finalizer steps; this test is the regression sentinel
+// against any future regression where InsertWithOutbox loses
+// its TX wrapper (e.g., a naive refactor to two sequential
+// Exec calls — a plausible-but-wrong simplification).
+func TestRepository_InsertWithOutbox_OutboxFailure_RollsBackArtifactRow(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewRepository(db)
+	repo.nowFn = func() time.Time { return nowFixed }
+	ctx := context.Background()
+
+	// Pre-seed: an outbox_event with the SAME canonical
+	// event_key the InsertWithOutbox will compute. The unique
+	// index will reject the duplicate, surfacing as the
+	// typed ErrOutboxEmit wrap. (Other fields populated with
+	// harmless defaults so the conflicting row simulates
+	// "an earlier publish_request emission for the same key
+	// already reached pending status".)
+	const collidingKey = "stage:job-test-1:art-test-1"
+	preSeedTime := nowFixed.UTC().Format(time.RFC3339Nano)
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, status, created_at, updated_at)
+		   VALUES (?, '', '', '', ?, 'pending', ?, ?)`,
+		eventTypeForTest, collidingKey, preSeedTime, preSeedTime,
+	); err != nil {
+		t.Fatalf("pre-seed colliding outbox row: %v", err)
+	}
+
+	stage := validStage()
+	eventKey, err := repo.InsertWithOutbox(ctx, stage, eventTypeForTest, payloadForTest)
+	if err == nil {
+		t.Fatalf("InsertWithOutbox with colliding event_key: expected non-nil error, got eventKey=%q (TX SHOULD have failed)", eventKey)
+	}
+	if !errors.Is(err, artifact.ErrOutboxEmit) {
+		t.Errorf("err = %v, want ErrOutboxEmit (typed-error contract for outbox INSERT failure)", err)
+	}
+
+	// 1. Returned eventKey MUST be empty on failure (no
+	//    successful commit happened — the caller cannot
+	//    log a non-existent eventKey).
+	if eventKey != "" {
+		t.Errorf("returned eventKey = %q, want %q (no commit happened)", eventKey, "")
+	}
+
+	// 2. CRITICAL REGRESSION SENTINEL: artifact_stages row
+	//    MUST NOT exist — the TX was rolled back atomically.
+	//    A non-rolled-back row would orphan the stage from
+	//    the publisher + finalizer saga (the row would scan
+	//    but no follow-up event would fire).
+	got, getErr := repo.GetByID(ctx, stage.ID)
+	if got != nil {
+		t.Errorf("artifact_stages row IS persisted after failed InsertWithOutbox (id=%q state=%q) — TX rollback REGRESSION: row should be rolled back", got.ID, got.State)
+	}
+	if !errors.Is(getErr, artifact.ErrArtifactStageNotFound) {
+		t.Errorf("GetByID after failed InsertWithOutbox: err = %v, want ErrArtifactStageNotFound (row was rolled back)", getErr)
+	}
+
+	// 3. Direct DB-side confirmation: COUNT(*) probe against
+	//    artifact_stages for the canonical stage ID. Belt-
+	//    and-suspenders check independent of the
+	//    application-layer GetByID sentinel mapping.
+	var rowCount int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM artifact_stages WHERE id = ?`, stage.ID).Scan(&rowCount); err != nil {
+		t.Fatalf("COUNT(artifact_stages by id): %v", err)
+	}
+	if rowCount != 0 {
+		t.Errorf("artifact_stages row count for id=%q = %d, want 0 (TX was not rolled back — atomicity REGRESSION)", stage.ID, rowCount)
+	}
+
+	// 4. The colliding outbox row is STILL present (we
+	//    deliberately do NOT clean it up — production's
+	//    retry-pipeline expects the prior failed emission
+	//    remains for diagnostics). The application's
+	//    job_id lookup would find it on a re-attempt via
+	//    event_key dedup; the test confirms the pre-seed
+	//    was not inadvertently cleaned by the rollback.
+	var preSeedCount int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM outbox_events WHERE event_key = ?`, collidingKey).Scan(&preSeedCount); err != nil {
+		t.Fatalf("COUNT(outbox_events by pre-seeded event_key): %v", err)
+	}
+	if preSeedCount != 1 {
+		t.Errorf("pre-seeded outbox row count for event_key=%q = %d, want 1 (pre-seed should remain untouched by TX rollback)", collidingKey, preSeedCount)
+	}
 }
