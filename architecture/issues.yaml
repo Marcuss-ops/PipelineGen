@@ -283,7 +283,7 @@ issues:
       - "Concern C: Behavior-change audit on audit_collection.go (`git diff b1e38ba2^..b1e38ba2 -- internal/application/qdrant/legacyaudit/audit_collection.go`). Confirm 22/22 mutation is rename/spacing refactor only; if any production behavior is altered, file a separate fixup PR."
       - "Stash@{0} cleanup decision: 8 files preserved during the drain. Inspect via `git stash show -p stash@{0}`; confirm ZERO of the 8 files are missing from main; then `git stash drop stash@{0}` ONLY with explicit operator sign-off (do NOT auto-drop)."
       - "Working-tree health: confirm HEAD == origin/main post-burst (per AGENTS.md post-push invariant) + working tree clean + no NEW M files accumulated since b1e38ba2."
-    evidence_filename: "this entry's companion commit message body (forward-pointers inline + user-spec reconciliation table, hybrid-C structure)"
+    evidence_filename: "commit F (sha: 40c9c33f6bfa6dc1e8f33e7ae0354eec64c20848) message body (forward-pointers inline + user-spec reconciliation table, hybrid-C structure)"
     opened_date: 2026-07-12
     tracking_issue: "godlike/07 zero-legacy no-fake-availability + AGENTS.md Operational rules + user-spec forward-pointer requirement (forward-pointers belong in commit message body, NO new files)"
 
@@ -311,9 +311,9 @@ issues:
   # (audit of the bot's drain PR at parent commit b1e38ba2 per the
   # code-reviewer REQUEST-CHANGES verdict) — it is not in the
   # LIVE-VERIFY trace scope above. Scoped out by evidence file
-  # `this entry's companion commit message body` (forward-pointers
-  # inline; no separate `.md` attachment per AGENTS.md
-  # "Git history is the archive").
+  # commit F (sha: 40c9c33f6bfa6dc1e8f33e7ae0354eec64c20848) message
+  # body (forward-pointers inline; no separate `.md` attachment per
+  # AGENTS.md "Git history is the archive").
   # Per godlike/07 zero-legacy, when all PR-LIVE-VERIFY-{1..5}
   # follow-ups RESOLVE, this traceability block is removed along
   # with the entries — the evidence file
@@ -473,7 +473,7 @@ issues:
   # Canonical fix is test-side WHERE clause `id NOT LIKE '%:metadata'`
   # in scripts/stock_pipeline_live_test.sh. Future-investigator playbook
   # + architectural ceiling in follow_up below; detail lives in
-  # companion commit message body (Hybrid-C) and the /tmp/_*.log
+  # commit F (sha: 40c9c33f6bfa6dc1e8f33e7ae0354eec64c20848) message body (Hybrid-C) and the /tmp/_*.log
   # pointers in evidence_filename.
   - id: P1-DIAGNOSTIC-ARC-LIVE-BATTERY-FINALIZER
     title: "Live battery Steps 6-7 fail diagnostic arc — composition-root gap hypothesis A falsified; race-condition hypothesis B untestable under current Dockerfile + host-process constraints; data-layer pivot revealed test-side Step 5 misread"
@@ -487,7 +487,7 @@ issues:
       - "Test-side fix (if Round 16 hypothesis stands): add `AND id NOT LIKE '%:metadata'` to scripts/stock_pipeline_live_test.sh Step 5 WHERE clause (commit a 1-line change to both `scripts/stock_pipeline_live_test.sh` and its byte-equal mirror `scripts/tests/stock_pipeline_live_test.sh`). Re-run live battery fresh — expected PASS=12/FAIL=0 confirming the test-side root cause. Apply this fix only after operator sign-off (test-side changes touch CI)."
       - "Cleanup: revert inert DEBUG_INSTRUMENTATION + log import in step_finalize.go via `git restore` once the test-side fix is validated. The 5-line log.Printf on Phase 4 entry was source-only decoration under the current ceiling; reverting returns the file to origin/main baseline. Track via `git status --porcelain internal/application/assets/providers/stock/stockpipeline/step_finalize.go`."
       - "Future-investigator playbook (encoded from Round 7-16 evidence): hypothesis A is DECIDED — refuted live; do not re-validate without remounted fresh-binary evidence. Hypothesis B is OPEN — currently untestable; prefer Path C (data-layer) over source-level instrumentation until the Dockerfile+host-process ceiling lifts. The live battery Step-6/7 cascade likely has a test-side root cause (Round 16 Step 5 SELECT ordering); look test-side FIRST before any production-code revert."
-    evidence_filename: "/tmp/_live_real_run_round6.log + /tmp/_live_sqlite_probe_round15.log + /tmp/_live_sqlite_failure_rate_round15b.log + /tmp/_live_sqlite_metadata_hypothesis_round16.log + this entry's companion commit body (forward-pointers inline; per AGENTS.md Documentation rule 'Git history is the archive', do NOT create a separate .md attachment file — commit message IS the canonical trace)"
+    evidence_filename: "/tmp/_live_real_run_round6.log + /tmp/_live_sqlite_probe_round15.log + /tmp/_live_sqlite_failure_rate_round15b.log + /tmp/_live_sqlite_metadata_hypothesis_round16.log + commit F (sha: 40c9c33f6bfa6dc1e8f33e7ae0354eec64c20848) message body (forward-pointers inline; per AGENTS.md Documentation rule 'Git history is the archive', do NOT create a separate .md attachment file — commit message IS the canonical trace)"
     opened_date: 2026-07-12
     tracking_issue: "godlike/07 no-fake-availability (no assumed behavioural restoration); AGENTS.md Documentation rule (forward-pointers in commit message body, no new archived files); AGENTS.md Operational rules (no source edits without explicit user request; pre-push verify-main gate RED blocks push)"
 
@@ -532,7 +532,7 @@ issues:
       - "Re-run `make verify-format`; expect 0 lines (clean repo-wide)."
       - "Cross-reference (godlike/06 one-fact-per-entry): PRE-EXISTING-12 covers this single-post-Fase-11 surface; PRE-EXISTING-10 covers the slide-worker-wave-pre-flight + Commit 9b/9c catalog-extension cluster of 11 files. Both closed in Commit F (this commit); deliberately separated per godlike/06 SSOT (different wave origin + different residual classification)."
       - "FALSE-POSITIVE DISCARD (3 originally-referenced drift entries were NOT actual drift): (a) clip_plaintext_output_p0f_test.go was reported unformatted by an earlier repo-wide gofmt -l run but `gofmt -l` on it returns empty — already clean; (b) publisher_pathbuilder_test.go was a ghost path (no on-disk file, no git deletion record, no staged deletion); (c) publisher_vo_subfolder_test.go same ghost path as (b). Post-Commit F repo-wide `gofmt -l .` returns empty repo-wide — these 3 entries are discarded, not surfaced."
-    evidence_filename: "this commit's message body (forward-pointers inline; per AGENTS.md 'Documentation rule', git history is the archive — no separate .md attachment)"
+    evidence_filename: "commit F (sha: 40c9c33f6bfa6dc1e8f33e7ae0354eec64c20848) message body (forward-pointers inline; per AGENTS.md 'Documentation rule', git history is the archive — no separate .md attachment)"
     opened_date: 2026-07-12
     tracking_issue: "godlike/06 SSOT carry-forward discipline; closed by Commit F in the same operation as PRE-EXISTING-10 ratification (two distinct entries per godlike/06 one-fact-per-entry discipline; PRE-EXISTING-10 = slide_worker wave residue + Commit 9b/9c catalog-extension; PRE-EXISTING-12 = post-Fase-11 single-file residue)"
 
@@ -590,7 +590,7 @@ issues:
   # surface.
   - id: PRE-EXISTING-12-USECASE-CACHE-RACE-DRIFT
     title: "CacheRace DifferentFingerprints test residual — fakeOllamaGen.calls is atomic.Int32 but the test asserts int64(4); testify 'Elements should be the same type' fires before comparison"
-    status: in_progress
+    status: resolved
     severity: p2
     owner_capability: "internal/application/scripts/usecase/cache_race_p2a_test.go (assertion) + internal/application/scripts/usecase/engine_test.go (fakeOllamaGen.calls declaration)"
     follow_up:
@@ -629,6 +629,6 @@ issues:
       - "Verify local baseline post-commit: `git log -n 5 --oneline` shows the ratification commit on local main; `go build ./...` + `go vet ./...` + `go test ./internal/application/youtube/usecase/...` continue flipping green (Step 5's bounded verification gates; the artlist/types.go fix at HEAD unblocks the full-repo gate)."
       - "Verify origin/main baseline: this ratification commit fast-forwards cleanly onto origin/main once the local divergence flagged in the prior turn's push attempt is resolved (no SHA hard-pin here — refer to git log for the exact SHA, since a future rebase may relocate it)."
       - "Future-ratification playbook: see PRE-EXISTING-10-FORMAT-DRIFT in this file — it is the canonical exemplar for the ratify-via-doctrine pattern (status:resolved at close-out + commit-message-body-as-archive + zero attachment files). One-pattern-per-fact discipline (godlike/06) — this entry does not re-state the playbook."
-    evidence_filename: "this entry's companion commit message body (forward-pointers inline + Step 5 spec seam table + verification-gate ledger; no separate .md attachment per AGENTS.md 'Git history is the archive')"
+    evidence_filename: "commit F (sha: 40c9c33f6bfa6dc1e8f33e7ae0354eec64c20848) message body (forward-pointers inline + Step 5 spec seam table + verification-gate ledger; no separate .md attachment per AGENTS.md 'Git history is the archive')"
     opened_date: 2026-07-12
     tracking_issue: "godlike/06 SSOT bookkeeping rule for ratifying already-shipped splits via documentation; doctrinal precedent: PRE-EXISTING-10-FORMAT-DRIFT in this file; AGENTS.md Documentation rule ('Git history is the archive' — commit message body IS the canonical trace, no side files); companion prior fix: artlist/types.go merge-conflict resolution unblocks the full-repo gate that Step 5's bounded gates were scoped within (git log carries the SHA, no hard-pin)"

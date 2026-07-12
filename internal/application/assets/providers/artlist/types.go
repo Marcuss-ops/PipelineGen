@@ -3,6 +3,7 @@ package artlist
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
