@@ -59,6 +59,8 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/app"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────
