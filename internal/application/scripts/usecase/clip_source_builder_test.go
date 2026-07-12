@@ -38,6 +38,7 @@ import (
 
 	"go.uber.org/zap"
 
+	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -374,7 +375,8 @@ func TestClipSourceBuilder_TranscriptRuneSafeExcerpt_A4(t *testing.T) {
 				byID: map[string]*asset.Asset{clipID: clip},
 			}
 			b := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
-			ev, _, _, err := b.BuildClipContext(context.Background(), []string{clipID}, nil)
+			b.ConfigureTextTrackReader(&a4StubTextTrackReader{transcripts: map[string]string{clipID: tc.transcript}})
+			ev, _, _, err := b.BuildClipContext(context.Background(), []string{clipID}, &scripts.ClipGenerationOptions{Language: "en"})
 			if err != nil {
 				t.Fatalf("BuildClipContext: %v", err)
 			}
@@ -416,3 +418,39 @@ func TestClipSourceBuilder_TranscriptRuneSafeExcerpt_A4(t *testing.T) {
 		})
 	}
 }
+
+// a4StubTextTrackReader is a per-subtest TextTrackReader stub used by
+// TestClipSourceBuilder_TranscriptRuneSafeExcerpt_A4. It returns the
+// test-fixture transcript (parameterized in tc.transcript) for the
+// canonical clip ID at language "en" with kind=Transcript. All other
+// (assetID, language, kind) triples return (nil, nil, nil) so the
+// test surface is fully hermetic — no real DB / Whisper path.
+type a4StubTextTrackReader struct {
+	transcripts map[string]string
+}
+
+func (s *a4StubTextTrackReader) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+	if text, ok := s.transcripts[assetID]; ok && kind == asset.TextTrackTranscript {
+		return &asset.TextTrack{
+			AssetID:       assetID,
+			LanguageCode:  languageCode,
+			TextKind:      asset.TextTrackTranscript,
+			TextContent:   text,
+			TextHash:      "a4-" + assetID,
+			SourceVersion: "v1",
+			Status:        asset.TextTrackReady,
+		}, nil, nil
+	}
+	return nil, nil, nil
+}
+
+func (s *a4StubTextTrackReader) ListReadyLanguages(_ context.Context, assetID string, _ asset.TextTrackKind) ([]string, error) {
+	if _, ok := s.transcripts[assetID]; ok {
+		return []string{"en"}, nil
+	}
+	return nil, nil
+}
+
+// Compile-time pin: a4StubTextTrackReader satisfies the canonical
+// scriptports.TextTrackReader surface (Fase 4 strict cutover).
+var _ scriptports.TextTrackReader = (*a4StubTextTrackReader)(nil)

@@ -138,24 +138,12 @@ type MultilingualConfig struct {
 	// the pipeline (cmd/admin/text_tracks_backfill.go).
 	RequireTranscriptReady bool `yaml:"require_transcript_ready" default:"false"`
 
-	// MigrationFallbackLegacyMetadata is the one-time migration
-	// switch for the Fase 4 video-pipeline cutover
-	// (PR-PY-CLIPS-CORRETTE-TRADOTTE, July 2026). When true, the
-	// ClipSourceBuilder keeps the legacy `metadata_json["transcript"]`
-	// / `metadata_json["clean_transcript"]` fallback path active
-	// for clips whose `asset_text_tracks` row is missing or
-	// non-READY. When false (the canonical post-cutover default),
-	// the legacy path is REMOVED: the video pipeline reads
-	// transcripts EXCLUSIVELY from `asset_text_tracks` and
-	// surfaces `*ErrTextTrackNotReady` when no READY track is
-	// available for the caller's target language.
-	//
-	// Default false (post-cutover).
-	// godlike/07 fail-closed: an explicit operator opt-in is
-	// required to re-enable the legacy path; the migration is
-	// not a silent background fallback.
-	MigrationFallbackLegacyMetadata bool `yaml:"migration_fallback_legacy_metadata" default:"false"`
-
+	// MigrationFallbackLegacyMetadata REMOVED in Fase 4 strict cutover (July 2026).
+	// The legacy metadata_json["transcript"] / metadata_json["clean_transcript"] read is
+	// RETIRED; the video pipeline reads transcripts EXCLUSIVELY from asset_text_tracks
+	// via the TextTrackReader port. See
+	// internal/application/scripts/usecase/clip_source_builder_transcript.go for the
+	// canonical audit trail.
 	// TranslationPolicy controls the application-layer model
 	// selection passed to the TranslationPort for the
 	// TextTrackMaterializer (Fase 3, PR-PY-CLIPS-CORRETTE-TRADOTTE,

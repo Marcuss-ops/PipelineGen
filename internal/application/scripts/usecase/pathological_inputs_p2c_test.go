@@ -83,8 +83,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/stretchr/testify/assert"
@@ -116,8 +116,32 @@ func newP2CAsset(id, name, filename, transcript, driveLink string) *asset.Asset 
 func runP2CBuild(t *testing.T, clips map[string]*asset.Asset, ids []string) (*scriptpkg.ClipEvidence, error) {
 	t.Helper()
 	stub := &stubClipsResolver{byID: clips}
+
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): route the
+	// legacy metadata_json["transcript"] test fixture writes back
+	// through the canonical TextTrackReader port. Resolved in
+	// strict-cutover resolveTranscript (no metadata_json fallback).
+	// Each clip's metadata_json["transcript"] field becomes the
+	// Transcript block content for that clip, surfacing through
+	// the canonical Fase 4 read pipeline.
+	transcripts := map[string]string{}
+	for id, clip := range clips {
+		if text := clip.GetMetadataString("transcript"); text != "" {
+			transcripts[id] = text
+		}
+	}
+
 	b := scripts.NewClipSourceBuilder(stub, nil, zap.NewNop())
-	ev, _, _, err := b.BuildClipContext(context.Background(), ids, nil)
+	if len(transcripts) > 0 {
+		b.ConfigureTextTrackReader(&p2cMetaBackedTranscriptReader{transcripts: transcripts})
+	}
+	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): pass
+	// Language: "en" explicitly so optsResolveLanguage returns
+	// a non-empty language code; otherwise resolveTranscript
+	// short-circuits via the empty-language branch and returns
+	// ErrTextTrackNotReady with empty transcript, breaking the
+	// post-cutover read path.
+	ev, _, _, err := b.BuildClipContext(context.Background(), ids, &scripts.ClipGenerationOptions{Language: "en"})
 	return ev, err
 }
 
@@ -145,9 +169,9 @@ func TestPathologicalInputs_P2C_Group1_MultilingualAndLength(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		label               string
-		transcript          string
-		wantExcerptRunes    int
+		label                string
+		transcript           string
+		wantExcerptRunes     int
 		wantEndsWithEllipsis bool
 	}{
 		// Pathological single-script length (100K chars).
@@ -470,4 +494,37 @@ func TestPathologicalInputs_P2C_Group5_PathologicalKeys(t *testing.T) {
 		assert.Equal(t, []string{longID}, ev.AcceptedClipIDs, "no max ID length cap (SUT BUG 4)")
 		assert.Equal(t, "LongID", ev.ClipNames[longID], "display name resolved for very long ID")
 	})
+}
+
+// p2cMetaBackedTranscriptReader is the P2.C test suite's
+// TextTrackReader stub. It mirrors metaBackedTranscriptReader in
+// the P0.E suite (different name because they live in different
+// test packages — P2.C is in usecase_test, P0.E is in usecase).
+// Routes legacy metadata_json["transcript"] content through the
+// canonical Fase 4 strict-cutover TextTrackReader.FindReady.
+// Hermetic: in-memory, no DB / Whisper involvement.
+type p2cMetaBackedTranscriptReader struct {
+	transcripts map[string]string
+}
+
+func (r *p2cMetaBackedTranscriptReader) FindReady(_ context.Context, assetID, languageCode string, kind asset.TextTrackKind) (*asset.TextTrack, []asset.TimedCue, error) {
+	if text, ok := r.transcripts[assetID]; ok && kind == asset.TextTrackTranscript {
+		return &asset.TextTrack{
+			AssetID:       assetID,
+			LanguageCode:  languageCode,
+			TextKind:      asset.TextTrackTranscript,
+			TextContent:   text,
+			TextHash:      "p2c-stub-" + assetID,
+			SourceVersion: "v1",
+			Status:        asset.TextTrackReady,
+		}, nil, nil
+	}
+	return nil, nil, nil
+}
+
+func (r *p2cMetaBackedTranscriptReader) ListReadyLanguages(_ context.Context, assetID string, _ asset.TextTrackKind) ([]string, error) {
+	if _, ok := r.transcripts[assetID]; ok {
+		return []string{"en"}, nil
+	}
+	return nil, nil
 }

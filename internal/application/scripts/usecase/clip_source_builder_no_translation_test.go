@@ -24,10 +24,10 @@ import (
 
 	"go.uber.org/zap"
 
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // stubTranslationPort is a translation.TranslationPort spy that
@@ -95,7 +95,7 @@ func TestClipSourceBuilder_NeverInvokesTranslationPort(t *testing.T) {
 	}
 
 	b := scripts.NewClipSourceBuilder(stubClips, nil, zap.NewNop())
-	b.ConfigureTextTrackReader(reader, false /* legacyFallback=false */)
+	b.ConfigureTextTrackReader(reader)
 
 	// Path 1: happy path (1 clip, READY text track).
 	ev, _, _, err := b.BuildClipContext(context.Background(), []string{"clip-A"}, &scripts.ClipGenerationOptions{Language: "en"})
@@ -124,7 +124,7 @@ func TestClipSourceBuilder_NeverInvokesTranslationPort(t *testing.T) {
 		readyLanguages: map[string][]string{},
 	}
 	b2 := scripts.NewClipSourceBuilder(stubClips, nil, zap.NewNop())
-	b2.ConfigureTextTrackReader(readerEmpty, false)
+	b2.ConfigureTextTrackReader(readerEmpty)
 	ev2, _, _, err := b2.BuildClipContext(context.Background(), []string{"clip-A"}, &scripts.ClipGenerationOptions{Language: "it"})
 	if err != nil {
 		t.Fatalf("missing-track path returned error: %v", err)
@@ -200,13 +200,13 @@ func (s *stubTextTrackReader) ListReadyLanguages(_ context.Context, assetID stri
 // the stub reader.
 func makeTrack(assetID, languageCode, text string, status asset.TextTrackStatus) *asset.TextTrack {
 	return &asset.TextTrack{
-		AssetID:      assetID,
-		LanguageCode: languageCode,
-		TextKind:     asset.TextTrackTranscript,
-		TextContent:  text,
-		TextHash:     "hash-" + assetID + "-" + languageCode,
+		AssetID:       assetID,
+		LanguageCode:  languageCode,
+		TextKind:      asset.TextTrackTranscript,
+		TextContent:   text,
+		TextHash:      "hash-" + assetID + "-" + languageCode,
 		SourceVersion: "v1.0",
-		Status:       status,
+		Status:        status,
 	}
 }
 

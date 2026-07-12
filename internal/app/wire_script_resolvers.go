@@ -99,14 +99,15 @@ func buildScriptSourceResolvers(
 			// *TextTrackRepositorySQLite wired in the
 			// composition root; the sub-interface
 			// (scriptports.TextTrackReader) is the typed
-			// surface consumed by ClipSourceBuilder. The
-			// legacy metadata_json fallback is gated on
-			// `cfg.Media.Multilingual.MigrationFallbackLegacyMetadata`.
+			// surface consumed by ClipSourceBuilder.
+			//
+			// Fase 4 strict cutover: there is no legacy
+			// metadata_json[\"transcript\"] fallback; the
+			// TextTrackReader is the SOLE read surface. The
+			// MigrationFallbackLegacyMetadata config knob is
+			// removed (see internal/platform/config/media.go).
 			if root.Repos.TextTrackRepo != nil {
-				clipSourceBuilder.ConfigureTextTrackReader(
-					root.Repos.TextTrackRepo,
-					cfg.Media.Multilingual.MigrationFallbackLegacyMetadata,
-				)
+				clipSourceBuilder.ConfigureTextTrackReader(root.Repos.TextTrackRepo)
 			}
 		}
 	} // ── Normalization config ───────────────────────────────────────
