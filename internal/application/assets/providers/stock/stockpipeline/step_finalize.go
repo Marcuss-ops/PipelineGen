@@ -51,7 +51,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	"go.uber.org/zap"
 
@@ -141,15 +140,6 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 			}
 		}
 	}
-
-	// ── DEBUG_INSTRUMENTATION (Phase 4 entry, round 13, July 2026) ───
-	// Reversible via `git restore step_finalize.go`. Single hypothesis:
-	// is `runner.JobFinalizer()` nil on the production path? Note: a
-	// parallel agent has already implemented fail-closed ErrFinalizerAbsent
-	// at this point — this instrumentation is complementary diagnostic
-	// data captured BEFORE the fail-closed branch fires.
-	log.Printf("DEBUG_INSTRUMENTATION: stock.finalize_phase4 jobFinalizerWired=%v publishedCount=%d manifestValid=%v fp=%q",
-		runner.JobFinalizer() != nil, len(runner.State().Published), manifest != nil, fp)
 
 	// ── Phase 3+4: single-TX spine write ────────────────────────────
 	// godlike/07 fail-closed (no-fake-availability): the production

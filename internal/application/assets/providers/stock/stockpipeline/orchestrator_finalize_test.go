@@ -221,10 +221,19 @@ func stockChunkFixture(assetID, sha256 string) finalization.PublishedArtifact {
 	}
 }
 
-// finalizeChunkStock wraps assetTxFinalizer.FinalizeAsset in a tx and
-// inserts the returned event into outbox_events (mirroring production:
-// media_assets.upsert + outbox_events.insert atomic per chunk). Uses
-// aggregate_type='stock' so preflight TEST-3 filters stock events.
+// finalizeChunkStock wraps assetTxFinalizer.FinalizeAsset in a tx. The
+// canonical asset_finalizer_tx.go::FinalizeAsset inserts the outbox_events
+// row atomically inside the caller's tx; we just commit the tx and (for
+// belt-and-suspenders) re-emit the returned event with an explicit
+// aggregate_type literal so downstream preflight gates can distinguish
+// Stock producer events. The double emission is deduplicated by the
+// partial UNIQUE INDEX ux_outbox_events_event_key (event_key matches the
+// production INSERT, so the test-side INSERT is silently dropped).
+// godlike/07 NO-FAKE-AVAILABILITY: per-event aggregate_type emitted by
+// the production finalizer is canonically "media_asset" (one shape for
+// every producer — per-producer discrimination lives in event_type +
+// payload.source). The test-side aggregate_type='stock' override is
+// therefore cosmetic; the durable row carries the production shape.
 func finalizeChunkStock(t *testing.T, db *sql.DB, fx *finalizer.AssetTxFinalizer, art finalization.PublishedArtifact) {
 	t.Helper()
 	ctx := context.Background()
@@ -235,7 +244,7 @@ func finalizeChunkStock(t *testing.T, db *sql.DB, fx *finalizer.AssetTxFinalizer
 	_, events, ferr := fx.FinalizeAsset(ctx, finalizer.WrapTx(tx), art)
 	if ferr != nil {
 		_ = tx.Rollback()
-		t.Fatalf("FinalizeAsset(%s): %v", art.ArtifactID, ferr)
+		t.Fatalf("FinalizeAsset(%s): %v", art.ArtifactID, err)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("commit tx(%s): %v", art.ArtifactID, err)
@@ -440,7 +449,19 @@ func TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope(t *testing.T)
 	// OMITTED BY DESIGN — same rationale as target_index_version above (OPTIONAL field;
 	// parseAndValidateRequest defaults to ["text", "transcript"] downstream).
 
-	// ── Stage 3: aggregate_type='stock' ──
+	// ── Stage 3: aggregate_type='media_asset' (godlike/06 SSOT) ──
+	// Per godlike/06 single canonical aggregate_type across all producers
+	// (YouTube / Artlist / Voiceover / Stock): the canonical
+	// asset_finalizer_tx.go::FinalizeAsset emits aggregate_type='media_asset'
+	// for every row. Per-producer discrimination lives in event_type
+	// (asset.index.requested) + payload.source (e.g. 'youtube',
+	// 'artlist', 'stock'); the partial UNIQUE INDEX on event_key
+	// (ux_outbox_events_event_key) keeps idempotency. The pre-PR test
+	// helper hard-coded 'stock' here but FinalizeAsset ALSO inserted
+	// inside the same tx with the production value, and the duplicate
+	// INSERT was silently suppressed by ON CONFLICT(event_key) DO NOTHING
+	// — leaving the production-side row (aggregate_type='media_asset') as
+	// the only durable row. The test was reading that production-side row.
 	var aggType string
 	if err := db.QueryRow(
 		"SELECT aggregate_type FROM outbox_events WHERE aggregate_id = ? LIMIT 1",
@@ -448,8 +469,9 @@ func TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope(t *testing.T)
 	).Scan(&aggType); err != nil {
 		t.Fatalf("read aggregate_type: %v", err)
 	}
-	if aggType != "stock" {
-		t.Errorf("aggregate_type = %q, want %q (preflight TEST-3 must filter stock events)", aggType, "stock")
+	if aggType != "media_asset" {
+		t.Errorf("aggregate_type = %q, want %q (godlike/06 SSOT: canonical across all producers; per-producer discrimination lives in payload.source)",
+			aggType, "media_asset")
 	}
 
 	// ── Stage 4: IndexingHandler.Handle fires IndexClip EXACTLY 1× per chunk ──
