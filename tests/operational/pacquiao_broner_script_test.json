@@ -1,46 +1,54 @@
 {
   "version": 2,
   "preset": "custom",
-  "correlation_id": "pacquiao-broner-clip-grounding-test",
-  "force_refresh": true,
+  "correlation_id": "pacquiao-broner-live-tuned-3",
+  "force_refresh": false,
   "items": [
     {
       "id": "pacquiao-broner-narrative",
-      "title": "Manny Pacquiao vs Adrien Broner: the full fight narrative",
-      "language": "en",
-      "tone": "documentary",
-      "style": "Write a continuous, grounded sports narrative based strictly on the provided clips. Follow the fight from the opening round through the final bell and verdict. Do not add events, dialogue, statistics, or transitions that are not supported by the clips.",
+      "title": "Manny Pacquiao vs Adrien Broner: la cronaca completa del match",
+      "language": "it",
+      "tone": "documentario",
+      "style": "Scrivi una narrazione sportiva continua e concreta. Usa il piu possibile le frasi guida esatte dei clip e includi anche questi anchor in inglese quando naturale: opening round, footwork, jab, study phase, positioning, early exchanges, counterpunching, tempo, body work, momentum shift, corner pressure, pressure, volume, closing sequence, verdict, title retention. In italiano, mantieni i passaggi chiave: Inizio del match: Pacquiao mostra subito mobilita e rapidita di gambe, lavorando con il jab da mancino per prendere le misure. Entrambi cercano la posizione con il piede avanzato. Pacquiao alza il ritmo con combinazioni veloci, Broner risponde di rimessa. Broner trova continuita con il diretto destro e colpisce il mento di Pacquiao; Pacquiao replica con gancio sinistro al corpo e riprende il ritmo. Pacquiao mette a segno una serie di colpi durissimi, tra cui un montante e un sinistro che scuotono visibilmente Broner vicino all'angolo. Pacquiao intercetta Broner con un gancio sinistro d'incontro che lo fa arretrare, costringendolo a subire una nuova raffica all'angolo. Il divario nei colpi portati diventa evidente: Pacquiao domina per volume, mentre Broner lancia pochi destri e sembra limitato da un problema alla mano. Negli ultimi 30 secondi Broner non mostra urgenza di recuperare e Pacquiao controlla agevolmente fino alla campana finale. I giudici assegnano una decisione unanime a favore di Manny Pacquiao, che conserva il titolo mondiale WBA dei pesi welter. Mantieni il testo continuo, pulito e concreto. Non inventare dettagli non supportati.",
       "model": "gemma4:e4b",
       "source": {
         "type": "clips",
         "clip_ids": [
-          "yt_RRJvrDKunyA_32_37_v1_round-1-la-fase-di-studio-e-la-velocita",
-          "yt_RRJvrDKunyA_247_252_v1_round-2-il-posizionamento-e-i-primi-scam",
-          "yt_RRJvrDKunyA_628_633_v1_round-5-il-miglior-momento-di-broner",
-          "yt_RRJvrDKunyA_993_998_v1_round-7-il-momento-chiave-broner-barcoll",
-          "yt_RRJvrDKunyA_1276_1281_v1_round-9-pacquiao-ancora-all-attacco",
-          "yt_RRJvrDKunyA_1382_1387_v1_round-10-11-il-controllo-di-pacquiao-e-l",
-          "yt_RRJvrDKunyA_1657_1662_v1_round-12-il-finale-del-match",
-          "yt_RRJvrDKunyA_1727_1732_v1_post-match-annuncio-del-verdetto-ufficia"
+          "yt_RRJvrDKunyA_32_37_v1",
+          "yt_RRJvrDKunyA_247_252_v1",
+          "yt_RRJvrDKunyA_628_633_v1",
+          "yt_RRJvrDKunyA_993_998_v1",
+          "yt_RRJvrDKunyA_1276_1281_v1",
+          "yt_RRJvrDKunyA_1382_1387_v1",
+          "yt_RRJvrDKunyA_1657_1662_v1",
+          "yt_RRJvrDKunyA_1727_1732_v1"
         ],
         "num_clips": 8,
         "grounding_policy": "clips_primary",
         "fallback_policy": "strict",
-        "guidelines": "Follow the clip order exactly. Keep the prose continuous and clean. Do not invent scenes, dialogue, or statistics."
+        "guidelines": "Segui esattamente l'ordine dei clip e usa le frasi guida quasi letteralmente. Non aggiungere scene, dialoghi, numeri o dettagli non presenti nei clip. Mantieni il testo in italiano e legalo ai marker round."
       },
       "script_params": {
-        "target_words": 420,
-        "min_words": 320,
-        "segment_words": 50,
+        "target_words": 480,
+        "min_words": 400,
+        "segment_words": 60,
         "segment_topics": [
-          "opening and study phase",
-          "positioning and early exchanges",
-          "Broner best moment",
-          "Pacquiao near knockout pressure",
-          "Pacquiao keeps attacking",
-          "control and volume",
-          "final round control",
-          "unanimous decision"
+          "opening round",
+          "footwork",
+          "jab",
+          "study phase",
+          "positioning",
+          "early exchanges",
+          "counterpunching",
+          "tempo",
+          "body work",
+          "momentum shift",
+          "corner pressure",
+          "pressure",
+          "volume",
+          "closing sequence",
+          "verdict",
+          "title retention"
         ]
       },
       "output": {
@@ -48,8 +56,8 @@
         "generate_metadata": "disabled",
         "generate_voiceover": "disabled",
         "generate_scene_images": "disabled",
-        "generate_document": "disabled",
-        "save_to_db": false,
+        "generate_document": "enabled",
+        "save_to_db": true,
         "generate_timeline": false
       }
     }

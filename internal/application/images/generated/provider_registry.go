@@ -1,21 +1,21 @@
 // Package generated (application/images/generated) — provider_registry.go
-// holds the GenerationProviderRegistry, the canonical registry seam
-// for AI image generation. Per PR-IMG-SPLIT-5 (July 2026), the registry
-// is in its own file, separate from types, errors, interfaces, and
-// concrete providers.
+// holds the GenerationProviderRegistry — the canonical single-provider
+// registry for AI image generation. Per PR-IMG-SPLIT-5 (July 2026), the
+// registry is now in its own file, separate from types, errors, interfaces,
+// and concrete providers.
 //
-// The generated package no longer ships a default provider. The registry
-// is fail-closed by construction: with no provider registered, every
-// caller-facing method surfaces ErrProviderUnavailable (or
-// ErrProviderNotFound for name-based lookup). Composition roots that
-// want a non-empty registry must pass a GenerationProvider explicitly.
+// Google Slides, driven through Chrome/Playwright and Nano Banana Pro, is
+// the only supported generation path. The registry enforces a
+// single-provider invariant: non-Google-Slides providers are rejected at
+// Generate time.
 //
 // File layout:
 //
-//	types.go                 — DTOs
+//	types.go                 — DTOs + CanonicalGoogleSlidesModel constant
 //	errors.go                — ErrProviderUnavailable sentinel
 //	provider.go              — GenerationProvider interface + ImageGeneratorPort
-//	provider_registry.go     — GenerationProviderRegistry
+//	provider_google_slides.go — GoogleSlidesProvider
+//	provider_registry.go      — GenerationProviderRegistry
 package generated
 
 import (
@@ -27,17 +27,15 @@ import (
 	"go.uber.org/zap"
 )
 
-// GenerationProviderRegistry is the canonical registry seam for AI image
-// generation. The registry holds at most one GenerationProvider; with no
-// provider registered it fails closed at every public method.
+// GenerationProviderRegistry retains the registry seam while enforcing a
+// single-provider invariant. This keeps composition/test boundaries stable
+// without preserving unnecessary provider selection logic.
 type GenerationProviderRegistry struct {
 	provider GenerationProvider
 	log      *zap.Logger
 }
 
-// NewGenerationProviderRegistry composes the registry with at most one
-// provider. Passing nil for `provider` yields a fail-closed registry
-// that returns ErrProviderUnavailable on Generate.
+// NewGenerationProviderRegistry composes the registry with a single provider.
 func NewGenerationProviderRegistry(log *zap.Logger, provider GenerationProvider) *GenerationProviderRegistry {
 	if log == nil {
 		log = zap.NewNop()
@@ -45,13 +43,20 @@ func NewGenerationProviderRegistry(log *zap.Logger, provider GenerationProvider)
 	return &GenerationProviderRegistry{provider: provider, log: log}
 }
 
-// Generate dispatches to the registered provider. With no provider wired,
-// the canonical endpoint surfaces ErrProviderUnavailable (godlike/07
-// fail-closed doctrine: never represent an unavailable backend as a
-// successful no-op).
+// NewDefaultProviderRegistry builds the only supported generation registry.
+func NewDefaultProviderRegistry(log *zap.Logger, googleSlidesPort ImageGeneratorPort) *GenerationProviderRegistry {
+	return NewGenerationProviderRegistry(log, NewGoogleSlidesProvider(googleSlidesPort, log))
+}
+
+// Generate dispatches to the single registered provider. Non-Google-Slides
+// providers are rejected at this gate (fail-closed per godlike/07).
 func (r *GenerationProviderRegistry) Generate(ctx context.Context, req GenerateRequest, opts GenerateOptions) (*GeneratedImage, error) {
 	if r == nil || r.provider == nil {
-		return nil, fmt.Errorf("no generation provider registered: %w", ErrProviderUnavailable)
+		return nil, fmt.Errorf("google-slides provider not registered: %w", ErrProviderUnavailable)
+	}
+	if r.provider.Name() != asset.ProviderGoogleSlides {
+		return nil, fmt.Errorf("invalid generation provider %q: only %q is allowed: %w",
+			r.provider.Name(), asset.ProviderGoogleSlides, ErrProviderUnavailable)
 	}
 
 	out, err := r.provider.Generate(ctx, req, opts)
@@ -60,15 +65,15 @@ func (r *GenerationProviderRegistry) Generate(ctx context.Context, req GenerateR
 	}
 	if r.log != nil {
 		r.log.Info("generation provider dispatched",
+			zap.String("provider", string(asset.ProviderGoogleSlides)),
+			zap.String("model", CanonicalGoogleSlidesModel),
 			zap.Int("bytes", len(out.Data)),
 		)
 	}
 	return out, nil
 }
 
-// TriggerPrewarm forwards the warmup signal to the registered provider.
-// With no provider wired, the call is a no-op (fail-closed for dispatch
-// is enforced separately at Generate time).
+// TriggerPrewarm forwards the warmup signal to the single registered provider.
 func (r *GenerationProviderRegistry) TriggerPrewarm(ctx context.Context, jobID string, count int) {
 	if r == nil || r.provider == nil {
 		return
@@ -76,21 +81,16 @@ func (r *GenerationProviderRegistry) TriggerPrewarm(ctx context.Context, jobID s
 	r.provider.TriggerPrewarm(ctx, jobID, count)
 }
 
-// ProviderByName is the name-based accessor. With no provider registered,
-// it returns nil for every provider ID; callers must check the second
-// return value (Resolve) or the canonical Generate gate.
+// ProviderByName returns Google Slides for its canonical ID and nil for every
+// other provider name.
 func (r *GenerationProviderRegistry) ProviderByName(name asset.ImageProvider) GenerationProvider {
-	if r == nil || r.provider == nil || name == "" {
-		return nil
-	}
-	if r.provider.Name() != name {
+	if r == nil || r.provider == nil || name != asset.ProviderGoogleSlides {
 		return nil
 	}
 	return r.provider
 }
 
-// Providers returns a list containing the registered provider, or nil
-// if no provider is wired.
+// Providers returns either the sole Google Slides provider or an empty list.
 func (r *GenerationProviderRegistry) Providers() []GenerationProvider {
 	if r == nil || r.provider == nil {
 		return nil
@@ -98,24 +98,23 @@ func (r *GenerationProviderRegistry) Providers() []GenerationProvider {
 	return []GenerationProvider{r.provider}
 }
 
-// Diagnostics returns a per-provider health map. With no provider
-// registered the map is empty (no keys surface, no false positives).
+// Diagnostics probes only the real Google Slides provider.
 func (r *GenerationProviderRegistry) Diagnostics(ctx context.Context) map[asset.ImageProvider]error {
-	out := make(map[asset.ImageProvider]error)
+	out := make(map[asset.ImageProvider]error, 1)
 	if r == nil || r.provider == nil {
 		return out
 	}
-	out[r.provider.Name()] = r.provider.Healthy(ctx)
+	out[asset.ProviderGoogleSlides] = r.provider.Healthy(ctx)
 	return out
 }
 
-// Resolve implements the generation Registry contract. With no provider
-// registered, every provider ID fails closed with ErrProviderNotFound.
+// Resolve implements the generation Registry contract. Only google-slides is
+// resolvable; all former provider IDs fail closed.
 func (r *GenerationProviderRegistry) Resolve(providerID string) (GenerationProvider, error) {
 	if r == nil {
 		return nil, errors.New("generated: nil registry")
 	}
-	if r.provider == nil || r.provider.Name() != asset.ImageProvider(providerID) {
+	if providerID != string(asset.ProviderGoogleSlides) || r.provider == nil {
 		return nil, fmt.Errorf("%w (id=%q)", ErrProviderNotFound, providerID)
 	}
 	return r.provider, nil
