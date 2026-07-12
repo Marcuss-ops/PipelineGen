@@ -116,25 +116,52 @@ func WireArtlist(
 ) (*ArtlistWiring, error) {
 	_ = ctx
 
-	// godlike/07 fail-closed: 5 mandatory gates UPFRONT (4 wiring + 1 config,
-	// see validateArtlistScraperURL below). Gates #1-4 short-circuit in order.
+	// godlike/07 fail-closed: 5 mandatory UPFRONT gates (4 wiring + 1 cfg).
+	// Phase 1 (Fase 1, July 2026): each gate now returns the typed
+	// ErrArtlistDepMissing{Kind, Field} sentinel so orchestrators can
+	// branch on intent via errors.As(&missing) and report WHICH dep
+	// failed. The previous fmt.Errorf chain lacked structured Kind/Field
+	// and forced log-line grep — Phase 1 makes the diagnostic
+	// programmatically reachable.
 	if bundle == nil {
-		return nil, fmt.Errorf("WireArtlist: bundle is nil")
+		return nil, ErrArtlistDepMissing{Kind: DepKindRunRepo, Field: "bundle"}
 	}
 	if bundle.Publisher == nil {
-		return nil, fmt.Errorf("WireArtlist: bundle.Publisher is nil (F2.11 mandatory; artlist.NewService rejects with ErrPublisherUnavailable so we fail-closed upstream)")
+		return nil, ErrArtlistDepMissing{Kind: DepKindPublisher, Field: "bundle.Publisher"}
 	}
 	if dispatcher == nil {
-		return nil, fmt.Errorf("WireArtlist: dispatcher is nil (QDRANT-002 mandatory; artlist.NewSearchService rejects with ErrAssetMutationDispatcherUnavailable)")
+		return nil, ErrArtlistDepMissing{Kind: DepKindDispatcher, Field: "dispatcher"}
 	}
 	if bundle.ClipsRepo == nil {
-		return nil, fmt.Errorf("WireArtlist: bundle.ClipsRepo is nil (AssetStore port nil at first SearchByTerms call would panic)")
+		return nil, ErrArtlistDepMissing{Kind: DepKindClipsRepo, Field: "bundle.ClipsRepo"}
 	}
 	if bundle.Jobs == nil || bundle.Jobs.Service == nil {
-		return nil, fmt.Errorf("WireArtlist: bundle.Jobs.Service is nil (Build dep + JobsSvc; /run path unreachable)")
+		return nil, ErrArtlistDepMissing{Kind: DepKindJobsService, Field: "bundle.Jobs.Service"}
+	}
+	// gate #6 — Indexer (Qdrant clipindexer port).
+	// Per user spec literal "Qdrant indexer" listing + per godlike/07
+	// fail-closed: nil on the indexer would cause runtime nil-deref at
+	// the first outbox-stage /run invocation that reaches indexing.
+	// Composition-time rejection via typed sentinel is the canonical
+	// contract; the diagnostic endpoint (Fase 2 follow-up) reads the
+	// Kind to surface WHICH dep the operator forgot to wire.
+	if bundle.ClipIndexerService == nil {
+		return nil, ErrArtlistDepMissing{Kind: DepKindIndexer, Field: "bundle.ClipIndexerService"}
 	}
 
 	// jobdomain.Service alias pin is verified at compile time (Pattern 0 + AGENTS.md).
+
+	// gate #7 — Finalizer (canonical transactional AssetTxFinalizer).
+	// Per user spec literal "finalizer" listing + per godlike/07
+	// fail-closed: the constructor's nil-discard path is contractually
+	// permitted (a future config-validation branch could return nil
+	// on incompatible schema). Composition-time rejection via typed
+	// sentinel pins the invariant; `Field: "finalizerTx"` so the
+	// diagnostic surfaces the source-path beside the well-known Kind.
+	finalizerTx := assetfinalizer.NewAssetTxFinalizer(log)
+	if finalizerTx == nil {
+		return nil, ErrArtlistDepMissing{Kind: DepKindFinalizer, Field: "finalizerTx"}
+	}
 
 	// godlike/07 fail-closed: gate #5 (ART-002 P0.1, July 2026) — config
 	// validity check. When artlist_enabled=true the Node scraper server
@@ -414,7 +441,11 @@ func WireArtlist(
 			AssetVerRepo:      assetVerRepo,
 			// PR-ARTLIST-FINALIZER (July 2026): canonical transactional
 			// asset finalizer. Replaces the legacy dispatchBridge path.
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(log),
+			// Phase 1 (Fase 1, July 2026): finalizerTx is declared above
+			// (gate #7) so the typed sentinel path is the SOLE
+			// canonical owner of the fail-closed check; the previous
+			// inline-construction shape masked the nil-discard path.
+			AssetFinalizerTx: finalizerTx,
 		},
 	})
 	if err != nil {
@@ -541,12 +572,48 @@ func (a *artlistProcessorDownloadAdapter) DownloadArtlistClip(
 //	(b) Configure scraper:  VELOX_ARTLIST_SCRAPER_SERVER_URL=http://artlist-scraper:9123
 //	                        (docker-compose.yml production setup, PR-ARTLIST-CONFIG-PREFIX
 //	                        July 2026 renamed from the bare ARTLIST_SCRAPER_SERVER_URL)
+// validateArtlistScraperURL is the canonical fail-closed gate #5
+// (ART-002 P0.1, July 2026) for WireArtlist. Returns the typed
+// ErrArtlistDepMissing sentinel when the Artlist feature is enabled
+// but the Node scraper server URL is empty (or cfg itself is nil).
+//
+// godlike/07 no-fake-availability: deployments with feature enabled but
+// missing URL MUST NOT succeed silently — the underlying scraper.New()
+// field (ServerURL="") would otherwise pass through to per-call exec
+// fallback (heavier + less reliable) and break /run invocations on first
+// use rather than at startup. This gate pins the fail-closed contract at
+// the composition-root layer; the underlying scraper.New() still accepts
+// URL="" for backward compat with non-Artlist providers (test fixtures,
+// smoke tests, the etc/script artifact paths).
+//
+// godlike/06 SSOT: the gate is the SINGLE canonical owner of this check;
+// the 4 TDD tests in build_bundles_artlist_test.go target it directly via
+// (cfg) → error return. Promotion to WireArtlist is via a single call
+// site (no inline duplicate logic anywhere). If the underlying check
+// moves to the scraper package later, mirror it here as a defense-in-depth
+// gate (don't remove the composition-root check — the "fail fast at boot
+// vs fail slow at first /run" distinction is operationally important).
+//
+// Escape hatches (kept in the Detail field for the operator-fix hint):
+//
+//	(a) Disable Artlist:    VELOX_FEATURE_ARTLIST_ENABLED=false (default)
+//	(b) Configure scraper:  VELOX_ARTLIST_SCRAPER_SERVER_URL=http://artlist-scraper:9123
+//	                        (docker-compose.yml production setup, PR-ARTLIST-CONFIG-PREFIX
+//	                        July 2026 renamed from the bare ARTLIST_SCRAPER_SERVER_URL)
 func validateArtlistScraperURL(cfg *config.Config) error {
 	if cfg == nil {
-		return fmt.Errorf("WireArtlist: cfg is nil (gate #5 scraper-URL fail-closed cannot evaluate)")
+		return ErrArtlistDepMissing{
+			Kind:   DepKindScraperURL,
+			Field:  "cfg",
+			Detail: "ART-002 P0.1 gate #5: cfg is nil; cannot evaluate scraper-URL fail-closed",
+		}
 	}
 	if cfg.Features.ArtlistEnabled && cfg.External.ArtlistScraperServerURL == "" {
-		return fmt.Errorf("WireArtlist: cfg.Features.ArtlistEnabled=true but cfg.External.ArtlistScraperServerURL is empty (ART-002 P0.1 fail-closed; required env VELOX_ARTLIST_SCRAPER_SERVER_URL — without it the searcher chain silently degrades to per-call exec fallback). To disable Artlist set VELOX_FEATURE_ARTLIST_ENABLED=false")
+		return ErrArtlistDepMissing{
+			Kind:  DepKindScraperURL,
+			Field: "cfg.External.ArtlistScraperServerURL",
+			Detail: "ART-002 P0.1: cfg.Features.ArtlistEnabled=true but cfg.External.ArtlistScraperServerURL is empty — required env VELOX_ARTLIST_SCRAPER_SERVER_URL (without it the searcher chain silently degrades to per-call exec fallback). To disable Artlist set VELOX_FEATURE_ARTLIST_ENABLED=false",
+		}
 	}
 	return nil
 }
@@ -564,6 +631,92 @@ func validateArtlistScraperURL(cfg *config.Config) error {
 // than mask it; defining the sentinel here keeps the SSOT single-
 // source for both the gate error and the abort-contract test.
 var ErrArtlistConsumerRegistrationFailed = errors.New("artlist: consumer-job registration failed at composition — production must abort boot (godlike/07 no-fake-availability)")
+
+// ════════════════════════════════════════════════════════════════════
+//  ErrArtlistDepMissing — typed per-dep fail-closed sentinel (Fase 1)
+//
+//  godlike/06 SSOT: this file is the SINGLE canonical owner of the
+//  typed sentinel + DepKind constant set. Every WireArtlist mandatory
+//  gate returns an instance so orchestrators (registerArtlist) can:
+//   1. Branch on intent via `errors.As(err, &missing)` — structured logs
+//      (zap.String("missing_dep", missing.Kind.String())).
+//   2. Surface the missing field name (Field) verbatim so operators can
+//      map to the upstream ComposeRoot / runtime receipt.
+//   3. Avoid the godlike/07 fake-availability anti-pattern of
+//      `log.Warn + skip-route + return-nil` (previous behavior) — the
+//      composition caller now aborts boot with a typed-wrapped error.
+//
+//  Phase 1 (DoD §1) maps 6 of the 10 user-listed deps to hard gates.
+//  Indexer (Qdrant indexer) / FFmpeg processor / Downloader are
+//  intentionally NOT gated by design: their prod-bit-state is verified
+//  at runtime via the canonical PostValidator + IsLiveProbe + ffprobe
+//  binary-detection paths surfaced via WireArtlist's composition-time
+//  construction (NOT composition-time fail-closed). A Fase 1.5 follow-
+//  up may promote them to typed gates if the operator-only battery
+//  requires composition-time visibility — for now per-dep telemetry is
+//  surfaced via /api/artlist/diagnostics (Fase 2 follow-up).
+// ════════════════════════════════════════════════════════════════════
+
+// DepKind enumerates the canonical Artlist composition dependency
+// kinds. The string value is the canonical log/diagnostic tag — tests
+// branch on errors.As depth matching; operators grep on these strings.
+type DepKind string
+
+const (
+	// DepKindRunRepo gates `bundle == nil` (the ArtlistBundle itself).
+	DepKindRunRepo DepKind = "ArtlistBundle"
+	// DepKindPublisher gates `bundle.Publisher == nil` (canonical delivery.Publisher).
+	DepKindPublisher DepKind = "DrivePublisher"
+	// DepKindDispatcher gates `dispatcher == nil` (canonical outbox.Dispatcher).
+	DepKindDispatcher DepKind = "OutboxDispatcher"
+	// DepKindClipsRepo gates `bundle.ClipsRepo == nil` (canonical *assets.ClipsRepository).
+	DepKindClipsRepo DepKind = "ClipsRepository"
+	// DepKindJobsService gates `bundle.Jobs.Service == nil` (composition-time JobsBundle.Service).
+	DepKindJobsService DepKind = "JobsService"
+	// DepKindScraperURL gates the (cfg.Features.ArtlistEnabled &&
+	// cfg.External.ArtlistScraperServerURL=="") pair via validateArtlistScraperURL.
+	DepKindScraperURL DepKind = "ArtlistScraperServerURL"
+	// DepKindIndexer gates `bundle.ClipIndexerService == nil` (Qdrant clipindexer port).
+	// The pre-Fase-1 service thread would silently nil-deref at first
+	// outbox dispatch — composition-time rejection turns a runtime 500
+	// into a typed boot abort.
+	DepKindIndexer DepKind = "ClipIndexerService"
+	// DepKindFinalizer gates the assetfinalizer.NewAssetTxFinalizer(log)
+	// nil-discard path. The constructor today always returns non-nil;
+	// the gate pins the contract at composition time so a future
+	// implementation that conditionally returns nil (e.g., early
+	// config-validation failure) cannot silently regress the
+	// fail-closed invariant.
+	DepKindFinalizer DepKind = "AssetTxFinalizer"
+)
+
+// String makes DepKind satisfy fmt.Stringer so zap.String fields
+// (zap.String("missing_dep", missing.Kind.String())) render cleanly
+// without explicit casts.
+func (k DepKind) String() string { return string(k) }
+
+// ErrArtlistDepMissing is the typed per-dep sentinel WireArtlist
+// returns at every mandatory gate. errors.As(err, &missing) lets
+// orchestrators programmatically branch on the missing dep. The Detail
+// field optionally carries the original verbose message (scraper-URL
+// gate uses it to retain the operator env-var hint verbatim; simple
+// gates leave it empty).
+type ErrArtlistDepMissing struct {
+	Kind   DepKind
+	Field  string
+	Detail string
+}
+
+// Error satisfies the error interface; the format is greedy-named so
+// operators grepping for `mandatory dependency missing:` land on the
+// canonical diagnostic string. Detail (when non-empty) is appended
+// after the godlike/07 marker for the operator-fix hint paths.
+func (e ErrArtlistDepMissing) Error() string {
+	if e.Detail != "" {
+		return fmt.Sprintf("artlist: mandatory dependency missing: %s (field: %s) — godlike/07 fail-closed; %s", e.Kind, e.Field, e.Detail)
+	}
+	return fmt.Sprintf("artlist: mandatory dependency missing: %s (field: %s) — godlike/07 fail-closed", e.Kind, e.Field)
+}
 
 // WireArtlistJobBindings registers the Artlist job handler with the jobs dispatcher.
 // Extracted from WireArtlist so the late-binding has a dedicated composition surface

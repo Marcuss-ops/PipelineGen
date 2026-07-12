@@ -18,6 +18,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
@@ -367,17 +368,35 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		root.Drive.DestResolver,
 	)
 	if err != nil {
-		// godlike/07 fail-closed: downgrade to log.Warn + skip-route + return-nil.
-		// Composition boot MUST NOT abort because artlist is optional in the
-		// architecture; operators see 404 on /api/artlist/* rather than a
-		// full-system rollback.
-		log.Warn("registerArtlist: WireArtlist failed (mandatory gate nil); skipping route registration (godlike/07 fail-closed)",
-			zap.String("root_path", "/api/artlist/*"),
-			zap.Bool("godlike_07_fail_closed", true),
-			zap.Error(err),
-		)
-		wiring.ArtlistSvc = nil
-		return nil
+		// godlike/07 fail-closed: when ArtlistEnabled=true (gated above at
+		// the feature-flag check), a missing mandatory dep ABORTS BOOT with
+		// a typed error. The previous log.Warn + skip-route + return-nil
+		// was a godlike/07 fake-availability violation — operators saw a
+		// green boot with no indicator of WHICH dep was missing, and
+		// `curl /api/artlist/*` returned 404 without surfacing the gate
+		// that fired.
+		// Phase 1 (Fase 1, July 2026) surfaces the ErrArtlistDepMissing
+		// sentinel via errors.As(&missing) so the operator log carries
+		// the canonical Kind + Field tuple. The wrapping
+		// `registerArtlist aborting boot (godlike/07 fail-closed)` keeps
+		// the diagnostic literal searchable in production logs (mirrors
+		// the pre-PR wire-typed-error literal at the WireArtlistJobBindings
+		// failure branch).
+		var depMissing ErrArtlistDepMissing
+		if errors.As(err, &depMissing) {
+			log.Error("registerArtlist: mandatory dependency strictly required when Artlist is enabled; aborting boot (godlike/07 fail-closed)",
+				zap.String("root_path", "/api/artlist/*"),
+				zap.String("missing_dep", depMissing.Kind.String()),
+				zap.String("missing_field", depMissing.Field),
+				zap.Error(err),
+			)
+		} else {
+			log.Error("registerArtlist: WireArtlist unexpected failure; aborting boot (godlike/07 fail-closed)",
+				zap.String("root_path", "/api/artlist/*"),
+				zap.Error(err),
+			)
+		}
+		return fmt.Errorf("registerArtlist aborting boot (godlike/07 fail-closed): %w", err)
 	}
 
 	if err := tryRegisterModuleStrict(registry, log, artlistWiring.Module, WithRegistrationPoint("register.Artlist")); err != nil {
