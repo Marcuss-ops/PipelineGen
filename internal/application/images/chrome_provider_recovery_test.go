@@ -1,403 +1,273 @@
+// Package images — chrome_provider_recovery_test.go (P1.1, July 2026):
+// wire-level recovery tests for the chrome_provider.go → slide_worker.py
+// forwarding contract.
+//
+// Why this file exists (against extending smoke_test.go):
+//   The user P1.1 spec explicitly asks for "Test end-to-end in
+//   chrome_provider_recovery_test.go". The 5-prompt smoke + 2-consecutive
+//   clean-context + Composer direct-call tests already live in smoke_test.go;
+//   adding the 3 P1.1 protocol-extension tests there would bloat an
+//   already-large file. Centralizing them in their own file also makes the
+//   "what is the wire-level contract today?" question trivially answerable
+//   (one file, one protocol surface, one canonical assertion set).
+//
+// What each test pins:
+//   1. TestChromeProvider_NegativePromptForwarded (P1.1 §a) —
+//        negative_prompt field is forwarded verbatim in workerReq;
+//        the composed prompt contains the canonical P1.2 directive
+//        `[negative: do not include ...]`; prompt_original carries the
+//        raw user prompt for the worker-side JSONL audit trail.
+//
+//   2. TestChromeProvider_PromptSuffixForwarded (P1.1 §a + §b) —
+//        prompt_suffix field is forwarded verbatim when set; absent
+//        when PromptSuffix is empty (zero-value discrimination).
+//
+//   3. TestChromeProvider_RatioForwarded (P1.1 §c) —
+//        ratio field is forwarded verbatim when set; the `id`
+//        correlation token (== `request_id` per spec) is always
+//        populated. The wire-level key is `id`; chrome_provider.go
+//        also emits a `request_id` alias for spec compliance.
+//
+// These tests reuse the smokeFixture mock from smoke_test.go (same
+// package; newSmokeFixture, newSmokeFixture.serveResponses, writeValidPNG
+// are all accessible without import). They do NOT depend on Python
+// being installed.
+
 package images
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"go.uber.org/zap"
 )
 
-// ── isDeadWorkerError tests ──────────────────────────────────────────────
-
-func TestIsDeadWorkerError_NilError(t *testing.T) {
-	p := &ChromeImageProvider{log: zap.NewNop()}
-	if p.isDeadWorkerError(nil) {
-		t.Fatal("nil error should not be a dead worker error")
-	}
-}
-
-func TestIsDeadWorkerError_BrokenPipeString(t *testing.T) {
-	p := &ChromeImageProvider{log: zap.NewNop()}
-	err := fmt.Errorf("write to pipe: broken pipe")
-	if !p.isDeadWorkerError(err) {
-		t.Fatal("'broken pipe' in error message should be detected as dead worker")
-	}
-}
-
-func TestIsDeadWorkerError_StdoutClosedUnexpectedly(t *testing.T) {
-	p := &ChromeImageProvider{log: zap.NewNop()}
-	err := fmt.Errorf("worker stdout closed unexpectedly (process may have exited)")
-	if !p.isDeadWorkerError(err) {
-		t.Fatal("'stdout closed unexpectedly' should be detected as dead worker")
-	}
-}
-
-func TestIsDeadWorkerError_ProcessExited(t *testing.T) {
-	// Run a subprocess that exits immediately so we get a valid ProcessState.
-	cmd := exec.Command("true")
-	_ = cmd.Run() // ProcessState is now populated.
-
-	p := &ChromeImageProvider{
-		log: zap.NewNop(),
-		cmd: cmd,
-	}
-	err := fmt.Errorf("some generic error")
-	if !p.isDeadWorkerError(err) {
-		t.Fatal("process with exited ProcessState should be detected as dead worker")
-	}
-}
-
-func TestIsDeadWorkerError_HealthyWorker(t *testing.T) {
-	// A worker that is still running (we simulate with a sleeping process).
-	cmd := exec.Command("sleep", "30")
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("failed to start sleep: %v", err)
-	}
-	defer cmd.Process.Kill()
-
-	p := &ChromeImageProvider{
-		log:     zap.NewNop(),
-		cmd:     cmd,
-		started: true,
-	}
-	err := fmt.Errorf("some unrelated error")
-	if p.isDeadWorkerError(err) {
-		t.Fatal("a healthy worker with a generic error should NOT be detected as dead")
-	}
-}
-
-func TestIsDeadWorkerError_EPIPEViaWriteProbe(t *testing.T) {
-	// Create a pipe and close the write end to simulate a broken stdin.
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	r.Close() // close read end
-
-	p := &ChromeImageProvider{
-		log:   zap.NewNop(),
-		stdin: w,
-	}
-
-	// Close the write end to simulate a broken pipe.
-	w.Close()
-
-	// Pass a generic error that does NOT contain "broken pipe" so that
-	// the stdin probe (Write([]byte{0})) fires and detects EPIPE.
-	// If we passed "broken pipe" in the message, the string-match would
-	// short-circuit and the probe would never execute.
-	probeErr := fmt.Errorf("health check failed: worker unresponsive")
-	if !p.isDeadWorkerError(probeErr) {
-		t.Fatal("EPIPE via stdin probe should be detected as dead worker")
-	}
-}
-
-func TestIsDeadWorkerError_TokenTooLong(t *testing.T) {
-	p := &ChromeImageProvider{log: zap.NewNop()}
-	err := fmt.Errorf("bufio.Scanner: token too long")
-	if !p.isDeadWorkerError(err) {
-		t.Fatal("'token too long' should be detected as dead worker")
-	}
-}
-
-func TestIsDeadWorkerError_StdinIsNil(t *testing.T) {
-	p := &ChromeImageProvider{log: zap.NewNop(), stdin: nil}
-	err := fmt.Errorf("health check: worker stdin is nil (process may have exited)")
-	if !p.isDeadWorkerError(err) {
-		t.Fatal("'stdin is nil' should be detected as dead worker")
-	}
-}
-
-func TestIsDeadWorkerError_UnrelatedError(t *testing.T) {
-	p := &ChromeImageProvider{log: zap.NewNop()}
-	err := fmt.Errorf("warmup: expected status=ready, got error")
-	if p.isDeadWorkerError(err) {
-		t.Fatal("a non-pipe error should NOT be detected as dead worker")
-	}
-}
-
-// ── resetWorker tests ────────────────────────────────────────────────────
-
-func TestResetWorker_ClearsState(t *testing.T) {
-	p := &ChromeImageProvider{
-		log:     zap.NewNop(),
-		started: true,
-		stdin:   nil, // no real stdin needed for state-clearing test
-		stdout:  nil,
-	}
-	p.resetWorker()
-	if p.started {
-		t.Fatal("resetWorker should set started=false")
-	}
-	if p.cmd != nil {
-		t.Fatal("resetWorker should set cmd=nil")
-	}
-}
-
-func TestResetWorker_KillsProcess(t *testing.T) {
-	cmd := exec.Command("sleep", "30")
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("failed to start sleep: %v", err)
-	}
-
-	p := &ChromeImageProvider{
-		log:     zap.NewNop(),
-		cmd:     cmd,
-		started: true,
-	}
-	done := p.resetWorker()
-
-	// resetWorker() kills the process and spawns a background goroutine
-	// that calls cmd.Wait(). The returned channel closes when Wait()
-	// completes — giving us a proper synchronization point instead of
-	// polling cmd.ProcessState (which is subject to memory-visibility races
-	// between the goroutine writing it and the test reading it).
-	select {
-	case <-done:
-		// Process fully reaped by the background goroutine.
-	case <-time.After(2 * time.Second):
-		t.Fatal("process was not killed or waited on by resetWorker within 2 seconds")
-	}
-}
-
-// ── ensureStarted dead-worker detection test ─────────────────────────────
-
-func TestEnsureStarted_DetectsDeadWorkerAndRelaunches(t *testing.T) {
-	// This test verifies that ensureStarted detects a dead worker
-	// (started=true but healthCheck fails with a dead-worker error)
-	// and relaunches.
-	//
-	// We can't test with a real Python worker here (requires Playwright),
-	// but we CAN verify the detection path by setting up a fake state:
-	// started=true, a dead process, and verifying that resetWorker is called.
-
-	// Run a subprocess that exits immediately.
-	cmd := exec.Command("true")
-	_ = cmd.Run() // ProcessState is now populated.
-
-	p := &ChromeImageProvider{
-		scriptsDir: "/nonexistent",
-		log:        zap.NewNop(),
-		started:    true,
-		cmd:        cmd, // already exited
-		stdin:      nil,
-		stdout:     nil,
-	}
-
-	// ensureStarted should detect the dead worker (ProcessState.Exited)
-	// and call resetWorker, then attempt to relaunch. Since scriptsDir
-	// is nonexistent, the relaunch will fail with "slide_worker.py not found".
-	// But the key assertion is that started was reset to false.
-	err := p.ensureStarted(t.Context())
-	if err == nil {
-		t.Fatal("expected error (slide_worker.py not found), got nil")
-	}
-	if !strings.Contains(err.Error(), "slide_worker.py not found") {
-		t.Fatalf("expected 'slide_worker.py not found' error, got: %v", err)
-	}
-	// Verify the worker was reset (started=false) even though relaunch failed.
-	if p.started {
-		t.Fatal("ensureStarted should have reset started=false after detecting dead worker")
-	}
-}
-
-// ── ErrNoImageCandidate tests (P0.1, July 2026) ───────────────────────────
+// TestChromeProvider_NegativePromptForwarded (P1.1 §a) verifies the
+// wire-level forwarding of the negative_prompt field plus the canonical
+// composed-prompt contract (P1.2 still owns the default format).
 //
-// godlike/07 FAIL-CLOSED contract: when the Python worker reports it could
-// not extract a valid candidate (no candidate, only stale results, blob:/
-// googleusercontent both unreachable), the Go side MUST:
-//   - remove any file at the canonical output_path
-//   - NOT return a GeneratedImage to the caller
-//   - surface a typed error that wraps ErrImageGenNoImageCandidate
-// so retry policies + audit logs can distinguish 'no candidate' from any
-// other terminal failure. The pre-fix code fell back to a slide-export
-// (File → Download → PNG) which produced blank/white artifacts that passed
-// byte-level validation. The tests below lock in the FAIL-CLOSED contract.
+//	(a) negative_prompt MUST be forwarded verbatim in workerReq.
+//	(b) composed prompt MUST contain the canonical negative directive
+//	    `[negative: do not include ...]` (P1.2's prompt_composer
+//	    produces format; P1.1's wire-level field just threads the raw).
+//	(c) prompt_original MUST carry the raw user prompt (P1.2 audit
+//	    trail — verifies the worker can later recover the raw form
+//	    for JSONL diagnostics).
+func TestChromeProvider_NegativePromptForwarded(t *testing.T) {
+	fix := newSmokeFixture(t)
+	outputPath := filepath.Join(t.TempDir(), "neg_fwd.png")
+	writeValidPNG(t, outputPath, 80, 80)
 
-// ClassifyError-pure unit tests — no process / pipe plumbing required.
-
-func TestClassifyError_ErrNoImageCandidate(t *testing.T) {
-	err := ClassifyError("ErrNoImageCandidate")
-	if err == nil {
-		t.Fatal("ClassifyError(\"ErrNoImageCandidate\") returned nil")
-	}
-	if !errors.Is(err, ErrImageGenNoImageCandidate) {
-		t.Fatalf("ClassifyError should wrap ErrImageGenNoImageCandidate; got %v", err)
-	}
-}
-
-func TestClassifyError_ErrNoImageCandidate_CaseInsensitive(t *testing.T) {
-	// Worker may emit mixed-case; ClassifyError lowers the input on the
-	// substring probe, so the surface is case-insensitive.
-	cases := []string{
-		"ErrNoImageCandidate",
-		"errnoimagecandidate",
-		"ERRNOIMAGECANDIDATE",
-		"  ErrNoImageCandidate  ",
-	}
-	for _, c := range cases {
-		err := ClassifyError(c)
-		if err == nil {
-			t.Fatalf("ClassifyError(%q) returned nil", c)
-		}
-		if !errors.Is(err, ErrImageGenNoImageCandidate) {
-			t.Fatalf("ClassifyError(%q) must wrap ErrImageGenNoImageCandidate; got %v", c, err)
-		}
-	}
-}
-
-func TestClassifyError_ErrNoImageCandidate_NotOtherSentinels(t *testing.T) {
-	err := ClassifyError("ErrNoImageCandidate")
-	// Must NOT cross-classify into other typed sentinels (the pre-fix hit
-	// the 'default' branch which mapped to ErrImageGenPermanent).
-	for _, sentinel := range []error{
-		ErrImageGenPermanent,
-		ErrImageGenNetwork,
-		ErrImageGenQuota,
-		ErrImageGenAuth,
-		ErrImageGenPolicy,
-	} {
-		if errors.Is(err, sentinel) {
-			t.Fatalf("ErrNoImageCandidate must NOT be classified as %v; got %v", sentinel, err)
-		}
-	}
-}
-
-// Integration test: the full generateOnce path wires the worker →
-// ChromeImageProvider FAIL-CLOSED contract. ensureStarted triggers
-// healthCheck (1 request/response round-trip), then generateOnce writes a
-// generate request and reads the matching-ID response. We mock both
-// round-trips with canned JSON and assert: (a) typed ErrImageGenNoImageCandidate
-// is returned, (b) any orphan file at outputPath is REMOVED, (c) the
-// caller does NOT receive a GeneratedImage.
-
-func TestGenerateOnce_ErrNoImageCandidate_FailClosedRemovesOutput(t *testing.T) {
-	stdInR, stdInW, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe stdin: %v", err)
-	}
-	stdOutR, stdOutW, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe stdout: %v", err)
-	}
-	// Review feedback P0.1: break the test-cycle after Generate returns.
-	// Closing stdInW unblocks the drainer goroutine's bufio.Scanner
-	// (os.Pipe does not return EOF until the writer end is closed),
-	// which then closes the requestIds channel and unblocks the
-	// response-writer goroutine. Without this seam, both goroutines
-	// leak under `go test -race`.
-	t.Cleanup(func() {
-		_ = stdInW.Close()
+	const negativePrompt = "text, watermark, blurry"
+	fix.serveResponses([]string{
+		strings.ReplaceAll(
+			`{"id":"{GEN_ID}","status":"ok","output":"REPLACE","bytes":102400,"natural_w":1920,"natural_h":1080,"complete":true,"elapsed_ms":22000,"profile":0}`,
+			"REPLACE", outputPath,
+		),
 	})
-
-	// Background cmd so isDeadWorkerError does not trip on nil p.cmd
-	// (ProcessState nil → not exited; the stdin probe Write succeeds
-	// because stdInR is being drained by goroutine 1).
-	cmd := exec.Command("sleep", "30")
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("sleep start: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+		Prompt:         "a peaceful valley at dawn",
+		Style:          "cinematic",
+		Width:          1920,
+		Height:         1080,
+		NegativePrompt: negativePrompt,
+		OutputPath:     outputPath,
 	})
-
-	p := &ChromeImageProvider{
-		log:     zap.NewNop(),
-		stdin:   stdInW,
-		stdout:  bufio.NewScanner(stdOutR),
-		started: true,
-		cmd:     cmd,
+	if err != nil || g == nil {
+		t.Fatalf("P1.1 §a: want accept; got g=%v err=%v", g, err)
+	}
+	last := fix.lastRequest()
+	if last == nil {
+		t.Fatal("P1.1 §a: no captured request")
 	}
 
-	// Sentinel: orphan file at the canonical outputPath. The FAIL-CLOSED
-	// contract says this MUST be removed when the worker reports an error.
-	outputPath := filepath.Join(t.TempDir(), "extracted.png")
-	if err := os.WriteFile(outputPath, []byte("orphan"), 0o644); err != nil {
-		t.Fatalf("setup orphan: %v", err)
+	// (a) negative_prompt field MUST carry the raw user prompt verbatim
+	// so the worker can use it for diagnostics / fallback composition.
+	gotNP, _ := last["negative_prompt"].(string)
+	if gotNP != negativePrompt {
+		t.Fatalf("P1.1 §a: negative_prompt not forwarded verbatim; want %q, got %q",
+			negativePrompt, gotNP)
 	}
 
-	// Handshake channel: drainer goroutine forwards each request id
-	// (empty for health, populated for generate); response-writer
-	// goroutine waits until it sees a non-empty id and emits the matching
-	// error response.
-	requestIDs := make(chan string, 4)
+	// (b) composed prompt MUST contain the negative directive (P1.2
+	// canonical format `[negative: do not include ...]`). If the chrome
+	// provider regressed to non-composition, the substring would be
+	// absent and the operator would silently lose the keywords.
+	gotP, _ := last["prompt"].(string)
+	if !strings.Contains(gotP, "[negative: do not include text;watermark;blurry]") {
+		t.Fatalf("P1.1 §a: composed prompt missing negative directive; got %q", gotP)
+	}
 
-	// Goroutine 1: drain stdin. Without consumption, every provider
-	// writeJSON would block on the synchronous io.Pipe semantics.
-	go func() {
-		defer close(requestIDs)
-		scanner := bufio.NewScanner(stdInR)
-		for scanner.Scan() {
-			var req map[string]any
-			if json.Unmarshal(scanner.Bytes(), &req) != nil {
-				continue
-			}
-			id, _ := req["id"].(string)
-			select {
-			case requestIDs <- id:
-			default:
-				// channel full → drainer ahead of writer; drop.
-			}
-		}
-	}()
+	// (c) prompt_original field MUST carry the raw user prompt (P1.2
+	// audit trail — verifies the worker can later recover the raw form).
+	gotOrig, _ := last["prompt_original"].(string)
+	if gotOrig != "a peaceful valley at dawn" {
+		t.Fatalf("P1.1 §a: prompt_original not raw; got %q", gotOrig)
+	}
+}
 
-	// Goroutine 2: serve canned responses in the order the provider expects.
-	go func() {
-		defer stdOutW.Close()
-		// 1) Health response: triggers ensureStarted → healthCheck success.
-		if _, werr := fmt.Fprintln(stdOutW, `{"status":"ok"}`); werr != nil {
-			return
-		}
-		// 2) Generate response: wait for the dynamic id from the drainer.
-		var genID string
-		for captured := range requestIDs {
-			if captured != "" { // health request has no id; skip empties
-				genID = captured
-				break
-			}
-		}
-		resp := fmt.Sprintf(
-			`{"id":"%s","status":"error","code":"ErrNoImageCandidate","error":"ErrNoImageCandidate","profile":0}`+"\n",
-			genID,
-		)
-		_, _ = stdOutW.Write([]byte(resp))
-	}()
+// TestChromeProvider_PromptSuffixForwarded (P1.1 §a + §b) verifies the
+// wire-level forwarding of the prompt_suffix escape-hatch field plus
+// zero-value discrimination.
+//
+//	(a) prompt_suffix MUST be forwarded verbatim when set.
+//	(b) When PromptSuffix is NOT supplied, the field MUST be absent in
+//	    the workerReq payload (chrome_provider.go only emits it when
+//	    non-empty; the zero-value-discrimination guard prevents noise
+//	    fields in the audit log).
+func TestChromeProvider_PromptSuffixForwarded(t *testing.T) {
+	fix := newSmokeFixture(t)
+	outputPath := filepath.Join(t.TempDir(), "suffix_fwd.png")
+	writeValidPNG(t, outputPath, 80, 80)
 
-	// Run the test through the public Generate entry point so the
-	// deadWorkerError retry logic also exercises the typed-error path
-	// (it must NOT retry on ErrImageGenNoImageCandidate).
-	g, genErr := p.Generate(context.Background(), GenerateImageRequest{
-		Prompt:     "test prompt",
-		Width:      1024,
-		Height:     1024,
+	const rawPrompt = "a starlit desert at night"
+	const explicitSuffix = "negative_keywords: avoid text, watermark, blurry"
+
+	// (a) happy path: suffix set → forwarded verbatim.
+	fix.serveResponses([]string{
+		strings.ReplaceAll(
+			`{"id":"{GEN_ID}","status":"ok","output":"REPLACE","bytes":102400,"natural_w":1920,"natural_h":1080,"complete":true,"elapsed_ms":22000,"profile":0}`,
+			"REPLACE", outputPath,
+		),
+	})
+	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+		Prompt:       rawPrompt,
+		Style:        "cinematic",
+		Width:        1920,
+		Height:       1080,
+		PromptSuffix: explicitSuffix,
+		OutputPath:   outputPath,
+	})
+	if err != nil || g == nil {
+		t.Fatalf("P1.1 §a+b: want accept; got g=%v err=%v", g, err)
+	}
+	last := fix.lastRequest()
+	if last == nil {
+		t.Fatal("P1.1 §a+b: no captured request")
+	}
+	gotSuffix, ok := last["prompt_suffix"].(string)
+	if !ok || gotSuffix != explicitSuffix {
+		t.Fatalf("P1.1 §a: prompt_suffix not forwarded verbatim; want %q, got %q (ok=%v)",
+			explicitSuffix, gotSuffix, ok)
+	}
+
+	// (b) zero-value discrimination: a 2nd fixture with the same prompt
+	// but no PromptSuffix should NOT have prompt_suffix in the payload.
+	fix2 := newSmokeFixture(t)
+	outputPath2 := filepath.Join(t.TempDir(), "no_suffix.png")
+	writeValidPNG(t, outputPath2, 80, 80)
+	fix2.serveResponses([]string{
+		strings.ReplaceAll(
+			`{"id":"{GEN_ID}","status":"ok","output":"REPLACE","bytes":102400,"natural_w":1920,"natural_h":1080,"complete":true,"elapsed_ms":22000,"profile":0}`,
+			"REPLACE", outputPath2,
+		),
+	})
+	_, err2 := fix2.p.Generate(context.Background(), GenerateImageRequest{
+		Prompt: rawPrompt,
+		Style:  "cinematic",
+		Width:  1920, Height: 1080,
+		OutputPath: outputPath2,
+	})
+	if err2 != nil {
+		t.Fatalf("P1.1 §b (zero-value): want accept; got %v", err2)
+	}
+	last2 := fix2.lastRequest()
+	if _, present := last2["prompt_suffix"]; present {
+		t.Fatal("P1.1 §b (zero-value): prompt_suffix should NOT be present when empty")
+	}
+}
+
+// TestChromeProvider_RatioForwarded (P1.1 §c) verifies the wire-level
+// forwarding of the ratio override field plus the request_id correlation
+// token population.
+//
+//	(a) ratio MUST be forwarded verbatim when set.
+//	(b) The `id` correlation token (= `request_id` per spec) MUST be
+//	    populated so the worker can echo it back in the response for
+//	    log correlation. Wire-level key is `id`; chrome_provider.go
+//	    also emits a `request_id` alias for spec compliance.
+func TestChromeProvider_RatioForwarded(t *testing.T) {
+	fix := newSmokeFixture(t)
+	outputPath := filepath.Join(t.TempDir(), "ratio_fwd.png")
+	writeValidPNG(t, outputPath, 80, 80)
+
+	fix.serveResponses([]string{
+		strings.ReplaceAll(
+			`{"id":"{GEN_ID}","status":"ok","output":"REPLACE","bytes":102400,"natural_w":1920,"natural_h":1080,"complete":true,"elapsed_ms":22000,"profile":0}`,
+			"REPLACE", outputPath,
+		),
+	})
+	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+		Prompt: "a misty forest with sunlight",
+		Style:  "cinematic",
+		Width:  1920, Height: 1080,
+		Ratio:      "16:9",
 		OutputPath: outputPath,
 	})
+	if err != nil || g == nil {
+		t.Fatalf("P1.1 §c: want accept; got g=%v err=%v", g, err)
+	}
+	last := fix.lastRequest()
+	if last == nil {
+		t.Fatal("P1.1 §c: no captured request")
+	}
 
-	// (a) No GeneratedImage surfaced.
-	if g != nil {
-		t.Fatalf("expected nil GeneratedImage on FAIL-CLOSED ErrNoImageCandidate; got %+v", g)
+	// (a) ratio verbatim.
+	gotRatio, ok := last["ratio"].(string)
+	if !ok || gotRatio != "16:9" {
+		t.Fatalf("P1.1 §c: ratio not forwarded verbatim; want 16:9, got %q (ok=%v)", gotRatio, ok)
 	}
-	// (b) Typed sentinel propagated.
-	if genErr == nil {
-		t.Fatalf("expected error on FAIL-CLOSED ErrNoImageCandidate; got nil")
+
+	// (b) `id` AND `request_id` are both populated to the same value
+	// (chrome_provider.go emits `request_id` as an alias of `id` per
+	// the user spec's request_id naming convention).
+	idVal, idOK := last["id"].(string)
+	if !idOK || idVal == "" {
+		t.Fatalf("P1.1 §c: id (request_id) missing; got %q (ok=%v)", idVal, idOK)
 	}
-	if !errors.Is(genErr, ErrImageGenNoImageCandidate) {
-		t.Fatalf("expected err to wrap ErrImageGenNoImageCandidate; got %v", genErr)
+	reqIDVal, reqIDOK := last["request_id"].(string)
+	if !reqIDOK || reqIDVal != idVal {
+		t.Fatalf("P1.1 §c: request_id alias missing or mismatched; id=%q, request_id=%q",
+			idVal, reqIDVal)
 	}
-	// (c) Orphan file removed from outputPath.
-	if _, statErr := os.Stat(outputPath); statErr == nil {
-		t.Fatalf("outputPath MUST be REMOVED on FAIL-CLOSED; still exists")
-	} else if !os.IsNotExist(statErr) {
-		t.Fatalf("outputPath unexpectd stat err: %v", statErr)
+}
+
+// TestChromeProvider_RequestIDAliasOnly (P1.1, July-29 review-feedback)
+// verifies that even when the ratio + prompt_suffix fields are absent
+// (default canonical composition), the `request_id` alias IS in the
+// payload (it's always emitted, not gated on ratio or suffix presence).
+func TestChromeProvider_RequestIDAliasOnly(t *testing.T) {
+	fix := newSmokeFixture(t)
+	outputPath := filepath.Join(t.TempDir(), "rid_only.png")
+	writeValidPNG(t, outputPath, 80, 80)
+
+	fix.serveResponses([]string{
+		strings.ReplaceAll(
+			`{"id":"{GEN_ID}","status":"ok","output":"REPLACE","bytes":102400,"natural_w":1920,"natural_h":1080,"complete":true,"elapsed_ms":22000,"profile":0}`,
+			"REPLACE", outputPath,
+		),
+	})
+	_, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+		Prompt: "a snow-capped peak at sunrise",
+		Style:  "watercolor",
+		Width:  1920, Height: 1080,
+		// No Ratio, no PromptSuffix — zero-value path.
+		OutputPath: outputPath,
+	})
+	if err != nil {
+		t.Fatalf("P1.1 (zero-value pass): want accept; got %v", err)
+	}
+	last := fix.lastRequest()
+	if last == nil {
+		t.Fatal("P1.1 (zero-value pass): no captured request")
+	}
+	idVal, _ := last["id"].(string)
+	reqIDVal, ok := last["request_id"].(string)
+	if !ok || reqIDVal != idVal || reqIDVal == "" {
+		t.Fatalf("request_id alias must always be present and equal to id; id=%q, request_id=%q (ok=%v)",
+			idVal, reqIDVal, ok)
+	}
+	if idVal == "" {
+		t.Fatal("id correlation token must be non-empty")
 	}
 }

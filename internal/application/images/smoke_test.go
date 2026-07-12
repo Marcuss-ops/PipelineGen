@@ -268,8 +268,8 @@ func TestSmoke_LongPrompt_ForwardedInWorkerReq(t *testing.T) {
 	outputPath := filepath.Join(t.TempDir(), "long.png")
 	writeValidPNG(t, outputPath, 80, 80)
 
-	// > 400 character multi-sentence prompt. Each sentence ~38 chars;
-	// 12 repeats → 456 chars. Spec said "prompto lungo >400 caratteri".
+	// > 400 character multi-sentence prompt. Each sentence ~37 chars;
+	// 12 repeats → ~452 chars. Spec said "prompto lungo >400 caratteri".
 	longPrompt := strings.Repeat("This is a detailed scene description. ", 12)
 	if len(longPrompt) < 400 {
 		t.Fatalf("test setup: long prompt should be > 400 chars; got %d", len(longPrompt))
@@ -296,9 +296,28 @@ func TestSmoke_LongPrompt_ForwardedInWorkerReq(t *testing.T) {
 		t.Fatal("smoke.2: no captured request")
 	}
 	gotP, _ := last["prompt"].(string)
-	if gotP != longPrompt {
-		t.Fatalf("smoke.2: prompt mismatch (got %d chars, want %d chars); diff may indicate truncation",
-			len(gotP), len(longPrompt))
+	// P1.2 (July 2026): the Go side composes the prompt via ComposePrompt
+	// before sending to the worker. With Style="cinematic" the composed form
+	// is `{prompt} [style: cinematic]`. The user-spec contract has TWO parts:
+	//   (1) the 400-char raw prompt arrives WHOLE at the worker;
+	//   (2) the composed form contains style + raw prompt.
+	// Assert both: prefix==raw prompt (no truncation), and the style suffix
+	// is appended (suffix composition fired). The "…" / "..." marker must
+	// be absent — the legacy MAX_PROMPT_LEN truncation is RETIRED.
+	if !strings.HasPrefix(gotP, longPrompt) {
+		t.Fatalf("smoke.2 (P1.2 contract): composed prompt must START with the raw %d-char text (got %d chars total); truncation or first-period split detected", len(longPrompt), len(gotP))
+	}
+	if strings.Contains(gotP, "…") {
+		t.Fatal("smoke.2 (P1.2 contract): truncation marker '…' detected in composed prompt (legacy MAX_PROMPT_LEN path re-emerged)")
+	}
+	if !strings.Contains(gotP, "[style: cinematic]") {
+		t.Fatalf("smoke.2 (P1.2 contract): composed prompt missing style suffix; got %q (want substring '[style: cinematic]')", gotP)
+	}
+	// Composed length must equal raw length + style suffix length (no
+	// compression per P1.2 policy).
+	gotOrig, _ := last["prompt_original"].(string)
+	if gotOrig != longPrompt {
+		t.Fatalf("smoke.2 (P1.2 contract): prompt_original field should be raw user prompt for worker-side JSONL audit; got %d chars (want %d)", len(gotOrig), len(longPrompt))
 	}
 }
 
@@ -790,9 +809,7 @@ func TestSmoke_TwoConsecutiveRequests_CleanContext(t *testing.T) {
 	if id1 == "" || id2 == "" || id1 == id2 {
 		t.Errorf("expected distinct non-empty UUIDs; got id1=%q id2=%q", id1, id2)
 	}
-}
-
-// isUUIDv4 returns true when s matches the canonical RFC 4122 36-char
+} // isUUIDv4 returns true when s matches the canonical RFC 4122 36-char
 // 8-4-4-4-12 UUIDv4 form. The version nibble at position 14 must be '4';
 // the variant nibble at position 19 must be in {'8','9','a','b'}.
 func isUUIDv4(s string) bool {
@@ -821,4 +838,229 @@ func isUUIDv4(s string) bool {
 		}
 	}
 	return true
+}
+
+// P1.1 (July 2026) wire-level recovery tests live in
+// chrome_provider_recovery_test.go (per the user spec — "Test end-to-end
+// in chrome_provider_recovery_test.go"). Centralizing them in their
+// own file keeps smoke_test.go focused on the 5-prompt + 2-consecutive
+// + Composer direct-call contract surface.
+
+// ── P1.2 (July 2026): Long prompt + style + negative composition ───────
+//
+// User spec ("Test: prompt 400 caratteri con 3 frasi arriva intero al
+// worker; il prompt composto Go-side contiene stile+negativi+prompt
+// completo") has TWO assertions:
+//   (1) a 400+ char prompt with N>=3 sentences arrives WHOLE at the
+//       worker (no truncation, no first-period split);
+//   (2) the Go-composed prompt contains the full 400+ char text PLUS
+//       the style suffix PLUS the negative directive (with `,`→`;`).
+//
+// The existing TestSmoke_LongPrompt_ForwardedInWorkerReq covers case
+// (1) under Style-only; this test covers the FULL P1.2 contract
+// (style + negative + raw prompt, all three present in workerReq).
+//
+// We deliberately build the 400-char prompt from 3 distinct sentences
+// so the assertion "first sentence NOT stripped off" can detect any
+// first-period split that re-emerges.
+
+func TestSmoke_LongPromptWithStyleAndNegative_ArrivesWholeWithAffixes(t *testing.T) {
+	fix := newSmokeFixture(t)
+	outputPath := filepath.Join(t.TempDir(), "composed.png")
+	writeValidPNG(t, outputPath, 80, 80)
+
+	// 400+ char prompt composed of 3 distinct sentences (so a re-emergent
+	// first-period split can be detected). 18 rounds of the first
+	// sentence + the second + the third → ~470 chars.
+	longPrompt := strings.Repeat("a vintage airport runway at night. ", 18) +
+		"dim runway beacons flicker along the tarmac. " +
+		"a 747 approaches with cabin lights in three rows of windows."
+	if len(longPrompt) < 400 {
+		t.Fatalf("test setup: long prompt should be > 400 chars; got %d", len(longPrompt))
+	}
+	// Sanity-check: 3 distinct sentences present (period-separated).
+	if strings.Count(longPrompt, ".") < 4 {
+		// 4 because the last sentence ends without a trailing period but
+		// the first sentence is repeated 18 times.
+		t.Fatalf("test setup: long prompt should have >= 3 sentences; got %d dots in %q", strings.Count(longPrompt, "."), longPrompt)
+	}
+
+	fix.serveResponses([]string{
+		strings.ReplaceAll(
+			`{"id":"{GEN_ID}","status":"ok","output":"REPLACE","bytes":1024,"natural_w":1920,"natural_h":1080,"complete":true,"elapsed_ms":40000,"profile":0}`,
+			"REPLACE", outputPath,
+		),
+	})
+	g, err := fix.p.Generate(context.Background(), GenerateImageRequest{
+		Prompt:         longPrompt,
+		Style:          "cinematic",
+		NegativePrompt: "text, watermark, blurry",
+		Width:          1920,
+		Height:         1080,
+		OutputPath:     outputPath,
+	})
+	if err != nil || g == nil {
+		t.Fatalf("smoke.P1.2: want accept, got g=%v err=%v", g, err)
+	}
+	last := fix.lastRequest()
+	if last == nil {
+		t.Fatal("smoke.P1.2: no captured request")
+	}
+	gotP, _ := last["prompt"].(string)
+
+	// (1) P1.2 contract: the 400+ char prompt arrives WHOLE at the worker.
+	if !strings.HasPrefix(gotP, longPrompt) {
+		t.Fatalf("smoke.P1.2 (1): composed prompt MUST START with the raw %d-char text (got %d chars); truncation or first-period split detected", len(longPrompt), len(gotP))
+	}
+	if strings.Contains(gotP, "\u2026") { // Unicode ellipsis "…"
+		t.Fatal("smoke.P1.2 (1): Unicode ellipsis '…' detected in composed prompt (legacy MAX_PROMPT_LEN truncation re-emerged)")
+	}
+	// Verify the 3 distinct sentences are present in order in the composed prompt.
+	for _, sentence := range []string{
+		"a vintage airport runway at night.",
+		"dim runway beacons flicker along the tarmac.",
+		"a 747 approaches with cabin lights",
+	} {
+		if !strings.Contains(gotP, sentence) {
+			t.Fatalf("smoke.P1.2 (1): composed prompt missing sentence %q (first-period split re-emerged?); got prefix=%q", sentence, gotP[:min(len(gotP), 120)])
+		}
+	}
+
+	// (2) P1.2 contract: the Go-composed prompt contains style + negative + raw prompt.
+	if !strings.Contains(gotP, "[style: cinematic]") {
+		t.Fatalf("smoke.P1.2 (2): composed prompt missing style suffix; got %q", gotP)
+	}
+	// Negative directive with `,` → `;` defensive transform.
+	if !strings.Contains(gotP, "[negative: do not include text;watermark;blurry]") {
+		t.Fatalf("smoke.P1.2 (2): composed prompt missing negative directive (with `,`→`;` transform); got %q", gotP)
+	}
+
+	// (3) prompt_original field carries the RAW user prompt for the worker
+	// JSONL audit (prompt_original field in every phase emission).
+	gotOrig, _ := last["prompt_original"].(string)
+	if gotOrig != longPrompt {
+		t.Fatalf("smoke.P1.2 (3): prompt_original field should be the raw user prompt (audit); got %d chars vs want %d", len(gotOrig), len(longPrompt))
+	}
+
+	// (4) Composed length: raw + style_affix + negative_affix (no compression).
+	wantSuffix := " [style: cinematic] [negative: do not include text;watermark;blurry]"
+	wantComposed := longPrompt + wantSuffix
+	if gotP != wantComposed {
+		t.Fatalf("smoke.P1.2 (4): composed prompt byte-mismatch (expected exact match: prompt + style + negative); want len=%d, got len=%d", len(wantComposed), len(gotP))
+	}
+}
+
+// min helper REMOVED (July 2026): Go 1.21+ ships a `min` builtin in the
+// `builtin` package, and the project's go.mod declares `go 1.25.0`. The
+// earlier package-level `func min(a, b int) int` would have shadowed the
+// builtin across the entire `images` package (other consumers in the
+// same package resolving `min(...)` would have hit our redefinition),
+// so the helper was deleted. Call sites use the builtin directly:
+//   `min(len(gotP), 120)`, `min(len(r.Composed), len(longPrompt))`.
+
+// ── P1.2 (July 2026): Direct ComposePrompt unit test ────────────────────
+//
+// Unit-level pinning of the contract documented in
+// internal/application/images/prompt_composer.go. Asserts:
+//   - empty style + empty negative → composed == raw (no mutation)
+//   - any null style → omit `[style: ...]`
+//   - any null negative → omit `[negative: ...]`
+//   - multi-word negatives: `,` → `;` (no truncation)
+//   - WasCompressed is HARDCODED false (P1.2 policy)
+//   - composed_len = original_len + len(style_affix) + len(negative_affix)
+//   - no `…` Unicode ellipsis, no `...` ASCII ellipsis inside the prompt
+//   - 400-char prompt arrives whole (no first-period split)
+func TestPromptComposer_DirectCall_FormatContract(t *testing.T) {
+	// (a) No style, no negative: composed MUST equal raw (no mutation).
+	r := ComposePrompt("a peaceful valley at dawn", "", "")
+	if r.Composed != "a peaceful valley at dawn" {
+		t.Fatalf("compose (a): empty affixes; want unchanged prompt; got %q", r.Composed)
+	}
+	if r.WasCompressed {
+		t.Fatal("compose (a): WasCompressed MUST be false (P1.2 policy); got true")
+	}
+	if r.StyleAffix != "" || r.NegativeAffix != "" {
+		t.Fatalf("compose (a): empty affixes; want StyleAffix=NegativeAffix=\"\"; got %q / %q",
+			r.StyleAffix, r.NegativeAffix)
+	}
+	if r.ComposedLen != r.OriginalLen {
+		t.Fatalf("compose (a): empty affixes; want ComposedLen==OriginalLen; got %d vs %d",
+			r.ComposedLen, r.OriginalLen)
+	}
+
+	// (b) Style only: composed = prompt + ` [style: X]`.
+	r = ComposePrompt("a starlit desert at night", "cinematic", "")
+	if !strings.HasPrefix(r.Composed, "a starlit desert at night") {
+		t.Fatalf("compose (b): composed must START with raw prompt; got %q", r.Composed)
+	}
+	if !strings.Contains(r.Composed, "[style: cinematic]") {
+		t.Fatalf("compose (b): composed must contain style suffix; got %q", r.Composed)
+	}
+	if r.NegativeAffix != "" {
+		t.Fatalf("compose (b): empty negative; want NegativeAffix=\"\"; got %q", r.NegativeAffix)
+	}
+	if r.StyleAffix != " [style: cinematic]" {
+		t.Fatalf("compose (b): StyleAffix shape wrong; want %q; got %q", " [style: cinematic]", r.StyleAffix)
+	}
+	if r.ComposedLen != r.OriginalLen+len(r.StyleAffix) {
+		t.Fatalf("compose (b): ComposedLen=%d != OriginalLen=%d + StyleAffixLen=%d",
+			r.ComposedLen, r.OriginalLen, len(r.StyleAffix))
+	}
+
+	// (c) Negative only: composed = prompt + ` [negative: do not include ...]`.
+	// Multi-word negatives: `,` → `;`.
+	r = ComposePrompt("a misty forest with sunlight", "", "text, watermark, blurry")
+	if !strings.HasPrefix(r.Composed, "a misty forest with sunlight") {
+		t.Fatalf("compose (c): composed must START with raw prompt; got %q", r.Composed)
+	}
+	if !strings.Contains(r.Composed, "[negative: do not include text;watermark;blurry]") {
+		t.Fatalf("compose (c): composed must contain negative directive with `,`→`;` transform; got %q", r.Composed)
+	}
+	if r.StyleAffix != "" {
+		t.Fatalf("compose (c): empty style; want StyleAffix=\"\"; got %q", r.StyleAffix)
+	}
+	if r.ComposedLen != r.OriginalLen+len(r.NegativeAffix) {
+		t.Fatalf("compose (c): ComposedLen=%d != OriginalLen=%d + NegativeAffixLen=%d",
+			r.ComposedLen, r.OriginalLen, len(r.NegativeAffix))
+	}
+
+	// (d) Style + negative: full format.
+	r = ComposePrompt("a snow-capped peak at sunrise", "watercolor", "low quality")
+	wantSuffix := " [style: watercolor] [negative: do not include low quality]"
+	if r.Composed != "a snow-capped peak at sunrise"+wantSuffix {
+		t.Fatalf("compose (d): full format mismatch; want %q; got %q",
+			"a snow-capped peak at sunrise"+wantSuffix, r.Composed)
+	}
+	if r.ComposedLen != r.OriginalLen+len(r.StyleAffix)+len(r.NegativeAffix) {
+		t.Fatalf("compose (d): ComposedLen invariant broken; got %d vs %d+%d+%d",
+			r.ComposedLen, r.OriginalLen, len(r.StyleAffix), len(r.NegativeAffix))
+	}
+
+	// (e) 400-char prompt arrives WHOLE (no truncation, no first-period
+	// split). Same shape used by the smoke fixture above (longPrompt
+	// is re-derived to keep the test unit-testable without io.Pipe).
+	sentence := "a vintage airport runway at night. "
+	parts := []string{
+		strings.Repeat(sentence, 18),
+		"dim runway beacons flicker along the tarmac. ",
+		"a 747 approaches with cabin lights in three rows of windows.",
+	}
+	longPrompt := strings.Join(parts, "")
+	if len(longPrompt) < 400 {
+		t.Fatalf("compose (e) setup: want >= 400 chars; got %d", len(longPrompt))
+	}
+	r = ComposePrompt(longPrompt, "cinematic", "text, watermark")
+	if !strings.HasPrefix(r.Composed, longPrompt) {
+		t.Fatalf("compose (e): composed MUST START with the raw 400-char text (no truncation); got prefix of %d vs want %d",
+			min(len(r.Composed), len(longPrompt)), len(longPrompt))
+	}
+	// Verify all 3 sentences are present in the composed form.
+	for _, s := range parts {
+		if !strings.Contains(r.Composed, s) {
+			t.Fatalf("compose (e): composed missing sentence %q (first-period split re-emerged)", s)
+		}
+	}
+	if strings.Contains(r.Composed, "\u2026") || strings.Contains(r.Composed, "...") {
+		t.Fatal("compose (e): truncation marker detected in composed prompt (legacy MAX_PROMPT_LEN path re-emerged)")
+	}
 }
