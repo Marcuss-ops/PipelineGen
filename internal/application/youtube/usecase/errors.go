@@ -9,23 +9,20 @@
 // (jobs/classify.go) switches on `errors.As(err, &ee)` instead of
 // string matching.
 //
-// Azione 3/8 di Step 7 (July 2026): the substring-match fallback
-// delegates to `pkg/retry.IsTransient` (the canonical repository-
-// wide "should I retry this?" predicate). The typed `*ExtractionError`
-// path stays authoritative: a terminal `*ExtractionError{
-// Retryable: false }` whose inner Cause happens to match the
-// transient substring taxonomy (e.g. "503" appearing inside a
-// terminal Cause) MUST classify as non-retryable — that is the
-// Correttezza #9 property. The fallback is therefore only invoked
-// after `errors.As` returns false: it covers raw port errors that
-// bubble up through `retry.Do` before the use case can wrap them.
+// FASE 6 Cut 6.1.D (July 2026): the Azione-3-8 substring-match
+// fallback to `pkg/retry.IsTransient` was REMOVED. The function
+// is now strictly typed: a `*ExtractionError{Code, Retryable}`
+// is the only retryable classification surface. A raw port error
+// that reaches IsTransientExtractionError without having been
+// wrapped by the use case is therefore classified as terminal —
+// the canonical remediation is to wrap it upstream (the use case
+// is the canonical wrap point). The Correttezza #9 property
+// (typed-path beats substring) is now strict: no fallback layer.
 package usecase
 
 import (
 	"errors"
 	"fmt"
-
-	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // FailureCode is the typed enum the use case returns on the canonical
@@ -159,16 +156,20 @@ func NewExtractionError(code FailureCode, retryable bool, message string, cause 
 // is the Correttezza #9 property (the typed classification wins
 // over heuristic substring matching).
 //
-// The substring fallback delegates to `pkg/retry.IsTransient` and
-// is only invoked when `errors.As` returns false: it covers raw
-// port errors bubbling up through `retry.Do` before the use case
-// can wrap them (e.g. a transient 503 from yt-dlp wrapped as
-// `fmt.Errorf("video processing failed: %w", err)`).
+// FASE 6 Cut 6.1.D (July 2026): the substring fallback to
+// `pkg/retry.IsTransient` was REMOVED. A raw port error that
+// reaches this classifier without having been wrapped by the use
+// case (e.g. a transient 503 from yt-dlp wrapped as
+// `fmt.Errorf("video processing failed: %w", err)` and propagated
+// past process_segment without an `*ExtractionError` wrap) now
+// classifies as NON-transient — the canonical remediation is for
+// the use case to wrap it on extraction (godlike/07 typed-only).
+// The Correttezza #9 invariant is preserved because the typed path
+// is the SOLE classification: there is no fallback layer to leak.
 //
-// Returns true when the typed path says retryable OR the substring
-// fallback matches the canonical taxonomy. Returns false for nil
-// errors, for terminal `*ExtractionError`, and for unknown shapes
-// that match no transient substring.
+// Returns true ONLY when the typed path says retryable. Returns
+// false for nil errors, for terminal `*ExtractionError`, and for
+// any error that doesn't carry a typed `*ExtractionError` envelope.
 func IsTransientExtractionError(err error) bool {
 	if err == nil {
 		return false
@@ -177,5 +178,8 @@ func IsTransientExtractionError(err error) bool {
 	if errors.As(err, &ee) {
 		return ee.Retryable
 	}
-	return retry.IsTransient(err)
+	// FASE 6 Cut 6.1.D: substring fallback removed. A raw port error
+	// that bypassed the use case wrap is non-transient by default —
+	// the typed path is the only authoritative classifier.
+	return false
 }

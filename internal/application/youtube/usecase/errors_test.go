@@ -89,22 +89,33 @@ func TestIsTransientExtractionError_WrappedTypedPath(t *testing.T) {
 	}
 }
 
-// TestIsTransientExtractionError_SubstringFallback pins the
-// legacy fallback path: a raw port error matching a known
-// transient substring (timeout, 429, 503, 502, 504, "rate limit",
-// "connection refused", "temporarily unavailable") classifies
-// as transient even when not wrapped in *ExtractionError.
-func TestIsTransientExtractionError_SubstringFallback(t *testing.T) {
+// TestIsTransientExtractionError_NonTypedIsTerminal pins the
+// FASE 6 Cut 6.1.D invariant: a raw port error that reaches
+// IsTransientExtractionError WITHOUT an *ExtractionError envelope
+// classifies as NON-transient. The substring fallback to
+// pkg/retry.IsTransient was REMOVED; the typed path is the only
+// authoritative classifier. A raw 429 / 503 / "rate limit" error
+// that slipped past the use case wrap (canonical remediation:
+// wrap it in NewExtractionError upstream) is classified as
+// terminal to make the gap visible at the classification site
+// rather than silently retrying via a substring heuristic.
+func TestIsTransientExtractionError_NonTypedIsTerminal(t *testing.T) {
 	cases := []struct {
 		name string
 		err  error
 		want bool
 	}{
-		{"timeout", errors.New("request timeout after 30s"), true},
-		{"429", errors.New("HTTP error 429: rate limit exceeded"), true},
-		{"503", errors.New("service unavailable: 503"), true},
-		{"connection refused", errors.New("dial tcp: connection refused"), true},
-		{"rate limit", errors.New("rate limit exceeded"), true},
+		// All-non-typed: every shape is terminal, even when the
+		// message *looks* transient to a substring classifier.
+		// This is the Correttezza #9 + FASE 6 Cut 6.1.D property:
+		// typed-path strict; no fallback layer.
+		{"timeout", errors.New("request timeout after 30s"), false},
+		{"429", errors.New("HTTP error 429: rate limit exceeded"), false},
+		{"503", errors.New("service unavailable: 503"), false},
+		{"connection refused", errors.New("dial tcp: connection refused"), false},
+		{"rate limit", errors.New("rate limit exceeded"), false},
+		{"temporarily unavailable", errors.New("backend temporarily unavailable"), false},
+		// Terminal-shapes stay terminal.
 		{"terminal-permission", errors.New("permission denied"), false},
 		{"terminal-not-found", errors.New("file not found"), false},
 		{"terminal-validation", errors.New("invalid input"), false},
@@ -112,7 +123,7 @@ func TestIsTransientExtractionError_SubstringFallback(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := IsTransientExtractionError(tc.err); got != tc.want {
-				t.Errorf("IsTransientExtractionError(%q): want %v got %v", tc.err.Error(), tc.want, got)
+				t.Errorf("IsTransientExtractionError(%q): want %v got %v (FASE 6 Cut 6.1.D: raw-typed-only classifier; substring messages must NOT classify as transient)", tc.err.Error(), tc.want, got)
 			}
 		})
 	}
