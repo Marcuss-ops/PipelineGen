@@ -115,6 +115,22 @@ type ResolverConfig struct {
 	// AuditRepository persists download events and answers daily-count
 	// queries. Required when AcquisitionMode is authorized_api.
 	AuditRepository artapp.DownloadAuditRepository
+
+	// PostValidator runs AFTER the transport completes AND AFTER
+	// os.Stat, but BEFORE the audit row flips to succeeded.
+	//
+	// PR-HLS-AES128 (P1, July 2026): the production composition wires
+	// this to the canonical ffmpeg.Processor.Probe(ctx, path) gate so
+	// every authorized_api download is ffprobe-validated + stat-positive
+	// BEFORE markAudit(Succeeded) can fire
+	// (godlike/07 no-fake-availability).
+	// If the validator returns a non-nil error the audit row is
+	// flipped to Failed and the typed error surfaces to the caller.
+	//
+	// If nil, no PostValidator runs (defense-in-depth for non-HLS
+	// paths in tests or deployments where ffprobe is intentionally
+	// omitted). This keeps the existing test surface backward-compat.
+	PostValidator func(ctx context.Context, path string) error
 }
 
 // Resolver is the unified Artlist download routing surface. It owns the
@@ -305,12 +321,43 @@ func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 		return nil, mapError(err, path == downloadPathYTDLP)
 	}
 
-	markAudit(artapp.DownloadAuditStatusSucceeded)
-
+	// PR-HLS-AES128 (P1, July 2026): os.Stat MUST happen BEFORE
+	// markAudit(Succeeded). A 0-byte or missing file is not a success —
+	// it is a sign of truncated transport or corrupt source. Pre-PR
+	// these flipped the audit row to succeeded even when the actual
+	// bytes on disk were missing or empty (godlike/07
+	// no-fake-availability violation). See resolver_test.go
+	// ::TestResolver_Download_AuditFailedOnZeroByteFile for the
+	// regression lock.
 	info, statErr := os.Stat(outPath)
 	if statErr != nil {
+		markAudit(artapp.DownloadAuditStatusFailed)
 		return nil, fmt.Errorf("%w: stat result: %v", artapp.ErrEmptyResult, statErr)
 	}
+	if info.Size() == 0 {
+		markAudit(artapp.DownloadAuditStatusFailed)
+		return nil, fmt.Errorf("%w: file %q is 0 bytes (transport reported success but produced no bytes)", artapp.ErrEmptyResult, outPath)
+	}
+
+	// PR-HLS-AES128 (P1, July 2026): PostValidator is the Go-side gate
+	// for ffprobe-based sanity checking. The composition root wires
+	// this to ffmpeg.Processor.Probe in production so a corrupted-but-
+	// stat-positive MP4 (e.g. AES-128 key not applied to segments by
+	// the upstream Node scraper) fails the audit instead of silently
+	// succeeding. Nillable so the existing test surface works without
+	// production wiring.
+	if r.cfg.PostValidator != nil {
+		if vErr := r.cfg.PostValidator(ctx, outPath); vErr != nil {
+			markAudit(artapp.DownloadAuditStatusFailed)
+			return nil, fmt.Errorf("%w: post-validator (ffprobe-equivalent): %v", artapp.ErrInvalidResponse, vErr)
+		}
+	}
+
+	// FINAL DEFENSIVE-STAGE marker: only reach here if EVERY post-check
+	// passed (stat success + size > 0 + validator nil/error). Flipping
+	// the audit row to succeeded at this point means the bytes on disk
+	// are real, non-empty, AND (when wired) verified readable.
+	markAudit(artapp.DownloadAuditStatusSucceeded)
 
 	return &artapp.DownloadResult{
 		LocalPath: outPath,

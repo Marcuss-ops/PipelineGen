@@ -312,3 +312,117 @@ func TestResolver_Download_ManualImportBlocksDownloadAtP1Default(t *testing.T) {
 	require.Empty(t, audit.records,
 		"manual_import gate fires before the audit row is recorded; no rows expected")
 }
+
+// ----- PR-HLS-AES128 (P1, July 2026) --------------------------------------
+//
+// Three tests pin the new gate-order contract in Resolver.Download().
+//
+//   1. markAudit(Succeeded) now happens AFTER os.Stat AND (if wired)
+//      AFTER PostValidator. A 0-byte file MUST NOT pass the audit gate.
+//      Pre-PR was a silent success (godlike/07 no-fake-availability violation).
+//   2. A PostValidator returning a non-nil error MUST mark the audit Failed.
+//      Mirrors the production wiring (ffprobe PostValidator).
+//   3. Backward compat: the existing happy-path test (no PostValidator)
+//      MUST continue to produce a Succeeded audit when bytes are real.
+
+func TestResolver_Download_AuditFailedOnZeroByteFile(t *testing.T) {
+	dir := t.TempDir()
+
+	// Server writes 0 bytes after the Content-Type header. Transport
+	// will return 200 with empty body — pre-PR this was a silent
+	// "succeeded" with audit=Succeeded and an empty bytes array.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "video/mp4")
+		w.WriteHeader(http.StatusOK)
+		// intentionally no body write → 0 bytes on disk
+	}))
+	defer server.Close()
+
+	audit := &fakeAuditRepository{limit: 10}
+	r := NewResolver(&config.Config{}, ResolverConfig{
+		AcquisitionMode:    artapp.AcquisitionModeAuthorizedAPI,
+		AccountID:          "default",
+		DailyDownloadLimit: 10,
+		AuditRepository:    audit,
+	}, zap.NewNop(), nil)
+
+	_, err := r.Download(context.Background(), artapp.DownloadRequest{
+		SourceRef:     server.URL + "/clip.mp4",
+		DestinationID: dir,
+		Filename:      "clip.mp4",
+	})
+
+	require.Error(t, err)
+	require.Len(t, audit.records, 1,
+		"audit row was recorded before the transport (race-free ordering preserved)")
+	assert.Equal(t, artapp.DownloadAuditStatusFailed, audit.records[0].status,
+		"PR-HLS-AES128: 0-byte transport output MUST flip audit to Failed (godlike/07 no-fake-availability)")
+}
+
+func TestResolver_Download_AuditFailedOnPostValidatorRejection(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("fake video bytes that will be rejected by post-validator")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "video/mp4")
+		_, _ = w.Write(content)
+	}))
+	defer server.Close()
+
+	audit := &fakeAuditRepository{limit: 10}
+	r := NewResolver(&config.Config{}, ResolverConfig{
+		AcquisitionMode:    artapp.AcquisitionModeAuthorizedAPI,
+		AccountID:          "default",
+		DailyDownloadLimit: 10,
+		AuditRepository:    audit,
+		// PostValidator mimics an ffprobe-equivalent rejecting non-media
+		// bytes — the same shape the production composition root wires.
+		PostValidator: func(_ context.Context, _ string) error {
+			return errors.New("post-validator rejected: bytes don't look like a media file (mock)")
+		},
+	}, zap.NewNop(), nil)
+
+	_, err := r.Download(context.Background(), artapp.DownloadRequest{
+		SourceRef:     server.URL + "/clip.mp4",
+		DestinationID: dir,
+		Filename:      "clip.mp4",
+	})
+
+	require.Error(t, err)
+	require.Len(t, audit.records, 1)
+	assert.Equal(t, artapp.DownloadAuditStatusFailed, audit.records[0].status,
+		"PR-HLS-AES128: validator rejection MUST flip audit to Failed")
+}
+
+func TestResolver_Download_HappyPathPreservedWithPostValidatorNil(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("fake video bytes for happy-path preservation test")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "video/mp4")
+		_, _ = w.Write(content)
+	}))
+	defer server.Close()
+
+	audit := &fakeAuditRepository{limit: 10}
+	r := NewResolver(&config.Config{}, ResolverConfig{
+		AcquisitionMode:    artapp.AcquisitionModeAuthorizedAPI,
+		AccountID:          "default",
+		DailyDownloadLimit: 10,
+		AuditRepository:    audit,
+		// PostValidator intentionally LEFT NIL — backward-compat surface
+		// must work without production wiring.
+	}, zap.NewNop(), nil)
+
+	result, err := r.Download(context.Background(), artapp.DownloadRequest{
+		SourceRef:     server.URL + "/clip.mp4",
+		DestinationID: dir,
+		Filename:      "clip.mp4",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(len(content)), result.Bytes)
+	require.Len(t, audit.records, 1)
+	assert.Equal(t, artapp.DownloadAuditStatusSucceeded, audit.records[0].status,
+		"PR-HLS-AES128: backward-compatible happy path with no PostValidator MUST still produce Succeeded audit")
+}
