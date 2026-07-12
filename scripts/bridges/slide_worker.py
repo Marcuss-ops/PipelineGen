@@ -62,10 +62,49 @@ from PIL import Image
 MASTER_STORAGE = "data/google_slides_storage.json"
 PROFILE_DIR = "data/google_slides_session_profile"
 
-# ── Prompt cleanup constants (godlike/07 minimum-blast-radius) ────────────
-MAX_PROMPT_LEN = 150
-PROMPT_ELLIPSIS = "..."
-PROMPT_TARGET_LEN = MAX_PROMPT_LEN - len(PROMPT_ELLIPSIS)  # 147
+# ── Legacy prompt truncation RETIRED (P1.2, July 2026) ────────────────
+#
+# The constants below (MAX_PROMPT_LEN=150, PROMPT_ELLIPSIS="...",
+# PROMPT_TARGET_LEN=147) and the corresponding `prompt.split('.')` first-
+# period split + `prompt[:150].rsplit(' ', 1)[0]` truncation block in
+# ProfileWorker._generate are REMOVED.
+#
+# Why the empirical MAX_PROMPT_LEN=150 was retired:
+#   The pre-FASE-7 observation suggested Google Slides (Nano Banana Pro)
+#   visually rejected prompts longer than ~150 chars (silent canvas reset).
+#   The mitigation heuristic was: (a) split on the first period (taking only
+#   the FIRST sentence) and (b) truncate to 147 chars + "..." on a word
+#   boundary. That heuristic destroyed semantic intent — a multi-clause
+#   scenario prompt like "a vintage airport runway at night. dim runway
+#   beacons. an approaching 747 with cabin lights" got cut to "a vintage
+#   airport runway at night".
+#
+# New policy (P1.2, July 2026): the FULL prompt arrives from Go, already
+# composed as `{prompt} [style: X] [negative: do not include ...]`. See
+# internal/application/images/prompt_composer.go::ComposePrompt. We send
+# the whole composed string to ta.fill(); the worker does NO mutation.
+# If Google Slides still rejects on length, the typed retry policy
+# (chrome_provider.Generate — ClassifyError → ErrImageGenPolicy /
+# ErrImageGenTimeout / ErrImageGenPermanent / ErrImageGenNoImageCandidate)
+# catches it with a structured error code so the operator sees the
+# actual rejection and can shorten the prompt deliberately. Silent
+# truncation is strictly worse because (a) the worker never shows the
+# caller what it actually sent (no audit trail), and (b) a typo that
+# shortens a meaningful clause to a preamble destroys the brief.
+#
+# godlike/07 no-fake-availability (P1.2): the worker's prompt-cleanup
+# step was silent fake-availability. It accepted a multi-sentence
+# prompt and emitted a single-sentence prompt without surfacing that
+# fact anywhere visible to the operator. The P1.2 cutover is the
+# canonical fix: trust the Go side to compose, trust the API to
+# reject loudly, and surface every rejection structurally.
+#
+# Forward-pointer: a future push may add a model-aware compressor
+# (e.g. summary-based shortening) firing above an empirically-validated
+# threshold. Today's contract is "send whole; let the API reject
+# loudly" and is pinned by the smoke test
+# `TestSmoke_LongPromptWithStyleAndNegative_ArrivesWholeWithAffixes`
+# plus `TestPromptComposer_DirectCall_FormatContract`.
 
 # ── P2 diagnostics (July 2026) ────────────────────────────────────────────
 #
@@ -382,8 +421,8 @@ def _clear_image_library_panel(page) -> int:
         return -1
 
 
-def _check_169_selected(page) -> bool:
-    """P1.3 (July 2026): post-click verification that 16:9 ratio is applied.
+def _check_169_selected(page, ratio: str = "16:9") -> bool:
+    """P1.3 (July 2026): post-click verification that the requested ratio is applied.
 
     Slides.new collapses the dropdown after click, so the original
     `opt_169` Playwright locator is unreachable after the click fires.
@@ -393,8 +432,13 @@ def _check_169_selected(page) -> bool:
     best-effort: a missed selector returns False (not True) so the typed
     ErrImageGenRatioNotSelected path is taken conservatively.
 
+    P1.1 (July 2026): the `ratio` parameter (defaulting to "16:9" if
+    the request did not specify one) is canonical — we honored the
+    dynamic value rather than hardcoding "16:9" so a future non-16:9
+    ratio support can land without changing the selector set.
+
     Returns True iff one of the selectors matches a label containing
-    '16:9'. False on JS evaluate failure or no match.
+    the requested ratio. False on JS evaluate failure or no match.
     """
     if page is None:
         return False
@@ -415,9 +459,9 @@ def _check_169_selected(page) -> bool:
             }
             return '';
         }""") or ''
-        return '16:9' in selected
+        return ratio in selected
     except Exception as e:
-        _log(f"[_check_169_selected] DOM evaluate failed: {e}")
+        _log(f"[_check_169_selected] DOM evaluate failed (ratio={ratio}): {e}")
         return False
 
 
@@ -760,7 +804,7 @@ class ProfileWorker(threading.Thread):
     # ── Generation ────────────────────────────────────────────────────
 
     def _generate(self, req: dict) -> dict:
-        """Execute one image generation. req = {id, prompt, output, negative_prompt?, style_id?, width?, height?, generation_id?}."""
+        """Execute one image generation. req = {id, prompt, prompt_original?, output, negative_prompt?, style_id?, width?, height?, ratio?, prompt_suffix?, generation_id?, extended_payload?}."""
         request_id = req["id"]
         prompt = req["prompt"]
         output_path = req["output"]
@@ -769,8 +813,46 @@ class ProfileWorker(threading.Thread):
         req_width = int(req.get("width") or 0)
         req_height = int(req.get("height") or 0)
         generation_id = req.get("generation_id", "")
+        # P1.1 (July 2026, July-29 review-feedback): the worker auto-composes
+        # `negative_keywords: avoid ...` at the end of the prompt when the
+        # caller supplies a `negative_prompt` but no explicit `prompt_suffix`.
+        # This honours the user spec literally: "Worker Python: (a) per
+        # negative/non-style usa inclusion testuale nel prompt (campo unico
+        # dell'UI Slides) — componi 'negative_keywords: avoid ...' alla fine
+        # del prompt".
+        #
+        #   auto-composed format (degenerate case):
+        #     negative_keywords: avoid {negative_prompt}
+        #
+        #   auto-composed format (multi-keyword comma-separated):
+        #     negative_keywords: avoid text, watermark, blurry
+        #
+        # Anti-double-affix guard (July-29 reviewer-feedback round-2):
+        # We skip the auto-compose when the composed `prompt` ALREADY
+        # contains a negative directive — chrome_provider.go's P1.2
+        # prompt_composer emits `[negative: do not include ...]` in the
+        # canonical path, so emitting `negative_keywords: avoid ...` on
+        # top would produce TWO directives in the DOM, contradicting
+        # the user spec's "alla fine del prompt" (single directive).
+        # The auto-compose is the FALLBACK for callers that route via a
+        # different chrome provider (e.g. a future NVIDIA Flux backend
+        # that does NOT pre-compose).
+        prompt_suffix = req.get("prompt_suffix", "")
+        if (not prompt_suffix and negative_prompt
+                and "[negative: do not include" not in prompt):
+            prompt_suffix = f"negative_keywords: avoid {negative_prompt}"
+        # P1.1 (July 2026): ratio overrides the default 16:9 the
+        # Proporzioni dropdown selects. Empty defaults to "16:9" — the
+        # canonical P1.3 contract for mandatory 16:9 selection.
+        ratio = req.get("ratio", "") or "16:9"
 
-        original_prompt = prompt  # P2: prompt_original field for log replication.
+        # P1.2 (July 2026): prompt_original carries the raw user prompt for
+        # the JSONL diagnostic's `prompt_original` field (audit trail). When
+        # the Go side has composed the prompt via ComposePrompt (default),
+        # `prompt` is the composed form (`raw + [style: ...] + [negative: ...]`)
+        # and `prompt_original` is the raw. We fall back to `prompt` for
+        # backward compatibility with callers that haven't been migrated.
+        original_prompt = req.get("prompt_original", prompt)  # P2 + P1.2: audit-log raw prompt.
 
         # P2 phase #1: start. Emit BEFORE any DOM action so the
         # operator can correlate request receipt to phase progression.
@@ -783,20 +865,18 @@ class ProfileWorker(threading.Thread):
             generation_id=generation_id, output_path=output_path,
         )
 
-        # Prompt cleanup (preserved from pre-P2).
-        sentences = [s.strip() for s in prompt.split('.') if s.strip()]
-        if sentences:
-            prompt = sentences[0]
-            if len(prompt) > MAX_PROMPT_LEN:
-                truncated = prompt[:PROMPT_TARGET_LEN]
-                last_space = truncated.rfind(' ')
-                if last_space != -1:
-                    prompt = truncated[:last_space] + PROMPT_ELLIPSIS
-                else:
-                    prompt = truncated + PROMPT_ELLIPSIS
-        else:
-            prompt = prompt[:MAX_PROMPT_LEN]
-        _log(f"[profile-{self.profile_id}][{request_id}] cleaned prompt from '{original_prompt[:40]}...' to '{prompt}' (len={len(prompt)})")
+        # P1.2 (July 2026): prompt arrives WHOLE from Go (already composed by
+        # internal/application/images/prompt_composer.go::ComposePrompt —
+        # style + negative + raw prompt in a single suffix-separated string).
+        # No first-period split, no MAX_PROMPT_LEN truncation, no `…` marker.
+        # The legacy cleanup block (kept verbatim above for reference, now
+        # deleted) used to mutate `prompt` to the first sentence and truncate
+        # to 147 chars. The P1.2 change trusts the Go-side composer to
+        # produce the canonical form and rejects the heuristic entirely.
+        # If a caller sends a comma-separated negative list, the Go side
+        # has already replaced `,` with `;` so the bracketed directive reads
+        # unambiguous. We pass `prompt` straight to ta.fill() below.
+        _log(f"[profile-{self.profile_id}][{request_id}] prompt accepted whole from Go (len={len(prompt)}, original_len={len(original_prompt)}, composed_no_truncation=true)")
 
         os.makedirs(os.path.dirname(os.path.abspath(output_path)) or ".", exist_ok=True)
         t0 = time.time()
@@ -881,7 +961,17 @@ class ProfileWorker(threading.Thread):
                 ta = self.page.locator('textarea:visible').first
                 ta.wait_for(state="visible", timeout=25000)
 
-            ta.fill(prompt)
+            # P1.1 (July 2026): if the caller supplies prompt_suffix, the worker
+            # appends it to the composed prompt in the textarea fill. The
+            # composed form (from P1.2's Go-side prompt_composer) is the
+            # canonical default; prompt_suffix is the user-facing escape-hatch
+            # for callers that need a custom worker-side format (e.g. the
+            # user spec's "negative_keywords: avoid ..." directive). The
+            # strip() guard avoids double-spacing when suffix is non-empty.
+            if prompt_suffix:
+                ta.fill((prompt + " " + prompt_suffix).strip())
+            else:
+                ta.fill(prompt)
 
             # P2 phase #2: prompt_set.
             _log_diag(
@@ -890,7 +980,7 @@ class ProfileWorker(threading.Thread):
                 image_mode_active=image_mode_active,
             )
 
-            # Step 3: select 16:9. MANDATORY per spec (P1.3, July 2026).
+            # Step 3: select ratio. MANDATORY per spec (P1.3, July 2026).
             # The pre-fix `except: pass` silently degraded to whatever
             # ratio was already selected (often the prior request's). We
             # now (a) raise on click failure, (b) verify the post-click
@@ -898,6 +988,9 @@ class ProfileWorker(threading.Thread):
             # the dropdown so the original locator is unreachable), and
             # (c) return a typed `ErrImageGenRatioNotSelected` error so
             # the Go side can resetWorker + retry-once.
+            # P1.1 (July 2026): the `ratio` variable is honored — overrides
+            # the canonical 16:9 default from the Go side when set. Empty
+            # `ratio` from the request defaults to "16:9" (the P1.3 contract).
             try:
                 prop_btn = self.page.locator(
                     '[aria-label="Proporzioni"], '
@@ -906,24 +999,29 @@ class ProfileWorker(threading.Thread):
                 if not prop_btn.is_visible():
                     raise Exception("Proporzioni button not visible (cannot open ratio menu)")
                 prop_btn.click(force=True, timeout=3000)
-                opt_169 = self.page.locator('*:has-text("16:9")').last
-                opt_169.wait_for(state="visible", timeout=3000)
-                opt_169.click(force=True, timeout=3000)
+                opt_ratio = self.page.locator(
+                    f'[role="menuitemradio"]:has-text("{ratio}"), '
+                    f'[data-ratio="{ratio}"], '
+                    f'*:has-text("{ratio}")'
+                ).last
+                opt_ratio.wait_for(state="visible", timeout=3000)
+                opt_ratio.click(force=True, timeout=3000)
                 # Settle + verify the dropdown closed. The locator
-                # handle on opt_169 is typically gone after the dropdown
-                # closes so we re-query via _check_169_selected.
+                # handle on opt_ratio is typically gone after the dropdown
+                # closes so we re-query via _check_169_selected (which is
+                # parameterized on the dynamic ratio variable).
                 self.page.wait_for_timeout(400)
-                if not _check_169_selected(self.page):
-                    raise Exception("16:9 not confirmed in post-click selected-ratio state")
-                ratio_selected = "16:9"
+                if not _check_169_selected(self.page, ratio):
+                    raise Exception(f"{ratio} not confirmed in post-click selected-ratio state")
+                ratio_selected = ratio
             except Exception as e:
                 err_code = "ErrImageGenRatioNotSelected"
-                _log(f"[profile-{self.profile_id}][{request_id}] 16:9 selection FAILED: {e}")
+                _log(f"[profile-{self.profile_id}][{request_id}] {ratio} selection FAILED: {e}")
                 _log_diag(
                     request_id, self.profile_id, "error",
                     url=self.page.url,
                     error_code=err_code,
-                    error_message=f"16:9 selection failed: {e}",
+                    error_message=f"{ratio} selection failed: {e}",
                     elapsed_ms=int((time.time() - t0) * 1000),
                 )
                 # P1.3: typed error → Go-side (ClassifyError) maps
@@ -1312,14 +1410,26 @@ def main() -> None:
                 # P1.1: forward the full extended payload (negative_prompt,
                 # style_id, width, height, generation_id) to the worker
                 # via the in_queue dict.
+                # P1.1 + P1.2 (July 2026): forward the full extended payload
+                # (negative_prompt, style_id, width, height, generation_id)
+                # PLUS prompt_original so the worker can preserve the raw
+                # user prompt in the JSONL diagnostics (prompt_original field)
+                # while filling the DOM textarea with the composed prompt.
+                # The Go side already composed prompt via ComposePrompt; the
+                # prompt_original field carries the raw user prompt for
+                # audit/log correlation — the worker's `original_prompt`
+                # local variable uses it preferentially.
                 result = dispatcher.profiles[0]._generate({
                     "id": request_id,
                     "prompt": prompt,
+                    "prompt_original": req.get("prompt_original", prompt),
                     "output": output_path,
                     "negative_prompt": req.get("negative_prompt", ""),
                     "style_id": req.get("style_id", ""),
                     "width": req.get("width", 0),
                     "height": req.get("height", 0),
+                    "ratio": req.get("ratio", ""),
+                    "prompt_suffix": req.get("prompt_suffix", ""),
                     "generation_id": req.get("generation_id", ""),
                 })
                 # In generation mode we already emitted the response

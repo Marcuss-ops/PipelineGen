@@ -46,6 +46,23 @@ type GenerateImageRequest struct {
 	// Step 4 (July 2026): populated from StyleResolver.ResolvedStyle.
 	NegativePrompt string `json:"negative_prompt,omitempty"`
 
+	// P1.1 (July 2026): free-text escape-hatch that the worker appends
+	// to the prompt in the Slides textarea fill. Useful for callers
+	// who need a custom worker-side composition format (e.g. the
+	// "negative_keywords: avoid ..." directive if the canonical
+	// Go-side ComposePrompt format `[negative: do not include Y]`
+	// isn't suitable). Empty means no extra suffix; the canonical
+	// P1.2 composition `[style: X] [negative: ...]` remains the
+	// default.
+	PromptSuffix string `json:"prompt_suffix,omitempty"`
+
+	// P1.1 (July 2026): overrides the default 16:9 ratio the worker
+	// selects in the Slides "Proporzioni" dropdown. Empty defaults
+	// to "16:9" on the worker side. Forwarded as-is via workerReq;
+	// no Go-side validation (the worker's post-click DOM verify is
+	// the source of truth for whether the selected ratio matches).
+	Ratio string `json:"ratio,omitempty"`
+
 	// OutputPath is the canonical file path where the provider should save
 	// the generated image. When set, the provider writes directly to this
 	// path instead of a temporary location, enabling direct file-based

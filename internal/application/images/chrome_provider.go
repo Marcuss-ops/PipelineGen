@@ -276,17 +276,53 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req GenerateImag
 	// was not a UUID; downstream log aggregation needed ad-hoc
 	// regexes to split the correlator. UUIDv4 is canonical.
 	generationID := generateUUIDv4()
+	// P1.2 (July 2026): the worker receives the COMPOSED prompt (raw
+	// prompt + style suffix + negative directive). ComposePrompt is the
+	// canonical Go-side composer — see internal/application/images/prompt_composer.go.
+	// Format: `{prompt} [style: {style}] [negative: do not include {negatives}]`.
+	// The legacy MAX_PROMPT_LEN=150 worker-side truncation heuristic
+	// (sentence split + 147-char floor) is RETIRED — the empirical "Google
+	// Slides rejects prompts longer than ~150 chars" observation is
+	// superseded by sending the full prompt with typed retry on real
+	// rejection (ClassifyError → ErrImageGenPolicy / ErrImageGenTimeout).
+	// We forward `prompt_original` separately so the worker can preserve
+	// the raw user prompt in the JSONL diagnostics (prompt_original field
+	// in every phase emission) while filling the DOM textarea with the
+	// composed prompt.
+	composed := ComposePrompt(req.Prompt, req.Style, req.NegativePrompt)
 	workerReq := map[string]any{
 		"action":          "generate",
-		"id":              requestID,
+		"id":              requestID, // request_id correlation token (Go ↔ worker stdin/stdout)
 		"generation_id":   generationID,
-		"prompt":          req.Prompt,
+		"prompt":          composed.Composed,
+		"prompt_original": req.Prompt, // raw user prompt for worker-side JSONL audit
 		"negative_prompt": req.NegativePrompt,
 		"style_id":        req.Style,
 		"width":           req.Width,
 		"height":          req.Height,
 		"output":          outputPath,
 	}
+	// P1.1 (July 2026): forward prompt_suffix + ratio when non-empty.
+	// prompt_suffix is the worker's escape-hatch for callers that want
+	// a custom worker-side composition format (e.g. the user spec's
+	// "negative_keywords: avoid ..." directive). ratio overrides the
+	// default 16:9 the Proporzioni dropdown selects. Both default to
+	// empty/16:9 respectively — the canonical P1.2 composition
+	// `[style: X] [negative: ...]` remains the default behaviour.
+	if req.PromptSuffix != "" {
+		workerReq["prompt_suffix"] = req.PromptSuffix
+	}
+	if req.Ratio != "" {
+		workerReq["ratio"] = req.Ratio
+	}
+	// P1.1 (July 2026, July-29 review-feedback): the user spec explicitly
+	// asks for a `request_id` correlation field. The canonical
+	// chrome_provider.go internal token is `id` (Phase-named); for
+	// spec-compliance we ALSO emit `request_id` as an alias pointing
+	// at the same string. The response reader consumes `id` (canonical
+	// chrome_provider ↔ worker wire identity); consumers that pivot on
+	// `request_id` per the user spec see the same value.
+	workerReq["request_id"] = requestID
 	if err := p.writeJSON(workerReq); err != nil {
 		if p.isDeadWorkerError(err) {
 			p.log.Warn("ChromeImageProvider: broken pipe on write, resetting worker", zap.Error(err))
@@ -426,6 +462,18 @@ func (p *ChromeImageProvider) generateOnce(ctx context.Context, req GenerateImag
 		zap.String("method", resp.Method),
 		zap.String("style", req.Style),
 		zap.String("prompt", req.Prompt),
+		// P1.2 (July 2026): P1.2 composition observability. The two length
+		// fields let the operator see (a) the raw user prompt length
+		// (audit) and (b) the composed form sent to the worker (which
+		// appends style + negative affixes). composed_prompt_dirty is
+		// the WasCompressed flag — for P1.2 it is hardcoded false
+		// (no compression), but the log field is preserved as the
+		// forward-pointer hook for a future model-aware compressor.
+		zap.Int("prompt_raw_len", len(req.Prompt)),
+		zap.Int("composed_prompt_len", composed.ComposedLen),
+		zap.Int("composed_prompt_style_affix_len", len(composed.StyleAffix)),
+		zap.Int("composed_prompt_negative_affix_len", len(composed.NegativeAffix)),
+		zap.Bool("composed_prompt_dirty", composed.WasCompressed),
 		zap.Int("bytes", len(data)),
 		zap.Int("req_width", req.Width),
 		zap.Int("req_height", req.Height),
