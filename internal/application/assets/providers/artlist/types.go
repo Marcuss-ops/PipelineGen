@@ -3,6 +3,7 @@ package artlist
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"gopkg.in/yaml.v3"
@@ -277,6 +278,199 @@ type DiagnosticsResponse struct {
 	// endpoint-level errors from per-probe errors by absence of the
 	// term-search fields + presence of this string.
 	Error string `json:"error,omitempty"`
+}
+
+// RunStatus is the canonical wire-by-wire status enum surfaced by
+// the /api/artlist/runs/:id endpoint (Fase 3, July 2026).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: never aggregate to a single OK
+// bool at this endpoint. Operators must walk the per-bucket counts
+// (Found / Processed / Skipped / Failed) to spot the failure mode;
+// the status enum is the verdict on the bucketing pattern, not a
+// re-aggregate.
+//
+// Mirrors the canonical state-machine pattern in
+// internal/application/voiceover/parent_state.go (succeeded /
+// partial_success / failed) — the partial_success string is the
+// precedent for a 3-state machine. The Fase 3 enum uses upper-case
+// SUCCEEDED / FAILED / PARTIAL_SUCCESS to match the user-spec
+// literal and avoid the underscore-cased form in the JSON wire.
+type RunStatus string
+
+const (
+	// RunStatusSucceeded is the verdict when Processed > 0 AND
+	// Failed == 0 (and the Found == Processed+Skipped+Failed
+	// invariant holds). Mirrors the user-spec literal:
+	// "Solo quando Processed>0 ∧ Failed=0 ⇒ SUCCEEDED".
+	RunStatusSucceeded RunStatus = "SUCCEEDED"
+	// RunStatusFailed is the verdict when Processed == 0 AND
+	// Failed > 0 (zero work done, all failures). Mirrors the
+	// user-spec literal: "Processed=0 ∧ Failed>0 ⇒ FAILED".
+	RunStatusFailed RunStatus = "FAILED"
+	// RunStatusPartialSuccess is the verdict for any mixed case:
+	// Processed > 0 AND Failed > 0 (some work, some failures);
+	// Processed == 0 AND Failed == 0 AND Skipped > 0 (zero work,
+	// zero failure, all skipped); OR the Found != Processed +
+	// Skipped + Failed invariant violation; OR the real-DB
+	// cross-check mismatch (artlist_runs.processed_count > 0 but
+	// media_assets has 0 rows for source='artlist' in the run's
+	// time window).
+	RunStatusPartialSuccess RunStatus = "PARTIAL_SUCCESS"
+	// RunStatusUnknown is the verdict for the "run not found" /
+	// "fresh install" / "no runs yet" case. The handler in Commit 3
+	// short-circuits the state machine and returns this constant
+	// when artlist_runs.LatestRun / artlist_runs.GetByID returns
+	// sql.ErrNoRows (rather than feeding all-zero counts to
+	// EvaluateRunState, which would fall to Rule 5 and produce
+	// PARTIAL_SUCCESS — a misleading verdict for the no-runs case).
+	//
+	// The handler /api/artlist/runs/:id also pairs this status
+	// with HTTP 404 (godlike/07 fail-closed: the run truly does
+	// not exist; reporting PARTIAL_SUCCESS would mask that fact).
+	RunStatusUnknown RunStatus = "UNKNOWN"
+)
+
+// String makes RunStatus satisfy fmt.Stringer so the canonical
+// log/diagnostic tag (zap.Stringer(...) rendering) shows the
+// wire-format value without explicit casts.
+func (s RunStatus) String() string { return string(s) }
+
+// IsTerminal reports whether the RunStatus is a final verdict
+// (no further state transitions expected). SUCCEEDED / FAILED /
+// PARTIAL_SUCCESS are all terminal (godlike/07 fail-closed: the
+// state machine resolves to one of these; no "running" or
+// "pending" surface). RunStatusUnknown is ALSO terminal (it
+// represents the "no run exists" verdict, which is a final
+// state — the run will not transition into existence at a
+// later time; it either exists or it doesn't).
+func (s RunStatus) IsTerminal() bool {
+	switch s {
+	case RunStatusSucceeded, RunStatusFailed, RunStatusPartialSuccess, RunStatusUnknown:
+		return true
+	}
+	return false
+}
+
+// RunStatusCounts is the per-bucket counts input to EvaluateRunState.
+//
+// godlike/06 SSOT: this struct is the SINGLE canonical input shape
+// for the state-machine evaluation. The /api/artlist/runs/:id
+// handler reads Found/Skipped/Failed from artlist_runs (canonical
+// aggregate writer) + Processed from artlist_runs.processed_count
+// + RealPersisted from a defensive time-window COUNT(*) on
+// media_assets. The RealPersisted field is the "zero-asset-
+// impossible-to-succeed" cross-check (godlike/07 fail-closed).
+type RunStatusCounts struct {
+	// Found is the canonical aggregate count (artlist_runs.found_count).
+	Found int
+	// Processed is the claimed processed count (artlist_runs.processed_count).
+	// May be 0 (zero work) or > 0 (some/all work). The real-DB cross-check
+	// is the RealPersisted field.
+	Processed int
+	// Skipped is the canonical aggregate count (artlist_runs.skipped_count).
+	Skipped int
+	// Failed is the canonical aggregate count (artlist_runs.failed_count).
+	Failed int
+	// RealPersisted is the COUNT(*) from media_assets WHERE source='artlist'
+	// AND created_at >= run.created_at. The defensive cross-check that
+	// catches the "artlist_runs.processed_count lies about persisted assets"
+	// failure mode. If Processed > 0 but RealPersisted == 0, the verdict
+	// is forced to PARTIAL_SUCCESS with diagnostic "real_db_mismatch"
+	// (godlike/07 fail-closed: a zero-asset run cannot be SUCCEEDED).
+	RealPersisted int
+}
+
+// InvariantHolds reports whether the Found == Processed + Skipped +
+// Failed invariant holds (the user-spec literal: "Processed+Skipped+
+// Failed=Found come vincolo"). When false, the verdict is forced to
+// PARTIAL_SUCCESS regardless of the per-bucket pattern.
+func (c RunStatusCounts) InvariantHolds() bool {
+	return c.Found == c.Processed+c.Skipped+c.Failed
+}
+
+// EvaluateRunState applies the canonical 4-rule state machine to
+// the per-bucket counts and returns the wire-by-wire RunStatus
+// plus the invariant-violation flag + a typed diagnostic.
+//
+// Rule priority (godlike/07 fail-closed, first match wins):
+//
+//  1. Invariant violation: Found != Processed + Skipped + Failed
+//     → PARTIAL_SUCCESS with InvariantViolated=true + diagnostic.
+//  2. Real-DB mismatch: Processed > 0 BUT RealPersisted == 0
+//     → PARTIAL_SUCCESS with InvariantViolated=true + diagnostic.
+//     (The "zero-asset-impossible-to-succeed" gate per the user
+//     spec test requirement.)
+//  3. Zero work, all failures: Processed == 0 AND Failed > 0
+//     → FAILED.
+//  4. All work succeeded: Processed > 0 AND Failed == 0
+//     → SUCCEEDED.
+//  5. Default (any other case): PARTIAL_SUCCESS.
+//
+// This function is PURE (no I/O). The /api/artlist/runs/:id handler
+// is the only production caller; the matrix test file
+// evaluate_run_state_test.go pins the rule priority verbatim.
+func EvaluateRunState(c RunStatusCounts) (status RunStatus, invariantViolated bool, diagnostic string) {
+	// Rule 1: invariant violation.
+	if !c.InvariantHolds() {
+		return RunStatusPartialSuccess, true,
+			fmt.Sprintf("invariant_violated: Found(%d) != Processed(%d) + Skipped(%d) + Failed(%d)",
+				c.Found, c.Processed, c.Skipped, c.Failed)
+	}
+	// Rule 2: real-DB mismatch (zero-asset-impossible-to-succeed gate).
+	if c.Processed > 0 && c.RealPersisted == 0 {
+		return RunStatusPartialSuccess, true,
+			fmt.Sprintf("real_db_mismatch: artlist_runs.processed_count=%d but media_assets has 0 rows for source='artlist' in the run's time window (a zero-asset run cannot be SUCCEEDED — godlike/07 fail-closed)",
+				c.Processed)
+	}
+	// Rule 3: zero work, all failures.
+	if c.Processed == 0 && c.Failed > 0 {
+		return RunStatusFailed, false, ""
+	}
+	// Rule 4: all work succeeded.
+	if c.Processed > 0 && c.Failed == 0 {
+		return RunStatusSucceeded, false, ""
+	}
+	// Rule 5: default (mixed case).
+	return RunStatusPartialSuccess, false, ""
+}
+
+// RunStatusResponse is the canonical wire shape returned by
+// /api/artlist/runs/:id (Fase 3, July 2026).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the response carries the typed
+// status enum + per-bucket counts (no aggregate OK bool). Operators
+// walk each field independently to find the failure mode. The
+// InvariantViolated + Diagnostic fields surface the
+// invariant-violation case explicitly (Rule 1 + Rule 2 of
+// EvaluateRunState).
+type RunStatusResponse struct {
+	RunID  string    `json:"run_id"`
+	Term   string    `json:"term"`
+	Status RunStatus `json:"status"`
+	// Per-bucket counts (Found / Processed / Skipped / Failed) read
+	// from artlist_runs (canonical aggregate writer). The "real"
+	// Processed count comes from the cross-check
+	// (RealPersisted) — see EvaluateRunState Rule 2.
+	Found     int `json:"found"`
+	Processed int `json:"processed"`
+	Skipped   int `json:"skipped"`
+	Failed    int `json:"failed"`
+	// InvariantViolated is true when EvaluateRunState fired Rule 1
+	// (Found != Processed + Skipped + Failed) or Rule 2
+	// (Processed > 0 but RealPersisted == 0). Operators use this
+	// flag to spot silent accounting drift.
+	InvariantViolated bool `json:"invariant_violated,omitempty"`
+	// Diagnostic is the human-readable string EvaluateRunState
+	// produced when InvariantViolated is true. Empty otherwise.
+	Diagnostic string `json:"diagnostic,omitempty"`
+	// EvaluatedAt is the wall-clock timestamp the verdict was
+	// computed. time.Time auto-marshals to RFC3339 in JSON
+	// ("2026-07-12T10:30:00.000Z") — the Go-idiomatic shape that
+	// matches the codebase's other timestamp surfaces
+	// (e.g., domain/asset.Asset.IndexedAt, domain/asset.Asset.UpdatedAt).
+	// Useful for operator audit trails when comparing a stale
+	// verdict against a re-evaluation.
+	EvaluatedAt time.Time `json:"evaluated_at"`
 }
 
 // SearchRequest represents a search request.
