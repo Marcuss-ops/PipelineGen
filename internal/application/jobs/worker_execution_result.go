@@ -52,6 +52,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"go.uber.org/zap"
 )
 
@@ -282,10 +283,22 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 			zap.Error(dispatchErr))
 
 		if j.RetryCount < j.MaxRetries {
-			backoff := time.Duration(1<<j.RetryCount) * 2 * time.Second
-			if backoff > 30*time.Second {
-				backoff = 30 * time.Second
-			}
+			// Backoff math now routes through pkg/retry.BackoffFor
+			// (the canonical owner of "compute exponential backoff" —
+			// godlike/06 SSOT, see pkg/retry/options.go godlike/06
+			// block). 2s × 2^RetryCount capped at 30s — byte-equivalent
+			// with the pre-migration bitwise math, but the cap now
+			// lives at `MaxBackoff` in the canonical Options literal
+			// instead of an inlined `if backoff > 30*time.Second`
+			// post-clamp. JitterFraction defaults to 0 in a struct
+			// literal so determinism for the server-side `available_at`
+			// schedule is preserved (the SQL stored timestamp is the
+			// persisted retry target, NEVER a random pre-sleep).
+			backoff := retry.BackoffFor(j.RetryCount, retry.Options{
+				InitialBackoff: 2 * time.Second,
+				BackoffFactor:  2.0,
+				MaxBackoff:     30 * time.Second,
+			})
 			w.log.Info("scheduling job for retry",
 				zap.String("job_id", j.ID),
 				zap.Duration("backoff", backoff))
