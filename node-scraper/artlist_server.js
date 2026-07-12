@@ -11,6 +11,12 @@ const __dirname = path.dirname(__filename);
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.ARTLIST_SCRAPER_PORT || '9123', 10);
+// P3 (July 2026): BIND defaults to '0.0.0.0' so the container is reachable
+// from sibling containers via the docker-compose `backend` network bridge.
+// The historical default '127.0.0.1' made /health unreachable from
+// pipelinegen-server (only the scraper's own loopback). Operators can
+// still pin to loopback for unit-tests/local dev via ARTLIST_SCRAPER_BIND.
+const BIND = process.env.ARTLIST_SCRAPER_BIND || '0.0.0.0';
 const PROFILE_DIR = process.env.CHROME_PROFILE_DIR || '';
 const DEFAULT_LIMIT = 8;
 const MAX_LIMIT = 50;
@@ -248,8 +254,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[artlist-server] Listening on http://127.0.0.1:${PORT}`);
+server.listen(PORT, BIND, () => {
+  console.log(`[artlist-server] Listening on http://${BIND}:${PORT} (bind via ARTLIST_SCRAPER_BIND env var)`);
   console.log(`[artlist-server] Endpoints: POST /search, POST /download, GET /health`);
   console.log(`[artlist-server] Browser will warm up on first request`);
 });
