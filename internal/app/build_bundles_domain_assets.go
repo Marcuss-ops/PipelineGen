@@ -81,7 +81,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		Dispatcher:    params.outbox.Dispatcher,
 	})
 
-	autotagSvc := autotag.NewService(params.dbs.main.DB, params.repos.Assets.Repository(), params.process.VLMClient, nil, params.log)
+	autotagSvc := autotag.NewService(params.dbs.dualPool.Writer, params.repos.Assets.Repository(), params.process.VLMClient, nil, params.log)
 
 	docPublisher := params.drive.DocPublisher
 	lessonsS := lessonsSvc.NewService(

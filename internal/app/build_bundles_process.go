@@ -44,6 +44,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	jobsoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	metadataexport "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox/metadataexport"
+	publishdrive "github.com/Marcuss-ops/PipelineGen/internal/application/publish_drive"
+	publishoutbox "github.com/Marcuss-ops/PipelineGen/internal/application/publish_outbox"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/staging"
+	artifact "github.com/Marcuss-ops/PipelineGen/internal/domain/artifact"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/vlm"
 	sqmetadataexport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/metadataexport"
@@ -91,9 +95,35 @@ import (
 // handles local file removal (stdlib os.Remove, no port ceremony)
 // and logs+skips the Drive delete branch with an operator-visible
 // warning. Production wiring always supplies a non-nil adapter.
-func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, qd *QdrantDeps, jobs *JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver) (*OutboxBundle, IOpaqueStartFunc, error) {
+func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, qd *QdrantDeps, jobs *JobsBundle, voiceoverDriver jobsoutbox.VoiceoverCleanupDriver, stagingSvc staging.Store, repo artifact.Repository, drivePublisher delivery.Publisher) (*OutboxBundle, IOpaqueStartFunc, error) {
 	if qd == nil {
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: qdrantDeps is nil (QDRANT-002 PR8 fail-closed; composition forgot to call buildQdrantDeps first?)")
+	}
+	if stagingSvc == nil {
+		// FASE 3 Push 3.1c: the Publisher worker is the canonical
+		// outbox→staging adapter. It MUST be wired here (otherwise
+		// publish_requested events dead-letter on the first
+		// emission). Composition must call BuildStagingBundle
+		// BEFORE BuildOutboxBundle so the typed port is available.
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: stagingSvc is required (FASE 3 Push 3.1c; composition must call BuildStagingBundle before BuildOutboxBundle)")
+	}
+	if repo == nil {
+		// FASE 3 Push 3.1e: the DriveUploader worker consumes
+		// artifact.Repository for the MarkPublished fenced-CAS. A
+		// nil repo is fail-closed — composition must inject the
+		// same artifact.Repository port that StagingBundle uses
+		// (single-writer SSOT; no second DB wrapper).
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: repo is required (FASE 3 Push 3.1e; composition must inject StagingBundle.Repository)")
+	}
+	if drivePublisher == nil {
+		// FASE 3 Push 3.1e: the DriveUploader worker is the
+		// canonical outbox→Drive adapter. It MUST be wired here
+		// (otherwise artifact.staged.v1 events dead-letter the
+		// moment the saga's first Publish step). A nil
+		// drivePublisher is fail-closed — composition must
+		// inject the canonical delivery.Publisher from
+		// DriveBundle (built in BuildDriveBundle).
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: drivePublisher is required (FASE 3 Push 3.1e; composition must inject DriveBundle.Publisher)")
 	}
 
 	// PR-QDRANT-CONFIG-MISMATCH-GATE (July 2026): defense-in-depth
@@ -107,7 +137,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	if err := validateQdrantIndexerCompatibility(cfg); err != nil {
 		return nil, nil, err
 	}
-	outboxEventsRepo := outboxevents.NewRepository(dbs.main.DB)
+	outboxEventsRepo := outboxevents.NewRepository(dbs.dualPool.Writer)
 
 	// PR 3 fix/qdrant-outbox-fail-closed BL-1 fix: dispatcher
 	// construction moved to AFTER the fail-closed handler
@@ -161,7 +191,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	// place infra concrete types meet application ports — the
 	// outbox.Deps struct no longer needs MetadataDir because the
 	// handler gets its output dir as part of HandlerDeps at wire time.
-	metadataExportResolver := sqmetadataexport.NewSQLiteAdapter(dbs.main.DB)
+	metadataExportResolver := sqmetadataexport.NewSQLiteAdapter(dbs.dualPool.Writer)
 	metadataExportWriter := &filesmetadataexport.FileWriter{}
 	metadataExportDeps := metadataexport.HandlerDeps{
 		Resolver:  metadataExportResolver,
@@ -172,7 +202,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	metadataExportHandler := metadataexport.NewMetadataExportHandler(metadataExportDeps)
 
 	outboxDeps := &jobsoutbox.Deps{
-		DB:                   dbs.main.DB,
+		DB:                   dbs.dualPool.Writer,
 		HTTPClient:           httpClient,
 		HMACSecrets:          hmacSecrets,
 		InsecureDev:          cfg.Security.DeliveryInsecureDev,
@@ -255,6 +285,56 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		return nil, nil, fmt.Errorf("BuildOutboxBundle: register optional outbox handlers: %w", err)
 	}
 
+	// FASE 3 Push 3.1c (July 2026): register the canonical
+	// Promote→Publisher worker. Drains
+	// `artifact.publish_requested.v1` events from outbox_events
+	// and forwards them to staging.Store.Stage (which then
+	// co-emits `artifact.staged.v1` via
+	// Repository.InsertWithOutbox — the canonical atomic
+	// primitive). Fail-closed: a nil/errored handler
+	// registration aborts boot — a half-wired publisher would
+	// dead-letter every publish_requested event on the first
+	// emission, which is a worse failure mode than a clean
+	// compose-time abort.
+	publisherHandler, pubErr := publishoutbox.NewHandler(stagingSvc, log)
+	if pubErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: publish_outbox.NewHandler (fail-fast at construction): %w", pubErr)
+	}
+	if regErr := eventsRegistry.Register(publisherHandler); regErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: register publish_outbox handler (fail-closed): %w", regErr)
+	}
+	log.Info("outbox publish handler registered: artifact.publish_requested.v1 → staging.Store.Stage (FASE 3 Push 3.1c)")
+
+	// FASE 3 Push 3.1e (July 2026): register the canonical
+	// Stage→Publish worker. Drains `artifact.staged.v1` events
+	// (atomically co-emitted by Repository.InsertWithOutbox in
+	// Push 3.1c) and forwards each event to
+	// delivery.Publisher.Publish (the canonical Drive upload
+	// canal) + Repository.MarkPublished with a canonical JSON
+	// PublishedLocation payload. Fail-closed: a nil/errored
+	// handler registration aborts boot — a half-wired
+	// DriveUploader would dead-letter every staged.v1 event on
+	// the first emission, which is a worse failure mode than a
+	// clean compose-time abort.
+	//
+	// The handler consumes the SAME artifact.Repository port
+	// that staging.StoreService.Stage uses (canonical single-
+	// writer; the Repository is the typed cursor to the same
+	// underlying *artifactstages.Repository concrete — godlike/06
+	// SSOT per FASE 3 Spina Dorsale). Threading the Repository
+	// explicitly into BuildOutboxBundle (rather than re-fetching
+	// from a downstream service) keeps the wiring fail-closed:
+	// a NULL repo at compose-time is a typed-error abort, not a
+	// silent runtime nil-deref.
+	driveUploadHandler, driveErr := publishdrive.NewHandler(repo, drivePublisher, log)
+	if driveErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: publish_drive.NewHandler (fail-fast at construction): %w", driveErr)
+	}
+	if regErr := eventsRegistry.Register(driveUploadHandler); regErr != nil {
+		return nil, nil, fmt.Errorf("BuildOutboxBundle: register publish_drive handler (fail-closed): %w", regErr)
+	}
+	log.Info("outbox publish_drive handler registered: artifact.staged.v1 → delivery.Publisher.Publish + Repository.MarkPublished (FASE 3 Push 3.1e)")
+
 	// ── Dispatcher + pool construction (post fail-closed). ────────
 	multiClipsUp := outbox.NewMultiClipsUpserter(
 		map[string]outbox.ClipsUpserter{
@@ -266,7 +346,7 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		log,
 	)
 	stateWriter := outbox.ClipsStateWriter(repos.ClipsRepo)
-	outboxTxMgr := outbox.NewManager(dbs.main.DB, log)
+	outboxTxMgr := outbox.NewManager(dbs.dualPool.Writer, log)
 	dispatcher := outbox.NewDispatcher(multiClipsUp, stateWriter, outboxEventsRepo, outboxTxMgr, log)
 	log.Info("outbox dispatcher instantiated: canonical upsert+outbox_events enqueue path AND canonical delete+outbox_events enqueue path (QDRANT-002 PR7)")
 
@@ -298,6 +378,8 @@ func BuildOutboxBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 		EventsRepo:     outboxEventsRepo,
 		EventsRegistry: eventsRegistry,
 		EventsPool:     eventsPool,
+		Publisher:      publisherHandler,
+		DriveUploader:  driveUploadHandler,
 	}, startClosure, nil
 }
 

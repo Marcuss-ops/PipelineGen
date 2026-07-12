@@ -1,4 +1,4 @@
-// Package app — DB setup helpers (PG-006, June 2026).
+// Package app — DB setup helpers (PG-006 + Cut 6.2 sibling, June/July 2026).
 //
 // Extracted from bootstrap.go so the bootstrap.go entry-point file remains
 // strictly free of `internal/infrastructure/*` imports. The `databases`
@@ -7,20 +7,35 @@
 // schema migration); only the composition root is allowed to keep the
 // infra imports.
 //
-// Context: AGENTS.md §13 — `internal/infrastructure/**` is the only file
-// tree allowed to import concrete SDK / driver code; `internal/app/**` is
-// the composition root that wires the infra into the application domain
-// via typed ports. PG-006 narrows the rule: bootstrap.go specifically
-// must stay free of infra imports so the API tree's dependency on app
-// remains strictly typed.
+// PG-006 (June 2026): `internal/infrastructure/**` is the only file tree
+// allowed to import concrete SDK / driver code; `internal/app/**` is the
+// composition root that wires the infra into the application domain.
+// PG-006 narrows the rule: bootstrap.go specifically must stay free of
+// infra imports so the API tree's dependency on app remains strictly
+// typed.
+//
+// FASE 6 Cut 6.2 sibling (July 2026): the `dualPool *sqlite.DualPool`
+// field is ADDED alongside the existing `main *storage.SQLiteDB` field.
+// `dbs.dualPool.Writer` is the canonical write-side *sql.DB handle for
+// repository construction (Cut 6.2 A3 verdict: every repo gets Writer
+// by default; Reader migration is a forward-pointer to a future cut).
+// `dbs.main` (the storage.SQLiteDB wrapper) is RETAINED for health /
+// observability consumers that don't decompose into writer/reader
+// (infrahealth.NewSQLiteChecker, NewDriveRootsValidator). The two
+// pools share the same on-disk file via WAL-mode concurrent-reader +
+// single-writer semantics (see sqlite.go::NewDualPool rationale and
+// sqlite/pool.go / pool_test.go for the canonical Cut 6.2 surface).
 package app
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -41,20 +56,35 @@ type CleanupFunc func()
 // DatabaseSet at construction time; the canonical source of truth is
 // `dbs.set.Primary` / `dbs.set.Observability`.
 //
-// PR-Queue-Split-EXPAND / ADR-0003 (June 2026): the `jobs` field is added
-// for the EXPAND-on flag shape. When cfg.Jobs.SplitDBEnabled is true,
+// PR-Queue-Split-EXPAND (June 2026): the `jobs` field is added for the
+// EXPAND-on flag shape. When cfg.Jobs.SplitDBEnabled is true,
 // `initDatabases` opens a separate jobs.db.sqlite file via
 // storage.OpenSQLiteDB and populates this field; composition.go picks
 // `dbs.jobs` over `dbs.main` for the JobsBundle's *SQLiteStore when
-// `dbs.jobs != nil`. EXPAND boots a fresh jobs.db.sqlite via
-// RunMigrations with `migrations/sqlite_jobs/` as the migration directory.
-// Default behaviour (SplitDBEnabled=false): `jobs` stays nil — no extra
-// DB opens, no extra migrations run, no callsite changes — today's
-// production deployments are unaffected.
+// `dbs.jobs != nil`. Default behaviour: `jobs` stays nil.
+//
+// Cut 6.2 sibling (July 2026): the `dualPool` field is added for the
+// WAL-mode reader/writer split. Repositories throughout the composition
+// tree thread Writer and Reader from the dualPool; health/observability
+// consumers keep using storage.SQLiteDB (`dbs.main.DB`) because the
+// `infrahealth.NewSQLiteChecker(db)` constructor takes the storage
+// wrapper as its argument. The two pools share the on-disk file via
+// WAL-mode SQLite concurrency.
+//
+// Field population rules (godlike/06 SSOT):
+//   - dbs.set: always non-nil after a successful OpenSet.
+//   - dbs.main: storage.SQLiteDB wrapper around dbs.set.Primary.DB.
+//   - dbs.logs: storage.SQLiteDB wrapper around dbs.set.Observability.DB.
+//   - dbs.dualPool: nil in tests that bypass NewDualPool (legacy TestDB).
+//     Production callers (initDatabases) MUST construct a non-nil
+//     DualPool so the canonical instrumentation surface (Cut 6.2
+//     metrics + EXPLAIN) fires at boot.
+//   - dbs.jobs: non-nil only when cfg.Jobs.SplitDBEnabled=true.
 type databases struct {
-	set  *storage.DatabaseSet
-	main *storage.SQLiteDB
-	logs *storage.SQLiteDB
+	set      *storage.DatabaseSet
+	main     *storage.SQLiteDB
+	logs     *storage.SQLiteDB
+	dualPool *sqlite.DualPool
 
 	// jobs is the EXPAND CANONICAL queue DB. nil when SplitDBEnabled is
 	// false (today's default); non-nil when the EXPAND flag is on. Both
@@ -65,14 +95,17 @@ type databases struct {
 }
 
 func (d *databases) Close() {
-	// Close jobs BEFORE the DatabaseSet so any in-flight job write tx
-	// commits against the jobs DB before its SQLite WAL is checkpointed.
-	// The Media DB and jobs DB share no locks today (different files),
-	// but the order is documented as a future-proof invariant for when
-	// PR-B (multi-node pgbroker.Store) replaces the SQLite pair with a
-	// single PG backend — the close order will mirror the dependency
-	// graph there. Today, closing jobs first is a no-op-vs-the-other-order
-	// but documents the invariant for maintainers reading the code.
+	// Close the dualPool BEFORE storage.DatabaseSet so the
+	// Cut 6.2-instrumented txs (connection_wait_seconds,
+	// tx_duration_seconds, sqlite_busy_total) finish their
+	// observation windows before the underlying *sql.DB handles
+	// disappear. The Media DB and jobs DB share no locks today
+	// (different files), but the order is documented as a
+	// future-proof invariant for when a multi-node pgbroker.Store
+	// replaces the SQLite pair with a single PG backend.
+	if d.dualPool != nil {
+		_ = d.dualPool.Close()
+	}
 	if d.jobs != nil {
 		_ = d.jobs.Close()
 	}
@@ -85,15 +118,24 @@ func (d *databases) Close() {
 // canonical `storage.OpenSet` (codex/db-set-and-paths). No `sql.Open`
 // remains outside `internal/infrastructure/database/**`.
 //
-// PR-Queue-Split-EXPAND / ADR-0003 (June 2026): when cfg.Jobs.SplitDBEnabled
-// is true, also opens jobs.db.sqlite via storage.OpenSQLiteDB and
-// populates dbs.jobs. The path resolution rules: cfg.Jobs.JobsDBPath
-// (explicit operator override) wins over the canonical derivation
-// (jobsDBPathFromPrimary — strip "media.db.sqlite" from the primary
-// path's basename). Fail-closed: opening the jobs DB is logged +
-// returned as an error so a misconfigured layout surfaces at boot, not
-// at first-claim-time.
-func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
+// Cut 6.2 sibling (July 2026): after the storage set opens, the
+// composition root constructs an additional DualPool via
+// sqlite.NewDualPool on the SAME primary file. The dual pool holds the
+// writer (MaxOpenConns=1) + reader (MaxOpenConns=runtime.NumCPU())
+// per the canonical Cut 6.2 design. Repositories consumed by Build*
+// Bundle()s migrate to dbs.dualPool.Writer (default canonical writer
+// path per Cut 6.2 A3 verdict); read-only observation paths may
+// migrate to dbs.dualPool.Reader in a follow-up cut.
+//
+// godlike/07 fail-closed: a NewDualPool error aborts the boot sequence
+// rather than silently regressing back to dbs.main.DB. Migration
+// failure surfaces as a typed error from CleanupStack rather than as
+// a deadlocked writer tx at first write.
+//
+// PR-Queue-Split-EXPAND (June 2026): when cfg.Jobs.SplitDBEnabled is
+// true, also opens jobs.db.sqlite via storage.OpenSQLiteDB and
+// populates dbs.jobs.
+func initDatabases(ctx context.Context, cfg *config.Config, log *zap.Logger) (*databases, error) {
 	setCfg := storage.StorageConfig{
 		DataDir:             cfg.Storage.DataDir,
 		PrimaryDBPath:       cfg.Storage.PrimaryDBFullPath(),
@@ -112,6 +154,23 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 		logs: set.Observability,
 	}
 
+	// Cut 6.2 sibling: build the canonical WAL-mode DualPool on the
+	// same primary file. The dual pool is the canonical connection
+	// surface for code that wants the connection_wait_seconds +
+	// tx_duration_seconds + sqlite_busy_total instrumentation; legacy
+	// dbs.main.DB remains for health-check consumers that need the
+	// storage.SQLiteDB wrapper (infrahealth.NewSQLiteChecker).
+	dualPool, dErr := sqlite.NewDualPool(ctx, setCfg.PrimaryDBPath, runtime.NumCPU())
+	if dErr != nil {
+		dbs.Close()
+		return nil, fmt.Errorf("init databases: NewDualPool: %w", dErr)
+	}
+	dbs.dualPool = dualPool
+	log.Info("Cut 6.2 dualPool wired (WAL-mode; writer=1, readers=NumCPU)",
+		zap.Int("num_readers", runtime.NumCPU()),
+		zap.String("primary_path", setCfg.PrimaryDBPath),
+	)
+
 	// PR-Queue-Split-EXPAND: gate at initDatabases so the JobsBundle can
 	// pick the right DB at composition-root call time (BuildJobsBundle's
 	// signature does not need to change — it accepts a *storage.SQLiteDB).
@@ -122,10 +181,11 @@ func initDatabases(cfg *config.Config, log *zap.Logger) (*databases, error) {
 		}
 		jobsDB, jobsOpenErr := storage.OpenSQLiteDB(jobsPath, log)
 		if jobsOpenErr != nil {
-			// Fail-closed: closing any partial state (main DB) so a
-			// half-open pair does not leak. The operator either retries
-			// with a fixed path OR flips SplitDBEnabled=false to fall
-			// back to the canonical single-DB shape.
+			// Fail-closed: closing any partial state (dualPool +
+			// main DB) so a half-open triple does not leak. The
+			// operator either retries with a fixed path OR flips
+			// SplitDBEnabled=false to fall back to the canonical
+			// single-DB shape.
 			dbs.Close()
 			return nil, fmt.Errorf("init jobs DB %s: %w", jobsPath, jobsOpenErr)
 		}

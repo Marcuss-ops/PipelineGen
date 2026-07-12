@@ -26,7 +26,7 @@ import (
 
 // BuildAIBundle constructs the LLM/script/memory stack. Uses Drive.DocClient
 // and Drive.DriveUploader (which were constructed earlier).
-// PR4.A (June 2026): MemoryRepo is created here (dbs.main.DB), not in BuildRepoBundle,
+// PR4.A (June 2026): MemoryRepo is created here (dbs.dualPool.Writer), not in BuildRepoBundle,
 // so that the single consumer (startGemmaMemorySweeper) reads it from root.AI
 // without going through RepoBundle.
 func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, repos *RepoBundle, drive *DriveBundle) (*AIBundle, error) {
@@ -78,7 +78,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	}
 
 	scriptGen := ollama.NewGenerator(ollamaClient)
-	translationCache := sqlitescripts.NewCache(dbs.main.DB)
+	translationCache := sqlitescripts.NewCache(dbs.dualPool.Writer)
 	scriptGen.SetTranslationCache(translationCache)
 	log.Info("translation cache initialized", zap.String("db", dbs.main.Path()))
 
@@ -145,7 +145,7 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 		Reranker:           rerankerClient,
 		ScriptGen:          scriptGen,
 		OllamaTranslator:   ollamaTranslator,
-		MemoryRepo:         adapters.NewRepository(dbs.main.DB),
+		MemoryRepo:         adapters.NewRepository(dbs.dualPool.Writer),
 		ScriptEngine:       engine,
 		WhisperTranscriber: whisperAdapter,
 	}, nil

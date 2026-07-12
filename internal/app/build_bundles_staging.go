@@ -73,10 +73,10 @@ func BuildStagingBundle(dbs *databases, cfg *config.Config, log *zap.Logger) (*S
 	// A nil *sql.DB surfaces as a wrapped error from the
 	// SQLite driver on the first call; we pre-validate here to
 	// fail loud at boot, not mid-job.
-	if dbs == nil || dbs.main == nil || dbs.main.DB == nil {
-		return nil, fmt.Errorf("build staging: dbs.main.DB is nil (composition root failed to open the primary SQLite DB before BuildStagingBundle)")
+	if dbs == nil || dbs.dualPool == nil || dbs.dualPool.Writer == nil {
+		return nil, fmt.Errorf("build staging: dbs.dualPool.Writer is nil (composition root failed to construct the DualPool before BuildStagingBundle)")
 	}
-	repo := artifactstages.NewRepository(dbs.main.DB)
+	repo := artifactstages.NewRepository(dbs.dualPool.Writer)
 	// Conformance with artifact.Repository is pinned at the
 	// StagingBundle.Repository field type + the canonical anchor
 	// at internal/infrastructure/database/sqlite/artifact_stages/repository.go:51

@@ -166,7 +166,7 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// folder IDs before making Drive API calls. Nil-tolerant: when
 		// the catalog table doesn't exist yet (fresh DB), the adapter
 		// returns nil and SetCatalogLookup becomes a no-op.
-		catalogRepo := sqlitedelivery.NewRepository(dbs.main.DB)
+		catalogRepo := sqlitedelivery.NewRepository(dbs.dualPool.Writer)
 		pub.SetCatalogLookup(drive.NewCatalogFolderLookup(catalogRepo))
 	}
 

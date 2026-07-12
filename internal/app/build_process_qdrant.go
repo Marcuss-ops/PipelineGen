@@ -210,7 +210,7 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, re
 				APIKey:  cfg.Qdrant.APIKey,
 				Timeout: cfg.Qdrant.Timeout,
 			},
-			DB:     dbs.main.DB,
+			DB:     dbs.dualPool.Writer,
 			Logger: log,
 		})
 		if rerr != nil {
