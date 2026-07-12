@@ -208,7 +208,8 @@ func TestResolver_Download_AuthorizedAPILimitAllowsDownload(t *testing.T) {
 	// transport.
 	require.Error(t, err)
 	assert.False(t, errors.Is(err, artapp.ErrDailyDownloadLimitExceeded))
-	assert.False(t, errors.Is(err, artapp.ErrManualImportActive))
+	assert.False(t, errors.Is(err, artapp.ErrAcquisitionModeBlocked),
+		"Fase 6 / Commit 1: ErrManualImportActive renamed to ErrAcquisitionModeBlocked; the assertion must follow the rename")
 	assert.False(t, errors.Is(err, artapp.ErrAutomaticDownloadsDisabled))
 }
 
@@ -257,8 +258,9 @@ func TestResolver_Download_AuthorizedByNewDefaults(t *testing.T) {
 
 	// The transport-layer rejection of file:// URLs is irrelevant. What
 	// matters: the resolver gates MUST NOT reject the request before
-	// it reaches the transport. With the P1 defaults, ErrManualImportActive
-	// and ErrAutomaticDownloadsDisabled MUST both be absent, audit row
+	// it reaches the transport. With the P1 defaults, ErrAcquisitionModeBlocked
+	// (Fase 6 / Commit 1: was ErrManualImportActive) and ErrAutomaticDownloadsDisabled
+	// MUST both be absent, audit row
 	// MUST be recorded.
 	require.Error(t, err, "transport failure expected; not asserting on transport outcome")
 	assert.False(t, errors.Is(err, artapp.ErrAcquisitionModeBlocked),
@@ -278,7 +280,8 @@ func TestResolver_Download_AuthorizedByNewDefaults(t *testing.T) {
 // TestResolver_Download_ManualImportBlocksDownloadAtP1Default guards
 // the manual_import opt-out path under the new default regime: when
 // the operator EXPLICITLY sets ARTLIST_ACQUISITION_MODE=manual_import,
-// the resolver gate MUST return ErrManualImportActive EVEN THOUGH the
+// the resolver gate MUST return ErrAcquisitionModeBlocked (Fase 6 / Commit 1:
+// was ErrManualImportActive) EVEN THOUGH the
 // loader default is authorized_api. This protects the cutover from
 // accidentally swallowing the manual_import escape hatch.
 func TestResolver_Download_ManualImportBlocksDownloadAtP1Default(t *testing.T) {
