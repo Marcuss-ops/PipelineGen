@@ -76,6 +76,54 @@ def call_ollama(ollama_url: str, model: str, prompt: str, context: str = "") -> 
         raise RuntimeError("Ollama request timed out (300s)") from exc
 
 
+def _parse_step_response(response: str) -> tuple[str, str]:
+    """Classify one ReAct loop step's response into a ``(kind, payload)`` pair.
+
+    ``kind`` is the LLM-side marker that the parser detected. The caller
+    is responsible for mapping ``search`` to the wire-format evidence
+    type (``action``) so external JSON output stays byte-identical to the
+    pre-fix contract.
+
+    Order of checks matters because the markers can overlap (e.g.
+    ``Action: search(`` is a subset char pattern that must NOT trip the
+    ``Thought:`` branch first). The longest-prefix-first order below
+    mirrors the pre-fix validator exactly:
+
+      1. ``Answer:``  (terminal-state marker, must win first)
+      2. ``Action: search(``  (info-gathering action)
+      3. ``Action: write(``  (drafting action)
+      4. ``Thought:``  (planning marker)
+      5. fallback   (model did not follow format; treat the WHOLE response
+         as the final answer — preserves the pre-fix "Model didn't
+         follow format" branch).
+
+    Args:
+      response: raw assistant text for one ReAct step.
+
+    Returns:
+      (``kind``, ``payload``) where:
+
+      * ``('thought', stripped_response)``
+      * ``('search', stripped_response)``
+      * ``('write', stripped_response)``
+      * ``('answer', text_after_Answer_marker)``  (empty string if the
+        model emitted a bare ``Answer:`` with no trailing text)
+      * ``('answer', stripped_response)``  (fallback)
+    """
+    if "Answer:" in response:
+        answer_part = response.split("Answer:", 1)[1].strip()
+        return ("answer", answer_part)
+    if "Action: search(" in response:
+        return ("search", response.strip())
+    if "Action: write(" in response:
+        return ("write", response.strip())
+    if "Thought:" in response:
+        return ("thought", response.strip())
+    # Model didn't follow format — preserve the pre-fix fallback that
+    # treats the WHOLE response as the final answer.
+    return ("answer", response.strip())
+
+
 def run_react_loop(topic: str, context: str, max_steps: int,
                    ollama_url: str, model: str) -> dict:
     """Execute the ReAct reasoning loop and return the result dict."""
@@ -107,24 +155,27 @@ def run_react_loop(topic: str, context: str, max_steps: int,
         steps_taken = step
         thinking_history += f"\n{response}\n"
 
-        # Parse the response type
-        if "Answer:" in response:
-            answer_part = response.split("Answer:", 1)[1].strip()
-            if answer_part:
-                final_answer = answer_part
+        kind, payload = _parse_step_response(response)
+
+        if kind == "answer":
+            # If the parser returned a non-empty payload (real "Answer: "
+            # marker with trailing text OR fallback WHOLE-RESPONSE), promote
+            # it to final_answer. Empty payload: keep prior final_answer
+            # — this preserves the pre-fix "Answer: <empty>" path where
+            # the model emitted a bare marker with no payload.
+            if payload:
+                final_answer = payload
             evidence.append({"step": step, "type": "answer", "content": final_answer})
             break
-        elif "Action: search(" in response:
-            evidence.append({"step": step, "type": "action", "content": response.strip()})
-        elif "Action: write(" in response:
-            evidence.append({"step": step, "type": "write", "content": response.strip()})
-        elif "Thought:" in response:
-            evidence.append({"step": step, "type": "thought", "content": response.strip()})
-        else:
-            # Model didn't follow format — treat as answer
-            final_answer = response
-            evidence.append({"step": step, "type": "answer", "content": response.strip()})
-            break
+        if kind == "search":
+            # Parser returns 'search'; the outward evidence type stays
+            # 'action' so external JSON consumers (Go-side parsers, audit
+            # log readers) see NO wire-format drift.
+            evidence.append({"step": step, "type": "action", "content": payload})
+        elif kind == "write":
+            evidence.append({"step": step, "type": "write", "content": payload})
+        elif kind == "thought":
+            evidence.append({"step": step, "type": "thought", "content": payload})
 
     if not final_answer:
         final_answer = thinking_history.strip()
