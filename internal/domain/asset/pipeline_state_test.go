@@ -303,6 +303,41 @@ func TestPipelineState_String(t *testing.T) {
 	}
 }
 
+// TestPipelineState_ZeroValueFromStateRejected pins the
+// zero-value from-state guard added in the Commit 1 follow-up
+// (code-reviewer verdict MUST-FIX #1). An uninitialized
+// PipelineState MUST NOT pass any IsValidTransition check —
+// including the (zero, zero) self-loop, which is the silent
+// false-positive the guard prevents. The existing state
+// machines (UploadState, WorkflowState) allow (zero, zero) =
+// true via the self-loop; PipelineState is stricter.
+func TestPipelineState_ZeroValueFromStateRejected(t *testing.T) {
+	cases := []struct {
+		name string
+		s    PipelineState
+		to   PipelineState
+		want bool
+	}{
+		// The MUST-FIX cases: every (zero, *) pair is rejected.
+		{"zero-self-loop-rejected", PipelineState(""), PipelineState(""), false},
+		{"zero-to-canonical-rejected", PipelineState(""), StatePipelineDownloadPending, false},
+		{"zero-to-terminal-rejected", PipelineState(""), StatePipelineIndexed, false},
+		{"zero-to-failed-rejected", PipelineState(""), StatePipelineFailed, false},
+		{"zero-to-another-zero-rejected", PipelineState(""), PipelineState("UNKNOWN"), false},
+		{"zero-to-lowercase-rejected", PipelineState(""), PipelineState("discovered"), false},
+		// Sanity: a non-zero from-state with the same targets
+		// behaves per the matrix.
+		{"canonical-self-loop-allowed", StatePipelineDiscovered, StatePipelineDiscovered, true},
+		{"canonical-to-canonical-allowed", StatePipelineDiscovered, StatePipelineDownloadPending, true},
+		{"canonical-to-unknown-rejected", StatePipelineDiscovered, PipelineState("UNKNOWN"), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, c.s.IsValidTransition(c.to))
+		})
+	}
+}
+
 // TestPipelineState_UnknownTargetRejected pins the unknown-
 // target gate: IsValidTransition must reject transitions to
 // ad-hoc values (the Valid() check on `to`).
@@ -374,6 +409,8 @@ func TestSanitizeSafeMessage_StripsControlChars(t *testing.T) {
 		{"ff-stripped", "before\x0cafter", "beforeafter"},
 		{"mixed-newline-tab-cr", "a\nb\tc\rd", "a b\tc d"},
 		{"escape-stripped", "before\x1bafter", "beforeafter"},
+		{"c1-nel-stripped", "before\x85after", "beforeafter"},
+		{"c1-uni-sep-stripped", "before\x9cafter", "beforeafter"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -487,6 +524,43 @@ func TestSanitizeSafeMessage_RealisticCase(t *testing.T) {
 	want := "ffmpeg failed: \tStream #0:0: Video: h264, 1920x1080, 30 fps \tError: -22 (Invalid argument)"
 	got := SanitizeSafeMessage(in)
 	assert.Equal(t, want, got)
+}
+
+// TestSanitizeSafeMessage_ShortCircuitsOnLongInput pins the
+// long-input short-circuit added in the Commit 1 follow-up
+// (code-reviewer verdict NICE-TO-HAVE #3). A multi-MB input
+// is pre-truncated to 4× the cap before the Builder passes,
+// bounding the allocation cost. The final cap-with-marker
+// step still produces MaxSafeMessageLen chars of output.
+func TestSanitizeSafeMessage_ShortCircuitsOnLongInput(t *testing.T) {
+	// 100,000 'a' chars: well over 4× the cap (4096).
+	in := strings.Repeat("a", 100_000)
+	got := SanitizeSafeMessage(in)
+	assert.Equal(t, MaxSafeMessageLen, len(got),
+		"long input must short-circuit; final output is still capped to MaxSafeMessageLen")
+	assert.True(t, strings.HasSuffix(got, "...(truncated)"),
+		"long input must surface the truncation marker")
+
+	// Boundary: 4096 chars (4× the cap exactly) is NOT
+	// short-circuited by the Step 0 pre-truncation (the cut
+	// is `> 4×` not `>= 4×`). The final cap still fires.
+	inAt4x := strings.Repeat("a", MaxSafeMessageLen*4)
+	gotAt4x := SanitizeSafeMessage(inAt4x)
+	assert.Equal(t, MaxSafeMessageLen, len(gotAt4x),
+		"input at exactly 4× the cap is processed (not short-circuited at Step 0) and still capped at Step 4")
+	assert.True(t, strings.HasSuffix(gotAt4x, "...(truncated)"),
+		"input at 4× still hits the Step 4 cap with the marker")
+
+	// Boundary: 4097 chars (just over 4×) IS short-circuited
+	// at Step 0. Pre-truncation to 4096 chars happens BEFORE
+	// the Builder passes. The final cap still produces
+	// MaxSafeMessageLen chars.
+	inOver4x := strings.Repeat("a", MaxSafeMessageLen*4+1)
+	gotOver4x := SanitizeSafeMessage(inOver4x)
+	assert.Equal(t, MaxSafeMessageLen, len(gotOver4x),
+		"input just over 4× the cap is short-circuited at Step 0 and still capped at Step 4")
+	assert.True(t, strings.HasSuffix(gotOver4x, "...(truncated)"),
+		"input just over 4× must surface the truncation marker")
 }
 
 // TestSanitizeSafeMessage_Idempotent pins the idempotency
