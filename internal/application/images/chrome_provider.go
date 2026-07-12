@@ -232,11 +232,26 @@ func (p *ChromeImageProvider) Generate(ctx context.Context, req GenerateImageReq
 	// subprocess gives the panel a clean state where the next request
 	// can re-open the menu without contamination from the prior
 	// attempt's leftovers.
-	if p.isDeadWorkerError(err) || errors.Is(err, ErrImageGenRatioNotSelected) {
+	//
+	// P0.4 (July 2026): the retry-once resetWorker path is extended to
+	// also fire on ErrImageGenTimeout (worker hit the 60s polling
+	// ceiling with NO candidate passing the baseline-diff filter — the
+	// panel is likely in a stale state and a fresh subprocess gives the
+	// next attempt a clean gallery) AND ErrImageGenBlankOrPlaceholder
+	// (visual_validate rejected the bytes — the panel may have rendered
+	// a placeholder that passed the worker's dim/complete filter but
+	// failed Go-side content invariants; resetWorker + retry-once is the
+	// recovery seam). The three-error retry surface is the P0.4 user
+	// spec's "resetWorker integration per timeout / whitespace /
+	// selettore ambiguo".
+	if p.isDeadWorkerError(err) || errors.Is(err, ErrImageGenRatioNotSelected) ||
+		errors.Is(err, ErrImageGenTimeout) || errors.Is(err, ErrImageGenBlankOrPlaceholder) {
 		p.log.Warn("ChromeImageProvider: recoverable worker failure, resetting and retrying once",
 			zap.Error(err),
 			zap.Bool("is_dead_worker", p.isDeadWorkerError(err)),
-			zap.Bool("is_ratio_error", errors.Is(err, ErrImageGenRatioNotSelected)))
+			zap.Bool("is_ratio_error", errors.Is(err, ErrImageGenRatioNotSelected)),
+			zap.Bool("is_timeout_error", errors.Is(err, ErrImageGenTimeout)),
+			zap.Bool("is_blank_placeholder_error", errors.Is(err, ErrImageGenBlankOrPlaceholder)))
 		p.resetWorker()
 		return p.generateOnce(ctx, req)
 	}
