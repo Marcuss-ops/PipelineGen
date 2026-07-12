@@ -79,6 +79,33 @@ func RunDedupKey(term, rootFolderID, strategy string, dryRun bool, limit int) st
 }
 
 // RunTagItem represents the result for a single clip in the full pipeline.
+//
+// RunTagItem.Status is the per-item audit surface (Fase 6 / Commit 1,
+// July 2026 — godlike/07 typed-error block visibility). Canonical values:
+//
+//	"completed"             happy path (legacy)
+//	"media_process_failed"  mediaProcessor.Process returned error (legacy)
+//	"drive_upload_failed"   Drive fields missing after persist (legacy, PR-ARTLIST-DOD-GATE-02)
+//	"hash_missing"          SHA-256 missing after persist (legacy, PR-ARTLIST-HASH-FIX)
+//	"persist_failed"        finalizer OR commit failed (legacy, PR-ARTLIST-OUTCOME-ACCOUNTING)
+//	"dry_run"               req.DryRun skip (legacy)
+//
+//	Fase 6 typed gate-block values (one per Commit of the new authorization
+//	gate series; ops MUST be grep-able via these exact lowercase strings):
+//
+//	"blocked_mode"             acquisition_mode=manual_import surfaced ErrAcquisitionModeBlocked (Commit 1, July 2026)
+//	"blocked_daily_limit"      ArtlistDailyDownloadLimit<=0 OR count>=limit surfaced ErrDailyLimitExhausted (Commit 2)
+//	"blocked_unauthorized"     account not authorized surfaced ErrAccountUnauthorized (Commit 3)
+//	"blocked_session_expired"  session expired surfaced ErrSessionExpired (Commit 4)
+//
+// RunTagItem.Error carries the typed-error text verbatim when Status is
+// one of the blocked_* values (operators grep on the per-item audit log
+// without needing a separate /run/:id roundtrip; godlike/07).
+//
+// godlike/06 SSOT (Status enum): the canonical values are listed here
+// + referenced from stageProcessBatch (gate-block short-circuit) +
+// from run-record EvaluateRunState (per-status verdict rule). Adding a
+// new value MUST land in BOTH places in the SAME PR to avoid drift.
 type RunTagItem struct {
 	ClipID       string `json:"clip_id"`
 	Name         string `json:"name"`

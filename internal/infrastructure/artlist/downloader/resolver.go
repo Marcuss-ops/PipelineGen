@@ -214,9 +214,19 @@ func (r *Resolver) Download(ctx context.Context, req artapp.DownloadRequest) (*a
 
 	// Acquisition-mode gate. This is the single canonical place where
 	// automatic Artlist downloads are allowed or rejected.
+	//
+	// Fase 6 / Commit 1 (July 2026): the sentinel is now named
+	// ErrAcquisitionModeBlocked (was ErrManualImportActive). The
+	// rename matches the user-spec literal — the behaviour is
+	// identical: manual_import block IS a fail-closed typed error,
+	// surfaced via errors.Is so the orchestrator (stageProcessBatch)
+	// stamps RunTagItem.Status = "blocked_mode" + item.Error verbatim,
+	// and the run-state aggregate (resp.Failed++) so
+	// EvaluateRunState verdicts PARTIAL_SUCCESS / FAILED on partial /
+	// total block. No silent skip.
 	mode := r.cfg.AcquisitionMode.Normalize()
 	if !mode.AllowsAutomaticDownload() {
-		return nil, artapp.ErrManualImportActive
+		return nil, artapp.ErrAcquisitionModeBlocked
 	}
 
 	// Daily limit gate. A limit of 0 means automatic downloads are

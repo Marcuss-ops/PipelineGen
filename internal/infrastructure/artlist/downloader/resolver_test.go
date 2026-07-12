@@ -71,7 +71,8 @@ func TestResolver_Download_ManualImportBlocksDownload(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, artapp.ErrManualImportActive)
+	assert.ErrorIs(t, err, artapp.ErrAcquisitionModeBlocked,
+		"Fase 6 / Commit 1: the manual_import gate fires ErrAcquisitionModeBlocked (was ErrManualImportActive)")
 }
 
 func TestResolver_Download_AuthorizedAPILimitZeroBlocksDownload(t *testing.T) {
@@ -260,8 +261,8 @@ func TestResolver_Download_AuthorizedByNewDefaults(t *testing.T) {
 	// and ErrAutomaticDownloadsDisabled MUST both be absent, audit row
 	// MUST be recorded.
 	require.Error(t, err, "transport failure expected; not asserting on transport outcome")
-	assert.False(t, errors.Is(err, artapp.ErrManualImportActive),
-		"P1 default AcquisitionMode=authorized_api MUST NOT yield ErrManualImportActive")
+	assert.False(t, errors.Is(err, artapp.ErrAcquisitionModeBlocked),
+		"P1 default AcquisitionMode=authorized_api MUST NOT yield ErrAcquisitionModeBlocked")
 	assert.False(t, errors.Is(err, artapp.ErrAutomaticDownloadsDisabled),
 		"P1 default DailyDownloadLimit=10 MUST NOT yield ErrAutomaticDownloadsDisabled")
 	assert.False(t, errors.Is(err, artapp.ErrDailyDownloadLimitExceeded),
@@ -307,8 +308,8 @@ func TestResolver_Download_ManualImportBlocksDownloadAtP1Default(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, artapp.ErrManualImportActive,
-		"the manual_import override MUST escape the P1 default")
+	assert.ErrorIs(t, err, artapp.ErrAcquisitionModeBlocked,
+		"Fase 6 / Commit 1: the manual_import override MUST escape the P1 default with the new ErrAcquisitionModeBlocked sentinel")
 	require.Empty(t, audit.records,
 		"manual_import gate fires before the audit row is recorded; no rows expected")
 }
