@@ -1408,21 +1408,24 @@ class ProfileWorker(threading.Thread):
                                 buffer_int_list = self.page.evaluate(
                                     "url => fetch(url).then(r => r.arrayBuffer()).then(b => Array.from(new Uint8Array(b)))",
                                     src,
+                                    timeout=10000,
                                 )
                                 if isinstance(buffer_int_list, list) and buffer_int_list:
                                     image_bytes = bytes(buffer_int_list)
                                     fetch_method = "blob-fetch"
-                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page succeeded ({len(image_bytes)} bytes)")
-                            except Exception as fe:
-                                _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page failed: {fe}")
-                            if not image_bytes:
-                                try:
-                                    # locator.screenshot() captures the rendered
-                                    # <img> element without touching the slide
-                                    # page. This respects "MAI esportare la slide":
-                                    # the operation is element-scoped, not
-                                    # page-scoped.
-                                    image_bytes = img.screenshot(type="png")
+                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page succeeded ({len(image_bytes)} bytes)")                                except Exception as fe:
+                                    _log(f"[profile-{self.profile_id}][{request_id}] blob: window.fetch proxy-on-page failed: {fe}")
+                                if not image_bytes:
+                                    try:
+                                        # locator.screenshot() captures the rendered
+                                        # <img> element without touching the slide
+                                        # page. This respects "MAI esportare la slide":
+                                        # the operation is element-scoped, not
+                                        # page-scoped. timeout=5000 bounds the
+                                        # variant where the locator selector silently
+                                        # rotates off the DOM mid-fetch; the worker
+                                        # fails fast and surfaces a typed error.
+                                        image_bytes = img.screenshot(type="png", timeout=5000)
                                     fetch_method = "element-screenshot"
                                     _log(f"[profile-{self.profile_id}][{request_id}] blob: element-screenshot fallback succeeded ({len(image_bytes)} bytes)")
                                 except Exception as se:
