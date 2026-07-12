@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "e2e-search-no-results",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "search-no-results",
+      "title": "No-result search failure",
+      "language": "en",
+      "tone": "documentary",
+      "style": "This request should fail because the semantic search has no matches.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "search",
+        "query": "e2e_token_that_does_not_exist_938472",
+        "max_clips": 5,
+        "min_coverage": 1,
+        "min_transcript_words": 0,
+        "ordering_strategy": "chronological",
+        "grounding_policy": "clips_primary"
+      },
+      "script_params": {
+        "target_words": 120,
+        "min_words": 80
+      },
+      "output": {
+        "extract_entities": "disabled",
+        "generate_metadata": "disabled",
+        "generate_voiceover": "disabled",
+        "generate_scene_images": "disabled",
+        "generate_document": "disabled",
+        "save_to_db": false,
+        "generate_timeline": false
+      }
+    }
+  ]
+}
