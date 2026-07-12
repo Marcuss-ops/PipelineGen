@@ -275,6 +275,16 @@ func (f *fakeRepoForCompileTime) IncrementAttemptCount(ctx context.Context, id s
 	panic("compile-time anchor only")
 }
 
+// InsertWithOutbox atomically writes a new ArtifactStage row AND co-emits
+// an outbox event in one transaction (Push 3.1c: FASE 3 Spina Dorsale TX-
+// aware primitive). The Repository interface in stages.go (line ~417) pins
+// this signature; the panic body matches the surrounding mock members because
+// this is a compile-time anchor only — runtime tests live in
+// internal/infrastructure/database/sqlite/artifact_stages/repository_test.go.
+func (f *fakeRepoForCompileTime) InsertWithOutbox(ctx context.Context, stage *ArtifactStage, eventType string, payload []byte) (string, error) {
+	panic("compile-time anchor only")
+}
+
 // contains is a tiny stdlib-only strings.Contains substitute so this
 // test file has no external dependencies.
 func contains(haystack, needle string) bool {
