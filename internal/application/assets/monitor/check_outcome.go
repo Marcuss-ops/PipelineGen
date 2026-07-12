@@ -17,6 +17,7 @@ import (
 	"time"
 
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
+	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 )
 
 // recordCheckOutcome translates a checkChannel error into the
@@ -80,13 +81,20 @@ func (m *ChannelMonitor) nextCheckTime(ch channels.Channel, success bool) string
 	if failures < 1 {
 		failures = 1
 	}
-	backoff := policy.BackoffInitial
-	for i := 1; i < failures && backoff < policy.BackoffCap; i++ {
-		backoff *= 2
-	}
-	if backoff > policy.BackoffCap {
-		backoff = policy.BackoffCap
-	}
+	// Backoff math now routes through pkg/retry.BackoffFor — the
+	// canonical owner of "compute exponential backoff" (godlike/06
+	// SSOT, see pkg/retry/options.go godlike/06 block). failures-1
+	// is the 0-based attempt count: failures=1 → InitialBackoff
+	// (single iteration skipped), failures=2 → 2×InitialBackoff,
+	// failures=N → 2^(N-1) × InitialBackoff saturated at MaxBackoff.
+	// Byte-equivalent with the pre-migration for-loop + post-clamp.
+	// JitterFraction defaults to 0 so the persisted `available_at`
+	// timestamp is deterministic (a schedule, not a sleep duration).
+	backoff := retry.BackoffFor(failures-1, retry.Options{
+		InitialBackoff: policy.BackoffInitial,
+		BackoffFactor:  2.0,
+		MaxBackoff:     policy.BackoffCap,
+	})
 	return time.Now().Add(backoff).Format(time.RFC3339)
 }
 
