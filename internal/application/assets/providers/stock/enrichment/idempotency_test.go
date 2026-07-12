@@ -49,6 +49,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 )
 
 // canonicalTriple is the canonical test triple used across the 9
@@ -280,6 +282,43 @@ func TestIsValidEnrichmentIdempotencyKey_AcceptsCanonicalRejectsMalformed(t *tes
 			t.Errorf("expected non-hex char to be invalid: %q", bad)
 		}
 	})
+}
+
+// TestEnrichmentIdempotencyKey_MatchesBuildKeyString pins the
+// godlike/06 SSOT contract between EnrichmentIdempotencyKey and
+// pkg/idempotency.BuildKeyString (Commit A follow-up, July 2026).
+// EnrichmentIdempotencyKey delegates 1:1 to BuildKeyString with
+// provider="stock-enrich" + the pre-joined raw bytes; the SSOT
+// cross-check verifies BYTE-IDENTICAL output for the same
+// canonical triple. A future drift between the two surfaces
+// (e.g. someone adds a delimiter to the pre-joined bytes, or
+// switches hash functions) fails this test loudly.
+func TestEnrichmentIdempotencyKey_MatchesBuildKeyString(t *testing.T) {
+	got, gotErr := EnrichmentIdempotencyKey(canonicalChunkID, canonicalContentHash, EnrichmentVersionV1)
+	if gotErr != nil {
+		t.Fatalf("EnrichmentIdempotencyKey happy-path returned error: %v", gotErr)
+	}
+	raw := canonicalChunkID + ":" + canonicalContentHash + ":" + string(EnrichmentVersionV1)
+	want, wantErr := idempotency.BuildKeyString("stock-enrich", raw)
+	if wantErr != nil {
+		t.Fatalf("BuildKeyString happy-path returned error: %v", wantErr)
+	}
+	if got != want {
+		t.Errorf("EnrichmentIdempotencyKey(%q,%q,%q) = %q; BuildKeyString must produce the same key for the same canonical (godlike/06 SSOT)",
+			canonicalChunkID, canonicalContentHash, EnrichmentVersionV1, got)
+	}
+	// Byte-stability fixture (Commit A follow-up, July 2026):
+	// pin a known 64-char hex so a lockstep drift between the
+	// wrapper and the canonical surface (e.g. both add a
+	// delimiter in unison) fails loudly. The fixture hex is
+	// SHA-256 of the canonical 97-byte pre-joined string
+	// `canonicalChunkID + ":" + canonicalContentHash + ":" +
+	// string(EnrichmentVersionV1)`, cross-validated between
+	// bash `echo -n` and a Go program in the pre-Commit-A
+	// byte-stability hash computation.
+	if got != "ba93a47600b9bce576d7d7562629dc8ca01c8ff1d715284ad60c4161d6e3ccfd" {
+		t.Errorf("EnrichmentIdempotencyKey must produce byte-stable output identical to legacy hashutil.SHA256String + pkg/idempotency.BuildKeyString (in-flight outbox events rely on this); got %q", got)
+	}
 }
 
 // Test 9: EnrichmentIdempotencyKeyDiagnostic returns specific
