@@ -194,53 +194,53 @@ func (o *RunOrchestratorService) stageProcessBatch(ctx context.Context, ps *pipe
 				staged, stageErr := o.svc.stager.StageSource(ctx, assets.SourceRef{
 					URL: arg.w.processInput.SourceURL,
 				})
-			if stageErr != nil {
-				// Fase 6 / Commit 1 (July 2026): typed gate-block
-				// short-circuit. godlike/07 fail-closed: when the
-				// stager fires a typed gate-block error (ErrAcquisition
-				// ModeBlocked today; the remaining sentinel entries land
-				// in Commits 2/3/4 via the classifier), the helper
-				// stamps the per-item audit (item.Status + item.Error)
-				// verbatim and bumps resp.Failed so EvaluateRunState
-				// (Rule 5 PARTIAL_SUCCESS / Rule 3 FAILED) reports the
-				// truth instead of paper-over a partial-blocks run as
-				// "all good".
-				//
-				// godlike/06 SSOT: the classification logic lives in
-				// gate_block_classifier.go (the SINGLE canonical owner
-				// of the (sentinel, per-item status) mapping). Adding
-				// a new typed gate-block error MUST extend the
-				// classifier, NOT introduce a parallel check here.
-				shortStatus := gateBlockShortCircuit(
-					&arg.w.item,
-					stageErr,
-					newGateBlockCounterFor(ps.resp),
-					o.svc.log,
-					func(stage, msg string) error {
-						if o.svc.assetProcessing != nil {
-							return o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, stage, msg)
-						}
-						return nil
-					},
-				)
-				if shortStatus != "" {
-					// The gate-block helper already stamped item.Status
-					// + item.Error + bumped resp.Failed. The orchestr
-					// ator MUST append the item to resp.Items + RETURN
-					// early so mediaProcessor.Process is NOT invoked —
-					// continuing would silently overwrite the typed
-					// block with the transport-layer outcome (a
-					// godlike/07 fake-availability violation).
-					mu.Lock()
-					ps.resp.Items = append(ps.resp.Items, arg.w.item)
-					mu.Unlock()
-					return
-				}
-				o.svc.log.Warn("shared SourceStager pre-stage failed (continuing with mediaProcessor)",
-					zap.String("clip_id", arg.w.item.ClipID),
-					zap.String("source_url", arg.w.processInput.SourceURL),
-					zap.Error(stageErr))
-			} else {
+				if stageErr != nil {
+					// Fase 6 / Commit 1 (July 2026): typed gate-block
+					// short-circuit. godlike/07 fail-closed: when the
+					// stager fires a typed gate-block error (ErrAcquisition
+					// ModeBlocked today; the remaining sentinel entries land
+					// in Commits 2/3/4 via the classifier), the helper
+					// stamps the per-item audit (item.Status + item.Error)
+					// verbatim and bumps resp.Failed so EvaluateRunState
+					// (Rule 5 PARTIAL_SUCCESS / Rule 3 FAILED) reports the
+					// truth instead of paper-over a partial-blocks run as
+					// "all good".
+					//
+					// godlike/06 SSOT: the classification logic lives in
+					// gate_block_classifier.go (the SINGLE canonical owner
+					// of the (sentinel, per-item status) mapping). Adding
+					// a new typed gate-block error MUST extend the
+					// classifier, NOT introduce a parallel check here.
+					shortStatus := gateBlockShortCircuit(
+						&arg.w.item,
+						stageErr,
+						newGateBlockCounterFor(ps.resp),
+						o.svc.log,
+						func(stage, msg string) error {
+							if o.svc.assetProcessing != nil {
+								return o.svc.assetProcessing.Fail(ctx, arg.w.item.ClipID, stage, msg)
+							}
+							return nil
+						},
+					)
+					if shortStatus != "" {
+						// The gate-block helper already stamped item.Status
+						// + item.Error + bumped resp.Failed. The orchestr
+						// ator MUST append the item to resp.Items + RETURN
+						// early so mediaProcessor.Process is NOT invoked —
+						// continuing would silently overwrite the typed
+						// block with the transport-layer outcome (a
+						// godlike/07 fake-availability violation).
+						mu.Lock()
+						ps.resp.Items = append(ps.resp.Items, arg.w.item)
+						mu.Unlock()
+						return
+					}
+					o.svc.log.Warn("shared SourceStager pre-stage failed (continuing with mediaProcessor)",
+						zap.String("clip_id", arg.w.item.ClipID),
+						zap.String("source_url", arg.w.processInput.SourceURL),
+						zap.Error(stageErr))
+				} else {
 					// Step 9/12 wire-up (July 2026): now that the Processor honors
 					// ProcessInput.LocalPath (asset/processor.go + processor.go),
 					// the staged file is NOT just a probe — mediaProcessor.Process

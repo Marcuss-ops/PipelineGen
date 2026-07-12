@@ -341,11 +341,11 @@ type RunRepository interface {
 // the canonical artlist_runs schema columns verbatim (godlike/06
 // SSOT column-level reconciliation).
 type LatestRunSummary struct {
-	RunID      string
-	Term       string
-	Status     string
-	Error      string // mirrors error_message column
-	CreatedAt  string // ISO-8601 (datetime('now') UTC)
+	RunID     string
+	Term      string
+	Status    string
+	Error     string // mirrors error_message column
+	CreatedAt string // ISO-8601 (datetime('now') UTC)
 }
 
 // ErrRunRepositoryUnavailable is the typed sentinel NewService returns
