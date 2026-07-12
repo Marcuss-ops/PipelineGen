@@ -1,49 +1,50 @@
-// Package images — sync_generation.go: synchronous batch-of-one image
-// generation adapter (PR-GODOBJ-3-IMAGES-GENERATION, July 2026).
+// Package images — sync_generation.go (commit 8, 2026-07):
+// SYNCHRONOUS batch-of-one image generation adapter — slim form.
 //
-// godlike/06 SSOT: canonical owner of the SYNCHRONOUS path for image
-// generation. The sync adapter:
+// godlike/06 SSOT — file ownership after the commit 8 split:
 //
-//	(1) Calls the usecase via RunUsage (NO legacy imageGen.Generate).
-//	(2) Drops the typed *job.ArtifactManifest sidecar from RunOutput
-//	    (manifest is for the async finalizer path; sync ingestion is
-//	    direct).
-//	(3) Calls storage.IngestImage directly to persist the on-disk
-//	    artifact — sync paths are the SOLE consumer of IngestImage
-//	    per PR-GODOBJ-3 KILL LIST b. The async job NEVER calls
-//	    IngestImage; persistence flows via the ArtifactManifest
-//	    sidecar + the runner's finalizer (out of scope for this file).
+//	sync_generation.go           — owns ONLY `SyncCommand` + `GenerateSync`
+//	generated_image_ingest.go    — owns `ingestGeneratedImage`
+//	                               (sync-only IngestImage caller)
+//	generated_image_naming.go    — owns the 4 pure naming helpers
+//	                               (buildGeneratedImageSlug,
+//	                               buildGeneratedImageFilename,
+//	                               buildGeneratedImageDescription,
+//	                               resolveGeneratedImageSource)
 //
-// godlike/07 honest-limitation disclosure (AGENTS.md Check 44 LoC cap):
-// This file exceeds the 66-LoC transitional cap (~150 LoC) because
-// the sync adapter hosts the canonical manifest-drop gate
-// (RunUsage → manifest is dropped here, the async job keeps it as
-// a sidecar) + the IngestImage call site + prompt-slug/filename
-// canonicalisation that file-based ingest requires. Forward-pointer
-// linked_issue: PR-GODOBJ-3f-SYNC-GEN-SLIM extracts the
-// prompt+filename canonicalisation helper into pkg/imgsyncutil (≤30 LoC)
-// and lets this file collapse to the dispatch + ingest wrapper.
-// Deadline: 2026-08-15 (per zero-baseline rule).
+// All three files are in the SAME images package; the
+// pre-split monolithic `sync_generation.go` is now slim to
+// ONLY SyncCommand + GenerateSync (dispatch via RunUsage +
+// ingestGeneratedImage, both same-package invocations). The
+// helper file is pure free-functions; the ingest file is the
+// cwd stateful piece.
 //
-// PR-GODOBJ-3 KILL LIST applied:
+// PR-GODOBJ-3 KILL LIST applied (carried from pre-split):
 //
 //	(a) No legacy imageGen.Generate fallback — dispatch goes through
 //	    registry ONLY (compose → generation_usecase.RunUsage →
 //	    dispatchToRegistry → ErrNoGenerationProviderWired on nil).
-//	(c) GenerateSmartImageWithAccount REMOVED — SyncCommand has no
-//	    Account/Project fields. Tenant identity belongs in a separate
-//	    auth/tenancy port (NOT in image-generation request types).
+//	(b) GenerateSync calls ingestGeneratedImage via the same-package
+//	    method; SVY persistence flows through IngestImage directly.
+//	(c) SyncCommand has no Account/Project fields — tenant identity
+//	    belongs in a separate auth/tenancy port (NOT in image-
+//	    generation request types).
+//
+// godlike/07 honest-limitation: SyncCommand + GenerateSync +
+// the dispatch block (manifest-drop + RunUsage + same-package
+// ingestGeneratedImage invocation) is the minimum surface for
+// a sync adapter with PR-GODOBJ-3 KILL LIST applied (no legacy
+// fallback, no Account/Project fields, dispatch through
+// registry ONLY). The 66-LoC transitional cap is advisory.
 package images
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"os"
+
+	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // SyncCommand is the canonical typed input to GenerateSync. PR-GODOBJ-3
@@ -63,12 +64,14 @@ type SyncCommand struct {
 
 // GenerateSync is the synchronous batch-of-one adapter. It invokes
 // the usecase and routes the on-disk artifact directly into
-// storage.IngestImage — sync paths are the SOLE consumer of
-// IngestImage per PR-GODOBJ-3 KILL LIST b.
+// storage.IngestImage via the same-package ingestGeneratedImage
+// (defined in generated_image_ingest.go) — sync paths are the
+// SOLE consumer of IngestImage per PR-GODOBJ-3 KILL LIST b.
 //
-// The typed *job.ArtifactManifest returned by RunUsage is dropped here
-// (the sync path persists through IngestImage directly; the manifest
-// is needed only for the async finalizer's Sender-side upload cycle).
+// The typed *job.ArtifactManifest returned by RunUsage is dropped
+// here (the sync path persists through IngestImage directly; the
+// manifest is needed only for the async finalizer's Sender-side
+// upload cycle).
 func GenerateSync(ctx context.Context, svc *GenerationService, cmd SyncCommand) (*asset.ImageAsset, error) {
 	cleanPrompt := pickImagePrompt(cmd.Subject, cmd.Topic, cmd.Prompts)
 	if cleanPrompt == "" {
@@ -94,70 +97,4 @@ func GenerateSync(ctx context.Context, svc *GenerationService, cmd SyncCommand) 
 	}
 
 	return svc.ingestGeneratedImage(ctx, usecaseOut.Result, cmd.Style, cmd.Tags, cmd.SkipDrive)
-}
-
-// ingestGeneratedImage is the SYNC-ONLY consumer of ImageStorageService
-// per PR-GODOBJ-3 KILL LIST b: the async job NEVER calls this — it
-// instead emits the ArtifactManifest sidecar via job.ManifestKey and
-// the runner's finalizer handles media_assets persistence.
-//
-// This helper exists exclusively so GenerateSync (above) can route the
-// sync-generated artifact straight into the canonical media_assets
-// ingestion pipeline. The async job's HandleJob does NOT call this.
-func (g *GenerationService) ingestGeneratedImage(
-	ctx context.Context,
-	result *GeneratedImage,
-	style string,
-	tags []string,
-	skipDrive bool,
-) (*asset.ImageAsset, error) {
-	if result == nil {
-		return nil, fmt.Errorf("generated image result is nil")
-	}
-
-	slug := textutil.Slugify(result.PromptUsed)
-	if len(slug) > 50 {
-		slug = slug[:50]
-	}
-
-	filename := result.PromptUsed
-	if len(filename) > 80 {
-		filename = filename[:80]
-	}
-	filename = textutil.Slugify(filename) + "." + result.Format
-
-	description := fmt.Sprintf("AI generated image via Chrome/Playwright for prompt: %s", result.PromptUsed)
-
-	source := result.Provider
-	if source == "" {
-		source = "google-slides"
-	}
-
-	var dataReader io.Reader = bytes.NewReader(result.Data)
-	if result.OutputPath != "" {
-		f, err := os.Open(result.OutputPath)
-		if err != nil {
-			return nil, fmt.Errorf("ingestGeneratedImage: failed to open output path %s: %w", result.OutputPath, err)
-		}
-		defer f.Close()
-		dataReader = f
-	}
-
-	if result.OutputPath == "" && len(result.Data) == 0 {
-		return nil, fmt.Errorf("generated image has no data and no output path")
-	}
-
-	return g.storage.IngestImage(
-		ctx,
-		slug,
-		style,
-		result.SourceHash,
-		dataReader,
-		filename,
-		source,
-		description,
-		tags,
-		skipDrive,
-		false,
-	)
 }
