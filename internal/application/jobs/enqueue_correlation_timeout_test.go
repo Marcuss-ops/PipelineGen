@@ -63,6 +63,7 @@ func (m *correlationTimeoutBroker) SetProgress(_ context.Context, _ string, _ in
 func (m *correlationTimeoutBroker) AddEvent(_ context.Context, _ string, _, _ string, _ map[string]any) error {
 	return nil
 }
+
 // FASE 4(b) (July 2026): the canonical kerneljob.Store.RenewLease
 // signature now returns the typed RenewLeaseResult envelope
 // (LeaseStateContinue | CancelRequested | LeaseLost). The pre-Fase-4

@@ -52,6 +52,7 @@ import (
 // exercises a deterministic `s.nowFunc()` injection (the
 // Service has a `nowFunc` field for this purpose).
 var _ = time.Now
+
 const schemasFASE2 = `
 CREATE TABLE operations (
     operation_id            TEXT PRIMARY KEY,

@@ -80,7 +80,7 @@ func TestOutboxMetrics_AllRegistered(t *testing.T) {
 	}
 
 	wantNames := map[string]bool{
-		"outbox_lag_seconds":              false,
+		"outbox_lag_seconds":               false,
 		"outbox_dispatch_duration_seconds": false,
 		"outbox_reclaim_total":             false,
 		"outbox_dlq_total":                 false,
@@ -195,7 +195,7 @@ func TestOutboxMetrics_LabelShapes(t *testing.T) {
 	}
 
 	wantLabels := map[string][]string{
-		"outbox_lag_seconds":              {"event_type"},
+		"outbox_lag_seconds":               {"event_type"},
 		"outbox_dispatch_duration_seconds": {"event_type", "outcome"},
 		"outbox_reclaim_total":             {},
 		"outbox_dlq_total":                 {"event_type"},

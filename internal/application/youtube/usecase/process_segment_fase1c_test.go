@@ -182,9 +182,10 @@ func (a *alwaysHitCache) GetExisting(_ context.Context, _ string) (*youtubetypes
 // ── Test 1: Step 10 alone (no panic, accepts new signature) ──────────
 //
 // Directly exercise step10_MetadataEnrich. The test asserts:
-//   (a) the method accepts the new (transcript, languageCode, cues)
-//       parameter list and returns nil when MetadataService is nil
-//   (b) the call does NOT panic, even with a nil MetadataService
+//
+//	(a) the method accepts the new (transcript, languageCode, cues)
+//	    parameter list and returns nil when MetadataService is nil
+//	(b) the call does NOT panic, even with a nil MetadataService
 //
 // godlike/06 SSOT: the test pins that step10_MetadataEnrich
 // reads ONLY from the parameter list (transcript, languageCode,
@@ -253,10 +254,10 @@ func TestExecute_CacheMiss_TranscriberInvokedAtMostOnce(t *testing.T) {
 	// struct literal (no NewTextTrackResolver ctor in this
 	// codebase; the field shape is the canonical surface).
 	deps.TextTrackResolver = &TextTrackResolver{
-		Repo:       noRowsRepo{},    // priority 1+2 (DB) → miss
-		Subtitles:  noSubtitleFetcher{}, // priority 3+4 → miss
-		Transcriber: tport,          // priority 5 → fires once
-		Log:        zap.NewNop(),
+		Repo:        noRowsRepo{},        // priority 1+2 (DB) → miss
+		Subtitles:   noSubtitleFetcher{}, // priority 3+4 → miss
+		Transcriber: tport,               // priority 5 → fires once
+		Log:         zap.NewNop(),
 	}
 
 	uc := NewProcessYouTubeSegmentUseCase(deps)
@@ -301,10 +302,10 @@ func TestExecute_CacheHit_TranscriberNotInvoked(t *testing.T) {
 	// the test would observe any regression that bypasses the
 	// cache short-circuit.
 	deps.TextTrackResolver = &TextTrackResolver{
-		Repo:       noRowsRepo{},
-		Subtitles:  noSubtitleFetcher{},
+		Repo:        noRowsRepo{},
+		Subtitles:   noSubtitleFetcher{},
 		Transcriber: tport,
-		Log:        zap.NewNop(),
+		Log:         zap.NewNop(),
 	}
 	// Wire a cache that ALWAYS hits (so the orchestrator
 	// short-circuits at Step 2 BEFORE the resolver).

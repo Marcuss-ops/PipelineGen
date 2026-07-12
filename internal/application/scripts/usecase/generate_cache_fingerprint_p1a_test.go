@@ -31,15 +31,15 @@
 //     different fingerprint.
 //
 // SUT BUGS SURFACED (documented in commit body, NOT in-code skips):
-//   1. cache_key.go EXCLUDES SegmentTopics from the fingerprint. The
-//      user spec lists "segment topics" as one of the 10 fields that
-//      must change the fingerprint. The P1.A_PerFieldMutation
-//      SegmentTopics sub-test asserts the user-spec invariant and
-//      FAILS at runtime. This TDD-reveals-bug pattern matches the
-//      P0.G fallback policy convention. The fix is to add
-//      SegmentTopics (or its canonical hash) to the
-//      GenerationFingerprintInput struct + extend BuildFingerprint
-//      to include it. This is an orthogonal follow-up PR.
+//  1. cache_key.go EXCLUDES SegmentTopics from the fingerprint. The
+//     user spec lists "segment topics" as one of the 10 fields that
+//     must change the fingerprint. The P1.A_PerFieldMutation
+//     SegmentTopics sub-test asserts the user-spec invariant and
+//     FAILS at runtime. This TDD-reveals-bug pattern matches the
+//     P0.G fallback policy convention. The fix is to add
+//     SegmentTopics (or its canonical hash) to the
+//     GenerationFingerprintInput struct + extend BuildFingerprint
+//     to include it. This is an orthogonal follow-up PR.
 //
 // PRE-EXISTING SIBLING FAILURES (orthogonal, NOT caused by P1.A):
 //   - TestPlaintextOutput_P0F — pre-existing failure
@@ -195,14 +195,15 @@ type p1aMutationCase struct {
 // each mutation.
 //
 // SUT BUG SURFACED:
-//   The SegmentTopics sub-test FAILS at runtime — cache_key.go
-//   EXCLUDES SegmentTopics from the GenerationFingerprintInput,
-//   so changing SegmentTopics does NOT change the fingerprint.
-//   The user spec says it MUST. This is a TDD-reveals-bug: the
-//   test will surface the discrepancy and the production fix is
-//   to add SegmentTopics (or its canonical hash) to the input
-//   struct. The fix is an orthogonal follow-up PR, NOT part of
-//   P1.A.
+//
+//	The SegmentTopics sub-test FAILS at runtime — cache_key.go
+//	EXCLUDES SegmentTopics from the GenerationFingerprintInput,
+//	so changing SegmentTopics does NOT change the fingerprint.
+//	The user spec says it MUST. This is a TDD-reveals-bug: the
+//	test will surface the discrepancy and the production fix is
+//	to add SegmentTopics (or its canonical hash) to the input
+//	struct. The fix is an orthogonal follow-up PR, NOT part of
+//	P1.A.
 //
 // All other sub-tests pass: clip order, transcript, description,
 // tag, tone, language, model, prompt_version, grounding_policy
@@ -380,22 +381,22 @@ func TestCacheFingerprint_P1A_PerFieldMutationSensitivity(t *testing.T) {
 // TestCacheFingerprint_P1A_ClipOrderInversionCriticalCase pins the
 // user-spec critical case:
 //
-//   "Inverti solo l'ordine delle clip (set ID identico) →
-//    fingerprint cambia perché AssembledText contiene l'ordine
-//    effettivo."
+//	"Inverti solo l'ordine delle clip (set ID identico) →
+//	 fingerprint cambia perché AssembledText contiene l'ordine
+//	 effettivo."
 //
 // The SET of clip IDs is identical (clip-a, clip-b, clip-c); only
 // the ORDER differs. The fingerprint MUST change because:
 //
-//   1. BuildFingerprint sorts ClipIDs lexicographically, so the
-//      set of ClipIDs produces the same sorted slice in both
-//      cases — ClipIDs alone do NOT distinguish the two.
-//   2. FingerprintInputFromSource uses sha256(AssembledText) for
-//      SourceTextHash. AssembledText is the concatenation of
-//      per-clip blocks (CLIP header + Description + Transcript +
-//      Tags) in RESOLUTION ORDER. Reversing the order produces
-//      a different AssembledText → different SourceTextHash →
-//      different fingerprint.
+//  1. BuildFingerprint sorts ClipIDs lexicographically, so the
+//     set of ClipIDs produces the same sorted slice in both
+//     cases — ClipIDs alone do NOT distinguish the two.
+//  2. FingerprintInputFromSource uses sha256(AssembledText) for
+//     SourceTextHash. AssembledText is the concatenation of
+//     per-clip blocks (CLIP header + Description + Transcript +
+//     Tags) in RESOLUTION ORDER. Reversing the order produces
+//     a different AssembledText → different SourceTextHash →
+//     different fingerprint.
 //
 // This proves that the canonical identity is order-sensitive at
 // the AssembledText level, not at the ClipIDs level — the user's

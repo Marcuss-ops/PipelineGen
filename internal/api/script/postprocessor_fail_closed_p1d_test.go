@@ -101,7 +101,7 @@ import (
 // `_ error =` pin would be redundant.)
 var (
 	_ *domainScript.PreflightProcessorMissingError = &domainScript.PreflightProcessorMissingError{Processor: "voiceover", Reason: "test"}
-	_ adapters.PostProcessorRegistry              = adapters.PostProcessorRegistry{}
+	_ adapters.PostProcessorRegistry               = adapters.PostProcessorRegistry{}
 )
 
 // p1dStubProcessor is the canonical no-op PostProcessor used to
@@ -304,12 +304,12 @@ func TestP1D_Document_Isolated_Available_NoError(t *testing.T) {
 // generate_voiceover=true but caps.VoiceoverEnabled=false
 // (composition not wired), the preflight MUST:
 //
-//   (a) surface an error (no silent skip)
-//   (b) carry the canonical sentinel (errors.Is schema)
-//   (c) carry the canonical typed envelope (errors.As schema)
-//   (d) report Processor="voiceover"
-//   (e) populate Reason (diagnosability)
-//   (f) contain "preflight:" prefix (HTTP error_class match)
+//	(a) surface an error (no silent skip)
+//	(b) carry the canonical sentinel (errors.Is schema)
+//	(c) carry the canonical typed envelope (errors.As schema)
+//	(d) report Processor="voiceover"
+//	(e) populate Reason (diagnosability)
+//	(f) contain "preflight:" prefix (HTTP error_class match)
 //
 // A regression that re-introduces silent graceful-degradation
 // (pre-PR-2 behavior) surfaces as test failure here.

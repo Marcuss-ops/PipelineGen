@@ -20,10 +20,10 @@
 // enforceClipNativeContract branches on policy.
 //
 //   - strict  → *ClipNativePlanningError{
-//                  Code: "CLIP_NATIVE_PLANNING_FAILED",
-//                  Policy: "strict"}
+//     Code: "CLIP_NATIVE_PLANNING_FAILED",
+//     Policy: "strict"}
 //   - allow_prose → warning appended + Status:
-//                  ItemStatusSucceededWithWarnings + ModeInfo flip
+//     ItemStatusSucceededWithWarnings + ModeInfo flip
 //
 // Test seam: orchestrator-level (buildUsecaseWithClipResolver +
 // fakeOllamaGen + fakeClipResolver). The default stub

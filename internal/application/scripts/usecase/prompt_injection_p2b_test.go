@@ -508,14 +508,14 @@ func TestPromptInjectionDefense_P2B_OutputFormatRejectsJSON(t *testing.T) {
 // (Pacquiao vs Broner), the SYSTEM MUST detect the subject
 // change. The test exercises BOTH layers:
 //
-//   5a. ENGINE LAYER: the engine has no topic check (SUT BUG 3).
-//       The engine accepts the off-topic response verbatim.
-//   5b. USECASE LAYER: the quality gate catches the off-topic
-//       response via the WEAK PROXY of source-text-coverage
-//       dropping and unsupported-claims rising. This is the
-//       documented behavior in SUT BUG 3 (no dedicated
-//       topic-preservation check; the proxy is the only
-//       defense today).
+//	5a. ENGINE LAYER: the engine has no topic check (SUT BUG 3).
+//	    The engine accepts the off-topic response verbatim.
+//	5b. USECASE LAYER: the quality gate catches the off-topic
+//	    response via the WEAK PROXY of source-text-coverage
+//	    dropping and unsupported-claims rising. This is the
+//	    documented behavior in SUT BUG 3 (no dedicated
+//	    topic-preservation check; the proxy is the only
+//	    defense today).
 //
 // ATTESO per the user spec: subject is preserved. The system
 // should detect subject change. Today the detection is via

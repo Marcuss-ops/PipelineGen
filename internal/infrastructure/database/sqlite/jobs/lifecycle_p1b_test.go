@@ -4,18 +4,18 @@
 //
 // USER-SPEC INVARIANTS (verbatim, July 2026):
 //
-//	- All 8 user-spec states: PENDING, QUEUED, RUNNING, SUCCEEDED, FAILED,
-//	  CANCELLED, DEAD_LETTERED (and the 11 canonical kernel states).
-//	- Progress monotonically increasing.
-//	- Error available on failure.
-//	- Result present ONLY at completion.
-//	- No job stuck indefinitely (lease expiry reclaim).
-//	- Retry limit respected.
-//	- Model timeout handled.
-//	- Worker crash recovered (RequeueExpiredLeases).
-//	- Server restart during generation → resume or retry or fail
-//	  explicitly (NEVER RUNNING forever).
-//	- Observation endpoint: status+progress+error+result.
+//   - All 8 user-spec states: PENDING, QUEUED, RUNNING, SUCCEEDED, FAILED,
+//     CANCELLED, DEAD_LETTERED (and the 11 canonical kernel states).
+//   - Progress monotonically increasing.
+//   - Error available on failure.
+//   - Result present ONLY at completion.
+//   - No job stuck indefinitely (lease expiry reclaim).
+//   - Retry limit respected.
+//   - Model timeout handled.
+//   - Worker crash recovered (RequeueExpiredLeases).
+//   - Server restart during generation → resume or retry or fail
+//     explicitly (NEVER RUNNING forever).
+//   - Observation endpoint: status+progress+error+result.
 //
 // SEAM CHOICE RATIONALE:
 //   - SQLiteStore is the canonical state-machine layer. All transitions
@@ -32,33 +32,33 @@
 //     these two recovery paths, not via the per-job-timeout context.
 //
 // SUT BUGS SURFACED (documented in commit body, NOT in-code skips):
-//   1. SetProgress does NOT enforce monotonicity (lifecycle_progress.go:23
-//      is a bare `UPDATE jobs SET progress = ?` with no monotonicity
-//      guard). A worker calling SetProgress(75) then SetProgress(50)
-//      silently regresses. The P1.B_ProgressMonotonic sub-test pins
-//      this behavior and surfaces it as a TDD-reveals-bug. The
-//      production fix is to enforce monotonicity via a guarded
-//      UPDATE (`WHERE progress <= ?`) — an orthogonal follow-up PR.
-//   2. PENDING is NOT a kernel state (kernel has 11 canonical states;
-//      PENDING is a pre-QUEUED dispatcher concept owned by the
-//      enqueue path, not the state machine). The P1.B_AllStates
-//      sub-test pins the canonical state set and documents the gap.
-//   3. DEAD_LETTERED is NOT a kernel status — it is a `dead_letter_jobs`
-//      table presence. The P1.B_DeadLettered sub-test pins the
-//      canonical mechanism (FinalizeAttempt with DLQPayload +
-//      FailedPermanent inserts a dead_letter_jobs row in the same TX
-//      as the status flip, atomically).
-//   4. requeueSingle used to mask SQL exec errors as the generic
-//      "rows affected 0" (mustRowsAffected(res) == 0 branch collapsed
-//      with the err != nil branch). This commit FIXES it by splitting
-//      the check (repository_claims.go): SQL errors are now surfaced
-//      verbatim via fmt.Sprintf, and the rows-affected=0 case has a
-//      descriptive CAS-fence suffix. The requeueSingle fix was the
-//      direct result of the P1.B test surface area; the companion
-//      rows-handle-during-BeginTx fix in RequeueExpiredLeases is
-//      also part of this commit (buffer SELECT into a slice, close
-//      rows BEFORE invoking requeueSingle — prevents SHARED→RESERVED
-//      lock upgrade deadlock in non-WAL deployments).
+//  1. SetProgress does NOT enforce monotonicity (lifecycle_progress.go:23
+//     is a bare `UPDATE jobs SET progress = ?` with no monotonicity
+//     guard). A worker calling SetProgress(75) then SetProgress(50)
+//     silently regresses. The P1.B_ProgressMonotonic sub-test pins
+//     this behavior and surfaces it as a TDD-reveals-bug. The
+//     production fix is to enforce monotonicity via a guarded
+//     UPDATE (`WHERE progress <= ?`) — an orthogonal follow-up PR.
+//  2. PENDING is NOT a kernel state (kernel has 11 canonical states;
+//     PENDING is a pre-QUEUED dispatcher concept owned by the
+//     enqueue path, not the state machine). The P1.B_AllStates
+//     sub-test pins the canonical state set and documents the gap.
+//  3. DEAD_LETTERED is NOT a kernel status — it is a `dead_letter_jobs`
+//     table presence. The P1.B_DeadLettered sub-test pins the
+//     canonical mechanism (FinalizeAttempt with DLQPayload +
+//     FailedPermanent inserts a dead_letter_jobs row in the same TX
+//     as the status flip, atomically).
+//  4. requeueSingle used to mask SQL exec errors as the generic
+//     "rows affected 0" (mustRowsAffected(res) == 0 branch collapsed
+//     with the err != nil branch). This commit FIXES it by splitting
+//     the check (repository_claims.go): SQL errors are now surfaced
+//     verbatim via fmt.Sprintf, and the rows-affected=0 case has a
+//     descriptive CAS-fence suffix. The requeueSingle fix was the
+//     direct result of the P1.B test surface area; the companion
+//     rows-handle-during-BeginTx fix in RequeueExpiredLeases is
+//     also part of this commit (buffer SELECT into a slice, close
+//     rows BEFORE invoking requeueSingle — prevents SHARED→RESERVED
+//     lock upgrade deadlock in non-WAL deployments).
 //
 // PRE-EXISTING SIBLING FAILURES (orthogonal, NOT caused by P1.B):
 //   - TestPlaintextOutput_P0F — pre-existing failure
@@ -1019,5 +1019,3 @@ func TestJobLifecycle_P1B_DeadLettered(t *testing.T) {
 	assert.Equal(t, string(dlqPayload), dlqPayloadCol,
 		"dead_letter_jobs.payload_json MUST carry the canonical DLQ payload")
 }
-
-

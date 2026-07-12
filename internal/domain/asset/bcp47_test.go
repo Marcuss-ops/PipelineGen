@@ -61,33 +61,33 @@ func TestNormalize_AcceptsCanonicalAndVariants(t *testing.T) {
 func TestNormalize_RejectsMalformed(t *testing.T) {
 	// "pt_br" intentionally NOT here — 2+_+2 IS a valid BCP-47 pair (see TestNormalize_AcceptsCanonicalAndVariants {pt-BR-lowercase-underscore}); the Rejects list must stay consistent with the Accepts list.
 	cases := []string{
-		"portuguese",   // full language name
-		"english",      // full language name
-		"italian",      // full language name
-		"POR",          // 3-letter ISO 639-2 code
-		"eng",          // 3-letter ISO 639-2 code
-		"ita",          // 3-letter ISO 639-2 code
-		"en-USA",       // 3-letter region
-		"en_usa",       // 3-letter region
-		"es-ESP",       // 3-letter region
-		"zh-Hans",      // 4-letter script subtag
-		"en-US-CA",     // 3-part language+region+region
-		"en_US.UTF-8",  // CLDR locale suffix
-		"en_US_POSIX",  // CLDR locale suffix
-		"123",          // digits only
-		"en-1",         // digit region
-		"x",            // 1-letter
-		"xyz",          // 3-letter bare
-		"en us",        // whitespace inside
-		"english-US",   // full language name + region
+		"portuguese",     // full language name
+		"english",        // full language name
+		"italian",        // full language name
+		"POR",            // 3-letter ISO 639-2 code
+		"eng",            // 3-letter ISO 639-2 code
+		"ita",            // 3-letter ISO 639-2 code
+		"en-USA",         // 3-letter region
+		"en_usa",         // 3-letter region
+		"es-ESP",         // 3-letter region
+		"zh-Hans",        // 4-letter script subtag
+		"en-US-CA",       // 3-part language+region+region
+		"en_US.UTF-8",    // CLDR locale suffix
+		"en_US_POSIX",    // CLDR locale suffix
+		"123",            // digits only
+		"en-1",           // digit region
+		"x",              // 1-letter
+		"xyz",            // 3-letter bare
+		"en us",          // whitespace inside
+		"english-US",     // full language name + region
 		"  portuguese  ", // full name with whitespace
-		"pt-BR-Maringá", // 3-part with city
-		"en_US",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected (BCP-47 strictly uses hyphen)
-		"pt_BR",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
-		"pt_br",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
-		"en_us",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
-		"it_IT",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
-		"es_ES",        // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
+		"pt-BR-Maringá",  // 3-part with city
+		"en_US",          // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected (BCP-47 strictly uses hyphen)
+		"pt_BR",          // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
+		"pt_br",          // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
+		"en_us",          // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
+		"it_IT",          // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
+		"es_ES",          // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b: underscore separator rejected
 	}
 	for _, in := range cases {
 		t.Run("reject_"+in, func(t *testing.T) {

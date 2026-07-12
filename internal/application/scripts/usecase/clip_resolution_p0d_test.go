@@ -5,35 +5,35 @@
 // resolution path: when the user supplies N clip IDs in any order,
 // the canonical output surfaces must preserve the EXACT input order:
 //
-//   1. ev.AcceptedClipIDs MUST equal the input slice element-for-element
-//      (positional equality — NOT a set equality / ElementsMatch).
-//      A future regression that ships, e.g., sort.Strings on the
-//      AcceptedClipIDs slice would silently rewrite the narrative
-//      ordering and surface instantly as a slice-equal failure here.
-//   2. ev.RenderableClipIDs (the DriveLink-bearing subset) MUST be the
-//      SAME input order — clips whose positions in the input are
-//      reordered must keep their position; only Drive-link presence
-//      filters the membership, never order.
-//   3. ev.AssembledText MUST mention every CLIP-N token in input order.
-//      The engine passes the assembled text verbatim to the LLM as
-//      grounding evidence; a regression that inflates the text with
-//      a sort.SceneID or hash-bucketed re-bucket would surface as a
-//      positional failure in the sourceText CLIP-N index traversal.
-//   4. The SceneAssetBinder (buildScenesFromClipEvidence) MUST emit
-//      scene[i] with Bindings.Clip.ClipID == input[i] for all i —
-//      independent of input ordering. This is the canonical 1:1
-//      binding contract (P0 #2 June 2026) that pins how the binder
-//      translates the dynamic evidence chain into the per-scene
-//      bindings document / voiceover / images consume.
+//  1. ev.AcceptedClipIDs MUST equal the input slice element-for-element
+//     (positional equality — NOT a set equality / ElementsMatch).
+//     A future regression that ships, e.g., sort.Strings on the
+//     AcceptedClipIDs slice would silently rewrite the narrative
+//     ordering and surface instantly as a slice-equal failure here.
+//  2. ev.RenderableClipIDs (the DriveLink-bearing subset) MUST be the
+//     SAME input order — clips whose positions in the input are
+//     reordered must keep their position; only Drive-link presence
+//     filters the membership, never order.
+//  3. ev.AssembledText MUST mention every CLIP-N token in input order.
+//     The engine passes the assembled text verbatim to the LLM as
+//     grounding evidence; a regression that inflates the text with
+//     a sort.SceneID or hash-bucketed re-bucket would surface as a
+//     positional failure in the sourceText CLIP-N index traversal.
+//  4. The SceneAssetBinder (buildScenesFromClipEvidence) MUST emit
+//     scene[i] with Bindings.Clip.ClipID == input[i] for all i —
+//     independent of input ordering. This is the canonical 1:1
+//     binding contract (P0 #2 June 2026) that pins how the binder
+//     translates the dynamic evidence chain into the per-scene
+//     bindings document / voiceover / images consume.
 //
 // USER-SPEC SCENARIOS:
 //
 //   - chronological  : round-1, round-2, ..., round-8
 //   - reverse        : round-8, round-7, ..., round-1
 //   - round_7_first  : round-7, round-1, round-2, round-3, round-4,
-//                      round-5, round-6, round-8 (round 7 fires
-//                      before round 1 — narrative must respect the
-//                      user-supplied order)
+//     round-5, round-6, round-8 (round 7 fires
+//     before round 1 — narrative must respect the
+//     user-supplied order)
 //
 // "Il testo narrativo non riordini arbitrariamente gli eventi" is
 // enforced deterministically at the EVIDENCE LAYER (a–c above).
@@ -208,18 +208,18 @@ func assertCLIPTokensInInputOrder(t *testing.T, ids []string, sourceText, caseNa
 // ordering contract for the 3 user-spec input orderings. Each
 // subtest:
 //
-//   1. Builds a fresh ClipSourceBuilder + a freshly-seeded resolver.
-//   2. Calls BuildClipContext with the permutation's clipIDs.
-//   3. Asserts:
-//      (a) ev.AcceptedClipIDs slice-equals the input order.
-//      (b) ev.RenderableClipIDs slice-equals the input order
-//          (every clip has a DriveLink; the subset is the whole
-//          set — kept so a future regression that filters by
-//          DriveLink AFTER reordering fails loudly).
-//      (c) EVERY CLIP-N token in input order appears in sourceText
-//          at strictly increasing string indices (no reorder, no
-//          drop, no duplicate emission).
-//      (d) Scenario-specific idOrderCheck pivot assertion.
+//  1. Builds a fresh ClipSourceBuilder + a freshly-seeded resolver.
+//  2. Calls BuildClipContext with the permutation's clipIDs.
+//  3. Asserts:
+//     (a) ev.AcceptedClipIDs slice-equals the input order.
+//     (b) ev.RenderableClipIDs slice-equals the input order
+//     (every clip has a DriveLink; the subset is the whole
+//     set — kept so a future regression that filters by
+//     DriveLink AFTER reordering fails loudly).
+//     (c) EVERY CLIP-N token in input order appears in sourceText
+//     at strictly increasing string indices (no reorder, no
+//     drop, no duplicate emission).
+//     (d) Scenario-specific idOrderCheck pivot assertion.
 //
 // Parallel execution is safe: each subtest allocates its own
 // resolver + builder + opts (no package-level shared state).
@@ -310,8 +310,8 @@ func TestClipResolution_P0D_BinderOrder(t *testing.T) {
 			ev := buildP0DPlanEvidence(tc.clipIDs)
 
 			plan := &scriptpkg.ResolvedGenerationPlan{
-				SourceKind: string(scriptpkg.SourceClips),
-				NumClips:   len(tc.clipIDs),
+				SourceKind:   string(scriptpkg.SourceClips),
+				NumClips:     len(tc.clipIDs),
 				ClipEvidence: ev,
 			}
 

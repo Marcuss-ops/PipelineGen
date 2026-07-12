@@ -80,10 +80,10 @@ import (
 // TestEnvelope_4MixedItems_Isolation pins the user-spec
 // contract for a 4-item envelope with mixed source types:
 //
-//   1. clip Pacquiao     (SourceClips, 1 clip_id)
-//   2. text-only          (SourceText)
-//   3. clip mancanti     (SourceClips, 1 missing clip_id)
-//   4. item inglese      (SourceText, Language="en")
+//  1. clip Pacquiao     (SourceClips, 1 clip_id)
+//  2. text-only          (SourceText)
+//  3. clip mancanti     (SourceClips, 1 missing clip_id)
+//  4. item inglese      (SourceText, Language="en")
 //
 // Assertions:
 //   - HTTP 202 Accepted (envelope accepted; Validate() passes
@@ -472,5 +472,3 @@ func TestConcurrency_10DifferentBodies_10JobsClips(t *testing.T) {
 		"P2.A user spec: 10 different clip probes MUST produce 10 unique RequestHashes. "+
 			"got unique hashes=%d (if < 10, the canonical hash derivation is missing clip_id — SUT BUG 3)", len(requestHashSet))
 }
-
-

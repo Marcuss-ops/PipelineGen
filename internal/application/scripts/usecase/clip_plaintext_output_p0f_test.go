@@ -10,43 +10,43 @@
 // FORBIDDEN SIGNATURES (case-insensitive per `grep -Ei` semantics
 // in the user spec):
 //
-//   1. ```            (3-backtick code fences — model is leaking
-//                       raw code into the prose stream)
-//   2. JSON           (literal word "JSON" — model is signaling
-//                       structured output rather than prose)
-//   3. schema_version (canonical model-output schema token — same
-//                       leak as JSON)
-//   4. specscene      (canonical model-output structured-scene
-//                       token — same leak as JSON)
-//   5. scene-1        (canonical scene ID prefix — model is
-//                       emitting per-scene identifiers into the
-//                       narrative stream)
-//   6. clip_id        (canonical clip binding key — model is
-//                       emitting per-clip identifiers into the
-//                       narrative stream)
-//   7. drive.google.com (canonical Drive URL host — model is
-//                          leaking internal storage URLs into
-//                          the prose)
-//   8. lines starting with `{` (JSON object opening — model is
-//                                  emitting structured data
-//                                  alongside or instead of prose)
+//  1. ```            (3-backtick code fences — model is leaking
+//     raw code into the prose stream)
+//  2. JSON           (literal word "JSON" — model is signaling
+//     structured output rather than prose)
+//  3. schema_version (canonical model-output schema token — same
+//     leak as JSON)
+//  4. specscene      (canonical model-output structured-scene
+//     token — same leak as JSON)
+//  5. scene-1        (canonical scene ID prefix — model is
+//     emitting per-scene identifiers into the
+//     narrative stream)
+//  6. clip_id        (canonical clip binding key — model is
+//     emitting per-clip identifiers into the
+//     narrative stream)
+//  7. drive.google.com (canonical Drive URL host — model is
+//     leaking internal storage URLs into
+//     the prose)
+//  8. lines starting with `{` (JSON object opening — model is
+//     emitting structured data
+//     alongside or instead of prose)
 //
 // The contract is enforced at TWO LEVELS:
 //
-//  (a) HELPER level — pure-function regex check that runs against
-//      any prose string (cheap, no Ollama). Per-signature
-//      regression coverage (9 sub-tests, includes a
-//      case-variant lock) + happy-path clean-prose coverage
-//      (4 sub-tests) + cumulative detection (1 test: a fixture
-//      containing all 8 signatures must trip ALL 8 matches, not
-//      just the first).
+//	(a) HELPER level — pure-function regex check that runs against
+//	    any prose string (cheap, no Ollama). Per-signature
+//	    regression coverage (9 sub-tests, includes a
+//	    case-variant lock) + happy-path clean-prose coverage
+//	    (4 sub-tests) + cumulative detection (1 test: a fixture
+//	    containing all 8 signatures must trip ALL 8 matches, not
+//	    just the first).
 //
-//  (b) ORCHESTRATOR level — drives GenerateOneUseCase via
-//      buildUsecaseWithClipResolver + fakeOllamaGen + a
-//      text-only source, asserts the canonical result.Output.Text
-//      passes the contract. Proves the regex check applies to
-//      the REAL model-emitted output end-to-end, not just
-//      hand-crafted strings.
+//	(b) ORCHESTRATOR level — drives GenerateOneUseCase via
+//	    buildUsecaseWithClipResolver + fakeOllamaGen + a
+//	    text-only source, asserts the canonical result.Output.Text
+//	    passes the contract. Proves the regex check applies to
+//	    the REAL model-emitted output end-to-end, not just
+//	    hand-crafted strings.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: every signature is checked via
 // `(?i)` regex (Go: regexp.MustCompile + MatchString), so the
@@ -306,14 +306,14 @@ func TestPlaintextOutput_P0F_SignatureIndex_AllReported(t *testing.T) {
 	// Prose that intentionally contains all 8 signatures. Each
 	// signature is on its own line for surgical grep-ability.
 	prose := strings.Join([]string{
-		"```",                                    // code_fence
-		"as json output",                         // json_literal (lowercase variant of JSON)
-		"schema_version=1",                        // schema_version
-		"specscene here",                          // specscene
-		"scene-1 starts now",                      // scene_1
-		"clip_id=abc",                             // clip_id
-		"https://drive.google.com/xyz",            // drive_google_host
-		`{"key": "value"}`,                        // line_opening_brace
+		"```",                          // code_fence
+		"as json output",               // json_literal (lowercase variant of JSON)
+		"schema_version=1",             // schema_version
+		"specscene here",               // specscene
+		"scene-1 starts now",           // scene_1
+		"clip_id=abc",                  // clip_id
+		"https://drive.google.com/xyz", // drive_google_host
+		`{"key": "value"}`,             // line_opening_brace
 	}, "\n")
 
 	matched := 0

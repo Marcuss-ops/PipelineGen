@@ -36,14 +36,14 @@
 // The user's "coerenza" check (NON usare confronto esatto,
 // solo tolleranza) is satisfied by:
 //
-//  (a) BOTH result.Output.WordCount and result.Quality.ActualWords
-//      must independently fall within [target*0.80, target*1.20]
-//      (tolerance check on each field, NOT exact comparison).
-//  (b) |result.Output.WordCount - result.Quality.ActualWords|
-//      must be ≤ 1 (consistency delta, tolerance-based — a
-//      small delta is expected from off-by-one counting in
-//      the engine's tokenizer; an exact comparison would be
-//      too strict and would NOT honor "solo tolleranza").
+//	(a) BOTH result.Output.WordCount and result.Quality.ActualWords
+//	    must independently fall within [target*0.80, target*1.20]
+//	    (tolerance check on each field, NOT exact comparison).
+//	(b) |result.Output.WordCount - result.Quality.ActualWords|
+//	    must be ≤ 1 (consistency delta, tolerance-based — a
+//	    small delta is expected from off-by-one counting in
+//	    the engine's tokenizer; an exact comparison would be
+//	    too strict and would NOT honor "solo tolleranza").
 //
 // Prose engineering: the helper p0iBuildLengthToleranceOrchestrator
 // generates a vocabulary-repeated prose of EXACTLY target_words
@@ -229,8 +229,8 @@ func TestLengthTolerance_P0I(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name        string
-		words       int
+		name         string
+		words        int
 		lower, upper int
 	}{
 		{"Target150_Accepts120To190", 150, 120, 190},

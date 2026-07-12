@@ -33,9 +33,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/catalog"
 	assetdrive "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/drive"
 	youtubestager "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/youtube"
+
 	// httpstager package: directory path is `http`; package name is `httpstager`.
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/http"
+	httpstager "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/http"
 	infacq "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/acquisition"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
