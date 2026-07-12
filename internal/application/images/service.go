@@ -124,11 +124,7 @@ func NewService(deps ImagesDeps) *Service {
 
 	generatedRegistry := deps.Generated
 	if generatedRegistry == nil {
-		// Fail-closed canonical endpoint: composition roots that want a
-		// non-empty generation registry must populate deps.Generated
-		// explicitly. With nil, the registry will surface
-		// ErrProviderUnavailable at every public call.
-		generatedRegistry = generated.NewGenerationProviderRegistry(log, nil)
+		generatedRegistry = generated.NewDefaultProviderRegistry(log, NewImageGeneratorAdapter(deps.GenAI.ImageGen))
 	}
 
 	gen := NewGenerationService(generatedRegistry, deps.GenAI.StyleRegistry, log, store)

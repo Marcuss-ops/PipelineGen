@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+import os
+import sys
+from playwright.sync_api import sync_playwright
+from storage_utils import save_storage_snapshot, storage_looks_usable
+
+MASTER_STORAGE = "data/google_slides_storage.json"
+PROFILE_DIR = "data/google_slides_session_profile"
+
+def main():
+    print("==================================================================")
+    print(" Google Slides Login Helper")
+    print("==================================================================")
+    print("Avvio del browser in corso...")
+    
+    with sync_playwright() as p:
+        os.makedirs(PROFILE_DIR, exist_ok=True)
+        context = p.chromium.launch_persistent_context(
+            PROFILE_DIR,
+            headless=False,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+            ],
+        )
+        page = context.new_page()
+        print("Navigazione su https://slides.new...")
+        page.goto("https://slides.new")
+        
+        print("\n--> EFFETTUA IL LOGIN nella finestra del browser che si è aperta.")
+        print("--> Una volta completato il login e caricata la pagina di Google Slides,")
+        print("    torna qui sul terminale e premi INVIO per salvare la sessione.")
+        
+        try:
+            input()
+        except KeyboardInterrupt:
+            print("\nOperazione annullata.")
+            context.close()
+            sys.exit(1)
+            
+        storage = context.storage_state()
+
+        if "accounts.google.com" in page.url or not storage_looks_usable(storage):
+            print("Sessione non salvata: il login non risulta completato o lo snapshot è vuoto.")
+            context.close()
+            sys.exit(1)
+
+        # Save both to MASTER_STORAGE and profile storage, preserving backups.
+        save_storage_snapshot(MASTER_STORAGE, storage, backup_path=f"{MASTER_STORAGE}.backup")
+
+        profile_storage_path = f"{MASTER_STORAGE}.profile_0"
+        save_storage_snapshot(profile_storage_path, storage, backup_path=f"{profile_storage_path}.backup")
+            
+        print("==================================================================")
+        print(f"✅ Sessione salvata con successo!")
+        print(f"   - {MASTER_STORAGE}")
+        print(f"   - {profile_storage_path}")
+        print("==================================================================")
+        context.close()
+
+if __name__ == "__main__":
+    main()

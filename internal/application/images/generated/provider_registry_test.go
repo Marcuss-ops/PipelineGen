@@ -5,42 +5,85 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 )
 
-// TestGenerationRegistry_Generate_FailClosed pins the canonical
-// Empty-registry fail-closed contract: with no GenerationProvider
-// registered, the public Generate method must surface typed
-// ErrProviderUnavailable (godlike/07 doctrine). The canonical image
-// endpoint landed by `NewGenerationProviderRegistry(log, nil)` from
-// the composition root relies on this.
-func TestGenerationRegistry_Generate_FailClosed(t *testing.T) {
-	registry := NewGenerationProviderRegistry(zap.NewNop(), nil)
-	out, err := registry.Generate(context.Background(), GenerateRequest{Prompt: "x"}, GenerateOptions{})
-	if !errors.Is(err, ErrProviderUnavailable) {
-		t.Fatalf("err = %v, want ErrProviderUnavailable", err)
+type fakeBackend struct {
+	captures []PortGenerateRequest
+	result   *PortGeneratedImage
+	err      error
+}
+
+func (f *fakeBackend) Generate(_ context.Context, req PortGenerateRequest) (*PortGeneratedImage, error) {
+	f.captures = append(f.captures, req)
+	if f.err != nil {
+		return nil, f.err
 	}
-	if out != nil {
-		t.Errorf("out = %v, want nil", out)
+	return f.result, nil
+}
+
+func (f *fakeBackend) TriggerPrewarm(_ context.Context, _ string, _ int) {
+	// no-op stub for ImageGeneratorPort contract
+}
+
+func TestGenerationRegistry_DefaultsToGoogleSlidesNanoBananaPro(t *testing.T) {
+	backend := &fakeBackend{result: &PortGeneratedImage{Data: []byte("png-bytes"), Format: "png"}}
+	registry := NewDefaultProviderRegistry(zap.NewNop(), backend)
+
+	result, err := registry.Generate(context.Background(), GenerateRequest{Prompt: "x"}, GenerateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Provider != asset.ProviderGoogleSlides {
+		t.Fatalf("provider = %q, want %q", result.Provider, asset.ProviderGoogleSlides)
+	}
+	if result.Model != CanonicalGoogleSlidesModel {
+		t.Fatalf("model = %q, want %q", result.Model, CanonicalGoogleSlidesModel)
+	}
+	if len(backend.captures) != 1 {
+		t.Fatalf("expected 1 backend dispatch, got %d", len(backend.captures))
 	}
 }
 
-// TestGenerationRegistry_Empty_NoProviders pins the Empty-registry
-// accessor contract: Providers / ProviderByName / Diagnostics all
-// surface zero providers / nil / empty maps when no provider is
-// registered. These are separate test functions from the
-// Resolve-fail-closed coverage in resolve_test.go to keep the
-// per-capability surface legible.
-func TestGenerationRegistry_Empty_NoProviders(t *testing.T) {
-	registry := NewGenerationProviderRegistry(zap.NewNop(), nil)
+func TestGenerationRegistry_NotWired(t *testing.T) {
+	registry := NewDefaultProviderRegistry(zap.NewNop(), nil)
+	_, err := registry.Generate(context.Background(), GenerateRequest{}, GenerateOptions{})
+	if !errors.Is(err, ErrProviderUnavailable) {
+		t.Fatalf("err = %v, want ErrProviderUnavailable", err)
+	}
+}
 
-	if got := registry.Providers(); len(got) != 0 {
-		t.Fatalf("Providers() len = %d, want 0", len(got))
+func TestGenerationRegistry_ExposesOnlyGoogleSlides(t *testing.T) {
+	registry := NewDefaultProviderRegistry(zap.NewNop(), nil)
+	providers := registry.Providers()
+	if len(providers) != 1 || providers[0].Name() != asset.ProviderGoogleSlides {
+		t.Fatalf("providers = %+v", providers)
 	}
-	if got := registry.ProviderByName("google-slides"); got != nil {
-		t.Fatalf("ProviderByName(\"google-slides\") = %v, want nil", got)
+	if registry.ProviderByName(asset.ProviderGoogleSlides) == nil {
+		t.Fatal("google-slides provider missing")
 	}
-	if got := registry.Diagnostics(context.Background()); len(got) != 0 {
-		t.Fatalf("Diagnostics() len = %d, want 0", len(got))
+	if registry.ProviderByName(asset.ImageProvider("removed-provider")) != nil {
+		t.Fatal("removed provider must not resolve")
+	}
+}
+
+func TestGenerationRegistry_DiagnosticsOnlyGoogleSlides(t *testing.T) {
+	registry := NewDefaultProviderRegistry(zap.NewNop(), nil)
+	diagnostics := registry.Diagnostics(context.Background())
+	if len(diagnostics) != 1 {
+		t.Fatalf("diagnostics entries = %d, want 1", len(diagnostics))
+	}
+	if _, ok := diagnostics[asset.ProviderGoogleSlides]; !ok {
+		t.Fatal("google-slides diagnostics entry missing")
+	}
+}
+
+func TestGenerationRegistry_ProviderErrorPropagates(t *testing.T) {
+	want := errors.New("upstream quota exceeded")
+	registry := NewDefaultProviderRegistry(zap.NewNop(), &fakeBackend{err: want})
+	_, err := registry.Generate(context.Background(), GenerateRequest{}, GenerateOptions{})
+	if !errors.Is(err, want) {
+		t.Fatalf("err = %v, want wrapped %v", err, want)
 	}
 }

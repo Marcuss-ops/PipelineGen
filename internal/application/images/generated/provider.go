@@ -4,10 +4,11 @@
 // interfaces live in their own file, separate from concrete providers
 // and the registry.
 //
-// The generated package has no active generation provider as of the
-// Chrome/Playwright + Google Slides retirement; the interfaces here
-// remain as the typed contract for any future backend that wires into
-// the registry pipeline.
+// Google Slides, driven through Chrome/Playwright and Nano Banana Pro,
+// is the only supported generation path. Flux and NVIDIA provider
+// stubs were removed deliberately: unavailable providers must not
+// appear in registries, diagnostics, model routing, or public
+// capability surfaces.
 package generated
 
 import (
@@ -16,9 +17,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
-// GenerationProvider is the backend contract for AI image generation.
-// Production composition must register an explicit provider; the
-// generated package itself ships fail-closed with no default backend.
+// GenerationProvider is the single backend contract for AI image generation.
+// Production composition must register GoogleSlidesProvider and nothing else.
 type GenerationProvider interface {
 	Generate(ctx context.Context, req GenerateRequest, opts GenerateOptions) (*GeneratedImage, error)
 	TriggerPrewarm(ctx context.Context, jobID string, count int)
