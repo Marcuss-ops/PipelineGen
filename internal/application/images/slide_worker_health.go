@@ -77,3 +77,73 @@ func (p *ChromeImageProvider) Health() error {
 func (p *ChromeImageProvider) ActiveCooldownProfiles() int {
 	return 0
 }
+
+// HealthDeepResult mirrors the JSON shape the Python worker returns
+// for `{"action": "health_deep"}`. The probe verifies that the Nano
+// Banana panel is open, the prompt textarea is interactable, and the
+// Immagine/Image mode is selectable (NOT collapsed/hidden/disabled).
+// Any one failing makes the post-generation image-mode-actively-ok
+// check return an error.
+//
+// P2 (July 2026): HealthDeep is invoked AFTER a successful Generate
+// to confirm the next request will also flow through the image-mode
+// pipeline (no silent regression to text-only mode). The basic
+// `health` action stays the low-cost probe used by ensureStarted;
+// HealthDeep is the heavier post-write consistency check carried
+// out by the diagnostics + smoke paths.
+type HealthDeepResult struct {
+	Status              string `json:"status"`
+	PanelOK             bool   `json:"panel_ok"`
+	TextareaOK          bool   `json:"textarea_ok"`
+	ImageModeSelectable bool   `json:"image_mode_selectable"`
+	URL                 string `json:"url,omitempty"`
+	ProfileHealthy      bool   `json:"profile_healthy"`
+	FailureReason       string `json:"failure_reason,omitempty"`
+}
+
+// HealthDeep issues a deeper health probe to the worker that exercises
+// the Nano Banana UI surface (panel + textarea + Immagine mode) so
+// post-Generate callers can verify the next-request pipeline is
+// reachable. Returns nil iff all three round-trip checks pass AND
+// the basic profile health is still ok.
+//
+// PR-CHROME-PROVIDER-SPLIT + P2 (July 2026): HealthDeep complements
+// the existing Health() probe (worker alive + responsive). Health()
+// stays the lightweight kick-the-tires probe used by ensureStarted;
+// HealthDeep is the heavier post-write DOM readiness check that
+// catches silent regressions (e.g. Immagine tab closes between
+// generations because of a Google Slides UI refactor). Must be
+// called while p.mu is held.
+func (p *ChromeImageProvider) HealthDeep() error {
+	if p.stdin == nil {
+		return fmt.Errorf("health deep: worker stdin is nil (process may have exited)")
+	}
+	if err := p.writeJSON(map[string]any{"action": "health_deep"}); err != nil {
+		return fmt.Errorf("health deep: write failed: %w", err)
+	}
+	raw, err := p.readRawResponse()
+	if err != nil {
+		return fmt.Errorf("health deep: read failed: %w", err)
+	}
+	var result HealthDeepResult
+	if err := mapToStruct(raw, &result); err != nil {
+		return fmt.Errorf("health deep: parse failed: %w (raw=%v)", err, raw)
+	}
+	if result.Status != "ok" {
+		reason := result.FailureReason
+		if reason == "" {
+			reason = "unknown (worker returned status != ok)"
+		}
+		return fmt.Errorf("health deep: worker reported unhealthy: %s", reason)
+	}
+	if !result.PanelOK {
+		return fmt.Errorf("health deep: Nano Banana panel is not open (URL=%s)", result.URL)
+	}
+	if !result.TextareaOK {
+		return fmt.Errorf("health deep: prompt textarea is not interactable (URL=%s)", result.URL)
+	}
+	if !result.ImageModeSelectable {
+		return fmt.Errorf("health deep: Immagine/Image mode is not selectable (URL=%s)", result.URL)
+	}
+	return nil
+}

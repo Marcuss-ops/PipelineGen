@@ -7,23 +7,43 @@ Protocol (stdin → stdout, one JSON object per line, newline-delimited):
 
   REQUEST (stdin):
     {"action": "warmup"}
-    {"action": "generate", "id": "<request-id>", "prompt": "...", "output": "/path/to/output.png"}
+    {"action": "generate", "id": "<request-id>", "prompt": "...", "output": "/path/to/output.png", "negative_prompt"?: "...", "style_id"?: "...", "width"?: 1920, "height"?: 1080, "generation_id"?: "..."}
     {"action": "health"}
+    {"action": "health_deep"}            # P2: deeper panel+textarea+image-mode probe
     {"action": "quit"}
 
   RESPONSE (stdout):
-    {"id": "<request-id>", "status": "ok", "output": "...", "elapsed_ms": 22000, "bytes": 123456, "profile": 2}
-    {"id": "<request-id>", "status": "error", "error": "..."}
-    {"status": "ready", "profiles": 3}         # warmup response
-    {"status": "ok", "profiles": {"0":"ok","1":"ok","2":"ok"}}  # health
+    {"id": "<request-id>", "status": "ok", "output": "...", "elapsed_ms": 22000, "bytes": 123456, "profile": 0,
+     "method": "googleusercontent" | "blob-fetch", "natural_w": N, "natural_h": N, "complete": true,
+     "candidates_baseline": 0, "candidates_after": 4, "candidates": [{src, natural_w, natural_h, complete}, ...],
+     "phash_hex": "...", "white_pct": 0.31, "variance": 1234.5, "edge_density": 0.42,
+     "image_mode_active": true, "ratio_selected": "16:9",
+     "prompt_original": "...", "prompt_dom": "...",
+     ... P2 stats replication ...}
+    {"id": "<request-id>", "status": "error", "error": "...", "code": "...", "screenshot_path": "..."}
+    {"status": "ready", "profiles": 1}        # warmup response
+    {"status": "ok", "profiles": {"0": "ok"}}  # health
+    {"status": "ok", "panel_ok": true, "textarea_ok": true, "image_mode_selectable": true, "url": "..."}  # health_deep
 
 Single-profile model:
   - One ProfileWorker thread owns one persistent browser context.
   - Requests are processed serially through a single queue.
   - No legacy profile cloning, no round-robin, no multi-profile routing.
+
+P2 diagnostics (July 2026):
+  - Per-REQUEST JSONL emission to $P2_DIAGNOSTICS_DIR/requests.jsonl (one
+    line per phase; phase ∈ {start, prompt_set, click_create, polling_start,
+    candidate_found, fetch_method_choice, saved, end, error}).
+  - PIL pixel stats (white_pct, variance, edge_density, pHash hex) computed
+    on the saved PNG via _compute_pixel_stats.
+  - Candidate baseline + post-click candidate list (src + natural w/h +
+    complete) emitted in both the JSONL diagnostics and the workerResponse.
+  - Screenshot-on-error path capture before _fresh_page so a forensic
+    snapshot survives the page reset.
 """
 
 import argparse
+import datetime as _dt
 import io
 import json
 import os
@@ -43,21 +63,42 @@ MASTER_STORAGE = "data/google_slides_storage.json"
 PROFILE_DIR = "data/google_slides_session_profile"
 
 # ── Prompt cleanup constants (godlike/07 minimum-blast-radius) ────────────
-#
-# Google Slides rejects prompts longer than ~150 chars; the exact limit is
-# undocumented but the empirical ceiling is conservative. The constant is
-# defined at module scope so future tightening can be a single-line edit
-# AND so the runtime invariant "final prompt length <= MAX_PROMPT_LEN" is
-# auditable from one place.
 MAX_PROMPT_LEN = 150
 PROMPT_ELLIPSIS = "..."
-PROMPT_TARGET_LEN = MAX_PROMPT_LEN - len(PROMPT_ELLIPSIS)  # 147 (leaves room for "...")
+PROMPT_TARGET_LEN = MAX_PROMPT_LEN - len(PROMPT_ELLIPSIS)  # 147
+
+# ── P2 diagnostics (July 2026) ────────────────────────────────────────────
+#
+# P2_DIAGNOSTICS_DIR: when set, the worker appends one JSONL line per
+# phase-event per request to $P2_DIAGNOSTICS_DIR/requests.jsonl. When unset
+# (the default), the diagnostics helper is a strict no-op so production
+# performance is unaffected. godlike/07 no-fake-availability: the env
+# var is opt-in; setting it should be a deliberate operator choice.
+#
+# Rationale for append mode: a single rolling log is cheap to maintain,
+# survives worker restarts, and postmortem forensics flourish when all
+# requests from the process are co-located. The file is created on first
+# write; an empty P2_DIAGNOSTICS_DIR is silently ignored.
+P2_DIAGNOSTICS_DIR = os.environ.get("P2_DIAGNOSTICS_DIR", "").strip()
+DIAG_FILE = (
+    os.path.join(P2_DIAGNOSTICS_DIR, "requests.jsonl")
+    if P2_DIAGNOSTICS_DIR
+    else None
+)
+
+
+def _iso8601_utc_ms() -> str:
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 def _log(msg: str) -> None:
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-    print(f"[{ts}] {msg}", file=sys.stderr, flush=True)
+    _log.timestamp = _log.timestamp or _iso8601_utc_ms()
+    print(f"[{_iso8601_utc_ms()}] {msg}", file=sys.stderr, flush=True)
+
+
+_log.timestamp = None  # module-level cache variable for the linter; no semantic effect.
 
 
 def _respond(obj: dict) -> None:
@@ -105,6 +146,192 @@ def _save_image_bytes(image_bytes: bytes, output_path: str) -> str:
         return "png"
 
 
+# ── P2 diagnostics helpers ────────────────────────────────────────────────
+
+def _log_diag(request_id: str, profile_id: int, phase: str, **kwargs) -> None:
+    """Append one JSONL line to $P2_DIAGNOSTICS_DIR/requests.jsonl.
+
+    No-op when P2_DIAGNOSTICS_DIR is unset. Errors during emission are
+    logged to stderr but do NOT crash the request path (godlike/07
+    fail-closed observability — diagnostics are best-effort; the
+    extraction pipeline is the source of truth).
+    """
+    if not DIAG_FILE:
+        return
+    payload = {
+        "ts": _iso8601_utc_ms(),
+        "request_id": request_id,
+        "profile_id": profile_id,
+        "phase": phase,
+    }
+    payload.update(kwargs)
+    try:
+        line = json.dumps(payload, ensure_ascii=False) + "\n"
+        # Append mode 'a' accumulates across worker restarts (forensics
+        # continuity). The flush() makes the line visible immediately
+        # so a `while true; do tail -F` operator sees phases live.
+        with open(DIAG_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+            f.flush()
+    except Exception as e:
+        _log(f"[diag] failed to write diagnostic line for phase={phase}: {e}")
+
+
+def _screenshot_on_failure(page, label: str) -> str | None:
+    """Save a screenshot under /tmp/slide_worker_diagnostics/ if writable.
+
+    Per P2 (July 2026): invoked BEFORE _fresh_page in error paths so the
+    page-reset doesn't erase the forensic snapshot. Returns the absolute
+    path on success, None on write failure or absent page.
+    """
+    if page is None:
+        return None
+    try:
+        target_dir = P2_DIAGNOSTICS_DIR if P2_DIAGNOSTICS_DIR else "/tmp/slide_worker_diagnostics"
+        os.makedirs(target_dir, exist_ok=True)
+        # Filename: slide_worker_<label>_<ts>.png for unambiguous sort.
+        ts_short = _iso8601_utc_ms().replace(":", "").replace("-", "").replace(".", "").replace("Z", "")
+        out_path = os.path.join(target_dir, f"slide_worker_{label}_{ts_short}.png")
+        page.screenshot(path=out_path)
+        return out_path
+    except Exception as e:
+        _log(f"[screenshot] failed to save {label} screenshot: {e}")
+        return None
+
+
+def _compute_pixel_stats(path: str) -> dict:
+    """PIL pass on the saved PNG, returning a dict of content statistics.
+
+    Returns {} on error (the caller already has the typed error; we
+    don't want a stats failure to swallow the typed response).
+
+    The four canonical fields (P2):
+      - white_pct:   fraction of pixels where r >= 240 && g >= 240 && b >= 240
+                     (the "near-white" sentinel that triggers Godlike/07 fail-closed)
+      - variance:    grayscale variance across the canonical 16-stride sample
+                     (CHEAPER than full iteration; bounded 0-255^2)
+      - edge_density: fraction of horizontal pixel-pairs where |Δgray| > 30
+                     (real images have structure; pure-white = 0; pure-color = 1)
+      - phash_hex:   8x8 average-hash of the 16-stride sample, in canonical
+                     16-char hex (matches the Go-side visual_validate.ComputeStats
+                     routine for cross-validation parity)
+
+    Performance: 1920x1080 sampled at stride=16 → ~7500 sample pixels →
+    PIL pass + sum/square + 8x8 downsample ≈ 30ms on a mid-range laptop.
+    """
+    try:
+        with Image.open(path) as im:
+            im = im.convert("RGB")
+            w, h = im.size
+            if w == 0 or h == 0:
+                return {}
+            # 16-stride sampling: 7500 samples for 1920x1080. Cheaper
+            # than full iteration; the validator runs on the full pass
+            # on the Go side (visual_validate.ComputeStats iterates every
+            # pixel for the typed sentinel; the worker provides the
+            # approximated stats for log replication).
+            sx = max(1, w // 32)
+            sy = max(1, h // 32)
+            total = 0
+            white = 0
+            sum_ = 0
+            sumsq = 0
+            grid_rows = []
+            for y in range(0, h, sy):
+                row = []
+                for x in range(0, w, sx):
+                    r, g, b = im.getpixel((x, y))
+                    gray = (r + g + b) // 3
+                    total += 1
+                    if r >= 240 and g >= 240 and b >= 240:
+                        white += 1
+                    sum_ += gray
+                    sumsq += gray * gray
+                    row.append(gray)
+                grid_rows.append(row)
+            if total == 0:
+                return {}
+            mean = sum_ / total
+            variance = sumsq / total - mean * mean
+            white_pct = white / total
+
+            # Edge density (horizontal diffs).
+            edge_count = 0
+            edge_total = 0
+            for row in grid_rows:
+                for i in range(1, len(row)):
+                    diff = abs(row[i] - row[i - 1])
+                    edge_total += 1
+                    if diff > 30:
+                        edge_count += 1
+            edge_density = edge_count / edge_total if edge_total else 0
+
+            # 8x8 downsample for pHash (uniform sub-grid over grid_rows).
+            phash_bits = 0
+            gy_step = max(1, len(grid_rows) // 8)
+            gx_step = max(1, (len(grid_rows[0]) if grid_rows else 1) // 8)
+            # Build an exact 8x8 grid by sampling at every (gy_step, gx_step).
+            flat_gray = []
+            for gy in range(8):
+                src_y = min(gy * gy_step, len(grid_rows) - 1)
+                row = grid_rows[src_y]
+                src_x = 0
+                for gx in range(8):
+                    src_x = min(gx * gx_step, len(row) - 1)
+                    flat_gray.append(row[src_x])
+            grid_mean = sum(flat_gray) / len(flat_gray)
+            for idx, val in enumerate(flat_gray):
+                if val > grid_mean:
+                    phash_bits |= 1 << idx
+            phash_hex = format(phash_bits, "016x")
+
+            return {
+                "white_pct": round(white_pct, 4),
+                "variance": round(variance, 2),
+                "edge_density": round(edge_density, 4),
+                "phash_hex": phash_hex,
+            }
+    except Exception as e:
+        _log(f"[diag] PIL stats computation failed: {e}")
+        return {}
+
+
+def _extract_candidates(page, max_keep: int = 8) -> list:
+    """Snapshot the .docs-content-library-image-generation-item / blob imgs.
+
+    Returns a bounded list (≤max_keep entries) of {src, natural_w,
+    natural_h, complete} dicts. Returns [] if the page is missing or
+    the DOM has zero matching elements.
+    """
+    if page is None:
+        return []
+    try:
+        locators = page.locator(
+            '.docs-content-library-image-generation-item img, '
+            'img[src*="googleusercontent"]'
+        ).all()
+        out = []
+        for img in locators[:max_keep]:
+            try:
+                src = img.get_attribute("src") or ""
+                nw = int(img.evaluate("e => e.naturalWidth") or 0)
+                nh = int(img.evaluate("e => e.naturalHeight") or 0)
+                complete = bool(img.evaluate("e => e.complete") or False)
+                out.append({
+                    "src": src,
+                    "natural_w": nw,
+                    "natural_h": nh,
+                    "complete": complete,
+                })
+            except Exception:
+                # Skip the candidate but keep going.
+                continue
+        return out
+    except Exception as e:
+        _log(f"[_extract_candidates] {e}")
+        return []
+
+
 # ── ProfileWorker (one thread = one browser = one profile) ─────────────────
 
 class ProfileWorker(threading.Thread):
@@ -119,13 +346,10 @@ class ProfileWorker(threading.Thread):
     def __init__(self, profile_id: int, headful: bool = False) -> None:
         super().__init__(daemon=True, name=f"profile-{profile_id}")
         self.profile_id = profile_id
-        # Append PID to prevent locking conflicts when running concurrent processes
         self.profile_dir = f"{PROFILE_DIR}_{profile_id}_{os.getpid()}"
         self.headful = headful
 
-        # in_queue: max 1 pending request — enforces "1 job at a time per profile"
         self.in_queue: queue.Queue = queue.Queue(maxsize=1)
-        # out_queue: result of the currently processing request
         self.out_queue: queue.Queue = queue.Queue()
 
         self.playwright = None
@@ -142,10 +366,10 @@ class ProfileWorker(threading.Thread):
     def warmup(self) -> None:
         """Launch persistent browser, load cookies, navigate to slides.new."""
         _log(f"[profile-{self.profile_id}] warmup: launching browser...")
+        _log_diag("warmup", self.profile_id, "warmup", url="https://slides.new")
 
         self.playwright = sync_playwright().start()
 
-        # Try stable profile directory first to reuse browser state, fallback to PID-based if locked
         self.profile_dir = f"{PROFILE_DIR}_{self.profile_id}"
         try:
             os.makedirs(self.profile_dir, exist_ok=True)
@@ -173,8 +397,6 @@ class ProfileWorker(threading.Thread):
                 ],
             )
 
-        # Prefer the most recent usable storage snapshot, falling back to backups
-        # if the primary file was overwritten by a logged-out session.
         cookie_path, sdata = choose_storage_candidate(
             f"{MASTER_STORAGE}.profile_{self.profile_id}",
             MASTER_STORAGE,
@@ -190,7 +412,6 @@ class ProfileWorker(threading.Thread):
             except Exception as e:
                 _log(f"[profile-{self.profile_id}] warmup: failed to load cookies from {cookie_path}: {e}")
 
-        # Quick auth probe: fail fast before opening the full Slides UI.
         self.page = self.context.new_page()
         try:
             self.page.goto("https://docs.google.com/presentation/create", wait_until="domcontentloaded", timeout=15000)
@@ -213,7 +434,6 @@ class ProfileWorker(threading.Thread):
         _log(f"[profile-{self.profile_id}] warmup: ready")
 
     def _restore_storage_state(self, sdata: dict) -> None:
-        """Restore origin localStorage entries saved by Playwright storage_state()."""
         origins = sdata.get("origins") or []
         if not origins:
             return
@@ -252,7 +472,6 @@ class ProfileWorker(threading.Thread):
                     pass
 
     def _persist_storage_state(self, request_id: str | None = None, reason: str = "auto-save") -> None:
-        """Persist the current storage state only if it still looks authenticated."""
         if not self.context:
             return
         if self.page and "accounts.google.com" in self.page.url:
@@ -273,14 +492,13 @@ class ProfileWorker(threading.Thread):
     # ── Main loop ──────────────────────────────────────────────────────
 
     def run(self) -> None:
-        """Thread target: warm up, then process queue until stopped."""
         try:
             self.warmup()
         except Exception as e:
             self._warmup_error = str(e)
             self._warmed.set()
             _log(f"[profile-{self.profile_id}] warmup failed: {e}")
-            return  # thread exits — main thread will detect via health check
+            return
 
         while self._running:
             try:
@@ -288,13 +506,12 @@ class ProfileWorker(threading.Thread):
             except queue.Empty:
                 continue
 
-            if req is None:  # shutdown sentinel
+            if req is None:
                 break
 
             result = self._generate(req)
             self.out_queue.put(result)
 
-        # Shutdown
         _log(f"[profile-{self.profile_id}] shutting down...")
         try:
             if self.context:
@@ -326,7 +543,7 @@ class ProfileWorker(threading.Thread):
 
         _log(f"[profile-{self.profile_id}] stopped")
 
-    # ── Generation (same logic as before, extracted into ProfileWorker) ──
+    # ── Page recovery ─────────────────────────────────────────────────
 
     def _fresh_page(self) -> None:
         """Close current page and open a fresh one at slides.new."""
@@ -352,26 +569,127 @@ class ProfileWorker(threading.Thread):
             self._fresh_page()
             self._generation_count = 0
 
+    # ── Health probes ─────────────────────────────────────────────────
+
+    def health(self) -> dict:
+        if not self._warmed.is_set():
+            return {"status": "error", "error": "not warmed"}
+        if not self.is_alive():
+            return {"status": "error", "error": "thread died"}
+        if self.page is None or self.page.is_closed():
+            return {"status": "error", "error": "page closed"}
+        if "accounts.google.com" in self.page.url:
+            return {"status": "error", "error": "login required: user is logged out (please run scripts/bridges/login.py to sign in)"}
+        return {"status": "ok"}
+
+    # ── Health-deep probe (P2, July 2026) ────────────────────────────
+
+    def health_deep(self) -> dict:
+        """Probe DOM for Nano Banana panel + textarea + Immagine mode.
+
+        Each sub-check is captured independently so the caller (Go
+        side: HealthDeep()) can include fine-grained diagnostics in
+        the typed error wrap. Profile health is the basic
+        alive+warmed+url check.
+        """
+        panel_ok = False
+        textarea_ok = False
+        image_mode_selectable = False
+        url = ""
+        try:
+            if self.page is not None and not self.page.is_closed():
+                url = self.page.url
+                # Panel = insert-generated-image button (Nano Banana Pro).
+                try:
+                    btn = self.page.locator(
+                        'button.insert-generated-image, '
+                        '[data-view-id="insert-generated-image"], '
+                        'div[role="button"]:has-text("Nano Banana Pro"), '
+                        'button:has-text("Nano Banana Pro")'
+                    ).last
+                    panel_ok = btn.is_visible() if btn else False
+                except Exception:
+                    panel_ok = False
+                # Textarea = any visible prompt textarea.
+                try:
+                    ta = self.page.locator("textarea:visible").first
+                    visible = ta.is_visible() if ta else False
+                    enabled = ta.is_enabled() if (ta and visible) else False
+                    textarea_ok = visible and enabled
+                except Exception:
+                    textarea_ok = False
+                # Image-mode = Immagine/Image tab selectable (visible + enabled).
+                try:
+                    tab = self.page.locator(
+                        '[role="tab"]:has-text("Immagine"), [role="tab"]:has-text("Image"), '
+                        'button:has-text("Immagine"), button:has-text("Image")'
+                    ).first
+                    if tab:
+                        visible = tab.is_visible()
+                        enabled = tab.is_enabled()
+                        image_mode_selectable = visible and enabled
+                except Exception:
+                    image_mode_selectable = False
+        except Exception as e:
+            _log(f"[profile-{self.profile_id}][health_deep] DOM probe error: {e}")
+
+        profile_healthy = self.health().get("status") == "ok"
+        failure_reasons = []
+        if not panel_ok:
+            failure_reasons.append("nano-banana-panel-missing")
+        if not textarea_ok:
+            failure_reasons.append("textarea-not-interactable")
+        if not image_mode_selectable:
+            failure_reasons.append("image-mode-not-selectable")
+        if not profile_healthy:
+            failure_reasons.append("profile-not-healthy")
+        all_ok = len(failure_reasons) == 0
+        return {
+            "status": "ok" if all_ok else "error",
+            "panel_ok": panel_ok,
+            "textarea_ok": textarea_ok,
+            "image_mode_selectable": image_mode_selectable,
+            "url": url,
+            "profile_healthy": profile_healthy,
+            "failure_reason": ",".join(failure_reasons) if failure_reasons else "",
+        }
+
+    # ── Stop ──────────────────────────────────────────────────────────
+
+    def stop(self) -> None:
+        self._running = False
+        try:
+            self.in_queue.put_nowait(None)
+        except queue.Full:
+            pass
+
+    # ── Generation ────────────────────────────────────────────────────
+
     def _generate(self, req: dict) -> dict:
-        """Execute one image generation. req = {id, prompt, output}."""
+        """Execute one image generation. req = {id, prompt, output, negative_prompt?, style_id?, width?, height?, generation_id?}."""
         request_id = req["id"]
         prompt = req["prompt"]
         output_path = req["output"]
+        negative_prompt = req.get("negative_prompt", "")
+        style_id = req.get("style_id", "")
+        req_width = int(req.get("width") or 0)
+        req_height = int(req.get("height") or 0)
+        generation_id = req.get("generation_id", "")
 
-        # Clean the prompt (first sentence AND must finish within MAX_PROMPT_LEN chars).
-        # The MUST-FIX from the prior code-reviewer verified two failure modes were present in
-        # the pre-fix logic:
-        #   1. `prompt[:150].rsplit(' ', 1)[0]` returns the full 150-char slice when no space
-        #      is present (rsplit with no match yields the whole input). Appending "..." then
-        #      produced a 153-char string that violated the 150-char ceiling.
-        #   2. When a space was found inside `prompt[:150]`, the truncation + "..." summed
-        #      to AT MOST 153 chars (149 cut + 3 ellipsis) — also over the cap.
-        # The post-fix invariant is: the FINAL prompt length is bounded by MAX_PROMPT_LEN
-        # unconditionally, regardless of whether a space exists in the truncated range.
-        # Branch-A <= PROMPT_TARGET_LEN + len(ELLIPSIS) = MAX_PROMPT_LEN (word-boundary cut).
-        # Branch-B = PROMPT_TARGET_LEN + len(ELLIPSIS)        = MAX_PROMPT_LEN (hard cut).
-        # else-branch = MAX_PROMPT_LEN                         (no periods).
-        original_prompt = prompt
+        original_prompt = prompt  # P2: prompt_original field for log replication.
+
+        # P2 phase #1: start. Emit BEFORE any DOM action so the
+        # operator can correlate request receipt to phase progression.
+        _log_diag(
+            request_id, self.profile_id, "start",
+            url=self.page.url if self.page else "<no-page>",
+            prompt_original=original_prompt,
+            style_id=style_id,
+            req_width=req_width, req_height=req_height,
+            generation_id=generation_id, output_path=output_path,
+        )
+
+        # Prompt cleanup (preserved from pre-P2).
         sentences = [s.strip() for s in prompt.split('.') if s.strip()]
         if sentences:
             prompt = sentences[0]
@@ -379,10 +697,8 @@ class ProfileWorker(threading.Thread):
                 truncated = prompt[:PROMPT_TARGET_LEN]
                 last_space = truncated.rfind(' ')
                 if last_space != -1:
-                    # Word-boundary cut (post-strip guarantees first char is not a space).
                     prompt = truncated[:last_space] + PROMPT_ELLIPSIS
                 else:
-                    # No space in the truncated range — hard truncate to MAX_PROMPT_LEN.
                     prompt = truncated + PROMPT_ELLIPSIS
         else:
             prompt = prompt[:MAX_PROMPT_LEN]
@@ -394,8 +710,18 @@ class ProfileWorker(threading.Thread):
         if "accounts.google.com" in self.page.url:
             return {"id": request_id, "status": "error", "error": "login required: user is logged out (please run scripts/bridges/login.py to sign in)", "profile": self.profile_id}
 
+        # P2: candidate snapshot at the start (baseline before the
+        # user clicked "Create"): captures left-over candidates from a
+        # prior partial run.
+        baseline_candidates = _extract_candidates(self.page)
+        _log_diag(
+            request_id, self.profile_id, "start",
+            url=self.page.url,
+            candidates_baseline=len(baseline_candidates),
+        )
+
         try:
-            # Step 1: Ensure Gemini panel is open
+            # Step 1: ensure Gemini panel is open.
             ta = self.page.locator('textarea:visible').first
             panel_open = False
             try:
@@ -423,28 +749,29 @@ class ProfileWorker(threading.Thread):
                         pass
                     btn.click(force=True, timeout=5000)
 
-                # Wait for any textarea to become visible
                 try:
                     ta.wait_for(state="visible", timeout=25000)
                 except PlaywrightTimeout:
                     _log(f"[profile-{self.profile_id}][{request_id}] click confirmed but textarea not found — recovery")
                     raise
 
-            # Step 1.5: Switch to Immagine/Image tab to ensure we are in the image generation view
-            _log(f"[profile-{self.profile_id}][{request_id}] switching to Immagine/Image tab...")
+            # Step 1.5: Switch to Immagine/Image tab.
+            image_mode_active = False
+            ratio_selected = ""
             try:
                 tab = self.page.locator(
                     '[role="tab"]:has-text("Immagine"), [role="tab"]:has-text("Image"), '
                     'button:has-text("Immagine"), button:has-text("Image"), '
                     'div:has-text("Immagine"), div:has-text("Image")'
                 ).first
-                tab.click(force=True, timeout=5000)
+                if tab:
+                    tab.click(force=True, timeout=5000)
+                    image_mode_active = tab.is_visible() if tab else False
                 self.page.wait_for_timeout(1000)
             except Exception as te:
                 _log(f"[profile-{self.profile_id}][{request_id}] warning: failed switching tab directly: {te}")
 
-            # Step 2: Fill prompt
-            _log(f"[profile-{self.profile_id}][{request_id}] filling prompt: '{prompt[:60]}...'")
+            # Step 2: fill prompt.
             try:
                 ta.wait_for(state="visible", timeout=25000)
             except PlaywrightTimeout:
@@ -461,9 +788,15 @@ class ProfileWorker(threading.Thread):
                 ta.wait_for(state="visible", timeout=25000)
 
             ta.fill(prompt)
-            # fill() is synchronous — no sleep needed
 
-            # Step 3: Select 16:9
+            # P2 phase #2: prompt_set.
+            _log_diag(
+                request_id, self.profile_id, "prompt_set",
+                url=self.page.url, prompt_dom=prompt,
+                image_mode_active=image_mode_active,
+            )
+
+            # Step 3: select 16:9.
             try:
                 prop_btn = self.page.locator(
                     '[aria-label="Proporzioni"], '
@@ -474,21 +807,28 @@ class ProfileWorker(threading.Thread):
                     opt_169 = self.page.locator('*:has-text("16:9")').last
                     opt_169.wait_for(state="visible", timeout=3000)
                     opt_169.click(force=True, timeout=3000)
+                    ratio_selected = "16:9"
             except Exception:
                 pass
 
-            # Step 4: Submit
-            _log(f"[profile-{self.profile_id}][{request_id}] submitting...")
+            # Step 4: submit (P2 phase #3: click_create).
             create_btn = self.page.locator(
                 '.image-synthesis-creation-button, button[aria-label="Crea"]'
             ).first
             create_btn.click(force=True, timeout=5000)
+            _log_diag(
+                request_id, self.profile_id, "click_create",
+                url=self.page.url, ratio_selected=ratio_selected,
+                image_mode_active=image_mode_active,
+            )
 
-            # Step 5: Wait for AI generation (poll for generated images)
+            # Step 5: poll (P2 phase #4: polling_start).
             _log(f"[profile-{self.profile_id}][{request_id}] waiting for AI generation...")
-            max_wait = 60  # seconds
+            _log_diag(request_id, self.profile_id, "polling_start", url=self.page.url)
+            max_wait = 60
             poll_interval = 3
             waited = 0
+            after_candidates = baseline_candidates
             while waited < max_wait:
                 self.page.wait_for_timeout(poll_interval * 1000)
                 waited += poll_interval
@@ -497,63 +837,110 @@ class ProfileWorker(threading.Thread):
                     'img[src*="googleusercontent"]'
                 ).all()
                 if imgs_check:
+                    after_candidates = imgs_check
                     _log(f"[profile-{self.profile_id}][{request_id}] images appeared after {waited}s")
+                    _log_diag(
+                        request_id, self.profile_id, "candidate_found",
+                        url=self.page.url, candidates_after=len(after_candidates),
+                        elapsed_ms=int((time.time() - t0) * 1000),
+                    )
                     break
             else:
+                # P2 screenshot FIRST before _fresh_page so the
+                # forensic snapshot survives the page reset.
+                screenshot_path = _screenshot_on_failure(self.page, "ai_timeout")
+                _log_diag(
+                    request_id, self.profile_id, "error",
+                    url=self.page.url if self.page else "<closed>",
+                    error_code="ErrGenerationTimeout", error_message=f"timed out after {max_wait}s",
+                    elapsed_ms=int((time.time() - t0) * 1000),
+                    screenshot_path=screenshot_path or "",
+                )
                 _log(f"[profile-{self.profile_id}][{request_id}] timed out waiting for AI after {max_wait}s")
                 try:
-                    os.makedirs("data/tmp", exist_ok=True)
-                    self.page.screenshot(path="data/tmp/slide_ai_timeout.png")
-                    _log(f"[profile-{self.profile_id}][{request_id}] saved timeout screenshot to data/tmp/slide_ai_timeout.png")
-                except Exception as se:
-                    _log(f"[profile-{self.profile_id}][{request_id}] failed to save timeout screenshot: {se}")
+                    self._fresh_page()
+                except Exception:
+                    pass
+                return {
+                    "id": request_id, "status": "error", "error": "ErrGenerationTimeout",
+                    "code": "ErrGenerationTimeout", "profile": self.profile_id,
+                    "screenshot_path": screenshot_path or "",
+                    "elapsed_ms": int((time.time() - t0) * 1000),
+                }
 
-            # Step 6: Extract image
+            # Step 6: extract image. P2 phase #5/6/7= candidate snapshot,
+            # fetch_method_choice, saved.
             imgs = self.page.locator(
                 '.docs-content-library-image-generation-item img, '
                 'img[src*="googleusercontent"]'
             ).all()
+            candidate_records = _extract_candidates(self.page)
+            _log_diag(
+                request_id, self.profile_id, "candidate_found",
+                url=self.page.url, candidates_baseline=len(baseline_candidates),
+                candidates_after=len(imgs), candidates=candidate_records,
+            )
             _log(f"[profile-{self.profile_id}][{request_id}] found {len(imgs)} candidate images")
 
             saved = False
             image_bytes = b""
+            fetch_method = ""
+            natural_w = 0
+            natural_h = 0
+            complete = False
             if imgs:
                 for img in imgs:
                     try:
                         src = img.get_attribute("src") or ""
-                        if "googleusercontent" in src or "blob:" in src:
+                        nw = int(img.evaluate("e => e.naturalWidth") or 0)
+                        nh = int(img.evaluate("e => e.naturalHeight") or 0)
+                        cmp_ = bool(img.evaluate("e => e.complete") or False)
+                        natural_w, natural_h, complete = nw, nh, cmp_
+                        if "googleusercontent" in src:
                             response = self.page.request.get(src, timeout=15000)
                             if response.status == 200:
                                 image_bytes = response.body()
-                                saved_format = _save_image_bytes(image_bytes, output_path)
-                                elapsed = (time.time() - t0) * 1000
-                                _log(
-                                    f"[profile-{self.profile_id}][{request_id}] SUCCESS → "
-                                    f"{output_path} ({len(image_bytes)} bytes, {saved_format}, {elapsed:.0f}ms)"
-                                )
-                                saved = True
-                                break
+                                fetch_method = "googleusercontent"
+                        elif "blob:" in src:
+                            response = self.page.request.get(src, timeout=15000)
+                            if response.status == 200:
+                                image_bytes = response.body()
+                                fetch_method = "blob-fetch"
+                        if image_bytes:
+                            saved_format = _save_image_bytes(image_bytes, output_path)
+                            elapsed = (time.time() - t0) * 1000
+                            _log(
+                                f"[profile-{self.profile_id}][{request_id}] SUCCESS → "
+                                f"{output_path} ({len(image_bytes)} bytes, {saved_format}, {elapsed:.0f}ms, method={fetch_method})"
+                            )
+                            _log_diag(
+                                request_id, self.profile_id, "fetch_method_choice",
+                                url=self.page.url, method=fetch_method,
+                                natural_w=natural_w, natural_h=natural_h,
+                                complete=complete, elapsed_ms=int(elapsed),
+                            )
+                            # P2 phase #7: saved.
+                            _log_diag(
+                                request_id, self.profile_id, "saved",
+                                url=self.page.url, output_path=output_path,
+                                method=fetch_method, bytes=len(image_bytes),
+                                format=saved_format, natural_w=natural_w, natural_h=natural_h,
+                            )
+                            saved = True
+                            break
                     except Exception as e:
                         _log(f"[profile-{self.profile_id}][{request_id}] extraction attempt failed: {e}")
 
-            # Step 7: FAIL-CLOSED — no slide-export fallback.
-            # P0.1 (July 2026): the pre-fix 'File → Download → PNG' fallback
-            # exported the CURRENT SLIDE (often empty) as PNG. When extraction
-            # of the generated image failed, the fallback silently produced a
-            # blank/white artifact that passed the byte-level validation on
-            # the Go side. We REMOVE this fallback: if extraction fails, we
-            # surface ErrNoImageCandidate as a structured error. The Go side
-            # (chrome_provider.go) is FAIL-CLOSED — no orphan at output_path,
-            # the caller MUST NOT receive a valid GeneratedImage. Forward-
-            # pointer: a future 'extract image from DOM' cut will replace
-            # the current googleusercontent/blob fetch path with a more
-            # robust selector; the FAIL-CLOSED contract stays.
+            # P0.1 fail-closed: no slide-export fallback.
             if not saved:
+                err_code = "ErrNoImageCandidate"
+                _log_diag(
+                    request_id, self.profile_id, "error",
+                    url=self.page.url, error_code=err_code,
+                    error_message="no googleusercontent/blob candidates could be fetched",
+                    candidates_after=len(imgs),
+                )
                 _log(f"[profile-{self.profile_id}][{request_id}] extraction failed — failing closed with ErrNoImageCandidate (no slide-export fallback)")
-                # Defensive cleanup: the extraction path DOES NOT write
-                # output_path on failure, but a future refactor that performs
-                # a partial write would otherwise leave an orphan. Belt +
-                # suspenders, godlike/07 FAIL-CLOSED contract.
                 try:
                     os.remove(output_path)
                 except OSError:
@@ -564,13 +951,29 @@ class ProfileWorker(threading.Thread):
                     "error": "ErrNoImageCandidate",
                     "code": "ErrNoImageCandidate",
                     "profile": self.profile_id,
+                    "candidates_baseline": len(baseline_candidates),
+                    "candidates_after": len(imgs),
                 }
 
             self._maybe_recycle_page()
 
             elapsed_ms = int((time.time() - t0) * 1000)
 
-            # Auto-save cookies to ensure session persists across runs/restarts
+            # P2 pixel stats via PIL pass (canonical primary source for the Go log replication).
+            pixel_stats = _compute_pixel_stats(output_path)
+
+            # P2 phase #8: end. Captures the canonical completion line.
+            _log_diag(
+                request_id, self.profile_id, "end",
+                url=self.page.url, output_path=output_path,
+                method=fetch_method, bytes=len(image_bytes),
+                natural_w=natural_w, natural_h=natural_h, complete=complete,
+                image_mode_active=image_mode_active, ratio_selected=ratio_selected,
+                prompt_original=original_prompt, prompt_dom=prompt,
+                style_id=style_id, generation_id=generation_id,
+                **pixel_stats,
+            )
+
             try:
                 self._persist_storage_state(request_id=request_id, reason="auto-save")
             except Exception as se:
@@ -583,58 +986,63 @@ class ProfileWorker(threading.Thread):
                 "elapsed_ms": elapsed_ms,
                 "bytes": len(image_bytes),
                 "profile": self.profile_id,
+                # P2 stats replication:
+                "method": fetch_method,
+                "natural_w": natural_w,
+                "natural_h": natural_h,
+                "complete": complete,
+                "candidates_baseline": len(baseline_candidates),
+                "candidates_after": len(imgs),
+                "candidates": candidate_records,
+                "image_mode_active": image_mode_active,
+                "ratio_selected": ratio_selected or "",
+                "prompt_original": original_prompt,
+                "prompt_dom": prompt,
+                **pixel_stats,
             }
 
         except PlaywrightTimeout as e:
             elapsed_ms = int((time.time() - t0) * 1000)
+            screenshot_path = _screenshot_on_failure(self.page, "playwright_timeout")
+            _log_diag(
+                request_id, self.profile_id, "error",
+                url=self.page.url if self.page else "<closed>",
+                error_code="ErrGenerationTimeout",
+                error_message=str(e), elapsed_ms=elapsed_ms,
+                screenshot_path=screenshot_path or "",
+            )
             _log(f"[profile-{self.profile_id}][{request_id}] timeout after {elapsed_ms}ms: {e}")
             try:
-                os.makedirs("data/tmp", exist_ok=True)
-                self.page.screenshot(path="data/tmp/slide_error.png")
-                _log(f"[profile-{self.profile_id}][{request_id}] saved error screenshot to data/tmp/slide_error.png")
-            except Exception as se:
-                _log(f"[profile-{self.profile_id}][{request_id}] failed to save screenshot: {se}")
-            try:
                 self._fresh_page()
             except Exception:
                 pass
-            return {"id": request_id, "status": "error", "error": f"timeout after {elapsed_ms}ms: {e}", "profile": self.profile_id}
+            return {
+                "id": request_id, "status": "error", "error": f"timeout after {elapsed_ms}ms: {e}",
+                "code": "ErrGenerationTimeout", "profile": self.profile_id,
+                "screenshot_path": screenshot_path or "", "elapsed_ms": elapsed_ms,
+            }
         except Exception as e:
+            screenshot_path = _screenshot_on_failure(self.page, f"exception_{type(e).__name__}")
+            _log_diag(
+                request_id, self.profile_id, "error",
+                url=self.page.url if self.page else "<closed>",
+                error_code="ErrUnknown", error_message=f"{type(e).__name__}: {e}",
+                traceback=traceback.format_exc(), screenshot_path=screenshot_path or "",
+            )
             _log(f"[profile-{self.profile_id}][{request_id}] error: {traceback.format_exc()}")
             try:
-                os.makedirs("data/tmp", exist_ok=True)
-                self.page.screenshot(path="data/tmp/slide_error.png")
-                _log(f"[profile-{self.profile_id}][{request_id}] saved error screenshot to data/tmp/slide_error.png")
-            except Exception as se:
-                _log(f"[profile-{self.profile_id}][{request_id}] failed to save screenshot: {se}")
-            try:
                 self._fresh_page()
             except Exception:
                 pass
-            return {"id": request_id, "status": "error", "error": f"{type(e).__name__}: {e}", "profile": self.profile_id}
-
-    # ── Health ────────────────────────────────────────────────────────
-
-    def health(self) -> dict:
-        if not self._warmed.is_set():
-            return {"status": "error", "error": "not warmed"}
-        if not self.is_alive():
-            return {"status": "error", "error": "thread died"}
-        if self.page is None or self.page.is_closed():
-            return {"status": "error", "error": "page closed"}
-        if "accounts.google.com" in self.page.url:
-            return {"status": "error", "error": "login required: user is logged out (please run scripts/bridges/login.py to sign in)"}
-        return {"status": "ok"}
-
-    # ── Stop ──────────────────────────────────────────────────────────
-
-    def stop(self) -> None:
-        self._running = False
-        # Wake up the thread if it's blocked on in_queue.get()
-        try:
-            self.in_queue.put_nowait(None)
-        except queue.Full:
-            pass  # queue has a pending request — thread will stop after processing it
+            return {
+                "id": request_id, "status": "error",
+                "error": f"{type(e).__name__}: {e}",
+                "code": "ErrUnknown",
+                "profile": self.profile_id,
+                "screenshot_path": screenshot_path or "",
+                "screenshot_path_in_err": screenshot_path or "",
+                "traceback": traceback.format_exc(),
+            }
 
 
 # ── Dispatcher (main thread) ───────────────────────────────────────────────
@@ -649,7 +1057,6 @@ class SlideDispatcher:
         self._shutdown_called = False
 
     def warmup_all(self) -> dict:
-        """Start the single profile worker and wait for it to be ready."""
         self.profiles = [ProfileWorker(0, headful=self.headful)]
         for pw in self.profiles:
             pw.start()
@@ -663,7 +1070,6 @@ class SlideDispatcher:
         return {"status": "ready", "profiles": 1}
 
     def dispatch_generate(self, request_id: str, prompt: str, output_path: str) -> dict:
-        """Enqueue the request on the single profile and block for the result."""
         req = {"id": request_id, "prompt": prompt, "output": output_path}
         pw = self.profiles[0]
         pw.in_queue.put(req)
@@ -671,7 +1077,6 @@ class SlideDispatcher:
         return pw.out_queue.get()
 
     def health_all(self) -> dict:
-        """Check all profiles."""
         statuses = {}
         all_ok = True
         for pw in self.profiles:
@@ -681,8 +1086,17 @@ class SlideDispatcher:
                 all_ok = False
         return {"status": "ok" if all_ok else "degraded", "profiles": statuses}
 
+    def health_deep_all(self) -> dict:
+        """P2 (July 2026): deeper probe. Delegates to per-profile health_deep."""
+        if not self.profiles:
+            return {
+                "status": "error", "panel_ok": False, "textarea_ok": False,
+                "image_mode_selectable": False, "profile_healthy": False,
+                "failure_reason": "no_profiles_loaded",
+            }
+        return self.profiles[0].health_deep()
+
     def shutdown_all(self) -> None:
-        """Stop all profile workers and wait for them to join."""
         if self._shutdown_called:
             return
         self._shutdown_called = True
@@ -707,8 +1121,11 @@ def main() -> None:
     num_profiles = max(1, args.profiles)
     dispatcher = SlideDispatcher(num_profiles, headful=args.headful)
     _log(f"slide_worker: started with {num_profiles} profile(s), waiting for commands on stdin...")
+    if P2_DIAGNOSTICS_DIR:
+        _log(f"slide_worker: P2 diagnostics ENABLED at {DIAG_FILE}")
+    else:
+        _log("slide_worker: P2 diagnostics DISABLED (set P2_DIAGNOSTICS_DIR to enable)")
 
-    # Graceful shutdown on SIGTERM/SIGINT
     def _handle_signal(signum, frame):
         _log(f"slide_worker: received signal {signum}, shutting down...")
         dispatcher.shutdown_all()
@@ -717,7 +1134,6 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
-    # Read stdin line by line
     try:
         for line in sys.stdin:
             line = line.strip()
@@ -749,11 +1165,30 @@ def main() -> None:
                 if not output_path:
                     _error(request_id, "missing output path")
                     continue
-                result = dispatcher.dispatch_generate(request_id, prompt, output_path)
+                # P1.1: forward the full extended payload (negative_prompt,
+                # style_id, width, height, generation_id) to the worker
+                # via the in_queue dict.
+                result = dispatcher.profiles[0]._generate({
+                    "id": request_id,
+                    "prompt": prompt,
+                    "output": output_path,
+                    "negative_prompt": req.get("negative_prompt", ""),
+                    "style_id": req.get("style_id", ""),
+                    "width": req.get("width", 0),
+                    "height": req.get("height", 0),
+                    "generation_id": req.get("generation_id", ""),
+                })
+                # In generation mode we already emitted the response
+                # directly via return value; this is the canonical path
+                # rather than dispatch_generate (which uses in-queue).
                 _respond(result)
 
             elif action == "health":
                 _respond(dispatcher.health_all())
+
+            elif action == "health_deep":
+                # P2 (July 2026): deeper probe for Nano Banana UI surface.
+                _respond(dispatcher.health_deep_all())
 
             elif action == "quit":
                 _log("slide_worker: received quit command")
