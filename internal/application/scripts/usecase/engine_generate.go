@@ -136,6 +136,21 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 			// cache-hit path (sanitized text → re-sanitize is a
 			// no-op).
 			output.Text = SanitizeScriptOutput(output.Text)
+			// PR-CS-1 / FASE 5 (DoD #6): word-budget gate ±25%
+			// (observational only — log, never block persistence).
+			budget := CheckWordBudget(output.Text, effectiveTargetForBudgetWords(plan))
+			if e.log != nil {
+				logFields := []zap.Field{
+					zap.Int("target_words", budget.TargetWords),
+					zap.Int("actual_words", budget.ActualWords),
+					zap.Float64("deviation_percent", budget.DeviationPercent),
+				}
+				if budget.Pass {
+					e.log.Info("engine: word-budget gate PASS", logFields...)
+				} else {
+					e.log.Warn("engine: word-budget gate FAIL", logFields...)
+				}
+			}
 			// PR 3 (June 2026): stamp engine-side provenance
 			// fields onto the canonical typed MSOV1 so post-
 			// processors (notably PersistenceProcessor) read
@@ -240,6 +255,21 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// scrub on the prior write and the cache-hit replay re-runs
 	// it (still a no-op on clean input).
 	output.Text = SanitizeScriptOutput(output.Text)
+	// PR-CS-1 / FASE 5 (DoD #6): word-budget gate ±25%
+	// (observational only — log, never block persistence).
+	budget := CheckWordBudget(output.Text, effectiveTargetForBudgetWords(plan))
+	if e.log != nil {
+		logFields := []zap.Field{
+			zap.Int("target_words", budget.TargetWords),
+			zap.Int("actual_words", budget.ActualWords),
+			zap.Float64("deviation_percent", budget.DeviationPercent),
+		}
+		if budget.Pass {
+			e.log.Info("engine: word-budget gate PASS", logFields...)
+		} else {
+			e.log.Warn("engine: word-budget gate FAIL", logFields...)
+		}
+	}
 	// PR 3 (June 2026): stamp engine-side provenance fields onto
 	// the canonical typed ModelScriptOutputV1 in-place so the
 	// typed walk (ppReg.Run with &engineResult.Output) reads
