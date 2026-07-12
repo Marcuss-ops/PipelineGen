@@ -245,6 +245,23 @@ func IsTransient(err error) bool {
 //
 // WrapTransient is the canonical migration target for ad-hoc inline
 // substring matchers at infra boundaries (Azione 4/8 di Step 7).
+//
+// FASE 6 Cut 6.1.C rewrite (July 2026): production IsTransient became
+// pure typed-probe in Cut 6.1.D (no substring fallback). WrapTransient
+// now routes the wrap decision through Decision() walker — registered
+// classifiers (stdlib + qdrant + sqlite + google api at init time, see
+// registry_*.go) gate the result. The new production contract is:
+//   - SDK-returned typed errors (*googleapi.Error, *sqlite3.Error,
+//     *url.Error, *exec.ExitError, etc.) recognised by their registered
+//     classifier → WrapTransient wraps the transient subtypes into
+//     *TransientInfrastructureError.
+//   - Raw SDK strings (errors.New("timeout")) are NOT wrapped — callers
+//     must emit typed envelopes at the SDK boundary. This matches the
+//     canonical SDK-boundary contract (godlike/06 SSOT) — raw strings
+//     at production runtime = unmapped shape = fail-closed.
+//   - Already-typed envelopes (RetryableError implementers or
+//     *TransientInfrastructureError carriers) pass through idempotently
+//     via errors.As walking the unwrap chain.
 func WrapTransient(err error) error {
 	if err == nil {
 		return nil
@@ -253,7 +270,13 @@ func WrapTransient(err error) error {
 	if errors.As(err, &te) {
 		return err
 	}
-	if IsTransient(err) {
+	// FASE 6 Cut 6.1.C: route wrap decision through Decision() walker
+	// so registered classifiers gate the result. The pre-Cut 6.1.D
+	// pure-IsTransient probe lost the substring fallback in Cut 6.1.D;
+	// the Decision() chain now owns the wrap decision (classifier
+	// authoritativeness replaces substring heuristics).
+	d, ok := Decision(err)
+	if ok && d.Retryable {
 		return &TransientInfrastructureError{Err: err}
 	}
 	return err
