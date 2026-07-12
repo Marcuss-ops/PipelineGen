@@ -72,6 +72,7 @@ import (
 	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	mediaproc "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
+	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -280,6 +281,34 @@ func WireArtlist(
 		AccountID:          cfg.External.ArtlistAccountID,
 		DailyDownloadLimit: cfg.External.ArtlistDailyDownloadLimit,
 		AuditRepository:    artlistDownloadAuditAdapter,
+		// PR-HLS-AES128 (P1, July 2026): wire the canonical ffprobe
+		// post-validator. Every authorized_api download is now ffprobe-
+		// sanity-checked BEFORE markAudit(Succeeded) can fire
+		// (godlike/07 no-fake-availability). The wrapped Probe returns
+		// (*MediaInfo, error); we coerce to (ctx, path) error so the
+		// ResolverConfig.PostValidator signature stays clean. The
+		// HasVideo gate is the spec-required "file is readable" check:
+		// HasVideo=false means the bytes on disk don't look like a real
+		// media file (corrupt transport, missing AES-128 stage in
+		// upstream Node scraper, etc.) and the audit row MUST flip to
+		// Failed instead of silently succeeding.
+		//
+		// Fail-closed: if ffprobe is missing on PATH, ffmpeg.Processor.Probe
+		// returns an error (from process.Run's exec.LookPath), and the
+		// Resolver correctly routes this to markAudit(Failed) + a typed
+		// ErrInvalidResponse to the caller. Operationally: the operator
+		// sees the audit-status flip and an actionable log line naming
+		// ffprobe as the missing dependency.
+		PostValidator: func(ctx context.Context, path string) error {
+			mediaInfo, err := ffmpeg.NewProcessor("").Probe(ctx, path)
+			if err != nil {
+				return err
+			}
+			if !mediaInfo.HasVideo {
+				return fmt.Errorf("ffprobe: no video stream detected in %q (corrupt container or missing AES-128 stage upstream)", path)
+			}
+			return nil
+		},
 	}, log, downloader.NewMetrics())
 	// Compile-time pin lives in the infra package.
 	_ = (artlistPkg.Downloader)(artlistDownloader)
