@@ -509,19 +509,20 @@ issues:
     evidence_filename: "tests/operational/gofmt_drift_close_2026-07-12.log (deliverables: `gofmt -d` empty + `go vet ./internal/app/... ./internal/application/.../artlist/... ./internal/infrastructure/artlist/... ./internal/domain/asset/... ./pkg/idempotency/... ./internal/infrastructure/database/sqlite/outbox/...` clean + Commit F SHA on origin/main)"
     opened_date: 2026-07-12
     tracking_issue: "godlike/06 SSOT carry-forward discipline; closed by Commit F (instantiated with status:resolved in the same operation — the entry did not exist in pre-Commit-F issues.yaml; closed directly because drift was already resolved at Commit F execution time; the format-drift catalog surface is now zero)"
-  - id: PRE-EXISTING-11-DRIVE-TEST-COMPILE [RESOLVED]
-    title: "publisher_test_dod_language_test.go compile error resolved (FASE 12 fix — test doubles canonical in publisher_test.go; PR-VO-3 tests pass)"
-    status: open
+  - id: PRE-EXISTING-11-DRIVE-TEST-COMPILE
+    title: "publisher_test_dod_language_test.go compile error (FASE 12 fix canonicalized test doubles in publisher_test.go; PR-VO-3 green; orphan file removed)"
+    status: resolved
     severity: p1
-    owner_capability: "internal/infrastructure/drive (publisher_test_dod_language_test.go)"
+    owner_capability: "internal/infrastructure/drive (publisher_test.go — canonical test doubles host)"
     follow_up:
-      - "Diagnose the undefined 'require' compile error or missing test double symbols (fakeFolderManager, etc.) in the untracked file."
-      - "Resolve the missing dependencies (e.g., go mod tidy or stub inclusion), OR remove the untracked file if it is orphaned WIP from a prior wave."
-      - "Re-run go test -race ./... to confirm the project-wide suite compiles and runs."
-    evidence_filename: "stdout from make verify-main 2026-07-12 diagnostic"
-    opened_date: 2026-07-12
-    tracking_issue: "godlike/07 zero-legacy compilation blocker; AGENTS.md Operational rules (no source edits without explicit user request); PRE-EXISTING-7 already covers 3 of 4 sibling failures in internal/application/scripts/usecase + PRE-EXISTING-8 covers the 4th - ZERO new entries needed there"
-
+      - "Action: closed by commits f16975892 (PR-VO-3 test-double canonicalization — closes PRE-EXISTING-11) + e287b41d3 (physical removal of duplicate publisher_*_test*.go files). Per godlike/06 ratification-by-doctrine pattern (matches STEP-5-CLOSEOUT-TEXT-TRACK-RESOLVER-SPLIT, PRE-EXISTING-6/10/12 in this file, close-out commit 51bb2163f), this entry stays as resolved audit trail; ownership migrates to the closing commits."
+      - "Diagnostic (this commit's check): `git log --diff-filter=D --pretty=format:%H -- publisher_test_dod_language_test.go` returns e287b41d3 (physical deletion commit). `git log --grep=PR-VO-3` returns f16975892 (canonical language-matrix test-double close). `find . -name publisher_test_dod_language_test.go` returns 0 results on PURE main post-fix; file does NOT exist on disk. `git ls-files main origin/main HEAD | grep publisher_test_dod_language` returns 0 matches. `grep -rn publisher_test_dod_language --include=*.go .` returns 0 matches."
+      - "Root cause (pre-fix): the test file was an orphaned WIP from a prior wave that referenced test-double symbols (fakeFolderManager etc.) NEVER defined in publisher_test.go (the canonical host). The FASE 12 fix (PR-VO-3-LANGUAGE-MATRIX) moved test doubles into publisher_test.go as the canonical host + deleted the orphan. PR-VO-3 tests pass on PURE main."
+      - "Stale-doc fix (this commit): original entry's title had `[RESOLVED]` marker but `status: open` was not flipped in the same operation — yaml drift between title + status fields. This entry closes that drift via the ratification-keeping pattern; the title is amended (drop [RESOLVED] marker since `status: resolved` now conveys it). Matches STEP-5-CLOSEOUT-TEXT-TRACK-RESOLVER-SPLIT precedent (no `[RESOLVED]` marker; status is canonical). The original follow_up's diagnostic bullet is moot by absence-of-target — file is gone, no fix was needed in this turn."
+      - "Verification (this commit, per user-spec gate): `go build ./internal/infrastructure/drive/...` exit 0; `go vet ./internal/infrastructure/drive/...` exit 0; `go test -race ./internal/infrastructure/drive/... -count=1 -timeout=180s` PASS = both internal/infrastructure/drive (1.823s) and internal/infrastructure/drive/resolver (1.056s). grep -c fakeFolderManager internal/infrastructure/drive/publisher_test.go >= 3 (canonical host owns the symbol across struct declaration + construction sites). NO source code touched by this yaml ratification commit."
+    evidence_filename: "commit f16975892 message body (fix(drive): complete PR-VO-3-LANGUAGE-MATRIX test doubles — closes PRE-EXISTING-11) + commit e287b41d3 message body (fix(drive): drop duplicate publisher_*_test*.go files); per AGENTS.md Documentation rule 'Git history is the archive', no separate .md attachment — commit bodies are the canonical trace"
+    opened_date: "2026-07-12"
+    tracking_issue: "godlike/07 zero-legacy compilation blocker; closed by commits f16975892 + e287b41d3 (test-double canonicalization in publisher_test.go + orphan file deletion); PRE-EXISTING-7/8 cover sibling failure surfaces in internal/application/scripts/usecase with ZERO new entries needed there"
   - id: PRE-EXISTING-12-FORMAT-DRIFT
     title: "verify-format red on internal/infrastructure/database/sqlite/assets/artlist_atomic_writer.go (Fase 11 Commit 1 ArtlistPublishTxAdapter residue; 27+/27- gofmt diff: whitespace + import-group reorder per gofmt spec; closed by Commit F)"
     status: resolved
