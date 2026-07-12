@@ -23,9 +23,9 @@ import {
 } from '../src/artlist/browser.js';
 import { fetchClipDetails } from './detail-fetcher.js';
 import {
-  scoreClipRelevance,
-  isRelevantClip,
-} from '../src/artlist/scoring.js';
+  relevanceOverfetch,
+  DEFAULT_MAX_FETCH_PAGES,
+} from '../src/artlist/relevance-overfetch.js';
 import { exportCookiesForYtDlp } from '../src/artlist/cookies.js';
 import { extractClipId } from '../src/artlist/url.js';
 import {
@@ -162,50 +162,84 @@ export async function searchArtlist(
       };
     }
 
-    // ─── Phase 2: Fallback — scroll DOM + open detail tabs ──────────────
+    // ─── Phase 2: Fallback — Relevance overfetch loop ─────────────────────
+    //
+    // PR-P2-RELEVANCE-FILTER (July 2026). User-spec literal:
+    //   "se i risultati rilevanti sono meno del `limit`, NON fare
+    //    fallback sui non filtrati. Invece overfetch (apri più
+    //    pagine dettaglio finché non raggiungi il limite o il
+    //    budget di pagine) e poi restituisci solo i rilevanti.
+    //    Limita a MAX_FETCH_PAGES per evitare costi incontrollati."
+    //
+    // The dispatch decision (limit / budget / nomore) is owned by
+    // relevanceOverfetch — a pure helper (godlike/06 SSOT) that
+    // NEVER pads the result set with unfiltered (godlike/07
+    // no-fake-availability). The pre-PR branch
+    //   `(scored.length >= limit ? scored : fallback)`
+    // is RETIRED: the legacy anti-pattern silently hid the
+    // relevance-filter deficit from the operator. With overfetch,
+    // the scraper either returns ≥ `limit` relevant clips, or it
+    // returns the best subset up to MAX_FETCH_PAGES with a
+    // `haltedAt: 'budget'` observable in tests.
+    //
+    // Wiring:
+    //   - pendingUrls  : queue of clip-page URLs awaiting a detail
+    //                    fetch. Initially populated from intercepted
+    //                    API responses; discoverMore appends more.
+    //   - fetchBatch   : closure that drains up to `n` URLs from
+    //                    pendingUrls → fetchClipDetailsBatch →
+    //                    Clip[]. Returns [] when queue is empty.
+    //   - discoverMore : closure that surfaces NEW clip-page URLs
+    //                    via DOM scroll. Returns [] when the page
+    //                    is exhausted (driver of 'nomore' halt).
     const interceptedPageUrls = intercepted
       .filter((c) => c.clip_page_url)
       .map((c) => c.clip_page_url);
-    const targetCandidates = Math.max(limit, 1);
-    const seen = new Set(interceptedPageUrls);
-    const clipPageUrls = [...interceptedPageUrls];
+    const seenUrls = new Set(interceptedPageUrls);
+    const pendingUrls = [...interceptedPageUrls];
 
-    await collectClipLinksFromHrefs(
-      page,
-      (newlyFound) => {
-        for (const href of newlyFound) {
-          if (!seen.has(href) && clipPageUrls.length < targetCandidates) {
-            seen.add(href);
-            clipPageUrls.push(href);
+    const fetchBatch = async (n) => {
+      if (n <= 0 || pendingUrls.length === 0) return [];
+      const slice = pendingUrls.splice(0, n);
+      const clips = await fetchClipDetailsBatch(
+        browser,
+        slice,
+        Math.min(slice.length, DEFAULT_DETAIL_CONCURRENCY)
+      );
+      return Array.isArray(clips) ? clips : [];
+    };
+
+    const discoverMore = async () => {
+      // Surface fresh clip-page URLs from the search-results page.
+      // The underlying collectClipLinksFromHrefs loops until its
+      // internal cap (`targetCandidates`) is reached OR the page is
+      // exhausted. We surface up to `targetCandidates` fresh URLs
+      // per discoverMore() call to keep the budget bounded.
+      const targetCandidates = DEFAULT_DETAIL_CONCURRENCY;
+      const fresh = [];
+      await collectClipLinksFromHrefs(
+        page,
+        (newlyFound) => {
+          for (const href of newlyFound) {
+            if (seenUrls.has(href) || fresh.length >= targetCandidates) continue;
+            seenUrls.add(href);
+            fresh.push(href);
           }
-          if (clipPageUrls.length >= targetCandidates) break;
-        }
-      },
-      targetCandidates
-    );
-
-    const detailClips = await fetchClipDetailsBatch(
-      browser,
-      clipPageUrls.slice(0, targetCandidates),
-      DEFAULT_DETAIL_CONCURRENCY
-    );
-
-    const scored = detailClips
-      .map((clip) => ({ ...clip, score: scoreClipRelevance(term, clip) }))
-      .filter((clip) => isRelevantClip(term, clip))
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          String(a.clip_id).localeCompare(String(b.clip_id))
+        },
+        targetCandidates
       );
+      pendingUrls.push(...fresh);
+      return fresh;
+    };
 
-    const fallback = detailClips
-      .map((clip) => ({ ...clip, score: scoreClipRelevance(term, clip) }))
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          String(a.clip_id).localeCompare(String(b.clip_id))
-      );
+    const overfetch = await relevanceOverfetch({
+      term,
+      limit: Math.max(limit, 1),
+      maxFetchPages: DEFAULT_MAX_FETCH_PAGES,
+      batchSize: DEFAULT_DETAIL_CONCURRENCY,
+      fetchBatch,
+      discoverMore,
+    });
 
     try {
       await exportCookiesForYtDlp(page, '/tmp/artlist_cookies.txt');
@@ -217,9 +251,7 @@ export async function searchArtlist(
     return {
       term,
       search_url: searchUrl,
-      clips: (scored.length >= limit ? scored : fallback)
-        .slice(0, limit)
-        .map(({ score, ...clip }) => clip),
+      clips: overfetch.clips.map(({ score, ...clip }) => clip),
     };
   } finally {
     try {
@@ -300,4 +332,5 @@ export async function searchArtlistPreview(term, limit, profileDir) {
 export const __testing = {
   FAST_PATH_MIN_CLIPS,
   DEFAULT_DETAIL_CONCURRENCY,
+  DEFAULT_MAX_FETCH_PAGES,
 };
