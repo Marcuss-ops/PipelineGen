@@ -1,0 +1,118 @@
+{
+  "version": 2,
+  "preset": "custom",
+  "correlation_id": "e2e-search-full-timeline",
+  "force_refresh": true,
+  "items": [
+    {
+      "id": "search-full-timeline",
+      "title": "Manny Pacquiao vs Adrien Broner: full fight chronological recap",
+      "language": "it",
+      "tone": "documentary",
+      "style": "Follow the retrieved evidence chronologically. Do not invent missing stages.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "search",
+        "query": "Manny Pacquiao Adrien Broner full fight from opening round to verdict",
+        "max_clips": 13,
+        "min_coverage": 1,
+        "min_transcript_words": 5,
+        "ordering_strategy": "chronological",
+        "grounding_policy": "clips_primary"
+      },
+      "script_params": {
+        "target_words": 700,
+        "min_words": 500,
+        "segment_words": 50,
+        "segment_topics": [
+          "round 1",
+          "round 2",
+          "round 3",
+          "round 4",
+          "round 5",
+          "round 6",
+          "round 7",
+          "round 8",
+          "round 9",
+          "round 10",
+          "round 11",
+          "round 12",
+          "official verdict"
+        ]
+      },
+      "output": {
+        "extract_entities": "disabled",
+        "generate_metadata": "disabled",
+        "generate_voiceover": "disabled",
+        "generate_scene_images": "disabled",
+        "generate_document": "enabled",
+        "save_to_db": false,
+        "generate_timeline": false
+      }
+    },
+    {
+      "id": "clips-control",
+      "title": "Manny Pacquiao vs Adrien Broner: concise grounded recap",
+      "language": "it",
+      "tone": "documentary",
+      "style": "Resta molto vicino alle frasi dei clip. Usa quasi letteralmente queste frasi guida: 'Round 1 - La fase di studio e la velocita di Pacquiao', 'Round 7 - Il momento chiave: Broner barcolla'. Non inventare dettagli non supportati.",
+      "model": "gemma4:e4b",
+      "source": {
+        "type": "clips",
+        "clip_ids": [
+          "yt_RRJvrDKunyA_32_37_v1",
+          "yt_RRJvrDKunyA_993_998_v1"
+        ],
+        "num_clips": 2,
+        "grounding_policy": "clips_primary",
+        "fallback_policy": "strict",
+        "ordering_strategy": "chronological",
+        "guidelines": "Follow the clip order exactly. Keep the prose continuous and clean. Do not invent scenes, dialogue, or statistics."
+      },
+      "script_params": {
+        "target_words": 250,
+        "min_words": 180,
+        "segment_words": 20,
+        "segment_topics": [
+          "round 1",
+          "round 7"
+        ]
+      },
+      "output": {
+        "extract_entities": "disabled",
+        "generate_metadata": "disabled",
+        "generate_voiceover": "disabled",
+        "generate_scene_images": "disabled",
+        "generate_document": "enabled",
+        "save_to_db": false,
+        "generate_timeline": false
+      }
+    },
+    {
+      "id": "text-control",
+      "title": "Operational text control",
+      "language": "en",
+      "tone": "neutral",
+      "style": "Keep the control prose short and grounded.",
+      "model": "gemma2:2b",
+      "source": {
+        "type": "text",
+        "topic": "Operational pipeline note",
+        "source_text": "A mixed batch should keep the search, clips, and text paths isolated from each other."
+      },
+      "script_params": {
+        "target_words": 120,
+        "min_words": 80
+      },
+      "output": {
+        "extract_entities": "disabled",
+        "generate_metadata": "disabled",
+        "generate_voiceover": "disabled",
+        "generate_scene_images": "disabled",
+        "generate_document": "disabled",
+        "save_to_db": false,
+        "generate_timeline": false
+      }
+    }
+  ]
+}
