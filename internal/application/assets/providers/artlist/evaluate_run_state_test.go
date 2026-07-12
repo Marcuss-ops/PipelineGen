@@ -93,7 +93,7 @@ func TestEvaluateRunState_InvariantViolation(t *testing.T) {
 		Found:         10, // claimed: 10 discovered
 		Processed:     5,  // tallied: 5 processed
 		Skipped:       0,
-		Failed:        0,  // tallied: 0 failed
+		Failed:        0, // tallied: 0 failed
 		RealPersisted: 5, // real DB matches the claim
 		// 5 + 0 + 0 = 5 ≠ 10 → invariant violation
 	}
@@ -156,8 +156,8 @@ func TestEvaluateRunState_PartialSuccessWithFailure(t *testing.T) {
 // accidentally swap them are caught.
 func TestEvaluateRunState_RulePriorityInvariantFirst(t *testing.T) {
 	c := RunStatusCounts{
-		Found:         5,  // claim: 5 discovered
-		Processed:     3,  // claim: 3 processed
+		Found:         5, // claim: 5 discovered
+		Processed:     3, // claim: 3 processed
 		Skipped:       0,
 		Failed:        0,
 		RealPersisted: 0, // also real-DB mismatch

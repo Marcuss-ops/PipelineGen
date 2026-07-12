@@ -21,7 +21,7 @@
 //	  the dispatch target (asset.index.requested.v1 vs
 //	  asset.drive.delete_requested.v1).
 //
-// SEGMENT DELIMITER
+// # SEGMENT DELIMITER
 //
 // The 4-tuple is delimited by ':' (the codebase convention from
 // existing key shapes — see BuildIndexEventKey in
@@ -93,47 +93,45 @@ import (
 // All sentinels carry the canonical "no fake availability"
 // reason text for grep-ability.
 var (
-// ErrEmptyProvider — provider is required for every key.
-// A missing provider is the canonical "wiring bug" case
-// (the caller forgot to thread the provider through).
-ErrEmptyProvider = errors.New("idempotency: provider is required (godlike/07 — no fake availability)")
-// ErrEmptyClipID — clip_id is required for every key.
-// A missing clip_id is the canonical "no fake identity"
-// case (the caller would otherwise hash a phantom row).
-ErrEmptyClipID = errors.New("idempotency: clip_id is required (godlike/07 — no fake availability)")
-// ErrEmptySourceVersion — source_version is required for
-// every key. A missing source_version is the canonical
-// "stale CAS fence" case (the worker didn't read the
-// current source_version before enqueueing).
-ErrEmptySourceVersion = errors.New("idempotency: source_version is required (godlike/07 — no fake availability)")
-// ErrEmptySHA256 — sha256(file) is required for AssetKey
-// (the row identity). A missing sha256 is the canonical
-// "download not yet complete" case — the caller should
-// use JobKey until the file is downloaded and the
-// sha256 is computed.
-ErrEmptySHA256 = errors.New("idempotency: sha256 file digest is required for AssetKey (use JobKey until the file is downloaded)")
-// ErrEmptyEventType — event_type is required for OutboxKey
-// (the dispatch target disambiguator).
-ErrEmptyEventType = errors.New("idempotency: event_type is required for OutboxKey (godlike/07 — no fake availability)")
-// ErrInvalidSegment — a ROUTING field (eventType, provider)
-// contains ':', the reserved segment delimiter. The
-// constructor rejects the input rather than silently
-// producing a mis-parsable key. The godlike/06 contract:
-// a downstream parser that splits on ':' (the canonical
-// segment delimiter) MUST see exactly 4/3/4 segments for
-// AssetKey/JobKey/OutboxKey. A provider like "art:list"
-// would otherwise silently produce a 5-segment key that
-// any ':'-splitter would misparse.
-//
-// NOTE: the guard applies ONLY to the routing fields. The
-// data fields (clipID, sourceVersion, sha256File) are opaque
-// and may legitimately contain ':' as a scheme prefix
-// (e.g. "sha256:abc", "planner:abc:0") — see the SEGMENT
-// DELIMITER section in the package doc.
-ErrInvalidSegment = errors.New("idempotency: ':' is reserved as the segment delimiter (godlike/06 — applies to ROUTING fields only; data fields clipID/source_version/sha256 may carry ':' as a scheme prefix)")
+	// ErrEmptyProvider — provider is required for every key.
+	// A missing provider is the canonical "wiring bug" case
+	// (the caller forgot to thread the provider through).
+	ErrEmptyProvider = errors.New("idempotency: provider is required (godlike/07 — no fake availability)")
+	// ErrEmptyClipID — clip_id is required for every key.
+	// A missing clip_id is the canonical "no fake identity"
+	// case (the caller would otherwise hash a phantom row).
+	ErrEmptyClipID = errors.New("idempotency: clip_id is required (godlike/07 — no fake availability)")
+	// ErrEmptySourceVersion — source_version is required for
+	// every key. A missing source_version is the canonical
+	// "stale CAS fence" case (the worker didn't read the
+	// current source_version before enqueueing).
+	ErrEmptySourceVersion = errors.New("idempotency: source_version is required (godlike/07 — no fake availability)")
+	// ErrEmptySHA256 — sha256(file) is required for AssetKey
+	// (the row identity). A missing sha256 is the canonical
+	// "download not yet complete" case — the caller should
+	// use JobKey until the file is downloaded and the
+	// sha256 is computed.
+	ErrEmptySHA256 = errors.New("idempotency: sha256 file digest is required for AssetKey (use JobKey until the file is downloaded)")
+	// ErrEmptyEventType — event_type is required for OutboxKey
+	// (the dispatch target disambiguator).
+	ErrEmptyEventType = errors.New("idempotency: event_type is required for OutboxKey (godlike/07 — no fake availability)")
+	// ErrInvalidSegment — a ROUTING field (eventType, provider)
+	// contains ':', the reserved segment delimiter. The
+	// constructor rejects the input rather than silently
+	// producing a mis-parsable key. The godlike/06 contract:
+	// a downstream parser that splits on ':' (the canonical
+	// segment delimiter) MUST see exactly 4/3/4 segments for
+	// AssetKey/JobKey/OutboxKey. A provider like "art:list"
+	// would otherwise silently produce a 5-segment key that
+	// any ':'-splitter would misparse.
+	//
+	// NOTE: the guard applies ONLY to the routing fields. The
+	// data fields (clipID, sourceVersion, sha256File) are opaque
+	// and may legitimately contain ':' as a scheme prefix
+	// (e.g. "sha256:abc", "planner:abc:0") — see the SEGMENT
+	// DELIMITER section in the package doc.
+	ErrInvalidSegment = errors.New("idempotency: ':' is reserved as the segment delimiter (godlike/06 — applies to ROUTING fields only; data fields clipID/source_version/sha256 may carry ':' as a scheme prefix)")
 )
-
-
 
 // errInvalidSegment returns a per-field invalidSegmentError for
 // the colon-collision guard on the routing fields (eventType,
@@ -174,18 +172,18 @@ func (e *invalidSegmentError) Is(target error) bool {
 // Field rules (see the SEGMENT DELIMITER section in the package
 // doc for the routing/data split rationale):
 //   - provider  : ROUTING field — empty rejected with
-//                 ErrEmptyProvider; ':' rejected with
-//                 ErrInvalidSegment.
+//     ErrEmptyProvider; ':' rejected with
+//     ErrInvalidSegment.
 //   - clipID    : DATA field    — empty rejected with
-//                 ErrEmptyClipID; ':' ALLOWED (stock planner
-//                 IDs and sha256-prefixed IDs legitimately
-//                 use ':' as a scheme prefix).
+//     ErrEmptyClipID; ':' ALLOWED (stock planner
+//     IDs and sha256-prefixed IDs legitimately
+//     use ':' as a scheme prefix).
 //   - sourceVer : DATA field    — empty rejected with
-//                 ErrEmptySourceVersion; ':' ALLOWED (sha256
-//                 source_version is conventionally
-//                 "sha256:<hex>").
+//     ErrEmptySourceVersion; ':' ALLOWED (sha256
+//     source_version is conventionally
+//     "sha256:<hex>").
 //   - sha256File: DATA field    — empty rejected with
-//                 ErrEmptySHA256; ':' ALLOWED.
+//     ErrEmptySHA256; ':' ALLOWED.
 //
 // Empty inputs are rejected with a typed sentinel so the gates
 // downstream (UNIQUE on media_assets.id, scraper dedup, etc.)
@@ -238,12 +236,12 @@ func AssetKey(provider, clipID, sourceVersion, sha256File string) (string, error
 // Field rules (see the SEGMENT DELIMITER section in the package
 // doc for the routing/data split rationale):
 //   - provider  : ROUTING field — empty rejected with
-//                 ErrEmptyProvider; ':' rejected with
-//                 ErrInvalidSegment.
+//     ErrEmptyProvider; ':' rejected with
+//     ErrInvalidSegment.
 //   - clipID    : DATA field    — empty rejected with
-//                 ErrEmptyClipID; ':' ALLOWED.
+//     ErrEmptyClipID; ':' ALLOWED.
 //   - sourceVer : DATA field    — empty rejected with
-//                 ErrEmptySourceVersion; ':' ALLOWED.
+//     ErrEmptySourceVersion; ':' ALLOWED.
 //
 // Empty inputs are rejected with typed sentinels (same
 // godlike/07 fail-closed discipline as AssetKey). The checks
@@ -283,9 +281,9 @@ func JobKey(provider, clipID, sourceVersion string) (string, error) {
 // Field rules (see the SEGMENT DELIMITER section in the package
 // doc for the routing/data split rationale):
 //   - eventType  : ROUTING field — empty rejected with
-//                  ErrEmptyEventType; ':' rejected with
-//                  ErrInvalidSegment (eventType is the
-//                  routing segment — must be segment-stable).
+//     ErrEmptyEventType; ':' rejected with
+//     ErrInvalidSegment (eventType is the
+//     routing segment — must be segment-stable).
 //   - provider   : ROUTING field — empty rejected; ':' rejected.
 //   - clipID     : DATA field    — empty rejected; ':' ALLOWED.
 //   - sourceVer  : DATA field    — empty rejected; ':' ALLOWED.

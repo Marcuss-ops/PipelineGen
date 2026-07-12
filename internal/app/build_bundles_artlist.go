@@ -627,6 +627,7 @@ func (a *artlistProcessorDownloadAdapter) DownloadArtlistClip(
 //	(b) Configure scraper:  VELOX_ARTLIST_SCRAPER_SERVER_URL=http://artlist-scraper:9123
 //	                        (docker-compose.yml production setup, PR-ARTLIST-CONFIG-PREFIX
 //	                        July 2026 renamed from the bare ARTLIST_SCRAPER_SERVER_URL)
+//
 // validateArtlistScraperURL is the canonical fail-closed gate #5
 // (ART-002 P0.1, July 2026) for WireArtlist. Returns the typed
 // ErrArtlistDepMissing sentinel when the Artlist feature is enabled
@@ -665,8 +666,8 @@ func validateArtlistScraperURL(cfg *config.Config) error {
 	}
 	if cfg.Features.ArtlistEnabled && cfg.External.ArtlistScraperServerURL == "" {
 		return ErrArtlistDepMissing{
-			Kind:  DepKindScraperURL,
-			Field: "cfg.External.ArtlistScraperServerURL",
+			Kind:   DepKindScraperURL,
+			Field:  "cfg.External.ArtlistScraperServerURL",
 			Detail: "ART-002 P0.1: cfg.Features.ArtlistEnabled=true but cfg.External.ArtlistScraperServerURL is empty — required env VELOX_ARTLIST_SCRAPER_SERVER_URL (without it the searcher chain silently degrades to per-call exec fallback). To disable Artlist set VELOX_FEATURE_ARTLIST_ENABLED=false",
 		}
 	}

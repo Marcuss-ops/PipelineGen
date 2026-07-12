@@ -263,9 +263,9 @@ func TestPipelineState_IsTerminal(t *testing.T) {
 // states × 4 methods table.
 func TestPipelineState_HelperMethods(t *testing.T) {
 	cases := []struct {
-		s                                    PipelineState
-		wantFailed, wantSucceeded, wantSkip  bool
-		wantPending                          bool
+		s                                   PipelineState
+		wantFailed, wantSucceeded, wantSkip bool
+		wantPending                         bool
 	}{
 		// 3 terminal states.
 		{StatePipelineIndexed, false, true, false, false},

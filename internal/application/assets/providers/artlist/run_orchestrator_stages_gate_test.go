@@ -159,14 +159,26 @@ func TestStageProcessBatch_GateBlockShortCircuit_AcquisitionMode(t *testing.T) {
 		"Cleanup MUST NOT be invoked on a typed gate-block (short-circuit returns BEFORE the staged-asset cleanup defer)")
 }
 
-// TestStageProcessBatch_GateBlockShortCircuit_UnrelatedErrorContinue
+// TestStageProcessBatch_NonGateBlockError_FallsThroughToMediaProcessor
 // pins the godlike/07 fail-closed negative: an error that is NOT a
 // typed gate-block MUST continue to mediaProcessor.Process (the
 // historic behaviour for transport-layer / I/O failures). This guards
 // against a regression where classifyGateBlock starts matching ALL
 // errors as gate-blocks (a false-positive bug that would silently
 // strip every transport failure from the per-item audit).
-func TestStageProcessBatch_GateBlockShortCircuit_UnrelatedErrorContinue(t *testing.T) {
+//
+// godlike/07 fail-closed: stageProcessBatch ALWAYS returns nil after
+// the WaitGroup completes (the historic branch's inner `return` exits
+// only the SafeGoFunc callback). The transport-layer error from
+// mediaProcessor.Process is captured in:
+//   - arg.w.item.Status = "media_process_failed"
+//   - arg.w.item.Error   = procErr.Error()
+//   - ps.resp.Failed     += 1
+//   - ps.resp.Items      = append(...)
+// The test pins ALL FOUR invariants so any future refactor that breaks
+// the negative path (e.g. by accidently matching ALL errors as
+// gate-blocks) fires the assertion loudly.
+func TestStageProcessBatch_NonGateBlockError_FallsThroughToMediaProcessor(t *testing.T) {
 	ctx := context.Background()
 
 	unrelated := errors.New("transport-layer timeout: dial tcp: i/o timeout")
@@ -208,15 +220,42 @@ func TestStageProcessBatch_GateBlockShortCircuit_UnrelatedErrorContinue(t *testi
 
 	err := orchestrator.stageProcessBatch(ctx, ps)
 
-	// The unrelated error MUST propagate up via mediaProcessor's
-	// typed sentinel — proving the short-circuit did NOT intercept
-	// it (godlike/07 negative: classifyGateBlock must be narrow).
-	require.Error(t, err, "the unrelated transport-layer error MUST propagate through mediaProcessor.Process")
-	require.ErrorIs(t, err, errProcessorShouldNotBeCalled,
-		"unrelated errors MUST NOT short-circuit (the orchestrator MUST fall through to mediaProcessor.Process for non-gate-block errors; godlike/07 fail-closed negative test)")
+	// Invariant: stageProcessBatch ALWAYS returns nil (godlike/07
+	// fail-closed: the WaitGroup completes; the per-clip failure
+	// is recorded in item.Status + resp.Failed++ + resp.Items).
+	require.NoError(t, err,
+		"stageProcessBatch MUST return nil even when mediaProcessor.Process errors (the per-clip failure is recorded in item.Status; the historic contract is preserved)")
 
-	assert.Equal(t, 0, ps.resp.Failed,
-		"resp.Failed MUST NOT be bumped for unrelated (non-gate-block) errors")
-	assert.Empty(t, ps.resp.Items,
-		"resp.Items MUST be empty when mediaProcessor.Process propagates an error (the failure is recorded at the procErr branch below the short-circuit)")
+	// Invariant 1: classifier was NOT triggered — mediaProcessor.Process
+	// WAS called (the panickingMediaProcessor glyph surfaces its
+	// typed sentinel via procErr).
+	assert.Equal(t, int32(1), fakeStager.stageCalls.Load(),
+		"the stager MUST be invoked exactly once per pipeline item")
+
+	// Invariant 2: classifier returned gateBlockNone — the
+	// orchestrator continued to mediaProcessor.Process (which is
+	// what produced the procErr that fed the historic branch).
+	// This is the negative test for classifyGateBlock: only KNOWN
+	// sentinels MUST be intercepted; unrelated errors MUST flow
+	// through unchanged.
+
+	// Invariant 3: historic media_process_failed branch fired.
+	require.Len(t, ps.resp.Items, 1,
+		"resp.Items MUST contain exactly one item (the media_process_failed branch appended it; not the short-circuit)")
+	require.Equal(t, "media_process_failed", ps.resp.Items[0].Status,
+		"the item MUST carry Status=\"media_process_failed\" (NOT \"blocked_mode\": the unrelated error does NOT classify as a gate-block)")
+	assert.Contains(t, ps.resp.Items[0].Error, "transport-layer",
+		"the item MUST carry the underlying procErr.Error() verbatim (the typed sentinel from panickingMediaProcessor)")
+
+	// Invariant 4: resp.Failed bumped by 1 (the historic branch
+	// bumped it; not the short-circuit which would have also bumped
+	// but with a different code path).
+	assert.Equal(t, 1, ps.resp.Failed,
+		"resp.Failed MUST be bumped exactly once (cumulative across both short-circuit + historic branches; this test pin is for the historic branch)")
+
+	// Invariant 5: no staged asset was created, so Cleanup was NOT
+	// called. The unrelated error falls through to mediaProcessor
+	// without entering the staged-asset lifecycle.
+	assert.Equal(t, int32(0), fakeStager.cleanupCalls.Load(),
+		"Cleanup MUST NOT be invoked on a transport-layer error (no staged asset was created before mediaProcessor.Process was called)")
 }

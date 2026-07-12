@@ -88,10 +88,10 @@ func (r *recordingRunRepo) LatestRun(_ context.Context) (*LatestRunSummary, erro
 	}
 	c := r.calls[len(r.calls)-1]
 	return &LatestRunSummary{
-		RunID: c.RunID,
-		Term:  c.Term,
+		RunID:  c.RunID,
+		Term:   c.Term,
 		Status: c.Status,
-		Error: c.ErrorMessage,
+		Error:  c.ErrorMessage,
 	}, nil
 }
 
