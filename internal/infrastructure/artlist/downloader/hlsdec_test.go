@@ -100,7 +100,7 @@ func TestHLS_DecryptSegment_RoundTripSequenceIV(t *testing.T) {
 	assert.Equal(t, byte(0x08), iv[15])
 
 	// Round-trip a single block.
-	key := []byte("AESGENERATED01234") // 16 bytes — distinct from above for test independence
+	key := []byte("AES_GENERATED0123")                            // 16 bytes — distinct from above for test independence
 	plaintext := []byte("HLS sequence-IV-AES-128-CBC test!")[:16] // exactly 1 block
 	plaintextWithPKCS := append([]byte{}, plaintext...)
 	// PKCS#7 full-block padding: 16 bytes of 0x10
