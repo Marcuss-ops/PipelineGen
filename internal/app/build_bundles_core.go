@@ -296,11 +296,14 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
 			LLMGen: params.ScriptGen, MetaWriter: params.VOMetaWriter, StyleRegistry: params.StyleRegistry,
-			ImageGen: imgservice.NewChromeImageProviderPool(
-				params.Cfg.Paths.PythonScriptsDir,
-				params.Cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations,
-				params.Log,
-			),
+			// PR-IMAGES-CHROME-RETIRED (July 2026): ImageGen left unset
+			// (zero value = nil). The canonical image endpoint fails
+			// closed per godlike/07: google_slides_provider.Generate
+			// returns ErrProviderUnavailable when its delegate is nil,
+			// so the HTTP handler surfaces a typed-error 503. Removed
+			// the NewChromeImageProviderPool wiring because the
+			// persistent Chrome/Playwright slide_worker process is
+			// operationally retired.
 		},
 		External: imgservice.ImagesExternalDeps{
 			IngestSvc: params.IngestSvc, Dispatcher: params.Dispatcher, VeloxBaseURL: params.Cfg.External.VeloxBaseURL,

@@ -30,10 +30,14 @@ func (d *DiagnosticsService) Diagnostics() DiagnosticsReport {
 		Capabilities:     d.AllCapabilities(),
 	}
 
-	if cp, ok := d.imageGen.(*ChromeImageProvider); ok {
-		report.ImageGenHealthy = cp.Health() == nil
-		report.ImageGenCooldownProfiles = cp.ActiveCooldownProfiles()
-	} else if cp, ok := d.imageGen.(interface {
+	// PR-IMAGES-CHROME-RETIRED (July 2026): the explicit
+	// *ChromeImageProvider type-assert branch is REMOVED. The
+	// structural-interface fallthrough below catches any ImageGenerator
+	// implementation that exposes Health() + ActiveCooldownProfiles()
+	// (ChromeImageProvider satisfies the structural shape, so its
+	// presence continues to surface diagnostics correctly; the
+	// removed branch was a duplicate code path, not additional state).
+	if cp, ok := d.imageGen.(interface {
 		Health() error
 		ActiveCooldownProfiles() int
 	}); ok {
