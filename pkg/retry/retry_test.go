@@ -609,7 +609,7 @@ func TestTransientInfrastructureError_Format(t *testing.T) {
 	}
 }
 
-// ─── sleepDuration / jitter (Azione 4/8 di Step 7) ──────────────────────────
+// ─── BackoffFor / jitter (Azione 4/8 di Step 7) ──────────────────────────
 
 // TestSleepDuration_NoJitter_Deterministic verifies that JitterFraction=0
 // produces the exact canonical exponential backoff sequence (no random
@@ -634,8 +634,8 @@ func TestSleepDuration_NoJitter_Deterministic(t *testing.T) {
 		1600 * time.Millisecond,
 	}
 	for i, want := range wantSeq {
-		if got := sleepDuration(i, opts); got != want {
-			t.Errorf("sleepDuration(%d) = %v, want %v", i, got, want)
+		if got := BackoffFor(i, opts); got != want {
+			t.Errorf("BackoffFor(%d) = %v, want %v", i, got, want)
 		}
 	}
 }
@@ -658,9 +658,9 @@ func TestSleepDuration_Jitter25_Envelope(t *testing.T) {
 	// Envelope: [0.75s, 1.25s].
 	envelope := struct{ lo, hi time.Duration }{750 * time.Millisecond, 1250 * time.Millisecond}
 	for i := 0; i < 1000; i++ {
-		got := sleepDuration(0, opts)
+		got := BackoffFor(0, opts)
 		if got < envelope.lo || got > envelope.hi {
-			t.Errorf("iter %d: sleepDuration = %v, outside envelope [%v, %v]",
+			t.Errorf("iter %d: BackoffFor = %v, outside envelope [%v, %v]",
 				i, got, envelope.lo, envelope.hi)
 		}
 	}
@@ -681,9 +681,9 @@ func TestSleepDuration_Jitter50_Envelope(t *testing.T) {
 	}
 	envelope := struct{ lo, hi time.Duration }{500 * time.Millisecond, 1500 * time.Millisecond}
 	for i := 0; i < 1000; i++ {
-		got := sleepDuration(0, opts)
+		got := BackoffFor(0, opts)
 		if got < envelope.lo || got > envelope.hi {
-			t.Errorf("iter %d: sleepDuration = %v, outside envelope [%v, %v]",
+			t.Errorf("iter %d: BackoffFor = %v, outside envelope [%v, %v]",
 				i, got, envelope.lo, envelope.hi)
 		}
 	}
@@ -707,7 +707,7 @@ func TestSleepDuration_Jitter_Variability(t *testing.T) {
 	const N = 1000
 	minD, maxD := time.Duration(1<<62), time.Duration(0)
 	for i := 0; i < N; i++ {
-		got := sleepDuration(0, opts)
+		got := BackoffFor(0, opts)
 		if got < minD {
 			minD = got
 		}
@@ -741,11 +741,11 @@ func TestSleepDuration_Jitter_ClampBelowZero(t *testing.T) {
 		JitterFraction: -0.25,
 	}
 	for i := 0; i < 100; i++ {
-		if got, want := sleepDuration(0, opts), 1*time.Second; got != want {
+		if got, want := BackoffFor(0, opts), 1*time.Second; got != want {
 			t.Errorf("iter %d: JitterFraction=-0.25 produced %v, want exactly %v (negative jitter must clamp to no-jitter)", i, got, want)
 		}
-		if got := sleepDuration(0, opts); got <= 0 {
-			t.Errorf("iter %d: sleepDuration %v must be > 0 even after clamping negative jitter", i, got)
+		if got := BackoffFor(0, opts); got <= 0 {
+			t.Errorf("iter %d: BackoffFor %v must be > 0 even after clamping negative jitter", i, got)
 		}
 	}
 }
@@ -768,9 +768,9 @@ func TestSleepDuration_Jitter_ClampAboveOne(t *testing.T) {
 	// Envelope: [0, 2*base] = [0, 2s].
 	envelope := struct{ lo, hi time.Duration }{0, 2 * time.Second}
 	for i := 0; i < 1000; i++ {
-		got := sleepDuration(0, opts)
+		got := BackoffFor(0, opts)
 		if got < envelope.lo || got > envelope.hi {
-			t.Errorf("iter %d: sleepDuration = %v, outside envelope [%v, %v] (JitterFraction=2.0 must clamp to 1.0)",
+			t.Errorf("iter %d: BackoffFor = %v, outside envelope [%v, %v] (JitterFraction=2.0 must clamp to 1.0)",
 				i, got, envelope.lo, envelope.hi)
 		}
 	}
@@ -793,9 +793,9 @@ func TestSleepDuration_JitterOnMaxBackoffCap(t *testing.T) {
 	// on top of 500ms. Envelope: [375ms, 625ms].
 	envelope := struct{ lo, hi time.Duration }{375 * time.Millisecond, 625 * time.Millisecond}
 	for i := 0; i < 1000; i++ {
-		got := sleepDuration(4, opts)
+		got := BackoffFor(4, opts)
 		if got < envelope.lo || got > envelope.hi {
-			t.Errorf("iter %d: sleepDuration = %v, outside envelope [%v, %v] (jitter must apply AFTER MaxBackoff cap)",
+			t.Errorf("iter %d: BackoffFor = %v, outside envelope [%v, %v] (jitter must apply AFTER MaxBackoff cap)",
 				i, got, envelope.lo, envelope.hi)
 		}
 	}

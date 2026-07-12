@@ -12,7 +12,7 @@
 //   (4) norm — defensive coalesce of zero-valued Options fields into
 //       canonical defaults (so callers passing retry.Options{} get
 //       the documented production sane-default surface).
-//   (5) sleepDuration — exponential backoff with MaxBackoff cap and
+//   (5) BackoffFor — exponential backoff with MaxBackoff cap and
 //       bounded jitter math. Pure function: takes the attempt count
 //       and the Options, returns the duration the next retry should
 //       sleep before being called. math/rand global Float64 is safe
@@ -22,7 +22,7 @@
 // ═══════════ Usage from retry.go (orchestrator) ═════════════════════════════
 //
 // retry.DoWithValue calls norm once before the loop starts and
-// sleepDuration once per-retry-sleep. The two helpers live here
+// BackoffFor once per-retry-sleep. The two helpers live here
 // rather than in retry.go so this file is the single canonical
 // "options and jitter math" surface (godlike/06 SSOT one-canonical-
 // owner-per-fact). The orchestrator composes them; this file owns
@@ -122,7 +122,7 @@ func DefaultOptions() Options {
 //     into telemetry they did not request.
 //   - Clock: zero value (nil) is handled by ClockFromOptions (which
 //     itself falls through to RealClock{}); coalescing here would
-//     diverge from sleepDuration's downstream ClockFromOptions call.
+//     diverge from BackoffFor's downstream ClockFromOptions call.
 //
 // Fase 6(a) strict change (no backward-compatible default): when
 // IsRetryable is nil, norm sets it to a FAIL-CLOSED no-retry predicate
@@ -179,7 +179,7 @@ func norm(o Options) Options {
 	// retry.Options{JitterFraction: 0, IsRetryable: predicate}
 	// explicitly — the explicit-zero signal is preserved by the
 	// condition (zero == zero is the only escape hatch). Negative or
-	// out-of-range values are clamped by sleepDuration, not here.
+	// out-of-range values are clamped by BackoffFor, not here.
 	if o.JitterFraction == 0 {
 		o.JitterFraction = 0.25
 	}
@@ -200,7 +200,7 @@ func neverRetry(error) bool { return false }
 
 // ── exponential backoff + bounded jitter ───────────────────────────────────
 
-// sleepDuration computes the delay before retry attempt `attemptCount`
+// BackoffFor computes the delay before retry attempt `attemptCount`
 // (0-based: 0 = first retry's wait). The computation is:
 //
 //	delay = InitialBackoff × BackoffFactor^attemptCount
@@ -223,7 +223,25 @@ func neverRetry(error) bool { return false }
 // jitter compose correctly: at cap, the jitter envelope is
 // [cap×(1-f), cap×(1+f)] rather than a wider range that would defeat
 // the cap's intent.
-func sleepDuration(attemptCount int, opts Options) time.Duration {
+//
+// godlike/06 SSOT (one-canonical-owner-per-fact): this function is
+// the SOLE canonical owner of the "compute exponential backoff" math
+// across the PipelineGen codebase. Callers needing a one-shot backoff
+// duration (e.g. SQL scheduler's `available_at` write, monitor's
+// `nextCheckTime`) call BackoffFor with an explicit Options literal
+// instead of inlining their own math. Callers needing a retry loop
+// call retry.Do / retry.DoWithValue (which routes its per-retry sleep
+// through this same function).
+//
+// NOTE on norm(): BackoffFor does NOT call norm(opts) on the inbound
+// Options. The retry-loop caller already invokes norm inside
+// DoWithValue before the loop starts; one-shot callers must pass an
+// explicit Options literal (InitialBackoff / BackoffFactor / MaxBackoff
+// / JitterFraction). This preserves deterministic scheduling — a
+// server-side SQL `available_at` write must NOT carry hidden jitter;
+// the schedule value is the persisted retry target, not a random
+// pre-sleep duration.
+func BackoffFor(attemptCount int, opts Options) time.Duration {
 	delay := float64(opts.InitialBackoff)
 	for i := 0; i < attemptCount; i++ {
 		delay *= opts.BackoffFactor
