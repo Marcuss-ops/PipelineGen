@@ -86,6 +86,23 @@ DIAG_FILE = (
     else None
 )
 
+# ── P1.3 panel-refresh (July 2026) ──────────────────────────────────────
+#
+# SLIDE_WORKER_REFRESH_EVERY: every N requests the worker triggers a
+# DOM-level clear of the images library panel before the next submit.
+# Default=1 ⟹ every request starts from a clean panel. Higher N amortises
+# the 200-300ms clear cost across N requests when operator chooses to
+# tolerate some cross-request contamination.
+#
+# Strategy: DOM-level removeChildren of the
+#   `.docs-content-library-image-generation-item`
+# subtree + 200ms settle. Slides.new exposes no native one-click "delete
+# all"; we use plain element removal via page.evaluate. If the DOM clear
+# raises (highly unlikely under Chromium), the call returns -1 and the
+# worker keeps the prior state — the next request will see stale images
+# only until `_maybe_recycle_page` triggers (every 20 successful runs).
+SLIDE_WORKER_REFRESH_EVERY = max(1, int(os.environ.get("SLIDE_WORKER_REFRESH_EVERY") or "1"))
+
 
 def _iso8601_utc_ms() -> str:
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
@@ -332,6 +349,78 @@ def _extract_candidates(page, max_keep: int = 8) -> list:
         return []
 
 
+def _clear_image_library_panel(page) -> int:
+    """P1.3 (July 2026): DOM-level removeChildren of the images library panel.
+
+    Slides.new exposes no native one-click "delete all" button for the
+    image library; we use plain JavaScript node removal via page.evaluate.
+    The function:
+
+      1. Locates every `.docs-content-library-image-generation-item` node.
+      2. Calls node.remove() on each.
+      3. Returns the number of items removed (>= 0 on success).
+      4. Applies a 200ms settle delay so the polling loop does not race
+         with the DOM mutation (the test contract "second non vede candidati
+         della prima dopo 800ms" assumes a ~200-300ms clean-window).
+
+    Returns -1 on failure (the caller should treat this as best-effort
+    cleanup; the canonical clean-context invariant will be re-established
+    by `_maybe_recycle_page` on the 20th generation if needed).
+    """
+    if page is None:
+        return -1
+    try:
+        removed = page.evaluate("""() => {
+            const items = [...document.querySelectorAll('.docs-content-library-image-generation-item')];
+            items.forEach(n => n.remove());
+            return items.length;
+        }""") or 0
+        page.wait_for_timeout(200)
+        return int(removed)
+    except Exception as e:
+        _log(f"[_clear_image_library_panel] DOM clear failed: {e}")
+        return -1
+
+
+def _check_169_selected(page) -> bool:
+    """P1.3 (July 2026): post-click verification that 16:9 ratio is applied.
+
+    Slides.new collapses the dropdown after click, so the original
+    `opt_169` Playwright locator is unreachable after the click fires.
+    We re-verify via a JS evaluate that walks a small list of DOM
+    selectors in priority order; the first one that surfaces a non-empty
+    label is the canonical "selected ratio" indicator. The check is
+    best-effort: a missed selector returns False (not True) so the typed
+    ErrImageGenRatioNotSelected path is taken conservatively.
+
+    Returns True iff one of the selectors matches a label containing
+    '16:9'. False on JS evaluate failure or no match.
+    """
+    if page is None:
+        return False
+    try:
+        selected = page.evaluate("""() => {
+            const candidates = [
+                document.querySelector('[data-selected-ratio]'),
+                document.querySelector('.ratio-button[data-active=\"true\"]'),
+                document.querySelector('[role=\"radio\"][aria-checked=\"true\"][data-ratio]'),
+                document.querySelector('[class*=\"ratio\"][class*=\"selected\"]'),
+                document.querySelector('[aria-pressed=\"true\"][data-ratio]'),
+                document.querySelector('[data-ratio=\"16:9\"]'),
+            ];
+            for (const el of candidates) {
+                if (!el) continue;
+                const txt = (el.textContent || el.getAttribute('aria-label') || el.getAttribute('data-ratio') || '').trim();
+                if (txt.length > 0) return txt;
+            }
+            return '';
+        }""") or ''
+        return '16:9' in selected
+    except Exception as e:
+        _log(f"[_check_169_selected] DOM evaluate failed: {e}")
+        return False
+
+
 # ── ProfileWorker (one thread = one browser = one profile) ─────────────────
 
 class ProfileWorker(threading.Thread):
@@ -360,6 +449,11 @@ class ProfileWorker(threading.Thread):
         self._running = True
         self._generation_count = 0
         self._max_generations_before_page_recycle = 20
+        # P1.3 (July 2026): per-request counter that gates the panel
+        # refresh (`SLIDE_WORKER_REFRESH_EVERY` env var). Initialised
+        # to 0 so the first request has count=1 (divisible by N=1
+        # default → always clear).
+        self._refresh_count = 0
 
     # ── Warmup ────────────────────────────────────────────────────────
 
@@ -796,20 +890,70 @@ class ProfileWorker(threading.Thread):
                 image_mode_active=image_mode_active,
             )
 
-            # Step 3: select 16:9.
+            # Step 3: select 16:9. MANDATORY per spec (P1.3, July 2026).
+            # The pre-fix `except: pass` silently degraded to whatever
+            # ratio was already selected (often the prior request's). We
+            # now (a) raise on click failure, (b) verify the post-click
+            # selected ratio via _check_169_selected (Slides.new closes
+            # the dropdown so the original locator is unreachable), and
+            # (c) return a typed `ErrImageGenRatioNotSelected` error so
+            # the Go side can resetWorker + retry-once.
             try:
                 prop_btn = self.page.locator(
                     '[aria-label="Proporzioni"], '
                     '.image-synthesis [aria-label*="Proporzi"]'
                 ).first
-                if prop_btn.is_visible():
-                    prop_btn.click(force=True, timeout=3000)
-                    opt_169 = self.page.locator('*:has-text("16:9")').last
-                    opt_169.wait_for(state="visible", timeout=3000)
-                    opt_169.click(force=True, timeout=3000)
-                    ratio_selected = "16:9"
-            except Exception:
-                pass
+                if not prop_btn.is_visible():
+                    raise Exception("Proporzioni button not visible (cannot open ratio menu)")
+                prop_btn.click(force=True, timeout=3000)
+                opt_169 = self.page.locator('*:has-text("16:9")').last
+                opt_169.wait_for(state="visible", timeout=3000)
+                opt_169.click(force=True, timeout=3000)
+                # Settle + verify the dropdown closed. The locator
+                # handle on opt_169 is typically gone after the dropdown
+                # closes so we re-query via _check_169_selected.
+                self.page.wait_for_timeout(400)
+                if not _check_169_selected(self.page):
+                    raise Exception("16:9 not confirmed in post-click selected-ratio state")
+                ratio_selected = "16:9"
+            except Exception as e:
+                err_code = "ErrImageGenRatioNotSelected"
+                _log(f"[profile-{self.profile_id}][{request_id}] 16:9 selection FAILED: {e}")
+                _log_diag(
+                    request_id, self.profile_id, "error",
+                    url=self.page.url,
+                    error_code=err_code,
+                    error_message=f"16:9 selection failed: {e}",
+                    elapsed_ms=int((time.time() - t0) * 1000),
+                )
+                # P1.3: typed error → Go-side (ClassifyError) maps
+                # to ErrImageGenRatioNotSelected → Generate() calls
+                # resetWorker + retry-once.
+                return {
+                    "id": request_id,
+                    "status": "error",
+                    "error": f"{err_code}: {e}",
+                    "code": err_code,
+                    "profile": self.profile_id,
+                    "elapsed_ms": int((time.time() - t0) * 1000),
+                }
+
+            # P1.3 Step 3.5 (July 2026): SLIDE_WORKER_REFRESH_EVERY gate.
+            # If the gate condition is satisfied (e.g. every request when
+            # N=1, the canonical default), clear the image library panel
+            # before submit so polling counts only the new candidates
+            # generated by THIS request. The DOM clear is best-effort:
+            # on failure we still proceed to submit (failure logged), and
+            # the canonical clean-context invariant will be re-established
+            # by `_maybe_recycle_page` on the 20th generation if needed.
+            self._refresh_count += 1
+            if self._refresh_count % SLIDE_WORKER_REFRESH_EVERY == 0:
+                cleared = _clear_image_library_panel(self.page)
+                _log_diag(
+                    request_id, self.profile_id, "panel_cleared",
+                    url=self.page.url, removed=cleared,
+                    refresh_count=self._refresh_count,
+                )
 
             # Step 4: submit (P2 phase #3: click_create).
             create_btn = self.page.locator(

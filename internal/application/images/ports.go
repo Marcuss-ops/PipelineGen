@@ -161,9 +161,75 @@ var ErrImageGenAuth = fmt.Errorf("image generation: authentication error")
 // top-level retry.Decision walker via errMsg classification).
 var ErrImageGenNoImageCandidate = fmt.Errorf("image generation: no image candidate (worker reported ErrNoImageCandidate)")
 
+// ErrImageGenBlankOrPlaceholder is the typed sentinel surfaced when the
+// post-extraction visual_validate pass rejects the file at output_path:
+//   - white_pct exceeds the style-gated threshold (>99% standard, >99.8% whiteboard)
+//   - variance < 5 (monochrome fill)
+//   - pHash distance from the slide-vuoto reference hash is <= 5 (too
+//     similar to the canonical blank placeholder)
+//
+// godlike/07 FAIL-CLOSED contract (P0.2, July 2026): the pre-fix
+// pipeline only checked file size and SHA-256 on the generated PNG,
+// so any blank PNG (a real artifact produced by the worker over an empty
+// slides.new page) was ingested as a valid GeneratedImage. We close
+// the gap by decoding + asserting content invariants in
+// internal/application/images/visual_validate.Validate. The path
+// is FAIL-CLOSED: chrome_provider.Generate removes output_path, callers
+// see a typed error, the worker retry policy sees a deterministic
+// retryable (the page may have been stale; the same prompt with a
+// fresh page should not re-produce a blank).
+//
+// This error is mapped onto the ERR_BLANK_OR_PLACEHOLDER or
+// errblankorplaceholder code from worker responses. The sentinel is
+// recommended as RETRYABLE (transient environment in the panel) per
+// retry.IsTransient contract via errMsg classification.
+var ErrImageGenBlankOrPlaceholder = fmt.Errorf("image generation: blank/placeholder detected by visual_validate")
+
+// ErrImageGenTimeout is the typed sentinel surfaced when the worker
+// waited the canonical 60s for a new image to appear in the
+// docs-content-library-image-generation-item panel and saw no new
+// candidate that differed from the pre-click baseline.
+//
+// godlike/07 FAIL-CLOSED contract (P0.4, July 2026): the pre-fix
+// behaviour logged a screenshot and PROCEEDED with extraction,
+// potentially ingesting a stale image from a previous generation.
+// We RETIRE that path: timeout is a terminal failure for this
+// request, the worker reports ErrImageGenTimeout, and the caller
+// (and the page-recycle wiring in chrome_provider.go::resetWorker)
+// decides whether to retry on a fresh page.
+//
+// Recommended as RETRYABLE via the errgenerationtimeout substring
+// path in ClassifyError.
+var ErrImageGenTimeout = fmt.Errorf("image generation: timeout waiting for new candidate (worker reported ErrGenerationTimeout)")
+
 // ErrImageGenPolicy wraps content-policy rejections (prompt blocked by
 // provider safety filter). NOT retryable — different prompt needed.
 var ErrImageGenPolicy = fmt.Errorf("image generation: content policy rejection")
+
+// ErrImageGenRatioNotSelected is surfaced when the worker reports that
+// the mandatory 16:9 ratio selection failed during request prep. The
+// failure mode is one of:
+//
+//   - the "Proporzioni" button was not visible (panel in a different
+//     state — e.g. not on the image-mode tab);
+//   - the 16:9 option locator was not reachable (dropdown collapses
+//     before the click registers);
+//   - the post-click DOM query (`_check_169_selected`) did not surface
+//     a label containing "16:9" (the click registered on a different
+//     element).
+//
+// godlike/07 fail-closed contract (P1.3, July 2026): the pre-fix
+// `except: pass` in slide_worker.py::Step 3 silently accepted whatever
+// ratio the panel happened to have (often the prior request's 16:9 or
+// 4:3). We now return a typed error so the Go side can resetWorker +
+// retry-once. The retry path uses a freshly-launched subprocess so the
+// next request opens on a clean panel where the 16:9 menu can be
+// re-selected without contamination from the failed attempt.
+//
+// Note: this is RETRYABLE via the chrome_provider.Generate retry-once
+// path (not via retry.IsTransient / retry.Decision — it is a panel-
+// state-specific recovery, not a generic transient).
+var ErrImageGenRatioNotSelected = fmt.Errorf("image generation: 16:9 ratio not selected (mandatory UI step failed)")
 
 // ClassifyError maps a provider-level error string to the appropriate
 // typed sentinel. Used by ChromeImageProvider to wrap worker responses.
@@ -200,6 +266,30 @@ func ClassifyError(errMsg string) error {
 		// (substring → sentinel) pairs to make the precedence explicit
 		// without the case-ordering dance.
 		return fmt.Errorf("%w: %s", ErrImageGenNoImageCandidate, errMsg)
+	case strings.Contains(lower, "errblankorplaceholder"):
+		// P0.2 (July 2026): typed sentinel for the visual-validate
+		// FAIL-CLOSED path. The content validator (visual_validate
+		// package) rejects near-white / monochrome / slide-vuoto
+		// images; this branch surfaces the resulting code from the
+		// worker. Placed before network/timeout for the same
+		// reason as ErrNoImageCandidate above: typed contract wins
+		// over transport signal.
+		return fmt.Errorf("%w: %s", ErrImageGenBlankOrPlaceholder, errMsg)
+	case strings.Contains(lower, "errgenerationtimeout"):
+		// P0.4 (July 2026): typed sentinel for the 'no new candidate
+		// after 60s polling' path. Placed before network/timeout to
+		// ensure the typed timeout (a content-event) wins over a
+		// generic transport signal.
+		return fmt.Errorf("%w: %s", ErrImageGenTimeout, errMsg)
+	case strings.Contains(lower, "errimagegenrationotselected") || strings.Contains(lower, "ratio-not-selected"):
+		// P1.3 (July 2026): typed sentinel for the mandatory 16:9
+		// selection failure. Placed before the generic network/timeout
+		// fallthrough so the typed panel-state recovery contract is
+		// surfaced, NOT a transport-class retry. The Generate() loop
+		// recognises this specific sentinel via errors.Is(err,
+		// ErrImageGenRatioNotSelected) and triggers resetWorker +
+		// retry-once instead of bubbling the error to the caller.
+		return fmt.Errorf("%w: %s", ErrImageGenRatioNotSelected, errMsg)
 	case strings.Contains(lower, "network") || strings.Contains(lower, "connection") ||
 		strings.Contains(lower, "timeout") || strings.Contains(lower, "refused") ||
 		strings.Contains(lower, "dns") || strings.Contains(lower, "eof"):
