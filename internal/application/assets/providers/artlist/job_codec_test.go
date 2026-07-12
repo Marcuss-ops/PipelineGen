@@ -12,12 +12,14 @@ func TestArtlistDedupKeyUsesCanonicalRequest(t *testing.T) {
 		Term:     "  City ",
 		Strategy: "",
 		DryRun:   false,
+		Limit:    8,
 	}
 
 	reqB := RunTagRequest{
 		Term:     "city",
 		Strategy: "verify",
 		DryRun:   false,
+		Limit:    8,
 	}
 
 	normA := NormalizeRunTagRequest(reqA, RunDefaults{
@@ -28,11 +30,35 @@ func TestArtlistDedupKeyUsesCanonicalRequest(t *testing.T) {
 		DefaultRootFolderID: "drive-folder",
 	})
 
-	keyA := RunDedupKey(normA.Term, normA.RootFolderID, normA.Strategy, normA.DryRun)
-	keyB := RunDedupKey(normB.Term, normB.RootFolderID, normB.Strategy, normB.DryRun)
+	keyA := RunDedupKey(normA.Term, normA.RootFolderID, normA.Strategy, normA.DryRun, normA.Limit)
+	keyB := RunDedupKey(normB.Term, normB.RootFolderID, normB.Strategy, normB.DryRun, normB.Limit)
 
 	if keyA != keyB {
 		t.Fatalf("expected canonical equivalent requests to share dedup key: %s != %s", keyA, keyB)
+	}
+}
+
+// TestArtlistDedupKey_DifferentLimitProducesDifferentKey pins the
+// Fase 5 / Commit 3 follow-up invariant: the dedup key MUST vary with
+// the limit parameter. A replay of the same term + root folder +
+// strategy + dryRun with a DIFFERENT limit is a DIFFERENT run, not a
+// same-run replay; omitting limit from the key would collapse
+// distinct runs into one ActiveKey and surface misleading dedup
+// (godlike/07 fail-closed: never silently merge distinct operator
+// requests).
+func TestArtlistDedupKey_DifferentLimitProducesDifferentKey(t *testing.T) {
+	key8 := RunDedupKey("city", "drive-folder", "verify", false, 8)
+	key16 := RunDedupKey("city", "drive-folder", "verify", false, 16)
+	key1 := RunDedupKey("city", "drive-folder", "verify", false, 1)
+
+	if key8 == key16 {
+		t.Fatalf("expected limit=8 and limit=16 to produce different dedup keys (a different limit is a different run); both produced %q", key8)
+	}
+	if key8 == key1 {
+		t.Fatalf("expected limit=8 and limit=1 to produce different dedup keys; both produced %q", key8)
+	}
+	if key16 == key1 {
+		t.Fatalf("expected limit=16 and limit=1 to produce different dedup keys; both produced %q", key16)
 	}
 }
 

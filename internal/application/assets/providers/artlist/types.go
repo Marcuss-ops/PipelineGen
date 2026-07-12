@@ -55,8 +55,27 @@ type RunTagRequest struct {
 }
 
 // RunDedupKey creates a deduplication key for artlist jobs.
-func RunDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
-	return runDedupKey(term, rootFolderID, strategy, dryRun)
+//
+// Fase 5 / Commit 3 (July 2026) follow-up: the signature now
+// includes `limit` because a replay of the same run with a
+// DIFFERENT limit (e.g. limit=8 vs limit=16) is a DIFFERENT run, not
+// a same-run replay — omitting limit from the key would collapse
+// distinct runs into one ActiveKey and surface misleading dedup.
+//
+// godlike/07 fail-closed: the limit is part of the canonical
+// identity. Different run parameters MUST produce different keys
+// (a replay that re-runs the SAME term + folder + limit + strategy +
+// dryRun collapses; a replay that re-runs with a DIFFERENT limit
+// does NOT collapse — the operator gets a fresh run, which is the
+// honest semantic for "I asked for N clips, the dedup honored
+// it, now I want M clips").
+//
+// The function is the SINGLE canonical surface for the run-level
+// dedup key (godlike/06 SSOT). The kernel job broker's UNIQUE index
+// on `jobs.active_key` is the storage layer; this function is the
+// identity layer.
+func RunDedupKey(term, rootFolderID, strategy string, dryRun bool, limit int) string {
+	return runDedupKey(term, rootFolderID, strategy, dryRun, limit)
 }
 
 // RunTagItem represents the result for a single clip in the full pipeline.

@@ -209,18 +209,19 @@ func NormalizeRunTagRequest(req RunTagRequest, defaults RunDefaults) RunTagReque
 	return req
 }
 
-func runDedupKey(term, rootFolderID, strategy string, dryRun bool) string {
+func runDedupKey(term, rootFolderID, strategy string, dryRun bool, limit int) string {
 	// Build canonical request for deduplication
 	canonical := map[string]any{
 		"term":           strings.ToLower(strings.TrimSpace(term)),
 		"root_folder_id": strings.TrimSpace(rootFolderID),
 		"strategy":       strings.ToLower(strings.TrimSpace(strategy)),
 		"dry_run":        dryRun,
+		"limit":          limit,
 	}
 	raw, err := json.Marshal(canonical)
 	if err != nil {
 		// Fallback to simple key if JSON fails
-		return fmt.Sprintf("%s|%s|%s|%v", strings.ToLower(strings.TrimSpace(term)), strings.TrimSpace(rootFolderID), strings.ToLower(strings.TrimSpace(strategy)), dryRun)
+		return fmt.Sprintf("%s|%s|%s|%v|%d", strings.ToLower(strings.TrimSpace(term)), strings.TrimSpace(rootFolderID), strings.ToLower(strings.TrimSpace(strategy)), dryRun, limit)
 	}
 	hash := sha256.Sum256(raw)
 	return fmt.Sprintf("%x", hash)
