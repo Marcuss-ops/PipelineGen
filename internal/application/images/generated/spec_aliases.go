@@ -15,8 +15,6 @@ type GenerationRegistryImpl = GenerationProviderRegistry
 var ErrProviderNotFound = errors.New("generated: provider id not found in registry")
 
 var (
-	_ Provider = (*GoogleSlidesProvider)(nil)
-
 	_ Registry = (*GenerationProviderRegistry)(nil)
 	_ Registry = (*GenerationRegistryImpl)(nil)
 )
