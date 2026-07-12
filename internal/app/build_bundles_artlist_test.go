@@ -25,6 +25,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -37,6 +38,7 @@ import (
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
+	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -154,8 +156,13 @@ func TestWireArtlist_PublisherGate_FailsClosed(t *testing.T) {
 
 	require.Error(t, err)
 	require.Nil(t, wiring)
-	assert.Contains(t, err.Error(), "Publisher is nil",
-		"expected WireArtlist to fail-closed on mandatory Publisher gate (gate #1 runs first in the ladder)")
+	var missing ErrArtlistDepMissing
+	require.True(t, errors.As(err, &missing),
+		"Fase 1: WireArtlist MUST return typed ErrArtlistDepMissing{Kind: DepKindPublisher} on the mandatory Publisher gate")
+	assert.Equal(t, DepKindPublisher, missing.Kind,
+		"gate #1 short-circuit on Publisher nil — Kind/Field carry the canonical diagnostic")
+	assert.Equal(t, "bundle.Publisher", missing.Field,
+		"Field carries the source-path so operators can map to the upstream ComposeRoot")
 }
 
 // TestWireArtlist_PublisherGate_ShortCircuitsOverDispatcher: confirms the
@@ -200,8 +207,12 @@ func TestWireArtlist_PublisherGate_ShortCircuitsOverDispatcher(t *testing.T) {
 
 	require.Error(t, err)
 	require.Nil(t, wiring)
-	assert.Contains(t, err.Error(), "Publisher is nil",
-		"mandatory Publisher gate must remain authoritative (gate #1) even when Dispatcher gate #2 is wired")
+	var missing ErrArtlistDepMissing
+	require.True(t, errors.As(err, &missing),
+		"Fase 1: Publisher must short-circuit BEFORE Dispatcher gate; typed sentinel MUST still publish the Ladder-1 Kind")
+	assert.Equal(t, DepKindPublisher, missing.Kind,
+		"gate-ordering invariant: Publisher nil catches before Dispatcher gate fires")
+	assert.Equal(t, "bundle.Publisher", missing.Field)
 }
 
 // ---------- ART-002 P0.1 (July 2026): gate #5 scraper-URL fail-closed ----------
@@ -227,13 +238,18 @@ func TestWireArtlist_PublisherGate_ShortCircuitsOverDispatcher(t *testing.T) {
 // TestValidateArtlistScraperURL_NilCfg_ReturnsError: defensive coverage
 // for the gate-#5 nil-cfg case. Returns a typed error so WireArtlist's
 // single call site propagates the same pattern as the 4 wiring gates.
+// Fase 1 (Phase 1, July 2026) — the typed sentinel is now parsed via
+// errors.As so DepKindScraperURL + Field="cfg" are structurally testable.
 func TestValidateArtlistScraperURL_NilCfg_ReturnsError(t *testing.T) {
 	err := validateArtlistScraperURL(nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "cfg is nil",
-		"gate #5 helper must fail loudly when cfg is nil (defensive godlike/06 SSOT)")
-	assert.Contains(t, err.Error(), "scraper-URL fail-closed",
-		"error must name the gate so operators can grep it in logs")
+	var missing ErrArtlistDepMissing
+	require.True(t, errors.As(err, &missing),
+		"Fase 1: validateArtlistScraperURL nil-cfg MUST return typed ErrArtlistDepMissing{Kind: DepKindScraperURL}")
+	assert.Equal(t, DepKindScraperURL, missing.Kind)
+	assert.Equal(t, "cfg", missing.Field)
+	assert.Contains(t, missing.Detail, "scraper-URL fail-closed",
+		"Detail must retain the diagnostic marker for operator log grep (forward-compat with the Fase 2 /api/artlist/diagnostics endpoint)")
 }
 
 // TestValidateArtlistScraperURL_DisabledAndEmptyURL_ReturnsNil: when
@@ -353,11 +369,12 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 	}
 
 	bundle := &ArtlistBundle{
-		DB:             sqliteDB,
-		ClipsRepo:      clipsRepo,
-		Publisher:      &stubPublisherForArtlistComposition{},
-		Jobs:           jobsBundle,
-		MediaProcessor: nil, // optional; nil-tolerant in WireArtlist's MediaProcessor bridge
+		DB:                 sqliteDB,
+		ClipsRepo:          clipsRepo,
+		Publisher:          &stubPublisherForArtlistComposition{},
+		Jobs:               jobsBundle,
+		ClipIndexerService: clipindexer.NewService(nil, sqliteDB, "", log), // Fase 1 gate #6 (Indexr/Qdrant)
+		MediaProcessor:     nil,                                            // optional; nil-tolerant in WireArtlist's MediaProcessor bridge
 	}
 
 	// WireArtlist mandatory call shape (8 args). The 3 ComposeRoot
