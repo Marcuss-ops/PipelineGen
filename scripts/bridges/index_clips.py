@@ -16,14 +16,56 @@ except ImportError as e:
     print("Install: pip install sentence-transformers spacy yake[full] requests")
     exit(1)
 
-nlp = spacy.load("en_core_web_sm")
-nlp_it = None
-try:
-    nlp_it = spacy.load("it_core_news_sm")
-except:
-    pass
+_models = None  # populated lazily by get_models() on first call
 
-model = SentenceTransformer("intfloat/multilingual-e5-base")
+
+def get_models():
+    """Lazy-load ML models on first call.
+
+    Returns ``(nlp, nlp_it_or_none, model)``. Memoised so subsequent calls
+    are O(1).
+
+    Why lazy (July 2026):
+      * `spacy.load("en_core_web_sm")` reads the model package from disk
+        (hundreds of MB) on every import.
+      * `SentenceTransformer("intfloat/multilingual-e5-base")` downloads
+        + caches the model on first run.
+    Both are non-trivial and DOMINATE the index_clips import cost when
+    the file is imported by tooling that does NOT actually need ML
+    inference (e.g. CI lint jobs, parser smoke tests, lightweight
+    import-graph inspection). The lazy pattern defers both to the
+    first `compute_embedding` / `normalize_text` invocation; only an
+    actual `--db ...` indexing run pays.
+    """
+    global _models
+    if _models is not None:
+        return _models
+    nlp = spacy.load("en_core_web_sm")
+    nlp_it = None
+    try:
+        nlp_it = spacy.load("it_core_news_sm")
+    except Exception:
+        # Italian model not installed — fall back to the multilingual
+        # en pipeline. Bare-except → except Exception because we still
+        # want KeyboardInterrupt / SystemExit to propagate normally.
+        pass
+    model = SentenceTransformer("intfloat/multilingual-e5-base")
+    _models = (nlp, nlp_it, model)
+    return _models
+
+
+def __getattr__(name):
+    """Module-level lazy attribute for back-compat with external callers.
+
+    Lets code like ``from index_clips import nlp, model`` keep working
+    without the caller having to know about `get_models()`. Replaces
+    the pre-fix eager top-level `nlp = spacy.load(...)` /
+    `model = SentenceTransformer(...)` global initializers.
+    """
+    if name in ("nlp", "nlp_it", "model"):
+        nlp, nlp_it, model = get_models()
+        return {"nlp": nlp, "nlp_it": nlp_it, "model": model}[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 def get_txt_content(local_path, name=None):
     if not local_path and not name:
@@ -65,12 +107,16 @@ def get_txt_content(local_path, name=None):
     return ""
 
 def normalize_text(text):
+    """Lemmatise + strip stopwords/punct. Italian-aware via a tiny
+    stopword sniff; falls back to the en pipeline.
+    """
     # Quick heuristic to detect Italian words
     italian_stopwords = {"il", "la", "i", "gli", "le", "un", "una", "di", "a", "da", "in", "con", "su", "per", "tra", "fra", "che"}
     words = text.lower().split()
     is_italian = any(w in italian_stopwords for w in words)
+    nlp, nlp_it, _ = get_models()
     target_nlp = nlp_it if (is_italian and nlp_it) else nlp
-    
+
     doc = target_nlp(text.lower())
     return " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
 
@@ -123,10 +169,14 @@ def generate_search_text(parts):
 embedding_cache_text = {}
 
 def compute_embedding(text):
+    """Encode `text` with the E5 SentenceTransformer; cache results by
+    raw text to dedupe identical inputs across clips.
+    """
     if text in embedding_cache_text:
         return embedding_cache_text[text]
     # E5 requires 'passage:' prefix for documents being indexed
     # See: https://huggingface.co/intfloat/multilingual-e5-base
+    _, _, model = get_models()
     prefixed = "passage: " + text
     emb = json.dumps(model.encode(prefixed, normalize_embeddings=True).tolist())
     embedding_cache_text[text] = emb
