@@ -21,6 +21,7 @@ package collections
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -373,6 +374,13 @@ func TestCleanupWithConfig_FailClosed_OnAliasResolutionError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "resolve active target") {
 		t.Errorf("error wrapping must preserve the 'resolve active target' diagnostic prefix; got %q", err.Error())
+	}
+	// Code-reviewer D3: assert the error wraps a typed *transport.APIError
+	// so a future regression that breaks the wrap chain (e.g. replaces
+	// fmt.Errorf("...%w", err) with errors.New(err.Error())) is caught.
+	var apiErr *transport.APIError
+	if !errors.As(err, &apiErr) {
+		t.Errorf("error must wrap *transport.APIError; got %T (%v)", err, err)
 	}
 	if len(deleteCalls) != 0 {
 		t.Errorf("DELETE was called %d times on fail-closed path; want 0; deleteCalls=%v", len(deleteCalls), deleteCalls)
