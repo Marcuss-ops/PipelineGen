@@ -89,18 +89,13 @@ func (p *DocumentProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Processo
 	return ProcessorBestEffort
 }
 
-// PR 5 (June 2026): signature now takes ProcessInput envelope.
+// Process creates or updates the canonical script document.
 //
-// FASE-document-canonical (July 2026): ALWAYS calls the canonical
-// renderer BuildGenerationDocumentHTML. Per godlike/06 SSOT
-// one-canonical-owner-per-fact the production doc surface has a
-// single canonical renderer; BuildGenerationDocumentHTML gracefully
-// handles both the with-SpecScene and empty-SpecScene cases (the
-// empty case skips the <h2>Scenes</h2> section via the
-// `len(model.SpecScene.Scenes) > 0` guard internally). The
-// `includeSpecSceneBlock` 6th parameter is set to true for production
-// output — operators can visually verify the SpecScene JSON debug
-// block at the bottom of every Google Doc.
+// The visible document contains only the title and the final SpecScene JSON.
+// Full prose, the human-readable Scenes expansion, entities, metadata, and
+// visible provenance are deliberately omitted to avoid maintaining multiple
+// competing script representations. Provenance remains available as a hidden
+// HTML comment through BuildSpecSceneDocumentHTML.
 func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.docsSvc == nil {
 		return nil, fmt.Errorf("%w: document processor: DocumentsService not configured", scriptpkg.ErrPostprocessFailed)
@@ -114,30 +109,15 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		docTitle = "Generated Script"
 	}
 
-	// Canonical single-renderer call: BuildGenerationDocumentHTML is the
-	// SOLE canonical production renderer per AGENTS.md Pattern 0.
 	model := &scriptpkg.ModelScriptOutputV1{
 		SchemaVersion: 1,
 		Text:          input.Text,
 		SpecScene:     input.SpecScene,
 	}
 
-	// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026): entities and
-	// metadata now flow through ProcessInput from upstream
-	// processors via mergePostProcessResult write-back. When nil,
-	// the canonical renderer gracefully skips those sections — no
-	// spurious headers, no regressions.
-	//
-	// Honest scope-lock (godlike/07): the write-back only takes
-	// effect when the document processor runs AFTER the entities/
-	// metadata processors in plan.Postprocessors execution order.
-	// When it runs before, the inputs stay nil (byte-equivalent to
-	// pre-PR behavior). Future reordering of the postprocessor list
-	// to place document last would unlock full rendering.
-	// Render the document twice: first without the final doc_id so
-	// we can create the file, then again with the provenance block
-	// filled in and update the file content.
-	htmlContent := BuildGenerationDocumentHTML(model, docTitle, plan.Language, input.Entities, input.Metadata, true, input.Provenance)
+	// Render twice: first without the final doc_id so the document can be
+	// created, then again after provenance receives the real doc_id/doc_link.
+	htmlContent := BuildSpecSceneDocumentHTML(model, docTitle, input.Provenance)
 
 	idempotencyKey := plan.CacheKey
 	if idempotencyKey == "" {
@@ -146,16 +126,17 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	link, id := p.docsSvc.CreateDoc(ctx, docTitle, htmlContent, p.resolveFolder, plan.DriveFolderID, idempotencyKey, plan.ForceRefresh)
 	if link == "" {
 		return nil, fmt.Errorf("%w: document processor: Google Doc creation returned empty link", scriptpkg.ErrPostprocessFailed)
-	} // Fill the provenance block with the real doc_id/doc_link and
-	// rewrite the document body so it contains the complete
-	// provenance metadata.
+	}
+
+	// Fill the hidden provenance block with the real doc_id/doc_link and
+	// rewrite the document body so it contains complete trace metadata.
 	if input.Provenance != nil {
 		input.Provenance.DocID = id
 		input.Provenance.DocLink = link
 		input.Provenance.RequestedMode = requestedModeForPlan(plan)
 		input.Provenance.UsedMode = usedModeForInput(plan, input)
 		input.Provenance.FallbackUsed = input.Provenance.RequestedMode != input.Provenance.UsedMode
-		htmlWithProv := BuildGenerationDocumentHTML(model, docTitle, plan.Language, input.Entities, input.Metadata, true, input.Provenance)
+		htmlWithProv := BuildSpecSceneDocumentHTML(model, docTitle, input.Provenance)
 		if err := p.docsSvc.UpdateDoc(ctx, id, docTitle, htmlWithProv); err != nil {
 			return &PostProcessResult{
 				DocLink:  link,
