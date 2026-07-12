@@ -51,6 +51,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"go.uber.org/zap"
 
@@ -141,24 +142,33 @@ func (StockFinalizeStep) Run(ctx context.Context, runner StepRunner) error {
 		}
 	}
 
-	// ── Phase 3+4: single-TX spine write (optional) ────────────────
+	// ── DEBUG_INSTRUMENTATION (Phase 4 entry, round 13, July 2026) ───
+	// Reversible via `git restore step_finalize.go`. Single hypothesis:
+	// is `runner.JobFinalizer()` nil on the production path? Note: a
+	// parallel agent has already implemented fail-closed ErrFinalizerAbsent
+	// at this point — this instrumentation is complementary diagnostic
+	// data captured BEFORE the fail-closed branch fires.
+	log.Printf("DEBUG_INSTRUMENTATION: stock.finalize_phase4 jobFinalizerWired=%v publishedCount=%d manifestValid=%v fp=%q",
+		runner.JobFinalizer() != nil, len(runner.State().Published), manifest != nil, fp)
+
+	// ── Phase 3+4: single-TX spine write ────────────────────────────
+	// godlike/07 fail-closed (no-fake-availability): the production
+	// symmetric gate (validateStockSymmetricGate in
+	// build_bundles_stock.go) forbids a job that reaches stock.finalize
+	// with JobFinalizer nil; if the gate was somehow bypassed (drift,
+	// test misconfiguration) the step body MUST surface the wiring gap
+	// instead of returning nil and letting the broker declare SUCCEEDED.
+	// The pre-Commit-A "test-fixture mode silent-success short-circuit"
+	// hid this class of wiring gap from production. Test fixtures MUST
+	// wire a stubJobFinalizer{} to satisfy the StepRunner interface
+	// contract — there is no longer a back-compat skip path.
 	if runner.JobFinalizer() == nil {
-		// Test-fixture / §F.1 back-compat: no JobFinalizer wired.
-		// Phase-0 gate above bypassed on JobFinalizer==nil so test
-		// fixtures calling Step.Run directly with empty state.Published
-		// still reach this skip path (no spine write, no error).
-		//
-		// NOTE: the original Phase-4 `len(Published)==0` block (which
-		// returned ErrStockFinalizeStateLost OR preserved INDEX_PENDING)
-		// is REMOVED here. It was unreachable in production (Phase 0
-		// gate fires first) AND unreachable in test-fixture mode
-		// (the outer `JobFinalizer()==nil` skip returns BEFORE this
-		// check). Removing it eliminates the silent-success trap
-		// without breaking any test fixture.
-		if runner.Log() != nil {
-			runner.Log().Debug("orchestrator: stock.finalize: SUCCEEDED (test-fixture, no spine write)")
-		}
-		return nil
+		// Wrap carries the where-when + remediation hint; the sentinel
+		// itself stays terse so callers can errors.Is(err, ErrFinalizerAbsent)
+		// without parsing a long human-readable string. Mirrors the file's
+		// other branches (ErrStockFinalizeLeaseMissing wraps with field
+		// values; ErrStockFinalizeSpineFailed wraps the inner fault).
+		return fmt.Errorf("%w: Step.Run reached Phase 3+4 without a wired JobFinalizer (call WithJobFinalizer before RunResilient)", ErrFinalizerAbsent)
 	}
 
 	// At this point: JobFinalizer is wired (production mode) AND

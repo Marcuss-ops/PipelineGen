@@ -170,17 +170,27 @@ func TestStockFinalizeStep_JobFinalizerWired_PublishedEmpty_NoOpState_AlsoFailsC
 	}
 }
 
-// TestStockFinalizeStep_JobFinalizerNil_PublishedEmpty_GateBypassed
-// pins the test-fixture mode contract. When JobFinalizer is nil,
-// the Phase-0 gate MUST be bypassed so existing stock_test fixtures
-// that call Step.Run directly with empty state.Published continue to
-// return nil (or fire downstream sentinels, but never ErrStockFinalizeStateLost).
+// TestStockFinalizeStep_JobFinalizerNil_PublishedEmpty_FailsClosedAtManifestValidate
+// pins the downstream-manifest-validate branch for the
+// JobFinalizer=nil + Published=empty configuration. With
+// Commit-A's fail-closed close-out, Phase 3+4 is reached (Phase-0
+// gate is bypassed) and Phase 1 produces an empty manifest (chunked
+// build with empty Published yields 0 Artifacts), so Validate() fires
+// ErrArtifactManifestInvalid with "manifest has zero artifacts". The
+// Phase-3+4 fail-closed sentinel MUST NOT fire on this configuration
+// (the failure class is upstream — manifest empty is a deeper problem
+// than finalizer absence). godlike/07 cross-sentinel sanity pin
+// preserved: ErrStockFinalizeStateLost must NOT fire either (Phase 0
+// gate is bypassed on JobFinalizer=nil).
 //
-// In production this combination is forbidden at composition-time
-// (validateStockSymmetricGate in build_bundles_stock.go) — a job
-// with JobFinalizer=nil cannot reach stock.finalize. The test-fixture
-// mode is the legitimate wire-shape.
-func TestStockFinalizeStep_JobFinalizerNil_PublishedEmpty_GateBypassed(t *testing.T) {
+// Pre-Commit-A contract rewrite: this test used to assert the
+// silent-success "test-fixture mode" branch returned nil on this
+// configuration. That branch is REMOVED; the new fail-closed at
+// Phase 3+4 is asserted by TestStockFinalizeStep_NilJobFinalizer_FailsClosed.
+// This test retains the "downstream sentinel fires, neither
+// Phase-3+4 finalizer nor Phase-0 state-lost" cross-sentinel pin to
+// defend canonical-sentinel attribution discipline (godlike/07).
+func TestStockFinalizeStep_JobFinalizerNil_PublishedEmpty_FailsClosedAtManifestValidate(t *testing.T) {
 	runner := newFinalizeFakeRunner(
 		&RunInput{FolderID: "wf-test"},
 		&runState{Published: nil},
@@ -205,7 +215,7 @@ func TestStockFinalizeStep_JobFinalizerNil_PublishedEmpty_GateBypassed(t *testin
 	// other than ErrStockFinalizeStateLost is acceptable per godlike/07
 	// no-fake-availability contract (gate is bypassed, but downstream
 	// gates still fire on their own merits).
-	t.Logf("test-fixture mode: gate correctly bypassed; downstream sentinel fired: %v", err)
+	t.Logf("Phase 0 gate correctly bypassed on JobFinalizer=nil (Commit-A fail-closed close-out); downstream sentinel fired: %v", err)
 }
 
 // TestStockFinalizeStep_JobFinalizerWired_PublishedNonEmpty does NOT
@@ -240,5 +250,61 @@ func TestStockFinalizeStep_JobFinalizerWired_PublishedNonEmpty_GateBypassed(t *t
 		t.Logf("gate correctly bypassed on non-empty Published; downstream pipeline succeeded end-to-end (only true if test coverage produces a manifest with metadata hydrated — currently a canary for post-Commit-4-7 era)")
 	} else {
 		t.Logf("gate correctly bypassed on non-empty Published; downstream sentinel fired (test-fixture manifest builder produced empty/Required:false entries): %v", err)
+	}
+}
+
+// TestStockFinalizeStep_NilJobFinalizer_FailsClosed is the canonical
+// contract test for the Commit-A fail-closed close-out. When
+// JobFinalizer() is nil at Phase 3+4, the step MUST surface
+// ErrFinalizerAbsent via errors.Is traversal — the pre-Commit-A
+// "test-fixture mode" silent-success short-circuit that returned nil
+// in this state is REMOVED. Production code paths reach this branch
+// only via the production symmetric gate bypass; test fixtures MUST
+// wire a stubJobFinalizer{} to satisfy the StepRunner interface
+// contract (godlike/07 no-fake-availability, godlike/06 SSOT).
+//
+// Coverage contract:
+//   - err MUST NOT be nil (silent-success trap closed)
+//   - errors.Is(err, ErrFinalizerAbsent) MUST be true (typed sentinel fires)
+//   - errors.Is(err, ErrStockFinalizeStateLost) MUST be false (Phase-0
+//     gate stays silent on nil JobFinalizer and only this branch governs
+//     the failure class)
+func TestStockFinalizeStep_NilJobFinalizer_FailsClosed(t *testing.T) {
+	// Arrange: one chunk with non-empty LocalPath + Filename so
+	// buildChunkedStockManifest produces an ArtifactManifest that
+	// passes ArtifactManifest.Validate (the gate inspects Path
+	// string equality, NOT the file on disk — so a stub path
+	// suffices). JobFinalizer nil keeps Phase 0 bypassed and
+	// Phase 3+4 on the new fail-closed branch.
+	runner := newFinalizeFakeRunner(
+		&RunInput{FolderID: "wf-test"},
+		&runState{
+			Published: []ChunkState{
+				{
+					Index:      0,
+					ArtifactID: "stock:test:chunk:0",
+					Filename:   "chunk_0.mp4",
+					LocalPath:  "/stub-path-validate-doesnt-stat",
+				},
+			},
+		},
+		nil, // JobFinalizer nil → production gate was bypassed; step must fail closed
+	)
+	step := StockFinalizeStep{}
+
+	// Act
+	err := step.Run(context.Background(), runner)
+
+	// Assert: fail-closed sentinel fires
+	if err == nil {
+		t.Fatalf("expected ErrFinalizerAbsent fail-closed, got nil (silent-success bug class!)")
+	}
+	if !errors.Is(err, ErrFinalizerAbsent) {
+		t.Fatalf("want errors.Is(ErrFinalizerAbsent)=true, got %v", err)
+	}
+	// Sanity: Phase-0 gate must NOT fire in this configuration (it
+	// guards JobFinalizer!=nil + Published=empty only).
+	if errors.Is(err, ErrStockFinalizeStateLost) {
+		t.Fatalf("Phase-0 gate fired instead of Phase-3+4 fail-closed (cross-contamination of sentinels): %v", err)
 	}
 }
