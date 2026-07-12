@@ -64,6 +64,19 @@ external:
   # Artlist scraper optimizations
   artlist_live_search_cache_ttl_hours: 24    # Level 1: in-memory cache TTL (0=disabled)
   artlist_scraper_server_url: ""             # Level 3: set to "http://localhost:9123" when server is running (PR-ARTLIST-CONFIG-PREFIX July 2026: bound from env VELOX_ARTLIST_SCRAPER_SERVER_URL)
+  # PR-ARTLIST-AUTHORIZED-BY-DEFAULT (P1, July 2026): the historical
+  # godlike/07 fail-closed default `manual_import` was FLIPPED to
+  # `authorized_api` so a fresh deploy of PipelineGen is immediately
+  # useful for the Artlist-driven stock pipeline. Operators that need
+  # to OPT OUT of automatic downloads set this field to "manual_import"
+  # explicitly OR set ARTLIST_ACQUISITION_MODE=manual_import in
+  # secrets/pipelinegen.env (overrides the YAML value at runtime).
+  artlist_acquisition_mode: "authorized_api"  # PR-ARTLIST-AUTHORIZED-BY-DEFAULT P1: was "manual_import"
+  # 10/day cap aligns with Artlist's per-account quota for non-Enterprise
+  # plans; operators with Enterprise agreements set this to a higher
+  # value or override via ARTLIST_DAILY_DOWNLOAD_LIMIT env var. Set to
+  # 0 to disable automatic downloads entirely (ErrAutomaticDownloadsDisabled).
+  artlist_daily_download_limit: 10           # PR-ARTLIST-AUTHORIZED-BY-DEFAULT P1: was 0 (disabled)
 
 paths:
   python_scripts_dir: "scripts"
