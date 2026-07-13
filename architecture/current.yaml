@@ -137,9 +137,10 @@
       note: internal/infrastructure/database/sqlite/assets/artlist_atomic_writer.go (Fase 11 Commit 1 residue; closed by Commit F)
 
 - id: WAVE-20-QDRANT-005D-HYGIENE
-  status: in_progress
+  status: resolved
   owner: qdrant-hygiene work stream
   deadline: "2026-08-15T00:00:00Z"
+  closed_date: "2026-07-13"
   rationale: |
     Forward-prevention half of QDRANT-RECOVERY-001 (resolved July 2026).
     Owns Check 5 (same-package duplicate-type-declaration lint) +
@@ -147,13 +148,34 @@
     + the canonical AWK-lens switch from package-name-only to the
     Go-package-identity tuple (directory_path, package_name) to clear
     the ~14 cross-directory same-package-NAME false-positives.
+
+    CLOSURE NARRATIVE (PRE-EXISTING-15-LENS-MIGRATION, July 2026):
+    Item (c) of wave_qdrant_005d_hygiene rationale closed: AWK lens in
+    scripts/ci-architectural-checks.sh (the second "Check 5" block, the
+    duplicate-type-declaration lint — distinct from the earlier
+    forbid-mutation-primitives block at scripts/ci/architecture/checks/
+    check_05_mutation_primitives.sh) now emits `dir<TAB>pkg<TAB>Type<TAB>file:line`
+    via `dirname "$f"`, dedup key is `dir/pkg:Type`, FAIL remediation
+    message references the canonical tuple shape and policy.yaml::lint_gates[check=5].
+    The (count=2 in same package) false-positives for job.Filter +
+    job.EnqueueRequest across (domain/job, kernel/job) clear (different
+    (dir,pkg) tuples post-migration; not a Go redeclaration). Items
+    (a)+(b) remain owner-resolved at this commit (Check 5 maintenance +
+    allowlist cadence are subordinated to the maintenance of the new
+    canonical-tuple lens). Item (d) — the canonical note append to
+    docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md — is OUT OF SCOPE:
+    the file does not exist on disk and creating governance docs is a
+    separate non-trivial decision (deferred to a future explicit sub-task).
   follow_up_tickets:
     - id: ARCHCHECK-GO-MIGRATION-PHASE-1
-      note: PR-ID for the AWK-lens migration; tracked under WAVE-ARCHCHECK-MIGRATION.
+      note: PR-ID for the AWK-lens migration; closes here (PRE-EXISTING-15-LENS-MIGRATION).
+    - id: PRE-EXISTING-15-LENS-MIGRATION
+      note: Atomic commit closes this ticket (item (c) of wave_qdrant_005d_hygiene.rationale). Counter stays 6→6 (in_progress excluded from open count).
   cross_refs:
     gate_id: QDRANT-005D
     policy: architecture/policy.yaml::lint_gates[check=5]
     ci_gate: scripts/ci-architectural-checks.sh::Check 5
+    evidence_commit: "PRE-EXISTING-15-LENS-MIGRATION closes this entry (via AWK-lens migration on scripts/ci-architectural-checks.sh Check 5 duplicate-type block + this status flip in architecture/current.yaml)"
 
 - id: WAVE-21-PR-G-SCRIPTS-SUBPKG
   status: in_progress

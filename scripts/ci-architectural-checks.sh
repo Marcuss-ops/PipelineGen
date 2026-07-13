@@ -609,8 +609,13 @@ echo "OK: no duplicate migration version prefixes in ${migration_root}/"
 # type declaration cannot land with a colliding same-package symbol.
 #
 # Implementation: walk every non-test .go file under internal/, extract the
-# `package X` line + every `^type X ...` declaration, project to <package>:<type>,
-# fail on any redeclaration that is NOT listed in the per-package allowlist.
+# `package X` line + every `^type X ...` declaration, project to the
+# canonical Go-package-identity tuple `<dir>/<package>:<type>` (per
+# architecture/policy.yaml::lint_gates[check=5] — Go's package identity is
+# `(directory_path, package_name)`, NOT package_name alone; the principle is
+# also restated in architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE
+# / PRE-EXISTING-15-LENS-MIGRATION), fail on any redeclaration that is NOT
+# listed in the per-(dir,pkg) allowlist.
 #
 # Allowlist: docs/migrations/duplicate-types-allowlist.txt lists one
 # `<package>:<TypeName>` per line for intentional redeclarations. Per AGENTS.md
@@ -629,7 +634,18 @@ echo "OK: no duplicate migration version prefixes in ${migration_root}/"
 #                                  SSOT invariant)
 echo "=== Check 5: same-package duplicate-type-declarations (QDRANT-RECOVERY-001 follow-up) ==="
 
-# Step 1: extract every exported type declaration as TSV: package<TAB>Type<TAB>file:line
+# Step 1: extract every exported type declaration as TSV:
+# dir<TAB>package<TAB>Type<TAB>file:line
+# where the dedup key = `dir/pkg:Type` (canonical Go-package identity tuple
+# `(directory_path, package_name)` per policy.yaml::lint_gates[check=5]).
+# PRE-EXISTING-15-LENS-MIGRATION (closes WAVE-20-QDRANT-005D-HYGIENE, July 2026):
+# the previous lens extracted ONLY `package_name`, which co-classified two
+# files in DIFFERENT directories declaring the same `package <name>` as the
+# same Go package — generating ~14 cross-directory same-package-NAME
+# false-positives (e.g. internal/domain/job/job.go::job.Filter vs
+# internal/kernel/job/job.go::job.Filter were flagged as one redeclaration).
+# Extending the lens to the canonical (dir, name) tuple distinguishes them
+# because Go's package identity is, literally, the dir+name pair.
 decls=""
 while IFS= read -r -d '' f; do
   # extract package name from the first `package X` line (guard against empty).
@@ -639,12 +655,19 @@ while IFS= read -r -d '' f; do
   # and producing a false-positive `(count=381 in same package)`.
   pkg=$(awk '/^package[[:space:]]+/ {print $2; exit}' "$f" 2>/dev/null || true)
   [ -z "$pkg" ] && continue
-  per_file=$(awk -v pkg="$pkg" -v file="$f" '
+  # PRE-EXISTING-15-LENS-MIGRATION: derive directory_path from the file path
+  # via `dirname`. The find walks internal/... so all paths are repo-root
+  # relative and already start with `internal/`; `dirname` returns the
+  # canonical POSIX directory component (e.g. internal/domain/job for
+  # internal/domain/job/job.go). The (dir, pkg) tuple now matches Go's own
+  # package-identity contract.
+  dir=$(dirname "$f")
+  per_file=$(awk -v pkg="$pkg" -v dir="$dir" -v file="$f" '
     /^type[[:space:]]+[A-Z]/ {
       s = $0
       sub(/^type[[:space:]]+/, "", s)
       if (match(s, /^[A-Z][A-Za-z0-9_]*/)) {
-        printf("%s\t%s\t%s:%d\n", pkg, substr(s, RSTART, RLENGTH), file, FNR)
+        printf("%s\t%s\t%s\t%s:%d\n", dir, pkg, substr(s, RSTART, RLENGTH), file, FNR)
       }
     }' "$f" 2>/dev/null || true)
   decls="$decls"$'\n'"$per_file"
@@ -659,7 +682,14 @@ if [ -f "docs/migrations/duplicate-types-allowlist.txt" ]; then
             | awk '{print $1}' | sort -u | paste -sd'|' - || true)
 fi
 
-# Step 3: dedup by (package, TypeName), count, fail on count >= 2 not in allowlist.
+# Step 3: dedup by (dir, package, TypeName), count, fail on count >= 2 not in allowlist.
+# PRE-EXISTING-15-LENS-MIGRATION: key now = `dir/pkg:Type`. Two files in
+# DIFFERENT directories declaring the same package name + same type are
+# NOT a Go redeclaration (they live in different Go packages — Go's
+# package identity is the directory_path+package_name tuple) and this
+# gate correctly lets them pass. Two files in the SAME directory
+# declaring the same package name + same type ARE a Go redeclaration
+# (the build error "<X> redeclared in this block") and correctly fail.
 # The awk END loop visits counts in arbitrary order (hash) — sorted by count desc
 # would be nicer but not required for correct FAIL output.
 fails=$(printf '%s\n' "$decls" \
@@ -671,19 +701,24 @@ fails=$(printf '%s\n' "$decls" \
       out = ""
     }
     {
-      if (NF < 3) next
-      pkg = $1; tn = $2
-      key = pkg ":" tn
-      sites[key] = (sites[key] == "" ? $3 : sites[key] ", " $3)
+      if (NF < 4) next
+      dir = $1; pkg = $2; tn = $3
+      key = dir "/" pkg ":" tn
+      sites[key] = (sites[key] == "" ? $4 : sites[key] ", " $4)
       counts[key]++
     }
     END {
       for (key in counts) {
         if (counts[key] < 2) continue
         if (key in allowed) continue
-        split(key, parts, ":")
-        out = out sprintf("\n  %s.%s  (count=%d in same package)\n    sites: %s\n",
-                          parts[1], parts[2], counts[key], sites[key])
+      # Display path uses dir/pkg.TypeName for human readability;
+      # recover (pkg, TypeName) via a single split on `/` (last segment
+      # is the package name) + index() + substr() (TypeName is the colon-tail).
+      dp_n = split(key, dp, "/")
+      colon = index(key, ":")
+      tn = substr(key, colon + 1)
+      out = out sprintf("\n  %s.%s  (count=%d in same (dir,pkg))\n    sites: %s\n",
+                        dp[dp_n], tn, counts[key], sites[key])
       }
       printf "%s", out
     }' 2>/dev/null || true)
@@ -693,10 +728,12 @@ if [ -n "$fails" ]; then
   echo "$fails"
   echo ""
   echo "Resolution order:"
-  echo "  1. Pick one file as canonical; remove the duplicate from every other file;"
-  echo "  2. Or if the redeclaration is intentional (documented wire-mirror), add"
-  echo "     an entry to docs/migrations/duplicate-types-allowlist.txt"
-  echo "     in the form '<package>:<TypeName>   # rationale + owner + deadline'."
+  echo "  1. Pick one file as canonical; remove the duplicate from every other file;"    echo "  2. Or if the redeclaration is intentional (documented wire-mirror), add"
+    echo "     an entry to docs/migrations/duplicate-types-allowlist.txt"
+    echo "     in the form '<dir>/<package>:<TypeName>   # rationale + owner + deadline'."
+    echo "     (The <dir> token is the canonical directory_path component of"
+    echo "     Go's directory_path+package_name package-identity tuple; see"
+    echo "     architecture/policy.yaml::lint_gates[check=5].)"
   echo ""
   echo "Per AGENTS.md §8 ARCHITECTURE-CI-GATES zero-baseline rule, every new"
   echo "allowlist entry requires explicit owner + deadline; transitional"
