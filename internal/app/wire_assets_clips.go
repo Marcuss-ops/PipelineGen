@@ -60,23 +60,27 @@ type buildClipsParams struct {
 	IdemHandler      gin.HandlerFunc
 }
 
-// buildClipsBundle constructs the canonical *clipsapi.ClipsDescriptor
-// by:
+// buildClipsBundle constructs the canonical *clipsapi.ClipsModule
+// (PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE, July 2026: replaced the
+// legacy *clipsapi.ClipsDescriptor with the new upper-ClipsModule
+// type) by:
 //  1. Constructing the dispatcher adapters (clipsDispatcherPort +
 //     mutationsDisp) from the raw *outbox.Dispatcher
 //  2. Building the application-layer use cases (enrichUC, bulkUploadWorker,
 //     uploadUC, reuploadUC, clipOpsSvc) from the typed-port adapters
-//  3. Calling clipsapi.Build with the 20-field Dependencies struct
-//  4. Type-asserting the returned api.Descriptor to the concrete
-//     *clipsapi.ClipsDescriptor (the descriptor exposes ONLY routes
-//     + job handlers — the raw orchestrator *Handler stays private
-//     post Card 10).
+//  3. Calling clipsapi.Build with the 20-field Dependencies struct —
+//     Build returns *clipsapi.ClipsModule directly (the upper
+//     ClipsModule{Catalog, Ingest, Processing, Operations} struct
+//     with 4 EXPOSED sub-descriptor fields per the user directive;
+//     3 PRIVATE routing-only fields {publication, indexing, bulk}
+//     are not exposed cross-package per godlike/06 SSOT
+//     minimum-needed surface).
 //
 // Card 10 (July 2026): returns the ClipEnricher typed port alongside
-// the descriptor so the composition root can thread it into the
+// the module so the composition root can thread it into the
 // register-side sourcingEnrichmentAdapter without reaching through
 // any internal/api/assets/clips/* field.
-func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, appclips.ClipEnricher, error) {
+func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.ClipEnricher, error) {
 	// (1) Dispatcher adapters
 	//
 	// PR12c (June 2026): wire the dispatcher's port, NOT the concrete
@@ -286,22 +290,21 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, appcl
 		return nil, nil, err
 	}
 
-	// (4) Type-assert to the concrete *clipsapi.ClipsDescriptor
+	// (4) ClipsModule returned directly by Build (PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE, July 2026).
 	//
-	// The Descriptor's forwarder methods (Name/Enabled/RegisterRoutes)
-	// are interface-level; the descriptor exposes ONLY routes + job
-	// handlers post Card 10. Type-assert once so the assetsapi.NewModule
-	// caller in wire_assets.go accepts the concrete (the concrete
-	// *ClipsDescriptor satisfies api.Descriptor structurally).
-	desc, ok := descriptor.(*clipsapi.ClipsDescriptor)
-	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper. Also adds the missing `desc == nil` post-assertion check (the other 6 descriptor sites already had it; this site had only `!ok` — the inconsistency this PR fixes).
-	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: clips (got %T, want *clipsapi.ClipsDescriptor)", descriptor), !ok || desc == nil, DepRequired, params.Log); err != nil {
+	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired fail-closed.
+	// No more type-assertion — Build returns *clipsai.ClipsModule directly.
+	// *ClipsModule satisfies api.Descriptor structurally (compile-time
+	// pinned in clips/module.go via `var _ api.Descriptor = (*ClipsModule)(nil)`),
+	// so the assetsapi.NewModule caller in wire_assets.go accepts it as
+	// the api.Descriptor field directly.
+	if err := ClassifyDepGet("WireAssets: clips: *clipsapi.ClipsModule is nil (godlike/07 fail-closed; PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE invariant)", descriptor == nil, DepRequired, params.Log); err != nil {
 		return nil, nil, err
 	}
 	// Card 10 (July 2026): return the canonical ClipEnricher typed
-	// port alongside the descriptor so WireAssets threads it into
+	// port alongside the module so WireAssets threads it into
 	// the register-side sourcingEnrichmentAdapter (the one non-HTTP
 	// consumer) without reaching through any internal/api/assets/
 	// clips/* Handler field.
-	return desc, enrichUC, nil
+	return descriptor, enrichUC, nil
 }
