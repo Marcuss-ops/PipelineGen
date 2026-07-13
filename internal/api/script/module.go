@@ -150,7 +150,8 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		// NewScriptFlowHandler (godlike/06 SSOT one canonical owner
 		// per fact); it is NOT forwarded as a separate top-level
 		// field on ScriptFlowDeps to avoid the drift hazard of two
-		// independent PreflightCaps instances per ScriptFlowHandler.
+		// (PR-COMMIT3: PreflightCaps removed; the per-ScriptFlowHandler
+		// independence surface is empty post-removal.)
 	})
 
 	// Construct the route Module (name "script-flow" + prefix

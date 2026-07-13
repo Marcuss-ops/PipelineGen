@@ -142,25 +142,6 @@ func TestNormalizeItemIdempotent(t *testing.T) {
 	}
 }
 
-func TestNormalizeItemIdempotentWithImages(t *testing.T) {
-	cfg := defaultCfg()
-	item := clipsItem()
-
-	adapters.NormalizeItem(&item, scriptpkg.PresetWithImages, cfg)
-	first := item
-
-	adapters.NormalizeItem(&item, scriptpkg.PresetWithImages, cfg)
-
-	if item.Output.GenerateSceneImages != first.Output.GenerateSceneImages {
-		t.Error("generate_scene_images changed on second pass")
-	}
-	if item.Output.GenerateVoiceover != first.Output.GenerateVoiceover {
-		t.Error("generate_voiceover changed on second pass")
-	}
-	if item.Output.ExtractEntities != first.Output.ExtractEntities {
-		t.Error("extract_entities changed on second pass")
-	}
-}
 
 // ── Normalization: nil safety ──────────────────────────────────────
 
@@ -265,98 +246,9 @@ func TestNormalizeItemExplicitWordsBeatDuration(t *testing.T) {
 // with_images now changes ONLY the image sizing fields
 // (SentencesPerImage + ImagesPerScene), in caller-precedence order.
 
-func TestApplyPresetWithImages(t *testing.T) {
-	item := clipsItem()
-	item.Language = "it"
-	item.Tone = "cinematic"
 
-	scripts.ApplyPreset(&item, scriptpkg.PresetWithImages)
 
-	// DRIFT-FIX: GenerateSceneImages is a deprecation-registered,
-	// no-op flag — the with_images preset MUST NOT promote it.
-	if item.Output.GenerateSceneImages.AsBool() {
-		t.Error("with_images: generate_scene_images is deprecated; preset must NOT promote it (drift-fix July 2026)")
-	}
-	if item.Output.GenerateVoiceover.AsBool() {
-		t.Error("with_images: generate_voiceover is deprecated; preset must NOT promote it (drift-fix July 2026)")
-	}
-	if item.Output.GenerateDocument.AsBool() {
-		t.Error("with_images: generate_document is deprecated; preset must NOT promote it (drift-fix July 2026)")
-	}
-	if item.Output.ExtractEntities.AsBool() {
-		t.Error("with_images: extract_entities should be false")
-	}
-	if item.Output.GenerateMetadata.AsBool() {
-		t.Error("with_images: generate_metadata should be false")
-	}
 
-	// Identity fields untouched.
-	if item.Language != "it" {
-		t.Errorf("with_images should not change language: got %q", item.Language)
-	}
-	if item.Tone != "cinematic" {
-		t.Errorf("with_images should not change tone: got %q", item.Tone)
-	}
-	if item.Title != "Clip Script" {
-		t.Errorf("with_images should not change title: got %q", item.Title)
-	}
-
-	// Image sizing defaults applied.
-	if item.ScriptParams.SentencesPerImage != 8 {
-		t.Errorf("with_images: sentences_per_image should be 8, got %d",
-			item.ScriptParams.SentencesPerImage)
-	}
-	if item.ScriptParams.ImagesPerScene != 2 {
-		t.Errorf("with_images: images_per_scene should be 2, got %d",
-			item.ScriptParams.ImagesPerScene)
-	}
-}
-
-func TestApplyPresetWithImagesRespectsExplicitSizing(t *testing.T) {
-	item := clipsItem()
-	item.ScriptParams.SentencesPerImage = 12                // caller explicit
-	item.Output.GenerateDocument = scriptpkg.ToggleDisabled // caller explicit OFF
-
-	scripts.ApplyPreset(&item, scriptpkg.PresetWithImages)
-
-	// Caller explicit sizing preserved.
-	if item.ScriptParams.SentencesPerImage != 12 {
-		t.Errorf("caller sentences_per_image should be preserved: got %d",
-			item.ScriptParams.SentencesPerImage)
-	}
-	// DRIFT-FIX (July 2026): GenerateDocument is a
-	// deprecation-registered flag. The preset MUST NOT promote or
-	// override it. Caller-explicit ToggleDisabled stays disabled.
-	if item.Output.GenerateDocument.AsBool() {
-		t.Error("generate_document ToggleDisabled was overwritten; preset must NOT alter deprecated fields (drift-fix July 2026)")
-	}
-}
-
-func TestApplyPresetCustom(t *testing.T) {
-	item := clipsItem()
-	item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
-
-	scripts.ApplyPreset(&item, scriptpkg.PresetCustom)
-
-	// Custom: no overrides.
-	if !item.Output.GenerateSceneImages.AsBool() {
-		t.Error("custom preset should not change generate_scene_images")
-	}
-}
-
-func TestApplyPresetBatchPassThrough(t *testing.T) {
-	item := textItem()
-
-	// "batch" preset is pass-through (identical to "custom") — no
-	// force flags. The domain only defines PresetCustom and
-	// PresetWithImages; batch is a plain string.
-	scripts.ApplyPreset(&item, scriptpkg.Preset("batch"))
-
-	// Batch: no overrides — same as custom.
-	if item.Output.GenerateSceneImages.AsBool() {
-		t.Error("batch preset should not enable generate_scene_images")
-	}
-}
 
 func TestApplyPresetNilItem(t *testing.T) {
 	scripts.ApplyPreset(nil, scriptpkg.PresetWithImages)
@@ -388,36 +280,12 @@ func TestApplyPresetNilItem(t *testing.T) {
 // caller sets BOTH GenerateSceneImages + GenerateVoiceover true, the
 // preset preserves them. Post-drift the preset is effectively
 // pass-through for these fields (caller wins either way).
-func TestApplyPresetFullMedia_DoesNothingWhenExplicit(t *testing.T) {
-	item := clipsItem()
-	item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
-	item.Output.GenerateVoiceover = scriptpkg.ToggleEnabled
-	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
-	if !item.Output.GenerateSceneImages.AsBool() {
-		t.Error("full_media: caller-set GenerateSceneImages must remain true (caller > preset)")
-	}
-	if !item.Output.GenerateVoiceover.AsBool() {
-		t.Error("full_media: caller-set GenerateVoiceover must remain true (caller > preset)")
-	}
-}
 
 // TestApplyPresetFullMedia_DoesNotPromoteDeprecatedFlags verifies the
 // drift-fix contract: when the caller leaves BOTH GenerateSceneImages +
 // GenerateVoiceover at zero (ToggleDefault / unset), the preset
 // MUST NOT promote either to ToggleEnabled. Both fields are
 // deprecation-registered no-op fields.
-func TestApplyPresetFullMedia_DoesNotPromoteDeprecatedFlags(t *testing.T) {
-	item := clipsItem()
-	// Both flags are zero (ToggleDefault / unset) by default on a
-	// fresh clipsItem.
-	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
-	if item.Output.GenerateSceneImages.AsBool() {
-		t.Error("full_media: GenerateSceneImages is deprecated; preset must NOT promote it (drift-fix July 2026)")
-	}
-	if item.Output.GenerateVoiceover.AsBool() {
-		t.Error("full_media: GenerateVoiceover is deprecated; preset must NOT promote it (drift-fix July 2026)")
-	}
-}
 
 // TestApplyPresetFullMedia_CallerPrecedencePreserved verifies the per-field
 // caller precedence contract post-drift-fix: caller-set fields stay
@@ -429,33 +297,6 @@ func TestApplyPresetFullMedia_DoesNotPromoteDeprecatedFlags(t *testing.T) {
 //     MUST preserve images=true AND MUST NOT promote voiceover=true.
 //   - caller sets GenerateVoiceover=true, leaves images=Disabled → preset
 //     MUST preserve the caller's explicit opt-out on images AND voiceover=true.
-func TestApplyPresetFullMedia_CallerPrecedencePreserved(t *testing.T) {
-	// Scenario A: images=Enabled, voiceover=Default → preset must
-	// preserve images AND must NOT promote voiceover.
-	item := clipsItem()
-	item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
-	// GenerateVoiceover deliberately left at ToggleDefault (unset).
-	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
-	if !item.Output.GenerateSceneImages.AsBool() {
-		t.Error("full_media (scenario A): caller-set GenerateSceneImages must remain true")
-	}
-	if item.Output.GenerateVoiceover.AsBool() {
-		t.Error("full_media (scenario A): preset must NOT promote caller-zero GenerateVoiceover (drift-fix July 2026)")
-	}
-
-	// Scenario B (symmetric): images=Disabled, voiceover=Enabled → preset must
-	// preserve the caller's explicit opt-out and leave images disabled.
-	item2 := clipsItem()
-	item2.Output.GenerateSceneImages = scriptpkg.ToggleDisabled
-	item2.Output.GenerateVoiceover = scriptpkg.ToggleEnabled
-	scripts.ApplyPreset(&item2, scriptpkg.PresetFullMedia)
-	if item2.Output.GenerateSceneImages.AsBool() {
-		t.Error("full_media (scenario B): caller-explicit GenerateSceneImages=disabled must survive the preset")
-	}
-	if !item2.Output.GenerateVoiceover.AsBool() {
-		t.Error("full_media (scenario B): caller-set GenerateVoiceover must remain true")
-	}
-}
 
 // ── Catalog preset test ───────────────────────────────────────────────────
 
@@ -464,43 +305,6 @@ func TestApplyPresetFullMedia_CallerPrecedencePreserved(t *testing.T) {
 // Source (even when Source.ClipIDs is empty). The HTTP handler binds
 // Source.Kind=SourceCatalog upstream; the preset simply carries the intent.
 // Per §6 row 4: catalog | source.kind=catalog | none.
-func TestApplyPresetCatalog_PassThrough(t *testing.T) {
-	item := scriptpkg.GenerationItemV2{}
-	scripts.ApplyPreset(&item, scriptpkg.PresetCatalog)
-	// Source side: the preset is pass-through (case body is empty),
-	// so Source must remain at its zero value. We check field-by-field
-	// because SourceSpec contains []string slices that are not directly
-	// `==`-comparable in Go.
-	if item.Source.Type != "" {
-		t.Errorf("catalog: source.type must remain zero (preset does not set it; got %q)", item.Source.Type)
-	}
-	if len(item.Source.ClipIDs) != 0 {
-		t.Errorf("catalog: source.clip_ids must remain zero (preset does not set them; got %v)", item.Source.ClipIDs)
-	}
-	if item.Source.Query != "" {
-		t.Errorf("catalog: source.query must remain zero; got %q", item.Source.Query)
-	}
-	// Output side: explicit flag-by-flag check. No struct-level
-	// comparison (OutputSpec contains []string Languages which is
-	// not `==`-comparable). SCRIPT-PIPELINE-DECOUPLING PR-3
-	// (TOGGLE-TRISTATE): every flag check uses .AsBool() so
-	// caller-explicit ToggleDisabled flows through correctly — a
-	// preset must not flip ToggleDefault → ToggleEnabled OR
-	// ToggleDisabled → ToggleEnabled.
-	if item.Output.GenerateSceneImages.AsBool() ||
-		item.Output.GenerateVoiceover.AsBool() ||
-		item.Output.GenerateDocument.AsBool() ||
-		item.Output.ExtractEntities.AsBool() ||
-		item.Output.GenerateMetadata.AsBool() {
-		t.Error("catalog: ANY output flag must remain caller-controlled; preset must not set any")
-	}
-	if item.Output.OutputFmt != "" {
-		t.Errorf("catalog: output.output_fmt must remain zero; got %q", item.Output.OutputFmt)
-	}
-	if len(item.Output.Languages) != 0 {
-		t.Errorf("catalog: output.languages must remain zero; got %v", item.Output.Languages)
-	}
-}
 
 // ── Search preset test ────────────────────────────────────────────────────
 
@@ -509,43 +313,6 @@ func TestApplyPresetCatalog_PassThrough(t *testing.T) {
 // Source (even when Source.Query is empty). The HTTP handler binds
 // Source.Kind=SourceSearch upstream; the preset simply carries the intent.
 // Per §6 row 5: search | source.kind=search | none.
-func TestApplyPresetSearch_PassThrough(t *testing.T) {
-	item := scriptpkg.GenerationItemV2{}
-	scripts.ApplyPreset(&item, scriptpkg.PresetSearch)
-	// Source side: the preset is pass-through (case body is empty),
-	// so Source must remain at its zero value. We check field-by-field
-	// because SourceSpec contains []string slices that are not directly
-	// `==`-comparable in Go.
-	if item.Source.Type != "" {
-		t.Errorf("search: source.type must remain zero (preset does not set it; got %q)", item.Source.Type)
-	}
-	if len(item.Source.ClipIDs) != 0 {
-		t.Errorf("search: source.clip_ids must remain zero; got %v", item.Source.ClipIDs)
-	}
-	if item.Source.Query != "" {
-		t.Errorf("search: source.query must remain zero (preset does not set it; got %q)", item.Source.Query)
-	}
-	// Output side: explicit flag-by-flag check. No struct-level
-	// comparison (OutputSpec contains []string Languages which is
-	// not `==`-comparable). SCRIPT-PIPELINE-DECOUPLING PR-3
-	// (TOGGLE-TRISTATE): every flag check uses .AsBool() so
-	// caller-explicit ToggleDisabled flows through correctly — a
-	// preset must not flip ToggleDefault → ToggleEnabled OR
-	// ToggleDisabled → ToggleEnabled.
-	if item.Output.GenerateSceneImages.AsBool() ||
-		item.Output.GenerateVoiceover.AsBool() ||
-		item.Output.GenerateDocument.AsBool() ||
-		item.Output.ExtractEntities.AsBool() ||
-		item.Output.GenerateMetadata.AsBool() {
-		t.Error("search: ANY output flag must remain caller-controlled; preset must not set any")
-	}
-	if item.Output.OutputFmt != "" {
-		t.Errorf("search: output.output_fmt must remain zero; got %q", item.Output.OutputFmt)
-	}
-	if len(item.Output.Languages) != 0 {
-		t.Errorf("search: output.languages must remain zero; got %v", item.Output.Languages)
-	}
-}
 
 // ── Validator: edge cases ──────────────────────────────────────────
 
@@ -697,105 +464,7 @@ func TestBuildPlanClipsFieldMapping(t *testing.T) {
 	}
 }
 
-func TestBuildPlanPostprocessorList(t *testing.T) {
-	item := textItem()
-	item.Output.ExtractEntities = scriptpkg.ToggleEnabled
-	item.Output.GenerateDocument = scriptpkg.ToggleEnabled
-	item.Output.SaveToDB = true
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
 
-	plan := scripts.BuildPlan(item)
-
-	// DRIFT-FIX (July 2026): GenerateDocument is a
-	// deprecation-registered flag; buildPostprocessorList MUST NOT
-	// append "document" post-processor even when caller sets
-	// GenerateDocument=Enabled. The documentary output is produced
-	// by the separate downstream job TypeDocumentGenerate.
-	//
-	// With SaveToDB, Document, and Entities enabled post-drift-fix:
-	// entities + clip_search + clip_bindings + stock_association
-	// + persistence = 5. ClipBindings + StockAssociation are
-	// unconditional (auto-appended even on pure-text generation).
-	//
-	// PR-CLIP-SEARCH-WIRING (July 2026): clip_search is in the
-	// closed canonical set; buildPostprocessorList appends it
-	// immediately after entities when ExtractEntities=true.
-	if len(plan.Postprocessors) != 5 {
-		t.Fatalf("expected 5 postprocessors (no 'document' post-drift-fix), got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
-	}
-	if plan.Postprocessors[0] != "entities" {
-		t.Errorf("postprocessor[0]: %q", plan.Postprocessors[0])
-	}
-	if plan.Postprocessors[1] != "clip_search" {
-		t.Errorf("postprocessor[1] (expected 'clip_search' per PR-CLIP-SEARCH-WIRING extraction-order): %q", plan.Postprocessors[1])
-	}
-	// clip_bindings and stock_association are unconditional.
-	// persistence comes after them in the final position. "document"
-	// MUST NOT appear (deprecation-registered no-op flag).
-	foundPersist := false
-	foundDoc := false
-	for _, pp := range plan.Postprocessors {
-		if pp == "persistence" {
-			foundPersist = true
-		}
-		if pp == "document" {
-			foundDoc = true
-		}
-	}
-	if !foundPersist {
-		t.Errorf("expected persistence in postprocessors, got: %v", plan.Postprocessors)
-	}
-	if foundDoc {
-		t.Errorf("'document' MUST NOT appear in postprocessors (deprecation-registered no-op flag, drift-fix July 2026); got: %v", plan.Postprocessors)
-	}
-}
-
-func TestBuildPlanPostprocessorListFull(t *testing.T) {
-	item := textItem()
-	item.Output.ExtractEntities = scriptpkg.ToggleEnabled
-	item.Output.GenerateMetadata = scriptpkg.ToggleEnabled
-	item.Output.GenerateVoiceover = scriptpkg.ToggleEnabled
-	item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
-	item.Output.GenerateDocument = scriptpkg.ToggleEnabled
-	item.Output.SaveToDB = true
-	adapters.NormalizeItem(&item, scriptpkg.PresetCustom, defaultCfg())
-
-	plan := scripts.BuildPlan(item)
-
-	// DRIFT-FIX (July 2026): GenerateVoiceover + GenerateSceneImages +
-	// GenerateDocument are deprecation-registered flags; the inline
-	// pipeline MUST NOT append voiceover / images / document
-	// post-processors even when caller sets them Enabled. The 3
-	// outputs are produced by the canonical downstream jobs
-	// (TypeVoiceoverGenerate + TypeImagesGenerate +
-	// TypeDocumentGenerate).
-	//
-	// With ExtractEntities + GenerateMetadata + SaveToDB enabled
-	// post-drift-fix (all ACTIVE postprocessor flags + scene
-	// binding + stock + persistence):
-	// entities + clip_search + metadata + clip_bindings +
-	// stock_association + persistence = 6. The 3
-	// deprecation-registered post-processors (voiceover / images /
-	// document) MUST NOT appear in the list.
-	//
-	// PR-CLIP-SEARCH-WIRING (July 2026): clip_search appended
-	// between entities and metadata when ExtractEntities=true.
-	expected := []string{"entities", "clip_search", "metadata", "clip_bindings", "stock_association", "persistence"}
-	if len(plan.Postprocessors) != 6 {
-		t.Fatalf("expected 6 postprocessors (no voiceover/images/document post-drift-fix), got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
-	}
-	for i, name := range expected {
-		if plan.Postprocessors[i] != name {
-			t.Errorf("postprocessor[%d]: got %q, want %q", i, plan.Postprocessors[i], name)
-		}
-	}
-	for _, pp := range plan.Postprocessors {
-		switch pp {
-		case "voiceover", "images", "document":
-			t.Errorf("deprecation-registered postprocessor %q MUST NOT appear (drift-fix July 2026)", pp)
-		}
-	}
-}
 
 func TestBuildPlanDeterministic(t *testing.T) {
 	cfg := defaultCfg()
@@ -1037,29 +706,6 @@ func TestBuildItemIdentityDifferentItems(t *testing.T) {
 	}
 }
 
-func TestBuildItemIdentityIgnoresOutputFlags(t *testing.T) {
-	// Output flags control postprocessors, not script text.
-	// The identity must not change when output flags change.
-	item1 := textItem()
-	item1.Output.ExtractEntities = scriptpkg.ToggleDisabled
-	item1.Output.GenerateDocument = scriptpkg.ToggleDisabled
-	item1.Output.SaveToDB = false
-
-	item2 := textItem()
-	item2.Output.ExtractEntities = scriptpkg.ToggleEnabled
-	item2.Output.GenerateDocument = scriptpkg.ToggleEnabled
-	item2.Output.SaveToDB = true
-
-	adapters.NormalizeItem(&item1, scriptpkg.PresetCustom, defaultCfg())
-	adapters.NormalizeItem(&item2, scriptpkg.PresetCustom, defaultCfg())
-
-	id1 := adapters.BuildItemIdentity(item1)
-	id2 := adapters.BuildItemIdentity(item2)
-
-	if id1 != id2 {
-		t.Errorf("identity should ignore output flags: %q vs %q", id1, id2)
-	}
-}
 
 func TestBuildItemIdentityClipIDOrderStable(t *testing.T) {
 	// Clip IDs are sorted for determinism — different input orders

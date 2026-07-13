@@ -47,7 +47,6 @@ Payload:
   "save_to_db": false,
   "force_refresh": false,
   "extract_entities": false,
-  "generate_scene_images": false,
   "generate_metadata": false
 }
 

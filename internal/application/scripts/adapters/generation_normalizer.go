@@ -162,16 +162,9 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 		item.ScriptParams.ImagesPerScene = cfg.DefaultImagesPerScene
 	}
 
-	// Voiceover group default. DRIFT-FIX (July 2026): the prior
-	// condition was `out.GenerateVoiceover.AsBool() && ...empty`,
-	// which materially read the deprecated GenerateVoiceover
-	// toggled. Per user directive the deprecated field cannot be
-	// materially respected; the default-to-ChannelID behaviour is
-	// preserved but the read-side toggle condition is dropped
-	// (VoiceoverGroup is now unconditionally populated to the
-	// cfg.ChannelID when caller left it empty, because the
-	// downstream voiceover.generate job reads VoiceoverGroup
-	// regardless of the deprecated inline flag).
+	// Voiceover group default. Populate to cfg.ChannelID when
+	// caller left it empty; the downstream voiceover.generate job
+	// reads VoiceoverGroup regardless of any inline toggle.
 	if strings.TrimSpace(item.Output.VoiceoverGroup) == "" {
 		item.Output.VoiceoverGroup = cfg.ChannelID
 	}
@@ -251,15 +244,12 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 	//      adds ProcessorPersistence to the postprocessor list, so
 	//      scripts are never persisted.
 	//
-	// DRIFT-FIX (July 2026, user directive "nessun campo
-	// documentato come deprecato può essere ancora materialmente
-	// rispettato"): the prior GenerateDocument ToggleDefault-→
-	// ToggleEnabled safety override is REMOVED. The
-	// deprecation-registered flag is no longer materially respected
-	// by the inline pipeline (Document output is produced by the
-	// separate TypeDocumentGenerate downstream job). SaveToDB
-	// stays a safety default because SaveToDB is NOT a
-	// deprecation-registered toggle (live postprocessor gate).
+	// PR-COMMIT3 (July 2026): the prior GenerateDocument safety
+	// override is REMOVED — the deprecation-registered flag is
+	// physically removed from OutputSpec in this commit. Document
+	// output is produced by the separate TypeDocumentGenerate
+	// downstream job. SaveToDB stays a safety default because
+	// SaveToDB is NOT a deprecation-registered toggle.
 	if !item.Output.SaveToDB {
 		item.Output.SaveToDB = true
 	}
@@ -312,11 +302,16 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 // Summary by case (see doc §6 for the canonical rows):
 //
 //	custom     → pass-through (no overrides)
-//	with_images → GenerateSceneImages=true; SentencesPerImage=8,
-//	               ImagesPerScene=2 only when caller left them at zero
-//	full_media → per-field caller precedence: enable scene_images and/or
-//	              voiceover ONLY for fields the caller left at zero;
-//	              caller-set fields stay untouched
+//	with_images → SentencesPerImage=8, ImagesPerScene=2 only when caller
+//	               left them at zero (the deprecation-registered
+//	               GenerateSceneImages toggle is physically removed in
+//	               PR-COMMIT3 July 2026; images output is produced by
+//	               the separate TypeImagesGenerate downstream job)
+//	full_media → scoping-only (the deprecation-registered
+//	              GenerateSceneImages + GenerateVoiceover toggles are
+//	              physically removed in PR-COMMIT3 July 2026; output
+//	              is produced by the separate TypeImagesGenerate +
+//	              TypeVoiceoverGenerate downstream jobs)
 //	catalog    → pass-through (handler binds source.kind=catalog upstream)
 //	search     → pass-through (handler binds source.kind=search upstream)
 //	batch / unknown / empty → pass-through
@@ -329,16 +324,12 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 		// §6 row 1: custom | none | none.
 		// Caller filled every flag explicitly; preset must not touch.
 	case scriptpkg.PresetWithImages:
-		// §6 row 2: with_images | none | images.enabled=true only.
-		//
-		// DRIFT-FIX (July 2026): the prior GenerateSceneImages
-		// toggle assignment is REMOVED. The deprecation-registered
-		// flag is no longer materially respected by the inline
-		// pipeline (images output is produced by the separate
-		// TypeImagesGenerate downstream job). Sizing defaults
-		// (SentencesPerImage / ImagesPerScene) are NOT a
-		// deprecation-registered toggle and stay as caller-precedence
-		// defaults — they remain useful for downstream job sizing.
+		// §6 row 2: with_images | none | images sizing defaults.
+		// PR-COMMIT3 (July 2026): the prior GenerateSceneImages
+		// toggle assignment is REMOVED. Sizing defaults
+		// (SentencesPerImage / ImagesPerScene) stay as
+		// caller-precedence defaults — they remain useful for
+		// downstream job sizing.
 		if item.ScriptParams.SentencesPerImage <= 0 {
 			item.ScriptParams.SentencesPerImage = 8
 		}
@@ -346,16 +337,11 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 			item.ScriptParams.ImagesPerScene = 2
 		}
 	case scriptpkg.PresetFullMedia:
-		// §6 row 3: full_media | none | images and voiceover enabled
-		// explicitly.
-		//
-		// DRIFT-FIX (July 2026): the prior GenerateSceneImages +
+		// §6 row 3: full_media | scoping-only.
+		// PR-COMMIT3 (July 2026): the prior GenerateSceneImages +
 		// GenerateVoiceover toggle assignments are REMOVED. Both
-		// flags are deprecation-registered; per user directive they
-		// cannot be materially respected by the inline pipeline
-		// (output is produced by the separate downstream jobs
-		// TypeImagesGenerate + TypeVoiceoverGenerate). The preset
-		// is now scoping-only for these fields.
+		// flags are physically removed from OutputSpec. The
+		// preset is now scoping-only for these fields.
 	case scriptpkg.PresetCatalog:
 		// §6 row 4: catalog | source.kind=catalog | none.
 		//

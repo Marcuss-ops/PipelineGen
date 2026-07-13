@@ -53,9 +53,6 @@ Payload:
         "target_words": 200
       },
       "output": {
-        "generate_document": false,
-        "generate_scene_images": false,
-        "generate_voiceover": false,
         "generate_metadata": false,
         "extract_entities": false
       }
@@ -94,9 +91,6 @@ PAYLOAD=$(jq -n \
               target_words: 200
             },
             output: {
-              generate_document: false,
-              generate_scene_images: false,
-              generate_voiceover: false,
               generate_metadata: false,
               extract_entities: false
             }

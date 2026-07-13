@@ -139,7 +139,6 @@ smoke_log_section "Step A: POST /api/script/generate (3 clip_ids, language=en, g
 PAYLOAD=$(jq -n --arg rid "$REQ_ID" --arg c1 "$CLIP_1" --arg c2 "$CLIP_2" --arg c3 "$CLIP_3" '{
     language: "en",
     clip_ids: [$c1, $c2, $c3],
-    generate_document: true,
     idempotency_key: $rid
 }')
 smoke_curl POST "/api/script/generate" --data "$PAYLOAD" >/dev/null

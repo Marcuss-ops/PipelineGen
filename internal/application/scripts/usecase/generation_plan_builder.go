@@ -214,20 +214,20 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	// Qdrant is unavailable). Runs after clip_bindings so it can
 	// fall back to scene.Bindings.Clip.DriveLink.
 	pp = append(pp, adapters.ProcessorStockAssociation)
-	// DRIFT-FIX (July 2026): ProcessorVoiceover / ProcessorImages /
-	// ProcessorDocument are INTENTIONALLY NOT appended here even
-	// when caller sends GenerateVoiceover=Enabled /
-	// GenerateSceneImages=Enabled / GenerateDocument=Enabled. The
-	// 3 inner-deprecated toggles remain on OutputSpec + the JSON
-	// wire for backward-compat with pre-PR-3 HTTP clients but are
-	// no longer materially respected by the inline pipeline per
-	// the user directive "nessun campo documentato come deprecato
-	// può essere ancora materialmente rispettato". Voiceover /
-	// images / document output is produced exclusively by the 3
-	// canonical downstream jobs (TypeVoiceoverGenerate /
+	// PR-COMMIT3 (July 2026): ProcessorVoiceover / ProcessorImages /
+	// ProcessorDocument are NOT appended here. The 3
+	// deprecation-registered output flags (GenerateVoiceover +
+	// GenerateSceneImages + GenerateDocument) are physically
+	// removed from OutputSpec in this commit; pre-commit HTTP
+	// clients sending those keys fail closed at the API layer
+	// (DisallowUnknownFields, see
+	// internal/api/script/handler_generate_request.go). Voiceover
+	// / images / document output is produced exclusively by the
+	// 3 canonical downstream jobs (TypeVoiceoverGenerate /
 	// TypeImagesGenerate / TypeDocumentGenerate in
 	// internal/domain/job/job.go); see architecture/deprecations.yaml
-	// OUTPUT_SPEC_{VOICEOVER,IMAGES,DOCUMENT}_FLAG.
+	// OUTPUT_SPEC_{VOICEOVER,IMAGES,DOCUMENT}_FLAG each flipped
+	// to status: removed.
 	if out.SaveToDB {
 		pp = append(pp, adapters.ProcessorPersistence)
 	}

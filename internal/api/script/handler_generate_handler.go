@@ -1,6 +1,6 @@
 // Package script — handler_generate_handler.go is the thin HTTP transport
 // for POST /api/script/generate. It owns only the fields it needs
-// (submissionSvc, log, caps, validator) - 4 fields instead of the
+// (submissionSvc, log, validator) - 3 fields instead of the
 // 22-field ScriptFlowHandler God Object.
 //
 // AZIONE 1 (July 2026): extracted from ScriptFlowHandler per the
@@ -61,14 +61,13 @@ import (
 )
 
 // HandlerGenerate is the narrow HTTP handler for script generation.
-// It owns exactly the 4 fields it needs - no more, no less.
+// It owns exactly the 3 fields it needs - no more, no less.
 // Constructed by NewScriptFlowHandler alongside the legacy
 // ScriptFlowHandler; wired by RegisterRoutes as the handler for
 // POST /api/script/generate.
 type HandlerGenerate struct {
 	submitter generationSubmitter
 	log       *zap.Logger
-	caps      PreflightCaps
 	validator *usecase.PayloadValidator
 }
 
@@ -79,7 +78,6 @@ type HandlerGenerate struct {
 func NewHandlerGenerate(
 	submitter generationSubmitter,
 	log *zap.Logger,
-	caps PreflightCaps,
 	validator *usecase.PayloadValidator,
 ) *HandlerGenerate {
 	if log == nil {
@@ -91,7 +89,6 @@ func NewHandlerGenerate(
 	return &HandlerGenerate{
 		submitter: submitter,
 		log:       log,
-		caps:      caps,
 		validator: validator,
 	}
 }

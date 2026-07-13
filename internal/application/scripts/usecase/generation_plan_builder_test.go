@@ -60,9 +60,6 @@ func buildPostprocessorListTestScenarios() []struct {
 			out: scriptpkg.OutputSpec{
 				ExtractEntities:     scriptpkg.ToggleEnabled,
 				GenerateMetadata:    scriptpkg.ToggleEnabled,
-				GenerateVoiceover:   scriptpkg.ToggleEnabled,
-				GenerateSceneImages: scriptpkg.ToggleEnabled,
-				GenerateDocument:    scriptpkg.ToggleEnabled,
 				SaveToDB:            true,
 			},
 		},
@@ -85,19 +82,16 @@ func buildPostprocessorListTestScenarios() []struct {
 		{
 			name: "voiceover_only",
 			out: scriptpkg.OutputSpec{
-				GenerateVoiceover: scriptpkg.ToggleEnabled,
 			},
 		},
 		{
 			name: "scene_images_only",
 			out: scriptpkg.OutputSpec{
-				GenerateSceneImages: scriptpkg.ToggleEnabled,
 			},
 		},
 		{
 			name: "document_only",
 			out: scriptpkg.OutputSpec{
-				GenerateDocument: scriptpkg.ToggleEnabled,
 			},
 		},
 		{
@@ -116,9 +110,6 @@ func buildPostprocessorListTestScenarios() []struct {
 		{
 			name: "voiceover_and_images_and_document",
 			out: scriptpkg.OutputSpec{
-				GenerateVoiceover:   scriptpkg.ToggleEnabled,
-				GenerateSceneImages: scriptpkg.ToggleEnabled,
-				GenerateDocument:    scriptpkg.ToggleEnabled,
 			},
 		},
 		{

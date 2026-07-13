@@ -28,6 +28,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
@@ -312,4 +313,28 @@ func (s *StockStager) stageFromDrive(ctx context.Context, ref assets.SourceRef, 
 		LocalPath: outputPath,
 		Bytes:     fi.Size(),
 	}, nil
+}
+
+func (s *StockStager) StageSourceV2(ctx context.Context, ref asset.SourceRef) (*asset.StagedSource, error) {
+	staged, err := s.StageSource(ctx, assets.SourceRef(ref))
+	if err != nil {
+		return nil, err
+	}
+	return &asset.StagedSource{
+		LocalPath: staged.LocalPath,
+		Bytes:     staged.Bytes,
+		SourceID:  ref.URL,
+		SourceRef: ref,
+	}, nil
+}
+
+func (s *StockStager) CleanupStagedSource(ctx context.Context, staged *asset.StagedSource) error {
+	if staged == nil {
+		return nil
+	}
+	staged.CleanedUp = true
+	return s.Cleanup(ctx, &assets.StagedAsset{
+		LocalPath: staged.LocalPath,
+		Bytes:     staged.Bytes,
+	})
 }

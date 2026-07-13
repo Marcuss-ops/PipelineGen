@@ -22,8 +22,7 @@
 // EXPLICITLY excludes output flags (they don't change the text):
 //   - SaveToDB (transport)
 //   - DriveFolderID (transport)
-//   - GenerateDocument / GenerateVoiceover / GenerateSceneImages /
-//     ExtractEntities / GenerateMetadata (postprocessors)
+//   - ExtractEntities / GenerateMetadata (the 2 surviving ACTIVE postprocessors)
 //   - OutputFmt, Languages (postprocessing-only)
 //   - ForceRefresh (cache-bypass control, not identity)
 //   - Segment sizing (NumClips, SegmentWords, SegmentTopics) —
@@ -42,8 +41,13 @@ package script
 // BuildCacheKey returns the deterministic cache key for a plan.
 // Two plans that produce identical script text MUST return the
 // same CacheKey so the memory gate serves an exact hit. Output
-// flags that don't change the text are deliberately excluded
-// so toggling "GenerateDocument" doesn't invalidate the cache.
+// flags that don't change the text are deliberately excluded.
+//
+// PR-COMMIT3 (July 2026): the 3 deprecation-registered flags
+// (GenerateVoiceover + GenerateSceneImages + GenerateDocument) are
+// physically removed from OutputSpec; cache-key concerns vanish
+// (the prior goddoc note flagged a "cache-key concerns vanish"
+// invariant that the deletion surfaces locks in).
 //
 // This function is a thin wrapper around the canonical
 // BuildFingerprint. All fingerprint logic lives in fingerprint.go;

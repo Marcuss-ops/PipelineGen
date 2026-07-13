@@ -380,8 +380,6 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 			// scenes. Leaving other flags false keeps the plan
 			// small (4 postprocessors) and avoids missing-
 			// registered Required-class failures.
-			GenerateVoiceover:   scriptpkg.ToggleEnabled,
-			GenerateSceneImages: scriptpkg.ToggleEnabled,
 		},
 	}
 	plan := scripts.BuildPlan(item)
@@ -390,7 +388,7 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 	// Expected: entities, metadata, clip_bindings, stock_association,
 	//           voiceover, images, document, persistence
 	if len(plan.Postprocessors) < 4 {
-		t.Fatalf("expected at least 4 postprocessors, got %d: %v",
+		t.Fatalf("expected at least 2 postprocessors, got %d: %v",
 			len(plan.Postprocessors), plan.Postprocessors)
 	}
 	// clip_bindings must appear before voiceover and images.

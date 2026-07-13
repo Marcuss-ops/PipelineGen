@@ -69,7 +69,6 @@ func main() {
 		"topic":               *topic,
 		"language":            *language,
 		"sentences_per_image": *sentences,
-		"generate_document":   true,
 	}
 
 	// Deterministic reqID: same inputs => same job_id on the server, so a

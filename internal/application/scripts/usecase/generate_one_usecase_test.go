@@ -121,9 +121,6 @@ func itemForTimingsTest() scriptpkg.GenerationItemV2 {
 			// (last two are unconditional best-efforts per
 			// buildPostprocessorList and missing-registered
 			// in this test, surfacing as warnings only).
-			GenerateDocument:    scriptpkg.ToggleDisabled,
-			GenerateSceneImages: scriptpkg.ToggleDisabled,
-			GenerateVoiceover:   scriptpkg.ToggleDisabled,
 			SaveToDB:            false,
 		},
 	}

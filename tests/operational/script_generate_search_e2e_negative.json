@@ -27,9 +27,6 @@
       "output": {
         "extract_entities": "disabled",
         "generate_metadata": "disabled",
-        "generate_voiceover": "disabled",
-        "generate_scene_images": "disabled",
-        "generate_document": "disabled",
         "save_to_db": false,
         "generate_timeline": false
       }

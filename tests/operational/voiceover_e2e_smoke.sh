@@ -124,9 +124,6 @@ ENVELOPE=$(jq -n \
       source: { type: "text", topic: $topic },
       output: {
         languages: [$lang],
-        generate_voiceover: true,
-        generate_scene_images: true,
-        generate_document: true
       }
     }]
   }')
