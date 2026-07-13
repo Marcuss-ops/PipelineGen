@@ -141,7 +141,13 @@ func (m *Materializer) Materialize(
 	perCallCfg := m.resolverCfg
 	perCallCfg.SourceLanguage = sourceLanguageCode
 	if len(targetLanguagesOverride) > 0 {
-		perCallCfg.MaterializeLanguages = append([]string{}, targetLanguagesOverride...)
+		// Operator override path: route through
+		// OverrideTargetLanguages (NOT the Registry). The
+		// resolver does not validate overrides against the
+		// registry — backfill operations need to drill into
+		// codes the operator has since removed from
+		// cfg.MaterializeLanguages.
+		perCallCfg.OverrideTargetLanguages = append([]string{}, targetLanguagesOverride...)
 	}
 
 	report := &MaterializationReport{

@@ -11,22 +11,63 @@ package texttracks
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ResolverConfig is the read-only configuration the resolver
 // consumes.
+//
+// PR-CATALOG-MULTILINGUA step 3 (July 2026): the legacy
+// `MaterializeLanguages []string` field is REMOVED. The
+// canonical pipeline-language set now flows through
+// `Registry asset.LanguageRegistry` (godlike/06 SSOT — the
+// resolver queries `Registry.EnabledLanguages()` filtered by
+// `TranslateClips=true`). Per-call candidate overrides
+// (Materializer's 6th argument) flow through
+// `OverrideTargetLanguages []string` and unconditionally
+// bypass the registry filter (godlike/07 fail-closed — the
+// caller is responsible for ensuring every override code is
+// one the pipeline can translate; the resolver does NOT
+// validate against the registry here, because backfill
+// operations legitimately need to drill into codes the
+// operator has since removed from MaterializeLanguages).
 type ResolverConfig struct {
-	MaterializeLanguages []string
-	SourceLanguage       string
-	ModelVersion         string
-	PromptVersion        string
-	TranslationPolicy    string
-	TranslationModel     string
+	// Registry is the canonical pipeline-language SSOT.
+	// Constructed from cfg.Media.Multilingual.Languages via
+	// asset.NewLanguageRegistry in the composition root.
+	// nil → pipeline runs in disabled mode (zero candidates
+	//           from the registry); the override path is the
+	//           only way to inject candidates.
+	Registry asset.LanguageRegistry
+
+	// OverrideTargetLanguages is a per-call candidate
+	// override. Non-empty → the resolver uses ONLY this
+	// list (filtered by source language); used by the
+	// backfill CLI + admin jobs to drill into a single
+	// language without editing cfg.
+	OverrideTargetLanguages []string
+
+	SourceLanguage    string
+	ModelVersion      string
+	PromptVersion     string
+	TranslationPolicy string
+	TranslationModel  string
 }
 
 // Validate checks the config for mandatory fields.
+//
+// godlike/07 fail-closed: SourceLanguage is required AND
+// at least one of (Registry, OverrideTargetLanguages) must
+// be populated. OverrideTargetLanguages entries MUST be
+// non-empty + non-whitespace BCP-47 codes — an empty
+// entry would otherwise fall through to the translator
+// port with a blank target_lang and surface a quieter
+// error from the LLM instead of the typed sentinel here.
+//
+// A resolver constructed with neither is a deployment bug,
+// not a fallback to "en".
 func (c ResolverConfig) Validate() error {
 	if c.SourceLanguage == "" {
 		return &ErrInvalidMaterializeRequest{
@@ -34,10 +75,18 @@ func (c ResolverConfig) Validate() error {
 			Reason: "source_language is required",
 		}
 	}
-	if len(c.MaterializeLanguages) == 0 {
+	if c.Registry == nil && len(c.OverrideTargetLanguages) == 0 {
 		return &ErrInvalidMaterializeRequest{
-			Field:  "MaterializeLanguages",
-			Reason: "materialize_languages must be non-empty",
+			Field:  "Registry",
+			Reason: "either LanguageRegistry or OverrideTargetLanguages must be populated",
+		}
+	}
+	for i, code := range c.OverrideTargetLanguages {
+		if strings.TrimSpace(code) == "" {
+			return &ErrInvalidMaterializeRequest{
+				Field:  "OverrideTargetLanguages",
+				Reason: fmt.Sprintf("entry at index %d is empty or whitespace", i),
+			}
 		}
 	}
 	return nil
@@ -96,13 +145,44 @@ func (r *Resolver) FindSourceTrack(ctx context.Context) (*asset.TextTrack, error
 
 // CandidateLanguages returns the canonical target-language set,
 // filtered against the source language.
+//
+// PR-CATALOG-MULTILINGUA step 3 (July 2026): the candidate
+// pool is sourced from ONE of two paths, in priority order:
+//
+//  1. OverrideTargetLanguages (per-call operator override,
+//     skips registry filter — backfill drill-down).
+//  2. Registry.EnabledLanguages() filtered by
+//     TranslateClips=true (godlike/06 SSOT — every pipeline
+//     asks the registry for "what languages can I
+//     translate into?").
+//
+// The source language is excluded from the result, matching
+// the pre-step-3 semantics (translating from en → en is a
+// no-op).
 func (r *Resolver) CandidateLanguages() []string {
-	out := make([]string, 0, len(r.cfg.MaterializeLanguages))
-	for _, lang := range r.cfg.MaterializeLanguages {
-		if lang == r.cfg.SourceLanguage {
-			continue
+	var pool []string
+	switch {
+	case len(r.cfg.OverrideTargetLanguages) > 0:
+		// (1) Operator override path. The caller is
+		// responsible for ensuring every override code is
+		// one the pipeline can actually translate; the
+		// resolver does NOT validate against the registry.
+		pool = r.cfg.OverrideTargetLanguages
+	case r.cfg.Registry != nil:
+		// (2) Registry SSOT path. Filter by TranslateClips
+		// so TTS-only codes are not fanned out for clip
+		// translation.
+		for _, s := range r.cfg.Registry.EnabledLanguages() {
+			if s.TranslateClips {
+				pool = append(pool, s.Code)
+			}
 		}
-		out = append(out, lang)
+	}
+	out := make([]string, 0, len(pool))
+	for _, l := range pool {
+		if l != r.cfg.SourceLanguage {
+			out = append(out, l)
+		}
 	}
 	return out
 }

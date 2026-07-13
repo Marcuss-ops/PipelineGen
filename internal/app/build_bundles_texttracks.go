@@ -14,6 +14,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -84,13 +85,17 @@ func BuildTextTrackBundle(
 		return nil, fmt.Errorf("compose texttracks: log is required")
 	}
 
+	registry, err := buildLanguageRegistry(cfg.Media.Multilingual)
+	if err != nil {
+		return nil, fmt.Errorf("compose texttracks: language registry: %w", err)
+	}
 	resolverCfg := texttracks.ResolverConfig{
-		MaterializeLanguages: cfg.Media.Multilingual.MaterializeLanguages,
-		SourceLanguage:       cfg.Media.Multilingual.SourceLanguage,
-		ModelVersion:         cfg.External.OllamaModel,
-		PromptVersion:        resolveTranslationPromptVersion(cfg),
-		TranslationPolicy:    cfg.Media.Multilingual.TranslationPolicy,
-		TranslationModel:     resolveTranslationModel(cfg.Media.Multilingual.TranslationPolicy),
+		Registry:          registry,
+		SourceLanguage:    cfg.Media.Multilingual.SourceLanguage,
+		ModelVersion:      cfg.External.OllamaModel,
+		PromptVersion:     resolveTranslationPromptVersion(cfg),
+		TranslationPolicy: cfg.Media.Multilingual.TranslationPolicy,
+		TranslationModel:  resolveTranslationModel(cfg.Media.Multilingual.TranslationPolicy),
 	}
 
 	materializer, err := texttracks.NewMaterializer(
@@ -211,6 +216,49 @@ func wireTextTrackJobBindings(
 		return fmt.Errorf("wire texttracks: register handler: %w", err)
 	}
 	return nil
+}
+
+// buildLanguageRegistry constructs the canonical
+// asset.LanguageRegistry from cfg.MultilingualConfig. godlike/06
+// SSOT: this helper is the SOLE canonical owner of the
+// "YAML → registry" projection. Three-tier priority:
+//
+//  1. cfg.MultilingualConfig.Languages — the typed
+//     `languages:` list (PR-CATALOG-MULTILINGUA step 3
+//     SSOT) — wins when non-empty. Each entry is verified
+//     by the LangaugeSpecSlice.UnmarshalYAML hook (legacy
+//     CSV auto-promoted to defaults; struct-list preserved
+//     verbatim).
+//  2. cfg.MultilingualConfig.MaterializeLanguages — the
+//     legacy CSV back-compat list. Auto-promoted to a
+//     registry with all-defaults (enabled=true, translate=
+//     true, tts=true). Used by pre-step-3 operator configs.
+//  3. asset.EmptyLanguageRegistry() — pipeline in disabled
+//     mode. godlike/07 fail-closed; no silent fallback to
+//     "en".
+//
+// Registry-construction errors (duplicate code, invalid spec)
+// are returned to the caller — BuildTextTrackBundle surfaces
+// them via the same `fmt.Errorf("…: %w", err)` chain that
+// surfaces every other compose-time failure. godlike/07
+// fail-closed does NOT require a panic: an error returned
+// from the composition root IS the boot-time fail-fast.
+func buildLanguageRegistry(ml config.MultilingualConfig) (asset.LanguageRegistry, error) {
+	if len(ml.Languages) > 0 {
+		reg, err := asset.NewLanguageRegistry(ml.Languages)
+		if err != nil {
+			return nil, fmt.Errorf("typed Languages list rejected: %w", err)
+		}
+		return reg, nil
+	}
+	if len(ml.MaterializeLanguages) > 0 {
+		reg, err := asset.NewLanguageRegistryFromCodes(ml.MaterializeLanguages)
+		if err != nil {
+			return nil, fmt.Errorf("legacy MaterializeLanguages rejected: %w", err)
+		}
+		return reg, nil
+	}
+	return asset.EmptyLanguageRegistry(), nil
 }
 
 // resolveTranslationPromptVersion returns the active translation
