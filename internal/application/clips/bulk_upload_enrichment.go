@@ -1,24 +1,6 @@
-// Package clips (bulk_upload_enrichment) — Step "enrich" of the
-// per-clip pipeline: stage the transcript for the indexer's
-// /index_transcript endpoint.
-//
-// P1.7 (July 2026): extracted from
-// internal/application/clips/bulk_upload_worker.go as part of the
-// 7-file worker-pipeline split.
-//
-// Wave 2 (Asset commit + Qdrant, July 2026): direct IndexClip calls
-// have been removed. The canonical asset.index.requested outbox event
-// is already emitted by registerClip via the canonical dispatcher;
-// the IndexingHandler consumer will trigger embedding generation and
-// Qdrant upsert asynchronously. This helper now only performs
-// transcript staging.
-//
-// Caller-side responsibilities:
-//   - always invoked (PR-13 retired the SkipEmbeddings gate)
-//
-// No new abstractions — top-level helper function. The outbox
-// consumer owns indexing / Qdrant asynchronously; the worker
-// only stages transcripts.
+// Package clips (bulk_upload_enrichment) — Step "enrich" of the per-clip
+// pipeline: stage the transcript for the canonical IndexingHandler consumer
+// (outbox owns indexing/Qdrant asynchronously).
 package clips
 
 import (
@@ -29,12 +11,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// enrichClip stages the candidate's transcript (when present) for
-// the indexer's /index_transcript endpoint.
-//
-// Wave 2 (Asset commit + Qdrant, July 2026): direct IndexClip calls
-// have been removed. The canonical asset.index.requested outbox event
-// is already emitted by registerClip via the canonical dispatcher.
+// enrichClip stages the candidate's transcript for the indexer when present.
 func enrichClip(
 	cfg ClipConfigPort,
 	cand clipCandidate,
@@ -45,8 +22,8 @@ func enrichClip(
 	}
 }
 
-// stageTranscript writes the candidate's transcript into the
-// configured YoutubeClips stage root under a slug-safe subbucket.
+// stageTranscript writes the candidate's transcript to a slug-safe
+// subbucket under cfg.YoutubeClipsPath() (default DataDir/youtube-clips).
 func stageTranscript(
 	cfg ClipConfigPort,
 	cand clipCandidate,
