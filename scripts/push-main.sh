@@ -7,12 +7,19 @@
 #   3. SHA advances during `make verify-main` (head moved mid-test);
 #   4. `make verify-main` itself does not exit 0 (fail-closed CI mirror).
 #
+# AND, after the push lands, validates that the push did not silently
+# lose any path deletions:
+#   5. every D-status path in HEAD~1..HEAD is actually absent from the
+#      pushed SHA's tree (catches the "git mv didn't propagate the
+#      delete" failure mode that required a corrective forward commit
+#      on 2026-07-13).
+#
 # Operational contract:
 #   - Every local `git push origin HEAD:main` MUST go through this
 #     wrapper. AGENTS.md git workflow already enforces `make verify-main`
 #     pre-push; this script unifies the local-CI signal with the
 #     additional dimensional checks (remote-advanced, tree-stable,
-#     SHA-stable).
+#     SHA-stable, deletions-propagated).
 #
 # Production deployment contract (NOT enforced by this script):
 #   - `make docker-sign` + `make docker-digest` produce a CI-certified
@@ -31,9 +38,12 @@
 #
 # Exit codes:
 #   0 — every gate passed AND the push succeeded (or --dry-run completed).
-#   1 — any gate failed (remote advance / tree drift / SHA drift / GREEN).
+#   1 — any pre-push gate failed (remote advance / tree drift / SHA drift / GREEN).
 #   2 — gates passed but `git push` failed (network / auth / ref-rejection).
 #   3 — operator chose FORCE_PUSH but a HARD gate (CI digest) failed.
+#   4 — post-push lockstep check failed (deletions did not propagate to
+#       origin/<branch>; the push landed but the remote tree still
+#       contains paths the local commit's diff marked as D-status).
 #
 # godlike/07 NO-FAKE-AVAILABILITY: the script returns non-zero on the
 # FIRST failed gate (no fallbacks, no `|| true`).
@@ -170,5 +180,79 @@ else
 fi
 
 echo "✅ push-main: HEAD pushed to origin/$TARGET_BRANCH."
+
+# ── Gate 5: post-push lockstep (deletions propagated to origin) ───
+# Closes the "git mv didn't propagate the delete" failure mode that
+# surfaced on 2026-07-13: a `git mv` rename commit added the new path
+# but the old path silently re-appeared on origin/main after the push
+# (root cause undiagnosed; possible autostash restore / fast-forward
+# edge case / race). Without this check, the discrepancy is invisible
+# until a downstream git pull re-introduces the stale file.
+#
+# Mechanism: enumerate every D-status path in HEAD~1..HEAD, then for
+# each one assert `git ls-tree <pushed-sha> <path>` is EMPTY. The
+# pushed SHA is `git rev-parse origin/<branch>` after the push (the
+# local ref is updated by the push, no extra `git fetch` required).
+# If the local HEAD SHA does NOT match the remote SHA, a concurrent
+# push landed between our push and the check — we fail loud rather
+# than silently query a newer remote state.
+#
+# Empty-commit case: if HEAD has no D-status rows, the loop body is
+# skipped and the gate prints the no-deletions happy path. This is
+# the common case (most commits add or modify files, not delete).
+#
+# Force-push case: the check still applies — the pushed SHA is what
+# origin/<branch> points to AFTER the --force-with-lease, so the
+# comparison is always against the actual post-push state.
+DELETED_PATHS="$(git diff-tree --no-commit-id --name-status -r HEAD~1..HEAD 2>/dev/null | awk '$1=="D" {print $2}' || true)"
+PUSHED_SHA="$(git rev-parse "origin/$TARGET_BRANCH" 2>/dev/null || true)"
+if [ -z "$PUSHED_SHA" ]; then
+    echo "❌ push-main: cannot resolve origin/$TARGET_BRANCH after push (network/auth drift post-push)" >&2
+    exit 4
+fi
+if [ "$SHA_AFTER" != "$PUSHED_SHA" ]; then
+    echo "❌ push-main: post-push lockstep aborted — local HEAD=$SHA_AFTER differs from origin/$TARGET_BRANCH=$PUSHED_SHA" >&2
+    echo "   A concurrent push landed between our push and this check, OR the push itself did not land." >&2
+    echo "   Remediation: re-run the push (git fetch + rebase + bash scripts/push-main.sh)." >&2
+    exit 4
+fi
+if [ -z "$DELETED_PATHS" ]; then
+    echo "✅ Gate 5 (post-push lockstep): no D-status paths in HEAD~1..HEAD — nothing to verify (common case)."
+else
+    DELETED_COUNT="$(printf '%s\n' "$DELETED_PATHS" | grep -c . || true)"
+    echo "▶ push-main: verifying $DELETED_COUNT deletion(s) in HEAD propagated to origin/$TARGET_BRANCH=$PUSHED_SHA..."
+    failed_deletions=""
+    while IFS= read -r path; do
+        [ -z "$path" ] && continue
+        if [ -n "$(git ls-tree "$PUSHED_SHA" "$path" 2>/dev/null)" ]; then
+            failed_deletions="${failed_deletions}${path}"$'\n'
+        fi
+    done <<< "$DELETED_PATHS"
+    if [ -n "$failed_deletions" ]; then
+        echo "❌ push-main: post-push lockstep FAILED — the following path(s) were deleted in HEAD=$SHA_AFTER but are STILL present on origin/$TARGET_BRANCH=$PUSHED_SHA:" >&2
+        # Use a `while read` loop rather than `printf '%s\n' $failed_deletions`
+        # so paths with spaces print on a single line each (unquoted
+        # word-splitting on $failed_deletions would break "my docs/foo.txt"
+        # into two separate lines and obscure the actual offending path).
+        while IFS= read -r p; do
+            [ -z "$p" ] && continue
+            echo "   $p" >&2
+        done <<< "$failed_deletions"
+        echo "" >&2
+        echo "   This is the 'git mv didn't propagate the delete' failure mode: the local" >&2
+        echo "   commit's D-status row(s) did not make it into the remote tree, even" >&2
+        echo "   though \`git push\` reported success." >&2
+        echo "" >&2
+        echo "   Remediation:" >&2
+        echo "     1. Inspect the stale file on origin: git ls-tree origin/$TARGET_BRANCH <path>" >&2
+        echo "     2. Re-create the file in the local working tree from origin/main" >&2
+        echo "        (git checkout origin/$TARGET_BRANCH -- <path>)" >&2
+        echo "     3. Record the deletion: git rm <path>" >&2
+        echo "     4. Commit + re-push: git commit -m 'fix(<scope>): remove stale <path> from origin/main' && bash scripts/push-main.sh" >&2
+        exit 4
+    fi
+    echo "✅ Gate 5 (post-push lockstep): $DELETED_COUNT deletion(s) verified absent from origin/$TARGET_BRANCH=$PUSHED_SHA."
+fi
+
 echo "   verify: git log -n 5 --oneline | head -1"
 git log -n 5 --oneline | sed 's/^/     /' | head -3
