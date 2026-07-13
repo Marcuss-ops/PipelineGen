@@ -281,6 +281,83 @@ func TestPostVoiceoverComposer_ResolveFolderError_DoesNotWriteTempOrPublish(t *t
 	}
 }
 
+// Table-driven coverage for the godlike/07 no-fake-availability gate that
+// validates a resolved RefBinding before hydrating the manifest. Each row
+// mirrors a real resolver-return failure mode.
+func TestPostVoiceoverComposer_RefBindingValidation_FailsClosedOnPartialFakes(t *testing.T) {
+	cases := []struct {
+		name    string
+		binding RefBinding
+		wantErr error
+	}{
+		{
+			name:    "EmptyClipID",
+			binding: RefBinding{ClipID: "", DriveLink: "https://drive.google.com/file/d/abc/view", StartMs: 0, EndMs: 120_000},
+			wantErr: ErrComposerIncompleteRefBinding,
+		},
+		{
+			name:    "EmptyDriveLink",
+			binding: RefBinding{ClipID: "clip-001", DriveLink: "", StartMs: 0, EndMs: 120_000},
+			wantErr: ErrComposerIncompleteRefBinding,
+		},
+		{
+			name:    "NegativeStartMs",
+			binding: RefBinding{ClipID: "clip-001", DriveLink: "https://x", StartMs: -10, EndMs: 100},
+			wantErr: ErrComposerInvalidRefTimeRange,
+		},
+		{
+			name:    "ZeroDuration",
+			binding: RefBinding{ClipID: "clip-001", DriveLink: "https://x", StartMs: 1_000, EndMs: 1_000},
+			wantErr: ErrComposerInvalidRefTimeRange,
+		},
+		{
+			name:    "NegativeDuration",
+			binding: RefBinding{ClipID: "clip-001", DriveLink: "https://x", StartMs: 500, EndMs: 200},
+			wantErr: ErrComposerInvalidRefTimeRange,
+		},
+		{
+			name:    "ValidPopulation",
+			binding: RefBinding{ClipID: "clip-001", DriveLink: "https://x", StartMs: 0, EndMs: 10_000},
+			wantErr: nil,
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			pub := newRecordingPublisher()
+			res := &StaticRefBindingResolver{Table: BindingTable{
+				"slot-1:candidate-0": tc.binding,
+			}}
+			c, err := NewPostVoiceoverComposer(pub, res)
+			if err != nil {
+				t.Fatalf("NewPostVoiceoverComposer: %v", err)
+			}
+			out := scriptpkg.ModelOutput{Segments: []scriptpkg.ModelOutputSegment{
+				{Ref: "slot-1:candidate-0", Text: "hi"},
+			}}
+			_, _, err = c.ComposeAndPublish(context.Background(), out, canonicalDestination(t), "g", "s", "a")
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Fatalf("unexpected err for valid binding: %v", err)
+				}
+				if pub.publishCalls != 1 {
+					t.Errorf("Publish should be called once for valid binding (got publishCalls=%d)", pub.publishCalls)
+				}
+				return
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Errorf("err = %v, want %v", err, tc.wantErr)
+			}
+			if pub.publishCalls != 0 {
+				t.Errorf("Publish MUST NOT be called for invalid binding (got publishCalls=%d)", pub.publishCalls)
+			}
+			if pub.lastRequest.LocalPath != "" {
+				t.Errorf("LocalPath MUST be empty when binding validation fails (got %q)", pub.lastRequest.LocalPath)
+			}
+		})
+	}
+}
+
 func TestStaticRefBindingResolver_Succeeds(t *testing.T) {
 	s := &StaticRefBindingResolver{Table: fixtureBinding()}
 	b, err := s.Resolve(context.Background(), "slot-1:candidate-0")
