@@ -54,20 +54,66 @@ type StorageConfig struct {
 
 func (s StorageConfig) MediaPath() string { return s.FullPath(s.MediaDir) }
 
+// TempPath returns the full path to the temporary directory.
+func (s StorageConfig) TempPath() string { return s.FullPath(s.TempDir) }
+
+// AbsDataDir returns the canonical absolute form of s.DataDir. An empty
+// s.DataDir falls back to the struct's documented default ("./data")
+// and is then resolved via filepath.Abs against the current working
+// directory.
+//
+// godlike/06 SSOT: every disk-layout helper on StorageConfig MUST route
+// through this method so callers receive an absolute path regardless of
+// the operator's process cwd or whether the configured DataDir was
+// relative. A relative "./data" returned to filepath.EvalSymlinks stays
+// as "data" (the relative form) and breaks the IsLocalFolderAllowed
+// symlink-canonicalization guard at
+// internal/application/clips/bulk_upload_helpers.go (FASE-N EvalSymlinks
+// audit). The DataDir field itself remains a raw string so existing
+// callers that compose cfg.Storage.DataDir into ad-hoc paths (192+
+// matches) continue to compile; new callers that feed the value into
+// filesystem APIs preferring an absolute root SHOULD prefer AbsDataDir().
+//
+// Empty DataDir or an Abs() failure falls back to the raw input so the
+// caller surfaces a meaningful error downstream — never silently
+// rewrite to "/".
+func (s StorageConfig) AbsDataDir() string { return s.absDataDir() }
+
+// absDataDir is the private resolver underlying AbsDataDir. Empty
+// s.DataDir is treated as "./data" (the struct field's `default:` tag
+// resolves to "./data" at config-load time; this fallback covers the
+// case where the struct is constructed manually without going through
+// the env-var loader).
+func (s StorageConfig) absDataDir() string {
+	raw := s.DataDir
+	if raw == "" {
+		raw = "./data"
+	}
+	abs, err := filepath.Abs(raw)
+	if err != nil {
+		return raw // best-effort: caller surfaces Err downstream
+	}
+	return abs
+}
+
 // FullPath returns the absolute path to a subdirectory within DataDir.
+// The DataDir root is canonicalized via absDataDir() so the result is
+// always absolute regardless of the operator's process cwd or whether
+// the configured DataDir was relative. An ALREADY-ABSOLUTE subDir is
+// returned verbatim (operator override semantics — see StagingPath for
+// the analogous contract on the staging workspace).
 func (s StorageConfig) FullPath(subDir string) string {
 	if filepath.IsAbs(subDir) {
 		return subDir
 	}
-	return filepath.Join(s.DataDir, subDir)
+	return filepath.Join(s.absDataDir(), subDir)
 }
 
-// TempPath returns the full path to the temporary directory.
-func (s StorageConfig) TempPath() string { return s.FullPath(s.TempDir) }
-
-// mediaSubPath returns the full path to a subdirectory under MediaDir.
+// mediaSubPath returns the absolute path to a subdirectory under
+// MediaDir. Routed through absDataDir() for the same cwd-absolute
+// invariant that FullPath provides.
 func (s StorageConfig) mediaSubPath(sub string) string {
-	return filepath.Join(s.DataDir, s.MediaDir, sub)
+	return filepath.Join(s.absDataDir(), s.MediaDir, sub)
 }
 
 // VoiceoversPath returns the full path to the voiceovers directory.

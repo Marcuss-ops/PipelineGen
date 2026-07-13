@@ -295,7 +295,7 @@ func (bt *BulkUploadTransport) BulkUploadYouTubeClips(c *gin.Context) {
 	if !appclips.IsLocalFolderAllowed(abs,
 		bt.cfg.Storage.MediaPath(),
 		bt.cfg.Storage.TempPath(),
-		bt.cfg.Storage.DataDir,
+		bt.cfg.Storage.AbsDataDir(),
 	) {
 		apiutil.BadRequest(c, fmt.Sprintf(
 			"local_folder %q is not under any allowed base path (drive.media_dir, drive.temp_dir, drive.data_dir, or a path explicitly added via config)",
