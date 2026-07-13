@@ -5,6 +5,14 @@
 // keywords) per media asset. Used by the YouTube writer path, the
 // TextTrackResolver lookup-before-Whisper fast path, and the
 // SearchTextBuilder for multilingual embedding construction.
+//
+// PR-CATALOG-MULTILINGUA step 2 (July 2026): the SELECT/INSERT
+// projections now carry the new source_track_id (FK back to the
+// parent source-language track for audit-trail navigation) +
+// source_text_hash (persisted source-text SHA-256) columns
+// added by migration 156. The scanTextTrack function reads them
+// into the domain TextTrack struct's SourceTrackID (nullable
+// *int64) and SourceTextHash (string, ” when unset) fields.
 package assets
 
 import (
@@ -46,9 +54,10 @@ INSERT INTO asset_text_tracks (
     source_type, source_language_code, is_original,
     provider, model_name, model_version, prompt_version,
     text_hash, source_version, translation_key, is_current,
+    source_track_id, source_text_hash,
     confidence, status,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, datetime('now'), datetime('now'))
 ON CONFLICT(asset_id, language_code, text_kind) DO UPDATE SET
     text_content         = excluded.text_content,
     source_type          = excluded.source_type,
@@ -62,6 +71,8 @@ ON CONFLICT(asset_id, language_code, text_kind) DO UPDATE SET
     source_version       = excluded.source_version,
     translation_key      = excluded.translation_key,
     is_current           = excluded.is_current,
+    source_track_id      = excluded.source_track_id,
+    source_text_hash     = excluded.source_text_hash,
     confidence           = excluded.confidence,
     status               = excluded.status,
     updated_at           = datetime('now')
@@ -105,6 +116,16 @@ func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []as
 			confidence = sql.NullFloat64{Float64: *t.Confidence, Valid: true}
 		}
 
+		// PR-CATALOG-MULTILINGUA step 2: SourceTrackID is a
+		// nullable FK; pass NULL when unset (e.g. a source-language
+		// row whose own parent is the asset row). The migration
+		// added column has no NOT NULL constraint; the SQLite FK
+		// is satisfied by NULL.
+		sourceTrackID := sql.NullInt64{}
+		if t.SourceTrackID != nil {
+			sourceTrackID = sql.NullInt64{Int64: *t.SourceTrackID, Valid: true}
+		}
+
 		sourceVersion := t.SourceVersion
 
 		isOriginal := 0
@@ -132,6 +153,8 @@ func (r *TextTrackRepositorySQLite) UpsertBatch(ctx context.Context, tracks []as
 			t.TextHash,
 			sourceVersion,
 			t.TranslationKey,
+			sourceTrackID,
+			t.SourceTextHash,
 			confidence,
 			status,
 		); err != nil {
@@ -182,6 +205,7 @@ func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID strin
 		        source_type, source_language_code, is_original,
 		        provider, model_name, model_version, prompt_version,
 		        text_hash, source_version, translation_key, is_current,
+		        source_track_id, source_text_hash,
 		        confidence, status,
 		        created_at, updated_at
 		 FROM asset_text_tracks
@@ -216,11 +240,20 @@ func (r *TextTrackRepositorySQLite) FindReady(ctx context.Context, assetID strin
 // "no cues", not a zero-length slice) when the track has no
 // per-segment rows.
 //
+// PR-CATALOG-MULTILINGUA step 2 (July 2026): the SELECT projection
+// includes the new text_hash column added by migration 156. The
+// current TimedCue struct (asset.TimedCue = {StartMs, EndMs, Text})
+// does NOT carry TextHash on the wire yet — the column is read so
+// it lands in the row memory and is discarded. A future step adds
+// a TimedCue.TextHash field + a Method that surfaces the segment
+// hashes to callers (e.g. "skip-WAV if identical segment hash
+// already exists in the track" fast path).
+//
 // Caller MUST pass a valid track_id (the FK ON DELETE CASCADE
 // ensures orphan rows are impossible).
 func (r *TextTrackRepositorySQLite) findCuesForTrackID(ctx context.Context, trackID int64) ([]asset.TimedCue, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT start_ms, end_ms, text
+		`SELECT start_ms, end_ms, text, text_hash
 		 FROM asset_text_track_segments
 		 WHERE track_id = ?
 		 ORDER BY sequence_no ASC`,
@@ -234,9 +267,16 @@ func (r *TextTrackRepositorySQLite) findCuesForTrackID(ctx context.Context, trac
 	var cues []asset.TimedCue // nil when no rows (matches domain port contract)
 	for rows.Next() {
 		var c asset.TimedCue
-		if scanErr := rows.Scan(&c.StartMs, &c.EndMs, &c.Text); scanErr != nil {
+		var segHash string
+		if scanErr := rows.Scan(&c.StartMs, &c.EndMs, &c.Text, &segHash); scanErr != nil {
 			return nil, fmt.Errorf("findCuesForTrackID: scan: %w", scanErr)
 		}
+		// Note: segHash is currently discarded — TimedCue
+		// has no TextHash field yet. The column is read so
+		// the scanner's column count matches the SELECT
+		// projection; future steps expose the hash through
+		// TimedCue (PR-CATALOG-MULTILINGUA step 8+).
+		_ = segHash
 		cues = append(cues, c)
 	}
 	if err = rows.Err(); err != nil {
@@ -295,6 +335,7 @@ func (r *TextTrackRepositorySQLite) Find(ctx context.Context, assetID string, la
 		        source_type, source_language_code, is_original,
 		        provider, model_name, model_version, prompt_version,
 		        text_hash, source_version, translation_key, is_current,
+		        source_track_id, source_text_hash,
 		        confidence, status,
 		        created_at, updated_at
 		 FROM asset_text_tracks
@@ -325,6 +366,7 @@ func (r *TextTrackRepositorySQLite) ListByAsset(ctx context.Context, assetID str
 		        source_type, source_language_code, is_original,
 		        provider, model_name, model_version, prompt_version,
 		        text_hash, source_version, translation_key, is_current,
+		        source_track_id, source_text_hash,
 		        confidence, status,
 		        created_at, updated_at
 		 FROM asset_text_tracks
@@ -375,6 +417,10 @@ func scanTextTrack(s textTrackScanner) (*asset.TextTrack, error) {
 		sourceVersion  string
 		translationKey string
 		isCurrent      int
+		// PR-CATALOG-MULTILINGUA step 2: nullable FK + persisted
+		// source hash — read via sql.NullInt64 + string.
+		sourceTrackID  sql.NullInt64
+		sourceTextHash string
 		confidence     sql.NullFloat64
 		status         string
 		createdAtStr   string
@@ -387,6 +433,7 @@ func scanTextTrack(s textTrackScanner) (*asset.TextTrack, error) {
 		&sourceType, &sourceLangCode, &isOriginal,
 		&provider, &modelName, &modelVersion, &promptVersion,
 		&textHash, &sourceVersion, &translationKey, &isCurrent,
+		&sourceTrackID, &sourceTextHash,
 		&confidence, &status,
 		&createdAtStr, &updatedAtStr,
 	)
@@ -410,6 +457,15 @@ func scanTextTrack(s textTrackScanner) (*asset.TextTrack, error) {
 	t.SourceVersion = sourceVersion
 	t.TranslationKey = translationKey
 	t.IsCurrent = isCurrent == 1
+	// PR-CATALOG-MULTILINGUA step 2: source_track_id is a
+	// nullable FK; only set the domain pointer when Valid
+	// (NULL is semantically meaningful — it means "this row
+	// IS the source" — see TextTrack.SourceTrackID doc).
+	if sourceTrackID.Valid {
+		v := sourceTrackID.Int64
+		t.SourceTrackID = &v
+	}
+	t.SourceTextHash = sourceTextHash
 	if confidence.Valid {
 		v := confidence.Float64
 		t.Confidence = &v
@@ -501,6 +557,7 @@ func (r *TextTrackRepositorySQLite) FindCurrentForTranslation(
 		        source_type, source_language_code, is_original,
 		        provider, model_name, model_version, prompt_version,
 		        text_hash, source_version, translation_key, is_current,
+		        source_track_id, source_text_hash,
 		        confidence, status,
 		        created_at, updated_at
 		 FROM asset_text_tracks
@@ -553,6 +610,13 @@ func (r *TextTrackRepositorySQLite) FindCurrentForTranslation(
 //     its own flip + INSERT (chain of audit predecessors).
 //   - This is the audit-trail-maximising race semantics, NOT a
 //     silent-overwrite trade-off.
+//
+// PR-CATALOG-MULTILINGUA step 2 (July 2026): the INSERT projection
+// now carries source_track_id + source_text_hash — both nullable
+// FK / persisted-hash columns added by migration 156. The caller
+// (Materializer) populates source_track_id with the parent's
+// text-track row.id (the source-language track that produced this
+// translation) so a forensic dump can navigate the audit trail.
 func (r *TextTrackRepositorySQLite) InsertTranslationWithAuditPredecessor(ctx context.Context, track asset.TextTrack) error {
 	if track.AssetID == "" {
 		return fmt.Errorf("text_track_repository.InsertTranslationWithAuditPredecessor: AssetID is required")
@@ -632,6 +696,17 @@ func (r *TextTrackRepositorySQLite) InsertTranslationWithAuditPredecessor(ctx co
 		confidence = sql.NullFloat64{Float64: *track.Confidence, Valid: true}
 	}
 
+	// PR-CATALOG-MULTILINGUA step 2: SourceTrackID is a nullable
+	// FK back to the parent source-language track. The Materializer
+	// populates this with the parent's row.id (e.g. EN transcript's
+	// row.id when inserting an IT translation). NULL when this row
+	// IS the source (e.g. a whisper EN transcript — no parent
+	// text-track row exists yet, the source is the asset itself).
+	sourceTrackID := sql.NullInt64{}
+	if track.SourceTrackID != nil {
+		sourceTrackID = sql.NullInt64{Int64: *track.SourceTrackID, Valid: true}
+	}
+
 	sourceVersion := track.SourceVersion
 	isOriginal := 0
 	if track.IsOriginal {
@@ -650,9 +725,10 @@ func (r *TextTrackRepositorySQLite) InsertTranslationWithAuditPredecessor(ctx co
 			source_type, source_language_code, is_original,
 			provider, model_name, model_version, prompt_version,
 			text_hash, source_version, translation_key, is_current,
+			source_track_id, source_text_hash,
 			confidence, status,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
 		track.AssetID,
 		track.LanguageCode,
 		string(track.TextKind),
@@ -667,6 +743,8 @@ func (r *TextTrackRepositorySQLite) InsertTranslationWithAuditPredecessor(ctx co
 		track.TextHash,
 		sourceVersion,
 		track.TranslationKey,
+		sourceTrackID,
+		track.SourceTextHash,
 		confidence,
 		status,
 	); err != nil {
