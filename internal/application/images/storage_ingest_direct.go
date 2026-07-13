@@ -133,6 +133,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		SubjectID:    slug,
 		Hash:         hash,
 		PathRel:      dest.RelativePath,
+		LocalPath:    dest.LocalPath,
 		SourceURL:    storedSourceURL,
 		Description:  description,
 		DriveFileID:  driveFileID,
