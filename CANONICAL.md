@@ -14,6 +14,7 @@ Only current, executable information belongs in the working tree. Historical pla
 | Compatibility removals | `architecture/deprecations.yaml` |
 | Qdrant schema | code under `internal/infrastructure/qdrant/schema` and machine-readable files under `architecture/qdrant` |
 | Operational procedures | current files under `docs/operations` |
+| Clip pre-planner pipeline (input → planner → search → sampler → view redaction → generator → binding) | `docs/operations/clip-pre-planner.md` |
 | CI exceptions | allowlists under `docs/migrations` |
 
 ## Conflict rule
