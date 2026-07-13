@@ -33,6 +33,11 @@ func (oh *OpsHandler) repoForSource(source string) *assets.ClipsRepository {
 func (oh *OpsHandler) ListFolders(c *gin.Context) {
 	source := c.Param("source")
 
+	if oh.clipsRepo == nil {
+		apiutil.Error(c, 503, "clips repository not wired")
+		return
+	}
+
 	repo := oh.repoForSource(source)
 	if repo == nil {
 		apiutil.BadRequest(c, "invalid source: "+source)

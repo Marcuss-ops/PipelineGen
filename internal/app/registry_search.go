@@ -1,7 +1,7 @@
 // Package app — search backend + fan-out construction (PR4 split).
 //
 // PR4 mechanical split (June 2026): registerSearchBackend is the
-// canonical wiring site for the SearchFanOut decorator + SearchAggregator
+// canonical wiring site for the SearchFanOut decorator + Aggregator
 // pair shared across YouTubeClip + Assets. The actual call is invoked
 // from registerInternalModules; this file owns the helper so any
 // change to the cross-step state's construction is local.
@@ -12,7 +12,7 @@
 //
 // registerSearchBackend populates wiring.searchFanOut +
 // wiring.searchBackends and returns the closure-local
-// *providers.SearchAggregator for YouTubeClip/Assets consumers. Empty
+// *search.Aggregator for YouTubeClip/Assets consumers. Empty
 // nil-packaging is intentionally allowed when root.Search.ProviderRegistry
 // is nil (test / partial deploy scenarios) — the callers see a noop
 // fan-out and a nil aggregator, which is the canonical fail-closed
@@ -34,14 +34,14 @@ import (
 // "redeclared in this block" build error this PR fix removed).
 
 // registerSearchBackend populates the canonical SearchFanOut +
-// SearchAggregator pair. Called once per WireRegistry invocation from
+// search.Aggregator pair. Called once per WireRegistry invocation from
 // registerInternalModules (Step 1b). Returns:
 //
 //   - searchFanOut: the SearchFanOut decorator, stamped onto AssetsBundle
 //     by Step 5 (registerAssets).
 //   - searchBackends: the BackendRegistry surface for the Assets bundle.
-//   - searchAgg: the SearchAggregator used by YouTubeClip's
-//     constructor + mediasearch handler's WireParams.
+//   - searchAgg: the *search.Aggregator used by YouTubeClip's
+//     SearchAdvanced route and the Assets search routes.
 //
 // Empty-input behavior (when ProviderReg is nil) is the canonical
 // fail-closed: the fan-out / backends / aggregator are all nil; the
@@ -50,12 +50,13 @@ import (
 // reviewer's Q7 invariant: nil provider-reg must NOT panic here;
 // production sees the warning log and proceeds with nil for the
 // downstream caller to fail-closed.
-func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets.ClipsRepository, wiring *RegistryWiring, embeddings search.EmbeddingChannelRegistry, vectorStore assetsearch.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService, reranker rerankerClient) (search.SearchFanOut, *search.BackendRegistry, *providers.SearchAggregator) {
+func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, clipsRepo *sqassets.ClipsRepository, wiring *RegistryWiring, embeddings search.EmbeddingChannelRegistry, vectorStore assetsearch.VectorStorePort, mediaRepo search.MediaReadRepository, delivery search.AssetDeliveryService, reranker rerankerClient) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator) {
 	var searchFanOut search.SearchFanOut
 	var searchBackends *search.BackendRegistry
-	var searchAgg *providers.SearchAggregator
+	var searchAgg *search.Aggregator
 	if providerReg != nil {
-		searchFanOut, searchBackends, _ = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
+		var err error
+		searchFanOut, searchBackends, searchAgg, err = BuildCanonicalSearchFanOut(SearchBackendBuildOpts{
 			Logger:      log,
 			ProviderReg: providerReg,
 			ClipsRepo:   clipsRepo,
@@ -69,7 +70,10 @@ func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, cli
 			Delivery:    delivery,
 			Reranker:    reranker,
 		})
-		searchAgg = providers.NewSearchAggregator(providerReg)
+		if err != nil {
+			log.Error("registerSearchBackend: BuildCanonicalSearchFanOut failed (fail-closed)", zap.Error(err))
+			return nil, nil, nil
+		}
 		log.Info("PR-2: canonical SearchFanOut wired against root.Search.ProviderRegistry (single shared instance)")
 	}
 	wiring.searchFanOut = searchFanOut

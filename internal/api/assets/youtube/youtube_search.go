@@ -12,7 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
@@ -105,76 +105,74 @@ func (h *YouTubeClipHandler) SearchAdvanced(c *gin.Context) {
 		}
 	}
 
-	if h.searchAggregator == nil {
-		apiutil.InternalError(c, fmt.Errorf("search aggregator not wired (composition root must populate root.Search.SearchAggregator)"))
+	if h.searchSvc == nil {
+		apiutil.InternalError(c, fmt.Errorf("search service not wired (composition root must populate SearchSvc)"))
 		return
 	}
 	ctx := c.Request.Context()
-	sources := []string{"artlist", "youtube", "stock"}
+	q := search.Query{
+		Text:  req.Q,
+		Limit: req.Limit,
+		Filters: search.Filters{
+			Source:    req.Source,
+			MediaType: req.Category,
+		},
+		Mode: search.SearchModeANN,
+	}
 	if req.Source != "" && req.Source != "all" {
-		sources = []string{req.Source}
+		q.Sources = []string{req.Source}
 	}
-	cursor := ""
 	if req.Offset > 0 {
-		cursor = fmt.Sprintf("offset:%d", req.Offset)
+		q.Cursor = fmt.Sprintf("offset:%d", req.Offset)
 	}
-	aggRes, aggErr := h.searchAggregator.Aggregate(ctx, &providers.SearchQuery{
-		Query:     req.Q,
-		MediaType: req.Category,
-	}, providers.AggregateOptions{
-		Limit:   req.Limit,
-		Cursor:  cursor,
-		Sources: sources,
-	})
-	if aggErr != nil {
-		apiutil.InternalError(c, fmt.Errorf("aggregator.Aggregate: %w", aggErr))
+	res, err := h.searchSvc.Search(ctx, q)
+	if err != nil {
+		apiutil.InternalError(c, fmt.Errorf("search.Aggregate: %w", err))
 		return
 	}
-	clips := make([]gin.H, 0, len(aggRes.Hits))
-	for _, hit := range aggRes.Hits {
+	clips := make([]gin.H, 0, len(res.Items))
+	for _, item := range res.Items {
 		clips = append(clips, gin.H{
-			"id":           hit.Candidate.SourceRef,
-			"title":        hit.Candidate.Title,
-			"source_name":  hit.ProviderName,
-			"score":        hit.FinalScore,
-			"thumb_url":    hit.Candidate.ThumbnailURL,
-			"preview_url":  hit.Candidate.PreviewURL,
-			"media_type":   string(hit.Candidate.MediaType),
-			"qdrant_score": hit.QdrantScore,
-			"rerank_score": hit.RerankScore,
+			"id":           item.SourceRef,
+			"title":        item.Title,
+			"source_name":  item.Source,
+			"score":        item.Score,
+			"thumb_url":    item.ThumbnailURL,
+			"preview_url":  item.PreviewURL,
+			"media_type":   item.MediaType,
+			"qdrant_score": item.Score,
+			"rerank_score": item.Score,
 		})
 	}
 	apiutil.OK(c, gin.H{
 		"ok":              true,
 		"count":           len(clips),
-		"total":           aggRes.Total,
+		"total":           len(res.Items),
 		"clips":           clips,
-		"cursor":          aggRes.Cursor,
-		"provider_errors": aggRes.ProviderErrors,
+		"cursor":          res.NextCursor,
+		"provider_errors": res.ProviderErrors,
 	})
 }
 
 // Stats returns clip statistics across all sources.
 func (h *YouTubeClipHandler) Stats(c *gin.Context) {
-	if h.searchAggregator == nil {
-		apiutil.InternalError(c, fmt.Errorf("search aggregator not wired"))
+	if h.searchFanOut == nil {
+		apiutil.InternalError(c, fmt.Errorf("search fan-out not wired"))
 		return
 	}
-	ctx := c.Request.Context()
-	sources := []string{"artlist", "youtube", "stock"}
-
-	aggRes, aggErr := h.searchAggregator.Aggregate(ctx, &providers.SearchQuery{}, providers.AggregateOptions{
-		Limit:   1,
-		Sources: sources,
-	})
-	if aggErr != nil {
-		apiutil.InternalError(c, fmt.Errorf("aggregator.Aggregate: %w", aggErr))
-		return
+	stats := h.searchFanOut.Stats()
+	providers := make(map[string]gin.H, len(stats))
+	for name, s := range stats {
+		providers[name] = gin.H{
+			"hits":              s.Hits,
+			"calls":             s.Calls,
+			"errors":            s.Errors,
+			"avg_latency_ms":    s.AverageLatency().Milliseconds(),
+		}
 	}
 
 	apiutil.OK(c, gin.H{
-		"ok":               true,
-		"total_candidates": aggRes.Total,
-		"providers":        aggRes.ProviderErrors,
+		"ok":        true,
+		"providers": providers,
 	})
 }
