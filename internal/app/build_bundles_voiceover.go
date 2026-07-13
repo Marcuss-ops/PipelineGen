@@ -206,7 +206,8 @@ func buildVoiceoverService(
 		voRepoAdapter,     // VoiceoverRepository
 		outboxEnqueuer,    // TxOutboxEnqueuer (nil-safe in finalizer)
 		projectionAdapter, // LifecycleProjectionUpserter
-		log,               // *zap.Logger
+		log,               // *zap.Logger,
+		nil,               // committer — wired by future PR (PR-ASSET-COMMITTER-COMMITASSET Phase 2)
 	)
 
 	// P1-2 (June 2026): the application layer no longer constructs

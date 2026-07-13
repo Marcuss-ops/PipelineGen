@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"go.uber.org/zap"
 )
@@ -170,43 +171,69 @@ func (f *voiceoverFinalizer) Finalize(ctx context.Context, tx *sql.Tx, cmd *Fina
 		return nil, fmt.Errorf("voiceoverFinalizer: InsertTx: %w", err)
 	}
 
-	// ── Step 4: media_assets projection UPSERT (REQUIRED) ──
-	// P0.4 Fase 3a (July 2026): this step was MISSING in the child
-	// pipeline (Path A). The unified finalizer now writes the
-	// media_assets row for BOTH paths. Audit P0 #2: LifecycleService
-	// nil is a fatal wiring error (fail-fast above), so a non-nil
-	// LifecycleService here is always present.
-	if err := f.deps.LifecycleService.UpsertVoiceoverProjectionTx(ctx, tx, &VoiceoverProjectionInput{
-		ID:           cmd.ID,
-		Source:       "voiceover",
-		Name:         textPreview,
-		Filename:     cmd.Filename,
-		FolderID:     cmd.FolderID,
-		FolderPath:   cmd.FolderPath,
-		MediaType:    "audio",
-		LocalPath:    cmd.LocalPath,
-		DriveFileID:  cmd.DriveFileID,
-		DriveLink:    cmd.DriveLink,
-		DownloadLink: cmd.DownloadLink,
-		FileHash:     cmd.FileHash,
-		Language:     cmd.Language,
-		Status:       string(StatusGenerated),
-		Metadata:     string(cmd.MetaJSON),
-	}); err != nil {
-		return nil, fmt.Errorf("voiceoverFinalizer: UpsertVoiceoverProjectionTx (media_assets): %w", err)
-	}
-	required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))
-
-	// ── Step 5: Outbox — asset.index.requested (REQUIRED) ──
-	// Audit P0 #2: Outbox nil is fatal (fail-fast above). FileHash
-	// empty is a data-state guard-skip with execution marker.
-	if cmd.FileHash != "" {
-		if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, cmd.FileHash); err != nil {
-			return nil, fmt.Errorf("voiceoverFinalizer: EnqueueIndexEvent: %w", err)
+	// ── Step 4 + Step 5: media_assets projection + asset.index.requested outbox ──
+	// PR-ASSET-COMMITTER-COMMITASSET (July 2026): when Committer is
+	// wired, BOTH writes (media_assets row + asset.index.requested
+	// outbox event) are produced by a SINGLE Committer.CommitTx call
+	// inside the caller's tx — atomic, single producer, no out-of-band
+	// path. The legacy ports (LifecycleService, Outbox) remain as
+	// pre-Cutover fallbacks for callers that have not yet wired the
+	// committer.
+	//
+	// godlike/06 SSOT: when Committer is wired, it is the SOLE canonical
+	// producer of both writes; the dispatcher is the SOLE canonical
+	// consumer of the outbox event.
+	if f.deps.Committer != nil {
+		if _, err := f.deps.Committer.CommitTx(ctx, tx, buildVoiceoverCommitRequest(cmd, textPreview)); err != nil {
+			return nil, fmt.Errorf("voiceoverFinalizer: Committer.CommitTx (media_assets + outbox): %w", err)
 		}
-		required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))
+		required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))
+		// Step 5: when Committer is wired, FileHash guard-skip is the
+		// ONLY data-state branch (Committer emits the outbox event
+		// unconditionally when EmitIndexEvent=true; we set it true
+		// iff FileHash is non-empty so the guard-skip mirrors the
+		// pre-Cutover Step 5 contract).
+		if cmd.FileHash != "" {
+			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))
+		} else {
+			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty FileHash"))
+		}
 	} else {
-		required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty FileHash"))
+		// ── Legacy pre-Cutover path (Step 4 + Step 5 separately) ──
+		// Audit P0 #2: LifecycleService nil is a fatal wiring error
+		// (fail-fast at Finalize() entry), so a non-nil
+		// LifecycleService here is always present.
+		if err := f.deps.LifecycleService.UpsertVoiceoverProjectionTx(ctx, tx, &VoiceoverProjectionInput{
+			ID:           cmd.ID,
+			Source:       "voiceover",
+			Name:         textPreview,
+			Filename:     cmd.Filename,
+			FolderID:     cmd.FolderID,
+			FolderPath:   cmd.FolderPath,
+			MediaType:    "audio",
+			LocalPath:    cmd.LocalPath,
+			DriveFileID:  cmd.DriveFileID,
+			DriveLink:    cmd.DriveLink,
+			DownloadLink: cmd.DownloadLink,
+			FileHash:     cmd.FileHash,
+			Language:     cmd.Language,
+			Status:       string(StatusGenerated),
+			Metadata:     string(cmd.MetaJSON),
+		}); err != nil {
+			return nil, fmt.Errorf("voiceoverFinalizer: UpsertVoiceoverProjectionTx (media_assets): %w", err)
+		}
+		required = append(required, formatRequiredState(requiredStepMediaAssetsProjection, requiredStateExecuted))
+
+		// Audit P0 #2: Outbox nil is fatal (fail-fast above). FileHash
+		// empty is a data-state guard-skip with execution marker.
+		if cmd.FileHash != "" {
+			if err := f.deps.Outbox.EnqueueIndexEvent(ctx, tx, cmd.ID, cmd.FileHash); err != nil {
+				return nil, fmt.Errorf("voiceoverFinalizer: EnqueueIndexEvent: %w", err)
+			}
+			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateExecuted))
+		} else {
+			required = append(required, formatRequiredState(requiredStepIndexOutbox, requiredStateGuarded, "empty FileHash"))
+		}
 	}
 
 	// ── Step 6: Outbox — voiceover.cleanup.requested (REQUIRED) ──
@@ -243,4 +270,49 @@ func formatRequiredState(step, state string, reason ...string) string {
 		return step + ": " + state
 	}
 	return step + ": " + state + " (" + reason[0] + ")"
+}
+
+func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) assetspersistence.CommitRequest {
+	language := ""
+	if cmd.Language != "" {
+		language = string(cmd.Language)
+	}
+	locations := []assetspersistence.LocationCommit{}
+	if cmd.DriveFileID != "" {
+		locations = append(locations, assetspersistence.LocationCommit{
+			Kind:        "drive",
+			Provider:    "drive",
+			ExternalID:  cmd.DriveFileID,
+			URI:         cmd.DriveLink,
+			WebViewLink: cmd.DriveLink,
+			DownloadURL: cmd.DownloadLink,
+			FileHash:    cmd.FileHash,
+			IsPrimary:   true,
+		})
+	}
+	return assetspersistence.CommitRequest{
+		AssetID:        cmd.ID,
+		Source:         "voiceover",
+		Name:           textPreview,
+		Filename:       cmd.Filename,
+		MediaType:      "audio",
+		ContentHash:    cmd.FileHash,
+		Description:    textPreview,
+		SearchText:     textPreview,
+		LifecycleState: "PUBLISHED",
+		IndexState:     "INDEXING_PENDING",
+		LocalPath:      cmd.LocalPath,
+		FolderID:       cmd.FolderID,
+		FolderPath:     cmd.FolderPath,
+		Title:          textPreview,
+		Metadata: assetspersistence.TypedMetadata{
+			Title:         textPreview,
+			Description:   textPreview,
+			SourceVersion: cmd.FileHash,
+			Tags:          nil,
+			Extra:         map[string]any{"language": language, "request_id": cmd.RequestID},
+		},
+		Locations:      locations,
+		EmitIndexEvent: cmd.FileHash != "",
+	}
 }

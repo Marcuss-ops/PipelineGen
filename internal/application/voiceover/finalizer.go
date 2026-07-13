@@ -49,6 +49,7 @@ import (
 	"context"
 	"database/sql"
 
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 	"go.uber.org/zap"
 )
@@ -225,11 +226,21 @@ type FinalizeResult struct {
 // voiceoverFinalizerDeps holds the external dependencies for the
 // concrete finalizer. All ports are optional (nil-safe) except
 // voiceoverRepo which is mandatory (INSERT/DELETE are always needed).
+//
+// PR-ASSET-COMMITTER-COMMITASSET (July 2026): Committer is the
+// CANONICAL producer of the media_assets projection + asset.index.requested
+// outbox event. When wired, the finalizer routes Step 4 + Step 5
+// through Committer.CommitTx in a single atomic write inside the
+// caller's tx. The legacy LifecycleService + Outbox deps remain
+// for backward compat (pre-Cutover callers) — Step 4 + Step 5
+// prefer Committer when present and fall back to the legacy ports
+// otherwise (see finalizer_execute.go).
 type voiceoverFinalizerDeps struct {
-	VoiceoverRepo    persistence.Repository      // mandatory
-	Outbox           TxOutboxEnqueuer            // nil-safe (skip index + cleanup)
-	LifecycleService LifecycleProjectionUpserter // nil-safe (skip media_assets)
-	Logger           *zap.Logger                 // nil-safe via zap.NewNop()
+	VoiceoverRepo    persistence.Repository           // mandatory
+	Outbox           TxOutboxEnqueuer                 // nil-safe (skip index + cleanup)
+	LifecycleService LifecycleProjectionUpserter      // nil-safe (skip media_assets, pre-Cutover fallback)
+	Committer        assetspersistence.AssetCommitter // PR-ASSET-COMMITTER: nil-safe; when wired, replaces LifecycleService+Outbox for the media_assets + outbox path
+	Logger           *zap.Logger                      // nil-safe via zap.NewNop()
 }
 
 // LifecycleProjectionUpserter is the narrow port for writing the
@@ -291,9 +302,15 @@ func newVoiceoverFinalizer(deps voiceoverFinalizerDeps) *voiceoverFinalizer {
 //   - voRepo: persistence.Repository (BeginTx, InsertTx, DeleteByIDTx,
 //     CountByDriveFileIDTx) — mandatory, panics on nil.
 //   - outbox: TxOutboxEnqueuer (EnqueueIndexEvent, EnqueueCleanupEvent)
-//     — nil-safe (skip outbox steps when nil).
+//     — nil-safe (skip outbox steps when nil). Pre-Cutover fallback
+//     for Step 5 (index outbox) when Committer is unwired.
 //   - lifecycleSvc: LifecycleProjectionUpserter (UpsertVoiceoverProjectionTx)
-//     — nil-safe (skip media_assets projection when nil).
+//     — nil-safe (skip media_assets projection when nil). Pre-Cutover
+//     fallback for Step 4 when Committer is unwired.
+//   - committer: persistence.AssetCommitter — nil-safe. When wired,
+//     Step 4 (media_assets projection) + Step 5 (asset.index.requested
+//     outbox) are produced by Committer.CommitTx in a single atomic
+//     write inside the caller's tx. PR-ASSET-COMMITTER-COMMITASSET.
 //   - log: *zap.Logger — nil-safe (zap.NewNop() fallback).
 //
 // Returns VoiceoverFinalizer so the composition root can inject an
@@ -302,12 +319,14 @@ func NewVoiceoverFinalizer(
 	voRepo persistence.Repository,
 	outbox TxOutboxEnqueuer,
 	lifecycleSvc LifecycleProjectionUpserter,
+	committer assetspersistence.AssetCommitter,
 	log *zap.Logger,
 ) VoiceoverFinalizer {
 	return newVoiceoverFinalizer(voiceoverFinalizerDeps{
 		VoiceoverRepo:    voRepo,
 		Outbox:           outbox,
 		LifecycleService: lifecycleSvc,
+		Committer:        committer,
 		Logger:           log,
 	})
 }

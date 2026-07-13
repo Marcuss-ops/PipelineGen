@@ -184,6 +184,22 @@ type CommitResult struct {
 	OutboxInserted    bool
 }
 
+// AssetCommitRequest is the canonical alias of CommitRequest, exposed at
+// the application-layer port boundary. The user-facing surface name
+// (AssetCommitRequest / CommittedAsset) makes the single-function
+// Contract (CommitAsset) self-documenting at the call site:
+//
+//	persistence.AssetCommitter.CommitAsset(ctx, persistence.AssetCommitRequest) (persistence.CommittedAsset, error)
+//
+// is the canonical read; underlying type identity is preserved
+// (alias, not new struct), so existing callers passing CommitRequest
+// continue to compile byte-equivalent.
+type AssetCommitRequest = CommitRequest
+
+// CommittedAsset is the canonical alias of CommitResult — see
+// AssetCommitRequest for the rationale.
+type CommittedAsset = CommitResult
+
 // Transaction is the narrow write surface consumed by AssetCommitter.
 // Production concrete: *sql.Tx.
 type Transaction interface {
@@ -208,6 +224,21 @@ type AssetCommitter interface {
 	// commits it. Use this for standalone producers that do not
 	// already own a transaction.
 	CommitAndIndex(ctx context.Context, req CommitRequest) (CommitResult, error)
+
+	// CommitAsset is the SINGLE canonical user-facing entry point
+	// for the asset commit surface (PR-ASSET-COMMITTER-COMMITASSET,
+	// July 2026). It opens a fresh SQLite transaction, writes
+	// media_assets + asset_locations + typed metadata (metadata_json)
+	// + the asset.index.requested outbox event, and commits
+	// atomically. Caller-owned-tx orchestrators should use CommitTx;
+	// standalone producers should use CommitAsset (or its
+	// back-compat alias CommitAndIndex).
+	//
+	// godlike/06 SSOT: CommitAsset is the ONLY canonical producer
+	// of the asset.index.requested outbox event. After cutover, no
+	// other code path is allowed to insert into outbox_events for
+	// this event_type — the dispatcher is the only consumer.
+	CommitAsset(ctx context.Context, req AssetCommitRequest) (CommittedAsset, error)
 }
 
 // ── Typed sentinels ──────────────────────────────────────────────────
