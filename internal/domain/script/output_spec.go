@@ -270,25 +270,34 @@ type OutputSpec struct {
 	// Toggle semantics.
 	GenerateMetadata Toggle `json:"generate_metadata,omitempty"`
 
-	// GenerateVoiceover is an ACTIVE inline postprocessor gated on
-	// the VoiceoverService wiring (composition root at
-	// internal/app/wire_script_postprocess.go::registerScriptPostProcessors
-	// silently skips registration on nil service; BestEffort policy
-	// prevents hard preflight failure). ToggleDisabled survives
-	// applySafetyDefaults — caller opt-out is honored.
+	// GenerateVoiceover is DEPRECATED.
+	//
+	// Deprecated: voiceover generation is now produced by the separate
+	// voiceover.generate downstream job (internal/domain/job/job.go
+	// TypeVoiceoverGenerate). Set voiceover requirements via
+	// sceneplan.AssetRequirements instead. Retaining this field only
+	// for backward compatibility; setting it has no effect on the
+	// script.generate pipeline post-Fase 2.
 	GenerateVoiceover Toggle `json:"generate_voiceover,omitempty"`
 
-	// GenerateSceneImages is an ACTIVE inline postprocessor gated
-	// on the ImageService wiring. ToggleDisabled survives
-	// applySafetyDefaults — caller opt-out is honored.
+	// GenerateSceneImages is DEPRECATED.
+	//
+	// Deprecated: scene images are now produced by the separate
+	// images.generate downstream job (internal/domain/job/job.go
+	// TypeImagesGenerate). Set image requirements via
+	// sceneplan.AssetRequirements instead. Retaining this field only
+	// for backward compatibility; setting it has no effect on the
+	// script.generate pipeline post-Fase 2.
 	GenerateSceneImages Toggle `json:"generate_scene_images,omitempty"`
 
-	// GenerateDocument controls inline Google Doc creation via
-	// ProcessorDocument. Gated on DriveBundle.DocClient. Pre-PR-3
-	// audit item #1 found this flag was silently overridden to true
-	// when caller set explicit false — fixed in PR-3:
-	// applySafetyDefaults now checks ToggleDefault (only the unset
-	// path is overridden to ToggleEnabled); ToggleDisabled survives.
+	// GenerateDocument is DEPRECATED.
+	//
+	// Deprecated: Google Doc creation is now produced by the separate
+	// document.generate downstream job (internal/domain/job/job.go
+	// TypeDocumentGenerate). Set document requirements via
+	// sceneplan.AssetRequirements instead. Retaining this field only
+	// for backward compatibility; setting it has no effect on the
+	// script.generate pipeline post-Fase 2.
 	GenerateDocument Toggle `json:"generate_document,omitempty"`
 
 	// ── Persistence (bool — out of PR-3 scope per action plan) ──
