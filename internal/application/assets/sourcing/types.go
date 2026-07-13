@@ -161,22 +161,28 @@ type SyncDriveFolderResult struct {
 	Message       string
 }
 
-// LocalToDriveCommand is the input for uploading a local folder to Drive.
+// LocalToDriveCommand is the input for the bulk-upload-youtube-clips
+// enqueue. PR-CLIPS-ENQUEUE-ONLY (July 2026): the command carries only
+// the WHAT (which folder, which Drive target, source label, category).
+// The HOW (recursive walk, concurrency, file patterns) is read from
+// server config by the worker when the job runs. The pre-scan /
+// DryRun / LocalFound / drive_folder_name fields are GONE — the worker
+// is the sole owner of filesystem scanning.
 type LocalToDriveCommand struct {
 	LocalFolder   string
 	DriveFolderID string
 	Source        string
-	Limit         int
+	Category      string
+	Recursive     bool
 	Concurrency   int
-	DryRun        bool
 }
 
-// LocalToDriveResult is the output of a local-to-drive operation.
+// LocalToDriveResult is the output of a local-to-drive enqueue.
+// The scan results (clips/actors/local_found) are NOT computed here —
+// the worker emits them when the job runs. The handler returns this
+// immediately with the job_id so the caller can poll the job status.
 type LocalToDriveResult struct {
-	OK         bool
-	DryRun     bool
-	JobID      string
-	Message    string
-	LocalFound int
-	Groups     []string
+	OK      bool
+	JobID   string
+	Message string
 }

@@ -17,16 +17,24 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
-// EnrichAndIndexClip helper — used by external batch/mixin callers
-// (sourcingEnrichmentAdapter → nonops.EnrichAndIndexClip, called via
-// the orchestrator clips.Handler.EnrichAndIndexClip 1-line
-// delegator). Returns immediately if enrichUC is nil; otherwise
-// delegates to the shared enrichUC instance.
+// EnrichAndIndexClip helper — kept for the nonops.Handler interface
+// contract (godlike/06 SSOT compile-time pin) but card 10 (July 2026)
+// removed its only production caller (sourcingEnrichmentAdapter now
+// depends on the canonical appclips.ClipEnricher typed port and never
+// reaches through *clips.Handler). Returns immediately if enrichUC is
+// nil; otherwise delegates to the shared enrichUC instance using the
+// slim (ctx, clipID) signature introduced in card 10.
+//
+// The `source` parameter is retained on the outer signature for
+// interface conformance; the slim enrichUC.EnrichAndIndex looks up
+// the asset by clipID internally so the source context is not needed
+// at this call site.
 func (h *NonOpsHandler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, source string) {
 	if h.enrichUC == nil {
 		return
 	}
-	h.enrichUC.EnrichAndIndex(ctx, clip, source)
+	_ = source
+	h.enrichUC.EnrichAndIndex(ctx, clip.ID)
 }
 
 // EnrichMedia triggers semantic enrichment + embedding for any media

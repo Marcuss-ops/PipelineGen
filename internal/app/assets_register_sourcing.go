@@ -157,12 +157,11 @@ func newAssetRegisterService(
 	// + log. Future composition sites will inject a real JobsPort adapter.
 	drvSvc := drivesync.NewService(nil, &zapSourcingLogger{log: log})
 
-	// P0-1 / commit 4 (this commit): LocalImporter sub-service.
-	// 3-dep ctor: jobs + scanner + log (all nil at this composition site
-	// today; preserves historical behaviour — file-scanner-not-configured
-	// and jobs-port-not-configured errors fire when CLI invokes them in
-	// dry-run or non-dry-run paths respectively).
-	localSvc := localimport.NewService(nil, nil, &zapSourcingLogger{log: log})
+	// PR-CLIPS-ENQUEUE-ONLY (July 2026): LocalImporter sub-service.
+	// 2-dep ctor: jobs + log (nil at this composition site; the
+	// enqueue path no longer pre-scans the directory — the worker
+	// is the sole owner of filesystem scanning).
+	localSvc := localimport.NewService(nil, &zapSourcingLogger{log: log})
 
 	// P0-1 / commit 5 (this commit): façade di pulizia. 5-arg call:
 	// 4 sub-services + log. The historic 14-dep ctor collapses to 5

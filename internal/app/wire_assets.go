@@ -158,7 +158,7 @@ func WireAssets(
 
 	// (2) Build capability bundles (linear pipeline; order matches the
 	// canonical *Descriptor flow used by assetsapi.NewModule below)
-	clipsDesc, err := buildClipsBundle(buildClipsParams{
+	clipsDesc, clipEnricher, err := buildClipsBundle(buildClipsParams{
 		Cfg:              cfg,
 		Log:              log,
 		Deps:             deps,
@@ -247,7 +247,7 @@ func WireAssets(
 		return nil, fmt.Errorf("WireAssets: soundeffect: %w", err)
 	}
 
-	rd, err := buildRegisterBundle(cfg, log, deps, lifecycle, driveUploader, providerRegistry, clipsDesc, idemHandler, dispatcher, jobs)
+	rd, err := buildRegisterBundle(cfg, log, deps, lifecycle, driveUploader, providerRegistry, clipEnricher, idemHandler, dispatcher, jobs)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: register: %w", err)
 	}
@@ -328,11 +328,14 @@ func buildSoundeffectBundle(
 //
 // The user-requested 5-file split (PR-WIRE-ASSETS-CAPABILITY-SPLIT) does
 // not include register; this helper stays in wire_assets.go for
-// consistency with the linear-pipeline shape. The sourcingEnrichmentAdapter
-// (constructed inside newAssetRegisterService) is the one non-HTTP
-// consumer of the clips orchestrator — it calls
-// handler.EnrichAndIndexClip(ctx, clip, source) — which the
-// ClipsDescriptor exposes via its Handler field.
+// consistency with the linear-pipeline shape.
+//
+// Card 10 (July 2026): the sourcingEnrichmentAdapter (constructed
+// inside newAssetRegisterService) is the canonical non-HTTP consumer
+// of the clips enrich path — it now consumes the appclips.ClipEnricher
+// typed port (godlike/06 SSOT: boundary type lives at the application
+// layer; the descriptor exposes only routes + job handlers and no
+// longer exposes any *clips.Handler field).
 //
 // PR-DRIVE-AVAILABILITY-GATE (2026-07-04): builds a driveChecker
 // closure that mirrors the boot-time validateDriveServiceAvailability
@@ -348,12 +351,12 @@ func buildRegisterBundle(
 	lifecycle driveutil.FileLifecycle,
 	driveUploader *driveutil.Uploader,
 	providerRegistry *providers.Registry,
-	clipsDesc *clipsapi.ClipsDescriptor,
+	clipEnricher appclips.ClipEnricher,
 	idemHandler gin.HandlerFunc,
 	dispatcher *outbox.Dispatcher,
 	jobs *JobsBundle,
 ) (*assetregister.RegisterDescriptor, error) {
-	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, lifecycle, deps.Core.AssetTreeService, providerRegistry, clipsDesc.Handler, dispatcher, deps.Delivery.Publisher, jobs.Service)
+	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, lifecycle, deps.Core.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service)
 
 	// PR-DRIVE-AVAILABILITY-GATE: compose the canonical driveChecker
 	// closure. Two-state probe (godlike/06 SSOT one-canonical-owner-per-fact):

@@ -1,34 +1,36 @@
 package storage
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
+// LocalToDriveRequest is the minimal canonical POST body for the
+// bulk-upload-youtube-clips route. The POST is a pure enqueue: it
+// validates the payload, enqueues a bulk_upload_youtube_clips job,
+// and returns the job_id. The worker (BulkUploadWorker) is the sole
+// owner of filesystem scanning — no pre-scan happens here.
 type LocalToDriveRequest struct {
 	LocalFolder   string `json:"local_folder"`
 	DriveFolderID string `json:"drive_folder_id"`
 	Source        string `json:"source,omitempty"`
-	Limit         int    `json:"limit,omitempty"`
+	Category      string `json:"category,omitempty"`
+	Recursive     bool   `json:"recursive,omitempty"`
 	Concurrency   int    `json:"concurrency,omitempty"`
-	DryRun        bool   `json:"dry_run"`
 }
 
+// LocalToDriveResponse is the immediate 202 reply: {ok, job_id, message}.
+// The scan results (clips/actors/local_found) are NOT computed here —
+// the worker emits them when the job runs.
 type LocalToDriveResponse struct {
-	OK         bool     `json:"ok"`
-	DryRun     bool     `json:"dry_run"`
-	LocalFound int      `json:"local_found,omitempty"`
-	Actors     []string `json:"actors,omitempty"`
+	OK      bool   `json:"ok"`
+	JobID   string `json:"job_id,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 func (h *Handler) LocalToDrive(c *gin.Context) {
@@ -38,13 +40,12 @@ func (h *Handler) LocalToDrive(c *gin.Context) {
 		return
 	}
 
-	abs, err := filepath.Abs(req.LocalFolder)
-	if err != nil {
-		apiutil.BadRequest(c, "invalid local_folder: "+err.Error())
-		return
-	}
-	if _, err := os.Stat(abs); err != nil {
-		apiutil.BadRequest(c, fmt.Sprintf("local_folder not accessible: %v", err))
+	// PR-CLIPS-ENQUEUE-ONLY (July 2026): the handler validates the
+	// minimal payload and enqueues the job. No filesystem pre-scan
+	// (no os.Stat, no filepath.WalkDir) happens here — the worker
+	// (BulkUploadWorker) is the sole owner of filesystem scanning.
+	if strings.TrimSpace(req.LocalFolder) == "" {
+		apiutil.BadRequest(c, "local_folder is required")
 		return
 	}
 	if strings.TrimSpace(req.DriveFolderID) == "" {
@@ -52,192 +53,37 @@ func (h *Handler) LocalToDrive(c *gin.Context) {
 		return
 	}
 
-	candidates, err := scanLocalMp4(abs, req.Limit)
-	if err != nil {
-		apiutil.BadRequest(c, "scan failed: "+err.Error())
-		return
-	}
-
-	// Group by actor name (first subdir level)
-	actorMap := groupByActorLocal(candidates)
-	actorNames := make([]string, 0, len(actorMap))
-	for name := range actorMap {
-		actorNames = append(actorNames, name)
-	}
-
-	h.log.Info("scanned local folder",
-		zap.Int("clips", len(candidates)),
-		zap.Int("actors", len(actorNames)),
-		zap.Bool("dry_run", req.DryRun))
-
-	if req.DryRun {
-		apiutil.OK(c, LocalToDriveResponse{
-			OK:         true,
-			DryRun:     true,
-			LocalFound: len(candidates),
-			Actors:     actorNames,
-		})
-		return
-	}
-
 	source := req.Source
 	if source == "" {
 		source = "youtube-local"
 	}
-	conc := req.Concurrency
-	if conc <= 0 {
-		conc = 3
+
+	// Recursive + concurrency + category are optional wire-shape
+	// overrides; the worker uses its server-config defaults when the
+	// caller omits them.
+	payload := map[string]any{
+		"local_folder":    req.LocalFolder,
+		"drive_folder_id": strings.TrimSpace(req.DriveFolderID),
+		"source":          source,
+		"category":        req.Category,
+		"recursive":       req.Recursive,
+		"concurrency":     req.Concurrency,
 	}
+
+	h.log.Info("bulk-upload-youtube-clips: enqueue",
+		zap.String("local_folder", req.LocalFolder),
+		zap.String("drive_folder_id", req.DriveFolderID),
+		zap.String("source", source),
+		zap.String("category", req.Category),
+		zap.Bool("recursive", req.Recursive),
+		zap.Int("concurrency", req.Concurrency))
 
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
 		Type:    "bulk_upload_youtube_clips",
 		Project: "media",
-		Payload: map[string]any{
-			"local_folder":           abs,
-			"drive_folder_id":        strings.TrimSpace(req.DriveFolderID),
-			"source":                 source,
-			"subdir_as_drive_subdir": true,
-			"recursive":              true,
-			"concurrency":            conc,
-			"limit":                  req.Limit,
-			"file_patterns":          []string{"*.mp4"},
-		},
-	}, fmt.Sprintf("Job enqueued (%d clips, %d actors).", len(candidates), len(actorNames))); ok {
+		Payload: payload,
+	}, "Job enqueued."); ok {
 		return
 	}
 	// EnqueueAsync returns false if jobsSvc is nil (503) or on error.
-}
-
-type localClip struct {
-	LocalPath    string
-	RelPath      string
-	Name         string
-	ActorName    string
-	Size         int64
-	MetadataPath string
-	Transcript   string
-}
-
-func scanLocalMp4(root string, limit int) ([]localClip, error) {
-	var out []localClip
-	walk := func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.EqualFold(filepath.Ext(d.Name()), ".mp4") {
-			return nil
-		}
-		if limit > 0 && len(out) >= limit {
-			return filepath.SkipAll
-		}
-
-		rel, _ := filepath.Rel(root, path)
-		base := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
-		dir := filepath.Dir(path)
-
-		// Extract actor name from first subdir
-		parts := strings.Split(filepath.ToSlash(rel), "/")
-		actorName := ""
-		if len(parts) > 1 {
-			actorName = parts[0]
-		}
-
-		// Look for metadata sibling
-		metaPath := ""
-		for _, candidate := range []string{
-			filepath.Join(dir, "metadata_"+base+".json"),
-			filepath.Join(dir, base+".metadata.json"),
-			filepath.Join(dir, "metadata.json"),
-		} {
-			if _, e := os.Stat(candidate); e == nil {
-				metaPath = candidate
-				break
-			}
-		}
-
-		// Look for transcript sibling
-		transcript := ""
-		for _, candidate := range []string{
-			filepath.Join(dir, base+".txt"),
-			filepath.Join(dir, "transcript.txt"),
-		} {
-			if data, e := os.ReadFile(candidate); e == nil {
-				transcript = string(data)
-				break
-			}
-		}
-
-		fi, _ := d.Info()
-		out = append(out, localClip{
-			LocalPath:    path,
-			RelPath:      filepath.ToSlash(rel),
-			Name:         base,
-			ActorName:    actorName,
-			Size:         fi.Size(),
-			MetadataPath: metaPath,
-			Transcript:   transcript,
-		})
-		return nil
-	}
-	if err := filepath.WalkDir(root, walk); err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func groupByActorLocal(clips []localClip) map[string][]localClip {
-	groups := make(map[string][]localClip)
-	for _, c := range clips {
-		actor := c.ActorName
-		if actor == "" {
-			actor = "uncategorized"
-		}
-		groups[actor] = append(groups[actor], c)
-	}
-	return groups
-}
-
-func loadMetaFromFile(clip *asset.Asset, path string) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	var meta map[string]any
-	if err := json.Unmarshal(data, &meta); err != nil {
-		return
-	}
-	if clip.Metadata == nil {
-		clip.Metadata = make(map[string]any)
-	}
-	for k, v := range meta {
-		clip.Metadata[k] = v
-	}
-	if v, ok := meta["clean_title"].(string); ok && v != "" {
-		clip.Name = v
-	}
-	if v, ok := meta["youtube_video_id"].(string); ok {
-		clip.SetMetadataString("youtube_video_id", v)
-	}
-	if v, ok := meta["youtube_url"].(string); ok {
-		clip.SetMetadataString("youtube_url", v)
-	}
-	if v, ok := meta["youtube_title"].(string); ok {
-		clip.SetMetadataString("youtube_title", v)
-	}
-	if v, ok := meta["topics"].([]any); ok {
-		clip.Metadata["topics"] = v
-	}
-	if v, ok := meta["speakers"].([]any); ok {
-		clip.Metadata["speakers"] = v
-	}
-	if v, ok := meta["clean_transcript"].(string); ok && v != "" {
-		clip.Metadata["clean_transcript"] = v
-		clip.SearchText = v
-	}
-	if v, ok := meta["hook"].(string); ok {
-		clip.Metadata["hook"] = v
-	}
 }
