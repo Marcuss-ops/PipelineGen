@@ -7,7 +7,7 @@
 #
 # Usage examples:
 #   # Synchronous run (blocking, saves results, returns status):
-#   export VELOX_ADMIN_TOKEN="d6e31eb8d805b0cc91ef439aae42658b2838531b1de35b804f6932ca439c077d"
+#   export VELOX_ADMIN_TOKEN="***REDACTED***"
 #   python3 scripts/run_stock.py --queries "boxing training gym" --folder-name "boxing_clips" --output response.json
 #
 #   # Direct URLs run (sync):

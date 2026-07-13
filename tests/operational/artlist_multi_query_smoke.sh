@@ -13,7 +13,7 @@
 #   - curl + jq on PATH
 #
 # Usage:
-#   VELOX_ADMIN_TOKEN='d6e31eb8d805b0cc91ef439aae42658b2838531b1de35b804f6932ca439c077d' bash tests/operational/artlist_multi_query_smoke.sh
+#   VELOX_ADMIN_TOKEN='***REDACTED***' bash tests/operational/artlist_multi_query_smoke.sh
 
 # Cross-reference: this script is a sibling of artlist_live_e2e_verify.sh
 # which enforces the gate test count (EXPECTED_GATE_MATCHES) against the
@@ -30,7 +30,7 @@ set -euo pipefail
 HOST="${VELOX_HOST:-127.0.0.1}"
 PORT="${VELOX_PORT:-8000}"
 BASE_URL="http://${HOST}:${PORT}"
-TOKEN="${VELOX_ADMIN_TOKEN:-d6e31eb8d805b0cc91ef439aae42658b2838531b1de35b804f6932ca439c077d}"
+TOKEN="${VELOX_ADMIN_TOKEN:-***REDACTED***}"
 SCRAPER_URL="http://127.0.0.1:9123"
 DB_PATH="${VELOX_DATA_DIR:-./data}/media/media.db.sqlite"
 DRY_RUN_LIMIT="${ARTLIST_MQ_LIMIT:-1}"
