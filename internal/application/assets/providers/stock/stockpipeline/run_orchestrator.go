@@ -19,8 +19,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // runOrchestratorResilient is the canonical production entry point.

@@ -25,7 +25,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── SceneImageJobEmitter port (Pattern 0) ──────────────────────────────

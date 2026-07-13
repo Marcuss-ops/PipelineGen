@@ -18,7 +18,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // RegisterJobHandlers is the THIRD (innermost) link in the canonical
@@ -55,7 +55,7 @@ func (h *NonOpsHandler) RegisterJobHandlers() error {
 		return fmt.Errorf("%w: nonops.RegisterJobHandlers called with jobsSvc=nil (composition bug; NewNonOpsHandlerStrict must reject nil JobsSvc at construction; the legacy nil-tolerant NewNonOpsHandler is for test back-compat only)",
 			jobs.ErrJobsSvcRequiredAtRegistration)
 	}
-	return h.jobsSvc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), jobs.HandlerFunc(h.HandleBulkUploadYouTubeClipsJob))
+	return h.jobsSvc.RegisterHandler(string(kerneljob.TypeBulkUploadYouTubeClips), jobs.HandlerFunc(h.HandleBulkUploadYouTubeClipsJob))
 }
 
 // HandleBulkUploadYouTubeClipsJob is the bulk_upload_youtube_clips
@@ -65,7 +65,7 @@ func (h *NonOpsHandler) RegisterJobHandlers() error {
 // a 1-line delegator (clips.Handler.HandleBulkUploadYouTubeClipsJob)
 // for module.go::ClipsDescriptor.RegisterJobHandlers to consume
 // without a direct nonops.Handler import.
-func (h *NonOpsHandler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *jobservice.Job, tools *jobs.JobTools) (map[string]any, error) {
+func (h *NonOpsHandler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *kerneljob.Job, tools *jobs.JobTools) (map[string]any, error) {
 	if h.bulkUploadWorker == nil {
 		return nil, fmt.Errorf("bulk upload worker not configured")
 	}

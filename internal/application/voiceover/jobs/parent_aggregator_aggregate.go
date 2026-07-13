@@ -30,7 +30,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 

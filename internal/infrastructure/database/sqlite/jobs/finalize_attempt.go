@@ -70,9 +70,9 @@ import (
 	"fmt"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )

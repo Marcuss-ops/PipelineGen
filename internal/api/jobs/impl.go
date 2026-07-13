@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -27,7 +27,7 @@ import (
 // aggregates across shards) without touching the orchestrator's
 // mutation surface.
 type JobsHandler struct {
-	service domainjob.Service
+	service kerneljob.Service
 	stats   appjobs.JobStatsReader
 	log     *zap.Logger
 }
@@ -40,7 +40,7 @@ type JobsHandler struct {
 // internal/application/jobs/stats.go). A reader-only binding (e.g.
 // a Postgres-backed aggregator without the mutation surface) passes
 // an implementation that satisfies only JobStatsReader.
-func NewJobsHandler(service domainjob.Service, stats appjobs.JobStatsReader, log *zap.Logger) *JobsHandler {
+func NewJobsHandler(service kerneljob.Service, stats appjobs.JobStatsReader, log *zap.Logger) *JobsHandler {
 	return &JobsHandler{service: service, stats: stats, log: log}
 }
 
@@ -63,7 +63,7 @@ func (h *JobsHandler) Enqueue(c *gin.Context) {
 	}
 
 	// Map HTTP DTO to domain request
-	req := domainjob.EnqueueRequest{
+	req := kerneljob.EnqueueRequest{
 		Type:          dto.Type,
 		Project:       dto.Project,
 		VideoName:     dto.VideoName,
@@ -111,10 +111,10 @@ func (h *JobsHandler) Get(c *gin.Context) {
 }
 
 func (h *JobsHandler) List(c *gin.Context) {
-	var filter domainjob.Filter
+	var filter kerneljob.Filter
 
 	if status := c.Query("status"); status != "" {
-		s := domainjob.Status(status)
+		s := kerneljob.Status(status)
 		filter.Status = &s
 	}
 	if jobType := c.Query("type"); jobType != "" {
@@ -159,7 +159,7 @@ func (h *JobsHandler) Retry(c *gin.Context) {
 	id := c.Param("id")
 
 	type retryer interface {
-		Retry(context.Context, string) (*domainjob.Job, error)
+		Retry(context.Context, string) (*kerneljob.Job, error)
 	}
 	r, ok := h.service.(retryer)
 	if !ok {
@@ -224,7 +224,7 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 	// On error, fall back to an empty slice so the response shape stays stable;
 	// clients polling /full already expect events to be an array (never null).
 	// The canonical Event type lives in domain/job.
-	events := []domainjob.Event{}
+	events := []kerneljob.Event{}
 	if eventsList, err := h.service.ListEvents(c.Request.Context(), id); err != nil {
 		h.log.Error("failed to list job events", zap.String("job_id", id), zap.Error(err))
 	} else {
@@ -256,7 +256,7 @@ func (h *JobsHandler) GetFull(c *gin.Context) {
 // shared by GET /api/jobs/{id} and GET /api/jobs/{id}/full.
 // It derives current_stage from the most recent timeline event and
 // surfaces any events whose type is "warning".
-func (h *JobsHandler) buildJobResponse(j *domainjob.Job, events []domainjob.Event) gin.H {
+func (h *JobsHandler) buildJobResponse(j *kerneljob.Job, events []kerneljob.Event) gin.H {
 	currentStage := string(j.Status)
 	warnings := make([]gin.H, 0)
 	for i := len(events) - 1; i >= 0; i-- {

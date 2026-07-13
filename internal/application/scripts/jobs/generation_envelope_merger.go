@@ -34,8 +34,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // MergeTypedExecutionEnvelope takes the canonical §8.4 result +

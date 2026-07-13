@@ -25,7 +25,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	apiutil "github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -47,7 +47,7 @@ import (
 //     of AGENTS.md) so the API contract is independent of the
 //     internal Command field set.
 type Handler struct {
-	jobsSvc jobservice.Service
+	jobsSvc kerneljob.Service
 	log     *zap.Logger
 }
 
@@ -55,7 +55,7 @@ type Handler struct {
 // pass a non-nil jobsSvc — fail-fast on nil via panic so a
 // misconfigured composition root surfaces at startup rather than
 // at the first request.
-func NewHandler(jobsSvc jobservice.Service, log *zap.Logger) *Handler {
+func NewHandler(jobsSvc kerneljob.Service, log *zap.Logger) *Handler {
 	if jobsSvc == nil {
 		panic("voiceover.NewHandler: jobsSvc is required (jobs.Service for voiceover.generate enqueue)")
 	}

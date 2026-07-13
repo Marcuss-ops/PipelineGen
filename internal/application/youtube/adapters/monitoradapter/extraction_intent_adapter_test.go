@@ -32,7 +32,7 @@ import (
 	monitor "github.com/Marcuss-ops/PipelineGen/internal/application/assets/monitor"
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
 )
@@ -57,29 +57,29 @@ var _ monitor.JobEnqueuer = (*ExtractionIntentAdapter)(nil)
 // Enqueue-recording surfaces the test cases assert on, and lets the
 // collision pre-check be driven via findActive.
 type fakeJobsSvc struct {
-	findActiveResp   *jobservice.Job
+	findActiveResp   *kerneljob.Job
 	findActiveErr    error
 	findActiveCalls  int
 	findActiveKeyArg string
 
 	enqueueErr     error
 	enqueueCalls   int
-	lastEnqueueReq *jobservice.EnqueueRequest
+	lastEnqueueReq *kerneljob.EnqueueRequest
 }
 
-func (f *fakeJobsSvc) FindActiveByKey(_ context.Context, activeKey string) (*jobservice.Job, error) {
+func (f *fakeJobsSvc) FindActiveByKey(_ context.Context, activeKey string) (*kerneljob.Job, error) {
 	f.findActiveCalls++
 	f.findActiveKeyArg = activeKey
 	return f.findActiveResp, f.findActiveErr
 }
 
-func (f *fakeJobsSvc) Enqueue(_ context.Context, req *jobservice.EnqueueRequest) (*jobservice.Job, error) {
+func (f *fakeJobsSvc) Enqueue(_ context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error) {
 	f.enqueueCalls++
 	f.lastEnqueueReq = req
 	if f.enqueueErr != nil {
 		return nil, f.enqueueErr
 	}
-	return &jobservice.Job{ID: "job-" + req.ActiveKey, Status: jobservice.StatusQueued}, nil
+	return &kerneljob.Job{ID: "job-" + req.ActiveKey, Status: kerneljob.StatusQueued}, nil
 }
 
 // fakeChannelsSvc is a minimal ChannelsCursorSvc stub. Records every
@@ -143,9 +143,9 @@ func extractIntentFixture() monitor.ExtractionIntent {
 // video we didn't actually process in this tick.
 func TestExtractionIntentAdapter_CollisionNoOp(t *testing.T) {
 	jsvc := &fakeJobsSvc{
-		findActiveResp: &jobservice.Job{
+		findActiveResp: &kerneljob.Job{
 			ID:     "job-existing",
-			Status: jobservice.StatusQueued,
+			Status: kerneljob.StatusQueued,
 		},
 	}
 	csvc := &fakeChannelsSvc{}
@@ -213,9 +213,9 @@ func TestExtractionIntentAdapter_HappyPath_TranslationLocksAndCursorOmits(t *tes
 	if jsvc.lastEnqueueReq == nil {
 		t.Fatal("Enqueue was called but lastEnqueueReq is nil (test fixture bug)")
 	}
-	if jsvc.lastEnqueueReq.Type != jobservice.TypeYouTubeClipExtract {
+	if jsvc.lastEnqueueReq.Type != kerneljob.TypeYouTubeClipExtract {
 		t.Errorf("Enqueue Type = %q, want %q",
-			jsvc.lastEnqueueReq.Type, jobservice.TypeYouTubeClipExtract)
+			jsvc.lastEnqueueReq.Type, kerneljob.TypeYouTubeClipExtract)
 	}
 	if want := monitor.ActiveKeyPrefix + intent.VideoID; jsvc.lastEnqueueReq.ActiveKey != want {
 		t.Errorf("Enqueue ActiveKey = %q, want %q", jsvc.lastEnqueueReq.ActiveKey, want)

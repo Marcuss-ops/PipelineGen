@@ -9,8 +9,8 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 
@@ -87,13 +87,13 @@ func (h *ScriptGenerateItemJobHandler) Register(jobsSvc *appjobs.Service) error 
 	if jobsSvc == nil {
 		return fmt.Errorf("ScriptGenerateItemJobHandler.Register: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(jobpkg.TypeScriptGenerateItem, appjobs.HandlerFunc(h.HandleJob)); err != nil {
+	if err := jobsSvc.RegisterHandler(kerneljob.TypeScriptGenerateItem, appjobs.HandlerFunc(h.HandleJob)); err != nil {
 		return fmt.Errorf("ScriptGenerateItemJobHandler.Register: bind %q to dispatcher: %w",
-			jobpkg.TypeScriptGenerateItem, err)
+			kerneljob.TypeScriptGenerateItem, err)
 	}
 	if h.logger != nil {
 		h.logger.Info("registered script.generate_item handler",
-			zap.String("job_type", jobpkg.TypeScriptGenerateItem))
+			zap.String("job_type", kerneljob.TypeScriptGenerateItem))
 	}
 	return nil
 }

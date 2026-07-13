@@ -35,7 +35,7 @@
 package jobs
 
 import (
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // buildManifestFromArtifacts materialises the canonical Sender-side

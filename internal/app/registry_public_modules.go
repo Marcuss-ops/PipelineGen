@@ -70,7 +70,7 @@ func registerSystem(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 func registerJobs(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
 	jobsDescriptor, err := jobsapi.Build(jobsapi.Dependencies{
 		Service:     root.Jobs.Service,
-		Stats:       root.Jobs.Service,           // *appjobs.Service satisfies both domainjob.Service + appjobs.JobStatsReader
+		Stats:       root.Jobs.Service,           // *appjobs.Service satisfies both kerneljob.Service + appjobs.JobStatsReader
 		EnabledFunc: func() bool { return true }, // jobs is always on in production
 		ModuleOpts:  nil,                         // no per-feature middleware (matches pre-Step-13 wiring)
 		Logger:      log,

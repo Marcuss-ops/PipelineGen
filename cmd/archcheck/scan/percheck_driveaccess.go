@@ -21,19 +21,19 @@
 //   - internal/app/**                               : composition-root wiring.
 //   - internal/application/assets/delivery/**       : the application-layer delivery port.
 //   - internal/application/assets/catalogsync/**    : TEMPORARY allowlist — uploaddrive.Uploader
-//                                                    field on Subscriber (1 callsite) is
-//                                                    pending typed-port migration (see
-//                                                    TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION
-//                                                    in architecture/deprecations.yaml,
-//                                                    deadline Q3 2026). The allowlist prefix
-//                                                    is attached per-pattern to the
-//                                                    substring-overlapping subset so the
-//                                                    catalogsync file is uniformly exempt.
+//     field on Subscriber (1 callsite) is
+//     pending typed-port migration (see
+//     TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION
+//     in architecture/deprecations.yaml,
+//     deadline Q3 2026). The allowlist prefix
+//     is attached per-pattern to the
+//     substring-overlapping subset so the
+//     catalogsync file is uniformly exempt.
 //   - *_test.go                                     : tests may construct fakes directly.
 //   - cmd/archcheck/scan/**                         : the scanner's own package is exempt
-//                                                    (out of the walk scope: ScanDriveAccessSSOT
-//                                                    only walks internal/application/** +
-//                                                    internal/api/**).
+//     (out of the walk scope: ScanDriveAccessSSOT
+//     only walks internal/application/** +
+//     internal/api/**).
 //
 // Pattern anchors:
 //

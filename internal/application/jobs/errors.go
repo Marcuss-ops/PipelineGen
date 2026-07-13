@@ -89,7 +89,7 @@
 // was a back-compat shim for the pre-Fase-5(a) assignment chain
 // appjobs ← sqljobs ← domjob). The canonical home is
 // `internal/domain/job/errors.go`; callers probe via
-// `errors.Is(err, domjob.ErrLeaseLost)`.
+// `errors.Is(err, kerneljob.ErrLeaseLost)`.
 package jobs
 
 import "errors"

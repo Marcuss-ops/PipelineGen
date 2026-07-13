@@ -16,7 +16,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 type recordingYouTubeClipService struct {
@@ -46,25 +46,25 @@ func (s *recordingYouTubeClipService) GetOrCreateChannelFolder(_ context.Context
 }
 
 type recordingJobsService struct {
-	lastReq *jobservice.EnqueueRequest
+	lastReq *kerneljob.EnqueueRequest
 }
 
-func (s *recordingJobsService) Enqueue(_ context.Context, req *jobservice.EnqueueRequest) (*jobservice.Job, error) {
+func (s *recordingJobsService) Enqueue(_ context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error) {
 	s.lastReq = req
-	return &jobservice.Job{ID: "job-123"}, nil
+	return &kerneljob.Job{ID: "job-123"}, nil
 }
 
-func (s *recordingJobsService) Get(context.Context, string) (*jobservice.Job, error) { return nil, nil }
-func (s *recordingJobsService) Cancel(context.Context, string) error                 { return nil }
-func (s *recordingJobsService) List(context.Context, jobservice.Filter) ([]jobservice.Job, error) {
+func (s *recordingJobsService) Get(context.Context, string) (*kerneljob.Job, error) { return nil, nil }
+func (s *recordingJobsService) Cancel(context.Context, string) error                { return nil }
+func (s *recordingJobsService) List(context.Context, kerneljob.Filter) ([]kerneljob.Job, error) {
 	return nil, nil
 }
-func (s *recordingJobsService) IsTerminal(status jobservice.Status) bool { return status.IsTerminal() }
-func (s *recordingJobsService) RegisterHandler(string, any) error        { return nil }
-func (s *recordingJobsService) ListEvents(context.Context, string) ([]jobservice.Event, error) {
+func (s *recordingJobsService) IsTerminal(status kerneljob.Status) bool { return status.IsTerminal() }
+func (s *recordingJobsService) RegisterHandler(string, any) error       { return nil }
+func (s *recordingJobsService) ListEvents(context.Context, string) ([]kerneljob.Event, error) {
 	return nil, nil
 }
-func (s *recordingJobsService) Retry(context.Context, string) (*jobservice.Job, error) {
+func (s *recordingJobsService) Retry(context.Context, string) (*kerneljob.Job, error) {
 	return nil, nil
 }
 
@@ -161,7 +161,7 @@ func TestNormalizeExtractionDestination_PreservesExplicitFolderPath(t *testing.T
 
 func TestRecordingJobsService_EnqueueCapturesPayload(t *testing.T) {
 	svc := &recordingJobsService{}
-	_, err := svc.Enqueue(context.Background(), &jobservice.EnqueueRequest{
+	_, err := svc.Enqueue(context.Background(), &kerneljob.EnqueueRequest{
 		Type:    youtube.JobExtract,
 		Payload: map[string]any{"hello": "world"},
 	})
@@ -172,8 +172,8 @@ func TestRecordingJobsService_EnqueueCapturesPayload(t *testing.T) {
 
 func TestRecordingJobsService_IsTerminalDelegates(t *testing.T) {
 	svc := &recordingJobsService{}
-	require.True(t, svc.IsTerminal(jobservice.StatusSucceeded))
-	require.False(t, svc.IsTerminal(jobservice.StatusQueued))
+	require.True(t, svc.IsTerminal(kerneljob.StatusSucceeded))
+	require.False(t, svc.IsTerminal(kerneljob.StatusQueued))
 }
 
 func TestNormalizeExtractionDestination_InvalidsRemainEmpty(t *testing.T) {

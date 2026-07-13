@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"go.uber.org/zap"
@@ -332,7 +332,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 			)
 			return liveResp, nil, dedupErr
 		}
-		job, err := s.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
+		job, err := s.jobsSvc.Enqueue(ctx, &kerneljob.EnqueueRequest{
 			Type:       "media.artlist",
 			Payload:    (&JobCodec{}).PayloadFromRequest(&RunTagRequest{Term: normalizedTerm, Limit: limit, RootFolderID: driveFolderID}),
 			ActiveKey:  runActiveKey,

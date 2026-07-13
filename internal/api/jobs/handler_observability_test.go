@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -62,7 +61,7 @@ func TestGet_EnrichedResponseShape(t *testing.T) {
 
 	job := &kerneljob.Job{
 		ID:            "job-obs-1",
-		Type:          domainjob.TypeScriptGenerate,
+		Type:          kerneljob.TypeScriptGenerate,
 		Status:        kerneljob.StatusRunning,
 		CorrelationID: "corr-abc-123",
 		Progress:      42,
@@ -112,7 +111,7 @@ func TestList_CorrelationIDFilter(t *testing.T) {
 
 	job := &kerneljob.Job{
 		ID:            "job-obs-2",
-		Type:          domainjob.TypeScriptGenerate,
+		Type:          kerneljob.TypeScriptGenerate,
 		Status:        kerneljob.StatusQueued,
 		CorrelationID: "corr-filter-xyz",
 	}

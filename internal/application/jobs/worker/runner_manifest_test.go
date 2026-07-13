@@ -18,7 +18,7 @@ import (
 	"io"
 	"testing"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 

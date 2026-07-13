@@ -25,12 +25,12 @@ import (
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
 	sqlitejobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	sqliteops "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 func init() { gin.SetMode(gin.TestMode) }
@@ -370,7 +370,7 @@ CREATE UNIQUE INDEX ux_outbox_events_event_key
 // delegator pattern, June 2026) but the test only exercises
 // the Get/Events paths that don't touch stats. Production
 // wiring passes *appjobs.Service which satisfies BOTH
-// domainjob.Service AND JobStatsReader structurally (see
+// kerneljob.Service AND JobStatsReader structurally (see
 // internal/app/registry_public_modules.go::registerJobs).
 // Tests use this typed stub to avoid pulling a real SQLite
 // stats reader into the script package (which would otherwise

@@ -32,9 +32,9 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -201,10 +201,10 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	job := &domainjob.Job{
+	job := &kerneljob.Job{
 		ID:        "gate03-job-run-001",
 		Type:      "media.artlist",
-		Status:    domainjob.StatusRunning,
+		Status:    kerneljob.StatusRunning,
 		Payload:   payloadBytes,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
@@ -317,10 +317,10 @@ func TestGate03_ArtlistRunsNotRecordedWhenDiscoveryFails(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	job := &domainjob.Job{
+	job := &kerneljob.Job{
 		ID:        "gate03-job-fail-001",
 		Type:      "media.artlist",
-		Status:    domainjob.StatusRunning,
+		Status:    kerneljob.StatusRunning,
 		Payload:   payloadBytes,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),

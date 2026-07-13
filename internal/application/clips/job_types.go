@@ -2,7 +2,7 @@ package clips
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // JobBulkUpload is the canonical application-side alias for the

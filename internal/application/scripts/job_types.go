@@ -2,7 +2,7 @@ package scripts
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // JobGenerate is the canonical application-side alias for the

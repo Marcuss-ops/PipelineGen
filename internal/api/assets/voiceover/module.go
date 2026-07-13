@@ -52,7 +52,7 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -74,7 +74,7 @@ type Dependencies struct {
 	// composition-root misconfig surfaces at startup); the panic
 	// is unreachable from Build's caller because Build is
 	// fail-closed on nil Jobs BEFORE calling NewHandler.
-	Jobs jobservice.Service
+	Jobs kerneljob.Service
 
 	// EnabledFunc is the closure that decides whether the
 	// module's routes are mounted. The voiceover capability has

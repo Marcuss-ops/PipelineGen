@@ -48,7 +48,7 @@ import (
 	"testing"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // canonicalJobTypes enumerates every Type* constant declared in the
@@ -87,31 +87,31 @@ import (
 // Compose NOT in the slice) trips test 4. Together they make the
 // Compose() ingress symmetric against the canonical const block.
 var canonicalJobTypes = []string{
-	job.TypeMediaExtract,           // domain/job/job.go
-	job.TypeMediaStock,             // domain/job/job.go
-	job.TypeVoiceoverBatch,         // domain/job/job.go
-	job.TypeSubtitleGenerate,       // domain/job/job.go
-	job.TypeRenderVideo,            // domain/job/job.go
-	job.TypeYouTubeUpload,          // domain/job/job.go
-	youtube.JobExtract,     // domain/job/job.go
-	job.TypeCatalogSync,            // domain/job/job.go
-	job.TypeArtlistRun,             // domain/job/job.go
-	job.TypeSystemCleanup,          // domain/job/job.go
-	job.TypeMediaGenerate,          // domain/job/job.go
-	job.TypeVideoGenerate,          // domain/job/job.go
-	job.TypeBooksProcess,           // domain/job/job.go
-	job.TypeLessonsProcess,         // domain/job/job.go
-	job.TypeMediaReindex,           // domain/job/job.go
-	job.TypeMediaEnrich,            // domain/job/job.go
-	job.TypeYouTubeRebuildST,       // domain/job/job.go
-	scripts.JobGenerate,         // domain/job/job.go
-	clips.JobBulkUpload, // domain/job/job.go
-	job.TypeDriveFolderSync,        // domain/job/job.go
-	job.TypeMediaCurate,            // domain/job/job.go
-	job.TypeVoiceoverPromo,         // domain/job/job.go
-	voiceover.JobGenerate,      // domain/job/job.go
-	job.TypeVoiceoverGenerateItem,  // domain/job/job.go
-	TypeImageGenerateGoogle,        // application/jobs/registry.go (FASE 2 / June 2026)
+	job.TypeMediaExtract,          // domain/job/job.go
+	job.TypeMediaStock,            // domain/job/job.go
+	job.TypeVoiceoverBatch,        // domain/job/job.go
+	job.TypeSubtitleGenerate,      // domain/job/job.go
+	job.TypeRenderVideo,           // domain/job/job.go
+	job.TypeYouTubeUpload,         // domain/job/job.go
+	youtube.JobExtract,            // domain/job/job.go
+	job.TypeCatalogSync,           // domain/job/job.go
+	job.TypeArtlistRun,            // domain/job/job.go
+	job.TypeSystemCleanup,         // domain/job/job.go
+	job.TypeMediaGenerate,         // domain/job/job.go
+	job.TypeVideoGenerate,         // domain/job/job.go
+	job.TypeBooksProcess,          // domain/job/job.go
+	job.TypeLessonsProcess,        // domain/job/job.go
+	job.TypeMediaReindex,          // domain/job/job.go
+	job.TypeMediaEnrich,           // domain/job/job.go
+	job.TypeYouTubeRebuildST,      // domain/job/job.go
+	scripts.JobGenerate,           // domain/job/job.go
+	clips.JobBulkUpload,           // domain/job/job.go
+	job.TypeDriveFolderSync,       // domain/job/job.go
+	job.TypeMediaCurate,           // domain/job/job.go
+	job.TypeVoiceoverPromo,        // domain/job/job.go
+	voiceover.JobGenerate,         // domain/job/job.go
+	job.TypeVoiceoverGenerateItem, // domain/job/job.go
+	TypeImageGenerateGoogle,       // application/jobs/registry.go (FASE 2 / June 2026)
 	// Spina Dorsale Fase 2 / PR-BATCH-REGISTER-ASYNC / PR-GEMMA-EXTRACT-IMPORTANT
 	// downstream job types registered in registry_script.go, registry_stock.go,
 	// registry_media.go, and registry_extraction.go.

@@ -2,7 +2,7 @@ package clips
 
 import "context"
 
-// JobsServicePort is the narrowed surface of `jobservice.Service`
+// JobsServicePort is the narrowed surface of `kerneljob.Service`
 // for enqueuing "system.cleanup" jobs in deep mode. Repurposes the
 // existing port `domain/job` to avoid a re-import in this file.
 type JobsServicePort interface {

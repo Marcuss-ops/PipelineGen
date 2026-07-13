@@ -73,10 +73,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptjobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
 )
@@ -258,10 +258,10 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	// Tracked: VO-DECOMPOSITION-2026-07-04. The placeholder returns a clear
 	// "not yet implemented" error so the Creator never silently drops
 	// voiceover jobs on an unsigned dispatcher.
-	placeholderVO := func(ctx context.Context, j *domainjob.Job, tools *appjobs.JobExecutionTools) (map[string]any, error) {
+	placeholderVO := func(ctx context.Context, j *kerneljob.Job, tools *appjobs.JobExecutionTools) (map[string]any, error) {
 		return nil, fmt.Errorf("voiceover.generate_item: not yet implemented in Creator composition (Blocco 3.x)")
 	}
-	if err := dispatcher.Register(domainjob.TypeVoiceoverGenerateItem, placeholderVO); err != nil {
+	if err := dispatcher.Register(kerneljob.TypeVoiceoverGenerateItem, placeholderVO); err != nil {
 		cleanup()
 		return nil, nil, fmt.Errorf("creator: register voiceover.generate_item placeholder: %w", err)
 	}
@@ -272,11 +272,11 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 	reg := worker.NewRegistry()
 	// P1 #13 (July 2026): adapter was retired. dispatcher.AllHandlers
 	// returns canonical `appjobs.Handler` values which are Go-type-aliases
-	// for `domainjob.Handler` (canonical SSOT in
+	// for `kerneljob.Handler` (canonical SSOT in
 	// internal/domain/job/handler.go). worker.Handler is also an alias
-	// for the same domainjob.Handler, so the handler passes directly
+	// for the same kerneljob.Handler, so the handler passes directly
 	// without an inline-wrapped closure. The worker runtime translates
-	// `worker.Tools` (broker facade) into `*domainjob.JobExecutionTools`
+	// `worker.Tools` (broker facade) into `*kerneljob.JobExecutionTools`
 	// at Dispatch time (registry.go::translateToolsToExecutionTools)
 	// so the handler observes the canonical signature at invocation.
 	for jobType, handler := range dispatcher.AllHandlers() {
@@ -331,12 +331,12 @@ type brokerAdapter struct {
 // signature; a mismatched payload is reported as a typed error so
 // registration fails loudly rather than silently dropping the
 // handler. P1 #13 (July 2026): appjobs.JobExecutionTools is a
-// Go-type-alias for domainjob.JobExecutionTools (canonical SSOT),
+// Go-type-alias for kerneljob.JobExecutionTools (canonical SSOT),
 // and the asserted signature matches the canonical Handler.
 // Pre-P1-#13 literal `map[string]any` return remains valid via
 // Result = map[string]any alias.
 func (b brokerAdapter) RegisterHandler(jobType string, handler any) error {
-	h, ok := handler.(func(context.Context, *domainjob.Job, *appjobs.JobExecutionTools) (map[string]any, error))
+	h, ok := handler.(func(context.Context, *kerneljob.Job, *appjobs.JobExecutionTools) (map[string]any, error))
 	if !ok {
 		return fmt.Errorf("brokerAdapter: handler type mismatch for jobType=%q (got %T)", jobType, handler)
 	}

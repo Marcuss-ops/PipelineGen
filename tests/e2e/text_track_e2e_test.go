@@ -36,10 +36,10 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"

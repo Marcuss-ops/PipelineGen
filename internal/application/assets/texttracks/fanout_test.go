@@ -39,7 +39,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"

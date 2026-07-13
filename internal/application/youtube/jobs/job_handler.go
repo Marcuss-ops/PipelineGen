@@ -8,7 +8,7 @@ import (
 
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
 )
@@ -48,7 +48,7 @@ func NewJobHandler(svc YouTubeExtractor, log *zap.Logger) *JobHandler {
 //     errors.As, then logged + returned as result, nil);
 //   - err          → terminal / retryable classification surfaced to the
 //     broker so its retry/timeout policy can react.
-func (h *JobHandler) HandleJob(ctx context.Context, job *jobservice.Job, tools *jobtools.JobTools) (map[string]any, error) {
+func (h *JobHandler) HandleJob(ctx context.Context, job *kerneljob.Job, tools *jobtools.JobTools) (map[string]any, error) {
 	h.log.Info("handling youtube_clip.extract job",
 		zap.String("job_id", job.ID),
 	)

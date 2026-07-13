@@ -30,11 +30,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/worker"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/jobbrokerclient"
 	remoteshared "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/remote/shared"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // internalV1Prefix is the URL prefix the production server mounts
@@ -524,15 +524,15 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	require.NoError(t, dispatcher.Register(appjobs.TypeMediaReindex, clipSvc.HandleJob))
 
 	// 5. P1 #13 (July 2026): appjobs.HandlerFunc = worker.Handler =
-	//    domainjob.Handler — the handler already takes *JobExecutionTools;
+	//    kerneljob.Handler — the handler already takes *JobExecutionTools;
 	//    the adapt bridge is now a no-op identity cast (previously it
 	//    converted *worker.Tools → *appjobs.JobTools). worker.Runner
-	//    translates *worker.Tools → *domainjob.JobExecutionTools at
+	//    translates *worker.Tools → *kerneljob.JobExecutionTools at
 	//    Dispatch time, so the handler sees the same shape from both
 	//    the in-process Dispatcher call and the remote-worker call.
 	//
 	// godlike/06 SSOT: both adapt here and the production
-	//    app.BuildWorkerRegistry consume the same domainjob.Handler;
+	//    app.BuildWorkerRegistry consume the same kerneljob.Handler;
 	//    no inline bridge is needed.
 	adapt := func(handler appjobs.HandlerFunc) worker.Handler {
 		return handler
@@ -553,11 +553,11 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	mock := newMockBroker(t)
 	mock.serveLease(&appjobs.Lease{
 		LeaseID: "lease-test-1",
-		Job: &domainjob.Job{
+		Job: &kerneljob.Job{
 			ID:       "job-test-reindex-1",
 			Type:     appjobs.TypeMediaReindex,
 			Payload:  json.RawMessage(`{}`),
-			Status:   domainjob.StatusRunning,
+			Status:   kerneljob.StatusRunning,
 			Revision: 1,
 			LeaseID:  "lease-test-1",
 		},
@@ -675,7 +675,7 @@ func TestE2E_RemoteWorkerExecutesMediaReindex(t *testing.T) {
 	// assertion reads cleanly across both lifecycle paths. If we
 	// wanted strict equality, we'd use Equal(t, 0, ...) which
 	// requires `int(0)`; EqualValues is the safer cross-shape choice.
-	j2Result, err := j2.HandleJob(replayCtx, &domainjob.Job{
+	j2Result, err := j2.HandleJob(replayCtx, &kerneljob.Job{
 		ID:      "job-test-reindex-1-replay",
 		Type:    appjobs.TypeMediaReindex,
 		Payload: json.RawMessage(`{}`),
@@ -763,11 +763,11 @@ func TestE2E_RemoteWorkerRenewsLease(t *testing.T) {
 	mock := newMockBroker(t)
 	lease := &appjobs.Lease{
 		LeaseID: "lease-phase7-1",
-		Job: &domainjob.Job{
+		Job: &kerneljob.Job{
 			ID:       "job-phase7-renew-1",
 			Type:     "test.slow_phase7",
 			Payload:  json.RawMessage(`{}`),
-			Status:   domainjob.StatusRunning,
+			Status:   kerneljob.StatusRunning,
 			Revision: 1,
 			LeaseID:  "lease-phase7-1",
 		},
@@ -782,10 +782,10 @@ func TestE2E_RemoteWorkerRenewsLease(t *testing.T) {
 	//    block-until-signal pattern proves the RUNNER's renewal
 	//    loop fires while the handler is mid-execution, which is
 	//    the W1 Phase 7 contract.
-	// P1 #13 (July 2026): worker.Handler = domainjob.Handler takes
+	// P1 #13 (July 2026): worker.Handler = kerneljob.Handler takes
 	// *JobExecutionTools (not *worker.Tools). The tools parameter is
 	// unused (_) so the parameter type change is cosmetic-only.
-	handler := func(ctx context.Context, _ *domainjob.Job, _ *domainjob.JobExecutionTools) (domainjob.Result, error) {
+	handler := func(ctx context.Context, _ *kerneljob.Job, _ *kerneljob.JobExecutionTools) (kerneljob.Result, error) {
 		select {
 		case <-mock.renewSeen:
 			// broker mock observed ≥1 renew — unblock and

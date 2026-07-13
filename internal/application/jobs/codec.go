@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Legacy typed Codec surface (kept from pre-C2) ───────────────────

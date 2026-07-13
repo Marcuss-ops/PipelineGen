@@ -2,7 +2,7 @@ package youtube
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // JobExtract is the canonical application-side alias for the

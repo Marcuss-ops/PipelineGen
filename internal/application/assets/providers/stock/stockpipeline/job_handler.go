@@ -21,7 +21,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // StockJobResult is the typed result envelope returned by HandleJob.
@@ -29,11 +29,11 @@ import (
 // declared in a single struct (godlike/06 one-owner-per-fact).
 //
 // P5 (July 2026): added as part of the stock action-plan wave.
-// The return surface stays map[string]any (domainjob.Result) for
+// The return surface stays map[string]any (kerneljob.Result) for
 // broker compatibility; ToResultMap() bridges the typed struct to
 // the canonical wire representation.
 type StockJobResult struct {
-	Manifest                *jobdomain.ArtifactManifest `json:"__artifact_manifest"`
+	Manifest                *kerneljob.ArtifactManifest `json:"__artifact_manifest"`
 	FinalStatus             string                      `json:"final_status"`
 	TotalClips              int                         `json:"total_clips"`
 	TotalChunks             int                         `json:"total_chunks"`
@@ -52,7 +52,7 @@ type StockJobResult struct {
 // passes (non-empty string / non-zero time).
 func (r StockJobResult) ToResultMap() map[string]any {
 	m := map[string]any{
-		jobdomain.ManifestKey: r.Manifest,
+		kerneljob.ManifestKey: r.Manifest,
 		"final_status":        r.FinalStatus,
 		"total_clips":         r.TotalClips,
 		"total_chunks":        r.TotalChunks,
@@ -273,7 +273,7 @@ func extractLease(job *appjobs.Job) finalization.Lease {
 // Errors here are typed-error contract violations (manifest
 // schema drift) — a typed-error wrap is the right escalation
 // since callers can't recover from a marshaller bug mid-job.
-func manifestBytes(manifest *jobdomain.ArtifactManifest) ([]byte, error) {
+func manifestBytes(manifest *kerneljob.ArtifactManifest) ([]byte, error) {
 	if manifest == nil {
 		return nil, fmt.Errorf("stockpipeline.manifestBytes: nil manifest")
 	}
