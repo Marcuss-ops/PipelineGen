@@ -526,6 +526,170 @@ func TestMigrations_Smoke(t *testing.T) {
 		}
 	})
 
+	// ── PR-CATALOG-MULTILINGUA step 2 (July 2026) — migration 156.
+
+	// AssetTextTracksSpecColumnsPresent asserts that the two new
+	// columns added by migration 156 are present on
+	// asset_text_tracks: source_track_id (INTEGER nullable FK ON
+	// DELETE SET NULL → asset_text_tracks.id) and
+	// source_text_hash (TEXT NOT NULL DEFAULT ''). godlike/06
+	// SSOT: these are the canonical audit-trail surface for the
+	// catalog translation pipeline; a future agent removing
+	// either would regress the audit-trail invariant.
+	t.Run("AssetTextTracksSpecColumnsPresent", func(t *testing.T) {
+		required := []string{"source_track_id", "source_text_hash"}
+		rows, err := db.Query(`PRAGMA table_info(asset_text_tracks)`)
+		if err != nil {
+			t.Fatalf("PRAGMA table_info(asset_text_tracks): %v", err)
+		}
+		defer rows.Close()
+		seen := make(map[string]struct{}, 32)
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, ctype string
+			var dfltValue sql.NullString
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+				t.Fatalf("scan asset_text_tracks table_info row: %v", err)
+			}
+			seen[name] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate asset_text_tracks table_info: %v", err)
+		}
+		for _, col := range required {
+			if _, ok := seen[col]; !ok {
+				t.Errorf("asset_text_tracks missing step-2 column %q (added by migration 156)", col)
+			}
+		}
+	})
+
+	// AssetTextTracksSourceTrackFKRoundTrip pins the audit-trail
+	// shape: insert a parent EN transcript + a child IT translation
+	// with source_track_id pointing back to the parent; DELETE the
+	// parent; verify the child survives with source_track_id = NULL
+	// (ON DELETE SET NULL — NOT CASCADE, which would erase the
+	// audit row entirely).
+	t.Run("AssetTextTracksSourceTrackFKRoundTrip", func(t *testing.T) {
+		const assetID = "rt-step2-fk-1"
+		if _, err := db.Exec(
+			`INSERT INTO media_assets (id, source, name, media_type, lifecycle_state) VALUES (?, 'artlist', 'step2-fk', 'video', 'ACTIVE')`,
+			assetID,
+		); err != nil {
+			t.Fatalf("setup media_assets: %v", err)
+		}
+		res, err := db.Exec(
+			`INSERT INTO asset_text_tracks (asset_id, language_code, text_kind, text_content, source_type, is_original, text_hash, status) VALUES (?, 'en', 'transcript', '[en] hello', 'provided', 1, ?, 'READY')`,
+			assetID, "en-hash-1",
+		)
+		if err != nil {
+			t.Fatalf("insert parent EN track: %v", err)
+		}
+		parentID, err := res.LastInsertId()
+		if err != nil {
+			t.Fatalf("read parent LastInsertId: %v", err)
+		}
+		if _, err := db.Exec(
+			`INSERT INTO asset_text_tracks (asset_id, language_code, text_kind, text_content, source_type, source_track_id, source_text_hash, is_original, text_hash, translation_key, prompt_version, status) VALUES (?, 'it', 'transcript', '[it] hello', 'translation', ?, 'en-hash-1', 0, ?, 'tk-step2-1', 'prompt-v1', 'READY')`,
+			assetID, parentID, "it-hash-1",
+		); err != nil {
+			t.Fatalf("insert child IT translation: %v", err)
+		}
+		var childSourceID sql.NullInt64
+		var childSourceHash string
+		if err := db.QueryRow(
+			`SELECT source_track_id, source_text_hash FROM asset_text_tracks WHERE asset_id = ? AND language_code = 'it' AND text_kind = 'transcript'`,
+			assetID,
+		).Scan(&childSourceID, &childSourceHash); err != nil {
+			t.Fatalf("read child row: %v", err)
+		}
+		if !childSourceID.Valid || childSourceID.Int64 != parentID {
+			t.Errorf("child.source_track_id = %v, want %d", childSourceID, parentID)
+		}
+		if childSourceHash != "en-hash-1" {
+			t.Errorf("child.source_text_hash = %q, want %q", childSourceHash, "en-hash-1")
+		}
+		if _, err := db.Exec(`DELETE FROM asset_text_tracks WHERE id = ?`, parentID); err != nil {
+			t.Fatalf("delete parent: %v", err)
+		}
+		var afterDeleteID sql.NullInt64
+		err = db.QueryRow(
+			`SELECT source_track_id FROM asset_text_tracks WHERE asset_id = ? AND language_code = 'it' AND text_kind = 'transcript'`,
+			assetID,
+		).Scan(&afterDeleteID)
+		if err != nil {
+			t.Fatalf("read child after parent-delete: %v", err)
+		}
+		if afterDeleteID.Valid {
+			t.Errorf("child.source_track_id should be NULL after parent delete (ON DELETE SET NULL); got %d", afterDeleteID.Int64)
+		}
+	})
+
+	// AssetTextTracksSpecDefaultsPermissive: a row insert WITHOUT
+	// source_track_id / source_text_hash MUST succeed and yield
+	// NULL / '' defaults — the additive contract lets migration
+	// 156 ship without a separate back-fill.
+	t.Run("AssetTextTracksSpecDefaultsPermissive", func(t *testing.T) {
+		const assetID = "rt-step2-defaults-1"
+		if _, err := db.Exec(
+			`INSERT INTO media_assets (id, source, name, media_type, lifecycle_state) VALUES (?, 'artlist', 'step2-defaults', 'video', 'ACTIVE')`,
+			assetID,
+		); err != nil {
+			t.Fatalf("setup media_assets: %v", err)
+		}
+		if _, err := db.Exec(
+			`INSERT INTO asset_text_tracks (asset_id, language_code, text_kind, text_content, source_type, is_original, text_hash, status) VALUES (?, 'de', 'transcript', '[de] hallo', 'provided', 1, ?, 'READY')`,
+			assetID, "de-hash-1",
+		); err != nil {
+			t.Fatalf("insert without source_track_id / source_text_hash: %v", err)
+		}
+		var sourceID sql.NullInt64
+		var sourceHash string
+		if err := db.QueryRow(
+			`SELECT source_track_id, source_text_hash FROM asset_text_tracks WHERE asset_id = ? AND language_code = 'de' AND text_kind = 'transcript'`,
+			assetID,
+		).Scan(&sourceID, &sourceHash); err != nil {
+			t.Fatalf("read defaults: %v", err)
+		}
+		if sourceID.Valid {
+			t.Errorf("default source_track_id should be NULL; got %d", sourceID.Int64)
+		}
+		if sourceHash != "" {
+			t.Errorf("default source_text_hash should be ''; got %q", sourceHash)
+		}
+	})
+
+	// AssetTextTrackSegmentsTextHashPresent: assert the new
+	// text_hash column + supporting index (migration 156) on
+	// asset_text_track_segments. DEFAULT '' / non-unique.
+	t.Run("AssetTextTrackSegmentsTextHashPresent", func(t *testing.T) {
+		rows, err := db.Query(`PRAGMA table_info(asset_text_track_segments)`)
+		if err != nil {
+			t.Fatalf("PRAGMA table_info(asset_text_track_segments): %v", err)
+		}
+		seen := make(map[string]struct{}, 16)
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, ctype string
+			var dfltValue sql.NullString
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+				rows.Close()
+				t.Fatalf("scan table_info row: %v", err)
+			}
+			seen[name] = struct{}{}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate table_info: %v", err)
+		}
+		if _, ok := seen["text_hash"]; !ok {
+			t.Errorf("asset_text_track_segments missing text_hash column (added by migration 156)")
+		}
+		segIdx := mustReadIndexNames(t, db, "asset_text_track_segments")
+		if !contains(segIdx, "idx_asset_text_track_segments_hash") {
+			t.Errorf("asset_text_track_segments missing index %q (declared by migration 156)", "idx_asset_text_track_segments_hash")
+		}
+	})
+
 	// ── PR-CATALOG-MULTILINGUA step 4 (July 2026) — migration 155.
 
 	// AssetTextTracksTranslationFingerprintColumnsPresent asserts
