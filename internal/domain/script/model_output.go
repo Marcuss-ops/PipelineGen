@@ -334,10 +334,23 @@ type ClipBinding struct {
 	DriveLink string `json:"drive_link,omitempty"`
 
 	// StartMs is the optional clip start offset in milliseconds.
+	// Together with EndMs it bounds the selected segment within
+	// the underlying clip asset.
 	StartMs int64 `json:"start_ms,omitempty"`
 
 	// EndMs is the optional clip end offset in milliseconds.
+	// Together with StartMs it bounds the selected segment within
+	// the underlying clip asset.
 	EndMs int64 `json:"end_ms,omitempty"`
+
+	// DurationMs is the canonical binding-segment-duration
+	// surface; "duration unknown" when zero. Populated by
+	// the scene planner via scriptpkg.ClipDurationMs (PURE
+	// canonical helper) with the canonical caller pattern's
+	// scriptpkg.ClipDurationMsFromAssetID fallback. Whole-
+	// clip duration is upstream binder's responsibility
+	// (godlike/06 SSOT decomposition).
+	DurationMs int64 `json:"duration_ms,omitempty"`
 }
 
 // ── Image binding ──────────────────────────────────────────────────

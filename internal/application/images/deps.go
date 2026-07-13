@@ -13,6 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
@@ -63,9 +64,22 @@ type ImagesGenAIDeps struct {
 }
 
 // ImagesExternalDeps holds external-service dependencies (ingest, outbox, Velox, GA).
+//
+// Committer is the canonical SINGLE-transaction asset commit surface
+// (persistence.AssetCommitter) used by ImageStorageService.ingestDirect
+// to atomically write media_assets + asset_locations + typed metadata +
+// the asset.index.requested outbox event. It replaces the prior
+// AddImage + dispatcher.EnqueueAndIndex two-transaction path that
+// carried a documented crash-risk window between SQLite and Qdrant
+// (PR-IMAGES-INGEST-ATOMIC, July 2026). Nil is tolerated for back-
+// compat with test fixtures and partial deploys; a nil Committer
+// in production is the operator's responsibility, not the SSOT.
+// The legacy Dispatcher field is retained (NOT removed) for video
+// and audio paths in storage_drive.go that don't use CommitAsset.
 type ImagesExternalDeps struct {
 	IngestSvc    *ingest.Service
 	Dispatcher   *outbox.Dispatcher
+	Committer    persistence.AssetCommitter
 	VeloxBaseURL string
 	GACfg        GoogleAccountingConfig
 }

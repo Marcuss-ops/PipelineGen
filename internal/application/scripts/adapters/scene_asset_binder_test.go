@@ -64,7 +64,7 @@ func TestSceneAssetBinder_BindClips_OneToOnePreservesOrder(t *testing.T) {
 
 	require.Equal(t, true, res.Changed, "1:1 binding must report Changed=true")
 	for i, want := range clipIDs {
-		sceneID := "scene-" + string(rune('0' + i))
+		sceneID := "scene-" + string(rune('0'+i))
 		binding, ok := res.Bindings[sceneID]
 		require.True(t, ok, "expected binding for %s", sceneID)
 		assert.Equal(t, want, binding.ClipID)
@@ -105,14 +105,14 @@ func TestSceneAssetBinder_BindClips_RespectsNumClips(t *testing.T) {
 
 	require.Equal(t, true, res.Changed, "NumClips-respecting binding must report Changed=true")
 	for i := 0; i < numClips; i++ {
-		sceneID := "scene-" + string(rune('0' + i))
+		sceneID := "scene-" + string(rune('0'+i))
 		binding, ok := res.Bindings[sceneID]
 		require.True(t, ok, "expected binding for %s", sceneID)
 		assert.Equal(t, clipIDs[i], binding.ClipID)
 		assert.Equal(t, driveLinks[clipIDs[i]], binding.DriveLink)
 	}
 	for i := numClips; i < 5; i++ {
-		sceneID := "scene-" + string(rune('0' + i))
+		sceneID := "scene-" + string(rune('0'+i))
 		_, ok := res.Bindings[sceneID]
 		assert.False(t, ok, "scene[%d] must not have a binding", i)
 	}
@@ -147,13 +147,13 @@ func TestSceneAssetBinder_BindClips_ClearsExtraStaleClipBindings(t *testing.T) {
 
 	require.Equal(t, true, res.Changed)
 	for i := 0; i < 2; i++ {
-		sceneID := "scene-" + string(rune('0' + i))
+		sceneID := "scene-" + string(rune('0'+i))
 		binding, ok := res.Bindings[sceneID]
 		require.True(t, ok)
 		assert.Equal(t, clipIDs[i], binding.ClipID)
 	}
 	for i := 2; i < 5; i++ {
-		sceneID := "scene-" + string(rune('0' + i))
+		sceneID := "scene-" + string(rune('0'+i))
 		_, ok := res.Bindings[sceneID]
 		assert.False(t, ok, "scene[%d] must not have a binding", i)
 	}

@@ -109,7 +109,7 @@ import (
 type AssetTxFinalizer struct {
 	log       *zap.Logger
 	fanout    *texttracks.MaterializeFanOut // optional nil-safe post-publish fan-out helper
-	committer persistence.AssetCommitter     // canonical asset commit surface
+	committer persistence.AssetCommitter    // canonical asset commit surface
 }
 
 // NewAssetTxFinalizer creates an AssetTxFinalizer.

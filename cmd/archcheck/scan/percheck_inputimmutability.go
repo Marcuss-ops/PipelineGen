@@ -7,16 +7,17 @@
 // reason about and breaks the caller's expectation of the input value.
 //
 // This gate flags two common mutation patterns:
-//   1. Reassigning the whole input struct: `*req = ...`
-//   2. Assigning to a field of an parameter named req/input/request/params.
+//  1. Reassigning the whole input struct: `*req = ...`
+//  2. Assigning to a field of an parameter named req/input/request/params.
 //
 // Allowlist:
 //   - *_test.go : tests may mutate inputs to verify behavior.
 //   - internal/app/** : composition-root wiring may transform inputs.
 //
 // Pattern anchors:
-//   \*(req|input|request|params)\s*=              — whole-struct reassignment
-//   (req|input|request|params)\.[A-Za-z_]+\s*=    — field assignment
+//
+//	\*(req|input|request|params)\s*=              — whole-struct reassignment
+//	(req|input|request|params)\.[A-Za-z_]+\s*=    — field assignment
 package scan
 
 import (

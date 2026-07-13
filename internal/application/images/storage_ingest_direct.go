@@ -3,11 +3,12 @@ package images
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
-	"time"
 
+	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
@@ -174,52 +175,93 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		Provider:     classifyImageProvider(source, generator),
 	}
 
-	if _, err := s.repo.AddImage(ctx, result); err != nil {
-		message := strings.ToLower(err.Error())
-		if strings.Contains(message, "unique") || strings.Contains(message, "constraint") {
-			if existing, readErr := s.repo.GetImageByHash(ctx, hash); readErr == nil && existing != nil {
-				return existing, nil
-			}
-			return result, nil
-		}
-		return nil, fmt.Errorf("add image: %w", err)
+	// PR-IMAGES-INGEST-ATOMIC (July 2026): the prior 2-transaction
+	// path (`repo.AddImage` + `dispatcher.EnqueueAndIndex`) carried
+	// a documented crash-risk window between SQLite and the Qdrant
+	// outbox event — a process crash between the two commits left
+	// the image in SQLite without a corresponding index.requested
+	// event, requiring manual reconcile. This rewrite collapses the
+	// two writes into a SINGLE atomic CommitAsset transaction: one
+	// BEGIN writes `media_assets` + `asset_locations` + typed
+	// `metadata_json` + the `asset.index.requested` outbox event then
+	// COMMITS, so a crash leaves zero rows in both stores (godlike/07
+	// fail-closed preservation of the un-persisted work). The previous
+	// "unique constraint" handling is delegated to CommitAsset's
+	// canonical idempotent upsert contract.
+	if s.committer == nil {
+		// Fail-closed mirror of the previous fail-open dispatcher
+		// guard: a nil Committer is the operator's responsibility per
+		// godlike/07 NO-FAKE-AVAILABILITY. We refuse to write half
+		// of the two-tx pipeline (the SQLite row only) and instead
+		// surface a typed images-package sentinel so the caller can
+		// errors.Is it for routing. Refusing to write a (partial)
+		// media_assets row without the matching outbox event
+		// preserves the SSOT the refactor closes.
+		return nil, fmt.Errorf("%w: image ingest atomic commit refused (godlike/07 NO-FAKE-AVAILABILITY)", errImageIngestCommitterNil)
 	}
 
-	// PR-QDRANT-IMAGES-INDEX (July 2026): after AddImage succeeds,
-	// emit an asset.index.requested outbox event so the Qdrant
-	// IndexingHandler indexes the image in the vector store.
-	//
-	// Two-transaction gap note: AddImage commits in its own tx,
-	// then EnqueueAndIndex opens a new tx. If the process crashes
-	// between them, the image is in SQLite but not Qdrant. The
-	// admin reconcile tool (cmd/admin/reconcile_qdrant.go) can
-	// repair this gap — forward-pointer PR-QDRANT-IMAGES-RECONCILE.
-	if s.dispatcher != nil {
-		dispAsset := &asset.Asset{
-			ID:             hash,
-			Name:           textutil.Truncate(description, 500),
-			Source:         "image",
-			MediaType:      asset.MediaTypeImage,
-			LifecycleState: asset.StateStaging,
-			CreatedAt:      time.Now(),
-		}
-		dispAsset.SetDriveFileID(driveFileID)
-		dispAsset.SetDriveLink(s.FormatDriveLink(driveFileID))
-		dispAsset.SetLocalPath(dest.LocalPath)
-		dispAsset.SetFileHash(hash)
-
-		if err := s.dispatcher.EnqueueAndIndex(ctx, dispAsset, hash); err != nil {
-			if s.log != nil {
-				s.log.Warn("Qdrant indexing enqueue failed for retrieved image",
-					zap.Error(err),
-					zap.String("hash", hash),
-					zap.String("source", source))
-			}
-		}
-	} else if s.log != nil {
-		s.log.Debug("Qdrant indexing skipped for retrieved image (dispatcher not wired)",
-			zap.String("hash", hash))
+	// Build the canonical CommitRequest from the resolved assets +
+	// collected metadata. AssetID and ContentHash both equal `hash`
+	// so the generated outbox event keeps its legacy aggregate_id ==
+	// hash wire identity (preserves the downstream job handler's
+	// dedup contract).
+	commitReq := persistence.CommitRequest{
+		AssetID:        hash,
+		Source:         "image",
+		Filename:       filename,
+		MediaType:      string(asset.MediaTypeImage),
+		ContentHash:    hash,
+		LifecycleState: string(asset.StateStaging),
+		IndexState:     string(asset.StateIndexPending),
+		LocalPath:      dest.LocalPath,
+		FolderID:       s.driveFolderID,
+		Title:          textutil.Truncate(description, 500),
+		Description:    description,
+		SourceURL:      storedSourceURL,
+		Metadata: persistence.TypedMetadata{
+			Title:         textutil.Truncate(description, 500),
+			Description:   description,
+			SourceVersion: defaults.VisualEmbeddingModelVersion,
+			Tags:          tags,
+			Slug:          slug,
+			SizeBytes:     int64(len(content)),
+			// width + height live in Extra because TypedMetadata has no
+			// typed slots for them — mirror the JSON keys produced by
+			// the metaJSON fallback above.
+			SourceProvider: string(classifyImageProvider(source, generator)),
+			Extra: map[string]any{
+				"path_rel":                 result.PathRel,
+				"width":                    width,
+				"height":                   height,
+				"origin":                   classifyImageOrigin(source, generator),
+				"provider":                 classifyImageProvider(source, generator),
+				"generator":                generator,
+				"style":                    style,
+				"gen_id":                   genID,
+				"drive_file_id":            driveFileID,
+				"content_hash":             hash,
+				"embedding_version_visual": defaults.VisualEmbeddingModelVersion,
+			},
+		},
+		Locations:      buildImageIngestLocations(dest.LocalPath, driveFileID, s.FormatDriveLink(driveFileID), hash, int64(len(content))),
+		EmitIndexEvent: true,
 	}
+
+	if _, err := s.committer.CommitAsset(ctx, commitReq); err != nil {
+		// CommitAsset is idempotent: a unique-collision on a
+		// previously-committed (AssetID, ContentHash) row returns
+		// a successful CommitResult with zero new RowsAffected, NOT
+		// an error. If we DO see an error here, surface it as-is —
+		// the caller can decide whether to retry. The previous
+		// GetImageByHash fallback path was retired because the new
+		// canonical writer handles dedup atomically.
+		return nil, fmt.Errorf("image ingest atomic commit: %w", err)
+	}
+
+	// Forward-pointer: the previous dispatcher.EnqueueAndIndex path
+	// is preserved below for video + audio assets in storage_drive.go
+	// (see ImageStorageService.dispatcher comment in storage_service.go).
+	// The image ingest path no longer routes through dispatcher.
 
 	return result, nil
 }
@@ -237,4 +279,51 @@ func imageGeneratorLabel(source string) string {
 	default:
 		return "web-download"
 	}
+}
+
+// errImageIngestCommitterNil is the canonical typed sentinel returned
+// when ImageStorageService.committer is nil at ingestDirect invocation.
+// godlike/07 typed-error discipline: callers can errors.Is this to
+// distinguish the fail-closed nil-committer case from the
+// CommitAsset-call error case (the latter wraps the underlying
+// persistence error directly without a sentinel).
+var errImageIngestCommitterNil = errors.New("images: ingestDirect: asset committer is nil (require persistence.AssetCommitter wiring at composition time)")
+
+// buildImageIngestLocations returns the canonical asset_locations
+// rows for an image ingest. The local filesystem row is always
+// present and marked primary. When the Drive upload succeeded
+// (driveFileID non-empty), a second drive row is appended so the
+// typed asset_locations table mirrors the metadata.Extra["drive_file_id"]
+// shape — the godlike/06 SSOT for downstream readers of the location
+// surface.
+//
+// The Drive row is NOT marked primary; the local row remains the
+// primary so single-replica offline reads continue to work even when
+// Drive is unreachable. Callers that need Drive-as-primary should
+// layer their resolver on top of this canonical shape.
+func buildImageIngestLocations(localPath, driveFileID, webLink, hash string, sizeBytes int64) []persistence.LocationCommit {
+	locs := []persistence.LocationCommit{
+		{
+			Kind:          "local",
+			Provider:      "filesystem",
+			URI:           localPath,
+			WebViewLink:   "",
+			FileSizeBytes: sizeBytes,
+			FileHash:      hash,
+			IsPrimary:     true,
+		},
+	}
+	if strings.TrimSpace(driveFileID) != "" {
+		locs = append(locs, persistence.LocationCommit{
+			Kind:          "drive",
+			Provider:      "drive",
+			ExternalID:    driveFileID,
+			URI:           webLink,
+			WebViewLink:   webLink,
+			FileSizeBytes: sizeBytes,
+			FileHash:      hash,
+			IsPrimary:     false,
+		})
+	}
+	return locs
 }

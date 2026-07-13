@@ -202,12 +202,15 @@ func buildVoiceoverService(
 	}
 
 	projectionAdapter := newVoiceoverProjectionAdapter(voLifecycle)
+	// NewVoiceoverFinalizer sig is (repo, outbox, lifecycle, committer, logger)
+	// per finalizer_invariants_test.go:390. committer=nil preserves the
+	// Step 4+5 legacy branch (clip_atomic_writer.go:132 wires canonical).
 	finalizer := voiceover.NewVoiceoverFinalizer(
 		voRepoAdapter,     // VoiceoverRepository
 		outboxEnqueuer,    // TxOutboxEnqueuer (nil-safe in finalizer)
 		projectionAdapter, // LifecycleProjectionUpserter
-		log,               // *zap.Logger,
-		nil,               // committer — wired by future PR (PR-ASSET-COMMITTER-COMMITASSET Phase 2)
+		nil,               // committer (nil preserves legacy pre-Cutover branch)
+		log,               // *zap.Logger
 	)
 
 	// P1-2 (June 2026): the application layer no longer constructs

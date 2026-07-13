@@ -51,13 +51,13 @@ const (
 	// so the new scheme lives under `<ClipsRootFolder>/youtube/...`
 	// rather than spilling into the legacy `clips/...` root.
 	DestinationYouTubeAsset DestinationKey = "youtube_asset"
-	DestinationArtlist     DestinationKey = "artlist"
-	DestinationStock       DestinationKey = "stock"
-	DestinationImage       DestinationKey = "image"
-	DestinationVoiceover   DestinationKey = "voiceover"
-	DestinationBook        DestinationKey = "book"
-	DestinationScript      DestinationKey = "script"
-	DestinationSoundEffect DestinationKey = "sound_effect"
+	DestinationArtlist      DestinationKey = "artlist"
+	DestinationStock        DestinationKey = "stock"
+	DestinationImage        DestinationKey = "image"
+	DestinationVoiceover    DestinationKey = "voiceover"
+	DestinationBook         DestinationKey = "book"
+	DestinationScript       DestinationKey = "script"
+	DestinationSoundEffect  DestinationKey = "sound_effect"
 	// DestinationSoundEffectSidecar (PR-P12-SOUND-EFFECT-SIDECAR, July 2026):
 	// canonical destination for sound-effect metadata.json sidecars
 	// (tags, search_text, semantic metadata) co-located with the

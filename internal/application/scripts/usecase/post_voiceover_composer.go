@@ -25,13 +25,13 @@ import (
 // Godlike/07 NO-FAKE-AVAILABILITY: typed sentinels. Every caller can errors.Is
 // these to distinguish composition-time failures from runtime failures.
 var (
-	ErrComposerEmptyModelOutput      = errors.New("post-voiceover composer: empty model output (no segments)")
-	ErrComposerRefBindingMissing     = errors.New("post-voiceover composer: ref has no binding entry in BindingTable")
-	ErrComposerNilPublisher          = errors.New("post-voiceover composer: nil delivery.Publisher at construction (would silently no-op Drive write)")
-	ErrComposerNilResolver           = errors.New("post-voiceover composer: nil RefBindingResolver at construction")
-	ErrComposerManifestDestination   = errors.New("post-voiceover composer: empty delivery.DestinationKey (would dangle on Drive)")
-	ErrComposerIncompleteRefBinding  = errors.New("post-voiceover composer: resolved RefBinding has empty ClipID or DriveLink (would write a structurally bogus manifest; godlike/07 NO-FAKE-AVAILABILITY)")
-	ErrComposerInvalidRefTimeRange   = errors.New("post-voiceover composer: resolved RefBinding has invalid time range (StartMs < 0 or EndMs <= StartMs)")
+	ErrComposerEmptyModelOutput     = errors.New("post-voiceover composer: empty model output (no segments)")
+	ErrComposerRefBindingMissing    = errors.New("post-voiceover composer: ref has no binding entry in BindingTable")
+	ErrComposerNilPublisher         = errors.New("post-voiceover composer: nil delivery.Publisher at construction (would silently no-op Drive write)")
+	ErrComposerNilResolver          = errors.New("post-voiceover composer: nil RefBindingResolver at construction")
+	ErrComposerManifestDestination  = errors.New("post-voiceover composer: empty delivery.DestinationKey (would dangle on Drive)")
+	ErrComposerIncompleteRefBinding = errors.New("post-voiceover composer: resolved RefBinding has empty ClipID or DriveLink (would write a structurally bogus manifest; godlike/07 NO-FAKE-AVAILABILITY)")
+	ErrComposerInvalidRefTimeRange  = errors.New("post-voiceover composer: resolved RefBinding has invalid time range (StartMs < 0 or EndMs <= StartMs)")
 )
 
 // RefBinding is the canonical tabular binding row produced post-voiceover.

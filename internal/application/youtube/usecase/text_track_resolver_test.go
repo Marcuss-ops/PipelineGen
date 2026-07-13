@@ -125,6 +125,20 @@ func (s *stubRepo) ListByAsset(_ context.Context, assetID string) ([]asset.TextT
 	return out, nil
 }
 
+// FindCurrentForTranslation + InsertTranslationWithAuditPredecessor
+// are the PR-CATALOG-MULTILINGUA step-4 surface added to the
+// canonical TextTrackRepository port. stubRepo backs the
+// TextTrackResolver priority-chain tests, which exercise
+// FindReady + ListReadyLanguages + Save (no LookupBeforeTranslate
+// gate). Both new methods mirror the null-write contract of
+// p1fStubRepo / fakeTextTrackRepo (see materializer_test.go).
+func (s *stubRepo) FindCurrentForTranslation(_ context.Context, _ string, _ asset.TextTrackKind, _, _, _, _, _ string) (*asset.TextTrack, error) {
+	return nil, nil
+}
+func (s *stubRepo) InsertTranslationWithAuditPredecessor(_ context.Context, _ asset.TextTrack) error {
+	return nil
+}
+
 // stubSubtitles records FetchSegmentSubtitles invocations and returns
 // a deterministic bundle.
 type stubSubtitles struct {

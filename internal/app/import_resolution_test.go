@@ -6,6 +6,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -180,17 +181,17 @@ func TestModuleDependencyConstraints(t *testing.T) {
 
 	allowlist := map[string]bool{
 		// Composition root adapters are allowed to bridge layers.
-		"internal/app": true,
-		"internal/app/lifecycle.go": true,
-		"internal/app/adapters_infra.go": true,
-		"internal/app/registry_adapters.go": true,
+		"internal/app":                             true,
+		"internal/app/lifecycle.go":                true,
+		"internal/app/adapters_infra.go":           true,
+		"internal/app/registry_adapters.go":        true,
 		"internal/app/clips_dispatcher_adapter.go": true,
-		"internal/app/build_bundles_core.go": true,
-		"internal/app/build_bundles_process.go": true,
-		"internal/app/build_bundles_drive.go": true,
-		"internal/app/capability_registry.go": true,
-		"internal/app/creator_runtime.go": true,
-		"internal/app/import_resolution_test.go": true,
+		"internal/app/build_bundles_core.go":       true,
+		"internal/app/build_bundles_process.go":    true,
+		"internal/app/build_bundles_drive.go":      true,
+		"internal/app/capability_registry.go":      true,
+		"internal/app/creator_runtime.go":          true,
+		"internal/app/import_resolution_test.go":   true,
 	}
 
 	var violations []string

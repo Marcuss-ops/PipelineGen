@@ -15,10 +15,11 @@
 //   - internal/domain/script types                 : domain types own ClipBinding/StockBinding definitions.
 //
 // Pattern anchors:
-//   Bindings\.Clip\s*=                             — direct clip binding assignment
-//   Bindings\.Stock\s*=                            — direct stock binding assignment
-//   ClipBinding\{                                  — direct clip binding literal (outside domain)
-//   StockBinding\{                                 — direct stock binding literal (outside domain)
+//
+//	Bindings\.Clip\s*=                             — direct clip binding assignment
+//	Bindings\.Stock\s*=                            — direct stock binding assignment
+//	ClipBinding\{                                  — direct clip binding literal (outside domain)
+//	StockBinding\{                                 — direct stock binding literal (outside domain)
 package scan
 
 import (

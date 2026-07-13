@@ -3,11 +3,11 @@
 // The artlist publish adapter is now a thin mapper over the canonical
 // persistence.AssetCommitter. These tests pin:
 //
-//   1. Validation fails closed BEFORE any DB write.
-//   2. Happy path atomically writes media_assets, asset_locations,
-//      and one asset.index.requested outbox row.
-//   3. Idempotent replay collapses to a single outbox row.
-//   4. Nil constructor / nil receiver surfaces at the right boundary.
+//  1. Validation fails closed BEFORE any DB write.
+//  2. Happy path atomically writes media_assets, asset_locations,
+//     and one asset.index.requested outbox row.
+//  3. Idempotent replay collapses to a single outbox row.
+//  4. Nil constructor / nil receiver surfaces at the right boundary.
 package assets
 
 import (
