@@ -136,28 +136,36 @@ func (a *zapSourcingLogger) Debug(msg string, keysAndValues ...any) {
 }
 
 // ── sourcingEnrichmentAdapter ─────────────────────────────────────────
-
+//
+// Card 10 (July 2026): the adapter no longer holds a raw *clips.Handler —
+// the only non-HTTP consumer of internal/api/assets/clips/. Instead it
+// depends on the canonical appclips.ClipEnricher typed port (godlike/06
+// SSOT one-canonical-owner-per-fact). The slim boundary lets the
+// descriptor expose ONLY routes + job handlers (no Handler field), and
+// it future-proofs the consumer against implementation swaps
+// (async worker-backed enrichment, Qdrant-direct bulk paths).
 type sourcingEnrichmentAdapter struct {
-	handler *clipsapi.Handler
+	enricher appclips.ClipEnricher
 }
 
 func (a *sourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID, localPath, source string) error {
-	if a.handler == nil {
+	if a.enricher == nil {
 		// PR-SOURCING-ADAPTER-FAIL-CLOSED (July 2026): fail-closed
 		// pre-return — replaces the pre-fix silent-success nil.
-		// The canonical composition-time invariant is handler non-nil;
+		// The canonical composition-time invariant is enricher non-nil;
 		// if nil, the canonical wiring path was bypassed and the caller
 		// MUST observe the failure as a typed-sentinel rather than as
 		// a no-op success (godlike/07 NO-FAKE-AVAILABILITY).
 		return sourcing.ErrSourcingEnrichAndIndexDisabled
 	}
-	clip := &asset.Asset{
-		ID:        clipID,
-		Source:    asset.Source(source),
-		Name:      clipID,
-		MediaType: asset.MediaType("video"),
-	}
-	clip.SetLocalPath(localPath)
-	a.handler.EnrichAndIndexClip(ctx, clip, source)
-	return nil
+	// Card 10 (July 2026): pass clipID only — the use case performs
+	// the assetRepo lookup internally (pre-Card-10 the adapter
+	// constructed a minimal Asset shape and called the handler
+	// delegator). localPath + source are preserved on the adapter's
+	// outer signature for caller-back-compat (composition root never
+	// reads them; they're historic register-flow args).
+	_ = localPath
+	_ = source
+	_ = asset.Asset{}
+	return a.enricher.EnrichAndIndex(ctx, clipID)
 }

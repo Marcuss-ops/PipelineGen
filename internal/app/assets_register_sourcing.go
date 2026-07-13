@@ -57,7 +57,7 @@ func newAssetRegisterService(
 	lifecycle driveutil.FileLifecycle,
 	assetTreeSvc *assettree.Service,
 	providerRegistry *providers.Registry,
-	clipsHandler *clipsapi.Handler,
+	clipEnricher appclips.ClipEnricher,
 	dispatcher *outbox.Dispatcher,
 	publisher delivery.Publisher,
 	jobsSvc *appjobs.Service,
@@ -68,7 +68,10 @@ func newAssetRegisterService(
 	// 8-port budget per architecture/policy.yaml::max_constructor_deps.
 	ytIndex := &youtubeIndexDispatcherAdapter{disp: dispatcher, tree: assetTreeSvc}
 	ytEnrich := &youtubeEnrichmentAdapter{
-		enrichment: &sourcingEnrichmentAdapter{handler: clipsHandler},
+		// Card 10 (July 2026): wire the canonical ClipEnricher typed
+		// port instead of the raw *clips.Handler. The descriptor's
+		// exposed surface is now strictly routes + job handlers.
+		enrichment: &sourcingEnrichmentAdapter{enricher: clipEnricher},
 		config:     &sourcingConfigAdapter{cfg: cfg},
 		search:     &sourcingSearchAdapter{registry: providerRegistry},
 		// jobs port intentionally nil today (composition root signature does
