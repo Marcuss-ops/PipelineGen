@@ -18,7 +18,6 @@ package monitor
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"testing"
