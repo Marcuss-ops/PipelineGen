@@ -112,7 +112,13 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/documents"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
 	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
@@ -326,7 +332,63 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 // (3) surfaces as a test failure rather than a runtime mismatch.
 func c3ValidateRuntimeGraph() error {
 	mutableReg := jobpkg.NewMutableJobRegistry()
+
+	// PR-JOB-TYPE-OWNER-LOCKS (July 2026, godlike/06 SSOT): each
+	// owning package owns its own JobDefinition (canonical-name
+	// identifier + wire-string value lifted verbatim from the
+	// domain package). Composition root is the canonical single
+	// registration point per AGENTS.md §composition-root. The
+	// C3 handler binding below wires placeholder JobHandlerFunc
+	// until C4 (Dispatcher Enqueue via def.PayloadCodec) replaces
+	// them with real dispatch routing.
+	//
+	// The 6 owner-side JobXxx identifier constants are captured as
+	// a slice here so the placeholder BindHandler loop below can
+	// satisfy the HasHandler invariant for the 6 owner types just
+	// like the existing CanonicalJobDefinitions entries.
+	additionalOwnerTypes := []string{
+		images.JobGenerate,
+		youtube.JobExtract,
+		scripts.JobGenerate,
+		documents.JobGenerate,
+		voiceover.JobGenerate,
+		clips.JobBulkUpload,
+	}
+	ownerTypeSet := map[string]bool{
+		images.JobGenerate:    true,
+		youtube.JobExtract:    true,
+		scripts.JobGenerate:   true,
+		documents.JobGenerate: true,
+		voiceover.JobGenerate: true,
+		clips.JobBulkUpload:   true,
+	}
+	for _, registerOwner := range []func(job.MutableJobRegistry) error{
+		images.MustRegister,
+		youtube.MustRegister,
+		scripts.MustRegister,
+		documents.MustRegister,
+		voiceover.MustRegister,
+		clips.MustRegister,
+	} {
+		if err := registerOwner(mutableReg); err != nil {
+			return fmt.Errorf("c3: owner must-register: %w", err)
+		}
+	}
+
 	for _, def := range jobpkg.CanonicalJobDefinitions {
+		// PR-JOB-TYPE-OWNER-LOCKS (July 2026, godlike/06 SSOT): skip
+		// owner-registered wire-strings so the canonical loop is
+		// idempotent. Owner-side MustRegister is the live authority
+		// for images.generate / script.generate / document.generate;
+		// the CanonicalImagesGenerate / CanonicalScriptGenerate /
+		// CanonicalDocumentGenerate literals are filter-skipped here
+		// so they remain code-only reference (NOT runtime SSOT).
+		// The placeholder BindHandler for those 3 overlaps lands in
+		// the additionalOwnerTypes loop below — owner-side authority
+		// extends uniformly to definition + handler binding.
+		if ownerTypeSet[def.Type] {
+			continue
+		}
 		if err := mutableReg.RegisterDefinition(def); err != nil {
 			return fmt.Errorf("register %s: %w", def.Type, err)
 		}
@@ -338,6 +400,17 @@ func c3ValidateRuntimeGraph() error {
 		}
 		if err := mutableReg.BindHandler(def.Type, placeholder); err != nil {
 			return fmt.Errorf("bind handler %s: %w", def.Type, err)
+		}
+	}
+	// PR-JOB-TYPE-OWNER-LOCKS: bind placeholder handlers for the 6
+	// owner-side JobXxx types so post-Freeze HasHandler(t) returns
+	// true uniformly across every AllDefinitions() entry.
+	ownerPlaceholder := func(_ context.Context, _ *jobpkg.Job, _ any) (any, error) {
+		return nil, nil
+	}
+	for _, ownerType := range additionalOwnerTypes {
+		if err := mutableReg.BindHandler(ownerType, ownerPlaceholder); err != nil {
+			return fmt.Errorf("bind owner handler %s: %w", ownerType, err)
 		}
 	}
 	compiled, err := mutableReg.Freeze()
