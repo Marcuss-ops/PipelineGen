@@ -36,8 +36,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	docpkg "github.com/Marcuss-ops/PipelineGen/internal/application/document"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job/workspace"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job/workspace"
 )
 
 // ── helpers ──────────────────────────────────────────────────────────
