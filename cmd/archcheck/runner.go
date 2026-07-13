@@ -329,6 +329,14 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// (canonical outbox→qdrant emitter). _test.go files are
 		// exempt (regression-guard allowlist).
 		{"percheck_qdrant_index_import_ban", scan.ScanQdrantIndexImportBan},
+		// Check PR-INDEXED-STATE-SSOT (July 2026):
+		// forward-prevention gate that pins the godlike/06 SSOT contract:
+		// media_assets.index_state='INDEXED' transitions ONLY via the
+		// canonical outbox consumer (IndexingHandler -> clipindexer.IndexClip
+		// -> setIndexedAt). Per user directive: "Fare in modo che lo stato
+		// asset.index.state=INDEXED passi solo dal consumer outbox
+		// dedicato."
+		{"percheck_indexed_state_writer_ssot", scan.ScanIndexedStateWriterSSOT},
 	}
 }
 
