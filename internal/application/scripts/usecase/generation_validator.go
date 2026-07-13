@@ -79,11 +79,14 @@ func validateSource(src scriptpkg.SourceSpec, ref string) []string {
 
 func validateOutput(out scriptpkg.OutputSpec, ref string) []string {
 	var d []string
-	if out.GenerateVoiceover.AsBool() {
-		if out.VoiceoverGroup == "" {
-			// Voiceover group can default from config; not an error.
-		}
-	}
+	// DRIFT-FIX (July 2026, user directive "nessun campo
+	// documentato come deprecato può essere ancora materialmente
+	// rispettato"): the prior GenerateVoiceover.AsBool() check
+	// (line 81, with an empty conditional body) was a dead-code
+	// material-read of the deprecation-registered flag and is
+	// REMOVED. Voiceover output is produced by the separate
+	// downstream job TypeVoiceoverGenerate; the canonical inline
+	// validator MUST NOT condition on the deprecated toggle.
 	if out.MaxChars < 0 {
 		d = append(d, ref+": max_chars cannot be negative")
 	}

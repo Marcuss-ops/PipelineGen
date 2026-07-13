@@ -13,8 +13,23 @@
 // postprocessor-name gate and surface only at runtime as
 // "processor X not registered" warnings. The test below
 // blocks that drift class by asserting the subset invariant
-// across 10 scenarios (all-flags-on, all-flags-off, 6
-// individual flag toggles, 2 flag-combination permutations).
+// across 12 scenarios (all-flags-on, all-flags-off, 6
+// individual flag toggles, 2 flag-combination permutations,
+// 2 translate_to scenarios).
+//
+// DRIFT-FIX (July 2026, user directive "nessun campo
+// documentato come deprecato può essere ancora materialmente
+// rispettato"): the 3 deprecation-registered post-processors
+// (ProcessorVoiceover / ProcessorImages / ProcessorDocument)
+// are no longer appended by buildPostprocessorList. They
+// remain in adapters.CanonicalProcessorNames() ONLY because
+// other call sites still reference them (e.g. the
+// compat-only no-op wrappers — see ADR 0001). The
+// §2 set-membership guard is preserved across the drift-fix
+// so a future code path that DOES need to surface voiceover/
+// images/document MUST route through the canonical
+// ProcessorName constants rather than introduce new string
+// literals.
 package usecase
 
 import (

@@ -256,7 +256,14 @@ func TestNormalizeItemExplicitWordsBeatDuration(t *testing.T) {
 	}
 }
 
-// ── Preset: with_images changes only images/voiceover/entities ─────
+// ── Preset: with_images changes ONLY sizing (drift-fix July 2026) ─────
+//
+// DRIFT-FIX (July 2026, user directive "nessun campo documentato come
+// deprecato può essere ancora materialmente rispettato"): per the
+// drift-fix GenerateSceneImages is REMOVED from the with_images preset;
+// the deprecation-registered flag is no longer promoted by the preset.
+// with_images now changes ONLY the image sizing fields
+// (SentencesPerImage + ImagesPerScene), in caller-precedence order.
 
 func TestApplyPresetWithImages(t *testing.T) {
 	item := clipsItem()
@@ -265,10 +272,16 @@ func TestApplyPresetWithImages(t *testing.T) {
 
 	scripts.ApplyPreset(&item, scriptpkg.PresetWithImages)
 
-	// with_images preset forces generate_scene_images; voiceover is
-	// no longer forced by the preset (June 2026 consolidation).
-	if !item.Output.GenerateSceneImages.AsBool() {
-		t.Error("with_images: generate_scene_images should be true")
+	// DRIFT-FIX: GenerateSceneImages is a deprecation-registered,
+	// no-op flag — the with_images preset MUST NOT promote it.
+	if item.Output.GenerateSceneImages.AsBool() {
+		t.Error("with_images: generate_scene_images is deprecated; preset must NOT promote it (drift-fix July 2026)")
+	}
+	if item.Output.GenerateVoiceover.AsBool() {
+		t.Error("with_images: generate_voiceover is deprecated; preset must NOT promote it (drift-fix July 2026)")
+	}
+	if item.Output.GenerateDocument.AsBool() {
+		t.Error("with_images: generate_document is deprecated; preset must NOT promote it (drift-fix July 2026)")
 	}
 	if item.Output.ExtractEntities.AsBool() {
 		t.Error("with_images: extract_entities should be false")
@@ -311,10 +324,11 @@ func TestApplyPresetWithImagesRespectsExplicitSizing(t *testing.T) {
 		t.Errorf("caller sentences_per_image should be preserved: got %d",
 			item.ScriptParams.SentencesPerImage)
 	}
-	// Document: preset forces ON because bool zero-value is indistinguishable.
-	// Current behavior: preset overwrites false → true.
-	if !item.Output.GenerateDocument.AsBool() {
-		t.Log("generate_document false was overwritten by preset (bool zero-value limitation)")
+	// DRIFT-FIX (July 2026): GenerateDocument is a
+	// deprecation-registered flag. The preset MUST NOT promote or
+	// override it. Caller-explicit ToggleDisabled stays disabled.
+	if item.Output.GenerateDocument.AsBool() {
+		t.Error("generate_document ToggleDisabled was overwritten; preset must NOT alter deprecated fields (drift-fix July 2026)")
 	}
 }
 
@@ -351,15 +365,29 @@ func TestApplyPresetNilItem(t *testing.T) {
 
 // ── FullMedia preset tests ────────────────────────────────────────────────
 //
+// DRIFT-FIX (July 2026, user directive "nessun campo documentato come
+// deprecato può essere ancora materialmente rispettato"): per the
+// drift-fix GenerateSceneImages + GenerateVoiceover are REMOVED from
+// the full_media preset — both flags are deprecation-registered,
+// no-op fields that the preset MUST NOT materially respect. The
+// full_media preset is now scoping-only for these fields (it
+// preserves caller-set values verbatim and does not promote zero
+// values).
+//
 // Per §6 row 3 of docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md,
-// `full_media` enables scene_images and voiceover explicitly. The canonical
-// implementation applies per-field caller precedence: a caller-set flag is
-// NEVER overwritten; only fields left at zero are filled in. Caller
-// precedence wins field-by-field (caller > preset > config > safety).
+// `full_media` enables scene_images and voiceover explicitly. The
+// canonical pre-drift implementation applied per-field caller
+// precedence: a caller-set flag is NEVER overwritten; only fields
+// left at zero are filled in. Post-drift, the preset is a no-op for
+// the deprecation-registered flags. Caller precedence wins
+// field-by-field (caller > preset > config > safety) — but the
+// preset contributes zero to the OR-chain for scene_images and
+// voiceover.
 
 // TestApplyPresetFullMedia_DoesNothingWhenExplicit verifies that when the
-// caller has BOTH GenerateSceneImages and GenerateVoiceover set to true,
-// the preset does NOT touch either field — caller precedence is preserved.
+// caller sets BOTH GenerateSceneImages + GenerateVoiceover true, the
+// preset preserves them. Post-drift the preset is effectively
+// pass-through for these fields (caller wins either way).
 func TestApplyPresetFullMedia_DoesNothingWhenExplicit(t *testing.T) {
 	item := clipsItem()
 	item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
@@ -373,30 +401,37 @@ func TestApplyPresetFullMedia_DoesNothingWhenExplicit(t *testing.T) {
 	}
 }
 
-// TestApplyPresetFullMedia_EnablesBothByDefault verifies that when the
-// caller leaves BOTH GenerateSceneImages and GenerateVoiceover at zero, the
-// preset enables both atomic flags per §6 row 3.
-func TestApplyPresetFullMedia_EnablesBothByDefault(t *testing.T) {
+// TestApplyPresetFullMedia_DoesNotPromoteDeprecatedFlags verifies the
+// drift-fix contract: when the caller leaves BOTH GenerateSceneImages +
+// GenerateVoiceover at zero (ToggleDefault / unset), the preset
+// MUST NOT promote either to ToggleEnabled. Both fields are
+// deprecation-registered no-op fields.
+func TestApplyPresetFullMedia_DoesNotPromoteDeprecatedFlags(t *testing.T) {
 	item := clipsItem()
-	// Both flags are zero (false) by default on a fresh clipsItem.
+	// Both flags are zero (ToggleDefault / unset) by default on a
+	// fresh clipsItem.
 	scripts.ApplyPreset(&item, scriptpkg.PresetFullMedia)
-	if !item.Output.GenerateSceneImages.AsBool() {
-		t.Error("full_media: GenerateSceneImages must be enabled when caller left at zero")
+	if item.Output.GenerateSceneImages.AsBool() {
+		t.Error("full_media: GenerateSceneImages is deprecated; preset must NOT promote it (drift-fix July 2026)")
 	}
-	if !item.Output.GenerateVoiceover.AsBool() {
-		t.Error("full_media: GenerateVoiceover must be enabled when caller left at zero")
+	if item.Output.GenerateVoiceover.AsBool() {
+		t.Error("full_media: GenerateVoiceover is deprecated; preset must NOT promote it (drift-fix July 2026)")
 	}
 }
 
-// TestApplyPresetFullMedia_OverridesOnlyZeroValues verifies the per-field
-// caller precedence contract: caller-set fields stay untouched; only fields
-// the caller left at zero are filled in. Two scenarios are exercised:
-//   - caller sets GenerateSceneImages=true, leaves voiceover=false → preset
-//     enables ONLY voiceover (the zero field), leaves images untouched.
-//   - caller sets GenerateVoiceover=true, leaves images=false → preset
-//     enables ONLY images (the zero field), leaves voiceover untouched.
-func TestApplyPresetFullMedia_OverridesOnlyZeroValues(t *testing.T) {
-	// Scenario A: images=Enabled, voiceover=Default → preset enables voiceover only.
+// TestApplyPresetFullMedia_CallerPrecedencePreserved verifies the per-field
+// caller precedence contract post-drift-fix: caller-set fields stay
+// untouched; the preset contributes zero to the OR-chain for the
+// deprecation-registered GenerateSceneImages + GenerateVoiceover.
+//
+// Two scenarios are exercised:
+//   - caller sets GenerateSceneImages=true, leaves voiceover=Default → preset
+//     MUST preserve images=true AND MUST NOT promote voiceover=true.
+//   - caller sets GenerateVoiceover=true, leaves images=Disabled → preset
+//     MUST preserve the caller's explicit opt-out on images AND voiceover=true.
+func TestApplyPresetFullMedia_CallerPrecedencePreserved(t *testing.T) {
+	// Scenario A: images=Enabled, voiceover=Default → preset must
+	// preserve images AND must NOT promote voiceover.
 	item := clipsItem()
 	item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
 	// GenerateVoiceover deliberately left at ToggleDefault (unset).
@@ -404,8 +439,8 @@ func TestApplyPresetFullMedia_OverridesOnlyZeroValues(t *testing.T) {
 	if !item.Output.GenerateSceneImages.AsBool() {
 		t.Error("full_media (scenario A): caller-set GenerateSceneImages must remain true")
 	}
-	if !item.Output.GenerateVoiceover.AsBool() {
-		t.Error("full_media (scenario A): preset must enable ONLY the caller-zero field (GenerateVoiceover)")
+	if item.Output.GenerateVoiceover.AsBool() {
+		t.Error("full_media (scenario A): preset must NOT promote caller-zero GenerateVoiceover (drift-fix July 2026)")
 	}
 
 	// Scenario B (symmetric): images=Disabled, voiceover=Enabled → preset must
@@ -671,18 +706,22 @@ func TestBuildPlanPostprocessorList(t *testing.T) {
 
 	plan := scripts.BuildPlan(item)
 
-	// buildPostprocessorList now auto-adds clip_bindings and
-	// stock_association BEFORE voiceover/images (P0 reorder,
-	// June 2026). With SaveToDB, Document, and Entities enabled:
-	// entities + clip_search + clip_bindings + stock_association
-	// + document + persistence = 6.
+	// DRIFT-FIX (July 2026): GenerateDocument is a
+	// deprecation-registered flag; buildPostprocessorList MUST NOT
+	// append "document" post-processor even when caller sets
+	// GenerateDocument=Enabled. The documentary output is produced
+	// by the separate downstream job TypeDocumentGenerate.
 	//
-	// PR-CLIP-SEARCH-WIRING (July 2026): clip_search is now in the
+	// With SaveToDB, Document, and Entities enabled post-drift-fix:
+	// entities + clip_search + clip_bindings + stock_association
+	// + persistence = 5. ClipBindings + StockAssociation are
+	// unconditional (auto-appended even on pure-text generation).
+	//
+	// PR-CLIP-SEARCH-WIRING (July 2026): clip_search is in the
 	// closed canonical set; buildPostprocessorList appends it
-	// immediately after entities when ExtractEntities=true. Bumped
-	// expected count from 5 to 6.
-	if len(plan.Postprocessors) != 6 {
-		t.Fatalf("expected 6 postprocessors, got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
+	// immediately after entities when ExtractEntities=true.
+	if len(plan.Postprocessors) != 5 {
+		t.Fatalf("expected 5 postprocessors (no 'document' post-drift-fix), got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
 	}
 	if plan.Postprocessors[0] != "entities" {
 		t.Errorf("postprocessor[0]: %q", plan.Postprocessors[0])
@@ -690,20 +729,24 @@ func TestBuildPlanPostprocessorList(t *testing.T) {
 	if plan.Postprocessors[1] != "clip_search" {
 		t.Errorf("postprocessor[1] (expected 'clip_search' per PR-CLIP-SEARCH-WIRING extraction-order): %q", plan.Postprocessors[1])
 	}
-	// clip_bindings and stock_association are auto-inserted; document
-	// and persistence come after them in the final position.
-	foundDoc := false
+	// clip_bindings and stock_association are unconditional.
+	// persistence comes after them in the final position. "document"
+	// MUST NOT appear (deprecation-registered no-op flag).
 	foundPersist := false
+	foundDoc := false
 	for _, pp := range plan.Postprocessors {
-		if pp == "document" {
-			foundDoc = true
-		}
 		if pp == "persistence" {
 			foundPersist = true
 		}
+		if pp == "document" {
+			foundDoc = true
+		}
 	}
-	if !foundDoc || !foundPersist {
-		t.Errorf("expected document and persistence in postprocessors, got: %v", plan.Postprocessors)
+	if !foundPersist {
+		t.Errorf("expected persistence in postprocessors, got: %v", plan.Postprocessors)
+	}
+	if foundDoc {
+		t.Errorf("'document' MUST NOT appear in postprocessors (deprecation-registered no-op flag, drift-fix July 2026); got: %v", plan.Postprocessors)
 	}
 }
 
@@ -719,23 +762,37 @@ func TestBuildPlanPostprocessorListFull(t *testing.T) {
 
 	plan := scripts.BuildPlan(item)
 
-	// Full set with auto-added clip_bindings and stock_association
-	// (now BEFORE voiceover/images — P0 reorder, June 2026):
-	// entities, clip_search, metadata, clip_bindings,
-	// stock_association, voiceover, images, document,
-	// persistence = 9.
+	// DRIFT-FIX (July 2026): GenerateVoiceover + GenerateSceneImages +
+	// GenerateDocument are deprecation-registered flags; the inline
+	// pipeline MUST NOT append voiceover / images / document
+	// post-processors even when caller sets them Enabled. The 3
+	// outputs are produced by the canonical downstream jobs
+	// (TypeVoiceoverGenerate + TypeImagesGenerate +
+	// TypeDocumentGenerate).
+	//
+	// With ExtractEntities + GenerateMetadata + SaveToDB enabled
+	// post-drift-fix (all ACTIVE postprocessor flags + scene
+	// binding + stock + persistence):
+	// entities + clip_search + metadata + clip_bindings +
+	// stock_association + persistence = 6. The 3
+	// deprecation-registered post-processors (voiceover / images /
+	// document) MUST NOT appear in the list.
 	//
 	// PR-CLIP-SEARCH-WIRING (July 2026): clip_search appended
 	// between entities and metadata when ExtractEntities=true.
-	// Bumped expected count from 8 to 9.
-	expected := []string{"entities", "clip_search", "metadata", "clip_bindings", "stock_association", "voiceover", "images", "document", "persistence"}
-	// ClipBindings + StockAssociation are appended automatically.
-	if len(plan.Postprocessors) != 9 {
-		t.Fatalf("expected 9 postprocessors, got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
+	expected := []string{"entities", "clip_search", "metadata", "clip_bindings", "stock_association", "persistence"}
+	if len(plan.Postprocessors) != 6 {
+		t.Fatalf("expected 6 postprocessors (no voiceover/images/document post-drift-fix), got %d: %v", len(plan.Postprocessors), plan.Postprocessors)
 	}
 	for i, name := range expected {
 		if plan.Postprocessors[i] != name {
 			t.Errorf("postprocessor[%d]: got %q, want %q", i, plan.Postprocessors[i], name)
+		}
+	}
+	for _, pp := range plan.Postprocessors {
+		switch pp {
+		case "voiceover", "images", "document":
+			t.Errorf("deprecation-registered postprocessor %q MUST NOT appear (drift-fix July 2026)", pp)
 		}
 	}
 }
