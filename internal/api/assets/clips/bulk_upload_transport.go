@@ -306,8 +306,21 @@ func (bt *BulkUploadTransport) BulkUploadYouTubeClips(c *gin.Context) {
 
 	// Enqueue the job.
 	activeKey := fmt.Sprintf("bulk_upload_yt:%s", abs)
+	// PR-JOBS-SSOT-FIX (July 2026): use the canonical job-type constant
+	// instead of the raw wire literal. The descriptor-side RegisterJobHandlers
+	// registers the handler under `string(jobservice.TypeBulkUploadYouTubeClips)`
+	// = "media.bulk_upload_youtube_clips" (internal/domain/job/job.go:101);
+	// writing the wire side as "bulk_upload_youtube_clips" was a godlike/06
+	// SSOT violation that caused Service.HasHandler(j.Type) to return false
+	// at enqueue time and the dispatcher to fail with
+	// ErrNoHandlerForJobType despite a successful handler registration.
+	// Constant is also used by the /readyz canary readiness probe + the
+	// canonical Registry, so this single source-of-truth restores
+	// end-to-end consistency. The 13 other production sites that still
+	// carry the raw literal are out of scope for this commit (W14 audit
+	// followup).
 	if ok := transport.EnqueueAsync(c, bt.jobsSvc, &transport.EnqueueInput{
-		Type:    "bulk_upload_youtube_clips",
+		Type:    string(jobservice.TypeBulkUploadYouTubeClips),
 		Project: "media",
 		Payload: map[string]any{
 			"local_folder":           abs,
