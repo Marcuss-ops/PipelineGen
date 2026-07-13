@@ -91,18 +91,6 @@ import (
 // Go, an alias `type X = scriptpkg.X` returns the SAME Type as
 // the underlying structured type, so aliases pass this gate.
 // Shadow structs (different fields/methods) fail.
-//
-// TODO(fase2-alias-collapse): package usecase `ClipPrePlan`,
-// `ClipSearchSlot`, `SourceAnchor` are LOCAL SHADOW structs,
-// NOT type aliases for the canonical `scriptpkg.*` types.
-// grep-discoverable marker for any follow-up automation that
-// scans `TODO(<scope>):` patterns (e.g. for godlike/06 SSOT
-// audits). Tracker: see `source_spec.go`'s FASE-2 alias
-// collapse plan. The fix belongs in the planner's local-port
-// structs (the production code), NOT in this test — per
-// AGENTS.md "no production-code changes unless explicitly
-// requested".
-//
 // KNOWN godlike/06 SSOT VIOLATION (open followup): `ClipPrePlan`,
 // `ClipSearchSlot`, `SourceAnchor` as referenced unprefixed
 // inside `package usecase` are LOCAL shadow structs, NOT type
@@ -137,12 +125,11 @@ func TestClipPrePlan_JSONSchemaContract(t *testing.T) {
 
 	rt := reflect.TypeOf(scriptpkg.ClipPrePlan{})
 
-	wantKeys := []string{"version", "fingerprint", "source_hash", "title", "slots"}
+	wantKeys := []string{"version", "source_hash", "title", "slots"}
 	pinnedTypes := map[string]reflect.Type{
-		"Version":     reflect.TypeOf(int(0)),
-		"Fingerprint": reflect.TypeOf(""),
-		"SourceHash":  reflect.TypeOf(""),
-		"Title":       reflect.TypeOf(""),
+		"Version":    reflect.TypeOf(int(0)),
+		"SourceHash": reflect.TypeOf(""),
+		"Title":      reflect.TypeOf(""),
 	}
 	nullableGoNames := []string{"Fingerprint"}
 

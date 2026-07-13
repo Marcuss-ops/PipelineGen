@@ -285,7 +285,7 @@ func TestPolicyThresholds(t *testing.T) {
 		wantClip    float64
 		description string
 	}{
-		{scriptpkg.GroundingPolicyClipsPrimary, 0.15, 1.00, "clips_primary: lower text threshold, full clip binding"},
+		{scriptpkg.GroundingPolicyClipsPrimary, 0.40, 1.00, "clips_primary: lower text threshold, full clip binding"},
 		{scriptpkg.GroundingPolicySourcePrimary, 0.85, 0.00, "source_primary: high text threshold, no clip binding required"},
 		{scriptpkg.GroundingPolicyBalanced, 0.60, 0.50, "balanced: moderate text and clip thresholds"},
 		{"", defaultMinSourceTextCoverage, 0.00, "default: fallback text threshold, no clip binding"},

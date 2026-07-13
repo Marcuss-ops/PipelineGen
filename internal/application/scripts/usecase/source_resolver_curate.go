@@ -69,9 +69,9 @@ var ErrCurateNoClips = fmt.Errorf("curate: no clips found to curate")
 // godlike/06 SSOT: the dedup+limit+min-score logic is delegated
 // to the canonical ClipSampler port (single impl). This resolver
 // owns only:
-//  1. Collection: hits from ClipSearchPort + hint IDs from src.ClipIDs
-//  2. Per-source field plumbing (WorkspaceID + IsSystem, MinQualityScore)
-//  3. Post-clipBuilder hydration + AllowTextOnly fallback path
+//   1. Collection: hits from ClipSearchPort + hint IDs from src.ClipIDs
+//   2. Per-source field plumbing (WorkspaceID + IsSystem, MinQualityScore)
+//   3. Post-clipBuilder hydration + AllowTextOnly fallback path
 type CurateSourceResolver struct {
 	clipSearch  ClipSearchPort
 	clipBuilder clipContextBuilder

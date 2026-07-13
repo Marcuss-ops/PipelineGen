@@ -114,22 +114,22 @@ const (
 	TypeLessonsProcess = lessons.TypeProcess
 
 	// Script job types are owned by internal/domain/script.
-	TypeScriptGenerate         = script.TypeGenerate
+	TypeScriptGenerate        = script.TypeGenerate
 	TypeScriptVoiceoverSibling = script.TypeVoiceoverSibling
-	TypeScriptImageSibling     = script.TypeImageSibling
-	TypeScriptGenerateItem     = script.TypeGenerateItem
+	TypeScriptImageSibling    = script.TypeImageSibling
+	TypeScriptGenerateItem    = script.TypeGenerateItem
 
 	// Drive job types are owned by internal/domain/drive.
 	TypeDriveFolderSync = drive.TypeFolderSync
 
 	// Image job types are owned by internal/domain/image.
-	TypeImagesGenerate      = image.TypeImagesGenerate
+	TypeImagesGenerate    = image.TypeImagesGenerate
 	TypeImageGenerateGoogle = image.TypeGenerateGoogle
 
 	// Document job types are owned by internal/domain/document.
 	TypeDocumentGenerate = document.TypeGenerate
 
 	// Asset job types are owned by internal/domain/asset.
-	TypeAssetsResolve        = asset.TypeResolve
+	TypeAssetsResolve     = asset.TypeResolve
 	TypeAssetTextMaterialize = asset.TypeTextMaterialize
 )

@@ -4436,3 +4436,120 @@ if [ "${debt_budget_rc}" -ne 0 ]; then
     exit 1
 fi
 echo "OK: DEBT BUDGET respected -- ${debt_budget_output}"
+
+# ── Check 70: AssetCommitter SSOT (Wave 5, July 2026) ──
+# AssetCommitter is the single canonical persistence boundary for
+# processed assets. Direct calls to AssetFinalizerTx.FinalizeAsset
+# or mutations.AssetMutationDispatcher.EnqueueAndIndex outside the
+# AssetCommitter are SSOT regressions: they bypass the canonical
+# transaction + outbox orchestration owned by the committer.
+#
+# Allowlist:
+#   - internal/application/assets/processing/asset_committer.go : the canonical AssetCommitter implementation.
+#   - *_test.go                                                   : tests may exercise the underlying primitives directly.
+#   - internal/application/assets/finalizer/**                   : the finalizer interface definition and its tests.
+#   - internal/application/assets/mutations/**                   : the dispatcher interface definition and its tests.
+#
+# Pattern anchors:
+#   \.FinalizeAsset\(          — direct finalizer call
+#   \.EnqueueAndIndex\(        — direct dispatcher call
+#   AssetFinalizerTx\.FinalizeAsset — rare fully-qualified call
+#   AssetMutationDispatcher\.EnqueueAndIndex — rare fully-qualified call
+
+echo "=== Check 70: AssetCommitter SSOT (Wave 5, July 2026) ==="
+asset_committer_hits=$(rg -n --type go \
+    -e '\.FinalizeAsset\(' \
+    -e '\.EnqueueAndIndex\(' \
+    -e 'AssetFinalizerTx\.FinalizeAsset' \
+    -e 'AssetMutationDispatcher\.EnqueueAndIndex' \
+    --glob '!**/asset_committer.go' \
+    --glob '!**/*_test.go' \
+    --glob '!**/finalizer/**' \
+    --glob '!**/mutations/**' \
+    internal/application internal/api 2>/dev/null \
+    | awk -F: '{ rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i; if (rest ~ /^[[:space:]]*\/\//) next; print }' \
+    || true)
+if [ -n "$asset_committer_hits" ]; then
+    echo "FAIL: direct asset persistence call outside AssetCommitter:"
+    echo "$asset_committer_hits"
+    echo ""
+    echo "Fix: route persistence through processing.AssetCommitter.Commit or"
+    echo "     processing.AssetCommitter.EnqueueAndIndex. The committer is the"
+    echo "     single owner of the asset persistence transaction + outbox"
+    echo "     orchestration."
+    exit 1
+fi
+echo "OK: no direct asset persistence calls outside AssetCommitter"
+
+# ── Check 71: Qdrant upsert SSOT (Wave 5, July 2026) ──
+# IndexWriter is the ONLY code path that calls
+# transport.Client.UpsertPoints / transport.Client.DeletePoints.
+# Any direct caller outside index_writer.go bypasses the canonical
+# write path (outbox.Dispatcher → IndexingHandler → IndexWriter)
+# and risks stale data racing the source_version supersede gate.
+#
+# Allowlist:
+#   - internal/infrastructure/qdrant/indexing/index_writer*.go : the canonical IndexWriter package.
+#   - *_test.go                                                   : tests may construct transport.Client fakes directly.
+#
+# Pattern anchors:
+#   \.UpsertPoints\(  — direct transport.Client upsert
+#   \.DeletePoints\( — direct transport.Client delete
+
+echo "=== Check 71: Qdrant upsert SSOT (Wave 5, July 2026) ==="
+qdrant_upsert_hits=$(rg -n --type go \
+    -e '\.UpsertPoints\(' \
+    -e '\.DeletePoints\(' \
+    --glob '!**/qdrant/indexing/**' \
+    --glob '!**/*_test.go' \
+    internal/ 2>/dev/null \
+    | awk -F: '{ rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i; if (rest ~ /^[[:space:]]*\/\//) next; print }' \
+    || true)
+if [ -n "$qdrant_upsert_hits" ]; then
+    echo "FAIL: direct Qdrant upsert/delete call outside IndexWriter:"
+    echo "$qdrant_upsert_hits"
+    echo ""
+    echo "Fix: route Qdrant writes through outbox.Dispatcher (production) or the"
+    echo "     admin reindex CLI (operator tooling). The canonical write path is"
+    echo "     outbox.Dispatcher → IndexingHandler → IndexWriter."
+    exit 1
+fi
+echo "OK: no direct Qdrant upsert/delete calls outside IndexWriter"
+
+# ── Check 72: SearchAggregator uniqueness (Wave 5, July 2026) ──
+# There must be exactly one SearchAggregator in the production
+# codebase. Multiple aggregators or ad-hoc backend fan-out bypass
+# the canonical ranking/dedup pipeline.
+#
+# Allowlist:
+#   - internal/application/search/aggregator.go : the canonical Aggregator definition.
+#   - *_test.go                                : tests may construct aggregators for verification.
+#
+# Pattern anchors:
+#   search\.NewAggregator\(  — canonical constructor
+#   NewAggregator\(        — generic constructor name collision
+
+echo "=== Check 72: SearchAggregator uniqueness (Wave 5, July 2026) ==="
+aggregator_count=$(rg -n --type go \
+    -e 'search\.NewAggregator\(' \
+    -e '\bNewAggregator\(' \
+    --glob '!**/search/aggregator.go' \
+    --glob '!**/*_test.go' \
+    internal/ 2>/dev/null \
+    | awk -F: '{ rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i; if (rest ~ /^[[:space:]]*\/\//) next; print }' \
+    | wc -l | awk '{print $1+0}')
+if [ "$aggregator_count" -gt 0 ]; then
+    echo "FAIL: extra SearchAggregator constructor found outside canonical aggregator:"
+    rg -n --type go \
+        -e 'search\.NewAggregator\(' \
+        -e '\bNewAggregator\(' \
+        --glob '!**/search/aggregator.go' \
+        --glob '!**/*_test.go' \
+        internal/ 2>/dev/null \
+        | awk -F: '{ rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i; if (rest ~ /^[[:space:]]*\/\//) next; print }'
+    echo ""
+    echo "Fix: route all search aggregation through the canonical search.Aggregator."
+    echo "     Do not introduce additional aggregator implementations."
+    exit 1
+fi
+echo "OK: no extra SearchAggregator constructors outside canonical aggregator"

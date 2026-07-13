@@ -4,12 +4,12 @@
 // scanner (PR-CLIPINGEST-PIPELINE step 8, July 2026).
 //
 // Covered invariants:
-//  1. The canonical owner's basename exempts itself.
-//  2. A duplicated `type ClipIngestPipeline struct {` declaration
-//     anywhere outside the canonical owner is reported.
-//  3. A duplicated `ClipIngestPipeline{...}` literal usage is reported.
-//  4. The scanner's own file names match the rule-name whitelist
-//     — scanner source MUST NOT trip on itself.
+//   1. The canonical owner's basename exempts itself.
+//   2. A duplicated `type ClipIngestPipeline struct {` declaration
+//      anywhere outside the canonical owner is reported.
+//   3. A duplicated `ClipIngestPipeline{...}` literal usage is reported.
+//   4. The scanner's own file names match the rule-name whitelist
+//      — scanner source MUST NOT trip on itself.
 package scan
 
 import (
@@ -71,7 +71,7 @@ type ClipIngestPipeline struct {
 
 func TestScanClipIngestPipelineCanonical1_ShadowDeclarationReported(t *testing.T) {
 	dir, cleanup := writeTempTree(t, map[string]string{
-		canonicalOwnerPath: canonicalOwnerGo,
+		canonicalOwnerPath:                       canonicalOwnerGo,
 		"internal/application/assets/providers/shadow/clip_ingest_shadow.go": shadowDeclarerGo,
 	})
 	defer cleanup()
@@ -103,9 +103,9 @@ func New() shadow.ClipIngestPipeline {
 
 func TestScanClipIngestPipelineCanonical1_ShadowLiteralReported(t *testing.T) {
 	dir, cleanup := writeTempTree(t, map[string]string{
-		canonicalOwnerPath: canonicalOwnerGo,
+		canonicalOwnerPath:                       canonicalOwnerGo,
 		"internal/application/assets/providers/shadow/clip_ingest_shadow.go": shadowDeclarerGo,
-		"internal/application/ecommerce/clip_ingest_literal.go":              shadowLiteralGo,
+		"internal/application/ecommerce/clip_ingest_literal.go":            shadowLiteralGo,
 	})
 	defer cleanup()
 	v := ScanClipIngestPipelineCanonical1(dir)

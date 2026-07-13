@@ -7,7 +7,7 @@
 //   - source_text coverage >= 0.70
 //   - clip_evidence coverage == 1.00 for clips_primary
 //   - unsupported claims == 0
-//   - target words within policy-specific tolerance
+//   - target words within 80-120% tolerance
 //   - reject empty/generic text
 //
 // The result is always populated in GenerationResult.Quality. When
@@ -29,15 +29,13 @@ const (
 	// source text or clip evidence.
 	defaultMinSourceTextCoverage = 0.70
 
-	// Default tolerance for non-clip-primary plans.
+	// minTargetWordsRatio is the lower bound of the target word
+	// tolerance (actual >= target * minTargetWordsRatio).
 	minTargetWordsRatio = 0.80
-	maxTargetWordsRatio = 1.20
 
-	// clips_primary is allowed more rewrite slack because the model is
-	// narrating from visual evidence rather than paraphrasing a fixed prose
-	// source verbatim.
-	clipsPrimaryMinTargetWordsRatio = 0.50
-	clipsPrimaryMaxTargetWordsRatio = 4.00
+	// maxTargetWordsRatio is the upper bound of the target word
+	// tolerance (actual <= target * maxTargetWordsRatio).
+	maxTargetWordsRatio = 1.20
 )
 
 // policyThresholds returns the source_text and clip_evidence coverage
@@ -53,9 +51,9 @@ const (
 //     reasonably covered.
 //
 // Rationale for the numeric thresholds:
-//   - clips_primary source 0.15: the script is allowed to expand
+//   - clips_primary source 0.40: the script is allowed to expand
 //     beyond the provided source_text because the clips carry the
-//     factual burden, but only light textual overlap is required.
+//     factual burden, but some textual overlap is still required.
 //   - source_primary source 0.85: the script must stay very close
 //     to the provided source_text because it is the authoritative
 //     source; clips are decorative.
@@ -64,7 +62,7 @@ const (
 func policyThresholds(policy string) (sourceMin, clipMin float64) {
 	switch policy {
 	case scriptpkg.GroundingPolicyClipsPrimary:
-		return 0.15, 1.00
+		return 0.40, 1.00
 	case scriptpkg.GroundingPolicySourcePrimary:
 		return 0.85, 0.00
 	case scriptpkg.GroundingPolicyBalanced:
@@ -147,15 +145,6 @@ func evaluateQualityGate(
 
 	// Evaluate thresholds per grounding policy.
 	minSourceTextCov, minClipCov := policyThresholds(plan.GroundingPolicy)
-	effectiveTargetWords := plan.TargetWords
-	if plan.GroundingPolicy == scriptpkg.GroundingPolicyClipsPrimary {
-		if _, clipTarget, _ := clipRuntimeBudget(&plan); clipTarget > 0 {
-			if effectiveTargetWords <= 0 || clipTarget < effectiveTargetWords {
-				effectiveTargetWords = clipTarget
-			}
-		}
-	}
-	q.TargetWords = effectiveTargetWords
 	// When no clip evidence is present, the clip coverage requirement
 	// is irrelevant regardless of policy.
 	if plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0 {
@@ -184,19 +173,12 @@ func evaluateQualityGate(
 			"unsupported claims detected")
 	}
 	// PRE-EXISTING-7 / FASE 13 PART 2: target-word tolerance only
-	// enforces when the plan is not clip-native. Clip-guided output
-	// is intentionally allowed to rewrite more freely, so the gate
-	// does not hard-fail on word-count drift when clip evidence is
-	// present.
-	if effectiveTargetWords > 0 && strings.TrimSpace(sourceText) != "" && (plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0) {
-		minRatio := minTargetWordsRatio
-		maxRatio := maxTargetWordsRatio
-		if plan.GroundingPolicy == scriptpkg.GroundingPolicyClipsPrimary {
-			minRatio = clipsPrimaryMinTargetWordsRatio
-			maxRatio = clipsPrimaryMaxTargetWordsRatio
-		}
-		lower := float64(effectiveTargetWords) * minRatio
-		upper := float64(effectiveTargetWords) * maxRatio
+	// enforces when a source anchor exists (plan.SourceText or clip
+	// evidence). Pure-prose free-form generation has no anchor —
+	// the tolerance is observational only.
+	if plan.TargetWords > 0 && strings.TrimSpace(sourceText) != "" {
+		lower := float64(plan.TargetWords) * minTargetWordsRatio
+		upper := float64(plan.TargetWords) * maxTargetWordsRatio
 		if float64(q.ActualWords) < lower || float64(q.ActualWords) > upper {
 			reasons = append(reasons,
 				"actual word count outside target tolerance")

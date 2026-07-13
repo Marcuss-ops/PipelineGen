@@ -1,41 +1,32 @@
 // Package scan — per-check forward-prevention gate that bans
-// writes to SpecScene.Text / .Title / .Kind / .Index inside
-// the scene/ package (Wave 1.3 + Wave 2.0, July 2026).
+// writes to SpecScene.Text / .Title / .Kind / .Index outside
+// the canonical ScenePlanner (Wave 1.3, July 2026).
 //
 // Scan scope is EXACTLY the four fields the user requested
 // (Text / Title / Kind / Index). Per AGENTS.md "no features
 // beyond explicit request", scene.ID is NOT in the banned list
-// even though the model/LLM owns it — adding ID would expand
-// scope beyond the user's literal request.
+// even though the canonical planner also owns it — adding ID
+// would expand scope beyond the user's literal request.
 //
-// scan/percheck_binder_scene_field_writes.go pins the
-// forward-prevention gate codified by the Wave 1 + Wave 2
-// architectural refactors:
+// scan/percheck_binder_scene_field_writes.go owns the Go
+// migration of the script-ownership forward-prevention gate
+// codified by the Wave 1 architectural refactor:
 //
-//	Wave 1.1 (July 2026): ScenePlanner owned scene-shape writes.
-//	Wave 1.3 (July 2026): forward-prevention gate added.
-//	Wave 2.0 (July 2026): binder is now pure binding (does NOT
-//	                        call ScenePlanner/Synthesizer). The
-//	                        gate stays as forward-prevention so
-//	                        a future agent who re-introduces
-//	                        inline kind/title/text writes from
-//	                        binder.go (or any other scene/*.go
-//	                        file outside test files) surfaces as
-//	                        a CI build failure.
+//	godlike/06 SSOT  — ScenePlanner owns scene.Text / scene.Title /
+//	                   scene.Kind / scene.Index.
+//	godlike/07        — every per-scene mutation must come from
+//	NO-FAKE-AVAILABILITY  one canonical owner; the binder is
+//	                   permitted to mutate ONLY Bindings.Clip /
+//	                   Bindings.Stock.
 //
-// godlike/06 SSOT discipline:
-//   - ScenePlanner was the Wave 1.1 SSOT for scene-shape writes.
-//   - Wave 2.0 walked the planner back; the model/LLM now owns
-//     scene.Text / .Title / .Kind / .Index / .ID via
-//     model_output.go.
-//   - The binder writes ONLY scene.Bindings.*{Clip, Stock}.
-//   - The gate still bans scene-shape writes from the scene/
-//     package to prevent future drift.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: every scene-shape mutation
-// must come from the canonical owner (the LLM, gated by the
-// Spec_scene validate path); the binder is permitted to mutate
-// ONLY Bindings.Clip / Bindings.Stock.
+// The SceneAssetBinder source file MUST NEVER carry a literal
+// assignment to a banned field on a SpecScene value. The
+// Wave 1.1 extraction (ScenePlanner introduced in
+// internal/application/scripts/scene/scene_planner.go) routed
+// every scene-shape decision through the planner; this gate
+// freezes that contract so a future agent who drifts back into
+// inline kind/title/text writes inside the binder surfaces as
+// a CI build failure rather than a silent godlike/07 regression.
 //
 // Matched surface (line-anchored regex):
 //
@@ -50,14 +41,10 @@
 //
 // Exemptions (forward-prevention policy mirrors
 // percheck_asset_state_no_shadow_enum.go precedent):
-//   - canonical owners (Wave 1.1 + Wave 2.0): the
-//     ScenePlanner file (internal/application/scripts/scene/
-//     scene_planner.go) was the Wave 1.1 owner, deleted in
-//     Wave 2.0. The exemption constant remains for archival
-//     reference; if a future wave re-introduces the planner
-//     it auto-re-exempts.
-//   - test files (`_test.go` suffix) — regression-guard
-//     surface legitimately needs fixture assignments.
+//   - canonical ScenePlanner (internal/application/scripts/scene/
+//     scene_planner.go) — the SOLE owner of scene field writes.
+//   - test files (`_test.go` suffix) — regression-guard surface
+//     legitimately needs fixture assignments.
 //   - comment-only references — residue-accounted as WARN
 //     (godlike/07), not violated.
 //   - skip-dirs: .git, vendor, node_modules, node-scraper,
