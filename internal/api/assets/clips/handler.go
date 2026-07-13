@@ -351,6 +351,14 @@ func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *jobser
 // ReindexClip + EnrichMedia + BatchReindex) are installed via
 // h.nonops.RegisterRoutes(r, idem) — see PR-CLIPS-NONOPS-EXTRACT
 // (July 2026) for the sub-package extraction rationale.
+//
+// NOTE (Wave 4, July 2026): This method is retained as the
+// canonical route surface for existing tests and for callers that
+// construct the Handler directly. The clips.Build composition path
+// registers routes through the sub-descriptors (catalog, ingest,
+// processing, publication, indexing, operations, bulk) instead of
+// calling this method, so production registration does not double-
+// mount routes.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	idem := h.idemWriter()
 
@@ -363,4 +371,41 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/:source/clips/:id/download", idem, h.DownloadClip)
 	r.POST("/:source/clips/:id/duplicates", idem, h.FindDuplicates)
 	r.POST("/:source/clips/:id/reupload", idem, h.ReuploadClip)
+}
+
+// ── Wave 4 sub-descriptor factory methods ─────────────────────────────
+//
+// These methods expose the existing sub-handlers as
+// submodule.RouteRegistrar instances so that clips.Build can
+// compose the clips capability from catalog/ingest/processing/
+// publication/indexing/operations/bulk sub-descriptors without
+// exposing the Handler's unexported fields. Each factory returns
+// a wrapper that delegates to the corresponding sub-handler.
+
+func (h *Handler) catalogRegistrar(idem gin.HandlerFunc) *catalogRegistrar {
+	return &catalogRegistrar{search: h.search, ops: h.ops, h: h, idem: idem}
+}
+
+func (h *Handler) ingestRegistrar(idem gin.HandlerFunc) *ingestRegistrar {
+	return &ingestRegistrar{ingest: h.ingest, idem: idem}
+}
+
+func (h *Handler) processingRegistrar(idem gin.HandlerFunc) *processingRegistrar {
+	return &processingRegistrar{nonops: h.nonops, idem: idem}
+}
+
+func (h *Handler) publicationRegistrar(idem gin.HandlerFunc) *publicationRegistrar {
+	return &publicationRegistrar{h: h, idem: idem}
+}
+
+func (h *Handler) indexingRegistrar(idem gin.HandlerFunc) *indexingRegistrar {
+	return &indexingRegistrar{nonops: h.nonops, idem: idem}
+}
+
+func (h *Handler) operationsRegistrar(idem gin.HandlerFunc) *operationsRegistrar {
+	return &operationsRegistrar{ops: h.ops, nonops: h.nonops, idem: idem}
+}
+
+func (h *Handler) bulkRegistrar(idem gin.HandlerFunc) *bulkRegistrar {
+	return &bulkRegistrar{bulk: h.bulkTransport, idem: idem}
 }

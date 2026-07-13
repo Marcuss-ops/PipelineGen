@@ -51,6 +51,13 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/bulk"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/catalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/indexing"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/ingest"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/processing"
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/publication"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
@@ -227,8 +234,10 @@ type Dependencies struct {
 // ClipsDescriptor is the concrete capability Descriptor returned
 // by Build. It satisfies api.Descriptor via the explicit Module
 // field (named, not embedded — no method-promotion surprises from
-// api.Module) and forwarder methods. The pre-built `Handler` is
-// exposed so the ONE non-HTTP caller
+// api.Module) and forwarder methods. The Module aggregates the seven
+// Wave-4 sub-descriptors (catalog, ingest, processing, publication,
+// indexing, operations, bulk) under the /clips prefix. The pre-built
+// `Handler` is exposed so the ONE non-HTTP caller
 // (`internal/app/assets_register_sourcing.go::sourcingEnrichmentAdapter`)
 // can drive `clipsHandler.EnrichAndIndexClip(ctx, clip, source)`
 // without re-constructing the orchestrator (matches the artlist
@@ -236,8 +245,8 @@ type Dependencies struct {
 //
 // UNIQUE TO CLIPS: the handler is the HTTP orchestrator (not a
 // "use case service" like artlist's *artlistapp.Service). It is
-// the SAME object that owns RegisterRoutes; the Module closure
-// captures it. Exposing it via `Descriptor.Handler` is the
+// the SAME object that owns RegisterRoutes; the sub-descriptors
+// capture it. Exposing it via `Descriptor.Handler` is the
 // pattern-level answer to "I need to call a non-HTTP method
 // (EnrichAndIndexClip) on the same orchestrator that the routes
 // use" — the alternative would be to extract a separate
@@ -421,15 +430,91 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		return nil, fmt.Errorf("clips.Build: %w", err)
 	}
 
+	// Build the Wave-4 sub-descriptors. Each sub-descriptor wraps a
+	// cluster of routes and is registered under the /clips group by
+	// ClipsDescriptor.RegisterRoutes. The idempotency middleware is
+	// captured at construction time so the sub-descriptors satisfy
+	// api.Module.RegisterRoutes.
+	catalogDesc, err := catalog.Build(catalog.Dependencies{
+		Handler:     handler.catalogRegistrar(idem),
+		EnabledFunc: deps.EnabledFunc,
+		Idempotency: idem,
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clips.Build: catalog sub-descriptor: %w", err)
+	}
+	ingestDesc, err := ingest.Build(ingest.Dependencies{
+		Handler:     handler.ingestRegistrar(idem),
+		EnabledFunc: deps.EnabledFunc,
+		Idempotency: idem,
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clips.Build: ingest sub-descriptor: %w", err)
+	}
+	processingDesc, err := processing.Build(processing.Dependencies{
+		Handler:     handler.processingRegistrar(idem),
+		EnabledFunc: deps.EnabledFunc,
+		Idempotency: idem,
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clips.Build: processing sub-descriptor: %w", err)
+	}
+	publicationDesc, err := publication.Build(publication.Dependencies{
+		Handler:     handler.publicationRegistrar(idem),
+		EnabledFunc: deps.EnabledFunc,
+		Idempotency: idem,
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clips.Build: publication sub-descriptor: %w", err)
+	}
+	indexingDesc, err := indexing.Build(indexing.Dependencies{
+		Handler:     handler.indexingRegistrar(idem),
+		EnabledFunc: deps.EnabledFunc,
+		Idempotency: idem,
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clips.Build: indexing sub-descriptor: %w", err)
+	}
+	operationsDesc, err := operations.Build(operations.Dependencies{
+		Handler:     handler.operationsRegistrar(idem),
+		EnabledFunc: deps.EnabledFunc,
+		Idempotency: idem,
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clips.Build: operations sub-descriptor: %w", err)
+	}
+	bulkDesc, err := bulk.Build(bulk.Dependencies{
+		Handler:     handler.bulkRegistrar(idem),
+		EnabledFunc: deps.EnabledFunc,
+		Idempotency: idem,
+		Logger:      log,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("clips.Build: bulk sub-descriptor: %w", err)
+	}
+
 	// Construct the route Module. The closure inside
-	// api.NewRouteModule calls handler.RegisterRoutes(r) — the
-	// Handler is captured here, not exposed to the composition
-	// root via the Module surface.
+	// api.NewRouteModule calls adapter.RegisterRoutes(r) — the
+	// adapter forwards to each sub-descriptor under the /clips group.
 	mod := api.NewRouteModule(
 		"clips",
 		deps.EnabledFunc,
 		"/clips",
-		handler,
+		&subModuleAdapter{subModules: []api.Descriptor{
+			catalogDesc,
+			ingestDesc,
+			processingDesc,
+			publicationDesc,
+			indexingDesc,
+			operationsDesc,
+			bulkDesc,
+		}},
 		log,
 		deps.ModuleOpts..., // typically []ModuleOption{api.WithMiddleware(...)}
 	)
@@ -438,4 +523,23 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		Module:  mod,
 		Handler: handler,
 	}, nil
+}
+
+// subModuleAdapter adapts a slice of sub-descriptors to the
+// api.Module RegisterRoutes contract. It is the handler passed to
+// api.NewRouteModule so that module-level middleware is applied
+// once to the /clips group before each sub-descriptor registers
+// its routes.
+type subModuleAdapter struct {
+	subModules []api.Descriptor
+}
+
+// RegisterRoutes mounts each enabled sub-descriptor under the
+// supplied router group.
+func (a *subModuleAdapter) RegisterRoutes(rg *gin.RouterGroup) {
+	for _, sub := range a.subModules {
+		if sub.Enabled() {
+			sub.RegisterRoutes(rg)
+		}
+	}
 }
