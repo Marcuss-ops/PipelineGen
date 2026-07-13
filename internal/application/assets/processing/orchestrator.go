@@ -2,10 +2,10 @@
 //
 // Orchestrator coordinates the four-step pipeline:
 //
-//	1. Stage   — acquisition.SourceStager downloads the source to local disk.
-//	2. Transform — asset.MediaTransformer runs the FFmpeg pipeline.
-//	3. Publish — delivery.Publisher uploads to Drive.
-//	4. Commit  — AssetCommitter persists to DB/outbox.
+//  1. Stage   — acquisition.SourceStager downloads the source to local disk.
+//  2. Transform — asset.MediaTransformer runs the FFmpeg pipeline.
+//  3. Publish — delivery.Publisher uploads to Drive.
+//  4. Commit  — AssetCommitter persists to DB/outbox.
 //
 // The orchestrator is the single owner of this coordination; the
 // MediaTransformer is intentionally narrow and does not download,
@@ -32,22 +32,22 @@ type Orchestrator interface {
 
 // ProcessRequest describes a media asset to be processed end-to-end.
 type ProcessRequest struct {
-	AssetID      string
-	Name         string
-	SourceURL    string
-	OutputDir    string
-	Filename     string
-	FolderID     string
-	Destination  delivery.DestinationKey
-	Term         string
-	Duration     int
-	Width        int
-	Height       int
-	Normalize    *bool
-	KeepAudio    bool
+	AssetID         string
+	Name            string
+	SourceURL       string
+	OutputDir       string
+	Filename        string
+	FolderID        string
+	Destination     delivery.DestinationKey
+	Term            string
+	Duration        int
+	Width           int
+	Height          int
+	Normalize       *bool
+	KeepAudio       bool
 	RenditionLayout bool
 	// Metadata is optional source-specific enrichment passed to the committer.
-	Metadata     map[string]any
+	Metadata map[string]any
 }
 
 // ProcessResponse is the result of an end-to-end processing run.
@@ -64,11 +64,11 @@ type ProcessResponse struct {
 
 // orchestrator is the concrete Orchestrator implementation.
 type orchestrator struct {
-	stager    acquisition.SourceStager
+	stager      acquisition.SourceStager
 	transformer asset.MediaTransformer
-	publisher delivery.Publisher
-	committer AssetCommitter
-	log       *zap.Logger
+	publisher   delivery.Publisher
+	committer   AssetCommitter
+	log         *zap.Logger
 }
 
 // NewOrchestrator creates an Orchestrator.
@@ -88,11 +88,11 @@ func NewOrchestrator(
 		log = zap.NewNop()
 	}
 	return &orchestrator{
-		stager:    stager,
+		stager:      stager,
 		transformer: transformer,
-		publisher: publisher,
-		committer: committer,
-		log:       log,
+		publisher:   publisher,
+		committer:   committer,
+		log:         log,
 	}
 }
 
@@ -171,13 +171,18 @@ func (o *orchestrator) Process(ctx context.Context, req ProcessRequest) (*Proces
 	// Step 3: Publish.
 	if o.publisher != nil && req.FolderID != "" {
 		publishReq := delivery.PublishRequest{
-			Destination:        req.Destination,
-			LocalPath:          transformResult.LocalPath,
-			Filename:           transformResult.Filename,
-			Description:        fmt.Sprintf("PipelineGen processed: %s (id=%s)", req.Name, req.AssetID),
-			AssetID:            req.AssetID,
-			Group:              req.Term,
-			RootFolderOverride: req.FolderID,
+			Destination: req.Destination,
+			LocalPath:   transformResult.LocalPath,
+			Filename:    transformResult.Filename,
+			Description: fmt.Sprintf("PipelineGen processed: %s (id=%s)", req.Name, req.AssetID),
+			AssetID:     req.AssetID,
+			Group:       req.Term,
+			// godlike/08 forward-prevention: route the folder hint through
+			// the canonical DestinationFolderID seam on delivery.PublishRequest
+			// rather than the banned RootFolderOverride. The publisher's
+			// DestinationKey mapping owns folder resolution; per-task hints
+			// flow through the typed seam.
+			DestinationFolderID: req.FolderID,
 		}
 		publishResult, pubErr := o.publisher.Publish(ctx, publishReq)
 		if pubErr != nil {
