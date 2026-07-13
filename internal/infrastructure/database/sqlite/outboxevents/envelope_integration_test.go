@@ -222,3 +222,127 @@ func TestEnvelope_DedupPreservesPayloadCollisions(t *testing.T) {
 		t.Fatalf("payload bytes must vary across calls (event_id is per-call UUID)")
 	}
 }
+
+// ── Card 7.1 (July 2026): force=true seam ────────────────────────
+//
+// Admin reindex emits asset.index.requested.v1 with force=true so the
+// worker bypasses the source_version supersede gate. The event_key
+// must carry the literal ":force" suffix so SQLite UNIQUE(event_key)
+// does NOT collapse a force reindex with a prior non-force reindex
+// for the same (assetID, schemaVersion, sourceVersion) tuple. The
+// payload must carry "force": true so the worker reads the flag at
+// consume time. These three tests pin both surfaces.
+
+// TestBuildReindexEnvelopeV1Force_PayloadContainsForceField — the
+// admin reindex payload must carry "force": true so the worker
+// (IndexingHandler.Handle) reads the flag and bypasses the
+// source_version supersede gate.
+func TestBuildReindexEnvelopeV1Force_PayloadContainsForceField(t *testing.T) {
+	t0 := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
+	_, payload, err := BuildReindexEnvelopeV1Force("asset-force-1", "media_assets_v3", "hash-ff1", t0)
+	if err != nil {
+		t.Fatalf("BuildReindexEnvelopeV1Force: %v", err)
+	}
+	if !strings.Contains(payload, `"force":true`) {
+		t.Fatalf("force=true payload must carry \"force\":true, got %q", payload)
+	}
+	// Symmetry: the non-force variant must NOT carry force=true.
+	_, payloadNonForce, err := BuildReindexEnvelopeV1("asset-force-1", "media_assets_v3", "hash-ff1", t0)
+	if err != nil {
+		t.Fatalf("BuildReindexEnvelopeV1: %v", err)
+	}
+	if strings.Contains(payloadNonForce, `"force":true`) {
+		t.Fatalf("non-force payload must NOT carry \"force\":true, got %q", payloadNonForce)
+	}
+}
+
+// TestBuildReindexEnvelopeV1Force_EventKeyHasForceSuffix — the
+// force=true event_key appends the literal ":force" suffix so the
+// SQLite UNIQUE(event_key) dedup does not collapse a force reindex
+// with a prior non-force reindex for the same (assetID, schema,
+// source) tuple. The non-force variant must produce the same
+// event_key shape WITHOUT the suffix (regression pin — without the
+// suffix the dedup would silently swallow operator force).
+func TestBuildReindexEnvelopeV1Force_EventKeyHasForceSuffix(t *testing.T) {
+	t0 := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
+	forceKey, _, err := BuildReindexEnvelopeV1Force("asset-force-2", "media_assets_v3", "hash-ff2", t0)
+	if err != nil {
+		t.Fatalf("BuildReindexEnvelopeV1Force: %v", err)
+	}
+	nonForceKey, _, err := BuildReindexEnvelopeV1("asset-force-2", "media_assets_v3", "hash-ff2", t0)
+	if err != nil {
+		t.Fatalf("BuildReindexEnvelopeV1: %v", err)
+	}
+	if !strings.HasSuffix(forceKey, ":force") {
+		t.Fatalf("force=true event_key must end with literal \":force\" suffix, got %q", forceKey)
+	}
+	if forceKey == nonForceKey {
+		t.Fatalf("force=true and force=false event_keys MUST differ for the same (assetID, schema, source) tuple; got identical %q", forceKey)
+	}
+}
+
+// TestEnvelope_ForceNewRowOnTopOfNonForce — the admin reindex path
+// must NOT be collapsed by a prior non-force enqueue for the same
+// (assetID, schemaVersion, sourceVersion) tuple. SQLite UNIQUE
+// (event_key) + ON CONFLICT DO NOTHING is the dedup vector: a
+// non-force reindex row already exists (event_key without :force
+// suffix), a subsequent force reindex (event_key WITH :force suffix)
+// must produce a SECOND row. The worker's supersede gate bypass
+// then runs IndexClip unconditionally on the force row.
+func TestEnvelope_ForceNewRowOnTopOfNonForce(t *testing.T) {
+	db := setupOutboxTable(t)
+	repo := NewRepository(db)
+	t0 := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC)
+
+	// 1. Non-force enqueue (the dedup-collapsible prior row).
+	nonForceKey, nonForcePayload, err := BuildReindexEnvelopeV1("asset-force-3", "media_assets_v3", "hash-ff3", t0)
+	if err != nil {
+		t.Fatalf("build non-force: %v", err)
+	}
+	if _, err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-force-3", "media_asset", nonForcePayload, nonForceKey); err != nil {
+		t.Fatalf("enqueue non-force: %v", err)
+	}
+	if c := countRows(t, db, nonForceKey); c != 1 {
+		t.Fatalf("non-force enqueue: want 1 row for event_key=%q, got %d", nonForceKey, c)
+	}
+
+	// 2. Force reindex (the admin reindex case) for the SAME
+	// (assetID, schema, source) tuple. The :force suffix MUST
+	// produce a distinct event_key, so the second Enqueue creates
+	// a fresh outbox row (the operator's force is NOT collapsed).
+	forceKey, forcePayload, err := BuildReindexEnvelopeV1Force("asset-force-3", "media_assets_v3", "hash-ff3", t0)
+	if err != nil {
+		t.Fatalf("build force: %v", err)
+	}
+	if forceKey == nonForceKey {
+		t.Fatalf("force=true and force=false must produce distinct event_keys (regression: dedup would silently swallow operator force)")
+	}
+	if _, err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-force-3", "media_asset", forcePayload, forceKey); err != nil {
+		t.Fatalf("enqueue force: %v", err)
+	}
+
+	// 3. The non-force row still exists (the prior reconcile-repair
+	// applied state is preserved for audit) and the force row was
+	// inserted as a NEW row (not collapsed).
+	if c := countRows(t, db, nonForceKey); c != 1 {
+		t.Fatalf("non-force row should remain after force reindex; want 1, got %d", c)
+	}
+	if c := countRows(t, db, forceKey); c != 1 {
+		t.Fatalf("force row should be inserted as a NEW row (not collapsed by non-force dedup); want 1, got %d", c)
+	}
+
+	// 4. Re-running the same force enqueue is dedup-collapsed at
+	// the SQLite UNIQUE(event_key) level (idempotent re-runs of
+	// the same admin command). Both event_keys stable across
+	// retries; the operator can re-run safely.
+	_, forcePayloadAgain, err := BuildReindexEnvelopeV1Force("asset-force-3", "media_assets_v3", "hash-ff3", t0)
+	if err != nil {
+		t.Fatalf("rebuild force: %v", err)
+	}
+	if _, err := repo.Enqueue(context.Background(), nil, EventAssetIndexRequested, "asset-force-3", "media_asset", forcePayloadAgain, forceKey); err != nil {
+		t.Fatalf("re-enqueue force: %v", err)
+	}
+	if c := countRows(t, db, forceKey); c != 1 {
+		t.Fatalf("re-enqueue of same force event_key must dedup to 1 row; got %d", c)
+	}
+}

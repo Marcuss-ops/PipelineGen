@@ -66,11 +66,19 @@ type AssetPointIDFunc func(assetID string) string
 // contentHash is rejected by the canonical envelope builder because
 // the worker supersede gate (IndexingHandler) requires it.
 //
+// EnqueueReindex carries the `force` flag (Card 7.1, July 2026):
+// when true, the adapter routes through the canonical force
+// envelope variant (outboxevents.BuildReindexEnvelopeV1Force) so
+// the worker bypasses the source_version supersede gate. The
+// canonical admin reindex path passes force=true. Production
+// reconciler --apply also passes force=true today (the operator's
+// --apply IS the admin opt-in).
+//
 // EnqueueDelete emits ONE asset.index.delete_requested.v1 outbox
 // event per call; the deterministic delete key ("delete:<assetID>")
 // was already correct pre-PR-11.
 type OutboxRepairEnqueuer interface {
-	EnqueueReindex(ctx context.Context, assetID, contentHash string) error
+	EnqueueReindex(ctx context.Context, assetID, contentHash string, force bool) error
 	EnqueueDelete(ctx context.Context, assetID string) error
 }
 
@@ -185,8 +193,8 @@ func (noopMetrics) RecordRunComplete(string, float64)              {}
 // in Apply mode would have hidden every repair-dispatch regression.
 type noopOutboxEnqueuer struct{}
 
-func (noopOutboxEnqueuer) EnqueueReindex(context.Context, string, string) error { return nil }
-func (noopOutboxEnqueuer) EnqueueDelete(context.Context, string) error          { return nil }
+func (noopOutboxEnqueuer) EnqueueReindex(context.Context, string, string, bool) error { return nil }
+func (noopOutboxEnqueuer) EnqueueDelete(context.Context, string) error                { return nil }
 
 // noopPayloadMutator is the default QdrantPayloadMutator when
 // Deps.Payload is nil. Same caveat as noopOutboxEnqueuer.

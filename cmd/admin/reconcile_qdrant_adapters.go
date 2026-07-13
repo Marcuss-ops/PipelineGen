@@ -111,10 +111,14 @@ type outboxRepairAdapter struct {
 // the supplied assetID. The event_key is deterministic per
 // (assetID, target_schema_version, full_content_hash) tuple, built via
 // outboxevents.BuildReindexEnvelopeV1 (the canonical envelope
-// builder) — see that function's idempotency invariants in PR 11
-// (June 2026). Two consecutive reconciler --apply runs on the same
-// asset (no content change) collapse to a single outbox_events row
-// via ON CONFLICT (event_key) DO NOTHING.
+// builder, when force=false) or outboxevents.BuildReindexEnvelopeV1Force
+// (when force=true) — see those functions' idempotency invariants in
+// PR 11 (June 2026) + Card 7.1 (July 2026). Two consecutive reconciler
+// --apply runs on the same asset (no content change, force=false) collapse
+// to a single outbox_events row via ON CONFLICT (event_key) DO NOTHING.
+// A force=true enqueue (admin reindex) survives a prior force=false
+// enqueue for the same (assetID, schema, source) tuple because the
+// :force suffix differentiates the event_key.
 //
 // The content_hash lookup happens INSIDE the producer tx so the
 // captured value is exactly the row-state at the moment we commit
@@ -154,7 +158,14 @@ type outboxRepairAdapter struct {
 // internal/infrastructure/database/sqlite/assets/source_version.go
 // + source_version_test.go for the regression pin across all
 // four priority slots (including the legacy top-level column).
-func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID, contentHash string) error {
+//
+// force (Card 7.1, July 2026): the admin reindex path passes
+// force=true. Production reconciler --apply also passes force=true
+// today (the operator's --apply IS the admin opt-in). The adapter
+// routes through outboxevents.BuildReindexEnvelopeV1Force when
+// force=true so the worker bypasses the source_version supersede
+// gate.
+func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID, contentHash string, force bool) error {
 	if assetID == "" {
 		return errors.New("outboxRepairAdapter.EnqueueReindex: assetID must not be empty")
 	}
@@ -178,7 +189,12 @@ func (a *outboxRepairAdapter) EnqueueReindex(ctx context.Context, assetID, conte
 		return fmt.Errorf("update updated_at %s: %w", assetID, err)
 	}
 
-	eventKey, payloadJSON, err := outboxevents.BuildReindexEnvelopeV1(assetID, a.schemaVersion, contentHash, time.Now())
+	var eventKey, payloadJSON string
+	if force {
+		eventKey, payloadJSON, err = outboxevents.BuildReindexEnvelopeV1Force(assetID, a.schemaVersion, contentHash, time.Now())
+	} else {
+		eventKey, payloadJSON, err = outboxevents.BuildReindexEnvelopeV1(assetID, a.schemaVersion, contentHash, time.Now())
+	}
 	if err != nil {
 		return fmt.Errorf("build reindex envelope: %w", err)
 	}

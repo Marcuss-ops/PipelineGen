@@ -156,6 +156,17 @@ type SourceVersionQuerier interface {
 //     producers don't break)
 //   - idempotency_key     (mirrors event_key for audit); empty is
 //     terminal
+//   - force               (Card 7.1, July 2026; bool, default false).
+//     When true, the source_version supersede gate in Handle is
+//     bypassed and IndexClip is invoked unconditionally. Producers
+//     that want forced reindex must use the canonical
+//     outboxevents.BuildReindexEnvelopeV1Force variant (which sets
+//     this field to true AND appends the ":force" suffix to
+//     event_key so the SQLite UNIQUE(event_key) dedup does not
+//     collapse a force reindex with a prior non-force reindex).
+//     Production ingest (asset_committer) and the normal reconciler
+//     repair path (service_projection) MUST NOT set force — the
+//     supersede dedup is part of their contract.
 //
 // Producers MUST NOT include embeddings, raw search vectors, or any
 // payload that would make the event bloom to MBs. The handler
@@ -172,6 +183,11 @@ type indexRequestV1 struct {
 	EmbeddingModel     string   `json:"embedding_model,omitempty"`
 	EmbeddingVersion   string   `json:"embedding_version,omitempty"`
 	IdempotencyKey     string   `json:"idempotency_key"`
+	// Force (Card 7.1, July 2026): when true, the source_version
+	// supersede gate is bypassed. See package doc above for the
+	// producer-side contract + the BuildReindexEnvelopeV1Force
+	// variant.
+	Force bool `json:"force,omitempty"`
 }
 
 // IndexingHandler is the canonical handler for asset.index.requested.v1.
