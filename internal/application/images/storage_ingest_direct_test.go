@@ -3,6 +3,7 @@ package images
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -238,8 +239,11 @@ func TestIngestDirect_CommitterNil_FailsClosed(t *testing.T) {
 	// The error message must signal the SSOT contract so operators can
 	// route on it: refuse to write the SQLite half of the legacy
 	// 2-transaction pipeline without the matching outbox event.
-	if !strings.Contains(err.Error(), "Committer is nil") {
-		t.Errorf("error = %q, want message containing 'Committer is nil' (godlike/07 NO-FAKE-AVAILABILITY contract)", err.Error())
+	if !errors.Is(err, errImageIngestCommitterNil) {
+		t.Errorf("error %v is not errors.Is errImageIngestCommitterNil (godlike/07 typed-sentinel contract)", err)
+	}
+	if !strings.Contains(err.Error(), "asset committer is nil") {
+		t.Errorf("error = %q, want message containing 'asset committer is nil' (godlike/07 NO-FAKE-AVAILABILITY contract)", err.Error())
 	}
 }
 
