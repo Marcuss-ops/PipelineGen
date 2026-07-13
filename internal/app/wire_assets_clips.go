@@ -102,7 +102,12 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error
 	//   (b) the media.enrich worker registered below, which the
 	//       handlers now enqueue to instead of spawning goroutines
 	//       with context.WithoutCancel.
-	enrichUC := appclips.NewEnrichUseCase(params.AssetRepo, params.Deps.Search.ClipIndexerService, params.MetaWriter, params.Log)
+	//
+	// Wave 2 (Asset commit + Qdrant, July 2026): EnrichUseCase now
+	// depends on the canonical mutations.AssetMutationDispatcher so
+	// enriched metadata is persisted and re-indexed through the outbox
+	// pipeline. Direct clipIndexer.IndexClip calls are removed.
+	enrichUC := appclips.NewEnrichUseCase(params.AssetRepo, params.MetaWriter, mutationsDisp, params.Log)
 
 	// (2b) BulkUploadWorker (W14 PR2 slice 3, June 2026)
 	//
@@ -121,7 +126,6 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
 		params.Deps.Delivery.Publisher,
 		newClipsRepoAdapter(params.Deps.Core.ClipsRepo),
-		newClipsIndexerAdapter(params.Deps.Search.ClipIndexerService),
 		newClipsHashAdapter(),
 		newClipsCfgAdapter(params.Cfg, appjobs.Compose()),
 		mutationsDisp,

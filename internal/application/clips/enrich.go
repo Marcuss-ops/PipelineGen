@@ -5,41 +5,49 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"go.uber.org/zap"
-)
-
-// EnrichUseCase handles semantic enrichment for clips.
-// vectorStore was removed from this flow.
-// The clip indexer is the canonical semantic-search backend now.
+) // EnrichUseCase handles semantic enrichment for clips.
+// Wave 2 (Asset commit + Qdrant, July 2026): direct clipIndexer.IndexClip
+// calls have been removed. Enriched metadata is persisted and re-indexed
+// through the canonical outbox pipeline (mutations.AssetMutationDispatcher).
+// The IndexingHandler consumer drives embedding generation and Qdrant upsert
+// asynchronously.
 type EnrichUseCase struct {
-	assetRepo   asset.Repository
-	clipIndexer *clipindexer.Service
-	metaWriter  semantic.MetadataWriterPort
-	log         *zap.Logger
+	assetRepo  asset.Repository
+	metaWriter semantic.MetadataWriterPort
+	dispatcher mutations.AssetMutationDispatcher
+	log        *zap.Logger
 }
 
 // NewEnrichUseCase constructs the use case.
+//
+// Wave 2 (Asset commit + Qdrant, July 2026): the dispatcher is now
+// required so that enriched metadata is persisted and re-indexed
+// through the canonical outbox pipeline. Direct clipIndexer.IndexClip
+// calls have been removed; the IndexingHandler consumer drives
+// embedding generation and Qdrant upsert asynchronously.
 func NewEnrichUseCase(
 	repo asset.Repository,
-	indexer *clipindexer.Service,
 	mw semantic.MetadataWriterPort,
+	dispatcher mutations.AssetMutationDispatcher,
 	log *zap.Logger,
 ) *EnrichUseCase {
 	return &EnrichUseCase{
-		assetRepo:   repo,
-		clipIndexer: indexer,
-		metaWriter:  mw,
-		log:         log,
+		assetRepo:  repo,
+		metaWriter: mw,
+		dispatcher: dispatcher,
+		log:        log,
 	}
 }
 
-// EnrichAndIndex runs the full enrichment pipeline in background:
+// EnrichAndIndex runs the enrichment pipeline:
 //  1. LLM semantic tagger -> search_text, tags, subjects
-//  2. Clip indexer -> embedding computation
-//  3. Vector store (Qdrant) upsert
+//  2. Persist the enriched asset and enqueue an outbox event so the
+//     IndexingHandler consumer can re-generate embeddings and upsert
+//     to Qdrant asynchronously.
 func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, source string) {
 	enrichCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
@@ -87,21 +95,31 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 				clip.Metadata["semantic_enriched"] = true
 			}
 
-			if uc.assetRepo != nil {
+			// Persist the enriched asset. Prefer the canonical
+			// dispatcher (UPSERT + outbox INSERT atomically). When the
+			// dispatcher is not wired, fall back to the asset repo so
+			// test fixtures and partial deployments do not silently
+			// lose enriched metadata.
+			if uc.dispatcher != nil {
+				contentHash := clip.FileHash()
+				if contentHash == "" {
+					uc.log.Warn("enriched clip has no content hash; persisting without re-index",
+						zap.String("clip_id", clip.ID))
+				} else if err := uc.dispatcher.EnqueueAndIndex(enrichCtx, clip, contentHash); err != nil {
+					uc.log.Warn("failed to enqueue enriched clip for indexing",
+						zap.String("clip_id", clip.ID), zap.Error(err))
+				}
+			} else if uc.assetRepo != nil {
+				uc.log.Warn("enrichment complete but dispatcher not wired; persisting via assetRepo fallback",
+					zap.String("clip_id", clip.ID))
 				if err := uc.assetRepo.Upsert(enrichCtx, clip); err != nil {
 					uc.log.Warn("failed to persist enriched clip metadata",
 						zap.String("clip_id", clip.ID), zap.Error(err))
 				}
+			} else {
+				uc.log.Warn("enrichment complete but neither dispatcher nor assetRepo wired; re-index skipped",
+					zap.String("clip_id", clip.ID))
 			}
-		}
-	}
-
-	// Step 2: Clip indexer (PG-034: only the canonical search backend — vector
-	// store fallback was deleted with Qdrant).
-	if uc.clipIndexer != nil && uc.clipIndexer.IsEnabled() {
-		if err := uc.clipIndexer.IndexClip(enrichCtx, clip.ID); err != nil {
-			uc.log.Warn("clip indexer failed for clip",
-				zap.String("clip_id", clip.ID), zap.Error(err))
 		}
 	}
 
@@ -109,11 +127,10 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clip *asset.Asset, 
 }
 
 // UpsertToVectorStore was removed in PG-034 (June 2026) along with the
-// Qdrant capability. The clip indexer's IndexClip path is now the
-// single canonical semantic indexing entry point.
-
-// HasVectorStore was removed in PG-034 (June 2026).
-// The clip indexer is now the canonical semantic-search backend.
+// Qdrant capability. The clip indexer's IndexClip path is still the
+// single canonical semantic indexing entry point, but it is invoked
+// indirectly by the outbox consumer (IndexingHandler) rather than
+// directly by application workflows.
 
 // EnrichMediaRequest contains the input for the EnrichMedia endpoint.
 // SkipQdrant was removed from this flow.
@@ -166,9 +183,9 @@ type ClipFinder interface {
 //	┌───────────────────────┬──────────────────────────────────────┐
 //	│ Deps wired            │ Result.Action                        │
 //	├───────────────────────┼──────────────────────────────────────┤
-//	│ JobsSvc + clipIndexer │ "deprecated_use_route_POST_media_enrich"
+//	│ Dispatcher + JobsSvc  │ "deprecated_use_route_POST_media_enrich"
 //	│ JobsSvc only          │ "deprecated_use_route_POST_media_enrich"
-//	│ clipIndexer only      │ "deprecated_use_route_POST_reindex"
+//	│ Dispatcher only       │ "deprecated_use_route_POST_reindex"
 //	│ neither               │ "no_pipeline_available"              │
 //	└───────────────────────┴──────────────────────────────────────┘
 //
@@ -190,8 +207,11 @@ func (uc *EnrichUseCase) EnrichMedia(ctx context.Context, req EnrichMediaRequest
 
 	// Inspect deps to provide a directed message: where should the
 	// caller go to actually run the enrichment?
+	//
+	// Wave 2 (Asset commit + Qdrant, July 2026): replaced the
+	// clipIndexer check with the canonical dispatcher check.
 	switch {
-	case uc.clipIndexer != nil && uc.clipIndexer.IsEnabled() && !req.SkipEmbedGen:
+	case uc.dispatcher != nil && !req.SkipEmbedGen:
 		return &EnrichMediaResult{
 			Action:  "deprecated_use_route_POST_media_enrich",
 			AssetID: req.AssetID,
@@ -205,7 +225,7 @@ func (uc *EnrichUseCase) EnrichMedia(ctx context.Context, req EnrichMediaRequest
 			AssetID: req.AssetID,
 			Source:  req.Source,
 			Method:  "noop",
-			Message: "neither clipIndexServer nor jobs port wired; cannot enrich",
+			Message: "dispatcher not wired; cannot enrich",
 		}, nil
 	}
 }

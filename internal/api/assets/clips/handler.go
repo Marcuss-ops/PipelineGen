@@ -149,7 +149,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	// S1a (June 2026): when the composition root supplies a shared
 	// EnrichUC, reuse it; when nil (test fixture, partial deploy),
 	// construct a local fallback copy that preserves pre-lift behaviour.
-	enrichUC := enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.ClipIndexer, d.MetaWriter, d.Log)
+	enrichUC := enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.MetaWriter, d.Log)
 	bulkTagsUC := appclips.NewBulkTagsUseCase(d.ClipsRepo, d.AssetTreeSvc)
 	downloadUC := appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo)
 	reprocessUC := appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor, nil)
@@ -243,6 +243,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 // godlike/07 no-fake-availability.
 //
 // godlike/06 SSOT: the canonical path is
+//
 //	clips.Build (module.go)
 //	  -> NewHandlerStrict (this function)
 //	      -> nonops.ValidateNonOpsDeps pre-check on the required deps
@@ -270,17 +271,21 @@ func NewHandlerStrict(d Deps, idempotencyMiddleware gin.HandlerFunc) (*Handler, 
 // enrichUCOrLocal returns `shared` when non-nil, otherwise constructs a
 // fresh EnrichUseCase with the supplied dependencies. Single-line
 // helper that documents the share-or-construct decision inline.
+//
+// Wave 2 (Asset commit + Qdrant, July 2026): the local fallback has
+// no dispatcher by design (the orchestrator only sees the narrower
+// ClipIndexDispatcherPort). Enrichment will still run, but re-index
+// enqueueing is skipped with a warning.
 func enrichUCOrLocal(
 	shared *appclips.EnrichUseCase,
 	repo asset.Repository,
-	indexer *clipindexer.Service,
 	mw semantic.MetadataWriterPort,
 	log *zap.Logger,
 ) *appclips.EnrichUseCase {
 	if shared != nil {
 		return shared
 	}
-	return appclips.NewEnrichUseCase(repo, indexer, mw, log)
+	return appclips.NewEnrichUseCase(repo, mw, nil, log)
 }
 
 // repoForSource resolves a clip source to its canonical repository
