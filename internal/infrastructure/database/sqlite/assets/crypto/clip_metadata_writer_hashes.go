@@ -21,11 +21,11 @@
 // source_version → event_key chain) and from the clip ID, so it
 // belongs with the other deterministic-hashing functions rather
 // than with the JSON payload serialization. Two readers of
-// buildMetadataEventKey (the canonical entry points + the
+// BuildMetadataEventKey (the canonical entry points + the
 // buildMetadataPayload cross-reference) both already cross file
 // boundaries via package-level symbol sharing, so there is no
 // new dependency surface.
-package assets
+package crypto
 
 import (
 	"crypto/sha256"
@@ -75,7 +75,7 @@ func ComputeContentHashWithTextTracks(fileHash string, textTracks []asset.TextTr
 	return hex.EncodeToString(h[:])
 }
 
-// buildMetadataEventKey returns the canonical event_key for the
+// BuildMetadataEventKey returns the canonical event_key for the
 // metadata write. Shape:
 //
 //	metadata:reindex:<clipID>:<sourceVersion>
@@ -85,7 +85,7 @@ func ComputeContentHashWithTextTracks(fileHash string, textTracks []asset.TextTr
 // outbox dispatcher treats the two events as distinct (the
 // metadata event triggers a Qdrant re-index, the clip event
 // triggers a fresh insert).
-func buildMetadataEventKey(clipID, sourceVersion string) string {
+func BuildMetadataEventKey(clipID, sourceVersion string) string {
 	if sourceVersion == "" {
 		// Empty sourceVersion is fail-closed at the builder
 		// level; the writer surfaces an empty event_key as
