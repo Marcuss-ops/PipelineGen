@@ -697,6 +697,39 @@ func (s *p1fStubRepo) ListByAsset(_ context.Context, assetID string) ([]asset.Te
 	return out, nil
 }
 
+// FindCurrentForTranslation is the canonical
+// lookup-before-translate gate (godlike/06 SSOT). The stub
+// returns (nil, nil): every test that exercises Group 2/3
+// uses test-local fixtures that bypass the materializer
+// path, so the stub does not need to honour the 6-tuple
+// translation_key lookup. The presence of the method is
+// what matters — it lets the compile-time
+// `var _ asset.TextTrackRepository = (*p1fStubRepo)(nil)`
+// assertion at the bottom of this file pass.
+func (s *p1fStubRepo) FindCurrentForTranslation(
+	_ context.Context,
+	_ string,
+	_ asset.TextTrackKind,
+	_ string,
+	_ string,
+	_ string,
+	_ string,
+	_ string,
+) (*asset.TextTrack, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return nil, nil
+}
+
+// InsertTranslationWithAuditPredecessor is the canonical
+// flip-and-insert path (godlike/06 SSOT). The stub is a
+// no-op — test fixtures seed rows directly through
+// UpsertBatch, so the materializer's atomic-flip semantics
+// never fire in the P1.F test surface.
+func (s *p1fStubRepo) InsertTranslationWithAuditPredecessor(_ context.Context, _ asset.TextTrack) error {
+	return nil
+}
+
 // p1fStubSubtitles records FetchSegmentSubtitles calls. Used to
 // assert the resolver did NOT fall through to subtitles when
 // the DB has a READY track (Group 2) and to assert the
