@@ -268,6 +268,7 @@ func buildEditorialPrompt(item scriptpkg.GenerationItemV2) string {
 	if item.ScriptParams.PromptVersion != "" {
 		parts = append(parts, "Prompt version: "+item.ScriptParams.PromptVersion)
 	}
+	parts = append(parts, "Do not include raw URLs, hyperlinks, or source citations in the prose output.")
 
 	return strings.Join(parts, "\n\n")
 }
