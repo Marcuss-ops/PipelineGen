@@ -8,6 +8,15 @@
 // existing callsite that built a usecase.ClipSearchQuery literal
 // keeps compiling, but now resolves to the same shape the qdrant
 // adapter consumes.
+//
+// FASE-7 move-only refactor (July 2026): the
+// deduplicate-and-collect-clip-IDs + coverage gate loop is delegated
+// to the canonical ClipSampler port (usecase/clip_sampler_impl.go).
+// The resolver normalizes raw clip-search hits + hint IDs into
+// []ports.ClipSamplerCandidate and calls the registry's sampler in
+// ONE place. There is no resolver-local copy of the dedup+select
+// loop anymore (godlike/06 SSOT; the user's "vietati tre sampler
+// separati" constraint is enforced structurally).
 package usecase
 
 import (
@@ -31,9 +40,7 @@ import (
 // WorkspaceID + IsSystem) cannot drift between the curate path
 // and the canonical port surface. Code that previously referenced
 // `usecase.ClipSearchQuery{...}` keeps compiling — the alias
-// resolves to the same shape at runtime. This is the consolidation
-// AGENTS.md §Migration Status (Brutal Care Plan) was converging
-// toward; the previous duplicate is now permanently a no-op.
+// resolves to the same shape at runtime.
 type ClipSearchQuery = ports.ClipSearchQuery
 
 // ClipSearchPort is the canonical semantic-search leg of
@@ -58,17 +65,27 @@ type ClipSearchPort interface {
 var ErrCurateNoClips = fmt.Errorf("curate: no clips found to curate")
 
 // CurateSourceResolver resolves SourceCurate sources.
+//
+// godlike/06 SSOT: the dedup+limit+min-score logic is delegated
+// to the canonical ClipSampler port (single impl). This resolver
+// owns only:
+//   1. Collection: hits from ClipSearchPort + hint IDs from src.ClipIDs
+//   2. Per-source field plumbing (WorkspaceID + IsSystem, MinQualityScore)
+//   3. Post-clipBuilder hydration + AllowTextOnly fallback path
 type CurateSourceResolver struct {
 	clipSearch  ClipSearchPort
 	clipBuilder clipContextBuilder
+	samplerReg  *ClipSamplerRegistry // FASE-7: single source of selection logic
 	log         *zap.Logger
 }
 
-// NewCurateSourceResolver creates a CurateSourceResolver backed by
-// a concrete ClipSourceBuilder.
-func NewCurateSourceResolver(clipBuilder *ClipSourceBuilder, log *zap.Logger) *CurateSourceResolver {
+// NewCurateSourceResolver creates a CurateSourceResolver.
+// clipBuilder and samplerReg must be non-nil (composition root
+// enforces this via wire_script_resolvers.go).
+func NewCurateSourceResolver(clipBuilder *ClipSourceBuilder, log *zap.Logger, samplerReg *ClipSamplerRegistry) *CurateSourceResolver {
 	return &CurateSourceResolver{
 		clipBuilder: clipBuilder,
+		samplerReg:  samplerReg,
 		log:         log,
 	}
 }
@@ -88,14 +105,15 @@ var _ adapters.SourceResolver = (*CurateSourceResolver)(nil)
 //
 // PR 5 (June 2026): the workspace scope is propagated from
 // resCtx (the per-source envelope supplied by the worker) into
-// the ClipSearchQuery literal. Without this propagation, the
-// compile-time fail-closed gate at qdrant.CompileQdrantFilter
-// (which rejects WorkspaceID="" + IsSystem=false) would force
-// every curate call to either crash OR be marked system. The
-// exact field name on resCtx depends on the orchestration layer's
-// CopyScriptScopeForCuration glue; the curate path is the
-// canonical consumer, so the symbol it expects here is the
-// contract.
+// the ClipSearchQuery literal.
+//
+// FASE-7 move-only: curate delegates dedup+limit to the SINGLE
+// sampler impl via the registry. Pre-collection (hits) and
+// post-collection (hints) are appended onto the canonical
+// []ports.ClipSamplerCandidate slice; the sampler handles
+// dedup+limit. hitsSearchItems (curate's SearchResults) is
+// built from hits ONLY; the original curate behavior excluded
+// hint-only IDs from SearchResults (move-only preserved).
 func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	if r == nil {
 		return nil, fmt.Errorf("CurateSourceResolver: nil receiver")
@@ -104,19 +122,7 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		return nil, fmt.Errorf("CurateSourceResolver: clipBuilder is nil")
 	}
 
-	// Workspace propagation (PR 5). `SourceResolutionContext` does
-	// not (yet) carry a workspace envelope — see internal/domain/script
-	// for the canonical struct fields. Curate is a BACKGROUND
-	// semantic-search leg by design: the worker that schedules
-	// the curate task often operates across multiple workspaces
-	// to seed the next batch of clips. Per the verdict §8,
-	// background requests MUST be marked IsSystem=true EXPLICITLY;
-	// the workspace MUST-clause at qdrant.CompileQdrantFilter is
-	// omitted because IsSystem=true short-circuits it. A future
-	// follow-up can route a per-script workspace through the
-	// orchestration layer if a per-tenant curate mode becomes
-	// necessary; for now the spec-matching behaviour is
-	// IsSystem=true + WorkspaceID="".
+	// Workspace propagation (PR 5).
 	const scopeWorkspace = ""
 	const scopeIsSystem = true
 
@@ -130,9 +136,13 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		minScore = *src.MinQualityScore
 	}
 
-	clipIDs := make([]string, 0)
-	searchResults := make([]scriptpkg.SearchResultItem, 0)
-	seen := make(map[string]struct{})
+	// FASE-7 move-only: collect raw candidates (hits + hints)
+	// into the canonical sampler shape. hitsSearchItems is built
+	// from hits WITHOUT contributing hint entries — the sampler
+	// only sees clip-IDs to dedup, not the metadata audit row.
+	candidates := make([]ports.ClipSamplerCandidate, 0)
+	hitsSearchItems := make([]scriptpkg.SearchResultItem, 0)
+	seenForItems := make(map[string]struct{})
 
 	if src.Search && r.clipSearch != nil {
 		hits, searchErr := r.clipSearch.SearchClips(ctx, ClipSearchQuery{
@@ -152,17 +162,25 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 			}
 		} else {
 			for _, h := range hits {
-				if _, dup := seen[h.ClipID]; dup {
+				id := strings.TrimSpace(h.ClipID)
+				if id == "" {
 					continue
 				}
-				seen[h.ClipID] = struct{}{}
-				clipIDs = append(clipIDs, h.ClipID)
-				searchResults = append(searchResults, scriptpkg.SearchResultItem{
-					ClipID: h.ClipID,
+				candidates = append(candidates, ports.ClipSamplerCandidate{
+					ClipID: id,
 					Name:   h.Name,
 					Score:  h.Score,
 					Source: h.Source,
 				})
+				if _, dup := seenForItems[id]; !dup {
+					seenForItems[id] = struct{}{}
+					hitsSearchItems = append(hitsSearchItems, scriptpkg.SearchResultItem{
+						ClipID: id,
+						Name:   h.Name,
+						Score:  h.Score,
+						Source: h.Source,
+					})
+				}
 			}
 		}
 	}
@@ -171,15 +189,24 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		r.log.Info("CurateSourceResolver: Search=true but ClipSearchPort not wired (HintClipIDs-only)")
 	}
 
+	// Hints become candidates too (zero-score) so the sampler
+	// dedupes hit-vs-hint collisions. They DO NOT contribute to
+	// hitsSearchItems (move-only: original curate SearchResults
+	// excluded hint IDs).
 	for _, id := range src.ClipIDs {
-		if _, dup := seen[id]; dup {
+		id := strings.TrimSpace(id)
+		if id == "" {
 			continue
 		}
-		seen[id] = struct{}{}
-		clipIDs = append(clipIDs, id)
+		candidates = append(candidates, ports.ClipSamplerCandidate{
+			ClipID: id,
+			Name:   "",
+			Score:  0,
+			Source: "hint",
+		})
 	}
 
-	if len(clipIDs) == 0 {
+	if len(candidates) == 0 {
 		if !src.AllowTextOnly {
 			return nil, &scriptpkg.SourceResolutionError{
 				SourceType:  scriptpkg.SourceCurate,
@@ -194,10 +221,37 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 			Title:           resCtx.Title,
 			Language:        resCtx.Language,
 			SourceText:      "",
-			SearchResults:   searchResults,
+			SearchResults:   hitsSearchItems,
 			GroundingPolicy: src.GroundingPolicy,
 		}, nil
 	}
+
+	// Delegate dedup+limit to the canonical sampler. MinCoverage
+	// is 0 for curate (no coverage gate in the original code);
+	// MinScore is enforced upstream by the qdrant adapter, so
+	// 0 here matches the original curate behavior (move-only
+	// preserved).
+	selection, err := r.samplerReg.SamplerFor(ClipSamplerCallerCurate).Select(
+		ports.ClipSamplerRequest{
+			Query:         query,
+			Limit:         limit,
+			MinScore:      0,
+			SourceType:    scriptpkg.SourceCurate,
+			CallingSource: ClipSamplerCallerCurate,
+		},
+		candidates,
+	)
+	if err != nil {
+		return nil, &scriptpkg.SourceResolutionError{
+			SourceType:  scriptpkg.SourceCurate,
+			Query:       query,
+			ResultCount: 0,
+			Inner:       err,
+		}
+	}
+
+	clipIDs := selection.ClipIDs
+	searchItems := hitsSearchItems
 
 	opts := &ClipGenerationOptions{
 		Language:           resCtx.Language,
@@ -250,7 +304,7 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		Language:        resCtx.Language,
 		SourceText:      modelSourceText,
 		ClipEvidence:    clipEvidence,
-		SearchResults:   searchResults,
+		SearchResults:   searchItems,
 		GroundingPolicy: src.GroundingPolicy,
 	}, nil
 }

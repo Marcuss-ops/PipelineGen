@@ -1,6 +1,15 @@
 // Package scripts — source_resolver_catalog.go resolves SourceCatalog
 // sources into a ResolvedSource. It searches the local media catalog
 // for matching clips, then uses ClipSourceBuilder to build context.
+//
+// FASE-7 move-only refactor (July 2026): the
+// deduplicate-and-collect-clip-IDs loop is delegated to the canonical
+// ClipSampler port (usecase/clip_sampler_impl.go). The resolver
+// normalizes raw LocalCatalog hits into []ports.ClipSamplerCandidate
+// and calls the registry's sampler in ONE place. There is no
+// resolver-local copy of the dedup+select loop anymore (godlike/06
+// SSOT; the user's "vietati tre sampler separati" constraint is
+// enforced structurally).
 package usecase
 
 import (
@@ -10,6 +19,7 @@ import (
 	"time"
 
 	appsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
@@ -19,22 +29,32 @@ import (
 // CatalogSourceResolver resolves SourceCatalog sources by searching
 // the local media catalog, fetching matching clips, and building
 // ClipEvidence via ClipSourceBuilder.
+//
+// godlike/06 SSOT: the selection/limit/coverage logic is delegated
+// to the canonical ClipSampler port (single impl). This resolver
+// owns only the per-source raw-to-candidate mapping + the
+// post-clipBuilder hydration phase.
 type CatalogSourceResolver struct {
 	catalogSearch appsearch.LocalCatalogPort
 	clipBuilder   *ClipSourceBuilder
+	samplerReg    *ClipSamplerRegistry // FASE-7: single source of selection logic
 	log           *zap.Logger
 }
 
 // NewCatalogSourceResolver creates a CatalogSourceResolver.
-// catalogSearch must be non-nil.
+// catalogSearch, clipBuilder, and samplerReg must all be non-nil
+// (composition root wiring enforces this via
+// wire_script_resolvers.go).
 func NewCatalogSourceResolver(
 	catalogSearch appsearch.LocalCatalogPort,
 	clipBuilder *ClipSourceBuilder,
+	samplerReg *ClipSamplerRegistry,
 	log *zap.Logger,
 ) *CatalogSourceResolver {
 	return &CatalogSourceResolver{
 		catalogSearch: catalogSearch,
 		clipBuilder:   clipBuilder,
+		samplerReg:    samplerReg,
 		log:           log,
 	}
 }
@@ -45,6 +65,10 @@ func NewCatalogSourceResolver(
 // ClipGenerationOptions.Language/Tone/Model/Style/TargetWords.
 // Catalog hits don't carry language context so resolutionContext
 // is the canonical source of truth.
+//
+// FASE-7 move-only: dedupe+limit+coverage replaced by a single
+// ClipSampler.Select call. Caller-tagged "catalog" propagated
+// to the sampler for audit logging only.
 func (r *CatalogSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	if r == nil || r.catalogSearch == nil {
 		return nil, &scriptpkg.NoSourceError{
@@ -80,45 +104,34 @@ func (r *CatalogSourceResolver) Resolve(ctx context.Context, src scriptpkg.Sourc
 		}
 	}
 
-	// Deduplicate and collect clip IDs.
-	seen := make(map[string]struct{}, limit)
-	clipIDs := make([]string, 0, limit)
-	searchItems := make([]scriptpkg.SearchResultItem, 0, limit)
+	// FASE-7 move-only: normalize raw catalog results into
+	// canonical sampler candidates, then delegate to the single
+	// ClipSampler impl. There is no resolver-local copy of the
+	// dedup+select+coverage loop anymore.
+	candidates := make([]ports.ClipSamplerCandidate, 0, len(results))
 	for _, result := range results {
-		id := strings.TrimSpace(result.ID)
-		if id == "" {
-			continue
-		}
-		if _, dup := seen[id]; dup {
-			continue
-		}
-		seen[id] = struct{}{}
-		clipIDs = append(clipIDs, id)
-		searchItems = append(searchItems, scriptpkg.SearchResultItem{
-			ClipID: id,
+		candidates = append(candidates, ports.ClipSamplerCandidate{
+			ClipID: strings.TrimSpace(result.ID),
 			Name:   result.Name,
 			Score:  result.Score,
 			Source: "catalog",
 		})
-		if len(clipIDs) >= limit {
-			break
-		}
 	}
 
-	// Check coverage if requested.
-	if minCoverage > 0 && limit > 0 {
-		coverage := float64(len(clipIDs)) / float64(limit)
-		if coverage < minCoverage {
-			return nil, &scriptpkg.SourceResolutionError{
-				SourceType:  scriptpkg.SourceCatalog,
-				Query:       query,
-				ResultCount: len(clipIDs),
-				Inner:       fmt.Errorf("catalog coverage %.2f below required minimum %.2f", coverage, minCoverage),
-			}
-		}
+	selection, err := r.samplerReg.SamplerFor(ClipSamplerCallerCatalog).Select(
+		ports.ClipSamplerRequest{
+			Query:         query,
+			Limit:         limit,
+			MinCoverage:   minCoverage,
+			SourceType:    scriptpkg.SourceCatalog,
+			CallingSource: ClipSamplerCallerCatalog,
+		},
+		candidates,
+	)
+	if err != nil {
+		return nil, err
 	}
-
-	if len(clipIDs) == 0 {
+	if len(selection.ClipIDs) == 0 {
 		return nil, &scriptpkg.SourceResolutionError{
 			SourceType:  scriptpkg.SourceCatalog,
 			Query:       query,
@@ -126,6 +139,8 @@ func (r *CatalogSourceResolver) Resolve(ctx context.Context, src scriptpkg.Sourc
 			Inner:       fmt.Errorf("no catalog clips found for query %q", query),
 		}
 	}
+	clipIDs := selection.ClipIDs
+	searchItems := selection.SearchItems
 
 	// Phase 2: build clip context via shared hydration helper.
 	if r.clipBuilder == nil {
