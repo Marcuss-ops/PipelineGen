@@ -190,8 +190,8 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		deps.Jobs,
 		deps.ClipStorePort, // nil-tolerant — downstream routes that need it short-circuit
 		deps.ToolChecker,
-		deps.Idempotency,  // nil ⇒ no-op default inside NewYouTubeClipHandler
-		deps.SearchSvc,    // nil ⇒ SearchAdvanced returns 503
+		deps.Idempotency, // nil ⇒ no-op default inside NewYouTubeClipHandler
+		deps.SearchSvc,   // nil ⇒ SearchAdvanced returns 503
 		deps.SearchFanOut, // nil ⇒ Stats returns 503
 	)
 

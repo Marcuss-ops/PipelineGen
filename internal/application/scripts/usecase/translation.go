@@ -318,10 +318,9 @@ func TranslateScriptSpec(
 		scene := enriched.Scenes[i]
 		inputScene := in.SpecScene.Scenes[i]
 		translated := scriptpkg.SpecScene{
-			ID:           scene.ID,
-			Index:        scene.Index,
-			Kind:         scene.Kind,
-			EvidenceRefs: append([]string(nil), scene.EvidenceRefs...),
+			ID:    scene.ID,
+			Index: scene.Index,
+			Kind:  scene.Kind,
 		}
 
 		// Scene.Text translation (early return on failure).

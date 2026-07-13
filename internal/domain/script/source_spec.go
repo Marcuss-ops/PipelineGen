@@ -10,7 +10,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"regexp"
 	"strings"
 
 	// godlike/06 SSOT note: golang.org/x/text/unicode/norm is the
@@ -466,42 +465,6 @@ type ClipDetail struct {
 	DriveLink string `json:"drive_link,omitempty"`
 }
 
-// ClipDurationMs returns the positive clip duration derived from the
-// resolved start/end offsets, or 0 when the range is not usable.
-func ClipDurationMs(startMs, endMs int64) int64 {
-	if endMs > startMs {
-		return endMs - startMs
-	}
-	return 0
-}
-
-var youtubeClipAssetIDDurationRE = regexp.MustCompile(`^yt_(.+)_([0-9]+)_([0-9]+)_[^_]+$`)
-
-// ClipDurationMsFromAssetID returns the positive clip duration derived
-// from the canonical YouTube clip asset ID, or 0 when the ID does not
-// encode a usable window.
-func ClipDurationMsFromAssetID(assetID string) int64 {
-	assetID = strings.TrimSpace(assetID)
-	if assetID == "" {
-		return 0
-	}
-	match := youtubeClipAssetIDDurationRE.FindStringSubmatch(assetID)
-	if len(match) != 4 {
-		return 0
-	}
-	var startMs, endMs int64
-	if _, err := fmt.Sscanf(match[2], "%d", &startMs); err != nil {
-		return 0
-	}
-	if _, err := fmt.Sscanf(match[3], "%d", &endMs); err != nil {
-		return 0
-	}
-	if endMs > startMs {
-		return (endMs - startMs) * 1000
-	}
-	return 0
-}
-
 // ModelClipView is the model-facing projection of a clip. It strips
 // away technical locators and keeps only evidence that can change the
 // voiceover choice.
@@ -828,7 +791,6 @@ type SlotClipBinding struct {
 	DriveLink    string        `json:"drive_link,omitempty"`
 	StartMs      int64         `json:"start_ms,omitempty"`
 	EndMs        int64         `json:"end_ms,omitempty"`
-	DurationMs   int64         `json:"duration_ms,omitempty"`
 	SourceAnchor *SourceAnchor `json:"source_anchor,omitempty"`
 	// Embedding is the dense vector of the bound clip. Consumed
 	// by the ClipSampler's diversity gate (cosine sim against

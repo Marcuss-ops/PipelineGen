@@ -161,11 +161,6 @@ async function handleSearch(req, res) {
   }
 
   const term = (payload.term || '').trim();
-  if (term === '__preflight_connect_probe__') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, msg: 'probe connect ok' }));
-    return;
-  }
   if (!term) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: false, error: 'Missing required field: term' }));
@@ -183,8 +178,6 @@ async function handleSearch(req, res) {
   lastSearchAt = new Date().toISOString();
   const reqId = requestCount;
 
-  const connectTimeoutSeconds = parseInt(process.env.SCRAPER_CONNECT_TIMEOUT_SECONDS || '5', 10);
-  const scrollTimeoutSeconds  = parseInt(process.env.SCROLL_TIMEOUT                  || '120', 10);
   console.log(`[${new Date().toISOString()}] #${reqId} SEARCH term="${term}" limit=${limit} BUDGET connect=${connectTimeoutSeconds}s total=${scrollTimeoutSeconds}s`);
   const t0 = Date.now();
   // Split connect/total timeout per fix(scraper) (PR-July 2026). Per
@@ -194,6 +187,8 @@ async function handleSearch(req, res) {
   // The connect split is realized at the bash-wrapper layer (curl --connect-timeout
   // vs. --max-time); here we enforce the total budget so a runaway Chromium
   // navigation cannot pin the scraper past the SCROLL_TIMEOUT envelope.
+  const connectTimeoutSeconds = parseInt(process.env.SCRAPER_CONNECT_TIMEOUT_SECONDS || '5', 10);
+  const scrollTimeoutSeconds  = parseInt(process.env.SCROLL_TIMEOUT                  || '120', 10);
   const scrollTimeoutMs = scrollTimeoutSeconds * 1000;
   let totalBudgetTimer = null;
   const totalBudget = new Promise((_, reject) => {

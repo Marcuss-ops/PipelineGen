@@ -178,7 +178,6 @@ var ErrNoHandlerForJobType = errors.New("appjobs.Service.Enqueue: no handler reg
 // Registration step so the chain
 //
 //	ClipsDescriptor.RegisterJobHandlers
-//
 // → Handler.RegisterJobHandlers
 // → NonOpsHandler.RegisterJobHandlers
 //

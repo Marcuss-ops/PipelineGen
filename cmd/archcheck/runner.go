@@ -201,6 +201,18 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_voiceover_alias_ban", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanVoiceoverAliasBan(root, pol, r, productionOnly)
 		}},
+		// Check 73-77 (Wave 5, July 2026): forward-prevention gates for
+		// canonical architectural surfaces:
+		//   - SceneAssetBinder SSOT
+		//   - Drive access through delivery.Publisher
+		//   - typed metadata registry (reduce map[string]any)
+		//   - input immutability
+		//   - SourceStager + MediaTransformer usage
+		{"percheck_assetbinder_ssot", scan.ScanAssetBinderSSOT},
+		{"percheck_drive_access_ssot", scan.ScanDriveAccessSSOT},
+		{"percheck_metadata_registry", scan.ScanMetadataRegistry},
+		{"percheck_input_immutability", scan.ScanInputImmutability},
+		{"percheck_sourcestager_transformer", scan.ScanSourceStagerTransformer},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
 			// ScanPackages and ScanCommandBinaries share a
 			// fileLines map populated by the single tree walk in

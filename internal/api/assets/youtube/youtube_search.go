@@ -164,10 +164,10 @@ func (h *YouTubeClipHandler) Stats(c *gin.Context) {
 	providers := make(map[string]gin.H, len(stats))
 	for name, s := range stats {
 		providers[name] = gin.H{
-			"hits":           s.Hits,
-			"calls":          s.Calls,
-			"errors":         s.Errors,
-			"avg_latency_ms": s.AverageLatency().Milliseconds(),
+			"hits":              s.Hits,
+			"calls":             s.Calls,
+			"errors":            s.Errors,
+			"avg_latency_ms":    s.AverageLatency().Milliseconds(),
 		}
 	}
 
