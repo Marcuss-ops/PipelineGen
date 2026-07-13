@@ -177,7 +177,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		}
 		dispAsset.SetDriveFileID(driveFileID)
 		dispAsset.SetDriveLink(s.FormatDriveLink(driveFileID))
-		dispAsset.SetLocalPath(dest.RelativePath)
+		dispAsset.SetLocalPath(dest.LocalPath)
 		dispAsset.SetFileHash(hash)
 
 		if err := s.dispatcher.EnqueueAndIndex(ctx, dispAsset, hash); err != nil {
