@@ -48,10 +48,27 @@ type SearchScope struct {
 // PR 5 moves the value-list to AssetFilter so a future admin
 // "include-staging" diagnostic opt-in doesn't need to revisit
 // qdrant/*.go.
+//
+// FolderNormalizedGroup (PR-FOLDER-FILTER, July 2026) is the
+// canonical lowercase routing key for the `normalized_group`
+// Qdrant must-clause. Source of truth = clipfolder.ClipFolderRef;
+// producers MUST route via FolderAliasResolver.Resolve() before
+// setting this field (godlike/07 NO-FAKE-AVAILABILITY: an
+// unmapped input fails upstream at ErrUnknownFolderAlias, never
+// silently backfills here).
+//
+// INVARIANT: the wire key emitted by CompileQdrantFilter is
+// `normalized_group` — NEVER `folder`, `macro_topic`, or
+// `blueprint`. The latter names are forbidden at the search-port
+// surface (pipeline-plan directive, July 2026). Any future
+// rename of the payload key requires a coordinated migration
+// across the writer (clip_metadata_writer_payload.go) + readers
+// (this filter) + the indexer's IndexDocument airlock.
 type AssetFilter struct {
-	Source         string
-	Category       string
-	MediaType      string
-	Language       string
-	LifecycleState []string
+	Source                string
+	Category              string
+	MediaType             string
+	Language              string
+	LifecycleState        []string
+	FolderNormalizedGroup string
 }

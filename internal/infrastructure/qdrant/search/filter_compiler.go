@@ -95,6 +95,27 @@ func CompileQdrantFilter(scope appsearch.SearchScope, filter appsearch.AssetFilt
 		must = append(must, matchClause("language", filter.Language))
 	}
 
+	// 2a. PR-FOLDER-FILTER (July 2026) folder restrict. Emits the
+	//     canonical Qdrant `normalized_group` must-clause — NOT
+	//     `folder`, `macro_topic`, or `blueprint`. The key name
+	//     matches the writer side (clip_metadata_writer_payload.go)
+	//     + the IndexDocument airlock (payload_mapper.go).
+	//
+	//     Empty FolderNormalizedGroup means "no folder filter";
+	//     callers MUST resolve the alias upstream via
+	//     clipfolder.FolderAliasResolver.Resolve() (godlike/07
+	//     NO-FAKE-AVAILABILITY: this filter never invents a default).
+	//
+	//     The lowercase normalised key (e.g. "boxe", "hiphop") is
+	//     stored on media_assets.metadata_json.normalized_group
+	//     AND on Qdrant payload; the lowercased form is the only
+	//     wire-compatible representation — uppercase variants
+	//     ("Boxe") do not match because Qdrant's `match.value`
+	//     is byte-equal.
+	if filter.FolderNormalizedGroup != "" {
+		must = append(must, matchClause("normalized_group", filter.FolderNormalizedGroup))
+	}
+
 	// 3. Lifecycle allow-list — PR 5 §8 mandatory invariant.
 	//    AssetFilter.LifecycleState defaults to {"ACTIVE"} when the
 	//    caller doesn't override it. The legacy {"active", "searchable"}

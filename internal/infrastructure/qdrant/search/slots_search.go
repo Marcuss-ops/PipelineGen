@@ -111,7 +111,7 @@ func (a *semanticAssetSearchAdapter) SearchSlots(
 		return nil, fmt.Errorf("slots search adapter: embedder not configured")
 	}
 
-	// Per-slot option resolution (defaults applied ONCE per call,
+	//	Per-slot option resolution (defaults applied ONCE per call,
 	// NOT per slot, so callers don't repeat defaults across the
 	// loop).
 	perSlotTimeout := opts.PerSlotTimeout
@@ -125,6 +125,17 @@ func (a *semanticAssetSearchAdapter) SearchSlots(
 	// minScore falls through to searchAssetsClip's per-kind
 	// default (0.5 for clip) when zero — preserves symmetry with
 	// the legacy SearchAssets behavior.
+
+	// Folder unwrap (PR-FOLDER-FILTER, July 2026): the entire plan
+	// targets ONE folder (single user-picked thematic area), so
+	// the unwrap happens ONCE per call, NOT per slot. Nil Folder
+	// → empty string (no filter). The wire key emitted by
+	// CompileQdrantFilter is `normalized_group` (NOT `folder`,
+	// `macro_topic`, `blueprint`).
+	var folderGroup string
+	if opts.Folder != nil {
+		folderGroup = opts.Folder.NormalizedGroup
+	}
 
 	startTime := time.Now()
 	byRef := make(map[string][]scriptpkg.ClipCandidate, len(plan.Slots))
@@ -164,14 +175,15 @@ func (a *semanticAssetSearchAdapter) SearchSlots(
 		// resources regardless of success/failure path.
 		slotCtx, cancel := context.WithTimeout(ctx, perSlotTimeout)
 		hits, searchErr := a.searchAssetsClip(slotCtx, ports.AssetSearchQuery{
-			Query:       query,
-			Source:      opts.SourceFilter,
-			Category:    opts.Category,
-			MediaType:   opts.MediaType,
-			WorkspaceID: opts.WorkspaceID,
-			IsSystem:    opts.IsSystem,
-			Limit:       perSlotLimit,
-			MinScore:    opts.MinScore,
+			Query:                 query,
+			Source:                opts.SourceFilter,
+			Category:              opts.Category,
+			MediaType:             opts.MediaType,
+			WorkspaceID:           opts.WorkspaceID,
+			IsSystem:              opts.IsSystem,
+			Limit:                 perSlotLimit,
+			MinScore:              opts.MinScore,
+			FolderNormalizedGroup: folderGroup,
 		}, query)
 		cancel()
 

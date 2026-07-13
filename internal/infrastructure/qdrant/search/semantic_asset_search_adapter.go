@@ -213,9 +213,10 @@ func (a *semanticAssetSearchAdapter) searchAssetsClip(ctx context.Context, q por
 			IsSystem:    q.IsSystem,
 		},
 		appsearch.AssetFilter{
-			Source:    q.Source,
-			Category:  q.Category,
-			MediaType: q.MediaType,
+			Source:                q.Source,
+			Category:              q.Category,
+			MediaType:             q.MediaType,
+			FolderNormalizedGroup: q.FolderNormalizedGroup,
 		},
 	)
 	if err != nil {

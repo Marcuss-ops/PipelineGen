@@ -24,6 +24,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -138,6 +139,24 @@ type ClipSearchQuery struct {
 	Limit int
 	// MinScore is the cosine-similarity threshold. Zero = 0.5.
 	MinScore float64
+
+	// Folder, when non-nil, restricts the search to clips whose
+	// Qdrant payload `normalized_group` matches Folder.NormalizedGroup.
+	// Nil = no folder filter (search across all groups).
+	//
+	// Forward-pointer: producers MUST resolve the user's free-text
+	// input via clipfolder.FolderAliasResolver before constructing
+	// this pointer — the godlike/07 NO-FAKE-AVAILABILITY contract
+	// means an unmapped input surfaces a typed ErrUnknownFolderAlias
+	// upstream, NOT a silently-fallback filter here. The port does
+	// NOT perform alias normalisation: it trusts the caller's
+	// ClipFolderRef as the canonical SSOT surface (godlike/06).
+	//
+	// Wire invariant: the Qdrant must-clause emitted by the
+	// adapter is keyed `normalized_group`, NOT `folder`,
+	// `macro_topic`, or `blueprint` — those names are FORBIDDEN at
+	// the search-port surface (per the pipeline-plan directive).
+	Folder *clipfolder.ClipFolderRef
 }
 
 // ClipSearchHit is the result item. AssetID is the canonical
@@ -202,12 +221,23 @@ type SlotsSearchOptions struct {
 	MediaType    string
 
 	// WorkspaceID + IsSystem mirror the AssetSearchQuery tenant
-	// isolation contract (PR 5 June 2026, fix/qdrant-tenant-scope).
+	// isolation contract (PR 5 June 2026, fix/qqdrant-tenant-scope).
 	// The fail-closed workspace check runs ONCE before the per-slot
 	// loop (not per slot, to avoid repeated validation cost on
 	// large plans).
 	WorkspaceID string
 	IsSystem    bool
+
+	// Folder, when non-nil, restricts EVERY per-slot query to the
+	// folder's NormalizedGroup via the canonical Qdrant
+	// `normalized_group` must-clause. nil = no folder filter
+	// (search across all groups).
+	//
+	// godlike/06 SSOT: this is the SAME shape as
+	// ClipSearchQuery.Folder — producers fill both from a single
+	// FolderAliasResolver.Resolve() call. Per-slot overrides are
+	// NOT supported; the plan-as-a-whole targets one folder.
+	Folder *clipfolder.ClipFolderRef
 }
 
 // SlotsSearchResult is the per-slot aggregate outcome of the

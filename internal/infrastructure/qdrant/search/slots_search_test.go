@@ -29,6 +29,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clipfolder"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
@@ -189,4 +190,56 @@ func contains(haystack, needle string) bool {
 		}
 	}
 	return false
+}
+
+// TestSemanticSearch_Slots_FolderSet_DoesNotBreakTypedEnvelope
+// pins PR-FOLDER-FILTER: when SlotsSearchOptions.Folder is a
+// resolved *clipfolder.ClipFolderRef (non-nil), the typed
+// envelope surfaces the same fail-closed reasons as the nil-folder
+// path (here: nil embedder). The unwrap must NOT crash, must NOT
+// silently-drop the typed envelope, must NOT invent a zero-value
+// filter. The actual wire-shape of the emitted `normalized_group`
+// must-clause is pinned at the filter_compiler level (NOT here)
+// to keep this test surface hermetic — a stubbed Searcher + stub
+// embedder is a larger fixture than the existing slots_search_test
+// pinned pattern is set up for.
+func TestSemanticSearch_Slots_FolderSet_DoesNotBreakTypedEnvelope(t *testing.T) {
+	port := NewSemanticAssetSearchAdapter(&Searcher{}, nil, "text", KindClip, nil)
+	clipPort := port.(ports.ClipSearchPort)
+	opts := validSlotsOpts()
+	opts.Folder = &clipfolder.ClipFolderRef{
+		Path:            "Boxe",
+		NormalizedGroup: "boxe",
+	}
+	res, err := clipPort.SearchSlots(context.Background(), validSlotsPlan(), opts)
+	if err == nil {
+		t.Fatal("nil embedder must return typed error even with Folder set (Folder unwrap runs after embedder nil-check)")
+	}
+	if !contains(err.Error(), "embedder not configured") {
+		t.Errorf("Folder unwrap must not change typed envelope; want canonical embedder error, got %q", err.Error())
+	}
+	if res != nil {
+		t.Fatalf("typed-envelope failure must return nil result; got %+v", res)
+	}
+}
+
+// TestSemanticSearch_Slots_FolderNil_DoesNotBreakTypedEnvelope is
+// the symmetric baseline: nil Folder surfaces the SAME typed
+// envelope (no rewrite, no silent default). This pins that the
+// Folder unwrap is purely additive — existing nil-folder call
+// sites behave identically post-PR-FOLDER-FILTER.
+func TestSemanticSearch_Slots_FolderNil_DoesNotBreakTypedEnvelope(t *testing.T) {
+	port := NewSemanticAssetSearchAdapter(&Searcher{}, nil, "text", KindClip, nil)
+	clipPort := port.(ports.ClipSearchPort)
+	opts := validSlotsOpts() // Folder is zero-value nil
+	res, err := clipPort.SearchSlots(context.Background(), validSlotsPlan(), opts)
+	if err == nil {
+		t.Fatal("nil embedder must return typed error with nil Folder")
+	}
+	if !contains(err.Error(), "embedder not configured") {
+		t.Errorf("nil-folder path must keep typed envelope; got %q", err.Error())
+	}
+	if res != nil {
+		t.Fatalf("typed-envelope failure must return nil result; got %+v", res)
+	}
 }
