@@ -9,7 +9,7 @@
 // These tests protect the static invariants the PR fixes:
 //
 //  1. Every command listed in `availableCommands` must have a
-//     `case "X":` arm in cmd/admin/main.go's switch (otherwise operators
+//     `case "X":` arm in cmd/admin/subcommands.go's switch (otherwise operators
 //     trigger an "Unknown command" exit-code-1 trip).
 //  2. benchQueriesFile.Description/Version metadata must survive a
 //     JSON round-trip through benchSaveReport / benchLoadQueries
@@ -38,10 +38,10 @@ import (
 )
 
 func TestAdminCommands_AreRegistered(t *testing.T) {
-	mainPath := filepath.Join("main.go")
+	mainPath := filepath.Join("subcommands.go")
 	src, err := os.ReadFile(mainPath)
 	if err != nil {
-		t.Fatalf("read main.go: %v", err)
+		t.Fatalf("read subcommands.go: %v", err)
 	}
 
 	// Match `case "X":` arms anywhere in the switch block. The list
@@ -56,7 +56,7 @@ func TestAdminCommands_AreRegistered(t *testing.T) {
 
 	for _, cmd := range availableCommands {
 		if !registered[cmd] {
-			t.Errorf("command %q is listed in availableCommands but has no `case %q: ...` arm in main.go", cmd, cmd)
+			t.Errorf("command %q is listed in availableCommands but has no `case %q: ...` arm in subcommands.go", cmd, cmd)
 		}
 	}
 
