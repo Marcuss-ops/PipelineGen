@@ -237,6 +237,24 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// Test files (`_test.go` suffix) and the scanner's
 		// own package (cmd/archcheck/scan/**) are exempt.
 		{"percheck_asset_state_no_shadow_enum", scan.ScanAssetStateNoShadowEnum},
+		// Wave 1.3 (July 2026): forward-prevention gate that
+		// pins the SceneAssetBinder-purity invariant. The
+		// canonical ScenePlanner (internal/application/scripts/
+		// scene/scene_planner.go) is the SOLE owner of every
+		// scene.Text / scene.Title / scene.Kind / scene.Index
+		// write (Wave 1.1 SSOT — per user request, scope is
+		// exactly the four fields the user listed, NOT scene.ID
+		// to honor AGENTS.md "no features beyond explicit
+		// request"). Any file inside the scene/ package that
+		// carries a literal assignment to a banned field OUTSIDE
+		// the canonical owner (and outside the test-file
+		// allowlist) surfaces as a CI build failure rather than
+		// a silent Wave 1.1 drift. The gate does NOT trip on
+		// permitted scene.Bindings.Clip / scene.Bindings.Stock
+		// writes (the binder's canonical responsibility).
+		// Comment-only references are residue-accounted
+		// (godlike/07).
+		{"percheck_binder_scene_field_writes", scan.ScanBinderSceneFieldWrites},
 	}
 }
 
