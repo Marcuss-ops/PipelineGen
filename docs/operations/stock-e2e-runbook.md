@@ -419,13 +419,17 @@ Wire the `cmp -s` equivalence check into `make verify-main` (or `scripts/ci-arch
 
 ## §11 — Diagnostica RETRY_WAIT (ricetta operativa)
 
+**Purpose**: diagnose a single `RETRY_WAIT` / `CANCELLED` / `QUEUED`-with-retry-history job end-to-end, with the SQLite-direct fallback that operators must use **while the admin token rotation hasn't yet propagated to the running server binary**.
+
+**Reading order**: §11.0 (env contract prerequisite) → §11.1 (token fingerprint pre-flight) → §11.2 (API-auth path) → §11.3 (SQLite-direct fallback) → §11.4 (interpretation) → §11.5 (forward-pointer dispatch) → §11.6 (handoff ack) → §11.7 (sign-off).
+
 ### §11.0 — Operator env contract (Artlist clean-test minimum set)
 
 **Owner canonico**: §11.0 is the SSOT for the operator-facing env-var minimum of the **Artlist clean test** (`tests/operational/artlist_live_e2e_verify.sh`). It is INTENTIONALLY SEPARATE from §10.2 (which owns the Stock live-battery env contract). Per godlike/06 one canonical owner per fact: do not duplicate these rows in §10.2.
 
 | Variable                       | Required? | Canonical default                                            | Effect if unset                                                                                            | Canonical reference                                                                            |
 |--------------------------------|-----------|--------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
-| `VELOX_ADMIN_TOKEN`            | REQUIRED  | (none — secret-store-resident)                              | `/api/jobs/*` returns **HTTP 401** per `internal/api/middleware/admin_token.go::RequireAdminToken`; SQLite path still works | `internal/platform/config/middleware` (`AuthSecurityPort.AdminToken`); rotation recipe §11.2 |
+| `VELOX_ADMIN_TOKEN`            | REQUIRED  | env-only (canonical source: `.env` → `internal/platform/config/middleware.AdminToken` via `AuthSecurityPort`); rotate via `scripts/rotate_token.sh` + §11.2 | `/api/jobs/*` returns **HTTP 401** per `internal/api/middleware/admin_token.go::RequireAdminToken`; SQLite path still works | `internal/platform/config/middleware` (`AuthSecurityPort.AdminToken`); rotation recipe `scripts/rotate_token.sh` + §11.2 |
 | `VELOX_PORT`                   | required  | `8000`                                                       | Server listen port (also used as `BASE=http://127.0.0.1:${VELOX_PORT}` in shell snippets)                  | `.env.example:16`, `cmd/server/main.go:47`, §10.2                                              |
 | `VELOX_DRIVE_ARTLIST_ROOT`     | required  | (none)                                                       | Artlist uploads land in the operator-supplied default `ArtlistRootFolder` (may be empty on dev)           | `internal/platform/config/drive.go:20` (`ArtlistRootFolder` env-tagged `VELOX_DRIVE_ARTLIST_ROOT`), `.env.example:90`, `architecture/issues.yaml::{ROOT_DRY_RUN}` |
 | `SCROLL_TIMEOUT`               | required  | `10` (in-script), **operator MUST set `120`**               | Direct scraper (`POST /search` port 9123) needs ~72s on cold Chromium (see §11.2 401-note derivation)      | `tests/operational/artlist_live_e2e_verify.sh:165` (`SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-10}"`)  |
@@ -459,15 +463,11 @@ grep -nE '^[[:space:]]*(VELOX_PORT|VELOX_DRIVE_ARTLIST_ROOT|SCROLL_TIMEOUT|SKIP_
 # Any drift between the canonical references (above) and this §11.0 table MUST update BOTH atomically per godlike/06 lockstep.
 ```
 
-### §11.0.1 — Honoring §11 from §10 / §11 references
+**Lockstep cross-references** (was §11.0.1 collapsed into this paragraph per godlike/06 cross-traversal; no orphan sub-section):
 
 - §10.2 `VELOX_PORT` row applies to BOTH the Stock live battery AND the Artlist clean test (canonical reference: `.env.example:16`).
 - §10.7 cache-shadowed ID callout applies to Artlist terms too; never put a cache-shadowed term in the clean test's `SEARCH_TERM`.
 - §11.2 / §11.3 (the API + SQLite diagnostic recipe below) assume §11.0 vars are set; the env contract is the prerequisite, not a duplicate.
-
----
-
-**Purpose**: diagnose a single `RETRY_WAIT` / `CANCELLED` / `QUEUED`-with-retry-history job end-to-end, with the SQLite-direct fallback that operators must use **while the admin token rotation hasn't yet propagated to the running server binary**.
 
 Registered under the same `STOCK-E2E-BATTERY-2026-07-05` wave (operator-facing recipe); **no new wave slot** in `architecture/current.yaml` — minimum-blast-radius per godlike/07. §11 reorganizes only the operator surface (commands + forward-pointers), no Go code touched.
 
