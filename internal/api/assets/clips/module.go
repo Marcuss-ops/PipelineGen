@@ -306,7 +306,26 @@ func (d *ClipsDescriptor) RegisterJobHandlers(svc api.JobRegistrar) error {
 	}
 	// The handler holds the concrete *Handler method; we cast it
 	// to appjobs.HandlerFunc so the typed port accepts it.
-	return svc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), appjobs.HandlerFunc(d.Handler.HandleBulkUploadYouTubeClipsJob))
+	registerErr := svc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), appjobs.HandlerFunc(d.Handler.HandleBulkUploadYouTubeClipsJob))
+	// PR-DIAG-BULKUPLOAD-REGISTRATION (July 2026, diagnostic-only):
+	// confirm the write landed by logging the received svc's pointer
+	// + the result of RegisterHandler. The transport-side pointer
+	// (logged inside BulkUploadYouTubeClips at request entry) should
+	// match this svc_ptr when the canonical wiring is correct; a
+	// mismatch localizes the split. Diagnostic only — no behavioural
+	// change; retire in a follow-up commit once the upstream bug is fixed.
+	if d.Handler.log != nil {
+		d.Handler.log.Info("clips: registered bulk_upload_youtube_clips handler",
+			zap.String("module", "clips"),
+			zap.String("svc_type", fmt.Sprintf("%T", svc)),
+			zap.String("svc_ptr", fmt.Sprintf("%p", svc)),
+			zap.String("descriptor_ptr", fmt.Sprintf("%p", d)),
+			zap.String("handler_ptr", fmt.Sprintf("%p", d.Handler)),
+			zap.Bool("register_ok", registerErr == nil),
+			zap.Error(registerErr),
+		)
+	}
+	return registerErr
 }
 
 // Build composes the Clips HTTP capability from the typed narrow
