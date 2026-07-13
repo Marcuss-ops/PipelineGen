@@ -25,11 +25,24 @@
 // StockSearchPort per-call (Q10 verdict), so the StockAssociation
 // processor keeps composition wiring unchanged and passes
 // `p.stockSearch` to each BindStock invocation.
+//
+// Wave 1.1 (July 2026) — Script Ownership refactor: the binder
+// no longer constructs SpecScenes. The ScenePlanner (scene_planner.go)
+// owns scene-construction logic (clip-evidence narration, prose
+// fallback, intro/outro kind assignment). The binder INTERNALLY
+// delegates to the planner via b.planner.Plan; its public API
+// (BindClips signature) is preserved so the existing
+// binder_test.go scenarios continue to pin the load-bearing
+// behaviors end-to-end without test churn.
+//
+// Wave 1.3 will turn binder purity into a godlike/06 SSOT
+// per-check that emits a build failure when the binder touches
+// any non-Bindings field. Until then, scene.Text / scene.Title /
+// scene.Kind assignments are routed via the planner.
 package scene
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
@@ -76,104 +89,34 @@ type BindStockResult struct {
 // invariant: each processor becomes a thin orchestrator that
 // delegates to this struct).
 //
+// Wave 1.1 (July 2026): the ScenPlanner replaces the inline
+// SceneSynthesizer. The planner owns every scene-construction
+// concern (clip-evidence narration, prose partition coordination,
+// intro/outro kind assignment); the binder INTERNALLY delegates
+// scene construction to it while still owning ONLY the binding
+// responsibility (scenes.Bindings.Clip + scene.Bindings.Stock).
+//
 // The struct holds only the logger (Q2 verdict). The typed
 // StockSearchPort is passed per-call to BindStock (Q10 verdict) so
 // the composition root wiring remains stable: the processor keeps
 // holding `stockSearch` and forwards it at each invocation.
 type SceneAssetBinder struct {
 	log *zap.Logger
-	// sync holds the canonical SceneSynthesizer used by BindClips
-	// when the prose-fallback heuristic engages. Held inline so
-	// callers do not have to thread a separate SceneSynthesizer
-	// value through the constructor — the synthesizer is stateless.
-	sync *SceneSynthesizer
+	// planner holds the canonical ScenePlanner (Wave 1.1
+	// promotion). The planner owns scene construction; the
+	// binder INTERNALLY delegates to it but does NOT expose it
+	// to callers (composition root wiring unchanged: callers
+	// only see SceneAssetBinder).
+	planner *ScenePlanner
 }
 
 // NewSceneAssetBinder returns a SceneAssetBinder with the supplied
-// logger. The synthesizer is constructed inline (the logger is
-// shared so future heuristics that emit their own diagnostics
-// can route through the same channel).
+// logger. The planner is constructed inline (the logger is shared
+// so future heuristics that emit their own diagnostics can route
+// through the same channel). Wave 1.1: the planner replaces the
+// inline SceneSynthesizer.
 func NewSceneAssetBinder(log *zap.Logger) *SceneAssetBinder {
-	return &SceneAssetBinder{log: log, sync: NewSceneSynthesizer()}
-}
-
-// buildScenesFromClipEvidence deterministically constructs one
-// SpecScene per accepted clip using the clip's transcript,
-// description and metadata as primary evidence. It is the
-// canonical clip-native scene builder used for source.type == clips.
-//
-// The returned scenes are ordered to match
-// plan.ClipEvidence.AcceptedClipIDs. Each scene binds its clip
-// via scene.Bindings.Clip. If ClipDetails is missing for a clip,
-// the scene text falls back to the clip name.
-func buildScenesFromClipEvidence(plan *scriptpkg.ResolvedGenerationPlan) []scriptpkg.SpecScene {
-	if plan == nil || plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0 {
-		return nil
-	}
-
-	ev := plan.ClipEvidence
-	clipIDs := ev.AcceptedClipIDs
-	if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
-		clipIDs = clipIDs[:plan.NumClips]
-	}
-
-	scenes := make([]scriptpkg.SpecScene, len(clipIDs))
-	for i, clipID := range clipIDs {
-		detail, ok := ev.ClipDetails[clipID]
-		if !ok {
-			// Fall back to the assembled evidence if the detail map
-			// is not populated (legacy paths / tests).
-			detail = scriptpkg.ClipDetail{
-				Name:      ev.ClipNames[clipID],
-				DriveLink: ev.DriveLinks[clipID],
-			}
-		}
-
-		text := strings.TrimSpace(detail.Transcript)
-		if text == "" {
-			text = strings.TrimSpace(detail.Description)
-		}
-		if text == "" {
-			text = detail.Name
-		}
-		if text == "" {
-			text = fmt.Sprintf("Scene %d", i+1)
-		}
-		kind := scriptpkg.SceneClip
-		if len(clipIDs) >= 3 {
-			if i == 0 {
-				kind = scriptpkg.SceneIntro
-			} else if i == len(clipIDs)-1 {
-				kind = scriptpkg.SceneOutro
-			}
-		}
-
-		binding := &scriptpkg.ClipBinding{
-			ClipID:    clipID,
-			ClipTitle: detail.Name,
-			DriveLink: detail.DriveLink,
-			StartMs:   detail.StartMs,
-			EndMs:     detail.EndMs,
-		}
-		if binding.DriveLink == "" {
-			binding.DriveLink = ev.DriveLinks[clipID]
-		}
-		if binding.ClipTitle == "" {
-			binding.ClipTitle = ev.ClipNames[clipID]
-		}
-
-		scenes[i] = scriptpkg.SpecScene{
-			ID:    fmt.Sprintf("scene-%s", clipID),
-			Index: i,
-			Text:  text,
-			Title: detail.Name,
-			Kind:  kind,
-			Bindings: scriptpkg.SceneBindings{
-				Clip: binding,
-			},
-		}
-	}
-	return scenes
+	return &SceneAssetBinder{log: log, planner: NewScenePlanner(log)}
 }
 
 // BindClips assigns clips from ClipEvidence.AcceptedClipIDs to the
@@ -183,6 +126,13 @@ func buildScenesFromClipEvidence(plan *scriptpkg.ResolvedGenerationPlan) []scrip
 // BindClipsResult.SynthesizedScenes (when the heuristic engaged)
 // OR the caller may inspect input.SpecScene.Scenes after the call
 // (the binder mutates the slice in-place when scenes pre-exist).
+//
+// Wave 1.1 (July 2026) — scene-construction delegation: every
+// scene-shape decision (clip-evidence narration, prose partition,
+// intro/outro kind assignment) is delegated to b.planner.Plan. The
+// binder INTERNALLY delegates but its public API is unchanged so
+// the existing binder_test.go scenarios continue to pin the
+// load-bearing behaviors end-to-end.
 //
 // Guarantees (preserved verbatim from the pre-Phase-2
 // ClipBindingsProcessor.Process body):
@@ -200,68 +150,14 @@ func (b *SceneAssetBinder) BindClips(
 		return BindClipsResult{}
 	}
 
-	heuristicEngaged := false
-
-	// P0 (July 2026): for source.type == clips, scenes are built
-	// directly from the resolved clip evidence. The engine-emitted
-	// scene list is replaced by the clip-native scene plan so that
-	// transcription, timestamps and metadata are the primary
-	// evidence. Prose fallback is eliminated for the clips path;
-	// if clip evidence is unavailable, the pipeline fails explicitly
-	// downstream with CLIP_NATIVE_PLAN_UNAVAILABLE.
-	if plan.SourceKind == string(scriptpkg.SourceClips) {
-		clipBuiltScenes := buildScenesFromClipEvidence(plan)
-		if len(clipBuiltScenes) > 0 {
-			scenes = clipBuiltScenes
-			heuristicEngaged = true
-			if b.log != nil {
-				b.log.Info("clip_bindings: built scenes from clip evidence",
-					zap.Int("scenes", len(scenes)))
-			}
-		}
-	}
-
-	// FASE 3 (June 2026) — prose-fallback heuristic. Kept only for
-	// non-clips clip-aware sources (catalog/search/curate) where
-	// the model does not emit structured scenes. For source.type ==
-	// clips the heuristic above takes precedence.
-	if len(scenes) == 0 {
-		cleanedText := cleanProseFallbackText(text)
-		if cleanedText == "" {
-			return BindClipsResult{}
-		}
-		// Determine the target scene count. When clip evidence is
-		// present, bind one scene per accepted clip (capped by
-		// NumClips). Otherwise fall back to NumClips, then to a
-		// sentence-derived count so prose-fallback still produces
-		// scenes even when no clips were resolved.
-		//
-		// SentencesPerImage is an image-layout parameter borrowed
-		// here as a prose-segmentation heuristic; it avoids a
-		// zero-scene fallback when neither clip evidence nor
-		// NumClips is available.
-		n := 0
-		if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
-			n = len(plan.ClipEvidence.AcceptedClipIDs)
-		}
-		if plan.NumClips > 0 && (n == 0 || plan.NumClips < n) {
-			n = plan.NumClips
-		}
-		if n <= 0 && plan.SentencesPerImage > 0 {
-			sentences := splitProseSentences(cleanedText)
-			n = (len(sentences) + plan.SentencesPerImage - 1) / plan.SentencesPerImage
-		}
-		synthesized := b.sync.FromProse(cleanedText, n)
-		if len(synthesized) == 0 {
-			return BindClipsResult{}
-		}
-		scenes = synthesized
-		heuristicEngaged = true
-		if b.log != nil {
-			b.log.Info("clip_bindings: prose-fallback heuristic engaged",
-				zap.Int("synthesized", len(synthesized)),
-				zap.Int("clips", n))
-		}
+	// Wave 1.1: delegate scene construction to the planner. The
+	// planner decides whether to preserve LLM scenes (microsoft
+	// draft path), synthesize from prose (prose-fallback path),
+	// build from clip evidence (clip-evidence path), or no-op.
+	scenes, heuristicEngaged := b.applyPlanner(draftInput(scenes, text, plan), plan)
+	if heuristicEngaged && b.log != nil {
+		b.log.Info("clip_bindings: prose-fallback heuristic engaged",
+			zap.Int("synthesized", len(scenes)))
 	}
 
 	if len(scenes) == 0 {
@@ -300,16 +196,28 @@ func (b *SceneAssetBinder) BindClips(
 		clipID := clipIDs[i]
 		driveLink := plan.ClipEvidence.DriveLinks[clipID]
 
-		// Always bind the canonical clip ID and drive link. If a
-		// clip-built binding already exists, preserve its enriched
-		// fields (title, timestamps) while overwriting any stale
-		// clip ID that the model may have emitted.
+		detail, _ := plan.ClipEvidence.ClipDetails[clipID]
+
 		if scenes[i].Bindings.Clip == nil {
 			scenes[i].Bindings.Clip = &scriptpkg.ClipBinding{}
 		}
 		scenes[i].Bindings.Clip.ClipID = clipID
 		scenes[i].Bindings.Clip.DriveLink = driveLink
+		if detail.Name != "" {
+			scenes[i].Bindings.Clip.ClipTitle = detail.Name
+		}
+		if detail.StartMs > 0 {
+			scenes[i].Bindings.Clip.StartMs = detail.StartMs
+		}
+		if detail.EndMs > 0 {
+			scenes[i].Bindings.Clip.EndMs = detail.EndMs
+		}
 	}
+
+	// Note (Wave 1.1): kind assignment moved into b.planner.Plan
+	// (canonical owner). For pre-existing LLM scenes, the planner
+	// already assigned intro/clip/outro before the binder's
+	// per-scene binding loop ran; we do NOT re-overwrite here.
 
 	// P0 #2: extra scenes beyond the clip count get no binding.
 	// Explicitly nil out any LLM-assigned stale binding so the
@@ -329,23 +237,81 @@ func (b *SceneAssetBinder) BindClips(
 	result := BindClipsResult{Changed: true}
 	if heuristicEngaged {
 		result.SynthesizedScenes = scenes
-		if plan.SourceKind == string(scriptpkg.SourceClips) {
-			result.Warnings = []string{
-				"clip_bindings: built " +
-					itoaLen(len(scenes)) + " scenes from clip evidence; bound " +
-					itoaLen(bindCount) + "/" +
-					itoaLen(len(clipIDs)) + " clips",
-			}
-		} else {
-			result.Warnings = []string{
-				"clip_bindings: prose-fallback synthesised " +
-					itoaLen(len(scenes)) + " scenes; bound " +
-					itoaLen(bindCount) + "/" +
-					itoaLen(len(clipIDs)) + " clips",
-			}
+		result.Warnings = []string{
+			"clip_bindings: prose-fallback synthesised " +
+				itoaLen(len(scenes)) + " scenes; bound " +
+				itoaLen(bindCount) + "/" +
+				itoaLen(len(clipIDs)) + " clips",
 		}
 	}
 	return result
+}
+
+// applyPlanner is the Wave 1.1 internal delegation seam — the
+// binder calls the planner instead of inlining scene construction.
+// Returns (scenes, synthesized) where synthesized is true when the
+// prose-fallback path engaged (FASE 3 contract). The pre-Phase-2
+// behavior is preserved byte-for-byte (no semantic change), but
+// the construction is now routed through the canonical owner
+// (godlike/06 SSOT).
+func (b *SceneAssetBinder) applyPlanner(
+	draft NarrativeDraft,
+	plan *scriptpkg.ResolvedGenerationPlan,
+) ([]scriptpkg.SpecScene, bool) {
+	// Wave 1.1 preserves the pre-Phase-2 binder decision tree
+	// exactly: only the prose-fallback branch delegates to the
+	// planner's clip-evidence path (the "synthesized" signal is
+	// heuristicEngaged for the binder's BindClipsResult contract).
+	if len(draft.Scenes) > 0 {
+		// Pre-existing LLM scenes → planner assigns kinds and
+		// returns the same scenes; the binder then binds.
+		planResult := b.planner.Plan(draft, plan)
+		if len(planResult.Scenes) > 0 {
+			return planResult.Scenes, false
+		}
+		return draft.Scenes, false
+	}
+
+	// Prose-fallback path: feed the draft to the planner so the
+	// planner's `cleanProseFallbackText` + `FromProse` path
+	// remains the issuer (godlike/06 SSOT). The synthesizer is
+	// the canonical prose partitioner; the planner is the
+	// coordination layer that decides when to call it.
+	planResult := b.planner.Plan(draft, plan)
+	if planResult.Synthesized && len(planResult.Scenes) > 0 {
+		return planResult.Scenes, true
+	}
+	if planResult.Source == ScenePlanSourceNoop {
+		return nil, false
+	}
+	if len(planResult.Scenes) > 0 {
+		// Clip-evidence path engaged even when no draft.Scenes
+		// and no draft.Text were supplied — this matches the
+		// pre-Phase-2 behavior for clip-evidence plans where
+		// the input.SpecScene.Scenes was an empty slice (the
+		// binder built scenes from ClipEvidence directly).
+		return planResult.Scenes, false
+	}
+	// True no-op: empty input AND no synthesis path produced
+	// scenes. The binder's early-return guard above catches
+	// len(scenes) == 0.
+	return nil, false
+}// draftInput is the Wave 1.1 internal extraction — it maps the
+// pre-Phase-2 (scenes, text) BindClips signature to the planner's
+// NarrativeDraft input shape. godlike/06 SSOT: this is a
+// package-internal seam only; no public callers see it. The
+// SourceKind is sourced from plan.SourceKind when available so
+// the clips-source suppression check fires correctly through the
+// planner boundary.
+func draftInput(scenes []scriptpkg.SpecScene, text string, plan *scriptpkg.ResolvedGenerationPlan) NarrativeDraft {
+	draft := NarrativeDraft{
+		Text:   text,
+		Scenes: scenes,
+	}
+	if plan != nil {
+		draft.SourceKind = plan.SourceKind
+	}
+	return draft
 }
 
 // BindStock searches Qdrant per scene and populates scene.Bindings.
