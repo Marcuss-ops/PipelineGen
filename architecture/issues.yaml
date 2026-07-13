@@ -449,7 +449,7 @@ issues:
 
   - id: PRE-EXISTING-9-ARCHCHECK-SNAPSHOT
     title: "cmd/archcheck::TestSnapshot failing (architecture-check snapshot regression)"
-    status: open
+    status: in_progress
     severity: p1
     owner_capability: "cmd/archcheck"
     follow_up:
@@ -634,3 +634,63 @@ issues:
     evidence_filename: "commit F (sha: 40c9c33f6bfa6dc1e8f33e7ae0354eec64c20848) message body (forward-pointers inline + Step 5 spec seam table + verification-gate ledger; no separate .md attachment per AGENTS.md 'Git history is the archive')"
     opened_date: 2026-07-12
     tracking_issue: "godlike/06 SSOT bookkeeping rule for ratifying already-shipped splits via documentation; doctrinal precedent: PRE-EXISTING-10-FORMAT-DRIFT in this file; AGENTS.md Documentation rule ('Git history is the archive' — commit message body IS the canonical trace, no side files); companion prior fix: artlist/types.go merge-conflict resolution unblocks the full-repo gate that Step 5's bounded gates were scoped within (git log carries the SHA, no hard-pin)"
+
+  # ── PRE-EXISTING-15-LENS-MIGRATION — Check-5 lens dir_path+pkg_name migration (November 2026 sub-commit) ──
+  # Wave QDRANT-005D hygiene follow-up documented for the operator's "novembre" sub-commit
+  # wave (per the user directive spawning this entries.yaml + policy.yaml containment commit).
+  # Per architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE::rationale point (c):
+  #   "the Go-side remediation that switches the AWK lens from (package_name) only
+  #    to the canonical Go-package identity tuple (directory_path, package_name)
+  #    to clear the current_count of ~14 cross-directory same-package-NAME false-positives"
+  #
+  # Containment move: operator parked as open rather than executing the fix inline.
+  # Owner: PipelineGen Agent (qdrant-hygiene workstream).
+  # Deadline: 2026-11-30 (operator's "novembre" sub-commit window per godlike/06 SSOT-marker).
+  - id: PRE-EXISTING-15-LENS-MIGRATION
+    title: "Check 5 mutation-primitive lens: migrate from package_name-only filter to canonical (directory_path, package_name) Go-package identity tuple"
+    status: open
+    severity: p2
+    owner_capability: "scripts/ci/architecture/checks/check_05_mutation_primitives.sh (AWK lens + ARCH-ALLOWLISTED rg post-pass)"
+    follow_up:
+      - "Migrate check_05_mutation_primitives.sh's rg_window_allowlist from package_name-only filter to the (dir_path, pkg_name) canonical Go-package identity tuple (architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE::rationale point c)."
+      - "Clear the ~14 cross-directory same-package-NAME false-positives (the lens currently treats `package qdrant` in internal/infrastructure/qdrant/types.go and `package qdrant` in internal/infrastructure/qdrant/types_dr.go as identical when they are distinct from the application-layer dr.SnapshotDescription mirror at internal/application/qdrant/dr/types.go)."
+      - "Verify the lens on internal/infrastructure/qdrant/types*.go + the canonical dr.SnapshotDescription mirror: zero false-positive hits post-migration."
+      - "Promote to resolved in the November sub-commit that lands the migration (the container's 'five or fewer entries stay under cap' guarantee becomes observable once -15 resolves)."
+    evidence_filename: "tests/operational/check5_lens_migration_2026-11.md"
+    opened_date: 2026-07-13
+    tracking_issue: "godlike/06 SSOT carry-forward discipline; architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE; WAVE-ARCHCHECK-MIGRATION follow_up_ticket::ARCHCHECK-GO-MIGRATION-PHASE-1"
+
+  # ── PRE-EXISTING-16-DOCS-MISSING — Five godlike docs MISSING on disk (November 2026 sub-commit) ──
+  # architecture/policy.yaml references five canonical godlike docs under
+  # docs/architecture/godlike/ that are MISSING on disk as of July 2026:
+  #   - data_ownership_doc:    docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md  (MISSING)
+  #   - legacy_policy_doc:     docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md        (MISSING)
+  #   - ci_gates_doc:          docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md      (MISSING)
+  #   - agent_playbook_doc:    docs/architecture/godlike/11_AGENT_EXECUTION_PLAYBOOK.md  (MISSING)
+  #   - removal_doc:           docs/architecture/godlike/13_FEATURE_REMOVAL_CHECKLIST.md  (MISSING)
+  #
+  # Per policy.yaml::data_ownership_doc (etc.) Phase 0 semantics: each rule family emits
+  # a *_doc_missing warn-severity violation when the referenced path is absent on disk.
+  # Today the warnings are silent because cmd/archcheck produces warn-level output only;
+  # --strict promotes them to hard CI gates, at which point the missing-doc surface becomes
+  # CI-failing.
+  #
+  # Containment move: operator parked as open rather than recreating the docs inline.
+  # Owner: PipelineGen Agent (docs-arch wave).
+  # Deadline: 2026-11-30 (operator's "novembre" sub-commit window per godlike/06 SSOT-marker).
+  - id: PRE-EXISTING-16-DOCS-MISSING
+    title: "Five policy.yaml-referenced godlike docs are MISSING on disk (06/07/08/11/13); recreate in November sub-commit"
+    status: open
+    severity: p2
+    owner_capability: "docs/architecture/godlike/ (recreation surface; per-file owner listed in follow_up)"
+    follow_up:
+      - "Recreate 06_DATA_AND_CONFIG_OWNERSHIP.md (data+config ownership axis; DB rules + Qdrant projection sequence + Drive authority + configuration boot pipeline + EXPAND/BACKFILL/CUTOVER/CONTRACT migration sequence)."
+      - "Recreate 07_ZERO_LEGACY_POLICY.md (godlike/07 zero-legacy mandate + deprecation-record requirements + transitional-baseline discipline)."
+      - "Recreate 08_ARCHITECTURE_CI_GATES.md (executable architecture rules + CI gate definitions; mirrors scripts/ci-architectural-checks.sh gate surface)."
+      - "Recreate 11_AGENT_EXECUTION_PLAYBOOK.md (AI-agent code-modification boundaries + EXPAND/BACKFILL/CUTOVER/CONTRACT migration method, adjoined to AGENTS.md)."
+      - "Recreate 13_FEATURE_REMOVAL_CHECKLIST.md (7-phase teardown sequence for a superseded feature; agent-readable checklist adjoined to godlike/07)."
+      - "Verify each doc's required-section presence per cmd/archcheck `data_ownership_doc_incomplete` / `legacy_policy_doc_incomplete` / `ci_gates_doc_incomplete` rule families; --strict promotion gate becomes green."
+      - "Promote to resolved in the November sub-commit that ships all five docs (the container's cap-9 guarantee becomes stale once -16 resolves and operator can decrement policy.yaml back to ≤5)."
+    evidence_filename: "tests/operational/godlike_docs_audit_2026-11.md"
+    opened_date: 2026-07-13
+    tracking_issue: "godlike/06 SSOT carry-forward discipline; policy.yaml::data_ownership_doc / legacy_policy_doc / ci_gates_doc / agent_playbook_doc / removal_doc rule families"
