@@ -78,6 +78,54 @@ func writeFakeOutboxCanonical(t *testing.T, tempDir string) string {
 	return path
 }
 
+// writeFakeLegacyAuditExempt writes a synthetic file in
+// internal/application/qdrant/legacyaudit/** that imports
+// the qdrant infrastructure (operator/audit tooling —
+// read-only classification walker; must NOT trip).
+func writeFakeLegacyAuditExempt(t *testing.T, tempDir string) string {
+	t.Helper()
+	dir := filepath.Join(tempDir, "internal", "application", "qdrant", "legacyaudit")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir legacyaudit dir: %v", err)
+	}
+	path := filepath.Join(dir, "audit_walker.go")
+	body := "package legacyaudit\n\n" +
+		"// audit_walker.go: read-only classification walker.\n" +
+		"// Reads schema.DefaultV3Schema() for the per-channel\n" +
+		"// dimension spec. Operator/audit tooling — exempt\n" +
+		"// per the percheck's widened exempt set.\n" +
+		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant\"\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write legacyaudit file: %v", err)
+	}
+	return path
+}
+
+// writeFakeMaintenanceExempt writes a synthetic file in
+// internal/application/qdrant/maintenance/** that imports
+// the qdrant infrastructure (operator/maintenance tooling
+// — 3-mode orchestrator; must NOT trip).
+func writeFakeMaintenanceExempt(t *testing.T, tempDir string) string {
+	t.Helper()
+	dir := filepath.Join(tempDir, "internal", "application", "qdrant", "maintenance")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir maintenance dir: %v", err)
+	}
+	path := filepath.Join(dir, "service.go")
+	body := "package maintenance\n\n" +
+		"// service.go: 3-mode orchestrator (audit / repair-locators\n" +
+		"// / delete-invalid). Constructs the qdrant client via the\n" +
+		"// typed QdrantScannerAdapter + QdrantCleaner ports; Delete\n" +
+		"// mode dispatches via the canonical outbox. Operator\n" +
+		"// maintenance tooling — exempt per the percheck's widened\n" +
+		"// exempt set.\n" +
+		"import _ \"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant\"\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write maintenance file: %v", err)
+	}
+	return path
+}
+
 // writeFakeApplicationViolation writes a synthetic Go file
 // inside an internal/application/** package (NOT exempt)
 // that imports the qdrant infrastructure directly. The
@@ -183,6 +231,8 @@ func TestScanQdrantIndexImportBan_OnlyExemptPasses(t *testing.T) {
 	tempDir := t.TempDir()
 	writeFakeAdminCanonical(t, tempDir)
 	writeFakeOutboxCanonical(t, tempDir)
+	writeFakeLegacyAuditExempt(t, tempDir)
+	writeFakeMaintenanceExempt(t, tempDir)
 
 	r := &report.Report{
 		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
@@ -369,6 +419,55 @@ func TestScanQdrantIndexImportBan_AdminAndOutboxExempted(t *testing.T) {
 			(strings.Contains(v.File, "ad_hoc_admin.go") ||
 				strings.Contains(v.File, "indexing_handle.go")) {
 			t.Errorf("admin/outbox canonical exempt zones MUST be exempt; got violation: %s",
+				v.Note)
+		}
+	}
+}
+
+// TestScanQdrantIndexImportBan_LegacyAuditExempted verifies
+// that operator/audit tooling under
+// internal/application/qdrant/legacyaudit/** is exempt from
+// the percheck gate. The fixture file
+// `audit_walker.go` imports the qdrant infrastructure for
+// read-only classification (schema.DefaultV3Schema) — the
+// canonical per-channel dimension spec the walker compares
+// against. Exempt per the widened exempt set (Wave YY).
+func TestScanQdrantIndexImportBan_LegacyAuditExempted(t *testing.T) {
+	tempDir := t.TempDir()
+	writeFakeLegacyAuditExempt(t, tempDir)
+
+	r := &report.Report{
+		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
+	}
+	ScanQdrantIndexImportBan(tempDir, &policy.Policy{}, r)
+	for _, v := range r.Violations {
+		if v.Rule == qdrantImportBanRule &&
+			strings.Contains(v.File, "audit_walker.go") {
+			t.Errorf("legacyaudit canonical exempt zone MUST be exempt; got violation: %s",
+				v.Note)
+		}
+	}
+}
+
+// TestScanQdrantIndexImportBan_MaintenanceExempted verifies
+// that operator/maintenance tooling under
+// internal/application/qdrant/maintenance/** is exempt from
+// the percheck gate. The fixture file `service.go` imports
+// the qdrant infrastructure for the 3-mode orchestrator
+// (audit / repair-locators / delete-invalid). Exempt per the
+// widened exempt set (Wave YY).
+func TestScanQdrantIndexImportBan_MaintenanceExempted(t *testing.T) {
+	tempDir := t.TempDir()
+	writeFakeMaintenanceExempt(t, tempDir)
+
+	r := &report.Report{
+		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
+	}
+	ScanQdrantIndexImportBan(tempDir, &policy.Policy{}, r)
+	for _, v := range r.Violations {
+		if v.Rule == qdrantImportBanRule &&
+			strings.Contains(v.File, "maintenance/service.go") {
+			t.Errorf("maintenance canonical exempt zone MUST be exempt; got violation: %s",
 				v.Note)
 		}
 	}

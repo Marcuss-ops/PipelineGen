@@ -10,7 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -137,16 +137,22 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		// at the struct literal below (both encode "generated" for
 		// the AI path).
 		metaJSON, _ = json.Marshal(map[string]any{
-			"prompt_original":          description,
-			"semantic_description":     "",
-			"style":                    style,
-			"tags":                     tags,
-			"provider":                 string(classifyImageProvider(source, generator)),
-			"origin":                   "generated",
-			"width":                    width,
-			"height":                   height,
+			"prompt_original":      description,
+			"semantic_description": "",
+			"style":                style,
+			"tags":                 tags,
+			"provider":             string(classifyImageProvider(source, generator)),
+			"origin":               "generated",
+			"width":                width,
+			"height":               height,
+			// Wave YY (July 2026, image ingest drift-fix per
+			// percheck_qdrant_index_import_ban): VisualEmbeddingModelVersion
+			// moved to pkg/defaults (cross-layer constant) to break
+			// the infra/qdrant import from the application layer.
+			// The schema package re-exports the same const for
+			// backward compat with infra-layer consumers.
 			"content_hash":             hash,
-			"embedding_version_visual": schema.VisualEmbeddingModelVersion,
+			"embedding_version_visual": defaults.VisualEmbeddingModelVersion,
 		})
 	}
 
