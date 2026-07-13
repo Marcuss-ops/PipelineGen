@@ -166,6 +166,5 @@ func (a *sourcingEnrichmentAdapter) EnrichAndIndex(ctx context.Context, clipID, 
 	// reads them; they're historic register-flow args).
 	_ = localPath
 	_ = source
-	_ = asset.Asset{}
 	return a.enricher.EnrichAndIndex(ctx, clipID)
 }
