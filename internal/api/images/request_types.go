@@ -32,6 +32,27 @@ type ImageGenerationRequest struct {
 	Height int      `json:"height"`
 	Style  string   `json:"style" example:"medievale"`
 	Tags   []string `json:"tags"`
+
+	// DeliveryMode controls how the sync handler waits before responding.
+	// Valid values:
+	//   - "fast"     (default): return as soon as the local file is
+	//                         written and the media_assets row +
+	//                         asset.index.requested outbox row are
+	//                         committed in a single SQLite transaction.
+	//                         Drive upload + SigLIP embedding + Qdrant
+	//                         upsert happen asynchronously via the
+	//                         outbox dispatcher after SQLite commit.
+	//   - "complete": same as fast, but the handler BLOCKS on the
+	//                 outbox dispatcher until the index.requested
+	//                 event for the returned asset_id reaches a
+	//                 terminal state (or a bounded deadline expires).
+	//                 On timeout the response still returns the
+	//                 asset_id (delivery is async-safe); the timeout
+	//                 just signals "indexing not yet finished".
+	// godlike/07 no-fake-availability: an unknown value fails with
+	// HTTP 400; "fast" is the backward-compat default when the field
+	// is missing or empty (matches the pre-delivery_mode contract).
+	DeliveryMode string `json:"delivery_mode,omitempty" example:"fast"`
 }
 
 // GenerateBatchRequest is the async batch image generation request

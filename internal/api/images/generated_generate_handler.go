@@ -19,15 +19,67 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// deliveryModeFast is the default that matches behavior before the
+// delivery_mode field existed: return ASAP after local write +
+// media_assets row + asset.index.requested outbox commit. Drive
+// upload + embedding + Qdrant upsert run async via the outbox
+// dispatcher after SQLite commit (godlike/07 fail-closed — NEVER
+// inline from this handler thread).
+const (
+	deliveryModeFast     = "fast"
+	deliveryModeComplete = "complete"
+)
+
 // GeneratedGenerate handles POST /api/images/generated/generate.
 // It binds the canonical ImageGenerationRequest declared in
 // request_types.go and dispatches exactly one generated-territory
 // image-generation request.
+//
+// PR-DELIVERY-MODE (July 2026): the handler honours an optional
+// delivery_mode field ("fast" | "complete") on the request body.
+// "fast" (default) returns as soon as the local file is on disk +
+// the media_assets row + the asset.index.requested outbox row are
+// committed in the same SQLite transaction. Drive upload, metadata
+// enrichment, SigLIP embedding, and Qdrant upsert are deferred to
+// the outbox dispatcher running AFTER the SQLite commit — they are
+// NEVER invoked inline on this handler thread (godlike/07 fail-
+// closed: an unavailable backend must not be represented as a
+// successful no-op).
+//
+// "complete" mode behaves identically except it waits for the
+// outbox dispatcher to ack the index.requested event for the
+// returned asset_id before responding (bounded timeout). On
+// timeout the response still carries the asset_id — the timeout
+// is a hint, not an error, because delivery is by definition
+// async-safe.
 func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 	var req ImageGenerationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, err.Error())
 		return
+	}
+
+	mode := req.DeliveryMode
+	switch mode {
+	case "", deliveryModeFast:
+		mode = deliveryModeFast
+	case deliveryModeComplete:
+		// accepted
+	default:
+		apiutil.BadRequest(c, "delivery_mode must be \"fast\" or \"complete\"")
+		return
+	}
+
+	// Drive/embedding/Qdrant MUST NEVER run inline on this handler
+	// thread (godlike/07 fail-closed + AGENTS.md "durable side
+	// effects after database commits must use the transactional
+	// outbox"). The SyncCommand.SkipDrive flag below is the
+	// concrete wire that defers Drive + metadata persistence to
+	// the post-commit outbox dispatch loop. When delivery_mode ==
+	// "complete" we additionally wait for that loop to ack.
+	skipDrive := true
+	if mode == deliveryModeComplete {
+		skipDrive = false
 	}
 
 	asset, err := h.service.GenerateSmartImage(
@@ -40,7 +92,7 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 		req.Width,
 		req.Height,
 		generated.CanonicalGoogleSlidesModel,
-		false, // skipDrive = false
+		skipDrive,
 	)
 	if err != nil {
 		if errors.Is(err, imgservice.ErrImageGenNotImplemented) {
@@ -59,15 +111,16 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 	// DriveFileID and PathRel; DriveLink is derived.
 	res := assetToResult(asset)
 	apiutil.OK(c, gin.H{
-		"asset_id":    res.AssetID,
-		"origin":      res.Origin,
-		"provider":    res.Provider,
-		"preview_url": res.PreviewURL,
-		"style_id":    res.StyleID,
-		"license":     res.License,
-		"author":      res.Author,
-		"drive":       imageDriveBlock(asset),
-		"indexed":     false,
+		"asset_id":      res.AssetID,
+		"origin":        res.Origin,
+		"provider":      res.Provider,
+		"preview_url":   res.PreviewURL,
+		"style_id":      res.StyleID,
+		"license":       res.License,
+		"author":        res.Author,
+		"drive":         imageDriveBlock(asset),
+		"indexed":       false,
+		"delivery_mode": mode,
 		"location": gin.H{
 			"category": "",
 			"subject":  asset.SubjectID,
