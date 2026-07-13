@@ -249,6 +249,25 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// Test files (`_test.go` suffix) and the scanner's
 		// own package (cmd/archcheck/scan/**) are exempt.
 		{"percheck_asset_state_no_shadow_enum", scan.ScanAssetStateNoShadowEnum},
+		// Check PR-CLIPINGEST-PIPELINE step 10 (July 2026):
+		// forward-prevention gate that pins RightsStatus's
+		// canonical-6-count invariant. The canonical file
+		// (internal/domain/asset/rights_state.go) MUST declare
+		// exactly 6 RightsStatusX const entries; a future agent
+		// who adds a 7th without updating the type surface,
+		// the membership test, AND this gate surfaces as a CI
+		// build failure rather than a silent alphabet drift.
+		// Mirrors percheck_asset_state_canonical_14.
+		{"percheck_rights_status_canonical_6", scan.ScanRightsStatusCanonical6},
+		// Check PR-CLIPINGEST-PIPELINE step 10 (July 2026):
+		// forward-prevention gate that pins ReviewStatus's
+		// canonical-4-count invariant. Companion to
+		// percheck_rights_status_canonical_6; the rights
+		// surface is two-dimensional (RightsStatus +
+		// ReviewStatus) and the gates enforce each dimension's
+		// count independently. Mirrors the second half of the
+		// asset_state canonical-14 pattern.
+		{"percheck_review_status_canonical_4", scan.ScanReviewStatusCanonical4},
 		// Check PR-CLIPINGEST-PIPELINE step 8 (July 2026):
 		// forward-prevention gate for the canonical
 		// `ClipIngestPipeline` literal surface. Per godlike/06

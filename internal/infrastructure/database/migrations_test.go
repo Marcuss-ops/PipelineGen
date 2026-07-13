@@ -1108,6 +1108,184 @@ func TestMigrations_Smoke(t *testing.T) {
 			t.Errorf("asset_state round-trip = %q, want %q", got, "READY_MULTILINGUAL")
 		}
 	})
+
+	// ── PR-CLIPINGEST-PIPELINE step 10 (July 2026) — rights extension columns (migration 158) ──
+	//
+	// RightsExtensionColumnsPresent asserts the 6 rights-extension
+	// columns added by migration 158 are PHYSICALLY present on
+	// media_assets. Mirrors the structural pattern of
+	// CanonicalConsolidationColumnsPresent above (migration 152)
+	// + AssetStateColumnPresent (migration 157). Each required
+	// entry MUST be backed by a corresponding ALTER TABLE in
+	// migrations/sqlite/158_asset_rights_extension.sql.
+	//
+	// Column ORDER matches canonical.go's CREATE TABLE block
+	// (godlike/06 SSOT — the canonical constant plus the
+	// migration SQL MUST agree on order).
+	t.Run("RightsExtensionColumnsPresent", func(t *testing.T) {
+		required := []string{
+			"license_basis",
+			"owner_channel_id",
+			"allowed_channels",
+			"allowed_regions",
+			"expires_at",
+			"review_status",
+		}
+		rows, err := db.Query(`PRAGMA table_info(media_assets)`)
+		if err != nil {
+			t.Fatalf("PRAGMA table_info(media_assets): %v", err)
+		}
+		defer rows.Close()
+		seen := make(map[string]struct{}, 64)
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, ctype string
+			var dfltValue sql.NullString
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+				t.Fatalf("scan table_info row: %v", err)
+			}
+			seen[name] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate table_info: %v", err)
+		}
+		for _, col := range required {
+			if _, ok := seen[col]; !ok {
+				t.Errorf("media_assets missing rights-extension column %q (added by migration 158; canonical.go in this package must mirror it)", col)
+			}
+		}
+	})
+
+	// RightsExtensionDefaultsPermissive asserts the 6 new
+	// columns are permissive on a minimal INSERT (no rights
+	// arguments supplied) — the migration's NOT NULL DEFAULT
+	// clauses MUST kick in. The DEFAULT alphabet matches the
+	// rights_state.go canonical surface.
+	t.Run("RightsExtensionDefaultsPermissive", func(t *testing.T) {
+		const assetID = "rt-step10-defaults-1"
+		_, err := db.Exec(
+			`INSERT INTO media_assets (id, source, name, media_type, lifecycle_state)
+			 VALUES (?, 'artlist', 'step10-defaults', 'video', 'ACTIVE')`,
+			assetID,
+		)
+		if err != nil {
+			t.Fatalf("insert step10-defaults row: %v", err)
+		}
+		var (
+			licenseBasis    string
+			ownerChannelID  string
+			allowedChannels string
+			allowedRegions  string
+			expiresAt       string
+			reviewStatus    string
+		)
+		if err := db.QueryRow(
+			`SELECT license_basis, owner_channel_id, allowed_channels,
+			        allowed_regions, expires_at, review_status
+			 FROM media_assets WHERE id = ?`,
+			assetID,
+		).Scan(&licenseBasis, &ownerChannelID, &allowedChannels,
+			&allowedRegions, &expiresAt, &reviewStatus); err != nil {
+			t.Fatalf("read step10-defaults row: %v", err)
+		}
+		// license_basis + owner_channel_id + expires_at default ''.
+		if licenseBasis != "" {
+			t.Errorf("default license_basis should be ''; got %q", licenseBasis)
+		}
+		if ownerChannelID != "" {
+			t.Errorf("default owner_channel_id should be ''; got %q", ownerChannelID)
+		}
+		if expiresAt != "" {
+			t.Errorf("default expires_at should be ''; got %q", expiresAt)
+		}
+		// allowed_channels + allowed_regions default '[]' (JSON empty array).
+		if allowedChannels != "[]" {
+			t.Errorf("default allowed_channels should be '[]'; got %q", allowedChannels)
+		}
+		if allowedRegions != "[]" {
+			t.Errorf("default allowed_regions should be '[]'; got %q", allowedRegions)
+		}
+		// review_status default 'none' (fail-OPEN on the review
+		// dimension per rights_state.go's DefaultReviewStatus).
+		if reviewStatus != "none" {
+			t.Errorf("default review_status should be 'none'; got %q", reviewStatus)
+		}
+	})
+
+	// RightsExtensionColumnsRoundTrip inserts a media_assets
+	// row with all 6 rights-extension columns populated and
+	// reads it back via raw SQL. Migrating an empty DB is
+	// the integration-test equivalent of "FetchAsset works on
+	// fixture in-memory". Mirrors CanonicalConsolidationColumnsRoundTrip
+	// (migration 152).
+	t.Run("RightsExtensionColumnsRoundTrip", func(t *testing.T) {
+		const assetID = "rt-step10-1"
+		_, err := db.Exec(
+			`INSERT INTO media_assets (
+				id, source, name, media_type, lifecycle_state,
+				license_basis, owner_channel_id, allowed_channels,
+				allowed_regions, expires_at, review_status
+			) VALUES (
+				?, 'artlist', 'step10 round-trip', 'video', 'ACTIVE',
+				?, ?, ?, ?, ?, ?
+			)`,
+			assetID,
+			// license_basis — freeform pointer to AssetLicense.id
+			// (operator workflow; not dereferenced on planner hot path).
+			"license-asset-license-001",
+			// owner_channel_id — single YouTube channel ID.
+			"UC_step10_owner",
+			// allowed_channels — JSON array (single-element for compactness).
+			`["UC_step10_owner"]`,
+			// allowed_regions — JSON array of ISO country codes.
+			`["US","IT","DE"]`,
+			// expires_at — RFC3339-numeric timestamp.
+			"2030-01-01T00:00:00Z",
+			// review_status — canonical alphabet value.
+			"approved",
+		)
+		if err != nil {
+			t.Fatalf("insert step10 round-trip row: %v", err)
+		}
+		var (
+			gotLicenseBasis    string
+			gotOwnerChannelID  string
+			gotAllowedChannels string
+			gotAllowedRegions  string
+			gotExpiresAt       string
+			gotReviewStatus    string
+		)
+		if err := db.QueryRow(
+			`SELECT license_basis, owner_channel_id, allowed_channels,
+			        allowed_regions, expires_at, review_status
+			 FROM media_assets WHERE id = ?`,
+			assetID,
+		).Scan(&gotLicenseBasis, &gotOwnerChannelID, &gotAllowedChannels,
+			&gotAllowedRegions, &gotExpiresAt, &gotReviewStatus); err != nil {
+			t.Fatalf("read step10 round-trip row: %v", err)
+		}
+		expectations := map[string]string{
+			"license_basis":    gotLicenseBasis,
+			"owner_channel_id": gotOwnerChannelID,
+			"allowed_channels": gotAllowedChannels,
+			"allowed_regions":  gotAllowedRegions,
+			"expires_at":       gotExpiresAt,
+			"review_status":    gotReviewStatus,
+		}
+		wants := map[string]string{
+			"license_basis":    "license-asset-license-001",
+			"owner_channel_id": "UC_step10_owner",
+			"allowed_channels": `["UC_step10_owner"]`,
+			"allowed_regions":  `["US","IT","DE"]`,
+			"expires_at":       "2030-01-01T00:00:00Z",
+			"review_status":    "approved",
+		}
+		for col, got := range expectations {
+			if got != wants[col] {
+				t.Errorf("rights-extension round-trip %s = %q, want %q", col, got, wants[col])
+			}
+		}
+	})
 }
 
 // contains is a tiny stdlib-free helper used only by the migration

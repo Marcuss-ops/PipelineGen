@@ -203,7 +203,36 @@ CREATE TABLE IF NOT EXISTS media_assets (
     semantic_hash     TEXT    NOT NULL DEFAULT '',
     rights_status     TEXT    NOT NULL DEFAULT 'review_required',
     policy_version    TEXT    NOT NULL DEFAULT 'v1',
-    lifecycle_status  TEXT    NOT NULL DEFAULT 'ACTIVE'
+    lifecycle_status  TEXT    NOT NULL DEFAULT 'ACTIVE',
+    -- Migration 158 (July 2026, PR-CLIPINGEST-PIPELINE step 10) —
+    -- 6 rights-extension columns. Types and DEFAULTs match
+    -- migrations/sqlite/158_asset_rights_extension.sql byte-for-
+    -- byte so this constant stays in lockstep with the canonical
+    -- migration. The Italian plan's Step 10 groups licensing,
+    -- ownership, channel scope, regional scope, expiry, and the
+    -- active-review gate on one row so the Clip Pre-Planner has
+    -- a single source of truth for the rights surface.
+    --
+    -- godlike/06 SSOT: the enum alphabets for license_basis
+    -- (freeform string), review_status (closed 4), and
+    -- allowed_channels/allowed_regions (JSON arrays) live in
+    -- internal/domain/asset/rights_state.go. The archcheck gates
+    -- percheck_rights_status_canonical_6 +
+    -- percheck_review_status_canonical_4 enforce the enum
+    -- counts. expires_at carries an RFC3339-numeric string so
+    -- string sort matches chronological order (deferred to a
+    -- follow-up if operator workflow requires timezone-naive
+    -- timestamps).
+    --
+    -- See migration 158 header for the per-column rationale
+    -- (e.g. allowed_channels default '[]' so a NULL-vs-empty
+    -- disambiguation is unnecessary at planner-side filter time).
+    license_basis      TEXT    NOT NULL DEFAULT '',
+    owner_channel_id   TEXT    NOT NULL DEFAULT '',
+    allowed_channels   TEXT    NOT NULL DEFAULT '[]',
+    allowed_regions    TEXT    NOT NULL DEFAULT '[]',
+    expires_at         TEXT    NOT NULL DEFAULT '',
+    review_status      TEXT    NOT NULL DEFAULT 'none'
 );`
 
 // CanonicalAssetArtifactsTable is the single source of truth for the

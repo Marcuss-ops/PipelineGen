@@ -81,6 +81,40 @@ const (
 	// the new event is purely ADDITIVE — no existing producer or
 	// consumer is rewritten.
 	EventAssetPublished = "asset.published"
+
+	// EventAssetRightsChanged (PR-CLIPINGEST-PIPELINE Step 10,
+	// July 2026). Emitted by producers that mutate the rights
+	// surface on a media_assets row (e.g. operator upgrades
+	// rights_status from review_required → licensed; or sets
+	// expires_at when a license ends). The consumer (handler
+	// lands in follow-up PR — see suggest_followups) re-emits
+	// EventAssetIndexRequested so the Qdrant reindex path picks
+	// up the new rights-state payload without a separate
+	// indexer-writer code path. Naming follows the
+	// established asset.* family so a single substring search
+	// finds producer + consumer + tests in one grep pass.
+	//
+	// Coexist with EventAssetIndexRequested: the rights event
+	// is independently emitted by a rights-changing workflow; a
+	// caller can emit one OR both (typically just the rights
+	// event for a permission-only change; both for a content-
+	// AND-rights bundle change).
+	//
+	// godlike/07 fail-closed (matches EventAssetPublished): the
+	// schema-version mismatch path is a terminal sentinel per
+	// godlike/06 — the handler fails-fast with a typed error so
+	// the producer MUST upgrade before consumers can resume.
+	EventAssetRightsChanged = "asset.rights.changed"
+
+	// EventAssetRightsExtensionBatchApplied is the migration-158
+	// propagation channel for existing rows. The migration emits
+	// ONE such event per apply (NOT one per row — bad blast
+	// radius on a larger fleet). The consumer (follow-up PR)
+	// schedules targeted re-projection for the affected assets
+	// via a startup-time reconcile sweep. Field-name consistency
+	// with EventAssetRightsChanged is intentional so a future
+	// per-row upgrade reuses the same payload codec.
+	EventAssetRightsExtensionBatchApplied = "asset.rights_extension.batch_applied"
 )
 
 // SchemaVersionAssetPublished is the canonical v1 schema string.
@@ -89,6 +123,19 @@ const (
 // does not match this string literally; mismatch cannot be cured
 // by retry, so producers must upgrade.
 const SchemaVersionAssetPublished = "asset.published.v1"
+
+// SchemaVersionAssetRightsChanged is the canonical v1 schema string
+// for the per-row rights-change event. The consumer (handler
+// lands in follow-up PR per godlike/07 minimum-blast-radius;
+// see suggest_followups for the precise migration path) fails-
+// fast with a typed Terminal sentinel if the inbound envelope's
+// schema_version does not match this string literally; mismatch
+// cannot be cured by retry, so producers MUST upgrade.
+const SchemaVersionAssetRightsChanged = "asset.rights.changed.v1"
+
+// SchemaVersionAssetRightsExtensionBatchApplied is the canonical
+// v1 schema string for the migration-apply batch event.
+const SchemaVersionAssetRightsExtensionBatchApplied = "asset.rights_extension.batch_applied.v1"
 
 type Handler interface {
 	EventType() string

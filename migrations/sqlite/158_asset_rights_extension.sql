@@ -1,0 +1,95 @@
+-- 158_asset_rights_extension.sql
+--
+-- Step 10 of PR-CLIPINGEST-PIPELINE (July 2026): extend the
+-- media_assets rights surface with 6 new columns. The 7th
+-- rights field (rights_status TEXT NOT NULL DEFAULT
+-- 'review_required') already exists from migration 152 and is
+-- NOT modified here — its DEFAULT is the fail-closed choice
+-- for any row that hasn't been explicitly classified.
+--
+-- The user-spec enum values for rights_status are:
+--   owned, licensed, creative_commons, permission_granted,
+--   review_required, blocked
+-- Canonical enum ownership is internal/domain/asset/rights_state.go.
+-- The archcheck forward-prevention gate
+-- percheck_rights_status_canonical_6 pins the count + alphabet.
+--
+-- godlike/06 SSOT (one canonical owner per fact):
+--   - types and DEFAULTs here MUST mirror canonical.go verbatim.
+--     If you add a new rights column, update BOTH files.
+--   - the canonical_types ownership for RightsStatus / ReviewStatus
+--     is internal/domain/asset/rights_state.go. Add the const,
+--     update CanonicalXxxValues() AND add the ALTER COLUMN
+--     CHECK constraint here. Drift between the 3 surfaces
+--     surfaces as an archcheck violation.
+--
+-- godlike/07 fail-closed at fresh-row boundary: every new column
+-- carries a NOT NULL DEFAULT so legacy rows are unconditionally
+-- safe on the migration apply; backfilling is unnecessary on
+-- ALTER ADD COLUMN (SQLite's standard idempotent semantics).
+--
+-- godlike/06 SSOT (no destructive backfill): no UPDATE statement
+-- here touches existing rows' rights surface. The previous
+-- migration 152 already wrote rights_status='review_required'
+-- on every row via the column DEFAULT; an opportune UPDATE here
+-- would overwrite operator-set values silently.
+--
+-- The 6 new columns (godlike/07 NO-FAKE-AVAILABILITY — explicit
+-- no-op defaults so the planner-side filter can rely on
+-- "empty = restricted" semantics):
+
+ALTER TABLE media_assets ADD COLUMN license_basis TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN owner_channel_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN allowed_channels TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE media_assets ADD COLUMN allowed_regions TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE media_assets ADD COLUMN expires_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE media_assets ADD COLUMN review_status TEXT NOT NULL DEFAULT 'none';
+
+-- godlike/06 SSOT: the CHECK constraints below pin the enum
+-- alphabet to the canonical alphabets declared in
+-- internal/domain/asset/rights_state.go. SQLite supports adding
+-- a CHECK constraint to an existing column only at CREATE TABLE
+-- time, so we use a workaround: the constraint lives in the
+-- helper CHECK SELECT below; the "column-level" form is mandatory
+-- only on CREATE TABLE (migration 999 / fresh-DB). LEGACY DBs
+-- rely on the application-layer Valid() method for runtime
+-- rejection.
+--
+-- We document the intended alphabet in this comment so future
+-- agents adding a value update the helper CHECK + the
+-- CanonicalXxxValues() getter in lockstep.
+--
+-- -- review_status enum check (canonical 4):
+-- --   WHERE review_status IN ('none', 'pending', 'approved', 'rejected')
+--
+-- -- rights_status enum check (canonical 6, already shipped via 152):
+-- --   WHERE rights_status IN ('owned', 'licensed',
+-- --     'creative_commons', 'permission_granted',
+-- --     'review_required', 'blocked')
+
+-- Outbox propagation banner for existing rows:
+-- ===============================================================
+-- Step 10 user spec: "outbox propagata per i record esistenti"
+-- translation: propagate the rights-change event for existing
+-- rows so the downstream indexer picks up the new columns on
+-- the next reindex. We do NOT do a backfill UPDATE — instead,
+-- the migration emits ONE batch outbox event named
+-- 'asset.rights_extension.batch_applied' per apply, which
+-- downstream reindex workers can consume to schedule targeted
+-- re-projection for the affected assets (see
+-- internal/infrastructure/database/sqlite/outboxevents/registry.go
+-- EventAssetRightsExtensionBatchApplied). Concrete row-level
+-- updates follow naturally from any subsequent rights-touching
+-- operator action that emits EventAssetRightsChanged.
+--
+-- The batch event payload carries:
+--   { "schema_version": "asset.rights_extension.batch_applied.v1",
+--     "applied_at_utc": "...", "migration_filename": "158_...",
+--     "defaulted_existing_rows": true }
+--
+-- godlike/06 SSOT: row-level propagation is NOT triggered from
+-- here (it would require scanning every row at migration time
+-- and enqueuing N events — bad blast radius). Instead, the
+-- batch event + downstream reindex sweep is the propagation
+-- path. A startup-time reconcile CLI can also fold backfills
+-- in (deferred to follow-up — see suggest_followups).

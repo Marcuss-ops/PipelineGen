@@ -238,6 +238,58 @@ type SlotsSearchOptions struct {
 	// FolderAliasResolver.Resolve() call. Per-slot overrides are
 	// NOT supported; the plan-as-a-whole targets one folder.
 	Folder *clipfolder.ClipFolderRef
+
+	// IncludeRightRestricted (PR-CLIPINGEST-PIPELINE Step 10,
+	// July 2026) gates the canonical rights-restricted filter on
+	// the SlotSearchPort.SearchSlots adapter (see
+	// internal/infrastructure/qdrant/search/slots_search.go).
+	//
+	// Behaviour:
+	//
+	//   - false (default = closed): the adapter injects a
+	//     Qdrant `MustNot(terms: [...])` clause excluding the
+	//     2 publishable=false RightsStatus values
+	//     (review_required, blocked) — the canonical "must skip"
+	//     set IsRightsRestrictedPredicate() returns. The
+	//     union also excludes ReviewStatus values whose
+	//     IsReviewGateRequired returns true (pending, rejected).
+	//     This is the godlike/07 fail-closed default: a missing
+	//     rights surface on a legacy row never spuriously enters
+	//     a planning surface.
+	//
+	//   - true: the adapter SKIPS the rights-restricted filter
+	//     and lets the caller see all hits. Operators set this
+	//     for audit / reconcile / DR paths where the blocked /
+	//     review_required set is intentionally visible.
+	//
+	// godlike/06 SSOT: the predicate membership list is
+	// canonical at internal/domain/asset/rights_state.go
+	// (IsRightsRestrictedPredicate + IsReviewGateRequired);
+	// the adapter pulls from there so adding a new enum value
+	// automatically inherits the correct membership-classification
+	// without a parallel adapter update.
+	//
+	// godlike/07 fail-closed at legacy-row boundary: when the
+	// Qdrant collection has not yet been reindexed with the
+	// `rights_status` payload field (migration 158 just shipped;
+	// reindex is the operationally deferred step — see
+	// suggest_followups), the adapter MUST log loudly + STILL
+	// apply the filter (NOT silently no-op). "Never represent an
+	// unavailable backend as a successful no-op" means we MUST
+	// either:
+	//   (a) refuse the call with typed ErrRightsFilterRequiresReindex
+	//       when the collection's rights_status payload index is
+	//       missing, OR
+	//   (b) forward through with the in-app fallback filter when
+	//       the AssetData rights fields are populated by the
+	//       caller (godlike/07 fail-closed: the call cannot lie
+	//       about what it filtered on).
+	//
+	// The implementation choice (a vs b) is the follow-up
+	// adapter PR — this Options field only declares the input
+	// contract; the adapter wiring (slots_search.go) lands in
+	// the focused supply-chain PR.
+	IncludeRightRestricted bool
 }
 
 // SlotsSearchResult is the per-slot aggregate outcome of the
