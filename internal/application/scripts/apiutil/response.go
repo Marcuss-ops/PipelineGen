@@ -8,15 +8,21 @@
 // under godlike/06 "one canonical owner per fact". The legacy surface is
 // on the deprecation path:
 //
-//   - CUTOVER wave: the legacy Response/Sync/Async symbols in
-//     internal/application/generation/response.go are flagged
-//     ErrDeprecatedWireEnvelope on use, with audit-pin docs pointing here.
-//   - CONTRACT wave: physical git-rm of the legacy symbols after the
-//     three remaining call sites (internal/application/books/process_usecase.go,
-//     internal/application/books/process_drive_usecase.go,
-//     internal/application/lessons/generate_usecase.go) and
-//     internal/app/registry_public_modules.go have migrated to this
-//     surface.
+//   - CUTOVER wave (PR-GENERATION-FACADE-REMOVE / commit 7, July 2026):
+//     the legacy facade at `internal/application/generation/` (which
+//     historically carried Response/Sync/Async) was PHYSICALLY git-rm'd
+//     along with the entire generic generation facade package; the
+//     canonical proprietary APIs for book/lesson/script/batch were not
+//     real on disk (internal/api/content/ is a doc-only shell) so the
+//     facade removal is acceptable per user spec. The forward-prevention
+//     gate at cmd/archcheck/scan/percheck_no_generic_generation_facade.go
+//     bans any re-introduction of the facade package.
+//   - CONTRACT wave: physical git-rm of the legacy symbols closed in
+//     commit 7. The three remaining call sites (internal/application/
+//     books/process_usecase.go, internal/application/books/process_drive_usecase.go,
+//     internal/application/lessons/generate_usecase.go) and internal/app/
+//     registry_public_modules.go had already migrated to this Response[T]
+//     surface, satisfying the migration prerequisite.
 //
 // This file is the additive EXPAND step. The Mode constants, the
 // Response[T] struct, and the Sync[T]/Async[T] constructors mirror the

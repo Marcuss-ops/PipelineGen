@@ -6,9 +6,11 @@
 // (outbox_events insert) are committed atomically — no orphan jobs, no
 // orphan embeddings.
 //
-// The ONLY legitimate way to bypass the outbox is the DirectIndexer, which
-// is restricted to admin reindex endpoints (see direct_indexer.go for
-// the rule). All other callers must use Dispatcher.
+// All callers must use Dispatcher (EnqueueAndIndex for inserts,
+// EnqueueAndDelete for deletes). The previously-documented direct bypass
+// (DirectIndexer) was removed in Card 7 (July 2026) — git log shows the
+// closure commit; no production path now mutates media_assets +
+// indexes in any other way.
 package outbox
 
 import (

@@ -1,0 +1,17 @@
+name: test_template_chain
+
+defaults:
+  keyword: different-term-xyz
+
+steps:
+  - id: first
+    type: http
+    endpoint: "POST http://localhost:8080/api/artlist/run"
+    payload:
+      term: "{{ workflow.defaults.keyword }}"
+      limit: 1
+      dry_run: true
+
+  - id: second
+    type: http
+    endpoint: "GET http://localhost:8080/api/artlist/runs/{{ steps.first.run_id }}"
