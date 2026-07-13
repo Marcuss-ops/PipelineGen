@@ -47,6 +47,12 @@ const (
 
 // TextTrack is the domain model for a single localized text resource
 // attached to a media asset. It maps 1:1 to a row in asset_text_tracks.
+//
+// PR-CATALOG-MULTILINGUA step 4 (July 2026): PromptVersion,
+// TranslationKey, and IsCurrent extend the canonical surface so the
+// Materializer can persist a deterministic translation fingerprint
+// + audit trail without rewriting the production UPSERT (which
+// preserves the AcquireService contract).
 type TextTrack struct {
 	ID                 int64           `json:"id"`
 	AssetID            string          `json:"asset_id"`
@@ -59,10 +65,35 @@ type TextTrack struct {
 	Provider           string          `json:"provider"`
 	ModelName          string          `json:"model_name"`
 	ModelVersion       string          `json:"model_version"`
-	TextHash           string          `json:"text_hash"`
-	SourceVersion      string          `json:"source_version"`
-	Confidence         *float64        `json:"confidence,omitempty"`
-	Status             TextTrackStatus `json:"status"`
-	CreatedAt          time.Time       `json:"created_at"`
-	UpdatedAt          time.Time       `json:"updated_at"`
+	// PromptVersion is the prompt-template version that produced
+	// this row. EMPTY when the provider does not expose a template
+	// taxonomy (matches the model_version convention for
+	// text-track provenance). Stored as a TEXT NOT NULL DEFAULT ''
+	// column added by migration 155.
+	PromptVersion string `json:"prompt_version"`
+	TextHash      string `json:"text_hash"`
+	SourceVersion string `json:"source_version"`
+	// TranslationKey is the deterministic SHA-256 fingerprint of
+	// the translation REQUEST (source_text_hash + target_language +
+	// translation_model + model_version + prompt_version). Persisted
+	// verbatim by the application layer's insert path so the
+	// lookup-before-translate gate (FindCurrentForTranslation) can
+	// match by index without recomputing the SHA-256 on every
+	// materialization cycle. Canonical formula owned by
+	// asset.TranslationKey — NEVER re-implement inline.
+	// TEXT NOT NULL DEFAULT '' column added by migration 155.
+	TranslationKey string `json:"translation_key"`
+	// IsCurrent is the "this is the live translation for this
+	// (asset, language, kind) context" flag. The SQLite partial
+	// UNIQUE INDEX idx_asset_text_tracks_current WHERE is_current=1
+	// enforces the "at most one current row per context" invariant;
+	// when a new translation is inserted, the prior is_current=1
+	// row is flipped to is_current=0 atomically within the same
+	// transaction (InsertTranslationWithAuditPredecessor). INTEGER
+	// NOT NULL DEFAULT 1 column added by migration 155.
+	IsCurrent  bool            `json:"is_current"`
+	Confidence *float64        `json:"confidence,omitempty"`
+	Status     TextTrackStatus `json:"status"`
+	CreatedAt  time.Time       `json:"created_at"`
+	UpdatedAt  time.Time       `json:"updated_at"`
 }

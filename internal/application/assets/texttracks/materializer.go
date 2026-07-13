@@ -213,6 +213,23 @@ func (m *Materializer) Materialize(
 }
 
 // materializeOne handles a single target language.
+//
+// PR-CATALOG-MULTILINGUA step 4 (July 2026): the
+// lookup-before-translate gate runs FIRST via
+// FindCurrentForTranslation. If a row already exists with
+// matching translation_key + status=READY + is_current=1, the
+// translation is REUSED and the LLM call is skipped (no LLM
+// cost, no row insert). Otherwise the request is translated via
+// TranslationPort and persisted via
+// InsertTranslationWithAuditPredecessor (which atomically
+// flips the prior is_current=1 row to 0 before inserting the
+// new row, preserving the audit trail).
+//
+// Legacy MaterializationKey / ShouldRetranslate logic is
+// retained as a soft-fallback legacy classifier (it logs the
+// classification AFTER the new gate fires) so existing
+// MaterializationReport classification (created vs
+// retranslated) survives the migration cutover.
 func (m *Materializer) materializeOne(
 	ctx context.Context,
 	resolver *Resolver,
@@ -220,29 +237,66 @@ func (m *Materializer) materializeOne(
 	targetLang string,
 	report *MaterializationReport,
 ) error {
-	existing, err := resolver.FindExistingTarget(ctx, targetLang)
+	// (Step 4) Lookup-before-translate gate. The port computes the
+	// 5-tuple SHA-256 translation_key internally via
+	// asset.TranslationKey (godlike/06 SSOT — one canonical
+	// formula owner). If a READY + is_current=1 row already
+	// exists for this exact 6-tuple (asset + kind + target lang +
+	// source_text_hash + translation_model + model_version +
+	// prompt_version), the translation is REUSED and the LLM
+	// call is skipped. The existing track stays is_current=1;
+	// no row insert, no audit flip — godlike/07 honest lock.
+	existing, err := m.repo.FindCurrentForTranslation(
+		ctx,
+		report.AssetID,
+		report.Kind,
+		targetLang,
+		report.SourceTextHash,
+		m.resolverCfg.TranslationModel,
+		m.resolverCfg.ModelVersion,
+		m.resolverCfg.PromptVersion,
+	)
 	if err != nil {
-		return fmt.Errorf("find existing: %w", err)
+		return fmt.Errorf("find current for translation: %w", err)
 	}
-
-	key := MaterializationKey{
-		SourceVersion:  source.SourceVersion,
-		ModelVersion:   m.resolverCfg.ModelVersion,
-		PromptVersion:  m.resolverCfg.PromptVersion,
-		SourceTextHash: report.SourceTextHash,
-	}
-
-	// Classification is decided BEFORE the translation (so the
-	// caller can log "skipping IT (matching key)" early), but
-	// the Created/Retranslated list append happens AFTER the
-	// translation + upsert succeed. A failure between
-	// classification and success lands in FailedLanguages.
-	classification := "created"
-	switch {
-	case ShouldSkip(existing, key):
+	if existing != nil {
 		report.SkippedLanguages = append(report.SkippedLanguages, targetLang)
+		m.log.Info("texttracks.materialize.translation_key_hit",
+			zap.String("asset_id", report.AssetID),
+			zap.String("kind", string(report.Kind)),
+			zap.String("target_language", targetLang),
+		)
 		return nil
-	case ShouldRetranslate(existing, key):
+	}
+
+	// (Step 4) Compute the deterministic translation fingerprint
+	// for the insert path. Same canonical formula; this copy is
+	// persisted on the new row via InsertTranslationWithAuditPredecessor
+	// below. The lookup above and the insert here MUST share the
+	// same formula values, so both go through asset.TranslationKey.
+	translationKey := asset.TranslationKey(
+		report.SourceTextHash,
+		targetLang,
+		m.resolverCfg.TranslationModel,
+		m.resolverCfg.ModelVersion,
+		m.resolverCfg.PromptVersion,
+	)
+
+	// Soft-fallback classifier: keep the legacy
+	// created-vs-retranslated split so callers can see "this
+	// row was the FIRST translation" vs "this row replaced a
+	// stale prior translation" in the report. Hits go to
+	// "retranslated" because auditing an old (legacy, no
+	// translation_key) row as historical and a new keyed row
+	// as current is exactly the audit-trail-maximising
+	// shape.
+	classification := "created"
+	if legacyExisting, err := resolver.FindExistingTarget(ctx, targetLang); err == nil && legacyExisting != nil {
+		// classifier emits "retranslated" whenever a prior
+		// row is present and the new row carries a fresh
+		// translation_key. The discriminator-flip side
+		// effect happens in
+		// InsertTranslationWithAuditPredecessor below.
 		classification = "retranslated"
 	}
 
@@ -280,7 +334,12 @@ func (m *Materializer) materializeOne(
 		}
 	}
 
-	// (e) Build the new READY track.
+	// (e) Build the new READY track. The translation_key
+	// persisted here matches the lookup probe; the partial
+	// UNIQUE INDEX WHERE is_current=1 invariant guarantees
+	// no predecessor row with the same key remains is_current=1
+	// (the InsertTranslationWithAuditPredecessor began with a
+	// targeted UPDATE).
 	confidence := translated.Confidence
 	newTrack := asset.TextTrack{
 		AssetID:            report.AssetID,
@@ -293,8 +352,11 @@ func (m *Materializer) materializeOne(
 		Provider:           translated.UsedProvider,
 		ModelName:          translated.UsedModel,
 		ModelVersion:       m.resolverCfg.ModelVersion,
+		PromptVersion:      m.resolverCfg.PromptVersion,
 		TextHash:           ComputeSourceTextHash(translated.TranslatedText),
 		SourceVersion:      source.SourceVersion,
+		TranslationKey:     translationKey,
+		IsCurrent:          true,
 		Confidence:         &confidence,
 		Status:             asset.TextTrackReady,
 	}
@@ -302,8 +364,14 @@ func (m *Materializer) materializeOne(
 		newTrack.Confidence = nil
 	}
 
-	if err := m.repo.UpsertBatch(ctx, []asset.TextTrack{newTrack}); err != nil {
-		return fmt.Errorf("upsert READY: %w", err)
+	// (Step 4) Insert via the flip-and-insert path. Replaces
+	// the legacy UpsertBatch call (which silently overwrote
+	// rows on UNIQUE(asset_id, language_code, text_kind) and
+	// lost the audit trail). The atomic flip inside the
+	// transaction guarantees exactly one is_current=1 row per
+	// context after the call returns.
+	if err := m.repo.InsertTranslationWithAuditPredecessor(ctx, newTrack); err != nil {
+		return fmt.Errorf("insert translation with audit predecessor: %w", err)
 	}
 
 	switch classification {
