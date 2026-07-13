@@ -102,11 +102,11 @@ type Handler struct {
 	assetRepo       asset.Repository
 	driveAdmin      drive.Admin
 	duplicateFinder *duplicates.Finder
-	downloadUC       *appclips.DownloadUseCase
-	reuploadUC       *appclips.ReuploadUseCase
-	publisher        delivery.Publisher
-	log              *zap.Logger
-	jobsSvc          jobservice.Service
+	downloadUC      *appclips.DownloadUseCase
+	reuploadUC      *appclips.ReuploadUseCase
+	publisher       delivery.Publisher
+	log             *zap.Logger
+	jobsSvc         jobservice.Service
 
 	// Cfg used by driveRootForSource helper (Action cluster).
 	cfg *config.Config
@@ -144,7 +144,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware
-	}	// S1a (June 2026): when the composition root supplies a shared
+	} // S1a (June 2026): when the composition root supplies a shared
 	// EnrichUC, reuse it; when nil (test fixture, partial deploy),
 	// construct a local fallback copy that preserves pre-lift behaviour.
 	enrichUC := enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.MetaWriter, d.Log)
@@ -157,12 +157,12 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		assetRepo:       d.AssetRepo,
 		duplicateFinder: d.DuplicateFinder,
 		driveAdmin:      d.DriveAdmin,
-		downloadUC:       downloadUC,
-		reuploadUC:       d.ReuploadUC,
-		publisher:        d.Publisher,
-		log:              d.Log,
-		jobsSvc:          d.JobsSvc,
-		cfg:              d.Cfg,
+		downloadUC:      downloadUC,
+		reuploadUC:      d.ReuploadUC,
+		publisher:       d.Publisher,
+		log:             d.Log,
+		jobsSvc:         d.JobsSvc,
+		cfg:             d.Cfg,
 
 		// Split 1 (June 2026, override ADR 0009): Search sub-handler.
 		search: NewSearchHandler(SearchDeps{

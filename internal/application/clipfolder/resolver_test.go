@@ -332,9 +332,9 @@ func TestProductionYAML_LoadsAndSeedsExpectedAliases(t *testing.T) {
 	// canonical triad (Path, NormalizedGroup) per macro category
 	// MUST be present.
 	macroCategories := []struct {
-		alias          string
-		wantPath       string
-		wantNormGroup  string
+		alias         string
+		wantPath      string
+		wantNormGroup string
 	}{
 		{"boxe", "Boxe", "boxe"},
 		{"wwe", "WWE", "wwe"},

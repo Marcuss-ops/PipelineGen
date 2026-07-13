@@ -1,0 +1,20 @@
+{
+  "_comment": "youtube_bulk_upload_test.json — pure data payload for tests/operational/youtube_bulk_upload_smoke.sh. Only the canonical body schema lives here; bash wrapper .sh applies env-driven Idempotency-Key, dry_run?, and any source-overrides. godlike/06 SSOT: this file is the canonical fixture for the youtube bulk-upload E2E; operators tweaking the wire shape edit ONLY this file.",
+
+  "qdrant_url": "http://127.0.0.1:6333",
+
+  "correlation_id": "youtube_bulk_upload_e2e_v1",
+  "source": "youtube-e2e",
+  "drive_folder_id": "10p7NPodbQNjbSyvDIQJtowcmGeejwwlb",
+
+  "limit": 3,
+  "force_refresh": true,
+
+  "options": {
+    "dry_run": false,
+    "embed_dimensions": 768,
+    "index_state_target": "INDEXED",
+    "lifecycle_state_target": "ACTIVE",
+    "expected_local_count": 3
+  }
+}

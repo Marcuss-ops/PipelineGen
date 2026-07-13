@@ -6,10 +6,10 @@
 // processor_stock_association.go):
 //
 //  1. Qdrant hit                 → scene.Bindings.Stock { AssetID, DriveLink, Score, Fallback:false }
-//  2. Qdrant empty, scene has Clip.DriveLink  → scene.Bindings.Stock { DriveLink = clip.DriveLink, Fallback:true }
+//  2. Qdrant empty, scene has Clip.DriveLink  → scene.Bindings.Stock stays nil (no duplicate stock binding)
 //  3. Qdrant empty, scene has NO Clip binding → scene.Bindings.Stock stays nil (silent)
-//  4. Qdrant error, scene has Clip.DriveLink  → scene.Bindings.Stock { DriveLink = clip.DriveLink, Fallback:true }
-//  5. Empty scene.Text → still attempts clip fallback (matches processor code path)
+//  4. Qdrant error, scene has Clip.DriveLink  → scene.Bindings.Stock stays nil (no duplicate stock binding)
+//  5. Empty scene.Text → still attempts the stock path, but no duplicate fallback binding is written
 //
 // Best-effort policy: a missing or failing stock search must NOT
 // abort the pipeline. The tests assert the side-effect on
@@ -143,10 +143,10 @@ func TestStockAssociation_QdrantHit(t *testing.T) {
 	assert.False(t, stock.Fallback, "Fallback must be false on a real Qdrant hit")
 }
 
-// TestStockAssociation_FallbackToClip asserts the documented fallback:
+// TestStockAssociation_FallbackToClip asserts the no-duplicate contract:
 // when SearchStock returns no hits AND the scene carries a Clip
-// binding with a non-empty DriveLink, the Stock binding is populated
-// from the clip's drive link with Fallback:true.
+// binding, the processor must NOT duplicate the clip DriveLink into
+// Stock.
 func TestStockAssociation_FallbackToClip(t *testing.T) {
 	t.Parallel()
 	const clipDrive = "https://drive.google.com/file/d/clip-as-stock"
@@ -164,13 +164,8 @@ func TestStockAssociation_FallbackToClip(t *testing.T) {
 	res, err := proc.Process(context.Background(), stockPlan(), input)
 	require.NoError(t, err)
 	require.NotNil(t, res)
-	require.NotNil(t, input.SpecScene.Scenes[0].Bindings.Stock,
-		"Stock binding must be populated from clip.DriveLink on fallback")
-	stock := input.SpecScene.Scenes[0].Bindings.Stock
-	assert.True(t, stock.Fallback, "Fallback must be true when sourcing from clip")
-	assert.Equal(t, clipDrive, stock.DriveLink, "Stock DriveLink must mirror clip.DriveLink")
-	assert.Empty(t, stock.AssetID, "AssetID must be empty on fallback (no Qdrant match)")
-	assert.Zero(t, stock.Score, "Score must be zero on fallback")
+	assert.Nil(t, input.SpecScene.Scenes[0].Bindings.Stock,
+		"Stock binding must stay nil when fallback would only duplicate the clip DriveLink")
 }
 
 // TestStockAssociation_NoHitNoClipLeavesStockNil pins the current
@@ -197,8 +192,8 @@ func TestStockAssociation_NoHitNoClipLeavesStockNil(t *testing.T) {
 
 // TestStockAssociation_SearchErrorFallsBackToClip asserts the
 // transport-error path: when SearchStock returns a non-nil error,
-// the processor must log a warning AND fall back to the scene's
-// clip drive link (best-effort policy contract).
+// the processor must log a warning and avoid duplicating the clip
+// drive link into Stock.
 func TestStockAssociation_SearchErrorFallsBackToClip(t *testing.T) {
 	t.Parallel()
 	const clipDrive = "https://drive.google.com/file/d/clip-fallback-err"
@@ -214,15 +209,12 @@ func TestStockAssociation_SearchErrorFallsBackToClip(t *testing.T) {
 	res, err := proc.Process(context.Background(), stockPlan(), input)
 	require.NoError(t, err, "best-effort processor must NOT propagate Qdrant errors")
 	require.NotNil(t, res)
-	require.NotNil(t, input.SpecScene.Scenes[0].Bindings.Stock)
-	assert.True(t, input.SpecScene.Scenes[0].Bindings.Stock.Fallback)
-	assert.Equal(t, clipDrive, input.SpecScene.Scenes[0].Bindings.Stock.DriveLink)
+	assert.Nil(t, input.SpecScene.Scenes[0].Bindings.Stock)
 }
 
 // TestStockAssociation_EmptySceneTextStillTriesClip mirrors the
 // processor's branch for empty scene.Text: it skips SearchStock and
-// goes straight to the clip fallback. Pin this so a future refactor
-// does not accidentally omit the clip-bound scenes from processing.
+// does not synthesize a duplicate Stock binding.
 func TestStockAssociation_EmptySceneTextStillTriesClip(t *testing.T) {
 	t.Parallel()
 	const clipDrive = "https://drive.google.com/file/d/clip-empty-text"
@@ -239,9 +231,7 @@ func TestStockAssociation_EmptySceneTextStillTriesClip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, search.calls,
 		"SearchStock must NOT be called when scene.Text is empty")
-	require.NotNil(t, input.SpecScene.Scenes[0].Bindings.Stock)
-	assert.True(t, input.SpecScene.Scenes[0].Bindings.Stock.Fallback)
-	assert.Equal(t, clipDrive, input.SpecScene.Scenes[0].Bindings.Stock.DriveLink)
+	assert.Nil(t, input.SpecScene.Scenes[0].Bindings.Stock)
 }
 
 // TestStockAssociation_NilSearchIsNoOp asserts the composition-time
@@ -321,9 +311,8 @@ func TestStockAssociation_QdrantHit_ReturnsChanged(t *testing.T) {
 
 // TestStockAssociation_FallbackToClip_ReturnsChanged pins the
 // contract for the fallback path: Qdrant returns no hits, the
-// scene has a non-empty Clip.DriveLink, the binder populates
-// scene.Bindings.Stock with Fallback=true, the processor result
-// MUST report Changed=true.
+// scene has a non-empty Clip.DriveLink, but the processor must not
+// duplicate that clip link into Stock.
 func TestStockAssociation_FallbackToClip_ReturnsChanged(t *testing.T) {
 	t.Parallel()
 	search := &fakeStockSearch{hits: nil}
@@ -351,9 +340,7 @@ func TestStockAssociation_FallbackToClip_ReturnsChanged(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, res)
 	require.True(t, res.Changed,
-		"Changed must be true when the binder falls back to clip (Phase 1 closure invariant)")
-	require.NotNil(t, input.SpecScene.Scenes[0].Bindings.Stock,
-		"Stock binding must be populated from clip.DriveLink on fallback")
-	assert.True(t, input.SpecScene.Scenes[0].Bindings.Stock.Fallback,
-		"Fallback must be true on the clip-fallback path")
+		"Changed must stay true while the processor runs, even when it declines to duplicate the clip link")
+	assert.Nil(t, input.SpecScene.Scenes[0].Bindings.Stock,
+		"Stock binding must stay nil on the no-duplicate clip-fallback path")
 }

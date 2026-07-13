@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // ── Prompt helpers ────────────────────────────────────────────────────
@@ -43,7 +44,11 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 	if plan.NumClips > 0 {
 		extra = append(extra, fmt.Sprintf("Use exactly %d clip-driven scenes.", requestedClips))
 	}
-	if plan.SegmentWords > 0 {
+	if plan.GroundingPolicy == scriptpkg.GroundingPolicyClipsPrimary {
+		if budget := buildClipRuntimeBudgetInstructions(plan); budget != "" {
+			extra = append(extra, budget)
+		}
+	} else if plan.SegmentWords > 0 {
 		extra = append(extra, fmt.Sprintf("Aim for about %d words per segment.", plan.SegmentWords))
 	}
 	if len(plan.SegmentTopics) > 0 {
@@ -72,6 +77,36 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 	}
 	lines = append(lines, extra...)
 	return strings.Join(lines, "\n")
+}
+
+// buildClipRuntimeBudgetInstructions turns the resolved clip runtime
+// into an operative narration budget for clips_primary plans.
+func buildClipRuntimeBudgetInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
+	totalDurationMs, totalWords, perClip := clipRuntimeBudget(plan)
+	if totalDurationMs <= 0 || totalWords <= 0 || len(perClip) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b,
+		"Clip runtime budget: %d ms total across the accepted clips, or about %d words total at %d wpm.\n",
+		totalDurationMs, totalWords, clipRuntimeWordsPerMinute())
+	b.WriteString("Treat this clip budget as the operative cap for the narration. If the earlier target words are higher, keep the script within this clip budget instead.\n")
+	for i, budget := range perClip {
+		fmt.Fprintf(&b,
+			"- clip %d (%d ms) -> about %d words.\n",
+			i+1, budget.DurationMs, budget.WordBudget)
+	}
+	b.WriteString("Keep each scene close to its clip budget and avoid stretching a short clip into a long monologue.")
+	return b.String()
+}
+
+func clipRuntimeWordsPerMinute() int {
+	cfg := defaults.DefaultScriptConfig()
+	if cfg.WordsPerMinute <= 0 {
+		return 150
+	}
+	return cfg.WordsPerMinute
 }
 
 // buildSegmentInstructions renders the PR-CS-1 ScriptSegment blocks
