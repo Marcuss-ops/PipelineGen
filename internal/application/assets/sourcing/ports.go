@@ -148,23 +148,13 @@ type JobsPort interface {
 	Enqueue(ctx context.Context, req EnqueueRequest) (*EnqueuedJob, error)
 }
 
-// ── File system ports ──────────────────────────────────────────────────
-
-// LocalFileInfo describes a file on disk found during scanning.
-type LocalFileInfo struct {
-	Path         string
-	RelPath      string
-	Name         string
-	GroupName    string // e.g. actor/subdir name
-	Size         int64
-	MetadataPath string
-	Transcript   string
-}
-
-// FileScannerPort scans local directories for media files.
-type FileScannerPort interface {
-	Scan(ctx context.Context, rootPath string, limit int) ([]LocalFileInfo, error)
-}
+// ── File system ports ────────────────────────────────────────────────────
+//
+// PR-CLIPS-ENQUEUE-ONLY (July 2026): the FileScannerPort + LocalFileInfo
+// were RETIRED. The worker is the sole owner of filesystem scanning;
+// the enqueue path no longer pre-scans the directory. Callers that
+// need to scan a local folder must go through the worker (which runs
+// the scan when the bulk_upload_youtube_clips job executes).
 
 // ── Hash ports ─────────────────────────────────────────────────────────
 

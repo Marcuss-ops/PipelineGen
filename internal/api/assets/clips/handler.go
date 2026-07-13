@@ -15,9 +15,6 @@
 package clips
 
 import (
-	"context"
-	"fmt"
-
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/nonops"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
@@ -26,7 +23,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/duplicates"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
