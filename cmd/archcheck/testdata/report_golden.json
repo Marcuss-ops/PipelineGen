@@ -85,7 +85,8 @@
       "module_ingest",
       "module_jobs",
       "module_stock",
-      "module_youtube"
+      "module_youtube",
+      "subject_bindings"
     ]
   },
   "summary": {
