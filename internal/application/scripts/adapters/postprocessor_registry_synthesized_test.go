@@ -336,7 +336,12 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 	r := adapterspkg.NewPostProcessorRegistry(log)
 
 	// Stub processors: clip_bindings synthesises scenes from prose;
-	// voiceover + images are downstream captures.
+	// persistence is the downstream consumer of synthesised
+	// scenes. PR-COMMIT3 (July 2026): voiceover + images are no
+	// longer inline postprocessors — the corresponding artifact
+	// output is produced by the canonical downstream jobs
+	// (TypeVoiceoverGenerate / TypeImagesGenerate), not the
+	// inline PostProcessorRegistry.
 	synth := &synthesisingProcessor{
 		name:   "clip_bindings",
 		policy: adapterspkg.ProcessorBestEffort,
@@ -349,23 +354,20 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 		name:   "stock_association",
 		policy: adapterspkg.ProcessorBestEffort,
 	}
-	vo := &synthesisingProcessor{
-		name:   "voiceover",
-		policy: adapterspkg.ProcessorBestEffort,
-	}
-	img := &synthesisingProcessor{
-		name:   "images",
+	persistence := &synthesisingProcessor{
+		name:   "persistence",
 		policy: adapterspkg.ProcessorBestEffort,
 	}
 	r.Register(synth)
 	r.Register(stockAssoc)
-	r.Register(vo)
-	r.Register(img)
+	r.Register(persistence)
 	r.Freeze()
 
 	// Build a plan using the REAL buildPostprocessorList (via
-	// BuildPlan) with all artifact flags enabled — guarantees the
-	// order is the one the production code path produces.
+	// BuildPlan) with the 2 surviving ACTIVE flags enabled.
+	// PR-COMMIT3 (July 2026): the 3 deprecation-registered
+	// output flags (GenerateVoiceover + GenerateSceneImages +
+	// GenerateDocument) are physically removed from OutputSpec.
 	item := scriptpkg.GenerationItemV2{
 		ID:    "item-p0-reorder",
 		Title: "P0 Reorder Test",
@@ -375,43 +377,23 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 			SourceText: "Prose-only payload simulating a gemma model output.",
 		},
 		Output: scriptpkg.OutputSpec{
-			// PR-COMMIT3 (July 2026): the 3 deprecation-registered
-			// output flags (GenerateVoiceover + GenerateSceneImages
-			// + GenerateDocument) are physically removed from
-			// OutputSpec. Voiceover / images / document output is
-			// produced exclusively by the canonical downstream
-			// jobs (TypeVoiceoverGenerate / TypeImagesGenerate /
-			// TypeDocumentGenerate), not the inline
-			// PostProcessorRegistry. The postprocessor list now
-			// contains only the 2 surviving ACTIVE postprocessors
-			// (entities + metadata) + the unconditional
-			// scene-normalisation stages (clip_bindings +
-			// stock_association) + persistence.
 			ExtractEntities:  scriptpkg.ToggleEnabled,
 			GenerateMetadata: scriptpkg.ToggleEnabled,
 		},
 	}
 	plan := scripts.BuildPlan(item)
 
-	// Verify the REAL order produced by buildPostprocessorList.
-	// Expected: entities, metadata, clip_bindings, stock_association,
-	//           voiceover, images, document, persistence
-	if len(plan.Postprocessors) < 4 {
-		t.Fatalf("expected at least 4 postprocessors (entities + metadata + clip_bindings + stock_association + persistence), got %d: %v",
-			len(plan.Postprocessors), plan.Postprocessors)
-	}
-	// PR-COMMIT3 (July 2026): voiceover + images + document are
-	// no longer appended by buildPostprocessorList. The 3
-	// deprecation-registered output flags are physically removed
-	// from OutputSpec; the corresponding artifact output is
-	// produced by the canonical downstream jobs
-	// (TypeVoiceoverGenerate / TypeImagesGenerate /
-	// TypeDocumentGenerate). The postprocessor list now contains
+	// PR-COMMIT3 (July 2026): the postprocessor list now contains
 	// only the 2 surviving ACTIVE postprocessors (entities +
 	// metadata) + the unconditional scene-normalisation stages
 	// (clip_bindings + stock_association) + persistence. The
 	// clip_bindings ordering invariant is still valid: it must
-	// run before any downstream consumer of synthesised scenes.
+	// run before the final persistence write so synthesised
+	// scenes are visible.
+	if len(plan.Postprocessors) < 4 {
+		t.Fatalf("expected at least 4 postprocessors (entities + metadata + clip_bindings + stock_association + persistence), got %d: %v",
+			len(plan.Postprocessors), plan.Postprocessors)
+	}
 	cbIdx := -1
 	for i, name := range plan.Postprocessors {
 		if name == "clip_bindings" {
@@ -445,18 +427,15 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	// The runtime assertion: clip_bindings synthesised scenes
-	// must be visible to the persistence postprocessor (the last
-	// scene-normalisation stage). PR-COMMIT3 (July 2026):
-	// voiceover + images are no longer inline postprocessors;
-	// they consume the FinalSpecScene from the canonical
-	// downstream jobs, not the inline registry.
-	if len(downstream.lastInputScenes) != 2 {
+	// Runtime assertion: clip_bindings synthesised scenes must be
+	// visible to the persistence postprocessor (the last
+	// scene-normalisation stage).
+	if len(persistence.lastInputScenes) != 2 {
 		t.Fatalf("P0 reorder: persistence saw %d scenes, want 2 (clip_bindings synth not propagated before persistence ran)",
-			len(downstream.lastInputScenes))
+			len(persistence.lastInputScenes))
 	}
-	if downstream.lastInputScenes[0].ID != "syn-0" {
-		t.Errorf("persistence saw scene[0].ID = %q, want syn-0", downstream.lastInputScenes[0].ID)
+	if persistence.lastInputScenes[0].ID != "syn-0" {
+		t.Errorf("persistence saw scene[0].ID = %q, want syn-0", persistence.lastInputScenes[0].ID)
 	}
 
 	// FinalSpecScene must carry the synthesised bundle.

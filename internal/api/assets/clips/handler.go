@@ -1,12 +1,17 @@
 // Package clips — handler.go: fat orchestrator that mounts every clip route.
 //
 // Composition: 5 sub-handlers (search/ingest/ops/nonops/bulk) registered via
-// per-cluster RegisterRoutes; 3 non-HTTP delegators (EnrichAndIndexClip +
-// RegisterJobHandlers + HandleBulkUploadYouTubeClipsJob) keep external
-// non-HTTP consumers stable. NewHandlerStrict validates the JOB-SVC +
+// per-cluster RegisterRoutes. NewHandlerStrict validates the JOB-SVC +
 // bulk-upload-worker chain at construction (godlike/07 no-fake-availability)
 // — a partial wiring crashes at boot instead of silently succeeding on first
 // enqueue. The legacy NewHandler (nil-tolerant) remains for test fixtures.
+//
+// Card 10 (July 2026): the 3 non-HTTP delegators
+// (EnrichAndIndexClip + RegisterJobHandlers + HandleBulkUploadYouTubeClipsJob)
+// are REMOVED from *Handler — the slim units have migrated either to the
+// canonical typed port (appclips.ClipEnricher for enrich) or to a private
+// sub-handler registrar (ClipsDescriptor.clipJobRegistrar for bulk_upload).
+// The exposed transport surface is now strictly HTTP routes.
 package clips
 
 import (
@@ -94,7 +99,15 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware
 	}
-	enrichUC := enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.MetaWriter, d.Log)
+	// Card 10 (July 2026): enrichUC is REQUIRED. The composition root
+	// (app/wire_assets_clips.go) constructs it via NewEnrichUseCase with
+	// the canonical dispatcher wired; nil at this constructor only
+	// happens via the legacy NewHandler nil-tolerant path used by test
+	// fixtures (godlike/07 back-compat). The previous enrichUCOrLocal
+	// fallback into repo.Upsert is RETIRED — partial deployments must
+	// fail-closed at the composition root, not silently bypass the
+	// outbox here.
+	enrichUC := d.EnrichUC
 	bulkTagsUC := appclips.NewBulkTagsUseCase(d.ClipsRepo, d.AssetTreeSvc)
 	downloadUC := appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo)
 	reprocessUC := appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor, nil)
@@ -171,22 +184,10 @@ func NewHandlerStrict(d Deps, idempotencyMiddleware gin.HandlerFunc) (*Handler, 
 	}); err != nil {
 		return nil, err
 	}
-	return NewHandler(d, idempotencyMiddleware), nil
-}
-
-// enrichUCOrLocal: returns shared when non-nil; otherwise constructs a local
-// fallback with no dispatcher (orchestrator only sees the narrower
-// ClipIndexDispatcherPort; enrichment runs but re-index enqueueing is skipped).
-func enrichUCOrLocal(
-	shared *appclips.EnrichUseCase,
-	repo asset.Repository,
-	mw semantic.MetadataWriterPort,
-	log *zap.Logger,
-) *appclips.EnrichUseCase {
-	if shared != nil {
-		return shared
+	if d.EnrichUC == nil {
+		return nil, appclips.ErrEnrichDispatcherRequired
 	}
-	return appclips.NewEnrichUseCase(repo, mw, nil, log)
+	return NewHandler(d, idempotencyMiddleware), nil
 }
 
 // repoForSource: resolves clip source via the Search sub-handler; used as
@@ -196,31 +197,6 @@ func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
 		return nil
 	}
 	return h.search.repoForSource(source)
-}
-
-// EnrichAndIndexClip: 1-line delegator to nonops.EnrichAndIndexClip.
-func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, source string) {
-	if h.nonops == nil {
-		return
-	}
-	h.nonops.EnrichAndIndexClip(ctx, clip, source)
-}
-
-// RegisterJobHandlers: 1-line delegator to nonops.RegisterJobHandlers.
-func (h *Handler) RegisterJobHandlers() error {
-	if h.nonops == nil {
-		return nil
-	}
-	return h.nonops.RegisterJobHandlers()
-}
-
-// HandleBulkUploadYouTubeClipsJob: 1-line delegator to nonops; typed error
-// when nonops is nil so the dispatcher fails closed.
-func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *jobservice.Job, tools *appjobs.JobTools) (map[string]any, error) {
-	if h.nonops == nil {
-		return nil, fmt.Errorf("nonops sub-handler not wired (clips.Handler constructed without NewHandler)")
-	}
-	return h.nonops.HandleBulkUploadYouTubeClipsJob(ctx, j, tools)
 }
 
 // RegisterRoutes mounts the entire clip-route surface.
