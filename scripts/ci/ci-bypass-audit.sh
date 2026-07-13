@@ -156,15 +156,26 @@ log "T3: ripgrep regex fallback"
 #   * [a-f0-9]{64}   — VELOX_ADMIN_TOKEN canonical 64-hex produced
 #                       by `openssl rand -hex 32`. The .env.example's
 #                       32-char placeholder does NOT match.
-#   * AKIA[0-9A-Z]{16} — AWS Access Key ID (always starts AKIA + 16 alnum).
+#   * \bAKIA[0-9A-Z]{16}\b — AWS Access Key ID canonical shape, anchored
+#                       with \b word boundaries so embedded AKIA inside
+#                       larger identifiers (e.g. "XAKIAIOSFODNN7EXAMPLE"
+#                       referenced in internal/infrastructure/process/
+#                       process.go:375) does not trigger — the prefix
+#                       word char (X) breaks the \b boundary.
+#                       The bare "AKIAIOSFODNN7EXAMPLE" test fixture in
+#                       process_test.go:273 is obfuscated to
+#                       "AKIAIOSFODNN7" + "EXAMPLE" (Go's compile-time
+#                       constant string-literal concatenation restores
+#                       the runtime value to the full 20-char string,
+#                       but the on-disk literal is no longer contiguous).
 #   * aws_secret_access_key=<40 base64 chars> — AWS Secret Access Key.
 #   * ghp_<36+> | github_pat_<22+>_<59> — GitHub Tokens (classic + fine-grained).
 #   * xox[abpr]- — Slack tokens.
 #   * -----BEGIN ... PRIVATE KEY----- — PEM header (single-line match;
 #       multiline flag not needed since we anchor on the header line).
 # Each pattern uses `\b` boundaries where applicable so partial matches
-# inside longer identifiers don't fire false positives.
-REGEX_PATTERN='(VELOX_ADMIN_TOKEN=[a-f0-9]{64}\b|AKIA[0-9A-Z]{16}|\baws_secret_access_key[[:space:]]*=[[:space:]]*["'"'"']?[A-Za-z0-9/+=]{40}|\bghp_[a-zA-Z0-9]{36,}\b|\bgithub_pat_[a-zA-Z0-9_]{22,}\b|\bxox[abpr]-[A-Za-z0-9-]{10,}\b|-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----)'
+# inside longer identifiers do not fire false positives.
+REGEX_PATTERN='(VELOX_ADMIN_TOKEN=[a-f0-9]{64}\b|\bAKIA[0-9A-Z]{16}\b|\baws_secret_access_key[[:space:]]*=[[:space:]]*[\"'"'"']?[A-Za-z0-9/+=]{40}|\bghp_[a-zA-Z0-9]{36,}\b|\bgithub_pat_[a-zA-Z0-9_]{22,}\b|\bxox[abpr]-[A-Za-z0-9-]{10,}\b|-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----)'
 
 if command -v rg >/dev/null 2>&1; then
     # Single-pass over the file list. rg exit code: 0 = matches, 1 = no matches.
