@@ -18,8 +18,10 @@ import (
 //
 // Phase 2 of postprocessor-unification (2026-07-08): the processor
 // is a thin orchestrator that delegates to
-// scene.SceneAssetBinder.BindClips. The binder knows only scene_id,
-// requirements, candidate assets, and binding policy.
+// scene.SceneAssetBinder.BindClips. The prose-fallback helper,
+// JSON-envelope cleanup, sentence splitter, kind-for-position
+// mapping, and the 1:1 binding loop all moved to the scene
+// package (godlike/06 SSOT one canonical owner per fact).
 //
 // The constructor signature is STABLE for godlike/07
 // minimum-blast-radius — wire_script_postprocess.go does not need
@@ -48,86 +50,55 @@ func (p *ClipBindingsProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) Proc
 	return ProcessorBestEffort
 }
 
-// Process delegates to scene.SceneAssetBinder.BindClips and applies
-// the returned bindings to the input scenes. The processor owns the
-// translation from SpecScene to the binder's canonical request shape
-// (scene_id + requirements + candidates + policy) and back again.
+// Process delegates to scene.SceneAssetBinder.BindClips and maps
+// the result back to PostProcessResult. The binder mutates
+// input.SpecScene.Scenes in-place when scenes pre-exist OR returns
+// the synthesized scene list via BindClipsResult.SynthesizedScenes
+// when the prose-fallback heuristic engages. The processor only
+// owns the adapter-envelope translation layer (per godlike/06
+// SSOT — adapters cannot import usecase + scene package types
+// freely because of cycle risk; the postprocessor layer is the
+// canonical seam).
 func (p *ClipBindingsProcessor) Process(
 	ctx context.Context,
 	plan *scriptpkg.ResolvedGenerationPlan,
 	input ProcessInput,
 ) (*PostProcessResult, error) {
-	_ = ctx
-
-	clipIDs, driveLinks := acceptedClipIDs(plan)
-	if len(clipIDs) == 0 {
-		return &PostProcessResult{}, nil
-	}
-
-	scenes := input.SpecScene.Scenes
-	reqs := make([]scene.ClipBindingRequest, 0, len(scenes))
-	for _, s := range scenes {
-		reqs = append(reqs, scene.ClipBindingRequest{
-			SceneID:      s.ID,
-			Requirements: scene.AssetRequirements{},
-			Policy:       scene.ClipBindingPolicy{},
-		})
-	}
-
-	// Build one candidate per accepted clip in canonical order.
-	candidates := make([]scene.ClipCandidate, 0, len(clipIDs))
-	for _, id := range clipIDs {
-		candidates = append(candidates, scene.ClipCandidate{
-			ClipID:    id,
-			DriveLink: driveLinks[id],
-		})
-	}
-
-	// Distribute candidates to requests 1:1 in order.
-	for i := range reqs {
-		if i < len(candidates) {
-			reqs[i].Candidates = []scene.ClipCandidate{candidates[i]}
-		}
-	}
-
-	res := p.binder.BindClips(reqs)
+	res := p.binder.BindClips(input.SpecScene.Scenes, input.Text, plan)
 	if !res.Changed {
 		return &PostProcessResult{}, nil
 	}
 
-	// Apply bindings back to the original scenes. Scenes beyond the
-	// clip count get their stale Bindings.Clip explicitly nil-ed
-	// (P0 #2 invariant: surface LLM mismatches instead of silently
-	// preserving stale bindings).
-	clipCount := len(candidates)
-	for i := range scenes {
-		if binding, ok := res.Bindings[scenes[i].ID]; ok {
-			scenes[i].Bindings.Clip = binding
-		} else if i < clipCount {
-			// Safety: a scene within the clip range should always
-			// have a binding; if it does not, leave it untouched.
-			continue
-		} else {
-			scenes[i].Bindings.Clip = nil
+	// FASE 3 (June 2026) preserved verbatim: when the prose-fallback
+	// heuristic synthesised scenes, the registry's IsEmpty() gate at
+	// postprocessor_document.go would otherwise flag the binder as
+	// "returned empty output". SynthesizedScenes counts as
+	// observable work so the empty warning does not fire.
+	//
+	// P1 #10 (June 2026) preserved verbatim: when scenes pre-existed
+	// (heuristic NOT engaged), the binder mutated every scene's
+	// Bindings.Clip field — Changed=true prevents the false
+	// "empty-output" warning for the normal model-output path too.
+	result := &PostProcessResult{
+		Changed:           true,
+		SynthesizedScenes: res.SynthesizedScenes,
+		Warnings:          res.Warnings,
+	}
+	if len(result.SynthesizedScenes) > 0 && len(input.SpecScene.Scenes) > 0 {
+		for i := range result.SynthesizedScenes {
+			if i >= len(input.SpecScene.Scenes) {
+				break
+			}
+			result.SynthesizedScenes[i].Bindings = input.SpecScene.Scenes[i].Bindings
 		}
 	}
-
-	return &PostProcessResult{Changed: true}, nil
-}
-
-// acceptedClipIDs returns the canonical ordered list of accepted clip
-// IDs and their drive links from the plan. It respects NumClips when
-// set.
-func acceptedClipIDs(plan *scriptpkg.ResolvedGenerationPlan) ([]string, map[string]string) {
-	if plan == nil || plan.ClipEvidence == nil || len(plan.ClipEvidence.AcceptedClipIDs) == 0 {
-		return nil, nil
+	// When the synthesized list is non-nil, mutate the input
+	// envelope so the downstream document/persistence processors
+	// observe the synthesized scene list (matches the
+	// pre-Phase-2 in-place mutation in processor_clip_bindings.go).
+	if len(res.SynthesizedScenes) > 0 {
+		input.SpecScene.Scenes = res.SynthesizedScenes
+		_ = ctx // ambient ctx unused in the binder delegation path
 	}
-
-	clipIDs := plan.ClipEvidence.AcceptedClipIDs
-	if plan.NumClips > 0 && plan.NumClips < len(clipIDs) {
-		clipIDs = clipIDs[:plan.NumClips]
-	}
-
-	driveLinks := plan.ClipEvidence.DriveLinks
-	return clipIDs, driveLinks
+	return result, nil
 }

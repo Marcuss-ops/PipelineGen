@@ -29,10 +29,11 @@ func TestModelScriptOutputV1RoundTrip(t *testing.T) {
 					Kind:  script.SceneNarration,
 				},
 				{
-					ID:    "scene-2",
-					Index: 1,
-					Text:  "Scene with a clip.",
-					Kind:  script.SceneClip,
+					ID:           "scene-2",
+					Index:        1,
+					Text:         "Scene with a clip.",
+					EvidenceRefs: []string{"slot-2"},
+					Kind:         script.SceneClip,
 					Bindings: script.SceneBindings{
 						Clip: &script.ClipBinding{
 							ClipID:    "clip-abc123",
@@ -101,6 +102,9 @@ func TestModelScriptOutputV1RoundTrip(t *testing.T) {
 	s2 := decoded.SpecScene.Scenes[1]
 	if s2.Bindings.Clip == nil {
 		t.Fatal("scene-2: clip binding is nil after round-trip")
+	}
+	if len(s2.EvidenceRefs) != 1 || s2.EvidenceRefs[0] != "slot-2" {
+		t.Fatalf("scene-2 evidence refs mismatch: %#v", s2.EvidenceRefs)
 	}
 	if s2.Bindings.Clip.ClipID != "clip-abc123" {
 		t.Errorf("scene-2 clip_id: %s", s2.Bindings.Clip.ClipID)

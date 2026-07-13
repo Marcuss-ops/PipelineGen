@@ -250,6 +250,12 @@ type SpecScene struct {
 	// the voiceover text. It is optional and omitted when empty.
 	Metadata *SceneMetadata `json:"metadata,omitempty"`
 
+	// EvidenceRefs carries the opaque refs that explain how this
+	// scene was grounded. The backend resolves these refs to clip
+	// evidence / binding-table entries after the model emits text.
+	// Empty when the scene was not authored against an explicit ref.
+	EvidenceRefs []string `json:"evidence_refs,omitempty"`
+
 	// Kind tags the scene's primary visual treatment.
 	Kind SceneKind `json:"kind"`
 
@@ -338,6 +344,9 @@ type ClipBinding struct {
 
 	// EndMs is the optional clip end offset in milliseconds.
 	EndMs int64 `json:"end_ms,omitempty"`
+
+	// DurationMs is the optional clip duration in milliseconds.
+	DurationMs int64 `json:"duration_ms,omitempty"`
 }
 
 // ── Image binding ──────────────────────────────────────────────────

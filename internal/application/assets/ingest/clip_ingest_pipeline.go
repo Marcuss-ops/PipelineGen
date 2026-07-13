@@ -17,19 +17,19 @@
 //
 // The 9 components (user spec verbatim):
 //
-//   1. Downloader            — source bytes (production: YouTubeStager /
-//                              ArtlistStager / StockStager).
-//   2. MediaNormalizer       — canonical container/codec normalization.
-//   3. ContentHasher         — canonical SHA-256 (AssetMutationDispatcher
-//                              supersede-gate fingerprint).
-//   4. ArtifactStore         — typed-narrow companion writer for
-//                              locations/processing.
-//   5. Transcriber           — audio transcript (WhisperTranscriberPort).
-//   6. ClipEnricher          — semantic + visual metadata attachment.
-//   7. TextTrackTranslator  — localize source-language text tracks.
-//   8. SearchTextComposer    — BM25 + vector-search text envelope.
-//   9. AssetMutationDispatcher — canonical SSOT atomic media_assets +
-//                              outbox_events write surface (QDRANT-002).
+//  1. Downloader            — source bytes (production: YouTubeStager /
+//     ArtlistStager / StockStager).
+//  2. MediaNormalizer       — canonical container/codec normalization.
+//  3. ContentHasher         — canonical SHA-256 (AssetMutationDispatcher
+//     supersede-gate fingerprint).
+//  4. ArtifactStore         — typed-narrow companion writer for
+//     locations/processing.
+//  5. Transcriber           — audio transcript (WhisperTranscriberPort).
+//  6. ClipEnricher          — semantic + visual metadata attachment.
+//  7. TextTrackTranslator  — localize source-language text tracks.
+//  8. SearchTextComposer    — BM25 + vector-search text envelope.
+//  9. AssetMutationDispatcher — canonical SSOT atomic media_assets +
+//     outbox_events write surface (QDRANT-002).
 //
 // All 3 providers (YouTube / Artlist / Stock) MUST flow through the
 // SAME AssetMutationDispatcher instance (composition-root enforces,
@@ -38,9 +38,9 @@
 // State-traversal mapping (per PR-CATALOG-MULTILINGUA step 7's canonical
 // 14-state ASSET STATE MACHINES — see internal/domain/asset/asset_state.go):
 //
-//   DISCOVERED → DOWNLOADED → NORMALIZED → HASHED → UPLOADED →
-//   TRANSCRIBED → ENRICHED → TRANSLATED → INDEX_PENDING → INDEXED →
-//   READY → READY_MULTILINGUAL
+//	DISCOVERED → DOWNLOADED → NORMALIZED → HASHED → UPLOADED →
+//	TRANSCRIBED → ENRICHED → TRANSLATED → INDEX_PENDING → INDEXED →
+//	READY → READY_MULTILINGUAL
 //
 // The Ingest method walks the first 8 stages. The remaining transitions
 // (INDEX_PENDING → INDEXED, INDEXED → READY, READY → READY_MULTILINGUAL)

@@ -99,7 +99,7 @@ func TestGenerateE2E_OneClipWithCompatibleSourceText(t *testing.T) {
 }
 
 // TestGenerateE2E_MultipleClips verifies that three accepted clips are
-// reflected in ClipEvidence and the Ollama prompt.
+// reflected in ClipEvidence and the Ollama request payload.
 func TestGenerateE2E_MultipleClips(t *testing.T) {
 	t.Parallel()
 
@@ -121,9 +121,10 @@ func TestGenerateE2E_MultipleClips(t *testing.T) {
 
 	captured := gen.capturedReq.Load()
 	require.NotNil(t, captured)
-	assert.Contains(t, captured.Prompt, "clip-a")
-	assert.Contains(t, captured.Prompt, "clip-b")
-	assert.Contains(t, captured.Prompt, "clip-c")
+	assert.Contains(t, captured.SourceText, "NARRATIVE EVIDENCE 1")
+	assert.Contains(t, captured.SourceText, "Ref: clip_1")
+	assert.Contains(t, captured.SourceText, "Ref: clip_2")
+	assert.Contains(t, captured.SourceText, "Ref: clip_3")
 }
 
 // TestGenerateE2E_SourcePrimaryGroundingPolicy verifies that the

@@ -99,17 +99,12 @@ func fixtureBinding() BindingTable {
 }
 
 // fixtureModelOutput returns a 3-segment LLM envelope for the Pacquiao fixture.
-func fixtureModelOutput() scriptpkg.ModelScriptOutputV1 {
-	return scriptpkg.ModelScriptOutputV1{
-		SpecScene: scriptpkg.SpecSceneOutput{
-			Version: 1,
-			Scenes: []scriptpkg.SpecScene{
-				{ID: "slot-1:candidate-0", Text: "Manny enters to a roaring crowd.", Index: 0, Kind: scriptpkg.SceneClip},
-				{ID: "slot-2:candidate-1", Text: "Broner jabs; Manny counters.", Index: 1, Kind: scriptpkg.SceneClip},
-				{ID: "slot-3:candidate-2", Text: "Manny raises both belts.", Index: 2, Kind: scriptpkg.SceneClip},
-			},
-		},
-	}
+func fixtureModelOutput() scriptpkg.ModelOutput {
+	return scriptpkg.ModelOutput{Segments: []scriptpkg.ModelOutputSegment{
+		{Ref: "slot-1:candidate-0", Text: "Manny enters to a roaring crowd."},
+		{Ref: "slot-2:candidate-1", Text: "Broner jabs; Manny counters."},
+		{Ref: "slot-3:candidate-2", Text: "Manny raises both belts."},
+	}}
 }
 
 func TestPostVoiceoverComposer_HappyPath_HydratesSpecSceneAndPublishes(t *testing.T) {
@@ -207,7 +202,7 @@ func TestPostVoiceoverComposer_EmptyModelOutput_FailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPostVoiceoverComposer: %v", err)
 	}
-	_, _, err = c.ComposeAndPublish(context.Background(), scriptpkg.ModelScriptOutputV1{}, canonicalDestination(t), "g", "s", "a")
+	_, _, err = c.ComposeAndPublish(context.Background(), scriptpkg.ModelOutput{}, canonicalDestination(t), "g", "s", "a")
 	if !errors.Is(err, ErrComposerEmptyModelOutput) {
 		t.Errorf("err = %v, want ErrComposerEmptyModelOutput", err)
 	}
@@ -223,15 +218,10 @@ func TestPostVoiceoverComposer_RefNotInBinding_FailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPostVoiceoverComposer: %v", err)
 	}
-	out := scriptpkg.ModelScriptOutputV1{
-		SpecScene: scriptpkg.SpecSceneOutput{
-			Version: 1,
-			Scenes: []scriptpkg.SpecScene{
-				{ID: "slot-1:candidate-0", Text: "valid", Index: 0, Kind: scriptpkg.SceneClip},
-				{ID: "slot-999:candidate-0", Text: "missing", Index: 1, Kind: scriptpkg.SceneClip},
-			},
-		},
-	}
+	out := scriptpkg.ModelOutput{Segments: []scriptpkg.ModelOutputSegment{
+		{Ref: "slot-1:candidate-0", Text: "valid"},
+		{Ref: "slot-999:candidate-0", Text: "missing"},
+	}}
 	_, _, err = c.ComposeAndPublish(context.Background(), out, canonicalDestination(t), "g", "s", "a")
 	if !errors.Is(err, ErrComposerRefBindingMissing) {
 		t.Errorf("err = %v, want ErrComposerRefBindingMissing", err)
@@ -342,14 +332,9 @@ func TestPostVoiceoverComposer_RefBindingValidation_FailsClosedOnPartialFakes(t 
 			if err != nil {
 				t.Fatalf("NewPostVoiceoverComposer: %v", err)
 			}
-			out := scriptpkg.ModelScriptOutputV1{
-				SpecScene: scriptpkg.SpecSceneOutput{
-					Version: 1,
-					Scenes: []scriptpkg.SpecScene{
-						{ID: "slot-1:candidate-0", Text: "hi", Index: 0, Kind: scriptpkg.SceneClip},
-					},
-				},
-			}
+			out := scriptpkg.ModelOutput{Segments: []scriptpkg.ModelOutputSegment{
+				{Ref: "slot-1:candidate-0", Text: "hi"},
+			}}
 			_, _, err = c.ComposeAndPublish(context.Background(), out, canonicalDestination(t), "g", "s", "a")
 			if tc.wantErr == nil {
 				if err != nil {

@@ -248,6 +248,14 @@ func applyKindClipRule(
 			scene.Bindings.Clip.DriveLink = link
 		}
 	}
+	if scene.Bindings.Clip.DurationMs <= 0 && evidence != nil && evidence.ClipDetails != nil {
+		if detail, ok := evidence.ClipDetails[clipID]; ok {
+			scene.Bindings.Clip.DurationMs = scriptpkg.ClipDurationMs(detail.StartMs, detail.EndMs)
+		}
+	}
+	if scene.Bindings.Clip.DurationMs <= 0 {
+		scene.Bindings.Clip.DurationMs = scriptpkg.ClipDurationMsFromAssetID(clipID)
+	}
 	if scene.Bindings.Clip.ClipTitle == "" {
 		// PR 6 (June 2026): canonical placeholder until
 		// clips metadata lookup ships. Truncated to 16

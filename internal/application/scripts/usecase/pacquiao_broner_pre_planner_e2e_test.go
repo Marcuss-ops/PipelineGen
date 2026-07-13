@@ -263,12 +263,27 @@ func TestClipPrePlanner_PacquiaoBroner_E2E(t *testing.T) {
 			// domain. The mapping is field-by-field; the
 			// distinctPickSampler doesn't actually read
 			// req.Slot, so the conversion is purely structural.
+			// godlike/06 SSOT forward-pointer (Wave 2.0): the
+			// planner-local SourceAnchor (defined in this
+			// package) and the scriptpkg.SourceAnchor (consumed
+			// by ports.ClipSamplerRequest) are intentionally
+			// separate types today. Both carry the same
+			// SourceHash / StartOffset / EndOffset / Excerpt
+			// quartet — explicit field copy keeps the Wire shape
+			// stable until FASE-2 collapses them via type alias
+			// (godlike/06 SSOT).
+			anchorCopy := &scriptpkg.SourceAnchor{
+				SourceHash:  slot.SourceAnchor.SourceHash,
+				StartOffset: slot.SourceAnchor.StartOffset,
+				EndOffset:   slot.SourceAnchor.EndOffset,
+				Excerpt:     slot.SourceAnchor.Excerpt,
+			}
 			req := ports.ClipSamplerRequest{
 				SlotRef: slot.Ref,
 				Slot: scriptpkg.ClipSearchSlot{
 					Ref:              slot.Ref,
 					Topic:            slot.Topic,
-					SourceAnchor:     slot.SourceAnchor,
+					SourceAnchor:     anchorCopy,
 					SearchQuery:      slot.SearchQuery,
 					VisualIntent:     slot.VisualIntent,
 					TargetDurationMs: slot.TargetDurationMs,

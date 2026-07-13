@@ -104,19 +104,6 @@ func (r *CatalogSourceResolver) Resolve(ctx context.Context, src scriptpkg.Sourc
 		}
 	}
 
-	// Phase 2: build clip context via shared hydration helper.
-	// This check is placed BEFORE the sampler selection so that a
-	// missing ClipSourceBuilder surfaces as a NoSourceError (missing
-	// infrastructure) rather than a SourceResolutionError (no clips
-	// found), preserving the contract tested by
-	// TestCatalogResolverDeduplicates.
-	if r.clipBuilder == nil {
-		return nil, &scriptpkg.NoSourceError{
-			ItemID: resCtx.ItemID,
-			Reason: "catalog source resolver: ClipSourceBuilder not configured",
-		}
-	}
-
 	// FASE-7 move-only: normalize raw catalog results into
 	// canonical sampler candidates, then delegate to the single
 	// ClipSampler impl. There is no resolver-local copy of the
@@ -154,6 +141,14 @@ func (r *CatalogSourceResolver) Resolve(ctx context.Context, src scriptpkg.Sourc
 	}
 	clipIDs := selection.ClipIDs
 	searchItems := selection.SearchItems
+
+	// Phase 2: build clip context via shared hydration helper.
+	if r.clipBuilder == nil {
+		return nil, &scriptpkg.NoSourceError{
+			ItemID: resCtx.ItemID,
+			Reason: "catalog source resolver: ClipSourceBuilder not configured",
+		}
+	}
 
 	opts := buildSearchClipOpts(src)
 	// PR 4: thread operator-side traits from resolutionContext.

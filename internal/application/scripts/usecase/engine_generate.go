@@ -54,6 +54,11 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	// a fingerprint hash.
 	renderedPrompt := plan.RenderedPrompt
 	minWords := plan.TargetWords
+	if plan.GroundingPolicy == scriptpkg.GroundingPolicyClipsPrimary {
+		if _, clipWords, _ := clipRuntimeBudget(plan); clipWords > 0 && (minWords <= 0 || clipWords < minWords) {
+			minWords = clipWords
+		}
+	}
 	useMemory := plan.UseMemory
 	saveToDB := plan.SaveToDB
 	// PR 2: plan.CacheKey is the canonical memory-gate cache key.
