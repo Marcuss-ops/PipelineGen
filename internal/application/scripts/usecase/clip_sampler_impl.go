@@ -2,60 +2,65 @@
 // implementation of the ClipSampler port.
 //
 // godlike/06 SSOT: this file is the SOLE owner of the
-// deduplication + selection + coverage policy consumed by the
-// search, catalog, and curate resolvers. The previous design had
-// three independent copies of this loop (search resolver lines
-// ~88-122, catalog resolver lines ~75-110, curate resolver
-// lines ~127-156 embedded inline). The move-only refactor
-// consolidates them here; the three resolvers normalize their
-// raw candidates into []ports.ClipSamplerCandidate, call
-// Select(req, candidates), and consume the result. There is no
-// resolver-local copy of this loop anymore.
+// deduplication + selection + coverage + gate-audit policy
+// consumed by the search, catalog, and curate resolvers.
 //
-// godlike/07 NO-FAKE-AVAILABILITY: contract violation (Limit
-// <= 0) returns a typed error envelope rather than a degraded
-// no-op. Coverage-gate failure returns a nil result AND a
-// non-nil error envelope — equivalent to the original resolver
-// behaviour (which returned `nil, err` and discarded any partial
-// state). FASE-7 fix-up: drop the partial-result field under
-// coverage failure so the surface is byte-equivalent to the
-// move-only contract.
+// FASE-8 (July 2026): the impl runs ALL 10 audit gates per
+// candidate and accumulates a GateProvenanceRecord for EVERY
+// evaluation (pass or fail). The Provenance slice forms the
+// full audit trail an operator inspects post-hoc.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: contract violations return
+// typed error envelopes (SourceResolutionError). Coverage-gate
+// failure returns nil result AND a non-nil error envelope. The
+// sampler NEVER synthesises defaults to mask sparse candidates;
+// missing-metadata candidates fail-loud (gate evaluator appends
+// `Passed=false` with explicit reason). Resolver-side enrichment
+// is the FASE-9 work that lets real resolvers feed rich
+// candidates to this sampler \u2014 the sampler's job is to gate,
+// not to enrich.
 package usecase
 
 import (
 	"fmt"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
 // defaultClipSampler is the canonical sampler implementation.
-// Exposed via NewDefaultClipSampler(); held by ClipSamplerRegistry.
-// The struct is intentionally empty \u2014 the policy is method-local
-// pure logic with no internal state.
-type defaultClipSampler struct{}
-
-// NewDefaultClipSampler returns the canonical impl. This is the
-// only constructor; godlike/06 SSOT forbids alternative impls.
-func NewDefaultClipSampler() ports.ClipSampler {
-	return &defaultClipSampler{}
+// Held by ClipSamplerRegistry (godlike/06 SSOT: single instance).
+type defaultClipSampler struct {
+	// gates is the canonical 10-gate list. Order is the audit
+	// contract (canonical even for null-evaluation outcomes).
+	gates []SamplerGate
 }
 
-// Select applies the canonical dedup + limit + coverage policy.
-// Semantics, in order:
-//   1. Validate request: Limit must be > 0; fail-closed otherwise.
-//   2. For each candidate (in caller-supplied order):
-//      a. Skip empty ClipIDs (defensive; ports should not emit).
-//      b. Drop candidates with Score < req.MinScore.
-//      c. Skip duplicates (seen[] lookup on ClipID).
-//      d. Append to ClipIDs + SearchItems (with Source verbatim).
-//      e. Stop once len(ClipIDs) == req.Limit.
-//   3. If MinCoverage > 0 and len(ClipIDs)/req.Limit < MinCoverage:
-//      return (partial result, ErrCoverageGate).
+// NewDefaultClipSampler returns the canonical impl with the
+// 10-gate audit pipeline wired in. This is the only
+// constructor; godlike/06 SSOT forbids alternative impls.
+func NewDefaultClipSampler() ports.ClipSampler {
+	return &defaultClipSampler{gates: defaultGates()}
+}
+
+// Select applies the canonical dedup + limit + coverage + 10-gate
+// audit policy. Semantics, in order:
 //
-// The per-candidate order is caller-controlled, so search/catalog
-// can pass semantic-similarity order and curate can pass hits-first
-// then hint-only order \u2014 all through the same impl.
+//  1. Validate request: Limit must be > 0; fail-closed otherwise.
+//  2. For each candidate (in caller-supplied order):
+//     a. Skip empty ClipIDs (defensive; ports should not emit).
+//     b. Drop candidates with Score < req.MinScore.
+//     c. Skip duplicates (seen[] lookup on ClipID).
+//     d. Run ALL 10 gates; emit one GateProvenanceRecord per gate.
+//     e. If ANY gate failed, drop the candidate.
+//     f. Otherwise, append to ClipIDs + SearchItems.
+//     g. Stop once len(ClipIDs) == req.Limit.
+//  3. If MinCoverage > 0 and len(ClipIDs)/req.Limit < MinCoverage:
+//     return (ClipSamplerResult{}, ErrCoverageGate).
+//
+// Provenance writes happen for EVERY (candidate, gate) regardless
+// of pass/fail; the dropped candidates leave a paper trail so a
+// post-hoc audit can answer "why did candidate X fail the plan?".
 func (s *defaultClipSampler) Select(
 	req ports.ClipSamplerRequest,
 	candidates []ports.ClipSamplerCandidate,
@@ -72,6 +77,16 @@ func (s *defaultClipSampler) Select(
 	seen := make(map[string]struct{}, req.Limit)
 	clipIDs := make([]string, 0, req.Limit)
 	items := make([]scriptpkg.SearchResultItem, 0, req.Limit)
+	provenance := scriptpkg.SamplerProvenance{
+		Records: make([]scriptpkg.GateProvenanceRecord, 0, len(candidates)*len(s.gates)),
+	}
+
+	gateInput := ClipSamplerGateInput{
+		Slot:               req.Slot,
+		PreviousSelections: req.PreviousSelections,
+		CallingSource:      req.CallingSource,
+		SourceTextLength:   len(req.Query),
+	}
 
 	for _, c := range candidates {
 		if c.ClipID == "" {
@@ -83,6 +98,27 @@ func (s *defaultClipSampler) Select(
 		if _, dup := seen[c.ClipID]; dup {
 			continue
 		}
+
+		gateInput.Candidate = c
+		allPassed := true
+		for _, g := range s.gates {
+			passed, reason := g.Evaluate(gateInput)
+			provenance.Records = append(provenance.Records, scriptpkg.GateProvenanceRecord{
+				SlotRef:     req.SlotRef,
+				CandidateID: c.ClipID,
+				GateName:    g.Name(),
+				Passed:      passed,
+				Reason:      reason,
+			})
+			if !passed {
+				allPassed = false
+			}
+		}
+		if !allPassed {
+			// Drop the candidate but preserve the audit trail row.
+			continue
+		}
+
 		seen[c.ClipID] = struct{}{}
 		clipIDs = append(clipIDs, c.ClipID)
 		items = append(items, scriptpkg.SearchResultItem{
@@ -96,17 +132,11 @@ func (s *defaultClipSampler) Select(
 		}
 	}
 
-	if len(clipIDs) == 0 {
-		// No selection \u2014 mirror the original resolvers' behavior
-		// (search/catalog return SourceResolutionError; curate
-		// returns ErrCurateNoClips). The lift intentionally does
-		// NOT pick one; callers receive clipIDs=nil and decide.
-	}
-
+	// Coverage gate (still applies after the 10-gate filter):
 	if req.MinCoverage > 0 && req.Limit > 0 {
 		coverage := float64(len(clipIDs)) / float64(req.Limit)
 		if coverage < req.MinCoverage {
-			return ports.ClipSamplerResult{}, &scriptpkg.SourceResolutionError{
+			return ports.ClipSamplerResult{Provenance: provenance}, &scriptpkg.SourceResolutionError{
 				SourceType:  req.SourceType,
 				Query:       req.Query,
 				ResultCount: len(clipIDs),
@@ -120,5 +150,6 @@ func (s *defaultClipSampler) Select(
 	return ports.ClipSamplerResult{
 		ClipIDs:     clipIDs,
 		SearchItems: items,
+		Provenance:  provenance,
 	}, nil
 }

@@ -274,7 +274,7 @@ func TestSearchResolverSuccess(t *testing.T) {
 	t.Parallel()
 	// Search resolver requires a ClipSourceBuilder, which is heavy to construct.
 	// Direct nil test verifies the nil-guard works correctly.
-	resolver := scripts.NewSearchSourceResolver(nil, nil, zap.NewNop(), scripts.NewClipSamplerRegistry())
+	resolver := scripts.NewSearchSourceResolver(nil, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:  scriptpkg.SourceSearch,
 		Query: "test query",
@@ -287,7 +287,7 @@ func TestSearchResolverSuccess(t *testing.T) {
 func TestSearchResolverEmptyQuery(t *testing.T) {
 	t.Parallel()
 	search := &fakeSearchPort{}
-	resolver := scripts.NewSearchSourceResolver(search, nil, zap.NewNop(), scripts.NewClipSamplerRegistry())
+	resolver := scripts.NewSearchSourceResolver(search, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type: scriptpkg.SourceSearch,
 	}, scriptpkg.SourceResolutionContext{ItemID: "item-empty"})
@@ -299,7 +299,7 @@ func TestSearchResolverEmptyQuery(t *testing.T) {
 func TestSearchResolverSearchError(t *testing.T) {
 	t.Parallel()
 	search := &fakeSearchPort{err: errors.New("qdrant timeout")}
-	resolver := scripts.NewSearchSourceResolver(search, nil, zap.NewNop(), scripts.NewClipSamplerRegistry())
+	resolver := scripts.NewSearchSourceResolver(search, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:  scriptpkg.SourceSearch,
 		Query: "test",
@@ -316,7 +316,7 @@ func TestSearchResolverSearchError(t *testing.T) {
 func TestSearchResolverNoResults(t *testing.T) {
 	t.Parallel()
 	search := &fakeSearchPort{results: []scripts.SemanticSearchResult{}}
-	resolver := scripts.NewSearchSourceResolver(search, nil, zap.NewNop(), scripts.NewClipSamplerRegistry())
+	resolver := scripts.NewSearchSourceResolver(search, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:  scriptpkg.SourceSearch,
 		Query: "no results",
@@ -339,7 +339,7 @@ func (f *fakeCatalogPort) SearchAll(_ context.Context, _ string) ([]appsearch.Ca
 
 func TestCatalogResolverNilCatalogService(t *testing.T) {
 	t.Parallel()
-	resolver := scripts.NewCatalogSourceResolver(nil, nil, zap.NewNop(), scripts.NewClipSamplerRegistry())
+	resolver := scripts.NewCatalogSourceResolver(nil, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:  scriptpkg.SourceCatalog,
 		Query: "test",
@@ -352,7 +352,7 @@ func TestCatalogResolverNilCatalogService(t *testing.T) {
 func TestCatalogResolverEmptyQuery(t *testing.T) {
 	t.Parallel()
 	cat := &fakeCatalogPort{}
-	resolver := scripts.NewCatalogSourceResolver(cat, nil, zap.NewNop(), scripts.NewClipSamplerRegistry())
+	resolver := scripts.NewCatalogSourceResolver(cat, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type: scriptpkg.SourceCatalog,
 	}, scriptpkg.SourceResolutionContext{ItemID: "item-empty"})
@@ -364,7 +364,7 @@ func TestCatalogResolverEmptyQuery(t *testing.T) {
 func TestCatalogResolverSearchError(t *testing.T) {
 	t.Parallel()
 	cat := &fakeCatalogPort{err: errors.New("catalog db down")}
-	resolver := scripts.NewCatalogSourceResolver(cat, nil, zap.NewNop(), scripts.NewClipSamplerRegistry())
+	resolver := scripts.NewCatalogSourceResolver(cat, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:  scriptpkg.SourceCatalog,
 		Query: "test",
@@ -377,7 +377,7 @@ func TestCatalogResolverSearchError(t *testing.T) {
 func TestCatalogResolverNoResults(t *testing.T) {
 	t.Parallel()
 	cat := &fakeCatalogPort{results: []appsearch.CatalogSearchResult{}}
-	resolver := scripts.NewCatalogSourceResolver(cat, nil, zap.NewNop(), scripts.NewClipSamplerRegistry())
+	resolver := scripts.NewCatalogSourceResolver(cat, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:  scriptpkg.SourceCatalog,
 		Query: "nothing matches",
@@ -394,7 +394,7 @@ func TestCatalogResolverMinCoverageNotMet(t *testing.T) {
 			{ID: "clip-1", Name: "First Clip", Score: 0.9},
 		},
 	}
-	resolver := scripts.NewCatalogSourceResolver(cat, nil, zap.NewNop(), scripts.NewClipSamplerRegistry())
+	resolver := scripts.NewCatalogSourceResolver(cat, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:        scriptpkg.SourceCatalog,
 		Query:       "test",
@@ -417,7 +417,7 @@ func TestCatalogResolverDeduplicates(t *testing.T) {
 	}
 	// Without a ClipSourceBuilder, Phase 2 will fail. We just verify
 	// the catalog search phase doesn't crash on duplicates.
-	resolver := scripts.NewCatalogSourceResolver(cat, nil, zap.NewNop(), scripts.NewClipSamplerRegistry())
+	resolver := scripts.NewCatalogSourceResolver(cat, nil, scripts.NewClipSamplerRegistry(), zap.NewNop())
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:     scriptpkg.SourceCatalog,
 		Query:    "test",
@@ -591,8 +591,8 @@ func TestCatalogSearchParity_NoSeparateEngineRequests(t *testing.T) {
 	// method: BuildClipContext. No GenerateScript, no Chat, no engine.
 	//
 	// Prove we can construct both resolver types without an engine.
-	_ = scripts.NewCatalogSourceResolver(nil, nil, nil, scripts.NewClipSamplerRegistry())
-	_ = scripts.NewSearchSourceResolver(nil, nil, nil, scripts.NewClipSamplerRegistry())
+	_ = scripts.NewCatalogSourceResolver(nil, nil, scripts.NewClipSamplerRegistry(), nil)
+	_ = scripts.NewSearchSourceResolver(nil, nil, scripts.NewClipSamplerRegistry(), nil)
 	_ = scripts.NewTextSourceResolver()
 
 	// The ResolvedSource shape has no engine-level fields — it carries
