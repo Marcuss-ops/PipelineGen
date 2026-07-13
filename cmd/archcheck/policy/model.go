@@ -45,6 +45,18 @@ type Policy struct {
 	CmdMainMaxLines       int
 	MaxConstructorDeps    int
 	MaxStructDeps         int
+
+	// MaxClipIngestPipelineFields is the per-struct exception to the global
+	// MaxStructDeps=8 cap, lifted to 9 for the canonical 9-component
+	// ClipIngestPipeline surface (PR-CLIPINGEST-PIPELINE step 8, July 2026).
+	// Mirrors the existing image-asset pattern (well-established per-struct
+	// knob escape hatch). The 9-component shape is the SOLE canonical owner at
+	// internal/application/assets/ingest/clip_ingest_pipeline.go (godlike/06
+	// SSOT); the percheck_clip_ingest_pipeline_canonical_1 forward-prevention
+	// gate enforces this at the type level. Operators who add a new
+	// canonical surface with > 8 fields declare a matching `_per_struct_field`
+	// knob here, NOT a global cap raise.
+	MaxClipIngestPipelineFields int
 	ForbiddenTopLevelDirs []string
 	KernelSubzones        []string
 	Capabilities          []string
