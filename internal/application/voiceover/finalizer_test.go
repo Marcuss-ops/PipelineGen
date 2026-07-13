@@ -169,16 +169,16 @@ var _ persistence.Repository = (*finalizerTestRepo)(nil)
 func TestFinalizeStage_NilFinalizerConstructorPanic(t *testing.T) {
 	db := openFinalizerTestDB(t)
 	require.PanicsWithValue(
-		t,			"voiceover.NewProcessSegmentUseCase: Finalizer is required (P0.4 Fase 3a — unified finalization port)",
+		t, "voiceover.NewProcessSegmentUseCase: Finalizer is required (P0.4 Fase 3a — unified finalization port)",
 		func() {
 			_ = NewProcessSegmentUseCase(ProcessSegmentDeps{
-				TTSProvider:         &stubProcessTTS{			cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", FileHash: "h"}},
-			Publisher:           &stubProcessPublisher{fileID: "x"},
-			VoiceoverRepository: &finalizerTestRepo{db: db},
-			Finalizer:           nil, // KEY: nil Finalizer — must panic with typed message
-			Logger:              zap.NewNop(),
-		})
-	},
+				TTSProvider:         &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", FileHash: "h"}},
+				Publisher:           &stubProcessPublisher{fileID: "x"},
+				VoiceoverRepository: &finalizerTestRepo{db: db},
+				Finalizer:           nil, // KEY: nil Finalizer — must panic with typed message
+				Logger:              zap.NewNop(),
+			})
+		},
 		"NewProcessSegmentUseCase MUST panic with typed message when Finalizer is nil (godlike/07 fail-fast at construction, panic-value regression guard)",
 	)
 }
