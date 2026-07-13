@@ -1,6 +1,6 @@
 // cmd/admin/reindex_qdrant_dryrun.go — the dry-run path extracted from
 // the canonical runReindexQdrant orchestrator (LONG-FILES-DECOMPOSITION-V2-2026-07-06
-// P3 BASSA, July 2026). Pure code-motion: the dry-run branch body is moved
+// P3 BASSA, July 2026). The dry-run branch body is moved
 // verbatim from runReindexQdrant. The 3-file split layout:
 //
 //   - reindex_qdrant.go          (slim orchestrator) — package doc + reindexQdrantDeps + parseReindexQdrantArgs + timestampedTargetCollection + runReindexQdrant (thin dispatch)
