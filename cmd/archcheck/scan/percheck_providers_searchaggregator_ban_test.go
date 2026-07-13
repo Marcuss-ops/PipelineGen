@@ -1,21 +1,22 @@
 // Package scan — companion test for percheck_providers_searchaggregator_ban.go.
 //
 // Pins:
-//   (a) "legacy literal trips" — a probe file that references
-//       `providers.SearchAggregator` in production code trips
-//       a violation.
-//   (b) "comment-only is residue-accounted" — the SAME literal
-//       in a `//` doc-comment line emits a WARN (not a violation).
-//   (c) "scan-root self-package is exempt" — a probe file inside
-//       `cmd/archcheck/scan/` referencing the literal does NOT
-//       trip (false-positive exemption for the scanner's own
-//       package).
-//   (d) "test files are exempt" — a `_test.go` probe file
-//       referencing the literal does NOT trip (regression-guard
-//       allowlist per godlike/06).
-//   (e) "productionOnly silences WARN bucket" — when called with
-//       productionOnly=true the comment-only WARN is suppressed
-//       (PR-P12-PERCHECK-BASELINE-ZERO, deadline 2026-08-15).
+//
+//	(a) "legacy literal trips" — a probe file that references
+//	    `providers.SearchAggregator` in production code trips
+//	    a violation.
+//	(b) "comment-only is residue-accounted" — the SAME literal
+//	    in a `//` doc-comment line emits a WARN (not a violation).
+//	(c) "scan-root self-package is exempt" — a probe file inside
+//	    `cmd/archcheck/scan/` referencing the literal does NOT
+//	    trip (false-positive exemption for the scanner's own
+//	    package).
+//	(d) "test files are exempt" — a `_test.go` probe file
+//	    referencing the literal does NOT trip (regression-guard
+//	    allowlist per godlike/06).
+//	(e) "productionOnly silences WARN bucket" — when called with
+//	    productionOnly=true the comment-only WARN is suppressed
+//	    (PR-P12-PERCHECK-BASELINE-ZERO, deadline 2026-08-15).
 package scan
 
 import (
@@ -196,9 +197,9 @@ func TestScanProvidersSearchAggregatorBan_ProductionOnlySilencesWARN(t *testing.
 	probeBody := `package app
 
 // ProductionOnlyProbe carries a comment-only reference to the
-// banned literal. In productionOnly=true mode the WARN bucket
-// MUST be silenced; in productionOnly=false mode the WARN MUST
-// surface.
+// banned literal providers.SearchAggregator. In productionOnly=true
+// mode the WARN bucket MUST be silenced; in productionOnly=false mode
+// the WARN MUST surface.
 type ProductionOnlyProbe struct{}
 `
 	if err := os.WriteFile(probeFile, []byte(probeBody), 0o644); err != nil {

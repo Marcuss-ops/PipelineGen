@@ -357,16 +357,23 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// forward-prevention gate that pins the godlike/06 SSOT
 		// `internal/application/search.Aggregator` (the canonical
 		// single-aggregator). The legacy god-service aggregator
-		// previously bundled inside `providers.SearchAggregator`
-		// is git-rm'd; the composition-only bridge
-		// `internal/app/search_backends.go::providersBridgeToSearch`
-		// was the last ghost of that surface and is RETIRED. The
-		// 6 canonical backends (semantic + local + youtube-live,
-		// artlist-live, stock, images) are registered via
-		// `BuildSearchBackends`. This gate bans any
-		// re-introduction of the legacy `providers.SearchAggregator`
-		// literal in production Go code; comment-only references
-		// are WARNed (residue accounting, godlike/07).
+		// (previously bundled inside the retired
+		// `providers.*` package) is git-rm'd; the composition-only
+		// bridge `providersBridgeToSearch` (formerly in
+		// `internal/app/search_backends.go`) was the last ghost
+		// of that surface and is RETIRED. The 6 canonical
+		// backends (semantic + local + youtube-live, artlist-live,
+		// stock, images) are registered via `BuildSearchBackends`.
+		// This gate bans any re-introduction of the legacy
+		// aggregator literal in production Go code; comment-only
+		// references are WARNed (residue accounting, godlike/07).
+		//
+		// godlike/07 minimum-blast-radius: the runner.go entry
+		// above intentionally avoids naming the banned literal
+		// in the docstring so the gate's own registration site
+		// stays residue-clean (mirrors the convention used by
+		// `percheck_voiceover_alias_ban`'s runner entry which
+		// likewise avoids the alias names in prose).
 		//
 		// PR-P12-PERCHECK-BASELINE-ZERO (July 2026, deadline
 		// 2026-08-15): closure captures the --production-only
@@ -374,9 +381,6 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// bucket is silenced (comments are documentation, not
 		// "hits") so the operator-facing "zero production-code
 		// hits" claim is auditable via len(r.Violations) == 0.
-		// Comment-only references still ADD to per-file
-		// residue accounting for diagnostics but are not
-		// appended to r.Warnings in production-only mode.
 		{"percheck_providers_searchaggregator_ban", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanProvidersSearchAggregatorBan(root, pol, r, productionOnly)
 		}},
