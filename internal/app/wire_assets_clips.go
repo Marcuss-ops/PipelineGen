@@ -68,9 +68,15 @@ type buildClipsParams struct {
 //     uploadUC, reuploadUC, clipOpsSvc) from the typed-port adapters
 //  3. Calling clipsapi.Build with the 20-field Dependencies struct
 //  4. Type-asserting the returned api.Descriptor to the concrete
-//     *clipsapi.ClipsDescriptor (the descriptor exposes the raw
-//     *Handler via .Handler for the one non-HTTP consumer: register)
-func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error) {
+//     *clipsapi.ClipsDescriptor (the descriptor exposes ONLY routes
+//     + job handlers — the raw orchestrator *Handler stays private
+//     post Card 10).
+//
+// Card 10 (July 2026): returns the ClipEnricher typed port alongside
+// the descriptor so the composition root can thread it into the
+// register-side sourcingEnrichmentAdapter without reaching through
+// any internal/api/assets/clips/* field.
+func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, appclips.ClipEnricher, error) {
 	// (1) Dispatcher adapters
 	//
 	// PR12c (June 2026): wire the dispatcher's port, NOT the concrete
@@ -90,7 +96,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error
 	// composition-time check (QDRANT-002 PR7 invariant).
 	mutationsDisp, err := newMutationsDispatcherAdapter(params.Dispatcher)
 	if err != nil {
-		return nil, fmt.Errorf("clips: mutations dispatcher: %w", err)
+		return nil, nil, fmt.Errorf("clips: mutations dispatcher: %w", err)
 	}
 
 	// (1b) DuplicateFinder
@@ -103,7 +109,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error
 		NewClipsRepoDuplicateSource("local", params.Deps.Core.ClipsRepo),
 	)
 
-	// (2a) EnrichUseCase
+	// (2a) EnrichUseCase (card 10: returns *EnrichUseCase, error)
 	//
 	// S1a (June 2026): construct the shared EnrichUseCase ONCE at
 	// composition time. The clipsHandler receives it via Deps.EnrichUC
@@ -118,7 +124,16 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error
 	// depends on the canonical mutations.AssetMutationDispatcher so
 	// enriched metadata is persisted and re-indexed through the outbox
 	// pipeline. Direct clipIndexer.IndexClip calls are removed.
-	enrichUC := appclips.NewEnrichUseCase(params.AssetRepo, params.MetaWriter, mutationsDisp, params.Log)
+	//
+	// Card 10 (July 2026): NewEnrichUseCase returns (*UseCase, error)
+	// — nil dispatcher is a hard error (godlike/07 fail-closed). The
+	// legacy assetRepo fallback inside the use case is retired; the
+	// composition root MUST pass the canonical dispatcher (WireAssets
+	// already does).
+	enrichUC, err := appclips.NewEnrichUseCase(params.AssetRepo, params.MetaWriter, mutationsDisp, params.Log)
+	if err != nil {
+		return nil, nil, fmt.Errorf("clips: NewEnrichUseCase: %w", err)
+	}
 
 	// (2b) BulkUploadWorker (W14 PR2 slice 3, June 2026)
 	//
@@ -268,23 +283,25 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error
 		EnabledFunc:      func() bool { return true },
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// (4) Type-assert to the concrete *clipsapi.ClipsDescriptor
 	//
 	// The Descriptor's forwarder methods (Name/Enabled/RegisterRoutes)
-	// are interface-level; the non-HTTP consumer below
-	// (sourcingEnrichmentAdapter → handler.EnrichAndIndexClip) needs
-	// the raw orchestrator *Handler, which is reachable only via the
-	// concrete *ClipsDescriptor.Handler field. Type-assert once and
-	// reuse the concrete for both consumers (the concrete
-	// *ClipsDescriptor satisfies api.Descriptor structurally, so the
-	// assetsapi.NewModule call in wire_assets.go accepts it).
+	// are interface-level; the descriptor exposes ONLY routes + job
+	// handlers post Card 10. Type-assert once so the assetsapi.NewModule
+	// caller in wire_assets.go accepts the concrete (the concrete
+	// *ClipsDescriptor satisfies api.Descriptor structurally).
 	desc, ok := descriptor.(*clipsapi.ClipsDescriptor)
 	// PR-WIRE-ASSETS-NIL-CLASSIFICATION (2026-07-25): DepRequired via helper. Also adds the missing `desc == nil` post-assertion check (the other 6 descriptor sites already had it; this site had only `!ok` — the inconsistency this PR fixes).
 	if err := ClassifyDepGet(fmt.Sprintf("WireAssets: clips (got %T, want *clipsapi.ClipsDescriptor)", descriptor), !ok || desc == nil, DepRequired, params.Log); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return desc, nil
+	// Card 10 (July 2026): return the canonical ClipEnricher typed
+	// port alongside the descriptor so WireAssets threads it into
+	// the register-side sourcingEnrichmentAdapter (the one non-HTTP
+	// consumer) without reaching through any internal/api/assets/
+	// clips/* Handler field.
+	return desc, enrichUC, nil
 }
