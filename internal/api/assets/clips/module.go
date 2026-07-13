@@ -1,10 +1,16 @@
 // Package clips — module.go: canonical Build entrypoint for the Clips HTTP capability.
 //
-// Build constructs the ClipsDescriptor (Module + Handler). The Module mounts
-// 7 sub-descriptors (catalog/ingest/processing/publication/indexing/operations/bulk)
-// under /clips. Description.Handler is the lone non-HTTP consumer side-channel
-// (sourcingEnrichmentAdapter → EnrichAndIndexClip); production HTTP routes
-// always go through the Module.
+// Build constructs the ClipsDescriptor which exposes ONLY routes (Module)
+// + job handlers (RegisterJobHandlers). The raw orchestrator *Handler
+// is no longer exposed on the descriptor — godlike/06 SSOT: the
+// descriptor's public surface is the minimum needed by the
+// composition root and external callers; the orchestrator is a
+// private construction artifact.
+//
+// Card 10 (July 2026): ClipsDescriptor.Handler is REMOVED. The single
+// non-HTTP caller (sourcingEnrichmentAdapter in internal/app) is now
+// wired through the canonical appclips.ClipEnricher typed port
+// instead of reaching through clips.Handler.
 package clips
 
 import (
@@ -26,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/duplicates"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -42,8 +49,8 @@ import (
 
 // Dependencies is the typed narrow input to Build. Mirror of Handler.Deps plus
 // Build-time fields (Idempotency middleware, EnabledFunc closure, ModuleOpts
-// decorators). Mandatory fields return error when nil; optional fields fall
-// through to handler-level nil-tolerance.
+// decorators). Mandatory fields return error when nil; EnrichUC is REQUIRED
+// (post-Card 10) — the legacy enrichUCOrLocal fallback is retired.
 type Dependencies struct {
 	ClipsRepo       *assets.ClipsRepository
 	AssetRepo       asset.Repository
@@ -65,7 +72,10 @@ type Dependencies struct {
 	Dispatcher      appclips.ClipIndexDispatcherPort
 	DuplicateFinder *duplicates.Finder
 	ReuploadUC      *appclips.ReuploadUseCase
-	// EnrichUC is OPTIONAL: nil triggers enrichUCOrLocal fallback construction.
+	// EnrichUC is REQUIRED post-Card 10. nil → Build returns an error
+	// (godlike/07 fail-closed). The pre-Card-10 enrichUCOrLocal fallback
+	// is fully retired (see commits log: card 10 closed the silent-success
+	// assetRepo bypass path).
 	EnrichUC         *appclips.EnrichUseCase
 	BulkUploadWorker *appclips.BulkUploadWorker
 	ClipOpsService   *appclips.ClipOpsService
@@ -78,18 +88,56 @@ type Dependencies struct {
 	EnabledFunc func() bool
 	// ModuleOpts: nil → plain RouteModule.
 	ModuleOpts []api.RouteModuleOption
-
-	// Field→sub-handler mapping: each *XxxRegistrar method on *Handler
-	// consumes exactly the deps its cluster needs (search/ingest/ops/nonops/
-	// bulk) — see handler.go factory functions for the per-cluster matrix.
 }
 
-// ClipsDescriptor: route surface (Module) + raw orchestrator (Handler).
-// Descriptor does NOT embed *Handler — forwarder methods (Name/Enabled/
-// RegisterRoutes/RegisterJobHandlers) hand-promote the surface.
+// clipJobRegistrar is the canonical bridge from ClipsDescriptor to the
+// jobs service. Card 10: replaces the prior chain
+// Descriptor.RegisterJobHandlers → Handler.RegisterJobHandlers →
+// NonOpsHandler.RegisterJobHandlers. The Descriptor holds a slim
+// registrar (no Handler dependency); the boot-time diagnostic
+// pointer snapshot is preserved.
+type clipJobRegistrar struct {
+	bulkUploadWorker *appclips.BulkUploadWorker
+	jobsSvc          jobservice.Service
+	log              *zap.Logger
+}
+
+// RegisterBulkUpload writes the bulk_upload_youtube_clips handler
+// into the supplied jobs service. Returns the typed error from
+// jobsSvc.RegisterHandler so callers can branch on no-handler-
+// registered scenarios via errors.Is(err, jobs.ErrJobsSvcRequiredAtRegistration).
+//
+// godlike/07 fail-closed: nil BulkUploadWorker or nil JobsSvc →
+// surface a typed sentinel rather than silently succeeding on the
+// next enqueue.
+func (r *clipJobRegistrar) RegisterBulkUpload(svc api.JobRegistrar, descriptorPtr interface{}) error {
+	if r.bulkUploadWorker == nil || r.jobsSvc == nil {
+		return fmt.Errorf("%w: clipJobRegistrar: BulkUploadWorker or JobsSvc nil at registration (godlike/07 fail-closed)", appjobs.ErrJobsSvcRequiredAtRegistration)
+	}
+	registerErr := svc.RegisterHandler(jobservice.TypeBulkUploadYouTubeClips, appjobs.HandlerFunc(r.bulkUploadWorker.HandleJob))
+	if r.log != nil {
+		r.log.Info("clips: registered bulk_upload_youtube_clips handler (descriptor-side)",
+			zap.String("module", "clips"),
+			zap.String("svc_type", fmt.Sprintf("%T", svc)),
+			zap.String("svc_ptr", fmt.Sprintf("%p", svc)),
+			zap.String("descriptor_type", fmt.Sprintf("%T", descriptorPtr)),
+			zap.String("descriptor_ptr", fmt.Sprintf("%p", descriptorPtr)),
+			zap.Bool("register_ok", registerErr == nil),
+			zap.Error(registerErr),
+		)
+	}
+	return registerErr
+}
+
+// ClipsDescriptor: route surface (Module) + job-handler registrar.
+// godlike/06 SSOT one-canonical-owner-per-fact: the descriptor's
+// exposed surface is the minimum the composition root + external
+// callers need. The orchestrator *Handler is now a private
+// construction artifact (advanced inside Build); no cross-package
+// caller reaches into the Handler.
 type ClipsDescriptor struct {
-	Module  api.Module
-	Handler *Handler
+	Module api.Module
+	jobReg *clipJobRegistrar
 }
 
 func (d *ClipsDescriptor) Name() string  { return d.Module.Name() }
@@ -98,38 +146,24 @@ func (d *ClipsDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
 	d.Module.RegisterRoutes(rg)
 }
 
-// RegisterJobHandlers implements api.DescriptorJobs by routing through the
-// canonical 3-method chain: Descriptor → Handler → NonOpsHandler →
-// jobs.Service. The svc parameter is captured in orchestrator's h.jobsSvc at
-// wire-time (same instance), so fail-closed typed sentinels surface at
-// nonops.RegisterJobHandlers first.
-//
-// Diagnostic ping (symmetric to BulkUploadYouTubeClips handler-entry snapshot)
-// records descriptor+handler+jobsSvc pointers at boot so a future "no handler
-// registered" reproduction can localise the wiring split. Retire once the
-// upstream bug is closed.
+// RegisterJobHandlers implements api.DescriptorJobs by routing through
+// the slim clipJobRegistrar (godlike/06 SSOT: the canonical 3-method
+// chain's LEFTMOST entry). The svc parameter is the jobs service
+// injected by the composition root (same instance the orchestrator
+// Handler captures internally for the nonops sub-handler).
 func (d *ClipsDescriptor) RegisterJobHandlers(svc api.JobRegistrar) error {
-	if d.Handler == nil {
+	if d.jobReg == nil {
 		return nil
 	}
-	registerErr := d.Handler.RegisterJobHandlers()
-	_ = svc // svc is structurally required by DescriptorJobs; orchestrator captures the same instance.
-	if d.Handler.log != nil {
-		d.Handler.log.Info("clips: registered bulk_upload_youtube_clips handler",
-			zap.String("module", "clips"),
-			zap.String("svc_type", fmt.Sprintf("%T", svc)),
-			zap.String("svc_ptr", fmt.Sprintf("%p", svc)),
-			zap.String("descriptor_ptr", fmt.Sprintf("%p", d)),
-			zap.String("handler_ptr", fmt.Sprintf("%p", d.Handler)),
-			zap.Bool("register_ok", registerErr == nil),
-			zap.Error(registerErr),
-		)
-	}
-	return registerErr
+	return d.jobReg.RegisterBulkUpload(svc, d)
 }
 
-// Build composes the Clips HTTP capability. Fail-closed on mandatory nil deps.
-// Returns ClipsDescriptor { Module, Handler }.
+// Build composes the Clips HTTP capability. Fail-closed on mandatory
+// nil deps (post-Card 10: EnrichUC is now in the mandatory set).
+//
+// Returns ClipsDescriptor { Module, jobReg }. The raw orchestrator
+// *Handler stays as a private construction artifact consumed only
+// by the per-cluster sub-registrar method-value callbacks.
 func Build(deps Dependencies) (api.Descriptor, error) {
 	if deps.ClipsRepo == nil {
 		return nil, fmt.Errorf("clips.Build: ClipsRepo is required")
@@ -142,6 +176,9 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 	}
 	if deps.EnabledFunc == nil {
 		return nil, fmt.Errorf("clips.Build: EnabledFunc is required (composition root wires the closure)")
+	}
+	if deps.EnrichUC == nil {
+		return nil, fmt.Errorf("clips.Build: EnrichUC is required (card 10 retired the assetRepo local-fallback; partial deployments must fail-closed)")
 	}
 
 	log := deps.Log
@@ -247,7 +284,14 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		deps.ModuleOpts...,
 	)
 
-	return &ClipsDescriptor{Module: mod, Handler: handler}, nil
+	return &ClipsDescriptor{
+		Module: mod,
+		jobReg: &clipJobRegistrar{
+			bulkUploadWorker: deps.BulkUploadWorker,
+			jobsSvc:          deps.JobsSvc,
+			log:              log,
+		},
+	}, nil
 }
 
 // subModuleAdapter mounts each enabled sub-descriptor under the supplied router group.

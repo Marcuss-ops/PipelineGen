@@ -58,9 +58,9 @@ func buildPostprocessorListTestScenarios() []struct {
 		{
 			name: "all_flags_on",
 			out: scriptpkg.OutputSpec{
-				ExtractEntities:     scriptpkg.ToggleEnabled,
-				GenerateMetadata:    scriptpkg.ToggleEnabled,
-				SaveToDB:            true,
+				ExtractEntities:  scriptpkg.ToggleEnabled,
+				GenerateMetadata: scriptpkg.ToggleEnabled,
+				SaveToDB:         true,
 			},
 		},
 		{
@@ -81,18 +81,15 @@ func buildPostprocessorListTestScenarios() []struct {
 		},
 		{
 			name: "voiceover_only",
-			out: scriptpkg.OutputSpec{
-			},
+			out:  scriptpkg.OutputSpec{},
 		},
 		{
 			name: "scene_images_only",
-			out: scriptpkg.OutputSpec{
-			},
+			out:  scriptpkg.OutputSpec{},
 		},
 		{
 			name: "document_only",
-			out: scriptpkg.OutputSpec{
-			},
+			out:  scriptpkg.OutputSpec{},
 		},
 		{
 			name: "save_to_db_only",
@@ -109,8 +106,7 @@ func buildPostprocessorListTestScenarios() []struct {
 		},
 		{
 			name: "voiceover_and_images_and_document",
-			out: scriptpkg.OutputSpec{
-			},
+			out:  scriptpkg.OutputSpec{},
 		},
 		{
 			// PR-TRANSLATE-SCRIPT-SPEC PR-5 (2026-07-09): setting

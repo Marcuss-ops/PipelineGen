@@ -138,7 +138,6 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		log = zap.NewNop()
 	}
 
-
 	return &ScriptFlowHandler{
 		log:           log,
 		adminToken:    deps.AdminToken,

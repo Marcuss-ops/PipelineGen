@@ -142,7 +142,6 @@ func TestNormalizeItemIdempotent(t *testing.T) {
 	}
 }
 
-
 // ── Normalization: nil safety ──────────────────────────────────────
 
 func TestNormalizeItemPreservesSourceTopic(t *testing.T) {
@@ -245,10 +244,6 @@ func TestNormalizeItemExplicitWordsBeatDuration(t *testing.T) {
 // the deprecation-registered flag is no longer promoted by the preset.
 // with_images now changes ONLY the image sizing fields
 // (SentencesPerImage + ImagesPerScene), in caller-precedence order.
-
-
-
-
 
 func TestApplyPresetNilItem(t *testing.T) {
 	scripts.ApplyPreset(nil, scriptpkg.PresetWithImages)
@@ -463,8 +458,6 @@ func TestBuildPlanClipsFieldMapping(t *testing.T) {
 		t.Error("plan.ClipEvidence should be nil before source resolution")
 	}
 }
-
-
 
 func TestBuildPlanDeterministic(t *testing.T) {
 	cfg := defaultCfg()
@@ -705,7 +698,6 @@ func TestBuildItemIdentityDifferentItems(t *testing.T) {
 		t.Error("items with different source text should have different identities")
 	}
 }
-
 
 func TestBuildItemIdentityClipIDOrderStable(t *testing.T) {
 	// Clip IDs are sorted for determinism — different input orders

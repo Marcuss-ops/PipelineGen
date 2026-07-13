@@ -366,11 +366,20 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// `BuildSearchBackends`. This gate bans any
 		// re-introduction of the legacy `providers.SearchAggregator`
 		// literal in production Go code; comment-only references
-		// are WARNed (residue accounting, godlike/07). /
-		// Fails if any production .go file outside the scanner's
-		// own package + test files (regression-guard allowlist)
-		// references the legacy literal.
-		{"percheck_providers_searchaggregator_ban", scan.ScanProvidersSearchAggregatorBan},
+		// are WARNed (residue accounting, godlike/07).
+		//
+		// PR-P12-PERCHECK-BASELINE-ZERO (July 2026, deadline
+		// 2026-08-15): closure captures the --production-only
+		// flag. In production-only mode the comment-only WARN
+		// bucket is silenced (comments are documentation, not
+		// "hits") so the operator-facing "zero production-code
+		// hits" claim is auditable via len(r.Violations) == 0.
+		// Comment-only references still ADD to per-file
+		// residue accounting for diagnostics but are not
+		// appended to r.Warnings in production-only mode.
+		{"percheck_providers_searchaggregator_ban", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanProvidersSearchAggregatorBan(root, pol, r, productionOnly)
+		}},
 	}
 }
 
