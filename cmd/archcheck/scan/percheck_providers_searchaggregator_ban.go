@@ -108,12 +108,12 @@ func providersSearchAggregatorWarn(r *report.Report, label, msg string) {
 // does NOT trip CI on resubmission.
 //
 // productionOnly mode (PR-P12-PERCHECK-BASELINE-ZERO, July 2026,
-// deadline 2026-08-15): when true, comment-only WARNs are
-// SILENCED (comments are documentation, not "hits") so the
-// operator-facing "zero production-code hits" claim is auditable
-// via `len(r.Violations) == 0`. Comment-only references still
-// ADD to `commentOnly` for diagnostic accounting but are not
-// appended to `r.Warnings` when productionOnly is true. Mirrors
+// deadline 2026-08-15): when true, the comment-only WARN is
+// suppressed so the operator-facing "zero production-code hits"
+// claim is auditable via `len(r.Violations) == 0`. Comment-only
+// references still flip the per-file `commentOnly` counter to
+// non-zero (so the conditional remains exercised), but the
+// appended WARN itself is gated on `!productionOnly`. Mirrors
 // the convention used by `scanVoiceoverAliasBanOne` and the
 // Wave 5 forward-prevention gate cluster (`percheck_root_override_ban`,
 // `percheck_voiceover_alias_ban`, etc.).
@@ -163,10 +163,10 @@ func ScanProvidersSearchAggregatorBan(root string, pol *policy.Policy, r *report
 
 // inspectProvidersSearchAggregatorFile opens a single Go file
 // and scans each line for the banned literal. Comment-only lines
-// emit a single WARN per file (residue accounting) rather than
-// a violation. When `productionOnly` is true, the WARN bucket
-// is suppressed so the audit-friendly "zero production-code
-// hits" claim (PR-P12-PERCHECK-BASELINE-ZERO) is honoured.
+// flip the per-file `commentOnly` counter to non-zero; the
+// per-file WARN is appended only when `!productionOnly` (so the
+// audit-friendly "zero production-code hits" claim,
+// PR-P12-PERCHECK-BASELINE-ZERO, is honoured).
 func inspectProvidersSearchAggregatorFile(root, absPath string, r *report.Report, productionOnly bool) {
 	relPath, err := filepath.Rel(root, absPath)
 	if err != nil {
