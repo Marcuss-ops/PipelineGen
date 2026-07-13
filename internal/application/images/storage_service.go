@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
+	assetapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
@@ -44,7 +45,15 @@ type ImageStorageService struct {
 	// a single SQLite transaction. Replaces the prior repo.AddImage +
 	// dispatcher.EnqueueAndIndex two-transaction path that carried a
 	// documented crash-risk window between SQLite and Qdrant.
-	committer     persistence.AssetCommitter
+	committer persistence.AssetCommitter
+	// sourceStager is the canonical port for staging remote URLs into
+	// deterministic local files (PR-SOURCESTAGER-CONSOLIDATE, July 2026).
+	// downloadAndIngest routes web image downloads through StageSourceV2
+	// so the inline `http.NewRequest + s.client.Do` boilerplate no
+	// longer leaks into the processor. Nil fails closed with a typed
+	// error (godlike/07) — the composition root MUST wire the stager
+	// at NewService time. Pre-PR inline-http fallback was retired.
+	sourceStager  assetapp.SourceStager
 	dedup         singleflight.Group
 	log           *zap.Logger
 	gaServerURL   string
