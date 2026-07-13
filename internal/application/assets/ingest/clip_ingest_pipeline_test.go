@@ -11,7 +11,7 @@
 //
 // Field shapes (canonical from internal/domain/asset/*.go):
 //   - asset.TranscriptResult{ Text string, DetectedLanguage string,
-//       Confidence *float64 } — NO bare Language field.
+//     Confidence *float64 } — NO bare Language field.
 //   - asset.TextTrack{ LanguageCode, TextContent, ... } — NO bare Language
 //     or Text field (those would not compile against the canonical surface).
 package ingest
@@ -114,7 +114,7 @@ func (s *stubDispatcher) EnqueueAndIndex(_ context.Context, _ *asset.Asset, _ st
 }
 
 func (s *stubDispatcher) EnqueueAndRestore(_ context.Context, _ string) error { return nil }
-func (s *stubDispatcher) EnqueueAndDelete(_ context.Context, _ string) error   { return nil }
+func (s *stubDispatcher) EnqueueAndDelete(_ context.Context, _ string) error  { return nil }
 
 // compile-time port-pin: stub satisfies the canonical AssetMutationDispatcher interface.
 var _ mutations.AssetMutationDispatcher = (*stubDispatcher)(nil)
@@ -163,15 +163,15 @@ func TestClipIngestPipeline_Ingest_HappyPath(t *testing.T) {
 		t.Fatalf("SearchText = %q, want search-text-composed", res.SearchText)
 	}
 	pairs := map[string]*atomic.Int32{
-		"Downloader":     &d.called,
-		"Normalizer":     &n.called,
-		"Hasher":         &h.called,
-		"ArtifactStore":  &st.called,
-		"Transcriber":    &tr.called,
-		"Enricher":       &e.called,
-		"Translator":     &tt.called,
-		"Composer":       &sc.called,
-		"Dispatcher":     &disp.called,
+		"Downloader":    &d.called,
+		"Normalizer":    &n.called,
+		"Hasher":        &h.called,
+		"ArtifactStore": &st.called,
+		"Transcriber":   &tr.called,
+		"Enricher":      &e.called,
+		"Translator":    &tt.called,
+		"Composer":      &sc.called,
+		"Dispatcher":    &disp.called,
 	}
 	for name, c := range pairs {
 		if c.Load() != 1 {

@@ -609,6 +609,17 @@ func newTextTrackPipelineFixture(t *testing.T, collection string) *textTrackPipe
 
 	translator := newStubPipelineTranslator()
 
+	// Canonical language registry for MaterializeLanguages — built
+	// via asset.NewLanguageRegistryFromCodes per PR-CATALOG-
+	// MULTILINGUA step 3 (the legacy MaterializeLanguages []string
+	// field was removed from texttracks.ResolverConfig in favor of
+	// a typed LanguageRegistry that carries canonical BCP-47
+	// normalization + dedup semantics at construction time).
+	reg, err := asset.NewLanguageRegistryFromCodes([]string{"en", "it", "es", "fr"})
+	if err != nil {
+		t.Fatalf("asset.NewLanguageRegistryFromCodes must succeed: %v", err)
+	}
+
 	// Real Materializer using the production TextTrackRepositorySQLite
 	// + production outboxevents.Repository + hermetic translator.
 	materializer, err := texttracks.NewMaterializer(
@@ -616,10 +627,10 @@ func newTextTrackPipelineFixture(t *testing.T, collection string) *textTrackPipe
 		translator,
 		fx.Events, // outbox.Repository satisfies OutboxEnqueuer (godlike/06 SSOT signature match)
 		texttracks.ResolverConfig{
-			MaterializeLanguages: []string{"en", "it", "es", "fr"},
-			SourceLanguage:       "en",
-			ModelVersion:         "model-v1",
-			PromptVersion:        "prompt-v1",
+			Registry:       reg,
+			SourceLanguage: "en",
+			ModelVersion:   "model-v1",
+			PromptVersion:  "prompt-v1",
 		},
 		fx.Log,
 	)

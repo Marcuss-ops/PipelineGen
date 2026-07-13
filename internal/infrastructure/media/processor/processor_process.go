@@ -89,15 +89,15 @@ func (p *Processor) moveRawToProcessed(rawPath, processedPath string) (string, e
 // processRenditions (PR-CLIPINGEST-PIPELINE step 9, July 2026) renders
 // the canonical per-asset file set per user spec:
 //
-//	{asset_id}__master.mp4    — H.264/AAC/yuv420p/30fps/1920x1080
-//	                              (the canonical master, unique per asset,
-//                               shared across all languages; voiceover + subtitle
-//                               files layer on top in per-language variants)
-//	{asset_id}__preview.mp4   — 720p H.264/AAC proxy
-//	{asset_id}__manifest.json — per-asset metadata ledger (placeholder; the
-//                               canonical manifest writer lands in a
-//                               follow-up PR alongside the voiceover fan-out
-//                               reorganization)
+//		{asset_id}__master.mp4    — H.264/AAC/yuv420p/30fps/1920x1080
+//		                              (the canonical master, unique per asset,
+//	                              shared across all languages; voiceover + subtitle
+//	                              files layer on top in per-language variants)
+//		{asset_id}__preview.mp4   — 720p H.264/AAC proxy
+//		{asset_id}__manifest.json — per-asset metadata ledger (placeholder; the
+//	                              canonical manifest writer lands in a
+//	                              follow-up PR alongside the voiceover fan-out
+//	                              reorganization)
 //
 // Pre-step-9, the function saved the raw source untouched as `master`
 // and the normalized output as `mezzanine` (with human-readable

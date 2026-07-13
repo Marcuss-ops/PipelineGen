@@ -10,6 +10,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -32,7 +33,18 @@ type ImageStorageService struct {
 	tempDir       string
 	driveFolderID string
 	client        *http.Client
-	dispatcher    *outbox.Dispatcher
+	// dispatcher is retained (NOT removed) for the video + audio paths
+	// in storage_drive.go that bypass CommitAsset. The image-ingest
+	// path (ingestDirect) now uses committer exclusively for atomicity.
+	dispatcher *outbox.Dispatcher
+	// committer is the canonical SINGLE-transaction asset commit surface
+	// for image ingest (PR-IMAGES-INGEST-ATOMIC, July 2026). Used by
+	// ingestDirect to atomically write media_assets + asset_locations +
+	// typed metadata + the asset.index.requested outbox event inside
+	// a single SQLite transaction. Replaces the prior repo.AddImage +
+	// dispatcher.EnqueueAndIndex two-transaction path that carried a
+	// documented crash-risk window between SQLite and Qdrant.
+	committer     persistence.AssetCommitter
 	dedup         singleflight.Group
 	log           *zap.Logger
 	gaServerURL   string

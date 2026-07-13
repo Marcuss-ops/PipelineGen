@@ -148,8 +148,8 @@ func NewClipAtomicWriterAdapter(db *sql.DB, box *outboxevents.Repository, log *z
 //
 //  1. BeginTx                              ← orchestrator
 //  2. AssetCommitter.CommitTx              ← unified media_assets +
-//                                           asset_locations + metadata +
-//                                           outbox event
+//     asset_locations + metadata +
+//     outbox event
 //  3. upsertTextTracksInTx (legacy)      ← clip_metadata_writer.go (pre-existing)
 //  4. Commit                               ← orchestrator
 //  5. checkOutboxTerminalAfterCommit       ← outbox.go (BLOCKER #4)
@@ -274,11 +274,11 @@ func (w *ClipAtomicWriterAdapter) buildCommitRequest(clipID string, asset youtub
 		},
 		Locations: []persistence.LocationCommit{
 			{
-				Kind:       "drive",
-				Provider:   "drive",
-				ExternalID: asset.Drive.FileID,
+				Kind:        "drive",
+				Provider:    "drive",
+				ExternalID:  asset.Drive.FileID,
 				WebViewLink: asset.Drive.WebViewLink,
-				IsPrimary:  true,
+				IsPrimary:   true,
 			},
 		},
 		EmitIndexEvent: true,

@@ -301,9 +301,16 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 				params.Cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations,
 				params.Log,
 			),
-		},
-		External: imgservice.ImagesExternalDeps{
-			IngestSvc: params.IngestSvc, Dispatcher: params.Dispatcher, VeloxBaseURL: params.Cfg.External.VeloxBaseURL,
+		}, External: imgservice.ImagesExternalDeps{
+			IngestSvc: params.IngestSvc, Dispatcher: params.Dispatcher,
+			// TODO(production): wire a real NewSQLiteAssetCommitter here.
+			// PR-IMAGES-INGEST-ATOMIC (July 2026) requires the writer DB
+			// + outbox events repo to be threaded through buildImagesParams.
+			// ingestDirect fails closed with a typed error when Committer
+			// is nil so the gap is observable; production must supply a
+			// real committer before the image ingest path is live.
+			Committer:    nil,
+			VeloxBaseURL: params.Cfg.External.VeloxBaseURL,
 			GACfg: imgservice.GoogleAccountingConfig{
 				ServerURL: params.Cfg.GoogleAccounting.ServerURL, DownloadDir: params.Cfg.GoogleAccounting.DownloadDir,
 				VidsProjectID: params.Cfg.GoogleAccounting.VidsProjectID,

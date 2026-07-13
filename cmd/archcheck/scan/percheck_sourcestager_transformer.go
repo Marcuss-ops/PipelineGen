@@ -16,8 +16,9 @@
 //   - *_test.go : tests may invoke raw binaries for verification.
 //
 // Pattern anchors:
-//   exec\.Command.*ffmpeg|yt-dlp|wget  — raw binary invocation
-//   ffmpeg|yt-dlp|wget string literals in application code
+//
+//	exec\.Command.*ffmpeg|yt-dlp|wget  — raw binary invocation
+//	ffmpeg|yt-dlp|wget string literals in application code
 package scan
 
 import (

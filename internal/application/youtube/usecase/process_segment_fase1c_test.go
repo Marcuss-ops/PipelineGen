@@ -128,6 +128,20 @@ func (noRowsRepo) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTr
 	return []string{}, nil
 }
 
+// FindCurrentForTranslation + InsertTranslationWithAuditPredecessor
+// are the PR-CATALOG-MULTILINGUA step-4 surface added to the
+// canonical TextTrackRepository port. noRowsRepo is the canonical
+// "every read misses" stub (priority 1+2 miss); both new methods
+// mirror the null-write contract from
+// internal/application/scripts/usecase/multilingual_persistence_p1f_test.go::p1fStubRepo
+// and internal/application/assets/texttracks/materializer_test.go::fakeTextTrackRepo.
+func (noRowsRepo) FindCurrentForTranslation(_ context.Context, _ string, _ asset.TextTrackKind, _, _, _, _, _ string) (*asset.TextTrack, error) {
+	return nil, nil
+}
+func (noRowsRepo) InsertTranslationWithAuditPredecessor(_ context.Context, _ asset.TextTrack) error {
+	return nil
+}
+
 // compile-time assertion: noRowsRepo satisfies TextTrackRepository.
 var _ asset.TextTrackRepository = (*noRowsRepo)(nil)
 
@@ -163,6 +177,21 @@ func (r readyTrackRepo) FindReady(_ context.Context, _ string, _ string, _ asset
 }
 func (r readyTrackRepo) ListReadyLanguages(_ context.Context, _ string, _ asset.TextTrackKind) ([]string, error) {
 	return []string{r.langCode}, nil
+}
+
+// FindCurrentForTranslation + InsertTranslationWithAuditPredecessor
+// are the PR-CATALOG-MULTILINGUA step-4 surface added to the
+// canonical TextTrackRepository port. readyTrackRepo is the canonical
+// "priority 1+2 (DB) HIT + READY" stub used by the Fase 4
+// transcript-already-READY chain test. Both new methods mirror
+// the null-write contract of p1fStubRepo / fakeTextTrackRepo
+// (this stub tracks no audit predecessor — the tests inspect
+// only the priority-2 short-circuit at FindReady).
+func (r readyTrackRepo) FindCurrentForTranslation(_ context.Context, _ string, _ asset.TextTrackKind, _, _, _, _, _ string) (*asset.TextTrack, error) {
+	return nil, nil
+}
+func (r readyTrackRepo) InsertTranslationWithAuditPredecessor(_ context.Context, _ asset.TextTrack) error {
+	return nil
 }
 
 // compile-time assertion: readyTrackRepo satisfies TextTrackRepository.

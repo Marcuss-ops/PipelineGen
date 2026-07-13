@@ -173,13 +173,13 @@ func (a *artlistPublishTxAdapter) CommitArtlistPublishTx(ctx context.Context, cm
 		},
 		Locations: []persistence.LocationCommit{
 			{
-				Kind:       "drive",
-				Provider:   "drive",
-				ExternalID: cmd.DriveFileID,
-				URI:        cmd.AssetLocation,
+				Kind:        "drive",
+				Provider:    "drive",
+				ExternalID:  cmd.DriveFileID,
+				URI:         cmd.AssetLocation,
 				WebViewLink: cmd.DriveLink,
 				DownloadURL: cmd.DownloadLink,
-				IsPrimary:  true,
+				IsPrimary:   true,
 			},
 		},
 		EmitIndexEvent: true,

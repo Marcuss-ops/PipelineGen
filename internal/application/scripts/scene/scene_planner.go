@@ -16,16 +16,19 @@
 // after this phase:
 //   - SceneAssetBinder.BindClips: attach Bindings.Clip + no shape.
 //   - SceneAssetBinder.BindStock: attach Bindings.Stock + no shape.
+//
 // Wave 1.3 will turn the binder purity into a godlike/06 SSOT
 // arch-check per-check that emits a build failure when the binder
 // touches any non-Bindings field.
 //
 // godlike/07 NO-FAKE-AVAILABILITY: Plan never fabricates scenes.
 // Every scene returned has either:
-//   (a) come from the LLM-emitted draft (preserved verbatim),
-//   (b) come from clip evidence with a transcript/description/name
-//       reference (never synthesized out of nothing), or
-//   (c) come from real prose partition (the canonical SceneSynthesizer).
+//
+//	(a) come from the LLM-emitted draft (preserved verbatim),
+//	(b) come from clip evidence with a transcript/description/name
+//	    reference (never synthesized out of nothing), or
+//	(c) come from real prose partition (the canonical SceneSynthesizer).
+//
 // The ungrounded "Scene {i+1}" placeholder is allowed only inside
 // the synthesizer when the prose partition produces an under-word
 // scene that must validate (per synthesizer.go contract).
@@ -414,6 +417,13 @@ func (p *ScenePlanner) PlanFromClipEvidence(
 			}
 		}
 
+		// ClipBinding.DurationMs is the canonical segment-
+		// duration surface; populated here via
+		// scriptpkg.ClipDurationMs (PURE canonical helper) plus
+		// the canonical caller pattern's
+		// scriptpkg.ClipDurationMsFromAssetID fallback for the
+		// zero-delta branch (returns 0 by godlike/07
+		// NO-FAKE-AVAILABILITY; "duration unknown").
 		binding := &scriptpkg.ClipBinding{
 			ClipID:     clipID,
 			ClipTitle:  detail.Name,

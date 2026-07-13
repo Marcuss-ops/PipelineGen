@@ -106,6 +106,7 @@ func NewService(deps ImagesDeps) *Service {
 		driveFolderID: cfg.Drive.RootFolder(),
 		client:        &http.Client{Timeout: 10 * time.Minute},
 		dispatcher:    deps.External.Dispatcher,
+		committer:     deps.External.Committer,
 		log:           log,
 		gaServerURL:   deps.External.GACfg.ServerURL,
 		gaDownloadDir: deps.External.GACfg.DownloadDir,

@@ -14,12 +14,13 @@
 //   - *_test.go                                     : tests may construct fakes directly.
 //
 // Pattern anchors:
-//   drive\.NewUploader\(                             — direct uploader construction
-//   drive\.NewFolderManager\(                       — direct folder manager construction
-//   drive\.Uploader                                  — direct uploader type reference
-//   drive\.FolderManager                             — direct folder manager type reference
-//   \*drive\.Uploader                               — pointer to concrete uploader
-//   \*drive\.FolderManager                          — pointer to concrete folder manager
+//
+//	drive\.NewUploader\(                             — direct uploader construction
+//	drive\.NewFolderManager\(                       — direct folder manager construction
+//	drive\.Uploader                                  — direct uploader type reference
+//	drive\.FolderManager                             — direct folder manager type reference
+//	\*drive\.Uploader                               — pointer to concrete uploader
+//	\*drive\.FolderManager                          — pointer to concrete folder manager
 package scan
 
 import (

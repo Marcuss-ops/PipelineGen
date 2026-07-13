@@ -14,7 +14,8 @@
 //   - *_test.go : tests may use map[string]any for fixtures.
 //
 // Pattern anchors:
-//   map\[string\]any  — raw metadata map type
+//
+//	map\[string\]any  — raw metadata map type
 package scan
 
 import (

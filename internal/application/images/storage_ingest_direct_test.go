@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -39,8 +41,58 @@ func (f *fakePublisher) ResolveFolder(_ context.Context, _ delivery.PublishReque
 	return "folder-1", nil
 }
 
+// recordingCommitter is the unit-test stub for persistence.AssetCommitter
+// used by the happy-path tests. It records the call args (so tests can
+// assert the canonical CommitRequest shape) and returns a successful
+// CommitResult. Tests that intentionally need a nil Committer
+// (e.g. TestIngestDirect_CommitterNil_FailsClosed) set svc.committer
+// = nil directly.
+type recordingCommitter struct {
+	calls      int
+	lastReq    persistence.AssetCommitRequest
+	lastResult persistence.CommittedAsset
+}
+
+func (r *recordingCommitter) CommitTx(_ context.Context, _ persistence.Transaction, req persistence.AssetCommitRequest) (persistence.CommitResult, error) {
+	r.calls++
+	r.lastReq = req
+	out := r.success(req)
+	r.lastResult = out
+	return out, nil
+}
+
+func (r *recordingCommitter) CommitAndIndex(_ context.Context, req persistence.AssetCommitRequest) (persistence.CommitResult, error) {
+	r.calls++
+	r.lastReq = req
+	out := r.success(req)
+	r.lastResult = out
+	return out, nil
+}
+
+func (r *recordingCommitter) CommitAsset(_ context.Context, req persistence.AssetCommitRequest) (persistence.CommittedAsset, error) {
+	r.calls++
+	r.lastReq = req
+	out := r.success(req)
+	r.lastResult = out
+	return out, nil
+}
+
+func (r *recordingCommitter) success(req persistence.AssetCommitRequest) persistence.CommitResult {
+	return persistence.CommitResult{
+		AssetRowsAffected: 1,
+		OutboxInserted:    req.EmitIndexEvent,
+		OutboxEventKey:    req.AssetID + ":" + req.ContentHash,
+	}
+}
+
 // testImageService creates a minimal ImageStorageService for testing
 // ingestDirect. Uses an in-memory SQLite database.
+//
+// PR-IMAGES-INGEST-ATOMIC (July 2026): wires a recordingCommitter stub
+// for the happy-path tests so they can assert ingestDirect routes through
+// the canonical CommitAsset transaction. Tests that need the fail-closed
+// path (TestIngestDirect_CommitterNil_FailsClosed) explicitly set
+// svc.committer = nil after calling this helper.
 func testImageService(t *testing.T) *ImageStorageService {
 	t.Helper()
 
@@ -52,7 +104,11 @@ func testImageService(t *testing.T) *ImageStorageService {
 
 	repo := assets.NewImagesRepository(db)
 
-	// Create the minimal schema needed by ImagesRepository.
+	// Create the minimal schema needed by ImagesRepository for the
+	// pre-Commit flows (subjects upsert). The post-CommitAsset path
+	// is exercised against the recordingCommitter stub, so the
+	// production media_assets / asset_locations / outbox_events
+	// schema is NOT required in this in-memory test DB.
 	for _, stmt := range []string{
 		// subjects table (migration 104) — needed by CreateSubject.
 		`CREATE TABLE IF NOT EXISTS subjects (
@@ -62,50 +118,6 @@ func testImageService(t *testing.T) *ImageStorageService {
 			metadata_json TEXT NOT NULL DEFAULT '{}',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
-		// media_assets table (migration 033) — needed by AddImage.
-		`CREATE TABLE IF NOT EXISTS media_assets (
-			id TEXT PRIMARY KEY,
-			source TEXT DEFAULT '',
-			name TEXT DEFAULT '',
-			url TEXT DEFAULT '',
-			tags TEXT DEFAULT '[]',
-			tags_norm TEXT DEFAULT '',
-			media_type TEXT DEFAULT '',
-			width INT DEFAULT 0,
-			height INT DEFAULT 0,
-			file_hash TEXT DEFAULT '',
-			local_path TEXT DEFAULT '',
-			relative_path TEXT DEFAULT '',
-			drive_file_id TEXT DEFAULT '',
-			lifecycle_state TEXT DEFAULT 'STAGING',
-			metadata_json TEXT DEFAULT '{}',
-			origin TEXT DEFAULT '',
-			provider TEXT DEFAULT '',
-			created_at TEXT DEFAULT '',
-			updated_at TEXT DEFAULT ''
-		)`,
-		// retrieved_image_details (needed by dualWriteImageDetails -> UpsertRetrievedDetails).
-		`CREATE TABLE IF NOT EXISTS retrieved_image_details (
-			asset_id TEXT PRIMARY KEY,
-			source_image_url TEXT DEFAULT '',
-			source_page_url TEXT DEFAULT '',
-			license TEXT DEFAULT '',
-			author TEXT DEFAULT '',
-			search_query TEXT DEFAULT '',
-			retrieved_at TEXT DEFAULT '',
-			provider TEXT DEFAULT ''
-		)`,
-		`CREATE TABLE IF NOT EXISTS generated_image_details (
-			asset_id TEXT PRIMARY KEY,
-			prompt_original TEXT DEFAULT '',
-			prompt_resolved TEXT DEFAULT '',
-			style_id TEXT DEFAULT '',
-			style_version TEXT DEFAULT '',
-			model TEXT DEFAULT '',
-			seed TEXT DEFAULT '',
-			generation_job_id TEXT DEFAULT '',
-			source_hash TEXT DEFAULT ''
 		)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
@@ -128,6 +140,7 @@ func testImageService(t *testing.T) *ImageStorageService {
 		log:         zap.NewNop(),
 		subjectTags: &noopSubjectTags{},
 		imagesDir:   tempDir,
+		committer:   &recordingCommitter{},
 	}
 }
 
@@ -139,8 +152,13 @@ func testImageService(t *testing.T) *ImageStorageService {
 //
 // PR-QDRANT-IMAGES-INDEX (July 2026): pre-PR this was a hard failure
 // (os.Remove + return error). Post-PR it's a warn-and-continue.
+//
+// PR-IMAGES-INGEST-ATOMIC (July 2026): now routed through CommitAsset
+// via the recording stub, so the happy path exercises the canonical
+// atomic write instead of the legacy AddImage + EnqueueAndIndex path.
 func TestIngestDirect_TagImageMetadataFailure_IsNonFatal(t *testing.T) {
 	svc := testImageService(t)
+	committer := svc.committer.(*recordingCommitter)
 
 	// Wire the Phase 1.2 disabled MetadataWriter stub — Write() returns
 	// ErrSemanticMetadataWriterDisabled, which causes tagImageMetadata to fail.
@@ -173,36 +191,67 @@ func TestIngestDirect_TagImageMetadataFailure_IsNonFatal(t *testing.T) {
 	if _, statErr := os.Stat(dest); os.IsNotExist(statErr) {
 		t.Fatalf("local file %s was deleted by ingestDirect (pre-PR os.Remove behavior)", dest)
 	}
+
+	// PR-IMAGES-INGEST-ATOMIC: verify CommitAsset was called EXACTLY once
+	// with EmitIndexEvent=true (the SSOT contract for image ingest —
+	// outbox event emitted atomically with the media_assets row).
+	if committer.calls != 1 {
+		t.Errorf("recordingCommitter.calls = %d, want 1 (PR-IMAGES-INGEST-ATOMIC: CommitAsset must be called exactly once)", committer.calls)
+	}
+	if !committer.lastReq.EmitIndexEvent {
+		t.Error("CommitAsset called with EmitIndexEvent=false; image ingest MUST emit the asset.index.requested outbox event atomically")
+	}
+	if committer.lastReq.AssetID != hash || committer.lastReq.ContentHash != hash {
+		t.Errorf("CommitAsset AssetID/ContentHash = (%q, %q); both must equal the content hash to preserve identity", committer.lastReq.AssetID, committer.lastReq.ContentHash)
+	}
 }
 
-// TestIngestDirect_DispatcherNil_NoPanic verifies that when
-// s.dispatcher is nil, the function does NOT panic and returns
-// successfully.
-func TestIngestDirect_DispatcherNil_NoPanic(t *testing.T) {
+// TestIngestDirect_CommitterNil_FailsClosed verifies that when
+// s.committer is nil, ingestDirect returns a typed error and does NOT
+// write the corresponding outbox event. It is the post-refactor mirror
+// of TestIngestDirect_DispatcherNil_NoPanic: the prior fail-open
+// dispatcher guard (which silently dropped index writes) is replaced
+// by a fail-closed committer guard (which refuses to write the SQLite
+// half of the legacy 2-transaction pipeline).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a nil Committer indicating "no
+// index writer available" must surface as a typed error so callers
+// can choose to skip the index write or treat it as fatal. Refusing
+// to write a (partial) media_assets row without the matching
+// outbox event is the SSOT — it preserves the atomicity invariant
+// the refactor closes.
+func TestIngestDirect_CommitterNil_FailsClosed(t *testing.T) {
 	svc := testImageService(t)
-	svc.dispatcher = nil // explicitly nil
+	svc.committer = nil // explicit nil — fail-closed assertion
 
 	ctx := context.Background()
 	content := []byte{0xFF, 0xD8, 0xFF, 0xE0}
 	hash := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-	result, err := svc.ingestDirect(ctx, "test-slug", "", "", content, "test.jpg",
+	_, err := svc.ingestDirect(ctx, "test-slug", "", "", content, "test.jpg",
 		"https://upload.wikimedia.org/wikipedia/test/test.jpg",
-		"Test for nil dispatcher guard", nil, hash, true, true)
+		"Test for nil committer guard", nil, hash, true, true)
 
-	if err != nil {
-		t.Fatalf("ingestDirect with nil dispatcher returned error: %v", err)
+	if err == nil {
+		t.Fatal("ingestDirect with nil committer returned nil error; MUST fail closed (godlike/07 NO-FAKE-AVAILABILITY)")
 	}
-	if result == nil {
-		t.Fatal("ingestDirect with nil dispatcher returned nil result")
+	// The error message must signal the SSOT contract so operators can
+	// route on it: refuse to write the SQLite half of the legacy
+	// 2-transaction pipeline without the matching outbox event.
+	if !strings.Contains(err.Error(), "Committer is nil") {
+		t.Errorf("error = %q, want message containing 'Committer is nil' (godlike/07 NO-FAKE-AVAILABILITY contract)", err.Error())
 	}
 }
 
 // TestIngestDirect_GeneratedImage_StoresDriveLinkAsSourceURL verifies that
 // generated images persist the Drive web link as the canonical SourceURL
 // once upload succeeds. The provider label still flows into Provider.
+//
+// PR-IMAGES-INGEST-ATOMIC (July 2026): the recordingCommitter stub is
+// wired to record the canonical CommitRequest shape.
 func TestIngestDirect_GeneratedImage_StoresDriveLinkAsSourceURL(t *testing.T) {
 	svc := testImageService(t)
+	committer := svc.committer.(*recordingCommitter)
 	svc.cfg = &config.Config{Drive: config.DriveConfig{ImagesRootFolder: "images-root"}}
 	svc.publisher = &fakePublisher{
 		fileID: "drive-file-123",
@@ -239,16 +288,46 @@ func TestIngestDirect_GeneratedImage_StoresDriveLinkAsSourceURL(t *testing.T) {
 	if result.Provider != "google-slides" {
 		t.Fatalf("Provider = %q, want google-slides", result.Provider)
 	}
+
+	// PR-IMAGES-INGEST-ATOMIC: verify CommitAsset was called exactly
+	// once and routed the SourceURL (Drive link) through to the
+	// canonical CommitRequest.
+	if committer.calls != 1 {
+		t.Errorf("recordingCommitter.calls = %d, want 1", committer.calls)
+	}
+	if committer.lastReq.SourceURL != "https://drive.google.com/file/d/drive-file-123/view" {
+		t.Errorf("CommitAsset SourceURL = %q, want drive web link", committer.lastReq.SourceURL)
+	}
 }
 
-// TestIngestDirect_EnqueueAndIndexCalled is an integration-level test
-// that verifies EnqueueAndIndex IS called after AddImage when a real
-// dispatcher is wired. Requires a live SQLite-backed outbox.Dispatcher.
+// TestIngestDirect_CommitAsset_AtomicSSOTContract pins the SSOT
+// invariant that the legacy 2-transaction crash-window is closed:
+// CommitAsset is the only canonical producer of (media_assets row,
+// asset.index.requested outbox event) pairs.
 //
-// Forward-pointer PR-QDRANT-IMAGES-ENQUEUE-TEST (deadline 2026-08-15):
-// wire a real outbox.Dispatcher with temp SQLite and verify
-// outbox_events table has an asset.index.requested row with
-// aggregate_id = hash after ingestDirect succeeds.
-func TestIngestDirect_EnqueueAndIndexCalled(t *testing.T) {
-	t.Skip("integration test — requires real outbox.Dispatcher with SQLite-backed outbox events repo (forward-pointer PR-QDRANT-IMAGES-ENQUEUE-TEST)")
+// Forward-pointer PR-QDRANT-IMAGES-INTEGRATION-TEST (deadline 2026-08-15):
+// wire a real NewSQLiteAssetCommitter against a temp SQLite DB to
+// verify outbox_events table is populated in the same transaction
+// as media_assets (the full atomicity invariant that the legacy
+// runtime only enforced via the runtime reconcile tool).
+func TestIngestDirect_CommitAsset_AtomicSSOTContract(t *testing.T) {
+	svc := testImageService(t)
+	committer := svc.committer.(*recordingCommitter)
+
+	ctx := context.Background()
+	content := []byte{0xFF, 0xD8, 0xFF, 0xE0}
+	hash := "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+	_, err := svc.ingestDirect(ctx, "test-slug", "", "", content, "test.jpg",
+		"https://upload.wikimedia.org/wikipedia/test/test.jpg",
+		"SSOT contract check — atomic commit", nil, hash, true, true)
+	if err != nil {
+		t.Fatalf("ingestDirect returned error: %v", err)
+	}
+	if committer.calls != 1 {
+		t.Errorf("recordingCommitter.calls = %d, want exactly 1 (closes the legacy 2-tx crash window)", committer.calls)
+	}
+	if !committer.lastReq.EmitIndexEvent {
+		t.Error("CommitAsset called with EmitIndexEvent=false; image ingest SSOT requires EmitIndexEvent=true so the outbox row + media_assets row commit atomically")
+	}
 }

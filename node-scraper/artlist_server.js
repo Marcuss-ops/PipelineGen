@@ -178,17 +178,10 @@ async function handleSearch(req, res) {
   lastSearchAt = new Date().toISOString();
   const reqId = requestCount;
 
-  console.log(`[${new Date().toISOString()}] #${reqId} SEARCH term="${term}" limit=${limit} BUDGET connect=${connectTimeoutSeconds}s total=${scrollTimeoutSeconds}s`);
-  const t0 = Date.now();
-  // Split connect/total timeout per fix(scraper) (PR-July 2026). Per
-  // godlike/07 minimum-blast-radius + the §11.0 doc-public contract:
-  //   - SCRAPER_CONNECT_TIMEOUT_SECONDS = connect budget (Chromium launch + first page nav)
-  //   - SCROLL_TIMEOUT                  = total budget enforced as Promise.race backstop
-  // The connect split is realized at the bash-wrapper layer (curl --connect-timeout
-  // vs. --max-time); here we enforce the total budget so a runaway Chromium
-  // navigation cannot pin the scraper past the SCROLL_TIMEOUT envelope.
   const connectTimeoutSeconds = parseInt(process.env.SCRAPER_CONNECT_TIMEOUT_SECONDS || '5', 10);
   const scrollTimeoutSeconds  = parseInt(process.env.SCROLL_TIMEOUT                  || '120', 10);
+  console.log(`[${new Date().toISOString()}] #${reqId} SEARCH term="${term}" limit=${limit} BUDGET connect=${connectTimeoutSeconds}s total=${scrollTimeoutSeconds}s`);
+  const t0 = Date.now();
   const scrollTimeoutMs = scrollTimeoutSeconds * 1000;
   let totalBudgetTimer = null;
   const totalBudget = new Promise((_, reject) => {
