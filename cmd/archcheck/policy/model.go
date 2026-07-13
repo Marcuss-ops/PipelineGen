@@ -40,11 +40,11 @@ package policy
 // declared in the policy so the report snapshot is forward-compatible,
 // but no enforcement logic runs against them yet.
 type Policy struct {
-	MaxFilesPerPackage    int
-	MaxLinesPerFile       int
-	CmdMainMaxLines       int
-	MaxConstructorDeps    int
-	MaxStructDeps         int
+	MaxFilesPerPackage int
+	MaxLinesPerFile    int
+	CmdMainMaxLines    int
+	MaxConstructorDeps int
+	MaxStructDeps      int
 
 	// MaxClipIngestPipelineFields is the per-struct exception to the global
 	// MaxStructDeps=8 cap, lifted to 9 for the canonical 9-component
@@ -57,12 +57,12 @@ type Policy struct {
 	// canonical surface with > 8 fields declare a matching `_per_struct_field`
 	// knob here, NOT a global cap raise.
 	MaxClipIngestPipelineFields int
-	ForbiddenTopLevelDirs []string
-	KernelSubzones        []string
-	Capabilities          []string
-	PlatformSubzones      []string
-	LegacyInternalRoots   []string
-	TargetInternalRoots   []string
+	ForbiddenTopLevelDirs       []string
+	KernelSubzones              []string
+	Capabilities                []string
+	PlatformSubzones            []string
+	LegacyInternalRoots         []string
+	TargetInternalRoots         []string
 	// DataOwnershipDoc is the path (relative to root) of the canonical
 	// data/config ownership document whose authority the rule family
 	// scanOwnershipDoc enforces. Empty string opts out (Phase 0 only;
