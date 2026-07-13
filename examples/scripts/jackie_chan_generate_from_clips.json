@@ -33,9 +33,6 @@
       "output": {
         "extract_entities": false,
         "generate_metadata": false,
-        "generate_voiceover": true,
-        "generate_scene_images": false,
-        "generate_document": true,
         "save_to_db": true,
         "generate_timeline": false
       }

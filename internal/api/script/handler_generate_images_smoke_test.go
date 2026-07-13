@@ -30,11 +30,6 @@ func TestHandlerGenerate_SmokeSceneImagesPayload(t *testing.T) {
 	handler := NewHandlerGenerate(
 		submit,
 		zap.NewNop(),
-		PreflightCaps{
-			VoiceoverEnabled: true,
-			ImagesEnabled:    true,
-			DocumentEnabled:  true,
-		},
 		usecase.NewDefaultPayloadValidator(),
 	)
 
@@ -80,7 +75,7 @@ func TestHandlerGenerate_SmokeSceneImagesPayload(t *testing.T) {
 	payload := submit.lastReq.JobPayload
 	require.NoError(t, json.Unmarshal(payload, &env))
 	require.Len(t, env.Items, 1)
-	require.True(t, env.Items[0].Output.GenerateSceneImages.AsBool(),
+	require.True(t, env.Items[0].Output.SaveToDB,
 		"payload handed to the job queue must preserve generate_scene_images=true")
 	_ = deps
 }

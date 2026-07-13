@@ -52,18 +52,20 @@ type AutoHarvestService interface {
 //
 //   - Submission: the canonical submission service.
 //   - Log: structured logger.
-//   - Caps: SCRIPTCONTRACT-2026-07-08 PR-2 PreflightCaps. The
-//     flat composition-time postprocessor-availability surface.
-//     Built by the composition root from root.Domains.VoiceoverService
-//   - root.Domains.ImageService + root.Drive.DocClient. Zero-value
-//     is the conservative default (all false, fail-closed for any
-//     user-requested processor).
 //   - Validator: config-aware payload validator for
 //     POST /api/script/generate.
+//
+// PR-COMMIT3 (July 2026): the legacy `Caps PreflightCaps` field is
+// physically removed. The 3 deprecation-registered output flags
+// (GenerateVoiceover / GenerateSceneImages / GenerateDocument) that
+// the preflight gated are themselves physically removed from
+// OutputSpec (see architecture/deprecations.yaml records flipped
+// to status: removed). The preflight module (postprocessor_preflight.go)
+// + 4 test files + errors_preflight.go are physically deleted alongside
+// the field per godlike/07 no-fake-availability.
 type GenerateDeps struct {
 	Submission generationSubmitter
 	Log        *zap.Logger
-	Caps       PreflightCaps
 	Validator  *usecase.PayloadValidator
 }
 
@@ -136,26 +138,17 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		log = zap.NewNop()
 	}
 
-	// SCRIPTCONTRACT-2026-07-08 PR-2: there is exactly ONE
-	// PreflightCaps instance per ScriptFlowHandler. The composition
-	// root (internal/app/wire_script.go) builds it at startup from
-	// root.Domains.VoiceoverService / root.Domains.ImageService /
-	// root.Drive.DocClient. The canonical source is
-	// `deps.Generate.Caps`; the HandlerGenerate consumes it on
-	// the request seam and the validator's preflight is purely
-	// deterministic (no I/O).
-	caps := deps.Generate.Caps
 
 	return &ScriptFlowHandler{
 		log:           log,
 		adminToken:    deps.AdminToken,
 		clipsSearcher: deps.ClipsSearcher,
-		caps:          caps,
 
-		// AZIONE 1 (July 2026): construct the 4-field HandlerGenerate
+		// AZIONE 1 (July 2026): construct the 3-field HandlerGenerate
 		// alongside the slim ScriptFlowHandler. POST /generate
-		// delegates to h.gen.Generate(c).
-		gen: NewHandlerGenerate(deps.Generate.Submission, deps.Generate.Log, caps, deps.Generate.Validator),
+		// delegates to h.gen.Generate(c). PR-COMMIT3: the 4th
+		// `caps` arg is removed alongside the preflight module.
+		gen: NewHandlerGenerate(deps.Generate.Submission, deps.Generate.Log, deps.Generate.Validator),
 
 		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 2-field
 		// JobsHandler. GET /api/script/jobs/:id mounts via

@@ -353,6 +353,24 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// which deletes the fields. Comment-only references are
 		// WARNed (residue accounting, godlike/07).
 		{"percheck_mediatransformer_no_infra_fields", scan.ScanMediaTransformerNoInfraFields},
+		// Check PR-PROVIDERS-SEARCHAGGREGATOR-REMOVE (July 2026):
+		// forward-prevention gate that pins the godlike/06 SSOT
+		// `internal/application/search.Aggregator` (the canonical
+		// single-aggregator). The legacy god-service aggregator
+		// previously bundled inside `providers.SearchAggregator`
+		// is git-rm'd; the composition-only bridge
+		// `internal/app/search_backends.go::providersBridgeToSearch`
+		// was the last ghost of that surface and is RETIRED. The
+		// 6 canonical backends (semantic + local + youtube-live,
+		// artlist-live, stock, images) are registered via
+		// `BuildSearchBackends`. This gate bans any
+		// re-introduction of the legacy `providers.SearchAggregator`
+		// literal in production Go code; comment-only references
+		// are WARNed (residue accounting, godlike/07). /
+		// Fails if any production .go file outside the scanner's
+		// own package + test files (regression-guard allowlist)
+		// references the legacy literal.
+		{"percheck_providers_searchaggregator_ban", scan.ScanProvidersSearchAggregatorBan},
 	}
 }
 

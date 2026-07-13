@@ -172,7 +172,6 @@ func TestGenerateE2E_GenerateSceneImages_BindsBindingImageStatus(t *testing.T) {
 		Output: scriptpkg.OutputSpec{
 			// GenerateSceneImages=true → plan.Postprocessors
 			// becomes [clip_bindings, stock_association, images].
-			GenerateSceneImages: scriptpkg.ToggleEnabled,
 			// Opt-out of every other postprocessor.
 			// SaveToDB=false: persistence NOT in plan.Postprocessors
 			// (Required class without a fake repo would be a hard
@@ -183,8 +182,6 @@ func TestGenerateE2E_GenerateSceneImages_BindsBindingImageStatus(t *testing.T) {
 			// preflight does not demand their registration.
 			ExtractEntities:   scriptpkg.ToggleDisabled,
 			GenerateMetadata:  scriptpkg.ToggleDisabled,
-			GenerateVoiceover: scriptpkg.ToggleDisabled,
-			GenerateDocument:  scriptpkg.ToggleDisabled,
 		},
 	}
 
@@ -273,7 +270,6 @@ func TestGenerateE2E_GenerateSceneImages_SingleScene_PinsStatus(t *testing.T) {
 		},
 		ScriptParams: scriptpkg.ScriptSpec{TargetWords: 8},
 		Output: scriptpkg.OutputSpec{
-			GenerateSceneImages: scriptpkg.ToggleEnabled,
 			SaveToDB:            false,
 		},
 	}

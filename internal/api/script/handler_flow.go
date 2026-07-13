@@ -67,7 +67,6 @@ type DocumentCreator interface {
 //  2. Auth primitive (adminToken) — consumed by EnableAuth + AdminToken.
 //  3. Delegation pointers (gen + jobs) — sub-handlers that own
 //     canonical impls of POST /generate, /jobs/:id.
-//  4. Operating envelope (log + caps) — universal logger + PreflightCaps.
 //
 // FASE 2 (July 2026): jobsSvc + registry fields are REMOVED.
 // The FASE 2 enqueue path is owned by h.gen.operations + h.jobs.operations.
@@ -77,7 +76,6 @@ type ScriptFlowHandler struct {
 	gen           *HandlerGenerate
 	jobs          *JobsHandler
 	log           *zap.Logger
-	caps          PreflightCaps
 }
 
 // jobsRegisterRoutes mounts /api/script/jobs/:id via JobsHandler.

@@ -211,13 +211,23 @@ type SourceResolutionContext struct {
 	Segments []ScriptSegment `json:"segments,omitempty"`
 
 	// RequireDriveLink tells the clip resolver whether clips MUST have
-	// a Drive link to be included in the resolved set. When false
-	// (the caller only wants text generation — no document, no scene
-	// images), clips without Drive links are still accepted because
-	// only transcript + metadata are needed.
+	// a Drive link to be included in the resolved set. When true
+	// (the canonical PR-COMMIT3 fail-closed default), clips without
+	// Drive links are rejected by the resolver and surfaced via
+	// MissingClipIDs (godlike/07 NO-FAKE-AVAILABILITY).
 	//
-	// P0 #3 (June 2026): computed from item.Output.GenerateDocument ||
-	// item.Output.GenerateSceneImages in buildResolutionContext.
+	// PR-COMMIT3 (July 2026): HARDCODED to true in
+	// buildResolutionContext (internal/application/scripts/usecase/plan_resolution.go).
+	// The prior derivation from the 2 deprecation-registered output
+	// flags (GenerateDocument || GenerateSceneImages) is REMOVED
+	// because both flags are physically removed from OutputSpec in
+	// this commit. The hardcoded true is the canonical
+	// godlike/07 fail-closed default. A future source-resolution
+	// migration may introduce a non-deprecated
+	// OutputSpec.SourceRequireDriveLink field to restore caller
+	// override capability (OUT OF SCOPE for this commit per
+	// AGENTS.md "do not add features to production code unless the
+	// user explicitly requested them").
 	RequireDriveLink bool `json:"-"`
 }
 

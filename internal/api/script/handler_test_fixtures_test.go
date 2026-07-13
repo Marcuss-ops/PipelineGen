@@ -243,20 +243,11 @@ func newMinimalScriptFlowDepsForTest(jobs job.Service) (ScriptFlowDeps, *fakeSub
 		Generate: GenerateDeps{
 			Submission: submitter,
 			Log:        zap.NewNop(),
-			// SCRIPTCONTRACT-2026-07-08 PR-2: zero-value caps would
-			// make the preflight gate 503 on any user envelope that
-			// requests voiceover/document/images. The canonical test
-			// fixture wires all 3 caps = true so the preflight gate
-			// passes for the canonical minimal-envelope test path
-			// (e.g. handler_idempotency_test.go uses no output
-			// flags, so the gate is a no-op; but other tests in the
-			// package may exercise the same fixture with explicit
-			// output flags).
-			Caps: PreflightCaps{
-				VoiceoverEnabled: true,
-				ImagesEnabled:    true,
-				DocumentEnabled:  true,
-			},
+			// PR-COMMIT3 (July 2026): the legacy `Caps PreflightCaps`
+			// field is physically removed alongside the preflight
+			// module. Tests now exercise the canonical envelope path
+			// directly (the bindGenerateEnvelope DisallowUnknownFields
+			// check rejects deleted-flag callers with HTTP 400).
 			Validator: usecase.NewDefaultPayloadValidator(),
 		},
 	}

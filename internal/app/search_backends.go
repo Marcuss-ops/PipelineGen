@@ -262,33 +262,11 @@ func sourceOrAll(s string) string {
 	return s
 }
 
-// ── providersBridgeToSearch — composition-only bridge helper ────────────────────	// providersBridgeToSearch wraps a *providers.Registry into the canonical
-// *search.Aggregator. The implementation REUSES BuildSearchBackends
-// (declared above in this file) so future Freeze / register-shape
-// changes cannot drift between this bridge and the canonical helper.
-// ClipsRepo / MediasearchSvc / WorkspaceID are intentionally left
-// nil/empty so only provider-side backends register; this matches
-// the provider-only fan-out scope (local + semantic live in dedicated
-// adapters registered by the canonical WireRegistry path).
-func providersBridgeToSearch(reg *providers.Registry, log *zap.Logger) (*search.Aggregator, error) {
-	if reg == nil {
-		return nil, fmt.Errorf("providersBridgeToSearch: registry is nil (composition root must call WireRegistry -> Freeze() before this helper)")
-	}
-	if log == nil {
-		log = zap.NewNop()
-	}
-	backendReg, err := BuildSearchBackends(SearchBackendBuildOpts{
-		Logger:      log,
-		ProviderReg: reg,
-		// ClipsRepo: nil, MediasearchSvc: nil, WorkspaceID: "" —
-		// BuildSearchBackends skips those branches when nil/empty,
-		// so the bridge only registers provider-side backends.
-	})
-	if err != nil {
-		log.Error("providersBridgeToSearch: BuildSearchBackends failed (fail-closed)", zap.Error(err))
-		return nil, fmt.Errorf("providersBridgeToSearch: %w", err)
-	}
-	log.Info("providersBridgeToSearch completed (provider-bridge only; local+semantic live on canonical WireRegistry)",
-		zap.Int("provider_backends", len(backendReg.All())))
-	return search.NewAggregator(backendReg, &zapSearchLogAdapter{log: log}), nil
-}
+// (PR-PROVIDERS-SEARCHAGGREGATOR-REMOVE, July 2026) — the legacy
+// provider→aggregator composition-only bridge is RETIRED. The
+// 6 canonical backends (semantic + local + youtube-live,
+// artlist-live, stock, images) are now registered via
+// BuildSearchBackends above; every search consumer routes
+// through *search.Aggregator. The archcheck forward-prevention
+// gate `percheck_providers_searchaggregator_ban` pins the
+// godlike/06 SSOT — see git log for the migration history.

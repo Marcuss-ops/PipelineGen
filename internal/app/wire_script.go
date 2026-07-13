@@ -109,11 +109,15 @@ import (
 func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) error {
 	// Phase 2 activation (June 2026) — root.AI / root.Domains required.
 	// PR-SCRIPTCONTRACT-COMPOSITION-WIRE (July 2026): root.Drive added to
-	// the canonical guard. The PreflightCaps construction below reads
-	// `root.Drive.DocClient`; without this guard, a nil Drive bundle
-	// would panic with nil-pointer deref instead of failing-closed
-	// (godlike/07 fail-fast-at-input). Consistent with the existing
-	// pattern (root.AI / root.AI.ScriptGen / root.Domains).
+	// the canonical guard. PR-COMMIT3 (July 2026): the PreflightCaps
+	// construction is REMOVED alongside the preflight module
+	// (postprocessor_preflight.go) — the 3 gated fields
+	// (GenerateVoiceover / GenerateSceneImages / GenerateDocument)
+	// are physically removed from OutputSpec. Without this guard,
+	// a nil Drive bundle would panic with nil-pointer deref instead
+	// of failing-closed (godlike/07 fail-fast-at-input). Consistent
+	// with the existing pattern (root.AI / root.AI.ScriptGen /
+	// root.Domains).
 	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil || root.Drive == nil {
 		return nil
 	}
@@ -190,39 +194,18 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// ── Step 5: Handler construction (slim form, PR-script-deps-slim) ──
 	//
-	// PR-SCRIPTCONTRACT-COMPOSITION-WIRE (July 2026): build PreflightCaps
-	// at startup from the canonical composition-time dep checks. The
-	// preflight gate already exists in
-	// internal/api/script/postprocessor_preflight.go::requireRequestedProcessors
-	// (canonical Surface 1 per the action plan §3.PR-2); without this
-	// wiring, postprocessor_preflight sees a zero-value PreflightCaps
-	// and fails-closed with ErrPreflightProcessorMissing on EVERY
-	// `POST /api/script/generate` request that asks for voiceover /
-	// scene-images / documents — even on healthy deployments where
-	// the composition-time deps ARE wired. This is the canonical
-	// surface that DROPS the zero-value default in favour of the
-	// real composition-time signal.
-	//
-	// godlike/06 SSOT: buildPreflightCaps is the SOLE canonical
-	// construction site for PreflightCaps (one canonical owner per
-	// fact). Its 3 boolean fields are 1:1 with the composition-time
-	// dep presence on root.Domains + root.Drive. Any future
-	// processor category MUST be added in 3 surfaces lockstep:
-	// PreflightCaps struct (postprocessor_preflight.go), the
-	// requireRequestedProcessorsOne branch (postprocessor_preflight.go),
-	// and the buildPreflightCaps helper here.
-	//
-	// godlike/07 minimum-blast-radius: zero new dependencies, zero
-	// signature changes, zero composition-root wiring shifts beyond
-	// this inline call. The helper is nil-safe (a misconfigured
-	// deployment without a service gets `Enabled=false`, the
-	// preflight surfaces ErrPreflightProcessorMissing for any
-	// user-requested processor that needs it).
-	preflightCaps := buildPreflightCaps(root)
-	log.Info("wireScriptFlow: PreflightCaps composed at startup (postprocessor preflight wired)",
-		zap.Bool("voiceover_enabled", preflightCaps.VoiceoverEnabled),
-		zap.Bool("images_enabled", preflightCaps.ImagesEnabled),
-		zap.Bool("document_enabled", preflightCaps.DocumentEnabled))
+	// PR-COMMIT3 (July 2026): the preflight module
+	// (postprocessor_preflight.go) + buildPreflightCaps helper +
+	// PreflightCaps struct are physically REMOVED. The 3 gated
+	// output flags (GenerateVoiceover / GenerateSceneImages /
+	// GenerateDocument) are physically removed from OutputSpec.
+	// Callers that send the deleted 3 flags receive HTTP 400
+	// UNKNOWN_FIELD at the wire boundary (DisallowUnknownFields in
+	// bindGenerateEnvelope). The downstream jobs
+	// (TypeVoiceoverGenerate / TypeImagesGenerate /
+	// TypeDocumentGenerate in internal/domain/job/job.go) are the
+	// canonical owners of the voiceover / scene-images / document
+	// artifact surfaces.
 
 	submissionSvc, err := buildScriptSubmissionService(root, log)
 	if err != nil {
@@ -233,7 +216,6 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		Generate: scriptapi.GenerateDeps{
 			Submission: submissionSvc,
 			Log:        log,
-			Caps:       preflightCaps,
 			Validator:  usecase.NewPayloadValidator(cfg.Scripts),
 		},
 		// FASE 2 (July 2026): JobsDeps.Registry is RETIRED. The
@@ -273,32 +255,6 @@ func anyScriptFeatureEnabled(cfg *config.Config) bool {
 		return false
 	}
 	return cfg.Features.ScriptClipsEnabled || cfg.Features.ScriptDocsEnabled || cfg.Features.ImagesEnabled
-}
-
-// buildPreflightCaps is the canonical SOLE owner of the PreflightCaps
-// construction (godlike/06 one-canonical-owner-per-fact).
-//
-// PR-SCRIPTCONTRACT-COMPOSITION-WIRE (July 2026): the 3 booleans are
-// 1:1 with the composition-time dep presence on root.Domains +
-// root.Drive. nil-safe: a misconfigured deployment without a service
-// gets `Enabled=false`, the preflight surfaces
-// ErrPreflightProcessorMissing for any user-requested processor that
-// needs it (godlike/07 NO-FAKE-AVAILABILITY).
-//
-// godlike/07 minimum-blast-radius: pure function (no I/O, no side
-// effects, no log writes). Testable in isolation via the 3-permutation
-// hermetic test in wire_script_preflight_test.go.
-//
-// The helper is intentionally inline (not on a typed port) because
-// PreflightCaps is a value-typed flat-deps surface (no interface needed
-// at the wire boundary — the preflight gate is the only consumer and
-// it lives in the same package group as the helper).
-func buildPreflightCaps(root *ComposeRoot) scriptapi.PreflightCaps {
-	return scriptapi.PreflightCaps{
-		VoiceoverEnabled: root.Domains.VoiceoverService != nil,
-		ImagesEnabled:    root.Domains.ImageService != nil,
-		DocumentEnabled:  root.Drive.DocClient != nil,
-	}
 }
 
 // registerScripts orchestrates the /api/script/* routing surface.

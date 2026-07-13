@@ -51,11 +51,6 @@ func TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns503(t *testing.T) {
 	handler := NewHandlerGenerate(
 		&slowSubmissionService{blockDuration: 5 * time.Second},
 		zap.NewNop(),
-		PreflightCaps{
-			VoiceoverEnabled: true,
-			ImagesEnabled:    true,
-			DocumentEnabled:  true,
-		},
 		nil,
 	)
 	router := gin.New()

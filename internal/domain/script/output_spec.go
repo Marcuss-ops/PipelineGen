@@ -1,35 +1,52 @@
 // Package script — output_spec.go defines the canonical ScriptSpec
 // (HOW to generate) and OutputSpec (WHAT to produce) contracts.
 //
-// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE): the 5
-// postprocessor flags (ExtractEntities + GenerateMetadata +
-// GenerateVoiceover + GenerateSceneImages + GenerateDocument) are now
-// Toggle tri-state (ToggleDefault/ToggleEnabled/ToggleDisabled),
-// closing the audit item #6 "bool zero-value ambiguity" — caller
-// explicit false is now distinguishable from caller-did-not-set, and
-// ToggleDisabled survives the applySafetyDefaults+ApplyPreset chain
-// (no silent override per godlike/07 NO-FAKE-AVAILABILITY). The
-// SaveToDB field stays bool (out of PR-3 scope per action plan).
+// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE): the 2
+// surviving ACTIVE postprocessor flags (ExtractEntities +
+// GenerateMetadata) are Toggle tri-state (ToggleDefault/
+// ToggleEnabled/ToggleDisabled), closing the audit item #6
+// "bool zero-value ambiguity" — caller explicit false is
+// distinguishable from caller-did-not-set, and ToggleDisabled
+// survives the applySafetyDefaults+ApplyPreset chain (no silent
+// override per godlike/07 NO-FAKE-AVAILABILITY). SaveToDB
+// stays bool (out of PR-3 scope per action plan).
 //
-// PR-3 wire-shape: the Toggle.UnmarshalJSON / Toggle.MarshalJSON methods
-// (plus OutputSpec.UnmarshalJSON + OutputSpec.MarshalJSON) accept BOTH the new Toggle strings
-// ("enabled"/"disabled"/"default") AND the legacy boolean values
-// (true/false → ToggleEnabled/ToggleDisabled) so pre-PR-3 HTTP clients
-// continue to function during the migration window. OutputSpec
-// also implements UnmarshalJSON to default OMITTED Toggle fields to
-// ToggleDefault (Go's default leaves them at the zero value
-// Toggle(""), which is not equal to ToggleDisabled NOR ToggleDefault
-// — explicit defaulting is required for the godlike/07
-// NO-FAKE-AVAILABILITY contract). The canonical resolution chain
-// after unmarshal is:
+// PR-COMMIT3 (July 2026): the 3 deprecation-registered output
+// flags (GenerateVoiceover + GenerateSceneImages +
+// GenerateDocument) are PHYSICALLY REMOVED from OutputSpec per
+// the user directive "nessun campo documentato come deprecato
+// può essere ancora materialmente rispettato". The runtime
+// contract "setting them has no effect on the script.generate
+// pipeline" is enforced by their absence from the struct
+// itself; pre-PR-COMMIT3 HTTP clients sending the 3 keys now
+// fail closed at the API layer (DisallowUnknownFields) and
+// surface a 400 UNKNOWN_FIELD error.
+//
+// PR-3 wire-shape: the Toggle.UnmarshalJSON / Toggle.MarshalJSON
+// methods (plus OutputSpec.UnmarshalJSON + OutputSpec.MarshalJSON)
+// accept BOTH the new Toggle strings ("enabled"/"disabled"/
+// "default") AND the legacy boolean values (true/false →
+// ToggleEnabled/ToggleDisabled) so pre-PR-3 HTTP clients that
+// still send the 2 surviving ACTIVE flags in legacy bool form
+// continue to function. OutputSpec implements UnmarshalJSON to
+// default OMITTED Toggle fields to ToggleDefault (Go's default
+// leaves them at the zero value Toggle(""), which is not equal
+// to ToggleDisabled NOR ToggleDefault — explicit defaulting is
+// required for the godlike/07 NO-FAKE-AVAILABILITY contract).
+// The canonical resolution chain after unmarshal is:
 //
 //	if caller != ToggleDefault: return caller
 //	elif preset != ToggleDefault: return preset
 //	elif config != ToggleDefault: return config
 //	else: return safety
 //
-// PR-1 (June 2026): HasAnyPostprocessor already OR'd all 5 flags;
-// unchanged in PR-3 (still uses .AsBool() per side).
+// PR-1 (June 2026): HasAnyPostprocessor now ORs only the 2
+// surviving ACTIVE postprocessor flags (ExtractEntities +
+// GenerateMetadata). The 3 deprecation-registered flags are
+// physically removed from the struct (PR-COMMIT3, July 2026);
+// see architecture/deprecations.yaml records
+// OUTPUT_SPEC_VOICEOVER_FLAG + OUTPUT_SPEC_IMAGES_FLAG +
+// OUTPUT_SPEC_DOCUMENT_FLAG each flipped to status: removed.
 //
 // No durable field uses any, any, or map[string]any.
 package script
@@ -249,12 +266,25 @@ type ScriptSpec struct {
 
 // OutputSpec declares which post-generation artifacts to produce.
 //
-// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE): the 5
-// postprocessor flags are now Toggle tri-state. Caller-explicit
-// ToggleDisabled survives the applySafetyDefaults + ApplyPreset chain
-// (no silent override per godlike/07 NO-FAKE-AVAILABILITY). SaveToDB
-// stays bool (persistence flag is not a postprocessor toggle per
-// the action plan).
+// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE): the 2
+// surviving ACTIVE postprocessor flags (ExtractEntities +
+// GenerateMetadata) are Toggle tri-state. Caller-explicit
+// ToggleDisabled survives the applySafetyDefaults + ApplyPreset
+// chain (no silent override per godlike/07 NO-FAKE-AVAILABILITY).
+// SaveToDB stays bool (persistence flag is not a postprocessor
+// toggle per the action plan).
+//
+// PR-COMMIT3 (July 2026): the 3 deprecation-registered flags
+// (GenerateVoiceover + GenerateSceneImages + GenerateDocument) are
+// PHYSICALLY REMOVED from the struct. Pre-commit HTTP clients
+// sending those keys will surface a 400 UNKNOWN_FIELD error at
+// the API layer (DisallowUnknownFields, see
+// internal/api/script/handler_generate_request.go::bindGenerateEnvelope).
+// The corresponding plan.Postprocessors[] entries are routed
+// exclusively through the canonical downstream jobs
+// (TypeVoiceoverGenerate / TypeImagesGenerate /
+// TypeDocumentGenerate registered in internal/domain/job/job.go),
+// not the inline PostProcessorRegistry runtime.
 type OutputSpec struct {
 	// ── Postprocessors (Toggle tri-state) ──────────────────────────
 	//
@@ -269,36 +299,6 @@ type OutputSpec struct {
 	// (ProcessorMetadata). See ExtractEntities comment for
 	// Toggle semantics.
 	GenerateMetadata Toggle `json:"generate_metadata,omitempty"`
-
-	// GenerateVoiceover is DEPRECATED.
-	//
-	// Deprecated: voiceover generation is now produced by the separate
-	// voiceover.generate downstream job (internal/domain/job/job.go
-	// TypeVoiceoverGenerate). Set voiceover requirements via
-	// sceneplan.AssetRequirements instead. Retaining this field only
-	// for backward compatibility; setting it has no effect on the
-	// script.generate pipeline post-Fase 2.
-	GenerateVoiceover Toggle `json:"generate_voiceover,omitempty"`
-
-	// GenerateSceneImages is DEPRECATED.
-	//
-	// Deprecated: scene images are now produced by the separate
-	// images.generate downstream job (internal/domain/job/job.go
-	// TypeImagesGenerate). Set image requirements via
-	// sceneplan.AssetRequirements instead. Retaining this field only
-	// for backward compatibility; setting it has no effect on the
-	// script.generate pipeline post-Fase 2.
-	GenerateSceneImages Toggle `json:"generate_scene_images,omitempty"`
-
-	// GenerateDocument is DEPRECATED.
-	//
-	// Deprecated: Google Doc creation is now produced by the separate
-	// document.generate downstream job (internal/domain/job/job.go
-	// TypeDocumentGenerate). Set document requirements via
-	// sceneplan.AssetRequirements instead. Retaining this field only
-	// for backward compatibility; setting it has no effect on the
-	// script.generate pipeline post-Fase 2.
-	GenerateDocument Toggle `json:"generate_document,omitempty"`
 
 	// ── Persistence (bool — out of PR-3 scope per action plan) ──
 	SaveToDB         bool `json:"save_to_db,omitempty"`
@@ -352,20 +352,14 @@ type OutputSpec struct {
 // ToggleDefault both resolve to true; ToggleDisabled resolves to
 // false). SaveToDB is intentionally out of scope.
 //
-// DRIFT-FIX (July 2026, user directive "nessun campo documentato
-// come deprecato può essere ancora materialmente rispettato"): the 3
+// PR-COMMIT3 (July 2026, user directive "nessun campo documentato
+// come deprecato può essere ancora materialmente rispettato"): the
+// OR chain includes only the 2 surviving ACTIVE flags
+// (ExtractEntities + GenerateMetadata). The 3
 // deprecation-registered flags (GenerateVoiceover +
-// GenerateSceneImages + GenerateDocument) are NO LONGER included in
-// the OR chain. They remain on the struct + the wire for
-// backward-compat with pre-PR-3 HTTP clients, but the runtime
-// contract is "setting them has no effect on the script.generate
-// pipeline". The corresponding plan.Postprocessors[] entries are
-// routed exclusively through the canonical downstream jobs
-// (TypeVoiceoverGenerate / TypeImagesGenerate / TypeDocumentGenerate
-// registered in internal/domain/job/job.go), not the inline
-// PostProcessorRegistry runtime. See architecture/deprecations.yaml
-// records OUTPUT_SPEC_VOICEOVER_FLAG + OUTPUT_SPEC_IMAGES_FLAG +
-// OUTPUT_SPEC_DOCUMENT_FLAG.
+// GenerateSceneImages + GenerateDocument) are physically removed
+// from the struct. Pre-commit HTTP clients sending those keys
+// fail closed at the API layer with a 400 UNKNOWN_FIELD error.
 func (o *OutputSpec) HasAnyPostprocessor() bool {
 	return o.ExtractEntities.AsBool() ||
 		o.GenerateMetadata.AsBool()
@@ -420,15 +414,6 @@ func (o *OutputSpec) UnmarshalJSON(data []byte) error {
 		if _, ok := raw["generate_metadata"]; !ok {
 			o.GenerateMetadata = ToggleDefault
 		}
-		if _, ok := raw["generate_voiceover"]; !ok {
-			o.GenerateVoiceover = ToggleDefault
-		}
-		if _, ok := raw["generate_scene_images"]; !ok {
-			o.GenerateSceneImages = ToggleDefault
-		}
-		if _, ok := raw["generate_document"]; !ok {
-			o.GenerateDocument = ToggleDefault
-		}
 	}
 	return nil
 }
@@ -459,9 +444,6 @@ func (o OutputSpec) MarshalJSON() ([]byte, error) {
 
 	hideIfDefault(&tmp.ExtractEntities)
 	hideIfDefault(&tmp.GenerateMetadata)
-	hideIfDefault(&tmp.GenerateVoiceover)
-	hideIfDefault(&tmp.GenerateSceneImages)
-	hideIfDefault(&tmp.GenerateDocument)
 
 	return json.Marshal(tmp)
 }

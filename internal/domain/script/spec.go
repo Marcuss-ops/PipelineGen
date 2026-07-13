@@ -49,14 +49,12 @@ type GenerationSpec struct {
 	ImagesPerScene    int `json:"images_per_scene,omitempty"`
 
 	// ── Feature flags ────────────────────────────────────────────────
-	ExtractEntities     bool   `json:"extract_entities,omitempty"`
-	ArtlistSearch       bool   `json:"artlist_search,omitempty"`
-	StockSearch         bool   `json:"stock_search,omitempty"`
-	GenerateMetadata    bool   `json:"generate_metadata,omitempty"`
-	GenerateVoiceover   bool   `json:"generate_voiceover,omitempty"`
-	VoiceoverGroup      string `json:"voiceover_group,omitempty"`
-	VoiceoverFolderID   string `json:"voiceover_folder_id,omitempty"`
-	GenerateSceneImages bool   `json:"generate_scene_images,omitempty"`
+	ExtractEntities   bool   `json:"extract_entities,omitempty"`
+	ArtlistSearch     bool   `json:"artlist_search,omitempty"`
+	StockSearch       bool   `json:"stock_search,omitempty"`
+	GenerateMetadata  bool   `json:"generate_metadata,omitempty"`
+	VoiceoverGroup    string `json:"voiceover_group,omitempty"`
+	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
 
 	// ── Multilingual ─────────────────────────────────────────────────
 	Languages []string `json:"languages,omitempty"`

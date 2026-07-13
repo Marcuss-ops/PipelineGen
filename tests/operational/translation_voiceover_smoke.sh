@@ -113,7 +113,6 @@ ENVELOPE=$(jq -n \
       source: { type: "text", topic: $topic },
       output: {
         languages: [$lang],
-        generate_voiceover: $generate_voiceover,
         translate_to: $tx,
         save_to_db: true
       }
