@@ -4,12 +4,14 @@
 // godlike/06 SSOT — one canonical owner per fact.
 //
 // Rule (percheck_clip_ingest_pipeline_canonical_1): every
-//   1. type declaration `type ClipIngestPipeline struct`
-//   2. literal composite usage `ClipIngestPipeline{...}` / `&ClipIngestPipeline{...}`
 //
-//   in any .go file under the project MUST live in the canonical
-//   owner: internal/application/assets/ingest/clip_ingest_pipeline.go
-//   (or its _test sibling). Anything else is a SEVERITY-error violation.
+//  1. type declaration `type ClipIngestPipeline struct`
+//
+//  2. literal composite usage `ClipIngestPipeline{...}` / `&ClipIngestPipeline{...}`
+//
+//     in any .go file under the project MUST live in the canonical
+//     owner: internal/application/assets/ingest/clip_ingest_pipeline.go
+//     (or its _test sibling). Anything else is a SEVERITY-error violation.
 //
 // Exemptions (mirroring the precedent set by
 // percheck_image_asset_invariants.go):
@@ -197,21 +199,26 @@ func scanASTForClipIngestPipeline(f *ast.File, relSlash string, fset *token.File
 		return true
 	})
 
-	if len(out) > 0 {
-		return out
-	}
 	return out
 }
 
 // isClipIngestPipelineType reports whether the AST expr is
-// `ClipIngestPipeline` or `*ClipIngestPipeline` (the canonical
-// composite-literal pattern, including `&ClipIngestPipeline{...}`).
+// `ClipIngestPipeline`, `*ClipIngestPipeline` (the canonical
+// composite-literal pattern, including `&ClipIngestPipeline{...}`),
+// or a package-qualified reference where the *selected* identifier
+// is ClipIngestPipeline (e.g. `ingest.ClipIngestPipeline{...}` or
+// a shadow `shadow.ClipIngestPipeline{...}` outside the canonical
+// owner). godlike/06 SSOT: any struct-literal instantiation of
+// ClipIngestPipeline outside the canonical owner is a violation,
+// regardless of how the type is referenced.
 func isClipIngestPipelineType(expr ast.Expr) bool {
 	switch e := expr.(type) {
 	case *ast.Ident:
 		return e.Name == "ClipIngestPipeline"
 	case *ast.StarExpr:
 		return isClipIngestPipelineType(e.X)
+	case *ast.SelectorExpr:
+		return e.Sel != nil && e.Sel.Name == "ClipIngestPipeline"
 	}
 	return false
 }
