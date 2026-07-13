@@ -180,8 +180,8 @@ func TestGenerateE2E_GenerateSceneImages_BindsBindingImageStatus(t *testing.T) {
 			// entities / metadata both Required; opt-out keeps
 			// them off plan.Postprocessors so the ValidateRequested
 			// preflight does not demand their registration.
-			ExtractEntities:   scriptpkg.ToggleDisabled,
-			GenerateMetadata:  scriptpkg.ToggleDisabled,
+			ExtractEntities:  scriptpkg.ToggleDisabled,
+			GenerateMetadata: scriptpkg.ToggleDisabled,
 		},
 	}
 
@@ -270,7 +270,7 @@ func TestGenerateE2E_GenerateSceneImages_SingleScene_PinsStatus(t *testing.T) {
 		},
 		ScriptParams: scriptpkg.ScriptSpec{TargetWords: 8},
 		Output: scriptpkg.OutputSpec{
-			SaveToDB:            false,
+			SaveToDB: false,
 		},
 	}
 

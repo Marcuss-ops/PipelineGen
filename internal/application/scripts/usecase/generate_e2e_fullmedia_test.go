@@ -109,9 +109,9 @@ func TestGenerateE2E_FullMedia_BindsImagesAndVoiceoverWithoutLocalPaths(t *testi
 			TargetWords: 16,
 		},
 		Output: scriptpkg.OutputSpec{
-			ExtractEntities:     scriptpkg.ToggleDisabled,
-			GenerateMetadata:    scriptpkg.ToggleDisabled,
-			SaveToDB:            false,
+			ExtractEntities:  scriptpkg.ToggleDisabled,
+			GenerateMetadata: scriptpkg.ToggleDisabled,
+			SaveToDB:         false,
 		},
 	}
 

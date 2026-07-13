@@ -6,6 +6,7 @@
 // the CI test phase without ffmpeg, network, or sandbox flags.
 //
 // godlike/06 SSOT — pins:
+//
 //   - canonical filename shape ({asset_id}__master.mp4 / __preview.mp4
 //     / __manifest.json). The processor.processRenditions function
 //     is the SOLE canonical owner of the canonical `__<role>`
@@ -69,8 +70,8 @@ import (
 	"strings"
 	"testing"
 
-	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	deliverypkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
+	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/pathutil"
 )
 
@@ -79,9 +80,9 @@ import (
 // TestStep9_Layout_CanonicalFilenames pins the three canonical per-asset
 // filenames produced by processor.processRenditions:
 //
-//   {asset_id}__master.mp4    (H.264/AAC/yuv420p/30fps/1920x1080)
-//   {asset_id}__preview.mp4   (720p H.264/AAC proxy)
-//   {asset_id}__manifest.json (per-asset metadata ledger)
+//	{asset_id}__master.mp4    (H.264/AAC/yuv420p/30fps/1920x1080)
+//	{asset_id}__preview.mp4   (720p H.264/AAC proxy)
+//	{asset_id}__manifest.json (per-asset metadata ledger)
 //
 // The `__` separator and the role suffix are SSOT — the canonical
 // surfaces that downstream consumers (Qdrant payload mappers,
@@ -93,8 +94,8 @@ func TestStep9_Layout_CanonicalFilenames(t *testing.T) {
 	const assetID = "yt_abc_0_30_v1"
 	cases := []struct {
 		name     string
-		filename  string
-		wantRole  string
+		filename string
+		wantRole string
 	}{
 		{"master", assetID + "__master.mp4", "__master.mp4"},
 		{"preview", assetID + "__preview.mp4", "__preview.mp4"},
@@ -248,12 +249,12 @@ func TestStep9_PathBuilder_Sanitization(t *testing.T) {
 func TestStep9_Codec_CanonicalValues(t *testing.T) {
 	// Canonical master surface — synthesised.
 	masterRendition := struct {
-		Codec       string
-		AudioCodec  string // reuses the Container / PixelFormat convention from the processor
-		Width       int
-		Height      int
-		FPS         float64
-		Container   string
+		Codec      string
+		AudioCodec string // reuses the Container / PixelFormat convention from the processor
+		Width      int
+		Height     int
+		FPS        float64
+		Container  string
 	}{
 		// godlike/06 SSOT: the master is ALWAYS H.264/AAC/yuv420p/30fps/1920x1080
 		// across all languages (per Step 9 user spec). Values below MUST match

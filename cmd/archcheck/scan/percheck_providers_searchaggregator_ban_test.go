@@ -13,6 +13,9 @@
 //   (d) "test files are exempt" — a `_test.go` probe file
 //       referencing the literal does NOT trip (regression-guard
 //       allowlist per godlike/06).
+//   (e) "productionOnly silences WARN bucket" — when called with
+//       productionOnly=true the comment-only WARN is suppressed
+//       (PR-P12-PERCHECK-BASELINE-ZERO, deadline 2026-08-15).
 package scan
 
 import (
@@ -30,6 +33,9 @@ import (
 func TestScanProvidersSearchAggregatorBan_LegacyLiteralTrips(t *testing.T) {
 	tmp := t.TempDir()
 	probeFile := filepath.Join(tmp, "internal/app/legacy_aggregator_probe.go")
+	if err := os.MkdirAll(filepath.Dir(probeFile), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
 	probeBody := `package app
 
 import (
@@ -50,7 +56,7 @@ func (LegacyAggregatorProbe) Use(reg *providers.Registry) *providers.SearchAggre
 	}
 
 	r := &report.Report{}
-	ScanProvidersSearchAggregatorBan(tmp, &policy.Policy{}, r)
+	ScanProvidersSearchAggregatorBan(tmp, &policy.Policy{}, r, false)
 
 	if len(r.Violations) == 0 {
 		t.Fatalf("expected at least one violation for legacy literal; got 0")
@@ -75,6 +81,9 @@ func (LegacyAggregatorProbe) Use(reg *providers.Registry) *providers.SearchAggre
 func TestScanProvidersSearchAggregatorBan_CommentOnlyIsResidueAccounted(t *testing.T) {
 	tmp := t.TempDir()
 	probeFile := filepath.Join(tmp, "internal/app/legacy_comment_probe.go")
+	if err := os.MkdirAll(filepath.Dir(probeFile), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
 	probeBody := `package app
 
 // LegacyCommentProbe is a probe struct whose docstring mentions
@@ -87,7 +96,7 @@ type LegacyCommentProbe struct{}
 	}
 
 	r := &report.Report{}
-	ScanProvidersSearchAggregatorBan(tmp, &policy.Policy{}, r)
+	ScanProvidersSearchAggregatorBan(tmp, &policy.Policy{}, r, false)
 
 	for _, v := range r.Violations {
 		if v.File == "internal/app/legacy_comment_probe.go" {
@@ -126,7 +135,7 @@ const selfProbeLiteral = "providers.SearchAggregator"
 	}
 
 	r := &report.Report{}
-	ScanProvidersSearchAggregatorBan(tmp, &policy.Policy{}, r)
+	ScanProvidersSearchAggregatorBan(tmp, &policy.Policy{}, r, false)
 
 	for _, v := range r.Violations {
 		if v.File == "cmd/archcheck/scan/self_probe.go" {
@@ -141,6 +150,9 @@ const selfProbeLiteral = "providers.SearchAggregator"
 func TestScanProvidersSearchAggregatorBan_TestFilesAreExempt(t *testing.T) {
 	tmp := t.TempDir()
 	probeFile := filepath.Join(tmp, "internal/app/probe_test_target_test.go")
+	if err := os.MkdirAll(filepath.Dir(probeFile), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
 	probeBody := `package app
 
 import _ "context"
@@ -154,7 +166,7 @@ type _ struct{}
 	}
 
 	r := &report.Report{}
-	ScanProvidersSearchAggregatorBan(tmp, &policy.Policy{}, r)
+	ScanProvidersSearchAggregatorBan(tmp, &policy.Policy{}, r, false)
 
 	for _, v := range r.Violations {
 		if v.File == "internal/app/probe_test_target_test.go" {
@@ -166,5 +178,59 @@ type _ struct{}
 			" banned-literal: comment-only reference(s) to providers.SearchAggregator in internal/app/probe_test_target_test.go (descriptive prose; non-fatal per godlike/07 no-fake-availability; replace or remove before next sweep)" {
 			t.Errorf("_test.go files should be exempt from WARN too; got=%q", w)
 		}
+	}
+}
+
+// TestScanProvidersSearchAggregatorBan_ProductionOnlySilencesWARN
+// verifies the PR-P12-PERCHECK-BASELINE-ZERO convention: when
+// `productionOnly=true`, the comment-only WARN bucket is
+// silenced (so the operator-facing "zero production-code hits"
+// claim is auditable via len(r.Violations) == 0). The violation
+// surface is unchanged.
+func TestScanProvidersSearchAggregatorBan_ProductionOnlySilencesWARN(t *testing.T) {
+	tmp := t.TempDir()
+	probeFile := filepath.Join(tmp, "internal/app/production_only_probe.go")
+	if err := os.MkdirAll(filepath.Dir(probeFile), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	probeBody := `package app
+
+// ProductionOnlyProbe carries a comment-only reference to the
+// banned literal. In productionOnly=true mode the WARN bucket
+// MUST be silenced; in productionOnly=false mode the WARN MUST
+// surface.
+type ProductionOnlyProbe struct{}
+`
+	if err := os.WriteFile(probeFile, []byte(probeBody), 0o644); err != nil {
+		t.Fatalf("write probe file: %v", err)
+	}
+
+	// productionOnly=true path: expect zero WARNs even though
+	// the comment-only reference exists.
+	rProd := &report.Report{}
+	ScanProvidersSearchAggregatorBan(tmp, &policy.Policy{}, rProd, true)
+	if len(rProd.Warnings) != 0 {
+		t.Errorf("productionOnly=true should silence WARN bucket; got=%+v", rProd.Warnings)
+	}
+	for _, v := range rProd.Violations {
+		if v.File == "internal/app/production_only_probe.go" {
+			t.Errorf("comment-only line should never emit a violation; got=%+v", v)
+		}
+	}
+
+	// productionOnly=false path: expect the WARN to surface
+	// (control: confirms the test fixture is well-formed).
+	rDev := &report.Report{}
+	ScanProvidersSearchAggregatorBan(tmp, &policy.Policy{}, rDev, false)
+	foundWarn := false
+	for _, w := range rDev.Warnings {
+		if w == providersSearchAggregatorRule+
+			" banned-literal: comment-only reference(s) to providers.SearchAggregator in internal/app/production_only_probe.go (descriptive prose; non-fatal per godlike/07 no-fake-availability; replace or remove before next sweep)" {
+			foundWarn = true
+			break
+		}
+	}
+	if !foundWarn {
+		t.Errorf("productionOnly=false control: expected residue-accounting WARN; got warnings=%+v", rDev.Warnings)
 	}
 }

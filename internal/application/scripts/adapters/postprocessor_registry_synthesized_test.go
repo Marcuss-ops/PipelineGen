@@ -375,11 +375,20 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 			SourceText: "Prose-only payload simulating a gemma model output.",
 		},
 		Output: scriptpkg.OutputSpec{
-			// Only enable voiceover + images — the two artifact
-			// producers that MUST see clip_bindings' synthesised
-			// scenes. Leaving other flags false keeps the plan
-			// small (4 postprocessors) and avoids missing-
-			// registered Required-class failures.
+			// PR-COMMIT3 (July 2026): the 3 deprecation-registered
+			// output flags (GenerateVoiceover + GenerateSceneImages
+			// + GenerateDocument) are physically removed from
+			// OutputSpec. Voiceover / images / document output is
+			// produced exclusively by the canonical downstream
+			// jobs (TypeVoiceoverGenerate / TypeImagesGenerate /
+			// TypeDocumentGenerate), not the inline
+			// PostProcessorRegistry. The postprocessor list now
+			// contains only the 2 surviving ACTIVE postprocessors
+			// (entities + metadata) + the unconditional
+			// scene-normalisation stages (clip_bindings +
+			// stock_association) + persistence.
+			ExtractEntities:  scriptpkg.ToggleEnabled,
+			GenerateMetadata: scriptpkg.ToggleEnabled,
 		},
 	}
 	plan := scripts.BuildPlan(item)
@@ -388,39 +397,37 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 	// Expected: entities, metadata, clip_bindings, stock_association,
 	//           voiceover, images, document, persistence
 	if len(plan.Postprocessors) < 4 {
-		t.Fatalf("expected at least 2 postprocessors, got %d: %v",
+		t.Fatalf("expected at least 4 postprocessors (entities + metadata + clip_bindings + stock_association + persistence), got %d: %v",
 			len(plan.Postprocessors), plan.Postprocessors)
 	}
-	// clip_bindings must appear before voiceover and images.
+	// PR-COMMIT3 (July 2026): voiceover + images + document are
+	// no longer appended by buildPostprocessorList. The 3
+	// deprecation-registered output flags are physically removed
+	// from OutputSpec; the corresponding artifact output is
+	// produced by the canonical downstream jobs
+	// (TypeVoiceoverGenerate / TypeImagesGenerate /
+	// TypeDocumentGenerate). The postprocessor list now contains
+	// only the 2 surviving ACTIVE postprocessors (entities +
+	// metadata) + the unconditional scene-normalisation stages
+	// (clip_bindings + stock_association) + persistence. The
+	// clip_bindings ordering invariant is still valid: it must
+	// run before any downstream consumer of synthesised scenes.
 	cbIdx := -1
-	voIdx := -1
-	imgIdx := -1
 	for i, name := range plan.Postprocessors {
-		switch name {
-		case "clip_bindings":
+		if name == "clip_bindings" {
 			cbIdx = i
-		case "voiceover":
-			voIdx = i
-		case "images":
-			imgIdx = i
+			break
 		}
 	}
 	if cbIdx < 0 {
 		t.Fatal("clip_bindings missing from buildPostprocessorList output")
 	}
-	if voIdx < 0 {
-		t.Fatal("voiceover missing from buildPostprocessorList output")
-	}
-	if imgIdx < 0 {
-		t.Fatal("images missing from buildPostprocessorList output")
-	}
-	if cbIdx >= voIdx {
-		t.Errorf("P0 reorder: clip_bindings (idx %d) must come BEFORE voiceover (idx %d) in buildPostprocessorList output: %v",
-			cbIdx, voIdx, plan.Postprocessors)
-	}
-	if cbIdx >= imgIdx {
-		t.Errorf("P0 reorder: clip_bindings (idx %d) must come BEFORE images (idx %d) in buildPostprocessorList output: %v",
-			cbIdx, imgIdx, plan.Postprocessors)
+	// clip_bindings must appear before persistence (the last
+	// scene-normalisation stage) so synthesised scenes are
+	// visible to the final write.
+	if cbIdx >= len(plan.Postprocessors)-1 {
+		t.Errorf("P0 reorder: clip_bindings (idx %d) must come BEFORE persistence (last) in buildPostprocessorList output: %v",
+			cbIdx, plan.Postprocessors)
 	}
 
 	// Run the registry with the real plan. Input has empty scenes
@@ -438,21 +445,18 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 		t.Fatalf("Run returned error: %v", err)
 	}
 
-	// The runtime assertion: voiceover and images must have seen
-	// the synthesised scenes (2 scenes from clip_bindings).
-	if len(vo.lastInputScenes) != 2 {
-		t.Fatalf("P0 reorder: voiceover saw %d scenes, want 2 (clip_bindings synth not propagated to voiceover before it ran)",
-			len(vo.lastInputScenes))
+	// The runtime assertion: clip_bindings synthesised scenes
+	// must be visible to the persistence postprocessor (the last
+	// scene-normalisation stage). PR-COMMIT3 (July 2026):
+	// voiceover + images are no longer inline postprocessors;
+	// they consume the FinalSpecScene from the canonical
+	// downstream jobs, not the inline registry.
+	if len(downstream.lastInputScenes) != 2 {
+		t.Fatalf("P0 reorder: persistence saw %d scenes, want 2 (clip_bindings synth not propagated before persistence ran)",
+			len(downstream.lastInputScenes))
 	}
-	if len(img.lastInputScenes) != 2 {
-		t.Fatalf("P0 reorder: images saw %d scenes, want 2 (clip_bindings synth not propagated to images before it ran)",
-			len(img.lastInputScenes))
-	}
-	if vo.lastInputScenes[0].ID != "syn-0" {
-		t.Errorf("voiceover saw scene[0].ID = %q, want syn-0", vo.lastInputScenes[0].ID)
-	}
-	if img.lastInputScenes[1].Kind != scriptpkg.SceneClip {
-		t.Errorf("images saw scene[1].Kind = %q, want SceneClip", img.lastInputScenes[1].Kind)
+	if downstream.lastInputScenes[0].ID != "syn-0" {
+		t.Errorf("persistence saw scene[0].ID = %q, want syn-0", downstream.lastInputScenes[0].ID)
 	}
 
 	// FinalSpecScene must carry the synthesised bundle.

@@ -107,13 +107,24 @@ func providersSearchAggregatorWarn(r *report.Report, label, msg string) {
 // than a violation so descriptive prose in surviving doc-strings
 // does NOT trip CI on resubmission.
 //
+// productionOnly mode (PR-P12-PERCHECK-BASELINE-ZERO, July 2026,
+// deadline 2026-08-15): when true, comment-only WARNs are
+// SILENCED (comments are documentation, not "hits") so the
+// operator-facing "zero production-code hits" claim is auditable
+// via `len(r.Violations) == 0`. Comment-only references still
+// ADD to `commentOnly` for diagnostic accounting but are not
+// appended to `r.Warnings` when productionOnly is true. Mirrors
+// the convention used by `scanVoiceoverAliasBanOne` and the
+// Wave 5 forward-prevention gate cluster (`percheck_root_override_ban`,
+// `percheck_voiceover_alias_ban`, etc.).
+//
 // The scan walks the entire project (no fixed scan root) because
 // the banned literal could legitimately live anywhere — a stray
 // reference in `internal/app/`, `internal/api/`, `cmd/admin/`, or
 // `tests/` is equally invalid. The standard skip-dir + `_test.go`
 // allowlist is honoured so the scan surface matches the rest of
 // the archcheck forward-prevention gates.
-func ScanProvidersSearchAggregatorBan(root string, pol *policy.Policy, r *report.Report) {
+func ScanProvidersSearchAggregatorBan(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
 	_ = pol
 	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
@@ -134,7 +145,7 @@ func ScanProvidersSearchAggregatorBan(root string, pol *policy.Policy, r *report
 		if strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		inspectProvidersSearchAggregatorFile(root, path, r)
+		inspectProvidersSearchAggregatorFile(root, path, r, productionOnly)
 		return nil
 	})
 	if err != nil {
@@ -153,8 +164,10 @@ func ScanProvidersSearchAggregatorBan(root string, pol *policy.Policy, r *report
 // inspectProvidersSearchAggregatorFile opens a single Go file
 // and scans each line for the banned literal. Comment-only lines
 // emit a single WARN per file (residue accounting) rather than
-// a violation.
-func inspectProvidersSearchAggregatorFile(root, absPath string, r *report.Report) {
+// a violation. When `productionOnly` is true, the WARN bucket
+// is suppressed so the audit-friendly "zero production-code
+// hits" claim (PR-P12-PERCHECK-BASELINE-ZERO) is honoured.
+func inspectProvidersSearchAggregatorFile(root, absPath string, r *report.Report, productionOnly bool) {
 	relPath, err := filepath.Rel(root, absPath)
 	if err != nil {
 		relPath = absPath
@@ -205,18 +218,18 @@ func inspectProvidersSearchAggregatorFile(root, absPath string, r *report.Report
 			continue
 		}
 		r.Violations = append(r.Violations, report.Violation{
-			Package:  "<root>",
-			File:     relPath,
-			Line:     lineNo,
-			Rule:     providersSearchAggregatorRule,
-			Severity: string(report.SeverityError),
+			Package:     "<root>",
+			File:        relPath,
+			Line:        lineNo,
+			Rule:        providersSearchAggregatorRule,
+			Severity:    string(report.SeverityError),
 			MatchedRule: "forbidden_legacy_search_aggregator_reference",
 			Note: providersSearchAggregatorNote +
 				" | file: " + relPath +
 				" | line: " + trimmed,
 		})
 	}
-	if commentOnly > 0 {
+	if commentOnly > 0 && !productionOnly {
 		providersSearchAggregatorWarn(r, "banned-literal:",
 			"comment-only reference(s) to providers.SearchAggregator in "+relPath+
 				" (descriptive prose; non-fatal per godlike/07 no-fake-availability; replace or remove before next sweep)")
