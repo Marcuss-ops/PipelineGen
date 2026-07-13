@@ -7,16 +7,17 @@
 // renders (title, full text, scenes with clip/image/voiceover
 // bindings, entities, metadata) directly from the typed inputs.
 //
-// FASE-document-canonical (July 2026): BuildGenerationDocumentHTML
-// remains the SOLE canonical production renderer (per AGENTS.md
-// Pattern 0 / godlike/06 one-canonical-owner-per-fact). When the
-// 6th parameter `includeSpecSceneBlock` is true, it ALSO appends an
-// optional `<h2>SpecScene JSON</h2><pre>{json}</pre>` debug block
-// that surfaces the canonical SpecSceneOutput shape verbatim
+// FASE-document-canonical (July 2026): the document surface keeps the
+// full typed renderer for tooling/tests. The production document
+// processor uses the dedicated SpecScene-only renderer in
+// generation_specscene_html.go. When the 6th parameter
+// `includeSpecSceneBlock` is true, the full renderer ALSO appends an
+// optional `<h2>SpecScene JSON</h2><pre>{json}</pre>` debug block that
+// surfaces the canonical SpecSceneOutput shape verbatim
 // (json.MarshalIndent + html.EscapeString), useful for troubleshooting
-// or downstream tooling that wants a textual dump of the macro-
-// structure next to the rendered prose. The default (false) keeps
-// production docs pristine.
+// or downstream tooling that wants a textual dump of the macro-structure
+// next to the rendered prose. The default (false) keeps production docs
+// pristine.
 //
 // PR-HTML-SPLIT (July 2026): this file was decomposed from a larger
 // generation_html.go; the deprecated helpers (BuildClipSpecSceneDocumentHTML,
@@ -28,17 +29,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"regexp"
 	"strings"
 
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// BuildGenerationDocumentHTML renders the Google Doc HTML body for a
-// canonical typed model + aggregate entities + metadata. This is the
-// SOLE canonical production renderer (per AGENTS.md Pattern 0 +
-// godlike/06 SSOT one-canonical-owner-per-fact); DocumentProcessor
-// and any new caller MUST use this function rather than build their
-// own ad-hoc HTML body.
+var urlPattern = regexp.MustCompile(`https?://\S+`)
+
+// BuildGenerationDocumentHTML renders the full Google Doc HTML body
+// for a canonical typed model + aggregate entities + metadata. It
+// includes the per-scene section, optional provenance, and optional
+// SpecScene JSON debug block. Tooling and tests that need the richer
+// document surface should use this function.
 //
 // Sections:
 //
@@ -74,6 +77,20 @@ func BuildGenerationDocumentHTML(
 	includeSpecSceneBlock bool,
 	provenance ...*scriptpkg.GenerationProvenance,
 ) string {
+	return renderGenerationDocumentHTML(model, title, language, entities, metadata, includeSpecSceneBlock, true, true, provenance...)
+}
+
+func renderGenerationDocumentHTML(
+	model *scriptpkg.ModelScriptOutputV1,
+	title string,
+	language string,
+	entities *scriptpkg.EntityResult,
+	metadata []scriptpkg.VideoMetadata,
+	includeSpecSceneBlock bool,
+	includeScenes bool,
+	includeProvenance bool,
+	provenance ...*scriptpkg.GenerationProvenance,
+) string {
 	if model == nil {
 		return ""
 	}
@@ -91,6 +108,9 @@ func BuildGenerationDocumentHTML(
 	// ── Full text prose ───────────────────────────────────────────────
 	if t := strings.TrimSpace(model.Text); t != "" {
 		b.WriteString("<h2>Script</h2>")
+		if !includeScenes {
+			t = stripURLs(t)
+		}
 		for _, para := range strings.Split(t, "\n\n") {
 			para = strings.TrimSpace(para)
 			if para == "" {
@@ -103,7 +123,7 @@ func BuildGenerationDocumentHTML(
 	}
 
 	// ── Scenes ────────────────────────────────────────────────────────
-	if len(model.SpecScene.Scenes) > 0 {
+	if includeScenes && len(model.SpecScene.Scenes) > 0 {
 		b.WriteString("<h2>Scenes</h2>")
 		for i := range model.SpecScene.Scenes {
 			sc := &model.SpecScene.Scenes[i]
@@ -257,7 +277,7 @@ func BuildGenerationDocumentHTML(
 	// ── Provenance block ──────────────────────────────────────────────
 	// Embed the generation provenance as a machine-readable JSON block
 	// inside a hidden HTML comment and as a visible last-section for operators.
-	if len(provenance) > 0 && provenance[0] != nil {
+	if includeProvenance && len(provenance) > 0 && provenance[0] != nil {
 		raw, err := json.MarshalIndent(provenance[0], "", "  ")
 		if err == nil {
 			b.WriteString("<!-- PIPELINEGEN-PROVENANCE: ")
@@ -282,6 +302,10 @@ func BuildGenerationDocumentHTML(
 
 	b.WriteString("</body></html>")
 	return b.String()
+}
+
+func stripURLs(text string) string {
+	return urlPattern.ReplaceAllString(text, "")
 }
 
 // chapterLabel maps a BCP-47-ish language tag to the localised
