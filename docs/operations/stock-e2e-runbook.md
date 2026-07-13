@@ -460,6 +460,8 @@ echo "VELOX_PORT=${VELOX_PORT} SCROLL_TIMEOUT=${SCROLL_TIMEOUT} SKIP_HERMETICS=$
 # The five canonical env vars (read-only scan; no rewrite).
 grep -nE '^[[:space:]]*(VELOX_PORT|VELOX_DRIVE_ARTLIST_ROOT|SCROLL_TIMEOUT|SKIP_HERMETICS|VELOX_ADMIN_TOKEN|SCRAPER_CONNECT_TIMEOUT_SECONDS)' \
   .env.example tests/operational/artlist_live_e2e_verify.sh scripts/artlist_pipeline_live_test.sh \
+  scripts/tests/scraper_artlist_startup_e2e.sh tests/operational/artlist_scraper_failure_smoke.sh \
+  tests/operational/artlist_preflight_smoke.sh tests/operational/artlist_scraper_timeouts_smoke.sh \
   internal/platform/config/*.go 2>/dev/null | head -50
 # Any drift between the canonical references (above) and this §11.0 table MUST update BOTH atomically per godlike/06 lockstep.
 ```
