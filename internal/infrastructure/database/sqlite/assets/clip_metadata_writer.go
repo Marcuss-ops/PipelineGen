@@ -7,14 +7,14 @@
 // type, its constructor, the two public entry points, and the
 // compile-time port satisfaction pin (Pattern 0). Helper functions
 // (buildMetadataPayload, updateMediaAssetsMetadataTx, upsertTextTracksInTx,
-// buildMetadataEventKey, ComputeContentHashWithTextTracks) live in the
+// BuildMetadataEventKey, ComputeContentHashWithTextTracks) live in the
 // adjacent file-level siblings:
 //
 //   - clip_metadata_writer_payload.go — payload + tx-bound persistence
 //     helpers (buildMetadataPayload, updateMediaAssetsMetadataTx,
 //     upsertTextTracksInTx).
 //   - clip_metadata_writer_hashes.go — deterministic content/event-key
-//     hashing (ComputeContentHashWithTextTracks, buildMetadataEventKey).
+//     hashing (ComputeContentHashWithTextTracks, BuildMetadataEventKey).
 //
 // The two entry points (UpdateClipMetadataAndRequestIndex and
 // UpdateClipMetadataTextsAndRequestIndex) are the SINGLE canonical
@@ -153,7 +153,7 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataAndRequestIndex(
 	// with the same content collapses via ON CONFLICT DO NOTHING
 	// (idempotent) and a write with different content produces a
 	// fresh outbox row (re-index).
-	eventKey := buildMetadataEventKey(clipID, m.SourceVersion)
+	eventKey := BuildMetadataEventKey(clipID, m.SourceVersion)
 	payload, err := buildMetadataPayload(clipID, m, nowStr)
 	if err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataAndRequestIndex: build payload: %w", err)
@@ -269,7 +269,7 @@ func (w *ClipMetadataWriterAdapter) UpdateClipMetadataTextsAndRequestIndex(
 	}
 
 	// 5) Build outbox event
-	eventKey := buildMetadataEventKey(clipID, m.SourceVersion)
+	eventKey := BuildMetadataEventKey(clipID, m.SourceVersion)
 	payload, err := buildMetadataPayload(clipID, m, nowStr)
 	if err != nil {
 		return fmt.Errorf("ClipMetadataWriterAdapter.UpdateClipMetadataTextsAndRequestIndex: build payload: %w", err)

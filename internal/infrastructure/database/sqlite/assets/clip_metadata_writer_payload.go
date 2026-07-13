@@ -13,7 +13,7 @@
 //     the two public entry points + the Pattern 0 compile-time
 //     pin (var _ youtubeports.ClipMetadataWriter = ...).
 //   - clip_metadata_writer_hashes.go — owns
-//     ComputeContentHashWithTextTracks + buildMetadataEventKey.
+//     ComputeContentHashWithTextTracks + BuildMetadataEventKey.
 //
 // NOTE on user-requested "localizeTextTracks helper": that function
 // does NOT exist in the current source (verified by rg search on
@@ -151,7 +151,7 @@ func buildMetadataPayload(
 		"transcript_path":  m.TranscriptPath,
 		"source_url":       m.SourceURL,
 		"requested_at":     nowStr,
-		"idempotency_key":  buildMetadataEventKey(clipID, m.SourceVersion),
+		"idempotency_key":  BuildMetadataEventKey(clipID, m.SourceVersion),
 	}
 	if m.Hook != "" {
 		payload["hook"] = m.Hook
