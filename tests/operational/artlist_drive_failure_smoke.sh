@@ -43,7 +43,7 @@ TOKEN_FILE="${PROJECT_DIR}/token.json"
 TOKEN_BACKUP="${PROJECT_DIR}/token.json.bak"
 SERVER_LOG="/tmp/pipelinegen_drive_test.log"
 BOOT_TIMEOUT=60
-ADMIN_TOKEN="${VELOX_ADMIN_TOKEN:-d6e31eb8d805b0cc91ef439aae42658b2838531b1de35b804f6932ca439c077d}"
+ADMIN_TOKEN="${VELOX_ADMIN_TOKEN:-***REDACTED***}"
 
 PASS=0; FAIL=0
 log_info()  { echo "[INFO]  $(date '+%H:%M:%S') $*"; }

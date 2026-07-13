@@ -28,7 +28,7 @@ set -euo pipefail
 HOST="${VELOX_HOST:-127.0.0.1}"
 PORT="${VELOX_PORT:-8000}"
 BASE_URL="http://${HOST}:${PORT}"
-TOKEN="${VELOX_ADMIN_TOKEN:-d6e31eb8d805b0cc91ef439aae42658b2838531b1de35b804f6932ca439c077d}"
+TOKEN="${VELOX_ADMIN_TOKEN:-***REDACTED***}"
 SCRAPER_URL="http://127.0.0.1:9123"
 TEST_TERM="${ARTLIST_SCR_FAIL_TERM:-shadow}"
 # Per fix(scraper) PR + docs/operations/stock-e2e-runbook.md §11.0:
