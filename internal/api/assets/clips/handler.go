@@ -117,6 +117,10 @@ type Handler struct {
 	ingest *IngestHandler
 	// ops (Step 5 Split 2): Ops sub-handler — 14 ops routes (5 read + 9 write+idem).
 	ops *OpsHandler
+	// bulk (DRIFT-CLIPS-BULK-SPLIT-5, July 2026): BulkUploadTransport —
+	// 1 HTTP route POST /:source/clips/bulk-upload-youtube-clips. Reconnected
+	// after PR-CLIPS-NONOPS-EXTRACT orphaned the receiver (July 2026).
+	bulkTransport *BulkUploadTransport
 	// nonops (PR-CLIPS-NONOPS-EXTRACT, July 2026): 9 NonOps methods
 	// (6 HTTP routes + 3 non-HTTP delegators on the orchestrator)
 	// extracted from handler.go + handler_delegators.go +
@@ -195,6 +199,18 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			DriveAdmin:     d.DriveAdmin,
 			AssetTreeSvc:   d.AssetTreeSvc,
 			Log:            d.Log,
+		}),
+		// BulkUploadTransport (DRIFT-CLIPS-BULK-SPLIT-5 + reconnector
+		// patch, July 2026): the SINGLE HTTP route
+		// POST /:source/clips/bulk-upload-youtube-clips. All 5 deps
+		// come straight from the orchestrator Deps bag.
+		bulkTransport: NewBulkUploadTransport(BulkTransportDeps{
+			JobsSvc:          d.JobsSvc,
+			DriveAdmin:       d.DriveAdmin,
+			Cfg:              d.Cfg,
+			BulkUploadWorker: d.BulkUploadWorker,
+			Publisher:        d.Publisher,
+			Log:              d.Log,
 		}),
 	}
 
@@ -307,6 +323,7 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	h.search.RegisterRoutes(r, idem)
 	h.ops.RegisterRoutes(r, idem)
 	h.nonops.RegisterRoutes(r, idem)
+	h.bulkTransport.RegisterRoutes(r, idem)
 
 	r.POST("/:source/clips/:id/download", idem, h.DownloadClip)
 	r.POST("/:source/clips/:id/duplicates", idem, h.FindDuplicates)
