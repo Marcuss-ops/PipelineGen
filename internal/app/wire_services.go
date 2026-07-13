@@ -129,6 +129,15 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 		partialCleanup()
 		return nil, nil, nil, fmt.Errorf("wire broker: %w", err)
 	}
+	// TIGHTENING (July 2026, godlike/07): explicit nil-broker fail-closed guard. Today
+	// localbroker.New never returns (nil, nil), so this branch is dead code; it is a
+	// permanent composition-time assertion that any future factory-method mutation
+	// cannot smuggle a nil pointer into root.Jobs.Broker. If tripped, the partialCleanup
+	// path is identical to the err branch so the operator's runbook surface is uniform.
+	if broker == nil {
+		partialCleanup()
+		return nil, nil, nil, fmt.Errorf("wire broker: constructed broker is nil (Deps produced nil pointer despite err=nil)")
+	}
 	root.Jobs.Broker = broker
 
 	// PR-COMPLETE-WORKER-BROAD-FIX (July 2026): wire the canonical
