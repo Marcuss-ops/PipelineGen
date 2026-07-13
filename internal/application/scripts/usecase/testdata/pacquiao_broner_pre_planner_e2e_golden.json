@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "source_hash": "d14665dec73fbe08025de2f5adfd7b24692b7136c14e6b124dc5327a0a1a25f9",
+  "title": "Pacquiao vs Broner Recap",
+  "slots": [
+    {
+      "ref": "slot-1",
+      "topic": "La fase iniziale e lo studio della distanza",
+      "source_anchor": {
+        "source_hash": "d14665dec73fbe08025de2f5adfd7b24692b7136c14e6b124dc5327a0a1a25f9",
+        "start_offset": 0,
+        "end_offset": 0,
+        "excerpt": ""
+      },
+      "search_query": "Pacquiao vs Broner Recap La fase iniziale e lo studio della distanza boxing scene coverage narrative",
+      "visual_intent": "Visual depiction of: La fase iniziale e lo studio della distanza (at source offset 0/380)",
+      "target_duration_ms": 7500,
+      "required": false
+    },
+    {
+      "ref": "slot-2",
+      "topic": "Pressione crescente di Pacquiao (round 4-6)",
+      "source_anchor": {
+        "source_hash": "d14665dec73fbe08025de2f5adfd7b24692b7136c14e6b124dc5327a0a1a25f9",
+        "start_offset": 0,
+        "end_offset": 0,
+        "excerpt": ""
+      },
+      "search_query": "Pacquiao vs Broner Recap Pressione crescente di Pacquiao (round 4-6) boxing combinations power left right straight pressure",
+      "visual_intent": "Visual depiction of: Pressione crescente di Pacquiao (round 4-6) (at source offset 0/380)",
+      "target_duration_ms": 7500,
+      "required": false
+    },
+    {
+      "ref": "slot-3",
+      "topic": "Round 7 - momento decisivo",
+      "source_anchor": {
+        "source_hash": "d14665dec73fbe08025de2f5adfd7b24692b7136c14e6b124dc5327a0a1a25f9",
+        "start_offset": 0,
+        "end_offset": 0,
+        "excerpt": ""
+      },
+      "search_query": "Pacquiao vs Broner Recap Round 7 - momento decisivo boxing scene coverage narrative",
+      "visual_intent": "Visual depiction of: Round 7 - momento decisivo (at source offset 0/380)",
+      "target_duration_ms": 7500,
+      "required": false
+    },
+    {
+      "ref": "slot-4",
+      "topic": "Decisione finale dei giudici",
+      "source_anchor": {
+        "source_hash": "d14665dec73fbe08025de2f5adfd7b24692b7136c14e6b124dc5327a0a1a25f9",
+        "start_offset": 0,
+        "end_offset": 0,
+        "excerpt": ""
+      },
+      "search_query": "Pacquiao vs Broner Recap Decisione finale dei giudici boxing decision judges scorecard unanimous split knockdown",
+      "visual_intent": "Visual depiction of: Decisione finale dei giudici (at source offset 0/380)",
+      "target_duration_ms": 7500,
+      "required": false
+    }
+  ]
+}
