@@ -68,9 +68,11 @@ func publishClip(
 	driveFilename := driveName + ".mp4"
 	driveDesc := buildBulkDriveDescription(cand, fileHash, *payload)
 
-	// Determine group for Publisher (subdir maps to group folder).
+	// PR-13 (July 2026): layout policy is server-controlled. The
+	// PipelineGen Drive layout always mirrors local subdirs, so
+	// pubGroup is the candidate's subdir whenever present.
 	pubGroup := ""
-	if payload.SubdirAsDriveSubdir && cand.Subdir != "" && cand.Subdir != "." {
+	if cand.Subdir != "" && cand.Subdir != "." {
 		pubGroup = cand.Subdir
 	}
 

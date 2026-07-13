@@ -1,40 +1,29 @@
 // Package clips (bulk_upload_worker) — port-typed worker that handles the
-// bg job "bulk_upload_youtube_clips" for ingesting a folder of local
-// .mp4 files into the media pipeline.
+// "bulk_upload_youtube_clips" bg job for ingesting a folder of local .mp4
+// files into the media pipeline.
 //
-// Wave 14 PR2 slice (June 2026): caused the handler-side
-// internal/api/assets/clips/bulk_upload_worker.go to be removed from
-// internal/api/ and re-homed under application/clips where it belongs
-// per AGENTS.md Pattern 0 + Pattern 8 (transport handlers are thin;
-// business logic lives in the application layer). The worker now
-// depends exclusively on the typed ports declared in this package's
-// ports.go — concrete adapters wrap *assets.ClipsRepository,
-// *drive.Uploader, *config.Config, foldermemory.Service and
-// hashutil.MD5File at the composition root.
+// PR-13 (July 2026, refactor(api): drop runtime-tunable noise configs):
+// the worker owns ALL the runtime choices — recursion, file filter,
+// concurrency, layout policy. No client-supplied flags. The transport
+// only feeds `local_folder`, `drive_folder_id`, `source`, `category`;
+// the worker decides HOW to process the folder.
 //
-// Wave 2 (Asset commit + Qdrant, July 2026): the direct clipindexer
-// dependency was removed. Indexing is now driven by the canonical
-// outbox consumer (IndexingHandler → clipindexer.IndexClip); the
-// worker emits the asset.index.requested event via the dispatcher
-// during registerClip.
+// P1.7 (July 2026): the per-clip pipeline is split into 7 sibling files
+// (one section per concern). This file is the orchestrator: struct +
+// ctor + HandleJob + processOneClip stitch.
 //
-// P1.7 (July 2026): the per-clip pipeline was extracted into 7 sibling
-// files (one section per concern) so this file stays focused on the
-// top-level orchestration: struct + ctor + HandleJob + processOneClip
-// stitch. The 7 sections of the pipeline are:
+// Wave 2 (Asset commit + Qdrant, July 2026): direct clipindexer
+// dependency removed. Indexing is owned exclusively by the outbox
+// consumer.
 //
-//  1. worker       — this file (struct + ctor + orchestrator)
-//  2. scanner      — bulk_upload_scan_pipeline.go
-//  3. clip-pub     — bulk_upload_clip_pub.go
-//  4. sidecar-pub  — bulk_upload_sidecar_pub.go
-//  5. registration — bulk_upload_registration.go
-//  6. enrichment   — bulk_upload_enrichment.go
-//  7. result       — bulk_upload_result.go
+// Counter semantics (PR-13, July 2026):
+//   - uploaded    — Drive publish succeeded
+//   - committed   — mutation dispatcher EnqueueAndIndex succeeded
+//     (= asset row persisted + outbox event written in
+//     one tx).
+//   - failed      — any stage in processOneClip returned error
 //
-// No new abstractions — only top-level helper functions consumed by
-// the processOneClip stitch. The worker struct (6 typed-port fields)
-// and constructor signature are unchanged from the pre-split surface
-// except for the Wave 2 removal of the unused indexer port.
+// Pre-PR-13 always-zero `indexed` / `qdrant_pushed` / `skipped` are GONE.
 package clips
 
 import (
@@ -47,7 +36,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -56,18 +44,6 @@ import (
 // BulkUploadWorker owns the heavy business logic for the
 // "bulk_upload_youtube_clips" job. Construction takes the typed ports
 // only; no concrete infrastructure types appear in this file.
-//
-// PR 7 (June 2026, codex/qdrant-app-writers-fail-closed): the
-// `dispatcher` field is the canonical mutations.AssetMutationDispatcher
-// SSOT. Required so the worker's media_assets UPSERT step routes
-// through the canonical outbox+tx writer (QDRANT-002 atomicity
-// invariant).
-//
-// Wave 2 (Asset commit + Qdrant, July 2026): the `indexer`
-// ClipIndexerPort field was removed. Direct IndexClip calls have
-// been eliminated; the canonical asset.index.requested outbox event
-// is emitted by registerClip, and the IndexingHandler consumer
-// triggers embedding generation and Qdrant upsert asynchronously.
 type BulkUploadWorker struct {
 	publisher  ClipPublisherPort
 	repo       ClipRepositoryPort
@@ -77,13 +53,7 @@ type BulkUploadWorker struct {
 	log        *zap.Logger
 }
 
-// NewBulkUploadWorker constructs the canonical worker. All port
-// arguments are required. Returns a *BulkUploadWorker (never nil).
-//
-// Wave 2 (Asset commit + Qdrant, July 2026): the `indexer`
-// ClipIndexerPort parameter was removed. Direct IndexClip calls
-// have been eliminated; indexing is driven by the canonical outbox
-// consumer.
+// NewBulkUploadWorker constructs the canonical worker.
 func NewBulkUploadWorker(
 	publisher ClipPublisherPort,
 	repo ClipRepositoryPort,
@@ -105,15 +75,7 @@ func NewBulkUploadWorker(
 	}
 }
 
-// HandleJob is the registered handler for
-// "bulk_upload_youtube_clips". Wired by the API layer's
-// Handler.RegisterJobHandlers (which delegates into this worker).
-//
-// P1.7 (July 2026): the per-clip pipeline calls into the 6 sibling
-// files (publishClip + publishSidecars + registerClip + enrichClip +
-// finalizeJobResult) instead of inlining them. The orchestrating
-// flow is preserved verbatim — only the body of processOneClip
-// changed (now stages helpers in sequence).
+// HandleJob is the registered handler for "bulk_upload_youtube_clips".
 func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	if w.cfg == nil {
 		return nil, fmt.Errorf("bulk upload worker: cfg not configured (ClipConfigPort is nil — production wiring must supply non-nil cfg)")
@@ -136,14 +98,12 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 
 	log.Info("bulk upload job started",
 		zap.String("local_folder", payload.LocalFolder),
-		zap.String("drive_folder_id", payload.DriveFolderID),
-		zap.Int("concurrency", payload.Concurrency))
+		zap.String("drive_folder_id", payload.DriveFolderID))
 
 	if tools != nil && tools.Event != nil {
 		tools.Event("job_started", "bulk upload job started", map[string]any{
 			"local_folder":    payload.LocalFolder,
 			"drive_folder_id": payload.DriveFolderID,
-			"concurrency":     payload.Concurrency,
 		})
 	}
 
@@ -151,7 +111,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		return nil, fmt.Errorf("local_folder is required")
 	}
 	if w.publisher == nil {
-		return nil, fmt.Errorf("drive publisher not configured (P0.1: Publisher mandatory, ClipDriveUploaderPort removed)")
+		return nil, fmt.Errorf("drive publisher not configured (PR-13: Publisher mandatory, ClipDriveUploaderPort removed)")
 	}
 	if w.repo == nil {
 		return nil, fmt.Errorf("clips repository not configured")
@@ -159,13 +119,6 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	if payload.DriveFolderID == "" {
 		return nil, fmt.Errorf("drive_folder_id is required (enqueue path should have resolved it)")
 	}
-
-	// FASE 4(b) (July 2026): cancel-signal is observed via ctx.Err() —
-	// see internal/domain/job/handler.go for the canonical rationale
-	// (the pre-Fase-4 IsCancelled callback was REMOVED in FASE 4(b)
-	// because the typed kerneljob.RenewLeaseResult.State →
-	// renewLeaseLoopWith → jobCancel(jobCtx) propagation is now
-	// native context cancellation).
 
 	if tools != nil && tools.Progress != nil {
 		tools.Progress(2, fmt.Sprintf("Scanning %s", payload.LocalFolder))
@@ -175,7 +128,9 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 			"local_folder": payload.LocalFolder,
 		})
 	}
-	candidates, err := scanLocalClips(payload.LocalFolder, payload.Recursive, payload.FilePatterns, payload.SkipPatterns, payload.Limit)
+	// PR-13 (July 2026): scan params are server-controlled.
+	// recursion=true is hardcoded; include/skip filters are empty; limit=0 (no cap).
+	candidates, err := scanLocalClips(payload.LocalFolder, true, nil, nil, 0)
 	if err != nil {
 		if tools != nil && tools.Event != nil {
 			tools.Event("error", fmt.Sprintf("scan failed: %v", err), map[string]any{
@@ -190,8 +145,11 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 			tools.Progress(100, "No clips found")
 		}
 		return map[string]any{
-			"total": 0, "uploaded": 0, "skipped": 0, "failed": 0,
-			"message": "no clips matching patterns in local_folder",
+			"total":     0,
+			"uploaded":  0,
+			"committed": 0,
+			"failed":    0,
+			"message":   "no clips in local_folder",
 		}, nil
 	}
 
@@ -206,22 +164,13 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		tools.Progress(5, fmt.Sprintf("Found %d clips, starting pipeline", total))
 	}
 
-	// P0.1 (July 2026): Publisher is mandatory; subdir folder
-	// resolution is handled internally by delivery.Publisher
-	// via the Group and RootFolderOverride fields. Legacy
-	// resolveSubdirFolderID closure removed.
-
-	concurrency := payload.Concurrency
-	if concurrency <= 0 {
-		concurrency = 2
-	}
+	// PR-13 (July 2026): concurrency is server-controlled. Default 2.
+	concurrency := 2
 	sem := make(chan struct{}, concurrency)
 	var (
 		wg            sync.WaitGroup
 		uploaded      atomic.Int64
-		indexed       atomic.Int64
-		pushed        atomic.Int64
-		skipped       atomic.Int64
+		committed     atomic.Int64
 		failed        atomic.Int64
 		failedDetails []string
 		failedMu      sync.Mutex
@@ -231,7 +180,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		if tools == nil || tools.Progress == nil {
 			return
 		}
-		done := uploaded.Load() + skipped.Load() + failed.Load()
+		done := uploaded.Load() + committed.Load() + failed.Load()
 		pct := int(float64(done) / float64(total) * 95.0)
 		if pct < 5 {
 			pct = 5
@@ -239,8 +188,8 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		if pct > 100 {
 			pct = 100
 		}
-		tools.Progress(pct, fmt.Sprintf("Processed %d/%d (uploaded=%d indexed=%d qdrant=%d failed=%d)",
-			done, total, uploaded.Load(), indexed.Load(), pushed.Load(), failed.Load()))
+		tools.Progress(pct, fmt.Sprintf("Processed %d/%d (uploaded=%d committed=%d failed=%d)",
+			done, total, uploaded.Load(), committed.Load(), failed.Load()))
 	}
 
 	for i := range candidates {
@@ -257,7 +206,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 			defer reportProgress(false)
 
 			if err := w.processOneClip(ctx, payload, cand,
-				&uploaded, &indexed, &pushed, &skipped, &failed, log, tools); err != nil {
+				&uploaded, &committed, &failed, log, tools); err != nil {
 				failedMu.Lock()
 				failedDetails = append(failedDetails, fmt.Sprintf("%s: %v", cand.LocalPath, err))
 				if len(failedDetails) > 50 {
@@ -273,54 +222,38 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	wg.Wait()
 	reportProgress(true)
 
-	result := finalizeJobResult(total, &uploaded, &indexed, &pushed, &skipped, &failed, failedDetails, payload)
+	result := finalizeJobResult(total, &uploaded, &committed, &failed, failedDetails, payload)
 	log.Info("bulk upload job complete", zap.Any("result", result))
 	if tools != nil && tools.Event != nil {
 		tools.Event("completed", "bulk upload job completed", map[string]any{
-			"total":    total,
-			"uploaded": uploaded.Load(),
-			"indexed":  indexed.Load(),
-			"failed":   failed.Load(),
+			"total":     total,
+			"uploaded":  uploaded.Load(),
+			"committed": committed.Load(),
+			"failed":    failed.Load(),
 		})
 	}
 	return result, nil
 }
 
 // processOneClip stitches the per-clip pipeline: config check →
-// hash + clipID → publish-clip (skip-upload gate) → sidecar-publish
-// (skip-upload gate) → register (clip build + dispatcher
-// EnqueueAndIndex) → enrich (skip-embeddings gate).
-//
-// P1.7 (July 2026): the steps are extracted into top-level helpers
-// in 6 sibling files. This method only sequences them + manages
-// per-clip counter book-keeping.
-//
-// Latent counters preserved verbatim from pre-split (forward-pointer
-// for a future hardening wave, NOT changed in P1.7):
-//   - "skipped" is never incremented (always 0 in the report)
-//   - "pushed" is never incremented (always 0 in the report)
-//
-// Both counters are kept on the report schema for back-compat
-// with downstream reconciliation + dashboard consumers; promoting
-// them to real metrics is a separate change. Function parameters
-// in Go don't require suppressors, so `skipped` / `pushed` are
-// passed through to finalizeJobResult where they are loaded.
+// hash + clipID → publish-clip → sidecar-publish → register (clip
+// build + dispatcher EnqueueAndIndex) → enrich. None of these stages
+// are gated by client flags (PR-13 retired SkipUpload / SkipEmbeddings /
+// SkipQdrant gates).
 func (w *BulkUploadWorker) processOneClip(
 	ctx context.Context,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
 	cand clipCandidate,
-	uploaded, indexed, pushed, skipped, failed *atomic.Int64,
+	uploaded, committed, failed *atomic.Int64,
 	log *zap.Logger,
 	tools *appjobs.JobTools,
 ) error {
 	if w == nil || w.hasher == nil || w.publisher == nil || w.repo == nil {
 		failed.Add(1)
-		return fmt.Errorf("bulk upload not configured correctly (P0.1: Publisher mandatory)")
+		return fmt.Errorf("bulk upload not configured correctly (PR-13: Publisher mandatory)")
 	}
 
-	// Step 1: hash + clipID (stays in worker.go — these are the
-	// per-clip log-bookkeeping fields; the scan-pipeline file
-	// owns the folder-walk helpers only).
+	// Step 1: hash + clipID.
 	fileHash, err := w.hasher.MD5File(cand.LocalPath)
 	if err != nil {
 		failed.Add(1)
@@ -341,48 +274,34 @@ func (w *BulkUploadWorker) processOneClip(
 		})
 	}
 
-	// Step 2-3: publish clip via Publisher (clip-pub section).
-	var pubRes *delivery.PublishResult
-	targetFolderID := payload.DriveFolderID
-	if !payload.SkipUpload {
-		var pubErr error
-		pubRes, pubErr = publishClip(ctx, w.publisher, payload, cand, fileHash, log)
-		if pubErr != nil {
-			failed.Add(1)
-			if tools != nil && tools.Event != nil {
-				tools.Event("error", fmt.Sprintf("drive upload failed for %s", cand.LocalPath), map[string]any{
-					"local_path": cand.LocalPath,
-					"error":      pubErr.Error(),
-				})
-			}
-			return pubErr
-		}
-		uploaded.Add(1)
-		targetFolderID = pubRes.FolderID
-		log.Info("published to drive",
-			zap.String("file_id", pubRes.FileID),
-			zap.String("drive_link", pubRes.WebViewLink),
-			zap.String("publish_action", string(pubRes.Action)))
+	// Step 2-3: publish clip via Publisher + sidecars.
+	pubRes, pubErr := publishClip(ctx, w.publisher, payload, cand, fileHash, log)
+	if pubErr != nil {
+		failed.Add(1)
 		if tools != nil && tools.Event != nil {
-			tools.Event("drive_upload", fmt.Sprintf("Uploaded %s to Drive", cand.LocalPath), map[string]any{
-				"clip_id":    clipID,
-				"file_id":    pubRes.FileID,
-				"drive_link": pubRes.WebViewLink,
+			tools.Event("error", fmt.Sprintf("drive upload failed for %s", cand.LocalPath), map[string]any{
+				"local_path": cand.LocalPath,
+				"error":      pubErr.Error(),
 			})
 		}
-		// Step 3b: best-effort sidecar publishes (errors logged
-		// but not bubbled — pre-split silently dropped sidecar
-		// errors; P1.7 preserves silent-drop semantics by NOT
-		// bumping any counter from publishSidecars). The added
-		// `log.Warn` on sidecar publish failure is a hygiene
-		// improvement: original code had no observability at all
-		// — operator dashboards would never see sidecar drift.
-		publishSidecars(ctx, w.publisher, cand, targetFolderID, log)
+		return pubErr
 	}
+	uploaded.Add(1)
+	targetFolderID := pubRes.FolderID
+	log.Info("published to drive",
+		zap.String("file_id", pubRes.FileID),
+		zap.String("drive_link", pubRes.WebViewLink),
+		zap.String("publish_action", string(pubRes.Action)))
+	if tools != nil && tools.Event != nil {
+		tools.Event("drive_upload", fmt.Sprintf("Uploaded %s to Drive", cand.LocalPath), map[string]any{
+			"clip_id":    clipID,
+			"file_id":    pubRes.FileID,
+			"drive_link": pubRes.WebViewLink,
+		})
+	}
+	publishSidecars(ctx, w.publisher, cand, targetFolderID, log)
 
-	// Step 4 + 5: build clip Asset + dispatcher.EnqueueAndIndex
-	// (registration section). Strict fail-closed on nil
-	// dispatcher — surfaces explicitly via returned error.
+	// Step 4 + 5: build clip Asset + dispatcher.EnqueueAndIndex.
 	if err := registerClip(ctx, w.dispatcher, payload, cand, pubRes, fileHash, targetFolderID, log); err != nil {
 		failed.Add(1)
 		if tools != nil && tools.Event != nil {
@@ -393,6 +312,7 @@ func (w *BulkUploadWorker) processOneClip(
 		}
 		return err
 	}
+	committed.Add(1)
 	log.Info("saved clip to DB", zap.String("clip_id", clipID))
 	if tools != nil && tools.Event != nil {
 		tools.Event("db_register", fmt.Sprintf("Registered %s in DB", clipID), map[string]any{
@@ -400,15 +320,7 @@ func (w *BulkUploadWorker) processOneClip(
 		})
 	}
 
-	// Step 6: enrichment (transcript staging only). Wave 2 (Asset
-	// commit + Qdrant, July 2026): direct IndexClip calls have been
-	// removed. The canonical asset.index.requested outbox event is
-	// already emitted by registerClip; the IndexingHandler consumer
-	// will trigger embedding generation and Qdrant upsert
-	// asynchronously. The "indexed" counter is intentionally left
-	// at zero because indexing is no longer synchronous.
-	if !payload.SkipEmbeddings {
-		enrichClip(w.cfg, cand, log)
-	}
+	// Step 6: enrichment (transcript staging only).
+	enrichClip(w.cfg, cand, log)
 	return nil
 }

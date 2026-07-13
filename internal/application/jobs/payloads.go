@@ -77,29 +77,15 @@ type ArtlistRunPayload struct {
 
 // BulkUploadYouTubeClipsPayload is sent with JobTypeBulkUploadYouTubeClips.
 //
-// Scans a local folder recursively for .mp4 files (each with optional
-// clip_manifest.json / transcript.txt siblings), uploads them to Google
-// Drive, creates media_assets records, generates semantic + transcript
-// embeddings via the Python embedding server, and pushes points to Qdrant.
-//
-// Designed for the "add a folder of orphan YouTube clips back into the
-// pipeline" workflow — runs entirely async via the job system, so callers
-// can poll progress through GET /api/jobs/{id}/full.
+// PR-13 (July 2026, refactor(api): drop runtime-tunable noise configs):
+// the canonical client surface is the WHAT (local_folder, drive_folder_id,
+// source, category). The HOW (recursion, extensions, concurrency, layout,
+// indexing policy) lives in server config — see Cfg.Storage + Cfg.Jobs.
 type BulkUploadYouTubeClipsPayload struct {
-	LocalFolder         string   `json:"local_folder"`                // absolute path to scan recursively
-	DriveFolderID       string   `json:"drive_folder_id,omitempty"`   // target Drive folder (root of subdirs)
-	DriveFolderName     string   `json:"drive_folder_name,omitempty"` // fallback: create folder by this name under ClipsRoot
-	Source              string   `json:"source,omitempty"`            // source label written to media_assets (default: youtube-local)
-	Category            string   `json:"category,omitempty"`          // category written to media_assets
-	SubdirAsDriveSubdir bool     `json:"subdir_as_drive_subdir"`      // mirror local subdir structure on Drive (default true)
-	Recursive           bool     `json:"recursive"`                   // recurse into subdirs (default true)
-	DryRun              bool     `json:"dry_run"`                     // scan + report, do not upload
-	Limit               int      `json:"limit,omitempty"`             // cap number of clips (0 = no limit)
-	SkipUpload          bool     `json:"skip_upload,omitempty"`       // only create DB records + embeddings
-	SkipEmbeddings      bool     `json:"skip_embeddings,omitempty"`   // only upload + create DB records
-	Concurrency         int      `json:"concurrency,omitempty"`       // parallel uploads (default 2)
-	FilePatterns        []string `json:"file_patterns,omitempty"`     // extra glob patterns to include (default [*.mp4])
-	SkipPatterns        []string `json:"skip_patterns,omitempty"`     // paths to skip (substring match)
+	LocalFolder   string `json:"local_folder"`              // absolute path to scan
+	DriveFolderID string `json:"drive_folder_id,omitempty"` // target Drive folder (root of subdirs)
+	Source        string `json:"source,omitempty"`          // source label written to media_assets (default: youtube-local)
+	Category      string `json:"category,omitempty"`        // category written to media_assets
 }
 
 // DriveFolderSyncPayload is sent with JobTypeDriveFolderSync.
