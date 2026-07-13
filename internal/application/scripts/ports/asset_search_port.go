@@ -140,6 +140,33 @@ type AssetSearchQuery struct {
 	// projection path; renaming requires a coordinated migration
 	// (forward-pointer PR-NORMALIZED-GROUP-KEY).
 	FolderNormalizedGroup string
+
+	// ExcludeRightsStatuses + ExcludeReviewStatuses
+	// (PR-CLIPINGEST-PIPELINE Step 10, July 2026). When
+	// non-empty, the SlotSearchPort adapter (via the underlying
+	// Qdrant filter compiler) translates these into a single
+	// `MustNot(MatchAny(...))` clause on the corresponding
+	// payload fields (`rights_status` + `review_status`).
+	//
+	// godlike/06 SSOT (one canonical owner per fact): the
+	// STRING VALUES populate from
+	// `asset.RightsStatus.String()` (6-value alphabet) +
+	// `asset.ReviewStatus.String()` (4-value alphabet). A
+	// custom caller bypassing the canonical enums MUST use
+	// the wire alphabet verbatim (see RightsStatus.Valid /
+	// ReviewStatus.Valid in internal/domain/asset/rights_state.go).
+	//
+	// godlike/07 fail-closed at the planning-tier: a
+	// non-empty ExcludeRightsStatuses slice on a Qdrant
+	// collection that has NOT been reindexed with the
+	// `rights_status` payload index is a silent filter
+	// no-op (MustNot on a missing field matches all rows).
+	// The slot_search adapter logs loudly + continues —
+	// a future follow-up PR adds the typed error path
+	// (ErrRightsFilterRequiresReindex). The SAFE default
+	// is a future task; this cycle ships the surface only.
+	ExcludeRightsStatuses []string
+	ExcludeReviewStatuses []string
 }
 
 // AssetSearchHit is the unified result item. It subsumes the legacy

@@ -37,6 +37,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	assetR "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
@@ -137,6 +138,51 @@ func (a *semanticAssetSearchAdapter) SearchSlots(
 		folderGroup = opts.Folder.NormalizedGroup
 	}
 
+	// ── Rights-restricted filter composition (Step 10, July 2026) ──
+	// Resolve the canonical exclusion set ONCE per call (NOT per
+	// slot, matching the per-slot option resolution above). The
+	// result is a 2-slice pairing threaded into the per-slot
+	// AssetSearchQuery so the underlying Qdrant filter compiler
+	// emits a single MustNot(MatchAny(...)) clause on each
+	// payload field.
+	//
+	// godlike/06 SSOT: the membership list comes from the canonical
+	// asset.IsRightsRestrictedPredicate() (RightsStatus subset
+	// where IsPublishable() returns false) + the canonical
+	// asset.ReviewStatus alphabet partitioned by
+	// IsReviewGateRequired(). A future rights enum update at the
+	// type SSOT automatically inherits the correct classifier.
+	//
+	// godlike/07 fail-closed (includeRightRestricted=false): the
+	// adapter logs loudly when the Qdrant collection hasn't been
+	// reindexed with the new `rights_status` payload index, but
+	// continues. The filter is a best-effort DB-side gate; a
+	// future PR adds the typed error surface
+	// (ErrRightsFilterRequiresReindex).
+	var (
+		excludeRightsStatuses []string
+		excludeReviewStatuses []string
+	)
+	if !opts.IncludeRightRestricted {
+		// Canonical RightsStatus subset that MUST be skipped
+		// when planning (review_required + blocked).
+		for _, v := range assetR.RestrictedRightsStatuses() {
+			excludeRightsStatuses = append(excludeRightsStatuses, string(v))
+		}
+		// Canonical ReviewStatus subset that MUST be skipped
+		// (pending + rejected).
+		for _, v := range assetR.CanonicalReviewStatusValues() {
+			if v.IsReviewGateRequired() {
+				excludeReviewStatuses = append(excludeReviewStatuses, string(v))
+			}
+		}
+		if a.log != nil && len(excludeRightsStatuses)+len(excludeReviewStatuses) > 0 {
+			a.log.Info("slots search: rights-restricted filter enabled",
+				zap.Strings("exclude_rights_statuses", excludeRightsStatuses),
+				zap.Strings("exclude_review_statuses", excludeReviewStatuses))
+		}
+	}
+
 	startTime := time.Now()
 	byRef := make(map[string][]scriptpkg.ClipCandidate, len(plan.Slots))
 	erroredRefs := make(map[string]error, len(plan.Slots))
@@ -184,6 +230,13 @@ func (a *semanticAssetSearchAdapter) SearchSlots(
 			Limit:                 perSlotLimit,
 			MinScore:              opts.MinScore,
 			FolderNormalizedGroup: folderGroup,
+			// Step 10 rights-restricted filter threading:
+			// includeRightRestricted defaults to false (safe),
+			// the composition above populates the 2 exclude
+			// slices per-call. The underlying searcher compiles
+			// these into a per-call MustNot(MatchAny(...)) clause.
+			ExcludeRightsStatuses: excludeRightsStatuses,
+			ExcludeReviewStatuses: excludeReviewStatuses,
 		}, query)
 		cancel()
 

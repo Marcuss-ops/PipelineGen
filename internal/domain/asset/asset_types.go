@@ -44,6 +44,40 @@ type Asset struct {
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 	DeletedAt      *time.Time     `json:"deleted_at,omitempty"`
+
+	// ── Step 10 rights surface (PR-CLIPINGEST-PIPELINE, July 2026) ─────
+	// Six TYPED extensions added by migration 158 alongside the
+	// existing rights_status column (which lives in the Metadata
+	// map under the "rights_status" key for historical reasons —
+	// see accessors in asset_accessors.go). The 6 NEW fields below
+	// are typed first-class struct properties so they show up in
+	// Asset JSON serialization without an explicit Metadata-touch
+	// round-trip.
+	//
+	// godlike/06 SSOT: the canonical enums for RightsStatus (6
+	// values) + ReviewStatus (4 values) live in rights_state.go.
+	// The archcheck forward-prevention gates
+	// percheck_rights_status_canonical_6 +
+	// percheck_review_status_canonical_4 enforce the count + the
+	// shadow-declaration ban.
+	//
+	// godlike/07 fail-closed: a missing rights_status on a legacy
+	// row does NOT panic; the canonical surface
+	// (IsPublishable) returns false on the zero value so the
+	// SlotSearchPort filter applies uniformly. See
+	// internal/application/scripts/ports/clip_search_port.go for
+	// the IncludeRightRestricted override flag.
+	//
+	// LicenseBasis bridges to AssetLicense.id (asset/license_release.go)
+	// via a freeform pointer the operator workflow populates; the
+	// planner does not dereference the asset_licenses table on
+	// hot path (operator-driven workflow, not runtime-resolved).
+	LicenseBasis    string       `json:"license_basis"`
+	OwnerChannelID  string       `json:"owner_channel_id"`
+	AllowedChannels []string     `json:"allowed_channels,omitempty"`
+	AllowedRegions  []string     `json:"allowed_regions,omitempty"`
+	ExpiresAt       string       `json:"expires_at,omitempty"`
+	ReviewStatus    ReviewStatus `json:"review_status,omitempty"`
 }
 
 // ── Metadata helpers ────────────────────────────────────────────────
