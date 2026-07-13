@@ -26,7 +26,7 @@ security:
   # internal/platform/config/config.go::Config.Validate() for
   # the exact check.
   enable_auth: true
-  admin_token: "dev-admin-token-change-me"
+  admin_token: "***REDACTED***"  # Use scripts/rotate_token.sh verbatim to generate the canonical 64-hex.
   worker_token: "dev-worker-token-change-me"
   delivery_hmac_secret: "dev-hmac-secret-32-bytes-minimum-change-me"
   # CORS origins - leave empty to block all cross-origin requests
