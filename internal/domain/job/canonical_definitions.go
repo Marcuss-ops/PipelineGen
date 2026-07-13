@@ -15,6 +15,20 @@
 //	CanonicalImagesGenerate    images.generate / creator_allowed / multi-image artifacts
 //	CanonicalScriptGenerate    script.generate / creator_allowed / heavy artifacts
 //
+// ── Authority note (PR-JOB-TYPE-OWNER-LOCKS, July 2026) ──────────────
+//
+// The 3 canonical literals CanonicalImagesGenerate / CanonicalScriptGenerate /
+// CanonicalDocumentGenerate overlap with constants now owned by the owner
+// packages (internal/application/{images,scripts,documents}/job_types.go).
+// Composition-root filtering in c3ValidateRuntimeGraph (see
+// internal/app/registry.go) skips these 3 entries at registration time so
+// the canonical slice retains a code-only reference, NOT a runtime SSOT.
+// Run-time authority for these wire-strings lives in the owner packages per
+// godlike/06 SSOT. Future contributors should NOT extend these 3 literals to
+// include codecs/artifacts without first coordinating with the owner
+// packages; the canonical here serves as a static reference for tooling and
+// tests only.
+//
 // ── Update discipline ───────────────────────────────────────────────
 //
 // A 6th canonical family must:
