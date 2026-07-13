@@ -1,4 +1,4 @@
-// Package scripts — processor_document.go creates a Google Doc
+// Package scripts - processor_document.go creates a Google Doc
 // from the generated script. Enabled as "document" in the plan's
 // Postprocessors list.
 package adapters
@@ -27,7 +27,7 @@ type FolderResolver = func(ctx context.Context, folderID string, fallback string
 // DocumentsService is the minimal document-service contract the
 // DocumentsProcessor relies on. Production wiring injects the
 // concrete *usecase.DocumentsService (whose method set satisfies
-// this interface) — verified at composition time via direct pointer
+// this interface) - verified at composition time via direct pointer
 // assignment.
 type DocumentsService interface {
 	// CreateDoc creates a Google Doc. idempotencyKey is used to
@@ -58,44 +58,16 @@ func (p *DocumentProcessor) Name() ProcessorName { return ProcessorDocument }
 
 // Policy classifies document as ProcessorBestEffort (Fase 2 canonical,
 // July 2026).
-//
-// Single canonical source of truth for the document postprocessor's
-// policy — per godlike/06 SSOT one-canonical-owner-per-fact. The
-// PostProcessorRegistry records this value at Register() time
-// (postprocessor_registry.go:319 `policy := proc.Policy(nil)`) so
-// downstream LookupPolicy / ValidateRequested / Run all consume the
-// SAME value. Previously this method returned ProcessorRequired,
-// which DRIFTED from the Fase 2 registry-default table
-// (postprocessor_registry.go:163: `document: ProcessorBestEffort`).
-// Flipping it here threads the canonical decision in ONE point.
-//
-// Fase 2 contract for document:
-//   - Missing-registered document service (docsSvc==nil at composition)
-//     becomes a warning, NOT a hard pipeline abort.
-//   - Runtime Drive failure (auth/permission/quota) becomes a warning.
-//   - Empty DocLink from CreateDoc() becomes a warning.
-//   - Pipeline continues with the rest of the postprocessors and
-//     emits a "document skipped" warning the operator sees in
-//     PipelineResult.Warnings (the canonical client-facing envelope
-//     per the existing voiceover_propagate_warnings precedent).
-//
-// The "log+continue" pattern: DocumentProcessor.Process()'s existing
-// nil-docsSvc guard now returns an ErrPostprocessFailed but the
-// registry's ProcessorBestEffort classification aborts the
-// whole-pipeline gate and converts it into a typed warning propagated
-// through PostProcessResult.Warnings + PipelineResult.Warnings.
-// Failure visibility is preserved (no silent skip).
 func (p *DocumentProcessor) Policy(_ *scriptpkg.ResolvedGenerationPlan) ProcessorPolicy {
 	return ProcessorBestEffort
 }
 
 // Process creates or updates the canonical script document.
 //
-// The visible document contains only the title and the final SpecScene JSON.
-// Full prose, the human-readable Scenes expansion, entities, metadata, and
-// visible provenance are deliberately omitted to avoid maintaining multiple
-// competing script representations. Provenance remains available as a hidden
-// HTML comment through BuildSpecSceneDocumentHTML.
+// The visible document surface is intentionally reduced to the title and
+// the canonical SpecScene JSON block. The hidden provenance comment is
+// rendered through BuildSpecSceneDocumentHTML so traceability survives
+// without reintroducing the legacy visible sections.
 func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (*PostProcessResult, error) {
 	if p.docsSvc == nil {
 		return nil, fmt.Errorf("%w: document processor: DocumentsService not configured", scriptpkg.ErrPostprocessFailed)
@@ -115,9 +87,9 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		SpecScene:     input.SpecScene,
 	}
 
-	// Render twice: first without the final doc_id so the document can be
-	// created, then again after provenance receives the real doc_id/doc_link.
-	htmlContent := BuildSpecSceneDocumentHTML(model, docTitle, input.Provenance)
+	// Create the doc first, then rewrite it with the final provenance once
+	// the Drive doc ID/link are available.
+	htmlContent := BuildSpecSceneDocumentHTML(model, docTitle)
 
 	idempotencyKey := plan.CacheKey
 	if idempotencyKey == "" {
@@ -128,14 +100,13 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		return nil, fmt.Errorf("%w: document processor: Google Doc creation returned empty link", scriptpkg.ErrPostprocessFailed)
 	}
 
-	// Fill the hidden provenance block with the real doc_id/doc_link and
-	// rewrite the document body so it contains complete trace metadata.
 	if input.Provenance != nil {
 		input.Provenance.DocID = id
 		input.Provenance.DocLink = link
 		input.Provenance.RequestedMode = requestedModeForPlan(plan)
 		input.Provenance.UsedMode = usedModeForInput(plan, input)
 		input.Provenance.FallbackUsed = input.Provenance.RequestedMode != input.Provenance.UsedMode
+
 		htmlWithProv := BuildSpecSceneDocumentHTML(model, docTitle, input.Provenance)
 		if err := p.docsSvc.UpdateDoc(ctx, id, docTitle, htmlWithProv); err != nil {
 			return &PostProcessResult{
