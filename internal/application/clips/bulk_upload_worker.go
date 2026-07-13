@@ -1,29 +1,14 @@
-// Package clips (bulk_upload_worker) — port-typed worker that handles the
-// "bulk_upload_youtube_clips" bg job for ingesting a folder of local .mp4
-// files into the media pipeline.
+// Package clips (bulk_upload_worker) — orchestrator for the
+// "bulk_upload_youtube_clips" bg job. The per-clip pipeline is split across
+// 7 sibling files (one section per concern: scan, hash, clip-pub, sidecar,
+// register, enrich, result); this file owns the struct, constructor,
+// HandleJob entry, and the processOneClip stitch.
 //
-// PR-13 (July 2026, refactor(api): drop runtime-tunable noise configs):
-// the worker owns ALL the runtime choices — recursion, file filter,
-// concurrency, layout policy. No client-supplied flags. The transport
-// only feeds `local_folder`, `drive_folder_id`, `source`, `category`;
-// the worker decides HOW to process the folder.
-//
-// P1.7 (July 2026): the per-clip pipeline is split into 7 sibling files
-// (one section per concern). This file is the orchestrator: struct +
-// ctor + HandleJob + processOneClip stitch.
-//
-// Wave 2 (Asset commit + Qdrant, July 2026): direct clipindexer
-// dependency removed. Indexing is owned exclusively by the outbox
-// consumer.
-//
-// Counter semantics (PR-13, July 2026):
+// Counter semantics (canonical results map, set by finalizeJobResult):
 //   - uploaded    — Drive publish succeeded
-//   - committed   — mutation dispatcher EnqueueAndIndex succeeded
-//     (= asset row persisted + outbox event written in
-//     one tx).
+//   - committed   — dispatcher.EnqueueAndIndex succeeded (asset row +
+//     outbox event in one tx); always ≤ uploaded (publish-first ordering)
 //   - failed      — any stage in processOneClip returned error
-//
-// Pre-PR-13 always-zero `indexed` / `qdrant_pushed` / `skipped` are GONE.
 package clips
 
 import (
@@ -41,9 +26,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
-// BulkUploadWorker owns the heavy business logic for the
-// "bulk_upload_youtube_clips" job. Construction takes the typed ports
-// only; no concrete infrastructure types appear in this file.
+// BulkUploadWorker owns the heavy business logic. Typed ports only.
 type BulkUploadWorker struct {
 	publisher  ClipPublisherPort
 	repo       ClipRepositoryPort
@@ -53,7 +36,6 @@ type BulkUploadWorker struct {
 	log        *zap.Logger
 }
 
-// NewBulkUploadWorker constructs the canonical worker.
 func NewBulkUploadWorker(
 	publisher ClipPublisherPort,
 	repo ClipRepositoryPort,
@@ -75,14 +57,13 @@ func NewBulkUploadWorker(
 	}
 }
 
-// HandleJob is the registered handler for "bulk_upload_youtube_clips".
 func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	if w.cfg == nil {
-		return nil, fmt.Errorf("bulk upload worker: cfg not configured (ClipConfigPort is nil — production wiring must supply non-nil cfg)")
+		return nil, fmt.Errorf("bulk upload worker: cfg not configured")
 	}
 	jobTimeout := w.cfg.JobTimeout(appjobs.TypeBulkUploadYouTubeClips)
 	if jobTimeout <= 0 {
-		return nil, fmt.Errorf("bulk upload worker: job timeout for %q resolved to %v (non-positive — check registry configuration)", appjobs.TypeBulkUploadYouTubeClips, jobTimeout)
+		return nil, fmt.Errorf("bulk upload worker: job timeout for %q resolved to %v (non-positive — check registry)", appjobs.TypeBulkUploadYouTubeClips, jobTimeout)
 	}
 	ctx, cancel := context.WithTimeout(ctx, jobTimeout)
 	defer cancel()
@@ -111,7 +92,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		return nil, fmt.Errorf("local_folder is required")
 	}
 	if w.publisher == nil {
-		return nil, fmt.Errorf("drive publisher not configured (PR-13: Publisher mandatory, ClipDriveUploaderPort removed)")
+		return nil, fmt.Errorf("drive publisher not configured")
 	}
 	if w.repo == nil {
 		return nil, fmt.Errorf("clips repository not configured")
@@ -128,8 +109,6 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 			"local_folder": payload.LocalFolder,
 		})
 	}
-	// PR-13 (July 2026): scan params are server-controlled.
-	// recursion=true is hardcoded; include/skip filters are empty; limit=0 (no cap).
 	candidates, err := scanLocalClips(payload.LocalFolder, true, nil, nil, 0)
 	if err != nil {
 		if tools != nil && tools.Event != nil {
@@ -164,8 +143,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		tools.Progress(5, fmt.Sprintf("Found %d clips, starting pipeline", total))
 	}
 
-	// PR-13 (July 2026): concurrency is server-controlled. Default 2.
-	concurrency := 2
+	const concurrency = 2
 	sem := make(chan struct{}, concurrency)
 	var (
 		wg            sync.WaitGroup
@@ -235,11 +213,9 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	return result, nil
 }
 
-// processOneClip stitches the per-clip pipeline: config check →
-// hash + clipID → publish-clip → sidecar-publish → register (clip
-// build + dispatcher EnqueueAndIndex) → enrich. None of these stages
-// are gated by client flags (PR-13 retired SkipUpload / SkipEmbeddings /
-// SkipQdrant gates).
+// processOneClip stitches the per-clip pipeline: config check → hash +
+// clipID → publish clip + sidecars → register (asset build + dispatcher
+// EnqueueAndIndex) → enrich.
 func (w *BulkUploadWorker) processOneClip(
 	ctx context.Context,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
@@ -250,10 +226,9 @@ func (w *BulkUploadWorker) processOneClip(
 ) error {
 	if w == nil || w.hasher == nil || w.publisher == nil || w.repo == nil {
 		failed.Add(1)
-		return fmt.Errorf("bulk upload not configured correctly (PR-13: Publisher mandatory)")
+		return fmt.Errorf("bulk upload not configured correctly")
 	}
 
-	// Step 1: hash + clipID.
 	fileHash, err := w.hasher.MD5File(cand.LocalPath)
 	if err != nil {
 		failed.Add(1)
@@ -274,7 +249,6 @@ func (w *BulkUploadWorker) processOneClip(
 		})
 	}
 
-	// Step 2-3: publish clip via Publisher + sidecars.
 	pubRes, pubErr := publishClip(ctx, w.publisher, payload, cand, fileHash, log)
 	if pubErr != nil {
 		failed.Add(1)
@@ -301,7 +275,6 @@ func (w *BulkUploadWorker) processOneClip(
 	}
 	publishSidecars(ctx, w.publisher, cand, targetFolderID, log)
 
-	// Step 4 + 5: build clip Asset + dispatcher.EnqueueAndIndex.
 	if err := registerClip(ctx, w.dispatcher, payload, cand, pubRes, fileHash, targetFolderID, log); err != nil {
 		failed.Add(1)
 		if tools != nil && tools.Event != nil {
@@ -320,7 +293,6 @@ func (w *BulkUploadWorker) processOneClip(
 		})
 	}
 
-	// Step 6: enrichment (transcript staging only).
 	enrichClip(w.cfg, cand, log)
 	return nil
 }

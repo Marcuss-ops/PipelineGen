@@ -1,29 +1,12 @@
-// Package clips hosts the unified HTTP handler that owns every clip-related
-// endpoint. PR-A Phase 4 BULK consolidation: a single Handler struct carries
-// the full dep surface and exposes every method previously scattered across
-// handler_sources_clip_*.go in the flat sources package.
+// Package clips — handler.go: fat orchestrator that mounts every clip route.
 //
-// Splits 1 + 2 + Step-5-Split-2 (June 2026, override ADR 0009): Search /
-// Ingest / Ops sub-handlers own their idiomatic-route band via per-cluster
-// RegisterRoutes. Each sub-handler receiver receives only the deps it
-// consumes. The orchestrator *Handler keeps a public Deps bag, applies one
-// idempotency middleware (PR8) for all writes, and calls RegisterRoutes on
-// each sub-handler.
-//
-// NonOps methods (9): BulkAddTags / BulkRemoveTags / ReprocessClip /
-// ReindexClip / BatchReindex / EnrichMedia / EnrichAndIndexClip /
-// RegisterJobHandlers / HandleBulkUploadYouTubeClipsJob live in the
-// nonops sub-package (PR-CLIPS-NONOPS-EXTRACT, July 2026, deadline
-// 2026-08-01). The orchestrator *Handler keeps 3 one-line
-// delegators (EnrichAndIndexClip / RegisterJobHandlers /
-// HandleBulkUploadYouTubeClipsJob) for non-HTTP consumer stability
-// (sourcingEnrichmentAdapter + ClipsDescriptor.RegisterJobHandlers +
-// jobs-service dispatcher). The 6 HTTP routes are installed via
-// h.nonops.RegisterRoutes(r, idem) in Handler.RegisterRoutes.
-//
-// Action cluster (DownloadClip / ReuploadClip / FindDuplicates) stays on
-// *Handler via clip_action.go; Action its own sub-handler will land in a
-// later commit.
+// Composition: 5 sub-handlers (search/ingest/ops/nonops/bulk) registered via
+// per-cluster RegisterRoutes; 3 non-HTTP delegators (EnrichAndIndexClip +
+// RegisterJobHandlers + HandleBulkUploadYouTubeClipsJob) keep external
+// non-HTTP consumers stable. NewHandlerStrict validates the JOB-SVC +
+// bulk-upload-worker chain at construction (godlike/07 no-fake-availability)
+// — a partial wiring crashes at boot instead of silently succeeding on first
+// enqueue. The legacy NewHandler (nil-tolerant) remains for test fixtures.
 package clips
 
 import (
@@ -55,9 +38,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// Deps is the constructor bag for Handler. Keeping deps in a struct
-// rather than 14 positional arguments makes wiring sites readable and
-// future dep additions non-breaking.
+// Deps is the constructor bag for Handler.
 type Deps struct {
 	ClipsRepo        *assets.ClipsRepository
 	AssetRepo        asset.Repository
@@ -86,19 +67,11 @@ type Deps struct {
 	Publisher        delivery.Publisher
 }
 
-// Handler owns every clip-related HTTP method. One receiver per method;
-// methods live on *Handler until their cluster lands its own sub-handler
-// (Search/Ingest/Ops/NonOps already split; Action methods stay inline
-// until their future split).
+// Handler is the fat HTTP orchestrator. Sub-handlers are constructed eagerly
+// in NewHandler; non-HTTP delegators stay on *Handler for external consumers.
 type Handler struct {
-	// PR8 (June 2026): Idempotency is the reusable Gin idempotency
-	// middleware (constructed once at server boot via NewHandler →
-	// WireAssets → BuildRepoBundle.IdempotencyStore). Nil-tolerated so
-	// test fixtures can opt out. Only WRITE routes install it — READ
-	// routes fall through unchanged.
 	Idempotency gin.HandlerFunc
 
-	// Action cluster mirror fields (split 3 TBD).
 	assetRepo       asset.Repository
 	driveAdmin      drive.Admin
 	duplicateFinder *duplicates.Finder
@@ -107,46 +80,20 @@ type Handler struct {
 	publisher       delivery.Publisher
 	log             *zap.Logger
 	jobsSvc         jobservice.Service
+	cfg             *config.Config
 
-	// Cfg used by driveRootForSource helper (Action cluster).
-	cfg *config.Config
-
-	// search (Split 1): Search sub-handler — 4 clip-search routes.
-	search *SearchHandler
-	// ingest (Split 2): Ingest sub-handler — 3 ingest routes.
-	ingest *IngestHandler
-	// ops (Step 5 Split 2): Ops sub-handler — 14 ops routes (5 read + 9 write+idem).
-	ops *OpsHandler
-	// bulk (DRIFT-CLIPS-BULK-SPLIT-5, July 2026): BulkUploadTransport —
-	// 1 HTTP route POST /:source/clips/bulk-upload-youtube-clips. Reconnected
-	// after PR-CLIPS-NONOPS-EXTRACT orphaned the receiver (July 2026).
+	search        *SearchHandler
+	ingest        *IngestHandler
+	ops           *OpsHandler
 	bulkTransport *BulkUploadTransport
-	// nonops (PR-CLIPS-NONOPS-EXTRACT, July 2026): 9 NonOps methods
-	// (6 HTTP routes + 3 non-HTTP delegators on the orchestrator)
-	// extracted from handler.go + handler_delegators.go +
-	// handler_reprocess.go + handler_index.go + handler_download.go +
-	// clip_ops_handlers.go. Construction receives pre-built use case
-	// instances per thinker verdict Q7 (don't re-construct in the
-	// sub-package — that would leak repository/service deps to
-	// nonops).
-	nonops *nonops.NonOpsHandler
+	nonops        *nonops.NonOpsHandler
 }
 
-// NewHandler constructs the unified Handler. May be called before every
-// dependency is wired — individual methods that need a missing dep will
-// internal-error handle it (preserved legacy behavior).
-//
-// PR8: idempotencyMiddleware is the reusable Gin idempotency middleware
-// instance; a nil value disables idempotency (test fixtures / dry-run
-// CLI invocations). Production wiring passes the canonical *middleware.Idempotency
-// value constructed from BuildRepoBundle.IdempotencyStore.
 func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware
-	} // S1a (June 2026): when the composition root supplies a shared
-	// EnrichUC, reuse it; when nil (test fixture, partial deploy),
-	// construct a local fallback copy that preserves pre-lift behaviour.
+	}
 	enrichUC := enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.MetaWriter, d.Log)
 	bulkTagsUC := appclips.NewBulkTagsUseCase(d.ClipsRepo, d.AssetTreeSvc)
 	downloadUC := appclips.NewDownloadUseCase(d.AssetRepo, d.VoiceoverRepo)
@@ -164,7 +111,6 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		jobsSvc:         d.JobsSvc,
 		cfg:             d.Cfg,
 
-		// Split 1 (June 2026, override ADR 0009): Search sub-handler.
 		search: NewSearchHandler(SearchDeps{
 			ClipsRepo:     d.ClipsRepo,
 			AssetRepo:     d.AssetRepo,
@@ -172,9 +118,6 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			ImagesRepo:    d.ImagesRepo,
 			SearchSvc:     d.SearchSvc,
 		}),
-		// Split 2 (June 2026, override ADR 0009): Ingest sub-handler.
-		// 6 fields removed July 2026 (dead code — UploadVideoClip was
-		// migrated to uploadUC.Execute).
 		ingest: NewIngestHandler(IngestDeps{
 			Dispatcher:   d.Dispatcher,
 			AssetTreeSvc: d.AssetTreeSvc,
@@ -184,11 +127,6 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			UploadUC:     d.UploadUC,
 			Log:          d.Log,
 		}),
-		// Step 5 Split 2 (June 2026, override ADR 0009): Ops sub-handler
-		// owns 14 routes (5 read + 9 write+idem). The 7 OpsDeps fields
-		// below are exactly what the 14 moved methods touch — no more,
-		// no less (cluster × deps matrix §4). Non-Ops methods stay
-		// inline on *Handler until their future sub-handlers land.
 		ops: NewOpsHandler(OpsDeps{
 			ClipOpsService: d.ClipOpsService,
 			DeletionSvc:    d.DeletionSvc,
@@ -198,13 +136,6 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			AssetTreeSvc:   d.AssetTreeSvc,
 			Log:            d.Log,
 		}),
-		// BulkUploadTransport (DRIFT-CLIPS-BULK-SPLIT-5 + reconnector
-		// patch, July 2026; PR-13, July 2026 — runtime-tunable noise
-		// dropped): the SINGLE HTTP route
-		// POST /:source/clips/bulk-upload-youtube-clips. The transport
-		// receives JobsSvc + the 3 storage base paths + the worker +
-		// log. DriveAdmin + Publisher dropped because Drive folder
-		// resolution is not a transport responsibility.
 		bulkTransport: NewBulkUploadTransport(BulkTransportDeps{
 			JobsSvc:          d.JobsSvc,
 			MediaPath:        d.Cfg.Storage.MediaPath(),
@@ -215,13 +146,6 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 		}),
 	}
 
-	// PR-CLIPS-NONOPS-EXTRACT (July 2026): construct the NonOps
-	// sub-handler AFTER the h struct is in place so we can bind
-	// h.repoForSource as the canonical source-resolution callback
-	// (method value, captured even though h is partially populated
-	// at this point — when the method is invoked later via
-	// h.nonops.ReindexClip, the receiver's h.search field is fully
-	// constructed and the lookup chains correctly).
 	h.nonops = nonops.NewNonOpsHandler(nonops.Deps{
 		BulkTagsUC:       bulkTagsUC,
 		ReprocessUC:      reprocessUC,
@@ -236,29 +160,10 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	return h
 }
 
-// NewHandlerStrict constructs the unified Handler with fail-closed
-// validation of the canonical 3-method job-handler registration chain
-// deps at construction time. Threaded through the composition root
-// (clips/module.go::Build -> NewHandlerStrict) so a partial wiring
-// that would fail at first enqueue crashes loudly at boot instead —
-// godlike/07 no-fake-availability.
-//
-// godlike/06 SSOT: the canonical path is
-//
-//	clips.Build (module.go)
-//	  -> NewHandlerStrict (this function)
-//	      -> nonops.ValidateNonOpsDeps pre-check on the required deps
-//	      -> NewHandler construction (with the validated locator deps)
-//	  -> ClipsDescriptor.RegisterJobHandlers (module.go)
-//	      -> Handler.RegisterJobHandlers (handler.go)
-//	          -> NonOpsHandler.RegisterJobHandlers (nonops/handler_jobs.go)
-//	              -> jobs.Service.RegisterHandler
-//
-// If the pre-check fails (JobsSvc or BulkUploadWorker is nil), the
-// construction returns an error instead of constructing a Handler
-// with a partially-wired nonops sub-handler. The legacy NewHandler
-// (nil-tolerant at construction) remains for test fixtures that
-// opt out of the fail-closed contract.
+// NewHandlerStrict: same construction as NewHandler but validates the
+// nonops.NewNonOps required deps (JobsSvc + BulkUploadWorker non-nil) up front.
+// godlike/07 no-fake-availability: a partial wiring that would fail at first
+// enqueue is a 500 at boot instead.
 func NewHandlerStrict(d Deps, idempotencyMiddleware gin.HandlerFunc) (*Handler, error) {
 	if err := nonops.ValidateNonOpsDeps(nonops.Deps{
 		JobsSvc:          d.JobsSvc,
@@ -269,14 +174,9 @@ func NewHandlerStrict(d Deps, idempotencyMiddleware gin.HandlerFunc) (*Handler, 
 	return NewHandler(d, idempotencyMiddleware), nil
 }
 
-// enrichUCOrLocal returns `shared` when non-nil, otherwise constructs a
-// fresh EnrichUseCase with the supplied dependencies. Single-line
-// helper that documents the share-or-construct decision inline.
-//
-// Wave 2 (Asset commit + Qdrant, July 2026): the local fallback has
-// no dispatcher by design (the orchestrator only sees the narrower
-// ClipIndexDispatcherPort). Enrichment will still run, but re-index
-// enqueueing is skipped with a warning.
+// enrichUCOrLocal: returns shared when non-nil; otherwise constructs a local
+// fallback with no dispatcher (orchestrator only sees the narrower
+// ClipIndexDispatcherPort; enrichment runs but re-index enqueueing is skipped).
 func enrichUCOrLocal(
 	shared *appclips.EnrichUseCase,
 	repo asset.Repository,
@@ -289,12 +189,8 @@ func enrichUCOrLocal(
 	return appclips.NewEnrichUseCase(repo, mw, nil, log)
 }
 
-// repoForSource resolves a clip source to its canonical repository
-// by delegating to the Search sub-handler (Split 1, June 2026).
-// Used as the method-value callback by the nonops sub-handler
-// (RepoForSource: h.repoForSource in NewHandler) so the lookup
-// chains into the Search sub-handler without coupling nonops to
-// it directly.
+// repoForSource: resolves clip source via the Search sub-handler; used as
+// method-value callback by the nonops sub-handler.
 func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
 	if h.search == nil {
 		return nil
@@ -302,20 +198,7 @@ func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
 	return h.search.repoForSource(source)
 }
 
-// ── One-line delegators to nonops (3 non-HTTP methods) ────────────────
-//
-// PR-CLIPS-NONOPS-EXTRACT (July 2026): these 3 methods stay on
-// *Handler (the orchestrator) as one-line delegators to the nonops
-// sub-handler so external non-HTTP consumers continue to work
-// without breaking. The 6 HTTP routes are installed via
-// h.nonops.RegisterRoutes(r, idem) in RegisterRoutes below.
-
-// EnrichAndIndexClip is a 1-line delegator to nonops.EnrichAndIndexClip.
-// External consumer: sourcingEnrichmentAdapter
-// (internal/app/youtube_adapters_meta.go) calls this on the
-// orchestrator *Handler to drive the bulk-enrich path that
-// supplements the HTTP /enrich route. Returns immediately if the
-// nonops sub-handler is nil (test fixture / pre-construction call).
+// EnrichAndIndexClip: 1-line delegator to nonops.EnrichAndIndexClip.
 func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, source string) {
 	if h.nonops == nil {
 		return
@@ -323,10 +206,7 @@ func (h *Handler) EnrichAndIndexClip(ctx context.Context, clip *asset.Asset, sou
 	h.nonops.EnrichAndIndexClip(ctx, clip, source)
 }
 
-// RegisterJobHandlers is a 1-line delegator to nonops.RegisterJobHandlers.
-// External consumers: ClipsDescriptor.RegisterJobHandlers
-// (clips/module.go) + tests. Returns nil when the nonops sub-handler
-// is nil (test fixture / pre-construction call).
+// RegisterJobHandlers: 1-line delegator to nonops.RegisterJobHandlers.
 func (h *Handler) RegisterJobHandlers() error {
 	if h.nonops == nil {
 		return nil
@@ -334,12 +214,8 @@ func (h *Handler) RegisterJobHandlers() error {
 	return h.nonops.RegisterJobHandlers()
 }
 
-// HandleBulkUploadYouTubeClipsJob is a 1-line delegator to
-// nonops.HandleBulkUploadYouTubeClipsJob. External consumer: the
-// jobs service dispatcher (wired via RegisterJobHandlers above).
-// Returns a typed error when the nonops sub-handler is nil
-// (test fixture / pre-construction call) so the dispatcher can
-// fail-closed rather than silently succeeding on a no-op.
+// HandleBulkUploadYouTubeClipsJob: 1-line delegator to nonops; typed error
+// when nonops is nil so the dispatcher fails closed.
 func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *jobservice.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	if h.nonops == nil {
 		return nil, fmt.Errorf("nonops sub-handler not wired (clips.Handler constructed without NewHandler)")
@@ -348,20 +224,9 @@ func (h *Handler) HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *jobser
 }
 
 // RegisterRoutes mounts the entire clip-route surface.
-// Thin delegators + helpers moved to handler_delegators.go
-// (LONG-FILES-DECOMPOSITION-2026-07-06 Band B #7). The 6 NonOps
-// HTTP routes (BulkAddTags + BulkRemoveTags + ReprocessClip +
-// ReindexClip + EnrichMedia + BatchReindex) are installed via
-// h.nonops.RegisterRoutes(r, idem) — see PR-CLIPS-NONOPS-EXTRACT
-// (July 2026) for the sub-package extraction rationale.
 //
-// NOTE (Wave 4, July 2026): This method is retained as the
-// canonical route surface for existing tests and for callers that
-// construct the Handler directly. The clips.Build composition path
-// registers routes through the sub-descriptors (catalog, ingest,
-// processing, publication, indexing, operations, bulk) instead of
-// calling this method, so production registration does not double-
-// mount routes.
+// NOTE: clips.Build composition paths register routes through sub-descriptors,
+// NOT through this method, so production registration does not double-mount.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	idem := h.idemWriter()
 
@@ -375,15 +240,6 @@ func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	r.POST("/:source/clips/:id/duplicates", idem, h.FindDuplicates)
 	r.POST("/:source/clips/:id/reupload", idem, h.ReuploadClip)
 }
-
-// ── Wave 4 sub-descriptor factory methods ─────────────────────────────
-//
-// These methods expose the existing sub-handlers as
-// submodule.RouteRegistrar instances so that clips.Build can
-// compose the clips capability from catalog/ingest/processing/
-// publication/indexing/operations/bulk sub-descriptors without
-// exposing the Handler's unexported fields. Each factory returns
-// a wrapper that delegates to the corresponding sub-handler.
 
 func (h *Handler) catalogRegistrar(idem gin.HandlerFunc) *catalogRegistrar {
 	return &catalogRegistrar{search: h.search, ops: h.ops, h: h, idem: idem}
