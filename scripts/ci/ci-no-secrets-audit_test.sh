@@ -285,7 +285,7 @@ for i in "${!LOCKSTEP_LOCK_FILES[@]}"; do
         echo "  FAIL [code] $desc" >&2
         echo "    file $file is MISSING the obfuscation primitive" >&2
         echo "    expected literal: $pattern" >&2
-        echo "    investigate: grep -F -- "\$pattern" $file" >&2
+        echo "    investigate: grep -F -- \$pattern $file" >&2
     else
         PASS_COUNT=$((PASS_COUNT + 1))
         qlog "  PASS [code] $desc"
