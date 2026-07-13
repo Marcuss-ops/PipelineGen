@@ -41,6 +41,16 @@ import (
 // guarantee is the audit-able contract the rest of the pipeline
 // relies on.
 type PlanRequest struct {
+	// ItemID is the canonical generation item identifier the
+	// caller uses to track this plan's lineage. The planner
+	// echoes it on every SourcePlanningError so operator
+	// dashboards can correlate failures without inspecting
+	// the request body. Empty ItemID is allowed (the
+	// planner just leaves it blank on errors); callers
+	// should populate it for audit traceability per the
+	// godlike/06 SSOT contract.
+	ItemID string
+
 	// Title is the canonical document/video title. Used as a
 	// planner input when the source_text is sparse; carried
 	// verbatim into the planner-derived ClipPrePlan.Title.
@@ -142,7 +152,14 @@ type ClipSearchSlot struct {
 	// SourceText span this slot represents. The planner
 	// NEVER edits SourceText; the slot's chosen clip MUST
 	// depict a moment that overlaps this span.
-	SourceAnchor SourceAnchor
+	//
+	// Pointer type (not value): aligns with the domain
+	// ClipPrePlan convention and matches the
+	// FASE-2 type-alias swap target
+	// (type ClipSearchSlot = scriptpkg.ClipSearchSlot).
+	// ValidatePlan rejects a nil SourceAnchor before any
+	// downstream code touches the slot.
+	SourceAnchor *SourceAnchor
 
 	// SearchQuery is the per-slot query sent to the
 	// SlotSearchPort. Composition: Title + Topic + visual

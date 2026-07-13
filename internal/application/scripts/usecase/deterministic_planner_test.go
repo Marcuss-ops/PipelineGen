@@ -148,7 +148,7 @@ func TestDeterministicPlanner_PacquiaoGolden(t *testing.T) {
 	// Total TargetDurationMs is exactly 30000 with 4 slots of 7500
 	// each (30000 / 4 = 7500, remainder 0). Verify sum + per-slot.
 	var sum int64
-	for i, s := range plan.Slots {
+	for _, s := range plan.Slots {
 		sum += s.TargetDurationMs
 	}
 	if sum != 30000 {
