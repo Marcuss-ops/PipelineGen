@@ -6,7 +6,18 @@
 // No durable field uses any, any, or map[string]any.
 package script
 
-import "strings"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"strings"
+
+	// godlike/06 SSOT note: golang.org/x/text/unicode/norm is the
+	// Unicode Standard citation for source-text canonicalization
+	// (NFC). It is the ONLY 3rd-party import permitted in this
+	// domain package: every other planner field uses stdlib only.
+	"golang.org/x/text/unicode/norm"
+)
 
 // SourceType enumerates the canonical input sources for script generation.
 type SourceType string
@@ -403,6 +414,37 @@ func (e *ClipEvidence) ModelSourceText() string {
 	return ""
 }
 
+// CoverageSourceText returns the clip evidence content with the
+// structural labels stripped out. It is used by editorial quality
+// checks so that presentation-only markers do not distort the
+// overlap ratio.
+func (e *ClipEvidence) CoverageSourceText() string {
+	if e == nil {
+		return ""
+	}
+	text := strings.TrimSpace(e.NarrativeText)
+	if text == "" {
+		return ""
+	}
+	var parts []string
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case line == "",
+			strings.HasPrefix(line, "NARRATIVE EVIDENCE "),
+			strings.HasPrefix(line, "Ref:"),
+			strings.HasPrefix(line, "VisualSummary:"),
+			strings.HasPrefix(line, "Description:"),
+			strings.HasPrefix(line, "Transcript:"),
+			strings.HasPrefix(line, "DurationMs:"):
+			continue
+		default:
+			parts = append(parts, line)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // ClipDetail carries the primary evidence for a single accepted
 // clip. It is the canonical source of truth for clip-native scene
 // construction (transcription, timestamps, metadata).
@@ -487,4 +529,309 @@ type SearchResultItem struct {
 	Score     float64 `json:"score"`
 	Source    string  `json:"source"`
 	DriveLink string  `json:"drive_link,omitempty"`
+}
+
+// ── Clip Pre-Planner types (FASE 1, July 2026) ────────────────────────
+//
+// godlike/06 SSOT: this is the canonical ownership site for the
+// operator-intent -> visual-requirements shape transition. The
+// SlotSearchPort, the shared ClipSampler, the engine, and the
+// backend binder all read these types.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: SourceHash + immutable SourceAnchor
+// are the cross-machine identity of the planning source. The
+// planner must NEVER rewrite the SourceText; offsets and excerpts
+// are byte-stable across replays.
+
+// CanonicalizeSourceText returns the byte-deterministic form of s
+// used for SourceHash computation. Strips carriage returns and
+// applies Unicode NFC normalization so identical logical text
+// yields the same hash across machines and editors.
+//
+// godlike/06 SSOT: every planner impl + every Validate method feeds
+// CanonicalizeSourceText -> ComputeSourceHash. NEVER hash raw user
+// bytes; whitespace/EOL variances would leak into the fingerprint
+// substrate.
+func CanonicalizeSourceText(s string) string {
+	n := strings.ReplaceAll(s, "\r\n", "\n")
+	return norm.NFC.String(n)
+}
+
+// ComputeSourceHash returns the SHA-256 hex digest of the
+// canonicalized form of s. Stored on ClipPrePlan.SourceHash and
+// SourceAnchor.SourceHash.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: same hash on any host for any
+// whitespace/Unicode-equivalent input; used as the planning source
+// identity for cache invalidation downstream.
+func ComputeSourceHash(s string) string {
+	sum := sha256.Sum256([]byte(CanonicalizeSourceText(s)))
+	return hex.EncodeToString(sum[:])
+}
+
+// SourceAnchor is an immutable byte-range reference into the
+// canonicalized SourceText. Once a planner commits an anchor, the
+// offsets and excerpt MUST NOT mutate; both the model-facing
+// prompt and the backend binding spec depend on this stability.
+//
+// SourceHash MUST equal the parent ClipPrePlan.SourceHash for any
+// anchor in that plan (anti-drift gate). The planner emits offsets
+// into the canonicalized text - never into raw user bytes.
+//
+// Conventionally EndOffset <= len(CanonicalizeSourceText(SourceText)).
+// The degenerate (StartOffset==EndOffset==0) anchor is allowed only
+// when SourceText is empty; the planner emits exactly one such
+// anchor instead of inventing text.
+type SourceAnchor struct {
+	SourceHash  string `json:"source_hash"`
+	StartOffset int    `json:"start_offset"`
+	EndOffset   int    `json:"end_offset"`
+	Excerpt     string `json:"excerpt,omitempty"`
+}
+
+// Validate enforces the anchor contract against the parent plan's
+// hash. nil-safe.
+//
+// Ordering (deterministic contract):
+//  1. parent source_hash equality (anti-drift gate)
+//  2. start_offset >= 0
+//  3. end_offset >= start_offset
+func (a *SourceAnchor) Validate(parentPlanSourceHash string) error {
+	if a == nil {
+		return fmt.Errorf("source anchor: nil")
+	}
+	var details []string
+	if a.SourceHash != parentPlanSourceHash {
+		details = append(details, fmt.Sprintf(
+			"source_hash mismatch (anchor=%q, plan=%q)",
+			a.SourceHash, parentPlanSourceHash))
+	}
+	if a.StartOffset < 0 {
+		details = append(details, fmt.Sprintf(
+			"start_offset must be >= 0, got %d", a.StartOffset))
+	}
+	if a.EndOffset < a.StartOffset {
+		details = append(details, fmt.Sprintf(
+			"end_offset must be >= start_offset (start=%d end=%d)",
+			a.StartOffset, a.EndOffset))
+	}
+	if len(details) > 0 {
+		return fmt.Errorf("source anchor: %s", strings.Join(details, "; "))
+	}
+	return nil
+}
+
+// ClipSearchSlot is a single visual requirement emitted by the
+// Pre-Planner. The SlotSearchPort finds candidates for it; the
+// shared ClipSampler picks one per slot.
+//
+// Ref is the temporary skeleton key the rest of the pipeline
+// threads. Format: "slot-N" with N = 1..len(plan.Slots). NOT a
+// clip_id. The planner MUST emit refs in order with no gaps
+// ("slot-1", "slot-2", ..., "slot-N"). The model must never see
+// a clip_id; it sees Ref.
+//
+// Required uses bare `json:"required"` (no `omitempty`) so the
+// `false` value survives JSON round-trip; silence would conflate
+// "explicit optional" with "schema missing".
+type ClipSearchSlot struct {
+	Ref              string        `json:"ref"`
+	Topic            string        `json:"topic,omitempty"`
+	SourceAnchor     *SourceAnchor `json:"source_anchor,omitempty"`
+	SearchQuery      string        `json:"search_query,omitempty"`
+	VisualIntent     string        `json:"visual_intent,omitempty"`
+	TargetDurationMs int64         `json:"target_duration_ms,omitempty"`
+	Required         bool          `json:"required"`
+}
+
+// Validate enforces the slot contract against the parent plan's
+// hash. nil-safe.
+func (s *ClipSearchSlot) Validate(parentPlanSourceHash string) error {
+	if s == nil {
+		return fmt.Errorf("clip search slot: nil")
+	}
+	ref := strings.TrimSpace(s.Ref)
+	if ref == "" {
+		return fmt.Errorf("clip search slot: ref is required")
+	}
+	if !strings.HasPrefix(ref, "slot-") {
+		return fmt.Errorf(
+			"clip search slot: ref %q must start with \"slot-\"", ref)
+	}
+	if s.SourceAnchor == nil {
+		return fmt.Errorf("clip search slot: source_anchor is required")
+	}
+	return s.SourceAnchor.Validate(parentPlanSourceHash)
+}
+
+// ClipPrePlan is the deterministic, provenance-attached output of
+// the Pre-Planner. Slot order matches the operator's narrative
+// order. SourceHash drives cache invalidation: any SourceText edit
+// bumps the hash and invalidates the cached plan.
+type ClipPrePlan struct {
+	Version     int              `json:"version"`
+	Fingerprint string           `json:"fingerprint,omitempty"`
+	SourceHash  string           `json:"source_hash"`
+	Title       string           `json:"title"`
+	Slots       []ClipSearchSlot `json:"slots"`
+}
+
+// Validate enforces plan-level invariants. nil-safe.
+//
+//  1. version == 1
+//  2. SourceHash non-empty
+//  3. Title non-empty (after trim)
+//  4. every slot validates (propagates parent-hash equality check)
+//  5. slot refs are strictly sequential ("slot-1", "slot-2", ...):
+//     no gaps, out-of-order, or duplicates (explicit duplicate
+//     detection via seenRefs).
+func (p *ClipPrePlan) Validate() error {
+	if p == nil {
+		return fmt.Errorf("clip pre plan: nil")
+	}
+	var details []string
+	if p.Version != 1 {
+		details = append(details, fmt.Sprintf(
+			"unsupported version %d (expected 1)", p.Version))
+	}
+	if p.SourceHash == "" {
+		details = append(details, "source_hash is required")
+	}
+	if strings.TrimSpace(p.Title) == "" {
+		details = append(details, "title is required")
+	}
+	seenRefs := make(map[string]struct{})
+	for i, slot := range p.Slots {
+		if err := slot.Validate(p.SourceHash); err != nil {
+			details = append(details,
+				fmt.Sprintf("slots[%d]: %s", i, err.Error()))
+		}
+		ref := strings.TrimSpace(slot.Ref)
+		expected := fmt.Sprintf("slot-%d", i+1)
+		if ref != expected {
+			details = append(details, fmt.Sprintf(
+				"slots[%d]: ref %q does not match expected %q (no gaps, in order)",
+				i, ref, expected))
+		}
+		if _, dup := seenRefs[ref]; dup {
+			details = append(details, fmt.Sprintf(
+				"slots[%d]: duplicate ref %q (slot refs must be unique)",
+				i, ref))
+		} else {
+			seenRefs[ref] = struct{}{}
+		}
+	}
+	if len(details) > 0 {
+		return fmt.Errorf("clip pre plan: %s", strings.Join(details, "; "))
+	}
+	return nil
+}
+
+// ClipCandidate is one search match emitted by the SlotSearchPort
+// for a slot. Only the ClipSampler reads it; never the model-facing
+// prompt.
+//
+// AssetRef is INTERNAL - never leak to the model.
+// PerSlotScoreBreakdown is a per-gate audit map the Sampler reads
+// to write GateProvenanceRecord entries downstream.
+type ClipCandidate struct {
+	SlotRef               string             `json:"slot_ref"`
+	AssetRef              string             `json:"asset_ref"`
+	SemanticScore         float64            `json:"semantic_score"`
+	VisualScore           float64            `json:"visual_score,omitempty"`
+	QualityScore          float64            `json:"quality_score,omitempty"`
+	DurationMs            int64              `json:"duration_ms,omitempty"`
+	TranscriptSnippet     string             `json:"transcript_snippet,omitempty"`
+	Language              string             `json:"language,omitempty"`
+	DriveLinkEmpty        bool               `json:"drive_link_empty,omitempty"`
+	WitnessedAtMs         int64              `json:"witnessed_at_ms,omitempty"`
+	PerSlotScoreBreakdown map[string]float64 `json:"per_slot_score_breakdown,omitempty"`
+}
+
+// NarrativeClipView is the slot-aware, MODEL-FACING view. By
+// contract this struct EXCLUDES infra IDs: no clip_id, no
+// asset_id, no drive_link, no local_path, no source_url, no
+// speaker, no commentator, no raw_metadata. The model sees
+// SlotRef + Description + VisualSummary + Transcript + DurationMs
+// only. godlike/07 NO-FAKE-AVAILABILITY: Compile-time struct shape
+// is the enforcement layer; a redaction-leak test
+// (source_spec_planner_roundtrip_test.go) catches runtime drift.
+type NarrativeClipView struct {
+	SlotRef       string `json:"slot_ref"`
+	Description   string `json:"description,omitempty"`
+	VisualSummary string `json:"visual_summary,omitempty"`
+	Transcript    string `json:"transcript,omitempty"`
+	DurationMs    int64  `json:"duration_ms,omitempty"`
+}
+
+// Validate enforces projection discipline: SlotRef is required;
+// infra IDs are not stored on this struct at all (compile-time
+// guarantees).
+func (v *NarrativeClipView) Validate() error {
+	if v == nil {
+		return fmt.Errorf("narrative clip view: nil")
+	}
+	if strings.TrimSpace(v.SlotRef) == "" {
+		return fmt.Errorf("narrative clip view: slot_ref is required")
+	}
+	return nil
+}
+
+// SlotClipBinding is the slot-aware backend binding spec produced
+// by the ClipSampler. Coexists with model_output.ClipBinding: the
+// latter is a scene-level binding populated from SlotClipBinding
+// at backend bind time. The SourceAnchor presence preserves the
+// audit trail (text span -> bytes) intact; downstream delivery
+// MUST go through delivery.Publisher (no RootFolderOverride from
+// this layer).
+type SlotClipBinding struct {
+	SlotRef      string        `json:"slot_ref"`
+	ClipID       string        `json:"clip_id"`
+	ClipTitle    string        `json:"clip_title,omitempty"`
+	DriveLink    string        `json:"drive_link,omitempty"`
+	StartMs      int64         `json:"start_ms,omitempty"`
+	EndMs        int64         `json:"end_ms,omitempty"`
+	SourceAnchor *SourceAnchor `json:"source_anchor,omitempty"`
+}
+
+// ResolvedClipSlot ties a chosen candidate back to its plan slot.
+// It is the audit-able provenance of every clip the Sampler
+// selected. The Narrative view is what the model sees; the
+// Binding is what the backend sees. Both travel together.
+type ResolvedClipSlot struct {
+	Ref            string             `json:"ref"`
+	Topic          string             `json:"topic,omitempty"`
+	SourceAnchor   *SourceAnchor      `json:"source_anchor,omitempty"`
+	ChosenAssetRef string             `json:"chosen_asset_ref"`
+	SemanticScore  float64            `json:"semantic_score"`
+	VisualScore    float64            `json:"visual_score,omitempty"`
+	Narrative      *NarrativeClipView `json:"narrative,omitempty"`
+	Binding        *SlotClipBinding   `json:"binding,omitempty"`
+}
+
+// Validate enforces slot-level invariants against the parent
+// plan's hash. nil-safe.
+func (s *ResolvedClipSlot) Validate(parentPlanSourceHash string) error {
+	if s == nil {
+		return fmt.Errorf("resolved clip slot: nil")
+	}
+	ref := strings.TrimSpace(s.Ref)
+	if ref == "" {
+		return fmt.Errorf("resolved clip slot: ref is required")
+	}
+	if !strings.HasPrefix(ref, "slot-") {
+		return fmt.Errorf(
+			"resolved clip slot: ref %q must start with \"slot-\"", ref)
+	}
+	if strings.TrimSpace(s.ChosenAssetRef) == "" {
+		return fmt.Errorf(
+			"resolved clip slot: chosen_asset_ref is required")
+	}
+	if s.SourceAnchor != nil {
+		if err := s.SourceAnchor.Validate(parentPlanSourceHash); err != nil {
+			return fmt.Errorf(
+				"resolved clip slot: source_anchor: %s", err.Error())
+		}
+	}
+	return nil
 }
