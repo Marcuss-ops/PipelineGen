@@ -347,21 +347,28 @@ type OutputSpec struct {
 	TranslateTo string `json:"translate_to,omitempty"`
 }
 
-// HasAnyPostprocessor returns true when at least one postprocessor
+// HasAnyPostprocessor returns true when at least one ACTIVE postprocessor
 // flag is non-disabled (toggle tri-state: ToggleEnabled or
 // ToggleDefault both resolve to true; ToggleDisabled resolves to
 // false). SaveToDB is intentionally out of scope.
 //
-// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3: post-tri-state cutover,
-// every flag check uses .AsBool() so caller-explicit ToggleDisabled
-// flows through correctly (no false positive "processor enabled"
-// when caller opted out).
+// DRIFT-FIX (July 2026, user directive "nessun campo documentato
+// come deprecato può essere ancora materialmente rispettato"): the 3
+// deprecation-registered flags (GenerateVoiceover +
+// GenerateSceneImages + GenerateDocument) are NO LONGER included in
+// the OR chain. They remain on the struct + the wire for
+// backward-compat with pre-PR-3 HTTP clients, but the runtime
+// contract is "setting them has no effect on the script.generate
+// pipeline". The corresponding plan.Postprocessors[] entries are
+// routed exclusively through the canonical downstream jobs
+// (TypeVoiceoverGenerate / TypeImagesGenerate / TypeDocumentGenerate
+// registered in internal/domain/job/job.go), not the inline
+// PostProcessorRegistry runtime. See architecture/deprecations.yaml
+// records OUTPUT_SPEC_VOICEOVER_FLAG + OUTPUT_SPEC_IMAGES_FLAG +
+// OUTPUT_SPEC_DOCUMENT_FLAG.
 func (o *OutputSpec) HasAnyPostprocessor() bool {
 	return o.ExtractEntities.AsBool() ||
-		o.GenerateMetadata.AsBool() ||
-		o.GenerateVoiceover.AsBool() ||
-		o.GenerateSceneImages.AsBool() ||
-		o.GenerateDocument.AsBool()
+		o.GenerateMetadata.AsBool()
 }
 
 // UnmarshalJSON is the canonical godlike/06 SSOT owner of OutputSpec's

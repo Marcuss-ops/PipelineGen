@@ -162,8 +162,17 @@ func applyConfigDefaults(item *scriptpkg.GenerationItemV2, cfg NormalizationConf
 		item.ScriptParams.ImagesPerScene = cfg.DefaultImagesPerScene
 	}
 
-	// Voiceover group default.
-	if item.Output.GenerateVoiceover.AsBool() && strings.TrimSpace(item.Output.VoiceoverGroup) == "" {
+	// Voiceover group default. DRIFT-FIX (July 2026): the prior
+	// condition was `out.GenerateVoiceover.AsBool() && ...empty`,
+	// which materially read the deprecated GenerateVoiceover
+	// toggled. Per user directive the deprecated field cannot be
+	// materially respected; the default-to-ChannelID behaviour is
+	// preserved but the read-side toggle condition is dropped
+	// (VoiceoverGroup is now unconditionally populated to the
+	// cfg.ChannelID when caller left it empty, because the
+	// downstream voiceover.generate job reads VoiceoverGroup
+	// regardless of the deprecated inline flag).
+	if strings.TrimSpace(item.Output.VoiceoverGroup) == "" {
 		item.Output.VoiceoverGroup = cfg.ChannelID
 	}
 
@@ -233,32 +242,24 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 
 	// ── Postprocessor flags (P0.1, July 2026) ─────
 	//
-	// GenerateDocument and SaveToDB are safety defaults because:
-	//   1. The "custom" preset is pass-through (ApplyPreset touches nothing).
-	//   2. applyConfigDefaults only fills identity/sizing/prompt fields.
-	//   3. Without these safety defaults, buildPostprocessorList never adds
-	//      ProcessorDocument or ProcessorPersistence to the postprocessor
-	//      list, so Google Docs are never created and scripts never persisted.
+	// SaveToDB is a safety default because:
+	//   1. The "custom" preset is pass-through (ApplyPreset touches
+	//      nothing).
+	//   2. applyConfigDefaults only fills identity/sizing/prompt
+	//      fields.
+	//   3. Without this safety default, buildPostprocessorList never
+	//      adds ProcessorPersistence to the postprocessor list, so
+	//      scripts are never persisted.
 	//
-	// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE):
-	// the safety default now uses `== ToggleDefault` to distinguish
-	// unset from explicit-disabled. Post-PR-3:
-	//   - caller explicit ToggleDisabled → survives the safety chain
-	//     (no silent override on caller opt-out per godlike/07
-	//     NO-FAKE-AVAILABILITY).
-	//   - caller explicit ToggleDefault → safety flips to ToggleEnabled
-	//     (processor runs by default for backward compat with the
-	//     pre-PR-3 silent-overwrite behavior on the UNSET path).
-	// PR-1 (Decision-Lock) preserved: GenerateVoiceover +
-	// GenerateSceneImages are NOT safety-defaulted because they're
-	// composition-gated (require VoiceoverService / ImageService
-	// wiring). The composition root at
-	// internal/app/wire_script_postprocess.go silently skips their
-	// registration on missing service + the BestEffort policy in
-	// defaultPolicyByName prevents a hard preflight failure.
-	if item.Output.GenerateDocument == scriptpkg.ToggleDefault {
-		item.Output.GenerateDocument = scriptpkg.ToggleEnabled
-	}
+	// DRIFT-FIX (July 2026, user directive "nessun campo
+	// documentato come deprecato può essere ancora materialmente
+	// rispettato"): the prior GenerateDocument ToggleDefault-→
+	// ToggleEnabled safety override is REMOVED. The
+	// deprecation-registered flag is no longer materially respected
+	// by the inline pipeline (Document output is produced by the
+	// separate TypeDocumentGenerate downstream job). SaveToDB
+	// stays a safety default because SaveToDB is NOT a
+	// deprecation-registered toggle (live postprocessor gate).
 	if !item.Output.SaveToDB {
 		item.Output.SaveToDB = true
 	}
@@ -323,9 +324,6 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 	if item == nil {
 		return
 	}
-	isUnsetToggle := func(t scriptpkg.Toggle) bool {
-		return t == scriptpkg.ToggleDefault || t == ""
-	}
 	switch preset {
 	case scriptpkg.PresetCustom:
 		// §6 row 1: custom | none | none.
@@ -333,16 +331,14 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 	case scriptpkg.PresetWithImages:
 		// §6 row 2: with_images | none | images.enabled=true only.
 		//
-		// Enable scene images. Voiceover / document / entities /
-		// metadata stay caller-controlled — the preset never alters
-		// them silently (per doc §6 last line). Sizing defaults fill
-		// in only when caller left them at zero (caller precedence
-		// via OutputSpec Toggle tri-state contract — caller-explicit
-		// ToggleDisabled is preserved through ApplyPreset because the
-		// assignment only runs when caller left field at ToggleDefault).
-		if isUnsetToggle(item.Output.GenerateSceneImages) {
-			item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
-		}
+		// DRIFT-FIX (July 2026): the prior GenerateSceneImages
+		// toggle assignment is REMOVED. The deprecation-registered
+		// flag is no longer materially respected by the inline
+		// pipeline (images output is produced by the separate
+		// TypeImagesGenerate downstream job). Sizing defaults
+		// (SentencesPerImage / ImagesPerScene) are NOT a
+		// deprecation-registered toggle and stay as caller-precedence
+		// defaults — they remain useful for downstream job sizing.
 		if item.ScriptParams.SentencesPerImage <= 0 {
 			item.ScriptParams.SentencesPerImage = 8
 		}
@@ -353,20 +349,13 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 		// §6 row 3: full_media | none | images and voiceover enabled
 		// explicitly.
 		//
-		// Per-field caller precedence: caller wins field-by-field.
-		// If caller left ONLY GenerateSceneImages off, the preset
-		// enables ONLY GenerateSceneImages; if caller left ONLY
-		// GenerateVoiceover off, the preset enables ONLY voiceover;
-		// if both are off, preset enables both. Caller > preset >
-		// config > safety — entities, metadata and document remain
-		// caller-controlled. Toggle tri-state: caller-explicit
-		// ToggleDisabled survives (no override on opt-out).
-		if isUnsetToggle(item.Output.GenerateSceneImages) {
-			item.Output.GenerateSceneImages = scriptpkg.ToggleEnabled
-		}
-		if isUnsetToggle(item.Output.GenerateVoiceover) {
-			item.Output.GenerateVoiceover = scriptpkg.ToggleEnabled
-		}
+		// DRIFT-FIX (July 2026): the prior GenerateSceneImages +
+		// GenerateVoiceover toggle assignments are REMOVED. Both
+		// flags are deprecation-registered; per user directive they
+		// cannot be materially respected by the inline pipeline
+		// (output is produced by the separate downstream jobs
+		// TypeImagesGenerate + TypeVoiceoverGenerate). The preset
+		// is now scoping-only for these fields.
 	case scriptpkg.PresetCatalog:
 		// §6 row 4: catalog | source.kind=catalog | none.
 		//

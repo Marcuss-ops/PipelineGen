@@ -19,9 +19,16 @@ import (
 )
 
 // TestHasAnyPostprocessor_AllFlagsAndTrue verifies the Toggle tri-state
-// OR for all 5 postprocessor flags. Each sub-case isolates one
-// flag-to-true scenario so a future operator-driven refactor that
-// removes a flag from the OR surfaces as a targeted test failure.
+// OR for the ACTIVE postprocessor flags AFTER the
+// deprecation-drift fix (July 2026, user directive "nessun campo
+// documentato come deprecato può essere ancora materialmente
+// rispettato"). The 3 deprecation-registered flags (GenerateVoiceover
+// + GenerateSceneImages + GenerateDocument) are no longer in the OR
+// chain — the runtime contract is "setting them has no effect on the
+// script.generate pipeline". Each sub-case isolates one flag scenario
+// so a future operator-driven refactor that breaks the OR-included-set
+// invariant surfaces as a targeted test failure.
+//
 // PR-3: literals use canonical Toggle constants — the legacy bool
 // form is accepted by SafeUnmarshalJSON at the wire, but struct
 // literals (Go typed boundary) use the typed constants directly.
@@ -47,22 +54,22 @@ func TestHasAnyPostprocessor_AllFlagsAndTrue(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "only_GenerateVoiceover",
+			name: "only_GenerateVoiceover_deprecated_returns_false",
 			spec: OutputSpec{GenerateVoiceover: ToggleEnabled},
-			want: true,
+			want: false,
 		},
 		{
-			name: "only_GenerateSceneImages",
+			name: "only_GenerateSceneImages_deprecated_returns_false",
 			spec: OutputSpec{GenerateSceneImages: ToggleEnabled},
-			want: true,
+			want: false,
 		},
 		{
-			name: "only_GenerateDocument_inline_google_doc_creation",
+			name: "only_GenerateDocument_only_deprecated_returns_false",
 			spec: OutputSpec{GenerateDocument: ToggleEnabled},
-			want: true,
+			want: false,
 		},
 		{
-			name: "all_five_flags_enabled",
+			name: "all_five_flags_enabled_active_two_dominate",
 			spec: OutputSpec{
 				ExtractEntities:     ToggleEnabled,
 				GenerateMetadata:    ToggleEnabled,
@@ -73,14 +80,15 @@ func TestHasAnyPostprocessor_AllFlagsAndTrue(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "document_enabled_voiceover_default",
+			name: "document_enabled_voiceover_default_returns_false",
 			spec: OutputSpec{
 				GenerateDocument: ToggleEnabled,
-				// Document enabled, caller left voiceover at default
-				// (zero value ToggleDefault). Result: HasAnyPostprocessor
-				// returns true because Document is on.
+				// Caller left voiceover at zero (ToggleDefault).
+				// The deprecated GenerateDocument flag MUST NOT
+				// promote HasAnyPostprocessor (godlike/07
+				// NO-FAKE-AVAILABILITY after the drift-fix).
 			},
-			want: true,
+			want: false,
 		},
 		{
 			name: "PR3_caller_explicit_disabled_survives",
@@ -191,6 +199,16 @@ func TestOutputSpec_UnmarshalJSON_LegacyBoolPreservesCallerIntent(t *testing.T) 
 // override. Simulates the normalizer's safety-default chain at the
 // spec layer (request-level mirror; the full E2E flow lives in
 // generation_normalizer_test.go).
+//
+// DRIFT-FIX (July 2026): the applySafetyDefaults GenerateDocument
+// safety override is REMOVED (GenerateDocument is a
+// deprecation-registered no-op flag; its safety override was part of
+// the drift). The simulated safety-default block is therefore no-op
+// across all 3 deprecation-registered flags (Voiceover + Images +
+// Document) — preserving the existing "all-disabled stays disabled"
+// semantic without re-introducing the drift. SaveToDB-unconditional
+// still trips safety defaults but is OUT OF SCOPE for
+// HasAnyPostprocessor (intentionally per the OutputSpec godoc).
 func TestHasAnyPostprocessor_DisabledSurvivesSafetyDefault(t *testing.T) {
 	spec := OutputSpec{
 		ExtractEntities:     ToggleDisabled,
@@ -199,14 +217,15 @@ func TestHasAnyPostprocessor_DisabledSurvivesSafetyDefault(t *testing.T) {
 		GenerateSceneImages: ToggleDisabled,
 		GenerateDocument:    ToggleDisabled,
 	}
-	// Simulate applySafetyDefaults (the Document + SaveToDB-forced-on
-	// branches): document passed ToggleDisabled → no override (the
-	// canonical "caller explicit survives" path). In the real
-	// createPinnedItemAndSubjects the toggle is checked BEFORE the
-	// override, so ToggleDisabled flows through intact.
-	if spec.GenerateDocument == ToggleDefault {
-		spec.GenerateDocument = ToggleEnabled
-	}
+	// Simulate applySafetyDefaults (the SaveToDB-forced-on branch
+	// only — the GenerateDocument safety override is no longer in
+	// scope post-drift-fix). The conditional `if X ==
+	// ToggleDefault` chain that previously promoted
+	// Document-default to Document-enabled is gone from the
+	// normalizer; this test mirrors that by short-circuiting past
+	// the simulation step (spec fields are already
+	// caller-set-ToggleDisabled, so the safety-default simulation
+	// would not flip any of them anyway).
 	if spec.HasAnyPostprocessor() {
 		t.Errorf("HasAnyPostprocessor() = true after all-Disabled; " +
 			"applySafetyDefaults must NOT override caller-explicit " +
