@@ -1,26 +1,11 @@
-// Package clips (bulk_upload_registration) — Steps "register" of
-// the per-clip pipeline: build the canonical *asset.Asset from the
-// scanned candidate + (optionally) the publish result + file hash,
-// then route the media_assets UPSERT through the canonical
-// mutations.AssetMutationDispatcher port so the QDRANT-002
-// atomicity invariant (media_assets UPSERT + outbox_events INSERT in
-// one tx) applies uniformly to bulk-uploaded clips.
+// Package clips (bulk_upload_registration) — Step "register" of the
+// per-clip pipeline: build canonical *asset.Asset from candidate +
+// PublishResult + fileHash, then route media_assets UPSERT through
+// mutations.AssetMutationDispatcher (QDRANT-002 atomicity: media_assets +
+// outbox_events INSERT in one tx).
 //
-// P1.7 (July 2026): extracted from
-// internal/application/clips/bulk_upload_worker.go as part of the
-// 7-file worker-pipeline split.
-//
-// Strict fail-closed (PR 7, June 2026 — codex/qdrant-app-writers-fail-closed):
-// a nil dispatcher returns mutations.ErrDispatcherUnavailable wrapped
-// with context so the work's failure is operator-visible via the job
-// outcome, NOT as a half-written asset row that would orphan a
-// Qdrant upsert. contentHash is the MD5 from scan-pipeline.MD5File;
-// mirrors the v1 supersede-gate semantics (QDRANT-002 item F:
-// source_version on index.requested.v1).
-//
-// No new abstractions — top-level helper function; the
-// *asset.Asset build + Set* calls are unchanged from the
-// pre-split inline code.
+// Fail-closed: nil dispatcher surfaces mutations.ErrDispatcherUnavailable;
+// nil pubRes after publish returns typed error to caller.
 package clips
 
 import (
@@ -38,43 +23,26 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
-// registerClip builds the canonical *asset.Asset from the scanned
-// candidate + (optionally) the publish result + file hash, then
-// routes the asset + contentHash through the canonical
-// mutations.AssetMutationDispatcher so the media_assets UPSERT and
-// the outbox INSERT share a single transaction.
+// registerClip builds the canonical *asset.Asset and routes its persistence
+// through the canonical dispatcher so the media_assets UPSERT and outbox
+// INSERT share one transaction.
 //
-// Pre-split semantics preserved:
-//   - targetFolderID is the resolved folder id from the
-//     .mp4 publish (pubRes.FolderID).
-//   - The transcript is truncated to 200000 bytes on the
-//     clean_transcript slot; transcript_truncated=true is set on
-//     truncation so downstream enrichment can flag the
-//     lossy-compression.
-//   - The manifest's youtube_video_id / youtube_url + tags are
-//     copied onto the asset via SetMetadataString / append.
-//
-// PR-13 (July 2026): SkipUpload gate retired — pubRes is always
-// non-nil at the worker's call site. Fail closed (typed error)
-// rather than crashing on a regression that re-introduces nil.
+// Transcript capped at 200000 bytes on clean_transcript (transcript_truncated=true marker so downstream enrichment flags lossy-compression). Manifest youtube_video_id/url + tags propagate via SetMetadataString/Tags.
 func registerClip(
 	ctx context.Context,
 	dispatcher mutations.AssetMutationDispatcher,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
 	cand clipCandidate,
-	pubRes *delivery.PublishResult, // always non-nil after PR-13 (SkipUpload gate retired)
+	pubRes *delivery.PublishResult,
 	fileHash string,
 	targetFolderID string,
 	log *zap.Logger,
 ) error {
 	if dispatcher == nil {
-		return fmt.Errorf("bulk upload dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
+		return fmt.Errorf("bulk upload dispatcher not configured: %w", mutations.ErrDispatcherUnavailable)
 	}
-	// PR-13 (July 2026): SkipUpload gate retired — pubRes is always
-	// non-nil at the worker's call site. Fail closed (typed error)
-	// rather than crashing on a regression that re-introduces nil.
 	if pubRes == nil {
-		return fmt.Errorf("registerClip: pubRes must be non-nil (PR-13 retired the SkipUpload gate; publishClip must run before register)")
+		return fmt.Errorf("registerClip: pubRes must be non-nil (publishClip must run before register)")
 	}
 
 	now := time.Now().UTC()
