@@ -81,7 +81,7 @@ func NewFolderAliasResolverFromBytes(data []byte) (*FolderAliasResolver, error) 
 	}
 
 	byKey := make(map[string]folderAliasEntry, len(raw.FolderAliases))
-	for alias, entry := range raw.FoldersAliases {
+	for alias, entry := range raw.FolderAliases {
 		key := normaliseAliasKey(alias)
 		if key == "" {
 			return nil, fmt.Errorf("clipfolder: empty alias key in yaml")

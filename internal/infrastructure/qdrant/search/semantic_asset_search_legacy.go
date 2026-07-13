@@ -22,9 +22,29 @@ import (
 //
 // 7-day backward-compat: this method survives until
 // PR-CLIPS-STOCK-PORT-RETIRE retires it (deadline 2026-08-15).
+//
+// Folder filter (PR-FOLDER-FILTER, July 2026): when q.Folder is
+// non-nil, the adapter unwraps ClipFolderRef.NormalizedGroup into
+// AssetSearchQuery.FolderNormalizedGroup so the canonical Qdrant
+// `normalized_group` must-clause is emitted by CompileQdrantFilter.
+// Nil folder leaves the surface untouched (no filter). The wire
+// key is `normalized_group` (not `folder`, `macro_topic`,
+// `blueprint`).
 func (a *semanticAssetSearchAdapter) SearchClips(ctx context.Context, q ports.ClipSearchQuery) ([]ports.ClipSearchHit, error) {
 	if a.kind != KindClip {
 		return nil, fmt.Errorf("clip path called on %s adapter (canonical kind=clip required; this is a runtime guard, not a soft fallback)", a.kind)
+	}
+	// Folder unwrap (PR-FOLDER-FILTER): typed pointer → canonical
+	// string. Zero-value ptr (nil) → empty string (no filter).
+	// Anomalies like Folder != nil with empty NormalizedGroup are
+	// honour-no-paper: a non-nil ClipFolderRef that came out of
+	// the canonical FolderAliasResolver is by construction
+	// non-empty; producers bypassing the resolver are a
+	// godlike/07 contract violation surfaced upstream at the
+	// resolver call site, NOT a runtime check here.
+	var folderGroup string
+	if q.Folder != nil {
+		folderGroup = q.Folder.NormalizedGroup
 	}
 	canonicalHits, err := a.SearchAssets(ctx, ports.AssetSearchQuery{
 		Query:                  q.Query,
@@ -36,6 +56,7 @@ func (a *semanticAssetSearchAdapter) SearchClips(ctx context.Context, q ports.Cl
 		Limit:                  q.Limit,
 		MinScore:               q.MinScore,
 		RequireActiveLifecycle: false, // clip path: CompileQdrantFilter already locks lifecycle=ACTIVE.
+		FolderNormalizedGroup:  folderGroup,
 	})
 	if err != nil {
 		return nil, err

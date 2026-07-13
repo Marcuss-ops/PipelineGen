@@ -231,3 +231,88 @@ func TestCompileQdrantFilter_ExplicitLifecycle_HonoursCallerAllowlist(t *testing
 		t.Fatalf("expected ACTIVE+STAGING; got %#v", states)
 	}
 }
+
+// TestCompileQdrantFilter_FolderSet_EmitsNormalizedGroupClause pins
+// the PR-FOLDER-FILTER contract: a non-empty FolderNormalizedGroup
+// emits the canonical Qdrant `normalized_group` must-clause. The
+// wire key is `normalized_group` — NEVER `folder`, `macro_topic`,
+// or `blueprint`. Empty/default AssetFilter otherwise (so this
+// test isolates the folder filter alone).
+func TestCompileQdrantFilter_FolderSet_EmitsNormalizedGroupClause(t *testing.T) {
+	t.Parallel()
+
+	filt, err := CompileQdrantFilter(
+		search.SearchScope{WorkspaceID: "tenant-A"},
+		search.AssetFilter{FolderNormalizedGroup: "boxe"},
+	)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	hasMustClause(t, filt, "normalized_group", "boxe")
+	// SANITY: the wire key MUST be `normalized_group`, NOT any of
+	// the forbidden alternative names. If a future rename lands,
+	// this surface test catches it at PR time rather than at first
+	// production search.
+	forbidden := []string{"folder", "macro_topic", "blueprint"}
+	clauses := filterMustValues(t, filt)
+	for _, fk := range forbidden {
+		if _, present := clauses[fk]; present {
+			t.Errorf("forbidden wire key %q leaked into the Qdrant filter (must be `normalized_group`); clauses=%#v", fk, clauses)
+		}
+	}
+}
+
+// TestCompileQdrantFilter_FolderEmpty_OmitsClause pins the
+// empty-string drop semantic: an empty FolderNormalizedGroup
+// produces NO `normalized_group` must-clause (the search is
+// unfiltered on the folder axis). godlike/07 NO-FAKE-AVAILABILITY:
+// the compiler never invents a default folder; nil/empty
+// explicitly means "no filter".
+func TestCompileQdrantFilter_FolderEmpty_OmitsClause(t *testing.T) {
+	t.Parallel()
+
+	filt, err := CompileQdrantFilter(
+		search.SearchScope{WorkspaceID: "tenant-A"},
+		search.AssetFilter{FolderNormalizedGroup: ""},
+	)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	clauses := filterMustValues(t, filt)
+	if _, present := clauses["normalized_group"]; present {
+		t.Errorf("empty FolderNormalizedGroup must drop the normalized_group clause; got %#v", clauses)
+	}
+}
+
+// TestCompileQdrantFilter_FolderAndLifecycle_MustArrayCoexists
+// pins the AND-in-must invariant: when BOTH FolderNormalizedGroup
+// AND lifecycle_state=ACTIVE are set, both clauses live in the
+// same `must` array (Qdrant semantics: must array = AND). A future
+// drift that splits the filter into a different shape (e.g.
+// moves folder into a separate `should` array) surfaces here.
+func TestCompileQdrantFilter_FolderAndLifecycle_MustArrayCoexists(t *testing.T) {
+	t.Parallel()
+
+	filt, err := CompileQdrantFilter(
+		search.SearchScope{WorkspaceID: "tenant-A"},
+		search.AssetFilter{FolderNormalizedGroup: "hiphop"},
+	)
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	raw, _ := json.Marshal(filt)
+	s := string(raw)
+	if !strings.Contains(s, `"normalized_group"`) || !strings.Contains(s, `"boxxe"`) && !strings.Contains(s, `"hiphop"`) {
+		t.Errorf("filter JSON missing normalized_group: %s", s)
+	}
+	if !strings.Contains(s, `"lifecycle_state"`) || !strings.Contains(s, `"ACTIVE"`) {
+		t.Errorf("filter JSON missing lifecycle_state ACTIVE: %s", s)
+	}
+	// Cross-key isolation: the same filter must NOT also leak a
+	// `folder`/`macro_topic`/`blueprint` clause.
+	for _, fk := range []string{`"folder"`, `"macro_topic"`, `"blueprint"`} {
+		if strings.Contains(s, fk+`,"match"`) || strings.Contains(s, `"key":"`+fk+`"`) {
+			t.Errorf("forbidden wire key %q leaked into the JSON filter: %s", fk, s)
+		}
+	}
+}

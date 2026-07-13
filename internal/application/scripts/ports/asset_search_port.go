@@ -121,6 +121,25 @@ type AssetSearchQuery struct {
 	// clip path uses the value CompileQdrantFilter emits (already
 	// ACTIVE-locked) and typically passes false.
 	RequireActiveLifecycle bool
+
+	// FolderNormalizedGroup, when non-empty, emits the canonical
+	// Qdrant `normalized_group` must-clause via CompileQdrantFilter.
+	// Empty = no folder filter (search across all groups).
+	//
+	// godlike/06 SSOT: this field is the unwrapped form of the
+	// user-facing ports.ClipSearchQuery.Folder / SlotsSearchOptions.Folder
+	// (both of which carry *clipfolder.ClipFolderRef). The unwrap
+	// happens in the adapter one step up so AssetSearchQuery does
+	// NOT depend on the clipfolder package — AssetSearchQuery is
+	// the unified surface shared with the stock + image paths which
+	// have no folder concept.
+	//
+	// Wire invariant: the filter uses `normalized_group` (NOT
+	// `folder`, `macro_topic`, or `blueprint`). The naming pins
+	// the JSON-keyed payload contract across the embedding +
+	// projection path; renaming requires a coordinated migration
+	// (forward-pointer PR-NORMALIZED-GROUP-KEY).
+	FolderNormalizedGroup string
 }
 
 // AssetSearchHit is the unified result item. It subsumes the legacy
