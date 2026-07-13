@@ -143,6 +143,11 @@ services:
     environment:
       PORT: "9123"
       PERSISTENT: "1"
+      # Per fix(scraper) PR — split connect/total timeout. Mirrors
+      # docs/operations/stock-e2e-runbook.md §11.0 env contract:
+      # SCROLL_TIMEOUT = scraper total budget; SCRAPER_CONNECT_TIMEOUT_SECONDS = connect budget.
+      SCROLL_TIMEOUT: "120"
+      SCRAPER_CONNECT_TIMEOUT_SECONDS: "5"
     networks:
       - backend
 

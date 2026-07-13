@@ -31,6 +31,9 @@ BASE_URL="http://${HOST}:${PORT}"
 TOKEN="${VELOX_ADMIN_TOKEN:-d6e31eb8d805b0cc91ef439aae42658b2838531b1de35b804f6932ca439c077d}"
 SCRAPER_URL="http://127.0.0.1:9123"
 TEST_TERM="${ARTLIST_SCR_FAIL_TERM:-shadow}"
+# Per fix(scraper) PR + docs/operations/stock-e2e-runbook.md §11.0:
+SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-120}"
+SCRAPER_CONNECT_TIMEOUT_SECONDS="${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}"
 
 PASS=0; FAIL=0
 log_info()  { echo "[INFO]  $(date '+%H:%M:%S') $*"; }
@@ -68,7 +71,7 @@ fi
 
 # === Step 2: Submit artlist/run ===
 log_info "Submitting artlist/run with scraper down..."
-HTTP_CODE=$(curl -s -o /tmp/artlist_scr_fail.json -w '%{http_code}' --max-time 30 \
+HTTP_CODE=$(curl -sS --connect-timeout "${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}" -o /tmp/artlist_scr_fail.json -w '%{http_code}' --max-time "${SCROLL_TIMEOUT:-120}" \
     -X POST "${BASE_URL}/api/artlist/run" \
     -H "Authorization: Bearer ${TOKEN}" \
     -H 'Content-Type: application/json' \

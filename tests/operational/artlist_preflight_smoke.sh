@@ -36,6 +36,9 @@ TOKEN="${VELOX_ADMIN_TOKEN:-d6e31eb8d805b0cc91ef439aae42658b2838531b1de35b804f69
 DB_PATH="${VELOX_DATA_DIR:-./data}/media/media.db.sqlite"
 QDRANT_URL="http://127.0.0.1:6333"
 COLLECTION="media_assets_current"
+# Per fix(scraper) PR + docs/operations/stock-e2e-runbook.md §11.0:
+SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-120}"
+SCRAPER_CONNECT_TIMEOUT_SECONDS="${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}"
 
 PASS=0; FAIL=0; WARN=0
 log_info()  { echo "[INFO]  $(date '+%H:%M:%S') $*"; }
@@ -111,7 +114,7 @@ fi
 # CHECK 6: Qdrant scroll for artlist source
 # ====================================================================
 log_info "=== CHECK 6: Qdrant scroll (source=artlist) ==="
-SCROLL=$(curl -s --max-time 10 -X POST "${QDRANT_URL}/collections/${COLLECTION}/points/scroll" \
+SCROLL=$(curl -sS --connect-timeout "${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}" --max-time "${SCROLL_TIMEOUT:-120}" -X POST "${QDRANT_URL}/collections/${COLLECTION}/points/scroll" \
     -H 'Content-Type: application/json' \
     -d '{"filter":{"must":[{"key":"source","match":{"value":"artlist"}}]},"limit":10,"with_payload":true,"with_vector":false}' 2>/dev/null)
 SCROLL_COUNT=$(echo "${SCROLL}" | jq -r '.result.points | length // 0' 2>/dev/null)
@@ -171,7 +174,7 @@ fi
 # CHECK 10: Scraper health
 # ====================================================================
 log_info "=== CHECK 10: Scraper health ==="
-SCRAPER=$(curl -s --max-time 3 http://127.0.0.1:9123/health 2>/dev/null)
+SCRAPER=$(curl -sS --connect-timeout "${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}" --max-time "${SCROLL_TIMEOUT:-120}" http://127.0.0.1:9123/health 2>/dev/null)
 if echo "${SCRAPER}" | jq -e '.ok == true' > /dev/null 2>&1; then
     UPTIME=$(echo "${SCRAPER}" | jq -r '.uptime_seconds')
     BROWSER=$(echo "${SCRAPER}" | jq -r '.browser_running')
