@@ -1035,6 +1035,79 @@ func TestMigrations_Smoke(t *testing.T) {
 			t.Errorf("bumping language_code alone should NOT violate UNIQUE; got %v", err)
 		}
 	})
+
+	// ── PR-CATALOG-MULTILINGUA step 7 (July 2026) — migration 157.
+
+	// AssetStateColumnPresent asserts the new media_assets
+	// .asset_state column added by migration 157 is present
+	// (TEXT NOT NULL DEFAULT 'DISCOVERED'). godlike/06 SSOT
+	// invariant: the column's alphabet must equal the 14
+	// canonical AssetState values declared at
+	// internal/domain/asset/asset_state.go —
+	// percheck_asset_state_canonical_14 enforces the
+	// count, and percheck_asset_state_no_shadow_enum
+	// enforces no shadow declarations.
+	t.Run("AssetStateColumnPresent", func(t *testing.T) {
+		rows, err := db.Query(`PRAGMA table_info(media_assets)`)
+		if err != nil {
+			t.Fatalf("PRAGMA table_info(media_assets): %v", err)
+		}
+		defer rows.Close()
+		seen := make(map[string]struct{}, 64)
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, ctype string
+			var dfltValue sql.NullString
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+				t.Fatalf("scan table_info row: %v", err)
+			}
+			seen[name] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate table_info: %v", err)
+		}
+		if _, ok := seen["asset_state"]; !ok {
+			t.Errorf("media_assets missing asset_state column (added by migration 157; analog to the canonical.go / asset_state.go canonical surface)")
+		}
+	})
+
+	// AssetStateIndexPresent asserts the supporting index
+	// idx_media_assets_asset_state on the asset_state column.
+	// Migration 157 declares CREATE INDEX IF NOT EXISTS.
+	t.Run("AssetStateIndexPresent", func(t *testing.T) {
+		indexes := mustReadIndexNames(t, db, "media_assets")
+		if !contains(indexes, "idx_media_assets_asset_state") {
+			t.Errorf("media_assets missing index %q (declared by migration 157)", "idx_media_assets_asset_state")
+		}
+	})
+
+	// AssetStateColumnRoundTrip inserts a media_assets row
+	// with asset_state set to a canonical state and reads it
+	// back. The DEFAULT 'DISCOVERED' makes the column
+	// permissive on legacy inserts; an explicit value here
+	// exercises the literal-write path used by the future
+	// SetAssetStateTx writer.
+	t.Run("AssetStateColumnRoundTrip", func(t *testing.T) {
+		const assetID = "rt-step7-1"
+		_, err := db.Exec(
+			`INSERT INTO media_assets (id, source, name, media_type, lifecycle_state, asset_state)
+			 VALUES (?, 'artlist', 'step7 round-trip', 'video', 'ACTIVE', 'READY_MULTILINGUAL')`,
+			assetID,
+		)
+		if err != nil {
+			t.Fatalf("insert asset_state round-trip row: %v", err)
+		}
+		var got string
+		if err := db.QueryRow(
+			`SELECT asset_state FROM media_assets WHERE id = ?`,
+			assetID,
+		).Scan(&got); err != nil {
+			t.Fatalf("select asset_state round-trip row: %v", err)
+		}
+		if got != "READY_MULTILINGUAL" {
+			t.Errorf("asset_state round-trip = %q, want %q", got, "READY_MULTILINGUAL")
+		}
+	})
 }
 
 // contains is a tiny stdlib-free helper used only by the migration
