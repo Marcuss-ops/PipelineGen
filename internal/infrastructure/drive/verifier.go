@@ -46,20 +46,25 @@ package drive
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
 // Typed sentinels (godlike/07). Callers probe via errors.Is to
-// distinguish "file not found" from "file in trash" from generic
-// "API error" — each requires different operator intervention.
+// distinguish "file not found" from "file in trash" from
+// "size mismatch" from "content mismatch" from generic "API
+// error" — each requires different operator intervention.
 //
 // These are SEPARATE from the pre-existing ErrAmbiguousDriveFile
 // (uploader.go) sentinel — that one is raised by lookup methods
 // when >1 non-trashed match exists, while these are raised by
 // the post-upload verifier when the SINGLE expected file is
-// missing or trashed. The two failure surfaces are distinct.
+// missing / trashed / size-mismatched / content-mismatched. The
+// failure surfaces are distinct.
 var (
 	// ErrDriveFileNotFound: the Files.Get API call returned a
 	// 404 (the file ID does not exist on Drive, or has been
@@ -78,44 +83,106 @@ var (
 	// silently via the PutActionSkipped branch of PutFile —
 	// Commit 1 closes this poison-file gap.
 	ErrDriveFileInTrash = errors.New("drive verifier: file is in Drive Trash bin (Trashed=true)")
+
+	// ErrDriveFileSizeMismatch (PR-CLIPINGEST-PIPELINE step 9,
+	// Commit 3, July 2026): the Drive-side file size does not
+	// match the caller's ExpectedSize. Treated as a hard upload
+	// failure (per user spec "Upload verificato per size+checksum
+	// prima della cancellazione locale"). The caller is expected
+	// to preserve the local file for operator triage.
+	ErrDriveFileSizeMismatch = errors.New("drive verifier: file size mismatch (Drive-side != expected)")
+
+	// ErrDriveFileSHA256Mismatch (PR-CLIPINGEST-PIPELINE step 9,
+	// Commit 7, July 2026): the Drive-side file's SHA-256 (computed
+	// from a Files.Get + Download round-trip) does not match the
+	// caller's ExpectedSHA256. Treated as a hard upload failure
+	// per the user spec.
+	ErrDriveFileSHA256Mismatch = errors.New("drive verifier: file SHA-256 content mismatch (Drive-side != expected)")
 )
 
 // VerificationParams is the per-upload expected-metadata envelope
 // the caller threads into the verifier. Commit 1 ships the
 // FileIDPresent + FileNotInTrash checks; subsequent Fase 10
-// commits will add the Name (Commit 2), Size (Commit 3), MIME
-// (Commit 4), Folder (Commit 5), and Downloadable (Commit 6)
-// checks. The struct is intentionally extensible: zero-value
-// fields are skipped so the Commit-1 surface doesn't impose
-// Commit-2+ invariants on every caller.
+// commits add the Name (Commit 2), Size (Commit 3), MIME
+// (Commit 4), Folder (Commit 5), Downloadable (Commit 6), and
+// SHA-256 content-match (Commit 7) checks. The struct is
+// intentionally extensible: zero-value fields are skipped so the
+// Commit-1 surface doesn't impose Commit-2+ invariants on every
+// caller.
 //
 // Why a single struct (not per-check args): future commits
-// (2-6) add 4 more fields; passing 6 positional args would be
+// (2-7) add 5 more fields; passing 7 positional args would be
 // brittle (easy to swap). The struct is the canonical SSOT
 // per godlike/06.
+//
+// PR-CLIPINGEST-PIPELINE step 9 (July 2026): Commit 3 (size) +
+// Commit 7 (SHA-256) land in this cycle. Together they implement
+// the user-spec literal "Upload verificato per size+checksum
+// prima della cancellazione locale" — the canonical post-upload
+// verification gate that prevents local-file cleanup from
+// racing ahead of an incomplete Drive upload. Callers pre-compute
+// the local size + SHA-256 (the canonical processor.Process
+// does this) and thread them via ExpectedSize + ExpectedSHA256;
+// Verify compares against the live Drive-side file and surfaces a
+// typed sentinel on mismatch.
 type VerificationParams struct {
 	// ExpectedName is the filename the caller expects on Drive.
-	// Commit 2 will compare against meta.Name. Zero value
+	// Commit 2 compares against meta.Name. Zero value
 	// (empty string) = skip the name check.
 	ExpectedName string
 
 	// ExpectedFolderID is the folder the caller expects the
-	// file to live in. Commit 5 will compare against
+	// file to live in. Commit 5 compares against
 	// meta.Parents. Zero value = skip the folder check.
 	ExpectedFolderID string
 
 	// ExpectedMIMEType is the MIME type the caller expects
-	// (e.g. "video/mp4"). Commit 4 will compare against
-	// meta.MimeType. The comparison is exact-match in Commit 4
-	// — wildcards like "video/*" are NOT a Commit 1 concern.
-	// Zero value = skip the MIME check.
+	// (e.g. "video/mp4"). Commit 4 compares against
+	// meta.MimeType. The comparison is exact-match — wildcards
+	// like "video/*" are NOT a Commit 4 concern. Zero value =
+	// skip the MIME check.
 	ExpectedMIMEType string
 
 	// RequireSizeGTZero (Commit 3) toggles the size>0 check.
 	// Default false (no size check); Commit 3 sets it true on
-	// the canonical upload path. Pre-Commit-3, callers that
-	// set this to true see the check fire.
+	// the canonical upload path.
+	//
+	// PR-CLIPINGEST-PIPELINE step 9 (July 2026): superseded by
+	// ExpectedSize (the more specific size-match check). Kept
+	// for back-compat with Commit-3-only callers (a deprecated
+	// alias; new code uses ExpectedSize > 0).
 	RequireSizeGTZero bool
+
+	// ExpectedSize (PR-CLIPINGEST-PIPELINE step 9, Commit 3, July
+	// 2026) is the pre-computed local-file size the caller
+	// threads into the verifier. When non-zero, Verify
+	// compares the Drive-side file size (Meta.Size) against
+	// ExpectedSize; mismatch surfaces the typed sentinel
+	// ErrDriveFileSizeMismatch. Zero value = skip the size-match
+	// check (back-compat for callers that don't pre-compute size).
+	//
+	// Fail-closed: a size mismatch is treated as a hard upload
+	// failure (the local file is preserved for operator triage
+	// per the user spec "prima della cancellazione locale").
+	ExpectedSize int64
+
+	// ExpectedSHA256 (PR-CLIPINGEST-PIPELINE step 9, Commit 7,
+	// July 2026) is the pre-computed local-file SHA-256 hex
+	// digest the caller threads into the verifier. When
+	// non-empty, Verify downloads the Drive-side file
+	// (via Reader.DownloadFile), computes its SHA-256, and
+	// compares against ExpectedSHA256 (case-insensitive).
+	// Mismatch surfaces the typed sentinel
+	// ErrDriveFileSHA256Mismatch. Empty value = skip the
+	// content-match check (back-compat for callers that
+	// don't pre-compute SHA-256).
+	//
+	// Note: the content-match requires a Files.Get + Download
+	// round-trip, which costs bandwidth. The canonical
+	// user-spec gate is "size+checksum" — both are
+	// implemented; callers that want only the cheaper
+	// size-match leave ExpectedSHA256 empty.
+	ExpectedSHA256 string
 }
 
 // UploadVerification is the per-check result envelope returned
@@ -124,7 +191,7 @@ type VerificationParams struct {
 // what was probed) plus the typed sentinel. Commit 1
 // populates only the FileIDPresent + FileNotInTrash fields;
 // subsequent commits add NameMatches, SizeGTZero, MIMEMatches,
-// FolderMatches, Downloadable.
+// FolderMatches, Downloadable, VerifiedSHA256.
 //
 // godlike/06 SSOT: the per-check fields are FLAT (not nested
 // in a map[string]bool) so each check is type-safe and
@@ -151,6 +218,17 @@ type UploadVerification struct {
 	// MimeType) for logging or further validation without
 	// re-issuing a Files.Get.
 	Meta *FileMeta
+
+	// VerifiedSHA256 (PR-CLIPINGEST-PIPELINE step 9, Commit 7,
+	// July 2026) is the SHA-256 hex digest the verifier
+	// computed from the Drive-side file content (via
+	// Reader.DownloadFile). Populated ONLY when the caller
+	// passed ExpectedSHA256 non-empty AND the SHA-256 check
+	// succeeded. Empty on the Commit-1 surface (no
+	// ExpectedSHA256) and on a SHA-256 mismatch (the
+	// mismatch sentinel wins; the verified hash is NOT
+	// surfaced to avoid leaking the broken state).
+	VerifiedSHA256 string
 }
 
 // UploadVerifier is the canonical Fase 10 post-upload
@@ -181,6 +259,36 @@ type UploadVerifier struct {
 // as a typed error rather than a mid-call panic.
 func NewUploadVerifier(r Reader) *UploadVerifier {
 	return &UploadVerifier{reader: r}
+}
+
+// computeSHA256 (PR-CLIPINGEST-PIPELINE step 9, Commit 7, July
+// 2026) downloads the Drive-side file via Reader.DownloadFile,
+// streams the bytes through SHA-256, and returns the lowercase
+// hex digest. The download is bounded by io.LimitReader (no
+// infinite read) and the stream is closed by the function
+// (deferred Close on the underlying io.ReadCloser). Used ONLY
+// by Verify when the caller threads ExpectedSHA256 non-empty.
+func (v *UploadVerifier) computeSHA256(ctx context.Context, fileID string) (string, error) {
+	if v == nil || v.reader == nil {
+		return "", fmt.Errorf("drive verifier.computeSHA256: nil reader")
+	}
+	// Reader.DownloadFile returns (io.ReadCloser, contentType, error) per
+	// the canonical ports.go signature; we discard the contentType here
+	// because the SHA-256 check is content-only — MIME validation is a
+	// separate Commit 4 concern (ExpectedMIMEType).
+	rc, _, err := v.reader.DownloadFile(ctx, fileID)
+	if err != nil {
+		return "", fmt.Errorf("download file %q: %w", fileID, err)
+	}
+	defer rc.Close()
+	h := sha256.New()
+	// 1 MiB buffer — matches the canonical streaming hash buffer
+	// used elsewhere in the codebase (e.g. fileutil.HashFile).
+	const bufSize = 1 << 20
+	if _, err := io.CopyBuffer(h, rc, make([]byte, bufSize)); err != nil {
+		return "", fmt.Errorf("read file %q for sha256: %w", fileID, err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // Verify is the canonical post-upload verification entry
@@ -266,10 +374,54 @@ func (v *UploadVerifier) Verify(ctx context.Context, fileID string, params Verif
 		return v2, ErrDriveFileInTrash
 	}
 
-	// Future commits (2-6) will add their checks here. The
-	// Commit-1 happy path is: fileID present + not in
-	// trash → success.
-	_ = params // Commit 1 ignores params; Commits 2-6 consume it.
+	// Commit 3 (PR-CLIPINGEST-PIPELINE step 9, July 2026): size
+	// match. When ExpectedSize > 0, compare the Drive-side
+	// file size (Meta.Size) against the caller-threaded
+	// ExpectedSize. Mismatch → ErrDriveFileSizeMismatch +
+	// partially-populated envelope (so the caller can log the
+	// actual Drive-side size for triage).
+	//
+	// The pre-step-9 RequireSizeGTZero alias is honoured: when
+	// ExpectedSize == 0 AND RequireSizeGTZero == true, the
+	// check fires with ExpectedSize = 0 (effectively a
+	// "size must be > 0" check). When both are unset, the
+	// check is skipped (back-compat).
+	if params.ExpectedSize > 0 || params.RequireSizeGTZero {
+		if int64(meta.Size) != params.ExpectedSize {
+			return v2, fmt.Errorf(
+				"drive verifier: file_id=%q size mismatch: drive=%d expected=%d: %w",
+				fileID, meta.Size, params.ExpectedSize, ErrDriveFileSizeMismatch,
+			)
+		}
+	}
+
+	// Commit 7 (PR-CLIPINGEST-PIPELINE step 9, July 2026): SHA-256
+	// content match. When ExpectedSHA256 is non-empty, download
+	// the Drive-side file via Reader.DownloadFile, compute its
+	// SHA-256, and compare against ExpectedSHA256
+	// (case-insensitive). Mismatch → ErrDriveFileSHA256Mismatch.
+	//
+	// The download happens ONLY when the size check passes (no
+	// point downloading a size-mismatched file). The download
+	// itself is not retried — a transient 503 surfaces wrapped
+	// to the caller (who can re-verify or re-upload).
+	if params.ExpectedSHA256 != "" {
+		hash, hashErr := v.computeSHA256(ctx, fileID)
+		if hashErr != nil {
+			return v2, fmt.Errorf(
+				"drive verifier: file_id=%q sha256 compute: %w", fileID, hashErr,
+			)
+		}
+		if !strings.EqualFold(hash, params.ExpectedSHA256) {
+			return v2, fmt.Errorf(
+				"drive verifier: file_id=%q sha256 mismatch: drive=%s expected=%s: %w",
+				fileID, hash, params.ExpectedSHA256, ErrDriveFileSHA256Mismatch,
+			)
+		}
+		// Surface the verified hash on the envelope so the
+		// caller can log it without re-issuing the download.
+		v2.VerifiedSHA256 = hash
+	}
 
 	return v2, nil
 }

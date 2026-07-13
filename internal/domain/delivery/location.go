@@ -79,6 +79,16 @@ type AssetLocationInput struct {
 
 	// Language is the BCP-47 tag for per-language subfoldering.
 	Language string `json:"language,omitempty"`
+
+	// ChannelID (PR-CLIPINGEST-PIPELINE step 9, July 2026) is the
+	// canonical YouTube channel_id for the new YouTube asset layout.
+	// Wire-level input: HTTP bodies, job payload envelopes, and CLI
+	// flags populate this field for the new YouTubeAsset destination
+	// (the legacy YouTubeClip destination continues to use Category as
+	// the operator-curated group alias — the two coexist on this DTO).
+	// Required for DestinationYouTubeAsset; the mapper surfaces
+	// ErrAssetPublishLocationIncompleteForDestination when empty.
+	ChannelID string `json:"channel_id,omitempty"`
 }
 
 // IsEmpty reports whether the AssetLocationInput is zero-value in every

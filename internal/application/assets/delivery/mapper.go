@@ -114,6 +114,15 @@ type AssetPublishInput struct {
 	// SourceVersion is the logical source version at publish time.
 	SourceVersion int64
 
+	// SizeBytes (PR-CLIPINGEST-PIPELINE step 9, July 2026) is the
+	// optional pre-computed local-file size for the post-upload
+	// size-match verification gate (Commit 3 of verifier.go). When
+	// non-zero, the mapper propagates it to PublishRequest.SizeBytes
+	// and the publisher threads it into
+	// VerificationParams.ExpectedSize. Zero = skip the size-match
+	// check (back-compat for callers that don't pre-compute size).
+	SizeBytes int64
+
 	// Tags are the semantic keywords for the Qdrant payload (Wave 10
 	// upstream). Held here so the mapper can validate non-emptiness per
 	// destination (e.g. image-ai typically carries 2-8 tags; voiceover
@@ -182,6 +191,11 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 		ContentHash:   input.ContentHash,
 		SourceVersion: input.SourceVersion,
 		Tags:          input.Tags, // DoD #3: propagated to Qdrant payload downstream
+		// PR-CLIPINGEST-PIPELINE step 9 (July 2026): thread the
+		// pre-computed size for the post-upload verification gate.
+		// The publisher propagates this to PutFileRequest.ExpectedSize
+		// in Step 6. Zero value is the back-compat fallback.
+		SizeBytes: input.SizeBytes,
 	}
 
 	loc := input.Location
@@ -246,6 +260,46 @@ func BuildPublishRequest(input AssetPublishInput) (PublishRequest, error) {
 		}
 		req.Group = loc.Category
 		req.Subject = subject
+
+	case DestinationYouTubeAsset:
+		// PR-CLIPINGEST-PIPELINE step 9 (July 2026): canonical
+		// mapper for the new YouTube asset layout
+		// `youtube/{channel_id}/{video_id}/clips/{asset_id}`.
+		// Three required Location fields (godlike/07 fail-closed):
+		//   - ChannelID  → req.ChannelID
+		//   - Subject    → req.Subject (YouTube video_id)
+		//   - AssetID    → req.AssetID (media_assets.id; threaded via
+		//                  the top-level input, not Location, since it
+		//                  is the per-asset identity rather than a
+		//                  semantic location)
+		// YouTubeAssetPath surfaces a typed sentinel per missing field
+		// (ErrYouTubeAssetPathMissingField); the mapper pre-checks
+		// here so the operator sees a per-destination error message
+		// rather than the path-builder's deeper "required field
+		// missing" message.
+		if loc.ChannelID == "" {
+			return PublishRequest{}, fmt.Errorf(
+				"%w %q: missing %q", ErrAssetPublishLocationIncompleteForDestination,
+				input.Destination, "channel_id",
+			)
+		}
+		subject := loc.SubjectOrName()
+		if subject == "" {
+			return PublishRequest{}, fmt.Errorf(
+				"%w %q: %w", ErrAssetPublishLocationIncompleteForDestination,
+				input.Destination, ErrAssetPublishNameCannotReplaceSubject,
+			)
+		}
+		if input.AssetID == "" {
+			return PublishRequest{}, fmt.Errorf(
+				"%w %q: missing %q", ErrAssetPublishLocationIncompleteForDestination,
+				input.Destination, "asset_id",
+			)
+		}
+		req.ChannelID = loc.ChannelID
+		req.Subject = subject
+		req.AssetID = input.AssetID
+		req.SizeBytes = input.SizeBytes
 
 	case DestinationArtlist:
 		if loc.Category == "" {

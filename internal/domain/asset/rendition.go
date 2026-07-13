@@ -16,6 +16,21 @@ const (
 	RenditionKindStoryboard RenditionKind = "storyboard"
 	RenditionKindAudio      RenditionKind = "audio"
 	RenditionKindSubtitle   RenditionKind = "subtitle"
+	// RenditionKindManifest (PR-CLIPINGEST-PIPELINE step 9, July 2026):
+	// canonical rendition kind for the per-asset `{asset_id}__manifest.json`
+	// sidecar (the asset's metadata ledger co-located with the master in
+	// the same Drive folder). The JSON sidecar is not a video/image/audio
+	// rendition in the traditional sense, but it IS one of the three
+	// canonical files the Publisher publishes for every asset per the
+	// user-spec literal `{asset_id}__master.mp4 + __preview.mp4 +
+	// __manifest.json`. Adding it to the RenditionKind enum keeps the
+	// canonical Publisher surface uniform (all three files flow through
+	// the same per-file publish seam); the file is text/JSON so
+	// buildRenditionOutput's per-kind probe (width/height/fps) no-ops
+	// for it (the manifest has no codec/width/height). Future cleanup
+	// may collapse the JSON sidecar into a separate ManifestFile type,
+	// but the surface stays a RenditionKind until that lands.
+	RenditionKindManifest RenditionKind = "manifest"
 )
 
 // AssetRendition is a single technical variant of a media asset.
