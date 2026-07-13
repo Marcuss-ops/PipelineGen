@@ -181,7 +181,6 @@ func ScanMediaTransformerNoInfraFields(root string, pol *policy.Policy, r *repor
 	// State machine: track which target struct body we are
 	// currently inside. Empty string = not inside a target.
 	currentTarget := ""
-	typeEndLine := 0
 	braceDepth := 0
 	commentOnly := 0
 	lineNo := 0
@@ -194,14 +193,16 @@ func ScanMediaTransformerNoInfraFields(root string, pol *policy.Policy, r *repor
 		// <Name> struct {`. The Name must be in
 		// mediaTransformerTargetTypes.
 		if currentTarget == "" {
-			if m := regexp.MustCompile(`^type\s+(\w+)\s+struct\s*\{`).FindStringSubmatch(trimmed); m != nil {
-				name := m[1]
-				for _, t := range mediaTransformerTargetTypes {
-					if name == t {
-						currentTarget = name
-						braceDepth = 1
-						typeEndLine = lineNo
-						break
+			if strings.HasPrefix(trimmed, "type ") && strings.HasSuffix(trimmed, " struct {") {
+				parts := strings.Fields(trimmed)
+				if len(parts) >= 2 {
+					name := parts[1]
+					for _, t := range mediaTransformerTargetTypes {
+						if name == t {
+							currentTarget = name
+							braceDepth = 1
+							break
+						}
 					}
 				}
 			}
@@ -218,7 +219,6 @@ func ScanMediaTransformerNoInfraFields(root string, pol *policy.Policy, r *repor
 		// next `}` to 0. We exit when braceDepth == 0.
 		if braceDepth == 0 {
 			currentTarget = ""
-			typeEndLine = 0
 			continue
 		}
 
