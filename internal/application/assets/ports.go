@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"time"
+
+	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ── MaintenanceRepository port (extracted from maintenance package) ─────
@@ -119,7 +121,7 @@ type DBHealthChecker interface {
 	Ping(ctx context.Context, dbPath string) DBHealthCheckResult
 }
 
-// ── SourceStager port (Step 9/12, July 2026) ────────────────────────────
+// ── SourceStager port (PR-MEDIATRANSFORMER-RENAME, July 2026) ────────────
 //
 // assets.SourceStager is the LEGACY per-call staging port. It downloads
 // source media into a temp location that the caller owns and must
@@ -147,20 +149,14 @@ type DBHealthChecker interface {
 //
 // Per Pattern 0 (AGENTS.md): the port lives at the application layer;
 // concrete implementations live in infrastructure or provider packages.
-
-// SourceRef identifies what to download. URL is the canonical source
-// locator (e.g. a YouTube video URL, an Artlist m3u8, a stock clip URL).
 //
-// DownloadSection is an optional time range (yt-dlp format, e.g.
-// "*00:01:20-00:01:35"). Empty means "download the full asset".
-// ForceKeyframes forces keyframe-aligned cuts for time-section downloads.
-// MergeFormat sets the output container (e.g. "mp4").
-type SourceRef struct {
-	URL             string
-	DownloadSection string
-	ForceKeyframes  bool
-	MergeFormat     string
-}
+// PR-MEDIATRANSFORMER-RENAME (July 2026): SourceRef + StagedSource
+// are NOT defined here — they live in the domain layer at
+// `internal/domain/asset/staged_source.go` (the canonical SSOT per
+// godlike/06). The domain types are imported as `asset.SourceRef`
+// and `asset.StagedSource` via the `asset` import alias. The
+// SourceStager port signature uses the domain types so the port
+// itself stays free of application-layer concerns.
 
 // StagedAsset carries the result of a successful StageSource call.
 // The file at LocalPath is ready for subsequent processing (cut,
@@ -192,18 +188,37 @@ type StagedAsset struct {
 // SourceStager downloads source media into a staging location and
 // returns the staged file path. Cleanup removes staged files when the
 // caller no longer needs them.
+//
+// PR-MEDIATRANSFORMER-RENAME (July 2026): the StageSourceV2 and
+// CleanupStagedSource methods use the domain-layer
+// `asset.SourceRef` and `asset.StagedSource` types (imported via
+// the `asset` import alias). The application-layer `assets`
+// package is NOT the owner of these types — it only references
+// them through the port.
 type SourceStager interface {
-	StageSource(ctx context.Context, ref SourceRef) (*StagedAsset, error)
+	StageSource(ctx context.Context, ref asset.SourceRef) (*StagedAsset, error)
 	Cleanup(ctx context.Context, staged *StagedAsset) error
-	StageSourceV2(ctx context.Context, ref SourceRef) (*StagedSource, error)
-	CleanupStagedSource(ctx context.Context, staged *StagedSource) error
+	StageSourceV2(ctx context.Context, ref asset.SourceRef) (*asset.StagedSource, error)
+	CleanupStagedSource(ctx context.Context, staged *asset.StagedSource) error
 }
 
-type StagedSource struct {
-	LocalPath        string
-	Bytes            int64
-	IntermediateHash string
-	SourceID         string
-	SourceRef        SourceRef
-	CleanedUp        bool
-}
+// ── Backward-compatibility aliases (PR-MEDIATRANSFORMER-RENAME, July 2026) ──
+//
+// These Go type aliases let the ~50 existing callers in
+// `internal/application/{youtube,clips,artlist,voiceover}` and
+// `internal/infrastructure/{stager,media}` continue to reference
+// `assets.SourceRef` and `assets.StagedSource` without churn. The
+// canonical SSOT lives in the domain layer at
+// `internal/domain/asset/staged_source.go`; the aliases are
+// transparent forwarders that resolve to the same underlying type
+// at compile time.
+//
+// Deprecated: use `asset.SourceRef` and `asset.StagedSource`
+// (the domain types) directly. The aliases are removed in
+// PR-MEDIATRANSFORMER-RENAME step 2 when the forbidden fields
+// are deleted from RenditionSet and all callers migrate to the
+// domain import.
+type (
+	SourceRef    = asset.SourceRef
+	StagedSource = asset.StagedSource
+)

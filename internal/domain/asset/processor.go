@@ -43,8 +43,6 @@ package asset
 import (
 	"context"
 	"time"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 )
 
 // ProcessingStatus is the 4-state lifecycle of a processing step.
@@ -89,20 +87,6 @@ type ProcessingRecord struct {
 // normalization/rendition pipeline, computes hashes, and returns a
 // local `RenditionSet`.
 //
-// PR-MEDIATRANSFORMER-RENAME (July 2026): the legacy `Processor`
-// interface is renamed to `MediaTransformer`. The new contract
-// takes a `StagedSource` (produced by assets.SourceStager.StageSourceV2)
-// + a `TransformSpec` and produces a local `RenditionSet`. The
-// god service is ONLY renamed in this commit — the forbidden
-// fields (Drive/DB/Qdrant) stay in `RenditionSet` for now and
-// are removed in subsequent steps. Concrete media transformers
-// implement this contract directly.
-type MediaTransformer interface {
-	// Transform runs the media transformation pipeline on the
-	// staged source (staged.LocalPath) and returns the canonical
-	// local result.
-	Transform(ctx context.Context, staged *assets.StagedSource, spec *TransformSpec) (*RenditionSet, error)
-}
 
 // TransformSpec contains the input for transforming a staged media
 // asset.
