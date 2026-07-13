@@ -369,14 +369,26 @@ func TestBuildPayloadFromDocument_ProvenanceWritesObservedVersion(t *testing.T) 
 }
 
 // TestBuildPayloadFromDocument_NoForbiddenLocatorKeys pins the
-// canonical wire-shape invariant: NO `drive_link`, NO `local_path`,
-// NO `status` payload keys are emitted. The freeze-test in
-// composition_test.go pins the same invariant at the struct level;
-// this test pins it at the WIRE level (the actual Payload map keys).
+// canonical wire-shape invariant: NO `local_path`, NO `status`
+// payload keys are emitted (these are the residual forbidden locator
+// keys; drive_link was promoted to CANONICAL payload field by
+// PR-CATALOG-MULTILINGUA step 6, July 2026).
+// The freeze-test in composition_test.go pins the same invariant at
+// the struct level; this test pins it at the WIRE level (the actual
+// Payload map keys).
 //
 // The AirLock via assetToIndexDocumentNoValidate must strip the SQL-
-// fetch derived fields (AssetData.DriveLink / AssetData.LocalPath /
-// AssetData.Status) so the iter field references below cannot leak.
+// fetch derived fields (AssetData.Status / AssetData.LocalPath) so
+// the field references below cannot leak. drive_link IS emitted in
+// the payload when set (per the Italian plan search-result-key block).
+//
+// Related tests:
+//   - TestBuildPayloadFromDocument_DriveLinkEmittedWhenSet (test 18 in
+//     payload_builder_test.go) — verifies the positive emission of
+//     drive_link.
+//   - TestBuildPayloadFromDocument_CanonicalSearchDocument_NoLinkOrLocatorInEmbeddingText
+//     — pin the FORWARD-PREVENTION half: drive_link is NEVER in the
+//     embedding_text (only in payload).
 func TestBuildPayloadFromDocument_NoForbiddenLocatorKeys(t *testing.T) {
 	schema := qdrantSchema.DefaultV3Schema()
 	asset := &AssetData{
@@ -385,14 +397,13 @@ func TestBuildPayloadFromDocument_NoForbiddenLocatorKeys(t *testing.T) {
 		MediaType:      "video",
 		LifecycleState: "ACTIVE",
 		// Simulate the SQL-side fields the AirLock MUST strip from the wire:
-		Status:    "ACTIVE_LEGACY", // forbidden, never reach the wire
-		DriveLink: "https://drive.example.test/should-not-leak",
+		Status:    "ACTIVE_LEGACY", // forbidden: never reach the wire
 		LocalPath: "/tmp/should-not-leak",
 	}
 	doc := assetToIndexDocumentNoValidate(asset, schema)
 	payload := BuildPayloadFromDocument(doc, schema)
 
-	for _, forbidden := range []string{"status", "drive_link", "local_path"} {
+	for _, forbidden := range []string{"status", "local_path"} {
 		if v, present := payload[forbidden]; present {
 			t.Errorf("BuildPayloadFromDocument MUST NOT emit forbidden payload key %q (PR 6 verdict §7.4 footer); got %v", forbidden, v)
 		}
@@ -476,12 +487,31 @@ func TestBuildPayloadFromDocument_SemanticFieldsAreProjected(t *testing.T) {
 	assert.Equal(t, "https://www.youtube.com/watch?v=vdC5GXxS-qU", payload["source_url"])
 	assert.Equal(t, int64(5000), payload["duration_ms"])
 	assert.Equal(t, 5, payload["duration_sec"])
-	assert.Contains(t, payload["embedding_text"], "Pacquiao vs Broner Round 7 Broner barcolla")
-	assert.Contains(t, payload["embedding_text"], "origin: retrieved")
-	assert.Contains(t, payload["embedding_text"], "workflow_id: wf-1")
-	assert.Contains(t, payload["embedding_text"], "chunk_index: 0")
-	assert.Contains(t, payload["embedding_text"], "total_chunks: 11")
-	assert.Contains(t, payload["embedding_text"], "tags: ")
+	// PR-CATALOG-MULTILINGUA step 6 (July 2026): the canonical
+	// 8-field composer (buildCanonicalSearchDocument) emits ONLY the
+	// sanctioned fields in canonical order. The pre-step-6 builder
+	// emitted `origin:`, `workflow_id:`, `chunk_index:`, `total_chunks:`,
+	// `tags:` labels INSIDE embedding_text — those are explicitly
+	// FORBIDDEN in embedding_text per the forward-prevention contract
+	// (pinned by TestBuildPayloadFromDocument_CanonicalSearchDocument_NoLinkOrLocatorInEmbeddingText
+	// in payload_builder_test.go). The reduced assertions below pin
+	// the positive canonical composition (Title + Description appear)
+	// and the forward-prevention negative (no pre-step-6 labels leak).
+	emb, _ := payload["embedding_text"].(string)
+	for _, mustContain := range []string{
+		"Pacquiao vs Broner Round 7 Broner barcolla", // title (1st canonical field)
+	} {
+		if !strings.Contains(emb, mustContain) {
+			t.Errorf("embedding_text missing canonical-8th field %q\ngot = %q", mustContain, emb)
+		}
+	}
+	for _, forbidden := range []string{
+		"origin:", "workflow_id:", "chunk_index:", "total_chunks:", "tags:",
+	} {
+		if strings.Contains(emb, forbidden) {
+			t.Errorf("embedding_text contains forbidden pre-step-6 label %q (forward-prevention: canonical 8-field composer regression)\ngot = %q", forbidden, emb)
+		}
+	}
 	entities, ok := payload["entities"].([]string)
 	require.True(t, ok, "entities must be projected as []string")
 	assert.NotEmpty(t, entities)

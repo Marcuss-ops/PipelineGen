@@ -198,23 +198,28 @@ func TestIndexedMetadata_RoundIsInt_NotPointer(t *testing.T) {
 }
 
 // 4. godlike/06 forbidden-field contract (defensive).
-// `IndexDocument` MUST NOT contain `Status` / `DriveLink` /
-// `LocalPath` — the airlock via `IndexDocument` strips these
-// from the SQL-fetch shape. This is enforced by the canonical
-// freeze-test in `composition_test.go::TestComposition_Frozen
-// QdrantIndexDocumentForbiddenFields`. The reflective duplication
-// here is a SECONDARY guard so the violation surfaces immediately
-// when running the indexing-package tests (without needing
-// composition-test).
+// `IndexDocument` MUST NOT contain the canonical set of forbidden
+// fields declared in `ForbiddenIndexDocumentFields` (godlike/06 SSOT
+// slice). The airlock strips these from the SQL-fetch AssetData
+// shape. This is also enforced by the canonical freeze-test in
+// `composition_test.go::TestComposition_FrozenQdrantIndexDocument
+// ForbiddenFields`. The reflective duplication here is a SECONDARY
+// guard so the violation surfaces immediately when running the
+// indexing-package tests (without needing composition-test).
+//
+// PR-CATALOG-MULTILINGUA step 6 (July 2026): the canonical
+// ForbiddenIndexDocumentFields slice is reduced to {Status,
+// LocalPath} — DriveLink is PROMOTED to canonical payload field
+// (no longer forbidden on IndexDocument). Test reads the SSOT slice
+// directly so the next forbidden-field promote lands in lockstep
+// with this test in a single freeze-test audit-pin pass.
 func TestIndexDocument_DoNotExposeForbiddenFields(t *testing.T) {
-	forbidden := []string{"Status", "DriveLink", "LocalPath"}
-
 	for _, structT := range []interface{}{
 		IndexDocument{},
 		IndexedMetadata{},
 	} {
 		typ := reflect.TypeOf(structT)
-		for _, name := range forbidden {
+		for _, name := range ForbiddenIndexDocumentFields {
 			if _, ok := typ.FieldByName(name); ok {
 				t.Errorf("%s contains forbidden field %q — godlike/06 SSOT freeze-test VIOLATION", typ.Name(), name)
 			}

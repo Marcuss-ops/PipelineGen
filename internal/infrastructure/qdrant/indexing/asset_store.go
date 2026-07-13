@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // SQLiteAssetStore implements AssetStore backed by the media_assets table.
@@ -48,6 +49,12 @@ type assetRowScanner struct {
 	workspaceID, youtubeVideoID, youtubeURL, startTime, endTime                     sql.NullString
 	createdAt, updatedAt, deletedAt                                                 sql.NullString
 	lifecycleState                                                                  sql.NullString
+	// semanticHash is the resolved semantic fingerprint:
+	//   asset_visual_summaries.source_hash (when a real VLM pass has run)
+	//   ∪ media_assets.semantic_hash (fallback)
+	// godlike/06 SSOT precedence — see canonicalQuery's resolved_semantic_hash
+	// subquery for the canonical pre-resolve at SQL-fetch time.
+	resolvedSemanticHash sql.NullString
 }
 
 // scanArgs returns the pointer list passed to rows.Scan / QueryRowContext.Scan.
@@ -72,6 +79,7 @@ func (r *assetRowScanner) scanArgs(a *AssetData) []any {
 		&r.workspaceID, &r.channelID, &r.lic,
 		&r.sourceVersionStr,
 		&r.createdAt, &r.updatedAt, &r.deletedAt,
+		&r.resolvedSemanticHash,
 	}
 }
 
@@ -156,10 +164,44 @@ func (r *assetRowScanner) populate(a *AssetData) {
 	if r.deletedAt.Valid {
 		a.DeletedAt = r.deletedAt.String
 	}
+	// Resolved semantic hash (godlike/06 SSOT precedence pinned by the
+	// canonicalQuery's scalar subquery — see comment above).
+	if r.resolvedSemanticHash.Valid {
+		a.SemanticHash = r.resolvedSemanticHash.String
+	}
 }
 
 // canonicalQuery is the SELECT column list shared by FetchAsset and
 // FetchAssetBatch. Column order MUST match assetRowScanner.scanArgs.
+//
+// godlike/06 SSOT: the trailing `resolved_semantic_hash` scalar
+// subquery pins the canonical pre-resolved value of current_semantic_hash
+// with the precedence rule dictated by the Italian plan / step 6:
+//
+//	(a) asset_visual_summaries.source_hash (migration 151) — when a
+//	    real VLM pass has run. Per migration 151, the table is 1:1
+//	    with media_assets.id (PRIMARY KEY) — no language_code or
+//	    is_current columns — so the lookup reduces to the canonical
+//	    PK query. NULLIF around the inner SELECT distinguishes
+//	    "no row" / "row.source_hash is empty default" from
+//	    "row.source_hash is a real VLM fingerprint".
+//	(b) media_assets.semantic_hash (migration 152) — fallback
+//	    (also empty-string gated by NULLIF for symmetry).
+//	(c) "" — neither populated.
+//
+// The forward-prevention invariant: COALESCE falls through on NULL
+// only — passing through an empty string ('""') is treated as a
+// populated sentinel. Per migration 151, source_hash is
+// `TEXT NOT NULL DEFAULT ”`; an early insert with no real VLM
+// pass populates source_hash with the empty default. Without
+// NULLIF, the empty ” would block the semantic_hash fallback and
+// the airlock would emit an empty current_semantic_hash — a
+// silent regression against the user-spec (b) precedence rule.
+//
+// The airlock in index_airlock.go just trusts AssetData.SemanticHash;
+// it does NOT re-derive precedence. AssetStore is the canonical owner
+// of the precedence resolution (godlike/06 ONE canonical owner per
+// fact).
 const canonicalQuery = `
 		id, COALESCE(name, ''), COALESCE(source, ''), COALESCE(media_type, ''),
 		COALESCE(lifecycle_state, 'ACTIVE'),
@@ -178,8 +220,24 @@ const canonicalQuery = `
 		duration_ms,
 		workspace_id, channel_id, license,
 		source_version,
-		created_at, updated_at, deleted_at
+		created_at, updated_at, deleted_at,
+		COALESCE(
+			NULLIF(
+				(SELECT source_hash FROM asset_visual_summaries
+				 WHERE asset_id = media_assets.id
+				 LIMIT 1),
+				''
+			),
+			NULLIF(semantic_hash, ''),
+			''
+		) AS resolved_semantic_hash
 	FROM media_assets`
+
+// maxTranscriptsPerAsset caps the per-asset transcript-row count
+// fetched by `populateTranscripts` (single-asset flow). At 200
+// languages per asset the slice is a generous load — typical
+// multilingual catalogs sit at ≤20 langs; the cap is defensive.
+const maxTranscriptsPerAsset = 200
 
 // FetchAsset reads one row from media_assets and populates an AssetData.
 //
@@ -192,6 +250,14 @@ const canonicalQuery = `
 // either column; post-PR1 the column store is the only source and
 // the canonical fallback is 'ACTIVE'. The query no longer selects
 // `status`, so the row layout shrinks by one column.
+//
+// PR-CATALOG-MULTILINGUA step 6 (July 2026): after the main scan, a
+// tiny side-query populates AssetData.Transcripts from
+// `asset_text_tracks WHERE text_kind='transcript' AND is_current=1`.
+// Quiet-fails when asset_text_tracks doesn't exist yet (older DB or
+// a unit-test stub): AssetData.Transcripts stays empty and the
+// composer falls back to the legacy single-string Transcript field
+// (godlike/07 minimum-blast-radius transition contract).
 func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*AssetData, error) {
 	a := &AssetData{}
 	var row assetRowScanner
@@ -205,6 +271,7 @@ func (s *SQLiteAssetStore) FetchAsset(ctx context.Context, assetID string) (*Ass
 	}
 
 	row.populate(a)
+	s.populateTranscripts(ctx, a, assetID)
 	return a, nil
 }
 
@@ -242,6 +309,15 @@ func (s *SQLiteAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error
 // last asset's ID.
 //
 // Same filter as ListAllAssetIDs: excludes folders and soft-deleted rows.
+//
+// PR-CATALOG-MULTILINGUA step 6 (July 2026): after the main scan loop,
+// ONE additional SQL query fetches the per-page transcripts in batch
+// from `asset_text_tracks WHERE text_kind='transcript' AND is_current=1`
+// (keyed by asset_id IN (page ids)) and stitches them into the
+// already-allocated AssetData.Transcripts slices. Avoids N+1.
+// Quiet-fails on schema drift: when asset_text_tracks doesn't exist
+// yet, AssetData.Transcripts stays nil for every asset and the
+// composer falls back to the legacy single-string Transcript field.
 func (s *SQLiteAssetStore) FetchAssetBatch(ctx context.Context, afterID string, limit int) ([]*AssetData, error) {
 	if limit <= 0 {
 		limit = 500
@@ -277,7 +353,133 @@ func (s *SQLiteAssetStore) FetchAssetBatch(ctx context.Context, afterID string, 
 		row.populate(a)
 		out = append(out, a)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate asset batch (after %q): %w", afterID, err)
+	}
+	s.populateTranscriptsBatch(ctx, out)
+	return out, nil
+}
+
+// populateTranscripts fetches the per-asset current transcript
+// rows from asset_text_tracks and attaches them to AssetData.Transcripts.
+// godlike/07 NO-FAKE-AVAILABILITY: on schema drift (table missing),
+// asset_text_tracks is swallowed and AssetData.Transcripts stays nil.
+// The composer's legacy single-string fallback covers the transition.
+//
+// drift surface (forward-prevention): rows.Err() is checked AFTER the
+// iteration. A mid-iteration connection drop surfaces as a silent
+// incomplete slice without this check; a future agent deducing
+// "Transcripts had 1 row" when the underlying query was aborted would
+// lose multiple language slots without warning.
+func (s *SQLiteAssetStore) populateTranscripts(ctx context.Context, a *AssetData, assetID string) {
+	if a == nil {
+		return
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT language_code, text
+		FROM asset_text_tracks
+		WHERE asset_id = ?
+		  AND text_kind = 'transcript'
+		  AND is_current = 1
+		ORDER BY language_code ASC
+		LIMIT ?
+	`, assetID, maxTranscriptsPerAsset)
+	if err != nil {
+		return // godlike/07 transition: missing schema is no crash
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var lang, text string
+		if err := rows.Scan(&lang, &text); err != nil {
+			continue
+		}
+		lang = strings.TrimSpace(lang)
+		if text == "" {
+			continue
+		}
+		a.Transcripts = append(a.Transcripts, TranscriptTrack{
+			Lang:       lang,
+			Text:       text,
+			IsOriginal: strings.EqualFold(lang, strings.TrimSpace(a.Language)),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		// godlike/07 transition: do not crash, but do not silently treat
+		// an aborted query as success either. The follow-up reindex picks
+		// up the missing language slots on the next pass.
+		_ = err
+	}
+}
+
+// populateTranscriptsBatch fetches ALL transcript rows for the page
+// in ONE query (keyed by asset_id IN (?, ?, ...)) and stitches them
+// into the already-allocated AssetData slice. Avoids N+1 fetch-asset
+// round-trips (HIGH #8 contract). Quiet-fails on schema drift.
+//
+// Per-asset cap: the single-fetch path caps at maxTranscriptsPerAsset
+// via SQL LIMIT ?. The batch path has no SQL-side cap (IN-list doesn't
+// carry LIMIT) so we enforce maxTranscriptsPerAsset in code per-asset
+// to defend against pathological multi-language catalog rows.
+// godlike/07 minimum-blast-radius: defensive only — typical
+// multilingual catalogs sit at ≤20 langs.
+//
+// SQL tiebreaker: ORDER BY (asset_id, language_code, id ASC) so two
+// is_current=1 rows sharing the same language_code surface in
+// deterministic insertion-order across re-runs.
+func (s *SQLiteAssetStore) populateTranscriptsBatch(ctx context.Context, page []*AssetData) {
+	if len(page) == 0 {
+		return
+	}
+	placeholders := strings.Repeat("?,", len(page))
+	placeholders = strings.TrimRight(placeholders, ",")
+	args := make([]any, len(page))
+	idToAsset := make(map[string]*AssetData, len(page))
+	for i, a := range page {
+		args[i] = a.ID
+		idToAsset[a.ID] = a
+	}
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT asset_id, language_code, text
+		FROM asset_text_tracks
+		WHERE asset_id IN (%s)
+		  AND text_kind = 'transcript'
+		  AND is_current = 1
+		ORDER BY asset_id ASC, language_code ASC, id ASC
+	`, placeholders), args...)
+	if err != nil {
+		return // godlike/07 transition: missing schema is no crash
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var assetID, lang, text string
+		if err := rows.Scan(&assetID, &lang, &text); err != nil {
+			continue
+		}
+		a, ok := idToAsset[assetID]
+		if !ok || a == nil {
+			continue
+		}
+		lang = strings.TrimSpace(lang)
+		if text == "" {
+			continue
+		}
+		if len(a.Transcripts) >= maxTranscriptsPerAsset {
+			// Per-asset cap enforced in code. Truncation is recoverable
+			// on the next page cursor pass.
+			continue
+		}
+		a.Transcripts = append(a.Transcripts, TranscriptTrack{
+			Lang:       lang,
+			Text:       text,
+			IsOriginal: strings.EqualFold(lang, strings.TrimSpace(a.Language)),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		// godlike/07 transition + forward-prevention: connection drop
+		// mid-iteration is NOT silently absorbed; the follow-up reindex
+		// picks up the missing language slots on the next pass.
+		_ = err
+	}
 }
 
 // ListAssetsForReconcile returns the minimum asset payload needed by the

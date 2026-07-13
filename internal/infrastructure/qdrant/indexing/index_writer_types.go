@@ -6,6 +6,31 @@ import (
 
 // ── Asset data types for the mapper ──────────────────────────────────
 
+// TranscriptTrack is one language slice of a clip's multilingual
+// transcript. PR-CATALOG-MULTILINGUA step 6 (July 2026): AssetData
+// carries a slice of these so the canonical search_document composer
+// can emit original-language text bare first and each subsequent
+// language as `transcript ({lang}): {text}` — all in ONE Qdrant
+// embedding_text (no per-language Qdrant point fanout at v1).
+//
+// godlike/06 SSOT: this type lives here (alongside AssetData) because
+// it is the airlock's canonical input shape; the domain type
+// (internal/domain/asset.TextTrackResolvedBundle) is the SSOT for the
+// ROW shape, but the SLICE projection needed by the composer is a
+// distinct concern and this file is the canonical owner.
+//
+// IsOriginal is computed at SQL-fetch time (AssetStore) by comparing
+// `language_code = media_assets.language` (the canonical
+// post-migration-152 original-language signal). The composer reads
+// ONLY IsOriginal for the bare-text slot; the Lang/Text carries every
+// row so the skip-language rows assemble into `transcript ({lang}): …`
+// sequels in deterministic order (Lang-ASC tiebreaker).
+type TranscriptTrack struct {
+	Lang       string // BCP-47 language code, e.g. "en", "it", "es", "pt-BR"
+	Text       string // verbatim row text
+	IsOriginal bool   // true when this row's Lang matches the clip's original language
+}
+
 // AssetData is the canonical asset representation used by PayloadMapper.
 // It mirrors the media_assets table columns needed for Qdrant points.
 type AssetData struct {
@@ -26,13 +51,14 @@ type AssetData struct {
 	Style          string   `json:"style,omitempty"`
 	Tags           []string `json:"tags,omitempty"`
 	SearchText     string   `json:"search_text,omitempty"`
-	// DriveLink is the Drive web-view link for non-Qdrant legacy
-	// callers. QDRANT-001 (June 2026): intentionally NOT emitted by
-	// payload_mapper.BuildPayload — clients obtain a short-TTL
-	// signed URL via delivery.Signer.BuildAuthorizedURL per asset.
-	// Populated by asset_store.go from media_assets.drive_link for
-	// ingest-path tracking / reconstruct-from-SQL flows; never
-	// shipped to the vector index.
+	// DriveLink is the canonical Drive web-view URL for the asset
+	// (e.g. "https://drive.google.com/file/d/abc123/view").
+	// PR-CATALOG-MULTILINGUA step 6 (July 2026): now EMITTED in the
+	// Qdrant payload as the `drive_link` payload key so search results
+	// can offer an open-in-Drive affordance without an extra signed-URL
+	// round-trip (the legacy QDRANT-001 rule is REPLACED).
+	// Forward-prevention: drive_link belongs ONLY in payload, NEVER in
+	// embedding_text (pinned by payload_builder_test.go).
 	DriveLink string `json:"drive_link,omitempty"`
 	// LocalPath is the absolute filesystem path for non-Qdrant
 	// legacy callers. QDRANT-001 (June 2026): intentionally NOT
@@ -95,6 +121,28 @@ type AssetData struct {
 	VisualVector     []float32 `json:"-"`
 	AudioVector      []float32 `json:"-"`
 	ContentHash      string    `json:"content_hash,omitempty"`
+	// SemanticHash is the canonical projection of
+	// media_assets.semantic_hash (added by migration 152) — the
+	// SHA-256 fingerprint of the semantic block. Distinct from
+	// ContentHash (which is byte-level content fingerprint). The
+	// airlock wires this into IndexedMetadata.CurrentSemanticHash
+	// which is emitted as payload key `current_semantic_hash`. Empty
+	// (and the payload key is omitted) when the underlying row has
+	// no semantic_hash yet. PR-CATALOG-MULTILINGUA step 6 (July
+	// 2026). The asset_store reads
+	// `SELECT semantic_hash FROM media_assets WHERE id = ?` to
+	// populate this.
+	SemanticHash string `json:"semantic_hash,omitempty"`
+	// Transcripts is the multilingual transcript slice populated by
+	// AssetStore from asset_text_tracks rows where text_kind='transcript'
+	// AND is_current=1 (PR-CATALOG-MULTILINGUA step 6, July 2026).
+	// The first slice entry whose IsOriginal == true is rendered as
+	// bare text in embedding_text; every other entry is rendered as
+	// `transcript ({Lang}): {Text}` on a new line. Empty when no
+	// is_current=1 transcript rows exist. godlike/07
+	// NO-FAKE-AVAILABILITY: nil vs empty-slice are equivalent ("no
+	// transcript available yet").
+	Transcripts []TranscriptTrack `json:"transcripts,omitempty"`
 	// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent timestamp Drive
 	// folder metadata. Propagated from ChunkState → metadata.json →
 	// AssetData → Qdrant payload. Per-run scalar (all chunks in the
