@@ -201,6 +201,38 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_voiceover_alias_ban", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanVoiceoverAliasBan(root, pol, r, productionOnly)
 		}},
+		// Check Card 7.2 (July 2026): forward-prevention gate for
+		// the closed DirectIndexer bypass. The legacy DirectIndexer
+		// + 6 associated symbols (NewDirectIndexer,
+		// WithAdminReindex, IsAdminReindex,
+		// SetAdminReindexAuditLogger, AdminReindexKey,
+		// ErrDirectIndexerAbuse) were deleted in Card 7. Admin
+		// reindex MUST route through
+		// `outboxRepairAdapter.EnqueueReindex` in
+		// `cmd/admin/reconcile_qdrant_adapters.go` (force=true
+		// seam on `BuildReindexEnvelopeV1Force`). Production-code
+		// references to ANY of the 7 deleted symbols trip the
+		// build as SeverityError; comment-only + 2 documented
+		// residue files (outbox/dispatcher.go + cmd/admin/
+		// reconcile_qdrant_adapters.go) are residue-accounted as
+		// WARN (silenced under productionOnly).
+		//
+		// godlike/07 minimum-blast-radius: the runner.go entry
+		// above intentionally avoids naming the banned literals
+		// in the docstring so the gate's own registration site
+		// stays residue-clean (mirrors the convention used by
+		// `percheck_voiceover_alias_ban`'s runner entry which
+		// likewise avoids the alias names in prose).
+		//
+		// PR-P12-PERCHECK-BASELINE-ZERO (July 2026, deadline
+		// 2026-08-15): closure captures the --production-only
+		// flag. In production-only mode the comment-only WARN
+		// bucket is silenced (comments are documentation, not
+		// "hits") so the operator-facing "zero production-code
+		// hits" claim is auditable via len(r.Violations) == 0.
+		{"percheck_direct_indexer_bypass_closed", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanDirectIndexerBypassClosed(root, pol, r, productionOnly)
+		}},
 		// Check PR-API-MODULE-DEPS-MAX-8 (July 2026):
 		// forward-prevention gate that enforces the canonical
 		// maximum-8-fields invariant on every API module's
