@@ -253,3 +253,56 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_artifacts_unique_singleton
 CREATE INDEX IF NOT EXISTS idx_asset_artifacts_status_updated
     ON asset_artifacts (status, updated_at DESC);
 `
+
+// CanonicalScriptLocalizationsTable is the single source of truth for
+// the in-memory CREATE TABLE block required by script_localizations
+// readers that don't want to round-trip through RunMigrationsOnDB
+// (tests, fixtures, dry-run admin tooling).
+//
+// Mirror of migrations/sqlite/154_create_script_localizations.sql
+// (PR-CATALOG-MULTILINGUA step 5, July 2026). Types, CHECK constraints,
+// the UNIQUE(source/tuple) fingerprint, the FK CASCADE to scripts.id,
+// and the 2 supporting indexes MUST match the migration byte-for-byte
+// so the canonical CREATE TABLE reproduces what the migration chain
+// produces on a fresh DB.
+//
+// Why godlike/06 SSOT — kept together with the media_assets + asset_artifacts
+// constants: script_localizations is the localized-SpecSceneOutput
+// projection surface for the same scripts.id that owns
+// scripts.specscene (migration 100, the original-language source of
+// truth). Tests that exercise the FK CASCADE, the UNIQUE constraint,
+// or the per-status drain pattern need all three tables in lockstep.
+// Splitting into a separate Constants file would invite drift
+// between the fixture and the production migration.
+const CanonicalScriptLocalizationsTable = `
+CREATE TABLE IF NOT EXISTS script_localizations (
+    script_id          INTEGER NOT NULL,
+
+    source_script_hash TEXT NOT NULL
+                       CHECK (length(source_script_hash) > 0),
+
+    language_code      TEXT NOT NULL
+                       CHECK (length(language_code) >= 2),
+
+    specscene_json     TEXT NOT NULL DEFAULT ''
+                       CHECK (status != 'ready' OR length(specscene_json) > 0),
+
+    translation_model  TEXT NOT NULL DEFAULT '',
+    model_version      TEXT NOT NULL DEFAULT '',
+    prompt_version     TEXT NOT NULL DEFAULT '',
+
+    status             TEXT NOT NULL DEFAULT 'pending'
+                       CHECK (status IN ('pending','running','ready','failed')),
+
+    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+
+    FOREIGN KEY (script_id) REFERENCES scripts(id) ON DELETE CASCADE,
+
+    UNIQUE(script_id, source_script_hash, language_code, model_version, prompt_version)
+);
+CREATE INDEX IF NOT EXISTS idx_script_localizations_script_id
+    ON script_localizations (script_id);
+CREATE INDEX IF NOT EXISTS idx_script_localizations_language_status
+    ON script_localizations (language_code, status);
+`
