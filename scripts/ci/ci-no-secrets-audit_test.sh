@@ -79,7 +79,7 @@ qlog() { [[ $QUIET -eq 0 ]] && log "$@"; return 0; }
 # the gate's REGEX_PATTERN byte-for-byte; the lockstep check below
 # enforces that.
 TEST_REGEX_PATTERN=$(cat <<'EOF'
-(VELOX_ADMIN_TOKEN=[a-f0-9]{64}\b|\bAKIA[0-9A-Z]{16}\b|\baws_secret_access_key[[:space:]]*=[[:space:]]*["']?[A-Za-z0-9/+=]{40}|\bghp_[a-zA-Z0-9]{36,}\b|\bgithub_pat_[a-zA-Z0-9_]{22,}\b|\bxox[abpr]-[A-Za-z0-9-]{10,}\b|-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----)
+(VELOX_(ADMIN|WORKER)_TOKEN(:-|=)[a-f0-9]{64}\b|\bAKIA[0-9A-Z]{16}\b|\baws_secret_access_key[[:space:]]*=[[:space:]]*["']?[A-Za-z0-9/+=]{40}|\bghp_[a-zA-Z0-9]{36,}\b|\bgithub_pat_[a-zA-Z0-9_]{22,}\b|\bxox[abpr]-[A-Za-z0-9-]{10,}\b|-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----)
 EOF
 )
 
@@ -111,10 +111,15 @@ if [[ -z "$GATE_REGEX_PATTERN" ]]; then
 fi
 
 # Sanity: both patterns must contain the canonical anchors (AKIA +
-# VELOX_ADMIN_TOKEN). Catches operator comment-out / accidental
-# rewrite that would otherwise pass the byte-for-byte check.
-if ! [[ "$GATE_REGEX_PATTERN" == *AKIA* ]] || ! [[ "$GATE_REGEX_PATTERN" == *VELOX_ADMIN_TOKEN* ]]; then
-    echo "[$SCRIPT_NAME] FATAL: gate REGEX_PATTERN is missing canonical anchors (AKIA / VELOX_ADMIN_TOKEN)" >&2
+# VELOX_). Catches operator comment-out / accidental rewrite that
+# would otherwise pass the byte-for-byte check.
+# NOTE: the regex uses `VELOX_(ADMIN|WORKER)_TOKEN` (with parens around
+# the alternation), so the literal substring `VELOX_ADMIN_TOKEN` does
+# NOT appear verbatim — we anchor on `VELOX_` instead, which IS
+# present as a literal substring in both `VELOX_(ADMIN|WORKER)_TOKEN`
+# and `VELOX_ADMIN_TOKEN` (legacy regex shape).
+if ! [[ "$GATE_REGEX_PATTERN" == *AKIA* ]] || ! [[ "$GATE_REGEX_PATTERN" == *VELOX_* ]]; then
+    echo "[$SCRIPT_NAME] FATAL: gate REGEX_PATTERN is missing canonical anchors (AKIA / VELOX_)" >&2
     echo "  GATE: $GATE_REGEX_PATTERN" >&2
     exit 2
 fi
@@ -156,7 +161,10 @@ matches() {
 # exclusion list, but the prefix is belt-and-suspenders).
 # Format: "description|input"
 POSITIVE_CASES=(
-    'VELOX 64-hex admin token (canonical openssl rand -hex 32)|VELOX_ADMIN_TOKEN=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'
+    'VELOX 64-hex admin token (literal assignment)|VELOX_ADMIN_TOKEN=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'
+    'VELOX 64-hex admin token (bash env-var default-value form; the 2026-07-13 leak shape)|TOKEN="${VELOX_ADMIN_TOKEN:-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789}"'
+    'VELOX 64-hex worker token (literal assignment; canonical alternate to admin)|VELOX_WORKER_TOKEN=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789'
+    'VELOX 64-hex worker token (env-var default-value form)|SERVICE="${VELOX_WORKER_TOKEN:-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789}"'
     'AWS access key ID (AKIA + 16 uppercase alnum; TEST-prefixed)|AKIATESTSTESTSTEST12'
     'GitHub classic PAT (ghp_ + 36+ alnum; TEST-prefixed)|ghp_TESTabcdefghijklmnopqrstuvwxyz0123456789'
     'GitHub fine-grained PAT (github_pat_ + 22+ alnum/_; TEST-prefixed)|github_pat_11TESTABCDEF0_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZab'
@@ -177,7 +185,9 @@ NEGATIVE_CASES=(
     'Short hex (40 chars, not 64 — VELOX regex requires {64})|VELOX_ADMIN_TOKEN=abcdef0123456789abcdef0123456789abcdef01'
     'PEM PUBLIC key header (PUBLIC, not PRIVATE)|-----BEGIN RSA PUBLIC KEY-----'
     '.env placeholder (32-char dummy, not 64 hex)|VELOX_ADMIN_TOKEN=test-admin-token-12345'
-    'Bearer reference (no value after =)|Authorization: Bearer ${VELOX_ADMIN_TOKEN}'
+    'Bearer reference (no value after = or :- adjacent to hex)|Authorization: Bearer ${VELOX_ADMIN_TOKEN}'
+    '***REDACTED*** sentinel via env-var default-value (post-redaction canonical sentinel; not hex-shaped)|${VELOX_ADMIN_TOKEN:-***REDACTED***}'
+    '***REDACTED*** sentinel via literal assignment (post-redaction Watchlist — gate must stay GREEN)|VELOX_ADMIN_TOKEN=***REDACTED***'
 )
 
 PASS_COUNT=0

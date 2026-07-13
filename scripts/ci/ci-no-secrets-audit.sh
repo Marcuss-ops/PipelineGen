@@ -161,9 +161,24 @@ log "T3: ripgrep regex fallback"
 
 # Patterns are anchored to canonical secret shapes so docs / placeholder
 # files do NOT trip the gate:
-#   * [a-f0-9]{64}   — VELOX_ADMIN_TOKEN canonical 64-hex produced
-#                       by `openssl rand -hex 32`. The .env.example's
-#                       32-char placeholder does NOT match.
+#
+#   * VELOX_(ADMIN|WORKER)_TOKEN(:-|=)[a-f0-9]{64}\b
+#                     — VELOX canonical 64-hex produced by `openssl rand
+#                       -hex 32`. The (ADMIN|WORKER) worker's token
+#                       alternation covers both shapes; the `(:-|=)`
+#                       alternation covers BOTH the literal assignment
+#                       form `VELOX_ADMIN_TOKEN=HEX` AND the bash
+#                       parameter-default form `${VELOX_ADMIN_TOKEN:-HEX}`
+#                       that was the genesis of the 2026-07-13 incident
+#                       (the previous regex only caught the literal form
+#                       and let the env-var default-value shape through).
+#                       End-`\b` word boundary ensures the 64-char hex
+#                       terminates cleanly. The 32-char `.env.example`
+#                       placeholder does NOT match (length < 64); the
+#                       post-redaction `***REDACTED***` sentinel ALSO
+#                       does NOT match (not pure hex), so the gate
+#                       correctly stays GREEN after a redaction commit.
+#
 #   * \bAKIA[0-9A-Z]{16}\b — AWS Access Key ID canonical shape, anchored
 #                       with \b word boundaries so embedded AKIA inside
 #                       larger identifiers (e.g. "XAKIAIOSFODNN7EXAMPLE"
@@ -182,9 +197,12 @@ log "T3: ripgrep regex fallback"
 #   * -----BEGIN ... PRIVATE KEY----- — PEM header (single-line match;
 #       multiline flag not needed since we anchor on the header line).
 # Each pattern uses `\b` boundaries where applicable so partial matches
-# inside longer identifiers do not fire false positives.
+# inside longer identifiers do not fire false positives. Lockstep with
+# scripts/ci/ci-no-secrets-audit_test.sh::TEST_REGEX_PATTERN (byte-for-byte
+# equality enforced at test setup — any drift in the gate regex surfaces
+# BEFORE any case runs).
 REGEX_PATTERN=$(cat <<'GATE_REGEX_EOF'
-(VELOX_ADMIN_TOKEN=[a-f0-9]{64}\b|\bAKIA[0-9A-Z]{16}\b|\baws_secret_access_key[[:space:]]*=[[:space:]]*["']?[A-Za-z0-9/+=]{40}|\bghp_[a-zA-Z0-9]{36,}\b|\bgithub_pat_[a-zA-Z0-9_]{22,}\b|\bxox[abpr]-[A-Za-z0-9-]{10,}\b|-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----)
+(VELOX_(ADMIN|WORKER)_TOKEN(:-|=)[a-f0-9]{64}\b|\bAKIA[0-9A-Z]{16}\b|\baws_secret_access_key[[:space:]]*=[[:space:]]*["']?[A-Za-z0-9/+=]{40}|\bghp_[a-zA-Z0-9]{36,}\b|\bgithub_pat_[a-zA-Z0-9_]{22,}\b|\bxox[abpr]-[A-Za-z0-9-]{10,}\b|-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----)
 GATE_REGEX_EOF
 )
 
