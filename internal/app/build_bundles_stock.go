@@ -16,9 +16,16 @@
 //     (Module api.Module + Service *stockpipeline.Service).
 //   - The canonical StockUseCase constructor lives in
 //     stockpipeline/usecase.go::NewStockUseCase (returns *stockpipeline.StockUseCase,
-//     which is what api/assets/stock/handler.go expects via NewHandler +
-//     api/assets/stock/module.go::Build).
+//     which is what api/assets/stock/module.go::Build expects).
 //   - The API Descriptor lives in api/assets/stock/module.go::StockDescriptor.
+//
+// HTTP HANDLER RETIRED (godlike/07 NO-FAKE-AVAILABILITY, July 2026):
+// the internal/api/assets/stock/ handler files were deleted because the
+// capability is unmounted everywhere (zero /api/stock-pipeline/* route
+// registration). The composition root continues to construct the
+// *stockpipeline.Service + *stockpipeline.StockUseCase (used internally
+// by the enrichment worker); the HTTP projection surface is retired
+// from this bundle's Dependencies.
 //
 // Pre-commit-2 state: WireStockPipeline was retired and the Step 8
 // registerInternalModules stub logged a Warn + nil-wired
@@ -31,10 +38,8 @@
 package app
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
-	"io"
 	"strings"
 
 	"go.uber.org/zap"
@@ -50,7 +55,6 @@ import (
 	assetindex "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
-	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -92,12 +96,13 @@ type StockBundleDeps struct {
 	// whether /api/stock-pipeline/* routes are mounted. MANDATORY
 	// for stockapi.Build — nil closes the capability (no route
 	// registration) per api/assets/stock/module.go's nil-tolerance.
+	//
+	// HTTP HANDLER RETIRED (godlike/07, July 2026): the handler side of
+	// this closure is a no-op (api.NewRouteModule with nil handler),
+	// but keeping the closure lets the capability surface continue to
+	// gate /api/stock-pipeline/* off cleanly when the feature flag is
+	// false (composition root treats false → unregisterable Descriptor).
 	StockPipelineEnabled func() bool
-
-	// DriveReader is the narrow port for streaming files from
-	// Google Drive (stock download endpoint). OPTIONAL — nil
-	// produces a 503 on /clips/:id/download.
-	DriveReader stockapi.StockDriveReader
 
 	// PR-011A (July 2026): stock RLM/LLM enrichment pass composition
 	// seam. Both fields are OPTIONAL (nil = enrichment disabled,
@@ -165,47 +170,13 @@ func validateStockSymmetricGate(publisher delivery.Publisher, finalizer finaliza
 	return nil
 }
 
-// stockDriveReaderFromBundle extracts the drive.Reader from the
-// ComposeRoot and adapts it to stockapi.StockDriveReader. Returns
-// nil when root.Drive or root.Drive.Reader is nil (godlike/07
-// fail-closed: 503 on /clips/:id/download).
-func stockDriveReaderFromBundle(root *ComposeRoot) stockapi.StockDriveReader {
-	if root == nil || root.Drive == nil || root.Drive.Reader == nil {
-		return nil
-	}
-	return &stockDriveReaderAdapter{reader: root.Drive.Reader}
-}
-
-// stockDriveReaderAdapter adapts drive.Reader to stockapi.StockDriveReader.
-// Pattern 0 adapter — lives in the composition root to break the import
-// cycle (stock package cannot import infrastructure/drive directly).
-type stockDriveReaderAdapter struct {
-	reader driveup.Reader
-}
-
-func (a *stockDriveReaderAdapter) DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error) {
-	return a.reader.DownloadFile(ctx, fileID)
-}
-
-func (a *stockDriveReaderAdapter) GetFileMeta(ctx context.Context, fileID string) (*stockapi.DriveFileMeta, error) {
-	meta, err := a.reader.GetFileMeta(ctx, fileID)
-	if err != nil {
-		return nil, err
-	}
-	// PR-STOCK-OVERSIZED-DOWNLOAD-GUARD (2026-07-08): propagate the
-	// canonical Size int64 field so the api-layer size guard
-	// (`MaxStockDownloadSize` check in DownloadStockClip) can enforce
-	// the 2GiB cap WITHOUT adding a new Drive API round-trip. The
-	// underlying *Uploader.GetFileMeta already fetches Size from the
-	// same files.get?fields="...,size,..." call (uploader_file.go:114).
-	// godlike/06 SSOT: Size is the SOLE canonical owner of the byte
-	// count mirroring drive.FileMeta.Size — pre-PR the adapter
-	// silently dropped Size (zero callers used it), creating the
-	// false-fidelity gap that the 413 guard closes.
-	return &stockapi.DriveFileMeta{MimeType: meta.MimeType, Size: meta.Size}, nil
-}
-
-var _ stockapi.StockDriveReader = (*stockDriveReaderAdapter)(nil)
+// stockDriveReaderFromBundle + stockDriveReaderAdapter RETIRED
+// (godlike/07 NO-FAKE-AVAILABILITY, July 2026): the HTTP handler that
+// consumed the StockDriveReader port was deleted (handler.go +
+// handler_download.go). The composition root no longer adapts
+// drive.Reader to stockapi.StockDriveReader because no caller reads
+// the port. Zero-availability masquerade removed; size guard AND
+// MIME gate that the adapter fed have no surface anymore.
 
 // BuildStockBundle assembles the stock video pipeline composition root:
 //
@@ -392,12 +363,17 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	}
 
 	// ── Gate 4: compose the canonical API Descriptor ─────────────
+	//
+	// godlike/07 fail-closed (July 2026): the HTTP handler was
+	// retired (no route mounting anywhere). stockapi.Build now
+	// reduces to UseCase + EnabledFunc; the resulting Descriptor's
+	// Module carries a nil handler so RouteModule.RegisterRoutes
+	// logs a Warn + skips route registration. The composition root
+	// continues to type-assert the *StockDescriptor below so
+	// downstream registry code is unaffected.
 	sd, err := stockapi.Build(stockapi.Dependencies{
 		UseCase:     useCase,
 		EnabledFunc: deps.StockPipelineEnabled,
-		AssetLookup: deps.ClipsRepo,
-		DriveReader: deps.DriveReader,
-		Logger:      deps.Log,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockapi.Build: %w", err)
