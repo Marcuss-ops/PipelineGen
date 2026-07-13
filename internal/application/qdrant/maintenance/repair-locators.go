@@ -14,8 +14,6 @@ package maintenance
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
 	"go.uber.org/zap"
 )
@@ -62,32 +60,31 @@ func (s *Service) Repair(ctx context.Context, opts RepairOptions) error {
 	if err != nil {
 		s.log.Error("qdrant-maintenance repair-locators failed", zap.Error(err))
 		if report != nil && opts.JSON {
-			b, _ := json.Marshal(report)
-			fmt.Fprintln(s.cliWriter, string(b))
+			if jErr := s.cli.JSON(report); jErr != nil {
+				s.log.Warn("qdrant-maintenance: partial-report JSON marshal failed (dropping partial line; main err returned below)", zap.Error(jErr))
+			}
 		}
 		return err
 	}
 
 	if opts.JSON {
-		b, _ := json.Marshal(report)
-		fmt.Fprintln(s.cliWriter, string(b))
-		return nil
+		return s.cli.JSON(report)
 	}
 
-	fmt.Fprintln(s.cliWriter, "=== qdrant-maintenance repair-locators ===")
-	fmt.Fprintf(s.cliWriter, "  Collection:       %s\n", report.Collection)
-	fmt.Fprintf(s.cliWriter, "  Points scrolled:  %d\n", report.TotalPointsScrolled)
-	fmt.Fprintf(s.cliWriter, "  With drive_link:  %d\n", report.PointsWithDriveLink)
-	fmt.Fprintf(s.cliWriter, "  With local_path:  %d\n", report.PointsWithLocalPath)
-	fmt.Fprintf(s.cliWriter, "  Affected (total): %d\n", report.PointsAffected)
-	fmt.Fprintf(s.cliWriter, "  Keys removed:     %d\n", report.KeysRemoved)
-	fmt.Fprintf(s.cliWriter, "  Batch calls:      %d\n", report.BatchCount)
+	s.cli.HumanLine("=== qdrant-maintenance repair-locators ===")
+	s.cli.HumanLinef("  Collection:       %s\n", report.Collection)
+	s.cli.HumanLinef("  Points scrolled:  %d\n", report.TotalPointsScrolled)
+	s.cli.HumanLinef("  With drive_link:  %d\n", report.PointsWithDriveLink)
+	s.cli.HumanLinef("  With local_path:  %d\n", report.PointsWithLocalPath)
+	s.cli.HumanLinef("  Affected (total): %d\n", report.PointsAffected)
+	s.cli.HumanLinef("  Keys removed:     %d\n", report.KeysRemoved)
+	s.cli.HumanLinef("  Batch calls:      %d\n", report.BatchCount)
 	if len(report.Errors) > 0 {
-		fmt.Fprintf(s.cliWriter, "  Errors:           %d\n", len(report.Errors))
+		s.cli.HumanLinef("  Errors:           %d\n", len(report.Errors))
 		for i, e := range report.Errors {
-			fmt.Fprintf(s.cliWriter, "    [%d] %s\n", i, e)
+			s.cli.HumanLinef("    [%d] %s\n", i, e)
 		}
 	}
-	fmt.Fprintln(s.cliWriter, "\nRun 'qdrant-maintenance audit' to confirm zero LegacyLocatorPayload hits.")
+	s.cli.HumanLine("\nRun 'qdrant-maintenance audit' to confirm zero LegacyLocatorPayload hits.")
 	return nil
 }

@@ -19,8 +19,6 @@ package maintenance
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 
 	"go.uber.org/zap"
 
@@ -50,21 +48,20 @@ func (s *Service) Audit(ctx context.Context, opts AuditOptions) error {
 	if err != nil {
 		s.log.Warn("qdrant-maintenance: classify returned with errors; printing partial report", zap.Error(err))
 		if opts.JSON && report != nil {
-			b, _ := json.Marshal(report)
-			fmt.Fprintln(s.cliWriter, string(b))
+			if jErr := s.cli.JSON(report); jErr != nil {
+				s.log.Warn("qdrant-maintenance: partial-report JSON marshal failed (dropping partial line; main err returned below)", zap.Error(jErr))
+			}
 		}
 		return err
 	}
 
 	if opts.JSON {
-		b, _ := json.Marshal(report)
-		fmt.Fprintln(s.cliWriter, string(b))
-		return nil
+		return s.cli.JSON(report)
 	}
 
-	fmt.Fprintln(s.cliWriter, "=== qdrant-maintenance audit ===")
-	fmt.Fprintln(s.cliWriter, legacyaudit.StringifyReport(report))
-	fmt.Fprintln(s.cliWriter, "\nRe-run with 'repair-locators' to strip legacy payload keys,")
-	fmt.Fprintln(s.cliWriter, "or 'delete-invalid' to dispatch canonical outbox DELETE events for non-locator findings.")
+	s.cli.HumanLine("=== qdrant-maintenance audit ===")
+	s.cli.HumanLine(legacyaudit.StringifyReport(report))
+	s.cli.HumanLine("\nRe-run with 'repair-locators' to strip legacy payload keys,")
+	s.cli.HumanLine("or 'delete-invalid' to dispatch canonical outbox DELETE events for non-locator findings.")
 	return nil
 }

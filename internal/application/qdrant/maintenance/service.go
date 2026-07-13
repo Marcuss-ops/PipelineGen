@@ -33,7 +33,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 
 	"go.uber.org/zap"
 
@@ -93,19 +92,28 @@ type Service struct {
 	cfg *config.Config
 	log *zap.Logger
 
-	// cliWriter is the godlike/06 SSOT surface for CLI-UX output
-	// (formatted reports, JSON dumps, on-screen UI hints). The typed
-	// port keeps CLI-format output decoupled from zap's operator-log
-	// channel — zap writes to stderr / log-configured sinks; the
-	// cliWriter writes the byte-equivalent of the pre-split fmt.Print*
-	// surface to its injected io.Writer (default os.Stdout).
+	// cli is the godlike/06 SSOT CLI-UX surface (the typed CLIOutput
+	// adapter declared in output.go). Owns ONLY the printable side of
+	// CLI UX — formatted human-readable reports, JSON dumps, on-screen
+	// UI hints. Decoupled from zap's operator-log channel: zap writes
+	// to stderr / log-configured sinks via Service.log; the cli adapter
+	// writes to its injected io.Writer (default os.Stdout via NewCLIOutput).
 	//
-	// godlike/07 NO-FAKE-AVAILABILITY: nil cliWriter is NEVER a
-	// silent no-op fallback — NewService fails closed by defaulting
-	// to os.Stdout when d.CliWriter is nil so the operator never
-	// loses CLI UX. Tests that want to capture output pass a
-	// bytes.Buffer via Deps.CliWriter explicitly.
-	cliWriter io.Writer
+	// godlike/07 NO-FAKE-AVAILABILITY: nil CLIOutput is NEVER a silent
+	// no-op — NewCLIOutput fails closed by defaulting to os.Stdout when
+	// d.CliWriter is nil so the operator never loses CLI UX. Tests that
+	// want to capture output pass a bytes.Buffer via Deps.CliWriter.
+	//
+	// CR-thinker Q5 rationale (2026-07): Service.log stays separate (NOT
+	// folded into cli) because Service.initHeavy reaches s.log directly
+	// for storage.OpenSQLiteDB(..., s.log) and app.InitComposition(s.cfg, s.log).
+	// Folding zap into this adapter would either force a cli.Logger()
+	// getter (godlike/07 minimum-blast-radius regression — re-exports
+	// the structured logger through an extra indirection) or accept a
+	// weaker interface upstream (godlike/06 SSOT regression). Both are
+	// anti-patterns; the 2-field (log + cli) layout is the canonical
+	// scope-discipline answer.
+	cli *CLIOutput
 
 	// Heavy-init fields (Audit + Delete modes only).
 	sqliteDB   *sql.DB
@@ -160,20 +168,16 @@ func NewService(d Deps) (*Service, error) {
 	if d.Cleaner == nil {
 		return nil, errors.New("maintenance.NewService: cleaner is nil (composition root missing QdrantCleaner port)")
 	}
-	// godlike/07 fail-closed-at-construction: nil CliWriter defaults
-	// to os.Stdout so CLI UX is byte-equivalent with the pre-split
-	// fmt.Print* surface. Tests pass an explicit bytes.Buffer to
-	// capture output; cmd/admin never passes CliWriter because the
-	// default is correct for normal operator UX (stdout).
-	cliWriter := d.CliWriter
-	if cliWriter == nil {
-		cliWriter = os.Stdout
-	}
+	// godlike/07 fail-closed-at-construction: NewCLIOutput defaults to
+	// os.Stdout so CLI UX is byte-equivalent with the pre-split fmt.Print*
+	// surface. Tests pass an explicit bytes.Buffer via Deps.CliWriter;
+	// cmd/admin never passes CliWriter because the default is correct
+	// for normal operator UX (stdout).
 	return &Service{
-		cfg:       d.Cfg,
-		log:       d.Log,
-		cliWriter: cliWriter,
-		cleaner:   d.Cleaner,
+		cfg:     d.Cfg,
+		log:     d.Log,
+		cli:     NewCLIOutput(d.CliWriter),
+		cleaner: d.Cleaner,
 	}, nil
 }
 
