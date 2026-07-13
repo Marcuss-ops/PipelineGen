@@ -185,9 +185,15 @@ func (uc *GenerateOneUseCase) Execute(
 		if resolved.Title != "" {
 			plan.Title = resolved.Title
 		}
-		if resolved.SourceText != "" {
-			plan.SourceText = resolved.SourceText
-		}
+		// Wave 2.x directive (PR-REFACTOR-P1-CYCLOMATIC, July 2026):
+		// ResolvedSource.SourceText MUST NOT overwrite plan.SourceText.
+		// rationale: plan.SourceText is owned by the normalizer + BuildPlan
+		// (item.Source.SourceText); letting the source resolver overwrite it
+		// re-introduces a side-effect where the same logical plan has two
+		// textual identities (item.Source.SourceText vs resolved.SourceText).
+		// The clip-evidence text assembled into plan.ClipEvidence.NarrativeText
+		// remains the canonical editorial substrate (consumed by the engine
+		// via plan.ClipEvidence.ModelSourceText()).
 		if resolved.ClipEvidence != nil {
 			plan.ClipEvidence = resolved.ClipEvidence
 		}

@@ -6,6 +6,10 @@
 // No durable field uses any, any, or map[string]any.
 package script
 
+import (
+	"slices"
+)
+
 // ResolvedGenerationPlan is the fully resolved, validated plan that
 // the engine consumes. It carries:
 //   - identity fields (title, language, tone, model, mode)
@@ -178,4 +182,54 @@ func (p *ResolvedGenerationPlan) HasPostprocessor(name string) bool {
 		}
 	}
 	return false
+}
+
+// NewResolvedGenerationPlan is the canonical defensive-copy
+// constructor for ResolvedGenerationPlan. Every slice/map field on
+// the returned instance is freshly-allocated so post-construction
+// mutation of the input's slices/maps cannot reach the constructed
+// instance.
+//
+// Scope of cloning — the slice fields callers have historically
+// mutated after BuildPlan returned:
+//
+//   - SegmentTopics, Segments (text-segment metadata)
+//   - Languages (translation target list)
+//   - Postprocessors (postprocessor execution order)
+//
+// The embedded *ClipEvidence is re-cloned via NewClipEvidence so
+// downstream code holding the plan's plan.ClipEvidence pointer
+// cannot mutate the source ResolvedSource's clip evidence maps.
+// The remaining scalar fields (strings, ints, bools, the
+// *SearchResultItem-equivalent scalars) are copied by value as
+// part of the struct copy and are inherently safe.
+//
+// godlike/06 SSOT (no mutation helper): the constructor is the
+// SOLE canonical path that returns a snapshot-safe plan. After
+// NewResolvedGenerationPlan returns, the plan's slices/maps are
+// logically immutable from the construction-side contract; the
+// caller MUST NOT introduce public mutex methods that mutate the
+// maps (the same `godlike/06 no-mutation-helper` discipline that
+// applies to NewClipEvidence).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: scalar fields are read-only
+// from the consumer's surface — no `WithClipEvidenceClipID(...)`
+// companion. Re-cloning into a fresh instance is the canonical
+// mutation path; the constructor's defensive-copy semantics
+// means a single logical "edit" round trips through
+// NewResolvedGenerationPlan.
+//
+// Nil-pointer contract: if input.ClipEvidence is nil the
+// constructor leaves the embedded ClipEvidence nil. The
+// downstream type assertion `plan.ClipEvidence != nil` is the
+// canonical nil-guard at the consumer.
+func NewResolvedGenerationPlan(p ResolvedGenerationPlan) *ResolvedGenerationPlan {
+	p.SegmentTopics = slices.Clone(p.SegmentTopics)
+	p.Segments = slices.Clone(p.Segments)
+	p.Languages = slices.Clone(p.Languages)
+	p.Postprocessors = slices.Clone(p.Postprocessors)
+	if p.ClipEvidence != nil {
+		p.ClipEvidence = NewClipEvidence(*p.ClipEvidence)
+	}
+	return &p
 }
