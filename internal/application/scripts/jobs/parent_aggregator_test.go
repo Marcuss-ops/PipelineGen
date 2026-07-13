@@ -226,7 +226,7 @@ func buildParentStubWithDocs(parentID string, childSpecs map[string]struct {
 	}
 	parent := &job.Job{
 		ID:     parentID,
-		Type:   job.TypeScriptGenerate,
+		Type:   scripts.JobGenerate,
 		Status: job.StatusFinalizing,
 		Result: makeScriptParentStateWaitingChildren(parentID, childIDs, len(childIDs)),
 	}
@@ -255,7 +255,7 @@ func buildParentStub(parentID string, childStatuses map[string]job.Status, child
 	}
 	parent := &job.Job{
 		ID:     parentID,
-		Type:   job.TypeScriptGenerate,
+		Type:   scripts.JobGenerate,
 		Status: job.StatusFinalizing,
 		Result: makeScriptParentStateWaitingChildren(parentID, childIDs, len(childIDs)),
 		// Revision defaults to 0 in tests; production reads parent.Revision

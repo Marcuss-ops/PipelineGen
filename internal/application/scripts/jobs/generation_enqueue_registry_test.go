@@ -63,7 +63,7 @@ func (f *fakeJobEnqueuer) Enqueue(_ context.Context, req *jobdomain.EnqueueReque
 func newRegistryWithScriptGenerateRetry(retries int) *appjobs.Registry {
 	r := appjobs.NewRegistry()
 	_ = r.Register(appjobs.RegistryEntry{
-		Type:              appjobs.TypeScriptGenerate,
+		Type:              scripts.JobGenerate,
 		Description:       "test fixture for Issue 4 plumbing assertions",
 		Timeout:           60 * time.Minute,
 		DefaultMaxRetries: retries,

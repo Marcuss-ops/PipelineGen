@@ -45,7 +45,7 @@ func TestService_HasHandler(t *testing.T) {
 	// handler for `script.generate`. The remaining test cases
 	// derive from this base (nil receiver, nil dispatcher, etc.).
 	dispatcher := NewDispatcher()
-	if err := dispatcher.Register(job.TypeScriptGenerate, fakeHandler); err != nil {
+	if err := dispatcher.Register(scripts.JobGenerate, fakeHandler); err != nil {
 		t.Fatalf("register fake handler: %v", err)
 	}
 	svc, err := NewService(nakedJobBroker{}, dispatcher, zap.NewNop(), Compose())
@@ -63,7 +63,7 @@ func TestService_HasHandler(t *testing.T) {
 		{
 			name:     "nil receiver returns false (defensive guard)",
 			svc:      nil,
-			jobType:  job.TypeScriptGenerate,
+			jobType:  scripts.JobGenerate,
 			wantHave: false,
 		},
 		{
@@ -74,7 +74,7 @@ func TestService_HasHandler(t *testing.T) {
 				log:        nil,
 				registry:   nil,
 			},
-			jobType:  job.TypeScriptGenerate,
+			jobType:  scripts.JobGenerate,
 			wantHave: false,
 		},
 		{
@@ -86,7 +86,7 @@ func TestService_HasHandler(t *testing.T) {
 		{
 			name:     "registered type returns true (canonical happy path)",
 			svc:      svc,
-			jobType:  job.TypeScriptGenerate,
+			jobType:  scripts.JobGenerate,
 			wantHave: true,
 		},
 		{

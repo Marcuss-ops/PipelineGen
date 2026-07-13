@@ -61,9 +61,9 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	if w.cfg == nil {
 		return nil, fmt.Errorf("bulk upload worker: cfg not configured")
 	}
-	jobTimeout := w.cfg.JobTimeout(appjobs.TypeBulkUploadYouTubeClips)
+	jobTimeout := w.cfg.JobTimeout(clips.JobBulkUpload)
 	if jobTimeout <= 0 {
-		return nil, fmt.Errorf("bulk upload worker: job timeout for %q resolved to %v (non-positive — check registry)", appjobs.TypeBulkUploadYouTubeClips, jobTimeout)
+		return nil, fmt.Errorf("bulk upload worker: job timeout for %q resolved to %v (non-positive — check registry)", clips.JobBulkUpload, jobTimeout)
 	}
 	ctx, cancel := context.WithTimeout(ctx, jobTimeout)
 	defer cancel()

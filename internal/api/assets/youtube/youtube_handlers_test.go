@@ -162,7 +162,7 @@ func TestNormalizeExtractionDestination_PreservesExplicitFolderPath(t *testing.T
 func TestRecordingJobsService_EnqueueCapturesPayload(t *testing.T) {
 	svc := &recordingJobsService{}
 	_, err := svc.Enqueue(context.Background(), &jobservice.EnqueueRequest{
-		Type:    appjobs.TypeYouTubeClipExtract,
+		Type:    youtube.JobExtract,
 		Payload: map[string]any{"hello": "world"},
 	})
 	require.NoError(t, err)

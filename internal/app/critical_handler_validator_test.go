@@ -273,7 +273,7 @@ func TestValidateCriticalHandlers_EmptySlice(t *testing.T) {
 
 // literalRegisterTestJobType is a SYNTHETIC test-only job type used
 // in the v2-shape tests. Decoupling from canonical production types
-// (e.g. appjobs.TypeVoiceoverGenerate) avoids future fixture
+// (e.g. voiceover.JobGenerate) avoids future fixture
 // coupling — production composition tests that pre-register handlers
 // for canonical types would poison the test pre-state.
 const literalRegisterTestJobType = "test.literal_register.fixture"

@@ -65,7 +65,7 @@ func (h *YouTubeClipHandler) Extract(c *gin.Context) {
 	}
 
 	if ok := transport.EnqueueAsync(c, h.jobsSvc, &transport.EnqueueInput{
-		Type:    appjobs.TypeYouTubeClipExtract,
+		Type:    youtube.JobExtract,
 		Payload: payloadMap,
 	}, "YouTube clip extraction job enqueued."); ok {
 		return
