@@ -361,10 +361,23 @@ func (m *Materializer) materializeOne(
 		PromptVersion:      m.resolverCfg.PromptVersion,
 		TextHash:           ComputeSourceTextHash(translated.TranslatedText),
 		SourceVersion:      source.SourceVersion,
-		TranslationKey:     translationKey,
-		IsCurrent:          true,
-		Confidence:         &confidence,
-		Status:             asset.TextTrackReady,
+		// PR-CLIPINGEST-PIPELINE step 11 (July 2026): propagate
+		// the parent source_text_hash onto the fan-out target
+		// row so the "multilingua — segmenti/timestamp
+		// invariati" invariant is enforced end-to-end. The
+		// lookup probe at the top of materializeOne already
+		// feeds SourceTextHash into translation_key; without
+		// this insertion-side propagation the lookup hits
+		// would miss on subsequent Materialize calls for the
+		// same source (the row is unreadable without a
+		// SourceTextHash). One canonical owner — the
+		// MaterializationReport is the SSOT for source_hash
+		// and the new row copies it verbatim.
+		SourceTextHash: report.SourceTextHash,
+		TranslationKey: translationKey,
+		IsCurrent:      true,
+		Confidence:     &confidence,
+		Status:         asset.TextTrackReady,
 	}
 	if confidence == 0 {
 		newTrack.Confidence = nil
