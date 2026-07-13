@@ -1,5 +1,71 @@
 package config
 
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+)
+
+// LanguageSpecSlice is the YAML-facing carrier for
+// MultilingualConfig.Languages. It accepts BOTH the
+// legacy CSV-shaped YAML
+//
+//	languages: [it, en, es, ...]
+//
+// (auto-promoted to enabled+translate+tts on every entry) AND
+// the typed struct-list shape
+//
+//	languages:
+//	  - {code: it, enabled: true, translate_clips: true, generate_tts: false}
+//	  - {code: en, enabled: true, translate_clips: true, generate_tts: true}
+//
+// (preserved verbatim). godlike/06 SSOT: this is the SINGLE
+// canonical decoder for cfg.MultilingualConfig.Languages.
+//
+// PR-CATALOG-MULTILINGUA step 3 (July 2026): introduced alongside
+// the domain/asset.LanguageRegistry SSOT; legacy pre-step-3
+// configs that still carry `materialize_languages:` continue to
+// parse via MultilingualConfig.MaterializeLanguages and are
+// auto-promoted into a registry by the composition root
+// (build_bundles_texttracks.go).
+type LanguageSpecSlice []asset.LanguageSpec
+
+// UnmarshalYAML handles both []string (legacy) and []LanguageSpec
+// (new) shapes. The struct-list shape is attempted first; on
+// success the slice is set verbatim. On any error from the
+// struct list, the []string shape is attempted and each code
+// is auto-promoted to a fully-enabled spec.
+func (l *LanguageSpecSlice) UnmarshalYAML(node *yaml.Node) error {
+	// Try the typed struct-list shape first. An empty YAML
+	// list decodes to a nil slice without error, which is
+	// fine (we'll fall through to the string-list pass and
+	// also get an empty list there). The struct-list path
+	// wins for non-empty typed YAMLs.
+	var structs []asset.LanguageSpec
+	if err := node.Decode(&structs); err == nil && len(structs) > 0 {
+		*l = structs
+		return nil
+	}
+	// Try the legacy []string shape. yaml.v3 will refuse a
+	// map node into a []string, so a non-list YAML surfaces
+	// a decode error here (caller bug).
+	var codes []string
+	if err := node.Decode(&codes); err != nil {
+		return fmt.Errorf("multilingual.languages: must be []string (legacy) or []LanguageSpec (typed): %w", err)
+	}
+	for _, c := range codes {
+		*l = append(*l, asset.LanguageSpec{
+			Code:           c,
+			Enabled:        true,
+			TranslateClips: true,
+			GenerateTTS:    true,
+		})
+	}
+	return nil
+}
+
 // MediaConfig groups all media-pipeline configuration (multilingual
 // settings, text-track acquisition, future media-runtime knobs) under a
 // single namespace so the Config struct stays tree-readable. The
@@ -101,17 +167,37 @@ type MultilingualConfig struct {
 	// these languages so the E5 multilingual model can match queries
 	// in any supported language. Defaults to source_language only.
 	IndexLanguages []string `yaml:"index_languages" default:"en"`
-	// MaterializeLanguages is the CANONICAL set of languages the
-	// YouTube acquisition chain probes for subtitles + the
-	// TextTrackMaterializer (Fase 3) materializes translations for.
-	// The chain uses this list as the SubtitleFetcherAdapter
-	// preferred-languages list (priority order: top-to-bottom in
-	// the comma-separated CSV). godlike/07 honest lock: the chain
-	// MUST NOT fall back to "en" when this list is empty — empty
-	// surfaces as "und" (BCP-47 undetermined) and the resolver
-	// surfaces ErrLanguageUndeterminable when RequireLanguage
-	// Certainty is set. Default mirrors the canonical
-	// asset.SupportedLanguages whitelist: it, en, es, pt-BR, fr, de.
+	// Languages is the canonical SSOT for the pipeline's
+	// language capabilities (PR-CATALOG-MULTILINGUA step 3,
+	// July 2026). Loaded from `multilingual.languages:` in the
+	// YAML; accepts BOTH the legacy CSV shape
+	// ( `[it, en, es, ...]`, auto-promoted) AND the typed
+	// struct-list shape
+	// ( `[{code: it, enabled: true, translate_clips: true, generate_tts: false}, ...]` ).
+	// The composition root constructs a single
+	// asset.LanguageRegistry from this slice and threads it
+	// into every pipeline that needs to know which languages
+	// are enabled (texttracks materializer is the
+	// first-migrated consumer; future steps migrate voices,
+	// scripts, etc.). godlike/06 SSOT: this is the canonical
+	// YAML surface for pipeline language capabilities.
+	Languages LanguageSpecSlice `yaml:"languages"`
+
+	// MaterializeLanguages is the LEGACY comma-separated
+	// surface retained for back-compat with pre-step-3 YAML
+	// configs. Operators are encouraged to migrate to the
+	// typed `languages:` list; until they do, the composition
+	// root auto-promotes this list into a registry with
+	// (enabled=true, translate=true, tts=true) defaults.
+	// godlike/07: if both `languages:` AND
+	// `materialize_languages:` are set, the typed list wins
+	// (it carries per-language flags the legacy CSV
+	// cannot).
+	//
+	// Deprecated: use Languages (with LanguageSpec) +
+	// asset.LanguageRegistry. Retained for back-compat with
+	// pre-step-3 YAML configs; will be removed in step 4+
+	// SSOT cutover.
 	MaterializeLanguages []string `yaml:"materialize_languages" default:"it, en, es, pt-BR, fr, de"`
 	// RequireLanguageCertainty, when true, makes the YouTube
 	// acquisition chain (TextTrackResolver.AcquireSegmentText) fail

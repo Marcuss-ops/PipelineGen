@@ -201,15 +201,25 @@ func (f *fakeOutbox) Enqueue(_ context.Context, _ *sql.Tx, eventType, aggregateI
 
 func newTestMaterializer(t *testing.T, repo *fakeTextTrackRepo, tr translation.TranslationPort, ob texttracks.OutboxEnqueuer, srcLang string, targets []string, modelVer, promptVer string) *texttracks.Materializer {
 	t.Helper()
+	// PR-CATALOG-MULTILINGUA step 3: build the per-test
+	// registry from a `[]string` literal via
+	// NewLanguageRegistryFromCodes (auto-promotes each code
+	// to enabled+translate+tts=true). Identical pre-step-3
+	// semantics: the test's `targets []string` literal IS
+	// the candidate set.
+	reg, err := asset.NewLanguageRegistryFromCodes(targets)
+	if err != nil {
+		t.Fatalf("NewLanguageRegistryFromCodes(%v): %v", targets, err)
+	}
 	m, err := texttracks.NewMaterializer(
 		repo,
 		tr,
 		ob,
 		texttracks.ResolverConfig{
-			MaterializeLanguages: targets,
-			SourceLanguage:       srcLang,
-			ModelVersion:         modelVer,
-			PromptVersion:        promptVer,
+			Registry:       reg,
+			SourceLanguage: srcLang,
+			ModelVersion:   modelVer,
+			PromptVersion:  promptVer,
 		},
 		zap.NewNop(),
 	)
@@ -676,16 +686,24 @@ func TestMaterialize_TranslationKeyMiss_CreatesNewRowWithTranslationKey(t *testi
 
 func newTestMaterializerWithModel(t *testing.T, repo *fakeTextTrackRepo, tr translation.TranslationPort, ob texttracks.OutboxEnqueuer, srcLang string, targets []string, modelName, modelVer, promptVer string) *texttracks.Materializer {
 	t.Helper()
+	// PR-CATALOG-MULTILINGUA step 3: same registry-from-codes
+	// construction as newTestMaterializer (`targets` literal
+	// IS the candidate set, no registry filter applied
+	// because there's no Materializer per-call override).
+	reg, err := asset.NewLanguageRegistryFromCodes(targets)
+	if err != nil {
+		t.Fatalf("NewLanguageRegistryFromCodes(%v): %v", targets, err)
+	}
 	m, err := texttracks.NewMaterializer(
 		repo,
 		tr,
 		ob,
 		texttracks.ResolverConfig{
-			MaterializeLanguages: targets,
-			SourceLanguage:       srcLang,
-			ModelVersion:         modelVer,
-			PromptVersion:        promptVer,
-			TranslationModel:     modelName,
+			Registry:         reg,
+			SourceLanguage:   srcLang,
+			ModelVersion:     modelVer,
+			PromptVersion:    promptVer,
+			TranslationModel: modelName,
 		},
 		zap.NewNop(),
 	)
