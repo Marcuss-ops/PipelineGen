@@ -10,6 +10,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	// godlike/06 SSOT note: golang.org/x/text/unicode/norm is the
@@ -443,6 +445,50 @@ func (e *ClipEvidence) CoverageSourceText() string {
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// NewClipEvidence is the canonical defensive-copy constructor for
+// ClipEvidence. Every slice and map field on the returned instance
+// is a freshly-allocated clone of the corresponding input field;
+// post-construction mutation of the input's slices/maps cannot
+// reach the constructed instance.
+//
+// Scope of cloning — the 4 user-named maps + all other slice/map
+// fields that callers have historically mutated:
+//
+//   - AcceptedClipIDs, RenderableClipIDs, ClipTranscriptHashes
+//     (slice fields; defensive-clone via slices.Clone)
+//   - Excluded, MissingClipIDs (slice fields; defensive-clone)
+//   - DriveLinks, ClipNames, ClipDetails (map fields;
+//     defensive-clone via maps.Clone)
+//
+// Non-collection scalar fields (LanguageCode, TextTrackVersion,
+// TranscriptHash, ClipCount, AssembledText, NarrativeText) are
+// copied by value as part of the struct copy and are inherently
+// safe.
+//
+// godlike/06 SSOT (one canonical owner per fact): the constructor
+// is the ONLY path that produces a ClipEvidence with snapshot-safe
+// internal state. Incremental builders (e.g.,
+// ClipSourceBuilder.BuildClipContext) complete their work via
+// freshly-allocated maps during a single function frame so they
+// do not need to re-route through this constructor.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: the constructor does not
+// tolerate nil-receiver-map sources — Go's maps.Clone handles
+// nil maps cleanly (returns nil), so a caller that passes
+// partially-populated maps still gets a snapshot-correct
+// construction. Partial population is preserved: nil remains nil.
+func NewClipEvidence(e ClipEvidence) *ClipEvidence {
+	e.AcceptedClipIDs = slices.Clone(e.AcceptedClipIDs)
+	e.RenderableClipIDs = slices.Clone(e.RenderableClipIDs)
+	e.ClipTranscriptHashes = slices.Clone(e.ClipTranscriptHashes)
+	e.Excluded = slices.Clone(e.Excluded)
+	e.MissingClipIDs = slices.Clone(e.MissingClipIDs)
+	e.DriveLinks = maps.Clone(e.DriveLinks)
+	e.ClipNames = maps.Clone(e.ClipNames)
+	e.ClipDetails = maps.Clone(e.ClipDetails)
+	return &e
 }
 
 // ClipDetail carries the primary evidence for a single accepted
