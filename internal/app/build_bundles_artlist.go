@@ -62,7 +62,6 @@ import (
 
 	scripts_usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
@@ -74,6 +73,7 @@ import (
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	mediaproc "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -85,7 +85,7 @@ var (
 	_ artlistPkg.AssetStore = (*assets.ClipsRepository)(nil) // 7-method set via *AssetStoreSQLite method-promotion
 	_ artlistPkg.Indexer    = (*clipindexer.Service)(nil)    // IndexClip + IsEnabled
 	_ artlistPkg.Dispatcher = (*outbox.Dispatcher)(nil)      // EnqueueAndIndex + SaveDiscoveredAsset
-	_ jobdomain.Service     = (*appjobs.Service)(nil)        // cross-package alias safety (Build Deps.Jobs + ServiceDeps.JobsSvc)
+	_ kerneljob.Service     = (*appjobs.Service)(nil)        // cross-package alias safety (Build Deps.Jobs + ServiceDeps.JobsSvc)
 )
 
 // WireArtlist constructs *artlist.Service + *ArtlistDescriptor from the canonical
@@ -149,7 +149,7 @@ func WireArtlist(
 		return nil, ErrArtlistDepMissing{Kind: DepKindIndexer, Field: "bundle.ClipIndexerService"}
 	}
 
-	// jobdomain.Service alias pin is verified at compile time (Pattern 0 + AGENTS.md).
+	// kerneljob.Service alias pin is verified at compile time (Pattern 0 + AGENTS.md).
 
 	// gate #7 — Finalizer (canonical transactional AssetTxFinalizer).
 	// Per user spec literal "finalizer" listing + per godlike/07
@@ -177,7 +177,7 @@ func WireArtlist(
 	if err := validateArtlistScraperURL(cfg); err != nil {
 		return nil, err
 	}
-	_ = (jobdomain.Service)(bundle.Jobs.Service)
+	_ = (kerneljob.Service)(bundle.Jobs.Service)
 
 	log.Info("WireArtlist: ART-001 reversal wiring starting",
 		zap.String("root_path", "/api/artlist/*"),
@@ -703,7 +703,7 @@ func WireArtlistJobBindings(artlistSvc *artlistPkg.Service, jobsBundle *JobsBund
 	// false post-call — surface as the same typed sentinel so
 	// the composition caller aborts rather than continuing with
 	// an unwired consumer.
-	if !jobsBundle.Service.HasHandler(jobdomain.TypeArtlistRun) {
+	if !jobsBundle.Service.HasHandler(kerneljob.TypeArtlistRun) {
 		return fmt.Errorf("%w: post-bind HasHandler(media.artlist) returned false (dispatcher silently dropped the Register call?)",
 			ErrArtlistConsumerRegistrationFailed)
 	}

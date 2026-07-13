@@ -36,7 +36,7 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ErrVoiceoverNotImplementedOnCreator is the godlike/07-compliant typed
@@ -62,7 +62,7 @@ var ErrVoiceoverNotImplementedOnCreator = errors.New("creator: voiceover.generat
 // The dispatcher's Register contract is closed-set (no future-bound types),
 // so no registration drift risk: opting in to the build tag re-injects
 // the EXACT shape the production code path used to expose.
-func voiceoverPlaceholderHandler(ctx context.Context, j *domainjob.Job, tools *appjobs.JobTools) (map[string]any, error) {
+func voiceoverPlaceholderHandler(ctx context.Context, j *kerneljob.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	_ = ctx
 	_ = tools
 	return nil, fmt.Errorf("voiceover.generate_item: not yet implemented in Creator composition (godlike/07 P1-COMPL-12 opt-in test affordance): %w", ErrVoiceoverNotImplementedOnCreator)
@@ -83,9 +83,9 @@ func registerVoiceoverGenerateItemPlaceholder(dispatcher *appjobs.Dispatcher) er
 	if dispatcher == nil {
 		return fmt.Errorf("registerVoiceoverGenerateItemPlaceholder: dispatcher is nil: %w", ErrVoiceoverNotImplementedOnCreator)
 	}
-	if err := dispatcher.Register(domainjob.TypeVoiceoverGenerateItem, voiceoverPlaceholderHandler); err != nil {
+	if err := dispatcher.Register(kerneljob.TypeVoiceoverGenerateItem, voiceoverPlaceholderHandler); err != nil {
 		return fmt.Errorf("registerVoiceoverGenerateItemPlaceholder: bind %q to dispatcher: %w",
-			domainjob.TypeVoiceoverGenerateItem, err)
+			kerneljob.TypeVoiceoverGenerateItem, err)
 	}
 	return nil
 }

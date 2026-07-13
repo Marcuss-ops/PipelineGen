@@ -28,7 +28,7 @@ import (
 	"errors"
 	"testing"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

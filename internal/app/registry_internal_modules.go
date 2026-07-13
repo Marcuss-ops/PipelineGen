@@ -296,9 +296,9 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 //	    concrete receiver (would need a `clipsRepoAssetStoreAdapter`
 //	    shim if signatures drift).
 //	(c) `artlist.Build(Dependencies{...})` requires `Jobs` field type
-//	    `jobservice.Service` (per `internal/domain/job/job.go::Service`)
-//	    — a typed return of `jobdomain.Service` to that field compiles
-//	    only if `jobdomain.Service` is the same interface (low risk
+//	    `kerneljob.Service` (per `internal/domain/job/job.go::Service`)
+//	    — a typed return of `kerneljob.Service` to that field compiles
+//	    only if `kerneljob.Service` is the same interface (low risk
 //	    given the import alias `jobservice` is canonical, but
 //	    unverified in this commit window).
 //
@@ -486,7 +486,7 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 func registerJobsRoute(registry *module.Registry, log *zap.Logger, root *ComposeRoot) error {
 	jobsDescriptor, err := jobsapi.Build(jobsapi.Dependencies{
 		Service:     root.Jobs.Service,
-		Stats:       root.Jobs.Service,           // *appjobs.Service satisfies both domainjob.Service + appjobs.JobStatsReader
+		Stats:       root.Jobs.Service,           // *appjobs.Service satisfies both kerneljob.Service + appjobs.JobStatsReader
 		EnabledFunc: func() bool { return true }, // jobs is always on in production
 		ModuleOpts:  nil,                         // no per-feature middleware (matches pre-Step-13 wiring)
 		Logger:      log,

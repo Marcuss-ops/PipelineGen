@@ -41,7 +41,7 @@ import (
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -479,7 +479,7 @@ func TestRunLease_RenewalError_NoCompleteCall(t *testing.T) {
 		// sync.Once). Synchronous, no Sleep, no race.
 		//
 		// P1 #13 (July 2026): worker.Handler is a Go-type-alias
-		// for domainjob.Handler (canonical SSOT at
+		// for kerneljob.Handler (canonical SSOT at
 		// internal/domain/job/handler.go). The handler literal
 		// must consume *appjobs.JobExecutionTools (==*domainob.JobExecutionTools)
 		// AND return appjobs.Result (==Map alias). The worker runtime

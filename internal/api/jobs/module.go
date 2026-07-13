@@ -36,7 +36,7 @@
 // the canonical /api/jobs/* URL set.
 //
 // UNIQUE TO JOBS (PR-0, June 2026): the Handler depends on TWO
-// narrow ports — `domainjob.Service` (the orchestrator, exposes
+// narrow ports — `kerneljob.Service` (the orchestrator, exposes
 // Enqueue/Cancel/Retry/Get/List/ListEvents) AND
 // `appjobs.JobStatsReader` (the stats reader, exposes GetStats
 // only). The split is intentional (per the PR-0 commit comment):
@@ -57,7 +57,7 @@
 // register / diagnostics / search) — only `Module` field, no
 // `Handler` / `Service` field. The jobs HTTP capability has no
 // non-HTTP consumer in the codebase that needs the raw JobsHandler
-// (the `domainjob.Service` is consumed via the JobsBundle which is
+// (the `kerneljob.Service` is consumed via the JobsBundle which is
 // the canonical facade for non-HTTP consumers like the clips
 // orchestrator's EnrichUseCase). The Handler stays the internal
 // worker captured by the Module closure; no caller (composition
@@ -77,21 +77,21 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
 // Dependencies is the typed narrow input to Build. The JobsHandler
-// depends on a domainjob.Service (orchestrator) + an
+// depends on a kerneljob.Service (orchestrator) + an
 // appjobs.JobStatsReader (narrow stats port) + a logger.
 //
 // Mandatory fields return an error when nil; optional fields fall
 // through to the handler's existing nil-tolerance. Logger nil →
 // zap.NewNop() (composition-root-friendly default).
 type Dependencies struct {
-	// Service is the canonical domainjob.Service orchestrator
+	// Service is the canonical kerneljob.Service orchestrator
 	// (Enqueue/Cancel/Retry/Get/List/ListEvents). In production,
 	// the JobsBundle constructs the *appjobs.Service and
 	// exposes it as root.Jobs.Service. MANDATORY — Build
@@ -99,13 +99,13 @@ type Dependencies struct {
 	// and 6 of the 7 routes call service methods
 	// unconditionally. A nil Service would NPE at first
 	// request; fail at startup instead.
-	Service domainjob.Service
+	Service kerneljob.Service
 
 	// Stats is the canonical appjobs.JobStatsReader port
 	// (PR-0, June 2026). In production, the
 	// sfxstatsJobStatsReaderAdapter wraps *appjobs.Service's
 	// GetStats helper. *appjobs.Service satisfies both
-	// `domainjob.Service` AND `appjobs.JobStatsReader` via
+	// `kerneljob.Service` AND `appjobs.JobStatsReader` via
 	// compile-time assertion — production wiring passes the
 	// same concrete pointer to both fields. MANDATORY —
 	// Build returns an error when nil. The Handler stores

@@ -67,8 +67,8 @@ import (
 	"fmt"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
 )

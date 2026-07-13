@@ -26,7 +26,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -164,14 +164,14 @@ func TestNewService_NilDepsRejected(t *testing.T) {
 
 type recordingJobsEnqueuer struct {
 	ctx              context.Context
-	req              *jobservice.EnqueueRequest
-	job              *jobservice.Job
+	req              *kerneljob.EnqueueRequest
+	job              *kerneljob.Job
 	returnErr        error
 	correlation      string
 	activeDuringCall bool
 }
 
-func (r *recordingJobsEnqueuer) Enqueue(ctx context.Context, req *jobservice.EnqueueRequest) (*jobservice.Job, error) {
+func (r *recordingJobsEnqueuer) Enqueue(ctx context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error) {
 	r.ctx = ctx
 	r.req = req
 	r.correlation = corid.FromContext(ctx)
@@ -180,7 +180,7 @@ func (r *recordingJobsEnqueuer) Enqueue(ctx context.Context, req *jobservice.Enq
 		return nil, r.returnErr
 	}
 	if r.job == nil {
-		r.job = &jobservice.Job{ID: "job-123"}
+		r.job = &kerneljob.Job{ID: "job-123"}
 	}
 	return r.job, nil
 }

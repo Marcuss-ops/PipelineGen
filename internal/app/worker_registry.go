@@ -49,11 +49,11 @@ func BuildProfileWorkerRegistry(root *ComposeRoot, allowedTypes []string) (*work
 	// Register only handlers whose types are in the allowed set.
 	// P1 #13 (July 2026): jobs.Dispatcher.AllHandlers returns
 	// canonical `appjobs.Handler` values which are now Go-type-aliases
-	// for `domainjob.Handler` (the canonical SSOT in
+	// for `kerneljob.Handler` (the canonical SSOT in
 	// internal/domain/job/handler.go). worker.Handler is the same
 	// alias, so the handler passes directly — no adaptHandler bridge
 	// is needed at registration time. The worker runtime translates
-	// `worker.Tools` (broker facade) into `*domainjob.JobExecutionTools`
+	// `worker.Tools` (broker facade) into `*kerneljob.JobExecutionTools`
 	// at Dispatch time (registry.go::translateToolsToExecutionTools)
 	// so the handler observes the canonical signature.
 	reg := worker.NewRegistry()
@@ -96,11 +96,11 @@ func BuildWorkerRegistry(root *ComposeRoot) (*worker.Registry, []string, error) 
 	}
 	reg := worker.NewRegistry()
 	// P1 #13 (July 2026): handler is canonical `appjobs.Handler`
-	// which is a Go-type-alias for `domainjob.Handler`. worker.Handler
+	// which is a Go-type-alias for `kerneljob.Handler`. worker.Handler
 	// is the same alias, so it passes directly — no adaptHandler
 	// bridge is needed at registration time. The worker runtime
 	// translates `worker.Tools` (broker facade) into
-	// `*domainjob.JobExecutionTools` at Dispatch time
+	// `*kerneljob.JobExecutionTools` at Dispatch time
 	// (registry.go::translateToolsToExecutionTools) so the handler
 	// observes the canonical signature.
 	for jobType, h := range root.Jobs.Dispatcher.AllHandlers() {
@@ -116,10 +116,10 @@ func BuildWorkerRegistry(root *ComposeRoot) (*worker.Registry, []string, error) 
 }
 
 // adaptHandler was RETIRED in P1 #13 (July 2026): appjobs.Handler and
-// worker.Handler are both Go-type-aliases for domainjob.Handler (see
+// worker.Handler are both Go-type-aliases for kerneljob.Handler (see
 // internal/domain/job/handler.go for the canonical SSOT). Re-introducing
 // a bridge here is forward-forbidden — the runtime handles worker.Tools
-// → *domainjob.JobExecutionTools translation at Dispatch time
+// → *kerneljob.JobExecutionTools translation at Dispatch time
 // (worker/registry.go::translateToolsToExecutionTools). The two
 // Build*WorkerRegistry helpers below now pass canonical Handler values
 // directly to worker.Registry.Register.

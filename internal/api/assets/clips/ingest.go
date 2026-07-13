@@ -33,8 +33,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -65,7 +65,7 @@ var errClipDispatcherUnavailable = errors.New("clips API write unavailable: Asse
 type IngestDeps struct {
 	Dispatcher   appclips.ClipIndexDispatcherPort
 	AssetTreeSvc *assettree.Service
-	JobsSvc      jobservice.Service
+	JobsSvc      kerneljob.Service
 	ClipsRepo    *assets.ClipsRepository
 	EnrichUC     *appclips.EnrichUseCase
 	UploadUC     *appupload.UseCase
@@ -80,7 +80,7 @@ type IngestDeps struct {
 type IngestHandler struct {
 	dispatcher   appclips.ClipIndexDispatcherPort
 	assetTreeSvc *assettree.Service
-	jobsSvc      jobservice.Service
+	jobsSvc      kerneljob.Service
 	clipsRepo    *assets.ClipsRepository
 	enrichUC     *appclips.EnrichUseCase
 	uploadUC     *appupload.UseCase

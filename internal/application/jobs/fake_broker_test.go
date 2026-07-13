@@ -8,7 +8,7 @@
 package jobs
 
 import (
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // nakedJobBroker is a non-nil job.JobBroker stub. It is intentionally

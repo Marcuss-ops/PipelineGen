@@ -48,8 +48,8 @@ import (
 
 	"go.uber.org/zap"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // PersistGeneratedArtifacts writes the canonical §8.4 multi-artifact

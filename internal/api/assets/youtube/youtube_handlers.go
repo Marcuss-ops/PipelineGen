@@ -23,7 +23,7 @@ import (
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -56,7 +56,7 @@ var _ YouTubeClipService = (*youtube.Service)(nil)
 type YouTubeClipHandler struct {
 	service     YouTubeClipService
 	log         *zap.Logger
-	jobsSvc     jobservice.Service
+	jobsSvc     kerneljob.Service
 	clipsRepo   ytports.ClipStorePort
 	toolChecker appassets.ToolChecker
 	Idempotency gin.HandlerFunc
@@ -84,7 +84,7 @@ type YouTubeClipHandler struct {
 // (the only Write route in the handler). Read routes (info, search,
 // diagnostics, stats) are unchanged. nil disables idempotency for
 // test fixtures.
-func NewYouTubeClipHandler(service YouTubeClipService, log *zap.Logger, jobsSvc jobservice.Service, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut) *YouTubeClipHandler {
+func NewYouTubeClipHandler(service YouTubeClipService, log *zap.Logger, jobsSvc kerneljob.Service, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut) *YouTubeClipHandler {
 	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware

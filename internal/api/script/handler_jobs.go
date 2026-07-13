@@ -25,7 +25,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -42,12 +42,12 @@ import (
 // (one canonical owner per fact): JobsHandler owns ONLY these 2
 // methods — nothing else.
 type JobsHandler struct {
-	jobsSvc jobservice.Service
+	jobsSvc kerneljob.Service
 	log     *zap.Logger
 }
 
 // NewJobsHandler constructs the canonical JobsHandler.
-func NewJobsHandler(jobsSvc jobservice.Service, log *zap.Logger) *JobsHandler {
+func NewJobsHandler(jobsSvc kerneljob.Service, log *zap.Logger) *JobsHandler {
 	return &JobsHandler{
 		jobsSvc: jobsSvc,
 		log:     log,
@@ -70,7 +70,7 @@ func (jh *JobsHandler) RegisterJobRoutes(r *gin.RouterGroup, auth AdminTokenProv
 }
 
 // compile-time guard
-var _ jobservice.Service = jobservice.Service(nil)
+var _ kerneljob.Service = kerneljob.Service(nil)
 
 // GetJobStatus is the canonical handler for GET /api/script/jobs/:id.
 // Returns the current job snapshot (status + progress + error + result).

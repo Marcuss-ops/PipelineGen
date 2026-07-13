@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	pkgconcurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
 	"go.uber.org/zap"

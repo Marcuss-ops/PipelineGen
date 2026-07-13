@@ -32,7 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	artlistapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -57,7 +57,7 @@ type Dependencies struct {
 
 	// Jobs is the canonical jobs service used by the /run enqueue
 	// path. MANDATORY — Build returns an error when nil.
-	Jobs jobservice.Service
+	Jobs kerneljob.Service
 
 	// ClipResolver is the clipresolver port used by /recommend.
 	// OPTIONAL — nil is forwarded and the handler returns 503.

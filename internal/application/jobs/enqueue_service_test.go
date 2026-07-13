@@ -47,8 +47,8 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Constructor fail-closed (PR-jobs-retry-contract typed contract) ────

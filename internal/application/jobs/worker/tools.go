@@ -11,7 +11,7 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ExpectedRevision returns the worker's current view of the canonical
@@ -138,7 +138,7 @@ type Tools struct {
 // compatible with struct literals in Go pre-1.19; the Load/Store
 // pattern is preferred. The single Store here is the only publish
 // of the initial revision; subsequent Stores come from Renew.
-func NewTools(broker appjobs.Broker, store eventStore, workerID, sessionID string, j *domainjob.Job, workspace string, assetClient AssetClient) *Tools {
+func NewTools(broker appjobs.Broker, store eventStore, workerID, sessionID string, j *kerneljob.Job, workspace string, assetClient AssetClient) *Tools {
 	t := &Tools{
 		broker:      broker,
 		store:       store,

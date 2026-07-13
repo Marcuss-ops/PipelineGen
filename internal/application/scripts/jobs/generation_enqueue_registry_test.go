@@ -27,8 +27,8 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // fakeJobEnqueuer records every EnqueueRequest it receives. The
@@ -36,7 +36,7 @@ import (
 // caller (e.g. EnqueueGenerationJob) sees the round-trip success
 // path it normally would walking the real JobsService.Enqueue.
 type fakeJobEnqueuer struct {
-	lastReq *jobdomain.EnqueueRequest
+	lastReq *kerneljob.EnqueueRequest
 	calls   int
 }
 
@@ -44,13 +44,13 @@ func newFakeJobEnqueuer() *fakeJobEnqueuer {
 	return &fakeJobEnqueuer{}
 }
 
-func (f *fakeJobEnqueuer) Enqueue(_ context.Context, req *jobdomain.EnqueueRequest) (*jobdomain.Job, error) {
+func (f *fakeJobEnqueuer) Enqueue(_ context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error) {
 	f.calls++
 	f.lastReq = req
-	return &jobdomain.Job{
+	return &kerneljob.Job{
 		ID:         "job_fake",
 		Type:       req.Type,
-		Status:     jobdomain.StatusQueued,
+		Status:     kerneljob.StatusQueued,
 		MaxRetries: req.MaxRetries,
 	}, nil
 }

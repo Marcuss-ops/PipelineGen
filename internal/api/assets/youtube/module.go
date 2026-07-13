@@ -28,7 +28,7 @@ import (
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -38,7 +38,7 @@ import (
 //
 // Mandatory fields (Build returns error on nil):
 //   - Service         *youtube.Service            (used by GetVideoInfo, Extract, Diagnostics, SearchAdvanced, Stats)
-//   - Jobs            jobservice.Service          (used by Extract enqueue path)
+//   - Jobs            kerneljob.Service          (used by Extract enqueue path)
 //   - ToolChecker     appassets.ToolChecker       (used by Diagnostics; nil-safe inside NewYouTubeClipHandler)
 //   - EnabledFunc     func() bool                 (composition-root wires cfg.Features.YouTubeEnabled; keeps the
 //     api package free of platform/config imports)
@@ -59,7 +59,7 @@ type Dependencies struct {
 
 	// Jobs is the canonical jobs service used by the /extract enqueue
 	// path. MANDATORY — Build returns an error when nil.
-	Jobs jobservice.Service
+	Jobs kerneljob.Service
 
 	// ClipStorePort is the youtubeports.ClipStorePort the handler holds
 	// for downstream uses (reprocess / download paths that don't go
@@ -170,7 +170,7 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		return nil, fmt.Errorf("youtube.Build: Service is required (composition root must pre-construct *youtube.Service from BuildDomainBundle + youtube.NewService)")
 	}
 	if deps.Jobs == nil {
-		return nil, fmt.Errorf("youtube.Build: Jobs is required (the /extract enqueue path is unreachable without jobservice.Service)")
+		return nil, fmt.Errorf("youtube.Build: Jobs is required (the /extract enqueue path is unreachable without kerneljob.Service)")
 	}
 	if deps.ToolChecker == nil {
 		return nil, fmt.Errorf("youtube.Build: ToolChecker is required (GET /diagnostics depends on the external-tool probe — missing dep must fail closed at composition time, not at first request)")

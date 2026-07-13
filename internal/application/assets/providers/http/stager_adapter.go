@@ -75,6 +75,30 @@ func (s *HTTPStager) StageSource(ctx context.Context, ref assets.SourceRef) (*as
 // a file to clean up). The real implementation will mirror the
 // ArtlistStager Cleanup surface (remove the staged file or its
 // parent temp dir, no-op on nil/empty).
+// StageSourceV2 is the V2 variant of StageSource (Card 9 / source-stager
+// consolidation, July 2026). Returns a canonical *asset.StagedSource
+// (the typed-port contract) wrapping the legacy *assets.StagedAsset.
+// Adapters that have not yet migrated to the V2 typed port return a
+// typed error so the composition root can register a fail-closed
+// capability (godlike/07 NO-FAKE-AVAILABILITY).
+func (s *HTTPStager) StageSourceV2(ctx context.Context, ref assets.SourceRef) (*assets.StagedSource, error) {
+	return nil, fmt.Errorf("%w: url=%q", ErrHTTPStagerNotImplemented, ref.URL)
+}
+
+// CleanupStagedSource is the V2 typed-port companion to Cleanup.
+// Returns nil when staged is nil (idempotent). The legacy Cleanup
+// is called via a wrapper *assets.StagedAsset to preserve the
+// existing on-disk removal semantics.
+func (s *HTTPStager) CleanupStagedSource(ctx context.Context, staged *assets.StagedSource) error {
+	if staged == nil {
+		return nil
+	}
+	return s.Cleanup(ctx, &assets.StagedAsset{
+		LocalPath: staged.LocalPath,
+		Bytes:     staged.Bytes,
+	})
+}
+
 func (s *HTTPStager) Cleanup(ctx context.Context, staged *assets.StagedAsset) error {
 	_ = ctx
 	_ = staged

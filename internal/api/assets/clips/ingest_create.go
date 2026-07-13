@@ -8,7 +8,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -112,8 +112,8 @@ func (ih *IngestHandler) CreateClip(c *gin.Context) {
 	// `POST /:source/clips/:id/reindex`.
 	indexed := true
 	if ih.enrichUC != nil && ih.jobsSvc != nil {
-		_, err := ih.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
-			Type: jobservice.TypeMediaEnrich,
+		_, err := ih.jobsSvc.Enqueue(ctx, &kerneljob.EnqueueRequest{
+			Type: kerneljob.TypeMediaEnrich,
 			Payload: map[string]any{
 				"asset_id": clip.ID,
 				"source":   source,

@@ -42,7 +42,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // TestAssertRunSummaryArtifactsRequired_NilReceiver pins the nil-

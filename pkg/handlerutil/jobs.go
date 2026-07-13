@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	ptrutil "github.com/Marcuss-ops/PipelineGen/pkg/ptrutil"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )

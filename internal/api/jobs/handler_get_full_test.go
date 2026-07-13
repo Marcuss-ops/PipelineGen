@@ -35,7 +35,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
@@ -97,7 +96,7 @@ var _ kerneljob.Service = (*stubServiceForGetFull)(nil)
 // jobs (lives canonical SSOT at internal/domain/job/job.go). Tests
 // reference this constant directly instead of literal "script.generate"
 // to maintain godlike/06 SSOT (one canonical owner per fact).
-const pushedType = domainjob.TypeScriptGenerate
+const pushedType = kerneljob.TypeScriptGenerate
 
 // ── Regression tests for GetFull top-level error contract ─────────
 

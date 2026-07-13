@@ -11,12 +11,12 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 type Broker struct {
-	jobs       domainjob.Store
+	jobs       kerneljob.Store
 	workers    *assets.WorkerNodesRepository
 	progress   ProgressSink
 	coalescer  *ProgressCoalescer
@@ -40,7 +40,7 @@ type Broker struct {
 // ErrFinalizerNotConfigured. Non-nil = the broker delegates artifact-
 // producing completions through the transactional finalization spine.
 type Deps struct {
-	Jobs      domainjob.Store
+	Jobs      kerneljob.Store
 	Workers   *assets.WorkerNodesRepository
 	Progress  ProgressSink
 	Coalescer *ProgressCoalescer
@@ -193,7 +193,7 @@ func (b *Broker) Progress(ctx context.Context, cmd appjobs.ProgressCommand) erro
 	}
 	// Disabled coalescing: write directly to the canonical sink.
 	// (Coincidentally: b.progress == b.jobs today, since *SQLiteStore
-	//  satisfies both ProgressSink and domainjob.Store. Future
+	//  satisfies both ProgressSink and kerneljob.Store. Future
 	//  postgres adapter may diverge; the broker stays correct because
 	//  it routes through the ProgressSink port, not the path-equal
 	//  identity.)
@@ -368,7 +368,7 @@ func (b *Broker) IsCancelled(ctx context.Context, jobID string, leaseID string) 
 	if err != nil || j == nil {
 		return false, err
 	}
-	return j.Status == domainjob.StatusCancelled, nil
+	return j.Status == kerneljob.StatusCancelled, nil
 }
 
 // WithFinalizer threads the canonical JobFinalizer into the broker
@@ -440,7 +440,7 @@ func (b *Broker) ensureLease(ctx context.Context, jobID, workerID, leaseID strin
 		return errors.New("job not found")
 	}
 	if j.WorkerID != workerID || j.LeaseID != leaseID || j.Revision != expectedRevision {
-		return domainjob.ErrLeaseLost
+		return kerneljob.ErrLeaseLost
 	}
 	return nil
 }

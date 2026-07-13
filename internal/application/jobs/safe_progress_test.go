@@ -22,7 +22,7 @@ import (
 )
 
 // TestSafeProgressFn_NilTools_NoOp — nil-tolerant ProgressFn
-// witness for the canonical *domainjob.JobExecutionTools. The
+// witness for the canonical *kerneljob.JobExecutionTools. The
 // Creator-runtime wrap (internal/app/creator_runtime.go) and the
 // worker.Registry.Dispatch translation helper both produce
 // nil-tolerant envelopes (event no-op closures) so a handler that

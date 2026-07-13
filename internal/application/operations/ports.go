@@ -19,9 +19,9 @@ import (
 	"context"
 	"database/sql"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // JobEnqueuer is the canonical narrow port for inserting a job

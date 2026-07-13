@@ -25,9 +25,9 @@ import (
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
@@ -49,7 +49,7 @@ type Deps struct {
 	AssetTreeSvc     *assettree.Service
 	MetaWriter       semantic.MetadataWriterPort
 	ClipIndexer      *clipindexer.Service
-	JobsSvc          jobservice.Service
+	JobsSvc          kerneljob.Service
 	Cfg              *config.Config
 	Log              *zap.Logger
 	VoiceoverRepo    *assets.VoiceoversRepository
@@ -80,7 +80,7 @@ type Handler struct {
 	reuploadUC      *appclips.ReuploadUseCase
 	publisher       delivery.Publisher
 	log             *zap.Logger
-	jobsSvc         jobservice.Service
+	jobsSvc         kerneljob.Service
 	cfg             *config.Config
 
 	search        *SearchHandler

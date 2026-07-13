@@ -10,15 +10,15 @@ import (
 	"testing"
 	"time"
 
-	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // TestStockJobResult_ToResultMap_AllFieldsPopulated verifies that every
 // field survives the round-trip through ToResultMap() with the correct
 // key in the result map and the correct typed value.
 func TestStockJobResult_ToResultMap_AllFieldsPopulated(t *testing.T) {
-	manifest := &jobdomain.ArtifactManifest{
-		SchemaVersion: jobdomain.SchemaVersionArtifactManifestV1,
+	manifest := &kerneljob.ArtifactManifest{
+		SchemaVersion: kerneljob.SchemaVersionArtifactManifestV1,
 		JobID:         "test-job-123",
 		WorkflowID:    "wf-roundtrip",
 	}
@@ -39,8 +39,8 @@ func TestStockJobResult_ToResultMap_AllFieldsPopulated(t *testing.T) {
 	m := r.ToResultMap()
 
 	// ── Always-present fields ──────────────────────────────────
-	if got, ok := m[jobdomain.ManifestKey].(*jobdomain.ArtifactManifest); !ok {
-		t.Errorf("key %q missing or wrong type: %T", jobdomain.ManifestKey, m[jobdomain.ManifestKey])
+	if got, ok := m[kerneljob.ManifestKey].(*kerneljob.ArtifactManifest); !ok {
+		t.Errorf("key %q missing or wrong type: %T", kerneljob.ManifestKey, m[kerneljob.ManifestKey])
 	} else if got != manifest {
 		t.Errorf("Manifest pointer mismatch: got %p, want %p (same instance must survive)", got, manifest)
 	}
@@ -74,8 +74,8 @@ func TestStockJobResult_ToResultMap_AllFieldsPopulated(t *testing.T) {
 // (omitempty contract: zero-value string → key absent).
 func TestStockJobResult_ToResultMap_OmitemptyFinalizationStatus(t *testing.T) {
 	r := StockJobResult{
-		Manifest: &jobdomain.ArtifactManifest{
-			SchemaVersion: jobdomain.SchemaVersionArtifactManifestV1,
+		Manifest: &kerneljob.ArtifactManifest{
+			SchemaVersion: kerneljob.SchemaVersionArtifactManifestV1,
 			JobID:         "omitempty-test",
 		},
 		FinalStatus:        "INDEX_PENDING",
@@ -93,8 +93,8 @@ func TestStockJobResult_ToResultMap_OmitemptyFinalizationStatus(t *testing.T) {
 // that a zero time.Time is omitted from the result map.
 func TestStockJobResult_ToResultMap_OmitemptyFinalizationCompletedAt(t *testing.T) {
 	r := StockJobResult{
-		Manifest: &jobdomain.ArtifactManifest{
-			SchemaVersion: jobdomain.SchemaVersionArtifactManifestV1,
+		Manifest: &kerneljob.ArtifactManifest{
+			SchemaVersion: kerneljob.SchemaVersionArtifactManifestV1,
 			JobID:         "zero-time-test",
 		},
 		FinalStatus:             "SUCCEEDED",
@@ -120,14 +120,14 @@ func TestStockJobResult_ToResultMap_NilManifest(t *testing.T) {
 	}
 	m := r.ToResultMap()
 
-	v, ok := m[jobdomain.ManifestKey]
+	v, ok := m[kerneljob.ManifestKey]
 	if !ok {
-		t.Errorf("key %q missing (nil manifest must still be present)", jobdomain.ManifestKey)
+		t.Errorf("key %q missing (nil manifest must still be present)", kerneljob.ManifestKey)
 	}
 	// Go interface-footgun: interface{}((*T)(nil)) != nil.
 	// Use a type assertion to unwrap the typed nil value.
-	if mv, ok := v.(*jobdomain.ArtifactManifest); !ok || mv != nil {
-		t.Errorf("key %q = %v (%T), want nil *ArtifactManifest", jobdomain.ManifestKey, v, v)
+	if mv, ok := v.(*kerneljob.ArtifactManifest); !ok || mv != nil {
+		t.Errorf("key %q = %v (%T), want nil *ArtifactManifest", kerneljob.ManifestKey, v, v)
 	}
 	assertString(t, m, "final_status", "FAILED")
 }
@@ -136,8 +136,8 @@ func TestStockJobResult_ToResultMap_NilManifest(t *testing.T) {
 // Chunks slice is correctly represented in the result map.
 func TestStockJobResult_ToResultMap_EmptyChunks(t *testing.T) {
 	r := StockJobResult{
-		Manifest: &jobdomain.ArtifactManifest{
-			SchemaVersion: jobdomain.SchemaVersionArtifactManifestV1,
+		Manifest: &kerneljob.ArtifactManifest{
+			SchemaVersion: kerneljob.SchemaVersionArtifactManifestV1,
 		},
 		FinalStatus: "SUCCEEDED",
 		Chunks:      nil,
@@ -156,12 +156,12 @@ func TestStockJobResult_ToResultMap_EmptyChunks(t *testing.T) {
 }
 
 // TestStockJobResult_ToResultMap_ManifestKeyConstant verifies that
-// jobdomain.ManifestKey is "__artifact_manifest" — the wire key the
+// kerneljob.ManifestKey is "__artifact_manifest" — the wire key the
 // broker's downstream runner reads per domain/job.ManifestKey.
 func TestStockJobResult_ToResultMap_ManifestKeyConstant(t *testing.T) {
-	if jobdomain.ManifestKey != "__artifact_manifest" {
-		t.Errorf("jobdomain.ManifestKey = %q, want %q (wire-format contract: broker runner reads this key)",
-			jobdomain.ManifestKey, "__artifact_manifest")
+	if kerneljob.ManifestKey != "__artifact_manifest" {
+		t.Errorf("kerneljob.ManifestKey = %q, want %q (wire-format contract: broker runner reads this key)",
+			kerneljob.ManifestKey, "__artifact_manifest")
 	}
 }
 

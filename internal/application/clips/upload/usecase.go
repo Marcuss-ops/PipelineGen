@@ -19,7 +19,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +40,7 @@ type UseCase struct {
 	dispatcher    IndexDispatcher
 	cfg           Config
 	treeBuilder   TreeBuilder
-	jobsSvc       jobservice.Service
+	jobsSvc       kerneljob.Service
 	processRunner appassets.ProcessRunner
 	log           *zap.Logger
 }
@@ -58,7 +58,7 @@ type UseCaseDeps struct {
 	Dispatcher    IndexDispatcher
 	Config        Config
 	TreeBuilder   TreeBuilder
-	JobsSvc       jobservice.Service
+	JobsSvc       kerneljob.Service
 	ProcessRunner appassets.ProcessRunner
 	Log           *zap.Logger
 }
@@ -285,8 +285,8 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 	// ── 10. Enqueue async media.enrich job ────────────────────────
 	indexed := false
 	if uc.jobsSvc != nil {
-		_, err := uc.jobsSvc.Enqueue(ctx, &jobservice.EnqueueRequest{
-			Type: jobservice.TypeMediaEnrich,
+		_, err := uc.jobsSvc.Enqueue(ctx, &kerneljob.EnqueueRequest{
+			Type: kerneljob.TypeMediaEnrich,
 			Payload: map[string]any{
 				"asset_id": clip.ID,
 				"source":   cmd.Source,

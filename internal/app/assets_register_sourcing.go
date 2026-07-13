@@ -27,11 +27,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/localimport"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing/youtube"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	assetsrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive/resolver"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -124,7 +124,7 @@ func newAssetRegisterService(
 	// (the batch enqueuer adapter also returns ErrEnqueuerNotWired on
 	// nil svc, so the surface is consistent).
 	if jobsSvc != nil {
-		if err := jobsSvc.RegisterHandler(appjobs.TypeClipRegister, appjobs.HandlerFunc(func(ctx context.Context, j *jobdomain.Job, tools *appjobs.JobTools) (map[string]any, error) {
+		if err := jobsSvc.RegisterHandler(appjobs.TypeClipRegister, appjobs.HandlerFunc(func(ctx context.Context, j *kerneljob.Job, tools *appjobs.JobTools) (map[string]any, error) {
 			var cmd sourcing.RegisterClipCommand
 			if len(j.Payload) > 0 {
 				if err := json.Unmarshal(j.Payload, &cmd); err != nil {
@@ -288,7 +288,7 @@ func (a *clipJobEnqueuerAdapter) EnqueueClip(ctx context.Context, cmd sourcing.R
 	if baseID := corid.FromContext(ctx); baseID != "" {
 		cid = baseID + ":" + cid
 	}
-	job, err := a.svc.Enqueue(ctx, &jobdomain.EnqueueRequest{
+	job, err := a.svc.Enqueue(ctx, &kerneljob.EnqueueRequest{
 		Type:          appjobs.TypeClipRegister,
 		Payload:       json.RawMessage(payload),
 		CorrelationID: cid,

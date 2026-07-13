@@ -18,11 +18,11 @@
 //
 // Identity was preserved across the cutover: `errors.Is(err, jobs.ErrLeaseLost)`
 // (the in-package alias at repository_commands.go) and
-// `errors.Is(err, domjob.ErrLeaseLost)` (the canonical decl at
+// `errors.Is(err, kerneljob.ErrLeaseLost)` (the canonical decl at
 // internal/domain/job/errors.go) probe the SAME sentinel (same `error`
 // value). External callers that previously imported
 // `sqljobs.ErrLeaseLost` from this package can switch to either:
-//   - `domjob.ErrLeaseLost` (canonical, recommended for cross-package callers)
+//   - `kerneljob.ErrLeaseLost` (canonical, recommended for cross-package callers)
 //   - `jobs.ErrLeaseLost` (in-package, equivalent identity)
 //
 // `ErrFinalizeAttempt*` sentinels are re-exported as canonical aliases

@@ -375,6 +375,21 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// which deletes the fields. Comment-only references are
 		// WARNed (residue accounting, godlike/07).
 		{"percheck_mediatransformer_no_infra_fields", scan.ScanMediaTransformerNoInfraFields},
+		// Check PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB step 1 (July 2026):
+		// forward-prevention gate that bans imports of the deleted
+		// `internal/domain/job` package. Per godlike/06 SSOT the
+		// kernel is the SOLE owner of job-mechanism types and does
+		// NOT carry feature-specific job names (`scripts.JobGenerate`,
+		// `images.JobGenerate`, `voiceover.JobGenerate`, etc.).
+		// The legacy `internal/domain/job` package was a back-compat
+		// alias layer (`Job`/`Status`/`Event`/`Filter`/`Store`)
+		// shadowing the canonical kernel surface — deletion enforces
+		// the dual-source-of-truth ban. Comment-only references are
+		// WARNed (residue accounting, silenced under productionOnly).
+		// _test.go is included in the scan surface because a test
+		// importing the deleted path cannot compile. Family
+		// precedent: percheck_no_generic_generation_facade.
+		{"percheck_no_domain_job_compatibility_aliases", scan.ScanNoDomainJobCompatibilityAliases},
 		// Check PR-GENERATION-FACADE-REMOVE (commit 7, July 2026):
 		// forward-prevention gate that BANS any re-introduction of
 		// the application-zone or domain-zone generic generation

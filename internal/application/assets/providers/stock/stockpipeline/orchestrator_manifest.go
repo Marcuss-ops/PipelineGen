@@ -8,7 +8,7 @@
 package stockpipeline
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // buildStockManifest returns the C12 5-artifact envelope for stock.

@@ -7,7 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
-	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 )
 
@@ -16,12 +16,12 @@ import (
 // surface in internal/application/clips (Wave 14 PR2 pattern); the
 // worker registrant (Service.RegisterHandler) is unaffected.
 //
-// We use the canonical jobservice.EnqueueRequest / *jobservice.Job
+// We use the canonical kerneljob.EnqueueRequest / *kerneljob.Job
 // shape directly so the composition root can hand the concrete
 // *jobs.Service straight in without an adapter wrapper. The
 // *jobs.Job.ID return field is read without any custom projection.
 type jobsEnqueuer interface {
-	Enqueue(ctx context.Context, req *jobservice.EnqueueRequest) (*jobservice.Job, error)
+	Enqueue(ctx context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error)
 }
 
 // ServiceRunner is the narrowed surface of stockpipeline.Service that
@@ -94,7 +94,7 @@ func (u *StockUseCase) Submit(ctx context.Context, cmd *StockCommand, async bool
 		enqueueCtx, cancel := background.DetachWithTimeout(ctx, "stock-submit-enqueue", 30*time.Second)
 		defer cancel()
 
-		job, err := u.jobsSvc.Enqueue(enqueueCtx, &jobservice.EnqueueRequest{
+		job, err := u.jobsSvc.Enqueue(enqueueCtx, &kerneljob.EnqueueRequest{
 			Type:    "media.stock",
 			Payload: cmd.ToJobPayload(),
 		})

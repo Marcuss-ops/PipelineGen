@@ -23,22 +23,21 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/sourcing"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	jobdomain "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Test fixtures ──────────────────────────────────────────────────
 
-// stubJobBroker implements jobdomain.JobBroker for tests.
+// stubJobBroker implements kerneljob.JobBroker for tests.
 // Only Create has real behavior; all other methods panic on unexpected
 // calls so that a future regression in Service.Enqueue that accesses a
 // new Store method surfaces immediately.
 type stubJobBroker struct {
-	lastJob  *jobdomain.Job
-	createFn func(ctx context.Context, j *jobdomain.Job) error
+	lastJob  *kerneljob.Job
+	createFn func(ctx context.Context, j *kerneljob.Job) error
 }
 
-func (s *stubJobBroker) Create(ctx context.Context, j *jobdomain.Job) error {
+func (s *stubJobBroker) Create(ctx context.Context, j *kerneljob.Job) error {
 	s.lastJob = j
 	if s.createFn != nil {
 		return s.createFn(ctx, j)
@@ -48,34 +47,34 @@ func (s *stubJobBroker) Create(ctx context.Context, j *jobdomain.Job) error {
 	return nil
 }
 
-func (s *stubJobBroker) Get(ctx context.Context, id string) (*jobdomain.Job, error) {
+func (s *stubJobBroker) Get(ctx context.Context, id string) (*kerneljob.Job, error) {
 	panic("stubJobBroker.Get: unexpected call — Service.Enqueue does not call Get")
 }
 
-func (s *stubJobBroker) List(ctx context.Context, filter jobdomain.Filter) ([]jobdomain.Job, error) {
+func (s *stubJobBroker) List(ctx context.Context, filter kerneljob.Filter) ([]kerneljob.Job, error) {
 	panic("stubJobBroker.List: unexpected call — Service.Enqueue does not call List")
 }
 
-func (s *stubJobBroker) FindActiveByKey(ctx context.Context, activeKey string) (*jobdomain.Job, error) {
+func (s *stubJobBroker) FindActiveByKey(ctx context.Context, activeKey string) (*kerneljob.Job, error) {
 	// Called by Enqueue when req.ActiveKey != "". In our tests ActiveKey is empty,
 	// but we return nil/nil to satisfy the interface contract.
 	return nil, nil
 }
 
-func (s *stubJobBroker) FindByTypeAndCorrelation(ctx context.Context, jobType, correlationID string) (*jobdomain.Job, error) {
+func (s *stubJobBroker) FindByTypeAndCorrelation(ctx context.Context, jobType, correlationID string) (*kerneljob.Job, error) {
 	// Called by Enqueue when req.CorrelationID != "". In our tests CorrelationID is empty.
 	return nil, nil
 }
 
-func (s *stubJobBroker) ListEvents(ctx context.Context, jobID string) ([]jobdomain.Event, error) {
+func (s *stubJobBroker) ListEvents(ctx context.Context, jobID string) ([]kerneljob.Event, error) {
 	panic("stubJobBroker.ListEvents: unexpected call — Service.Enqueue does not call ListEvents")
 }
 
-func (s *stubJobBroker) Retry(ctx context.Context, id string) (*jobdomain.Job, error) {
+func (s *stubJobBroker) Retry(ctx context.Context, id string) (*kerneljob.Job, error) {
 	panic("stubJobBroker.Retry: unexpected call — Service.Enqueue does not call Retry")
 }
 
-func (s *stubJobBroker) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration, types []string) (*jobdomain.Job, error) {
+func (s *stubJobBroker) ClaimNext(ctx context.Context, workerID string, leaseTTL time.Duration, types []string) (*kerneljob.Job, error) {
 	panic("stubJobBroker.ClaimNext: unexpected call — Service.Enqueue does not call ClaimNext")
 }
 
@@ -109,7 +108,7 @@ func (s *stubJobBroker) AddEvent(ctx context.Context, id, eventType, message str
 // `error`-only return is gone. The stub still panics on dispatch
 // (Enqueue does not call RenewLease), but the signature MUST match
 // the canonical Store surface for the compile-time pin
-// `var _ jobdomain.JobBroker = (*stubJobBroker)(nil)` to hold.
+// `var _ kerneljob.JobBroker = (*stubJobBroker)(nil)` to hold.
 func (s *stubJobBroker) RenewLease(ctx context.Context, id, workerID string, leaseTTL time.Duration) (kerneljob.RenewLeaseResult, error) {
 	panic("stubJobBroker.RenewLease: unexpected call — Service.Enqueue does not call RenewLease")
 }
@@ -122,8 +121,8 @@ func (s *stubJobBroker) FinalizeAttempt(ctx context.Context, cmd kerneljob.Final
 	panic("stubJobBroker.FinalizeAttempt: unexpected call — Service.Enqueue does not call FinalizeAttempt")
 }
 
-// Compile-time assertion: stubJobBroker satisfies jobdomain.JobBroker.
-var _ jobdomain.JobBroker = (*stubJobBroker)(nil)
+// Compile-time assertion: stubJobBroker satisfies kerneljob.JobBroker.
+var _ kerneljob.JobBroker = (*stubJobBroker)(nil)
 
 // newTestService builds a minimal *appjobs.Service wired to a
 // stubJobBroker. The dispatcher is nil (Enqueue does not use it).
@@ -532,9 +531,9 @@ func TestResolverFolderEnsurer_ErrorPropagation(t *testing.T) {
 // error from Service.Enqueue (simulated via createFn) is wrapped with
 // "%w" such that the caller can probe it via errors.Is.
 func TestClipJobEnqueuerAdapter_EnqueueError(t *testing.T) {
-	simulatedErr := jobdomain.ErrUnknownJobType
+	simulatedErr := kerneljob.ErrUnknownJobType
 	broker := &stubJobBroker{
-		createFn: func(ctx context.Context, j *jobdomain.Job) error {
+		createFn: func(ctx context.Context, j *kerneljob.Job) error {
 			return simulatedErr
 		},
 	}

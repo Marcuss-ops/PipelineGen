@@ -53,9 +53,9 @@ import (
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	jobpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // bindGenerateEnvelope JSON-binds the request body into a
@@ -260,7 +260,7 @@ func buildGenerateSubmitRequest(
 		IdempotencyKey: idempotencyKey,
 		RequestHash:    requestHash,
 		ForceRefresh:   env.ForceRefresh,
-		JobType:        jobpkg.TypeScriptGenerate,
+		JobType:        kerneljob.TypeScriptGenerate,
 		JobPayload:     payload,
 		JobPriority:    0,
 		JobMaxRetries:  3,
