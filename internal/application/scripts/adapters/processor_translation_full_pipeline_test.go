@@ -212,20 +212,37 @@ func TestPipeline_FullChain_TranslationSpecSceneSurvival(t *testing.T) {
 		}
 	}
 
-	// ── Assert Invariant 5: Document HTML contains Italian markers ──
+	// ── Assert Invariant 5: Document HTML uses the canonical SpecScene surface ──
 	if docStub.capturedContent == "" {
 		t.Fatal("DocumentProcessor.CreateDoc was not called (empty content)")
 	}
-	if !strings.Contains(docStub.capturedContent, "[it]") {
-		t.Errorf("Document HTML does not contain Italian marker [it]; content snippet: %q",
+	if !strings.Contains(docStub.capturedContent, "<h1>Boxing Story</h1>") {
+		t.Errorf("Document HTML does not contain the expected title; content snippet: %q",
 			textutil.Truncate(docStub.capturedContent, 200))
 	}
-	// Verify both scene texts appear in the document HTML.
-	if !strings.Contains(docStub.capturedContent, "Welcome to the arena.") {
-		t.Errorf("Document HTML does not contain scene 0 text 'Welcome to the arena.'")
+	if !strings.Contains(docStub.capturedContent, "<h2>SpecScene JSON</h2>") {
+		t.Errorf("Document HTML does not contain canonical SpecScene JSON block; content snippet: %q",
+			textutil.Truncate(docStub.capturedContent, 200))
 	}
-	if !strings.Contains(docStub.capturedContent, "The crowd roars.") {
-		t.Errorf("Document HTML does not contain scene 1 text 'The crowd roars.'")
+	if strings.Contains(docStub.capturedContent, "<h2>Script</h2>") {
+		t.Errorf("Document HTML unexpectedly contains legacy Script section: %q",
+			textutil.Truncate(docStub.capturedContent, 200))
+	}
+	if strings.Contains(docStub.capturedContent, "<h2>Scenes</h2>") {
+		t.Errorf("Document HTML unexpectedly contains legacy Scenes section: %q",
+			textutil.Truncate(docStub.capturedContent, 200))
+	}
+	if strings.Contains(docStub.capturedContent, "<h2>Technical Provenance</h2>") {
+		t.Errorf("Document HTML unexpectedly contains Technical Provenance section: %q",
+			textutil.Truncate(docStub.capturedContent, 200))
+	}
+	proseSurface := docStub.capturedContent
+	if idx := strings.Index(proseSurface, "<h2>SpecScene JSON</h2>"); idx >= 0 {
+		proseSurface = proseSurface[:idx]
+	}
+	if strings.Contains(proseSurface, "https://") {
+		t.Errorf("Document HTML unexpectedly contains raw URL in prose surface: %q",
+			textutil.Truncate(proseSurface, 200))
 	}
 
 	// ── Assert Invariant 6: Persisted script row OutputText contains [it] ──
