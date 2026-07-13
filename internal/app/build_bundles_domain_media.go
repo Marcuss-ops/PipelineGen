@@ -14,7 +14,13 @@ import (
 	ytmetadata "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/metadata"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
+	"github.com/Marcuss-ops/PipelineGen/internal/asset/commit"
+	"github.com/Marcuss-ops/PipelineGen/internal/asset/publication"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/recommendation"
+	"github.com/Marcuss-ops/PipelineGen/internal/transcription"
+	"github.com/Marcuss-ops/PipelineGen/internal/youtube/acquisition"
+	ytfeatmetadata "github.com/Marcuss-ops/PipelineGen/internal/youtube/metadata"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
@@ -236,6 +242,30 @@ func buildDomainMediaServices(
 		return nil, nil, fmt.Errorf("compose youtube: %w", err)
 	}
 	bundle.YoutubeClipService = youtube.NewService(youtubeDeps)
+
+	// PR-YOUTUBE-SERVICE-SPLIT (July 2026): composition-root wiring
+	// for the 6 typed-narrow packages (godlike/06 SSOT). Phase 1
+	// validates the wiring at compile time via function-value
+	// references — each entry resolves the package + constructor
+	// symbol at build time; any signature drift surfaces as a
+	// compile failure rather than a runtime nil-port panic. Phase 2
+	// (separate commit) consumes the typed-narrow ports directly
+	// here and promotes the function-value references to actual
+	// construction calls (with godlike/07 fail-closed nil-port
+	// guards + typed sentinels). godlike/06 SSOT one-canonical-
+	// owner-per-fact: each new package owns exactly one canonical
+	// contract (Acquirer, Metadata, Transcriber, Publisher,
+	// Committer, Recommender); the legacy canonical impl
+	// (youtube.Service, WhisperTranscriberAdapter, PublishClipToDrive,
+	// AssetTxFinalizer) stays untouched in this commit.
+	var (
+		_ = acquisition.NewServiceAdapter
+		_ = ytfeatmetadata.NewSearchServiceAdapter
+		_ = transcription.NewWhisperAdapter
+		_ = publication.NewDriveAdapter
+		_ = commit.NewTxAdapter
+		_ = recommendation.NewStubAdapter
+	)
 
 	return voMetaWriter, clipWriter, nil
 }
