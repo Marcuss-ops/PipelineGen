@@ -9,6 +9,7 @@ package sqlite
 import (
 	"context"
 	"errors"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -111,25 +112,48 @@ func TestNewDualPool_EmptyURIFailsClosed(t *testing.T) {
 // TestWalPragmas_PreservesAllThreePragmas: url.Values.Set on the same
 // key REPLACES, url.Values.Add APPENDS. Set 3x wastes 2 pragmas; Add
 // 3x preserves all of them in the encoded URI.
+//
+// AUDIT (PR-CANONICAL-WAL-PRAGMAS-ENCODE, July 2026): walPragmas() uses
+// the canonical Go URL composer url.Values.Encode() which percent-
+// encodes reserved characters — the parens in `_pragma=journal_mode(WAL)`
+// surface as `_pragma=journal_mode%28WAL%29` in the encoded URI. The
+// driver (mattn/go-sqlite3) correctly decodes %28/%29 to ( ) at runtime
+// (proven by sibling test TestNewDualPool_WALModeApplied which queries
+// PRAGMA journal_mode directly). So the assertion target is the
+// UNESCAPED form (matches the canonical human-readable intent of the
+// pragmas); the encoded form is the wire-shape, not the assertion
+// contract. ARCH-ALLOWLISTED: issues.yaml::PRE-EXISTING-1 follow_up
+// bullet 3 (assertion fix surface; production is canonical godlike/06
+// SSOT go URL composer).
 func TestWalPragmas_PreservesAllThreePragmas(t *testing.T) {
 	uri := "/tmp/cut62_wal_pragmas.db"
 	out, err := walPragmas(uri)
 	require.NoError(t, err)
 
-	assert.Contains(t, out, "_pragma=journal_mode(WAL)",
+	// Unescape the encoded URI so the assertions operate on the
+	// canonical pragma form. _busy_timeout=5000 has no reserved
+	// chars so unescape is a no-op for that segment — the
+	// back-compat check below still passes identically.
+	unescapedOut, err := url.QueryUnescape(out)
+	require.NoError(t, err, "url.QueryUnescape must accept walPragmas output verbatim (godlike/07 fail-closed contract)")
+
+	assert.Contains(t, unescapedOut, "_pragma=journal_mode(WAL)",
 		"WAL pragma MUST survive encoding (canonical concurrent-reader affordance)")
-	assert.Contains(t, out, "_pragma=busy_timeout(5000)",
+	assert.Contains(t, unescapedOut, "_pragma=busy_timeout(5000)",
 		"busy_timeout pragma MUST survive encoding (canonical retry.IsTransient ErrBusy loop)")
-	assert.Contains(t, out, "_pragma=synchronous(NORMAL)",
+	assert.Contains(t, unescapedOut, "_pragma=synchronous(NORMAL)",
 		"synchronous pragma MUST survive encoding (WAL-safe durability)")
-	assert.Contains(t, out, "_busy_timeout=5000",
+	assert.Contains(t, unescapedOut, "_busy_timeout=5000",
 		"_busy_timeout parameter MUST survive encoding (legacy driver-level pendant)")
 
-	assert.Equal(t, 1, strings.Count(out, "_pragma=journal_mode(WAL)"),
+	// Count=1 invariant preserved across the unescape: each pragma
+	// was added exactly once via q.Add in walPragmas(); url.Values.Encode
+	// rewrites the form but never collapses or duplicates entries.
+	assert.Equal(t, 1, strings.Count(unescapedOut, "_pragma=journal_mode(WAL)"),
 		"journal_mode pragma MUST appear exactly once")
-	assert.Equal(t, 1, strings.Count(out, "_pragma=busy_timeout(5000)"),
+	assert.Equal(t, 1, strings.Count(unescapedOut, "_pragma=busy_timeout(5000)"),
 		"busy_timeout pragma MUST appear exactly once")
-	assert.Equal(t, 1, strings.Count(out, "_pragma=synchronous(NORMAL)"),
+	assert.Equal(t, 1, strings.Count(unescapedOut, "_pragma=synchronous(NORMAL)"),
 		"synchronous pragma MUST appear exactly once")
 }
 
