@@ -180,5 +180,76 @@ CREATE TABLE IF NOT EXISTS media_assets (
     -- bottom for readability — see the layered-enumeration block in
     -- the package doc above for the detailed column history.
     index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
-    index_state_updated_at TEXT NOT NULL DEFAULT ''
+    index_state_updated_at TEXT NOT NULL DEFAULT '',
+    -- Migration 152 (July 2026, PR-CATALOG-MULTILINGUA step 1):
+    -- 13 canonical metadata columns added by
+    -- migrations/sqlite/152_add_canonical_metadata_columns.sql.
+    -- Types and DEFAULTs match 152 byte-for-byte so this constant
+    -- stays in lockstep with the canonical migration. The Italian
+    -- plan's Step 1 groups identity, source, time, language,
+    -- integrity, rights, and lifecycle on one row so the
+    -- multilingual catalog has a single source of truth.
+    -- See migration 152 header for the per-column rationale (e.g.
+    -- binary_sha256 length-64 guard against MD5 pollution).
+    source_provider   TEXT    NOT NULL DEFAULT '',
+    source_video_id   TEXT    NOT NULL DEFAULT '',
+    source_channel_id TEXT    NOT NULL DEFAULT '',
+    source_url        TEXT    NOT NULL DEFAULT '',
+    start_ms          INTEGER NOT NULL DEFAULT 0,
+    end_ms            INTEGER NOT NULL DEFAULT 0,
+    original_language TEXT    NOT NULL DEFAULT '',
+    title             TEXT    NOT NULL DEFAULT '',
+    binary_sha256     TEXT    NOT NULL DEFAULT '',
+    semantic_hash     TEXT    NOT NULL DEFAULT '',
+    rights_status     TEXT    NOT NULL DEFAULT 'review_required',
+    policy_version    TEXT    NOT NULL DEFAULT 'v1',
+    lifecycle_status  TEXT    NOT NULL DEFAULT 'ACTIVE'
 );`
+
+// CanonicalAssetArtifactsTable is the single source of truth for the
+// in-memory CREATE TABLE block required by asset_artifacts readers
+// that don't want to round-trip through RunMigrationsOnDB (tests,
+// fixtures, dry-run admin tooling).
+//
+// Mirror of migrations/sqlite/153_create_asset_artifacts.sql
+// (PR-CATALOG-MULTILINGUA step 1, July 2026). Types, CHECK constraints,
+// and 3 supporting indexes MUST match the migration byte-for-byte
+// so the canonical CREATE TABLE reproduces what the migration chain
+// produces on a fresh DB.
+//
+// Why godlike/06 SSOT — kept together with the media_assets constant:
+// asset_artifacts is the canonical file-registry surface for
+// media_assets.id; tests that exercise the FK or the partial UNIQUE
+// index need both tables in lockstep. Splitting into a separate
+// Constants file would invite drift between the fixture and the
+// production migration.
+const CanonicalAssetArtifactsTable = `
+CREATE TABLE IF NOT EXISTS asset_artifacts (
+    id            TEXT PRIMARY KEY,
+    asset_id      TEXT NOT NULL,
+    role          TEXT NOT NULL
+                  CHECK (role IN ('render_master','preview','thumbnail','waveform','source_archive')),
+    mime_type     TEXT NOT NULL DEFAULT '',
+    local_path    TEXT NOT NULL DEFAULT '',
+    drive_file_id TEXT NOT NULL DEFAULT '',
+    drive_link    TEXT NOT NULL DEFAULT '',
+    file_size     INTEGER NOT NULL DEFAULT 0,
+    file_sha256   TEXT NOT NULL DEFAULT '',
+    width         INTEGER NOT NULL DEFAULT 0,
+    height        INTEGER NOT NULL DEFAULT 0,
+    frame_rate    REAL NOT NULL DEFAULT 0.0,
+    duration_ms   INTEGER NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending','uploaded','verified','deleted')),
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (asset_id) REFERENCES media_assets(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_asset_artifacts_asset_role
+    ON asset_artifacts (asset_id, role);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_artifacts_unique_singleton
+    ON asset_artifacts (asset_id, role)
+    WHERE role IN ('render_master', 'preview');
+CREATE INDEX IF NOT EXISTS idx_asset_artifacts_status_updated
+    ON asset_artifacts (status, updated_at DESC);
+`
