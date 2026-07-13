@@ -74,8 +74,16 @@ log_fail() { log "FAIL: $*"; EXIT_CODE=1; }
 # contains the 32-char PLACEHOLDER token which is shorter than 64-hex, so
 # the VELOX regex below doesn't trip on it; we still exclude it
 # defensively to keep HIT_LOG clean.
+#
+# Also filter OUT the test file for THIS gate (`ci-no-secrets-audit_test.sh`):
+# the test intentionally embeds canonical positive-case fixtures (AKIA,
+# ghp_, github_pat_, xox-, PEM headers, VELOX 64-hex) that MUST match the
+# regex, so the test file would false-positive on its own gate. The test
+# is the lockstep CONSUMER of the regex; it asserts the regex catches
+# these shapes. Excluding it from the gate scan is the canonical
+# "test fixture excluded from production check" pattern.
 git ls-files 2>/dev/null \
-    | grep -vE '^(\.env|\.env\.local|\.env\.example|\.env\.development|\.env\.production)$' \
+    | grep -vE '^(\.env|\.env\.local|\.env\.example|\.env\.development|\.env\.production|scripts/ci/ci-no-secrets-audit_test\.sh)$' \
     > "$FILES_LIST" || true
 
 n=$(wc -l < "$FILES_LIST" | tr -d ' ')
@@ -175,11 +183,14 @@ log "T3: ripgrep regex fallback"
 #       multiline flag not needed since we anchor on the header line).
 # Each pattern uses `\b` boundaries where applicable so partial matches
 # inside longer identifiers do not fire false positives.
-REGEX_PATTERN='(VELOX_ADMIN_TOKEN=[a-f0-9]{64}\b|\bAKIA[0-9A-Z]{16}\b|\baws_secret_access_key[[:space:]]*=[[:space:]]*[\"'"'"']?[A-Za-z0-9/+=]{40}|\bghp_[a-zA-Z0-9]{36,}\b|\bgithub_pat_[a-zA-Z0-9_]{22,}\b|\bxox[abpr]-[A-Za-z0-9-]{10,}\b|-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----)'
+REGEX_PATTERN=$(cat <<'GATE_REGEX_EOF'
+(VELOX_ADMIN_TOKEN=[a-f0-9]{64}\b|\bAKIA[0-9A-Z]{16}\b|\baws_secret_access_key[[:space:]]*=[[:space:]]*["']?[A-Za-z0-9/+=]{40}|\bghp_[a-zA-Z0-9]{36,}\b|\bgithub_pat_[a-zA-Z0-9_]{22,}\b|\bxox[abpr]-[A-Za-z0-9-]{10,}\b|-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----)
+GATE_REGEX_EOF
+)
 
 if command -v rg >/dev/null 2>&1; then
     # Single-pass over the file list. rg exit code: 0 = matches, 1 = no matches.
-    if xargs -a "$FILES_LIST" rg -nE --color=never "$REGEX_PATTERN" \
+    if xargs -a "$FILES_LIST" rg -n -e "$REGEX_PATTERN" --color=never \
             > "${HIT_LOG}.regex" 2>/dev/null; then
         hits=$(wc -l < "${HIT_LOG}.regex" | tr -d ' ')
         log_fail "ripgrep regex detected ${hits} hit(s) (see ${HIT_LOG}.regex)"
