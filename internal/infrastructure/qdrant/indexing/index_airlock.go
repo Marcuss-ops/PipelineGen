@@ -146,6 +146,31 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 		policyVersion = asset.IndexVersion
 	}
 	drivePath := cleanDrivePath(assetpkg.MetadataString(asset.Metadata, "drive_path"))
+	driveLink := firstNonEmpty(asset.DriveLink, assetpkg.MetadataString(asset.Metadata, "drive_link"))
+	// PR-CATALOG-MULTILINGUA step 6 (July 2026): SemanticHash carries
+	// the canonical pre-resolved value computed by AssetStore with the
+	// godlike/06 SSOT precedence rule
+	// (asset_visual_summaries.source_hash ∪ media_assets.semantic_hash).
+	// The airlock trusts AssetStore as the single canonical owner of
+	// the precedence and just forwards the resolved value. Empty when
+	// neither source has populated a hash yet (godlike/07
+	// NO-FAKE-AVAILABILITY: empty = "no hash yet", NOT a placeholder).
+	currentSemanticHash := asset.SemanticHash
+	// PR-CATALOG-MULTILINGUA step 6 (July 2026): Transcripts carries
+	// the multilingual transcript slice populated by AssetStore from
+	// asset_text_tracks rows where text_kind='transcript' AND
+	// is_current=1. The composer iterates the slice and renders the
+	// IsOriginal row as bare text first, then each remaining row as
+	// `transcript ({lang}): {text}`. Empty when no is_current=1
+	// transcript rows exist for the asset.
+	//
+	// legacyTranscript is the pre-step-6 single-string fallback for
+	// backward compat with old callers (admin CLI, fixtures) that
+	// haven't yet surfaced the TextTrackQuerier pipeline. AssetStore
+	// v1 reads `transcript` from metadata_json ONLY as a one-time
+	// bridge; producers that have an is_current row revert to the
+	// canonical slice and the single-string key becomes vestigial.
+	legacyTranscript := strings.TrimSpace(assetpkg.MetadataString(asset.Metadata, "transcript"))
 	indexingStatus := assetpkg.MetadataString(asset.Metadata, "indexing_status")
 	// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent timestamp Drive
 	// folder metadata. Read from top-level AssetData first, fall
@@ -220,7 +245,23 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			TotalChunks:      intOrFallback(asset.TotalChunks, assetpkg.MetadataInt(asset.Metadata, "total_chunks")),
 			PolicyVersion:    policyVersion,
 			DrivePath:        drivePath,
-			IndexingStatus:   indexingStatus,
+			// DriveLink is now a canonical payload key (no longer
+			// forbidden on IndexDocument, see PR 6 doctrine update).
+			DriveLink: driveLink,
+			// CurrentSemanticHash is the canonical semantic block
+			// fingerprint (SSOT: media_assets.semantic_hash +
+			// asset_visual_summaries.source_hash precedence,
+			// see semantic_hash precedence rule in the airlock
+			// docstring).
+			CurrentSemanticHash: currentSemanticHash,
+			// Transcript (single string) is the pre-step-6
+			// backward-compat fallback field. The canonical
+			// multilingual composer reads Transcripts (slice) instead.
+			// Producers that haven't yet adopted the TextTrackQuerier
+			// pipeline still surface a non-empty Transcript verbatim.
+			Transcript:     legacyTranscript,
+			Transcripts:    asset.Transcripts,
+			IndexingStatus: indexingStatus,
 			// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent timestamp
 			// folder metadata propagated through the airlock (top-level
 			// first, metadata_json fallback).

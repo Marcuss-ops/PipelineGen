@@ -6,7 +6,7 @@ package indexing
 
 import (
 	"fmt"
-	"strconv"
+	"sort"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
@@ -28,11 +28,15 @@ import (
 // the writer actually emitted. Drift surface: the per-channel counter
 // in schema.SwitchReport.VersionMismatchPerChannel (PR 12).
 //
-// FORBIDDEN at this emitter: drive_link, local_path, status payload
-// keys. The AirLock via IndexDocument strips these from the wire shape;
-// this fn preserves the invariant. The freeze test in
+// FORBIDDEN at this emitter: local_path, status payload keys (locked by
+// the IndexDocument airlock — neither field exists on IndexDocument).
+// drive_link IS now canonical in payload (PR-CATALOG-MULTILINGUA step
+// 6, July 2026) but is FORBIDDEN in embedding_text (forward-prevention
+// test
+// TestBuildPayloadFromDocument_CanonicalSearchDocument_NoLinkOrLocatorInEmbeddingText
+// pins that half of the invariant). The freeze test in
 // composition_test.go::TestComposition_FrozenQdrantIndexDocumentCanonicalTypes
-// + the wire-level test below pin both halves of the invariant.
+// pins the forbidden-SSOT half.
 func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) map[string]any {
 	if doc == nil {
 		return map[string]any{}
@@ -41,10 +45,16 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	if semanticTitle == "" {
 		semanticTitle = buildSemanticTitle(doc.Metadata.Title, doc.Metadata.Event, doc.Metadata.Round, doc.Metadata.Scene, doc.Metadata.Subject)
 	}
-	embeddingText := doc.Metadata.EmbeddingText
-	if embeddingText == "" {
-		embeddingText = buildEmbeddingText(doc, semanticTitle)
-	}
+	// PR-CATALOG-MULTILINGUA step 6 (July 2026): the canonical SEARCH
+	// DOCUMENT is ALWAYS composed via buildCanonicalSearchDocument;
+	// the pre-existing pre-fill override
+	// (`if doc.Metadata.EmbeddingText != ""`) is REMOVED so no caller
+	// can bypass the forward-prevention gate by sneaking
+	// link/locator text into doc.Metadata.EmbeddingText. The
+	// canonical composer reads ONLY the 8 sanctioned fields and
+	// emits an empty string when none are populated; that is the
+	// SINGLE source of truth for the embedding shape on the wire.
+	embeddingText := buildCanonicalSearchDocument(doc)
 	sourceURL := firstNonEmpty(doc.Metadata.SourceURL, doc.Metadata.YouTubeURL)
 	sourceVideoID := firstNonEmpty(doc.Metadata.SourceVideoID, doc.Metadata.YouTubeID)
 	name := firstNonEmpty(doc.Metadata.Name, doc.Metadata.Title, doc.Metadata.SemanticTitle, doc.AssetID)
@@ -148,8 +158,9 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	}
 	// PR-TIMESTAMP-FOLDER-LINK (July 2026): parent timestamp Drive
 	// folder metadata for "open in Drive" navigation from search
-	// results. drive_link remains FORBIDDEN (QDRANT-001); these are
-	// distinct keys with distinct semantics (folder vs file).
+	// results. drive_link is the file-level canonical URL emitted
+	// below; the timestamp_* keys are FOLDER-level distinct surfaces
+	// (folder navigation vs file playback).
 	if doc.Metadata.TimestampDriveFolderLink != "" {
 		payload["timestamp_drive_folder_link"] = doc.Metadata.TimestampDriveFolderLink
 	}
@@ -230,6 +241,31 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	if doc.SearchText != "" {
 		payload["search_text"] = doc.SearchText
 	}
+	// ── Canonical payload block (PR-CATALOG-MULTILINGUA step 6, July 2026).
+	// These 2 keys are the search-result-key payload for the multilingual
+	// clip catalog. drive_link replaces the legacy QDRANT-001 NO-DRIVE-LINK
+	// rule (Italian plan: drive_link is canonical in payload — but NEVER
+	// in embedding_text; the forward-prevention test
+	// TestBuildPayloadFromDocument_CanonicalSearchDocument_NoLinkOrLocatorInEmbeddingText
+	// pins that half of the invariant).
+	// current_semantic_hash is the SSOT fingerprint that gates the upsert
+	// supersede when VLM/translations mutate without content_hash changing.
+	// Precedence rule (godlike/06 SSOT — AssetStore is the canonical
+	// owner of the resolved value; airlock layers just trust it):
+	//   (a) asset_visual_summaries.source_hash (VLM fingerprint,
+	//       migration 151) — populated post a real VLM pass.
+	//   (b) media_assets.semantic_hash (migration 152) — fallback.
+	// The AssetStore layer wires AssetData.SemanticHash from the
+	// JOIN vs ∪ ma precedence (follow-up PR; the airlock trusts the
+	// pre-resolved value).
+	// godlike/07 NO-FAKE-AVAILABILITY: both keys are omitempty; absence
+	// means the producer side hasn't populated them yet.
+	if doc.Metadata.DriveLink != "" {
+		payload["drive_link"] = doc.Metadata.DriveLink
+	}
+	if doc.Metadata.CurrentSemanticHash != "" {
+		payload["current_semantic_hash"] = doc.Metadata.CurrentSemanticHash
+	}
 	if sourceVideoID != "" {
 		payload["source_video_id"] = sourceVideoID
 	}
@@ -300,234 +336,167 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func buildEmbeddingText(doc *IndexDocument, semanticTitle string) string {
+// buildCanonicalSearchDocument composes the canonical search text for
+// the asset per PR-CATALOG-MULTILINGUA step 6 (July 2026).
+//
+// The canonical 8-field composition is:
+//
+//  1. title            ← doc.Metadata.Title
+//  2. description      ← doc.Metadata.Description
+//  3. visual_summary   ← doc.Metadata.VisualSummary
+//  4. transcript       ← doc.Metadata.Transcripts (multilingual joined;
+//     original-language row bare, sequels as `transcript ({lang}): …`)
+//     with document.Metadata.Transcript (single string) as the v1
+//     fallback for callers that haven't yet adopted the TextTrackQuerier
+//     pipeline.
+//  5. topics           ← doc.Metadata.Topics (joined as "topics: a, b, c")
+//  6. entities         ← doc.Metadata.Entities (joined as "entities: a, b, c")
+//  7. event            ← doc.Metadata.Event
+//  8. scene            ← doc.Metadata.Scene
+//
+// Empty fields are SKIPPED (godlike/07 NO-FAKE-AVAILABILITY: a missing
+// field MUST NOT emit a placeholder line). Each non-empty field is on
+// its own line so the operator can eyeball-verify the composer output.
+//
+// Multimodal transcript assembly (PR-CATALOG-MULTILINGUA step 6):
+// the slice asset.Transcripts carries one row per `is_current=1`
+// transcript in asset_text_tracks. The composer:
+//   - emits the IsOriginal row (matched against
+//     doc.Metadata.OriginalLanguage via case-folded equality) as BARE
+//     text on its own line — the primary embedding-text signal.
+//   - emits each non-original row as
+//     `transcript ({Lang}): {Text}` on a new line — language-coded
+//     sequels. Deterministic order: original row first (if any), then
+//     non-original rows in Lang-ASC alphabetical order so re-runs
+//     produce byte-stable embedding_text.
+//
+// Forward-prevention contract (pinned by payload_builder_test.go):
+// the composition MUST NOT contain any link/locator metadata. The
+// following forbidden substrings — if any appear in the output —
+// trigger the test failure surface:
+//
+//	drive_link / drive_path / source_url / http:// / https://
+//	source_video_id / youtube_video_id / youtube_url
+//	job_id / workflow_id / policy_version / chunk_index / total_chunks
+//	run_fingerprint / chunk_id / clip_id / asset_id
+//
+// godlike/06 SSOT: the canonical field set is the SINGLE source of
+// truth for the embedding_text composition. Per-source variations
+// (YouTube additional hook, Stock tags formatted as "Tags: ...")
+// belong in payload filter fields, NOT in the embedding_text. The
+// embedding_text is the search vector input — link/locator in it
+// dilutes the embedding's semantic focus.
+//
+// godlike/07 minimum-blast-radius: the pre-existing per-source
+// switch-case helper (which embedded workflow_id, job_id, run_fingerprint,
+// chunk_index, total_chunks, policy_version, source_video_id, source_provider
+// labels) was REMOVED in this PR alongside the strconv import — that
+// import was only used by that helper. The 8-field composer is the
+// ONLY embedding_text composer in the file.
+func buildCanonicalSearchDocument(doc *IndexDocument) string {
 	if doc == nil {
 		return ""
 	}
-	parts := make([]string, 0, 12)
-	source := strings.ToLower(strings.TrimSpace(doc.Metadata.Source))
+	parts := make([]string, 0, 8)
 
-	if semanticTitle != "" {
-		parts = append(parts, semanticTitle)
+	if v := strings.TrimSpace(doc.Metadata.Title); v != "" {
+		parts = append(parts, v)
 	}
+	if v := strings.TrimSpace(doc.Metadata.Description); v != "" {
+		parts = append(parts, v)
+	}
+	if v := strings.TrimSpace(doc.Metadata.VisualSummary); v != "" {
+		parts = append(parts, v)
+	}
+	if transcript := composeMultilingualTranscriptBlock(doc); transcript != "" {
+		parts = append(parts, transcript)
+	}
+	if len(doc.Metadata.Topics) > 0 {
+		parts = append(parts, "topics: "+strings.Join(doc.Metadata.Topics, ", "))
+	}
+	if len(doc.Metadata.Entities) > 0 {
+		parts = append(parts, "entities: "+strings.Join(doc.Metadata.Entities, ", "))
+	}
+	if v := strings.TrimSpace(doc.Metadata.Event); v != "" {
+		parts = append(parts, "event: "+v)
+	}
+	if v := strings.TrimSpace(doc.Metadata.Scene); v != "" {
+		parts = append(parts, "scene: "+v)
+	}
+	return strings.Join(parts, "\n")
+}
 
-	switch source {
-	case "youtube":
-		if doc.Metadata.Summary != "" && doc.Metadata.Summary != semanticTitle {
-			parts = append(parts, doc.Metadata.Summary)
+// composeMultilingualTranscriptBlock renders the multilingual transcript
+// canon for embedding_text per PR-CATALOG-MULTILINGUA step 6. Three cases:
+//
+//  1. doc.Metadata.Transcripts is non-empty: emit IsOriginal row as bare
+//     text first, then each non-original row as
+//     `transcript ({Lang}): {Text}` on a new line. Rows with empty
+//     Text are SKIPPED (godlike/07 NO-FAKE-AVAILABILITY). Lang code
+//     is case-folded for the original-language match so `"EN"` and
+//     `"en"` are equivalent. Order within the sequels is Lang-ASC
+//     alphabetical for byte-stable output.
+//  2. doc.Metadata.Transcripts is empty AND doc.Metadata.Transcript
+//     is non-empty (legacy single-string fallback): emit
+//     doc.Metadata.Transcript verbatim. This keeps the embedding-text
+//     stable for the transition window for callers that haven't yet
+//     adopted the new TextTrackQuerier flow.
+//  3. Both empty: emit "" (the embedding_text composer at the caller
+//     layer SKIPS the field — embedding-text just doesn't include the
+//     transcript slot).
+func composeMultilingualTranscriptBlock(doc *IndexDocument) string {
+	if doc == nil {
+		return ""
+	}
+	if len(doc.Metadata.Transcripts) > 0 {
+		originalLang := strings.TrimSpace(doc.Metadata.OriginalLanguage)
+		var originalLine string
+		var others []TranscriptTrack
+		for _, t := range doc.Metadata.Transcripts {
+			text := strings.TrimSpace(t.Text)
+			if text == "" {
+				continue // godlike/07 NO-FAKE-AVAILABILITY: skip empty rows
+			}
+			if originalLang != "" && strings.EqualFold(t.Lang, originalLang) && t.IsOriginal {
+				originalLine = text
+				continue
+			}
+			if t.IsOriginal && originalLang == "" {
+				// OriginalLanguage empty on the airlock but IsOriginal=true
+				// (text_track_repository wires IsOriginal from media_assets.language;
+				// if that is empty, ANY row can claim IsOriginal). Treat the
+				// FIRST IsOriginal row as bare text and route subsequent rows
+				// to the sequel bucket so a single bare-text slot is emitted.
+				if originalLine == "" {
+					originalLine = text
+					continue
+				}
+			}
+			others = append(others, TranscriptTrack{Lang: t.Lang, Text: text})
 		}
-		if doc.Metadata.Description != "" {
-			parts = append(parts, doc.Metadata.Description)
+		// Sort sequels by Lang ASC for deterministic byte-stable output.
+		sort.SliceStable(others, func(i, j int) bool {
+			return others[i].Lang < others[j].Lang
+		})
+		out := ""
+		if originalLine != "" {
+			out = originalLine
+			for _, t := range others {
+				out += "\ntranscript (" + t.Lang + "): " + t.Text
+			}
+			return out
 		}
-		if doc.Metadata.Hook != "" {
-			parts = append(parts, "hook: "+doc.Metadata.Hook)
-		}
-		if doc.Metadata.Event != "" {
-			parts = append(parts, "event: "+doc.Metadata.Event)
-		}
-		if doc.Metadata.Scene != "" {
-			parts = append(parts, "scene: "+doc.Metadata.Scene)
-		}
-		if doc.Metadata.Subject != "" {
-			parts = append(parts, "subject: "+doc.Metadata.Subject)
-		}
-		if doc.Metadata.SourceProvider != "" || doc.Metadata.Source != "" {
-			provider := firstNonEmpty(doc.Metadata.SourceProvider, doc.Metadata.Source)
-			if provider != "" {
-				parts = append(parts, "source: "+provider)
+		// No IsOriginal row identified. Emit ALL rows as sequels with a
+		// stable Lang-ASC order so the rubric stays non-empty.
+		for _, t := range others {
+			if out == "" {
+				out = "transcript (" + t.Lang + "): " + t.Text
+			} else {
+				out += "\ntranscript (" + t.Lang + "): " + t.Text
 			}
 		}
-		if doc.Metadata.Origin != "" {
-			parts = append(parts, "origin: "+doc.Metadata.Origin)
-		}
-		if doc.Metadata.Destination != "" {
-			parts = append(parts, "destination: "+doc.Metadata.Destination)
-		}
-		if doc.Metadata.SourceVideoID != "" {
-			parts = append(parts, "source_video_id: "+doc.Metadata.SourceVideoID)
-		}
-		if doc.Metadata.PolicyVersion != "" {
-			parts = append(parts, "policy_version: "+doc.Metadata.PolicyVersion)
-		}
-		if doc.Metadata.WorkflowID != "" {
-			parts = append(parts, "workflow_id: "+doc.Metadata.WorkflowID)
-		}
-		if doc.Metadata.RunFingerprint != "" {
-			parts = append(parts, "run_fingerprint: "+doc.Metadata.RunFingerprint)
-		}
-		if doc.Metadata.JobID != "" {
-			parts = append(parts, "job_id: "+doc.Metadata.JobID)
-		}
-		if doc.Metadata.ChunkIndex > 0 || doc.Metadata.TotalChunks > 0 {
-			parts = append(parts, "chunk_index: "+strconv.Itoa(doc.Metadata.ChunkIndex))
-		}
-		if doc.Metadata.TotalChunks > 0 {
-			parts = append(parts, "total_chunks: "+strconv.Itoa(doc.Metadata.TotalChunks))
-		}
-		if doc.Metadata.Category != "" {
-			parts = append(parts, "category: "+doc.Metadata.Category)
-		}
-		if doc.Metadata.Language != "" {
-			parts = append(parts, "language: "+doc.Metadata.Language)
-		}
-		if len(doc.Metadata.Topics) > 0 {
-			parts = append(parts, "topics: "+strings.Join(doc.Metadata.Topics, ", "))
-		}
-		if len(doc.Metadata.Speakers) > 0 {
-			parts = append(parts, "speakers: "+strings.Join(doc.Metadata.Speakers, ", "))
-		}
-		if len(doc.Metadata.MentionedPeople) > 0 {
-			parts = append(parts, "mentioned_people: "+strings.Join(doc.Metadata.MentionedPeople, ", "))
-		}
-		if len(doc.Metadata.Entities) > 0 {
-			parts = append(parts, "entities: "+strings.Join(doc.Metadata.Entities, ", "))
-		}
-		if len(doc.Metadata.SearchKeywords) > 0 {
-			parts = append(parts, "search_keywords: "+strings.Join(doc.Metadata.SearchKeywords, ", "))
-		}
-		if len(doc.Metadata.Tags) > 0 {
-			parts = append(parts, "tags: "+strings.Join(doc.Metadata.Tags, ", "))
-		}
-	case "stock":
-		if doc.Metadata.Summary != "" && doc.Metadata.Summary != semanticTitle {
-			parts = append(parts, doc.Metadata.Summary)
-		}
-		if doc.Metadata.Description != "" {
-			parts = append(parts, doc.Metadata.Description)
-		}
-		if doc.Metadata.Event != "" {
-			parts = append(parts, "event: "+doc.Metadata.Event)
-		}
-		if doc.Metadata.Round > 0 {
-			parts = append(parts, "round: "+strconv.Itoa(doc.Metadata.Round))
-		}
-		if doc.Metadata.Scene != "" {
-			parts = append(parts, "scene: "+doc.Metadata.Scene)
-		}
-		if doc.Metadata.Subject != "" {
-			parts = append(parts, "subject: "+doc.Metadata.Subject)
-		}
-		if doc.Metadata.Destination != "" {
-			parts = append(parts, "destination: "+doc.Metadata.Destination)
-		}
-		if doc.Metadata.SourceProvider != "" {
-			parts = append(parts, "source_provider: "+doc.Metadata.SourceProvider)
-		}
-		if doc.Metadata.Origin != "" {
-			parts = append(parts, "origin: "+doc.Metadata.Origin)
-		}
-		if doc.Metadata.PolicyVersion != "" {
-			parts = append(parts, "policy_version: "+doc.Metadata.PolicyVersion)
-		}
-		if doc.Metadata.WorkflowID != "" {
-			parts = append(parts, "workflow_id: "+doc.Metadata.WorkflowID)
-		}
-		if doc.Metadata.RunFingerprint != "" {
-			parts = append(parts, "run_fingerprint: "+doc.Metadata.RunFingerprint)
-		}
-		if doc.Metadata.JobID != "" {
-			parts = append(parts, "job_id: "+doc.Metadata.JobID)
-		}
-		if doc.Metadata.ChunkIndex > 0 || doc.Metadata.TotalChunks > 0 {
-			parts = append(parts, "chunk_index: "+strconv.Itoa(doc.Metadata.ChunkIndex))
-		}
-		if doc.Metadata.TotalChunks > 0 {
-			parts = append(parts, "total_chunks: "+strconv.Itoa(doc.Metadata.TotalChunks))
-		}
-		if doc.Metadata.Category != "" {
-			parts = append(parts, "category: "+doc.Metadata.Category)
-		}
-		if len(doc.Metadata.Topics) > 0 {
-			parts = append(parts, "topics: "+strings.Join(doc.Metadata.Topics, ", "))
-		}
-		if len(doc.Metadata.Entities) > 0 {
-			parts = append(parts, "entities: "+strings.Join(doc.Metadata.Entities, ", "))
-		}
-		if len(doc.Metadata.SearchKeywords) > 0 {
-			parts = append(parts, "search_keywords: "+strings.Join(doc.Metadata.SearchKeywords, ", "))
-		}
-		if len(doc.Metadata.Tags) > 0 {
-			parts = append(parts, "tags: "+strings.Join(doc.Metadata.Tags, ", "))
-		}
-		if doc.Metadata.DurationSec > 0 {
-			parts = append(parts, "duration_sec: "+strconv.Itoa(doc.Metadata.DurationSec))
-		}
-	default:
-		if doc.Metadata.Summary != "" && doc.Metadata.Summary != semanticTitle {
-			parts = append(parts, doc.Metadata.Summary)
-		}
-		if doc.Metadata.Description != "" {
-			parts = append(parts, doc.Metadata.Description)
-		}
-		if doc.Metadata.Hook != "" {
-			parts = append(parts, "hook: "+doc.Metadata.Hook)
-		}
-		if doc.Metadata.Event != "" {
-			parts = append(parts, "event: "+doc.Metadata.Event)
-		}
-		if doc.Metadata.Scene != "" {
-			parts = append(parts, "scene: "+doc.Metadata.Scene)
-		}
-		if doc.Metadata.Subject != "" {
-			parts = append(parts, "subject: "+doc.Metadata.Subject)
-		}
-		if doc.Metadata.SourceProvider != "" || doc.Metadata.Source != "" {
-			provider := firstNonEmpty(doc.Metadata.SourceProvider, doc.Metadata.Source)
-			if provider != "" {
-				parts = append(parts, "source: "+provider)
-			}
-		}
-		if doc.Metadata.Origin != "" {
-			parts = append(parts, "origin: "+doc.Metadata.Origin)
-		}
-		if doc.Metadata.Destination != "" {
-			parts = append(parts, "destination: "+doc.Metadata.Destination)
-		}
-		if doc.Metadata.PolicyVersion != "" {
-			parts = append(parts, "policy_version: "+doc.Metadata.PolicyVersion)
-		}
-		if doc.Metadata.WorkflowID != "" {
-			parts = append(parts, "workflow_id: "+doc.Metadata.WorkflowID)
-		}
-		if doc.Metadata.RunFingerprint != "" {
-			parts = append(parts, "run_fingerprint: "+doc.Metadata.RunFingerprint)
-		}
-		if doc.Metadata.JobID != "" {
-			parts = append(parts, "job_id: "+doc.Metadata.JobID)
-		}
-		if doc.Metadata.ChunkIndex > 0 || doc.Metadata.TotalChunks > 0 {
-			parts = append(parts, "chunk_index: "+strconv.Itoa(doc.Metadata.ChunkIndex))
-		}
-		if doc.Metadata.TotalChunks > 0 {
-			parts = append(parts, "total_chunks: "+strconv.Itoa(doc.Metadata.TotalChunks))
-		}
-		if doc.Metadata.Category != "" {
-			parts = append(parts, "category: "+doc.Metadata.Category)
-		}
-		if doc.Metadata.Language != "" {
-			parts = append(parts, "language: "+doc.Metadata.Language)
-		}
-		if len(doc.Metadata.Topics) > 0 {
-			parts = append(parts, "topics: "+strings.Join(doc.Metadata.Topics, ", "))
-		}
-		if len(doc.Metadata.Speakers) > 0 {
-			parts = append(parts, "speakers: "+strings.Join(doc.Metadata.Speakers, ", "))
-		}
-		if len(doc.Metadata.MentionedPeople) > 0 {
-			parts = append(parts, "mentioned_people: "+strings.Join(doc.Metadata.MentionedPeople, ", "))
-		}
-		if len(doc.Metadata.Entities) > 0 {
-			parts = append(parts, "entities: "+strings.Join(doc.Metadata.Entities, ", "))
-		}
-		if len(doc.Metadata.SearchKeywords) > 0 {
-			parts = append(parts, "search_keywords: "+strings.Join(doc.Metadata.SearchKeywords, ", "))
-		}
-		if len(doc.Metadata.Tags) > 0 {
-			parts = append(parts, "tags: "+strings.Join(doc.Metadata.Tags, ", "))
-		}
-		if doc.Metadata.DurationSec > 0 {
-			parts = append(parts, "duration_sec: "+strconv.Itoa(doc.Metadata.DurationSec))
-		}
+		return out
 	}
-	return strings.Join(parts, ". ")
+	// Legacy single-string fallback (pre-step-6 callers).
+	return strings.TrimSpace(doc.Metadata.Transcript)
 }

@@ -41,13 +41,26 @@
 // QdrantIndexDocumentForbiddenFields):
 //
 //   - Status
-//   - DriveLink
 //   - LocalPath
 //
-// These stay on the SQL-fetch `asset.AssetData` DTO for diagnostic
-// paths (cmd/admin/*, asset ingest); they are NOT promoted to the
-// Qdrant payload. A future reader discovering these fields on
-// IndexDocument is looking at the wrong struct.
+// Status and LocalPath stay on the SQL-fetch `asset.AssetData` DTO
+// for diagnostic paths (cmd/admin/*, asset ingest); they are NOT
+// promoted to the Qdrant payload. A future reader discovering these
+// fields on IndexDocument is looking at the wrong struct.
+//
+// NOTE on drive_link (PR-CATALOG-MULTILINGUA step 6, July 2026):
+// DriveLink WAS in the original forbidden list (QDRANT-001, June
+// 2026). The Italian multilingual plan explicitly places drive_link
+// in the Qdrant payload so the persistence layer can recover a
+// canonical open-in-Drive URL per clip WITHOUT a separate signed-URL
+// round-trip via delivery.Signer. The Ital plan docstring at the
+// canonical-link step keeps the URL-only contract (no embedded
+// credentials); signed-URL signing stays in the delivery layer for
+// write-back authority. IndexDocument.DriveLink is now a canonical
+// field. The old QDRANT-001 rule is REPLACED by the godlike/06 SSOT
+// rule that drive_link belongs only in payload, NEVER in
+// embedding_text (forward-prevention test in payload_builder_test.go
+// pins both halves).
 package indexing
 
 import (
@@ -205,6 +218,30 @@ type IndexedMetadata struct {
 	TimestampDriveFolderLink string
 	TimestampFolderID        string
 
+	// DriveLink is the canonical Drive web-view URL (e.g.
+	// "https://drive.google.com/file/d/abc123/view"). Populated from
+	// AssetData.DriveLink (which is sourced from media_assets.drive_link
+	// via the AssetStore). Emitted as payload key `drive_link` per
+	// PR-CATALOG-MULTILINGUA step 6 (July 2026) — the Italian plan
+	// places drive_link in the payload so search results can offer an
+	// open-in-Drive affordance without an extra signed-URL round-trip.
+	// Forward-prevention: drive_link is NEVER in embedding_text; see
+	// payload_builder_test.go::TestBuildPayloadFromDocument_CanonicalSearchDocument_NoLinkOrLocator
+	// in embedding_text (forward-prevention contract).
+	DriveLink string
+
+	// CurrentSemanticHash is the SHA-256 fingerprint of the canonical
+	// semantic block for the clip. Source-of-truth in priority order:
+	//   (a) asset_visual_summaries.source_hash (migration 151) — the
+	//       canonical VLM fingerprint when a real VLM pass has run.
+	//   (b) media_assets.semantic_hash (migration 152) — the legacy
+	//       placeholder column; empty when no VLM pass.
+	// Empty (and the payload key is omitted) when neither source has
+	// populated a hash. Emitted as payload key `current_semantic_hash`
+	// so the upsert supersede gate can detect "VLM pass + descriptions
+	// changed → re-embed even when content_hash unchanged".
+	CurrentSemanticHash string
+
 	// StartTime / EndTime are the HH:MM:SS.ms timeline anchors
 	// (YouTube clip excerpts). Empty when the asset is not a clip.
 	StartTime string
@@ -221,6 +258,36 @@ type IndexedMetadata struct {
 	CreatedAt string
 	UpdatedAt string
 	DeletedAt string
+
+	// Transcript is the canonical multilingual transcript text for
+	// the embedding_text composition (PR-CATALOG-MULTILINGUA step 6,
+	// July 2026). Per-source from the canonical SearchTextComposer
+	// pipeline: a single concatenated block where the original-language
+	// transcript is the bare text, and each additional language is on a
+	// new line as `transcript ({lang}): {text}`. The airlock wires this
+	// from the TextTrackQuerier port + metadata_json fallback. Empty
+	// when no asset_text_tracks rows are is_current=1.
+	//
+	// godlike/07 NO-FAKE-AVAILABILITY: empty means "no transcript
+	// available yet" — we do NOT emit a placeholder line in embedding_text.
+	Transcript string
+
+	// Transcripts is the canonical multilingual transcript slice
+	// populated by AssetStore from `asset_text_tracks WHERE
+	// text_kind='transcript' AND is_current=1`. The composer in
+	// payload_builder.go iterates this slice to produce the
+	// canonical 8-field search_document:
+	//   - IsOriginal == true → bare text on its own line.
+	//   - remaining rows      → `transcript ({Lang}): {Text}` sequels
+	//                            in Lang-ASC alphabetical order
+	//                            (byte-stable across re-runs).
+	// Sorted/selected invariants are the SOURCE's responsibility
+	// (AssetStore issues ORDER BY); the composer is a pure transformer.
+	// Empty when no is_current=1 rows exist; the composer falls back
+	// to the legacy single-string Transcript field above for the
+	// transition window for callers that haven't yet adopted the new
+	// TextTrackQuerier flow.
+	Transcripts []TranscriptTrack
 
 	// ── Text track projection (lightweight, no full transcripts) ────
 
@@ -411,9 +478,15 @@ type IndexDocument struct {
 // Hidden (unexported) because it's a test-only fixture; callers
 // outside this package should never reason about which fields are
 // forbidden — they should reason about the wire shape (no
-// drive_link / no local_path / no status payload keys).
+// local_path / no status payload keys; drive_link IS now canonical).
+//
+// PR-CATALOG-MULTILINGUA step 6 (July 2026): DriveLink removed from
+// the forbidden list. The canonical open-in-Drive URL belongs in the
+// payload so search results can offer an open-in-Drive affordance
+// without an extra signed-URL round-trip per query. Complement the
+// forward-prevention tests in payload_builder_test.go that pin
+// drive_link is payload-only (NEVER in embedding_text).
 var ForbiddenIndexDocumentFields = []string{
 	"Status",
-	"DriveLink",
 	"LocalPath",
 }
