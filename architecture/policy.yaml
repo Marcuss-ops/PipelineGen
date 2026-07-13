@@ -56,6 +56,17 @@ max_constructor_deps: 8
 # when unset. Zero opts out.
 max_struct_deps: 8
 
+# PR-CLIPINGEST-PIPELINE step 8 (July 2026): per-struct allowance for the canonical
+# 9-component ClipIngestPipeline wiring. Mirrors the existing image-asset pattern
+# (`max_image_asset_fields: 8` is the per-struct knob; the global `max_struct_deps: 8`
+# is the default). The 9-component shape is the SOLE canonical owner at
+# internal/application/assets/ingest/clip_ingest_pipeline.go (godlike/06 SSOT);
+# the percheck_clip_ingest_pipeline_canonical_1 forward-prevention gate enforces
+# this at the type level. Without this per-struct allowance the 9-component shape
+# would be a `max_struct_deps` violation; the knob is the documented escape
+# hatch (godlike/06 SSOT — single canonical owner per fact).
+max_clip_ingest_pipeline_fields: 9
+
 # Generic dumping-ground dirs forbidden as top-level package names
 # (per the proposal §"internal/capabilities").
 forbidden_top_level_dirs: service, repository, models, utils, helpers
