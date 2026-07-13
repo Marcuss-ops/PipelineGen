@@ -233,6 +233,16 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_assetbinder_ssot", scan.ScanAssetBinderSSOT},
 		{"percheck_drive_access_ssot", scan.ScanDriveAccessSSOT},
 		{"percheck_metadata_registry", scan.ScanMetadataRegistry},
+		// Check PR-79 (PR-METADATA-REGISTRY-FOUNDATION, July 2026):
+		// forward-prevention gate for the Asset.Metadata
+		// name-spaced KEY alphabet (separate concern from the
+		// Wave 5 `percheck_metadata_registry` map[string]any
+		// ban). Canonical SSOT is
+		// internal/domain/asset/metadata_registry.go which
+		// declares every provider.* style key with Owner + Type.
+		// Severity=error: an unregistered name-spaced key
+		// surfaces as a CI build failure.
+		{"percheck_metadata_key_registry", scan.ScanMetadataKeys},
 		{"percheck_input_immutability", scan.ScanInputImmutability},
 		{"percheck_sourcestager_transformer", scan.ScanSourceStagerTransformer},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
@@ -389,7 +399,9 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// _test.go is included in the scan surface because a test
 		// importing the deleted path cannot compile. Family
 		// precedent: percheck_no_generic_generation_facade.
-		{"percheck_no_domain_job_compatibility_aliases", scan.ScanNoDomainJobCompatibilityAliases},
+		{"percheck_no_domain_job_compatibility_aliases", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanNoDomainJobCompatibilityAliases(root, pol, r, productionOnly)
+		}},
 		// Check PR-GENERATION-FACADE-REMOVE (commit 7, July 2026):
 		// forward-prevention gate that BANS any re-introduction of
 		// the application-zone or domain-zone generic generation
