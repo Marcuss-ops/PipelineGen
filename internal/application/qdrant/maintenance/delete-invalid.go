@@ -18,7 +18,6 @@ package maintenance
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -47,8 +46,9 @@ func (s *Service) Delete(ctx context.Context, opts DeleteOptions) error {
 	if err != nil {
 		s.log.Warn("qdrant-maintenance: classify returned with errors; printing partial report", zap.Error(err))
 		if opts.JSON && report != nil {
-			b, _ := json.Marshal(report)
-			fmt.Fprintln(s.cliWriter, string(b))
+			if jErr := s.cli.JSON(report); jErr != nil {
+				s.log.Warn("qdrant-maintenance: partial-report JSON marshal failed (dropping partial line; main err returned below)", zap.Error(jErr))
+			}
 		}
 		return err
 	}
@@ -70,20 +70,18 @@ func (s *Service) Delete(ctx context.Context, opts DeleteOptions) error {
 				"collection": report.Collection,
 				"message":    "zero non-locator assets to delete — all findings are locator-only; use repair-locators",
 			}
-			b, _ := json.Marshal(out)
-			fmt.Fprintln(s.cliWriter, string(b))
-		} else {
-			fmt.Fprintln(s.cliWriter, "delete-invalid: zero non-locator assets to delete.")
-			fmt.Fprintln(s.cliWriter, "(All findings are locator-only; use 'repair-locators' instead.)")
+			return s.cli.JSON(out)
 		}
+		s.cli.HumanLine("delete-invalid: zero non-locator assets to delete.")
+		s.cli.HumanLine("(All findings are locator-only; use 'repair-locators' instead.)")
 		return nil
 	}
 
 	if !opts.JSON {
-		fmt.Fprintf(s.cliWriter, "=== qdrant-maintenance delete-invalid ===\n")
-		fmt.Fprintln(s.cliWriter, legacyaudit.StringifyReport(report))
-		fmt.Fprintf(s.cliWriter, "\nNon-locator assets to delete: %d\n", len(assetIDs))
-		fmt.Fprintln(s.cliWriter, "\nApplying via outbox.Dispatcher.EnqueueAndDelete (the canonical deletion path; "+
+		s.cli.HumanLine("=== qdrant-maintenance delete-invalid ===")
+		s.cli.HumanLine(legacyaudit.StringifyReport(report))
+		s.cli.HumanLinef("\nNon-locator assets to delete: %d\n", len(assetIDs))
+		s.cli.HumanLine("\nApplying via outbox.Dispatcher.EnqueueAndDelete (the canonical deletion path; " +
 			"never DELETE FROM media_assets directly)...")
 	}
 
@@ -117,15 +115,13 @@ func (s *Service) Delete(ctx context.Context, opts DeleteOptions) error {
 			"audit":      report.Audit,
 			"collection": report.Collection,
 		}
-		b, _ := json.Marshal(out)
-		fmt.Fprintln(s.cliWriter, string(b))
-	} else {
-		fmt.Fprintf(s.cliWriter, "delete-invalid: dispatched %d canonical DELETE events to outbox_events.\n", applied)
-		if applied < len(assetIDs) {
-			fmt.Fprintf(s.cliWriter, "  (%d skipped due to enqueue errors — check logs above)\n", len(assetIDs)-applied)
-		}
-		fmt.Fprintln(s.cliWriter, "Run `go run ./cmd/admin qdrant-readiness` afterwards to confirm dead_letters=0 and zero legacy audit hits.")
+		return s.cli.JSON(out)
 	}
+	s.cli.HumanLinef("delete-invalid: dispatched %d canonical DELETE events to outbox_events.\n", applied)
+	if applied < len(assetIDs) {
+		s.cli.HumanLinef("  (%d skipped due to enqueue errors — check logs above)\n", len(assetIDs)-applied)
+	}
+	s.cli.HumanLine("Run `go run ./cmd/admin qdrant-readiness` afterwards to confirm dead_letters=0 and zero legacy audit hits.")
 	return nil
 }
 
