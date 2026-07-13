@@ -82,6 +82,9 @@ QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:6333}"
 QDRANT_COLLECTION="${QDRANT_COLLECTION:-media_assets_current}"
 SCRAPER_URL="${SCRAPER_URL:-${VELOX_ARTLIST_SCRAPER_SERVER_URL:-http://127.0.0.1:9123}}"
 ROOT_FOLDER_ID="${ROOT_FOLDER_ID:-${VELOX_DRIVE_ARTLIST_ROOT:-}}"
+# Per fix(scraper) PR + docs/operations/stock-e2e-runbook.md §11.0:
+SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-120}"
+SCRAPER_CONNECT_TIMEOUT_SECONDS="${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}"
 
 OUT_DIR="/tmp/artlist-pipeline-live-test"
 mkdir -p "$OUT_DIR"
@@ -188,7 +191,7 @@ pass "/health returned 200"
 # ─── STEP 2: Scraper reachable (real Artlist search probe) ──────────────
 log ""
 log "── STEP 2/12  Scraper /search probe (term='${QUERIES[0]}', limit=$LIMIT_PER_QUERY) ──"
-SCRAPER_PROBE=$(curl -s --max-time 15 -X POST "$SCRAPER_URL/search" \
+SCRAPER_PROBE=$(curl -sS --connect-timeout "${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}" --max-time "${SCROLL_TIMEOUT:-120}" -X POST "$SCRAPER_URL/search" \
     -H 'Content-Type: application/json' \
     -d "$(jq -nc --arg q "${QUERIES[0]}" --argjson n "$LIMIT_PER_QUERY" '{term: $q, limit: $n}')" \
     2>/dev/null || echo '{}')

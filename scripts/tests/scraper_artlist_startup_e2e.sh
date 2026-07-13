@@ -38,6 +38,9 @@ HEALTH_PORT="${HEALTH_PORT:-9123}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-90}"   # container start_period in Dockerfile is 10s
 POLL_INTERVAL="${POLL_INTERVAL:-2}"
 LOG_TAIL="${LOG_TAIL:-100}"
+# Per fix(scraper) PR + docs/operations/stock-e2e-runbook.md §11.0:
+SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-120}"
+SCRAPER_CONNECT_TIMEOUT_SECONDS="${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}"
 
 # PATTERNS confirmed for /health payload (matches the JSON shape in
 # node-scraper/artlist_server.js::handleHealth):
@@ -101,7 +104,7 @@ LAST_JSON=""
 while [[ ${ELAPSED} -lt ${HEALTH_TIMEOUT} ]]; do
     sleep "${POLL_INTERVAL}"
     ELAPSED=$((ELAPSED + POLL_INTERVAL))
-    HEALTH=$(curl -s --max-time 3 "http://${HEALTH_HOST}:${HEALTH_PORT}/health" || echo "{}")
+    HEALTH=$(curl -sS --connect-timeout "${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}" --max-time "${SCROLL_TIMEOUT:-120}" "http://${HEALTH_HOST}:${HEALTH_PORT}/health" || echo "{}")
     LAST_JSON="${HEALTH}"
     OK=$(echo "${HEALTH}"   | jq -r '.ok // false' 2>/dev/null || echo "false")
     BROWSE=$(echo "${HEALTH}" | jq -r '.browser_running // false' 2>/dev/null || echo "false")
@@ -145,7 +148,7 @@ log_info "Warming scraper browser via curl -fsS http://${HEALTH_HOST}:${HEALTH_P
 # assert /health's last_launch_error did not flip to a string after
 # the warm-up window — a quick re-poll is enough.
 sleep 3
-HEALTH_AFTER=$(curl -s --max-time 3 "http://${HEALTH_HOST}:${HEALTH_PORT}/health" || echo "{}")
+HEALTH_AFTER=$(curl -sS --connect-timeout "${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}" --max-time "${SCROLL_TIMEOUT:-120}" "http://${HEALTH_HOST}:${HEALTH_PORT}/health" || echo "{}")
 LAUNCH_ERR_AFTER=$(echo "${HEALTH_AFTER}" | jq -r '.last_launch_error // null' 2>/dev/null)
 if [[ "${LAUNCH_ERR_AFTER}" == "null" || -z "${LAUNCH_ERR_AFTER}" ]]; then
     log_pass "last_launch_error cleared after warm-up; browser launch was clean"

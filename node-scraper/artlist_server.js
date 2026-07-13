@@ -180,12 +180,31 @@ async function handleSearch(req, res) {
 
   console.log(`[${new Date().toISOString()}] #${reqId} SEARCH term="${term}" limit=${limit}`);
   const t0 = Date.now();
+  // Split connect/total timeout per fix(scraper) (PR-July 2026). Per
+  // godlike/07 minimum-blast-radius + the §11.0 doc-public contract:
+  //   - SCRAPER_CONNECT_TIMEOUT_SECONDS = connect budget (Chromium launch + first page nav)
+  //   - SCROLL_TIMEOUT                  = total budget enforced as Promise.race backstop
+  // The connect split is realized at the bash-wrapper layer (curl --connect-timeout
+  // vs. --max-time); here we enforce the total budget so a runaway Chromium
+  // navigation cannot pin the scraper past the SCROLL_TIMEOUT envelope.
+  const connectTimeoutSeconds = parseInt(process.env.SCRAPER_CONNECT_TIMEOUT_SECONDS || '5', 10);
+  const scrollTimeoutSeconds  = parseInt(process.env.SCROLL_TIMEOUT                  || '120', 10);
+  const scrollTimeoutMs = scrollTimeoutSeconds * 1000;
+  let totalBudgetTimer = null;
+  const totalBudget = new Promise((_, reject) => {
+    totalBudgetTimer = setTimeout(
+      () => reject(new Error(`scraper total budget ${scrollTimeoutSeconds}s exceeded (SCROLL_TIMEOUT env var)`)),
+      scrollTimeoutMs,
+    );
+  });
 
   try {
     const browser = await getBrowser();
     
     // searchArtlist accetta un browser esistente (param 4) per riusare Chromium.
-    const result = await searchArtlist(term, limit, PROFILE_DIR, browser);
+    const job = searchArtlist(term, limit, PROFILE_DIR, browser);
+    const result = await Promise.race([job, totalBudget]);
+    if (totalBudgetTimer) clearTimeout(totalBudgetTimer);
     const elapsed = Date.now() - t0;
     console.log(`[${new Date().toISOString()}] #${reqId} DONE ${result.clips.length} clips in ${elapsed}ms`);
 

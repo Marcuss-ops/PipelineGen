@@ -162,7 +162,11 @@ LIMIT="${LIMIT:-1}"
 
 POLL_INTERVAL="${POLL_INTERVAL:-10}"
 POLL_MAX="${POLL_MAX:-18}"             # 18 * 10s = 180s job wait
-SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-10}" # seconds for Qdrant scroll
+# Per fix(scraper) PR + docs/operations/stock-e2e-runbook.md §11.0:
+#   SCROLL_TIMEOUT = scraper total budget (was 10s, raised to 120s).
+#   SCRAPER_CONNECT_TIMEOUT_SECONDS = connect budget (Chromium cold start + first nav).
+SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-120}"                          # scraper total budget
+SCRAPER_CONNECT_TIMEOUT_SECONDS="${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}"  # connect budget
 CURL_TIMEOUT="${CURL_TIMEOUT:-30}"
 
 LAST_JSON="${LAST_JSON:-/tmp/artlist_live_e2e_last_run.json}"
@@ -352,7 +356,7 @@ log_info "Search term: '${SEARCH_TERM}' (limit=${LIMIT})"
 # exercised in-flight). The node-scraper contract (artlist_search.js)
 # returns { ok:true, term, search_url, clips:[...] } on success.
 log_info "=== § 1: Scraper /search probe (term='${SEARCH_TERM}', limit=${LIMIT}) ==="
-SCRAPER_PROBE=$(curl -s --max-time "${SCROLL_TIMEOUT}" -X POST "${SCRAPER_URL}/search" \
+SCRAPER_PROBE=$(curl -sS --connect-timeout "${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}" --max-time "${SCROLL_TIMEOUT:-120}" -X POST "${SCRAPER_URL}/search" \
     -H 'Content-Type: application/json' \
     -d "$(jq -nc --arg q "${SEARCH_TERM}" --argjson n "${LIMIT}" '{term: $q, limit: $n}')")
 SCRAPER_OK=$(echo "${SCRAPER_PROBE}" | jq -r '.ok           // false')
@@ -686,7 +690,7 @@ for AID in ${ASSET_IDS}; do
     # --- STEP 7+8: Qdrant scroll + payload ---
     # Pre-built QHEADERS array carries the api-key when QDRANT_API_KEY is set.
     log_info "--- 7+8: Qdrant scroll on ${COLLECTION} ---"
-    SCROLL=$(curl -s --max-time "${SCROLL_TIMEOUT}" \
+    SCROLL=$(curl -sS --connect-timeout "${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}" --max-time "${SCROLL_TIMEOUT:-120}" \
         -X POST "${QDRANT_URL}/collections/${COLLECTION}/points/scroll" \
         "${QHEADERS[@]}" \
         -H 'Content-Type: application/json' \
