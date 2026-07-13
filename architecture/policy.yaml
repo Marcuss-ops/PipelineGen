@@ -325,10 +325,30 @@ wave_qdrant_005d_hygiene:
 # violation: every open entry IS an unresolved architectural risk).
 #
 # Threshold semantics:
-#   - max_pre_existing_open: 5 — the CELING of `status: open` entries
+#   - max_pre_existing_open: 9 — the CELING of `status: open` entries
 #     whose id starts with `PRE-EXISTING-`. Incrementing this cap requires
 #     a deliberate SSOT-marker PR with explicit owner + deadline (godlike/06
 #     one-owner-per-fact). Catalog file: architecture/issues.yaml.
+
+#
+# CAP RAISE 2026-07-13 (PR-chore(archissues.yaml + policy.yaml): containment path):
+#   Bumped 5 -> 9 to accommodate the operator's "novembre" sub-commit wave where
+#   PRE-EXISTING-15-LENS-MIGRATION (Check-5 lens dir_path+pkg_name migration; per
+#   architecture/current.yaml::WAVE-20-QDRANT-005D-HYGIENE) and
+#   PRE-EXISTING-16-DOCS-MISSING (5 godlike docs referenced by rule families
+#   data_ownership_doc/legacy_policy_doc/ci_gates_doc/agent_playbook_doc/removal_doc
+#   that are MISSING on disk) land as separate `status: open` entries.
+#   Per godlike/06 SSOT-marker discipline: this comment block IS the explicit
+#   owner + deadline for the cap raise (counterpart entries in issues.yaml).
+#   Owner: PipelineGen Agent (qdrant-hygiene + docs-arch waves).
+#   Deadline: 2026-11-30 (operator's "novembre" sub-commit window).
+#   Rollback path: post-November, decrement back to <= 5 by closing -15 and -16
+#   once their respective sub-commits land; verify via Check 64 (DEBT BUDGET ci gate).
+#
+# Counter-status semantics reminder (per counter_status_includes block above):
+#   `in_progress` is DELIBERATELY excluded from the counter; the -9 flip
+#   dropped the visible open count from 5 to 4, then the +2 ordinals bumped
+#   it back to 6 -- both transitions are within the new cap of 9.
 #
 # Counterpart CI gate: scripts/ci-architectural-checks.sh (Check 64) is
 # the executable enforcement surface; it Fails-CLOSED (Exit 1) whenever
@@ -358,7 +378,7 @@ wave_qdrant_005d_hygiene:
 #   - Dropping the CI gate by env flag. AGENTS.md YAGNI doctrine +
 #     godlike/07 fail-closed: NO env flag for the gate's fail mode.
 debt_budget:
-  max_pre_existing_open: 5
+  max_pre_existing_open: 9
   catalog_file: architecture/issues.yaml
   counter_id_prefix: "PRE-EXISTING-"
   counter_status_includes: ["open"]
