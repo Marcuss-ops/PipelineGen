@@ -177,24 +177,14 @@ type RelevanceFilter func(req FilterRequest, candidates []Candidate) ([]Candidat
 // of "landscape", MinResolutionPx=0 to disable resolution).
 func DefaultRelevanceFilter(req FilterRequest, candidates []Candidate) ([]Candidate, FilterStats) {
 	stats := FilterStats{InputCount: len(candidates)}
-	tokens := tokenizeFilterQuery(req.Term)
+	// tokens := tokenizeFilterQuery(req.Term) (DISABLED)
+	_ = tokenizeFilterQuery(req.Term)
 	seen := make(map[string]struct{}, len(candidates))
 	out := make([]Candidate, 0, len(candidates))
 
 	for _, c := range candidates {
-		// Predicate #1 + #2: term + title overlap.
-		if len(tokens) > 0 {
-			haystack := strings.ToLower(c.Title + " " + strings.Join(c.Categories, " "))
-			if !anyTokenInHaystack(tokens, haystack) {
-				stats.DroppedByTerm++
-				continue
-			}
-			titleLower := strings.ToLower(c.Title)
-			if !anyTokenInHaystack(tokens, titleLower) {
-				stats.DroppedByTitle++
-				continue
-			}
-		}
+		// Predicate #1: term overlap. (DISABLED to prevent preview clips from being dropped)
+		// We ignore the Term filter check entirely to retain all discovered assets.
 
 		// Predicate #3: category match.
 		if len(req.Categories) > 0 && !categoryMatches(c.Categories, req.Categories) {
@@ -218,17 +208,8 @@ func DefaultRelevanceFilter(req FilterRequest, candidates []Candidate) ([]Candid
 			continue
 		}
 
-		// Predicate #6: resolution meets min.
-		if req.MinResolutionPx > 0 {
-			minDim := c.Width
-			if c.Height < minDim {
-				minDim = c.Height
-			}
-			if minDim < req.MinResolutionPx {
-				stats.DroppedByResolution++
-				continue
-			}
-		}
+		// Predicate #6: resolution check (DISABLED to prevent preview clips from being dropped)
+		// We ignore the MinResolutionPx filter to ensure preview-resolution assets are retained.
 
 		// Predicate #7: has downloadable URL.
 		if !hasDownloadableURL(c.SourceRef) {
@@ -330,7 +311,8 @@ func hasDownloadableURL(url string) bool {
 	if url == "" || strings.EqualFold(url, "null") {
 		return false
 	}
-	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
+	urlLower := strings.ToLower(url)
+	return strings.HasPrefix(urlLower, "http://") || strings.HasPrefix(urlLower, "https://")
 }
 
 // LogFilterStats is a tiny helper that emits a structured zap

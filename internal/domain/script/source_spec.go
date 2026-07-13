@@ -6,6 +6,8 @@
 // No durable field uses any, any, or map[string]any.
 package script
 
+import "strings"
+
 // SourceType enumerates the canonical input sources for script generation.
 type SourceType string
 
@@ -313,8 +315,14 @@ type ClipEvidence struct {
 	ClipCount int `json:"clip_count"`
 
 	// AssembledText is the concatenated transcript/description text
-	// ready for the engine prompt.
+	// ready for legacy provenance and compatibility consumers.
 	AssembledText string `json:"assembled_text,omitempty"`
+
+	// NarrativeText is the model-facing projection of the resolved
+	// clip evidence. It contains only narration-safe evidence blocks
+	// and excludes technical markers such as clip IDs, Drive links,
+	// tags and source URLs.
+	NarrativeText string `json:"narrative_text,omitempty"`
 
 	// DriveLinks maps clip_id → Drive URL for downstream rendering.
 	DriveLinks map[string]string `json:"drive_links,omitempty"`
@@ -381,6 +389,20 @@ type ClipEvidence struct {
 	TranscriptHash string `json:"transcript_hash,omitempty"`
 }
 
+// ModelSourceText returns the clip evidence projection that is safe
+// to send to the model. It intentionally fails closed: if NarrativeText
+// is absent, the caller gets an empty string instead of the legacy
+// technical text.
+func (e *ClipEvidence) ModelSourceText() string {
+	if e == nil {
+		return ""
+	}
+	if text := strings.TrimSpace(e.NarrativeText); text != "" {
+		return text
+	}
+	return ""
+}
+
 // ClipDetail carries the primary evidence for a single accepted
 // clip. It is the canonical source of truth for clip-native scene
 // construction (transcription, timestamps, metadata).
@@ -399,6 +421,17 @@ type ClipDetail struct {
 	EndMs int64 `json:"end_ms,omitempty"`
 	// DriveLink is the Google Drive URL for the clip.
 	DriveLink string `json:"drive_link,omitempty"`
+}
+
+// ModelClipView is the model-facing projection of a clip. It strips
+// away technical locators and keeps only evidence that can change the
+// voiceover choice.
+type ModelClipView struct {
+	Ref           string `json:"ref"`
+	Description   string `json:"description,omitempty"`
+	VisualSummary string `json:"visual_summary,omitempty"`
+	Transcript    string `json:"transcript,omitempty"`
+	DurationMs    int64  `json:"duration_ms,omitempty"`
 }
 
 // ExcludedClip records a clip that was filtered out during resolution

@@ -167,7 +167,11 @@ func (g *Generator) GenerateScript(ctx context.Context, req types.TextGeneration
 		// Gemma4 needs a generous token budget: the model "thinks" first,
 		// consuming tokens before the actual response. Budget = JSON structure
 		// overhead (256) + per-clip thinking overhead (512) + char limit ÷ 4.
-		perClipOverhead := 512 * max(1, len(req.ClipIDs))
+		clipCount := len(req.ClipIDs)
+		if clipCount == 0 {
+			clipCount = strings.Count(req.SourceText, "NARRATIVE EVIDENCE ")
+		}
+		perClipOverhead := 512 * max(1, clipCount)
 		options["num_predict"] = 256 + perClipOverhead + (req.MaxChars / 4)
 	} else if _, ok := options["num_predict"]; !ok {
 		options["num_predict"] = types.DefaultNumPredict

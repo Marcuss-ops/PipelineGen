@@ -57,6 +57,25 @@ class ImageEmbedRequest(BaseModel):
     image_path: str  # For image-to-visual embedding (SigLIP image encoder)
 
 
+# ── Batch image-embedding capability (godlike/07 fail-closed batch contract).
+# Caps requests at 512 items so a misconfigured bulk caller cannot OOM the
+# siglip-so400m-patch14-384 inference runtime at request time. Empty batches
+# are rejected at the validator (Pydantic renders them as 422 by FastAPI).
+# The hard upper bound matches the architecture/ownership capacity budget
+# for the visual_ingest job family (≤ 512 frames per call).
+class BatchImageEmbedRequest(BaseModel):
+    image_paths: list[str]  # For batched image-to-visual embedding (1 HTTP round-trip)
+
+    @field_validator("image_paths")
+    @classmethod
+    def _validate_size(cls, v):
+        if not v:
+            raise ValueError("image_paths cannot be empty")
+        if isinstance(v, list) and len(v) > 512:
+            raise ValueError("image_paths batch cannot exceed 512 items")
+        return v
+
+
 class AudioFileEmbedRequest(BaseModel):
     audio_path: str  # For audio-file-to-audio embedding (CLAP audio encoder)
 

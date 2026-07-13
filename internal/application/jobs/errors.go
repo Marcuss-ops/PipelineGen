@@ -163,6 +163,33 @@ var ErrUniqueConstraintViolation = errors.New("appjobs.Service.Enqueue: SQLite U
 // Errors.Is(err, ErrNoHandlerForJobType) is the canonical probe.
 var ErrNoHandlerForJobType = errors.New("appjobs.Service.Enqueue: no handler registered for the requested job type (the job would never be consumed; register a handler first or correct the job type)")
 
+// ErrJobsSvcRequiredAtRegistration marks a nil jobs.Service detected at
+// handler-registration time (e.g. by NonOpsHandler.RegisterJobHandlers).
+// Symmetric with ErrMissingDeps's composition-root contract but scoped to
+// the registration surface specifically (the registration step is where
+// no-handler-registered symptoms surface first).
+//
+// godlike/07 NO-FAKE-AVAILABILITY rationale: the pre-PR nonops path silently
+// returned nil from RegisterJobHandlers when JobsSvc was nil; an operator
+// wiring bulkUploadWorker WITHOUT wiring JobsSvc would see a successful
+// boot and a runtime "no handler registered for bulk_upload_youtube_clips"
+// at first enqueue, with no diagnostic pointing at the missing dep.
+// The typed sentinel surfaces the composition bug immediately at the
+// Registration step so the chain
+//
+//	ClipsDescriptor.RegisterJobHandlers
+// → Handler.RegisterJobHandlers
+// → NonOpsHandler.RegisterJobHandlers
+//
+// fails closed at boot (or any first-register invocation) rather than
+// silently accepting a partial wiring. Production composition roots MUST
+// use NewNonOpsHandlerStrict to reject nil JobsSvc / nil BulkUploadWorker
+// at construction time; this sentinel fires only when the strict guard
+// was bypassed via the legacy nil-tolerant NewNonOpsHandler.
+//
+// Errors.Is(err, ErrJobsSvcRequiredAtRegistration) is the canonical probe.
+var ErrJobsSvcRequiredAtRegistration = errors.New("appjobs: JobsSvc is required at handler-registration time (composition bug; NewNonOpsHandlerStrict must reject nil JobsSvc at construction; the legacy NewNonOpsHandler is nil-tolerant for test fixtures only)")
+
 // ErrMissingDeps marks a nil dependency detected at registration time
 // (typically RegisterHandler / RegisterJobHandler). Surfaced as a typed
 // sentinel so callers (composition root, batch wiring, clipindexer

@@ -12,6 +12,7 @@ from . import (
     siglip_model,
 )
 from .models import (
+    BatchImageEmbedRequest,
     ImageEmbedRequest,
     PhashRequest,
     VisualAnalyzeRequest,
@@ -64,6 +65,84 @@ async def embed_visual_from_image(req: ImageEmbedRequest):
                 "model": VISUAL_MODEL_NAME,
                 "model_version": VISUAL_MODEL_VERSION,
             }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── batch endpoint (godlike/07 fail-closed, signer wire) ────────────────
+# Single HTTP round-trip for N image embeddings. The Go caller uses this
+# whenever it would otherwise issue N sequential /embed_visual_from_image
+# requests (e.g. video-frame backfills, slide-deck ingestion). All N
+# forward passes happen under ONE _inference_sem acquisition so concurrent
+# batch callers serialize rather than fan out across the INFERENCE_CONCURRENCY
+# semaphore slots (protects against CPU + RAM exhaustion when callers
+# bulk-load N=512 in parallel).
+@router.post("/embed_visual_from_images")
+async def embed_visual_from_images(req: BatchImageEmbedRequest):
+    """Generate SigLIP visual embeddings (768d each) for a list of image files.
+
+    Response envelope (order-preserved, response[i] corresponds to
+    request.image_paths[i]):
+
+        {
+          "embeddings": [[768 floats], [768 floats], ...],
+          "dimensions": 768,
+          "count": N,
+          "model": "google/siglip-so400m-patch14-384",
+          "model_version": "2026-06-26-v1"
+        }
+
+    Semi-trusted callers: trust that ALL paths succeed or we surface a
+    single typed error for the whole batch. NO partial-success arrays.
+    Fail-closed semantics (godlike/07):
+      - SKIP_SIGLIP=1 (or model load failure) ⇒ HTTP 501 (re-uses _require_siglip()).
+      - empty / oversized batch ⇒ HTTP 422 (Pydantic validator).
+      - PIL read failure on any path ⇒ HTTP 500 with detail
+        "image_paths[<idx>] PIL open failed: ...". Caller must retry the
+        WHOLE batch; no silent drop of failing items.
+      - any non-200 ⇒ typed error.
+    """
+    _require_siglip()
+    async with _inference_sem:
+        try:
+            from PIL import Image
+
+            imgs = []
+            for idx, p in enumerate(req.image_paths):
+                try:
+                    img = Image.open(p).convert("RGB")
+                    imgs.append(img)
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"image_paths[{idx}] PIL open failed: {type(e).__name__}: {e}",
+                    )
+
+            # True vectorised batched inference. siglip_model.encode accepts a
+            # list of PIL Images and produces one batched forward pass — much
+            # faster than N serial encode() calls under the same semaphore.
+            embeddings = siglip_model.encode(imgs).tolist()
+
+            # Per-vector cross-shape uniformity — godlike/06 SSOT invariant.
+            if not embeddings:
+                raise HTTPException(status_code=500, detail="empty embeddings list from siglip_model.encode")
+            canonical = len(embeddings[0])
+            for i, v in enumerate(embeddings):
+                if len(v) != canonical:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"embeddings[{i}] dimension drift: {len(v)} vs canonical {canonical}",
+                    )
+
+            return {
+                "embeddings": embeddings,
+                "dimensions": canonical,
+                "count": len(embeddings),
+                "model": VISUAL_MODEL_NAME,
+                "model_version": VISUAL_MODEL_VERSION,
+            }
+        except HTTPException:
+            raise  # pass through typed errors
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 

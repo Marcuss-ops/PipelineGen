@@ -116,8 +116,8 @@ func (r *ArtlistDownloadAuditRepository) RecordDownload(ctx context.Context, rec
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO artlist_download_audit (id, provider, account_id, asset_id, external_url, status, downloaded_at, license_id, release_id, project_id, downloaded_by)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, rec.Provider, rec.AccountID, rec.AssetID, rec.ExternalURL, string(rec.Status),
-		downloadedAt, rec.LicenseID, rec.ReleaseID, rec.ProjectID, rec.DownloadedBy,
+		id, rec.Provider, rec.AccountID, rec.AssetID, toNullString(rec.ExternalURL), string(rec.Status),
+		downloadedAt, toNullString(rec.LicenseID), toNullString(rec.ReleaseID), toNullString(rec.ProjectID), toNullString(rec.DownloadedBy),
 	)
 	if err != nil {
 		r.log.Error("artlist_download_audit_repository.RecordDownload failed",
@@ -225,13 +225,19 @@ func (r *ArtlistDownloadAuditRepository) scanRows(ctx context.Context, query str
 	var out []DownloadAuditRow
 	for rows.Next() {
 		var row DownloadAuditRow
+		var externalURL, licenseID, releaseID, projectID, downloadedBy sql.NullString
 		if err := rows.Scan(
-			&row.ID, &row.Provider, &row.AccountID, &row.AssetID, &row.ExternalURL,
-			&row.Status, &row.DownloadedAt, &row.LicenseID, &row.ReleaseID,
-			&row.ProjectID, &row.DownloadedBy, &row.CreatedAt,
+			&row.ID, &row.Provider, &row.AccountID, &row.AssetID, &externalURL,
+			&row.Status, &row.DownloadedAt, &licenseID, &releaseID,
+			&projectID, &downloadedBy, &row.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("artlist_download_audit_repository.listBy scan: %w", err)
 		}
+		row.ExternalURL = externalURL.String
+		row.LicenseID = licenseID.String
+		row.ReleaseID = releaseID.String
+		row.ProjectID = projectID.String
+		row.DownloadedBy = downloadedBy.String
 		out = append(out, row)
 	}
 	return out, rows.Err()

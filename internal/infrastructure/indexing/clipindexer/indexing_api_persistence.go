@@ -34,7 +34,7 @@ func (s *Service) fetchClipSearchInputs(
 	// Qdrant search results for YouTube clips.
 	row := s.db.QueryRowContext(ctx, `
 SELECT COALESCE(name, ''),
-       COALESCE(search_text,
+       COALESCE(NULLIF(search_text, ''),
                 json_extract(COALESCE(metadata_json, '{}'), '$.search_text'),
                 '')
 FROM media_assets WHERE id = ?`, clipID)

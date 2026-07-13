@@ -324,13 +324,19 @@ func TestEngineGenerate_AppendsClipGroundingInstructions(t *testing.T) {
 	captured := gen.capturedReq.Load()
 	require.NotNil(t, captured)
 	assert.Contains(t, captured.Prompt, "CLIP-GROUNDED WRITING RULES:")
-	assert.Contains(t, captured.Prompt, "clip-1, clip-2")
+	assert.Contains(t, captured.Prompt, "narrative evidence blocks")
 	assert.Contains(t, captured.Prompt, "describe what is happening in the clips")
+	assert.Contains(t, captured.Prompt, "do not include URLs, drive links, clip IDs, speaker labels, tag lists, keyword lists")
+	assert.Contains(t, captured.Prompt, "Put technical details only in metadata or bindings")
 	assert.Contains(t, captured.Prompt, "Use exactly 2 clip-driven scenes.")
 	assert.Contains(t, captured.Prompt, "Aim for about 120 words per segment.")
 	assert.Contains(t, captured.Prompt, "Breakfast setup")
 	assert.Contains(t, captured.Prompt, "Street reaction")
 	assert.Contains(t, captured.Prompt, "[OUTPUT_FORMAT]")
+	assert.Empty(t, captured.ClipIDs)
+	assert.NotContains(t, captured.Prompt, "clip-1, clip-2")
+	assert.NotContains(t, captured.Prompt, "clip-1")
+	assert.NotContains(t, captured.Prompt, "clip-2")
 }
 
 func TestEngineGenerate_MemoryGateHit(t *testing.T) {

@@ -9,7 +9,7 @@
       "title": "Manny Pacquiao vs Adrien Broner: recap essenziale",
       "language": "en",
       "tone": "documentary",
-      "style": "Write a tight transcript-like recap. Reuse the exact source cues when possible and avoid creative paraphrase. Keep the sequence and wording close to: opening round, tactical approach, remarkable mobility, exceptional footwork, left jab, measure distance, opponent's rhythm, faster and lighter on his feet, careful study, intense pressure, powerful combinations, uppercut, left hook, corner ropes, overwhelmed, unanimous decision.",
+      "style": "Write a short, natural recap in plain language. Keep it focused on the action and avoid technical markers, URLs, speaker labels, tag lists, and keyword lists.",
       "model": "gemma4:e4b",
       "source": {
         "type": "clips",

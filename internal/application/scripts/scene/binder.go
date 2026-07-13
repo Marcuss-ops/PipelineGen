@@ -139,7 +139,6 @@ func buildScenesFromClipEvidence(plan *scriptpkg.ResolvedGenerationPlan) []scrip
 		if text == "" {
 			text = fmt.Sprintf("Scene %d", i+1)
 		}
-
 		kind := scriptpkg.SceneClip
 		if len(clipIDs) >= 3 {
 			if i == 0 {

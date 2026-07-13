@@ -123,45 +123,58 @@ func NewImageEmbedderAdapter(cfg ImageEmbedderConfig, schema *schema.IndexSchema
 // Compile-time assertion.
 var _ ImageEmbedder = (*imageEmbedderAdapter)(nil)
 
-// EmbedImages calls /embed_visual for each image path and returns the
-// generated embeddings. Returns transport.ErrChannelUnavailable when no sidecar
-// URL is configured.
+// EmbedImages calls /embed_visual_from_images (the canonical batch endpoint)
+// once and returns the generated embeddings. The sidecar accepts N image
+// paths in a single request, runs one batched siglip_model.encode pass under
+// a single _inference_sem acquisition, and returns an order-preserved array
+// of N×768d vectors.
+//
+// N images require 1 HTTP round-trip — replaces the prior N-round-trip
+// per-image loop. Port interface signature unchanged; caller-facing
+// semantics unchanged. Returns transport.ErrChannelUnavailable when no
+// sidecar URL is configured (model wiring absent).
 func (a *imageEmbedderAdapter) EmbedImages(ctx context.Context, imagePaths []string) ([][]float32, error) {
 	if a.serverURL == "" {
 		return nil, &transport.ErrChannelUnavailable{Channel: "visual"}
 	}
-
-	out := make([][]float32, 0, len(imagePaths))
-	for _, path := range imagePaths {
-		vec, err := a.embedSingle(ctx, path)
-		if err != nil {
-			return out, err
-		}
-		out = append(out, vec)
+	if len(imagePaths) == 0 {
+		return [][]float32{}, nil
 	}
-	return out, nil
+	return a.embedBatch(ctx, imagePaths)
 }
 
-func (a *imageEmbedderAdapter) embedSingle(ctx context.Context, imagePath string) ([]float32, error) {
-	// QDRANT-003: call /embed_visual_from_image which accepts {"image_path": "..."}
-	// and uses SigLIP image encoder (768d).
+// embedBatch calls /embed_visual_from_images which accepts
+// {"image_paths": [...]} and returns one batched vector per input path.
+// Single HTTP round-trip for the whole batch.
+//
+// godlike/07 fail-closed batch semantics:
+//   - any non-200 ⇒ propagate the error (do NOT silently drop items).
+//   - response.count != len(imagePaths) ⇒ fail-closed mismatch error.
+//   - per-vector dimension drift ⇒ fail-closed (godlike/06).
+//   - HTTP 501 (model not loaded) ⇒ transport.ErrChannelUnavailable (same
+//     sentinel as the legacy per-image path so callers short-circuit
+//     identically).
+func (a *imageEmbedderAdapter) embedBatch(ctx context.Context, imagePaths []string) ([][]float32, error) {
+	// QDRANT-003: call /embed_visual_from_images which accepts
+	// {"image_paths": [...]} and uses SigLIP image encoder (768d) in a single
+	// batched forward pass.
 	// QDRANT-001: validate canonical sidecar envelope (model, model_version,
-	// dimensions) — reject incomplete or inconsistent responses.
-	payload, err := json.Marshal(map[string]string{"image_path": imagePath})
+	// dimensions, count) — reject incomplete or inconsistent responses.
+	payload, err := json.Marshal(map[string][]string{"image_paths": imagePaths})
 	if err != nil {
-		return nil, fmt.Errorf("marshal visual embed request: %w", err)
+		return nil, fmt.Errorf("marshal visual batch embed request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		a.serverURL+"/embed_visual_from_image", bytes.NewReader(payload))
+		a.serverURL+"/embed_visual_from_images", bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("create visual embed request: %w", err)
+		return nil, fmt.Errorf("create visual batch embed request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("visual embed request failed: %w", err)
+		return nil, fmt.Errorf("visual batch embed request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -171,31 +184,43 @@ func (a *imageEmbedderAdapter) embedSingle(ctx context.Context, imagePath string
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("visual embed HTTP %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("visual batch embed HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	var parsed struct {
-		Embedding    []float64 `json:"embedding"`
-		Dimensions   int       `json:"dimensions"`
-		Model        string    `json:"model"`
-		ModelVersion string    `json:"model_version"`
+		Embeddings   [][]float64 `json:"embeddings"`
+		Dimensions   int         `json:"dimensions"`
+		Count        int         `json:"count"`
+		Model        string      `json:"model"`
+		ModelVersion string      `json:"model_version"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("decode visual embed response: %w", err)
+		return nil, fmt.Errorf("decode visual batch embed response: %w", err)
 	}
 
 	// QDRANT-001: validate canonical sidecar envelope.
 	if parsed.Model == "" {
-		return nil, fmt.Errorf("visual embed: missing 'model' in sidecar response")
+		return nil, fmt.Errorf("visual batch embed: missing 'model' in sidecar response")
 	}
 	if parsed.ModelVersion == "" {
-		return nil, fmt.Errorf("visual embed: missing 'model_version' in sidecar response")
+		return nil, fmt.Errorf("visual batch embed: missing 'model_version' in sidecar response")
 	}
 	if parsed.Dimensions <= 0 {
-		return nil, fmt.Errorf("visual embed: missing or invalid 'dimensions' in sidecar response")
+		return nil, fmt.Errorf("visual batch embed: missing or invalid 'dimensions' in sidecar response")
 	}
-	if parsed.Dimensions != len(parsed.Embedding) {
-		return nil, fmt.Errorf("visual embed: dimensions=%d but embedding length=%d", parsed.Dimensions, len(parsed.Embedding))
+	if parsed.Count != len(imagePaths) {
+		return nil, fmt.Errorf("visual batch embed: count=%d but requested %d", parsed.Count, len(imagePaths))
+	}
+	if len(parsed.Embeddings) != parsed.Count {
+		return nil, fmt.Errorf("visual batch embed: len(embeddings)=%d but count=%d", len(parsed.Embeddings), parsed.Count)
+	}
+
+	// Per-vector dimension check before model-identity (drift surfaces first).
+	for i, vec := range parsed.Embeddings {
+		if len(vec) != parsed.Dimensions {
+			return nil, fmt.Errorf("visual batch embed: embeddings[%d] length=%d but dimensions=%d",
+				i, len(vec), parsed.Dimensions)
+		}
 	}
 
 	// QDRANT-001: validate model identity against the schema.IndexSchema manifest.
@@ -203,27 +228,31 @@ func (a *imageEmbedderAdapter) embedSingle(ctx context.Context, imagePath string
 	if a.schema != nil {
 		if spec := a.schema.GetDense("visual"); spec != nil {
 			if !modelNameMatches(parsed.Model, spec.Model) {
-				return nil, fmt.Errorf("visual embed: model identity mismatch: sidecar returned %q, schema expects %q",
+				return nil, fmt.Errorf("visual batch embed: model identity mismatch: sidecar returned %q, schema expects %q",
 					parsed.Model, spec.Model)
 			}
 			if parsed.Dimensions != spec.Dimensions {
-				return nil, fmt.Errorf("visual embed: dimension mismatch: sidecar returned %d, schema expects %d",
+				return nil, fmt.Errorf("visual batch embed: dimension mismatch: sidecar returned %d, schema expects %d",
 					parsed.Dimensions, spec.Dimensions)
 			}
 		}
 	}
 
-	out := make([]float32, len(parsed.Embedding))
-	for i, v := range parsed.Embedding {
-		out[i] = float32(v)
-	}
-	// Post-conversion canonical 768d guard. The pre-conversion
-	// spec.Dimensions check above only fires when a.serverURL is wired
-	// through NewImageEmbedderAdapter with a non-nil schema (test paths
-	// sometimes pass schema=nil). This guard is the universal
-	// bottleneck so dim drift never reaches Qdrant (godlike/06).
-	if err := validateVisualEmbeddingDim(out); err != nil {
-		return nil, err
+	out := make([][]float32, len(parsed.Embeddings))
+	for i, vec := range parsed.Embeddings {
+		v32 := make([]float32, len(vec))
+		for j, v := range vec {
+			v32[j] = float32(v)
+		}
+		// Post-conversion canonical 768d guard. The pre-conversion
+		// spec.Dimensions check above only fires when a.serverURL is wired
+		// through NewImageEmbedderAdapter with a non-nil schema (test paths
+		// sometimes pass schema=nil). This guard is the universal
+		// bottleneck so dim drift never reaches Qdrant (godlike/06).
+		if err := validateVisualEmbeddingDim(v32); err != nil {
+			return nil, err
+		}
+		out[i] = v32
 	}
 	return out, nil
 }

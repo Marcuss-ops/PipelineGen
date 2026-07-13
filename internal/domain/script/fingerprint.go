@@ -132,8 +132,8 @@ func FingerprintInputFromSource(src SourceSpec, ev *ClipEvidence) GenerationFing
 	}
 
 	if ev != nil {
-		if ev.AssembledText != "" {
-			input.SourceTextHash = sha256Hex(ev.AssembledText)
+		if text := ev.ModelSourceText(); text != "" {
+			input.SourceTextHash = sha256Hex(text)
 		}
 		input.ClipIDs = append([]string(nil), ev.AcceptedClipIDs...)
 		input.ClipTranscriptHashes = append([]string(nil), ev.ClipTranscriptHashes...)
