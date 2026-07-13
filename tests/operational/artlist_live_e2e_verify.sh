@@ -196,7 +196,7 @@ log_pass() { echo "[PASS]  $(date '+%H:%M:%S') $*"; PASS=$((PASS + 1)); }
 log_warn() { echo "[WARN]  $(date '+%H:%M:%S') $*"; WARN=$((WARN + 1)); }
 log_fail() { echo "[FAIL]  $(date '+%H:%M:%S') $*"; FAIL=$((FAIL + 1)); }
 
-auth_header() { echo "Authorization: Bearer ${TOKEN}"; }
+auth_header() { echo "X-Velox-Admin-Token: ${TOKEN}"; }
 
 append_asset_verdict() {
     local id="$1" verdict="$2"
@@ -355,19 +355,35 @@ log_info "Search term: '${SEARCH_TERM}' (limit=${LIMIT})"
 # the live term BEFORE we enqueue the real job (where this proxy is
 # exercised in-flight). The node-scraper contract (artlist_search.js)
 # returns { ok:true, term, search_url, clips:[...] } on success.
-log_info "=== § 1: Scraper /search probe (term='${SEARCH_TERM}', limit=${LIMIT}) ==="
-SCRAPER_PROBE=$(curl -sS --connect-timeout "${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}" --max-time "${SCROLL_TIMEOUT:-120}" -X POST "${SCRAPER_URL}/search" \
-    -H 'Content-Type: application/json' \
-    -d "$(jq -nc --arg q "${SEARCH_TERM}" --argjson n "${LIMIT}" '{term: $q, limit: $n}')")
-SCRAPER_OK=$(echo "${SCRAPER_PROBE}" | jq -r '.ok           // false')
+# § 1 — Live-search probe via the canonical PipelineGen integration
+# boundary `/api/artlist/search/live` (per godlike/06 SSOT to
+# internal/api/assets/artlist/artlist_handlers.go::SearchLive).
+# The scraper's bare `${SCRAPER_URL}/search` is POST-only (per
+# node-scraper/artlist_server.js:140 — returns 405 on GET), so the
+# canonical `-G --data-urlencode` form authenticated via
+# `$(auth_header)` (now `X-Velox-Admin-Token` per
+# internal/api/middleware/admin_token.go:26) applies to the Go API
+# wrapping the same Node searchArtlist. Response shape: `live_enforced`
+# + `clips` come from artlist_handlers.go::SearchLive. `apiutil.OK` is
+# pass-through c.JSON (pkg/apiutil/apiutil.go:73) — does NOT auto-add
+# `ok:true` at root, so SCRAPER_OK MUST extract `.live_enforced` (per
+# godlike/06 SSOT lockstep with the SearchLive contract).
+log_info "=== § 1: Live-search probe (/api/artlist/search/live, term='${SEARCH_TERM}', limit=${LIMIT}) ==="
+SCRAPER_PROBE=$(curl -sS --connect-timeout "${SCRAPER_CONNECT_TIMEOUT_SECONDS:-5}" --max-time "${SCROLL_TIMEOUT:-120}" -G \
+    -H "$(auth_header)" \
+    --data-urlencode "term=${SEARCH_TERM}" \
+    --data-urlencode "limit=${LIMIT}" \
+    "${BASE_URL}/api/artlist/search/live")
+SCRAPER_OK=$(echo "${SCRAPER_PROBE}" | jq -r '.live_enforced // false')
 SCRAPER_CLIPS=$(echo "${SCRAPER_PROBE}" | jq -r '.clips        | length // 0' 2>/dev/null || echo "0")
 
-if [[ "${SCRAPER_OK}" != "true" ]]; then    SCRAPER_ERR=$(echo "${SCRAPER_PROBE}" | jq -r '.error // "<no .error field>"')
-    log_fail "scraper /search returned ok=false: ${SCRAPER_ERR}"
+if [[ "${SCRAPER_OK}" != "true" ]]; then
+    SCRAPER_ERR=$(echo "${SCRAPER_PROBE}" | jq -r '.error // "<no .error field>"')
+    log_fail "live-search probe (/api/artlist/search/live) returned live_enforced=false: ${SCRAPER_ERR}"
 elif [[ "${SCRAPER_CLIPS}" -ge 1 ]]; then
-    log_pass "scraper /search returned ${SCRAPER_CLIPS} candidate(s) — job enqueue may proceed"
+    log_pass "live-search probe (/api/artlist/search/live) returned ${SCRAPER_CLIPS} candidate(s) — job enqueue may proceed"
 else
-    log_warn "scraper /search returned 0 candidates — job enqueue may still succeed via fallback"
+    log_warn "live-search probe (/api/artlist/search/live) returned 0 candidates — job enqueue may still succeed via fallback"
 fi
 
 # ============================================================
