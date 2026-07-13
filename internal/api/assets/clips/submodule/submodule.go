@@ -5,7 +5,16 @@
 // Each sub-descriptor is a thin wrapper around a RouteRegistrar: a
 // small handler cluster that already knows how to register its own
 // routes. The wrapper turns that cluster into a canonical
-// api.Descriptor so the parent clips module can aggregate them.
+// *Descriptor so the parent clips module can aggregate them AND
+// expose the typed sub-descriptor pointer on the upper ClipsModule
+// struct (godlike/06 minimum-needed cross-package surface).
+//
+// PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE (July 2026): Build returns
+// the *Descriptor concrete (not the generic api.Descriptor
+// interface) so callers can do `module.Catalog.RegisterRoutes(rg)`
+// against the typed concrete — godlike/06 SSOT one-canonical-owner
+// per fact: the typed contract IS the per-sub-module contract, no
+// generic bridge allocation.
 package submodule
 
 import (
@@ -42,22 +51,33 @@ type Deps struct {
 }
 
 // Descriptor is the concrete api.Descriptor returned by Build.
+// Exposed typed so the parent ClipsModule struct can hold
+// `*catalog.Descriptor` / `*ingest.Descriptor` / etc. fields with
+// the per-cluster concrete type (godlike/06 SSOT: minimum-needed
+// cross-package surface, no premature interface widening).
 type Descriptor struct {
-	Module api.Module
+	module api.Module
 }
 
 // Name returns the module name.
-func (d *Descriptor) Name() string { return d.Module.Name() }
+func (d *Descriptor) Name() string { return d.module.Name() }
 
 // Enabled forwards to the module's closure.
-func (d *Descriptor) Enabled() bool { return d.Module.Enabled() }
+func (d *Descriptor) Enabled() bool { return d.module.Enabled() }
 
 // RegisterRoutes forwards to the module.
-func (d *Descriptor) RegisterRoutes(rg *gin.RouterGroup) { d.Module.RegisterRoutes(rg) }
+func (d *Descriptor) RegisterRoutes(rg *gin.RouterGroup) { d.module.RegisterRoutes(rg) }
 
-// Build wraps the supplied RouteRegistrar in a canonical
-// api.Descriptor. Missing mandatory deps fail closed.
-func Build(d Deps) (api.Descriptor, error) {
+// godlike/06 SSOT: the Descriptor's `module` field is exposed
+// read-only through the Module accessor for construction-sites
+// (api.NewRouteModule calls) that need the underlying Module
+// value. Cross-package consumers stay agnostic and use the typed
+// *Descriptor pointer.
+func (d *Descriptor) Module() api.Module { return d.module }
+
+// Build wraps the supplied RouteRegistrar in a canonical *Descriptor.
+// Missing mandatory deps fail closed (godlike/07 NO-FAKE-AVAILABILITY).
+func Build(d Deps) (*Descriptor, error) {
 	if d.Handler == nil {
 		return nil, fmt.Errorf("submodule.Build: Handler is required for sub-descriptor %q", d.Name)
 	}
@@ -77,7 +97,7 @@ func Build(d Deps) (api.Descriptor, error) {
 		log,
 		d.ModuleOpts...,
 	)
-	return &Descriptor{Module: mod}, nil
+	return &Descriptor{module: mod}, nil
 }
 
 // registrarAdapter adapts a RouteRegistrar to the api.Module
