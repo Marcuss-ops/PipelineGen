@@ -366,55 +366,6 @@ docker-bootstrap-smoke:
 ci: go-version-check fmt vet tidy-check lint test coverage-check build
 	@echo "✅ All CI checks passed!"
 
-# verify-main — Cleanup Plan P0-3 (June 2026): the canonical fail-closed
-# pre-push gate. Action card P0-3 wires this into the local-mirror rule
-# ("every push to `main` MUST pass locally first"). Mirrors the
-# `.github/workflows/ci.yml` chain so a green local signal is a sufficient
-# proxy for a green CI signal — same commands, same failure semantics.
-#
-# FAIL-CLOSED contract:
-#   - `&&` between commands: any failing step aborts the chain immediately.
-#   - NO `|| true`, NO `|| echo`, NO fallbacks.
-#   - exit code = the first command that failed (Go make yields the right
-#     one automatically; bash `&&` does the same).
-#
-# P0.3 fixes (June 2026):
-#   - verify-format already fail-closed via `test -z "$(gofmt -l .)"`
-#     (gofmt -l exits 0 even with unformatted files — the test -z guard
-#     catches them).
-#   - Added -race to go test (previously only in dedicated CI job).
-#   - Added tidy-check (go mod tidy + git diff --exit-code) to catch
-#     stale go.mod/go.sum before push.
-#
-# Order rationale:
-#   1. `verify-format`        — fail-closed gofmt gate (DEPENDENCY,
-#                                target below). Catches unformatted diffs
-#                                in seconds. MUST fail before any other
-#                                step that costs minutes.
-#   2. `tidy-check`           — go.mod/go.sum correctness; cheap.
-#   3. `go vet ./...`         — static analysis; semantically cheap.
-#   4. `go test -race ./...`  — heaviest pre-build step with race
-#                                detector enabled.
-#   5. `go build ./...`       — full project type-check.
-#   6. architecture-aggregate — schema-level cross-check on
-#                                architecture/ownership.generated.yaml.
-#   7. archcheck --strict     — gate-promoted phase-0 governance check.
-#   8. ci-architectural-checks — the long-standing legacy fallback kept
-#                                as the LAST step so an arch drift at
-#                                step 6/7 surfaces before the legacy
-#                                check masks it.
-# verify-main is gated on go-version-check per the existing pattern
-# (build, vet, tidy-check, ci all carry the same precondition). An
-# operator on a stale host Go gets the canonical "Go version mismatch"
-# error from go-version-check instead of an obscure toolchain crash
-# further along the chain.
-#
-# Fail-closed chain is folded into ONE shell invocation via \-line
-# continuation + `&&` chaining. Without the \-continuation Make runs
-# each recipe line in its own subshell, so a fast failure on line 1
-# would NOT abort lines 2-7 (the first 6 commands would still execute).
-# The \-continuation collapses them into one shell with `set -e`-like
-# `&&` semantics: first failure exits non-zero and aborts the chain.
 # verify-no-secrets — canonical wire-in for the no-secrets gate
 # (scripts/ci/ci-no-secrets-audit.sh). GODLIKE/06 SSOT lockstep: the
 # script at scripts/ci/ci-no-secrets-audit.sh is the canonical owner
