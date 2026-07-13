@@ -2,6 +2,15 @@
 // sources into a ResolvedSource. It performs semantic search via a
 // pluggable SemanticSearchPort (backed by Qdrant in production), then
 // uses ClipSourceBuilder to build context from the matched clips.
+//
+// FASE-7 move-only refactor (July 2026): the
+// deduplicate-and-collect-clip-IDs loop is delegated to the canonical
+// ClipSampler port (usecase/clip_sampler_impl.go). The resolver
+// normalizes raw SemanticSearchResult rows into
+// []ports.ClipSamplerCandidate and calls the registry's sampler in
+// ONE place. There is no resolver-local copy of the dedup+select
+// loop anymore (godlike/06 SSOT; the user's "vietati tre sampler
+// separati" constraint is enforced structurally).
 package usecase
 
 import (
@@ -10,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
@@ -36,6 +46,11 @@ type SemanticSearchResult struct {
 // SearchSourceResolver resolves SourceSearch sources by performing
 // semantic search and building ClipEvidence via ClipSourceBuilder.
 //
+// godlike/06 SSOT: the selection/limit/coverage logic is delegated
+// to the canonical ClipSampler port (single impl). This resolver
+// owns only the per-source raw-to-candidate mapping + the
+// post-clipBuilder hydration phase.
+//
 // Unit tests currently only exercise Phase 1
 // (search port error paths); Phase 2 (ClipSourceBuilder context
 // assembly) needs a testable fake ClipSourceBuilder. Same gap
@@ -43,20 +58,26 @@ type SemanticSearchResult struct {
 type SearchSourceResolver struct {
 	search      SemanticSearchPort
 	clipBuilder *ClipSourceBuilder
+	samplerReg  *ClipSamplerRegistry // FASE-7: single source of selection logic
 	log         *zap.Logger
 }
 
 // NewSearchSourceResolver creates a SearchSourceResolver.
-// search and clipBuilder must be non-nil (enforced at registration
-// time by wire_script.go).
+// search, clipBuilder, and samplerReg must all be non-nil
+// (composition root wiring enforces this via
+// wire_script_resolvers.go — the buildScriptSourceResolvers
+// factory constructs NewClipSamplerRegistry() once and passes
+// it to every resolver).
 func NewSearchSourceResolver(
 	search SemanticSearchPort,
 	clipBuilder *ClipSourceBuilder,
+	samplerReg *ClipSamplerRegistry,
 	log *zap.Logger,
 ) *SearchSourceResolver {
 	return &SearchSourceResolver{
 		search:      search,
 		clipBuilder: clipBuilder,
+		samplerReg:  samplerReg,
 		log:         log,
 	}
 }
@@ -68,6 +89,10 @@ func NewSearchSourceResolver(
 // ClipGenerationOptions.Language/Tone/Model/Style/TargetWords.
 // Semantic search results don't carry language context; the
 // canonical source is resolutionContext.
+//
+// FASE-7 move-only: dedupe+limit+coverage replaced by a single
+// ClipSampler.Select call. Caller-tagged "search" propagated
+// to the sampler for audit logging only.
 func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.SourceSpec, resCtx scriptpkg.SourceResolutionContext) (*scriptpkg.ResolvedSource, error) {
 	if r == nil || r.search == nil {
 		return nil, &scriptpkg.NoSourceError{
@@ -105,47 +130,34 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 		}
 	}
 
-	// Deduplicate and collect clip IDs. Defensive — semantic search
-	// should not return duplicates, but the identity layer is the
-	// single place to enforce uniqueness.
-	seen := make(map[string]struct{}, limit)
-	clipIDs := make([]string, 0, limit)
-	searchItems := make([]scriptpkg.SearchResultItem, 0, limit)
+	// FASE-7 move-only: normalize raw SemanticSearchResult rows
+	// into canonical sampler candidates, then delegate to the
+	// single ClipSampler impl. There is no resolver-local copy
+	// of the dedup+select+coverage loop anymore.
+	candidates := make([]ports.ClipSamplerCandidate, 0, len(results))
 	for _, result := range results {
-		id := strings.TrimSpace(result.ClipID)
-		if id == "" {
-			continue
-		}
-		if _, dup := seen[id]; dup {
-			continue
-		}
-		seen[id] = struct{}{}
-		clipIDs = append(clipIDs, id)
-		searchItems = append(searchItems, scriptpkg.SearchResultItem{
-			ClipID: id,
+		candidates = append(candidates, ports.ClipSamplerCandidate{
+			ClipID: strings.TrimSpace(result.ClipID),
 			Name:   result.Name,
 			Score:  result.Score,
 			Source: "semantic",
 		})
-		if len(clipIDs) >= limit {
-			break
-		}
 	}
 
-	// Check coverage if requested.
-	if minCoverage > 0 && limit > 0 {
-		coverage := float64(len(clipIDs)) / float64(limit)
-		if coverage < minCoverage {
-			return nil, &scriptpkg.SourceResolutionError{
-				SourceType:  scriptpkg.SourceSearch,
-				Query:       query,
-				ResultCount: len(clipIDs),
-				Inner:       fmt.Errorf("search coverage %.2f below required minimum %.2f", coverage, minCoverage),
-			}
-		}
+	selection, err := r.samplerReg.SamplerFor(ClipSamplerCallerSearch).Select(
+		ports.ClipSamplerRequest{
+			Query:         query,
+			Limit:         limit,
+			MinCoverage:   minCoverage,
+			SourceType:    scriptpkg.SourceSearch,
+			CallingSource: ClipSamplerCallerSearch,
+		},
+		candidates,
+	)
+	if err != nil {
+		return nil, err
 	}
-
-	if len(clipIDs) == 0 {
+	if len(selection.ClipIDs) == 0 {
 		return nil, &scriptpkg.SourceResolutionError{
 			SourceType:  scriptpkg.SourceSearch,
 			Query:       query,
@@ -153,6 +165,8 @@ func (r *SearchSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 			Inner:       fmt.Errorf("no semantic search results for query %q", query),
 		}
 	}
+	clipIDs := selection.ClipIDs
+	searchItems := selection.SearchItems
 
 	// Phase 2: build clip context via shared hydration helper.
 	if r.clipBuilder == nil {

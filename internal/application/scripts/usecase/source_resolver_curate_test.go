@@ -93,6 +93,7 @@ func makePackForIDs(ids []string) *scriptpkg.ClipEvidence {
 func makeTestCurateResolver(builder clipContextBuilder) *CurateSourceResolver {
 	return &CurateSourceResolver{
 		clipBuilder: builder,
+		samplerReg:  NewClipSamplerRegistry(),
 		log:         zap.NewNop(),
 	}
 }
@@ -136,7 +137,7 @@ func TestCurateResolver_NilReceiver(t *testing.T) {
 
 func TestCurateResolver_NilBuilder(t *testing.T) {
 	t.Parallel()
-	r := &CurateSourceResolver{log: zap.NewNop()}
+	r := &CurateSourceResolver{log: zap.NewNop(), samplerReg: NewClipSamplerRegistry()}
 	_, err := r.Resolve(context.Background(), srcSpec("q", nil, false, false), makeTestResCtx())
 	if err == nil || !strings.Contains(err.Error(), "clipBuilder is nil") {
 		t.Fatalf("expected nil builder error, got %v", err)

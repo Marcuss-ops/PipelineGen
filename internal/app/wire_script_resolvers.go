@@ -79,6 +79,14 @@ func buildScriptSourceResolvers(
 ) {
 	gen := root.AI.ScriptGen
 
+	// FASE-7 move-only refactor (July 2026): ClipSampler is the
+	// SINGLE shared selection port for search/catalog/curate
+	// resolvers. The registry holds one impl; SamplerFor(caller)
+	// returns the same instance for every resolver with a
+	// caller-tagged audit context. godlike/06 SSOT forbids per-
+	// resolver sampler impls.
+	samplerReg := usecase.NewClipSamplerRegistry()
+
 	// ── Clip source builder ────────────────────────────────────────
 	var clipSourceBuilder *usecase.ClipSourceBuilder
 	if gen != nil {
@@ -145,7 +153,7 @@ func buildScriptSourceResolvers(
 	// *catalog.Repository → search.LocalCatalogPort.
 	if root.Repos.CatalogRepo != nil && clipSourceBuilder != nil {
 		catAdapter := &searchCatalogAdapter{catalog: root.Repos.CatalogRepo}
-		sourceReg.Register(scriptpkg.SourceCatalog, usecase.NewCatalogSourceResolver(catAdapter, clipSourceBuilder, log))
+		sourceReg.Register(scriptpkg.SourceCatalog, usecase.NewCatalogSourceResolver(catAdapter, clipSourceBuilder, samplerReg, log))
 	}
 
 	// ── Qdrant embedder (shared by SemanticSearchPort and ClipSearchPort) ──
@@ -164,14 +172,14 @@ func buildScriptSourceResolvers(
 			vectorName: "text",
 			log:        log,
 		}
-		sourceReg.Register(scriptpkg.SourceSearch, usecase.NewSearchSourceResolver(searchPort, clipSourceBuilder, log))
+		sourceReg.Register(scriptpkg.SourceSearch, usecase.NewSearchSourceResolver(searchPort, clipSourceBuilder, samplerReg, log))
 		log.Info("SourceSearch resolver wired (Qdrant + Ollama embedder)")
 	}
 
 	// Curate resolver — gated on clipSourceBuilder.
 	var curateResolver *usecase.CurateSourceResolver
 	if clipSourceBuilder != nil {
-		curateResolver = usecase.NewCurateSourceResolver(clipSourceBuilder, log)
+		curateResolver = usecase.NewCurateSourceResolver(clipSourceBuilder, log, samplerReg)
 		sourceReg.Register(scriptpkg.SourceCurate, curateResolver)
 	}
 
