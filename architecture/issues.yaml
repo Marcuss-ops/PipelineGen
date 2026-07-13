@@ -755,3 +755,72 @@ issues:
     opened_date: "2026-07-13"
     closed_date: "2026-07-13"
     tracking_issue: "godlike/06 SSOT single-source-of-truth; godlike/07 zero-baseline auto-cure property; AGENTS.md Operational rule 'Atomic commits, no bundling' (this fix is one commit, one entry-published resolution, one test-target retarget)"
+
+  # ── PRE-EXISTING-18-CLIPS-NIL-PORT-503 — clips ops nil-port contract (ST-VERIFY-16) ──
+  # Commit E nil-port-503 contract (July 13 2026): a nil ClipsRepository
+  # underneath OpsHandler MUST return HTTP 503 Service Unavailable per
+  # godlike/07 fail-closed semantics, NOT HTTP 400 (misclassified
+  # bad-request), NOT HTTP 200 (silent no-op), NOT HTTP 500 (nil-method
+  # panic). The 4 sibling guards already exist in clip_integrity_handler.go
+  # (`if oh.clipOpsService == nil { ... 503 ... }`) for the clipOpsService
+  # port; this fix completes the 5th nil-port contract on
+  # folder_query_handler.go for the clipsRepo port.
+  #
+  # Pre-fix diagnostic (this commit's check):
+  #   `go test -race -v -run TestClipsQueryPort_CompositionWiring ./internal/api/assets/clips`
+  #   FAIL: expected http.StatusServiceUnavailable (503), actual http.StatusBadRequest (400).
+  #   The 5 read routes (ListFolders + FolderStatus + GetFolderChildren +
+  #   GetTree + GetBreadcrumb) in folder_query_handler.go all dereferenced
+  #   oh.clipsRepo via oh.repoForSource(...) without a preceding nil-port
+  #   guard, falling through to the 400 path when the typed-nil
+  #   propagated.
+  #
+  # Resolution (this commit): added canonical nil-port-503 guard at the
+  # entry of all 5 read routes in folder_query_handler.go
+  # (`if oh.clipsRepo == nil { apiutil.Error(c, http.StatusServiceUnavailable, "clips query port not wired"); return }`)
+  # matching the existing 4-sibling guard pattern in clip_integrity_handler.go.
+  # NO new imports beyond apiutil (already imported in pkg) + net/http
+  # (likely new; required for http.StatusServiceUnavailable constant).
+  #
+  # Regression coverage: 4 sibling 503/400 contract tests continue to
+  # PASS (TestHandler_Cleanup_503_NoService + TestHandler_VerifyClip_503_NoService
+  # + TestHandler_Cleanup_400_InvalidSource + TestHandler_Cleanup_400_MalformedJSON);
+  # package-wide `go test -race ./internal/api/assets/clips` shows no
+  # new red spots compared to ST-VERIFY-15 baseline.
+  #
+  # Doctrinal alignment: godlike/07 fail-closed (no false 400, no silent
+  # 200, no 500 panic); godlike/06 SSOT pattern-parity with the 4 sibling
+  # nil-port guards (all 5 nil-port sites in internal/api/assets/clips now
+  # use the canonical 503 shape).
+  #
+  # Ticket-structure rationale (godlike/06 one-owner-per-fact):
+  # PRE-EXISTING-2-INTERNAL-APP-COMPOSITION's owner_capability is
+  # `internal/app (composition root + registry_internal_modules)` whereas
+  # this bug lives at `internal/api/assets/clips/folder_query_handler.go` —
+  # different first-level pkg, different work-stream, different owner.
+  # Fresh PRE-EXISTING-18 entry preserves owner-cleanliness across pkg
+  # boundaries. Counter impact: 0 (status:resolved lands directly; excluded
+  # from open-count per counter_status_includes=["open"]).
+  #
+  # Verification (this commit, bounded):
+  #   go test -race -v -count=3 -run TestClipsQueryPort_CompositionWiring ./internal/api/assets/clips -> PASS exit 0
+  #   go vet ./internal/api/assets/clips/... -> exit 0
+  #   go build ./... -> exit 0 (full-repo compile-clean)
+  #   go test -count=0 ./internal/api/assets/clips/... -> compile-clean
+  #   gofmt -l . -> empty (no new drift)
+  #   5 sibling 503/400 contract tests -> continue PASS (no regression)
+  - id: PRE-EXISTING-18-CLIPS-NIL-PORT-503
+    title: "TestClipsQueryPort_CompositionWiring nil-port contract drift — OpsHandler read routes returned HTTP 400 instead of canonical HTTP 503 (godlike/07 fail-closed)"
+    status: resolved
+    severity: p2
+    owner_capability: "internal/api/assets/clips/folder_query_handler.go (5 read routes + repoForSource — the ClipsQueryPort dereference surface)"
+    follow_up:
+      - "Action (closed): added canonical `if oh.clipsRepo == nil { apiutil.Error(c, http.StatusServiceUnavailable, \"clips query port not wired\"); return }` guard at the entry of all 5 read routes (ListFolders + FolderStatus + GetFolderChildren + GetTree + GetBreadcrumb), matching the 4-sibling pattern in clip_integrity_handler.go. NO new logic; pattern-parity holds."
+      - "Pre-fix diagnostic: GET /api/clips/youtube/folders routed through OpsHandler.ListFolders → oh.repoForSource → nil chain → fell through to a generic 400 bad-request path. Test asserted 503 per godlike/07 fail-closed semantics + 'Commit E nil-port-503 contract' docstring."
+      - "Regression-coverage guard: 4 sibling tests (TestHandler_Cleanup_503_NoService + TestHandler_VerifyClip_503_NoService + TestHandler_Cleanup_400_InvalidSource + TestHandler_Cleanup_400_MalformedJSON) continue to PASS — fix is purely-additive, not a behavior reversal."
+      - "All 5 nil-port guards in internal/api/assets/clips now use the canonical 503 shape (`apiutil.Error(c, http.StatusServiceUnavailable, \"... not wired\")`). Pattern-parity holds pkg-wide per godlike/06 SSOT."
+      - "Do NOT regress this fix by introducing a fallback path that returns 200 with empty body; that would silently mask the wiring bug and violate godlike/07 fail-closed semantics."
+    evidence_filename: "go test -race -v -count=3 -run TestClipsQueryPort_CompositionWiring ./internal/api/assets/clips + package-wide go test -race ./internal/api/assets/clips regression sweep (this commit's diagnostic verbatim; per AGENTS.md 'Git history is the archive' rule, commit message body IS the canonical trace; no separate .md attachment)"
+    opened_date: "2026-07-13"
+    closed_date: "2026-07-13"
+    tracking_issue: "godlike/07 fail-closed nil-port contract enforcement across all 5 nil-port sites in internal/api/assets/clips; godlike/06 SSOT pattern-parity with the 4 sibling guards in clip_integrity_handler.go; AGENTS.md Operational rule 'Atomic commits, no bundling'"
