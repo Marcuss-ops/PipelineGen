@@ -199,15 +199,18 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			Log:            d.Log,
 		}),
 		// BulkUploadTransport (DRIFT-CLIPS-BULK-SPLIT-5 + reconnector
-		// patch, July 2026): the SINGLE HTTP route
-		// POST /:source/clips/bulk-upload-youtube-clips. All 5 deps
-		// come straight from the orchestrator Deps bag.
+		// patch, July 2026; PR-13, July 2026 — runtime-tunable noise
+		// dropped): the SINGLE HTTP route
+		// POST /:source/clips/bulk-upload-youtube-clips. The transport
+		// receives JobsSvc + the 3 storage base paths + the worker +
+		// log. DriveAdmin + Publisher dropped because Drive folder
+		// resolution is not a transport responsibility.
 		bulkTransport: NewBulkUploadTransport(BulkTransportDeps{
 			JobsSvc:          d.JobsSvc,
-			DriveAdmin:       d.DriveAdmin,
-			Cfg:              d.Cfg,
+			MediaPath:        d.Cfg.Storage.MediaPath(),
+			TempPath:         d.Cfg.Storage.TempPath(),
+			DataDir:          d.Cfg.Storage.AbsDataDir(),
 			BulkUploadWorker: d.BulkUploadWorker,
-			Publisher:        d.Publisher,
 			Log:              d.Log,
 		}),
 	}

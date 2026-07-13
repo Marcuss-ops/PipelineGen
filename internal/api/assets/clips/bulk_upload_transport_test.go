@@ -1,21 +1,20 @@
 // Package clips (test) — bulk_upload_transport_test.go.
 //
 // Regression pin for the DRIFT-CLIPS-BULK-SPLIT-5 reconnect patch
-// (July 2026). Handler.RegisterRoutes MUST mount the
-// BulkUploadTransport sub-handler so that
-// POST /:source/clips/bulk-upload-youtube-clips returns 200 (dry-run)
-// or 202 (async enqueue) — NOT 404 (which would mean the sub-handler
-// was silently disconnected from the orchestrator by some future
-// refactor of the Split-1/2/3/4/5 chain).
+// (July 2026). BulkUploadTransport MUST mount its route at
+// POST /:source/clips/bulk-upload-youtube-clips so the canonical
+// enqueue path returns 202 (async enqueue) or 503 (JobsSvc not
+// configured in the test fixture) — NOT 404 (which would mean the
+// sub-handler was silently disconnected).
 //
-// The dry-run path is exercised so this regression test stays
-// runtime-self-contained: it does NOT need a JobsSvc stub because
-// the handler short-circuits to apiutil.OK(200) BEFORE touching
-// bt.jobsSvc. The 1-line JobRegistrar equivalent (the 8-method
-// job.Service interface satisfaction) is intentionally NOT
-// included — a regression in the dispatch chain is a SEPARATE
-// concern covered by the live /readyz canary + the worker-side
-// handler-registration diagnostic.
+// PR-13 (July 2026): the canonical client surface is the 4-field
+// payload {local_folder, drive_folder_id, source, category}. Dry-run,
+// skip_*, subdir flag, file/skip patterns are GONE.
+//
+// The orchestrator-level wiring (Handler → bulkRegistrar →
+// BulkUploadTransport.RegisterRoutes) is now covered by the
+// composition-root E2E + archcheck gate; this transport-level test
+// verifies the route is mounted and the handler non-404 forwards.
 package clips
 
 import (
@@ -31,15 +30,23 @@ import (
 )
 
 func TestBulkUploadTransport_RouteRegistered(t *testing.T) {
-	tmp := t.TempDir() // ScanLocalClips mandates an existing directory
-	h := NewHandler(Deps{Log: zap.NewNop()}, nil)
+	tmp := t.TempDir()
+	bt := NewBulkUploadTransport(BulkTransportDeps{
+		JobsSvc:          nil,
+		MediaPath:        tmp,
+		TempPath:         tmp,
+		DataDir:          tmp,
+		BulkUploadWorker: nil,
+		Log:              zap.NewNop(),
+	})
+
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	g := r.Group("/api/clips") // mirrors clips/module.go production mount
-	h.RegisterRoutes(g)        // installs :source/clips/bulk-upload-youtube-clips
+	g := r.Group("/api/clips")
+	bt.RegisterRoutes(g, func(c *gin.Context) { c.Next() })
 
 	body := fmt.Sprintf(
-		`{"local_folder":%q,"drive_folder_id":"d-stale","dry_run":true,"limit":0}`,
+		`{"local_folder":%q,"drive_folder_id":"d-stale"}`,
 		tmp,
 	)
 	req := httptest.NewRequest(
@@ -52,8 +59,9 @@ func TestBulkUploadTransport_RouteRegistered(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.NotEqual(t, http.StatusNotFound, w.Code,
-		"BulkUploadTransport disconnected from orchestrator (P0 regression: sub-handler dropped from Handler.RegisterRoutes)")
-	require.True(t, w.Code == http.StatusOK || w.Code == http.StatusAccepted,
-		"want 200 (dry-run) or 202 (async enqueue), got %d body=%s",
+		"BulkUploadTransport route not registered (P0 regression: sub-handler dropped from RegisterRoutes)")
+	require.True(t,
+		w.Code == http.StatusAccepted || w.Code == http.StatusServiceUnavailable,
+		"want 202 (async enqueue) or 503 (JobsSvc not configured in test fixture), got %d body=%s",
 		w.Code, w.Body.String())
 }

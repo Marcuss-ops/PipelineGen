@@ -45,30 +45,36 @@ import (
 // the outbox INSERT share a single transaction.
 //
 // Pre-split semantics preserved:
-//   - pubRes may be nil (SkipUpload gate): the asset.Asset is
-//     still built and persisted (local-only path), Drive-side
-//     fields are simply left empty.
 //   - targetFolderID is the resolved folder id from the
-//     .mp4 publish (pubRes.FolderID if available, else
-//     payload.DriveFolderID for SkipUpload).
+//     .mp4 publish (pubRes.FolderID).
 //   - The transcript is truncated to 200000 bytes on the
 //     clean_transcript slot; transcript_truncated=true is set on
 //     truncation so downstream enrichment can flag the
 //     lossy-compression.
 //   - The manifest's youtube_video_id / youtube_url + tags are
 //     copied onto the asset via SetMetadataString / append.
+//
+// PR-13 (July 2026): SkipUpload gate retired — pubRes is always
+// non-nil at the worker's call site. Fail closed (typed error)
+// rather than crashing on a regression that re-introduces nil.
 func registerClip(
 	ctx context.Context,
 	dispatcher mutations.AssetMutationDispatcher,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
 	cand clipCandidate,
-	pubRes *delivery.PublishResult, // nil if SkipUpload
+	pubRes *delivery.PublishResult, // always non-nil after PR-13 (SkipUpload gate retired)
 	fileHash string,
 	targetFolderID string,
 	log *zap.Logger,
 ) error {
 	if dispatcher == nil {
 		return fmt.Errorf("bulk upload dispatcher not configured (QDRANT-asset-mutation isolation required): %w", mutations.ErrDispatcherUnavailable)
+	}
+	// PR-13 (July 2026): SkipUpload gate retired — pubRes is always
+	// non-nil at the worker's call site. Fail closed (typed error)
+	// rather than crashing on a regression that re-introduces nil.
+	if pubRes == nil {
+		return fmt.Errorf("registerClip: pubRes must be non-nil (PR-13 retired the SkipUpload gate; publishClip must run before register)")
 	}
 
 	now := time.Now().UTC()
@@ -117,11 +123,9 @@ func registerClip(
 			}
 		}
 	}
-	if pubRes != nil {
-		clip.SetDriveLink(pubRes.WebViewLink)
-		clip.SetDownloadLink(pubRes.DownloadLink)
-		clip.SetDriveFileID(pubRes.FileID)
-	}
+	clip.SetDriveLink(pubRes.WebViewLink)
+	clip.SetDownloadLink(pubRes.DownloadLink)
+	clip.SetDriveFileID(pubRes.FileID)
 	if cand.Transcript != "" {
 		if clip.Metadata == nil {
 			clip.Metadata = make(map[string]any)

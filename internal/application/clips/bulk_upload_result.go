@@ -6,28 +6,22 @@
 // internal/application/clips/bulk_upload_worker.go as part of the
 // 7-file worker-pipeline split.
 //
-// The result map is consumed by:
-//   - the broker's job-outcome renderer (the JSON becomes part of
-//     the canonical job.result envelope),
-//   - downstream reconciliation poller screens,
-//   - operator dashboards pinning "bulk_upload_youtube_clips"
-//     progress.
+// PR-13 (July 2026): the result map was slimmed to the canonical
+// 3 counters (uploaded / committed / failed) + audit echoes
+// (local_folder / drive_folder) + the failures cap. Retired the
+// pre-PR-13 always-zero fields (indexed / qdrant_pushed / skipped).
 //
-// Schema (preserved verbatim from pre-split code):
+// Schema:
+//
 //   - total         — int; len(candidates)
 //   - uploaded      — int64; count of successful .mp4 publishes
-//   - indexed       — int64; count of successful ClipIndexer.IndexClip
-//   - qdrant_pushed — int64; count of qdrant pushes (latent
-//     unused — preserved for back-compat)
-//   - skipped       — int64; count of skipped clips (latent
-//     unused — preserved for back-compat)
+//   - committed     — int64; count of asset+outbox tx commits
+//     (≤ uploaded by design; canonical QDRANT-002
+//     ordering: publish → register → commit)
 //   - failed        — int64; count of failed clips
 //   - local_folder  — string; payload.LocalFolder (audit echo)
 //   - drive_folder  — string; payload.DriveFolderID (audit echo)
 //   - failures      — []string (≤50 entries); cap-limited
-//     per-clip failure messages
-//
-// No new abstractions — top-level helper function.
 package clips
 
 import (
@@ -36,26 +30,19 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 )
 
-// finalizeJobResult builds the canonical result envelope returned
-// to the broker by HandleJob. Counters are loaded atomically from
-// the per-job atomic counters (mutated by goroutines in the
-// HandleJob fan-out). The function is pure — no side effects, no
-// logging (caller logs `result` once for the audit trail).
 func finalizeJobResult(
 	total int,
-	uploaded, indexed, pushed, skipped, failed *atomic.Int64,
+	uploaded, committed, failed *atomic.Int64,
 	failedDetails []string,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
 ) map[string]any {
 	result := map[string]any{
-		"total":         total,
-		"uploaded":      uploaded.Load(),
-		"indexed":       indexed.Load(),
-		"qdrant_pushed": pushed.Load(),
-		"skipped":       skipped.Load(),
-		"failed":        failed.Load(),
-		"local_folder":  payload.LocalFolder,
-		"drive_folder":  payload.DriveFolderID,
+		"total":        total,
+		"uploaded":     uploaded.Load(),
+		"committed":    committed.Load(),
+		"failed":       failed.Load(),
+		"local_folder": payload.LocalFolder,
+		"drive_folder": payload.DriveFolderID,
 	}
 	if len(failedDetails) > 0 {
 		result["failures"] = failedDetails
