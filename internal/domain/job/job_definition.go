@@ -1,21 +1,26 @@
-// Package job — job_definition.go alias layer (PR-KERNEL-JOB-POPULATE, commit 9, July 2026).
+// Package job — job_definition.go alias layer (PR-KERNEL-JOB-POPULATE, commit 9.1, July 2026).
 //
 // The canonical JobDefinition + ExecutionClass + Capability +
-// ArtifactPolicy + CodecDescriptor now live in
-// internal/kernel/job/job_definition.go (the kernel subzone is the
+// ArtifactPolicy + CodecDescriptor + CodecDescriptorMarker now
+// live in internal/kernel/job/ (the kernel subzone is the
 // SOLE owner of cross-cutting contracts per godlike/06 SSOT).
 //
 // This file is a back-compat alias layer preserving the in-tree
 // reference sites that declared `type Def = domainjob.JobDefinition`
 // or referenced `domainjob.ArtifactPolicy.Validate()` directly.
-// Go type aliases are transparent: `domainjob.JobDefinition` and
-// `kerneljob.JobDefinition` are the same type as far as the compiler
-// and runtime are concerned.
+// Go type aliases are transparent at the package boundary:
+// `domainjob.JobDefinition` and `kerneljob.JobDefinition` are the
+// same type as far as the compiler and runtime are concerned.
 //
-// Future code SHOULD import internal/kernel/job directly. The aliases
-// here are scheduled for cutover in the CONTRACT phase (deadline
-// 2026-10-01) per the migration schedule preserved in the previous
-// version of this file (GODLIKE-07-EXPAND-BACKFILL-CUTOVER-CONTRACT).
+// Methods on the underlying kernel types (ExecutionClass.IsValid /
+// .String, JobDefinition.Validate, ArtifactPolicy.Validate) are
+// promoted across the type-alias boundary automatically — Go does
+// NOT permit redeclaring them on the alias (compile error:
+// "method redeclared in this block"). The aliases here are
+// scheduled for cutover in the CONTRACT phase (deadline 2026-10-01)
+// per the GODLIKE-07-EXPAND-BACKFILL-CUTOVER-CONTRACT discipline.
+//
+// Future code SHOULD import internal/kernel/job directly.
 package job
 
 import (
@@ -45,6 +50,12 @@ type (
 
 	// JobDefinition is the canonical registry-roster struct.
 	JobDefinition = kerneljob.JobDefinition
+
+	// CodecDescriptorMarker is the canonical metadata-only
+	// marker struct (SchemaVersion + JobType + identity body
+	// methods). Re-aliased here so existing
+	// `domainjob.CodecDescriptorMarker` references compile.
+	CodecDescriptorMarker = kerneljob.CodecDescriptorMarker
 )
 
 // ExecutionClass constants are re-exported so existing
@@ -58,41 +69,3 @@ const (
 	ExecutionCreatorOnly    = kerneljob.ExecutionCreatorOnly
 )
 
-// IsValid is a method-on-typealias issue: since ExecutionClass is a
-// type alias of kerneljob.ExecutionClass, calling
-// `domainjob.ExecutionClass.IsValid()` resolves to
-// `kerneljob.ExecutionClass.IsValid()` (Go promotes methods across
-// type-alias boundaries). Re-exported for documentation only — the
-// canonical implementation lives at
-// internal/kernel/job/job_definition.go::IsValid.
-func (e ExecutionClass) IsValid() bool {
-	return kerneljob.ExecutionClass(e).IsValid()
-}
-
-// String is likewise method-promoted via the type alias to the
-// kernel-side String() method. Re-declared here for clarity.
-func (e ExecutionClass) String() string {
-	return kerneljob.ExecutionClass(e).String()
-}
-
-// Validate is method-promoted via the type alias to the kernel-side
-// Validate() method on JobDefinition. Re-declared for clarity.
-func (d JobDefinition) Validate() error {
-	return kerneljob.JobDefinition(d).Validate()
-}
-
-// Validate is method-promoted via the type alias to the kernel-side
-// Validate() method on ArtifactPolicy. Re-declared for clarity.
-func (p ArtifactPolicy) Validate() error {
-	return kerneljob.ArtifactPolicy(p).Validate()
-}
-
-// NewCodecDescriptorMarker is re-exported so existing
-// `domainjob.NewCodecDescriptorMarker(...)` references in
-// registry_codec_completeness_test.go + canonical_definitions.go
-// continue to compile against the domain-job import path.
-// Composition is the canonical constructor lives at
-// internal/kernel/job/codec.go::NewCodecDescriptorMarker.
-func NewCodecDescriptorMarker(codecMarker, jobType string) CodecDescriptor {
-	return kerneljob.NewCodecDescriptorMarker(codecMarker, jobType)
-}
