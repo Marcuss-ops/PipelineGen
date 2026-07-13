@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
+	"net/http"
 )
 
 // repoForSource resolves a clip source to its canonical repository.
@@ -31,6 +32,11 @@ func (oh *OpsHandler) repoForSource(source string) *assets.ClipsRepository {
 
 // ListFolders lists all folders for a source.
 func (oh *OpsHandler) ListFolders(c *gin.Context) {
+	if oh.clipsRepo == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "clips query port not wired")
+		return
+	}
+
 	source := c.Param("source")
 
 	if oh.clipsRepo == nil {
@@ -72,6 +78,11 @@ func (oh *OpsHandler) ListFolders(c *gin.Context) {
 
 // FolderStatus returns the status of a folder.
 func (oh *OpsHandler) FolderStatus(c *gin.Context) {
+	if oh.clipsRepo == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "clips query port not wired")
+		return
+	}
+
 	source := c.Param("source")
 	folderID := c.Param("id")
 
@@ -128,6 +139,11 @@ func (oh *OpsHandler) FolderStatus(c *gin.Context) {
 
 // GetFolderChildren returns the children of a specific folder.
 func (oh *OpsHandler) GetFolderChildren(c *gin.Context) {
+	if oh.clipsRepo == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "clips query port not wired")
+		return
+	}
+
 	source := c.Param("source")
 	folderID := c.Param("id")
 
@@ -212,6 +228,11 @@ func (oh *OpsHandler) GetFolderChildren(c *gin.Context) {
 
 // GetTree returns the direct children of a given parent folder.
 func (oh *OpsHandler) GetTree(c *gin.Context) {
+	if oh.clipsRepo == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "clips query port not wired")
+		return
+	}
+
 	source := c.Param("source")
 	parentID := c.Query("parent_id")
 
@@ -255,6 +276,11 @@ func (oh *OpsHandler) GetTree(c *gin.Context) {
 
 // GetBreadcrumb returns the path from root down to the specified node ID.
 func (oh *OpsHandler) GetBreadcrumb(c *gin.Context) {
+	if oh.clipsRepo == nil {
+		apiutil.Error(c, http.StatusServiceUnavailable, "clips query port not wired")
+		return
+	}
+
 	source := c.Param("source")
 	id := c.Query("id")
 
