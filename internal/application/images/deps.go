@@ -10,6 +10,7 @@
 package images
 
 import (
+	assetapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
@@ -76,10 +77,20 @@ type ImagesGenAIDeps struct {
 // in production is the operator's responsibility, not the SSOT.
 // The legacy Dispatcher field is retained (NOT removed) for video
 // and audio paths in storage_drive.go that don't use CommitAsset.
+//
+// SourceStager is the canonical port for staging remote URLs into
+// deterministic local files (PR-SOURCESTAGER-CONSOLIDATE, July 2026).
+// downloadAndIngest routes web-image downloads through it so the
+// inline `http.NewRequest + s.client.Do` boilerplate no longer leaks
+// into the processor. The composition root MUST wire this with a
+// real implementation (e.g. internal/infrastructure/stager/
+// HTTPSourceStager); a nil value causes downloadAndIngest to fail
+// closed with a typed error (godlike/07).
 type ImagesExternalDeps struct {
 	IngestSvc    *ingest.Service
 	Dispatcher   *outbox.Dispatcher
 	Committer    persistence.AssetCommitter
+	SourceStager assetapp.SourceStager
 	VeloxBaseURL string
 	GACfg        GoogleAccountingConfig
 }
