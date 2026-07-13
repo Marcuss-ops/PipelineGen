@@ -225,44 +225,67 @@ done
 echo
 
 # ── Code lockstep checks ────────────────────────────────────────────
-# The 2 known FP code locations MUST NOT trigger the regex. If a
-# future refactor reverts the obfuscation (re-introduces a contiguous
-# AKIAIOSFODNN7EXAMPLE literal, or removes the X prefix from the
-# process.go comment, etc.), the gate would false-positive on
-# process_test.go:273-279 or process.go:375 and the canonical
-# `go test ./internal/infrastructure/process/...` suite would still
-# pass but the CI no-secrets-audit would block. Locking the
-# obfuscation in CI prevents the regression at the source.
-qlog "── Code lockstep (2 known FP locations) ──"
+# Content-anchored (NOT line-anchored) verification: each obfuscation
+# primitive MUST be present in the source code. If someone refactors
+# out the X-prefix or the runtime-concat-split (re-introducing the
+# contiguous AKIAIOSFODNN7EXAMPLE literal), the gate would re-trigger
+# on process_test.go or the comment in process.go and the canonical
+# `go test ./internal/infrastructure/process/...` would still pass —
+# so the CI no-secrets-audit is the ONLY safety net. This test fails
+# loud if either obfuscation primitive is removed.
+#
+# Content-anchored (NOT line-anchored): a prior version used
+# `sed -n '<line>p'` to scope the check to a specific line range.
+# That was fragile — refactors that add/remove lines above the
+# obfuscation shift line numbers and silently check the wrong code
+# (or the wrong number). Content-anchored via `grep -qF` is
+# refactor-robust: the literal must appear SOMEWHERE in the file,
+# but the specific line does not matter.
+#
+# The negative-case test fixtures (XAKIAIOSFODNN7EXAMPLE and
+# awsKey := "AKIAIOSFODNN7" + "EXAMPLE") ALSO use these literals,
+# so the gate's regex NEGATIVE case is implicitly coupled: if someone
+# rewrites the negative-case fixture to remove the literal, this
+# lockstep check catches it.
+qlog "── Code lockstep (2 obfuscation primitives) ──"
 
-LOCKSTEP_FILES=(
-    'internal/infrastructure/process/process.go:370,380|XAKIA reference comment (line ~375)'
-    'internal/infrastructure/process/process_test.go:281,281|Runtime-concat-split awsKey (line 281)'
+# 3 parallel arrays — index `i` corresponds to one lockstep check.
+# LOCKSTEP_LOCK_FILES[i]     is the file to scan.
+# LOCKSTEP_LOCK_DESCS[i]     is the human-readable description.
+# LOCKSTEP_LOCK_LITERALS[i]  is the EXACT text/code that proves the
+#                             obfuscation primitive is in place
+#                             (grep -F, no regex).
+LOCKSTEP_LOCK_FILES=(
+    'internal/infrastructure/process/process.go'
+    'internal/infrastructure/process/process_test.go'
+)
+LOCKSTEP_LOCK_DESCS=(
+    'XAKIA reference comment (X prefix breaks \b boundary)'
+    'Runtime-concat-split awsKey (Go compile-time literal fold)'
+)
+LOCKSTEP_LOCK_LITERALS=(
+    'XAKIAIOSFODNN7EXAMPLE'
+    'awsKey := "AKIAIOSFODNN7" + "EXAMPLE"'
 )
 
-for entry in "${LOCKSTEP_FILES[@]}"; do
-    # Format: "file:start,end|description"
-    # The line range (start,end) scopes the check to the SPECIFIC obfuscation
-    # code, not the whole file. This avoids false positives from documentation
-    # comments that legitimately contain the full token string (e.g. the
-    # AKIAIOSFODNN7EXAMPLE reference in the process_test.go comment block).
-    file_range="${entry%%|*}"
-    desc="${entry#*|}"
-    file="${file_range%:*}"
-    range="${file_range##*:}"
+for i in "${!LOCKSTEP_LOCK_FILES[@]}"; do
+    file="${LOCKSTEP_LOCK_FILES[$i]}"
+    desc="${LOCKSTEP_LOCK_DESCS[$i]}"
+    pattern="${LOCKSTEP_LOCK_LITERALS[$i]}"
     if [[ ! -f "$file" ]]; then
         FAIL_COUNT=$((FAIL_COUNT + 1))
         echo "  FAIL [code] $desc" >&2
         echo "    file not found: $file" >&2
         continue
     fi
-    # Extract the file's content bounded by the line range and run the regex.
-    # Expect NO matches.
-    if matches "$(sed -n "${range}p" "$file")"; then
+    # grep -qF: fixed-string match (no regex, no word-boundary expansion).
+    # Fails loud if the obfuscation primitive is missing from the file.
+    if ! grep -qF -- "$pattern" "$file"; then
         FAIL_COUNT=$((FAIL_COUNT + 1))
         echo "  FAIL [code] $desc" >&2
-        echo "    file $file (lines $range) matched the regex (FP regression!)" >&2
-        echo "    investigate: sed -n \"${range}p\" $file | rg -n -e \"$TEST_REGEX_PATTERN\"" >&2
+        echo "    file $file is MISSING the obfuscation primitive" >&2
+        echo "    expected literal: $pattern" >&2
+        echo "    investigate: grep -F -- "\$pattern" $file" >&2
     else
         PASS_COUNT=$((PASS_COUNT + 1))
         qlog "  PASS [code] $desc"
@@ -270,8 +293,9 @@ for entry in "${LOCKSTEP_FILES[@]}"; do
 done
 echo
 
+
 # ── Verdict ─────────────────────────────────────────────────────────
-TOTAL=$((TOTAL + ${#LOCKSTEP_FILES[@]}))
+TOTAL=$((TOTAL + ${#LOCKSTEP_LOCK_FILES[@]}))
 echo "================================================="
 echo "  CI no-secrets-audit test"
 echo "  PASS=$PASS_COUNT  FAIL=$FAIL_COUNT  TOTAL=$TOTAL"
