@@ -238,7 +238,7 @@ diagnostic-only, not an action plan):
 |------------------------------------------------------------------|----------------------------------------------------------------------|
 | `jobs` and `job_events` table schemas                            | `migrations/sqlite/001_velox_core.sql:193`                           |
 | Canonical SELECT projection for `job_events`                     | `internal/infrastructure/database/sqlite/jobs/repository_events.go`  |
-| Job INSERTs (status / error / retry_count writers)               | `internal/infrastructure/database/sqlite/jobs/` (finalize_attempt + lifecycle_complete + lifecycle_finalize + lifecycle_aggregation + lifecycle_progress + repository_claims) |
+| Job INSERTs (status / error / retry_count writers)               | `internal/infrastructure/database/sqlite/jobs/finalize_attempt.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_complete.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_finalize.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_aggregation.go` + `internal/infrastructure/database/sqlite/jobs/lifecycle_progress.go` + `internal/infrastructure/database/sqlite/jobs/repository_claims.go` + `internal/application/jobs/finalizer/job_completion_writer.go` (lines 108, 138) |
 | Finalizer rows-error mapping (`jobs.error` ← `job_events.message`)| `internal/kernel/job/finalize_commands.go:226`                     |
 | `"no candidates found"` literal origin                            | `internal/application/assets/providers/artlist/run_orchestrator_stages.go:52` |
 | `stageDiscoverClips` function entry                              | `internal/application/assets/providers/artlist/run_orchestrator_stages.go:44` |
@@ -257,6 +257,12 @@ operator-runnable guard for this lockstep.
   echo '-- canonical jobs + job_events schema owner --'
   grep -nE 'CREATE TABLE IF NOT EXISTS (jobs|job_events)\b' \
     migrations/sqlite/*.sql
+  echo
+  echo '-- canonical job_events INSERT writers (BOTH dirs; per godlike/06 SSOT lockstep) --'
+  grep -rnE 'INSERT INTO job_events\b' \
+    internal/infrastructure/database/sqlite/jobs/ \
+    internal/application/jobs/finalizer/ \
+    | grep -v _test.go
   echo
   echo '-- canonical jobs.error writer --'
   grep -rnE 'UPDATE jobs SET error\b|jobs\.error\s*=' \
