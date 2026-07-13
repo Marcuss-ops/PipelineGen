@@ -308,6 +308,27 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// Comment-only references are residue-accounted
 		// (godlike/07).
 		{"percheck_binder_scene_field_writes", scan.ScanBinderSceneFieldWrites},
+		// Bulk YouTube uploader + image ingest drift-fix
+		// (July 2026): forward-prevention gate that bans the
+		// import of `internal/infrastructure/qdrant` from
+		// `internal/application/**` packages. Per godlike/06
+		// SSOT, the canonical qdrant-write surface is the
+		// outbox worker (`internal/application/jobs/outbox/`),
+		// which receives `asset.index.requested` /
+		// `asset.points.upserted` events emitted by
+		// CommitAsset. Direct application-layer qdrant imports
+		// force-couple the write to the wire-shape contract
+		// and bypass the transactional outbox (godlike/07
+		// NO-FAKE-AVAILABILITY). The bulk YouTube uploader
+		// (Wave 2) and image ingest (Wave 2) already route the
+		// write through CommitAsset → outbox; this gate freezes
+		// the contract so a future contributor reintroducing
+		// direct qdrant imports surfaces as a CI build failure.
+		// Exempt zones per user directive: cmd/admin/**
+		// (operator tooling) + internal/application/jobs/outbox/**
+		// (canonical outbox→qdrant emitter). _test.go files are
+		// exempt (regression-guard allowlist).
+		{"percheck_qdrant_index_import_ban", scan.ScanQdrantIndexImportBan},
 	}
 }
 
