@@ -92,12 +92,31 @@ import (
 // the underlying structured type, so aliases pass this gate.
 // Shadow structs (different fields/methods) fail.
 var (
-	_ = reflect.TypeOf(scriptpkg.ClipPrePlan{}) == reflect.TypeOf((*ClipPrePlan)(nil)).Elem()
-	_ = reflect.TypeOf(scriptpkg.ClipSearchSlot{}) == reflect.TypeOf((*ClipSearchSlot)(nil)).Elem()
-	_ = reflect.TypeOf(scriptpkg.SourceAnchor{}) == reflect.TypeOf((*SourceAnchor)(nil)).Elem()
+	// Compile-time identity pin: `ClipPrePlan` as referenced
+	// unprefixed inside `package usecase` MUST resolve to the
+	// canonical `scriptpkg.ClipPrePlan` struct (alias per the
+	// FASE-2 collapse comment in source_spec.go). The literal
+	// assignment below compiles only when the two types are
+	// assignable — i.e. when the local `ClipPrePlan` is a
+	// `type X = scriptpkg.X` alias. A future PR that introduces a
+	// local-port shadow struct (`type ClipPrePlan struct {…}`
+	// with parallel-mirror fields) breaks this assignment at
+	// `go test` BUILD time with a clear ">cannot use
+	// scriptpkg.ClipPrePlan{} (value of type
+	// scriptpkg.ClipPrePlan) as usecase.ClipPrePlan value<"
+	// error, surfacing the godlike/06-SSOT planner-return-type
+	// identity drift BEFORE the planner runtime marshals a
+	// divergent struct.
+	_ ClipPrePlan = scriptpkg.ClipPrePlan{}
+	// Same pin for the per-slot envelope. scriptpkg adopts both
+	// the alias and the cross-package literal-init so the pin
+	// compiles today and gates a future shadow-struct drift.
+	_ ClipSearchSlot = scriptpkg.ClipSearchSlot{}
+	// Same pin for the per-anchor envelope.
+	_ SourceAnchor = scriptpkg.SourceAnchor{}
 )
 
- ClipPrePlan
+// TestClipPrePlan_JSONSchemaContract pins the top-level ClipPrePlan
 // wire shape: JSON-tagged field names (in declaration order, which
 // `encoding/json` marshals verbatim), the omitempty status of each
 // field, and the Go types that translate to JSON bool/number/string.
