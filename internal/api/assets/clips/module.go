@@ -78,6 +78,10 @@ type Dependencies struct {
 	EnabledFunc func() bool
 	// ModuleOpts: nil → plain RouteModule.
 	ModuleOpts []api.RouteModuleOption
+
+	// Field→sub-handler mapping: each *XxxRegistrar method on *Handler
+	// consumes exactly the deps its cluster needs (search/ingest/ops/nonops/
+	// bulk) — see handler.go factory functions for the per-cluster matrix.
 }
 
 // ClipsDescriptor: route surface (Module) + raw orchestrator (Handler).
@@ -99,12 +103,29 @@ func (d *ClipsDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
 // jobs.Service. The svc parameter is captured in orchestrator's h.jobsSvc at
 // wire-time (same instance), so fail-closed typed sentinels surface at
 // nonops.RegisterJobHandlers first.
+//
+// Diagnostic ping (symmetric to BulkUploadYouTubeClips handler-entry snapshot)
+// records descriptor+handler+jobsSvc pointers at boot so a future "no handler
+// registered" reproduction can localise the wiring split. Retire once the
+// upstream bug is closed.
 func (d *ClipsDescriptor) RegisterJobHandlers(svc api.JobRegistrar) error {
 	if d.Handler == nil {
 		return nil
 	}
+	registerErr := d.Handler.RegisterJobHandlers()
 	_ = svc // svc is structurally required by DescriptorJobs; orchestrator captures the same instance.
-	return d.Handler.RegisterJobHandlers()
+	if d.Handler.log != nil {
+		d.Handler.log.Info("clips: registered bulk_upload_youtube_clips handler",
+			zap.String("module", "clips"),
+			zap.String("svc_type", fmt.Sprintf("%T", svc)),
+			zap.String("svc_ptr", fmt.Sprintf("%p", svc)),
+			zap.String("descriptor_ptr", fmt.Sprintf("%p", d)),
+			zap.String("handler_ptr", fmt.Sprintf("%p", d.Handler)),
+			zap.Bool("register_ok", registerErr == nil),
+			zap.Error(registerErr),
+		)
+	}
+	return registerErr
 }
 
 // Build composes the Clips HTTP capability. Fail-closed on mandatory nil deps.
