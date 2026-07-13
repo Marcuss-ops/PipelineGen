@@ -335,13 +335,24 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 	log := zap.NewNop()
 	r := adapterspkg.NewPostProcessorRegistry(log)
 
-	// Stub processors: clip_bindings synthesises scenes from prose;
-	// persistence is the downstream consumer of synthesised
-	// scenes. PR-COMMIT3 (July 2026): voiceover + images are no
-	// longer inline postprocessors — the corresponding artifact
-	// output is produced by the canonical downstream jobs
+	// Stub processors: all 5 postprocessors the plan expects must
+	// be registered (entities + metadata + clip_bindings +
+	// stock_association + persistence). clip_bindings
+	// synthesises scenes from prose; persistence is the
+	// downstream consumer of synthesised scenes.
+	// PR-COMMIT3 (July 2026): voiceover + images are no longer
+	// inline postprocessors — the corresponding artifact output
+	// is produced by the canonical downstream jobs
 	// (TypeVoiceoverGenerate / TypeImagesGenerate), not the
 	// inline PostProcessorRegistry.
+	entities := &synthesisingProcessor{
+		name:   "entities",
+		policy: adapterspkg.ProcessorBestEffort,
+	}
+	metadata := &synthesisingProcessor{
+		name:   "metadata",
+		policy: adapterspkg.ProcessorBestEffort,
+	}
 	synth := &synthesisingProcessor{
 		name:   "clip_bindings",
 		policy: adapterspkg.ProcessorBestEffort,
@@ -358,6 +369,8 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 		name:   "persistence",
 		policy: adapterspkg.ProcessorBestEffort,
 	}
+	r.Register(entities)
+	r.Register(metadata)
 	r.Register(synth)
 	r.Register(stockAssoc)
 	r.Register(persistence)
