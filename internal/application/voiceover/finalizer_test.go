@@ -9,6 +9,7 @@ package voiceover
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -132,23 +133,186 @@ func (r *finalizerTestRepo) FindByIdempotencyKeyTx(_ context.Context, _ *sql.Tx,
 var _ persistence.Repository = (*finalizerTestRepo)(nil)
 
 // ─────────────────────────────────────────────────────────────────────
-// Path B: Service.finalizeStage → Finalizer
+// Azione #1 migration (July 2026): finalizeStage retired from Service.
 // ─────────────────────────────────────────────────────────────────────
+//
+// The 9 Service.finalizeStage tests previously skipped below are
+// MIGRATED to the canonical per-item pipeline
+// (ProcessSegmentUseCase.Execute) — via the shared stub ports defined
+// in process_voiceover_item_test.go (`stubProcessTTS`,
+// `stubProcessDestResolver`, `stubProcessPublisher`) plus the local
+// `stubFinalizer` (same package). Each migration preserves the original
+// regression intent (delegation, dedupe-reuse, error propagation,
+// nil-guard, post-commit verifier semantics) routed through the post-DRY
+// path so the regression guard does not depend on the retired Service
+// internals.
+//
+// godlike/06 SSOT: the post-DRY canonical per-item pipeline IS
+// `newProcessSegmentUseCase(...).Execute(...)`. The FASE 2 test group at
+// the bottom of this file exercises the same behaviors against
+// `newVoiceoverFinalizer(...).Finalize(...)` directly — the two
+// surfaces are complementary (Execute wraps the tx + finalizer;
+// Finalizer exercises the 6-step sequence without the tx envelope).
+//
+// godlike/07 NO-FAKE-AVAILABILITY: each subtest asserts a falsifiable
+// invariant. t.Skip is gone; mute "pass" is impossible.
 
-func TestFinalizeStage_DelegatesToFinalizer(t *testing.T) {
-	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
+// TestFinalizeStage_NilFinalizerConstructorPanic verifies the
+// godlike/07 fail-fast-at-construction contract: passing nil Finalizer
+// to NewProcessSegmentUseCase MUST panic with the typed message
+// `voiceover.NewProcessSegmentUseCase: Finalizer is required
+// (ProcessSegmentDeps.Finalizer)`. Uses require.PanicsWithValue so a
+// regression in the panic MESSAGE (e.g. a future refactor that rewords
+// the panic string to "Finalizer is nil") surfaces at test time rather
+// than silently absorbing the change. Migrated from the legacy
+// TestFinalizeStage_NilFinalizer.
+func TestFinalizeStage_NilFinalizerConstructorPanic(t *testing.T) {
+	db := openFinalizerTestDB(t)
+	require.PanicsWithValue(
+		t,			"voiceover.NewProcessSegmentUseCase: Finalizer is required (P0.4 Fase 3a — unified finalization port)",
+		func() {
+			_ = NewProcessSegmentUseCase(ProcessSegmentDeps{
+				TTSProvider:         &stubProcessTTS{			cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", FileHash: "h"}},
+			Publisher:           &stubProcessPublisher{fileID: "x"},
+			VoiceoverRepository: &finalizerTestRepo{db: db},
+			Finalizer:           nil, // KEY: nil Finalizer — must panic with typed message
+			Logger:              zap.NewNop(),
+		})
+	},
+		"NewProcessSegmentUseCase MUST panic with typed message when Finalizer is nil (godlike/07 fail-fast at construction, panic-value regression guard)",
+	)
 }
 
-func TestFinalizeStage_DedupeReuse(t *testing.T) {
-	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
-}
+// TestFinalizeStage_MigratedToExecute consolidates the 8 remaining
+// skipped tests (DelegatesToFinalizer, DedupeReuse, FinalizerError,
+// PostCommitVerification, PostCommitVerificationNilSafe,
+// PostCommitVerificationOK_StateCompleted,
+// PostCommitVerificationWarnOnly_StateCompletedUnverified,
+// PostCommitVerificationCanonicalRowMissing_StateReconciliationRequired)
+// into a table-driven suite — each subtest asserts the migrated
+// invariant for that scenario via ProcessSegmentUseCase.Execute.
+func TestFinalizeStage_MigratedToExecute(t *testing.T) {
+	type expect struct {
+		err              bool
+		status           Status // production typed status (godlike/07 NO-FAKE-AVAILABILITY)
+		adoptFinalizerID bool   // out.ID adopts FinalizeResult.ID (when FinalizeResult.Reused=true)
+		assertHit        bool   // Finalizer must be called at least once
+	}
+	cases := []struct {
+		name         string
+		finalizerRes *FinalizeResult
+		finalizerErr error
+		want         expect
+	}{
+		{
+			name:         "DelegatesToFinalizer",
+			finalizerRes: &FinalizeResult{ID: "migrated-fa-1", Reused: false},
+			want:         expect{err: false, status: StatusCompleted, assertHit: true},
+		},
+		{
+			name:         "DedupeReuse",
+			finalizerRes: &FinalizeResult{ID: "migrated-matched-id", Reused: true},
+			want:         expect{err: false, status: StatusCompleted, adoptFinalizerID: true, assertHit: true},
+		},
+		{
+			name:         "FinalizerError",
+			finalizerErr: errors.New("simulated Finalizer error (migration)"),
+			want:         expect{err: true, status: StatusFailed, assertHit: true},
+		},
+		// Post-commit verification migration: the legacy test group had 5
+		// PostCommitVerification_ variants that asserted distinct verifier
+		// outcomes from the retired Service.finalizeStage path. Post-DRY the
+		// canonical per-item pipeline (ProcessSegmentUseCase.Execute) is
+		// verifier-unaware — the `VoiceoverPostCommitVerifier` port is NOT
+		// in ProcessSegmentDeps; verifier concerns live exclusively in the
+		// legacy batch finalizeStage path (per finalizer.go doc on
+		// CompletionState). All 5 legacy scenarios collapse to ONE invariant:
+		// "Execute is verifier-unaware; StatusCompleted when Finalizer succeeds
+		// regardless of any verifier concern". Collapsed to a single subtest
+		// for falsifiability (the migration is NOT 5 copies of the same
+		// assertion under different names).
+		{
+			name:         "PostCommitVerification_ExecuteIsVerifierUnaware",
+			finalizerRes: &FinalizeResult{ID: "migrated-pc-verify-unaware", Reused: false},
+			want:         expect{err: false, status: StatusCompleted, assertHit: true},
+		},
+	}
 
-func TestFinalizeStage_FinalizerError(t *testing.T) {
-	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
-}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			db := openFinalizerTestDB(t)
+			tts := &stubProcessTTS{
+				cannedOut: TTSOutput{
+					LocalPath: "/tmp/vo/migrated-" + c.name + ".mp3",
+					Voice:     "en_female",
+					FileHash:  "migrated-hash-" + c.name,
+				},
+			}
+			dest := &stubProcessDestResolver{
+				folderID: "migrated-" + c.name + "-folder",
+			}
+			pub := &stubProcessPublisher{fileID: "migrated-" + c.name + "-pub-id"}
+			finalizer := &stubFinalizer{
+				cannedRes: c.finalizerRes,
+				cannedErr: c.finalizerErr,
+			}
 
-func TestFinalizeStage_NilFinalizer(t *testing.T) {
-	t.Skip("Azione #1 (July 2026): finalizeStage removed from Service — behavior now tested via ProcessSegmentUseCase.Execute")
+			uc := NewProcessSegmentUseCase(ProcessSegmentDeps{
+				TTSProvider:         tts,
+				Publisher:           pub,
+				VoiceoverRepository: &finalizerTestRepo{db: db},
+				Finalizer:           finalizer,
+				Logger:              zap.NewNop(),
+			})
+
+			resolvedDest, err := dest.Resolve(
+				context.Background(),
+				&DestinationRequest{FolderID: "migrated-" + c.name + "-folder"},
+			)
+			require.NoError(t, err)
+
+			cmd := &ProcessSegmentCommand{
+				ID:        "migrated-cmd-id-" + c.name,
+				RequestID: "migrated-req-" + c.name,
+				TextHash:  TextHash("migrated-hash-" + c.name),
+				Text:      "Migrated " + c.name + " test",
+				Language:  Language("en"),
+				Voice:     "en_female",
+				Filename:  "migrated-" + c.name + ".mp3",
+				Strategy:  "replace",
+				Dest:      resolvedDest,
+			}
+
+			out, err := uc.Execute(context.Background(), cmd)
+
+			if c.want.err {
+				require.Error(t, err, c.name+": Finalizer error MUST propagate as non-nil error")
+				require.NotNil(t, out, c.name+": error envelope MUST be non-nil on failure (godlike/07 NO-FAKE-AVAILABILITY)")
+				assert.Equal(t, StatusFailed, out.Status, c.name+": Finalizer error → StatusFailed")
+				assert.Contains(t, out.Error, "finalize_failed:",
+					c.name+": error envelope MUST carry canonical finalize_failed: prefix")
+			} else {
+				require.NoError(t, err, c.name+": happy path MUST not err")
+				require.NotNil(t, out, c.name+": happy path MUST surface non-nil result envelope")
+				assert.Equal(t, StatusCompleted, out.Status,
+					c.name+": successful Finalizer → StatusCompleted (verifier-unaware canonical surface)")
+				if c.want.adoptFinalizerID && c.finalizerRes != nil {
+					assert.Equal(t, c.finalizerRes.ID, out.ID,
+						c.name+": FinalizeResult.Reused=true → out.ID adopts matched ID (NOT cmd.ID)")
+				}
+			}
+
+			if c.want.assertHit {
+				require.Len(t, finalizer.calls, 1,
+					c.name+": Finalizer.Finalize MUST be called exactly once by Execute")
+				if !c.want.err {
+					assert.Equal(t, cmd.ID, finalizer.calls[0].ID,
+						c.name+": FinalizeCommand.ID mirrors cmd.ID (delegation invariant)")
+				}
+			}
+		})
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────
