@@ -257,6 +257,55 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		})
 	}
 
+	// PR-CHROME-POOL-WARM-AT-BOOT (July 2026): the Slides image worker
+	// pool warmup used to be fired by a readiness probe (lazily on the
+	// first /ready poll). That allowed the HTTP listener to accept
+	// traffic against a cold / partially-warm pool, and added the full
+	// browser-launch + login + slides.new latency to the FIRST image
+	// generation request after boot.
+	//
+	// Convert the prewarm into a synchronous Required StartupStep.
+	// serverLifecycle.Start runs the plan in order and BLOCKS until
+	// every step succeeds; the HTTP listener bind in cmd/server/main.go
+	// happens AFTER Start returns, so the server cannot advertise a
+	// "running" state until every chrome pool worker has reported
+	// ready. Falls into the canonical order:
+	//
+	//   drive-init → qdrant-collection → outbox-pool
+	//   → chrome-pool-prewarm    [NEW, Required]
+	//   → background services (scanner, monitor, sweepers)
+	//   → job runner (always last)
+	//
+	// Per-worker profile isolation is already enforced by session.py
+	// (MASTER_STORAGE.profile_<id> + PROFILE_DIR_<id>_<pid>); this
+	// step just guarantees those workers actually exist server-side
+	// before requests can reach them.
+	if root != nil && root.Domains != nil && root.Domains.ImageService != nil && cfg.Features.ImagesEnabled {
+		imgSvc := root.Domains.ImageService
+		poolSize := cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations
+		startupPlan = append(startupPlan, StartupStep{
+			Name: "chrome-pool-prewarm", Required: true,
+			Start: func(ctx context.Context) error {
+				log.Info("StartupStep: prewarming ChromeImageProviderPool", zap.Int("pool_size", poolSize))
+				imgSvc.TriggerPrewarm(ctx, "startup-prewarm", poolSize)
+
+				report := imgSvc.Diagnostics()
+				if !report.ImageGenWired {
+					return fmt.Errorf("chrome image provider pool is not wired")
+				}
+				if !report.ImageGenHealthy {
+					return fmt.Errorf("chrome image provider pool is unhealthy")
+				}
+				if report.ImageGenCooldownProfiles > 0 {
+					return fmt.Errorf("chrome image provider pool has %d unhealthy/cooldown profiles", report.ImageGenCooldownProfiles)
+				}
+				log.Info("StartupStep: ChromeImageProviderPool prewarmed successfully and healthy", zap.Int("pool_size", poolSize))
+				return nil
+			},
+			Stop: func(_ context.Context) error { return nil },
+		})
+	}
+
 	// Append the background services plan (scanner, monitor, sweepers, etc.)
 	// followed by the job runner (always last, required).
 	if jobs != nil {
@@ -356,6 +405,10 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		dbProbe, nil, driveProbe,
 		log,
 	)
+
+	// (chrome-pool-prewarm now lives in startupPlan; the prior
+	//  lifecycle.AddProbe("chrome-pool", ...) is gone, so HTTP traffic
+	//  never reaches a cold pool.)
 
 	var healthSvc any
 	if root != nil && root.Utility != nil {
