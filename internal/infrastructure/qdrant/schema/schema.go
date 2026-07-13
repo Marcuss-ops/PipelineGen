@@ -3,6 +3,8 @@ package schema
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 )
 
 // Canonical embedding model constants (godlike/06 SSOT).
@@ -20,7 +22,13 @@ const (
 	// VisualEmbeddingModelVersion pins the SigLIP model version baked
 	// into media_assets.metadata_json.embedding_version_visual and
 	// schema.IndexSchema.DenseVectors[visual].ModelVersion.
-	VisualEmbeddingModelVersion = "2026-06-16-v1"
+	//
+	// Re-exported from pkg/defaults.VisualEmbeddingModelVersion for
+	// backward compat with infra-layer consumers. The canonical
+	// declaration lives in pkg/defaults (cross-layer constant home).
+	// Bumping the value is a schema migration; don't change without
+	// planning a v4.
+	VisualEmbeddingModelVersion = defaults.VisualEmbeddingModelVersion
 )
 
 // DefaultV3Schema returns the canonical v3 index schema.

@@ -82,15 +82,33 @@ var qdrantImportBanSkipPathPrefixes = []string{
 }
 
 // qdrantImportBanExemptPathPrefixes is the canonical exempt set
-// per user directive ("esclusi admin tools"):
-//  1. cmd/admin/** — operator-grade tooling. Per the user
+// per user directive ("esclusi admin tools") + the operator/audit
+// tooling extension (Wave YY, July 2026, image ingest drift-fix):
+//
+//  1. cmd/admin/** — operator-grade CLI tooling (backfill,
+//     reconciliation, diagnostics, maintenance). Per the user
 //     directive the EXEMPT set is "admin tools"; the canonical
-//     admin subpackage at cmd/admin/ is the SSE.
+//     CLI admin subpackage at cmd/admin/ is the surface form.
 //  2. internal/application/jobs/outbox/** — the canonical
 //     IndexingHandler outbox consumer. The composition-root
 //     hooks the outbox worker up with the canonical qdrant
-//     infrastructure; the outbox worker is the SOLE GUI wire
-//     from the application surface to the qdrant ANN index.
+//     infrastructure; the outbox worker is the SOLE wire from
+//     the application surface to the qdrant ANN index for
+//     production index/upsert/delete events.
+//  3. internal/application/qdrant/legacyaudit/** — operator/audit
+//     tooling (read-only classification walker + canonical-point-ID
+//     helpers + dry-run apply-step shapes). legacyaudit is a
+//     pure-classification walker that never mutates the qdrant
+//     collection; the apply step is gated behind cmd/admin which
+//     dispatches through the canonical outbox. Conceptually
+//     identical to "admin tools" — operator tooling that
+//     legitimately reads the schema for audit purposes.
+//  4. internal/application/qdrant/maintenance/** — operator/maintenance
+//     tooling (audit / repair-locators / delete-invalid modes).
+//     Constructs the qdrant client via the typed QdrantScannerAdapter
+//     + QdrantCleaner ports; the Delete mode dispatches via the
+//     canonical root.Outbox.Dispatcher.EnqueueAndDelete path.
+//     Conceptually identical to "admin tools" — operator tooling.
 //
 // Files under these paths MAY import the qdrant infrastructure;
 // any other internal/application/** package importing it must
@@ -98,6 +116,8 @@ var qdrantImportBanSkipPathPrefixes = []string{
 var qdrantImportBanExemptPathPrefixes = []string{
 	"cmd/admin/",
 	"internal/application/jobs/outbox/",
+	"internal/application/qdrant/legacyaudit/",
+	"internal/application/qdrant/maintenance/",
 }
 
 // qdrantImportBanScope is the canonical application-zone prefix
