@@ -195,4 +195,15 @@ type StagedAsset struct {
 type SourceStager interface {
 	StageSource(ctx context.Context, ref SourceRef) (*StagedAsset, error)
 	Cleanup(ctx context.Context, staged *StagedAsset) error
+	StageSourceV2(ctx context.Context, ref SourceRef) (*StagedSource, error)
+	CleanupStagedSource(ctx context.Context, staged *StagedSource) error
+}
+
+type StagedSource struct {
+	LocalPath        string
+	Bytes            int64
+	IntermediateHash string
+	SourceID         string
+	SourceRef        SourceRef
+	CleanedUp        bool
 }

@@ -107,6 +107,14 @@ func NewService(deps ImagesDeps) *Service {
 		client:        &http.Client{Timeout: 10 * time.Minute},
 		dispatcher:    deps.External.Dispatcher,
 		committer:     deps.External.Committer,
+		// PR-SOURCESTAGER-CONSOLIDATE (July 2026): SourceStager is
+		// the canonical port for staging remote URLs into
+		// deterministic local files. downloadAndIngest routes web
+		// image downloads through it so the inline http boilerplate
+		// no longer leaks into the processor. Nil is tolerated
+		// (test fixture, partial deploy); downloadAndIngest fails
+		// closed with a typed error when nil (godlike/07).
+		sourceStager:  deps.External.SourceStager,
 		log:           log,
 		gaServerURL:   deps.External.GACfg.ServerURL,
 		gaDownloadDir: deps.External.GACfg.DownloadDir,

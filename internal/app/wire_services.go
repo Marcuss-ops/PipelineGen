@@ -24,6 +24,8 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"path/filepath"
 	"time"
 
 	jobsapi "github.com/Marcuss-ops/PipelineGen/internal/api/jobs"
@@ -40,6 +42,7 @@ import (
 	localbroker "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/jobs/local"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/stager"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"github.com/gin-gonic/gin"
@@ -353,6 +356,29 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 		root.Repos.VoiceoverRepo,
 		log,
 	)
+	// PR-SOURCESTAGER-CONSOLIDATE (July 2026): wire the canonical
+	// HTTPSourceStager into the jobs/assets Service so the URL
+	// download path (Service.fetch) routes through
+	// StageSourceV2 instead of inline http.NewRequest +
+	// httpClient.Do. The staging dir is co-located with the rest
+	// of the temp space and the 2-minute timeout mirrors the
+	// legacy httpClient.Timeout so behaviour parity is preserved
+	// for callers (Service.Download) that do not observe the
+	// intermediate file.
+	if assetSvc != nil {
+		jobsStagerDir := filepath.Join(cfg.Storage.TempPath(), "jobs-staged-sources")
+		jobsSourceStager, jobsStagerErr := stager.NewHTTPSourceStager(
+			jobsStagerDir,
+			&http.Client{Timeout: 2 * time.Minute},
+			log,
+		)
+		if jobsStagerErr != nil {
+			log.Error("wire_services: NewHTTPSourceStager init failed; jobs/assets URL downloads will fail closed",
+				zap.String("stager_dir", jobsStagerDir), zap.Error(jobsStagerErr))
+		} else {
+			assetSvc.WithSourceStager(jobsSourceStager)
+		}
+	}
 	// PR3 (June 2026): Wave 14 close — internal/api/workers/ was eliminated
 	// and the handler moved to internal/api/jobs/ as a sibling receiver
 	// (WorkersBrokerHandler). The ctor signature is identical so existing
