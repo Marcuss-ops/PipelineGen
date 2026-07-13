@@ -419,6 +419,54 @@ Wire the `cmp -s` equivalence check into `make verify-main` (or `scripts/ci-arch
 
 ## §11 — Diagnostica RETRY_WAIT (ricetta operativa)
 
+### §11.0 — Operator env contract (Artlist clean-test minimum set)
+
+**Owner canonico**: §11.0 is the SSOT for the operator-facing env-var minimum of the **Artlist clean test** (`tests/operational/artlist_live_e2e_verify.sh`). It is INTENTIONALLY SEPARATE from §10.2 (which owns the Stock live-battery env contract). Per godlike/06 one canonical owner per fact: do not duplicate these rows in §10.2.
+
+| Variable                       | Required? | Canonical default                                            | Effect if unset                                                                                            | Canonical reference                                                                            |
+|--------------------------------|-----------|--------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| `VELOX_ADMIN_TOKEN`            | REQUIRED  | (none — secret-store-resident)                              | `/api/jobs/*` returns **HTTP 401** per `internal/api/middleware/admin_token.go::RequireAdminToken`; SQLite path still works | `internal/platform/config/middleware` (`AuthSecurityPort.AdminToken`); rotation recipe §11.2 |
+| `VELOX_PORT`                   | required  | `8000`                                                       | Server listen port (also used as `BASE=http://127.0.0.1:${VELOX_PORT}` in shell snippets)                  | `.env.example:16`, `cmd/server/main.go:47`, §10.2                                              |
+| `VELOX_DRIVE_ARTLIST_ROOT`     | required  | (none)                                                       | Artlist uploads land in the operator-supplied default `ArtlistRootFolder` (may be empty on dev)           | `internal/platform/config/drive.go:20` (`ArtlistRootFolder` env-tagged `VELOX_DRIVE_ARTLIST_ROOT`), `.env.example:90`, `architecture/issues.yaml::{ROOT_DRY_RUN}` |
+| `SCROLL_TIMEOUT`               | required  | `10` (in-script), **operator MUST set `120`**               | Direct scraper (`POST /search` port 9123) needs ~72s on cold Chromium (see §11.2 401-note derivation)      | `tests/operational/artlist_live_e2e_verify.sh:165` (`SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-10}"`)  |
+| `SKIP_HERMETICS`               | required  | `0` (unset)                                                  | If unset, the wrapper runs the hermetic precondition + `go test '^TestGate'`. Set `1` to bypass.          | `tests/operational/artlist_live_e2e_verify.sh:99` + `:372`                                                          |
+
+**Pre-rotation token recipe (canonical; never echo cleartext)**:
+
+```bash
+# Set the secret store version: sha256 prefix only.
+[ -n "$VELOX_ADMIN_TOKEN" ] \
+  || { echo "VELOX_ADMIN_TOKEN UNSET — load from secret store first (per godlike/07)"; exit 1; }
+TOKEN_FP=$(printf '%s' "$VELOX_ADMIN_TOKEN" | sha256sum | cut -c1-16)
+echo "# env contract audit (token fingerprint=${TOKEN_FP})"
+
+# Verify the four operator-facing vars are SHAPE-correct before any curl call.
+: "${VELOX_PORT:=8000}"
+export SCROLL_TIMEOUT="${SCROLL_TIMEOUT:-120}"     # doc-public default per §11.0 row above
+export SKIP_HERMETICS="${SKIP_HERMETICS:-1}"       # clean test bypasses hermetic precondition
+: "${VELOX_DRIVE_ARTLIST_ROOT:?VELOX_DRIVE_ARTLIST_ROOT UNSET — set to a known dedicated folder per .env.example:90}"
+
+echo "VELOX_PORT=${VELOX_PORT} SCROLL_TIMEOUT=${SCROLL_TIMEOUT} SKIP_HERMETICS=${SKIP_HERMETICS} VELOX_DRIVE_ARTLIST_ROOT=${VELOX_DRIVE_ARTLIST_ROOT}"
+```
+
+**Drift detection** (re-run on any operator commit that touches one of the canonical references):
+
+```bash
+# The five canonical env vars (read-only scan; no rewrite).
+grep -nE '^[[:space:]]*(VELOX_PORT|VELOX_DRIVE_ARTLIST_ROOT|SCROLL_TIMEOUT|SKIP_HERMETICS|VELOX_ADMIN_TOKEN)' \
+  .env.example tests/operational/artlist_live_e2e_verify.sh scripts/artlist_pipeline_live_test.sh \
+  internal/platform/config/*.go 2>/dev/null | head -50
+# Any drift between the canonical references (above) and this §11.0 table MUST update BOTH atomically per godlike/06 lockstep.
+```
+
+### §11.0.1 — Honoring §11 from §10 / §11 references
+
+- §10.2 `VELOX_PORT` row applies to BOTH the Stock live battery AND the Artlist clean test (canonical reference: `.env.example:16`).
+- §10.7 cache-shadowed ID callout applies to Artlist terms too; never put a cache-shadowed term in the clean test's `SEARCH_TERM`.
+- §11.2 / §11.3 (the API + SQLite diagnostic recipe below) assume §11.0 vars are set; the env contract is the prerequisite, not a duplicate.
+
+---
+
 **Purpose**: diagnose a single `RETRY_WAIT` / `CANCELLED` / `QUEUED`-with-retry-history job end-to-end, with the SQLite-direct fallback that operators must use **while the admin token rotation hasn't yet propagated to the running server binary**.
 
 Registered under the same `STOCK-E2E-BATTERY-2026-07-05` wave (operator-facing recipe); **no new wave slot** in `architecture/current.yaml` — minimum-blast-radius per godlike/07. §11 reorganizes only the operator surface (commands + forward-pointers), no Go code touched.
