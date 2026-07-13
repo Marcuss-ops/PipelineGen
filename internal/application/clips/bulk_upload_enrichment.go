@@ -1,22 +1,19 @@
 // Package clips (bulk_upload_enrichment) — Step "enrich" of the
 // per-clip pipeline: stage the transcript for the indexer's
-// /index_transcript endpoint + invoke ClipIndexer.IndexClip on the
-// local registry.
+// /index_transcript endpoint.
 //
 // P1.7 (July 2026): extracted from
 // internal/application/clips/bulk_upload_worker.go as part of the
 // 7-file worker-pipeline split.
 //
-// Both legs are best-effort:
-//   - Transcript staging: a write error logs a warning;
-//     staging is non-fatal because the indexer can re-stage
-//     from data/media on demand.
-//   - IndexClip: a clip-indexer error logs a warning; pre-split
-//     behaviour did NOT bump the failed counter for indexer
-//     failures (only publish / hash / dispatcher errors counted).
+// Wave 2 (Asset commit + Qdrant, July 2026): direct IndexClip calls
+// have been removed. The canonical asset.index.requested outbox event
+// is already emitted by registerClip via the canonical dispatcher;
+// the IndexingHandler consumer will trigger embedding generation and
+// Qdrant upsert asynchronously. This helper now only performs
+// transcript staging.
 //
 // Caller-side responsibilities:
-//   - bump indexed.Add(1) when enrichClip returns true
 //   - call only when payload.SkipEmbeddings is false
 //
 // No new abstractions — top-level helper function with single
@@ -27,7 +24,6 @@
 package clips
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,44 +32,25 @@ import (
 )
 
 // enrichClip stages the candidate's transcript (when present) for
-// the indexer's /index_transcript endpoint, then invokes
-// ClipIndexer.IndexClip on the local registry.
+// the indexer's /index_transcript endpoint.
 //
-// The clipID parameter MUST be the canonical id computed by the
-// orchestrator (processOneClip) from the real file hash — the same
-// id that gets persisted to media_assets by the registration
-// section. Pre-split the Asset.ID value (post buildBulkClipID) was
-// what IndexClip received; P1.7 propagation through a clipID
-// argument preserves that contract verbatim.
-//
-// Returns true when the indexer successfully indexed the clip;
-// false otherwise. A nil indexer is treated as "not enabled" and
-// returns false (matches pre-split behaviour where
-// `if w.indexer != nil && w.indexer.IsEnabled()` gates the call).
+// Wave 2 (Asset commit + Qdrant, July 2026): direct IndexClip calls
+// have been removed. The canonical asset.index.requested outbox event
+// is already emitted by registerClip via the canonical dispatcher;
+// the IndexingHandler consumer will trigger embedding generation and
+// Qdrant upsert asynchronously. This helper now only performs
+// transcript staging.
 func enrichClip(
-	ctx context.Context,
 	cfg ClipConfigPort,
-	indexer ClipIndexerPort,
 	cand clipCandidate,
-	clipID string,
 	log *zap.Logger,
-) bool {
+) {
 	if cand.Transcript != "" {
 		stageTranscript(cfg, cand, log)
 	}
-	if indexer != nil && indexer.IsEnabled() {
-		if err := indexer.IndexClip(ctx, clipID); err != nil {
-			if log != nil {
-				log.Warn("indexer failed (non-fatal)",
-					zap.String("clip_id", clipID),
-					zap.String("path", cand.LocalPath),
-					zap.Error(err))
-			}
-			return false
-		}
-		return true
-	}
-	return false
+	// Wave 2: indexing is owned by the canonical outbox consumer
+	// (IndexingHandler → clipindexer.IndexClip). The dispatcher
+	// emitted the asset.index.requested event during registerClip.
 }
 
 // stageTranscript writes the candidate's transcript into the

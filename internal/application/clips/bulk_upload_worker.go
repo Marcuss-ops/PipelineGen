@@ -9,10 +9,16 @@
 // business logic lives in the application layer). The worker now
 // depends exclusively on the typed ports declared in this package's
 // ports.go — concrete adapters wrap *assets.ClipsRepository,
-// *drive.Uploader, *config.Config, *clipindexer.Service,
-// foldermemory.Service and hashutil.MD5File at the composition root.
+// *drive.Uploader, *config.Config, foldermemory.Service and
+// hashutil.MD5File at the composition root.
 //
-// P1.7 (July 2026): the per-clip pipeline was extracted into 6 sibling
+// Wave 2 (Asset commit + Qdrant, July 2026): the direct clipindexer
+// dependency was removed. Indexing is now driven by the canonical
+// outbox consumer (IndexingHandler → clipindexer.IndexClip); the
+// worker emits the asset.index.requested event via the dispatcher
+// during registerClip.
+//
+// P1.7 (July 2026): the per-clip pipeline was extracted into 7 sibling
 // files (one section per concern) so this file stays focused on the
 // top-level orchestration: struct + ctor + HandleJob + processOneClip
 // stitch. The 7 sections of the pipeline are:
@@ -26,8 +32,9 @@
 //  7. result       — bulk_upload_result.go
 //
 // No new abstractions — only top-level helper functions consumed by
-// the processOneClip stitch. The worker struct (7 typed-port fields)
-// and constructor signature are unchanged from the pre-split surface.
+// the processOneClip stitch. The worker struct (6 typed-port fields)
+// and constructor signature are unchanged from the pre-split surface
+// except for the Wave 2 removal of the unused indexer port.
 package clips
 
 import (
@@ -55,10 +62,15 @@ import (
 // SSOT. Required so the worker's media_assets UPSERT step routes
 // through the canonical outbox+tx writer (QDRANT-002 atomicity
 // invariant).
+//
+// Wave 2 (Asset commit + Qdrant, July 2026): the `indexer`
+// ClipIndexerPort field was removed. Direct IndexClip calls have
+// been eliminated; the canonical asset.index.requested outbox event
+// is emitted by registerClip, and the IndexingHandler consumer
+// triggers embedding generation and Qdrant upsert asynchronously.
 type BulkUploadWorker struct {
 	publisher  ClipPublisherPort
 	repo       ClipRepositoryPort
-	indexer    ClipIndexerPort
 	hasher     ClipHashPort
 	cfg        ClipConfigPort
 	dispatcher mutations.AssetMutationDispatcher
@@ -67,10 +79,14 @@ type BulkUploadWorker struct {
 
 // NewBulkUploadWorker constructs the canonical worker. All port
 // arguments are required. Returns a *BulkUploadWorker (never nil).
+//
+// Wave 2 (Asset commit + Qdrant, July 2026): the `indexer`
+// ClipIndexerPort parameter was removed. Direct IndexClip calls
+// have been eliminated; indexing is driven by the canonical outbox
+// consumer.
 func NewBulkUploadWorker(
 	publisher ClipPublisherPort,
 	repo ClipRepositoryPort,
-	indexer ClipIndexerPort,
 	hasher ClipHashPort,
 	cfg ClipConfigPort,
 	dispatcher mutations.AssetMutationDispatcher,
@@ -82,7 +98,6 @@ func NewBulkUploadWorker(
 	return &BulkUploadWorker{
 		publisher:  publisher,
 		repo:       repo,
-		indexer:    indexer,
 		hasher:     hasher,
 		cfg:        cfg,
 		dispatcher: dispatcher,
@@ -385,17 +400,15 @@ func (w *BulkUploadWorker) processOneClip(
 		})
 	}
 
-	// Step 6: enrichment (transcript staging + IndexClip), only
-	// when embeddings are not skipped (preserve pre-split gate).
+	// Step 6: enrichment (transcript staging only). Wave 2 (Asset
+	// commit + Qdrant, July 2026): direct IndexClip calls have been
+	// removed. The canonical asset.index.requested outbox event is
+	// already emitted by registerClip; the IndexingHandler consumer
+	// will trigger embedding generation and Qdrant upsert
+	// asynchronously. The "indexed" counter is intentionally left
+	// at zero because indexing is no longer synchronous.
 	if !payload.SkipEmbeddings {
-		if didIndex := enrichClip(ctx, w.cfg, w.indexer, cand, clipID, log); didIndex {
-			indexed.Add(1)
-			if tools != nil && tools.Event != nil {
-				tools.Event("indexed", fmt.Sprintf("Indexed %s for Qdrant", clipID), map[string]any{
-					"clip_id": clipID,
-				})
-			}
-		}
+		enrichClip(w.cfg, cand, log)
 	}
 	return nil
 }
