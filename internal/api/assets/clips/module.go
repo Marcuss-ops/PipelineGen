@@ -56,7 +56,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/duplicates"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
@@ -164,11 +164,9 @@ type Dependencies struct {
 	// MANDATORY — used by Ingest sub-handler (UpdateClip path).
 	Dispatcher appclips.ClipIndexDispatcherPort
 
-	// SearchAggregator is the canonical cross-provider
-	// search.Aggregator (the search.NewAggregator instance from
-	// WireRegistry, aliased to providers.SearchAggregator).
+	// DuplicateFinder is the canonical duplicate-detection service.
 	// MANDATORY — used by Action cluster (FindDuplicates).
-	SearchAggregator *providers.SearchAggregator
+	DuplicateFinder *duplicates.Finder
 
 	// ReuploadUC is the application-layer ReuploadUseCase.
 	// MANDATORY — used by Action cluster (ReuploadClip).
@@ -409,10 +407,10 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		ArtifactSvc:      deps.ArtifactSvc,
 		FolderMemSvc:     deps.FolderMemSvc,
 		SearchSvc:        deps.SearchSvc,
-		ProcessRunner:    deps.ProcessRunner,
-		Dispatcher:       deps.Dispatcher,
-		SearchAggregator: deps.SearchAggregator,
-		ReuploadUC:       deps.ReuploadUC,
+		ProcessRunner:   deps.ProcessRunner,
+		Dispatcher:      deps.Dispatcher,
+		DuplicateFinder: deps.DuplicateFinder,
+		ReuploadUC:      deps.ReuploadUC,
 		EnrichUC:         deps.EnrichUC,
 		BulkUploadWorker: deps.BulkUploadWorker,
 		ClipOpsService:   deps.ClipOpsService,

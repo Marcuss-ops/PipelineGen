@@ -25,6 +25,7 @@ import (
 
 	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/duplicates"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -91,6 +92,16 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error
 	if err != nil {
 		return nil, fmt.Errorf("clips: mutations dispatcher: %w", err)
 	}
+
+	// (1b) DuplicateFinder
+	//
+	// Wave 4 (July 2026): the canonical duplicate-detection service.
+	// It fans out hash lookups to registered sources. Today the only
+	// source is the SQLite clips repository; future sources plug in via
+	// the duplicates.Source port.
+	duplicateFinder := duplicates.NewFinder(
+		NewClipsRepoDuplicateSource("local", params.Deps.Core.ClipsRepo),
+	)
 
 	// (2a) EnrichUseCase
 	//
@@ -227,8 +238,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error
 	// *Handler is constructed inside Build and captured by the
 	// returned Module's closure. clipsDescriptor.Handler stays
 	// accessible to the one non-HTTP consumer
-	// (newAssetRegisterService → sourcingEnrichmentAdapter →
-	// handler.EnrichAndIndexClip).
+	// (newAssetRegisterService → sourcingEnrichmentAdapter →	// handler.EnrichAndIndexClip).
 	descriptor, err := clipsapi.Build(clipsapi.Dependencies{
 		ClipsRepo:        params.Deps.Core.ClipsRepo,
 		AssetRepo:        params.AssetRepo,
@@ -247,6 +257,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsDescriptor, error
 		ProcessRunner:    processRunnerAdapter,
 		Dispatcher:       clipsDispatcherPort,
 		EnrichUC:         enrichUC,
+		DuplicateFinder:  duplicateFinder,
 		SearchSvc:        params.SearchAggregator,
 		BulkUploadWorker: bulkUploadWorker,
 		ClipOpsService:   clipOpsSvc,

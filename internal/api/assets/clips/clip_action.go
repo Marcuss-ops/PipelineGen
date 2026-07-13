@@ -17,7 +17,6 @@ import (
 	"os"
 	"strings"
 
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
@@ -180,48 +179,35 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 		return
 	}
 
-	// P0.4 (June 2026): SearchAggregator is now MANDATORY for FindDuplicates.
-	// The legacy direct-repo fallback (map[string]*assets.ClipsRepository
-	// keyed by {"artlist","youtube","stock"}) was removed — the aggregator's
-	// HashQuery path fans out deterministically to all registered
-	// ClipHashSource adapters, and the Sources filter is left empty so the
-	// registry drives the fan-out instead of a hardcoded whitelist.
-	// Reference: PR-CLIP-DEDUP-MIGRATION.
-	if h.searchAggregator == nil {
-		h.log.Error("FindDuplicates: SearchAggregator not wired")
-		apiutil.Error(c, 503, "search aggregator not available")
+	// Wave 4 (July 2026): FindDuplicates uses the canonical
+	// duplicates.Finder capability instead of providers.SearchAggregator.
+	// The finder fans out hash lookups to registered sources and returns
+	// operator-facing DuplicateMatch rows that include LocalPath/DriveLink.
+	if h.duplicateFinder == nil {
+		h.log.Error("FindDuplicates: DuplicateFinder not wired")
+		apiutil.Error(c, 503, "duplicate finder not available")
+		return
+	}
+
+	matches, findErr := h.duplicateFinder.Find(c.Request.Context(), clip.FileHash())
+	if findErr != nil {
+		apiutil.InternalError(c, fmt.Errorf("duplicateFinder.Find: %w", findErr))
 		return
 	}
 
 	duplicates := []gin.H{}
-	res, aggErr := h.searchAggregator.Aggregate(
-		c.Request.Context(),
-		&providers.SearchQuery{},
-		providers.AggregateOptions{
-			HashQuery: clip.FileHash(),
-		},
-	)
-	if aggErr != nil {
-		apiutil.InternalError(c, fmt.Errorf("aggregator.Aggregate: %w", aggErr))
-		return
-	}
-	if res != nil {
-		for name, e := range res.ProviderErrors {
-			h.log.Warn("Failed to search duplicates in "+name, zap.Error(e))
+	for _, m := range matches {
+		if m.Source == source && m.AssetID == clipID {
+			continue
 		}
-		for _, hit := range res.Hits {
-			if hit.SourceSource == source && hit.SourceID == clipID {
-				continue
-			}
-			duplicates = append(duplicates, gin.H{
-				"source":     hit.SourceSource,
-				"id":         hit.SourceID,
-				"name":       hit.Name,
-				"drive_link": hit.DriveLink,
-				"local_path": hit.LocalPath,
-				"thumb_url":  hit.ThumbnailURL,
-			})
-		}
+		duplicates = append(duplicates, gin.H{
+			"source":     m.Source,
+			"id":         m.AssetID,
+			"name":       m.Name,
+			"drive_link": m.DriveLink,
+			"local_path": m.LocalPath,
+			"thumb_url":  m.ThumbnailURL,
+		})
 	}
 
 	apiutil.OK(c, gin.H{
