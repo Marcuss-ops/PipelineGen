@@ -47,6 +47,22 @@ func NewSQLiteAssetCommitter(db *sql.DB, box *outboxevents.Repository, log *zap.
 // Compile-time assertion.
 var _ persistence.AssetCommitter = (*SQLiteAssetCommitter)(nil)
 
+// CommitAsset is the canonical user-facing entry point (alias
+// `CommitAsset` on the persistence.AssetCommitter port). It opens
+// a fresh SQLite transaction, writes the canonical asset + locations
+// + metadata + asset.index.requested outbox event, and commits
+// atomically. Behavior is byte-equivalent to CommitAndIndex; the new
+// name is the single user-facing surface per the user-facing
+// contract:
+//
+//	CommitAsset(ctx, AssetCommitRequest) (CommittedAsset, error)
+//
+// godlike/06 SSOT: this is the ONLY canonical producer of the
+// asset.index.requested outbox event at the persistence layer.
+func (c *SQLiteAssetCommitter) CommitAsset(ctx context.Context, req persistence.AssetCommitRequest) (persistence.CommittedAsset, error) {
+	return c.CommitAndIndex(ctx, persistence.CommitRequest(req))
+}
+
 // CommitAndIndex opens a new transaction, writes the asset, and
 // commits. This is the standalone-producer entry point.
 func (c *SQLiteAssetCommitter) CommitAndIndex(ctx context.Context, req persistence.CommitRequest) (persistence.CommitResult, error) {
@@ -352,4 +368,3 @@ func firstNonEmpty(a, b string) string {
 	}
 	return b
 }
-

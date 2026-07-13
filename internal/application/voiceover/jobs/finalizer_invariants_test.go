@@ -387,7 +387,7 @@ func TestVoiceoverFinalizer_PersistsMediaAssetsInSameTxn(t *testing.T) {
 	// canonical constructor (godlike/06 Pattern 0 — voiceover.finalizer
 	// is the SINGLE canonical implementation of the VoiceoverFinalizer
 	// port per P0.4 Fase 3a, July 2026).
-	f := voiceover.NewVoiceoverFinalizer(repo, outbox, lifecycle, zap.NewNop())
+	f := voiceover.NewVoiceoverFinalizer(repo, outbox, lifecycle, nil, zap.NewNop()) // PR-ASSET-COMMITTER-COMMITASSET: committer=nil (legacy path)
 
 	// Open the caller's tx — the canonical "atomicity envelope" the
 	// finalizer is expected to honour.

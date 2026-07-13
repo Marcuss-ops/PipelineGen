@@ -655,6 +655,7 @@ func TestProcessSegmentUseCase_Execute_FASE5_E2E_RealFinalizer_HappyPath(t *test
 		repo,
 		outboxStub,
 		lifecycleStub,
+		nil, // committer — pre-Cutover (PR-ASSET-COMMITTER-COMMITASSET Phase 2)
 		zap.NewNop(),
 	)
 
@@ -773,6 +774,7 @@ func TestProcessSegmentUseCase_Execute_FASE5_E2E_IdempotencyReplay(t *testing.T)
 		repo,
 		outboxStub,
 		lifecycleStub,
+		nil, // committer — pre-Cutover (PR-ASSET-COMMITTER-COMMITASSET Phase 2)
 		zap.NewNop(),
 	)
 
@@ -890,6 +892,7 @@ func TestProcessSegmentUseCase_Execute_FASE6_E2E_OrphanCleanup_RealFinalizer(t *
 		repo,
 		outboxStub,
 		lifecycleStub,
+		nil, // committer — pre-Cutover (PR-ASSET-COMMITTER-COMMITASSET Phase 2)
 		zap.NewNop(),
 	)
 
