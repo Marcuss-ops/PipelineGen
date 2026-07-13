@@ -13,15 +13,27 @@
 // if the planner cannot produce a valid plan for the given request,
 // it returns an error rather than producing a degraded no-op plan.
 //
-// Stage plan:
-//   - FASE 1: types declared here (port-local). This commit.
-//   - FASE 2: types migrate to internal/domain/script (no shape
-//     change; relocation only) when the domain package adopts the
-//     planner vocabulary.
+// Stage plan (RESOLVED at FASE-2, July 2026):
+//   - FASE 1: types declared here (port-local). Shipped.
+//   - FASE 2: type aliases for the canonical scriptpkg.* shapes
+//     land HERE; this port no longer carries local-port struct
+//     shadows for ClipPrePlan / ClipSearchSlot / SourceAnchor.
+//     godlike/06 SSOT (one canonical owner per fact): the
+//     internal/domain/script package owns the wire shape; the
+//     port re-exports them by alias so the planner's return
+//     types are the canonical struct by construction. No shape
+//     change. No data-loss. PlanRequest stays local because the
+//     domain does not (yet) own the operator-intent shape.
 //   - FASE 3: deterministic planner implementation ships.
 //   - FASE 4+: SlotSearchPort.SearchSlots extension, shared
 //     ClipSampler, and backend Ref -> clip_id binding depend on
 //     this port and ship in their own commits.
+//
+// Compile-time identity pin: see
+// pacquiao_broner_pre_planner_schema_contract_test.go for the
+// `var _ ClipPrePlan = scriptpkg.ClipPrePlan{}` lines that prove
+// the alias identity at `go test` build time. Re-introducing a
+// local-port struct shadow here will break those pins.
 package usecase
 
 import (
@@ -98,119 +110,38 @@ type PlanRequest struct {
 
 // ── Output ──────────────────────────────────────────────────────────────
 
-// ClipPrePlan is the deterministic, provenance-attached output of
-// the Pre-Planner. It is the audit-able contract for the rest of
-// the pipeline: SlotSearchPort reads Slots and finds candidates;
-// the Sampler reads candidates + Slots and emits one clip per
-// slot.
-type ClipPrePlan struct {
-	// Version is the contract version (currently 1). Bumped
-	// on any breaking shape change; conservative on additive
-	// changes.
-	Version int
+// ClipPrePlan is the TYPE ALIAS for the canonical
+// scriptpkg.ClipPrePlan (FASE-2, July 2026). godlike/06 SSOT:
+// the planner's return type IS the canonical domain struct.
+// Adding `Fingerprint` (or any other field) to the canonical
+// type adds it here by construction; removing it removes it
+// here. The wire shape used for cache invalidation,
+// SlotSearchPort consumption, and downstream binder is the
+// scriptpkg shape — nothing local. See source_spec.go for the
+// canonical doc and the Validate() method that catches plan-
+// level drift (slot refs, SourceHash, Title).
+type ClipPrePlan = scriptpkg.ClipPrePlan
 
-	// SourceHash is the sha256 of the original SourceText at
-	// planning time. Every ClipSearchSlot.SourceAnchor
-	// carries the same value. The backend (FASE 5) rejects
-	// any later binding whose anchor hash no longer matches.
-	SourceHash string
+// ClipSearchSlot is the TYPE ALIAS for the canonical
+// scriptpkg.ClipSearchSlot (FASE-2, July 2026). godlike/06 SSOT:
+// the per-slot shape the SlotSearchPort reads IS the canonical
+// domain struct. Required is a bare `json:"required"` (no
+// omitempty) so a `false` value survives JSON round-trip;
+// silence would conflate 'explicit optional' with 'schema
+// missing' — see source_spec.go for the canonical contract.
+// See pacquiao_broner_pre_planner_schema_contract_test.go for the
+// compile-time pin that proves this alias identity.
+type ClipSearchSlot = scriptpkg.ClipSearchSlot
 
-	// Title is the planner-derived cinematic title. May
-	// differ cosmetically from req.Title; always non-empty
-	// on a valid plan.
-	Title string
-
-	// Slots is the ordered list of visual requirements. The
-	// order matches the operator's narrative order
-	// (Segments[] order when present, source_text order
-	// otherwise). Slot.Refs are "slot-1".."slot-N" with N
-	// = len(Slots) and never re-order or re-index between
-	// planner runs of the same input.
-	Slots []ClipSearchSlot
-}
-
-// ClipSearchSlot is a single visual requirement emitted by the
-// Pre-Planner. The SlotSearchPort finds candidates for it; the
-// shared ClipSampler picks one per slot.
-type ClipSearchSlot struct {
-	// Ref is the temporary skeleton key the rest of the
-	// pipeline threads (the model-facing prompt sees it;
-	// the backend resolves Ref -> clip_id at binding
-	// time). Format: "slot-N" with N = 1..len(plan.Slots).
-	// NOT a clip_id; the model must never see one and must
-	// refuse to report anything other than {ref, text}.
-	Ref string
-
-	// Topic is the per-slot narrative topic. Verbatim from
-	// the corresponding Segment.Topic when Segments[] is
-	// non-empty; otherwise a topic-derived slice of
-	// source_text at the anchor offset. The editor-facing
-	// prompt displays this verbatim.
-	Topic string
-
-	// SourceAnchor is the immutable reference to the
-	// SourceText span this slot represents. The planner
-	// NEVER edits SourceText; the slot's chosen clip MUST
-	// depict a moment that overlaps this span.
-	//
-	// Pointer type (not value): aligns with the domain
-	// ClipPrePlan convention and matches the
-	// FASE-2 type-alias swap target
-	// (type ClipSearchSlot = scriptpkg.ClipSearchSlot).
-	// ValidatePlan rejects a nil SourceAnchor before any
-	// downstream code touches the slot.
-	SourceAnchor *SourceAnchor
-
-	// SearchQuery is the per-slot query sent to the
-	// SlotSearchPort. Composition: Title + Topic + visual
-	// narrative verbs. Stable: the same PlanRequest
-	// produces the same SearchQuery text (byte-identical).
-	SearchQuery string
-
-	// VisualIntent describes what the chosen clip is
-	// expected to show. Used at index time by the VLM
-	// cross-check (FASE VLM) and surfaced in the model-
-	// facing prompt as the slot's narrative view header.
-	// Stable: deterministic string.
-	VisualIntent string
-
-	// TargetDurationMs is the desired runtime for the
-	// chosen clip. The sampler enforces a soft floor
-	// (>= 0.8 * TargetDurationMs) and a hard ceiling
-	// (<= 2 * TargetDurationMs).
-	TargetDurationMs int64
-
-	// Required marks the slot as must-have. A sampler that
-	// cannot satisfy all Required slots fails the planner's
-	// overall result (no partial plan).
-	Required bool
-}
-
-// SourceAnchor is an immutable reference to a SourceText span.
-// Offsets are byte offsets into SourceText committed at planning
-// time. The planner sets SourceHash; downstream code uses it to
-// enforce source-text immutability.
-type SourceAnchor struct {
-	// SourceHash is the sha256 of the SourceText this
-	// anchor was computed against. Set by the planner
-	// (= plan.SourceHash); downstream rejects mismatches.
-	SourceHash string
-
-	// StartOffset is the inclusive byte offset in the
-	// original SourceText.
-	StartOffset int
-
-	// EndOffset is the exclusive byte offset. EndOffset >
-	// StartOffset always; EndOffset <= len(SourceText)
-	// always.
-	EndOffset int
-
-	// Excerpt is a pre-extracted prose slice (<= 500 runes
-	// by convention) for the planner's own use AND the
-	// model-facing prompt. Verbatim from SourceText; never
-	// reworded.
-	Excerpt string
-}
+// SourceAnchor is the TYPE ALIAS for the canonical
+// scriptpkg.SourceAnchor (FASE-2, July 2026). godlike/06 SSOT:
+// the per-anchor byte-range identity IS the canonical domain
+// struct. The planner emits offsets into the canonicalized
+// text (never raw user bytes); SourceHash is the parent
+// ClipPrePlan.SourceHash and provides the anti-drift gate the
+// backend relies on. See source_spec.go for the canonical
+// Validate(parentPlanSourceHash) method.
+type SourceAnchor = scriptpkg.SourceAnchor
 
 // ── Port ─────────────────────────────────────────────────────────────────
 
