@@ -100,7 +100,7 @@ func TestSearchResolver_RealBuilder_DedupsAndHydratesInSearchOrder(t *testing.T)
 		},
 	})
 
-	resolver := NewSearchSourceResolver(search, builder, zap.NewNop(), NewClipSamplerRegistry())
+	resolver := NewSearchSourceResolver(search, builder, NewClipSamplerRegistry(), zap.NewNop())
 
 	resolved, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:               scriptpkg.SourceSearch,
@@ -212,7 +212,7 @@ func TestSearchResolver_MinCoverageFailsClosed(t *testing.T) {
 		},
 	})
 
-	resolver := NewSearchSourceResolver(search, builder, zap.NewNop(), NewClipSamplerRegistry())
+	resolver := NewSearchSourceResolver(search, builder, NewClipSamplerRegistry(), zap.NewNop())
 
 	_, err := resolver.Resolve(context.Background(), scriptpkg.SourceSpec{
 		Type:        scriptpkg.SourceSearch,

@@ -792,6 +792,10 @@ type SlotClipBinding struct {
 	StartMs      int64         `json:"start_ms,omitempty"`
 	EndMs        int64         `json:"end_ms,omitempty"`
 	SourceAnchor *SourceAnchor `json:"source_anchor,omitempty"`
+	// Embedding is the dense vector of the bound clip. Consumed
+	// by the ClipSampler's diversity gate (cosine sim against
+	// the current candidate); cross-slot governance. FASE-8.
+	Embedding []float32 `json:"embedding,omitempty"`
 }
 
 // ResolvedClipSlot ties a chosen candidate back to its plan slot.

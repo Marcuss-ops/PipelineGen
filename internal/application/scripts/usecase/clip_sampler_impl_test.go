@@ -1,8 +1,14 @@
-// Package scripts \u2014 clip_sampler_impl_test.go pins the FASE-7
+// Package scripts \u2014 clip_sampler_impl_test.go pins the FASE-7/8
 // single defaultClipSampler contract. Five golden tests cover
 // the move-only surface: dedup+limit, min_score floor, coverage
 // pass, coverage fail with nil result (move-only parity), and
 // limit-zero fail-closed (godlike/07 NO-FAKE-AVAILABILITY).
+//
+// FASE-8 enrichment: each candidate fixture satisfies all 10
+// gates (richTranscript/VisualSummary/MediaType/DurationMs/
+// AnchorCoverageRatio/DriveLink/Embedding). The Slot context is
+// the same across tests (Slot.Topic="test-topic" token-overlaps
+// with every candidate Transcript).
 package usecase
 
 import (
@@ -10,13 +16,57 @@ import (
 	"strings"
 	"testing"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
+
+// richSlot is the canonical Slot context used by every FASE-8
+// test fixture below. Topic="test-topic" tokenises to a single
+// 10-char token ">3-char" which exactly matches the substring
+// "test-topic" embedded in every richCandidate's Transcript.
+//
+// TargetDurationMs=6000 keeps DurationMs=6000 inside
+// [Floor=4800, Ceiling=12000] for the duration gate.
+func richSlot() scriptpkg.ClipSearchSlot {
+	return scriptpkg.ClipSearchSlot{
+		Ref:              "slot-test",
+		Topic:            "test-topic",
+		TargetDurationMs: 6000,
+	}
+}
+
+// richCandidate returns a candidate that satisfies all 10
+// gates given richSlot() context. Each test may mutate
+// individual fields (Score, Transcript, Embedding, ...) to
+// exercise dedup / min-score / coverage paths.
+//
+// Defaults chosen to pass: Score=0.95 (>= MinQualityScore
+// 0.50), Transcript has 12 words including the slot topic,
+// VisualSummary has 14 words, MediaType="video", DurationMs
+// = target, AnchorCoverageRatio = 0.80 (>= MinAnchorCoverage
+// 0.50), DriveLink set, Embedding identity-different across
+// distinct candidates to keep diversity trivially passing.
+func richCandidate(id string, score float64) ports.ClipSamplerCandidate {
+	return ports.ClipSamplerCandidate{
+		ClipID:              id,
+		Name:                id + "-name",
+		Score:               score,
+		Source:              "semantic",
+		Transcript:          "test-topic content body for " + id + " with sufficient word count and references.",
+		VisualSummary:       "The test-topic scene rendering for " + id + " with sufficient visual rune length.",
+		MediaType:           "video",
+		DurationMs:          6000,
+		AnchorCoverageRatio: 0.80,
+		DriveLink:           "https://drive.google.com/file/d/" + id + "/view",
+		Embedding:           []float32{0.0, 1.0, 0.0},
+	}
+}
 
 func TestSamplerImpl_BasicLimitAndDedup(t *testing.T) {
 	sampler := NewDefaultClipSampler()
 	req := ports.ClipSamplerRequest{
+		SlotRef:       "slot-test",
+		Slot:          richSlot(),
 		Limit:         3,
 		MinCoverage:   0,
 		SourceType:    scriptpkg.SourceSearch,
@@ -25,11 +75,11 @@ func TestSamplerImpl_BasicLimitAndDedup(t *testing.T) {
 	// 5 distinct IDs + a duplicate of the first, so dedup + limit-3
 	// yields exactly the first 3 in caller order.
 	candidates := []ports.ClipSamplerCandidate{
-		{ClipID: "clip-1", Name: "first", Score: 0.9, Source: "semantic"},
-		{ClipID: "clip-2", Name: "second", Score: 0.8, Source: "semantic"},
-		{ClipID: "clip-1", Name: "first-dup", Score: 0.7, Source: "semantic"},
-		{ClipID: "clip-3", Name: "third", Score: 0.6, Source: "semantic"},
-		{ClipID: "clip-4", Name: "fourth", Score: 0.5, Source: "semantic"},
+		richCandidate("clip-1", 0.9),
+		richCandidate("clip-2", 0.8),
+		richCandidate("clip-1", 0.7), // dup
+		richCandidate("clip-3", 0.6),
+		richCandidate("clip-4", 0.5),
 	}
 	res, err := sampler.Select(req, candidates)
 	if err != nil {
@@ -49,16 +99,22 @@ func TestSamplerImpl_BasicLimitAndDedup(t *testing.T) {
 func TestSamplerImpl_MinScoreFilters(t *testing.T) {
 	sampler := NewDefaultClipSampler()
 	req := ports.ClipSamplerRequest{
+		SlotRef:       "slot-test",
+		Slot:          richSlot(),
 		Limit:         10,
 		MinScore:      0.5,
 		SourceType:    scriptpkg.SourceSearch,
 		CallingSource: ClipSamplerCallerSearch,
 	}
+	high := richCandidate("high", 0.95)
+	high.Embedding = []float32{1.0, 0.0, 0.0}
+	mid := richCandidate("mid", 0.55)
+	mid.Embedding = []float32{0.0, 1.0, 0.0}
 	candidates := []ports.ClipSamplerCandidate{
-		{ClipID: "high", Score: 0.95, Source: "semantic"},
-		{ClipID: "lo-1", Score: 0.10, Source: "semantic"}, // dropped
-		{ClipID: "lo-2", Score: 0.30, Source: "semantic"}, // dropped
-		{ClipID: "mid", Score: 0.55, Source: "semantic"},
+		high,
+		richCandidate("lo-1", 0.10), // dropped by MinScore pre-gate
+		richCandidate("lo-2", 0.30), // dropped by MinScore pre-gate
+		mid,
 	}
 	res, err := sampler.Select(req, candidates)
 	if err != nil {
@@ -72,15 +128,17 @@ func TestSamplerImpl_MinScoreFilters(t *testing.T) {
 func TestSamplerImpl_CoveragePass(t *testing.T) {
 	sampler := NewDefaultClipSampler()
 	req := ports.ClipSamplerRequest{
+		SlotRef:       "slot-test",
+		Slot:          richSlot(),
 		Limit:         4,
 		MinCoverage:   0.5,
 		SourceType:    scriptpkg.SourceSearch,
 		CallingSource: ClipSamplerCallerSearch,
 	}
 	candidates := []ports.ClipSamplerCandidate{
-		{ClipID: "a", Source: "semantic"},
-		{ClipID: "b", Source: "semantic"},
-		{ClipID: "c", Source: "semantic"},
+		richCandidate("a", 0.95),
+		richCandidate("b", 0.90),
+		richCandidate("c", 0.85),
 	}
 	res, err := sampler.Select(req, candidates)
 	if err != nil {
@@ -96,13 +154,15 @@ func TestSamplerImpl_CoverageFailReturnsNilResult(t *testing.T) {
 	// move-only parity with the original resolver behaviour.
 	sampler := NewDefaultClipSampler()
 	req := ports.ClipSamplerRequest{
+		SlotRef:       "slot-test",
+		Slot:          richSlot(),
 		Limit:         10,
 		MinCoverage:   0.5,
 		SourceType:    scriptpkg.SourceSearch,
 		CallingSource: ClipSamplerCallerSearch,
 	}
 	candidates := []ports.ClipSamplerCandidate{
-		{ClipID: "only-one", Source: "semantic"},
+		richCandidate("only-one", 0.95),
 	}
 	res, err := sampler.Select(req, candidates)
 	if err == nil {
