@@ -33,9 +33,9 @@ deprecations:
   # ────────────────────────────────────────────────────────────────────────
   - id: OUTPUT_SPEC_VOICEOVER_FLAG
     owner_capability: internal/domain/script
-    exact_symbol: "OutputSpec.GenerateVoiceover (bool flag, json: generate_voiceover)"
+    exact_symbol: "OutputSpec.GenerateVoiceover (Toggle flag, json: generate_voiceover)"
     file: internal/domain/script/output_spec.go
-    file_line: 131
+    file_line: 281
     replacement: "Voiceover is now produced by a separate voiceover.generate downstream job (internal/domain/job/job.go TypeVoiceoverGenerate). Set voiceover requirements via sceneplan.AssetRequirements instead."
     introduction_date: 2026-07-01
     removal_date: 2026-Q3
@@ -49,9 +49,9 @@ deprecations:
 
   - id: OUTPUT_SPEC_IMAGES_FLAG
     owner_capability: internal/domain/script
-    exact_symbol: "OutputSpec.GenerateSceneImages (bool flag, json: generate_scene_images)"
+    exact_symbol: "OutputSpec.GenerateSceneImages (Toggle flag, json: generate_scene_images)"
     file: internal/domain/script/output_spec.go
-    file_line: 138
+    file_line: 291
     replacement: "Scene images are now produced by a separate images.generate downstream job (internal/domain/job/job.go TypeImagesGenerate). Set image requirements via sceneplan.AssetRequirements instead."
     introduction_date: 2026-07-01
     removal_date: 2026-Q3
@@ -65,9 +65,9 @@ deprecations:
 
   - id: OUTPUT_SPEC_DOCUMENT_FLAG
     owner_capability: internal/domain/script
-    exact_symbol: "OutputSpec.GenerateDocument (bool flag, json: generate_document)"
+    exact_symbol: "OutputSpec.GenerateDocument (Toggle flag, json: generate_document)"
     file: internal/domain/script/output_spec.go
-    file_line: 145
+    file_line: 301
     replacement: "Google Doc creation is now produced by a separate document.generate downstream job (internal/domain/job/job.go TypeDocumentGenerate). Set document requirements via sceneplan.AssetRequirements instead."
     introduction_date: 2026-07-01
     removal_date: 2026-Q3
