@@ -74,6 +74,7 @@
       "internal/application/images (25 files) — in_progress to capability/images split",
       "internal/application/youtube (43 files) — in_progress to capability/youtube split",
       "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)",
+      "internal/application/assets/providers/stock/stockpipeline (79 files) — in_progress to stockpipeline/{ingest,finalize,publish,cleanup,reconcile} phase split; target subzones honor canonical max_files_per_package=40 cap (PR-STOCKPIPELINE-PHASE-SPLIT, July 2026)",
       "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"
     ],
     "StaleProseStems": [
@@ -90,36 +91,26 @@
     ]
   },
   "summary": {
-    "total_violations": 43,
+    "total_violations": 44,
     "by_reason": {
       "agent_playbook_doc_missing": 1,
       "ci_gates_doc_missing": 1,
       "constructor_deps": 9,
       "data_ownership_doc_missing": 1,
       "legacy_policy_doc_missing": 1,
-      "percheck_monitor_infra_import": 1,
+      "percheck_monitor_infra_import": 3,
       "percheck_root_override_ban": 1,
       "percheck_type_redecl": 8,
       "pkg_size": 5,
       "removal_doc_missing": 1,
-      "struct_deps": 13,
-      "thin_command": 1
+      "struct_deps": 13
     },
     "by_severity": {
-      "error": 10,
-      "warn": 33
+      "error": 12,
+      "warn": 32
     }
   },
   "violations": [
-    {
-      "file": "cmd/admin/main.go",
-      "actual_lines": 217,
-      "max_lines": 200,
-      "matched_rule": "cmd_main_max_lines",
-      "rule": "thin_command",
-      "severity": "warn",
-      "note": "command binaries must be thin (root ctx + config + compose + mode + shutdown)"
-    },
     {
       "file": "docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md",
       "matched_rule": "data_ownership_doc",
@@ -163,7 +154,7 @@
     },
     {
       "file": "internal/api/assets/clips/module.go",
-      "line": 94,
+      "line": 87,
       "actual_count": 26,
       "allowed_count": 8,
       "matched_rule": "max_struct_deps",
@@ -242,8 +233,24 @@
       "note": "struct CompositionDeps has 9 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
-      "file": "internal/application/assets/monitor/youtube_discoveries_test.go",
-      "line": 65,
+      "file": "internal/application/assets/monitor/youtube_discoveries_test_recovery.go",
+      "line": 29,
+      "matched_rule": "monitor_infra_import_ban",
+      "rule": "percheck_monitor_infra_import",
+      "severity": "error",
+      "note": "forbidden internal/infrastructure/ import in monitor/ (FASE 3.7 Commit 3); route through composition-root adapter in internal/app/lifecycle.go or prepend `// ARCH-ALLOWLIST: monitor-infra-import` on the line preceding the import"
+    },
+    {
+      "file": "internal/application/assets/monitor/youtube_discoveries_test_scoring.go",
+      "line": 18,
+      "matched_rule": "monitor_infra_import_ban",
+      "rule": "percheck_monitor_infra_import",
+      "severity": "error",
+      "note": "forbidden internal/infrastructure/ import in monitor/ (FASE 3.7 Commit 3); route through composition-root adapter in internal/app/lifecycle.go or prepend `// ARCH-ALLOWLIST: monitor-infra-import` on the line preceding the import"
+    },
+    {
+      "file": "internal/application/assets/monitor/youtube_discoveries_test_smoke.go",
+      "line": 31,
       "matched_rule": "monitor_infra_import_ban",
       "rule": "percheck_monitor_infra_import",
       "severity": "error",
@@ -389,7 +396,7 @@
     },
     {
       "package": "cmd/admin",
-      "actual_count": 62,
+      "actual_count": 63,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
@@ -432,14 +439,7 @@
       "matched_rule": "same_package_duplicate_type_declarations",
       "rule": "percheck_type_redecl",
       "severity": "error",
-      "note": "job.JobBroker (count=2 in same package); sites: internal/domain/job/store.go:41:2, internal/kernel/job/store.go:159:6"
-    },
-    {
-      "package": "internal/job",
-      "matched_rule": "same_package_duplicate_type_declarations",
-      "rule": "percheck_type_redecl",
-      "severity": "error",
-      "note": "job.EnqueueRequest (count=2 in same package); sites: internal/domain/job/service.go:30:2, internal/kernel/job/service.go:53:6"
+      "note": "job.Event (count=2 in same package); sites: internal/domain/job/job.go:31:2, internal/kernel/job/job.go:174:6"
     },
     {
       "package": "internal/job",
@@ -467,7 +467,7 @@
       "matched_rule": "same_package_duplicate_type_declarations",
       "rule": "percheck_type_redecl",
       "severity": "error",
-      "note": "job.Event (count=2 in same package); sites: internal/domain/job/job.go:31:2, internal/kernel/job/job.go:174:6"
+      "note": "job.JobBroker (count=2 in same package); sites: internal/domain/job/store.go:41:2, internal/kernel/job/store.go:159:6"
     },
     {
       "package": "internal/job",
@@ -482,11 +482,21 @@
       "rule": "percheck_type_redecl",
       "severity": "error",
       "note": "job.Filter (count=2 in same package); sites: internal/domain/job/job.go:27:2, internal/kernel/job/job.go:91:6"
+    },
+    {
+      "package": "internal/job",
+      "matched_rule": "same_package_duplicate_type_declarations",
+      "rule": "percheck_type_redecl",
+      "severity": "error",
+      "note": "job.EnqueueRequest (count=2 in same package); sites: internal/domain/job/service.go:30:2, internal/kernel/job/service.go:53:6"
     }
   ],
   "grandfathered_known": null,
   "warnings": [
-    "Check 54: 1 ARCH-ALLOWLIST: monitor-infra-import site(s) in internal/application/assets/monitor/youtube_discoveries_test.go (each entry requires explicit owner + deadline per AGENTS.md §7; verify currency at promote-to-zero pass)",
+    "Check 54: 1 ARCH-ALLOWLIST: monitor-infra-import site(s) in internal/application/assets/monitor/youtube_discoveries_test_indexing.go (each entry requires explicit owner + deadline per AGENTS.md §7; verify currency at promote-to-zero pass)",
+    "Check 54: 1 ARCH-ALLOWLIST: monitor-infra-import site(s) in internal/application/assets/monitor/youtube_discoveries_test_recovery.go (each entry requires explicit owner + deadline per AGENTS.md §7; verify currency at promote-to-zero pass)",
+    "Check 54: 1 ARCH-ALLOWLIST: monitor-infra-import site(s) in internal/application/assets/monitor/youtube_discoveries_test_scoring.go (each entry requires explicit owner + deadline per AGENTS.md §7; verify currency at promote-to-zero pass)",
+    "Check 54: 1 ARCH-ALLOWLIST: monitor-infra-import site(s) in internal/application/assets/monitor/youtube_discoveries_test_smoke.go (each entry requires explicit owner + deadline per AGENTS.md §7; verify currency at promote-to-zero pass)",
     "Check N (player_client=): 1 comment-only reference(s) in cmd/archcheck/runner.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check N (player_client=): 1 comment-only reference(s) in internal/app/lifecycle_scheduler.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check N (player_client=): 2 comment-only reference(s) in internal/application/transcripts/ytdlp_subtitles.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
