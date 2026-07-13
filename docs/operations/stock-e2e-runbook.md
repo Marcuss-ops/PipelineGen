@@ -465,8 +465,22 @@ curl -sS --connect-timeout 5 --max-time 30 \
   -o "/tmp/diag_${JOB}_full.json" -w "HTTP %{http_code} size=%{size_download}B time=%{time_total}s\n"
 
 # Filter to the operator-relevant fields (no cleartext anywhere).
-jq -c '{id, type, status, current_stage, progress, retry_count, max_retries, error, started_at, updated_at, created_at, retryable}' \
-  "/tmp/diag_${JOB}_full.json"
+# NOTE: retry_count / max_retries are NOT at top-level of /full — they live under
+# the nested `job` object (full domainjob.Job struct). Top-level keys are the
+# 16 listed in buildJobResponse (id/type/status/correlation_id/current_stage/
+# current_step/progress/warnings/result/error/created_at/started_at/updated_at/
+# timeline/events/retryable/job). Alias them under the canonical names.
+jq -c '{
+    id, type, status,
+    current_stage, current_step, progress,
+    error,
+    started_at, updated_at, created_at,
+    retryable,
+    retry_count:  .job.retry_count,
+    max_retries:  .job.max_retries,
+    worker_id:    .job.worker_id,
+    correlation_id
+}' "/tmp/diag_${JOB}_full.json"
 
 # /events filtered to error|warning|retry mentions.
 curl -sS --connect-timeout 5 --max-time 30 \
