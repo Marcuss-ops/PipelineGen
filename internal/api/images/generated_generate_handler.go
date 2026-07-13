@@ -111,16 +111,26 @@ func (h *ImagesHandler) GeneratedGenerate(c *gin.Context) {
 	// DriveFileID and PathRel; DriveLink is derived.
 	res := assetToResult(asset)
 	apiutil.OK(c, gin.H{
-		"asset_id":      res.AssetID,
-		"origin":        res.Origin,
-		"provider":      res.Provider,
-		"preview_url":   res.PreviewURL,
-		"style_id":      res.StyleID,
-		"license":       res.License,
-		"author":        res.Author,
-		"drive":         imageDriveBlock(asset),
-		"indexed":       false,
-		"delivery_mode": mode,
+		"asset_id":    res.AssetID,
+		"origin":      res.Origin,
+		"provider":    res.Provider,
+		"preview_url": res.PreviewURL,
+		"style_id":    res.StyleID,
+		"license":     res.License,
+		"author":      res.Author,
+		"drive":       imageDriveBlock(asset),
+		"indexed":     false,
+		// Operator-visible canonical metadata shape (godlike/06 SSOT):
+		// "visual_embedding_dimensions" + "embedding_version_visual" pin
+		// the canonical SigLIP model that the outbox dispatcher will
+		// embed with after SQLite commit. "metadata_json" echoes back
+		// the full persisted text so operators can verify
+		// prompt_original / semantic_description / style / etc. without
+		// a separate GET.
+		"visual_embedding_dimensions": 768,             // VisualEmbeddingDim
+		"embedding_version_visual":    "2026-06-16-v1", // VisualEmbeddingModelVersion
+		"metadata_json":               asset.MetadataJSON,
+		"delivery_mode":               mode,
 		"location": gin.H{
 			"category": "",
 			"subject":  asset.SubjectID,

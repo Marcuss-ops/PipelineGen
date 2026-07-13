@@ -5,6 +5,24 @@ import (
 	"strings"
 )
 
+// Canonical embedding model constants (godlike/06 SSOT).
+//
+// Co-located with schema.IndexSchema so embedders, the generated-image
+// ingest path, and operator-facing API responses all anchor to the exact
+// same values. Updating any of these is a schema migration that changes
+// the Qdrant collection shape (named vector "visual" + payload field
+// embedding_version_visual). Don't bump without planning a v4.
+const (
+	// VisualEmbeddingDim is the canonical SigLIP so400m-patch14-384
+	// embedding dimensionality for the Qdrant "visual" named vector.
+	VisualEmbeddingDim = 768
+
+	// VisualEmbeddingModelVersion pins the SigLIP model version baked
+	// into media_assets.metadata_json.embedding_version_visual and
+	// schema.IndexSchema.DenseVectors[visual].ModelVersion.
+	VisualEmbeddingModelVersion = "2026-06-16-v1"
+)
+
 // DefaultV3Schema returns the canonical v3 index schema.
 //
 // v3 represents the QDRANT-003 schema with real embedding models:
