@@ -247,12 +247,12 @@ func findRepoRoot(t *testing.T) string {
 // KNOWN GAP (godlike/07 NO-FAKE-AVAILABILITY): this test does NOT
 // assert that the canonical registry binding is in place. Specifically,
 // `internal/application/jobs/registry_voiceover.go` must register a
-// handler for `job.TypeVoiceoverGenerate`. A future agent could rename
+// handler for `voiceover.JobGenerate`. A future agent could rename
 // the const literal, unregister the job type, or have a stale
 // registration without surfacing here. Forward-pointer `PR-REF-REG-VO`
 // (deadline 2026-08-22) will add the missing third sub-assert: load
 // the registry via `registry_voiceover_test.go::TestRegistry_HasTypeVoiceoverGenerate`
-// and assert `registry.HasHandler(job.TypeVoiceoverGenerate) == true`.
+// and assert `registry.HasHandler(voiceover.JobGenerate) == true`.
 // The test still ships as a meaningful partial gate (the const + bridge
 // surface contract is the load-bearing invariant for the BLOC5.4
 // cutover) and the forward-pointer is the canonical SSOT for the
@@ -264,8 +264,8 @@ func TestPromo_CanonicalMigrationGate(t *testing.T) {
 	// would break the wire-shape contract (jobs.Service.Enqueue callers
 	// use this const exclusively; see AGENTS.md Git-Lesson-3).
 	const wantJobType = "voiceover.generate"
-	if got := string(job.TypeVoiceoverGenerate); got != wantJobType {
-		t.Fatalf("job.TypeVoiceoverGenerate = %q, want %q (canonical one-canonical-const-per-jobType per godlike/06 SSOT — see internal/domain/job/job.go:78)", got, wantJobType)
+	if got := string(voiceover.JobGenerate); got != wantJobType {
+		t.Fatalf("voiceover.JobGenerate = %q, want %q (canonical one-canonical-const-per-jobType per godlike/06 SSOT — see internal/domain/job/job.go:78)", got, wantJobType)
 	}
 
 	// ── 2. Bridge source does NOT call Service.GenerateBatch ──────
@@ -286,7 +286,7 @@ func TestPromo_CanonicalMigrationGate(t *testing.T) {
 
 	if strings.Contains(bridgeBody, "GenerateBatch(") {
 		t.Errorf("bridge source %q must NOT call Service.GenerateBatch (legacy batch method that would double-invoke the TTS pipeline); "+
-			"the canonical async path is voiceover.generate via jobs.Dispatcher (job.TypeVoiceoverGenerate = %q); "+
+			"the canonical async path is voiceover.generate via jobs.Dispatcher (voiceover.JobGenerate = %q); "+
 			"see internal/application/voiceover/promo.go:1-8 (BLOC5.4 migration forward-deferred)",
 			bridgePath, wantJobType)
 	}
@@ -303,7 +303,7 @@ func TestPromo_CanonicalMigrationGate(t *testing.T) {
 			bridgePath)
 	}
 
-	t.Logf("canonical migration gate active: voiceover.generate is the canonical async target (job.TypeVoiceoverGenerate = %q); "+
+	t.Logf("canonical migration gate active: voiceover.generate is the canonical async target (voiceover.JobGenerate = %q); "+
 		"bridge does NOT call Service.GenerateBatch (regression-guard for TTS-double-invocation); "+
 		"current surface: Service.GenerateWithDestination; "+
 		"BLOC5.4 migration target: bridge routes through jobs.Dispatcher",

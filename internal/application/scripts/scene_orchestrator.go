@@ -142,7 +142,7 @@ func NewEmitter(dispatcher DispatcherShim) *Emitter {
 
 // EmitSceneImageJob validates the command and delegates to
 // Dispatcher.Enqueue for typed-payload routing. The emitted
-// job type is canonical domain/job.TypeImagesGenerate ("images.generate").
+// job type is canonical domain/images.JobGenerate ("images.generate").
 //
 // Returns the canonical job-broker job ID on success, or a typed
 // error on failure. Emit failures are reachable via errors.Is
@@ -187,7 +187,7 @@ func (e *Emitter) EmitSceneImageJob(ctx context.Context, cmd EmitSceneImageComma
 	// Delegate to the canonical Dispatcher.Enqueue.
 	// The Dispatcher routes through CompiledJobRegistry →
 	// PayloadCodec.EncodePayload → EnqueuePort.Enqueue.
-	j, err := e.dispatcher.Enqueue(ctx, job.TypeImagesGenerate, payload)
+	j, err := e.dispatcher.Enqueue(ctx, images.JobGenerate, payload)
 	if err != nil {
 		return "", fmt.Errorf("scene orchestrator: emit images.generate for scene %d (parent %s): %w",
 			cmd.SceneIndex, cmd.ParentJobID, err)

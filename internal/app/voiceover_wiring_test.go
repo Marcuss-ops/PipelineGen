@@ -9,7 +9,7 @@
 //     `voiceover.generate handler registered (Catena A P0 wiring
 //     complete)` in the late-bindings block of composition.go; this
 //     test reads the same bookkeeping via
-//     jobs.Service.HasHandler(job.TypeVoiceoverGenerate).
+//     jobs.Service.HasHandler(voiceover.JobGenerate).
 //
 //  2. The GenerateJobHandler.Register(jobsSvc) call MUST be idempotent
 //     w.r.t. registration bookkeeping — calling it twice is a no-op,
@@ -60,7 +60,7 @@ func TestVoiceoverGenerateHandler_RequiresRegistration(t *testing.T) {
 	// Pre-condition: no handler for voiceover.generate yet. This is the
 	// regression target for future Catena-A-shaped wiring accidents —
 	// `false` is the gate value the smoke test asserts against.
-	require.False(t, jobsBundle.Service.HasHandler(job.TypeVoiceoverGenerate),
+	require.False(t, jobsBundle.Service.HasHandler(voiceover.JobGenerate),
 		"voiceover.generate handler is unregistered at boot — Catena A P0 wiring is missing")
 
 	// Register a stub handler. The signature accepts the canonical
@@ -72,9 +72,9 @@ func TestVoiceoverGenerateHandler_RequiresRegistration(t *testing.T) {
 	// bottom of this file (P1 #13a godlike/06 audit-pin); the legacy
 	// `appjobs.JobTools` parameter name was retired in favour of the
 	// canonical `appjobs.JobExecutionTools` per the P1 #13 unification.
-	jobsBundle.Service.RegisterHandler(job.TypeVoiceoverGenerate, stubVoiceoverGenerateHandler)
+	jobsBundle.Service.RegisterHandler(voiceover.JobGenerate, stubVoiceoverGenerateHandler)
 
-	require.True(t, jobsBundle.Service.HasHandler(job.TypeVoiceoverGenerate),
+	require.True(t, jobsBundle.Service.HasHandler(voiceover.JobGenerate),
 		"voiceover.generate handler must be registered after Register (Catena A P0 wiring contract)")
 
 	// P0.3 (June 2026): per-language child job type (voiceover.generate_item)

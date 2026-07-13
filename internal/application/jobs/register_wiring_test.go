@@ -227,7 +227,7 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	// the SSOT job-type list and the resolver lookup.
 	registry := jobs.NewRegistry()
 	if err := registry.Register(jobs.JobPolicy{
-		Type:              jobs.TypeVoiceoverGenerate,
+		Type:              voiceover.JobGenerate,
 		Description:       "Voiceover single generation",
 		Timeout:           30 * time.Minute,
 		DefaultMaxRetries: 2,
@@ -260,7 +260,7 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	}
 
 	// Parent IS consumable.
-	if !svc.HasHandler(jobs.TypeVoiceoverGenerate) {
+	if !svc.HasHandler(voiceover.JobGenerate) {
 		t.Fatal("§15.9: after Register, parent handler must be present (HasHandler returned false)")
 	}
 
@@ -292,7 +292,7 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	}
 
 	// Both handlers must be consumable.
-	if !svc.HasHandler(jobs.TypeVoiceoverGenerate) {
+	if !svc.HasHandler(voiceover.JobGenerate) {
 		t.Fatal("§15.9: after child register, parent handler must still be present")
 	}
 	if !svc.HasHandler(jobs.TypeVoiceoverGenerateItem) {

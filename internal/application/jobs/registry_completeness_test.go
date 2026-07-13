@@ -93,7 +93,7 @@ var canonicalJobTypes = []string{
 	job.TypeSubtitleGenerate,       // domain/job/job.go
 	job.TypeRenderVideo,            // domain/job/job.go
 	job.TypeYouTubeUpload,          // domain/job/job.go
-	job.TypeYouTubeClipExtract,     // domain/job/job.go
+	youtube.JobExtract,     // domain/job/job.go
 	job.TypeCatalogSync,            // domain/job/job.go
 	job.TypeArtlistRun,             // domain/job/job.go
 	job.TypeSystemCleanup,          // domain/job/job.go
@@ -104,12 +104,12 @@ var canonicalJobTypes = []string{
 	job.TypeMediaReindex,           // domain/job/job.go
 	job.TypeMediaEnrich,            // domain/job/job.go
 	job.TypeYouTubeRebuildST,       // domain/job/job.go
-	job.TypeScriptGenerate,         // domain/job/job.go
-	job.TypeBulkUploadYouTubeClips, // domain/job/job.go
+	scripts.JobGenerate,         // domain/job/job.go
+	clips.JobBulkUpload, // domain/job/job.go
 	job.TypeDriveFolderSync,        // domain/job/job.go
 	job.TypeMediaCurate,            // domain/job/job.go
 	job.TypeVoiceoverPromo,         // domain/job/job.go
-	job.TypeVoiceoverGenerate,      // domain/job/job.go
+	voiceover.JobGenerate,      // domain/job/job.go
 	job.TypeVoiceoverGenerateItem,  // domain/job/job.go
 	TypeImageGenerateGoogle,        // application/jobs/registry.go (FASE 2 / June 2026)
 	// Spina Dorsale Fase 2 / PR-BATCH-REGISTER-ASYNC / PR-GEMMA-EXTRACT-IMPORTANT

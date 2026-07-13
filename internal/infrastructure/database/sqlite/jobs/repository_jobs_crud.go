@@ -265,7 +265,7 @@ func (r *SQLiteStore) List(ctx context.Context, filter job.Filter) ([]job.Job, e
 // json_extract.
 //
 // Commit 3 P0 #4 (July 2026): parentType parameter replaces the hardcoded
-// job.TypeVoiceoverGenerate so both script.generate and voiceover.generate
+// voiceover.JobGenerate so both script.generate and voiceover.generate
 // aggregators reuse the same query. Only waiting_children is queried —
 // partial_success is terminal (prevents infinite re-aggregation P0 #7).
 //

@@ -468,13 +468,13 @@ func wireVoiceoverJobBindings(domains *DomainBundle, jobs *JobsBundle, log *zap.
 		// If already bound, skip the re-Register — the domains field
 		// is still overwritten with the BLOC5.3 fanout-bound handler
 		// for downstream state-tracking consumers.
-		if !jobs.Service.HasHandler(appjobs.TypeVoiceoverGenerate) {
+		if !jobs.Service.HasHandler(voiceover.JobGenerate) {
 			if err := parentHandler.Register(jobs.Service); err != nil {
 				return fmt.Errorf("voiceover.generate parent handler Register (BLOC5.3 commit-2): %w", err)
 			}
 		} else {
 			log.Info("voiceover.generate handler already bound (Catena A P0 wiring succeeded) — preserving dispatcher binding; BLOC5.3 fanout-bound handler canonicals the domains.VoiceoverGenerateHandler field reference for downstream state-tracking",
-				zap.String("job_type", appjobs.TypeVoiceoverGenerate))
+				zap.String("job_type", voiceover.JobGenerate))
 		}
 		domains.VoiceoverGenerateHandler = parentHandler
 
@@ -509,7 +509,7 @@ func appendVoiceoverCriticalValidators(domains *DomainBundle, jobs *JobsBundle, 
 				CriticalHandler{
 					Name: "voiceover.generate",
 					Bind: func(svc *appjobs.Service) error {
-						if svc.HasHandler(appjobs.TypeVoiceoverGenerate) {
+						if svc.HasHandler(voiceover.JobGenerate) {
 							return nil // idempotent: Catena A P0 bind preserved
 						}
 						return vh.Register(svc)

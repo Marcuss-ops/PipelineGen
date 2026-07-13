@@ -71,20 +71,18 @@ const (
 // contraction window.
 const (
 	// Media job types are owned by internal/domain/media.
-	TypeMediaExtract           = media.TypeExtract
-	TypeMediaStock             = media.TypeStock
-	TypeArtlistRun             = media.TypeArtlistRun
-	TypeMediaGenerate          = media.TypeGenerate
-	TypeMediaReindex           = media.TypeReindex
-	TypeMediaEnrich            = media.TypeEnrich
-	TypeBulkUploadYouTubeClips = media.TypeBulkUploadYouTubeClips
-	TypeMediaCurate            = media.TypeCurate
-	TypeClipRegister           = media.TypeClipRegister
-	TypeMediaStockRLMEnrich    = media.TypeStockRLMEnrich
+	TypeMediaExtract        = media.TypeExtract
+	TypeMediaStock          = media.TypeStock
+	TypeArtlistRun          = media.TypeArtlistRun
+	TypeMediaGenerate       = media.TypeGenerate
+	TypeMediaReindex        = media.TypeReindex
+	TypeMediaEnrich         = media.TypeEnrich
+	TypeMediaCurate         = media.TypeCurate
+	TypeClipRegister        = media.TypeClipRegister
+	TypeMediaStockRLMEnrich = media.TypeStockRLMEnrich
 
 	// Voiceover job types are owned by internal/domain/voiceover.
 	TypeVoiceoverBatch        = voiceover.TypeBatch
-	TypeVoiceoverGenerate     = voiceover.TypeGenerate
 	TypeVoiceoverGenerateItem = voiceover.TypeGenerateItem
 	TypeVoiceoverPromo        = voiceover.TypePromo
 
@@ -97,7 +95,6 @@ const (
 
 	// YouTube job types are owned by internal/domain/youtube.
 	TypeYouTubeUpload               = youtube.TypeUpload
-	TypeYouTubeClipExtract          = youtube.TypeClipExtract
 	TypeYouTubeClipExtractImportant = youtube.TypeClipExtractImportant
 	TypeYouTubeRebuildST            = youtube.TypeRebuildSearchText
 
@@ -114,7 +111,6 @@ const (
 	TypeLessonsProcess = lessons.TypeProcess
 
 	// Script job types are owned by internal/domain/script.
-	TypeScriptGenerate         = script.TypeGenerate
 	TypeScriptVoiceoverSibling = script.TypeVoiceoverSibling
 	TypeScriptImageSibling     = script.TypeImageSibling
 	TypeScriptGenerateItem     = script.TypeGenerateItem
@@ -123,11 +119,9 @@ const (
 	TypeDriveFolderSync = drive.TypeFolderSync
 
 	// Image job types are owned by internal/domain/image.
-	TypeImagesGenerate      = image.TypeImagesGenerate
 	TypeImageGenerateGoogle = image.TypeGenerateGoogle
 
 	// Document job types are owned by internal/domain/document.
-	TypeDocumentGenerate = document.TypeGenerate
 
 	// Asset job types are owned by internal/domain/asset.
 	TypeAssetsResolve        = asset.TypeResolve

@@ -194,7 +194,7 @@ func (a *ParentAggregator) Start(ctx context.Context) {
 // Errors on individual parents are logged and skipped — a failed
 // parent will be retried on the next tick.
 func (a *ParentAggregator) Tick(ctx context.Context) {
-	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, job.TypeVoiceoverGenerate, 100)
+	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, voiceover.JobGenerate, 100)
 	if err != nil {
 		a.deps.Logger.Error("ParentAggregator.Tick: ListAwaitingAggregation failed", zap.Error(err))
 		return

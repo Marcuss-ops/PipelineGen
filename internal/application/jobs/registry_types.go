@@ -129,29 +129,25 @@ type JobPolicy = RegistryEntry
 // Per godlike/06 one-canonical-owner-per-fact: ZERO new string literals here;
 // every value resolves to a domain/job constant.
 const (
-	TypeMediaExtract           = job.TypeMediaExtract
-	TypeMediaStock             = job.TypeMediaStock
-	TypeVoiceoverBatch         = job.TypeVoiceoverBatch
-	TypeVoiceoverGenerate      = job.TypeVoiceoverGenerate
-	TypeSubtitleGenerate       = job.TypeSubtitleGenerate
-	TypeRenderVideo            = job.TypeRenderVideo
-	TypeYouTubeUpload          = job.TypeYouTubeUpload
-	TypeYouTubeClipExtract     = job.TypeYouTubeClipExtract
-	TypeCatalogSync            = job.TypeCatalogSync
-	TypeArtlistRun             = job.TypeArtlistRun
-	TypeSystemCleanup          = job.TypeSystemCleanup
-	TypeMediaGenerate          = job.TypeMediaGenerate
-	TypeVideoGenerate          = job.TypeVideoGenerate
-	TypeBooksProcess           = job.TypeBooksProcess
-	TypeLessonsProcess         = job.TypeLessonsProcess
-	TypeMediaReindex           = job.TypeMediaReindex
-	TypeMediaEnrich            = job.TypeMediaEnrich
-	TypeYouTubeRebuildST       = job.TypeYouTubeRebuildST
-	TypeScriptGenerate         = job.TypeScriptGenerate
-	TypeBulkUploadYouTubeClips = job.TypeBulkUploadYouTubeClips
-	TypeDriveFolderSync        = job.TypeDriveFolderSync
-	TypeMediaCurate            = job.TypeMediaCurate
-	TypeVoiceoverPromo         = job.TypeVoiceoverPromo
+	TypeMediaExtract     = job.TypeMediaExtract
+	TypeMediaStock       = job.TypeMediaStock
+	TypeVoiceoverBatch   = job.TypeVoiceoverBatch
+	TypeSubtitleGenerate = job.TypeSubtitleGenerate
+	TypeRenderVideo      = job.TypeRenderVideo
+	TypeYouTubeUpload    = job.TypeYouTubeUpload
+	TypeCatalogSync      = job.TypeCatalogSync
+	TypeArtlistRun       = job.TypeArtlistRun
+	TypeSystemCleanup    = job.TypeSystemCleanup
+	TypeMediaGenerate    = job.TypeMediaGenerate
+	TypeVideoGenerate    = job.TypeVideoGenerate
+	TypeBooksProcess     = job.TypeBooksProcess
+	TypeLessonsProcess   = job.TypeLessonsProcess
+	TypeMediaReindex     = job.TypeMediaReindex
+	TypeMediaEnrich      = job.TypeMediaEnrich
+	TypeYouTubeRebuildST = job.TypeYouTubeRebuildST
+	TypeDriveFolderSync  = job.TypeDriveFolderSync
+	TypeMediaCurate      = job.TypeMediaCurate
+	TypeVoiceoverPromo   = job.TypeVoiceoverPromo
 	// TypeVoiceoverGenerateItem is the per-language child job scheduled by the
 	// parent voiceover.generate handler via FanoutVoiceoversUseCase
 	// (PR-VOICEOVER-PARENT-CHILD-FANOUT, June 2026). Concurrency is
@@ -166,9 +162,7 @@ const (
 	// identifiers when wiring canonical codecs; the canonical strings
 	// themselves live in internal/domain/job/job.go (per godlike/02
 	// §Capability-specific constants stay in their owning domain package).
-	TypeImagesGenerate   = job.TypeImagesGenerate
-	TypeDocumentGenerate = job.TypeDocumentGenerate
-	TypeAssetsResolve    = job.TypeAssetsResolve
+	TypeAssetsResolve = job.TypeAssetsResolve
 
 	// Step 11B (July 2026) sibling-job type aliases. Canonical strings
 	// ("script.spawn_voiceover", "script.spawn_images") live in
