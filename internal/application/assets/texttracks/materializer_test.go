@@ -102,6 +102,53 @@ func (f *fakeTextTrackRepo) ListReadyLanguages(_ context.Context, assetID string
 	return langs, nil
 }
 
+// FindCurrentForTranslation (PR-CATALOG-MULTILINGUA step 4): lookup
+// is_current=1 + status=READY row matching the canonical 5-tuple.
+// Returns (nil, nil) on miss.
+func (f *fakeTextTrackRepo) FindCurrentForTranslation(_ context.Context, assetID string, kind asset.TextTrackKind, targetLang, sourceTextHash, translationModel, modelVersion, promptVersion string) (*asset.TextTrack, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.tracks[key(assetID, targetLang, kind)]
+	if !ok || !t.IsCurrent || t.Status != asset.TextTrackReady {
+		return nil, nil
+	}
+	// Compute the canonical 5-tuple SHA-256 via asset.TranslationKey
+	// and compare against the persisted row's translation_key.
+	expected := asset.TranslationKey(
+		sourceTextHash,
+		targetLang,
+		translationModel,
+		modelVersion,
+		promptVersion,
+	)
+	if t.TranslationKey != expected {
+		return nil, nil
+	}
+	clone := *t
+	return &clone, nil
+}
+
+// InsertTranslationWithAuditPredecessor (PR-CATALOG-MULTILINGUA
+// step 4): flip prior is_current=1 row to is_current=0 then insert
+// the new row with is_current=1.
+func (f *fakeTextTrackRepo) InsertTranslationWithAuditPredecessor(_ context.Context, track asset.TextTrack) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k := key(track.AssetID, track.LanguageCode, track.TextKind)
+	// Flip any prior is_current=1 row with a different translation_key.
+	if existing, ok := f.tracks[k]; ok && existing.IsCurrent && existing.TranslationKey != track.TranslationKey {
+		existing.IsCurrent = false
+		existing.UpdatedAt = time.Now()
+		f.tracks[k] = existing
+	}
+	track.IsCurrent = true
+	if track.ID == 0 {
+		track.ID = int64(len(f.tracks) + 1000) // deterministic test id
+	}
+	f.tracks[k] = &track
+	return nil
+}
+
 type fakeTranslator struct {
 	mu             sync.Mutex
 	translateCalls int32
@@ -205,6 +252,14 @@ func TestMaterialize_SkipsAlreadyReadyMatchingKey(t *testing.T) {
 	const srcText = "hello world"
 	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, srcVer, srcText)
 
+	// PR-CATALOG-MULTILINGUA step 4: pre-populate the IT row with
+	// the full translation_key matching the resolver config
+	// (translationModel="" default, modelVersion="model-v1",
+	// promptVersion="prompt-v1"). Without this, the new gate
+	// (FindCurrentForTranslation) would miss and retranslate IT.
+	srcTextHash := texttracks.ComputeSourceTextHash(srcText)
+	expectedKey := asset.TranslationKey(srcTextHash, "it", "", "model-v1", "prompt-v1")
+
 	repo.tracks[key("asset-1", "it", asset.TextTrackTranscript)] = &asset.TextTrack{
 		ID:                 200,
 		AssetID:            "asset-1",
@@ -217,8 +272,11 @@ func TestMaterialize_SkipsAlreadyReadyMatchingKey(t *testing.T) {
 		Provider:           "fake",
 		ModelName:          "fake-model",
 		ModelVersion:       "model-v1",
+		PromptVersion:      "prompt-v1",
 		TextHash:           texttracks.ComputeSourceTextHash("[it] hello world"),
 		SourceVersion:      srcVer,
+		TranslationKey:     expectedKey,
+		IsCurrent:          true,
 		Status:             asset.TextTrackReady,
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
@@ -226,7 +284,7 @@ func TestMaterialize_SkipsAlreadyReadyMatchingKey(t *testing.T) {
 
 	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
 
-	rep, err := m.Materialize(ctx, "asset-1", "en", texttracks.ComputeSourceTextHash(srcText), asset.TextTrackTranscript, nil)
+	rep, err := m.Materialize(ctx, "asset-1", "en", srcTextHash, asset.TextTrackTranscript, nil)
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}
@@ -503,4 +561,136 @@ func TestMaterialize_ExcludesSourceLanguage(t *testing.T) {
 	if got := atomic.LoadInt32(&tr.translateCalls); got != 2 {
 		t.Fatalf("expected 2 translate calls (it + es, source excluded), got %d", got)
 	}
+}
+
+// ── PR-CATALOG-MULTILINGUA step 4 (July 2026) — lookup-before-translate gate.
+
+// TestMaterialize_TranslationKeyHit_SkipsLLMCall pins the
+// lookup-before-translate gate: when an is_current=1 + status=READY
+// row already exists with translation_key matching the resolver's
+// 5-tuple, the Materializer MUST skip the LLM call entirely (no
+// Translate, no Upsert). The audit-trail invariant is preserved
+// (the prior row stays is_current=1 — no flip needed).
+func TestMaterialize_TranslationKeyHit_SkipsLLMCall(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeRepo()
+	tr := &fakeTranslator{}
+	ob := &fakeOutbox{}
+	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+
+	// Pre-populate IT row with translation_key matching the
+	// resolver's 5-tuple (source_text_hash + target_lang +
+	// translation_model + model_version + prompt_version).
+	const srcText = "hello world"
+	srcHash := texttracks.ComputeSourceTextHash(srcText)
+	expectedKey := asset.TranslationKey(srcHash, "it", "ollama-qwen", "model-v1", "prompt-v1")
+
+	repo.tracks[key("asset-1", "it", asset.TextTrackTranscript)] = &asset.TextTrack{
+		ID:                 200,
+		AssetID:            "asset-1",
+		LanguageCode:       "it",
+		TextKind:           asset.TextTrackTranscript,
+		TextContent:        "[it] hello world",
+		SourceType:         asset.TextSourceTranslation,
+		SourceLanguageCode: "en",
+		IsOriginal:         false,
+		Provider:           "ollama",
+		ModelName:          "qwen2.5",
+		ModelVersion:       "model-v1",
+		PromptVersion:      "prompt-v1",
+		TextHash:           texttracks.ComputeSourceTextHash("[it] hello world"),
+		SourceVersion:      "src-v1",
+		TranslationKey:     expectedKey,
+		IsCurrent:          true,
+		Status:             asset.TextTrackReady,
+	}
+
+	m := newTestMaterializer(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "model-v1", "prompt-v1")
+	// Patch the new model name so the resolver's translation_key
+	// diff-matches the pre-populated row's translation_key:
+	m = newTestMaterializerWithModel(t, repo, tr, ob, "en", []string{"en", "it", "es"}, "ollama-qwen", "model-v1", "prompt-v1")
+
+	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
+	if err != nil {
+		t.Fatalf("Materialize: %v", err)
+	}
+	if got := atomic.LoadInt32(&tr.translateCalls); got != 1 {
+		t.Fatalf("expected 1 translate call (ES — IT is a translation_key hit), got %d", got)
+	}
+	if len(rep.SkippedLanguages) != 1 || rep.SkippedLanguages[0] != "it" {
+		t.Fatalf("expected skipped=[it] (translation_key hit), got %v", rep.SkippedLanguages)
+	}
+	if len(rep.CreatedLanguages) != 1 || rep.CreatedLanguages[0] != "es" {
+		t.Fatalf("expected created=[es], got %v", rep.CreatedLanguages)
+	}
+	// IT row's content must be untouched — godlike/07 honest lock:
+	// reuse never silently overrides.
+	existing, _ := repo.Find(ctx, "asset-1", "it", asset.TextTrackTranscript)
+	if existing == nil || existing.TextContent != "[it] hello world" {
+		t.Fatalf("expected IT row content to be untouched, got %+v", existing)
+	}
+}
+
+// TestMaterialize_TranslationKeyMiss_CreatesNewRowWithTranslationKey
+// pins the gate's miss path: when FindCurrentForTranslation
+// returns nil, the Materializer MUST call the LLM and persist a
+// new row via InsertTranslationWithAuditPredecessor carrying the
+// freshly-computed translation_key + IsCurrent=true.
+func TestMaterialize_TranslationKeyMiss_CreatesNewRowWithTranslationKey(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeRepo()
+	tr := &fakeTranslator{}
+	ob := &fakeOutbox{}
+	seedSourceTrack(repo, "asset-1", "en", asset.TextTrackTranscript, "src-v1", "hello world")
+
+	m := newTestMaterializerWithModel(t, repo, tr, ob, "en", []string{"en", "it"}, "ollama-qwen", "model-v1", "prompt-v1")
+
+	srcHash := texttracks.ComputeSourceTextHash("hello world")
+	rep, err := m.Materialize(ctx, "asset-1", "en", srcHash, asset.TextTrackTranscript, nil)
+	if err != nil {
+		t.Fatalf("Materialize: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&tr.translateCalls); got != 1 {
+		t.Fatalf("expected 1 translate call (IT — no prior translation_key), got %d", got)
+	}
+	if len(rep.CreatedLanguages) != 1 || rep.CreatedLanguages[0] != "it" {
+		t.Fatalf("expected created=[it], got %v", rep.CreatedLanguages)
+	}
+
+	// The persisted IT row MUST carry the resolver-computed
+	// translation_key + IsCurrent=true. The fake repo
+	// enforces this via InsertTranslationWithAuditPredecessor.
+	itRow, _ := repo.Find(ctx, "asset-1", "it", asset.TextTrackTranscript)
+	if itRow == nil {
+		t.Fatal("expected IT row to be persisted after translation_key miss")
+	}
+	if !itRow.IsCurrent {
+		t.Fatalf("expected IT row is_current=true, got %v", itRow.IsCurrent)
+	}
+	wantKey := asset.TranslationKey(srcHash, "it", "ollama-qwen", "model-v1", "prompt-v1")
+	if itRow.TranslationKey != wantKey {
+		t.Fatalf("expected IT translation_key=%q, got %q", wantKey, itRow.TranslationKey)
+	}
+}
+
+func newTestMaterializerWithModel(t *testing.T, repo *fakeTextTrackRepo, tr translation.TranslationPort, ob texttracks.OutboxEnqueuer, srcLang string, targets []string, modelName, modelVer, promptVer string) *texttracks.Materializer {
+	t.Helper()
+	m, err := texttracks.NewMaterializer(
+		repo,
+		tr,
+		ob,
+		texttracks.ResolverConfig{
+			MaterializeLanguages: targets,
+			SourceLanguage:       srcLang,
+			ModelVersion:         modelVer,
+			PromptVersion:        promptVer,
+			TranslationModel:     modelName,
+		},
+		zap.NewNop(),
+	)
+	if err != nil {
+		t.Fatalf("NewMaterializer: %v", err)
+	}
+	return m
 }

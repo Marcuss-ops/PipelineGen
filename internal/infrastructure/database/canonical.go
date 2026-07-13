@@ -274,6 +274,80 @@ CREATE INDEX IF NOT EXISTS idx_asset_artifacts_status_updated
 // or the per-status drain pattern need all three tables in lockstep.
 // Splitting into a separate Constants file would invite drift
 // between the fixture and the production migration.
+// CanonicalAssetTextTracksTable is the single source of truth for the
+// in-memory CREATE TABLE block required by asset_text_tracks readers
+// that don't want to round-trip through RunMigrationsOnDB (tests,
+// fixtures, dry-run admin tooling).
+//
+// Mirror of migrations/sqlite/155_asset_text_tracks_translation_fingerprint.sql
+// (PR-CATALOG-MULTILINGUA step 4, July 2026). Types, CHECK constraints,
+// the partial UNIQUE INDEX WHERE is_current=1 invariant, the FK CASCADE
+// to media_assets(id), and the 4 supporting indexes MUST match the
+// migration byte-for-byte so the canonical CREATE TABLE reproduces
+// what the migration chain produces on a fresh DB.
+//
+// Why godlike/06 SSOT — kept together with the media_assets +
+// asset_artifacts + script_localizations constants: asset_text_tracks
+// is the localized-text persistence surface for media_assets.id and
+// the structural backbone of the multilingual catalog. Tests that
+// exercise the partial UNIQUE audit-trail invariant, the FK CASCADE
+// or the search-text lookup need this constant in lockstep with
+// media_assets (the FK target). Splitting into a separate file
+// would invite drift between the fixture and the production
+// migration.
+//
+// Forward-prevention note (godlike/06): future agents finding this
+// constant MUST NOT add UNIQUE(asset_id, language_code, text_kind)
+// back as an inline constraint — that would re-introduce the
+// silent-overwrite regression that step 4 explicitly removes. The
+// partial UNIQUE INDEX idx_asset_text_tracks_current is the SOLE
+// "at most one current row per context" gate. archcheck
+// (percheck_image_asset_invariants and its step-4 siblings) is the
+// canonical detector for that misstep.
+const CanonicalAssetTextTracksTable = `
+CREATE TABLE IF NOT EXISTS asset_text_tracks (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    asset_id            TEXT NOT NULL,
+    language_code       TEXT NOT NULL,
+    text_kind           TEXT NOT NULL,
+
+    text_content        TEXT NOT NULL DEFAULT '',
+
+    source_type         TEXT NOT NULL DEFAULT 'provided',
+    source_language_code TEXT NOT NULL DEFAULT '',
+    is_original         INTEGER NOT NULL DEFAULT 0,
+
+    provider            TEXT NOT NULL DEFAULT '',
+    model_name          TEXT NOT NULL DEFAULT '',
+    model_version       TEXT NOT NULL DEFAULT '',
+    prompt_version      TEXT NOT NULL DEFAULT '',
+
+    text_hash           TEXT NOT NULL DEFAULT '',
+    source_version      TEXT NOT NULL DEFAULT '',
+    translation_key     TEXT NOT NULL DEFAULT '',
+    is_current          INTEGER NOT NULL DEFAULT 1,
+
+    confidence          REAL,
+    status              TEXT NOT NULL DEFAULT 'READY'
+                        CHECK (status IN ('READY', 'PENDING', 'FAILED')),
+
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
+
+    FOREIGN KEY (asset_id) REFERENCES media_assets(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_asset_text_tracks_asset
+    ON asset_text_tracks (asset_id);
+CREATE INDEX IF NOT EXISTS idx_asset_text_tracks_language
+    ON asset_text_tracks (language_code, text_kind);
+CREATE INDEX IF NOT EXISTS idx_asset_text_tracks_hash
+    ON asset_text_tracks (text_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_text_tracks_current
+    ON asset_text_tracks (asset_id, language_code, text_kind)
+    WHERE is_current = 1;
+`
+
 const CanonicalScriptLocalizationsTable = `
 CREATE TABLE IF NOT EXISTS script_localizations (
     script_id          INTEGER NOT NULL,

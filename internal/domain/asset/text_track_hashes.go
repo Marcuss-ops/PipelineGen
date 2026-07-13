@@ -130,3 +130,79 @@ func SourceVersion(
 	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])
 }
+
+// TranslationKey is the canonical SHA-256 fingerprint of a
+// translation REQUEST context — the look-up key the Materializer
+// uses BEFORE calling the LLM to decide "have I already produced
+// a translation under this exact (source, model, prompt) tuple
+// into this language?".
+//
+// PR-CATALOG-MULTILINGUA step 4 (July 2026, Italian plan):
+// the lookup-before-translate gate keys on this fingerprint; if
+// a row exists with matching translation_key + status=READY +
+// is_current=1, the translation is REUSED and the LLM call is
+// skipped (no row insert, no audit-write). If no matching row
+// exists, a new row is inserted (marking the prior is_current=1
+// row is_current=0 atomically — see InsertTranslationWithAuditPredecessor).
+//
+// Formula:
+//
+//	translation_key = sha256(source_text_hash       + "|" +
+//	                         target_language_code   + "|" +
+//	                         translation_model      + "|" +
+//	                         model_version          + "|" +
+//	                         prompt_version)
+//
+// Distinction from SourceVersion (godlike/06 SSOT — one canonical
+// owner per FACT, not per Algorithm):
+//
+//   - SourceVersion is the DERIVED-row fingerprint (7 inputs,
+//     including the source language, provider, model_name); it
+//     changes when ANY provenance column changes. Used for
+//     downstream cache invalidation (Qdrant outbox events driven
+//     by source_version drift).
+//   - TranslationKey is the REQUEST fingerprint (5 inputs WITHOUT
+//     source_language / provider / model_name) — those are
+//     derivable from the resolver context and not part of the
+//     per-row idempotency key. Smaller input set = cleaner
+//     stability contract: a swap from ollama-qwen to ollama-llama
+//     under the SAME model_name does NOT change the request
+//     fingerprint, the user instead bumps TranslationModel in the
+//     Materializer ResolverConfig.
+//
+// godlike/06 SSOT: this is the SOLE canonical formula. The
+// canonical input quintuple is asserted in text_track_hashes_test.go
+// via TestTranslationKey_Deterministic. Mirror callers MUST
+// call this helper, not reimplement the SHA-256 chain. Inline
+// "translation_key" string concatenation anywhere in the codebase
+// is a canonical-drift detector trigger for code-reviewer-minimax-m3.
+//
+// Notes:
+//   - source_text_hash is passed verbatim (the caller already
+//     invoked TextHash on the source text; passing a re-normalised
+//     payload is a caller bug, NOT a formula bug).
+//   - translation_model / model_version / prompt_version are
+//     EMPTY strings when the provider does not expose a model
+//     taxonomy; the SHA-256 chain remains stable across empty
+//     strings.
+//   - target_language_code is the BCP-47 tag of the OUTPUT
+//     language. Empty string is a contract violation at the call
+//     site — this helper does NOT substitute a BCP-47 "und"
+//     default; TranslationPort.Translate is the upstream gate.
+func TranslationKey(
+	sourceTextHash string,
+	targetLanguageCode string,
+	translationModel string,
+	modelVersion string,
+	promptVersion string,
+) string {
+	payload := strings.Join([]string{
+		sourceTextHash,
+		targetLanguageCode,
+		translationModel,
+		modelVersion,
+		promptVersion,
+	}, "|")
+	sum := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(sum[:])
+}

@@ -9,6 +9,8 @@ package asset
 //   - The TextTrackResolver (lookup-before-Whisper fast path)
 //   - The SearchTextBuilder (fetch all tracks for configured index_languages)
 //   - The source_version computation (text_hash inclusion)
+//   - The Materializer (lookup-before-translate gate + audit-friendly
+//     translation insert path) — PR-CATALOG-MULTILINGUA step 4
 
 import "context"
 
@@ -67,4 +69,92 @@ type TextTrackRepository interface {
 	// concrete SQLite implementation lives in
 	// `internal/infrastructure/database/sqlite/assets/`.
 	ListReadyLanguages(ctx context.Context, assetID string, kind TextTrackKind) ([]string, error)
+
+	// FindCurrentForTranslation is the dedicated READY+is_current=1
+	// lookup the Materializer uses as the
+	// lookup-before-translate gate (PR-CATALOG-MULTILINGUA step 4).
+	//
+	// Inputs (godlike/07 contract — empty fields are a caller bug,
+	// not a fallback directive; the port computes the
+	// translation_key internally via asset.TranslationKey):
+	//
+	//	assetID, kind, targetLanguageCode, sourceTextHash,
+	//	translationModel, modelVersion, promptVersion
+	//
+	// Behaviour: internally calls
+	// `translationKey := asset.TranslationKey(sourceTextHash,
+	//   targetLanguageCode, translationModel, modelVersion,
+	//   promptVersion)` and then runs
+	// `SELECT WHERE asset_id=? AND language_code=? AND text_kind=?
+	//   AND translation_key=? AND is_current=1 AND status='READY'`.
+	//
+	// Returns (track, nil) on hit + (nil, nil) on miss. The lookup
+	// is index-only (no row scan) thanks to the partial UNIQUE
+	// INDEX idx_asset_text_tracks_current WHERE is_current=1 +
+	// the translation_key idx_asset_text_tracks_hash reuse
+	// (additive per migration 155).
+	//
+	// godlike/06 SSOT: this is the SOLE canonical "is there already
+	// a covered translation under this 6-tuple (5-tuple
+	// translation_key inputs + asset_id/kind)?" query. Callers
+	// MUST NOT compose the predicate inline — the canonical owner
+	// of the lookup formula is this port method, not the
+	// application layer. The application layer passes the natural
+	// inputs; the repo computes the translation_key via
+	// asset.TranslationKey.
+	//
+	// Stale is_current=0 rows (audit predecessors) are NOT visible
+	// through this method — they stay for forensic dumps via
+	// ListByAsset. The partial UNIQUE INDEX guarantees fewer-cost
+	// lookup + split-brain protection.
+	FindCurrentForTranslation(
+		ctx context.Context,
+		assetID string,
+		kind TextTrackKind,
+		targetLanguageCode string,
+		sourceTextHash string,
+		translationModel string,
+		modelVersion string,
+		promptVersion string,
+	) (*TextTrack, error)
+
+	// InsertTranslationWithAuditPredecessor inserts a new TextTrack
+	// row marking it is_current=1, atomically flipping any prior
+	// is_current=1 row for the same (asset, language, kind)
+	// context to is_current=0 — preserving the audit-trail
+	// invariant "previous tracks stay, never silently overwritten"
+	// (PR-CATALOG-MULTILINGUA step 4).
+	//
+	// Inputs (godlike/07 contract — caller-provided):
+	//   - track.PromptVersion + track.TranslationKey + track.IsCurrent=true
+	//
+	// Behaviour:
+	//
+	//	BEGIN IMMEDIATE TRANSACTION;
+	//	  UPDATE asset_text_tracks SET is_current = 0, updated_at = ...
+	//	  WHERE asset_id=? AND language_code=? AND text_kind=?
+	//	    AND is_current = 1 AND translation_key != ?;
+	//	  INSERT INTO asset_text_tracks (..., is_current=1, ...) VALUES (...);
+	//	COMMIT;
+	//
+	// The UPDATE is a NO-OP when no prior row exists (or the prior
+	// row already carries the same translation_key as the new
+	// row — idempotency case). The partial UNIQUE INDEX
+	// idx_asset_text_tracks_current guarantees that the INSERT
+	// cannot split-brain against an existing is_current=1 row.
+	//
+	// godlike/07 honest lock: the insert ALWAYS flips the prior
+	// is_current=1 row. There is no silent UPSERT semantic here;
+	// audit-trail is non-negotiable. Callers wanting UPSERT-on-
+	// identify semantics (Whisper acquire, initial embed) MUST
+	// use UpsertBatch instead. This method is BACKWARD-INCOMPATIBLE
+	// with the migration 137 UNIQUE(asset_id, language_code,
+	// text_kind) constraint — migration 155 replaces the
+	// constraint with the partial UNIQUE INDEX WHERE is_current=1.
+	//
+	// godlike/06 SSOT: this is the SOLE canonical
+	// "flip-and-insert translation row" path. Callers MUST NOT
+	// inline UPDATE+INSERT pairs (split-brain risk) or substitute
+	// the legacy UpsertBatch (silent-overwrite risk).
+	InsertTranslationWithAuditPredecessor(ctx context.Context, track TextTrack) error
 }

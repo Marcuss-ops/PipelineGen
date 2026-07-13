@@ -137,3 +137,82 @@ func TestSourceVersion_EmptyInputsAreStable(t *testing.T) {
 		t.Fatalf("SourceVersion with empty metadata should still be deterministic: %s vs %s", v1, v2)
 	}
 }
+
+// ── PR-CATALOG-MULTILINGUA step 4 (July 2026) — TranslationKey SSOT ──────
+//
+// TranslationKey is the canonical deterministic fingerprint of a
+// translation REQUEST context — the look-up key the Materializer uses
+// BEFORE calling the LLM to decide "have I already produced a
+// translation under this exact (source, model, prompt) tuple into
+// this language?". The canonical formula lives in
+// asset.TranslationKey; these tests pin the SOLE-canonical-owner
+// invariant:
+//   - TestTranslationKey_Deterministic pins the SHA-256 chain + the
+//     pipe-separator namespace.
+//   - TestTranslationKey_DiffersWhenAnyInputChanges pins that each
+//     of the 5 input slots is independently variant-discriminating
+//     (a perceptual SMPI contract — bumping ANY one of the 5
+//     discriminators MUST produce a distinct fingerprint).
+//   - TestTranslationKey_EmptyFieldsAreStable pins the empty-string
+//     convention for providers that don't expose a model taxonomy.
+//
+// Drift here MUST fail the build before reaching prod — it's the
+// translation-idempotency namespace.
+
+func TestTranslationKey_Deterministic(t *testing.T) {
+	// 5-tuple SHA-256: source_text_hash + target_language +
+	// translation_model + model_version + prompt_version
+	// (godlike/06 SSOT — one canonical owner per fact).
+	v1 := asset.TranslationKey("abc-text-hash", "it", "ollama", "v3", "prompt-v1")
+	v2 := asset.TranslationKey("abc-text-hash", "it", "ollama", "v3", "prompt-v1")
+	if v1 != v2 {
+		t.Fatalf("TranslationKey not deterministic: %s vs %s", v1, v2)
+	}
+	if len(v1) != 64 {
+		t.Fatalf("TranslationKey should be a 64-hex SHA-256 string, got length %d (%q)", len(v1), v1)
+	}
+}
+
+func TestTranslationKey_DiffersWhenAnyInputChanges(t *testing.T) {
+	base := asset.TranslationKey("abc-text-hash", "it", "ollama", "v3", "prompt-v1")
+
+	cases := []struct {
+		name string
+		got  string
+	}{
+		{"source_text_hash", asset.TranslationKey("different-text-hash", "it", "ollama", "v3", "prompt-v1")},
+		{"target_language", asset.TranslationKey("abc-text-hash", "es", "ollama", "v3", "prompt-v1")},
+		{"translation_model", asset.TranslationKey("abc-text-hash", "it", "deepl", "v3", "prompt-v1")},
+		{"model_version", asset.TranslationKey("abc-text-hash", "it", "ollama", "v4", "prompt-v1")},
+		{"prompt_version", asset.TranslationKey("abc-text-hash", "it", "ollama", "v3", "prompt-v2")},
+	}
+	for _, tc := range cases {
+		if tc.got == base {
+			t.Errorf("TranslationKey should differ when %s changes (got identical hash)", tc.name)
+		}
+	}
+}
+
+func TestTranslationKey_EmptyFieldsAreStable(t *testing.T) {
+	// Empty translation_model / model_version / prompt_version is
+	// allowed for providers that don't expose a model taxonomy.
+	// The hash chain must remain stable across reproduction calls.
+	v1 := asset.TranslationKey("abc", "it", "", "", "")
+	v2 := asset.TranslationKey("abc", "it", "", "", "")
+	if v1 != v2 {
+		t.Fatalf("TranslationKey with empty metadata should still be deterministic: %s vs %s", v1, v2)
+	}
+}
+
+func TestTranslationKey_DiffersFromSourceVersion(t *testing.T) {
+	// godlike/06 SSOT smoke: TranslationKey and SourceVersion MUST
+	// diverge when called with overlapping inputs — they encode
+	// DIFFERENT facts (request fingerprint vs derived-row
+	// fingerprint). Drift between them is a sign one helper was
+	// reimplemented against the other's formula.
+	tk := asset.TranslationKey("abc", "it", "ollama", "v3", "prompt-v1")
+	sv := asset.SourceVersion("abc", "en", "it", "ollama", "qwen2.5", "v3", "prompt-v1")
+	if tk == sv {
+		t.Fatalf("TranslationKey and SourceVersion produced identical hashes for distinct formulas — reimplementation drift: %s", tk)
+	}
+}
