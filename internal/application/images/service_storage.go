@@ -25,12 +25,6 @@ func (s *Service) UploadToStyleDrive(ctx context.Context, imageAsset *asset.Imag
 	return s.Store.UploadToStyleDrive(ctx, imageAsset, style)
 }
 
-// RegisterVideoAsset registers a video file as an image asset
-// (video thumbnail / still frame) in the storage system.
-func (s *Service) RegisterVideoAsset(ctx context.Context, filePath, description, source, style string, durationSec int, existingDriveFileID, existingDriveLink string) error {
-	return s.Store.RegisterVideoAsset(ctx, filePath, description, source, style, durationSec, existingDriveFileID, existingDriveLink)
-}
-
 // SyncFromDrive synchronizes image assets from Google Drive.
 func (s *Service) SyncFromDrive(ctx context.Context) error { return s.Store.SyncFromDrive(ctx) }
 

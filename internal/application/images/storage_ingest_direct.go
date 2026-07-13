@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
 	"go.uber.org/zap"
 )
 
@@ -52,24 +54,18 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	if ext == "" {
 		ext = ".jpg"
 	}
-	req := drive.AssetDestinationRequest{
-		Source:       drive.SourceType(source),
-		MediaType:    drive.MediaTypeImage,
-		Subject:      slug,
-		Hash:         hash,
-		Ext:          ext,
-		Style:        style,
-		GenerationID: genID,
-	}
-	if root := s.aiImageDriveRootForSource(source, style); root != "" {
-		req.DriveRootOverride = root
-	}
 
-	dest, err := s.mediaStore.ResolveDest(req)
-	if err != nil {
-		return nil, fmt.Errorf("resolve destination: %w", err)
-	}
-	if err := persistImageBytes(dest.LocalPath, content); err != nil {
+	// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy
+	// mediaStore.ResolveDest(req) bridge (which used
+	// drive.AssetDestinationRequest as the input shape) is RETIRED.
+	// The path computation has migrated into the destinations
+	// package as destinations.LocalPathFor (PR-IMAGES-REMOVE-DRIVE-STORE
+	// follow-up, July 2026) so the destinationResolver package
+	// owns the canonical image-path shape (source-prefixed
+	// `<source>/<slug>.<ext>`). The images package imports it
+	// without taking a destination-resolver interface change.
+	localPath, relativePath := destinations.LocalPathFor(s.imagesDir, slug, source, ext)
+	if err := persistImageBytes(localPath, content); err != nil {
 		return nil, err
 	}
 
@@ -82,7 +78,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	// to Drive, and persisted in SQLite. The caller still gets a valid
 	// *asset.ImageAsset back. Pre-PR this was a hard failure that
 	// deleted the downloaded file and aborted the entire ingest.
-	metaResult, err := s.meta.tagImageMetadata(ctx, description, style, generator, hash, dest.LocalPath, width, height)
+	metaResult, err := s.meta.tagImageMetadata(ctx, description, style, generator, hash, localPath, width, height)
 	if err != nil {
 		if s.log != nil {
 			s.log.Warn("tagImageMetadata failed; continuing with minimal metadata",
@@ -93,10 +89,18 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		metaResult = nil
 	}
 
+	// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy
+	// mediaStore.UploadToDrive / s.publishToDrive bridge is RETIRED —
+	// Drive upload now routes directly through s.publisher.Publish
+	// (delivery.Publisher) with the canonical delivery.PublishRequest
+	// shape. The override root is still sourced from
+	// s.aiImageDriveRootForSource so the per-style folder routing
+	// is preserved end-to-end.
 	var driveFileID string
 	storedSourceURL := source
-	if s.mediaStore != nil && !skipDrive {
-		if req.DriveRootOverride == "" {
+	if s.publisher != nil && !skipDrive {
+		overrideRoot := s.aiImageDriveRootForSource(source, style)
+		if overrideRoot == "" {
 			if s.log != nil {
 				s.log.Debug("Drive upload skipped for image: no configured root folder",
 					zap.String("source", source),
@@ -104,13 +108,22 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 					zap.String("slug", slug))
 			}
 		} else {
-			fileID, webLink, uploadErr := s.publishToDrive(ctx, req, dest.LocalPath)
+			pubResult, uploadErr := s.publisher.Publish(ctx, delivery.PublishRequest{
+				Destination:        delivery.DestinationImage,
+				LocalPath:          localPath,
+				Filename:           filepath.Base(localPath),
+				Style:              style,
+				Subject:            slug,
+				Group:              slug,
+				ConflictPolicy:     delivery.ConflictSkip,
+				RootFolderOverride: overrideRoot,
+			})
 			if uploadErr != nil {
 				s.log.Warn("Drive upload failed", zap.Error(uploadErr))
 			} else {
-				driveFileID = fileID
-				if strings.TrimSpace(webLink) != "" {
-					storedSourceURL = webLink
+				driveFileID = pubResult.FileID
+				if strings.TrimSpace(pubResult.WebViewLink) != "" {
+					storedSourceURL = pubResult.WebViewLink
 				}
 				if !skipMetadata && metaResult != nil {
 					s.meta.uploadImageMetadata(ctx, style, slug, metaResult)
@@ -160,8 +173,8 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	result := &asset.ImageAsset{
 		SubjectID:    slug,
 		Hash:         hash,
-		PathRel:      dest.RelativePath,
-		LocalPath:    dest.LocalPath,
+		PathRel:      relativePath,
+		LocalPath:    localPath,
 		SourceURL:    storedSourceURL,
 		Description:  description,
 		DriveFileID:  driveFileID,
@@ -213,7 +226,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		ContentHash:    hash,
 		LifecycleState: string(asset.StateStaging),
 		IndexState:     string(asset.StateIndexPending),
-		LocalPath:      dest.LocalPath,
+		LocalPath:      localPath,
 		FolderID:       s.driveFolderID,
 		Title:          textutil.Truncate(description, 500),
 		Description:    description,
@@ -243,7 +256,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 				"embedding_version_visual": defaults.VisualEmbeddingModelVersion,
 			},
 		},
-		Locations:      buildImageIngestLocations(dest.LocalPath, driveFileID, s.FormatDriveLink(driveFileID), hash, int64(len(content))),
+		Locations:      buildImageIngestLocations(localPath, driveFileID, s.FormatDriveLink(driveFileID), hash, int64(len(content))),
 		EmitIndexEvent: true,
 	}
 

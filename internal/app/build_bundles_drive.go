@@ -29,7 +29,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	sqlitedelivery "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -180,28 +179,6 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		publisher = &driveStubPublisher{log: log}
 	}
 
-	var mediaStore *drive.Store
-	var destResolver asset.Resolver
-	if driveClient != nil {
-		storageResolver := drive.NewResolver(
-			drive.MediaRoot(cfg.Storage.MediaPath()),
-			drive.DriveRoot(dests.RootFolder()),
-		)
-
-		// AssetTree + TreeSources removed July 2026 (dead code — the
-		// fields on Store were assigned but never read by any Store
-		// method; EnsureDriveFolder routes on MediaType alone).
-		mediaStore = drive.NewStore(
-			storageResolver,
-			dests.RootFolder(),
-			dests.ImagesFolder(),
-			"", // VideoAIRoot removed (PR June 2026) — pass empty string
-			dests.SoundEffectsRoot,
-		)
-
-		destResolver = drive.NewDestinationResolver(mediaStore)
-	}
-
 	// PR9-A (June 2026): side-effecting initialisation is delegated to
 	// startDriveBackgroundFolders (defined in build_drive_startup.go).
 	// Package-level function cross-file call so the source-level
@@ -267,8 +244,13 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// architecture/deprecations.yaml#DRIVE-RAW-BUNDLE-LEAK.
 		driveUploader: driveUploader, // unexported; for internal wiring within package app
 		DriveDests:    dests,
-		MediaStore:    mediaStore,
-		DestResolver:  destResolver,
+		// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): DriveBundle.MediaStore
+		// field was REMOVED. DestResolver field stays on the struct
+		// (nil-tolerant for legacy non-image callers like voiceover/artlist
+		// that still consume asset.Resolver through the bundle) but is
+		// no longer wired here — the previous drive.NewDestinationResolver
+		// impl was tied to drive.Store, which has been retired.
+		DestResolver:  nil,
 		StyleRegistry: styleRegistry,
 		Publisher:     publisher,
 		DocClient:     docClient,

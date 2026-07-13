@@ -27,7 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // buildImageManifest materialises the canonical Sender-side ArtifactManifest

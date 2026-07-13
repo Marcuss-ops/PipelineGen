@@ -272,10 +272,8 @@ type buildImagesParams struct {
 	Cfg           *config.Config
 	Log           *zap.Logger
 	DriveUploader *drive.Uploader
-	ClipsRepo     *sqassets.ClipsRepository
 	StyleRegistry *generation.StyleRegistry
 	ScriptGen     *ollama.Generator
-	MediaStore    *drive.Store
 	Publisher     delivery.Publisher
 	ImageRepo     *sqassets.ImagesRepository
 	VOMetaWriter  semantic.MetadataWriterPort
@@ -319,8 +317,8 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 	imageService := imgservice.NewService(imgservice.ImagesDeps{
 		Core: imgservice.ImagesCoreDeps{Cfg: params.Cfg, Log: params.Log},
 		Storage: imgservice.ImagesStorageDeps{
-			ImageRepo: params.ImageRepo, ClipsRepo: params.ClipsRepo, DriveReader: params.DriveUploader,
-			MediaStore: params.MediaStore, Publisher: params.Publisher, DestResolver: destResolver,
+			ImageRepo: params.ImageRepo, DriveReader: params.DriveUploader,
+			Publisher: params.Publisher, DestResolver: destResolver,
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
 			LLMGen: params.ScriptGen, MetaWriter: params.VOMetaWriter, StyleRegistry: params.StyleRegistry,

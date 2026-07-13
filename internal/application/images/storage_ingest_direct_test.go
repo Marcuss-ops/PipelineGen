@@ -15,7 +15,6 @@ import (
 	persistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -94,6 +93,11 @@ func (r *recordingCommitter) success(req persistence.AssetCommitRequest) persist
 // the canonical CommitAsset transaction. Tests that need the fail-closed
 // path (TestIngestDirect_CommitterNil_FailsClosed) explicitly set
 // svc.committer = nil after calling this helper.
+//
+// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy drive.NewResolver +
+// drive.NewStore setup + the `mediaStore` field are REMOVED. ingestDirect
+// no longer calls into drive.Store — LocalPath is now computed inline as
+// `filepath.Join(s.imagesDir, slug+ext)`.
 func testImageService(t *testing.T) *ImageStorageService {
 	t.Helper()
 
@@ -128,15 +132,8 @@ func testImageService(t *testing.T) *ImageStorageService {
 
 	tempDir := t.TempDir()
 
-	// drive.NewResolver takes (mediaRoot, driveRoot string).
-	resolver := drive.NewResolver(tempDir, "fake-drive-root")
-
-	// drive.NewStore takes (resolver, rootFolder, imagesFolder, videoAIRoot, soundEffectsRoot string).
-	driveStore := drive.NewStore(resolver, "root-folder", "images-folder", "", "")
-
 	return &ImageStorageService{
 		repo:        repo,
-		mediaStore:  driveStore,
 		meta:        &MetadataService{log: zap.NewNop()},
 		log:         zap.NewNop(),
 		subjectTags: &noopSubjectTags{},
@@ -157,6 +154,9 @@ func testImageService(t *testing.T) *ImageStorageService {
 // PR-IMAGES-INGEST-ATOMIC (July 2026): now routed through CommitAsset
 // via the recording stub, so the happy path exercises the canonical
 // atomic write instead of the legacy AddImage + EnqueueAndIndex path.
+//
+// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): local path computation is
+// inline (slug+ext), no drive.Store dependency in testImageService.
 func TestIngestDirect_TagImageMetadataFailure_IsNonFatal(t *testing.T) {
 	svc := testImageService(t)
 	committer := svc.committer.(*recordingCommitter)
@@ -185,12 +185,10 @@ func TestIngestDirect_TagImageMetadataFailure_IsNonFatal(t *testing.T) {
 		t.Fatal("ingestDirect returned nil result")
 	}
 
-	// Verify the local file still exists on disk (NOT deleted).
-	// Use result.PathRel from the Drive resolver's computed relative path,
-	// not a manually constructed path.
+	// Verify the local file was written (inline path computation: slug+ext).
 	dest := filepath.Join(svc.imagesDir, result.PathRel)
 	if _, statErr := os.Stat(dest); os.IsNotExist(statErr) {
-		t.Fatalf("local file %s was deleted by ingestDirect (pre-PR os.Remove behavior)", dest)
+		t.Fatalf("local file %s missing (ingestDirect must write the image to local disk)", dest)
 	}
 
 	// PR-IMAGES-INGEST-ATOMIC: verify CommitAsset was called EXACTLY once
@@ -216,9 +214,9 @@ func TestIngestDirect_TagImageMetadataFailure_IsNonFatal(t *testing.T) {
 // half of the legacy 2-transaction pipeline).
 //
 // godlike/07 NO-FAKE-AVAILABILITY: a nil Committer indicating "no
-// index writer available" must surface as a typed error so callers
-// can choose to skip the index write or treat it as fatal. Refusing
-// to write a (partial) media_assets row without the matching
+// index writer available" must surface as a typed error so callers can
+// choose to skip the index write or treat it as fatal. Refusing to
+// write a (partial) media_assets row without the matching
 // outbox event is the SSOT — it preserves the atomicity invariant
 // the refactor closes.
 func TestIngestDirect_CommitterNil_FailsClosed(t *testing.T) {
@@ -253,6 +251,9 @@ func TestIngestDirect_CommitterNil_FailsClosed(t *testing.T) {
 //
 // PR-IMAGES-INGEST-ATOMIC (July 2026): the recordingCommitter stub is
 // wired to record the canonical CommitRequest shape.
+//
+// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): s.publisher.Publish is now
+// called directly from ingestDirect (no more publishToDrive bridge).
 func TestIngestDirect_GeneratedImage_StoresDriveLinkAsSourceURL(t *testing.T) {
 	svc := testImageService(t)
 	committer := svc.committer.(*recordingCommitter)

@@ -140,7 +140,6 @@ type DriveBundle struct {
 	DocClient     drive.DocClient
 	DocPublisher  delivery.DocPublisher
 	DriveDests    *DriveDestinations
-	MediaStore    *drive.Store
 	DestResolver  asset.Resolver
 	StyleRegistry *generation.StyleRegistry
 	Publisher     delivery.Publisher
