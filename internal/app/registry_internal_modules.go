@@ -64,9 +64,8 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	idemHandler := idemPlus.Handler()
 
 	// Step 1b — Search fan-out. Constructed once and shared between
-	// YouTubeClip + Assets. The legacy providers.SearchAggregator is
-	// gone (git-rm'd); the canonical *search.Aggregator lives behind
-	// the SearchFanOut decorator which exposes the user-spec
+	// YouTubeClip + Assets. The canonical *search.Aggregator lives
+	// behind the SearchFanOut decorator which exposes the user-spec
 	// Option{Hits, Latencies} Stats surface. Composition-stable failure
 	// mode: a BuildCanonicalSearchFanOut error aborts boot so a
 	// misconfigured backend set is visible at startup rather than

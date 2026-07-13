@@ -1,8 +1,8 @@
 // Package search — telemetry.go introduces the user-spec Option{Hits,
-// Latencies} pattern as the canonical Stats surface for the canonical
-// SearchAggregator. The decorator wraps an *Aggregator and records
-// per-backend counters across calls. Handlers consume Stats() instead
-// of holding a parallel stats-mut struct on their own struct.
+// Latencies} pattern as the canonical Stats surface. The decorator
+// wraps an *Aggregator and records per-backend counters across calls.
+// Handlers consume Stats() instead of holding a parallel stats-mut
+// struct on their own struct.
 //
 // User spec (PR-2, June 2026):
 //
@@ -52,9 +52,9 @@ type BackendStats struct {
 }
 
 // AverageLatency returns CumulativeLatency / Calls. 0 when no calls
-// have been recorded yet. Mirrors the legacy ProviderStats.AvgLatency
-// contract so existing handler JSON ("avg_latency_ms") keeps its
-// semantics after the migration.
+// have been recorded yet. The shape is preserved across the legacy
+// ProviderStats → BackendStats migration so handler JSON
+// "avg_latency_ms" keys stay stable.
 func (b *BackendStats) AverageLatency() time.Duration {
 	if b == nil || b.Calls == 0 {
 		return 0
@@ -63,12 +63,10 @@ func (b *BackendStats) AverageLatency() time.Duration {
 }
 
 // SearchFanOut is the public surface used by handlers and the
-// composition root. It is the SOLE surface they depend on after
-// the PR-2 migration: the dual-search-aggregator pattern (one in
-// providers.SearchAggregator, one in search.Aggregator) is gone;
-// the decorator wraps the canonical Aggregator and exposes the
-// Stats surface the OldAggregate had via the user-spec
-// Option{Hits, Latencies} pattern.
+// composition root — the SOLE dependency after the legacy provider-
+// aggregator path was retired. The decorator wraps the canonical
+// *Aggregator and exposes per-backend counters (Hits/Latencies/Errors)
+// via the user-spec Option{Hits, Latencies} pattern.
 type SearchFanOut interface {
 	// Search delegates to the inner Aggregator and records per-
 	// backend stats. Result + error mirror the inner Aggregator

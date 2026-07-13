@@ -180,9 +180,9 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 	}
 
 	// Wave 4 (July 2026): FindDuplicates uses the canonical
-	// duplicates.Finder capability instead of providers.SearchAggregator.
-	// The finder fans out hash lookups to registered sources and returns
-	// operator-facing DuplicateMatch rows that include LocalPath/DriveLink.
+	// duplicates.Finder capability. The finder fans out hash lookups to
+	// registered sources and returns operator-facing DuplicateMatch rows
+	// that include LocalPath/DriveLink (PR-SEARCH-DRIVELINK).
 	if h.duplicateFinder == nil {
 		h.log.Error("FindDuplicates: DuplicateFinder not wired")
 		apiutil.Error(c, 503, "duplicate finder not available")
