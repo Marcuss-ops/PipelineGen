@@ -178,7 +178,7 @@ async function handleSearch(req, res) {
   lastSearchAt = new Date().toISOString();
   const reqId = requestCount;
 
-  console.log(`[${new Date().toISOString()}] #${reqId} SEARCH term="${term}" limit=${limit}`);
+  console.log(`[${new Date().toISOString()}] #${reqId} SEARCH term="${term}" limit=${limit} BUDGET connect=${connectTimeoutSeconds}s total=${scrollTimeoutSeconds}s`);
   const t0 = Date.now();
   // Split connect/total timeout per fix(scraper) (PR-July 2026). Per
   // godlike/07 minimum-blast-radius + the §11.0 doc-public contract:
@@ -204,7 +204,6 @@ async function handleSearch(req, res) {
     // searchArtlist accetta un browser esistente (param 4) per riusare Chromium.
     const job = searchArtlist(term, limit, PROFILE_DIR, browser);
     const result = await Promise.race([job, totalBudget]);
-    if (totalBudgetTimer) clearTimeout(totalBudgetTimer);
     const elapsed = Date.now() - t0;
     console.log(`[${new Date().toISOString()}] #${reqId} DONE ${result.clips.length} clips in ${elapsed}ms`);
 
@@ -222,6 +221,12 @@ async function handleSearch(req, res) {
     console.error(`[${new Date().toISOString()}] #${reqId} ERROR after ${elapsed}ms:`, err.message);
     res.writeHead(500, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: false, error: err.message || String(err) }));
+  } finally {
+    // §11.0 SCROLL_TIMEOUT budget backstop: cancel the timer on every code
+    // path (success / budget-exceeded / unexpected throw). Without the
+    // finally, a failed search would keep the timer alive up to
+    // scrollTimeoutSeconds (handle leak per failed request).
+    if (totalBudgetTimer) clearTimeout(totalBudgetTimer);
   }
 }
 
