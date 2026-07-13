@@ -201,6 +201,28 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_voiceover_alias_ban", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanVoiceoverAliasBan(root, pol, r, productionOnly)
 		}},
+		// Check PR-API-MODULE-DEPS-MAX-8 (July 2026):
+		// forward-prevention gate that enforces the canonical
+		// maximum-8-fields invariant on every API module's
+		// `Dependencies` (or `Deps`) bag. Scans ONLY the
+		// canonical Build-entrypoint location
+		// (`internal/api/**/module.go`) via Go AST
+		// (`go/parser`+`go/ast`+`go/token`) — strictly more
+		// robust than regex for grouped multi-decl fields,
+		// embedded fields, and multiline field declarations.
+		// The bypass list encodes the already-split clips
+		// surface from PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE
+		// (upper + 7 sub-descriptors); the upper's wide
+		// Dependencies is the WIRING surface for the 7 sub-
+		// descriptors, not the route-installer surface, so
+		// it is exempted by canonical-operator intent rather
+		// than by field-count. EVERY other module.go under
+		// internal/api/ whose `Dependencies` bag carries > 8
+		// fields trips the gate. Bypass-list hits are
+		// WARNed (godlike/07 residue accounting) instead of
+		// violated so the running audit lane stays residue-
+		// honest even when the bypass list needs later cleanup.
+		{"percheck_api_module_deps_max_8", scan.ScanApiModuleDepsMax8},
 		// Check 73-77 (Wave 5, July 2026): forward-prevention gates for
 		// canonical architectural surfaces:
 		//   - SceneAssetBinder SSOT
