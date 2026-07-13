@@ -10,6 +10,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
 )
@@ -124,8 +125,28 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		metaJSON, _ = json.Marshal(payload)
 		tags = uniqueAppend(tags, payload.Tags...)
 	} else {
+		// PR-CANONICAL-GENERATED-IMAGE-METADATA (July 2026):
+		// authoritative 10-key shape produced when the semantic
+		// enricher didn't run. The semantic-enricher branch above is
+		// preserved verbatim — it carries a richer typed Payload.
+		// This fallback is the SSOT contract for generated images
+		// without extra enrichment; operators + downstream tooling
+		// must treat these keys as canonical (godlike/06). The
+		// "origin" string is doubly-pinned: this JSON key mirrors
+		// ImageAsset.Origin via classifyImageOrigin(source, generator)
+		// at the struct literal below (both encode "generated" for
+		// the AI path).
 		metaJSON, _ = json.Marshal(map[string]any{
-			"prompt": description, "style": style, "generator": generator,
+			"prompt_original":          description,
+			"semantic_description":     "",
+			"style":                    style,
+			"tags":                     tags,
+			"provider":                 string(classifyImageProvider(source, generator)),
+			"origin":                   "generated",
+			"width":                    width,
+			"height":                   height,
+			"content_hash":             hash,
+			"embedding_version_visual": schema.VisualEmbeddingModelVersion,
 		})
 	}
 

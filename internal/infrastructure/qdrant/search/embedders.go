@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,6 +31,29 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
+
+// Godlike/06 SSOT: canonical 768d visual embedding guard.
+//
+// The Python sidecar produces a 768d SigLIP vector. Any other
+// dimensionality indicates a model-rotation drift or a buggy sidecar
+// build. We fail closed with a typed sentinel rather than silently
+// upserting a wrong-shape vector to Qdrant (which would corrupt the
+// server-side payload index + downstream RRF fusion).
+var ErrInvalidVisualEmbeddingDim = errors.New(
+	"visual embed: embedding vector dimension does not match canonical SigLIP 768d shape",
+)
+
+// validateVisualEmbeddingDim is the single canonical guard for visual
+// embedding dimensionality. Exposed (lowercase, package-private) so
+// embedders_dim_test.go can exercise it without HTTP/sidecar mocking,
+// and so embedSingle can call it as the post-conversion bottleneck.
+func validateVisualEmbeddingDim(vec []float32) error {
+	if len(vec) != schema.VisualEmbeddingDim {
+		return fmt.Errorf("%w: got %d, expected %d",
+			ErrInvalidVisualEmbeddingDim, len(vec), schema.VisualEmbeddingDim)
+	}
+	return nil
+}
 
 // ── TextEmbedder adapter ──────────────────────────────────────────────
 
@@ -192,6 +216,14 @@ func (a *imageEmbedderAdapter) embedSingle(ctx context.Context, imagePath string
 	out := make([]float32, len(parsed.Embedding))
 	for i, v := range parsed.Embedding {
 		out[i] = float32(v)
+	}
+	// Post-conversion canonical 768d guard. The pre-conversion
+	// spec.Dimensions check above only fires when a.serverURL is wired
+	// through NewImageEmbedderAdapter with a non-nil schema (test paths
+	// sometimes pass schema=nil). This guard is the universal
+	// bottleneck so dim drift never reaches Qdrant (godlike/06).
+	if err := validateVisualEmbeddingDim(out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
