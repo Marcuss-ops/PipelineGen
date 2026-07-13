@@ -91,6 +91,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/localized"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
@@ -101,11 +102,16 @@ import (
 // ledger connection) and *outboxevents.Repository (the outbox writer
 // — talks into the SAME connection within the same tx per the
 // outboxevents.Repository.Enqueue contract).
+//
+// godlike/06 SSOT: the adapter now delegates the canonical asset commit
+// to persistence.AssetCommitter. This file only owns the YouTube-specific
+// command validation, text-track writes, and transaction orchestration.
 type ClipAtomicWriterAdapter struct {
-	db  *sql.DB
-	box *outboxevents.Repository
-	log *zap.Logger
-	now func() time.Time // injectable clock for tests; production = time.Now
+	committer persistence.AssetCommitter
+	db        *sql.DB
+	box       *outboxevents.Repository
+	log       *zap.Logger
+	now       func() time.Time // injectable clock for tests; production = time.Now
 }
 
 // NewClipAtomicWriterAdapter constructs the adapter. Both db AND box
@@ -119,11 +125,15 @@ func NewClipAtomicWriterAdapter(db *sql.DB, box *outboxevents.Repository, log *z
 	if box == nil {
 		panic("assets.NewClipAtomicWriterAdapter: outboxevents.Repository is required (composition must pass root.Outbox.EventsRepo)")
 	}
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &ClipAtomicWriterAdapter{
-		db:  db,
-		box: box,
-		log: log,
-		now: time.Now,
+		committer: NewSQLiteAssetCommitter(db, box, log),
+		db:        db,
+		box:       box,
+		log:       log,
+		now:       time.Now,
 	}
 }
 
@@ -137,12 +147,12 @@ func NewClipAtomicWriterAdapter(db *sql.DB, box *outboxevents.Repository, log *z
 // Helper-call order MUST-stay (Step 7 split — see file header):
 //
 //  1. BeginTx                              ← orchestrator
-//  2. upsertClipInTx                       ← asset.go
-//     2.5) upsertTextTracksInTx (legacy)      ← clip_metadata_writer.go (pre-existing)
-//  3. BuildReindexEnvelopeV1               ← outboxevents envelope.go (no SQL)
-//  4. enqueueClipIndexEventInTx            ← outbox.go
-//  5. Commit                               ← orchestrator
-//  6. checkOutboxTerminalAfterCommit       ← outbox.go (BLOCKER #4)
+//  2. AssetCommitter.CommitTx              ← unified media_assets +
+//                                           asset_locations + metadata +
+//                                           outbox event
+//  3. upsertTextTracksInTx (legacy)      ← clip_metadata_writer.go (pre-existing)
+//  4. Commit                               ← orchestrator
+//  5. checkOutboxTerminalAfterCommit       ← outbox.go (BLOCKER #4)
 func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 	ctx context.Context,
 	clipID string,
@@ -178,34 +188,20 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 		}
 	}()
 
-	// ── 2) UPSERT media_assets (BLOCKER #2 closure: source_version
-	//     is now written to the DB column, not just the outbox envelope).
-	nowStr := w.now().UTC().Format(time.RFC3339)
-	// Compute before both UPSERT + outbox so both surfaces agree on
-	// the same sourceVersion — invariant enforced by the test.
-	policyVersion := asset.PolicyVersion
-	if policyVersion == "" {
-		policyVersion = derivePolicyVersion(clipID)
-	}
-	sourceVersion := deriveSourceVersion(clipID, asset.FileHash, policyVersion)
-	if err := upsertClipInTx(ctx, tx, clipID, asset, sourceVersion, nowStr); err != nil {
-		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: upsert: %w", err)
+	// ── 2) Canonical asset commit via AssetCommitter.
+	req := w.buildCommitRequest(clipID, asset)
+	res, err := w.committer.CommitTx(ctx, tx, req)
+	if err != nil {
+		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: commit asset: %w", err)
 	}
 
-	// ── 2.5) UPSERT asset_text_tracks from payload Texts[] (legacy stripe).
+	// ── 3) UPSERT asset_text_tracks from payload Texts[] (legacy stripe).
 	// When the caller provided localized texts (transcripts, descriptions,
 	// etc.) in the Segment.Texts[] field, persist them atomically in the
 	// same transaction as media_assets + outbox_events. This eliminates
 	// the race where a separate TextTrackResolver.Save() call could fail
 	// silently after Step 9 committed.
-	//
-	// godlike/06 SSOT: this helper is defined in clip_metadata_writer.go
-	// (a sibling file in the same package). We inherit the existing
-	// implementation verbatim — splitting added RETURNING-id semantics
-	// to its sibling `upsertTextTracksReturningIDsInTx` in
-	// clip_atomic_writer_tracks.go, but the legacy non-RETURNING helper
-	// stays put so callers that already use it (e.g. metadata-only
-	// paths) keep their behaviour byte-for-byte.
+	nowStr := w.now().UTC().Format(time.RFC3339)
 	if len(asset.Texts) > 0 {
 		tracks := localizedClipTextsToTextTracks(clipID, asset.Texts)
 		if len(tracks) > 0 {
@@ -215,58 +211,82 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 		}
 	}
 
-	// ── 3) Build canonical v1 envelope (no SQL — outboxevents.BuildReindexEnvelopeV1).
-	eventKey, payloadJSON, err := outboxevents.BuildReindexEnvelopeV1(
-		clipID,
-		outboxevents.ReindexEnvelopeV1Schema,
-		sourceVersion,
-		w.now().UTC(),
-	)
-	if err != nil {
-		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: build envelope: %w", err)
-	}
-	// Blocco 1.1: the canonical envelope built by BuildReindexEnvelopeV1
-	// always wins. The caller MUST NOT supply a custom payload — the
-	// IndexEventPayload carries only routing fields (Type, AggregateID,
-	// CreatedAt). The previous `if len(event.Payload) > 0` override path
-	// replaced the canonical envelope with an ad-hoc payload that the
-	// IndexingHandler consumer rejected as terminal (dead_letter).
-
-	// ── 4) INSERT outbox_events (tx-bound helper).
-	enqResult, err := enqueueClipIndexEventInTx(
-		ctx, w.box, tx,
-		event.Type, event.AggregateID, clipID,
-		payloadJSON, eventKey,
-	)
-	if err != nil {
-		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: outbox enqueue: %w", err)
-	}
-
-	// ── 5) Commit (orchestrator-owned).
+	// ── 4) Commit (orchestrator-owned).
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: commit: %w", err)
 	}
 	committed = true
 
-	// ── 6) BLOCKER #4 closure: terminal conflict → typed error, not silent success.
-	// Pre-closure the writer logged a warning and returned nil, producing
-	// "processed" with no index event. Post-closure we return a typed
-	// sentinel so the use case can surface "processed_but_index_blocked".
-	if terr := checkOutboxTerminalAfterCommit(w.log, enqResult, clipID, eventKey); terr != nil {
+	// ── 5) BLOCKER #4 closure: terminal conflict → typed error, not silent success.
+	if terr := checkOutboxTerminalAfterCommit(w.log, res.OutboxInserted, clipID, res.OutboxEventKey); terr != nil {
 		return terr
 	}
 
 	if w.log != nil {
 		w.log.Debug("ClipAtomicWriterAdapter: clip + index event committed",
 			zap.String("clip_id", clipID),
-			zap.String("event_key", eventKey),
-			zap.String("source_version", sourceVersion),
-			zap.Bool("outbox_inserted", enqResult.Inserted))
+			zap.String("event_key", res.OutboxEventKey),
+			zap.Int64("rows_affected", res.AssetRowsAffected),
+		)
 	}
 	return nil
 }
 
-// ── Compile-time assertions (AGENTS.md Pattern 0) ────────────────────
+// buildCommitRequest translates a YouTube ClipAsset into the canonical
+// persistence.CommitRequest. This is the SOLE place where the YouTube
+// shape is mapped to the unified asset commit shape.
+func (w *ClipAtomicWriterAdapter) buildCommitRequest(clipID string, asset youtubetypes.ClipAsset) persistence.CommitRequest {
+	policyVersion := asset.PolicyVersion
+	if policyVersion == "" {
+		policyVersion = derivePolicyVersion(clipID)
+	}
+	sourceVersion := deriveSourceVersion(clipID, asset.FileHash, policyVersion)
+
+	filename := deriveFilenameFromAsset(asset)
+	if filename == "" {
+		filename = clipID + ".mp4"
+	}
+	name := deriveNameFromAsset(asset)
+	if name == "" {
+		name = filename
+	}
+
+	folderPath := asset.Drive.FolderPath
+	if folderPath == "" {
+		folderPath = asset.Drive.FolderID
+	}
+
+	return persistence.CommitRequest{
+		AssetID:        clipID,
+		Source:         "youtube",
+		Name:           name,
+		Filename:       filename,
+		MediaType:      "video",
+		ContentHash:    asset.FileHash,
+		SearchText:     asset.SearchText,
+		LifecycleState: "ACTIVE",
+		LocalPath:      asset.LocalPath,
+		FolderID:       asset.Drive.FolderID,
+		FolderPath:     folderPath,
+		Metadata: persistence.TypedMetadata{
+			SourceVersion: sourceVersion,
+			Title:         asset.Metadata.Summary,
+		},
+		Locations: []persistence.LocationCommit{
+			{
+				Kind:       "drive",
+				Provider:   "drive",
+				ExternalID: asset.Drive.FileID,
+				WebViewLink: asset.Drive.WebViewLink,
+				IsPrimary:  true,
+			},
+		},
+		EmitIndexEvent: true,
+		RequestedAt:    w.now(),
+	}
+}
+
+// Compile-time assertions (AGENTS.md Pattern 0) ────────────────────
 
 // Per AGENTS.md Pattern 0: the concrete receiver must satisfy the
 // typed port so any signature drift surfaces as a build failure.
@@ -287,8 +307,6 @@ var _ youtubeports.ClipAtomicWriter = (*ClipAtomicWriterAdapter)(nil)
 // dead-letter routing divergence between the two surfaces — this
 // dual-port assertion is the SSOT that defeats that divergence.
 var _ localized.LocalizedClipWriter = (*ClipAtomicWriterAdapter)(nil)
-
-// ── Diagnostics ────────────────────────────────────────────────────
 
 // MarshalCanonicalPayload marshals a map into a JSON raw message for
 // callers that want to enrich the canonical payload with extra fields

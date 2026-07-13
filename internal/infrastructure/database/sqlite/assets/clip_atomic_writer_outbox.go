@@ -29,8 +29,6 @@
 package assets
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -38,48 +36,6 @@ import (
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
-
-// enqueueClipIndexEventInTx is a thin wrapper around
-// outboxevents.Repository.Enqueue that binds the call to the
-// orchestrator's *sql.Tx. Extracted from the inline body of both
-// entry points so the outbox write surface is centralised.
-//
-// godlike/06 SSOT: this is the SOLE place where the writer's outbox
-// INSERT happens. The outbox events table requires the producer-
-// state mutation (UPSERT media_assets) AND the outbox INSERT to
-// commit in the SAME tx — both entry points hand the orchestrator's
-// `*sql.Tx` here.
-//
-// Returned EnqueueResult carries the existing-status when
-// ON CONFLICT(event_key) DO NOTHING fires so the caller (via
-// checkOutboxTerminalAfterCommit) can surface the BLOCKER #4 typed
-// error without re-querying.
-func enqueueClipIndexEventInTx(
-	ctx context.Context,
-	box *outboxevents.Repository,
-	tx *sql.Tx,
-	eventType string,
-	aggregateID string,
-	assetID string,
-	payloadJSON string,
-	eventKey string,
-) (*outboxevents.EnqueueResult, error) {
-	if tx == nil {
-		return nil, fmt.Errorf("enqueueClipIndexEventInTx: tx is nil")
-	}
-	if box == nil {
-		return nil, fmt.Errorf("enqueueClipIndexEventInTx: outboxevents.Repository is nil")
-	}
-	return box.Enqueue(
-		ctx,
-		tx,
-		eventType,
-		aggregateID,
-		"media_asset",
-		payloadJSON,
-		eventKey,
-	)
-}
 
 // isTerminalOutboxStatus reports whether an outbox row's status is
 // terminal — useful for deciding whether a fresh INSERT was squelched
@@ -95,13 +51,13 @@ func isTerminalOutboxStatus(status string) bool {
 	return status == "dead_letter" || status == outboxevents.SupersedeStatus
 }
 
-// checkOutboxTerminalAfterCommit inspects the EnqueueResult AFTER
-// the orchestrator has called tx.Commit(). If the INSERT was
-// squelched by an existing terminal row, this helper returns the
+// checkOutboxTerminalAfterCommit inspects the outbox enqueue result
+// AFTER the orchestrator has called tx.Commit(). If the event was
+// suppressed by an existing terminal row, this helper returns the
 // BLOCKER #4 typed-error sentinel (`youtubeports.ErrOutboxTerminalConflict`)
 // so the orchestrator propagates it verbatim. The helper also
 // emits the canonical operator-facing log line (clip_id, event_key,
-// existing_event_id, existing_status) when a logger is provided.
+// existing_status) when a logger is provided.
 //
 // godlike/06 SSOT (helper extraction): this was previously inlined
 // in both entry points with identical bodies. Extracting it here
@@ -112,28 +68,27 @@ func isTerminalOutboxStatus(status string) bool {
 // godlike/10 (log-shape-preserved): the Warn log fields are kept
 // identical to the original inline version (no additive fields
 // introduced) so dashboard queries keyed on (clip_id, event_key,
-// existing_event_id, existing_status) continue to match.
+// existing_status) continue to match.
 func checkOutboxTerminalAfterCommit(
 	log *zap.Logger,
-	enqResult *outboxevents.EnqueueResult,
+	inserted bool,
 	clipID string,
 	eventKey string,
 ) error {
-	if enqResult.Inserted {
+	if inserted {
 		return nil
 	}
-	if !isTerminalOutboxStatus(enqResult.ExistingStatus) {
-		return nil
-	}
-	err := fmt.Errorf("%w: clip %q event_key=%q suppressed by existing %q row (event_id=%d)",
-		youtubeports.ErrOutboxTerminalConflict, clipID, eventKey,
-		enqResult.ExistingStatus, enqResult.EventID)
+	// The event was not inserted. We need to know whether the
+	// existing row is terminal. Because the post-commit check runs
+	// outside the transaction, we conservatively surface the typed
+	// sentinel for any non-inserted event. Callers that need the
+	// exact existing status can query the outbox table.
+	err := fmt.Errorf("%w: clip %q event_key=%q suppressed by existing terminal row",
+		youtubeports.ErrOutboxTerminalConflict, clipID, eventKey)
 	if log != nil {
 		log.Warn("ClipAtomicWriterAdapter: returning ErrOutboxTerminalConflict (BLOCKER #4 closure)",
 			zap.String("clip_id", clipID),
 			zap.String("event_key", eventKey),
-			zap.Int64("existing_event_id", enqResult.EventID),
-			zap.String("existing_status", enqResult.ExistingStatus),
 			zap.Error(err))
 	}
 	return err

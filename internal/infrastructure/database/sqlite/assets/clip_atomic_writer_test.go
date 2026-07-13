@@ -68,6 +68,18 @@ CREATE TABLE IF NOT EXISTS media_assets (
     search_text TEXT NOT NULL DEFAULT '',
     metadata_json TEXT NOT NULL DEFAULT '{}',
     lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
+    index_state TEXT NOT NULL DEFAULT '',
+    thumbnail_url TEXT NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    asset_version TEXT NOT NULL DEFAULT '',
+    asset_location TEXT NOT NULL DEFAULT '',
+    rendition TEXT NOT NULL DEFAULT '',
+    source_provider TEXT NOT NULL DEFAULT '',
+    source_video_id TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    start_ms INTEGER NOT NULL DEFAULT 0,
+    end_ms INTEGER NOT NULL DEFAULT 0,
+    title TEXT NOT NULL DEFAULT '',
     created_at TEXT, updated_at TEXT
 );
 CREATE TABLE IF NOT EXISTS outbox_events (
@@ -90,6 +102,21 @@ CREATE TABLE IF NOT EXISTS outbox_events (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_outbox_events_event_key ON outbox_events(event_key);
+CREATE TABLE IF NOT EXISTS asset_locations (
+    asset_id TEXT NOT NULL,
+    location_kind TEXT NOT NULL DEFAULT '',
+    uri TEXT NOT NULL DEFAULT '',
+    external_id TEXT NOT NULL DEFAULT '',
+    web_view_link TEXT NOT NULL DEFAULT '',
+    download_url TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT '',
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    file_hash TEXT NOT NULL DEFAULT '',
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (asset_id, location_kind)
+);
 `
 
 // newAtomicWriterDB opens an in-memory SQLite with the minimal

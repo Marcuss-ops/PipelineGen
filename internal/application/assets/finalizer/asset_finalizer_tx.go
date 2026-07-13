@@ -67,6 +67,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
@@ -106,8 +107,9 @@ import (
 //
 // Canonical reference: Piano d'Azione Completo § 5.1–5.2.
 type AssetTxFinalizer struct {
-	log    *zap.Logger
-	fanout *texttracks.MaterializeFanOut // optional nil-safe post-publish fan-out helper
+	log       *zap.Logger
+	fanout    *texttracks.MaterializeFanOut // optional nil-safe post-publish fan-out helper
+	committer persistence.AssetCommitter     // canonical asset commit surface
 }
 
 // NewAssetTxFinalizer creates an AssetTxFinalizer.
@@ -141,6 +143,18 @@ func (s *AssetTxFinalizer) WithFanOut(fanout *texttracks.MaterializeFanOut) *Ass
 		return s
 	}
 	s.fanout = fanout
+	return s
+}
+
+// WithCommitter attaches the canonical AssetCommitter. When set,
+// FinalizeAsset delegates the media_assets + asset_locations +
+// metadata + outbox writes to the committer, making AssetCommitter
+// the single point of asset commit.
+func (s *AssetTxFinalizer) WithCommitter(committer persistence.AssetCommitter) *AssetTxFinalizer {
+	if s == nil {
+		return s
+	}
+	s.committer = committer
 	return s
 }
 
@@ -273,6 +287,156 @@ func (s *AssetTxFinalizer) FinalizeAsset(
 
 	nowStr := timeutil.FormatRFC3339(time.Now())
 
+	// When a canonical AssetCommitter is wired, delegate the
+	// media_assets + primary asset_locations + metadata +
+	// asset.index.requested outbox event to it. This makes
+	// AssetCommitter the single point of asset commit.
+	if s.committer != nil {
+		return s.finalizeWithCommitter(ctx, tx, artifact, nowStr)
+	}
+
+	// Legacy path: keep the previous implementation for callers that
+	// have not yet wired the committer. This will be removed once the
+	// cutover is complete.
+	return s.finalizeLegacy(ctx, tx, artifact, nowStr)
+}
+
+// finalizeWithCommitter uses persistence.AssetCommitter for the
+// canonical asset commit, then writes asset_versions and
+// asset_renditions on top.
+func (s *AssetTxFinalizer) finalizeWithCommitter(
+	ctx context.Context,
+	tx finalization.Transaction,
+	artifact finalization.PublishedArtifact,
+	nowStr string,
+) (finalization.ArtifactRef, []finalization.OutboxEvent, error) {
+	req := s.buildCommitRequest(artifact)
+
+	// AssetCommitter needs a concrete *sql.Tx. The production
+	// finalization.Transaction is sqlTxAdapter, which wraps *sql.Tx.
+	sqlTx, ok := UnwrapSQLTx(tx)
+	if !ok {
+		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: transaction is not *sql.Tx")
+	}
+	res, err := s.committer.CommitTx(ctx, sqlTx, req)
+	if err != nil {
+		return finalization.ArtifactRef{}, nil, fmt.Errorf("asset finalizer: commit asset: %w", err)
+	}
+	_ = res // reserved for future metrics / logging
+
+	// 2. INSERT asset_versions — new version row.
+	versionNum, err := s.insertAssetVersion(ctx, tx, &artifact, nowStr)
+	if err != nil {
+		return finalization.ArtifactRef{}, nil, err
+	}
+
+	// 3. UPSERT rendition locations + asset_renditions for each
+	// additional technical variant supplied by the caller.
+	for i := range artifact.Renditions {
+		if err := s.upsertRenditionLocation(ctx, tx, &artifact, &artifact.Renditions[i], nowStr); err != nil {
+			return finalization.ArtifactRef{}, nil, err
+		}
+	}
+
+	ref := finalization.ArtifactRef{
+		ArtifactID:    artifact.ArtifactID,
+		AssetID:       artifact.ArtifactID,
+		Kind:          artifact.Kind,
+		SourceVersion: int64(versionNum),
+		ContentHash:   artifact.SHA256,
+		Location:      artifact.Location,
+	}
+
+	// The AssetCommitter already inserted the asset.index.requested
+	// outbox event inside the same transaction. Returning it here
+	// would cause the JobFinalizer to enqueue it a second time.
+	s.log.Debug("asset finalised in tx (via AssetCommitter)",
+		zap.String("artifact_id", artifact.ArtifactID),
+		zap.Int("version", versionNum),
+		zap.String("media_type", kindToMediaType(artifact.Kind)),
+	)
+
+	return ref, nil, nil
+}
+
+// buildCommitRequest translates a PublishedArtifact into the canonical
+// persistence.CommitRequest.
+func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArtifact) persistence.CommitRequest {
+	source := artifact.Source
+	if source == "" {
+		source = string(artifact.Location.Action)
+	}
+	mediaType := kindToMediaType(artifact.Kind)
+
+	metadata := persistence.TypedMetadata{
+		Description:   artifact.Description,
+		PublishAction: string(artifact.Location.Action),
+		SizeBytes:     artifact.SizeBytes,
+	}
+	if artifact.SourceVersion != 0 {
+		metadata.SourceVersion = fmt.Sprintf("%d", artifact.SourceVersion)
+	}
+	// Merge source-specific enrichment data from ArtifactMetadata.
+	if len(artifact.ArtifactMetadata) > 0 {
+		metadata.Extra = make(map[string]any, len(artifact.ArtifactMetadata))
+		for k, v := range artifact.ArtifactMetadata {
+			metadata.Extra[k] = v
+		}
+	}
+
+	locations := []persistence.LocationCommit{
+		{
+			Kind:          artifact.Location.Provider,
+			Provider:      artifact.Location.Provider,
+			ExternalID:    artifact.Location.FileID,
+			URI:           primaryURI(artifact.Location),
+			WebViewLink:   artifact.Location.WebViewLink,
+			DownloadURL:   artifact.Location.DownloadLink,
+			MimeType:      artifact.MIMEType,
+			FileSizeBytes: artifact.SizeBytes,
+			FileHash:      artifact.SHA256,
+			IsPrimary:     true,
+		},
+	}
+
+	return persistence.CommitRequest{
+		AssetID:        artifact.ArtifactID,
+		Source:         source,
+		Name:           artifact.Filename,
+		Filename:       artifact.Filename,
+		MediaType:      mediaType,
+		ContentHash:    artifact.SHA256,
+		Description:    artifact.Description,
+		LifecycleState: "PUBLISHED",
+		IndexState:     "INDEXING_PENDING",
+		FolderID:       artifact.Location.FolderID,
+		FolderPath:     artifact.Location.FolderPath,
+		Metadata:       metadata,
+		Locations:      locations,
+		EmitIndexEvent: true,
+		RequestedAt:    time.Now(),
+	}
+}
+
+// primaryURI returns the canonical URI for an AssetLocation.
+// The location model does not carry a dedicated URI field, so we
+// derive it from the human-facing web view link or the direct
+// download link.
+func primaryURI(loc finalization.AssetLocation) string {
+	if loc.WebViewLink != "" {
+		return loc.WebViewLink
+	}
+	return loc.DownloadLink
+}
+
+// finalizeLegacy is the pre-AssetCommitter implementation. It is kept
+// for backward compatibility until the committer is wired everywhere.
+func (s *AssetTxFinalizer) finalizeLegacy(
+	ctx context.Context,
+	tx finalization.Transaction,
+	artifact finalization.PublishedArtifact,
+	nowStr string,
+) (finalization.ArtifactRef, []finalization.OutboxEvent, error) {
 	// 1. UPSERT media_assets — canonical asset row.
 	if err := s.upsertMediaAsset(ctx, tx, &artifact, nowStr); err != nil {
 		return finalization.ArtifactRef{}, nil, err
@@ -308,17 +472,8 @@ func (s *AssetTxFinalizer) FinalizeAsset(
 	}
 
 	// Outbox event: index this asset in Qdrant.
-	// Canonical v1 envelope matching the IndexingHandler contract
-	// (schema_version, event_id, asset_id, source_version,
-	// idempotency_key are REQUIRED by the handler).
 	eventID := uuid.NewString()
 	eventKey := fmt.Sprintf("index:%s:%s", artifact.ArtifactID, artifact.SHA256)
-	// Compute source + media_type for the outbox payload, mirroring
-	// the fallback logic used in upsertMediaAsset for the media_assets
-	// row. The gate04 outbox test asserts these fields are populated
-	// in the JSON envelope consumed by the dispatcher worker + Qdrant
-	// indexer; without this fix the JSON silently omitted them and the
-	// test failed with payload["source"]=nil, payload["media_type"]=nil.
 	sourceStr := artifact.Source
 	if sourceStr == "" {
 		sourceStr = string(artifact.Location.Action)
@@ -347,8 +502,7 @@ func (s *AssetTxFinalizer) FinalizeAsset(
 		},
 	}
 
-	// Persist the outbox event inside the same transaction so the
-	// IndexingHandler can pick it up atomically after commit.
+	// Persist the outbox event inside the same transaction.
 	if err := s.insertOutboxEvent(ctx, tx, events[0], nowStr); err != nil {
 		return finalization.ArtifactRef{}, nil, err
 	}
