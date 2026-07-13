@@ -117,42 +117,131 @@ deprecations:
   # embedded fields automatically.
   # ──────────────────────────────────────────────────────────────────
 
-  # ── P1-3-BACKFILL — DRIVE-UPLOAD-ANALYSIS-2026-07-06: migrate 4 adapters from deprecated Admin.TrashFile/DeleteFile/RenameFile to FileLifecycle ──
+  # ── P1-3-BACKFILL → CUTOVER — DRIVE-UPLOAD-ANALYSIS-2026-07-06: migrate 4 adapters from deprecated Admin.TrashFile/DeleteFile/RenameFile to FileLifecycle ──
   - id: DRIVE-ADMIN-TO-FILELIFECYCLE-MIGRATION
     owner_capability: internal/infrastructure/drive
     exact_symbol: |
       Admin.TrashFile / Admin.DeleteFile / Admin.RenameFile — deprecated call sites
       in 4 application-layer adapters migrated to drive.FileLifecycle.{Trash,Delete,Rename}.
+      PR-DRIVE-CLEANUP (July 2026): the 4 adapters FAIL-CLOSED with hard-error typed-sentinel
+      when FileLifecycle is nil (no graceful Admin fallback remains). The scanner
+      `percheck_driveaccess.go` enforces NO direct `drive.Admin` / `*drive.Admin` /
+      `drive.NewDriveServiceFromFiles(` references in internal/application/** or
+      internal/api/** (allowlisted: internal/app/, internal/infrastructure/drive/,
+      internal/application/assets/delivery/, internal/application/assets/catalogsync/
+      for the forward-pointer uploaddrive.Uploader alias only).
     file: |
       internal/app/clips_adapters_drive.go + internal/app/adapters_voiceover_publisher.go +
-      internal/app/adapters_infra.go + internal/app/module_media_ingest.go
-    file_line: "various (4 adapters + 3 construction sites)"
+      internal/app/adapters_infra.go + internal/app/module_media_ingest.go +
+      cmd/archcheck/scan/percheck_driveaccess.go (scanner enforcement) +
+      architecture/deprecations.yaml (this entry).
+    file_line: "various (4 adapters + 3 construction sites + scanner + manifest)"
     replacement: |
       drive.FileLifecycle.{Trash,Delete,Rename} — the canonical Pattern 0 port for
-      file-lifecycle Drive ops. All 4 adapters now route through FileLifecycle
-      with graceful nil→Admin fallback for sites where FileLifecycle is not
-      accessible from composition context.
+      file-lifecycle Drive ops. All 4 adapters route through FileLifecycle strictly;
+      any nil-lifecycle call fails closed with the typed sentinel
+      `ErrLifecycleNotWired` (or per-adapter equivalent) per godlike/07
+      NO-FAKE-AVAILABILITY. The composition root (internal/app/) is the SOLE
+      wire site for both Admin (folder-CRUD) and FileLifecycle (file ops).
     introduction_date: 2026-07-06
     removal_date: never
-    tracking_issue: "DRIVE-UPLOAD-ANALYSIS-2026-07-06 P1-3 (shipped 2026-07-06)"
+    tracking_issue: "DRIVE-UPLOAD-ANALYSIS-2026-07-06 P1-3 (shipped 2026-07-06) + PR-DRIVE-CLEANUP (July 2026) CUTOVER commit"
     compatibility_test: |
       rg 'clipsDriveAdapter\.TrashFile|driveAdminAdapter\.RenameFile|storageDriveAdapter\.RenameFile' --type go internal/app/
-      returns the new FileLifecycle-first routes with graceful Admin fallback.
-      rg 'voiceoverDriveAdapter' --type go internal/app/ returns 0 hits (removed upstream).
+      returns the new FileLifecycle-first routes — FAIL-CLOSED hard-error when lifecycle
+      is nil. rg 'voiceoverDriveAdapter' --type go internal/app/ returns 0 hits (removed upstream).
+      rg 'drive\.Admin\b|\*drive\.Admin|drive\.NewDriveServiceFromFiles\(' --type go internal/application/ internal/api/
+      returns 0 hits in production code (allowlisted: internal/app/ composition root +
+      internal/application/assets/catalogsync/ for the forward-pointer uploaddrive alias only).
+      go test ./cmd/archcheck/scan/... -run TestScanDriveAccessSSOT exits 0
+      (7 hermetic fixture tests pin the scanner's allowlist precedence: 1 PASS-clean, 3 FAIL,
+      3 PASS-allowlist-or-exemption).
     usage_metric: |
       Pre-migration: 4 adapters calling Admin.{TrashFile,DeleteFile,RenameFile} directly.
-      Post-migration: 4 adapters calling FileLifecycle.{Trash,Delete,Rename} with nil→Admin fallback.
+      Post-BACKFILL (2026-07-06): 4 adapters calling FileLifecycle.{Trash,Delete,Rename} with nil→Admin fallback.
+      Post-CUTOVER (PR-DRIVE-CLEANUP, July 2026): 4 adapters calling FileLifecycle.{Trash,Delete,Rename}
+      with HARD-ERROR fail-closed (no nil→Admin fallback); scanner ensures no future drift.
       voiceoverDriveAdapter removed entirely by upstream ce0c6396.
+      Forward-pointer: catalogsync.Subscriber still uses uploaddrive.Uploader (1 production callsite;
+      typed-port migration to delivery.Publisher + drive.Reader-port is non-trivial — see
+      TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION, Q3 2026).
+    migration_phase: CUTOVER
+    status: in_progress
+    notes: |
+      PR-DRIVE-CLEANUP (July 2026) flips the migration from EXPAND to CUTOVER. The
+      4 adapters now FAIL-CLOSED with hard-error typed-sentinel (per godlike/07
+      NO-FAKE-AVAILABILITY) when FileLifecycle is nil; the legacy nil→Admin fallback
+      was REMOVED at the same commit. Forward-prevention is enforced by
+      `cmd/archcheck/scan/percheck_driveaccess.go` (Check 74, PR-DRIVE-CLEANUP extension):
+        - banned patterns: drive.Admin / *drive.Admin / drive.NewDriveServiceFromFiles(
+          + drive.NewFileLifecycleAdapter( + drive.Uploader (pre-existing) +
+          uploaddrive.Uploader / uploaddrive.Admin (aliased-import coverage).
+        - allowlist precedence: internal/infrastructure/drive/** > internal/app/**
+          > internal/application/assets/delivery/** > internal/application/assets/
+          catalogsync/** (uploaddrive alias forward-pointer only).
+        - _test.go files are exempt.
+      Forward-pointers:
+        (1) TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION (Q3 2026): migrate the catalogsync
+            Subscriber's 1 uploaddrive.Uploader production callsite to delivery.Publisher
+            (writes) + drive.Reader-port (reads). When this ships, the catalogsync
+            allowlist entry is removed from percheck_driveaccess.go + this deprecation
+            record is amended.
+      Cross-refs: CHANGELOG.md P1-3-BACKFILL + P1-3-CUTOVER (new) + AGENTS.md
+      §"Simplicity & Minimalism" + godlike/07 §"Migration sequence" + §"No fake
+      availability".
+
+  # ── TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION (forward-pointer, Q3 2026) ──
+  # PR-DRIVE-CLEANUP (July 2026): the catalogsync Subscriber continues to use
+  # `uploaddrive.Uploader` in production code (1 callsite). The migration to
+  # the canonical typed-port surface (delivery.Publisher for writes +
+  # drive.Reader-port for reads) is NON-TRIVIAL because it intersects with
+  # the sync-target resolution logic + the recursive Sibling-walk that
+  # artlist/stock pipelines reuse. Defer to a dedicated Q3 2026 ticket;
+  # until that ticket ships, the catalogsync package is the ONLY
+  # allowlisted exemption for uploaddrive.Uploader / uploaddrive.Admin
+  # in percheck_driveaccess.go. Forward-pointer migration_phase: EXPAND.
+  # ──────────────────────────────────────────────────────────────────────
+  - id: CATALOGSYNC-DRIVE-PORT-MIGRATION
+    owner_capability: internal/application/assets/catalogsync
+    exact_symbol: |
+      uploaddrive.Uploader fields on catalogsync.Subscriber + the recursive
+      walk that downloads assets via the legacy concrete. Currently routed
+      through the low-level drive package directly.
+    file: internal/application/assets/catalogsync/service.go
+    file_line: "Subscriber struct (import alias `uploaddrive`) + recursive-walk helper"
+    replacement: |
+      delivery.Publisher for uploads + drive.Reader-port (or its typed successor)
+      for downloads. Composition-root wired. Catalogsync package drops the
+      `uploaddrive` import alias entirely after the migration ships.
+    introduction_date: 2026-07
+    removal_date: 2026-Q3
+    tracking_issue: "TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION (forward-pointer from PR-DRIVE-CLEANUP)"
+    compatibility_test: |
+      Post-migration:
+        (a) rg 'uploaddrive' internal/application/assets/catalogsync/ returns 0 hits.
+        (b) The scanner's `internal/application/assets/catalogsync/` allowlist prefix is removed
+            from percheck_driveaccess.go (the uploaddrive.Uploader + uploaddrive.Admin patterns
+            revert to FORBID-ANYWHERE).
+        (c) This deprecation record flips migration_phase: EXPAND → CUTOVER → CONTRACT.
+        (d) go test ./cmd/archcheck/scan/... -run TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncAllows
+            flips from PASS to FAIL (the catalogsync fixture now triggers a violation because
+            the allowlist is gone).
+    usage_metric: |
+      Today: 1 production callsite (Subscriber struct field) + 0 test cases
+      (the dispatcher_test.go fixture is _test.go exempt).
+      Post-migration: 0 references to uploaddrive.* in production code.
     migration_phase: EXPAND
     status: in_progress
     notes: |
-      Graceful fallback (nil lifecycle → legacy Admin method) allows gradual
-      migration. Construction sites where DeliveryDeps does not expose
-      FileLifecycle (e.g. newAssetRegisterService) pass nil lifecycle —
-      the fallback preserves backward compatibility. Full CUTOVER requires
-      adding FileLifecycle to DeliveryDeps so all construction sites can
-      wire the canonical port. Forward-pointer: P1-3-CUTOVER (deadline 2026-Q4).
-      Cross-refs: CHANGELOG.md P1-3-BACKFILL + AGENTS.md mirror.
+      Forward-pointer only. The catalogsync Subscriber's uploaddrive.Uploader field is
+      NOT removed in PR-DRIVE-CLEANUP because the typed-port migration (delivery.Publisher
+      + drive.Reader-port) intersects with the sync-target resolution logic + the recursive
+      Sibling-walk that artlist/stock pipelines reuse; the change is non-trivial enough
+      to warrant a dedicated ticket in Q3 2026. The scanner allowlist pin
+      (`internal/application/assets/catalogsync/`) is the load-bearing forward-pointer: it
+      marks the EXACT location where the migration must yield zero surface when it ships.
+      When this ticket lands, this record is amended (migration_phase flips to CUTOVER +
+      CONTRACT) and the catalogsync allowlist entry is removed from percheck_driveaccess.go.
 
   - id: VOICEOVER-RESULT-FLAT-SYNTHESIS
     owner_capability: internal/domain/voiceover
