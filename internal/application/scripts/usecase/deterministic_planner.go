@@ -131,10 +131,14 @@ type deterministicPlanner struct{}
 //   - Plan: pure; deterministic; fails closed on caller-side violations
 //     via SourcePlanningError; never invents source_text; never
 //     modifies SourceAnchor offsets after the fact.
-//   - ValidatePlan: re-implements the domain-equivalent checks on the
-//     port-local types. Required because the port and domain types
-//     are separate structs in different packages today (FASE 2 will
-//     collapse them via type aliases).
+//   - ValidatePlan: implements planner-side invariants that go
+//     beyond the canonical scriptpkg.ClipPrePlan.Validate() —
+//     slot Ref ordinality, SourceAnchor anti-drift gate, target
+//     duration non-negativity. Since FASE-2 (July 2026) the
+//     port-local types are type aliases for scriptpkg.*, so Validate
+//     and ValidatePlan both operate on the same underlying struct
+//     and any drift between planner output and the canonical wire
+//     shape becomes impossible at the type system layer.
 func NewDeterministicPlanner() *deterministicPlanner {
 	return &deterministicPlanner{}
 }
@@ -433,10 +437,13 @@ func distributeTargetDuration(slots []ClipSearchSlot, totalMs int64) {
 
 // ValidatePlan is the post-construction guardrail. Rejects obvious
 // drift (e.g. SourceAnchor hash != plan.SourceHash) and missing
-// required fields. Re-implements the same checks the domain
-// ClipPrePlan.Validate() performs — separate because the port type
-// is a different struct in a different package today (FASE-2 work
-// collapses them via type alias and the impl can delegate).
+// required fields. Since FASE-2 (July 2026) the local-port types
+// are type aliases for the scriptpkg.* shapes — ValidatePlan
+// operates on the same underlying struct as the canonical
+// scriptpkg.ClipPrePlan.Validate() and reinforces its checks with
+// planner-specific invariants (slot Ref ordinality, target
+// duration non-negativity) that the canonical Validate does not
+// own.
 func (p *deterministicPlanner) ValidatePlan(plan *ClipPrePlan) error {
 	if plan == nil {
 		return fmt.Errorf("clip pre plan: nil")
