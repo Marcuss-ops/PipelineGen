@@ -6,12 +6,14 @@
 // transcript+description current con source_text_hash e
 // segmenti/timestamp invariati".
 //
-// STRENGTH NOTE on SourceTextHash pinning: the canonical byte-equality
-// invariant is enforced via a production-fix in
+// SourceTextHash byte-equality invariant: every fan-out target
+// row's SourceTextHash MUST equal the source row's SHA-256 of
+// the source TextContent. This is enforced at production by
 // materializer.go::materializeOne (`SourceTextHash: report.SourceTextHash`).
-// The acceptance test below pins the SHAPE invariant (non-empty);
-// tightening to byte-equality is a future must-pass test once
-// that production fix lands.
+// The acceptance tests below pin BYTE-EQUALITY (not just
+// shape) — the "segments/timestamp invariati" half of the
+// user spec maps to the fan-out carrier never drifting from
+// the source's content fingerprint.
 package acceptance_test
 
 import (
@@ -77,8 +79,9 @@ func TestMultilingual_AllConfiguredLanguagesReachReady(t *testing.T) {
 		case asset.TextTrackTranscript:
 			tCount++
 			if trk.LanguageCode != srcLang {
-				if trk.SourceTextHash == "" {
-					t.Errorf("transcript[%s].source_text_hash EMPTY", trk.LanguageCode)
+				if trk.SourceTextHash != srcTranscriptHash {
+					t.Errorf("transcript[%s].source_text_hash = %q, want %q (byte-equality invariant)",
+						trk.LanguageCode, trk.SourceTextHash, srcTranscriptHash)
 				}
 				if !trk.IsCurrent {
 					t.Errorf("transcript[%s].is_current = false, want true", trk.LanguageCode)
@@ -90,8 +93,9 @@ func TestMultilingual_AllConfiguredLanguagesReachReady(t *testing.T) {
 		case asset.TextTrackDescription:
 			dCount++
 			if trk.LanguageCode != srcLang {
-				if trk.SourceTextHash == "" {
-					t.Errorf("description[%s].source_text_hash EMPTY", trk.LanguageCode)
+				if trk.SourceTextHash != srcDescHash {
+					t.Errorf("description[%s].source_text_hash = %q, want %q (byte-equality invariant)",
+						trk.LanguageCode, trk.SourceTextHash, srcDescHash)
 				}
 				if !trk.IsCurrent {
 					t.Errorf("description[%s].is_current = false, want true", trk.LanguageCode)

@@ -88,8 +88,9 @@ func TestSearch_LocalizationIsTextualNotIdentity(t *testing.T) {
 		if tk.LanguageCode == srcLang {
 			continue
 		}
-		if tk.SourceTextHash == "" {
-			t.Errorf("track[%s].source_text_hash EMPTY (parent-hash-propagation invariant violated)", tk.LanguageCode)
+		if tk.SourceTextHash != srcHash {
+			t.Errorf("track[%s].source_text_hash = %q, want %q (parent-hash-propagation byte-equality invariant violated)",
+				tk.LanguageCode, tk.SourceTextHash, srcHash)
 		}
 		if tk.AssetID != assetID {
 			t.Errorf("track[%s].AssetID %q != canonical %q",
@@ -110,16 +111,6 @@ func TestSearch_LocalizationIsTextualNotIdentity(t *testing.T) {
 		if !strings.HasPrefix(c, "[") || !strings.Contains(c, l) {
 			t.Errorf("language %s: TextContent %q does not carry the markdown-ish language prefix",
 				l, c)
-		}
-	}
-}
-
-func TestSearch_AssetIdSurvivesSourceRevisions(t *testing.T) {
-	const assetID = "asset-search-003"
-	ids := []string{assetID, assetID}
-	for _, id := range ids {
-		if id != assetID {
-			t.Errorf("asset_id drifted: got %q, want %q", id, assetID)
 		}
 	}
 }
