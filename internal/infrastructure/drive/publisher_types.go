@@ -58,6 +58,34 @@ type PutFileRequest struct {
 	IdempotencyKey string                  // P0.6: Drive appProperties key for conflict detection
 	ContentHash    string                  // P0.6: hex-encoded SHA-256 of file content
 	SourceVersion  int64                   // P0.6: logical source version
+
+	// ExpectedSize (PR-CLIPINGEST-PIPELINE step 9, July 2026) is the
+	// pre-computed local-file size. When non-zero, the uploader
+	// threads it into VerificationParams.ExpectedSize and the
+	// post-upload verifier rejects uploads whose Drive-side size
+	// does not match. Zero = skip the size-match check.
+	//
+	// Distinct from ContentHash: ContentHash is the canonical
+	// identity fingerprint (used for IdempotencyKey + Drive
+	// appProperties); ExpectedSize is a hard upload-integrity
+	// signal at the post-upload verification gate. The two are
+	// complementary; the user-spec literal "Upload verificato per
+	// size+checksum" calls for BOTH. Callers that pre-compute only
+	// the size leave ExpectedSHA256 empty (skip the content-match).
+	ExpectedSize int64
+
+	// ExpectedSHA256 (PR-CLIPINGEST-PIPELINE step 9, July 2026) is
+	// the pre-computed local-file SHA-256 hex digest. When
+	// non-empty, the uploader threads it into
+	// VerificationParams.ExpectedSHA256 and the post-upload
+	// verifier downloads the Drive-side file + computes its
+	// SHA-256 to compare. Mismatch surfaces the typed sentinel
+	// ErrDriveFileSHA256Mismatch. Empty = skip the content-match
+	// check (back-compat for callers that don't pre-compute
+	// SHA-256). The content-match requires a Files.Get +
+	// Download round-trip, which costs bandwidth — callers
+	// that want only the cheaper size-match leave this empty.
+	ExpectedSHA256 string
 }
 
 // PutFileResult is the structured return value.

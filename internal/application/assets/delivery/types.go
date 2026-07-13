@@ -37,6 +37,20 @@ type DestinationKey string
 
 const (
 	DestinationYouTubeClip DestinationKey = "youtube_clip"
+	// DestinationYouTubeAsset (PR-CLIPINGEST-PIPELINE step 9, July 2026):
+	// canonical destination for the new YouTube asset layout per user
+	// spec — `PipelineGen Assets/youtube/{channel_id}/{video_id}/clips/
+	// {asset_id}/{asset_id}__master.mp4 + __preview.mp4 + __manifest.json`.
+	// Distinct from DestinationYouTubeClip (the legacy
+	// `clips/{group}/{video_id}/` scheme) so the cutover is additive:
+	// new YouTube asset writes route through this key; legacy
+	// YouTubeClip writes continue unchanged. godlike/06 SSOT: the
+	// two destinations share the same root folder (cfg.Drive.ClipsFolder)
+	// but emit different PathBuilder segments. The folder-namespace
+	// wrap (`youtube/`) is added by the registry via maybeWrapNamespace
+	// so the new scheme lives under `<ClipsRootFolder>/youtube/...`
+	// rather than spilling into the legacy `clips/...` root.
+	DestinationYouTubeAsset DestinationKey = "youtube_asset"
 	DestinationArtlist     DestinationKey = "artlist"
 	DestinationStock       DestinationKey = "stock"
 	DestinationImage       DestinationKey = "image"
@@ -147,6 +161,30 @@ type PublishRequest struct {
 
 	// ProjectID groups related assets (e.g. a book processing run).
 	ProjectID string `json:"project_id,omitempty"`
+
+	// ChannelID (PR-CLIPINGEST-PIPELINE step 9, July 2026) is the
+	// canonical YouTube channel_id for the new YouTube asset layout.
+	// Used by YouTubeAssetPath as the second path segment (after the
+	// `youtube/` namespace): `youtube/{channel_id}/{video_id}/clips/
+	// {asset_id}/...`. Distinct from the legacy Group field (which
+	// is the operator-curated human-readable alias — Boxe, HipHop —
+	// the YouTubeClipPath builder consumes). The two coexist:
+	// existing Group-based YouTubeClip writes are unaffected;
+	// new YouTubeAsset writes thread the canonical YouTube
+	// channel_id via this field. Empty ChannelID on a
+	// DestinationYouTubeAsset request is fail-closed (the mapper
+	// returns ErrAssetPublishLocationIncompleteForDestination with
+	// "missing channel_id").
+	ChannelID string `json:"channel_id,omitempty"`
+
+	// SizeBytes (PR-CLIPINGEST-PIPELINE step 9, July 2026) is the
+	// pre-computed local-file size for the post-upload size-match
+	// verification gate (Commit 3 of verifier.go). When non-zero,
+	// the publisher threads this into VerificationParams.ExpectedSize
+	// and the verifier rejects uploads whose Drive-side size does
+	// not match. Zero = skip the size check (back-compat for
+	// callers that don't pre-compute size).
+	SizeBytes int64 `json:"size_bytes,omitempty"`
 
 	// Group is a logical grouping key (e.g. YouTube channel name,
 	// artlist search term). Used by PathBuilder to construct the

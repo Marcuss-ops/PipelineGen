@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -110,6 +111,25 @@ func NewDestinationRegistry(cfg *config.Config) *DestinationRegistry {
 				PathBuilder:    maybeWrapNamespace(cfg, "clips", cfg.Drive.ClipsRootFolder, YouTubeClipPath),
 				RequireSubpath: true,
 				ConflictPolicy: ConflictSkip, // immutable uploaded clip
+			},
+			// DestinationYouTubeAsset (PR-CLIPINGEST-PIPELINE step 9, July 2026):
+			// canonical destination for the new YouTube asset layout per user
+			// spec — `PipelineGen Assets/youtube/{channel_id}/{video_id}/clips/
+			// {asset_id}/{asset_id}__master.mp4 + __preview.mp4 + __manifest.json`.
+			// Shares the ClipsRootFolder with DestinationYouTubeClip but emits
+			// `youtube/{channel_id}/{video_id}/clips/{asset_id}` segments via
+			// YouTubeAssetPath. The `youtube/` namespace is added by
+			// maybeWrapNamespace so the new scheme nests under the same root
+			// without spilling into the legacy `clips/` root.
+			// godlike/06 SSOT: YouTubeAssetPath is the SOLE canonical owner of
+			// the new scheme's path shape. ChannelID + Subject + AssetID flow
+			// from PublishRequest; the builder is pure (no side effects).
+			DestinationYouTubeAsset: {
+				RootFolderID:   cfg.Drive.ClipsFolder(),
+				Namespace:      "youtube",
+				PathBuilder:    maybeWrapNamespace(cfg, "youtube", cfg.Drive.ClipsRootFolder, YouTubeAssetPath),
+				RequireSubpath: true,
+				ConflictPolicy: ConflictSkip, // immutable uploaded master (per-asset canonical)
 			},
 			DestinationArtlist: {
 				RootFolderID:   cfg.Drive.ArtlistFolder(),
@@ -278,6 +298,62 @@ func withNamespace(namespace string, inner PathBuilder) PathBuilder {
 		return append([]string{namespace}, segs...), nil
 	}
 }
+
+// YouTubeAssetPath (PR-CLIPINGEST-PIPELINE step 9, July 2026) builds
+// the path for the new YouTube asset layout per user spec:
+//
+//	youtube/{channel_id}/{video_id}/clips/{asset_id}
+//
+// Required PublishRequest fields:
+//   - ChannelID (YouTube channel_id; the user-spec segment 2)
+//   - Subject   (YouTube video_id; the user-spec segment 3)
+//   - AssetID   (media_assets.id; the user-spec segment 5)
+//
+// Returns ErrYouTubeAssetPathMissingField for any missing required
+// field (godlike/07 typed-error contract — callers can probe via
+// errors.Is). The asset_id is the per-asset folder, not a leaf file
+// — the per-asset files (`{asset_id}__master.mp4` + `__preview.mp4`
+// + `__manifest.json`) are uploaded into the resolved folder by the
+// caller (the canonical processor.processRenditions function names
+// them; the publisher only resolves the folder).
+//
+// godlike/06 SSOT: YouTubeAssetPath is the SOLE canonical owner of
+// the new scheme's path shape. Distinct from YouTubeClipPath (the
+// legacy `clips/{group}/{video_id}` scheme) — the two coexist per
+// godlike/06 additive-evolution principle. Future cutover (when all
+// callers migrate to the new scheme) collapses the two by retiring
+// YouTubeClipPath; until then both builders live side-by-side.
+func YouTubeAssetPath(req PublishRequest) ([]string, error) {
+	channelID := strings.TrimSpace(req.ChannelID)
+	if channelID == "" {
+		return nil, fmt.Errorf("%w: channel_id is required for youtube_asset destination", ErrYouTubeAssetPathMissingField)
+	}
+	videoID := strings.TrimSpace(req.Subject)
+	if videoID == "" {
+		return nil, fmt.Errorf("%w: subject (video_id) is required for youtube_asset destination", ErrYouTubeAssetPathMissingField)
+	}
+	assetID := strings.TrimSpace(req.AssetID)
+	if assetID == "" {
+		return nil, fmt.Errorf("%w: asset_id is required for youtube_asset destination", ErrYouTubeAssetPathMissingField)
+	}
+	return []string{
+		pathutil.SafeFolderName(channelID),
+		pathutil.SafeFolderName(videoID),
+		"clips",
+		pathutil.SafeFolderName(assetID),
+	}, nil
+}
+
+// ErrYouTubeAssetPathMissingField (PR-CLIPINGEST-PIPELINE step 9,
+// July 2026) is the typed sentinel raised by YouTubeAssetPath when a
+// required field (ChannelID / Subject / AssetID) is empty. Callers
+// probe via errors.Is to surface a per-field hint to the operator.
+// Pre-step-9 a missing field would have produced a downstream
+// `pathutil.SafeFolderName("")` panic — godlike/07 fail-fast moves
+// the check to the seam.
+var ErrYouTubeAssetPathMissingField = errors.New(
+	"delivery: YouTubeAssetPath: required field missing",
+)
 
 // YouTubeClipPath builds the path for YouTube clips:
 //

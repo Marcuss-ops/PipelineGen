@@ -188,6 +188,16 @@ func (p *Publisher) Publish(ctx context.Context, req delivery.PublishRequest) (*
 		IdempotencyKey: req.IdempotencyKey,
 		ContentHash:    req.ContentHash,
 		SourceVersion:  req.SourceVersion,
+		// PR-CLIPINGEST-PIPELINE step 9 (July 2026): thread the
+		// canonical size + content-hash verification signals
+		// (req.SizeBytes + req.ContentHash) into
+		// PutFileRequest.ExpectedSize + PutFileRequest.ExpectedSHA256.
+		// The uploader's verifyUploadedFile gate consumes these and
+		// the post-upload UploadVerifier rejects mismatches per
+		// the user-spec literal "Upload verificato per size+checksum
+		// prima della cancellazione locale".
+		ExpectedSize:   req.SizeBytes,
+		ExpectedSHA256: req.ContentHash,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("delivery: publish to %q: %w", req.Destination, err)

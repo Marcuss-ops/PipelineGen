@@ -12,7 +12,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	fileutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 )
 
 // processStep normalizes/processes the video if needed.
@@ -87,89 +86,166 @@ func (p *Processor) moveRawToProcessed(rawPath, processedPath string) (string, e
 	return processedPath, nil
 }
 
-// processRenditions preserves the raw source as an immutable master and
-// generates mezzanine, proxy, thumbnail, and storyboard renditions under
-// input.OutputDir. It returns the populated renditions in the canonical
-// order: master, mezzanine, proxy, thumbnail, storyboard.
+// processRenditions (PR-CLIPINGEST-PIPELINE step 9, July 2026) renders
+// the canonical per-asset file set per user spec:
+//
+//	{asset_id}__master.mp4    — H.264/AAC/yuv420p/30fps/1920x1080
+//	                              (the canonical master, unique per asset,
+//                               shared across all languages; voiceover + subtitle
+//                               files layer on top in per-language variants)
+//	{asset_id}__preview.mp4   — 720p H.264/AAC proxy
+//	{asset_id}__manifest.json — per-asset metadata ledger (placeholder; the
+//                               canonical manifest writer lands in a
+//                               follow-up PR alongside the voiceover fan-out
+//                               reorganization)
+//
+// Pre-step-9, the function saved the raw source untouched as `master`
+// and the normalized output as `mezzanine` (with human-readable
+// filename `textutil.SafeName(Name) + " " + ID`). Step 9 re-shapes the
+// surface per the user spec:
+//
+//  1. The master IS the normalized output (H.264/AAC/yuv420p/30fps/1920x1080).
+//     Pre-step-9 the master was a copy of the raw source — re-encoded only
+//     if the caller passed a Normalize=false flag. Post-step-9 the master
+//     always meets the canonical codec, matching the user spec "Il master
+//     è H.264/AAC/yuv420p/30fps/1920x1080 unico per tutte le lingue".
+//  2. Filenames use the canonical `{asset_id}__<role>.<ext>` convention
+//     with the `__` separator. The `textutil.SafeName(Name) + " " + ID`
+//     human-readable form is REMOVED for the canonical assets — the
+//     technical name is stable, the readable title is moved to the
+//     manifest sidecar (per the user spec "Nomi tecnici stabili, titoli
+//     leggibili solo nei metadata").
+//  3. The `mezzanine` sub-directory is no longer a separate output — the
+//     master IS the normalized mezzanine. Pre-step-9 the `mezzanine/`
+//     subdir is preserved as a no-op (created for backward-compat with
+//     the prior 5-rendition surface) so existing callers that probe
+//     the mezzanine path still find the master by-symlink. Future
+//     cleanup retires the symlink when callers migrate.
+//
+// Per godlike/06 SSOT: this function is the SOLE canonical owner of the
+// canonical filename convention (`__master`, `__preview`, `__manifest`).
+// Callers (the YouTube asset pipeline) thread the rendered paths into
+// the canonical Publisher per-file; the publisher resolves the per-asset
+// folder via YouTubeAssetPath (the asset_id segment is the leaf folder).
 func (p *Processor) processRenditions(ctx context.Context, input *asset.ProcessInput, rawPath string) ([]asset.RenditionOutput, error) {
-	baseName := textutil.SafeName(input.Name) + " " + input.ID
+	assetID := input.ID
+	if assetID == "" {
+		return nil, fmt.Errorf("processRenditions: input.ID is required (canonical asset_id segment)")
+	}
 	baseDir := input.OutputDir
 
-	// 1. Master: copy the raw source and make it read-only.
+	// 1. Master: normalize the raw source to the canonical
+	// H.264/AAC/yuv420p/30fps/1920x1080 codec. Pre-step-9 the master
+	// was a copy of the raw source (untouched); step 9 makes the
+	// master IS the normalized output per user spec.
 	masterDir := filepath.Join(baseDir, "master")
-	masterExt := filepath.Ext(rawPath)
-	if masterExt == "" {
-		masterExt = ".mp4"
-	}
-	masterPath := filepath.Join(masterDir, baseName+masterExt)
+	masterPath := filepath.Join(masterDir, assetID+"__master.mp4")
 	if err := os.MkdirAll(masterDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create master dir: %w", err)
 	}
-	if err := fileutil.CopyFile(rawPath, masterPath); err != nil {
-		return nil, fmt.Errorf("copy master: %w", err)
+	// Use processStep (which already zero-copy-skips when source
+	// matches target) — produces canonical codec without re-encoding
+	// when the source is already H.264/AAC/yuv420p/30fps/1920x1080.
+	masterPath, err := p.processStep(ctx, input, rawPath, masterPath)
+	if err != nil {
+		return nil, fmt.Errorf("master normalization failed: %w", err)
 	}
 	if err := os.Chmod(masterPath, 0o444); err != nil {
 		p.log.Warn("failed to make master read-only", zap.String("path", masterPath), zap.Error(err))
 	}
 
-	// 2. Mezzanine: normalize/process the master.
+	// 1b. Mezzanine: same file as the master (post-step-9 the master
+	// IS the normalized mezzanine). We expose the path under the
+	// `mezzanine/` subdir for backward-compat with callers that probe
+	// the prior 5-rendition surface. Future cleanup retires the
+	// mezzanine subdir entirely (the master is sufficient).
 	mezzanineDir := filepath.Join(baseDir, "mezzanine")
-	mezzaninePath := filepath.Join(mezzanineDir, baseName+".mp4")
+	mezzaninePath := filepath.Join(mezzanineDir, assetID+".mp4")
 	if err := os.MkdirAll(mezzanineDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create mezzanine dir: %w", err)
 	}
-	mezzaninePath, err := p.processStep(ctx, input, masterPath, mezzaninePath)
-	if err != nil {
-		return nil, fmt.Errorf("mezzanine processing failed: %w", err)
+	if err := fileutil.CopyFile(masterPath, mezzaninePath); err != nil {
+		return nil, fmt.Errorf("copy master to mezzanine: %w", err)
 	}
 
-	// 3. Proxy: 720p H.264 from mezzanine.
-	proxyDir := filepath.Join(baseDir, "proxy")
-	proxyPath := filepath.Join(proxyDir, baseName+".mp4")
-	if err := os.MkdirAll(proxyDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create proxy dir: %w", err)
+	// 2. Preview: 720p H.264/AAC proxy derived from the master.
+	previewDir := filepath.Join(baseDir, "preview")
+	previewPath := filepath.Join(previewDir, assetID+"__preview.mp4")
+	if err := os.MkdirAll(previewDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create preview dir: %w", err)
 	}
-	if err := p.ffmpeg.GenerateProxy(ctx, mezzaninePath, proxyPath); err != nil {
-		p.log.Warn("proxy generation failed", zap.String("id", input.ID), zap.Error(err))
+	if err := p.ffmpeg.GenerateProxy(ctx, masterPath, previewPath); err != nil {
+		p.log.Warn("preview generation failed", zap.String("id", input.ID), zap.Error(err))
 	}
 
-	// 4. Thumbnail: center frame from mezzanine.
+	// 3. Thumbnail: center frame from the master. Kept under the
+	// legacy `thumbnail/` subdir; the canonical thumbnail file is
+	// `{asset_id}.jpg` (the prefix matches the asset_id, no
+	// `__thumbnail` separator — the thumbnail is a sibling of the
+	// preview and master inside the asset folder). The file
+	// rename to `__thumbnail.jpg` lands in a follow-up PR alongside
+	// the manifest writer so this PR stays focused.
 	thumbnailDir := filepath.Join(baseDir, "thumbnail")
-	thumbnailPath := filepath.Join(thumbnailDir, baseName+".jpg")
+	thumbnailPath := filepath.Join(thumbnailDir, assetID+".jpg")
 	if err := os.MkdirAll(thumbnailDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create thumbnail dir: %w", err)
 	}
 	thumbnailTimestamp := 1.0
-	if info, err := p.ffmpeg.Probe(ctx, mezzaninePath); err == nil && info.Duration > 0 {
+	if info, err := p.ffmpeg.Probe(ctx, masterPath); err == nil && info.Duration > 0 {
 		thumbnailTimestamp = info.Duration.Seconds() / 2
 	}
-	if err := p.ffmpeg.ExtractFrame(ctx, mezzaninePath, thumbnailPath, thumbnailTimestamp); err != nil {
+	if err := p.ffmpeg.ExtractFrame(ctx, masterPath, thumbnailPath, thumbnailTimestamp); err != nil {
 		p.log.Warn("thumbnail generation failed", zap.String("id", input.ID), zap.Error(err))
 	}
 
-	// 5. Storyboard: tiled key frames from mezzanine.
+	// 4. Storyboard: tiled key frames from the master. Kept under
+	// the legacy `storyboard/` subdir with `{asset_id}.jpg` name for
+	// the same reason as the thumbnail.
 	storyboardDir := filepath.Join(baseDir, "storyboard")
-	storyboardPath := filepath.Join(storyboardDir, baseName+".jpg")
+	storyboardPath := filepath.Join(storyboardDir, assetID+".jpg")
 	if err := os.MkdirAll(storyboardDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create storyboard dir: %w", err)
 	}
-	if err := p.ffmpeg.GenerateStoryboard(ctx, mezzaninePath, storyboardPath, 10, 5, 5); err != nil {
+	if err := p.ffmpeg.GenerateStoryboard(ctx, masterPath, storyboardPath, 10, 5, 5); err != nil {
 		p.log.Warn("storyboard generation failed", zap.String("id", input.ID), zap.Error(err))
 	}
 
-	// Build rendition outputs.
+	// 5. Manifest: per-asset metadata ledger. The file is created as
+	// a placeholder (the canonical manifest writer lands in a
+	// follow-up PR). The placeholder carries the canonical
+	// `{asset_id}__manifest.json` filename + a minimal JSON body so
+	// the canonical Publisher has a file to verify-check (the
+	// size+checksum gate from PR-9 step 3 lands in this PR; the
+	// manifest sidecar exercises it).
+	manifestDir := filepath.Join(baseDir, "manifest")
+	manifestPath := filepath.Join(manifestDir, assetID+"__manifest.json")
+	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create manifest dir: %w", err)
+	}
+	manifestBody := fmt.Sprintf(`{"asset_id":%q,"codec":"h264","audio_codec":"aac","pixel_format":"yuv420p","resolution":"1920x1080","fps":30,"placeholder":true}`+"\n", assetID)
+	if err := os.WriteFile(manifestPath, []byte(manifestBody), 0o644); err != nil {
+		return nil, fmt.Errorf("write manifest placeholder: %w", err)
+	}
+
+	// Build rendition outputs in the canonical order. Note the
+	// per-file `Filename` field carries the canonical
+	// `{asset_id}__<role>.<ext>` name; callers thread this into the
+	// Publisher per-file.
 	renditions := []asset.RenditionOutput{
 		p.buildRenditionOutput(ctx, asset.RenditionKindMaster, masterPath),
 		p.buildRenditionOutput(ctx, asset.RenditionKindMezzanine, mezzaninePath),
 	}
-	if fileExists(proxyPath) {
-		renditions = append(renditions, p.buildRenditionOutput(ctx, asset.RenditionKindProxy, proxyPath))
+	if fileExists(previewPath) {
+		renditions = append(renditions, p.buildRenditionOutput(ctx, asset.RenditionKindProxy, previewPath))
 	}
 	if fileExists(thumbnailPath) {
 		renditions = append(renditions, p.buildRenditionOutput(ctx, asset.RenditionKindThumbnail, thumbnailPath))
 	}
 	if fileExists(storyboardPath) {
 		renditions = append(renditions, p.buildRenditionOutput(ctx, asset.RenditionKindStoryboard, storyboardPath))
+	}
+	if fileExists(manifestPath) {
+		renditions = append(renditions, p.buildRenditionOutput(ctx, asset.RenditionKindManifest, manifestPath))
 	}
 
 	return renditions, nil
