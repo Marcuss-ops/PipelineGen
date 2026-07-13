@@ -64,7 +64,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
