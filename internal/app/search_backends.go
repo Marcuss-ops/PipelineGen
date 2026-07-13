@@ -262,17 +262,14 @@ func sourceOrAll(s string) string {
 	return s
 }
 
-// ── providersBridgeToSearch — composition-only bridge helper ────────────────────
-
-// providersBridgeToSearch wraps a *providers.Registry into the canonical
+// ── providersBridgeToSearch — composition-only bridge helper ────────────────────	// providersBridgeToSearch wraps a *providers.Registry into the canonical
 // *search.Aggregator. The implementation REUSES BuildSearchBackends
 // (declared above in this file) so future Freeze / register-shape
 // changes cannot drift between this bridge and the canonical helper.
 // ClipsRepo / MediasearchSvc / WorkspaceID are intentionally left
-// nil/empty so only the provider-side backends register — that
-// matches the legacy providers.SearchAggregator scope (provider-only
-// fan-out; local + semantic live in dedicated adapters registered
-// by the canonical WireRegistry path).
+// nil/empty so only provider-side backends register; this matches
+// the provider-only fan-out scope (local + semantic live in dedicated
+// adapters registered by the canonical WireRegistry path).
 func providersBridgeToSearch(reg *providers.Registry, log *zap.Logger) (*search.Aggregator, error) {
 	if reg == nil {
 		return nil, fmt.Errorf("providersBridgeToSearch: registry is nil (composition root must call WireRegistry -> Freeze() before this helper)")

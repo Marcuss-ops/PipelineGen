@@ -76,9 +76,9 @@ type YouTubeClipHandler struct {
 // searchSvc        - canonical search.Aggregator for SearchAdvanced.
 // searchFanOut     - canonical SearchFanOut decorator for Stats.
 //
-// Wave 4 (July 2026): SearchAdvanced + Stats migrated from the legacy
-// providers.SearchAggregator to the canonical search capability.
-// SearchAdvanced uses searchSvc.Search; Stats uses searchFanOut.Stats().
+// Wave 4 (July 2026): SearchAdvanced + Stats route through the
+// canonical search.Aggregator. SearchAdvanced uses searchSvc.Search;
+// Stats uses searchFanOut.Stats().
 //
 // PR8 (June 2026): added idempotencyMiddleware to wrap POST /clips/process
 // (the only Write route in the handler). Read routes (info, search,
@@ -154,7 +154,6 @@ func (h *YouTubeClipHandler) GetVideoInfo(c *gin.Context) {
 }
 
 // S3d (June 2026) removal: getAllClipRepos() is REMOVED.
-// The SearchAdvanced + Stats methods now route through the
-// canonical SearchAggregator. The clipsRepo field on the
-// struct stays for downstream uses (reprocess / download paths
-// that don't aggregate provider fan-out).
+// SearchAdvanced + Stats now route through the canonical
+// *search.Aggregator. clipsRepo stays for downstream uses
+// (reprocess / download paths that don't aggregate provider fan-out).
