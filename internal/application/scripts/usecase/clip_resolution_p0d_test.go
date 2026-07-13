@@ -284,17 +284,15 @@ func TestClipResolution_P0D_BuilderOrder(t *testing.T) {
 }
 
 // TestClipResolution_P0D_BinderOrder pins the binder-layer
-// ordering contract: scene[i].Bindings.Clip.ClipID MUST equal
-// the i-th AcceptedClipID for all i, regardless of input order.
-// This locks the canonical 1:1 scene-binding contract (P0 #2
-// June 2026) that downstream processor pipelines (Document /
-// Voiceover / Images) rely on for canonical scene→clip mapping.
+// ordering contract: scene[i] (by scene_id) MUST bind to the i-th
+// AcceptedClipID for all i, regardless of input order. This locks
+// the canonical 1:1 scene-binding contract (P0 #2 June 2026) that
+// downstream processor pipelines rely on for canonical scene→clip
+// mapping.
 //
 // The binder exercises the SAME 3 orderings as the builder test —
-// against a hand-rolled ResolvedGenerationPlan that mirrors what
-// ClipsSourceResolver would produce. The binder MUST preserve
-// the input order (no re-sort, no mod-cycling, no map-key
-// iteration drift).
+// against hand-rolled ClipBindingRequest slices. The binder MUST
+// preserve the input order (no re-sort, no mod-cycling).
 func TestClipResolution_P0D_BinderOrder(t *testing.T) {
 	t.Parallel()
 
@@ -303,79 +301,54 @@ func TestClipResolution_P0D_BinderOrder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Build a fully-detailed ClipEvidence with the same
-			// order as the test permutation, populated with the
-			// canonical per-clip detail map so buildScenesFromClipEvidence
-			// surfaces every scene binding cleanly.
-			ev := buildP0DPlanEvidence(tc.clipIDs)
-
-			plan := &scriptpkg.ResolvedGenerationPlan{
-				SourceKind:   string(scriptpkg.SourceClips),
-				NumClips:     len(tc.clipIDs),
-				ClipEvidence: ev,
+			// Build one ClipBindingRequest per scene in the test
+			// permutation. The binder knows only scene_id,
+			// requirements, candidate assets, and binding policy.
+			reqs := make([]scene.ClipBindingRequest, 0, len(tc.clipIDs))
+			for i, id := range tc.clipIDs {
+				sceneID := "scene-" + string(rune('0'+i))
+				reqs = append(reqs, scene.ClipBindingRequest{
+					SceneID:      sceneID,
+					Requirements: scene.AssetRequirements{},
+					Candidates: []scene.ClipCandidate{
+						{ClipID: id, DriveLink: "https://drive.google.com/" + id},
+					},
+					Policy: scene.ClipBindingPolicy{},
+				})
 			}
 
 			binder := scene.NewSceneAssetBinder(nil)
-			result := binder.BindClips(nil, "", plan)
+			result := binder.BindClips(reqs)
 			require.Truef(t, result.Changed,
 				"binder MUST report Changed=true for clip-source kinds (case=%q)", tc.name)
-			require.Lenf(t, result.SynthesizedScenes, len(tc.clipIDs),
-				"binder MUST emit one scene per accepted clip (case=%q); got=%d want=%d",
-				tc.name, len(result.SynthesizedScenes), len(tc.clipIDs))
-
-			scenes := result.SynthesizedScenes
+			require.Lenf(t, result.Bindings, len(tc.clipIDs),
+				"binder MUST emit one binding per accepted clip (case=%q); got=%d want=%d",
+				tc.name, len(result.Bindings), len(tc.clipIDs))
 
 			// P0.D binder invariants:
 			//
 			// For every i in [0, len(tc.clipIDs)):
-			//  - scenes[i].Index == i         (positional index)
-			//  - scenes[i].ID                  == "scene-<clipID[i]>"
-			//                                          (canonical scene ID)
-			//  - scenes[i].Bindings.Clip != nil  (1:1 binding, no cycling)
-			//  - scenes[i].Bindings.Clip.ClipID == tc.clipIDs[i]
+			//  - result.Bindings["scene-i"] exists
+			//  - result.Bindings["scene-i"].ClipID == tc.clipIDs[i]
 			//                                          (1:1 ID match — PRESERVES order)
-			//  - scenes[i].Bindings.Clip.ClipTitle contains the round-N
-			//                                      marker  (detail map wired)
 			for i, want := range tc.clipIDs {
-				sceneRef := scenes[i]
-				require.Equalf(t, i, sceneRef.Index,
-					"P0.D binder invariant: scenes[%d].Index MUST equal %d (case=%q); got=%d",
-					i, i, tc.name, sceneRef.Index)
-
-				require.Equalf(t, "scene-"+want, sceneRef.ID,
-					"P0.D binder invariant: scenes[%d].ID MUST equal %q (case=%q); got=%q",
-					i, "scene-"+want, tc.name, sceneRef.ID)
-
-				require.NotNilf(t, sceneRef.Bindings.Clip,
-					"P0.D binder invariant: scenes[%d].Bindings.Clip MUST be non-nil (1:1 binding, case=%q)",
-					i, tc.name)
-
-				clip := sceneRef.Bindings.Clip
-				require.Equalf(t, want, clip.ClipID,
-					"P0.D binder invariant: scenes[%d].Bindings.Clip.ClipID MUST equal input[%d]==%q (case=%q); got=%q",
-					i, i, want, tc.name, clip.ClipID)
-
-				assert.Containsf(t, clip.ClipTitle, want,
-					"P0.D binder invariant: scenes[%d].Bindings.Clip.ClipTitle MUST reference %q (Detail.Name wired, case=%q); got=%q",
-					i, want, tc.name, clip.ClipTitle)
+				sceneID := "scene-" + string(rune('0'+i))
+				binding, ok := result.Bindings[sceneID]
+				require.Truef(t, ok,
+					"P0.D binder invariant: expected binding for %s (case=%q)",
+					sceneID, tc.name)
+				require.Equalf(t, want, binding.ClipID,
+					"P0.D binder invariant: %s.ClipID MUST equal input[%d]==%q (case=%q); got=%q",
+					sceneID, i, want, tc.name, binding.ClipID)
 			}
 
-			// Post-condition: total scene count == clip count
-			// (NO modulo cycling at this seam — extra scenes
-			// beyond the clip count get nil bindings per
-			// godlike/07 / P0 #2; here both are equal so we
-			// simply re-pin the equality).
-			require.Equalf(t, len(tc.clipIDs), len(scenes),
-				"P0.D binder invariant: total scene count MUST equal clip count (case=%q); got=%d want=%d",
-				tc.name, len(scenes), len(tc.clipIDs))
-
 			// Pivot assertion: same idOrderCheck as the builder
-			// test — re-pinned here on scene Bindings.Clip.ClipID
-			// to prove the binder does NOT re-sort independent of
-			// the builder.
-			binderIDs := make([]string, len(scenes))
-			for i, s := range scenes {
-				binderIDs[i] = s.Bindings.Clip.ClipID
+			// test — re-pinned here on bound ClipIDs to prove the
+			// binder does NOT re-sort independent of the builder.
+			binderIDs := make([]string, len(tc.clipIDs))
+			for i := range tc.clipIDs {
+				sceneID := "scene-" + string(rune('0'+i))
+				binderIDs[i] = result.Bindings[sceneID].ClipID
 			}
 			tc.idOrderCheck(t, binderIDs)
 		})
