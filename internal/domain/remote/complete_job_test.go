@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── CompleteJobRequest.Validated (pre-TX fail-fast) ──────────────────
