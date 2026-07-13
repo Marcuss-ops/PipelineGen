@@ -165,6 +165,21 @@ func (bt *BulkUploadTransport) HandleBulkUploadYouTubeClipsJob(ctx context.Conte
 //	503 — JobsSvc not configured (regression from the
 //	      EnqueueAsync fallback in transport package).
 func (bt *BulkUploadTransport) BulkUploadYouTubeClips(c *gin.Context) {
+	// PR-DIAG-BULKUPLOAD-REGISTRATION (July 2026, diagnostic-only):
+	// log bt.jobsSvc pointer at handler entry so a future "no handler
+	// registered" reproduction can compare this transport-side pointer
+	// against the descriptor-side svc_ptr (logged inside
+	// ClipsDescriptor.RegisterJobHandlers at boot) and the
+	// jobs_service_ptr (logged inside WireAssets at composition time).
+	// All three should match when the canonical wiring is correct; a
+	// mismatch localizes the split. Diagnostic only — no behavioural
+	// change; retire in a follow-up commit once the upstream bug is fixed.
+	if bt.log != nil {
+		bt.log.Info("bulk-upload: handler-entry jobs-service snapshot",
+			zap.String("bt_jobsSvc_type", fmt.Sprintf("%T", bt.jobsSvc)),
+			zap.String("bt_jobsSvc_ptr", fmt.Sprintf("%p", bt.jobsSvc)),
+		)
+	}
 	var req BulkUploadYouTubeClipsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		apiutil.BadRequest(c, "invalid request: "+err.Error())

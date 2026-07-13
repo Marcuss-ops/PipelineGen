@@ -184,10 +184,37 @@ func WireAssets(
 	// clipsDesc is *ClipsDescriptor (concrete); wrap in any for
 	// the type assertion (mirrors registerGenerationCapability pattern
 	// where genDesc is already api.Descriptor).
+	//
+	// PR-DIAG-BULKUPLOAD-REGISTRATION (July 2026, diagnostic-only):
+	// snapshot the jobs-service pointer at the composition site so a
+	// future "no handler registered" reproduction can compare the
+	// descriptor-side svc_ptr (logged inside ClipsDescriptor.RegisterJobHandlers)
+	// against the transport-side bt_jobsSvc_ptr (logged inside
+	// BulkUploadYouTubeClips on request entry). Pointer equality across
+	// both ends would rule out the "two different *jobs.Service instances"
+	// hypothesis; a mismatch would localize the split. Diagnostic only —
+	// no behavioural change; the lines should be retired in a follow-up
+	// commit once the upstream bug is fixes.
+	log.Info("WireAssets: pre-DescriptorJobs-registration jobs-service snapshot",
+		zap.String("jobs_service_type", fmt.Sprintf("%T", jobs.Service)),
+		zap.String("jobs_service_ptr", fmt.Sprintf("%p", jobs.Service)),
+		zap.String("jobs_facade_type", fmt.Sprintf("%T", jobs.Facade)),
+		zap.String("jobs_facade_ptr", fmt.Sprintf("%p", jobs.Facade)),
+		zap.String("clipsDesc_type", fmt.Sprintf("%T", clipsDesc)),
+		zap.String("clipsDesc_ptr", fmt.Sprintf("%p", clipsDesc)),
+	)
 	if dj, ok := any(clipsDesc).(module.DescriptorJobs); ok {
+		log.Info("WireAssets: clipsDesc type-asserted as DescriptorJobs; calling RegisterJobHandlers")
 		if err := dj.RegisterJobHandlers(jobs.Service); err != nil {
 			log.Warn("failed to register clips job handlers", zap.Error(err))
+		} else {
+			log.Info("WireAssets: clips job handlers registered (descriptor-side ok)")
 		}
+	} else {
+		log.Warn("WireAssets: clipsDesc does NOT implement module.DescriptorJobs — bulk_upload_youtube_clips will be unhandled (DIAG: this is bug-localisation signal A)",
+			zap.String("clipsDesc_type", fmt.Sprintf("%T", clipsDesc)),
+			zap.String("clipsDesc_ptr", fmt.Sprintf("%p", clipsDesc)),
+		)
 	}
 
 	storageDesc, err := buildStorageBundle(log, jobs, deps.Core.CatalogSyncService)
