@@ -234,6 +234,17 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			AvailableLanguages:  assetpkg.MetadataStringSlice(asset.Metadata, "available_languages"),
 			TranscriptAvailable: metadataBool(asset.Metadata, "transcript_available"),
 			TextTracksVersion:   assetpkg.MetadataString(asset.Metadata, "text_tracks_version"),
+
+			// ── VLM visual summary block (FASE-9 + visual-summary reindex) ────
+			// Verbatim copy from AssetData (top-level first-class fields; the
+			// visual-summary reindex service populates these when it runs a
+			// new VLM pass; the payload builder emits them with omitempty).
+			VisualSummary:              asset.VisualSummary,
+			VisibleActions:             asset.VisibleActions,
+			VisibleEntities:            asset.VisibleEntities,
+			VisualPreprocessingVersion: asset.VisualPreprocessingVersion,
+			VisualModelName:            asset.VisualModelName,
+			VisualModelVersion:         asset.VisualModelVersion,
 		},
 		Embeddings: map[VectorChannel]EmbeddingArtifact{},
 	}
