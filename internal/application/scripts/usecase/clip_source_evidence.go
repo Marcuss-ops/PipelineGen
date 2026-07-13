@@ -8,15 +8,8 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// appendClipSourceText writes the per-clip source text block
-// (CLIP header + Description + Transcript + Tags + blank-line
-// terminator) to the source-text writer.
-//
-// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the
-// transcript string is PRE-RESOLVED by the caller (the main
-// per-clip loop calls resolveTranscript exactly once and
-// threads the result through). This method does NOT call
-// resolveTranscript itself.
+// appendClipSourceText writes the legacy technical per-clip source
+// text block used for provenance and compatibility consumers.
 func (c *ClipSourceBuilder) appendClipSourceText(w *strings.Builder, id string, clip *asset.Asset, transcript string) {
 	w.WriteString(fmt.Sprintf("CLIP %s: %s\n", id, clipDisplayName(clip, id)))
 	if searchText := strings.TrimSpace(clip.SearchText); searchText != "" {
@@ -32,6 +25,61 @@ func (c *ClipSourceBuilder) appendClipSourceText(w *strings.Builder, id string, 
 		w.WriteString(fmt.Sprintf("  Tags: %s\n", strings.Join(clip.Tags, ", ")))
 	}
 	w.WriteString("\n")
+}
+
+// appendNarrativeClipText writes the model-facing per-clip
+// evidence block. The projection is intentionally narration-only:
+// no clip IDs, Drive links, tags or source URLs.
+//
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 4 (July 2026): the
+// transcript string is PRE-RESOLVED by the caller (the main
+// per-clip loop calls resolveTranscript exactly once and
+// threads the result through). This method does NOT call
+// resolveTranscript itself.
+func (c *ClipSourceBuilder) appendNarrativeClipText(w *strings.Builder, position int, clip *asset.Asset, transcript string) {
+	if w == nil || clip == nil {
+		return
+	}
+	view := buildModelClipView(position, clip, transcript)
+	w.WriteString(fmt.Sprintf("NARRATIVE EVIDENCE %d\n", position+1))
+	w.WriteString(fmt.Sprintf("Ref: %s\n", view.Ref))
+	if title := strings.TrimSpace(view.VisualSummary); title != "" {
+		w.WriteString(fmt.Sprintf("VisualSummary: %s\n", title))
+	}
+	if desc := strings.TrimSpace(view.Description); desc != "" {
+		w.WriteString(fmt.Sprintf("Description: %s\n", desc))
+	}
+	if transcript := strings.TrimSpace(view.Transcript); transcript != "" {
+		w.WriteString(fmt.Sprintf("Transcript: %s\n", transcript))
+	}
+	w.WriteString(fmt.Sprintf("DurationMs: %d\n", view.DurationMs))
+	w.WriteString("\n")
+}
+
+func buildModelClipView(position int, clip *asset.Asset, transcript string) scriptpkg.ModelClipView {
+	view := scriptpkg.ModelClipView{
+		Ref:        fmt.Sprintf("clip_%d", position+1),
+		Transcript: truncateExcerpt(strings.TrimSpace(transcript), excerptMaxRunes),
+		DurationMs: parseMetadataMs(clip.GetMetadataString("duration_ms")),
+	}
+	if view.DurationMs <= 0 {
+		startMs := parseMetadataMs(clip.GetMetadataString("start_ms"))
+		endMs := parseMetadataMs(clip.GetMetadataString("end_ms"))
+		if endMs > startMs {
+			view.DurationMs = endMs - startMs
+		}
+	}
+	if searchText := strings.TrimSpace(clip.SearchText); searchText != "" {
+		view.Description = searchText
+	} else if desc := strings.TrimSpace(clip.GetMetadataString("description")); desc != "" {
+		view.Description = desc
+	}
+	if title := strings.TrimSpace(clipDisplayName(clip, "")); title != "" {
+		view.VisualSummary = title
+	} else {
+		view.VisualSummary = view.Description
+	}
+	return view
 }
 
 // appendClipDetail populates the per-clip detail map with the
@@ -79,6 +127,7 @@ func buildClipEvidence(
 	excludedClips []scriptpkg.ExcludedClip,
 	missingClipIDs []scriptpkg.MissingClipID,
 	sourceText string,
+	narrativeText string,
 	clipDetails map[string]scriptpkg.ClipDetail,
 	resolvedTracks map[string]*asset.TextTrack,
 ) *scriptpkg.ClipEvidence {
@@ -122,6 +171,7 @@ func buildClipEvidence(
 		RenderableClipIDs: renderableIDs,
 		ClipCount:         len(canonicalIDs),
 		AssembledText:     sourceText,
+		NarrativeText:     narrativeText,
 		DriveLinks:        clipDriveLinks,
 		ClipNames:         clipNameMap,
 		Excluded:          excludedClips,

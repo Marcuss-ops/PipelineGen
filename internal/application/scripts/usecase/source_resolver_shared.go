@@ -65,6 +65,10 @@ func buildResolvedClipSource(
 	}
 
 	fingerprint := BuildClipFingerprint(src, evidence)
+	modelSourceText := sourceText
+	if evidence != nil {
+		modelSourceText = strings.TrimSpace(evidence.ModelSourceText())
+	}
 
 	if log != nil {
 		elapsed := time.Since(p.startTime)
@@ -78,7 +82,7 @@ func buildResolvedClipSource(
 		Type:            p.sourceType,
 		Topic:           title,
 		Title:           title,
-		SourceText:      sourceText,
+		SourceText:      modelSourceText,
 		ClipEvidence:    evidence,
 		Fingerprint:     fingerprint,
 		GroundingPolicy: src.GroundingPolicy,

@@ -18,6 +18,8 @@ package nonops
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -126,6 +128,57 @@ func NewNonOpsHandler(d Deps) *NonOpsHandler {
 		repoForSource:    d.RepoForSource,
 		log:              d.Log,
 	}
+}
+
+// ValidateNonOpsDeps is the canonical fail-closed gate for the nonops
+// sub-handler's required deps. Extracted from NewNonOpsHandlerStrict so
+// the strict constructor AND external callers (clips.NewHandlerStrict via
+// the composition root) share a single source-of-truth.
+//
+// godlike/07 fail-closed contract: JobsSvc and BulkUploadWorker MUST
+// be non-nil at composition time. The canonical 3-method registration
+// chain (ClipsDescriptor.RegisterJobHandlers -> Handler.RegisterJobHandlers
+// -> NonOpsHandler.RegisterJobHandlers -> jobs.Service.RegisterHandler)
+// cannot complete if either is missing — the dispatcher's handler map
+// would stay empty -> "no handler registered" at first enqueue.
+// Validation at construction lets the operator crash loudly at boot
+// rather than silently accumulating an unrecoverable chain gap.
+//
+// Returns a non-nil error listing ALL missing required deps (not just
+// the first one), so operators can fix the wiring in one boot iteration.
+func ValidateNonOpsDeps(d Deps) error {
+	var missing []string
+	if d.JobsSvc == nil {
+		missing = append(missing, "JobsSvc")
+	}
+	if d.BulkUploadWorker == nil {
+		missing = append(missing, "BulkUploadWorker")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("nonops.ValidateNonOpsDeps: required dependencies missing at composition time (godlike/07 fail-closed contract): %s — pass them at the composition root via nonops.NewNonOpsHandlerStrict or clips.NewHandlerStrict", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// NewNonOpsHandlerStrict constructs a NonOpsHandler with the required
+// composition-time deps validated upfront via ValidateNonOpsDeps.
+//
+// godlike/07 fail-closed: JobsSvc + BulkUploadWorker are REQUIRED.
+// Nil either -> an error is returned at construction time so the
+// operator crashes loudly at boot rather than "no handler registered"
+// at first enqueue. The legacy nil-tolerant NewNonOpsHandler remains
+// for test fixtures that opt out of the fail-closed contract (legacy
+// back-compat path; do NOT call from production composition roots).
+//
+// Canonical production wiring: the composition root
+// (clips.Build -> NewHandlerStrict -> NewNonOpsHandlerStrict) calls
+// this constructor so the canonical 3-method registration chain is
+// fail-closed at boot per godlike/07.
+func NewNonOpsHandlerStrict(d Deps) (*NonOpsHandler, error) {
+	if err := ValidateNonOpsDeps(d); err != nil {
+		return nil, err
+	}
+	return NewNonOpsHandler(d), nil
 }
 
 // RegisterRoutes installs the 6 NonOps HTTP routes on the supplied

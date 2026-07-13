@@ -48,7 +48,7 @@ func buildProvenance(
 func hashSourceText(plan scriptpkg.ResolvedGenerationPlan) string {
 	parts := []string{strings.TrimSpace(plan.SourceText)}
 	if plan.ClipEvidence != nil {
-		parts = append(parts, strings.TrimSpace(plan.ClipEvidence.AssembledText))
+		parts = append(parts, strings.TrimSpace(plan.ClipEvidence.ModelSourceText()))
 	}
 	h := sha256.Sum256([]byte(strings.Join(parts, "\n")))
 	return hex.EncodeToString(h[:])

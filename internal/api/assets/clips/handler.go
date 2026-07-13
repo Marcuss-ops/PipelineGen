@@ -235,6 +235,38 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	return h
 }
 
+// NewHandlerStrict constructs the unified Handler with fail-closed
+// validation of the canonical 3-method job-handler registration chain
+// deps at construction time. Threaded through the composition root
+// (clips/module.go::Build -> NewHandlerStrict) so a partial wiring
+// that would fail at first enqueue crashes loudly at boot instead —
+// godlike/07 no-fake-availability.
+//
+// godlike/06 SSOT: the canonical path is
+//	clips.Build (module.go)
+//	  -> NewHandlerStrict (this function)
+//	      -> nonops.ValidateNonOpsDeps pre-check on the required deps
+//	      -> NewHandler construction (with the validated locator deps)
+//	  -> ClipsDescriptor.RegisterJobHandlers (module.go)
+//	      -> Handler.RegisterJobHandlers (handler.go)
+//	          -> NonOpsHandler.RegisterJobHandlers (nonops/handler_jobs.go)
+//	              -> jobs.Service.RegisterHandler
+//
+// If the pre-check fails (JobsSvc or BulkUploadWorker is nil), the
+// construction returns an error instead of constructing a Handler
+// with a partially-wired nonops sub-handler. The legacy NewHandler
+// (nil-tolerant at construction) remains for test fixtures that
+// opt out of the fail-closed contract.
+func NewHandlerStrict(d Deps, idempotencyMiddleware gin.HandlerFunc) (*Handler, error) {
+	if err := nonops.ValidateNonOpsDeps(nonops.Deps{
+		JobsSvc:          d.JobsSvc,
+		BulkUploadWorker: d.BulkUploadWorker,
+	}); err != nil {
+		return nil, err
+	}
+	return NewHandler(d, idempotencyMiddleware), nil
+}
+
 // enrichUCOrLocal returns `shared` when non-nil, otherwise constructs a
 // fresh EnrichUseCase with the supplied dependencies. Single-line
 // helper that documents the share-or-construct decision inline.

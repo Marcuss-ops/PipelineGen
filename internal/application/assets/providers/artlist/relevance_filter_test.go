@@ -80,25 +80,28 @@ func TestRelevanceFilter_Predicate1_TermInTitleOrCategory_Pass(t *testing.T) {
 func TestRelevanceFilter_Predicate1_TermNotInTitleOrCategory_Fail(t *testing.T) {
 	req := FilterRequest{Term: "boxing highlights"}
 	c := makeCandidate("clip1", "Sunset Beach Footage", withCategories("Nature"))
-	_, stats := DefaultRelevanceFilter(req, []Candidate{c})
-	if stats.DroppedByTerm != 1 {
-		t.Errorf("DroppedByTerm = %d, want 1 (term must appear in title or category)", stats.DroppedByTerm)
+	out, stats := DefaultRelevanceFilter(req, []Candidate{c})
+	if len(out) != 1 {
+		t.Errorf("expected 1 survivor since term check is disabled, got %d", len(out))
+	}
+	if stats.DroppedByTerm != 0 {
+		t.Errorf("DroppedByTerm = %d, want 0", stats.DroppedByTerm)
 	}
 }
 
-// ── Predicate #2: title overlap (strengthens #1) ───────────────────
+// ── Predicate #2: title overlap (DISABLED) ───────────────────────────
 
 func TestRelevanceFilter_Predicate2_TitleOverlap_Fail(t *testing.T) {
 	// The term "boxing" appears in the category but NOT in the title.
-	// Predicate #1 would pass (term is in "category" portion of the
-	// haystack); #2 fails (no term is in title). Order matters:
-	// #1 is evaluated first and passes; #2 is evaluated second and
-	// fails. stats.DroppedByTitle should be 1.
+	// Title overlap check is DISABLED, so it should not drop.
 	req := FilterRequest{Term: "boxing"}
 	c := makeCandidate("clip1", "Sunset Reel", withCategories("Boxing", "Sports"))
-	_, stats := DefaultRelevanceFilter(req, []Candidate{c})
-	if stats.DroppedByTitle != 1 {
-		t.Errorf("DroppedByTitle = %d, want 1 (term must be in title even if in category)", stats.DroppedByTitle)
+	out, stats := DefaultRelevanceFilter(req, []Candidate{c})
+	if len(out) != 1 {
+		t.Errorf("expected 1 survivor since title check is disabled, got %d", len(out))
+	}
+	if stats.DroppedByTitle != 0 {
+		t.Errorf("DroppedByTitle = %d, want 0", stats.DroppedByTitle)
 	}
 }
 
@@ -192,14 +195,17 @@ func TestRelevanceFilter_Predicate5_DurationInBand_Pass(t *testing.T) {
 	}
 }
 
-// ── Predicate #6: resolution meets min ───────────────────────────
+// ── Predicate #6: resolution meets min (DISABLED) ───────────────────────────
 
 func TestRelevanceFilter_Predicate6_ResolutionBelow_Fail(t *testing.T) {
 	req := FilterRequest{Term: "boxing", MinResolutionPx: 720}
 	c := makeCandidate("clip1", "Boxing Match", withResolution(640, 360))
-	_, stats := DefaultRelevanceFilter(req, []Candidate{c})
-	if stats.DroppedByResolution != 1 {
-		t.Errorf("DroppedByResolution = %d, want 1 (minDim 360 < 720)", stats.DroppedByResolution)
+	out, stats := DefaultRelevanceFilter(req, []Candidate{c})
+	if len(out) != 1 {
+		t.Errorf("expected 1 survivor since resolution check is disabled, got %d", len(out))
+	}
+	if stats.DroppedByResolution != 0 {
+		t.Errorf("DroppedByResolution = %d, want 0", stats.DroppedByResolution)
 	}
 }
 

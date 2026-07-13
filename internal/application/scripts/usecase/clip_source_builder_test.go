@@ -36,6 +36,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
@@ -417,6 +419,50 @@ func TestClipSourceBuilder_TranscriptRuneSafeExcerpt_A4(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestClipSourceBuilder_ModelSourceText_IsNarrativeOnly pins the
+// model-facing projection contract. The builder still produces a
+// technical AssembledText for compatibility, but ModelSourceText
+// must be free of technical locators and include only the narrative
+// clip view.
+func TestClipSourceBuilder_ModelSourceText_IsNarrativeOnly(t *testing.T) {
+	const clipID = "clip-model-view"
+
+	clip := newAssetWithDriveLink(clipID, "", "Pacquiao vs Broner", "https://drive.google.com/file/d/clip-model-view/view")
+	clip.SearchText = "Pacquiao controls the distance with his jab."
+	clip.SetMetadataString("description", "Visual recap of Pacquiao and Broner at center ring.")
+	clip.Tags = []string{"commentator", "boxing"}
+
+	reader := &stubTextTrackReader{
+		tracks: map[string]*asset.TextTrack{
+			clipID + ":en": makeTrack(clipID, "en", "Pacquiao appears faster and lighter on his feet.", asset.TextTrackReady),
+		},
+		readyLanguages: map[string][]string{clipID: {"en"}},
+	}
+	resolver := &stubClipsResolver{byID: map[string]*asset.Asset{clipID: clip}}
+
+	builder := scripts.NewClipSourceBuilder(resolver, nil, zap.NewNop())
+	builder.ConfigureTextTrackReader(reader)
+
+	ev, _, sourceText, err := builder.BuildClipContext(context.Background(), []string{clipID}, &scripts.ClipGenerationOptions{Language: "en"})
+	require.NoError(t, err)
+	require.NotNil(t, ev)
+	require.NotEmpty(t, sourceText)
+
+	modelText := ev.ModelSourceText()
+	require.NotEmpty(t, modelText)
+	assert.Contains(t, modelText, "NARRATIVE EVIDENCE 1")
+	assert.Contains(t, modelText, "Ref: clip_1")
+	assert.Contains(t, modelText, "Description: Pacquiao controls the distance with his jab.")
+	assert.Contains(t, modelText, "Transcript: Pacquiao appears faster and lighter on his feet.")
+	assert.Contains(t, modelText, "DurationMs: 0")
+	assert.NotContains(t, modelText, "CLIP "+clipID+":")
+	assert.NotContains(t, modelText, "drive.google.com")
+	assert.NotContains(t, modelText, "youtube.com")
+	assert.NotContains(t, modelText, "Tags:")
+	assert.NotContains(t, modelText, "commentator")
+	assert.NotContains(t, modelText, "announcer")
 }
 
 // a4StubTextTrackReader is a per-subtest TextTrackReader stub used by

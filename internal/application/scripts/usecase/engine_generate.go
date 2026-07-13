@@ -183,8 +183,6 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 	} else if len(plan.SegmentTopics) > 0 {
 		RecordScriptGenerationBranch("b", plan.Language)
 	}
-	clipIDs := extractPlanClipIDs(plan)
-
 	builtPrompt := renderedPrompt
 	// PR-CS-1 / FASE 3: ScriptSegment blocks + canonical footer are
 	// emitted BEFORE the legacy ClipGroundingInstructions so they
@@ -214,7 +212,6 @@ func (e *Engine) Generate(ctx context.Context, plan *scriptpkg.ResolvedGeneratio
 		Title:           title,
 		MinWords:        minWords,
 		MaxChars:        plan.MaxChars,
-		ClipIDs:         clipIDs,
 		Temperature:     plan.Temperature,
 		GroundingPolicy: plan.GroundingPolicy,
 		// LLM-PLAIN-TEXT-CONTRACT wave (PR-2, July 2026): flip

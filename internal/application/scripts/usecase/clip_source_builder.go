@@ -279,8 +279,9 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		// post-loop buildClipEvidence call reads the
 		// FIRST non-nil entry to populate the evidence-level
 		// fingerprint.
-		resolvedTracks   = make(map[string]*asset.TextTrack, len(records))
-		sourceTextWriter strings.Builder
+		resolvedTracks      = make(map[string]*asset.TextTrack, len(records))
+		sourceTextWriter    strings.Builder
+		narrativeTextWriter strings.Builder
 	)
 	for _, record := range records {
 		if record.clip.DriveLink() != "" {
@@ -291,6 +292,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		clipToCanonical[record.clip.ID] = record.id
 		clipNames = append(clipNames, clipDisplayName(record.clip, record.id))
 		c.appendClipSourceText(&sourceTextWriter, record.id, record.clip, record.transcript)
+		c.appendNarrativeClipText(&narrativeTextWriter, len(canonicalIDs)-1, record.clip, record.transcript)
 		c.appendClipDetail(clipDetails, record.id, record.clip, record.transcript)
 		if record.track != nil {
 			resolvedTracks[record.id] = record.track
@@ -313,6 +315,7 @@ func (c *ClipSourceBuilder) BuildClipContext(
 		excludedClips,
 		missingClipIDs,
 		strings.TrimSpace(sourceTextWriter.String()),
+		strings.TrimSpace(narrativeTextWriter.String()),
 		clipDetails,
 		resolvedTracks,
 	)

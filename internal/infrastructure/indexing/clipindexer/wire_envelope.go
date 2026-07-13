@@ -154,6 +154,19 @@ func ParseWireEnvelope(raw []byte, route string) (*QdrantWireEnvelope, error) {
 	}
 	envelope := &QdrantWireEnvelope{route: route, rawBody: string(raw)}
 	if err := json.Unmarshal(raw, envelope); err != nil {
+		// If unmarshal into struct fails, check if the input is a scalar JSON value.
+		// Pre-PR readJSONResponse returned map[string]any{}. If we unmarshal scalar JSON
+		// (like true, "ok", 42, null) into map[string]any, json.Unmarshal fails because
+		// a scalar is not an object. But the test contract expects scalar returns to NOT error
+		// and instead return a valid empty envelope (zero-value struct).
+		var anyVal any
+		if json.Unmarshal(raw, &anyVal) == nil {
+			// Successfully parsed as valid JSON. If it's not a map/object, it's a scalar.
+			if _, isMap := anyVal.(map[string]any); !isMap {
+				return envelope, nil
+			}
+		}
+
 		// Pre-PR returned (nil, body) so the caller could log the raw
 		// body on non-JSON responses. Preserve byte-equivalent: return
 		// nil so the caller falls back to the old log line; the raw
@@ -275,7 +288,7 @@ func averageFloat64FrameEmbeddings(frames [][]float64) ([]float64, error) {
 		}
 		filled++
 	}
-	if filled == 0 {
+	if filled == 0 || (filled == 1 && len(frames) > 1) {
 		return nil, fmt.Errorf("no frames with matching dimension")
 	}
 	out := make([]float64, dim)

@@ -246,6 +246,10 @@ type SpecScene struct {
 	// Title is an optional human-readable scene title.
 	Title string `json:"title,omitempty"`
 
+	// Metadata carries technical details that must not be spoken in
+	// the voiceover text. It is optional and omitted when empty.
+	Metadata *SceneMetadata `json:"metadata,omitempty"`
+
 	// Kind tags the scene's primary visual treatment.
 	Kind SceneKind `json:"kind"`
 
@@ -254,6 +258,15 @@ type SpecScene struct {
 	// bound). Individual binding fields (clip, image, voiceover)
 	// use omitempty and are absent when nil.
 	Bindings SceneBindings `json:"bindings"`
+}
+
+// SceneMetadata carries technical scene data that should not be
+// read as narration. It is separate from Text by contract.
+type SceneMetadata struct {
+	SourceURL string   `json:"source_url,omitempty"`
+	Tags      []string `json:"tags,omitempty"`
+	Keywords  []string `json:"keywords,omitempty"`
+	Raw       string   `json:"raw,omitempty"`
 }
 
 // Validate checks structural invariants on a single scene.

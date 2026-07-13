@@ -34,8 +34,6 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 		return ""
 	}
 
-	// Issue #2 (June 2026): field renamed ClipIDs → AcceptedClipIDs.
-	clipIDs := strings.Join(plan.ClipEvidence.AcceptedClipIDs, ", ")
 	requestedClips := len(plan.ClipEvidence.AcceptedClipIDs)
 	if plan.NumClips > 0 && plan.NumClips < requestedClips {
 		requestedClips = plan.NumClips
@@ -66,10 +64,11 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 		"CLIP-GROUNDED WRITING RULES:",
 		"1. Treat the supplied clip evidence as the primary source.",
 		"2. Every scene must describe what is happening in the clips: action, movement, setting, objects, reactions, and immediate consequences.",
-		"3. Stay anchored to the clip sequence and the listed clip IDs: " + clipIDs + ". Do not drift into generic biography unless it directly explains the clip.",
+		"3. Stay anchored to the clip sequence and its narrative evidence blocks. Do not drift into generic biography unless it directly explains the clip.",
 		"4. If a clip contains multiple beats, narrate those beats in order instead of abstracting them away.",
 		"5. Do not invent events, dialogue, or transitions that are not supported by the clip evidence.",
-		"6. Keep drive links out of the spoken script; they are reference metadata only.",
+		"6. Keep the spoken text natural and clean: do not include URLs, drive links, clip IDs, speaker labels, tag lists, keyword lists, or other technical markers in the narrated text.",
+		"7. Put technical details only in metadata or bindings when the output contract supports them; never print them inside the voiceover text.",
 	}
 	lines = append(lines, extra...)
 	return strings.Join(lines, "\n")
@@ -161,4 +160,5 @@ Write ONLY the complete narrative script text. Follow these rules:
 3. DO NOT output scene IDs, scene indexes, kind labels, or bindings.
 4. DO NOT output schema_version, specscene, or any structured envelope.
 5. DO NOT output metadata fields, clip_ids, drive links, or image URLs.
-6. Write ONLY cohesive narrative prose. The script text itself. Nothing else.`
+6. DO NOT put technical markers such as URLs, speaker labels, tags, keywords, or clip IDs inside the prose.
+7. Write ONLY cohesive narrative prose. The script text itself. Nothing else.`

@@ -59,7 +59,6 @@ import (
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -304,9 +303,27 @@ func (d *ClipsDescriptor) RegisterJobHandlers(svc api.JobRegistrar) error {
 	if d.Handler == nil {
 		return nil
 	}
-	// The handler holds the concrete *Handler method; we cast it
-	// to appjobs.HandlerFunc so the typed port accepts it.
-	registerErr := svc.RegisterHandler(string(jobservice.TypeBulkUploadYouTubeClips), appjobs.HandlerFunc(d.Handler.HandleBulkUploadYouTubeClipsJob))
+	// PR-CLIPS-NONOPS-CANONICAL-CHAIN (July 2026): route through the
+	// orchestrator's 1-line delegator (Handler.RegisterJobHandlers)
+	// instead of calling svc.RegisterHandler directly. The canonical
+	// 3-method chain is
+	//
+	//	ClipsDescriptor.RegisterJobHandlers (this method)
+	//	-> Handler.RegisterJobHandlers (handler.go)
+	//	-> NonOpsHandler.RegisterJobHandlers (nonops/handler_jobs.go)
+	//	-> jobs.Service.RegisterHandler
+	//
+	// The `svc` parameter is part of the api.DescriptorJobs interface
+	// but unused here: the orchestrator's captured h.jobsSvc IS the
+	// same instance the composition root passes (canonical wiring,
+	// JobsBundle.Facade == JobsBundle.Service). Routing through the
+	// orchestrator (a) keeps the fail-closed typed sentinel at
+	// nonops.RegisterJobHandlers the FIRST observable surface for a
+	// misconfigured JobsSvc, and (b) makes the dispatched handler
+	// resolve through Handler.HandleBulkUploadYouTubeClipsJob ->
+	// nonops.HandleBulkUploadYouTubeClipsJob -> bulkUploadWorker.HandleJob
+	// which is the EXACT path the SSOT diagnostic (ec0d7b89d) validated.
+	registerErr := d.Handler.RegisterJobHandlers()
 	// PR-DIAG-BULKUPLOAD-REGISTRATION (July 2026, diagnostic-only):
 	// confirm the write landed by logging the received svc's pointer
 	// + the result of RegisterHandler. The transport-side pointer
@@ -366,11 +383,16 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		idem = func(c *gin.Context) { c.Next() }
 	}
 
-	// Construct the canonical Handler orchestrator. NewHandler has
-	// its own nil-tolerance for EnrichUC (falls back to a local
-	// copy via enrichUCOrLocal); all other fields are passed
-	// straight through.
-	handler := NewHandler(Deps{
+	// Construct the canonical Handler orchestrator via the strict
+	// fail-closed constructor (PR-CLIPS-NONOPS-FAIL-CLOSED,
+	// July 2026). ValidateNonOpsDeps pre-check at composition time
+	// ensures JobsSvc + BulkUploadWorker are non-nil — a partial
+	// wiring that would fail at first enqueue ("no handler
+	// registered for bulk_upload_youtube_clips") is now a 500 at
+	// boot instead of a silent-success class (godlike/07
+	// no-fake-availability). NewHandler itself remains nil-tolerant
+	// for test fixtures that opt out of the fail-closed contract.
+	handler, err := NewHandlerStrict(Deps{
 		ClipsRepo:        deps.ClipsRepo,
 		AssetRepo:        deps.AssetRepo,
 		DeletionSvc:      deps.DeletionSvc,
@@ -397,6 +419,9 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		UploadUC:         deps.UploadUC,
 		Publisher:        deps.Publisher,
 	}, idem)
+	if err != nil {
+		return nil, fmt.Errorf("clips.Build: %w", err)
+	}
 
 	// Construct the route Module. The closure inside
 	// api.NewRouteModule calls handler.RegisterRoutes(r) — the

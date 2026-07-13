@@ -79,7 +79,6 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 
-	// Combined schema: writer columns + clipindexer columns + outbox.
 	schema := `
 	CREATE TABLE IF NOT EXISTS media_assets (
 		id TEXT PRIMARY KEY,
@@ -92,6 +91,7 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 		metadata_json TEXT NOT NULL DEFAULT '{}',
 		index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
 		index_state_updated_at TEXT NOT NULL DEFAULT '',
+		search_text TEXT NOT NULL DEFAULT '',
 		created_at TEXT, updated_at TEXT
 	);`
 	schema += clipAtomicWriterOutboxSchema

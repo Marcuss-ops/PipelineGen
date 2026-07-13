@@ -238,13 +238,17 @@ func (r *CurateSourceResolver) Resolve(ctx context.Context, src scriptpkg.Source
 	if title == "" {
 		title = query
 	}
+	modelSourceText := sourceText
+	if clipEvidence != nil {
+		modelSourceText = strings.TrimSpace(clipEvidence.ModelSourceText())
+	}
 
 	return &scriptpkg.ResolvedSource{
 		Type:            scriptpkg.SourceCurate,
 		Topic:           query,
 		Title:           title,
 		Language:        resCtx.Language,
-		SourceText:      sourceText,
+		SourceText:      modelSourceText,
 		ClipEvidence:    clipEvidence,
 		SearchResults:   searchResults,
 		GroundingPolicy: src.GroundingPolicy,

@@ -203,7 +203,7 @@ func evaluateQualityGate(
 func buildSourceText(plan scriptpkg.ResolvedGenerationPlan) string {
 	parts := []string{plan.SourceText}
 	if plan.ClipEvidence != nil {
-		parts = append(parts, plan.ClipEvidence.AssembledText)
+		parts = append(parts, plan.ClipEvidence.ModelSourceText())
 	}
 	return strings.Join(parts, " ")
 }
