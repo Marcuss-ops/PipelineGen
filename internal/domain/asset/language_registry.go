@@ -86,6 +86,30 @@ func (s LanguageSpec) Validate() error {
 // Implementations MUST be Read-only after construction; mutating
 // the registry at runtime is not supported (a future step adds
 // a reload-from-config API if operators need it).
+//
+// Capability-filter contract (godlike/06 SSOT split) — THIS
+// IS THE NON-NEGOTIABLE PART OF THE INTERFACE. Future
+// implementers, maintainers, and reviewers MUST honour it:
+//
+// The registry is the canonical CAPABILITY SURFACE. It
+// returns every spec with its full flag set; it does NOT
+// pre-filter by TranslateClips, GenerateTTS, or any future
+// capability. Each downstream consumer picks which
+// capability it cares about at the query site:
+//   - texttracks.Resolver filters by TranslateClips=true
+//     before fanning out clip-translation jobs.
+//   - a future voiceover consumer would filter by
+//     GenerateTTS=true.
+//   - an introspection CLI exposes every flag.
+//
+// Implementations MUST NOT add convenience methods like
+// TranslateClipLanguages() / TTSLanguages() that smuggle a
+// pre-applied capability filter back into the registry
+// layer. Such methods are a godlike/06 SSOT violation
+// requiring an explicit godlike-allowance exception.
+// Consumers pick the capability at the query site — that
+// is the architecture decision; the registry exposes raw
+// capabilities only.
 type LanguageRegistry interface {
 	// EnabledLanguages returns every spec with Enabled=true,
 	// in the YAML-declared order (no sorting; the operator's
@@ -168,10 +192,11 @@ func EmptyLanguageRegistry() LanguageRegistry {
 // declared order IS the priority order for most callers —
 // chains honour the first match wins rule).
 //
-// Capability-filter contract (godlike/06 SSOT split): this
-// method ONLY filters by Enabled=true. The TranslateClips /
-// GenerateTTS flags are returned verbatim so consumers can
-// pick which capability they care about at the query site:
+// Capability-filter contract (mirrors the interface-level
+// contract on LanguageRegistry): this method ONLY filters
+// by Enabled=true. The TranslateClips / GenerateTTS flags
+// are returned verbatim so consumers can pick which
+// capability they care about at the query site:
 //   - texttracks.Resolver.CandidateLanguages filters by
 //     TranslateClips=true to fan out clip-translation jobs.
 //   - a future voiceover consumer would filter by
@@ -192,6 +217,29 @@ func (r *staticLanguageRegistry) EnabledLanguages() []LanguageSpec {
 	return out
 }
 
+// Resolve looks up a single spec by code. Returns
+// (spec, true) on hit; (zero, false) on miss. godlike/07
+// honest lock: callers MUST treat the bool as
+// authoritative, not nil-check the spec.
+//
+// Capability-filter contract (mirrors the interface-level
+// contract on LanguageRegistry): the returned spec carries
+// the FULL capability flag set (Enabled / TranslateClips /
+// GenerateTTS / ...future). The method does NOT pre-filter
+// by any capability — the consumer chooses which capability
+// it gates on at the query site. Consumers MUST NOT call
+// Resolve and assume "the spec is already filtered to my
+// capability" — it isn't; it IS the canonical capability
+// surface for that code.
+//
+// Enabled=false entries are returned verbatim — the
+// consumer MUST check `spec.Enabled` before treating the
+// returned spec as a fan-out candidate. Disabled codes are
+// registered (audit trail — e.g. operator removed "en"
+// from the YAML) but excluded from
+// EnabledLanguages(); Resolve still surfaces them so a
+// CLI / introspection tool can show "this code was
+// previously registered, current status: disabled".
 func (r *staticLanguageRegistry) Resolve(code string) (LanguageSpec, bool) {
 	s, ok := r.byCode[code]
 	return s, ok
