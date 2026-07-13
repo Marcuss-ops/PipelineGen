@@ -193,6 +193,28 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Run `make verify-no-secrets` (fail-closed)
+      # GODLIKE/06 SSOT lockstep: the `Makefile` `verify-no-secrets`
+      # target is the canonical wire-in point; the script at
+      # scripts/ci/ci-no-secrets-audit.sh is the canonical owner of
+      # the in-house no-secrets check (one canonical owner per fact).
+      # Invoking `make verify-no-secrets` here (rather than calling
+      # the script directly) makes the Makefile the single source of
+      # truth for how the gate is invoked — a future rename of the
+      # script updates one place, and the local `make verify-main`
+      # green signal matches the CI green signal bit-for-bit.
+      # The 3-tier auto-detect (T1 gitleaks / T2 trufflehog / T3
+      # ripgrep regex fallback) catches repo-local custom shapes
+      # (VELOX_ADMIN_TOKEN 64-hex, AWS AKIA, ghp_, github_pat_, xox-,
+      # PEM) that gitleaks's default ruleset does not recognise —
+      # this step is a complementary detection layer, not a
+      # replacement for the gitleaks step above.
+      # Exit contract: 0=PASS, 1=FAIL (hit list printed + saved to
+      # HIT_LOG), 2=setup error. NO `continue-on-error: true` per
+      # godlike/07 NO-FAKE-AVAILABILITY: a fail is a fail.
+      timeout-minutes: 5
+      run: make verify-no-secrets
+
   verify-node-scraper:
     name: Verify node-scraper installs cleanly on Node 22
     # Mirrors the audit's recommendation: Dependabot already runs
