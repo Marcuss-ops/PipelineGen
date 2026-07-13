@@ -35,6 +35,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
@@ -86,7 +87,7 @@ func (p *ChromeImageProvider) ensureStarted(ctx context.Context) error {
 	//
 	// We use exec.Command (not CommandContext) because the worker outlives
 	// individual request contexts.
-	p.cmd = exec.Command("python3", scriptPath, "--profiles", "1")
+	p.cmd = exec.Command("python3", scriptPath, "--profiles", "1", "--profile-id", strconv.Itoa(p.profileID))
 
 	var err error
 	p.stdin, err = p.cmd.StdinPipe()

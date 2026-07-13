@@ -32,7 +32,7 @@ func NewChromeImageProviderPool(scriptsDir string, poolSize int, log *zap.Logger
 		log:       log,
 	}
 	for i := 0; i < poolSize; i++ {
-		pool.providers = append(pool.providers, NewChromeImageProvider(scriptsDir, log))
+		pool.providers = append(pool.providers, NewChromeImageProvider(scriptsDir, i, log))
 	}
 	return pool
 }

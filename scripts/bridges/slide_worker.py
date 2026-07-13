@@ -113,13 +113,19 @@ def main() -> int:
         help="Number of profiles (must be 1 today; multi-profile is WIP)",
     )
     parser.add_argument(
+        "--profile-id",
+        type=int,
+        default=0,
+        help="Specific profile ID for this single-profile instance",
+    )
+    parser.add_argument(
         "--headful",
         action="store_true",
         help="Run browser in non-headless mode (debugging surface)",
     )
     args = parser.parse_args()
 
-    dispatcher = SlideDispatcher(num_profiles=args.profiles, headful=args.headful)
+    dispatcher = SlideDispatcher(num_profiles=args.profiles, headful=args.headful, profile_id=args.profile_id)
 
     # Install signal handlers BEFORE warmup_all so a SIGINT during a
     # hung Playwright launch still drains the dispatcher (no zombie
