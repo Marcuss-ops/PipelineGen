@@ -1,532 +1,245 @@
 // Package scene_test — binder_test.go: hermetic TDD coverage for
 // SceneAssetBinder.BindClips + SceneAssetBinder.BindStock.
 //
-// The two binder methods are the canonical load-bearing seams for
-// Phase 2 — both ClipBindingsProcessor and StockAssociationProcessor
-// delegate to them. These tests pin the per-clip + per-stock contract
-// endpoints that the existing processor tests cover, but now at
-// the scene-package layer (godlike/06 SSOT one canonical owner per
-// fact).
+// The binder knows only scene_id, requirements, candidate assets,
+// and binding policy. It does NOT know scene text, kind, title,
+// index, or prose fallback.
 package scene_test
 
 import (
-	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/scene"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
-
-// ── Fakes ──────────────────────────────────────────────────────────────
-
-type fakeStockSearch struct {
-	hits  []ports.StockSearchHit
-	err   error
-	calls int
-	lastQ string
-}
-
-func (f *fakeStockSearch) SearchStock(_ context.Context, q string, _ int) ([]ports.StockSearchHit, error) {
-	f.calls++
-	f.lastQ = q
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.hits, nil
-}
-
-// SearchAssets is the no-op stub that satisfies the embedded
-// ports.AssetSearchPort interface (which ports.StockSearchPort
-// embeds). The binder under test routes through the legacy
-// SearchStock seam, so SearchAssets is not exercised — the no-op
-// return preserves the existing test surface byte-for-byte.
-//
-// godlike/07 minimum-blast-radius: same pattern as the
-// processor_stock_association_test.go::fakeStockSearch.SearchAssets
-// fix (PR-TRANSLATE-SCRIPT-SPEC-STOCK-ASSOCIATION-CHANGED-CONTRACT
-// ship_sha 648e778b1). Pre-existing carry-forward: ports.StockSearchPort
-// embeds ports.AssetSearchPort, and the canonical fix is to either
-// (a) add the no-op stub here, or (b) keep the legacy
-// SearchStock-only surface and forward through a dedicated
-// ports.ClipSearchPort sub-port (forward-pointer
-// PR-TRANSLATE-SCRIPT-SPEC-PORT-EMBED, deadline 2026-08-15).
-func (f *fakeStockSearch) SearchAssets(_ context.Context, _ ports.AssetSearchQuery) ([]ports.AssetSearchHit, error) {
-	return nil, nil
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────
-
-func makeScenes(n int) []scriptpkg.SpecScene {
-	scenes := make([]scriptpkg.SpecScene, n)
-	for i := range scenes {
-		scenes[i] = scriptpkg.SpecScene{
-			ID:    "scene-" + string(rune('0'+i)),
-			Index: i,
-			Text:  "Scene text",
-			Kind:  scriptpkg.SceneClip,
-		}
-	}
-	return scenes
-}
 
 // ── BindClips ──────────────────────────────────────────────────────────
 
-// TestSceneAssetBinder_BindClips_NilPlan is the canonical no-op
-// branch preserved verbatim from the pre-Phase-2
-// ClipBindingsProcessor.Process body.
-func TestSceneAssetBinder_BindClips_NilPlan(t *testing.T) {
+// TestSceneAssetBinder_BindClips_EmptyRequests is the canonical no-op
+// branch.
+func TestSceneAssetBinder_BindClips_EmptyRequests(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	res := b.BindClips(makeScenes(3), "text", nil)
+	res := b.BindClips(nil)
 	assert.Equal(t, false, res.Changed)
-	assert.Nil(t, res.SynthesizedScenes)
-	assert.Nil(t, res.Warnings)
-}
-
-// TestSceneAssetBinder_BindClips_NoClipEvidence covers the
-// plan.ClipEvidence==nil OR AcceptedClipIDs==empty branches.
-// When scenes already exist but there is no clip evidence, the
-// binder is a no-op (Changed=false) — there is nothing to bind
-// and the scenes are already present from the upstream LLM step.
-// This preserves the godlike/07 NO-FAKE-AVAILABILITY contract:
-// Changed=true only when actual mutations occur.
-func TestSceneAssetBinder_BindClips_NoClipEvidence(t *testing.T) {
-	t.Parallel()
-	b := scene.NewSceneAssetBinder(zap.NewNop())
-	// ClipEvidence==nil branch — scenes exist, nothing to bind → no-op.
-	scenes := makeScenes(3)
-	res := b.BindClips(scenes, "text", &scriptpkg.ResolvedGenerationPlan{})
-	assert.Equal(t, false, res.Changed, "binder returns Changed=false when scenes exist and ClipEvidence is nil (no-op)")
-	assert.Nil(t, res.SynthesizedScenes)
-	// AcceptedClipIDs empty branch — same no-op behavior.
-	scenes2 := makeScenes(3)
-	res = b.BindClips(scenes2, "text", &scriptpkg.ResolvedGenerationPlan{
-		ClipEvidence: &scriptpkg.ClipEvidence{},
-	})
-	assert.Equal(t, false, res.Changed, "binder returns Changed=false when scenes exist and AcceptedClipIDs is empty (no-op)")
+	assert.Empty(t, res.Bindings)
 }
 
 // TestSceneAssetBinder_BindClips_OneToOneBinding covers the
-// canonical 1:1 clip-scene binding when scenes count == clip count.
+// canonical 1:1 clip-scene binding.
 func TestSceneAssetBinder_BindClips_OneToOneBinding(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
 	const driveA = "https://drive.google.com/a"
 	const driveB = "https://drive.google.com/b"
 	const driveC = "https://drive.google.com/c"
-	scenes := makeScenes(3)
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		ClipEvidence: &scriptpkg.ClipEvidence{
-			AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
-			DriveLinks: map[string]string{
-				"clip-a": driveA,
-				"clip-b": driveB,
-				"clip-c": driveC,
-			},
-		},
+
+	reqs := []scene.ClipBindingRequest{
+		{SceneID: "scene-0", Candidates: []scene.ClipCandidate{{ClipID: "clip-a", DriveLink: driveA}}},
+		{SceneID: "scene-1", Candidates: []scene.ClipCandidate{{ClipID: "clip-b", DriveLink: driveB}}},
+		{SceneID: "scene-2", Candidates: []scene.ClipCandidate{{ClipID: "clip-c", DriveLink: driveC}}},
 	}
 
-	res := b.BindClips(scenes, "any text", plan)
+	res := b.BindClips(reqs)
 	require.Equal(t, true, res.Changed)
-	require.NotNil(t, scenes[0].Bindings.Clip)
-	assert.Equal(t, "clip-a", scenes[0].Bindings.Clip.ClipID)
-	assert.Equal(t, driveA, scenes[0].Bindings.Clip.DriveLink)
-	require.NotNil(t, scenes[1].Bindings.Clip)
-	assert.Equal(t, "clip-b", scenes[1].Bindings.Clip.ClipID)
-	assert.Equal(t, driveB, scenes[1].Bindings.Clip.DriveLink)
-	require.NotNil(t, scenes[2].Bindings.Clip)
-	assert.Equal(t, "clip-c", scenes[2].Bindings.Clip.ClipID)
-	assert.Equal(t, driveC, scenes[2].Bindings.Clip.DriveLink)
+	require.Len(t, res.Bindings, 3)
+	assert.Equal(t, "clip-a", res.Bindings["scene-0"].ClipID)
+	assert.Equal(t, driveA, res.Bindings["scene-0"].DriveLink)
+	assert.Equal(t, "clip-b", res.Bindings["scene-1"].ClipID)
+	assert.Equal(t, driveB, res.Bindings["scene-1"].DriveLink)
+	assert.Equal(t, "clip-c", res.Bindings["scene-2"].ClipID)
+	assert.Equal(t, driveC, res.Bindings["scene-2"].DriveLink)
 }
 
-// TestSceneAssetBinder_BindClips_NoCyclingP0_2 covers the P0 #2
-// invariant: when scenes > clips, extra scenes get nil binding
-// (NOT cycling — surface LLM mismatches instead of silently reusing
-// clips).
-func TestSceneAssetBinder_BindClips_NoCyclingP0_2(t *testing.T) {
+// TestSceneAssetBinder_BindClips_MultipleCandidatesFirstWins verifies
+// that when a request carries multiple candidates, only the first
+// valid candidate is bound.
+func TestSceneAssetBinder_BindClips_MultipleCandidatesFirstWins(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	scenes := makeScenes(5)
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		ClipEvidence: &scriptpkg.ClipEvidence{
-			AcceptedClipIDs: []string{"clip-a", "clip-b"},
-			DriveLinks: map[string]string{
-				"clip-a": "https://drive.google.com/a",
-				"clip-b": "https://drive.google.com/b",
+	reqs := []scene.ClipBindingRequest{
+		{
+			SceneID: "scene-0",
+			Candidates: []scene.ClipCandidate{
+				{ClipID: "clip-a", DriveLink: "https://drive/a"},
+				{ClipID: "clip-b", DriveLink: "https://drive/b"},
 			},
 		},
 	}
 
-	res := b.BindClips(scenes, "any text", plan)
+	res := b.BindClips(reqs)
 	require.Equal(t, true, res.Changed)
-	require.NotNil(t, scenes[0].Bindings.Clip)
-	require.NotNil(t, scenes[1].Bindings.Clip)
-	assert.Nil(t, scenes[2].Bindings.Clip, "P0 #2: extra scenes must NOT be cycled")
-	assert.Nil(t, scenes[3].Bindings.Clip, "P0 #2: extra scenes must NOT be cycled")
-	assert.Nil(t, scenes[4].Bindings.Clip, "P0 #2: extra scenes must NOT be cycled")
+	require.Len(t, res.Bindings, 1)
+	assert.Equal(t, "clip-a", res.Bindings["scene-0"].ClipID)
 }
 
-// TestSceneAssetBinder_BindClips_ProseFallbackFASE3 covers the
-// prose-fallback heuristic (FASE 3 June 2026): when scenes is
-// empty + cleaned text is non-empty, synthesize N scenes + bind
-// 1:1 + return SynthesizedScenes + Warnings.
-func TestSceneAssetBinder_BindClips_ProseFallbackFASE3(t *testing.T) {
+// TestSceneAssetBinder_BindClips_EmptyCandidateSkipped verifies that
+// candidates with empty ClipID are skipped.
+func TestSceneAssetBinder_BindClips_EmptyCandidateSkipped(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	const prose = "First sentence here. Second sentence here. Third sentence here."
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		ClipEvidence: &scriptpkg.ClipEvidence{
-			AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
-			DriveLinks: map[string]string{
-				"clip-a": "https://drive.google.com/a",
-				"clip-b": "https://drive.google.com/b",
-				"clip-c": "https://drive.google.com/c",
+	reqs := []scene.ClipBindingRequest{
+		{
+			SceneID: "scene-0",
+			Candidates: []scene.ClipCandidate{
+				{ClipID: "", DriveLink: "https://drive/empty"},
+				{ClipID: "clip-a", DriveLink: "https://drive/a"},
 			},
 		},
 	}
 
-	var scenes []scriptpkg.SpecScene // start empty (small local model)
-	res := b.BindClips(scenes, prose, plan)
+	res := b.BindClips(reqs)
 	require.Equal(t, true, res.Changed)
-	require.Len(t, res.SynthesizedScenes, 3,
-		"prose-fallback must synthesize 3 scenes (CanonicalSynthesizer n=3)")
-	require.Len(t, res.Warnings, 1, "prose-fallback must emit exactly 1 warning")
-	assert.Contains(t, res.Warnings[0], "prose-fallback synthesised")
-	assert.Contains(t, res.Warnings[0], "bound 3/3 clips")
+	assert.Equal(t, "clip-a", res.Bindings["scene-0"].ClipID)
 }
 
-// TestSceneAssetBinder_BindClips_ProseFallbackEmptyText covers the
-// "scenes empty + cleaned text empty" no-op branch.
-func TestSceneAssetBinder_BindClips_ProseFallbackEmptyText(t *testing.T) {
+// TestSceneAssetBinder_BindClips_MaxMatchesHonored verifies that
+// MaxMatches caps the number of candidates considered.
+func TestSceneAssetBinder_BindClips_MaxMatchesHonored(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		ClipEvidence: &scriptpkg.ClipEvidence{
-			AcceptedClipIDs: []string{"clip-a"},
-			DriveLinks:      map[string]string{"clip-a": "https://drive/a"},
-		},
-	}
-	res := b.BindClips(nil, "", plan)
-	assert.Equal(t, false, res.Changed)
-}
-
-// TestSceneAssetBinder_BindClips_ClipEvidenceBuildsScenes covers the P0
-// clip-native path: when SourceKind == clips, scenes are built directly
-// from clip evidence using transcript/description/name as primary evidence.
-func TestSceneAssetBinder_BindClips_ClipEvidenceBuildsScenes(t *testing.T) {
-	t.Parallel()
-	b := scene.NewSceneAssetBinder(zap.NewNop())
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		SourceKind: string(scriptpkg.SourceClips),
-		ClipEvidence: &scriptpkg.ClipEvidence{
-			AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
-			ClipDetails: map[string]scriptpkg.ClipDetail{
-				"clip-a": {Transcript: "transcript a", Description: "desc a", Name: "name a", DriveLink: "https://drive/a", StartMs: 0, EndMs: 1000, Tags: []string{"tag1"}},
-				"clip-b": {Description: "desc b", Name: "name b", DriveLink: "https://drive/b", StartMs: 1000, EndMs: 2000},
-				"clip-c": {Name: "name c", DriveLink: "https://drive/c", StartMs: 2000, EndMs: 3000},
+	reqs := []scene.ClipBindingRequest{
+		{
+			SceneID: "scene-0",
+			Candidates: []scene.ClipCandidate{
+				{ClipID: "clip-a", DriveLink: "https://drive/a"},
+				{ClipID: "clip-b", DriveLink: "https://drive/b"},
 			},
-			DriveLinks: map[string]string{
-				"clip-a": "https://drive/a",
-				"clip-b": "https://drive/b",
-				"clip-c": "https://drive/c",
-			},
+			Policy: scene.ClipBindingPolicy{MaxMatches: 1},
 		},
 	}
 
-	res := b.BindClips(nil, "any prose", plan)
+	res := b.BindClips(reqs)
 	require.Equal(t, true, res.Changed)
-	require.Len(t, res.SynthesizedScenes, 3)
-	require.Len(t, res.Warnings, 1)
-	assert.Contains(t, res.Warnings[0], "built 3 scenes from clip evidence")
-
-	// Transcript priority.
-	assert.Equal(t, "transcript a", res.SynthesizedScenes[0].Text)
-	// Description fallback.
-	assert.Equal(t, "desc b", res.SynthesizedScenes[1].Text)
-	// Name fallback.
-	assert.Equal(t, "name c", res.SynthesizedScenes[2].Text)
-
-	// Intro/outro kind assignment for >=3 clips.
-	assert.Equal(t, scriptpkg.SceneIntro, res.SynthesizedScenes[0].Kind)
-	assert.Equal(t, scriptpkg.SceneClip, res.SynthesizedScenes[1].Kind)
-	assert.Equal(t, scriptpkg.SceneOutro, res.SynthesizedScenes[2].Kind)
-
-	// Bindings populated.
-	assert.Equal(t, "clip-a", res.SynthesizedScenes[0].Bindings.Clip.ClipID)
-	assert.Equal(t, "https://drive/a", res.SynthesizedScenes[0].Bindings.Clip.DriveLink)
-	assert.Equal(t, "name a", res.SynthesizedScenes[0].Bindings.Clip.ClipTitle)
-	assert.Equal(t, int64(0), res.SynthesizedScenes[0].Bindings.Clip.StartMs)
-	assert.Equal(t, int64(1000), res.SynthesizedScenes[0].Bindings.Clip.EndMs)
-}
-
-// TestSceneAssetBinder_BindClips_ClipEvidenceNumClipsCap verifies that
-// NumClips caps the number of clip-built scenes.
-func TestSceneAssetBinder_BindClips_ClipEvidenceNumClipsCap(t *testing.T) {
-	t.Parallel()
-	b := scene.NewSceneAssetBinder(zap.NewNop())
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		SourceKind: string(scriptpkg.SourceClips),
-		NumClips:   2,
-		ClipEvidence: &scriptpkg.ClipEvidence{
-			AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
-			ClipDetails: map[string]scriptpkg.ClipDetail{
-				"clip-a": {Name: "name a"},
-				"clip-b": {Name: "name b"},
-				"clip-c": {Name: "name c"},
-			},
-		},
-	}
-
-	res := b.BindClips(nil, "any prose", plan)
-	require.Equal(t, true, res.Changed)
-	require.Len(t, res.SynthesizedScenes, 2)
-	assert.Equal(t, "name a", res.SynthesizedScenes[0].Text)
-	assert.Equal(t, "name b", res.SynthesizedScenes[1].Text)
-}
-
-// TestSceneAssetBinder_BindClips_ClipEvidenceLegacyFallback verifies that
-// clip-built scenes fall back to ClipNames/DriveLinks when ClipDetails
-// is not populated.
-func TestSceneAssetBinder_BindClips_ClipEvidenceLegacyFallback(t *testing.T) {
-	t.Parallel()
-	b := scene.NewSceneAssetBinder(zap.NewNop())
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		SourceKind: string(scriptpkg.SourceClips),
-		ClipEvidence: &scriptpkg.ClipEvidence{
-			AcceptedClipIDs: []string{"clip-a"},
-			ClipNames: map[string]string{
-				"clip-a": "legacy name",
-			},
-			DriveLinks: map[string]string{
-				"clip-a": "https://drive/legacy",
-			},
-		},
-	}
-
-	res := b.BindClips(nil, "any prose", plan)
-	require.Equal(t, true, res.Changed)
-	require.Len(t, res.SynthesizedScenes, 1)
-	assert.Equal(t, "legacy name", res.SynthesizedScenes[0].Text)
-	assert.Equal(t, "clip-a", res.SynthesizedScenes[0].Bindings.Clip.ClipID)
-	assert.Equal(t, "https://drive/legacy", res.SynthesizedScenes[0].Bindings.Clip.DriveLink)
-}
-
-// TestSceneAssetBinder_BindClips_ClipEvidenceEmptyNoProseFallback verifies
-// that the clips path does NOT fall back to prose when clip evidence is
-// empty; instead it returns Changed=false so downstream enforcement can
-// fail with CLIP_NATIVE_PLAN_UNAVAILABLE.
-func TestSceneAssetBinder_BindClips_ClipEvidenceEmptyNoProseFallback(t *testing.T) {
-	t.Parallel()
-	b := scene.NewSceneAssetBinder(zap.NewNop())
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		SourceKind: string(scriptpkg.SourceClips),
-		ClipEvidence: &scriptpkg.ClipEvidence{
-			AcceptedClipIDs: []string{},
-		},
-	}
-
-	res := b.BindClips(nil, "some prose that should be ignored", plan)
-	assert.Equal(t, false, res.Changed)
-	assert.Nil(t, res.SynthesizedScenes)
-	assert.Nil(t, res.Warnings)
-}
-
-// TestSceneAssetBinder_BindClips_ProseFallbackNoClipEvidence covers the
-// case where scenes are empty and clip evidence is missing or empty,
-// verifying that scenes are still synthesized based on sentences and NumClips.
-func TestSceneAssetBinder_BindClips_ProseFallbackNoClipEvidence(t *testing.T) {
-	t.Parallel()
-	b := scene.NewSceneAssetBinder(zap.NewNop())
-
-	// Case 1: no clip evidence, NumClips = 0, default fallback n = sentences (3)
-	const prose = "First sentence here. Second sentence here. Third sentence here."
-	plan := &scriptpkg.ResolvedGenerationPlan{
-		SentencesPerImage: 1, // should split to 3 scenes
-	}
-	res := b.BindClips(nil, prose, plan)
-	require.Equal(t, true, res.Changed)
-	require.Len(t, res.SynthesizedScenes, 3)
-	assert.Nil(t, res.SynthesizedScenes[0].Bindings.Clip)
-	assert.Contains(t, res.Warnings[0], "bound 0/0 clips")
-
-	// Case 2: no clip evidence, NumClips = 2, forces n = 2 scenes
-	plan2 := &scriptpkg.ResolvedGenerationPlan{
-		NumClips: 2,
-	}
-	res2 := b.BindClips(nil, prose, plan2)
-	require.Equal(t, true, res2.Changed)
-	require.Len(t, res2.SynthesizedScenes, 2)
+	assert.Equal(t, "clip-a", res.Bindings["scene-0"].ClipID)
 }
 
 // ── BindStock ──────────────────────────────────────────────────────────
 
-// TestSceneAssetBinder_BindStock_NilSearch is the canonical composition-time
-// fail-closed branch preserved verbatim from the pre-Phase-2
-// StockAssociationProcessor.
-func TestSceneAssetBinder_BindStock_NilSearch(t *testing.T) {
+// TestSceneAssetBinder_BindStock_EmptyRequests is the canonical no-op
+// branch.
+func TestSceneAssetBinder_BindStock_EmptyRequests(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	sceneWithClip := scriptpkg.SpecScene{
-		ID: "scene-0", Index: 0, Text: "x", Kind: scriptpkg.SceneClip,
-		Bindings: scriptpkg.SceneBindings{
-			Clip: &scriptpkg.ClipBinding{DriveLink: "https://drive/x"},
-		},
-	}
-	res := b.BindStock(context.Background(), []scriptpkg.SpecScene{sceneWithClip}, nil)
-	// Conflict-check: Stock must remain nil when port is nil.
-	// (Inspects the struct value directly here — BindStock returned
-	// early at `search == nil` so no slice-backed mutation occurred;
-	// a slice variable is unnecessary for this no-op contract test.)
+	res := b.BindStock(nil)
 	assert.Equal(t, false, res.Changed)
-	assert.Nil(t, sceneWithClip.Bindings.Stock)
-}
-
-// TestSceneAssetBinder_BindStock_EmptyScenes covers the empty-scenes
-// no-op branch.
-func TestSceneAssetBinder_BindStock_EmptyScenes(t *testing.T) {
-	t.Parallel()
-	b := scene.NewSceneAssetBinder(zap.NewNop())
-	search := &fakeStockSearch{}
-	res := b.BindStock(context.Background(), nil, search)
-	assert.Equal(t, false, res.Changed)
-	assert.Equal(t, 0, search.calls, "no scenes → no SearchStock invocations")
+	assert.Empty(t, res.Bindings)
 }
 
 // TestSceneAssetBinder_BindStock_QdrantHit covers the happy path
-// where Qdrant returns a hit → scene.Bindings.Stock populated with
-// Fallback:false and per-iteration info logs emit (verified via
-// fake.calls counter).
+// where a stock candidate is bound.
 func TestSceneAssetBinder_BindStock_QdrantHit(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	const qdrantDrive = "https://drive.google.com/qdrant-asset"
-	const clipDrive = "https://drive.google.com/clip" // not used here
-	search := &fakeStockSearch{
-		hits: []ports.StockSearchHit{
-			{
-				AssetID:   "asset-q-1",
-				Name:      "Qdrant 1",
-				Source:    "stock",
-				DriveLink: qdrantDrive,
-				Score:     0.91,
+	reqs := []scene.StockBindingRequest{
+		{
+			SceneID: "scene-0",
+			Candidates: []scene.StockCandidate{
+				{
+					AssetID:   "asset-q-1",
+					Name:      "Qdrant 1",
+					Source:    "stock",
+					DriveLink: "https://drive.google.com/qdrant-asset",
+					Score:     0.91,
+				},
 			},
 		},
 	}
-	sceneWithClip := scriptpkg.SpecScene{
-		ID: "scene-0", Index: 0, Text: "Jackie Chan combat scene", Kind: scriptpkg.SceneClip,
-		Bindings: scriptpkg.SceneBindings{
-			Clip: &scriptpkg.ClipBinding{DriveLink: clipDrive},
-		},
-	}
-	scenes := []scriptpkg.SpecScene{sceneWithClip}
-	res := b.BindStock(context.Background(), scenes, search)
+
+	res := b.BindStock(reqs)
 	require.Equal(t, true, res.Changed)
-	assert.Equal(t, 1, search.calls)
-	require.NotNil(t, scenes[0].Bindings.Stock)
-	stock := scenes[0].Bindings.Stock
+	require.Len(t, res.Bindings, 1)
+	stock := res.Bindings["scene-0"]
 	assert.Equal(t, "asset-q-1", stock.AssetID)
-	assert.Equal(t, qdrantDrive, stock.DriveLink)
+	assert.Equal(t, "https://drive.google.com/qdrant-asset", stock.DriveLink)
 	assert.InDelta(t, 0.91, stock.Score, 0.001)
-	assert.False(t, stock.Fallback, "Qdrant hit → Fallback must be false")
+	assert.False(t, stock.Fallback)
 }
 
 // TestSceneAssetBinder_BindStock_FallbackToClip covers the Qdrant
-// empty + clip drive present branch: scene.Bindings.Stock populated
-// from clip.DriveLink with Fallback:true.
+// empty + clip drive present branch.
 func TestSceneAssetBinder_BindStock_FallbackToClip(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	const clipDrive = "https://drive.google.com/clip-as-stock"
-	search := &fakeStockSearch{hits: nil}
-	sceneWithClip := scriptpkg.SpecScene{
-		ID: "scene-0", Index: 0, Text: "Jackie Chan interview", Kind: scriptpkg.SceneClip,
-		Bindings: scriptpkg.SceneBindings{
-			Clip: &scriptpkg.ClipBinding{DriveLink: clipDrive},
+	reqs := []scene.StockBindingRequest{
+		{
+			SceneID:    "scene-0",
+			Candidates: nil,
+			Policy: scene.StockBindingPolicy{
+				FallbackToClip:    true,
+				FallbackDriveLink: "https://drive.google.com/clip-as-stock",
+			},
 		},
 	}
-	scenes := []scriptpkg.SpecScene{sceneWithClip}
-	res := b.BindStock(context.Background(), scenes, search)
+
+	res := b.BindStock(reqs)
 	require.Equal(t, true, res.Changed)
-	require.NotNil(t, scenes[0].Bindings.Stock)
-	stock := scenes[0].Bindings.Stock
+	require.Len(t, res.Bindings, 1)
+	stock := res.Bindings["scene-0"]
 	assert.True(t, stock.Fallback)
-	assert.Equal(t, clipDrive, stock.DriveLink)
+	assert.Equal(t, "https://drive.google.com/clip-as-stock", stock.DriveLink)
 	assert.Empty(t, stock.AssetID)
 	assert.Zero(t, stock.Score)
 }
 
 // TestSceneAssetBinder_BindStock_NoHitNoClipLeavesStockNil covers the
-// silent-nil branch: Qdrant empty + scene has no Clip binding →
-// Stock stays nil.
+// silent-nil branch.
 func TestSceneAssetBinder_BindStock_NoHitNoClipLeavesStockNil(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	search := &fakeStockSearch{hits: nil}
-	sceneNoClip := scriptpkg.SpecScene{
-		ID: "scene-0", Index: 0, Text: "pure narration", Kind: scriptpkg.SceneNarration,
-	}
-	// Slice variable (NOT slice literal) so the assertion inspects
-	// the actual binder mutation surface. Per godlike/07 NO-FAKE-AVAILABILITY:
-	// a slice literal makes a NEW backing array, which means assertions
-	// on the original struct value will trivially pass for ANY binder
-	// behavior — a future bug that incorrectly populates Stock would
-	// silently pass the test. The slice-variable pattern is the
-	// canonical signal-integrity recipe.
-	scenes := []scriptpkg.SpecScene{sceneNoClip}
-	res := b.BindStock(context.Background(), scenes, search)
-	require.Equal(t, true, res.Changed)
-	assert.Nil(t, scenes[0].Bindings.Stock,
-		"Stock must stay nil when both Qdrant and Clip binding are absent")
-}
-
-// TestSceneAssetBinder_BindStock_SearchErrorFallsBackToClip covers the
-// transport-error path: SearchStock returns non-nil error + scene has
-// clip drive → fallback binding + best-effort semantics (no error
-// propagation).
-func TestSceneAssetBinder_BindStock_SearchErrorFallsBackToClip(t *testing.T) {
-	t.Parallel()
-	b := scene.NewSceneAssetBinder(zap.NewNop())
-	const clipDrive = "https://drive.google.com/clip-fallback-err"
-	search := &fakeStockSearch{err: errors.New("qdrant unreachable")}
-	sceneWithClip := scriptpkg.SpecScene{
-		ID: "scene-0", Index: 0, Text: "any", Kind: scriptpkg.SceneClip,
-		Bindings: scriptpkg.SceneBindings{
-			Clip: &scriptpkg.ClipBinding{DriveLink: clipDrive},
+	reqs := []scene.StockBindingRequest{
+		{
+			SceneID:    "scene-0",
+			Candidates: nil,
+			Policy:     scene.StockBindingPolicy{FallbackToClip: false},
 		},
 	}
-	scenes := []scriptpkg.SpecScene{sceneWithClip}
-	res := b.BindStock(context.Background(), scenes, search)
-	require.Equal(t, true, res.Changed)
-	require.NotNil(t, scenes[0].Bindings.Stock)
-	assert.True(t, scenes[0].Bindings.Stock.Fallback)
-	assert.Equal(t, clipDrive, scenes[0].Bindings.Stock.DriveLink)
+
+	res := b.BindStock(reqs)
+	assert.Equal(t, false, res.Changed)
+	assert.Empty(t, res.Bindings)
 }
 
-// TestSceneAssetBinder_BindStock_EmptySceneTextSkipsSearch covers the
-// per-iteration empty-text branch: scene.Text empty → skip the
-// SearchStock call entirely + fallback to clip.
-func TestSceneAssetBinder_BindStock_EmptySceneTextSkipsSearch(t *testing.T) {
+// TestSceneAssetBinder_BindStock_EmptyCandidateSkipped verifies that
+// candidates with empty AssetID are skipped.
+func TestSceneAssetBinder_BindStock_EmptyCandidateSkipped(t *testing.T) {
 	t.Parallel()
 	b := scene.NewSceneAssetBinder(zap.NewNop())
-	const clipDrive = "https://drive.google.com/clip-empty"
-	search := &fakeStockSearch{}
-	sceneWithClip := scriptpkg.SpecScene{
-		ID: "scene-0", Index: 0, Text: "", Kind: scriptpkg.SceneClip,
-		Bindings: scriptpkg.SceneBindings{
-			Clip: &scriptpkg.ClipBinding{DriveLink: clipDrive},
+	reqs := []scene.StockBindingRequest{
+		{
+			SceneID: "scene-0",
+			Candidates: []scene.StockCandidate{
+				{AssetID: ""},
+				{AssetID: "asset-q-1", DriveLink: "https://drive/q"},
+			},
 		},
 	}
-	scenes := []scriptpkg.SpecScene{sceneWithClip}
-	res := b.BindStock(context.Background(), scenes, search)
+
+	res := b.BindStock(reqs)
 	require.Equal(t, true, res.Changed)
-	assert.Equal(t, 0, search.calls, "empty scene.Text must NOT trigger SearchStock")
-	require.NotNil(t, scenes[0].Bindings.Stock)
-	assert.True(t, scenes[0].Bindings.Stock.Fallback)
-	assert.Equal(t, clipDrive, scenes[0].Bindings.Stock.DriveLink)
+	assert.Equal(t, "asset-q-1", res.Bindings["scene-0"].AssetID)
+}
+
+// TestSceneAssetBinder_BindStock_MaxMatchesHonored verifies that
+// MaxMatches caps the number of candidates considered.
+func TestSceneAssetBinder_BindStock_MaxMatchesHonored(t *testing.T) {
+	t.Parallel()
+	b := scene.NewSceneAssetBinder(zap.NewNop())
+	reqs := []scene.StockBindingRequest{
+		{
+			SceneID: "scene-0",
+			Candidates: []scene.StockCandidate{
+				{AssetID: "asset-a", DriveLink: "https://drive/a"},
+				{AssetID: "asset-b", DriveLink: "https://drive/b"},
+			},
+			Policy: scene.StockBindingPolicy{MaxMatches: 1},
+		},
+	}
+
+	res := b.BindStock(reqs)
+	require.Equal(t, true, res.Changed)
+	assert.Equal(t, "asset-a", res.Bindings["scene-0"].AssetID)
 }
