@@ -319,6 +319,20 @@ if [[ -z "${TOKEN}" ]]; then
     exit 2
 fi
 
+# Preflight guardrail — SCROLL_TIMEOUT minimum-budget threshold (per godlike/06 SSOT to
+# docs/operations/stock-e2e-runbook.md §11.0 row "SCROLL_TIMEOUT"; 60s is the §11.0 lower
+# bound, 120s the doc-public default after the fix(scraper) series). Fail-closed: a too-low
+# total-budget means the Node scraper's connect-plus-render will race against the
+# connect-timeout, producing false CANCELLED/RETRY_WAIT signals on cold Chromium startups
+# (Chromium cold start + first nav needs ~30s alone; a 30s scraper total budget would
+# always lose the race even on a healthy node-scraper). Both non-numeric AND sub-60 inputs
+# fail-closed here — no silently-accepted operator error.
+if ! [[ "${SCROLL_TIMEOUT}" =~ ^[0-9]+$ ]] || [[ "${SCROLL_TIMEOUT}" -lt 60 ]]; then
+    log_fail "SCROLL_TIMEOUT='${SCROLL_TIMEOUT}' is invalid OR below the §11.0 minimum-budget threshold (60 seconds). Default is 120 (scraper total budget per the fix(scraper) series). Set SCROLL_TIMEOUT=120 (or any integer ≥ 60)."
+    exit 2
+fi
+log_info "SCROLL_TIMEOUT=${SCROLL_TIMEOUT}s ≥ 60s (scraper total budget OK)"
+
 if ! curl -s --max-time "${CURL_TIMEOUT}" "${BASE_URL}/ready" | jq -e '.status == "ready"' >/dev/null 2>&1; then
     log_fail "Server not ready at ${BASE_URL}/ready"
     exit 2
@@ -330,6 +344,27 @@ if ! curl -s --max-time 3 "${SCRAPER_URL}/health" | jq -e '.ok == true' >/dev/nu
     exit 2
 fi
 log_info "Scraper: healthy (${SCRAPER_URL})"
+
+# Preflight guardrail — bare scraper /search direct connect-timeout ≤ 5s.
+# The bare node-scraper /search endpoint is POST-only (per node-scraper/artlist_server.js:140,
+# returning 405 on GET). We send a minimal POST body; ANY http response from the server within
+# the connect-timeout window proves TCP+TLS are healthy (functional search results are
+# asserted later by § 1). Per godlike/07 minimum-blast-radius + the §11.0 contract
+# (SCRAPER_CONNECT_TIMEOUT_SECONDS=5):
+#   * curl rc=7 (couldn't connect) — node-scraper not listening on $SCRAPER_URL.
+#   * curl rc=28 (operation timeout exceeded) — node-scraper hung or overloaded.
+#   * any other non-zero rc — fail-closed preflight (the live cycle would otherwise
+#     loop a retry storm against a dead socket without operator visibility).
+if curl -sS --connect-timeout 5 --max-time 10 -X POST "${SCRAPER_URL}/search" \
+        -H 'Content-Type: application/json' \
+        -d '{"term":"__preflight_connect_probe__","limit":1}' \
+        -o /dev/null 2>/dev/null; then
+    log_info "Bare scraper /search connect-timeout ≤ 5s OK (${SCRAPER_URL})"
+else
+    rc=$?
+    log_fail "Bare scraper /search did NOT respond within 5s connect-timeout at ${SCRAPER_URL} (curl rc=${rc}). Refusing to run the live cycle — node-scraper is unreachable or hung (preflight-aborted)."
+    exit 2
+fi
 
 if ! curl -s --max-time 3 "${QDRANT_URL}/collections" >/dev/null 2>&1; then
     log_fail "Qdrant not reachable at ${QDRANT_URL}"
