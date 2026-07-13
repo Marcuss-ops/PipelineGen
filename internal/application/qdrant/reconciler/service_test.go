@@ -59,14 +59,15 @@ type stubOutbox struct {
 type stubReindexCall struct {
 	assetID     string
 	contentHash string
+	force       bool
 }
 
-func (s *stubOutbox) EnqueueReindex(ctx context.Context, assetID, contentHash string) error {
+func (s *stubOutbox) EnqueueReindex(ctx context.Context, assetID, contentHash string, force bool) error {
 	if s.failNext {
 		s.failNext = false
 		return os.ErrInvalid
 	}
-	s.reindex = append(s.reindex, stubReindexCall{assetID: assetID, contentHash: contentHash})
+	s.reindex = append(s.reindex, stubReindexCall{assetID: assetID, contentHash: contentHash, force: force})
 	return nil
 }
 

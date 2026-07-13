@@ -129,7 +129,16 @@ func (s *Service) applyRepair(ctx context.Context, collection string, pairs []Cl
 			KindLifecycleMismatch,
 			KindWorkspaceMismatch,
 			KindNonCanonicalPointID:
-			if err := s.outbox.EnqueueReindex(ctx, c.AssetID, c.ContentHash); err != nil {
+			// Card 7.1 (July 2026): the admin reindex path passes
+			// force=true. The reconciler is only invoked from
+			// `reconcile-qdrant --apply` (an admin tool) so the
+			// force flag is always true here. The worker bypasses
+			// the source_version supersede gate for these
+			// admin-driven repairs. A future split between
+			// production-repair and admin-repair can introduce a
+			// separate "force=false" production-repair dispatch
+			// path without changing this caller.
+			if err := s.outbox.EnqueueReindex(ctx, c.AssetID, c.ContentHash, true); err != nil {
 				errs = append(errs, fmt.Sprintf("enqueue reindex %s: %v", c.AssetID, err))
 				continue
 			}

@@ -113,7 +113,7 @@ func (h *IndexingHandler) Handle(ctx context.Context, evt outboxevents.Event) er
 		}
 		// sql.ErrNoRows (row missing) — fall through.
 		// (value, nil) — proceed; supersede if value differs.
-		if qerr == nil && curVersion != "" && curVersion != p.SourceVersion {
+		if qerr == nil && curVersion != "" && curVersion != p.SourceVersion && !p.Force {
 			// Stamp the metric before returning so dashboards
 			// surface the supersede delta even when the handler
 			// short-circuits before the duration observation

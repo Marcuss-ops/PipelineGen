@@ -117,8 +117,8 @@ type (
 	readiNoopPayload struct{}
 )
 
-func (readiNoopOutbox) EnqueueReindex(context.Context, string, string) error { return nil }
-func (readiNoopOutbox) EnqueueDelete(context.Context, string) error          { return nil }
+func (readiNoopOutbox) EnqueueReindex(context.Context, string, string, bool) error { return nil }
+func (readiNoopOutbox) EnqueueDelete(context.Context, string) error                { return nil }
 func (readiNoopPayload) DeletePayloadKeys(context.Context, string, []string, []string) error {
 	return nil
 }
