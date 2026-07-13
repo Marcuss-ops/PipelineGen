@@ -96,8 +96,6 @@ func NewService(deps ImagesDeps) *Service {
 
 	store := &ImageStorageService{
 		repo:          deps.Storage.ImageRepo,
-		stockRepo:     deps.Storage.ClipsRepo,
-		mediaStore:    deps.Storage.MediaStore,
 		publisher:     deps.Storage.Publisher,
 		driveReader:   deps.Storage.DriveReader,
 		cfg:           cfg,

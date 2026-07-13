@@ -1,10 +1,7 @@
 package images
 
 import (
-	"context"
-	"fmt"
 	"net/http"
-	"path/filepath"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
@@ -23,10 +20,18 @@ import (
 // ImageStorageService handles image storage, retrieval, Drive operations,
 // web search, and media asset registration. It delegates metadata operations
 // to MetadataService.
+//
+// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy `mediaStore
+// *drive.Store` field (used for pre-scan path-only resolution + the
+// AssetDestinationRequest→Publish bridge via s.publishToDrive) is
+// RETIRED. The retained deps are: Local destination resolver
+// (destResolver, YAML-backed), Publisher, AssetCommitter. The
+// s.publishToDrive bridge + the mapMediaType* helpers are deleted
+// with it (call sites in ingestDirect now call
+// s.publisher.Publish(... delivery.PublishRequest{...}) directly).
 type ImageStorageService struct {
 	repo          *assets.ImagesRepository
 	stockRepo     *assets.ClipsRepository
-	mediaStore    *drive.Store
 	publisher     delivery.Publisher
 	driveReader   drive.Reader
 	cfg           *config.Config
@@ -71,61 +76,4 @@ type ImageStorageService struct {
 	// silent-fake `extractSubjectAndTags` stub that violated godlike/07
 	// no-fake-availability. Concrete wiring is inline in service.go::NewService.
 	subjectTags SubjectTagsService
-}
-
-// publishToDrive is the P0-2 canonical bridge from the legacy
-// AssetDestinationRequest shape to delivery.Publisher.Publish.
-// The call routes through Publisher.Publish with proper ConflictPolicy
-// and DestinationKey resolution. The legacy mediaStore.UploadToDrive
-// fallback was RETIRED per P0-2 godlike/07 closure (July 2026) — nil
-// publisher at construction time now fails-closed.
-//
-// Returns the (fileID, webViewLink) pair for backward compat with
-// existing call sites that use the Store.UploadToDrive triple-return
-// shape.
-func (s *ImageStorageService) publishToDrive(ctx context.Context, req drive.AssetDestinationRequest, filePath string) (string, string, error) {
-	if s == nil {
-		return "", "", fmt.Errorf("ImageStorageService.publishToDrive: nil receiver")
-	}
-	if s.publisher == nil {
-		return "", "", fmt.Errorf("ImageStorageService.publishToDrive: publisher not configured (P0-2 godlike/07: nil publisher fail-closed)")
-	}
-	result, err := s.publisher.Publish(ctx, delivery.PublishRequest{
-		Destination:        mapMediaTypeToDestination(req.MediaType),
-		LocalPath:          filePath,
-		Filename:           filepath.Base(filePath),
-		Style:              req.Style,
-		Subject:            req.Subject,
-		Group:              req.Subject,
-		ConflictPolicy:     mapMediaTypeToConflictPolicy(req),
-		RootFolderOverride: req.DriveRootOverride,
-	})
-	if err != nil {
-		return "", "", fmt.Errorf("publishToDrive: %w", err)
-	}
-	return result.FileID, result.WebViewLink, nil
-}
-
-// mapMediaTypeToDestination resolves a drive.MediaType to the canonical
-// delivery.DestinationKey. P0-2 (July 2026).
-func mapMediaTypeToDestination(mt drive.MediaType) delivery.DestinationKey {
-	switch mt {
-	case drive.MediaTypeSoundEffect:
-		return delivery.DestinationSoundEffect
-	default:
-		return delivery.DestinationImage
-	}
-}
-
-// mapMediaTypeToConflictPolicy chooses the canonical ConflictPolicy for
-// the given AssetDestinationRequest. metadata JSON files are treated as
-// regenerable (ConflictOverwrite); all other media (images, audio) use
-// ConflictRename to ensure no file is silently lost on name collision
-// (godlike/07 NO-FAKE-AVAILABILITY: ConflictSkip would silently drop
-// images on duplicate filenames without operator visibility).
-func mapMediaTypeToConflictPolicy(req drive.AssetDestinationRequest) delivery.ConflictPolicy {
-	if req.Ext == ".json" || req.Hash == "metadata" {
-		return delivery.ConflictOverwrite
-	}
-	return delivery.ConflictRename
 }
