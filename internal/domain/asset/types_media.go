@@ -313,11 +313,22 @@ type Subject struct {
 // Step 1 (July 2026): Origin and Provider fields added for territory
 // separation (retrieved vs generated vs uploaded).
 type ImageAsset struct {
-	ID           int64     `json:"id"`
-	Hash         string    `json:"hash"`
-	SubjectID    string    `json:"subject_id"`        // TEXT in database (slug)
-	SlugID       string    `json:"slug_id,omitempty"` // Alias for internal logic
-	PathRel      string    `json:"path_rel"`
+	ID        int64  `json:"id"`
+	Hash      string `json:"hash"`
+	SubjectID string `json:"subject_id"`        // TEXT in database (slug)
+	SlugID    string `json:"slug_id,omitempty"` // Alias for internal logic
+	PathRel   string `json:"path_rel"`
+	// LocalPath is the filesystem-absolute path to the image on disk.
+	// godlike/06 SSOT: it is the AUTHOR-side absolute path used by
+	// OS-level readers (visual embedding sidecar, file IO), while
+	// PathRel is the CATALOG-side container-relative path used by
+	// the web/UI layer. They are NOT duplicative; they serve two
+	// distinct consumers (FS vs web). The SigLIP embedding sidecar
+	// (/embed_visual_from_image) reads `local_path` from media_assets
+	// and opens it directly via os.Open, so it REQUIRES the absolute
+	// path. Prior to this fix the field was always empty, causing
+	// the sidecar to fail to open the file.
+	LocalPath    string    `json:"local_path,omitempty"`
 	SourceURL    string    `json:"source_url"`
 	License      string    `json:"license"`
 	Width        int       `json:"width"`
