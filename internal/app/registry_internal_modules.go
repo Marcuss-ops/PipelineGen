@@ -64,12 +64,11 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	idemHandler := idemPlus.Handler()
 
 	// Step 1b — Search fan-out. Constructed once and shared between
-	// YouTubeClip + Assets. The pre-PR-2 parallel
-	// `providers.NewSearchAggregator` is gone (git-rm'd); the
-	// canonical *search.Aggregator lives behind the SearchFanOut
-	// decorator which exposes the user-spec Option{Hits, Latencies}
-	// Stats surface. Composition-stable failure mode: a
-	// BuildCanonicalSearchFanOut error aborts boot so a
+	// YouTubeClip + Assets. The legacy providers.SearchAggregator is
+	// gone (git-rm'd); the canonical *search.Aggregator lives behind
+	// the SearchFanOut decorator which exposes the user-spec
+	// Option{Hits, Latencies} Stats surface. Composition-stable failure
+	// mode: a BuildCanonicalSearchFanOut error aborts boot so a
 	// misconfigured backend set is visible at startup rather than
 	// silently degrading to partial coverage.
 	var providerReg *providers.Registry
@@ -137,7 +136,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 		rerankerPort = root.AI.Reranker
 	}
 
-	_, _, searchAgg := registerSearchBackend(log, providerReg, root.Repos.ClipsRepo, wiring,
+	searchFanOut, _, searchAgg := registerSearchBackend(log, providerReg, root.Repos.ClipsRepo, wiring,
 		embeddingReg,         // embeddings: EmbeddingChannelRegistry from Ollama pipeline
 		vectorStoreForSearch, // vectorStore: Qdrant SearchAdapter from Process bundle
 		mediaRepo,            // mediaRepo: ClipsRepository → MediaReadRepository
@@ -164,7 +163,7 @@ func registerInternalModules(ctx context.Context, registry *module.Registry, log
 	// the handler's constructor resolves providers lazily so it's fine
 	// to pass the empty registry here; it will be populated by the time
 	// HTTP requests arrive.
-	if err := registerYouTubeClip(registry, log, cfg, root, wiring, searchAgg); err != nil {
+	if err := registerYouTubeClip(registry, log, cfg, root, wiring, searchAgg, searchFanOut); err != nil {
 		return err
 	}
 
@@ -435,7 +434,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 // site type-asserts ONCE to *youtubeapi.YouTubeDescriptor
 // (fail-closed) and reuses the concrete for the
 // wiring.YouTubeClip wiring handle.
-func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring, searchAgg *providers.SearchAggregator) error {
+func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot, wiring *RegistryWiring, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut) error {
 	if !cfg.Features.YouTubeEnabled {
 		log.Info("registerYouTubeClip: YouTube feature is disabled; skipping HTTP route registration")
 		wiring.YouTubeClip = nil
@@ -443,13 +442,14 @@ func registerYouTubeClip(registry *module.Registry, log *zap.Logger, cfg *config
 	}
 
 	descriptor, err := youtubeapi.Build(youtubeapi.Dependencies{
-		Service:          root.Domains.YoutubeClipService,
-		Jobs:             root.Jobs.Facade,
-		ToolChecker:      toolCheckerAdapter,
-		Idempotency:      wiring.idempotencyHandler,
-		SearchAggregator: searchAgg,
-		EnabledFunc:      func() bool { return cfg.Features.YouTubeEnabled },
-		Logger:           log,
+		Service:      root.Domains.YoutubeClipService,
+		Jobs:         root.Jobs.Facade,
+		ToolChecker:  toolCheckerAdapter,
+		Idempotency:  wiring.idempotencyHandler,
+		SearchSvc:    searchSvc,
+		SearchFanOut: searchFanOut,
+		EnabledFunc:  func() bool { return cfg.Features.YouTubeEnabled },
+		Logger:       log,
 	})
 	if err != nil {
 		return fmt.Errorf("registerYouTubeClip: youtube.Build: %w", err)

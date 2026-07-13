@@ -178,29 +178,26 @@ func BuildSearchBackends(opts SearchBackendBuildOpts) (*search.BackendRegistry, 
 // /api/media/clips/search + Assets /api/clips/search/advanced +
 // Mediasearch + FindDuplicates).
 //
-// PR-2 (June 2026): returns BOTH the fan-out AND the bare
-// registry so callers can stamp both into AssetsBundle without
-// resorting to type-assertion acrobatics on the decorator's
-// internal state. The bundle holds the registry directly so
-// diagnostic routes + future Health probes can render it without
-// going through the decorator.
+// Wave 4 (July 2026): also returns the bare *search.Aggregator so
+// consumers that need direct query access (e.g. YouTube SearchAdvanced)
+// can use it without type-asserting the decorator.
 //
 // Fail-closed: BuildSearchBackends error propagates verbatim so
 // WireRegistry aborts on a misconfigured backend set instead of
 // silently degrading to partial coverage.
-func BuildCanonicalSearchFanOut(opts SearchBackendBuildOpts) (search.SearchFanOut, *search.BackendRegistry, error) {
+func BuildCanonicalSearchFanOut(opts SearchBackendBuildOpts) (search.SearchFanOut, *search.BackendRegistry, *search.Aggregator, error) {
 	log := opts.Logger
 	if log == nil {
 		log = zap.NewNop()
 	}
 	reg, err := BuildSearchBackends(opts)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	agg := search.NewAggregator(reg, &zapSearchLogAdapter{log: log})
 	log.Info("BuildCanonicalSearchFanOut: canonical SearchFanOut wired",
 		zap.Int("backends", len(reg.All())))
-	return search.NewSearchFanOut(agg), reg, nil
+	return search.NewSearchFanOut(agg), reg, agg, nil
 }
 
 // ── Internal helpers ───────────────────────────────────────────────────

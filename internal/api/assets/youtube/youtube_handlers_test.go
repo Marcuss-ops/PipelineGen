@@ -104,6 +104,7 @@ func TestYouTubeClipHandler_Extract_PreparesFolderPathAndPayload(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	body := map[string]any{

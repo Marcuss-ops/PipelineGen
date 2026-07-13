@@ -19,7 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
@@ -60,14 +60,12 @@ type YouTubeClipHandler struct {
 	clipsRepo   ytports.ClipStorePort
 	toolChecker appassets.ToolChecker
 	Idempotency gin.HandlerFunc
-	// searchAggregator (S3d, June 2026): wires SearchAdvanced + Stats
-	// through the canonical SearchAggregator. When nil, both methods
-	// return 503 (services not wired) rather than a partial-result
-	// path; the composition root is required to provide one in any
-	// post-Freeze configuration. Migration target: SearchAdvanced +
-	// Stats are aggregator-routed (S3d); the legacy h.getAllClipRepos()
-	// method is removed.
-	searchAggregator *providers.SearchAggregator
+	// searchSvc (Wave 4, July 2026): canonical search.Aggregator for
+	// SearchAdvanced. When nil, the route returns 503.
+	searchSvc *search.Aggregator
+	// searchFanOut (Wave 4, July 2026): canonical SearchFanOut decorator
+	// for Stats telemetry. When nil, Stats returns 503.
+	searchFanOut search.SearchFanOut
 } // NewYouTubeClipHandler builds the YouTubeClipHandler.
 // service          - YouTube service used by this handler.
 // log              - zap logger for diagnostics.
@@ -75,38 +73,31 @@ type YouTubeClipHandler struct {
 // clipsRepo        - canonical YouTube clip-store port.
 // toolChecker      - external-tool probe used by Diagnostics.
 // idempotencyMiddleware - reusable Gin idempotency middleware; nil disables.
-// searchAggregator    - canonical SearchAggregator for SearchAdvanced + Stats.
+// searchSvc        - canonical search.Aggregator for SearchAdvanced.
+// searchFanOut     - canonical SearchFanOut decorator for Stats.
 //
-// PR-CLIP-YT-REGISTRY-CLEANUP (June 2026): providerRegistry arg +
-// providerSearch field + providerReg field + providerResolve sync.Once +
-// resolveProvider() method all removed. The handler no longer resolves a
-// SearchProvider from providers.Registry; routes that need search dispatch
-// go through SearchAdvanced (aggregator-routed).
-//
-// S3d (June 2026): clipsRepo retained for downstream uses (reprocess /
-// download paths that don't go through the aggregator), but SearchAdvanced
-// + Stats are now aggregator-only via the appended searchAggregator arg.
-// Composition root wires NewSearchAggregator(post-Freeze registry) and
-// passes that SAME pointer to both YouTubeClipHandler + the clips.Handler
-// (FindDuplicates). The h.getAllClipRepos() method was REMOVED.
+// Wave 4 (July 2026): SearchAdvanced + Stats migrated from the legacy
+// providers.SearchAggregator to the canonical search capability.
+// SearchAdvanced uses searchSvc.Search; Stats uses searchFanOut.Stats().
 //
 // PR8 (June 2026): added idempotencyMiddleware to wrap POST /clips/process
 // (the only Write route in the handler). Read routes (info, search,
 // diagnostics, stats) are unchanged. nil disables idempotency for
 // test fixtures.
-func NewYouTubeClipHandler(service YouTubeClipService, log *zap.Logger, jobsSvc jobservice.Service, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchAggregator *providers.SearchAggregator) *YouTubeClipHandler {
+func NewYouTubeClipHandler(service YouTubeClipService, log *zap.Logger, jobsSvc jobservice.Service, clipsRepo ytports.ClipStorePort, toolChecker appassets.ToolChecker, idempotencyMiddleware gin.HandlerFunc, searchSvc *search.Aggregator, searchFanOut search.SearchFanOut) *YouTubeClipHandler {
 	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware
 	}
 	return &YouTubeClipHandler{
-		service:          service,
-		log:              log,
-		jobsSvc:          jobsSvc,
-		clipsRepo:        clipsRepo,
-		toolChecker:      toolChecker,
-		Idempotency:      idem,
-		searchAggregator: searchAggregator,
+		service:      service,
+		log:          log,
+		jobsSvc:      jobsSvc,
+		clipsRepo:    clipsRepo,
+		toolChecker:  toolChecker,
+		Idempotency:  idem,
+		searchSvc:    searchSvc,
+		searchFanOut: searchFanOut,
 	}
 }
 

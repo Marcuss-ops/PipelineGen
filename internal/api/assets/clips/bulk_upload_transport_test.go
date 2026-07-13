@@ -19,6 +19,7 @@
 package clips
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,9 +38,9 @@ func TestBulkUploadTransport_RouteRegistered(t *testing.T) {
 	g := r.Group("/api/clips") // mirrors clips/module.go production mount
 	h.RegisterRoutes(g)        // installs :source/clips/bulk-upload-youtube-clips
 
-	body := strings.Replace(
-		`{"local_folder":"PLACE","drive_folder_id":"d-stale","dry_run":true,"limit":0}`,
-		"PLACE", tmp, 1,
+	body := fmt.Sprintf(
+		`{"local_folder":%q,"drive_folder_id":"d-stale","dry_run":true,"limit":0}`,
+		tmp,
 	)
 	req := httptest.NewRequest(
 		"POST",

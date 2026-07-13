@@ -25,7 +25,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	youtube "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	jobservice "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -47,7 +47,8 @@ import (
 //   - ClipStorePort   ytports.ClipStorePort       (downstream uses — kept from the pre-Step-4 wiring; nil-tolerant
 //     because newClipStoreAdapter(nil) returns a nil interface)
 //   - Idempotency     gin.HandlerFunc             (wraps POST /clips/process; nil ⇒ no-op default handler)
-//   - SearchAggregator *providers.SearchAggregator (routes SearchAdvanced + Stats; nil ⇒ 503 from those two routes)
+//   - SearchSvc      *search.Aggregator (route SearchAdvanced; nil ⇒ 503)
+//   - SearchFanOut   search.SearchFanOut (route Stats; nil ⇒ 503)
 //   - ModuleOpts      []api.RouteModuleOption     (typically empty for clips; bundle-specific decorators ONLY)
 //   - Logger          *zap.Logger                 (nil ⇒ zap.NewNop())
 type Dependencies struct {
@@ -80,12 +81,14 @@ type Dependencies struct {
 	// nil falls through to a no-op handler in NewYouTubeClipHandler.
 	Idempotency gin.HandlerFunc
 
-	// SearchAggregator routes SearchAdvanced + Stats via the canonical
-	// providers.SearchAggregator fan-out (S3d, June 2026). OPTIONAL —
-	// nil causes SearchAdvanced + Stats to return 503 at request time
-	// (the composition root is required to provide one in any
-	// post-Freeze configuration).
-	SearchAggregator *providers.SearchAggregator
+	// SearchSvc is the canonical search.Aggregator used by
+	// SearchAdvanced. OPTIONAL — nil causes SearchAdvanced to return
+	// 503 at request time.
+	SearchSvc *search.Aggregator
+
+	// SearchFanOut is the canonical search.SearchFanOut decorator used
+	// by Stats. OPTIONAL — nil causes Stats to return 503.
+	SearchFanOut search.SearchFanOut
 
 	// EnabledFunc is the closure that decides whether the module's
 	// routes are mounted. The composition root wires the canonical
@@ -187,8 +190,9 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		deps.Jobs,
 		deps.ClipStorePort, // nil-tolerant — downstream routes that need it short-circuit
 		deps.ToolChecker,
-		deps.Idempotency,      // nil ⇒ no-op default inside NewYouTubeClipHandler
-		deps.SearchAggregator, // nil ⇒ SearchAdvanced + Stats return 503
+		deps.Idempotency, // nil ⇒ no-op default inside NewYouTubeClipHandler
+		deps.SearchSvc,   // nil ⇒ SearchAdvanced returns 503
+		deps.SearchFanOut, // nil ⇒ Stats returns 503
 	)
 
 	module := api.NewRouteModule(
