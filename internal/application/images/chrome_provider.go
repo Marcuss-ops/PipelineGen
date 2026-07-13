@@ -87,6 +87,7 @@ var _ ImageGenerator = (*ChromeImageProvider)(nil)
 // no per-profile routing; the tracking was fake-availability.
 type ChromeImageProvider struct {
 	scriptsDir string
+	profileID  int
 	log        *zap.Logger
 
 	mu      sync.Mutex
@@ -103,9 +104,10 @@ type ChromeImageProvider struct {
 // is REMOVED. The pre-split constructor silently ignored it; single-
 // profile is the canonical policy. godlike/07 no-fake-availability
 // demands the constructor not advertise a parameter it doesn't honor.
-func NewChromeImageProvider(scriptsDir string, log *zap.Logger) *ChromeImageProvider {
+func NewChromeImageProvider(scriptsDir string, profileID int, log *zap.Logger) *ChromeImageProvider {
 	return &ChromeImageProvider{
 		scriptsDir: scriptsDir,
+		profileID:  profileID,
 		log:        log,
 	}
 }

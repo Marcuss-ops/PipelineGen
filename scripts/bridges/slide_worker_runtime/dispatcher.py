@@ -160,11 +160,12 @@ class SlideDispatcher:
     Go-side update.
     """
 
-    def __init__(self, num_profiles: int, headful: bool = False) -> None:
+    def __init__(self, num_profiles: int, headful: bool = False, profile_id: int = 0) -> None:
         # Per the wave plan § "Single-profile model", num_profiles is
         # hard-clamped to 1; future expansion would update this.
         self.num_profiles = 1
         self.headful = headful
+        self.profile_id = profile_id
         self.profiles: List[ProfileWorker] = []
         self._shutdown_called = False
 
@@ -177,7 +178,7 @@ class SlideDispatcher:
         On failure: returns `{"status": "error", "error": "..."}`
         with the canonical error string. The wait is bounded at 30s.
         """
-        self.profiles = [ProfileWorker(0, headful=self.headful)]
+        self.profiles = [ProfileWorker(self.profile_id, headful=self.headful)]
         for pw in self.profiles:
             pw.start()
         if not self.profiles[0]._warmed.wait(timeout=30):
