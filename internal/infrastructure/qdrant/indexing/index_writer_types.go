@@ -101,6 +101,23 @@ type AssetData struct {
 	// same timestamp block share the same parent folder).
 	TimestampDriveFolderLink string `json:"timestamp_drive_folder_link,omitempty"`
 	TimestampFolderID        string `json:"timestamp_folder_id,omitempty"`
+
+	// ── VLM visual summary block (FASE-9 + visual-summary reindex) ────
+	// Populated by the visual-summary reindex service
+	// (internal/application/indexing/visual_summary.go) at
+	// cmd/admin/reindex_visual_summary.go time. Six fields map 1:1 to
+	// IndexedMetadata; the airlock in index_airlock.go copies them
+	// verbatim with omitempty on the wire. All six are required for
+	// the godlike/06 SSOT "version the projection with preprocessing
+	// + model versions" rule; a row missing these fields surfaces
+	// the "no VLM pass yet" sentinel and is OMITTED from the
+	// payload entirely (godlike/07 NO-FAKE-AVAILABILITY).
+	VisualSummary              string   `json:"visual_summary,omitempty"`
+	VisibleActions             []string `json:"visible_actions,omitempty"`
+	VisibleEntities            []string `json:"visible_entities,omitempty"`
+	VisualPreprocessingVersion string   `json:"visual_preprocessing_version,omitempty"`
+	VisualModelName            string   `json:"visual_model_name,omitempty"`
+	VisualModelVersion         string   `json:"visual_model_version,omitempty"`
 }
 
 // AssetStore is the interface the PayloadMapper needs to fetch asset data.

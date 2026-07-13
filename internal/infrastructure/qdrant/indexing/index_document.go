@@ -239,6 +239,52 @@ type IndexedMetadata struct {
 	// TextTracksVersion is a short hash of the sorted text track
 	// hashes for change detection.
 	TextTracksVersion string
+
+	// ── VLM visual summary block (FASE-9 + visual-summary reindex path) ────
+	// Sourced from internal/domain/asset/clip_visual_summary.go
+	// (canonical VisualSummary row in asset_visual_summaries). The Go
+	// visual-summary reindex service (cmd/admin/reindex_visual_summary.go)
+	// populates the AssetData.VisualSummary* fields, which the airlock
+	// copies here with the same names.
+	//
+	// godlike/07 NO-FAKE-AVAILABILITY: empty/-empty slice means "no VLM
+	// pass has run". The payload builder emits these keys only when the
+	// values are non-empty so the payload omits the keys entirely in the
+	// no-pass case (Apache Arrow "missing field" semantics on read).
+
+	// VisualSummary is the aggregated caption text from the VLM pass
+	// over frames sampled at interval_seconds (1 frame every N seconds).
+	VisualSummary string
+
+	// VisibleActions is the union of action verbs the VLM identified
+	// across all sampled frames (deduplicated, deterministic order, capped
+	// at asset.MaxVisibleItems=32).
+	VisibleActions []string
+
+	// VisibleEntities is the union of named entities the VLM identified
+	// across all sampled frames (deduplicated, deterministic order, capped
+	// at asset.MaxVisibleItems=32).
+	VisibleEntities []string
+
+	// VisualPreprocessingVersion is the canonical
+	// "vlm-sampler/<semver>" identifier of the FFmpeg + frame-sampler
+	// pipeline that produced the VisualSummary row. Required for the
+	// godlike/06 SSOT "version the projection with preprocessing +
+	// model versions" rule; a re-index at a different preprocessing
+	// version produces a different SourceHash and forces a Qdrant
+	// re-publish.
+	VisualPreprocessingVersion string
+
+	// VisualModelName is the VLM model identifier (e.g.
+	// "llava-1.6-7b", "qwen-vl", etc.). Empty when no VLM pass has
+	// run.
+	VisualModelName string
+
+	// VisualModelVersion is the VLM checkpoint version string
+	// (e.g. "2026-07-13"). Distinct from VisualModelName; both are
+	// surfaced so "which VLM was used?" is answerable from the
+	// payload alone.
+	VisualModelVersion string
 }
 
 // EmbeddingArtifact is the OBSERVED provenance record for a single
