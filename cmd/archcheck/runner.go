@@ -337,6 +337,22 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// asset.index.state=INDEXED passi solo dal consumer outbox
 		// dedicato."
 		{"percheck_indexed_state_writer_ssot", scan.ScanIndexedStateWriterSSOT},
+		// Check PR-MEDIATRANSFORMER-RENAME step 1 (July 2026):
+		// forward-prevention gate that bans Drive/Qdrant/SQLite
+		// fields in the MediaTransformer DTOs (TransformSpec +
+		// RenditionSet). Per godlike/06 SSOT, MediaTransformer is
+		// a local-only transformer — it takes a StagedSource (already
+		// on local disk via the canonical SourceStager port) and
+		// produces a local RenditionSet. Drive/DB/Qdrant concerns
+		// are out of scope and belong to the orchestrator +
+		// finalizer + commit layers downstream. Step 1 of the rename
+		// is ONLY a type rename (Processor → MediaTransformer,
+		// ProcessInput → TransformSpec, ProcessResult → RenditionSet);
+		// the forbidden fields STAY in the DTOs for now and this
+		// gate WILL trip on them as a forward-pointer to step 2,
+		// which deletes the fields. Comment-only references are
+		// WARNed (residue accounting, godlike/07).
+		{"percheck_mediatransformer_no_infra_fields", scan.ScanMediaTransformerNoInfraFields},
 	}
 }
 
