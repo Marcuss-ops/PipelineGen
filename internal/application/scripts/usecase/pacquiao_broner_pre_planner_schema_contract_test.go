@@ -67,7 +67,37 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// TestClipPrePlan_JSONSchemaContract pins the top-level ClipPrePlan
+// ── Planner return-type identity pin ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// Runtime guarantee that `ClipPrePlan`, `ClipSearchSlot`, and
+// `SourceAnchor` as referenced unprefixed inside `package usecase`
+// (the planner's actual return types at `&ClipPrePlan{V1, …}`
+// literal sites) IS the canonical `scriptpkg.*` struct — not a
+// local-port shadow with parallel-mirror fields. Per
+// source_spec.go's doc comment, "FASE 2 will collapse them via
+// type aliases" — the alias keeps the planner's return type
+// identical to the canonical domain struct.
+//
+// Without this pin: a future PR could introduce a local-port
+// `type ClipPrePlan struct {...}` shadow. The reflection-based
+// schema-contract tests would still pin the scriptpkg shape.
+// The byte-compare golden could still pass on coincidentally
+// matching field names. But the planner runtime would marshal
+// a different struct — and both layers would give a green CI
+// while the planner's wire output silently drifts from the
+// contract.
+//
+// The asserts are equality compares of reflect.TypeOf values; in
+// Go, an alias `type X = scriptpkg.X` returns the SAME Type as
+// the underlying structured type, so aliases pass this gate.
+// Shadow structs (different fields/methods) fail.
+var (
+	_ = reflect.TypeOf(scriptpkg.ClipPrePlan{}) == reflect.TypeOf((*ClipPrePlan)(nil)).Elem()
+	_ = reflect.TypeOf(scriptpkg.ClipSearchSlot{}) == reflect.TypeOf((*ClipSearchSlot)(nil)).Elem()
+	_ = reflect.TypeOf(scriptpkg.SourceAnchor{}) == reflect.TypeOf((*SourceAnchor)(nil)).Elem()
+)
+
+ ClipPrePlan
 // wire shape: JSON-tagged field names (in declaration order, which
 // `encoding/json` marshals verbatim), the omitempty status of each
 // field, and the Go types that translate to JSON bool/number/string.
@@ -268,8 +298,12 @@ func assertFieldSetOrderOmitemptyAndTypes(
 		if !ok {
 			continue
 		}
-		wantOmitempty, isPinned := nullableSet[f.Name]
-		_ = isPinned // check applied regardless of pinned-status
+		// godlike/06 SSOT: the boolean for "this field's tag
+		// should carry omitempty" is derived from the second
+		// map-lookup return value. The first return is the
+		// value type's zero (struct{}{} here); indexing it
+		// truthily would trip the Go compiler on the ! operator.
+		_, wantOmitempty := nullableSet[f.Name]
 		hasOmitempty := strings.Contains(tag, "omitempty")
 		if wantOmitempty && !hasOmitempty {
 			t.Errorf("%s.%s tag %q is missing omitempty (expected zero-value to be omitted from wire shape)",
