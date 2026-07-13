@@ -5,15 +5,26 @@
 // Done:
 //   - build count per capability = 1
 //   - registration count per module name = 1
-//   - generation publishes job handlers on the api.DescriptorJobs slot
 //   - registry frozen only after all registrations
 //
-// The 3 named functions (registerGenerationCapability,
-// registerChannelsCapability, registerSearchQueriesCapability) replace
-// inline blocks previously trapped inside a `for _, m := range
-// []struct{...}` loop body that ran the blocks 6× per WireRegistry
-// call. The tests below prove the called-once contract without spinning
+// The 2 named functions (registerChannelsCapability,
+// registerSearchQueriesCapability) replace inline blocks
+// previously trapped inside a `for _, m := range []struct{...}`
+// loop body that ran the blocks 6× per WireRegistry call. The
+// tests below prove the called-once contract without spinning
 // up the entire WireRegistry stack.
+//
+// Generation capability was REMOVED in commit 7
+// (PR-GENERATION-FACADE-REMOVE, July 2026): the legacy
+// internal/application/generation package was git-rm'd;
+// the canonical proprietary APIs for books/lessons do NOT
+// exist on disk (internal/api/content/ is a doc-only shell),
+// so the facade's routing was the only HTTP surface for
+// generation. Per user spec ("Restano le API canoniche
+// proprietarie per book, lesson, script, batch se esistono e
+// sono reali") the removal is acceptable. See
+// cmd/archcheck/scan/percheck_no_generic_generation_facade.go
+// for forward-prevention.
 //
 // The `fakeModule` test helper is intentionally NOT redefined here —
 // it already lives in `registry_failfast_test.go` (same package `app`)
@@ -21,12 +32,12 @@
 //
 // Each test passes a `*ComposeRoot` with the minimum fields required
 // for the function under test: zero-value for everything except the
-// targeted dep (Domains for generation; DB for channels and
-// search_queries). With nil inputs, each function's nil-guard
-// short-circuits BEFORE invoking Build, so the test scope stays inside
-// the regression boundary without spinning up generation.Build /
-// channels.Build / searchqueriesuc — Build success is not asserted
-// here (already pinned by integration tests of WireRegistry itself).
+// targeted dep (DB for channels and search_queries). With nil inputs,
+// each function's nil-guard short-circuits BEFORE invoking Build, so
+// the test scope stays inside the regression boundary without
+// spinning up channels.Build / searchqueriesuc — Build success is
+// not asserted here (already pinned by integration tests of
+// WireRegistry itself).
 package app
 
 import (
@@ -39,28 +50,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// TestRegisterGenerationCapability_NilDomains_NoRegister pins: when
-// root.Domains is nil (no books/lessons services wired), the function
-// returns nil without registering anything — Build is NOT called.
-//
-// Regression target: the previous loop shape ran this block 6× per
-// WireRegistry; even on the no-Domains path the block executed per
-// iteration. The named-function form guarantees a single execution
-// point and a clean exit when Dependencies would be incomplete.
-func TestRegisterGenerationCapability_NilDomains_NoRegister(t *testing.T) {
-	reg := module.NewRegistry()
-	log := zap.NewNop()
-	cfg := &config.Config{}
-	root := &ComposeRoot{Domains: nil}
-
-	require.NoError(t, registerGenerationCapability(reg, log, cfg, root))
-	require.Empty(t, reg.GetEnabled(),
-		"registerGenerationCapability with nil Domains must register nothing — Build is not called when there is no book/lesson backing service")
-}
-
-// TestRegisterChannelsCapability_NilDB_NoRegister pins the same
-// invariant for the channels capability. With root.DB nil, the function
-// returns the no-op path.
+// TestRegisterChannelsCapability_NilDB_NoRegister pins:
+// with root.DB nil, the function returns the no-op path.
 func TestRegisterChannelsCapability_NilDB_NoRegister(t *testing.T) {
 	reg := module.NewRegistry()
 	log := zap.NewNop()
@@ -84,18 +75,18 @@ func TestRegisterSearchQueriesCapability_NilDB_NoRegister(t *testing.T) {
 }
 
 // TestRegisterAllCapabilities_DoNotFreezeRegistry pins the freeze-order
-// invariant: the 3 named functions do NOT call reg.Freeze. WireRegistry
+// invariant: the named functions do NOT call reg.Freeze. WireRegistry
 // owns the canonical Freeze call and runs it once at the very end.
 //
-// Proof strategy: after the 3 calls return, a follow-up Register must
+// Proof strategy: after the calls return, a follow-up Register must
 // succeed. This is only possible if the registry is still mutable (not
 // yet frozen). The post-loop-check sentinel module also confirms
 // WireRegistry's "freezes only after all registrations are complete"
-// contract by appearing alongside (or above) the 3 named functions in
+// contract by appearing alongside (or above) the named functions in
 // the timeline.
 //
-// All 3 functions run on nil-Domains/nil-DB inputs so they short-circuit
-// to their no-op paths and never invoke Build. This means the test
+// All 2 functions run on nil-DB inputs so they short-circuit to
+// their no-op paths and never invoke Build. This means the test
 // does not depend on a real BooksService stub — keep scope tight and
 // the test small.
 func TestRegisterAllCapabilities_DoNotFreezeRegistry(t *testing.T) {
@@ -104,15 +95,17 @@ func TestRegisterAllCapabilities_DoNotFreezeRegistry(t *testing.T) {
 	cfg := &config.Config{}
 	root := &ComposeRoot{Domains: nil, DB: nil}
 
-	// Zero-value ComposeRoot paths short-circuit all 3 named functions.
+	// Zero-value ComposeRoot paths short-circuit all named functions.
 	// Errors on the strict path (e.g., a real Build that fails) are
 	// tolerated — the invariant of interest is the registry's
 	// mutability, which is unaffected by registration errors.
-	_ = registerGenerationCapability(reg, log, cfg, root)
 	_ = registerChannelsCapability(reg, log, root)
 	_ = registerSearchQueriesCapability(reg, log, root)
 
 	// A subsequent Register MUST succeed — proves Freeze hasn't fired.
+	// Cross-file dep pin: `fakeModule` lives in registry_failfast_test.go
+	// (same package `app`); adding/removing the struct there is a
+	// compile-error here, by design.
 	err := reg.Register(&fakeModule{name: "post-loop-check"})
 	require.NoError(t, err,
 		"registry must remain mutable after registerXCapability calls — Freeze is WireRegistry's responsibility, called only after all registrations are complete")
@@ -123,5 +116,5 @@ func TestRegisterAllCapabilities_DoNotFreezeRegistry(t *testing.T) {
 		names[m.Name()] = true
 	}
 	require.True(t, names["post-loop-check"],
-		"the sentinel post-loop-check module must appear in the registry — confirms an extra Register succeeded past the 3 named functions")
+		"the sentinel post-loop-check module must appear in the registry — confirms an extra Register succeeded past the named functions")
 }

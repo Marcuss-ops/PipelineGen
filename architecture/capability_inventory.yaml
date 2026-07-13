@@ -200,12 +200,12 @@ api_capabilities:
     path: internal/api/assets/youtube
     has_build_signature: true
     direct_register_calls: []
-    concrete_constructors: []  # gated by internal/api/assets/youtube/gate_test.go (no infrastructure imports); Blocco C1-Step 4 (June 2026): youtube now exposes the canonical `Build(deps Dependencies) (api.Descriptor, error)` signature (pattern parity with Blocco C1-Step 3 artlist precedent)
-  - name: content
+    concrete_constructors: []  # gated by internal/api/assets/youtube/gate_test.go (no infrastructure imports); Blocco C1-Step 4 (June 2026): youtube now exposes the canonical `Build(deps Dependencies) (api.Descriptor, error)` signature (pattern parity with Blocco C1-Step 3 artlist precedent)  - name: content
     path: internal/api/content
+    state: retired                 # PR-GENERATION-FACADE-REMOVE (commit 7, July 2026): sibling dead-code surface to the git-rm'd generation facade; the internal/api/content/content.go file is a doc-only shell — no BooksHandler/LessonsHandler/RegisterRoutes implementations exist. The shell is retained for historical reference but is NOT mounted in the composition root's WireRegistry (no registerContent call). Forward-prevention gate cmd/archcheck/scan/percheck_no_generic_generation_facade.go blocks any re-introduction of the unified facade pattern; the content shell is independently drifted from the facade and is documented here for inventory integrity.
     has_build_signature: false
     direct_register_calls: []
-    concrete_constructors: []
+    concrete_constructors: [] 
   - name: images
     path: internal/api/images
     has_build_signature: false
@@ -321,7 +321,8 @@ application_capabilities:
       - { symbol: "internal/infrastructure/drive",                file_line: "file_url.go (mock)",        is_test: true,  note: "API-layer uses pkg/urlutil; production Go code does not import drive directly" }
   - name: generation
     path: internal/application/generation
-    has_build_signature: true       # module.go:129 — `func Build(deps Dependencies) (api.Descriptor, error)`
+    state: retired                 # PR-GENERATION-FACADE-REMOVE (commit 7, July 2026): git-rm'd; canonical proprietary replacements (book/lesson/script/batch) did not exist on disk (internal/api/content/ is a doc-only shell). See cmd/archcheck/scan/percheck_no_generic_generation_facade.go for forward-prevention.
+    has_build_signature: false
     direct_register_calls: []
     concrete_constructors: []
   - name: images

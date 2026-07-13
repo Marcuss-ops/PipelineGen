@@ -1,0 +1,9 @@
+name: test_failure
+
+steps:
+  - id: bad_artlist
+    type: http
+    endpoint: "POST http://localhost:8080/api/artlist/run"
+    payload:
+      limit: 2
+      dry_run: true

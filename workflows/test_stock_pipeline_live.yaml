@@ -1,0 +1,105 @@
+name: test_stock_pipeline_live
+
+# Manual-only trigger per docs/operations/stock-e2e-runbook.md §10.6
+# and ci-architectural-checks.sh Check 69. The live battery hits yt-dlp
+# + Drive writes + Qdrant mutations -- side-effect-heavy, NEVER belong in
+# PR/push scheduling. The DSL interprets this triggers line as the
+# only allowed trigger shape (any other line that introduces an
+# automatic trigger fails Check 69).
+triggers: [workflow_dispatch]
+
+defaults:
+  mode: verify
+  output_dir: /tmp/stock-pipeline-live-test
+
+steps:
+  - id: preflight_token
+    type: env_check
+    requires_var: VELOX_ADMIN_TOKEN
+    on_missing: fail
+    note: |
+      Bearer token is REQUIRED for /api/stock-pipeline/run and
+      /api/jobs/<id>/full. The script falls back to .env lookup
+      but exit-2 if neither resolves.
+
+  - id: preflight_server
+    type: http
+    endpoint: "GET http://localhost:${VELOX_PORT:-8000}/health"
+    expect_status: 200
+    timeout_seconds: 5
+    on_fail: fail
+    note: |
+      Server MUST boot with VELOX_FEATURE_STOCK_PIPELINE_ENABLED=true
+      for this battery's /run + /jobs/... routes to be mounted.
+
+  - id: preflight_db
+    type: file_check
+    path: "${DB_PATH:-data/media/media.db.sqlite}"
+    on_missing: fail
+    note: |
+      Canonical SQLite media_assets + outbox_events source.
+
+  - id: live_battery
+    uses: shell.bash
+    command: bash ${LIVE_BATTERY_PATH:-scripts/tests/stock_pipeline_live_test.sh}
+    env:
+      RUN_SEARCH: "${RUN_SEARCH:-0}"
+      RUN_DIRECT: "${RUN_DIRECT:-1}"
+      REQUIRE_QDRANT: "${REQUIRE_QDRANT:-1}"
+      YOUTUBE_URL: "${YOUTUBE_URL:-}"
+      QUERY: "${QUERY:-}"
+      MIN_MP4_BYTES: "${MIN_MP4_BYTES:-65536}"
+      JOB_POLL_TIMEOUT: "${JOB_POLL_TIMEOUT:-300}"
+      JOB_POLL_INTERVAL: "${JOB_POLL_INTERVAL:-10}"
+    # C1 (code-reviewer 2026-07-12): the script emits its one-line verdict
+    # as `VERDICT pass=N fail=N job=...` (last printf line). It does NOT
+    # emit a stand-alone "PASS:" token, so `success: ["PASS"]` would
+    # never match and the workflow would time out. Anchor on the actual
+    # emitted line via substring match; rely on the script's exit code
+    # (0 = no FAIL, 1 = >=1 FAIL) for the hard gate.
+    wait:
+      interval_ms: 10000
+      # C3 (2026-07-12): bumped from 360 to 600 to absorb STEP 10 curl --max-time 120
+      # retries + STEP 12 ffprobe + STEP 4 polling tail. JOB_POLL_TIMEOUT=300
+      # is the script's internal cap; the workflow leaves a generous 300s
+      # buffer for STEP 1-9 + STEP 10-12 tail.
+      timeout_seconds: 600
+      success_substring: "VERDICT pass="
+      success_exit_code: 0
+      failure_substring: "VERDICT "
+      failure_exit_code_min: 1
+    on_pass: continue
+    on_fail: fail
+    note: |
+      Run the live battery; verdict at end prints VERDICT pass=<n>/fail=<n>
+      plus Last job / Last asset / Qdrant hits. Artifacts persist
+      under /tmp/stock-pipeline-live-test/. Operator MUST supply a
+      fresh YOUTUBE_URL (NOT RRJvrDKunyA -- cache-shadowed, hard-refused).
+
+  - id: report_verdict
+    type: shell.bash
+    # C2 (code-reviewer 2026-07-12): the script does NOT produce a
+    # `verdict_line.txt` file in ${output_dir}. Its one-line verdict is
+    # the LAST `printf` line of its own stdout, captured in the run log
+    # (default `/tmp/stock-pipeline-live-test/stock_pipeline_run.log` when
+    # invoked via this workflow's `tee`). Surface it via `tail|grep` on
+    # whichever log file the operator's tee captures.
+    command: |
+      set +e
+      log_file=$(ls -1t ${defaults.output_dir}/*.log 2>/dev/null | head -n 1)
+      if [ -z "$log_file" ]; then
+        log_file=$(ls -1t /tmp/stock-pipeline-live-test/*.log 2>/dev/null | head -n 1)
+      fi
+      if [ -z "$log_file" ]; then
+        echo "WARN: no log file under ${defaults.output_dir} or /tmp/stock-pipeline-live-test/ (operator should inspect artifacts dir)"
+        exit 0
+      fi
+      echo "-> verdict line from $log_file:"
+      grep '^VERDICT ' "$log_file" | tail -n 1
+      echo
+      echo "-> last 10 lines of $log_file (for ticket paste):"
+      tail -n 10 "$log_file"
+    note: |
+      Surface the canonical one-liner verdict for ticket paste.
+      Operator can grep artifacts at /tmp/stock-pipeline-live-test/
+      to triage any [FAIL] line per docs/operations/stock-e2e-runbook.md §10.5.

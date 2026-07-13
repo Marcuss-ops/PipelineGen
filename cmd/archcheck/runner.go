@@ -375,6 +375,21 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// which deletes the fields. Comment-only references are
 		// WARNed (residue accounting, godlike/07).
 		{"percheck_mediatransformer_no_infra_fields", scan.ScanMediaTransformerNoInfraFields},
+		// Check PR-GENERATION-FACADE-REMOVE (commit 7, July 2026):
+		// forward-prevention gate that BANS any re-introduction of
+		// the application-zone or domain-zone generic generation
+		// facade. The two packages were git-rm'd because zero
+		// production callers remained and the canonical proprietary
+		// APIs (book/lesson/script/batch) did not exist on disk (the
+		// internal/api/content/ surface is a doc-only shell). Per
+		// godlike/06 SSOT, the per-domain packages own their handler
+		// wiring — a generic inter-domain facade creates a godlike/07
+		// NO-FAKE-AVAILABILITY regression. Comment-only references
+		// to the banned import paths are WARNed (residue accounting,
+		// godlike/07).
+		{"percheck_no_generic_generation_facade", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanNoGenericGenerationFacade(root, pol, r, productionOnly)
+		}},
 		// Check PR-PROVIDERS-SEARCHAGGREGATOR-REMOVE (July 2026):
 		// forward-prevention gate that pins the godlike/06 SSOT
 		// `internal/application/search.Aggregator` (the canonical

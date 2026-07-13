@@ -31,7 +31,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/searchqueries"
 	appchannels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -164,54 +163,6 @@ func registerRealtime(registry *module.Registry, log *zap.Logger, root *ComposeR
 		log,
 	), WithRegistrationPoint("register.Realtime")); err != nil {
 		return fmt.Errorf("wire registry: realtime module: %w", err)
-	}
-	return nil
-}
-
-// registerGenerationCapability wires the Capability-Standard unified
-// generation endpoint at /api/generations via generation.Build(deps).
-//
-// Returning nil on Build failure keeps the registry mutable so
-// WireRegistry's later phases are not poisoned. The strict path will
-// surface a hard error on any subsequent register-generation attempt
-// (pin per TestRegisterGenerationCapability_RepeatedCallsFailFast).
-func registerGenerationCapability(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
-	if root.Domains == nil {
-		return nil
-	}
-	var booksHandler generation.HandlerFunc
-	if root.Domains.BooksService != nil {
-		booksHandler = root.Domains.BooksService.HandleJob
-	}
-	var lessonsHandler generation.HandlerFunc
-	if root.Domains.LessonsService != nil {
-		lessonsHandler = root.Domains.LessonsService.HandleJob
-	}
-	genDesc, err := generation.Build(generation.Dependencies{
-		Jobs:           root.Jobs.Service,
-		Assets:         root.Repos.Assets,
-		Books:          booksHandler,
-		Lessons:        lessonsHandler,
-		BooksEnabled:   cfg.Books.Enabled,
-		LessonsEnabled: cfg.Lessons.Enabled,
-		ScriptEnabled:  anyScriptFeatureEnabled(cfg),
-		Logger:         log,
-	})
-	if err != nil {
-		log.Warn("failed to wire module", zap.String("module", "generation"), zap.Error(err))
-		return nil
-	}
-	if err := tryRegisterModuleStrict(registry, log, genDesc, WithRegistrationPoint("register.Generation")); err != nil {
-		return fmt.Errorf("wire registry: generation: %w", err)
-	}
-	// PublishSlots (api.DescriptorJobs). RegisterJobHandlers is the
-	// slot-publication method; it does NOT re-register the module.
-	// The strict-path Register call above already placed the Descriptor
-	// in the module registry; this call only publishes worker handlers.
-	if dj, ok := genDesc.(module.DescriptorJobs); ok {
-		if err := dj.RegisterJobHandlers(root.Jobs.Service); err != nil {
-			log.Warn("failed to register generation job handlers", zap.Error(err))
-		}
 	}
 	return nil
 }

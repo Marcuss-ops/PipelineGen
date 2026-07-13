@@ -1,0 +1,14 @@
+name: test_artlist_dry
+
+defaults:
+  strategy: verify
+
+steps:
+  - id: artlist
+    type: http
+    endpoint: "POST http://localhost:8080/api/artlist/run"
+    payload:
+      term: "ocean-waves"
+      limit: 2
+      dry_run: true
+      strategy: "{{ workflow.defaults.strategy }}"
