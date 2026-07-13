@@ -213,6 +213,30 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 			scan.ScanPackages(root, pol, r, fileLines)
 			scan.ScanCommandBinaries(root, pol, r, fileLines)
 		}},
+		// Check PR-CATALOG-MULTILINGUA step 7 (July 2026):
+		// forward-prevention gate that pins
+		// AssetState's canonical-14-count invariant. The
+		// canonical file (internal/domain/asset/asset_state.go)
+		// MUST declare exactly 14 StateAssetX const
+		// entries; a future agent who adds a 15th without
+		// updating the type surface, the matrix test, AND
+		// this gate surfaces as a CI build failure rather
+		// than a silent schema drift. Comment-only
+		// references to the canonical surface are residue-
+		// accounted (godlike/07).
+		{"percheck_asset_state_canonical_14", scan.ScanAssetStateCanonical14},
+		// Check PR-CATALOG-MULTILINGUA step 7 (July 2026):
+		// forward-prevention gate that bans `StateAssetX
+		// AssetState = "..."` const declarations OUTSIDE
+		// the canonical SOLE owner. Mirrors the image-asset
+		// literal-ban shape: the canonical SSOT is the
+		// ONLY file permitted to declare the alphabet; a
+		// shadow declaration anywhere else is a godlike/06
+		// SSOT violation risking alphabet drift
+		// (godlike/07 NO-FAKE-AVAILABILITY regression).
+		// Test files (`_test.go` suffix) and the scanner's
+		// own package (cmd/archcheck/scan/**) are exempt.
+		{"percheck_asset_state_no_shadow_enum", scan.ScanAssetStateNoShadowEnum},
 	}
 }
 
