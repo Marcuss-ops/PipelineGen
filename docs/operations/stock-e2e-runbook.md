@@ -414,3 +414,181 @@ fi
 Wire the `cmp -s` equivalence check into `make verify-main` (or `scripts/ci-architectural-checks.sh`) as a machine-enforced invariant — per godlike/06 SSOT, machine-enforced invariants trump prose documentation.
 
 **Wave-tracker coupling**: `architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05` does NOT gain a new child entry for §10 — §10 is a side artifact of the same wave, not a new wave. If a future wave lifts §10 into a first-class surface, it would get its own `STOCK-E2E-LIVE-BATTERY-<date>` entry per the slim-schema ratchet.
+
+---
+
+## §11 — Diagnostica RETRY_WAIT (ricetta operativa)
+
+**Purpose**: diagnose a single `RETRY_WAIT` / `CANCELLED` / `QUEUED`-with-retry-history job end-to-end, with the SQLite-direct fallback that operators must use **while the admin token rotation hasn't yet propagated to the running server binary**.
+
+Registered under the same `STOCK-E2E-BATTERY-2026-07-05` wave (operator-facing recipe); **no new wave slot** in `architecture/current.yaml` — minimum-blast-radius per godlike/07. §11 reorganizes only the operator surface (commands + forward-pointers), no Go code touched.
+
+**Genesis (2026-07-13)**: diagnosed job `job_1783924561995565623_559b55fa` (type `media.artlist`) which appeared in the prior preflight as `RETRY_WAIT`. At recipe-write time the row resolved to `status=CANCELLED, retry_count=1, max_retries=3, error="no candidates found"`, with timeline `job_start → job_claimed (YOutube_626773_worker-5) → error "artlist run failed" → job_retry_wait → CANCELLED`. Aggregate for type `media.artlist`: 14 CANCELLED / 1 RETRY_WAIT / 22 SUCCEEDED. Recipe covers all three states (transient RETRY_WAIT, terminal CANCELLED, fresh QUEUED) so future operators don't have to re-derive the path.
+
+**Honest-limitation (godlike/07)**: no `CHANGELOG.md` is committed for this section because **the file does not exist on `origin/main`** at the project root. The recipe documents the inline forward-pointers; missing-CHANGELOG drift is recorded here, not staged by this commit (a future wave that introduces `CHANGELOG.md` will re-home §11's audit trail per godlike/06 SSOT).
+
+### §11.1 — Pre-flight gate (token fingerprint)
+
+Never print cleartext token to logs. Verify the env token is bit-shaped-active before any API call:
+
+```bash
+# Hash the in-env token; print only the sha256 prefix.
+# No cleartext token anywhere in stdout or in this runbook.
+[ -n "$VELOX_ADMIN_TOKEN" ] \
+  && printf '%s' "$VELOX_ADMIN_TOKEN" | sha256sum | cut -c1-16 \
+  || { echo "VELOX_ADMIN_TOKEN UNSET — set \$VELOX_ADMIN_TOKEN first"; exit 1; }
+```
+
+If the printed fingerprint does NOT match the deployment's known-good `VELOX_ADMIN_TOKEN` fingerprint the operator must complete the rotation + service-restart sequence BEFORE consulting §11.2. Otherwise the API path returns HTTP 401 (see §11.2 401-note).
+
+### §11.2 — API-auth path (POST-rotation reality)
+
+Canonical endpoints (registered by `internal/api/jobs/impl.go::RegisterRoutes` over `r.GET("/:id/full", h.GetFull)` and `r.GET("/:id/events", h.Events)`):
+
+- `GET /api/jobs/{id}/full` → `buildJobResponse` shape: `{id, type, status, correlation_id, current_stage, current_step, progress, warnings, result, error (NEW top-level parity per PR-ERROR-SURFACING 2026-07-04), created_at, started_at, updated_at, timeline, events, retryable, job}`. `current_stage` derives from the most-recent non-warning event type.
+- `GET /api/jobs/{id}/events` → `{events, count}`. Each event has `{id, job_id, type, message, data, created_at}` per `internal/kernel/job/job.go::Event`.
+
+Header precedence (per `internal/api/middleware/admin_token.go`): `X-Velox-Admin-Token` (preferred) > `Authorization: Bearer`. Comparison via `compareTokens` (constant-time, no network-level timing leak). On mismatch → **HTTP 401** with body `{"ok":false,"error":"admin token required"}` and `c.Abort()`. **CRITICAL**: a `.env` reload is **NOT** sufficient to pick up a rotated token — the live PipelineGen binary must be restarted so middleware re-evaluates `sec.AdminToken()` at request time.
+
+```bash
+JOB='job_1783924561995565623_559b55fa'
+BASE='http://127.0.0.1:8000'
+
+# Token fingerprint for the run-evidence marker (no cleartext logged).
+TOKEN_FP=$(printf '%s' "$VELOX_ADMIN_TOKEN" | sha256sum | cut -c1-16)
+echo "# API auth path (token fingerprint=${TOKEN_FP})"
+
+# /full surface — the FULL canonical job shape (PR-ERROR-SURFACING 2026-07-04 parity).
+curl -sS --connect-timeout 5 --max-time 30 \
+  -H "X-Velox-Admin-Token: $VELOX_ADMIN_TOKEN" -H "Accept: application/json" \
+  "$BASE/api/jobs/$JOB/full" \
+  -o "/tmp/diag_${JOB}_full.json" -w "HTTP %{http_code} size=%{size_download}B time=%{time_total}s\n"
+
+# Filter to the operator-relevant fields (no cleartext anywhere).
+jq -c '{id, type, status, current_stage, progress, retry_count, max_retries, error, started_at, updated_at, created_at, retryable}' \
+  "/tmp/diag_${JOB}_full.json"
+
+# /events filtered to error|warning|retry mentions.
+curl -sS --connect-timeout 5 --max-time 30 \
+  -H "X-Velox-Admin-Token: $VELOX_ADMIN_TOKEN" -H "Accept: application/json" \
+  "$BASE/api/jobs/$JOB/events" \
+  -o "/tmp/diag_${JOB}_events.json" -w "HTTP %{http_code} size=%{size_download}B time=%{time_total}s\n"
+
+jq -c '[.events[]? | select(
+     (((.type // "") | ascii_downcase) == "error")
+  or (((.type // "") | ascii_downcase) == "warning")
+  or ((.message // "") | ascii_downcase | contains("retry"))
+  or ((.message // "") | ascii_downcase | contains("fail"))
+)] | {count: length, sample: (.[0:5] | map({ts: .created_at, type, message}))}' \
+  "/tmp/diag_${JOB}_events.json"
+```
+
+**401-decode**: if `HTTP %{http_code}` reports `401`, classify per `RequireAdminToken` middleware:
+- middleware mounted with empty `expected` AND `EnableAuth()=true` → **HTTP 500** ("RequireAdminToken misconfigured"); the server binary was started without a bound admin token.
+- middleware mounted, env token does not byte-match server-bound token → **HTTP 401**; the operator MUST rotate the admin secret AND restart the live PipelineGen binary (NOT just reload `.env`) per godlike/07 minimum-blast-radius discipline.
+
+Either of the above means: continue at §11.3 with the SQLite-direct fallback — it does not require the admin token to authenticate.
+
+### §11.3 — SQLite-direct fallback (works regardless of API auth)
+
+Canonical SQLite paths (per `architecture/current.yaml`'s STOCK-E2E wave-tracker + the `data/media/media.db.sqlite` default from §10.2). Column names verified against `internal/kernel/job/job.go::Job` JSON tags + the actual `jobs`/`job_events` table schema on `origin/main`:
+
+- `jobs` (canonical): `id, type, status, priority, project, video_name, active_key, correlation_id, payload_json, result_json, progress, error, retry_count, max_retries, worker_id, lease_id, lease_expiry, revision, created_at, updated_at, started_at, completed_at, cancelled_at, workflow_id, workflow_step_id, parent_state_typed`. **The pre-Fase-4 `retries` column does NOT exist; canonical column name is `retry_count`.**
+- `job_events` (canonical): `id, job_id, type, message, data_json, created_at`. **The `level` / `stage` / `error_code` columns do NOT exist on `job_events`; do not query them.**
+
+```bash
+DB='./data/media/media.db.sqlite'
+JOB='job_1783924561995565623_559b55fa'
+
+echo "# sqlite diag (works without API auth) for $JOB"
+
+# 1. Inspect the canonical job row (retry_count, NOT retries).
+sqlite3 -header -column "$DB" \
+  "SELECT id, type, status, progress, retry_count, max_retries,
+          substr(coalesce(error,''),1,160) AS error_head,
+          worker_id, substr(worker_id,1,32) AS worker_head,
+          created_at, started_at, updated_at, cancelled_at
+   FROM jobs
+   WHERE id='$JOB';"
+
+# 2. Inspect the FULL event timeline (no level/stage filtering — columns do not exist).
+sqlite3 -header -column "$DB" \
+  "SELECT id, type, substr(coalesce(message,''),1,140) AS message_head,
+          substr(coalesce(data_json,''),1,80) AS data_head,
+          created_at
+   FROM job_events
+   WHERE job_id='$JOB'
+   ORDER BY created_at ASC;"
+
+# 3. Operational fingerprint: errors / retry mentions / scraper / driver / timeout / auth.
+sqlite3 -header -column "$DB" \
+  "SELECT type, substr(coalesce(message,''),1,140) AS message_head, created_at
+   FROM job_events
+   WHERE job_id='$JOB' AND (
+        lower(coalesce(type,'')) IN ('error','warning')
+     OR lower(coalesce(message,'')) LIKE '%retry%'
+     OR lower(coalesce(message,'')) LIKE '%fail%'
+     OR lower(coalesce(message,'')) LIKE '%drive%'
+     OR lower(coalesce(message,'')) LIKE '%scraper%'
+     OR lower(coalesce(message,'')) LIKE '%timeout%'
+     OR lower(coalesce(message,'')) LIKE '%auth%'
+     OR lower(coalesce(message,'')) LIKE '%candidate%'
+   )
+   ORDER BY created_at ASC LIMIT 50;"
+
+# 4. Per-provider aggregate (operator sees the trend; e.g. 14 CANCELLED for media.artlist).
+sqlite3 -header -column "$DB" \
+  "SELECT status, retry_count, max_retries, count(*) AS n
+   FROM jobs
+   WHERE type='media.artlist'
+   GROUP BY status, retry_count, max_retries
+   ORDER BY status, retry_count;"
+```
+
+### §11.4 — Interpretation rules (state → next-action)
+
+Cross-references §3; consistent with the lifecycle tree declared in `internal/kernel/job/job.go::Status` (`QUEUED → LEASED → RUNNING → WAITING_CHILDREN → FINALIZING → SUCCEEDED | PARTIALLY_SUCCEEDED | FAILED | CANCELLED`) with `RETRY_WAIT → QUEUED` as the recovery loop.
+
+| Observed state                                                                  | Class                                                                          | Operator action                                                      |
+|---------------------------------------------------------------------------------|--------------------------------------------------------------------------------|----------------------------------------------------------------------|
+| `status=RETRY_WAIT` AND `retry_count < max_retries`                             | Transient retry pause (broker scheduled retry, scheduled `ScheduleRetry`)     | Observe. The broker drives `RETRY_WAIT → QUEUED` per `kernel/job/store.go::Store.Retry`; no manual intervention needed. |
+| `status=QUEUED` AND `retry_count > 0`                                           | Retry enqueued; awaiting worker claim                                          | Observe. If stuck in QUEUED with no claims, inspect worker runtime per `internal/application/jobs/worker/runner.go`. |
+| `status=FAILED` (retries exhausted)                                             | Terminal — retry logic hit `max_retries`                                       | Ship the canonical PR forward-pointer (see §11.5). Re-run by operator via `POST /api/jobs/{id}/retry` after the fix. |
+| `status=CANCELLED`                                                              | Operator-or-system cancellation (`POST /api/jobs/{id}/cancel` OR policy rule) | No auto-recovery. Inspect `cancelled_at` AND the most-recent timeline event to disambiguate operator vs system. Re-run manually after fix. |
+| `status=SUCCEEDED` (terminal but expected post-finalize-projection)             | Sanity: assert `media_assets` row + outbox + Qdrant visibility per §3         | If `error` field is non-empty on a SUCCEEDED row → `PR-JOBS-ERROR-VS-STATUS-DRIFT`; same fix as §3 "SUCCEEDED but empty projection". |
+| `status=WAITING_CHILDREN` / `FINALIZING` (non-terminal, parent aggregation)     | Parent aggregation in flight                                                  | Observe the parent's aggregator per `internal/application/scripts/jobs/parent_aggregator.go`. Do NOT cancel. |
+
+### §11.5 — Forward-pointer dispatch table (Artlist-specific)
+
+Per godlike/06 SSOT (one canonical owner per fact). For the operator who lands on §11 with a `media.artlist` job, these are the canonical mappings from observed surface → canonical fix site:
+
+| Condition (diagnostic result)                                                            | Forward-pointer                  | Canonical owner file (godlike/06 SSOT)                                                                                       | Action                                                                                              |
+|------------------------------------------------------------------------------------------|----------------------------------|------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| `error="no candidates found"` (or message contains `no candidates found`)                 | `PR-ARTLIST-NO-CANDIDATES`       | `internal/application/assets/providers/artlist/run_orchestrator_stages.go::stageDiscoverClips` (line 52: `resp.Error = "no candidates found"`) | Inspect Artlist searcher chain (`internal/application/assets/providers/artlist/search_core.go::buildSearcherChain`); confirm the search term yields ≥1 result; verify the live scraper (`node-scraper/artlist_search.js`) `SCROLL_TIMEOUT ≥ 120` per the post-rotation timeouts. |
+| First-party error event `"artlist run failed"` (any detail) but `error` column differs  | `PR-ARTLIST-RUN-FAILED`          | `internal/application/assets/providers/artlist/job_core.go` (line 333: `tools.Event("error", "artlist run failed", map[string]any{...})`) | Inspect `data_json` for the underlying cause; the broker surfaces failure here AND moves the row to RETRY_WAIT (then CANCELLED on max-retries). |
+| Run alternates `run_service.go` (line 81 `resp.Error = "no candidates found"`) variant | `PR-ARTLIST-RUN-SERVICE-NO-HITS` | `internal/application/assets/providers/artlist/run_service.go` (line 81)                                                     | Same root cause as `PR-ARTLIST-NO-CANDIDATES`; different entry-point. Apply the same fix; one canonical owner policy does NOT permit merging the two PRs — each entry owns a distinct seam. |
+| Job stuck on `WAITING_CHILDREN` longer than the orchestrator's aggregator timeout       | `PR-ARTLIST-PARENT-AGG-HANG`     | `internal/application/scripts/jobs/parent_aggregator.go` (cross-capability aggregator; only applies to parent jobs of type `media.artlist`)  | Inspect parent aggregator; verify all children reached terminal. NOT a media.artlist-only symptom — may belong under the WAVE-21 PR-G scripts subpkg closure. |
+| `status=CANCELLED` (operator action or policy)                                           | (no auto-recovery)               | `n/a`                                                                                                                        | Document cancellation reason in `internal/infrastructure/database/sqlite/jobs/repository_commands.go::Cancel` lineage; operator re-runs after the upstream fix. |
+
+### §11.6 — Operator handoff ack checklist (run BEFORE re-running the affected job)
+
+1. **§11.1 token fingerprint**: printed `cut -c1-16` non-empty + matches the known-good deployment fingerprint.
+2. **API path chosen**: `§11.2` returns `HTTP 200` AFTER rotation+restart; otherwise proceed at §11.3.
+3. **SQLite schema verified**: the diagnosis used ONLY canonical columns (`retry_count`, no `level/stage/error_code` in `job_events`).
+4. **Forward-pointer resolved**: §11.5 row applied (commit on the canonical owner file, NOT here).
+5. **Pre-flight re-run**: `bash tests/operational/artlist_live_e2e_verify.sh` (per the post-rotation cleanup card; OUT-OF-SCOPE for §11 but mandatory before the post-fix live re-run is treated as clean).
+6. **Lockstep**: lock OR drive-by fix on the canonical owner file landed on `main`; §11 stays doc-only and never edits code.
+
+### §11.7 — Sign-off + lockstep
+
+Per godlike/06 SSOT: §11 references canonical-files only via §11.5 owner pointers + §11.2 / §11.3 column lists synthesized from `internal/kernel/job/job.go` (Job struct) + the on-disk DDL (which the SQLite fallback renders). Cross-references: §3 diagnosis table (operator-facing decision tree) + §4 pre-flight gate (env-var contract) + §10.2 env-var contract (live battery).
+
+**Authoritative owner of facts in §11**:
+
+- Job lifecycle (terminal map, `RETRY_WAIT → QUEUED` recovery) → `internal/kernel/job/job.go` + `internal/kernel/job/store.go::Store.Retry`.
+- `/api/jobs/{id}/...` response shape + `PR-ERROR-SURFACING` 2026-07-04 → `internal/api/jobs/impl.go`.
+- Admin-token precedence + 401 semantics → `internal/api/middleware/admin_token.go`.
+- Artlist forward-pointers → `internal/application/assets/providers/artlist/{run_orchestrator_stages.go, job_core.go, run_service.go, search_core.go}` per row in §11.5.
+- SQLite DDL → `migrations/sqlite/` (canonical owner of column names; do not invent columns in §11 recipes that aren't on disk).
+
+Re-run `bash -n` on every shell snippet in §11.1 → §11.5 after any operator commit that touches this section. Drift detection: any snippet whose `bash -n` flags a syntax error is a godlike/06 SSOT regression — fix the snippet, NOT the receiving operator's command line.
