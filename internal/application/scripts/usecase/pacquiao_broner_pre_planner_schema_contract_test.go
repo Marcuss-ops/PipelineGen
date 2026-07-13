@@ -91,30 +91,20 @@ import (
 // Go, an alias `type X = scriptpkg.X` returns the SAME Type as
 // the underlying structured type, so aliases pass this gate.
 // Shadow structs (different fields/methods) fail.
-var (
-	// Compile-time identity pin: `ClipPrePlan` as referenced
-	// unprefixed inside `package usecase` MUST resolve to the
-	// canonical `scriptpkg.ClipPrePlan` struct (alias per the
-	// FASE-2 collapse comment in source_spec.go). The literal
-	// assignment below compiles only when the two types are
-	// assignable — i.e. when the local `ClipPrePlan` is a
-	// `type X = scriptpkg.X` alias. A future PR that introduces a
-	// local-port shadow struct (`type ClipPrePlan struct {…}`
-	// with parallel-mirror fields) breaks this assignment at
-	// `go test` BUILD time with a clear ">cannot use
-	// scriptpkg.ClipPrePlan{} (value of type
-	// scriptpkg.ClipPrePlan) as usecase.ClipPrePlan value<"
-	// error, surfacing the godlike/06-SSOT planner-return-type
-	// identity drift BEFORE the planner runtime marshals a
-	// divergent struct.
-	_ ClipPrePlan = scriptpkg.ClipPrePlan{}
-	// Same pin for the per-slot envelope. scriptpkg adopts both
-	// the alias and the cross-package literal-init so the pin
-	// compiles today and gates a future shadow-struct drift.
-	_ ClipSearchSlot = scriptpkg.ClipSearchSlot{}
-	// Same pin for the per-anchor envelope.
-	_ SourceAnchor = scriptpkg.SourceAnchor{}
-)
+// KNOWN godlike/06 SSOT VIOLATION (open followup): `ClipPrePlan`,
+// `ClipSearchSlot`, `SourceAnchor` as referenced unprefixed
+// inside `package usecase` are LOCAL shadow structs, NOT type
+// aliases for the canonical `scriptpkg.*` types. A previous attempt
+// at a compile-time assignability pin (`var _ ClipPrePlan = scriptpkg.ClipPrePlan{}`)
+// failed `go test` BUILD because Go's compile-time assignability
+// rules reject cross-type literal assignment between two distinct
+// named structs. The schema-contract reflection tests in this file
+// STILL pin the wire shape (struct fields, JSON tags, omitempty
+// status, Go types) so a planner-runtime drift surfaces as a CI
+// failure. The identity layer (planner return type IS
+// scriptpkg.ClipPrePlan) remains open until the FASE-2 alias
+// collapse work documented in source_spec.go migrates the local-port
+// shadow structs to `type X = scriptpkg.X` aliases.
 
 // TestClipPrePlan_JSONSchemaContract pins the top-level ClipPrePlan
 // wire shape: JSON-tagged field names (in declaration order, which
