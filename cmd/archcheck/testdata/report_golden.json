@@ -162,7 +162,7 @@
     },
     {
       "file": "internal/api/assets/clips/module.go",
-      "line": 88,
+      "line": 94,
       "actual_count": 26,
       "allowed_count": 8,
       "matched_rule": "max_struct_deps",
@@ -388,7 +388,7 @@
     },
     {
       "package": "cmd/admin",
-      "actual_count": 61,
+      "actual_count": 62,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
@@ -396,7 +396,7 @@
     },
     {
       "package": "internal/app",
-      "actual_count": 118,
+      "actual_count": 119,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
@@ -420,7 +420,7 @@
     },
     {
       "package": "internal/infrastructure/database/sqlite/assets",
-      "actual_count": 61,
+      "actual_count": 62,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
@@ -495,6 +495,7 @@
     "Check B1 (RootFolderOverride): 2 comment-only reference(s) in internal/api/script/handler_facade.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 2 comment-only reference(s) in internal/application/assets/lifecycle/service.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/lifecycle/service_voiceover.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/processing/orchestrator.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/providers/stock/stockpipeline/util.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/sourcing/youtube/adapters.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "Check B1 (RootFolderOverride): 1 comment-only reference(s) in internal/application/assets/sourcing/youtube/usecase/publish_drive.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
