@@ -43,3 +43,14 @@ func (a sqlTxAdapter) QueryRowContext(ctx context.Context, query string, args ..
 func WrapTx(tx *sql.Tx) finalization.Transaction {
 	return sqlTxAdapter{tx: tx}
 }
+
+// UnwrapSQLTx returns the underlying *sql.Tx when the transaction
+// was produced by WrapTx. This lets AssetCommitter callers that
+// need a concrete *sql.Tx participate in the same transaction.
+func UnwrapSQLTx(t finalization.Transaction) (*sql.Tx, bool) {
+	a, ok := t.(sqlTxAdapter)
+	if !ok {
+		return nil, false
+	}
+	return a.tx, true
+}

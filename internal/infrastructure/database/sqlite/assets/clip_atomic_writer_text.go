@@ -9,7 +9,6 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/localized"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
 // CommitClipTextAndIndexEvent performs the canonical atomic localized
@@ -72,16 +71,12 @@ func (w *ClipAtomicWriterAdapter) CommitClipTextAndIndexEvent(
 		}
 	}()
 
-	// ── 2) UPSERT media_assets (BLOCKER #2 closure: source_version
-	//     written to the DB column, mirroring the outbox envelope).
+	// ── 2) UPSERT media_assets + outbox via AssetCommitter.
 	nowStr := w.now().UTC().Format(time.RFC3339)
-	policyVersion := cmd.Clip.PolicyVersion
-	if policyVersion == "" {
-		policyVersion = derivePolicyVersion(cmd.Clip.ID)
-	}
-	sourceVersion := deriveSourceVersion(cmd.Clip.ID, cmd.Clip.FileHash, policyVersion)
-	if uerr := upsertClipInTx(ctx, tx, cmd.Clip.ID, cmd.Clip, sourceVersion, nowStr); uerr != nil {
-		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipTextAndIndexEvent: upsert clip: %w", uerr)
+	req := w.buildCommitRequest(cmd.Clip.ID, cmd.Clip)
+	res, err := w.committer.CommitTx(ctx, tx, req)
+	if err != nil {
+		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipTextAndIndexEvent: commit asset: %w", err)
 	}
 
 	// ── 3) UPSERT asset_text_tracks (RETURNING id for FK resolution).
@@ -101,35 +96,6 @@ func (w *ClipAtomicWriterAdapter) CommitClipTextAndIndexEvent(
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipTextAndIndexEvent: insert segments: %w", serr)
 	}
 
-	// ── 5) Build canonical v1 outbox envelope (no SQL — outboxevents.BuildReindexEnvelopeV1).
-	eventKey, payloadJSON, berr := outboxevents.BuildReindexEnvelopeV1(
-		cmd.Clip.ID,
-		outboxevents.ReindexEnvelopeV1Schema,
-		sourceVersion,
-		w.now().UTC(),
-	)
-	if berr != nil {
-		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipTextAndIndexEvent: build envelope: %w", berr)
-	}
-
-	// ── 6) INSERT outbox_events (tx-bound helper).
-	eventType := cmd.IndexEvent.Type
-	if eventType == "" {
-		eventType = outboxevents.EventAssetIndexRequested
-	}
-	aggregateID := cmd.IndexEvent.AggregateID
-	if aggregateID == "" {
-		aggregateID = cmd.Clip.ID
-	}
-	enqResult, eerr := enqueueClipIndexEventInTx(
-		ctx, w.box, tx,
-		eventType, aggregateID, cmd.Clip.ID,
-		payloadJSON, eventKey,
-	)
-	if eerr != nil {
-		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipTextAndIndexEvent: outbox enqueue: %w", eerr)
-	}
-
 	// ── 7) Commit (orchestrator-owned).
 	if cerr := tx.Commit(); cerr != nil {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipTextAndIndexEvent: commit: %w", cerr)
@@ -137,18 +103,17 @@ func (w *ClipAtomicWriterAdapter) CommitClipTextAndIndexEvent(
 	committed = true
 
 	// ── 8) BLOCKER #4 closure: terminal conflict → typed error.
-	if terr := checkOutboxTerminalAfterCommit(w.log, enqResult, cmd.Clip.ID, eventKey); terr != nil {
+	if terr := checkOutboxTerminalAfterCommit(w.log, res.OutboxInserted, cmd.Clip.ID, res.OutboxEventKey); terr != nil {
 		return terr
 	}
 
 	if w.log != nil {
 		w.log.Debug("ClipAtomicWriterAdapter.CommitClipTextAndIndexEvent: clip + tracks + segments + index event committed atomically",
 			zap.String("clip_id", cmd.Clip.ID),
-			zap.String("event_key", eventKey),
-			zap.String("source_version", sourceVersion),
+			zap.String("event_key", res.OutboxEventKey),
 			zap.Int("text_tracks", len(cmd.TextTracks)),
 			zap.Int("timed_tracks", len(cmd.TimedTracks)),
-			zap.Bool("outbox_inserted", enqResult.Inserted))
+			zap.Bool("outbox_inserted", res.OutboxInserted))
 	}
 	return nil
 }
