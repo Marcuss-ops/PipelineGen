@@ -173,6 +173,7 @@ known_grandfathered:
   - "internal/application/images (25 files) — in_progress to capability/images split"
   - "internal/application/youtube (43 files) — in_progress to capability/youtube split"
   - "internal/api (≤11 productive files in root + wave-14 transport consolidation done; further splits pending Wave 22+)"
+  - "internal/application/assets/providers/stock/stockpipeline (79 files) — in_progress to stockpipeline/{ingest,finalize,publish,cleanup,reconcile} phase split; target subzones honor canonical max_files_per_package=40 cap (PR-STOCKPIPELINE-PHASE-SPLIT, July 2026)"
   - "internal/infrastructure/database/sqlite/{jobs,outbox,assets,...} — SQL redistribution to capabilities in_progress"
 
 # ── Prometheus boundary (generic pkg-layer governance, June 2026) ─────────────
