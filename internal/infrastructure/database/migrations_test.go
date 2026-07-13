@@ -328,6 +328,215 @@ func TestMigrations_Smoke(t *testing.T) {
 		}
 	})
 
+	// ── PR-CATALOG-MULTILINGUA step 1 (July 2026) — migrations 152 + 153.
+
+	// CanonicalConsolidationColumnsPresent asserts the 13 canonical
+	// metadata columns added by migration 152 are physically present
+	// on media_assets. Mirrors the structural pattern of
+	// QdrantAssetColumnsPresent above. Each required entry MUST be
+	// backed by a corresponding ALTER TABLE in
+	// migrations/sqlite/152_add_canonical_metadata_columns.sql.
+	t.Run("CanonicalConsolidationColumnsPresent", func(t *testing.T) {
+		required := []string{
+			"source_provider", "source_video_id", "source_channel_id",
+			"source_url", "start_ms", "end_ms", "original_language",
+			"title", "binary_sha256", "semantic_hash",
+			"rights_status", "policy_version", "lifecycle_status",
+		}
+		rows, err := db.Query(`PRAGMA table_info(media_assets)`)
+		if err != nil {
+			t.Fatalf("PRAGMA table_info(media_assets): %v", err)
+		}
+		defer rows.Close()
+		seen := make(map[string]struct{}, 64)
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, ctype string
+			var dfltValue sql.NullString
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+				t.Fatalf("scan table_info row: %v", err)
+			}
+			seen[name] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate table_info: %v", err)
+		}
+		for _, col := range required {
+			if _, ok := seen[col]; !ok {
+				t.Errorf("media_assets missing canonical column %q (added by migration 152; canonical.go in this package must mirror it)", col)
+			}
+		}
+	})
+
+	// CanonicalConsolidationColumnsRoundTrip inserts a media_assets
+	// row with all 13 canonical columns populated and reads it back
+	// via raw SQL. Migrating an empty DB is the integration-test
+	// equivalent of "FetchAsset works on fixture in-memory".
+	t.Run("CanonicalConsolidationColumnsRoundTrip", func(t *testing.T) {
+		const assetID = "rt-canon-1"
+		_, err := db.Exec(`
+			INSERT INTO media_assets (
+				id, source_provider, source_video_id, source_channel_id,
+				source_url, start_ms, end_ms, original_language, title,
+				binary_sha256, semantic_hash, rights_status,
+				policy_version, lifecycle_status
+			) VALUES (
+				?, 'youtube', 'yt-consolidate-1', 'UC_consolidate',
+				'https://www.youtube.com/watch?v=yt-consolidate-1',
+				?, ?, 'en', 'Round-Trip Canonical Title',
+				?, 'semhash-from-asset-visual-summaries-0001',
+				'permission_granted', 'v1', 'READY_MULTILINGUAL'
+			)`,
+			assetID,
+			int64(32000), int64(37000),
+			// binary_sha256 is a 64-char SHA-256 hex string.
+			"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		)
+		if err != nil {
+			t.Fatalf("insert canonical round-trip asset: %v", err)
+		}
+		var (
+			sourceProvider, sourceVideoID, sourceChannelID, sourceURL string
+			startMs, endMs                                            int64
+			originalLanguage, title, binarySHA256, semanticHash       string
+			rightsStatus, policyVersion, lifecycleStatus              string
+		)
+		err = db.QueryRow(`
+			SELECT source_provider, source_video_id, source_channel_id,
+			       source_url, start_ms, end_ms, original_language, title,
+			       binary_sha256, semantic_hash, rights_status,
+			       policy_version, lifecycle_status
+			FROM media_assets WHERE id = ?`, assetID,
+		).Scan(&sourceProvider, &sourceVideoID, &sourceChannelID, &sourceURL,
+			&startMs, &endMs, &originalLanguage, &title,
+			&binarySHA256, &semanticHash, &rightsStatus,
+			&policyVersion, &lifecycleStatus)
+		if err != nil {
+			t.Fatalf("select canonical round-trip asset: %v", err)
+		}
+		expectations := map[string]string{
+			"source_provider":   sourceProvider,
+			"source_video_id":   sourceVideoID,
+			"source_channel_id": sourceChannelID,
+			"source_url":        sourceURL,
+			"original_language": originalLanguage,
+			"title":             title,
+			"binary_sha256":     binarySHA256,
+			"semantic_hash":     semanticHash,
+			"rights_status":     rightsStatus,
+			"policy_version":    policyVersion,
+			"lifecycle_status":  lifecycleStatus,
+		}
+		wants := map[string]string{
+			"source_provider":   "youtube",
+			"source_video_id":   "yt-consolidate-1",
+			"source_channel_id": "UC_consolidate",
+			"source_url":        "https://www.youtube.com/watch?v=yt-consolidate-1",
+			"original_language": "en",
+			"title":             "Round-Trip Canonical Title",
+			"binary_sha256":     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			"semantic_hash":     "semhash-from-asset-visual-summaries-0001",
+			"rights_status":     "permission_granted",
+			"policy_version":    "v1",
+			"lifecycle_status":  "READY_MULTILINGUAL",
+		}
+		for col, got := range expectations {
+			if got != wants[col] {
+				t.Errorf("canonical round-trip %s = %q, want %q", col, got, wants[col])
+			}
+		}
+		if startMs != 32000 {
+			t.Errorf("canonical round-trip start_ms = %d, want 32000", startMs)
+		}
+		if endMs != 37000 {
+			t.Errorf("canonical round-trip end_ms = %d, want 37000", endMs)
+		}
+	})
+
+	// AssetArtifactsTablePresent asserts that the asset_artifacts
+	// table created by migration 153 has all 16 columns in canonical
+	// order, that the FK to media_assets(id) is registered, and that
+	// the 3 supporting indexes are present.
+	t.Run("AssetArtifactsTablePresent", func(t *testing.T) {
+		var count int
+		err := db.QueryRow(
+			`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='asset_artifacts'`,
+		).Scan(&count)
+		if err != nil {
+			t.Fatalf("check asset_artifacts presence: %v", err)
+		}
+		if count != 1 {
+			t.Fatalf("asset_artifacts table missing in sqlite_master (count=%d, want 1)", count)
+		}
+
+		rows, err := db.Query(`PRAGMA table_info(asset_artifacts)`)
+		if err != nil {
+			t.Fatalf("PRAGMA table_info(asset_artifacts): %v", err)
+		}
+		defer rows.Close()
+		seen := make(map[string]struct{}, 32)
+		for rows.Next() {
+			var cid, notnull, pk int
+			var name, ctype string
+			var dfltValue sql.NullString
+			if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+				t.Fatalf("scan asset_artifacts table_info row: %v", err)
+			}
+			seen[name] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatalf("iterate asset_artifacts table_info: %v", err)
+		}
+		required := []string{
+			"id", "asset_id", "role", "mime_type",
+			"local_path", "drive_file_id", "drive_link",
+			"file_size", "file_sha256",
+			"width", "height", "frame_rate", "duration_ms",
+			"status", "created_at", "updated_at",
+		}
+		for _, col := range required {
+			if _, ok := seen[col]; !ok {
+				t.Errorf("asset_artifacts missing column %q (declared by migration 153)", col)
+			}
+		}
+
+		// FK from asset_artifacts.asset_id → media_assets.id.
+		var fkCount int
+		err = db.QueryRow(
+			`SELECT COUNT(*) FROM pragma_foreign_key_list('asset_artifacts')
+			 WHERE "table" = 'media_assets' AND "from" = 'asset_id' AND "to" = 'id'`,
+		).Scan(&fkCount)
+		if err != nil {
+			t.Fatalf("read asset_artifacts foreign_key_list: %v", err)
+		}
+		if fkCount != 1 {
+			t.Errorf("asset_artifacts.asset_id FK to media_assets.id missing (count=%d, want 1)", fkCount)
+		}
+
+		// 3 supporting indexes.
+		artifactsIndexes := mustReadIndexNames(t, db, "asset_artifacts")
+		for _, want := range []string{
+			"idx_asset_artifacts_asset_role",
+			"idx_asset_artifacts_unique_singleton",
+			"idx_asset_artifacts_status_updated",
+		} {
+			if !contains(artifactsIndexes, want) {
+				t.Errorf("asset_artifacts missing index %q (declared by migration 153)", want)
+			}
+		}
+	})
+}
+
+// contains is a tiny stdlib-free helper used only by the migration
+// smoke tests; mirrors slices.Contains behaviour to keep imports
+// minimal.
+func contains(haystack []string, needle string) bool {
+	for _, item := range haystack {
+		if item == needle {
+			return true
+		}
+	}
+	return false
 }
 
 // itoa is a tiny stdlib-free formatter used to keep foreign_key_check
