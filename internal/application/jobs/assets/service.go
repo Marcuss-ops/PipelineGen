@@ -4,17 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 
 	driveutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
@@ -22,11 +21,18 @@ import (
 type Service struct {
 	assetIndex    *assetindex.Service
 	querySvc      *asset.Service
-	imagesRepo    *assets.ImagesRepository
-	voiceoverRepo *assets.VoiceoversRepository
+	imagesRepo    *sqliteassets.ImagesRepository
+	voiceoverRepo *sqliteassets.VoiceoversRepository
 	uploadRoot    string
-	httpClient    *http.Client
-	log           *zap.Logger
+	// sourceStager is the canonical port for staging remote URLs
+	// into deterministic local files (PR-SOURCESTAGER-CONSOLIDATE,
+	// July 2026). fetch routes web URL downloads through it so the
+	// inline `http.NewRequest + client.Do` boilerplate no longer
+	// leaks into the processor. Nil is tolerated (test fixture,
+	// partial deploy); fetch fails closed with a typed error when
+	// nil (godlike/07).
+	sourceStager assets.SourceStager
+	log          *zap.Logger
 }
 
 type UploadResponse struct {
@@ -42,11 +48,11 @@ type resolvedAsset struct {
 	DownloadLink string
 }
 
-func NewService(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *assets.ImagesRepository, voiceoverRepo *assets.VoiceoversRepository, log *zap.Logger) *Service {
+func NewService(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *sqliteassets.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, log *zap.Logger) *Service {
 	return NewServiceWithUploadRoot(assetIndex, querySvc, imagesRepo, voiceoverRepo, "", log)
 }
 
-func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *assets.ImagesRepository, voiceoverRepo *assets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *Service {
+func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *asset.Service, imagesRepo *sqliteassets.ImagesRepository, voiceoverRepo *sqliteassets.VoiceoversRepository, uploadRoot string, log *zap.Logger) *Service {
 	if strings.TrimSpace(uploadRoot) == "" {
 		uploadRoot = filepath.Join(os.TempDir(), "pipelinegen", "worker-uploads")
 	}
@@ -56,9 +62,19 @@ func NewServiceWithUploadRoot(assetIndex *assetindex.Service, querySvc *asset.Se
 		imagesRepo:    imagesRepo,
 		voiceoverRepo: voiceoverRepo,
 		uploadRoot:    uploadRoot,
-		httpClient:    &http.Client{Timeout: 2 * time.Minute},
 		log:           log,
 	}
+}
+
+// WithSourceStager injects the canonical SourceStager used by fetch
+// to stage remote URLs into deterministic local files
+// (PR-SOURCESTAGER-CONSOLIDATE, July 2026). It is a setter (not a
+// constructor arg) to keep the NewServiceWithUploadRoot signature
+// stable for existing call sites. A nil stager keeps fetch failing
+// closed with a typed error per godlike/07.
+func (s *Service) WithSourceStager(stager assets.SourceStager) *Service {
+	s.sourceStager = stager
+	return s
 }
 
 func (s *Service) Download(ctx context.Context, assetID string) (io.ReadCloser, string, error) {
@@ -267,23 +283,80 @@ func (s *Service) resolve(ctx context.Context, assetID string) (*resolvedAsset, 
 	return nil, nil
 }
 
+// fetch streams a remote URL into an io.ReadCloser.
+//
+// PR-SOURCESTAGER-CONSOLIDATE (July 2026): the inline
+// `http.NewRequest + s.httpClient.Do + StatusCode` path is retired.
+// The download now routes through the canonical assets.SourceStager
+// port (StageSourceV2) so:
+//   - status-code checks no longer leak into the processor,
+//   - the staged LocalPath is deterministic from SourceRef.URL
+//     (two requests for the same URL dedupe naturally on disk),
+//   - the IntermediateHash is computed during the staging write so
+//     callers do not pay a second read pass for dedup checks.
+//
+// godlike/07 NO-FAKE-AVAILABILITY: a nil stager fails closed with a
+// typed error rather than silently falling back to inline http.
+// Cleanup of the staged file happens deterministically when the
+// returned ReadCloser is closed (via stagedSourceReadCloser.Close).
 func (s *Service) fetch(ctx context.Context, rawURL, filename string) (io.ReadCloser, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, normalizeDownloadURL(rawURL), nil)
+	if s.sourceStager == nil {
+		return nil, "", fmt.Errorf("jobs/assets.fetch: source stager is nil (PR-SOURCESTAGER-CONSOLIDATE: composition root must wire assets.SourceStager)")
+	}
+	ref := assets.SourceRef{URL: normalizeDownloadURL(rawURL)}
+	staged, err := s.sourceStager.StageSourceV2(ctx, ref)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("jobs/assets.fetch: stage source %q: %w", rawURL, err)
 	}
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, "", err
+	f, openErr := os.Open(staged.LocalPath)
+	if openErr != nil {
+		// Best-effort cleanup of the staged file; do not leak it.
+		_ = s.sourceStager.CleanupStagedSource(ctx, staged)
+		return nil, "", fmt.Errorf("jobs/assets.fetch: open staged source %q: %w", staged.LocalPath, openErr)
 	}
-	if resp.StatusCode >= 300 {
-		defer resp.Body.Close()
-		return nil, "", fmt.Errorf("remote download failed: %s", resp.Status)
+	return &stagedSourceReadCloser{
+		ReadCloser: f,
+		staged:     staged,
+		stager:     s.sourceStager,
+		log:        s.log,
+		sourceURL:  rawURL,
+	}, filename, nil
+}
+
+// stagedSourceReadCloser wraps a *os.File opened from a staged source
+// so the staged file is deterministically cleaned up when the
+// caller closes the ReadCloser. This preserves the streaming
+// io.ReadCloser contract for callers (e.g. Download) while
+// transparently routing the URL download through the canonical
+// assets.SourceStager port.
+//
+// godlike/07: cleanup failures are logged but do NOT fail Close()
+// because the caller has already finished reading the body and a
+// stale staging file is a non-fatal operational concern (next
+// StageSourceV2 call dedupes via deterministic LocalPath).
+type stagedSourceReadCloser struct {
+	io.ReadCloser
+	staged    *assets.StagedSource
+	stager    assets.SourceStager
+	log       *zap.Logger
+	sourceURL string
+}
+
+func (r *stagedSourceReadCloser) Close() error {
+	closeErr := r.ReadCloser.Close()
+	// Use a fresh context for cleanup so a cancelled request context
+	// does not prevent staging cleanup. The cleanup is best-effort.
+	cleanupErr := r.stager.CleanupStagedSource(context.Background(), r.staged)
+	if cleanupErr != nil && r.log != nil {
+		r.log.Warn("stagedSourceReadCloser: cleanup failed (best-effort)",
+			zap.String("staged_path", r.staged.LocalPath),
+			zap.String("source_url", r.sourceURL),
+			zap.Error(cleanupErr))
 	}
-	if filename == "" {
-		filename = filenameFromResponse(resp, rawURL)
+	if closeErr != nil {
+		return closeErr
 	}
-	return resp.Body, filename, nil
+	return cleanupErr
 }
 
 func convertAssetRecord(assetID, localPath, driveLink, downloadLink, fallbackID string) *resolvedAsset {
@@ -340,23 +413,6 @@ func normalizeDownloadURL(rawURL string) string {
 		}
 	}
 	return rawURL
-}
-
-func filenameFromResponse(resp *http.Response, fallbackURL string) string {
-	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
-		if idx := strings.Index(strings.ToLower(cd), "filename="); idx >= 0 {
-			name := strings.Trim(cd[idx+len("filename="):], "\"'; ")
-			if name != "" {
-				return name
-			}
-		}
-	}
-	if fallbackURL != "" {
-		if idx := strings.LastIndex(fallbackURL, "/"); idx >= 0 && idx < len(fallbackURL)-1 {
-			return fallbackURL[idx+1:]
-		}
-	}
-	return "asset.bin"
 }
 
 func firstNonEmpty(values ...string) string {

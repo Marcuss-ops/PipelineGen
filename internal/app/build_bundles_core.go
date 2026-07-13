@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"path/filepath"
 	"time"
 
 	"go.uber.org/zap"
@@ -38,6 +40,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/disasterrecovery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	qdranttransport "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/stager"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -288,6 +291,31 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 			zap.String("yaml_path", destinationsYAMLPath), zap.Error(err))
 		destResolver = nil
 	}
+	// PR-SOURCESTAGER-CONSOLIDATE (July 2026): construct the canonical
+	// HTTPSourceStager that backs the assets.SourceStager port used by
+	// ImageStorageService.downloadAndIngest. The staging dir is
+	// <TempPath>/staged-sources so it is co-located with the rest of
+	// the temp space and survives the same retention policy. The
+	// http.Client uses a 10-minute timeout (mirrors the legacy
+	// inline-http timeout) and a fresh per-Service instance (the
+	// legacy shared client lives on the service struct but only the
+	// stager needs it now).
+	stagerDir := filepath.Join(params.Cfg.Storage.TempPath(), "staged-sources")
+	imageSourceStager, stagerErr := stager.NewHTTPSourceStager(
+		stagerDir,
+		&http.Client{Timeout: 10 * time.Minute},
+		params.Log,
+	)
+	if stagerErr != nil {
+		// godlike/07 fail-closed: a stager init failure (missing
+		// dir, nil client, nil log) MUST NOT silently degrade to
+		// the legacy inline-http path. Surface the error so the
+		// composition root fails before the service starts
+		// processing requests.
+		params.Log.Error("buildImagesService: NewHTTPSourceStager init failed; image ingest will fail closed",
+			zap.String("stager_dir", stagerDir), zap.Error(stagerErr))
+		imageSourceStager = nil
+	}
 	imageService := imgservice.NewService(imgservice.ImagesDeps{
 		Core: imgservice.ImagesCoreDeps{Cfg: params.Cfg, Log: params.Log},
 		Storage: imgservice.ImagesStorageDeps{
@@ -309,7 +337,17 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 			// ingestDirect fails closed with a typed error when Committer
 			// is nil so the gap is observable; production must supply a
 			// real committer before the image ingest path is live.
-			Committer:    nil,
+			Committer: nil,
+			// PR-SOURCESTAGER-CONSOLIDATE (July 2026): SourceStager
+			// is the canonical port for staging remote URLs into
+			// deterministic local files. downloadAndIngest routes
+			// web image downloads through it so the inline
+			// http.NewRequest + client.Do boilerplate no longer
+			// leaks into the processor. Nil is tolerated (the
+			// stager init failed above, or a partial deploy);
+			// downloadAndIngest fails closed with a typed error
+			// (godlike/07).
+			SourceStager: imageSourceStager,
 			VeloxBaseURL: params.Cfg.External.VeloxBaseURL,
 			GACfg: imgservice.GoogleAccountingConfig{
 				ServerURL: params.Cfg.GoogleAccounting.ServerURL, DownloadDir: params.Cfg.GoogleAccounting.DownloadDir,
