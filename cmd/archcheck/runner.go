@@ -252,7 +252,12 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// same pattern (file-local max_*_fields key + Policy
 		// field + registered check).
 		{"percheck_clip_ingest_pipeline_canonical_1", func(root string, pol *policy.Policy, r *report.Report) {
-			scan.ScanClipIngestPipelineCanonical1(root)
+			// Append-only convention (mirrors scanner-returning-slice patterns
+			// elsewhere in the codebase): the scanner returns a typed
+			// []report.Violation. Dropping the slice makes the percheck
+			// a silent no-op — the godlike/06 SSOT forward-prevention
+			// invariant would be invisible to the operator.
+			r.Violations = append(r.Violations, scan.ScanClipIngestPipelineCanonical1(root)...)
 		}},
 		// Wave 1.3 (July 2026): forward-prevention gate that
 		// pins the SceneAssetBinder-purity invariant. The
