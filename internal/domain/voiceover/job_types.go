@@ -21,4 +21,8 @@ const (
 	// TypeGenerateItem is the canonical job type for a single
 	// voiceover-generation item (per-line TTS dispatch).
 	TypeGenerateItem = "voiceover.generate_item"
+
+	// TypePromo is the canonical job type for voiceover promo
+	// generation (operator-curated promotional clip TTS).
+	TypePromo = "voiceover.promo"
 )
