@@ -20,13 +20,13 @@
 //     indirection) or weaken the heavy-init contract by accepting a
 //     weaker interface upstream. Both are anti-patterns.
 //   - godlike/07 NO-FAKE-AVAILABILITY:
-//     * Nil io.Writer -> defaults to `os.Stdout` (CLI UX must always
-//       land where the operator reads; silent no-op is the failing-
-//       closed-as-silent-noop anti-pattern).
-//     * `json.Marshal` error from the JSON method is RETURNED, not
-//       silently swallowed (machine consumers expect a JSON line and
-//       any marshal failure must surface somewhere — the typed error
-//       is the only way per Q4 NO-FAKE-AVAILABILITY).
+//   - Nil io.Writer -> defaults to `os.Stdout` (CLI UX must always
+//     land where the operator reads; silent no-op is the failing-
+//     closed-as-silent-noop anti-pattern).
+//   - `json.Marshal` error from the JSON method is RETURNED, not
+//     silently swallowed (machine consumers expect a JSON line and
+//     any marshal failure must surface somewhere — the typed error
+//     is the only way per Q4 NO-FAKE-AVAILABILITY).
 package maintenance
 
 import (
