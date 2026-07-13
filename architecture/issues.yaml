@@ -694,3 +694,64 @@ issues:
     evidence_filename: "tests/operational/godlike_docs_audit_2026-11.md"
     opened_date: 2026-07-13
     tracking_issue: "godlike/06 SSOT carry-forward discipline; policy.yaml::data_ownership_doc / legacy_policy_doc / ci_gates_doc / agent_playbook_doc / removal_doc rule families"
+
+  # ── PRE-EXISTING-17-CMD-ADMIN-REGISTRY-DRIFT — admin subcommand test scan-target fix (ST-VERIFY-17) ──
+  # Test scan-target bug diagnosis (July 13 2026): the existing
+  # TestAdminCommands_AreRegistered in cmd/admin/admin_test.go scanned
+  # cmd/admin/main.go for `case "X":` arms. main.go is a PURE COMPOSITION
+  # DELEGATOR (per its own file-header comment) that only calls
+  # `dispatchSubcommand(name, args)`; the actual `case "X":` arms live
+  # in cmd/admin/subcommands.go::dispatchSubcommand. With 34 subcommands
+  # in availableCommands and ZERO arms in main.go, the test fail-count
+  # was 34 false-positives per Run.
+  #
+  # Pre-fix diagnostic (this commit's check):
+  #   `grep -cE '^\s*case\s+"' cmd/admin/main.go` -> 0
+  #   `grep -cE '^\s*case\s+"' cmd/admin/subcommands.go` -> 34
+  #   `comm -23 ... availableCommands ... case arms ...` -> empty (zero diff)
+  #   `comm -13 ...` -> empty (zero diff)
+  # Confirms 1:1 match between availableCommands and dispatchSubcommand's
+  # `case "X":` arms once the test's scan target is corrected.
+  #
+  # Resolution (this commit): retarget the test's filepath.Join arg from
+  # "main.go" to "subcommands.go" (4 string substitutions in
+  # admin_test.go: line 12 docstring + line 44 filepath.Join + line 47
+  # read-failure message + line 59 test-failure message). NO new imports,
+  # NO new functions, NO production-code edits. subcommands.go is the
+  # canonical dispatcher per its file-header ("the canonical command
+  # list, the dispatch switch, and the usage block live in
+  # cmd/admin/subcommands.go"); the test now points at the canonical
+  # source per godlike/06 SSOT.
+  #
+  # Auto-cure property: any future addition to either availableCommands
+  # or dispatchSubcommand without pairing the other side fails the test
+  # with an explicit error message identifying the missing partner. The
+  # test is now structurally self-curing per godlike/07 zero-baseline.
+  #
+  # Verification (this commit, bounded):
+  #   `go test -race -v -count=3 -run TestAdminCommands_AreRegistered ./cmd/admin` -> PASS exit 0 over 3 deterministic runs
+  #   `go vet ./cmd/admin/...` -> exit 0
+  #   `go test -count=0 ./cmd/admin/...` -> compile-clean
+  #   `gofmt -l .` -> empty (no new drift introduced)
+  #
+  # Debt-budget counter impact: this entry lands as `status: resolved`
+  # in the same commit as the fix; counter-status-includes=["open"]
+  # excludes both in_progress and resolved from the open-counter
+  # per policy.yaml::debt_budget::. The new entry adds zero pressure to
+  # max_pre_existing_open=9 (the cap stays at current-value with -17
+  # already in resolved state at landing).
+  - id: PRE-EXISTING-17-CMD-ADMIN-REGISTRY-DRIFT
+    title: "cmd/admin TestAdminCommands_AreRegistered scan target bug — failures false-positive on main.go instead of subcommands.go::dispatchSubcommand"
+    status: resolved
+    severity: p2
+    owner_capability: "cmd/admin/admin_test.go::TestAdminCommands_AreRegistered"
+    follow_up:
+      - "Action (closed): retargeted test's filepath.Join from \"main.go\" to \"subcommands.go\" (4 string substitutions only). The canonical dispatcher is subcommands.go::dispatchSubcommand per its own header; the test now points at the canonical source per godlike/06 SSOT."
+      - "Pre-fix diagnostic: 34 false-positive test failures because main.go has 0 `case \"X\":` arms (it is a pure delegator that only calls `dispatchSubcommand(name, args)`); all 34 arms live in subcommands.go dispatchSubcommand. Cross-reference comm -23 / comm -13 confirmed 1:1 coverage when scan target is correct."
+      - "Auto-cure property: future additions that update either availableCommands OR dispatchSubcommand without pairing will fail the test with explicit error messages naming both files. Structurally self-curing per godlike/07 zero-baseline."
+      - "Verification: `go test -race -v -count=3 -run TestAdminCommands_AreRegistered ./cmd/admin` PASS exit 0 deterministically; `go vet` + `go test -count=0` source-limited smoke both clean; `gofmt -l .` empty."
+      - "Do not assume `availableCommands` is the test source AND the production source by default; the production dispatcher IS subcommands.go, and the test now scans that file. If the next refactor moves `availableCommands` itself, update this entry's evidence_filename accordingly."
+    evidence_filename: "commit d7b82f07==HEAD~1 ground-truth diagnostic (dispatchSubcommand 34 arms, availableCommands 34 entries, comm -23 / comm -13 both empty) + this entry's companion commit message body (4-sed-diff inlined; per AGENTS.md 'Git history is the archive' rule, no separate .md attachment — commit body IS the canonical trace)"
+    opened_date: "2026-07-13"
+    closed_date: "2026-07-13"
+    tracking_issue: "godlike/06 SSOT single-source-of-truth; godlike/07 zero-baseline auto-cure property; AGENTS.md Operational rule 'Atomic commits, no bundling' (this fix is one commit, one entry-published resolution, one test-target retarget)"
