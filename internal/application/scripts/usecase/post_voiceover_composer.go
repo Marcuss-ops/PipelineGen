@@ -25,11 +25,13 @@ import (
 // Godlike/07 NO-FAKE-AVAILABILITY: typed sentinels. Every caller can errors.Is
 // these to distinguish composition-time failures from runtime failures.
 var (
-	ErrComposerEmptyModelOutput    = errors.New("post-voiceover composer: empty model output (no segments)")
-	ErrComposerRefBindingMissing   = errors.New("post-voiceover composer: ref has no binding entry in BindingTable")
-	ErrComposerNilPublisher        = errors.New("post-voiceover composer: nil delivery.Publisher at construction (would silently no-op Drive write)")
-	ErrComposerNilResolver         = errors.New("post-voiceover composer: nil RefBindingResolver at construction")
-	ErrComposerManifestDestination = errors.New("post-voiceover composer: empty delivery.DestinationKey (would dangle on Drive)")
+	ErrComposerEmptyModelOutput      = errors.New("post-voiceover composer: empty model output (no segments)")
+	ErrComposerRefBindingMissing     = errors.New("post-voiceover composer: ref has no binding entry in BindingTable")
+	ErrComposerNilPublisher          = errors.New("post-voiceover composer: nil delivery.Publisher at construction (would silently no-op Drive write)")
+	ErrComposerNilResolver           = errors.New("post-voiceover composer: nil RefBindingResolver at construction")
+	ErrComposerManifestDestination   = errors.New("post-voiceover composer: empty delivery.DestinationKey (would dangle on Drive)")
+	ErrComposerIncompleteRefBinding  = errors.New("post-voiceover composer: resolved RefBinding has empty ClipID or DriveLink (would write a structurally bogus manifest; godlike/07 NO-FAKE-AVAILABILITY)")
+	ErrComposerInvalidRefTimeRange   = errors.New("post-voiceover composer: resolved RefBinding has invalid time range (StartMs < 0 or EndMs <= StartMs)")
 )
 
 // RefBinding is the canonical tabular binding row produced post-voiceover.
@@ -170,6 +172,17 @@ func (c *PostVoiceoverComposer) ComposeAndPublish(
 		b, err := c.resolver.Resolve(ctx, seg.Ref)
 		if err != nil {
 			return SpecSceneManifest{}, delivery.PublishResult{}, fmt.Errorf("resolve ref %q at index %d: %w", seg.Ref, i, err)
+		}
+		// godlike/07 NO-FAKE-AVAILABILITY: validate the resolved RefBinding
+		// BEFORE hydrating the manifest. A resolver returning a partial
+		// binding (empty ClipID/DriveLink or invalid StartMs/EndMs) would
+		// otherwise write a structurally-bogus JSON to Drive — clients
+		// would parse it successfully but find the clip unusable.
+		if b.ClipID == "" || b.DriveLink == "" {
+			return SpecSceneManifest{}, delivery.PublishResult{}, fmt.Errorf("ref %q at index %d: incomplete RefBinding (ClipID=%q, DriveLink=%q): %w", seg.Ref, i, b.ClipID, b.DriveLink, ErrComposerIncompleteRefBinding)
+		}
+		if b.StartMs < 0 || b.EndMs <= b.StartMs {
+			return SpecSceneManifest{}, delivery.PublishResult{}, fmt.Errorf("ref %q at index %d: invalid RefBinding time range (StartMs=%d, EndMs=%d): %w", seg.Ref, i, b.StartMs, b.EndMs, ErrComposerInvalidRefTimeRange)
 		}
 		manifest.Scenes = append(manifest.Scenes, SpecSceneEntry{
 			Ref:   seg.Ref,
