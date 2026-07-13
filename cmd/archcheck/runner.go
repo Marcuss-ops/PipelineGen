@@ -237,6 +237,23 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// Test files (`_test.go` suffix) and the scanner's
 		// own package (cmd/archcheck/scan/**) are exempt.
 		{"percheck_asset_state_no_shadow_enum", scan.ScanAssetStateNoShadowEnum},
+		// Check PR-CLIPINGEST-PIPELINE step 8 (July 2026):
+		// forward-prevention gate for the canonical
+		// `ClipIngestPipeline` literal surface. Per godlike/06
+		// SSOT, ONLY internal/application/assets/ingest/
+		// clip_ingest_pipeline.go (and its _test sibling) may
+		// declare `type ClipIngestPipeline struct` or use a
+		// `ClipIngestPipeline{...}` / `*ClipIngestPipeline{...}` /
+		// package-qualified `<pkg>.ClipIngestPipeline{...}`
+		// composite literal. Percheck lifts the max_struct_deps
+		// ceiling via policy.max_clip_ingest_pipeline_fields: 9
+		// for this struct family; production lifts for any
+		// future structurally-significant struct follow the
+		// same pattern (file-local max_*_fields key + Policy
+		// field + registered check).
+		{"percheck_clip_ingest_pipeline_canonical_1", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanClipIngestPipelineCanonical1(root)
+		}},
 		// Wave 1.3 (July 2026): forward-prevention gate that
 		// pins the SceneAssetBinder-purity invariant. The
 		// canonical ScenePlanner (internal/application/scripts/
