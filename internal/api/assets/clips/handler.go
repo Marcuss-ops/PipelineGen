@@ -35,7 +35,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/duplicates"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
@@ -77,7 +77,7 @@ type Deps struct {
 	SearchSvc        *search.Aggregator
 	ProcessRunner    appassets.ProcessRunner
 	Dispatcher       appclips.ClipIndexDispatcherPort
-	SearchAggregator *providers.SearchAggregator
+	DuplicateFinder  *duplicates.Finder
 	ReuploadUC       *appclips.ReuploadUseCase
 	EnrichUC         *appclips.EnrichUseCase
 	BulkUploadWorker *appclips.BulkUploadWorker
@@ -99,9 +99,9 @@ type Handler struct {
 	Idempotency gin.HandlerFunc
 
 	// Action cluster mirror fields (split 3 TBD).
-	assetRepo        asset.Repository
-	searchAggregator *providers.SearchAggregator
-	driveAdmin       drive.Admin
+	assetRepo       asset.Repository
+	driveAdmin      drive.Admin
+	duplicateFinder *duplicates.Finder
 	downloadUC       *appclips.DownloadUseCase
 	reuploadUC       *appclips.ReuploadUseCase
 	publisher        delivery.Publisher
@@ -144,9 +144,7 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	var idem gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if idempotencyMiddleware != nil {
 		idem = idempotencyMiddleware
-	}
-
-	// S1a (June 2026): when the composition root supplies a shared
+	}	// S1a (June 2026): when the composition root supplies a shared
 	// EnrichUC, reuse it; when nil (test fixture, partial deploy),
 	// construct a local fallback copy that preserves pre-lift behaviour.
 	enrichUC := enrichUCOrLocal(d.EnrichUC, d.AssetRepo, d.MetaWriter, d.Log)
@@ -155,10 +153,10 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	reprocessUC := appclips.NewReprocessUseCase(d.AssetRepo, d.MediaProcessor, nil)
 
 	h := &Handler{
-		Idempotency:      idem,
-		assetRepo:        d.AssetRepo,
-		searchAggregator: d.SearchAggregator,
-		driveAdmin:       d.DriveAdmin,
+		Idempotency:     idem,
+		assetRepo:       d.AssetRepo,
+		duplicateFinder: d.DuplicateFinder,
+		driveAdmin:      d.DriveAdmin,
 		downloadUC:       downloadUC,
 		reuploadUC:       d.ReuploadUC,
 		publisher:        d.Publisher,

@@ -62,6 +62,16 @@ type DuplicateMatch struct {
 	// AssetID is the canonical asset identifier (UUID).
 	AssetID string `json:"asset_id"`
 
+	// Source is the canonical source identity (e.g. "youtube",
+	// "artlist", "stock", "local").
+	Source string `json:"source"`
+
+	// Name is the human-readable asset name.
+	Name string `json:"name"`
+
+	// ThumbnailURL is the public thumbnail URL, when available.
+	ThumbnailURL string `json:"thumbnail_url,omitempty"`
+
 	// LocalPath is the filesystem path to the asset's bytes on
 	// the running instance. Used by operators for visual
 	// verification or filesystem-level cleanup.
