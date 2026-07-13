@@ -448,6 +448,80 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_providers_searchaggregator_ban", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanProvidersSearchAggregatorBan(root, pol, r, productionOnly)
 		}},
+		// Check 78 (PR-DIAGNOSI-FINALE rule 1, July 2026):
+		// forward-prevention gate for the canonical
+		// SceneAssetBinder's interaction with the canonical
+		// SceneSynthesizer. Per godlike/06 SSOT, the
+		// SceneAssetBinder (internal/application/scripts/scene/
+		// binder.go) is the SOLE owner of scene-binding
+		// mutations, AND it MUST NOT round-trip through the
+		// SceneSynthesizer (which lives in the same package
+		// for pre-binder orchestration). A binder ->
+		// synthesizer route either re-runs synthesis
+		// (idempotent cost) OR overwrites already-shaped
+		// scene.Text with synthesized prose (silent P0 #2
+		// invariant regression). The gate pins this
+		// invariant by inspection of the canonical binder
+		// file alone; comment-only references to
+		// SceneSynthesizer are residue-accounted (godlike/07).
+		{"percheck_assetbinder_no_scenesynthesizer", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanAssetBinderNoSynthesizer(root, pol, r, productionOnly)
+		}},
+		// Check 79 (PR-DIAGNOSI-FINALE rule 3, July 2026):
+		// forward-prevention gate for the canonical
+		// `asset.index.requested` outbox-event emission
+		// surface. Per godlike/06 SSOT + QDRANT-002 atomicity
+		// invariant, the AssetCommitter.CommitAsset pathway
+		// (internal/application/assets/persistence/committer.go
+		// or internal/application/assets/processing/
+		// asset_committer.go) is the SOLE legitimate emitter
+		// for the canonical `asset.index.requested.v1`
+		// envelope. Production-code emission of the literal
+		// outside the canonical AssetCommitter chain (and
+		// outside the documented exempt zones) surfaces as a
+		// CI build failure. Comment-only references are
+		// residue-accounted (godlike/07); productionOnly
+		// mode silences the WARN bucket so the operator-
+		// facing "zero production-code hits" claim is
+		// auditable via len(r.Violations) == 0.
+		{"percheck_asset_committer_event_ssot", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanAssetCommitterEventSSOT(root, pol, r, productionOnly)
+		}},
+		// Check 80 (PR-DIAGNOSI-FINALE rule 4, July 2026):
+		// forward-prevention gate for the canonical sole
+		// caller of `transport.Client.UpsertPoints(`. Per
+		// godlike/06 SSOT, the IndexingHandler outbox
+		// consumer in
+		// internal/infrastructure/qdrant/indexing/ is the
+		// sole production caller of qdrant.UpsertPoints.
+		// The regex requires a dot-receiver before the
+		// function name so the transport-package function
+		// declaration line (`func (c *Client) UpsertPoints(
+		// ...)`) is naturally exempt. Test fixtures are
+		// exempt; the residue is documented in
+		// migrations/api/archcheck-strict-baseline.json
+		// (godlike/07 migration-window permit).
+		{"percheck_upsert_points_sole_owner", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanUpsertPointsSoleOwner(root, pol, r, productionOnly)
+		}},
+		// Check 81 (PR-DIAGNOSI-FINALE rule 6, July 2026):
+		// forward-prevention gate for the canonical
+		// SearchAggregator singleton invariant. Per
+		// godlike/06 SSOT, the canonical SearchAggregator
+		// is constructed EXACTLY ONCE at the composition
+		// root (internal/app/registry_search.go or
+		// internal/app/search_backends.go). The gate
+		// counts production-code construction sites of
+		// `search.NewAggregator(` and asserts the count
+		// is exactly 1; 0 callers trips a "singleton-missing"
+		// violation (godlike/07 NO-FAKE-AVAILABILITY
+		// regression); > 1 callers trips a
+		// "singleton-duplicated" violation (godlike/06
+		// SSOT singleton-divergence). The workerdoctor
+		// .Aggregator is a separate-domain helper and is
+		// naturally exempt by the regex (requires the
+		// search. qualifier). Test files are exempt.
+		{"percheck_search_aggregator_singleton", scan.ScanSearchAggregatorSingleton},
 	}
 }
 

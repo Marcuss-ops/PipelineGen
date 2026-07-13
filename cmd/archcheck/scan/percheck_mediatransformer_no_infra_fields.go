@@ -83,7 +83,28 @@ var mediaTransformerTargetTypes = []string{"TransformSpec", "RenditionSet"}
 //
 // "qdrant"  covers Qdrant vectors / qdrant.Client / etc.
 // "sqlite"  covers SQLite / *sql.DB / sqlite3 / etc.
-var mediaTransformerForbiddenSubstrings = []string{"drive", "qdrant", "sqlite"}
+// "folderid"      covers FolderID / folder_id (Drive folder anchor).
+// "downloadlink"  covers DownloadLink / download_link (Drive download URL).
+// "md5"           covers MD5 (Drive upload checksum, NOT a transformer concern).
+// "publishaction" covers PublishAction (Drive upload action, NOT a transformer concern).
+// "clippageurl"   covers ClipPageURL (artlist provider URL, NOT a transformer concern).
+//
+// PR-DIAGNOSI-FINALE rule 9 strengthening (July 2026): the MediaTransformer
+// is local-only. The 5 added substrings cover the 5 Drive / provider-specific
+// fields that step 2 of PR-MEDIATRANSFORMER-RENAME will REMOVE. The gate
+// already tripped on these fields (forward-pointer); the explicit substring
+// list locks the forward-prevention invariant so the substring count is
+// a single-line forward-pointer reference rather than a derived inference.
+var mediaTransformerForbiddenSubstrings = []string{
+	"drive",
+	"qdrant",
+	"sqlite",
+	"folderid",
+	"downloadlink",
+	"md5",
+	"publishaction",
+	"clippageurl",
+}
 
 // mediaTransformerFieldRe matches a Go struct field declaration
 // of the shape `FieldName TypeExpr` inside a struct body. It
@@ -115,7 +136,7 @@ const mediaTransformerRule = "percheck_mediatransformer_no_infra_fields"
 // forbidden fields. The message references the canonical SOLE
 // owner + the forward-prevention gate so the operator sees
 // the migration path inline.
-const mediaTransformerNote = "forbidden field in MediaTransformer DTO (PR-MEDIATRANSFORMER-RENAME step 1, July 2026): the MediaTransformer is a local-only transformer and MUST NOT carry Drive/Qdrant/SQLite fields in its DTOs; route the infrastructure concern through the orchestrator + finalizer + commit layers downstream. Step 2 of PR-MEDIATRANSFORMER-RENAME deletes the existing forbidden fields and this gate will pass"
+const mediaTransformerNote = "forbidden field in MediaTransformer DTO (PR-MEDIATRANSFORMER-RENAME step 1, July 2026; PR-DIAGNOSI-FINALE rule 9, July 2026): the MediaTransformer is a local-only transformer and MUST NOT carry Drive/Qdrant/SQLite/provider-specific fields (FolderID, DownloadLink, MD5, PublishAction, ClipPageURL) in its DTOs; route the infrastructure concern through the orchestrator + finalizer + commit layers downstream. Step 2 of PR-MEDIATRANSFORMER-RENAME deletes the existing forbidden fields and this gate will pass"
 
 // mediaTransformerSkipDirs mirrors percheck_asset_state_no_shadow_enum.go's
 // standard skip-dir set.
