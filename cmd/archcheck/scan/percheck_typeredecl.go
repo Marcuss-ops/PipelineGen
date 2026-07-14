@@ -71,15 +71,15 @@ const duplicateTypesAllowlistRelPath = "docs/migrations/duplicate-types-allowlis
 // the type name (X), with the type parameter list ignored — the
 // shell awk regex matches the same way.
 //
-// Allowlist file format (matches shell):
+// Allowlist file format (matches shell, with dirpath-aware superset):
 //
 //	# comments are ignored
-//	<pkg>:<TypeName>            # rationale + owner + deadline
+//	<pkg>:<TypeName>                 # legacy — suffix-match against new key
+//	<dirpath>\x00<pkg>\x00<TypeName>  # precise — exact key match
 //
-// Only the first whitespace-separated token (`<pkg>:<TypeName>`)
-// is consumed. A missing allowlist file is treated as zero
-// entries (no exceptions), matching the shell `if [ -f ... ]`
-// guard.
+// Only the first whitespace-separated token is consumed. A
+// missing allowlist file is treated as zero entries (no
+// exceptions), matching the shell `if [ -f ... ]` guard.
 func ScanTypeRedeclarations(root string, pol *policy.Policy, r *report.Report) {
 	allowlist := loadDuplicateTypesAllowlist(root)
 
@@ -88,10 +88,16 @@ func ScanTypeRedeclarations(root string, pol *policy.Policy, r *report.Report) {
 		"node-scraper": true, "examples": true, "scripts": true,
 	}
 
-	// typeSites maps <package>:<TypeName> to the list of
-	// (file, line) sites where the type is declared. We use a
-	// composite key (rather than a nested map) so the
-	// dedup-and-sort pass is a single linear walk.
+	// typeSites maps a NUL-separated (dirpath,pkg,TypeName)
+	// composite key to the list of (file, line) sites where the
+	// type is declared. We use a composite key (rather than a
+	// nested map) so the dedup-and-sort pass is a single linear walk.
+	//
+	// The dirpath component distinguishes distinct Go packages that
+	// happen to share the same package NAME (e.g. `package job` in
+	// internal/domain/job vs internal/kernel/job), eliminating
+	// cross-directory same-package-NAME false positives while still
+	// detecting TRUE same-package (same-dir) redeclarations.
 	type site struct{ file, line string }
 	typeSites := map[string][]site{}
 
@@ -130,6 +136,7 @@ func ScanTypeRedeclarations(root string, pol *policy.Policy, r *report.Report) {
 		// (f.Decls). No two-pass pattern needed.
 		relPath, _ := filepath.Rel(root, path)
 		relPath = filepath.ToSlash(relPath)
+		pkgPath := filepath.Dir(relPath)
 
 		for _, decl := range f.Decls {
 			gd, ok := decl.(*ast.GenDecl)
@@ -148,7 +155,7 @@ func ScanTypeRedeclarations(root string, pol *policy.Policy, r *report.Report) {
 					continue
 				}
 				pos := fset.Position(ts.Pos())
-				key := pkg + ":" + ts.Name.Name
+				key := pkgPath + "\x00" + pkg + "\x00" + ts.Name.Name
 				typeSites[key] = append(typeSites[key], site{
 					file: relPath,
 					line: pos.String(), // "file:line:col"
@@ -170,17 +177,37 @@ func ScanTypeRedeclarations(root string, pol *policy.Policy, r *report.Report) {
 		if len(sites) < 2 {
 			continue
 		}
+		// Allowlist matching accepts BOTH the dirpath-aware
+		// composite key (new format) AND the legacy
+		// `<pkg>:<TypeName>` form (existing entries). Legacy
+		// entries are matched as a suffix of the dirpath-aware
+		// key: we convert their `:` separator to `\x00` and
+		// check whether the converted entry suffix-matches the
+		// trailing portion of the key.
+		allowed := false
 		if _, ok := allowlist[key]; ok {
+			allowed = true
+		}
+		if !allowed {
+			for entry := range allowlist {
+				converted := strings.Replace(entry, ":", "\x00", 1)
+				if converted != entry && strings.HasSuffix(key, converted) {
+					allowed = true
+					break
+				}
+			}
+		}
+		if allowed {
 			continue
 		}
-		// Split key back into pkg + name.
-		idx := strings.Index(key, ":")
-		if idx < 0 {
+		// Split the dirpath-aware key back into its 3 parts.
+		parts := strings.Split(key, "\x00")
+		if len(parts) != 3 {
 			continue
 		}
 		offenders = append(offenders, violationKey{
-			pkg:   key[:idx],
-			name:  key[idx+1:],
+			pkg:   parts[1],
+			name:  parts[2],
 			sites: sites,
 		})
 	}
