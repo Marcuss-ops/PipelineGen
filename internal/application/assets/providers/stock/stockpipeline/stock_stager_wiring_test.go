@@ -115,14 +115,14 @@ func (r *recordingStager) StageSource(ctx context.Context, ref assets.SourceRef)
 // Cleanup records the call + the staged asset the orchestrator hands
 // to the cleanup. Tests configure cleanupErr to drive the "cleanup
 // failure tolerated" path.
-func (r *recordingStager) CleanupStagedSource(ctx context.Context, staged *asset.StagedSource) error {
+func (r *recordingStager) Cleanup(_ context.Context, staged *assets.StagedAsset) error {
 	r.cleanupCalls++
-	_ = staged
+	r.cleanedStaged = staged
 	return r.cleanupErr
 }
 
-// Cleanup implements assets.SourceStager (legacy method).
-func (r *recordingStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
+// CleanupStagedSource implements assets.SourceStager.
+func (r *recordingStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
 	return nil
 }
 
