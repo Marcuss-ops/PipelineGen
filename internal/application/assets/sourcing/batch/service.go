@@ -112,7 +112,7 @@ func (s *Service) BatchRegister(ctx context.Context, commands []sourcing.Registe
 		)
 	}
 
-	log.Info("batch registration enqueued", "service", "batch", "enqueued", enqueued, "enqueueFailed", enqueueFailed)
+	log.Info("batch registration enqueued", "service", "batch", "enqueued_count", enqueued, "enqueue_failed", enqueueFailed)
 	return &sourcing.BatchRegisterResult{
 		OK:            true,
 		Total:         len(commands),
