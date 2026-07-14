@@ -41,7 +41,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // DispatcherPort is the application-layer port for DeletionService's
@@ -139,7 +138,7 @@ type DeletionService struct {
 	// maintenance/service_test.go) but ignored by DeleteClip. Future
 	// commit retires the field; tracked under the Blocco 3.1 commit
 	// 4/3 forward-pointer in architecture/current.yaml.
-	driveUploader *drive.Uploader
+	driveUploader any
 	assetTreeSvc  *assettree.Service
 	assetIndexSvc *assetindex.Service
 	dispatcher    DispatcherPort
@@ -177,7 +176,7 @@ func NewDeletionService(
 	artlistRepo, clipsRepo, stockRepo *assets.ClipsRepository,
 	voiceoverRepo *assets.VoiceoversRepository,
 	imagesRepo *assets.ImagesRepository,
-	driveUploader *drive.Uploader,
+	driveUploader any,
 	assetTreeSvc *assettree.Service,
 	assetIndexSvc *assetindex.Service,
 	dispatcher DispatcherPort,

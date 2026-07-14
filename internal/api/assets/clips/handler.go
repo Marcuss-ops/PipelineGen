@@ -25,14 +25,13 @@ import (
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 
 	"github.com/gin-gonic/gin"
@@ -44,7 +43,7 @@ type Deps struct {
 	ClipsRepo        *assets.ClipsRepository
 	AssetRepo        asset.Repository
 	DeletionSvc      *deletion.DeletionService
-	DriveAdmin       drive.Admin
+	DriveAdmin       any
 	MediaProcessor   asset.Processor
 	AssetTreeSvc     *assettree.Service
 	MetaWriter       semantic.MetadataWriterPort
@@ -74,7 +73,7 @@ type Handler struct {
 	Idempotency gin.HandlerFunc
 
 	assetRepo       asset.Repository
-	driveAdmin      drive.Admin
+	driveAdmin      any
 	duplicateFinder *duplicates.Finder
 	downloadUC      *appclips.DownloadUseCase
 	reuploadUC      *appclips.ReuploadUseCase

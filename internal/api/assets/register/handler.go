@@ -63,7 +63,7 @@ type Handler struct {
 // PR-DRIVE-AVAILABILITY-GATE (2026-07-04): driveChecker is the
 // canonical probe closure wired by the composition root from a
 // closure mirroring validateDriveServiceAvailability (returns nil iff
-// *drive.Uploader.Service is wired + cfg stat-OK). nil → defensive
+// the Drive Uploader service is wired + cfg stat-OK). nil → defensive
 // always-fail closure (godlike/07 no-fake-availability; an unwired
 // handler must NEVER silently accept folder_id traffic). The
 // composition root wires a real closure via Dependencies.DriveChecker;
@@ -258,7 +258,7 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 	// two levels: (a) the request-level BatchRegisterRequest.FolderID
 	// default that backfills per-clip FolderID below, or (b)
 	// individual clip FolderID overrides. Either path triggers
-	// the *drive.Uploader.Service dereference INSIDE
+	// the Drive Uploader service dereference INSIDE
 	// sourcing.Service.BatchRegisterFromYouTube — pre-gate this
 	// panics with 500 because the composition-root
 	// log.Warn("Google Drive client not initialized") silently

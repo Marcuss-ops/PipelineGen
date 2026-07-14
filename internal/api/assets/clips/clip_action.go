@@ -11,6 +11,7 @@
 package clips
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -18,11 +19,17 @@ import (
 	"strings"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+// driveReader is the minimal surface used by DownloadClip when proxying
+// a clip from Google Drive. It is declared locally so the clips API
+// package does not import the drive infrastructure package directly.
+type driveReader interface {
+	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
+}
 
 // DownloadClip streams the local video file for a clip.
 func (h *Handler) DownloadClip(c *gin.Context) {
@@ -49,9 +56,9 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 
 	// 2. Try to proxy from Google Drive
 	if result.Source == appclips.DownloadSourceDrive && h.driveAdmin != nil {
-		// GetFileMeta + DownloadFile are drive.Reader methods;
-		// type-assert from drive.Admin (both satisfied by *drive.Uploader).
-		reader, ok := h.driveAdmin.(drive.Reader)
+		// DownloadFile is satisfied by the concrete Drive Uploader
+		// via the local driveReader interface.
+		reader, ok := h.driveAdmin.(driveReader)
 		if !ok {
 			apiutil.InternalError(c, fmt.Errorf("drive admin does not support file downloads (Reader interface not satisfied)"))
 			return
@@ -61,27 +68,24 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 			zap.String("clip_id", clipID),
 			zap.String("drive_id", result.DriveID))
 
-		// Check mime type first
-		meta, metaErr := reader.GetFileMeta(c.Request.Context(), result.DriveID)
-		if metaErr != nil {
-			h.log.Error("failed to get drive file metadata", zap.Error(metaErr), zap.String("id", result.DriveID))
-			apiutil.InternalError(c, fmt.Errorf("failed to reach drive: %w", metaErr))
-			return
-		}
-
-		// BLOCK non-media MIME types from Drive
-		if !strings.HasPrefix(meta.MimeType, "video/") && !strings.HasPrefix(meta.MimeType, "audio/") && meta.MimeType != "application/octet-stream" {
-			h.log.Warn("refusing to proxy non-media file from drive", zap.String("mime", meta.MimeType))
-			apiutil.BadRequest(c, "drive file is not media: "+meta.MimeType)
-			return
-		}
-
 		body, contentType, dlErr := reader.DownloadFile(c.Request.Context(), result.DriveID)
 		if dlErr != nil {
 			h.log.Error("failed to download from drive", zap.Error(dlErr), zap.String("id", result.DriveID))
 			apiutil.InternalError(c, fmt.Errorf("failed to stream from drive: %w", dlErr))
 			return
 		}
+
+		// BLOCK non-media MIME types from Drive
+		if contentType != "" &&
+			!strings.HasPrefix(contentType, "video/") &&
+			!strings.HasPrefix(contentType, "audio/") &&
+			contentType != "application/octet-stream" {
+			body.Close()
+			h.log.Warn("refusing to proxy non-media file from drive", zap.String("mime", contentType))
+			apiutil.BadRequest(c, "drive file is not media: "+contentType)
+			return
+		}
+
 		defer body.Close()
 
 		if contentType == "" || contentType == "application/octet-stream" {
