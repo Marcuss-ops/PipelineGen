@@ -79,6 +79,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -434,16 +435,26 @@ func bootstrapCompletionSchema(db *sql.DB) error {
 //   - media_assets(id='art1')         — asset_index entry keyed on artifactID
 //     (Azione 1 lookup target).
 //   - jobs(id='j1', status='RUNNING') — CompleteWithArtifacts CAS target.
-//
-// Order matters: media_assets MUST come first because asset_locations
-// has a FK to media_assets(id) (even though storage.OpenSQLiteDB does
-// not enforce foreign_keys by default, INSERT ORDER preserves the
-// invariant for any future ON mode toggle).
+//	// Order matters: media_assets MUST come first because asset_locations
+	// has a FK to media_assets(id). storage.OpenSQLiteDB now enables
+	// foreign_keys enforcement, so we MUST satisfy the FK at insert
+	// time. The flow needs TWO media_assets rows:
+	//   - "art1"   : Resolver lookup target (Azione 1 asset_index key)
+	//   - "asset-1": FK target for asset_locations where asset_id is
+	//                the AssetMappings["art1"] → "asset-1" mapping result
+	//                produced by WithArtifactsService during completion.
+	// Both rows coexist; they document the canonical lookup-key vs
+	// FK-target split (godlike/06 SSOT: one canonical owner per fact).
 func seedCompletionFixtures(db *sql.DB, pngPath string) error {
 	if _, err := db.Exec(
 		`INSERT INTO media_assets (id, source, media_type, local_path) VALUES ('art1', 'artlist', 'image', ?)`,
 		pngPath); err != nil {
 		return fmt.Errorf("e2e test seed: media_assets: %w", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO media_assets (id, source, media_type, local_path) VALUES ('asset-1', 'artlist', 'image', ?)`,
+		pngPath); err != nil {
+		return fmt.Errorf("e2e test seed: media_assets (FK target): %w", err)
 	}
 	if _, err := db.Exec(
 		`INSERT INTO jobs (id, type, payload, status, lease_id, attempt, retry_count) VALUES ('j1', 'test.e2e', '{}', 'RUNNING', 'l1', 0, 0)`); err != nil {
@@ -874,11 +885,21 @@ func doPostJSON(t *testing.T, url string, body []byte, auth string) map[string]a
 	require.NoError(t, err, "execute POST to %q", url)
 	defer resp.Body.Close()
 
+	// Buffer body BEFORE the non-2xx assertion so the error
+	// message can include the response payload, AND decode from
+	// the buffered bytes (not the already-drained reader). The
+	// previous implementation called io.ReadAll + (then)
+	// json.NewDecoder(resp.Body).Decode, which EOF'd on the
+	// decoder because the body had been drained by io.ReadAll.
+	// Fix: one read → bytes → both the status message AND the
+	// JSON decode consume the same buffered copy.
+	bodyBytes, readErr := io.ReadAll(resp.Body)
+	require.NoError(t, readErr, "read response body from %q", url)
 	require.True(t, resp.StatusCode >= 200 && resp.StatusCode < 300,
-		"unexpected HTTP status %d from %q", resp.StatusCode, url)
+		"unexpected HTTP status %d from %q (body: %s)", resp.StatusCode, url, string(bodyBytes))
 
 	out := map[string]any{}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.Unmarshal(bodyBytes, &out); err != nil {
 		t.Fatalf("decode JSON from %q: %v", url, err)
 	}
 	return out
