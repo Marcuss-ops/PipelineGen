@@ -109,15 +109,9 @@ import (
 func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, root *ComposeRoot, registry *module.Registry) error {
 	// Phase 2 activation (June 2026) — root.AI / root.Domains required.
 	// PR-SCRIPTCONTRACT-COMPOSITION-WIRE (July 2026): root.Drive added to
-	// the canonical guard. PR-COMMIT3 (July 2026): the PreflightCaps
-	// construction is REMOVED alongside the preflight module
-	// (postprocessor_preflight.go) — the 3 gated fields
-	// (GenerateVoiceover / GenerateSceneImages / GenerateDocument)
-	// are physically removed from OutputSpec. Without this guard,
-	// a nil Drive bundle would panic with nil-pointer deref instead
-	// of failing-closed (godlike/07 fail-fast-at-input). Consistent
-	// with the existing pattern (root.AI / root.AI.ScriptGen /
-	// root.Domains).
+	// the canonical guard. Without this guard, a nil Drive bundle would
+	// panic with nil-pointer deref instead of failing-closed
+	// (godlike/07 fail-fast-at-input).
 	if root.AI == nil || root.AI.ScriptGen == nil || root.Domains == nil || root.Drive == nil {
 		return nil
 	}

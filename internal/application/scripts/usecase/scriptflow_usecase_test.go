@@ -5,7 +5,6 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -77,60 +76,6 @@ func TestSemaphoreUseCase_AcquireReleaseReuse(t *testing.T) {
 }
 
 // TestSemaphoreUseCase_NilSafe is now in semaphore_usecase_test.go
-
-// ── PrewarmUseCase ──────────────────────────────────────────────────────────
-
-type fakePrewarmSvc struct {
-	calls atomic.Int32
-	last  atomic.Pointer[struct {
-		jobID string
-		count int
-	}]
-}
-
-func (f *fakePrewarmSvc) TriggerPrewarm(ctx context.Context, jobID string, count int) {
-	f.calls.Add(1)
-	f.last.Store(&struct {
-		jobID string
-		count int
-	}{jobID: jobID, count: count})
-}
-
-func TestPrewarmUseCase_ShouldStart(t *testing.T) {
-	t.Parallel()
-	assert.True(t, ShouldStart(true, 0, 0))
-	assert.True(t, ShouldStart(false, 3, 0))
-	assert.True(t, ShouldStart(false, 0, 5))
-	assert.False(t, ShouldStart(false, 0, 0))
-}
-
-// TestPrewarmUseCase_ImageServiceNil is now in prewarm_usecase_test.go
-
-func TestPrewarmUseCase_NotStartedWhenGuardFalse(t *testing.T) {
-	t.Parallel()
-	svc := &fakePrewarmSvc{}
-	uc := NewPrewarmUseCase(svc, zap.NewNop())
-	err := uc.Start(context.Background(), "jobA", false)
-	require.NoError(t, err)
-	uc.Wait()
-	assert.Equal(t, int32(0), svc.calls.Load(), "TriggerPrewarm must not be called when shouldStart=false")
-}
-
-func TestPrewarmUseCase_FiresGoroutineWhenShouldStart(t *testing.T) {
-	t.Parallel()
-	svc := &fakePrewarmSvc{}
-	uc := NewPrewarmUseCase(svc, zap.NewNop()).WithTimeout(2 * time.Second).WithCount(7)
-	err := uc.Start(context.Background(), "jobA", true)
-	require.NoError(t, err)
-	uc.Wait()
-	assert.Equal(t, int32(1), svc.calls.Load())
-	last := svc.last.Load()
-	require.NotNil(t, last)
-	assert.Equal(t, "jobA", last.jobID)
-	assert.Equal(t, 7, last.count)
-}
-
-// TestPrewarmUseCase_NilUseCase is now in prewarm_usecase_test.go
 
 // ── DocumentsUseCase ────────────────────────────────────────────────────────
 

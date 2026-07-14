@@ -100,19 +100,12 @@ func buildResolutionContext(item scriptpkg.GenerationItemV2) scriptpkg.SourceRes
 		SegmentWords:  item.ScriptParams.SegmentWords,
 		SegmentTopics: append([]string(nil), item.ScriptParams.SegmentTopics...),
 		Segments:      append([]scriptpkg.ScriptSegment(nil), item.ScriptParams.Segments...),
-		// PR-COMMIT3 (July 2026): RequireDriveLink is HARDCODED to
-		// true. The previous derivation read the 2
-		// deprecation-registered output flags (GenerateDocument +
-		// GenerateSceneImages) which are physically removed in this
-		// commit. Hardcoding to true is the fail-closed default per
-		// godlike/07 NO-FAKE-AVAILABILITY: when a clip candidate
-		// lacks a Drive link, the resolver rejects it rather than
-		// silently substituting a clip with no renderable backing.
-		// A future source-resolution migration may introduce a
-		// non-deprecated OutputSpec.SourceRequireDriveLink field to
-		// restore caller override capability (OUT OF SCOPE for this
-		// commit per AGENTS.md "do not add features to production
-		// code unless the user explicitly requested them").
+		// RequireDriveLink is hardcoded to true as the canonical
+		// fail-closed default (godlike/07 NO-FAKE-AVAILABILITY). A
+		// future source-resolution migration may introduce a non-
+		// deprecated OutputSpec.SourceRequireDriveLink field to
+		// restore caller override capability (OUT OF SCOPE per
+		// AGENTS.md).
 		RequireDriveLink: true,
 	}
 }

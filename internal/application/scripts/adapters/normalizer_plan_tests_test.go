@@ -236,13 +236,9 @@ func TestNormalizeItemExplicitWordsBeatDuration(t *testing.T) {
 	}
 }
 
-// ── Preset: with_images changes ONLY sizing (drift-fix July 2026) ─────
+// ── Preset: with_images changes ONLY sizing ─────────────────────────────
 //
-// DRIFT-FIX (July 2026, user directive "nessun campo documentato come
-// deprecato può essere ancora materialmente rispettato"): per the
-// drift-fix GenerateSceneImages is REMOVED from the with_images preset;
-// the deprecation-registered flag is no longer promoted by the preset.
-// with_images now changes ONLY the image sizing fields
+// with_images changes ONLY the image sizing fields
 // (SentencesPerImage + ImagesPerScene), in caller-precedence order.
 
 func TestApplyPresetNilItem(t *testing.T) {

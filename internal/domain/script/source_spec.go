@@ -212,22 +212,14 @@ type SourceResolutionContext struct {
 
 	// RequireDriveLink tells the clip resolver whether clips MUST have
 	// a Drive link to be included in the resolved set. When true
-	// (the canonical PR-COMMIT3 fail-closed default), clips without
+	// (the canonical fail-closed default), clips without
 	// Drive links are rejected by the resolver and surfaced via
 	// MissingClipIDs (godlike/07 NO-FAKE-AVAILABILITY).
 	//
-	// PR-COMMIT3 (July 2026): HARDCODED to true in
-	// buildResolutionContext (internal/application/scripts/usecase/plan_resolution.go).
-	// The prior derivation from the 2 deprecation-registered output
-	// flags (GenerateDocument || GenerateSceneImages) is REMOVED
-	// because both flags are physically removed from OutputSpec in
-	// this commit. The hardcoded true is the canonical
-	// godlike/07 fail-closed default. A future source-resolution
-	// migration may introduce a non-deprecated
+	// Hardcoded to true in buildResolutionContext; a future source-
+	// resolution migration may introduce a non-deprecated
 	// OutputSpec.SourceRequireDriveLink field to restore caller
-	// override capability (OUT OF SCOPE for this commit per
-	// AGENTS.md "do not add features to production code unless the
-	// user explicitly requested them").
+	// override capability (OUT OF SCOPE per AGENTS.md).
 	RequireDriveLink bool `json:"-"`
 }
 
