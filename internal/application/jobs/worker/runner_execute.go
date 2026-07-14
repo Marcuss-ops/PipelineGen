@@ -121,7 +121,24 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 	// a non-empty handlerResult. Calling uploadManifest for those
 	// jobs would fail with ErrArtifactClientRequired and
 	// incorrectly terminal-fail an otherwise successful job.
-	var uploaded any
+	//
+	// Trade-off: an artifact-producing handler paired with a nil
+	// assetClient now silently completes with StatusSkipped
+	// artifacts instead of failing closed at the
+	// ErrArtifactClientRequired gate; ops dashboards must monitor
+	// outbox_events for missing artifact.<kind>.uploaded events
+	// to surface this misconfiguration.
+	//
+	// Hotfix from 670182936: typed pointer (was `var uploaded any`)
+	// preserves the silent-skip nil-check semantics. With `any`, an
+	// uploadManifest-call returning `(nil, nil)` assigned into the
+	// interface variable would set a typed-nil pointer wrapped in
+	// `any` — `if uploaded != nil` evaluates TRUE in that case,
+	// and the downstream `json.Marshal(uploaded)` would emit
+	// `"null"` instead of falling through to the handlerResult
+	// path. The typed pointer keeps `if uploaded != nil` as a
+	// concrete-pointer nil check.
+	var uploaded *job.RemoteArtifactManifest
 	if r.registry.ProducesArtifacts(lease.Job.Type) {
 		var upErr error
 		uploaded, upErr = r.uploadManifest(jobCtx, lease.Job.ID, handlerResult)
