@@ -48,8 +48,35 @@
 // that commit.
 package asset
 
+// AssetStateAlphabetCount is the canonical inventory size
+// for the AssetState enum (PR-CATALOG-MULTILINGUA step 7+,
+// July 2026).
+//
+// godlike/06 SSOT invariant: this const is the SINGLE
+// literal source-of-truth for the canonical-14 count across
+// the codebase. All consumers MUST reference
+// AssetStateAlphabetCount instead of a literal `14` so a
+// future PR adding/removing a state changes ONE literal
+// + the const declarations + CanonicalAssetStateValues()
+// + the matrix tests in lockstep:
+//
+//   - the percheck_asset_state_canonical_14 archcheck
+//     (cmd/archcheck/scan/percheck_asset_state_canonical_14.go)
+//     imports this const for its wantCount.
+//   - TestAssetState_CanonicalValuesExhaustive pins
+//     len(CanonicalAssetStateValues()) == AssetStateAlphabetCount.
+//   - TestAssetState_FileConstDeclarations pins the regex
+//     match count on the canonical file source.
+//
+// Adding/removing a state surfaces as a single CI build
+// failure cascade (the const literal, the const decls,
+// the helper method, the matrix tests, the scanner all
+// cross-check). Mirrors the per-city-set list-count
+// discipline used by other canonical alphabets.
+const AssetStateAlphabetCount = 14
+
 // AssetState is the canonical per-asset journey state machine.
-// 14 values, all UPPERCASE.
+// AssetStateAlphabetCount values, all UPPERCASE.
 type AssetState string
 
 const (

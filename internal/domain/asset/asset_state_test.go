@@ -38,6 +38,7 @@ package asset
 import (
 	_ "embed"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -481,8 +482,8 @@ func TestAssetState_UnknownTargetRejected(t *testing.T) {
 // update the IsValidTransition matrix AND the helper-methods
 // test AND the percheck_asset_state_canonical_14 archcheck.
 func TestAssetState_CanonicalValuesExhaustive(t *testing.T) {
-	assert.Len(t, CanonicalAssetStateValues(), 14,
-		"CanonicalAssetStateValues must return exactly 14 values; if you add a 15th, update the matrix AND helper-methods test AND the percheck_asset_state_canonical_14 archcheck pin")
+	assert.Len(t, CanonicalAssetStateValues(), AssetStateAlphabetCount,
+		"CanonicalAssetStateValues must return exactly AssetStateAlphabetCount values; if you add a state, bump AssetStateAlphabetCount in asset_state.go and update the matrix + helper-methods test + the percheck_asset_state_canonical_14 archcheck in lockstep")
 	assert.Equal(t, allAssetStates, CanonicalAssetStateValues(),
 		"CanonicalAssetStateValues must return values in the same order as allAssetStates (test-side mirror)")
 }
@@ -539,19 +540,22 @@ var assetStateConstDeclRe = regexp.MustCompile(`(?m)^\tStateAsset\w+\s+AssetStat
 // together — failure modes documented in the regex godoc.
 func TestAssetState_FileConstDeclarations(t *testing.T) {
 	matches := assetStateConstDeclRe.FindAllString(assetStateSource, -1)
-	if got := len(matches); got != 14 {
+	if got := len(matches); got != AssetStateAlphabetCount {
 		// Extract the StateAssetX identifier from each match
 		// so the failure diagnostic surfaces the actual
-		// spelled-out IDs the file declares.
+		// spelled-out IDs the file declares (matches the
+		// canonical [A-N] -> alphabet declared in
+		// asset_state.go::const ( ... ) OR the fixture
+		// [A-N] stubs the production-canary test injects).
 		var names []string
 		for _, m := range matches {
-			fields := regexp.MustCompile(`\s+`).Split(m, 3)
+			fields := strings.Fields(m)
 			if len(fields) > 0 {
 				names = append(names, fields[0])
 			}
 		}
-		t.Fatalf("asset_state.go source declares %d StateAssetX consts; want 14 (canonical-14 invariant). Matched IDs: %v. If you added/removed a state, update the canonical file + CanonicalAssetStateValues() + the matrix test + percheck_asset_state_canonical_14 in lockstep (godlike/06 SSOT).",
-			got, names)
+		t.Fatalf("asset_state.go source declares %d StateAssetX consts; want AssetStateAlphabetCount=%d. Matched IDs: %v. If you added/removed a state, bump AssetStateAlphabetCount in asset_state.go and update the canonical file + CanonicalAssetStateValues() + the matrix test + percheck_asset_state_canonical_14 in lockstep (godlike/06 SSOT).",
+			got, AssetStateAlphabetCount, names)
 	}
 	// Lockstep cross-check (matrix-table surface alignment):
 	// the file-declared count MUST equal
