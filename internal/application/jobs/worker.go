@@ -148,7 +148,7 @@ type Worker struct {
 // in-process *SQLiteStore (the compile-time assertion in
 // notifier.go::var _ QueueNotifier = (*sqljobs.SQLiteStore)(nil)
 // is the seam marker for a future adapter).
-func NewWorker(id string, repo job.Store, dispatcher *Dispatcher, notifier QueueNotifier,
+func NewWorker(id string, repo kerneljob.Store, dispatcher *Dispatcher, notifier QueueNotifier,
 	log *zap.Logger, leaseTTL, pollEvery time.Duration, backoff BackoffConfig, types []string) *Worker {
 	return &Worker{
 		id:         id,

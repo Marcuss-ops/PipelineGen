@@ -62,7 +62,7 @@ func (s *Service) Fail(ctx context.Context, id string, err error) error {
 // transitions a parent voiceover.generate job to its final terminal
 // posture. No other code path may write jobs.status or
 // jobs.result.parent_state after the worker has emitted JOB_COMPLETED.
-func (s *Service) FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result map[string]any, errMsg string, expectedVersion int) error {
+func (s *Service) FinalizeAggregateParent(ctx context.Context, id string, targetStatus kerneljob.Status, result map[string]any, errMsg string, expectedVersion int) error {
 	if s == nil {
 		return fmt.Errorf("jobs: FinalizeAggregateParent: nil receiver (composition bug)")
 	}
