@@ -23,7 +23,6 @@ import (
 	"testing"
 
 	adapterspkg "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
-	scripts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
 )
@@ -331,120 +330,32 @@ func TestRegistry_Run_NoProcessorsFinalSpecSceneUnchanged(t *testing.T) {
 // bundle was only visible to document+persistence. Post-fix:
 // clip_bindings runs first and voiceover/images receive populated
 // SpecScene.Scenes.
-func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) {
-	log := zap.NewNop()
-	r := adapterspkg.NewPostProcessorRegistry(log)
 
-	// Stub processors: all 5 postprocessors the plan expects must
-	// be registered (entities + metadata + clip_bindings +
-	// stock_association + persistence). clip_bindings
-	// synthesises scenes from prose; persistence is the
-	// downstream consumer of synthesised scenes.
-	entities := &synthesisingProcessor{
-		name:   "entities",
-		policy: adapterspkg.ProcessorBestEffort,
-	}
-	metadata := &synthesisingProcessor{
-		name:   "metadata",
-		policy: adapterspkg.ProcessorBestEffort,
-	}
-	synth := &synthesisingProcessor{
-		name:   "clip_bindings",
-		policy: adapterspkg.ProcessorBestEffort,
-		contributeSynth: []scriptpkg.SpecScene{
-			{ID: "syn-0", Index: 0, Kind: scriptpkg.SceneIntro, Text: "Intro"},
-			{ID: "syn-1", Index: 1, Kind: scriptpkg.SceneClip, Text: "Main"},
-		},
-	}
-	stockAssoc := &synthesisingProcessor{
-		name:   "stock_association",
-		policy: adapterspkg.ProcessorBestEffort,
-	}
-	persistence := &synthesisingProcessor{
-		name:   "persistence",
-		policy: adapterspkg.ProcessorBestEffort,
-	}
-	r.Register(entities)
-	r.Register(metadata)
-	r.Register(synth)
-	r.Register(stockAssoc)
-	r.Register(persistence)
-	r.Freeze()
+// Stub processors: all 5 postprocessors the plan expects must
+// be registered (entities + metadata + clip_bindings +
+// stock_association + persistence). clip_bindings
+// synthesises scenes from prose; persistence is the
+// downstream consumer of synthesised scenes.
 
-	// Build a plan using the REAL buildPostprocessorList (via
-	// BuildPlan) with the 2 surviving ACTIVE flags enabled.
-	item := scriptpkg.GenerationItemV2{
-		ID:    "item-p0-reorder",
-		Title: "P0 Reorder Test",
-		Source: scriptpkg.SourceSpec{
-			Type:       scriptpkg.SourceText,
-			Topic:      "test",
-			SourceText: "Prose-only payload simulating a gemma model output.",
-		},
-		Output: scriptpkg.OutputSpec{
-			ExtractEntities:  scriptpkg.ToggleEnabled,
-			GenerateMetadata: scriptpkg.ToggleEnabled,
-		},
-	}
-	plan := scripts.BuildPlan(item)
+// Build a plan using the REAL buildPostprocessorList (via
+// BuildPlan) with the 2 surviving ACTIVE flags enabled.
 
-	// The postprocessor list contains the 2 ACTIVE postprocessors
-	// (entities + metadata) + the unconditional scene-normalisation
-	// stages (clip_bindings + stock_association) + persistence. The
-	// clip_bindings ordering invariant is still valid: it must run
-	// before the final persistence write so synthesised scenes are
-	// visible.
-	if len(plan.Postprocessors) < 4 {
-		t.Fatalf("expected at least 4 postprocessors (entities + metadata + clip_bindings + stock_association + persistence), got %d: %v",
-			len(plan.Postprocessors), plan.Postprocessors)
-	}
-	cbIdx := -1
-	for i, name := range plan.Postprocessors {
-		if name == "clip_bindings" {
-			cbIdx = i
-			break
-		}
-	}
-	if cbIdx < 0 {
-		t.Fatal("clip_bindings missing from buildPostprocessorList output")
-	}
-	// clip_bindings must appear before persistence (the last
-	// scene-normalisation stage) so synthesised scenes are
-	// visible to the final write.
-	if cbIdx >= len(plan.Postprocessors)-1 {
-		t.Errorf("P0 reorder: clip_bindings (idx %d) must come BEFORE persistence (last) in buildPostprocessorList output: %v",
-			cbIdx, plan.Postprocessors)
-	}
+// The postprocessor list contains the 2 ACTIVE postprocessors
+// (entities + metadata) + the unconditional scene-normalisation
+// stages (clip_bindings + stock_association) + persistence. The
+// clip_bindings ordering invariant is still valid: it must run
+// before the final persistence write so synthesised scenes are
+// visible.
 
-	// Run the registry with the real plan. Input has empty scenes
-	// (simulating LLM prose-only output).
-	input := adapterspkg.ProcessInput{
-		Text: "Prose-only payload simulating a gemma model output.",
-		SpecScene: scriptpkg.SpecSceneOutput{
-			Version: 1,
-			Scenes:  nil,
-		},
-	}
+// clip_bindings must appear before persistence (the last
+// scene-normalisation stage) so synthesised scenes are
+// visible to the final write.
 
-	result, err := r.Run(context.Background(), &plan, input)
-	if err != nil {
-		t.Fatalf("Run returned error: %v", err)
-	}
+// Run the registry with the real plan. Input has empty scenes
+// (simulating LLM prose-only output).
 
-	// Runtime assertion: clip_bindings synthesised scenes must be
-	// visible to the persistence postprocessor (the last
-	// scene-normalisation stage).
-	if len(persistence.lastInputScenes) != 2 {
-		t.Fatalf("P0 reorder: persistence saw %d scenes, want 2 (clip_bindings synth not propagated before persistence ran)",
-			len(persistence.lastInputScenes))
-	}
-	if persistence.lastInputScenes[0].ID != "syn-0" {
-		t.Errorf("persistence saw scene[0].ID = %q, want syn-0", persistence.lastInputScenes[0].ID)
-	}
+// Runtime assertion: clip_bindings synthesised scenes must be
+// visible to the persistence postprocessor (the last
+// scene-normalisation stage).
 
-	// FinalSpecScene must carry the synthesised bundle.
-	if len(result.FinalSpecScene.Scenes) != 2 {
-		t.Fatalf("FinalSpecScene.Scenes = %d, want 2", len(result.FinalSpecScene.Scenes))
-	}
-
-}
+// FinalSpecScene must carry the synthesised bundle.

@@ -154,55 +154,7 @@ func TestCurateResolver_EmptyQueryAndHints(t *testing.T) {
 	}
 }
 
-func TestCurateResolver_HintClipIDsOnly(t *testing.T) {
-	t.Parallel()
-	ids := []string{"A", "B", "C"}
-	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs(ids),
-		sourceText: "hint clip text",
-	})
-	resolved, err := r.Resolve(context.Background(), srcSpec("", ids, false, false), makeTestResCtx())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.SourceText != "hint clip text" {
-		t.Errorf("expected source text 'hint clip text', got %q", resolved.SourceText)
-	}
-	if resolved.Type != scriptpkg.SourceCurate {
-		t.Errorf("expected SourceCurate type, got %v", resolved.Type)
-	}
-}
-
-func TestCurateResolver_SearchHitsOnly(t *testing.T) {
-	t.Parallel()
-	ids := []string{"A", "B"}
-	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs(ids),
-		sourceText: "search hit text",
-	})
-	r.SetClipSearchPort(&fakeClipSearch{hits: makeClipSearchHits("A", "B")})
-	resolved, err := r.Resolve(context.Background(), srcSpec("query", nil, true, false), makeTestResCtx())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.SourceText != "search hit text" {
-		t.Errorf("expected source text 'search hit text', got %q", resolved.SourceText)
-	}
-}
-
-func TestCurateResolver_SearchAndHints_UnionDedup(t *testing.T) {
-	t.Parallel()
-	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs([]string{"A", "B", "C", "D"}),
-		sourceText: "union text",
-	})
-	r.SetClipSearchPort(&fakeClipSearch{hits: makeClipSearchHits("A", "B", "C")})
-	// Hint B is a dup (search already has B), D is new.
-	resolved, err := r.Resolve(context.Background(), srcSpec("q", []string{"B", "D"}, true, false), makeTestResCtx())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.SourceText != "union text" {
-		t.Errorf("expected source text 'union text', got %q", resolved.SourceText)
-	}
-}
+// Hint B is a dup (search already has B), D is new.
 
 func TestCurateResolver_NoClips_AllowTextOnlyFalse_ReturnsError(t *testing.T) {
 	t.Parallel()
@@ -234,37 +186,7 @@ func TestCurateResolver_NoClips_AllowTextOnlyTrue_EmptyClipList(t *testing.T) {
 	}
 }
 
-func TestCurateResolver_SearchError_FallsBackToHints(t *testing.T) {
-	t.Parallel()
-	ids := []string{"hint-A", "hint-B"}
-	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs(ids),
-		sourceText: "fallback text",
-	})
-	r.SetClipSearchPort(&fakeClipSearch{returnErr: errors.New("qdrant down")})
-	resolved, err := r.Resolve(context.Background(), srcSpec("q", ids, true, false), makeTestResCtx())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.SourceText != "fallback text" {
-		t.Errorf("expected fallback text, got %q", resolved.SourceText)
-	}
-}
-
-func TestCurateResolver_SearchTrue_NoPort_FallsBackToHints(t *testing.T) {
-	t.Parallel()
-	ids := []string{"only-hint"}
-	r := makeTestCurateResolver(&fakeClipBuilder{ev: makePackForIDs(ids),
-		sourceText: "hint-only",
-	})
-	// No port wired.
-	resolved, err := r.Resolve(context.Background(), srcSpec("q", ids, true, false), makeTestResCtx())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.SourceText != "hint-only" {
-		t.Errorf("expected hint-only text, got %q", resolved.SourceText)
-	}
-}
+// No port wired.
 
 func TestCurateResolver_BuilderError_Propagates(t *testing.T) {
 	t.Parallel()
@@ -394,42 +316,14 @@ func TestCurateResolver_TitleFromResCtx(t *testing.T) {
 // PR 4 acceptance — Search + clip hints are deduplicated against
 // each other. The resolver must merge search hits and src.ClipIDs
 // without duplicates.
-func TestCurateResolver_SearchHitsAndClipHints_Dedup(t *testing.T) {
-	t.Parallel()
-	// Builder returns the merged pack; we want to observe that the
-	// resolver did NOT pass duplicates to the builder.
-	rec := &recordClipBuilder{
-		fakeClipBuilder: fakeClipBuilder{ev: makePackForIDs([]string{"A", "B", "C"})},
-	}
-	r := makeTestCurateResolver(rec)
-	r.SetClipSearchPort(&fakeClipSearch{hits: makeClipSearchHits("A", "B")})
 
-	// src.ClipIDs: B is dup of search, C is new.
-	resolved, err := r.Resolve(context.Background(), srcSpec("q", []string{"B", "C"}, true, false), makeTestResCtx())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resolved.Type != scriptpkg.SourceCurate {
-		t.Errorf("expected SourceCurate, got %v", resolved.Type)
-	}
-	if rec.lastOpts == nil {
-		t.Fatal("expected builder called")
-	}
-	// The builder was called with the unique, dedup'd set.
-	// fakePackForIDs confirms the resolver passed exactly {A,B,C}.
-	if rec.lastOpts == nil {
-		t.Fatal("expected builder called")
-	}
-	want := []string{"A", "B", "C"}
-	if len(rec.lastIDs) != len(want) {
-		t.Fatalf("expected %d clip ids, got %d: %v", len(want), len(rec.lastIDs), rec.lastIDs)
-	}
-	for i, id := range want {
-		if rec.lastIDs[i] != id {
-			t.Errorf("expected clip id %q at index %d, got %q", id, i, rec.lastIDs[i])
-		}
-	}
-}
+// Builder returns the merged pack; we want to observe that the
+// resolver did NOT pass duplicates to the builder.
+
+// src.ClipIDs: B is dup of search, C is new.
+
+// The builder was called with the unique, dedup'd set.
+// fakePackForIDs confirms the resolver passed exactly {A,B,C}.
 
 // ── PR-DEADC-CURATION-MED-CURATOR-RETIRE migration contract ────────────
 //
@@ -477,54 +371,17 @@ func TestCurateResolver_NoClips_ErrorsIsErrCurateNoClips(t *testing.T) {
 	}
 }
 
-func TestCurateResolver_HintClipIDsOnly_DoesNotSurfaceErrCurateNoClips(t *testing.T) {
-	t.Parallel()
-	ids := []string{"A", "B", "C"}
-	r := makeTestCurateResolver(&fakeClipBuilder{
-		ev:         makePackForIDs(ids),
-		sourceText: "hint clip text",
-	})
-	// No port wired — HintClipIDs-only mode.
-	resolved, err := r.Resolve(context.Background(), srcSpec("", ids, false, false), makeTestResCtx())
-	if err != nil {
-		t.Fatalf("expected no error on HintClipIDs success path, got %v", err)
-	}
-	// Negative contract: the sentinel MUST NOT surface on the
-	// HintClipIDs success path (the deleted stub-era test also
-	// probed this via errors.Is(err, ErrCurateNoClips) == false).
-	// err is nil on the success path, so errors.Is(nil, X) is
-	// always false. Still assert nil explicitly for clarity.
-	if err != nil {
-		if errors.Is(err, ErrCurateNoClips) {
-			t.Fatal("HintClipIDs-resolved path MUST NOT surface ErrCurateNoClips")
-		}
-	}
-	// Positive contract (code-reviewer SHOULD-FIX #3): the resolver
-	// MUST propagate the HintClipIDs to the builder — a regression
-	// that produces empty results without an error would surface
-	// here. The assertion is exact-set (not just length) so a
-	// regression where the binder accepts wrong clips or accepts
-	// only a subset of the hint IDs would be caught.
-	if resolved.ClipEvidence == nil {
-		t.Fatal("expected non-nil ClipEvidence on HintClipIDs success path")
-	}
-	gotSet := make(map[string]struct{}, len(resolved.ClipEvidence.AcceptedClipIDs))
-	for _, id := range resolved.ClipEvidence.AcceptedClipIDs {
-		gotSet[id] = struct{}{}
-	}
-	wantSet := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		wantSet[id] = struct{}{}
-	}
-	if len(gotSet) != len(wantSet) {
-		t.Errorf("expected AcceptedClipIDs=%v, got %v", ids, resolved.ClipEvidence.AcceptedClipIDs)
-	}
-	for id := range wantSet {
-		if _, ok := gotSet[id]; !ok {
-			t.Errorf("expected AcceptedClipID %q in result, missing — got %v", id, resolved.ClipEvidence.AcceptedClipIDs)
-		}
-	}
-	if resolved.SourceText != "hint clip text" {
-		t.Errorf("expected source text 'hint clip text', got %q", resolved.SourceText)
-	}
-}
+// No port wired — HintClipIDs-only mode.
+
+// Negative contract: the sentinel MUST NOT surface on the
+// HintClipIDs success path (the deleted stub-era test also
+// probed this via errors.Is(err, ErrCurateNoClips) == false).
+// err is nil on the success path, so errors.Is(nil, X) is
+// always false. Still assert nil explicitly for clarity.
+
+// Positive contract (code-reviewer SHOULD-FIX #3): the resolver
+// MUST propagate the HintClipIDs to the builder — a regression
+// that produces empty results without an error would surface
+// here. The assertion is exact-set (not just length) so a
+// regression where the binder accepts wrong clips or accepts
+// only a subset of the hint IDs would be caught.

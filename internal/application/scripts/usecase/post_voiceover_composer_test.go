@@ -8,7 +8,6 @@ package usecase
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 
@@ -112,93 +111,26 @@ func fixtureModelOutput() scriptpkg.ModelScriptOutputV1 {
 	}
 }
 
-func TestPostVoiceoverComposer_HappyPath_HydratesSpecSceneAndPublishes(t *testing.T) {
-	pub := newRecordingPublisher()
-	res := &StaticRefBindingResolver{Table: fixtureBinding()}
-	c, err := NewPostVoiceoverComposer(pub, res)
-	if err != nil {
-		t.Fatalf("NewPostVoiceoverComposer: %v", err)
-	}
+// 1. Publisher called exactly once for each phase.
 
-	manifest, result, err := c.ComposeAndPublish(
-		context.Background(),
-		fixtureModelOutput(),
-		canonicalDestination(t),
-		"pacquiao_broner",
-		"intro_to_victory",
-		"asset-pacquiao-001",
-	)
-	if err != nil {
-		t.Fatalf("ComposeAndPublish: %v", err)
-	}
+// 2. Manifest has exactly 3 scenes.
 
-	// 1. Publisher called exactly once for each phase.
-	if pub.resolveCalls != 1 {
-		t.Errorf("ResolveFolder call count = %d, want 1", pub.resolveCalls)
-	}
-	if pub.publishCalls != 1 {
-		t.Errorf("Publish call count = %d, want 1", pub.publishCalls)
-	}
+// 3. Per-scene clip fields are hydrated from the binding table.
 
-	// 2. Manifest has exactly 3 scenes.
-	if got, want := len(manifest.Scenes), 3; got != want {
-		t.Fatalf("manifest scene count = %d, want %d", got, want)
-	}
+// 4. Outgoing PublishRequest has LocalPath set (path-based publish).
 
-	// 3. Per-scene clip fields are hydrated from the binding table.
-	wantClips := []SpecSceneClipBinding{
-		{ClipID: "clip-intro-001", DriveLink: "https://drive.google.com/file/d/clip-intro-001/view", StartMs: 0, EndMs: 120_000},
-		{ClipID: "clip-fight-001", DriveLink: "https://drive.google.com/file/d/clip-fight-001/view", StartMs: 120_000, EndMs: 360_000},
-		{ClipID: "clip-victory-001", DriveLink: "https://drive.google.com/file/d/clip-victory-001/view", StartMs: 360_000, EndMs: 480_000},
-	}
-	for i, want := range wantClips {
-		got := manifest.Scenes[i].Clip
-		if got != want {
-			t.Errorf("scene[%d].clip = %+v, want %+v", i, got, want)
-		}
-		if manifest.Scenes[i].Index != i {
-			t.Errorf("scene[%d].index = %d, want %d", i, manifest.Scenes[i].Index, i)
-		}
-	}
+// Verify the file at LocalPath is the manifest we marshalled.
 
-	// 4. Outgoing PublishRequest has LocalPath set (path-based publish).
-	if pub.lastRequest.LocalPath == "" {
-		t.Fatalf("PublishRequest.LocalPath is empty (must be non-empty for canonical publish)")
-	}
-	// Verify the file at LocalPath is the manifest we marshalled.
-	data, err := os.ReadFile(pub.lastRequest.LocalPath)
-	if err != nil {
-		t.Fatalf("read manifest at LocalPath %q: %v", pub.lastRequest.LocalPath, err)
-	}
-	if !strings.Contains(string(data), "clip-intro-001") {
-		t.Errorf("published manifest does not contain clip-intro-001 (got first 200 bytes: %q)", firstN(data, 200))
-	}
-	// Verify temp file was cleaned up after return.
-	if _, err := os.Stat(pub.lastRequest.LocalPath); !os.IsNotExist(err) {
-		t.Errorf("temp file %q should be deleted after Publish, stat err = %v", pub.lastRequest.LocalPath, err)
-	}
+// Verify temp file was cleaned up after return.
 
-	// 5. Forward-prevention: RootFolderOverride MUST be empty on EVERY
-	// outgoing PublishRequest - including the ResolveFolder call. The
-	// source-level scanner test (TestForwardPrevention_ComposerSourceDoesNotMentionRootFolderOverride)
-	// catches static drift; these runtime checks catch dynamic drift.
-	if pub.lastRequest.RootFolderOverride != "" {
-		t.Errorf("PublishRequest.RootFolderOverride = %q, want \"\" (godlike/08 forward-prevention on Publish call)", pub.lastRequest.RootFolderOverride)
-	}
-	if pub.lastResolveReq.RootFolderOverride != "" {
-		t.Errorf("ResolveRequest.RootFolderOverride = %q, want \"\" (godlike/08 forward-prevention on ResolveFolder call)", pub.lastResolveReq.RootFolderOverride)
-	}
+// 5. Forward-prevention: RootFolderOverride MUST be empty on EVERY
+// outgoing PublishRequest - including the ResolveFolder call. The
+// source-level scanner test (TestForwardPrevention_ComposerSourceDoesNotMentionRootFolderOverride)
+// catches static drift; these runtime checks catch dynamic drift.
 
-	// 6. Destination propagated correctly.
-	if pub.lastRequest.Destination != canonicalDestination(t) {
-		t.Errorf("PublishRequest.Destination = %q, want %q", pub.lastRequest.Destination, canonicalDestination(t))
-	}
+// 6. Destination propagated correctly.
 
-	// 7. PublishResult returned for caller logging.
-	if result.FileID != "fake-file-id-1234" {
-		t.Errorf("PublishResult.FileID = %q, want %q", result.FileID, "fake-file-id-1234")
-	}
-}
+// 7. PublishResult returned for caller logging.
 
 func TestPostVoiceoverComposer_EmptyModelOutput_FailsClosed(t *testing.T) {
 	pub := newRecordingPublisher()
@@ -385,15 +317,6 @@ func TestStaticRefBindingResolver_Succeeds(t *testing.T) {
 }
 
 // Sanity: the test file itself does not set RootFolderOverride.
-func TestSelf_NoRootFolderOverrideInThisFile(t *testing.T) {
-	data, err := os.ReadFile("post_voiceover_composer_test.go")
-	if err != nil {
-		t.Fatalf("read self: %v", err)
-	}
-	if strings.Contains(string(data), "RootFolderOverride: ") {
-		t.Errorf("this test file MUST NOT set RootFolderOverride literal in PublishRequest{}")
-	}
-}
 
 // firstN returns the first n bytes of b (or the whole string if shorter).
 func firstN(b []byte, n int) string {

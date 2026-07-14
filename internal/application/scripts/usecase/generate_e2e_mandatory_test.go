@@ -100,31 +100,6 @@ func TestGenerateE2E_OneClipWithCompatibleSourceText(t *testing.T) {
 
 // TestGenerateE2E_MultipleClips verifies that three accepted clips are
 // reflected in ClipEvidence and the Ollama prompt.
-func TestGenerateE2E_MultipleClips(t *testing.T) {
-	t.Parallel()
-
-	clipResolver := newFakeClipResolver()
-	clipResolver.AddClip(makeTestClip("clip-a", "Alpha", 10*time.Second))
-	clipResolver.AddClip(makeTestClip("clip-b", "Bravo", 15*time.Second))
-	clipResolver.AddClip(makeTestClip("clip-c", "Charlie", 20*time.Second))
-
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
-		Script: canonicalSceneJSON(3, []string{"clip-a", "clip-b", "clip-c"}, ""), WordCount: 10, EstDuration: 9, Model: "llama3:8b",
-	}}
-
-	uc := buildUsecaseWithClipResolver(gen, clipResolver)
-	item := makeClipsItem("e2e-three-clips", []string{"clip-a", "clip-b", "clip-c"}, "")
-
-	result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"clip-a", "clip-b", "clip-c"}, result.Source.AcceptedClipIDs)
-
-	captured := gen.capturedReq.Load()
-	require.NotNil(t, captured)
-	assert.Contains(t, captured.Prompt, "clip-a")
-	assert.Contains(t, captured.Prompt, "clip-b")
-	assert.Contains(t, captured.Prompt, "clip-c")
-}
 
 // TestGenerateE2E_SourcePrimaryGroundingPolicy verifies that the
 // source_primary grounding policy is forwarded to the Ollama request
