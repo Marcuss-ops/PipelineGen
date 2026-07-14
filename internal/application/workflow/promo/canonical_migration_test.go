@@ -292,13 +292,12 @@ func TestPromo_CanonicalMigrationGate(t *testing.T) {
 	}
 
 	// ── 3. Sanity check: bridge DOES use the current canonical surface ──
-	// This assertion is forward-deferred (will need updating post-BLOC5.4).
-	// Today the bridge calls Service.GenerateWithDestination per
-	// internal/application/voiceover/promo.go:66. A future BLOC5.4
-	// migration to jobs.Dispatcher will need to update this assertion
-	// to verify the dispatcher.Enqueue call site instead.
-	if !strings.Contains(bridgeBody, "GenerateWithDestination(") {
-		t.Errorf("bridge source %q must use the canonical non-batch surface (today: Service.GenerateWithDestination); "+
+	// Today the bridge routes through the canonical per-item pipeline via
+	// promoVoiceoverAdapter (Service.GeneratePromo → per-item executor).
+	// A future BLOC5.4 migration to jobs.Dispatcher will update this
+	// assertion to verify the dispatcher.Enqueue call site instead.
+	if !strings.Contains(bridgeBody, "promoVoiceoverAdapter") && !strings.Contains(bridgeBody, "GeneratePromo") {
+		t.Errorf("bridge source %q must use the canonical non-batch surface (today: Service.GeneratePromo via promoVoiceoverAdapter); "+
 			"post-BLOC5.4 this assertion will need to verify the dispatcher.Enqueue call site instead",
 			bridgePath)
 	}
