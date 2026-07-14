@@ -38,6 +38,13 @@ func (r *PostProcessorRegistry) Run(
 		return &PipelineResult{FinalSpecScene: input.SpecScene}, nil
 	}
 
+	// Concurrency safety: the caller's ProcessInput may share
+	// SpecScene slices with other goroutines (e.g. a cached
+	// engineResult.Output). Deep-clone before mergePostProcessResult
+	// mutates Scenes / Bindings in place so concurrent Runs cannot
+	// race on the same underlying memory.
+	input.SpecScene = cloneSpecSceneOutput(input.SpecScene)
+
 	result := &PipelineResult{
 		StageDurations: make(map[string]int64),
 	}
@@ -85,6 +92,11 @@ func (r *PostProcessorRegistry) Run(
 		start := time.Now()
 		ppResult, err := proc.Process(ctx, plan, input)
 		elapsed := time.Since(start).Milliseconds()
+		// Concurrency safety: a processor may return a shared/cached
+		// PostProcessResult (common in stubs and caches). Clone before
+		// mutating DurationMs or passing to merge so concurrent Run
+		// calls cannot race on the same pointer.
+		ppResult = clonePostProcessResult(ppResult)
 
 		if err != nil {
 			result.StageDurations[string(name)] = elapsed
@@ -161,3 +173,63 @@ func (r *PostProcessorRegistry) Run(
 	}
 	return result, nil
 }
+
+// cloneSpecSceneOutput returns a deep copy of the specscene envelope.
+// Run() needs an independent copy because mergePostProcessResult
+// mutates Scenes and Bindings in place; without cloning, concurrent
+// Runs operating on the same cached engine output would race on the
+// same underlying slices and pointer fields.
+func cloneSpecSceneOutput(s scriptpkg.SpecSceneOutput) scriptpkg.SpecSceneOutput {
+	if len(s.Scenes) == 0 {
+		return s
+	}
+	out := scriptpkg.SpecSceneOutput{
+		Version: s.Version,
+		Scenes:  make([]scriptpkg.SpecScene, len(s.Scenes)),
+	}
+	for i, sc := range s.Scenes {
+		out.Scenes[i] = sc
+		if sc.Metadata != nil {
+			meta := *sc.Metadata
+			out.Scenes[i].Metadata = &meta
+		}
+		out.Scenes[i].Bindings = cloneSceneBindings(sc.Bindings)
+	}
+	return out
+}
+
+// cloneSceneBindings returns a deep copy of bindings so that in-place
+// mutations of Image / Voiceover / Clip / Stock pointers in one Run
+// do not affect another Run sharing the same underlying scene.
+func cloneSceneBindings(b scriptpkg.SceneBindings) scriptpkg.SceneBindings {
+	out := scriptpkg.SceneBindings{}
+	if b.Clip != nil {
+		c := *b.Clip
+		out.Clip = &c
+	}
+	if b.Image != nil {
+		img := *b.Image
+		out.Image = &img
+	}
+	if b.Voiceover != nil {
+		v := *b.Voiceover
+		out.Voiceover = &v
+	}
+	if b.Stock != nil {
+		s := *b.Stock
+		out.Stock = &s
+	}
+	return out
+}
+
+// clonePostProcessResult returns a shallow copy of r. It is nil-safe
+// and isolates the registry's per-run mutations (DurationMs) from a
+// processor's shared/cached result pointer.
+func clonePostProcessResult(r *PostProcessResult) *PostProcessResult {
+	if r == nil {
+		return nil
+	}
+	copy := *r
+	return &copy
+}
+
