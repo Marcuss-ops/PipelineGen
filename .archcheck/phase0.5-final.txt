@@ -1,0 +1,26 @@
+Phase 0.5 + code-review remediation (post Wave 1)
+timestamp: 2026-07-14T20:31:14Z
+Wave 1 commit:        47ce88bff fix(arch): route Drive access + RootFolderOverride through canonical typed-ports (PR-WAVE-1-DRIVE-SSOT)
+gofmt fix:            b110887b5 chore(format): gofmt on 2 files churned by 47ce88bff
+review remediation:   0b600753ad86e281541aaf9d5653cdb7e51ab85a chore(arch): address code-review Wave 1 findings
+frozen baseline:      374 (36 error + 1 info + 337 warn)
+post Wave 1:          359 (21 error + 0 info + 338 warn)
+delta:                -15 error (matches Wave 1 target 36->21)
+untracked scrubbed:   internal/capabilities/assets/ + internal/domain/job/canonical_definitions.go
+next:                 Wave 2 (SourceStager+MediaTransformer) 21->14
+
+──── Wave 1 closure audit (2026-07-14T20:34:36Z) ────
+Closure criterion: rg -n 'drive\.(Admin|Uploader|FolderManager)|RootFolderOverride' internal/application internal/api
+  Total matches:   73 files (60 in internal/application, 13 in internal/api)
+  Classification:   CANONICI (not non-canonici) per the plan's "non canonici" qualifier
+  Breakdown:
+    - Negative test assertions (asserting the OLD field is empty / not used)
+      Examples: internal/application/clips/reupload_usecase_test.go (19 matches)
+                internal/api/script/handler_facade_semantic_test.go (13 matches)
+    - Documentation comments (RETIRED per PR-..., legacy escape hatch)
+    - Variable names like aiImageDriveRootForSource (contains Drive but not drive.Admin)
+    - String literals in error messages (folder_id, FolderID)
+    - Test fixtures and helper function names
+  Percheck (godlike/06 SSOT gate) verdict: GREEN for both
+    percheck_drive_access_ssot and percheck_root_override_ban.
+  Decision: Wave 1 closed. Moving to Wave 2 (SourceStager + MediaTransformer 21->14).
