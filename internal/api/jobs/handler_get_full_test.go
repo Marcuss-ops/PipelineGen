@@ -35,8 +35,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // stubServiceForGetFull is the minimal job.Service stub that
@@ -93,10 +93,11 @@ func (s *stubServiceForGetFull) Retry(_ context.Context, _ string) (*job.Job, er
 var _ job.Service = (*stubServiceForGetFull)(nil)
 
 // pushedType is the canonical job-type discriminator for script.generate
-// jobs (lives canonical SSOT at internal/domain/job/job.go). Tests
-// reference this constant directly instead of literal "script.generate"
-// to maintain godlike/06 SSOT (one canonical owner per fact).
-const pushedType = job.TypeScriptGenerate
+// jobs (lives canonical SSOT at internal/domain/script/job_types.go,
+// re-exported at internal/domain/job/job.go). Tests reference this
+// constant directly instead of literal "script.generate" to maintain
+// godlike/06 SSOT (one canonical owner per fact).
+const pushedType = scriptpkg.TypeGenerate
 
 // ── Regression tests for GetFull top-level error contract ─────────
 
