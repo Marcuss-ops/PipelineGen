@@ -56,8 +56,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	}
 
 	// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy
-	// mediaStore.ResolveDest(req) bridge (which used
-	// drive.AssetDestinationRequest as the input shape) is RETIRED.
+	// Local path is computed inline via destinations.LocalPathFor.
 	// The path computation has migrated into the destinations
 	// package as destinations.LocalPathFor (PR-IMAGES-REMOVE-DRIVE-STORE
 	// follow-up, July 2026) so the destinationResolver package
@@ -90,7 +89,7 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 	}
 
 	// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy
-	// mediaStore.UploadToDrive / s.publishToDrive bridge is RETIRED —
+	// The legacy drive.Store upload bridge is RETIRED —
 	// Drive upload now routes directly through s.publisher.Publish
 	// (delivery.Publisher) with the canonical delivery.PublishRequest
 	// shape. The override root is still sourced from

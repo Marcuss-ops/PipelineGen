@@ -13,6 +13,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	systemapi "github.com/Marcuss-ops/PipelineGen/internal/api/system"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
@@ -107,32 +108,45 @@ func (a *sfxSemanticWriterAdapter) Write(ctx context.Context, req sfxports.Metad
 
 // ── Resolver adapter ─────────────────────────────────────────────────
 
-// sfxResolverAdapter wraps *drive.Resolver to satisfy
-// sfxports.DestinationResolverPort. Only LocalPath is propagated (the
-// handler drops RelativePath).
+// sfxResolverAdapter computes the on-disk destination path for a
+// generated sound effect. It replaces the legacy *drive.Resolver
+// reach-through (PR-IMAGES-REMOVE-DRIVE-STORE, July 2026): the path
+// layout is computed locally from the request fields without calling
+// Drive or importing the legacy drive.Resolver/AssetDestinationRequest
+// surface. Only LocalPath is propagated (the handler drops RelativePath).
 type sfxResolverAdapter struct {
-	r *drive.Resolver
+	mediaRoot string
 }
 
 // Compile-time assertion: sfxResolverAdapter satisfies sfxports.DestinationResolverPort.
 var _ sfxports.DestinationResolverPort = (*sfxResolverAdapter)(nil)
 
 func (a *sfxResolverAdapter) Resolve(req sfxports.AssetDestinationRequest) (sfxports.ResolvedDest, error) {
-	concreteReq := drive.AssetDestinationRequest{
-		Source:    drive.SourceType(req.Source),
-		MediaType: drive.MediaType(req.MediaType),
-		Group:     req.Group,
-		Hash:      req.Hash,
-		Ext:       req.Ext,
+	// Preserve the legacy drive.Resolver path layout:
+	//   <mediaRoot>/<source>/<subject><ext>
+	// The legacy resolver defaulted an empty Subject to "unknown";
+	// the sfx handler never set Subject, so every file landed at
+	// "unknown.<ext>". We use Group (the sound-effect name) as the
+	// filename segment instead, which fixes the overwrite bug while
+	// keeping the same directory layout.
+	source := req.Source
+	if source == "" {
+		source = "media"
 	}
-	res, err := a.r.Resolve(concreteReq)
-	if err != nil {
-		return sfxports.ResolvedDest{}, err
+	subject := req.Group
+	if subject == "" {
+		subject = "unknown"
 	}
-	if res == nil {
-		return sfxports.ResolvedDest{}, nil
+	ext := req.Ext
+	if ext == "" {
+		ext = ".bin"
 	}
-	return sfxports.ResolvedDest{LocalPath: res.LocalPath}, nil
+	rel := filepath.Join(source, subject+ext)
+	localPath := ""
+	if a.mediaRoot != "" {
+		localPath = filepath.Join(a.mediaRoot, rel)
+	}
+	return sfxports.ResolvedDest{LocalPath: localPath}, nil
 }
 
 // ── Sfx dispatcher adapter ──────────────────────────────────────────────────

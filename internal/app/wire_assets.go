@@ -299,7 +299,7 @@ func buildSoundeffectBundle(
 ) (*assetsfx.SoundeffectDescriptor, error) {
 	sfxClips := &sfxClipsRepoAdapter{repo: deps.Core.ClipsRepo}
 	sfxMeta := &sfxSemanticWriterAdapter{w: metaWriter}
-	sfxResolver := &sfxResolverAdapter{r: driveutil.NewResolver("data", "")}
+	sfxResolver := &sfxResolverAdapter{mediaRoot: "data"}
 
 	sfxDispatcher := newSfxDispatcherAdapter(dispatcher)
 	descriptor, err := assetsfx.Build(assetsfx.Dependencies{

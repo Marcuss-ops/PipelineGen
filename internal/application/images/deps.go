@@ -46,15 +46,9 @@ type ImagesCoreDeps struct {
 }
 
 // ImagesStorageDeps holds repository, Drive, and publisher dependencies.
-//
-// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy `MediaStore
-// *drive.Store` field (used by s.mediaStore.ResolveDest for path-only
-// resolution + the old AssetDestinationRequest bridge) was REMOVED.
-// The images package no longer mutates drive.Store. Retained deps:
-// ImageRepo + DriveReader + Publisher + DestResolver (the YAML-backed
-// DestinationResolver that resolves destinationKey -> Drive folder ID,
-// also surfaced on ImageStorageService.destResolver for callers that
-// need to resolve Drive folders directly).
+// The images package writes assets atomically via Publisher and
+// AssetCommitter; it no longer holds any drive.Store / mediaStore
+// surface.
 type ImagesStorageDeps struct {
 	ImageRepo    *assets.ImagesRepository
 	DriveReader  drive.Reader
