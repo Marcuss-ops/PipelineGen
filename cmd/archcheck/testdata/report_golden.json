@@ -92,7 +92,7 @@
     ]
   },
   "summary": {
-    "total_violations": 506,
+    "total_violations": 505,
     "by_reason": {
       "agent_playbook_doc_missing": 1,
       "ci_gates_doc_missing": 1,
@@ -111,7 +111,7 @@
       "percheck_search_aggregator_singleton": 1,
       "percheck_sourcestager_transformer": 7,
       "percheck_type_redecl": 27,
-      "pkg_size": 9,
+      "pkg_size": 8,
       "removal_doc_missing": 1,
       "struct_deps": 14,
       "unknown_internal_root": 4
@@ -119,7 +119,7 @@
     "by_severity": {
       "error": 295,
       "info": 1,
-      "warn": 210
+      "warn": 209
     }
   },
   "violations": [
@@ -3825,14 +3825,6 @@
       "severity": "warn"
     },
     {
-      "package": "cmd/archcheck/scan",
-      "actual_count": 42,
-      "allowed_count": 40,
-      "matched_rule": "max_files_per_package",
-      "rule": "pkg_size",
-      "severity": "warn"
-    },
-    {
       "package": "domain/remote/complete_artifacts.go",
       "file": "domain/remote/complete_artifacts.go",
       "line": 40,
@@ -4454,7 +4446,6 @@
     "percheck_voiceover_alias_ban: internal/application/voiceover/types.go:284 comment-only reference \"voiceover.PromoRequest\": canonical: workflow/promo.Request (internal/application/workflow/promo/generate.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR B (f14b96d19) retired this alias.",
     "percheck_voiceover_alias_ban: internal/application/voiceover/types.go:285 comment-only reference \"voiceover.PromoResult\": canonical: workflow/promo.Result (internal/application/workflow/promo/generate.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR B (f14b96d19) retired this alias.",
     "percheck_voiceover_alias_ban: internal/application/voiceover/types.go:285 comment-only reference \"voiceover.PromoResponse\": canonical: workflow/promo.Response (internal/application/workflow/promo/generate.go). PR-VOICEOVER-ALIASES-RETIRE Sub-PR B (f14b96d19) retired this alias.",
-    "percheck_direct_indexer_bypass_closed bypass-symbol-residue: 1 comment-only / residue-file reference(s) to deleted bypass symbols in internal/infrastructure/database/sqlite/outbox/dispatcher.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_api_module_deps_max_8 bypass-list: internal/api/assets/clips/bulk/module.go has Dependencies bag with 5 fields (bypass under PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE; counted but not violated per godlike/07 no-fake-availability)",
     "percheck_api_module_deps_max_8 bypass-list: internal/api/assets/clips/catalog/module.go has Dependencies bag with 7 fields (bypass under PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE; counted but not violated per godlike/07 no-fake-availability)",
     "percheck_api_module_deps_max_8 bypass-list: internal/api/assets/clips/indexing/module.go has Dependencies bag with 5 fields (bypass under PR-CLIPS-7-MODULES-UPPER-CLIPSMODULE; counted but not violated per godlike/07 no-fake-availability)",

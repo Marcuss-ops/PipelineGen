@@ -35,39 +35,32 @@ type driveBookProcessor interface {
 // user-visible request. The processBookFromDriveTimeout ceiling is
 // enforced by the use case.
 type ProcessBookFromDriveRequest struct {
-	DriveFileURL      string `json:"drive_file_url"`
-	Instruction       string `json:"instruction,omitempty"`
-	Model             string `json:"model,omitempty"`
-	PagesPerChunk     int    `json:"pages_per_chunk,omitempty"`
-	ChunkSize         int    `json:"chunk_size,omitempty"`
-	OverlapSize       int    `json:"overlap_size,omitempty"`
-	MaxChunks         int    `json:"max_chunks,omitempty"`
-	OllamaURL         string `json:"ollama_url,omitempty"`
-	DriveFolderID     string `json:"drive_folder_id,omitempty"`
-	OutputPath        string `json:"output_path,omitempty"`
-	Language          string `json:"language,omitempty"`
-	TranslateOnly     bool   `json:"translate_only,omitempty"`
-	GeneratePDF       bool   `json:"generate_pdf,omitempty"`
-	PDFStyle          string `json:"pdf_style,omitempty"`
-	GenerateVoiceover bool   `json:"generate_voiceover,omitempty"`
-	VoiceoverLanguage string `json:"voiceover_language,omitempty"`
-	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
+	DriveFileURL  string `json:"drive_file_url"`
+	Instruction   string `json:"instruction,omitempty"`
+	Model         string `json:"model,omitempty"`
+	PagesPerChunk int    `json:"pages_per_chunk,omitempty"`
+	ChunkSize     int    `json:"chunk_size,omitempty"`
+	OverlapSize   int    `json:"overlap_size,omitempty"`
+	MaxChunks     int    `json:"max_chunks,omitempty"`
+	OllamaURL     string `json:"ollama_url,omitempty"`
+	DriveFolderID string `json:"drive_folder_id,omitempty"`
+	OutputPath    string `json:"output_path,omitempty"`
+	Language      string `json:"language,omitempty"`
+	TranslateOnly bool   `json:"translate_only,omitempty"`
+	GeneratePDF   bool   `json:"generate_pdf,omitempty"`
+	PDFStyle      string `json:"pdf_style,omitempty"`
 }
 
 // ProcessBookFromDriveResult is the synchronous payload carried in the
 // shared generation envelope.
 type ProcessBookFromDriveResult struct {
-	OutputPath         string `json:"output_path"`
-	PDFPath            string `json:"pdf_path"`
-	DriveFolder        string `json:"drive_folder"`
-	DriveDocURL        string `json:"drive_doc_url"`
-	DrivePDFURL        string `json:"drive_pdf_url"`
-	ChunksProcessed    int    `json:"chunks_processed"`
-	Language           string `json:"language"`
-	VoiceoverPath      string `json:"voiceover_path"`
-	VoiceoverDriveLink string `json:"voiceover_drive_link"`
-	VoiceoverDriveID   string `json:"voiceover_drive_id"`
-	VoiceoverError     string `json:"voiceover_error"`
+	OutputPath      string `json:"output_path"`
+	PDFPath         string `json:"pdf_path"`
+	DriveFolder     string `json:"drive_folder"`
+	DriveDocURL     string `json:"drive_doc_url"`
+	DrivePDFURL     string `json:"drive_pdf_url"`
+	ChunksProcessed int    `json:"chunks_processed"`
+	Language        string `json:"language"`
 }
 
 // Validate implements the handler-side validation contract.
@@ -114,26 +107,22 @@ func (uc *ProcessBookFromDriveUseCase) Handle(ctx context.Context, req ProcessBo
 
 	uc.log.Info("processing book from drive",
 		zap.String("drive_file_url", req.DriveFileURL),
-		zap.Bool("generate_voiceover", req.GenerateVoiceover),
 	)
 	result, err := uc.svc.ProcessBookFromDrive(ctxC, &ProcessFromDriveRequest{
-		DriveFileURL:      req.DriveFileURL,
-		Instruction:       req.Instruction,
-		Model:             req.Model,
-		PagesPerChunk:     req.PagesPerChunk,
-		ChunkSize:         req.ChunkSize,
-		OverlapSize:       req.OverlapSize,
-		MaxChunks:         req.MaxChunks,
-		OllamaURL:         req.OllamaURL,
-		DriveFolderID:     req.DriveFolderID,
-		OutputPath:        req.OutputPath,
-		Language:          req.Language,
-		TranslateOnly:     req.TranslateOnly,
-		GeneratePDF:       req.GeneratePDF,
-		PDFStyle:          req.PDFStyle,
-		GenerateVoiceover: req.GenerateVoiceover,
-		VoiceoverLanguage: req.VoiceoverLanguage,
-		VoiceoverFolderID: req.VoiceoverFolderID,
+		DriveFileURL:  req.DriveFileURL,
+		Instruction:   req.Instruction,
+		Model:         req.Model,
+		PagesPerChunk: req.PagesPerChunk,
+		ChunkSize:     req.ChunkSize,
+		OverlapSize:   req.OverlapSize,
+		MaxChunks:     req.MaxChunks,
+		OllamaURL:     req.OllamaURL,
+		DriveFolderID: req.DriveFolderID,
+		OutputPath:    req.OutputPath,
+		Language:      req.Language,
+		TranslateOnly: req.TranslateOnly,
+		GeneratePDF:   req.GeneratePDF,
+		PDFStyle:      req.PDFStyle,
 	})
 	if err != nil {
 		return ProcessBookFromDriveResponse{}, err
@@ -151,12 +140,6 @@ func (uc *ProcessBookFromDriveUseCase) Handle(ctx context.Context, req ProcessBo
 		resp.ChunksProcessed = result.BookResult.ChunksProcessed
 		resp.Language = result.BookResult.Language
 	}
-	if result.VoiceoverPath != "" {
-		resp.VoiceoverPath = result.VoiceoverPath
-		resp.VoiceoverDriveLink = result.VoiceoverDriveLink
-		resp.VoiceoverDriveID = result.VoiceoverDriveID
-	}
-	resp.VoiceoverError = result.VoiceoverError
 	return apiutil.Sync("book", resp), nil
 }
 

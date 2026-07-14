@@ -21,7 +21,6 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	ollamaclient "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/client"
@@ -240,14 +239,7 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.
 }
 
 // buildBooksService wires the books apply-layer Service.
-// P0-#3 (July 2026): the voiceover dependency was migrated from
-// *voiceover.Service (the legacy positional port with Result{OK:false}
-// anti-pattern) to voiceover.VoiceoverItemExecutor (the canonical
-// per-item use case port). The executor instance is constructed in
-// build_bundles_voiceover.go::buildVoiceoverService (the same
-// `voiceoverProcessItem` returned alongside the legacy *voiceover.Service)
-// and threaded into books via this helper.
-func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voiceoverExec voiceover.VoiceoverItemExecutor, publisher delivery.Publisher, reader drive.Reader) (*books.Service, error) {
+func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, publisher delivery.Publisher, reader drive.Reader) (*books.Service, error) {
 	transformer, err := pythontransformer.NewSubprocessTransformer(&pythontransformer.Config{
 		ScriptPath: cfg.Books.ScriptPath, PythonBin: cfg.Books.PythonBin, Enabled: cfg.Books.Enabled,
 	}, log)
@@ -256,7 +248,7 @@ func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, voic
 	}
 	booksSvc := books.NewService(
 		&books.Config{DriveFolderID: cfg.Drive.BooksFolder()},
-		dbs.dualPool.Writer, cfg.Drive.BooksFolder(), log, voiceoverExec, publisher, reader, transformer,
+		dbs.dualPool.Writer, cfg.Drive.BooksFolder(), log, publisher, reader, transformer,
 	)
 	booksSvc.SetEnabled(cfg.Books.Enabled)
 	log.Info("Books service initialized", zap.Bool("enabled", cfg.Books.Enabled))

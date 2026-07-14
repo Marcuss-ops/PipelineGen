@@ -13,10 +13,9 @@
 // Per the user directive (Italian, July 2026): "Elimina
 // internal/application/generation, internal/domain/generation, il
 // modulo dal registry, la rotta /generations, i tipi
-// Definition/Registry/BookSource/LessonSource/ScriptSource/
-// BatchSource/GenerationDescriptor, il generic handler e il generic
-// job mapping." The application-zone facade
-// (`internal/application/generation/`) + the domain-zone facade
+// Definition/Registry/ScriptSource/BatchSource/GenerationDescriptor,
+// il generic handler e il generic job mapping." The application-zone
+// facade (`internal/application/generation/`) + the domain-zone facade
 // (`internal/domain/generation/`) were both git-rm'd in commit 7;
 // the canonical proprietary APIs (book/lesson/script/batch) did
 // NOT exist on disk (`internal/api/content/` is a doc-only shell

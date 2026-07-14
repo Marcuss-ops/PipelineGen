@@ -82,9 +82,8 @@ func TestProcessBookFromDriveRequest_Validate(t *testing.T) {
 // TestProcessBookFromDriveUseCase_HandleSyncOK — arm-2 (sync happy path).
 //
 // The use case projects the result's BookResult fields onto the
-// response, plus the voiceover path/link/id/error. Tests assert all
-// three branches: nil BookResult, populated BookResult, populated
-// VoiceoverPath (with VoiceoverError empty).
+// response. Tests assert both branches: nil BookResult and populated
+// BookResult.
 func TestProcessBookFromDriveUseCase_HandleSyncOK(t *testing.T) {
 	fakeSvc := &FakeDriveBookProcessor{
 		Result: &ProcessFromDriveResult{
@@ -99,17 +98,12 @@ func TestProcessBookFromDriveUseCase_HandleSyncOK(t *testing.T) {
 				ChunksProcessed: 7,
 				Language:        "en",
 			},
-			VoiceoverPath:      "/tmp/voiceover.mp3",
-			VoiceoverDriveLink: "https://drive.google.com/file/vo",
-			VoiceoverDriveID:   "vo-id-xyz",
-			VoiceoverError:     "",
 		},
 	}
 	uc := NewProcessBookFromDriveUseCase(fakeSvc, zap.NewNop())
 
 	resp, err := uc.Handle(context.Background(), ProcessBookFromDriveRequest{
-		DriveFileURL:      "https://drive.google.com/file/d/abc123",
-		GenerateVoiceover: true,
+		DriveFileURL: "https://drive.google.com/file/d/abc123",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -122,12 +116,6 @@ func TestProcessBookFromDriveUseCase_HandleSyncOK(t *testing.T) {
 	}
 	if resp.Result.OutputPath != "/tmp/out.md" || resp.Result.ChunksProcessed != 7 || resp.Result.Language != "en" {
 		t.Fatalf("BookResult fields not projected: %+v", resp.Result)
-	}
-	if resp.Result.VoiceoverPath != "/tmp/voiceover.mp3" || resp.Result.VoiceoverDriveID != "vo-id-xyz" {
-		t.Fatalf("voiceover fields not projected: %+v", resp.Result)
-	}
-	if resp.Result.VoiceoverError != "" {
-		t.Fatalf("VoiceoverError should be empty on success, got %q", resp.Result.VoiceoverError)
 	}
 }
 

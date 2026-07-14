@@ -9,40 +9,32 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	urlutil "github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 var ErrBookReaderNotConfigured = fmt.Errorf("drive reader not configured — cannot download from Drive")
 
 type ProcessFromDriveRequest struct {
-	DriveFileURL      string `json:"drive_file_url"`
-	Instruction       string `json:"instruction,omitempty"`
-	Model             string `json:"model,omitempty"`
-	PagesPerChunk     int    `json:"pages_per_chunk,omitempty"`
-	ChunkSize         int    `json:"chunk_size,omitempty"`
-	OverlapSize       int    `json:"overlap_size,omitempty"`
-	MaxChunks         int    `json:"max_chunks,omitempty"`
-	OllamaURL         string `json:"ollama_url,omitempty"`
-	DriveFolderID     string `json:"drive_folder_id,omitempty"`
-	OutputPath        string `json:"output_path,omitempty"`
-	Language          string `json:"language,omitempty"`
-	TranslateOnly     bool   `json:"translate_only,omitempty"`
-	GeneratePDF       bool   `json:"generate_pdf,omitempty"`
-	PDFStyle          string `json:"pdf_style,omitempty"`
-	GenerateVoiceover bool   `json:"generate_voiceover"`
-	VoiceoverLanguage string `json:"voiceover_language,omitempty"`
-	VoiceoverFolderID string `json:"voiceover_folder_id,omitempty"`
+	DriveFileURL  string `json:"drive_file_url"`
+	Instruction   string `json:"instruction,omitempty"`
+	Model         string `json:"model,omitempty"`
+	PagesPerChunk int    `json:"pages_per_chunk,omitempty"`
+	ChunkSize     int    `json:"chunk_size,omitempty"`
+	OverlapSize   int    `json:"overlap_size,omitempty"`
+	MaxChunks     int    `json:"max_chunks,omitempty"`
+	OllamaURL     string `json:"ollama_url,omitempty"`
+	DriveFolderID string `json:"drive_folder_id,omitempty"`
+	OutputPath    string `json:"output_path,omitempty"`
+	Language      string `json:"language,omitempty"`
+	TranslateOnly bool   `json:"translate_only,omitempty"`
+	GeneratePDF   bool   `json:"generate_pdf,omitempty"`
+	PDFStyle      string `json:"pdf_style,omitempty"`
 }
 
 type ProcessFromDriveResult struct {
-	Success            bool           `json:"success"`
-	BookResult         *ProcessResult `json:"book_result,omitempty"`
-	VoiceoverPath      string         `json:"voiceover_path,omitempty"`
-	VoiceoverDriveLink string         `json:"voiceover_drive_link,omitempty"`
-	VoiceoverDriveID   string         `json:"voiceover_drive_id,omitempty"`
-	VoiceoverError     string         `json:"voiceover_error,omitempty"`
-	Error              string         `json:"error,omitempty"`
+	Success    bool           `json:"success"`
+	BookResult *ProcessResult `json:"book_result,omitempty"`
+	Error      string         `json:"error,omitempty"`
 }
 
 func (s *Service) ProcessBookFromDrive(ctx context.Context, req *ProcessFromDriveRequest) (*ProcessFromDriveResult, error) {
@@ -152,75 +144,8 @@ func (s *Service) ProcessBookFromDrive(ctx context.Context, req *ProcessFromDriv
 		}, nil
 	}
 
-	result := &ProcessFromDriveResult{
+	return &ProcessFromDriveResult{
 		Success:    true,
 		BookResult: bookResult,
-	}
-
-	if req.GenerateVoiceover && s.voiceoverExecutor != nil {
-		s.log.Info("generating voiceover from book output",
-			zap.String("output_path", bookResult.OutputPath),
-		)
-
-		outputContent, err := os.ReadFile(bookResult.OutputPath)
-		if err != nil {
-			result.VoiceoverError = fmt.Sprintf("failed to read book output: %v", err)
-			s.log.Warn("voiceover generation skipped: cannot read output", zap.Error(err))
-			return result, nil
-		}
-
-		voiceoverLang := req.VoiceoverLanguage
-		if voiceoverLang == "" {
-			voiceoverLang = "it"
-		}
-
-		filename := fmt.Sprintf("book_voiceover_%s.mp3", filepath.Base(bookResult.OutputPath))
-
-		// P0-#3 (July 2026): map the books-to-voiceover request to the
-		// canonical per-item command (same shape the
-		// voiceover.generate + voiceover.generate_item job paths use).
-		// The books path is synchronous within ProcessBookFromDrive
-		// (it does not enqueue a child job), so the dispatcher-assigned
-		// parent job ID is not available; use a stable synthetic ID
-		// (Validate requires non-empty ParentJobID + RequestID).
-		var dest *voiceover.DestinationRequest
-		if req.VoiceoverFolderID != "" {
-			dest = &voiceover.DestinationRequest{
-				Kind:     "explicit",
-				FolderID: req.VoiceoverFolderID,
-			}
-		}
-		itemCmd := &voiceover.GenerateVoiceoverItemCommand{
-			ParentJobID:   "books-process-from-drive",
-			RequestID:     "books-process-from-drive",
-			Text:          string(outputContent),
-			Language:      voiceover.Language(voiceoverLang),
-			Filename:      filename,
-			TextHash:      voiceover.ComputeTextHash(string(outputContent)),
-			Destination:   dest,
-			Strategy:      "replace",
-			RemoveSilence: false,
-		}
-		voResult, err := s.voiceoverExecutor.Execute(ctx, itemCmd)
-		if err != nil {
-			// Typed-error contract: real failures surface as a Go error
-			// (the per-item use case returns *PipelineError wrapping
-			// the stage-specific failure). No more
-			// `voResult.OK` / `voResult.Error` field check.
-			result.VoiceoverError = fmt.Sprintf("voiceover generation failed: %v", err)
-			s.log.Warn("voiceover generation failed", zap.Error(err))
-		} else if voResult != nil {
-			result.VoiceoverPath = voResult.LocalPath
-			result.VoiceoverDriveLink = voResult.DriveLink
-			result.VoiceoverDriveID = voResult.DriveFileID
-			s.log.Info("voiceover generated successfully",
-				zap.String("path", voResult.LocalPath),
-				zap.String("drive_link", voResult.DriveLink),
-			)
-		}
-	} else if req.GenerateVoiceover && s.voiceoverExecutor == nil {
-		result.VoiceoverError = "voiceover service not configured"
-	}
-
-	return result, nil
+	}, nil
 }
