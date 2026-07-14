@@ -107,11 +107,10 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	//    envelope inside the commit pipeline).
 	"internal/application/assets/mutations/",
 	// 4. Finalizer / texttracks / voiceover / image ingest /
-	//    soundeffect / catalogsync / provider / outbox job
-	//    handlers — surfaces that route through or consume the
-	//    canonical AssetCommitter pipeline (lambda-flow-down).
-	//    These ARE the canonical owner/consumer chain for the
-	//    literal value (per godlike/06 SSOT).
+	//    soundeffect / catalogsync / provider — surfaces that
+	//    route through the canonical AssetCommitter pipeline
+	//    (lambda-flow-down). These ARE the canonical owner
+	//    chain for the literal value (per godlike/06 SSOT).
 	"internal/application/assets/finalizer/",
 	"internal/application/assets/texttracks/",
 	"internal/application/voiceover/",
@@ -119,13 +118,7 @@ var assetCommitterEventSSOTExemptPathPrefixes = []string{
 	"internal/application/assets/soundeffect/",
 	"internal/application/assets/catalogsync/",
 	"internal/application/assets/providers/",
-	"internal/application/jobs/outbox/",
 	"internal/recommendation/",
-	// 4a. Legacy outbox dispatcher — transitional exemption while
-	//     EnqueueAndIndex / EnqueueIndexEvent are refactored to
-	//     route through the canonical AssetCommitter chain
-	//     (PR-ASSET-COMMITTER-CONSOLIDATION forward-pointer).
-	"internal/infrastructure/database/sqlite/outbox/",
 	// 5. Composition-root bundles — emit the canonical
 	//    event_type literal only as typed documentation.
 	"internal/app/",

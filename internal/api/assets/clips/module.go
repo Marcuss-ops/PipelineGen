@@ -51,12 +51,12 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"github.com/gin-gonic/gin"
@@ -71,12 +71,12 @@ type Dependencies struct {
 	ClipsRepo       *assets.ClipsRepository
 	AssetRepo       asset.Repository
 	DeletionSvc     *deletion.DeletionService
-	DriveAdmin      any
+	DriveAdmin      drive.Admin
 	MediaProcessor  asset.Processor
 	AssetTreeSvc    *assettree.Service
 	MetaWriter      semantic.MetadataWriterPort
 	ClipIndexer     *clipindexer.Service
-	JobsSvc         kerneljob.Service
+	JobsSvc         job.Service
 	Cfg             *config.Config
 	Log             *zap.Logger
 	VoiceoverRepo   *assets.VoiceoversRepository
@@ -113,7 +113,7 @@ type Dependencies struct {
 // is preserved.
 type clipJobRegistrar struct {
 	bulkUploadWorker *appclips.BulkUploadWorker
-	jobsSvc          kerneljob.Service
+	jobsSvc          job.Service
 	log              *zap.Logger
 }
 
@@ -129,7 +129,7 @@ func (r *clipJobRegistrar) RegisterBulkUpload(svc api.JobRegistrar, descriptorPt
 	if r.bulkUploadWorker == nil || r.jobsSvc == nil {
 		return fmt.Errorf("%w: clipJobRegistrar: BulkUploadWorker or JobsSvc nil at registration (godlike/07 fail-closed)", appjobs.ErrJobsSvcRequiredAtRegistration)
 	}
-	registerErr := svc.RegisterHandler(media.TypeBulkUploadYouTubeClips, appjobs.HandlerFunc(r.bulkUploadWorker.HandleJob))
+	registerErr := svc.RegisterHandler(job.TypeBulkUploadYouTubeClips, appjobs.HandlerFunc(r.bulkUploadWorker.HandleJob))
 	if r.log != nil {
 		r.log.Info("clips: registered bulk_upload_youtube_clips handler (module-side)",
 			zap.String("module", "clips"),

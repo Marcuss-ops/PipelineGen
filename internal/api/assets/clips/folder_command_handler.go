@@ -5,7 +5,6 @@
 package clips
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -13,14 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
-
-// driveFolderAdmin is the minimal surface used by TrashFolder and
-// DeleteFolder. It is declared locally so the clips API package does not
-// import the drive infrastructure package directly.
-type driveFolderAdmin interface {
-	TrashFolder(ctx context.Context, folderID string) error
-	DeleteFolder(ctx context.Context, folderID string) error
-}
 
 // RegenerateManifest regenerates manifest files for a folder.
 func (oh *OpsHandler) RegenerateManifest(c *gin.Context) {
@@ -94,12 +85,7 @@ func (oh *OpsHandler) TrashFolder(c *gin.Context) {
 			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured"))
 			return
 		}
-		admin, ok := oh.driveAdmin.(driveFolderAdmin)
-		if !ok {
-			apiutil.InternalError(c, fmt.Errorf("drive admin does not support folder lifecycle operations"))
-			return
-		}
-		if err := admin.TrashFolder(ctx, driveFolderID); err != nil {
+		if err := oh.driveAdmin.TrashFolder(ctx, driveFolderID); err != nil {
 			oh.log.Error("failed to trash folder in Google Drive", zap.String("folder_id", driveFolderID), zap.Error(err))
 			apiutil.InternalError(c, err)
 			return
@@ -167,12 +153,7 @@ func (oh *OpsHandler) DeleteFolder(c *gin.Context) {
 			apiutil.InternalError(c, fmt.Errorf("drive uploader not configured"))
 			return
 		}
-		admin, ok := oh.driveAdmin.(driveFolderAdmin)
-		if !ok {
-			apiutil.InternalError(c, fmt.Errorf("drive admin does not support folder lifecycle operations"))
-			return
-		}
-		if err := admin.DeleteFolder(ctx, driveFolderID); err != nil {
+		if err := oh.driveAdmin.DeleteFolder(ctx, driveFolderID); err != nil {
 			oh.log.Error("failed to delete folder in Google Drive", zap.String("folder_id", driveFolderID), zap.Error(err))
 			apiutil.InternalError(c, err)
 			return
