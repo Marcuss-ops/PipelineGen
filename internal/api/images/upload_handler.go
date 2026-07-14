@@ -69,8 +69,9 @@ func (h *ImagesHandler) Upload(c *gin.Context) {
 		return
 	}
 
-	if req.Name == "" {
-		req.Name = req.Subject
+	name := req.Name
+	if name == "" {
+		name = req.Subject
 	}
 
 	slug := strings.ReplaceAll(strings.ToLower(req.Subject), " ", "-")
@@ -78,7 +79,7 @@ func (h *ImagesHandler) Upload(c *gin.Context) {
 	res, err := h.ingestSvc.Ingest(c.Request.Context(), &ingest.Request{
 		Kind:   string(ingest.KindImage),
 		URL:    req.URL,
-		Name:   req.Name,
+		Name:   name,
 		Group:  slug,
 		Tags:   req.Tags,
 		Source: "upload",
