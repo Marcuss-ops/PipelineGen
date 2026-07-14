@@ -103,7 +103,6 @@ func NewService(deps ImagesDeps) *Service {
 		tempDir:       cfg.Storage.TempPath(),
 		driveFolderID: cfg.Drive.RootFolder(),
 		client:        &http.Client{Timeout: 10 * time.Minute},
-		dispatcher:    deps.External.Dispatcher,
 		committer:     deps.External.Committer,
 		// PR-SOURCESTAGER-CONSOLIDATE (July 2026): SourceStager is
 		// the canonical port for staging remote URLs into

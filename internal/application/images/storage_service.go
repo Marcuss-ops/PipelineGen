@@ -12,13 +12,12 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/destinations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/retrieved"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // ImageStorageService handles image storage, retrieval, Drive operations,
-// web search, and media asset registration. It delegates metadata operations
+// web search, and image asset registration. It delegates metadata operations
 // to MetadataService.
 //
 // PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy `mediaStore
@@ -31,7 +30,6 @@ import (
 // s.publisher.Publish(... delivery.PublishRequest{...}) directly).
 type ImageStorageService struct {
 	repo          *assets.ImagesRepository
-	stockRepo     *assets.ClipsRepository
 	publisher     delivery.Publisher
 	driveReader   drive.Reader
 	cfg           *config.Config
@@ -39,25 +37,15 @@ type ImageStorageService struct {
 	tempDir       string
 	driveFolderID string
 	client        *http.Client
-	// dispatcher is retained (NOT removed) for the video + audio paths
-	// in storage_drive.go that bypass CommitAsset. The image-ingest
-	// path (ingestDirect) now uses committer exclusively for atomicity.
-	dispatcher *outbox.Dispatcher
 	// committer is the canonical SINGLE-transaction asset commit surface
-	// for image ingest (PR-IMAGES-INGEST-ATOMIC, July 2026). Used by
-	// ingestDirect to atomically write media_assets + asset_locations +
-	// typed metadata + the asset.index.requested outbox event inside
-	// a single SQLite transaction. Replaces the prior repo.AddImage +
-	// dispatcher.EnqueueAndIndex two-transaction path that carried a
-	// documented crash-risk window between SQLite and Qdrant.
+	// for image ingest. Used by ingestDirect to atomically write
+	// media_assets + asset_locations + typed metadata + the
+	// asset.index.requested outbox event inside a single SQLite
+	// transaction.
 	committer persistence.AssetCommitter
 	// sourceStager is the canonical port for staging remote URLs into
-	// deterministic local files (PR-SOURCESTAGER-CONSOLIDATE, July 2026).
-	// downloadAndIngest routes web image downloads through StageSourceV2
-	// so the inline `http.NewRequest + s.client.Do` boilerplate no
-	// longer leaks into the processor. Nil fails closed with a typed
-	// error (godlike/07) — the composition root MUST wire the stager
-	// at NewService time. Pre-PR inline-http fallback was retired.
+	// deterministic local files. downloadAndIngest routes web image
+	// downloads through it.
 	sourceStager  assetapp.SourceStager
 	dedup         singleflight.Group
 	log           *zap.Logger
