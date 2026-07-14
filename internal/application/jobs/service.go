@@ -36,7 +36,7 @@ import (
 
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // Service manages job life cycle: enqueue, query, cancel.
@@ -51,7 +51,7 @@ import (
 // legacy NewService(repo, dispatcher, log) signature stays stable for
 // tests that don't depend on the registry.
 type Service struct {
-	repo       job.JobBroker
+	repo       kerneljob.JobBroker
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	registry   *Registry
@@ -85,7 +85,7 @@ type Service struct {
 // pre-Issue-4 hard-coded 3-retry safety net for ANY job type — a
 // godlike/07 silent-success risk if the composition root forgot the
 // WithRegistry call. The 4-arg signature eliminates that risk entirely.
-func NewService(repo job.JobBroker, dispatcher *Dispatcher, log *zap.Logger, reg *Registry) (*Service, error) {
+func NewService(repo kerneljob.JobBroker, dispatcher *Dispatcher, log *zap.Logger, reg *Registry) (*Service, error) {
 	if reg == nil {
 		return nil, ErrRegistryRequired
 	}
@@ -129,4 +129,4 @@ func (s *Service) WithRegistry(reg *Registry) *Service {
 }
 
 // Compile-time assertion: *Service satisfies the domain job.Service interface.
-var _ job.Service = (*Service)(nil)
+var _ kerneljob.Service = (*Service)(nil)

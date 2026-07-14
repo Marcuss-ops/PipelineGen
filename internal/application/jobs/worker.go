@@ -60,7 +60,7 @@ import (
 
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
 
@@ -104,7 +104,7 @@ func init() {
 //     canonical default.
 type Worker struct {
 	id         string
-	repo       job.Store
+	repo       kerneljob.Store
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	leaseTTL   time.Duration
@@ -318,7 +318,7 @@ func (w *Worker) Start(ctx context.Context) {
 
 		j, err := w.repo.ClaimNext(ctx, w.id, w.leaseTTL, w.types)
 		if err != nil {
-			if errors.Is(err, job.ErrTransitionConflict) {
+			if errors.Is(err, kerneljob.ErrTransitionConflict) {
 				// Expected under concurrent polling: another worker won the
 				// CAS race and claimed the job first. Treat it as a normal
 				// empty poll rather than a server-side error.

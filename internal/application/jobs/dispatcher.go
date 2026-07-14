@@ -53,7 +53,7 @@ import (
 	"errors"
 	"fmt"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Sentinel errors ────────────────────────────────────────────────
@@ -102,13 +102,14 @@ var ErrInvalidPayload = errors.New("appjobs.Dispatcher: payload encode failed")
 // Dispatcher. The compile-time assertion below pins the contract to
 // *Service so any future drift is a build failure.
 type EnqueuePort interface {
-	Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
+	Enqueue(ctx context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error)
 }
 
 // Compile-time assertion: *Service satisfies EnqueuePort. Pins the
 // bridge contract at compile time so any future drift on Service.Enqueue
 // is a build failure, not a runtime panic.
 var _ EnqueuePort = (*Service)(nil)
+
 
 // ── Dispatcher extensions ──────────────────────────────────────────
 
@@ -128,7 +129,7 @@ var _ EnqueuePort = (*Service)(nil)
 //
 // Returns the receiver for builder-style chaining. Mirrors the
 // canonical Service.WithRegistry precedent in service.go.
-func (d *Dispatcher) WithRegistry(reg job.CompiledJobRegistry) *Dispatcher {
+func (d *Dispatcher) WithRegistry(reg kerneljob.CompiledJobRegistry) *Dispatcher {
 	if d == nil {
 		return d
 	}
@@ -177,7 +178,7 @@ func (d *Dispatcher) SetEnqueuer(p EnqueuePort) *Dispatcher {
 // (TypeScriptGenerate = "script.generate", etc.). The parameter type
 // follows the existing EnqueueRequest.Type convention. A typed alias
 // can be added in a future migration without breaking this signature.
-func (d *Dispatcher) Enqueue(ctx context.Context, jobType string, payload any) (*job.Job, error) {
+func (d *Dispatcher) Enqueue(ctx context.Context, jobType string, payload any) (*kerneljob.Job, error) {
 	// (1) nil receiver.
 	if d == nil {
 		return nil, fmt.Errorf("%w: dispatcher is nil", ErrEnqueuerNotWired)
@@ -199,7 +200,7 @@ func (d *Dispatcher) Enqueue(ctx context.Context, jobType string, payload any) (
 	// (4) binary lookup against the post-Freeze CompiledJobRegistry.
 	def, ok := d.registry.Definition(jobType)
 	if !ok {
-		return nil, fmt.Errorf("%w: %s", job.ErrUnknownJobType, jobType)
+		return nil, fmt.Errorf("%w: %s", kerneljob.ErrUnknownJobType, jobType)
 	}
 
 	// (5) PayloadCodec must be set. Per C3 StartupValidator check (c),

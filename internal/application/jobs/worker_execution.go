@@ -67,13 +67,13 @@ import (
 	"fmt"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"go.uber.org/zap"
 )
 
-func (w *Worker) runJob(parent context.Context, j *job.Job) {
+func (w *Worker) runJob(parent context.Context, j *kerneljob.Job) {
 	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 

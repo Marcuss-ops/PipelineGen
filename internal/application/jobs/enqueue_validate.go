@@ -15,14 +15,14 @@ package jobs
 import (
 	"fmt"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // MaxPayloadSize is the maximum allowed size for a serialized job payload in bytes.
 const MaxPayloadSize = 1 << 20 // 1 MB
 
 // validateEnqueueRequest checks the domain EnqueueRequest for common errors.
-func validateEnqueueRequest(req *job.EnqueueRequest) error {
+func validateEnqueueRequest(req *kerneljob.EnqueueRequest) error {
 	if req == nil {
 		return fmt.Errorf("enqueue request is nil")
 	}

@@ -56,7 +56,7 @@ package jobs
 import (
 	"context"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -95,15 +95,15 @@ import (
 // stay (result, shouldExit) to keep `TestRenewLeaseLoopWith_CancelRequested_TriggersJobCancel`
 // + `TestRenewLeaseLoopWith_LeaseLost_AbortsLoop` +
 // `TestRenewLeaseLoopWith_Continue_NoOp` passing byte-for-byte.
-func (w *Worker) attemptLeaseRenewal(ctx context.Context, jobID string) (job.RenewLeaseResult, bool) {
+func (w *Worker) attemptLeaseRenewal(ctx context.Context, jobID string) (kerneljob.RenewLeaseResult, bool) {
 	result, err := w.repo.RenewLease(ctx, jobID, w.id, w.leaseTTL)
 
-	if result.State == job.LeaseStateCancelRequested {
+	if result.State == kerneljob.LeaseStateCancelRequested {
 		w.log.Info("worker: lease renewal observed cancel_requested (Fase 4(b) typed signal); cancelling jobCtx",
 			zap.String("job_id", jobID))
 		return result, true
 	}
-	if result.State == job.LeaseStateLeaseLost {
+	if result.State == kerneljob.LeaseStateLeaseLost {
 		w.log.Warn("worker: lease lost during renewal (Fase 4(b) typed signal); aborting",
 			zap.String("job_id", jobID), zap.Error(err))
 		return result, true
@@ -114,7 +114,7 @@ func (w *Worker) attemptLeaseRenewal(ctx context.Context, jobID string) (job.Ren
 	// authoritative success signal. godlike/07 fail-closed: a
 	// non-state error is treated as a transient hiccup; loop
 	// retries on the next ticker tick.
-	if err != nil && result.State != job.LeaseStateContinue {
+	if err != nil && result.State != kerneljob.LeaseStateContinue {
 		w.log.Warn("failed to renew lease",
 			zap.String("job_id", jobID), zap.Error(err))
 	}

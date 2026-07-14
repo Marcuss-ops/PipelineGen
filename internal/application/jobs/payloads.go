@@ -3,7 +3,7 @@ package jobs
 import (
 	"encoding/json"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Typed job payloads (Punto 22) ─────────────────────────────────────────
@@ -119,7 +119,7 @@ type TypedPayload interface {
 
 // DecodePayload unmarshals the job's raw payload into the requested type T.
 // Returns an error if the payload cannot be decoded.
-func DecodePayload[T TypedPayload](j *job.Job) (*T, error) {
+func DecodePayload[T TypedPayload](j *kerneljob.Job) (*T, error) {
 	var payload T
 	if len(j.Payload) == 0 {
 		return &payload, nil

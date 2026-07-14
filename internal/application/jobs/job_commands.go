@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // aggregateFlipper is the narrow Pattern-0 port the parent aggregator's
@@ -21,14 +21,14 @@ import (
 //
 // FASE 2 (July 2026): expectedVersion added for version-based CAS.
 type aggregateFlipper interface {
-	FinalizeAggregateParent(ctx context.Context, id string, targetStatus job.Status, result []byte, errMsg string, expectedVersion int) error
+	FinalizeAggregateParent(ctx context.Context, id string, targetStatus kerneljob.Status, result []byte, errMsg string, expectedVersion int) error
 }
 
 func (s *Service) Cancel(ctx context.Context, id string) error {
 	return s.repo.Cancel(ctx, id)
 }
 
-func (s *Service) Retry(ctx context.Context, id string) (*job.Job, error) {
+func (s *Service) Retry(ctx context.Context, id string) (*kerneljob.Job, error) {
 	return s.repo.Retry(ctx, id)
 }
 
@@ -72,7 +72,7 @@ func (s *Service) FinalizeAggregateParent(ctx context.Context, id string, target
 	if id == "" {
 		return fmt.Errorf("jobs: FinalizeAggregateParent: id is empty")
 	}
-	if targetStatus != job.StatusSucceeded && targetStatus != job.StatusFailed {
+	if targetStatus != kerneljob.StatusSucceeded && targetStatus != kerneljob.StatusFailed {
 		return fmt.Errorf("jobs: FinalizeAggregateParent: targetStatus must be SUCCEEDED or FAILED, got %q", targetStatus)
 	}
 	flipper, ok := s.repo.(aggregateFlipper)
