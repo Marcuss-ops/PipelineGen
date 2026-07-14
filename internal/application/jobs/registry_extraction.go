@@ -1,6 +1,7 @@
 package jobs
 
 import "time"
+import youtubejob "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
 
 // registerExtractionEntries registers all extraction/YouTube job types
 // into the canonical registry. Called by Compose() after the base
@@ -14,6 +15,13 @@ func registerExtractionEntries(r *Registry) {
 	// is statically registered. Flipping to false ensures the SQL-layer guard
 	// doesn't block the legacy Complete path if a handler is later registered.
 	r.Register(JobPolicy{Type: TypeMediaExtract, Description: "Media extraction", Timeout: 30 * time.Minute, DefaultMaxRetries: 2})
+
+	// PR-YOUTUBE-EXTRACT-REGISTRY (July 2026): youtube.extract is the
+	// canonical registry entry for the YouTube clip extraction path
+	// wired by internal/app/c3ValidateRuntimeGraph. The worker path
+	// persists its own media_assets row + outbox event in the caller-owned tx,
+	// so the broker's legacy Complete is the canonical mark-SUCCEEDED seam.
+	r.Register(JobPolicy{Type: youtubejob.TypeExtract, Description: "youtube clip extraction (URL -> media_assets row + outbox)", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})
 
 	// PR-COMPLETE-WORKER-YT-FIX (July 2026): ProducesArtifacts REMOVED.
 	r.Register(JobPolicy{Type: TypeYouTubeClipExtract, Description: "YouTube clip extraction (per-segment artifacts persisted inside the per-segment caller-owned tx via process_segment + ClipAtomicWriter; broker's legacy Complete is the canonical mark-SUCCEEDED seam)", Timeout: 60 * time.Minute, DefaultMaxRetries: 2})

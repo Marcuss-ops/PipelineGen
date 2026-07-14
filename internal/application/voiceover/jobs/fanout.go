@@ -245,9 +245,10 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			parentJobID, idx, itemTextHash, itemSpec.Language, itemSpec.Voice)
 
 		enqueued, err := u.deps.Enqueuer.Enqueue(ctx, &job.EnqueueRequest{
-			Type:      job.TypeVoiceoverGenerateItem,
-			Payload:   item,
-			ActiveKey: childActiveKey,
+			Type:          job.TypeVoiceoverGenerateItem,
+			Payload:       item,
+			CorrelationID: fmt.Sprintf("%s:item:%d", requestID, idx),
+			ActiveKey:     childActiveKey,
 		})
 		if err != nil {
 			u.deps.Logger.Warn("FanoutUseCase: enqueue child failed",

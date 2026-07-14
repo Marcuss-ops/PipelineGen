@@ -336,7 +336,7 @@ type brokerAdapter struct {
 // Pre-P1-#13 literal `map[string]any` return remains valid via
 // Result = map[string]any alias.
 func (b brokerAdapter) RegisterHandler(jobType string, handler any) error {
-	h, ok := handler.(func(context.Context, *job.Job, *appjobs.JobExecutionTools) (map[string]any, error))
+	h, ok := handler.(job.Handler)
 	if !ok {
 		return fmt.Errorf("brokerAdapter: handler type mismatch for jobType=%q (got %T)", jobType, handler)
 	}
