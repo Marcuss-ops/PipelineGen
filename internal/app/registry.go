@@ -165,8 +165,14 @@ type RegistryWiring struct {
 
 	// PR4 (June 2026) cross-step state — populated by internal modules
 	// registry, consumed by assets registration. Unexported.
-	searchFanOut       search.SearchFanOut
-	searchBackends     *search.BackendRegistry
+	searchFanOut   search.SearchFanOut
+	searchBackends *search.BackendRegistry
+	// searchAgg is the canonical godlike/06 SSOT *search.Aggregator
+	// singleton (constructed once at composition time by
+	// BuildCanonicalSearchFanOut inside registerSearchBackend).
+	// Plumbed into AssetsModuleDeps.Search.SearchAggregator so WireAssets
+	// can consume without constructing a duplicate (per percheck_search_aggregator_singleton).
+	searchAgg          *search.Aggregator
 	idempotencyHandler gin.HandlerFunc
 
 	// SearchFanOut is the public accessor for the canonical search
