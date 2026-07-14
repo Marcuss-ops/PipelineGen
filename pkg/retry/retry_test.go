@@ -1,39 +1,10 @@
-// Package retry — retry_test.go (FASE 6 Cut 6.1 finalization, July 2026).
+// Package retry — retry_test.go
 //
-// Migration note (PR-SUBSTRING-TRIM, FASE 6 Cut 6.1.D):
-//
-// Pre-FASE-6 IsTransient had a substring fallback against the canonical
-// transientSubstrings taxonomy (timeout/429/503/connection refused/EOF/etc.).
-// That substring path was REMOVED from production per the user spec:
-//
-//	"Rimuovi TUTTA la classificazione substring (eof, 429, 502, 503, 504,
-//	 timeout) dal percorso di produzione di pkg/retry."
-//
-// Production IsTransient is now a PURE TYPED PROBE (errors.As on
-// RetryableError interface + errors.As on *TransientInfrastructureError
-// carrier only). The pre-FASE-6 substring taxonomy is preserved as a
-// TEST-ONLY fixture in pkg/retry/transient_legacy_test.go via the
-// classifyLegacyTransientForTest adapter, but it is NOT in the global
-// chain by default.
-//
-// To preserve the regression value of the pre-FASE-6 substring-based
-// tests below, this file now exercises the canonical Decision()
-// walker with the legacy classifier EXPLICITLY REGISTERED at the top
-// of each substring-asserting test. The production goroutines never
-// see this registration (tests are isolated via ResetClassifiersForTest
-// + t.Cleanup). This converts the obsolete substring-assertion tests
-// into typed-Decision walker regression tests, preserving their
-// "what did the pre-FASE-6 classifier say about this error shape?"
-// evidence trail per godlike/07 no-fake-availability.
-//
-// godlike/07 honest-limitation: tests that exercise WrapTransient's
-// pre-FASE-6 substring-wrap contract (subtests 3, 6, 7, 8 of
-// TestWrapTransient) are t.Skip-ed individually with a forward-pointer
-// comment, because WrapTransient calls production IsTransient directly
-// (not the Decision walker) and therefore CANNOT consult the registered
-// legacy classifier. Migrating WrapTransient to consult Decision() is a
-// separate cut (forward-pointer: 6.1.C caller migration + WrapTransient
-// rewrite).
+// Tests exercise the canonical Decision() walker with the legacy
+// substring Classifier explicitly registered only in test scope.
+// Production IsTransient is a pure typed probe; the legacy classifier
+// lives in transient_legacy_test.go and is never in the global chain
+// by default.
 
 package retry
 
