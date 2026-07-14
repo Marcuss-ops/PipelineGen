@@ -31,6 +31,52 @@ deprecations:
   # sequence", zero pre-removal callers + canonical replacement present +
   # physical-removal target → EXPAND→BACKFILL→CONTRACT (skip CUTOVER).
   # ────────────────────────────────────────────────────────────────────────
+  - id: OUTPUT_SPEC_VOICEOVER_FLAG
+    owner_capability: internal/domain/script
+    exact_symbol: "OutputSpec.GenerateVoiceover (Toggle flag, json: generate_voiceover)"
+    file: internal/domain/script/output_spec.go
+    file_line: 281
+    replacement: "Voiceover is now produced by a separate voiceover.generate downstream job (internal/domain/job/job.go TypeVoiceoverGenerate). Set voiceover requirements via sceneplan.AssetRequirements instead."
+    introduction_date: 2026-07-01
+    removal_date: 2026-07-13
+    tracking_issue: "Spina Dorsale Fase 2 — Piano d'Azione § Fase 2"
+    compatibility_test: "PHYSICALLY REMOVED (PR-COMMIT3, July 2026): the field declaration is gone from internal/domain/script/output_spec.go; the test surface that exercised the field is removed (output_spec_test.go cases + drift-fix scenarios in normalizer_plan_tests_test.go). The wire shape is enforced to return 400 UNKNOWN_FIELD by bindGenerateEnvelope (json.Decoder.DisallowUnknownFields) per the user directive 'miglior 400 Unknown Field che campo accettato e ignorato'. Architecture/architecture/deprecations.yaml record retained as the canonical godlike/07 audit-pin for the physical-removal commit."
+    usage_metric: "Pre-removal: flag read by preset_resolver, generation_normalizer, handler_legacy_adapters, postprocessor_preflight. Post-COMMIT3: zero readers of the flag in production code (the field is physically gone from the struct); the preflight module is physically removed; all drift-fix test cases deleted. Callers sending the field receive HTTP 400 UNKNOWN_FIELD at the wire boundary."
+    migration_phase: CONTRACT
+    status: removed
+    notes: "PR-COMMIT3 (July 2026): the field is physically REMOVED from OutputSpec; the preflight module is physically deleted; the test surface is deleted. Architecture/deprecations.yaml record retained with status: removed + migration_phase: CONTRACT per the canonical godlike/07 lifecycle audit-pin. The 3 downstream jobs (TypeVoiceoverGenerate / TypeImagesGenerate / TypeDocumentGenerate in internal/domain/job/job.go) are the canonical owners of the artifact surfaces; callers who previously set these flags now emit asset-requirement spec surfaces (sceneplan.AssetRequirements) on a different downstream job type."
+
+
+  - id: OUTPUT_SPEC_IMAGES_FLAG
+    owner_capability: internal/domain/script
+    exact_symbol: "OutputSpec.GenerateSceneImages (Toggle flag, json: generate_scene_images)"
+    file: internal/domain/script/output_spec.go
+    file_line: 291
+    replacement: "Scene images are now produced by a separate images.generate downstream job (internal/domain/job/job.go TypeImagesGenerate). Set image requirements via sceneplan.AssetRequirements instead."
+    introduction_date: 2026-07-01
+    removal_date: 2026-07-13
+    tracking_issue: "Spina Dorsale Fase 2 — Piano d'Azione § Fase 2"
+    compatibility_test: "PHYSICALLY REMOVED (PR-COMMIT3, July 2026): the field declaration is gone from internal/domain/script/output_spec.go; the test surface that exercised the field is removed; bindGenerateEnvelope returns HTTP 400 UNKNOWN_FIELD on wire-shape ingress. The architecture/deprecations.yaml record is retained as the canonical godlike/07 audit-pin."
+    usage_metric: "Pre-removal: flag read by preset_resolver, generation_normalizer, postprocessor_preflight. Post-COMMIT3: zero readers of the flag in production code. Callers receive HTTP 400 UNKNOWN_FIELD."
+    migration_phase: CONTRACT
+    status: removed
+    notes: "PR-COMMIT3 (July 2026): the field is physically REMOVED. See OUTPUT_SPEC_VOICEOVER_FLAG for the canonical migration pattern (3 fields removed in lockstep per the user directive 'rimuovi ogni riferimento in normalizer, validator, plan builder, cache key, preflight, preset, test di compatibilità, deprecations.yaml, documentazione API')."
+
+  - id: OUTPUT_SPEC_DOCUMENT_FLAG
+    owner_capability: internal/domain/script
+    exact_symbol: "OutputSpec.GenerateDocument (Toggle flag, json: generate_document)"
+    file: internal/domain/script/output_spec.go
+    file_line: 301
+    replacement: "Google Doc creation is now produced by a separate document.generate downstream job (internal/domain/job/job.go TypeDocumentGenerate). Set document requirements via sceneplan.AssetRequirements instead."
+    introduction_date: 2026-07-01
+    removal_date: 2026-07-13
+    tracking_issue: "Spina Dorsale Fase 2 — Piano d'Azione § Fase 2"
+    compatibility_test: "PHYSICALLY REMOVED (PR-COMMIT3, July 2026): the field declaration is gone; the test surface is removed; bindGenerateEnvelope returns HTTP 400 UNKNOWN_FIELD on wire-shape ingress."
+    usage_metric: "Pre-removal: flag read by preset_resolver, generation_normalizer, postprocessor_preflight. Post-COMMIT3: zero readers of the flag in production code. Callers receive HTTP 400 UNKNOWN_FIELD."
+    migration_phase: CONTRACT
+    status: removed
+    notes: "PR-COMMIT3 (July 2026): the field is physically REMOVED. See OUTPUT_SPEC_VOICEOVER_FLAG for the canonical migration pattern."
+
 
   - id: ARTIFACT_RESULT_DOCUMENT_FIELD
     owner_capability: internal/domain/script
@@ -381,7 +427,7 @@ deprecations:
     file_line: 296
     replacement: "Handler.Generate with destination: {kind: \"group\", group: \"<topic>\"} (canonical /generate endpoint)"
     introduction_date: 2026-06-28
-    removal_date: 2026-09-26
+    removal_date: 2026-07-14
     tracking_issue: "PR-VO-C1 (Voiceover unification wave, June 2026)"
     compatibility_test: |
       Handler-level test pins the dual contract:
@@ -401,10 +447,10 @@ deprecations:
       Pre-removal: tbd by Capability on call to PR-VO-C1 sunset deadline.
       Post-removal (zero verification): counter MUST trend to zero AND
       `rg 'GenerateWithGroup' internal/api/assets/voiceover/` returns zero hits.
-    migration_phase: EXPAND
-    status: in_progress
+    migration_phase: CONTRACT
+    status: removed
     notes: |
-      PR-VO-C1 introduces the canonical `destination.kind` field on
+      PR-VO-C1 introduced the canonical `destination.kind` field on
       DestinationRequest (kind ∈ {"", "group", "explicit"}), where
       "group" routes through GroupsResolver at handler boundary and
       stamps FolderID back onto the destination.
@@ -488,7 +534,7 @@ deprecations:
       split gate per godlike/07 §"No fake availability" (a silent
       drift block, even if unclaimed, is operator foot-gun).
     introduction_date: 2026-04
-    removal_date: 2026-Q3
+    removal_date: 2026-07-14
     tracking_issue: |
       QDRANT-005A (canonical surface, shipped in commit 60a73183,
       June 2026). Removal target: Wave 14 mega-package split gate
@@ -546,66 +592,23 @@ deprecations:
         - Net delta = -1 yaml block, +0 canonical keys added (the
           canonical keys were already present), +1 deprecation
           record flip to `status: removed`.
-    migration_phase: EXPAND
-    status: in_progress
+    migration_phase: CONTRACT
+    status: removed
     notes: |
-      Multi-file scope: this deprecation record tracks two parallel
-      surfaces that collapse at the Wave 14 gate:
-        (1) the legacy `vector_search:` yaml block in `config.yaml`
-            (lines 172-175 — drift, no Go callsite);
-        (2) the absence of a `vector_search` Go namespace. The Go
-            side is already canonical — QdrantConfig lives at
-            `internal/platform/config/types.go:144-157` with the
-            yaml tags `base_url / enabled / api_key` matching the
-            canonical block shipped in commit 60a73183. There is no
-            Go-side deprecation work; the EXPAND phase is purely
-            about the yaml surface.
-
-      Why EXPAND (not CUTOVER / CONTRACT) per godlike/07: the
-      canonical replacement (`qdrant:` block) ships in commit
-      60a73183 alongside this manifest's registration. Per the
-      godlike/07 §"Migration sequence" rule, when the canonical
-      replacement exists AND the legacy surface is silent drift
-      (zero Go readers), the migration enters at EXPAND with
-      the canonical surface live + the legacy surface marked for
-      eventual deletion. BACKFILL / CUTOVER / CONTRACT unfold
-      over successive waves as the legacy block is removed.
-
-      Operator experience during the EXPAND window:
-        - The legacy block continues to load (viper reads it as
-          an unknown key, discards it with a warning in verbose
-          mode, or silently if warnings are suppressed — neither
-          path is observable by the application).
-        - The canonical block supplies all runtime values.
-        - Operators who did not migrate to the canonical block
-          observe no behavioural change: legacy was silent drift
-          already.
+      The legacy `vector_search:` yaml block in `config.yaml` has been
+      physically removed. The canonical `qdrant:` block (QdrantConfig)
+      is the sole configuration surface. The Go `VectorSearch` struct
+      namespace never existed in the canonical config struct; the only
+      tracked surface was the yaml block, which is now gone.
 
       Cross-refs:
         - godlike/06 §"One owner per fact" : the canonical
           `qdrant:` block owns the vec-search configuration fact.
-          The legacy `vector_search:` block is configuration drift
-          (different key `url:` vs canonical `base_url:`) and
-          does not represent an independent owner of the fact.
         - godlike/07 §"No fake availability" : the silent drift
-          is a fossil; registration ratchets it so operators
-          reading the config.yaml see an explicit godlike/07
-          deprecation comment alongside the canonical block
-          (added in this commit's drift-comment edit to
-          config.yaml block).
-        - godlike/07 §"Historical information" : preserves the
-          audit-purpose of the drift comment + this manifest
-          record across the EXPAND-to-CONTRACT window.
+          block is removed.
         - CHANGELOG.md QDRANT-005A `### Added` row (under the
           second `## Unreleased` block): cross-references this
-          manifest record after the EXPAND registration.
-
-      Wave 14 mega-package split gate: the natural removal cycle
-      for this record aligns with DRIVE-005-FIELDS sibling whose
-      `removal_date` is also 2026-Q3 tied to Wave 14. Both config
-      field + drift records fold into the same gate, which keeps
-      the gate-side audit footprint compact (1 PR at gate time
-      removes both fields of drift + their manifest records).
+          manifest record.
 
 
 
@@ -937,78 +940,6 @@ deprecations:
   # deprecation record formalises closure per godlike/07 §"each wave
   # closure needs a deprecation record + CHANGELOG entry".
   # ------------------------------------------------------------
-
-  - id: OPEN-W24-BLOCK1-NAMING-DECISION
-    title: "AssetMutationDispatcher vs AssetMutationService"
-    introduced: 2026-06-28
-    tracker_ref: "architecture/current.yaml#id-24 follow_up_tickets.PR-W24-BLOCK1-NAMING-DECISION"
-    teammate_ref: "scripts/ci-bypass-audit.sh + scripts/ci-architectural-checks.sh (both reference `mutations.AssetMutationDispatcher` in canonical-SSOT language)"
-    deadline: 2026-07-15
-    status: open (team vote pending)
-
-    evidence_dispatcher_currently_shipped:
-      - "(1) 99 hits across internal/ + cmd/ for AssetMutationDispatcher (canonical, currently shipped); 0 hits for AssetMutationService"
-      - "(2) Matches outbox.Dispatcher naming family: outbox.Dispatcher.EnqueueAndDelete, outbox.Dispatcher.EnqueueAndIndex, outbox.Dispatcher.EnqueueAndRestore (the canonical sibling pattern)"
-      - "(3) Reflects event-driven semantics: dispatcher routes envelope to outbox event queue, NOT to a generic service entry point"
-      - "(4) Compile-time assertion documented at internal/infrastructure/database/sqlite/outbox/repository.go:760 — `var _ mutations.AssetMutationDispatcher = (*Dispatcher)(nil)` — the outbox concrete IS the dispatcher (no fake availability per godlike/07)"
-
-    evidence_service_alternative:
-      - "(1) Idiomatic Go convention; 'Service' noun widely used across the codebase (scriptcore.Engine, clips.ReprocessUseCase, etc.)"
-      - "(2) Less cognitive load for new contributors reading the codebase for the first time"
-      - "(3) Future flexibility for non-event-driven compositions (e.g. read-most, sync validation flows)"
-      - "(4) Symmetric with package patterns like pkg/apiutil, pkg/handlerutil, pkg/sqlutil"
-
-    rationale_dispatcher_keep:
-      title: "Recommendation: keep AssetMutationDispatcher"
-      pros:
-        - "Matches outbox family semantics (event-driven); explicit about WHAT the canonical surface routes"
-        - "Distinguishes from sync Service patterns elsewhere in the codebase — naming aids grep-navigate"
-        - "Zero current friction: 99 hits = broad acceptance already; all consumers have adapted"
-        - "Compile-time assertion at the outbox concrete site IS the dispatcher; semantically true"
-      cons:
-        - "More specific semantics may limit future non-event-driven compositions if such compositions emerge"
-        - "New contributors must learn the dispatcher convention (small but real cognitive load)"
-
-    rationale_service_rename:
-      title: "Alternative: rename to AssetMutationService"
-      pros:
-        - "Idiomatic Go naming — fewer cognitive load for new contributors"
-        - "Future flexibility for non-event-composed flows (read-most, async-light, sync preflight)"
-        - "Symmetric with the broader `Service` noun pattern in pkg/<utility>/"
-      cons:
-        - "99 → 0 hits migration churn: 99 file:line edits across internal/ + cmd/" 
-        - "Renames affect Check 7 (ci-bypass-audit.sh) and Check 5 (ci-architectural-checks.sh) backward-compat surface"
-        - "Loses semantic distinction from outbox side: Dispatcher family becomes Service family — harder to grep for what is and isn't outbox-routed"
-        - "Zero functional value (semantics are equivalent; the change is purely aesthetic)"
-
-    decision_criteria: |
-      (a) If the team favours semantic precision + minimal churn, keep Dispatcher.
-      (b) If the team favours idempotent future flexibility + broader convention fit, rename to Service.
-      Decision recorded by PR-W24-BLOCK1-NAMING-DECISION ticket close:
-      the team's vote + rationale is appended to this section's `team_decision` field.
-
-    team_decision: pending
-    vote_record:
-      dispatcher_keep_votes: []
-      service_rename_votes: []
-    closing_blocker: "vote ties → defer until next wave tracker entry; cost-asymmetry is the deciding factor"
-
-    # Sibling evidence (canonical interface name declaration site):
-    canonical_evidence:
-      file: internal/application/assets/mutations/dispatcher.go
-      line: 1
-      quote: "// Package mutations — AssetMutationDispatcher canonical interface."
-      role: "the canonical interface name lives at this single site; renaming touches this line + 98 callers"
-      secondary_evidence:
-        - file: internal/application/assets/mutations/dispatcher.go
-          line: 150
-          quote: "type AssetMutationDispatcher interface {"
-          role: "canonical interface type declaration"
-        - file: internal/infrastructure/database/sqlite/outbox/repository.go
-          line: 760
-          quote: "var _ mutations.AssetMutationDispatcher = (*Dispatcher)(nil)"
-          role: "compile-time assertion at the outbox concrete site"
-
 
   - id: PR-IMAGE-CAPABILITY
     owner_capability: internal/application/assets/providers
@@ -1491,9 +1422,6 @@ deprecations:
       Callers: the runner.go::runLease Azione 7 branch reads
       `r.registry.ProducesArtifacts(job.Type)` and calls
       `tools.CompleteWithArtifacts(jobCtx, resultJSON, publishedJSON, nil)`.
-      promotion:
-    status: deprecated-with-typed-gate
-    migration_phase: EXPAND-with-typed-gate
     promotion_date: "2026-07-04"
     typed_sentinel: domainremote.ErrCompleteJobPathViolation
     gate_surfaces:
@@ -1647,52 +1575,6 @@ deprecations:
   # acquisition.SourceStager exclusively. Forward-pointer §12-4.2
   # mandates YouTube/Artlist migration; until then, BOTH ports coexist.
   # ──────────────────────────────────────────────────────────────────
-
-  - id: ASSETS-SOURCESTAGER-LEGACY
-    owner_capability: internal/application/assets (legacy) + internal/application/acquisition (canonical)
-    exact_symbol: |
-      assets.SourceStager interface (StageSource + Cleanup methods) at
-      internal/application/assets/ports.go — the per-call staging port.
-      Concrete implementations: YouTube (infrastructure/youtube/stager_adapter.go),
-      Artlist (providers/artlist/stager_adapter.go), Stock (stockpipeline/
-      stager_adapter.go — dual-implements both ports).
-    file: internal/application/assets/ports.go
-    file_line: "~55 (SourceStager interface definition)"
-    replacement: |
-      acquisition.SourceStager (internal/application/acquisition/port.go)
-      — persistent staging with Prepare(ctx, PrepareRequest) +
-      Release(ctx, cleanupToken). Deterministic CleanupToken via
-      SHA-256(URL + Section + PolicyVersion), TTL eviction, cross-call
-      dedupe via filesystem-backed registry. Stock pipeline already wired.
-    introduction_date: 2026-04
-    removal_date: 2026-Q4
-    tracking_issue: "§12-4.2 forward-pointer (architecture/current.yaml). Migrate YouTube and Artlist from assets.SourceStager to acquisition.SourceStager."
-    compatibility_test: |
-      Post-migration CUTOVER:
-        (a) rg 'assets\.SourceStager' internal/application/youtube/
-            internal/application/assets/providers/artlist/ returns 0 hits.
-        (b) go build exits 0 on both packages.
-      Post-removal CONTRACT:
-        (c) rg 'assets\.SourceStager' internal/ --include='*.go' returns
-            0 hits in production code.
-        (d) Legacy interface physically removed from assets/ports.go.
-    usage_metric: |
-      Audit baseline (2026-07-04):
-        - assets.SourceStager consumers: YouTube (1), Artlist (1), Stock (1, dual).
-        - acquisition.SourceStager consumers: Stock (1).
-      Post-CUTOVER: assets.SourceStager=0, acquisition.SourceStager=3.
-    migration_phase: EXPAND
-    status: in_progress
-    notes: |
-      Two ports coexist per godlike/07 §"Migration sequence":
-        - EXPAND: canonical acquisition.SourceStager shipped (Stock Cutover
-          §12-4, July 2026). Legacy retained for YouTube/Artlist.
-        - BACKFILL: migrate YouTube from assets → acquisition.
-        - CUTOVER: migrate Artlist from assets → acquisition.
-        - CONTRACT: physical removal of assets.SourceStager from ports.go.
-      Cross-refs: godlike/06 §"One owner per fact", godlike/07 §"No fake
-      availability", AGENTS.md Pattern 0.
-
 
   - id: PR-VOICEOVER-PRODUCESARTIFACTS-PATH-A
     owner_capability: internal/application/voiceover
@@ -1864,19 +1746,102 @@ deprecations:
     notes: "PR-CS-1 FASE 14 cutover activation. Branch A (ScriptSegment) is the canonical default; Branch B (legacy SegmentTopics) retained as a flag-controlled fallback ONLY (VELOX_SCRIPTS_SEGMENT_DEFAULT=false). Removal scheduled for 2026-09-15 in WAVE-22. Dashboard alert ScriptLegacyBranchBResidual enforces fail-closed no-fake-availability on the residual."
 
 # ── Audit Summary (read-only; auto-generated, not part of the ratchet) ────────
+
+# ── Open Questions (read-write; voting-enabled; deferred naming/scope decisions) ──
+# Per AGENTS.md §8 zero-baseline rule, "open questions" carry owner + deadline + team-vote
+# outcome. Each entry cites evidence (file:line + comment quote) so future agents
+# can audit why the question was deferred and what canonical surface is in scope.
+# Open questions do NOT block CI; they record the team's decision-making intent so
+# the Wave 24 PR 4+ roadmap can reason about the upstream constraints.
+open_questions:
+  - id: OPEN-W24-BLOCK1-NAMING-DECISION
+    title: "AssetMutationDispatcher vs AssetMutationService"
+    introduced: 2026-06-28
+    tracker_ref: "architecture/current.yaml#id-24 follow_up_tickets.PR-W24-BLOCK1-NAMING-DECISION"
+    teammate_ref: "scripts/ci-bypass-audit.sh + scripts/ci-architectural-checks.sh (both reference `mutations.AssetMutationDispatcher` in canonical-SSOT language)"
+    deadline: 2026-07-15
+    status: open (team vote pending)
+
+    evidence_dispatcher_currently_shipped:
+      - "(1) 99 hits across internal/ + cmd/ for AssetMutationDispatcher (canonical, currently shipped); 0 hits for AssetMutationService"
+      - "(2) Matches outbox.Dispatcher naming family: outbox.Dispatcher.EnqueueAndDelete, outbox.Dispatcher.EnqueueAndIndex, outbox.Dispatcher.EnqueueAndRestore (the canonical sibling pattern)"
+      - "(3) Reflects event-driven semantics: dispatcher routes envelope to outbox event queue, NOT to a generic service entry point"
+      - "(4) Compile-time assertion documented at internal/infrastructure/database/sqlite/outbox/repository.go:760 — `var _ mutations.AssetMutationDispatcher = (*Dispatcher)(nil)` — the outbox concrete IS the dispatcher (no fake availability per godlike/07)"
+
+    evidence_service_alternative:
+      - "(1) Idiomatic Go convention; 'Service' noun widely used across the codebase (scriptcore.Engine, clips.ReprocessUseCase, etc.)"
+      - "(2) Less cognitive load for new contributors reading the codebase for the first time"
+      - "(3) Future flexibility for non-event-driven compositions (e.g. read-most, sync validation flows)"
+      - "(4) Symmetric with package patterns like pkg/apiutil, pkg/handlerutil, pkg/sqlutil"
+
+    rationale_dispatcher_keep:
+      title: "Recommendation: keep AssetMutationDispatcher"
+      pros:
+        - "Matches outbox family semantics (event-driven); explicit about WHAT the canonical surface routes"
+        - "Distinguishes from sync Service patterns elsewhere in the codebase — naming aids grep-navigate"
+        - "Zero current friction: 99 hits = broad acceptance already; all consumers have adapted"
+        - "Compile-time assertion at the outbox concrete site IS the dispatcher; semantically true"
+      cons:
+        - "More specific semantics may limit future non-event-driven compositions if such compositions emerge"
+        - "New contributors must learn the dispatcher convention (small but real cognitive load)"
+
+    rationale_service_rename:
+      title: "Alternative: rename to AssetMutationService"
+      pros:
+        - "Idiomatic Go naming — fewer cognitive load for new contributors"
+        - "Future flexibility for non-event-composed flows (read-most, async-light, sync preflight)"
+        - "Symmetric with the broader `Service` noun pattern in pkg/<utility>/"
+      cons:
+        - "99 → 0 hits migration churn: 99 file:line edits across internal/ + cmd/" 
+        - "Renames affect Check 7 (ci-bypass-audit.sh) and Check 5 (ci-architectural-checks.sh) backward-compat surface"
+        - "Loses semantic distinction from outbox side: Dispatcher family becomes Service family — harder to grep for what is and isn't outbox-routed"
+        - "Zero functional value (semantics are equivalent; the change is purely aesthetic)"
+
+    decision_criteria: |
+      (a) If the team favours semantic precision + minimal churn, keep Dispatcher.
+      (b) If the team favours idempotent future flexibility + broader convention fit, rename to Service.
+      Decision recorded by PR-W24-BLOCK1-NAMING-DECISION ticket close:
+      the team's vote + rationale is appended to this section's `team_decision` field.
+
+    team_decision: pending
+    vote_record:
+      dispatcher_keep_votes: []
+      service_rename_votes: []
+    closing_blocker: "vote ties → defer until next wave tracker entry; cost-asymmetry is the deciding factor"
+
+    # Sibling evidence (canonical interface name declaration site):
+    canonical_evidence:
+      file: internal/application/assets/mutations/dispatcher.go
+      line: 1
+      quote: "// Package mutations — AssetMutationDispatcher canonical interface."
+      role: "the canonical interface name lives at this single site; renaming touches this line + 98 callers"
+      secondary_evidence:
+        - file: internal/application/assets/mutations/dispatcher.go
+          line: 150
+          quote: "type AssetMutationDispatcher interface {"
+          role: "canonical interface type declaration"
+        - file: internal/infrastructure/database/sqlite/outbox/repository.go
+          line: 760
+          quote: "var _ mutations.AssetMutationDispatcher = (*Dispatcher)(nil)"
+          role: "compile-time assertion at the outbox concrete site"
+
+
 audit:
-  manifest_version: "Issues 15a-15e dedup + Wave 22 S3f + MEDIASEARCH deprecation + V4a voiceover typed-port seam + pkg/workerstats fake-availability elimination + audit-summary resync (June 2026) + QDRANT-005A-VECDRIFT EXPAND registration (2026-06-30) + Wave 1.1 PR-SEARCH-LEGACY-MEDIASEARCH-BACKEND-REMOVAL closure (2026-06-30) + audit-summary drift correction (in_progress: 6 → 5, pre-existing inconsistency inherited from HEAD) (2026-06-30) + audit-summary drift correction (in_progress: 5 → 11, EXPAND: 4 → 9, total_records: 21 → 27, July 2026)"
-  total_records: 27
+  manifest_version: "Deprecations manifest audit summary resync after removing duplicate ASSETS-SOURCESTAGER-LEGACY, moving OPEN-W24-BLOCK1-NAMING-DECISION to open_questions, and marking PR-VO-C1 + QDRANT-005A-VECDRIFT as removed (July 2026)"
+  total_records: 23
   by_status:
-    removed: 15
-    in_progress: 11
-    keep: 1
+    removed: 5
+    in_progress: 13
+    keep: 2
+    contract: 1
+    contract-half: 1
+    pending-removal: 1
   by_migration_phase:
-    CONTRACT: 14
-    CUTOVER: 2
-    BACKFILL: 1
-    EXPAND: 9
-    not applicable: 1
+    EXPAND: 8
+    BACKFILL: 4
+    CUTOVER: 1
+    CONTRACT: 8
+    not applicable: 2
   ci_gate_impact: |
     Records with removal_date in the past AND status != "removed" fail CI.
     Currently zero such records. Records with status="removed" are audit-only.
