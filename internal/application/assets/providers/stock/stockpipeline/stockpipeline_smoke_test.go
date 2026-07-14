@@ -25,8 +25,9 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/corid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,6 +72,14 @@ var _ assets.SourceStager = (*stageURLRecordingStager)(nil)
 func (s *stageURLRecordingStager) StageSource(_ context.Context, ref assets.SourceRef) (*assets.StagedAsset, error) {
 	s.lastURL = ref.URL
 	return &assets.StagedAsset{LocalPath: "/tmp/staged.mp4", Bytes: 1}, nil
+}
+
+func (s *stageURLRecordingStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
+	return nil, nil
+}
+
+func (s *stageURLRecordingStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
+	return nil
 }
 
 func (s *stageURLRecordingStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error { return nil }
@@ -164,14 +173,14 @@ func TestNewService_NilDepsRejected(t *testing.T) {
 
 type recordingJobsEnqueuer struct {
 	ctx              context.Context
-	req              *kerneljob.EnqueueRequest
-	job              *kerneljob.Job
+	req              *jobs.EnqueueRequest
+	job              *jobs.Job
 	returnErr        error
 	correlation      string
 	activeDuringCall bool
 }
 
-func (r *recordingJobsEnqueuer) Enqueue(ctx context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error) {
+func (r *recordingJobsEnqueuer) Enqueue(ctx context.Context, req *jobs.EnqueueRequest) (*jobs.Job, error) {
 	r.ctx = ctx
 	r.req = req
 	r.correlation = corid.FromContext(ctx)
@@ -180,7 +189,7 @@ func (r *recordingJobsEnqueuer) Enqueue(ctx context.Context, req *kerneljob.Enqu
 		return nil, r.returnErr
 	}
 	if r.job == nil {
-		r.job = &kerneljob.Job{ID: "job-123"}
+		r.job = &jobs.Job{ID: "job-123"}
 	}
 	return r.job, nil
 }

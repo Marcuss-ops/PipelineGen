@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // wireYoutubeCatalogJobBindings registers catalog sync + youtube clip extract

@@ -30,8 +30,8 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	assets "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -328,7 +328,7 @@ func (h *WorkersBrokerHandler) CompleteWithArtifacts(c *gin.Context) {
 	}
 	apiutil.OK(c, CompleteArtifactsResponse{
 		JobID:    cmd.JobID,
-		Status:   string(kerneljob.StatusSucceeded),
+		Status:   string(jobs.StatusSucceeded),
 		AssetIDs: assetIDs,
 	})
 }

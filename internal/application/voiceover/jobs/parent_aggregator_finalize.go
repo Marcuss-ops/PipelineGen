@@ -28,8 +28,8 @@ import (
 	"errors"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 

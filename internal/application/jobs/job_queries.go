@@ -13,8 +13,8 @@ import (
 	"context"
 	"fmt"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 type requeueExpiredLeaser interface {

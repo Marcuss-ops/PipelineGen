@@ -76,7 +76,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Run is a thin wrapper around RunResilient that drops the

@@ -9,8 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 type correlationTimeoutBroker struct {
@@ -64,7 +63,7 @@ func (m *correlationTimeoutBroker) AddEvent(_ context.Context, _ string, _, _ st
 	return nil
 }
 
-// FASE 4(b) (July 2026): the canonical kerneljob.Store.RenewLease
+// FASE 4(b) (July 2026): the canonical job.Store.RenewLease
 // signature now returns the typed RenewLeaseResult envelope
 // (LeaseStateContinue | CancelRequested | LeaseLost). The pre-Fase-4
 // `error`-only return is gone. The stub returns LeaseStateContinue
@@ -72,8 +71,8 @@ func (m *correlationTimeoutBroker) AddEvent(_ context.Context, _ string, _, _ st
 // TestEnqueue_CorrelationLookupTimeoutDoesNotBlockCreate assertion
 // is unaffected — the test exercises the correlation-lookup path,
 // not the renew-loop path.
-func (m *correlationTimeoutBroker) RenewLease(_ context.Context, _ string, _ string, _ time.Duration) (kerneljob.RenewLeaseResult, error) {
-	return kerneljob.RenewLeaseResult{State: kerneljob.LeaseStateContinue}, nil
+func (m *correlationTimeoutBroker) RenewLease(_ context.Context, _ string, _ string, _ time.Duration) (job.RenewLeaseResult, error) {
+	return job.RenewLeaseResult{State: job.LeaseStateContinue}, nil
 }
 func (m *correlationTimeoutBroker) DeadLetter(_ context.Context, _ string, _ string) error {
 	return nil
@@ -86,8 +85,8 @@ func (m *correlationTimeoutBroker) DeadLetter(_ context.Context, _ string, _ str
 // Push 4.2 contract mandates for terminal-decision testing. Stub
 // returns errors.New to fail-fast if a future regression accidentally
 // exercises this codepath through the mock (godlike/07 fail-closed).
-func (m *correlationTimeoutBroker) FinalizeAttempt(_ context.Context, _ kerneljob.FinalizeAttemptCommand) (kerneljob.FinalizeAttemptResult, error) {
-	return kerneljob.FinalizeAttemptResult{}, errors.New("correlationTimeoutBroker.FinalizeAttempt: Push 4.6 stub (not exercised by TestEnqueue_CorrelationLookupTimeoutDoesNotBlockCreate)")
+func (m *correlationTimeoutBroker) FinalizeAttempt(_ context.Context, _ job.FinalizeAttemptCommand) (job.FinalizeAttemptResult, error) {
+	return job.FinalizeAttemptResult{}, errors.New("correlationTimeoutBroker.FinalizeAttempt: Push 4.6 stub (not exercised by TestEnqueue_CorrelationLookupTimeoutDoesNotBlockCreate)")
 }
 
 var _ job.JobBroker = (*correlationTimeoutBroker)(nil)

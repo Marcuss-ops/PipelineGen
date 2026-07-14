@@ -8,9 +8,7 @@
 //
 // Per AGENTS.md Pattern 0 (port abstraction) + Pattern 5 (one concept per
 // file): the LocalImporter owns the enqueue flow as a focused service
-// with 2 narrow deps (JobsPort + Logger). The FileScannerPort was
-// RETIRED in this commit — the worker scans the filesystem when the
-// job runs, not at enqueue time.
+// with 2 narrow deps (JobsPort + Logger).
 package localimport
 
 import (
@@ -39,8 +37,8 @@ func NewService(jobs sourcing.JobsPort, log sourcing.Logger) *Service {
 // (the HTTP handler) can return 202 Accepted with the id.
 //
 // PR-CLIPS-ENQUEUE-ONLY (July 2026): the call short-circuits after
-// validation + enqueue. No filesystem scan, no DryRun, no LocalFound.
-// The worker emits the scan results when the job runs.
+// validation + enqueue. No filesystem scan, no DryRun. The worker
+// emits the scan results when the job runs.
 //
 // Error order:
 //  1. nil service → "service is nil"

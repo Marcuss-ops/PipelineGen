@@ -8,7 +8,6 @@ package voiceover
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 
@@ -16,8 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
-
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 )
 
 // the panic string to "Finalizer is nil") surfaces at test time rather

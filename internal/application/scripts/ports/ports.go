@@ -11,7 +11,7 @@ import (
 	"context"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Broker is consumed by GenerateJobHandler.RegisterJobs (PR6).

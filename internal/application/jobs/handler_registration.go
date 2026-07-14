@@ -44,7 +44,7 @@ package jobs
 import (
 	"fmt"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // MaxJobsPerType is the canonical upper bound on registered handlers per

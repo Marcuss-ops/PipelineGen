@@ -39,7 +39,7 @@
 // itself is per-tick; no internal cadence / ticker state lives here.
 //
 // godlike/07 fail-closed posture: the typed LeaseState enum
-// (`kerneljob.LeaseState*`) is the SOLE termination signal. The
+// (`job.LeaseState*`) is the SOLE termination signal. The
 // `error` return from RenewLease is logged but never alone causes
 // loop termination — a non-state error is treated as a transient
 // hiccup and the loop retries on the next tick via the heartbeat's
@@ -56,7 +56,7 @@ package jobs
 import (
 	"context"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 )
 
@@ -95,15 +95,15 @@ import (
 // stay (result, shouldExit) to keep `TestRenewLeaseLoopWith_CancelRequested_TriggersJobCancel`
 // + `TestRenewLeaseLoopWith_LeaseLost_AbortsLoop` +
 // `TestRenewLeaseLoopWith_Continue_NoOp` passing byte-for-byte.
-func (w *Worker) attemptLeaseRenewal(ctx context.Context, jobID string) (kerneljob.RenewLeaseResult, bool) {
+func (w *Worker) attemptLeaseRenewal(ctx context.Context, jobID string) (job.RenewLeaseResult, bool) {
 	result, err := w.repo.RenewLease(ctx, jobID, w.id, w.leaseTTL)
 
-	if result.State == kerneljob.LeaseStateCancelRequested {
+	if result.State == job.LeaseStateCancelRequested {
 		w.log.Info("worker: lease renewal observed cancel_requested (Fase 4(b) typed signal); cancelling jobCtx",
 			zap.String("job_id", jobID))
 		return result, true
 	}
-	if result.State == kerneljob.LeaseStateLeaseLost {
+	if result.State == job.LeaseStateLeaseLost {
 		w.log.Warn("worker: lease lost during renewal (Fase 4(b) typed signal); aborting",
 			zap.String("job_id", jobID), zap.Error(err))
 		return result, true
@@ -114,7 +114,7 @@ func (w *Worker) attemptLeaseRenewal(ctx context.Context, jobID string) (kernelj
 	// authoritative success signal. godlike/07 fail-closed: a
 	// non-state error is treated as a transient hiccup; loop
 	// retries on the next ticker tick.
-	if err != nil && result.State != kerneljob.LeaseStateContinue {
+	if err != nil && result.State != job.LeaseStateContinue {
 		w.log.Warn("failed to renew lease",
 			zap.String("job_id", jobID), zap.Error(err))
 	}

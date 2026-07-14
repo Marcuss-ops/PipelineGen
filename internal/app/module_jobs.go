@@ -6,11 +6,11 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // JobsBundle is the Job module's *owned* runtime surface.

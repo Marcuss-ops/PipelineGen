@@ -54,8 +54,8 @@ import (
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -226,7 +226,7 @@ func buildParentStubWithDocs(parentID string, childSpecs map[string]struct {
 	}
 	parent := &job.Job{
 		ID:     parentID,
-		Type:   scripts.JobGenerate,
+		Type:   job.TypeScriptGenerate,
 		Status: job.StatusFinalizing,
 		Result: makeScriptParentStateWaitingChildren(parentID, childIDs, len(childIDs)),
 	}
@@ -255,7 +255,7 @@ func buildParentStub(parentID string, childStatuses map[string]job.Status, child
 	}
 	parent := &job.Job{
 		ID:     parentID,
-		Type:   scripts.JobGenerate,
+		Type:   job.TypeScriptGenerate,
 		Status: job.StatusFinalizing,
 		Result: makeScriptParentStateWaitingChildren(parentID, childIDs, len(childIDs)),
 		// Revision defaults to 0 in tests; production reads parent.Revision

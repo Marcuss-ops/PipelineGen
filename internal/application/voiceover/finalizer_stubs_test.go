@@ -9,13 +9,10 @@ package voiceover
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
 )

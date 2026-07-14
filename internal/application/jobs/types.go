@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -17,12 +17,12 @@ import (
 // Wave 5 PR 3 (June 2026): removed the three zero-copy forwarding type
 // aliases formerly aliased here (Store, StartJob, RequeueResult). Callers
 // must now import the canonical home directly:
-//   • jobs.Store                 → domain/kerneljob.Store
+//   • jobs.Store                 → domain/jobs.Store
 //   • jobs.StartJob              → internal/infrastructure/database/sqlite/jobs.StartJob
 //   • jobs.RequeueResult         → internal/infrastructure/database/sqlite/jobs.RequeueResult
 // The single in-tree consumer that switched to direct imports is
 // internal/infrastructure/jobs/local/broker.go. The application-layer
-// Runner/NewRunner are now typed against the canonical kerneljob.Store interface.
+// Runner/NewRunner are now typed against the canonical jobs.Store interface.
 // PR4.A2 (June 2026): removed the SQLiteStore/JobStats/ErrLeaseLost type
 // aliases (formerly this package's store.go). Callers now import
 // internal/infrastructure/database/sqlite/jobs directly as `sqljobs`.
@@ -59,7 +59,7 @@ type EnqueueRequest struct {
 //
 // Domain has NO upstream imports, so both jobs AND worker can
 // freely alias from it. The aliases below are sealed: renaming
-// any of kerneljob.Handler / domainob.JobExecutionTools /
+// any of jobs.Handler / domainob.JobExecutionTools /
 // domainob.Result triggers a compile failure at THIS site, the
 // godlike/06 SSOT lock that forces future renames to be deliberate.
 //
@@ -82,11 +82,11 @@ type EnqueueRequest struct {
 //	                         scripts/ci-architectural-checks.sh
 //	                         bans the legacy literal shapes.
 type (
-	JobExecutionTools = kerneljob.JobExecutionTools
-	JobTools          = kerneljob.JobExecutionTools // back-compat alias
-	Result            = kerneljob.Result
-	Handler           = kerneljob.Handler
-	HandlerFunc       = kerneljob.Handler // back-compat alias
+	JobExecutionTools = jobs.JobExecutionTools
+	JobTools          = jobs.JobExecutionTools // back-compat alias
+	Result            = jobs.Result
+	Handler           = jobs.Handler
+	HandlerFunc       = jobs.Handler // back-compat alias
 )
 
 // Dispatcher routes jobs to registered handlers by job type (string).
@@ -111,7 +111,7 @@ type Dispatcher struct {
 	// row-create method). The composition root wires the enqueuer
 	// AFTER constructing the *Service — see dispatcher.go for the
 	// late-binding rationale (cycle-break between dispatcher↔service).
-	registry kerneljob.CompiledJobRegistry
+	registry jobs.CompiledJobRegistry
 	enqueuer EnqueuePort
 }
 
@@ -153,7 +153,7 @@ func (d *Dispatcher) AllHandlers() map[string]Handler {
 	return out
 }
 
-func (d *Dispatcher) Dispatch(ctx context.Context, j *kerneljob.Job, tools *JobExecutionTools) (result Result, err error) {
+func (d *Dispatcher) Dispatch(ctx context.Context, j *jobs.Job, tools *JobExecutionTools) (result Result, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic in handler for job type %s: %v", j.Type, r)
@@ -209,7 +209,7 @@ type RunnerConfig struct {
 //	    WithRegistry(jobs.Compose())
 //	r.Start(ctx)
 type Runner struct {
-	repo       kerneljob.Store
+	repo       jobs.Store
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	config     RunnerConfig
@@ -218,7 +218,7 @@ type Runner struct {
 	broker     CompletionPort
 }
 
-func NewRunner(repo kerneljob.Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
+func NewRunner(repo jobs.Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
 	return &Runner{
 		repo:       repo,
 		dispatcher: dispatcher,

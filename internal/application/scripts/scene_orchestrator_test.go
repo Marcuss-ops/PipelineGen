@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // stubDispatcher implements DispatcherShim for testing.

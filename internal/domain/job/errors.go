@@ -47,40 +47,43 @@
 //     compat when the camada migration completes).
 package job
 
-import "errors"
+import (
+	"errors"
+
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+)
 
 // ErrLeaseLost is returned when a worker-originated operation fails because
 // the supplied lease_id no longer matches the job's current lease (the job
 // has been reassigned to another worker) or the lease has expired.
 //
-// This is the canonical Fase 5(a) sentinel. The previous canonical home
-// (internal/infrastructure/database/sqlite/jobs/store.go) is now a
-// transparent re-export alias — same `error` value, two import paths,
-// probes via errors.Is are equivalent.
+// This is the canonical Fase 5(a) sentinel. The canonical declaration now
+// lives in internal/kernel/job/errors.go; this package re-exports it as a
+// transparent alias so legacy callers keep compiling.
 //
 // Errors.Is(err, ErrLeaseLost) is the canonical probe.
-var ErrLeaseLost = errors.New("jobs: lease lost — the job has been reassigned to another worker (fenced operation rejected)")
+var ErrLeaseLost = kerneljob.ErrLeaseLost
 
 // ErrTransitionConflict is returned when a state transition is attempted
 // against a row whose current state does not match the expected pre-state
 // (concurrent modification detected via the CAS-fence on revision).
 //
-// This is the canonical Fase 5(a) sentinel. The previous canonical home
-// (internal/infrastructure/database/sqlite/jobs/store.go) is now a
-// transparent re-export alias.
+// This is the canonical Fase 5(a) sentinel. The canonical declaration now
+// lives in internal/kernel/job/errors.go; this package re-exports it as a
+// transparent alias so legacy callers keep compiling.
 //
 // Errors.Is(err, ErrTransitionConflict) is the canonical probe.
-var ErrTransitionConflict = errors.New("jobs: transition conflict — current status/lease/revision differs from expected (CAS-fence mismatch)")
+var ErrTransitionConflict = kerneljob.ErrTransitionConflict
 
 // ErrJobNotFound is returned by Store.Get/List/JobEvents paths when the
 // queried jobID does not exist in the jobs table.
 //
-// This is the canonical Fase 5(a) sentinel. The previous canonical home
-// (internal/infrastructure/database/sqlite/jobs/repository.go) is now a
-// transparent re-export alias.
+// This is the canonical Fase 5(a) sentinel. The canonical declaration now
+// lives in internal/kernel/job/errors.go; this package re-exports it as a
+// transparent alias so legacy callers keep compiling.
 //
 // Errors.Is(err, ErrJobNotFound) is the canonical probe.
-var ErrJobNotFound = errors.New("jobs: job not found (no row for the requested jobID)")
+var ErrJobNotFound = kerneljob.ErrJobNotFound
 
 // ── FinalizeAttempt sentinels (Pushed-by Phase 4(a) Push 4.2) ──────────
 //

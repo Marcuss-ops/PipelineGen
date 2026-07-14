@@ -40,11 +40,11 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
-	clipsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips"
 	assetregister "github.com/Marcuss-ops/PipelineGen/internal/api/assets/register"
 	assetsfx "github.com/Marcuss-ops/PipelineGen/internal/api/assets/soundeffect"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"

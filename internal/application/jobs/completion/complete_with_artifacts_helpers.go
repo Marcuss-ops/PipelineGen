@@ -7,8 +7,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // lookupInTxCanonicalResponse is the typed accessor for the prior

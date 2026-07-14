@@ -11,7 +11,7 @@
 //	    conditional branching.
 //	(2) Filesystem ops are NOT in this file. The handler delegates
 //	    to adapters/artifacts_persistence.go::PersistGeneratedArtifacts
-//	    which returns a pre-computed []scriptpkg.Artifact. The
+//	    which returns a pre-computed []job.Artifact. The
 //	    handler then calls buildManifestFromArtifacts (in
 //	    generation_manifest.go) to assemble the typed
 //	    *job.ArtifactManifest from that slice.
@@ -43,8 +43,8 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
 )
@@ -52,7 +52,7 @@ import (
 // GenerateJobHandler is the application-layer broker-handler for
 // `script.generate` jobs. Constructed via NewGenerateJobHandler;
 // registered by generation_registration.go::RegisterJobs under
-// scriptpkg.TypeScriptGenerate.
+// job.TypeScriptGenerate.
 type GenerateJobHandler struct {
 	one  *usecase.GenerateOneUseCase
 	many *usecase.GenerateManyUseCase
@@ -104,7 +104,7 @@ func (h *GenerateJobHandler) checkPipelineCtx(ctx context.Context, phase string)
 // use case.
 func (h *GenerateJobHandler) Handle(
 	ctx context.Context,
-	j *scriptpkg.Job,
+	j *job.Job,
 	tools *appjobs.JobTools,
 ) (map[string]any, error) {
 	if h == nil {
@@ -143,7 +143,7 @@ func (h *GenerateJobHandler) Handle(
 //     has typed-envelope fallback per C10 dual-shape discipline).
 func (h *GenerateJobHandler) handleSingle(
 	ctx context.Context,
-	j *scriptpkg.Job,
+	j *job.Job,
 	env *domainScript.GenerationEnvelopeV2,
 	tools *appjobs.JobTools,
 ) (map[string]any, error) {
@@ -231,7 +231,7 @@ func (h *GenerateJobHandler) handleSingle(
 				zap.String("job_id", j.ID),
 				zap.Error(vErr))
 		}
-		return mapped, fmt.Errorf("script.generate: artifact manifest: %w: %v", scriptpkg.ErrArtifactManifestInvalid, vErr)
+		return mapped, fmt.Errorf("script.generate: artifact manifest: %w: %v", job.ErrArtifactManifestInvalid, vErr)
 	}
 	// Merge the C10 dual-shape typed envelope (Data + Artifacts) into
 	// the broker handlerResult map. MergeTypedExecutionEnvelope is
@@ -243,7 +243,7 @@ func (h *GenerateJobHandler) handleSingle(
 				zap.String("job_id", j.ID),
 				zap.Error(mErr))
 		}
-		mapped[scriptpkg.ManifestKey] = manifest
+		mapped[job.ManifestKey] = manifest
 	}
 	if h.log != nil {
 		h.log.Info("handleSingle: artifact manifest injected (§8.4 multi-artifact shape)",
@@ -257,7 +257,7 @@ func (h *GenerateJobHandler) handleSingle(
 // separate script.generate_item child jobs via the wired broker.
 func (h *GenerateJobHandler) handleBatch(
 	ctx context.Context,
-	j *scriptpkg.Job,
+	j *job.Job,
 	env *domainScript.GenerationEnvelopeV2,
 	tools *appjobs.JobTools,
 ) (map[string]any, error) {
@@ -279,7 +279,7 @@ func (h *GenerateJobHandler) handleBatch(
 // reads to track child outcomes and finalise the parent.
 func (h *GenerateJobHandler) handleBatchFanout(
 	ctx context.Context,
-	j *scriptpkg.Job,
+	j *job.Job,
 	env *domainScript.GenerationEnvelopeV2,
 	tools *appjobs.JobTools,
 ) (map[string]any, error) {

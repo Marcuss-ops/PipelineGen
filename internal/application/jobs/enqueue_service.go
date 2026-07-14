@@ -26,7 +26,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )

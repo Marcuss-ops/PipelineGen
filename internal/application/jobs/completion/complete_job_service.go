@@ -53,8 +53,8 @@ import (
 	"errors"
 	"fmt"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Service (canonical owner of "complete a job") ────────────────────
@@ -227,7 +227,7 @@ func (s *Service) Complete(ctx context.Context, req *remote.CompleteJobRequest) 
 		s.bus.Publish(JobCompletionEvent{
 			JobID:       req.JobID,
 			Attempt:     req.Attempt,
-			FinalStatus: kerneljob.StatusSucceeded,
+			FinalStatus: job.StatusSucceeded,
 		})
 	}
 	return outResp, nil

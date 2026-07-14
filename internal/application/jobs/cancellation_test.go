@@ -5,7 +5,7 @@
 // architecture: the 2-second IsCancelled-poll goroutine (the
 // pre-FASE-4 startCancelWatcher helper at worker_execution.go) is
 // REMOVED; cancellation now propagates through the typed
-// kerneljob.RenewLeaseResult.State return value (Continue |
+// job.RenewLeaseResult.State return value (Continue |
 // CancelRequested | LeaseLost) observed by the
 // renewLeaseLoopWith helper on every lease-renewal tick.
 //
@@ -62,8 +62,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // renewLoopMockJobBroker is a minimal JobBroker used by the helper-level
@@ -72,17 +71,17 @@ import (
 // is a no-op or panics on unexpected dispatch.
 type renewLoopMockJobBroker struct {
 	mu        sync.Mutex
-	renewFunc func(ctx context.Context, id, workerID string, leaseTTL time.Duration) (kerneljob.RenewLeaseResult, error)
+	renewFunc func(ctx context.Context, id, workerID string, leaseTTL time.Duration) (job.RenewLeaseResult, error)
 	renewHits int
 }
 
-func (m *renewLoopMockJobBroker) RenewLease(ctx context.Context, id, workerID string, leaseTTL time.Duration) (kerneljob.RenewLeaseResult, error) {
+func (m *renewLoopMockJobBroker) RenewLease(ctx context.Context, id, workerID string, leaseTTL time.Duration) (job.RenewLeaseResult, error) {
 	m.mu.Lock()
 	m.renewHits++
 	renewFunc := m.renewFunc
 	m.mu.Unlock()
 	if renewFunc == nil {
-		return kerneljob.RenewLeaseResult{State: kerneljob.LeaseStateContinue}, nil
+		return job.RenewLeaseResult{State: job.LeaseStateContinue}, nil
 	}
 	return renewFunc(ctx, id, workerID, leaseTTL)
 }
@@ -136,8 +135,8 @@ func (m *renewLoopMockJobBroker) AddEvent(_ context.Context, _ string, _ string,
 func (m *renewLoopMockJobBroker) DeadLetter(_ context.Context, _ string, _ string) error {
 	return nil
 }
-func (m *renewLoopMockJobBroker) FinalizeAttempt(_ context.Context, _ kerneljob.FinalizeAttemptCommand) (kerneljob.FinalizeAttemptResult, error) {
-	return kerneljob.FinalizeAttemptResult{}, nil
+func (m *renewLoopMockJobBroker) FinalizeAttempt(_ context.Context, _ job.FinalizeAttemptCommand) (job.FinalizeAttemptResult, error) {
+	return job.FinalizeAttemptResult{}, nil
 }
 
 var _ job.JobBroker = (*renewLoopMockJobBroker)(nil)
@@ -155,8 +154,8 @@ func TestRenewLeaseLoopWith_CancelRequested_TriggersJobCancel(t *testing.T) {
 	t.Parallel()
 
 	mock := &renewLoopMockJobBroker{
-		renewFunc: func(_ context.Context, _ string, _ string, _ time.Duration) (kerneljob.RenewLeaseResult, error) {
-			return kerneljob.RenewLeaseResult{State: kerneljob.LeaseStateCancelRequested}, nil
+		renewFunc: func(_ context.Context, _ string, _ string, _ time.Duration) (job.RenewLeaseResult, error) {
+			return job.RenewLeaseResult{State: job.LeaseStateCancelRequested}, nil
 		},
 	}
 
@@ -216,8 +215,8 @@ func TestRenewLeaseLoopWith_LeaseLost_AbortsLoop(t *testing.T) {
 	t.Parallel()
 
 	mock := &renewLoopMockJobBroker{
-		renewFunc: func(_ context.Context, _ string, _ string, _ time.Duration) (kerneljob.RenewLeaseResult, error) {
-			return kerneljob.RenewLeaseResult{State: kerneljob.LeaseStateLeaseLost}, nil
+		renewFunc: func(_ context.Context, _ string, _ string, _ time.Duration) (job.RenewLeaseResult, error) {
+			return job.RenewLeaseResult{State: job.LeaseStateLeaseLost}, nil
 		},
 	}
 
@@ -262,10 +261,10 @@ func TestRenewLeaseLoopWith_Continue_NoOp(t *testing.T) {
 	t.Parallel()
 
 	mock := &renewLoopMockJobBroker{
-		renewFunc: func(_ context.Context, _ string, _ string, _ time.Duration) (kerneljob.RenewLeaseResult, error) {
+		renewFunc: func(_ context.Context, _ string, _ string, _ time.Duration) (job.RenewLeaseResult, error) {
 			expiry := time.Now().Add(5 * time.Minute)
-			return kerneljob.RenewLeaseResult{
-				State:          kerneljob.LeaseStateContinue,
+			return job.RenewLeaseResult{
+				State:          job.LeaseStateContinue,
 				NewLeaseExpiry: &expiry,
 			}, nil
 		},
@@ -321,7 +320,7 @@ func TestRenewLeaseLoopWith_Continue_NoOp(t *testing.T) {
 // flows through RenewLease returning CancelRequested instead.
 type mockCancelBroker struct {
 	mu              sync.Mutex
-	renewState      kerneljob.LeaseState
+	renewState      job.LeaseState
 	renewCalls      int
 	cancelAfterCall int // 0 = never; >0 = on the Nth call, set renewState to CancelRequested
 	progressCalls   int
@@ -335,7 +334,7 @@ type mockCancelBroker struct {
 }
 
 func newMockCancelBroker() *mockCancelBroker {
-	return &mockCancelBroker{jobStatus: job.StatusRunning, renewState: kerneljob.LeaseStateContinue}
+	return &mockCancelBroker{jobStatus: job.StatusRunning, renewState: job.LeaseStateContinue}
 }
 
 func (m *mockCancelBroker) Create(_ context.Context, _ *job.Job) error { return nil }
@@ -346,7 +345,7 @@ func (m *mockCancelBroker) Get(_ context.Context, id string) (*job.Job, error) {
 	m.lastGetRev = m.revision
 	return &job.Job{
 		ID:         id,
-		Type:       scripts.JobGenerate,
+		Type:       job.TypeScriptGenerate,
 		Status:     m.jobStatus,
 		Revision:   m.revision,
 		MaxRetries: 2,
@@ -387,19 +386,19 @@ func (m *mockCancelBroker) ListEvents(_ context.Context, _ string) ([]job.Event,
 // RenewLease returns the configured renewState; the cancelAfterCall
 // knob flips the state to CancelRequested on the Nth call so the
 // e2e test can observe a delayed-cancel scenario.
-func (m *mockCancelBroker) RenewLease(_ context.Context, _ string, _ string, _ time.Duration) (kerneljob.RenewLeaseResult, error) {
+func (m *mockCancelBroker) RenewLease(_ context.Context, _ string, _ string, _ time.Duration) (job.RenewLeaseResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.renewCalls++
 	state := m.renewState
 	if m.cancelAfterCall > 0 && m.renewCalls >= m.cancelAfterCall {
-		state = kerneljob.LeaseStateCancelRequested
+		state = job.LeaseStateCancelRequested
 	}
-	if state == kerneljob.LeaseStateContinue {
+	if state == job.LeaseStateContinue {
 		expiry := time.Now().Add(5 * time.Minute)
-		return kerneljob.RenewLeaseResult{State: state, NewLeaseExpiry: &expiry}, nil
+		return job.RenewLeaseResult{State: state, NewLeaseExpiry: &expiry}, nil
 	}
-	return kerneljob.RenewLeaseResult{State: state}, nil
+	return job.RenewLeaseResult{State: state}, nil
 }
 
 // finalize handlers — record which branch runJob took. Asserting
@@ -430,11 +429,11 @@ func (m *mockCancelBroker) Complete(_ context.Context, _ string, _ string, _ str
 	m.completeRev = expectedRevision
 	return nil
 }
-func (m *mockCancelBroker) FinalizeAttempt(_ context.Context, _ kerneljob.FinalizeAttemptCommand) (kerneljob.FinalizeAttemptResult, error) {
+func (m *mockCancelBroker) FinalizeAttempt(_ context.Context, _ job.FinalizeAttemptCommand) (job.FinalizeAttemptResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.finalizeOp = "FinalizeAttempt"
-	return kerneljob.FinalizeAttemptResult{}, nil
+	return job.FinalizeAttemptResult{}, nil
 }
 
 // TestWorker_CancelsRunningJobOnCancelSignal is the canonical FASE 4(b)
@@ -475,7 +474,7 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 	})
 
 	dispatcher := NewDispatcher()
-	if err := dispatcher.Register(scripts.JobGenerate, handler); err != nil {
+	if err := dispatcher.Register(job.TypeScriptGenerate, handler); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
 
@@ -492,7 +491,7 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 			JitterFraction:            0,
 			ConsecutiveEmptyThreshold: 0,
 		},
-		[]string{scripts.JobGenerate},
+		[]string{job.TypeScriptGenerate},
 	)
 
 	parentCtx, parentCancel := context.WithCancel(context.Background())
@@ -503,7 +502,7 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 		defer close(done)
 		worker.runJob(parentCtx, &job.Job{
 			ID:         "test-job-id",
-			Type:       scripts.JobGenerate,
+			Type:       job.TypeScriptGenerate,
 			Status:     job.StatusRunning,
 			MaxRetries: 2,
 			RetryCount: 0,
@@ -549,7 +548,7 @@ func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 	})
 
 	dispatcher := NewDispatcher()
-	if err := dispatcher.Register(scripts.JobGenerate, handler); err != nil {
+	if err := dispatcher.Register(job.TypeScriptGenerate, handler); err != nil {
 		t.Fatalf("register handler: %v", err)
 	}
 
@@ -566,7 +565,7 @@ func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 			JitterFraction:            0,
 			ConsecutiveEmptyThreshold: 0,
 		},
-		[]string{scripts.JobGenerate},
+		[]string{job.TypeScriptGenerate},
 	)
 
 	parentCtx, cancel := context.WithCancel(context.Background())
@@ -577,7 +576,7 @@ func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 		defer close(done)
 		worker.runJob(parentCtx, &job.Job{
 			ID:         "revision-test-job",
-			Type:       scripts.JobGenerate,
+			Type:       job.TypeScriptGenerate,
 			Status:     job.StatusRunning,
 			WorkerID:   "worker-1",
 			LeaseID:    "lease-1",

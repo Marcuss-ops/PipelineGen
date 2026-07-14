@@ -38,7 +38,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/generated"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 )
 
@@ -86,7 +86,7 @@ func (h *JobHandler) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.J
 	// FASE 4(b) (July 2026): cancel signal is observed via ctx.Err()
 	// rather than the pre-Fase-4 tools.IsCancelled callback (which
 	// polled a 2-second cancel-watcher goroutine REMOVED in FASE 4(b)).
-	// The typed kerneljob.RenewLeaseResult.State (CancelRequested)
+	// The typed job.RenewLeaseResult.State (CancelRequested)
 	// → renewLeaseLoopWith calls jobCancel(jobCtx) → ctx.Done().
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("image.generate.google: job %s was cancelled before execution started", j.ID)

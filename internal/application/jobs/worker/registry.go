@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // Sentinel errors for registry operations.
@@ -26,14 +26,14 @@ var (
 // Handler is the canonical job-handler signature used by BOTH
 // jobs.Dispatcher.Register AND worker.Registry.Register (P1 #13
 // unification, July 2026). It is a Go type alias to
-// kerneljob.Handler (the canonical SSOT in internal/domain/job/
+// job.Handler (the canonical SSOT in internal/domain/job/
 // handler.go). Putting the alias on domainjob (NOT jobs.Handler)
 // breaks what would otherwise be a cycle — worker no longer
 // imports its parent package; the canonical SSOT in domain is
 // below both, and both packages can freely alias from it. Compile
-// drift in kerneljob.Handler is a build failure at THIS site AND
+// drift in job.Handler is a build failure at THIS site AND
 // at the jobs.Handler alias site (godlike/06 SSOT lock).
-type Handler = kerneljob.Handler
+type Handler = job.Handler
 
 // Registry maps job types to handler functions. Once frozen, no new
 // registrations are accepted — this prevents the claim loop from picking
@@ -168,7 +168,7 @@ func (r *Registry) JobTypes() []string {
 // actual handler invocation site. The translation is a 1:1
 // forwarding adapter — no field is dropped or remapped.
 //
-// FASE 0.2 (July 4 2026): the third parameter `j *kerneljob.Job`
+// FASE 0.2 (July 4 2026): the third parameter `j *job.Job`
 // is threaded into translateToolsToExecutionTools so the closure
 // layer (Progress / IsCancelled / Event) can attribute its
 // telemetry-emit counters to the canonical job_type label (godlike/06
@@ -176,7 +176,7 @@ func (r *Registry) JobTypes() []string {
 // metadata; the closure layer reads from the same source rather
 // than a parallel string). Pre-FASE-0.2 `translateToolsToExecutionTools`
 // took only `(ctx, t *Tools)` and could not label the counters.
-func (r *Registry) Dispatch(ctx context.Context, j *kerneljob.Job, tools *Tools) (map[string]any, error) {
+func (r *Registry) Dispatch(ctx context.Context, j *job.Job, tools *Tools) (map[string]any, error) {
 	r.mu.RLock()
 	h, ok := r.handlers[j.Type]
 	r.mu.RUnlock()
@@ -215,7 +215,7 @@ func (r *Registry) Dispatch(ctx context.Context, j *kerneljob.Job, tools *Tools)
 //
 // Cardinality bound on the counters: the `jobType` string is the
 // canonical job-type label (godlike/06 SSOT: derived from the
-// canonical kerneljob.Job object at the Dispatch call site, not a
+// canonical job.Job object at the Dispatch call site, not a
 // free-form runtime argument). Empty `jobType` propagates to a ""
 // label on the counter — the gauge-side per-worker_id attribution
 // (separate axis) is unaffected.
@@ -226,19 +226,19 @@ func (r *Registry) Dispatch(ctx context.Context, j *kerneljob.Job, tools *Tools)
 // signal is the counter (godlike/06 SSOT) + the upstream
 // worker-package log to r.log.Warn at the Runner.runJob entry site
 // (see runner.go:210).
-func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType string) *kerneljob.JobExecutionTools {
+func translateToolsToExecutionTools(ctx context.Context, t *Tools, jobType string) *job.JobExecutionTools {
 	if t == nil {
-		return &kerneljob.JobExecutionTools{
+		return &job.JobExecutionTools{
 			Progress: func(int, string) {},
 			Event:    func(string, string, map[string]any) {},
 		}
 	}
-	return &kerneljob.JobExecutionTools{
+	return &job.JobExecutionTools{
 		// FASE 4(b) (July 2026): the IsCancelled closure is REMOVED.
 		// The pre-Fase-4 2-second IsCancelled-poll goroutine
 		// (startCancelWatcher at worker_execution.go) is gone; cancel
 		// now propagates through the typed
-		// kerneljob.RenewLeaseResult.State observation in
+		// job.RenewLeaseResult.State observation in
 		// renewLeaseLoopWith. The dispatch seam here is the canonical
 		// translation from worker.Tools to domainob.JobExecutionTools
 		// — without IsCancelled, the only 2 callbacks remaining are

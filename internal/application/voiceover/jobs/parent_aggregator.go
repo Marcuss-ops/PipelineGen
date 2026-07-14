@@ -46,7 +46,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 )
 
@@ -194,7 +194,7 @@ func (a *ParentAggregator) Start(ctx context.Context) {
 // Errors on individual parents are logged and skipped — a failed
 // parent will be retried on the next tick.
 func (a *ParentAggregator) Tick(ctx context.Context) {
-	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, voiceover.JobGenerate, 100)
+	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, job.TypeVoiceoverGenerate, 100)
 	if err != nil {
 		a.deps.Logger.Error("ParentAggregator.Tick: ListAwaitingAggregation failed", zap.Error(err))
 		return

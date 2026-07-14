@@ -37,6 +37,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // mapStager is a test stub that delegates StageSource decisions to a
@@ -59,8 +60,18 @@ func (m *mapStager) StageSource(ctx context.Context, ref assets.SourceRef) (*ass
 
 // Cleanup is a no-op for tests — the orchestrator's deferred cleanup
 // will call it, but tests don't assert on cleanup behavior.
-func (m *mapStager) Cleanup(ctx context.Context, staged *assets.StagedAsset) error {
+func (m *mapStager) CleanupStagedSource(ctx context.Context, staged *asset.StagedSource) error {
 	return nil
+}
+
+// Cleanup implements assets.SourceStager (legacy method).
+func (m *mapStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
+	return nil
+}
+
+// StageSourceV2 implements assets.SourceStager.
+func (f *mapStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
+	return nil, nil
 }
 
 // mapCutter is a test stub that delegates Cut decisions to a

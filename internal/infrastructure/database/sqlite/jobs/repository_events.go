@@ -24,7 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // eventsColumns is the canonical SELECT projection for the job_events

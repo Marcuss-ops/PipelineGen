@@ -29,6 +29,7 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // TestYouTubeClipExtract_RoutesToLegacyComplete pins the registry
@@ -52,18 +53,18 @@ func TestYouTubeClipExtract_RoutesToLegacyComplete(t *testing.T) {
 	if reg == nil {
 		t.Fatal("appjobs.Compose() returned nil registry")
 	}
-	if !reg.IsRegistered(youtube.JobExtract) {
-		t.Fatalf("job type %q must be registered (Compose missing this entry)", youtube.JobExtract)
+	if !reg.IsRegistered(job.TypeYouTubeClipExtract) {
+		t.Fatalf("job type %q must be registered (Compose missing this entry)", job.TypeYouTubeClipExtract)
 	}
-	entry, _ := reg.Get(youtube.JobExtract)
-	if reg.ProducesArtifacts(youtube.JobExtract) {
-		t.Fatalf("registry.ProducesArtifacts(%q) = true; want false (PR-COMPLETE-WORKER-YT-FIX mirrors the voiceover db2f3b1e fix; a true value would re-trigger the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115)", youtube.JobExtract)
+	entry, _ := reg.Get(job.TypeYouTubeClipExtract)
+	if reg.ProducesArtifacts(job.TypeYouTubeClipExtract) {
+		t.Fatalf("registry.ProducesArtifacts(%q) = true; want false (PR-COMPLETE-WORKER-YT-FIX mirrors the voiceover db2f3b1e fix; a true value would re-trigger the SQL-layer ErrCompleteJobPathViolation guard at repository_lifecycle.go:108-115)", job.TypeYouTubeClipExtract)
 	}
-	if got, want := reg.Timeout(youtube.JobExtract), 60*time.Minute; got != want {
-		t.Fatalf("registry.Timeout(%q) = %s; want %s", youtube.JobExtract, got, want)
+	if got, want := reg.Timeout(job.TypeYouTubeClipExtract), 60*time.Minute; got != want {
+		t.Fatalf("registry.Timeout(%q) = %s; want %s", job.TypeYouTubeClipExtract, got, want)
 	}
-	if got, want := reg.DefaultMaxRetries(youtube.JobExtract), 2; got != want {
-		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", youtube.JobExtract, got, want)
+	if got, want := reg.DefaultMaxRetries(job.TypeYouTubeClipExtract), 2; got != want {
+		t.Fatalf("registry.DefaultMaxRetries(%q) = %d; want %d", job.TypeYouTubeClipExtract, got, want)
 	}
 	if got := entry.Description; got != wantDescription {
 		t.Fatalf("Description drifted (audit-pin):\n  got:  %q\n  want: %q\nIf the wording change is intentional, update this test in lockstep.", got, wantDescription)
@@ -83,7 +84,7 @@ func TestYouTubeClipExtract_NotInProducesArtifactsMap(t *testing.T) {
 	if m == nil {
 		t.Fatal("ProducesArtifactsMap() returned nil map")
 	}
-	if m[youtube.JobExtract] {
-		t.Fatalf("ProducesArtifactsMap() includes %q; want absent (PR-COMPLETE-WORKER-YT-FIX)", youtube.JobExtract)
+	if m[job.TypeYouTubeClipExtract] {
+		t.Fatalf("ProducesArtifactsMap() includes %q; want absent (PR-COMPLETE-WORKER-YT-FIX)", job.TypeYouTubeClipExtract)
 	}
 }

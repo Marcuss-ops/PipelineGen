@@ -68,3 +68,8 @@ const (
 	ExecutionCreatorAllowed = kerneljob.ExecutionCreatorAllowed
 	ExecutionCreatorOnly    = kerneljob.ExecutionCreatorOnly
 )
+
+// NewCodecDescriptorMarker is re-exported so existing domain/job tests
+// that call it without a package prefix continue to compile. The
+// canonical implementation lives in internal/kernel/job/codec.go.
+var NewCodecDescriptorMarker = kerneljob.NewCodecDescriptorMarker

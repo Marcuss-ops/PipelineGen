@@ -21,7 +21,7 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // StockJobResult is the typed result envelope returned by HandleJob.
@@ -29,19 +29,19 @@ import (
 // declared in a single struct (godlike/06 one-owner-per-fact).
 //
 // P5 (July 2026): added as part of the stock action-plan wave.
-// The return surface stays map[string]any (kerneljob.Result) for
+// The return surface stays map[string]any (job.Result) for
 // broker compatibility; ToResultMap() bridges the typed struct to
 // the canonical wire representation.
 type StockJobResult struct {
-	Manifest                *kerneljob.ArtifactManifest `json:"__artifact_manifest"`
-	FinalStatus             string                      `json:"final_status"`
-	TotalClips              int                         `json:"total_clips"`
-	TotalChunks             int                         `json:"total_chunks"`
-	Chunks                  []ChunkResult               `json:"chunks"`
-	MetadataLink            string                      `json:"metadata_link"`
-	MetadataFileID          string                      `json:"metadata_file_id"`
-	FinalizationStatus      string                      `json:"__finalization_status,omitempty"`
-	FinalizationCompletedAt time.Time                   `json:"__finalization_completed_at,omitempty"`
+	Manifest                *job.ArtifactManifest `json:"__artifact_manifest"`
+	FinalStatus             string                `json:"final_status"`
+	TotalClips              int                   `json:"total_clips"`
+	TotalChunks             int                   `json:"total_chunks"`
+	Chunks                  []ChunkResult         `json:"chunks"`
+	MetadataLink            string                `json:"metadata_link"`
+	MetadataFileID          string                `json:"metadata_file_id"`
+	FinalizationStatus      string                `json:"__finalization_status,omitempty"`
+	FinalizationCompletedAt time.Time             `json:"__finalization_completed_at,omitempty"`
 }
 
 // ToResultMap converts the typed StockJobResult to the canonical
@@ -52,13 +52,13 @@ type StockJobResult struct {
 // passes (non-empty string / non-zero time).
 func (r StockJobResult) ToResultMap() map[string]any {
 	m := map[string]any{
-		kerneljob.ManifestKey: r.Manifest,
-		"final_status":        r.FinalStatus,
-		"total_clips":         r.TotalClips,
-		"total_chunks":        r.TotalChunks,
-		"chunks":              r.Chunks,
-		"metadata_link":       r.MetadataLink,
-		"metadata_file_id":    r.MetadataFileID,
+		job.ManifestKey:    r.Manifest,
+		"final_status":     r.FinalStatus,
+		"total_clips":      r.TotalClips,
+		"total_chunks":     r.TotalChunks,
+		"chunks":           r.Chunks,
+		"metadata_link":    r.MetadataLink,
+		"metadata_file_id": r.MetadataFileID,
 	}
 	if r.FinalizationStatus != "" {
 		m["__finalization_status"] = r.FinalizationStatus
@@ -273,7 +273,7 @@ func extractLease(job *appjobs.Job) finalization.Lease {
 // Errors here are typed-error contract violations (manifest
 // schema drift) — a typed-error wrap is the right escalation
 // since callers can't recover from a marshaller bug mid-job.
-func manifestBytes(manifest *kerneljob.ArtifactManifest) ([]byte, error) {
+func manifestBytes(manifest *job.ArtifactManifest) ([]byte, error) {
 	if manifest == nil {
 		return nil, fmt.Errorf("stockpipeline.manifestBytes: nil manifest")
 	}

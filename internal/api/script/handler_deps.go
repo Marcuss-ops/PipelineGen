@@ -32,7 +32,7 @@ import (
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"go.uber.org/zap"
 )
@@ -72,7 +72,7 @@ type GenerateDeps struct {
 // which reads the registry independently at composition time. JobsDeps
 // now carries only the JobService port + the canonical logger.
 type JobsDeps struct {
-	Jobs kerneljob.Service
+	Jobs jobs.Service
 	Log  *zap.Logger
 }
 
@@ -149,14 +149,14 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 	}
 }
 
-// Compile-time guard: kerneljob.Service surfaces drift in
+// Compile-time guard: jobs.Service surfaces drift in
 // NewJobsHandler / NewHandlerGenerate signatures (godlike/06 SSOT —
 // no separate sentinel needed; constructor calls fail-closed at
 // build time).
-var _ kerneljob.Service = kerneljob.Service(nil)
+var _ jobs.Service = jobs.Service(nil)
 
 // Compile-time guard: NewJobsHandler + NewHandlerGenerate accept
-// kerneljob.Service + *appjobs.Registry; drift in either signature
+// jobs.Service + *appjobs.Registry; drift in either signature
 // surfaces here, not at first runtime call. The canonical Pattern 0
 // build-failure lock per AGENTS.md is satisfied by the constructor
 // calls in NewScriptFlowHandler (compile-time, no separate sentinel

@@ -19,8 +19,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // StepRunner is the typed context each step body sees during

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Cleanup orchestrates orphan-record cleanup.

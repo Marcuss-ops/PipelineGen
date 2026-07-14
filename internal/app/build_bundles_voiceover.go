@@ -27,9 +27,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
+	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
@@ -468,13 +469,13 @@ func wireVoiceoverJobBindings(domains *DomainBundle, jobs *JobsBundle, log *zap.
 		// If already bound, skip the re-Register — the domains field
 		// is still overwritten with the BLOC5.3 fanout-bound handler
 		// for downstream state-tracking consumers.
-		if !jobs.Service.HasHandler(voiceover.JobGenerate) {
+		if !jobs.Service.HasHandler(job.TypeVoiceoverGenerate) {
 			if err := parentHandler.Register(jobs.Service); err != nil {
 				return fmt.Errorf("voiceover.generate parent handler Register (BLOC5.3 commit-2): %w", err)
 			}
 		} else {
 			log.Info("voiceover.generate handler already bound (Catena A P0 wiring succeeded) — preserving dispatcher binding; BLOC5.3 fanout-bound handler canonicals the domains.VoiceoverGenerateHandler field reference for downstream state-tracking",
-				zap.String("job_type", voiceover.JobGenerate))
+				zap.String("job_type", job.TypeVoiceoverGenerate))
 		}
 		domains.VoiceoverGenerateHandler = parentHandler
 
@@ -509,7 +510,7 @@ func appendVoiceoverCriticalValidators(domains *DomainBundle, jobs *JobsBundle, 
 				CriticalHandler{
 					Name: "voiceover.generate",
 					Bind: func(svc *appjobs.Service) error {
-						if svc.HasHandler(voiceover.JobGenerate) {
+						if svc.HasHandler(job.TypeVoiceoverGenerate) {
 							return nil // idempotent: Catena A P0 bind preserved
 						}
 						return vh.Register(svc)

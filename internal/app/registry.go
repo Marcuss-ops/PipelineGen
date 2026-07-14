@@ -119,7 +119,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 
@@ -331,7 +331,7 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 // canonical literal references — adding a 6th and forgetting step
 // (3) surfaces as a test failure rather than a runtime mismatch.
 func c3ValidateRuntimeGraph() error {
-	mutableReg := kerneljob.NewMutableJobRegistry()
+	mutableReg := job.NewMutableJobRegistry()
 
 	// PR-JOB-TYPE-OWNER-LOCKS (July 2026, godlike/06 SSOT): each
 	// owning package owns its own JobDefinition (canonical-name
@@ -348,19 +348,19 @@ func c3ValidateRuntimeGraph() error {
 	// like the existing CanonicalJobDefinitions entries.
 	additionalOwnerTypes := []string{
 		images.JobGenerate,
-		youtube.JobExtract,
-		scripts.JobGenerate,
+		job.TypeYouTubeClipExtract,
+		job.TypeScriptGenerate,
 		documents.JobGenerate,
-		voiceover.JobGenerate,
-		clips.JobBulkUpload,
+		job.TypeVoiceoverGenerate,
+		job.TypeBulkUploadYouTubeClips,
 	}
 	ownerTypeSet := map[string]bool{
-		images.JobGenerate:    true,
-		youtube.JobExtract:    true,
-		scripts.JobGenerate:   true,
-		documents.JobGenerate: true,
-		voiceover.JobGenerate: true,
-		clips.JobBulkUpload:   true,
+		images.JobGenerate:             true,
+		job.TypeYouTubeClipExtract:     true,
+		job.TypeScriptGenerate:         true,
+		documents.JobGenerate:          true,
+		job.TypeVoiceoverGenerate:      true,
+		job.TypeBulkUploadYouTubeClips: true,
 	}
 	for _, registerOwner := range []func(job.MutableJobRegistry) error{
 		images.MustRegister,
@@ -375,7 +375,7 @@ func c3ValidateRuntimeGraph() error {
 		}
 	}
 
-	for _, def := range kerneljob.CanonicalJobDefinitions {
+	for _, def := range job.CanonicalJobDefinitions {
 		// PR-JOB-TYPE-OWNER-LOCKS (July 2026, godlike/06 SSOT): skip
 		// owner-registered wire-strings so the canonical loop is
 		// idempotent. Owner-side MustRegister is the live authority
@@ -395,7 +395,7 @@ func c3ValidateRuntimeGraph() error {
 		// Placeholder JobHandlerFunc — replaced by C4 dispatch routing.
 		// Read by the C3 validator's HasHandler check only; not invoked
 		// at runtime until C4 wires def.PayloadCodec -> dispatcher.
-		placeholder := func(_ context.Context, _ *kerneljob.Job, _ any) (any, error) {
+		placeholder := func(_ context.Context, _ *job.Job, _ any) (any, error) {
 			return nil, nil
 		}
 		if err := mutableReg.BindHandler(def.Type, placeholder); err != nil {
@@ -405,7 +405,7 @@ func c3ValidateRuntimeGraph() error {
 	// PR-JOB-TYPE-OWNER-LOCKS: bind placeholder handlers for the 6
 	// owner-side JobXxx types so post-Freeze HasHandler(t) returns
 	// true uniformly across every AllDefinitions() entry.
-	ownerPlaceholder := func(_ context.Context, _ *kerneljob.Job, _ any) (any, error) {
+	ownerPlaceholder := func(_ context.Context, _ *job.Job, _ any) (any, error) {
 		return nil, nil
 	}
 	for _, ownerType := range additionalOwnerTypes {
@@ -418,14 +418,14 @@ func c3ValidateRuntimeGraph() error {
 		return fmt.Errorf("freeze: %w", err)
 	}
 	workflowRefs := []string{
-		kerneljob.TypeScriptGenerate,
-		kerneljob.TypeImagesGenerate,
-		kerneljob.TypeDocumentGenerate,
-		kerneljob.TypeAssetsResolve,
-		kerneljob.TypeClipRegister,
+		job.TypeScriptGenerate,
+		job.TypeImagesGenerate,
+		job.TypeDocumentGenerate,
+		job.TypeAssetsResolve,
+		job.TypeClipRegister,
 	}
-	validator := kerneljob.DefaultStartupValidator{}
-	if err := validator.ValidateRuntimeGraph(kerneljob.StartupValidationInput{
+	validator := job.DefaultStartupValidator{}
+	if err := validator.ValidateRuntimeGraph(job.StartupValidationInput{
 		Registry: compiled,
 		Workflow: workflowRefs,
 	}); err != nil {

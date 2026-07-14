@@ -18,38 +18,38 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── Fake job service for thin-transport test ────────────────────────
 
 type fakeJobService struct{}
 
-func (f *fakeJobService) Enqueue(_ context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error) {
-	return &kerneljob.Job{ID: "test-job"}, nil
+func (f *fakeJobService) Enqueue(_ context.Context, req *jobs.EnqueueRequest) (*jobs.Job, error) {
+	return &jobs.Job{ID: "test-job"}, nil
 }
-func (f *fakeJobService) Get(_ context.Context, _ string) (*kerneljob.Job, error) { return nil, nil }
-func (f *fakeJobService) Cancel(_ context.Context, _ string) error                { return nil }
-func (f *fakeJobService) List(_ context.Context, _ kerneljob.Filter) ([]kerneljob.Job, error) {
+func (f *fakeJobService) Get(_ context.Context, _ string) (*jobs.Job, error) { return nil, nil }
+func (f *fakeJobService) Cancel(_ context.Context, _ string) error           { return nil }
+func (f *fakeJobService) List(_ context.Context, _ jobs.Filter) ([]jobs.Job, error) {
 	return nil, nil
 }
-func (f *fakeJobService) IsTerminal(_ kerneljob.Status) bool    { return false }
+func (f *fakeJobService) IsTerminal(_ jobs.Status) bool         { return false }
 func (f *fakeJobService) RegisterHandler(_ string, _ any) error { return nil }
-func (f *fakeJobService) ListEvents(_ context.Context, _ string) ([]kerneljob.Event, error) {
+func (f *fakeJobService) ListEvents(_ context.Context, _ string) ([]jobs.Event, error) {
 	return nil, nil
 }
-func (f *fakeJobService) Retry(_ context.Context, _ string) (*kerneljob.Job, error) {
+func (f *fakeJobService) Retry(_ context.Context, _ string) (*jobs.Job, error) {
 	return nil, nil
 }
 
-// Compile-time: fakeJobService satisfies the full kerneljob.Service interface.
-var _ kerneljob.Service = (*fakeJobService)(nil)
+// Compile-time: fakeJobService satisfies the full jobs.Service interface.
+var _ jobs.Service = (*fakeJobService)(nil)
 
 // ── Helper: build test router with wired handler ────────────────────
 
 func newStorageHandler() (*Handler, *gin.Engine) {
 	gin.SetMode(gin.TestMode)
-	var jobsSvc kerneljob.Service = &fakeJobService{}
+	var jobsSvc jobs.Service = &fakeJobService{}
 	var catalogSync *catalogsync.Service // nil — sync route returns 500
 	handler := NewHandler(jobsSvc, catalogSync, zap.NewNop())
 	router := gin.New()

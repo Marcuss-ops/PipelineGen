@@ -5,7 +5,7 @@
 // GenerateVoiceoversCommand without leaking the wire shape into
 // the business side. The stub job.Service records the EnqueueRequest
 // passed by the handler so each test can assert on:
-//   - EnqueueRequest.Type (must equal voiceover.JobGenerate)
+//   - EnqueueRequest.Type (must equal job.TypeVoiceoverGenerate)
 //   - EnqueueRequest.CorrelationID (must equal request_id)
 //   - EnqueueRequest.Payload cast to *GenerateVoiceoversCommand
 //     and field-by-field field assertions
@@ -27,7 +27,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // stubJobsSvc captures the EnqueueRequest so tests can assert on the
@@ -128,8 +128,8 @@ func TestGenerateHandler_HappyPath_P0_2WireShape(t *testing.T) {
 	if jobsSvc.enqueued.CorrelationID != "video-xyz" {
 		t.Errorf("CorrelationID: got %q, want %q", jobsSvc.enqueued.CorrelationID, "video-xyz")
 	}
-	if jobsSvc.enqueued.Type != voiceover.JobGenerate {
-		t.Errorf("Type: got %q, want %q", jobsSvc.enqueued.Type, voiceover.JobGenerate)
+	if jobsSvc.enqueued.Type != job.TypeVoiceoverGenerate {
+		t.Errorf("Type: got %q, want %q", jobsSvc.enqueued.Type, job.TypeVoiceoverGenerate)
 	}
 
 	cmd, ok := jobsSvc.enqueued.Payload.(*voiceover.GenerateVoiceoversCommand)
@@ -472,8 +472,8 @@ func TestRequest_ToEnqueueRequest_CarriesCorrelationID(t *testing.T) {
 	if enq.CorrelationID != "vo-trace-xyz" {
 		t.Errorf("CorrelationID: got %q, want vo-trace-xyz", enq.CorrelationID)
 	}
-	if enq.Type != voiceover.JobGenerate {
-		t.Errorf("Type: got %q, want %q", enq.Type, voiceover.JobGenerate)
+	if enq.Type != job.TypeVoiceoverGenerate {
+		t.Errorf("Type: got %q, want %q", enq.Type, job.TypeVoiceoverGenerate)
 	}
 	cmd, ok := enq.Payload.(*voiceover.GenerateVoiceoversCommand)
 	if !ok {
@@ -557,7 +557,7 @@ func TestGenerateHandler_AcceptsExplicitKindWithFolderID(t *testing.T) {
 //
 // The check: an HTTP request POSTed to /generate MUST result in
 //  1. jobs.Service.Enqueue being called once (NOT zero, NOT twice)
-//  2. with Type == voiceover.JobGenerate (canonical job-type identifier)
+//  2. with Type == job.TypeVoiceoverGenerate (canonical job-type identifier)
 //  3. with Payload type *voiceover.GenerateVoiceoversCommand (canonical
 //     wire-shape round-trip, NOT BatchRequest or interface{})
 //  4. NOT result in any direct *voiceover.Service construction or
@@ -595,8 +595,8 @@ func TestHTTPConsumer_RoutesThroughCanonicalUseCase(t *testing.T) {
 		t.Errorf("CorrelationID: got %q, want vo-canonical-trace (canonical: request_id propagates)", jobsSvc.enqueued.CorrelationID)
 	}
 	// (2) canonical job-type identifier
-	if jobsSvc.enqueued.Type != voiceover.JobGenerate {
-		t.Errorf("Type: got %q, want %q (canonical: voiceover.generate job type — NOT TypeVoiceoverBatch)", jobsSvc.enqueued.Type, voiceover.JobGenerate)
+	if jobsSvc.enqueued.Type != job.TypeVoiceoverGenerate {
+		t.Errorf("Type: got %q, want %q (canonical: voiceover.generate job type — NOT TypeVoiceoverBatch)", jobsSvc.enqueued.Type, job.TypeVoiceoverGenerate)
 	}
 	// (3) canonical Payload type — *voiceover.GenerateVoiceoversCommand,
 	//     the per-batch parent command that FanoutVoiceoversUseCase consumes.

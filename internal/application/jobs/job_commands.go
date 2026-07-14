@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // aggregateFlipper is the narrow Pattern-0 port the parent aggregator's

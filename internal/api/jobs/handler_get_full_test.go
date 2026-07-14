@@ -18,7 +18,7 @@
 // surfaces verbatim.
 //
 // Stub pattern mirrors the canonical fakeJobService pattern from
-// internal/api/assets/storage/handler_test.go (8-method kerneljob.Service
+// internal/api/assets/storage/handler_test.go (8-method job.Service
 // stub: Enqueue / Get / Cancel / List / IsTerminal / RegisterHandler /
 // ListEvents / Retry).
 package jobs
@@ -35,11 +35,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
-// stubServiceForGetFull is the minimal kerneljob.Service stub that
+// stubServiceForGetFull is the minimal job.Service stub that
 // satisfies the 8-method signature. Mirrors internal/api/assets/storage/
 // handler_test.go::fakeJobService verbatim (no Comments added); the
 // difference is the Parameters on Get + ListEvents which feed the
@@ -51,22 +51,22 @@ type stubServiceForGetFull struct {
 
 	// outStatus is the canonical job.Status value returned from Get().
 	// Tests set this to drive the FAILED / SUCCEEDED / RUNNING scenarios.
-	outStatus kerneljob.Status
+	outStatus job.Status
 
 	// outID / outType are returned from Get().
 	outID   string
 	outType string
 
 	// eventsList / eventsErr feed the events slice via ListEvents().
-	eventsList []kerneljob.Event
+	eventsList []job.Event
 	eventsErr  error
 }
 
-func (s *stubServiceForGetFull) Enqueue(_ context.Context, _ *kerneljob.EnqueueRequest) (*kerneljob.Job, error) {
+func (s *stubServiceForGetFull) Enqueue(_ context.Context, _ *job.EnqueueRequest) (*job.Job, error) {
 	return nil, nil
 }
-func (s *stubServiceForGetFull) Get(_ context.Context, _ string) (*kerneljob.Job, error) {
-	return &kerneljob.Job{
+func (s *stubServiceForGetFull) Get(_ context.Context, _ string) (*job.Job, error) {
+	return &job.Job{
 		ID:     s.outID,
 		Type:   s.outType,
 		Status: s.outStatus,
@@ -74,29 +74,29 @@ func (s *stubServiceForGetFull) Get(_ context.Context, _ string) (*kerneljob.Job
 	}, nil
 }
 func (s *stubServiceForGetFull) Cancel(_ context.Context, _ string) error { return nil }
-func (s *stubServiceForGetFull) List(_ context.Context, _ kerneljob.Filter) ([]kerneljob.Job, error) {
+func (s *stubServiceForGetFull) List(_ context.Context, _ job.Filter) ([]job.Job, error) {
 	return nil, nil
 }
-func (s *stubServiceForGetFull) IsTerminal(_ kerneljob.Status) bool    { return false }
+func (s *stubServiceForGetFull) IsTerminal(_ job.Status) bool          { return false }
 func (s *stubServiceForGetFull) RegisterHandler(_ string, _ any) error { return nil }
-func (s *stubServiceForGetFull) ListEvents(_ context.Context, _ string) ([]kerneljob.Event, error) {
+func (s *stubServiceForGetFull) ListEvents(_ context.Context, _ string) ([]job.Event, error) {
 	return s.eventsList, s.eventsErr
 }
-func (s *stubServiceForGetFull) Retry(_ context.Context, _ string) (*kerneljob.Job, error) {
+func (s *stubServiceForGetFull) Retry(_ context.Context, _ string) (*job.Job, error) {
 	return nil, nil
 }
 
-// Compile-time pin: stub MUST satisfy kerneljob.Service to be wired
-// into JobsHandler.service (typed as kerneljob.Service via the
+// Compile-time pin: stub MUST satisfy job.Service to be wired
+// into JobsHandler.service (typed as job.Service via the
 // domain/job alias). Surfaces signature drift at build time, not
 // runtime panic.
-var _ kerneljob.Service = (*stubServiceForGetFull)(nil)
+var _ job.Service = (*stubServiceForGetFull)(nil)
 
 // pushedType is the canonical job-type discriminator for script.generate
 // jobs (lives canonical SSOT at internal/domain/job/job.go). Tests
 // reference this constant directly instead of literal "script.generate"
 // to maintain godlike/06 SSOT (one canonical owner per fact).
-const pushedType = kerneljob.TypeScriptGenerate
+const pushedType = job.TypeScriptGenerate
 
 // ── Regression tests for GetFull top-level error contract ─────────
 
@@ -106,16 +106,16 @@ const pushedType = kerneljob.TypeScriptGenerate
 // events/result/retryable/job — `error` was absent. Post-PR contract:
 // adds top-level `error`.
 type fullResponseEnvelope struct {
-	ID          string            `json:"id"`
-	Type        string            `json:"type"`
-	Status      kerneljob.Status  `json:"status"`
-	Progress    int               `json:"progress"`
-	Error       string            `json:"error"`
-	CurrentStep kerneljob.Status  `json:"current_step"`
-	Events      []kerneljob.Event `json:"events"`
-	Result      json.RawMessage   `json:"result"`
-	Retryable   bool              `json:"retryable"`
-	Job         *kerneljob.Job    `json:"job"`
+	ID          string          `json:"id"`
+	Type        string          `json:"type"`
+	Status      job.Status      `json:"status"`
+	Progress    int             `json:"progress"`
+	Error       string          `json:"error"`
+	CurrentStep job.Status      `json:"current_step"`
+	Events      []job.Event     `json:"events"`
+	Result      json.RawMessage `json:"result"`
+	Retryable   bool            `json:"retryable"`
+	Job         *job.Job        `json:"job"`
 }
 
 // runGetFull wires the canonical handler to a stub service, mounts it on
@@ -155,7 +155,7 @@ func TestGetFull_TopLevelErrorFieldPopulated(t *testing.T) {
 	stub := &stubServiceForGetFull{
 		outID:     "job-regression-1",
 		outType:   pushedType,
-		outStatus: kerneljob.StatusFailed,
+		outStatus: job.StatusFailed,
 		outErr:    wantErr,
 	}
 	env, body, code := runGetFull(t, stub)
@@ -182,7 +182,7 @@ func TestGetFull_TypedSentinelVerbatimPresence(t *testing.T) {
 	stub := &stubServiceForGetFull{
 		outID:     "job-regression-2",
 		outType:   pushedType,
-		outStatus: kerneljob.StatusFailed,
+		outStatus: job.StatusFailed,
 		outErr:    fullErr,
 	}
 	env, _, code := runGetFull(t, stub)
@@ -214,7 +214,7 @@ func TestGetFull_MirrorContract_TopLevelEqualsNested(t *testing.T) {
 	stub := &stubServiceForGetFull{
 		outID:     "job-regression-3",
 		outType:   pushedType,
-		outStatus: kerneljob.StatusFailed,
+		outStatus: job.StatusFailed,
 		outErr:    wantErr,
 	}
 	env, _, code := runGetFull(t, stub)
@@ -238,7 +238,7 @@ func TestGetFull_EmptyErrorOnSuccess(t *testing.T) {
 	stub := &stubServiceForGetFull{
 		outID:     "job-regression-4",
 		outType:   pushedType,
-		outStatus: kerneljob.StatusSucceeded,
+		outStatus: job.StatusSucceeded,
 		outErr:    "", // empty
 	}
 	env, body, code := runGetFull(t, stub)
@@ -257,9 +257,9 @@ func TestGetFull_BackwardCompat_ExistingFieldsPreserved(t *testing.T) {
 	stub := &stubServiceForGetFull{
 		outID:     "job-regression-5",
 		outType:   pushedType,
-		outStatus: kerneljob.StatusFailed,
+		outStatus: job.StatusFailed,
 		outErr:    wantErr,
-		eventsList: []kerneljob.Event{
+		eventsList: []job.Event{
 			{ID: "evt-1", JobID: "job-regression-5", Type: "started", Message: "begin"},
 		},
 	}
@@ -269,8 +269,8 @@ func TestGetFull_BackwardCompat_ExistingFieldsPreserved(t *testing.T) {
 	// Pre-existing fields preserved.
 	assert.Equal(t, "job-regression-5", env.ID, "id preserved")
 	assert.Equal(t, pushedType, env.Type, "type preserved")
-	assert.Equal(t, kerneljob.StatusFailed, env.Status, "status preserved")
-	assert.Equal(t, kerneljob.StatusFailed, env.CurrentStep,
+	assert.Equal(t, job.StatusFailed, env.Status, "status preserved")
+	assert.Equal(t, job.StatusFailed, env.CurrentStep,
 		"current_step preserved (must mirror j.Status pre-PR contract)")
 	require.Len(t, env.Events, 1, "events slice preserved")
 	assert.Equal(t, "evt-1", env.Events[0].ID, "events content preserved")

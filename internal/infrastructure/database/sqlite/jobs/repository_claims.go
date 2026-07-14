@@ -8,9 +8,8 @@ import (
 	"strings"
 	"time"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -148,7 +147,7 @@ func (r *SQLiteStore) Start(ctx context.Context, cmd StartJob) (*job.Job, error)
 // SQL statement so the row state observed here is the same as the
 // row state used for the UPDATE — no SELECT-then-UPDATE race window
 // where a concurrent Cancel could land between the two statements.
-func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string, leaseTTL time.Duration) (kerneljob.RenewLeaseResult, error) {
+func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string, leaseTTL time.Duration) (job.RenewLeaseResult, error) {
 	newExpiry := time.Now().Add(leaseTTL)
 	// Use QueryRowContext (not ExecContext) so we can read the
 	// RETURNING columns; rows-affected comes from the same row.
@@ -171,14 +170,14 @@ func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			// 0 rows updated — lease stolen, expired, or reaped.
-			return kerneljob.RenewLeaseResult{
-				State: kerneljob.LeaseStateLeaseLost,
+			return job.RenewLeaseResult{
+				State: job.LeaseStateLeaseLost,
 			}, fmt.Errorf("%w: renew lease", job.ErrLeaseLost)
 		}
-		return kerneljob.RenewLeaseResult{}, fmt.Errorf("RenewLease: %w", err)
+		return job.RenewLeaseResult{}, fmt.Errorf("RenewLease: %w", err)
 	}
 	// Decode the state.
-	state := kerneljob.LeaseState(stateW)
+	state := job.LeaseState(stateW)
 	if !state.IsValid() {
 		// Defensive: the SQL CASE expression can only emit
 		// 'cancel_requested' or 'continue' (or omit the row for
@@ -186,11 +185,11 @@ func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string
 		// regression; surface it as a typed error so operators
 		// see the diagnostic instead of a silent LeaseStateContinue
 		// default that would mask cancellation.
-		return kerneljob.RenewLeaseResult{}, fmt.Errorf("RenewLease: unknown lease state %q from SQL RETURNING", stateW)
+		return job.RenewLeaseResult{}, fmt.Errorf("RenewLease: unknown lease state %q from SQL RETURNING", stateW)
 	}
 	// Decode the post-renewal expiry for the Continue branch.
 	var newExpiryPtr *time.Time
-	if state == kerneljob.LeaseStateContinue {
+	if state == job.LeaseStateContinue {
 		// Use ParseRFC3339Ptr (the canonical timeutil helper that
 		// returns *time.Time for the lease_expiry column; the
 		// previous code called timeutil.ParseRFC3339 which does
@@ -202,11 +201,11 @@ func (r *SQLiteStore) RenewLease(ctx context.Context, id string, workerID string
 		// diagnostic.
 		t := timeutil.ParseRFC3339Ptr(expiryStr)
 		if t == nil {
-			return kerneljob.RenewLeaseResult{}, fmt.Errorf("RenewLease: parse lease_expiry %q: invalid RFC3339", expiryStr)
+			return job.RenewLeaseResult{}, fmt.Errorf("RenewLease: parse lease_expiry %q: invalid RFC3339", expiryStr)
 		}
 		newExpiryPtr = t
 	}
-	return kerneljob.RenewLeaseResult{
+	return job.RenewLeaseResult{
 		State:          state,
 		NewLeaseExpiry: newExpiryPtr,
 		JobRevision:    revisionW,

@@ -38,7 +38,7 @@ import (
 	"testing"
 	"time"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 )
 
@@ -176,9 +176,9 @@ func readFinalJob(t *testing.T, db *sql.DB, jobID string) finalJobRow {
 func TestFinalizeAttempt_OutcomeSucceeded(t *testing.T) {
 	store, jobID := setupFinalizeTestDB(t)
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeSucceeded,
+		Outcome:          jobs.OutcomeSucceeded,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
@@ -192,7 +192,7 @@ func TestFinalizeAttempt_OutcomeSucceeded(t *testing.T) {
 	if res.JobID != jobID {
 		t.Errorf("result.JobID = %q, want %q", res.JobID, jobID)
 	}
-	if res.FinalStatus != kerneljob.StatusSucceeded {
+	if res.FinalStatus != jobs.StatusSucceeded {
 		t.Errorf("result.FinalStatus = %q, want SUCCEEDED", res.FinalStatus)
 	}
 	if res.NewRevision != 2 {
@@ -237,9 +237,9 @@ func TestFinalizeAttempt_OutcomeSucceeded(t *testing.T) {
 func TestFinalizeAttempt_OutcomeFailedPermanent(t *testing.T) {
 	store, jobID := setupFinalizeTestDB(t)
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeFailedPermanent,
+		Outcome:          jobs.OutcomeFailedPermanent,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
@@ -250,7 +250,7 @@ func TestFinalizeAttempt_OutcomeFailedPermanent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FinalizeAttempt FailedPermanent: unexpected error: %v", err)
 	}
-	if res.FinalStatus != kerneljob.StatusFailed {
+	if res.FinalStatus != jobs.StatusFailed {
 		t.Errorf("FinalStatus = %q, want FAILED", res.FinalStatus)
 	}
 
@@ -277,9 +277,9 @@ func TestFinalizeAttempt_OutcomeScheduleRetry_UnderLimit(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeScheduleRetry,
+		Outcome:          jobs.OutcomeScheduleRetry,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
@@ -290,7 +290,7 @@ func TestFinalizeAttempt_OutcomeScheduleRetry_UnderLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FinalizeAttempt ScheduleRetry: unexpected error: %v", err)
 	}
-	if res.FinalStatus != kerneljob.StatusRetryWait {
+	if res.FinalStatus != jobs.StatusRetryWait {
 		t.Errorf("FinalStatus = %q, want RETRY_WAIT", res.FinalStatus)
 	}
 
@@ -316,9 +316,9 @@ func TestFinalizeAttempt_OutcomeScheduleRetry_AtomicDowngradeAtLimit(t *testing.
 	}
 
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeScheduleRetry,
+		Outcome:          jobs.OutcomeScheduleRetry,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
@@ -331,7 +331,7 @@ func TestFinalizeAttempt_OutcomeScheduleRetry_AtomicDowngradeAtLimit(t *testing.
 
 	// FinalStatus reflects the downgraded terminal value, not the caller-
 	// supplied retry intent.
-	if res.FinalStatus != kerneljob.StatusFailed {
+	if res.FinalStatus != jobs.StatusFailed {
 		t.Errorf("FinalStatus = %q, want FAILED (downgraded)", res.FinalStatus)
 	}
 
@@ -357,9 +357,9 @@ func TestFinalizeAttempt_OutcomeScheduleRetry_AtomicDowngradeAtLimit(t *testing.
 func TestFinalizeAttempt_LeaseLost_WorkerMismatch(t *testing.T) {
 	store, jobID := setupFinalizeTestDB(t)
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeSucceeded,
+		Outcome:          jobs.OutcomeSucceeded,
 		WorkerID:         "WORKER-B-STEALER", // does not match seeded "worker-A"
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
@@ -384,9 +384,9 @@ func TestFinalizeAttempt_LeaseLost_WorkerMismatch(t *testing.T) {
 func TestFinalizeAttempt_TransitionConflict_RevisionMismatch(t *testing.T) {
 	store, jobID := setupFinalizeTestDB(t)
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeSucceeded,
+		Outcome:          jobs.OutcomeSucceeded,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 99, // does not match seeded revision=1
@@ -406,9 +406,9 @@ func TestFinalizeAttempt_TransitionConflict_RevisionMismatch(t *testing.T) {
 func TestFinalizeAttempt_OutcomeInvalid(t *testing.T) {
 	store, jobID := setupFinalizeTestDB(t)
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.FinalizeAttemptOutcome("UNKNOWN"),
+		Outcome:          jobs.FinalizeAttemptOutcome("UNKNOWN"),
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
@@ -428,9 +428,9 @@ func TestFinalizeAttempt_OutcomeInvalid(t *testing.T) {
 func TestFinalizeAttempt_DLQ_IncompatibleWithSucceeded(t *testing.T) {
 	store, jobID := setupFinalizeTestDB(t)
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeSucceeded,
+		Outcome:          jobs.OutcomeSucceeded,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
@@ -451,9 +451,9 @@ func TestFinalizeAttempt_DLQ_IncompatibleWithSucceeded(t *testing.T) {
 func TestFinalizeAttempt_DLQ_RecordedOnFailure(t *testing.T) {
 	store, jobID := setupFinalizeTestDB(t)
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeFailedPermanent,
+		Outcome:          jobs.OutcomeFailedPermanent,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
@@ -492,14 +492,14 @@ func TestFinalizeAttempt_ArtifactStatePatch_Success(t *testing.T) {
 		t.Fatalf("seed artifact: %v", err)
 	}
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeSucceeded,
+		Outcome:          jobs.OutcomeSucceeded,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
 		Result:           json.RawMessage(`{"ok":true}`),
-		ArtifactState: &kerneljob.ArtifactStatePatch{
+		ArtifactState: &jobs.ArtifactStatePatch{
 			ArtifactID: artifactID,
 			NewState:   "SUCCEEDED",
 		},
@@ -531,14 +531,14 @@ func TestFinalizeAttempt_ArtifactStatePatch_Stale_OnTerminal(t *testing.T) {
 		t.Fatalf("seed terminal artifact: %v", err)
 	}
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeSucceeded,
+		Outcome:          jobs.OutcomeSucceeded,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
 		Result:           json.RawMessage(`{"ok":true}`),
-		ArtifactState: &kerneljob.ArtifactStatePatch{
+		ArtifactState: &jobs.ArtifactStatePatch{
 			ArtifactID: artifactID,
 			NewState:   "SUCCEEDED",
 		},
@@ -563,14 +563,14 @@ func TestFinalizeAttempt_ArtifactStatePatch_Stale_OnTerminal(t *testing.T) {
 func TestFinalizeAttempt_OutboxEvents_EachInserted(t *testing.T) {
 	store, jobID := setupFinalizeTestDB(t)
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeSucceeded,
+		Outcome:          jobs.OutcomeSucceeded,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
 		Result:           json.RawMessage(`{"ok":true}`),
-		OutboxEvents: []kerneljob.OutboxEventSpec{
+		OutboxEvents: []jobs.OutboxEventSpec{
 			{Type: "asset.index.requested", EventKey: "key-1", Payload: json.RawMessage(`{"asset":"a1"}`)},
 			{Type: "delivery.requested", EventKey: "key-2", Payload: json.RawMessage(`{"folder":"f1"}`)},
 		},
@@ -597,14 +597,14 @@ func TestFinalizeAttempt_OutboxEvents_EachInserted(t *testing.T) {
 func TestFinalizeAttempt_OutboxEvent_MissingEventKey(t *testing.T) {
 	store, jobID := setupFinalizeTestDB(t)
 	ctx := context.Background()
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := jobs.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeSucceeded,
+		Outcome:          jobs.OutcomeSucceeded,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-1",
 		ExpectedRevision: 1,
 		Result:           json.RawMessage(`{"ok":true}`),
-		OutboxEvents: []kerneljob.OutboxEventSpec{
+		OutboxEvents: []jobs.OutboxEventSpec{
 			{Type: "asset.index.requested", EventKey: ""}, // missing key
 		},
 	}

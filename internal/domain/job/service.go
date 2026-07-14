@@ -4,7 +4,7 @@
 // interface) and EnqueueRequest live in internal/kernel/job/. This
 // file re-exports them as type aliases for back-compat with 107
 // import sites in the codebase. Go's type aliases resolve
-// transparently: `job.Service` and `kerneljob.Service` are the same
+// transparently: `job.Service` and `job.Service` are the same
 // type as far as the compiler and runtime are concerned.
 //
 // EnqueueTyped[T] (the generic helper for typed-payload enqueue)
@@ -18,16 +18,16 @@ import (
 	"encoding/json"
 	"fmt"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Type aliases to canonical kernel/job types (Phase A.2) ──────────
 
 type (
 	// Service is the canonical job-system contract (see kernel/job.Service).
-	Service = kerneljob.Service
+	Service = job.Service
 	// EnqueueRequest is the typed payload handed to Service.Enqueue.
-	EnqueueRequest = kerneljob.EnqueueRequest
+	EnqueueRequest = job.EnqueueRequest
 )
 
 // EnqueueTyped is a deterministic, type-safe alternative to Enqueue.

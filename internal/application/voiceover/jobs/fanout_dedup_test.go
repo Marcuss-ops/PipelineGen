@@ -48,7 +48,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

@@ -28,7 +28,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 

@@ -10,7 +10,7 @@ package images
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,12 +20,12 @@ import (
 type ImagesHandler struct {
 	service   *imgservice.Service
 	ingestSvc *ingest.Service
-	jobsSvc   kerneljob.Service
+	jobsSvc   jobs.Service
 }
 
 // NewImagesHandler constructs the handler with the application-layer
 // services it delegates to.
-func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service, jobsSvc kerneljob.Service) *ImagesHandler {
+func NewImagesHandler(service *imgservice.Service, ingestSvc *ingest.Service, jobsSvc jobs.Service) *ImagesHandler {
 	return &ImagesHandler{service: service, ingestSvc: ingestSvc, jobsSvc: jobsSvc}
 }
 

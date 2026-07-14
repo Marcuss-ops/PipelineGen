@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 )
 
@@ -295,10 +295,10 @@ func TestArtlistJobResultRoundTrip(t *testing.T) {
 	}
 
 	// Convert back to RunTagResponse
-	job := &kerneljob.Job{
+	job := &job.Job{
 		ID:     "test-job",
 		Type:   "artlist.run",
-		Status: kerneljob.StatusSucceeded,
+		Status: job.StatusSucceeded,
 	}
 	jsonPayload, _ := json.Marshal(codec.PayloadFromRequest(&RunTagRequest{Term: "city"}))
 	job.Payload = jsonPayload

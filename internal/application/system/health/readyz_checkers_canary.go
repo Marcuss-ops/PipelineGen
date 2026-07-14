@@ -121,7 +121,7 @@ type HandlerRegChecker interface {
 //   - media.bulk_upload_youtube_clips: async bulk-upload worker
 //     (uses same delivery.Publisher via ClipPublisherPort).
 //     Canonical constant:
-//     domain/clips.JobBulkUpload = "media.bulk_upload_youtube_clips".
+//     domain/job.TypeBulkUploadYouTubeClips = "media.bulk_upload_youtube_clips".
 //
 // Both async paths route through the SAME delivery.Publisher +
 // Drive adapters as the sync register-from-youtube path, verified

@@ -8,7 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ────────────────────────────────────────────────────────────────────

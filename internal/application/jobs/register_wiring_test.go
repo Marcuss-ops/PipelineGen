@@ -55,7 +55,7 @@ import (
 	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 )
 
@@ -227,7 +227,7 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	// the SSOT job-type list and the resolver lookup.
 	registry := jobs.NewRegistry()
 	if err := registry.Register(jobs.JobPolicy{
-		Type:              voiceover.JobGenerate,
+		Type:              job.TypeVoiceoverGenerate,
 		Description:       "Voiceover single generation",
 		Timeout:           30 * time.Minute,
 		DefaultMaxRetries: 2,
@@ -260,7 +260,7 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	}
 
 	// Parent IS consumable.
-	if !svc.HasHandler(voiceover.JobGenerate) {
+	if !svc.HasHandler(job.TypeVoiceoverGenerate) {
 		t.Fatal("§15.9: after Register, parent handler must be present (HasHandler returned false)")
 	}
 
@@ -292,7 +292,7 @@ func TestValidateHandlerCompleteness_DetectsMissingChildHandler(t *testing.T) {
 	}
 
 	// Both handlers must be consumable.
-	if !svc.HasHandler(voiceover.JobGenerate) {
+	if !svc.HasHandler(job.TypeVoiceoverGenerate) {
 		t.Fatal("§15.9: after child register, parent handler must still be present")
 	}
 	if !svc.HasHandler(jobs.TypeVoiceoverGenerateItem) {

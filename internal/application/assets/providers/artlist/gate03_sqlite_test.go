@@ -30,11 +30,11 @@ import (
 	"go.uber.org/zap"
 
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/security"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -201,16 +201,16 @@ func TestGate03_ArtlistRunsPopulatedAfterHandleJob(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	job := &kerneljob.Job{
+	job := &jobs.Job{
 		ID:        "gate03-job-run-001",
 		Type:      "media.artlist",
-		Status:    kerneljob.StatusRunning,
+		Status:    jobs.StatusRunning,
 		Payload:   payloadBytes,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
 
-	jobTools := &jobs.JobTools{
+	jobTools := &appjobs.JobTools{
 		Progress: func(progress int, message string) {},
 		Event:    func(eventType string, message string, data map[string]any) {},
 	}
@@ -317,16 +317,16 @@ func TestGate03_ArtlistRunsNotRecordedWhenDiscoveryFails(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	job := &kerneljob.Job{
+	job := &jobs.Job{
 		ID:        "gate03-job-fail-001",
 		Type:      "media.artlist",
-		Status:    kerneljob.StatusRunning,
+		Status:    jobs.StatusRunning,
 		Payload:   payloadBytes,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
 
-	jobTools := &jobs.JobTools{
+	jobTools := &appjobs.JobTools{
 		Progress: func(progress int, message string) {},
 		Event:    func(eventType string, message string, data map[string]any) {},
 	}

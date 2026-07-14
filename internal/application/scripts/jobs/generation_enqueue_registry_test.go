@@ -27,8 +27,8 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // fakeJobEnqueuer records every EnqueueRequest it receives. The
@@ -36,7 +36,7 @@ import (
 // caller (e.g. EnqueueGenerationJob) sees the round-trip success
 // path it normally would walking the real JobsService.Enqueue.
 type fakeJobEnqueuer struct {
-	lastReq *kerneljob.EnqueueRequest
+	lastReq *job.EnqueueRequest
 	calls   int
 }
 
@@ -44,13 +44,13 @@ func newFakeJobEnqueuer() *fakeJobEnqueuer {
 	return &fakeJobEnqueuer{}
 }
 
-func (f *fakeJobEnqueuer) Enqueue(_ context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error) {
+func (f *fakeJobEnqueuer) Enqueue(_ context.Context, req *job.EnqueueRequest) (*job.Job, error) {
 	f.calls++
 	f.lastReq = req
-	return &kerneljob.Job{
+	return &job.Job{
 		ID:         "job_fake",
 		Type:       req.Type,
-		Status:     kerneljob.StatusQueued,
+		Status:     job.StatusQueued,
 		MaxRetries: req.MaxRetries,
 	}, nil
 }
@@ -63,7 +63,7 @@ func (f *fakeJobEnqueuer) Enqueue(_ context.Context, req *kerneljob.EnqueueReque
 func newRegistryWithScriptGenerateRetry(retries int) *appjobs.Registry {
 	r := appjobs.NewRegistry()
 	_ = r.Register(appjobs.RegistryEntry{
-		Type:              scripts.JobGenerate,
+		Type:              job.TypeScriptGenerate,
 		Description:       "test fixture for Issue 4 plumbing assertions",
 		Timeout:           60 * time.Minute,
 		DefaultMaxRetries: retries,

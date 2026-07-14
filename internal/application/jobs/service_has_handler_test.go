@@ -25,7 +25,7 @@ import (
 
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // TestService_HasHandler pins the new *Service.HasHandler contract.
@@ -45,7 +45,7 @@ func TestService_HasHandler(t *testing.T) {
 	// handler for `script.generate`. The remaining test cases
 	// derive from this base (nil receiver, nil dispatcher, etc.).
 	dispatcher := NewDispatcher()
-	if err := dispatcher.Register(scripts.JobGenerate, fakeHandler); err != nil {
+	if err := dispatcher.Register(job.TypeScriptGenerate, fakeHandler); err != nil {
 		t.Fatalf("register fake handler: %v", err)
 	}
 	svc, err := NewService(nakedJobBroker{}, dispatcher, zap.NewNop(), Compose())
@@ -63,7 +63,7 @@ func TestService_HasHandler(t *testing.T) {
 		{
 			name:     "nil receiver returns false (defensive guard)",
 			svc:      nil,
-			jobType:  scripts.JobGenerate,
+			jobType:  job.TypeScriptGenerate,
 			wantHave: false,
 		},
 		{
@@ -74,7 +74,7 @@ func TestService_HasHandler(t *testing.T) {
 				log:        nil,
 				registry:   nil,
 			},
-			jobType:  scripts.JobGenerate,
+			jobType:  job.TypeScriptGenerate,
 			wantHave: false,
 		},
 		{
@@ -86,7 +86,7 @@ func TestService_HasHandler(t *testing.T) {
 		{
 			name:     "registered type returns true (canonical happy path)",
 			svc:      svc,
-			jobType:  scripts.JobGenerate,
+			jobType:  job.TypeScriptGenerate,
 			wantHave: true,
 		},
 		{

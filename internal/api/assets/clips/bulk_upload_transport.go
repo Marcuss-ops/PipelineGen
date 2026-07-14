@@ -13,7 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -40,7 +40,7 @@ type BulkUploadYouTubeClipsResponse struct {
 
 // BulkTransportDeps: JobsSvc + 3 allowed storage base paths + worker + log.
 type BulkTransportDeps struct {
-	JobsSvc          kerneljob.Service
+	JobsSvc          job.Service
 	MediaPath        string
 	TempPath         string
 	DataDir          string
@@ -51,7 +51,7 @@ type BulkTransportDeps struct {
 // BulkUploadTransport owns the HTTP + job-dispatcher surface for the single
 // bulk-upload-youtube-clips route.
 type BulkUploadTransport struct {
-	jobsSvc          kerneljob.Service
+	jobsSvc          job.Service
 	mediaPath        string
 	tempPath         string
 	dataDir          string
@@ -130,7 +130,7 @@ func (bt *BulkUploadTransport) BulkUploadYouTubeClips(c *gin.Context) {
 
 	activeKey := fmt.Sprintf("bulk_upload_yt:%s", req.LocalFolder)
 	if ok := transport.EnqueueAsync(c, bt.jobsSvc, &transport.EnqueueInput{
-		Type:    string(kerneljob.TypeBulkUploadYouTubeClips),
+		Type:    string(job.TypeBulkUploadYouTubeClips),
 		Project: "media",
 		Payload: map[string]any{
 			"local_folder":    req.LocalFolder,

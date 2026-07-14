@@ -187,7 +187,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		Log:           params.Log,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("clips: upload.NewUseCase: %w", err)
+		return nil, nil, fmt.Errorf("clips: upload.NewUseCase: %w", err)
 	}
 
 	// (2d) Reupload UseCase (F2.9, June 2026)

@@ -6,7 +6,7 @@ import (
 
 	"go.uber.org/zap"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Reconcile reconciles database with Drive files via a real
