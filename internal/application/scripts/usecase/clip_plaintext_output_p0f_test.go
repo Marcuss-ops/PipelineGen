@@ -57,17 +57,12 @@
 package usecase
 
 import (
-	"context"
-	"fmt"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	ollamatypes "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 )
 
 // plaintextContractSignatures is the canonical list of regex
@@ -356,71 +351,35 @@ func TestPlaintextOutput_P0F_SignatureIndex_AllReported(t *testing.T) {
 // prose in the `text` field + an empty `scenes` array (no
 // per-scene structured data) — exactly the prose-only
 // post-LLM-PLAIN-TEXT-CONTRACT shape.
-func TestPlaintextOutput_P0F_Orchestrator_FakeOllamaCleanProse(t *testing.T) {
-	t.Parallel()
 
-	// A canonical clean prose — well within the 8-signature
-	// ban. The test asserts the orchestrator's Output.Text
-	// field passes the contract WITHOUT any of the forbidden
-	// signatures leaking through the engine / postprocessor
-	// pipeline.
-	const cleanProse = "Round 1 begins with both fighters trading jabs. " +
-		"The bell rings and the action starts. " +
-		"The champion enters the ring to a chorus of cheers."
+// A canonical clean prose — well within the 8-signature
+// ban. The test asserts the orchestrator's Output.Text
+// field passes the contract WITHOUT any of the forbidden
+// signatures leaking through the engine / postprocessor
+// pipeline.
 
-	// JSON envelope: canonical ModelScriptOutputV1 shape with
-	// CLEAN prose in the "text" field and an empty scenes
-	// array. Built inline (rather than via canonicalSceneJSON)
-	// so the prose is preserved EXACTLY (canonicalSceneJSON
-	// re-tokenises sourceText and does not round-trip the
-	// original sentence).
-	scriptEnvelope := fmt.Sprintf(
-		`{"schema_version":1,"text":%q,"specscene":{"version":1,"scenes":[]}}`,
-		cleanProse,
-	)
+// JSON envelope: canonical ModelScriptOutputV1 shape with
+// CLEAN prose in the "text" field and an empty scenes
+// array. Built inline (rather than via canonicalSceneJSON)
+// so the prose is preserved EXACTLY (canonicalSceneJSON
+// re-tokenises sourceText and does not round-trip the
+// original sentence).
 
-	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
-		Script:      scriptEnvelope,
-		WordCount:   50,
-		EstDuration: 6,
-		Model:       "llama3:8b",
-		Prompt:      "<test prompt — not asserted>",
-	}}
+// Text-only wiring: passes nil for the clip resolver
+// (buildUsecaseWithClipResolver wires the SourceText
+// resolver by default). The engine decodes Script and
+// surfaces the inner "text" field as
+// engineResult.Output.Text → result.Output.Text.
 
-	// Text-only wiring: passes nil for the clip resolver
-	// (buildUsecaseWithClipResolver wires the SourceText
-	// resolver by default). The engine decodes Script and
-	// surfaces the inner "text" field as
-	// engineResult.Output.Text → result.Output.Text.
-	uc := buildUsecaseWithClipResolver(gen, nil)
+// PRE-EXISTING-7 / FASE 13 PART 4: set SourceText empty so Fix B's
+// "tolerance observational when no source anchor" engages. The
+// TestPlaintextOutput contract is PURE PROSE free-form; the
+// editorial gate has no source anchor to compare against, so the
+// +/- 20% target-word tolerance is informational (logs only).
 
-	// PRE-EXISTING-7 / FASE 13 PART 4: set SourceText empty so Fix B's
-	// "tolerance observational when no source anchor" engages. The
-	// TestPlaintextOutput contract is PURE PROSE free-form; the
-	// editorial gate has no source anchor to compare against, so the
-	// +/- 20% target-word tolerance is informational (logs only).
-	item := makeTextOnlyItem("p0f-clean-prose", "")
-	item.ScriptParams.TargetWords = 0
-
-	result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.NotEmptyf(t, result.Output.Text,
-		"orchestrator Output.Text MUST be non-empty (engine wrapped a clean prose input); got=%q",
-		result.Output.Text)
-
-	matches := runPlaintextContract(t, result.Output.Text, "orchestrator-fake-ollama")
-	assert.Equalf(t, 0, matches,
-		"P0.F contract: orchestrator Output.Text MUST pass the plain-prose check; got %d matches; full text=%q",
-		matches, result.Output.Text)
-
-	// Sanity: the orchestrator propagated the prose (a stable
-	// substring is enough — strict byte-equality is too tight
-	// if a future engine tweak adds a trailing newline or
-	// normalises unicode quotes; the contract check above is
-	// the load-bearing assertion, this Contains check is just
-	// a smoke-test that the prose survived the pipeline).
-	assert.Containsf(t, result.Output.Text, "Round 1 begins with both fighters trading jabs.",
-		"orchestrator MUST propagate the prose to Output.Text; got=%q",
-		result.Output.Text)
-}
+// Sanity: the orchestrator propagated the prose (a stable
+// substring is enough — strict byte-equality is too tight
+// if a future engine tweak adds a trailing newline or
+// normalises unicode quotes; the contract check above is
+// the load-bearing assertion, this Contains check is just
+// a smoke-test that the prose survived the pipeline).

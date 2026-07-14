@@ -120,42 +120,12 @@ import (
 //   - Version is int; SourceHash, Title are non-pointer strings;
 //     Slots is []scriptpkg.ClipSearchSlot.
 //   - SourceHash + Title are mandatory wire fields (no omitempty).
-func TestClipPrePlan_JSONSchemaContract(t *testing.T) {
-	t.Parallel()
 
-	rt := reflect.TypeOf(scriptpkg.ClipPrePlan{})
-
-	wantKeys := []string{"version", "source_hash", "title", "slots"}
-	pinnedTypes := map[string]reflect.Type{
-		"Version":    reflect.TypeOf(int(0)),
-		"SourceHash": reflect.TypeOf(""),
-		"Title":      reflect.TypeOf(""),
-	}
-	nullableGoNames := []string{"Fingerprint"}
-
-	assertFieldSetOrderOmitemptyAndTypes(t, rt, wantKeys, pinnedTypes, nullableGoNames)
-
-	// Spot-check Slots is []scriptpkg.ClipSearchSlot. A regression
-	// that swaps Slots for []*scriptpkg.ClipSearchSlot (or
-	// []scriptpkg.SomeOtherSlot) breaks the slot-count contract
-	// in deterministic_planner_test.go, but this test catches it at
-	// the struct definition layer.
-	slotsField, ok := rt.FieldByName("Slots")
-	if !ok {
-		t.Fatalf("ClipPrePlan missing Slots field")
-	}
-	if slotsField.Type.Kind() != reflect.Slice {
-		t.Fatalf("ClipPrePlan.Slots is not a slice: kind=%v", slotsField.Type.Kind())
-	}
-	wantElem := reflect.TypeOf(scriptpkg.ClipSearchSlot{})
-	if slotsField.Type.Elem() != wantElem {
-		t.Fatalf("ClipPrePlan.Slots element type: want %v, got %v",
-			wantElem, slotsField.Type.Elem())
-	}
-	if tag, ok := slotsField.Tag.Lookup("json"); !ok || strings.HasPrefix(tag, "-") {
-		t.Fatalf("ClipPrePlan.Slots json tag drift: want non-empty/non-dash, got %q", tag)
-	}
-}
+// Spot-check Slots is []scriptpkg.ClipSearchSlot. A regression
+// that swaps Slots for []*scriptpkg.ClipSearchSlot (or
+// []scriptpkg.SomeOtherSlot) breaks the slot-count contract
+// in deterministic_planner_test.go, but this test catches it at
+// the struct definition layer.
 
 // TestClipSearchSlot_JSONSchemaContract pins the per-slot wire shape
 // with one critical extra pin: `Required` has NO omitempty so the

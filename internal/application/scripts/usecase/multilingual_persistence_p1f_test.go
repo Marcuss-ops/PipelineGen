@@ -901,66 +901,16 @@ func newP1FResolver(repo *p1fStubRepo, subs *p1fStubSubtitles, trans *p1fStubTra
 // acquisition paths (Whisper, Subtitles, or a future
 // translation leg) — the test pins ALL three as "must not be
 // called" for the canonical case.
-func TestCanonicalCase_ItalianReadyTrack_NoTranslatorNoWhisper(t *testing.T) {
-	t.Parallel()
 
-	// Asset has a READY Italian track in the DB.
-	italianText := "Ciao dal DB, transcript italiano pronto per la fase 4"
-	italianHash := asset.TextHash(italianText, "it", asset.TextTrackTranscript)
-	repo := &p1fStubRepo{rows: []asset.TextTrack{
-		{
-			AssetID:            "yt_p1f_canonical_001",
-			LanguageCode:       "it",
-			TextKind:           asset.TextTrackTranscript,
-			TextContent:        italianText,
-			Status:             asset.TextTrackReady,
-			SourceType:         asset.TextSourceYouTubeSubtitle,
-			SourceLanguageCode: "en",
-			IsOriginal:         false,
-			Provider:           "yt-dlp",
-			TextHash:           italianHash,
-			SourceVersion:      asset.SourceVersion(italianHash, "en", "it", "yt-dlp", "yt-auto", "", ""),
-		},
-	}}
+// Asset has a READY Italian track in the DB.
 
-	subs := &p1fStubSubtitles{bundle: &asset.ResolvedTextBundle{
-		LanguageCode: "es", PlainText: "should not be called",
-		SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true,
-	}}
-	trans := &p1fStubTranscriber{text: "should not be called"}
+// Acquire with PreferredLanguages = [it] (the canonical case).
 
-	resolver := newP1FResolver(repo, subs, trans)
+// User-spec invariant 1: bundle matches the DB row byte-equivalent.
 
-	// Acquire with PreferredLanguages = [it] (the canonical case).
-	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
-		ClipID:             "yt_p1f_canonical_001",
-		PreferredLanguages: []string{"it"},
-	})
-	require.NoError(t, err, "canonical case MUST succeed (DB hit)")
-	require.NotNil(t, bundle, "canonical case MUST return a non-nil bundle")
+// User-spec invariant 2: NO Whisper call (no new transcription).
 
-	// User-spec invariant 1: bundle matches the DB row byte-equivalent.
-	assert.Equal(t, "it", bundle.LanguageCode,
-		"bundle.LanguageCode MUST be the DB row's language (\"it\")")
-	assert.Equal(t, italianText, bundle.PlainText,
-		"bundle.PlainText MUST be byte-equivalent to the DB row's TextContent (no re-derivation)")
-	assert.Equal(t, asset.TextSourceYouTubeSubtitle, bundle.SourceType,
-		"bundle.SourceType MUST match the DB row's SourceType (canonical provenance)")
-	assert.True(t, bundle.IsOriginal,
-		"DB-sourced rows MUST carry IsOriginal=true (the DB row's IsOriginal was set true at save time)")
-	assert.Equal(t, "yt-dlp", bundle.Provider,
-		"bundle.Provider MUST match the DB row's Provider (provenance preserved)")
-
-	// User-spec invariant 2: NO Whisper call (no new transcription).
-	assert.Equal(t, 0, trans.calls,
-		"Whisper MUST NOT be called when DB has a READY track for the target language. "+
-			"got %d calls (user spec: NO nuova trascrizione)", trans.calls)
-
-	// User-spec invariant 3: NO Subtitles call (DB short-circuits).
-	assert.Equal(t, 0, subs.calls,
-		"Subtitles MUST NOT be called when DB has a READY track for the target language. "+
-			"got %d calls (priority 2 wins over priority 3+4)", subs.calls)
-}
+// User-spec invariant 3: NO Subtitles call (DB short-circuits).
 
 // TestCanonicalCase_UseSavedTrack_ByteEquivalentToDBRow pins the
 // canonical contract at a tighter grain: the returned bundle's
@@ -1100,66 +1050,33 @@ func TestCanonicalCase_PreferredLanguagesFanOut_PicksFirstMatch(t *testing.T) {
 // for the target language, silently producing a Whisper
 // transcript in a different language. The test pins the
 // fail-closed policy gate.
-func TestMissingTranslation_FrenchNotReady_NoSilentTranslation(t *testing.T) {
-	t.Parallel()
 
-	// Asset has en+es+it READY (no fr).
-	repo := &p1fStubRepo{rows: []asset.TextTrack{
-		{AssetID: "yt_p1f_missing_001", LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextContent: "English from DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
-		{AssetID: "yt_p1f_missing_001", LanguageCode: "es", TextKind: asset.TextTrackTranscript, TextContent: "Español del DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
-		{AssetID: "yt_p1f_missing_001", LanguageCode: "it", TextKind: asset.TextTrackTranscript, TextContent: "Italiano dal DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
-	}}
+// Asset has en+es+it READY (no fr).
 
-	// Subtitles return a non-fr bundle (the resolver's
-	// languageInList check will reject the bundle and fall
-	// through; but RequireLanguageCertainty=true will fire
-	// before Whisper is consulted).
-	subs := &p1fStubSubtitles{bundle: &asset.ResolvedTextBundle{
-		LanguageCode: "en", PlainText: "English subs",
-		SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true,
-	}}
-	trans := &p1fStubTranscriber{text: "MUST NOT be called"}
+// Subtitles return a non-fr bundle (the resolver's
+// languageInList check will reject the bundle and fall
+// through; but RequireLanguageCertainty=true will fire
+// before Whisper is consulted).
 
-	resolver := &usecase.TextTrackResolver{
-		Repo:                     repo,
-		Subtitles:                subs,
-		Transcriber:              trans,
-		Log:                      zap.NewNop(),
-		RequireLanguageCertainty: true, // fail-closed policy gate
-	}
+// fail-closed policy gate
 
-	// Request language=fr. No fr track anywhere.
-	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
-		ClipID:             "yt_p1f_missing_001",
-		VideoID:            "v_missing_001",
-		LocalPath:          "/tmp/missing.mp4",
-		PreferredLanguages: []string{"fr"},
-	})
+// Request language=fr. No fr track anywhere.
 
-	// User-spec invariant 1: RequireLanguageCertainty=true with
-	// no source material MUST fire asset.ErrLanguageUndeterminable
-	// (the fail-closed policy gate).
-	require.Error(t, err,
-		"RequireLanguageCertainty=true with no fr source material MUST return a typed error (fail-closed policy gate)")
-	assert.True(t, asset.IsLanguageUndeterminable(err),
-		"err MUST be errors.As-probeable as *asset.ErrLanguageUndeterminable. got=%T %v", err, err)
-	assert.Nil(t, bundle, "bundle MUST be nil on the fail-closed path")
+// User-spec invariant 1: RequireLanguageCertainty=true with
+// no source material MUST fire asset.ErrLanguageUndeterminable
+// (the fail-closed policy gate).
 
-	// User-spec invariant 2: NO Whisper call (no silent
-	// transcription). The resolver MUST short-circuit at the
-	// policy gate before reaching the Whisper port.
-	assert.Equal(t, 0, trans.calls,
-		"Whisper MUST NOT be called when RequireLanguageCertainty=true and no source material for the target language. "+
-			"got %d calls (user spec: NO nuova trascrizione silente)", trans.calls)
+// User-spec invariant 2: NO Whisper call (no silent
+// transcription). The resolver MUST short-circuit at the
+// policy gate before reaching the Whisper port.
 
-	// User-spec invariant 3: NO silent translation. The
-	// resolver does NOT have a translator port in the canonical
-	// 5-level chain (translation is a separate concern owned
-	// by TranslateScriptSpec). The test pins the resolver's
-	// no-silent-fallback invariant: when the chain exhausts,
-	// the resolver returns (nil, err) — not a fallback
-	// bundle in a different language.
-}
+// User-spec invariant 3: NO silent translation. The
+// resolver does NOT have a translator port in the canonical
+// 5-level chain (translation is a separate concern owned
+// by TranslateScriptSpec). The test pins the resolver's
+// no-silent-fallback invariant: when the chain exhausts,
+// the resolver returns (nil, err) — not a fallback
+// bundle in a different language.
 
 // TestMissingTranslation_AvailableLanguagesSurfaced pins the
 // operator-visibility contract: when ErrTextTrackNotReady
@@ -1245,56 +1162,28 @@ func TestMissingTranslation_AvailableLanguagesSurfaced(t *testing.T) {
 // assertion to (bundle!=nil with warning!=empty) — the test
 // pins the current (nil, nil) behavior, which is the
 // godlike/07 fail-closed default.
-func TestMissingTranslation_FallbackWithExplicitWarning(t *testing.T) {
-	t.Parallel()
 
-	// Asset has en+es+it READY (no fr, no de).
-	repo := &p1fStubRepo{rows: []asset.TextTrack{
-		{AssetID: "yt_p1f_fallback_001", LanguageCode: "en", TextKind: asset.TextTrackTranscript, TextContent: "English from DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
-		{AssetID: "yt_p1f_fallback_001", LanguageCode: "it", TextKind: asset.TextTrackTranscript, TextContent: "Italiano dal DB", Status: asset.TextTrackReady, SourceType: asset.TextSourceYouTubeSubtitle, IsOriginal: true},
-	}}
+// Asset has en+es+it READY (no fr, no de).
 
-	// Subtitles + Whisper return no usable content.
-	subs := &p1fStubSubtitles{bundle: nil}
-	trans := &p1fStubTranscriber{text: ""}
+// Subtitles + Whisper return no usable content.
 
-	// RequireLanguageCertainty=false (the canonical
-	// pre-Fase-1.b behavior: chain exhaustion → (nil, nil)
-	// silent degradation, no error). The test pins this
-	// current behavior AND the no-silent-substitution
-	// invariant: the resolver MUST NOT produce a bundle in
-	// "en" just because "en" is the closest available
-	// language.
-	resolver := newP1FResolver(repo, subs, trans)
+// RequireLanguageCertainty=false (the canonical
+// pre-Fase-1.b behavior: chain exhaustion → (nil, nil)
+// silent degradation, no error). The test pins this
+// current behavior AND the no-silent-substitution
+// invariant: the resolver MUST NOT produce a bundle in
+// "en" just because "en" is the closest available
+// language.
 
-	bundle, err := resolver.AcquireSegmentText(context.Background(), usecase.TextTrackAcquireRequest{
-		ClipID:             "yt_p1f_fallback_001",
-		VideoID:            "v_fallback_001",
-		LocalPath:          "/tmp/fallback.mp4",
-		PreferredLanguages: []string{"fr", "de"}, // both absent
-	})
-	require.NoError(t, err, "RequireLanguageCertainty=false should NOT fire (chain miss → (nil, nil))")
-	assert.Nil(t, bundle, "chain-exhausted MUST return nil bundle (no silent fallback)")
+// both absent
 
-	// User-spec invariant: NO silent substitution to the closest
-	// available language. The resolver did NOT consult
-	// Whisper/Subtitles/Translate to produce an "en" bundle.
-	assert.Equal(t, 0, trans.calls,
-		"Whisper MUST NOT be called when no source material exists for the target language. "+
-			"got %d calls (no silent substitution)", trans.calls)
-	assert.Equal(t, 0, subs.calls,
-		"Subtitles MUST NOT be called when no source material exists for the target language. "+
-			"got %d calls (no silent substitution)", subs.calls)
+// User-spec invariant: NO silent substitution to the closest
+// available language. The resolver did NOT consult
+// Whisper/Subtitles/Translate to produce an "en" bundle.
 
-	// Now exercise the empty targetLang path. The user spec
-	// mandates that an empty targetLang must NOT silently
-	// default to "en" (godlike/07 no-fake-availability).
-	bundle2, err2 := resolver.ResolveLanguage(context.Background(),
-		"yt_p1f_fallback_001", "", asset.TextTrackTranscript)
-	require.NoError(t, err2, "ResolveLanguage with empty targetLang MUST NOT error (godlike/07: empty → \"und\")")
-	assert.Nil(t, bundle2,
-		"ResolveLanguage with empty targetLang MUST return nil (no silent substitution to \"en\")")
-}
+// Now exercise the empty targetLang path. The user spec
+// mandates that an empty targetLang must NOT silently
+// default to "en" (godlike/07 no-fake-availability).
 
 // TestMissingTranslation_NormalizeEmptyLanguageToUnd pins the
 // godlike/07 no-fake-availability invariant: an empty

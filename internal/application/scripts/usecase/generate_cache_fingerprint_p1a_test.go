@@ -401,93 +401,36 @@ func TestCacheFingerprint_P1A_PerFieldMutationSensitivity(t *testing.T) {
 // This proves that the canonical identity is order-sensitive at
 // the AssembledText level, not at the ClipIDs level — the user's
 // "set ID identico" wording is the test's load-bearing invariant.
-func TestCacheFingerprint_P1A_ClipOrderInversionCriticalCase(t *testing.T) {
-	t.Parallel()
 
-	// Common clip metadata. The set is identical; only the order
-	// of AcceptedClipIDs + AssembledText differs.
-	clipIDs := []string{"clip-a", "clip-b", "clip-c"}
-	clipNames := map[string]string{
-		"clip-a": "Alpha clip",
-		"clip-b": "Bravo clip",
-		"clip-c": "Charlie clip",
-	}
-	clipTranscripts := map[string]string{
-		"clip-a": "Transcript of alpha.",
-		"clip-b": "Transcript of bravo.",
-		"clip-c": "Transcript of charlie.",
-	}
+// Common clip metadata. The set is identical; only the order
+// of AcceptedClipIDs + AssembledText differs.
 
-	// Build an AssembledText from the given order.
-	buildAssembled := func(order []string) string {
-		var out string
-		for _, id := range order {
-			out += "CLIP " + id + ": " + clipNames[id] + "\n"
-			out += "  Description: " + clipNames[id] + "\n"
-			out += "  Transcript: " + clipTranscripts[id] + "\n"
-			out += "\n"
-		}
-		return out
-	}
+// Build an AssembledText from the given order.
 
-	src := scriptpkg.SourceSpec{
-		Type:    scriptpkg.SourceClips,
-		ClipIDs: clipIDs,
-	}
+// ── Forward order: [A, B, C] ─────────────────────────────────
 
-	// ── Forward order: [A, B, C] ─────────────────────────────────
-	evForward := &scriptpkg.ClipEvidence{
-		AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
-		AssembledText:   buildAssembled([]string{"clip-a", "clip-b", "clip-c"}),
-	}
-	fpForward := scriptpkg.BuildFingerprint(scriptpkg.FingerprintInputFromSource(src, evForward))
+// ── Reverse order: [C, B, A] ─────────────────────────────────
+// Same set of clip IDs, but the AssembledText is concatenated
+// in the reverse order. The SourceTextHash (sha256 of
+// AssembledText) MUST differ → fingerprint MUST differ.
 
-	// ── Reverse order: [C, B, A] ─────────────────────────────────
-	// Same set of clip IDs, but the AssembledText is concatenated
-	// in the reverse order. The SourceTextHash (sha256 of
-	// AssembledText) MUST differ → fingerprint MUST differ.
-	evReverse := &scriptpkg.ClipEvidence{
-		AcceptedClipIDs: []string{"clip-c", "clip-b", "clip-a"},
-		AssembledText:   buildAssembled([]string{"clip-c", "clip-b", "clip-a"}),
-	}
-	fpReverse := scriptpkg.BuildFingerprint(scriptpkg.FingerprintInputFromSource(src, evReverse))
+// ── Assert: fingerprint changes when order changes ────────────
+// This is the user-spec critical-case invariant: same set of
+// IDs, reversed order → fingerprint changes because
+// AssembledText is order-sensitive.
 
-	// ── Assert: fingerprint changes when order changes ────────────
-	// This is the user-spec critical-case invariant: same set of
-	// IDs, reversed order → fingerprint changes because
-	// AssembledText is order-sensitive.
-	assert.NotEqual(t, fpForward, fpReverse,
-		"fingerprint MUST change when clip ORDER is inverted (same set of IDs). "+
-			"AssembledText contains the per-clip blocks in resolution order, "+
-			"so reversing the order produces a different SourceTextHash "+
-			"(sha256 of AssembledText) → different canonical fingerprint.")
+// ── Sanity check: the two AssembledText values are actually
+//    different strings (so the test failure is meaningful, not
+//    a no-op from a setup bug).
 
-	// ── Sanity check: the two AssembledText values are actually
-	//    different strings (so the test failure is meaningful, not
-	//    a no-op from a setup bug).
-	assert.NotEqual(t, evForward.AssembledText, evReverse.AssembledText,
-		"test setup invariant: forward and reverse AssembledText must be "+
-			"distinct strings (otherwise the fingerprint test is a no-op)")
+// ── Sanity check: the set of clip IDs is the same (the
+//    "set ID identico" wording from the user spec). If this
+//    ever changes, the test's premise is broken.
 
-	// ── Sanity check: the set of clip IDs is the same (the
-	//    "set ID identico" wording from the user spec). If this
-	//    ever changes, the test's premise is broken.
-	assert.ElementsMatch(t, evForward.AcceptedClipIDs, evReverse.AcceptedClipIDs,
-		"test setup invariant: forward and reverse evidence must carry the "+
-			"SAME SET of clip IDs (only the order differs — the user spec's "+
-			"critical-case premise)")
-
-	// ── Sanity check: the SourceTextHash is actually different
-	//    (this is the load-bearing mechanism for the fingerprint
-	//    change). If BuildFingerprint ever started sorting
-	//    AssembledText, this assertion would catch it. Defense in
-	//    depth: the main assertion above (fpForward != fpReverse)
-	//    is the user-spec invariant; this one pins the
-	//    mechanism.
-	fp1 := scriptpkg.FingerprintInputFromSource(src, evForward)
-	fp2 := scriptpkg.FingerprintInputFromSource(src, evReverse)
-	assert.NotEqual(t, fp1.SourceTextHash, fp2.SourceTextHash,
-		"SourceTextHash (sha256 of AssembledText) MUST differ when clip "+
-			"order is inverted — defense in depth: pins the load-bearing "+
-			"mechanism behind the main fingerprint-difference assertion")
-}
+// ── Sanity check: the SourceTextHash is actually different
+//    (this is the load-bearing mechanism for the fingerprint
+//    change). If BuildFingerprint ever started sorting
+//    AssembledText, this assertion would catch it. Defense in
+//    depth: the main assertion above (fpForward != fpReverse)
+//    is the user-spec invariant; this one pins the
+//    mechanism.

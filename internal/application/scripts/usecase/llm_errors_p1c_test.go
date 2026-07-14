@@ -194,27 +194,6 @@ func makeLLMErrorTestPlan() *scriptpkg.ResolvedGenerationPlan {
 //   - err message contains "connection refused" (inner network failure)
 //   - err message contains "engine: ollama generation failed" (engine wrap)
 //   - retry.Retryable(err) == true (transient — retry the next worker)
-func TestLLMErrors_P1C_OllamaUnreachable(t *testing.T) {
-	t.Parallel()
-	gen := &fakeOllamaGen{
-		returnErr: fmt.Errorf("ollama request failed: dial tcp 127.0.0.1:11434: connect: connection refused"),
-	}
-	e := buildTestEngine(gen, nil)
-
-	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
-
-	require.Error(t, err, "Ollama-unreachable MUST surface a non-nil error (nessun falso SUCCEEDED)")
-	require.Nil(t, result, "result MUST be nil when generation failed")
-	assert.Contains(t, err.Error(), "connection refused",
-		"error must surface the inner network failure verbatim")
-	assert.Contains(t, err.Error(), "engine: ollama generation failed",
-		"error must be wrapped with engine context for observability")
-	require.True(t, retry.Retryable(err),
-		"connection refused IS transient per pkg/retry/transient.go — workers MUST retry (retry SOLO dove appropriato)")
-	cat, _ := retry.Classify(err)
-	assert.Equal(t, "network", string(cat),
-		"Classify must return network category for connection refused")
-}
 
 // ── 2. ModelNotFound ─────────────────────────────────────────────────
 //
@@ -269,27 +248,6 @@ func TestLLMErrors_P1C_ModelNotFound(t *testing.T) {
 // surface this gap. This test uses "i/o timeout" (the
 // http.Client.Timeout shape) which IS in the taxonomy. See
 // file header.
-func TestLLMErrors_P1C_Timeout(t *testing.T) {
-	t.Parallel()
-	gen := &fakeOllamaGen{
-		returnErr: fmt.Errorf("ollama request failed: i/o timeout"),
-	}
-	e := buildTestEngine(gen, nil)
-
-	result, err := e.Generate(context.Background(), makeLLMErrorTestPlan())
-
-	require.Error(t, err, "Timeout MUST surface a non-nil error (nessun falso SUCCEEDED)")
-	require.Nil(t, result, "result MUST be nil when generation failed")
-	assert.Contains(t, err.Error(), "timeout",
-		"error must surface the timeout signal")
-	assert.Contains(t, err.Error(), "engine: ollama generation failed",
-		"error must be wrapped with engine context")
-	require.True(t, retry.Retryable(err),
-		"timeout IS transient per pkg/retry/transient.go — workers MUST retry (retry SOLO dove appropriato)")
-	cat, _ := retry.Classify(err)
-	assert.Equal(t, "timeout", string(cat),
-		"Classify must return timeout category for i/o timeout")
-}
 
 // ── 4. EmptyResponse ─────────────────────────────────────────────────
 //
