@@ -311,6 +311,22 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// Test files (`_test.go` suffix) and the scanner's
 		// own package (cmd/archcheck/scan/**) are exempt.
 		{"percheck_asset_state_no_shadow_enum", scan.ScanAssetStateNoShadowEnum},
+		// Check PR-CATALOG-MULTILINGUA step 7+ GAMMA (July 2026):
+		// forward-prevention gate for the migration 157
+		// column DEFAULT literal wire alignment. The column
+		// DEFAULT is the runtime companion of the typed
+		// initial-sentinel string declared in
+		// internal/domain/asset/asset_state.go; drift
+		// between the two surfaces (e.g., a future agent
+		// renames the typed initial sentinel but leaves
+		// the migration DEFAULT stale, OR vice versa)
+		// surfaces as SeverityError. SQL line comments
+		// inside the migration file are residue-accounted
+		// as WARN; a missing migration 157 file surfaces
+		// as a typed violation (godlike/07 fail-closed).
+		// Production-canary end-to-end sanity lives in
+		// percheck_157_asset_state_migration_default_wire_test.go::TestScanAssetStateMigration157DefaultWire_ProductionCanary.
+		{"percheck_157_asset_state_migration_default_wire", scan.ScanAssetStateMigration157DefaultWire},
 		// Check PR-CLIPINGEST-PIPELINE step 10 (July 2026):
 		// forward-prevention gate that pins RightsStatus's
 		// canonical-6-count invariant. The canonical file
