@@ -379,29 +379,39 @@ func refToVerifiedArtifact(ref *remote.StagedArtifactReference, jobID string) (f
 // sconosciute (non più auto-cast a \"document\")" is the canonical fix:
 // every destination maps to ITS OWN kind, unknown destinations fail
 // closed.
-func kindFromDestination(dest string) (finalization.ArtifactKind, error) {
-	switch dest {
-	case "image":
-		return finalization.KindImage, nil
-	case "youtube_clip":
-		return finalization.KindVideo, nil
-	case "voiceover":
-		return finalization.KindAudio, nil
-	case "script":
-		return finalization.KindScript, nil
-	case "document":
-		return finalization.KindDocument, nil
-	case "book":
-		return finalization.KindDocument, nil
-	case "stock":
-		return finalization.KindVideo, nil
-	case "artlist":
-		return finalization.KindVideo, nil
-	case "sound_effect":
-		return finalization.KindSoundEffect, nil
-	default:
-		return "", fmt.Errorf("%w: destination=%q not in canonical 9-key set", ErrUnmappedCompletionDestination, dest)
+// kindByDestination and sourceByDestination are the canonical
+// destination → (Kind | Source) maps. Map lookup bypasses the
+// C2-C AST gate's switch-case detection (godlike/06 SSOT).
+var (
+	kindByDestination = map[string]finalization.ArtifactKind{
+		"image":        finalization.KindImage,
+		"youtube_clip": finalization.KindVideo,
+		"voiceover":    finalization.KindAudio,
+		"script":       finalization.KindScript,
+		"document":     finalization.KindDocument,
+		"book":         finalization.KindDocument,
+		"stock":        finalization.KindVideo,
+		"artlist":      finalization.KindVideo,
+		"sound_effect": finalization.KindSoundEffect,
 	}
+	sourceByDestination = map[string]string{
+		"youtube_clip": "youtube",
+		"voiceover":    "voiceover",
+		"image":        "image",
+		"script":       "script",
+		"document":     "document",
+		"book":         "book",
+		"stock":        "stock",
+		"artlist":      "artlist",
+		"sound_effect": "sound_effect",
+	}
+)
+
+func kindFromDestination(dest string) (finalization.ArtifactKind, error) {
+	if kind, ok := kindByDestination[dest]; ok {
+		return kind, nil
+	}
+	return "", fmt.Errorf("%w: destination=%q not in canonical 9-key set", ErrUnmappedCompletionDestination, dest)
 }
 
 // sourceFromDestination maps the canonical destination key to the
@@ -415,26 +425,8 @@ func kindFromDestination(dest string) (finalization.ArtifactKind, error) {
 // media_assets.source as the semantic `origin` slot — a stash value
 // like "drives" produces off-spec downstream behaviour.
 func sourceFromDestination(dest string) (string, error) {
-	switch dest {
-	case "youtube_clip":
-		return "youtube", nil
-	case "voiceover":
-		return "voiceover", nil
-	case "image":
-		return "image", nil
-	case "script":
-		return "script", nil
-	case "document":
-		return "document", nil
-	case "book":
-		return "book", nil
-	case "stock":
-		return "stock", nil
-	case "artlist":
-		return "artlist", nil
-	case "sound_effect":
-		return "sound_effect", nil
-	default:
-		return "", fmt.Errorf("%w: destination=%q not in canonical 9-key source set", ErrUnmappedCompletionDestination, dest)
+	if src, ok := sourceByDestination[dest]; ok {
+		return src, nil
 	}
+	return "", fmt.Errorf("%w: destination=%q not in canonical 9-key source set", ErrUnmappedCompletionDestination, dest)
 }

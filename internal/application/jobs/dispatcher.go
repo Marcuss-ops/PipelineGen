@@ -53,7 +53,7 @@ import (
 	"errors"
 	"fmt"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Sentinel errors ────────────────────────────────────────────────

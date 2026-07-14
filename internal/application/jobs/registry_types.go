@@ -2,15 +2,15 @@
 //
 // godlike/06 SSOT (one-canonical-owner-per-fact): this file is the
 // canonical RE-EXPORT surface for the registry's per-job-type data shapes.
-// The canonical string literals live in internal/domain/job/job.go
-// (per godlike/02 §Capability-specific constants stay in their owning
-// domain package). Every Type* constant here is an alias (= job.TypeXxx)
+// The canonical string literals live in their owning capability domain
+// packages (per godlike/02 §Capability-specific constants stay in their
+// owning domain package). Every Type* constant here is an alias (= pkg.TypeXxx)
 // — ZERO new string literals.
 //
 //   - RegistryEntry + JobPolicy (type alias) — the per-job-type
 //     policy record surface (Wave 19 / P1-9, June 2026).
 //   - The full Type... identifier block — RE-EXPORTS every canonical
-//     string jobType from internal/domain/job/job.go.
+//     string jobType from its owning capability domain package.
 //
 // Lookup paths preserved: jobs.RegistryEntry{...}, jobs.JobPolicy{...},
 // and every `jobs.Type*` constant resolve identically pre/post split
@@ -26,8 +26,20 @@ package jobs
 import (
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/books"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/catalog"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/document"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/drive"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/image"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/lessons"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/subtitle"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/system"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/video"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
 )
 
 // ── RegistryEntry (Wave 19 / P1-9 canonical policy record) ─────────────
@@ -126,51 +138,51 @@ type JobPolicy = RegistryEntry
 
 // ── Standard job.Job Types — RE-EXPORT block ──────────────────────────
 //
-// Each constant is an alias to the canonical SSOT in internal/domain/job/job.go.
-// Per godlike/06 one-canonical-owner-per-fact: ZERO new string literals here;
-// every value resolves to a domain/job constant.
+// Each constant is an alias to the canonical SSOT in its owning
+// capability domain package. Per godlike/06 one-canonical-owner-per-
+// fact: ZERO new string literals here; every value resolves to a
+// capability domain constant.
 const (
-	TypeMediaExtract     = job.TypeMediaExtract
-	TypeMediaStock       = job.TypeMediaStock
-	TypeVoiceoverBatch   = job.TypeVoiceoverBatch
-	TypeSubtitleGenerate = job.TypeSubtitleGenerate
-	TypeRenderVideo      = job.TypeRenderVideo
-	TypeYouTubeUpload    = job.TypeYouTubeUpload
-	TypeCatalogSync      = job.TypeCatalogSync
-	TypeArtlistRun       = job.TypeArtlistRun
-	TypeSystemCleanup    = job.TypeSystemCleanup
-	TypeMediaGenerate    = job.TypeMediaGenerate
-	TypeVideoGenerate    = job.TypeVideoGenerate
-	TypeBooksProcess     = job.TypeBooksProcess
-	TypeLessonsProcess   = job.TypeLessonsProcess
-	TypeMediaReindex     = job.TypeMediaReindex
-	TypeMediaEnrich      = job.TypeMediaEnrich
-	TypeYouTubeRebuildST = job.TypeYouTubeRebuildST
-	TypeDriveFolderSync  = job.TypeDriveFolderSync
-	TypeMediaCurate      = job.TypeMediaCurate
-	TypeVoiceoverPromo   = job.TypeVoiceoverPromo
+	TypeMediaExtract     = media.TypeExtract
+	TypeMediaStock       = media.TypeStock
+	TypeVoiceoverBatch   = voiceover.TypeBatch
+	TypeSubtitleGenerate = subtitle.TypeGenerate
+	TypeRenderVideo      = video.TypeRender
+	TypeYouTubeUpload    = youtube.TypeUpload
+	TypeCatalogSync      = catalog.TypeSync
+	TypeArtlistRun       = media.TypeArtlistRun
+	TypeSystemCleanup    = system.TypeCleanup
+	TypeMediaGenerate    = media.TypeGenerate
+	TypeVideoGenerate    = video.TypeGenerate
+	TypeBooksProcess     = books.TypeProcess
+	TypeLessonsProcess   = lessons.TypeProcess
+	TypeMediaReindex     = media.TypeReindex
+	TypeMediaEnrich      = media.TypeEnrich
+	TypeYouTubeRebuildST = youtube.TypeRebuildSearchText
+	TypeDriveFolderSync  = drive.TypeFolderSync
+	TypeMediaCurate      = media.TypeCurate
+	TypeVoiceoverPromo   = voiceover.TypePromo
 	// TypeVoiceoverGenerateItem is the per-language child job scheduled by the
 	// parent voiceover.generate handler via FanoutVoiceoversUseCase
 	// (PR-VOICEOVER-PARENT-CHILD-FANOUT, June 2026). Concurrency is
 	// regulated by the registry's per-job-type Concurrency field
 	// (configured at compose time), NOT by goroutines inside the API.
-	TypeVoiceoverGenerateItem = job.TypeVoiceoverGenerateItem
-	TypeImageGenerateGoogle   = job.TypeImageGenerateGoogle
+	TypeVoiceoverGenerateItem = voiceover.TypeGenerateItem
+	TypeImageGenerateGoogle   = image.TypeGenerateGoogle
 
 	// P0 Commit 2 (July 2026) canonical aliases — declared in this block
 	// (NOT in codec.go) so the package-level re-export surface stays in
 	// ONE place. registry_codec_completeness_test.go uses these as bare
 	// identifiers when wiring canonical codecs; the canonical strings
-	// themselves live in internal/domain/job/job.go (per godlike/02
-	// §Capability-specific constants stay in their owning domain package).
-	TypeAssetsResolve = job.TypeAssetsResolve
+	// themselves live in their owning capability domain packages.
+	TypeAssetsResolve = asset.TypeResolve
 
 	// Step 11B (July 2026) sibling-job type aliases. Canonical strings
 	// ("script.spawn_voiceover", "script.spawn_images") live in
-	// internal/domain/job/job.go per godlike/02 §Capability-specific
+	// internal/domain/script per godlike/02 §Capability-specific
 	// constants stay in their owning domain package.
-	TypeScriptVoiceoverSibling = job.TypeScriptVoiceoverSibling
-	TypeScriptImageSibling     = job.TypeScriptImageSibling
+	TypeScriptVoiceoverSibling = script.TypeVoiceoverSibling
+	TypeScriptImageSibling     = script.TypeImageSibling
 
 	// ── P0 #4 audit (audit 2026-07-03) child-job type ──
 	// Audit 2026-07-03 P0 #4: per-item retry in script batches via
@@ -183,7 +195,7 @@ const (
 	// parent_aggregator.go) ticks the children and emits FinalizeAggregateParent
 	// with target_status=FAILED when aggregate=failed_terminal per
 	// godlike/07 (no fake availability), otherwise SUCCEEDED.
-	TypeScriptGenerateItem = job.TypeScriptGenerateItem
+	TypeScriptGenerateItem = script.TypeGenerateItem
 
 	// PR-BATCH-REGISTER-ASYNC (July 2026): async clip registration via
 	// the /api/media/register-batch endpoint. Each clip becomes an
@@ -192,7 +204,7 @@ const (
 	// registration pipeline persists its own media_assets row + outbox
 	// events inside a per-clip tx (mirror of youtube_clip.extract); the
 	// broker's legacy Complete is the canonical mark-SUCCEEDED seam.
-	TypeClipRegister = job.TypeClipRegister
+	TypeClipRegister = media.TypeClipRegister
 
 	// PR-011A (July 2026): post-publish RLM/LLM enrichment pass.
 	//
@@ -212,11 +224,11 @@ const (
 	// the existing asset.published outbox event (Wave 5
 	// SEMANTIC-LOCATION-API). The broker's legacy Complete is the
 	// canonical mark-SUCCEEDED seam — no per-item finalizer needed.
-	TypeMediaStockRLMEnrich = job.TypeMediaStockRLMEnrich
+	TypeMediaStockRLMEnrich = media.TypeStockRLMEnrich
 
 	// PR-GEMMA-EXTRACT-IMPORTANT (July 2026): per-LLM-segment fan-out
 	// clip extractor for POST /api/clips/extract-important. Canonical
-	// string lives in internal/domain/job/job.go (godlike/02
+	// string lives in internal/domain/youtube (godlike/02
 	// capability-specific constants stay in their owning domain package);
 	// this re-export keeps the registry_extraction.go Register call
 	// site consistent with the rest of its sibling entries
@@ -224,18 +236,19 @@ const (
 	// all unprefixed). JobType mirrors TypeYouTubeClipExtract but
 	// batch-fans out per LLM-identified segment instead of per video
 	// OR clip ID.
-	TypeYouTubeClipExtractImportant = job.TypeYouTubeClipExtractImportant
+	TypeYouTubeClipExtractImportant = youtube.TypeClipExtractImportant
 
 	// Canonical job types that were missing from the re-export block.
-	// They live in internal/domain/job/job.go and are re-exported here
-	// so sibling registry_*.go files can reference them as bare identifiers.
-	TypeVoiceoverGenerate      = job.TypeVoiceoverGenerate
-	TypeYouTubeClipExtract     = job.TypeYouTubeClipExtract
-	TypeScriptGenerate         = job.TypeScriptGenerate
-	TypeImagesGenerate         = job.TypeImagesGenerate
-	TypeDocumentGenerate       = job.TypeDocumentGenerate
-	TypeBulkUploadYouTubeClips = job.TypeBulkUploadYouTubeClips
-	TypeAssetTextMaterialize   = job.TypeAssetTextMaterialize
+	// They live in their owning capability domain packages and are
+	// re-exported here so sibling registry_*.go files can reference
+	// them as bare identifiers.
+	TypeVoiceoverGenerate      = voiceover.TypeGenerate
+	TypeYouTubeClipExtract     = youtube.TypeClipExtract
+	TypeScriptGenerate         = script.TypeGenerate
+	TypeImagesGenerate         = image.TypeImagesGenerate
+	TypeDocumentGenerate       = document.TypeGenerate
+	TypeBulkUploadYouTubeClips = media.TypeBulkUploadYouTubeClips
+	TypeAssetTextMaterialize   = asset.TypeTextMaterialize
 
 	// PR-YOUTUBE-EXTRACT-REGISTRY (July 2026): youtube.extract is registered
 	// in registry_extraction.go via the domain/youtube package constant.

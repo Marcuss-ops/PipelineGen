@@ -75,7 +75,7 @@ import (
 	"context"
 	"time"
 
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // renewLeaseLoopOpts carries the optional jobCancel callback (Fase 4(b))
