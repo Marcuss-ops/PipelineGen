@@ -109,7 +109,15 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 			"local_folder": payload.LocalFolder,
 		})
 	}
-	candidates, err := scanLocalClips(payload.LocalFolder, true, nil, nil, 0)
+	recursive := payload.Recursive
+	if !recursive && payload.Concurrency > 0 {
+		// shallow scan requested explicitly; concurrency default handled below
+	}
+	concurrency := payload.Concurrency
+	if concurrency <= 0 {
+		concurrency = 2
+	}
+	candidates, err := scanLocalClips(payload.LocalFolder, recursive, nil, nil, 0)
 	if err != nil {
 		if tools != nil && tools.Event != nil {
 			tools.Event("error", fmt.Sprintf("scan failed: %v", err), map[string]any{
@@ -143,7 +151,6 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		tools.Progress(5, fmt.Sprintf("Found %d clips, starting pipeline", total))
 	}
 
-	const concurrency = 2
 	sem := make(chan struct{}, concurrency)
 	var (
 		wg            sync.WaitGroup

@@ -7,9 +7,9 @@
 // configured in the test fixture) — NOT 404 (which would mean the
 // sub-handler was silently disconnected).
 //
-// PR-13 (July 2026): the canonical client surface is the 4-field
-// payload {local_folder, drive_folder_id, source, category}. Dry-run,
-// skip_*, subdir flag, file/skip patterns are GONE.
+// PR-13 (July 2026): the canonical client surface is the 6-field
+// payload {local_folder, drive_folder_id, source, category, recursive,
+// concurrency}. Dry-run, skip_*, subdir flag, file/skip patterns are GONE.
 //
 // The orchestrator-level wiring (Handler → bulkRegistrar →
 // BulkUploadTransport.RegisterRoutes) is now covered by the
