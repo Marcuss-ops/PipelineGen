@@ -217,6 +217,16 @@ type JobDefinition struct {
 	// Type identifies the job. Must be unique across the registry.
 	Type string
 
+	// Description is the human-readable, single-line summary of the
+	// job's purpose (e.g. "script generation (clips -> voiceover/script
+	// manifests)"). It is purely informational; Validate() does NOT
+	// check it. The field was preserved from the pre-commit-9
+	// internal/domain/job/ canonical so legacy callers and per-owner
+	// MustRegister() struct literals in internal/application/**/job_types.go
+	// continue to compile without churn (Card 9 baseline-repair,
+	// July 2026).
+	Description string
+
 	// ExecutionClass gates who can claim this job.
 	ExecutionClass ExecutionClass
 

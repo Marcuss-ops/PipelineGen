@@ -43,7 +43,11 @@
 // per godlike/06 §Database rules.
 package job
 
-import "time"
+import (
+	"time"
+
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+)
 
 // CanonicalScriptGenerate is the canonical JobDefinition for
 // script.generate — the workflow entry-point that fans out to
@@ -59,8 +63,8 @@ var CanonicalScriptGenerate = JobDefinition{
 		"script.generate",
 		"media.script.generate",
 	},
-	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.script.generate.v1", TypeScriptGenerate),
-	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.script.generate.v1", TypeScriptGenerate),
+	PayloadCodec: kerneljob.NewCodecDescriptorMarker("pipelinegen.payload.script.generate.v1", TypeScriptGenerate),
+	ResultCodec:  kerneljob.NewCodecDescriptorMarker("pipelinegen.result.script.generate.v1", TypeScriptGenerate),
 	ArtifactPolicy: ArtifactPolicy{
 		ProducesArtifacts: true,
 		RequireManifest:   true,
@@ -82,8 +86,8 @@ var CanonicalImagesGenerate = JobDefinition{
 	RequiredCapabilities: []Capability{
 		"media.image.generate",
 	},
-	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.images.generate.v1", TypeImagesGenerate),
-	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.images.generate.v1", TypeImagesGenerate),
+	PayloadCodec: kerneljob.NewCodecDescriptorMarker("pipelinegen.payload.images.generate.v1", TypeImagesGenerate),
+	ResultCodec:  kerneljob.NewCodecDescriptorMarker("pipelinegen.result.images.generate.v1", TypeImagesGenerate),
 	ArtifactPolicy: ArtifactPolicy{
 		ProducesArtifacts: true,
 		RequireManifest:   true,
@@ -105,8 +109,8 @@ var CanonicalDocumentGenerate = JobDefinition{
 		"doc.create",
 		"drive.write",
 	},
-	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.document.generate.v1", TypeDocumentGenerate),
-	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.document.generate.v1", TypeDocumentGenerate),
+	PayloadCodec: kerneljob.NewCodecDescriptorMarker("pipelinegen.payload.document.generate.v1", TypeDocumentGenerate),
+	ResultCodec:  kerneljob.NewCodecDescriptorMarker("pipelinegen.result.document.generate.v1", TypeDocumentGenerate),
 	ArtifactPolicy: ArtifactPolicy{
 		ProducesArtifacts: true,
 		RequireManifest:   true,
@@ -129,8 +133,8 @@ var CanonicalAssetsResolve = JobDefinition{
 		"qdrant.search",
 		"asset.reference",
 	},
-	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.assets.resolve.v1", TypeAssetsResolve),
-	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.assets.resolve.v1", TypeAssetsResolve),
+	PayloadCodec: kerneljob.NewCodecDescriptorMarker("pipelinegen.payload.assets.resolve.v1", TypeAssetsResolve),
+	ResultCodec:  kerneljob.NewCodecDescriptorMarker("pipelinegen.result.assets.resolve.v1", TypeAssetsResolve),
 	// Pure-data job: zero ArtifactPolicy left implicit.
 }
 
@@ -154,8 +158,8 @@ var CanonicalClipRegister = JobDefinition{
 		"media.clip.extract",
 		"drive.write",
 	},
-	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.media.clip.v1", TypeClipRegister),
-	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.media.clip.v1", TypeClipRegister),
+	PayloadCodec: kerneljob.NewCodecDescriptorMarker("pipelinegen.payload.media.clip.v1", TypeClipRegister),
+	ResultCodec:  kerneljob.NewCodecDescriptorMarker("pipelinegen.result.media.clip.v1", TypeClipRegister),
 	// ProducesArtifacts=false: per-item tx owns artifact persistence.
 }
 

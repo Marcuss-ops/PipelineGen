@@ -2,18 +2,13 @@ package voiceover
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
-// JobGenerate is the canonical application-side alias for the
-// voiceover job-type identifier. Wire value lifted from
-// domain/voiceover.TypeGenerate per godlike/02 SSOT.
 const JobGenerate = voiceover.TypeGenerate
 
-// JobGenerateHandlerFunc is the canonical JobHandlerFunc shape.
 type JobGenerateHandlerFunc = job.JobHandlerFunc
 
-// MustRegister wires voiceover.JobGenerate into the given registry.
 func MustRegister(reg job.MutableJobRegistry) error {
 	def := job.JobDefinition{
 		Type:           JobGenerate,
