@@ -64,9 +64,12 @@ func openPartialStateDB(t *testing.T) (*sql.DB, *outboxevents.Repository) {
 	require.NoError(t, err, "sql.Open(:memory:) must succeed")
 	t.Cleanup(func() { _ = db.Close() })
 
-	// media_assets — 17 columns, mirrors clip_atomic_writer.go::upsertClipInTx.
-	// Note: `lifecycle_state` defaults to 'ACTIVE' (the canonical PR-C
-	// lifecycle) — soft-delete is delegated to LifecycleService.
+	// media_assets — production-faithful subset, mirrors the canonical
+	// schema consumed by persistence.AssetCommitter (SQLiteAssetCommitter).
+	// The schema intentionally duplicates the canonical test DDL rather
+	// than using the production migration runner to keep the E2E test
+	// hermetic; any future column addition that breaks this test signals
+	// that the E2E companion schema needs to be updated in lockstep.
 	_, err = db.Exec(`
 		CREATE TABLE media_assets (
 			id TEXT PRIMARY KEY,
@@ -77,10 +80,44 @@ func openPartialStateDB(t *testing.T) (*sql.DB, *outboxevents.Repository) {
 			source_version TEXT NOT NULL DEFAULT '',
 			search_text TEXT NOT NULL DEFAULT '',
 			lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
+			metadata_json TEXT NOT NULL DEFAULT '{}',
+			index_state TEXT NOT NULL DEFAULT '',
+			thumbnail_url TEXT NOT NULL DEFAULT '',
+			url TEXT NOT NULL DEFAULT '',
+			asset_version TEXT NOT NULL DEFAULT '',
+			asset_location TEXT NOT NULL DEFAULT '',
+			rendition TEXT NOT NULL DEFAULT '',
+			source_provider TEXT NOT NULL DEFAULT '',
+			source_video_id TEXT NOT NULL DEFAULT '',
+			source_url TEXT NOT NULL DEFAULT '',
+			start_ms INTEGER NOT NULL DEFAULT 0,
+			end_ms INTEGER NOT NULL DEFAULT 0,
+			title TEXT NOT NULL DEFAULT '',
 			updated_at TEXT, created_at TEXT
 		)
 	`)
 	require.NoError(t, err, "CREATE TABLE media_assets must succeed")
+
+	// asset_locations — required by persistence.AssetCommitter for the
+	// primary drive location produced by Step 9.
+	_, err = db.Exec(`
+		CREATE TABLE asset_locations (
+			asset_id TEXT NOT NULL,
+			location_kind TEXT NOT NULL DEFAULT '',
+			uri TEXT NOT NULL DEFAULT '',
+			external_id TEXT NOT NULL DEFAULT '',
+			web_view_link TEXT NOT NULL DEFAULT '',
+			download_url TEXT NOT NULL DEFAULT '',
+			mime_type TEXT NOT NULL DEFAULT '',
+			file_size_bytes INTEGER NOT NULL DEFAULT 0,
+			file_hash TEXT NOT NULL DEFAULT '',
+			is_primary INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (asset_id, location_kind)
+		)
+	`)
+	require.NoError(t, err, "CREATE TABLE asset_locations must succeed")
 
 	// outbox_events — 15 columns, mirrors outboxevents/repository.go::Enqueue.
 	// The Enqueue contract expects: id INTEGER PK AUTOINCREMENT, event_type,
