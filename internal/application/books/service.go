@@ -43,7 +43,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
-	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
@@ -94,17 +94,6 @@ var ErrBookTransformerMissing = errors.New("books transformer port not wired —
 // pythontransformer.SubprocessTransformer); Service no longer
 // imports os/exec.
 //
-// P0-#3 (July 2026): the voiceover dependency field was migrated
-// from voiceover.VoiceoverGenerator (the legacy positional port
-// with Result{OK:false} anti-pattern) to
-// voiceover.VoiceoverItemExecutor (the canonical per-item use case
-// port). Books now uses the SAME per-item pipeline as the
-// voiceover.generate + voiceover.generate_item + voiceover.promo
-// paths — godlike/06 SSOT: one canonical per-item pipeline. The
-// books call site in drive.go now uses the typed Go error from
-// the executor instead of the legacy `voResult.OK` check, so
-// failures propagate up to the API layer as real errors.
-//
 // Constructor: NewService. Either transformer or publisher may
 // be nil so partial deployments (Drive disabled) keep the
 // local-file path ProcessBook alive; the Drive-dependent paths
@@ -113,15 +102,14 @@ var ErrBookTransformerMissing = errors.New("books transformer port not wired —
 // dependent paths (ProcessBook + ProcessBookWithProgress) surface
 // ErrBookTransformerMissing on nil.
 type Service struct {
-	db                *sql.DB
-	cfg               *Config
-	enabled           bool // Fase 7 review-fix #3 BACKFILL: Enabled moved out of Config to a struct field; composition root sets it via SetEnabled.
-	log               *zap.Logger
-	driveFolder       string
-	publisher         PublisherPort
-	reader            drive.Reader
-	voiceoverExecutor voiceover.VoiceoverItemExecutor // P0-#3 (July 2026): canonical per-item use case port, replaces voiceover.VoiceoverGenerator.
-	transformer       BookTransformer                 // Phase 7: downstream port (pythontransformer.SubprocessTransformer)
+	db          *sql.DB
+	cfg         *Config
+	enabled     bool // Fase 7 review-fix #3 BACKFILL: Enabled moved out of Config to a struct field; composition root sets it via SetEnabled.
+	log         *zap.Logger
+	driveFolder string
+	publisher   PublisherPort
+	reader      drive.Reader
+	transformer BookTransformer // Phase 7: downstream port (pythontransformer.SubprocessTransformer)
 }
 
 // NewService constructs a books.Service. Publisher + Reader +
@@ -145,20 +133,19 @@ type Service struct {
 // matching the historical default (the pre-fix ProcessBook check
 // was `if !s.cfg.Enabled`); the disabled path is now an explicit
 // composition-root decision rather than a Config field.
-func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, voiceoverExecutor voiceover.VoiceoverItemExecutor, publisher PublisherPort, reader drive.Reader, transformer BookTransformer) *Service {
+func NewService(cfg *Config, db *sql.DB, driveFolder string, log *zap.Logger, publisher PublisherPort, reader drive.Reader, transformer BookTransformer) *Service {
 	if cfg == nil {
 		cfg = DefaultConfig()
 	}
 	return &Service{
-		db:                db,
-		cfg:               cfg,
-		enabled:           true,
-		log:               log,
-		driveFolder:       driveFolder,
-		voiceoverExecutor: voiceoverExecutor,
-		publisher:         publisher,
-		reader:            reader,
-		transformer:       transformer,
+		db:          db,
+		cfg:         cfg,
+		enabled:     true,
+		log:         log,
+		driveFolder: driveFolder,
+		publisher:   publisher,
+		reader:      reader,
+		transformer: transformer,
 	}
 }
 
@@ -341,17 +328,6 @@ func (s *Service) ProcessBookAsync(ctx context.Context, req *ProcessRequest) (st
 		return "", errors.New(result.Error)
 	}
 	return fmt.Sprintf("book_sync_%d", time.Now().UnixNano()), nil
-}
-
-// SetVoiceoverExecutor wires the canonical per-item voiceover use case
-// (P0-#3, July 2026). The books call site in drive.go now delegates
-// to the per-item use case's Execute method, so failures surface as
-// typed Go errors instead of Result{OK:false} + nil. Pass nil to
-// disable the books-to-voiceover routing (ProcessBookFromDrive
-// short-circuits with the canonical "voiceover service not
-// configured" guard).
-func (s *Service) SetVoiceoverExecutor(v voiceover.VoiceoverItemExecutor) {
-	s.voiceoverExecutor = v
 }
 
 func (s *Service) IsEnabled() bool {

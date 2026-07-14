@@ -92,7 +92,6 @@ func newPhase1_3Service(t *testing.T, transformResult *TransformResult, transfor
 		nil,               // *sql.DB (unused)
 		cfg.DriveFolderID, // driveFolder
 		zap.NewNop(),      // *zap.Logger
-		nil,               // voiceover.VoiceoverItemExecutor (unused by HandleJob / driveToDrive; P0-#3 July 2026)
 		nil,               // PublisherPort — tests overwrite the field for publish scenarios
 		nil,               // drive.Reader (unused by HandleJob / driveToDrive)
 		tr,                // BookTransformer (stub for the canonical MB-OK path)

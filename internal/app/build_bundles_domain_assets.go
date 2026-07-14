@@ -59,7 +59,7 @@ func buildDomainAssetServices(params buildDomainAssetServicesParams) error {
 		params.outbox.Dispatcher,
 	)
 
-	booksSvc, err := buildBooksService(params.cfg, params.dbs, params.log, voiceoverProcessItem, params.drive.Publisher, params.drive.driveUploader)
+	booksSvc, err := buildBooksService(params.cfg, params.dbs, params.log, params.drive.Publisher, params.drive.driveUploader)
 	if err != nil {
 		return fmt.Errorf("compose domains: books transformer: %w", err)
 	}

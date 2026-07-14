@@ -7,10 +7,8 @@
 // orphan embeddings.
 //
 // All callers must use Dispatcher (EnqueueAndIndex for inserts,
-// EnqueueAndDelete for deletes). The previously-documented direct bypass
-// (DirectIndexer) was removed in Card 7 (July 2026) — git log shows the
-// closure commit; no production path now mutates media_assets +
-// indexes in any other way.
+// EnqueueAndDelete for deletes). No production path mutates media_assets
+// and indexes outside this dispatcher.
 package outbox
 
 import (

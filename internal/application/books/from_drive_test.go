@@ -132,7 +132,6 @@ func TestProcessBookFromDrive_F2_10_ReaderRoundTrip(t *testing.T) {
 		nil, // db - not used by ProcessBookFromDrive
 		"",  // driveFolder
 		zap.NewNop(),
-		nil, // voiceoverSvc - not exercised in this test (GenerateVoiceover=false)
 		nil, // publisher - not exercised (no Drive writes path here)
 		reader,
 		nil, // transformer (Phase 7): not exercised in this test; ProcessBookFromDrive short-circuits at the reader nil-check before reaching ProcessBook
@@ -141,9 +140,6 @@ func TestProcessBookFromDrive_F2_10_ReaderRoundTrip(t *testing.T) {
 		context.Background(),
 		&ProcessFromDriveRequest{
 			DriveFileURL: "https://drive.google.com/file/d/abc123/view",
-			// GenerateVoiceover is intentionally false to keep the
-			// happy-path simple — voiceover generation is a separate
-			// F2.x wave's responsibility, not F2.10's.
 		},
 	)
 
@@ -174,7 +170,7 @@ func TestProcessBookFromDrive_F2_10_NilReader_ReturnsConfiguredSentinel(t *testi
 		nil, // db
 		"",  // driveFolder
 		zap.NewNop(),
-		nil, nil, // voiceoverSvc, publisher
+		nil, // publisher
 		nil, // <-- deliberately nil Reader
 		nil, // <-- transformer nil: Phase 7 stub; test pre-empts via ErrBookReaderNotConfigured before ProcessBook path is reached
 	)

@@ -73,29 +73,6 @@ type BookSourceDescription struct {
 	DriveFileURL string
 }
 
-// BookSource is the resolved source surface returned by
-// BookSourceReader. Exactly one of LocalPath / GoogleDocID is
-// populated (mutually exclusive).
-type BookSource struct {
-	LocalPath   string
-	GoogleDocID string
-}
-
-// BookSourceReader resolves a BookSourceDescription to a
-// concrete source path the transformer can consume.
-//
-// EXPAND-phase contract: BookSourceReader is RESERVED for the
-// future wave; books.Service keeps the inline drive.Reader
-// download path to preserve the F2.10 closure (the audit-pinned
-// `drive.Reader = (*drive.Uploader)(nil)` compile-time
-// assertion at internal/infrastructure/drive/ports.go).
-type BookSourceReader interface {
-	// Read resolves the source description and returns the
-	// canonical book source (LocalPath populated; GoogleDocID
-	// populated when the source is a Google Doc).
-	Read(ctx context.Context, src BookSourceDescription) (*BookSource, error)
-}
-
 // TransformRequest is the canonical input surface for the book
 // transformer (Python script invocation, today). The request
 // shape intentionally DRIVES the existing --file / --google-doc-id
