@@ -13,7 +13,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
@@ -130,7 +131,7 @@ func (bt *BulkUploadTransport) BulkUploadYouTubeClips(c *gin.Context) {
 
 	activeKey := fmt.Sprintf("bulk_upload_yt:%s", req.LocalFolder)
 	if ok := transport.EnqueueAsync(c, bt.jobsSvc, &transport.EnqueueInput{
-		Type:    string(job.TypeBulkUploadYouTubeClips),
+		Type:    string(media.TypeBulkUploadYouTubeClips),
 		Project: "media",
 		Payload: map[string]any{
 			"local_folder":    req.LocalFolder,
