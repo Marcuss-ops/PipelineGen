@@ -24,9 +24,9 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -60,7 +60,7 @@ type Handler interface {
 
 	// Job handlers (used by ClipsDescriptor.RegisterJobHandlers).
 	RegisterJobHandlers() error
-	HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *jobs.Job, tools *appjobs.JobTools) (map[string]any, error)
+	HandleBulkUploadYouTubeClipsJob(ctx context.Context, j *kerneljob.Job, tools *appjobs.JobTools) (map[string]any, error)
 
 	// Route installation (called by the orchestrator Handler.RegisterRoutes).
 	RegisterRoutes(r *gin.RouterGroup, idem gin.HandlerFunc)
@@ -83,7 +83,7 @@ type Deps struct {
 	ClipIndexer *clipindexer.Service
 	// JobsSvc powers EnrichMedia + ReindexClip (enqueue) + BatchReindex (enqueue) +
 	// RegisterJobHandlers (job handler registration).
-	JobsSvc jobs.Service
+	JobsSvc kerneljob.Service
 	// BulkUploadWorker powers HandleBulkUploadYouTubeClipsJob.
 	BulkUploadWorker *appclips.BulkUploadWorker
 	// RepoForSource is the callback that resolves a clip source to its
@@ -104,7 +104,7 @@ type NonOpsHandler struct {
 	reprocessUC      *appclips.ReprocessUseCase
 	enrichUC         *appclips.EnrichUseCase
 	clipIndexer      *clipindexer.Service
-	jobsSvc          jobs.Service
+	jobsSvc          kerneljob.Service
 	bulkUploadWorker *appclips.BulkUploadWorker
 	repoForSource    func(string) *assets.ClipsRepository
 	log              *zap.Logger

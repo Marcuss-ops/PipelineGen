@@ -17,7 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -25,7 +25,7 @@ import (
 // sub-package. Was at clips/handler.go:280 pre-PR-CLIPS-NONOPS-EXTRACT;
 // moved here because all 3 callers (this file lines 50 + 95, and
 // handler_download.go's EnrichMedia) live in nonops.
-type enqueueRequest = job.EnqueueRequest
+type enqueueRequest = kerneljob.EnqueueRequest
 
 // ReindexClip triggers re-indexing of an existing clip (semantic
 // enrichment + vector store).

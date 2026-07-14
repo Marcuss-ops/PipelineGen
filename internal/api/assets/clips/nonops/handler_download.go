@@ -56,8 +56,9 @@ func (h *NonOpsHandler) EnrichMedia(c *gin.Context) {
 		return
 	}
 
-	if req.Source == "" {
-		req.Source = c.Param("source")
+	source := req.Source
+	if source == "" {
+		source = c.Param("source")
 	}
 
 	if req.AssetID == "" {
@@ -73,13 +74,13 @@ func (h *NonOpsHandler) EnrichMedia(c *gin.Context) {
 
 	h.log.Info("dispatching media.enrich via jobs system",
 		zap.String("asset_id", req.AssetID),
-		zap.String("source", req.Source),
+		zap.String("source", source),
 		zap.Bool("skip_embed_gen", req.SkipEmbedGen),
 	)
 
 	payload := map[string]any{
 		"asset_id":       req.AssetID,
-		"source":         req.Source,
+		"source":         source,
 		"skip_embed_gen": req.SkipEmbedGen,
 	}
 	job, err := h.jobsSvc.Enqueue(c.Request.Context(), &enqueueRequest{
@@ -97,7 +98,7 @@ func (h *NonOpsHandler) EnrichMedia(c *gin.Context) {
 		"job_id":     job.ID,
 		"status_url": "/api/jobs/" + job.ID + "/full",
 		"asset_id":   req.AssetID,
-		"source":     req.Source,
+		"source":     source,
 		"method":     "media.enrich_worker_via_jobs",
 		"message":    "enrichment + indexing dispatched to jobs system (worker will run)",
 	})
