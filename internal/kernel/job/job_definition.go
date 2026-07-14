@@ -227,9 +227,9 @@ type JobDefinition struct {
 	// July 2026).
 	//
 	// Format expectations (soft convention only, never enforced by
-	// Validate()): descriptions SHOULD be a single line of ≤ 80 chars
+	// Validate()): descriptions SHOULD be a single line of <= 80 chars
 	// in a lower-case noun-or-verb phrase, optionally extended with a
-	// parenthetical data-flow summary in the form "input → output".
+	// parenthetical data-flow summary in the form "input -> output".
 	// No embedded newlines, no leading whitespace, no terminal
 	// punctuation. The canonical MustRegister sites in
 	// internal/application/*/job_types.go follow this convention;
