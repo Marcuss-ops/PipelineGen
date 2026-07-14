@@ -5,9 +5,8 @@
 // HandleJob entry, and the processOneClip stitch.
 //
 // Counter semantics (canonical results map, set by finalizeJobResult):
-//   - uploaded    — Drive publish succeeded
 //   - committed   — dispatcher.EnqueueAndIndex succeeded (asset row +
-//     outbox event in one tx); always ≤ uploaded (publish-first ordering)
+//     outbox event in one tx)
 //   - failed      — any stage in processOneClip returned error
 package clips
 
@@ -133,7 +132,6 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		}
 		return map[string]any{
 			"total":     0,
-			"uploaded":  0,
 			"committed": 0,
 			"failed":    0,
 			"message":   "no clips in local_folder",
@@ -154,7 +152,6 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	sem := make(chan struct{}, concurrency)
 	var (
 		wg            sync.WaitGroup
-		uploaded      atomic.Int64
 		committed     atomic.Int64
 		failed        atomic.Int64
 		failedDetails []string
@@ -165,7 +162,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		if tools == nil || tools.Progress == nil {
 			return
 		}
-		done := uploaded.Load() + committed.Load() + failed.Load()
+		done := committed.Load() + failed.Load()
 		pct := int(float64(done) / float64(total) * 95.0)
 		if pct < 5 {
 			pct = 5
@@ -173,8 +170,8 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 		if pct > 100 {
 			pct = 100
 		}
-		tools.Progress(pct, fmt.Sprintf("Processed %d/%d (uploaded=%d committed=%d failed=%d)",
-			done, total, uploaded.Load(), committed.Load(), failed.Load()))
+		tools.Progress(pct, fmt.Sprintf("Processed %d/%d (committed=%d failed=%d)",
+			done, total, committed.Load(), failed.Load()))
 	}
 
 	for i := range candidates {
@@ -191,7 +188,7 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 			defer reportProgress(false)
 
 			if err := w.processOneClip(ctx, payload, cand,
-				&uploaded, &committed, &failed, log, tools); err != nil {
+				&committed, &failed, log, tools); err != nil {
 				failedMu.Lock()
 				failedDetails = append(failedDetails, fmt.Sprintf("%s: %v", cand.LocalPath, err))
 				if len(failedDetails) > 50 {
@@ -207,12 +204,11 @@ func (w *BulkUploadWorker) HandleJob(ctx context.Context, j *job.Job, tools *app
 	wg.Wait()
 	reportProgress(true)
 
-	result := finalizeJobResult(total, &uploaded, &committed, &failed, failedDetails, payload)
+	result := finalizeJobResult(total, &committed, &failed, failedDetails, payload)
 	log.Info("bulk upload job complete", zap.Any("result", result))
 	if tools != nil && tools.Event != nil {
 		tools.Event("completed", "bulk upload job completed", map[string]any{
 			"total":     total,
-			"uploaded":  uploaded.Load(),
 			"committed": committed.Load(),
 			"failed":    failed.Load(),
 		})
@@ -227,7 +223,7 @@ func (w *BulkUploadWorker) processOneClip(
 	ctx context.Context,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
 	cand clipCandidate,
-	uploaded, committed, failed *atomic.Int64,
+	committed, failed *atomic.Int64,
 	log *zap.Logger,
 	tools *appjobs.JobTools,
 ) error {
@@ -267,7 +263,6 @@ func (w *BulkUploadWorker) processOneClip(
 		}
 		return pubErr
 	}
-	uploaded.Add(1)
 	targetFolderID := pubRes.FolderID
 	log.Info("published to drive",
 		zap.String("file_id", pubRes.FileID),
