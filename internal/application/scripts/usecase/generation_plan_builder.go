@@ -214,20 +214,11 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	// Qdrant is unavailable). Runs after clip_bindings so it can
 	// fall back to scene.Bindings.Clip.DriveLink.
 	pp = append(pp, adapters.ProcessorStockAssociation)
-	// PR-COMMIT3 (July 2026): ProcessorVoiceover / ProcessorImages /
-	// ProcessorDocument are NOT appended here. The 3
-	// deprecation-registered output flags (GenerateVoiceover +
-	// GenerateSceneImages + GenerateDocument) are physically
-	// removed from OutputSpec in this commit; pre-commit HTTP
-	// clients sending those keys fail closed at the API layer
-	// (DisallowUnknownFields, see
-	// internal/api/script/handler_generate_request.go). Voiceover
-	// / images / document output is produced exclusively by the
-	// 3 canonical downstream jobs (TypeVoiceoverGenerate /
-	// TypeImagesGenerate / TypeDocumentGenerate in
-	// internal/domain/job/job.go); see architecture/deprecations.yaml
-	// OUTPUT_SPEC_{VOICEOVER,IMAGES,DOCUMENT}_FLAG each flipped
-	// to status: removed.
+	// ProcessorVoiceover / ProcessorImages / ProcessorDocument are
+	// NOT appended here; voiceover, images and document output is
+	// produced exclusively by the 3 canonical downstream jobs
+	// (TypeVoiceoverGenerate / TypeImagesGenerate /
+	// TypeDocumentGenerate in internal/domain/job/job.go).
 	if out.SaveToDB {
 		pp = append(pp, adapters.ProcessorPersistence)
 	}

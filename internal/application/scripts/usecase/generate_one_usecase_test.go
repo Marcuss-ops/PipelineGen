@@ -78,13 +78,11 @@ func (s *stubPostProcessor) Process(
 //     plan.Postprocessors (both Required-class per
 //     `defaultPolicyByName` and registered in the test's
 //     registry — the canonical two procs whose per-stage
-//     variance the assertion inspects)	//   - opts-OUT of GenerateVoiceover / GenerateSceneImages so
-//     plan.Postprocessors stays small (no extra Required procs
-//     the test would have to register cover for).
-//     GenerateDocument / SaveToDB are NOW safety defaults
-//     (July 2026) — the test Explicitly sets them false so
-//     NormalizeItem overrides them to true; persistence is
-//     registered in the test registry to satisfy ValidateRequested.
+//     variance the assertion inspects).
+//   - SaveToDB is a safety default (July 2026) — the test
+//     explicitly sets it false so NormalizeItem overrides it
+//     to true; persistence is registered in the test registry to
+//     satisfy ValidateRequested.
 //   - leaves VoiceoverFolderID empty so ResolveVoiceoverFolderForItem
 //     short-circuits before touching anything
 //
@@ -115,12 +113,11 @@ func itemForTimingsTest() scriptpkg.GenerationItemV2 {
 			ExtractEntities:  scriptpkg.ToggleEnabled,
 			GenerateMetadata: scriptpkg.ToggleEnabled,
 			// Opt-out of every other postprocessor so
-			// plan.Postprocessors stays to: entities,
-			// metadata, clip_bindings, stock_association, voiceover,
-			// images, document, persistence —
-			// (last two are unconditional best-efforts per
+			// plan.Postprocessors stays to: entities, metadata,
+			// clip_bindings, stock_association, persistence —
+			// (persistence is an unconditional best-effort per
 			// buildPostprocessorList and missing-registered
-			// in this test, surfacing as warnings only).
+			// in this test, surfacing as a warning only).
 			SaveToDB: false,
 		},
 	}

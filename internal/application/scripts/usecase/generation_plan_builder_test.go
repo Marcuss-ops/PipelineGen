@@ -39,14 +39,11 @@ import (
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
 
-// buildPostprocessorListTestScenarios enumerates 10 OutputSpec
-// variants that cover the full conditional branches of
-// buildPostprocessorList (per the godoc in
-// generation_plan_builder.go: the function appends conditional
-// postprocessors based on OutputSpec.ExtractEntities /
-// GenerateMetadata / GenerateVoiceover / GenerateSceneImages /
-// GenerateDocument / SaveToDB, plus the unconditional
-// clip_bindings + stock_association).
+// buildPostprocessorListTestScenarios enumerates OutputSpec
+// variants that cover the conditional branches of
+// buildPostprocessorList (ExtractEntities / GenerateMetadata /
+// SaveToDB / TranslateTo, plus the unconditional clip_bindings +
+// stock_association).
 func buildPostprocessorListTestScenarios() []struct {
 	name string
 	out  scriptpkg.OutputSpec
@@ -80,18 +77,6 @@ func buildPostprocessorListTestScenarios() []struct {
 			},
 		},
 		{
-			name: "voiceover_only",
-			out:  scriptpkg.OutputSpec{},
-		},
-		{
-			name: "scene_images_only",
-			out:  scriptpkg.OutputSpec{},
-		},
-		{
-			name: "document_only",
-			out:  scriptpkg.OutputSpec{},
-		},
-		{
 			name: "save_to_db_only",
 			out: scriptpkg.OutputSpec{
 				SaveToDB: true,
@@ -103,10 +88,6 @@ func buildPostprocessorListTestScenarios() []struct {
 				ExtractEntities:  scriptpkg.ToggleEnabled,
 				GenerateMetadata: scriptpkg.ToggleEnabled,
 			},
-		},
-		{
-			name: "voiceover_and_images_and_document",
-			out:  scriptpkg.OutputSpec{},
 		},
 		{
 			// PR-TRANSLATE-SCRIPT-SPEC PR-5 (2026-07-09): setting
