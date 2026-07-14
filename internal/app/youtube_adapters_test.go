@@ -26,14 +26,17 @@ func TestYouTubeComposition_FailsBeforeServiceConstruction(t *testing.T) {
 	var nilRunner *stubSearchRunner
 	var runner youtubeports.SearchRunnerPort = nilRunner // typed-nil
 
-	deps := youtubeapp.ServiceDeps{
-		SearchRunner:  runner,
-		AssetRepo:     &stubAssetRepo{},
-		VideoPipeline: &stubVideoPipeline{},
-	}
-	// MediaProcessor is intentionally missing (nil).
-	err := youtubeapp.ValidateServiceDeps(deps)
-	require.Error(t, err, "ValidateServiceDeps should reject typed-nil SearchRunner")
+	// PR-GRUPOC-1 (July 2026): sub-builder ctor. MediaProcessor
+	// intentionally nil to exercise the typed-nil guard via the
+	// missing required port (the validator's 4 required-port
+	// checks fire in order: SearchRunner → AssetRepo →
+	// VideoPipeline → MediaProcessor; typed-nil SearchRunner
+	// surfaces first).
+	core, asset, video, storage, adapter := validYouTubeSubBundles()
+	adapter.SearchRunner = runner
+	asset.MediaProcessor = nil // intentionally missing
+	err := youtubeapp.ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
+	require.Error(t, err, "ValidateServiceDepsFromSubBundles should reject typed-nil SearchRunner")
 	assert.True(t, portutil.IsNilPort(runner), "precondition: runner should be typed-nil")
 	assert.True(t, runner != nil, "precondition: typed-nil runner should != nil (Go semantics)")
 }
@@ -41,28 +44,20 @@ func TestYouTubeComposition_FailsBeforeServiceConstruction(t *testing.T) {
 // TestYouTubeComposition_ValidDepsBuildSuccessfully verifies that a fully
 // wired ServiceDeps passes validation and can construct a Service.
 func TestYouTubeComposition_ValidDepsBuildSuccessfully(t *testing.T) {
-	deps := youtubeapp.ServiceDeps{
-		Cfg:            youtubetypes.RuntimeConfig{},
-		Log:            zap.NewNop(),
-		SearchRunner:   &stubSearchRunner{},
-		AssetRepo:      &stubAssetRepo{},
-		VideoPipeline:  &stubVideoPipeline{},
-		MediaProcessor: &stubMediaProcessor{},
-		// PR-GODOBJ-1 (July 2026): NewService internally constructs
-		// an ExtractionService which panics on nil ProcessSeg
-		// (godlike/07 fail-closed). The test fixture must wire a
-		// minimal ProcessYouTubeSegmentUseCase with stub ports for
-		// the 5 required deps (Cache/VideoPipeline/Hash/Writer/
-		// SegmentsSvc). The stubs are never invoked in this test
-		// (only NewService's construction is exercised).
-		ProcessSeg: stubProcessYouTubeSegmentUseCase(t),
-	}
+	// PR-GRUPOC-1 (July 2026): sub-builder ctor. Cfg + Log land in
+	// ServiceCoreDeps; the rest of the 5-bundle pattern uses the
+	// canonical test fixture. ProcessSeg lands in ServiceVideoDeps
+	// (the per-segment orchestrator is video-pipeline-clustered
+	// per godlike/06 SSOT).
+	core, asset, video, storage, adapter := validYouTubeSubBundles()
+	core.Cfg = youtubetypes.RuntimeConfig{}
+	video.ProcessSeg = stubProcessYouTubeSegmentUseCase(t)
 
-	err := youtubeapp.ValidateServiceDeps(deps)
+	err := youtubeapp.ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	require.NoError(t, err, "fully wired deps should pass validation")
 
-	svc := youtubeapp.NewService(deps)
-	require.NotNil(t, svc, "NewService should return non-nil with valid deps")
+	svc := youtubeapp.NewServiceFromSubBundles(core, asset, video, storage, adapter)
+	require.NotNil(t, svc, "NewServiceFromSubBundles should return non-nil with valid deps")
 
 	// Smoke: optional port methods should not panic.
 	err = svc.IndexClip(context.Background(), "test")
@@ -71,7 +66,23 @@ func TestYouTubeComposition_ValidDepsBuildSuccessfully(t *testing.T) {
 	transcript, err := svc.TranscribeAudio(context.Background(), "/tmp/test.wav")
 	assert.NoError(t, err, "TranscribeAudio should no-op when no whisper wired")
 	assert.Empty(t, transcript)
-} // stubProcessYouTubeSegmentUseCase builds a minimal
+} // validYouTubeSubBundles is the canonical composition-test fixture
+// for YouTube sub-builder patterns (PR-GRUPOC-1, July 2026). Returns
+// 5 capability-area sub-bundles with the minimum required ports
+// wired (SearchRunner / AssetRepo / VideoPipeline / MediaProcessor).
+// Tests mutate specific sub-bundles to exercise the typed-nil guards.
+func validYouTubeSubBundles() (youtubeapp.ServiceCoreDeps, youtubeapp.ServiceAssetDeps, youtubeapp.ServiceVideoDeps, youtubeapp.ServiceStorageDeps, youtubeapp.ServiceAdapterDeps) {
+	return youtubeapp.ServiceCoreDeps{},
+		youtubeapp.ServiceAssetDeps{
+			AssetRepo:      &stubAssetRepo{},
+			MediaProcessor: &stubMediaProcessor{},
+		},
+		youtubeapp.ServiceVideoDeps{VideoPipeline: &stubVideoPipeline{}},
+		youtubeapp.ServiceStorageDeps{},
+		youtubeapp.ServiceAdapterDeps{SearchRunner: &stubSearchRunner{}}
+}
+
+// stubProcessYouTubeSegmentUseCase builds a minimal
 // *ProcessYouTubeSegmentUseCase with no-op stubs for the 5
 // required ports (Cache/VideoPipeline/Hash/Writer/SegmentsSvc).
 // Used by composition tests that exercise NewService's
@@ -121,44 +132,54 @@ func (s *stubClipAtomicWriterPort) CommitClipAndIndexEvent(_ context.Context, _ 
 
 // TestYouTubeComposition_AllRequiredDepsRejectsNil validates that every
 // required port is checked individually.
+//
+// PR-GRUPOC-1 (July 2026): the mutate callback operates directly on
+// the 3 sub-bundles that carry the validator's 4 required ports
+// (asset: AssetRepo + MediaProcessor, video: VideoPipeline,
+// adapter: SearchRunner). The pre-refactor mutate signature
+// (func(*youtubeapp.ServiceDeps)) was retired alongside the
+// ServiceDeps type.
 func TestYouTubeComposition_AllRequiredDepsRejectsNil(t *testing.T) {
 	tests := []struct {
 		name    string
-		mutate  func(*youtubeapp.ServiceDeps)
+		mutate  func(*youtubeapp.ServiceAssetDeps, *youtubeapp.ServiceVideoDeps, *youtubeapp.ServiceAdapterDeps)
 		wantMsg string
 	}{
 		{
-			name:    "nil SearchRunner",
-			mutate:  func(d *youtubeapp.ServiceDeps) { d.SearchRunner = nil },
+			name: "nil SearchRunner",
+			mutate: func(_ *youtubeapp.ServiceAssetDeps, _ *youtubeapp.ServiceVideoDeps, ad *youtubeapp.ServiceAdapterDeps) {
+				ad.SearchRunner = nil
+			},
 			wantMsg: "SearchRunner",
 		},
 		{
-			name:    "nil AssetRepo",
-			mutate:  func(d *youtubeapp.ServiceDeps) { d.AssetRepo = nil },
+			name: "nil AssetRepo",
+			mutate: func(a *youtubeapp.ServiceAssetDeps, _ *youtubeapp.ServiceVideoDeps, _ *youtubeapp.ServiceAdapterDeps) {
+				a.AssetRepo = nil
+			},
 			wantMsg: "AssetRepo",
 		},
 		{
-			name:    "nil VideoPipeline",
-			mutate:  func(d *youtubeapp.ServiceDeps) { d.VideoPipeline = nil },
+			name: "nil VideoPipeline",
+			mutate: func(_ *youtubeapp.ServiceAssetDeps, v *youtubeapp.ServiceVideoDeps, _ *youtubeapp.ServiceAdapterDeps) {
+				v.VideoPipeline = nil
+			},
 			wantMsg: "VideoPipeline",
 		},
 		{
-			name:    "nil MediaProcessor",
-			mutate:  func(d *youtubeapp.ServiceDeps) { d.MediaProcessor = nil },
+			name: "nil MediaProcessor",
+			mutate: func(a *youtubeapp.ServiceAssetDeps, _ *youtubeapp.ServiceVideoDeps, _ *youtubeapp.ServiceAdapterDeps) {
+				a.MediaProcessor = nil
+			},
 			wantMsg: "MediaProcessor",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			deps := youtubeapp.ServiceDeps{
-				SearchRunner:   &stubSearchRunner{},
-				AssetRepo:      &stubAssetRepo{},
-				VideoPipeline:  &stubVideoPipeline{},
-				MediaProcessor: &stubMediaProcessor{},
-			}
-			tc.mutate(&deps)
-			err := youtubeapp.ValidateServiceDeps(deps)
+			core, asset, video, storage, adapter := validYouTubeSubBundles()
+			tc.mutate(&asset, &video, &adapter)
+			err := youtubeapp.ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantMsg)
 		})

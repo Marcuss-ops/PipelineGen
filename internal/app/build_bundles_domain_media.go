@@ -204,11 +204,22 @@ func buildDomainMediaServices(
 		Log:                    log,
 	})
 
-	youtubeDeps := youtube.ServiceDeps{
-		Cfg:            buildYouTubeRuntimeConfig(cfg),
-		Log:            log,
-		MediaProcessor: process.MediaProcessor,
-		VideoPipeline:  videoPipelineAdapter,
+	// PR-GRUPOC-1 (July 2026): youtube.ServiceDeps (20 fields) is RETIRED.
+	// The 20 fields are now split into 5 capability-area sub-bundles
+	// (Core/Asset/Video/Storage/Adapter) — each ≤7 fields — to clear
+	// percheck_struct_deps ≤8 enforcement. The composition-root wiring
+	// below sources the 20 fields from the same canonical production
+	// dep set the previous ServiceDeps literal used; no port is added,
+	// dropped, or renamed. ClipFiles + Whisper are intentionally left
+	// nil (matches the previous literal's behaviour; those ports are
+	// not exercised by the YouTube orchestrator at composition time).
+	youtubeCore := youtube.ServiceCoreDeps{
+		Cfg: buildYouTubeRuntimeConfig(cfg),
+		Log: log,
+	}
+	youtubeAsset := youtube.ServiceAssetDeps{
+		AssetRepo:         repos.Assets.Repository(),
+		AssetDestResolver: drive.DestResolver,
 		LifecycleService: NewLifecycleFromDeps(&LifecycleDeps{
 			Registry: artifacts.NewClipsRegistry(
 				dbs.dualPool.Writer,
@@ -222,26 +233,32 @@ func buildDomainMediaServices(
 			DriveReader: drive.driveUploader,
 			AssetIndex:  search.AssetIndexService,
 		}, log),
-		AssetDestResolver: drive.DestResolver,
-		AssetRepo:         repos.Assets.Repository(),
-		Clips:             newClipStoreAdapter(repos.ClipsRepo),
-		Cache:             youtubeCache,
-		Monitors:          newMonitorsStoreAdapter(repos.MonitorsRepo),
-		Indexer:           clipIndexerAdapterValue,
-		Ollama:            ai.OllamaClient,
-		MetaFetcher:       metaFetcher,
-		DriveFolderMgr:    youtubePubAdapter,
-		FolderMemory:      newFolderMemoryAdapter(folderMemSvc),
-		SearchRunner:      searchRunnerAdapter,
-		HashSvc:           hashAdapter,
-		ProcessSeg:        processSeg,
-		TranscriptReader:  &youtube.OSTranscriptReader{},
-		SubtitleFetcher:   subtitleFetcherAdapter,
+		MediaProcessor: process.MediaProcessor,
 	}
-	if err := youtube.ValidateServiceDeps(youtubeDeps); err != nil {
+	youtubeVideo := youtube.ServiceVideoDeps{
+		VideoPipeline: videoPipelineAdapter,
+		ProcessSeg:    processSeg,
+	}
+	youtubeStorage := youtube.ServiceStorageDeps{
+		Clips:            newClipStoreAdapter(repos.ClipsRepo),
+		Cache:            youtubeCache,
+		Monitors:         newMonitorsStoreAdapter(repos.MonitorsRepo),
+		Indexer:          clipIndexerAdapterValue,
+		Ollama:           ai.OllamaClient,
+		FolderMemory:     newFolderMemoryAdapter(folderMemSvc),
+		TranscriptReader: &youtube.OSTranscriptReader{},
+	}
+	youtubeAdapter := youtube.ServiceAdapterDeps{
+		SearchRunner:    searchRunnerAdapter,
+		HashSvc:         hashAdapter,
+		SubtitleFetcher: subtitleFetcherAdapter,
+		MetaFetcher:     metaFetcher,
+		DriveFolderMgr:  youtubePubAdapter,
+	}
+	if err := youtube.ValidateServiceDepsFromSubBundles(youtubeCore, youtubeAsset, youtubeVideo, youtubeStorage, youtubeAdapter); err != nil {
 		return nil, nil, fmt.Errorf("compose youtube: %w", err)
 	}
-	bundle.YoutubeClipService = youtube.NewService(youtubeDeps)
+	bundle.YoutubeClipService = youtube.NewServiceFromSubBundles(youtubeCore, youtubeAsset, youtubeVideo, youtubeStorage, youtubeAdapter)
 
 	// PR-YOUTUBE-SERVICE-SPLIT (July 2026): composition-root wiring
 	// for the 6 typed-narrow packages (godlike/06 SSOT). Phase 1

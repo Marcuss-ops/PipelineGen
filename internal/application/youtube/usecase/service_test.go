@@ -195,15 +195,24 @@ func TestYouTubeClipHandlesPipelineFailure(t *testing.T) {
 		err: errors.New("yt-dlp failed"),
 	}
 
-	svc := NewService(ServiceDeps{
-		Cfg:               cfg,
-		Log:               log,
-		ProcessSeg:        newTestProcessSegmentUseCase(log, pipeline),
-		MediaProcessor:    nil, // processor
-		VideoPipeline:     pipeline,
-		LifecycleService:  nil, // lifecycle
-		AssetDestResolver: nil, // asset dest resolver
-	})
+	// PR-GRUPOC-1 (July 2026): the 22-field ServiceDeps is retired in
+	// favour of 5 capability-area sub-bundles. This test mutates
+	// MediaProcessor / LifecycleService / AssetDestResolver to nil
+	// (no-op); only VideoPipeline + ProcessSeg are exercised.
+	svc := NewServiceFromSubBundles(
+		ServiceCoreDeps{Cfg: cfg, Log: log},
+		ServiceAssetDeps{
+			MediaProcessor:    nil, // processor
+			LifecycleService:  nil, // lifecycle
+			AssetDestResolver: nil, // asset dest resolver
+		},
+		ServiceVideoDeps{
+			VideoPipeline: pipeline,
+			ProcessSeg:    newTestProcessSegmentUseCase(log, pipeline),
+		},
+		ServiceStorageDeps{},
+		ServiceAdapterDeps{},
+	)
 
 	resp, err := svc.Extract(ctx, &youtubetypes.ExtractRequest{
 		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -245,15 +254,24 @@ func TestYouTubeClipPassesExpectedAssetInputToPipeline(t *testing.T) {
 		outputPath: dummyFilePath,
 	}
 
-	svc := NewService(ServiceDeps{
-		Cfg:               cfg,
-		Log:               log,
-		ProcessSeg:        newTestProcessSegmentUseCase(log, pipeline),
-		MediaProcessor:    nil, // processor
-		VideoPipeline:     pipeline,
-		LifecycleService:  nil, // lifecycle
-		AssetDestResolver: nil, // asset dest resolver
-	})
+	// PR-GRUPOC-1 (July 2026): see sibling test for the sub-builder
+	// migration rationale. Same nil-MediaProcessor / nil-Lifecycle /
+	// nil-AssetDestResolver pattern (the test exercises the
+	// Pipeline-Forwarding path, not the asset-lifecycle cluster).
+	svc := NewServiceFromSubBundles(
+		ServiceCoreDeps{Cfg: cfg, Log: log},
+		ServiceAssetDeps{
+			MediaProcessor:    nil,
+			LifecycleService:  nil,
+			AssetDestResolver: nil,
+		},
+		ServiceVideoDeps{
+			VideoPipeline: pipeline,
+			ProcessSeg:    newTestProcessSegmentUseCase(log, pipeline),
+		},
+		ServiceStorageDeps{},
+		ServiceAdapterDeps{},
+	)
 
 	resp, err := svc.Extract(ctx, &youtubetypes.ExtractRequest{
 		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -424,14 +442,20 @@ func TestExtract_ReturnsContextCancelledIfContextCancelled(t *testing.T) {
 	security.AddAllowedHost("www.youtube.com")
 	security.AddAllowedHost("youtu.be")
 
-	svc := NewService(ServiceDeps{
-		Cfg:           testConfig(tmp),
-		Log:           zap.NewNop(),
-		ProcessSeg:    newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
-		VideoPipeline: &fakeVideoPipeline{},
-		AssetRepo:     &fakeAssetRepo{},
-		SearchRunner:  &fakeSearchRunner{},
-	})
+	// PR-GRUPOC-1 (July 2026): sub-builder ctor. AssetRepo lands in
+	// ServiceAssetDeps; SearchRunner in ServiceAdapterDeps. The
+	// forwarding chain needs AssetRepo for the canonical Extract
+	// facade (per PR5 Phase 3).
+	svc := NewServiceFromSubBundles(
+		ServiceCoreDeps{Cfg: testConfig(tmp), Log: zap.NewNop()},
+		ServiceAssetDeps{AssetRepo: &fakeAssetRepo{}},
+		ServiceVideoDeps{
+			VideoPipeline: &fakeVideoPipeline{},
+			ProcessSeg:    newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
+		},
+		ServiceStorageDeps{},
+		ServiceAdapterDeps{SearchRunner: &fakeSearchRunner{}},
+	)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -473,14 +497,18 @@ func TestExtract_ReturnsContextDeadlineExceededIfContextExpired(t *testing.T) {
 	security.AddAllowedHost("www.youtube.com")
 	security.AddAllowedHost("youtu.be")
 
-	svc := NewService(ServiceDeps{
-		Cfg:           testConfig(tmp),
-		Log:           zap.NewNop(),
-		ProcessSeg:    newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
-		VideoPipeline: &fakeVideoPipeline{},
-		AssetRepo:     &fakeAssetRepo{},
-		SearchRunner:  &fakeSearchRunner{},
-	})
+	// PR-GRUPOC-1 (July 2026): see sibling TestExtract_ReturnsContext
+	// Cancelled for the sub-builder migration rationale. Same shape.
+	svc := NewServiceFromSubBundles(
+		ServiceCoreDeps{Cfg: testConfig(tmp), Log: zap.NewNop()},
+		ServiceAssetDeps{AssetRepo: &fakeAssetRepo{}},
+		ServiceVideoDeps{
+			VideoPipeline: &fakeVideoPipeline{},
+			ProcessSeg:    newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
+		},
+		ServiceStorageDeps{},
+		ServiceAdapterDeps{SearchRunner: &fakeSearchRunner{}},
+	)
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now())
 	defer cancel()
 
