@@ -1,54 +1,10 @@
 // Package script — output_spec.go defines the canonical ScriptSpec
 // (HOW to generate) and OutputSpec (WHAT to produce) contracts.
 //
-// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE): the 2
-// surviving ACTIVE postprocessor flags (ExtractEntities +
-// GenerateMetadata) are Toggle tri-state (ToggleDefault/
-// ToggleEnabled/ToggleDisabled), closing the audit item #6
-// "bool zero-value ambiguity" — caller explicit false is
-// distinguishable from caller-did-not-set, and ToggleDisabled
-// survives the applySafetyDefaults+ApplyPreset chain (no silent
-// override per godlike/07 NO-FAKE-AVAILABILITY). SaveToDB
-// stays bool (out of PR-3 scope per action plan).
-//
-// PR-COMMIT3 (July 2026): the 3 deprecation-registered output
-// flags (GenerateVoiceover + GenerateSceneImages +
-// GenerateDocument) are PHYSICALLY REMOVED from OutputSpec per
-// the user directive "nessun campo documentato come deprecato
-// può essere ancora materialmente rispettato". The runtime
-// contract "setting them has no effect on the script.generate
-// pipeline" is enforced by their absence from the struct
-// itself; pre-PR-COMMIT3 HTTP clients sending the 3 keys now
-// fail closed at the API layer (DisallowUnknownFields) and
-// surface a 400 UNKNOWN_FIELD error.
-//
-// PR-3 wire-shape: the Toggle.UnmarshalJSON / Toggle.MarshalJSON
-// methods (plus OutputSpec.UnmarshalJSON + OutputSpec.MarshalJSON)
-// accept BOTH the new Toggle strings ("enabled"/"disabled"/
-// "default") AND the legacy boolean values (true/false →
-// ToggleEnabled/ToggleDisabled) so pre-PR-3 HTTP clients that
-// still send the 2 surviving ACTIVE flags in legacy bool form
-// continue to function. OutputSpec implements UnmarshalJSON to
-// default OMITTED Toggle fields to ToggleDefault (Go's default
-// leaves them at the zero value Toggle(""), which is not equal
-// to ToggleDisabled NOR ToggleDefault — explicit defaulting is
-// required for the godlike/07 NO-FAKE-AVAILABILITY contract).
-// The canonical resolution chain after unmarshal is:
-//
-//	if caller != ToggleDefault: return caller
-//	elif preset != ToggleDefault: return preset
-//	elif config != ToggleDefault: return config
-//	else: return safety
-//
-// PR-1 (June 2026): HasAnyPostprocessor now ORs only the 2
-// surviving ACTIVE postprocessor flags (ExtractEntities +
-// GenerateMetadata). The 3 deprecation-registered flags are
-// physically removed from the struct (PR-COMMIT3, July 2026);
-// see architecture/deprecations.yaml records
-// OUTPUT_SPEC_VOICEOVER_FLAG + OUTPUT_SPEC_IMAGES_FLAG +
-// OUTPUT_SPEC_DOCUMENT_FLAG each flipped to status: removed.
-//
-// No durable field uses any, any, or map[string]any.
+// OutputSpec carries two active postprocessor toggles (ExtractEntities
+// and GenerateMetadata) modelled as Toggle tri-state values. The
+// Toggle type accepts both canonical string values ("default",
+// "enabled", "disabled") and legacy booleans for wire compatibility.
 package script
 
 import (
@@ -265,26 +221,9 @@ type ScriptSpec struct {
 // ── OutputSpec ─────────────────────────────────────────────────────
 
 // OutputSpec declares which post-generation artifacts to produce.
-//
-// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE): the 2
-// surviving ACTIVE postprocessor flags (ExtractEntities +
-// GenerateMetadata) are Toggle tri-state. Caller-explicit
-// ToggleDisabled survives the applySafetyDefaults + ApplyPreset
-// chain (no silent override per godlike/07 NO-FAKE-AVAILABILITY).
-// SaveToDB stays bool (persistence flag is not a postprocessor
-// toggle per the action plan).
-//
-// PR-COMMIT3 (July 2026): the 3 deprecation-registered flags
-// (GenerateVoiceover + GenerateSceneImages + GenerateDocument) are
-// PHYSICALLY REMOVED from the struct. Pre-commit HTTP clients
-// sending those keys will surface a 400 UNKNOWN_FIELD error at
-// the API layer (DisallowUnknownFields, see
-// internal/api/script/handler_generate_request.go::bindGenerateEnvelope).
-// The corresponding plan.Postprocessors[] entries are routed
-// exclusively through the canonical downstream jobs
-// (TypeVoiceoverGenerate / TypeImagesGenerate /
-// TypeDocumentGenerate registered in internal/domain/job/job.go),
-// not the inline PostProcessorRegistry runtime.
+// ExtractEntities and GenerateMetadata are Toggle tri-state values.
+// Caller-explicit ToggleDisabled survives the applySafetyDefaults +
+// ApplyPreset chain. SaveToDB is a bool persistence flag.
 type OutputSpec struct {
 	// ── Postprocessors (Toggle tri-state) ──────────────────────────
 	//
@@ -347,49 +286,25 @@ type OutputSpec struct {
 	TranslateTo string `json:"translate_to,omitempty"`
 }
 
-// HasAnyPostprocessor returns true when at least one ACTIVE postprocessor
-// flag is non-disabled (toggle tri-state: ToggleEnabled or
-// ToggleDefault both resolve to true; ToggleDisabled resolves to
-// false). SaveToDB is intentionally out of scope.
-//
-// PR-COMMIT3 (July 2026, user directive "nessun campo documentato
-// come deprecato può essere ancora materialmente rispettato"): the
-// OR chain includes only the 2 surviving ACTIVE flags
-// (ExtractEntities + GenerateMetadata). The 3
-// deprecation-registered flags (GenerateVoiceover +
-// GenerateSceneImages + GenerateDocument) are physically removed
-// from the struct. Pre-commit HTTP clients sending those keys
-// fail closed at the API layer with a 400 UNKNOWN_FIELD error.
+// HasAnyPostprocessor returns true when at least one active postprocessor
+// flag is non-disabled (ToggleEnabled or ToggleDefault resolve to true;
+// ToggleDisabled resolves to false). SaveToDB is intentionally out of scope.
 func (o *OutputSpec) HasAnyPostprocessor() bool {
 	return o.ExtractEntities.AsBool() ||
 		o.GenerateMetadata.AsBool()
 }
 
-// UnmarshalJSON is the canonical godlike/06 SSOT owner of OutputSpec's
-// wire-shape ingress. It does a 2-pass decode:
-//
-//  1. Alias-decode via Alias OutputSpec (recursion-safe — Alias has
-//     the same JSON tags BUT no UnmarshalJSON method) so standard
+// UnmarshalJSON decodes OutputSpec with Toggle tri-state support.
+// It performs a 2-pass decode:
+//  1. Alias-decode via Alias OutputSpec (recursion-safe) so standard
 //     json.Unmarshal handles struct field assignment via Toggle's
-//     canonical UnmarshalJSON method (the bool/string/null forms).
+//     UnmarshalJSON method (bool/string/null forms).
+//  2. Raw-map pre-pass to default OMITTED Toggle keys to ToggleDefault.
+//     Go's default decode leaves absent Toggle fields at the zero value
+//     Toggle(""), which AsBool() would treat as true. This method fixes
+//     that by defaulting omitted keys to ToggleDefault.
 //
-//  2. Raw-map pre-pass to detect OMITTED Toggle keys. Go's default
-//     decode leaves an absent field at its zero value Toggle("")
-//     which is NOT equal to ToggleDefault OR ToggleDisabled —
-//     the AsBool() invariant would return true for the zero value
-//     (semantically a ToggleDefault-from-comparison-not-from-Wire,
-//     which is a godlike/07 NO-FAKE-AVAILABILITY risk). This method
-//     manually defaults every OMITTED toggle key to ToggleDefault.
-//
-// Clobber-bug fix (godlike/07 NO-FAKE-AVAILABILITY): if the raw-map
-// pre-pass FAILS (corrupt JSON mid-object, or RAM pressure, etc.)
-// we DO NOT collapse all fields to ToggleDefault — we preserve the
-// pass-1 alias-decode values. Only OMITTED keys get defaulted; present
-// keys (even if raw-map decode cannot parse them) pass through as
-// alias-decoded.
-//
-// godlike/06 SSOT: this lives ONLY here (canonical) — HTTP DTOs and
-// any future JSON middleware MUST NOT duplicate it.
+// If the raw-map pre-pass fails, pass-1 alias values are preserved.
 func (o *OutputSpec) UnmarshalJSON(data []byte) error {
 	// Step 1: alias-decode to populate all fields via Toggle's
 	// UnmarshalJSON (handles string/bool/null forms correctly).

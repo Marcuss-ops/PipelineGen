@@ -1,21 +1,4 @@
 // Package script — output_spec_test.go: regression-guard for OutputSpec.
-//
-// SCRIPT-PIPELINE-DECOUPLING-2026-07-09 PR-3 (TOGGLE-TRISTATE): the
-// 2 surviving ACTIVE postprocessor flags (ExtractEntities +
-// GenerateMetadata) are Toggle tri-state (ToggleDefault /
-// ToggleEnabled / ToggleDisabled). Caller-explicit ToggleDisabled
-// survives the applySafetyDefaults + ApplyPreset chain (no silent
-// override per godlike/07 NO-FAKE-AVAILABILITY). The wire shape
-// accepts both the legacy bool form (true → ToggleEnabled, false
-// → ToggleDisabled) and the canonical Toggle string form.
-//
-// PR-COMMIT3 (July 2026): the 3 deprecation-registered flags
-// (GenerateVoiceover + GenerateSceneImages + GenerateDocument) are
-// PHYSICALLY REMOVED from OutputSpec. Test cases that previously
-// exercised the deprecated fields are removed. The 400 UNKNOWN_FIELD
-// behavior is asserted by the API-layer regression test in
-// internal/api/script/handler_generate_request_test.go (see
-// DisallowUnknownFields).
 package script
 
 import (
@@ -24,17 +7,7 @@ import (
 )
 
 // TestHasAnyPostprocessor_AllFlagsAndTrue verifies the Toggle tri-state
-// OR for the 2 surviving ACTIVE postprocessor flags. Each sub-case
-// isolates one flag scenario so a future operator-driven refactor
-// that breaks the OR-included-set invariant surfaces as a targeted
-// test failure.
-//
-// PR-3: literals use canonical Toggle constants — the legacy bool
-// form is accepted by UnmarshalJSON at the wire, but struct
-// literals (Go typed boundary) use the typed constants directly.
-//
-// PR-COMMIT3 (July 2026): the 3 deprecation-registered flags are
-// physically removed; the test surface no longer references them.
+// OR for the active postprocessor flags.
 func TestHasAnyPostprocessor_AllFlagsAndTrue(t *testing.T) {
 	tests := []struct {
 		name string
@@ -85,17 +58,8 @@ func TestHasAnyPostprocessor_AllFlagsAndTrue(t *testing.T) {
 }
 
 // TestOutputSpec_UnmarshalJSON_LegacyBoolPreservesCallerIntent
-// regression-guards the godlike/07 NO-FAKE-AVAILABILITY M1 fix:
-// pre-PR-3 callers sending `{extract_entities: false}` would have
-// silently unmarshaled to ToggleDefault then been safety-defaulted
-// to ToggleEnabled (the very bug PR-3 set out to fix). After PR-3
-// the legacy bool form maps 1:1 to the canonical Toggle tri-state
-// (true → ToggleEnabled, false → ToggleDisabled), preserving
-// explicit caller intent.
-//
-// PR-COMMIT3 (July 2026): the test surface is reduced to the 2
-// surviving ACTIVE flags (ExtractEntities + GenerateMetadata). The
-// 3 deprecation-registered flags are no longer on the struct.
+// regression-guards the legacy bool form mapping to the canonical
+// Toggle tri-state (true → ToggleEnabled, false → ToggleDisabled).
 func TestOutputSpec_UnmarshalJSON_LegacyBoolPreservesCallerIntent(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -166,21 +130,8 @@ func TestOutputSpec_UnmarshalJSON_LegacyBoolPreservesCallerIntent(t *testing.T) 
 }
 
 // TestHasAnyPostprocessor_DisabledSurvivesSafetyDefault locks the
-// godlike/07 NO-FAKE-AVAILABILITY invariant that caller-explicit
-// ToggleDisabled flows through applySafetyDefaults without silent
-// override. Simulates the normalizer's safety-default chain at the
-// spec layer (request-level mirror; the full E2E flow lives in
-// generation_normalizer_test.go).
-//
-// PR-COMMIT3 (July 2026): the applySafetyDefaults override on the
-// deprecated GenerateDocument flag is REMOVED (the field is no
-// longer on the struct). The simulated safety-default block is
-// therefore no-op across the 2 surviving ACTIVE postprocessor
-// flags (ExtractEntities + GenerateMetadata) — preserving the
-// "all-disabled stays disabled" semantic without re-introducing
-// drift. SaveToDB-unconditional still trips safety defaults but
-// is OUT OF SCOPE for HasAnyPostprocessor (intentionally per the
-// OutputSpec godoc).
+// invariant that caller-explicit ToggleDisabled is preserved through
+// applySafetyDefaults without silent override.
 func TestHasAnyPostprocessor_DisabledSurvivesSafetyDefault(t *testing.T) {
 	spec := OutputSpec{
 		ExtractEntities:  ToggleDisabled,

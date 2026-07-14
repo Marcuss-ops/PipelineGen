@@ -43,12 +43,6 @@ package script
 // same CacheKey so the memory gate serves an exact hit. Output
 // flags that don't change the text are deliberately excluded.
 //
-// PR-COMMIT3 (July 2026): the 3 deprecation-registered flags
-// (GenerateVoiceover + GenerateSceneImages + GenerateDocument) are
-// physically removed from OutputSpec; cache-key concerns vanish
-// (the prior goddoc note flagged a "cache-key concerns vanish"
-// invariant that the deletion surfaces locks in).
-//
 // This function is a thin wrapper around the canonical
 // BuildFingerprint. All fingerprint logic lives in fingerprint.go;
 // this wrapper preserves the existing call sites.

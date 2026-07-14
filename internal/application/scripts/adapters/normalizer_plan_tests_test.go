@@ -252,46 +252,18 @@ func TestApplyPresetNilItem(t *testing.T) {
 
 // ── FullMedia preset tests ────────────────────────────────────────────────
 //
-// DRIFT-FIX (July 2026, user directive "nessun campo documentato come
-// deprecato può essere ancora materialmente rispettato"): per the
-// drift-fix GenerateSceneImages + GenerateVoiceover are REMOVED from
-// the full_media preset — both flags are deprecation-registered,
-// no-op fields that the preset MUST NOT materially respect. The
-// full_media preset is now scoping-only for these fields (it
-// preserves caller-set values verbatim and does not promote zero
-// values).
-//
 // Per §6 row 3 of docs/architecture/godlike/14_UNIFIED_SCRIPT_GENERATION.md,
-// `full_media` enables scene_images and voiceover explicitly. The
-// canonical pre-drift implementation applied per-field caller
-// precedence: a caller-set flag is NEVER overwritten; only fields
-// left at zero are filled in. Post-drift, the preset is a no-op for
-// the deprecation-registered flags. Caller precedence wins
-// field-by-field (caller > preset > config > safety) — but the
-// preset contributes zero to the OR-chain for scene_images and
-// voiceover.
+// `full_media` is scoping-only: it preserves caller-set values verbatim and
+// does not promote zero values.
 
-// TestApplyPresetFullMedia_DoesNothingWhenExplicit verifies that when the
-// caller sets BOTH GenerateSceneImages + GenerateVoiceover true, the
-// preset preserves them. Post-drift the preset is effectively
-// pass-through for these fields (caller wins either way).
+// TestApplyPresetFullMedia_DoesNothingWhenExplicit verifies that caller-set
+// fields are preserved.
 
-// TestApplyPresetFullMedia_DoesNotPromoteDeprecatedFlags verifies the
-// drift-fix contract: when the caller leaves BOTH GenerateSceneImages +
-// GenerateVoiceover at zero (ToggleDefault / unset), the preset
-// MUST NOT promote either to ToggleEnabled. Both fields are
-// deprecation-registered no-op fields.
+// TestApplyPresetFullMedia_DoesNotPromoteDeprecatedFlags verifies that unset
+// fields remain unset.
 
-// TestApplyPresetFullMedia_CallerPrecedencePreserved verifies the per-field
-// caller precedence contract post-drift-fix: caller-set fields stay
-// untouched; the preset contributes zero to the OR-chain for the
-// deprecation-registered GenerateSceneImages + GenerateVoiceover.
-//
-// Two scenarios are exercised:
-//   - caller sets GenerateSceneImages=true, leaves voiceover=Default → preset
-//     MUST preserve images=true AND MUST NOT promote voiceover=true.
-//   - caller sets GenerateVoiceover=true, leaves images=Disabled → preset
-//     MUST preserve the caller's explicit opt-out on images AND voiceover=true.
+// TestApplyPresetFullMedia_CallerPrecedencePreserved verifies per-field
+// caller precedence.
 
 // ── Catalog preset test ───────────────────────────────────────────────────
 

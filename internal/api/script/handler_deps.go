@@ -54,15 +54,6 @@ type AutoHarvestService interface {
 //   - Log: structured logger.
 //   - Validator: config-aware payload validator for
 //     POST /api/script/generate.
-//
-// PR-COMMIT3 (July 2026): the legacy `Caps PreflightCaps` field is
-// physically removed. The 3 deprecation-registered output flags
-// (GenerateVoiceover / GenerateSceneImages / GenerateDocument) that
-// the preflight gated are themselves physically removed from
-// OutputSpec (see architecture/deprecations.yaml records flipped
-// to status: removed). The preflight module (postprocessor_preflight.go)
-// + 4 test files + errors_preflight.go are physically deleted alongside
-// the field per godlike/07 no-fake-availability.
 type GenerateDeps struct {
 	Submission generationSubmitter
 	Log        *zap.Logger
