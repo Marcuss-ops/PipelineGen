@@ -109,7 +109,7 @@ type BatchRegisterRequest struct {
 type BatchRegisterResponse struct {
 	OK            bool                       `json:"ok"`
 	Total         int                        `json:"total"`
-	Enqueued      int                        `json:"enqueued"`
+	Enqueued      int                        `json:"enqueued_count"`
 	EnqueueFailed int                        `json:"enqueue_failed"`
 	Results       []sourcing.BatchClipResult `json:"results"`
 }
