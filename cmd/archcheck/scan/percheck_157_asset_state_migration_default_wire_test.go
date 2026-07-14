@@ -33,6 +33,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // projectRootForMigration157Test resolves the project root
@@ -80,7 +81,7 @@ func writeFakeMigration157(t *testing.T, tempDir, defaultLiteral string) {
 // comment in the migration file is residue, not violation).
 func TestScanAssetStateMigration157DefaultWire_CanonicalDiscoveredPasses(t *testing.T) {
 	tempDir := t.TempDir()
-	writeFakeMigration157(t, tempDir, string(StateAssetDiscovered))
+	writeFakeMigration157(t, tempDir, string(asset.StateAssetDiscovered))
 	r := &report.Report{
 		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
 	}
@@ -117,7 +118,7 @@ func TestScanAssetStateMigration157DefaultWire_RenamedSentinelFails(t *testing.T
 			if !containsSubstring(v.Note, "actual DEFAULT: 'RECEIVED'") {
 				t.Errorf("violation note must surface the actual discovered literal; got %q", v.Note)
 			}
-			wantStr := "want: '" + string(StateAssetDiscovered) + "'"
+			wantStr := "want: '" + string(asset.StateAssetDiscovered) + "'"
 			if !containsSubstring(v.Note, wantStr) {
 				t.Errorf("violation note must surface the expected literal; got %q", v.Note)
 			}
