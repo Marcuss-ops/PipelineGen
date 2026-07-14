@@ -49,12 +49,12 @@ var exceptionList = map[string]bool{
 	"internal/application/assets/providers/stock/stockpipeline/stager_adapter.go:157": true,
 	"internal/application/assets/providers/stock/stockpipeline/stager_adapter.go:160": true,
 	"internal/application/assets/texttracks/vtt_parser.go:51":                         true,
-	"internal/application/images/generated_image_ingest.go:57":                      true,
+	"internal/application/images/generated_image_ingest.go:57":                        true,
 	"internal/application/images/storage_download.go:56":                              true,
-	"internal/application/images/visual_validate/visual_validate.go:101":             true,
+	"internal/application/images/visual_validate/visual_validate.go:101":              true,
 	"internal/application/jobs/assets/service.go:99":                                  true,
 	"internal/application/jobs/assets/service.go:311":                                 true,
-	"internal/application/publish_outbox/handler.go:226":                            true,
+	"internal/application/publish_outbox/handler.go:226":                              true,
 	"internal/application/staging/service.go:142":                                     true,
 
 	// ── database/sql import hits (36) ─────────────────────────────────
@@ -99,11 +99,11 @@ var exceptionList = map[string]bool{
 	// import hits discovered after the audit baseline. These are
 	// transitional direct SQL references that will be abstracted
 	// behind typed ports in the SQLite sub-PR.
-	"internal/application/assets/persistence/committer.go:26":                         true,
-	"internal/application/assets/processing/asset_committer.go:15":                    true,
-	"internal/application/assets/texttracks/materializer.go:23":                       true,
-	"internal/application/operations/ports.go:20":                                     true,
-	"internal/application/voiceover/ports_finalization.go:5":                           true,
+	"internal/application/assets/persistence/committer.go:26":      true,
+	"internal/application/assets/processing/asset_committer.go:15": true,
+	"internal/application/assets/texttracks/materializer.go:23":    true,
+	"internal/application/operations/ports.go:20":                  true,
+	"internal/application/voiceover/ports_finalization.go:5":       true,
 }
 
 // disallowedPatterns are the 3 verbatim patterns from the

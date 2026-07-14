@@ -52,6 +52,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	outboxdispatcher "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
@@ -90,26 +91,9 @@ CREATE TABLE IF NOT EXISTS voiceovers (
     error TEXT NOT NULL DEFAULT '',
     strategy TEXT NOT NULL DEFAULT '',
     metadata TEXT NOT NULL DEFAULT '{}',
+    idempotency_key TEXT NOT NULL DEFAULT '',
+    job_id TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS media_assets (
-    id TEXT PRIMARY KEY,
-    source TEXT NOT NULL DEFAULT '',
-    name TEXT NOT NULL DEFAULT '',
-    folder_id TEXT NOT NULL DEFAULT '',
-    folder_path TEXT NOT NULL DEFAULT '',
-    filename TEXT NOT NULL DEFAULT '',
-    media_type TEXT NOT NULL DEFAULT '',
-    local_path TEXT NOT NULL DEFAULT '',
-    drive_file_id TEXT NOT NULL DEFAULT '',
-    drive_link TEXT NOT NULL DEFAULT '',
-    download_link TEXT NOT NULL DEFAULT '',
-    file_hash TEXT NOT NULL DEFAULT '',
-    language TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT '',
-    metadata_json TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -148,6 +132,13 @@ func qdrantE2EDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(qdrantE2ESchema); err != nil {
 		t.Fatalf("create qdrant E2E schema: %v", err)
+	}
+	// media_assets is created from the canonical constant so the
+	// lifecycle service's UPSERT projection stays in lockstep with
+	// the production schema (avoids drift when migrations add columns
+	// such as lifecycle_state or asset_version).
+	if _, err := db.Exec(storage.CanonicalMediaAssetsSchema); err != nil {
+		t.Fatalf("create canonical media_assets schema: %v", err)
 	}
 	return db
 }

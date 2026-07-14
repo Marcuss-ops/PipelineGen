@@ -58,7 +58,7 @@ INSERT INTO asset_text_tracks (
     confidence, status,
     created_at, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, datetime('now'), datetime('now'))
-ON CONFLICT(asset_id, language_code, text_kind) DO UPDATE SET
+ON CONFLICT(asset_id, language_code, text_kind) WHERE is_current=1 DO UPDATE SET
     text_content         = excluded.text_content,
     source_type          = excluded.source_type,
     source_language_code = excluded.source_language_code,

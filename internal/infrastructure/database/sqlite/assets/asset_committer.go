@@ -156,7 +156,7 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 	// 2. UPSERT media_assets.
 	indexState := req.IndexState
 	if indexState == "" {
-		indexState = "INDEXING_PENDING"
+		indexState = "DISCOVERED"
 	}
 	name := req.Name
 	if name == "" {
@@ -251,6 +251,7 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 			return persistence.CommitResult{}, fmt.Errorf("asset committer: enqueue outbox event: %w", err)
 		}
 		result.OutboxInserted = enqResult.Inserted
+		result.OutboxExistingStatus = enqResult.ExistingStatus
 	}
 
 	if c.log != nil {

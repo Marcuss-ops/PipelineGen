@@ -489,13 +489,13 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 		)
 		require.NoError(t, err, "Stock media_assets INSERT must succeed")
 
-		// Verify Stock index_state = INDEXING_PENDING.
+		// Verify Stock index_state = DISCOVERED.
 		var stockIndexState string
 		require.NoError(t, fx.DB.QueryRow(
 			`SELECT index_state FROM media_assets WHERE id = ?`, stockReq.AssetID,
 		).Scan(&stockIndexState))
-		require.Equal(t, "INDEXING_PENDING", stockIndexState,
-			"Stock media_assets.index_state must be INDEXING_PENDING at insert time")
+		require.Equal(t, "DISCOVERED", stockIndexState,
+			"Stock media_assets.index_state must be DISCOVERED at insert time")
 
 		// Emit outbox event for Stock (mirrors AssetTxFinalizer pattern).
 		stockEventKey := stockIdentity.IndexEventKey
@@ -636,7 +636,7 @@ func buildStockPersistRequest(
 		FolderID:       "folder-e2e-stock",
 		FolderPath:     "stock/e2e/" + dest.LocationInput.Category,
 		LifecycleState: "PUBLISHED",
-		IndexState:     "INDEXING_PENDING",
+		IndexState:     "DISCOVERED",
 		SearchText:     "", // stock search text composed by SearchTextBuilder
 	}
 }

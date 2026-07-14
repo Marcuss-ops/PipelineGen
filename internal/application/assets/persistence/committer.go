@@ -179,9 +179,10 @@ type CommitRequest struct {
 
 // CommitResult carries the outcome of a successful commit.
 type CommitResult struct {
-	AssetRowsAffected int64
-	OutboxEventKey    string
-	OutboxInserted    bool
+	AssetRowsAffected    int64
+	OutboxEventKey       string
+	OutboxInserted       bool
+	OutboxExistingStatus string // status of the existing outbox row when OutboxInserted=false; empty otherwise
 }
 
 // AssetCommitRequest is the canonical alias of CommitRequest, exposed at

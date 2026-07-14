@@ -6,7 +6,7 @@
 //
 //  1. func (s *AssetTxFinalizer) upsertMediaAsset — writes the
 //     canonical media_assets row inside the caller's tx. The INSERT
-//     path sets lifecycle_state='PUBLISHED' + index_state='INDEXING_PENDING'
+//     path sets lifecycle_state='PUBLISHED' + index_state='DISCOVERED'
 //     (godlike/06 SSOT canonical projection-time hint, mirrored
 //     across PR-008 wire shape + PR-009 DB column). The ON CONFLICT
 //     DO UPDATE path INTENTIONALLY OMITS the index_state column —
@@ -141,7 +141,7 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 			file_hash, drive_file_id, drive_link, download_link,
 			folder_id, folder_path, lifecycle_state, index_state,
 			metadata_json, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PUBLISHED', 'INDEXING_PENDING', ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PUBLISHED', 'DISCOVERED', ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		filename = excluded.filename,
 		media_type = excluded.media_type,
@@ -157,7 +157,7 @@ func (s *AssetTxFinalizer) upsertMediaAsset(
 		-- NOT clobber a state the clipindexer has already transitioned
 		-- (INDEXING / INDEXED / INDEX_FAILED). Only the clipindexer
 		-- owns the index_state column after the initial INSERT. The
-		-- fresh INSERT path still sets 'INDEXING_PENDING' so the
+		-- fresh INSERT path still sets 'DISCOVERED' so the
 		-- clipindexer downstream has a non-DISCOVERED state to advance
 		-- from; the DO UPDATE path leaves any prior transition intact.
 		metadata_json = excluded.metadata_json,

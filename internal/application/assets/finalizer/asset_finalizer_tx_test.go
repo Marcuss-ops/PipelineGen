@@ -41,7 +41,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
 			-- PR-009 (July 2026): E2E wiring finale — index_state column
 			-- added to mirror migration 094. The finalizer's spine write
-			-- sets it to 'INDEXING_PENDING' literally (matching the wire
+			-- sets it to 'DISCOVERED' literally (matching the wire
 			-- shape from PR-008); the IndexingHandler downstream
 			-- overwrites to 'INDEXED' after Qdrant upsert.
 			index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
@@ -459,7 +459,7 @@ func TestAssetTxFinalizer_RollbackOnError(t *testing.T) {
 // TestAssetTxFinalizer_IndexStatePendingAtInsert pins the godlike/07
 // no-fake-availability contract for the E2E wiring finale (PR-009):
 // the finalizer's spine write MUST set media_assets.index_state to
-// the literal 'INDEXING_PENDING' on fresh INSERT, matching the wire
+// the literal 'DISCOVERED' on fresh INSERT, matching the wire
 // shape from PR-008 (StockRunMetadata.IndexingStatus). The
 // IndexingHandler downstream overwrites to 'INDEXED' after a
 // successful Qdrant upsert.
@@ -499,9 +499,9 @@ func TestAssetTxFinalizer_IndexStatePendingAtInsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query index_state: %v", err)
 	}
-	if indexState != "INDEXING_PENDING" {
-		t.Errorf("media_assets.index_state = %q, want %q (E2E wiring finale: DB column must match the PR-008 wire shape)",
-			indexState, "INDEXING_PENDING")
+	if indexState != "DISCOVERED" {
+		t.Errorf("media_assets.index_state = %q, want %q (E2E wiring finale: DB column must use the canonical initial state)",
+			indexState, "DISCOVERED")
 	}
 
 	// Re-finalize (ON CONFLICT path): the index_state must NOT be

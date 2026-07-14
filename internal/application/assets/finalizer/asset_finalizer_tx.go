@@ -408,7 +408,7 @@ func (s *AssetTxFinalizer) buildCommitRequest(artifact finalization.PublishedArt
 		ContentHash:    artifact.SHA256,
 		Description:    artifact.Description,
 		LifecycleState: "PUBLISHED",
-		IndexState:     "INDEXING_PENDING",
+		IndexState:     "DISCOVERED",
 		FolderID:       artifact.Location.FolderID,
 		FolderPath:     artifact.Location.FolderPath,
 		Metadata:       metadata,
