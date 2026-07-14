@@ -9,6 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
 func runBackfillMissing(args []string) error {
@@ -33,8 +34,14 @@ func runBackfillMissing(args []string) error {
 	}
 	defer coreCleanup()
 
-	if root.Process.ClipIndexerService == nil {
-		return fmt.Errorf("clip indexer service is not initialized or configured")
+	if root.DB == nil || root.DB.DB == nil {
+		return fmt.Errorf("database is not initialized or configured")
+	}
+
+	outboxAdapter := &outboxRepairAdapter{
+		db:            root.DB.DB,
+		outboxRepo:    outboxevents.NewRepository(root.DB.DB),
+		schemaVersion: outboxevents.ReindexEnvelopeV1Schema,
 	}
 
 	ctx := cmdContext()
@@ -50,8 +57,9 @@ func runBackfillMissing(args []string) error {
 
 	// 1. Query all assets that don't have embeddings
 	query := `
-		SELECT id, source, name 
-		FROM media_assets 
+		SELECT id, source, name,
+			COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), file_hash, '') AS content_hash
+		FROM media_assets
 		WHERE (embedding_json IS NULL OR embedding_json = '[]' OR embedding_json = '')
 	`
 	var queryArgs []any
@@ -76,20 +84,26 @@ func runBackfillMissing(args []string) error {
 	defer rows.Close()
 
 	type assetItem struct {
-		ID     string
-		Source string
-		Name   string
+		ID          string
+		Source      string
+		Name        string
+		ContentHash string
 	}
 
 	var items []assetItem
 	for rows.Next() {
 		var item assetItem
-		var nameOpt *string
-		if err := rows.Scan(&item.ID, &item.Source, &nameOpt); err != nil {
+		var nameOpt, chOpt *string
+		if err := rows.Scan(&item.ID, &item.Source, &nameOpt, &chOpt); err != nil {
 			return fmt.Errorf("failed to scan row: %w", err)
 		}
 		if nameOpt != nil {
 			item.Name = *nameOpt
+		}
+		if chOpt != nil && *chOpt != "" {
+			item.ContentHash = *chOpt
+		} else {
+			item.ContentHash = "legacy_no_hash_" + item.ID
 		}
 		items = append(items, item)
 	}
@@ -120,20 +134,20 @@ func runBackfillMissing(args []string) error {
 			fmt.Printf("Progress: %d/%d assets processed...\n", i+1, total)
 		}
 
-		// Run IndexClip. This computes the text embedding (sentence transformer)
-		// and pushes the point to Qdrant.
+		// Enqueue an asset.index.requested event with force=true so the
+		// worker re-indexes the asset through the canonical outbox path.
 		start := time.Now()
-		err := root.Process.ClipIndexerService.IndexClip(ctx, item.ID)
+		err := outboxAdapter.EnqueueReindex(ctx, item.ID, item.ContentHash, true)
 		if err != nil {
 			failedCount++
-			log.Warn("Failed to index asset", zap.String("id", item.ID), zap.Error(err))
+			log.Warn("Failed to enqueue reindex", zap.String("id", item.ID), zap.Error(err))
 			if *verbose {
 				fmt.Printf("  ❌ Failed: %v\n", err)
 			}
 		} else {
 			successCount++
 			if *verbose {
-				fmt.Printf("  ✅ Success (took %v)\n", time.Since(start))
+				fmt.Printf("  ✅ Enqueued (took %v)\n", time.Since(start))
 			}
 		}
 	}
