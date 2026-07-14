@@ -249,8 +249,11 @@ func TestHandler_Handle_RejectsMissingFields(t *testing.T) {
 			tc.mutate(&p)
 			// SourceURI must be valid for jobs that don't test
 			// the missing-URI gate, so supply a real one for
-			// the JobID / Mime removal subtests.
-			if p.SourceURI == "" {
+			// the JobID / Mime removal subtests. Do NOT supply
+			// a SourceURI for the missing-SourceURI case, or the
+			// validation gate is bypassed and the test reaches
+			// Store.Stage with a nil receipt stub.
+			if p.SourceURI == "" && tc.name != "missing SourceURI" {
 				p.SourceURI = writeSourceFile(t, "x")
 			}
 			body, _ := json.Marshal(p)

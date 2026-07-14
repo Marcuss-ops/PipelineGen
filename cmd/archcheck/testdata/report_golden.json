@@ -92,34 +92,29 @@
     ]
   },
   "summary": {
-    "total_violations": 505,
+    "total_violations": 499,
     "by_reason": {
-      "agent_playbook_doc_missing": 1,
-      "ci_gates_doc_missing": 1,
       "constructor_deps": 9,
-      "data_ownership_doc_missing": 1,
       "kernel_split_hint": 1,
-      "legacy_policy_doc_missing": 1,
       "percheck_api_module_deps_max_8": 2,
       "percheck_asset_committer_event_ssot": 7,
       "percheck_drive_access_ssot": 13,
-      "percheck_input_immutability": 139,
+      "percheck_input_immutability": 134,
       "percheck_metadata_registry": 30,
       "percheck_monitor_infra_import": 3,
-      "percheck_no_domain_job_compatibility_aliases": 233,
+      "percheck_no_domain_job_compatibility_aliases": 236,
       "percheck_root_override_ban": 2,
       "percheck_search_aggregator_singleton": 1,
       "percheck_sourcestager_transformer": 7,
       "percheck_type_redecl": 27,
-      "pkg_size": 8,
-      "removal_doc_missing": 1,
+      "pkg_size": 9,
       "struct_deps": 14,
       "unknown_internal_root": 4
     },
     "by_severity": {
-      "error": 295,
+      "error": 298,
       "info": 1,
-      "warn": 209
+      "warn": 200
     }
   },
   "violations": [
@@ -157,37 +152,6 @@
       "rule": "unknown_internal_root",
       "severity": "warn",
       "note": "first-level internal/ dir is not declared in legacy or target roots"
-    },
-    {
-      "file": "docs/architecture/godlike/06_DATA_AND_CONFIG_OWNERSHIP.md",
-      "matched_rule": "data_ownership_doc",
-      "rule": "data_ownership_doc_missing",
-      "severity": "warn",
-      "note": "canonical data/config ownership document is missing or unreadable"
-    },
-    {
-      "file": "docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md",
-      "matched_rule": "legacy_policy_doc",
-      "rule": "legacy_policy_doc_missing",
-      "severity": "warn"
-    },
-    {
-      "file": "docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md",
-      "matched_rule": "ci_gates_doc",
-      "rule": "ci_gates_doc_missing",
-      "severity": "warn"
-    },
-    {
-      "file": "docs/architecture/godlike/11_AGENT_EXECUTION_PLAYBOOK.md",
-      "matched_rule": "agent_playbook_doc",
-      "rule": "agent_playbook_doc_missing",
-      "severity": "warn"
-    },
-    {
-      "file": "docs/architecture/godlike/13_FEATURE_REMOVAL_CHECKLIST.md",
-      "matched_rule": "removal_doc",
-      "rule": "removal_doc_missing",
-      "severity": "warn"
     },
     {
       "file": "internal/api/assets/clips/bulk_upload_transport.go",
@@ -1285,7 +1249,7 @@
     },
     {
       "file": "internal/application/images/metadata_service.go",
-      "line": 154,
+      "line": 139,
       "matched_rule": "input_struct_mutation",
       "rule": "percheck_input_immutability",
       "severity": "warn",
@@ -1301,7 +1265,7 @@
     },
     {
       "file": "internal/application/images/storage_ingest_direct.go",
-      "line": 119,
+      "line": 118,
       "matched_rule": "root_override_forward_prevention_gate",
       "rule": "percheck_root_override_ban",
       "severity": "error",
@@ -1539,7 +1503,7 @@
     },
     {
       "file": "internal/application/voiceover/stages.go",
-      "line": 98,
+      "line": 102,
       "matched_rule": "input_struct_mutation",
       "rule": "percheck_input_immutability",
       "severity": "warn",
@@ -1547,47 +1511,7 @@
     },
     {
       "file": "internal/application/voiceover/stages.go",
-      "line": 99,
-      "matched_rule": "input_struct_mutation",
-      "rule": "percheck_input_immutability",
-      "severity": "warn",
-      "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/application/voiceover/types_helpers.go",
-      "line": 46,
-      "matched_rule": "input_struct_mutation",
-      "rule": "percheck_input_immutability",
-      "severity": "warn",
-      "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/application/voiceover/types_helpers.go",
-      "line": 47,
-      "matched_rule": "input_struct_mutation",
-      "rule": "percheck_input_immutability",
-      "severity": "warn",
-      "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/application/voiceover/types_helpers.go",
-      "line": 54,
-      "matched_rule": "input_struct_mutation",
-      "rule": "percheck_input_immutability",
-      "severity": "warn",
-      "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/application/voiceover/types_helpers.go",
-      "line": 59,
-      "matched_rule": "input_struct_mutation",
-      "rule": "percheck_input_immutability",
-      "severity": "warn",
-      "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/application/voiceover/types_helpers.go",
-      "line": 63,
+      "line": 103,
       "matched_rule": "input_struct_mutation",
       "rule": "percheck_input_immutability",
       "severity": "warn",
@@ -2334,7 +2258,7 @@
     {
       "package": "app/build_bundles_artlist.go",
       "file": "app/build_bundles_artlist.go",
-      "line": 65,
+      "line": 22,
       "matched_rule": "domain_job_compatibility_aliases:production_import_attempt",
       "rule": "percheck_no_domain_job_compatibility_aliases",
       "severity": "error",
@@ -2460,7 +2384,7 @@
     {
       "package": "app/worker_registry_e2e_test.go",
       "file": "app/worker_registry_e2e_test.go",
-      "line": 33,
+      "line": 28,
       "matched_rule": "domain_job_compatibility_aliases:production_import_attempt",
       "rule": "percheck_no_domain_job_compatibility_aliases",
       "severity": "error",
@@ -3808,6 +3732,15 @@
       "note": "forbidden import of the deleted internal/domain/job alias layer (commit 8, PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB, July 2026). The package carried ONLY back-compat type aliases (Job/Status/Event/Filter/Store) shadowing the canonical internal/kernel/job surface. Per godlike/06 SSOT the kernel is the SOLE owner of job-mechanism types and does NOT depend on feature-specific job names (job.TypeScriptGenerate / images.JobGenerate / job.TypeVoiceoverGenerate / job.TypeYouTubeClipExtract / documents.JobGenerate / media.JobReindex — those live in their proprietary owning packages). Forward-prevention gate: percheck_no_domain_job_compatibility_aliases. The kernel surface is the canonical source-of-truth; the alias layer was deleted because it was a dual-source-of-truth violation. Re-introducing the layer would silently reintroduce the godlike/07 NO-FAKE-AVAILABILITY regression. | snippet: \tjobs \"github.com/Marcuss-ops/PipelineGen/internal/domain/job\""
     },
     {
+      "package": "archcheck/scan/percheck_bare_job_x_requires_domain_job_import.go",
+      "file": "archcheck/scan/percheck_bare_job_x_requires_domain_job_import.go",
+      "line": 84,
+      "matched_rule": "domain_job_compatibility_aliases:production_import_attempt",
+      "rule": "percheck_no_domain_job_compatibility_aliases",
+      "severity": "error",
+      "note": "forbidden import of the deleted internal/domain/job alias layer (commit 8, PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB, July 2026). The package carried ONLY back-compat type aliases (Job/Status/Event/Filter/Store) shadowing the canonical internal/kernel/job surface. Per godlike/06 SSOT the kernel is the SOLE owner of job-mechanism types and does NOT depend on feature-specific job names (job.TypeScriptGenerate / images.JobGenerate / job.TypeVoiceoverGenerate / job.TypeYouTubeClipExtract / documents.JobGenerate / media.JobReindex — those live in their proprietary owning packages). Forward-prevention gate: percheck_no_domain_job_compatibility_aliases. The kernel surface is the canonical source-of-truth; the alias layer was deleted because it was a dual-source-of-truth violation. Re-introducing the layer would silently reintroduce the godlike/07 NO-FAKE-AVAILABILITY regression. | snippet: \tcanonicalDomainJobPathBare = \"github.com/Marcuss-ops/PipelineGen/internal/domain/job\""
+    },
+    {
       "package": "archcheck/scan/percheck_no_domain_job_compatibility_aliases.go",
       "file": "archcheck/scan/percheck_no_domain_job_compatibility_aliases.go",
       "line": 59,
@@ -3817,12 +3750,38 @@
       "note": "forbidden import of the deleted internal/domain/job alias layer (commit 8, PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB, July 2026). The package carried ONLY back-compat type aliases (Job/Status/Event/Filter/Store) shadowing the canonical internal/kernel/job surface. Per godlike/06 SSOT the kernel is the SOLE owner of job-mechanism types and does NOT depend on feature-specific job names (job.TypeScriptGenerate / images.JobGenerate / job.TypeVoiceoverGenerate / job.TypeYouTubeClipExtract / documents.JobGenerate / media.JobReindex — those live in their proprietary owning packages). Forward-prevention gate: percheck_no_domain_job_compatibility_aliases. The kernel surface is the canonical source-of-truth; the alias layer was deleted because it was a dual-source-of-truth violation. Re-introducing the layer would silently reintroduce the godlike/07 NO-FAKE-AVAILABILITY regression. | snippet: \tdomainJobBannedPath = \"github.com/Marcuss-ops/PipelineGen/internal/domain/job\""
     },
     {
+      "package": "archcheck/scan/percheck_no_duplicate_job_alias.go",
+      "file": "archcheck/scan/percheck_no_duplicate_job_alias.go",
+      "line": 61,
+      "matched_rule": "domain_job_compatibility_aliases:production_import_attempt",
+      "rule": "percheck_no_domain_job_compatibility_aliases",
+      "severity": "error",
+      "note": "forbidden import of the deleted internal/domain/job alias layer (commit 8, PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB, July 2026). The package carried ONLY back-compat type aliases (Job/Status/Event/Filter/Store) shadowing the canonical internal/kernel/job surface. Per godlike/06 SSOT the kernel is the SOLE owner of job-mechanism types and does NOT depend on feature-specific job names (job.TypeScriptGenerate / images.JobGenerate / job.TypeVoiceoverGenerate / job.TypeYouTubeClipExtract / documents.JobGenerate / media.JobReindex — those live in their proprietary owning packages). Forward-prevention gate: percheck_no_domain_job_compatibility_aliases. The kernel surface is the canonical source-of-truth; the alias layer was deleted because it was a dual-source-of-truth violation. Re-introducing the layer would silently reintroduce the godlike/07 NO-FAKE-AVAILABILITY regression. | snippet: \tcanonicalDomainJobPath = \"github.com/Marcuss-ops/PipelineGen/internal/domain/job\""
+    },
+    {
       "package": "cmd/admin",
       "actual_count": 64,
       "allowed_count": 40,
       "matched_rule": "max_files_per_package",
       "rule": "pkg_size",
       "severity": "warn"
+    },
+    {
+      "package": "cmd/archcheck/scan",
+      "actual_count": 43,
+      "allowed_count": 40,
+      "matched_rule": "max_files_per_package",
+      "rule": "pkg_size",
+      "severity": "warn"
+    },
+    {
+      "package": "domain/job/errors_test.go",
+      "file": "domain/job/errors_test.go",
+      "line": 17,
+      "matched_rule": "domain_job_compatibility_aliases:production_import_attempt",
+      "rule": "percheck_no_domain_job_compatibility_aliases",
+      "severity": "error",
+      "note": "forbidden import of the deleted internal/domain/job alias layer (commit 8, PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB, July 2026). The package carried ONLY back-compat type aliases (Job/Status/Event/Filter/Store) shadowing the canonical internal/kernel/job surface. Per godlike/06 SSOT the kernel is the SOLE owner of job-mechanism types and does NOT depend on feature-specific job names (job.TypeScriptGenerate / images.JobGenerate / job.TypeVoiceoverGenerate / job.TypeYouTubeClipExtract / documents.JobGenerate / media.JobReindex — those live in their proprietary owning packages). Forward-prevention gate: percheck_no_domain_job_compatibility_aliases. The kernel surface is the canonical source-of-truth; the alias layer was deleted because it was a dual-source-of-truth violation. Re-introducing the layer would silently reintroduce the godlike/07 NO-FAKE-AVAILABILITY regression. | snippet: \tdomjob \"github.com/Marcuss-ops/PipelineGen/internal/domain/job\""
     },
     {
       "package": "domain/remote/complete_artifacts.go",
@@ -4486,6 +4445,7 @@
     "percheck_review_status_canonical_4 canonical-4-count: 22 comment-only reference(s) in internal/domain/asset/rights_state.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_binder_scene_field_writes binder-scene-writes: 1 comment-only reference(s) in internal/application/scripts/scene/synthesizer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_binder_scene_field_writes binder-scene-writes: 1 comment-only reference(s) in internal/application/scripts/scene_orchestrator.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
+    "domain_job_compatibility_aliases_comment_only domain-job-comments: 1 comment-only reference(s) in archcheck/scan/percheck_no_duplicate_job_alias.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_asset_committer_event_ssot index-event-comments: 1 comment-only reference(s) in internal/application/jobs/outbox/indexing.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_asset_committer_event_ssot index-event-comments: 1 comment-only reference(s) in internal/infrastructure/database/sqlite/assets/clip_atomic_writer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
     "percheck_asset_committer_event_ssot index-event-comments: 1 comment-only reference(s) in internal/infrastructure/database/sqlite/assets/clip_metadata_writer.go (descriptive prose; non-fatal per godlike/07 no-fake-availability)",
