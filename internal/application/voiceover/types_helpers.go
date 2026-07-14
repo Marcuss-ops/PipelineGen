@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/immutability"
 )
 
 // ── PR-VO-AUDIT-P01 helpers ─────────────────────────────────────────
@@ -42,28 +43,61 @@ func (i BatchItem) isSuccessful() bool {
 	return strings.TrimSpace(string(i.Status)) == "completed" && strings.TrimSpace(i.Error) == ""
 }
 
-func normalizeBatchRequest(req *BatchRequest) *BatchRequest {
-	if req.FilenameTemplate == "" {
-		req.FilenameTemplate = "{slug}_{lang}.mp3"
-	}
-	// PR-VO-A2: route through the canonical asset.PipelineStrategy normaliser so
-	// process.go's `req.Strategy == "replace"` branch matches the single source of
-	// truth for the three production strategies (verify / skip / replace). Unknown
-	// inputs collapse to "verify" — the read-through-cache default — which is the
-	// historically documented "no force" behaviour of NormalizeStrategy.
-	req.Strategy = string(asset.NormalizeStrategy(req.Strategy, false))
-	if len(req.Languages) == 0 {
-		// PR-VO-TYPED-PRIMITIVES (July 2026): untyped string literal
-		// implicitly converts to the Language named type — wire shape
-		// unchanged.
-		req.Languages = []Language{"en"}
-	}
-	if len(req.VoiceOverrides) == 0 {
-		if hydrated := voiceOverridesFromMetadata(req.Metadata); len(hydrated) > 0 {
-			req.VoiceOverrides = hydrated
+// normalizeBatchRequest performs the canonical pre-flight normalisation
+// for voiceover batch handlers, returning a fresh BatchRequest value.
+// The previous implementation mutated `req_in.X = ...` in place, which
+// made the typed copy-on-write primitive pkg/immutability.CloneWith[T]
+// inspect-call impossible without a pointer-to-pointer round-trip.
+//
+// This rewrite swaps the signature from `*BatchRequest -> *BatchRequest`
+// to `BatchRequest -> BatchRequest` (value semantics) — matching the
+// canonical RunTagRequest pattern at artlist/run_service.go and keeping
+// the migration honest: the function now returns the NORMALIZED value,
+// and callers receive the clone directly.
+//
+// SHALLOW-CLONE SEMANTICS (see pkg/immutability/copy.go godlike/06
+// SSOT docblock): mutation must be REPLACEMENT (`r.Languages =
+// []Language{...}` / `r.VoiceOverrides = map[string]string{...}`)
+// rather than index/deref, otherwise the changes bleed through to
+// the shared slice/map backing storage. The caller's original
+// BatchRequest value is byte-equivalent to its pre-call value for
+// all primitive fields; composite fields are freshly bound.
+func normalizeBatchRequest(req_in BatchRequest) BatchRequest {
+	// INPUT-IMMUTABILITY-COPY-ON-WRITE-MIGRATION: see architecture/
+	// deprecations.yaml for the godlike/07 audit-pin + the godlike
+	// forward-pointer entry.
+	cloned := immutability.CloneWith(req_in, func(r *BatchRequest) {
+		if r.FilenameTemplate == "" {
+			r.FilenameTemplate = "{slug}_{lang}.mp3"
 		}
-	}
-	return req
+		// PR-VO-A2: route through the canonical asset.PipelineStrategy
+		// normaliser so process.go's `req_in.Strategy == "replace"`
+		// branch matches the single source of truth for the three
+		// production strategies (verify / skip / replace). Unknown
+		// inputs collapse to "verify" — the read-through-cache
+		// default — which is the historically documented "no force"
+		// behaviour of NormalizeStrategy.
+		r.Strategy = string(asset.NormalizeStrategy(r.Strategy, false))
+		if len(r.Languages) == 0 {
+			// PR-VO-TYPED-PRIMITIVES (July 2026): untyped string
+			// literal implicitly converts to the Language named
+			// type — wire shape unchanged.
+			r.Languages = []Language{"en"}
+		}
+		if len(r.VoiceOverrides) == 0 {
+			if hydrated := voiceOverridesFromMetadata(r.Metadata); len(hydrated) > 0 {
+				// REPLACEMENT (not index mutation): slice/map backing
+				// storage is shared between cloned and original under
+				// pkg/immutability.CloneWith SHALLOW-CLONE semantics.
+				// See pkg/immutability/copy.go godlike/06 SSOT docblock.
+				r.VoiceOverrides = map[string]string{}
+				for k, v := range hydrated {
+					r.VoiceOverrides[k] = v
+				}
+			}
+		}
+	})
+	return cloned
 }
 
 func voiceOverridesFromMetadata(metadata map[string]any) map[string]string {
