@@ -45,7 +45,6 @@ var _ step10MetricsRecorderShape = (*Step10MetricsAdapter)(nil)
 // name + the failure_code label partition against the default
 // Prometheus registry.
 func TestStep10FailAfterClipTotal_Registered(t *testing.T) {
-	t.Parallel()
 
 	// Mint a fresh metric on the default registry is a no-op (the
 	// counter is already registered at package init). Instead, we
@@ -75,7 +74,6 @@ func TestStep10FailAfterClipTotal_Registered(t *testing.T) {
 // adapter contract: one call → counter += 1, with the failure_code
 // label matching the input.
 func TestStep10MetricsAdapter_IncStep10FailAfterClip_HappyPath(t *testing.T) {
-	t.Parallel()
 
 	const failureCode = "metadata_failed"
 
@@ -99,7 +97,6 @@ func TestStep10MetricsAdapter_IncStep10FailAfterClip_HappyPath(t *testing.T) {
 // canonical invariant: each distinct failure_code label produces a
 // distinct time series (no cross-label contamination).
 func TestStep10MetricsAdapter_LabelCardinalityIsPartitioned(t *testing.T) {
-	t.Parallel()
 
 	const codeA = "metadata_failed"
 	const codeB = "video_processing_failed"
