@@ -18,7 +18,6 @@ import (
 	"strings"
 
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -48,21 +47,25 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	}
 
 	// 2. Try to proxy from Google Drive
+	//
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): the proxy-from-Drive path used to
+	// type-assert h.driveAdmin to drive.Reader (both interfaces are
+	// satisfied by *drive.Uploader). That type-assertion is impossible
+	// post-Plan-A because h.driveAdmin is now the application-typed
+	// clips.ClipDriveUploaderPort whose GetFileMeta returns
+	// *ClipDriveFileMetaDTO (NOT *drive.FileMeta). Call the typed-port
+	// methods directly — the drive-side delegation lives in
+	// internal/app/clips_adapters_drive.go::clipsDriveAdapter which
+	// already routes GetFileMeta/DownloadFile through the underlying
+	// drive.Reader surface (godlike/06 SSOT: typed-port owns the
+	// seam, infrastructure Uploader stays composition-root-only).
 	if result.Source == appclips.DownloadSourceDrive && h.driveAdmin != nil {
-		// GetFileMeta + DownloadFile are drive.Reader methods;
-		// type-assert from drive.Admin (both satisfied by *drive.Uploader).
-		reader, ok := h.driveAdmin.(drive.Reader)
-		if !ok {
-			apiutil.InternalError(c, fmt.Errorf("drive admin does not support file downloads (Reader interface not satisfied)"))
-			return
-		}
-
 		h.log.Info("local file missing, proxying from drive",
 			zap.String("clip_id", clipID),
 			zap.String("drive_id", result.DriveID))
 
 		// Check mime type first
-		meta, metaErr := reader.GetFileMeta(c.Request.Context(), result.DriveID)
+		meta, metaErr := h.driveAdmin.GetFileMeta(c.Request.Context(), result.DriveID)
 		if metaErr != nil {
 			h.log.Error("failed to get drive file metadata", zap.Error(metaErr), zap.String("id", result.DriveID))
 			apiutil.InternalError(c, fmt.Errorf("failed to reach drive: %w", metaErr))
@@ -76,7 +79,7 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 			return
 		}
 
-		body, contentType, dlErr := reader.DownloadFile(c.Request.Context(), result.DriveID)
+		body, contentType, dlErr := h.driveAdmin.DownloadFile(c.Request.Context(), result.DriveID)
 		if dlErr != nil {
 			h.log.Error("failed to download from drive", zap.Error(dlErr), zap.String("id", result.DriveID))
 			apiutil.InternalError(c, fmt.Errorf("failed to stream from drive: %w", dlErr))

@@ -218,10 +218,14 @@ func seedClipRowWithDriveFileID(t *testing.T, db *sql.DB, id, lifecycleState, fi
 
 // newTestService wires a DeletionService against an in-memory SQLite +
 // the recording dispatcher mock. Fields that aren't exercised in the
-// routing test (voiceoverRepo, imagesRepo, driveUploader (deprecated),
-// assetTreeSvc, assetIndexSvc) are nil; DeleteClip's branch-selection
-// reaches the dispatcher path for the "artlist" source where
-// canonical is "clips" (ClipsRepository branch).
+// routing test (voiceoverRepo, imagesRepo, assetTreeSvc, assetIndexSvc)
+// are nil; DeleteClip's branch-selection reaches the dispatcher path
+// for the "artlist" source where canonical is "clips" (ClipsRepository
+// branch).
+//
+// PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is REMOVED
+// from the canonical ctor (12-arg signature instead of 13; the
+// driveUploader field has been retired from DeletionService entirely).
 //
 // driveGoneChecker + completionTxRunner are nil by default for
 // the Blocco 3.1 commit 4/3 tests (the DeleteClip path doesn't reach
@@ -234,7 +238,6 @@ func newTestService(t *testing.T, db *sql.DB, dispatcher deletion.DispatcherPort
 	return deletion.NewDeletionService(
 		clipsRepo, clipsRepo, clipsRepo,
 		nil, nil, // voiceoverRepo, imagesRepo
-		nil, // driveUploader (deprecated; ignored post-Blocco 3.1 commit 4/3)
 		nil, // assetTreeSvc
 		nil, // assetIndexSvc
 		dispatcher,
@@ -247,6 +250,8 @@ func newTestService(t *testing.T, db *sql.DB, dispatcher deletion.DispatcherPort
 // newTestServiceForComplete wires a DeletionService for the COMPLETED-step
 // tests (Blocco 3.1 commit 3/3). Includes the recorder-mock ports that
 // CompleteAsset reaches into.
+//
+// PR-WAVE-1-DRIVE-SSOT (July 2026): driveUploader arg REMOVED.
 func newTestServiceForComplete(
 	t *testing.T,
 	db *sql.DB,
@@ -259,7 +264,6 @@ func newTestServiceForComplete(
 	return deletion.NewDeletionService(
 		clipsRepo, clipsRepo, clipsRepo,
 		nil, nil, // voiceoverRepo, imagesRepo
-		nil, // driveUploader
 		nil, // assetTreeSvc
 		nil, // assetIndexSvc
 		dispatcher,
@@ -337,6 +341,9 @@ func TestDeletionService_DeleteClip_PropagatesDispatcherError(t *testing.T) {
 	}
 }
 
+// TestDeletionService_DeleteClip_NilDispatcherFailsFast — PR-WAVE-1-DRIVE-SSOT
+// (July 2026): the driveUploader arg REMOVED from the canonical ctor;
+// now passes 5 leading nils for the 5 repository positions (was 6).
 func TestDeletionService_DeleteClip_NilDispatcherFailsFast(t *testing.T) {
 	db := memoryDB(t)
 	minimalMediaAssetsFixture(t, db)
@@ -344,7 +351,7 @@ func TestDeletionService_DeleteClip_NilDispatcherFailsFast(t *testing.T) {
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
 	svc := deletion.NewDeletionService(
 		clipsRepo, clipsRepo, clipsRepo,
-		nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, // voiceoverRepo, imagesRepo, assetTreeSvc, assetIndexSvc
 		nil, // dispatcher nil — must fail-fast with a wiring-error
 		nil, // driveGoneChecker — CompleteAsset not exercised here
 		nil, // completionTxRunner — CompleteAsset not exercised here

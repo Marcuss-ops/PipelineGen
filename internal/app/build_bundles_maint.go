@@ -22,10 +22,15 @@ import (
 // BuildMaintBundle constructs the periodic maintenance + deletion services.
 func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, jobs *JobsBundle, outboxBundle *OutboxBundle) (*MaintBundle, error) {
 	_ = ctx
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is
+	// REMOVED from the canonical ctor — the field has been retired
+	// from DeletionService (the value was unused by every service
+	// method; the canonical async Drive surface is the dispatcher
+	// outbox port per godlike/06 SSOT one-canonical-owner-per-fact).
 	deletionSvc := deletion.NewDeletionService(
 		repos.ClipsRepo, repos.ClipsRepo, repos.ClipsRepo,
 		repos.VoiceoverRepo, repos.ImageRepo,
-		drive.driveUploader, search.AssetTreeService, search.AssetIndexService,
+		search.AssetTreeService, search.AssetIndexService,
 		outboxBundle.Dispatcher,
 		nil, // driveGoneChecker (Blocco 3.1 commit 3/3 — pre-commit-4/3 wiring forward-pointer)
 		nil, // completionTxRunner (Blocco 3.1 commit 3/3 — pre-commit-4/3 wiring forward-pointer)

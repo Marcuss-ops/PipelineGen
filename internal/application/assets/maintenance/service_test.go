@@ -118,8 +118,11 @@ func TestMaintenancePruning(t *testing.T) {
 	// paths via Service.RunCleanup; both are repo-only and never reach
 	// the DeleteClip dispatch branch, so a nil Dispatcher is safe
 	// (defense-in-depth check at deletion.DeleteClip remains nil-safe).
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is
+	// REMOVED from the canonical ctor; the test fixture passes the
+	// same 5 leading nils for the 5 repository positions.
 	deletionSvc := deletion.NewDeletionService(
-		nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil,
 		treeSvc,
 		idxSvc,
 		nil, // dispatcher (QDRANT-002 PR7)

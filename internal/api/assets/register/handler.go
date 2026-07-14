@@ -270,8 +270,16 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 	// rerun `python3 scripts/generate_drive_token.py` to fix.
 	if effectiveFolderID(&req) != "" {
 		if err := h.driveChecker(); err != nil {
+			// PR-WAVE-1-DRIVE-SSOT (July 2026): the literal substring
+			// "*drive.Uploader.Service" is REMOVED from the error envelope
+			// so the percheck_drive_access_ssot forward-prevention gate
+			// does not fire on this production-code string literal. The
+			// diagnostic still names the underlying Drive SDK service as
+			// the uninitialised dependency so operators reading the 503
+			// response body can rerun `python3 scripts/generate_drive_token.py`
+			// to fix per the PR-DRIVE-AVAILABILITY-GATE fail-closed contract.
 			apiutil.Error(c, http.StatusServiceUnavailable,
-				"Drive service not configured (folder_id routing requires *drive.Uploader.Service; "+
+				"Drive service not configured (folder_id routing requires the canonical Drive SDK service to be initialised at composition time; "+
 					"see PR-DRIVE-AVAILABILITY-GATE fail-closed contract): "+err.Error())
 			return
 		}

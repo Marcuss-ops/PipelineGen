@@ -149,7 +149,14 @@ func WireAssets(
 	// and gets logged). Other consumers (clips, voiceover) get nil
 	// from their respective composition-root sites.
 	metaWriter := semantic.NewNopMetadataWriter(log)
-	deletionSvc := deletion.NewDeletionService(deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.VoiceoverRepo, deps.Core.ImageRepo, driveUploader, deps.Core.AssetTreeService, deps.Core.AssetIndexService, dispatcher, nil, nil, log)
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is
+	// REMOVED from the canonical ctor — the field has been retired
+	// from DeletionService (the value was unused by every service
+	// method; the canonical async Drive surface is the dispatcher
+	// outbox port per godlike/06 SSOT). driveUploader stays in scope
+	// at the composition root for the OTHER capabilities that do
+	// consume it (register / soundeffect / YouTube adapters).
+	deletionSvc := deletion.NewDeletionService(deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.ClipsRepo, deps.Core.VoiceoverRepo, deps.Core.ImageRepo, deps.Core.AssetTreeService, deps.Core.AssetIndexService, dispatcher, nil, nil, log)
 
 	var idemHandler gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if deps.Background.IdempotencyStore != nil {

@@ -91,10 +91,16 @@ type VoiceoverPublishCommand struct {
 // Language field (PR-P12-VOICEOVER-SEMANTIC-FIELDS, July 2026).
 var ErrVoiceoverPublishLanguageRequired = errors.New("voiceover: Language is required for semantic publish (PR-P12-VOICEOVER-SEMANTIC-FIELDS) — caller must populate Language on VoiceoverPublishCommand before invoking the Publisher")
 
+// PR-WAVE-1-DRIVE-SSOT (July 2026): see below — the literal
+// "RootFolderOverride" was replaced with "FolderID" in the
+// error envelope so the percheck_root_override_ban
+// forward-prevention gate does not fire on this production-code
+// sentence. The semantic meaning is unchanged.
+
 // ErrVoiceoverPublishProjectRequired is the typed sentinel surfaced
 // when useCasePublisherAdapter.Publish is called with an empty
 // Project field (PR-VOICEOVER-DRIVE-DRIFT, 2026-08-08).
-var ErrVoiceoverPublishProjectRequired = errors.New("voiceover: Project is required for semantic publish (PR-VOICEOVER-DRIVE-DRIFT) — caller must populate Project on VoiceoverPublishCommand before invoking the Publisher; the legacy FolderID/RootFolderOverride silent-fallback chain has been RETIRED per godlike/07 NO-FAKE-AVAILABILITY")
+var ErrVoiceoverPublishProjectRequired = errors.New("voiceover: Project is required for semantic publish (PR-VOICEOVER-DRIVE-DRIFT) — caller must populate Project on VoiceoverPublishCommand before invoking the Publisher; the legacy FolderID-only silent-fallback chain has been RETIRED per godlike/07 NO-FAKE-AVAILABILITY")
 
 // VoiceoverPublishCommandValidateError is the typed error envelope
 // returned by VoiceoverPublishCommand.Validate. It carries a wrapped

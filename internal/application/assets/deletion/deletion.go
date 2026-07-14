@@ -41,7 +41,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 )
 
 // DispatcherPort is the application-layer port for DeletionService's
@@ -132,14 +131,17 @@ type DeletionService struct {
 	stockRepo     *assets.ClipsRepository
 	voiceoverRepo *assets.VoiceoversRepository
 	imagesRepo    *assets.ImagesRepository
-	// driveUploader is RETIRED at Blocco 3.1 commit 4/3 (June 2026).
-	// The field + ctor parameter are retained for back-compat with
-	// 3 production callers (internal/app/build_bundles_domain.go,
-	// internal/app/module_media.go, internal/application/assets/
-	// maintenance/service_test.go) but ignored by DeleteClip. Future
-	// commit retires the field; tracked under the Blocco 3.1 commit
-	// 4/3 forward-pointer in architecture/current.yaml.
-	driveUploader *drive.Uploader
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): the legacy `*drive.Uploader`
+	// field is RETIRED from the DeletionService struct entirely.
+	// The field + ctor parameter were already unused by every
+	// service method (DeleteClip, CompleteAsset, CleanupOrphanFiles
+	// never read `s.driveUploader`); the back-compat retention was
+	// the Blocco 3.1 commit 4/3 (June 2026) forward-pointer that this
+	// commit resolves. The composition-root wire sites
+	// (internal/app/wire_assets.go, internal/app/build_bundles_maint.go)
+	// + the test fixtures (internal/application/assets/maintenance/
+	// service_test.go, internal/application/assets/deletion/deletion_test.go)
+	// have been updated to drop the corresponding ctor argument.
 	assetTreeSvc  *assettree.Service
 	assetIndexSvc *assetindex.Service
 	dispatcher    DispatcherPort
@@ -148,11 +150,6 @@ type DeletionService struct {
 	// (nil = trust lifecycle_state proof); completionTxRunner is
 	// required for CompleteAsset to actually do cleanup (nil =
 	// wiring-error fail-closed).
-	//
-	// Production wiring (forward-pointer to commit 4/3): both
-	// fields are nil until commit 4/3 lands the runtime adapters.
-	// The library surface (CompleteAsset, the test pinning) is the
-	// canonical contract that the production adapters will satisfy.
 	driveGoneChecker DriveGoneChecker
 	completionTx     CompletionTxRunner
 	log              *zap.Logger
@@ -173,11 +170,17 @@ type DeletionService struct {
 // commit 4/3 lands the production adapters). Existing callers that
 // do NOT use CompleteAsset can pass nil for both without functional
 // regression on DeleteClip paths.
+// PR-WAVE-1-DRIVE-SSOT (July 2026): the `driveUploader *drive.Uploader`
+// parameter is REMOVED from the canonical ctor signature — callers
+// updated to pass 12 args instead of 13. The removed parameter carried
+// the legacy back-compat drive.Uploader reference that no service
+// method consumed; all deletion routes flow through the canonical
+// `dispatcher` (Outbox DispatcherPort) which owns the async Drive API
+// surface (godlike/06 SSOT one-canonical-owner-per-fact, PR-DRIVE-CLEANUP).
 func NewDeletionService(
 	artlistRepo, clipsRepo, stockRepo *assets.ClipsRepository,
 	voiceoverRepo *assets.VoiceoversRepository,
 	imagesRepo *assets.ImagesRepository,
-	driveUploader *drive.Uploader,
 	assetTreeSvc *assettree.Service,
 	assetIndexSvc *assetindex.Service,
 	dispatcher DispatcherPort,
@@ -191,7 +194,6 @@ func NewDeletionService(
 		stockRepo:        stockRepo,
 		voiceoverRepo:    voiceoverRepo,
 		imagesRepo:       imagesRepo,
-		driveUploader:    driveUploader,
 		assetTreeSvc:     assetTreeSvc,
 		assetIndexSvc:    assetIndexSvc,
 		dispatcher:       dispatcher,

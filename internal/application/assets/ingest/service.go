@@ -13,7 +13,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/enrichment"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/lifecycle"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -30,10 +29,23 @@ type Service struct {
 	cfg        *config.Config
 	log        *zap.Logger
 	downloader assets.MediaDownloader
-	driveAdmin drive.Admin
-	pipelines  map[Kind]*Pipeline
-	imagesDir  string
-	tempDir    string
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): the legacy `driveAdmin
+	// drive.Admin` field is RETIRED. Confirmed unused by every
+	// public method (Ingest, the post-resolution branches, the
+	// commit stage all reference typed-port pipeline field, not
+	// this dead Admin reference). The canonical ingest-side Drive
+	// surface is the per-pipeline `Pipeline.Lifecycle` (the
+	// domain-owned lifecycle invariant) and the composition-root
+	// scoped `*driveutil.Uploader` (held by the higher-level
+	// MediaIngestBundle / buildIngestService for the
+	// LifecycleFromDeps + ReversalPaths surface, NOT threaded
+	// through this application-layer Service). Composition-root
+	// wire sites (internal/app/module_media_ingest.go +
+	// internal/app/build_bundles_ingest.go) updated to the 5-arg
+	// ctor signature.
+	pipelines map[Kind]*Pipeline
+	imagesDir string
+	tempDir   string
 	// enrichState is the typed state-machine wrapper
 	// (PR-ENRICHMENT-STATE-MACHINE, July 2026, godlike/06 SSOT).
 	// NewService stamps PENDING on ingested rows post-ProcessAsset
@@ -51,12 +63,17 @@ type Service struct {
 // canonical PENDING stamp fires immediately on ingest success
 // (godlike/06 SSOT: every freshly-ingested row gets explicit
 // enrich_state).
-func NewService(cfg *config.Config, log *zap.Logger, driveAdmin drive.Admin, downloader assets.MediaDownloader, pipelines map[Kind]*Pipeline, enrichState *enrichment.EnrichStateMachine) *Service {
+//
+// PR-WAVE-1-DRIVE-SSOT (July 2026): the legacy `driveAdmin drive.Admin`
+// parameter is REMOVED from the canonical ctor signature — the field
+// was unused by every method (Ingest / branches / commit never read
+// `s.driveAdmin`). Composition-root wire sites updated to drop the
+// argument.
+func NewService(cfg *config.Config, log *zap.Logger, downloader assets.MediaDownloader, pipelines map[Kind]*Pipeline, enrichState *enrichment.EnrichStateMachine) *Service {
 	return &Service{
 		cfg:         cfg,
 		log:         log,
 		downloader:  downloader,
-		driveAdmin:  driveAdmin,
 		pipelines:   pipelines,
 		imagesDir:   cfg.Storage.ImagesPath(),
 		tempDir:     cfg.Storage.TempPath(),
