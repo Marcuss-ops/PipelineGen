@@ -225,6 +225,16 @@ type JobDefinition struct {
 	// MustRegister() struct literals in internal/application/**/job_types.go
 	// continue to compile without churn (Card 9 baseline-repair,
 	// July 2026).
+	//
+	// Format expectations: descriptions SHOULD be concise lowercase
+	// phrases starting with the core operation or noun, optionally
+	// followed by a parenthetical data-flow summary. The six canonical
+	// MustRegister sites in
+	// internal/application/{documents,scripts,voiceover,clips,images,youtube}/job_types.go
+	// follow this convention. Validate() does NOT enforce format —
+	// this is a soft convention only; human / observability / CLI
+	// surfaces may rely on the single-line shape and the absence of
+	// embedded newlines.
 	Description string
 
 	// ExecutionClass gates who can claim this job.
