@@ -435,16 +435,18 @@ func bootstrapCompletionSchema(db *sql.DB) error {
 //   - media_assets(id='art1')         — asset_index entry keyed on artifactID
 //     (Azione 1 lookup target).
 //   - jobs(id='j1', status='RUNNING') — CompleteWithArtifacts CAS target.
-//	// Order matters: media_assets MUST come first because asset_locations
-	// has a FK to media_assets(id). storage.OpenSQLiteDB now enables
-	// foreign_keys enforcement, so we MUST satisfy the FK at insert
-	// time. The flow needs TWO media_assets rows:
-	//   - "art1"   : Resolver lookup target (Azione 1 asset_index key)
-	//   - "asset-1": FK target for asset_locations where asset_id is
-	//                the AssetMappings["art1"] → "asset-1" mapping result
-	//                produced by WithArtifactsService during completion.
-	// Both rows coexist; they document the canonical lookup-key vs
-	// FK-target split (godlike/06 SSOT: one canonical owner per fact).
+//     // Order matters: media_assets MUST come first because asset_locations
+//
+// has a FK to media_assets(id). storage.OpenSQLiteDB now enables
+// foreign_keys enforcement, so we MUST satisfy the FK at insert
+// time. The flow needs TWO media_assets rows:
+//   - "art1"   : Resolver lookup target (Azione 1 asset_index key)
+//   - "asset-1": FK target for asset_locations where asset_id is
+//     the AssetMappings["art1"] → "asset-1" mapping result
+//     produced by WithArtifactsService during completion.
+//
+// Both rows coexist; they document the canonical lookup-key vs
+// FK-target split (godlike/06 SSOT: one canonical owner per fact).
 func seedCompletionFixtures(db *sql.DB, pngPath string) error {
 	if _, err := db.Exec(
 		`INSERT INTO media_assets (id, source, media_type, local_path) VALUES ('art1', 'artlist', 'image', ?)`,

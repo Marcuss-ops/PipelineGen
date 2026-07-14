@@ -232,4 +232,3 @@ func clonePostProcessResult(r *PostProcessResult) *PostProcessResult {
 	copy := *r
 	return &copy
 }
-
