@@ -13,7 +13,7 @@
 //
 //  1. TestVoiceoverGenerate_RoutesToLegacyComplete
 //     Verifies that the canonical registry (appjobs.Compose) declares
-//     voiceover.JobGenerate with ProducesArtifacts=false post-fix.
+//     job.TypeVoiceoverGenerate with ProducesArtifacts=false post-fix.
 //     The runner's runLease uses registry.ProducesArtifacts(jobType)
 //     to decide between tools.Complete and tools.CompleteWithArtifacts;
 //     the contract value drives the routing.
@@ -68,7 +68,7 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/persistence"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -80,14 +80,14 @@ import (
 // runLease consults registry.ProducesArtifacts(jobType) to decide
 // between tools.Complete (legacy, plain) and tools.CompleteWithArtifacts
 // (artifact-emitter spine). Post-PR-VO-COMPLETEPATH-FIX the canonical
-// registry MUST declare voiceover.JobGenerate with ProducesArtifacts=
+// registry MUST declare job.TypeVoiceoverGenerate with ProducesArtifacts=
 // false so the runner routes to legacy Complete — voiceover.finalizer
 // is the canonical owner of the per-item artifact writes
 // (voiceovers + media_assets + outbox events) inside the caller-owned
 // tx, NOT the broker's CompleteWithArtifacts path.
 //
 // Regression guard: if a future commit re-introduces ProducesArtifacts=
-// true on voiceover.JobGenerate, the SQL-layer guard at
+// true on job.TypeVoiceoverGenerate, the SQL-layer guard at
 // internal/infrastructure/database/sqlite/jobs/repository_lifecycle.go:115
 // will reject the legacy Complete with domainremote.ErrCompleteJobPathViolation
 // (the typed sentinel declared at internal/domain/remote/complete_job.go:148),
@@ -115,11 +115,11 @@ import (
 func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
 	reg := appjobs.Compose()
 	require.NotNil(t, reg)
-	require.True(t, reg.IsRegistered(voiceover.JobGenerate),
-		"voiceover.JobGenerate MUST be registered in the canonical registry (Compose())")
+	require.True(t, reg.IsRegistered(job.TypeVoiceoverGenerate),
+		"job.TypeVoiceoverGenerate MUST be registered in the canonical registry (Compose())")
 
-	assert.False(t, reg.ProducesArtifacts(voiceover.JobGenerate),
-		"voiceover.JobGenerate MUST have ProducesArtifacts=false post-PR-VO-COMPLETEPATH-FIX (commit db2f3b1e, 2026-07-04). "+
+	assert.False(t, reg.ProducesArtifacts(job.TypeVoiceoverGenerate),
+		"job.TypeVoiceoverGenerate MUST have ProducesArtifacts=false post-PR-VO-COMPLETEPATH-FIX (commit db2f3b1e, 2026-07-04). "+
 			"voiceover.finalizer.Finalize is the canonical owner of media_assets + outbox writes inside the per-item tx; "+
 			"the broker's legacy Complete is the canonical mark-SUCCEEDED seam. "+
 			"If ProducesArtifacts=true is reintroduced, the SQL-layer guard at "+
@@ -129,8 +129,8 @@ func TestVoiceoverGenerate_RoutesToLegacyComplete(t *testing.T) {
 
 	// Also verify the canonical registration surface (registry.go:541)
 	// uses the JobPolicy literal and not the ProducesArtifacts flag.
-	entry, ok := reg.Get(voiceover.JobGenerate)
-	require.True(t, ok, "voiceover.JobGenerate must be a registered entry")
+	entry, ok := reg.Get(job.TypeVoiceoverGenerate)
+	require.True(t, ok, "job.TypeVoiceoverGenerate must be a registered entry")
 	assert.Equal(t, "voiceover.generate", entry.Type)
 	assert.False(t, entry.ProducesArtifacts,
 		"registry entry's ProducesArtifacts field MUST be false (registry.go:541 post-db2f3b1e)")
@@ -521,7 +521,7 @@ func TestParentAggregator_TriggeredOnlyAfterWaitingChildren(t *testing.T) {
 		stub := &stubAggregatorJobsService{
 			parentJob: &job.Job{
 				ID:     "parent-waiting",
-				Type:   voiceover.JobGenerate,
+				Type:   job.TypeVoiceoverGenerate,
 				Status: job.StatusSucceeded,
 				Result: makeParentResult([]string{"child-w1"}),
 			},
@@ -554,7 +554,7 @@ func TestParentAggregator_TriggeredOnlyAfterWaitingChildren(t *testing.T) {
 		stub := &stubAggregatorJobsService{
 			parentJob: &job.Job{
 				ID:     "parent-succeeded",
-				Type:   voiceover.JobGenerate,
+				Type:   job.TypeVoiceoverGenerate,
 				Status: job.StatusSucceeded,
 				Result: terminalRaw,
 			},
@@ -588,7 +588,7 @@ func TestParentAggregator_TriggeredOnlyAfterWaitingChildren(t *testing.T) {
 		stub := &stubAggregatorJobsService{
 			parentJob: &job.Job{
 				ID:     "parent-cancelled",
-				Type:   voiceover.JobGenerate,
+				Type:   job.TypeVoiceoverGenerate,
 				Status: job.StatusCancelled,
 				Result: cancelledRaw,
 			},

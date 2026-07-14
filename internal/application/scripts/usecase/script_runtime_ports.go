@@ -23,7 +23,7 @@
 // The 4 interfaces:
 //
 //  1. SubmissionService          — FASE 2 canonical, aliases operations.Service
-//  2. JobQueryService            — NEW; narrowed from kerneljob.Service
+//  2. JobQueryService            — NEW; narrowed from job.Service
 //  3. ClipSearchService          — existing canonical (services.go)
 //  4. SectionRegenerationService — NEW; alias-of-shape for section_regen.go
 //
@@ -36,7 +36,7 @@ import (
 	"context"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── 1. SubmissionService ─────────────────────────────────────────────

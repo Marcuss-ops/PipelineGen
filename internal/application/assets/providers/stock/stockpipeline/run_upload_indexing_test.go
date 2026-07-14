@@ -8,7 +8,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // stubStager è il Commit 1.2 test fixture per il canonical
@@ -23,6 +23,14 @@ type stubStager struct{}
 
 func (stubStager) StageSource(_ context.Context, _ assets.SourceRef) (*assets.StagedAsset, error) {
 	return &assets.StagedAsset{LocalPath: "/tmp/stub-stager", Bytes: 0}, nil
+}
+
+func (stubStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
+	return nil, nil
+}
+
+func (stubStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
+	return nil
 }
 
 func (stubStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error {

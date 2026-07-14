@@ -11,8 +11,8 @@ import (
 
 	"go.uber.org/zap"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // JobStats holds aggregated job statistics.

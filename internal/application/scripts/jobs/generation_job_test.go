@@ -28,7 +28,7 @@ import (
 	"errors"
 	"testing"
 
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -108,7 +108,7 @@ func TestRegisterJobs_HappyPath(t *testing.T) {
 
 	require.NoError(t, err, "happy path: RegisterJobs with a non-nil broker returns nil")
 	assert.Equal(t, 1, broker.calls, "happy path: RegisterJobs calls broker.RegisterHandler exactly once")
-	assert.Equal(t, scriptpkg.TypeScriptGenerate, broker.lastType,
+	assert.Equal(t, job.TypeScriptGenerate, broker.lastType,
 		"happy path: broker is registered for script.generate (canonical spec type)")
 	assert.NotNil(t, broker.lastHandler,
 		"happy path: broker receives a non-nil handler so dispatch will not panic")

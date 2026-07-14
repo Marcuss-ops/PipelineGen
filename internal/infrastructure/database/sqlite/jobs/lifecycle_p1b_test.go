@@ -82,7 +82,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -314,18 +314,18 @@ func TestJobLifecycle_P1B_AllStates_RoundTrip(t *testing.T) {
 	// All 11 canonical kernel states. The user-spec 8 states are a
 	// subset; we test the FULL kernel surface so a future state
 	// removal/rename is caught at the SQL layer.
-	states := []kerneljob.Status{
-		kerneljob.StatusQueued,
-		kerneljob.StatusLeased,
-		kerneljob.StatusRunning,
-		kerneljob.StatusWaitingChildren,
-		kerneljob.StatusFinalizing,
-		kerneljob.StatusRetryWait,
-		kerneljob.StatusSucceeded,
-		kerneljob.StatusPartiallySucceeded,
-		kerneljob.StatusIndexPending,
-		kerneljob.StatusFailed,
-		kerneljob.StatusCancelled,
+	states := []job.Status{
+		job.StatusQueued,
+		job.StatusLeased,
+		job.StatusRunning,
+		job.StatusWaitingChildren,
+		job.StatusFinalizing,
+		job.StatusRetryWait,
+		job.StatusSucceeded,
+		job.StatusPartiallySucceeded,
+		job.StatusIndexPending,
+		job.StatusFailed,
+		job.StatusCancelled,
 	}
 
 	for _, status := range states {
@@ -354,10 +354,10 @@ func TestJobLifecycle_P1B_AllStates_RoundTrip(t *testing.T) {
 			// Status.IsTerminal() must agree with the canonical
 			// terminal-set membership (SUCCEEDED, PARTIALLY_SUCCEEDED,
 			// FAILED, CANCELLED).
-			expectedTerminal := status == kerneljob.StatusSucceeded ||
-				status == kerneljob.StatusPartiallySucceeded ||
-				status == kerneljob.StatusFailed ||
-				status == kerneljob.StatusCancelled
+			expectedTerminal := status == job.StatusSucceeded ||
+				status == job.StatusPartiallySucceeded ||
+				status == job.StatusFailed ||
+				status == job.StatusCancelled
 			assert.Equal(t, expectedTerminal, status.IsTerminal(),
 				"Status.IsTerminal() must agree with the canonical terminal set for %s", status)
 		})
@@ -370,7 +370,7 @@ func TestJobLifecycle_P1B_AllStates_RoundTrip(t *testing.T) {
 		// (job.go:44-58) does NOT define StatusPending. The
 		// Status.Valid() method is the canonical "is this a known
 		// status?" check; PENDING is intentionally not in the enum.
-		assert.False(t, kerneljob.Status("PENDING").Valid(),
+		assert.False(t, job.Status("PENDING").Valid(),
 			"PENDING is intentionally NOT a kernel status (pre-QUEUED dispatcher concept)")
 	})
 
@@ -379,7 +379,7 @@ func TestJobLifecycle_P1B_AllStates_RoundTrip(t *testing.T) {
 		// kernel status. The canonical failure mode that produces a
 		// dead_letter_jobs row is FinalizeAttempt with
 		// OutcomeFailedPermanent + DLQPayload (see TestJobLifecycle_P1B_DeadLettered).
-		assert.False(t, kerneljob.Status("DEAD_LETTERED").Valid(),
+		assert.False(t, job.Status("DEAD_LETTERED").Valid(),
 			"DEAD_LETTERED is intentionally NOT a kernel status (it's a dead_letter_jobs table presence)")
 	})
 }
@@ -628,7 +628,7 @@ func TestJobLifecycle_P1B_RetryLimitRespected(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, j, "ClaimNext must return our seeded job (id=%s)", jobID)
 		require.Equal(t, jobID, j.ID)
-		require.Equal(t, kerneljob.StatusRunning, j.Status)
+		require.Equal(t, job.StatusRunning, j.Status)
 		require.NotEmpty(t, j.LeaseID, "ClaimNext MUST populate LeaseID (CAS-fence dependency)")
 		return claimedJob{revision: j.Revision, leaseID: j.LeaseID}
 	}
@@ -754,7 +754,7 @@ func TestJobLifecycle_P1B_WorkerCrashRecovered(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, j, "ClaimNext MUST return the seeded job (id=%s)", jobID)
 	require.Equal(t, jobID, j.ID)
-	require.Equal(t, kerneljob.StatusRunning, j.Status)
+	require.Equal(t, job.StatusRunning, j.Status)
 
 	// Worker A crashes. The lease expires 1 hour later (backdated for
 	// the test; the real-world mechanism is leaseTTL + clock).
@@ -797,7 +797,7 @@ func TestJobLifecycle_P1B_WorkerCrashRecovered(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, j2, "worker-B MUST be able to claim the reclaimed job (id=%s)", jobID)
 	assert.Equal(t, jobID, j2.ID, "worker-B MUST get the SAME job id (deterministic recovery)")
-	assert.Equal(t, kerneljob.StatusRunning, j2.Status, "worker-B's claim MUST transition to RUNNING")
+	assert.Equal(t, job.StatusRunning, j2.Status, "worker-B's claim MUST transition to RUNNING")
 	assert.Equal(t, "worker-B", j2.WorkerID, "worker-B MUST be the new leaseholder")
 	assert.NotEqual(t, "worker-A", j2.WorkerID, "worker-A's id MUST NOT persist (reclaim cleared it)")
 }
@@ -888,7 +888,7 @@ func TestJobLifecycle_P1B_ObservationEndpoint(t *testing.T) {
 		name         string
 		jobType      string
 		driver       func(t *testing.T, store *SQLiteStore, db *sql.DB, jobID string)
-		expectStatus kerneljob.Status
+		expectStatus job.Status
 		expectResult string
 		expectError  string
 		expectProg   int
@@ -902,7 +902,7 @@ func TestJobLifecycle_P1B_ObservationEndpoint(t *testing.T) {
 				require.NoError(t, store.Complete(ctx, jobID, "worker-A", "lease-A", 1,
 					json.RawMessage(`{"ok":true,"items":7}`)))
 			},
-			expectStatus: kerneljob.StatusSucceeded,
+			expectStatus: job.StatusSucceeded,
 			expectResult: `{"ok":true,"items":7}`,
 			expectProg:   100,
 		},
@@ -915,7 +915,7 @@ func TestJobLifecycle_P1B_ObservationEndpoint(t *testing.T) {
 				require.NoError(t, store.Fail(ctx, jobID, "worker-B", "lease-B", 1,
 					"deterministic_failure"))
 			},
-			expectStatus: kerneljob.StatusFailed,
+			expectStatus: job.StatusFailed,
 			expectError:  "deterministic_failure",
 			expectResult: "{}", // Fail does not touch result_json; production's NOT NULL DEFAULT '{}' remains
 			expectProg:   50,   // unchanged from seed
@@ -927,7 +927,7 @@ func TestJobLifecycle_P1B_ObservationEndpoint(t *testing.T) {
 				seedQueuedJob(t, db, jobID, "p1b.test", 3)
 				require.NoError(t, store.Cancel(ctx, jobID))
 			},
-			expectStatus: kerneljob.StatusCancelled,
+			expectStatus: job.StatusCancelled,
 			expectResult: "{}", // production's NOT NULL DEFAULT '{}' (scanJobColumns returns the raw value)
 		},
 	}
@@ -982,9 +982,9 @@ func TestJobLifecycle_P1B_DeadLettered(t *testing.T) {
 	// in the same TX.
 	const errMsg = "deterministic_failure_dlq"
 	dlqPayload := json.RawMessage(`{"snapshot":true,"reason":"operator_review"}`)
-	cmd := kerneljob.FinalizeAttemptCommand{
+	cmd := job.FinalizeAttemptCommand{
 		JobID:            jobID,
-		Outcome:          kerneljob.OutcomeFailedPermanent,
+		Outcome:          job.OutcomeFailedPermanent,
 		WorkerID:         "worker-A",
 		LeaseID:          "lease-A",
 		ExpectedRevision: 1,
@@ -997,7 +997,7 @@ func TestJobLifecycle_P1B_DeadLettered(t *testing.T) {
 	}
 	res, err := store.FinalizeAttempt(ctx, cmd)
 	require.NoError(t, err)
-	assert.Equal(t, kerneljob.StatusFailed, res.FinalStatus,
+	assert.Equal(t, job.StatusFailed, res.FinalStatus,
 		"FinalizeAttempt(FailedPermanent) MUST return StatusFailed")
 	assert.True(t, res.DLQRecorded,
 		"FinalizeAttempt(DLQPayload) MUST set res.DLQRecorded=true")

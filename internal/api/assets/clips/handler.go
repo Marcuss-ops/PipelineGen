@@ -25,9 +25,9 @@ import (
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
@@ -49,7 +49,7 @@ type Deps struct {
 	AssetTreeSvc     *assettree.Service
 	MetaWriter       semantic.MetadataWriterPort
 	ClipIndexer      *clipindexer.Service
-	JobsSvc          kerneljob.Service
+	JobsSvc          jobs.Service
 	Cfg              *config.Config
 	Log              *zap.Logger
 	VoiceoverRepo    *assets.VoiceoversRepository
@@ -80,7 +80,7 @@ type Handler struct {
 	reuploadUC      *appclips.ReuploadUseCase
 	publisher       delivery.Publisher
 	log             *zap.Logger
-	jobsSvc         kerneljob.Service
+	jobsSvc         jobs.Service
 	cfg             *config.Config
 
 	search        *SearchHandler
@@ -145,14 +145,20 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 			AssetTreeSvc:   d.AssetTreeSvc,
 			Log:            d.Log,
 		}),
-		bulkTransport: NewBulkUploadTransport(BulkTransportDeps{
+	}
+
+	// BulkUploadTransport only needs Cfg for filesystem paths. Test fixtures
+	// that pass Deps without Cfg should still be able to construct a Handler
+	// for routes that do not touch the bulk transport.
+	if d.Cfg != nil {
+		h.bulkTransport = NewBulkUploadTransport(BulkTransportDeps{
 			JobsSvc:          d.JobsSvc,
 			MediaPath:        d.Cfg.Storage.MediaPath(),
 			TempPath:         d.Cfg.Storage.TempPath(),
 			DataDir:          d.Cfg.Storage.AbsDataDir(),
 			BulkUploadWorker: d.BulkUploadWorker,
 			Log:              d.Log,
-		}),
+		})
 	}
 
 	h.nonops = nonops.NewNonOpsHandler(nonops.Deps{

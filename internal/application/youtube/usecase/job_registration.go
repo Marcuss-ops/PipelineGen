@@ -14,7 +14,7 @@ import (
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ytjobs "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/jobs"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // RegisterHandler wires the orchestrator's two job-type handlers into the
@@ -34,19 +34,19 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("youtube.Service.RegisterHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", jobtools.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(kerneljob.TypeYouTubeClipExtract, jobtools.HandlerFunc(ytjobs.NewJobHandler(s, s.log).HandleJob)); err != nil {
-		return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", kerneljob.TypeYouTubeClipExtract, err)
+	if err := jobsSvc.RegisterHandler(jobs.TypeYouTubeClipExtract, jobtools.HandlerFunc(ytjobs.NewJobHandler(s, s.log).HandleJob)); err != nil {
+		return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", jobs.TypeYouTubeClipExtract, err)
 	}
-	s.log.Info("registered youtube_clip.extract job handler", zap.String("type", kerneljob.TypeYouTubeClipExtract))
+	s.log.Info("registered youtube_clip.extract job handler", zap.String("type", jobs.TypeYouTubeClipExtract))
 
 	// rebuild_search_text needs Clips to be wired so the rebuild can
 	// locate the indexed-clip rows. Guard keeps a half-wired bundle from
 	// registering a handler that would no-op on first invocation.
 	if s.clips != nil {
-		if err := jobsSvc.RegisterHandler(kerneljob.TypeYouTubeRebuildST, jobtools.HandlerFunc(s.HandleRebuildSearchTextJob)); err != nil {
-			return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", kerneljob.TypeYouTubeRebuildST, err)
+		if err := jobsSvc.RegisterHandler(jobs.TypeYouTubeRebuildST, jobtools.HandlerFunc(s.HandleRebuildSearchTextJob)); err != nil {
+			return fmt.Errorf("youtube.Service.RegisterHandler: bind %q to dispatcher: %w", jobs.TypeYouTubeRebuildST, err)
 		}
-		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", kerneljob.TypeYouTubeRebuildST))
+		s.log.Info("registered youtube.rebuild_search_text job handler", zap.String("type", jobs.TypeYouTubeRebuildST))
 	}
 	return nil
 }
@@ -66,7 +66,7 @@ func (s *Service) RegisterHandler(jobsSvc *jobtools.Service) error {
 // vs jobs.ClipIndexer, plus the meta any closure-cast to
 // *youtubeports.DownloaderMetadata) needs verification once a real
 // rebuild_search_text job is exercised end-to-end.
-func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, j *kerneljob.Job, tools *jobtools.JobTools) (map[string]any, error) {
+func (s *Service) HandleRebuildSearchTextJob(ctx context.Context, j *jobs.Job, tools *jobtools.JobTools) (map[string]any, error) {
 	deps := ytjobs.RebuildDeps{
 		Log:     s.log,
 		Indexer: s.indexer,

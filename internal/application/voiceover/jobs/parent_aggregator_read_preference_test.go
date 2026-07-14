@@ -44,7 +44,7 @@ import (
 	"strings"
 	"testing"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -98,7 +98,7 @@ func TestParentAggregator_AggregateOne_TypedWinsOverDisagreeingJSON(t *testing.T
 	resultJSON := []byte(`{"parent_state":"waiting_children","ok":true,"child_job_ids":["c1","c2"]}`)
 	parent := &job.Job{
 		ID:               parentID,
-		Type:             voiceover.JobGenerate,
+		Type:             job.TypeVoiceoverGenerate,
 		Status:           job.StatusSucceeded,
 		Result:           resultJSON,
 		ParentStateTyped: "succeeded", // AUTHORITATIVE — terminal.
@@ -127,7 +127,7 @@ func TestParentAggregator_AggregateOne_FallsBackToJSONWhenTypedEmpty(t *testing.
 	resultJSON := []byte(`{"parent_state":"waiting_children","ok":true,"child_job_ids":[]}`)
 	parent := &job.Job{
 		ID:               parentID,
-		Type:             voiceover.JobGenerate,
+		Type:             job.TypeVoiceoverGenerate,
 		Status:           job.StatusSucceeded,
 		Result:           resultJSON,
 		ParentStateTyped: "", // empty — pre-P1.2 row / concurrent write
@@ -166,7 +166,7 @@ func TestParentAggregator_AggregateOne_RejectsGarbageTypedValue(t *testing.T) {
 	resultJSON := []byte(`{"parent_state":"waiting_children","ok":true,"child_job_ids":[]}`)
 	parent := &job.Job{
 		ID:               parentID,
-		Type:             voiceover.JobGenerate,
+		Type:             job.TypeVoiceoverGenerate,
 		Status:           job.StatusSucceeded,
 		Result:           resultJSON,
 		ParentStateTyped: "garbage", // malformed — not a known voiceover.ParentState
@@ -235,7 +235,7 @@ func TestParentAggregator_AggregateOne_LogsDisagreementOnNonTerminal(t *testing.
 	resultJSON := []byte(`{"parent_state":"waiting_children","ok":true,"child_job_ids":[]}`)
 	parent := &job.Job{
 		ID:               parentID,
-		Type:             voiceover.JobGenerate,
+		Type:             job.TypeVoiceoverGenerate,
 		Status:           job.StatusSucceeded,
 		Result:           resultJSON,
 		ParentStateTyped: "partial_success", // non-terminal — disagrees with JSON
@@ -284,7 +284,7 @@ func TestParentAggregator_AggregateOne_NoWarnWhenTypedEqualsJSON(t *testing.T) {
 	resultJSON := []byte(`{"parent_state":"waiting_children","ok":true,"child_job_ids":[]}`)
 	parent := &job.Job{
 		ID:               parentID,
-		Type:             voiceover.JobGenerate,
+		Type:             job.TypeVoiceoverGenerate,
 		Status:           job.StatusSucceeded,
 		Result:           resultJSON,
 		ParentStateTyped: "waiting_children", // agrees with JSON
@@ -328,7 +328,7 @@ func TestParentAggregator_AggregateOne_ExcludesTerminalTyped(t *testing.T) {
 	resultJSON := []byte(`{"ok":true,"child_job_ids":["c1"]}`) // NO parent_state key
 	parent := &job.Job{
 		ID:               parentID,
-		Type:             voiceover.JobGenerate,
+		Type:             job.TypeVoiceoverGenerate,
 		Status:           job.StatusSucceeded,
 		Result:           resultJSON,
 		ParentStateTyped: "succeeded", // AUTHORITATIVE — terminal.

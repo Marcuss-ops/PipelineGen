@@ -34,8 +34,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // MergeTypedExecutionEnvelope takes the canonical §8.4 result +
@@ -44,7 +44,7 @@ import (
 //     typed Data half of ExecutionResult[GenerationResult])
 //   - handlerResult["artifacts"] = marshal of *ArtifactManifest
 //     (the typed Artifacts half)
-//   - handlerResult[scriptpkg.ManifestKey] = manifest (the runner
+//   - handlerResult[job.ManifestKey] = manifest (the runner
 //     lookup-key sidecar that job.Decode reads)
 //
 // The merge preserves any pre-existing handlerResult keys (the
@@ -58,12 +58,12 @@ import (
 func MergeTypedExecutionEnvelope(
 	handlerResult map[string]any,
 	result *domainScript.GenerationResult,
-	manifest *scriptpkg.ArtifactManifest,
+	manifest *job.ArtifactManifest,
 ) error {
 	if handlerResult == nil || result == nil || manifest == nil {
 		return fmt.Errorf("envelope_merger: nil handlerResult/result/manifest is invalid")
 	}
-	envelope := scriptpkg.ExecutionResult[domainScript.GenerationResult]{
+	envelope := job.ExecutionResult[domainScript.GenerationResult]{
 		Data:      *result,
 		Artifacts: manifest,
 	}
@@ -78,6 +78,6 @@ func MergeTypedExecutionEnvelope(
 	for k, v := range envMap {
 		handlerResult[k] = v
 	}
-	handlerResult[scriptpkg.ManifestKey] = manifest
+	handlerResult[job.ManifestKey] = manifest
 	return nil
 }

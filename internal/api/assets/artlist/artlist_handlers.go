@@ -15,7 +15,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -61,7 +61,7 @@ type ClipResolverRecommendResult struct {
 type ArtlistHandler struct {
 	service      *artlist.Service
 	catalogSync  *catalogsync.Service
-	jobsService  kerneljob.Service
+	jobsService  job.Service
 	clipResolver ClipResolverPort
 	log          *zap.Logger
 	cfg          artlist.ArtlistConfigPort
@@ -76,7 +76,7 @@ type ArtlistHandler struct {
 func NewArtlistHandler(
 	service *artlist.Service,
 	catalogSync *catalogsync.Service,
-	jobsService kerneljob.Service,
+	jobsService job.Service,
 	clipResolver ClipResolverPort,
 	log *zap.Logger,
 	cfgPort artlist.ArtlistConfigPort,
@@ -185,7 +185,7 @@ func (h *ArtlistHandler) enqueueArtlistRun(c *gin.Context, req artlist.RunTagReq
 		apiutil.BadRequest(c, fmt.Sprintf("invalid run-dedup input: %v", err))
 		return
 	}
-	job, err := h.jobsService.Enqueue(c.Request.Context(), &kerneljob.EnqueueRequest{
+	job, err := h.jobsService.Enqueue(c.Request.Context(), &job.EnqueueRequest{
 		Type:       "media.artlist",
 		Payload:    (&artlist.JobCodec{}).PayloadFromRequest(&req),
 		MaxRetries: 3,
@@ -300,7 +300,7 @@ func (h *ArtlistHandler) JobConsumer(c *gin.Context) {
 	}
 	apiutil.OK(c, gin.H{
 		"active":        active,
-		"consumer_type": kerneljob.TypeArtlistRun,
+		"consumer_type": job.TypeArtlistRun,
 		"detail":        detail,
 		"latency_ms":    time.Since(start).Milliseconds(),
 	})

@@ -67,8 +67,8 @@ import (
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs"
 	scriptports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 	usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
@@ -230,8 +230,8 @@ func (a *scriptItemFanoutBrokerAdapter) EnqueueScriptItem(
 	activeKey := fmt.Sprintf("script:item:%s:%d:%s", parentJobID, itemIndex, item.ID)
 	correlationID := fmt.Sprintf("%s:item:%d:%s", parentJobID, itemIndex, item.ID)
 
-	req := &kerneljob.EnqueueRequest{
-		Type:          kerneljob.TypeScriptGenerateItem,
+	req := &job.EnqueueRequest{
+		Type:          job.TypeScriptGenerateItem,
 		Payload:       json.RawMessage(payloadBytes),
 		ActiveKey:     activeKey,
 		CorrelationID: correlationID,

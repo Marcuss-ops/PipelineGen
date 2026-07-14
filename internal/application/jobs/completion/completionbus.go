@@ -79,7 +79,7 @@ import (
 	"errors"
 	"sync"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ErrWaitTimedOut is the canonical typed-error sentinel returned by

@@ -31,7 +31,7 @@ import (
 	"sync"
 	"testing"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── stub EnqueuePort ───────────────────────────────────────────────
@@ -313,7 +313,7 @@ func TestDispatcher_Enqueue_HappyPath_PINSCONTRACT(t *testing.T) {
 	//
 	// *job.EnqueueRequest.Payload is declared `any` (kernel-aliased
 	// per internal/domain/job/service.go::type EnqueueRequest =
-	// kerneljob.EnqueueRequest). The canonical Dispatcher.Enqueue
+	// job.EnqueueRequest). The canonical Dispatcher.Enqueue
 	// surface stores `json.RawMessage` (the codec-encoded bytes) into
 	// Payload; the type assertion below narrows the interface back to
 	// its concrete shape so json.Unmarshal(data []byte, ...) accepts it.

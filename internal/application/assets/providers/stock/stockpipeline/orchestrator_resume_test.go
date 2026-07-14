@@ -32,6 +32,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/execution/steps"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -137,6 +138,12 @@ type resumeStubStager struct{}
 
 func (resumeStubStager) StageSource(_ context.Context, _ assets.SourceRef) (*assets.StagedAsset, error) {
 	return nil, nil
+}
+func (resumeStubStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
+	return nil, nil
+}
+func (resumeStubStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
+	return nil
 }
 func (resumeStubStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error { return nil }
 

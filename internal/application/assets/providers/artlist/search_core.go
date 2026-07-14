@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	defaults "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 	"go.uber.org/zap"
@@ -256,7 +256,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 	}
 
 	// Enqueue processing job through common jobs service
-	if s.jobsSvc != nil {
+	{
 		driveFolderID := s.cfg.Drive.ArtlistFolder()
 		if strings.TrimSpace(driveFolderID) == "" {
 			s.log.Warn("skipping artlist job enqueue because no root folder is configured", zap.String("term", normalizedTerm), zap.Int("limit", limit))
@@ -332,7 +332,7 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 			)
 			return liveResp, nil, dedupErr
 		}
-		job, err := s.jobsSvc.Enqueue(ctx, &kerneljob.EnqueueRequest{
+		job, err := s.jobsSvc.Enqueue(ctx, &jobs.EnqueueRequest{
 			Type:       "media.artlist",
 			Payload:    (&JobCodec{}).PayloadFromRequest(&RunTagRequest{Term: normalizedTerm, Limit: limit, RootFolderID: driveFolderID}),
 			ActiveKey:  runActiveKey,

@@ -26,41 +26,41 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/video"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Type aliases to canonical kernel/job types (Phase A.2) ──────────
 
 type (
 	// Status is the canonical 8-state job lifecycle (see kernel/job.Status).
-	Status = kerneljob.Status
+	Status = job.Status
 	// Filter narrows job queries (see kernel/job.Filter).
-	Filter = kerneljob.Filter
+	Filter = job.Filter
 	// Job is the canonical domain entity for a job in the system.
-	Job = kerneljob.Job
+	Job = job.Job
 	// Event represents a discrete event in a job's timeline.
-	Event = kerneljob.Event
+	Event = job.Event
 )
 
 // ── Status constant aliases to canonical kernel/job constants ──────
 //
-// Go permits typed-constant aliases: const X = kerneljob.Y produces a
+// Go permits typed-constant aliases: const X = job.Y produces a
 // new const of identical type and value. Equality holds both ways:
-//   job.StatusQueued == kerneljob.StatusQueued (true)
+//   job.StatusQueued == job.StatusQueued (true)
 //   var x job.Status = job.StatusQueued         (compiles)
 
 const (
-	StatusQueued             = kerneljob.StatusQueued
-	StatusLeased             = kerneljob.StatusLeased
-	StatusRunning            = kerneljob.StatusRunning
-	StatusWaitingChildren    = kerneljob.StatusWaitingChildren
-	StatusFinalizing         = kerneljob.StatusFinalizing
-	StatusRetryWait          = kerneljob.StatusRetryWait
-	StatusSucceeded          = kerneljob.StatusSucceeded
-	StatusPartiallySucceeded = kerneljob.StatusPartiallySucceeded
-	StatusIndexPending       = kerneljob.StatusIndexPending
-	StatusFailed             = kerneljob.StatusFailed
-	StatusCancelled          = kerneljob.StatusCancelled
+	StatusQueued             = job.StatusQueued
+	StatusLeased             = job.StatusLeased
+	StatusRunning            = job.StatusRunning
+	StatusWaitingChildren    = job.StatusWaitingChildren
+	StatusFinalizing         = job.StatusFinalizing
+	StatusRetryWait          = job.StatusRetryWait
+	StatusSucceeded          = job.StatusSucceeded
+	StatusPartiallySucceeded = job.StatusPartiallySucceeded
+	StatusIndexPending       = job.StatusIndexPending
+	StatusFailed             = job.StatusFailed
+	StatusCancelled          = job.StatusCancelled
 )
 
 // ── Job type string constants ───────────────────────────────────────

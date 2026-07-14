@@ -54,8 +54,8 @@ import (
 
 	"go.uber.org/zap"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 const (
@@ -87,7 +87,7 @@ var ErrInvalidMode = errors.New("provider.sync.requested: invalid mode (terminal
 // from the jobs service. Declared locally so the outbox package depends
 // only on the canonical EnqueueRequest shape from domain/job.
 type JobsEnqueuer interface {
-	Enqueue(ctx context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error)
+	Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
 }
 
 // providerSyncRequest is the canonical v1 envelope.
@@ -289,7 +289,7 @@ func (h *ProviderSyncHandler) dispatchToJobs(ctx context.Context, evt outboxeven
 	if project == "" {
 		project = req.Provider
 	}
-	enqReq := &kerneljob.EnqueueRequest{
+	enqReq := &job.EnqueueRequest{
 		Type:          jobType,
 		Project:       project,
 		VideoName:     req.IdempotencyKey,

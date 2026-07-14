@@ -25,8 +25,8 @@ type LocalToDriveRequest struct {
 }
 
 // LocalToDriveResponse is the immediate 202 reply: {ok, job_id, message}.
-// The scan results (clips/actors/local_found) are NOT computed here —
-// the worker emits them when the job runs.
+// The scan results are NOT computed here — the worker emits them when
+// the job runs.
 type LocalToDriveResponse struct {
 	OK      bool   `json:"ok"`
 	JobID   string `json:"job_id,omitempty"`

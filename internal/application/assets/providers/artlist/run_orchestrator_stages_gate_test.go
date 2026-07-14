@@ -30,9 +30,19 @@ func (f *gateBlockFakeStager_SUTStageSource) StageSource(_ context.Context, _ as
 	return nil, f.err
 }
 
-func (f *gateBlockFakeStager_SUTStageSource) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
+func (f *gateBlockFakeStager_SUTStageSource) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
 	f.cleanupCalls.Add(1)
 	return nil
+}
+
+// Cleanup implements assets.SourceStager (legacy method).
+func (f *gateBlockFakeStager_SUTStageSource) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
+	return nil
+}
+
+// StageSourceV2 implements assets.SourceStager.
+func (f *gateBlockFakeStager_SUTStageSource) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
+	return nil, nil
 }
 
 // panickingMediaProcessor_MustNotBeCalled returns a typed sentinel

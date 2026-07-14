@@ -55,7 +55,7 @@
 //     (the service-side collaborator used by docCreatorImpl.CreateDoc).
 //   - internal/application/jobs: appjobs.Compose() (the typed
 //     job-type registry queried by validateScriptGenerateWiring).
-//   - internal/domain/job: kerneljob.TypeScriptGenerate (the canonical
+//   - internal/domain/job: job.TypeScriptGenerate (the canonical
 //     job-type ID validated in step (a) of the 3-invariant check).
 //   - internal/domain/script: scriptpkg.PlanInvalidError (the
 //     typed error returned from validateRequiredProcessors).
@@ -72,8 +72,8 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -174,8 +174,8 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	//     composition-time registry. The registry is frozen after
 	//     Compose(); this query is branch-free.
 	reg := appjobs.Compose()
-	if !reg.IsRegistered(kerneljob.TypeScriptGenerate) {
-		return fmt.Errorf("script.generate wiring (a): registry has no entry for %s; rebuild appjobs.Compose()", kerneljob.TypeScriptGenerate)
+	if !reg.IsRegistered(job.TypeScriptGenerate) {
+		return fmt.Errorf("script.generate wiring (a): registry has no entry for %s; rebuild appjobs.Compose()", job.TypeScriptGenerate)
 	}
 
 	// (b) Broker has the handler. The RegisterJobs success above is
@@ -188,8 +188,8 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	if root == nil || root.Jobs == nil || root.Jobs.Service == nil {
 		return fmt.Errorf("script.generate wiring (b): Jobs service is nil; the gate above should have tripped")
 	}
-	if !root.Jobs.Service.HasHandler(kerneljob.TypeScriptGenerate) {
-		return fmt.Errorf("script.generate wiring (b): broker has no handler for %s; RegisterJobs call above should have registered it", kerneljob.TypeScriptGenerate)
+	if !root.Jobs.Service.HasHandler(job.TypeScriptGenerate) {
+		return fmt.Errorf("script.generate wiring (b): broker has no handler for %s; RegisterJobs call above should have registered it", job.TypeScriptGenerate)
 	}
 
 	// (c) At least one worker in the cluster is configured to claim
@@ -199,11 +199,11 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	//     runtime audit.
 	if log != nil {
 		log.Info("validateScriptGenerateWiring: WorkerTypes not exposed yet; (c) check skipped (forward-looking)",
-			zap.String("job_type", kerneljob.TypeScriptGenerate))
+			zap.String("job_type", job.TypeScriptGenerate))
 	}
 	if log != nil {
 		log.Info("validateScriptGenerateWiring: script.generate wiring complete",
-			zap.String("job_type", kerneljob.TypeScriptGenerate))
+			zap.String("job_type", job.TypeScriptGenerate))
 	}
 	return nil
 }
@@ -291,7 +291,7 @@ var _ usecase.DriveCheckService = (*driveCheckServiceAdapter)(nil)
 // jobs.Service and the usecase.JobEnqueueService port.
 type jobsEnqueueServiceAdapter struct {
 	svc interface {
-		Enqueue(ctx context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error)
+		Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
 	}
 }
 
@@ -300,7 +300,7 @@ func (a *jobsEnqueueServiceAdapter) Enqueue(ctx context.Context, req any) (any, 
 	if a == nil || a.svc == nil {
 		return nil, fmt.Errorf("jobsEnqueueServiceAdapter: jobs service not wired")
 	}
-	typedReq, ok := req.(*kerneljob.EnqueueRequest)
+	typedReq, ok := req.(*job.EnqueueRequest)
 	if !ok {
 		return nil, fmt.Errorf("jobsEnqueueServiceAdapter: req is %T, want *job.EnqueueRequest", req)
 	}

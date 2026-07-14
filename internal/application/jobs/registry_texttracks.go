@@ -6,11 +6,7 @@ package jobs
 //
 // PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026).
 
-import (
-	"time"
-
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
-)
+import "time"
 
 func registerTextTrackEntries(r *Registry) {
 	// TypeAssetTextMaterialize is the canonical job type
@@ -24,7 +20,7 @@ func registerTextTrackEntries(r *Registry) {
 	//     before dead-letter; the materializer is idempotent at
 	//     the per-language level so a retry is safe).
 	r.Register(JobPolicy{
-		Type:              job.TypeAssetTextMaterialize,
+		Type:              TypeAssetTextMaterialize,
 		Description:       "Asset text track materialization (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3: fan-out translation into all configured MaterializeLanguages; idempotent via per-language skip + outbox event_key dedup)",
 		Timeout:           2 * time.Hour,
 		DefaultMaxRetries: 1,

@@ -8,8 +8,8 @@
 // canonical `internal/kernel/job` surface. Per the repo SSOT
 // (godlike/06), the kernel is the SOLE owner of job-mechanism
 // types and the kernel does NOT depend on feature-specific job
-// names (`scripts.JobGenerate`, `images.JobGenerate`,
-// `voiceover.JobGenerate`, etc.) — those live in their
+// names (`job.TypeScriptGenerate`, `images.JobGenerate`,
+// `job.TypeVoiceoverGenerate`, etc.) — those live in their
 // proprietary owning packages. Re-adding the alias layer would
 // silently reintroduce the dual-source-of-truth violation.
 //
@@ -62,7 +62,7 @@ const (
 	// violation. References commit 8 + the banned-path rationale
 	// so the operator sees the migration rationale inline (no
 	// cross-file lookup needed).
-	domainJobNote = "forbidden import of the deleted internal/domain/job alias layer (commit 8, PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB, July 2026). The package carried ONLY back-compat type aliases (Job/Status/Event/Filter/Store) shadowing the canonical internal/kernel/job surface. Per godlike/06 SSOT the kernel is the SOLE owner of job-mechanism types and does NOT depend on feature-specific job names (scripts.JobGenerate / images.JobGenerate / voiceover.JobGenerate / youtube.JobExtract / documents.JobGenerate / media.JobReindex — those live in their proprietary owning packages). Forward-prevention gate: percheck_no_domain_job_compatibility_aliases. The kernel surface is the canonical source-of-truth; the alias layer was deleted because it was a dual-source-of-truth violation. Re-introducing the layer would silently reintroduce the godlike/07 NO-FAKE-AVAILABILITY regression."
+	domainJobNote = "forbidden import of the deleted internal/domain/job alias layer (commit 8, PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB, July 2026). The package carried ONLY back-compat type aliases (Job/Status/Event/Filter/Store) shadowing the canonical internal/kernel/job surface. Per godlike/06 SSOT the kernel is the SOLE owner of job-mechanism types and does NOT depend on feature-specific job names (job.TypeScriptGenerate / images.JobGenerate / job.TypeVoiceoverGenerate / job.TypeYouTubeClipExtract / documents.JobGenerate / media.JobReindex — those live in their proprietary owning packages). Forward-prevention gate: percheck_no_domain_job_compatibility_aliases. The kernel surface is the canonical source-of-truth; the alias layer was deleted because it was a dual-source-of-truth violation. Re-introducing the layer would silently reintroduce the godlike/07 NO-FAKE-AVAILABILITY regression."
 )
 
 // domainJobImportRegex matches a Go import statement that

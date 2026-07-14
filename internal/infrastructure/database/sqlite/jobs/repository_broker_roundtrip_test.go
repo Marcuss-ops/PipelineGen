@@ -72,7 +72,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -477,7 +477,7 @@ func TestBroker_RoundTrip_RenewLease_DoesNotBumpRevision(t *testing.T) {
 
 	// Exercise: RenewLease with the matching (id, workerID, newLeaseTTL).
 	// FASE 4(b) (July 2026): the kernel signature is now
-	// RenewLease(ctx, id, workerID, leaseTTL) (kerneljob.RenewLeaseResult, error)
+	// RenewLease(ctx, id, workerID, leaseTTL) (job.RenewLeaseResult, error)
 	// — the typed result surfaces LeaseState (Continue | CancelRequested | LeaseLost)
 	// atomically with the lease extension in a single SQL UPDATE. The implementation
 	// must NOT bump the revision column.
@@ -485,7 +485,7 @@ func TestBroker_RoundTrip_RenewLease_DoesNotBumpRevision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenewLease returned error: %v", err)
 	}
-	if res.State != kerneljob.LeaseStateContinue {
+	if res.State != job.LeaseStateContinue {
 		t.Fatalf("RenewLease on a healthy RUNNING job: expected LeaseStateContinue, got %q (typed LeaseState drift regression)", res.State)
 	}
 
@@ -564,7 +564,7 @@ func TestBroker_RoundTrip_RenewLease_CancelledAtSet_ReturnsCancelRequested(t *te
 	if err != nil {
 		t.Fatalf("RenewLease returned error: %v (typed LeaseState drift regression — should be nil error on the cancel path, only the typed result signals cancel)", err)
 	}
-	if res.State != kerneljob.LeaseStateCancelRequested {
+	if res.State != job.LeaseStateCancelRequested {
 		t.Fatalf("RenewLease on a job with cancelled_at SET: expected LeaseStateCancelRequested, got %q (CASE expression drift regression — the pre-Fase-4 polling goroutine was supposed to be replaced by this atomic SQL path; if the CASE silently returns Continue the cancel signal is LOST)", res.State)
 	}
 
@@ -612,7 +612,7 @@ func TestBroker_RoundTrip_RenewLease_NoMatchingRow_ReturnsLeaseLost(t *testing.T
 	if !errors.Is(err, ErrLeaseLost) {
 		t.Errorf("RenewLease on a non-existent jobID: expected errors.Is(err, ErrLeaseLost) for downstream typed-sentinel matching, got %v", err)
 	}
-	if res.State != kerneljob.LeaseStateLeaseLost {
+	if res.State != job.LeaseStateLeaseLost {
 		t.Errorf("RenewLease on a non-existent jobID: expected res.State=LeaseStateLeaseLost, got %q (typed LeaseState drift regression — the worker MUST inspect the typed result.State to surface lease loss, the error sentinel alone is insufficient)", res.State)
 	}
 
@@ -630,7 +630,7 @@ func TestBroker_RoundTrip_RenewLease_NoMatchingRow_ReturnsLeaseLost(t *testing.T
 	if !errors.Is(err2, ErrLeaseLost) {
 		t.Errorf("RenewLease on a RUNNING job with wrong workerID: expected errors.Is(err, ErrLeaseLost), got %v", err2)
 	}
-	if res2.State != kerneljob.LeaseStateLeaseLost {
+	if res2.State != job.LeaseStateLeaseLost {
 		t.Errorf("RenewLease on a RUNNING job with wrong workerID: expected res.State=LeaseStateLeaseLost, got %q (worker_id filter regression — typed result must report LeaseLost so the worker can abort)", res2.State)
 	}
 }

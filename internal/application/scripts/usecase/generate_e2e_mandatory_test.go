@@ -223,7 +223,6 @@ func TestGenerateE2E_DocumentServiceUnavailable(t *testing.T) {
 	docProc := adapters.NewDocumentProcessor(nil, nil)
 	uc := buildUsecaseWithClipResolver(gen, nil, docProc)
 	item := makeTextOnlyItem("e2e-doc-unavailable", sourceText)
-	item = scriptpkg.ToggleEnabled
 
 	result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
 	require.NoError(t, err)

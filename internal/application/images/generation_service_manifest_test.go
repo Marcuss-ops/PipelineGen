@@ -44,7 +44,7 @@ import (
 	"strings"
 	"testing"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // validPNGBytes is the canonical 67-byte PNG signature + IHDR + IDAT

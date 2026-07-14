@@ -44,8 +44,8 @@ import (
 	"context"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Tx-runner (BEGIN IM ... COMMIT / ROLLBACK boundary) ─────────────

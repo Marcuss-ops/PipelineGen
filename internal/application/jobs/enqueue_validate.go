@@ -15,7 +15,7 @@ package jobs
 import (
 	"fmt"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // MaxPayloadSize is the maximum allowed size for a serialized job payload in bytes.

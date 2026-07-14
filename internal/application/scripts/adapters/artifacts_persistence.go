@@ -9,7 +9,7 @@
 //   - handler (`internal/application/scripts/jobs/generation_handler.go`)
 //     does NOT touch filesystem. It calls
 //     PersistGeneratedArtifacts(ctx, jobID, *GenerationResult)
-//     and uses the returned []scriptpkg.Artifact to build the
+//     and uses the returned []job.Artifact to build the
 //     typed *job.ArtifactManifest in generation_manifest.go.
 //   - The adapter does all FS ops: os.TempDir, os.MkdirAll,
 //     os.WriteFile, file stat, sha256 hashing.
@@ -48,8 +48,8 @@ import (
 
 	"go.uber.org/zap"
 
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // PersistGeneratedArtifacts writes the canonical §8.4 multi-artifact
@@ -63,7 +63,7 @@ import (
 //	jobID string              — used in artifact IDs (jobID + ":" + kind)
 //	result *GenerationResult   — the typed aggregate result
 //
-// Returns []scriptpkg.Artifact (the typed pre-computed artifact
+// Returns []job.Artifact (the typed pre-computed artifact
 // slice) and an error. The handler then wraps this slice into a
 // *job.ArtifactManifest via buildManifestFromArtifacts.
 //
@@ -75,7 +75,7 @@ func PersistGeneratedArtifacts(
 	jobID string,
 	result *domainScript.GenerationResult,
 	log *zap.Logger,
-) ([]scriptpkg.Artifact, error) {
+) ([]job.Artifact, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -88,7 +88,7 @@ func PersistGeneratedArtifacts(
 		return nil, fmt.Errorf("artifacts_persistence: mkdir %s: %w", outDir, err)
 	}
 
-	artifacts := make([]scriptpkg.Artifact, 0, 5 /* §8.4 best-case ceiling */)
+	artifacts := make([]job.Artifact, 0, 5 /* §8.4 best-case ceiling */)
 
 	// ── 1. script-json (REQUIRED) ──────────────────────────────────────
 	scriptJSONPath := filepath.Join(outDir, "script.json")
@@ -99,13 +99,13 @@ func PersistGeneratedArtifacts(
 	if writeErr := os.WriteFile(scriptJSONPath, scriptData, 0o644); writeErr != nil {
 		return nil, fmt.Errorf("artifacts_persistence: write script.json: %w", writeErr)
 	}
-	sha, shaErr := scriptpkg.ComputeSHA256(scriptJSONPath)
+	sha, shaErr := job.ComputeSHA256(scriptJSONPath)
 	if shaErr != nil {
 		return nil, fmt.Errorf("artifacts_persistence: sha256 script.json: %w", shaErr)
 	}
-	artifacts = append(artifacts, scriptpkg.Artifact{
+	artifacts = append(artifacts, job.Artifact{
 		ID:        jobID + ":script_json",
-		Kind:      scriptpkg.ArtifactKindScriptJSON,
+		Kind:      job.ArtifactKindScriptJSON,
 		Path:      scriptJSONPath,
 		Filename:  "script.json",
 		MIMEType:  "application/json",
@@ -126,13 +126,13 @@ func PersistGeneratedArtifacts(
 	if result.Artifacts.Document != nil && strings.TrimSpace(result.Artifacts.Document.DocLink) != "" {
 		pdfPath := filepath.Join(outDir, "document.pdf")
 		if pdfInfo, statErr := os.Stat(pdfPath); statErr == nil {
-			pdfSHA, pdfSHAErr := scriptpkg.ComputeSHA256(pdfPath)
+			pdfSHA, pdfSHAErr := job.ComputeSHA256(pdfPath)
 			if pdfSHAErr != nil {
 				return nil, fmt.Errorf("artifacts_persistence: sha256 document.pdf: %w", pdfSHAErr)
 			}
-			artifacts = append(artifacts, scriptpkg.Artifact{
+			artifacts = append(artifacts, job.Artifact{
 				ID:        jobID + ":pdf",
-				Kind:      scriptpkg.ArtifactKindPDF,
+				Kind:      job.ArtifactKindPDF,
 				Path:      pdfPath,
 				Filename:  "document.pdf",
 				MIMEType:  "application/pdf",
@@ -150,7 +150,7 @@ func PersistGeneratedArtifacts(
 
 	// ── 3. document-markdown (OPTIONAL, slot reserved) ─────────────────
 	// §8.4 lists document-markdown as OPTIONAL. The kind constant
-	// (scriptpkg.ArtifactKindMarkdown) is reserved here so a future
+	// (job.ArtifactKindMarkdown) is reserved here so a future
 	// emission pipeline can drop output without a wire-format
 	// extension. C12 gates emission on a future markdown-twin
 	// pipeline (out of scope for the C12 + PR-GODOBJ-4 closure).
@@ -165,13 +165,13 @@ func PersistGeneratedArtifacts(
 		if writeErr := os.WriteFile(scenesJSONPath, scenesData, 0o644); writeErr != nil {
 			return nil, fmt.Errorf("artifacts_persistence: write scenes.json: %w", writeErr)
 		}
-		scenesSHA, scenesSHAErr := scriptpkg.ComputeSHA256(scenesJSONPath)
+		scenesSHA, scenesSHAErr := job.ComputeSHA256(scenesJSONPath)
 		if scenesSHAErr != nil {
 			return nil, fmt.Errorf("artifacts_persistence: sha256 scenes.json: %w", scenesSHAErr)
 		}
-		artifacts = append(artifacts, scriptpkg.Artifact{
+		artifacts = append(artifacts, job.Artifact{
 			ID:        jobID + ":scenes",
-			Kind:      scriptpkg.ArtifactKindScenes,
+			Kind:      job.ArtifactKindScenes,
 			Path:      scenesJSONPath,
 			Filename:  "scenes.json",
 			MIMEType:  "application/json",
@@ -219,13 +219,13 @@ func PersistGeneratedArtifacts(
 		// Only include voiceover artifact if the file exists and
 		// we can compute its SHA256. Skip missing files gracefully.
 		if voInfo, voStatErr := os.Stat(voPath); voStatErr == nil {
-			voSHA, voSHAErr := scriptpkg.ComputeSHA256(voPath)
+			voSHA, voSHAErr := job.ComputeSHA256(voPath)
 			if voSHAErr != nil {
 				return nil, fmt.Errorf("artifacts_persistence: sha256 voiceover %s: %w", voPath, voSHAErr)
 			}
-			artifacts = append(artifacts, scriptpkg.Artifact{
+			artifacts = append(artifacts, job.Artifact{
 				ID:        fmt.Sprintf("%s:voiceover:%s", jobID, lang),
-				Kind:      scriptpkg.ArtifactKindVoiceover,
+				Kind:      job.ArtifactKindVoiceover,
 				Path:      voPath,
 				Filename:  voFilename,
 				MIMEType:  "audio/mpeg",

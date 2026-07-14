@@ -40,7 +40,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // GenerateVoiceoversRequest is the canonical HTTP wire shape for
@@ -230,9 +230,9 @@ func (r *GenerateVoiceoversRequest) ToCommand() *voiceover.GenerateVoiceoversCom
 // POSTs produce the same ActiveKey; the broker's FindActiveByKey
 // returns the existing non-terminal job instead of enqueuing a
 // duplicate.
-func (r *GenerateVoiceoversRequest) ToEnqueueRequest() *kerneljob.EnqueueRequest {
-	return &kerneljob.EnqueueRequest{
-		Type:          kerneljob.TypeVoiceoverGenerate,
+func (r *GenerateVoiceoversRequest) ToEnqueueRequest() *job.EnqueueRequest {
+	return &job.EnqueueRequest{
+		Type:          job.TypeVoiceoverGenerate,
 		Payload:       r.ToCommand(),
 		CorrelationID: r.RequestID,
 		ActiveKey:     r.parentActiveKey(),

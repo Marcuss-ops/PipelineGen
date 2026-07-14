@@ -16,7 +16,7 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 )
@@ -88,7 +88,7 @@ func (h *ImagesHandler) GenerateBatch(c *gin.Context) {
 			"tags":     item.Tags,
 		}
 
-		enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &kerneljob.EnqueueRequest{
+		enqueued, err := h.jobsSvc.Enqueue(c.Request.Context(), &job.EnqueueRequest{
 			Type:          appjobs.TypeImageGenerateGoogle,
 			CorrelationID: correlationID,
 			Payload:       payload,

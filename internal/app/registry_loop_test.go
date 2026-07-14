@@ -44,7 +44,6 @@ import (
 	"testing"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
-	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -92,7 +91,6 @@ func TestRegisterSearchQueriesCapability_NilDB_NoRegister(t *testing.T) {
 func TestRegisterAllCapabilities_DoNotFreezeRegistry(t *testing.T) {
 	reg := module.NewRegistry()
 	log := zap.NewNop()
-	cfg := &config.Config{}
 	root := &ComposeRoot{Domains: nil, DB: nil}
 
 	// Zero-value ComposeRoot paths short-circuit all named functions.

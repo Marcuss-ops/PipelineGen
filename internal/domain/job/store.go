@@ -16,7 +16,7 @@
 package job
 
 import (
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Type aliases to canonical kernel/job types (Phase A.2) ──────────
@@ -27,7 +27,7 @@ type (
 	// the lease fencing tuple (workerID, leaseID, expectedRevision)
 	// inline. Implementations MUST perform an optimistic-concurrency
 	// check before mutating job state.
-	Store = kerneljob.Store
+	Store = job.Store
 
 	// JobBroker is the canonical port under which any persistence
 	// implementation declares conformance
@@ -38,5 +38,5 @@ type (
 	// API) extend JobBroker here without modifying the canonical Store
 	// contract; adapters that cannot implement them stay out of the port
 	// (per godlike/07 "no fake availability").
-	JobBroker = kerneljob.JobBroker
+	JobBroker = job.JobBroker
 )

@@ -73,6 +73,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // ─────────────────────────────────────────────────────────────────────
@@ -114,10 +115,20 @@ func (r *recordingStager) StageSource(ctx context.Context, ref assets.SourceRef)
 // Cleanup records the call + the staged asset the orchestrator hands
 // to the cleanup. Tests configure cleanupErr to drive the "cleanup
 // failure tolerated" path.
-func (r *recordingStager) Cleanup(ctx context.Context, staged *assets.StagedAsset) error {
+func (r *recordingStager) CleanupStagedSource(ctx context.Context, staged *asset.StagedSource) error {
 	r.cleanupCalls++
-	r.cleanedStaged = staged
+	_ = staged
 	return r.cleanupErr
+}
+
+// Cleanup implements assets.SourceStager (legacy method).
+func (r *recordingStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
+	return nil
+}
+
+// StageSourceV2 implements assets.SourceStager.
+func (f *recordingStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
+	return nil, nil
 }
 
 // newWiringTestOrchestrator is a tiny constructor for tests that

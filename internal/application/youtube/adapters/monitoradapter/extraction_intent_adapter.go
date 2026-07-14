@@ -54,7 +54,7 @@ import (
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // JobsEnqueuerSvc is the minimum-surface port from jobs.Service.
@@ -63,8 +63,8 @@ import (
 // New EnqueueRequest field additions that the adapter doesn't consume
 // surface as a lint warning rather than a silent drop.
 type JobsEnqueuerSvc interface {
-	FindActiveByKey(ctx context.Context, activeKey string) (*kerneljob.Job, error)
-	Enqueue(ctx context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error)
+	FindActiveByKey(ctx context.Context, activeKey string) (*job.Job, error)
+	Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error)
 }
 
 // ChannelsCursorSvc is the minimum-surface port from channels.Service.
@@ -192,8 +192,8 @@ func (a *ExtractionIntentAdapter) EnqueueExtract(ctx context.Context, intent mon
 	}
 
 	// ── 4. Emit durable job via the broker ─────────────────────────
-	if _, err := a.jobsSvc.Enqueue(ctx, &kerneljob.EnqueueRequest{
-		Type:      kerneljob.TypeYouTubeClipExtract,
+	if _, err := a.jobsSvc.Enqueue(ctx, &job.EnqueueRequest{
+		Type:      job.TypeYouTubeClipExtract,
 		VideoName: intent.Title,
 		ActiveKey: activeKey,
 		Payload:   extractReq,

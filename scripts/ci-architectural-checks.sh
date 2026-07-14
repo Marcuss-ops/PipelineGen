@@ -711,14 +711,16 @@ fails=$(printf '%s\n' "$decls" \
       for (key in counts) {
         if (counts[key] < 2) continue
         if (key in allowed) continue
-      # Display path uses dir/pkg.TypeName for human readability;
-      # recover (pkg, TypeName) via a single split on `/` (last segment
-      # is the package name) + index() + substr() (TypeName is the colon-tail).
-      dp_n = split(key, dp, "/")
-      colon = index(key, ":")
-      tn = substr(key, colon + 1)
+      # Display path uses dir/pkg.TypeName for human readability.
+      # Key shape is `dir/pkg:TypeName` (e.g. `internal/foo/job:Filter`).
+      # Split on `:` first (yields the (dir/pkg, TypeName) tuple), then
+      # split the dir/pkg segment on `/` to recover the package name
+      # (the last slash-token). This avoids the latent bug where
+      # dp[dp_n] retains the colon and prints `pkg:Type.Type`.
+      c_n = split(key, key_parts, ":")
+      s_n = split(key_parts[1], dp, "/")
       out = out sprintf("\n  %s.%s  (count=%d in same (dir,pkg))\n    sites: %s\n",
-                        dp[dp_n], tn, counts[key], sites[key])
+                        dp[s_n], key_parts[2], counts[key], sites[key])
       }
       printf "%s", out
     }' 2>/dev/null || true)

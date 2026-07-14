@@ -30,8 +30,8 @@ import (
 	"fmt"
 	"time"
 
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // wireEnvelope mirrors the server-side body shape emitted by
@@ -119,7 +119,7 @@ func decodeCompletionErrorEnvelope(rawBody []byte) (*remote.RemoteCompletionErro
 func kindToDomainSentinel(kind remote.ErrorKind) error {
 	switch kind {
 	case remote.ErrorKindLeaseLost:
-		return kerneljob.ErrLeaseLost
+		return jobs.ErrLeaseLost
 	case remote.ErrorKindIdempotencyConflict:
 		return remote.ErrCompleteJobIdempotencyConflict
 	case remote.ErrorKindInvalidManifest:

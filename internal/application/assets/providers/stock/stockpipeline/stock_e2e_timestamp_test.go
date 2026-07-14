@@ -49,8 +49,9 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	asset "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // pacquiaoBronerRounds is the canonical 8-round Pacquiao/Broner fight
@@ -111,8 +112,18 @@ func (s *syntheticStager) StageSource(_ context.Context, _ assets.SourceRef) (*a
 	}, nil
 }
 
+func (s *syntheticStager) CleanupStagedSource(_ context.Context, _ *asset.StagedSource) error {
+	return nil
+}
+
+// Cleanup implements assets.SourceStager (legacy method).
 func (s *syntheticStager) Cleanup(_ context.Context, _ *assets.StagedAsset) error {
 	return nil
+}
+
+// StageSourceV2 implements assets.SourceStager.
+func (f *syntheticStager) StageSourceV2(_ context.Context, _ asset.SourceRef) (*asset.StagedSource, error) {
+	return nil, nil
 }
 
 // ffmpegCutter is the DoD 8 test fixture for the canonical VideoCutter

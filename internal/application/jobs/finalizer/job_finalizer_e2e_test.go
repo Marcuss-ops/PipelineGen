@@ -14,7 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // minimalSchema mirrors the columns the JobFinalizer reads/writes. The
@@ -339,7 +339,7 @@ func TestE2E_LeaseExpiryNullIsAcceptedBySQLGated(t *testing.T) {
 //     NOT req.Result.Attempt. A future reader changing markSucceeded's
 //     UPDATE statement to `revision = revision + 2` (silent value
 //     drift) would fail THIS assertion.
-//  3. evt.FinalStatus = kerneljob.StatusSucceeded (typed-port invariant:
+//  3. evt.FinalStatus = jobs.StatusSucceeded (typed-port invariant:
 //     the Finalizer's terminal transition is shaped as a typed event,
 //     not a free-form string).
 //
@@ -414,9 +414,9 @@ func TestFinalizer_PublishesTypedJobCompletionEvent_PostFlipRevision(t *testing.
 	if evt.JobID != jobID {
 		t.Errorf("evt.JobID = %q, want %q", evt.JobID, jobID)
 	}
-	if evt.FinalStatus != kerneljob.StatusSucceeded {
+	if evt.FinalStatus != jobs.StatusSucceeded {
 		t.Errorf("evt.FinalStatus = %q, want %q (StatusSucceeded)",
-			evt.FinalStatus, kerneljob.StatusSucceeded)
+			evt.FinalStatus, jobs.StatusSucceeded)
 	}
 	if err := evt.Err; err != nil {
 		t.Errorf("evt.Err = %v, want nil on SUCCEEDED event", err)

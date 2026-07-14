@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── Legacy typed Codec surface (kept from pre-C2) ───────────────────
@@ -95,7 +95,7 @@ func (c *TypedCodec[T, R]) DecodeResult(raw json.RawMessage) (R, error) {
 // in this package's registry.go (alongside the other 26 Type* alias
 // constants already declared there, e.g.
 //
-//     TypeScriptGenerate = scripts.JobGenerate
+//     TypeScriptGenerate = job.TypeScriptGenerate
 //
 // per godlike/02 §“Capability-specific constants stay in their owning
 // domain package”. Adding a 5th canonical family means adding ONE line

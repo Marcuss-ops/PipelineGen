@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 func TestExtractStagedArtifacts_HappyPath(t *testing.T) {

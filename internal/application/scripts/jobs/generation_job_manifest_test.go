@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	script "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // validScriptResult builds a minimal typed GenerationResult that
@@ -137,7 +137,7 @@ func validScriptResult_VoiceoverMultiLanguage() *script.GenerationResult {
 // compute their SHA256 (the §8.4 contract requires SHA256 on all
 // non-placeholder artifacts for the FinalizeAsset outbox event's
 // source_version field to be non-empty).
-func canonicalEmit(t *testing.T, jobID string, res *script.GenerationResult) (map[string]any, *scriptpkg.ArtifactManifest) {
+func canonicalEmit(t *testing.T, jobID string, res *script.GenerationResult) (map[string]any, *job.ArtifactManifest) {
 	t.Helper()
 	ensureFixtureFiles(t, jobID, res)
 	ctx := context.Background()
@@ -208,7 +208,7 @@ func TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts(t *testing.T) {
 	res := validScriptResult("en")
 	handlerResult, _ := canonicalEmit(t, "test-job-c12-happy", res)
 
-	manifest, decodeErr := scriptpkg.Decode(handlerResult)
+	manifest, decodeErr := job.Decode(handlerResult)
 	if decodeErr != nil {
 		t.Fatalf("job.Decode(handlerResult): %v", decodeErr)
 	}
@@ -222,11 +222,11 @@ func TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts(t *testing.T) {
 	}
 
 	want := map[string]int{
-		scriptpkg.ArtifactKindScriptJSON: 1,
-		scriptpkg.ArtifactKindPDF:        1,
-		scriptpkg.ArtifactKindMarkdown:   0,
-		scriptpkg.ArtifactKindScenes:     1,
-		scriptpkg.ArtifactKindVoiceover:  1,
+		job.ArtifactKindScriptJSON: 1,
+		job.ArtifactKindPDF:        1,
+		job.ArtifactKindMarkdown:   0,
+		job.ArtifactKindScenes:     1,
+		job.ArtifactKindVoiceover:  1,
 	}
 	for k, wantv := range want {
 		if got := kindCount[k]; got != wantv {
@@ -235,10 +235,10 @@ func TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts(t *testing.T) {
 	}
 
 	removedKinds := []string{
-		scriptpkg.ArtifactKindScriptText,
-		scriptpkg.ArtifactKindMetadata,
-		scriptpkg.ArtifactKindEntities,
-		scriptpkg.ArtifactKindImage,
+		job.ArtifactKindScriptText,
+		job.ArtifactKindMetadata,
+		job.ArtifactKindEntities,
+		job.ArtifactKindImage,
 	}
 	for _, k := range removedKinds {
 		if got := kindCount[k]; got != 0 {
@@ -247,18 +247,18 @@ func TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts(t *testing.T) {
 	}
 
 	wantRequired := map[string]bool{
-		scriptpkg.ArtifactKindScriptJSON: true,
-		scriptpkg.ArtifactKindPDF:        true,
-		scriptpkg.ArtifactKindMarkdown:   false,
-		scriptpkg.ArtifactKindScenes:     false,
-		scriptpkg.ArtifactKindVoiceover:  false,
+		job.ArtifactKindScriptJSON: true,
+		job.ArtifactKindPDF:        true,
+		job.ArtifactKindMarkdown:   false,
+		job.ArtifactKindScenes:     false,
+		job.ArtifactKindVoiceover:  false,
 	}
 	for _, k := range []string{
-		scriptpkg.ArtifactKindScriptJSON,
-		scriptpkg.ArtifactKindPDF,
-		scriptpkg.ArtifactKindMarkdown,
-		scriptpkg.ArtifactKindScenes,
-		scriptpkg.ArtifactKindVoiceover,
+		job.ArtifactKindScriptJSON,
+		job.ArtifactKindPDF,
+		job.ArtifactKindMarkdown,
+		job.ArtifactKindScenes,
+		job.ArtifactKindVoiceover,
 	} {
 		gotRequired := false
 		for _, a := range manifest.Artifacts {
@@ -275,8 +275,8 @@ func TestPersistGeneratedArtifacts_HappyPath_FiveArtifacts(t *testing.T) {
 		t.Errorf("manifest.Validate(): %v (manifest should be well-formed)", vErr)
 	}
 
-	if manifest.SchemaVersion != scriptpkg.SchemaVersionArtifactManifestV1 {
-		t.Errorf("manifest schema_version = %q, want %q", manifest.SchemaVersion, scriptpkg.SchemaVersionArtifactManifestV1)
+	if manifest.SchemaVersion != job.SchemaVersionArtifactManifestV1 {
+		t.Errorf("manifest schema_version = %q, want %q", manifest.SchemaVersion, job.SchemaVersionArtifactManifestV1)
 	}
 }
 
@@ -284,12 +284,12 @@ func TestPersistGeneratedArtifacts_NoDocument_OmitsPDF(t *testing.T) {
 	res := validScriptResult_NoDocument()
 	handlerResult, _ := canonicalEmit(t, "test-job-c12-no-doc", res)
 
-	manifest, decodeErr := scriptpkg.Decode(handlerResult)
+	manifest, decodeErr := job.Decode(handlerResult)
 	if decodeErr != nil {
 		t.Fatalf("decode: %v", decodeErr)
 	}
 	for _, a := range manifest.Artifacts {
-		if a.Kind == scriptpkg.ArtifactKindPDF {
+		if a.Kind == job.ArtifactKindPDF {
 			t.Errorf("PDF slot present in manifest when Document.DocLink empty — §8.4 spec says emit only when generated")
 		}
 	}
@@ -299,9 +299,9 @@ func TestPersistGeneratedArtifacts_NoScenes_OmitsScenes(t *testing.T) {
 	res := validScriptResult_NoScenes()
 	handlerResult, _ := canonicalEmit(t, "test-job-c12-no-scenes", res)
 
-	manifest, _ := scriptpkg.Decode(handlerResult)
+	manifest, _ := job.Decode(handlerResult)
 	for _, a := range manifest.Artifacts {
-		if a.Kind == scriptpkg.ArtifactKindScenes {
+		if a.Kind == job.ArtifactKindScenes {
 			t.Errorf("scenes slot present in manifest when SpecScene empty — §8.4 spec says emit only when generated")
 		}
 	}
@@ -311,10 +311,10 @@ func TestPersistGeneratedArtifacts_VoiceoverMultilang_OnePerLanguage(t *testing.
 	res := validScriptResult_VoiceoverMultiLanguage()
 	handlerResult, _ := canonicalEmit(t, "test-job-c12-multilang", res)
 
-	manifest, _ := scriptpkg.Decode(handlerResult)
+	manifest, _ := job.Decode(handlerResult)
 	voiceoverLangs := []string{}
 	for _, a := range manifest.Artifacts {
-		if a.Kind == scriptpkg.ArtifactKindVoiceover {
+		if a.Kind == job.ArtifactKindVoiceover {
 			voiceoverLangs = append(voiceoverLangs, filepath.Base(a.ID))
 		}
 	}
@@ -340,7 +340,7 @@ func TestPersistGeneratedArtifacts_TypedEnvelopeRouted(t *testing.T) {
 	if mErr != nil {
 		t.Fatalf("marshal handlerResult: %v", mErr)
 	}
-	var envelope scriptpkg.ExecutionResult[script.GenerationResult]
+	var envelope job.ExecutionResult[script.GenerationResult]
 	if uErr := json.Unmarshal(envelopeBytes, &envelope); uErr != nil {
 		t.Fatalf("unmarshal into typed ExecutionResult[GenerationResult]: %v", uErr)
 	}
@@ -358,14 +358,14 @@ func TestPersistGeneratedArtifacts_TypedEnvelopeRouted(t *testing.T) {
 	if envelope.Artifacts == nil {
 		t.Fatal("envelope.Artifacts is nil — typed dual-shape discipline violated")
 	}
-	if envelope.Artifacts.SchemaVersion != scriptpkg.SchemaVersionArtifactManifestV1 {
-		t.Errorf("envelope.Artifacts_schema_version = %q, want %q", envelope.Artifacts.SchemaVersion, scriptpkg.SchemaVersionArtifactManifestV1)
+	if envelope.Artifacts.SchemaVersion != job.SchemaVersionArtifactManifestV1 {
+		t.Errorf("envelope.Artifacts_schema_version = %q, want %q", envelope.Artifacts.SchemaVersion, job.SchemaVersionArtifactManifestV1)
 	}
 	if envelope.Artifacts.JobID != "test-job-c12-typed-env" {
 		t.Errorf("envelope.Artifacts.JobID = %q, want %q", envelope.Artifacts.JobID, "test-job-c12-typed-env")
 	}
-	if _, hasSidecar := handlerResult[scriptpkg.ManifestKey]; !hasSidecar {
-		t.Errorf("handlerResult missing %q sidecar — runner's job.Decode lookup will fail", scriptpkg.ManifestKey)
+	if _, hasSidecar := handlerResult[job.ManifestKey]; !hasSidecar {
+		t.Errorf("handlerResult missing %q sidecar — runner's job.Decode lookup will fail", job.ManifestKey)
 	}
 }
 
@@ -378,9 +378,9 @@ func TestPersistGeneratedArtifacts_ScriptJSONOnDisk(t *testing.T) {
 	res := validScriptResult("en")
 	handlerResult, _ := canonicalEmit(t, "c12-disk-pin-test", res)
 
-	manifest, _ := scriptpkg.Decode(handlerResult)
+	manifest, _ := job.Decode(handlerResult)
 	for _, a := range manifest.Artifacts {
-		if a.Kind != scriptpkg.ArtifactKindScriptJSON {
+		if a.Kind != job.ArtifactKindScriptJSON {
 			continue
 		}
 		if _, statErr := os.Stat(a.Path); statErr != nil {
@@ -405,7 +405,7 @@ func TestPersistGeneratedArtifacts_AllArtifactsHaveSHA256(t *testing.T) {
 	res := validScriptResult("en")
 	handlerResult, _ := canonicalEmit(t, "c12-sha256-pin", res)
 
-	manifest, decodeErr := scriptpkg.Decode(handlerResult)
+	manifest, decodeErr := job.Decode(handlerResult)
 	if decodeErr != nil {
 		t.Fatalf("decode: %v", decodeErr)
 	}

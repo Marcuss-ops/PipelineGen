@@ -31,7 +31,7 @@ package jobs
 import (
 	"testing"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // canonicalWiredJobTypes is the canonical list of job types whose

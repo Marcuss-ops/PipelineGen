@@ -12,8 +12,8 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -189,7 +189,7 @@ func (a *ScriptParentAggregator) Start(ctx context.Context) {
 // Tick performs one aggregation sweep. Errors on individual parents are
 // logged and skipped — a failed parent is retried on the next tick.
 func (a *ScriptParentAggregator) Tick(ctx context.Context) {
-	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, scripts.JobGenerate, 100)
+	jobs, err := a.deps.JobsSvc.ListAwaitingAggregation(ctx, appjobs.TypeScriptGenerate, 100)
 	if err != nil {
 		a.deps.Logger.Error("ScriptParentAggregator.Tick: ListAwaitingAggregation failed", zap.Error(err))
 		return

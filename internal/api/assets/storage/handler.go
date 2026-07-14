@@ -18,18 +18,18 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Handler is the thin HTTP transport for Drive folder sync operations.
 type Handler struct {
 	log         *zap.Logger
-	jobsSvc     kerneljob.Service
+	jobsSvc     jobs.Service
 	catalogSync *catalogsync.Service
 }
 
 // NewHandler creates a storage Handler for Drive folder sync.
-func NewHandler(jobs kerneljob.Service, catalogSync *catalogsync.Service, log *zap.Logger) *Handler {
+func NewHandler(jobs jobs.Service, catalogSync *catalogsync.Service, log *zap.Logger) *Handler {
 	return &Handler{log: log, jobsSvc: jobs, catalogSync: catalogSync}
 }
 

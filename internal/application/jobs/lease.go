@@ -3,7 +3,7 @@ package jobs
 import (
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Job is a type alias for the canonical domain Job entity.

@@ -12,7 +12,6 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
@@ -127,7 +126,7 @@ type ServiceDependencies struct {
 	Dispatcher        Dispatcher
 	MediaProcessor    asset.Processor
 	AssetDestResolver asset.Resolver
-	JobsSvc           jobs.Service
+	JobsSvc           appjobs.Service
 	AssetProcRepo     asset.ProcessingRepository
 	AssetVerRepo      asset.VersionRepository
 	// AssetFinalizerTx is the canonical transactional asset finalizer
@@ -234,7 +233,7 @@ type Service struct {
 	// Cross-cutting domain services.
 	mediaProcessor    asset.Processor
 	assetDestResolver asset.Resolver
-	jobsSvc           jobs.Service
+	jobsSvc           appjobs.Service
 
 	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
 	assetProcessing asset.ProcessingRepository
@@ -431,12 +430,12 @@ func (s *Service) SearchClips(ctx context.Context, term string) []*asset.Asset {
 }
 
 // HandleJob gestisce un job dalla coda.
-func (s *Service) HandleJob(ctx context.Context, j *jobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
+func (s *Service) HandleJob(ctx context.Context, j *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	return s.jobAdapter.HandleJob(ctx, j, tools)
 }
 
 // RegisterHandler registers the Artlist job handler (HandleJob) with the
-// canonical jobs.Service dispatcher for TypeArtlistRun ("media.artlist").
+// canonical appjobs.Service dispatcher for TypeArtlistRun ("media.artlist").
 // The composition root (WireArtlistJobBindings in build_bundles_artlist.go)
 // calls this method after WireArtlist completes, mirroring the
 // catalog/youtube RegisterHandler precedent in build_bundles_youtube.go.
@@ -444,7 +443,7 @@ func (s *Service) HandleJob(ctx context.Context, j *jobs.Job, tools *appjobs.Job
 // PR-P2-FAILCLOSED-JOB (July 2026): on success the receiver ALSO
 // tracks hasConsumer=true so the new /api/artlist/job-consumer
 // health endpoint (artlist_handlers.go::JobConsumer) can read the
-// consumer state without coupling to the jobs.Service surface
+// consumer state without coupling to the appjobs.Service surface
 // shape. The handler-side check is the source of truth for "is
 // media.artlist consumed?" — operator dashboards +
 // `make verify-main` gate both rely on this bool. godlike/06 SSOT:
@@ -465,7 +464,7 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 }
 
 // HasConsumer reports whether the Artlist job handler is currently
-// bound to a jobs.Service dispatcher for TypeArtlistRun
+// bound to a appjobs.Service dispatcher for TypeArtlistRun
 // ("media.artlist"). godlike/06 SSOT — operator-facing surface for
 // /api/artlist/job-consumer; composition root drives the bool via
 // RegisterHandler (which is the only writer). Returns false when the
@@ -496,6 +495,6 @@ func (s *Service) Searchers() (Searcher, Searcher, Searcher) {
 }
 
 // GetJobByRunID ottiene un job per run ID.
-func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*jobs.Job, error) {
+func (s *Service) GetJobByRunID(ctx context.Context, runID string) (*appjobs.Job, error) {
 	return s.jobAdapter.GetJobByRunID(ctx, runID)
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	_ "github.com/mattn/go-sqlite3"
 )
 

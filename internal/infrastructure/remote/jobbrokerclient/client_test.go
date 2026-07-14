@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Compile-time pin (godlike/06 SSOT discipline): the test
@@ -135,7 +135,7 @@ func TestClient_CompleteWithArtifacts_HappyPath(t *testing.T) {
 // the godlike/07 typed-error contract: when the server-side handler
 // returns the typed-error envelope {kind:"lease_lost",...}, the
 // client wraps the sentinel via fmt.Errorf(...: %w, ErrLeaseLost)
-// so upstream callers use errors.Is(err, kerneljob.ErrLeaseLost) over
+// so upstream callers use errors.Is(err, jobs.ErrLeaseLost) over
 // both in-process (*local.Broker) and remote (this Client) worker
 // executions.
 //
@@ -161,8 +161,8 @@ func TestClient_CompleteWithArtifacts_LeaseMismatchTypedError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-nil err when server emits lease_lost envelope")
 	}
-	if !errors.Is(err, kerneljob.ErrLeaseLost) {
-		t.Errorf("expected errors.Is(err, kerneljob.ErrLeaseLost); got %v (chain not wrapping sentinel)", err)
+	if !errors.Is(err, jobs.ErrLeaseLost) {
+		t.Errorf("expected errors.Is(err, jobs.ErrLeaseLost); got %v (chain not wrapping sentinel)", err)
 	}
 	// Stray body should ALSO bubble up via the wrap-chain (godlike/07
 	// no-fake-availability: the canonical error message carries

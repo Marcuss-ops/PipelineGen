@@ -58,9 +58,9 @@ import (
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/jobs/completion"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	metrics "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // Finalizer is the concrete implementation of finalization.JobFinalizer.
@@ -302,7 +302,7 @@ func (f *Finalizer) CompleteWithArtifacts(
 			f.bus.Publish(completion.JobCompletionEvent{
 				JobID:       req.Result.JobID,
 				Attempt:     req.Result.Attempt,
-				FinalStatus: kerneljob.StatusSucceeded,
+				FinalStatus: jobs.StatusSucceeded,
 				Err:         nil,
 				Revision:    jobRow.revision + 1, // post-flip integer counter
 			})

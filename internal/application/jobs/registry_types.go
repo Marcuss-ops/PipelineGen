@@ -26,7 +26,7 @@ package jobs
 import (
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── RegistryEntry (Wave 19 / P1-9 canonical policy record) ─────────────
@@ -224,4 +224,15 @@ const (
 	// batch-fans out per LLM-identified segment instead of per video
 	// OR clip ID.
 	TypeYouTubeClipExtractImportant = job.TypeYouTubeClipExtractImportant
+
+	// Canonical job types that were missing from the re-export block.
+	// They live in internal/domain/job/job.go and are re-exported here
+	// so sibling registry_*.go files can reference them as bare identifiers.
+	TypeVoiceoverGenerate      = job.TypeVoiceoverGenerate
+	TypeYouTubeClipExtract     = job.TypeYouTubeClipExtract
+	TypeScriptGenerate         = job.TypeScriptGenerate
+	TypeImagesGenerate         = job.TypeImagesGenerate
+	TypeDocumentGenerate       = job.TypeDocumentGenerate
+	TypeBulkUploadYouTubeClips = job.TypeBulkUploadYouTubeClips
+	TypeAssetTextMaterialize   = job.TypeAssetTextMaterialize
 )

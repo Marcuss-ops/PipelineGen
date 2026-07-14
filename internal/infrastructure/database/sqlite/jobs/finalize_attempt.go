@@ -56,7 +56,7 @@
 // godlike/07 fail-closed (no-fake-availability): each TX-internal step
 // either runs to completion or rolls back the entire transaction via
 // `defer tx.Rollback`. CAS-fence mismatches on step 4 return
-// job.ErrTransitionConflict / job.ErrLeaseLost without TX commit; stale
+// domjob.ErrTransitionConflict / domjob.ErrLeaseLost without TX commit; stale
 // artifact-state patches on step 6 surface ErrFinalizeAttemptArtifactStale;
 // outbox Events with empty Type or EventKey are rejected pre-TX. Silent-
 // default values are explicit typed sentinels, NEVER empty defaults.
@@ -70,10 +70,9 @@ import (
 	"fmt"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	hashutil "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 
@@ -104,47 +103,47 @@ import (
 // unchanged. The `.Error()` message returns the domjob-formatted
 // text (canonical surface).
 var (
-	ErrFinalizeAttemptOutcomeInvalid     = job.ErrFinalizeAttemptOutcomeInvalid
-	ErrFinalizeAttemptResultMissing      = job.ErrFinalizeAttemptResultMissing
-	ErrFinalizeAttemptErrorMissing       = job.ErrFinalizeAttemptErrorMissing
-	ErrFinalizeAttemptArtifactStale      = job.ErrFinalizeAttemptArtifactStale
-	ErrFinalizeAttemptOutboxEventMissing = job.ErrFinalizeAttemptOutboxEventMissing
-	ErrFinalizeAttemptDLQIncompatible    = job.ErrFinalizeAttemptDLQIncompatible
+	ErrFinalizeAttemptOutcomeInvalid     = domjob.ErrFinalizeAttemptOutcomeInvalid
+	ErrFinalizeAttemptResultMissing      = domjob.ErrFinalizeAttemptResultMissing
+	ErrFinalizeAttemptErrorMissing       = domjob.ErrFinalizeAttemptErrorMissing
+	ErrFinalizeAttemptArtifactStale      = domjob.ErrFinalizeAttemptArtifactStale
+	ErrFinalizeAttemptOutboxEventMissing = domjob.ErrFinalizeAttemptOutboxEventMissing
+	ErrFinalizeAttemptDLQIncompatible    = domjob.ErrFinalizeAttemptDLQIncompatible
 )
 
 // FinalizeAttempt is the canonical consolidated terminal-decision primitive.
 //
-// Implements kerneljob.Store.FinalizeAttempt (see internal/kernel/job/store.go).
+// Implements domjob.Store.FinalizeAttempt (see internal/kernel/job/store.go).
 // See internal/kernel/job/finalize_commands.go for the typed-envelope contract.
 //
 // Returns the canonical (FinalStatus, NewRevision, DLQRecorded,
 // OutboxEventsWritten) projection. Callers MUST NOT re-query the jobs row
 // to "double-check" — the returned FinalizeAttemptResult struct IS the
 // post-commit source of truth (godlike/06 SSOT).
-func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.FinalizeAttemptCommand) (kerneljob.FinalizeAttemptResult, error) {
+func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd domjob.FinalizeAttemptCommand) (domjob.FinalizeAttemptResult, error) {
 	// ── Pre-TX precondition validation ─────────────────────────────────
 	// godlike/07 fail-closed: reject BEFORE BeginTx so a bad command
 	// doesn't pin a connection in a doomed transaction. Unknown enum
 	// values, missing required fields, and incompatible combinations
 	// are surfaced as typed sentinels the caller can errors.Is-probe.
 	if cmd.JobID == "" {
-		return kerneljob.FinalizeAttemptResult{}, errors.New("FinalizeAttempt: JobID required")
+		return domjob.FinalizeAttemptResult{}, errors.New("FinalizeAttempt: JobID required")
 	}
 	if !cmd.Outcome.IsValid() {
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: %q", ErrFinalizeAttemptOutcomeInvalid, cmd.Outcome)
+		return domjob.FinalizeAttemptResult{}, fmt.Errorf("%w: %q", ErrFinalizeAttemptOutcomeInvalid, cmd.Outcome)
 	}
-	if cmd.Outcome == kerneljob.OutcomeSucceeded && len(cmd.Result) == 0 {
-		return kerneljob.FinalizeAttemptResult{}, ErrFinalizeAttemptResultMissing
+	if cmd.Outcome == domjob.OutcomeSucceeded && len(cmd.Result) == 0 {
+		return domjob.FinalizeAttemptResult{}, ErrFinalizeAttemptResultMissing
 	}
-	if cmd.Outcome != kerneljob.OutcomeSucceeded && cmd.ErrorMessage == "" {
-		return kerneljob.FinalizeAttemptResult{}, ErrFinalizeAttemptErrorMissing
+	if cmd.Outcome != domjob.OutcomeSucceeded && cmd.ErrorMessage == "" {
+		return domjob.FinalizeAttemptResult{}, ErrFinalizeAttemptErrorMissing
 	}
-	if len(cmd.DLQPayload) > 0 && cmd.Outcome == kerneljob.OutcomeSucceeded {
-		return kerneljob.FinalizeAttemptResult{}, ErrFinalizeAttemptDLQIncompatible
+	if len(cmd.DLQPayload) > 0 && cmd.Outcome == domjob.OutcomeSucceeded {
+		return domjob.FinalizeAttemptResult{}, ErrFinalizeAttemptDLQIncompatible
 	}
 	for _, evt := range cmd.OutboxEvents {
 		if evt.Type == "" || evt.EventKey == "" {
-			return kerneljob.FinalizeAttemptResult{}, ErrFinalizeAttemptOutboxEventMissing
+			return domjob.FinalizeAttemptResult{}, ErrFinalizeAttemptOutboxEventMissing
 		}
 	}
 
@@ -154,13 +153,13 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 	// ── TX BEGIN ──────────────────────────────────────────────────────
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: begin tx: %w", err)
+		return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
 	// ── Step 1: read jobs row for CAS fence + retry-limit + DLQ data ───
 	var (
-		status        job.Status
+		status        domjob.Status
 		curWorkerID   string
 		curLeaseID    string
 		revision      int
@@ -175,25 +174,25 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 	).Scan(&status, &curWorkerID, &curLeaseID, &revision, &maxRetries, &retryCount, &jobType, &correlationID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return kerneljob.FinalizeAttemptResult{}, ErrJobNotFound
+			return domjob.FinalizeAttemptResult{}, ErrJobNotFound
 		}
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: select jobs (id=%s): %w", cmd.JobID, err)
+		return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: select jobs (id=%s): %w", cmd.JobID, err)
 	}
 
 	// ── Step 2: CAS fence ─────────────────────────────────────────────
 	// godlike/07 fail-closed: the three CAS guards (worker_id, lease_id,
 	// revision) are evaluated against the row read in step 1. A mismatch
-	// returns the canonical job.ErrLeaseLost / job.ErrTransitionConflict typed
+	// returns the canonical domjob.ErrLeaseLost / domjob.ErrTransitionConflict typed
 	// sentinel; the TX is rolled back via the deferred Rollback().
 	if curWorkerID != cmd.WorkerID {
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: worker mismatch (current=%q want=%q)", job.ErrLeaseLost, curWorkerID, cmd.WorkerID)
+		return domjob.FinalizeAttemptResult{}, fmt.Errorf("%w: worker mismatch (current=%q want=%q)", domjob.ErrLeaseLost, curWorkerID, cmd.WorkerID)
 	}
 	if curLeaseID != cmd.LeaseID {
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: lease mismatch (current=%q want=%q)", job.ErrLeaseLost, curLeaseID, cmd.LeaseID)
+		return domjob.FinalizeAttemptResult{}, fmt.Errorf("%w: lease mismatch (current=%q want=%q)", domjob.ErrLeaseLost, curLeaseID, cmd.LeaseID)
 	}
 	if revision != cmd.ExpectedRevision {
 		observability.JobTransitionConflictTotal.WithLabelValues("finalize_attempt").Inc()
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: revision %d, expected %d", job.ErrTransitionConflict, revision, cmd.ExpectedRevision)
+		return domjob.FinalizeAttemptResult{}, fmt.Errorf("%w: revision %d, expected %d", domjob.ErrTransitionConflict, revision, cmd.ExpectedRevision)
 	}
 
 	// ── Step 3: compute target status + outcome-specific compilation ──
@@ -205,32 +204,32 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 	// field is never mutated. If we mutated cmd.ErrorMessage, a caller
 	// reusing cmd across retries (e.g. a worker with retry-on-failure
 	// loop) would silently propagate the suffix across all retries.
-	targetStatus := job.StatusSucceeded
+	targetStatus := domjob.StatusSucceeded
 	incrementRetry := false
 	errorMessage := cmd.ErrorMessage
 	switch cmd.Outcome {
-	case kerneljob.OutcomeSucceeded:
-		targetStatus = job.StatusSucceeded
-	case kerneljob.OutcomeFailedPermanent:
-		targetStatus = job.StatusFailed
-	case kerneljob.OutcomeScheduleRetry:
+	case domjob.OutcomeSucceeded:
+		targetStatus = domjob.StatusSucceeded
+	case domjob.OutcomeFailedPermanent:
+		targetStatus = domjob.StatusFailed
+	case domjob.OutcomeScheduleRetry:
 		if retryCount+1 > maxRetries {
 			// Retry-exhaustion downgrade: caller asked SCHEDULE_RETRY but
 			// the row is already at max_retries. Atomic downgrade to
 			// FAILED, with forensic-suffix on ErrorMessage so operators
 			// can distinguish "caller asked retry" from "retry limit hit".
-			targetStatus = job.StatusFailed
+			targetStatus = domjob.StatusFailed
 			incrementRetry = false
 			errorMessage = cmd.ErrorMessage + " (max retries exhausted)"
 		} else {
-			targetStatus = job.StatusRetryWait
+			targetStatus = domjob.StatusRetryWait
 			incrementRetry = true
 		}
 	default:
 		// Defensive: cmd.Outcome.IsValid() already guards this in step 1;
 		// this branch is dead code but keeps the switch exhaustive under
 		// any future enum widening that the IsValid helper misses.
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: %q", ErrFinalizeAttemptOutcomeInvalid, cmd.Outcome)
+		return domjob.FinalizeAttemptResult{}, fmt.Errorf("%w: %q", ErrFinalizeAttemptOutcomeInvalid, cmd.Outcome)
 	}
 	// errorMessage is consumed by steps 4 (SET error=?), 5 (DLQ error=?),
 	// and 8 (job_events message=?); the local-var assignment above
@@ -255,7 +254,7 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 	}
 	args := []any{targetStatus, nowStr, nowStr, errorMessage}
 
-	if cmd.Outcome == kerneljob.OutcomeSucceeded {
+	if cmd.Outcome == domjob.OutcomeSucceeded {
 		resultJSON := string(cmd.Result)
 		if resultJSON == "" || resultJSON == "null" {
 			// Defensive — cmd.Result was non-empty in the precondition,
@@ -276,12 +275,12 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 
 	res, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: update jobs (id=%s): %w", cmd.JobID, err)
+		return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: update jobs (id=%s): %w", cmd.JobID, err)
 	}
 	affected, _ := res.RowsAffected()
 	if affected == 0 {
 		observability.JobTransitionConflictTotal.WithLabelValues("finalize_attempt").Inc()
-		return kerneljob.FinalizeAttemptResult{}, job.ErrTransitionConflict
+		return domjob.FinalizeAttemptResult{}, domjob.ErrTransitionConflict
 	}
 
 	// ── Step 5: optional DLQ archive ──────────────────────────────────
@@ -302,7 +301,7 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 			`INSERT INTO dead_letter_jobs (job_id, job_type, correlation_id, error, payload_json, retry_count, failed_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			cmd.JobID, jobType, correlationID, errorMessage, string(cmd.DLQPayload), dlqRetryCount, nowStr,
 		); dlqErr != nil {
-			return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: DLQ insert (id=%s): %w", cmd.JobID, dlqErr)
+			return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: DLQ insert (id=%s): %w", cmd.JobID, dlqErr)
 		}
 		dlqRecorded = true
 	}
@@ -320,12 +319,12 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 			cmd.ArtifactState.NewState, nowStr, cmd.ArtifactState.ArtifactID, cmd.JobID,
 		)
 		if artErr != nil {
-			return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: artifact-state patch (artifact=%s job=%s state=%s): %w",
+			return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: artifact-state patch (artifact=%s job=%s state=%s): %w",
 				cmd.ArtifactState.ArtifactID, cmd.JobID, cmd.ArtifactState.NewState, artErr)
 		}
 		artAffected, _ := artRes.RowsAffected()
 		if artAffected == 0 {
-			return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("%w: artifact=%s job=%s target_state=%s",
+			return domjob.FinalizeAttemptResult{}, fmt.Errorf("%w: artifact=%s job=%s target_state=%s",
 				ErrFinalizeAttemptArtifactStale, cmd.ArtifactState.ArtifactID, cmd.JobID, cmd.ArtifactState.NewState)
 		}
 	}
@@ -353,7 +352,7 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 			`INSERT INTO outbox_events (event_type, aggregate_id, aggregate_type, payload_json, event_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(event_key) WHERE event_key != '' DO NOTHING`,
 			evt.Type, aggregateID, aggregateType, payloadJSON, evt.EventKey, nowStr, nowStr,
 		); outErr != nil {
-			return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: outbox insert (type=%s event_key=%s): %w", evt.Type, evt.EventKey, outErr)
+			return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: outbox insert (type=%s event_key=%s): %w", evt.Type, evt.EventKey, outErr)
 		}
 		outboxWritten = append(outboxWritten, evt.EventKey)
 	}
@@ -374,17 +373,17 @@ func (r *SQLiteStore) FinalizeAttempt(ctx context.Context, cmd kerneljob.Finaliz
 			`INSERT INTO job_events (id, job_id, type, message, data_json, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
 			evtID, cmd.JobID, cmd.EventType, errorMessage, dataJSON, nowStr,
 		); evErr != nil {
-			return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: job_events insert (id=%s type=%s): %w", cmd.JobID, cmd.EventType, evErr)
+			return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: job_events insert (id=%s type=%s): %w", cmd.JobID, cmd.EventType, evErr)
 		}
 	}
 
 	// ── Step 9: COMMIT ─────────────────────────────────────────────────
 	if err := tx.Commit(); err != nil {
-		return kerneljob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: commit (id=%s): %w", cmd.JobID, err)
+		return domjob.FinalizeAttemptResult{}, fmt.Errorf("finalizeAttempt: commit (id=%s): %w", cmd.JobID, err)
 	}
 
 	// godlike/06 SSOT: returned struct is the canonical post-commit surface.
-	return kerneljob.FinalizeAttemptResult{
+	return domjob.FinalizeAttemptResult{
 		JobID:               cmd.JobID,
 		FinalStatus:         targetStatus,
 		NewRevision:         revision + 1,

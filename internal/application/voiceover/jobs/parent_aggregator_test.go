@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -193,7 +193,7 @@ func TestParentDoesNotSucceedWhenChildResultIsFailed(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-1",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Result: makeParentResult([]string{"child-1"}),
 		},
 		childJobs: map[string]*job.Job{
@@ -236,7 +236,7 @@ func TestParentSucceedsWhenChildResultIsOK(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-2",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Result: makeParentResult([]string{"child-2"}),
 		},
 		childJobs: map[string]*job.Job{
@@ -276,7 +276,7 @@ func TestParentPartialSuccessWhenOneChildResultFailed(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-3",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Result: makeParentResult([]string{"child-ok", "child-fail"}),
 		},
 		childJobs: map[string]*job.Job{
@@ -331,7 +331,7 @@ func TestParentHandlesChildResultWithoutOKField(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-4",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Result: makeParentResult([]string{"child-legacy"}),
 		},
 		childJobs: map[string]*job.Job{
@@ -399,7 +399,7 @@ func TestParentBrokerStatusIsFAILEDWhenAllChildrenFailed(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-fail",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded, // worker already finalised broker-status
 			Result: makeParentStateWaitingChildren(),
 		},
@@ -443,7 +443,7 @@ func TestParentBrokerStatusSUCCEEDEDWhenAggregateIsPartialSuccess(t *testing.T) 
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-ps",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
 			Result: makeParentStateWaitingChildren("c-OK", "c-FAIL"),
 		},
@@ -494,7 +494,7 @@ func TestFinalizeAggregateParentReplayIsIdempotent_NoOp(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		flippedErr: domainremote.ErrAlreadyTerminalAggregate,
 		parentJob: &job.Job{
-			ID: "parent-replay", Type: voiceover.JobGenerate,
+			ID: "parent-replay", Type: job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded, Result: makeParentStateWaitingChildren(),
 		},
 		childJobs: map[string]*job.Job{
@@ -601,7 +601,7 @@ func TestAcceptance_HappyPath_ThreeLanguagesAllSucceeded(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-happy",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
 			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3, 0, ""),
 		},
@@ -639,7 +639,7 @@ func TestAcceptance_TTSTransientFailure_ChildRetryParentStaysOpen(t *testing.T) 
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-retry",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
 			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3, 0, ""),
 		},
@@ -692,7 +692,7 @@ func TestAcceptance_PermanentVoiceError_RequiredChildFailsParent(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-reqfail",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
 			Result: makeMultiChildParentResult([]string{"c-required", "c-ok"}, 2, 0, ""),
 		},
@@ -732,7 +732,7 @@ func TestAcceptance_OptionalVoiceError_ParentSucceedsWithWarning(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-optfail",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
 			Result: makeMultiChildParentResult([]string{"c-opt-fail", "c-ok"}, 2, 0, ""),
 		},
@@ -780,7 +780,7 @@ func TestAcceptance_EmptyChildIDsFiltered(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-partial",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
 			Result: makeMultiChildParentResult([]string{"c-it", "c-en", ""}, 3, 0, ""),
 		},
@@ -817,7 +817,7 @@ func TestAcceptance_FanoutParziale_OKFalse_AggregatorHandlesPartialSuccess(t *te
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-okfalse",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
 			Result: makeFanoutPartialOkFalseParentResult([]string{"c-it", "c-en", ""}),
 		},
@@ -899,7 +899,7 @@ func TestAcceptance_PartialFanout_ExpectedChildrenMatchesEnqueued(t *testing.T) 
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:       "parent-partial-accurate",
-			Type:     voiceover.JobGenerate,
+			Type:     job.TypeVoiceoverGenerate,
 			Status:   job.StatusSucceeded,
 			Result:   makePartialFanoutParentResult([]string{"c-it", "c-en", ""}),
 			Revision: 7,
@@ -981,7 +981,7 @@ func TestAcceptance_CancelParent_AggregatorSkips(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-cancelled",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusCancelled,
 			Result: cancelRaw,
 		},
@@ -1011,7 +1011,7 @@ func TestAcceptance_DBSucceededWorkerCrash_IdempotentRetry(t *testing.T) {
 		flippedErr: domainremote.ErrAlreadyTerminalAggregate,
 		parentJob: &job.Job{
 			ID:     "parent-idem",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
 			Result: makeMultiChildParentResult([]string{"c-it", "c-en", "c-pt"}, 3, 0, ""),
 		},
@@ -1041,7 +1041,7 @@ func TestAcceptance_RequiredFlagPropagatedFromChildPayload(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-reqprop",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
 			Result: makeMultiChildParentResult([]string{"c-req", "c-opt"}, 2, 0, ""),
 		},
@@ -1102,7 +1102,7 @@ func TestZeroChildren_AggregatorReturnsParentFailed(t *testing.T) {
 	stub := &stubAggregatorJobsService{
 		parentJob: &job.Job{
 			ID:     "parent-zero-fase4",
-			Type:   voiceover.JobGenerate,
+			Type:   job.TypeVoiceoverGenerate,
 			Status: job.StatusSucceeded,
 			Result: makeParentResult([]string{}), // ZERO children enqueued
 		},
@@ -1163,7 +1163,7 @@ func TestAcceptance_AggregatorCrash_VersionCASConflictRecovery(t *testing.T) {
 		flippedErr: domainremote.ErrAggregateCASConflict,
 		parentJob: &job.Job{
 			ID:       "parent-casconflict",
-			Type:     voiceover.JobGenerate,
+			Type:     job.TypeVoiceoverGenerate,
 			Status:   job.StatusSucceeded,
 			Result:   makeMultiChildParentResult([]string{"c1", "c2"}, 2, 0, ""),
 			Revision: 3,
