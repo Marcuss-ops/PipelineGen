@@ -46,6 +46,9 @@
 package observability
 
 import (
+	"errors"
+	"fmt"
+
 	scriptmetrics "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -115,10 +118,20 @@ func NewTranslationMetricsAdapter(reg prometheus.Registerer) (*TranslationMetric
 		Help: "Total number of script translation postprocessor warnings + non-fatal errors, partitioned by target_lang and reason. See PR-TRANSLATE-SCRIPT-SPEC forward-pointer FP3.",
 	}, []string{"target_lang", "reason"})
 	if err := reg.Register(cv); err != nil {
-		// Already-registered: surface as a composition bug. The
-		// production composition root should NEVER double-register;
-		// tests must use a fresh prometheus.NewRegistry() per test.
-		return nil, errTranslationMetricsAlreadyRegistered
+		// Already-registered: make the adapter idempotent so that
+		// multiple WireRegistry invocations in the same process
+		// (notably test suites) do not fail. Retrieve the existing
+		// CounterVec and reuse it.
+		var alreadyReg prometheus.AlreadyRegisteredError
+		if errors.As(err, &alreadyReg) {
+			existing, ok := alreadyReg.ExistingCollector.(*prometheus.CounterVec)
+			if !ok {
+				return nil, fmt.Errorf("translation metrics: existing collector is %T, not *prometheus.CounterVec", alreadyReg.ExistingCollector)
+			}
+			cv = existing
+		} else {
+			return nil, errTranslationMetricsAlreadyRegistered
+		}
 	}
 
 	// Internal: hold the registry so Registry() can return it for

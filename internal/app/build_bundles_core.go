@@ -240,11 +240,15 @@ func buildHealthService(cfg *config.Config, db *storage.SQLiteDB) *systemhealth.
 
 // buildBooksService wires the books apply-layer Service.
 func buildBooksService(cfg *config.Config, dbs *databases, log *zap.Logger, publisher delivery.Publisher, reader drive.Reader) (*books.Service, error) {
-	transformer, err := pythontransformer.NewSubprocessTransformer(&pythontransformer.Config{
-		ScriptPath: cfg.Books.ScriptPath, PythonBin: cfg.Books.PythonBin, Enabled: cfg.Books.Enabled,
-	}, log)
-	if err != nil {
-		return nil, fmt.Errorf("books service compose failed (transformer): %w", err)
+	var transformer *pythontransformer.SubprocessTransformer
+	if cfg.Books.Enabled {
+		var err error
+		transformer, err = pythontransformer.NewSubprocessTransformer(&pythontransformer.Config{
+			ScriptPath: cfg.Books.ScriptPath, PythonBin: cfg.Books.PythonBin, Enabled: true,
+		}, log)
+		if err != nil {
+			return nil, fmt.Errorf("books service compose failed (transformer): %w", err)
+		}
 	}
 	booksSvc := books.NewService(
 		&books.Config{DriveFolderID: cfg.Drive.BooksFolder()},

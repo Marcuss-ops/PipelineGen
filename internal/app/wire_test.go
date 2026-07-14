@@ -38,6 +38,11 @@ func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {
 		Storage: config.StorageConfig{
 			DataDir: tmpDir,
 		},
+		Media: config.MediaConfig{
+			Multilingual: config.MultilingualConfig{
+				SourceLanguage: "en",
+			},
+		},
 		Features: config.FeaturesConfig{
 			DriveEnabled:   false,
 			ArtlistEnabled: false,
@@ -82,6 +87,11 @@ func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
 		},
 		Storage: config.StorageConfig{
 			DataDir: tmpDir,
+		},
+		Media: config.MediaConfig{
+			Multilingual: config.MultilingualConfig{
+				SourceLanguage: "en",
+			},
 		},
 		Features: config.FeaturesConfig{
 			DriveEnabled:   false,
@@ -129,6 +139,11 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 		Storage: config.StorageConfig{
 			DataDir: tmpDir,
 		},
+		Media: config.MediaConfig{
+			Multilingual: config.MultilingualConfig{
+				SourceLanguage: "en",
+			},
+		},
 		Features: config.FeaturesConfig{
 			DriveEnabled:   false,
 			ArtlistEnabled: false,
@@ -175,6 +190,11 @@ func TestStartupIntegration(t *testing.T) {
 		},
 		Storage: config.StorageConfig{
 			DataDir: tmpDir,
+		},
+		Media: config.MediaConfig{
+			Multilingual: config.MultilingualConfig{
+				SourceLanguage: "en",
+			},
 		},
 		Features: config.FeaturesConfig{
 			DriveEnabled:   false,

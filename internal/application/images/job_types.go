@@ -10,11 +10,8 @@ const JobGenerate = image.TypeImagesGenerate
 type JobGenerateHandlerFunc = job.JobHandlerFunc
 
 func MustRegister(reg job.MutableJobRegistry) error {
-	def := job.JobDefinition{
-		Type:           JobGenerate,
-		Description:    "image generation (URL/components -> PNG/SVG)",
-		ExecutionClass: job.ExecutionCreatorAllowed,
-	}
+	def := job.CanonicalImagesGenerate
+	def.Description = "image generation (URL/components -> PNG/SVG)"
 	if err := reg.RegisterDefinition(def); err != nil {
 		return err
 	}

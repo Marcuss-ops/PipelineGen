@@ -72,7 +72,8 @@ func TestVoiceoverGenerateHandler_RequiresRegistration(t *testing.T) {
 	// bottom of this file (P1 #13a godlike/06 audit-pin); the legacy
 	// `appjobs.JobTools` parameter name was retired in favour of the
 	// canonical `appjobs.JobExecutionTools` per the P1 #13 unification.
-	jobsBundle.Service.RegisterHandler(job.TypeVoiceoverGenerate, stubVoiceoverGenerateHandler)
+	err = jobsBundle.Service.RegisterHandler(job.TypeVoiceoverGenerate, appjobs.HandlerFunc(stubVoiceoverGenerateHandler))
+	require.NoError(t, err)
 
 	require.True(t, jobsBundle.Service.HasHandler(job.TypeVoiceoverGenerate),
 		"voiceover.generate handler must be registered after Register (Catena A P0 wiring contract)")
@@ -84,7 +85,8 @@ func TestVoiceoverGenerateHandler_RequiresRegistration(t *testing.T) {
 	// boot smoke rather than at first runtime job dispatch.
 	require.False(t, jobsBundle.Service.HasHandler(job.TypeVoiceoverGenerateItem),
 		"voiceover.generate_item handler is unregistered at boot — P0.3 parent-child fan-out wiring is missing")
-	jobsBundle.Service.RegisterHandler(job.TypeVoiceoverGenerateItem, stubVoiceoverGenerateHandler)
+	err = jobsBundle.Service.RegisterHandler(job.TypeVoiceoverGenerateItem, appjobs.HandlerFunc(stubVoiceoverGenerateHandler))
+	require.NoError(t, err)
 	require.True(t, jobsBundle.Service.HasHandler(job.TypeVoiceoverGenerateItem),
 		"voiceover.generate_item handler must be registered after Register (P0.3 wiring contract)")
 }
