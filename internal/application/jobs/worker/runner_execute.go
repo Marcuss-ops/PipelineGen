@@ -115,10 +115,19 @@ func (r *Runner) runLease(parent context.Context, lease *appjobs.Lease) error {
 		return tools.Fail(jobCtx, err.Error())
 	}
 
-	// Manifest upload
-	uploaded, upErr := r.uploadManifest(jobCtx, lease.Job.ID, handlerResult)
-	if upErr != nil {
-		return tools.Fail(jobCtx, upErr.Error())
+	// Manifest upload. Only artifact-producing job types should
+	// attempt to upload a manifest; non-artifact jobs (e.g.
+	// media.reindex) legitimately run with a nil assetClient and
+	// a non-empty handlerResult. Calling uploadManifest for those
+	// jobs would fail with ErrArtifactClientRequired and
+	// incorrectly terminal-fail an otherwise successful job.
+	var uploaded any
+	if r.registry.ProducesArtifacts(lease.Job.Type) {
+		var upErr error
+		uploaded, upErr = r.uploadManifest(jobCtx, lease.Job.ID, handlerResult)
+		if upErr != nil {
+			return tools.Fail(jobCtx, upErr.Error())
+		}
 	}
 
 	var resultJSON json.RawMessage
