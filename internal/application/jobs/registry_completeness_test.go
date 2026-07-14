@@ -47,8 +47,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	
 )
 
 // canonicalJobTypes enumerates every Type* constant declared in the
@@ -111,7 +109,7 @@ var canonicalJobTypes = []string{
 	TypeVoiceoverPromo,         // domain/job/job.go
 	TypeVoiceoverGenerate,      // domain/job/job.go
 	TypeVoiceoverGenerateItem,  // domain/job/job.go
-	TypeImageGenerateGoogle,        // application/jobs/registry.go (FASE 2 / June 2026)
+	TypeImageGenerateGoogle,    // application/jobs/registry.go (FASE 2 / June 2026)
 	// Spina Dorsale Fase 2 / PR-BATCH-REGISTER-ASYNC / PR-GEMMA-EXTRACT-IMPORTANT
 	// downstream job types registered in registry_script.go, registry_stock.go,
 	// registry_media.go, and registry_extraction.go.

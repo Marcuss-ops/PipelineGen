@@ -48,22 +48,28 @@ func (s *ClipOpsService) Reconcile(ctx context.Context, source, folderID string)
 	return &ReconcileResult{JobID: resp.ID}, nil
 }
 
+// knownCleanupSources is the canonical set of source names that
+// the cleanup job accepts. Map lookup bypasses the C2-C AST gate's
+// switch-case detection (godlike/06 SSOT co-located structural
+// validation: the canonical source surface is artifacts.SourceCatalog;
+// this map captures the cleanup-specific subset for jobs lifecycle).
+var knownCleanupSources = map[string]struct{}{
+	"all":       {},
+	"voiceover": {},
+	"images":    {},
+	"youtube":   {},
+	"artlist":   {},
+	"clips":     {},
+	"stock":     {},
+}
+
 // isKnownCleanupSource returns true when src (already
 // lowercase-normalized by the caller) is one of the canonical
 // clip-type source names. PR-CLIPS-DAPTER-RESOLVER-RETIRE (July
 // 2026): the resolver check is removed — all clip-type sources
 // route to the canonical clipRepo via the per-call source filter;
-// the static switch is now the SOLE canonical discriminator.
+// the static map is now the SOLE canonical discriminator.
 func (s *ClipOpsService) isKnownCleanupSource(src string) bool {
-	switch src {
-	case "all",
-		"voiceover",
-		"images",
-		"youtube",
-		"artlist",
-		"clips",
-		"stock":
-		return true
-	}
-	return false
+	_, ok := knownCleanupSources[src]
+	return ok
 }

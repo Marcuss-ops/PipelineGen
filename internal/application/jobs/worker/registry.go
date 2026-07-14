@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // Sentinel errors for registry operations.

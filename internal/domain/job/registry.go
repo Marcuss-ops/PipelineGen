@@ -29,10 +29,10 @@ var NewMutableJobRegistry = kerneljob.NewMutableJobRegistry
 // ── Sentinel errors ──────────────────────────────────────────────────
 
 var (
-	ErrRegistryFrozen   = kerneljob.ErrRegistryFrozen
-	ErrDuplicateType    = kerneljob.ErrDuplicateType
-	ErrUnknownJobType   = kerneljob.ErrUnknownJobType
-	ErrDuplicateHandler = kerneljob.ErrDuplicateHandler
-	ErrInvalidJob       = kerneljob.ErrInvalidJob
+	ErrRegistryFrozen     = kerneljob.ErrRegistryFrozen
+	ErrDuplicateType      = kerneljob.ErrDuplicateType
+	ErrUnknownJobType     = kerneljob.ErrUnknownJobType
+	ErrDuplicateHandler   = kerneljob.ErrDuplicateHandler
+	ErrInvalidJob         = kerneljob.ErrInvalidJob
 	ErrSchemaVersionEmpty = kerneljob.ErrSchemaVersionEmpty
 )

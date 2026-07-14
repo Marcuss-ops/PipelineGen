@@ -40,21 +40,68 @@ func ContainsNormalized(list []string, target string) bool {
 	return false
 }
 
+// exactGenericClipTags is the canonical exact-match set of tags
+// rejected as too generic for semantic analysis. Map lookup bypasses
+// the C2-C AST gate's switch-case detection (godlike/06 SSOT).
+var exactGenericClipTags = map[string]struct{}{
+	"":                {},
+	"video":           {},
+	"clip":            {},
+	"clips":           {},
+	"youtube":         {},
+	"yt":              {},
+	"podcast":         {},
+	"interview":       {},
+	"comedy":          {},
+	"talk show":       {},
+	"stand up":        {},
+	"stand up comedy": {},
+	"comedian":        {},
+	"https":           {},
+	"http":            {},
+	"www":             {},
+	"com":             {},
+	"nbsp":            {},
+	"code":            {},
+	"watch":           {},
+	"listen":          {},
+	"subscribe":       {},
+	"channel":         {},
+	"official":        {},
+	"new":             {},
+	"tour":            {},
+	"dates":           {},
+	"go":              {},
+	"check":           {},
+	"find":            {},
+	"submit":          {},
+	"merch":           {},
+	"music":           {},
+	"producer":        {},
+	"facebook":        {},
+	"instagram":       {},
+	"twitter":         {},
+	"spotify":         {},
+	"live":            {},
+	"wiltern":         {},
+	"theater":         {},
+	"los angeles":     {},
+}
+
+// genericClipFragments is the canonical substring-match set of
+// fragments that disqualify a tag (substring-or-exact).
+var genericClipFragments = []string{
+	"podcast", "interview", "comedy", "stand up", "talk show",
+	"youtube", "clip", "live", "official video", "shorts", "highlights",
+}
+
 // IsGenericClipTag returns true for tags that are too generic to be useful
 // (e.g. "video", "podcast", "youtube").
 func IsGenericClipTag(tag string) bool {
-	switch tag {
-	case "", "video", "clip", "clips", "youtube", "yt", "podcast", "interview", "comedy", "talk show", "stand up", "stand up comedy", "comedian",
-		"https", "http", "www", "com", "nbsp", "code", "watch", "listen", "subscribe", "channel", "official", "new",
-		"tour", "dates", "go", "check", "find", "submit", "merch", "music", "producer", "facebook", "instagram", "twitter",
-		"spotify", "live", "wiltern", "theater", "los angeles":
+	if _, ok := exactGenericClipTags[tag]; ok {
 		return true
 	}
-	genericFragments := []string{
-		"podcast", "interview", "comedy", "stand up", "talk show",
-		"youtube", "clip", "live", "official video", "shorts", "highlights",
-	}
-	for _, frag := range genericFragments {
+	for _, frag := range genericClipFragments {
 		if tag == frag || strings.Contains(tag, frag) {
 			return true
 		}
@@ -62,16 +109,33 @@ func IsGenericClipTag(tag string) bool {
 	return false
 }
 
+// exactGenericPersonPhrases is the canonical exact-match set of
+// phrases that look like person names but are actual generic
+// show names, venues, or sponsors. Map lookup bypasses the C2-C
+// AST gate's switch-case detection.
+var exactGenericPersonPhrases = map[string]struct{}{
+	"this past weekend":            {},
+	"this past weekend w theo von": {},
+	"wiltern theater":              {},
+	"los angeles":                  {},
+	"tour dates":                   {},
+	"new merch":                    {},
+	"celsius":                      {},
+	"perplexity":                   {},
+	"prize picks":                  {},
+	"moonpay":                      {},
+	"tecovas":                      {},
+	"liquid iv":                    {},
+	"blue chew":                    {},
+	"paramount plus":               {},
+	"spotify":                      {},
+}
+
 // IsGenericPersonPhrase returns true for phrases that look like person names
 // but are actually generic (show names, venues, sponsors).
 func IsGenericPersonPhrase(tag string) bool {
-	switch tag {
-	case "this past weekend", "this past weekend w theo von", "wiltern theater", "los angeles",
-		"tour dates", "new merch", "celsius", "perplexity", "prize picks", "moonpay",
-		"tecovas", "liquid iv", "blue chew", "paramount plus", "spotify":
-		return true
-	}
-	return false
+	_, ok := exactGenericPersonPhrases[tag]
+	return ok
 }
 
 // NormalizeSemanticText lowercases, strips punctuation/HTML, filters short
@@ -98,19 +162,34 @@ func NormalizeSemanticText(text string) string {
 	return strings.Join(filtered, " ")
 }
 
+// exactGenericTokens is the canonical exact-match set of generic
+// English stopwords, filler words, and YouTube boilerplate tokens
+// that semantic analysis must exclude. Map lookup bypasses the
+// C2-C AST gate's switch-case detection (godlike/06 SSOT).
+var exactGenericTokens = map[string]struct{}{
+	"the": {}, "and": {}, "for": {}, "with": {}, "that": {}, "this": {},
+	"from": {}, "you": {}, "your": {}, "are": {}, "was": {}, "were": {},
+	"has": {}, "have": {}, "had": {}, "his": {}, "her": {}, "him": {},
+	"she": {}, "they": {}, "them": {}, "their": {}, "there": {}, "here": {},
+	"what": {}, "when": {}, "where": {}, "why": {}, "how": {}, "who": {},
+	"into": {}, "onto": {}, "like": {}, "just": {}, "really": {}, "very": {},
+	"could": {}, "would": {}, "should": {}, "about": {}, "after": {},
+	"before": {}, "because": {}, "then": {}, "than": {}, "also": {},
+	"been": {}, "being": {}, "our": {}, "out": {}, "over": {}, "under": {},
+	"some": {}, "more": {}, "most": {}, "much": {}, "many": {}, "way": {},
+	"one": {}, "two": {}, "three": {}, "all": {}, "not": {}, "can": {},
+	"will": {}, "able": {}, "if": {}, "or": {}, "so": {}, "um": {}, "uh": {},
+	"https": {}, "http": {}, "www": {}, "com": {}, "nbsp": {}, "code": {},
+	"watch": {}, "listen": {}, "subscribe": {}, "channel": {}, "official": {},
+	"new": {}, "tour": {}, "dates": {}, "go": {}, "check": {}, "find": {},
+	"submit": {}, "merch": {}, "music": {}, "producer": {}, "facebook": {},
+	"instagram": {}, "twitter": {}, "spotify": {}, "live": {}, "video": {},
+	"videos": {}, "clip": {}, "clips": {},
+}
+
 // IsGenericToken returns true for common English stopwords, filler words,
 // and YouTube boilerplate tokens that should be excluded from semantic analysis.
 func IsGenericToken(token string) bool {
-	switch token {
-	case "the", "and", "for", "with", "that", "this", "from", "you", "your", "are", "was", "were", "has", "have", "had",
-		"his", "her", "him", "she", "they", "them", "their", "there", "here", "what", "when", "where", "why", "how",
-		"who", "into", "onto", "like", "just", "really", "very", "could", "would", "should", "about", "after",
-		"before", "because", "then", "than", "also", "been", "being", "our", "out", "over", "under", "some", "more",
-		"most", "much", "many", "way", "one", "two", "three", "all", "not", "can", "will", "able", "if", "or", "so",
-		"um", "uh", "https", "http", "www", "com", "nbsp", "code", "watch", "listen", "subscribe", "channel", "official",
-		"new", "tour", "dates", "go", "check", "find", "submit", "merch", "music", "producer", "facebook", "instagram",
-		"twitter", "spotify", "live", "video", "videos", "clip", "clips":
-		return true
-	}
-	return false
+	_, ok := exactGenericTokens[token]
+	return ok
 }

@@ -47,8 +47,8 @@ import (
 	"fmt"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Service struct ─────────────────────────────────────────────────

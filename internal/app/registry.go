@@ -119,7 +119,14 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/youtube"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/document"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/image"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	domainyoutube "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/gin-gonic/gin"
 
@@ -348,19 +355,19 @@ func c3ValidateRuntimeGraph() error {
 	// like the existing CanonicalJobDefinitions entries.
 	additionalOwnerTypes := []string{
 		images.JobGenerate,
-		job.TypeYouTubeClipExtract,
-		job.TypeScriptGenerate,
+		domainyoutube.TypeClipExtract,
+		script.TypeGenerate,
 		documents.JobGenerate,
-		job.TypeVoiceoverGenerate,
-		job.TypeBulkUploadYouTubeClips,
+		domainvoiceover.TypeGenerate,
+		media.TypeBulkUploadYouTubeClips,
 	}
 	ownerTypeSet := map[string]bool{
-		images.JobGenerate:             true,
-		job.TypeYouTubeClipExtract:     true,
-		job.TypeScriptGenerate:         true,
-		documents.JobGenerate:          true,
-		job.TypeVoiceoverGenerate:      true,
-		job.TypeBulkUploadYouTubeClips: true,
+		images.JobGenerate:               true,
+		domainyoutube.TypeClipExtract:    true,
+		script.TypeGenerate:              true,
+		documents.JobGenerate:            true,
+		domainvoiceover.TypeGenerate:     true,
+		media.TypeBulkUploadYouTubeClips: true,
 	}
 	for _, registerOwner := range []func(job.MutableJobRegistry) error{
 		images.MustRegister,
@@ -418,11 +425,11 @@ func c3ValidateRuntimeGraph() error {
 		return fmt.Errorf("freeze: %w", err)
 	}
 	workflowRefs := []string{
-		job.TypeScriptGenerate,
-		job.TypeImagesGenerate,
-		job.TypeDocumentGenerate,
-		job.TypeAssetsResolve,
-		job.TypeClipRegister,
+		script.TypeGenerate,
+		image.TypeImagesGenerate,
+		document.TypeGenerate,
+		asset.TypeResolve,
+		media.TypeClipRegister,
 	}
 	validator := job.DefaultStartupValidator{}
 	if err := validator.ValidateRuntimeGraph(job.StartupValidationInput{

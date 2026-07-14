@@ -31,19 +31,19 @@ type (
 
 // ParentState constants.
 const (
-	ParentStateDispatching      = kerneljob.ParentStateDispatching
-	ParentStateWaitingChildren  = kerneljob.ParentStateWaitingChildren
-	ParentStateAggregating      = kerneljob.ParentStateAggregating
-	ParentStateSucceeded        = kerneljob.ParentStateSucceeded
-	ParentStateFailedTerminal   = kerneljob.ParentStateFailedTerminal
+	ParentStateDispatching     = kerneljob.ParentStateDispatching
+	ParentStateWaitingChildren = kerneljob.ParentStateWaitingChildren
+	ParentStateAggregating     = kerneljob.ParentStateAggregating
+	ParentStateSucceeded       = kerneljob.ParentStateSucceeded
+	ParentStateFailedTerminal  = kerneljob.ParentStateFailedTerminal
 )
 
 // Parent state sentinel errors.
 var (
-	ErrInvalidTransition   = kerneljob.ErrInvalidTransition
-	ErrAlreadyTerminal     = kerneljob.ErrAlreadyTerminal
+	ErrInvalidTransition     = kerneljob.ErrInvalidTransition
+	ErrAlreadyTerminal       = kerneljob.ErrAlreadyTerminal
 	ErrExpectedChildrenUnset = kerneljob.ErrExpectedChildrenUnset
-	ErrDuplicateChildEvent = kerneljob.ErrDuplicateChildEvent
+	ErrDuplicateChildEvent   = kerneljob.ErrDuplicateChildEvent
 )
 
 // NewStateMachine constructs a fresh state machine.
