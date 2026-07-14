@@ -208,7 +208,6 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	if u.deps.LocalizedWriter != nil {
 		clipAsset := buildClipAsset(clipID, cmd, *out, fileHash, policyVer)
 		event := youtubeports.IndexEventPayload{
-			Type:        "asset.index.requested",
 			AggregateID: clipID,
 			CreatedAt:   time.Now().UTC(),
 		}
@@ -294,7 +293,6 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		// dev/legacy composition root paths.
 		clipAsset := buildClipAsset(clipID, cmd, *out, fileHash, policyVer)
 		event := youtubeports.IndexEventPayload{
-			Type:        "asset.index.requested",
 			AggregateID: clipID,
 			CreatedAt:   time.Now().UTC(),
 		}
