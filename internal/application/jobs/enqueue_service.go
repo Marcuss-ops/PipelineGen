@@ -26,7 +26,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/background"
 	corid "github.com/Marcuss-ops/PipelineGen/pkg/corid"
 )
@@ -34,7 +34,7 @@ import (
 const correlationLookupTimeout = 2 * time.Second
 
 // Enqueue enqueues a job from a domain request. Implements job.Service.
-func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Job, error) {
+func (s *Service) Enqueue(ctx context.Context, req *kerneljob.EnqueueRequest) (*kerneljob.Job, error) {
 	if err := validateEnqueueRequest(req); err != nil {
 		return nil, err
 	}
@@ -91,10 +91,10 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 		payload = payloadBytes
 	}
 
-	j := &job.Job{
+	j := &kerneljob.Job{
 		ID:            generateJobID(),
 		Type:          req.Type,
-		Status:        job.StatusQueued,
+		Status:        kerneljob.StatusQueued,
 		Priority:      req.Priority,
 		Project:       req.Project,
 		VideoName:     req.VideoName,
@@ -207,7 +207,7 @@ func (s *Service) Enqueue(ctx context.Context, req *job.EnqueueRequest) (*job.Jo
 	return j, nil
 }
 
-func (s *Service) findExistingByCorrelation(ctx context.Context, jobType, correlationID string) (*job.Job, error) {
+func (s *Service) findExistingByCorrelation(ctx context.Context, jobType, correlationID string) (*kerneljob.Job, error) {
 	if correlationID == "" {
 		return nil, nil
 	}

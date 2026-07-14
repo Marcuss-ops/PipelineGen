@@ -75,7 +75,7 @@ import (
 	"context"
 	"time"
 
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // renewLeaseLoopOpts carries the optional jobCancel callback (Fase 4(b))
@@ -138,7 +138,7 @@ func (w *Worker) renewLeaseLoopWith(ctx context.Context, jobID string, stop <-ch
 				// store affirmatively returned CancelRequested. We
 				// do NOT cancel on LeaseStateLeaseLost — the worker
 				// is orphaned, not cancelled.
-				if result.State == jobs.LeaseStateCancelRequested && opts.jobCancel != nil {
+				if result.State == kerneljob.LeaseStateCancelRequested && opts.jobCancel != nil {
 					opts.jobCancel()
 				}
 				return
