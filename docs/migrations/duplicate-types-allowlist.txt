@@ -12,7 +12,7 @@
 # explicit owner + deadline. New entries WITHOUT those columns fail the
 # governance gate.
 #
-# Current baseline (origin/main, July 2026): 27 entries.
+# Current baseline (origin/main, July 2026): 42 entries.
 #   - 7 legacy QDRANT-hygiene entries (sqlite-vs-application mirror, cross-module
 #     search mirror, jobs broker port)
 #   - 7 PR-check-5 baseline-closure entries (cross-package-NAME false
@@ -24,6 +24,13 @@
 #     were not in the original PR-check-5 scope; entries added after the
 #     scanner bug (656 blank-line noise) was fixed by adding `if (NF < 3)
 #     next` to the Check 5 awk block in scripts/ci-architectural-checks.sh
+#   - 15 PHASE-A.2-PR-KERNEL-JOB-POPULATE entries (July 2026) —
+#     `internal/domain/job/*` (back-compat aliases) coexist with
+#     `internal/kernel/job/*` (canonicals); both directories declare
+#     `package job` so the Check 5 scanner groups them as one
+#     (dir,pkg)-keyed redeclaration. Verified per file:line below.
+#     Migration plan: CUTOVER to `kernel/job/` per godlike/07 §"Migration
+#     sequence" + Phase A.2; deadline 2026-09-01 (whole-block parity).
 # Deadline (whole block): 2026-09-01.
 # After 2026-09-01 these MUST migrate per godlike/07 §"Migration sequence"
 # (EXPAND → BACKFILL → CUTOVER → CONTRACT); the allowlist may NOT shrink
@@ -90,6 +97,21 @@ maintenance:Service                    # cross-package-NAME false positive — `
 reconciler:Metrics                     # cross-package-NAME false positive — `application/assets/deletion/reconciler/ports.go:105` (assets-side metrics interface) + `application/qdrant/reconciler/ports.go:139` (qdrant-side metrics interface) both declare `package reconciler`; distinct concerns per godlike/06 SSOT — owner: @qdrant-team, deadline: 2026-09-01
 translation:TranslationResult          # cross-package-NAME false positive — `application/translation/ports.go:224` (application port) + `domain/translation/translation.go:115` (domain canonical) both declare `package translation`; the application port wraps the domain type per Pattern 0 — owner: @translation-team, deadline: 2026-09-01
 reconciler:ServiceDeps                 # cross-package-NAME false positive — `application/assets/deletion/reconciler/service.go:53` (assets-side deps) + `application/qdrant/reconciler/service.go:94` (qdrant-side deps) both declare `package reconciler`; distinct dep-bag per godlike/06 SSOT — owner: @qdrant-team, deadline: 2026-09-01
+job:Result                              # cross-package-NAME false positive — `domain/job/handler.go:107` (back-compat alias) + `kernel/job/handler.go:75` (canonical) both declare `package job`; alias layer per Phase A.2 / PR-KERNEL-JOB-POPULATE — owner: @jobs-core, deadline: 2026-09-01
+job:ResultCodec                         # cross-package-NAME false positive — `domain/job/codec.go:36` (back-compat alias) + `kernel/job/codec.go:75` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:Service                             # cross-package-NAME false positive — `domain/job/service.go:34` (back-compat alias) + `kernel/job/service.go:30` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:Status                              # cross-package-NAME false positive — `domain/job/job.go:36` (back-compat alias) + `kernel/job/job.go:75` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:Store                               # cross-package-NAME false positive — `domain/job/store.go:34` (back-compat alias) + `kernel/job/store.go:27` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:JobExecutionTools                   # cross-package-NAME false positive — `domain/job/handler.go:31` (back-compat alias) + `kernel/job/handler.go:54` (canonical) both declare `package job`; alias layer per PR-KERNEL-JOB-POPULATE — owner: @jobs-core, deadline: 2026-09-01
+job:LeaseState                          # cross-package-NAME false positive — `domain/job/finalize_aliases.go:55` (back-compat alias) + `kernel/job/lease_state.go:47` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:OutboxEventSpec                     # cross-package-NAME false positive — `domain/job/finalize_aliases.go:28` (back-compat alias) + `kernel/job/finalize_commands.go:145` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:PayloadCodec                        # cross-package-NAME false positive — `domain/job/codec.go:30` (back-compat alias) + `kernel/job/codec.go:43` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:RenewLeaseResult                    # cross-package-NAME false positive — `domain/job/finalize_aliases.go:59` (back-compat alias) + `kernel/job/lease_state.go:98` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:FinalizeAttemptResult               # cross-package-NAME false positive — `domain/job/finalize_aliases.go` (back-compat alias) + `kernel/job/finalize_commands.go` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:Handler                             # cross-package-NAME false positive — `domain/job/handler.go` (back-compat alias) + `kernel/job/handler.go` (canonical) both declare `package job`; alias layer per PR-KERNEL-JOB-POPULATE — owner: @jobs-core, deadline: 2026-09-01
+job:Job                                 # cross-package-NAME false positive — `domain/job/job.go` (back-compat alias) + `kernel/job/job.go` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:JobBroker                           # cross-package-NAME false positive — `domain/job/store.go` (back-compat alias) + `kernel/job/store.go` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+job:JobDefinition                       # cross-package-NAME false positive — `domain/job/job_definition.go` (back-compat alias) + `kernel/job/job_definition.go` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
 #
 # ── OUT-OF-SCOPE DEFERRED PAIRS (PR-check-5 follow-up, June 2026) ──
 # The Check 5 lint also flagged 3 additional pairs that are NOT in the
