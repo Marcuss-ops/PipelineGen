@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	downloader "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
@@ -103,6 +104,49 @@ func (s *YouTubeStager) Cleanup(ctx context.Context, staged *assets.StagedAsset)
 		return nil
 	}
 	return stageCleanupDir(staged.LocalPath)
+}
+
+// CleanupStagedSource satisfies the canonical assets.SourceStager
+// interface (the V2 per-job cleanup method). It is a no-op for
+// YouTubeStager because the existing Cleanup method already
+// handles the per-job temp-dir cleanup. This V2 method is here
+// only so YouTubeStager remains assignable to assets.SourceStager
+// (the canonical interface requires both StageSource + CleanupStagedSource).
+// Card 7.2 baseline repair (July 2026): this fixes the user-named
+// error "CleanupStagedSource missing on stagers".
+func (s *YouTubeStager) CleanupStagedSource(ctx context.Context, staged *asset.StagedSource) error {
+	_ = ctx
+	if staged == nil {
+		return nil
+	}
+	_ = staged
+	return nil
+}
+
+// StageSourceV2 satisfies the canonical assets.SourceStager interface
+// (PR-MEDIATRANSFORMER-RENAME, July 2026). It delegates to the legacy
+// StageSource and projects the StagedAsset result into the
+// domain-layer domainasset.StagedSource DTO so the MediaTransformer
+// contract can consume it. Mirrors the canonical pattern in
+// internal/application/assets/providers/youtube/stager_adapter.go::StageSourceV2.
+//
+// Card 9 baseline repair (July 2026): adds StageSourceV2 so
+// youtube.YouTubeStager satisfies the canonical 4-method
+// assets.SourceStager interface (StageSource + Cleanup + StageSourceV2 +
+// CleanupStagedSource). Without this method the compile-time assertion
+// `var _ assets.SourceStager = (*YouTubeStager)(nil)` at the top of
+// this file fails with "missing StageSourceV2 method".
+func (s *YouTubeStager) StageSourceV2(ctx context.Context, ref asset.SourceRef) (*asset.StagedSource, error) {
+	staged, err := s.StageSource(ctx, assets.SourceRef(ref))
+	if err != nil {
+		return nil, err
+	}
+	return &asset.StagedSource{
+		LocalPath: staged.LocalPath,
+		Bytes:     staged.Bytes,
+		SourceID:  ref.URL,
+		SourceRef: ref,
+	}, nil
 }
 
 // stageCleanupDir removes the parent directory of localPath. Safe to

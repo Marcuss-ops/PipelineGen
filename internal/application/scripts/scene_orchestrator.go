@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
@@ -126,7 +127,7 @@ type Emitter struct {
 // structurally — no adapter wrapper needed. The compile-time
 // assertion below pins the contract.
 type DispatcherShim interface {
-	Enqueue(ctx context.Context, jobType string, payload any) (*job.Job, error)
+	Enqueue(ctx context.Context, jobType string, payload any) (*kerneljob.Job, error)
 }
 
 // NewEmitter constructs a SceneImageJobEmitter backed by the
