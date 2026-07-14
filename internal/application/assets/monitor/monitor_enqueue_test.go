@@ -164,8 +164,24 @@ func TestEnqueueFromAnalysis_CommitsOutboxWithCorrectPayload(t *testing.T) {
 	if len(gotReq.Segments) != len(analysis.Segments) {
 		t.Errorf("Segments len = %d, want %d", len(gotReq.Segments), len(analysis.Segments))
 	}
-	if gotReq.Channel.ID != ch.ID {
-		t.Errorf("Channel.ID = %q, want %q", gotReq.Channel.ID, ch.ID)
+	// Channel opaque gate (Fase 8 DTO contract lock, July 2026): the
+	// ExtractionIntent.Channel field is tagged `json:"-"` so the channel
+	// is intentionally opaque on the wire. The canonical pin lives in
+	// extraction_intent_test.go::TestExtractionIntent_JSONByteEquivalence
+	// (which scans for any `"channel":` / `"Channel":` substring in the
+	// Marshal output AND asserts the post-Unmarshal Channel equals the
+	// zero-value via reflect.DeepEqual against channels.Channel{}). This
+	// monitor-side assertion pins the same contract in the test that is
+	// closest to the call site so a future regression that re-introduces
+	// `json:"channel"` (or any other non-opaque tag) breaks here AND in
+	// the canonical pin. The pre-Fase-8 shape had Channel.ID round-trip
+	// through JSON; the post-Fase-8 shape drops it cleanly because the
+	// downstream job executor resolves the channel by row lookup against
+	// category_channels (see channels.Service.GetByID) — the dispatch
+	// payload only carries the channel_id-derived identifiers that the
+	// executor needs.
+	if gotReq.Channel != (channels.Channel{}) {
+		t.Errorf("Channel leaked through wire: Channel=%+v (ExtractionIntent.Channel is json:\"-\" opaque after Fase 8 DTO contract lock; post-Unmarshal round-trip must be zero-value matching canonical pin in extraction_intent_test.go)", gotReq.Channel)
 	}
 }
 
