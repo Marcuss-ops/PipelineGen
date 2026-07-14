@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"sync"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
@@ -47,9 +48,11 @@ type OpenFileFunc func(path string) (*os.File, error)
 // P2.1 (July 2026): lookupFunc and openFile are the previous package-level
 // test seams migrated to struct fields for per-instance test isolation.\n// Both default to the production helper when nil via u.lookupExisting /\n// u.openReader lazy-default paths; tests inject overrides via struct literal.
 type Uploader struct {
-	Service   *driveapi.Service
-	Log       *zap.Logger
-	folderOps singleflight.Group // F1.6 P0 #5 keyed lock: parentID+":"+canonicalName
+	Service     *driveapi.Service
+	Log         *zap.Logger
+	folderOps   singleflight.Group // F1.6 P0 #5 keyed lock: parentID+":"+canonicalName
+	folderCache sync.Map           // completed key -> folder ID
+	folderLocks sync.Map           // key -> *sync.Mutex
 
 	// lookupFunc and openFile are the P2.1 test seams (per-instance,
 	// not package-level). Production code reads them through the lazy
@@ -140,4 +143,9 @@ func (u *Uploader) openReader(path string) (*os.File, error) {
 		return u.openFile(path)
 	}
 	return os.Open(path)
+}
+
+func (u *Uploader) folderLockFor(key string) *sync.Mutex {
+	lock, _ := u.folderLocks.LoadOrStore(key, &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }
