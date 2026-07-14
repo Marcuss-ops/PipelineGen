@@ -5,21 +5,32 @@
 //
 // Per PR1.7 (June 2026):
 //   - The setter cascade has been collapsed into a single
-//     NewService(ServiceDeps) constructor. Callers wire every port exactly
-//     once at composition time; missing deps are surfaced via nil guard
-//     errors at first use.
+//     NewServiceFromSubBundles(core, asset, video, storage, adapter)
+//     constructor. Callers wire every port exactly once at composition
+//     time; missing deps are surfaced via nil guard errors at first use.
 //   - Persistence has exactly ONE canonical writer: `AssetRepository` on
-//     ServiceDeps. The previous triple fallback has been removed in PR1.6.
+//     ServiceAssetDeps. The previous triple fallback has been removed in PR1.6.
 //   - Drive operations go exclusively through DriveFolderManagerPort.
 //   - Concrete imports of outbox / drive SDK / clipsRepo have been removed
 //     from this package; concrete wiring belongs to composition + infra.
 //   - Asset-processing/version callbacks were removed from the extraction
 //     flow; the canonical asset writer is AssetRepo.
 //
+// PR-GRUPOC-1 (July 2026): the historical monolithic ServiceDeps
+// (22 fields) is RETIRED in favour of 5 capability-area sub-bundles
+// (godlike/06 SSOT one-canonical-owner-per-fact, percheck_struct_deps
+// ≤8 fields enforcement). Each sub-bundle groups ports by their
+// real responsibility area (runtime config / asset lifecycle /
+// video pipeline / persistent state / external I/O) — NOT by
+// arbitrary field-position split. The composition root in
+// internal/app/build_bundles_domain_media.go wires the 5 sub-bundles
+// from the same canonical production dep set, so no call-site loses
+// access to a port it actually consumed.
+//
 // CPR-CC-6 (June 2026): split from mega-package service_orchestrator.go.
-// This file holds only the Service struct, ServiceDeps, NewService
-// constructor, and ValidateServiceDeps. Public methods are in
-// orchestrator.go. ExtractionCallbacks are in callbacks.go.
+// This file holds only the Service struct, sub-bundles, constructor,
+// and validator. Public methods are in orchestrator.go. ExtractionCallbacks
+// are in callbacks.go.
 package usecase
 
 import (
@@ -34,23 +45,67 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/pkg/portutil"
 )
 
-// ServiceDeps is the FULL set of dependencies the YouTube orchestrator
-// requires. Wiring happens exactly once via NewService(ServiceDeps);
-// setters are intentionally absent.
-type ServiceDeps struct {
-	// Core collaborators (always required).
-	Cfg               youtubetypes.RuntimeConfig
-	Log               *zap.Logger
-	MediaProcessor    asset.Processor
-	VideoPipeline     youtubeports.VideoPipelinePort
-	LifecycleService  *lifecycle.Service
+// ── Per-cluster sub-bundles (PR-GRUPOC-1, July 2026) ──────────────────
+//
+// godlike/06 SSOT (one canonical owner per fact): each sub-bundle
+// groups ports that share a single responsibility area. The
+// percheck_struct_deps enforcement is satisfied because every
+// sub-bundle has ≤7 fields. NO struct-bag aliasing: each port is
+// directly typed in the sub-bundle, not wrapped in a nested struct.
+
+// ServiceCoreDeps is the runtime-config cluster: cfg + log.
+//   - Cfg: the per-build YouTube runtime config (concurrency
+//     limits, timeouts, hard-coded paths).
+//   - Log: the canonical zap logger (composition root provides
+//     a single instance per process).
+type ServiceCoreDeps struct {
+	Cfg youtubetypes.RuntimeConfig
+	Log *zap.Logger
+}
+
+// ServiceAssetDeps is the asset-lifecycle cluster: the canonical
+// asset writer, the destination resolver, the lifecycle orchestrator,
+// and the per-asset media processor. These four are the "what
+// happens to a single asset row" surface — the YouTube orchestrator
+// delegates asset mutation through this cluster (no setters, no
+// fallback paths).
+type ServiceAssetDeps struct {
+	AssetRepo         asset.Repository
 	AssetDestResolver asset.Resolver
+	LifecycleService  *lifecycle.Service
+	MediaProcessor    asset.Processor
+}
 
-	// PR1.6 — canonical persistence writer (asset.Repository).
-	// Required: dispatchOrIndex refuses to persist without it.
-	AssetRepo asset.Repository
+// ServiceVideoDeps is the video-pipeline cluster: the
+// VideoPipelinePort (yt-dlp + ffmpeg facade) and the
+// ProcessYouTubeSegmentUseCase (the per-segment orchestrator
+// wired through PR-GODOBJ-1, godlike/07 fail-closed at boot).
+type ServiceVideoDeps struct {
+	VideoPipeline youtubeports.VideoPipelinePort
+	ProcessSeg    *ProcessYouTubeSegmentUseCase
+}
 
-	// Port dependencies.
+// ServiceStorageDeps is the persistent-state cluster: clip store +
+// L2 cache + monitors + clip indexer + folder memory + ollama +
+// transcript reader. All seven are local-state ports — the
+// orchestrator reads / writes them but never holds external
+// resources directly.
+type ServiceStorageDeps struct {
+	Clips            youtubeports.ClipStorePort
+	Cache            youtubeports.CachePort
+	Monitors         youtubeports.MonitorsStorePort
+	Indexer          youtubeports.ClipIndexerPort
+	FolderMemory     youtubeports.FolderMemoryPort
+	Ollama           youtubeports.OllamaClientPort
+	TranscriptReader TranscriptReader
+}
+
+// ServiceAdapterDeps is the external-I/O cluster: search +
+// subtitle + whisper + clip-files + meta-fetcher + drive-folder +
+// hash. All seven reach outside the process boundary (yt-dlp,
+// Drive API, network, etc.) — the orchestrator delegates them
+// without holding concrete clients.
+type ServiceAdapterDeps struct {
 	SearchRunner    youtubeports.SearchRunnerPort
 	SubtitleFetcher youtubeports.SubtitleFetcherPort
 	Whisper         youtubeports.WhisperTranscriberPort
@@ -58,37 +113,12 @@ type ServiceDeps struct {
 	MetaFetcher     youtubeports.VideoMetadataFetcherPort
 	DriveFolderMgr  youtubeports.DriveFolderManagerPort
 	HashSvc         youtubeports.HashServicePort
-
-	// P1.3: TranscriptReader is the Pattern 0 port for reading on-disk
-	// transcript files. When nil, enrichment skips transcript-based
-	// features (sponsor detection, quality scoring). Tests inject an
-	// in-memory reader; production wires OSTranscriptReader.
-	TranscriptReader TranscriptReader
-
-	// PR1.5 — port-backed store/cache/index collaborators.
-	Clips        youtubeports.ClipStorePort
-	Cache        youtubeports.CachePort
-	Monitors     youtubeports.MonitorsStorePort
-	Indexer      youtubeports.ClipIndexerPort
-	FolderMemory youtubeports.FolderMemoryPort
-	Ollama       youtubeports.OllamaClientPort
-
-	// PR-GODOBJ-1 (July 2026): REQUIRED via panic fail-closed in
-	// NewExtractionService (godlike/07 no-fake-availability).
-	// Composition (build_bundles_domain.go) must wire
-	// ProcessYouTubeSegmentUseCase — a nil wiring triggers a
-	// ctor-panic that surfaces the missing port at boot. The
-	// legacy inline per-seg loop was physically removed in
-	// PR-GODOBJ-1 (the previous Commit 1/6 "Post-Commit-H
-	// removal" ratchet is now realized). Concrete wiring:
-	// build_bundles_domain.go constructs ProcessSeg from
-	// canonical ClipCacheAdapter + ClipAtomicWriterAdapter.
-	ProcessSeg *ProcessYouTubeSegmentUseCase
 }
 
-// Service is the YouTube orchestrator. Construct it once via NewService
-// (no setters). Methods received on nil-receiver port fields surface an
-// explicit error rather than silently no-op'ing.
+// Service is the YouTube orchestrator. Construct it once via
+// NewServiceFromSubBundles (no setters). Methods received on
+// nil-receiver port fields surface an explicit error rather than
+// silently no-op'ing.
 type Service struct {
 	cfg               youtubetypes.RuntimeConfig
 	log               *zap.Logger
@@ -127,47 +157,54 @@ type Service struct {
 	transcriptReader TranscriptReader
 }
 
-// NewService is the sole canonical constructor. Pass every dependency a
-// component of the YouTube pipeline touches; missing nothing means no
-// surrogate setters are needed. Composition root (internal/app/composition.go)
-// is the only intended caller.
+// NewServiceFromSubBundles is the sole canonical constructor (PR-GRUPOC-1,
+// July 2026). Pass every dependency a component of the YouTube pipeline
+// touches via 5 capability-area sub-bundles; missing nothing means no
+// surrogate setters are needed. Composition root (internal/app/build_
+// bundles_domain_media.go) is the only intended caller.
 //
 // PR5 (June 2026): the L2 cache is injected through CachePort; composition
 // owns the SQLite-backed infrastructure adapter.
-func NewService(deps ServiceDeps) *Service {
-	maxVideo := deps.Cfg.MaxConcurrentVideoExtracts
+func NewServiceFromSubBundles(
+	core ServiceCoreDeps,
+	asset ServiceAssetDeps,
+	video ServiceVideoDeps,
+	storage ServiceStorageDeps,
+	adapter ServiceAdapterDeps,
+) *Service {
+	maxVideo := core.Cfg.MaxConcurrentVideoExtracts
 	if maxVideo <= 0 {
 		maxVideo = 1
 	}
-	maxOllama := deps.Cfg.MaxConcurrentOllamaCalls
+	maxOllama := core.Cfg.MaxConcurrentOllamaCalls
 	if maxOllama <= 0 {
 		maxOllama = 1
 	}
 	svc := &Service{
-		cfg:               deps.Cfg,
-		log:               deps.Log,
-		mediaProcessor:    deps.MediaProcessor,
-		videoPipeline:     deps.VideoPipeline,
-		lifecycleService:  deps.LifecycleService,
-		assetDestResolver: deps.AssetDestResolver,
-		assetRepo:         deps.AssetRepo,
+		cfg:               core.Cfg,
+		log:               core.Log,
+		mediaProcessor:    asset.MediaProcessor,
+		videoPipeline:     video.VideoPipeline,
+		lifecycleService:  asset.LifecycleService,
+		assetDestResolver: asset.AssetDestResolver,
+		assetRepo:         asset.AssetRepo,
 
-		searchRunner:    deps.SearchRunner,
-		subtitleFetcher: deps.SubtitleFetcher,
-		whisper:         deps.Whisper,
-		clipFiles:       deps.ClipFiles,
-		metaFetcher:     deps.MetaFetcher,
-		driveFolderMgr:  deps.DriveFolderMgr,
-		hashSvc:         deps.HashSvc,
+		searchRunner:    adapter.SearchRunner,
+		subtitleFetcher: adapter.SubtitleFetcher,
+		whisper:         adapter.Whisper,
+		clipFiles:       adapter.ClipFiles,
+		metaFetcher:     adapter.MetaFetcher,
+		driveFolderMgr:  adapter.DriveFolderMgr,
+		hashSvc:         adapter.HashSvc,
 
-		clips:        deps.Clips,
-		cache:        deps.Cache,
-		monitors:     deps.Monitors,
-		indexer:      deps.Indexer,
-		folderMemory: deps.FolderMemory,
-		ollama:       deps.Ollama,
+		clips:        storage.Clips,
+		cache:        storage.Cache,
+		monitors:     storage.Monitors,
+		indexer:      storage.Indexer,
+		folderMemory: storage.FolderMemory,
+		ollama:       storage.Ollama,
 
-		transcriptReader: deps.TranscriptReader,
+		transcriptReader: storage.TranscriptReader,
 
 		videoExtractSem: make(chan struct{}, maxVideo),
 		ollamaSem:       make(chan struct{}, maxOllama),
@@ -179,14 +216,14 @@ func NewService(deps ServiceDeps) *Service {
 	// root wires a non-nil `*SearchRunnerAdapter` (checked in
 	// composition.go::BuildDomainBundle) but a future refactor could
 	// accidentally pass a typed-nil concrete pointer through an interface
-	// field of ServiceDeps. The portutil.IsNilPort guard catches that case
+	// field of ServiceAdapterDeps. The portutil.IsNilPort guard catches that case
 	// and refuses to wire the search service, producing an explicit
 	// failure at first use instead of a silent panic.
-	if deps.SearchRunner != nil && !portutil.IsNilPort(deps.SearchRunner) && deps.Log != nil {
+	if adapter.SearchRunner != nil && !portutil.IsNilPort(adapter.SearchRunner) && core.Log != nil {
 		svc.search = NewSearchService(SearchDeps{
-			SearchRunner: deps.SearchRunner,
+			SearchRunner: adapter.SearchRunner,
 			Cache:        svc.cache,
-			Log:          deps.Log,
+			Log:          core.Log,
 		})
 	}
 
@@ -197,41 +234,52 @@ func NewService(deps ServiceDeps) *Service {
 	// The root Service implements ExtractionCallbacks so callbacks are
 	// simply method calls on the same Service instance.
 	svc.extraction = NewExtractionService(ExtractionDeps{
-		Cfg:               deps.Cfg,
-		Log:               deps.Log,
-		VideoPipeline:     deps.VideoPipeline,
-		Clips:             deps.Clips,
-		Cache:             deps.Cache,
-		Monitors:          deps.Monitors,
-		AssetDestResolver: deps.AssetDestResolver,
-		FolderMemory:      deps.FolderMemory,
+		Cfg:               core.Cfg,
+		Log:               core.Log,
+		VideoPipeline:     video.VideoPipeline,
+		Clips:             storage.Clips,
+		Cache:             storage.Cache,
+		Monitors:          storage.Monitors,
+		AssetDestResolver: asset.AssetDestResolver,
+		FolderMemory:      storage.FolderMemory,
 		SegmentsSvc:       svc.segSvc,
 		// PR-GODOBJ-1 (July 2026): REQUIRED. NewExtractionService
 		// panics if ProcessSeg is nil (godlike/07 fail-closed;
 		// legacy inline loop PHYSICALLY removed). Composition MUST
 		// wire ProcessYouTubeSegmentUseCase.
-		ProcessSeg:          deps.ProcessSeg,
-		MaxConcurrentVideos: deps.Cfg.MaxConcurrentVideoExtracts,
+		ProcessSeg:          video.ProcessSeg,
+		MaxConcurrentVideos: core.Cfg.MaxConcurrentVideoExtracts,
 	}, svc)
 
 	return svc
 }
 
-// ValidateServiceDeps checks ServiceDeps for typed-nil interfaces on
-// required ports. Composition MUST call this before constructing the
-// service so typed-nil wiring errors surface at startup, not at first
-// invocation.
-func ValidateServiceDeps(deps ServiceDeps) error {
-	if isUnavailablePort(deps.SearchRunner) {
+// ValidateServiceDepsFromSubBundles checks the 5 sub-bundles for
+// typed-nil interfaces on required ports. Composition MUST call this
+// before constructing the service so typed-nil wiring errors surface
+// at startup, not at first invocation.
+//
+// PR-GRUPOC-1 (July 2026): mirrors the pre-refactor typed-nil guards
+// (SearchRunner / AssetRepo / VideoPipeline / MediaProcessor) on the
+// new sub-bundle surface. godlike/07 fail-closed: nil REQUIRED ports
+// surface as typed errors at composition time, not at first request.
+func ValidateServiceDepsFromSubBundles(
+	core ServiceCoreDeps,
+	asset ServiceAssetDeps,
+	video ServiceVideoDeps,
+	_ ServiceStorageDeps,
+	adapter ServiceAdapterDeps,
+) error {
+	if isUnavailablePort(adapter.SearchRunner) {
 		return fmt.Errorf("youtube: SearchRunner is required but not wired (or typed-nil)")
 	}
-	if deps.AssetRepo == nil || portutil.IsNilPort(deps.AssetRepo) {
+	if asset.AssetRepo == nil || portutil.IsNilPort(asset.AssetRepo) {
 		return fmt.Errorf("youtube: AssetRepo is required but not wired (or typed-nil)")
 	}
-	if isUnavailablePort(deps.VideoPipeline) {
+	if isUnavailablePort(video.VideoPipeline) {
 		return fmt.Errorf("youtube: VideoPipeline is required but not wired (or typed-nil)")
 	}
-	if deps.MediaProcessor == nil || portutil.IsNilPort(deps.MediaProcessor) {
+	if asset.MediaProcessor == nil || portutil.IsNilPort(asset.MediaProcessor) {
 		return fmt.Errorf("youtube: MediaProcessor is required but not wired (or typed-nil)")
 	}
 	return nil

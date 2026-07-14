@@ -43,14 +43,20 @@ func (f *fakeAssetRepo) FindByExternalRef(ctx context.Context, provider, externa
 	return nil, nil
 }
 
-// validDeps returns a ServiceDeps with all required ports wired (non-nil).
-func validDeps() ServiceDeps {
-	return ServiceDeps{
-		SearchRunner:   &fakeSearchRunner{},
-		AssetRepo:      &fakeAssetRepo{},
-		VideoPipeline:  &fakeVideoPipeline{},
-		MediaProcessor: &fakeMediaProcessor{},
-	}
+// validSubBundles returns the 5 capability-area sub-bundles with all
+// required ports wired. PR-GRUPOC-1 (July 2026): replaces the pre-PR
+// `validDeps() ServiceDeps` helper. Tests that exercise a typed-nil
+// guard mutate the relevant sub-bundle (e.g. `adapter.SearchRunner = nil`)
+// after calling this helper.
+func validSubBundles() (ServiceCoreDeps, ServiceAssetDeps, ServiceVideoDeps, ServiceStorageDeps, ServiceAdapterDeps) {
+	return ServiceCoreDeps{},
+		ServiceAssetDeps{
+			AssetRepo:      &fakeAssetRepo{},
+			MediaProcessor: &fakeMediaProcessor{},
+		},
+		ServiceVideoDeps{VideoPipeline: &fakeVideoPipeline{}},
+		ServiceStorageDeps{},
+		ServiceAdapterDeps{SearchRunner: &fakeSearchRunner{}}
 }
 
 // ── Required-port rejection tests ───────────────────────────────────────
@@ -59,9 +65,9 @@ func TestValidateServiceDeps_RejectsTypedNilSearchRunner(t *testing.T) {
 	var nilRunner *fakeSearchRunner
 	var runner youtubeports.SearchRunnerPort = nilRunner // typed-nil
 
-	deps := validDeps()
-	deps.SearchRunner = runner
-	err := ValidateServiceDeps(deps)
+	core, asset, video, storage, adapter := validSubBundles()
+	adapter.SearchRunner = runner
+	err := ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "SearchRunner")
 }
@@ -70,9 +76,9 @@ func TestValidateServiceDeps_RejectsTypedNilAssetRepo(t *testing.T) {
 	var nilRepo *fakeAssetRepo
 	var repo asset.Repository = nilRepo // typed-nil
 
-	deps := validDeps()
-	deps.AssetRepo = repo
-	err := ValidateServiceDeps(deps)
+	core, asset, video, storage, adapter := validSubBundles()
+	asset.AssetRepo = repo
+	err := ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "AssetRepo")
 }
@@ -81,9 +87,9 @@ func TestValidateServiceDeps_RejectsTypedNilVideoPipeline(t *testing.T) {
 	var nilPipeline *fakeVideoPipeline
 	var pipeline youtubeports.VideoPipelinePort = nilPipeline // typed-nil
 
-	deps := validDeps()
-	deps.VideoPipeline = pipeline
-	err := ValidateServiceDeps(deps)
+	core, asset, video, storage, adapter := validSubBundles()
+	video.VideoPipeline = pipeline
+	err := ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "VideoPipeline")
 }
@@ -92,25 +98,25 @@ func TestValidateServiceDeps_RejectsTypedNilMediaProcessor(t *testing.T) {
 	var nilProc *fakeMediaProcessor
 	var proc asset.Processor = nilProc // typed-nil
 
-	deps := validDeps()
-	deps.MediaProcessor = proc
-	err := ValidateServiceDeps(deps)
+	core, asset, video, storage, adapter := validSubBundles()
+	asset.MediaProcessor = proc
+	err := ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "MediaProcessor")
 }
 
 func TestValidateServiceDeps_RejectsBareNilSearchRunner(t *testing.T) {
-	deps := validDeps()
-	deps.SearchRunner = nil
-	err := ValidateServiceDeps(deps)
+	core, asset, video, storage, adapter := validSubBundles()
+	adapter.SearchRunner = nil
+	err := ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "SearchRunner")
 }
 
 func TestValidateServiceDeps_RejectsBareNilAssetRepo(t *testing.T) {
-	deps := validDeps()
-	deps.AssetRepo = nil
-	err := ValidateServiceDeps(deps)
+	core, asset, video, storage, adapter := validSubBundles()
+	asset.AssetRepo = nil
+	err := ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "AssetRepo")
 }
@@ -119,56 +125,68 @@ func TestValidateServiceDeps_RejectsBareNilAssetRepo(t *testing.T) {
 
 func TestValidateServiceDeps_AllowsOptionalTypedNilPorts(t *testing.T) {
 	// All required ports are valid, optional ports can be nil or typed-nil.
-	deps := validDeps()
+	core, asset, video, storage, adapter := validSubBundles()
 
 	// Optional ports intentionally left zero/nil — should pass.
-	deps.Indexer = nil
-	deps.Whisper = nil
-	deps.Ollama = nil
-	deps.HashSvc = nil
-	deps.DriveFolderMgr = nil
-	deps.SubtitleFetcher = nil
-	deps.ClipFiles = nil
-	deps.MetaFetcher = nil
-	deps.Clips = nil
-	deps.Monitors = nil
-	deps.FolderMemory = nil
+	storage.Indexer = nil
+	adapter.Whisper = nil
+	storage.Ollama = nil
+	adapter.HashSvc = nil
+	adapter.DriveFolderMgr = nil
+	adapter.SubtitleFetcher = nil
+	adapter.ClipFiles = nil
+	adapter.MetaFetcher = nil
+	storage.Clips = nil
+	storage.Monitors = nil
+	storage.FolderMemory = nil
 
-	err := ValidateServiceDeps(deps)
+	err := ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	assert.NoError(t, err)
 }
 
 func TestValidateServiceDeps_AllowsOptionalBareNilPorts(t *testing.T) {
-	deps := validDeps()
+	core, asset, video, storage, adapter := validSubBundles()
 	// All optional ports left as zero values (nil) — should pass.
-	err := ValidateServiceDeps(deps)
+	err := ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	assert.NoError(t, err)
 }
 
 func TestValidateServiceDeps_AllValidDepsPass(t *testing.T) {
-	deps := validDeps()
-	err := ValidateServiceDeps(deps)
+	core, asset, video, storage, adapter := validSubBundles()
+	err := ValidateServiceDepsFromSubBundles(core, asset, video, storage, adapter)
 	assert.NoError(t, err)
 }
 
 // ── Best-effort IndexClip / TranscribeAudio tests ───────────────────────
 
 func TestIndexClip_NoOpWhenIndexerNotWired(t *testing.T) {
-	svc := NewService(ServiceDeps{
-		Log:        zap.NewNop(),
-		ProcessSeg: newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
-		Indexer:    nil, // no indexer
-	})
+	// PR-GRUPOC-1 (July 2026): sub-builder ctor. Indexer is in
+	// ServiceStorageDeps; leaving it nil exercises the no-op path.
+	svc := NewServiceFromSubBundles(
+		ServiceCoreDeps{Log: zap.NewNop()},
+		ServiceAssetDeps{},
+		ServiceVideoDeps{
+			ProcessSeg: newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
+		},
+		ServiceStorageDeps{},
+		ServiceAdapterDeps{},
+	)
 	err := svc.IndexClip(context.Background(), "test-clip-id")
 	assert.NoError(t, err, "IndexClip should return nil (no-op) when indexer is not wired")
 }
 
 func TestTranscribeAudio_EmptyWhenWhisperNotWired(t *testing.T) {
-	svc := NewService(ServiceDeps{
-		Log:        zap.NewNop(),
-		ProcessSeg: newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
-		Whisper:    nil, // no whisper
-	})
+	// PR-GRUPOC-1 (July 2026): sub-builder ctor. Whisper is in
+	// ServiceAdapterDeps; leaving it nil exercises the no-op path.
+	svc := NewServiceFromSubBundles(
+		ServiceCoreDeps{Log: zap.NewNop()},
+		ServiceAssetDeps{},
+		ServiceVideoDeps{
+			ProcessSeg: newTestProcessSegmentUseCase(zap.NewNop(), &fakeVideoPipeline{}),
+		},
+		ServiceStorageDeps{},
+		ServiceAdapterDeps{},
+	)
 	result, err := svc.TranscribeAudio(context.Background(), "/tmp/test.wav")
 	assert.NoError(t, err)
 	assert.Empty(t, result, "TranscribeAudio should return empty string when whisper is not wired")
