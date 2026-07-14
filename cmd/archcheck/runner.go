@@ -507,6 +507,18 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// naturally exempt by the regex (requires the
 		// search. qualifier). Test files are exempt.
 		{"percheck_search_aggregator_singleton", scan.ScanSearchAggregatorSingleton},
+		// Wave-22 forward-prevention gate (godlike/08 evolution
+		// PR2, post-Wave 22 per architecture/current.yaml):
+		// bans low-level infrastructure imports from the API
+		// transport layer. Go-side mirror of
+		// scripts/ci/architecture/checks/check_19_api_infrastructure_imports.sh;
+		// reads the canonical allowlist at
+		// docs/migrations/api-infrastructure-imports-allowlist.txt
+		// for grandfathered surfaces (godlike/06 SSOT-marker
+		// discipline with owner + deadline). The rule id is
+		// promoted to a Phase-N hard gate via the
+		// pol.HardGates evaluate-and-escalate pass in Run().
+		{"percheck_api_infrastructure_imports", scan.ScanAPIInfrastructureImports},
 	}
 }
 
@@ -563,6 +575,36 @@ func Run(ctx context.Context, root, policyPath, phase string, strict bool, produ
 	}
 	r.Passed = len(r.Violations) == 0
 
+	// Wave-22 hard-gate promotion (godlike/08 evolution PR2).
+	// Build the lookup set once; for every violation whose
+	// Rule is in pol.HardGates, escalate Severity to
+	// report.SeverityError and set hasHardGate. Recompute
+	// BySeverity from scratch (the prior rollup inserted the
+	// unaware severity; we now want operators to see the
+	// escalated count in by_severity.error). Exit decision
+	// below extends to `hasHardGate || (strict && len>0)` so
+	// the gate fires regardless of --strict.
+	hasHardGate := false
+	if len(pol.HardGates) > 0 {
+		hgSet := make(map[string]bool, len(pol.HardGates))
+		for _, id := range pol.HardGates {
+			hgSet[id] = true
+		}
+		for i := range r.Violations {
+			if hgSet[r.Violations[i].Rule] {
+				r.Violations[i].Severity = string(report.SeverityError)
+				hasHardGate = true
+			}
+		}
+		if hasHardGate {
+			r.Summary.BySeverity = map[string]int{}
+			for _, v := range r.Violations {
+				r.Summary.BySeverity[v.Severity]++
+			}
+		}
+	}
+	r.HasHardGateHits = hasHardGate
+
 	// Sort violations for deterministic JSON output (Go map
 	// iteration in scan functions produces non-deterministic
 	// ordering; the golden-file snapshot test needs byte-stable
@@ -594,7 +636,7 @@ func Run(ctx context.Context, root, policyPath, phase string, strict bool, produ
 	}
 	fmt.Println(string(out))
 
-	if strict && len(r.Violations) > 0 {
+	if (strict && len(r.Violations) > 0) || hasHardGate {
 		return ExitViolations, nil
 	}
 	return ExitOK, nil

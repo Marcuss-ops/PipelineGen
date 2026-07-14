@@ -50,6 +50,17 @@ type Report struct {
 	// other fields. PR-ARCHCHECK-GO-MIGRATION-PHASE-1 (July 2026)
 	// is the first PR to populate the field.
 	Warnings []string `json:"warnings,omitempty"`
+	// HasHardGateHits is the per-run audit signal for the
+	// Wave-22 hard-gate evaluation pass (godlike/08 evolution
+	// PR2, promoted post-Wave 22 per architecture/current.yaml).
+	// True when at least one violation was on the canonical
+	// pol.HardGates list and was severity-escalated to
+	// report.SeverityError by Run() — operators can `jq
+	// '.has_hard_gate_hits'` to confirm whether a default
+	// (non-strict) run hit a Phase-N gate. Forward-compatible
+	// (omitempty-aware consumers that don't know about it
+	// ignore it).
+	HasHardGateHits bool `json:"has_hard_gate_hits"`
 }
 
 // Violation is the JSON shape emitted per rule violation.

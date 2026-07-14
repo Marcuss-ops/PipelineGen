@@ -401,3 +401,51 @@ debt_budget:
   # the entry flips to `resolved`.
   ci_gate: scripts/ci-architectural-checks.sh (Check 64)
 
+# Wave-22 hard-gate promotion (godlike/08 evolution PR2,
+# post-Wave 22 per architecture/current.yaml). The canonical
+# list of rule IDs whose violations ALWAYS exit ExitViolations
+# from cmd/archcheck, regardless of the --strict flag. The
+# runner's pre-exit evaluation pass (cmd/archcheck/runner.go)
+# builds a lookup set from this list; every violation whose
+# Rule matches is severity-escalated to report.SeverityError
+# and the exit decision is widened to `hasHardGate ||
+# (strict && len>0)`. Covers:
+#   - the 5 godlike docs (the canonical promotion scope of
+#     Wave 22); every `_doc_missing` and `_doc_incomplete`
+#     are fail-closed forward-prevention guards.
+#   - the Wave-5 typed metadata registry (map[string]any ban)
+#     already in pre-Wave-22 promotion.
+#   - the Wave-22 forward-prevention gate for low-level
+#     infrastructure imports in the API layer (Go-side mirror
+#     of scripts/ci/architecture/checks/check_19); both the
+#     hit rule and the fail-closed missing-allowlist rule are
+#     in the set.
+# SSOT for Wave-22 gate promotion. Bypassing requires an
+# explicit SSOT-marker demotion in architecture/current.yaml
+# (no in-tree override).
+hard_gates:
+  # 5 godlike docs (Wave-22 promotion scope). Both missing-
+  # file and missing-section variants are hard gates so a
+  # future agent who deletes either an H2 from the canonical
+  # doc OR deletes the doc entirely surfaces as a CI build
+  # failure on the next push, not as an operator trap.
+  - data_ownership_doc_missing
+  - data_ownership_doc_incomplete
+  - legacy_policy_doc_missing
+  - legacy_policy_doc_incomplete
+  - ci_gates_doc_missing
+  - ci_gates_doc_incomplete
+  - agent_playbook_doc_missing
+  - agent_playbook_doc_incomplete
+  - removal_doc_missing
+  - removal_doc_incomplete
+  # Wave-5 typed metadata registry (pre-Wave-22 promotion).
+  - percheck_metadata_registry
+  # Wave-22 forward-prevention: banned infrastructure imports
+  # in the API layer (Go-side mirror of Check 19). The hit
+  # rule and the fail-closed missing-allowlist rule are
+  # both in the set — operators must keep the canonical
+  # allowlist on disk (godlike/07 NO-FAKE-AVAILABILITY).
+  - percheck_api_infrastructure_imports
+  - percheck_api_infrastructure_imports_allowlist_missing
+
