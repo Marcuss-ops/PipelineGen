@@ -46,6 +46,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
 
 // assetStateCanonical14Path is the canonical SOLE owner of
@@ -121,7 +122,15 @@ func ScanAssetStateCanonical14(root string, pol *policy.Policy, r *report.Report
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	const wantCount = 14
+	// wantCount is the canonical inventory size, sourced from
+	// internal/domain/asset.AssetStateAlphabetCount (godlike/06
+	// SSOT — single literal source-of-truth for the canonical
+	// alphabet size across the codebase). A future agent
+	// changing that constant surfaces in the matrix tests too,
+	// so the percheck scanner + the alphabetic file surface +
+	// the runtime helper are kept in lockstep without parallel
+	// hardcoded literals.
+	const wantCount = asset.AssetStateAlphabetCount
 	count := 0
 	commentOnly := 0
 	lineNo := 0
