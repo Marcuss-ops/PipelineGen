@@ -30,6 +30,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"go.uber.org/zap"
 )
@@ -137,7 +138,17 @@ func (a *ParentAggregator) aggregateOne(ctx context.Context, j job.Job) error {
 	}
 	childIDs = filtered
 	if len(childIDs) == 0 {
-		a.finalizeParent(ctx, j.ID, ZeroChildrenAggregateResult())
+		res := ZeroChildrenAggregateResult()
+		// PR-P1.2-SQL-DUAL-WRITE: the typed column is authoritative.
+		// If it says a non-waiting non-terminal state (e.g. partial_success),
+		// preserve it even in the zero-children short-circuit. Otherwise
+		// keep the FASE 4 failed mapping for waiting_children/empty typed.
+		if j.ParentStateTyped != "" &&
+			j.ParentStateTyped != "waiting_children" &&
+			isKnownTypedParentState(j.ParentStateTyped) {
+			res.ParentState = voiceover.ParentState(j.ParentStateTyped)
+		}
+		a.finalizeParent(ctx, j.ID, res)
 		return nil
 	}
 
