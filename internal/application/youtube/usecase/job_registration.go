@@ -14,7 +14,7 @@ import (
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ytjobs "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/jobs"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // RegisterHandler wires the orchestrator's two job-type handlers into the

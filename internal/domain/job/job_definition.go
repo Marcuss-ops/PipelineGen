@@ -68,4 +68,3 @@ const (
 	ExecutionCreatorAllowed = kerneljob.ExecutionCreatorAllowed
 	ExecutionCreatorOnly    = kerneljob.ExecutionCreatorOnly
 )
-

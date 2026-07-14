@@ -1,8 +1,8 @@
 package youtube
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
 )
 
 const JobExtract = youtube.TypeExtract

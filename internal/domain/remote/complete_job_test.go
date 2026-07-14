@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 )
 
 // ── CompleteJobRequest.Validated (pre-TX fail-fast) ──────────────────

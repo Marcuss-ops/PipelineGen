@@ -43,7 +43,7 @@
 package voiceover
 
 import (
-job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ParentState is the typed parent-job application-level lifecycle
