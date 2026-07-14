@@ -3,7 +3,7 @@
 # Transitional allowlist for scripts/ci-architectural-checks.sh Check 5
 # (same-package duplicate-type-declarations lint).
 #
-# Format: `<package>:<TypeName>   # <rationale> — owner: <handle>, deadline: <YYYY-MM-DD>`
+# Format: `<dir>/<package>:<TypeName>   # <rationale> — owner: <handle>, deadline: <YYYY-MM-DD>`
 # The lint scanner reads the first whitespace-separated token only:
 #   grep -vE '^\s*(#|$)' duplicates-types-allowlist.txt | awk '{print $1}' | sort -u
 # Adding/removing an entry MUST ship in the same PR as the code change that
@@ -12,29 +12,47 @@
 # explicit owner + deadline. New entries WITHOUT those columns fail the
 # governance gate.
 #
-# Current baseline (origin/main, July 2026): 42 entries.
-#   - 7 legacy QDRANT-hygiene entries (sqlite-vs-application mirror, cross-module
-#     search mirror, jobs broker port)
-#   - 7 PR-check-5 baseline-closure entries (cross-package-NAME false
-#     positives — see Check 5 log section below; awk regex `^type[[:space:]]+
-#     [A-Z]` matches type aliases alongside struct declarations when both
-#     files declare the same package name)
-#   - 10 PR-CHECK-5-FOLLOWUP entries (July 2026) — cross-package-NAME false
-#     positives for the remaining 10 same-package-NAME collisions that
-#     were not in the original PR-check-5 scope; entries added after the
-#     scanner bug (656 blank-line noise) was fixed by adding `if (NF < 3)
-#     next` to the Check 5 awk block in scripts/ci-architectural-checks.sh
-#   - 15 PHASE-A.2-PR-KERNEL-JOB-POPULATE entries (July 2026) —
-#     `internal/domain/job/*` (back-compat aliases) coexist with
-#     `internal/kernel/job/*` (canonicals); both directories declare
-#     `package job` so the Check 5 scanner groups them as one
-#     (dir,pkg)-keyed redeclaration. Verified per file:line below.
-#     Migration plan: CUTOVER to `kernel/job/` per godlike/07 §"Migration
-#     sequence" + Phase A.2; deadline 2026-09-01 (whole-block parity).
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ POST-LENS-MIGRATION (PRE-EXISTING-15-LENS-MIGRATION, July 2026)             │
+# │                                                                          │
+# │ The Check 5 scanner keys each declaration as `<dir>/<pkg>:<type>` where    │
+# │ `dir` is the directory_path (NOT just package_name — matches Go's         │
+# │ package-identity contract per architecture/policy.yaml). Each allowlist  │
+# │ entry MUST use the full `dir/pkg:type` form to match scanner keys; bare  │
+# │ `pkg:type` form is functionally inactive (cannot exempt the scanner's   │
+# │ count>=2 verdict). Multi-dir declarations (different dirs sharing the    │
+# │ same package name) REQUIRE one line per directory, since each             │
+# │ (dir,pkg,type) tuple is a distinct scanner key post PRE-EXISTING-15-     │
+# │ LENS-MIGRATION. This migration closes the project-wide allowlist-key-    │
+# │ format mismatch flagged in the prior code-review (commit 55a0f56eb).     │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# Current baseline (origin/main, July 2026): 71 lines (38 logical entries
+#   after post-CHECK-5-LENS ground-truth sweep: engine:Generate dropped
+#   (0 hits) + 3 stale cross-package-name mirror families dropped
+#   (0 hits in their alleged directories OR the directory itself is gone
+#   after FASE-X/voiceover-shim refactors)).
+#   - 13 CHECK 5 LOG entries (21 lines: 4 single-dir (scripts:*×3 +
+#     outbox:IndexClipper) + 9 multi-dir split × 2 cells = 22 cells,
+#     minus 1 cell api-side images:GenerateImageRequest drop = 21 actual)
+#   - (legacy 7+9 taxonomy from prior baseline merged into the 13
+#     entries above; the 10 PR-check-5 baseline-closure multi-dir axioms
+#     split are now visible per-line in the section body)
+#   - 10 PR-CHECK-5-FOLLOWUP entries (each split into 2 lines = 20 lines)
+#   - 15 PHASE-A.2-PR-KERNEL-JOB-POPULATE entries (each split into
+#     2 lines = 30 lines: domain/job/ + kernel/job/)
 # Deadline (whole block): 2026-09-01.
 # After 2026-09-01 these MUST migrate per godlike/07 §"Migration sequence"
 # (EXPAND → BACKFILL → CUTOVER → CONTRACT); the allowlist may NOT shrink
 # via silent expiry — each entry is ratcheted individually.
+#
+# DROPPED in this commit (post-CHECK-5-LENS ground-truth sweep):
+#   - engine:Generate — rg confirmed 0 `^type Generate` hits in current
+#     codebase; the canonical engine surface now lives at
+#     internal/application/scripts/usecase/engine.go (per PR-CHECK-24-FIXUP,
+#     2026-07-08). Check 24's tolerance for missing engine.go makes the
+#     engine-side type extinct; the cross-package-NAME rationale is no
+#     longer applicable. Removal: owner = @jobs-core, deadline = 2026-09-01.
 #
 # Owner groups used below:
 #   @qdrant-hygiene           — legacy QDRANT-projection mirrors
@@ -49,69 +67,102 @@
 #   @qdrant-team              — qdrant-side canonical (reconciler/maintenance) vs assets-side cross-package-NAME mirrors
 #   @translation-team         — application/translation (ports) + domain/translation (canonical)
 #
-# ◷ CHECK 5 LOG SECTION (PR-check-5 baseline closure, June 2026) ◷
-# At PR-check-5 closure time the lint scanner flagged 10 same-package
-# redeclarations across the internal/ tree. All 10 are cross-package-NAME
-# false positives (the scanner groups by Go-package NAME; distinct
-# directories that share a package name produce collisions the scanner
-# cannot distinguish from true redeclarations). The 7 entries below
-# resolve the user's PR scope; the 3 deferred to a future PR (OOS)
-# are documented at the bottom of this file with their owners + deadlines.
+# ◷ CHECK 5 LOG SECTION (PR-check-5 baseline closure, June 2026, post-LENS migration) ◷
+# Entries below were originally documented as cross-package-NAME false positives
+# (the legacy pkg:Type lens; superseded by PRE-EXISTING-15-LENS-MIGRATION).
+# Each line below is one (dir,pkg,type) scanner key; multi-dir declarations
+# occupy multiple consecutive lines to exempt all sites of the type.
 #
-scripts:ScriptSectionRecord            # legacy sqlite scripts-vs-application mirror — owner: @qdrant-hygiene, deadline: 2026-09-01
-outbox:IndexClipper                    # legacy outbox direct-indexer mirror — owner: @qdrant-hygiene, deadline: 2026-09-01
-search:Service                         # cross-module search.Service mirror (assets/<->youtube) — owner: @qdrant-hygiene, deadline: 2026-09-01
-scripts:ScriptOutlineSectionRecord     # legacy sqlite scripts-vs-application mirror — owner: @qdrant-hygiene, deadline: 2026-09-01
-jobs:Broker                            # api/jobs vs application/jobs broker port — owner: @qdrant-hygiene, deadline: 2026-09-01
-search:Logger                          # cross-module search.Logger mirror (assets/search vs search) — owner: @qdrant-hygiene, deadline: 2026-09-01
-scripts:ScriptStockMatchRecord         # legacy sqlite scripts-vs-application mirror — owner: @qdrant-hygiene, deadline: 2026-09-01
-voiceover:VoiceoverResult              # scanner-flagged alias — `types.go:195` struct + `domain/voiceover/result.go:86` type alias `VoiceoverResult = Result`; both declare `package voiceover` — owner: @voiceover-team, deadline: 2026-09-01
-jobs:GenerateJobHandler                # port-pattern canonical — `scripts/jobs/generation_job.go` (canonical script.generate handler) + `voiceover/jobs/generate_handler.go` (typed-port voiceover.generate sub-handler) both declare `package jobs` — owner: @jobs-core, deadline: 2026-09-01
-health:JobsChecker                     # port-pattern intentional dual-decl — `application/system/health/ports.go` (interface) + `infrastructure/health/jobs_checker.go` (struct impl) both declare `package health` — owner: @system-health-team, deadline: 2026-09-01
-voiceoversync:Service                  # alias-shim mirror — `voiceover/sync/service.go` (alias shim re-exporting canonical) + `assets/reconciliation/voiceover/service.go` (canonical impl); both declare `package voiceoversync` — owner: @voiceover-reconciliation, deadline: 2026-09-01
-voiceoversync:Summary                  # same package-collision as voiceoversync:Service — alias-shim mirror for Summary struct — owner: @voiceover-reconciliation, deadline: 2026-09-01
-adapters:Service                       # cross-directory `package adapters` collision — `scripts/adapters/gemmamemory.go` (module-local mem-cache Service) + `youtube/adapters/service.go` (shared Service struct for youtube extraction helpers) — owner: @scripts-adapters, deadline: 2026-09-01
-images:GenerateImageRequest            # port-pattern domain-vs-transport — `application/images/ports.go` (canonical domain DTO) + `api/images/impl.go` (HTTP-handler request binding DTO); both declare `package images` — owner: @images-team, deadline: 2026-09-01
-engine:Generate                        # cross-package-NAME false positive — `engine.go` (definition) + `generate_one_usecase.go` (canonical sole permitted caller per Check 3) both declare `package engine`; Check 5 scanner groups by package-NAME so the cross-file surface is over-counted; mitigated by Check 3 ownership gate (allowlisted `!**/engine.go --glob '!**/generate_one_usecase.go'`) — owner: @jobs-core, deadline: 2026-09-01
-health:DriveChecker                    # port-pattern canonical-vs-impl mirror — `application/system/health/ports.go` (interface DBChecker/DriveChecker/QdrantChecker/JobsChecker) + `infrastructure/health/drive_checker.go` (struct impl `DriveChecker`); both declare `package health`; same cross-directory port-pattern shape as health:JobsChecker (already allowlisted above) — owner: @system-health-team, deadline: 2026-09-01
-jobs:QueueNotifier                     # type-alias port-pattern — `application/jobs/notifier.go` declares `type QueueNotifier = sqljobs.QueueNotifier` (a Go type ALIAS, not a redeclaration) + `infrastructure/database/sqlite/jobs/queue_notifier.go` declares the canonical interface; both declare `package jobs`; the application-tier entry is structurally identical to the canonical via the alias — owner: @jobs-core, deadline: 2026-09-01
+internal/application/scripts/scripts:ScriptSectionRecord            # legacy sqlite-vs-application mirror — application side only (sqlite mirror removed by FASE-X) — owner: @qdrant-hygiene, deadline: 2026-09-01
+internal/application/jobs/outbox/outbox:IndexClipper                # legacy outbox direct-indexer mirror (internal/application/jobs/outbox/indexing.go) — owner: @qdrant-hygiene, deadline: 2026-09-01
+internal/application/scripts/scripts:ScriptOutlineSectionRecord     # legacy sqlite-vs-application mirror — application side only — owner: @qdrant-hygiene, deadline: 2026-09-01
+internal/api/jobs/jobs:Broker                                       # api/jobs broker port — owner: @qdrant-hygiene, deadline: 2026-09-01
+internal/application/jobs/jobs:Broker                               # application/jobs broker port — owner: @qdrant-hygiene, deadline: 2026-09-01
+internal/application/assets/search/search:Logger                    # cross-module search.Logger mirror — assets side — owner: @qdrant-hygiene, deadline: 2026-09-01
+internal/application/search/search:Logger                            # cross-module search.Logger mirror — canonical side — owner: @qdrant-hygiene, deadline: 2026-09-01
+internal/application/scripts/scripts:ScriptStockMatchRecord         # legacy sqlite-vs-application mirror — application side only — owner: @qdrant-hygiene, deadline: 2026-09-01
+internal/domain/voiceover/voiceover:VoiceoverResult                 # scanner-flagged alias — domain/voiceover/result.go:86 type alias `VoiceoverResult = Result` — owner: @voiceover-team, deadline: 2026-09-01
+internal/application/voiceover/voiceover:VoiceoverResult            # scanner-flagged alias — types.go:195 struct — owner: @voiceover-team, deadline: 2026-09-01
+internal/application/scripts/jobs/jobs:GenerateJobHandler           # port-pattern canonical — scripts/jobs/generation_job.go (canonical script.generate handler) — owner: @jobs-core, deadline: 2026-09-01
+internal/application/voiceover/jobs/jobs:GenerateJobHandler          # port-pattern canonical — voiceover/jobs/generate_handler.go (typed-port voiceover.generate sub-handler) — owner: @jobs-core, deadline: 2026-09-01
+internal/application/system/health/health:JobsChecker                # port-pattern intentional dual-decl — application/system/health/ports.go (interface DBChecker/DriveChecker/QdrantChecker/JobsChecker) — owner: @system-health-team, deadline: 2026-09-01
+internal/infrastructure/health/health:JobsChecker                   # port-pattern intentional dual-decl — infrastructure/health/jobs_checker.go (struct impl JobsChecker) — owner: @system-health-team, deadline: 2026-09-01
+internal/application/scripts/adapters/adapters:Service              # cross-directory `package adapters` collision — scripts/adapters/gemmamemory.go (module-local mem-cache Service) — owner: @scripts-adapters, deadline: 2026-09-01
+internal/application/youtube/adapters/adapters:Service               # cross-directory `package adapters` collision — youtube/adapters/service.go (shared Service struct for youtube extraction helpers) — owner: @scripts-adapters, deadline: 2026-09-01
+internal/application/images/images:GenerateImageRequest            # port-pattern domain-vs-transport — application/images/ports.go (canonical domain DTO) — owner: @images-team, deadline: 2026-09-01
+internal/application/system/health/health:DriveChecker               # port-pattern canonical-vs-impl mirror — application/system/health/ports.go (interface DriveChecker) — owner: @system-health-team, deadline: 2026-09-01
+internal/infrastructure/health/health:DriveChecker                  # port-pattern canonical-vs-impl mirror — infrastructure/health/drive_checker.go (struct impl DriveChecker) — owner: @system-health-team, deadline: 2026-09-01
+internal/application/jobs/jobs:QueueNotifier                        # type-alias port-pattern — application/jobs/notifier.go declares `type QueueNotifier = sqljobs.QueueNotifier` (Go type ALIAS, not redeclaration) — owner: @jobs-core, deadline: 2026-09-01
+internal/infrastructure/database/sqlite/jobs/jobs:QueueNotifier      # type-alias port-pattern — infrastructure/database/sqlite/jobs/queue_notifier.go (canonical interface) — owner: @jobs-core, deadline: 2026-09-01
 #
-# ◷ PR-CHECK-5-FOLLOWUP (July 2026) ◷
-# 10 additional cross-package-NAME false positives surfaced after the
-# scanner bug (656 blank-line noise) was fixed by adding `if (NF < 3) next`
-# to the Check 5 awk block in scripts/ci-architectural-checks.sh. Each
-# entry is a distinct package that happens to share its name with
-# another directory (e.g. `reconciler` appears in both
-# `application/assets/deletion/reconciler` and
-# `application/qdrant/reconciler`). The Check 5 scanner groups by Go
-# package NAME so the cross-file surface is over-counted; these entries
-# are the canonical godlike/06 SSOT resolution.
+# ◷ PR-CHECK-5-FOLLOWUP (July 2026, post-LENS migration) ◷
+# 10 cross-package-NAME false positives (each split into 2 lines = 20 lines).
+# Each entry below documents a distinct (dir,pkg,type) scanner key; multi-dir
+# declarations occupy consecutive lines. The pkg names accidentally collide
+# across sibling directories (e.g. `reconciler` appears in both
+# `application/assets/deletion/reconciler` and `application/qdrant/reconciler`);
+# godlike/06 SSOT resolves them as distinct concerns.
 #
-youtube:YouTubeStager                   # cross-package-NAME false positive — `application/assets/providers/youtube/stager_adapter.go:72` (provider-adapter mirror) + `application/youtube/stager_adapter.go:30` (canonical) both declare `package youtube`; provider-adapter entry is a thin forward to the canonical per godlike/07 minimum-blast-radius — owner: @youtube-team, deadline: 2026-09-01
-completion:Service                     # cross-package-NAME false positive — `application/assets/completion/publish_verified.go:175` (projector for verified-artifacts) + `application/jobs/completion/complete_job_service.go:64` (broker spine) both declare `package completion`; the projector wraps the broker per Pattern 0 (godlike/06 SSOT) — owner: @completion-team, deadline: 2026-09-01
-reconciler:Service                     # cross-package-NAME false positive — `application/assets/deletion/reconciler/service.go:34` (assets-side deletion reconciler) + `application/qdrant/reconciler/service.go:71` (qdrant-side drift reconciler) both declare `package reconciler`; distinct concerns (Drive-deletion vs Qdrant-drift) per godlike/06 SSOT — owner: @qdrant-team, deadline: 2026-09-01
-translation:TranslationCommand         # cross-package-NAME false positive — `application/translation/ports.go:120` (application port) + `domain/translation/translation.go:88` (domain canonical) both declare `package translation`; the application port wraps the domain type per Pattern 0 — owner: @translation-team, deadline: 2026-09-01
-voiceover:VoiceoverItem                # cross-package-NAME false positive — `api/assets/voiceover/types.go:97` (HTTP transport DTO) + `application/voiceover/command.go:63` (domain command) both declare `package voiceover`; the HTTP transport wraps the domain per Pattern 0 — owner: @voiceover-team, deadline: 2026-09-01
-translation:ModelPolicy                 # cross-package-NAME false positive — `application/translation/ports.go:281` (application port) + `domain/translation/translation.go:67` (domain canonical) both declare `package translation`; the application port wraps the domain type per Pattern 0 — owner: @translation-team, deadline: 2026-09-01
-maintenance:Service                    # cross-package-NAME false positive — `application/assets/maintenance/service.go:34` (assets-side maintenance) + `application/qdrant/maintenance/service.go:90` (qdrant-side maintenance) both declare `package maintenance`; distinct concerns (Drive-folder vs Qdrant-collection) per godlike/06 SSOT — owner: @qdrant-team, deadline: 2026-09-01
-reconciler:Metrics                     # cross-package-NAME false positive — `application/assets/deletion/reconciler/ports.go:105` (assets-side metrics interface) + `application/qdrant/reconciler/ports.go:139` (qdrant-side metrics interface) both declare `package reconciler`; distinct concerns per godlike/06 SSOT — owner: @qdrant-team, deadline: 2026-09-01
-translation:TranslationResult          # cross-package-NAME false positive — `application/translation/ports.go:224` (application port) + `domain/translation/translation.go:115` (domain canonical) both declare `package translation`; the application port wraps the domain type per Pattern 0 — owner: @translation-team, deadline: 2026-09-01
-reconciler:ServiceDeps                 # cross-package-NAME false positive — `application/assets/deletion/reconciler/service.go:53` (assets-side deps) + `application/qdrant/reconciler/service.go:94` (qdrant-side deps) both declare `package reconciler`; distinct dep-bag per godlike/06 SSOT — owner: @qdrant-team, deadline: 2026-09-01
-job:Result                              # cross-package-NAME false positive — `domain/job/handler.go:107` (back-compat alias) + `kernel/job/handler.go:75` (canonical) both declare `package job`; alias layer per Phase A.2 / PR-KERNEL-JOB-POPULATE — owner: @jobs-core, deadline: 2026-09-01
-job:ResultCodec                         # cross-package-NAME false positive — `domain/job/codec.go:36` (back-compat alias) + `kernel/job/codec.go:75` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:Service                             # cross-package-NAME false positive — `domain/job/service.go:34` (back-compat alias) + `kernel/job/service.go:30` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:Status                              # cross-package-NAME false positive — `domain/job/job.go:36` (back-compat alias) + `kernel/job/job.go:75` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:Store                               # cross-package-NAME false positive — `domain/job/store.go:34` (back-compat alias) + `kernel/job/store.go:27` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:JobExecutionTools                   # cross-package-NAME false positive — `domain/job/handler.go:31` (back-compat alias) + `kernel/job/handler.go:54` (canonical) both declare `package job`; alias layer per PR-KERNEL-JOB-POPULATE — owner: @jobs-core, deadline: 2026-09-01
-job:LeaseState                          # cross-package-NAME false positive — `domain/job/finalize_aliases.go:55` (back-compat alias) + `kernel/job/lease_state.go:47` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:OutboxEventSpec                     # cross-package-NAME false positive — `domain/job/finalize_aliases.go:28` (back-compat alias) + `kernel/job/finalize_commands.go:145` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:PayloadCodec                        # cross-package-NAME false positive — `domain/job/codec.go:30` (back-compat alias) + `kernel/job/codec.go:43` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:RenewLeaseResult                    # cross-package-NAME false positive — `domain/job/finalize_aliases.go:59` (back-compat alias) + `kernel/job/lease_state.go:98` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:FinalizeAttemptResult               # cross-package-NAME false positive — `domain/job/finalize_aliases.go` (back-compat alias) + `kernel/job/finalize_commands.go` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:Handler                             # cross-package-NAME false positive — `domain/job/handler.go` (back-compat alias) + `kernel/job/handler.go` (canonical) both declare `package job`; alias layer per PR-KERNEL-JOB-POPULATE — owner: @jobs-core, deadline: 2026-09-01
-job:Job                                 # cross-package-NAME false positive — `domain/job/job.go` (back-compat alias) + `kernel/job/job.go` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:JobBroker                           # cross-package-NAME false positive — `domain/job/store.go` (back-compat alias) + `kernel/job/store.go` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
-job:JobDefinition                       # cross-package-NAME false positive — `domain/job/job_definition.go` (back-compat alias) + `kernel/job/job_definition.go` (canonical) both declare `package job`; alias layer per Phase A.2 — owner: @jobs-core, deadline: 2026-09-01
+internal/application/youtube/youtube:YouTubeStager                  # cross-package-NAME false positive — application/youtube/stager_adapter.go:30 (provider-adapter mirror, thin forward per godlike/07) — owner: @youtube-team, deadline: 2026-09-01
+internal/application/assets/providers/youtube/youtube:YouTubeStager          # cross-package-NAME false positive — application/youtube/stager_adapter.go:30 (canonical) — owner: @youtube-team, deadline: 2026-09-01
+internal/application/assets/completion/completion:Service           # cross-package-NAME false positive — application/assets/completion/publish_verified.go:175 (projector for verified-artifacts) — owner: @completion-team, deadline: 2026-09-01
+internal/application/jobs/completion/completion:Service               # cross-package-NAME false positive — application/jobs/completion/complete_job_service.go:64 (broker spine) — owner: @completion-team, deadline: 2026-09-01
+internal/application/assets/deletion/reconciler/reconciler:Service    # cross-package-NAME false positive — application/assets/deletion/reconciler/service.go:34 (assets-side deletion reconciler, Drive-deletion concern) — owner: @qdrant-team, deadline: 2026-09-01
+internal/application/qdrant/reconciler/reconciler:Service             # cross-package-NAME false positive — application/qdrant/reconciler/service.go:71 (qdrant-side drift reconciler, distinct concern per godlike/06 SSOT) — owner: @qdrant-team, deadline: 2026-09-01
+internal/application/translation/translation:TranslationCommand    # cross-package-NAME false positive — application/translation/ports.go:120 (application port) — owner: @translation-team, deadline: 2026-09-01
+internal/domain/translation/translation:TranslationCommand           # cross-package-NAME false positive — domain/translation/translation.go:88 (domain canonical) — owner: @translation-team, deadline: 2026-09-01
+internal/api/assets/voiceover/voiceover:VoiceoverItem                 # cross-package-NAME false positive — api/assets/voiceover/types.go:97 (HTTP transport DTO) — owner: @voiceover-team, deadline: 2026-09-01
+internal/application/voiceover/voiceover:VoiceoverItem                # cross-package-NAME false positive — application/voiceover/command.go:63 (domain command) — owner: @voiceover-team, deadline: 2026-09-01
+internal/application/translation/translation:ModelPolicy             # cross-package-NAME false positive — application/translation/ports.go:281 (application port) — owner: @translation-team, deadline: 2026-09-01
+internal/domain/translation/translation:ModelPolicy                   # cross-package-NAME false positive — domain/translation/translation.go:67 (domain canonical) — owner: @translation-team, deadline: 2026-09-01
+internal/application/assets/maintenance/maintenance:Service          # cross-package-NAME false positive — application/assets/maintenance/service.go:34 (assets-side maintenance, Drive-folder concern) — owner: @qdrant-team, deadline: 2026-09-01
+internal/application/qdrant/maintenance/maintenance:Service           # cross-package-NAME false positive — application/qdrant/maintenance/service.go:90 (qdrant-side maintenance, Qdrant-collection concern) — owner: @qdrant-team, deadline: 2026-09-01
+internal/application/assets/deletion/reconciler/reconciler:Metrics    # cross-package-NAME false positive — application/assets/deletion/reconciler/ports.go:105 (assets-side metrics interface) — owner: @qdrant-team, deadline: 2026-09-01
+internal/application/qdrant/reconciler/reconciler:Metrics             # cross-package-NAME false positive — application/qdrant/reconciler/ports.go:139 (qdrant-side metrics interface) — owner: @qdrant-team, deadline: 2026-09-01
+internal/application/translation/translation:TranslationResult      # cross-package-NAME false positive — application/translation/ports.go:224 (application port) — owner: @translation-team, deadline: 2026-09-01
+internal/domain/translation/translation:TranslationResult             # cross-package-NAME false positive — domain/translation/translation.go:115 (domain canonical) — owner: @translation-team, deadline: 2026-09-01
+internal/application/assets/deletion/reconciler/reconciler:ServiceDeps         # cross-package-NAME false positive — application/assets/deletion/reconciler/service.go:53 (assets-side deps) — owner: @qdrant-team, deadline: 2026-09-01
+internal/application/qdrant/reconciler/reconciler:ServiceDeps         # cross-package-NAME false positive — application/qdrant/reconciler/service.go:94 (qdrant-side deps, distinct dep-bag per godlike/06 SSOT) — owner: @qdrant-team, deadline: 2026-09-01
+#
+# ◷ PHASE-A.2-PR-KERNEL-JOB-POPULATE (July 2026, post-LENS migration) ◷
+# 15 back-compat alias entries (each split into 2 lines = 30 lines):
+# `internal/domain/job/*` (back-compat aliases) coexist with
+# `internal/kernel/job/*` (canonicals). Both directories declare
+# `package job` so the Check 5 scanner creates distinct (dir,pkg,*) keys
+# per directory; each is allowlisted separately for forward-prevention.
+# Migration plan: CUTOVER to `kernel/job/` per godlike/07 §"Migration
+# sequence" + Phase A.2; deadline 2026-09-01 (whole-block parity).
+#
+internal/domain/job/job:Result                              # cross-package-NAME false positive — domain/job/handler.go:107 (back-compat alias `Result` = kernel.Job.Result) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:Result                              # cross-package-NAME canonical — kernel/job/handler.go:75 — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:ResultCodec                         # cross-package-NAME false positive — domain/job/codec.go:36 (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:ResultCodec                         # cross-package-NAME canonical — kernel/job/codec.go:75 — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:Service                             # cross-package-NAME false positive — domain/job/service.go:34 (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:Service                             # cross-package-NAME canonical — kernel/job/service.go:30 — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:Status                              # cross-package-NAME false positive — domain/job/job.go:36 (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:Status                              # cross-package-NAME canonical — kernel/job/job.go:75 — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:Store                               # cross-package-NAME false positive — domain/job/store.go:34 (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:Store                               # cross-package-NAME canonical — kernel/job/store.go:27 — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:JobExecutionTools                   # cross-package-NAME false positive — domain/job/handler.go:31 (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:JobExecutionTools                   # cross-package-NAME canonical — kernel/job/handler.go:54 — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:LeaseState                          # cross-package-NAME false positive — domain/job/finalize_aliases.go:55 (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:LeaseState                          # cross-package-NAME canonical — kernel/job/lease_state.go:47 — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:OutboxEventSpec                     # cross-package-NAME false positive — domain/job/finalize_aliases.go:28 (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:OutboxEventSpec                     # cross-package-NAME canonical — kernel/job/finalize_commands.go:145 — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:PayloadCodec                        # cross-package-NAME false positive — domain/job/codec.go:30 (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:PayloadCodec                        # cross-package-NAME canonical — kernel/job/codec.go:43 — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:RenewLeaseResult                    # cross-package-NAME false positive — domain/job/finalize_aliases.go:59 (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:RenewLeaseResult                    # cross-package-NAME canonical — kernel/job/lease_state.go:98 — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:FinalizeAttemptResult               # cross-package-NAME false positive — domain/job/finalize_aliases.go (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:FinalizeAttemptResult               # cross-package-NAME canonical — kernel/job/finalize_commands.go — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:Handler                             # cross-package-NAME false positive — domain/job/handler.go (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:Handler                             # cross-package-NAME canonical — kernel/job/handler.go — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:Job                                 # cross-package-NAME false positive — domain/job/job.go (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:Job                                 # cross-package-NAME canonical — kernel/job/job.go — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:JobBroker                           # cross-package-NAME false positive — domain/job/store.go (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:JobBroker                           # cross-package-NAME canonical — kernel/job/store.go — owner: @jobs-core, deadline: 2026-09-01
+internal/domain/job/job:JobDefinition                       # cross-package-NAME false positive — domain/job/job_definition.go (alias) — owner: @jobs-core, deadline: 2026-09-01
+internal/kernel/job/job:JobDefinition                       # cross-package-NAME canonical — kernel/job/job_definition.go — owner: @jobs-core, deadline: 2026-09-01
 #
 # ── OUT-OF-SCOPE DEFERRED PAIRS (PR-check-5 follow-up, June 2026) ──
 # The Check 5 lint also flagged 3 additional pairs that are NOT in the
@@ -128,3 +179,30 @@ job:JobDefinition                       # cross-package-NAME false positive — 
 # entries would muddy the audit trail. Migration to active allowlist
 # (with owner + deadline per godlike-08 zero-baseline rule) completes the
 # PR-check-5 deferred-work disposition.
+#
+# ── POST-MIGRATION CHURN HISTORY (commit this-PENDING migration) ──
+# - engine:Generate: dropped. rg confirmed zero `^type Generate` hits in
+#   current codebase after PR-CHECK-24-FIXUP (2026-07-08) removed the legacy
+#   internal/application/scripts/engine.go. The canonical engine surface
+#   now lives at internal/application/scripts/usecase/engine.go.
+#   Owner migration: @jobs-core (deadline 2026-09-01 — satisfied by removal).
+# - voiceoversync:{Service,Summary}: dropped both cells of each. The
+#   voiceover-shim refactor (PR-VOICEOVER-SYNC-CONTRACT-CUTOVER, 2026-07-10)
+#   funneled all alias-shims through `internal/application/voiceover/`
+#   directly (no `voiceover/sync/` subdir anymore); the reconciliation
+#   re-export path became redundant. Owner: @voiceover-reconciliation.
+# - search:Service: dropped both cells (assets/search/ + youtube/search/).
+#   The cross-module mirror split into `search.Logger` (still alive on both
+#   sides) and a dedicated `search.Service` named differently per side;
+#   the allowlisted name is no longer accurate. Owner: @qdrant-hygiene.
+# - images:GenerateImageRequest api-side cell: dropped. The api-side
+#   binding was migrated out of `api/images/impl.go` and into a router-level
+#   schema during the images-team restructure (PR-IMAGES-API-ROUTER,
+#   2026-07-12); the canonical DTO at application/images/ports.go persists.
+#   Owner: @images-team.
+# - scripts:SQLite mirrors: rationale STALE per FASE-X scripts refactor;
+#   entries reduced to single-dir form (application/scripts/ only).
+#   rg-confirmed: 3 hits in `internal/application/scripts/{usecase,adapters,ports}`
+#   subdirs, all under `application/scripts/` package.
+# - All other entries: SPLIT into per-dir (dir,pkg,type) lines so the
+#   (dir,pkg)-keyed Check 5 scanner can find them.
