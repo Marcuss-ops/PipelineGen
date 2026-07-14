@@ -193,7 +193,6 @@ func (uc *EnrichUseCase) EnrichAndIndex(ctx context.Context, clipID string) erro
 // directly by application workflows.
 
 // EnrichMediaRequest contains the input for the EnrichMedia endpoint.
-// SkipQdrant was removed from this flow.
 // SkipEmbedGen is preserved for callers that want to skip the embedding
 // -generation leg altogether (the indexer now handles the whole pipeline).
 type EnrichMediaRequest struct {

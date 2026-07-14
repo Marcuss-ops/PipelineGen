@@ -1,8 +1,6 @@
 // Package clips (bulk_upload_scanner) — exported application-level
 // scanner helpers for the bulk-upload pipeline.
-// DRIFT-CLIPS-BULK-SPLIT-5 (June 2026, override ADR 0009):
-// extracted from internal/api/assets/clips/bulk_upload.go so the
-// HTTP transport can satisfy AGENTS.md Pattern 8 (transport = thin
+// The HTTP transport satisfies AGENTS.md Pattern 8 (transport = thin
 // HTTP shell; business orchestration delegates to application).
 //
 // The application tier already hosts the worker's scanLocalClips
