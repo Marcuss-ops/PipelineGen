@@ -227,7 +227,7 @@ func (d *Dispatcher) Enqueue(ctx context.Context, jobType string, payload any) (
 	// Type + Payload fields; Service.Enqueue populates CorrelationID from
 	// corid context, applies idempotency on (type, correlation_id), calls
 	// repo.Create, and surfaces the canonical job lifecycle.
-	return d.enqueuer.Enqueue(ctx, &kerneljob.EnqueueRequest{
+	return d.enqueuer.Enqueue(ctx, &job.EnqueueRequest{
 		Type:    jobType,
 		Payload: rawBytes,
 	})
