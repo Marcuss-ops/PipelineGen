@@ -76,14 +76,14 @@ type FanoutDeps struct {
 // parent job's result back into a typed FanoutResult without an
 // intermediate struct.
 type FanoutResult struct {
-	OK                 bool                 `json:"ok"`
-	ParentJobID        string               `json:"parent_job_id"`
-	RequestID          string               `json:"request_id"`
-	TotalOutputs       int                  `json:"total_outputs"`
-	EnqueuedCount      int                  `json:"enqueued_count"`
-	FailedEnqueueCount int                  `json:"failed_enqueue_count"`
-	ChildJobIDs        []string             `json:"child_job_ids"`
-	PerLanguage        []voiceover.Language `json:"per_language"`
+	OK                 bool     `json:"ok"`
+	ParentJobID        string   `json:"parent_job_id"`
+	RequestID          string   `json:"request_id"`
+	TotalOutputs       int      `json:"total_outputs"`
+	EnqueuedCount      int      `json:"enqueued_count"`
+	FailedEnqueueCount int      `json:"failed_enqueue_count"`
+	ChildJobIDs        []string `json:"child_job_ids"`
+	PerLanguage        []string `json:"per_language"`
 }
 
 // Compile-time assertion: *appjobs.Service satisfies Enqueuer.
@@ -170,7 +170,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 		RequestID:    requestID,
 		TotalOutputs: total,
 		ChildJobIDs:  make([]string, 0, total),
-		PerLanguage:  make([]voiceover.Language, 0, total),
+		PerLanguage:  make([]string, 0, total),
 	}
 
 	for idx, itemSpec := range cmd.Items {
@@ -229,7 +229,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 				zap.String("language", string(itemSpec.Language)),
 				zap.Error(err))
 			result.FailedEnqueueCount++
-			result.PerLanguage = append(result.PerLanguage, itemSpec.Language)
+			result.PerLanguage = append(result.PerLanguage, string(itemSpec.Language))
 			result.ChildJobIDs = append(result.ChildJobIDs, "")
 			result.OK = false
 			continue
@@ -257,13 +257,13 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 				zap.String("language", string(itemSpec.Language)),
 				zap.Error(err))
 			result.FailedEnqueueCount++
-			result.PerLanguage = append(result.PerLanguage, itemSpec.Language)
+			result.PerLanguage = append(result.PerLanguage, string(itemSpec.Language))
 			result.ChildJobIDs = append(result.ChildJobIDs, "")
 			result.OK = false
 			continue
 		}
 		result.EnqueuedCount++
-		result.PerLanguage = append(result.PerLanguage, itemSpec.Language)
+		result.PerLanguage = append(result.PerLanguage, string(itemSpec.Language))
 		result.ChildJobIDs = append(result.ChildJobIDs, enqueued.ID)
 	}
 
