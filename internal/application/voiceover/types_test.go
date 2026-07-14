@@ -123,7 +123,10 @@ func TestNormalizeBatchRequest_DefaultsVerifyWhenEmpty(t *testing.T) {
 	req := &BatchRequest{
 		Text: "implicit-strategy", Languages: []Language{"en"},
 	}
-	normalized := normalizeBatchRequest(req)
+	// deref-read; SHALLOW-CLONE isolation pin (see pkg/immutability docblock).
+	// Primitive fields stay byte-equivalent; composite fields use REPLACEMENT
+	// inside the closure to avoid shared backing.
+	normalized := normalizeBatchRequest(*req)
 	if normalized.Strategy != "verify" {
 		t.Fatalf("explicit-zero Strategy must normalize to \"verify\"; got %q", normalized.Strategy)
 	}
@@ -142,7 +145,10 @@ func TestNormalizeBatchRequest_FillsEmptyFilenameTemplate(t *testing.T) {
 		Languages: []Language{"it"},
 		Strategy:  "replace",
 	}
-	normalized := normalizeBatchRequest(req)
+	// deref-read; SHALLOW-CLONE isolation pin (see pkg/immutability docblock).
+	// Primitive fields stay byte-equivalent; composite fields use REPLACEMENT
+	// inside the closure to avoid shared backing.
+	normalized := normalizeBatchRequest(*req)
 	if normalized.FilenameTemplate == "" {
 		t.Fatalf("normalize must fill FilenameTemplate when caller leaves it empty; got \"\"")
 	}

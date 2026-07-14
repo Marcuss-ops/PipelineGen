@@ -89,7 +89,11 @@ func (s *Service) GenerateBatch(ctx context.Context, req *BatchRequest) (*BatchR
 		}
 	}
 
-	normalizeBatchRequest(req)
+	// normalize into a local copy; SHALLOW-CLONE isolation pin — see pkg/immutability/copy.go godlike/06 SSOT.
+	if req != nil {
+		normalized := normalizeBatchRequest(*req)
+		req = &normalized
+	}
 
 	if s.log != nil {
 		s.log.Info("GenerateBatch entry", zap.String("project", req.Project), zap.Any("destination", req.Destination))
