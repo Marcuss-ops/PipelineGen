@@ -122,43 +122,6 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_indexed_state_writer_ssot", scan.ScanIndexedStateWriterSSOT},
 		// Forward-prevention: MediaTransformer DTO infra fields.
 		{"percheck_mediatransformer_no_infra_fields", scan.ScanMediaTransformerNoInfraFields},
-<<<<<<< Updated upstream
-		// Forward-prevention: deleted internal/domain/job imports.
-		{"percheck_no_domain_job_compatibility_aliases", func(root string, pol *policy.Policy, r *report.Report) {
-			scan.ScanNoDomainJobCompatibilityAliases(root, pol, r, productionOnly)
-		}},
-		// Forward-prevention: generic generation facade re-introduction.
-||||||| constructed merge base
-		// Check PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB step 1 (July 2026):
-		// forward-prevention gate that bans imports of the deleted
-		// `internal/domain/job` package. Per godlike/06 SSOT the
-		// kernel is the SOLE owner of job-mechanism types and does
-		// NOT carry feature-specific job names (`scripts.JobGenerate`,
-		// `images.JobGenerate`, `voiceover.JobGenerate`, etc.).
-		// The legacy `internal/domain/job` package was a back-compat
-		// alias layer (`Job`/`Status`/`Event`/`Filter`/`Store`)
-		// shadowing the canonical kernel surface — deletion enforces
-		// the dual-source-of-truth ban. Comment-only references are
-		// WARNed (residue accounting, silenced under productionOnly).
-		// _test.go is included in the scan surface because a test
-		// importing the deleted path cannot compile. Family
-		// precedent: percheck_no_generic_generation_facade.
-		{"percheck_no_domain_job_compatibility_aliases", func(root string, pol *policy.Policy, r *report.Report) {
-			scan.ScanNoDomainJobCompatibilityAliases(root, pol, r, productionOnly)
-		}},
-		// Check PR-GENERATION-FACADE-REMOVE (commit 7, July 2026):
-		// forward-prevention gate that BANS any re-introduction of
-		// the application-zone or domain-zone generic generation
-		// facade. The two packages were git-rm'd because zero
-		// production callers remained and the canonical proprietary
-		// APIs (book/lesson/script/batch) did not exist on disk (the
-		// internal/api/content/ surface is a doc-only shell). Per
-		// godlike/06 SSOT, the per-domain packages own their handler
-		// wiring — a generic inter-domain facade creates a godlike/07
-		// NO-FAKE-AVAILABILITY regression. Comment-only references
-		// to the banned import paths are WARNed (residue accounting,
-		// godlike/07).
-=======
 		// (DEPRECATED PR-CARD9-PHASE2-CLOSEOUT, July 2026) the
 		// `percheck_no_domain_job_compatibility_aliases` perm was
 		// unregistered because its premise (ban imports of
@@ -187,7 +150,6 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		// NO-FAKE-AVAILABILITY regression. Comment-only references
 		// to the banned import paths are WARNed (residue accounting,
 		// godlike/07).
->>>>>>> Stashed changes
 		{"percheck_no_generic_generation_facade", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanNoGenericGenerationFacade(root, pol, r, productionOnly)
 		}},
