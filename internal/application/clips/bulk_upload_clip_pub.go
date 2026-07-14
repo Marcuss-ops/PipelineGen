@@ -19,8 +19,8 @@ import (
 )
 
 // publishClip publishes the .mp4 candidate to Google Drive via the canonical
-// Publisher port. Caller (processOneClip) bumps uploaded + threads
-// targetFolderID = pubRes.FolderID to registerClip + publishSidecars;
+// Publisher port. Caller (processOneClip) threads targetFolderID
+// (pubRes.FolderID) to registerClip + publishSidecars;
 // sidecars are OUT of scope here (separate file).
 func publishClip(
 	ctx context.Context,

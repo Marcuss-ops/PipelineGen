@@ -2,12 +2,10 @@
 // result map returned to the job broker.
 //
 // Schema invariants:
-//   - total / uploaded / committed / failed — atomic counters
+//   - total / committed / failed — atomic counters
 //   - local_folder / drive_folder — payload echoes
 //   - failures []string (capped at 50)
-//   - committed ≤ uploaded by design (publish-first ordering, single
-//     EnqueueAndIndex tx drives the gap when an upload isn't followed
-//     by a successful commit)
+//   - total == committed + failed upon job completion
 package clips
 
 import (
@@ -18,13 +16,12 @@ import (
 
 func finalizeJobResult(
 	total int,
-	uploaded, committed, failed *atomic.Int64,
+	committed, failed *atomic.Int64,
 	failedDetails []string,
 	payload *appjobs.BulkUploadYouTubeClipsPayload,
 ) map[string]any {
 	result := map[string]any{
 		"total":        total,
-		"uploaded":     uploaded.Load(),
 		"committed":    committed.Load(),
 		"failed":       failed.Load(),
 		"local_folder": payload.LocalFolder,
