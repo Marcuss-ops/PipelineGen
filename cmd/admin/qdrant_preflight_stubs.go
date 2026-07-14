@@ -1,22 +1,8 @@
-// cmd/admin/qdrant_preflight_stubs.go — stub + implemented test bodies
-// extracted from qdrant_preflight.go (PR-PREFLIGHT-SPLIT, July 2026).
+// cmd/admin/qdrant_preflight_stubs.go — stub + implemented test bodies.
 //
-// Tests 3, 4, 10, 11 remain forward-pointer stubs returning
-// ErrPreflightNotImplemented per godlike/07 NO-FAKE-AVAILABILITY.
-// Tests 5, 6, 7, 8 were REPLACED with real implementations in
-// PR-QDRANT-PREFLIGHT-TEST-{5,6,7,8}-IMPL (2026-07-08 QDRANT-DOD-FINAL
-// atomic batch) per user-specified gates 6, 7, 8, 11 of
-// architecture/action-plans/2026-07-08-qdrant-dod-final.md.
-//
-// godlike/07 NO-FAKE-AVAILABILITY: every implemented test does a real
-// HTTP call against the live stack (server :8081 + qdrant :6333) and
-// fails-closed via typed sentinels on drift. Tests that require the
-// upstream Test 3 (outbox-events-created) to have populated
-// preflightDeps.SeedAssetID fail-fast with ErrPreflightSeedMissing if
-// the seed has not run yet (canonical godlike/06 SSOT prerequisite
-// chain). Tests 5/6/7 all gate on this chain; Test 8 emits its own
-// aggregate_id so it does NOT depend on SeedAssetID.
-// godlike/06 SSOT chain: Test 3 → SeedAssetID → Tests 5/6/7 readable.
+// Implemented tests 5-8 perform real HTTP calls against the live stack
+// and fail-closed on drift. Tests 3, 4, 10, 11 are stubs returning
+// ErrPreflightNotImplemented. Tests 5-7 require SeedAssetID from Test 3.
 package main
 
 import (

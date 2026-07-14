@@ -1,50 +1,9 @@
-// Package retry — transient_legacy_test.go (FASE 6 Cut 6.1.D, July 2026).
+// Package retry — transient_legacy_test.go
 //
-// Test-only fixture that preserves the pre-FASE-6 substring taxonomy as
-// a TEST-ONLY Classifier. Production code (pkg/retry/transient.go) has
-// REMOVED the substring fallback per the FASE 6 user spec:
-//
-//	"Rimuovi TUTTA la classificazione substring (eof, 429, 502, 503, 504,
-//	timeout) dal percorso di produzione di pkg/retry."
-//
-// Per godlike/07 (no-fake-availability) and godlike/06 (SSOT), the
-// legacy surface is preserved verbatim here so tests can pin the
-// pre-FASE-6 behavior. The taxonomy is byte-identical to the slice
-// that lived in production transient.go prior to FASE 6 — same entry
-// order, same strings.
-//
-// What lives here:
-//
-//  1. transientSubstringsLegacy — the pre-FASE-6 canonical taxonomy.
-//     Declared as a const-style var so the canonical substring list
-//     is observable in the test fixture (and so test failures on
-//     "what did pre-FASE-6 classify as transient?" are reproducible).
-//
-//  2. classifyLegacyTransientForTest — test-side Classifier that walks
-//     the substring taxonomy against err.Error() (mirrors the
-//     pre-FASE-6 IsTransient substring loop). Tests call this
-//     adapter to assert "before FASE 6 this error WOULD have been
-//     transient" — useful for cataloging call-site migration
-//     (godlike/07 no-fake-availability: legacy behavior is observable,
-//     not silently lost).
-//
-// What does NOT live here:
-//
-//  - production IsTransient's substring path (REMOVED, see transient.go).
-//  - production IsTransientString's matcher (stubbed to return false,
-//    see transient.go for the deprecation contract).
-//
-// The fixture is ONLY included in test builds:
-//   - filename ends in _test.go → Go test-build-filter excludes from
-//     production binaries (production builds NEVER link this fixture).
-//   - The fixture's Classifier is registered at init() in test scope
-//     so transient_test.go + decision_test.go can use it via
-//     ResetClassifiersForTest + RegisterClassifier(...) for
-//     back-compat tests.
-//
-// ─────────────────────────────────────────────────────────────────────
-// Future-migration helpers (visible to tests, not production)
-// ─────────────────────────────────────────────────────────────────────
+// Test-only fixture preserving the pre-FASE-6 substring taxonomy as a
+// TEST-ONLY Classifier. Production IsTransient uses typed probes only;
+// this file lets tests assert "pre-FASE-6 would have classified X".
+// The taxonomy is byte-identical to the legacy production list.
 
 package retry
 

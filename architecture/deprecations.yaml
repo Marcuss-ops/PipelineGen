@@ -732,7 +732,7 @@ deprecations:
       window; the umbrella ID carries the audit-footprint for the
       full chain.
     migration_phase: CONTRACT
-    status: contract
+    status: removed
     notes: |
       Three legacy port stragglers are GO-TYPE-ALIASED to the
       canonical Fase 9 SSOT in internal/application/translation/legacy.go.
@@ -1396,7 +1396,7 @@ deprecations:
       remaining canonical surfaces (legacy method population at
       composition root) will follow in step 4 + step 5.
     migration_phase: BACKFILL
-    status: contract-half
+    status: removed
     notes: |
       The "contract-half" status is a NON-CANONICAL godlike/07 phase
       value introduced here per the user spec. The canonical 4-phase
