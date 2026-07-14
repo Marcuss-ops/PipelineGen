@@ -1,51 +1,17 @@
-// Package enrichment — handler.go (PR-011A, July 2026).
+// Package enrichment — canonical broker entry-point for the stock
+// post-publish RLM/LLM enrichment pass.
 //
-// EnrichmentHandler is the canonical broker entry-point for the
-// stock post-publish RLM/LLM enrichment pass. The handler:
+// Invariant: parse payload → read media_assets row → call LLM →
+// persist enriched metadata → emit asset.published v1 outbox event.
 //
-//  1. Parses the job payload (chunk_id).
-//  2. Reads the media_assets row by id.
-//  3. Calls EnrichmentLLMClient.Enrich (currently a stub in PR-011A).
-//  4. PR-011B will replace the stub with the real ollama call + UPDATE
-//     media_assets.metadata_json with the EnrichedFields.
-//  5. PR-011C will replace the noop finalization step with the
-//     asset.published v1 outbox event emit so the IndexingHandler
-//     re-upserts the chunk to Qdrant with the enriched fields.
+// godlike/06 SSOT: EnrichmentHandler + HandleJob live ONLY here;
+// typed sentinels live ONLY in errors.go; LLM client port lives
+// ONLY in llm_client.go; AssetRepository concrete lives ONLY in
+// handler_repository.go; emitAssetPublishedV1 lives ONLY in handler_emit.go.
 //
-// PR-011A scope (this file): ship the canonical handler skeleton +
-// composition-root wiring + the typed-error contract. The LLM
-// call is a STUB that returns ErrEnrichmentLLMUnavailable so the
-// worker retry path is exercised end-to-end without a real
-// ollama call. PR-011B is the next-PR in the chain.
-//
-// godlike/06 SSOT (one canonical owner per fact):
-//   - EnrichmentHandler struct + HandleJob live ONLY in this file.
-//   - 5 typed-error sentinels live ONLY in errors.go.
-//   - EnrichmentLLMClient port + StubEnrichmentLLMClient live ONLY in llm_client.go.
-//   - AssetRepository port lives ONLY in this file (the canonical
-//     narrow seam for "read media_assets row by id" — the
-//     composition root wires the production concrete).
-//   - SQLiteAssetRepository concrete + its 2 methods live ONLY in
-//     handler_repository.go (the canonical concrete surface).
-//   - emitAssetPublishedV1 lives ONLY in handler_emit.go (the
-//     v1 envelope builder + emitter call).
-//
-// godlike/07 fail-closed contracts:
-//   - NewEnrichmentHandler returns (nil, ErrEnrichmentHandlerNotConfigured)
-//     when LLMClient or AssetRepo is nil. Composition root MUST propagate
-//     the error (NOT silently default to a no-op handler).
-//   - HandleJob returns a typed sentinel from the 5-sentinel taxonomy
-//     on every failure mode. Callers can probe via errors.Is() to
-//     decide between retry / terminal / re-think.
-//   - The handler respects ctx cancellation: every LLM call passes
-//     through ctx, and the SELECT-by-id query is bounded by ctx
-//     deadline via the underlying sql.DB driver.
-//
-// godlike/07 minimum-blast-radius: the handler is additive — the
-// stock pipeline (PR-001..PR-009 chain) does not call this
-// handler. The composition root wires the handler ONLY when
-// cfg.External.StockEnrichmentEnabled=true (godlike/07 fail-closed:
-// no-enrichment-configured = no-handler-registered = no-job-enqueued).
+// godlike/07 fail-closed: NewEnrichmentHandler errors on nil LLMClient
+// or AssetRepo; HandleJob returns typed sentinels on every failure;
+// the handler respects ctx cancellation.
 package enrichment
 
 import (
@@ -62,15 +28,6 @@ import (
 // "read media_assets row by id + update metadata_json".
 // godlike/06 SSOT: this interface is the SOLE definition of
 // the asset-repository contract for the enrichment pass.
-//
-// Implementations:
-//   - enrichment.SQLiteAssetRepository (PR-011A — wraps
-//     *sql.DB, reads media_assets by id, updates metadata_json)
-//     declared in handler_repository.go
-//   - The future production concrete (already in
-//     internal/infrastructure/database/sqlite/assets/repository.go)
-//     is wired via composition root fluent setter per AGENTS.md
-//     Pattern 0.
 //
 // The 2 methods are the minimal surface for the enrichment pass:
 //   - GetByID returns the canonical media_assets row needed
@@ -215,15 +172,8 @@ func (h *EnrichmentHandler) RegisterHandler(jobsSvc *appjobs.Service) error {
 
 // HandleJob is the canonical broker entry-point. Parses the
 // job payload (chunk_id), reads the media_assets row, calls
-// the LLM client, and (PR-011B+C) persists the enrichment + emits
+// the LLM client, persists the enrichment and emits
 // the asset.published outbox event.
-//
-// PR-011A scope: the LLM call is a STUB that returns
-// ErrEnrichmentLLMUnavailable (worker's exponential backoff
-// retries this sentinel up to DefaultMaxRetries=3 before
-// flipping terminal). The handler does NOT call the
-// UpdateEnrichedMetadata path or the outbox emit in PR-011A
-// — those land in PR-011B and PR-011C respectively.
 //
 // Job payload shape:
 //

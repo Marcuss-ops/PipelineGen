@@ -1,52 +1,9 @@
-// Package app — build_bundles_artlist.go: composition-root surface for the
-// Artlist module (ART-001 FASE-6 reversal, July 2026).
+// Package app — build_bundles_artlist.go: composition-root surface for the Artlist module.
 //
-// godlike/06 SSOT: this file owns the canonical Pattern-0 wiring of the
-// artlist capability, including the only *artlist.SemanticEnricher
-// instantiation in the process — composition root is the canonical owner
-// for adapter wiring by construction.
-//
-// godlike/07 no-fake-availability: 5 mandatory gates are checked UPFRONT
-// (Publisher / Dispatcher / ClipsRepo / Jobs.Service are the 4 wiring
-// gates; gate #5 = config validity for the Node scraper URL when
-// artlist_enabled=true). nil on any of the first 4 yields a typed error,
-// which registerArtlist downgrades to log.Warn + skip-route +
-// return-nil. Gate #5 (scraper-server URL) is extracted to
-// validateArtlistScraperURL for direct unit-testability per godlike/06
-// SSOT — it aborts the wiring loudly with an actionable fix hint instead
-// of silently degrading to per-call exec fallback at first /run. Operators
-// see 404 on /api/artlist/* rather than a full-system boot abort.
-//
-// declared explicitly with a linked_issue cross-ref; see
-// architecture/current.yaml#ART-001.linked_issues (godlike/07 EXPAND-phase
-// discipline). The 2 repo fields (AssetProcRepo / AssetVerRepo)
-// are now WIRED via sqassets.NewAssetStoreSQLite (PRIORITÀ ASSOLUTA — nil would
-// panic in run_orchestrator_stages.go); the 3 searcher fields
-// (ScraperSearcher / PixabaySearcher / PexelsSearcher) are now WIRED inline from
-// the canonical infra concretes (PR-ARTLIST-SEARCHERS closed 2026-07-04).
-// Read-only endpoints (/stats, /diagnostics, /search/live) remain live; write
-// endpoints (/run, /recommend, /sync-catalogs) no longer return 503 from the
-// searcher-tier forward-pointers. The Build(Dependencies).ClipResolver field
-// is now WIRED via the new clipResolverRecommendAdapter
-// (PR-ARTLIST-RECOMMEND-ADAPTER, closed 2026-07-04) which bridges the
-// handler-side artlist.ClipResolverPort.Recommend method to the canonical
-// *scripts.ClipResolver.Resolve method + a real field-weighted Jaccard
-// scoring layer (Name 0.30 + Filename 0.10 + Description 0.20 + Tags 0.30 +
-// Transcript 0.10, see internal/app/clip_resolver_recommend_adapter.go). The
-// /recommend endpoint now returns real recommendations (not 503) when the
-// canonical resolver is available; nil canonical yields a nil adapter
-// (godlike/07 fail-closed fast path) and the handler's nil-tolerance returns
-// 503 only in that case. The audit-pin closure of the obsolete clipresolver
-// forward-pointer is in architecture/deprecations.yaml#PR-ARTLIST-SYNCSERVICE
-// (closed 2026-07-04) — the clipresolver package was already removed in a
-// prior refactor, so the deprecation was paperwork only.
-//
-// Single-function shape (WireArtlist) mirrors the existing WireMediaIngest
-// precedent in registry_internal_modules.go (Blocco C1-Step 3 scope).
-//
-// Riuso: ArtlistBundle struct (bundle_types.go, canonical per PR4d-chunk2)
-// + newArtlistConfigAdapter (adapters_infra.go, already compile-time-pinned
-// against artlist.ArtlistConfigPort).
+// godlike/06 SSOT: this file owns the canonical Pattern-0 adapter wiring of the
+// artlist capability.
+// godlike/07 fail-closed: mandatory gates are checked UPFRONT and nil dependencies yield
+// typed errors.
 package app
 
 import (
