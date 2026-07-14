@@ -84,6 +84,16 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 			// tenant-isolation through AssetsBundle.
 			SearchFanOut:          wiring.searchFanOut,
 			SearchBackendRegistry: wiring.searchBackends,
+			// Wave 6 (enforce aggregator singleton, July 2026): the
+			// canonical *search.Aggregator singleton is plumbed from
+			// RegistryWiring.searchAgg (constructed exactly once by
+			// BuildCanonicalSearchFanOut inside
+			// internal/app/search_backends.go and stamped by
+			// registerSearchBackend). WireAssets MUST consume this
+			// pointer rather than re-instantiating via
+			// search.NewAggregator (per percheck_search_aggregator_singleton
+			// forward-prevention gate).
+			SearchAggregator: wiring.searchAgg,
 		},
 		Delivery: DeliveryDeps{
 			Admin:     root.Drive.Admin,

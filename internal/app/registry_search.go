@@ -78,5 +78,6 @@ func registerSearchBackend(log *zap.Logger, providerReg *providers.Registry, cli
 	}
 	wiring.searchFanOut = searchFanOut
 	wiring.searchBackends = searchBackends
+	wiring.searchAgg = searchAgg
 	return searchFanOut, searchBackends, searchAgg
 }
