@@ -15,8 +15,8 @@ import (
 
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
-	youtube "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 type recordingYouTubeClipService struct {
@@ -162,7 +162,7 @@ func TestNormalizeExtractionDestination_PreservesExplicitFolderPath(t *testing.T
 func TestRecordingJobsService_EnqueueCapturesPayload(t *testing.T) {
 	svc := &recordingJobsService{}
 	_, err := svc.Enqueue(context.Background(), &jobs.EnqueueRequest{
-		Type:    youtube.TypeClipExtract,
+		Type:    job.TypeYouTubeClipExtract,
 		Payload: map[string]any{"hello": "world"},
 	})
 	require.NoError(t, err)

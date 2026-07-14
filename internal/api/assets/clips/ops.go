@@ -40,6 +40,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 
 	"github.com/gin-gonic/gin"
@@ -55,7 +56,7 @@ type OpsDeps struct {
 	DeletionSvc    *deletion.DeletionService
 	FolderMemSvc   *foldermemory.Service
 	ClipsRepo      *assets.ClipsRepository
-	DriveAdmin     any
+	DriveAdmin     drive.Admin
 	AssetTreeSvc   *assettree.Service
 	Log            *zap.Logger
 }
@@ -68,7 +69,7 @@ type OpsHandler struct {
 	deletionSvc    *deletion.DeletionService
 	folderMemSvc   *foldermemory.Service
 	clipsRepo      *assets.ClipsRepository
-	driveAdmin     any
+	driveAdmin     drive.Admin
 	assetTreeSvc   *assettree.Service
 	log            *zap.Logger
 }
