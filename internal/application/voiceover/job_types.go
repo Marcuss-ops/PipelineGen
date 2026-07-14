@@ -14,6 +14,10 @@ func MustRegister(reg job.MutableJobRegistry) error {
 		Type:           JobGenerate,
 		Description:    "voiceover generation (script + lang -> TTS audio)",
 		ExecutionClass: job.ExecutionCreatorAllowed,
+		Queue:          "default",
+		RequiredCapabilities: []job.Capability{
+			"voiceover.generate",
+		},
 	}
 	if err := reg.RegisterDefinition(def); err != nil {
 		return err
