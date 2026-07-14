@@ -251,7 +251,7 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 		apiutil.BadRequest(c, "seconds_per_segment expansion failed: "+expandErr.Error())
 		return
 	}
-	req.Clips = expanded
+	clips := expanded
 
 	// PR-DRIVE-AVAILABILITY-GATE (2026-07-04): pre-flight
 	// Drive-availability gate. The request may carry folder_id at
@@ -283,15 +283,15 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 	}
 
 	// Backfill folder_id from the request-level default
-	for i := range req.Clips {
-		if req.Clips[i].FolderID == "" && req.FolderID != "" {
-			req.Clips[i].FolderID = req.FolderID
+	for i := range clips {
+		if clips[i].FolderID == "" && req.FolderID != "" {
+			clips[i].FolderID = req.FolderID
 		}
 	}
 
 	// Build commands from request clips
-	commands := make([]sourcing.RegisterClipCommand, len(req.Clips))
-	for i, clipReq := range req.Clips {
+	commands := make([]sourcing.RegisterClipCommand, len(clips))
+	for i, clipReq := range clips {
 		commands[i] = toRegisterClipCommand(clipReq)
 	}
 
