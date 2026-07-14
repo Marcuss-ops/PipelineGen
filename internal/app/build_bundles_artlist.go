@@ -447,7 +447,7 @@ func WireArtlist(
 			Dispatcher:        dispatcher,
 			MediaProcessor:    bundle.MediaProcessor,
 			AssetDestResolver: destResolver,
-			JobsSvc:           *bundle.Jobs.Service,
+			JobsSvc:           bundle.Jobs.Service,
 			AssetProcRepo:     assetProcRepo,
 			AssetVerRepo:      assetVerRepo,
 			// PR-ARTLIST-FINALIZER (July 2026): canonical transactional

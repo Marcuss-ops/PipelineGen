@@ -353,8 +353,6 @@ func (ss *SearchService) DiscoverAndQueueRun(ctx context.Context, originalTerm s
 
 		return liveResp, runResp, nil
 	}
-
-	return liveResp, nil, nil
 }
 
 // SearchClips searches clips in the database

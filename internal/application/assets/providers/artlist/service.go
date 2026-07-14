@@ -126,7 +126,7 @@ type ServiceDependencies struct {
 	Dispatcher        Dispatcher
 	MediaProcessor    asset.Processor
 	AssetDestResolver asset.Resolver
-	JobsSvc           appjobs.Service
+	JobsSvc           *appjobs.Service
 	AssetProcRepo     asset.ProcessingRepository
 	AssetVerRepo      asset.VersionRepository
 	// AssetFinalizerTx is the canonical transactional asset finalizer
@@ -233,7 +233,7 @@ type Service struct {
 	// Cross-cutting domain services.
 	mediaProcessor    asset.Processor
 	assetDestResolver asset.Resolver
-	jobsSvc           appjobs.Service
+	jobsSvc           *appjobs.Service
 
 	// Asset lifecycle repositories (canonical model — wired per codex/wire-asset-lifecycle)
 	assetProcessing asset.ProcessingRepository
