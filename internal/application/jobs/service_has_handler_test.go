@@ -25,7 +25,7 @@ import (
 
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // TestService_HasHandler pins the new *Service.HasHandler contract.
@@ -45,7 +45,7 @@ func TestService_HasHandler(t *testing.T) {
 	// handler for `script.generate`. The remaining test cases
 	// derive from this base (nil receiver, nil dispatcher, etc.).
 	dispatcher := NewDispatcher()
-	if err := dispatcher.Register(job.TypeScriptGenerate, fakeHandler); err != nil {
+	if err := dispatcher.Register(TypeScriptGenerate, fakeHandler); err != nil {
 		t.Fatalf("register fake handler: %v", err)
 	}
 	svc, err := NewService(nakedJobBroker{}, dispatcher, zap.NewNop(), Compose())
@@ -63,7 +63,7 @@ func TestService_HasHandler(t *testing.T) {
 		{
 			name:     "nil receiver returns false (defensive guard)",
 			svc:      nil,
-			jobType:  job.TypeScriptGenerate,
+			jobType:  TypeScriptGenerate,
 			wantHave: false,
 		},
 		{
@@ -74,7 +74,7 @@ func TestService_HasHandler(t *testing.T) {
 				log:        nil,
 				registry:   nil,
 			},
-			jobType:  job.TypeScriptGenerate,
+			jobType:  TypeScriptGenerate,
 			wantHave: false,
 		},
 		{
@@ -86,13 +86,13 @@ func TestService_HasHandler(t *testing.T) {
 		{
 			name:     "registered type returns true (canonical happy path)",
 			svc:      svc,
-			jobType:  job.TypeScriptGenerate,
+			jobType:  TypeScriptGenerate,
 			wantHave: true,
 		},
 		{
 			name:     "unregistered type returns false (negative path)",
 			svc:      svc,
-			jobType:  job.TypeMediaExtract, // not registered in this test's Dispatcher
+			jobType:  TypeMediaExtract, // not registered in this test's Dispatcher
 			wantHave: false,
 		},
 	}
@@ -124,7 +124,7 @@ func TestService_HasHandler_AfterRegister_ReflectsNewState(t *testing.T) {
 	}
 
 	// Pre-condition: unregistered.
-	if svc.HasHandler(job.TypeMediaExtract) {
+	if svc.HasHandler(TypeMediaExtract) {
 		t.Fatal("pre-condition violated: HasHandler should be false before Register")
 	}
 
@@ -132,12 +132,12 @@ func TestService_HasHandler_AfterRegister_ReflectsNewState(t *testing.T) {
 	fakeHandler := HandlerFunc(func(ctx context.Context, j *job.Job, tools *JobTools) (map[string]any, error) {
 		return nil, nil
 	})
-	if err := dispatcher2.Register(job.TypeMediaExtract, fakeHandler); err != nil {
+	if err := dispatcher2.Register(TypeMediaExtract, fakeHandler); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
 	// Post-condition: registered.
-	if !svc.HasHandler(job.TypeMediaExtract) {
+	if !svc.HasHandler(TypeMediaExtract) {
 		t.Error("HasHandler should be true after Register")
 	}
 }

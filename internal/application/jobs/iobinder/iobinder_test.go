@@ -49,7 +49,8 @@ var disallowedPatterns = []struct {
 // from this map AND ship a benchmark proving the migration (see
 // benchmark_test.go for the canonical before/after template).
 var exceptionList = map[string]bool{
-	"assets/service.go:83": true, // os.Open in Service.Download — per-asset dynamic file path; tracked by PR-IOBINDER-P2-DOWNLOAD
+	"assets/service.go:99":  true, // os.Open in Service.Download — per-asset dynamic local file path; streamed to caller, not cacheable at boot (PR-IOBINDER-P2-DOWNLOAD)
+	"assets/service.go:311": true, // os.Open in Service.fetch — opens staged source file after SourceStager.StageSourceV2; path is dynamic per URL, streamed to caller (PR-IOBINDER-P2-DOWNLOAD)
 }
 
 // TestNoDirectSyncIOInJobsHotPaths walks internal/application/jobs/
