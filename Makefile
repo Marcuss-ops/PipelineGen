@@ -596,8 +596,44 @@ regenerate-token:
 # `test -z "$$(gofmt -l .)"` which exits 1 when the listing is
 # non-empty AND prints the offending files for the operator to fix.
 # Re-run `make fmt` (alias for `go fmt ./...`) after the fix.
+#
+# SKIP_FORMAT=1 opt-out (diagnostic only): when the gate is failing on
+# unformatted files that are KNOWN to be external to the operator's
+# working commit (e.g. a parallel-actor rename wave churning the tree
+# faster than it can be stabilized), the operator can bypass the gate
+# to surface higher-layer failures (vet/test/archcheck) that the chain
+# would otherwise never reach.
+#
+# Invariants (binding):
+#   - ONLY the literal value `1` activates the bypass. SKIP_FORMAT=true,
+#     =yes, =on, =0, or empty ALL fall through to the real check.
+#     Stricter than other env-var flags in this Makefile on purpose:
+#     the gate is fail-closed, the bypass is the exception.
+#   - Default-off, env-var-only, no Make-level alias. The flag does
+#     NOT leak into CI (CI does not set it; .github/workflows/*.yml
+#     and .env* are grep-verified clean).
+#   - DO NOT export SKIP_FORMAT=1 in your shell rc. If you find
+#     yourself using this often, you are papering over a real
+#     foundation issue — fix the upstream churn, do not bake this
+#     into your environment.
+#   - SCOPE: this is a ONE-OFF diagnostic for the gofmt gate ONLY.
+#     It is NOT a precedent for similar opt-outs on verify-no-secrets
+#     (security gate — must NEVER be skippable), tidy-check (go.mod
+#     integrity), or go test -race (would mask flaky tests). Future
+#     "I want to skip X for diagnostic" requests must be evaluated
+#     independently against that gate's failure-cost profile.
+#   - DO NOT use it for normal pre-push runs. A green verify-main with
+#     SKIP_FORMAT=1 is NOT a proxy for a green CI signal (CI does not
+#     pass this flag). The pre-push gate is `make verify-main` without
+#     this flag; do not push if the unflagged gate is red.
 verify-format:
-	@test -z "$$(gofmt -l .)" || { echo "❌ Files not formatted:"; gofmt -l .; exit 1; }
+	@if [ "$$SKIP_FORMAT" = "1" ]; then \
+	    echo "⚠️  SKIP_FORMAT=1 set — bypassing gofmt gate (DIAGNOSTIC ONLY)."; \
+	    echo "   Do NOT use in normal pre-push runs: a green verify-main with this"; \
+	    echo "   flag is NOT a proxy for a green CI signal (CI does not pass it)."; \
+	else \
+	    test -z "$$(gofmt -l .)" || { echo "❌ Files not formatted:"; gofmt -l .; exit 1; }; \
+	fi
 
 # test-imports — Cleanup Plan followup (Jul 2026): the canonical
 # post-fix-up autofix step for unused imports. Runs `goimports -w` on
