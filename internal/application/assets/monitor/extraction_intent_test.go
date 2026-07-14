@@ -220,15 +220,15 @@ func TestExtractionIntent_JSONByteEquivalence(t *testing.T) {
 //	(= ytdomain.Segment via type alias) MUST have the SAME field
 //	count + JSON tags (incl. omitempty parity) as ytdomain.Segment.
 //
-// Pin the count to EXACT 11 (ytdomain.Segment has 11 fields: Start,
+// Pin the count to EXACT 12 (ytdomain.Segment has 12 fields: Start,
 // End, Name, Tags, Summary, Topics, Speakers, MentionedPeople, Hook,
-// QualityScore, SearchVisibility). The alias makes both trivially
-// equal today; the strict count is the future-fence against a
-// godlike/06 split (e.g. a future ExtractionSegment re-introduced as
-// a separate struct shape with a different field set would break
+// QualityScore, SearchVisibility, Texts). The alias makes both
+// trivially equal today; the strict count is the future-fence against
+// a godlike/06 split (e.g. a future ExtractionSegment re-introduced
+// as a separate struct shape with a different field set would break
 // this assertion regardless of the type-alias-equivalence).
 //
-// overshoot: strict == 11 vs user spec floor ">= 10". The stricter
+// overshoot: strict == 12 vs user spec floor ">= 10". The stricter
 // pin documents the actual ytdomain.Segment field count and would
 // catch even a one-field drop (the spec floor allows that; this
 // pin doesn't). Comment marker `overshoot` ensures a future reader
@@ -240,7 +240,7 @@ func TestExtractionSegment_FieldParityWithYtdomainSegment(t *testing.T) {
 	monitorType := reflect.TypeOf(ExtractionSegment{})
 	ytdomainType := reflect.TypeOf(ytdomain.Segment{})
 
-	const expectedFieldCount = 11 // overshoot vs spec >= 10 (intentional stronger pin)
+	const expectedFieldCount = 12 // overshoot vs spec >= 10 (intentional stronger pin)
 	if monitorType.NumField() != expectedFieldCount {
 		t.Errorf("monitor.ExtractionSegment has %d fields, expected == %d (godlike/06 SSOT pin)",
 			monitorType.NumField(), expectedFieldCount)
