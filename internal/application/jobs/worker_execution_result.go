@@ -69,12 +69,12 @@ import (
 // artifact-producing job whose manifest cannot be honoured can NEVER
 // reach SUCCEEDED. Three typed-sentinel modes (godlike/06 SSOT):
 //
-//  1. job.ErrArtifactManifestMissing — manifest key absent
+//  1. kerneljob.ErrArtifactManifestMissing — manifest key absent
 //     (no __artifact_manifest in handler result). Per FASE 1 spec
 //     "il manifest è assente, ... bloccare ... la transizione a
 //     SUCCEEDED dei job type ProducesArtifacts=true".
 //
-//  2. job.ErrArtifactManifestInvalid — manifest cannot be decoded
+//  2. kerneljob.ErrArtifactManifestInvalid — manifest cannot be decoded
 //     (JSON error, unexpected type) OR fails shape validation
 //     (empty schema_version, zero artifacts, empty id/kind,
 //     path-set-but-filename-empty, etc). The wrapped error chain
@@ -90,7 +90,7 @@ import (
 // is allowed per the audit's existing audit-trail path; the empty
 // envelope is a VALID artifact manifest per schema, not a missing one.
 //
-// The mapping from job.Artifact → finalization.PublishedArtifact:
+// The mapping from kerneljob.Artifact → finalization.PublishedArtifact:
 //
 //	id          → artifact_id
 //	kind        → kind
@@ -127,8 +127,8 @@ import (
 //     required-but-empty-path, etc). The dual-%w
 //     form wraps BOTH the typed sentinel AND the inner
 //     Validate error, so errors.Is can probe either
-//     job.ErrArtifactManifestInvalid (general) OR
-//     job.ErrRequiredArtifactMissing (specific) via
+//     kerneljob.ErrArtifactManifestInvalid (general) OR
+//     kerneljob.ErrRequiredArtifactMissing (specific) via
 //     chain traversal.
 //  5. process   — publish the typed PublishedArtifact slice via
 //     json.Marshal; the Marshal failure path wraps
@@ -142,7 +142,7 @@ import (
 // TestExtractStagedArtifacts_RequiredMissingPath_ErrRequiredArtifactMissing
 // — all four MUST keep passing or the FASE 1 contract is broken.
 func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMessage, error) {
-	manifest, err := job.Decode(result)
+	manifest, err := kerneljob.Decode(result)
 	if err != nil {
 		// Malformed manifest — typed error per FASE 1. Caller fails
 		// the job; the broker MUST NOT mark SUCCEEDED for a job
@@ -151,14 +151,14 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 		// json/wire error so errors.Is probes for ErrArtifactManifestInvalid
 		// OR any sub-mode sentinel ErrRequiredArtifactMissing
 		// propagate through the chain.
-		return nil, fmt.Errorf("artifact-producing job %q: decode failure: %w: %w", jobType, job.ErrArtifactManifestInvalid, err)
+		return nil, fmt.Errorf("artifact-producing job %q: decode failure: %w: %w", jobType, kerneljob.ErrArtifactManifestInvalid, err)
 	}
 	if manifest == nil {
 		// Manifest key absent per FASE 1 spec "manifest è assente".
 		// Typed sentinel — caller fails the job; the broker MUST
 		// NOT mark SUCCEEDED. This is the close-out fix for the
 		// pre-FASE-1 silent-drop `[]` anti-pattern.
-		return nil, fmt.Errorf("artifact-producing job %q: %w", jobType, job.ErrArtifactManifestMissing)
+		return nil, fmt.Errorf("artifact-producing job %q: %w", jobType, kerneljob.ErrArtifactManifestMissing)
 	}
 	if len(manifest.Artifacts) == 0 {
 		// Valid empty envelope (handler legitimately produced zero
@@ -178,7 +178,7 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 		// ErrArtifactManifestInvalid (general) OR
 		// ErrRequiredArtifactMissing (specific) by traversing
 		// the wrap chain.
-		return nil, fmt.Errorf("artifact-producing job %q: validate failure: %w: %w", jobType, job.ErrArtifactManifestInvalid, err)
+		return nil, fmt.Errorf("artifact-producing job %q: validate failure: %w: %w", jobType, kerneljob.ErrArtifactManifestInvalid, err)
 	}
 
 	published := make([]finalization.PublishedArtifact, 0, len(manifest.Artifacts))
@@ -214,7 +214,7 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 		// typed error per FASE 1 (c). Caller fails the job. Dual-%w
 		// form preserves both the typed sentinel and the underlying
 		// json.Marshal error for caller-side errors.Is probing.
-		return nil, fmt.Errorf("artifact-producing job %q: PublishedArtifact marshal: %w: %w", jobType, job.ErrArtifactManifestInvalid, marshalErr)
+		return nil, fmt.Errorf("artifact-producing job %q: PublishedArtifact marshal: %w: %w", jobType, kerneljob.ErrArtifactManifestInvalid, marshalErr)
 	}
 	return json.RawMessage(raw), nil
 }
@@ -253,7 +253,7 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 //	       └─ success                     → log "job completed with artifacts"
 //	  └─ ProducesArtifacts false
 //	       └─ w.repo.Complete err
-//	            └─ job.ErrLeaseLost                 → log warn
+//	            └─ kerneljob.ErrLeaseLost                 → log warn
 //	            └─ domainremote.ErrCompleteJobPathViolation → Fail (FASE 0.1:
 //	                                                          legacy Worker path
 //	                                                          cannot complete
@@ -261,11 +261,11 @@ func extractStagedArtifacts(result map[string]any, jobType string) (json.RawMess
 //	            └─ other                           → log error
 //	       └─ success                             → log "job completed"
 //
-// All `errors.Is(err, job.ErrLeaseLost)` branches log warn rather than
+// All `errors.Is(err, kerneljob.ErrLeaseLost)` branches log warn rather than
 // re-raise; a lease-loss during a finalisation SQL UPDATE means another
 // worker has already CAS-won the row, so the next worker's transition
 // is the authoritative one.
-func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]any, dispatchErr error) {
+func (w *Worker) finalizeJob(ctx context.Context, j *kerneljob.Job, result map[string]any, dispatchErr error) {
 	// Refresh revision from the DB so the final CAS write carries the
 	// latest expected revision (a concurrent Update during execution
 	// would invalidate the snapshot copied at ClaimNext).
@@ -307,7 +307,7 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 			// server-side backoff via available_at. No intermediate
 			// "failed" state — avoids false alerting.
 			if retryErr := w.repo.ScheduleRetry(ctx, j.ID, workerID, leaseID, finalRevision, dispatchErr.Error(), backoff); retryErr != nil {
-				if errors.Is(retryErr, job.ErrLeaseLost) {
+				if errors.Is(retryErr, kerneljob.ErrLeaseLost) {
 					w.log.Warn("lease lost during ScheduleRetry — another worker claimed this job",
 						zap.String("job_id", j.ID))
 				} else {
@@ -320,7 +320,7 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 		}
 
 		if failErr := w.repo.Fail(ctx, j.ID, workerID, leaseID, finalRevision, dispatchErr.Error()); failErr != nil {
-			if errors.Is(failErr, job.ErrLeaseLost) {
+			if errors.Is(failErr, kerneljob.ErrLeaseLost) {
 				w.log.Warn("lease lost during fail (exhausted retries)",
 					zap.String("job_id", j.ID))
 			} else {
@@ -373,7 +373,7 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 				zap.Error(fmt.Errorf("worker.CompletionPort unset (call WithBroker(cp) at composition time)")))
 			if failErr := w.repo.Fail(ctx, j.ID, workerID, leaseID, finalRevision,
 				fmt.Sprintf("worker.CompletionPort not wired for artifact-producing job %q; call WithBroker(cp) on the Worker constructor", j.Type)); failErr != nil {
-				if errors.Is(failErr, job.ErrLeaseLost) {
+				if errors.Is(failErr, kerneljob.ErrLeaseLost) {
 					w.log.Warn("lease lost during fail-after-missing-broker",
 						zap.String("job_id", j.ID))
 				} else {
@@ -393,7 +393,7 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 		// metadata atomically with the job SUCCEEDED transition.
 		//
 		// FASE 1 (c) — typed-error contract: a manifest decode/marshal
-		// failure surfaces a typed job.ErrArtifactManifestInvalid. The
+		// failure surfaces a typed kerneljob.ErrArtifactManifestInvalid. The
 		// decode-error / marshal-error path FAILS the job (audit 2026-07-03
 		// P0 #4 criterion "il manifest non è decodificabile") — a
 		// malformed manifest MUST NOT silently reach SUCCEEDED.
@@ -413,7 +413,7 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 				zap.String("job_type", j.Type),
 				zap.Error(extractErr))
 			if failErr := w.repo.Fail(ctx, j.ID, workerID, leaseID, finalRevision, manifestErr); failErr != nil {
-				if errors.Is(failErr, job.ErrLeaseLost) {
+				if errors.Is(failErr, kerneljob.ErrLeaseLost) {
 					w.log.Warn("lease lost during fail-after-manifest-extract-error",
 						zap.String("job_id", j.ID))
 				} else {
@@ -454,7 +454,7 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 			// the operator can see WHY the job never reached SUCCEEDED.
 			if failErr := w.repo.Fail(ctx, j.ID, workerID, leaseID, finalRevision,
 				completionErr); failErr != nil {
-				if errors.Is(failErr, job.ErrLeaseLost) {
+				if errors.Is(failErr, kerneljob.ErrLeaseLost) {
 					w.log.Warn("lease lost during fail-after-completion-error",
 						zap.String("job_id", j.ID))
 				} else {
@@ -478,7 +478,7 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 	}
 
 	if completeErr := w.repo.Complete(ctx, j.ID, workerID, leaseID, finalRevision, mapToRawMessage(result)); completeErr != nil {
-		if errors.Is(completeErr, job.ErrLeaseLost) {
+		if errors.Is(completeErr, kerneljob.ErrLeaseLost) {
 			w.log.Warn("lease lost during complete — another worker claimed this job",
 				zap.String("job_id", j.ID))
 		} else if errors.Is(completeErr, domainremote.ErrCompleteJobPathViolation) {
@@ -496,7 +496,7 @@ func (w *Worker) finalizeJob(ctx context.Context, j *job.Job, result map[string]
 				zap.Error(completeErr))
 			if failErr := w.repo.Fail(ctx, j.ID, workerID, leaseID, finalRevision,
 				fmt.Sprintf("legacy Worker cannot complete artifact-producing job %q: %v", j.Type, completeErr)); failErr != nil {
-				if errors.Is(failErr, job.ErrLeaseLost) {
+				if errors.Is(failErr, kerneljob.ErrLeaseLost) {
 					w.log.Warn("lease lost during fail-after-artifact-gate",
 						zap.String("job_id", j.ID))
 				} else {
