@@ -79,13 +79,16 @@ type ArtlistRunPayload struct {
 //
 // PR-13 (July 2026, refactor(api): drop runtime-tunable noise configs):
 // the canonical client surface is the WHAT (local_folder, drive_folder_id,
-// source, category). The HOW (recursion, extensions, concurrency, layout,
-// indexing policy) lives in server config — see Cfg.Storage + Cfg.Jobs.
+// source, category). The HOW (extensions, layout, indexing policy) lives in
+// server config — see Cfg.Storage + Cfg.Jobs. Recursion and concurrency are
+// the only runtime knobs exposed to callers.
 type BulkUploadYouTubeClipsPayload struct {
 	LocalFolder   string `json:"local_folder"`              // absolute path to scan
 	DriveFolderID string `json:"drive_folder_id,omitempty"` // target Drive folder (root of subdirs)
 	Source        string `json:"source,omitempty"`          // source label written to media_assets (default: youtube-local)
 	Category      string `json:"category,omitempty"`        // category written to media_assets
+	Recursive     bool   `json:"recursive,omitempty"`       // true = recursive scan; false = shallow scan
+	Concurrency   int    `json:"concurrency,omitempty"`     // parallel workers (default from server config)
 }
 
 // DriveFolderSyncPayload is sent with JobTypeDriveFolderSync.

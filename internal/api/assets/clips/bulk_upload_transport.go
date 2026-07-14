@@ -26,6 +26,8 @@ type BulkUploadYouTubeClipsRequest struct {
 	DriveFolderID string `json:"drive_folder_id"`
 	Source        string `json:"source,omitempty"`
 	Category      string `json:"category,omitempty"`
+	Recursive     bool   `json:"recursive,omitempty"`
+	Concurrency   int    `json:"concurrency,omitempty"`
 }
 
 // BulkUploadYouTubeClipsResponse: immediate 202 with job_id + status URL.
@@ -135,6 +137,8 @@ func (bt *BulkUploadTransport) BulkUploadYouTubeClips(c *gin.Context) {
 			"drive_folder_id": req.DriveFolderID,
 			"source":          req.Source,
 			"category":        req.Category,
+			"recursive":       req.Recursive,
+			"concurrency":     req.Concurrency,
 		},
 		ActiveKey: activeKey,
 	}, "bulk upload job enqueued"); ok {
