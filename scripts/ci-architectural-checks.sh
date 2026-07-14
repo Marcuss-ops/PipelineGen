@@ -240,10 +240,19 @@ fi
 #   "script.generate_from_clips"     (job.TypeClipScriptGenerate)
 #   "script.generate_from_catalog"   (job.TypeCatalogScriptGenerate)
 #   "media.curate"                   (job.TypeMediaCurate)
-# Each canonical declaration lives in internal/domain/job/job.go. Any new
-# rg hit on those strings as quoted STRING LITERALS (not comments) in
-# production code indicates a regression — the canonical reference should
-# always be the typed constant.
+# Per godlike/02 SSOT ("capability-specific constants live in their
+# owning domain package"), each canonical declaration lives in the
+# capability-specific package; the legacy `internal/domain/job/job.go`
+# is a Phase-A.2 back-compat alias layer (type aliases to `kernel/job`)
+# and does NOT own the literal values. Canonical owners:
+#   - "media.curate"                  → internal/domain/media/job_types.go (media capability)
+#   - "script.generate_batch"         → internal/domain/script/         (script capability)
+#   - "script.generate_from_clips"    → internal/domain/script/         (script capability)
+#   - "script.generate_from_catalog"  → internal/domain/script/         (script capability)
+# Any new rg hit on those strings as quoted STRING LITERALS (not comments)
+# in production code outside these canonical owners indicates a regression
+# — the canonical reference should always be the typed constant from the
+# capability-specific domain.
 #
 # PR-B (June 2026) closes the 4 script-related constants only. The
 # remaining literal constants in internal/application/jobs/registry.go
@@ -263,6 +272,8 @@ literals=$(rg -n --type go \
     -e '[=:(,]\s*"(script\.generate_batch|media\.curate|script\.generate_from_catalog|script\.generate_from_clips)"' \
     -e '"(script\.generate_batch|media\.curate|script\.generate_from_catalog|script\.generate_from_clips)"\s*[:,)]' \
     --glob '!**/domain/job/job.go' \
+    --glob '!**/domain/media/job_types.go' \
+    --glob '!**/domain/script/**' \
     --glob '!**/*_test.go' \
     internal/ 2>/dev/null \
     | awk -F: '{
