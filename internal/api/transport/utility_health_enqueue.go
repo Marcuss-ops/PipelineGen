@@ -10,8 +10,8 @@
 //     to `health.go` (the deep-check `/health` URL contract from the
 //     codex/health-ready-contract, June 2026, lives there now).
 //
-// Remaining in this file: ONLY the async-enqueue helper that 8 caller
-// sites in `internal/api/assets/{voiceover,clips/bulk_upload,
+// Remaining in this file: ONLY the async-enqueue helper that caller
+// sites in `internal/api/assets/{voiceover,clips/bulk_upload_transport,
 // storage/{local_to_drive,sync_drive_folder,internal_sync_drive_folder},
 // youtube}/handler.go` route through with concrete `job.Service` and
 // the typed `*EnqueueInput` literal envelope below.
@@ -57,7 +57,7 @@ type EnqueueInput struct {
 //
 // Mirrors the contract pinned by
 // internal/api/assets/voiceover/handler.go (Wave 18 follow-up),
-// internal/api/assets/clips/bulk_upload.go (Wave 18),
+// internal/api/assets/clips/bulk_upload_transport.go (Wave 18),
 // internal/api/assets/storage/sync_drive_folder.go + local_to_drive.go
 // (Wave 17/18), and internal/api/assets/youtube/youtube_handlers.go.
 func EnqueueAsync(c *gin.Context, jobsSvc job.Service, in *EnqueueInput, msg string) bool {
