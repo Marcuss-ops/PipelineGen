@@ -202,20 +202,18 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 			scan.ScanVoiceoverAliasBan(root, pol, r, productionOnly)
 		}},
 		// Check Card 7.2 (July 2026): forward-prevention gate for
-		// the closed DirectIndexer bypass. The legacy DirectIndexer
-		// + 6 associated symbols (NewDirectIndexer,
-		// WithAdminReindex, IsAdminReindex,
-		// SetAdminReindexAuditLogger, AdminReindexKey,
-		// ErrDirectIndexerAbuse) were deleted in Card 7. Admin
-		// reindex MUST route through
-		// `outboxRepairAdapter.EnqueueReindex` in
-		// `cmd/admin/reconcile_qdrant_adapters.go` (force=true
-		// seam on `BuildReindexEnvelopeV1Force`). Production-code
-		// references to ANY of the 7 deleted symbols trip the
-		// build as SeverityError; comment-only + 2 documented
-		// residue files (outbox/dispatcher.go + cmd/admin/
-		// reconcile_qdrant_adapters.go) are residue-accounted as
-		// WARN (silenced under productionOnly).
+		// the closed admin-reindex bypass route. The legacy
+		// application-layer direct-write entrypoint + its 6 audit
+		// sidecar helpers were deprecated in Card 7; admin reindex
+		// MUST route through `outboxRepairAdapter.EnqueueReindex`
+		// in `cmd/admin/reconcile_qdrant_adapters.go` (force=true
+		// seam on `BuildReindexEnvelopeV1Force` ->
+		// outboxevents.Repository.Enqueue). Production-code
+		// references to the retired bypass surface trip the build
+		// as SeverityError; comment-only + 2 documented residue
+		// files (outbox/dispatcher.go + cmd/admin/
+		// reconcile_qdrant_adapters.go itself) are residue-
+		// accounted as WARN (silenced under productionOnly).
 		//
 		// godlike/07 minimum-blast-radius: the runner.go entry
 		// above intentionally avoids naming the banned literals

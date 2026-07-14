@@ -276,6 +276,101 @@ var SetAdminReindexAuditLoggerV2 = 4
 	}
 }
 
+// TestScanDirectIndexerBypassClosed_RegistrationBlockCommentAccounting
+// guards against future re-introduction of banned identifiers
+// in descriptive prose (the regression of the runner.go self-
+// trip bug closed by the 8c908a8ab follow-up). Three cases pin
+// both the comment-detection routing AND the residue-clean
+// invariant of the post-fix runner.go registration block-
+// comment:
+//
+//  1. residue-clean block-comment prose (no banned tokens):
+//     0 violations, 0 WARN regardless of productionOnly.
+//  2. pre-fix-style block-comment prose (banned literal
+//     "DirectIndexer" embedded): 0 violations (comment-
+//     detection routes to WARN bucket, NOT violation), 1 WARN
+//     in !productionOnly mode.
+//  3. pre-fix-style + productionOnly: 0 violations, 0 WARN
+//     (productionOnly silences the comment-only WARN bucket).
+func TestScanDirectIndexerBypassClosed_RegistrationBlockCommentAccounting(t *testing.T) {
+	cases := []struct {
+		name           string
+		proseBuilder   func() string
+		productionOnly bool
+		wantVios       int
+		wantWARN       bool
+	}{
+		{
+			name: "residue_clean_prose_emits_no_WARN",
+			proseBuilder: func() string {
+				// Mirrors the post-fix runner.go godlike/06 block-comment
+				// first-paragraph shape (no banned literals in prose).
+				return "// Check Card 7.2 (July 2026): forward-prevention gate for the closed admin-reindex bypass route. Admin reindex MUST route through outboxRepairAdapter.EnqueueReindex in cmd/admin/reconcile_qdrant_adapters.go (force=true seam on BuildReindexEnvelopeV1Force -> outboxevents.Repository.Enqueue)."
+			},
+			productionOnly: false,
+			wantVios:       0,
+			wantWARN:       false,
+		},
+		{
+			name:           "prefix_prose_with_banned_literal_emits_WARN",
+			proseBuilder:   preFixBannedLiteralProseFixture,
+			productionOnly: false,
+			wantVios:       0,
+			wantWARN:       true,
+		},
+		{
+			name:           "prefix_prose_with_banned_literal_productionOnly_silenced",
+			proseBuilder:   preFixBannedLiteralProseFixture,
+			productionOnly: true,
+			wantVios:       0,
+			wantWARN:       false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			makeFileForDirectIndexerBypassClosedTest(t, root, "internal/random_other/prose.go",
+				"package random_other\n"+tc.proseBuilder()+"\nfunc Note() {}\n")
+			rep := &report.Report{}
+			ScanDirectIndexerBypassClosed(root, nil, rep, tc.productionOnly)
+			if got := len(rep.Violations); got != tc.wantVios {
+				firstNote := "<none>"
+				if len(rep.Violations) > 0 {
+					firstNote = rep.Violations[0].Note
+				}
+				t.Fatalf("violations = %d, want %d (first: %s)", got, tc.wantVios, firstNote)
+			}
+			gotWARN := containsAnyString(rep.Warnings, "bypass-symbol-residue:")
+			if gotWARN != tc.wantWARN {
+				t.Fatalf("WARN presence = %v, want %v (warnings: %v)",
+					gotWARN, tc.wantWARN, rep.Warnings)
+			}
+		})
+	}
+}
+
+// preFixBannedLiteralProseFixture returns a "pre-fix-shape"
+// registration block-comment prose line that embeds all
+// canonical banner symbols in a comment context. Used by
+// cases 2 + 3 of TestScanDirectIndexerBypassClosed_RegistrationBlockCommentAccounting.
+//
+// Built dynamically from the SSOT symbol set
+// (directIndexerBypassClosedSymbols) so the fixture stays
+// lockstep with the canonical alphabet: renaming a banned
+// symbol in the SSOT auto-updates this fixture, no parallel
+// hardcoded list to drift.
+//
+// The exact prose shape is NOT critical — what matters is
+// that the comment contains ALL canonical banner symbols so
+// the comment-detection routing is exercised. Mirrors the
+// godlike/06 first-paragraph shape that Reviewer #1 on
+// PR-DIAGNOSI-FINALE flagged as a self-trip bug.
+func preFixBannedLiteralProseFixture() string {
+	return "// [pre-fix template; self-trip godlike/06] The banned symbols (" +
+		strings.Join(directIndexerBypassClosedSymbols, ", ") +
+		") were deleted in Card 7 (July 2026). DO NOT reintroduce."
+}
+
 // containsAnyString returns true if any haystack contains
 // the needle. Mirrors the helper in percheck_asset_committer_event_ssot_test.go.
 func containsAnyString(haystacks []string, needle string) bool {
