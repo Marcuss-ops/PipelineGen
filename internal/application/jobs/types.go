@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	"go.uber.org/zap"
 )
@@ -82,11 +82,11 @@ type EnqueueRequest struct {
 //	                         scripts/ci-architectural-checks.sh
 //	                         bans the legacy literal shapes.
 type (
-	JobExecutionTools = kerneljob.JobExecutionTools
-	JobTools          = kerneljob.JobExecutionTools // back-compat alias
-	Result            = kerneljob.Result
-	Handler           = kerneljob.Handler
-	HandlerFunc       = kerneljob.Handler // back-compat alias
+	JobExecutionTools = jobs.JobExecutionTools
+	JobTools          = jobs.JobExecutionTools // back-compat alias
+	Result            = jobs.Result
+	Handler           = jobs.Handler
+	HandlerFunc       = jobs.Handler // back-compat alias
 )
 
 // Dispatcher routes jobs to registered handlers by job type (string).
@@ -111,7 +111,7 @@ type Dispatcher struct {
 	// row-create method). The composition root wires the enqueuer
 	// AFTER constructing the *Service — see dispatcher.go for the
 	// late-binding rationale (cycle-break between dispatcher↔service).
-	registry kerneljob.CompiledJobRegistry
+	registry jobs.CompiledJobRegistry
 	enqueuer EnqueuePort
 }
 
@@ -153,7 +153,7 @@ func (d *Dispatcher) AllHandlers() map[string]Handler {
 	return out
 }
 
-func (d *Dispatcher) Dispatch(ctx context.Context, j *kerneljob.Job, tools *JobExecutionTools) (result Result, err error) {
+func (d *Dispatcher) Dispatch(ctx context.Context, j *jobs.Job, tools *JobExecutionTools) (result Result, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic in handler for job type %s: %v", j.Type, r)
@@ -209,7 +209,7 @@ type RunnerConfig struct {
 //	    WithRegistry(jobs.Compose())
 //	r.Start(ctx)
 type Runner struct {
-	repo       kerneljob.Store
+	repo       jobs.Store
 	dispatcher *Dispatcher
 	log        *zap.Logger
 	config     RunnerConfig
@@ -218,7 +218,7 @@ type Runner struct {
 	broker     CompletionPort
 }
 
-func NewRunner(repo kerneljob.Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
+func NewRunner(repo jobs.Store, dispatcher *Dispatcher, log *zap.Logger, config RunnerConfig) *Runner {
 	return &Runner{
 		repo:       repo,
 		dispatcher: dispatcher,

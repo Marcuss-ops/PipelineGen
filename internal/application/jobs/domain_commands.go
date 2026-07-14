@@ -9,20 +9,20 @@ package jobs
 import (
 	"encoding/json"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // WorkerCapabilities is the worker registration payload stored by the
 // authoritative API.
-type WorkerCapabilities = kerneljob.WorkerCapabilities
+type WorkerCapabilities = job.WorkerCapabilities
 
-type RegisterWorkerCommand = kerneljob.RegisterWorkerCommand
-type ClaimCommand = kerneljob.ClaimCommand
-type HeartbeatCommand = kerneljob.HeartbeatCommand
-type RenewCommand = kerneljob.RenewCommand
-type ProgressCommand = kerneljob.ProgressCommand
-type CompleteCommand = kerneljob.CompleteCommand
-type FailCommand = kerneljob.FailCommand
+type RegisterWorkerCommand = job.RegisterWorkerCommand
+type ClaimCommand = job.ClaimCommand
+type HeartbeatCommand = job.HeartbeatCommand
+type RenewCommand = job.RenewCommand
+type ProgressCommand = job.ProgressCommand
+type CompleteCommand = job.CompleteCommand
+type FailCommand = job.FailCommand
 
 // CompleteWithArtifactsCommand carries the result manifest, published
 // artifacts, and outbox events for atomic job finalisation through the

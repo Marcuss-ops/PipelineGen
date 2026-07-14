@@ -44,7 +44,7 @@ package jobs
 import (
 	"fmt"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // MaxJobsPerType is the canonical upper bound on registered handlers per
@@ -143,4 +143,4 @@ func (s *Service) ValidateHandlerCompleteness(reg *Registry) error {
 //
 // (job alias import retained for any future kernel-layer consumers that
 // reference domain types — currently zero in this file.)
-var _ kerneljob.Service = (*Service)(nil)
+var _ job.Service = (*Service)(nil)
