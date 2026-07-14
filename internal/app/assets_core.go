@@ -103,6 +103,15 @@ type SearchDeps struct {
 	ClipIndexerService    *clipindexer.Service
 	SearchFanOut          search.SearchFanOut
 	SearchBackendRegistry *search.BackendRegistry
+
+	// SearchAggregator is the canonical godlike/06 SSOT one-owner-per-fact
+	// *search.Aggregator singleton constructed at composition time by
+	// BuildCanonicalSearchFanOut (internal/app/search_backends.go) and
+	// plumbed through RegistryWiring.searchAgg into this field. The api/
+	// layer NEVER constructs a second instance and WireAssets MUST consume
+	// this canonical (per percheck_search_aggregator_singleton
+	// forward-prevention + PR-DIAGNOSI-FINALE rule 6).
+	SearchAggregator *search.Aggregator
 }
 
 // DeliveryDeps is the Assets-module delivery sub-system bundle.

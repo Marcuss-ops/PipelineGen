@@ -45,7 +45,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
-	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
@@ -133,10 +132,21 @@ func WireAssets(
 
 	searchBackends := deps.Search.SearchBackendRegistry
 	searchFanOut := deps.Search.SearchFanOut
+	// Wave 6 (enforce aggregator singleton, July 2026): the canonical
+	// *search.Aggregator singleton is constructed EXACTLY ONCE at
+	// composition time by BuildCanonicalSearchFanOut inside
+	// registerSearchBackend, plumbed through RegistryWiring.searchAgg
+	// into SearchDeps.SearchAggregator. WireAssets MUST consume
+	// deps.Search.SearchAggregator (NOT re-instantiate via
+	// search.NewAggregator) so percheck_search_aggregator_singleton
+	// stays at exactly 1 production construction site.
+	searchAggregator := deps.Search.SearchAggregator
 	if err := ClassifyDepGet("WireAssets: deps.Search.SearchFanOut is nil (composition root must call BuildCanonicalSearchFanOut before WireAssets)", searchFanOut == nil, DepRequired, log); err != nil {
 		return nil, err
 	}
-	searchAggregator := search.NewAggregator(searchBackends, &zapSearchLogAdapter{log: log})
+	if err := ClassifyDepGet("WireAssets: deps.Search.SearchAggregator is nil (composition root must call BuildCanonicalSearchFanOut before WireAssets)", searchAggregator == nil, DepRequired, log); err != nil {
+		return nil, err
+	}
 	log.Info("WireAssets: consumed pre-built canonical SearchFanOut",
 		zap.Int("backends", len(searchBackends.All())))
 
