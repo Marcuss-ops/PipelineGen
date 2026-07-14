@@ -18,7 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // observabilityStub is a minimal job.Service that records the
@@ -61,7 +62,7 @@ func TestGet_EnrichedResponseShape(t *testing.T) {
 
 	j := &job.Job{
 		ID:            "job-obs-1",
-		Type:          job.TypeScriptGenerate,
+		Type:          scriptpkg.TypeGenerate,
 		Status:        job.StatusRunning,
 		CorrelationID: "corr-abc-123",
 		Progress:      42,
@@ -111,7 +112,7 @@ func TestList_CorrelationIDFilter(t *testing.T) {
 
 	j := &job.Job{
 		ID:            "job-obs-2",
-		Type:          job.TypeScriptGenerate,
+		Type:          scriptpkg.TypeGenerate,
 		Status:        job.StatusQueued,
 		CorrelationID: "corr-filter-xyz",
 	}
