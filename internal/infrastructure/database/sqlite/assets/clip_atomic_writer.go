@@ -218,7 +218,7 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 	committed = true
 
 	// ── 5) BLOCKER #4 closure: terminal conflict → typed error, not silent success.
-	if terr := checkOutboxTerminalAfterCommit(w.log, res.OutboxInserted, clipID, res.OutboxEventKey); terr != nil {
+	if terr := checkOutboxTerminalAfterCommit(w.log, res.OutboxInserted, clipID, res.OutboxEventKey, res.OutboxExistingStatus); terr != nil {
 		return terr
 	}
 

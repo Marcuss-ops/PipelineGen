@@ -71,6 +71,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
@@ -458,22 +459,25 @@ func youTubeE2EDB(t *testing.T) *sql.DB {
 	// pattern across the test suite.)
 	t.Cleanup(func() { db.Close() })
 
-	schemaSQL := `
-	CREATE TABLE IF NOT EXISTS media_assets (
-		id TEXT PRIMARY KEY,
-		source TEXT, name TEXT, filename TEXT, media_type TEXT,
-		drive_file_id TEXT, drive_link TEXT, download_link TEXT,
-		local_path TEXT, file_hash TEXT,
-		folder_id TEXT, folder_path TEXT,
-		search_text TEXT NOT NULL DEFAULT '',
-		source_version TEXT NOT NULL DEFAULT '',
-		lifecycle_state TEXT NOT NULL DEFAULT 'ACTIVE',
-		metadata_json TEXT NOT NULL DEFAULT '{}',
-		index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
-		index_state_updated_at TEXT NOT NULL DEFAULT '',
-		created_at TEXT, updated_at TEXT
-	);`
+	schemaSQL := storage.CanonicalMediaAssetsSchema
 	schemaSQL += `
+CREATE TABLE IF NOT EXISTS asset_locations (
+    id TEXT PRIMARY KEY,
+    asset_id TEXT NOT NULL,
+    location_kind TEXT NOT NULL,
+    uri TEXT NOT NULL DEFAULT '',
+    external_id TEXT NOT NULL DEFAULT '',
+    web_view_link TEXT NOT NULL DEFAULT '',
+    download_url TEXT NOT NULL DEFAULT '',
+    mime_type TEXT NOT NULL DEFAULT '',
+    file_size_bytes INTEGER NOT NULL DEFAULT 0,
+    file_hash TEXT NOT NULL DEFAULT '',
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(asset_id, location_kind)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_locations_asset ON asset_locations(asset_id);
 CREATE TABLE IF NOT EXISTS outbox_events (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	event_type TEXT NOT NULL,

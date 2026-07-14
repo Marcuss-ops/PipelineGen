@@ -103,7 +103,7 @@ func (w *ClipAtomicWriterAdapter) CommitClipTextAndIndexEvent(
 	committed = true
 
 	// ── 8) BLOCKER #4 closure: terminal conflict → typed error.
-	if terr := checkOutboxTerminalAfterCommit(w.log, res.OutboxInserted, cmd.Clip.ID, res.OutboxEventKey); terr != nil {
+	if terr := checkOutboxTerminalAfterCommit(w.log, res.OutboxInserted, cmd.Clip.ID, res.OutboxEventKey, res.OutboxExistingStatus); terr != nil {
 		return terr
 	}
 

@@ -300,7 +300,7 @@ func buildVoiceoverCommitRequest(cmd *FinalizeCommand, textPreview string) asset
 		Description:    textPreview,
 		SearchText:     textPreview,
 		LifecycleState: "PUBLISHED",
-		IndexState:     "INDEXING_PENDING",
+		IndexState:     "DISCOVERED",
 		LocalPath:      cmd.LocalPath,
 		FolderID:       cmd.FolderID,
 		FolderPath:     cmd.FolderPath,

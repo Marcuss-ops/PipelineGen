@@ -164,7 +164,7 @@ func (a *artlistPublishTxAdapter) CommitArtlistPublishTx(ctx context.Context, cm
 		MediaType:      "video",
 		ContentHash:    cmd.FileHash,
 		LifecycleState: "PUBLISHED",
-		IndexState:     "INDEXING_PENDING",
+		IndexState:     "DISCOVERED",
 		AssetVersion:   cmd.AssetVersion,
 		AssetLocation:  cmd.AssetLocation,
 		Rendition:      cmd.Rendition,

@@ -74,21 +74,25 @@ func checkOutboxTerminalAfterCommit(
 	inserted bool,
 	clipID string,
 	eventKey string,
+	existingStatus string,
 ) error {
 	if inserted {
 		return nil
 	}
-	// The event was not inserted. We need to know whether the
-	// existing row is terminal. Because the post-commit check runs
-	// outside the transaction, we conservatively surface the typed
-	// sentinel for any non-inserted event. Callers that need the
-	// exact existing status can query the outbox table.
-	err := fmt.Errorf("%w: clip %q event_key=%q suppressed by existing terminal row",
-		youtubeports.ErrOutboxTerminalConflict, clipID, eventKey)
+	// The event was not inserted. Only surface the BLOCKER #4
+	// typed sentinel when the existing row is in a terminal state
+	// (dead_letter or superseded). Pending / processing collisions
+	// are benign — the same event is already scheduled.
+	if !isTerminalOutboxStatus(existingStatus) {
+		return nil
+	}
+	err := fmt.Errorf("%w: clip %q event_key=%q suppressed by existing terminal row (status=%q)",
+		youtubeports.ErrOutboxTerminalConflict, clipID, eventKey, existingStatus)
 	if log != nil {
 		log.Warn("ClipAtomicWriterAdapter: returning ErrOutboxTerminalConflict (BLOCKER #4 closure)",
 			zap.String("clip_id", clipID),
 			zap.String("event_key", eventKey),
+			zap.String("existing_status", existingStatus),
 			zap.Error(err))
 	}
 	return err

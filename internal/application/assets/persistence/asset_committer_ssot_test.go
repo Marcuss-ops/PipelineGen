@@ -109,7 +109,7 @@ func TestCommitAsset_OnlyCanonicalProducerOfAllFourWrites(t *testing.T) {
 		Description:    "SSOT canonical test asset",
 		SearchText:     "ssot canonical test",
 		LifecycleState: "PUBLISHED",
-		IndexState:     "INDEXING_PENDING",
+		IndexState:     "DISCOVERED",
 		FolderID:       "folder-ssot-001",
 		FolderPath:     "/tmp/ssot",
 		Title:          "SSOT Asset",

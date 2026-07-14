@@ -232,7 +232,19 @@ CREATE TABLE IF NOT EXISTS media_assets (
     allowed_channels   TEXT    NOT NULL DEFAULT '[]',
     allowed_regions    TEXT    NOT NULL DEFAULT '[]',
     expires_at         TEXT    NOT NULL DEFAULT '',
-    review_status      TEXT    NOT NULL DEFAULT 'none'
+    review_status      TEXT    NOT NULL DEFAULT 'none',
+    -- Migration 105 (July 2026) — asset_version is the canonical
+    -- per-asset version string written by the clip atomic writer
+    -- and artlist atomic writer. It is distinct from the
+    -- asset_versions table (sequential version history) and is
+    -- required by asset_committer UPSERT projections.
+    asset_version      TEXT    NOT NULL DEFAULT '',
+    -- asset_location and rendition are canonical per-asset
+    -- metadata fields consumed by the asset committer and the
+    -- artlist/clip atomic writers. They mirror the columns used
+    -- in internal/infrastructure/database/sqlite/assets/*.go.
+    asset_location     TEXT    NOT NULL DEFAULT '',
+    rendition          TEXT    NOT NULL DEFAULT ''
 );`
 
 // CanonicalAssetArtifactsTable is the single source of truth for the
@@ -356,6 +368,16 @@ CREATE TABLE IF NOT EXISTS asset_text_tracks (
     source_version      TEXT NOT NULL DEFAULT '',
     translation_key     TEXT NOT NULL DEFAULT '',
     is_current          INTEGER NOT NULL DEFAULT 1,
+
+    -- Migration 156 (July 2026) — PR-CATALOG-MULTILINGUA step 2:
+    -- source_track_id is the FK back to this same table for
+    -- audit-trail links from translations to their source-language
+    -- track. source_text_hash is the persisted SHA-256 of the
+    -- source text used for translation-key computation. Both
+    -- match migrations/sqlite/156_text_track_spec_columns.sql.
+    source_track_id     INTEGER
+                        REFERENCES asset_text_tracks(id) ON DELETE SET NULL,
+    source_text_hash  TEXT NOT NULL DEFAULT '',
 
     confidence          REAL,
     status              TEXT NOT NULL DEFAULT 'READY'

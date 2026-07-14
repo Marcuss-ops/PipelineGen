@@ -37,11 +37,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/translation"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	clipwriter "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
 	outboxevents "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+
 	youtubeusecase "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 )
 
@@ -65,28 +67,9 @@ func newTextTrackFixture(t *testing.T, collection string) *textTrackFixture {
 	t.Helper()
 	fx := newE2EFixture(t, collection)
 
-	// Add asset_text_tracks table (migration 137 DDL).
-	_, err := fx.DB.Exec(`
-CREATE TABLE IF NOT EXISTS asset_text_tracks (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    asset_id            TEXT NOT NULL,
-    language_code       TEXT NOT NULL,
-    text_kind           TEXT NOT NULL,
-    text_content        TEXT NOT NULL DEFAULT '',
-    source_type         TEXT NOT NULL DEFAULT 'provided',
-    source_language_code TEXT NOT NULL DEFAULT '',
-    is_original         INTEGER NOT NULL DEFAULT 0,
-    provider            TEXT NOT NULL DEFAULT '',
-    model_name          TEXT NOT NULL DEFAULT '',
-    model_version       TEXT NOT NULL DEFAULT '',
-    text_hash           TEXT NOT NULL DEFAULT '',
-    source_version      TEXT NOT NULL DEFAULT '',
-    confidence          REAL,
-    status              TEXT NOT NULL DEFAULT 'READY',
-    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(asset_id, language_code, text_kind)
-)`)
+	// Add asset_text_tracks table using the canonical schema constant
+	// so the fixture stays in lockstep with production migrations.
+	_, err := fx.DB.Exec(storage.CanonicalAssetTextTracksTable)
 	require.NoError(t, err, "CREATE TABLE asset_text_tracks must succeed")
 
 	// Add asset_text_track_segments table (migration 14X DDL).
@@ -109,6 +92,7 @@ CREATE TABLE IF NOT EXISTS asset_text_track_segments (
     start_ms INTEGER NOT NULL,
     end_ms INTEGER NOT NULL,
     text TEXT NOT NULL,
+    text_hash TEXT NOT NULL DEFAULT '',
     FOREIGN KEY(track_id) REFERENCES asset_text_tracks(id) ON DELETE CASCADE
 )`)
 	require.NoError(t, err, "CREATE TABLE asset_text_track_segments must succeed")

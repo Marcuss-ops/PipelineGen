@@ -72,7 +72,7 @@ func TestIndexState_INDEXED_OnlyViaOutboxConsumer(t *testing.T) {
 	// godlike/06 SSOT: INDEXED is exclusively outbox-consumer-
 	// driven. Without running the IndexingHandler, the state
 	// must remain in the canonical projection-time hint
-	// 'INDEXING_PENDING' (set by the finalizer's spine write).
+	// 'DISCOVERED' (set by the finalizer's spine write).
 	var indexState string
 	err = db.QueryRowContext(ctx,
 		`SELECT index_state FROM media_assets WHERE id = ?`,
@@ -85,8 +85,8 @@ func TestIndexState_INDEXED_OnlyViaOutboxConsumer(t *testing.T) {
 		t.Fatalf("media_assets.index_state = %q after CommitAsset WITHOUT outbox consumption; want != INDEXED (godlike/06 SSOT: INDEXED is exclusively outbox-consumer-driven via setIndexedAt)",
 			indexState)
 	}
-	if indexState != "INDEXING_PENDING" {
-		t.Errorf("media_assets.index_state = %q after CommitAsset; want INDEXING_PENDING (canonical projection-time hint)",
+	if indexState != "DISCOVERED" {
+		t.Errorf("media_assets.index_state = %q after CommitAsset; want DISCOVERED (canonical initial state)",
 			indexState)
 	}
 
