@@ -81,13 +81,11 @@ type GenerationFingerprintInput struct {
 	// remains EXCLUDED — see cache_key.go for the rationale.
 	Segments []ScriptSegment `json:"segments"`
 
-	// PRE-EXISTING-7/8 (FASE 13, July 2026): Topic + SegmentTopics
-	// joined the canonical fingerprint input. Tests #2 + #4 fail
-	// under the legacy exclusion (Topic and SegmentTopics were
-	// excluded from hash inputs). Adding both closes the closure
-	// path documented in PRE-EXISTING-7/8 follow_up bullets.
-	Topic         string   `json:"topic"`
-	SegmentTopics []string `json:"segment_topics"`
+	// PRE-EXISTING-7/8 (FASE 13, July 2026): Topic joined the
+	// canonical fingerprint input. SegmentTopics remains EXCLUDED
+	// because it is a segment-sizing/planner dimension, not part
+	// of the canonical text-identity fingerprint (see cache_key.go).
+	Topic string `json:"topic"`
 }
 
 // BuildFingerprint returns the canonical 64-bit hex fingerprint for
@@ -182,15 +180,12 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 		input.Segments = append([]ScriptSegment(nil), plan.Segments...)
 	}
 
-	// PRE-EXISTING-7/8 (FASE 13): map Topic + SegmentTopics into
-	// the canonical fingerprint. Mutations on either field MUST
-	// change the cache key (test #4 invariant) and two plans with
-	// different Topics MUST produce distinct keys (test #2 invariant).
+	// PRE-EXISTING-7/8 (FASE 13): map Topic into the canonical
+	// fingerprint. Mutations on Topic MUST change the cache key
+	// (test invariant) and two plans with different Topics MUST
+	// produce distinct keys.
 	if plan.Topic != "" {
 		input.Topic = plan.Topic
-	}
-	if len(plan.SegmentTopics) > 0 {
-		input.SegmentTopics = append([]string(nil), plan.SegmentTopics...)
 	}
 
 	return input
@@ -318,10 +313,6 @@ func cloneFingerprintInput(input GenerationFingerprintInput) GenerationFingerpri
 	// (or future similar transforms) would mutate the caller's slice.
 	if input.Segments != nil {
 		input.Segments = append([]ScriptSegment(nil), input.Segments...)
-	}
-	// PRE-EXISTING-7/8 (FASE 13): defensive deep-copy of SegmentTopics.
-	if input.SegmentTopics != nil {
-		input.SegmentTopics = append([]string(nil), input.SegmentTopics...)
 	}
 	return input
 }
