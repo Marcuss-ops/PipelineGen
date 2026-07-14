@@ -50,7 +50,7 @@ import (
 	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainremote "github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
 	"github.com/Marcuss-ops/PipelineGen/pkg/retry"
 	"go.uber.org/zap"
