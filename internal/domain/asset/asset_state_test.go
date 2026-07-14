@@ -36,10 +36,26 @@
 package asset
 
 import (
+	_ "embed"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+// assetStateSource embeds the canonical AssetState source
+// file at compile time. Used by
+// TestAssetState_FileConstDeclarations to pin the
+// canonical-14 count invariant at the SOURCE-FILE surface.
+//
+// godlike/06 SSOT: this file is the SOLE canonical owner of
+// the AssetState alphabet (mirrors asset_state.go's
+// package-level godoc). Embedding the file's bytes from
+// the test package keeps the test hermetic — no runtime
+// filesystem traversal required.
+//
+//go:embed asset_state.go
+var assetStateSource string
 
 // allAssetStates is the canonical, deterministic enumeration
 // used to drive the full (from, to) Cartesian. Mirrors
@@ -481,4 +497,74 @@ func TestAssetState_PreTerminalStatesLength(t *testing.T) {
 		"canonicalPreTerminalStates must hold exactly 11 entries (the 11 happy-path states); update if you add/remove a happy-path state")
 	assert.Equal(t, nonTerminalAssetStates, canonicalPreTerminalStates,
 		"canonicalPreTerminalStates must mirror the test's nonTerminalAssetStates slice (godlike/06 SSOT — same shape across production+test)")
+}
+
+// assetStateConstDeclRe mirrors the percheck scanner's
+// inventory regex verbatim so the file-surface alignment test
+// stays in lockstep with the gate that runs in CI.
+//
+// Format constraint: the canonical file's `const (…)` block
+// is gofmt-formatted (tab-indented), so the `\t` anchor is
+// guaranteed. If a future refactor changes the indentation
+// (e.g., column-0 declarations), BOTH this regex AND the
+// percheck scanner's regex must be updated together — the
+// two are a single lockstep surface across packages.
+var assetStateConstDeclRe = regexp.MustCompile(`(?m)^\tStateAsset\w+\s+AssetState\s+=\s+"[^"]+"$`)
+
+// TestAssetState_FileConstDeclarations pins the canonical-14
+// count invariant at the SOURCE-FILE surface (PR-CATALOG-
+// MULTILINGUA step 7+, July 2026).
+//
+// godlike/06 SSOT alignment: the canonical-14 count lives at
+// THREE interrelated surfaces, and this test pins the FIRST:
+//
+//	(1) AssetState alphabet in the canonical file SOURCE —
+//	    via this test's regex on `assetStateSource` (the
+//	    //go:embed-d bytes of asset_state.go).
+//	(2) CanonicalAssetStateValues() RUNTIME slice — via
+//	    TestAssetState_CanonicalValuesExhaustive.
+//	(3) percheck_asset_state_canonical_14 archcheck (CI) —
+//	    via cmd/archcheck/scan's production-canary test.
+//
+// If a future agent introduces drift in any one surface but
+// not the others (e.g., renames a const WITHOUT updating the
+// helper method; OR adds a 15th state WITHOUT bumping the
+// scanner pin), one of the three lockstep surfaces will fail
+// in CI.
+//
+// The regex uses ?m (multi-line) anchored on tab, matching
+// the scanner's regex verbatim. If a future refactor changes
+// the indentation shape (e.g., column-0 declarations), this
+// regex AND the percheck scanner's regex must be updated
+// together — failure modes documented in the regex godoc.
+func TestAssetState_FileConstDeclarations(t *testing.T) {
+	matches := assetStateConstDeclRe.FindAllString(assetStateSource, -1)
+	if got := len(matches); got != 14 {
+		// Extract the StateAssetX identifier from each match
+		// so the failure diagnostic surfaces the actual
+		// spelled-out IDs the file declares.
+		var names []string
+		for _, m := range matches {
+			fields := regexp.MustCompile(`\s+`).Split(m, 3)
+			if len(fields) > 0 {
+				names = append(names, fields[0])
+			}
+		}
+		t.Fatalf("asset_state.go source declares %d StateAssetX consts; want 14 (canonical-14 invariant). Matched IDs: %v. If you added/removed a state, update the canonical file + CanonicalAssetStateValues() + the matrix test + percheck_asset_state_canonical_14 in lockstep (godlike/06 SSOT).",
+			got, names)
+	}
+	// Lockstep cross-check (matrix-table surface alignment):
+	// the file-declared count MUST equal
+	// CanonicalAssetStateValues(). A disagreement means the
+	// runtime helper is out of sync with the file (e.g., a
+	// future agent renamed a const in the file but forgot
+	// to update the helper's slice literal). The per-check
+	// pin is therefore redundant — if the helper is out of
+	// sync with the file, the file-declared count vs
+	// helper-returned count diff will surface here.
+	canonical := CanonicalAssetStateValues()
+	if fileLen := len(matches); fileLen != len(canonical) {
+		t.Fatalf("file-declared count (%d) != CanonicalAssetStateValues() count (%d); the canonical file's source alphabet and the runtime helper's slice are out of lockstep (godlike/06 SSOT regression).",
+			fileLen, len(canonical))
+	}
 }

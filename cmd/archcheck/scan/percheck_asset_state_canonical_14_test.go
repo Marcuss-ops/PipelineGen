@@ -20,6 +20,7 @@ package scan
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
@@ -177,6 +178,70 @@ func TestScanAssetStateCanonical14_CanonicalFileMissing(t *testing.T) {
 	}
 	if found != 1 {
 		t.Errorf("expected exactly 1 violation when canonical file is missing; got %d", found)
+	}
+}
+
+// projectRootFromTestFile resolves the project root from the
+// location of the test file (cmd/archcheck/scan/<file>.go).
+// Uses runtime.Caller so the path is robust against future
+// file moves within the same package. Mirrors the convention
+// in the percheck_image_asset_invariants_test sibling.
+func projectRootFromTestFile(t *testing.T) string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller(0) failed; cannot resolve project root")
+	}
+	thisDir := filepath.Dir(thisFile)
+	// thisDir = <repo>/cmd/archcheck/scan; go up 3 to reach repo root.
+	return filepath.Clean(filepath.Join(thisDir, "..", "..", ".."))
+}
+
+// TestScanAssetStateCanonical14_ProductionCanonicalFile is the
+// END-TO-END SANITY RUN for the canonical-14 gate (PR-CATALOG-
+// MULTILINGUA step 7+, July 2026). Opens the REAL production
+// canonical file at internal/domain/asset/asset_state.go (NOT
+// a synthetic fixture) and asserts the scanner returns ZERO
+// violations + at least one residue WARN (the descriptive
+// GodLike-07 comment-only StateAsset references inside the
+// file).
+//
+// godlike/06 SSOT discipline: this is the only test in the
+// family that exercises the scanner against the production
+// canonical surface. If a future agent introduces drift
+// (renamed const, removed const, reformatted ValueSpec that
+// breaks the regex, etc.), this test exposes the failure at
+// `go test ./cmd/archcheck/scan/...` time BEFORE the
+// application binary ever runs.
+//
+// The test does NOT pre-compute "expected count" — it accepts
+// whatever the SCANNER itself returns. The lockstep invariant
+// lives in three test files in two packages; this one is the
+// one that reads the production source.
+func TestScanAssetStateCanonical14_ProductionCanonicalFile(t *testing.T) {
+	repoRoot := projectRootFromTestFile(t)
+	canonical := filepath.Join(repoRoot, assetStateCanonical14Path)
+	if _, err := os.Stat(canonical); err != nil {
+		t.Fatalf("production canonical file missing at %s: %v (cannot run end-to-end sanity)", assetStateCanonical14Path, err)
+	}
+	r := &report.Report{
+		Summary: report.Summary{ByReason: map[string]int{}, BySeverity: map[string]int{}},
+	}
+	ScanAssetStateCanonical14(repoRoot, &policy.Policy{}, r)
+	for _, v := range r.Violations {
+		if v.Rule == assetStateCanonical14Rule {
+			t.Errorf("production canonical %s tripped the canonical-14 gate: rule=%s matched=%s note=%s",
+				assetStateCanonical14Path, v.Rule, v.MatchedRule, v.Note)
+		}
+	}
+	// The production canonical file contains comment-only
+	// StateAsset references (godlike/06 godoc + per-const
+	// doc paragraphs) that the scanner residue-accounts as
+	// WARN. At least 1 WARN confirms the residue pathway is
+	// alive in CI.
+	if len(r.Warnings) < 1 {
+		t.Errorf("production canonical %s emitted zero residue warnings; the comment-only residue-accounting pathway may be dead (regression: godlike/07 NO-FAKE-AVAILABILITY drift)",
+			assetStateCanonical14Path)
 	}
 }
 
