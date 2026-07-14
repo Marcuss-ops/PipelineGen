@@ -31,8 +31,8 @@ import (
 // Sequence under test:
 //  1. TryReserve(key, "v1") → won=true, attempt=1.
 //  2. MarkRejected(id, "connection refused", retryable=true) →
-//     state='rejected_retryable', next_retry_at = now + backoff(1)=30s,
-//     attempt_count=1.
+//     state='rejected_retryable', next_retry_at = now + backoff(2)=60s,
+//     attempt_count=2 (TryReserve seeds 1; MarkRejected increments).
 //  3. TryReserve(key, "v1") → won=false (retry not yet due; current
 //     time < next_retry_at). Caller classifies already_scheduled.
 //  4. SQL-level check: state='rejected_retryable', next_retry_at
@@ -108,8 +108,8 @@ func TestYoutubeDiscoveries_RetryRoundTrip_TransientRejectionReclaimable(t *test
 	if gotNextRetryAt == "" {
 		t.Error("step 4 next_retry_at should be non-empty on retryable rejection")
 	}
-	if gotAttemptCount != 1 {
-		t.Errorf("step 4 attempt_count = %d, want 1 (DB starts at 0; first retryable MarkRejected bumps to 1)", gotAttemptCount)
+	if gotAttemptCount != 2 {
+		t.Errorf("step 4 attempt_count = %d, want 2 (TryReserve seeds 1; first retryable MarkRejected bumps to 2)", gotAttemptCount)
 	}
 	if gotLastError != rejection {
 		t.Errorf("step 4 last_error = %q, want %q", gotLastError, rejection)
@@ -119,15 +119,15 @@ func TestYoutubeDiscoveries_RetryRoundTrip_TransientRejectionReclaimable(t *test
 	}
 
 	// Verify next_retry_at is parseable and falls within the expected
-	// 50s..80s window (backoff(2)=60s, allow ±15-20s slack).
+	// 40s..80s window (backoff(2)=60s, allow ±20s slack).
 	retryAt, parseErr := time.Parse(time.RFC3339, gotNextRetryAt)
 	if parseErr != nil {
 		t.Fatalf("step 4 next_retry_at not RFC3339: %v (got %q)", parseErr, gotNextRetryAt)
 	}
 	delta := time.Until(retryAt)
-	// backoff(newAttempt=1) = 30s; allow ±20s slack
-	if delta < 10*time.Second || delta > 50*time.Second {
-		t.Errorf("step 4 next_retry_at delta = %v, want in [10s, 50s] (backoff(1)=30s)", delta)
+	// backoff(newAttempt=2) = 60s; allow ±20s slack
+	if delta < 40*time.Second || delta > 80*time.Second {
+		t.Errorf("step 4 next_retry_at delta = %v, want in [40s, 80s] (backoff(2)=60s)", delta)
 	}
 
 	// Step 5: simulate a second retry-reclaim by directly bumping
@@ -150,8 +150,8 @@ func TestYoutubeDiscoveries_RetryRoundTrip_TransientRejectionReclaimable(t *test
 	if err := db.QueryRowContext(ctx, `SELECT attempt_count FROM youtube_discoveries WHERE id = ?`, id).Scan(&gotAttemptCount); err != nil {
 		t.Fatalf("step 5 attempt_count SELECT: %v", err)
 	}
-	if gotAttemptCount != 2 {
-		t.Errorf("step 5 attempt_count = %d, want 2 (1 + 1 via direct SQL bump)", gotAttemptCount)
+	if gotAttemptCount != 3 {
+		t.Errorf("step 5 attempt_count = %d, want 3 (2 + 1 via direct SQL bump)", gotAttemptCount)
 	}
 
 	// Step 6: MarkRejected(retryable=false) → state='rejected_terminal'.
@@ -359,8 +359,8 @@ func TestMarkRejected_RetryableFlagLock(t *testing.T) {
 	if retryA == "" {
 		t.Error("retryable=true MUST pin next_retry_at, got empty")
 	}
-	if attemptA != 1 {
-		t.Errorf("retryable=true MUST increment attempt_count to 1, got %d", attemptA)
+	if attemptA != 2 {
+		t.Errorf("retryable=true MUST increment attempt_count to 2 (TryReserve seeds 1), got %d", attemptA)
 	}
 
 	// retryable=false on row B.
@@ -379,8 +379,8 @@ func TestMarkRejected_RetryableFlagLock(t *testing.T) {
 	if retryB.Valid {
 		t.Errorf("retryable=false MUST NOT pin next_retry_at, got %q", retryB.String)
 	}
-	if attemptB != 0 {
-		t.Errorf("retryable=false MUST NOT increment attempt_count, got %d", attemptB)
+	if attemptB != 1 {
+		t.Errorf("retryable=false MUST NOT increment attempt_count beyond TryReserve seed, got %d", attemptB)
 	}
 
 	// Verify next_retry_at is NULL (not set) for terminal rejections.
@@ -391,8 +391,8 @@ func TestMarkRejected_RetryableFlagLock(t *testing.T) {
 
 // TestMarkRejected_TerminalAfterRetryable_StaysTerminal pins the
 // "attempt_count" monotonicity: a row that went
-// pending → rejected_retryable (attempt=1) → rejected_terminal must
-// KEEP attempt_count=1 in the terminal state (terminal is final; no
+// pending → rejected_retryable (attempt=2) → rejected_terminal must
+// KEEP attempt_count=2 in the terminal state (terminal is final; no
 // further attempts).
 func TestMarkRejected_TerminalAfterRetryable_StaysTerminal(t *testing.T) {
 	repo, db, cleanup := newInMemoryLedger(t)
@@ -421,8 +421,8 @@ func TestMarkRejected_TerminalAfterRetryable_StaysTerminal(t *testing.T) {
 	if state != "rejected_terminal" {
 		t.Errorf("state = %q, want rejected_terminal", state)
 	}
-	if attempt != 1 {
-		t.Errorf("attempt_count = %d, want 1 (DB starts at 0; first retryable MarkRejected bumps to 1)", attempt)
+	if attempt != 2 {
+		t.Errorf("attempt_count = %d, want 2 (TryReserve seeds 1; first retryable MarkRejected bumps to 2)", attempt)
 	}
 	// next_retry_at is preserved from the prior retryable step but
 	// is meaningless for terminal rows (state='rejected_terminal' is
