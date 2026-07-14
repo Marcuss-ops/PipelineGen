@@ -20,7 +20,7 @@
 // fence: any production-code reference to one of the 7
 // deleted symbols trips the build as SeverityError.
 //
-// scanner policy (mirrors percheck_voiceover_alias_ban + 
+// scanner policy (mirrors percheck_voiceover_alias_ban +
 // percheck_asset_committer_event_ssot precedent):
 //   - skip standard excluded dirs (.git, vendor,
 //     node_modules, node-scraper, examples, archivist,
@@ -34,11 +34,11 @@
 //     verification).
 //   - two RESIDUE files document the closure and are
 //     exempt-as-WARN (NOT as violation):
-//       * internal/infrastructure/database/sqlite/outbox/dispatcher.go
-//         (header comment: "(DirectIndexer) was removed in
-//         Card 7 (July 2026)")
-//       * cmd/admin/reconcile_qdrant_adapters.go
-//         (docstring references the historical context)
+//   - internal/infrastructure/database/sqlite/outbox/dispatcher.go
+//     (header comment: "(DirectIndexer) was removed in
+//     Card 7 (July 2026)")
+//   - cmd/admin/reconcile_qdrant_adapters.go
+//     (docstring references the historical context)
 //     These are residue-accounted per godlike/07 discipline;
 //     the per-check operator-facing "zero production-code hits"
 //     claim remains auditable via len(r.Violations) == 0.
@@ -138,7 +138,7 @@ var directIndexerBypassClosedSkipPathPrefixes = []string{
 // per godlike/07.
 var directIndexerBypassClosedResidueFiles = map[string]bool{
 	"internal/infrastructure/database/sqlite/outbox/dispatcher.go": true,
-	"cmd/admin/reconcile_qdrant_adapters.go":                      true,
+	"cmd/admin/reconcile_qdrant_adapters.go":                       true,
 }
 
 // directIndexerBypassClosedWarn is the WARN-bucket emitter
