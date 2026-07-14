@@ -35,6 +35,13 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 	if dst.StageDurations == nil {
 		dst.StageDurations = make(map[string]int64)
 	}
+	// Concurrency safety: ProcessInput.SpecScene.Scenes may share
+	// its backing array with the engine result (or with another
+	// concurrent pipeline). Clone once before any in-place mutation
+	// so postprocessors can write-back bindings without racing.
+	if currentInput != nil {
+		currentInput.SpecScene.Scenes = cloneSpecSceneSlice(currentInput.SpecScene.Scenes)
+	}
 	if src.Entities != nil {
 		dst.Entities = src.Entities
 		// PR-PROCESS-INPUT-ENTITIES-METADATA (July 2026):
@@ -234,4 +241,16 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 			currentInput.SpecScene = src.TranslatedSpecScene
 		}
 	}
+}
+
+// cloneSpecSceneSlice returns a shallow copy of the scene slice.
+// Bindings is a value struct, so copying the slice element is enough
+// to isolate in-place binding mutations from the original backing array.
+func cloneSpecSceneSlice(scenes []scriptpkg.SpecScene) []scriptpkg.SpecScene {
+	if scenes == nil {
+		return nil
+	}
+	out := make([]scriptpkg.SpecScene, len(scenes))
+	copy(out, scenes)
+	return out
 }
