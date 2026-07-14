@@ -454,7 +454,7 @@ func TestPublisher_FolderManagerError(t *testing.T) {
 	require.Contains(t, err.Error(), "resolve drive path")
 }
 
-// ── P0 #3 tests (June 2026) — fail-fast NewPublisher nil-dep sentinels ───────
+// ── Fail-fast NewPublisher nil-dep sentinels ───────
 
 // TestNewPublisher_NilRegistry pins the composition-time fail-fast
 // sentinel for a nil DestinationRegistry. Without this barrier, a
@@ -502,13 +502,10 @@ func TestNewPublisher_NilFiles(t *testing.T) {
 	require.Nil(t, pub)
 }
 
-// ── P1.1 tests (July 2026) — ConflictPolicy plumbing ──────────────────
+// ── ConflictPolicy plumbing ──────────────────
 //
-// P1.1 replaces the legacy zero = ConflictOverwrite silent fallback:
-// the publisher now consults DestinationRegistry's per-destination
-// ConflictPolicy default when req.ConflictPolicy == 0 (the "caller
-// didn't pick" signal). Explicit req.ConflictPolicy values
-// (Skip / Overwrite / Rename) are honoured verbatim.
+// P1.1: zero req.ConflictPolicy resolves from the registry's per-destination
+// default; explicit values are honoured verbatim.
 
 // TestPublisher_Publish_RegistryDrivesZero_P1_1 pins the P1.1 contract:
 // when req.ConflictPolicy == 0, the publisher reads the registry's
@@ -751,15 +748,10 @@ func TestPublisher_PublishForwardsConflictPolicy_Rename(t *testing.T) {
 	require.Equal(t, delivery.ConflictRename, files.uploadCalls[0].policy)
 }
 
-// ── P0 #9 tests (June 2026) — PublishResult enrichment ─────────────
+// ── PublishResult enrichment ─────────────
 //
-// Pre-P0-#9 the publisher dropped DownloadLink / MD5Checksum / Action
-// from the underlying PutFileResult, forcing every consumer to
-// reconstruct the download URL via string interpolation. The test
-// below pins the contract: PublishResult carries all four metadata
-// fields verbatim from PutFileResult and the resolved PathSegments,
-// so no consumer can fall back to reconstruction without first
-// deleting this test or breaking it.
+// PublishResult must carry DownloadLink, MD5Checksum, FolderPath and Action
+// verbatim from PutFileResult so consumers never reconstruct URLs by hand.
 
 // TestPublisher_PublishEnrichesPublishResult_F1_5_P0_9 pins the P0
 // #9 surface: PublishResult must expose DownloadLink, MD5Checksum,
@@ -962,25 +954,14 @@ func TestPublisher_Publish_P0_1_ConflictRename_ExistingMatch(t *testing.T) {
 		"PublishActionCreated must NOT be assumed for a renamed conflict; the no-reconstruction contract requires the actual rename action class")
 }
 
-// ── PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE tests (July 2026) ──────────
+// ── PathBuilder incomplete-override sentinel tests ──────────
 //
-// PR-VO-ERR-PATHBUILDER-INCOMPLETE-OVERRIDE replaces the original log.Warn +
-// silent-swallow in Publisher.resolveDestination Step 4 fall-through with a
-// typed sentinel that callers can errors.Is. The sentinel is the canonical
-// diagnostic for "PathBuilder failed + the caller supplied RootFolderOverride,
-// so we fell back to direct-to-root upload" — useful for ops dashboards,
-// smoke alerts, and aggressive-mode callers that want to fail-closed at the
-// fallback (forward-pointer PR-VO-AGGREGATE-SUBPATH-CASCADE).
+// ErrPathBuilderIncompleteForOverride is the canonical diagnostic for
+// "PathBuilder failed + the caller supplied RootFolderOverride".
 //
-// godlike/07 typed-error contract: the sentinel is a top-level
-// `var X = errors.New(...)` declared in errors.go for clean errors.Is probes.
-// The wrap in resolveDestination uses dual-%w fmt.Errorf (Go 1.20+) to
-// preserve BOTH the typed sentinel (errors.Is) AND the underlying
-// PathBuilder cause (errors.As) — unlike the pre-PR fmt.Errorf "%%v+%%w"
-// which stringified the cause and lost typed recovery. errors.Join is
-// equally valid for typed-chain preservation but introduces newline-
-// separated stderr noise that breaks single-line log aggregators; the
-// dual-%w fmt.Errorf idiom is the canonical wrap for this surface.
+// godlike/07 typed-error contract: the sentinel is a top-level var in errors.go.
+// The wrap in resolveDestination uses dual-%w fmt.Errorf to preserve both the
+// typed sentinel (errors.Is) and the underlying PathBuilder cause (errors.As).
 
 // TestErrPathBuilderIncompleteForOverride_Sentinel pins the typed error
 // declaration + dual-%w fmt.Errorf wrap contract.
@@ -1186,20 +1167,12 @@ func TestResolveDestination_PathBuilderFailOverride_UsesOverrideRoot(t *testing.
 		"Publish MUST use the override root from the resolved struct (dual-return shape contract)")
 }
 
-// ── PR-VO-SUBFOLDER tests (July 2026, commit c96eb1e0) ───────────────────
+// ── RootFolderOverride subpath tests ───────────────────
 //
-// PR-VO-SUBFOLDER fixes the invariant that callers with an explicit
-// RootFolderOverride still benefit from the canonical PathBuilder
-// structure (e.g. voiceover: voiceovers/{project}/{language}). The
-// three tests below pin the three PathBuilder branches of resolveDestination:
-//
+// Pin the three resolveDestination branches:
 //   1. PathBuilder succeeds + override set → subpath built under override.
-//   2. PathBuilder fails + override set    → direct-to-root fallback (warn).
+//   2. PathBuilder fails + override set    → direct-to-root fallback.
 //   3. PathBuilder fails + no override     → error propagates to caller.
-//
-// They lock the contract that future refactors of PathBuilder or the
-// registry-driven Resolve cannot silently break the PR-VO-SUBFOLDER
-// contract — any drift surfaces here first.
 
 // TestResolveDestination_VoiceoverWithRootFolderOverride_BuildsSubpath
 // pins the canonical voiceover subpath structure under an explicit
@@ -1370,17 +1343,10 @@ func TestResolveDestination_PathBuilderFailsNoOverride_ReturnsError(t *testing.T
 		"Error must include the publisher's 'delivery: build path for %q: %w' prefix so the canonical seam is grep-able in logs")
 }
 
-// ── FASE D: DoD 9 tests (July 2026) — YouTube→Publisher PathBuilder & category ──
+// ── YouTube→Publisher PathBuilder & category tests ──
 //
-// DoD 9 validates the YouTube clip publishing flow with semantic metadata:
-//   - Category=Boxe paired with Subject=Pacquiao vs Broner (real-world names)
-//   - PathBuilder segment sanitisation (SafeFolderName preserves spaces/hyphens)
-//   - No-FolderID scenario (pure semantic routing — no RootFolderOverride)
-//
-// godlike/06 SSOT: YouTubeClipPath is the SOLE canonical owner of the
-// clips/{group}/{subject} path structure. Category on PublishRequest is
-// carried for Qdrant payload enrichment; the PathBuilder consumes Group
-// and Subject only.
+// DoD 9 validates semantic routing: Category is carried for Qdrant enrichment;
+// PathBuilder consumes Group and Subject only.
 
 // TestYouTubeClipPath_CategoryBoxeSubjectPacquiaoVsBroner_DOD_9_1 pins
 // DoD 9 item 1: YouTubeClipPath with the canonical Boxe category. The
@@ -1468,18 +1434,10 @@ func TestYouTubeClipPath_WithRootFolderOverride_UsesSingleLeaf(t *testing.T) {
 	require.Equal(t, []string{"boxing-channels"}, segs)
 }
 
-// ── FASE D: DoD 10 tests (July 2026) — fake FolderManager EnsureFolder integration ──
+// ── Publisher→FolderManager integration tests ──
 //
-// DoD 10 validates the Publisher→FolderManager integration contract:
-//   - fake FolderManager records each EnsureFolder(parent, segments...) call
-//   - Assert that EnsureFolder is called with the CORRECT parent (registry root)
-//     and the CORRECT segments (PathBuilder output after SafeFolderName)
-//   - Verify the Category field is carried through PublishRequest to the result
-//     (even though YouTubeClipPath doesn't consume it, the field survives the round-trip)
-//
-// godlike/06 SSOT: the fake FolderManager is the canonical test double for
-// FolderManagerPort; assertors MUST probe folderCalls by index, verifying
-// parent + segments shape, not just the leaf folder ID.
+// DoD 10 validates that EnsureFolder is called with the correct parent and
+// segments, and that PublishResult carries the resolved path.
 
 // TestPublisher_PublishYouTubeClip_CategoryBoxe_EnsureFolderSegments_DOD_10_1
 // pins DoD 10 item 1: Publisher.Publish with Category=Boxe, Subject='Pacquiao vs
@@ -1584,30 +1542,10 @@ func TestPublisher_PublishYouTubeClip_NoFolderOverride_PureSemanticRouting_DOD_1
 	require.Equal(t, "semantic-folder-id", files.uploadCalls[0].folderID)
 }
 
-// ── PR-VO-3-LANGUAGE-MATRIX tests (July 2026) ─────────────────────────
+// ── Voiceover multi-language subpath tests ─────────────────────────
 //
-// Pins the canonical voiceover multi-language Drive subpath contract:
-// 3 Publish calls with (it-IT, pt-BR, en-US) against the same project
-// MUST produce 3 DISTINCT EnsureFolder calls with distinct
-// {project}/{language} segments, proving each language gets its own
-// Drive subfolder.
-//
-// Pre-PR-VO-SUBFOLDER, PathBuilder was short-circuited when
-// RootFolderOverride was set, so ALL languages landed in the SAME
-// override root folder — silently overwriting each other's MP3 files.
-// After the fix, each language resolves to a distinct
-// {project}/{language} subfolder under the override.
-//
-// godlike/06 SSOT: VoiceoverPath is the SOLE canonical owner of the
-// voiceovers/{project}/{language} path structure.
-//
-// References:
-//   - VoiceoverPath: internal/application/assets/delivery/registry.go
-//     (segments = [project, language] when both non-empty).
-//   - SafeFolderName: pkg/pathutil/pathutil.go (preserves alphanum +
-//     hyphen verbatim, so "it-IT" / "pt-BR" / "en-US" pass through).
-//   - PR-VO-SUBFOLDER: fix in publisher.go::resolveDestination.
-//   - PR-VOICEOVER-PROJECT-THREADING: Project field threading fix.
+// Each language must resolve to a distinct {project}/{language} subfolder
+// under RootFolderOverride.
 
 // TestPublisher_Voiceover_3LanguageMatrix_DistinctSubpaths pins the
 // multi-language Drive subpath contract: 3 Publish calls with different

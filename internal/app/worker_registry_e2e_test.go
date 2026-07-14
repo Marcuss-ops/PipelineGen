@@ -1,12 +1,7 @@
 // Package app_test contains external test packages for internal/app,
-// including the PR-D smoke test that proves the remote worker HTTP
-// broker path is aligned with the server's WorkerHandler mount.
-//
-// The file was originally written against a PR-A-only branch
-// where jobbrokerclient hardcoded `/api/...` paths and the server
-// mounted the worker handler at `/internal/v1/...`. Post-PR-B those
-// two surfaces both derive from `remoteshared.InternalPathPrefix`
-// and the smoke now passes; it remains the W2 acceptance gate.
+// including the smoke test proving the remote worker HTTP broker
+// path is aligned with the server's WorkerHandler mount via
+// remoteshared.InternalPathPrefix.
 package app_test
 
 import (
@@ -47,43 +42,9 @@ import (
 // breadcrumb back to the constant.
 const internalV1Prefix = remoteshared.InternalPathPrefix
 
-// TestE2E_WorkerClaimsViaHTTPBroker_Alignment is the PR-D smoke test.
-//
-// Goal:
-//
-//	Prove that the remote worker, calling the broker via
-//	`jobbrokerclient.New(...).RegisterWorker(...)`, reaches the
-//	server's WorkerHandler mounted at `/internal/v1/workers/register`.
-//
-// Pre-PR-B state (this branch is PR-A-only):
-//   - Server (PR-A): routes.go mounts InternalworkerHandler at
-//     `/internal/v1` (the wiring has been there since PR-A restored
-//     cmd/server/main.go and the route registration).
-//   - Client: jobbrokerclient/client.go hardcodes `/api/workers/register`
-//     in its `post(ctx, "/api/workers/register", ...)` string. This
-//     URL is NOT registered in the server's gin router, so the call
-//     returns gin 404.
-//
-// Expected failure on this branch:
-//
-//	client.RegisterWorker(ctx, ...) hits /api/workers/register
-//	  → gin returns 404 "page not found"
-//	  → jobbrokerclient surfaces err = "HTTP 404: 404 page not found"
-//	  → require.NoError fails
-//	  → test prints a diagnostic pointing at the URL-alignment gap.
-//
-// Post-PR-B state (after the alignment PR merges):
-//
-//	client.RegisterWorker(ctx, ...) hits /internal/v1/workers/register
-//	  → gin routes to WorkerHandler.RegisterWorker
-//	  → handler invokes mockBroker.RegisterWorker
-//	  → mock returns session → handler responds 200 JSON
-//	  → require.NoError passes → require.True(mock.registerCalled) passes
-//	  → test PASSES.
-//
-// This test is intentionally THE FIRST signal a reviewer sees when
-// chaining PR-A → PR-B: a green run here is the W2 acceptance gate
-// for the path-alignment sub-task.
+// TestE2E_WorkerClaimsViaHTTPBroker_Alignment proves that the remote
+// worker, calling the broker via jobbrokerclient, reaches the server's
+// WorkerHandler mounted at remoteshared.InternalPathPrefix.
 func TestE2E_WorkerClaimsViaHTTPBroker_Alignment(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
