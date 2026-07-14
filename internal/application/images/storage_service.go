@@ -20,14 +20,9 @@ import (
 // web search, and image asset registration. It delegates metadata operations
 // to MetadataService.
 //
-// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy `mediaStore
-// *drive.Store` field (used for pre-scan path-only resolution + the
-// AssetDestinationRequest→Publish bridge via s.publishToDrive) is
-// RETIRED. The retained deps are: Local destination resolver
-// (destResolver, YAML-backed), Publisher, AssetCommitter. The
-// s.publishToDrive bridge + the mapMediaType* helpers are deleted
-// with it (call sites in ingestDirect now call
-// s.publisher.Publish(... delivery.PublishRequest{...}) directly).
+// ImageStorageService writes assets atomically via Publisher and
+// AssetCommitter. The legacy drive.Store / mediaStore surface has
+// been removed.
 type ImageStorageService struct {
 	repo          *assets.ImagesRepository
 	publisher     delivery.Publisher

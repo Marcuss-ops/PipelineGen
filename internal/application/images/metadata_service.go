@@ -13,18 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// MetadataService handles semantic metadata tagging and upload to Drive.
-// It is the canonical owner of metaWriter (semantic.MetadataWriter) and
-// all metadata-related operations for images.
-//
-// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy
-// `publishMetadata(ctx, req drive.AssetDestinationRequest, ...)` signature
-// has been retired — callers now pass (style, subject, filePath)
-// primitives instead of the legacy AssetDestinationRequest shape.
-// drive.AssetDestinationRequest + drive.MediaType are still retained
-// at the package level for non-image callers (e.g. sfxResolverAdapter
-// in app/adapters_infra.go) but are NO LONGER referenced inside the
-// images package.
+// MetadataService handles semantic metadata tagging and upload to images.
 type MetadataService struct {
 	metaWriter semantic.MetadataWriterPort
 	publisher  delivery.Publisher
@@ -32,11 +21,7 @@ type MetadataService struct {
 	log        *zap.Logger
 }
 
-// publishMetadata is the P0-2 canonical bridge for metadata JSON uploads.
-// Routes through delivery.Publisher.Publish with the modern
-// delivery.PublishRequest shape (no legacy drive.AssetDestinationRequest
-// param). The legacy mediaStore.UploadToDrive fallback was RETIRED
-// per P0-2 godlike/07 closure (July 2026).
+// publishMetadata uploads metadata JSON via delivery.Publisher.Publish.
 func (m *MetadataService) publishMetadata(ctx context.Context, style, subject, filePath string) error {
 	if m == nil {
 		return fmt.Errorf("MetadataService.publishMetadata: nil receiver")
@@ -192,12 +177,6 @@ func (m *MetadataService) uploadImageMetadata(ctx context.Context, style, subjec
 }
 
 // UploadBatchMetadata writes a single metadata.json for a group of assets.
-//
-// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy
-// `req := drive.AssetDestinationRequest{...}` literal is RETIRED. The
-// underlying publish is now invoked via `m.publishMetadata(ctx, style,
-// slug, result.LocalPath)` directly — no AssetDestinationRequest
-// wrapper struct needed.
 func (m *MetadataService) UploadBatchMetadata(ctx context.Context, genID, slug, style, prompt, generator string, assets []*asset.ImageAsset) {
 	m.log.Info("UploadBatchMetadata: starting", zap.String("gen_id", genID), zap.Int("assets", len(assets)))
 	if m.metaWriter == nil {

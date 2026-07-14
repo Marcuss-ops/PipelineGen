@@ -85,19 +85,7 @@ func (r *recordingCommitter) success(req persistence.AssetCommitRequest) persist
 	}
 }
 
-// testImageService creates a minimal ImageStorageService for testing
-// ingestDirect. Uses an in-memory SQLite database.
-//
-// PR-IMAGES-INGEST-ATOMIC (July 2026): wires a recordingCommitter stub
-// for the happy-path tests so they can assert ingestDirect routes through
-// the canonical CommitAsset transaction. Tests that need the fail-closed
-// path (TestIngestDirect_CommitterNil_FailsClosed) explicitly set
-// svc.committer = nil after calling this helper.
-//
-// PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy drive.NewResolver +
-// drive.NewStore setup + the `mediaStore` field are REMOVED. ingestDirect
-// no longer calls into drive.Store — LocalPath is now computed inline as
-// `filepath.Join(s.imagesDir, slug+ext)`.
+// testImageService creates a minimal ImageStorageService for testing ingestDirect.
 func testImageService(t *testing.T) *ImageStorageService {
 	t.Helper()
 
