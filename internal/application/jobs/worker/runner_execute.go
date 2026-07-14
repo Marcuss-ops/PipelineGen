@@ -9,6 +9,8 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	// domainjob is aliased because runLease binds the local variable
+	// `job := lease.Job`; using the bare package name would shadow it.
 	domainjob "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/observability"
 )
