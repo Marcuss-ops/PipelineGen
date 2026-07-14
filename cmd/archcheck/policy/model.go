@@ -89,6 +89,16 @@ type Policy struct {
 	// list opts out (Phase 0 only). See architecture/policy.yaml::
 	// stale_prose_paths for the comment block + severity ladder.
 	StaleProseStems []string
+	// HardGates is the canonical Wave-22 Phase-N hard-gate list
+	// (godlike/08 evolution PR2). DefaultChecks emit Rule IDs
+	// (string-equality matched against report.Violation.Rule);
+	// any violation whose Rule is in this list ALWAYS returns
+	// ExitViolations from cmd/archcheck/runner.go, regardless of
+	// --strict. SSOT for the Wave-22 gate promotion. Bypassing
+	// requires an SSOT-marker explicit demotion via
+	// architecture/current.yaml (no in-tree override).
+	// Empty list opts out (Phase 0 default behaviour).
+	HardGates []string
 }
 
 // Constraint is a forward-looking single-rule threshold description.

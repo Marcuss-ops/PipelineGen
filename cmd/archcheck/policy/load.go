@@ -48,6 +48,7 @@ func Load(path string) (*Policy, error) {
 	sc := bufio.NewScanner(f)
 	inGrandfathered := false
 	inStaleProse := false
+	inHardGates := false
 	for sc.Scan() {
 		line := sc.Text()
 		if idx := strings.Index(line, "#"); idx >= 0 {
@@ -79,6 +80,23 @@ func Load(path string) (*Policy, error) {
 				continue
 			}
 			inStaleProse = false
+		}
+
+		if inHardGates {
+			// Wave-22 hard-gate list (godlike/08 evolution PR2):
+			// the canonical Phase-N gate promotion for rule IDs
+			// whose violations must ALWAYS exit ExitViolations,
+			// regardless of --strict. Same bullet parser as the
+			// inGrandfathered + inStaleProse blocks (semantically
+			// identical — three list-style keys share one helper).
+			// collectBullet returns ("", false) for blank lines,
+			// so the inHardGates = false branch below resets the
+			// state naturally without an explicit blank-line check.
+			if b, isBullet := collectBullet(line); isBullet {
+				p.HardGates = append(p.HardGates, b)
+				continue
+			}
+			inHardGates = false
 		}
 
 		parts := strings.SplitN(trimmed, ":", 2)
@@ -127,6 +145,10 @@ func Load(path string) (*Policy, error) {
 		case "stale_prose_paths":
 			if val == "" {
 				inStaleProse = true
+			}
+		case "hard_gates":
+			if val == "" {
+				inHardGates = true
 			}
 		}
 	}

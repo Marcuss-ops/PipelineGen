@@ -267,3 +267,136 @@
     migration: migrations/sqlite/110_channel_consolidation.sql
     plan: architecture/ownership.generated.yaml::application_assets.category_channels_owns_monitor_state
     follow_up: docs/architecture/godlike/migration_109_rationale.md
+
+# ── Wave 22 — Phase-N hard-gate promotion (godlike/08 PR2) ──────────────
+# Promotion scope: demote specific rule families from `--strict`
+# advisory (Phase 0 default) to Phase-N hard gates so a future agent
+# who deletes or structurally guts a canonical governance surface
+# surfaces as a CI build failure on the next push, regardless of
+# the `--strict` flag. Promotion mechanism: `architecture/policy.yaml`
+# carries a `hard_gates:` list (Wave-22 PR-A); `cmd/archcheck/runner.go`
+# runs a pre-exit evaluation pass that escalates matched violations to
+# SeverityError and extends the exit decision to `hasHardGate ||
+# (strict && len>0)`. Promotion target window: post-Wave 22 (per
+# AGENTS.md godlike/08 evolution track PR2).
+#
+# Promotion-wave rule families:
+#   - 5 godlike docs: data_ownership_doc_missing|_incomplete,
+#     legacy_policy_doc_missing|_incomplete, ci_gates_doc_missing|
+#     _incomplete, agent_playbook_doc_missing|_incomplete,
+#     removal_doc_missing|_incomplete — emitted by
+#     cmd/archcheck/scan/documents.go Scan<X>Doc functions.
+#   - percheck_metadata_registry (the typed metadata Wave-5 gate,
+#     forward-promoted to Phase-N so the metadata map[string]any
+#     ban freezes on every push).
+#   - percheck_api_infrastructure_imports +
+#     percheck_api_infrastructure_imports_allowlist_missing —
+#     the new Wave-22 forward-prevention gate that mirrors
+#     scripts/ci/architecture/checks/check_19 on the Go side
+#     and gates the docs/migrations/api-infrastructure-imports-
+#     allowlist.txt file as fail-closed (godlike/07 NO-FAKE-
+#     AVAILABILITY on the canonical operator-facing audit
+#     surface for grandfathered api-layer infra imports).
+#
+# Behavior on baseline run: a default `go run ./cmd/archcheck`
+# invocation (NO --strict) on the current main branch WILL exit
+# 1 because the godlike/06/07/08/11/13 docs are not yet on disk
+# at the canonical paths the policy pins. This is the correct
+# fail-loud signal that the promotion is active — operators
+# either restore the canonical docs OR land the docs via the
+# `current.yaml::follow_up_tickets` follow-up band tracked below.
+# Once the 5 docs are committed at the canonical paths, the
+# default-mode invocation reverts to exit 0 with by_severity.
+# warn numeric now reflecting the tightened policy.
+#
+# Cross-references:
+#   - SSOT: architecture/policy.yaml::hard_gates (Wave-22 PR-A)
+#   - Implementation: cmd/archcheck/runner.go (D1+D2+D3)
+#   - Report audit field: cmd/archcheck/report/model.go::
+#     HasHardGateHits
+#   - New Go-side percheck: cmd/archcheck/scan/
+#     percheck_api_infrastructure_imports.go (Wave-22 PR-A)
+#   - Shell-side dual: scripts/ci/architecture/checks/
+#     check_19_api_infrastructure_imports.sh (canonical
+#     transitional baseline per godlike/08 §"Zero-baseline
+#     rule"; the Go scanner runs in parallel, both must
+#     exit 0)
+#
+# Follow-up tickets (post-Wave 22 PR-A landing):
+#   - Restore the 5 godlike docs at the canonical paths
+#     pinned by architecture/policy.yaml (data_ownership_doc,
+#     legacy_policy_doc, ci_gates_doc, agent_playbook_doc,
+#     removal_doc). Without these, the default-mode CI run
+#     is RED.
+#   - Wire `hasHardGate || (strict && len>0)` into the local
+#     mirror rule once the docs lands — i.e. the verify-main
+#     Makefile target gets the new exit semantics for free
+#     because `make verify-main` already invokes `cmd/archcheck
+#     --strict` (the prior phase), so the promotion is a
+#     super-set semantics.
+follow_up_tickets:
+  - id: WAVE-22-PHASE-N-HARD-GATES
+    status: in_progress
+    goal: Land the architecture/policy.yaml hard_gates list +
+      cmd/archcheck/runner.go pre-exit evaluation pass + new
+      percheck_api_infrastructure_imports Go-side scanner +
+      cmd/archcheck/report/model.go::HasHardGateHits audit
+      field + cmd/archcheck/scan/documents.go (already present)
+      + cmd/archcheck/scan/percheck_metadataregistry.go (already
+      present) so a future agent who deletes any of the 5 godlike
+      docs OR accidentally removes any api-layer
+      infrastructure-import allowlist OR reverts a domain type
+      to map[string]any surfaces as a Phase N hard gate
+      (exit 1 on default invocation).
+    owner: pipelinegen-qdrant-hygiene + docs-arch work streams
+    deadline: 2026-12-31
+    blocked_by: ["doc-restoration-track"]
+    rationale: |
+      The 5 godlike docs are the canonical governance surfaces
+      for data+config ownership, zero-legacy policy, CI-gates,
+      agent execution playbook, and feature-removal checklist.
+      Phase 0 emits `_missing` + `_incomplete` violations at
+      SeverityWarn, which `--strict` promotes to a hard exit
+      1 but ONLY when explicitly invoked. The Wave-22 promotion
+      demotes these to Phase-N hard gates so a missing-section
+      edit in any of the 5 surfaces fires on every default
+      push — closing the silent drift gap that surfaced in the
+      June 2026 audit_ledger (`docs/architecture/godlike/08`).
+      Dual-source-of-truth with the existing shell checks per
+      godlike/08 §"Zero-baseline rule": the new Go scanner
+      runs in parallel with the bash checks; both must exit
+      0 for CI to be green. The transition window keeps both
+      surfaces as redundant cross-checks until the goldens
+      are byte-stable across 4 consecutive pushes.
+    dependencies:
+      policy.yaml: architecture/policy.yaml::hard_gates
+      runner: cmd/archcheck/runner.go::Run
+      report: cmd/archcheck/report/model.go::HasHardGateHits
+      percheck: cmd/archcheck/scan/percheck_api_infrastructure_imports.go
+      documents: cmd/archcheck/scan/documents.go
+      metadata: cmd/archcheck/scan/percheck_metadataregistry.go
+    commands_to_run:
+      - go run ./cmd/archcheck --root . --policy architecture/policy.yaml
+      - go run ./cmd/archcheck --root . --policy architecture/policy.yaml --strict
+      - bash scripts/ci-architectural-checks.sh
+success_criteria:
+  - Default-mode `go run ./cmd/archcheck` exits 1 when any of the
+    5 godlike docs is missing OR incomplete (currently true on
+    baseline because docs not yet on disk at canonical paths).
+  - Default-mode `go run ./cmd/archcheck` exits 1 when any api/
+    *.go file imports github.com/Marcuss-ops/PipelineGen/
+    internal/infrastructure/ WITHOUT being on the canonical
+    allowlist (mirror of check_19 on the Go side).
+  - Default-mode `go run ./cmd/archcheck` exits 1 when
+    docs/migrations/api-infrastructure-imports-allowlist.txt
+    is missing (godlike/07 fail-closed).
+  - Default-mode `go run ./cmd/archcheck` exits 1 when any
+    internal/domain type reintroduces map[string]any metadata
+    field (pre-Wave-22 promotion; now hard-gated).
+  - Strict-mode run continues to behave as before (any
+    SeverityWarn violation = exit 1).
+  - cmd/archcheck/runner_test.go::TestReportSnapshot
+    regenerated goldens via `UPDATE_GOLDEN=1 go test ./cmd/archcheck/...`
+    remain byte-stable across the next 4 consecutive pushes
+    (godlike/08 §"Zero-baseline rule").
+
