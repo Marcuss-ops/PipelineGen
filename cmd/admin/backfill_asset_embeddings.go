@@ -1,9 +1,9 @@
 // cmd/admin/backfill_asset_embeddings.go — asset embedding backfill command (Task 5, July 2026)
 //
 // One-shot backfill for media_assets rows that are missing one or more
-// embedding channels (text, transcript, visual, audio). Uses the canonical
-// ClipIndexerService.IndexClip path so every channel is generated and
-// persisted through the same code path as the normal indexing flow.
+// embedding channels (text, transcript, visual, audio). Enqueues an
+// asset.index.requested outbox event (force=true) for each candidate so
+// the worker indexes it through the canonical outbox path.
 //
 // Features:
 //   - Dry-run (default): counts candidates and missing channels.
@@ -17,8 +17,8 @@
 //     IndexClip is idempotent (fast-path check skips already-embedded
 //     assets), so re-processing on resume is a no-op.
 //   - Retry failed: re-process assets that failed in a previous run.
-//   - Idempotent: IndexClip is idempotent — already-embedded assets are
-//     skipped by the fast-path check, so re-running is safe.
+//   - Idempotent: the outbox event_key is deterministic per
+//     (assetID, schemaVersion, contentHash), so re-running is safe.
 //   - JSON output: machine-readable report.
 //
 // Usage:
@@ -39,7 +39,7 @@
 // sibling file backfill_asset_embeddings_db.go (same package main).
 // This orchestrator file retains the entry point, arg parsing, the
 // pure testable core (backfillAssetEmbeddings), the checkpoint
-// load/save helpers, and the testability interface (clipIndexer).
+// load/save helpers, and the testability interface (reindexEnqueuer).
 //
 // The sibling stays in cmd/admin (NOT internal/infrastructure) per the
 // Commit E user constraint: "NON spostare nulla in internal/infrastructure
@@ -61,6 +61,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -161,14 +162,17 @@ func runBackfillAssetEmbeddings(args []string) error {
 	}
 	defer rootCleanup()
 
-	if root.Process.ClipIndexerService == nil {
-		return fmt.Errorf("clip indexer service is not initialized or configured")
-	}
 	if root.DB == nil || root.DB.DB == nil {
 		return fmt.Errorf("database not initialized in composition root")
 	}
 
-	report, cp, err := backfillAssetEmbeddings(ctx, root.DB.DB, root.Process.ClipIndexerService, deps, log)
+	adapter := &outboxRepairAdapter{
+		db:            root.DB.DB,
+		outboxRepo:    outboxevents.NewRepository(root.DB.DB),
+		schemaVersion: outboxevents.ReindexEnvelopeV1Schema,
+	}
+
+	report, cp, err := backfillAssetEmbeddings(ctx, root.DB.DB, adapter, deps, log)
 	if err != nil {
 		return err
 	}
@@ -287,7 +291,7 @@ func parseBackfillEmbeddingsArgs(args []string) (backfillEmbeddingsDeps, error) 
 func backfillAssetEmbeddings(
 	ctx context.Context,
 	db *sql.DB,
-	indexer clipIndexer,
+	enqueuer reindexEnqueuer,
 	deps backfillEmbeddingsDeps,
 	log *zap.Logger,
 ) (backfillEmbeddingsReport, *embeddingCheckpoint, error) {
@@ -395,8 +399,8 @@ func backfillAssetEmbeddings(
 	// At-least-once checkpointing: cp.LastProcessedID is updated in
 	// memory on every success, but flushed to disk only every --progress
 	// assets. A crash between flushes causes up to --progress assets to
-	// be re-processed on resume. This is safe because IndexClip is
-	// idempotent — the fast-path check skips already-embedded assets.
+	// be re-processed on resume. This is safe because the outbox
+	// event_key is deterministic per (assetID, schemaVersion, contentHash).
 	report.Checkpoint = deps.Checkpoint
 	for i, c := range candidates {
 		select {
@@ -428,14 +432,23 @@ func backfillAssetEmbeddings(
 		}
 
 		idxStart := time.Now()
-		err := indexer.IndexClip(ctx, c.ID)
+		var ch string
+		if err := db.QueryRowContext(ctx, `
+			SELECT COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), file_hash, '')
+			FROM media_assets WHERE id = ?`,
+			c.ID,
+		).Scan(&ch); err != nil || ch == "" {
+			ch = "legacy_no_hash_" + c.ID
+		}
+
+		err := enqueuer.EnqueueReindex(ctx, c.ID, ch, true)
 		if err != nil {
 			report.Failed++
 			if cp != nil {
 				cp.FailedCount++
 				cp.FailedIDs = append(cp.FailedIDs, c.ID)
 			}
-			log.Warn("IndexClip failed",
+			log.Warn("EnqueueReindex failed",
 				zap.String("asset_id", c.ID),
 				zap.String("source", c.Source),
 				zap.Error(err))
@@ -445,7 +458,7 @@ func backfillAssetEmbeddings(
 		}
 
 		report.Succeeded++
-		log.Debug("IndexClip succeeded",
+		log.Debug("EnqueueReindex succeeded",
 			zap.String("asset_id", c.ID),
 			zap.Duration("elapsed", time.Since(idxStart)))
 
@@ -460,8 +473,8 @@ func backfillAssetEmbeddings(
 
 		// Periodic checkpoint flush to disk.
 		// At-least-once delivery: crash between flushes → re-process
-		// up to --progress assets on resume. Safe because IndexClip
-		// is idempotent (fast-path check on already-embedded assets).
+		// up to --progress assets on resume. Safe because the outbox
+		// event_key is deterministic per (assetID, schemaVersion, contentHash).
 		if cp != nil && deps.Checkpoint != "" && (i+1)%deps.Progress == 0 {
 			if b, err := json.MarshalIndent(cp, "", "  "); err == nil {
 				_ = os.WriteFile(deps.Checkpoint, b, 0o644)
@@ -502,8 +515,8 @@ func loadCheckpoint(path string) (*embeddingCheckpoint, error) {
 
 // ── Interface for testability ─────────────────────────────────────────
 
-// clipIndexer is the subset of clipindexer.Service used by the backfill.
-// Production wired via root.Process.ClipIndexerService.
-type clipIndexer interface {
-	IndexClip(ctx context.Context, clipID string) error
+// reindexEnqueuer is the subset used by the backfill.
+// Production wired via outboxRepairAdapter.
+type reindexEnqueuer interface {
+	EnqueueReindex(ctx context.Context, assetID, contentHash string, force bool) error
 }
