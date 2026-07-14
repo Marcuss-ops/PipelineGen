@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS asset_text_tracks (
     provider TEXT NOT NULL DEFAULT '',
     model_name TEXT NOT NULL DEFAULT '',
     model_version TEXT NOT NULL DEFAULT '',
+    prompt_version TEXT NOT NULL DEFAULT '',
     text_hash TEXT NOT NULL DEFAULT '',
     source_version TEXT NOT NULL DEFAULT '',
     confidence REAL,

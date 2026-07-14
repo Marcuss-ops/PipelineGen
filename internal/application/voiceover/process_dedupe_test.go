@@ -53,6 +53,8 @@ CREATE TABLE IF NOT EXISTS voiceovers (
     status TEXT,
     strategy TEXT,
     metadata TEXT,
+    idempotency_key TEXT NOT NULL DEFAULT '',
+    job_id TEXT NOT NULL DEFAULT '',
     created_at TEXT,
     updated_at TEXT
 );
