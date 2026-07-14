@@ -111,10 +111,10 @@ func (r *YoutubeDiscoveriesRepository) MarkRejected(ctx context.Context, id, rej
 		row := tx.QueryRowContext(ctx, `
 			UPDATE youtube_discoveries
 			SET state = 'rejected_retryable',
-			    attempt_count = attempt_count + 1,
 			    last_error = ?,
 			    rejection_reason = ?,
 			    outcome = 'rejected',
+			    attempt_count = attempt_count + 1,
 			    updated_at = ?
 			WHERE id = ? AND state IN ('pending', 'analyzing')
 			RETURNING attempt_count

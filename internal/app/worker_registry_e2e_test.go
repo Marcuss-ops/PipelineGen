@@ -415,7 +415,7 @@ func (m *mockBroker) Complete(_ context.Context, cmd appjobs.CompleteCommand) er
 	return nil
 }
 
-func (m *mockBroker) Fail(_ context.Context, _ appjobs.FailCommand) error {
+func (m *mockBroker) Fail(_ context.Context, cmd appjobs.FailCommand) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.lease == nil {
@@ -423,7 +423,11 @@ func (m *mockBroker) Fail(_ context.Context, _ appjobs.FailCommand) error {
 		return fmt.Errorf("not implemented in alignment-smoke mock")
 	}
 	m.completed = append(m.completed, appjobs.CompleteCommand{
-		WorkerID: "fail-recorded",
+		WorkerID:         cmd.WorkerID,
+		WorkerSessionID:  cmd.WorkerSessionID,
+		JobID:            cmd.JobID,
+		LeaseID:          cmd.LeaseID,
+		ExpectedRevision: cmd.ExpectedRevision,
 	})
 	return nil
 }
