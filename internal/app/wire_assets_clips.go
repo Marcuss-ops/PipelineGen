@@ -258,11 +258,50 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	// returned Module's closure. clipsDescriptor.Handler stays
 	// accessible to the one non-HTTP consumer
 	// (newAssetRegisterService → sourcingEnrichmentAdapter →	// handler.EnrichAndIndexClip).
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): wrap the canonical
+	// *driveutil.Uploader in the application-typed
+	// clips.ClipDriveUploaderPort adapter so the clips.Build deps
+	// see a typed-port surface (NOT the banned drive.Admin concrete).
+	// The adapter implements TrashFolder + DeleteFolder (the only
+	// folder-lifecycle methods the clips OpsHandler uses) so the
+	// narrowing to a typed-port preserves behaviour while passing
+	// the percheck_drive_access_ssot forward-prevention gate. Reader
+	// + Lifecycle are nil here because the clips OpsHandler path
+	// does not consume them — they are wired in clips_adapters_drive.go
+	// by other capability callers when needed.
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): wire both admin AND reader
+	// surfaces. *driveutil.Uploader structurally satisfies both
+	// drive.Admin (folder CRUD) and drive.Reader (Files.Get +
+	// Files.Download for the proxy-from-Drive path used by
+	// api/assets/clips/clip_action.go::DownloadClip). The previous
+	// `nil, nil` wired Reader as nil, which made clip_action.go's
+	// proxy-from-Drive fallback return typed-wiring errors at request
+	// time. Wiring the same *driveutil.Uploader into both slots lets
+	// clipsDriveAdapter route GetFileMeta/DownloadFile through the
+	// Reader surface at the adapter boundary without exposing the
+	// drive.Reader concrete reference to the api/ layer (godlike/06
+	// SSOT: typed-port owns the seam).
+	//
+	// Typed-NIL interface trap caveat: a typed-nil *driveutil.Uploader
+	// (interface holding a nil underlying pointer) silently slips
+	// past newClipsDriveAdapter's `admin == nil` check, so adapter
+	// methods dispatching on a.reader return errors from the
+	// defensive nil-check (preserves fail-closed behaviour) while
+	// methods dispatching on a.admin panic on nil-pointer dereference.
+	// Pre-Plan-A code had the same shape (type-assertion to drive.Reader
+	// on the typed-nil field would have panicked at the same call
+	// site). The composition-root guard at wire_assets.go:96 is the
+	// canonical PR-ADAPTER-NIL-GUARD fail-closed enforcement for
+	// that pre-existing risk surface; Wave 1 preserves that
+	// invariant by treating typed-NIL as out-of-scope (existing
+	// partial-deploy paths already surface a startup error before
+	// reaching the clips wiring).
+	clipsFolderOps := newClipsDriveAdapter(params.DriveUploader, params.DriveUploader, nil)
 	descriptor, err := clipsapi.Build(clipsapi.Dependencies{
 		ClipsRepo:        params.Deps.Core.ClipsRepo,
 		AssetRepo:        params.AssetRepo,
 		DeletionSvc:      params.DeletionSvc,
-		DriveAdmin:       params.DriveUploader,
+		DriveAdmin:       clipsFolderOps,
 		MediaProcessor:   params.Deps.Core.MediaProcessor,
 		AssetTreeSvc:     params.Deps.Core.AssetTreeService,
 		MetaWriter:       params.MetaWriter,

@@ -107,15 +107,26 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 					zap.String("slug", slug))
 			}
 		} else {
+			// PR-WAVE-1-DRIVE-SSOT (July 2026): the per-style folder
+			// override is now expressed through the canonical
+			// DestinationFolderID field (the typed pre-resolved-folder
+			// surface on PublishRequest), NOT the legacy
+			// RootFolderOverride escape hatch. Per
+			// delivery/types.go::DestinationFolderID docstring, when
+			// non-empty DestinationFolderID takes precedence over the
+			// registry's RootFolderID for the destination — preserving
+			// the per-style folder routing end-to-end while satisfying
+			// the godlike/06 SSOT forward-prevention gate. Behavior
+			// unchanged from the caller's view.
 			pubResult, uploadErr := s.publisher.Publish(ctx, delivery.PublishRequest{
-				Destination:        delivery.DestinationImage,
-				LocalPath:          localPath,
-				Filename:           filepath.Base(localPath),
-				Style:              style,
-				Subject:            slug,
-				Group:              slug,
-				ConflictPolicy:     delivery.ConflictSkip,
-				RootFolderOverride: overrideRoot,
+				Destination:         delivery.DestinationImage,
+				DestinationFolderID: overrideRoot,
+				LocalPath:           localPath,
+				Filename:            filepath.Base(localPath),
+				Style:               style,
+				Subject:             slug,
+				Group:               slug,
+				ConflictPolicy:      delivery.ConflictSkip,
 			})
 			if uploadErr != nil {
 				s.log.Warn("Drive upload failed", zap.Error(uploadErr))

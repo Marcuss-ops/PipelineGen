@@ -32,7 +32,6 @@ import (
 
 	appassets "github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 
 	"github.com/gin-gonic/gin"
@@ -40,11 +39,22 @@ import (
 )
 
 // Deps is the constructor bag for Handler.
+//
+// PR-WAVE-1-DRIVE-SSOT (July 2026): the DriveAdmin field TYPE was
+// migrated from the banned `drive.Admin` to the application-typed
+// `clips.ClipDriveUploaderPort` (defined in internal/application/clips).
+// The field NAME stays `DriveAdmin` for minimal-diff + grep compat with
+// existing callers; the percheck_drive_access_ssot forward-prevention
+// gate only matches the lowercase+dot `drive.Admin` substring, so the
+// capital-D field name does NOT trigger the gate. The application-layer
+// typed-port contract enforces the canonical "one canonical owner per
+// fact" invariant: the folder-lifecycle surface (TrashFolder +
+// DeleteFolder) is on the port, not on a concrete drive.* type.
 type Deps struct {
 	ClipsRepo        *assets.ClipsRepository
 	AssetRepo        asset.Repository
 	DeletionSvc      *deletion.DeletionService
-	DriveAdmin       drive.Admin
+	DriveAdmin       appclips.ClipDriveUploaderPort
 	MediaProcessor   asset.Processor
 	AssetTreeSvc     *assettree.Service
 	MetaWriter       semantic.MetadataWriterPort
@@ -74,7 +84,7 @@ type Handler struct {
 	Idempotency gin.HandlerFunc
 
 	assetRepo       asset.Repository
-	driveAdmin      drive.Admin
+	driveAdmin      appclips.ClipDriveUploaderPort
 	duplicateFinder *duplicates.Finder
 	downloadUC      *appclips.DownloadUseCase
 	reuploadUC      *appclips.ReuploadUseCase

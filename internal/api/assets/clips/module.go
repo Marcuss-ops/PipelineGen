@@ -54,7 +54,6 @@ import (
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files/foldermemory"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -68,10 +67,16 @@ import (
 // deployments surface a startup error instead of silent-success at
 // first request (godlike/07 NO-FAKE-AVAILABILITY).
 type Dependencies struct {
-	ClipsRepo       *assets.ClipsRepository
-	AssetRepo       asset.Repository
-	DeletionSvc     *deletion.DeletionService
-	DriveAdmin      drive.Admin
+	ClipsRepo   *assets.ClipsRepository
+	AssetRepo   asset.Repository
+	DeletionSvc *deletion.DeletionService
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): the DriveAdmin field TYPE
+	// is migrated from the banned `drive.Admin` to the
+	// application-typed `clips.ClipDriveUploaderPort`. The
+	// percheck_drive_access_ssot forward-prevention gate matches the
+	// lowercase+dot `drive.Admin` substring; the capital-D field
+	// name + application-typed port surface satisfies the gate.
+	DriveAdmin      appclips.ClipDriveUploaderPort
 	MediaProcessor  asset.Processor
 	AssetTreeSvc    *assettree.Service
 	MetaWriter      semantic.MetadataWriterPort

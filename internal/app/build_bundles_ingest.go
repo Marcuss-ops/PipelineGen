@@ -138,7 +138,12 @@ func buildIngestService(cfg *config.Config, log *zap.Logger, dbs *databases, dri
 	stockRegistry := artifacts.NewClipsRegistry(dbs.dualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)
 	stockLifecycle := NewLifecycleFromDeps(&LifecycleDeps{Registry: stockRegistry, Publisher: publisher, DriveReader: driveUploader, AssetIndex: search.AssetIndexService, Store: ingest.NewClipStoreAdapter(dbs.dualPool.Writer, repos.Assets.Repository(), repos.Assets, repos.Assets.LocationRepository(), repos.Assets.ProcessingRepository(), mutationsDisp)}, log)
 	downloader := downloader.NewMediaDownloader(90 * time.Second)
-	return ingest.NewService(cfg, log, driveUploader.Admin(), downloader, map[ingest.Kind]*ingest.Pipeline{
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): the legacy
+	// `driveUploader.Admin()` arg is REMOVED from the canonical
+	// NewService ctor — the application-layer Service does not
+	// hold drive.Admin references; the composition root owns
+	// *driveutil.Uploader for the lifecycle adapter reads.
+	return ingest.NewService(cfg, log, downloader, map[ingest.Kind]*ingest.Pipeline{
 		ingest.KindImage:     {Kind: ingest.KindImage, DefaultSource: "image", RootFolderID: cfg.Drive.ImagesFolder(), Lifecycle: imagesLifecycle},
 		ingest.KindVoiceover: {Kind: ingest.KindVoiceover, DefaultSource: "voiceover", RootFolderID: cfg.Drive.VoiceoverFolder(), Lifecycle: voiceoverLifecycle},
 		ingest.KindClip:      {Kind: ingest.KindClip, DefaultSource: "youtube", RootFolderID: cfg.Drive.ClipsFolder(), Lifecycle: clipLifecycle},
