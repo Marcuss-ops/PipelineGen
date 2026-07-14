@@ -241,6 +241,9 @@ func (h *Handler) Handle(ctx context.Context, evt outboxevents.Event) error {
 		Requirement: requirement,
 		Destination: req.Destination,
 	})
+	if stageErr == nil && receipt == nil {
+		return fmt.Errorf("%w: Store.Stage returned nil receipt for job_id=%s", ErrInvalidPayload, req.JobID)
+	}
 	if stageErr != nil {
 		// godlike/07: surface the FULL typed chain so the
 		// outbox pool can decide retry vs drop. We do NOT
