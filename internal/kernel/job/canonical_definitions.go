@@ -45,15 +45,26 @@ package job
 
 import (
 	"time"
+)
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+// Canonical type string literals. These mirror the capability-owned
+// constants in internal/domain/<capability>/job_types.go. Keeping the
+// literal values here (rather than importing the domain packages)
+// preserves the kernel's stdlib-only import discipline while still
+// giving the composition root a stable set of canonical JobDefinitions.
+const (
+	canonicalTypeScriptGenerate   = "script.generate"
+	canonicalTypeImagesGenerate   = "images.generate"
+	canonicalTypeDocumentGenerate = "document.generate"
+	canonicalTypeAssetsResolve    = "assets.resolve"
+	canonicalTypeClipRegister     = "media.clip"
 )
 
 // CanonicalScriptGenerate is the canonical JobDefinition for
 // script.generate — the workflow entry-point that fans out to
 // images.generate + assets.resolve + document.generate downstream.
 var CanonicalScriptGenerate = JobDefinition{
-	Type:           TypeScriptGenerate,
+	Type:           canonicalTypeScriptGenerate,
 	ExecutionClass: ExecutionCreatorAllowed,
 	Queue:          "default",
 	Timeout:        60 * time.Minute,
@@ -63,8 +74,8 @@ var CanonicalScriptGenerate = JobDefinition{
 		"script.generate",
 		"media.script.generate",
 	},
-	PayloadCodec: job.NewCodecDescriptorMarker("pipelinegen.payload.script.generate.v1", TypeScriptGenerate),
-	ResultCodec:  job.NewCodecDescriptorMarker("pipelinegen.result.script.generate.v1", TypeScriptGenerate),
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.script.generate.v1", canonicalTypeScriptGenerate),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.script.generate.v1", canonicalTypeScriptGenerate),
 	ArtifactPolicy: ArtifactPolicy{
 		ProducesArtifacts: true,
 		RequireManifest:   true,
@@ -77,7 +88,7 @@ var CanonicalScriptGenerate = JobDefinition{
 // images.generate — heavy queue, multi-image artifacts, capacity-2
 // concurrency.
 var CanonicalImagesGenerate = JobDefinition{
-	Type:           TypeImagesGenerate,
+	Type:           canonicalTypeImagesGenerate,
 	ExecutionClass: ExecutionCreatorAllowed,
 	Queue:          "heavy",
 	Timeout:        30 * time.Minute,
@@ -86,8 +97,8 @@ var CanonicalImagesGenerate = JobDefinition{
 	RequiredCapabilities: []Capability{
 		"media.image.generate",
 	},
-	PayloadCodec: job.NewCodecDescriptorMarker("pipelinegen.payload.images.generate.v1", TypeImagesGenerate),
-	ResultCodec:  job.NewCodecDescriptorMarker("pipelinegen.result.images.generate.v1", TypeImagesGenerate),
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.images.generate.v1", canonicalTypeImagesGenerate),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.images.generate.v1", canonicalTypeImagesGenerate),
 	ArtifactPolicy: ArtifactPolicy{
 		ProducesArtifacts: true,
 		RequireManifest:   true,
@@ -99,7 +110,7 @@ var CanonicalImagesGenerate = JobDefinition{
 // CanonicalDocumentGenerate is the canonical JobDefinition for
 // document.generate — default queue, single-DOCX artifact.
 var CanonicalDocumentGenerate = JobDefinition{
-	Type:           TypeDocumentGenerate,
+	Type:           canonicalTypeDocumentGenerate,
 	ExecutionClass: ExecutionCreatorAllowed,
 	Queue:          "default",
 	Timeout:        15 * time.Minute,
@@ -109,8 +120,8 @@ var CanonicalDocumentGenerate = JobDefinition{
 		"doc.create",
 		"drive.write",
 	},
-	PayloadCodec: job.NewCodecDescriptorMarker("pipelinegen.payload.document.generate.v1", TypeDocumentGenerate),
-	ResultCodec:  job.NewCodecDescriptorMarker("pipelinegen.result.document.generate.v1", TypeDocumentGenerate),
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.document.generate.v1", canonicalTypeDocumentGenerate),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.document.generate.v1", canonicalTypeDocumentGenerate),
 	ArtifactPolicy: ArtifactPolicy{
 		ProducesArtifacts: true,
 		RequireManifest:   true,
@@ -123,7 +134,7 @@ var CanonicalDocumentGenerate = JobDefinition{
 // assets.resolve — pure-data job. Zero ArtifactPolicy:
 // ProducesArtifacts=false + RequireManifest=false (pure-data default).
 var CanonicalAssetsResolve = JobDefinition{
-	Type:           TypeAssetsResolve,
+	Type:           canonicalTypeAssetsResolve,
 	ExecutionClass: ExecutionCreatorAllowed,
 	Queue:          "default",
 	Timeout:        10 * time.Minute,
@@ -133,8 +144,8 @@ var CanonicalAssetsResolve = JobDefinition{
 		"qdrant.search",
 		"asset.reference",
 	},
-	PayloadCodec: job.NewCodecDescriptorMarker("pipelinegen.payload.assets.resolve.v1", TypeAssetsResolve),
-	ResultCodec:  job.NewCodecDescriptorMarker("pipelinegen.result.assets.resolve.v1", TypeAssetsResolve),
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.assets.resolve.v1", canonicalTypeAssetsResolve),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.assets.resolve.v1", canonicalTypeAssetsResolve),
 	// Pure-data job: zero ArtifactPolicy left implicit.
 }
 
@@ -148,7 +159,7 @@ var CanonicalAssetsResolve = JobDefinition{
 // (mirror of youtube_clip.extract); the broker's legacy Complete is
 // the canonical mark-SUCCEEDED seam.
 var CanonicalClipRegister = JobDefinition{
-	Type:           TypeClipRegister,
+	Type:           canonicalTypeClipRegister,
 	ExecutionClass: ExecutionCreatorAllowed,
 	Queue:          "default",
 	Timeout:        30 * time.Minute,
@@ -158,8 +169,8 @@ var CanonicalClipRegister = JobDefinition{
 		"media.clip.extract",
 		"drive.write",
 	},
-	PayloadCodec: job.NewCodecDescriptorMarker("pipelinegen.payload.media.clip.v1", TypeClipRegister),
-	ResultCodec:  job.NewCodecDescriptorMarker("pipelinegen.result.media.clip.v1", TypeClipRegister),
+	PayloadCodec: NewCodecDescriptorMarker("pipelinegen.payload.media.clip.v1", canonicalTypeClipRegister),
+	ResultCodec:  NewCodecDescriptorMarker("pipelinegen.result.media.clip.v1", canonicalTypeClipRegister),
 	// ProducesArtifacts=false: per-item tx owns artifact persistence.
 }
 

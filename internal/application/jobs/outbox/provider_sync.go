@@ -54,8 +54,8 @@ import (
 
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 const (

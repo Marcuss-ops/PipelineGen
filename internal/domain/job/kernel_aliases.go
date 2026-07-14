@@ -34,15 +34,15 @@ const (
 )
 
 type (
-	ArtifactManifest         = kerneljob.ArtifactManifest
-	Artifact                 = kerneljob.Artifact
-	RemoteAsset              = kerneljob.RemoteAsset
-	RemoteAssetIDAdapter     = kerneljob.RemoteAssetIDAdapter
-	UploadedManifest         = kerneljob.UploadedManifest
-	RemoteArtifactManifest   = kerneljob.RemoteArtifactManifest
-	ArtifactRequirement      = kerneljob.ArtifactRequirement
-	UploadedArtifact         = kerneljob.UploadedArtifact
-	RemoteArtifact           = kerneljob.RemoteArtifact
+	ArtifactManifest       = kerneljob.ArtifactManifest
+	Artifact               = kerneljob.Artifact
+	RemoteAsset            = kerneljob.RemoteAsset
+	RemoteAssetIDAdapter   = kerneljob.RemoteAssetIDAdapter
+	UploadedManifest       = kerneljob.UploadedManifest
+	RemoteArtifactManifest = kerneljob.RemoteArtifactManifest
+	ArtifactRequirement    = kerneljob.ArtifactRequirement
+	UploadedArtifact       = kerneljob.UploadedArtifact
+	RemoteArtifact         = kerneljob.RemoteArtifact
 )
 
 const (
@@ -60,22 +60,22 @@ var (
 // ── Artifact manifest typed-error sentinels ────────────────────────────
 
 var (
-	ErrArtifactManifestMissing  = kerneljob.ErrArtifactManifestMissing
-	ErrArtifactManifestInvalid  = kerneljob.ErrArtifactManifestInvalid
-	ErrRequiredArtifactMissing  = kerneljob.ErrRequiredArtifactMissing
+	ErrArtifactManifestMissing = kerneljob.ErrArtifactManifestMissing
+	ErrArtifactManifestInvalid = kerneljob.ErrArtifactManifestInvalid
+	ErrRequiredArtifactMissing = kerneljob.ErrRequiredArtifactMissing
 )
 
 // ── Worker command types ──────────────────────────────────────────────
 
 type (
-	WorkerSession          = kerneljob.WorkerSession
-	WorkerCapabilities     = kerneljob.WorkerCapabilities
-	RegisterWorkerCommand  = kerneljob.RegisterWorkerCommand
-	ClaimCommand           = kerneljob.ClaimCommand
-	HeartbeatCommand       = kerneljob.HeartbeatCommand
-	RenewCommand           = kerneljob.RenewCommand
-	ProgressCommand        = kerneljob.ProgressCommand
-	CompleteCommand        = kerneljob.CompleteCommand
-	FailCommand            = kerneljob.FailCommand
-	WorkerHardwareStats    = kerneljob.WorkerHardwareStats
+	WorkerSession         = kerneljob.WorkerSession
+	WorkerCapabilities    = kerneljob.WorkerCapabilities
+	RegisterWorkerCommand = kerneljob.RegisterWorkerCommand
+	ClaimCommand          = kerneljob.ClaimCommand
+	HeartbeatCommand      = kerneljob.HeartbeatCommand
+	RenewCommand          = kerneljob.RenewCommand
+	ProgressCommand       = kerneljob.ProgressCommand
+	CompleteCommand       = kerneljob.CompleteCommand
+	FailCommand           = kerneljob.FailCommand
+	WorkerHardwareStats   = kerneljob.WorkerHardwareStats
 )

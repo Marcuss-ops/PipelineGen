@@ -19,7 +19,7 @@ import (
 
 	scripts_usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/diagnostics"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/artlist/downloader"
@@ -31,6 +31,7 @@ import (
 	clipindexer "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 	ffmpeg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/ffmpeg"
 	mediaproc "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/processor"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
 )
@@ -660,7 +661,7 @@ func WireArtlistJobBindings(artlistSvc *artlistPkg.Service, jobsBundle *JobsBund
 	// false post-call — surface as the same typed sentinel so
 	// the composition caller aborts rather than continuing with
 	// an unwired consumer.
-	if !jobsBundle.Service.HasHandler(job.TypeArtlistRun) {
+	if !jobsBundle.Service.HasHandler(media.TypeArtlistRun) {
 		return fmt.Errorf("%w: post-bind HasHandler(media.artlist) returned false (dispatcher silently dropped the Register call?)",
 			ErrArtlistConsumerRegistrationFailed)
 	}

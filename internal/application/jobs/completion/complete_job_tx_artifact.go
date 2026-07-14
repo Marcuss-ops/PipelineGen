@@ -15,8 +15,8 @@ package completion
 import (
 	"fmt"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // checkArtifactHashRoundTrip enforces godlike/07 no-fake-

@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	sqljobs "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 

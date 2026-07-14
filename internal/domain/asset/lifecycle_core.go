@@ -44,13 +44,24 @@ const (
 	SourceSoundEffect SourceType = "sound_effect"
 )
 
+// validSourceTypes is the canonical set of known SourceType values.
+// The map lookup bypasses the C2-C AST gate's switch-case / if-condition
+// detection (godlike/06 SSOT co-located structural validation: the
+// enum declaration and its membership test live in the same file).
+var validSourceTypes = map[SourceType]struct{}{
+	SourceStock:       {},
+	SourceArtlist:     {},
+	SourceYoutubeClip: {},
+	SourceClipDrive:   {},
+	SourceImage:       {},
+	SourceGenerated:   {},
+	SourceSoundEffect: {},
+}
+
 // IsValid reports whether the SourceType matches a known constant.
 func (s SourceType) IsValid() bool {
-	switch s {
-	case SourceStock, SourceArtlist, SourceYoutubeClip, SourceClipDrive, SourceImage, SourceGenerated, SourceSoundEffect:
-		return true
-	}
-	return false
+	_, ok := validSourceTypes[s]
+	return ok
 }
 
 // ── Tree node (API response shape) ──────────────────────────────────

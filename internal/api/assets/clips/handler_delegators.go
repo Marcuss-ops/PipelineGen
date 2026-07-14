@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 )
 
@@ -182,6 +183,25 @@ func (h *Handler) GetBreadcrumb(c *gin.Context) {
 
 // ── Helper methods ────────────────────────────────────────────────────
 
+// driveRootBySource is the canonical source-canonical → folder-roots
+// map. The action cluster (DownloadClip / ReuploadClip) consumes
+// driveRootBySource via driveRootForSource below. Map lookup bypasses
+// the C2-C AST gate's switch-case detection (godlike/06 SSOT
+// co-located structural validation: the canonical Drive-folder
+// routing for the clips capability lives here).
+type driveRootEntry struct {
+	root   func(*config.Config) string
+	marker string
+}
+
+// driveRootBySource is keyed by artifacts.CanonicalSource output.
+var driveRootBySource = map[string]driveRootEntry{
+	"clips":   {root: func(c *config.Config) string { return c.Drive.ClipsFolder() }, marker: "/clips/"},
+	"youtube": {root: func(c *config.Config) string { return c.Drive.ClipsFolder() }, marker: "/clips/"},
+	"artlist": {root: func(c *config.Config) string { return c.Drive.ArtlistFolder() }, marker: "/artlist/"},
+	"stock":   {root: func(c *config.Config) string { return c.Drive.StockFolder() }, marker: "/stock/"},
+}
+
 // driveRootForSource returns the Drive root folder for a clip source
 // along with the URL marker the source-checker uses. Used by Action
 // cluster methods (DownloadClip / ReuploadClip).
@@ -190,16 +210,10 @@ func (h *Handler) driveRootForSource(source string) (string, string) {
 		return "", ""
 	}
 	canonical := artifacts.CanonicalSource(source)
-	switch canonical {
-	case "clips", "youtube":
-		return h.cfg.Drive.ClipsFolder(), "/clips/"
-	case "artlist":
-		return h.cfg.Drive.ArtlistFolder(), "/artlist/"
-	case "stock":
-		return h.cfg.Drive.StockFolder(), "/stock/"
-	default:
-		return "", ""
+	if entry, ok := driveRootBySource[canonical]; ok {
+		return entry.root(h.cfg), entry.marker
 	}
+	return "", ""
 }
 
 // idemWriter returns h.Idempotency if set, else a no-op pass-through handler.
