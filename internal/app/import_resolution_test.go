@@ -212,14 +212,14 @@ func TestModuleDependencyConstraints(t *testing.T) {
 		// package becomes a pure presentation layer. The bridge is
 		// allowlisted today so the layered-architecture gate does not
 		// block downstream tests; retiring the entry is the exit criterion.
-		"internal/api/assets/clips/clip_action.go":         true,
+		"internal/api/assets/clips/clip_action.go":          true,
 		"internal/api/assets/clips/folder_query_handler.go": true,
-		"internal/api/assets/clips/handler.go":             true,
-		"internal/api/assets/clips/ingest.go":              true,
-		"internal/api/assets/clips/module.go":              true,
-		"internal/api/assets/clips/nonops/handler.go":      true,
-		"internal/api/assets/clips/ops.go":                 true,
-		"internal/api/assets/clips/search.go":              true,
+		"internal/api/assets/clips/handler.go":              true,
+		"internal/api/assets/clips/ingest.go":               true,
+		"internal/api/assets/clips/module.go":               true,
+		"internal/api/assets/clips/nonops/handler.go":       true,
+		"internal/api/assets/clips/ops.go":                  true,
+		"internal/api/assets/clips/search.go":               true,
 		// TODO(archcheck-bridge): api/transport/qdrant_health.go exposes
 		// Qdrant collection/search/disaster-recovery types directly.
 		// Migration target: narrow typed port in internal/api/transport
@@ -227,7 +227,7 @@ func TestModuleDependencyConstraints(t *testing.T) {
 		// handler consumes an interface and the concrete Qdrant types
 		// stay in internal/infrastructure. Retiring this entry is the
 		// exit criterion.
-		"internal/api/transport/qdrant_health.go":          true,
+		"internal/api/transport/qdrant_health.go": true,
 		// TODO(archcheck-bridge): domain/remote imports
 		// internal/infrastructure/files for idempotency key derivation
 		// (ArtifactIdempotencyKey / CompleteJobIdempotencyKey).
@@ -236,7 +236,7 @@ func TestModuleDependencyConstraints(t *testing.T) {
 		// with pure stdlib deps) so the domain layer carries no infra
 		// imports. Retiring these entries is the exit criterion.
 		"internal/domain/remote/complete_job_idempotency.go": true,
-		"internal/domain/remote/idempotency.go":            true,
+		"internal/domain/remote/idempotency.go":              true,
 	}
 
 	var violations []string
