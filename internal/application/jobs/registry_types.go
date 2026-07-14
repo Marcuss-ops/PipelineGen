@@ -27,6 +27,7 @@ import (
 	"time"
 
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	youtube "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
 )
 
 // ── RegistryEntry (Wave 19 / P1-9 canonical policy record) ─────────────
@@ -235,4 +236,8 @@ const (
 	TypeDocumentGenerate       = job.TypeDocumentGenerate
 	TypeBulkUploadYouTubeClips = job.TypeBulkUploadYouTubeClips
 	TypeAssetTextMaterialize   = job.TypeAssetTextMaterialize
+
+	// PR-YOUTUBE-EXTRACT-REGISTRY (July 2026): youtube.extract is registered
+	// in registry_extraction.go via the domain/youtube package constant.
+	TypeYouTubeExtract = youtube.TypeExtract
 )
