@@ -1,8 +1,8 @@
 package voiceover
 
 import (
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 )
 
 const JobGenerate = voiceover.TypeGenerate
