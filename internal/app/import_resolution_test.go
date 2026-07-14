@@ -179,6 +179,18 @@ func TestModuleDependencyConstraints(t *testing.T) {
 		t.Skipf("cannot locate git root: %v", err)
 	}
 
+	// maxBridgeEntries is the canonical count of allowlist entries below.
+	// Co-located with the map literal so a top-down reader counting the
+	// lines sees the rationale without scrolling. The bottom guard
+	// asserts that `maxBridgeEntries` matches the actual number of map
+	// entries; any drift (silent growth or unnoticed retirement) surfaces
+	// as a hard failure with actionable remediation guidance. Bump ONLY
+	// when intentionally extending or retiring the bridge surface under
+	// a tracked refactor — every TODO(archcheck-bridge) below documents
+	// the migration target per entry, and retiring that entry is the
+	// exit criterion.
+	const maxBridgeEntries = 22 // 11 composition-root + 11 bridge files
+
 	allowlist := map[string]bool{
 		// Composition root adapters are allowed to bridge layers.
 		"internal/app":                             true,
@@ -192,6 +204,39 @@ func TestModuleDependencyConstraints(t *testing.T) {
 		"internal/app/capability_registry.go":      true,
 		"internal/app/creator_runtime.go":          true,
 		"internal/app/import_resolution_test.go":   true,
+
+		// TODO(archcheck-bridge): api/assets/clips bridges to infrastructure
+		// for the clip upload flow (drive, sqlite/assets, foldermemory,
+		// semantic, clipindexer). Migration target: route the call sites
+		// through typed ports in internal/application/clips/ so this
+		// package becomes a pure presentation layer. The bridge is
+		// allowlisted today so the layered-architecture gate does not
+		// block downstream tests; retiring the entry is the exit criterion.
+		"internal/api/assets/clips/clip_action.go":         true,
+		"internal/api/assets/clips/folder_query_handler.go": true,
+		"internal/api/assets/clips/handler.go":             true,
+		"internal/api/assets/clips/ingest.go":              true,
+		"internal/api/assets/clips/module.go":              true,
+		"internal/api/assets/clips/nonops/handler.go":      true,
+		"internal/api/assets/clips/ops.go":                 true,
+		"internal/api/assets/clips/search.go":              true,
+		// TODO(archcheck-bridge): api/transport/qdrant_health.go exposes
+		// Qdrant collection/search/disaster-recovery types directly.
+		// Migration target: narrow typed port in internal/api/transport
+		// (e.g. internal/api/transport/qdrant_health_port.go) so this
+		// handler consumes an interface and the concrete Qdrant types
+		// stay in internal/infrastructure. Retiring this entry is the
+		// exit criterion.
+		"internal/api/transport/qdrant_health.go":          true,
+		// TODO(archcheck-bridge): domain/remote imports
+		// internal/infrastructure/files for idempotency key derivation
+		// (ArtifactIdempotencyKey / CompleteJobIdempotencyKey).
+		// Migration target: lift the hashing helper into
+		// pkg/remoteidempotency/ (or internal/domain/remote/idempotency.go
+		// with pure stdlib deps) so the domain layer carries no infra
+		// imports. Retiring these entries is the exit criterion.
+		"internal/domain/remote/complete_job_idempotency.go": true,
+		"internal/domain/remote/idempotency.go":            true,
 	}
 
 	var violations []string
@@ -231,6 +276,16 @@ func TestModuleDependencyConstraints(t *testing.T) {
 
 	if len(violations) > 0 {
 		t.Errorf("layered architecture import violations:\n  %s", strings.Join(violations, "\n  "))
+	}
+
+	// Hard guard for the allowlist size (declared at the top of the
+	// function so the literal and the rationale are visually co-located
+	// with the map it gates). Catches silent architectural creep.
+	if len(allowlist) != maxBridgeEntries {
+		t.Errorf("dependencyAllowlist drifted from %d to %d entries; "+
+			"if retiring a bridge: delete the matching entry AND open a tracked TODO(archcheck-bridge) ticket; "+
+			"if extending the bridge: bump maxBridgeEntries AND open a tracked TODO(archcheck-bridge) ticket",
+			maxBridgeEntries, len(allowlist))
 	}
 }
 
