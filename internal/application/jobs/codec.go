@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	kerneljob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // ── Legacy typed Codec surface (kept from pre-C2) ───────────────────
@@ -271,6 +271,6 @@ func (a *TypedCodecAdapter[T, R]) DecodeResult(raw json.RawMessage) (any, error)
 // instantiation is a witness because an empty struct is valid for
 // any T/R constraint, so the cast succeeds at compile time.
 var (
-	_ kerneljob.PayloadCodec = (*TypedCodecAdapter[struct{}, struct{}])(nil)
-	_ kerneljob.ResultCodec  = (*TypedCodecAdapter[struct{}, struct{}])(nil)
+	_ job.PayloadCodec = (*TypedCodecAdapter[struct{}, struct{}])(nil)
+	_ job.ResultCodec  = (*TypedCodecAdapter[struct{}, struct{}])(nil)
 )
