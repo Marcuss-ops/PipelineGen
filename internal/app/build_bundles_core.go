@@ -328,7 +328,7 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 				params.Log,
 			),
 		}, External: imgservice.ImagesExternalDeps{
-			IngestSvc: params.IngestSvc, Dispatcher: params.Dispatcher,
+			IngestSvc: params.IngestSvc,
 			// TODO(production): wire a real NewSQLiteAssetCommitter here.
 			// PR-IMAGES-INGEST-ATOMIC (July 2026) requires the writer DB
 			// + outbox events repo to be threaded through buildImagesParams.

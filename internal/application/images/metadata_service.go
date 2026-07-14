@@ -15,7 +15,7 @@ import (
 
 // MetadataService handles semantic metadata tagging and upload to Drive.
 // It is the canonical owner of metaWriter (semantic.MetadataWriter) and
-// all metadata-related operations for images, videos, and audio clips.
+// all metadata-related operations for images.
 //
 // PR-IMAGES-REMOVE-DRIVE-STORE (July 2026): the legacy
 // `publishMetadata(ctx, req drive.AssetDestinationRequest, ...)` signature

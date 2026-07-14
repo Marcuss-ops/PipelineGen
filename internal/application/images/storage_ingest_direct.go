@@ -188,29 +188,12 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		Provider:     classifyImageProvider(source, generator),
 	}
 
-	// PR-IMAGES-INGEST-ATOMIC (July 2026): the prior 2-transaction
-	// path (`repo.AddImage` + `dispatcher.EnqueueAndIndex`) carried
-	// a documented crash-risk window between SQLite and the Qdrant
-	// outbox event — a process crash between the two commits left
-	// the image in SQLite without a corresponding index.requested
-	// event, requiring manual reconcile. This rewrite collapses the
-	// two writes into a SINGLE atomic CommitAsset transaction: one
-	// BEGIN writes `media_assets` + `asset_locations` + typed
-	// `metadata_json` + the `asset.index.requested` outbox event then
-	// COMMITS, so a crash leaves zero rows in both stores (godlike/07
-	// fail-closed preservation of the un-persisted work). The previous
+	// ingestDirect uses a single atomic CommitAsset transaction so a
+	// crash leaves zero rows in both stores. The previous
 	// "unique constraint" handling is delegated to CommitAsset's
 	// canonical idempotent upsert contract.
 	if s.committer == nil {
-		// Fail-closed mirror of the previous fail-open dispatcher
-		// guard: a nil Committer is the operator's responsibility per
-		// godlike/07 NO-FAKE-AVAILABILITY. We refuse to write half
-		// of the two-tx pipeline (the SQLite row only) and instead
-		// surface a typed images-package sentinel so the caller can
-		// errors.Is it for routing. Refusing to write a (partial)
-		// media_assets row without the matching outbox event
-		// preserves the SSOT the refactor closes.
-		return nil, fmt.Errorf("%w: image ingest atomic commit refused (godlike/07 NO-FAKE-AVAILABILITY)", errImageIngestCommitterNil)
+		return nil, fmt.Errorf("%w: image ingest atomic commit refused", errImageIngestCommitterNil)
 	}
 
 	// Build the canonical CommitRequest from the resolved assets +
@@ -270,11 +253,6 @@ func (s *ImageStorageService) ingestDirect(ctx context.Context, slug, style, gen
 		// canonical writer handles dedup atomically.
 		return nil, fmt.Errorf("image ingest atomic commit: %w", err)
 	}
-
-	// Forward-pointer: the previous dispatcher.EnqueueAndIndex path
-	// is preserved below for video + audio assets in storage_drive.go
-	// (see ImageStorageService.dispatcher comment in storage_service.go).
-	// The image ingest path no longer routes through dispatcher.
 
 	return result, nil
 }

@@ -21,7 +21,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 	"go.uber.org/zap"
@@ -56,12 +55,6 @@ type ImagesCoreDeps struct {
 // DestinationResolver that resolves destinationKey -> Drive folder ID,
 // also surfaced on ImageStorageService.destResolver for callers that
 // need to resolve Drive folders directly).
-//
-// PR-IMAGES-REMOVE-NON-IMAGE (July 2026): the legacy `ClipsRepo
-// *assets.ClipsRepository` field (used by the retired
-// ImageStorageService.RegisterVideoAsset / registerAudioClip paths to
-// upsert video + audio into the clips repository) was REMOVED in the
-// prior step.
 type ImagesStorageDeps struct {
 	ImageRepo    *assets.ImagesRepository
 	DriveReader  drive.Reader
@@ -77,31 +70,18 @@ type ImagesGenAIDeps struct {
 	ImageGen      ImageGenerator
 }
 
-// ImagesExternalDeps holds external-service dependencies (ingest, outbox, Velox, GA).
+// ImagesExternalDeps holds external-service dependencies (ingest, committer, Velox, GA).
 //
 // Committer is the canonical SINGLE-transaction asset commit surface
 // (persistence.AssetCommitter) used by ImageStorageService.ingestDirect
 // to atomically write media_assets + asset_locations + typed metadata +
-// the asset.index.requested outbox event. It replaces the prior
-// AddImage + dispatcher.EnqueueAndIndex two-transaction path that
-// carried a documented crash-risk window between SQLite and Qdrant
-// (PR-IMAGES-INGEST-ATOMIC, July 2026). Nil is tolerated for back-
-// compat with test fixtures and partial deploys; a nil Committer
-// in production is the operator's responsibility, not the SSOT.
-// The legacy Dispatcher field is retained (NOT removed) for video
-// and audio paths in storage_drive.go that don't use CommitAsset.
+// the asset.index.requested outbox event.
 //
 // SourceStager is the canonical port for staging remote URLs into
-// deterministic local files (PR-SOURCESTAGER-CONSOLIDATE, July 2026).
-// downloadAndIngest routes web-image downloads through it so the
-// inline `http.NewRequest + s.client.Do` boilerplate no longer leaks
-// into the processor. The composition root MUST wire this with a
-// real implementation (e.g. internal/infrastructure/stager/
-// HTTPSourceStager); a nil value causes downloadAndIngest to fail
-// closed with a typed error (godlike/07).
+// deterministic local files. downloadAndIngest routes web-image
+// downloads through it.
 type ImagesExternalDeps struct {
 	IngestSvc    *ingest.Service
-	Dispatcher   *outbox.Dispatcher
 	Committer    persistence.AssetCommitter
 	SourceStager assetapp.SourceStager
 	VeloxBaseURL string
