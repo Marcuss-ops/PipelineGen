@@ -244,12 +244,8 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 	//      adds ProcessorPersistence to the postprocessor list, so
 	//      scripts are never persisted.
 	//
-	// PR-COMMIT3 (July 2026): the prior GenerateDocument safety
-	// override is REMOVED — the deprecation-registered flag is
-	// physically removed from OutputSpec in this commit. Document
-	// output is produced by the separate TypeDocumentGenerate
-	// downstream job. SaveToDB stays a safety default because
-	// SaveToDB is NOT a deprecation-registered toggle.
+	// SaveToDB is a safety default because persistence is required
+	// for downstream processors to read the script.
 	if !item.Output.SaveToDB {
 		item.Output.SaveToDB = true
 	}
@@ -303,15 +299,8 @@ func applySafetyDefaults(item *scriptpkg.GenerationItemV2) {
 //
 //	custom     → pass-through (no overrides)
 //	with_images → SentencesPerImage=8, ImagesPerScene=2 only when caller
-//	               left them at zero (the deprecation-registered
-//	               GenerateSceneImages toggle is physically removed in
-//	               PR-COMMIT3 July 2026; images output is produced by
-//	               the separate TypeImagesGenerate downstream job)
-//	full_media → scoping-only (the deprecation-registered
-//	              GenerateSceneImages + GenerateVoiceover toggles are
-//	              physically removed in PR-COMMIT3 July 2026; output
-//	              is produced by the separate TypeImagesGenerate +
-//	              TypeVoiceoverGenerate downstream jobs)
+//	               left them at zero
+//	full_media → scoping-only
 //	catalog    → pass-through (handler binds source.kind=catalog upstream)
 //	search     → pass-through (handler binds source.kind=search upstream)
 //	batch / unknown / empty → pass-through
@@ -325,11 +314,6 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 		// Caller filled every flag explicitly; preset must not touch.
 	case scriptpkg.PresetWithImages:
 		// §6 row 2: with_images | none | images sizing defaults.
-		// PR-COMMIT3 (July 2026): the prior GenerateSceneImages
-		// toggle assignment is REMOVED. Sizing defaults
-		// (SentencesPerImage / ImagesPerScene) stay as
-		// caller-precedence defaults — they remain useful for
-		// downstream job sizing.
 		if item.ScriptParams.SentencesPerImage <= 0 {
 			item.ScriptParams.SentencesPerImage = 8
 		}
@@ -338,10 +322,6 @@ func ApplyPreset(item *scriptpkg.GenerationItemV2, preset scriptpkg.Preset) {
 		}
 	case scriptpkg.PresetFullMedia:
 		// §6 row 3: full_media | scoping-only.
-		// PR-COMMIT3 (July 2026): the prior GenerateSceneImages +
-		// GenerateVoiceover toggle assignments are REMOVED. Both
-		// flags are physically removed from OutputSpec. The
-		// preset is now scoping-only for these fields.
 	case scriptpkg.PresetCatalog:
 		// §6 row 4: catalog | source.kind=catalog | none.
 		//

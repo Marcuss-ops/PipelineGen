@@ -194,18 +194,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 
 	// ── Step 5: Handler construction (slim form, PR-script-deps-slim) ──
 	//
-	// PR-COMMIT3 (July 2026): the preflight module
-	// (postprocessor_preflight.go) + buildPreflightCaps helper +
-	// PreflightCaps struct are physically REMOVED. The 3 gated
-	// output flags (GenerateVoiceover / GenerateSceneImages /
-	// GenerateDocument) are physically removed from OutputSpec.
-	// Callers that send the deleted 3 flags receive HTTP 400
-	// UNKNOWN_FIELD at the wire boundary (DisallowUnknownFields in
-	// bindGenerateEnvelope). The downstream jobs
-	// (TypeVoiceoverGenerate / TypeImagesGenerate /
-	// TypeDocumentGenerate in internal/domain/job/job.go) are the
-	// canonical owners of the voiceover / scene-images / document
-	// artifact surfaces.
+	// Preflight module removed; OutputSpec contains only the
+	// surviving active flags. Callers sending removed flags receive
+	// HTTP 400 UNKNOWN_FIELD at the wire boundary.
 
 	submissionSvc, err := buildScriptSubmissionService(root, log)
 	if err != nil {

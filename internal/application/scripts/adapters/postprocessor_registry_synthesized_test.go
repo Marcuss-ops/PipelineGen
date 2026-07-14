@@ -340,11 +340,6 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 	// stock_association + persistence). clip_bindings
 	// synthesises scenes from prose; persistence is the
 	// downstream consumer of synthesised scenes.
-	// PR-COMMIT3 (July 2026): voiceover + images are no longer
-	// inline postprocessors — the corresponding artifact output
-	// is produced by the canonical downstream jobs
-	// (TypeVoiceoverGenerate / TypeImagesGenerate), not the
-	// inline PostProcessorRegistry.
 	entities := &synthesisingProcessor{
 		name:   "entities",
 		policy: adapterspkg.ProcessorBestEffort,
@@ -378,9 +373,6 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 
 	// Build a plan using the REAL buildPostprocessorList (via
 	// BuildPlan) with the 2 surviving ACTIVE flags enabled.
-	// PR-COMMIT3 (July 2026): the 3 deprecation-registered
-	// output flags (GenerateVoiceover + GenerateSceneImages +
-	// GenerateDocument) are physically removed from OutputSpec.
 	item := scriptpkg.GenerationItemV2{
 		ID:    "item-p0-reorder",
 		Title: "P0 Reorder Test",
@@ -396,13 +388,12 @@ func TestRegistry_Run_BuildPlanOrderVoiceoverImagesSeeSynthScenes(t *testing.T) 
 	}
 	plan := scripts.BuildPlan(item)
 
-	// PR-COMMIT3 (July 2026): the postprocessor list now contains
-	// only the 2 surviving ACTIVE postprocessors (entities +
-	// metadata) + the unconditional scene-normalisation stages
-	// (clip_bindings + stock_association) + persistence. The
-	// clip_bindings ordering invariant is still valid: it must
-	// run before the final persistence write so synthesised
-	// scenes are visible.
+	// The postprocessor list contains the 2 ACTIVE postprocessors
+	// (entities + metadata) + the unconditional scene-normalisation
+	// stages (clip_bindings + stock_association) + persistence. The
+	// clip_bindings ordering invariant is still valid: it must run
+	// before the final persistence write so synthesised scenes are
+	// visible.
 	if len(plan.Postprocessors) < 4 {
 		t.Fatalf("expected at least 4 postprocessors (entities + metadata + clip_bindings + stock_association + persistence), got %d: %v",
 			len(plan.Postprocessors), plan.Postprocessors)
