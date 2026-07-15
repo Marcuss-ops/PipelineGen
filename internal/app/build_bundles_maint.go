@@ -16,7 +16,7 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	_ = ctx
 	_ = drive
 
-	deletionSvc := deletion.NewDeletionService(deletion.Dependencies{
+	deletionSvc := deletion.NewService(deletion.Dependencies{
 		Repositories: deletion.RepositoryPorts{
 			Artlist:   repos.ClipsRepo,
 			Clips:     repos.ClipsRepo,
