@@ -493,16 +493,22 @@ func WireServices(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, e
 	}
 
 	return &AppDeps{
-		Registry:             registryWiring.Registry,
-		WorkerHandler:        workerHandler,
-		InternalMediaHandler: internalMediaHandler,
-		OutboxHandler:        registryWiring.OutboxHandler,
-		MediasearchHandler:   registryWiring.MediasearchHandler,
-		QdrantProbe:          qdrantProbe,
-		QdrantHealth:         qdrantHealth,
-		Lifecycle:            lifecycle,
-		HealthService:        healthSvc,
-		ReadyChecker:         readyChecker,
+		Handlers: AppHandlers{
+			Registry:             registryWiring.Registry,
+			WorkerHandler:        workerHandler,
+			InternalMediaHandler: internalMediaHandler,
+			OutboxHandler:        registryWiring.OutboxHandler,
+			MediasearchHandler:   registryWiring.MediasearchHandler,
+		},
+		Runtime: AppRuntime{
+			Lifecycle: lifecycle,
+		},
+		Health: AppHealth{
+			QdrantProbe:   qdrantProbe,
+			QdrantHealth:  qdrantHealth,
+			HealthService: healthSvc,
+			ReadyChecker:  readyChecker,
+		},
 	}, nil
 }
 
@@ -516,8 +522,12 @@ func WireMinimal(cfg *config.Config, log *zap.Logger, mode string) (*AppDeps, er
 		return nil, err
 	}
 	return &AppDeps{
-		Registry:  nil, // forward-pointer: PR-COMPOSITION-REGISTRY-LIVE-WIRE
-		Lifecycle: &minimalLifecycle{stop: coreClean},
+		Handlers: AppHandlers{
+			Registry: nil, // forward-pointer: PR-COMPOSITION-REGISTRY-LIVE-WIRE
+		},
+		Runtime: AppRuntime{
+			Lifecycle: &minimalLifecycle{stop: coreClean},
+		},
 	}, nil
 }
 

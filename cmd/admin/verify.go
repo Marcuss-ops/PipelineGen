@@ -70,8 +70,8 @@ func runVerifyArtlistPipeline(args []string) error {
 		log.Error("Failed to wire services", zap.Error(err))
 		return err
 	}
-	if deps.Lifecycle != nil {
-		defer deps.Lifecycle.Stop(context.Background())
+	if deps.Runtime.Lifecycle != nil {
+		defer deps.Runtime.Lifecycle.Stop(context.Background())
 	}
 
 	allOK := true

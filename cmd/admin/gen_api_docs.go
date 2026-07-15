@@ -44,7 +44,7 @@ func runGenAPIDocs(args []string) error {
 	if err != nil {
 		return fmt.Errorf("wire services: %w", err)
 	}
-	defer appDeps.Lifecycle.Stop(context.Background())
+	defer appDeps.Runtime.Lifecycle.Stop(context.Background())
 
 	// PG-006.1 (June 2026): inline genDocsSecurityAdapter was deleted —
 	// cfg.Security is now snapshotted into the canonical
@@ -73,7 +73,7 @@ func runGenAPIDocs(args []string) error {
 		Features:      featuresAdapter,
 	}
 	router := api.NewRouter(routerCfg)
-	router.SetRegistry(appDeps.Registry)
+	router.SetRegistry(appDeps.Handlers.Registry)
 	engine := router.Setup()
 
 	routes := engine.Routes()

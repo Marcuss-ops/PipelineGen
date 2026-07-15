@@ -105,8 +105,8 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 	// time, the probe is nil and the AddProbe call is no-op (the
 	// serverLifecycle type filters nil probes automatically inside
 	// its parallel barrier).
-	if deps.QdrantProbe != nil && deps.Lifecycle != nil {
-		deps.Lifecycle.AddProbe("qdrant", deps.QdrantProbe.Probe)
+	if deps.Health.QdrantProbe != nil && deps.Runtime.Lifecycle != nil {
+		deps.Runtime.Lifecycle.AddProbe("qdrant", deps.Health.QdrantProbe.Probe)
 	}
 
 	// QDRANT-route-constructor (June 2026, PR 3): outboxHandler and
@@ -115,17 +115,17 @@ func BuildServer(cfg *config.Config, mode string, log *zap.Logger) (*ServerRunti
 	// /internal/v1 routes register before Setup() executes.
 	server := api.NewServerWithHealth(api.ServerDeps{
 		Config:   cfg,
-		Registry: deps.Registry,
+		Registry: deps.Handlers.Registry,
 		Handlers: api.InternalHandlers{
-			Worker:      deps.WorkerHandler,
-			Media:       deps.InternalMediaHandler,
-			Outbox:      deps.OutboxHandler,
-			MediaSearch: deps.MediasearchHandler,
+			Worker:      deps.Handlers.WorkerHandler,
+			Media:       deps.Handlers.InternalMediaHandler,
+			Outbox:      deps.Handlers.OutboxHandler,
+			MediaSearch: deps.Handlers.MediasearchHandler,
 		},
-		Lifecycle:    deps.Lifecycle,
-		Health:       deps.HealthService,
-		Ready:        deps.ReadyChecker,
-		QdrantHealth: deps.QdrantHealth,
+		Lifecycle:    deps.Runtime.Lifecycle,
+		Health:       deps.Health.HealthService,
+		Ready:        deps.Health.ReadyChecker,
+		QdrantHealth: deps.Health.QdrantHealth,
 	})
 	return &ServerRuntime{Server: server, Deps: deps}, nil
 }
