@@ -64,7 +64,7 @@ internal/application/voiceover/dedupe.go  # Wave 19 PR-Wave19-MIGRATE-B: paramet
 internal/application/voiceover/persistence/repository.go  # Wave 19 PR-Wave19-MIGRATE-VO-REP: Voiceover Repository persistence direct SQL access; owner: agent/Codebuff; deadline: 2026-07-31
 
 internal/application/jobs/outbox/registry.go  # Wave 19 PR-Wave19-MIGRATE-G: OutboxRegistryPort + outbox/registry adapter (single repo hold); owner: agent/Codebuff; deadline: 2026-07-31
-internal/application/jobs/outbox/indexing.go  # Wave 19 PR-Wave19-MIGRATE-H: OutboxIndexingPort + outbox/indexing adapter (tx-emit on the swap path); owner: agent/Codebuff; deadline: 2026-07-31
+
 internal/application/books/service.go  # Wave 19 PR-Wave19-MIGRATE-I: BooksRepositoryPort + books adapter; this PR depends on P1-7 Refactor 3 cross-capability fix (books→voiceover); owner: agent/Codebuff; deadline: 2026-07-31
 
 # ── 4. Tier-C: higher-complexity production migrations (deadline 2026-08-15)
@@ -73,9 +73,7 @@ internal/application/books/service.go  # Wave 19 PR-Wave19-MIGRATE-I: BooksRepos
 # Refactor cost is larger; staged across 2-3 PRs per file is acceptable
 # if each PR preserves go build + go vet + architectural-checks green.
 internal/application/jobs/outbox/delivery.go  # Wave 19 PR-Wave19-MIGRATE-J: OutboxDeliveryPort + outbox/delivery adapter (atomic envelope-xfer via tx); owner: agent/Codebuff; deadline: 2026-08-15
-internal/application/assets/maintenance/run_cleanup.go  # Wave 19 PR-Wave19-MIGRATE-K: MaintenanceRunPort + maintenance/run adapter; owner: agent/Codebuff; deadline: 2026-08-15
-internal/application/assets/maintenance/deep_cleanup.go  # Wave 19 PR-Wave19-MIGRATE-L: MaintenanceDeepPort + maintenance/deep adapter; owner: agent/Codebuff; deadline: 2026-08-15
-internal/application/assets/maintenance/service.go  # Wave 19 PR-Wave19-MIGRATE-M: MaintenanceServicePort (composes Run+Deep) + maintenance/service adapter; owner: agent/Codebuff; deadline: 2026-08-15
+
 internal/application/assets/providers/artlist/service.go  # Wave 19 PR-Wave19-MIGRATE-N: ArtlistServicePort (broad surface) + artlist adapter; owner: agent/Codebuff; deadline: 2026-08-15
 internal/application/assets/ingest/adapter_clip.go  # Wave 19 PR-Wave19-MIGRATE-O: ClipIngestPort + assets/ingest adapter (depends on outbox dispatcher wiring); owner: agent/Codebuff; deadline: 2026-08-15
 
@@ -87,3 +85,35 @@ internal/application/assets/ingest/adapter_clip.go  # Wave 19 PR-Wave19-MIGRATE-
 internal/application/assets/artifacts/repository.go  # Wave 19 PR-Wave19-MIGRATE-P: ArtifactRepositoryPort + artifacts adapter (replaces concrete *Repository); owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/assets/artifacts/clips_adapter.go  # Wave 19 PR-Wave19-MIGRATE-Q: ClipsArtifactAdapterPort (narrows repository surface) + artifacts/clips_adapter adapter; owner: agent/Codebuff; deadline: 2026-08-31
 internal/application/assets/artifacts/resolvers/resolvers.go  # Wave 19 PR-Wave19-MIGRATE-R: ArtifactResolversPort (resolvers façade) + resolvers adapter; owner: agent/Codebuff; deadline: 2026-08-31
+
+# ── 6. Tier-E: voiceover SQL verification query (deadline 2026-08-31) ───
+internal/application/voiceover/verify_media_assets.go  # Wave 19 P0.7 Step 9/12: single SQL verification query (SELECT 1 FROM media_assets WHERE id=? AND source='voiceover'); owner: agent/Codebuff; deadline: 2026-08-31
+
+# ── 7. Tier-F: remaining P1-8 production violations (deadline 2026-08-31) ─
+# Files discovered by Check 42 that carry direct database/sql usage in
+# internal/application/** but were not in the original Wave 19 plan.
+# Each must be migrated to a typed port or grandfathered with owner+deadline.
+internal/application/assets/finalizer/tx_adapter.go  # P1-8 tx_adapter direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/assets/lifecycle/service_voiceover.go  # P1-8 lifecycle voiceover projection UPSERT; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/assets/persistence/committer.go  # P1-8 persistence committer direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/assets/processing/asset_committer.go  # P1-8 processing asset committer direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/assets/providers/stock/enrichment/handler_repository.go  # P1-8 stock enrichment handler repository SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/assets/providers/stock/enrichment/outbox_emitter.go  # P1-8 stock enrichment outbox emitter SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/assets/providers/stock/stockpipeline/service.go  # P1-8 stock pipeline service SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/assets/providers/stock/stockpipeline/service_types.go  # P1-8 stock pipeline service types SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/assets/texttracks/materializer.go  # P1-8 text tracks materializer direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/document/usecase.go  # P1-8 document usecase direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/execution/steps/sqlite_store.go  # P1-8 execution steps sqlite store (canonical tx bridge); owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/jobs/finalizer/artifact_writer.go  # P1-8 finalizer artifact writer SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/jobs/finalizer/job_completion_writer.go  # P1-8 finalizer job completion writer SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/jobs/finalizer/job_finalizer.go  # P1-8 finalizer job finalizer SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/jobs/finalizer/lease_fence.go  # P1-8 finalizer lease fence SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/jobs/finalizer/reconciler.go  # P1-8 finalizer reconciler SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/jobs/outbox/indexing_handle.go  # P1-8 outbox indexing handle SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/operations/ports.go  # P1-8 operations ports typed-port signature (canonical Pattern 0); owner: agent/Codebuff; deadline: never-canonical
+internal/application/qdrant/maintenance/service.go  # P1-8 qdrant maintenance service SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/voiceover/finalizer_cleanup_outbox.go  # P1-8 voiceover finalizer cleanup outbox SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/voiceover/finalizer_execute.go  # P1-8 voiceover finalizer execute SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/voiceover/finalizer.go  # P1-8 voiceover finalizer direct SQL; owner: agent/Codebuff; deadline: 2026-08-31
+internal/application/voiceover/ports_finalization.go  # P1-8 voiceover finalization ports (typed-port signature); owner: agent/Codebuff; deadline: never-canonical
+internal/application/voiceover/upload_intent.go  # P1-8 voiceover upload intent SQL; owner: agent/Codebuff; deadline: 2026-08-31

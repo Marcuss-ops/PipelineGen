@@ -57,8 +57,8 @@ func WireAssets(
 	}
 
 	var assetRepo asset.Repository
-	if deps.Core.Assets != nil {
-		assetRepo = deps.Core.Assets.Repository()
+	if deps.Core.Services.Assets != nil {
+		assetRepo = deps.Core.Services.Assets.Repository()
 	}
 
 	searchBackends := deps.Search.SearchBackendRegistry
@@ -73,7 +73,7 @@ func WireAssets(
 	log.Info("WireAssets: consumed pre-built canonical SearchFanOut",
 		zap.Int("backends", len(searchBackends.All())))
 
-	folderMemSvc := foldermemory.NewService(log, deps.Core.ClipsRepo)
+	folderMemSvc := foldermemory.NewService(log, deps.Core.Repositories.ClipsRepo)
 	metaWriter := semantic.NewNopMetadataWriter(log)
 
 	var idemHandler gin.HandlerFunc = func(c *gin.Context) { c.Next() }
@@ -121,12 +121,12 @@ func WireAssets(
 		)
 	}
 
-	storageDesc, err := buildStorageBundle(log, jobs, deps.Core.CatalogSyncService)
+	storageDesc, err := buildStorageBundle(log, jobs, deps.Core.Services.CatalogSyncService)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: storage: %w", err)
 	}
 
-	dd, diagSvc, err := buildDiagnosticsBundle(log, deps.Core.ClipsRepo)
+	dd, diagSvc, err := buildDiagnosticsBundle(log, deps.Core.Repositories.ClipsRepo)
 	if err != nil {
 		return nil, fmt.Errorf("WireAssets: diagnostics: %w", err)
 	}
@@ -193,7 +193,7 @@ func buildSoundeffectBundle(
 ) (*assetsfx.SoundeffectDescriptor, error) {
 	_ = driveUploader
 
-	sfxClips := &sfxClipsRepoAdapter{repo: deps.Core.ClipsRepo}
+	sfxClips := &sfxClipsRepoAdapter{repo: deps.Core.Repositories.ClipsRepo}
 	sfxMeta := &sfxSemanticWriterAdapter{w: metaWriter}
 	sfxResolver := &sfxResolverAdapter{mediaRoot: "data"}
 	sfxDispatcher := newSfxDispatcherAdapter(dispatcher)
@@ -240,7 +240,7 @@ func buildRegisterBundle(
 	dispatcher *outbox.Dispatcher,
 	jobs *JobsBundle,
 ) (*assetregister.RegisterDescriptor, error) {
-	registerSvc := newAssetRegisterService(cfg, log, deps.Core.ClipsRepo, driveUploader, lifecycle, deps.Core.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service)
+	registerSvc := newAssetRegisterService(cfg, log, deps.Core.Repositories.ClipsRepo, driveUploader, lifecycle, deps.Core.Services.AssetTreeService, providerRegistry, clipEnricher, dispatcher, deps.Delivery.Publisher, jobs.Service)
 
 	driveChecker := func() error {
 		if driveUploader == nil {
