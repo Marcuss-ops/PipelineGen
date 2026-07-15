@@ -1,0 +1,107 @@
+name: Verify Incremental Job Kernel Slice
+
+on:
+  push:
+    paths:
+      - .github/workflows/verify-job-kernel-slice.yml
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: verify-job-kernel-slice
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Compile and test migrated capabilities
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          post_status() {
+            curl -fsS -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPOSITORY}/statuses/$1" \
+              -d "$(python3 -c 'import json,sys; print(json.dumps({"state":sys.argv[1],"context":sys.argv[2],"description":sys.argv[3]}))' "$2" "$3" "$4")" >/dev/null
+          }
+
+          fail() {
+            post_status "${TRIGGER_SHA}" failure "job-kernel-incremental/verify" "$1"
+            exit 1
+          }
+
+          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/verify" "Compiling incremental migration slice"
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          migrated_files=(
+            internal/application/assets/providers/artlist/job_types.go
+            internal/application/assets/providers/artlist/job_core.go
+            internal/application/assets/providers/artlist/search_core.go
+            internal/application/assets/texttracks/fanout.go
+            internal/application/assets/providers/stock/stockpipeline/orchestrator_manifest.go
+            internal/application/assets/providers/stock/stockpipeline/orchestrator_metadata.go
+            internal/application/assets/providers/stock/stockpipeline/step_runner.go
+            internal/application/assets/providers/stock/stockpipeline/job_handler.go
+            cmd/archcheck/scan/packages.go
+            cmd/archcheck/scan/percheck_no_domain_job_compatibility_aliases.go
+            cmd/archcheck/checks.go
+          )
+
+          if [ -n "$(gofmt -l "${migrated_files[@]}")" ]; then
+            gofmt -d "${migrated_files[@]}"
+            fail "Migrated files are not gofmt-clean"
+          fi
+
+          packages=(
+            ./internal/application/assets/providers/artlist
+            ./internal/application/assets/texttracks
+            ./internal/application/assets/providers/stock/stockpipeline
+            ./cmd/archcheck/...
+          )
+          if ! go test -run '^$' "${packages[@]}" >/tmp/job-kernel-compile.log 2>&1; then
+            tail -n 150 /tmp/job-kernel-compile.log
+            fail "Incremental package compilation failed"
+          fi
+
+          if ! go test ./cmd/archcheck/scan ./internal/application/assets/providers/artlist ./internal/application/assets/texttracks >/tmp/job-kernel-tests.log 2>&1; then
+            tail -n 150 /tmp/job-kernel-tests.log
+            fail "Focused migration tests failed"
+          fi
+
+          if ! go run ./cmd/archcheck --production-only >/tmp/job-kernel-archcheck.log 2>&1; then
+            tail -n 150 /tmp/job-kernel-archcheck.log
+            fail "Production archcheck failed"
+          fi
+
+          git rm .github/workflows/verify-job-kernel-slice.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(ci): remove completed job kernel verifier"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+          final_sha=$(git rev-parse HEAD)
+          post_status "${TRIGGER_SHA}" success "job-kernel-incremental/verify" "Incremental migration slice is green"
+          post_status "${final_sha}" success "job-kernel-incremental/verify" "Incremental migration slice is green"
