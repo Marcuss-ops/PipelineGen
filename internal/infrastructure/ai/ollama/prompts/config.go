@@ -3,12 +3,10 @@ package prompts
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"sync"
 	"text/template"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
-
 	"gopkg.in/yaml.v3"
 )
 
@@ -107,22 +105,21 @@ type Config struct {
 
 // MemorySection is a labeled group of memory items for the enriched prompt.
 type MemorySection struct {
-	Type  string   // "channel", "past", "research", "other"
-	Items []string // formatted lines (already truncated by caller)
+	Type  string
+	Items []string
 }
 
-// Registry is the global prompt registry singleton.
 var (
 	registry     *Config
 	registryOnce sync.Once
 	registryErr  error
 )
 
-// Load loads the prompt config from the given YAML file path.
+// Load accepts either a regular YAML file or a split manifest with includes.
 func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := loadConfigData(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read prompts config %s: %w", path, err)
+		return nil, err
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
@@ -131,7 +128,6 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// MustLoad is like Load but panics on error.
 func MustLoad(path string) *Config {
 	cfg, err := Load(path)
 	if err != nil {
@@ -140,8 +136,7 @@ func MustLoad(path string) *Config {
 	return cfg
 }
 
-// Init initializes the global registry once. Safe to call multiple times.
-// After loading, it applies the filtering config to the types package.
+// Init initializes the global registry once and applies filtering overrides.
 func Init(path string) error {
 	registryOnce.Do(func() {
 		registry, registryErr = Load(path)
@@ -152,12 +147,10 @@ func Init(path string) error {
 	return registryErr
 }
 
-// Get returns the global registry. Returns nil if Init was never called or failed.
 func Get() *Config {
 	return registry
 }
 
-// render executes a Go template string with the given data map.
 func render(tmplStr string, data map[string]any) (string, error) {
 	t, err := template.New("").Parse(tmplStr)
 	if err != nil {
@@ -170,7 +163,6 @@ func render(tmplStr string, data map[string]any) (string, error) {
 	return buf.String(), nil
 }
 
-// joinStrings joins a slice of strings with ", ".
 func joinStrings(ss []string) string {
 	result := ""
 	for i, s := range ss {
@@ -182,8 +174,7 @@ func joinStrings(ss []string) string {
 	return result
 }
 
-// ApplyFilteringConfig applies the filtering lists from the YAML config
-// to the types package, overriding the hardcoded defaults.
+// ApplyFilteringConfig applies YAML filtering lists to the types package.
 func (c *Config) ApplyFilteringConfig() {
 	if c == nil {
 		return
