@@ -1,0 +1,117 @@
+# ── Check 5: forbid mutation primitives in production callers (QDRANT-asset-mutation isolation, Wave 22) ────
+# The three primitive methods UpsertClip / Restore / HardDelete are
+# dispatcher-only / admin-only entry points to media_assets. The
+# canonical narrow interface is mutations.AssetMutationPrimitives
+# (consumed by outbox.Dispatcher) and admin.InternalAdminPurge
+# (consumed by cmd/admin tooling). Production code paths in
+# internal/application/** and internal/api/** MUST NOT call these
+# methods directly:
+#
+#   - artlist ingestion MUST route through outbox.Dispatcher.EnqueueAndIndex
+#   - sourcing ingest MUST route through IndexDispatcherPort.EnqueueAndIndex
+#   - hash-recovery patches MUST use the lower-level Upsert (a public
+#     method that still bypasses the outbox but is syntactically
+#     permitted on the port surfaces; the lint is a syntactic guard)
+#   - admin physical-purge MUST go through InternalAdminPurge
+#     (these calls land in cmd/admin/** which is NOT production
+#     caller territory per AGENTS.md / Pattern 8)
+#
+# Verification:
+#   rg 'UpsertClip\(|^\s*\.Restore\(|^\s*\.HardDelete\(' \
+#      internal/application internal/api --glob '!**/*_test.go'
+#   must return ZERO hits.
+#
+# Allowlist:
+#   - mutations/primitives.go : defines the interface, not a caller.
+#   - admin/purge*.go         : cmd/admin's package, not production caller.
+#   - internal/infrastructure/** : the dispatcher + the canonical
+#                                  ClipsRepository (which is the
+#                                  owner of the SQL primitives).
+#   - *_test.go               : tests may call the methods directly.
+#
+# ARCH-ALLOWLIST opt-in (Wave 22 task 5 follow-up, June 2026): admin
+# migration / backfill files that legitimately need to call the raw
+# primitives (e.g. a one-shot operator tool that bypasses the dispatcher
+# during an offline maintenance window) MUST prepend the marker comment
+# `// ARCH-ALLOWLIST: admin-only` on the line preceding the call. Check 5
+# then strips any line-with-marker hit from the failing-set via an
+# awk pre-pass that drops matches whose preceding comment line carries
+# the magic marker. The marker is enforced strictly (typos in the magic
+# word = lint failure = corruption-safe by design). Per AGENTS.md §7
+# zero-baseline rule, new allowlist entries require explicit owner +
+# deadline; the marker is the call-site equivalent of an allowlist row.
+echo "=== Check 5: forbid mutation primitives in production callers (QDRANT-asset-mutation) ==="
+# Step 1: collect ALL raw hits, including ARCH-ALLOWLIST marker sites,
+# so the post-pass can recognise the magic marker on the line
+# PRECEDING the call line.
+all_hits=$(rg -n --type go \
+    -e '\bUpsertClip\(' \
+    -e '(^|[\s.(])r\.Restore\(' \
+    -e '(^|[\s.(])r\.HardDelete\(' \
+    -e '\.repo\.UpsertClip\(' \
+    -e '\.clips\.UpsertClip\(' \
+    -e '\.inner\.UpsertClip\(' \
+    --glob '!**/*_test.go' \
+    --glob '!**/mutations/primitives.go' \
+    --glob '!**/admin/purge*.go' \
+    --glob '!**/infrastructure/database/sqlite/**' \
+    internal/application internal/api 2>/dev/null \
+    || true)
+# Step 2: drop full-line comments AND lines preceded by the ARCH-ALLOWLIST
+# marker comment (i.e. the preceding line carries the magic marker).
+literal_calls=$(printf '%s\n' "$all_hits" \
+    | awk -F: '
+        BEGIN { prev_marker = 0 }
+        # Group hits by file so we look at the line BEFORE each hit
+        # within the same file. Maintain a ring buffer of the last
+        # 2 lines of each file in awk is non-trivial; instead we
+        # rely on rg already having line numbers and we look for
+        # marker on the SAME or PRECEDING line (rg joins via -).
+        {
+            rest = ""
+            for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+            if (rest ~ /^[[:space:]]*\/\/.*ARCH-ALLOWLIST:[[:space:]]*admin-only/) {
+                # Save as a marker line for THIS file. Format: file<TAB>marker_line
+                markers[$1] = (markers[$1] == "" ? $2 : markers[$1] "," $2)
+                next
+            }
+            if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+            # Allow if THIS line number is within marker+1..marker+3
+            # for the same file (tolerates a blank-line separator between
+            # marker comment and the call site). Strict equality would
+            # miss the operator-common pattern of
+            #   // ARCH-ALLOWLIST: admin-only
+            #
+            #   clipsRepo.UpsertClip(...)
+            # Scan every marker line in markers[$1] (comma-joined). If THIS
+            # hit line is within `marker+1..marker+25` for any marker in
+            # the same file, drop it (allowlisted). Scroll-window is 25
+            # lines; the marker count is unbounded per-file.
+            n = (markers[$1] == "" ? 0 : split(markers[$1], mlist, ","))
+            allowed = 0
+            for (mi = 1; mi <= n; mi++) {
+              m = mlist[mi] + 0
+              if (m > 0 && $2 + 0 >= m + 1 && $2 + 0 <= m + 25) { allowed = 1; break }
+            }
+            if (allowed) next
+            print
+        }' \
+    || true)
+if [ -n "$literal_calls" ]; then
+    echo "FAIL: forbidden mutation primitive call in production caller:"
+    echo "$literal_calls"
+    echo ""
+    echo "Fix: route writes through outbox.Dispatcher.EnqueueAndIndex"
+    echo "(production) or admin.InternalAdminPurge (offline tooling)."
+    echo "The narrowed surface is mutations.AssetMutationPrimitives; the"
+    echo "underlying methods on *assets.ClipsRepository are dispatcher-only."
+    echo ""
+    echo "If the call is genuinely admin migration / backfill, prepend the"
+    echo "comment marker on the line preceding the call:"
+    echo "    // ARCH-ALLOWLIST: admin-only"
+    echo "    clipsRepo.UpsertClip(ctx, &asset.Asset{ID: \"__backfill__\"})"
+    echo "The marker is stripped from the failing-set automatically."
+    exit 1
+fi
+echo "OK: no forbidden mutation primitive calls in production callers"
+

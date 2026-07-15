@@ -1,0 +1,41 @@
+# ── Check 46: C2-A registry-call-only-in-capability-registry (Blocco C2, June 2026) ──
+# The canonical composable composition point for ALL TypedRegistry.Register
+# calls is internal/app/capability_registry.go. The Phase 0 closure at
+# Blocco C1-Step 2 migrated every typed-punctuated Registry.Register call
+# out of every direct caller; this AST-based gate is the complementary
+# forward-prevention rule that re-asserts the invariant with go/parser
+# precision (ripsgrep substring scan misses string-literal false-positives
+# and reflection-based indirection). The gate binary lives at
+# scripts/archcheck/gates/gate_c2_registry_only.go and is invoked via
+# `go run` (single-file `package main`; the .go extension is required).
+#
+# Pattern anchors (AST SelectorExpr chain walk, see gate_c2_registry_only.go
+# for the rigorous 3-level chain + allowlist semantics):
+#   <typed>.Registry.Register(    where <typed> ∈ {api, module, jobs, providers}
+#
+# Allowlist (the ONLY permitted caller surface):
+#   - internal/app/capability_registry.go  — the canonical single composition point.
+#
+# Tests (`*_test.go`) and `generated/` subdirectories are excluded by the
+# gate's discoverGoFiles walker (mirrors capability_inventory.yaml's
+# `excludes` section).
+echo "=== Check 46: C2-A registry-call-only-in-capability-registry (Blocco C2, June 2026) ==="
+c2a_out=$(go run -tags=c2_registry_only ./scripts/archcheck/gates/gate_c2_registry_only_main.go . 2>&1) || c2a_rc=$?
+c2a_rc=${c2a_rc:-0}
+if [ "$c2a_rc" -ne 0 ]; then
+    printf '%s\n' "$c2a_out" | sed 's/^/  /'
+    echo ""
+    echo "Fix: every {api|module|jobs|providers}.Registry.Register call MUST live in"
+    echo "      internal/app/capability_registry.go (the canonical single composition"
+    echo "      point per Blocco C1-Step 2 + godlike/07 §zero-legacy-policy)."
+    echo "      Forward the call through that file's registerProviders /"
+    echo "      registerHTTPModules / registerJobs closure, OR route the registration"
+    echo "      through a typed port interface (AGENTS.md Pattern 0)."
+    echo ""
+    echo "If the call is genuinely a test fixture, ensure the file is *_test.go"
+    echo "(this gate excludes *_test.go)."
+    exit 1
+fi
+# Print the AST gate's own success line verbatim so the operator sees it in CI output.
+printf '%s\n' "$c2a_out" | grep -E '^C2-A gate:' || true
+

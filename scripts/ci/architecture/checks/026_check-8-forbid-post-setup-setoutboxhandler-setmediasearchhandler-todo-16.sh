@@ -1,0 +1,41 @@
+# ── Check 8: forbid post-Setup SetOutboxHandler/SetMediasearchHandler (TODO 16, Wave 19) ────
+# The deprecated setters on *Server MUST NOT be called from production
+# code. The constructor NewServerWithHealth accepts outboxHandler and
+# mediasearchHandler as params; routes are wired BEFORE Setup() runs.
+# Post-construction setter calls silently fail to register routes.
+#
+# Allowlist (the ONLY legitimate call sites):
+#   - internal/api/server.go        : the Server constructor wires handlers before Setup().
+#   - internal/api/routes.go        : Router.SetOutboxHandler/SetMediasearchHandler (called
+#                                     FROM the constructor, not by external callers).
+#   - *_test.go                     : test files may call deprecation-setters to verify
+#                                     the error contract.
+#   - tests/fixtures/zero_legacy/** : self-check fixtures (caught only in --self-check mode).
+echo "=== Check 8: forbid post-Setup SetOutboxHandler / SetMediasearchHandler (TODO 16) ==="
+postSetupSetters=$(rg -n --type go \
+    -e '\.SetOutboxHandler\(' \
+    -e '\.SetMediasearchHandler\(' \
+    --glob '!**/internal/api/server.go' \
+    --glob '!**/internal/api/routes.go' \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next
+        print
+    }' \
+    || true)
+if [ -n "$postSetupSetters" ]; then
+    echo "FAIL: SetOutboxHandler / SetMediasearchHandler call outside canonical constructor:"
+    echo "$postSetupSetters"
+    echo ""
+    echo "Fix: pass outboxHandler and mediasearchHandler through the"
+    echo "NewServerWithHealth constructor (before Setup()), NOT via post-"
+    echo "construction setters. The setters are deprecated and return errors"
+    echo "when called after the gin engine is already built."
+    exit 1
+fi
+echo "OK: no SetOutboxHandler / SetMediasearchHandler calls outside the canonical allowlist"
+
