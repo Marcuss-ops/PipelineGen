@@ -1,11 +1,6 @@
 name: One-shot semantic split of architectural checks
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/one-shot-split-ci-architectural-checks.yml
   issues:
     types:
       - opened
@@ -13,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: one-shot-split-ci-architectural-checks
@@ -20,10 +16,22 @@ concurrency:
 
 jobs:
   split:
-    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks'
+    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks v2'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Report start
+        if: github.event_name == 'issues'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'Semantic split started on the canonical all_checks.sh blob.'
+            })
+
       - name: Checkout latest main
         uses: actions/checkout@v4
         with:
@@ -36,23 +44,21 @@ jobs:
           set -euo pipefail
           monolith="scripts/ci/architecture/checks/all_checks.sh"
           entrypoint="scripts/ci-architectural-checks.sh"
-          if [ ! -f "${monolith}" ]; then
-            echo "CI: extracted architectural-check monolith is missing: ${monolith}" >&2
-            exit 1
-          fi
+          test -f "${monolith}"
           cp "${monolith}" "${entrypoint}"
           bash -n "${entrypoint}"
 
       - name: Generate and validate semantic modules
+        id: generate
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/ci/architecture/split_monolith.py
+          python3 scripts/ci/architecture/split_monolith.py | tee /tmp/split-output.txt
           test -s scripts/ci/architecture/checks.manifest
           bash -n scripts/ci-architectural-checks.sh
           module_count="$(grep -c '^checks/.*\.sh$' scripts/ci/architecture/checks.manifest)"
           test "${module_count}" -gt 1
-          echo "generated_modules=${module_count}"
+          echo "module_count=${module_count}" >> "${GITHUB_OUTPUT}"
 
       - name: Commit split directly to main
         shell: bash
@@ -66,3 +72,17 @@ jobs:
           git pull --rebase origin main
           bash -n scripts/ci-architectural-checks.sh
           git push origin HEAD:main
+
+      - name: Report result
+        if: always() && github.event_name == 'issues'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ job.status }}';
+            const modules = '${{ steps.generate.outputs.module_count }}' || 'unknown';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Semantic split workflow finished with status: ${status}. Generated modules: ${modules}.`
+            });
