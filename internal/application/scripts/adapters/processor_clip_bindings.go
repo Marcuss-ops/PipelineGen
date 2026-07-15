@@ -21,18 +21,26 @@ import (
 // scene.SceneAssetBinder.BindClips. The binder knows only scene_id,
 // requirements, candidate assets, and binding policy.
 //
+// P0 (July 2026): when the engine emits plain text and no scenes,
+// the processor synthesises scenes from clip evidence using the
+// canonical ScenePlanner.PlanFromClipEvidence before binding clips.
+// This closes the live source.type=clips path that previously
+// failed with CLIP_NATIVE_PLAN_UNAVAILABLE.
+//
 // The constructor signature is STABLE for godlike/07
 // minimum-blast-radius — wire_script_postprocess.go does not need
 // to change; the binder is constructed inline.
 type ClipBindingsProcessor struct {
-	binder *scene.SceneAssetBinder
-	log    *zap.Logger
+	binder  *scene.SceneAssetBinder
+	planner *scene.ScenePlanner
+	log     *zap.Logger
 }
 
 func NewClipBindingsProcessor(log *zap.Logger) *ClipBindingsProcessor {
 	return &ClipBindingsProcessor{
-		log:    log,
-		binder: scene.NewSceneAssetBinder(log),
+		log:     log,
+		binder:  scene.NewSceneAssetBinder(log),
+		planner: scene.NewScenePlanner(log),
 	}
 }
 
@@ -64,55 +72,82 @@ func (p *ClipBindingsProcessor) Process(
 		return &PostProcessResult{}, nil
 	}
 
+	// P0 (July 2026): if the engine produced no scenes (plain-text
+	// output mode), build them deterministically from clip evidence.
+	// This is the canonical clip-native scene construction path.
+	synthesized := false
+	if len(input.SpecScene.Scenes) == 0 {
+		scenes := p.planner.PlanFromClipEvidence(plan)
+		if len(scenes) > 0 {
+			input.SpecScene = scriptpkg.SpecSceneOutput{
+				Version: 1,
+				Scenes:  scenes,
+			}
+			synthesized = true
+		}
+	}
+
 	scenes := input.SpecScene.Scenes
-	reqs := make([]scene.ClipBindingRequest, 0, len(scenes))
-	for _, s := range scenes {
-		reqs = append(reqs, scene.ClipBindingRequest{
-			SceneID:      s.ID,
-			Requirements: scene.AssetRequirements{},
-			Policy:       scene.ClipBindingPolicy{},
-		})
-	}
 
-	// Build one candidate per accepted clip in canonical order.
-	candidates := make([]scene.ClipCandidate, 0, len(clipIDs))
-	for _, id := range clipIDs {
-		candidates = append(candidates, scene.ClipCandidate{
-			ClipID:    id,
-			DriveLink: driveLinks[id],
-		})
-	}
+	// P0 (July 2026): when scenes were synthesized from clip evidence,
+	// they already carry fully populated ClipBinding structs. Running
+	// the binder would overwrite them with a minimal binding, losing
+	// ClipTitle, StartMs, EndMs and DurationMs. Preserve the planner's
+	// detailed bindings by skipping the binder for the synthesized path.
+	if !synthesized {
+		reqs := make([]scene.ClipBindingRequest, 0, len(scenes))
+		for _, s := range scenes {
+			reqs = append(reqs, scene.ClipBindingRequest{
+				SceneID:      s.ID,
+				Requirements: scene.AssetRequirements{},
+				Policy:       scene.ClipBindingPolicy{},
+			})
+		}
 
-	// Distribute candidates to requests 1:1 in order.
-	for i := range reqs {
-		if i < len(candidates) {
-			reqs[i].Candidates = []scene.ClipCandidate{candidates[i]}
+		// Build one candidate per accepted clip in canonical order.
+		candidates := make([]scene.ClipCandidate, 0, len(clipIDs))
+		for _, id := range clipIDs {
+			candidates = append(candidates, scene.ClipCandidate{
+				ClipID:    id,
+				DriveLink: driveLinks[id],
+			})
+		}
+
+		// Distribute candidates to requests 1:1 in order.
+		for i := range reqs {
+			if i < len(candidates) {
+				reqs[i].Candidates = []scene.ClipCandidate{candidates[i]}
+			}
+		}
+
+		res := p.binder.BindClips(reqs)
+		if !res.Changed {
+			return &PostProcessResult{}, nil
+		}
+
+		// Apply bindings back to the original scenes. Scenes beyond the
+		// clip count get their stale Bindings.Clip explicitly nil-ed
+		// (P0 #2 invariant: surface LLM mismatches instead of silently
+		// preserving stale bindings).
+		clipCount := len(candidates)
+		for i := range scenes {
+			if binding, ok := res.Bindings[scenes[i].ID]; ok {
+				scenes[i].Bindings.Clip = binding
+			} else if i < clipCount {
+				// Safety: a scene within the clip range should always
+				// have a binding; if it does not, leave it untouched.
+				continue
+			} else {
+				scenes[i].Bindings.Clip = nil
+			}
 		}
 	}
 
-	res := p.binder.BindClips(reqs)
-	if !res.Changed {
-		return &PostProcessResult{}, nil
+	result := &PostProcessResult{Changed: true}
+	if synthesized {
+		result.SynthesizedScenes = input.SpecScene.Scenes
 	}
-
-	// Apply bindings back to the original scenes. Scenes beyond the
-	// clip count get their stale Bindings.Clip explicitly nil-ed
-	// (P0 #2 invariant: surface LLM mismatches instead of silently
-	// preserving stale bindings).
-	clipCount := len(candidates)
-	for i := range scenes {
-		if binding, ok := res.Bindings[scenes[i].ID]; ok {
-			scenes[i].Bindings.Clip = binding
-		} else if i < clipCount {
-			// Safety: a scene within the clip range should always
-			// have a binding; if it does not, leave it untouched.
-			continue
-		} else {
-			scenes[i].Bindings.Clip = nil
-		}
-	}
-
-	return &PostProcessResult{Changed: true}, nil
+	return result, nil
 }
 
 // acceptedClipIDs returns the canonical ordered list of accepted clip
