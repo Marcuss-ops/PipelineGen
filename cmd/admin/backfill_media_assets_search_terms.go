@@ -24,7 +24,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strconv"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"strings"
 
 	"go.uber.org/zap"
@@ -151,13 +151,13 @@ func parseBackfillArgs(args []string) (BackfillDeps, error) {
 		case a == "--json":
 			deps.JSON = true
 		case strings.HasPrefix(a, "--limit="):
-			n, err := parsePositiveFlag(a, "--limit")
+			n, err := cli.ParsePositiveFlag(a, "--limit")
 			if err != nil {
 				return deps, err
 			}
 			deps.Limit = n
 		case strings.HasPrefix(a, "--batch="):
-			n, err := parsePositiveFlag(a, "--batch")
+			n, err := cli.ParsePositiveFlag(a, "--batch")
 			if err != nil {
 				return deps, err
 			}
@@ -170,18 +170,6 @@ func parseBackfillArgs(args []string) (BackfillDeps, error) {
 		deps.BatchSize = defaultBackfillBatchSize
 	}
 	return deps, nil
-}
-
-func parsePositiveFlag(arg, flagName string) (int, error) {
-	raw := strings.TrimPrefix(arg, flagName+"=")
-	n, err := strconv.Atoi(raw)
-	if err != nil {
-		return 0, fmt.Errorf("invalid %s=%q: must be a non-negative integer", flagName, raw)
-	}
-	if n < 0 {
-		return 0, fmt.Errorf("invalid %s=%q: must be non-negative", flagName, raw)
-	}
-	return n, nil
 }
 
 // ── Pure logic (testable, no main-package state) ─────────────────────────

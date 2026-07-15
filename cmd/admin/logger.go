@@ -2,56 +2,33 @@
 // (stock-reset, summarize-book, backfill-monitored-sources-to-category-channels, ...).
 // logger.go centralises the (cfg, log, cleanup) tuple that every
 // command needs up front.
+//
+// PR-PKG-SIZE-CMD-ADMIN-1 (July 2026): appLogger and productionLogger
+// were extracted to cmd/admin/internal/cli (exported as AppLogger +
+// ProductionLogger) so the reconcile/reindex/dr subcommands (now in
+// cmd/admin/reconcile subpackage) can import them. The lowercase
+// symbols appLogger and productionLogger are retained here as
+// thin shims that delegate to the canonical cli.* helpers — the 60
+// non-moved cmd/admin files do NOT need to change as part of this
+// PR. Tracked follow-up: PR-PKG-SIZE-CMD-ADMIN-1-FOLLOWUP will
+// migrate all call sites to cli.AppLogger / cli.ProductionLogger
+// directly and delete this file.
 package main
 
 import (
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// appLogger loads the production config and a zap production logger;
-// returns (cfg, log, cleanup, err). Used by admin commands that need the
-// full config (cleanup, list-drive-folder,
-// reset-video-ai, verify-artlist-pipeline).
-//
-// The cleanup callback is safe to call multiple times — zap.Sync is
-// returns-nil-on-already-flushed, so an extra defer cleanup is harmless
-// during exit.
-//
-// NOTE: there used to be a `velox/go-master/internal/config` import
-// here (pre-Upstream commit 66c646b5 the handler migrated here under
-// that path). It was wrong from the start of the PipelineGen module:
-// velox/go-master/internal/config is a stdlib-shaped path that Go
-// resolves to $GOROOT/src/velox/go-master/internal/config, not to any
-// repo package. The canonical local config lives at
-// internal/platform/config, which provides `func Get() *Config`
-// — the right replacement.
+// appLogger is a thin shim around cli.AppLogger. See file header.
 func appLogger() (*config.Config, *zap.Logger, func(), error) {
-	cfg, err := config.Get()
-	if err != nil {
-		return nil, nil, func() {}, err
-	}
-	log, err := zap.NewProduction()
-	if err != nil {
-		return nil, nil, func() {}, err
-	}
-	cleanup := func() { _ = log.Sync() }
-	return cfg, log, cleanup, nil
+	return cli.AppLogger()
 }
 
-// productionLogger returns a zap production logger without loading the
-// global config. Kept as a helper for future admin commands that want
-// to read config directly via config.Get() inside their command body
-// without threading it through the helper signature (the upload-t5pre
-// command that used this helper was deleted in Wave A commit 1, June
-// 2026 — productionLogger remains for zero-config audit utilities
-// that may be reintroduced).
+// productionLogger is a thin shim around cli.ProductionLogger.
+// See file header.
 func productionLogger() (*zap.Logger, func(), error) {
-	log, err := zap.NewProduction()
-	if err != nil {
-		return nil, func() {}, err
-	}
-	cleanup := func() { _ = log.Sync() }
-	return log, cleanup, nil
+	return cli.ProductionLogger()
 }
