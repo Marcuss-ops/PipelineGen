@@ -1,0 +1,25 @@
+# ── Check 50: forbid retry-classifier substring-matcher outside pkg/retry (Step 7 closure, June 2026) ──
+# The canonical transient-error classification lives in pkg/retry/retry.go
+# (typed-path: TransientInfrastructureError + IsTransient + WrapTransient +
+# transientSubstrings taxonomy + DefaultOptions with JitterFraction=0.25).
+# Production classifiers MUST delegate to pkg/retry.IsTransient or wrap at the
+# SDK / port exit via pkg/retry.WrapTransient. A function whose name matches
+# one of the canonical retry-classifier tokens (IsTransient|isTransient|
+# IsRetryable|isRetryable|ShouldRetry|shouldRetry) followed by an optional
+# PascalCase suffix AND uses strings.Contains natively is a Step 7 SSOT
+# regression: a substring-based classifier outside pkg/retry.
+#
+# Allowlist (hardcoded package-level + per-file transitional baseline):
+#   pkg/retry                          — canonical home.
+#   pkg/textutil                       — string manipulation helpers.
+#   pkg/similarity                     — token-set similarity math.
+#   docs/migrations/retry-classifier-  — per-file transitional baseline with
+#     substring-allowlist.txt            explicit owner + deadline + rationale.
+# Tests (_test.go files) excluded per the standard check convention.
+#
+# Migration plan for future offenders:
+#   1. Wrap raw SDK / port error at the exit boundary via pkg/retry.WrapTransient.
+#   2. Classify at the gate via pkg/retry.IsTransient (typed path first).
+#   3. Delete local strings.Contains taxonomy; retry.IsTransient owns the list.
+echo "=== Check 50: forbid retry-classifier substring-matcher outside pkg/retry (Step 7) ==="
+

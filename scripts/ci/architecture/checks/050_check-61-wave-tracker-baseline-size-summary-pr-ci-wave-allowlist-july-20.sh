@@ -1,0 +1,41 @@
+# ── Check 61: wave-tracker baseline size summary (PR-CI-WAVE-ALLOWLIST, July 2026) ──
+# INFORMATIONAL gate (godlike/07 minimum-blast-radius). Does NOT change the
+# exit code of any prior check. The baseline size number is the canonical signal
+# for the question "is the baseline stable?" — a non-zero count means every
+# wave-tracker-known-acceptable PR-id was extracted from architecture/current.yaml
+# (zero false-positive regression on the allowlist side), a zero count means
+# the wave-tracker file is absent or unparseable.
+#
+# This is a NEW layer that consults the wave-tracker allowlist
+# (extract_known_acceptable_ids_from_yaml) populated at script start. The
+# summary is reproducible across runs (the wave-tracker file is the same),
+# so the baseline size number is a stable count rather than an all-violations
+# dump. Future per-check integration can opt-in by calling
+# `is_known_acceptable <PR_ID>` to consult the same allowlist.
+#
+# Wave-tracker status (informational only, NOT a gate):
+#   - YAML file present:        KNOWN_ACCEPTABLE_IDS populated
+#   - YAML file missing:        KNOWN_ACCEPTABLE_IDS empty (safe default)
+#   - YAML file unparseable:    KNOWN_ACCEPTABLE_IDS may be partial (text-based
+#                                extraction tolerates cascade bugs at lines
+#                                ~1582, ~2852, ~2996; line-anchored `id: PR-*`
+#                                patterns survive)
+# Per godlike/07 no-fake-availability: this gate is purely informational and
+# does NOT exit 1 on a low count. The operator dashboard surfaces the
+# number; CI exit code reflects the prior per-check exit-1 semantics
+# (unchanged). A future promotion to enforcement would require a separate
+# `verified_zero: true` flip per godlike/08 zero-baseline rule.
+echo "=== Check 61: wave-tracker baseline size summary (PR-CI-WAVE-ALLOWLIST) ==="
+if [ -n "${KNOWN_ACCEPTABLE_IDS}" ]; then
+    echo "INFO: wave-tracker file parsed; ${WAVE_BASELINE_SIZE} PR-id(s) extracted as known-acceptable baseline"
+    echo "      (id: PR-* entries with status: pending / in_progress, plus PRE-EXISTING-*-2026-07-04 parents)"
+    echo "      Baseline: per-check exit-1 semantics unchanged; this gate is informational only."
+    echo "      Operators may consult is_known_acceptable <PR_ID> in future per-check opt-ins."
+    echo "OK: Check 61 baseline size summary printed (informational; no exit-code change)"
+else
+    echo "WARN: KNOWN_ACCEPTABLE_IDS empty (wave-tracker file absent or unparseable)"
+    echo "      Defaulting to: every violation is treated as new (safe per godlike/07 no-fake-availability)"
+    echo "      Future: file presence or YAML fix restores the baseline"
+    echo "OK: Check 61 baseline size summary printed (informational; no exit-code change; allowlist empty)"
+fi
+

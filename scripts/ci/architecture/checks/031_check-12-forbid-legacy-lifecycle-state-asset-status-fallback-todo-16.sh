@@ -1,0 +1,37 @@
+# ── Check 12: forbid legacy "lifecycle_state: <asset>.Status" fallback (TODO 16) ────
+# QDRANT-001 §(b): the canonical lifecycle key is `lifecycle_state`; the
+# legacy `status` column is the QDRANT-RECOVERY-001 / QDRANT-005 source of
+# truth, but BuildPayload MUST populate the canonical key from
+# `asset.LifecycleState`, NOT from the legacy `asset.Status`. The latter is a
+# SSOT regression that loses fidelity on rows where Status and LifecycleState
+# diverge (which is most rows post-059 migration).
+#
+# Allowlist:
+#   - *_test.go                  : tests may exercise the legacy path explicitly.
+#   - tests/fixtures/zero_legacy/** : self-check fixtures.
+echo "=== Check 12: forbid legacy \"lifecycle_state\": <asset>.Status fallback (TODO 16) ==="
+legacyLifecycleState=$(rg -n --type go \
+    -e '"lifecycle_state":\s*\w+\.Status' \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next
+        print
+    }' \
+    || true)
+if [ -n "$legacyLifecycleState" ]; then
+    echo "FAIL: legacy \"lifecycle_state\": <asset>.Status fallback in payload builder:"
+    echo "$legacyLifecycleState"
+    echo ""
+    echo "Fix: change the BuildPayload (or equivalent) line to source the"
+    echo "lifecycle_state from asset.LifecycleState (the canonical field),"
+    echo "not asset.Status (the legacy column). The status -> lifecycle_state"
+    echo "rename happened in migration 059; rows where both exist will have"
+    echo "diverged since then and the legacy key reads stale data."
+    exit 1
+fi
+echo "OK: no legacy \"lifecycle_state\": <asset>.Status fallback in payload builders"
+

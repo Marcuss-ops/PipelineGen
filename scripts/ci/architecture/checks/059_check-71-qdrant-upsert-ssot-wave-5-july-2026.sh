@@ -1,0 +1,35 @@
+# ── Check 71: Qdrant upsert SSOT (Wave 5, July 2026) ──
+# IndexWriter is the ONLY code path that calls
+# transport.Client.UpsertPoints / transport.Client.DeletePoints.
+# Any direct caller outside index_writer.go bypasses the canonical
+# write path (outbox.Dispatcher → IndexingHandler → IndexWriter)
+# and risks stale data racing the source_version supersede gate.
+#
+# Allowlist:
+#   - internal/infrastructure/qdrant/indexing/index_writer*.go : the canonical IndexWriter package.
+#   - *_test.go                                                   : tests may construct transport.Client fakes directly.
+#
+# Pattern anchors:
+#   \.UpsertPoints\(  — direct transport.Client upsert
+#   \.DeletePoints\( — direct transport.Client delete
+
+echo "=== Check 71: Qdrant upsert SSOT (Wave 5, July 2026) ==="
+qdrant_upsert_hits=$(rg -n --type go \
+    -e '\.UpsertPoints\(' \
+    -e '\.DeletePoints\(' \
+    --glob '!**/qdrant/indexing/**' \
+    --glob '!**/*_test.go' \
+    internal/ 2>/dev/null \
+    | awk -F: '{ rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i; if (rest ~ /^[[:space:]]*\/\//) next; print }' \
+    || true)
+if [ -n "$qdrant_upsert_hits" ]; then
+    echo "FAIL: direct Qdrant upsert/delete call outside IndexWriter:"
+    echo "$qdrant_upsert_hits"
+    echo ""
+    echo "Fix: route Qdrant writes through outbox.Dispatcher (production) or the"
+    echo "     admin reindex CLI (operator tooling). The canonical write path is"
+    echo "     outbox.Dispatcher → IndexingHandler → IndexWriter."
+    exit 1
+fi
+echo "OK: no direct Qdrant upsert/delete calls outside IndexWriter"
+

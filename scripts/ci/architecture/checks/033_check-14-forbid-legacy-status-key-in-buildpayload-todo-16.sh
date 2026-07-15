@@ -1,0 +1,40 @@
+# ── Check 14: forbid legacy "status" key in BuildPayload (TODO 16) ────
+# QDRANT-001 §(b): the canonical payload key is `lifecycle_state`; a `status`
+# key in BuildPayload is the QDRANT-RECOVERY-001 legacy that QDRANT-001
+# removed. Any new BuildPayload that re-introduces the `status` key is a
+# SSOT regression: the qdrant-side search filter (`lifecycle_state`) is
+# what payloads and queries must agree on.
+#
+# Pattern: `"status": <value>` where value is a struct field reference
+# (e.g. asset.Status). Literal-string `status` values (HTTP codes, state
+# machine strings) are not in scope — the pattern is restricted to
+# `<word>.<word>` (struct field ref) to keep the check tight.
+#
+# Allowlist:
+#   - *_test.go                  : tests may construct legacy payloads.
+#   - tests/fixtures/zero_legacy/** : self-check fixtures.
+echo "=== Check 14: forbid legacy \"status\" key in BuildPayload (TODO 16) ==="
+legacyStatusKey=$(rg -n --type go \
+    -e '"status":\s*\w+\.' \
+    --glob '!**/*_test.go' \
+    --glob '!tests/fixtures/zero_legacy/**' \
+    . 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next
+        print
+    }' \
+    || true)
+if [ -n "$legacyStatusKey" ]; then
+    echo "FAIL: legacy \"status\" payload key (struct field ref) in BuildPayload:"
+    echo "$legacyStatusKey"
+    echo ""
+    echo "Fix: rename the payload key from \"status\" to \"lifecycle_state\""
+    echo "and source it from asset.LifecycleState. The QDRANT-001 §(b)"
+    echo "search contract requires both writer (BuildPayload) and reader"
+    echo "(Qdrant filter) to agree on the canonical key. See TODO 16."
+    exit 1
+fi
+echo "OK: no legacy \"status\" payload key in BuildPayload"
+

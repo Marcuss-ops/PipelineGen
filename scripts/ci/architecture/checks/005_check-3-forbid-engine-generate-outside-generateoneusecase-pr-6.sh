@@ -1,0 +1,37 @@
+# ── Check 3: forbid engine.Generate() outside GenerateOneUseCase (PR-6) ──
+# The canonical engine entry point is Engine.Generate(ctx, plan). The ONLY
+# permitted production caller is generate_one_usecase.go::GenerateOneUseCase.
+#
+# Allowlist:
+#   - generate_one_usecase.go   : canonical caller (typed pipeline orchestrator)
+#   - engine.go                  : definition site
+#   - *_test.go                  : tests may call Generate for verification
+#
+# Any new engine.Generate( call in production code outside the allowlist
+# is a PR-6 regression: engine access must flow through GenerateOneUseCase.
+echo "=== Check 3: forbid engine.Generate() outside GenerateOneUseCase (PR-6) ==="
+literals=$(rg -n --type go \
+    -e '\bengine\.Generate\(' \
+    --glob '!**/generate_one_usecase.go' \
+    --glob '!**/engine.go' \
+    --glob '!**/*_test.go' \
+    internal/ 2>/dev/null \
+    | awk -F: '{
+        rest = ""
+        for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i
+        if (rest ~ /^[[:space:]]*\/\//) next   # drop full-line comments
+        print
+    }' \
+    || true)
+if [ -n "$literals" ]; then
+    echo "FAIL: direct engine.Generate() call outside GenerateOneUseCase:"
+    echo "$literals"
+    echo ""
+    echo "Fix: route engine access through GenerateOneUseCase.Execute()."
+    echo "The engine is the canonical script-generator; the sole production"
+    echo "caller is generate_one_usecase.go. Handler code, resolvers, and"
+    echo "postprocessors must NOT call engine.Generate() directly."
+    exit 1
+fi
+echo "OK: no direct engine.Generate() calls outside GenerateOneUseCase"
+
