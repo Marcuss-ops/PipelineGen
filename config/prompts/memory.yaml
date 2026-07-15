@@ -1,0 +1,27 @@
+memory_enriched:
+  sections:
+    channel_memory: "CHANNEL MEMORY:"
+    past_scripts: "RELEVANT PAST SCRIPTS:"
+    research_memory: "RESEARCH MEMORY:"
+    additional_context: "ADDITIONAL CONTEXT:"
+  instruction: "Use the above memory as context for writing. Treat it as inspiration only: do not copy phrasing, openings, or paragraph order from prior runs. Reuse facts and style, but write a fresh version."
+  user_request_label: "USER REQUEST:"
+  write_script_line: "Write a script about: {{.Title}}"
+  details_line: "Details: {{.Prompt}}"
+  language_line: "Language: {{.Language}}"
+  truncated_suffix: "[...memory context truncated to prevent verbatim reuse...]"
+
+memory_fresh_variant:
+  angle_shift_header: "[FRESH_VARIANT_INSTRUCTIONS]"
+  angle_shift_body: |
+    A previous run on the same topic already exists. You MUST write a GENUINELY DIFFERENT version. To achieve this:
+    - Choose a DIFFERENT narrative angle or perspective (e.g. historical vs personal, analytical vs emotional, chronological vs thematic).
+    - Use a DIFFERENT opening hook — do not start the same way.
+    - Vary the pacing: if the previous version was fast and punchy, try slower and more atmospheric. If it was slow, try faster.
+    - Introduce at least ONE new example, anecdote, or reference that was not in the previous version.
+    - Reorder the sections: if the previous version started with facts then examples, try examples first.
+    - Change the closing: if the previous version ended with a summary, try ending with a question, prediction, or call to reflection.
+  avoid_list_header: "[PREVIOUS_RUN_AVOID_LIST]"
+  avoid_list_intro: "Do NOT reuse any of these specific phrases from the previous run:"
+  avoid_list_footer: "[/PHRASES_TO_AVOID]"
+  final_instruction: "Write a fresh version with a completely different angle."
