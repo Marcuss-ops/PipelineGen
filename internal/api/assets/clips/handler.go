@@ -7,11 +7,11 @@ import (
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
-// Deps mirrors the real HTTP capability boundaries. Each field is the exact
-// constructor contract of one independently testable handler; this is not a
-// generic dependency bag and transport performs no use-case construction.
+// Deps mirrors the real HTTP capability boundaries. Each grouped field is the
+// exact constructor contract of one independently testable handler.
 type Deps struct {
 	Search     SearchDeps
 	Ingest     IngestDeps
@@ -19,6 +19,12 @@ type Deps struct {
 	NonOps     nonops.Deps
 	Bulk       BulkTransportDeps
 	Actions    ActionDeps
+
+	// ClipOpsService and Log are a narrow compatibility seam for historical
+	// same-package fixtures. Production composition never sets them; remove
+	// after those fixtures construct Operations explicitly.
+	ClipOpsService *appclips.ClipOpsService
+	Log            *zap.Logger
 }
 
 // Handler is a transport-only aggregate retained for route compatibility and
@@ -38,6 +44,12 @@ func NewHandler(d Deps, idempotencyMiddleware gin.HandlerFunc) *Handler {
 	idem := idempotencyMiddleware
 	if idem == nil {
 		idem = func(c *gin.Context) { c.Next() }
+	}
+	if d.Operations.ClipOpsService == nil && d.ClipOpsService != nil {
+		d.Operations.ClipOpsService = d.ClipOpsService
+	}
+	if d.Operations.Log == nil && d.Log != nil {
+		d.Operations.Log = d.Log
 	}
 	return &Handler{
 		Idempotency:   idem,
@@ -62,7 +74,6 @@ func NewHandlerStrict(d Deps, idempotencyMiddleware gin.HandlerFunc) (*Handler, 
 	return NewHandler(d, idempotencyMiddleware), nil
 }
 
-// repoForSource is the narrow repository resolver supplied to NonOps.
 func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
 	if h.search == nil {
 		return nil
@@ -70,8 +81,6 @@ func (h *Handler) repoForSource(source string) *assets.ClipsRepository {
 	return h.search.repoForSource(source)
 }
 
-// RegisterRoutes is retained for legacy fixtures. Production mounts the seven
-// typed sub-descriptors built in module.go.
 func (h *Handler) RegisterRoutes(r *gin.RouterGroup) {
 	idem := h.idemWriter()
 	if h.ingest != nil {
