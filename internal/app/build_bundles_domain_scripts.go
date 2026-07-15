@@ -76,16 +76,16 @@ func buildDomainScriptServices(
 			return &drivePutFnResult{FileID: res.FileID, WebViewLink: res.WebViewLink}, nil
 		},
 	})
-	extractUseCase := youtube.NewExtractImportantClipsUseCase(
-		log,
-		extractAdapters.TranscriptFetcher,
-		nil, // analyzer=nil → failClosedAnalyzerAdapter returns ErrAnalyzerUnavailable at runtime
-		extractAdapters.SectionDownloader,
-		extractAdapters.DriveFolder,
-		extractAdapters.DriveUploader,
-		clipWriter,
-		extractAdapters.Hasher,
-	)
+	extractUseCase := youtube.NewExtractImportantClipsUseCase(youtube.ExtractImportantClipsDeps{
+		Log:        log,
+		Subtitles:  extractAdapters.TranscriptFetcher,
+		Analyzer:   nil, // analyzer=nil → failClosedAnalyzerAdapter returns ErrAnalyzerUnavailable at runtime
+		Downloader: extractAdapters.SectionDownloader,
+		Folder:     extractAdapters.DriveFolder,
+		Uploader:   extractAdapters.DriveUploader,
+		Writer:     clipWriter,
+		Hasher:     extractAdapters.Hasher,
+	})
 	bundle.ExtractImportantClipsJobHandler = youtube.NewExtractImportantClipsJobHandler(extractUseCase, log)
 
 	return nil
