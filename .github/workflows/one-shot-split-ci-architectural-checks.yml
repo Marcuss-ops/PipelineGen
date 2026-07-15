@@ -1,4 +1,5 @@
 name: One-shot split CI architectural checks
+# Existing-workflow update intentionally triggers the one-shot push event.
 
 on:
   push:
