@@ -42,14 +42,20 @@ jobs:
             post_status "${TRIGGER_SHA}" failure "job-kernel-final-zero" "$message"
             exit 1
           }
+          trap 'post_status "${TRIGGER_SHA}" failure "job-kernel-final-zero" "Unexpected workflow failure" || true' ERR
 
           post_status "${TRIGGER_SHA}" pending "job-kernel-final-zero" "Closing final 17 compatibility imports"
           git fetch origin main
           git reset --hard origin/main
 
           python3 <<'PY'
+          import subprocess
           from pathlib import Path
-          source = Path('.github/workflows/job-kernel-ast-cutover.yml').read_text(encoding='utf-8').splitlines()
+          raw = subprocess.check_output([
+              'git', 'show',
+              '0a111ef46df92258c0920d0cd6c63b7d6cb98694:.github/workflows/job-kernel-ast-cutover.yml',
+          ], text=True)
+          source = raw.splitlines()
           start = next(i for i, line in enumerate(source) if "cat >/tmp/job_ast_cutover.go <<'GO'" in line) + 1
           end = next(i for i in range(start, len(source)) if source[i].strip() == 'GO')
           body = [line[10:] if line.startswith('          ') else line for line in source[start:end]]
@@ -59,9 +65,6 @@ jobs:
           go run /tmp/job_ast_cutover.go
           mapfile -t changed_files < /tmp/job-ast-changed.txt
 
-          # clip_ops_cleanup.go declares a local variable named `job`; the
-          # syntax-only import cleanup cannot distinguish it from the former
-          # package alias. Remove the now-unused kernel import explicitly.
           python3 <<'PY'
           from pathlib import Path
           path = Path('internal/application/clips/clip_ops_cleanup.go')
@@ -136,7 +139,6 @@ jobs:
           }, indent=2) + '\n', encoding='utf-8')
           PY
 
-          # Compile the architecture scanner that owns this ratchet.
           if ! go test -run '^$' -timeout 120s ./cmd/archcheck/... >/tmp/job-kernel-archcheck-compile.log 2>&1; then
             tail -n 160 /tmp/job-kernel-archcheck-compile.log
             fail "Archcheck compilation failed"
@@ -157,5 +159,6 @@ jobs:
           git push origin HEAD:main
 
           final_sha=$(git rev-parse HEAD)
+          trap - ERR
           post_status "${TRIGGER_SHA}" success "job-kernel-final-zero" "Production compatibility import census is zero"
           post_status "${final_sha}" success "job-kernel-final-zero" "Zero-import ratchet compiled and published"
