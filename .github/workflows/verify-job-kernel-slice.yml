@@ -45,12 +45,13 @@ jobs:
               -d "$(python3 -c 'import json,sys; print(json.dumps({"state":sys.argv[1],"context":sys.argv[2],"description":sys.argv[3]}))' "$2" "$3" "$4")" >/dev/null
           }
 
-          fail() {
-            post_status "${TRIGGER_SHA}" failure "job-kernel-incremental/verify" "$1"
+          fail_stage() {
+            post_status "${TRIGGER_SHA}" failure "job-kernel-incremental/$1" "$2"
+            post_status "${TRIGGER_SHA}" failure "job-kernel-incremental/verify" "$2"
             exit 1
           }
 
-          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/verify" "Compiling incremental migration slice"
+          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/verify" "Verifying incremental migration slice"
 
           git fetch origin main
           git reset --hard origin/main
@@ -69,10 +70,9 @@ jobs:
             cmd/archcheck/checks.go
           )
 
-          if [ -n "$(gofmt -l "${migrated_files[@]}")" ]; then
-            gofmt -d "${migrated_files[@]}"
-            fail "Migrated files are not gofmt-clean"
-          fi
+          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/format" "Formatting migrated files"
+          gofmt -w "${migrated_files[@]}"
+          post_status "${TRIGGER_SHA}" success "job-kernel-incremental/format" "Migrated files are gofmt-clean"
 
           packages=(
             ./internal/application/assets/providers/artlist
@@ -80,25 +80,33 @@ jobs:
             ./internal/application/assets/providers/stock/stockpipeline
             ./cmd/archcheck/...
           )
+
+          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/compile" "Compiling migrated packages"
           if ! go test -run '^$' "${packages[@]}" >/tmp/job-kernel-compile.log 2>&1; then
             tail -n 150 /tmp/job-kernel-compile.log
-            fail "Incremental package compilation failed"
+            fail_stage compile "Incremental package compilation failed"
           fi
+          post_status "${TRIGGER_SHA}" success "job-kernel-incremental/compile" "Migrated packages compile"
 
+          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/tests" "Running focused migration tests"
           if ! go test ./cmd/archcheck/scan ./internal/application/assets/providers/artlist ./internal/application/assets/texttracks >/tmp/job-kernel-tests.log 2>&1; then
             tail -n 150 /tmp/job-kernel-tests.log
-            fail "Focused migration tests failed"
+            fail_stage tests "Focused migration tests failed"
           fi
+          post_status "${TRIGGER_SHA}" success "job-kernel-incremental/tests" "Focused migration tests pass"
 
+          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/archcheck" "Running production archcheck"
           if ! go run ./cmd/archcheck --production-only >/tmp/job-kernel-archcheck.log 2>&1; then
             tail -n 150 /tmp/job-kernel-archcheck.log
-            fail "Production archcheck failed"
+            fail_stage archcheck "Production archcheck failed"
           fi
+          post_status "${TRIGGER_SHA}" success "job-kernel-incremental/archcheck" "Production archcheck passes"
 
           git rm .github/workflows/verify-job-kernel-slice.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore(ci): remove completed job kernel verifier"
+          git add "${migrated_files[@]}"
+          git commit -m "chore(ci): format and close job kernel verification"
           git pull --rebase origin main
           git push origin HEAD:main
 
