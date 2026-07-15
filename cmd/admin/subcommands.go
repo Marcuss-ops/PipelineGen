@@ -39,6 +39,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/reconcile"
 )
 
 // errUnknownCommand is the canonical sentinel returned by
@@ -63,6 +64,8 @@ var availableCommands = []string{
 	"delete-specific-folders",
 	"dr-qdrant",
 	"drive-bootstrap",
+	"drive-create-folder",
+	"folder-path-backfill",
 	"drive-doctor",
 	"drive-reconcile",
 	"gen-api-docs",
@@ -81,6 +84,7 @@ var availableCommands = []string{
 	"sync-outros",
 	"test-youtube",
 	"text-tracks-backfill",
+	"transcript-cues-backfill",
 	"unify-catalogs",
 	"backfill-asset-embeddings",
 	"backfill-visual-embeddings",
@@ -119,11 +123,11 @@ func dispatchSubcommand(name string, args []string) error {
 	case "list-drive-folder":
 		return runListDriveFolder(args)
 	case "reindex-qdrant":
-		return runReindexQdrant(args)
+		return reconcile.RunReindexQdrant(args)
 	case "qdrant-maintenance":
 		return runQdrantMaintenance(args)
 	case "reconcile-qdrant":
-		return runReconcileQdrant(args)
+		return reconcile.RunReconcileQdrant(args)
 	case "reset-video-ai":
 		return runResetVideoAI(args)
 	case "qdrant-readiness":
@@ -136,6 +140,8 @@ func dispatchSubcommand(name string, args []string) error {
 		return runTestYouTube(args)
 	case "text-tracks-backfill":
 		return runTextTracksBackfill(args)
+	case "transcript-cues-backfill":
+		return runTranscriptCuesBackfill(args)
 	case "verify-artlist-pipeline":
 		return runVerifyArtlistPipeline(args)
 
@@ -157,11 +163,15 @@ func dispatchSubcommand(name string, args []string) error {
 	case "db":
 		return runDB(args)
 	case "dr-qdrant":
-		return runDrQdrant(args)
+		return reconcile.RunDrQdrant(args)
 	case "fullimages-migrate":
 		return runFullImagesMigrate(args)
 	case "drive-bootstrap":
 		return runDriveBootstrap(args)
+	case "drive-create-folder":
+		return runDriveCreateFolder(args)
+	case "folder-path-backfill":
+		return runFolderPathBackfill(args)
 	case "drive-doctor":
 		return runDriveDoctor(args)
 	case "drive-reconcile":

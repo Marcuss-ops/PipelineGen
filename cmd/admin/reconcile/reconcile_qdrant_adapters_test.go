@@ -1,6 +1,6 @@
-// Package main — reconcile_qdrant_adapters_test.go (Card 7.2,
+// Package reconcile — reconcile_qdrant_adapters_test.go (Card 7.2,
 // July 2026): runtime regression test asserting that the
-// admin reindex path (`outboxRepairAdapter.EnqueueReindex`
+// admin reindex path (`outbox.RepairAdapter.EnqueueReindex`
 // with `force=true`) DOES route through the canonical outbox
 // pipeline and DOES produce the canonical
 // `asset.index.requested.v1` envelope with the
@@ -24,10 +24,11 @@
 // The test uses a real in-memory SQLite outbox_events
 // table (UNIQUE on event_key) to verify the end-to-end
 // invariant — not just the builder output. The adapter
-// is constructed directly as a struct literal (same
-// package, unexported fields accessible) so the test
-// exercises the SAME code path the production reconciler
-// uses, with no test-only constructor in between.
+// is constructed via the canonical outbox.NewRepairAdapter
+// constructor (outbox package, exported in
+// PR-PKG-SIZE-CMD-ADMIN-1) so the test exercises the SAME
+// code path the production reconciler / backfill commands
+// use, with no test-only constructor in between.
 //
 // This is the canonical "admin reindex routes through
 // outbox" regression pin. Any future refactor that
@@ -37,7 +38,18 @@
 // as a CI test failure: the payload will lack
 // `"force":true` and the event_key will lack the `:force`
 // suffix.
-package main
+//
+// PR-PKG-SIZE-CMD-ADMIN-1 (July 2026): this test was
+// originally in cmd/admin/reconcile_qdrant_adapters_test.go
+// and referenced `outboxRepairAdapter` directly via a
+// package-local struct literal. After the cmd/admin
+// pkg_size refactor moved the adapter to
+// cmd/admin/internal/outbox/adapter.go (so both
+// `package main` admin commands AND cmd/admin/reconcile
+// could import it without a cross-package dependency
+// cycle), the test was updated to use the canonical
+// outbox.NewRepairAdapter constructor.
+package reconcile
 
 import (
 	"context"
@@ -47,6 +59,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3" // sqlite3 driver for in-memory outbox_events
 
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
 
@@ -103,10 +116,12 @@ func setupAdminOutboxTable(t *testing.T) *sql.DB {
 // is the canonical Card 7.2 regression test. It exercises
 // the full admin reindex path:
 //
-//  1. Construct outboxRepairAdapter (the cmd/admin glue that
-//     bypasses outbox.Dispatcher to avoid the ClipsRepository
-//     dependency cycle; see the type docstring in
-//     reconcile_qdrant_adapters.go for the full rationale).
+//  1. Construct outbox.RepairAdapter via the canonical
+//     outbox.NewRepairAdapter constructor (the cmd/admin glue
+//     that bypasses outbox.Dispatcher to avoid the
+//     ClipsRepository dependency cycle; see the type docstring
+//     in cmd/admin/internal/outbox/adapter.go for the full
+//     rationale).
 //  2. Call EnqueueReindex(ctx, "test-asset-1",
 //     "hash-admin-test", true) — force=true (admin route,
 //     Card 7.1 invariant).
@@ -127,11 +142,7 @@ func TestOutboxRepairAdapter_EnqueueReindex_AdminForce_RoutesThroughOutbox(t *te
 	db := setupAdminOutboxTable(t)
 	repo := outboxevents.NewRepository(db)
 
-	adapter := &outboxRepairAdapter{
-		db:            db,
-		outboxRepo:    repo,
-		schemaVersion: "media_assets_v3",
-	}
+	adapter := outbox.NewRepairAdapter(db, repo, "media_assets_v3")
 
 	ctx := context.Background()
 	if err := adapter.EnqueueReindex(ctx, "test-asset-1", "hash-admin-test", true); err != nil {
@@ -185,11 +196,7 @@ func TestOutboxRepairAdapter_EnqueueReindex_FalseDoesNotForce(t *testing.T) {
 	db := setupAdminOutboxTable(t)
 	repo := outboxevents.NewRepository(db)
 
-	adapter := &outboxRepairAdapter{
-		db:            db,
-		outboxRepo:    repo,
-		schemaVersion: "media_assets_v3",
-	}
+	adapter := outbox.NewRepairAdapter(db, repo, "media_assets_v3")
 
 	ctx := context.Background()
 	if err := adapter.EnqueueReindex(ctx, "test-asset-2", "hash-admin-test-nf", false); err != nil {

@@ -36,13 +36,14 @@
 // and logs a Warn — the CLI NEVER writes a placeholder VisualSummary
 // row as a fake success. The supersede gate is the only
 // "intentionally skip the upsert" path and is logged explicitly.
-package main
+package reconcile
 
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"os"
 	"strconv"
 	"strings"
@@ -188,7 +189,7 @@ func parseFloatFlag(arg, flag string) (float64, error) {
 // opens the canonical media DB, builds the visual_summary service
 // (sampler + VLM + repo), iterates media_assets, and reports counts.
 func runReindexVisualSummary(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+	cfg, log, cleanup, err := cli.AppLogger()
 	if err != nil {
 		return err
 	}
@@ -198,7 +199,7 @@ func runReindexVisualSummary(args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx := cmdContext()
+	ctx := cli.CmdContext()
 
 	log.Info("reindex-visual-summary starting",
 		zap.Bool("apply", deps.Apply),

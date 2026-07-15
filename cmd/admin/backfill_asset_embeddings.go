@@ -60,6 +60,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
@@ -166,11 +168,7 @@ func runBackfillAssetEmbeddings(args []string) error {
 		return fmt.Errorf("database not initialized in composition root")
 	}
 
-	adapter := &outboxRepairAdapter{
-		db:            root.DB.DB,
-		outboxRepo:    outboxevents.NewRepository(root.DB.DB),
-		schemaVersion: outboxevents.ReindexEnvelopeV1Schema,
-	}
+	adapter := outbox.NewRepairAdapter(root.DB.DB, outboxevents.NewRepository(root.DB.DB), outboxevents.ReindexEnvelopeV1Schema)
 
 	report, cp, err := backfillAssetEmbeddings(ctx, root.DB.DB, adapter, deps, log)
 	if err != nil {
@@ -250,13 +248,13 @@ func parseBackfillEmbeddingsArgs(args []string) (backfillEmbeddingsDeps, error) 
 		case strings.HasPrefix(a, "--source="):
 			deps.Source = strings.TrimPrefix(a, "--source=")
 		case strings.HasPrefix(a, "--limit="):
-			n, err := parsePositiveFlag(a, "--limit")
+			n, err := cli.ParsePositiveFlag(a, "--limit")
 			if err != nil {
 				return deps, err
 			}
 			deps.Limit = n
 		case strings.HasPrefix(a, "--progress="):
-			n, err := parsePositiveFlag(a, "--progress")
+			n, err := cli.ParsePositiveFlag(a, "--progress")
 			if err != nil {
 				return deps, err
 			}
@@ -516,7 +514,7 @@ func loadCheckpoint(path string) (*embeddingCheckpoint, error) {
 // ── Interface for testability ─────────────────────────────────────────
 
 // reindexEnqueuer is the subset used by the backfill.
-// Production wired via outboxRepairAdapter.
+// Production wired via outbox.RepairAdapter.
 type reindexEnqueuer interface {
 	EnqueueReindex(ctx context.Context, assetID, contentHash string, force bool) error
 }

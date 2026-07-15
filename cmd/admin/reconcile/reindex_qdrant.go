@@ -7,7 +7,7 @@
 //
 // 3-file split layout (LONG-FILES-DECOMPOSITION-V2-2026-07-06 P3 BASSA, July 2026):
 //
-//   - reindex_qdrant.go          (this file, slim) — package doc + reindexQdrantDeps + parseReindexQdrantArgs + timestampedTargetCollection + runReindexQdrant (thin dispatch)
+//   - reindex_qdrant.go          (this file, slim) — package doc + reindexQdrantDeps + parseReindexQdrantArgs + timestampedTargetCollection + RunReindexQdrant (thin dispatch)
 //   - reindex_qdrant_dryrun.go   (sibling)         — dryRunQdrant helper (the side-effect-free enumeration path)
 //   - reindex_qdrant_apply.go    (sibling)         — applyQdrant helper (the 4-phase apply path)
 //
@@ -38,11 +38,12 @@
 //	go run ./cmd/admin reindex-qdrant --apply --target-collection=media_assets_recovery_v9  # explicit recovery target
 //	go run ./cmd/admin reindex-qdrant --apply --limit=500        # cap rows
 //	go run ./cmd/admin reindex-qdrant --json                     # machine-readable dry-run / apply
-package main
+package reconcile
 
 import (
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"strings"
 	"time"
 
@@ -55,7 +56,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
 )
 
-// reindexQdrantDeps holds the parsed flags for runReindexQdrant.
+// reindexQdrantDeps holds the parsed flags for RunReindexQdrant.
 type reindexQdrantDeps struct {
 	Apply            bool
 	JSON             bool
@@ -84,7 +85,7 @@ func parseReindexQdrantArgs(args []string) (reindexQdrantDeps, error) {
 		case a == "--json":
 			deps.JSON = true
 		case strings.HasPrefix(a, "--limit="):
-			n, err := parsePositiveFlag(a, "--limit")
+			n, err := cli.ParsePositiveFlag(a, "--limit")
 			if err != nil {
 				return deps, err
 			}
@@ -129,7 +130,7 @@ func timestampedTargetCollection(base string, now time.Time) string {
 	return fmt.Sprintf("%s_%s_%09d", base, utc.Format("20060102_150405"), utc.Nanosecond())
 }
 
-// runReindexQdrant is the entry point registered in cmd/admin/main.go.
+// RunReindexQdrant is the entry point registered in cmd/admin/main.go.
 // It is the thin orchestrator that:
 //  1. Loads config + opens the media DB
 //  2. Builds the canonical Qdrant stack (schema + assetStore + mapper + client + writer + collectionMgr)
@@ -137,8 +138,8 @@ func timestampedTargetCollection(base string, now time.Time) string {
 //
 // The two phase handlers (dryRunQdrant, applyQdrant) live in sibling files
 // per the 3-file split layout (LONG-FILES-DECOMPOSITION-V2-2026-07-06 P3 BASSA).
-func runReindexQdrant(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+func RunReindexQdrant(args []string) error {
+	cfg, log, cleanup, err := cli.AppLogger()
 	if err != nil {
 		return err
 	}
@@ -156,7 +157,7 @@ func runReindexQdrant(args []string) error {
 		)
 	}
 
-	ctx := cmdContext()
+	ctx := cli.CmdContext()
 
 	log.Info("reindex-qdrant starting",
 		zap.Bool("apply", deps.Apply),
