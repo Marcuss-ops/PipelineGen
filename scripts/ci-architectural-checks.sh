@@ -11,7 +11,7 @@ if [ -n "${BASH_SOURCE[0]:-}" ]; then
   ARCH_CI_ENTRYPOINT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 else
   echo "CI: cannot resolve script directory from BASH_SOURCE[0]=" >&2
-  echo "    (process substitution / bash -c "source ..." invocation)." >&2
+  echo "    (process substitution / bash -c \"source ...\" invocation)." >&2
   echo "    Run the script as: bash scripts/ci-architectural-checks.sh" >&2
   echo "    or set MIGRATIONS_ROOT=/abs/path/to/migrations/sqlite explicitly." >&2
   exit 1
