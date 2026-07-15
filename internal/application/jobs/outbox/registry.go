@@ -1,4 +1,5 @@
-// Package outboxhandlers wires concrete handlers into an outboxevents.HandlerRegistry.
+// Package outboxhandlers wires concrete handlers into an
+// outboxevents.HandlerRegistry. Each handler is responsible for one event type.
 package outbox
 
 import (
@@ -41,9 +42,9 @@ type DriveDeletionDeps struct {
 	DriveDeleteHandler   DriveDeleter
 }
 
-// Deps bundles the optional dependencies forwarded to outbox handlers. Four
-// embedded capability groups replace the previous twelve-field flat bag while
-// retaining promoted selectors for existing registration code and call sites.
+// Deps bundles optional handler dependencies through four capability groups.
+// Anonymous embedding preserves existing selector and literal behavior while
+// keeping the visible dependency surface below the architecture cap.
 type Deps struct {
 	DeliveryDeps
 	IndexingDeps
@@ -51,9 +52,8 @@ type Deps struct {
 	DriveDeletionDeps
 }
 
-// IndexClipper is declared in indexing.go (canonical owner).
-
-// RegisterAll wires the canonical set of handlers into the registry.
+// RegisterAll is the legacy best-effort wrapper around core and optional
+// registration. Missing core inputs are logged and skipped rather than returned.
 func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexer IndexClipper, deps *Deps, metadataExportHandler outboxevents.Handler) error {
 	if registry == nil {
 		return fmtError("outbox RegisterAll: registry is nil")
@@ -80,10 +80,13 @@ func RegisterAll(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexe
 	return RegisterOptionalHandlers(registry, log, deps, metadataExportHandler)
 }
 
-// RegisterCoreHandlers wires handlers that are mandatory when Qdrant is enabled.
+// RegisterCoreHandlers wires handlers that must exist when Qdrant is enabled.
 func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logger, indexer IndexClipper, deps *Deps) error {
 	if registry == nil {
 		return fmtError("outbox RegisterCoreHandlers: registry is nil")
+	}
+	if log == nil {
+		log = zap.NewNop()
 	}
 	if indexer == nil {
 		return fmtError("outbox RegisterCoreHandlers: IndexingHandler mandatory dep missing (indexer=nil; buildQdrantDeps did not construct a ClipIndexer service)")
@@ -109,11 +112,14 @@ func RegisterCoreHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logge
 			return err
 		}
 	}
-	log.Info("outbox core handlers registered (fail-closed contract when cfg.Qdrant.Enabled)", zap.Int("registered", len(core)))
+	log.Info("outbox core handlers registered (fail-closed contract when cfg.Qdrant.Enabled)",
+		zap.Int("registered", len(core)),
+	)
 	return nil
 }
 
-// RegisterOptionalHandlers wires handlers that tolerate missing dependencies.
+// RegisterOptionalHandlers wires best-effort handlers. Missing optional
+// dependencies skip only the corresponding handler.
 func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.Logger, deps *Deps, metadataExportHandler outboxevents.Handler) error {
 	if registry == nil {
 		return fmtError("outbox RegisterOptionalHandlers: registry is nil")
@@ -121,60 +127,72 @@ func RegisterOptionalHandlers(registry *outboxevents.HandlerRegistry, log *zap.L
 	if log == nil {
 		log = zap.NewNop()
 	}
-	if deps == nil {
-		deps = &Deps{}
+	optional := []outboxevents.Handler{
+		&WorkflowStepCompletedHandler{log: log},
+		&WorkflowStepFailedHandler{log: log},
 	}
+	if metadataExportHandler != nil {
+		optional = append(optional, metadataExportHandler)
+	}
+	if deps != nil {
+		if (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev) {
+			optional = append(optional, NewDeliveryHandler(log, deps.HTTPClient, deps.DB, deps.HMACSecrets, deps.InsecureDev))
+		}
+	}
+	optional = append(optional, NewProviderSyncHandler(log, depsOrNil(deps).Jobs))
+	optional = append(optional, NewVoiceoverCleanupHandler(depsOrNil(deps).VoiceoverCleanupDriver, log))
 
-	for _, h := range []outboxevents.Handler{
-		NewWorkflowStepCompletedHandler(log),
-		NewWorkflowStepFailedHandler(log),
-	} {
+	if deps != nil &&
+		deps.DrivePatchLifecycle != nil &&
+		deps.DrivePatchLifecycleW != nil &&
+		deps.DrivePatchStateAdv != nil &&
+		deps.DriveDeleteHandler != nil {
+		optional = append(optional, NewDriveDeleteHandler(
+			log,
+			deps.DriveDeleteHandler,
+			deps.DrivePatchLifecycle,
+			deps.DrivePatchLifecycleW,
+			deps.DrivePatchStateAdv,
+		))
+	}
+	for _, h := range optional {
 		if err := registry.Register(h); err != nil {
 			return err
 		}
 	}
-
-	if metadataExportHandler != nil {
-		if err := registry.Register(metadataExportHandler); err != nil {
-			return err
-		}
-	}
-
-	if deps.DB != nil || deps.HTTPClient != nil {
-		if len(deps.HMACSecrets) > 0 || deps.InsecureDev {
-			h := NewDeliveryHandler(deps.DB, deps.HTTPClient, deps.HMACSecrets, deps.InsecureDev, log)
-			if err := registry.Register(h); err != nil {
-				return err
-			}
-		} else {
-			log.Info("outbox DeliveryHandler skipped (no HMAC secrets and insecure dev disabled)")
-		}
-	}
-
-	if deps.Jobs != nil || deps.DB != nil {
-		if err := registry.Register(NewProviderSyncHandler(deps.Jobs, deps.DB, log)); err != nil {
-			return err
-		}
-	}
-
-	if err := registry.Register(NewVoiceoverCleanupHandler(log, deps.VoiceoverCleanupDriver)); err != nil {
-		return err
-	}
-
-	if deps.DrivePatchLifecycle != nil && deps.DrivePatchLifecycleW != nil && deps.DrivePatchStateAdv != nil && deps.DriveDeleteHandler != nil {
-		if err := registry.Register(NewDriveDeleteHandler(
-			deps.DrivePatchLifecycle,
-			deps.DrivePatchLifecycleW,
-			deps.DrivePatchStateAdv,
-			deps.DriveDeleteHandler,
-			log,
-		)); err != nil {
-			return err
-		}
-	}
+	log.Info("outbox optional handlers registered",
+		zap.Int("registered", len(optional)),
+		zap.Bool("metadata_export_wired", metadataExportHandler != nil),
+		zap.Bool("delivery_wired", deps != nil && (deps.HTTPClient != nil || deps.DB != nil) && (len(deps.HMACSecrets) > 0 || deps.InsecureDev)),
+		zap.Bool("provider_sync_jobs_wired", deps != nil && deps.Jobs != nil),
+		zap.Bool("voiceover_cleanup_driver_wired", deps != nil && deps.VoiceoverCleanupDriver != nil),
+	)
 	return nil
 }
 
-func fmtError(msg string) error { return fmt.Errorf("%s", msg) }
+func depsOrNil(d *Deps) *Deps {
+	if d == nil {
+		return &Deps{}
+	}
+	return d
+}
 
-var _ = clipindexer.IndexingHandler(nil)
+func fmtError(msg string) error { return &registryError{msg: msg} }
+
+type registryError struct{ msg string }
+
+func (e *registryError) Error() string { return e.msg }
+
+// buildIndexingHandler auto-wires the indexer state-updater when the concrete
+// indexer supports it, preserving the sentinel-driven state-write path.
+func buildIndexingHandler(indexer IndexClipper, sourceQuerier SourceVersionQuerier, log *zap.Logger) *IndexingHandler {
+	h := NewIndexingHandler(indexer, sourceQuerier, log)
+	if su, ok := indexer.(clipindexer.IndexerStateUpdater); ok {
+		h.WithStateUpdater(su)
+		return h
+	}
+	log.Info("outbox buildIndexingHandler: indexer does not implement IndexerStateUpdater; sentinel-driven state-write will be skipped (retry path still fires)",
+		zap.String("indexer_type", fmt.Sprintf("%T", indexer)),
+	)
+	return h
+}
