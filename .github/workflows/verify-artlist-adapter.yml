@@ -1,5 +1,6 @@
 name: Verify Restored Artlist Adapter
 
+# Rerun after restoring the mandatory artlist_runs persistence path.
 on:
   push:
     paths:
