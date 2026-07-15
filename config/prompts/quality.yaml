@@ -1,0 +1,120 @@
+qa_pass:
+  system: "You are a senior documentary script quality reviewer. Your task is to review and improve the following script. You must NOT rewrite the entire script from scratch; only apply the specific fixes listed below."
+  body: |
+    QUALITY CHECKS TO APPLY:
+    1. FACTUAL CONSISTENCY: Verify that every claim, date, number, or statistic in the script is internally consistent. If a claim contradicts an earlier statement or looks invented without support, remove it or replace it with a more cautious phrasing.
+    2. OPENING STRENGTH: The first paragraph must be engaging and immediately relevant to the topic. If it starts with a generic filler (e.g., "In today's world...", "Since the beginning of time..."), rewrite it with a concrete hook or story.
+    3. CLOSING STRENGTH: The final paragraph must not be a recycled generic conclusion (e.g., "In conclusion...", "As we have seen..."). It should end with a memorable takeaway, a call to action, or a forward-looking insight specific to the topic.
+    4. GENERIC ENDING DETECTION: If the last 2-3 sentences are vague platitudes that could apply to any topic, replace them with specific, substantive closing thoughts.
+    5. GLOBAL REDUNDANCY: If the same idea or example is repeated in non-adjacent sections, remove the weaker repetition.
+    6. TONE CONSISTENCY: Ensure the entire script maintains the requested tone (e.g., documentary, educational, narrative). Fix any sudden shifts in style.
+    7. STRUCTURAL CHECK: Verify the script follows a logical progression: hook → context → core content → resolution → strong closing. Fix any section that breaks this flow.
+
+    RULES:
+    - Do NOT add new facts, data, or examples not already present in the script.
+    - Do NOT change the meaning or argument of any section.
+    - Do NOT add meta-text, chapter labels, timestamps, or speaker labels.
+    - Do NOT shorten the script significantly; preserve all substantive content.
+    - Return ONLY the corrected full script text, with no introductory or closing remarks.
+
+    {{.ToneBlock}}
+    {{.TitleBlock}}
+    SCRIPT:
+    {{.Script}}
+
+coherence_pass:
+  system: "You are a professional documentary script editor. Your task is to improve the coherence and continuity of the following script. You must NOT rewrite the entire script from scratch; only apply the specific fixes listed below."
+  body: |
+    FIXES TO APPLY:
+    1. Remove exact or near-exact repetitions of sentences or ideas between adjacent sections.
+    2. Strengthen weak transitions between sections so the narrative flows naturally.
+    3. Ensure the tone is consistent from the opening to the closing.
+    4. Verify the opening is strong and engaging; verify the closing is not generic or recycled.
+    5. If a section ends with a hook or cliffhanger, make sure the next section picks it up naturally.
+
+    RULES:
+    - Do NOT add new facts, data, or examples not already present in the script.
+    - Do NOT change the meaning or argument of any section.
+    - Do NOT add meta-text, chapter labels, timestamps, or speaker labels.
+    - Do NOT shorten the script significantly; preserve all substantive content.
+    - Return ONLY the corrected full script text, with no introductory or closing remarks.
+
+    {{.TitleBlock}}
+    SCRIPT:
+    {{.Script}}
+
+expand:
+  body: |
+    This section is too short ({{.CurrentWords}} words). You MUST expand it to about {{.TargetWords}} words (deficit: ~{{.Deficit}} words).
+
+    EXPAND BY ADDING:
+    1. More narrative context and scene-setting
+    2. Concrete examples, data, or anecdotes
+    3. Consequences or implications of key points
+    4. Natural transitions between ideas
+    5. Emotional or sensory details
+    6. Clearer explanations of complex concepts
+
+    RULES:
+    - Do NOT repeat the same sentences or ideas
+    - Do NOT change the meaning or factual content
+    - Do NOT add facts not present in the source material
+    - Preserve the original voice and tone
+
+    {{.GuidelinesBlock}}
+    TOPIC:
+    {{.Topic}}
+
+    CURRENT TEXT:
+    {{.Chapter}}
+
+    Target length: about {{.TargetWords}} words.
+
+compress:
+  body: |
+    This section is too long ({{.CurrentWords}} words). Compress it to about {{.TargetWords}} words (remove ~{{.Excess}} words).
+
+    COMPRESS BY:
+    1. Removing repetition and filler phrases
+    2. Merging redundant sentences
+    3. Cutting abstract padding and vague statements
+    4. Simplifying verbose constructions
+
+    PRESERVE:
+    - Concrete examples, numbers, statistics
+    - Checklists and actionable items
+    - Proper nouns and specific references
+    - The original voice and tone
+
+    RULES:
+    - Do NOT become poetic or motivational
+    - Do NOT add new content
+    - Do NOT change the meaning
+
+    {{.GuidelinesBlock}}
+    TOPIC:
+    {{.Topic}}
+
+    TEXT TO COMPRESS:
+    {{.Chapter}}
+
+    Target length: about {{.TargetWords}} words.
+
+quality_compress: |
+  Compress this chapter without losing practical value.
+
+  {{.GuidelinesBlock}}
+
+  TOPIC:
+  {{.Topic}}
+
+  CHAPTER TO COMPRESS:
+  {{.Chapter}}
+
+  Rules:
+  - Keep the same voice and topic.
+  - Remove repetition, filler, and abstract padding.
+  - Preserve concrete examples, numbers, checklists, and reader actions.
+  - Do not become poetic or motivational.
+  - Target length after compression: about {{.TargetWords}} words.
+  Return only the compressed chapter.
