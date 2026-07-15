@@ -383,6 +383,157 @@ func TestClipBindings_SynthesizesScenesFromClipEvidence_P0(t *testing.T) {
 	}
 }
 
+// TestClipBindings_ClipEvidence_EmptyScenes_SynthesizesScenes is the
+// canonical unit test for the new scene-builder path: when the engine
+// emits plain text and SpecScene.Scenes is empty, the processor
+// synthesises one scene per accepted clip from the clip evidence.
+func TestClipBindings_ClipEvidence_EmptyScenes_SynthesizesScenes(t *testing.T) {
+	ev := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"clip-a", "clip-b"},
+		ClipCount:       2,
+		ClipNames: map[string]string{
+			"clip-a": "Clip A",
+			"clip-b": "Clip B",
+		},
+		DriveLinks: map[string]string{
+			"clip-a": "https://drive.google.com/a",
+			"clip-b": "https://drive.google.com/b",
+		},
+		ClipDetails: map[string]scriptpkg.ClipDetail{
+			"clip-a": {Name: "Clip A", Transcript: "First clip.", StartMs: 0, EndMs: 3000},
+			"clip-b": {Name: "Clip B", Transcript: "Second clip.", StartMs: 4000, EndMs: 7000},
+		},
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{ClipEvidence: ev, NumClips: 2}
+	input := adapters.ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{}}
+
+	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	result, err := p.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("process error = %v", err)
+	}
+
+	if !result.Changed {
+		t.Errorf("result.Changed = false, want true")
+	}
+	if len(result.SynthesizedScenes) != 2 {
+		t.Fatalf("SynthesizedScenes = %d, want 2", len(result.SynthesizedScenes))
+	}
+	for i, wantID := range ev.AcceptedClipIDs {
+		s := result.SynthesizedScenes[i]
+		if s.Bindings.Clip == nil {
+			t.Fatalf("scene[%d].Bindings.Clip = nil, want binding to %q", i, wantID)
+		}
+		if s.Bindings.Clip.ClipID != wantID {
+			t.Errorf("scene[%d].Bindings.Clip.ClipID = %q, want %q", i, s.Bindings.Clip.ClipID, wantID)
+		}
+		if s.Text != ev.ClipDetails[wantID].Transcript {
+			t.Errorf("scene[%d].Text = %q, want transcript from clip evidence", i, s.Text)
+		}
+	}
+}
+
+// TestClipBindings_ModelProducedScenes_BindsClips covers the case where
+// the model already emitted scenes: the processor must bind each
+// accepted clip to the existing scenes in canonical order without
+// synthesising new ones.
+func TestClipBindings_ModelProducedScenes_BindsClips(t *testing.T) {
+	ev := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"clip-a", "clip-b"},
+		ClipCount:       2,
+		ClipNames: map[string]string{
+			"clip-a": "Clip A",
+			"clip-b": "Clip B",
+		},
+		DriveLinks: map[string]string{
+			"clip-a": "https://drive.google.com/a",
+			"clip-b": "https://drive.google.com/b",
+		},
+	}
+	plan := &scriptpkg.ResolvedGenerationPlan{ClipEvidence: ev, NumClips: 2}
+	input := adapters.ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{
+		Scenes: []scriptpkg.SpecScene{
+			{ID: "scene-0", Index: 0, Text: "Model scene 1"},
+			{ID: "scene-1", Index: 1, Text: "Model scene 2"},
+		},
+	}}
+
+	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	result, err := p.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("process error = %v", err)
+	}
+
+	if !result.Changed {
+		t.Errorf("result.Changed = false, want true")
+	}
+	if len(result.SynthesizedScenes) != 0 {
+		t.Errorf("SynthesizedScenes = %d, want 0 (model scenes must be preserved)", len(result.SynthesizedScenes))
+	}
+	for i, s := range input.SpecScene.Scenes {
+		wantID := ev.AcceptedClipIDs[i]
+		if s.Bindings.Clip == nil {
+			t.Fatalf("scene[%d].Bindings.Clip = nil, want binding to %q", i, wantID)
+		}
+		if s.Bindings.Clip.ClipID != wantID {
+			t.Errorf("scene[%d].Bindings.Clip.ClipID = %q, want %q", i, s.Bindings.Clip.ClipID, wantID)
+		}
+	}
+	if input.SpecScene.Scenes[0].Text != "Model scene 1" {
+		t.Errorf("scene[0].Text was mutated, want Model scene 1")
+	}
+	if input.SpecScene.Scenes[1].Text != "Model scene 2" {
+		t.Errorf("scene[1].Text was mutated, want Model scene 2")
+	}
+}
+
+// TestClipBindings_NoClipEvidence_NoOp verifies that when there is no
+// clip evidence the processor returns an empty result and does not
+// touch the input scenes. Covers both nil ClipEvidence and a non-nil
+// ClipEvidence with empty AcceptedClipIDs.
+func TestClipBindings_NoClipEvidence_NoOp(t *testing.T) {
+	tests := []struct {
+		name string
+		plan *scriptpkg.ResolvedGenerationPlan
+	}{
+		{
+			name: "nil ClipEvidence",
+			plan: &scriptpkg.ResolvedGenerationPlan{ClipEvidence: nil},
+		},
+		{
+			name: "empty AcceptedClipIDs",
+			plan: &scriptpkg.ResolvedGenerationPlan{ClipEvidence: &scriptpkg.ClipEvidence{
+				AcceptedClipIDs: []string{},
+				DriveLinks:      map[string]string{"clip-a": "https://drive/a"},
+			}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := adapters.ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{
+				Scenes: []scriptpkg.SpecScene{{ID: "scene-0", Index: 0, Text: "Only scene"}},
+			}}
+
+			p := adapters.NewClipBindingsProcessor(zap.NewNop())
+			result, err := p.Process(context.Background(), tt.plan, input)
+			if err != nil {
+				t.Fatalf("process error = %v", err)
+			}
+
+			if result.Changed {
+				t.Errorf("result.Changed = true, want false")
+			}
+			if len(result.SynthesizedScenes) != 0 {
+				t.Errorf("SynthesizedScenes = %d, want 0", len(result.SynthesizedScenes))
+			}
+			if input.SpecScene.Scenes[0].Bindings.Clip != nil {
+				t.Errorf("input scene binding was mutated unexpectedly")
+			}
+		})
+	}
+}
+
 // TestClipBindings_FallbackRange_UsesCanonicalKeys_PR6 verifies
 // the P0 #2 behaviour: when ClipEvidence.ClipIDs is empty, the
 // binder is a no-op (returns early with no bindings). The old
