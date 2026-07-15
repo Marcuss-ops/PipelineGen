@@ -62,7 +62,7 @@ jobs:
             fail_stage "compile-${tag}" "${tag} compilation failed"
           }
 
-          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/verify" "Repairing capability-owned job discriminators"
+          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/verify" "Repairing capability-owned contracts"
           git fetch origin main
           git reset --hard origin/main
 
@@ -86,6 +86,30 @@ jobs:
           if text.count(legacy_import) != 1:
               raise SystemExit("texttracks/jobs.go: expected one now-unused kernel/job import")
           jobs.write_text(text.replace(legacy_import, ""), encoding="utf-8")
+
+          artlist = Path("internal/application/assets/providers/artlist/job_core.go")
+          text = artlist.read_text(encoding="utf-8")
+          replacements = {
+              "\t\tFound:        resp.Found,": "\t\tFoundN:       resp.Found,",
+              "\t\tProcessed:    resp.Processed,": "\t\tProcessedN:   resp.Processed,",
+              "\t\tSkipped:      resp.Skipped,": "\t\tSkippedN:     resp.Skipped,",
+              "\t\tFailed:       resp.Failed,": "\t\tFailedN:      resp.Failed,",
+          }
+          for before, after in replacements.items():
+              if text.count(before) != 1:
+                  raise SystemExit(f"{artlist}: expected one field projection {before!r}")
+              text = text.replace(before, after)
+
+          failure_block = '''\tif !resp.OK || resp.Error != "" {
+\t\trec.Status = "failed"
+\t}'''
+          replacement_block = '''\tif !resp.OK || resp.Error != "" {
+\t\trec.Status = "failed"
+\t\trec.ErrorMessage = resp.Error
+\t}'''
+          if text.count(failure_block) != 1:
+              raise SystemExit(f"{artlist}: expected one failed-run projection block")
+          artlist.write_text(text.replace(failure_block, replacement_block), encoding="utf-8")
           PY
 
           migrated_files=(
@@ -142,7 +166,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "${migrated_files[@]}"
-          git commit -m "fix(texttracks): use asset-owned materialize job type"
+          git commit -m "fix(job): align migrated capability contracts"
           git pull --rebase origin main
           git push origin HEAD:main
 
