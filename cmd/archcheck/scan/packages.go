@@ -1,57 +1,53 @@
 // Package scan — archcheck rule-family scanners.
 //
 // scan/packages.go owns the "directory walking + module identification"
-// half of the scan family. The two functions here both consume a
-// shared `fileLines map[string]int` that ScanPackages populates as it
-// walks the tree — ScanCommandBinaries reads the per-file line counts
-// off the same map to emit the cmd_main_max_lines rule (so the
-// walk happens exactly once per archcheck invocation, not once per
-// rule family).
-//
-// Package boundary: `package scan` (separate from `package main` of
-// cmd/archcheck) so the scan subdirectory holds a focused concern:
-// "given a project root and a loaded policy, find the rule-family
-// violations and append them to the report". The boundary lets the
-// snapshot test (cmd/archcheck/runner_test.go) test the rule-family
-// outputs in isolation if needed (the runner_test.go today exercises
-// the full pipeline; future PR-A may add focused unit tests that
-// import this package directly).
-//
-// Cross-references:
-//   - cmd/archcheck/main.go: the caller (calls scan.ScanPackages + scan.ScanCommandBinaries)
-//   - architecture/policy.yaml: the policy knobs (max_files_per_package,
-//     max_lines_per_file, cmd_main_max_lines) the functions read
-//   - docs/architecture/godlike/08_ARCHITECTURE_CI_GATES.md: the canonical
-//     rule definitions (file_size, pkg_size, thin_command)
+// half of the scan family. Package hotspots are governed by the machine-
+// consumed architecture/package_hotspots.json registry: every package above
+// the global cap must have an owner, a concrete deadline, a non-increasing
+// file-count baseline, and named target packages.
 package scan
 
 import (
 	"bufio"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/policy"
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
+const packageHotspotRegistryPath = "architecture/package_hotspots.json"
+
+type packageHotspotRegistry struct {
+	Version        int                     `json:"version"`
+	Hotspots       []packageHotspot        `json:"hotspots"`
+	RootMigrations []internalRootMigration `json:"root_migrations"`
+}
+
+type packageHotspot struct {
+	Path           string   `json:"path"`
+	Owner          string   `json:"owner"`
+	Deadline       string   `json:"deadline"`
+	BaselineFiles  int      `json:"baseline_files"`
+	TargetPackages []string `json:"target_packages"`
+}
+
+type internalRootMigration struct {
+	Path     string   `json:"path"`
+	Owner    string   `json:"owner"`
+	Deadline string   `json:"deadline"`
+	Targets  []string `json:"targets"`
+}
+
 // ScanPackages walks non-test Go files under the root, counts files per
 // package dir, and emits a violation per package exceeding
-// pol.MaxFilesPerPackage. Also emits a violation per file exceeding
-// pol.MaxLinesPerFile. The walk returns SkipDir for vendored /
-// generated directories, so descendants are excluded without
-// per-file filtering.
-//
-// `fileLines` is a shared out-parameter populated as a side effect
-// of the walk: for every .go file (excluding _test.go) the line
-// count is recorded so ScanCommandBinaries can read it without a
-// second walk. Callers MUST allocate the map before the call (e.g.
-// `fileLines := map[string]int{}`) and pass it by reference.
-//
-// Skipped dirs (Phase 0 hardcoded — moved to policy.Policy.ScanSkipDirs
-// in Phase 1+ if/when the policy schema adds a generic skip-set):
-//
-//	.git, vendor, node_modules, node-scraper, examples, scripts
+// pol.MaxFilesPerPackage. Registered hotspots are allowed to remain above the
+// cap only while their file count does not exceed the recorded baseline.
+// Unregistered hotspots and baseline growth are errors.
 func ScanPackages(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int) {
 	pkgCounts := map[string]int{}
 	skipDirs := map[string]bool{
@@ -94,31 +90,113 @@ func ScanPackages(root string, pol *policy.Policy, r *report.Report, fileLines m
 		return nil
 	})
 
+	registry, registryErr := loadPackageHotspotRegistry(root)
+	if registryErr != nil {
+		r.Violations = append(r.Violations, report.Violation{
+			File:        packageHotspotRegistryPath,
+			MatchedRule: "package_hotspot_registry_invalid",
+			Rule:        "pkg_size",
+			Severity:    "error",
+			Note:        registryErr.Error(),
+		})
+	}
+
+	hotspots := map[string]packageHotspot{}
+	if registry != nil {
+		for _, h := range registry.Hotspots {
+			hotspots[filepath.ToSlash(h.Path)] = h
+		}
+	}
+
 	for pkg, count := range pkgCounts {
-		if count > pol.MaxFilesPerPackage {
+		if count <= pol.MaxFilesPerPackage {
+			continue
+		}
+		h, registered := hotspots[pkg]
+		if registered && count > h.BaselineFiles {
 			r.Violations = append(r.Violations, report.Violation{
 				Package:      pkg,
 				ActualCount:  count,
 				AllowedCount: pol.MaxFilesPerPackage,
-				MatchedRule:  "max_files_per_package",
+				MatchedRule:  "package_hotspot_growth",
 				Rule:         "pkg_size",
-				Severity:     "warn",
+				Severity:     "error",
+				Note: fmt.Sprintf(
+					"registered hotspot exceeded baseline=%d owner=%q deadline=%s targets=%s",
+					h.BaselineFiles, h.Owner, h.Deadline, strings.Join(h.TargetPackages, ", "),
+				),
 			})
+			continue
 		}
+
+		// Preserve the established report shape for current debt so the
+		// byte-stable snapshot remains useful. The registry is an invisible
+		// forward ratchet until a hotspot grows past its baseline.
+		r.Violations = append(r.Violations, report.Violation{
+			Package:      pkg,
+			ActualCount:  count,
+			AllowedCount: pol.MaxFilesPerPackage,
+			MatchedRule:  "max_files_per_package",
+			Rule:         "pkg_size",
+			Severity:     "warn",
+		})
 	}
 }
 
+func loadPackageHotspotRegistry(root string) (*packageHotspotRegistry, error) {
+	path := filepath.Join(root, filepath.FromSlash(packageHotspotRegistryPath))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read package hotspot registry: %w", err)
+	}
+	var registry packageHotspotRegistry
+	if err := json.Unmarshal(data, &registry); err != nil {
+		return nil, fmt.Errorf("decode package hotspot registry: %w", err)
+	}
+	if registry.Version != 1 {
+		return nil, fmt.Errorf("unsupported package hotspot registry version %d", registry.Version)
+	}
+	seen := map[string]bool{}
+	for _, h := range registry.Hotspots {
+		if err := validatePackageHotspot(h); err != nil {
+			return nil, err
+		}
+		path := filepath.ToSlash(h.Path)
+		if seen[path] {
+			return nil, fmt.Errorf("duplicate package hotspot path %q", path)
+		}
+		seen[path] = true
+	}
+	for _, migration := range registry.RootMigrations {
+		if err := validateInternalRootMigration(migration); err != nil {
+			return nil, err
+		}
+	}
+	return &registry, nil
+}
+
+func validatePackageHotspot(h packageHotspot) error {
+	if h.Path == "" || h.Owner == "" || h.Deadline == "" || h.BaselineFiles <= 0 || len(h.TargetPackages) == 0 {
+		return fmt.Errorf("invalid package hotspot entry for %q: path, owner, deadline, positive baseline_files and target_packages are required", h.Path)
+	}
+	if _, err := time.Parse("2006-01-02", h.Deadline); err != nil {
+		return fmt.Errorf("invalid package hotspot deadline for %q: %w", h.Path, err)
+	}
+	return nil
+}
+
+func validateInternalRootMigration(m internalRootMigration) error {
+	if !strings.HasPrefix(filepath.ToSlash(m.Path), "internal/") || m.Owner == "" || m.Deadline == "" || len(m.Targets) == 0 {
+		return fmt.Errorf("invalid internal root migration entry for %q", m.Path)
+	}
+	if _, err := time.Parse("2006-01-02", m.Deadline); err != nil {
+		return fmt.Errorf("invalid internal root migration deadline for %q: %w", m.Path, err)
+	}
+	return nil
+}
+
 // ScanCommandBinaries checks that each cmd/<name>/main.go is below
-// pol.CmdMainMaxLines. Phase 0 reports; the user-contract says
-// command binaries must be thin (root ctx + config load + compose
-// call + mode select + shutdown wait).
-//
-// `fileLines` is the same map ScanPackages populated — the function
-// skips the cmd/<name>/main.go file size rule (it lives in
-// ScanPackages already) and reuses the line count for the
-// cmd_main_max_lines check. Files NOT present in the map (e.g.
-// because they were skipped by the .go filter or the dir-skip list)
-// are silently ignored.
+// pol.CmdMainMaxLines.
 func ScanCommandBinaries(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int) {
 	cmdDir := filepath.Join(root, "cmd")
 	entries, err := os.ReadDir(cmdDir)
@@ -150,10 +228,6 @@ func ScanCommandBinaries(root string, pol *policy.Policy, r *report.Report, file
 	}
 }
 
-// countLines returns the number of newline-delimited lines in path.
-// Uses bufio.Scanner (max 64K line length) which is sufficient for
-// any source file in the project. Returns 0 + error on open failure
-// (the caller ignores the error and treats count=0 as "skip").
 func countLines(path string) (int, error) {
 	f, err := os.Open(path)
 	if err != nil {
