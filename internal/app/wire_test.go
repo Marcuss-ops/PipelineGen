@@ -57,7 +57,7 @@ func TestWireServicesDoesNotPanicWithoutDriveAndArtlist(t *testing.T) {
 	if deps == nil {
 		t.Fatal("expected non-nil deps")
 	}
-	defer deps.Lifecycle.Stop(context.Background())
+	defer deps.Runtime.Lifecycle.Stop(context.Background())
 }
 
 func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
@@ -106,9 +106,9 @@ func TestCleanupCanBeCalledMultipleTimesSafely(t *testing.T) {
 	}
 
 	// Call Cleanup multiple times
-	deps.Lifecycle.Stop(context.Background())
-	deps.Lifecycle.Stop(context.Background())
-	deps.Lifecycle.Stop(context.Background())
+	deps.Runtime.Lifecycle.Stop(context.Background())
+	deps.Runtime.Lifecycle.Stop(context.Background())
+	deps.Runtime.Lifecycle.Stop(context.Background())
 }
 
 func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
@@ -156,9 +156,9 @@ func TestWireServicesSkipsOptionalHandlersWhenDepsMissing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WireServices failed: %v", err)
 	}
-	defer deps.Lifecycle.Stop(context.Background())
+	defer deps.Runtime.Lifecycle.Stop(context.Background())
 
-	if deps.Registry == nil {
+	if deps.Handlers.Registry == nil {
 		t.Fatal("expected non-nil Registry")
 	}
 }
@@ -211,5 +211,5 @@ func TestStartupIntegration(t *testing.T) {
 	if deps == nil {
 		t.Fatal("expected non-nil deps")
 	}
-	defer deps.Lifecycle.Stop(context.Background())
+	defer deps.Runtime.Lifecycle.Stop(context.Background())
 }

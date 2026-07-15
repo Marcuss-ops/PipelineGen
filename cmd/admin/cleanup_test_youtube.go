@@ -24,14 +24,14 @@ func runTestYouTube(args []string) error {
 	}
 
 	fmt.Println("Services wired successfully!")
-	fmt.Printf("Registry: %v\n", deps.Registry != nil)
+	fmt.Printf("Registry: %v\n", deps.Handlers.Registry != nil)
 
-	if deps.Lifecycle != nil {
+	if deps.Runtime.Lifecycle != nil {
 		// AGENTS.md §7 post-write save ctx — admin one-shot composition
 		// root; deferred lifecycle.Stop drains pending work and must
 		// survive the deferred caller-cancel scope so all teardown
 		// work runs to completion.
-		defer deps.Lifecycle.Stop(context.Background())
+		defer deps.Runtime.Lifecycle.Stop(context.Background())
 	}
 	return nil
 }
