@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - .github/workflows/one-shot-split-ci-architectural-checks.yml
+  issues:
+    types:
+      - opened
   workflow_dispatch:
 
 permissions:
@@ -17,6 +20,7 @@ concurrency:
 
 jobs:
   split:
+    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
