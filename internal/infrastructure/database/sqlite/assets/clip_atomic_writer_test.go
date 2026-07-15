@@ -138,14 +138,11 @@ func newAtomicWriterDB(t *testing.T) *sql.DB {
 	return db
 }
 
-// canonicalEnvelopePayload resets the event payload to a zero-value
-// IndexEventPayload with the canonical Type prefilled. The writer's
-// CommitClipAndIndexEvent fills AggregateID from clipID when empty
-// (and renders the canonical envelope body internally).
+// canonicalEnvelopePayload resets the event metadata to its zero value.
+// The writer fills AggregateID from clipID when empty and the canonical
+// AssetCommitter owns the event type and envelope body.
 func canonicalEnvelopePayload() youtubeports.IndexEventPayload {
-	return youtubeports.IndexEventPayload{
-		Type: outboxevents.EventAssetIndexRequested,
-	}
+	return youtubeports.IndexEventPayload{}
 }
 
 // sha256Hex returns a 64-hex string the writer treats as the canonical

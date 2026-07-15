@@ -76,12 +76,9 @@ type CommitLocalizedClipCommand struct {
 	// Empty slice is allowed.
 	TimedTracks []TimedTextTrack
 
-	// IndexEvent is the canonical outbox event envelope (Type +
-	// AggregateID + CreatedAt). The writer builds the payload
-	// internally via the canonical BuildReindexEnvelopeV1
-	// builder; callers MUST NOT supply a custom payload (Blocco
-	// 1.1: the previous ad-hoc payload path caused every
-	// indexing event to land in dead_letter).
+	// IndexEvent carries only commit metadata (AggregateID + CreatedAt).
+	// The canonical AssetCommitter owns the event type and builds the
+	// payload internally; callers cannot supply a custom envelope.
 	IndexEvent youtubeports.IndexEventPayload
 
 	// RequireTranscriptReady, when true, makes the writer fail

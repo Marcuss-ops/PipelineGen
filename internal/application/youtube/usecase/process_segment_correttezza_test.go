@@ -337,7 +337,7 @@ func TestBuildClipAsset_CanonicalShape(t *testing.T) {
 		},
 	}
 	rec := &stubWriterAssetRecorder{}
-	rec.CommitClipAndIndexEvent(context.Background(), asset.ID, asset, youtubeports.IndexEventPayload{Type: "asset.index.requested"})
+	rec.CommitClipAndIndexEvent(context.Background(), asset.ID, asset, youtubeports.IndexEventPayload{})
 
 	if rec.calls != 1 {
 		t.Fatalf("writer should have been called once, got %d", rec.calls)

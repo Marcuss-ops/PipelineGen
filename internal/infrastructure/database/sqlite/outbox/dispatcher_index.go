@@ -18,8 +18,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// EnqueueAndIndex performs UPSERT media_assets + INSERT outbox_events
-// (event_type='asset.index.requested') in a single atomic transaction,
+// EnqueueAndIndex performs UPSERT media_assets + INSERT of the canonical
+// index-request event in a single atomic transaction,
 // then commits. After commit, the outboxevents Pool will see the new
 // pending event and run IndexClip on it asynchronously via the
 // IndexingHandler.
@@ -108,7 +108,7 @@ func (d *Dispatcher) EnqueueAndIndex(ctx context.Context, clip *asset.Asset, con
 			return fmt.Errorf("dispatcher.EnqueueAndIndex(%q): build outbox event_key: %w", clip.ID, ekErr)
 		}
 		payload := indexRequestV1{
-			SchemaVersion:      "asset.index.requested.v1",
+			SchemaVersion:      outboxevents.ReindexEnvelopeV1Schema,
 			EventID:            eventID,
 			AssetID:            clip.ID,
 			Operation:          "UPSERT",
@@ -324,7 +324,7 @@ func (d *Dispatcher) EnqueueIndexEvent(ctx context.Context, tx *sql.Tx, assetID,
 // between EnqueueAndIndex and EnqueueIndexEvent.
 func buildIndexRequestV1(eventID, assetID, contentHash, eventKey string) indexRequestV1 {
 	return indexRequestV1{
-		SchemaVersion:      "asset.index.requested.v1",
+		SchemaVersion:      outboxevents.ReindexEnvelopeV1Schema,
 		EventID:            eventID,
 		AssetID:            assetID,
 		Operation:          "UPSERT",

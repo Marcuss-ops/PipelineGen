@@ -848,7 +848,6 @@ func TestE2E_YouTubeDownloadToQdrantCAS(t *testing.T) {
 // used by the use case. Mirrors process_segment.go Step 9.
 func youTubeIndexEventPayload() youtubeports.IndexEventPayload {
 	return youtubeports.IndexEventPayload{
-		Type:        outboxevents.EventAssetIndexRequested,
 		AggregateID: "", // filled by the adapter from clipID
 	}
 }

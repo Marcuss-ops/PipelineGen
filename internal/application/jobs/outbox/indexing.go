@@ -83,11 +83,11 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
-// IndexRequestSchemaVersion is the canonical, EXACT string the
-// IndexingHandler accepts. Producers MUST send
-// "asset.index.requested.v1" literally. Mismatch is TERMINAL.
+// IndexRequestSchemaVersion is the canonical schema version the
+// IndexingHandler accepts. Producers and consumers share the definition
+// owned by outboxevents; a mismatch is TERMINAL.
 // Mirrors the DeleteRequestSchemaVersion pattern in index_delete.go.
-const IndexRequestSchemaVersion = "asset.index.requested.v1"
+const IndexRequestSchemaVersion = outboxevents.ReindexEnvelopeV1Schema
 
 // IndexRequestOperationUPSERT is the only operation value the v1
 // envelope carries for asset.index.requested events. DELETE flows
