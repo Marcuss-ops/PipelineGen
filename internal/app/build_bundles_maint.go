@@ -1,52 +1,62 @@
-// Package app owns maintenance and deletion bundle construction.
+// Package app — build_bundles_maint.go (split July 2026).
+//
+// This file owns the maintenance + deletion bundle construction.
+// Extracted from build_bundles_domain.go per AGENTS.md Pattern 5.
+//
+// godlike/06 SSOT: BuildMaintBundle is the single canonical owner of the
+// deletion + maintenance service construction.
 package app
 
 import (
 	"context"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/maintenance"
 	sqliteassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
-	"go.uber.org/zap"
 )
 
+// BuildMaintBundle constructs the periodic maintenance + deletion services.
 func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger, drive *DriveBundle, repos *RepoBundle, search *SearchBundle, jobs *JobsBundle, outboxBundle *OutboxBundle) (*MaintBundle, error) {
 	_ = ctx
-	_ = drive
-
-	deletionSvc := deletion.NewService(deletion.Dependencies{
-		Repositories: deletion.RepositoryPorts{
-			Artlist:   repos.ClipsRepo,
-			Clips:     repos.ClipsRepo,
-			Stock:     repos.ClipsRepo,
-			Voiceover: repos.VoiceoverRepo,
-			Images:    repos.ImageRepo,
-		},
-		Mutation: deletion.MutationPorts{
-			Dispatcher: outboxBundle.Dispatcher,
-			AssetTree:  search.AssetTreeService,
-		},
-		Completion: deletion.CompletionPorts{},
-		Maintenance: deletion.MaintenancePorts{
-			AssetIndex: search.AssetIndexService,
-		},
-		Log: log,
+	// PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is
+	// REMOVED from the canonical ctor — the field has been retired
+	// from DeletionService (the value was unused by every service
+	// method; the canonical async Drive surface is the dispatcher
+	// outbox port per godlike/06 SSOT one-canonical-owner-per-fact).
+	deletionSvc := deletion.NewDeletionService(deletion.DeletionServiceDeps{
+		ArtlistRepo:   repos.ClipsRepo,
+		ClipsRepo:     repos.ClipsRepo,
+		StockRepo:     repos.ClipsRepo,
+		VoiceoverRepo: repos.VoiceoverRepo,
+		ImagesRepo:    repos.ImageRepo,
+		AssetTreeSvc:  search.AssetTreeService,
+		AssetIndexSvc: search.AssetIndexService,
+		Dispatcher:    outboxBundle.Dispatcher,
+		Log:           log,
 	})
-
 	maintRepo := sqliteassets.NewMaintenanceRepository(dbs.dualPool.Writer, log)
-	maintenanceSvc := maintenance.NewService(
-		cfg,
-		log,
-		search.AssetIndexService,
-		search.AssetTreeService,
-		deletionSvc,
-		jobs.Service,
-		maintRepo,
+	maintenanceSvc := maintenance.NewService(cfg, log,
+		search.AssetIndexService, search.AssetTreeService, deletionSvc,
+		jobs.Service, maintRepo,
 	)
+	// Registries-and-SSOT (June 2026): this is the canonical site for
+	// the `system.cleanup` job-type registration. Spec §"Uniqueness"
+	// requires composition to fail on duplicate job types; the previous
+	// log-Warn-and-continue pattern silently absorbed any second-call
+	// attempt (a latent bug that manifested after WireRegistry's
+	// duplicate call was removed). Propagate so any future second-call
+	// path fails composition rather than masking the underlying
+	// Dispatcher error.
 	if err := maintenanceSvc.RegisterHandler(); err != nil {
 		return nil, fmt.Errorf("compose: register maintenance job handler (BuildMaintBundle): %w", err)
 	}
-	return &MaintBundle{MaintenanceSvc: maintenanceSvc, DeletionSvc: deletionSvc}, nil
+
+	return &MaintBundle{
+		MaintenanceSvc: maintenanceSvc,
+		DeletionSvc:    deletionSvc,
+	}, nil
 }

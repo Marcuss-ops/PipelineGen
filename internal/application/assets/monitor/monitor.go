@@ -129,7 +129,7 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 	// and similar fixtures). Panicking on production composition is
 	// the right signal; tolerating nil in tests preserves the test
 	// pattern that PR1 / PR2 / PR3 were built on.
-	if deps.Cfg != nil && deps.Discoveries == nil {
+	if deps.Cfg != nil && deps.Ports.Discoveries == nil {
 		panic("monitor.NewChannelMonitor: Discoveries port is required when Cfg is wired (production composition must wire *assets.YoutubeDiscoveriesRepository from internal/infrastructure/database/sqlite/assets/youtube_discoveries_repository.go; the nil-port pre-Commit-1 path defeats per-video dedupe AND cycle-end MAX watermark)")
 	}
 
@@ -171,11 +171,11 @@ func NewChannelMonitor(deps CompositionDeps) *ChannelMonitor {
 		channelsSvc: deps.ChannelsSvc,
 		log:         deps.Log,
 
-		ytdlp:       deps.Ytdlp,
-		transcript:  deps.Transcript,
-		analyzer:    deps.Analyzer,
-		enqueuer:    deps.Enqueuer,
-		discoveries: deps.Discoveries,
+		ytdlp:       deps.Ports.Ytdlp,
+		transcript:  deps.Ports.Transcript,
+		analyzer:    deps.Ports.Analyzer,
+		enqueuer:    deps.Ports.Enqueuer,
+		discoveries: deps.Ports.Discoveries,
 		metrics:     recorder,
 		policy:      deps.Policy,
 

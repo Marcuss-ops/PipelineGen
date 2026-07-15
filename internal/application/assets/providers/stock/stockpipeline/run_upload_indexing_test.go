@@ -127,7 +127,7 @@ func TestOrchestrator_RunResilient_OutboxRollback(t *testing.T) {
 		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
 		fakeSucceedingCutter{}, successNoopRenderer(),
-		stockManifestBuilder{}, w, noopProjection{},
+		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: w, Projection: noopProjection{}},
 	).
 		WithAssetPreparation(&recordingArtifactPreparation{}).
 		WithJobFinalizer(stubJobFinalizer{})
@@ -159,7 +159,7 @@ func TestOrchestrator_RunResilient_ManifestGateFails(t *testing.T) {
 		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
 		fakeSucceedingCutter{}, successNoopRenderer(),
-		stubBuilder{}, noopWriter{}, noopProjection{},
+		ResilienceDeps{Builder: stubBuilder{}, Writer: noopWriter{}, Projection: noopProjection{}},
 	).
 		WithAssetPreparation(&recordingArtifactPreparation{}).
 		WithJobFinalizer(stubJobFinalizer{})
@@ -191,7 +191,7 @@ func TestOrchestrator_RunResilient_QdrantOffline_IndexPending(t *testing.T) {
 		NewInMemoryStepStore(),
 		assets.SourceStager(stubStager{}),
 		fakeSucceedingCutter{}, successNoopRenderer(),
-		stockManifestBuilder{}, noopWriter{}, stubProjection{},
+		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: noopWriter{}, Projection: stubProjection{}},
 	).
 		WithAssetPreparation(&recordingArtifactPreparation{}).
 		WithJobFinalizer(stubJobFinalizer{})

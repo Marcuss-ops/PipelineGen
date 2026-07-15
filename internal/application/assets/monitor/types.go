@@ -19,37 +19,30 @@ const (
 // DefaultPlaylistEnd is the global default for how many videos to scan per channel check.
 const DefaultPlaylistEnd = 50
 
-// MonitorRuntimeDeps owns scheduler configuration and channel-state authority.
-type MonitorRuntimeDeps struct {
+// MonitorPorts bundles the narrow ports consumed by ChannelMonitor so
+// CompositionDeps stays under the archcheck 8-field cap.
+type MonitorPorts struct {
+	Ytdlp       MonitorDownloaderPort
+	Transcript  TranscriptProvider
+	Analyzer    VideoAnalyzer
+	Enqueuer    JobEnqueuer
+	Discoveries YoutubeDiscoveriesPort
+}
+
+// CompositionDeps is the ctor payload for NewChannelMonitor.
+type CompositionDeps struct {
 	Cfg         *config.Config
 	ChannelsSvc *channels.Service
 	Log         *zap.Logger
 	Policy      *MonitorRuntimePolicy
-}
-
-// MonitorProcessingDeps owns discovery, transcript analysis and job emission.
-type MonitorProcessingDeps struct {
-	Ytdlp      MonitorDownloaderPort
-	Transcript TranscriptProvider
-	Analyzer   VideoAnalyzer
-	Enqueuer   JobEnqueuer
-}
-
-// MonitorPersistenceDeps owns durable discovery state and observability.
-type MonitorPersistenceDeps struct {
-	Discoveries YoutubeDiscoveriesPort
-	// MetricsRecorder is optional. The constructor installs a
-	// NoopMetricsRecorder for test and partial-deploy paths.
+	Ports       MonitorPorts
+	// MetricsRecorder (FASE 3.7 Commit 2, 2026-07-04): optional
+	// Prometheus-shaped counter/histogram recorder. nil-safe —
+	// the ctor installs a NoopMetricsRecorder default so tests
+	// + partial-deploy paths don't need to wire it. Production
+	// composition (lifecycle.go) wires the concrete
+	// *observability.ObservabilityMetricsRecorder.
 	MetricsRecorder MetricsRecorder
-}
-
-// CompositionDeps is the ctor payload for NewChannelMonitor. The three
-// embedded capability bundles keep the construction contract explicit while
-// ensuring every dependency group remains below the architecture field cap.
-type CompositionDeps struct {
-	MonitorRuntimeDeps
-	MonitorProcessingDeps
-	MonitorPersistenceDeps
 }
 
 // ChannelCheckResult is the typed payload returned by ChannelMonitor.checkChannel.

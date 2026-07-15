@@ -86,6 +86,15 @@ func NewOrchestrator(cfg OrchestratorConfig, planner ClipPlanner, legacySteps Ex
 // incomplete manifest / projection returns Qdrant-offline error)
 // without touching the production composition wiring at
 // service.go::WireStockPipeline.
+// ResilienceDeps bundles the optional resilience ports for
+// NewOrchestratorWithResilience so the constructor stays under the
+// archcheck 8-parameter cap.
+type ResilienceDeps struct {
+	Builder    ManifestBuilder
+	Writer     TransactionalAssetWriter
+	Projection ProjectionPort
+}
+
 func NewOrchestratorWithResilience(
 	cfg OrchestratorConfig,
 	planner ClipPlanner,
@@ -93,19 +102,17 @@ func NewOrchestratorWithResilience(
 	stager assets.SourceStager,
 	cutter VideoCutter,
 	renderer StockRenderer,
-	builder ManifestBuilder,
-	writer TransactionalAssetWriter,
-	projection ProjectionPort,
+	resilience ResilienceDeps,
 ) *Orchestrator {
 	o := NewOrchestrator(cfg, planner, legacySteps, stager, cutter, renderer)
-	if builder != nil {
-		o.builder = builder
+	if resilience.Builder != nil {
+		o.builder = resilience.Builder
 	}
-	if writer != nil {
-		o.writer = writer
+	if resilience.Writer != nil {
+		o.writer = resilience.Writer
 	}
-	if projection != nil {
-		o.projection = projection
+	if resilience.Projection != nil {
+		o.projection = resilience.Projection
 	}
 	return o
 }

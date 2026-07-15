@@ -555,7 +555,6 @@ func TestStockE2E_Timestamp_8Clips_PacquiaoBroner(t *testing.T) {
 	finalizer := stubJobFinalizer{}
 	stager := &syntheticStager{path: sourcePath, durationSec: 1769}
 	cutter := &ffmpegCutter{ffmpegPath: ffmpegPath}
-
 	o := NewOrchestratorWithResilience(
 		OrchestratorConfig{
 			JobId:            "stock-e2e-dod-8",
@@ -569,7 +568,7 @@ func TestStockE2E_Timestamp_8Clips_PacquiaoBroner(t *testing.T) {
 		assets.SourceStager(stager),
 		cutter,
 		passthroughRenderer{},
-		stockManifestBuilder{}, noopWriter{}, noopProjection{},
+		ResilienceDeps{Builder: stockManifestBuilder{}, Writer: noopWriter{}, Projection: noopProjection{}},
 	).
 		WithAssetPreparation(prep).
 		WithJobFinalizer(finalizer)
