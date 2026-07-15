@@ -1,0 +1,216 @@
+schema_version: 1
+current:
+- id: PRE-EXISTING-BUILD-ISSUES-2026-07-04
+  status: in_progress
+  owner: architecture-governance
+  deadline: '2026-09-15T00:00:00Z'
+  rationale: Burn down the active PRE-EXISTING issue set. Resolved entries are removed from the active catalogs and remain discoverable through Git history.
+  count:
+    baseline_initial: 9
+    current: 5
+    target_zero: 0
+  follow_up_tickets:
+  - id: PRE-EXISTING-1-WAL-PRAGMAS
+    note: Restore the SQLite pragma contract.
+  - id: PRE-EXISTING-2-INTERNAL-APP-COMPOSITION
+    note: Close the remaining composition-root test failures.
+  - id: PRE-EXISTING-7-USECASE-TRANSLATION
+    note: Restore the missing-translation warning path.
+  - id: PRE-EXISTING-8-USECASE-CACHE-FINGERPRINT
+    note: Restore segment_topics fingerprint sensitivity.
+  - id: PRE-EXISTING-13-USECASE-PLAINTEXT-ENRICHMENT
+    note: Close the plaintext source-enrichment regression.
+  cross_refs:
+    ci_gate: scripts/ci-architectural-checks.sh#Check-64
+    issues_catalog: architecture/issues.yaml
+    source: architecture/catalog.yaml
+- id: WAVE-21-PR-G-SCRIPTS-SUBPKG
+  status: in_progress
+  owner: scripts-capability
+  deadline: '2026-08-01T00:00:00Z'
+  rationale: Complete the scripts capability split while preserving the existing public contracts and registry-driven composition.
+  count:
+    baseline_initial: 64
+    current: 61
+    target_zero: 0
+  cross_refs:
+    package: internal/application/scripts
+- id: WAVE-22-PR-D-SERVICE-DEPS-CAP
+  status: in_progress
+  owner: api-composition
+  deadline: '2026-09-15T00:00:00Z'
+  rationale: Reduce wide API dependency bags through canonical bundles and composition adapters rather than duplicate wiring.
+  cross_refs:
+    gate: percheck_api_module_deps_max_8
+- id: WAVE-22-C2-C-SOURCE-CATALOG
+  status: in_progress
+  owner: source-catalog
+  deadline: '2026-09-15T00:00:00Z'
+  rationale: Move source catalog ownership to the canonical typed registry and retire remaining duplicate declarations.
+  count:
+    baseline_initial: 48
+    current: 48
+    target_zero: 0
+- id: WAVE-22-C2-E-ROUTE-MANIFEST
+  status: in_progress
+  owner: api-routing
+  deadline: '2026-09-15T00:00:00Z'
+  rationale: Keep the route manifest generated from the registered runtime surface and eliminate hand-maintained route inventory drift.
+  count:
+    baseline_initial: 171
+    current: 171
+    target_zero: 0
+  cross_refs:
+    manifest: architecture/routes.yaml
+- id: WAVE-CONFORMANCE-001-id-24-MONITOR-CHANNELS
+  status: in_progress
+  owner: channels-capability
+  deadline: '2026-09-30T00:00:00Z'
+  rationale: Complete monitor and channels conformance through ports owned by the application layer and adapters wired only at the composition root.
+  cross_refs:
+    package: internal/application/assets/monitor
+- id: WAVE-23-JOB-KERNEL-MIGRATION
+  status: in_progress
+  owner: internal/kernel/job
+  deadline: '2026-09-30T00:00:00Z'
+  rationale: Migrate production imports from the compatibility domain/job surface to the canonical internal/kernel/job contract, then delete the compatibility aliases when the census reaches zero.
+  count:
+    baseline_initial: 172
+    current: 172
+    target_zero: 0
+  cross_refs:
+    details: architecture/job_kernel_migration.json
+    canonical_import: github.com/Marcuss-ops/PipelineGen/internal/kernel/job
+issues:
+- id: PR-LIVE-VERIFY-1
+  title: Node scraper is not running, so live verification cannot probe health.
+  status: open
+  severity: p0
+  owner_capability: node-scraper/artlist_server.js
+  follow_up:
+  - Start the scraper sidecar with the canonical Chromium and bind configuration.
+  - Confirm the health endpoint reports healthy before running live verification.
+  evidence_filename: tests/operational/artlist_live_e2e_LAST_RUN.md
+  opened_date: '2026-07-12'
+  tracking_issue: PR-P0-SCRAPER-BROWSER operational follow-up
+- id: PR-LIVE-VERIFY-2
+  title: The server readiness endpoint does not report the canonical ready status.
+  status: open
+  severity: p0
+  owner_capability: internal/api/server
+  follow_up:
+  - Verify the readiness response exposes a top-level status field.
+  - Make status ready only when every required readiness check passes.
+  evidence_filename: tests/operational/artlist_live_e2e_LAST_RUN.md
+  opened_date: '2026-07-12'
+  tracking_issue: godlike/07 fail-closed readiness conformance
+- id: PR-LIVE-VERIFY-3
+  title: The Artlist Drive root is not explicitly configured.
+  status: open
+  severity: p1
+  owner_capability: internal/platform/config
+  follow_up:
+  - Configure VELOX_DRIVE_ARTLIST_ROOT in development and CI secrets.
+  - Document the canonical live-verification destination.
+  evidence_filename: tests/operational/artlist_live_e2e_LAST_RUN.md
+  opened_date: '2026-07-12'
+  tracking_issue: Drive destination reproducibility
+- id: PR-LIVE-VERIFY-4
+  title: The admin token is not provisioned for live-verification preflight.
+  status: open
+  severity: p1
+  owner_capability: internal/platform/auth
+  follow_up:
+  - Provision the admin token through the canonical secret-management path.
+  - Verify the token never appears in tracked files or Git history.
+  evidence_filename: tests/operational/artlist_live_e2e_LAST_RUN.md
+  opened_date: '2026-07-12'
+  tracking_issue: credential-safe live verification
+- id: PR-LIVE-VERIFY-5
+  title: Drive credentials are not provisioned for live verification.
+  status: open
+  severity: p0
+  owner_capability: internal/infrastructure/drive
+  follow_up:
+  - Provision OAuth or service-account credentials through environment-only configuration.
+  - Verify Drive file resolution succeeds without committing credential material.
+  evidence_filename: tests/operational/artlist_live_e2e_LAST_RUN.md
+  opened_date: '2026-07-12'
+  tracking_issue: Drive authorization reproducibility
+- id: P0-BUILD-FIX-1
+  title: The local Go environment can report false missing symbols after split-file changes.
+  status: open
+  severity: p1
+  owner_capability: internal/infrastructure/database/sqlite/assets
+  follow_up:
+  - Reproduce after clearing build and test caches.
+  - Document the operator-side remediation without adding duplicate source stubs.
+  evidence_filename: tests/operational/clip_atomic_writer_build_probe_2026-07-12.md
+  opened_date: '2026-07-12'
+  tracking_issue: split-file compilation environment integrity
+- id: PRE-EXISTING-1-WAL-PRAGMAS
+  title: SQLite pool tests do not preserve every required WAL pragma.
+  status: open
+  severity: p2
+  owner_capability: internal/infrastructure/database/sqlite
+  follow_up:
+  - Reproduce the WAL pragma test failure.
+  - Align pool initialization and the test with the canonical pragma contract.
+  evidence_filename: tests/operational/make_verify_main_2026-07-12.log
+  opened_date: '2026-07-12'
+  tracking_issue: SQLite pool durability contract
+- id: PRE-EXISTING-2-INTERNAL-APP-COMPOSITION
+  title: Multiple composition-root tests remain failing.
+  status: open
+  severity: p2
+  owner_capability: internal/app
+  follow_up:
+  - Diagnose each failing composition test independently.
+  - Restore registry wiring without adding parallel construction paths.
+  evidence_filename: tests/operational/make_verify_main_2026-07-12.log
+  opened_date: '2026-07-12'
+  tracking_issue: composition-root registry integrity
+- id: PRE-EXISTING-7-USECASE-TRANSLATION
+  title: Missing-translation fallback does not emit the expected explicit warning.
+  status: open
+  severity: p2
+  owner_capability: internal/application/scripts/usecase
+  follow_up:
+  - Reproduce the targeted multilingual persistence test.
+  - Restore the warning path and rerun the usecase package tests.
+  evidence_filename: tests/operational/make_verify_main_2026-07-12.log
+  opened_date: '2026-07-12'
+  tracking_issue: zero-legacy multilingual fallback contract
+- id: PRE-EXISTING-8-USECASE-CACHE-FINGERPRINT
+  title: The cache fingerprint is not sensitive to segment_topics mutation.
+  status: open
+  severity: p2
+  owner_capability: internal/application/scripts/usecase
+  follow_up:
+  - Reproduce the per-field fingerprint test.
+  - Correct the canonical fingerprint computation and rerun the targeted suite.
+  evidence_filename: tests/operational/make_verify_main_2026-07-12.log
+  opened_date: '2026-07-12'
+  tracking_issue: cache-key completeness
+- id: P1-DIAGNOSTIC-ARC-LIVE-BATTERY-FINALIZER
+  title: Live stock battery steps 6 and 7 remain blocked by deployment and test-selection uncertainty.
+  status: open
+  severity: p2
+  owner_capability: internal/application/assets/providers/stock/stockpipeline
+  follow_up:
+  - Prefer read-only data-layer diagnostics before production instrumentation.
+  - Confirm whether the live test selects a metadata sidecar instead of a chunk asset.
+  evidence_filename: tests/operational/artlist_live_e2e_LAST_RUN.md
+  opened_date: '2026-07-12'
+  tracking_issue: live battery finalizer diagnosis
+- id: PRE-EXISTING-13-USECASE-PLAINTEXT-ENRICHMENT
+  title: Text-source enrichment can override the plaintext short-circuit contract.
+  status: in_progress
+  severity: p2
+  owner_capability: internal/application/scripts/usecase
+  follow_up:
+  - Reproduce the plaintext output regression with the canonical registry.
+  - Close it without introducing a second resolver or production-only test seam.
+  evidence_filename: tests/operational/fase13_part6_test3_plaintext_enrichment_2026-07-12.md
+  opened_date: '2026-07-12'
+  tracking_issue: resolver merge and source precedence discipline
