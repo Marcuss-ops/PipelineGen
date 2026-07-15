@@ -2,7 +2,8 @@
 """Normalize P1 architecture ratchet metadata before verification.
 
 This helper is intentionally idempotent. It removes duplicated live baseline
-numbers from the legacy CI runner and inventory while retaining dated targets.
+numbers from the legacy CI runner and split capability baseline while retaining
+dated targets.
 """
 
 from pathlib import Path
@@ -78,7 +79,7 @@ def normalize_ci_runner() -> None:
 
 
 def normalize_inventory() -> None:
-    path = Path("architecture/capability_inventory.yaml")
+    path = Path("architecture/capability_inventory/baseline.yaml")
     lines = path.read_text(encoding="utf-8").splitlines()
     out: list[str] = []
     gate = ""
@@ -98,8 +99,6 @@ def normalize_inventory() -> None:
             if stripped.startswith("current_source:") or stripped.startswith("ceiling_source:"):
                 continue
             if stripped.startswith("milestones:"):
-                # Idempotent rerun: discard the generated milestone block and
-                # regenerate it immediately after enforce_zero below.
                 continue
             if stripped.startswith("enforcing_test:"):
                 target = (
@@ -129,7 +128,6 @@ def normalize_inventory() -> None:
                 inserted.add(gate)
                 continue
 
-        # Remove old generated milestone rows on an idempotent rerun.
         if gate in {"C2-C", "C2-E"} and stripped.startswith("- { due:"):
             continue
         out.append(line)
