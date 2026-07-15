@@ -21,7 +21,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// WireAssets creates the unified Assets handler and module.
+// WireAssets builds the Assets HTTP capability from dependencies that were
+// fully constructed by the composition root. Required services are immutable:
+// the function never creates a second deletion service and never participates
+// in post-construction setter injection.
 func WireAssets(
 	cfg *config.Config,
 	log *zap.Logger,
@@ -30,7 +33,12 @@ func WireAssets(
 	lifecycle driveutil.FileLifecycle,
 	providerRegistry *providers.Registry,
 	dispatcher *outbox.Dispatcher,
+	deletionSvc *deletion.DeletionService,
 ) (*AssetsWiring, error) {
+	if deletionSvc == nil {
+		return nil, fmt.Errorf("WireAssets: canonical deletion service is required")
+	}
+
 	var driveUploader *driveutil.Uploader
 	if deps.Delivery.Admin != nil {
 		if up, ok := deps.Delivery.Admin.(*driveutil.Uploader); ok {
@@ -67,19 +75,6 @@ func WireAssets(
 
 	folderMemSvc := foldermemory.NewService(log, deps.Core.ClipsRepo)
 	metaWriter := semantic.NewNopMetadataWriter(log)
-	deletionSvc := deletion.NewDeletionService(
-		deps.Core.ClipsRepo,
-		deps.Core.ClipsRepo,
-		deps.Core.ClipsRepo,
-		deps.Core.VoiceoverRepo,
-		deps.Core.ImageRepo,
-		deps.Core.AssetTreeService,
-		deps.Core.AssetIndexService,
-		dispatcher,
-		nil,
-		nil,
-		log,
-	)
 
 	var idemHandler gin.HandlerFunc = func(c *gin.Context) { c.Next() }
 	if deps.Background.IdempotencyStore != nil {
