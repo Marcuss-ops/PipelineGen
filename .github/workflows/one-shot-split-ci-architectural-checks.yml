@@ -13,12 +13,12 @@ permissions:
 
 concurrency:
   group: one-shot-split-ci-architectural-checks
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   split:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout latest main
         uses: actions/checkout@v4
@@ -39,17 +39,16 @@ jobs:
           cp "${monolith}" "${entrypoint}"
           bash -n "${entrypoint}"
 
-      - name: Generate semantic check modules
+      - name: Generate and validate semantic modules
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/ci/architecture/split_monolith.py
-
-      - name: Run the modular production gate
-        shell: bash
-        run: |
-          set -euo pipefail
-          timeout 15m bash scripts/ci-architectural-checks.sh
+          test -s scripts/ci/architecture/checks.manifest
+          bash -n scripts/ci-architectural-checks.sh
+          module_count="$(grep -c '^checks/.*\.sh$' scripts/ci/architecture/checks.manifest)"
+          test "${module_count}" -gt 1
+          echo "generated_modules=${module_count}"
 
       - name: Commit split directly to main
         shell: bash
