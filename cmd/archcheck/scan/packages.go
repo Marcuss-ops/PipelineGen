@@ -1,9 +1,8 @@
 // Package scan — architecture package-size scanners.
 //
-// Package hotspots are governed by architecture/package_hotspots.json. The
-// historical scan keeps the established warning shape, while production-only
-// scans fail closed for unregistered hotspots, expired migration deadlines and
-// growth beyond a registered baseline.
+// Package hotspots are governed by architecture/package_hotspots.json. A
+// registered hotspot is accepted while it remains within its baseline and before
+// its deadline; unmanaged, expired or growing hotspots fail closed.
 package scan
 
 import (
@@ -42,15 +41,16 @@ type internalRootMigration struct {
 	Targets  []string `json:"targets"`
 }
 
-// ScanPackages preserves the historical package-size report shape. Production
-// enforcement must call ScanPackagesForMode with productionOnly=true.
+// ScanPackages runs the package-size scan. Registered debt is governed by the
+// same owner/baseline/deadline contract in every mode.
 func ScanPackages(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int) {
 	ScanPackagesForMode(root, pol, r, fileLines, false)
 }
 
 // ScanPackagesForMode walks non-test Go files, records per-file line counts and
-// enforces package hotspot governance. Existing registered debt remains a
-// warning only while it stays within baseline and before its deadline.
+// enforces package hotspot governance. A registered hotspot is not itself a
+// violation while it stays within baseline and before its deadline. Growth,
+// expiry and unregistered production hotspots remain fail-closed.
 func ScanPackagesForMode(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int, productionOnly bool) {
 	pkgCounts := map[string]int{}
 	skipDirs := map[string]bool{
@@ -167,32 +167,24 @@ func appendPackageHotspotResult(
 		return
 	}
 
-	if productionOnly && packageHotspotDeadlineExpired(h.Deadline, now) {
+	if packageHotspotDeadlineExpired(h.Deadline, now) {
+		severity := "warn"
+		if productionOnly {
+			severity = "error"
+		}
 		r.Violations = append(r.Violations, report.Violation{
 			Package:      pkg,
 			ActualCount:  count,
 			AllowedCount: globalCap,
 			MatchedRule:  "package_hotspot_deadline_expired",
 			Rule:         "pkg_size",
-			Severity:     "error",
+			Severity:     severity,
 			Note: fmt.Sprintf(
 				"registered hotspot deadline expired owner=%q deadline=%s targets=%s",
 				h.Owner, h.Deadline, strings.Join(h.TargetPackages, ", "),
 			),
 		})
-		return
 	}
-
-	// Preserve the established report shape for acknowledged debt. The
-	// production-only lane changes only unmanaged, expired or growing debt.
-	r.Violations = append(r.Violations, report.Violation{
-		Package:      pkg,
-		ActualCount:  count,
-		AllowedCount: globalCap,
-		MatchedRule:  "max_files_per_package",
-		Rule:         "pkg_size",
-		Severity:     "warn",
-	})
 }
 
 func packageHotspotDeadlineExpired(deadline string, now time.Time) bool {
