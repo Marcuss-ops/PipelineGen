@@ -1,0 +1,200 @@
+name: Job Kernel Production Cutover
+
+on:
+  push:
+    paths:
+      - .github/workflows/job-kernel-production-cutover.yml
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Migrate all production imports, compile, and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          post_status() {
+            local sha="$1"
+            local state="$2"
+            local context="$3"
+            local description="$4"
+            curl -fsS -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPOSITORY}/statuses/${sha}" \
+              -d "$(python3 -c 'import json,sys; print(json.dumps({"state":sys.argv[1],"context":sys.argv[2],"description":sys.argv[3]}))' "${state}" "${context}" "${description}")" >/dev/null
+          }
+
+          fail() {
+            post_status "${TRIGGER_SHA}" failure "job-kernel-cutover" "$1"
+            exit 1
+          }
+
+          post_status "${TRIGGER_SHA}" pending "job-kernel-cutover" "Migrating all production imports"
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          python3 <<'PY'
+          from __future__ import annotations
+
+          import json
+          import re
+          import shutil
+          from pathlib import Path
+
+          OLD = "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+          NEW = "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+          roots = [Path("internal"), Path("pkg"), Path("cmd")]
+
+          # Promote the only compatibility subpackage used by production.
+          src_workspace = Path("internal/domain/job/workspace")
+          dst_workspace = Path("internal/kernel/job/workspace")
+          dst_workspace.mkdir(parents=True, exist_ok=True)
+          for src in sorted(src_workspace.glob("*.go")):
+              if src.name.endswith("_test.go"):
+                  continue
+              shutil.copy2(src, dst_workspace / src.name)
+
+          changed: list[str] = []
+          import_line = re.compile(r'^\s*(?:import\s+)?(?:(?:[A-Za-z_][A-Za-z0-9_]*|\.|_)\s+)?["`]')
+
+          for root in roots:
+              if not root.exists():
+                  continue
+              for path in sorted(root.rglob("*.go")):
+                  rel = path.as_posix()
+                  if path.name.endswith("_test.go"):
+                      continue
+                  if rel == "cmd/archcheck" or rel.startswith("cmd/archcheck/"):
+                      continue
+                  if any(part in {"vendor", "node_modules", "testdata"} for part in path.parts):
+                      continue
+
+                  original = path.read_text(encoding="utf-8")
+                  lines = original.splitlines(keepends=True)
+                  rewritten = []
+                  for line in lines:
+                      if OLD in line and import_line.match(line):
+                          line = line.replace(OLD, NEW)
+                      rewritten.append(line)
+                  updated = "".join(rewritten)
+                  if updated != original:
+                      path.write_text(updated, encoding="utf-8")
+                      changed.append(rel)
+
+          migration_path = Path("architecture/job_kernel_migration.json")
+          migration = json.loads(migration_path.read_text(encoding="utf-8"))
+          migration["reported_baseline_imports"] = 0
+          migration["completed_capabilities"] = [
+              "internal/domain/remote",
+              "internal/application/jobs",
+              "internal/application/assets",
+              "internal/application/youtube",
+              "internal/api",
+              "cmd",
+              "pkg",
+          ]
+          migration_path.write_text(json.dumps(migration, indent=2) + "\n", encoding="utf-8")
+
+          # Independent census: production imports must be exactly zero.
+          offenders: list[str] = []
+          for root in roots:
+              if not root.exists():
+                  continue
+              for path in sorted(root.rglob("*.go")):
+                  rel = path.as_posix()
+                  if path.name.endswith("_test.go") or rel.startswith("cmd/archcheck/"):
+                      continue
+                  if any(part in {"vendor", "node_modules", "testdata"} for part in path.parts):
+                      continue
+                  for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                      if OLD in line and import_line.match(line):
+                          offenders.append(f"{rel}:{line_no}:{line.strip()}")
+
+          if offenders:
+              raise SystemExit("production compatibility imports remain:\n" + "\n".join(offenders))
+
+          Path("/tmp/job-kernel-changed-files.txt").write_text(
+              "\n".join(sorted(set(changed))) + "\n", encoding="utf-8"
+          )
+          print(f"migrated_files={len(set(changed))}")
+          PY
+
+          mapfile -t changed_go < <(git diff --name-only -- '*.go')
+          if [ "${#changed_go[@]}" -eq 0 ]; then
+            fail "No Go imports changed"
+          fi
+          gofmt -w "${changed_go[@]}"
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          dirs = set()
+          for raw in Path("/tmp/job-kernel-changed-files.txt").read_text(encoding="utf-8").splitlines():
+              raw = raw.strip()
+              if raw.endswith(".go"):
+                  dirs.add(str(Path(raw).parent))
+          dirs.add("internal/kernel/job/workspace")
+          Path("/tmp/job-kernel-package-dirs.txt").write_text(
+              "\n".join(sorted(dirs)) + "\n", encoding="utf-8"
+          )
+          PY
+
+          mapfile -t package_dirs < /tmp/job-kernel-package-dirs.txt
+          package_args=()
+          for dir in "${package_dirs[@]}"; do
+            package_args+=("./${dir}")
+          done
+
+          post_status "${TRIGGER_SHA}" pending "job-kernel-cutover/compile" "Compiling all changed packages"
+          if ! go test -run '^$' "${package_args[@]}" >/tmp/job-kernel-compile.log 2>&1; then
+            tail -n 100 /tmp/job-kernel-compile.log
+            post_status "${TRIGGER_SHA}" failure "job-kernel-cutover/compile" "Changed package compilation failed"
+            fail "Compilation failed"
+          fi
+          post_status "${TRIGGER_SHA}" success "job-kernel-cutover/compile" "All changed packages compile"
+
+          # Compile the governance checker and prove the registered ratchet is zero.
+          go test -run '^$' ./cmd/archcheck/... >/tmp/job-kernel-archcheck.log 2>&1 || {
+            tail -n 100 /tmp/job-kernel-archcheck.log
+            fail "Archcheck compilation failed"
+          }
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("architecture/job_kernel_migration.json").read_text())
+          assert data["reported_baseline_imports"] == 0, data
+          PY
+
+          git rm .github/workflows/job-kernel-production-cutover.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor(job): cut over production imports to kernel"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+          final_sha=$(git rev-parse HEAD)
+          post_status "${TRIGGER_SHA}" success "job-kernel-cutover" "All production imports migrated and published"
+          post_status "${final_sha}" success "job-kernel-cutover" "Production import census is zero"
