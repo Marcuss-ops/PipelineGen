@@ -4,6 +4,8 @@
 package app
 
 import (
+	"fmt"
+
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	mediasearchapi "github.com/Marcuss-ops/PipelineGen/internal/api/mediasearch"
 	outboxapi "github.com/Marcuss-ops/PipelineGen/internal/api/outbox"
