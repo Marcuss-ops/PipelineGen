@@ -56,25 +56,63 @@ import (
 // by Execute (the finalizer owns the outbox, PR-VO-B3). FilenameBuilder
 // was nil-safe per Azione #5; Execute trusts item.Filename pre-computed
 // by the fanout (BLOC4 P0.6 pass-through invariant).
+//
+// PR-NEST-FLAT-DEPS-VOICEOVER-PERITEM (July 2026): the previous flat
+// shape had 9 mandatory ports (or 10 before Azione #6), tripping the
+// `max_struct_deps=8` archcheck gate. The struct now nests the 9
+// fields into 5 purpose-grouped sub-bundles (each ≤5 fields, all ≤8):
+//
+//   - Pipeline (5): TTSProvider, DestinationResolver, AudioPostProcessor,
+//     Publisher, VoiceoverRepository — the per-item
+//     pipeline's 5 typed ports.
+//   - Recovery (2): DefaultFolderResolver (nil-safe), TxOutboxEnqueuer
+//     (nil-safe) — pre-existing nil-tolerant recovery
+//     ports for orphan cleanup + missing-destination
+//     fallback.
+//   - Finalize (1): Finalizer — the unified 6-step finalization port
+//     (P0.4 Fase 3a, July 2026).
+//   - Output   (1): OutputDir — the per-item output dir for TTS files.
+//   - Logger   (1): *zap.Logger — nil-safe via zap.NewNop().
+//
+// ProcessVoiceoverItemDeps itself carries 5 sub-bundle fields → 5
+// fields, well below the 8-field cap. The nesting follows the
+// canonical godlike/06 SSOT pattern established by
+// PR-NEST-FLAT-DEPS-ARLIST (internal/application/assets/providers/artlist/
+// service.go: ServicePorts + ServiceDependencies{Infra, Ports, Domain,
+// Repos, Finalizer}).
+//
+// godlike/06 SSOT: this is the SINGLE canonical Deps surface for
+// the per-item pipeline. New ports MUST land in one of the 5
+// sub-bundles (or extend the count by adding a new purpose-grouped
+// sub-bundle) so ProcessVoiceoverItemDeps stays ≤8 fields.
 type ProcessVoiceoverItemDeps struct {
+	Pipeline ProcessVoiceoverPipelinePorts
+	Recovery ProcessVoiceoverRecoveryPorts
+	Finalize ProcessVoiceoverFinalizePort
+	Output   ProcessVoiceoverOutputConfig
+	Logger   *zap.Logger // nil-safe via zap.NewNop()
+}
+
+// ProcessVoiceoverPipelinePorts groups the 5 canonical per-item
+// pipeline ports (TTSProvider → DestinationResolver → AudioPostProcessor
+// → Publisher → Finalize). Field count: 5.
+type ProcessVoiceoverPipelinePorts struct {
 	TTSProvider         TTSProvider
 	DestinationResolver DestinationResolver
 	AudioPostProcessor  AudioPostProcessor
 	Publisher           VoiceoverPublisher
 	VoiceoverRepository persistence.Repository
+}
+
+// ProcessVoiceoverRecoveryPorts groups the 2 nil-tolerant recovery
+// ports (orphan-cleanup + missing-destination fallback). Field count: 2.
+type ProcessVoiceoverRecoveryPorts struct {
 	// DefaultFolderResolver is OPTIONAL (nil-safe). When item.Destination
 	// is nil, Execute calls DefaultFolderResolver.Resolve(ctx) to obtain
 	// the configured default Voiceover folder. When nil OR the resolver
 	// returns ok=false, Execute surfaces a permanent missing-destination
 	// error (P0.2 nil-destination fallback, July 2026).
 	DefaultFolderResolver VoiceoverDefaultFolderResolver
-	// Finalizer is the unified finalization port (P0.4 Fase 3a, July 2026).
-	// MANDATORY — the per-item pipeline delegates all 6 finalization steps
-	// (dedupe, delete, insert, media_assets projection, index outbox,
-	// cleanup outbox) to the finalizer inside a caller-owned tx.
-	// Pre-Fase-3a only steps 2-3 + index outbox were executed; dedupe,
-	// media_assets, and cleanup were missing from the child pipeline.
-	Finalizer VoiceoverFinalizer
 	// TxOutboxEnqueuer is the OPTIONAL FASE 4 orphan-cleanup port (July 2026).
 	// When Stage 3 (Drive upload) succeeds and Stage 4 (Finalize) fails,
 	// the per-item path opens a SEPARATE tx and enqueues a
@@ -90,6 +128,20 @@ type ProcessVoiceoverItemDeps struct {
 	// composition-root audit can promote it to mandatory when
 	// FASE 4 wiring becomes the canonical production posture.
 	TxOutboxEnqueuer TxOutboxEnqueuer
+}
+
+// ProcessVoiceoverFinalizePort wraps the unified finalization port
+// (P0.4 Fase 3a, July 2026). MANDATORY — the per-item pipeline
+// delegates all 6 finalization steps (dedupe, delete, insert,
+// media_assets projection, index outbox, cleanup outbox) to the
+// finalizer inside a caller-owned tx. Field count: 1.
+type ProcessVoiceoverFinalizePort struct {
+	Finalizer VoiceoverFinalizer
+}
+
+// ProcessVoiceoverOutputConfig groups the per-item output dir.
+// Field count: 1.
+type ProcessVoiceoverOutputConfig struct {
 	// OutputDir is the base local filesystem directory for TTS output.
 	// When the resolved destination's FolderPath is empty, Execute falls
 	// back to OutputDir. Mirrors the batch path's Service.outputDir (set
@@ -99,7 +151,6 @@ type ProcessVoiceoverItemDeps struct {
 	// PR-VO-PERITEM-OUTPUTDIR (July 2026): added to close the empty
 	// FolderPath gap on the per-item path.
 	OutputDir string
-	Logger    *zap.Logger // nil-safe via zap.NewNop()
 }
 
 // ProcessVoiceoverItemUseCase is the canonical per-item voiceover
@@ -130,20 +181,20 @@ type ProcessVoiceoverItemUseCase struct {
 // ProcessSegmentUseCase is the SINGLE canonical per-item pipeline
 // runner; the use case just builds the DTO and delegates.
 func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoiceoverItemUseCase {
-	if deps.TTSProvider == nil {
-		panic("voiceover.NewProcessVoiceoverItemUseCase: TTSProvider is required (ProcessVoiceoverItemDeps.TTSProvider)")
+	if deps.Pipeline.TTSProvider == nil {
+		panic("voiceover.NewProcessVoiceoverItemUseCase: Pipeline.TTSProvider is required (ProcessVoiceoverItemDeps.Pipeline.TTSProvider)")
 	}
-	if deps.DestinationResolver == nil {
-		panic("voiceover.NewProcessVoiceoverItemUseCase: DestinationResolver is required")
+	if deps.Pipeline.DestinationResolver == nil {
+		panic("voiceover.NewProcessVoiceoverItemUseCase: Pipeline.DestinationResolver is required")
 	}
-	if deps.Publisher == nil {
-		panic("voiceover.NewProcessVoiceoverItemUseCase: Publisher is required (E1 cutover: drive-only upload)")
+	if deps.Pipeline.Publisher == nil {
+		panic("voiceover.NewProcessVoiceoverItemUseCase: Pipeline.Publisher is required (E1 cutover: drive-only upload)")
 	}
-	if deps.VoiceoverRepository == nil {
-		panic("voiceover.NewProcessVoiceoverItemUseCase: VoiceoverRepository is required")
+	if deps.Pipeline.VoiceoverRepository == nil {
+		panic("voiceover.NewProcessVoiceoverItemUseCase: Pipeline.VoiceoverRepository is required")
 	}
-	if deps.Finalizer == nil {
-		panic("voiceover.NewProcessVoiceoverItemUseCase: Finalizer is required (P0.4 Fase 3a — unified finalization port)")
+	if deps.Finalize.Finalizer == nil {
+		panic("voiceover.NewProcessVoiceoverItemUseCase: Finalize.Finalizer is required (P0.4 Fase 3a — unified finalization port)")
 	}
 	if deps.Logger == nil {
 		deps.Logger = zap.NewNop()
@@ -151,12 +202,12 @@ func NewProcessVoiceoverItemUseCase(deps ProcessVoiceoverItemDeps) *ProcessVoice
 	return &ProcessVoiceoverItemUseCase{
 		deps: deps,
 		processSeg: NewProcessSegmentUseCase(ProcessSegmentDeps{
-			TTSProvider:         deps.TTSProvider,
-			AudioPostProcessor:  deps.AudioPostProcessor,
-			Publisher:           deps.Publisher,
-			VoiceoverRepository: deps.VoiceoverRepository,
-			Finalizer:           deps.Finalizer,
-			TxOutboxEnqueuer:    deps.TxOutboxEnqueuer,
+			TTSProvider:         deps.Pipeline.TTSProvider,
+			AudioPostProcessor:  deps.Pipeline.AudioPostProcessor,
+			Publisher:           deps.Pipeline.Publisher,
+			VoiceoverRepository: deps.Pipeline.VoiceoverRepository,
+			Finalizer:           deps.Finalize.Finalizer,
+			TxOutboxEnqueuer:    deps.Recovery.TxOutboxEnqueuer,
 			Logger:              deps.Logger,
 		}),
 	}
@@ -213,7 +264,7 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	// usecase.go::Execute. Post-DRY both callers route through the
 	// same single function.
 	dest, err := ResolveDestinationWithFallback(ctx, item.Destination,
-		u.deps.DestinationResolver, u.deps.DefaultFolderResolver, u.deps.Logger)
+		u.deps.Pipeline.DestinationResolver, u.deps.Recovery.DefaultFolderResolver, u.deps.Logger)
 	if err != nil {
 		return &VoiceoverItemResult{
 			Language: item.Language,
@@ -238,8 +289,8 @@ func (u *ProcessVoiceoverItemUseCase) Execute(ctx context.Context, item *Generat
 	// ProcessSegmentUseCase.Execute receives an empty FolderPath
 	// and fails at the TTS Synthesize call (OutputDir="" →
 	// AudioPostProcessor returns "empty OutputDir/Filename").
-	if dest.FolderPath == "" && u.deps.OutputDir != "" {
-		dest.FolderPath = u.deps.OutputDir
+	if dest.FolderPath == "" && u.deps.Output.OutputDir != "" {
+		dest.FolderPath = u.deps.Output.OutputDir
 	}
 
 	// Trust item.TextHash from fanout (P0.6 invariant — no re-derive).
