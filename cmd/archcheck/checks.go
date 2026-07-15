@@ -67,7 +67,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 			scan.ScanNoDomainJobCompatibilityAliases(root, pol, r, productionOnly)
 		}},
 		{"percheck_domain_job_import_baseline", func(root string, pol *policy.Policy, r *report.Report) {
-			scan.ScanDomainJobImportBaseline(root, pol, r, productionOnly)
+			scan.ScanDomainJobBaselineRatchet(root, pol, r, productionOnly)
 		}},
 		{"percheck_no_generic_generation_facade", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanNoGenericGenerationFacade(root, pol, r, productionOnly)
