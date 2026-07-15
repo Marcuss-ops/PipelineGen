@@ -5,27 +5,26 @@
 // admin subcommand and by `main()` itself. Keep it thin: real
 // subcommand flags belong in the per-subcommand <name>.go files; this
 // file holds only the cross-cutting flags/context plumbing.
+//
+// PR-PKG-SIZE-CMD-ADMIN-1 (July 2026): cmdContext was extracted to
+// cmd/admin/internal/cli (exported as CmdContext) so the
+// reconcile/reindex/dr subcommands (now in cmd/admin/reconcile
+// subpackage) can import it. The lowercase symbol cmdContext is
+// retained here as a thin shim that delegates to the canonical
+// cli.CmdContext helper — the 60 non-moved cmd/admin files do NOT
+// need to change as part of this PR. Tracked follow-up:
+// PR-PKG-SIZE-CMD-ADMIN-1-FOLLOWUP will migrate all call sites to
+// cli.CmdContext directly and delete this file.
 
 package main
 
 import (
 	"context"
-	"os"
-	"os/signal"
-	"syscall"
+
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 )
 
-// cmdContext returns a context that is cancelled on SIGINT / SIGTERM.
-// AGENTS.md §7 post-write save ctx — admin CLI composition root; same
-// rationale as cmd/worker/main.go — admin is a one-shot binary whose
-// lifetime is bounded by the operator invocation, so we synthesise
-// the cancellation context here rather than relying on a parent
-// request ctx.
+// cmdContext is a thin shim around cli.CmdContext. See file header.
 func cmdContext() context.Context {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-ctx.Done()
-		cancel()
-	}()
-	return ctx
+	return cli.CmdContext()
 }
