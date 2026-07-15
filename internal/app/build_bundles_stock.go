@@ -96,11 +96,13 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 			Cutter:   deps.Media.Cutter,
 			Renderer: deps.Media.Renderer,
 		},
-		Jobs:          deps.Runtime.Jobs,
-		Finalizer:     deps.Delivery.Finalizer,
-		SourceStager:  deps.Persistence.SourceStager,
-		DB:            deps.Persistence.DB,
-		ChannelLister: deps.Enrichment.ChannelLister,
+		Jobs: deps.Runtime.Jobs,
+		OperationalDeps: stockpipeline.OperationalDeps{
+			Finalizer:     deps.Delivery.Finalizer,
+			SourceStager:  deps.Persistence.SourceStager,
+			DB:            deps.Persistence.DB,
+			ChannelLister: deps.Enrichment.ChannelLister,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockpipeline.NewService: %w", err)
