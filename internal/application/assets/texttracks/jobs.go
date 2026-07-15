@@ -13,7 +13,6 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -47,7 +46,7 @@ func (h *MaterializeJobHandler) Register(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return errors.New("texttracks.MaterializeJobHandler.Register: jobsSvc is nil")
 	}
-	return jobsSvc.RegisterHandler(job.TypeAssetTextMaterialize, appjobs.HandlerFunc(h.HandleJob))
+	return jobsSvc.RegisterHandler(asset.TypeTextMaterialize, appjobs.HandlerFunc(h.HandleJob))
 }
 
 func (h *MaterializeJobHandler) HandleJob(
@@ -90,9 +89,6 @@ func (h *MaterializeJobHandler) HandleJob(
 			})
 		}
 
-		// Thread the payload-level target_languages override
-		// into the per-call Materialize invocation. Empty
-		// means "use the materializer's configured set".
 		rep, err := h.materializer.Materialize(
 			ctx, cmd.AssetID, cmd.SourceLanguage, cmd.SourceTextHash, kind, cmd.TargetLanguages,
 		)
@@ -158,18 +154,6 @@ func (h *MaterializeJobHandler) validatePayload(cmd *MaterializeJobPayload) erro
 	return nil
 }
 
-// classifyError maps typed sentinels to TERMINAL vs RETRYABLE.
-//
-// TERMINAL: ErrInvalidMaterializeRequest, ErrNoSourceTrack,
-// ErrTrackNotReady, ErrUnsupportedLanguage, ErrTranslationFailed
-// (deterministic translation failure — retrying with the same
-// input does NOT help).
-//
-// RETRYABLE (broker default policy): repository errors, outbox
-// emission errors. A transient translation failure (HTTP 5xx,
-// timeout) does NOT surface as ErrTranslationFailed — the
-// underlying error is returned unwrapped, and the broker's
-// default retry policy decides.
 func (h *MaterializeJobHandler) classifyError(err error) error {
 	switch {
 	case errors.Is(err, &ErrInvalidMaterializeRequest{}):
