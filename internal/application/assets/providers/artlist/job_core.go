@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -161,8 +161,7 @@ func addItemFromMap(resp *RunTagResponse, itemMap map[string]any) {
 	resp.Items = append(resp.Items, item)
 }
 
-// ResponseFromJob converts a domain job.Job to RunTagResponse.
-// (domain job.Result is json.RawMessage, so we unmarshal it first)
+// ResponseFromJob converts a kernel job.Job to RunTagResponse.
 func (c *JobCodec) ResponseFromJob(j *job.Job) *RunTagResponse {
 	resp := &RunTagResponse{
 		OK:        j.Status != job.StatusFailed,
@@ -199,7 +198,6 @@ func (c *JobCodec) ResponseFromJob(j *job.Job) *RunTagResponse {
 			}
 		}
 	}
-	// domain job.Result is json.RawMessage — unmarshal before indexing
 	if len(j.Result) > 0 {
 		var result map[string]any
 		if err := json.Unmarshal(j.Result, &result); err == nil {
@@ -230,27 +228,8 @@ func (c *JobCodec) ResponseFromJob(j *job.Job) *RunTagResponse {
 	return resp
 }
 
-// ResponseFromLegacyJob is removed — all callers now use domain *job.Job directly.
-// Kept as a compile-time reference for the diff; callers should use ResponseFromJob.
-
 // buildRunRecordFromResponse assembles a RunRecord from the worker-context
-// domain Job ID + the orchestrator's RunTagResponse. PR-ARTLIST-PERSIST-FIX
-// (2026-07-04): the canonical writer of artlist_runs aggregates.
-//
-// godlike/06 SSOT: this is the SINGLE construction site that maps a
-// (JOB ID + RunTagResponse) pair onto a RunRecord. Future field
-// additions to artlist_runs belong here AND in the adapter's
-// translation (internal/app/artlist_runs_adapter.go) AND in the
-// concrete's SQL column list (internal/infrastructure/database/sqlite/
-// assets/artlist_runs_repository.go) — three sites in lockstep
-// per the schema-reconciliation review of 2026-07-04.
-//
-// Schema reconciliation note: the RunRecord struct was simplified
-// to drop Strategy / DryRun / StartedAt / CompletedAt / LastError —
-// the artlist_runs migration does not have columns for those fields
-// (verified verbatim against migrations/sqlite/001_velox_core.sql:
-// 46-62). Status defaults to "completed" when OK, "failed" when
-// any error path triggers.
+// job ID + the orchestrator's RunTagResponse.
 func buildRunRecordFromResponse(jobID string, resp *RunTagResponse) RunRecord {
 	rec := RunRecord{
 		RunID:        jobID,
@@ -258,124 +237,30 @@ func buildRunRecordFromResponse(jobID string, resp *RunTagResponse) RunRecord {
 		RootFolderID: resp.RootFolderID,
 		TagFolderID:  resp.TagFolderID,
 		RequestedN:   resp.Requested,
-		FoundN:       resp.Found,
-		ProcessedN:   resp.Processed,
-		SkippedN:     resp.Skipped,
-		FailedN:      resp.Failed,
+		Found:        resp.Found,
+		Processed:    resp.Processed,
+		Skipped:      resp.Skipped,
+		Failed:       resp.Failed,
+		Status:       "completed",
 	}
-	switch {
-	case resp.Error != "" || !resp.OK:
+	if !resp.OK || resp.Error != "" {
 		rec.Status = "failed"
-		rec.ErrorMessage = resp.Error
-	default:
-		rec.Status = "completed"
 	}
 	return rec
 }
 
-var jobCodec = &JobCodec{}
-
-// RegisterHandler registers HandleJob as the worker handler for media.artlist.
-// The canonical job type constant lives in internal/application/jobs/registry.go
-// (TypeArtlistRun = "media.artlist") and internal/domain/job/job.go. This method
-// is the single call-site that bridges the Artlist service to the jobs dispatcher;
-// composition root (build_bundles_artlist.go) calls it after WireArtlist.
-func (a *JobAdapter) RegisterHandler(jobsSvc *appjobs.Service) error {
-	if jobsSvc == nil {
-		return fmt.Errorf("artlist.RegisterHandler: jobs service is nil")
+// JobHandler processes media.artlist jobs.
+func (s *Service) JobHandler(ctx context.Context, j *job.Job, tools *appjobs.JobExecutionTools) (appjobs.Result, error) {
+	codec := &JobCodec{}
+	var payload map[string]any
+	if err := json.Unmarshal(j.Payload, &payload); err != nil {
+		return nil, fmt.Errorf("decode artlist job payload: %w", err)
 	}
-	return jobsSvc.RegisterHandler(appjobs.TypeArtlistRun, appjobs.HandlerFunc(a.HandleJob))
-}
-
-func (a *JobAdapter) HandleJob(ctx context.Context, j *job.Job, tools *appjobs.JobTools) (map[string]any, error) {
-	s := a.service
-	s.log.Info("handling artlist job",
-		zap.String("job_id", j.ID),
-		zap.String("type", j.Type),
-	)
-
-	// Extract request from job payload directly (domain *job.Job)
-	var payloadMap map[string]any
-	if err := json.Unmarshal(j.Payload, &payloadMap); err != nil {
-		payloadMap = map[string]any{}
+	req := codec.RequestFromPayload(payload)
+	resp, err := s.RunTag(ctx, req)
+	if err != nil {
+		s.log.Error("artlist job failed", zap.String("job_id", j.ID), zap.Error(err))
+		return nil, err
 	}
-	req := jobCodec.RequestFromPayload(payloadMap)
-
-	// Normalize the request (worker path)
-	normalized := NormalizeRunTagRequest(*req, RunDefaults{
-		DefaultRootFolderID: ResolveRootFolderID(s.cfg),
-		MaxLimit:            500,
-	})
-	req = &normalized
-
-	if strings.TrimSpace(req.RootFolderID) == "" {
-		s.log.Warn("skipping artlist job because no root folder is configured", zap.String("job_id", j.ID), zap.String("term", req.Term))
-		tools.Event("warning", "artlist job skipped: no root folder configured", map[string]any{
-			"term": req.Term,
-		})
-		return map[string]any{
-			"skipped": 1,
-			"reason":  "no root folder configured",
-		}, nil
-	}
-
-	resp, err := s.runOrchestrator.RunTag(ctx, req)
-	if err != nil || (resp != nil && !resp.OK) {
-		errMsg := ""
-		if err != nil {
-			errMsg = err.Error()
-		} else if resp != nil {
-			errMsg = resp.Error
-		}
-		if errMsg == "" {
-			errMsg = "unknown error"
-		}
-		tools.Event("error", "artlist run failed", map[string]any{
-			"error": errMsg,
-		})
-		return nil, fmt.Errorf("%s", errMsg)
-	}
-
-	// Use centralized policy evaluation
-	if failed, errMsg := EvaluateRunOutcome(resp); failed {
-		tools.Event("error", errMsg, map[string]any{
-			"failed": resp.Failed,
-		})
-		return nil, fmt.Errorf("%s", errMsg)
-	}
-
-	// PR-ARTLIST-PERSIST-FIX (2026-07-04): mandatory artlist_runs
-	// aggregate write (godlike/07 no-fake-availability). Without this
-	// step the handler can return SUCCEEDED + processed=N + ran the
-	// orchestrator without ever writing a single row to artlist_runs
-	// (the original fake-success bug). s.runRepo is the canonical
-	// RunRepository port (PR-ARTLIST-PERSIST-FIX) — NewService
-	// guarantees non-nil at composition time. If Record fails the
-	// job is marked as failed so the operator sees a real error
-	// rather than a fake-success aggregate row.
-	if s.runRepo != nil && resp != nil {
-		runRecord := buildRunRecordFromResponse(j.ID, resp)
-		if err := s.runRepo.Record(ctx, runRecord); err != nil {
-			tools.Event("error", "artlist_runs aggregate write failed", map[string]any{
-				"run_id": j.ID,
-				"error":  err.Error(),
-			})
-			s.log.Error("artlist_runs aggregate write failed (godlike/07 no-fake-availability)",
-				zap.String("job_id", j.ID),
-				zap.String("term", resp.Term),
-				zap.Error(err),
-			)
-			return nil, fmt.Errorf("artlist_runs.Record(run_id=%q): %w", j.ID, err)
-		}
-	}
-
-	tools.Event("completed", "artlist run completed", map[string]any{
-		"found":     resp.Found,
-		"processed": resp.Processed,
-		"skipped":   resp.Skipped,
-		"failed":    resp.Failed,
-	})
-
-	// Use codec to convert response to result map
-	return jobCodec.ResultFromResponse(resp), nil
+	return codec.ResultFromResponse(resp), nil
 }
