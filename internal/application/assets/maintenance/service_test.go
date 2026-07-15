@@ -121,15 +121,11 @@ func TestMaintenancePruning(t *testing.T) {
 	// PR-WAVE-1-DRIVE-SSOT (July 2026): the driveUploader arg is
 	// REMOVED from the canonical ctor; the test fixture passes the
 	// same 5 leading nils for the 5 repository positions.
-	deletionSvc := deletion.NewDeletionService(
-		nil, nil, nil, nil, nil,
-		treeSvc,
-		idxSvc,
-		nil, // dispatcher (QDRANT-002 PR7)
-		nil, // driveGoneChecker (Blocco 3.1 commit 3/3 — not exercised in this fixture)
-		nil, // completionTxRunner (Blocco 3.1 commit 3/3 — not exercised in this fixture)
-		logger,
-	)
+	deletionSvc := deletion.NewDeletionService(deletion.DeletionServiceDeps{
+		AssetTreeSvc:  treeSvc,
+		AssetIndexSvc: idxSvc,
+		Log:           logger,
+	})
 
 	// 5. Create Maintenance Service with our in-memory DB
 	maintRepo := assets.NewMaintenanceRepository(db, logger)

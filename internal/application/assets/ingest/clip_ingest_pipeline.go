@@ -183,45 +183,57 @@ type ClipIngestPipeline struct {
 	AssetMutationDispatcher mutations.AssetMutationDispatcher
 }
 
+// MediaProcessingDeps bundles the first 4 clip-ingest pipeline ports
+// so ClipIngestPipelineDeps stays under the archcheck 8-field cap.
+type MediaProcessingDeps struct {
+	Downloader      Downloader
+	MediaNormalizer MediaNormalizer
+	ContentHasher   ContentHasher
+	ArtifactStore   ArtifactStore
+}
+
+// EnrichmentDeps bundles the enrichment/translation ports of the
+// clip-ingest pipeline.
+type EnrichmentDeps struct {
+	Transcriber         Transcriber
+	ClipEnricher        ClipEnricher
+	TextTrackTranslator TextTrackTranslator
+	SearchTextComposer  SearchTextComposer
+}
+
 // ClipIngestPipelineDeps mirrors the 9 fields for the constructor
 // (single positional arg keeps max_constructor_deps: 8 satisfied).
 type ClipIngestPipelineDeps struct {
-	Downloader              Downloader
-	MediaNormalizer         MediaNormalizer
-	ContentHasher           ContentHasher
-	ArtifactStore           ArtifactStore
-	Transcriber             Transcriber
-	ClipEnricher            ClipEnricher
-	TextTrackTranslator     TextTrackTranslator
-	SearchTextComposer      SearchTextComposer
+	MediaProcessing       MediaProcessingDeps
+	Enrichment            EnrichmentDeps
 	AssetMutationDispatcher mutations.AssetMutationDispatcher
 	Log                     *zap.Logger
 }
 
 // depsValidate fails fast if any of the 9 components is nil.
 func depsValidate(d ClipIngestPipelineDeps) error {
-	if d.Downloader == nil {
+	if d.MediaProcessing.Downloader == nil {
 		return fmt.Errorf("%w: Downloader", ErrClipIngestPipelineFailClosed)
 	}
-	if d.MediaNormalizer == nil {
+	if d.MediaProcessing.MediaNormalizer == nil {
 		return fmt.Errorf("%w: MediaNormalizer", ErrClipIngestPipelineFailClosed)
 	}
-	if d.ContentHasher == nil {
+	if d.MediaProcessing.ContentHasher == nil {
 		return fmt.Errorf("%w: ContentHasher", ErrClipIngestPipelineFailClosed)
 	}
-	if d.ArtifactStore == nil {
+	if d.MediaProcessing.ArtifactStore == nil {
 		return fmt.Errorf("%w: ArtifactStore", ErrClipIngestPipelineFailClosed)
 	}
-	if d.Transcriber == nil {
+	if d.Enrichment.Transcriber == nil {
 		return fmt.Errorf("%w: Transcriber", ErrClipIngestPipelineFailClosed)
 	}
-	if d.ClipEnricher == nil {
+	if d.Enrichment.ClipEnricher == nil {
 		return fmt.Errorf("%w: ClipEnricher", ErrClipIngestPipelineFailClosed)
 	}
-	if d.TextTrackTranslator == nil {
+	if d.Enrichment.TextTrackTranslator == nil {
 		return fmt.Errorf("%w: TextTrackTranslator", ErrClipIngestPipelineFailClosed)
 	}
-	if d.SearchTextComposer == nil {
+	if d.Enrichment.SearchTextComposer == nil {
 		return fmt.Errorf("%w: SearchTextComposer", ErrClipIngestPipelineFailClosed)
 	}
 	if d.AssetMutationDispatcher == nil {
@@ -242,14 +254,14 @@ func NewClipIngestPipeline(deps ClipIngestPipelineDeps) (*ClipIngestPipeline, er
 		log = zap.NewNop()
 	}
 	return &ClipIngestPipeline{
-		Downloader:              deps.Downloader,
-		MediaNormalizer:         deps.MediaNormalizer,
-		ContentHasher:           deps.ContentHasher,
-		ArtifactStore:           deps.ArtifactStore,
-		Transcriber:             deps.Transcriber,
-		ClipEnricher:            deps.ClipEnricher,
-		TextTrackTranslator:     deps.TextTrackTranslator,
-		SearchTextComposer:      deps.SearchTextComposer,
+		Downloader:              deps.MediaProcessing.Downloader,
+		MediaNormalizer:         deps.MediaProcessing.MediaNormalizer,
+		ContentHasher:           deps.MediaProcessing.ContentHasher,
+		ArtifactStore:           deps.MediaProcessing.ArtifactStore,
+		Transcriber:             deps.Enrichment.Transcriber,
+		ClipEnricher:            deps.Enrichment.ClipEnricher,
+		TextTrackTranslator:     deps.Enrichment.TextTrackTranslator,
+		SearchTextComposer:      deps.Enrichment.SearchTextComposer,
 		AssetMutationDispatcher: deps.AssetMutationDispatcher,
 	}, nil
 }

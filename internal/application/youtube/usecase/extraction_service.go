@@ -35,13 +35,21 @@ import (
 
 // ExtractionDeps is the canonical deps bundle for the extraction
 // pipeline. ProcessSeg is REQUIRED (panic fail-closed at ctor; godlike/07).
+// LegacyCompositionDeps holds the legacy CompositionState wiring fields
+// that are kept for back-compat but not used in the canonical path.
+// Grouped into a sub-struct to keep ExtractionDeps under the archcheck
+// 8-field cap.
+type LegacyCompositionDeps struct {
+	VideoPipeline youtubeports.VideoPipelinePort
+	Clips         youtubeports.ClipStorePort
+	Cache         youtubeports.CachePort
+	Monitors      youtubeports.MonitorsStorePort
+}
+
 type ExtractionDeps struct {
 	Cfg                 youtubetypes.RuntimeConfig
 	Log                 *zap.Logger
-	VideoPipeline       youtubeports.VideoPipelinePort // reserved: legacy wiring kept for CompositionState back-compat (not used in canonical path)
-	Clips               youtubeports.ClipStorePort     // reserved: legacy wiring kept for CompositionState back-compat
-	Cache               youtubeports.CachePort         // reserved: legacy wiring kept for CompositionState back-compat
-	Monitors            youtubeports.MonitorsStorePort // reserved: legacy wiring kept for CompositionState back-compat
+	Legacy              LegacyCompositionDeps // reserved: legacy wiring kept for CompositionState back-compat (not used in canonical path)
 	AssetDestResolver   assetdomain.Resolver
 	FolderMemory        youtubeports.FolderMemoryPort
 	SegmentsSvc         *SegmentsService              // auto-constructed if nil (lazy-init)

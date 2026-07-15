@@ -234,12 +234,14 @@ func NewServiceFromSubBundles(
 	// The root Service implements ExtractionCallbacks so callbacks are
 	// simply method calls on the same Service instance.
 	svc.extraction = NewExtractionService(ExtractionDeps{
-		Cfg:               core.Cfg,
-		Log:               core.Log,
-		VideoPipeline:     video.VideoPipeline,
-		Clips:             storage.Clips,
-		Cache:             storage.Cache,
-		Monitors:          storage.Monitors,
+		Cfg: core.Cfg,
+		Log: core.Log,
+		Legacy: LegacyCompositionDeps{
+			VideoPipeline: video.VideoPipeline,
+			Clips:         storage.Clips,
+			Cache:         storage.Cache,
+			Monitors:      storage.Monitors,
+		},
 		AssetDestResolver: asset.AssetDestResolver,
 		FolderMemory:      storage.FolderMemory,
 		SegmentsSvc:       svc.segSvc,
