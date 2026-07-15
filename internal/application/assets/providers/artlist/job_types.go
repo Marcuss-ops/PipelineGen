@@ -2,6 +2,7 @@ package artlist
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"go.uber.org/zap"
 )
 
 func (a *JobAdapter) GetJobByRunID(ctx context.Context, runID string) (*job.Job, error) {
@@ -38,7 +40,7 @@ func NewJobAdapter(s *Service) *JobAdapter {
 }
 
 // RunTag delegates to the canonical Artlist run orchestrator. Keeping this
-// method on Service preserves the facade consumed by JobHandler and API code.
+// method on Service preserves the facade consumed by worker and API code.
 func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagResponse, error) {
 	if s == nil || s.runOrchestrator == nil {
 		return nil, fmt.Errorf("artlist.Service.RunTag: run orchestrator is not configured")
@@ -46,8 +48,10 @@ func (s *Service) RunTag(ctx context.Context, req *RunTagRequest) (*RunTagRespon
 	return s.runOrchestrator.RunTag(ctx, req)
 }
 
-// HandleJob adapts the canonical kernel handler signature to the existing
-// Service.JobHandler implementation without duplicating pipeline logic.
+// HandleJob is the canonical worker-side Artlist path. Besides running the
+// orchestrator it owns outcome evaluation, operator events and the mandatory
+// artlist_runs aggregate write; returning success without that write is
+// forbidden by the Gate 03 persistence contract.
 func (a *JobAdapter) HandleJob(
 	ctx context.Context,
 	j *job.Job,
@@ -56,7 +60,86 @@ func (a *JobAdapter) HandleJob(
 	if a == nil || a.service == nil {
 		return nil, fmt.Errorf("artlist.JobAdapter.HandleJob: service is not configured")
 	}
-	return a.service.JobHandler(ctx, j, tools)
+	if j == nil {
+		return nil, fmt.Errorf("artlist.JobAdapter.HandleJob: job is nil")
+	}
+
+	s := a.service
+	eventFn := appjobs.SafeEventFn(tools)
+	s.log.Info("handling artlist job",
+		zap.String("job_id", j.ID),
+		zap.String("type", j.Type),
+	)
+
+	var payloadMap map[string]any
+	if err := json.Unmarshal(j.Payload, &payloadMap); err != nil {
+		return nil, fmt.Errorf("decode artlist job payload: %w", err)
+	}
+	codec := &JobCodec{}
+	req := codec.RequestFromPayload(payloadMap)
+	normalized := NormalizeRunTagRequest(*req, RunDefaults{
+		DefaultRootFolderID: ResolveRootFolderID(s.cfg),
+		MaxLimit:            500,
+	})
+	req = &normalized
+
+	if strings.TrimSpace(req.RootFolderID) == "" {
+		s.log.Warn("skipping artlist job because no root folder is configured",
+			zap.String("job_id", j.ID),
+			zap.String("term", req.Term),
+		)
+		eventFn("warning", "artlist job skipped: no root folder configured", map[string]any{
+			"term": req.Term,
+		})
+		return job.Result{
+			"skipped": 1,
+			"reason":  "no root folder configured",
+		}, nil
+	}
+
+	resp, err := s.RunTag(ctx, req)
+	if err != nil || (resp != nil && !resp.OK) {
+		errMsg := ""
+		if err != nil {
+			errMsg = err.Error()
+		} else if resp != nil {
+			errMsg = resp.Error
+		}
+		if errMsg == "" {
+			errMsg = "unknown error"
+		}
+		eventFn("error", "artlist run failed", map[string]any{"error": errMsg})
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+
+	if failed, errMsg := EvaluateRunOutcome(resp); failed {
+		eventFn("error", errMsg, map[string]any{"failed": resp.Failed})
+		return nil, fmt.Errorf("%s", errMsg)
+	}
+
+	if s.runRepo != nil && resp != nil {
+		runRecord := buildRunRecordFromResponse(j.ID, resp)
+		if err := s.runRepo.Record(ctx, runRecord); err != nil {
+			eventFn("error", "artlist_runs aggregate write failed", map[string]any{
+				"run_id": j.ID,
+				"error":  err.Error(),
+			})
+			s.log.Error("artlist_runs aggregate write failed",
+				zap.String("job_id", j.ID),
+				zap.String("term", resp.Term),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("artlist_runs.Record(run_id=%q): %w", j.ID, err)
+		}
+	}
+
+	eventFn("completed", "artlist run completed", map[string]any{
+		"found":     resp.Found,
+		"processed": resp.Processed,
+		"skipped":   resp.Skipped,
+		"failed":    resp.Failed,
+	})
+	return codec.ResultFromResponse(resp), nil
 }
 
 // RegisterHandler binds the Artlist consumer using the media domain's
