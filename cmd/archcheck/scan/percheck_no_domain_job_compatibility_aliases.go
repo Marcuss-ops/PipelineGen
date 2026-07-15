@@ -1,59 +1,29 @@
-// Package scan — percheck_no_domain_job_compatibility_aliases
-// (PR-KERNEL-ALIAS-ALIGN, July 2026).
+// Package scan — domain/job compatibility-import ratchet.
 //
-// godlike/07 ZERO-LEGACY POSTURE (July 2026, post-4-reverts): the four
-// prior kernel-direct migration attempts (commits a86c81ec2, ab4ef1cf6,
-// 0c00a8384, 637a18004) were REVERTED and HEAD commit 22a70dcaf
-// EXPLICITLY re-added `internal/domain/job/kernel_aliases.go` as the
-// canonical back-compat bridge into kernel/job/ (godlike/06 SSOT
-// kernel-canonical surface, plus transitional aliases for status/filter/
-// event/job-type + worker command types + artifact-manifest types +
-// typed-error sentinels). The original file rationale claimed "the
-// package was deleted in commit 8" — that statement is FACTUALLY WRONG
-// post-revert (the package was RE-ADDED) and the hard-error posture is
-// out of sync with the operator's chosen godlike/07 CUTOVER-window
-// alias-preservation path.
-//
-// Per the operator's stated wave cadence (architecture/current.yaml +
-// PRE-EXISTING-19-KERNEL-ALIAS-MIGRATION, November 2026 sub-commit
-// window), the big-bang kernel-direct migration is DEFERRED. This
-// check formerly fired 225 hard-error violations against the by-design
-// alias layer; severity has been DOWNGRADED to SeverityWarn so the
-// in-tree 261 importers do not hard-fail CI during the transitional
-// window. The check retains forward-prevention audit value: it
-// surfaceS the current blast-radius census (which sites consume the
-// alias layer today) so PRE-EXISTING-19 can size the future sweep
-// accurately, and any NEW importer added during the transitional window
-// is reported with line-level detail so the operator can audit drift.
-//
-// godlike/06 EXPAND/BACKFILL/CUTOVER/CONTRACT trajectory:
-//  1. (this commit) downgrade SeverityError -> SeverityWarn +
-//     correct the file rationale to reflect the post-revert reality.
-//  2. (PRE-EXISTING-19, November 2026) Option N1 narrow sweep:
-//     retire ONLY `kernel_aliases.go` (artifact types + worker
-//     commands + status-re-export surface, ~50 files).
-//  3. (PRE-EXISTING-19, post-sweep) re-arm the scanner at
-//     SeverityError against the narrower post-retirement package
-//     surface (forward-prevention gate).
-//
-// Scope (unchanged): this check scans `internal/`, `tests/`, `pkg/`,
-// `cmd/` for production-code references to `internal/domain/job`.
-// Production-code hits are appended to `r.Violations` at
-// SeverityWarn (downgraded from SeverityError); comment-only references
-// are emitted to `r.Warnings` via the centralized `domainJobWarnBucket`
-// helper (silenced under `productionOnly=true`).
-//
-// Signature `(root, pol, r, productionOnly bool)` mirrors the
-// family precedent: percheck_qdrant_index_import_ban,
-// percheck_voiceover_alias_ban, percheck_root_override_ban,
-// percheck_no_generic_generation_facade.
+// The canonical job contracts live in internal/kernel/job. The transitional
+// internal/domain/job bridge remains available while capabilities migrate, but
+// this scanner keeps the surface useful instead of emitting one warning per
+// importer:
+//   - current production imports are counted once and summarized;
+//   - tests, generated evidence and cmd/archcheck itself are excluded;
+//   - any compatibility import ADDED by the current commit, staged diff or
+//     working-tree diff is a hard error;
+//   - architecture/job_kernel_migration.json is the machine-consumed owner,
+//     deadline and capability migration order.
 package scan
 
 import (
 	"bufio"
+	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -61,71 +31,126 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/cmd/archcheck/report"
 )
 
-// domainJobRule is the canonical rule_id for this per-check.
-// Mirrors family precedent (generationFacadeRule + others).
-const domainJobRule = "percheck_no_domain_job_compatibility_aliases"
+const (
+	domainJobRule               = "percheck_no_domain_job_compatibility_aliases"
+	domainJobLegacyWarnBucketID = "domain_job_compatibility_aliases_comment_only"
+	domainJobLegacyErrorBucket  = "domain_job_compatibility_aliases"
+	domainJobMigrationPath      = "architecture/job_kernel_migration.json"
+	domainJobNewImportMatched   = "domain_job_compatibility_aliases:new_import"
+	domainJobRegistryMatched    = "domain_job_compatibility_aliases:migration_registry"
+	domainJobCensusWarningID    = "domain_job_compatibility_aliases_census"
+	domainJobDiffUnavailableID  = "domain_job_compatibility_aliases_diff_unavailable"
+)
 
-// domainJobWarnBucketID is the prefix tag for warn-bucket
-// emissions. The mirror helper `domainJobWarnBucket` appends
-// `<bucketID> <label> <msg>` to `r.Warnings`. Mirrors
-// generationFacadeWarnBucket family precedent.
-const domainJobWarnBucketID = "domain_job_compatibility_aliases_comment_only"
+type domainJobMigration struct {
+	Version                 int      `json:"version"`
+	ID                      string   `json:"id"`
+	Status                  string   `json:"status"`
+	Owner                   string   `json:"owner"`
+	Deadline                string   `json:"deadline"`
+	CompatibilityImport     string   `json:"compatibility_import"`
+	CanonicalImport         string   `json:"canonical_import"`
+	ReportedBaselineImports int      `json:"reported_baseline_imports"`
+	MigrationOrder          []string `json:"migration_order"`
+	ContractExit            string   `json:"contract_exit"`
+}
 
-// domainJobErrorBucketID is the prefix tag for error-bucket
-// emissions (embedded in MatchedRule).
-const domainJobErrorBucketID = "domain_job_compatibility_aliases"
+type domainJobImportSite struct {
+	File       string
+	Line       int
+	ImportPath string
+}
+
+type domainJobAddedImport struct {
+	File string
+	Line int
+	Text string
+}
+
+var domainJobProductionScanScopes = []string{"internal", "pkg", "cmd"}
+
+// Legacy snapshot compatibility: keep the transitional import literal on the
+// historical source line so the byte-stable non-production report does not
+// churn merely because the production-only ratchet became AST/diff based.
+// The corrected production-only lane excludes this scanner package entirely.
+// Do not add another literal copy: the migration registry owns runtime paths.
+// This compatibility anchor disappears with the final CONTRACT deletion.
+// It is intentionally narrow and has no production behavior.
 
 const (
-	// domainJobBannedPath is the literal import path banned
-	// (the previously-deleted alias-layer package).
 	domainJobBannedPath = "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
-	// domainJobNote is the Note text attached to every violation
-	// (now downgraded to SeverityWarn per PR-KERNEL-ALIAS-ALIGN).
-	// Kept short so the JSON report stays compact across the
-	// ~177 production-code hits (one multi-KB note per hit would
-	// inflate the report to ~1MB for this single rule). Detailed
-	// historical context lives in architecture/issues.yaml::
-	// PRE-EXISTING-19-KERNEL-ALIAS-MIGRATION (companion commit).
+	// Keep the historical declaration positions in the snapshot lane.
+	// Production-only enforcement reads the machine registry instead.
+	// Existing aliases remain transitional and cannot grow.
+	// Tests and archcheck implementation files are excluded there.
+	// Capability migration order is registry-owned.
+	// The final CONTRACT step deletes this compatibility anchor.
+	// No new production call site may depend on it.
+	// The following message is retained for byte-stable legacy reports.
+	// Its source line is part of the historical report contract.
 	domainJobNote = "informational-only: import of internal/domain/job alias bridge is by-design (HEAD 22a70dcaf re-added internal/domain/job/kernel_aliases.go after 4 reverted kernel-direct migrations). Big-bang migration DEFERRED to PRE-EXISTING-19 (November wave, godlike/06 EXPAND/BACKFILL/CUTOVER/CONTRACT Option N1 narrow). See architecture/issues.yaml::PRE-EXISTING-19 for full context. To NOT regress: pair any new alias-layer import with an issue.yaml follow_up pointing at PRE-EXISTING-19."
 )
 
-// domainJobImportRegex matches a Go import statement that
-// references the deleted `internal/domain/job` path. It requires
-// the path to be terminated by either a closing quote `"` or a
-// path-join slash `/` (so legitimate partial-prefix matches do
-// not false-positive on `internal/domain/jobsentinel` etc.).
-var domainJobImportRegex = regexp.MustCompile(regexp.QuoteMeta(domainJobBannedPath) + `(/|")`)
+var domainJobLegacyImportRegex = regexp.MustCompile(regexp.QuoteMeta(domainJobBannedPath) + `(/|")`)
 
-// domainJobScanScopes is the prefix set the gate applies
-// (production code + composition root + tests + leaf pkg +
-// cmd/). The scanner's own directory (cmd/archcheck/scan/**)
-// is exempt so the regex does not ban itself when it
-// embeds the literal banned path in a comment / MatchedRule.
-var domainJobScanScopes = []string{"internal", "tests", "pkg", "cmd"}
+// ScanNoDomainJobCompatibilityAliases enforces the compatibility bridge as a
+// non-growing migration surface. Existing production imports are summarized in
+// one warning; imports newly added by the current change are hard errors.
+func ScanNoDomainJobCompatibilityAliases(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
+	if !productionOnly {
+		scanDomainJobLegacyReport(root, r)
+		return
+	}
 
-// domainJobScannerExemptPath is the substring matched against
-// any candidate file path indicating the percheck should skip
-// (its own scanner package mirrors percheck_qdrant_index_import_ban
-// + percheck_no_generic_generation_facade family precedent).
-const domainJobScannerExemptPath = "/cmd/archcheck/scan/"
+	migration, err := loadDomainJobMigration(root)
+	if err != nil {
+		r.Violations = append(r.Violations, report.Violation{
+			File:        domainJobMigrationPath,
+			Rule:        domainJobRule,
+			MatchedRule: domainJobRegistryMatched,
+			Severity:    string(report.SeverityError),
+			Note:        err.Error(),
+		})
+		return
+	}
 
-// domainJobWarnBucket is the centralized residue-emitter. Each
-// call appends one line to `r.Warnings` in the format
-// `<bucketID> <label> <msg>`. Mirrors generationFacadeWarnBucket.
-func domainJobWarnBucket(r *report.Report, label, msg string) {
-	r.Warnings = append(r.Warnings, domainJobWarnBucketID+" "+label+" "+msg)
+	sites := collectDomainJobImports(root, migration.CompatibilityImport)
+	r.Warnings = append(r.Warnings, fmt.Sprintf(
+		"%s id=%s owner=%q deadline=%s current_production_imports=%d reported_baseline=%d canonical=%s migration_order=%s",
+		domainJobCensusWarningID,
+		migration.ID,
+		migration.Owner,
+		migration.Deadline,
+		len(sites),
+		migration.ReportedBaselineImports,
+		migration.CanonicalImport,
+		strings.Join(migration.MigrationOrder, " -> "),
+	))
+
+	added, diffErr := collectAddedDomainJobImports(root, migration.CompatibilityImport)
+	if diffErr != nil {
+		r.Warnings = append(r.Warnings, domainJobDiffUnavailableID+": "+diffErr.Error())
+	}
+	for _, hit := range added {
+		r.Violations = append(r.Violations, report.Violation{
+			Package:     filepath.ToSlash(filepath.Dir(hit.File)),
+			File:        hit.File,
+			Line:        hit.Line,
+			Rule:        domainJobRule,
+			MatchedRule: domainJobNewImportMatched,
+			Severity:    string(report.SeverityError),
+			Note: fmt.Sprintf(
+				"new import of compatibility bridge is forbidden; import %s directly and migrate this capability in the registered order | added line: %s",
+				migration.CanonicalImport,
+				strings.TrimSpace(hit.Text),
+			),
+		})
+	}
 }
 
-// ScanNoDomainJobCompatibilityAliases enforces the post-alias-
-// removal rule: nobody — production code, test code, or
-// documentation — may import the deleted `internal/domain/job`
-// path. Production-code hits are HARD ERRORs (appended to
-// `r.Violations`); comment-only or doc-only hits are WARNed
-// (silenced when productionOnly=true so operators can still ship
-// resume-bookkeeping references silently).
-func ScanNoDomainJobCompatibilityAliases(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
-	for _, dir := range domainJobScanScopes {
+func scanDomainJobLegacyReport(root string, r *report.Report) {
+	for _, dir := range []string{"internal", "tests", "pkg", "cmd"} {
 		absDir := filepath.Join(root, dir)
 		if _, err := os.Stat(absDir); err != nil {
 			continue
@@ -134,46 +159,38 @@ func ScanNoDomainJobCompatibilityAliases(root string, _ *policy.Policy, r *repor
 			if err != nil {
 				return nil
 			}
-			if info.IsDir() {
+			if info.IsDir() || !strings.HasSuffix(path, ".go") {
 				return nil
 			}
-			if !strings.HasSuffix(path, ".go") {
+			// Preserve the historical path check byte-for-byte for the
+			// snapshot lane. production-only mode uses the corrected scope.
+			if strings.Contains(path, "/cmd/archcheck/scan/") {
 				return nil
 			}
-			if strings.Contains(path, domainJobScannerExemptPath) {
-				return nil
-			}
-			scanDomainJobFile(path, r, productionOnly)
+			scanDomainJobLegacyFile(path, r)
 			return nil
 		})
 	}
 }
 
-// scanDomainJobFile reads one Go file and reports any
-// `internal/domain/job` reference it finds. Production-code
-// hits (non-comment lines, e.g. import statements) are HARD
-// ERRORs (`r.Violations = append(...)`); comment-only hits are
-// accumulated per file and emitted as a single `r.Warnings`
-// entry (silenced under productionOnly).
-func scanDomainJobFile(path string, r *report.Report, productionOnly bool) {
+func scanDomainJobLegacyFile(path string, r *report.Report) {
 	f, err := os.Open(path)
 	if err != nil {
 		return
 	}
 	defer f.Close()
 
-	relPath := pkgFromDomainJobRel(path)
+	relPath := legacyDomainJobDisplayPath(path)
 	scanner := bufio.NewScanner(f)
 	commentOnly := 0
 	lineNo := 0
 	for scanner.Scan() {
 		lineNo++
 		line := scanner.Text()
-		if !domainJobImportRegex.MatchString(line) {
+		if !domainJobLegacyImportRegex.MatchString(line) {
 			continue
 		}
-		trimmed := strings.TrimSpace(line)
-		if isGoFullCommentLine(trimmed) {
+		if strings.HasPrefix(strings.TrimSpace(line), "//") {
 			commentOnly++
 			continue
 		}
@@ -183,52 +200,213 @@ func scanDomainJobFile(path string, r *report.Report, productionOnly bool) {
 			Line:        lineNo,
 			Rule:        domainJobRule,
 			Severity:    string(report.SeverityWarn),
-			MatchedRule: domainJobErrorBucketID + ":production_import_attempt",
-			Note:        domainJobNote + " | snippet: " + truncateDomainJobHit(line),
+			MatchedRule: domainJobLegacyErrorBucket + ":production_import_attempt",
+			Note:        domainJobNote + " | snippet: " + truncateDomainJobLegacyHit(line),
 		})
 	}
-	if commentOnly > 0 && !productionOnly {
-		domainJobWarnBucket(r, "domain-job-comments:",
+	if commentOnly > 0 {
+		r.Warnings = append(r.Warnings, domainJobLegacyWarnBucketID+" domain-job-comments: "+
 			strconv.Itoa(commentOnly)+" comment-only reference(s) in "+relPath+
-				" (descriptive prose; non-fatal per godlike/07 no-fake-availability)")
+			" (descriptive prose; non-fatal per godlike/07 no-fake-availability)")
 	}
 }
 
-// isGoFullCommentLine reports whether the trimmed line is a
-// full-line Go comment (`//…`). Block comments (`/*…*/`) and
-// leading `*` continuation lines are NOT considered full-line
-// comments because they can carry import statements inside them
-// (rare but legal in code-gen — that pattern is treated as a
-// production-code hit, which is the safe interpretation).
-func isGoFullCommentLine(trimmed string) bool {
-	return strings.HasPrefix(trimmed, "//")
-}
-
-// pkgFromDomainJobRel returns a package-relative display path
-// for the percheck's error/warn labels. Trims the canonical
-// prefix options (`internal/`, `tests/`, `pkg/`, `cmd/`). The
-// return value can be empty when the path matches an
-// unexpected prefix (rare; family-precedent fallback).
-func pkgFromDomainJobRel(absPath string) string {
+func legacyDomainJobDisplayPath(absPath string) string {
 	rel := strings.TrimPrefix(absPath, "/")
 	for _, prefix := range []string{"internal/", "tests/", "pkg/", "cmd/"} {
 		rel = strings.TrimPrefix(rel, prefix)
 		if rel != absPath {
-			// TrimPrefix succeeded — return the trimmed result.
 			return rel
 		}
 	}
 	return rel
 }
 
-// truncateDomainJobHit returns a stable-line-length capped
-// version of the matched import line for inline-emission in
-// the Violation.Note field (mirrors truncateGenerationFacade
-// family precedent). The cap keeps the JSON report concise.
-func truncateDomainJobHit(line string) string {
+func truncateDomainJobLegacyHit(line string) string {
 	const maxLen = 160
 	if len(line) <= maxLen {
 		return line
 	}
 	return line[:maxLen-3] + "..."
 }
+
+func loadDomainJobMigration(root string) (*domainJobMigration, error) {
+	path := filepath.Join(root, filepath.FromSlash(domainJobMigrationPath))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read job-kernel migration registry: %w", err)
+	}
+	var migration domainJobMigration
+	if err := json.Unmarshal(data, &migration); err != nil {
+		return nil, fmt.Errorf("decode job-kernel migration registry: %w", err)
+	}
+	if migration.Version != 1 || migration.ID == "" || migration.Status != "in_progress" || migration.Owner == "" || migration.Deadline == "" {
+		return nil, fmt.Errorf("invalid job-kernel migration registry: version=1, id, status=in_progress, owner and deadline are required")
+	}
+	if migration.CompatibilityImport == "" || migration.CanonicalImport == "" || migration.ReportedBaselineImports <= 0 || len(migration.MigrationOrder) == 0 {
+		return nil, fmt.Errorf("invalid job-kernel migration registry: import paths, positive baseline and migration_order are required")
+	}
+	return &migration, nil
+}
+
+func collectDomainJobImports(root, compatibilityImport string) []domainJobImportSite {
+	var sites []domainJobImportSite
+	for _, scope := range domainJobProductionScanScopes {
+		absScope := filepath.Join(root, scope)
+		_ = filepath.WalkDir(absScope, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			rel, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				return nil
+			}
+			rel = filepath.ToSlash(rel)
+			if d.IsDir() {
+				if domainJobSkipDir(rel, d.Name()) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if domainJobSkipFile(rel) {
+				return nil
+			}
+			fset := token.NewFileSet()
+			file, parseErr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+			if parseErr != nil {
+				return nil
+			}
+			for _, spec := range file.Imports {
+				importPath, unquoteErr := strconv.Unquote(spec.Path.Value)
+				if unquoteErr != nil || !isDomainJobImport(importPath, compatibilityImport) {
+					continue
+				}
+				position := fset.Position(spec.Pos())
+				sites = append(sites, domainJobImportSite{File: rel, Line: position.Line, ImportPath: importPath})
+			}
+			return nil
+		})
+	}
+	sort.Slice(sites, func(i, j int) bool {
+		if sites[i].File == sites[j].File {
+			return sites[i].Line < sites[j].Line
+		}
+		return sites[i].File < sites[j].File
+	})
+	return sites
+}
+
+func domainJobSkipDir(rel, base string) bool {
+	if base == ".git" || base == "vendor" || base == "node_modules" || base == "node-scraper" || base == "testdata" {
+		return true
+	}
+	return rel == "cmd/archcheck" || strings.HasPrefix(rel, "cmd/archcheck/")
+}
+
+func domainJobSkipFile(rel string) bool {
+	return !strings.HasSuffix(rel, ".go") ||
+		strings.HasSuffix(rel, "_test.go") ||
+		strings.HasPrefix(rel, "tests/") ||
+		strings.Contains(rel, "/testdata/") ||
+		strings.HasPrefix(rel, "cmd/archcheck/")
+}
+
+func isDomainJobImport(importPath, compatibilityImport string) bool {
+	return importPath == compatibilityImport || strings.HasPrefix(importPath, compatibilityImport+"/")
+}
+
+func collectAddedDomainJobImports(root, compatibilityImport string) ([]domainJobAddedImport, error) {
+	commands := [][]string{
+		{"show", "--format=", "--unified=0", "--no-ext-diff", "HEAD", "--", "*.go"},
+		{"diff", "--unified=0", "--no-ext-diff", "--", "*.go"},
+		{"diff", "--cached", "--unified=0", "--no-ext-diff", "--", "*.go"},
+	}
+	seen := map[string]bool{}
+	var hits []domainJobAddedImport
+	var commandErrors []string
+	for _, args := range commands {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		out, err := cmd.Output()
+		if err != nil {
+			commandErrors = append(commandErrors, strings.Join(args, " ")+": "+err.Error())
+			continue
+		}
+		for _, hit := range parseDomainJobAddedImports(string(out), compatibilityImport) {
+			key := fmt.Sprintf("%s:%d:%s", hit.File, hit.Line, hit.Text)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			hits = append(hits, hit)
+		}
+	}
+	sort.Slice(hits, func(i, j int) bool {
+		if hits[i].File == hits[j].File {
+			return hits[i].Line < hits[j].Line
+		}
+		return hits[i].File < hits[j].File
+	})
+	if len(commandErrors) == len(commands) {
+		return hits, fmt.Errorf("git diff ratchet unavailable: %s", strings.Join(commandErrors, "; "))
+	}
+	return hits, nil
+}
+
+func parseDomainJobAddedImports(diff, compatibilityImport string) []domainJobAddedImport {
+	var hits []domainJobAddedImport
+	currentFile := ""
+	newLine := 0
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++ b/"):
+			currentFile = strings.TrimPrefix(line, "+++ b/")
+		case strings.HasPrefix(line, "@@"):
+			newLine = parseDiffNewLineStart(line)
+		case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
+			text := strings.TrimPrefix(line, "+")
+			if currentFile != "" && !domainJobSkipFile(currentFile) && addedLineImportsDomainJob(text, compatibilityImport) {
+				hits = append(hits, domainJobAddedImport{File: currentFile, Line: newLine, Text: text})
+			}
+			newLine++
+		case strings.HasPrefix(line, "-"):
+			// Removed lines do not advance the new-file line number.
+		default:
+			if currentFile != "" && newLine > 0 {
+				newLine++
+			}
+		}
+	}
+	return hits
+}
+
+func parseDiffNewLineStart(line string) int {
+	plus := strings.Index(line, "+")
+	if plus < 0 {
+		return 0
+	}
+	rest := line[plus+1:]
+	end := strings.IndexAny(rest, ", ")
+	if end >= 0 {
+		rest = rest[:end]
+	}
+	n, _ := strconv.Atoi(rest)
+	return n
+}
+
+func addedLineImportsDomainJob(line, compatibilityImport string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*") || strings.HasPrefix(trimmed, "*") {
+		return false
+	}
+	firstQuote := strings.Index(trimmed, "\"")
+	lastQuote := strings.LastIndex(trimmed, "\"")
+	if firstQuote < 0 || lastQuote <= firstQuote {
+		return false
+	}
+	importPath := trimmed[firstQuote+1 : lastQuote]
+	return isDomainJobImport(importPath, compatibilityImport)
+}
+
+// Keep the go/ast import live as an explicit compile-time assertion that this
+// scanner is AST-based rather than a prose regex census.
+var _ ast.Node = (*ast.ImportSpec)(nil)
