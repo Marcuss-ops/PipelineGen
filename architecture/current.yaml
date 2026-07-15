@@ -1,402 +1,83 @@
-# PipelineGen — architecture/current.yaml (Fase 7(b), Push 7, July 2026).
-#
-# OPEN architectural debt. ONLY entries with status in (pending|in_progress)
-# are admitted. Closed waves belong in git history, NOT here.
-#
-# Schema per entry (godlike/06 SSOT = one canonical fact per entry):
-#   id            — short kebab identifier (PR-XXX-... or WAVE-NN-...).
-#                   Unique across entries. Stable across the wave's lifetime.
-#   status        — pending | in_progress
-#   owner         — workstream / role / wave-owner responsible for closure.
-#                   Mirrors capability_inventory.yaml::gates_baseline owner
-#                   when known.
-#   deadline      — RFC3339 UTC date (NOT datetime). Concrete day, no vague
-#                   quarters. A missed deadline is a CI signal (gating
-#                   ratchet nudges the entry toward "promote the gate
-#                   to enforce_zero=true").
-#   follow_up_tickets — optional list of follow-up PRs/tickets that
-#                       must close before the entry is removed.
-#   rationale     — optional human-readable note describing the WHY of
-#                   the debt + its blast radius if the wave stagnates.
-#   cross_refs    — optional machine-readable pointers to the related
-#                   ratchet (capability_inventory.yaml::gates_baseline.id)
-#                   + the governing CI check name.
-#
-# Regeneration contract: `go run ./cmd/admin regen-current-yaml` re-emits
-# this file from the canonical sources (gates_baseline + waves-tracker +
-# the hand-curated entries below). The hand-curated section is a
-# back-compat shell for waves that predate the gates_baseline schema;
-# migrate them to a gate_id reference as waves progress.
-#
-# Per AGENTS.md §8 zero-baseline rule: every entry here MUST carry an
-# explicit `owner` and a concrete `deadline`. Entries missing either
-# field are a forward-prevention regression — fail-closed.
-#
-# Per godlike/07 NO-FAKE-AVAILABILITY: dates that lie in the past past
-# today MUST be remediated (the wave has stagnated). The CI gate (Check
-# 63, scripts/ci-architectural-checks.sh) reports stale entries as a
-# warning + the cross-ref gates promote the wave toward enforce_zero=true.
-
-- id: PRE-EXISTING-BUILD-ISSUES-2026-07-04
-  status: in_progress
-  owner: carry-forward wave-tracker (operational)
+# Code generated from architecture/catalog.yaml by cmd/admin/regen-current-yaml. DO NOT EDIT.
+# Active statuses only: pending | in_progress. Completed work belongs in Git history.
+- id: "PRE-EXISTING-BUILD-ISSUES-2026-07-04"
+  status: "in_progress"
+  owner: "architecture-governance"
   deadline: "2026-09-15T00:00:00Z"
-  rationale: |
-    Carry-forward list of pre-existing build/test failures cataloged
-    during the legacy refactor wave (commits 1-9, July 2026).
-    Original 10 entries (9 remaining open) reproduce on PURE main (zero coupling to wave
-    commits 1-9) and were individually diagnosed + ratified by
-    Commit 7b's diagnostic (usecase TestMissingTranslation_FallbackWithExplicitWarning +
-    TestCacheFingerprint_P1A_PerFieldMutationSensitivity/segment_topics) +
-    Commit 9's ship gate (TestWalPragmas_PreservesAllThreePragmas +
-    internal/app/composition + assets/monitor + assets/providers + artlist +
-    stockpipeline + cmd/archcheck + format-drift on 6 artlist files) +
-    Commit 9b catalog-extension follow-up (4 drift files appended to
-    PRE-EXISTING-10-FORMAT-DRIFT after the verification re-run surfaced
-    them on July 12 2026: evaluate_run_state_test.go +
-    pipeline_state_test.go + pkg/idempotency/keys.go +
-    pkg/idempotency/keys_test.go; carrying the verify-format surface
-    from 6 → 10 unformatted files).
-    Commit 9c catalog-extension follow-up (1 uncataloged file
-    appended to PRE-EXISTING-10-FORMAT-DRIFT after the post-Commit-9b
-    verification re-run surfaced internal/infrastructure/database/sqlite/outbox/repository_test.go
-    on July 12 2026; carrying the verify-format surface from 10 → 11
-    unformatted files; catalog was genuinely under-extended between
-    Commit 9b push and the post-9b rerun that surfaced this drift).
-    Per godlike/06 SSOT + the user's option (a) decision on Commit 8,
-    these failures do NOT block wave commits 1-9 (each landed with
-    explicit CARRY-FORWARD awareness commit message annotation):
-    failures are out-of-scope to the wave's refactor scope
-    (postprocessor_composite_merge + sync_generation). MUST be
-    closed before PR-G CUTOVER phase (WAVE-21 deadline
-    2026-08-01) AND before WAVE-22 deadline 2026-09-15.
-
-    Note on first instantiation: this entry is the FIRST canonical
-    presence of the PRE-EXISTING-BUILD-ISSUES-2026-07-04 section in
-    architecture/current.yaml. Prior references to this section
-    (e.g., in BLOCKED summaries + Commit 8 spec history) were
-    speculative — the discipline existed in principle, but the
-    documentation did not exist on disk. This commit
-    (`chore(arch): initialize PRE-EXISTING-BUILD-ISSUES-2026-07-04
-    governance entry + per-surface catalog`) instantiates the
-    section retroactively with full provenance + per-surface
-    detail (in architecture/issues.yaml::PRE-EXISTING-{1..10}).
-
-    Commit F (Commit F close-out, July 12 2026): PRE-EXISTING-10-FORMAT-DRIFT
-    ratified + PRE-EXISTING-12-FORMAT-DRIFT closed by Commit F (`gofmt -w` on
-    12 files = 11 idempotent + 1 semantic). At Commit F execution time all 11
-    PRE-EXISTING-10 files were ALREADY gofmt-clean (`gofmt -l .` empty for
-    that surface) — the wave-pre-flight + Commit 9b/9c catalog-extension
-    format-drift had resolved itself by intermediate commits between
-    catalog-instantiation and Commit F; `gofmt -w` was applied idempotently to
-    the 11 for git-provenance (captures verified-clean-at-commit-boundary state
-    on origin/main). The 12th file (PRE-EXISTING-12's scope:
-    `internal/infrastructure/database/sqlite/assets/artlist_atomic_writer.go`)
-    had ACTUAL semantic drift (post-Fase 11 / Commit 1 ArtlistPublishTxAdapter
-    residue), and `gofmt -w` applied the canonical 27+/27- whitespace +
-    import-group reorder per gofmt spec. Both tickets Instantiate with
-    `status:resolved` in the same Commit F (godlike/06 ratify-via-doctrine:
-    opening + closing a ticket in one commit is admitted when the work is
-    already complete at commit time; the catalog is the SSOT, git history is
-    the archive). Original user-spec for PRE-EXISTING-10 mentioned 10 files;
-    canonical catalog (after Commit 9c extension) lists 11 — Commit F covers
-    the full 11+1=12 to align with godlike/06 SSOT. 3 originally-referenced
-    additional drift entries
-    (`clip_plaintext_output_p0f_test.go` + `publisher_pathbuilder_test.go`
-    + `publisher_vo_subfolder_test.go`) were FALSE POSITIVES discarded
-    (one was already clean on direct gofmt -l verification; two were
-    ghost path entries not on disk + no git deletion record). File-path
-    discrepancy noted:
-    `internal/infrastructure/artlist/diagnostics/system_prober.go`
-    was originally cataloged but the actual on-disk path is
-    `internal/infrastructure/artlist/diagnostics/system_prober.go`; the entry
-    `issues.yaml::PRE-EXISTING-10` cites the actual path (godlike/06 fix-by-action).  cross_refs:
-    issues_catalog: "architecture/issues.yaml::PRE-EXISTING-{1..10, 12}"
-    ratify_commits: ["commit 7b diagnostic", "commit 9 ship gate", "commit 9b catalog-extension", "commit 9c catalog-extension", "commit 9d closeout", "Commit F close-out (12 files: 11 idempotent + 1 semantic; PRE-EXISTING-10 ratification + PRE-EXISTING-12 close-out)", "Commit G DEBT BUDGET policy"] 
-    ci_gate: "scripts/ci-architectural-checks.sh::Check 63 (zero-baseline stale-entry detection)"
+  rationale: "Burn down the active PRE-EXISTING issue set. Resolved entries are removed from the active catalogs and remain discoverable through Git history."
+  count:
+    baseline_initial: 9
+    current: 5
+    target_zero: 0
   follow_up_tickets:
-    - id: PRE-EXISTING-1-WAL-PRAGMAS
-      note: internal/infrastructure/database/sqlite/pool_test.go:132 (busy_timeout + synchronous pragmas)
-    - id: PRE-EXISTING-2-INTERNAL-APP-COMPOSITION
-      note: internal/app/composition tests (TestRecommend_MinScoreFilterWorks, TestComposition_NoGoroutinesSpawned, TestStartupIntegration, etc.)
-    - id: PRE-EXISTING-3-ASSETS-MONITOR
-      note: internal/application/assets/monitor::TestAnalyzeVideo_ScoreBelowThresholdSoftSkips
-    - id: PRE-EXISTING-4-ASSETS-PROVIDERS
-      note: internal/application/assets/providers::TestSearchAggregator_HappyPath
-    - id: PRE-EXISTING-5-ASSETS-ARTLIST
-      note: internal/application/assets/providers/artlist::TestSearch_CandidateTranslation_RoundTrip
-    - id: PRE-EXISTING-6-STOCKPIPELINE
-      note: stock/stockpipeline::TestStockFinalize_EmitsAssetIndexRequestedPerChunk_V1Envelope (CLOSED by commit 4498d97f9; aggregate_type='media_asset' canonical SSOT one-shape-across-producers); TestSourcingNoLegacyIndexingStrings OBSOLETE on PURE main (test removed in earlier waves; `grep -rn 'func Test' 'Sourcing' internal/application/assets/providers/stock/` returns zero matches — no fix needed, hypothesis untestable by absence-of-target)
-    - id: PRE-EXISTING-7-USECASE-TRANSLATION
-      note: internal/application/scripts/usecase/multilingual_persistence_p1f_test.go::TestMissingTranslation_FallbackWithExplicitWarning
-    - id: PRE-EXISTING-8-USECASE-CACHE-FINGERPRINT
-      note: internal/application/scripts/usecase/generate_cache_fingerprint_p1a_test.go::TestCacheFingerprint_P1A_PerFieldMutationSensitivity
-    - id: PRE-EXISTING-9-ARCHCHECK-SNAPSHOT
-      note: cmd/archcheck::TestSnapshot
-    - id: PRE-EXISTING-12-FORMAT-DRIFT
-      note: internal/infrastructure/database/sqlite/assets/artlist_atomic_writer.go (Fase 11 Commit 1 residue; closed by Commit F)
-
-- id: WAVE-20-QDRANT-005D-HYGIENE
-  status: resolved
-  owner: qdrant-hygiene work stream
-  deadline: "2026-08-15T00:00:00Z"
-  closed_date: "2026-07-13"
-  rationale: |
-    Forward-prevention half of QDRANT-RECOVERY-001 (resolved July 2026).
-    Owns Check 5 (same-package duplicate-type-declaration lint) +
-    docs/architecture/godlike/duplicate-types-allowlist.txt maintenance
-    + the canonical AWK-lens switch from package-name-only to the
-    Go-package-identity tuple (directory_path, package_name) to clear
-    the ~14 cross-directory same-package-NAME false-positives.
-
-    CLOSURE NARRATIVE (PRE-EXISTING-15-LENS-MIGRATION, July 2026):
-    Item (c) of wave_qdrant_005d_hygiene rationale closed: AWK lens in
-    scripts/ci-architectural-checks.sh (the second "Check 5" block, the
-    duplicate-type-declaration lint — distinct from the earlier
-    forbid-mutation-primitives block at scripts/ci/architecture/checks/
-    check_05_mutation_primitives.sh) now emits `dir<TAB>pkg<TAB>Type<TAB>file:line`
-    via `dirname "$f"`, dedup key is `dir/pkg:Type`, FAIL remediation
-    message references the canonical tuple shape and policy.yaml::lint_gates[check=5].
-    The (count=2 in same package) false-positives for job.Filter +
-    job.EnqueueRequest across (domain/job, kernel/job) clear (different
-    (dir,pkg) tuples post-migration; not a Go redeclaration). Items
-    (a)+(b) remain owner-resolved at this commit (Check 5 maintenance +
-    allowlist cadence are subordinated to the maintenance of the new
-    canonical-tuple lens). Item (d) — the canonical note append to
-    docs/architecture/godlike/07_ZERO_LEGACY_POLICY.md — is OUT OF SCOPE:
-    the file does not exist on disk and creating governance docs is a
-    separate non-trivial decision (deferred to a future explicit sub-task).
-  follow_up_tickets:
-    - id: ARCHCHECK-GO-MIGRATION-PHASE-1
-      note: PR-ID for the AWK-lens migration; closes here (PRE-EXISTING-15-LENS-MIGRATION).
-    - id: PRE-EXISTING-15-LENS-MIGRATION
-      note: Atomic commit closes this ticket (item (c) of wave_qdrant_005d_hygiene.rationale). Counter stays 6→6 (in_progress excluded from open count).
+    - id: "PRE-EXISTING-1-WAL-PRAGMAS"
+      note: "Restore the SQLite pragma contract."
+    - id: "PRE-EXISTING-2-INTERNAL-APP-COMPOSITION"
+      note: "Close the remaining composition-root test failures."
+    - id: "PRE-EXISTING-7-USECASE-TRANSLATION"
+      note: "Restore the missing-translation warning path."
+    - id: "PRE-EXISTING-8-USECASE-CACHE-FINGERPRINT"
+      note: "Restore segment_topics fingerprint sensitivity."
+    - id: "PRE-EXISTING-13-USECASE-PLAINTEXT-ENRICHMENT"
+      note: "Close the plaintext source-enrichment regression."
   cross_refs:
-    gate_id: QDRANT-005D
-    policy: architecture/policy.yaml::lint_gates[check=5]
-    ci_gate: scripts/ci-architectural-checks.sh::Check 5
-    evidence_commit: "PRE-EXISTING-15-LENS-MIGRATION closes this entry (via AWK-lens migration on scripts/ci-architectural-checks.sh Check 5 duplicate-type block + this status flip in architecture/current.yaml)"
-
-- id: WAVE-21-PR-G-SCRIPTS-SUBPKG
-  status: in_progress
-  owner: PipelineGen Agent (PR-G.1 EXPAND)
+    ci_gate: "scripts/ci-architectural-checks.sh#Check-64"
+    issues_catalog: "architecture/issues.yaml"
+    source: "architecture/catalog.yaml"
+- id: "WAVE-21-PR-G-SCRIPTS-SUBPKG"
+  status: "in_progress"
+  owner: "scripts-capability"
   deadline: "2026-08-01T00:00:00Z"
-  rationale: |
-    PR-G migration phases EXPAND → BACKFILL → CUTOVER → CONTRACT
-    splits internal/application/scripts (53-file mega-package) into
-    bounded subpackages (curation/generation/persistence/postprocess/
-    source/usecases) per godlike/07. Day-1 (PR-G.1 EXPAND) shipped
-    2026-06-27; PR-G.2 BACKFILL is the next deliverable. Deadline
-    2026-08-01 pre-WAVE-22 CUTOVER lock-in so the backfill lands before
-    the WAVE-22 source-catalog + route-manifest gates are promoted to
-    enforce_zero=true (2026-09-15).
+  rationale: "Complete the scripts capability split while preserving the existing public contracts and registry-driven composition."
+  count:
+    baseline_initial: 64
+    current: 61
+    target_zero: 0
   cross_refs:
-    policy: architecture/policy.yaml::max_files_per_package=40
-    plan: architecture/ownership.generated.yaml::application_scripts
-
-- id: WAVE-22-PR-D-SERVICE-DEPS-CAP
-  status: in_progress
-  owner: PipelineGen Agent (PR-D)
+    package: "internal/application/scripts"
+- id: "WAVE-22-PR-D-SERVICE-DEPS-CAP"
+  status: "in_progress"
+  owner: "api-composition"
   deadline: "2026-09-15T00:00:00Z"
-  rationale: |
-    The ServiceDeps / Deps structured-port cap (8 fields max) is
-    promoted to a hard CI gate (Check 23). Current observations:
-    artlist.ServiceDeps ~15 fields + a few others. Each migration
-    PR must decrement the visible field count via sub-struct splits
-    (e.g. StorageDeps / MediaDeps / ProviderDeps).
+  rationale: "Reduce wide API dependency bags through canonical bundles and composition adapters rather than duplicate wiring."
   cross_refs:
-    gate_id: C2-SERVICE-DEPS
-    allowlist: docs/migrations/deps-struct-allowlist.txt
-    ci_gate: scripts/ci-architectural-checks.sh::Check 23
-
-- id: WAVE-22-C2-C-SOURCE-CATALOG
-  status: in_progress
-  owner: PipelineGen Agent (asset-sourcing + scripts-side)
+    gate: "percheck_api_module_deps_max_8"
+- id: "WAVE-22-C2-C-SOURCE-CATALOG"
+  status: "in_progress"
+  owner: "source-catalog"
   deadline: "2026-09-15T00:00:00Z"
+  rationale: "Move source catalog ownership to the canonical typed registry and retire remaining duplicate declarations."
   count:
     baseline_initial: 48
     current: 48
     target_zero: 0
-  rationale: |
-    Every source-kind switch / `if source == "X"` dispatch in production
-    code MUST live on the canonical Source Catalog (SourceCatalog.Resolve
-    + SourceRegistry.Resolve). Two canonical files own the dispatch:
-    internal/application/assets/artifacts/source_resolver.go +
-    internal/application/scripts/adapters/source_registry.go.
-    The AST gate runs with --baseline=48 to absorb transitional drift;
-    each migration PR decrements the baseline until it reaches 0.
-  cross_refs:
-    gate_id: C2-C
-    enforce_zero: false
-    ci_gate: scripts/ci-architectural-checks.sh::Check 47
-
-- id: WAVE-22-C2-E-ROUTE-MANIFEST
-  status: in_progress
-  owner: internal/app/registry.go (composition root) + scripts/admin/generate_routes_yaml.go
+- id: "WAVE-22-C2-E-ROUTE-MANIFEST"
+  status: "in_progress"
+  owner: "api-routing"
   deadline: "2026-09-15T00:00:00Z"
+  rationale: "Keep the route manifest generated from the registered runtime surface and eliminate hand-maintained route inventory drift."
   count:
     baseline_initial: 171
     current: 171
     target_zero: 0
-  rationale: |
-    Three sources of truth for the HTTP route surface MUST agree:
-    (1) architecture/routes.yaml — AST pre-step output,
-    (2) docs/api/ACTIVE_API_GENERATED.md — gin runtime capture,
-    (3) the code-intended routes. Drift = SSOT regression. The
-    AST-vs-runtime 2-way comparator runs with --baseline=171 to
-    absorb the day-1 drift surfaced by chained-group + non-foldable
-    gin method registrations. Future PR closes the 3-way loop.
   cross_refs:
-    gate_id: C2-E
-    enforce_zero: false
-    pre_step: scripts/admin/generate_routes_yaml.go
-    runtime_capture: cmd/admin/gen-api-docs
-    ci_gate: scripts/ci-architectural-checks.sh::Check 48
-
-- id: WAVE-CONFORMANCE-001-id-24-MONITOR-CHANNELS
-  status: in_progress
-  owner: PipelineGen Agent (category_channels work stream)
-  deadline: "2026-08-31T00:00:00Z"
-  rationale: |
-    category_channels owns monitor-state (via applier ChannelsService.
-    UpsertBulk + MarkChecked + UpdateCursor). Legacy `monitored_sources`
-    rows are backfilled to `category_channels`; on closure (CONTRACT
-    phase), the legacy discovery-state SQL is removed atomically. Migration
-    110 ships atomically with the channel-table schema consolidation.
+    manifest: "architecture/routes.yaml"
+- id: "WAVE-CONFORMANCE-001-id-24-MONITOR-CHANNELS"
+  status: "in_progress"
+  owner: "channels-capability"
+  deadline: "2026-09-30T00:00:00Z"
+  rationale: "Complete monitor and channels conformance through ports owned by the application layer and adapters wired only at the composition root."
   cross_refs:
-    migration: migrations/sqlite/110_channel_consolidation.sql
-    plan: architecture/ownership.generated.yaml::application_assets.category_channels_owns_monitor_state
-    follow_up: docs/architecture/godlike/migration_109_rationale.md
-
-# ── Wave 22 — Phase-N hard-gate promotion (godlike/08 PR2) ──────────────
-# Promotion scope: demote specific rule families from `--strict`
-# advisory (Phase 0 default) to Phase-N hard gates so a future agent
-# who deletes or structurally guts a canonical governance surface
-# surfaces as a CI build failure on the next push, regardless of
-# the `--strict` flag. Promotion mechanism: `architecture/policy.yaml`
-# carries a `hard_gates:` list (Wave-22 PR-A); `cmd/archcheck/runner.go`
-# runs a pre-exit evaluation pass that escalates matched violations to
-# SeverityError and extends the exit decision to `hasHardGate ||
-# (strict && len>0)`. Promotion target window: post-Wave 22 (per
-# AGENTS.md godlike/08 evolution track PR2).
-#
-# Promotion-wave rule families:
-#   - 5 godlike docs: data_ownership_doc_missing|_incomplete,
-#     legacy_policy_doc_missing|_incomplete, ci_gates_doc_missing|
-#     _incomplete, agent_playbook_doc_missing|_incomplete,
-#     removal_doc_missing|_incomplete — emitted by
-#     cmd/archcheck/scan/documents.go Scan<X>Doc functions.
-#   - percheck_metadata_registry (the typed metadata Wave-5 gate,
-#     forward-promoted to Phase-N so the metadata map[string]any
-#     ban freezes on every push).
-#   - percheck_api_infrastructure_imports +
-#     percheck_api_infrastructure_imports_allowlist_missing —
-#     the new Wave-22 forward-prevention gate that mirrors
-#     scripts/ci/architecture/checks/check_19 on the Go side
-#     and gates the docs/migrations/api-infrastructure-imports-
-#     allowlist.txt file as fail-closed (godlike/07 NO-FAKE-
-#     AVAILABILITY on the canonical operator-facing audit
-#     surface for grandfathered api-layer infra imports).
-#
-# Behavior on baseline run: a default `go run ./cmd/archcheck`
-# invocation (NO --strict) on the current main branch WILL exit
-# 1 because the godlike/06/07/08/11/13 docs are not yet on disk
-# at the canonical paths the policy pins. This is the correct
-# fail-loud signal that the promotion is active — operators
-# either restore the canonical docs OR land the docs via the
-# `current.yaml::follow_up_tickets` follow-up band tracked below.
-# Once the 5 docs are committed at the canonical paths, the
-# default-mode invocation reverts to exit 0 with by_severity.
-# warn numeric now reflecting the tightened policy.
-#
-# Cross-references:
-#   - SSOT: architecture/policy.yaml::hard_gates (Wave-22 PR-A)
-#   - Implementation: cmd/archcheck/runner.go (D1+D2+D3)
-#   - Report audit field: cmd/archcheck/report/model.go::
-#     HasHardGateHits
-#   - New Go-side percheck: cmd/archcheck/scan/
-#     percheck_api_infrastructure_imports.go (Wave-22 PR-A)
-#   - Shell-side dual: scripts/ci/architecture/checks/
-#     check_19_api_infrastructure_imports.sh (canonical
-#     transitional baseline per godlike/08 §"Zero-baseline
-#     rule"; the Go scanner runs in parallel, both must
-#     exit 0)
-#
-# Follow-up tickets (post-Wave 22 PR-A landing):
-#   - Restore the 5 godlike docs at the canonical paths
-#     pinned by architecture/policy.yaml (data_ownership_doc,
-#     legacy_policy_doc, ci_gates_doc, agent_playbook_doc,
-#     removal_doc). Without these, the default-mode CI run
-#     is RED.
-#   - Wire `hasHardGate || (strict && len>0)` into the local
-#     mirror rule once the docs lands — i.e. the verify-main
-#     Makefile target gets the new exit semantics for free
-#     because `make verify-main` already invokes `cmd/archcheck
-#     --strict` (the prior phase), so the promotion is a
-#     super-set semantics.
-follow_up_tickets:
-  - id: WAVE-22-PHASE-N-HARD-GATES
-    status: in_progress
-    goal: Land the architecture/policy.yaml hard_gates list +
-      cmd/archcheck/runner.go pre-exit evaluation pass + new
-      percheck_api_infrastructure_imports Go-side scanner +
-      cmd/archcheck/report/model.go::HasHardGateHits audit
-      field + cmd/archcheck/scan/documents.go (already present)
-      + cmd/archcheck/scan/percheck_metadataregistry.go (already
-      present) so a future agent who deletes any of the 5 godlike
-      docs OR accidentally removes any api-layer
-      infrastructure-import allowlist OR reverts a domain type
-      to map[string]any surfaces as a Phase N hard gate
-      (exit 1 on default invocation).
-    owner: pipelinegen-qdrant-hygiene + docs-arch work streams
-    deadline: 2026-12-31
-    blocked_by: ["doc-restoration-track"]
-    rationale: |
-      The 5 godlike docs are the canonical governance surfaces
-      for data+config ownership, zero-legacy policy, CI-gates,
-      agent execution playbook, and feature-removal checklist.
-      Phase 0 emits `_missing` + `_incomplete` violations at
-      SeverityWarn, which `--strict` promotes to a hard exit
-      1 but ONLY when explicitly invoked. The Wave-22 promotion
-      demotes these to Phase-N hard gates so a missing-section
-      edit in any of the 5 surfaces fires on every default
-      push — closing the silent drift gap that surfaced in the
-      June 2026 audit_ledger (`docs/architecture/godlike/08`).
-      Dual-source-of-truth with the existing shell checks per
-      godlike/08 §"Zero-baseline rule": the new Go scanner
-      runs in parallel with the bash checks; both must exit
-      0 for CI to be green. The transition window keeps both
-      surfaces as redundant cross-checks until the goldens
-      are byte-stable across 4 consecutive pushes.
-    dependencies:
-      policy.yaml: architecture/policy.yaml::hard_gates
-      runner: cmd/archcheck/runner.go::Run
-      report: cmd/archcheck/report/model.go::HasHardGateHits
-      percheck: cmd/archcheck/scan/percheck_api_infrastructure_imports.go
-      documents: cmd/archcheck/scan/documents.go
-      metadata: cmd/archcheck/scan/percheck_metadataregistry.go
-    commands_to_run:
-      - go run ./cmd/archcheck --root . --policy architecture/policy.yaml
-      - go run ./cmd/archcheck --root . --policy architecture/policy.yaml --strict
-      - bash scripts/ci-architectural-checks.sh
-success_criteria:
-  - Default-mode `go run ./cmd/archcheck` exits 1 when any of the
-    5 godlike docs is missing OR incomplete (currently true on
-    baseline because docs not yet on disk at canonical paths).
-  - Default-mode `go run ./cmd/archcheck` exits 1 when any api/
-    *.go file imports github.com/Marcuss-ops/PipelineGen/
-    internal/infrastructure/ WITHOUT being on the canonical
-    allowlist (mirror of check_19 on the Go side).
-  - Default-mode `go run ./cmd/archcheck` exits 1 when
-    docs/migrations/api-infrastructure-imports-allowlist.txt
-    is missing (godlike/07 fail-closed).
-  - Default-mode `go run ./cmd/archcheck` exits 1 when any
-    internal/domain type reintroduces map[string]any metadata
-    field (pre-Wave-22 promotion; now hard-gated).
-  - Strict-mode run continues to behave as before (any
-    SeverityWarn violation = exit 1).
-  - cmd/archcheck/runner_test.go::TestReportSnapshot
-    regenerated goldens via `UPDATE_GOLDEN=1 go test ./cmd/archcheck/...`
-    remain byte-stable across the next 4 consecutive pushes
-    (godlike/08 §"Zero-baseline rule").
-
+    package: "internal/application/assets/monitor"
+- id: "WAVE-23-JOB-KERNEL-MIGRATION"
+  status: "in_progress"
+  owner: "internal/kernel/job"
+  deadline: "2026-09-30T00:00:00Z"
+  rationale: "Migrate production imports from the compatibility domain/job surface to the canonical internal/kernel/job contract, then delete the compatibility aliases when the census reaches zero."
+  count:
+    baseline_initial: 172
+    current: 172
+    target_zero: 0
+  cross_refs:
+    canonical_import: "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+    details: "architecture/job_kernel_migration.json"
