@@ -204,8 +204,8 @@ type EnrichmentDeps struct {
 // ClipIngestPipelineDeps mirrors the 9 fields for the constructor
 // (single positional arg keeps max_constructor_deps: 8 satisfied).
 type ClipIngestPipelineDeps struct {
-	MediaProcessing       MediaProcessingDeps
-	Enrichment            EnrichmentDeps
+	MediaProcessing         MediaProcessingDeps
+	Enrichment              EnrichmentDeps
 	AssetMutationDispatcher mutations.AssetMutationDispatcher
 	Log                     *zap.Logger
 }
