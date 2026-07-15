@@ -42,7 +42,7 @@ import (
 	"fmt"
 	"strings"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Sentinel errors (godlike/07 typed-error contract) ─────────────
