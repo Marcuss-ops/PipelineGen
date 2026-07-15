@@ -71,76 +71,127 @@ import (
 // §F.1 governance — when nil, query.go's resolveQuery fails-closed at
 // first search.
 //
-// Mandatory fields return an error when nil; optional fields fall through
-// to the existing type's nil-tolerance (Publisher + Finalizer + DB +
-// ChannelLister are optional per stockpipeline.NewService's lenient
-// gate — the asymmetric gate above adds the load-bearing pairing
-// check).
+// PR-NEST-FLAT-DEPS-STOCK (July 2026): the previous flat shape had
+// 14 mandatory fields, tripping the `max_struct_deps=8` archcheck
+// gate (warn-severity struct_deps violation). The struct now nests
+// the 14 fields into 7 purpose-grouped sub-bundles (each ≤4 fields,
+// all ≤8):
+//
+//   - Runtime         (3): Cfg, Log, DB — runtime environment.
+//   - Delivery        (2): Publisher, Finalizer — the production pair.
+//   - Acquisition     (4): SourceStager, ClipsRepo, AssetIndex,
+//     Dispatcher — the storage + dispatch layer.
+//   - Media           (2): Cutter, Renderer — the ffmpeg-mediated
+//     media processing layer.
+//   - Orchestration   (2): Jobs, ChannelLister — the dispatcher-side
+//     control layer.
+//   - Feature         (1): StockPipelineEnabled — the capability
+//     gate closure.
+//   - Enrichment      (3): EnrichmentLLMClient, EnrichmentEnabled,
+//     EnrichmentEmitter — the PR-011A/B/C RLM/LLM
+//     enrichment pass surface.
+//
+// StockBundleDeps itself carries 7 sub-bundle fields → 7 fields, well
+// below the 8-field cap. The nesting follows the canonical godlike/06
+// SSOT pattern established by PR-NEST-FLAT-DEPS-ARLIST
+// (build_bundles_artlist.go::ServiceDeps{ServicePorts + ServiceDependencies}).
+//
+// Mandatory fields return an error when BuildStockBundle is called with
+// nil; optional fields fall through to the existing type's nil-tolerance
+// (Publisher + Finalizer + DB + ChannelLister are optional per
+// stockpipeline.NewService's lenient gate — the symmetric gate above
+// adds the load-bearing pairing check on Publisher/DepositFinalizer).
 type StockBundleDeps struct {
-	Cfg       *config.Config
-	Log       *zap.Logger
-	DB        *sql.DB                   // optional (nil → in-memory)
+	Runtime       StockRuntimeDeps
+	Delivery      StockDeliveryDeps
+	Acquisition   StockAcquisitionDeps
+	Media         StockMediaDeps
+	Orchestration StockOrchestrationDeps
+	Feature       StockFeatureGate
+	Enrichment    StockEnrichmentDeps
+}
+
+// StockRuntimeDeps groups the runtime environment the stock bundle
+// needs (Cfg, Log, DB). Field count: 3.
+type StockRuntimeDeps struct {
+	Cfg *config.Config
+	Log *zap.Logger
+	DB  *sql.DB // optional (nil → in-memory)
+}
+
+// StockDeliveryDeps groups the asymmetric production-pair surface
+// (Publisher, Finalizer). The StockSymmetricGate validates this pair
+// is both-nil or both-non-nil. Field count: 2.
+type StockDeliveryDeps struct {
 	Publisher delivery.Publisher        // optional (nil → backcompat; finalizer nil → OK)
 	Finalizer finalization.JobFinalizer // optional (nil → backcompat OR asymmetric gate fires when Publisher non-nil)
-	// typed ports
-	SourceStager  acquisition.SourceStager    // required
-	ClipsRepo     *sqassets.ClipsRepository   // required
-	AssetIndex    *assetindex.Service         // required
-	Dispatcher    *outbox.Dispatcher          // required
-	Cutter        stockpipeline.VideoCutter   // required
-	Renderer      stockpipeline.StockRenderer // required
+}
+
+// StockAcquisitionDeps groups the storage + dispatch layer the stock
+// pipeline reads from (SourceStager, ClipsRepo, AssetIndex,
+// Dispatcher). Field count: 4.
+type StockAcquisitionDeps struct {
+	SourceStager acquisition.SourceStager  // required
+	ClipsRepo    *sqassets.ClipsRepository // required
+	AssetIndex   *assetindex.Service       // required
+	Dispatcher   *outbox.Dispatcher        // required
+}
+
+// StockMediaDeps groups the ffmpeg-mediated media processing layer
+// (Cutter, Renderer). Field count: 2.
+type StockMediaDeps struct {
+	Cutter   stockpipeline.VideoCutter   // required
+	Renderer stockpipeline.StockRenderer // required
+}
+
+// StockOrchestrationDeps groups the dispatcher-side control layer
+// (Jobs, ChannelLister). ChannelLister is optional — when nil,
+// query.go's resolveQuery fails-closed at first search. Field
+// count: 2.
+type StockOrchestrationDeps struct {
 	Jobs          *appjobs.Service            // required
 	ChannelLister stockpipeline.ChannelLister // optional
+}
 
-	// StockPipelineEnabled is the canonical closure that decides
-	// whether /api/stock-pipeline/* routes are mounted. MANDATORY
-	// for stockapi.Build — nil closes the capability (no route
-	// registration) per api/assets/stock/module.go's nil-tolerance.
-	//
-	// HTTP HANDLER RETIRED (godlike/07, July 2026): the handler side of
-	// this closure is a no-op (api.NewRouteModule with nil handler),
-	// but keeping the closure lets the capability surface continue to
-	// gate /api/stock-pipeline/* off cleanly when the feature flag is
-	// false (composition root treats false → unregisterable Descriptor).
+// StockFeatureGate is the canonical closure that decides whether
+// /api/stock-pipeline/* routes are mounted. MANDATORY for
+// stockapi.Build — nil closes the capability (no route registration)
+// per api/assets/stock/module.go's nil-tolerance. HTTP HANDLER
+// RETIRED (godlike/07, July 2026): the handler side of this closure
+// is a no-op (api.NewRouteModule with nil handler), but keeping
+// the closure lets the capability surface continue to gate
+// /api/stock-pipeline/* off cleanly when the feature flag is false.
+// Field count: 1.
+type StockFeatureGate struct {
 	StockPipelineEnabled func() bool
+}
 
-	// PR-011A (July 2026): stock RLM/LLM enrichment pass composition
-	// seam. Both fields are OPTIONAL (nil = enrichment disabled,
-	// godlike/07 fail-closed). When both are non-nil AND
-	// EnrichmentEnabled() returns true, BuildStockBundle wires the
-	// canonical EnrichmentHandler (stockenrich.EnrichmentHandler)
-	// and registers it on the jobs dispatcher for
-	// appjobs.TypeMediaStockRLMEnrich ("media.stock_rlm_enrich").
-	//
+// StockEnrichmentDeps groups the PR-011A/B/C RLM/LLM enrichment pass
+// surface (LLMClient, Enabled closure, Emitter). All fields are
+// OPTIONAL (nil = enrichment disabled, godlike/07 fail-closed).
+// When EnrichmentEnabled() returns true AND the LLMClient is
+// resolved (override > real adapter > stub), BuildStockBundle wires
+// the canonical EnrichmentHandler
+// (stockenrich.EnrichmentHandler) and registers it on the jobs
+// dispatcher for appjobs.TypeMediaStockRLMEnrich
+// ("media.stock_rlm_enrich"). Field count: 3.
+type StockEnrichmentDeps struct {
 	// EnrichmentLLMClient is the canonical Pattern-0 typed port.
 	// PR-011A passes the stockenrich.StubEnrichmentLLMClient
 	// (returns ErrEnrichmentLLMUnavailable, drives the worker
-	// retry path end-to-end). PR-011B will replace the stub
-	// with a real ollama-backed adapter; the composition root
-	// wires it via fluent setter per AGENTS.md Pattern 0.
-	//
+	// retry path end-to-end). PR-011B replaces the stub with a
+	// real ollama-backed adapter.
+	EnrichmentLLMClient stockenrich.EnrichmentLLMClient
+
 	// EnrichmentEnabled is the canonical cfg-gated closure
 	// (mirrors StockPipelineEnabled). When nil or returning
-	// false, no handler is registered; the worker pool cannot
-	// dequeue media.stock_rlm_enrich jobs.
-	EnrichmentLLMClient stockenrich.EnrichmentLLMClient
-	EnrichmentEnabled   func() bool
+	// false, no handler is registered.
+	EnrichmentEnabled func() bool
 
 	// EnrichmentEmitter is the canonical Pattern-0 typed port for
-	// the asset.published v1 outbox event (PR-011C, July 2026).
-	// OPTIONAL (nil = disabled-mode wiring; the handler's
-	// godlike/07 nil-tolerance logs a Warn and skips the emit
-	// step). When non-nil, the handler builds the v1 envelope
-	// (via stockenrich.EnrichmentIdempotencyKey) and hands it to
-	// this port for emission to outbox_events.
-	//
-	// PR-011C ships the producer-side surface (handler + port +
-	// stub + tests). The production concrete (outbox-dispatcher-backed
-	// adapter that opens a tx + calls outboxevents.Repository.Enqueue)
-	// is a follow-up PR-011C-FOLLOW-UP-1 forward-pointer. Until
-	// that lands, production wiring passes nil here (handler
-	// skips emit with a Warn log; the LLM + UPDATE sequence still
-	// reaches the mark-SUCCEEDED seam end-to-end).
+	// the asset.published v1 outbox event (PR-011C). OPTIONAL
+	// (nil = disabled-mode wiring; the handler's godlike/07
+	// nil-tolerance logs a Warn and skips the emit step).
 	EnrichmentEmitter stockenrich.AssetPublishedEmitter
 }
 
@@ -228,33 +279,33 @@ func validateStockSymmetricGate(publisher delivery.Publisher, finalizer finaliza
 //   - (nil, stockapi.Build error) on missing UseCase / EnabledFunc.
 func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	// ── Gate 1: godlike/07 symmetric production pairing ────────
-	if err := validateStockSymmetricGate(deps.Publisher, deps.Finalizer); err != nil {
+	if err := validateStockSymmetricGate(deps.Delivery.Publisher, deps.Delivery.Finalizer); err != nil {
 		return nil, err
 	}
 
 	// ── Gate 2: construct the canonical *stockpipeline.Service ───
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
 		Runtime: stockpipeline.RuntimeDeps{
-			Cfg: deps.Cfg,
-			Log: deps.Log,
-			DB:  deps.DB,
+			Cfg: deps.Runtime.Cfg,
+			Log: deps.Runtime.Log,
+			DB:  deps.Runtime.DB,
 		},
-		Publisher: deps.Publisher,
+		Publisher: deps.Delivery.Publisher,
 		Storage: stockpipeline.StorageDeps{
-			ClipsRepo:  deps.ClipsRepo,
-			AssetIndex: deps.AssetIndex,
-			Dispatcher: deps.Dispatcher,
+			ClipsRepo:  deps.Acquisition.ClipsRepo,
+			AssetIndex: deps.Acquisition.AssetIndex,
+			Dispatcher: deps.Acquisition.Dispatcher,
 		},
 		Media: stockpipeline.MediaDeps{
-			Cutter:   deps.Cutter,
-			Renderer: deps.Renderer,
+			Cutter:   deps.Media.Cutter,
+			Renderer: deps.Media.Renderer,
 		},
 		Execution: stockpipeline.ExecutionDeps{
-			Jobs:          deps.Jobs,
-			SourceStager:  deps.SourceStager,
-			ChannelLister: deps.ChannelLister,
+			Jobs:          deps.Orchestration.Jobs,
+			SourceStager:  deps.Acquisition.SourceStager,
+			ChannelLister: deps.Orchestration.ChannelLister,
 		},
-		Finalizer: deps.Finalizer,
+		Finalizer: deps.Delivery.Finalizer,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockpipeline.NewService: %w", err)
@@ -264,7 +315,7 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	// godlike/06 structural-conformance: *stockpipeline.Service
 	// satisfies ServiceRunner; *appjobs.Service satisfies jobsEnqueuer.
 	// No adapter shim required — mirrors voiceoverjobs.FanoutDeps.
-	useCase := stockpipeline.NewStockUseCase(svc, deps.Jobs, deps.Log)
+	useCase := stockpipeline.NewStockUseCase(svc, deps.Orchestration.Jobs, deps.Runtime.Log)
 
 	// ── Gate 3b: PR-011A + PR-011B — wire the stock RLM/LLM enrichment handler ─
 	// godlike/07 fail-closed composition: enrichment is OPTIONAL
@@ -285,13 +336,13 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	// for the stock RLM/LLM enrichment pass per AGENTS.md Pattern 0
 	// + godlike/06 SSOT (one canonical owner per fact: the
 	// resolution order lives ONLY here in the composition root).
-	if deps.EnrichmentEnabled != nil && deps.EnrichmentEnabled() {
+	if deps.Enrichment.EnrichmentEnabled != nil && deps.Enrichment.EnrichmentEnabled() {
 		// Step 1: resolve the LLM client (override > real adapter > stub).
-		llmClient := deps.EnrichmentLLMClient
-		if llmClient == nil && deps.Cfg != nil {
-			modelName := strings.TrimSpace(deps.Cfg.External.ParseArenaLLM)
+		llmClient := deps.Enrichment.EnrichmentLLMClient
+		if llmClient == nil && deps.Runtime.Cfg != nil {
+			modelName := strings.TrimSpace(deps.Runtime.Cfg.External.ParseArenaLLM)
 			if modelName == "" {
-				modelName = strings.TrimSpace(deps.Cfg.External.OllamaModel)
+				modelName = strings.TrimSpace(deps.Runtime.Cfg.External.OllamaModel)
 			}
 			if modelName != "" {
 				// Construct the real ollama-backed adapter. The
@@ -301,18 +352,18 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 				// is passed to the adapter so Enrich() threads
 				// it via options["model"] on every Chat call.
 				ollamaCli := ollamaclient.NewClient(
-					deps.Cfg.External.OllamaURL,
-					deps.Cfg.External.OllamaModel,
-					deps.Cfg.External.OllamaTimeoutSeconds,
+					deps.Runtime.Cfg.External.OllamaURL,
+					deps.Runtime.Cfg.External.OllamaModel,
+					deps.Runtime.Cfg.External.OllamaTimeoutSeconds,
 				)
-				realAdapter, realErr := stockenrich.NewOllamaEnrichmentLLMClient(ollamaCli, modelName, deps.Cfg.External.EnrichmentPromptVersion)
+				realAdapter, realErr := stockenrich.NewOllamaEnrichmentLLMClient(ollamaCli, modelName, deps.Runtime.Cfg.External.EnrichmentPromptVersion)
 				if realErr != nil {
 					return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewOllamaEnrichmentLLMClient: %w", realErr)
 				}
 				llmClient = realAdapter
-				deps.Log.Info("stock.BuildStockBundle: enrichment wired with real ollama adapter",
+				deps.Runtime.Log.Info("stock.BuildStockBundle: enrichment wired with real ollama adapter",
 					zap.String("model", modelName),
-					zap.String("ollama_url", deps.Cfg.External.OllamaURL),
+					zap.String("ollama_url", deps.Runtime.Cfg.External.OllamaURL),
 				)
 			} else {
 				// godlike/07 minimum-blast-radius: when neither
@@ -322,14 +373,14 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 				// success — the stub returns
 				// ErrEnrichmentLLMUnavailable verbatim).
 				llmClient = stockenrich.NewStubEnrichmentLLMClient("stub:enrichment-unavailable")
-				deps.Log.Warn("stock.BuildStockBundle: enrichment using stub (no model configured; set ParseArenaLLM or OllamaModel to wire the real adapter)")
+				deps.Runtime.Log.Warn("stock.BuildStockBundle: enrichment using stub (no model configured; set ParseArenaLLM or OllamaModel to wire the real adapter)")
 			}
 		}
 
 		if llmClient == nil {
-			deps.Log.Warn("stock.BuildStockBundle: enrichment enabled but no LLM client resolved (set EnrichmentLLMClient or configure ParseArenaLLM/OllamaModel)")
+			deps.Runtime.Log.Warn("stock.BuildStockBundle: enrichment enabled but no LLM client resolved (set EnrichmentLLMClient or configure ParseArenaLLM/OllamaModel)")
 		} else {
-			assetRepo, repoErr := stockenrich.NewSQLiteAssetRepository(deps.DB)
+			assetRepo, repoErr := stockenrich.NewSQLiteAssetRepository(deps.Runtime.DB)
 			if repoErr != nil {
 				return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewSQLiteAssetRepository: %w", repoErr)
 			}
@@ -337,7 +388,7 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 			// PR-011C follow-up (July 2026): wire the production
 			// outbox-dispatcher-backed emitter. The emitter opens
 			// a fresh SQL tx + calls outboxevents.Repository.Enqueue
-			// per the canonical pattern. When deps.DB is nil, fall
+			// per the canonical pattern. When deps.Runtime.DB is nil, fall
 			// back to the nil-emitter (handler's godlike/07
 			// nil-tolerance logs a Warn + skips the emit step)
 			// — this preserves the PR-011C composition-root
@@ -349,24 +400,24 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 			// that enable enrichment MUST wire a real DB +
 			// real emitter (no silent-success on the emit path).
 			var emitter stockenrich.AssetPublishedEmitter
-			if deps.EnrichmentEmitter != nil {
-				emitter = deps.EnrichmentEmitter
-				deps.Log.Info("stock.BuildStockBundle: enrichment using injected AssetPublishedEmitter")
-			} else if deps.DB != nil {
-				emitter, repoErr = stockenrich.NewOutboxBackedAssetPublishedEmitter(deps.DB, deps.Log)
+			if deps.Enrichment.EnrichmentEmitter != nil {
+				emitter = deps.Enrichment.EnrichmentEmitter
+				deps.Runtime.Log.Info("stock.BuildStockBundle: enrichment using injected AssetPublishedEmitter")
+			} else if deps.Runtime.DB != nil {
+				emitter, repoErr = stockenrich.NewOutboxBackedAssetPublishedEmitter(deps.Runtime.DB, deps.Runtime.Log)
 				if repoErr != nil {
 					return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewOutboxBackedAssetPublishedEmitter: %w", repoErr)
 				}
-				deps.Log.Info("stock.BuildStockBundle: enrichment wired with outbox-backed emitter (asset.published v1)")
+				deps.Runtime.Log.Info("stock.BuildStockBundle: enrichment wired with outbox-backed emitter (asset.published v1)")
 			} else {
-				deps.Log.Warn("stock.BuildStockBundle: enrichment nil-emitter (no DB; the handler will skip asset.published v1 emit with a Warn log)")
+				deps.Runtime.Log.Warn("stock.BuildStockBundle: enrichment nil-emitter (no DB; the handler will skip asset.published v1 emit with a Warn log)")
 			}
 
-			enrichHandler, hErr := stockenrich.NewEnrichmentHandler(llmClient, assetRepo, emitter, deps.Log)
+			enrichHandler, hErr := stockenrich.NewEnrichmentHandler(llmClient, assetRepo, emitter, deps.Runtime.Log)
 			if hErr != nil {
 				return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.NewEnrichmentHandler: %w", hErr)
 			}
-			if regErr := enrichHandler.RegisterHandler(deps.Jobs); regErr != nil {
+			if regErr := enrichHandler.RegisterHandler(deps.Orchestration.Jobs); regErr != nil {
 				return nil, fmt.Errorf("stock.BuildStockBundle: enrichment.RegisterHandler: %w", regErr)
 			}
 		}
@@ -383,7 +434,7 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	// downstream registry code is unaffected.
 	sd, err := stockapi.Build(stockapi.Dependencies{
 		UseCase:     useCase,
-		EnabledFunc: deps.StockPipelineEnabled,
+		EnabledFunc: deps.Feature.StockPipelineEnabled,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockapi.Build: %w", err)
