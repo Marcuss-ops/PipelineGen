@@ -56,6 +56,20 @@ type Handler struct {
 	log                    *zap.Logger
 }
 
+// HandlerDeps carries the dependencies for NewHandler. Grouping them
+// keeps the constructor under the archcheck 8-parameter cap while
+// making the call sites self-documenting.
+type HandlerDeps struct {
+	ClipsRepo              sfxports.ClipRepositoryPort
+	MetaWriter             sfxports.SemanticMetadataWriterPort
+	Resolver               sfxports.DestinationResolverPort
+	Dispatcher             sfxports.DispatcherPort
+	Publisher              sfxports.PublisherPort
+	SoundEffectsRootFolder string
+	ProcessRunner          appassets.ProcessRunner
+	Log                    *zap.Logger
+}
+
 // NewHandler creates a sound effect handler.
 //
 // All concrete infrastructure collaborators are injected via structural
@@ -70,25 +84,16 @@ type Handler struct {
 // so existing test fixtures that omit the dispatcher continue to compile —
 // the Generate handler fails closed with HTTP 503 when invoked against a
 // nil dispatcher.
-func NewHandler(
-	clipsRepo sfxports.ClipRepositoryPort,
-	metaWriter sfxports.SemanticMetadataWriterPort,
-	resolver sfxports.DestinationResolverPort,
-	dispatcher sfxports.DispatcherPort,
-	publisher sfxports.PublisherPort,
-	soundEffectsRootFolder string,
-	processRunner appassets.ProcessRunner,
-	log *zap.Logger,
-) *Handler {
+func NewHandler(deps HandlerDeps) *Handler {
 	return &Handler{
-		clipsRepo:              clipsRepo,
-		metaWriter:             metaWriter,
-		resolver:               resolver,
-		dispatcher:             dispatcher,
-		publisher:              publisher,
-		soundEffectsRootFolder: soundEffectsRootFolder,
-		processRunner:          processRunner,
-		log:                    log,
+		clipsRepo:              deps.ClipsRepo,
+		metaWriter:             deps.MetaWriter,
+		resolver:               deps.Resolver,
+		dispatcher:             deps.Dispatcher,
+		publisher:              deps.Publisher,
+		soundEffectsRootFolder: deps.SoundEffectsRootFolder,
+		processRunner:          deps.ProcessRunner,
+		log:                    deps.Log,
 	}
 }
 

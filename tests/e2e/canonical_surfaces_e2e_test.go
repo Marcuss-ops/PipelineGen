@@ -121,11 +121,16 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 
 	t.Run("ClipIdentity", func(t *testing.T) {
 		// YouTube identity.
-		ytID, err := asset.NewYouTubeClipIdentity(
-			"vdC5GXxS-qU", 146, 155, "v1",
-			testSourceVersionFor("yt_vdC5GXxS-qU_146_155_v1"),
-			"multilingual-e5-base", "v1", "media_assets_current",
-		)
+		ytID, err := asset.NewYouTubeClipIdentity(asset.YouTubeClipIdentityParams{
+			VideoID:     "vdC5GXxS-qU",
+			StartSec:    146,
+			EndSec:      155,
+			PolicyVer:   "v1",
+			ContentHash: testSourceVersionFor("yt_vdC5GXxS-qU_146_155_v1"),
+			Model:       "multilingual-e5-base",
+			Version:     "v1",
+			Collection:  "media_assets_current",
+		})
 		require.NoError(t, err, "NewYouTubeClipIdentity must not fail")
 		require.NotEmpty(t, ytID.AssetID)
 		require.NotEmpty(t, ytID.ContentHash)
@@ -277,11 +282,16 @@ func TestE2E_CanonicalSurfaces_YouTubeAndStock(t *testing.T) {
 
 	t.Run("AssetPersistenceWriter_EnvelopeEquivalence", func(t *testing.T) {
 		// Build YouTube identity + metadata.
-		ytIdentity, err := asset.NewYouTubeClipIdentity(
-			"vdC5GXxS-qU", 146, 155, "v1",
-			testSourceVersionFor("yt_vdC5GXxS-qU_146_155_v1"),
-			"multilingual-e5-base", "v1", "media_assets_current",
-		)
+		ytIdentity, err := asset.NewYouTubeClipIdentity(asset.YouTubeClipIdentityParams{
+			VideoID:     "vdC5GXxS-qU",
+			StartSec:    146,
+			EndSec:      155,
+			PolicyVer:   "v1",
+			ContentHash: testSourceVersionFor("yt_vdC5GXxS-qU_146_155_v1"),
+			Model:       "multilingual-e5-base",
+			Version:     "v1",
+			Collection:  "media_assets_current",
+		})
 		require.NoError(t, err)
 		ytMeta := asset.ClipSemanticMetadata{
 			AssetID:         ytIdentity.AssetID,

@@ -90,16 +90,16 @@ func Build(deps Dependencies) (api.Descriptor, error) {
 		log = zap.NewNop()
 	}
 
-	handler := NewHandler(
-		deps.Core.ClipsRepo,
-		deps.Core.MetaWriter,
-		deps.Delivery.Resolver,
-		deps.Transport.Dispatcher,
-		deps.Delivery.Publisher,
-		deps.Delivery.SoundEffectsRootFolder,
-		deps.Core.ProcessRunner,
-		log,
-	)
+	handler := NewHandler(HandlerDeps{
+		ClipsRepo:              deps.Core.ClipsRepo,
+		MetaWriter:             deps.Core.MetaWriter,
+		Resolver:               deps.Delivery.Resolver,
+		Dispatcher:             deps.Transport.Dispatcher,
+		Publisher:              deps.Delivery.Publisher,
+		SoundEffectsRootFolder: deps.Delivery.SoundEffectsRootFolder,
+		ProcessRunner:          deps.Core.ProcessRunner,
+		Log:                    log,
+	})
 
 	mod := api.NewRouteModule(
 		"sound-effect",

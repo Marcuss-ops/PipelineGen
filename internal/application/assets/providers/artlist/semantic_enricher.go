@@ -111,6 +111,20 @@ type SemanticEnricher struct {
 	lifecycle drivepkg.FileLifecycle
 }
 
+// SemanticEnricherDeps carries the dependencies for NewSemanticEnricher.
+// Grouping them keeps the constructor under the archcheck 8-parameter cap
+// while preserving the canonical artlist semantic-enricher surface.
+type SemanticEnricherDeps struct {
+	Repo       AssetStore
+	Indexer    Indexer
+	MetaWriter semantic.MetadataWriterPort
+	Publisher  delivery.Publisher
+	Reader     drivepkg.Reader
+	Dispatcher Dispatcher
+	Lifecycle  drivepkg.FileLifecycle
+	Log        *zap.Logger
+}
+
 // NewSemanticEnricher crea un enricher pronto per il package artlist.
 // Usa semantic.MetadataWriterPort (chiamato GeneratePayload) invece di
 // chiamare Tagger() direttamente, per garantire che tutto il metadata
@@ -142,25 +156,16 @@ type SemanticEnricher struct {
 // tagger is absent; tests pass `semantic.NewNopMetadataWriter(log)`
 // for the explicit-nop path. The Enrich method already nil-checks
 // `e.metaWriter == nil` so both paths are fail-closed.
-func NewSemanticEnricher(
-	repo AssetStore,
-	indexer Indexer,
-	metaWriter semantic.MetadataWriterPort,
-	publisher delivery.Publisher,
-	reader drivepkg.Reader,
-	dispatcher Dispatcher,
-	lifecycle drivepkg.FileLifecycle,
-	log *zap.Logger,
-) *SemanticEnricher {
+func NewSemanticEnricher(deps SemanticEnricherDeps) *SemanticEnricher {
 	return &SemanticEnricher{
-		repo:       repo,
-		indexer:    indexer,
-		metaWriter: metaWriter,
-		publisher:  publisher,
-		reader:     reader,
-		dispatcher: dispatcher,
-		lifecycle:  lifecycle,
-		log:        log,
+		repo:       deps.Repo,
+		indexer:    deps.Indexer,
+		metaWriter: deps.MetaWriter,
+		publisher:  deps.Publisher,
+		reader:     deps.Reader,
+		dispatcher: deps.Dispatcher,
+		lifecycle:  deps.Lifecycle,
+		log:        deps.Log,
 	}
 }
 

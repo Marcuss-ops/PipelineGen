@@ -500,18 +500,17 @@ func TestE2E_Voiceover_QdrantIndexingFlow(t *testing.T) {
 
 	// Real lifecycle.Service — drives Stage 2 (Drive upload) + Stage 3
 	// (media_assets projection UPSERT) via UploadOnly + UpsertVoiceoverProjectionTx.
-	lifecycleSvc := lifecycle.NewService(
-		e2eAssetRecordStore{}, // dedupe never called in our test path
-		&e2eDriveAdmin{fileID: driveFileID},
-		nil, // driveReader — unused
-		nil, // registry — unused
-		nil, // assetIndex — unused
-		nil, // finalizer — unused (we use UploadOnly, not ProcessAsset)
-		lifecycle.Config{
-			UploadPolicy: assetop.UploadPolicy{Enabled: true},
-		},
-		zap.NewNop(),
-	)
+	lifecycleSvc := lifecycle.NewService(lifecycle.ServiceDeps{
+		Store:       e2eAssetRecordStore{}, // dedupe never called in our test path
+		Publisher:   &e2eDriveAdmin{fileID: driveFileID},
+		DriveReader: nil, // driveReader — unused
+		Registry:    nil, // registry — unused
+		AssetIndex:  nil, // assetIndex — unused
+		Finalizer:   nil, // finalizer — unused (we use UploadOnly, not ProcessAsset)
+		Log:         zap.NewNop(),
+	}, lifecycle.Config{
+		UploadPolicy: assetop.UploadPolicy{Enabled: true},
+	})
 
 	// Real outbox.Dispatcher — its EnqueueIndexEvent method writes the
 	// asset.index.requested event row inside the caller-owned tx.

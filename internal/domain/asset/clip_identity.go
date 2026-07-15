@@ -96,22 +96,35 @@ var ErrClipIdentityInvalidTimestamps = errors.New("clip identity: end_sec must b
 
 // ── YouTube builder ─────────────────────────────────────────────────
 
+// YouTubeClipIdentityParams carries the inputs for NewYouTubeClipIdentity.
+// Grouping them keeps the constructor signature under the archcheck
+// 8-parameter limit while preserving the canonical asset_id format.
+type YouTubeClipIdentityParams struct {
+	VideoID     string
+	StartSec    int
+	EndSec      int
+	PolicyVer   string
+	ContentHash string
+	Model       string
+	Version     string
+	Collection  string
+}
+
 // NewYouTubeClipIdentity constructs the canonical ClipIdentity for a
 // YouTube clip. The asset_id format is the well-known
 // `yt_{videoID}_{startSec}_{endSec}_{policyVer}` that has been in
 // production since the YouTube pipeline launched.
 //
 // Parameters:
-//   - videoID: the YouTube video ID (11-char alphanumeric + - and _)
-//   - startSec / endSec: the clip window boundaries (int, matching
+//   - params.VideoID: the YouTube video ID (11-char alphanumeric + - and _)
+//   - params.StartSec / params.EndSec: the clip window boundaries (int, matching
 //     the process_segment.go convention of int-cast seconds)
-//   - policyVer: the policy version string (e.g. "v1")
-//   - contentHash: the SHA-256 fingerprint of the asset's searchable
+//   - params.PolicyVer: the policy version string (e.g. "v1")
+//   - params.ContentHash: the SHA-256 fingerprint of the asset's searchable
 //     content (title+summary+topics+...). Must be non-empty.
-//   - model / version / collection: the indexing metadata from the
-//     clipindexer configuration. Callers pass these through from
-//     their composition root (the domain layer cannot import
-//     clipindexer).
+//   - params.Model / params.Version / params.Collection: the indexing metadata
+//     from the clipindexer configuration. Callers pass these through from
+//     their composition root (the domain layer cannot import clipindexer).
 //
 // Returns:
 //   - ClipIdentity: the canonical triple
@@ -123,29 +136,24 @@ var ErrClipIdentityInvalidTimestamps = errors.New("clip identity: end_sec must b
 // yt_{videoID}_{start}_{end}_{policy} asset_id format. The
 // process_segment.go inline `fmt.Sprintf` is the legacy surface;
 // callers that adopt this builder deprecate the inline derivation.
-func NewYouTubeClipIdentity(
-	videoID string,
-	startSec, endSec int,
-	policyVer string,
-	contentHash string,
-	model, version, collection string,
-) (ClipIdentity, error) {
-	videoID = strings.TrimSpace(videoID)
+func NewYouTubeClipIdentity(params YouTubeClipIdentityParams) (ClipIdentity, error) {
+	videoID := strings.TrimSpace(params.VideoID)
 	if videoID == "" {
 		return ClipIdentity{}, ErrClipIdentityEmptyAssetID
 	}
-	contentHash = strings.TrimSpace(contentHash)
+	contentHash := strings.TrimSpace(params.ContentHash)
 	if contentHash == "" {
 		return ClipIdentity{}, ErrClipIdentityEmptyContentHash
 	}
-	if endSec < startSec {
+	if params.EndSec < params.StartSec {
 		return ClipIdentity{}, ErrClipIdentityInvalidTimestamps
 	}
+	policyVer := params.PolicyVer
 	if policyVer == "" {
 		policyVer = "v1"
 	}
-	assetID := fmt.Sprintf("yt_%s_%d_%d_%s", videoID, startSec, endSec, policyVer)
-	eventKey := BuildIndexEventKey(assetID, contentHash, model, version, collection)
+	assetID := fmt.Sprintf("yt_%s_%d_%d_%s", videoID, params.StartSec, params.EndSec, policyVer)
+	eventKey := BuildIndexEventKey(assetID, contentHash, params.Model, params.Version, params.Collection)
 	return ClipIdentity{
 		AssetID:       assetID,
 		ContentHash:   contentHash,
