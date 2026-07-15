@@ -299,6 +299,90 @@ func TestClipBindings_CanonicalID_DriveFileID_PR6(t *testing.T) {
 	}
 }
 
+// TestClipBindings_SynthesizesScenesFromClipEvidence_P0 verifies
+// the P0 (July 2026) behaviour: when the engine emits plain text
+// and leaves SpecScene.Scenes empty, the processor builds scenes
+// deterministically from ClipEvidence via ScenePlanner.PlanFromClipEvidence
+// and then binds clips 1:1. This is the canonical fix for the live
+// source.type=clips path failing with CLIP_NATIVE_PLAN_UNAVAILABLE.
+func TestClipBindings_SynthesizesScenesFromClipEvidence_P0(t *testing.T) {
+	ev := &scriptpkg.ClipEvidence{
+		AcceptedClipIDs: []string{"clip-a", "clip-b", "clip-c"},
+		ClipCount:       3,
+		ClipNames: map[string]string{
+			"clip-a": "Clip A",
+			"clip-b": "Clip B",
+			"clip-c": "Clip C",
+		},
+		DriveLinks: map[string]string{
+			"clip-a": "https://drive.google.com/a",
+			"clip-b": "https://drive.google.com/b",
+			"clip-c": "https://drive.google.com/c",
+		},
+		ClipDetails: map[string]scriptpkg.ClipDetail{
+			"clip-a": {Name: "Clip A", Transcript: "First clip transcript.", DriveLink: "https://drive.google.com/a", StartMs: 1000, EndMs: 5000},
+			"clip-b": {Name: "Clip B", Transcript: "Second clip transcript.", DriveLink: "https://drive.google.com/b", StartMs: 6000, EndMs: 9000},
+			"clip-c": {Name: "Clip C", Transcript: "Third clip transcript.", DriveLink: "https://drive.google.com/c", StartMs: 10000, EndMs: 14000},
+		},
+	}
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ClipEvidence: ev,
+		NumClips:     3,
+	}
+
+	// Empty SpecScene simulates plain-text engine output.
+	input := adapters.ProcessInput{SpecScene: scriptpkg.SpecSceneOutput{}}
+
+	p := adapters.NewClipBindingsProcessor(zap.NewNop())
+	result, err := p.Process(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("process error = %v", err)
+	}
+	if !result.Changed {
+		t.Errorf("result.Changed = false, want true")
+	}
+	if len(result.SynthesizedScenes) != 3 {
+		t.Fatalf("SynthesizedScenes = %d, want 3", len(result.SynthesizedScenes))
+	}
+
+	// The returned scenes must be bound to the accepted clips in order,
+	// preserving the detailed bindings produced by PlanFromClipEvidence.
+	for i, s := range result.SynthesizedScenes {
+		wantID := ev.AcceptedClipIDs[i]
+		if s.Bindings.Clip == nil {
+			t.Fatalf("scene[%d].Bindings.Clip = nil, want binding to %q", i, wantID)
+		}
+		if s.Bindings.Clip.ClipID != wantID {
+			t.Errorf("scene[%d].Bindings.Clip.ClipID = %q, want %q", i, s.Bindings.Clip.ClipID, wantID)
+		}
+		if s.Bindings.Clip.DriveLink != ev.DriveLinks[wantID] {
+			t.Errorf("scene[%d].Bindings.Clip.DriveLink = %q, want %q",
+				i, s.Bindings.Clip.DriveLink, ev.DriveLinks[wantID])
+		}
+		if s.Bindings.Clip.ClipTitle != ev.ClipDetails[wantID].Name {
+			t.Errorf("scene[%d].Bindings.Clip.ClipTitle = %q, want %q",
+				i, s.Bindings.Clip.ClipTitle, ev.ClipDetails[wantID].Name)
+		}
+		if s.Bindings.Clip.StartMs != ev.ClipDetails[wantID].StartMs {
+			t.Errorf("scene[%d].Bindings.Clip.StartMs = %d, want %d",
+				i, s.Bindings.Clip.StartMs, ev.ClipDetails[wantID].StartMs)
+		}
+		if s.Bindings.Clip.EndMs != ev.ClipDetails[wantID].EndMs {
+			t.Errorf("scene[%d].Bindings.Clip.EndMs = %d, want %d",
+				i, s.Bindings.Clip.EndMs, ev.ClipDetails[wantID].EndMs)
+		}
+	}
+
+	// In the real pipeline mergePostProcessResult writes
+	// result.SynthesizedScenes back into currentInput.SpecScene.Scenes.
+	// The direct Process call receives input by value, so we assert
+	// on the returned SynthesizedScenes surface.
+	if len(result.SynthesizedScenes) != 3 {
+		t.Errorf("result.SynthesizedScenes = %d, want 3", len(result.SynthesizedScenes))
+	}
+}
+
 // TestClipBindings_FallbackRange_UsesCanonicalKeys_PR6 verifies
 // the P0 #2 behaviour: when ClipEvidence.ClipIDs is empty, the
 // binder is a no-op (returns early with no bindings). The old
