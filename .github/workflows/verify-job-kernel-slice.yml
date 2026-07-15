@@ -27,7 +27,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Compile and test migrated capabilities
+      - name: Repair, compile and test migrated capabilities
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -61,15 +61,33 @@ jobs:
             fail_stage "compile-${tag}" "${tag} compilation failed"
           }
 
-          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/verify" "Verifying incremental migration slice"
+          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/verify" "Repairing capability-owned job discriminators"
           git fetch origin main
           git reset --hard origin/main
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          files = [
+              Path("internal/application/assets/texttracks/fanout.go"),
+              Path("internal/application/assets/texttracks/jobs.go"),
+          ]
+          old = "job.TypeAssetTextMaterialize"
+          new = "asset.TypeTextMaterialize"
+          for path in files:
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one {old} reference, found {count}")
+              path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
 
           migrated_files=(
             internal/application/assets/providers/artlist/job_types.go
             internal/application/assets/providers/artlist/job_core.go
             internal/application/assets/providers/artlist/search_core.go
             internal/application/assets/texttracks/fanout.go
+            internal/application/assets/texttracks/jobs.go
             internal/application/assets/providers/stock/stockpipeline/orchestrator_manifest.go
             internal/application/assets/providers/stock/stockpipeline/orchestrator_metadata.go
             internal/application/assets/providers/stock/stockpipeline/step_runner.go
@@ -116,7 +134,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add "${migrated_files[@]}"
-          git commit -m "chore(ci): format and close job kernel verification"
+          git commit -m "fix(texttracks): use asset-owned materialize job type"
           git pull --rebase origin main
           git push origin HEAD:main
 
