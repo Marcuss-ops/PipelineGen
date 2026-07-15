@@ -4,7 +4,7 @@
 //
 // godlike/06 SSOT (one canonical owner per fact):
 //   - Step 6 transcript acquisition lives ONLY in
-//     u.deps.TextTrackResolver.AcquireSegmentText. NO handler may
+//     u.media.TextTrackResolver.AcquireSegmentText. NO handler may
 //     re-implement priority 3-5 inline (PR-PY-CLIPS-CORRETTE-TRADOTTE
 //     Fase 1.a, July 2026).
 //   - Step 7 Whisper fallback lives ONLY inside AcquireSegmentText
@@ -97,9 +97,9 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	// fetcher errors are logged + swallowed so the chain falls
 	// through to Whisper; Whisper errors are returned verbatim.
 	var bundle *asset.ResolvedTextBundle
-	if u.deps.TextTrackResolver != nil {
+	if u.media.TextTrackResolver != nil {
 		var acqErr error
-		bundle, acqErr = u.deps.TextTrackResolver.AcquireSegmentText(ctx, TextTrackAcquireRequest{
+		bundle, acqErr = u.media.TextTrackResolver.AcquireSegmentText(ctx, TextTrackAcquireRequest{
 			ClipID:       clipID,
 			VideoID:      cmd.VideoID,
 			StartSec:     startSec,
@@ -113,7 +113,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			// empty text-track set will be persisted atomically
 			// (the writer's policy validation is skipped when
 			// RequireTranscriptReady=false, which is the default).
-			u.deps.Log.Warn("text track acquisition failed (Whisper fallback returned an error); continuing with empty bundle — clip will be persisted without text tracks; backfill via Fase 5 admin command",
+			u.core.Log.Warn("text track acquisition failed (Whisper fallback returned an error); continuing with empty bundle — clip will be persisted without text tracks; backfill via Fase 5 admin command",
 				zap.String("clip_id", clipID), zap.Error(acqErr))
 			bundle = nil
 		} else if bundle != nil && !bundle.IsEmpty() {
@@ -123,7 +123,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			// Errors here are LOGGED, not swallowed, per Fase 1.a
 			// (audit 2026-07-11 §2.a).
 			if writeErr := os.WriteFile(txtPath, []byte(bundle.PlainText), 0o644); writeErr != nil {
-				u.deps.Log.Warn("transcript .txt side-channel write failed (clipindexer.lookupTranscriptPath Qdrant transcript embedding may miss this clip)",
+				u.core.Log.Warn("transcript .txt side-channel write failed (clipindexer.lookupTranscriptPath Qdrant transcript embedding may miss this clip)",
 					zap.String("txt_path", txtPath),
 					zap.Error(writeErr))
 			}
@@ -132,8 +132,8 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 
 	// Step 8 — DriveUploadFileIfChanged (unchanged, body verbatim
 	// from pre-split).
-	if u.deps.DriveFolderMgr != nil && cmd.DriveFolderID != "" && localPath != "" {
-		if upRes, _, upErr := u.deps.DriveFolderMgr.UploadFileIfChanged(
+	if u.media.DriveFolderMgr != nil && cmd.DriveFolderID != "" && localPath != "" {
+		if upRes, _, upErr := u.media.DriveFolderMgr.UploadFileIfChanged(
 			ctx, localPath, cmd.DriveFolderID, out.Item.Filename,
 			deriveNormalizedGroup(cmd), cmd.VideoID,
 		); upErr == nil && upRes != nil {
@@ -147,7 +147,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			// "transcript was never acquired" from "transcript was
 			// acquired and dropped due to upstream failure".
 			if bundle != nil && !bundle.IsEmpty() {
-				u.deps.Log.Warn("text bundle dropped due to upstream Drive upload failure; transcript will be re-acquired on the next retry — no atomic super-tx executed",
+				u.core.Log.Warn("text bundle dropped due to upstream Drive upload failure; transcript will be re-acquired on the next retry — no atomic super-tx executed",
 					zap.String("clip_id", clipID),
 					zap.String("bundle_language", bundle.LanguageCode),
 					zap.Int("bundle_cues", len(bundle.Cues)),
@@ -155,10 +155,10 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			}
 			retryable := IsTransientExtractionError(upErr)
 			if retryable {
-				u.deps.Log.Warn("drive upload transient failure (will be classified retryable by parent)",
+				u.core.Log.Warn("drive upload transient failure (will be classified retryable by parent)",
 					zap.String("clip_id", clipID), zap.Error(upErr))
 			} else {
-				u.deps.Log.Error("drive upload terminal failure (will be classified terminal by parent)",
+				u.core.Log.Error("drive upload terminal failure (will be classified terminal by parent)",
 					zap.String("clip_id", clipID), zap.Error(upErr))
 			}
 			typed := NewExtractionError(
@@ -205,7 +205,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 	// godlike/06 SSOT: the chain's selection is the authoritative
 	// source — flipping the order here would silently demote
 	// priority 2-5 wins back to the payload (audit 2026-07-11 §2.b).
-	if u.deps.LocalizedWriter != nil {
+	if u.metadata.LocalizedWriter != nil {
 		clipAsset := buildClipAsset(clipID, cmd, *out, fileHash, policyVer)
 		event := youtubeports.IndexEventPayload{
 			Type:        "asset.index.requested",
@@ -214,9 +214,9 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		}
 
 		var tracks []asset.TextTrack
-		if len(cmd.Segment.Texts) > 0 && u.deps.TextTrackResolver != nil {
+		if len(cmd.Segment.Texts) > 0 && u.media.TextTrackResolver != nil {
 			tracks = append(tracks,
-				u.deps.TextTrackResolver.MaterializePayloadTexts(clipID, cmd.Segment.Texts)...)
+				u.media.TextTrackResolver.MaterializePayloadTexts(clipID, cmd.Segment.Texts)...)
 		}
 		if bundle != nil && !bundle.IsEmpty() {
 			tracks = append(tracks,
@@ -224,8 +224,8 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 		}
 
 		var timedTracks []localized.TimedTextTrack
-		if u.deps.TextTrackResolver != nil {
-			if tt := u.deps.TextTrackResolver.bundleToTimedTrack(clipID, bundle); tt != nil {
+		if u.media.TextTrackResolver != nil {
+			if tt := u.media.TextTrackResolver.bundleToTimedTrack(clipID, bundle); tt != nil {
 				timedTracks = append(timedTracks, *tt)
 			}
 		}
@@ -236,10 +236,10 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			TimedTracks: timedTracks,
 			IndexEvent:  event,
 			// Fase 5: see MultilingualConfig.RequireTranscriptReady.
-			RequireTranscriptReady: u.deps.RequireTranscriptReady,
+			RequireTranscriptReady: u.observability.RequireTranscriptReady,
 		}
 
-		if wErr := u.deps.LocalizedWriter.CommitClipTextAndIndexEvent(ctx, superCmd); wErr != nil {
+		if wErr := u.metadata.LocalizedWriter.CommitClipTextAndIndexEvent(ctx, superCmd); wErr != nil {
 			// BLOCKER #4 closure (audit 2026-07-03): when the outbox
 			// row insert is suppressed by an existing terminal row
 			// (dead_letter or superseded), the writer returns
@@ -252,7 +252,7 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			if errors.Is(wErr, youtubeports.ErrOutboxTerminalConflict) {
 				out.Item.Status = "processed_but_index_blocked"
 				out.Status = "processed_but_index_blocked"
-				u.deps.Log.Warn("clip + tracks + cues committed but index blocked by terminal outbox row (BLOCKER #4)",
+				u.core.Log.Warn("clip + tracks + cues committed but index blocked by terminal outbox row (BLOCKER #4)",
 					zap.String("clip_id", clipID),
 					zap.Error(wErr))
 				return bundle, nil
@@ -270,22 +270,22 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 					fmt.Sprintf("writer rejected locale-not-ready: %v", wErr),
 					wErr,
 				)
-				u.deps.Log.Error("writer rejected locale-not-ready policy (Fase 2.b atomic tx rolled back; no rows visible)",
+				u.core.Log.Error("writer rejected locale-not-ready policy (Fase 2.b atomic tx rolled back; no rows visible)",
 					zap.String("clip_id", clipID), zap.Error(wErr))
 				return nil, u.fail(out, typed)
 			}
 			typed := NewExtractionError(FailureCodeWriterFailed, false,
 				fmt.Sprintf("localized writer failed: %v", wErr), wErr)
-			u.deps.Log.Error("localized writer terminal failure (Fase 2.b atomic tx rolled back; no rows visible)",
+			u.core.Log.Error("localized writer terminal failure (Fase 2.b atomic tx rolled back; no rows visible)",
 				zap.String("clip_id", clipID), zap.Error(wErr))
 			return nil, u.fail(out, typed)
 		}
 		out.IndexedRequestID = event.AggregateID
-		u.deps.Log.Info("localized clip super-tx committed",
+		u.core.Log.Info("localized clip super-tx committed",
 			zap.String("clip_id", clipID),
 			zap.Int("text_tracks", len(tracks)),
 			zap.Int("timed_tracks", len(timedTracks)))
-	} else if u.deps.Writer != nil {
+	} else if u.core.Writer != nil {
 		// Downgrade path: when composition did NOT wire
 		// LocalizedWriter (legacy bundle only), fall back to the
 		// legacy CommitClipAndIndexEvent. This branch MUST NOT be
@@ -298,11 +298,11 @@ func (u *ProcessYouTubeSegmentUseCase) step6to9_SubtitlesDriveWriter(
 			AggregateID: clipID,
 			CreatedAt:   time.Now().UTC(),
 		}
-		if wErr := u.deps.Writer.CommitClipAndIndexEvent(ctx, clipID, clipAsset, event); wErr != nil {
+		if wErr := u.core.Writer.CommitClipAndIndexEvent(ctx, clipID, clipAsset, event); wErr != nil {
 			if errors.Is(wErr, youtubeports.ErrOutboxTerminalConflict) {
 				out.Item.Status = "processed_but_index_blocked"
 				out.Status = "processed_but_index_blocked"
-				u.deps.Log.Warn("clip committed but index blocked by terminal outbox row (BLOCKER #4)",
+				u.core.Log.Warn("clip committed but index blocked by terminal outbox row (BLOCKER #4)",
 					zap.String("clip_id", clipID), zap.Error(wErr))
 				return bundle, nil
 			}

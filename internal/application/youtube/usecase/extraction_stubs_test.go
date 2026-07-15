@@ -57,13 +57,23 @@ func (testStubClipAtomicWriter) CommitClipAndIndexEvent(
 // fakeVideoPipeline instance) so the per-segment path threads
 // through the SAME mock observable at the Service-deps level
 // (pipeline.called assertions stay reliable).
+//
+// PR-GRUPOC-2 (July 2026): the pre-PR ProcessSegmentDeps literal
+// is replaced by 4 capability-area sub-bundles (Core carries the
+// 4 required ports + SegmentsSvc + Log; Media/Metadata/Observability
+// are zero-valued — the canonical no-op state).
 func newTestProcessSegmentUseCase(log *zap.Logger, pipeline youtubeports.VideoPipelinePort) *ProcessYouTubeSegmentUseCase {
-	return NewProcessYouTubeSegmentUseCase(ProcessSegmentDeps{
-		Cache:         testStubClipCache{},
-		VideoPipeline: pipeline,
-		Hash:          testStubHash{},
-		Writer:        testStubClipAtomicWriter{},
-		SegmentsSvc:   NewSegmentsService(),
-		Log:           log,
-	})
+	return NewProcessYouTubeSegmentFromSubBundles(
+		ProcessSegmentCoreDeps{
+			Cache:         testStubClipCache{},
+			VideoPipeline: pipeline,
+			Hash:          testStubHash{},
+			Writer:        testStubClipAtomicWriter{},
+			SegmentsSvc:   NewSegmentsService(),
+			Log:           log,
+		},
+		ProcessSegmentMediaDeps{},
+		ProcessSegmentMetadataDeps{},
+		ProcessSegmentObservabilityDeps{},
+	)
 }

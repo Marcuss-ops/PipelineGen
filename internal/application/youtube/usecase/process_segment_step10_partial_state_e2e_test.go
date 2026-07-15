@@ -202,8 +202,8 @@ func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(
 	require.NotNil(t, writer, "NewClipAtomicWriterAdapter must succeed with db + outbox repo")
 
 	// ── 4) Wire a captured logger so we can assert on the Warn log ──
-	core, recorded := observer.New(zapcore.WarnLevel)
-	capturedLog := zap.New(core)
+	obsCore, recorded := observer.New(zapcore.WarnLevel)
+	capturedLog := zap.New(obsCore)
 
 	// ── 5) Wire a real MetadataService that always errors on EnrichClip ──
 	// errBuilder is the canonical stub from process_segment_correttezza_test.go
@@ -219,13 +219,13 @@ func TestPartialState_E2E_Step10FailsAfterClipWrite_MediaAssetsAndOutboxPresent(
 	require.NotNil(t, metaSvc, "MetadataService must be non-nil")
 
 	// ── 6) Build deps with the REAL writer (the only difference from Test 9) ──
-	deps := validProcessSegmentDeps()
-	deps.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-	deps.Hash = testStubHash{}     // non-empty fileHash so Step 5 passes
-	deps.Writer = writer           // REAL writer (not stubWriterAssetRecorder)
-	deps.Log = capturedLog         // override zap.NewNop default
-	deps.MetadataService = metaSvc // always-fail Step 10 service
-	uc := NewProcessYouTubeSegmentUseCase(deps)
+	bundleCore, media, metadata, observability := validProcessSegmentDeps()
+	bundleCore.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
+	bundleCore.Hash = testStubHash{}   // non-empty fileHash so Step 5 passes
+	bundleCore.Writer = writer         // REAL writer (not stubWriterAssetRecorder)
+	bundleCore.Log = capturedLog       // override zap.NewNop default
+	metadata.MetadataService = metaSvc // always-fail Step 10 service
+	uc := NewProcessYouTubeSegmentFromSubBundles(bundleCore, media, metadata, observability)
 
 	// VideoID="abc" matches the existing Test 9 pattern (process_segment_correttezza_test.go)
 	// and produces the clean canonical clipID `yt_abc_0_10_v1` (no doubled

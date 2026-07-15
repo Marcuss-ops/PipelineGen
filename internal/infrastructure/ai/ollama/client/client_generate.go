@@ -13,6 +13,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/ollama/types"
 	logger "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/logging"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
+	retry "github.com/Marcuss-ops/PipelineGen/pkg/retry"
 
 	"go.uber.org/zap"
 )
@@ -48,11 +49,17 @@ func (c *Client) GenerateWithOptions(ctx context.Context, model, prompt string, 
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("ollama request failed: %w", err)
+		if errors.Is(err, context.Canceled) {
+			return "", fmt.Errorf("ollama request failed: %w", err)
+		}
+		return "", fmt.Errorf("ollama request failed: %w", &retry.TransientInfrastructureError{Err: err})
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
+			return "", fmt.Errorf("ollama returned status %d: %w", resp.StatusCode, &retry.TransientInfrastructureError{Err: fmt.Errorf("ollama returned status %d", resp.StatusCode)})
+		}
 		return "", fmt.Errorf("ollama returned status %d", resp.StatusCode)
 	}
 
@@ -123,13 +130,21 @@ func (c *Client) GenerateStreamWithOptions(ctx context.Context, model, prompt st
 
 		resp, err := c.httpClient.Do(httpReq)
 		if err != nil {
-			errChan <- fmt.Errorf("ollama request failed: %w", err)
+			if errors.Is(err, context.Canceled) {
+				errChan <- fmt.Errorf("ollama request failed: %w", err)
+			} else {
+				errChan <- fmt.Errorf("ollama request failed: %w", &retry.TransientInfrastructureError{Err: err})
+			}
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			errChan <- fmt.Errorf("ollama returned status %d", resp.StatusCode)
+			if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
+				errChan <- fmt.Errorf("ollama returned status %d: %w", resp.StatusCode, &retry.TransientInfrastructureError{Err: fmt.Errorf("ollama returned status %d", resp.StatusCode)})
+			} else {
+				errChan <- fmt.Errorf("ollama returned status %d", resp.StatusCode)
+			}
 			return
 		}
 

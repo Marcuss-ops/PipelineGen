@@ -105,8 +105,8 @@ func (u *ProcessYouTubeSegmentUseCase) step10_MetadataEnrich(
 	//          variance across cues). For Fase 1.c they are
 	//          accepted but unused.
 
-	if u.deps.MetadataService != nil {
-		_, metaErr := u.deps.MetadataService.EnrichClip(ctx, youtubetypes.ClipMetadataInput{
+	if u.metadata.MetadataService != nil {
+		_, metaErr := u.metadata.MetadataService.EnrichClip(ctx, youtubetypes.ClipMetadataInput{
 			ClipID:           clipID,
 			Title:            cmd.Segment.Name,
 			Transcript:       transcript,
@@ -130,7 +130,7 @@ func (u *ProcessYouTubeSegmentUseCase) step10_MetadataEnrich(
 			// contract (godlike/07 NO-FAKE-AVAILABILITY: the
 			// canonical job outcome is the typed error; the Warn
 			// log is purely observability).
-			u.deps.Log.Warn("Step 10 failed AFTER clip write \u2013 manual re-extract needed",
+			u.core.Log.Warn("Step 10 failed AFTER clip write \u2013 manual re-extract needed",
 				zap.String("clip_id", clipID),
 				zap.String("language_code", languageCode),
 				zap.String("failure_code", string(FailureCodeMetadataFailed)),
@@ -139,8 +139,8 @@ func (u *ProcessYouTubeSegmentUseCase) step10_MetadataEnrich(
 			// Increment the transcript_metadata_step10_fail_after_clip_total
 			// counter so dashboards can aggregate partial-state
 			// events across a batch extraction by failure_code.
-			if u.deps.Step10Metrics != nil {
-				u.deps.Step10Metrics.IncStep10FailAfterClip(string(FailureCodeMetadataFailed))
+			if u.observability.Step10Metrics != nil {
+				u.observability.Step10Metrics.IncStep10FailAfterClip(string(FailureCodeMetadataFailed))
 			}
 			typed := NewExtractionError(FailureCodeMetadataFailed, false,
 				fmt.Sprintf("metadata enrichment failed: %v", metaErr), metaErr)

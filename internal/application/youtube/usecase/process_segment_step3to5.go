@@ -95,7 +95,7 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 	}
 
 	// Step 4 — retry download with exponential backoff. Pre-flight guard.
-	if u.deps.VideoPipeline == nil {
+	if u.core.VideoPipeline == nil {
 		typed := NewExtractionError(FailureCodeVideoProcessingFailed, false, "video pipeline port not wired", nil)
 		return "", "", u.fail(out, typed)
 	}
@@ -117,25 +117,25 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 	// this method (after the typed error check on retry.Do) — SAFE because
 	// the staged source file is consumed by the cut within Step 4 and is
 	// unused by Steps 5a-10 which only touch the cut clip via localPath.
-	if u.deps.Stager != nil && cmd.VideoURL != "" {
-		staged, stageErr := u.deps.Stager.StageSource(ctx, assets.SourceRef{
+	if u.media.Stager != nil && cmd.VideoURL != "" {
+		staged, stageErr := u.media.Stager.StageSource(ctx, assets.SourceRef{
 			URL: cmd.VideoURL,
 		})
 		if stageErr != nil {
-			u.deps.Log.Warn("shared SourceStager pre-stage failed (continuing with legacy per-segment yt-dlp)",
+			u.core.Log.Warn("shared SourceStager pre-stage failed (continuing with legacy per-segment yt-dlp)",
 				zap.String("clip_id", clipID),
 				zap.String("video_url", cmd.VideoURL),
 				zap.Error(stageErr))
 		} else {
 			cutReq.PreDownloadedPath = staged.LocalPath
-			u.deps.Log.Info("shared SourceStager pre-staged full video for -c copy slicing",
+			u.core.Log.Info("shared SourceStager pre-staged full video for -c copy slicing",
 				zap.String("clip_id", clipID),
 				zap.String("video_url", cmd.VideoURL),
 				zap.String("local_path", staged.LocalPath),
 				zap.Int64("bytes", staged.Bytes))
 			defer func(staged *assets.StagedAsset) {
-				if cleanupErr := u.deps.Stager.Cleanup(ctx, staged); cleanupErr != nil {
-					u.deps.Log.Warn("shared SourceStager cleanup failed (best-effort)",
+				if cleanupErr := u.media.Stager.Cleanup(ctx, staged); cleanupErr != nil {
+					u.core.Log.Warn("shared SourceStager cleanup failed (best-effort)",
 						zap.String("local_path", staged.LocalPath),
 						zap.Error(cleanupErr))
 				}
@@ -152,15 +152,15 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 		// NO-FAKE-AVAILABILITY: cleanup is sanitized, not silent).
 		if rmStale := filepath.Join(cmd.OutDir, out.Item.Filename); rmStale != "" {
 			if rmErr := os.Remove(rmStale); rmErr != nil && !os.IsNotExist(rmErr) {
-				if u.deps.Log != nil {
-					u.deps.Log.Debug("retry pre-cleanup failed (best-effort, proceeding)",
+				if u.core.Log != nil {
+					u.core.Log.Debug("retry pre-cleanup failed (best-effort, proceeding)",
 						zap.String("path", rmStale),
 						zap.Error(rmErr))
 				}
 			}
 		}
 		var dlErr error
-		dlResult, dlErr = u.deps.VideoPipeline.DownloadAndCutYouTubeVideo(ctx, cutReq)
+		dlResult, dlErr = u.core.VideoPipeline.DownloadAndCutYouTubeVideo(ctx, cutReq)
 		return dlErr
 	}, retry.RetryOptions{
 		MaxAttempts:    3,
@@ -195,9 +195,9 @@ func (u *ProcessYouTubeSegmentUseCase) step3to5_CutRetryHash(
 			statErr)
 		return "", "", u.fail(out, typed)
 	}
-	if u.deps.Hash != nil {
+	if u.core.Hash != nil {
 		var hashErr error
-		fileHash, hashErr = u.deps.Hash.MD5File(localPath)
+		fileHash, hashErr = u.core.Hash.MD5File(localPath)
 		if hashErr != nil || fileHash == "" {
 			typed := NewExtractionError(FailureCodeHashFailed, false,
 				fmt.Sprintf("hash.MD5File failed for %q (err=%v)", localPath, hashErr),

@@ -66,6 +66,9 @@ func minimalConfig(dataDir string) *config.Config {
 		},
 		Paths:   config.PathsConfig{},
 		Storage: config.StorageConfig{DataDir: dataDir},
+		Media: config.MediaConfig{
+			Multilingual: config.MultilingualConfig{SourceLanguage: "en"},
+		},
 		Features: config.FeaturesConfig{
 			DriveEnabled:   false,
 			ArtlistEnabled: false,
@@ -110,6 +113,9 @@ var frozenZeroSpawnBuilders = []string{
 	"BuildDomainBundle",
 	"BuildJobsBundle",
 	"BuildOutboxBundle",
+	"BuildArtifactFinalizeBundle",
+	"BuildStagingBundle",
+	"BuildTextTrackBundle",
 	"BuildSyncBundle",
 	"BuildMaintBundle",
 	"BuildUtilityBundle",
@@ -199,15 +205,15 @@ func compositionBundleSourceFiles(t *testing.T) []string {
 // lockstep with the table below if a future PR adds new Qdrant ops
 // that legitimately cannot share the canonical runtime.
 const (
-	frozenQdrantClientSites          = 1
+	frozenQdrantClientSites          = 0
 	frozenQdrantDefaultV3SchemaSites = 1
 	frozenQdrantNewRuntimeSites      = 1
 )
 
-// TestComposition_FrozenClientConstructionSites: exactly ONE
-// qdrant.NewClient(...) call in internal/app/*.go (test files excluded).
-// Pre-PR4: two sites (buildQdrantDeps + BuildProcessBundle). After PR 4
-// the QdrantRuntime facade owns the single site.
+// TestComposition_FrozenClientConstructionSites: no qdrant.NewClient(...)
+// call in internal/app/*.go (test files excluded). The transport-layer
+// client now lives outside the composition package, so this guard keeps
+// the app layer from reintroducing its own construction site.
 func TestComposition_FrozenClientConstructionSites(t *testing.T) {
 	chdirToProjectRoot(t)
 	files := compositionBundleSourceFiles(t)
@@ -359,8 +365,8 @@ func TestComposition_FrozenQdrantIndexDocumentCanonicalTypes(t *testing.T) {
 		emitterCount)
 
 	// The forbidden-fields SSOT slice must contain EXACTLY the SSOT
-	// markers (3 entries today: Status, DriveLink, LocalPath).
-	for _, forbidden := range []string{"\"Status\"", "\"DriveLink\"", "\"LocalPath\""} {
+	// markers (2 entries today: Status, LocalPath).
+	for _, forbidden := range []string{"\"Status\"", "\"LocalPath\""} {
 		n := strings.Count(body, forbidden)
 		require.Equalf(t, 1, n,
 			"PR 6 #1: forbidden field %q expected exactly once in ForbiddenIndexDocumentFields SSOT; found %d", forbidden, n)

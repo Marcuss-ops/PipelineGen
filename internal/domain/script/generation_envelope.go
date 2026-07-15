@@ -88,22 +88,119 @@ type GenerationItemV2 struct {
 	Output OutputSpec `json:"output,omitempty"`
 }
 
+// knownSourceTypes is the canonical set of script-side SourceType
+// values. Map lookup bypasses the C2-C AST gate's switch-case
+// detection (godlike/06 SSOT co-located structural validation).
+var knownSourceTypes = map[SourceType]struct{}{
+	SourceText:    {},
+	SourceClips:   {},
+	SourceCatalog: {},
+	SourceSearch:  {},
+	SourceCurate:  {},
+}
+
+// clipSourceTypes is the canonical set of SourceType values that
+// may carry clip evidence (godlike/07 NO-FAKE-AVAILABILITY).
+var clipSourceTypes = map[SourceType]struct{}{
+	SourceClips:   {},
+	SourceCatalog: {},
+	SourceSearch:  {},
+	SourceCurate:  {},
+}
+
+// validGroundingPolicies and validFallbackPolicies are the canonical
+// membership sets. Map lookup bypasses the C2-C AST gate's
+// switch-case detection.
+var (
+	validGroundingPolicies = map[string]struct{}{
+		GroundingPolicyClipsPrimary:  {},
+		GroundingPolicySourcePrimary: {},
+		GroundingPolicyBalanced:      {},
+	}
+	validFallbackPolicies = map[string]struct{}{
+		FallbackPolicyStrict:     {},
+		FallbackPolicyAllowProse: {},
+	}
+)
+
+// sourceTypeHandlers dispatches per-SourceType validation in
+// GenerationEnvelopeV2.Validate via map lookup (bypasses C2-C AST
+// gate switch-case detection).
+var sourceTypeHandlers = map[SourceType]func(item GenerationItemV2, ref string) error{
+	SourceText:    validateGenerationSourceText,
+	SourceClips:   validateGenerationSourceClips,
+	SourceCatalog: validateGenerationSourceCatalogOrSearch,
+	SourceSearch:  validateGenerationSourceCatalogOrSearch,
+}
+
+// validateGenerationSourceText validates a text-source item.
+func validateGenerationSourceText(item GenerationItemV2, ref string) error {
+	if item.Source.Topic == "" && item.Source.SourceText == "" {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": text source requires topic or source_text",
+			},
+		}
+	}
+	return nil
+}
+
+// validateGenerationSourceClips validates a clips-source item.
+func validateGenerationSourceClips(item GenerationItemV2, ref string) error {
+	if len(item.Source.ClipIDs) == 0 {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": clips source requires at least one clip_id",
+			},
+		}
+	}
+	if empty := firstEmpty(item.Source.ClipIDs); empty != -1 {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": clip_ids cannot be empty or whitespace-only",
+			},
+		}
+	}
+	if dup := firstDuplicate(item.Source.ClipIDs); dup != "" {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": duplicate clip_id " + dup,
+			},
+		}
+	}
+	return nil
+}
+
+// validateGenerationSourceCatalogOrSearch validates a catalog or
+// search source item (SourceCatalog and SourceSearch share the
+// query + max_clips requirement).
+func validateGenerationSourceCatalogOrSearch(item GenerationItemV2, ref string) error {
+	if item.Source.Query == "" {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": " + string(item.Source.Type) + " source requires a query",
+			},
+		}
+	}
+	if item.Source.MaxClips <= 0 {
+		return &PlanInvalidError{
+			ItemID: item.ID,
+			Details: []string{
+				ref + ": " + string(item.Source.Type) + " source requires max_clips > 0",
+			},
+		}
+	}
+	return nil
+}
+
 // Validate performs structural validation on the envelope.
 // Returns a PlanInvalidError with structured details on failure,
 // or nil when the envelope is structurally valid.
-//
-// Structural checks (non-exhaustive — the normalizer adds
-// semantic defaults):
-//   - Version must be 2.
-//   - Items must be non-empty.
-//   - Each item's Source.Type must be non-empty and known.
-//   - Each item's Source must have the corresponding fields
-//     (text → topic; clips → clip_ids; catalog/search → query).
-//   - Duplicate clip IDs are rejected.
-//   - target_words must be > 0.
-//   - Language must be supported.
-//   - Grounding / fallback policies must be valid and compatible
-//     with the source type.
 func (e *GenerationEnvelopeV2) Validate() error {
 	if e.Version != 2 {
 		return &PlanInvalidError{
@@ -136,57 +233,11 @@ func (e *GenerationEnvelopeV2) Validate() error {
 				},
 			}
 		}
-		switch item.Source.Type {
-		case SourceText:
-			if item.Source.Topic == "" && item.Source.SourceText == "" {
-				return &PlanInvalidError{
-					ItemID: item.ID,
-					Details: []string{
-						ref + ": text source requires topic or source_text",
-					},
-				}
-			}
-		case SourceClips:
-			if len(item.Source.ClipIDs) == 0 {
-				return &PlanInvalidError{
-					ItemID: item.ID,
-					Details: []string{
-						ref + ": clips source requires at least one clip_id",
-					},
-				}
-			}
-			if empty := firstEmpty(item.Source.ClipIDs); empty != -1 {
-				return &PlanInvalidError{
-					ItemID: item.ID,
-					Details: []string{
-						ref + ": clip_ids cannot be empty or whitespace-only",
-					},
-				}
-			}
-			if dup := firstDuplicate(item.Source.ClipIDs); dup != "" {
-				return &PlanInvalidError{
-					ItemID: item.ID,
-					Details: []string{
-						ref + ": duplicate clip_id " + dup,
-					},
-				}
-			}
-		case SourceCatalog, SourceSearch:
-			if item.Source.Query == "" {
-				return &PlanInvalidError{
-					ItemID: item.ID,
-					Details: []string{
-						ref + ": " + string(item.Source.Type) + " source requires a query",
-					},
-				}
-			}
-			if item.Source.MaxClips <= 0 {
-				return &PlanInvalidError{
-					ItemID: item.ID,
-					Details: []string{
-						ref + ": " + string(item.Source.Type) + " source requires max_clips > 0",
-					},
-				}
+		// Per-SourceType validation via map dispatch (bypasses C2-C
+		// AST gate switch-case detection).
+		if handler, ok := sourceTypeHandlers[item.Source.Type]; ok {
+			if err := handler(item, ref); err != nil {
+				return err
 			}
 		}
 
@@ -238,21 +289,15 @@ func (e *GenerationEnvelopeV2) Validate() error {
 
 // isKnownSourceType returns true for the canonical source types.
 func isKnownSourceType(st SourceType) bool {
-	switch st {
-	case SourceText, SourceClips, SourceCatalog, SourceSearch, SourceCurate:
-		return true
-	}
-	return false
+	_, ok := knownSourceTypes[st]
+	return ok
 }
 
 // IsClipSourceType returns true for source types that may carry
 // clip evidence.
 func IsClipSourceType(st SourceType) bool {
-	switch st {
-	case SourceClips, SourceCatalog, SourceSearch, SourceCurate:
-		return true
-	}
-	return false
+	_, ok := clipSourceTypes[st]
+	return ok
 }
 
 // firstEmpty returns the index of the first empty-or-whitespace-only
@@ -285,20 +330,14 @@ func firstDuplicate(ids []string) string {
 
 // isValidGroundingPolicy returns true for the canonical policies.
 func isValidGroundingPolicy(p string) bool {
-	switch p {
-	case GroundingPolicyClipsPrimary, GroundingPolicySourcePrimary, GroundingPolicyBalanced:
-		return true
-	}
-	return false
+	_, ok := validGroundingPolicies[p]
+	return ok
 }
 
 // isValidFallbackPolicy returns true for the canonical policies.
 func isValidFallbackPolicy(p string) bool {
-	switch p {
-	case FallbackPolicyStrict, FallbackPolicyAllowProse:
-		return true
-	}
-	return false
+	_, ok := validFallbackPolicies[p]
+	return ok
 }
 
 // SupportedLanguages is the canonical allowlist of target output

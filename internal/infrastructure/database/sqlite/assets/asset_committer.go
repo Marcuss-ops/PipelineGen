@@ -13,11 +13,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 )
 
 // SQLiteAssetCommitter is the canonical adapter for
@@ -233,18 +235,55 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 	result.AssetRowsAffected = rowsAffected
 
 	if req.EmitIndexEvent {
-		eventKey, payload, err := outboxevents.BuildReindexEnvelopeV1(req.AssetID, clipindexer.CollectionVersion(), sourceVersion, requestedAt)
-		if err != nil {
-			return persistence.CommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)
+		var (
+			eventKey string
+			payload  []byte
+			err      error
+		)
+		if req.Source == "artlist" {
+			eventKey, err = idempotency.OutboxKey(
+				outboxevents.EventAssetIndexRequested,
+				req.Source,
+				req.AssetID,
+				sourceVersion,
+			)
+			if err != nil {
+				return persistence.CommitResult{}, fmt.Errorf("asset committer: build outbox event_key: %w", err)
+			}
+			result.OutboxEventKey = eventKey
+			payloadMap := map[string]any{
+				"schema_version":       "asset.index.requested.v1",
+				"event_id":             uuid.NewString(),
+				"asset_id":             req.AssetID,
+				"operation":            "UPSERT",
+				"source_version":       sourceVersion,
+				"target_index_version": clipindexer.CollectionVersion(),
+				"requested_vectors":    []string{"text", "transcript"},
+				"requested_at":         requestedAt.UTC().Format(time.RFC3339Nano),
+				"idempotency_key":      eventKey,
+				"source":               req.Source,
+				"media_type":           req.MediaType,
+			}
+			payload, err = json.Marshal(payloadMap)
+			if err != nil {
+				return persistence.CommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)
+			}
+		} else {
+			payloadStr := ""
+			eventKey, payloadStr, err = outboxevents.BuildReindexEnvelopeV1(req.AssetID, clipindexer.CollectionVersion(), sourceVersion, requestedAt)
+			if err != nil {
+				return persistence.CommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)
+			}
+			result.OutboxEventKey = eventKey
+			payload = []byte(payloadStr)
 		}
-		result.OutboxEventKey = eventKey
 
 		enqResult, err := c.box.Enqueue(
 			ctx, sqlTx,
 			outboxevents.EventAssetIndexRequested,
 			req.AssetID,
 			"media_asset",
-			payload,
+			string(payload),
 			eventKey,
 		)
 		if err != nil {

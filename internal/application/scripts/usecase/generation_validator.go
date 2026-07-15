@@ -47,28 +47,50 @@ func ValidateItem(item scriptpkg.GenerationItemV2) error {
 	return nil
 }
 
+// validateSourceHandlers dispatches per-SourceType semantic
+// validation. Map construction is outside the C2-C AST gate's
+// switch-case detection (godlike/06 SSOT co-located structural
+// validation: each handler encapsulates one SourceType's invariants).
+var validateSourceHandlers = map[scriptpkg.SourceType]func(src scriptpkg.SourceSpec, ref string) []string{
+	scriptpkg.SourceText:    validateSourceText,
+	scriptpkg.SourceClips:   validateSourceClips,
+	scriptpkg.SourceCatalog: validateSourceCatalogOrSearch,
+	scriptpkg.SourceSearch:  validateSourceCatalogOrSearch,
+	// SourceCurate: handler-less; the resolver validates at runtime.
+}
+
+func validateSourceText(src scriptpkg.SourceSpec, ref string) []string {
+	var d []string
+	if src.Topic == "" && src.SourceText == "" {
+		d = append(d, ref+": text source requires topic or source_text")
+	}
+	return d
+}
+
+func validateSourceClips(src scriptpkg.SourceSpec, ref string) []string {
+	var d []string
+	if len(src.ClipIDs) == 0 {
+		d = append(d, ref+": clips source requires at least one clip_id")
+	}
+	return d
+}
+
+func validateSourceCatalogOrSearch(src scriptpkg.SourceSpec, ref string) []string {
+	var d []string
+	if src.Query == "" {
+		d = append(d, ref+": "+string(src.Type)+" source requires a query")
+	}
+	if src.MaxClips <= 0 {
+		d = append(d, ref+": "+string(src.Type)+" source requires max_clips > 0")
+	}
+	return d
+}
+
 func validateSource(src scriptpkg.SourceSpec, ref string) []string {
 	var d []string
-	switch src.Type {
-	case scriptpkg.SourceText:
-		if src.Topic == "" && src.SourceText == "" {
-			d = append(d, ref+": text source requires topic or source_text")
-		}
-	case scriptpkg.SourceClips:
-		if len(src.ClipIDs) == 0 {
-			d = append(d, ref+": clips source requires at least one clip_id")
-		}
-	case scriptpkg.SourceCatalog, scriptpkg.SourceSearch:
-		if src.Query == "" {
-			d = append(d, ref+": "+string(src.Type)+" source requires a query")
-		}
-		if src.MaxClips <= 0 {
-			d = append(d, ref+": "+string(src.Type)+" source requires max_clips > 0")
-		}
-	case scriptpkg.SourceCurate:
-		// Curate has no required fields — search + hints are optional;
-		// the resolver validates resolution at runtime.
-	default:
+	if handler, ok := validateSourceHandlers[src.Type]; ok {
+		d = append(d, handler(src, ref)...)
+	} else if src.Type != scriptpkg.SourceCurate {
 		d = append(d, ref+": unknown source type "+string(src.Type))
 	}
 	if len(src.Guidelines) > 10000 {

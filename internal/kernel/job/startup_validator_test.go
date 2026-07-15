@@ -6,6 +6,7 @@
 package job
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -17,6 +18,20 @@ import (
 // both codecs, declares RequiredCapabilities, and has RequireManifest=true
 // so the manifest-required-without-result-codec check is exercised
 // when ResultCodec is nil.
+// dummyHandler is a no-op JobHandlerFunc used by tests that need a
+// bound handler without exercising its body.
+var dummyHandler JobHandlerFunc = func(_ context.Context, _ *Job, _ any) (any, error) {
+	return nil, nil
+}
+
+// canonical workflow references used by tests.
+const (
+	testTypeScriptGenerate   = "script.generate"
+	testTypeImagesGenerate   = "images.generate"
+	testTypeDocumentGenerate = "document.generate"
+	testTypeAssetsResolve    = "assets.resolve"
+)
+
 func validFullyWiredDef(t *testing.T, jobType string) JobDefinition {
 	t.Helper()
 	return JobDefinition{
@@ -76,7 +91,10 @@ func TestStartupValidator_AllPass(t *testing.T) {
 
 	// Workflow = the canonical 4 family refs.
 	wf := []string{
-		TypeScriptGenerate, TypeImagesGenerate, TypeDocumentGenerate, TypeAssetsResolve,
+		testTypeScriptGenerate,
+		testTypeImagesGenerate,
+		testTypeDocumentGenerate,
+		testTypeAssetsResolve,
 	}
 	err := v.ValidateRuntimeGraph(StartupValidationInput{
 		Registry: compiled,
@@ -102,7 +120,7 @@ func TestStartupValidator_WorkflowMissing(t *testing.T) {
 	v := DefaultStartupValidator{}
 
 	// Inject a workflow reference that resolves nothing.
-	wf := []string{TypeScriptGenerate, "workflow.does.not.exist"}
+	wf := []string{testTypeScriptGenerate, "workflow.does.not.exist"}
 	err := v.ValidateRuntimeGraph(StartupValidationInput{Registry: compiled, Workflow: wf})
 	if err == nil {
 		t.Fatal("ValidateRuntimeGraph should fail when workflow references unknown")

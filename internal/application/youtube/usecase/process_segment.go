@@ -24,6 +24,14 @@
 //   - process_segment_step6to9.go   → Steps 6-9 subtitles + Drive upload + writer commit
 //   - process_segment_step10.go     → Step 10  metadata enrichment
 //
+// Phase 2 Gruppo C-2 (PR-GRUPOC-2, July 2026): the use case struct
+// holds 4 capability-area sub-bundles (Core/Media/Metadata/Observability)
+// directly as 4 fields. The pre-PR `deps ProcessSegmentDeps` field
+// is RETIRED — per the user's explicit VINCOLO ASSOLUTO against
+// struct-bag aliasing. The 17 fields are now in 4 sub-bundles
+// (process_segment_deps.go), each <=7 fields, to clear
+// percheck_struct_deps <=8.
+//
 // The public Execute(ctx, cmd) (ProcessSegmentResult, error) signature is
 // byte-identical to pre-split (godlike/07 minimum-blast-radius). Lookup
 // path *UseCase.{Name,Policy,Execute} unchanged. Helpers
@@ -36,8 +44,6 @@ import (
 	"context"
 	"strings"
 
-	"go.uber.org/zap"
-
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 )
@@ -45,24 +51,20 @@ import (
 // ProcessYouTubeSegmentUseCase is the canonical per-segment pipeline.
 //
 // godlike/06 SSOT for the accompanying types:
-//   - ProcessSegmentPolicyVersion const → process_segment_deps.go (canonical SSOT)
-//   - ProcessSegmentDeps struct         → process_segment_deps.go (canonical bundle)
+//   - ProcessSegmentPolicyVersion const                       → process_segment_deps.go (canonical SSOT)
+//   - 4 sub-bundle types (Core/Media/Metadata/Observability)   → process_segment_deps.go (canonical bundles)
+//   - NewProcessYouTubeSegmentFromSubBundles                   → process_segment_deps.go (canonical ctor)
+//   - ValidateProcessSegmentSubBundles                        → process_segment_deps.go (canonical 5-port panic-check)
+//
+// PR-GRUPOC-2 (July 2026): the struct holds 4 sub-bundle fields
+// directly (NOT a `deps ProcessSegmentDeps` wrapper) per the user's
+// VINCOLO ASSOLUTO against struct-bag aliasing. Each sub-bundle
+// is <=7 fields (percheck_struct_deps <=8 enforcement).
 type ProcessYouTubeSegmentUseCase struct {
-	deps ProcessSegmentDeps
-}
-
-// NewProcessYouTubeSegmentUseCase constructs the canonical use case.
-// The 5 REQUIRED-port panic-on-nil checks now live in
-// ProcessSegmentDeps.Validate() (declared at process_segment_deps.go);
-// this ctor delegates to Validate() then handles the optional
-// Logger nil-fallback. Subtitles/Transcriber/DriveFolderMgr remain
-// runtime-gated (no panic) per the canonical optional-port pattern.
-func NewProcessYouTubeSegmentUseCase(d ProcessSegmentDeps) *ProcessYouTubeSegmentUseCase {
-	d.Validate()
-	if d.Log == nil {
-		d.Log = zap.NewNop()
-	}
-	return &ProcessYouTubeSegmentUseCase{deps: d}
+	core          ProcessSegmentCoreDeps
+	media         ProcessSegmentMediaDeps
+	metadata      ProcessSegmentMetadataDeps
+	observability ProcessSegmentObservabilityDeps
 }
 
 // Execute runs the canonical 9-step pipeline for one segment. The body

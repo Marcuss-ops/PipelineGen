@@ -92,7 +92,34 @@ func youTubeQdrantDB(t *testing.T) *sql.DB {
 		index_state TEXT NOT NULL DEFAULT 'DISCOVERED',
 		index_state_updated_at TEXT NOT NULL DEFAULT '',
 		search_text TEXT NOT NULL DEFAULT '',
-		created_at TEXT, updated_at TEXT
+		created_at TEXT, updated_at TEXT,
+		thumbnail_url TEXT NOT NULL DEFAULT '',
+		url TEXT NOT NULL DEFAULT '',
+		asset_version TEXT NOT NULL DEFAULT '',
+		asset_location TEXT NOT NULL DEFAULT '',
+		rendition TEXT NOT NULL DEFAULT '',
+		source_provider TEXT NOT NULL DEFAULT '',
+		source_video_id TEXT NOT NULL DEFAULT '',
+		source_url TEXT NOT NULL DEFAULT '',
+		start_ms INTEGER NOT NULL DEFAULT 0,
+		end_ms INTEGER NOT NULL DEFAULT 0,
+		title TEXT NOT NULL DEFAULT ''
+	);`
+	schema += `
+	CREATE TABLE IF NOT EXISTS asset_locations (
+		asset_id TEXT NOT NULL,
+		location_kind TEXT NOT NULL DEFAULT '',
+		uri TEXT NOT NULL DEFAULT '',
+		external_id TEXT NOT NULL DEFAULT '',
+		web_view_link TEXT NOT NULL DEFAULT '',
+		download_url TEXT NOT NULL DEFAULT '',
+		mime_type TEXT NOT NULL DEFAULT '',
+		file_size_bytes INTEGER NOT NULL DEFAULT 0,
+		file_hash TEXT NOT NULL DEFAULT '',
+		is_primary INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (asset_id, location_kind)
 	);`
 	schema += clipAtomicWriterOutboxSchema
 

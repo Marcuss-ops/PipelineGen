@@ -1,14 +1,12 @@
 error	percheck_api_module_deps_max_8	2
 error	percheck_asset_committer_event_ssot	8
-error	percheck_drive_access_ssot	13
 error	percheck_monitor_infra_import	3
-error	percheck_root_override_ban	2
 error	percheck_search_aggregator_singleton	1
 error	percheck_sourcestager_transformer	7
-info	kernel_split_hint	1
 warn	constructor_deps	9
+warn	percheck_api_infrastructure_imports_allowlist_stale	1
 warn	percheck_input_immutability	129
 warn	percheck_no_domain_job_compatibility_aliases	172
 warn	pkg_size	9
-warn	struct_deps	14
-warn	unknown_internal_root	4
+warn	struct_deps	13
+warn	unknown_internal_root	2

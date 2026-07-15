@@ -48,6 +48,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
@@ -96,6 +97,11 @@ type DriveFolderManagerAdapter struct {
 	// pair. Key = parentID + ":" + canonicalName. Mirrors Uploader's
 	// folderOps field (uploader.go:58).
 	folderOps singleflight.Group
+
+	// folderCache stores resolved folder IDs for completed path
+	// segments so repeated EnsureFolder calls can return immediately
+	// without re-running lookup.
+	folderCache sync.Map
 }
 
 // NewDriveFolderManagerAdapter constructs the adapter from a configured
@@ -159,13 +165,29 @@ func (a *DriveFolderManagerAdapter) EnsureFolder(ctx context.Context, parent str
 		// Mirrors Uploader.GetOrCreateFolder's folderOps pattern
 		// (uploader_ops.go:87).
 		key := currentParent + ":" + seg
+		if cached, ok := a.folderCache.Load(key); ok {
+			folderID := cached.(string)
+			leafID = folderID
+			currentParent = folderID
+			continue
+		}
 		result, sfErr, _ := a.folderOps.Do(key, func() (any, error) {
-			return a.findOrCreateFolder(ctx, currentParent, seg)
+			if cached, ok := a.folderCache.Load(key); ok {
+				return cached.(string), nil
+			}
+			folderID, err := a.findOrCreateFolder(ctx, currentParent, seg)
+			if err == nil && folderID != "" {
+				a.folderCache.Store(key, folderID)
+			}
+			return folderID, err
 		})
 		if sfErr != nil {
 			return "", fmt.Errorf("ensureFolder: segment %q: %w", seg, sfErr)
 		}
 		folderID := result.(string)
+		if folderID != "" {
+			a.folderCache.Store(key, folderID)
+		}
 		leafID = folderID
 		currentParent = folderID
 	}

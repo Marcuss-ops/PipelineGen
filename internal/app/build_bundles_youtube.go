@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
 )
 
 // wireYoutubeCatalogJobBindings registers catalog sync + youtube clip extract
@@ -28,7 +28,7 @@ func wireYoutubeCatalogJobBindings(sync *SyncBundle, domains *DomainBundle, jobs
 	// PR-GEMMA-EXTRACT-IMPORTANT Step 7: register the LLM-driven extractor.
 	if domains.ExtractImportantClipsJobHandler != nil && jobs.Service != nil {
 		if err := domains.ExtractImportantClipsJobHandler.Register(jobs.Service); err != nil {
-			return fmt.Errorf("%s: %w", job.TypeYouTubeClipExtractImportant, err)
+			return fmt.Errorf("%s: %w", youtube.TypeClipExtractImportant, err)
 		}
 	}
 	return nil
@@ -71,7 +71,7 @@ func appendYoutubeCatalogCriticalValidators(sync *SyncBundle, domains *DomainBun
 		h := domains.ExtractImportantClipsJobHandler
 		*validators = append(*validators,
 			CriticalHandler{
-				Name: job.TypeYouTubeClipExtractImportant,
+				Name: youtube.TypeClipExtractImportant,
 				Bind: func(svc *appjobs.Service) error {
 					return h.Register(svc)
 				},

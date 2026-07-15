@@ -56,6 +56,13 @@ func TestExplainQueryPlan_ReturnsRows(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
+	_, err = pool.Writer.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS jobs (
+			id TEXT PRIMARY KEY
+		)
+	`)
+	require.NoError(t, err)
+
 	plan, err := ExplainQueryPlan(ctx, pool.Reader, "SELECT id FROM jobs WHERE id = 1")
 	require.NoError(t, err)
 	assert.NotEmpty(t, plan, "EXPLAIN QUERY PLAN MUST return at least one plan row for a SELECT")

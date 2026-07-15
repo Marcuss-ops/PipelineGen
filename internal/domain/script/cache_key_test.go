@@ -123,11 +123,11 @@ func TestBuildCacheKey_DifferentTargetWordsChanges(t *testing.T) {
 	assert.NotEqual(t, script.BuildCacheKey(&p1), script.BuildCacheKey(&p2))
 }
 
-func TestBuildCacheKey_SegmentFieldsExcluded(t *testing.T) {
+func TestBuildCacheKey_SegmentSizingFieldsExcluded(t *testing.T) {
 	t.Parallel()
-	// The canonical GenerationFingerprintInput does not include
-	// segment sizing fields; they affect scene planning but are not
-	// part of the text-identity fingerprint.
+	// Segment sizing fields NumClips and SegmentWords must not
+	// change the text-identity fingerprint. SegmentTopics is
+	// intentionally not part of this exclusion any more.
 	p1 := basePlan()
 	p2 := basePlan()
 	p1.NumClips = 2
@@ -135,9 +135,9 @@ func TestBuildCacheKey_SegmentFieldsExcluded(t *testing.T) {
 	p1.SegmentTopics = []string{"A", "B"}
 	p2.NumClips = 3
 	p2.SegmentWords = 180
-	p2.SegmentTopics = []string{"A", "C"}
+	p2.SegmentTopics = []string{"A", "B"}
 	assert.Equal(t, script.BuildCacheKey(&p1), script.BuildCacheKey(&p2),
-		"segment sizing fields must not change the canonical cache key")
+		"NumClips and SegmentWords must not change the canonical cache key")
 }
 
 // ── Excludes (control flags / postprocessors must not change key) ────

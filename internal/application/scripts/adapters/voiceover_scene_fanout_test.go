@@ -29,6 +29,7 @@ package adapters
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
@@ -39,6 +40,7 @@ import (
 // canonical voiceover.VoiceoverItemExecutor port (per voiceover/ports.go)
 // so the test exercises the real dispatch surface, not a copy.
 type fakeItemExecutor struct {
+	mu    sync.Mutex
 	calls []fakeItemCall
 }
 
@@ -57,6 +59,7 @@ func (f *fakeItemExecutor) Execute(_ context.Context, item *voiceover.GenerateVo
 			Error:  "nil GenerateVoiceoverItemCommand",
 		}, nil
 	}
+	f.mu.Lock()
 	f.calls = append(f.calls, fakeItemCall{
 		method:   "Execute",
 		text:     item.Text,
@@ -64,6 +67,7 @@ func (f *fakeItemExecutor) Execute(_ context.Context, item *voiceover.GenerateVo
 		fn:       item.Filename,
 		textHash: item.TextHash,
 	})
+	f.mu.Unlock()
 	return &voiceover.VoiceoverItemResult{
 		Status:    voiceover.StatusCompleted,
 		Language:  item.Language,

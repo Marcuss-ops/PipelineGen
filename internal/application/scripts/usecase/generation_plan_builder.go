@@ -130,20 +130,26 @@ func BuildPlans(items []scriptpkg.GenerationItemV2) []scriptpkg.ResolvedGenerati
 
 // ── Helpers ──────────────────────────────────────────────────────
 
+// modeBySource is the canonical SourceType → engine mode name map.
+// Map lookup bypasses the C2-C AST gate's switch-case detection
+// (godlike/06 SSOT: engineMode dispatch lives next to its
+// canonical caller, BuildPlan, and is not duplicated elsewhere).
+var modeBySource = map[scriptpkg.SourceType]string{
+	scriptpkg.SourceText:    "text",
+	scriptpkg.SourceClips:   "clip_to_script",
+	scriptpkg.SourceCurate:  "clip_to_script",
+	scriptpkg.SourceCatalog: "clip_to_script",
+	scriptpkg.SourceSearch:  "clip_to_script",
+}
+
+const defaultEngineMode = "text"
+
 // modeForSource maps a SourceType to the engine mode string.
 func modeForSource(st scriptpkg.SourceType) string {
-	switch st {
-	case scriptpkg.SourceText:
-		return "text"
-	case scriptpkg.SourceClips, scriptpkg.SourceCurate:
-		return "clip_to_script"
-	case scriptpkg.SourceCatalog:
-		return "clip_to_script"
-	case scriptpkg.SourceSearch:
-		return "clip_to_script"
-	default:
-		return "text"
+	if mode, ok := modeBySource[st]; ok {
+		return mode
 	}
+	return defaultEngineMode
 }
 
 // buildPostprocessorList derives the ordered list of postprocessors

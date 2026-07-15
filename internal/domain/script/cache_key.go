@@ -25,9 +25,10 @@
 //   - ExtractEntities / GenerateMetadata (the 2 surviving ACTIVE postprocessors)
 //   - OutputFmt, Languages (postprocessing-only)
 //   - ForceRefresh (cache-bypass control, not identity)
-//   - Segment sizing (NumClips, SegmentWords, SegmentTopics) —
-//     these affect scene planning but are not part of the canonical
-//     text-identity fingerprint.
+//   - Segment sizing (NumClips, SegmentWords) — these affect scene
+//     planning but are not part of the canonical text-identity
+//     fingerprint. SegmentTopics is included via the canonical
+//     fingerprint input because it changes generated script shape.
 //
 // The PR 2 acceptance criteria:
 //   - same request -> same CacheKey (deterministic)

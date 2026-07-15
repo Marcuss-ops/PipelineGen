@@ -84,19 +84,27 @@ func (r *fase5RecordingWriter) CommitClipTextAndIndexEvent(_ context.Context, cm
 func TestStep6to9_RequireTranscriptReady_FlowsToWriterCommand(t *testing.T) {
 	t.Run("TrueFlag_PropagatesToWriterCommand", func(t *testing.T) {
 		writer := &fase5RecordingWriter{}
-		u := NewProcessYouTubeSegmentUseCase(ProcessSegmentDeps{
-			Cache:                  testStubClipCache{},
-			VideoPipeline:          fase5StubVideoPipeline{}, // required by Validate()
-			Hash:                   testStubHash{},
-			Writer:                 testStubClipAtomicWriter{},
-			LocalizedWriter:        writer,
-			SegmentsSvc:            NewSegmentsService(),
-			SegmentPolicy:          youtubetypes.DefaultSegmentPolicy(),
-			TextTrackResolver:      nil,  // nil → Step 6 skipped
-			DriveFolderMgr:         nil,  // nil → Step 8 skipped
-			RequireTranscriptReady: true, // <-- the field under test
-			Log:                    zap.NewNop(),
-		})
+		u := NewProcessYouTubeSegmentFromSubBundles(
+			ProcessSegmentCoreDeps{
+				Cache:         testStubClipCache{},
+				VideoPipeline: fase5StubVideoPipeline{}, // required by Validate()
+				Hash:          testStubHash{},
+				Writer:        testStubClipAtomicWriter{},
+				SegmentsSvc:   NewSegmentsService(),
+				SegmentPolicy: youtubetypes.DefaultSegmentPolicy(),
+				Log:           zap.NewNop(),
+			},
+			ProcessSegmentMediaDeps{
+				// nil → Step 6 skipped
+				// nil → Step 8 skipped
+			},
+			ProcessSegmentMetadataDeps{
+				LocalizedWriter: writer,
+			},
+			ProcessSegmentObservabilityDeps{
+				RequireTranscriptReady: true, // <-- the field under test
+			},
+		)
 
 		cmd := youtubetypes.ProcessSegmentCommand{
 			VideoID:         "vid-fase5-test",
@@ -150,19 +158,24 @@ func TestStep6to9_RequireTranscriptReady_FlowsToWriterCommand(t *testing.T) {
 
 	t.Run("FalseFlag_PropagatesToWriterCommand", func(t *testing.T) {
 		writer := &fase5RecordingWriter{}
-		u := NewProcessYouTubeSegmentUseCase(ProcessSegmentDeps{
-			Cache:                  testStubClipCache{},
-			VideoPipeline:          fase5StubVideoPipeline{},
-			Hash:                   testStubHash{},
-			Writer:                 testStubClipAtomicWriter{},
-			LocalizedWriter:        writer,
-			SegmentsSvc:            NewSegmentsService(),
-			SegmentPolicy:          youtubetypes.DefaultSegmentPolicy(),
-			TextTrackResolver:      nil,
-			DriveFolderMgr:         nil,
-			RequireTranscriptReady: false, // <-- the canonical post-Fase-1.c default
-			Log:                    zap.NewNop(),
-		})
+		u := NewProcessYouTubeSegmentFromSubBundles(
+			ProcessSegmentCoreDeps{
+				Cache:         testStubClipCache{},
+				VideoPipeline: fase5StubVideoPipeline{},
+				Hash:          testStubHash{},
+				Writer:        testStubClipAtomicWriter{},
+				SegmentsSvc:   NewSegmentsService(),
+				SegmentPolicy: youtubetypes.DefaultSegmentPolicy(),
+				Log:           zap.NewNop(),
+			},
+			ProcessSegmentMediaDeps{},
+			ProcessSegmentMetadataDeps{
+				LocalizedWriter: writer,
+			},
+			ProcessSegmentObservabilityDeps{
+				RequireTranscriptReady: false, // <-- the canonical post-Fase-1.c default
+			},
+		)
 
 		cmd := youtubetypes.ProcessSegmentCommand{
 			VideoID:  "vid-fase5-false",
