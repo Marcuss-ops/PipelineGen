@@ -1,3 +1,65 @@
+
+# Check 30 (no legacy scene-splitters): the pre-V1 paragraph-
+# splitting helpers were removed in PR 9; scenes come from the
+# canonical typed MSOV1 output directly.
+echo "=== Check 30: no legacy scene-splitters (PR 9) ==="
+if rg -q 'splitScriptIntoSegments\|sceneCountFromPlan' internal/application/scripts/; then
+    echo "FAIL: legacy scene-splitter helper(s) detected in internal/application/scripts/"
+    echo "Fix: read scenes from engineResult.Output.SpecScene.Scenes"
+    echo "     (validated by PR 6 ValidateAndEnrichSpecScene)."
+    exit 1
+fi
+echo "OK: no splitScriptIntoSegments / sceneCountFromPlan"
+
+# Check 31 (no artificial empty Scene.Text): the canonical MSOV1
+# validator (PR 6) requires every scene to carry non-empty text;
+# bypassing it via raw struct literals is a regression.
+#
+# PR 9 (June 2026, gate-tightening pass): the original blanket ban
+# on `Text: ""` false-positived legitimate defensive defaults like
+# `if sceneText == "" { sceneText = fallback }`. The tightened
+# pattern restricts the match to scene-construction contexts:
+# struct literals in the postprocessor layer (the path that
+# constructs a *scriptpkg.SpecScene / SpecSceneOutput / SceneImage
+# / SceneVoiceover literal). Defensive `sceneText == ""` guards
+# remain free to use the empty string literal.
+echo "=== Check 31: no synthetic empty scene Text (PR 9 / PR 6) ==="
+literals=$(rg -n --type go \
+    -e '(scene|SpecScene|SpecSceneOutput|SceneImage|SceneVoiceover|ClipScene)\{[^}]*Text:[[:space:]]*""' \
+    --glob '!**/*_test.go' \
+    internal/application/scripts/ 2>/dev/null \
+    | awk -F: '{ rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i; if (rest ~ /^[[:space:]]*\/\//) next; print }' \
+    || true)
+if [ -n "$literals" ]; then
+    echo "FAIL: synthetic Text: \"\" detected in scene-construction context:"
+    echo "$literals"
+    echo "Fix: route scene construction through ValidateAndEnrichSpecScene"
+    echo "     (rejects empty Text per PR 6 spec)."
+    exit 1
+fi
+echo "OK: no synthetic Text:\"\" in scene-construction literals"
+
+# Check 32 (no prose OutputFmt in canonical path): post-PR-6,
+# the validator rejects OutputFmt=\"prose\" outright. Any
+# production-code reference to the value is dead code or a
+# regression; documentation comments in tests are excluded via
+# the _test.go-with-comment pattern below.
+echo "=== Check 32: no prose OutputFmt in canonical path (PR 9 / PR 6) ==="
+literals=$(rg -n --type go \
+    -e 'OutputFmt[[:space:]]*[:=][[:space:]]*"prose"' \
+    -e 'output_fmt[[:space:]]*[:=][[:space:]]*"prose"' \
+    -e "OutputFmt[[:space:]]*[:=][[:space:]]*'prose'" \
+    -e "output_fmt[[:space:]]*[:=][[:space:]]*'prose'" \
+    --glob '!**/*_test.go' \
+    internal/application/scripts internal/domain/script 2>/dev/null \
+    | awk -F: '{ rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? ":" : "") $i; if (rest ~ /^[[:space:]]*\/\//) next; print }' \
+    || true)
+if [ -n "$literals" ]; then
+    echo "FAIL: OutputFmt \"prose\" detected in production path:"
+    echo "$literals"
+    exit 1
+fi
+echo "OK: no OutputFmt \"prose\" surface in canonical path"
 # ── Check 33: forbid retention:created_at:mutable SQL tag in jobs (Wave 22 followup, June 2026) ────
 # The retention sweeper (lifecycle.go::NewRetentionSweeper) deletes aged-out
 # outbox events by `created_at`. The canonical contract: created_at is
@@ -106,4 +168,3 @@ else
         echo "OK: 0 retention:created_at:mutable hits in production jobs package (eventTimestampIsImmutable not set; gate is informational)"
     fi
 fi
-
