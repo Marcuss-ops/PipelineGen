@@ -1,4 +1,5 @@
 name: Job Kernel AST Stabilize
+# Rerun after FinalizeAttempt sentinels moved to the canonical kernel.
 
 on:
   push:
@@ -48,11 +49,9 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
           lines = Path('.github/workflows/job-kernel-ast-cutover.yml').read_text(encoding='utf-8').splitlines()
-          # Extract the sentinel promotion Python block.
           start = next(i for i,l in enumerate(lines) if l.strip() == "python3 <<'PY'") + 1
           end = next(i for i in range(start, len(lines)) if lines[i].strip() == 'PY')
           Path('/tmp/promote_errors.py').write_text('\n'.join(l[10:] if l.startswith('          ') else l for l in lines[start:end]) + '\n')
-          # Extract the Go AST rewriter.
           start = next(i for i,l in enumerate(lines) if "cat >/tmp/job_ast_cutover.go <<'GO'" in l) + 1
           end = next(i for i in range(start, len(lines)) if lines[i].strip() == 'GO')
           Path('/tmp/job_ast_cutover.go').write_text('\n'.join(l[10:] if l.startswith('          ') else l for l in lines[start:end]) + '\n')
