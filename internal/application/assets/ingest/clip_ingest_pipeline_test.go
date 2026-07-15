@@ -130,14 +130,18 @@ func newAllPassDeps() (ClipIngestPipelineDeps, *stubDownloader, *stubNormalizer,
 	sc := &stubComposer{}
 	disp := &stubDispatcher{}
 	return ClipIngestPipelineDeps{
-		Downloader:              d,
-		MediaNormalizer:         n,
-		ContentHasher:           h,
-		ArtifactStore:           st,
-		Transcriber:             tr,
-		ClipEnricher:            e,
-		TextTrackTranslator:     tt,
-		SearchTextComposer:      sc,
+		MediaProcessing: MediaProcessingDeps{
+			Downloader:      d,
+			MediaNormalizer: n,
+			ContentHasher:   h,
+			ArtifactStore:   st,
+		},
+		Enrichment: EnrichmentDeps{
+			Transcriber:         tr,
+			ClipEnricher:        e,
+			TextTrackTranslator: tt,
+			SearchTextComposer:  sc,
+		},
 		AssetMutationDispatcher: disp,
 		Log:                     zap.NewNop(),
 	}, d, n, h, st, tr, e, tt, sc, disp
@@ -185,14 +189,14 @@ func TestClipIngestPipeline_NilAnyComponent_Fails(t *testing.T) {
 		name   string
 		mutate func(*ClipIngestPipelineDeps)
 	}{
-		{"nil Downloader", func(d *ClipIngestPipelineDeps) { d.Downloader = nil }},
-		{"nil MediaNormalizer", func(d *ClipIngestPipelineDeps) { d.MediaNormalizer = nil }},
-		{"nil ContentHasher", func(d *ClipIngestPipelineDeps) { d.ContentHasher = nil }},
-		{"nil ArtifactStore", func(d *ClipIngestPipelineDeps) { d.ArtifactStore = nil }},
-		{"nil Transcriber", func(d *ClipIngestPipelineDeps) { d.Transcriber = nil }},
-		{"nil ClipEnricher", func(d *ClipIngestPipelineDeps) { d.ClipEnricher = nil }},
-		{"nil TextTrackTranslator", func(d *ClipIngestPipelineDeps) { d.TextTrackTranslator = nil }},
-		{"nil SearchTextComposer", func(d *ClipIngestPipelineDeps) { d.SearchTextComposer = nil }},
+		{"nil Downloader", func(d *ClipIngestPipelineDeps) { d.MediaProcessing.Downloader = nil }},
+		{"nil MediaNormalizer", func(d *ClipIngestPipelineDeps) { d.MediaProcessing.MediaNormalizer = nil }},
+		{"nil ContentHasher", func(d *ClipIngestPipelineDeps) { d.MediaProcessing.ContentHasher = nil }},
+		{"nil ArtifactStore", func(d *ClipIngestPipelineDeps) { d.MediaProcessing.ArtifactStore = nil }},
+		{"nil Transcriber", func(d *ClipIngestPipelineDeps) { d.Enrichment.Transcriber = nil }},
+		{"nil ClipEnricher", func(d *ClipIngestPipelineDeps) { d.Enrichment.ClipEnricher = nil }},
+		{"nil TextTrackTranslator", func(d *ClipIngestPipelineDeps) { d.Enrichment.TextTrackTranslator = nil }},
+		{"nil SearchTextComposer", func(d *ClipIngestPipelineDeps) { d.Enrichment.SearchTextComposer = nil }},
 		{"nil AssetMutationDispatcher", func(d *ClipIngestPipelineDeps) { d.AssetMutationDispatcher = nil }},
 	}
 	for _, tc := range cases {
