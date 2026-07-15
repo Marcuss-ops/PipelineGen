@@ -9,6 +9,10 @@ permissions:
   contents: write
   statuses: write
 
+concurrency:
+  group: job-kernel-semantic-stabilize
+  cancel-in-progress: false
+
 jobs:
   stabilize:
     runs-on: ubuntu-latest
@@ -45,8 +49,6 @@ jobs:
           git fetch origin main
           git reset --hard origin/main
 
-          # Reuse the canonical semantic transformer embedded in the failed
-          # one-shot verifier, avoiding a second owner for the symbol map.
           python3 <<'PY'
           from pathlib import Path
           source = Path('.github/workflows/job-kernel-semantic-cutover.yml').read_text(encoding='utf-8').splitlines()
@@ -62,8 +64,7 @@ jobs:
           mapfile -t changed_files < /tmp/job-semantic-changed.txt
           gofmt -w "${changed_files[@]}"
 
-          # The kernel sentinel move is mandatory and foundational.
-          if ! go test -run '^$' ./internal/kernel/job ./internal/domain/job >/tmp/job-semantic-foundation.log 2>&1; then
+          if ! timeout 8m go test -run '^$' ./internal/kernel/job ./internal/domain/job >/tmp/job-semantic-foundation.log 2>&1; then
             tail -n 120 /tmp/job-semantic-foundation.log
             fail "Kernel/domain job foundation failed"
           fi
@@ -83,14 +84,13 @@ jobs:
           Path('/tmp/job-semantic-failures.json').write_text('{}\n')
           PY
 
-          # Repeat until the surviving package set is closed under compilation.
           for round in 1 2 3 4; do
             failed_this_round=0
             mapfile -t dirs < <(python3 -c 'import json; print("\n".join(sorted(json.load(open("/tmp/job-semantic-packages.json")))))')
             [ "${#dirs[@]}" -gt 0 ] || break
             for dir in "${dirs[@]}"; do
               log="/tmp/job-semantic-${round}-$(echo "$dir" | tr / _).log"
-              if go test -run '^$' "./${dir}" >"$log" 2>&1; then
+              if timeout 8m go test -run '^$' "./${dir}" >"$log" 2>&1; then
                 continue
               fi
               failed_this_round=1
