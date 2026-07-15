@@ -19,7 +19,7 @@ func TestScanDomainJobImportBaselineRejectsGrowth(t *testing.T) {
 	))
 
 	r := &report.Report{}
-	ScanDomainJobImportBaseline(root, &policy.Policy{}, r, true)
+	ScanDomainJobBaselineRatchet(root, &policy.Policy{}, r, true)
 	if len(r.Violations) != 1 {
 		t.Fatalf("expected one baseline violation, got %#v", r.Violations)
 	}
@@ -41,7 +41,7 @@ func TestScanDomainJobImportBaselineAllowsRegisteredCount(t *testing.T) {
 	))
 
 	r := &report.Report{}
-	ScanDomainJobImportBaseline(root, &policy.Policy{}, r, true)
+	ScanDomainJobBaselineRatchet(root, &policy.Policy{}, r, true)
 	if len(r.Violations) != 0 {
 		t.Fatalf("expected registered baseline to pass, got %#v", r.Violations)
 	}
