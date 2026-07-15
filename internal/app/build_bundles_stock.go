@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"go.uber.org/zap"
-
 	stockapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets/stock"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
@@ -18,30 +16,54 @@ import (
 	sqassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"go.uber.org/zap"
 )
 
-// StockBundleDeps is the typed input to BuildStockBundle. The next dependency
-// cleanup can group these ports without changing the builder's public entrypoint.
-type StockBundleDeps struct {
-	Cfg       *config.Config
-	Log       *zap.Logger
-	DB        *sql.DB
+// StockRuntimeDeps owns configuration, jobs and capability activation.
+type StockRuntimeDeps struct {
+	Cfg     *config.Config
+	Log     *zap.Logger
+	Jobs    *appjobs.Service
+	Enabled func() bool
+}
+
+// StockPersistencePorts owns source acquisition and canonical state changes.
+type StockPersistencePorts struct {
+	DB           *sql.DB
+	SourceStager acquisition.SourceStager
+	ClipsRepo    *sqassets.ClipsRepository
+	AssetIndex   *assetindex.Service
+	Dispatcher   *outbox.Dispatcher
+}
+
+// StockMediaPorts owns CPU media transformation.
+type StockMediaPorts struct {
+	Cutter   stockpipeline.VideoCutter
+	Renderer stockpipeline.StockRenderer
+}
+
+// StockDeliveryPorts is a paired publish/finalize contract.
+type StockDeliveryPorts struct {
 	Publisher delivery.Publisher
 	Finalizer finalization.JobFinalizer
+}
 
-	SourceStager  acquisition.SourceStager
-	ClipsRepo     *sqassets.ClipsRepository
-	AssetIndex    *assetindex.Service
-	Dispatcher    *outbox.Dispatcher
-	Cutter        stockpipeline.VideoCutter
-	Renderer      stockpipeline.StockRenderer
-	Jobs          *appjobs.Service
+// StockEnrichmentPorts owns optional query and LLM enrichment behavior.
+type StockEnrichmentPorts struct {
 	ChannelLister stockpipeline.ChannelLister
+	LLMClient     stockenrich.EnrichmentLLMClient
+	Enabled       func() bool
+	Emitter       stockenrich.AssetPublishedEmitter
+}
 
-	StockPipelineEnabled func() bool
-	EnrichmentLLMClient  stockenrich.EnrichmentLLMClient
-	EnrichmentEnabled    func() bool
-	EnrichmentEmitter    stockenrich.AssetPublishedEmitter
+// StockBundleDeps exposes five real capability boundaries rather than a flat
+// bag spanning configuration, persistence, media, delivery and enrichment.
+type StockBundleDeps struct {
+	Runtime     StockRuntimeDeps
+	Persistence StockPersistencePorts
+	Media       StockMediaPorts
+	Delivery    StockDeliveryPorts
+	Enrichment  StockEnrichmentPorts
 }
 
 func validateStockSymmetricGate(publisher delivery.Publisher, finalizer finalization.JobFinalizer) error {
@@ -54,54 +76,51 @@ func validateStockSymmetricGate(publisher delivery.Publisher, finalizer finaliza
 	return nil
 }
 
-// BuildStockBundle assembles the stock service, optional enrichment worker and
-// API descriptor through the canonical typed constructors.
+// BuildStockBundle assembles immutable stock services, optional enrichment and
+// the API descriptor through their canonical constructors.
 func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
-	if err := validateStockSymmetricGate(deps.Publisher, deps.Finalizer); err != nil {
+	if err := validateStockSymmetricGate(deps.Delivery.Publisher, deps.Delivery.Finalizer); err != nil {
 		return nil, err
 	}
 
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
-		Cfg:       deps.Cfg,
-		Log:       deps.Log,
-		Publisher: deps.Publisher,
+		Cfg:       deps.Runtime.Cfg,
+		Log:       deps.Runtime.Log,
+		Publisher: deps.Delivery.Publisher,
 		Storage: stockpipeline.StorageDeps{
-			ClipsRepo:  deps.ClipsRepo,
-			AssetIndex: deps.AssetIndex,
-			Dispatcher: deps.Dispatcher,
+			ClipsRepo:  deps.Persistence.ClipsRepo,
+			AssetIndex: deps.Persistence.AssetIndex,
+			Dispatcher: deps.Persistence.Dispatcher,
 		},
 		Media: stockpipeline.MediaDeps{
-			Cutter:   deps.Cutter,
-			Renderer: deps.Renderer,
+			Cutter:   deps.Media.Cutter,
+			Renderer: deps.Media.Renderer,
 		},
-		Jobs:         deps.Jobs,
-		Finalizer:    deps.Finalizer,
-		SourceStager: deps.SourceStager,
-		DB:           deps.DB,
+		Jobs:          deps.Runtime.Jobs,
+		Finalizer:     deps.Delivery.Finalizer,
+		SourceStager:  deps.Persistence.SourceStager,
+		DB:            deps.Persistence.DB,
+		ChannelLister: deps.Enrichment.ChannelLister,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockpipeline.NewService: %w", err)
 	}
 
-	useCase := stockpipeline.NewStockUseCase(svc, deps.Jobs, deps.Log)
+	useCase := stockpipeline.NewStockUseCase(svc, deps.Runtime.Jobs, deps.Runtime.Log)
 	if err := wireStockEnrichment(deps); err != nil {
 		return nil, err
 	}
 
 	descriptor, err := stockapi.Build(stockapi.Dependencies{
 		UseCase:     useCase,
-		EnabledFunc: deps.StockPipelineEnabled,
+		EnabledFunc: deps.Runtime.Enabled,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockapi.Build: %w", err)
 	}
 	typed, ok := descriptor.(*stockapi.StockDescriptor)
 	if !ok || typed == nil {
-		return nil, fmt.Errorf("stock.BuildStockBundle: stockapi.Build returned unexpected descriptor type %T (want *stockapi.StockDescriptor)", descriptor)
+		return nil, fmt.Errorf("stock.BuildStockBundle: stockapi.Build returned unexpected descriptor type %T", descriptor)
 	}
-
-	return &StockPipelineWiring{
-		Module:  typed.Module,
-		Service: svc,
-	}, nil
+	return &StockPipelineWiring{Module: typed.Module, Service: svc}, nil
 }
