@@ -25,6 +25,7 @@ import (
 	"context"
 	"errors"
 	sortlib "sort"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -102,6 +103,7 @@ type stubVoiceoverExecutor struct {
 	defaultRes *voiceover.VoiceoverItemResult
 	defaultErr error
 	calls      []voiceoverExecCall
+	mu         sync.Mutex
 }
 
 type voiceoverExecCall struct {
@@ -120,7 +122,9 @@ func (s *stubVoiceoverExecutor) Execute(_ context.Context, item *voiceover.Gener
 			Error:  "nil GenerateVoiceoverItemCommand",
 		}, nil
 	}
+	s.mu.Lock()
 	s.calls = append(s.calls, voiceoverExecCall{Text: item.Text, Language: string(item.Language), Filename: item.Filename, Dest: item.Destination})
+	s.mu.Unlock()
 	if err, ok := s.results[item.Text]; ok {
 		return nil, err
 	}

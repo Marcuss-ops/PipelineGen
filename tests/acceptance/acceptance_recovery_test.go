@@ -52,7 +52,7 @@ func TestRecovery_PreExistingFive_NoRetranslationOnResume(t *testing.T) {
 		t.Fatalf("seed source: %v", err)
 	}
 
-	first5 := []string{"it", "es", "fr", "de", "pt"}
+	first5 := []string{"it", "es", "fr", "de", "pt-BR"}
 	m1, err := texttracks.NewMaterializer(repo, tr, ob,
 		texttracks.ResolverConfig{
 			SourceLanguage:          "en",
@@ -118,14 +118,14 @@ func TestRecovery_FirstSix_AllCreated_NoSkipped(t *testing.T) {
 	m, err := texttracks.NewMaterializer(repo, tr, ob,
 		texttracks.ResolverConfig{
 			SourceLanguage:          "en",
-			OverrideTargetLanguages: concatInit([]string{"it", "es", "fr", "de", "pt", "ru"}),
+			OverrideTargetLanguages: concatInit([]string{"it", "es", "fr", "de", "pt-BR", "ru"}),
 			TranslationModel:        "stub-model", ModelVersion: "v1", PromptVersion: "p1",
 		}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewMaterializer: %v", err)
 	}
 	rep, err := m.Materialize(ctx, assetID, srcLang, srcHash, asset.TextTrackTranscript,
-		[]string{"it", "es", "fr", "de", "pt", "ru"})
+		[]string{"it", "es", "fr", "de", "pt-BR", "ru"})
 	if err != nil {
 		t.Fatalf("Materialize: %v", err)
 	}

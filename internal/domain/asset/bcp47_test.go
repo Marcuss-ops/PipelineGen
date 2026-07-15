@@ -127,7 +127,7 @@ func TestNormalize_EmptyCollapsesToUndetermined(t *testing.T) {
 // membership. Any change to SupportedLanguages is a deliberate
 // architectural decision.
 func TestIsSupported_PinsWhitelist(t *testing.T) {
-	supported := []string{"it", "en", "en-US", "es", "pt-BR", "fr", "de"}
+	supported := []string{"it", "en", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"}
 	for _, code := range supported {
 		if !IsSupported(code) {
 			t.Errorf("IsSupported(%q) = false, want true (canonical whitelist)", code)
@@ -136,6 +136,7 @@ func TestIsSupported_PinsWhitelist(t *testing.T) {
 	unsupported := []string{
 		"",
 		"und",
+		"en-US",
 		"ja",      // not in whitelist
 		"zh",      // not in whitelist
 		"ko",      // not in whitelist
@@ -152,11 +153,11 @@ func TestIsSupported_PinsWhitelist(t *testing.T) {
 }
 
 // TestSupportedLanguages_HasMinimumCoverage pins the user-spec (Fase 1.b):
-// the canonical whitelist MUST include it, en, en-US, es, pt-BR, fr, de
-// at minimum. Adding languages is allowed; REMOVING from this list
-// is a deliberate architectural change.
+// the canonical whitelist MUST include it, en, pl, ru, de, es, pt-BR,
+// fr, tr, id at minimum. Adding languages is allowed; REMOVING from
+// this list is a deliberate architectural change.
 func TestSupportedLanguages_HasMinimumCoverage(t *testing.T) {
-	required := []string{"it", "en", "en-US", "es", "pt-BR", "fr", "de"}
+	required := []string{"it", "en", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"}
 	for _, req := range required {
 		found := false
 		for _, s := range SupportedLanguages {

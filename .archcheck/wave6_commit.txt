@@ -1,0 +1,105 @@
+enforce aggregator singleton
+
+godlike/06 SSOT one-owner-per-fact: collapse the second
+search.NewAggregator construction site at internal/app/wire_assets.go:139
+into the canonical singleton constructed at the composition root by
+BuildCanonicalSearchFanOut (internal/app/search_backends.go:197,
+inside registerInternalModules). The aggregator instance is plumbed
+through one path:
+
+  BuildCanonicalSearchFanOut  (canonical, search_backends.go:197)
+    |
+    v
+  registerSearchBackend      (assigns wiring.searchAgg + wiring.searchFanOut
+                              + wiring.searchBackends, registry_search.go)
+    |
+    v
+  registerAssets             (populates assetsDeps.Search.SearchAggregator
+                              = wiring.searchAgg, registry_assets.go)
+    |
+    v
+  WireAssets                 (consumes ONLY deps.Search.SearchAggregator,
+                              NEVER constructs search.NewAggregator,
+                              wire_assets.go)
+
+Files changed (5):
+  - internal/app/assets_core.go        add SearchAggregator to SearchDeps
+                                        with godlike/06 SSOT documentation.
+  - internal/app/registry.go           add unexported searchAgg to
+                                        RegistryWiring (parallel to the
+                                        existing searchFanOut +
+                                        searchBackends unexported fields).
+  - internal/app/registry_search.go    assign wiring.searchAgg after
+                                        searchBackends in
+                                        registerSearchBackend.
+  - internal/app/registry_assets.go    populate assetsDeps.Search
+                                        .SearchAggregator = wiring.searchAgg.
+  - internal/app/wire_assets.go        remove duplicate
+                                        search.NewAggregator construction;
+                                        consume canonical via
+                                        deps.Search.SearchAggregator;
+                                        add ClassifyDepGet nil-guard
+                                        (godlike/07 fail-closed, never
+                                        silent nil-deref panic).
+
+godlike/06 SSOT rationale:
+
+The godlike/06 SSOT one-owner-per-fact invariant requires the canonical
+*search.Aggregator to be constructed EXACTLY ONCE. A second
+construction site silently diverges the search-routing decision (per
+the percheck note text: query A and query B would see different
+backend-membership decisions -- a godlike/07 NO-FAKE-AVAILABILITY
+violation with no error surface).
+
+godlike/07 fail-closed improvement on the partial-deploy path:
+
+When providerReg is nil, the canonical BuildCanonicalSearchFanOut is
+NOT called, so searchAgg stays nil. The pre-fix duplicate at
+wire_assets.go:139 would call search.NewAggregator(nil,
+&zapSearchLogAdapter{log: log}), which PANICS on the first
+BackendRegistry .All() iteration inside NewAggregator. The post-fix
+code reads deps.Search.SearchAggregator (nil) and returns a typed
+error via ClassifyDepGet -- the composition root aborts with a typed
+sentinel (godlike/07 fail-closed) rather than crashing mid-flight.
+
+Archcheck ledger delta (this commit):
+
+  percheck_search_aggregator_singleton  1 -> 0
+    (error severity; matched_rule was search_aggregator_singleton_duplicated;
+     canonical site is internal/app/search_backends.go:197 after fix)
+
+Cadence-precedent: WAVE-24 PR-WIRE-ASSETS-CAPABILITY-SPLIT (PR4d-chunk2
+June 2026 split of the 16-field AssetsBundle into 4 sub-structs;
+this PR adds the 4th field to SearchDeps + the cross-step wiring to
+populate it + consumes it downstream).
+
+Verification trail (run on this branch BEFORE commit):
+
+  - rg -n 'search.NewAggregator\\s*\\(' --type go internal cmd -g '!*_test.go'
+    -> exactly 1 hit (canonical site only)
+  - go build ./internal/app/...                            -> green
+  - go test ./internal/app/... -count=1 -timeout=120s       -> passes
+  - gofmt -l internal/app/...                              -> clean
+  - go run ./cmd/archcheck                                 -> percheck_search_aggregator_singleton 1 -> 0
+
+Per AGENTS.md: no new bypass, no new allowlist, no limit increase,
+no bundled features. Work directly on main, no branch, no PR.
+Atomic commit, single rule closure.
+
+NO push (the pre-push hook runs make verify-main and is currently
+REJECTED on 5 PRE-EXISTING build errors unrelated to this Wave 6:
+  - undefined: s.driveAdmin in
+    internal/application/assets/ingest/drive.go
+  - argument mismatch on deletion.NewDeletionService call in
+    internal/application/assets/deletion/deletion_test.go
+  - conflicting GetFileMeta method signature between
+    ClipDriveUploaderPort and infrastructure/drive.Reader in
+    internal/api/assets/clips/clip_action.go
+  - undefined: job.CanonicalDocumentGenerate
+  - undefined: job.CanonicalImagesGenerate
+These ride on the 42 dirty files that pre-existed on main PRIOR to this
+turn's work. They belong to a SEPARATE Wave (drive-SSOT /
+deletion-delivery / clip-action / documents / images canonical-defs)
+and must be cleared by their owning workstreams before WAVE-24 +
+Wave 6 commits can be pushed. AGENTS.md 'Atomic commits, no
+bundling' forbids folding them into Wave 6.

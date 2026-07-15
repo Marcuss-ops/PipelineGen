@@ -8,10 +8,10 @@
 //     (audit 2026-07-11 §2.c: a Whisper-side normalization that uppercase'd
 //     regions inconsistently caused "en-US" vs "EN-us" duplicates in
 //     asset_text_tracks before the helper was extracted).
-//   - The SupportedLanguages list (it, en, en-US, es, pt-BR, fr, de) is the
-//     canonical project-wide list of "languages we materialize translations
-//     for" — used by the Fase 3 TextTrackMaterializer job AND by the
-//     YouTube acquisition chain (acquire only these from Subtitles/Whisper).
+//   - The SupportedLanguages list (it, en, pl, ru, de, es, pt-BR, fr, tr, id)
+//     is the canonical project-wide list of "languages we materialize
+//     translations for" — used by the Fase 3 TextTrackMaterializer job AND by
+//     the YouTube acquisition chain (acquire only these from Subtitles/Whisper).
 //   - ErrLanguageUndeterminable is the SOLE typed error for "the chain
 //     exhausted without surfacing a language and the policy requires
 //     certainty". The Fase 4 video pipeline + Fase 5 backfill CLI
@@ -69,11 +69,14 @@ func IsLanguageUndeterminable(err error) bool {
 var SupportedLanguages = []string{
 	"it",
 	"en",
-	"en-US",
+	"pl",
+	"ru",
+	"de",
 	"es",
 	"pt-BR",
 	"fr",
-	"de",
+	"tr",
+	"id",
 }
 
 // IsSupported reports whether the input language is in the project

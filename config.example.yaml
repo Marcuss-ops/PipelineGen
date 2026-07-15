@@ -101,6 +101,45 @@ drive:
   sound_effects_root_folder: ""
   outro_root_folder: "1MB9pTRjvHUdMXUtGOMBcvgRc-MZG2rA4"
 
+media:
+  multilingual:
+    enabled: true
+    source_language: "en"
+    languages:
+      - code: it
+        enabled: true
+        translate_clips: true
+      - code: en
+        enabled: true
+        translate_clips: true
+      - code: pl
+        enabled: true
+        translate_clips: true
+      - code: ru
+        enabled: true
+        translate_clips: true
+      - code: de
+        enabled: true
+        translate_clips: true
+      - code: es
+        enabled: true
+        translate_clips: true
+      - code: pt-BR
+        enabled: true
+        translate_clips: true
+      - code: fr
+        enabled: true
+        translate_clips: true
+      - code: tr
+        enabled: true
+        translate_clips: true
+      - code: id
+        enabled: true
+        translate_clips: true
+    translation_policy: "auto"
+    require_language_certainty: true
+    require_transcript_ready: false
+
 video:
   width: 1280
   height: 720

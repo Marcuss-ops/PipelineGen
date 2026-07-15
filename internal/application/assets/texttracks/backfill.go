@@ -130,6 +130,7 @@ type BackfillOptions struct {
 	TextKind        asset.TextTrackKind
 	OnlyMissing     bool
 	Limit           int
+	AssetIDs        []string
 }
 
 // Validate returns an error for any invalid input. Empty

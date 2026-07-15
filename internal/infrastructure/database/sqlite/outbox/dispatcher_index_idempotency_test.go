@@ -62,7 +62,7 @@ var _ outboxEnqueuer = (*recordingOutboxEventsRepo)(nil)
 type txMgrRun struct{}
 
 func (*txMgrRun) InTransaction(ctx context.Context, fn func(tx *sql.Tx) error) error {
-	return fn(nil)
+	return fn(new(sql.Tx))
 }
 func (*txMgrRun) DB() *sql.DB { return nil }
 
@@ -316,7 +316,7 @@ func TestEnqueueIndexEvent_UsesOutboxKeyShape(t *testing.T) {
 	const assetID = "vo_voiceover_xyz"
 	const contentHash = "sha256:deadbeef"
 
-	if err := d.EnqueueIndexEvent(context.Background(), nil, assetID, contentHash); err != nil {
+	if err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), assetID, contentHash); err != nil {
 		t.Fatalf("EnqueueIndexEvent: %v", err)
 	}
 	if len(rec.calls) != 1 {
@@ -361,7 +361,7 @@ func TestEnqueueIndexEvent_ProviderInferredFromAssetIDPrefix(t *testing.T) {
 				log:              zap.NewNop(),
 			}
 			const contentHash = "sha256:1234"
-			if err := d.EnqueueIndexEvent(context.Background(), nil, tc.assetID, contentHash); err != nil {
+			if err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), tc.assetID, contentHash); err != nil {
 				t.Fatalf("EnqueueIndexEvent(%q): %v", tc.assetID, err)
 			}
 			if len(rec.calls) != 1 {
@@ -387,7 +387,7 @@ func TestEnqueueIndexEvent_UnknownPrefixFailsClosed(t *testing.T) {
 		txmgr:            &txMgrRun{},
 		log:              zap.NewNop(),
 	}
-	err := d.EnqueueIndexEvent(context.Background(), nil, "weird_unknown_xyz", "sha256:1234")
+	err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), "weird_unknown_xyz", "sha256:1234")
 	if err == nil {
 		t.Fatal("EnqueueIndexEvent with unknown assetID prefix must fail-closed (ErrEmptyProvider via OutboxKey)")
 	}
@@ -425,7 +425,7 @@ func TestEnqueueAndIndex_AndEnqueueIndexEvent_ProduceSameEventKey(t *testing.T) 
 	k1 := rec.calls[len(rec.calls)-1].EventKey
 
 	// Path 2: EnqueueIndexEvent with just (assetID, contentHash)
-	if err := d.EnqueueIndexEvent(context.Background(), nil, assetID, contentHash); err != nil {
+	if err := d.EnqueueIndexEvent(context.Background(), new(sql.Tx), assetID, contentHash); err != nil {
 		t.Fatalf("EnqueueIndexEvent: %v", err)
 	}
 	k2 := rec.calls[len(rec.calls)-1].EventKey

@@ -34,7 +34,7 @@ func TestMultilingual_AllConfiguredLanguagesReachReady(t *testing.T) {
 		srcLang = "en"
 	)
 
-	targetLangs := []string{"it", "es", "fr", "de"}
+	targetLangs := []string{"it", "pl", "ru", "de", "es", "pt-BR", "fr", "tr", "id"}
 	srcTranscript := "the quick brown fox jumps over the lazy dog"
 	srcDesc := "a brown fox clip"
 	srcTranscriptHash := sha256Hex(srcTranscript)

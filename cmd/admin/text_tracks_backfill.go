@@ -46,6 +46,9 @@
 //	--only-missing          Skip clips that have ALL target
 //	                        languages READY (uses
 //	                        ListReadyLanguages)
+//	--asset-ids             CSV of canonical media_assets.id values
+//	                        to process instead of scanning the
+//	                        whole source catalog
 //	--limit <n>             Cap the number of candidate assets
 //	--progress <n>          Log + checkpoint flush every N assets
 //	--checkpoint <path>     Save resume state to JSON
@@ -90,6 +93,7 @@ type textTracksBackfillDeps struct {
 	Source      string
 	Languages   string
 	TextKind    string
+	AssetIDs    string
 	Checkpoint  string
 	Resume      bool
 	RetryFailed bool
@@ -104,6 +108,7 @@ type textTracksBackfillReport struct {
 	TextKind           string   `json:"text_kind"`
 	OnlyMissing        bool     `json:"only_missing"`
 	Limit              int      `json:"limit,omitempty"`
+	AssetIDs           []string `json:"asset_ids,omitempty"`
 	TotalCandidates    int      `json:"total_candidates"`
 	Processed          int      `json:"processed"`
 	SourceReady        int      `json:"source_ready_count"`
@@ -131,6 +136,7 @@ type textTracksCheckpoint struct {
 	TextKind            string   `json:"text_kind"`
 	OnlyMissing         bool     `json:"only_missing"`
 	Limit               int      `json:"limit,omitempty"`
+	AssetIDs            []string `json:"asset_ids,omitempty"`
 	LastAssetID         string   `json:"last_asset_id"`
 	ProcessedCount      int      `json:"processed_count"`
 	SourceReadyCount    int      `json:"source_ready_count"`
@@ -176,6 +182,7 @@ func runTextTracksBackfill(args []string) error {
 		zap.String("text_kind", string(textKind)),
 		zap.Bool("only_missing", deps.OnlyMissing),
 		zap.Int("limit", deps.Limit),
+		zap.String("asset_ids", deps.AssetIDs),
 		zap.Int("progress", deps.Progress),
 		zap.String("checkpoint", deps.Checkpoint),
 		zap.Bool("resume", deps.Resume),
@@ -224,6 +231,7 @@ func runTextTracksBackfill(args []string) error {
 		TextKind:        textKind,
 		OnlyMissing:     deps.OnlyMissing,
 		Limit:           deps.Limit,
+		AssetIDs:        splitCSV(deps.AssetIDs),
 	}
 	if err := opts.Validate(); err != nil {
 		return fmt.Errorf("text-tracks-backfill: %w", err)
@@ -288,6 +296,7 @@ func runTextTracksBackfill(args []string) error {
 		cp.TextKind = string(textKind)
 		cp.OnlyMissing = deps.OnlyMissing
 		cp.Limit = deps.Limit
+		cp.AssetIDs = splitCSV(deps.AssetIDs)
 	}
 
 	out := textTracksBackfillReport{
@@ -364,6 +373,8 @@ func parseTextTracksBackfillArgs(args []string) (textTracksBackfillDeps, error) 
 			deps.Languages = strings.TrimPrefix(a, "--languages=")
 		case strings.HasPrefix(a, "--text-kind="):
 			deps.TextKind = strings.TrimPrefix(a, "--text-kind=")
+		case strings.HasPrefix(a, "--asset-ids="):
+			deps.AssetIDs = strings.TrimPrefix(a, "--asset-ids=")
 		case strings.HasPrefix(a, "--limit="):
 			n, err := parsePositiveFlag(a, "--limit")
 			if err != nil {
@@ -403,6 +414,19 @@ func parseTextTracksBackfillArgs(args []string) (textTracksBackfillDeps, error) 
 		deps.Progress = 50
 	}
 	return deps, nil
+}
+
+// splitCSV splits a comma-separated list into trimmed non-empty values.
+func splitCSV(csv string) []string {
+	parts := strings.Split(csv, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		v := strings.TrimSpace(p)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // splitLanguages splits the --languages CSV into (source, targets).

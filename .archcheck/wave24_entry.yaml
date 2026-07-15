@@ -1,0 +1,70 @@
+- id: WAVE-24-TOPOLOGY-MIGRATION
+  status: in_progress
+  owner: PipelineGen Agent (topology-migration workstream; PR-WAVE-24-TOPOLOGY-MIGRATION)
+  deadline: "2026-10-31T00:00:00Z"
+  rationale: |
+    godlike/06 SSOT EXPAND/BACKFILL/CUTOVER for the 4 legacy first-level
+    `internal/<x>` dirs flagged as unknown_internal_root by
+    `cmd/archcheck/scan/roots.go::ScanUnknownInternalRoots`. The 5-sub-move
+    envelope (one-per-capability per AGENTS.md "un commit per capability"):
+
+      - Sub-move 1 (DONE in commit 4d2b3568c, July 2026):
+        internal/asset/{commit,publication} →
+        internal/capabilities/assets/{commit,publication}.
+        Closes 1 unknown_internal_root (internal/asset) +
+        1 kernel_split_hint (asset name-match against
+        kernel_subzones::asset; cleared by rmdir of the
+        now-empty parent dir).
+      - Sub-move 2 (next, in_progress to schedule):
+        internal/recommendation/ →
+        internal/capabilities/assets/recommendation/.
+        Closes 1 unknown_internal_root.
+        The `recommendation` slice is NOT on policy.yaml::capabilities
+        allowlist (`assets`, `artlist`, `youtube`, …); nesting under
+        the canonical `assets/` slice is godlike/06 SSOT-conform.
+      - Sub-move 3 (planned): internal/transcription/ →
+        internal/capabilities/youtube/transcription/.
+        Closes 1 unknown_internal_root.
+        Body wraps
+        `internal/infrastructure/youtube/WhisperTranscriberAdapter`,
+        so nesting under `youtube/` is the canonical godlike/06 home
+        until Phase 2 spawns a generic media-processor slice.
+      - Sub-move 4 (planned): internal/youtube/metadata/ →
+        internal/capabilities/youtube/metadata/. Own commit.
+      - Sub-move 5 (planned): internal/youtube/acquisition/ →
+        internal/capabilities/youtube/acquisition/. Own commit.
+
+    Ledger delta (current, post sub-move 1):
+      unknown_internal_root          4 -> 3  (-1 warn: internal/asset gone)
+      kernel_split_hint              1 -> 0  (-1 info: internal/asset gone)
+      TOTAL                          374 -> 372
+    Ledger delta (target, post sub-move 5):
+      unknown_internal_root          3 -> 0 (closing the 4d-warning family)
+      kernel_split_hint              held at 0
+      TOTAL                          372 -> 369 (-3 from sub-moves 2-5)
+
+    Push gate: the pre-push hook (commit 5cf6a563f) runs
+    `make verify-main`. The post-sub-move-1 commit (4d2b3568c)
+    is currently REJECTED by 3 PRE-EXISTING build errors unrelated
+    to WAVE-24:
+      (a) undefined `s.driveAdmin` in
+          `internal/application/assets/ingest/drive.go`
+      (b) argument mismatch on `deletion.NewDeletionService`
+          call in
+          `internal/application/assets/deletion/deletion_test.go`
+      (c) conflicting `GetFileMeta` method signature between
+          `ClipDriveUploaderPort` and
+          `internal/infrastructure/drive.Reader` in
+          `internal/api/assets/clips/clip_action.go`
+    These ride on the 42 dirty files that pre-existed on the
+    working tree BEFORE this wave and are out of scope (separate
+    Wave on drive-SSOT / clip-action / deletion-delivery). They
+    must be addressed by their owning workstream BEFORE the
+    WAVE-24 commits can be pushed. AGENTS.md "Atomic commits,
+    no bundling" forbids folding them into WAVE-24 sub-commits.
+  cross_refs:
+    issues_catalog: "architecture/issues.yaml::PRE-EXISTING-20-TARGET-TREE-MIGRATION"
+    evidence_filenames: ["tests/operational/archcheck_pre_topology.out", "tests/operational/archcheck_post_submove1.out", ".archcheck/report-wave1-pre.json"]
+    companion_commit: "PR-WAVE-24-TOPOLOGY-MIGRATION (5-sub-move envelope; PR-KERNEL-ALIAS-ALIGN + PRE-EXISTING-19 are the governance-precedent cadence)"
+    ci_gate: "cmd/archcheck/scan/roots.go ScanUnknownInternalRoots (--baseline=4) + ScanKernelSubzoneHints (--baseline=1; resolved by empty-dir rmdir)"
+    related_waves: ["20-QDRANT-005D-HYGIENE", "PRE-EXISTING-15-LENS-MIGRATION", "WAVE-21-PR-G-SCRIPTS-SUBPKG", "WAVE-23-KERNEL-ALIAS-MIGRATION"]

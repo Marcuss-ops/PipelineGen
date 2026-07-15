@@ -1,0 +1,7 @@
+Phase 0 baseline-freeze push verification
+timestamp: 2026-07-14T20:11:57Z
+freeze commit: 4d2b3568c658432800412c1141261330c0dcda52 refactor(arch): migrate internal/asset/ to internal/capabilities/assets/
+origin/main head after push: 4d2b3568c658432800412c1141261330c0dcda52 refactor(arch): migrate internal/asset/ to internal/capabilities/assets/
+ahead/behind: 0	0
+unstaged-modified remaining: 42
+untracked remaining: 10
