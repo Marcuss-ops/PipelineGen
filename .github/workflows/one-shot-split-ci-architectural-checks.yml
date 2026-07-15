@@ -1,5 +1,4 @@
-name: One-shot split CI architectural checks
-# Existing-workflow update intentionally triggers the one-shot push event.
+name: One-shot semantic split of architectural checks
 
 on:
   push:
@@ -19,102 +18,25 @@ concurrency:
 jobs:
   split:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
-      - name: Checkout main
+      - name: Checkout latest main
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
-      - name: Split monolithic gate without behavior changes
+      - name: Generate semantic check modules
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from __future__ import annotations
+          python3 scripts/ci/architecture/split_monolith.py
 
-          import hashlib
-          import subprocess
-          from pathlib import Path
-
-          source = Path("scripts/ci-architectural-checks.sh")
-          parts_dir = Path("scripts/ci/architecture/parts")
-          workflow = Path(".github/workflows/one-shot-split-ci-architectural-checks.yml")
-
-          original = source.read_bytes()
-          lines = original.decode("utf-8").splitlines(keepends=True)
-          if not lines:
-              raise SystemExit("refusing to split an empty CI gate")
-
-          parts_dir.mkdir(parents=True, exist_ok=True)
-          for stale in parts_dir.glob("part_*.sh"):
-              stale.unlink()
-
-          chunk_lines = 350
-          for index, start in enumerate(range(0, len(lines), chunk_lines), start=1):
-              chunk = "".join(lines[start : start + chunk_lines]).encode("utf-8")
-              (parts_dir / f"part_{index:04d}.sh").write_bytes(chunk)
-
-          reconstructed = b"".join(path.read_bytes() for path in sorted(parts_dir.glob("part_*.sh")))
-          if reconstructed != original:
-              raise SystemExit("split reconstruction differs from the original script")
-
-          wrapper = '''#!/usr/bin/env bash
-          # scripts/ci-architectural-checks.sh — deterministic orchestrator.
-          #
-          # The historical gate is stored as ordered, byte-preserving parts under
-          # scripts/ci/architecture/parts/. The parts are assembled inside the
-          # scripts/ directory so the legacy BASH_SOURCE-based REPO_ROOT contract
-          # remains unchanged while individual files stay below the LOC budget.
+      - name: Run the modular production gate
+        shell: bash
+        run: |
           set -euo pipefail
-
-          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          PARTS_DIR="${SCRIPT_DIR}/ci/architecture/parts"
-
-          if [ ! -d "${PARTS_DIR}" ]; then
-            echo "CI: architectural check parts directory is missing: ${PARTS_DIR}" >&2
-            exit 1
-          fi
-
-          mapfile -t parts < <(find "${PARTS_DIR}" -maxdepth 1 -type f -name 'part_*.sh' -print | LC_ALL=C sort)
-          if [ "${#parts[@]}" -eq 0 ]; then
-            echo "CI: no architectural check parts found in ${PARTS_DIR}" >&2
-            exit 1
-          fi
-
-          assembled="$(mktemp "${SCRIPT_DIR}/.ci-architectural-checks.XXXXXX")"
-          trap 'rm -f "${assembled}"' EXIT HUP INT TERM
-          cat "${parts[@]}" > "${assembled}"
-
-          # Keep $0 equal to the canonical entrypoint and forward user arguments
-          # unchanged. BASH_SOURCE[0] resolves to the assembled file in scripts/,
-          # preserving the original REPO_ROOT calculation byte-for-byte.
-          if bash -c 'assembled=$1; shift; source "$assembled"' "$0" "${assembled}" "$@"; then
-            status=0
-          else
-            status=$?
-          fi
-          exit "${status}"
-          '''
-          source.write_text(wrapper, encoding="utf-8")
-
-          subprocess.run(["bash", "-n", str(source)], check=True)
-          validation = Path("scripts/.ci-architectural-checks.validation.sh")
-          validation.write_bytes(reconstructed)
-          try:
-              subprocess.run(["bash", "-n", str(validation)], check=True)
-              subprocess.run(["bash", str(source), "--self-check"], check=True)
-          finally:
-              validation.unlink(missing_ok=True)
-
-          digest = hashlib.sha256(original).hexdigest()
-          print(f"split {len(lines)} lines into {len(list(parts_dir.glob('part_*.sh')))} parts")
-          print(f"original_sha256={digest}")
-
-          # Delete this one-shot workflow in the generated commit.
-          workflow.unlink()
-          PY
+          timeout 15m bash scripts/ci-architectural-checks.sh
 
       - name: Commit split directly to main
         shell: bash
@@ -122,8 +44,9 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/ci-architectural-checks.sh scripts/ci/architecture/parts .github/workflows/one-shot-split-ci-architectural-checks.yml
+          git add -A scripts/ci-architectural-checks.sh scripts/ci/architecture .github/workflows/one-shot-split-ci-architectural-checks.yml
           git diff --cached --check
-          git commit -m "refactor(ci): split architectural gate into ordered parts"
+          git commit -m "refactor(ci): split architectural checks into sourced modules"
           git pull --rebase origin main
+          bash -n scripts/ci-architectural-checks.sh
           git push origin HEAD:main
