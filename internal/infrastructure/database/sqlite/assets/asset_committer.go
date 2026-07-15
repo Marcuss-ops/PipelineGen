@@ -1,9 +1,9 @@
 // Package assets — SQLite AssetCommitter adapter (PR-ASSET-COMMITTER).
 //
-// This file is the SOLE canonical implementation of
-// persistence.AssetCommitter. It owns the SQL that writes
-// media_assets, asset_locations, and the asset.index.requested
-// outbox event inside a single SQLite transaction.
+// This file is the sole canonical implementation of
+// persistence.AssetCommitter. It owns the SQL that writes media_assets,
+// asset_locations, and the durable index-request event inside one SQLite
+// transaction.
 package assets
 
 import (
@@ -13,13 +13,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
-	"github.com/Marcuss-ops/PipelineGen/pkg/idempotency"
 )
 
 // SQLiteAssetCommitter is the canonical adapter for
@@ -49,24 +46,15 @@ func NewSQLiteAssetCommitter(db *sql.DB, box *outboxevents.Repository, log *zap.
 // Compile-time assertion.
 var _ persistence.AssetCommitter = (*SQLiteAssetCommitter)(nil)
 
-// CommitAsset is the canonical user-facing entry point (alias
-// `CommitAsset` on the persistence.AssetCommitter port). It opens
-// a fresh SQLite transaction, writes the canonical asset + locations
-// + metadata + asset.index.requested outbox event, and commits
-// atomically. Behavior is byte-equivalent to CommitAndIndex; the new
-// name is the single user-facing surface per the user-facing
-// contract:
-//
-//	CommitAsset(ctx, AssetCommitRequest) (CommittedAsset, error)
-//
-// godlike/06 SSOT: this is the ONLY canonical producer of the
-// asset.index.requested outbox event at the persistence layer.
+// CommitAsset is the canonical user-facing entry point. It opens a fresh
+// SQLite transaction, writes the canonical asset, locations, metadata and
+// durable indexing request, then commits atomically.
 func (c *SQLiteAssetCommitter) CommitAsset(ctx context.Context, req persistence.AssetCommitRequest) (persistence.CommittedAsset, error) {
 	return c.CommitAndIndex(ctx, persistence.CommitRequest(req))
 }
 
-// CommitAndIndex opens a new transaction, writes the asset, and
-// commits. This is the standalone-producer entry point.
+// CommitAndIndex opens a new transaction, writes the asset, and commits.
+// This is the standalone-producer entry point.
 func (c *SQLiteAssetCommitter) CommitAndIndex(ctx context.Context, req persistence.CommitRequest) (persistence.CommitResult, error) {
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -101,8 +89,8 @@ func (c *SQLiteAssetCommitter) CommitAndIndex(ctx context.Context, req persisten
 	return res, nil
 }
 
-// CommitTx writes the asset, locations, metadata and optional outbox
-// event inside the caller-owned transaction.
+// CommitTx writes the asset, locations, metadata and optional indexing
+// request inside the caller-owned transaction.
 func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Transaction, req persistence.CommitRequest) (persistence.CommitResult, error) {
 	if err := req.Validate(); err != nil {
 		return persistence.CommitResult{}, err
@@ -230,67 +218,26 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 		return persistence.CommitResult{}, err
 	}
 
-	// 4. Optionally emit the asset.index.requested outbox event.
-	var result persistence.CommitResult
-	result.AssetRowsAffected = rowsAffected
-
+	// 4. Optionally emit the indexing request through the single canonical
+	// emitter. All callers, including legacy dispatchers, delegate to this
+	// same function so the outbox write has one owner.
+	result := persistence.CommitResult{AssetRowsAffected: rowsAffected}
 	if req.EmitIndexEvent {
-		var (
-			eventKey string
-			payload  []byte
-			err      error
-		)
-		if req.Source == "artlist" {
-			eventKey, err = idempotency.OutboxKey(
-				outboxevents.EventAssetIndexRequested,
-				req.Source,
-				req.AssetID,
-				sourceVersion,
-			)
-			if err != nil {
-				return persistence.CommitResult{}, fmt.Errorf("asset committer: build outbox event_key: %w", err)
-			}
-			result.OutboxEventKey = eventKey
-			payloadMap := map[string]any{
-				"schema_version":       outboxevents.ReindexEnvelopeV1Schema,
-				"event_id":             uuid.NewString(),
-				"asset_id":             req.AssetID,
-				"operation":            "UPSERT",
-				"source_version":       sourceVersion,
-				"target_index_version": clipindexer.CollectionVersion(),
-				"requested_vectors":    []string{"text", "transcript"},
-				"requested_at":         requestedAt.UTC().Format(time.RFC3339Nano),
-				"idempotency_key":      eventKey,
-				"source":               req.Source,
-				"media_type":           req.MediaType,
-			}
-			payload, err = json.Marshal(payloadMap)
-			if err != nil {
-				return persistence.CommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)
-			}
-		} else {
-			payloadStr := ""
-			eventKey, payloadStr, err = outboxevents.BuildReindexEnvelopeV1(req.AssetID, clipindexer.CollectionVersion(), sourceVersion, requestedAt)
-			if err != nil {
-				return persistence.CommitResult{}, fmt.Errorf("asset committer: build outbox payload: %w", err)
-			}
-			result.OutboxEventKey = eventKey
-			payload = []byte(payloadStr)
-		}
-
-		enqResult, err := c.box.Enqueue(
-			ctx, sqlTx,
-			outboxevents.EventAssetIndexRequested,
-			req.AssetID,
-			"media_asset",
-			string(payload),
-			eventKey,
-		)
+		indexResult, err := CommitIndexRequestTx(ctx, sqlTx, c.box, IndexRequest{
+			AssetID:               req.AssetID,
+			Source:                req.Source,
+			MediaType:             req.MediaType,
+			SourceVersion:         sourceVersion,
+			RequestedAt:           requestedAt,
+			UseProviderEventKey:   req.Source == "artlist",
+			IncludeSourceMetadata: req.Source == "artlist",
+		})
 		if err != nil {
-			return persistence.CommitResult{}, fmt.Errorf("asset committer: enqueue outbox event: %w", err)
+			return persistence.CommitResult{}, err
 		}
-		result.OutboxInserted = enqResult.Inserted
-		result.OutboxExistingStatus = enqResult.ExistingStatus
+		result.OutboxEventKey = indexResult.EventKey
+		result.OutboxInserted = indexResult.Inserted
+		result.OutboxExistingStatus = indexResult.ExistingStatus
 	}
 
 	if c.log != nil {
