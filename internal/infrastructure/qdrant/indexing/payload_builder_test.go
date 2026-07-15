@@ -211,6 +211,28 @@ func TestBuildPayloadFromDocument_DrivePathAndIndexingStatusEmitted(t *testing.T
 	}
 }
 
+// 13b. FolderPath emitted verbatim when set. This is the canonical
+// Drive folder label for folder-aware filtering/navigation.
+func TestBuildPayloadFromDocument_FolderPathEmittedWhenSet(t *testing.T) {
+	doc := emptyDoc()
+	doc.Metadata.FolderPath = "Manny Pacquiao vs Adrien Broner"
+	p := BuildPayloadFromDocument(doc, nil)
+	if v, ok := p["folder_path"]; !ok || v != "Manny Pacquiao vs Adrien Broner" {
+		t.Errorf("payload[folder_path] = %v, ok = %v — want canonical folder label", v, ok)
+	}
+}
+
+// 13c. FolderID emitted verbatim when set. This is the canonical Drive
+// folder ID for the asset's destination folder.
+func TestBuildPayloadFromDocument_FolderIDEmittedWhenSet(t *testing.T) {
+	doc := emptyDoc()
+	doc.Metadata.FolderID = "1G7MYF-EDrkoMXmDvAHbwOnaOza4f2HBJ"
+	p := BuildPayloadFromDocument(doc, nil)
+	if v, ok := p["folder_id"]; !ok || v != "1G7MYF-EDrkoMXmDvAHbwOnaOza4f2HBJ" {
+		t.Errorf("payload[folder_id] = %v, ok = %v — want canonical folder ID", v, ok)
+	}
+}
+
 // 14. Forbidden keys (local_path, status) NEVER present in the wire
 // payload. PR-CATALOG-MULTILINGUA step 6 (July 2026): drive_link is NO
 // LONGER in this set — it is canonical in the payload. Locks the

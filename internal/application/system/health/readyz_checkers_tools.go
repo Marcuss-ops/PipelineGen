@@ -39,7 +39,7 @@ func (c *DefaultToolsChecker) CheckTools(_ context.Context) []string {
 	var missing []string
 	tools := c.RequiredTools
 	if len(tools) == 0 {
-		tools = []string{"yt-dlp", "ffmpeg", "ffprobe"}
+		tools = []string{`yt-dlp`, `ffmpeg`, `ffprobe`}
 	}
 	for _, tool := range tools {
 		if _, err := exec.LookPath(tool); err != nil {
@@ -54,5 +54,5 @@ func (c *DefaultToolsChecker) CheckTools(_ context.Context) []string {
 // health_wiring.go) calls this once and attaches via
 // ReadyChecker.WithTools.
 func NewToolsChecker() ToolsChecker {
-	return &DefaultToolsChecker{RequiredTools: []string{"yt-dlp", "ffmpeg", "ffprobe"}}
+	return &DefaultToolsChecker{RequiredTools: []string{`yt-dlp`, `ffmpeg`, `ffprobe`}}
 }

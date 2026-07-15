@@ -1,7 +1,7 @@
 // Package indexing — index_document_test.go: canonical-shape sanity
 // suite for IndexDocument + IndexedMetadata.
 //
-// Companion to index_document.go's 17-field semantic-payload
+// Companion to index_document.go's 19-field semantic-payload
 // enrichment (shipped via commit `e8f8587f` on `origin/main`).
 // Locks the wire-shape contract so a future refactor that breaks
 // the canonical field set surfaces as a test failure BEFORE the
@@ -59,11 +59,11 @@ import (
 //     not list it explicitly: parallel-agent added it as the
 //     canonical LLM-derived secondary subject (per godlike/06
 //     SSOT we're locked to the wire shape the parallel-agent
-//     shipped). The pipeline strictly states: includes 17 fields
+//     shipped). The pipeline strictly states: includes 19 fields
 //     post-enrichment.
 func expectedSemanticPayloadFields() map[string]reflect.Kind {
 	return map[string]reflect.Kind{
-		// 16 user-spec semantic-payload fields:
+		// 18 user-spec semantic-payload fields:
 		"Destination":    reflect.String,
 		"Origin":         reflect.String,
 		"SourceProvider": reflect.String,
@@ -79,6 +79,8 @@ func expectedSemanticPayloadFields() map[string]reflect.Kind {
 		"PolicyVersion":  reflect.String,
 		"TotalChunks":    reflect.Int,
 		"DrivePath":      reflect.String,
+		"FolderID":       reflect.String,
+		"FolderPath":     reflect.String,
 		"IndexingStatus": reflect.String,
 
 		// 17th (parallel-agent-added): LLM-derived secondary
@@ -87,7 +89,7 @@ func expectedSemanticPayloadFields() map[string]reflect.Kind {
 	}
 }
 
-// 1. All 17 semantic-payload enrichment fields are declared on
+// 1. All 19 semantic-payload enrichment fields are declared on
 // `IndexedMetadata` with the expected reflect.Kind. A future
 // refactor that removes a field or changes its type surfaces as
 // a test failure BEFORE the writer/builder/Mapper contract breaks.
@@ -97,7 +99,7 @@ func expectedSemanticPayloadFields() map[string]reflect.Kind {
 // via reflect — a future agent adding a new field MUST update
 // BOTH the `IndexedMetadata` struct AND this want list in
 // lockstep per godlike/06 SSOT one-canonical-owner-per-fact.
-func TestIndexedMetadata_HasAll17SemanticPayloadFields(t *testing.T) {
+func TestIndexedMetadata_HasAll19SemanticPayloadFields(t *testing.T) {
 	typ := reflect.TypeOf(IndexedMetadata{})
 
 	want := expectedSemanticPayloadFields()

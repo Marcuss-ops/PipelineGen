@@ -636,11 +636,11 @@ func TestAssetToIndexDocument_AirLockStripsForbiddenFields(t *testing.T) {
 
 // TestBuildPayloadFromDocument_AssetDataSemanticFields_ZeroValueOmitsAll
 // pins the godlike/06 SSOT contract that ZERO-valued AssetData
-// top-level fields (PR 6's 18 NEW fields) do NOT emit any
+// top-level fields (PR 6's 19 NEW fields) do NOT emit any
 // corresponding payload keys. Old callers that pass AssetData with
-// all 18 fields at zero-value MUST continue to produce a
+// all 21 fields at zero-value MUST continue to produce a
 // backward-compatible payload (the canonical pre-PR-6 wire shape).
-// For each of the 18 new fields, a missing payload key is the
+// For each of the 21 new fields, a missing payload key is the
 // correct outcome — the godlike/07 NO-FAKE-AVAILABILITY rule
 // forbids placeholder strings (e.g. `Category: "unknown"`).
 func TestBuildPayloadFromDocument_AssetDataSemanticFields_ZeroValueOmitsAll(t *testing.T) {
@@ -650,11 +650,11 @@ func TestBuildPayloadFromDocument_AssetDataSemanticFields_ZeroValueOmitsAll(t *t
 		Source:         "stock",
 		MediaType:      "video",
 		LifecycleState: "ACTIVE",
-		// All 18 PR-6 fields intentionally at zero-value:
+		// All 21 PR-6 fields intentionally at zero-value:
 		// Title, Description, Summary, SourceURL, SourceVideoID,
-		// SourceProvider, Origin, Destination, Event, Round,
-		// Scene, Subject, Entities, WorkflowID, RunFingerprint,
-		// ChunkIndex, TotalChunks, PolicyVersion.
+		// SourceProvider, Origin, Destination, FolderID, FolderPath, Event,
+		// Round, Scene, Subject, Entities, WorkflowID,
+		// RunFingerprint, ChunkIndex, TotalChunks, PolicyVersion.
 	}
 	doc := assetToIndexDocumentNoValidate(asset, schema)
 	payload := BuildPayloadFromDocument(doc, schema)
@@ -662,9 +662,10 @@ func TestBuildPayloadFromDocument_AssetDataSemanticFields_ZeroValueOmitsAll(t *t
 	// For each PR-6 field, the corresponding payload key MUST be absent.
 	expectedAbsent := []string{
 		"title", "description", "summary", "source_url", "source_video_id",
-		"source_provider", "origin", "destination", "event", "round",
-		"scene", "subject", "entities", "workflow_id", "run_fingerprint",
-		"chunk_index", "total_chunks", "policy_version", "job_id",
+		"source_provider", "origin", "destination", "folder_id", "folder_path", "event",
+		"round", "scene", "subject", "entities", "workflow_id",
+		"run_fingerprint", "chunk_index", "total_chunks", "policy_version",
+		"job_id",
 	}
 	for _, key := range expectedAbsent {
 		if v, present := payload[key]; present {
@@ -682,7 +683,7 @@ func TestBuildPayloadFromDocument_AssetDataSemanticFields_ZeroValueOmitsAll(t *t
 
 // TestBuildPayloadFromDocument_AssetDataSemanticFields_PopulatedPropagates
 // pins the godlike/06 SSOT contract that POPULATED AssetData
-// top-level fields (PR 6's 18 NEW fields) DO emit the corresponding
+// top-level fields (PR 6's 21 NEW fields) DO emit the corresponding
 // payload keys via the airlock's first-class struct copy. The
 // PayloadMapper.AssetToIndexDocument signature is UNCHANGED — the
 // airlock detects the new fields and forwards them automatically
@@ -694,7 +695,7 @@ func TestBuildPayloadFromDocument_AssetDataSemanticFields_PopulatedPropagates(t 
 		Source:         "stock",
 		MediaType:      "video",
 		LifecycleState: "ACTIVE",
-		// All 18 PR-6 fields populated to verify the airlock
+		// All 21 PR-6 fields populated to verify the airlock
 		// forwards them to the payload.
 		Title:          "Pacquiao vs Broner Round 7",
 		Description:    "Broner is hurt and stumbling",
@@ -704,6 +705,8 @@ func TestBuildPayloadFromDocument_AssetDataSemanticFields_PopulatedPropagates(t 
 		SourceProvider: "pexels",
 		Origin:         "retrieved",
 		Destination:    "stock",
+		FolderID:       "1G7MYF-EDrkoMXmDvAHbwOnaOza4f2HBJ",
+		FolderPath:     "Manny Pacquiao vs Adrien Broner",
 		Event:          "Pacquiao vs Broner",
 		Round:          7,
 		Scene:          "Broner barcolla",
@@ -728,6 +731,8 @@ func TestBuildPayloadFromDocument_AssetDataSemanticFields_PopulatedPropagates(t 
 	assert.Equal(t, "pexels", payload["source_provider"])
 	assert.Equal(t, "retrieved", payload["origin"])
 	assert.Equal(t, "stock", payload["destination"])
+	assert.Equal(t, "1G7MYF-EDrkoMXmDvAHbwOnaOza4f2HBJ", payload["folder_id"])
+	assert.Equal(t, "Manny Pacquiao vs Adrien Broner", payload["folder_path"])
 	// LLM enrichment block.
 	assert.Equal(t, "Pacquiao vs Broner", payload["event"])
 	assert.Equal(t, 7, payload["round"])

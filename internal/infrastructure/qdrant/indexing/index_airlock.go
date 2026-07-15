@@ -146,6 +146,14 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 		policyVersion = asset.IndexVersion
 	}
 	drivePath := cleanDrivePath(assetpkg.MetadataString(asset.Metadata, "drive_path"))
+	folderID := asset.FolderID
+	if folderID == "" {
+		folderID = assetpkg.MetadataString(asset.Metadata, "folder_id")
+	}
+	folderPath := asset.FolderPath
+	if folderPath == "" {
+		folderPath = assetpkg.MetadataString(asset.Metadata, "folder_path")
+	}
 	driveLink := firstNonEmpty(asset.DriveLink, assetpkg.MetadataString(asset.Metadata, "drive_link"))
 	// PR-CATALOG-MULTILINGUA step 6 (July 2026): SemanticHash carries
 	// the canonical pre-resolved value computed by AssetStore with the
@@ -245,6 +253,8 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			TotalChunks:      intOrFallback(asset.TotalChunks, assetpkg.MetadataInt(asset.Metadata, "total_chunks")),
 			PolicyVersion:    policyVersion,
 			DrivePath:        drivePath,
+			FolderID:         folderID,
+			FolderPath:       folderPath,
 			// DriveLink is now a canonical payload key (no longer
 			// forbidden on IndexDocument, see PR 6 doctrine update).
 			DriveLink: driveLink,

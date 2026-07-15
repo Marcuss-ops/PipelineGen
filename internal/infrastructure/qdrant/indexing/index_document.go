@@ -208,6 +208,8 @@ type IndexedMetadata struct {
 	TotalChunks    int
 	PolicyVersion  string
 	DrivePath      string
+	FolderID       string
+	FolderPath     string
 	IndexingStatus string
 
 	// TimestampDriveFolderLink / TimestampFolderID carry the parent

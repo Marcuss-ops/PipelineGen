@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/job"
@@ -146,6 +147,93 @@ func TestYouTubeClipHandler_Extract_PreparesFolderPathAndPayload(t *testing.T) {
 	require.Equal(t, "vdC5GXxS-qU", dest["subfolder_name"])
 	require.Equal(t, "Pacquiao Vs Broner/vdC5GXxS-qU", dest["folder_path"])
 	require.Equal(t, true, dest["create_subfolder"])
+}
+
+func TestYouTubeClipHandler_Extract_PreparesThreeSegmentPayload(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := &recordingYouTubeClipService{}
+	jobsSvc := &recordingJobsService{}
+	handler := NewYouTubeClipHandler(
+		svc,
+		zap.NewNop(),
+		jobsSvc,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	body := map[string]any{
+		"url": "https://www.youtube.com/watch?v=vdC5GXxS-qU",
+		"segments": []map[string]any{
+			{
+				"start": "01:05",
+				"end":   "01:20",
+				"name":  "Pacquiao talks about Mayweather in Japan",
+			},
+			{
+				"start": "02:26",
+				"end":   "02:35",
+				"name":  "Broner says not to worry about Floyd",
+			},
+			{
+				"start": "03:13",
+				"end":   "03:25",
+				"name":  "Broner jokes about hood support",
+			},
+		},
+		"strategy": "verify",
+		"destination": map[string]any{
+			"group":            "Manny Pacquiao vs Adrien Broner",
+			"folder_id":        "1G7MYF-EDrkoMXmDvAHbwOnaOza4f2HBJ",
+			"folder_path":      "Manny Pacquiao vs Adrien Broner",
+			"subfolder_name":   "Manny Pacquiao vs Adrien Broner",
+			"create_subfolder": true,
+		},
+	}
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/clips/process", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "yt-vdC5GXxS-qU-multi-clip")
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	ctx.Request = req
+
+	handler.Extract(ctx)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, jobsSvc.lastReq)
+	require.Equal(t, appjobs.TypeYouTubeClipExtract, jobsSvc.lastReq.Type)
+
+	payload, ok := jobsSvc.lastReq.Payload.(map[string]any)
+	require.True(t, ok, "payload must be a JSON object map")
+
+	segments, ok := payload["segments"].([]any)
+	require.True(t, ok, "segments must be an array")
+	require.Len(t, segments, 3)
+
+	first := segments[0].(map[string]any)
+	second := segments[1].(map[string]any)
+	third := segments[2].(map[string]any)
+	require.Equal(t, "01:05", first["start"])
+	require.Equal(t, "01:20", first["end"])
+	require.Equal(t, "02:26", second["start"])
+	require.Equal(t, "02:35", second["end"])
+	require.Equal(t, "03:13", third["start"])
+	require.Equal(t, "03:25", third["end"])
+
+	dest, ok := payload["destination"].(map[string]any)
+	require.True(t, ok, "destination must be present in payload")
+	require.Equal(t, "1G7MYF-EDrkoMXmDvAHbwOnaOza4f2HBJ", dest["folder_id"])
+	require.Equal(t, "Manny Pacquiao vs Adrien Broner", dest["group"])
+	require.Equal(t, "Manny Pacquiao vs Adrien Broner", dest["subfolder_name"])
+	require.Equal(t, "Manny Pacquiao vs Adrien Broner", dest["folder_path"])
+	require.Equal(t, true, dest["create_subfolder"])
+	require.Equal(t, "verify", payload["strategy"])
 }
 
 func TestNormalizeExtractionDestination_PreservesExplicitFolderPath(t *testing.T) {

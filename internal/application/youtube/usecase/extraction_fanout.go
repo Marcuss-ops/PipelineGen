@@ -18,6 +18,8 @@ package usecase
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 
 	"go.uber.org/zap"
@@ -47,16 +49,22 @@ func (s *ExtractionService) extractFanOut(
 			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
+					panicErr := fmt.Errorf("segment %d panic: %v", i, r)
+					results[i] = failedFanOutResult(youtubetypes.ProcessSegmentResult{}, seg, i, driveFolderID, driveFolderPath, panicErr)
 					s.log.Error("panic in segment goroutine (extractFanOut recovered)",
 						zap.Int("segment_index", i),
 						zap.String("video_id", videoID),
+						zap.Error(panicErr),
 						zap.Any("recover", r))
 				}
 			}()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			cmd := buildSegmentCommand(req, seg, i, videoID, outDir, driveFolderID, driveFolderPath, keepAudio)
-			res, _ := s.processSeg.Execute(ctx, cmd)
+			res, execErr := s.processSeg.Execute(ctx, cmd)
+			if execErr != nil {
+				res = failedFanOutResult(res, seg, i, driveFolderID, driveFolderPath, execErr)
+			}
 			results[i] = res
 		}()
 	}
@@ -100,4 +108,33 @@ func buildSegmentCommand(
 		Strategy:        req.Strategy,
 		Destination:     req.Destination,
 	}
+}
+
+func failedFanOutResult(
+	res youtubetypes.ProcessSegmentResult,
+	seg youtubetypes.Segment,
+	index int,
+	driveFolderID, driveFolderPath string,
+	err error,
+) youtubetypes.ProcessSegmentResult {
+	res.Status = "failed"
+	res.Item.Status = "failed"
+	if res.Item.Name == "" {
+		res.Item.Name = cleanSegmentName(seg.Name, index)
+	}
+	if res.Item.Start == "" {
+		res.Item.Start = strings.TrimSpace(seg.Start)
+	}
+	if res.Item.End == "" {
+		res.Item.End = strings.TrimSpace(seg.End)
+	}
+	res.Item.DriveFolderID = driveFolderID
+	res.Item.DriveFolderPath = driveFolderPath
+	if res.Item.Error == "" && err != nil {
+		res.Item.Error = err.Error()
+	}
+	if res.Error == nil {
+		res.Error = err
+	}
+	return res
 }

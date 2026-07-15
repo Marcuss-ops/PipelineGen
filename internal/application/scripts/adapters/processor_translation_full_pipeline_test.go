@@ -30,6 +30,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 	"go.uber.org/zap"
@@ -389,4 +392,151 @@ func TestPipeline_FullChain_NoTranslationPreservesEnglish(t *testing.T) {
 			t.Errorf("FinalSpecScene scene 0 contains unexpected [it] marker: %q", result.FinalSpecScene.Scenes[0].Text)
 		}
 	}
+}
+
+// TestPipeline_FullChain_TranslationSpecSceneSurvival_PacquiaoBronerThreeClips
+// is the canonical three-asset regression for the final SpecScene/Gemma pass.
+// It uses the same three aligned clip IDs from the YouTube DoD fixture and
+// asserts that translation survives the full postprocessor chain while the
+// final SpecScene keeps the exact clip bindings and scene order.
+func TestPipeline_FullChain_TranslationSpecSceneSurvival_PacquiaoBronerThreeClips(t *testing.T) {
+	reg := NewPostProcessorRegistry(zap.NewNop())
+	reg.Register(NewTranslationProcessor(
+		pipelineTranslatorStub{},
+		nil,
+		pipelineTransUCStub{},
+		pipelineClassifyStub{},
+		zap.NewNop(),
+	))
+	reg.Register(NewClipBindingsProcessor(zap.NewNop()))
+	voStub := &pipelineVOStub{}
+	reg.Register(NewVoiceoverProcessor(voStub, zap.NewNop()))
+	docStub := &stubFullPipelineDocSvc{}
+	reg.Register(NewDocumentProcessor(docStub, nil))
+	repo := &idemFakeRepo{}
+	reg.Register(NewPersistenceProcessor(repo, zap.NewNop()))
+	reg.Freeze()
+
+	const (
+		clip1 = "yt_vdC5GXxS-qU_65_80_v1"
+		clip2 = "yt_vdC5GXxS-qU_146_155_v1"
+		clip3 = "yt_vdC5GXxS-qU_193_205_v1"
+	)
+
+	input := ProcessInput{
+		Text: "Pacquiao vs Adrien Broner multi-clip recap.",
+		SpecScene: scriptpkg.SpecSceneOutput{
+			Version: 1,
+			Scenes: []scriptpkg.SpecScene{
+				{
+					ID:    "scene-0",
+					Index: 0,
+					Kind:  scriptpkg.SceneClip,
+					Text:  "Pacquiao talks about Mayweather in Japan.",
+					Bindings: scriptpkg.SceneBindings{
+						Clip: &scriptpkg.ClipBinding{
+							ClipID:    clip1,
+							ClipTitle: "Pacquiao talks about Mayweather in Japan",
+							DriveLink: "https://drive.google.com/file/d/" + clip1 + "/view",
+						},
+						Image: &scriptpkg.ImageBinding{
+							ImageID: "img-" + clip1,
+							Prompt:  "Visual for clip 1",
+							URL:     "https://storage.example.com/" + clip1 + ".png",
+							Status:  "generated",
+						},
+					},
+				},
+				{
+					ID:    "scene-1",
+					Index: 1,
+					Kind:  scriptpkg.SceneClip,
+					Text:  "Broner tells everyone not to worry about Floyd.",
+					Bindings: scriptpkg.SceneBindings{
+						Clip: &scriptpkg.ClipBinding{
+							ClipID:    clip2,
+							ClipTitle: "Broner tells everyone not to worry about Floyd",
+							DriveLink: "https://drive.google.com/file/d/" + clip2 + "/view",
+						},
+						Image: &scriptpkg.ImageBinding{
+							ImageID: "img-" + clip2,
+							Prompt:  "Visual for clip 2",
+							URL:     "https://storage.example.com/" + clip2 + ".png",
+							Status:  "generated",
+						},
+					},
+				},
+				{
+					ID:    "scene-2",
+					Index: 2,
+					Kind:  scriptpkg.SceneClip,
+					Text:  "Broner jokes about hood support.",
+					Bindings: scriptpkg.SceneBindings{
+						Clip: &scriptpkg.ClipBinding{
+							ClipID:    clip3,
+							ClipTitle: "Broner jokes about hood support",
+							DriveLink: "https://drive.google.com/file/d/" + clip3 + "/view",
+						},
+						Image: &scriptpkg.ImageBinding{
+							ImageID: "img-" + clip3,
+							Prompt:  "Visual for clip 3",
+							URL:     "https://storage.example.com/" + clip3 + ".png",
+							Status:  "generated",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	plan := &scriptpkg.ResolvedGenerationPlan{
+		ID:          "pacquiao-broner-final-pass",
+		Language:    "en",
+		TranslateTo: "it",
+		Title:       "Manny Pacquiao vs Adrien Broner",
+		TargetWords: 900,
+		CacheKey:    "pacquiao-broner-final-pass",
+		Postprocessors: []string{
+			string(ProcessorTranslation),
+			string(ProcessorClipBindings),
+			string(ProcessorVoiceover),
+			string(ProcessorDocument),
+			string(ProcessorPersistence),
+		},
+	}
+
+	result, err := reg.Run(context.Background(), plan, input)
+	if err != nil {
+		t.Fatalf("Run() returned error: %v", err)
+	}
+	require.NotNil(t, result)
+	require.Len(t, result.FinalSpecScene.Scenes, 3)
+	require.Len(t, result.TranslatedSpecScene.Scenes, 3)
+
+	wantClipIDs := []string{clip1, clip2, clip3}
+	for i, sc := range result.FinalSpecScene.Scenes {
+		require.NotNil(t, sc.Bindings.Clip)
+		assert.Equal(t, wantClipIDs[i], sc.Bindings.Clip.ClipID)
+		assert.Contains(t, sc.Bindings.Clip.DriveLink, wantClipIDs[i])
+		assert.Contains(t, sc.Text, "[it]")
+	}
+
+	for i, sc := range result.TranslatedSpecScene.Scenes {
+		require.NotNil(t, sc.Bindings.Clip)
+		assert.Equal(t, wantClipIDs[i], sc.Bindings.Clip.ClipID)
+		assert.Contains(t, sc.Text, "[it]")
+	}
+
+	voStub.mu.Lock()
+	captured := append([]string(nil), voStub.capturedTexts...)
+	voStub.mu.Unlock()
+	require.Len(t, captured, 3)
+	for _, text := range captured {
+		assert.Contains(t, text, "[it]")
+	}
+
+	require.NotNil(t, repo.lastRec)
+	assert.Contains(t, repo.lastRec.OutputText, "[it]")
+	require.NotEmpty(t, docStub.capturedContent)
+	assert.Contains(t, docStub.capturedContent, "<h2>SpecScene JSON</h2>")
 }

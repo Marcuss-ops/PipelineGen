@@ -57,7 +57,9 @@
       "app",
       "application",
       "domain",
-      "infrastructure"
+      "infrastructure",
+      "transcription",
+      "youtube"
     ],
     "TargetInternalRoots": [
       "app",
@@ -107,51 +109,18 @@
     ]
   },
   "summary": {
-    "total_violations": 331,
+    "total_violations": 320,
     "by_reason": {
       "constructor_deps": 9,
-      "percheck_api_infrastructure_imports_allowlist_stale": 2,
       "percheck_input_immutability": 129,
-      "percheck_no_domain_job_compatibility_aliases": 171,
-      "percheck_sourcestager_transformer": 7,
-      "pkg_size": 1,
-      "struct_deps": 10,
-      "unknown_internal_root": 2
+      "percheck_no_domain_job_compatibility_aliases": 172,
+      "struct_deps": 10
     },
     "by_severity": {
-      "error": 7,
-      "warn": 324
+      "warn": 320
     }
   },
   "violations": [
-    {
-      "directory": "internal/youtube",
-      "matched_rule": "not_in_legacy_or_target_internal_roots",
-      "rule": "unknown_internal_root",
-      "severity": "warn",
-      "note": "first-level internal/ dir is not declared in legacy or target roots"
-    },
-    {
-      "directory": "internal/transcription",
-      "matched_rule": "not_in_legacy_or_target_internal_roots",
-      "rule": "unknown_internal_root",
-      "severity": "warn",
-      "note": "first-level internal/ dir is not declared in legacy or target roots"
-    },
-    {
-      "file": "docs/migrations/api-infrastructure-imports-allowlist.txt",
-      "matched_rule": "api_infra_import_allowlist_stale",
-      "rule": "percheck_api_infrastructure_imports_allowlist_stale",
-      "severity": "warn",
-      "note": "stale allowlist entry; file internal/api/assets/clips/clip_action.go no longer imports github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ — remove from docs/migrations/api-infrastructure-imports-allowlist.txt (godlike/08 zero-baseline rule: allowlist entries must exactly mirror the codebase)"
-    },
-    {
-      "file": "docs/migrations/api-infrastructure-imports-allowlist.txt",
-      "matched_rule": "api_infra_import_allowlist_stale",
-      "rule": "percheck_api_infrastructure_imports_allowlist_stale",
-      "severity": "warn",
-      "note": "stale allowlist entry; file internal/api/assets/clips/module.go no longer imports github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ — remove from docs/migrations/api-infrastructure-imports-allowlist.txt (godlike/08 zero-baseline rule: allowlist entries must exactly mirror the codebase)"
-    },
     {
       "file": "internal/api/assets/clips/bulk_upload_transport.go",
       "line": 109,
@@ -1271,22 +1240,6 @@
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
     },
     {
-      "file": "internal/application/system/health/readyz_checkers_tools.go",
-      "line": 42,
-      "matched_rule": "raw_source_media_or_transform",
-      "rule": "percheck_sourcestager_transformer",
-      "severity": "error",
-      "note": "raw source media / transformation reference: literal reference to ffmpeg/yt-dlp/wget binary — route through SourceStager (internal/application/acquisition) or MediaTransformer (internal/domain/asset/transformer) instead"
-    },
-    {
-      "file": "internal/application/system/health/readyz_checkers_tools.go",
-      "line": 57,
-      "matched_rule": "raw_source_media_or_transform",
-      "rule": "percheck_sourcestager_transformer",
-      "severity": "error",
-      "note": "raw source media / transformation reference: literal reference to ffmpeg/yt-dlp/wget binary — route through SourceStager (internal/application/acquisition) or MediaTransformer (internal/domain/asset/transformer) instead"
-    },
-    {
       "file": "internal/application/voiceover/process_voiceover_item.go",
       "line": 59,
       "actual_count": 9,
@@ -1311,46 +1264,6 @@
       "rule": "percheck_input_immutability",
       "severity": "warn",
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/application/workerdoctor/probes_invariant.go",
-      "line": 40,
-      "matched_rule": "raw_source_media_or_transform",
-      "rule": "percheck_sourcestager_transformer",
-      "severity": "error",
-      "note": "raw source media / transformation reference: literal reference to ffmpeg/yt-dlp/wget binary — route through SourceStager (internal/application/acquisition) or MediaTransformer (internal/domain/asset/transformer) instead"
-    },
-    {
-      "file": "internal/application/workerdoctor/probes_invariant.go",
-      "line": 43,
-      "matched_rule": "raw_source_media_or_transform",
-      "rule": "percheck_sourcestager_transformer",
-      "severity": "error",
-      "note": "raw source media / transformation reference: literal reference to ffmpeg/yt-dlp/wget binary — route through SourceStager (internal/application/acquisition) or MediaTransformer (internal/domain/asset/transformer) instead"
-    },
-    {
-      "file": "internal/application/workerdoctor/probes_invariant.go",
-      "line": 84,
-      "matched_rule": "raw_source_media_or_transform",
-      "rule": "percheck_sourcestager_transformer",
-      "severity": "error",
-      "note": "raw source media / transformation reference: literal reference to ffmpeg/yt-dlp/wget binary — route through SourceStager (internal/application/acquisition) or MediaTransformer (internal/domain/asset/transformer) instead"
-    },
-    {
-      "file": "internal/application/workerdoctor/probes_invariant.go",
-      "line": 90,
-      "matched_rule": "raw_source_media_or_transform",
-      "rule": "percheck_sourcestager_transformer",
-      "severity": "error",
-      "note": "raw source media / transformation reference: literal reference to ffmpeg/yt-dlp/wget binary — route through SourceStager (internal/application/acquisition) or MediaTransformer (internal/domain/asset/transformer) instead"
-    },
-    {
-      "file": "internal/application/workerdoctor/probes_invariant.go",
-      "line": 94,
-      "matched_rule": "raw_source_media_or_transform",
-      "rule": "percheck_sourcestager_transformer",
-      "severity": "error",
-      "note": "raw source media / transformation reference: literal reference to ffmpeg/yt-dlp/wget binary — route through SourceStager (internal/application/acquisition) or MediaTransformer (internal/domain/asset/transformer) instead"
     },
     {
       "file": "internal/application/youtube/adapters/manifest_mgr.go",
@@ -1586,7 +1499,7 @@
     {
       "package": "api/assets/youtube/youtube_handlers_test.go",
       "file": "api/assets/youtube/youtube_handlers_test.go",
-      "line": 18,
+      "line": 19,
       "matched_rule": "domain_job_compatibility_aliases:production_import_attempt",
       "rule": "percheck_no_domain_job_compatibility_aliases",
       "severity": "warn",
@@ -1595,7 +1508,7 @@
     {
       "package": "api/assets/youtube/youtube_handlers_test.go",
       "file": "api/assets/youtube/youtube_handlers_test.go",
-      "line": 19,
+      "line": 20,
       "matched_rule": "domain_job_compatibility_aliases:production_import_attempt",
       "rule": "percheck_no_domain_job_compatibility_aliases",
       "severity": "warn",
@@ -2664,6 +2577,15 @@
       "note": "informational-only: import of internal/domain/job alias bridge is by-design (HEAD 22a70dcaf re-added internal/domain/job/kernel_aliases.go after 4 reverted kernel-direct migrations). Big-bang migration DEFERRED to PRE-EXISTING-19 (November wave, godlike/06 EXPAND/BACKFILL/CUTOVER/CONTRACT Option N1 narrow). See architecture/issues.yaml::PRE-EXISTING-19 for full context. To NOT regress: pair any new alias-layer import with an issue.yaml follow_up pointing at PRE-EXISTING-19. | snippet: \tjob \"github.com/Marcuss-ops/PipelineGen/internal/domain/job\""
     },
     {
+      "package": "application/youtube/jobs/job_handler_test.go",
+      "file": "application/youtube/jobs/job_handler_test.go",
+      "line": 13,
+      "matched_rule": "domain_job_compatibility_aliases:production_import_attempt",
+      "rule": "percheck_no_domain_job_compatibility_aliases",
+      "severity": "warn",
+      "note": "informational-only: import of internal/domain/job alias bridge is by-design (HEAD 22a70dcaf re-added internal/domain/job/kernel_aliases.go after 4 reverted kernel-direct migrations). Big-bang migration DEFERRED to PRE-EXISTING-19 (November wave, godlike/06 EXPAND/BACKFILL/CUTOVER/CONTRACT Option N1 narrow). See architecture/issues.yaml::PRE-EXISTING-19 for full context. To NOT regress: pair any new alias-layer import with an issue.yaml follow_up pointing at PRE-EXISTING-19. | snippet: \tjob \"github.com/Marcuss-ops/PipelineGen/internal/domain/job\""
+    },
+    {
       "package": "application/youtube/jobs/rebuild.go",
       "file": "application/youtube/jobs/rebuild.go",
       "line": 12,
@@ -2968,14 +2890,6 @@
       "rule": "percheck_no_domain_job_compatibility_aliases",
       "severity": "warn",
       "note": "informational-only: import of internal/domain/job alias bridge is by-design (HEAD 22a70dcaf re-added internal/domain/job/kernel_aliases.go after 4 reverted kernel-direct migrations). Big-bang migration DEFERRED to PRE-EXISTING-19 (November wave, godlike/06 EXPAND/BACKFILL/CUTOVER/CONTRACT Option N1 narrow). See architecture/issues.yaml::PRE-EXISTING-19 for full context. To NOT regress: pair any new alias-layer import with an issue.yaml follow_up pointing at PRE-EXISTING-19. | snippet: \tjobs \"github.com/Marcuss-ops/PipelineGen/internal/domain/job\""
-    },
-    {
-      "package": "internal/app",
-      "actual_count": 119,
-      "allowed_count": 65,
-      "matched_rule": "max_files_per_package",
-      "rule": "pkg_size",
-      "severity": "warn"
     }
   ],
   "grandfathered_known": null,
