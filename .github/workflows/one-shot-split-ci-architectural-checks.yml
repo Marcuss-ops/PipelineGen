@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   split:
-    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks v2'
+    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks v3'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -29,7 +29,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: 'Semantic split started on the canonical all_checks.sh blob.'
+              body: `Semantic split started. Run id: ${context.runId}.`
             })
 
       - name: Checkout latest main
@@ -52,13 +52,24 @@ jobs:
         id: generate
         shell: bash
         run: |
-          set -euo pipefail
-          python3 scripts/ci/architecture/split_monolith.py | tee /tmp/split-output.txt
-          test -s scripts/ci/architecture/checks.manifest
-          bash -n scripts/ci-architectural-checks.sh
-          module_count="$(grep -c '^checks/.*\.sh$' scripts/ci/architecture/checks.manifest)"
-          test "${module_count}" -gt 1
-          echo "module_count=${module_count}" >> "${GITHUB_OUTPUT}"
+          set +e
+          python3 scripts/ci/architecture/split_monolith.py > /tmp/split-output.txt 2>&1
+          rc=$?
+          cat /tmp/split-output.txt
+          if [ "${rc}" -eq 0 ]; then
+            test -s scripts/ci/architecture/checks.manifest || rc=$?
+            bash -n scripts/ci-architectural-checks.sh || rc=$?
+          fi
+          if [ "${rc}" -eq 0 ]; then
+            module_count="$(grep -c '^checks/.*\.sh$' scripts/ci/architecture/checks.manifest)"
+            if [ "${module_count}" -le 1 ]; then
+              echo "expected more than one generated module" | tee -a /tmp/split-output.txt
+              rc=1
+            else
+              echo "module_count=${module_count}" >> "${GITHUB_OUTPUT}"
+            fi
+          fi
+          exit "${rc}"
 
       - name: Commit split directly to main
         shell: bash
@@ -78,11 +89,18 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const fs = require('fs');
             const status = '${{ job.status }}';
             const modules = '${{ steps.generate.outputs.module_count }}' || 'unknown';
+            let diagnostic = '';
+            try {
+              diagnostic = fs.readFileSync('/tmp/split-output.txt', 'utf8').trim();
+            } catch (_) {}
+            if (diagnostic.length > 5000) diagnostic = diagnostic.slice(-5000);
+            const suffix = diagnostic ? `\n\nDiagnostic:\n\`\`\`text\n${diagnostic}\n\`\`\`` : '';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `Semantic split workflow finished with status: ${status}. Generated modules: ${modules}.`
+              body: `Semantic split workflow finished with status: ${status}. Generated modules: ${modules}.${suffix}`
             });
