@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "schema_version": 1,
-  "generated_at": "2026-07-13",
+  "generated_at": "2026-07-15",
   "description": "Forward-prevention baseline for the 10 architectural diagnosis rules (PR-DIAGNOSI-FINALE, July 2026). Documents (a) the canonical-owner allowlists each archcheck scanner enforces and (b) the legitimately-retained residue caller-sties (test fixtures + godlike/07 migration-window permits). Forward-prevention discipline: any NEW caller trips the corresponding gate as a CI build failure unless the scanner's hardcoded allowlist AND this baseline JSON are updated in the same PR. Per godlike/07 NO-FAKE-AVAILABILITY, the baseline is the snapshot of LEGITIMATE callers that MUST remain — silent regressions (a future contributor introducing a new caller) get caught by the forward-prevention gate, not by manual review.",
   "rules": {
     "percheck_assetbinder_no_scenesynthesizer": {
@@ -189,10 +189,23 @@
     "percheck_input_immutability": {
       "rule_id": "percheck_input_immutability",
       "scope": "internal/application/** + internal/api/**",
-      "canonical_owner": "Each use case's Execute(...) function — returns a new value or a dedicated output type instead of mutating the input struct in place",
-      "forbidden_patterns": [
-        "\\*(?i)\\b(req|input|request|params)\\b\\s*=",
-        "(?i)\\b(req|input|request|params)\\b\\.[A-Za-z_][A-Za-z0-9_]*\\s*="
+      "canonical_owner": "Each use case or handler treats caller-owned pointer input contracts as read-only and derives local normalized values or dedicated outputs",
+      "detection": "Go AST object identity; line-oriented name regexes are forbidden because local DTOs and value copies are not caller-visible mutations",
+      "tracked_parameter_names": ["req", "input", "request", "params"],
+      "tracked_pointer_contract_suffixes": ["Input", "Request", "Params", "Command"],
+      "forbidden_operations": [
+        "whole tracked pointer target reassignment through *input = ...",
+        "direct or nested field assignment through a tracked pointer input",
+        "indexed assignment through a tracked pointer input",
+        "increment or decrement through a tracked pointer input",
+        "mutation from a nested closure capturing a tracked pointer input"
+      ],
+      "excluded_by_design": [
+        "local variables named req/input/request/params",
+        "value parameters normalized inside a function",
+        "local output DTO construction",
+        "shadowed local variables",
+        "net/http.Request transport state"
       ],
       "exempt_surface": ["cmd/archcheck/scan/**", "*_test.go"],
       "residue_allowed": []
