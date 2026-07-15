@@ -41,6 +41,9 @@ func buildUsecaseWithClipResolver(gen *fakeOllamaGen, clipResolver *fakeClipReso
 	for _, p := range extraProcs {
 		ppReg.Register(p)
 	}
+	// Wire the real clip-bindings processor so clip-source plans can
+	// synthesise scenes when the engine returns plain text.
+	ppReg.Register(adapters.NewClipBindingsProcessor(zap.NewNop()))
 	ppReg.Register(&stubPostProcessor{
 		name:   "persistence",
 		result: &adapters.PostProcessResult{Changed: true},
@@ -203,6 +206,53 @@ func TestGenerateE2E_DocumentServiceUnavailable(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.NotEmpty(t, result.Warnings, "document unavailability must produce a warning")
+}
+
+// TestGenerateE2E_ClipsPlainTextSynthesizesScenes verifies that a
+// clip source whose engine output contains plain text and no scenes
+// still produces valid SpecScene scenes bound to the accepted clips.
+// This is the regression guard for the live source.type=clips path
+// that previously failed with CLIP_NATIVE_PLAN_UNAVAILABLE.
+func TestGenerateE2E_ClipsPlainTextSynthesizesScenes(t *testing.T) {
+	t.Parallel()
+
+	clipResolver := newFakeClipResolver()
+	clipResolver.AddClip(makeTestClip("clip-1", "First Clip", 30*time.Second))
+	clipResolver.AddClip(makeTestClip("clip-2", "Second Clip", 30*time.Second))
+
+	// Engine returns plain prose with a valid V1 envelope but no scenes.
+	// Use text that overlaps with the clip evidence so the quality gate
+	// passes without needing model-emitted scenes.
+	plainText := buildOverlappingText(1, defaultClipSearchText)
+	gen := &fakeOllamaGen{result: &ollamatypes.GenerationResult{
+		Script:      fmt.Sprintf(`{"schema_version":1,"text":%q,"specscene":{"version":1,"scenes":[]}}`, plainText),
+		WordCount:   10,
+		EstDuration: 4,
+		Model:       "llama3:8b",
+	}}
+
+	uc := buildUsecaseWithClipResolver(gen, clipResolver)
+	item := makeClipsItem("e2e-clips-plain-text", []string{"clip-1", "clip-2"}, "")
+
+	result, err := uc.Execute(context.Background(), item, scriptpkg.Preset(""), nil)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, scriptpkg.ItemStatusSucceeded, result.Status,
+		"clip-native plan with valid evidence must succeed even when the engine emits no scenes")
+	require.NotNil(t, result.ModeInfo)
+	require.Equal(t, "clip_native", result.ModeInfo.UsedMode)
+	require.False(t, result.ModeInfo.FallbackUsed,
+		"synthesised clip-native scenes must not be treated as a fallback")
+
+	require.Len(t, result.Output.SpecScene.Scenes, 2,
+		"ClipBindingsProcessor must synthesise one scene per accepted clip")
+	for i, sc := range result.Output.SpecScene.Scenes {
+		require.NotEmpty(t, sc.Text, "synthesised scene[%d].Text must be populated", i)
+		require.NotNil(t, sc.Bindings.Clip, "synthesised scene[%d] must have a clip binding", i)
+		require.NotEmpty(t, sc.Bindings.Clip.ClipID, "synthesised scene[%d] must bind a clip_id", i)
+	}
+	require.Equal(t, "clip-1", result.Output.SpecScene.Scenes[0].Bindings.Clip.ClipID)
+	require.Equal(t, "clip-2", result.Output.SpecScene.Scenes[1].Bindings.Clip.ClipID)
 }
 
 // TestGenerateE2E_Concurrency runs many generation requests in parallel
