@@ -242,7 +242,7 @@ func buildDomainMediaServices(
 	youtubeAsset := youtube.ServiceAssetDeps{
 		AssetRepo:         repos.Assets.Repository(),
 		AssetDestResolver: drive.DestResolver,
-		LifecycleService: NewLifecycleFromDeps(&LifecycleDeps{
+		LifecycleService: NewLifecycleFromDeps(&AssetLifecycleDeps{
 			Registry: artifacts.NewClipsRegistry(
 				dbs.dualPool.Writer,
 				repos.Assets.Repository(),

@@ -229,7 +229,7 @@ func startBackgroundJobs(ctx context.Context, cfg *config.Config, dbs *databases
 // (drive.Reader) is the canonical read-side port for the reconcile
 // service's DriveIsNotTrashed check. The composition root threads
 // both directly — no unsafe type-assertion needed.
-type LifecycleDeps struct {
+type AssetLifecycleDeps struct {
 	Registry      artifacts.Registry
 	Publisher     delivery.Publisher
 	AssetIndex    *assetindex.Service
@@ -251,7 +251,7 @@ type LifecycleDeps struct {
 // port. lifecycle.Service uses Publisher for Drive writes (closes P0
 // #7) and DriveReader for the read-only reconcile/verify surface.
 func NewLifecycleFromDeps(
-	deps *LifecycleDeps,
+	deps *AssetLifecycleDeps,
 	log *zap.Logger,
 ) *lifecycle.Service {
 	driveReader := deps.DriveReader
