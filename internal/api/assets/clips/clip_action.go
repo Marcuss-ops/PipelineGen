@@ -1,13 +1,4 @@
-// Package clips — clip_action.go: Action cluster (Split 3, not yet
-// landed on a dedicated *ActionHandler receiver).
-//
-// Split 4 (June 2026, override ADR 0009): ReprocessClip moved into
-// ops.go (Ops cluster — uses only reprocessUC). DownloadClip,
-// ReuploadClip, FindDuplicates remain on *Handler until Split 3 = ActionReceiver
-// lands; per the discovery matrix: DownloadClip uses downloadUC +
-// driveAdmin; ReuploadClip uses reuploadUC; FindDuplicates uses
-// assetRepo + searchAggregator. None of those three uc instances
-// are in OpsDeps, so they do not migrate here.
+// Package clips — action transport for download, reupload and duplicate lookup.
 package clips
 
 import (
@@ -17,16 +8,57 @@ import (
 	"os"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/duplicates"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
+// ActionDeps contains only the collaborators consumed by the three action
+// endpoints. Use cases are constructed in internal/app, never in transport.
+type ActionDeps struct {
+	AssetRepo       asset.Repository
+	DriveAdmin      appclips.ClipDriveUploaderPort
+	DuplicateFinder *duplicates.Finder
+	DownloadUC      *appclips.DownloadUseCase
+	ReuploadUC      *appclips.ReuploadUseCase
+	Log             *zap.Logger
+}
+
+// ActionHandler owns the publication and duplicate-query HTTP endpoints.
+type ActionHandler struct {
+	assetRepo       asset.Repository
+	driveAdmin      appclips.ClipDriveUploaderPort
+	duplicateFinder *duplicates.Finder
+	downloadUC      *appclips.DownloadUseCase
+	reuploadUC      *appclips.ReuploadUseCase
+	log             *zap.Logger
+}
+
+func NewActionHandler(d ActionDeps) *ActionHandler {
+	if d.Log == nil {
+		d.Log = zap.NewNop()
+	}
+	return &ActionHandler{
+		assetRepo:       d.AssetRepo,
+		driveAdmin:      d.DriveAdmin,
+		duplicateFinder: d.DuplicateFinder,
+		downloadUC:      d.DownloadUC,
+		reuploadUC:      d.ReuploadUC,
+		log:             d.Log,
+	}
+}
+
 // DownloadClip streams the local video file for a clip.
-func (h *Handler) DownloadClip(c *gin.Context) {
+func (h *ActionHandler) DownloadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
+	if h.downloadUC == nil {
+		apiutil.InternalError(c, fmt.Errorf("download use case not wired"))
+		return
+	}
 
 	result, err := h.downloadUC.Resolve(c.Request.Context(), source, clipID)
 	if err != nil {
@@ -38,7 +70,6 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 		return
 	}
 
-	// 1. Try local file if it exists
 	if result.Source == appclips.DownloadSourceLocal {
 		if info, statErr := os.Stat(result.LocalPath); statErr == nil && !info.IsDir() {
 			c.File(result.LocalPath)
@@ -46,33 +77,17 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 		}
 	}
 
-	// 2. Try to proxy from Google Drive
-	//
-	// PR-WAVE-1-DRIVE-SSOT (July 2026): the proxy-from-Drive path used to
-	// type-assert h.driveAdmin to drive.Reader (both interfaces are
-	// satisfied by *drive.Uploader). That type-assertion is impossible
-	// post-Plan-A because h.driveAdmin is now the application-typed
-	// clips.ClipDriveUploaderPort whose GetFileMeta returns
-	// *ClipDriveFileMetaDTO (NOT *drive.FileMeta). Call the typed-port
-	// methods directly — the drive-side delegation lives in
-	// internal/app/clips_adapters_drive.go::clipsDriveAdapter which
-	// already routes GetFileMeta/DownloadFile through the underlying
-	// drive.Reader surface (godlike/06 SSOT: typed-port owns the
-	// seam, infrastructure Uploader stays composition-root-only).
 	if result.Source == appclips.DownloadSourceDrive && h.driveAdmin != nil {
 		h.log.Info("local file missing, proxying from drive",
 			zap.String("clip_id", clipID),
 			zap.String("drive_id", result.DriveID))
 
-		// Check mime type first
 		meta, metaErr := h.driveAdmin.GetFileMeta(c.Request.Context(), result.DriveID)
 		if metaErr != nil {
 			h.log.Error("failed to get drive file metadata", zap.Error(metaErr), zap.String("id", result.DriveID))
 			apiutil.InternalError(c, fmt.Errorf("failed to reach drive: %w", metaErr))
 			return
 		}
-
-		// BLOCK non-media MIME types from Drive
 		if !strings.HasPrefix(meta.MimeType, "video/") && !strings.HasPrefix(meta.MimeType, "audio/") && meta.MimeType != "application/octet-stream" {
 			h.log.Warn("refusing to proxy non-media file from drive", zap.String("mime", meta.MimeType))
 			apiutil.BadRequest(c, "drive file is not media: "+meta.MimeType)
@@ -90,12 +105,9 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 		if contentType == "" || contentType == "application/octet-stream" {
 			contentType = "video/mp4"
 		}
-
 		c.Header("Content-Type", contentType)
 		c.Header("Cache-Control", "public, max-age=3600")
-
-		_, copyErr := io.Copy(c.Writer, body)
-		if copyErr != nil {
+		if _, copyErr := io.Copy(c.Writer, body); copyErr != nil {
 			h.log.Debug("drive stream interrupted", zap.Error(copyErr))
 		}
 		return
@@ -104,16 +116,10 @@ func (h *Handler) DownloadClip(c *gin.Context) {
 	apiutil.NotFound(c, "clip video not available (no local file and no drive ID)")
 }
 
-// ReuploadClip reuploads a clip to Drive.
-func (h *Handler) ReuploadClip(c *gin.Context) {
+// ReuploadClip reuploads a clip to Drive through the application use case.
+func (h *ActionHandler) ReuploadClip(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
-
-	// P0.5 (June 2026): ReuploadClip now delegates to the
-	// ReuploadUseCase — business logic (folder resolution,
-	// Drive upload, hash update, dispatcher persistence) lives
-	// in internal/application/clips/reupload_usecase.go.
-	// The handler is thin transport only, per AGENTS.md Pattern 8.
 	if h.reuploadUC == nil {
 		apiutil.InternalError(c, fmt.Errorf("reupload use case not wired"))
 		return
@@ -151,8 +157,8 @@ func (h *Handler) ReuploadClip(c *gin.Context) {
 	})
 }
 
-// FindDuplicates finds clips with the same file_hash across different sources.
-func (h *Handler) FindDuplicates(c *gin.Context) {
+// FindDuplicates finds clips with the same file hash across registered sources.
+func (h *ActionHandler) FindDuplicates(c *gin.Context) {
 	source := c.Param("source")
 	clipID := c.Param("id")
 
@@ -160,32 +166,18 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 		apiutil.InternalError(c, fmt.Errorf("asset repository not available"))
 		return
 	}
-
 	clip, err := h.assetRepo.Get(c.Request.Context(), clipID)
-	if err != nil {
+	if err != nil || clip == nil {
 		apiutil.NotFound(c, "clip not found")
 		return
 	}
-	if clip == nil {
-		apiutil.NotFound(c, "clip not found")
-		return
-	}
-
 	if clip.FileHash() == "" {
 		apiutil.OK(c, gin.H{
-			"ok":         true,
-			"source":     source,
-			"clip_id":    clipID,
-			"file_hash":  "",
-			"duplicates": []gin.H{},
+			"ok": true, "source": source, "clip_id": clipID,
+			"file_hash": "", "duplicates": []gin.H{},
 		})
 		return
 	}
-
-	// Wave 4 (July 2026): FindDuplicates uses the canonical
-	// duplicates.Finder capability. The finder fans out hash lookups to
-	// registered sources and returns operator-facing DuplicateMatch rows
-	// that include LocalPath/DriveLink (PR-SEARCH-DRIVELINK).
 	if h.duplicateFinder == nil {
 		h.log.Error("FindDuplicates: DuplicateFinder not wired")
 		apiutil.Error(c, 503, "duplicate finder not available")
@@ -197,27 +189,19 @@ func (h *Handler) FindDuplicates(c *gin.Context) {
 		apiutil.InternalError(c, fmt.Errorf("duplicateFinder.Find: %w", findErr))
 		return
 	}
-
 	duplicates := []gin.H{}
 	for _, m := range matches {
 		if m.Source == source && m.AssetID == clipID {
 			continue
 		}
 		duplicates = append(duplicates, gin.H{
-			"source":     m.Source,
-			"id":         m.AssetID,
-			"name":       m.Name,
-			"drive_link": m.DriveLink,
-			"local_path": m.LocalPath,
-			"thumb_url":  m.ThumbnailURL,
+			"source": m.Source, "id": m.AssetID, "name": m.Name,
+			"drive_link": m.DriveLink, "local_path": m.LocalPath,
+			"thumb_url": m.ThumbnailURL,
 		})
 	}
-
 	apiutil.OK(c, gin.H{
-		"ok":         true,
-		"source":     source,
-		"clip_id":    clipID,
-		"file_hash":  clip.FileHash(),
-		"duplicates": duplicates,
+		"ok": true, "source": source, "clip_id": clipID,
+		"file_hash": clip.FileHash(), "duplicates": duplicates,
 	})
 }
