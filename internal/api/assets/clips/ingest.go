@@ -33,8 +33,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

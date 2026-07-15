@@ -1,8 +1,8 @@
 package clips
 
 import (
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 const JobBulkUpload = media.TypeBulkUploadYouTubeClips

@@ -36,7 +36,8 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ErrVoiceoverNotImplementedOnCreator is the godlike/07-compliant typed
@@ -83,9 +84,9 @@ func registerVoiceoverGenerateItemPlaceholder(dispatcher *appjobs.Dispatcher) er
 	if dispatcher == nil {
 		return fmt.Errorf("registerVoiceoverGenerateItemPlaceholder: dispatcher is nil: %w", ErrVoiceoverNotImplementedOnCreator)
 	}
-	if err := dispatcher.Register(job.TypeVoiceoverGenerateItem, voiceoverPlaceholderHandler); err != nil {
+	if err := dispatcher.Register(jobvoiceover.TypeGenerateItem, voiceoverPlaceholderHandler); err != nil {
 		return fmt.Errorf("registerVoiceoverGenerateItemPlaceholder: bind %q to dispatcher: %w",
-			job.TypeVoiceoverGenerateItem, err)
+			jobvoiceover.TypeGenerateItem, err)
 	}
 	return nil
 }

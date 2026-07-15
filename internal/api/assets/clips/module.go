@@ -14,7 +14,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/publication"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -46,7 +47,7 @@ func (r *clipJobRegistrar) RegisterBulkUpload(svc api.JobRegistrar, descriptorPt
 	if r.bulkUploadWorker == nil || r.jobsSvc == nil {
 		return fmt.Errorf("%w: clipJobRegistrar: BulkUploadWorker or JobsSvc nil at registration", appjobs.ErrJobsSvcRequiredAtRegistration)
 	}
-	registerErr := svc.RegisterHandler(job.TypeBulkUploadYouTubeClips, appjobs.HandlerFunc(r.bulkUploadWorker.HandleJob))
+	registerErr := svc.RegisterHandler(jobmedia.TypeBulkUploadYouTubeClips, appjobs.HandlerFunc(r.bulkUploadWorker.HandleJob))
 	if r.log != nil {
 		r.log.Info("clips: registered bulk_upload_youtube_clips handler",
 			zap.String("module", "clips"),
@@ -77,8 +78,8 @@ type ClipsModule struct {
 	jobReg      *clipJobRegistrar
 }
 
-func (m *ClipsModule) Name() string { return m.Module.Name() }
-func (m *ClipsModule) Enabled() bool { return m.Module.Enabled() }
+func (m *ClipsModule) Name() string                       { return m.Module.Name() }
+func (m *ClipsModule) Enabled() bool                      { return m.Module.Enabled() }
 func (m *ClipsModule) RegisterRoutes(rg *gin.RouterGroup) { m.Module.RegisterRoutes(rg) }
 
 func (m *ClipsModule) RegisterJobHandlers(svc api.JobRegistrar) error {

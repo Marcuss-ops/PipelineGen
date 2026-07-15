@@ -8,8 +8,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
+	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -113,7 +114,7 @@ func (ih *IngestHandler) CreateClip(c *gin.Context) {
 	indexed := true
 	if ih.enrichUC != nil && ih.jobsSvc != nil {
 		_, err := ih.jobsSvc.Enqueue(ctx, &job.EnqueueRequest{
-			Type: job.TypeMediaEnrich,
+			Type: jobmedia.TypeEnrich,
 			Payload: map[string]any{
 				"asset_id": clip.ID,
 				"source":   source,
