@@ -9,11 +9,16 @@ import (
 
 func TestNewYouTubeClipIdentity_HappyPath(t *testing.T) {
 	t.Parallel()
-	id, err := NewYouTubeClipIdentity(
-		"vdC5GXxS-qU", 146, 155, "v1",
-		"sha256-abc123",
-		"text-embedding-3-small", "v6", "media_assets_current",
-	)
+	id, err := NewYouTubeClipIdentity(YouTubeClipIdentityParams{
+		VideoID:     "vdC5GXxS-qU",
+		StartSec:    146,
+		EndSec:      155,
+		PolicyVer:   "v1",
+		ContentHash: "sha256-abc123",
+		Model:       "text-embedding-3-small",
+		Version:     "v6",
+		Collection:  "media_assets_current",
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -31,7 +36,10 @@ func TestNewYouTubeClipIdentity_HappyPath(t *testing.T) {
 
 func TestNewYouTubeClipIdentity_EmptyVideoID_ReturnsError(t *testing.T) {
 	t.Parallel()
-	_, err := NewYouTubeClipIdentity("", 0, 60, "v1", "hash", "m", "v", "c")
+	_, err := NewYouTubeClipIdentity(YouTubeClipIdentityParams{
+		VideoID: "", StartSec: 0, EndSec: 60, PolicyVer: "v1", ContentHash: "hash",
+		Model: "m", Version: "v", Collection: "c",
+	})
 	if err != ErrClipIdentityEmptyAssetID {
 		t.Errorf("err = %v, want ErrClipIdentityEmptyAssetID", err)
 	}
@@ -39,7 +47,10 @@ func TestNewYouTubeClipIdentity_EmptyVideoID_ReturnsError(t *testing.T) {
 
 func TestNewYouTubeClipIdentity_EmptyContentHash_ReturnsError(t *testing.T) {
 	t.Parallel()
-	_, err := NewYouTubeClipIdentity("abc", 0, 60, "v1", "", "m", "v", "c")
+	_, err := NewYouTubeClipIdentity(YouTubeClipIdentityParams{
+		VideoID: "abc", StartSec: 0, EndSec: 60, PolicyVer: "v1", ContentHash: "",
+		Model: "m", Version: "v", Collection: "c",
+	})
 	if err != ErrClipIdentityEmptyContentHash {
 		t.Errorf("err = %v, want ErrClipIdentityEmptyContentHash", err)
 	}
@@ -47,7 +58,10 @@ func TestNewYouTubeClipIdentity_EmptyContentHash_ReturnsError(t *testing.T) {
 
 func TestNewYouTubeClipIdentity_DefaultPolicyVersion(t *testing.T) {
 	t.Parallel()
-	id, err := NewYouTubeClipIdentity("abc", 0, 60, "", "hash", "m", "v", "c")
+	id, err := NewYouTubeClipIdentity(YouTubeClipIdentityParams{
+		VideoID: "abc", StartSec: 0, EndSec: 60, PolicyVer: "", ContentHash: "hash",
+		Model: "m", Version: "v", Collection: "c",
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -58,7 +72,10 @@ func TestNewYouTubeClipIdentity_DefaultPolicyVersion(t *testing.T) {
 
 func TestNewYouTubeClipIdentity_EndBeforeStart_ReturnsError(t *testing.T) {
 	t.Parallel()
-	_, err := NewYouTubeClipIdentity("abc", 60, 30, "v1", "hash", "m", "v", "c")
+	_, err := NewYouTubeClipIdentity(YouTubeClipIdentityParams{
+		VideoID: "abc", StartSec: 60, EndSec: 30, PolicyVer: "v1", ContentHash: "hash",
+		Model: "m", Version: "v", Collection: "c",
+	})
 	if err != ErrClipIdentityInvalidTimestamps {
 		t.Errorf("err = %v, want ErrClipIdentityInvalidTimestamps", err)
 	}
@@ -66,7 +83,10 @@ func TestNewYouTubeClipIdentity_EndBeforeStart_ReturnsError(t *testing.T) {
 
 func TestNewYouTubeClipIdentity_EqualStartEnd_OK(t *testing.T) {
 	t.Parallel()
-	id, err := NewYouTubeClipIdentity("abc", 60, 60, "v1", "hash", "m", "v", "c")
+	id, err := NewYouTubeClipIdentity(YouTubeClipIdentityParams{
+		VideoID: "abc", StartSec: 60, EndSec: 60, PolicyVer: "v1", ContentHash: "hash",
+		Model: "m", Version: "v", Collection: "c",
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -77,7 +97,10 @@ func TestNewYouTubeClipIdentity_EqualStartEnd_OK(t *testing.T) {
 
 func TestNewYouTubeClipIdentity_WhitespaceVideoID_Trimmed(t *testing.T) {
 	t.Parallel()
-	id, err := NewYouTubeClipIdentity("  abc123  ", 0, 60, "v1", "hash", "m", "v", "c")
+	id, err := NewYouTubeClipIdentity(YouTubeClipIdentityParams{
+		VideoID: "  abc123  ", StartSec: 0, EndSec: 60, PolicyVer: "v1", ContentHash: "hash",
+		Model: "m", Version: "v", Collection: "c",
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,10 +114,10 @@ func TestNewYouTubeClipIdentity_MatchesLegacyFormat(t *testing.T) {
 	// Verify the format matches the legacy process_segment.go:208 derivation:
 	// fmt.Sprintf("yt_%s_%d_%d_%s", cmd.VideoID, startSec, endSec, policyVer)
 	legacy := "yt_vdC5GXxS-qU_146_155_v1"
-	id, err := NewYouTubeClipIdentity(
-		"vdC5GXxS-qU", 146, 155, "v1",
-		"hash", "m", "v", "c",
-	)
+	id, err := NewYouTubeClipIdentity(YouTubeClipIdentityParams{
+		VideoID: "vdC5GXxS-qU", StartSec: 146, EndSec: 155, PolicyVer: "v1",
+		ContentHash: "hash", Model: "m", Version: "v", Collection: "c",
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -335,7 +358,10 @@ func TestDetectSourceFromAssetID_Empty(t *testing.T) {
 func TestSentinels_ErrorsIsReachable(t *testing.T) {
 	t.Parallel()
 	// Verify that both sentinels are reachable via errors.Is.
-	_, err1 := NewYouTubeClipIdentity("", 0, 0, "", "hash", "m", "v", "c")
+	_, err1 := NewYouTubeClipIdentity(YouTubeClipIdentityParams{
+		VideoID: "", StartSec: 0, EndSec: 0, PolicyVer: "", ContentHash: "hash",
+		Model: "m", Version: "v", Collection: "c",
+	})
 	if err1 != ErrClipIdentityEmptyAssetID {
 		t.Errorf("YouTube empty videoID: err = %v, want ErrClipIdentityEmptyAssetID", err1)
 	}
@@ -347,13 +373,16 @@ func TestSentinels_ErrorsIsReachable(t *testing.T) {
 	if err3 != ErrClipIdentityEmptyAssetID {
 		t.Errorf("Generic empty assetID: err = %v, want ErrClipIdentityEmptyAssetID", err3)
 	}
-	_, err4 := NewYouTubeClipIdentity("abc", 0, 0, "", "", "m", "v", "c")
+	_, err4 := NewYouTubeClipIdentity(YouTubeClipIdentityParams{
+		VideoID: "abc", StartSec: 0, EndSec: 0, PolicyVer: "", ContentHash: "",
+		Model: "m", Version: "v", Collection: "c",
+	})
 	if err4 != ErrClipIdentityEmptyContentHash {
 		t.Errorf("YouTube empty contentHash: err = %v, want ErrClipIdentityEmptyContentHash", err4)
 	}
 }
 
-// ── Compile-time pin ────────────────────────────────────────────────
+// ── Compile-time pin ───────────────────────────────────────────────
 
 func TestClipIdentityStruct_FieldsAccessible(t *testing.T) {
 	t.Parallel()
