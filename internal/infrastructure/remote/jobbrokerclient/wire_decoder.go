@@ -30,8 +30,8 @@ import (
 	"fmt"
 	"time"
 
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/remote"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // wireEnvelope mirrors the server-side body shape emitted by

@@ -2,7 +2,7 @@ package documents
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/document"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 const JobGenerate = document.TypeGenerate

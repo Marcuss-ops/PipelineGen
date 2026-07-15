@@ -39,8 +39,8 @@ import (
 
 	"go.uber.org/zap"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // FASE 2 canonical event_type for the outbox row that the

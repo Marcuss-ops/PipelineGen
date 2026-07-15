@@ -10,7 +10,7 @@ package images
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/gin-gonic/gin"
 )
 
