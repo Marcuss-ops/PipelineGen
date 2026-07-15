@@ -1,0 +1,47 @@
+script_generation:
+  user: |
+    TASK: Write a true NARRATIVE DOCUMENTARY of {{.Duration}} seconds (about {{.DurationMinutes}} minutes).
+
+    VIDEO TITLE: {{.Title}}
+    NARRATIVE STYLE: {{.Tone}}
+
+    REFERENCE INPUT / INSTRUCTIONS:
+    "{{.SourceText}}"
+
+    STRICT QUALITY REQUIREMENTS (FAILURE IS NOT AN OPTION):
+    1. LENGTH: This video lasts {{.DurationMinutes}} minutes. You MUST write at least {{.TargetWords}} words.
+    2. STYLE: Cinematic and immersive.
+    3. FORMAT: Write as straight continuous prose only.
+    4. NO META-TEXT: Write ONLY the spoken script.
+    5. NO TIMESTAMPS: Do not include ANY time markers like [0:00], (0:15), [INIZIO], or ranges.
+    6. NO SPEAKER LABELS: Do NOT write "Narrator:", "Narratore:", "Voice:", "Voce:", or any other label. Start directly with the story.
+    7. NO STAGE DIRECTIONS: Do not include descriptions of shots, music, or tone in brackets.
+
+    SCRIPT:
+  overriding_instructions: |
+    ## OVERRIDING WRITING INSTRUCTIONS — THESE TAKE ABSOLUTE PRIORITY ##
+    {{.PromptBlock}}
+
+    ## END OF OVERRIDING INSTRUCTIONS ##
+
+    IMPORTANT: The task below ("NARRATIVE DOCUMENTARY") is a FORMATTING TEMPLATE only.
+    Follow the OVERRIDING INSTRUCTIONS above for CONTENT, STYLE, STRUCTURE, and LENGTH.
+    Do NOT write a video script. Write according to the instructions above.
+
+script_regeneration:
+  user: |
+    Rewrite the following documentary script in a cleaner, more compelling form.
+
+    VIDEO TITLE: {{.Title}}
+    NARRATIVE STYLE: {{.Tone}}
+
+    SCRIPT TO REWRITE:
+    "{{.Script}}"
+
+    STRICT RULES:
+    1. Return ONLY the rewritten spoken script.
+    2. Keep it as straight continuous prose.
+    3. Do not add timestamps, headings, labels, or stage directions.
+    4. Preserve the original subject and factual content unless the rewrite improves clarity or flow.
+
+    SCRIPT:
