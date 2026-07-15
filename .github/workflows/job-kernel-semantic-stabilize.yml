@@ -67,7 +67,18 @@ jobs:
           body = []
           for line in source[start:end]:
               body.append(line[10:] if line.startswith('          ') else line)
-          Path('/tmp/job-semantic-transform.py').write_text('\n'.join(body) + '\n', encoding='utf-8')
+          script = '\n'.join(body) + '\n'
+          old = """if 'errors.New(' not in compat:
+    compat = compat.replace('\\t\"errors\"\\n\\n', '')"""
+          new = """has_errors_new = any(
+    'errors.New(' in line and not line.lstrip().startswith('//')
+    for line in compat.splitlines()
+)
+if not has_errors_new:
+    compat = compat.replace('\\t\"errors\"\\n\\n', '')"""
+          if old not in script:
+              raise SystemExit('semantic transformer: sentinel import cleanup block not found')
+          Path('/tmp/job-semantic-transform.py').write_text(script.replace(old, new), encoding='utf-8')
           PY
           python3 /tmp/job-semantic-transform.py
 
