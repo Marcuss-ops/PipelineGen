@@ -189,7 +189,7 @@ func (f *MaterializeFanOut) EnqueueMaterializeOne(
 	)
 
 	_, err := f.jobs.Enqueue(ctx, &job.EnqueueRequest{
-		Type:      job.TypeAssetTextMaterialize,
+		Type:      asset.TypeTextMaterialize,
 		Payload:   payload,
 		ActiveKey: activeKey,
 	})
