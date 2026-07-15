@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   split:
-    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks v4'
+    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks v5'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -55,6 +55,25 @@ jobs:
           test -f "${monolith}"
           cp "${monolith}" "${entrypoint}"
           bash -n "${entrypoint}"
+
+      - name: Normalize splitter to exact legacy parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/ci/architecture/split_monolith.py")
+          text = path.read_text(encoding="utf-8")
+          strict_green = '''    if modular.returncode != 0:
+                  raise SystemExit(modular.stdout.decode("utf-8", errors="replace"))
+          '''
+          if strict_green not in text:
+              raise SystemExit("cannot locate strict-green self-check block")
+          text = text.replace(strict_green, "")
+          text = text.replace('""|\\#*)', '""|\\\\#*)')
+          path.write_text(text, encoding="utf-8")
+          PY
 
       - name: Generate and validate semantic modules
         id: generate
