@@ -33,10 +33,7 @@ jobs:
           set -u -o pipefail
 
           post_status() {
-            local sha="$1"
-            local state="$2"
-            local context="$3"
-            local description="$4"
+            local sha="$1" state="$2" context="$3" description="$4"
             curl -fsS -X POST \
               -H "Authorization: Bearer ${GH_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
@@ -45,14 +42,36 @@ jobs:
               -d "$(python3 -c 'import json,sys; print(json.dumps({"state":sys.argv[1],"context":sys.argv[2],"description":sys.argv[3]}))' "${state}" "${context}" "${description}")" >/dev/null
           }
 
-          post_log_error() {
-            local stage="$1"
-            local log_file="$2"
-            local summary
-            summary=$(grep -m1 -E 'undefined:|cannot use|too many arguments|not enough arguments|build failed|FAIL|Error:|panic:' "${log_file}" 2>/dev/null \
-              | tr -cs 'A-Za-z0-9_.:/- ' '-' | cut -c1-72)
-            [ -n "${summary}" ] || summary="see-actions-log"
-            post_status "${TRIGGER_SHA}" failure "architecture-p1-error/${stage}/${summary}" "${stage} failed"
+          post_error_slug() {
+            local stage="$1" log_file="$2"
+            local slug
+            slug=$(python3 - "${log_file}" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+          patterns = (
+              r"[^\n]+\.go:\d+(?::\d+)?:[^\n]+",
+              r"undefined:[^\n]+",
+              r"cannot use[^\n]+",
+              r"too many arguments[^\n]+",
+              r"not enough arguments[^\n]+",
+              r"imported and not used[^\n]+",
+              r"unknown field[^\n]+",
+              r"FAIL\s+[^\n]+",
+          )
+          hit = "unknown-compile-error"
+          for pattern in patterns:
+              match = re.search(pattern, text)
+              if match:
+                  hit = match.group(0)
+                  break
+          hit = re.sub(r"[^A-Za-z0-9_.-]+", "-", hit).strip("-").lower()
+          print(hit[:52] or "unknown-compile-error")
+          PY
+          )
+            post_status "${TRIGGER_SHA}" failure "p1-error-${stage}-${slug}" "${stage} compile error"
           }
 
           post_status "${TRIGGER_SHA}" pending "architecture-p1-finalize" "P1 verification running"
@@ -87,22 +106,25 @@ jobs:
             internal/api/assets/clips/clip_action.go \
             internal/api/assets/clips/dispatcher_fail_closed_test.go
 
-          compile_log=/tmp/architecture-p1-compile.log
-          post_status "${TRIGGER_SHA}" pending "architecture-p1-compile" "Focused package compilation running"
-          if ! go test -run '^$' \
-            ./internal/api/assets/clips/... \
-            ./internal/app \
-            ./internal/application/assets/deletion \
-            ./internal/application/assets/maintenance \
-            ./internal/application/assets/providers/stock/... \
-            ./cmd/archcheck >"${compile_log}" 2>&1; then
-            tail -n 40 "${compile_log}"
-            post_status "${TRIGGER_SHA}" failure "architecture-p1-compile" "Focused package compilation failed"
-            post_log_error compile "${compile_log}"
-            post_status "${TRIGGER_SHA}" failure "architecture-p1-finalize" "Stopped during focused compilation"
-            exit 1
-          fi
-          post_status "${TRIGGER_SHA}" success "architecture-p1-compile" "Focused package compilation passed"
+          compile_one() {
+            local stage="$1" package="$2" log_file="/tmp/p1-${stage}.log"
+            post_status "${TRIGGER_SHA}" pending "p1-compile-${stage}" "Compiling ${package}"
+            if ! go test -run '^$' "${package}" >"${log_file}" 2>&1; then
+              tail -n 50 "${log_file}"
+              post_status "${TRIGGER_SHA}" failure "p1-compile-${stage}" "Compilation failed"
+              post_error_slug "${stage}" "${log_file}"
+              post_status "${TRIGGER_SHA}" failure "architecture-p1-finalize" "Stopped during ${stage} compilation"
+              exit 1
+            fi
+            post_status "${TRIGGER_SHA}" success "p1-compile-${stage}" "Compilation passed"
+          }
+
+          compile_one clips ./internal/api/assets/clips/...
+          compile_one app ./internal/app
+          compile_one deletion ./internal/application/assets/deletion
+          compile_one maintenance ./internal/application/assets/maintenance
+          compile_one stock ./internal/application/assets/providers/stock/...
+          compile_one archcheck ./cmd/archcheck
 
           gate_log=/tmp/architecture-p1-gates.log
           post_status "${TRIGGER_SHA}" pending "architecture-p1-ratchets" "Code-derived ratchet verification running"
@@ -111,9 +133,9 @@ jobs:
             go run -tags=c2_route_manifest -- ./scripts/archcheck/gates/gate_c2_route_manifest_main.go --root="$(pwd)"
             go run ./cmd/archcheck --strict
           } >"${gate_log}" 2>&1; then
-            tail -n 40 "${gate_log}"
+            tail -n 50 "${gate_log}"
             post_status "${TRIGGER_SHA}" failure "architecture-p1-ratchets" "Architecture ratchet verification failed"
-            post_log_error ratchets "${gate_log}"
+            post_error_slug ratchets "${gate_log}"
             post_status "${TRIGGER_SHA}" failure "architecture-p1-finalize" "Stopped during ratchet verification"
             exit 1
           fi
@@ -122,9 +144,9 @@ jobs:
           verify_log=/tmp/architecture-p1-verify-main.log
           post_status "${TRIGGER_SHA}" pending "architecture-p1-verify-main" "make verify-main running"
           if ! make verify-main >"${verify_log}" 2>&1; then
-            tail -n 60 "${verify_log}"
+            tail -n 70 "${verify_log}"
             post_status "${TRIGGER_SHA}" failure "architecture-p1-verify-main" "make verify-main failed"
-            post_log_error verify-main "${verify_log}"
+            post_error_slug verify-main "${verify_log}"
             post_status "${TRIGGER_SHA}" failure "architecture-p1-finalize" "Stopped during make verify-main"
             exit 1
           fi
