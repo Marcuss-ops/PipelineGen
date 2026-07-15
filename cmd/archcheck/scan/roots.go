@@ -69,7 +69,9 @@ func ScanKernelSubzoneHints(root string, pol *policy.Policy, r *report.Report) {
 // ScanUnknownInternalRoots treats a first-level internal root as governed when
 // it is either declared by the layout policy or registered in
 // architecture/package_hotspots.json with an owner, targets and deadline.
-// A truly unmanaged root is an error so new top-level zones cannot appear
+// Registered migration roots are accepted without an unknown-root warning;
+// their migration metadata is validated by the hotspot registry loader. A
+// truly unmanaged root is an error so new top-level zones cannot appear
 // silently.
 func ScanUnknownInternalRoots(root string, pol *policy.Policy, r *report.Report) {
 	internalDir := filepath.Join(root, "internal")
@@ -101,16 +103,6 @@ func ScanUnknownInternalRoots(root string, pol *policy.Policy, r *report.Report)
 			continue
 		}
 		if _, ok := registered[e.Name()]; ok {
-			// Registered migration roots retain the established report shape
-			// while their owner/targets/deadline are enforced by the registry
-			// loader. This avoids golden churn for acknowledged debt.
-			r.Violations = append(r.Violations, report.Violation{
-				Directory:   filepath.ToSlash(filepath.Join("internal", e.Name())),
-				MatchedRule: "not_in_legacy_or_target_internal_roots",
-				Rule:        "unknown_internal_root",
-				Severity:    "warn",
-				Note:        "first-level internal/ dir is not declared in legacy or target roots",
-			})
 			continue
 		}
 		r.Violations = append(r.Violations, report.Violation{
