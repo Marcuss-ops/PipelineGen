@@ -1,42 +1,59 @@
-// Package policy — archcheck policy loader.
-//
-// policy/load.go owns the stdlib-only parser for architecture/policy.yaml.
-// The format is intentionally simple: one `key: value` pair per line, with
-// `#` starting a line comment (mid-line `#` also starts a comment from
-// that point onward). Lists are either comma-separated on one line
-// (`key: a, b, c`) or multi-line bullets under a `key:` with an empty
-// value (`key:` followed by indented `- bullet` lines). Unknown keys
-// are ignored for forward-compat.
-//
-// Phase 0: Load() returns *Policy. Phase 1+ may extend to also return
-// the typed Rule / Constraint / OwnerRef entries declared in
-// model.go; today's parser extracts only the scalar Policy fields
-// because the YAML schema for the forward-looking types is not yet
-// specified.
-//
-// Cross-references:
-//   - architecture/policy.yaml: the on-disk format
-//   - cmd/archcheck/main.go: the caller (loadPolicy → policy.Load)
+// Package policy loads the enforced top-level keys from architecture/policy.yaml.
 package policy
 
 import (
 	"bufio"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 )
 
-// Load parses the flat key:value portions of architecture/policy.yaml.
-// Multi-line list values are exposed in the report header but not
-// consumed for enforcement in Phase 0. The returned *Policy is nil if
-// the file cannot be opened or read; an error is returned with the
-// underlying os.PathError wrapped for diagnostic context.
-//
-// The parser is line-based (`bufio.Scanner`, max line length 64K)
-// which is sufficient for the canonical policy file (~250 lines).
-// Larger policy files would need a streaming parser — not a current
-// concern.
+type fieldBinding struct {
+	Field    string
+	Consumer string
+	List     bool
+	Apply    func(*Policy, string) error
+}
+
+var policyBindings = map[string]fieldBinding{
+	"max_files_per_package":           intBinding("MaxFilesPerPackage", "scan.ScanPackages", func(p *Policy, n int) { p.MaxFilesPerPackage = n }),
+	"max_lines_per_file":              intBinding("MaxLinesPerFile", "scan.ScanPackages", func(p *Policy, n int) { p.MaxLinesPerFile = n }),
+	"cmd_main_max_lines":              intBinding("CmdMainMaxLines", "scan.ScanCommandBinaries", func(p *Policy, n int) { p.CmdMainMaxLines = n }),
+	"max_constructor_deps":            intBinding("MaxConstructorDeps", "scan.ScanConstructors", func(p *Policy, n int) { p.MaxConstructorDeps = n }),
+	"max_struct_deps":                 intBinding("MaxStructDeps", "scan.ScanStructDeps", func(p *Policy, n int) { p.MaxStructDeps = n }),
+	"max_clip_ingest_pipeline_fields": intBinding("MaxClipIngestPipelineFields", "scan.ScanStructDeps clip-ingest exception", func(p *Policy, n int) { p.MaxClipIngestPipelineFields = n }),
+	"forbidden_top_level_dirs":        stringListBinding("ForbiddenTopLevelDirs", "scan.ScanForbiddenDirs", func(p *Policy, v []string) { p.ForbiddenTopLevelDirs = v }),
+	"kernel_subzones":                 stringListBinding("KernelSubzones", "scan.ScanKernelSubzoneHints", func(p *Policy, v []string) { p.KernelSubzones = v }),
+	"capabilities":                    stringListBinding("Capabilities", "report policy snapshot and target-tree checks", func(p *Policy, v []string) { p.Capabilities = v }),
+	"platform_subzones":               stringListBinding("PlatformSubzones", "report policy snapshot and target-tree checks", func(p *Policy, v []string) { p.PlatformSubzones = v }),
+	"legacy_internal_roots":           stringListBinding("LegacyInternalRoots", "scan.ScanUnknownInternalRoots", func(p *Policy, v []string) { p.LegacyInternalRoots = v }),
+	"target_internal_roots":           stringListBinding("TargetInternalRoots", "scan.ScanUnknownInternalRoots", func(p *Policy, v []string) { p.TargetInternalRoots = v }),
+	"data_ownership_doc":              stringBinding("DataOwnershipDoc", "scan.ScanOwnershipDoc", func(p *Policy, v string) { p.DataOwnershipDoc = v }),
+	"legacy_policy_doc":               stringBinding("LegacyPolicyDoc", "scan.ScanLegacyPolicyDoc", func(p *Policy, v string) { p.LegacyPolicyDoc = v }),
+	"ci_gates_doc":                    stringBinding("CIGatesDoc", "scan.ScanCIGatesDoc", func(p *Policy, v string) { p.CIGatesDoc = v }),
+	"agent_playbook_doc":              stringBinding("AgentPlaybookDoc", "scan.ScanAgentPlaybookDoc", func(p *Policy, v string) { p.AgentPlaybookDoc = v }),
+	"removal_doc":                     stringBinding("RemovalDoc", "scan.ScanRemovalDoc", func(p *Policy, v string) { p.RemovalDoc = v }),
+	"known_grandfathered":             stringListBinding("KnownGrandfathered", "report grandfathered_known", func(p *Policy, v []string) { p.KnownGrandfathered = v }),
+	"stale_prose_paths":               stringListBinding("StaleProseStems", "scan.ScanStaleProsePaths", func(p *Policy, v []string) { p.StaleProseStems = v }),
+	"hard_gates":                      stringListBinding("HardGates", "runner hard-gate escalation", func(p *Policy, v []string) { p.HardGates = v }),
+}
+
+// These top-level sections are documentation or are consumed by legacy shell
+// gates. They are accepted explicitly, rather than falling through an unknown
+// key path.
+var acceptedDocumentSections = map[string]struct{}{
+	"prometheus_boundary":      {},
+	"cross_project_refs":       {},
+	"lint_gates":               {},
+	"wave_qdrant_005d_hygiene": {},
+	"debt_budget":              {},
+}
+
+// Load parses only top-level policy keys. Unknown top-level keys fail closed;
+// nested documentation under explicitly accepted sections is left to its
+// owning consumer.
 func Load(path string) (*Policy, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -46,161 +63,140 @@ func Load(path string) (*Policy, error) {
 
 	p := &Policy{}
 	sc := bufio.NewScanner(f)
-	inGrandfathered := false
-	inStaleProse := false
-	inHardGates := false
+	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	activeList := ""
+	lineNo := 0
 	for sc.Scan() {
-		line := sc.Text()
-		if idx := strings.Index(line, "#"); idx >= 0 {
-			line = line[:idx]
-		}
+		lineNo++
+		line := stripComment(sc.Text())
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
 
-		if inGrandfathered {
-			// collect indented bullets via the shared collectBullet
-			// helper (centralizes the indent + ASCII-quote trim; the
-			// inStaleProse path below uses the same helper).
-			if b, isBullet := collectBullet(line); isBullet {
-				p.KnownGrandfathered = append(p.KnownGrandfathered, b)
+		if activeList != "" {
+			if bullet, ok := collectBullet(line); ok {
+				binding := policyBindings[activeList]
+				if err := appendListValue(p, binding, bullet); err != nil {
+					return nil, fmt.Errorf("%s:%d: %w", path, lineNo, err)
+				}
 				continue
 			}
-			inGrandfathered = false
+			if isIndented(line) {
+				return nil, fmt.Errorf("%s:%d: expected a YAML bullet under %q", path, lineNo, activeList)
+			}
+			activeList = ""
 		}
 
-		if inStaleProse {
-			// collect indented bullets via the shared collectBullet()
-			// helper (handles the indent + ASCII-quote trim; see the
-			// helper doc for semantics). Mirrors the inGrandfathered
-			// path style.
-			if b, isBullet := collectBullet(line); isBullet {
-				p.StaleProseStems = append(p.StaleProseStems, b)
-				continue
-			}
-			inStaleProse = false
-		}
-
-		if inHardGates {
-			// Wave-22 hard-gate list (godlike/08 evolution PR2):
-			// the canonical Phase-N gate promotion for rule IDs
-			// whose violations must ALWAYS exit ExitViolations,
-			// regardless of --strict. Same bullet parser as the
-			// inGrandfathered + inStaleProse blocks (semantically
-			// identical — three list-style keys share one helper).
-			// collectBullet returns ("", false) for blank lines,
-			// so the inHardGates = false branch below resets the
-			// state naturally without an explicit blank-line check.
-			if b, isBullet := collectBullet(line); isBullet {
-				p.HardGates = append(p.HardGates, b)
-				continue
-			}
-			inHardGates = false
+		// Nested mappings and block-scalar bodies belong to an explicitly
+		// accepted top-level section. Only top-level declarations participate
+		// in the enforced Policy model.
+		if isIndented(line) {
+			continue
 		}
 
 		parts := strings.SplitN(trimmed, ":", 2)
 		if len(parts) != 2 {
-			continue
+			return nil, fmt.Errorf("%s:%d: expected top-level key: value", path, lineNo)
 		}
 		key := strings.TrimSpace(parts[0])
 		val := strings.TrimSpace(parts[1])
-		switch key {
-		case "max_files_per_package":
-			p.MaxFilesPerPackage = atoiOrDefault(val, 40)
-		case "max_lines_per_file":
-			p.MaxLinesPerFile = atoiOrDefault(val, 500)
-		case "cmd_main_max_lines":
-			p.CmdMainMaxLines = atoiOrDefault(val, 200)
-		case "max_constructor_deps":
-			p.MaxConstructorDeps = atoiOrDefault(val, 8)
-		case "max_struct_deps":
-			p.MaxStructDeps = atoiOrDefault(val, 8)
-		case "forbidden_top_level_dirs":
-			p.ForbiddenTopLevelDirs = splitTrim(val)
-		case "kernel_subzones":
-			p.KernelSubzones = splitTrim(val)
-		case "capabilities":
-			p.Capabilities = splitTrim(val)
-		case "platform_subzones":
-			p.PlatformSubzones = splitTrim(val)
-		case "legacy_internal_roots":
-			p.LegacyInternalRoots = splitTrim(val)
-		case "target_internal_roots":
-			p.TargetInternalRoots = splitTrim(val)
-		case "data_ownership_doc":
-			p.DataOwnershipDoc = val
-		case "legacy_policy_doc":
-			p.LegacyPolicyDoc = val
-		case "ci_gates_doc":
-			p.CIGatesDoc = val
-		case "agent_playbook_doc":
-			p.AgentPlaybookDoc = val
-		case "removal_doc":
-			p.RemovalDoc = val
-		case "known_grandfathered":
-			if val == "" {
-				inGrandfathered = true
+		if binding, ok := policyBindings[key]; ok {
+			if binding.List && val == "" {
+				activeList = key
+				continue
 			}
-		case "stale_prose_paths":
-			if val == "" {
-				inStaleProse = true
+			if err := binding.Apply(p, val); err != nil {
+				return nil, fmt.Errorf("%s:%d: key %q: %w", path, lineNo, key, err)
 			}
-		case "hard_gates":
-			if val == "" {
-				inHardGates = true
-			}
+			continue
 		}
+		if _, ok := acceptedDocumentSections[key]; ok {
+			continue
+		}
+		return nil, fmt.Errorf("%s:%d: unknown architecture policy key %q", path, lineNo, key)
 	}
 	if err := sc.Err(); err != nil {
 		return nil, fmt.Errorf("scan %s: %w", path, err)
 	}
+	if activeList != "" {
+		return nil, fmt.Errorf("%s: list key %q has no values", path, activeList)
+	}
 	return p, nil
 }
 
-// atoiOrDefault parses a positive integer from s; returns def when s
-// is empty, not an integer, or has surrounding whitespace that hides
-// the value. Used for the four numeric Policy fields
-// (MaxFilesPerPackage, MaxLinesPerFile, CmdMainMaxLines,
-// MaxConstructorDeps) so a missing/garbled value in policy.yaml
-// degrades to the documented default rather than os.Exit(2)-ing the
-// scan.
-func atoiOrDefault(s string, def int) int {
-	n, err := strconv.Atoi(strings.TrimSpace(s))
-	if err != nil {
-		return def
-	}
-	return n
+func intBinding(field, consumer string, set func(*Policy, int)) fieldBinding {
+	return fieldBinding{Field: field, Consumer: consumer, Apply: func(p *Policy, raw string) error {
+		n, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || n <= 0 {
+			return fmt.Errorf("expected a positive integer, got %q", raw)
+		}
+		set(p, n)
+		return nil
+	}}
 }
 
-// splitTrim splits a comma-separated scalar (e.g.
-// "asset, job, script, event, identity, errors") into a slice of
-// trimmed, non-empty strings. Empty entries are dropped (so a
-// trailing comma does not produce a phantom element). The output
-// preserves input order; the scan functions that consume the slice
-// sort or hash it as needed.
+func stringBinding(field, consumer string, set func(*Policy, string)) fieldBinding {
+	return fieldBinding{Field: field, Consumer: consumer, Apply: func(p *Policy, raw string) error {
+		v := strings.Trim(strings.TrimSpace(raw), "\"'")
+		if v == "" {
+			return fmt.Errorf("value cannot be empty")
+		}
+		set(p, v)
+		return nil
+	}}
+}
+
+func stringListBinding(field, consumer string, set func(*Policy, []string)) fieldBinding {
+	return fieldBinding{Field: field, Consumer: consumer, List: true, Apply: func(p *Policy, raw string) error {
+		values := splitTrim(raw)
+		if len(values) == 0 {
+			return fmt.Errorf("list cannot be empty")
+		}
+		set(p, values)
+		return nil
+	}}
+}
+
+func appendListValue(p *Policy, binding fieldBinding, value string) error {
+	field := reflect.ValueOf(p).Elem().FieldByName(binding.Field)
+	if !field.IsValid() || field.Kind() != reflect.Slice || field.Type().Elem().Kind() != reflect.String {
+		return fmt.Errorf("binding %s is not a []string Policy field", binding.Field)
+	}
+	field.Set(reflect.Append(field, reflect.ValueOf(value)))
+	return nil
+}
+
+func stripComment(line string) string {
+	if idx := strings.Index(line, "#"); idx >= 0 {
+		return line[:idx]
+	}
+	return line
+}
+
+func isIndented(line string) bool {
+	return strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")
+}
+
 func splitTrim(s string) []string {
 	parts := strings.Split(s, ",")
 	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
-			out = append(out, t)
+	for _, part := range parts {
+		if value := strings.Trim(strings.TrimSpace(part), "\"'"); value != "" {
+			out = append(out, value)
 		}
 	}
 	return out
 }
 
-// collectBullet parses one YAML indented-bullet line into a clean
-// scalar, returning (bullet, true) when line is a bullet to append,
-// or ("", false) when line has returned to top-level (calling code
-// resets its in-list flag). Handles mixed quoted + unquoted YAML
-// inline scalars; mirrors the original inGrandfathered block's
-// semantics. Helper exists so two list-style keys don't duplicate
-// the indent + dash + quote trim logic.
 func collectBullet(line string) (string, bool) {
-	if !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "\t") {
+	if !isIndented(line) {
 		return "", false
 	}
-	b := strings.Trim(strings.TrimSpace(strings.TrimLeft(line, " \t-")), "\"'")
-	return b, b != ""
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "-") {
+		return "", false
+	}
+	value := strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, "-")), "\"'")
+	return value, value != ""
 }
