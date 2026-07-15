@@ -1,17 +1,4 @@
-// Package app — AssetsModuleDeps bundle + sub-struct grouping (P0-2 commit 1).
-//
-// P0-2 (June 2026): the historical AssetsBundle (16-field flat struct,
-// package app, cross-capability cross-bundle-read channel) is split
-// into a typed AssetsModuleDeps with 4 sub-structs grouped by real
-// capability area:
-//
-//   - Core:        the canonical data layer (clips + voiceover + image
-//     repositories, asset.Service, asset tree + index,
-//     mediaProcessor, catalogSync).
-//   - Search:      the search sub-system (clipIndexer, SearchFanOut +
-//     BackendRegistry + canonical SearchAggregator).
-//   - Delivery:    the Drive admin and canonical Publisher ports.
-//   - Background:  the singleton idempotency layer.
+// Package app — Assets module dependency groups.
 package app
 
 import (
@@ -30,7 +17,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
 )
 
-// CoreRepositoryDeps owns the repositories used by the Assets capability.
+// CoreRepositoryDeps owns repositories used by the Assets capability.
 type CoreRepositoryDeps struct {
 	ClipsRepo     *sqassets.ClipsRepository
 	VoiceoverRepo *sqassets.VoiceoversRepository
@@ -47,35 +34,18 @@ type CoreServiceDeps struct {
 	ArtifactService    *artifacts.Service
 }
 
-// CoreDeps is the Assets-module data-layer bundle. This transitional direct
-// field shape remains until the sole composition literal is migrated through
-// newCoreDeps; the following commit embeds the two capability groups.
+// CoreDeps exposes two real capability groups instead of nine mandatory ports.
+// Anonymous embedding preserves the existing selector surface for consumers.
 type CoreDeps struct {
-	ClipsRepo          *sqassets.ClipsRepository
-	VoiceoverRepo      *sqassets.VoiceoversRepository
-	ImageRepo          *sqassets.ImagesRepository
-	Assets             *domainasset.Service
-	AssetTreeService   *assettree.Service
-	AssetIndexService  *assetindex.Service
-	MediaProcessor     domainasset.Processor
-	CatalogSyncService *catalogsync.Service
-	ArtifactService    *artifacts.Service
+	CoreRepositoryDeps
+	CoreServiceDeps
 }
 
-// newCoreDeps is the single composition assembler for CoreDeps. Callers pass
-// capability groups rather than a nine-slot flat literal; the final embedding
-// change therefore remains local to this file.
+// newCoreDeps is the single composition assembler for CoreDeps.
 func newCoreDeps(repositories CoreRepositoryDeps, services CoreServiceDeps) CoreDeps {
 	return CoreDeps{
-		ClipsRepo:          repositories.ClipsRepo,
-		VoiceoverRepo:      repositories.VoiceoverRepo,
-		ImageRepo:          repositories.ImageRepo,
-		Assets:             services.Assets,
-		AssetTreeService:   services.AssetTreeService,
-		AssetIndexService:  services.AssetIndexService,
-		MediaProcessor:     services.MediaProcessor,
-		CatalogSyncService: services.CatalogSyncService,
-		ArtifactService:    services.ArtifactService,
+		CoreRepositoryDeps: repositories,
+		CoreServiceDeps:    services,
 	}
 }
 
