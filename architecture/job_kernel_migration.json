@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "WAVE-23-JOB-KERNEL-MIGRATION",
+  "status": "in_progress",
+  "owner": "internal/kernel/job",
+  "deadline": "2026-09-30",
+  "compatibility_import": "github.com/Marcuss-ops/PipelineGen/internal/domain/job",
+  "canonical_import": "github.com/Marcuss-ops/PipelineGen/internal/kernel/job",
+  "reported_baseline_imports": 172,
+  "migration_order": [
+    "internal/domain/remote",
+    "internal/application/jobs",
+    "internal/application/assets",
+    "internal/application/youtube",
+    "internal/api",
+    "cmd",
+    "pkg"
+  ],
+  "contract_exit": "delete internal/domain/job compatibility aliases after the production import census reaches zero"
+}
