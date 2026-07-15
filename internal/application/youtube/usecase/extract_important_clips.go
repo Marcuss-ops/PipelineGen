@@ -146,25 +146,30 @@ type ExtractImportantClipsUseCase struct {
 	hasher     HasherPort // Step 3: replaces prior direct files.MD5File import (godlike/06 drift fix).
 }
 
-func NewExtractImportantClipsUseCase(
-	log *zap.Logger,
-	subtitles TranscriptFetcherPort,
-	analyzer AnalyzerPort, // nil-tolerant
-	downloader SectionDownloaderPort,
-	folder DriveFolderCreatorPort,
-	uploader DriveUploaderPort,
-	writer youtubeports.ClipAtomicWriter,
-	hasher HasherPort,
-) *ExtractImportantClipsUseCase {
-	if log == nil || subtitles == nil || downloader == nil ||
-		folder == nil || uploader == nil || writer == nil ||
-		hasher == nil {
+// ExtractImportantClipsDeps bundles the ports required by
+// ExtractImportantClipsUseCase so the constructor stays under the
+// archcheck 8-parameter cap.
+type ExtractImportantClipsDeps struct {
+	Log        *zap.Logger
+	Subtitles  TranscriptFetcherPort
+	Analyzer   AnalyzerPort // nil-tolerant
+	Downloader SectionDownloaderPort
+	Folder     DriveFolderCreatorPort
+	Uploader   DriveUploaderPort
+	Writer     youtubeports.ClipAtomicWriter
+	Hasher     HasherPort
+}
+
+func NewExtractImportantClipsUseCase(deps ExtractImportantClipsDeps) *ExtractImportantClipsUseCase {
+	if deps.Log == nil || deps.Subtitles == nil || deps.Downloader == nil ||
+		deps.Folder == nil || deps.Uploader == nil || deps.Writer == nil ||
+		deps.Hasher == nil {
 		panic("ExtractImportantClipsUseCase.New: required port nil (analyzer is nil-tolerant)")
 	}
 	return &ExtractImportantClipsUseCase{
-		log: log, subtitles: subtitles, analyzer: analyzer,
-		downloader: downloader, folder: folder, uploader: uploader,
-		writer: writer, hasher: hasher,
+		log: deps.Log, subtitles: deps.Subtitles, analyzer: deps.Analyzer,
+		downloader: deps.Downloader, folder: deps.Folder, uploader: deps.Uploader,
+		writer: deps.Writer, hasher: deps.Hasher,
 	}
 }
 

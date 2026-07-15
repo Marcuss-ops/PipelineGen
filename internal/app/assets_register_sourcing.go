@@ -91,18 +91,18 @@ func newAssetRegisterService(
 	// post-CUTOVER; deleting a rot interface is the canonical hygiene).
 	// See architecture/deprecations.yaml#PR-YT-DRIVE-LEGACY-RETIRE
 	// + internal/app/youtube_adapters_drive.go for the comment audit-pin.
-	ytSvc := youtube.NewService(
-		&sourcingFetchAdapter{registry: providerRegistry},
-		&sourcingClipStoreAdapter{repo: clipsRepo},
-		&sourcingPublisherAdapter{publisher: publisher},
-		&sourcingTranscriberAdapter{cfg: cfg, log: log},
+	ytSvc := youtube.NewService(youtube.ServiceDeps{
+		Fetcher:     &sourcingFetchAdapter{registry: providerRegistry},
+		Clips:       &sourcingClipStoreAdapter{repo: clipsRepo},
+		Publisher:   &sourcingPublisherAdapter{publisher: publisher},
+		Transcriber: &sourcingTranscriberAdapter{cfg: cfg, log: log},
 		// P1-5 CUTOVER (July 2026): lifecycle wired through from composition root.
 		// TrashFile now routes via FileLifecycle.Trash (no Admin fallback).
-		&sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, lifecycle: lifecycle, publisher: publisher, log: log},
-		ytIndex,
-		ytEnrich,
-		&zapSourcingLogger{log: log},
-	).WithRequireDrive(cfg.Features.MediaDriveRequired)
+		Metadata:   &sourcingMetadataAdapter{cfg: cfg, admin: driveUploader, reader: driveUploader, lifecycle: lifecycle, publisher: publisher, log: log},
+		IndexDisp:  ytIndex,
+		Enrichment: ytEnrich,
+		Log:        &zapSourcingLogger{log: log},
+	}).WithRequireDrive(cfg.Features.MediaDriveRequired)
 
 	// P0-1 / commit 2: BatchRegistrar sub-service (PR-BATCH-REGISTER-ASYNC).
 	// The synchronous YouTubeRegistrar loop is replaced with an async

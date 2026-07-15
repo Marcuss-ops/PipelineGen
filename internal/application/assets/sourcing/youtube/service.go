@@ -62,29 +62,34 @@ type Service struct {
 	requireDrive bool
 }
 
-// NewService creates a YouTubeRegistrar service. indexDisp is REQUIRED
+// ServiceDeps carries the ports for NewService. Grouping them keeps the
+// constructor under the archcheck 8-parameter cap while preserving the
+// canonical 8-port YouTubeRegistrar surface.
+type ServiceDeps struct {
+	Fetcher     sourcing.FetchProviderPort
+	Clips       sourcing.ClipStorePort
+	Publisher   sourcing.PublisherPort
+	Transcriber sourcing.TranscriptionPort
+	Metadata    sourcing.MetadataUploadPort
+	IndexDisp   IndexDispatcherPort
+	Enrichment  EnrichmentPort
+	Log         sourcing.Logger
+}
+
+// NewService creates a YouTubeRegistrar service. deps.IndexDisp is REQUIRED
 // (QDRANT-asset-mutation isolation June 2026 forbids the legacy UpsertClip
 // fallback). All other ports are best-effort: nil causes the corresponding
 // sub-operation to be skipped gracefully.
-func NewService(
-	fetcher sourcing.FetchProviderPort,
-	clips sourcing.ClipStorePort,
-	publisher sourcing.PublisherPort,
-	transcriber sourcing.TranscriptionPort,
-	metadata sourcing.MetadataUploadPort,
-	indexDisp IndexDispatcherPort,
-	enrichment EnrichmentPort,
-	log sourcing.Logger,
-) *Service {
+func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		fetcher:     fetcher,
-		clips:       clips,
-		publisher:   publisher,
-		transcriber: transcriber,
-		metadata:    metadata,
-		indexDisp:   indexDisp,
-		enrichment:  enrichment,
-		log:         log,
+		fetcher:     deps.Fetcher,
+		clips:       deps.Clips,
+		publisher:   deps.Publisher,
+		transcriber: deps.Transcriber,
+		metadata:    deps.Metadata,
+		indexDisp:   deps.IndexDisp,
+		enrichment:  deps.Enrichment,
+		log:         deps.Log,
 	}
 }
 

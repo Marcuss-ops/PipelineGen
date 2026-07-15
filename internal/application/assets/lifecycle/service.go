@@ -49,6 +49,19 @@ type Config struct {
 	ReconcilePolicy assetop.ReconcilePolicy
 }
 
+// ServiceDeps carries the dependencies for NewService. Grouping them
+// keeps the constructor under the archcheck 8-parameter cap while
+// preserving the canonical lifecycle service surface.
+type ServiceDeps struct {
+	Store       AssetRecordStore
+	Publisher   delivery.Publisher
+	DriveReader drive.Reader
+	Registry    artifacts.Registry
+	AssetIndex  *assetindex.Service
+	Finalizer   *artifacts.Finalizer
+	Log         *zap.Logger
+}
+
 // NewService creates a new lifecycle Service.
 //
 // FASE 9 Step 7: driveAdmin is used for UploadFile; driveReader is used
@@ -61,35 +74,26 @@ type Config struct {
 // composition root is the only place drive.Admin lives; the lifecycle
 // service itself NEVER holds a drive.Admin handle (P0 #7 invariant: no
 // raw SDK / legacy port access from application code).
-func NewService(
-	store AssetRecordStore,
-	publisher delivery.Publisher,
-	driveReader drive.Reader,
-	registry artifacts.Registry,
-	assetIndex *assetindex.Service,
-	finalizer *artifacts.Finalizer,
-	cfg Config,
-	log *zap.Logger,
-) *Service {
-	dedupe := assetop.NewDedupeService(store, cfg.DuplicatePolicy, log)
+func NewService(deps ServiceDeps, cfg Config) *Service {
+	dedupe := assetop.NewDedupeService(deps.Store, cfg.DuplicatePolicy, deps.Log)
 
 	var reconcile *assetop.ReconcileService
-	if cfg.ReconcilePolicy.Enabled && driveReader != nil {
-		reconcile = assetop.NewReconcileService(store, driveReader, cfg.ReconcilePolicy, log)
+	if cfg.ReconcilePolicy.Enabled && deps.DriveReader != nil {
+		reconcile = assetop.NewReconcileService(deps.Store, deps.DriveReader, cfg.ReconcilePolicy, deps.Log)
 	}
 
 	return &Service{
-		store:         store,
+		store:         deps.Store,
 		dedupe:        dedupe,
 		reconcile:     reconcile,
-		publisher:     publisher,
-		driveReader:   driveReader,
-		finalizer:     finalizer,
+		publisher:     deps.Publisher,
+		driveReader:   deps.DriveReader,
+		finalizer:     deps.Finalizer,
 		uploadPolicy:  cfg.UploadPolicy,
 		persistPolicy: cfg.PersistPolicy,
-		registry:      registry,
-		assetIndex:    assetIndex,
-		log:           log,
+		registry:      deps.Registry,
+		assetIndex:    deps.AssetIndex,
+		log:           deps.Log,
 	}
 }
 

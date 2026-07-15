@@ -161,17 +161,17 @@ func TestRenewLeaseLoopWith_CancelRequested_TriggersJobCancel(t *testing.T) {
 
 	// Build a real Worker on the mock broker so the renew-loop is
 	// wired through the canonical receiver.
-	w := NewWorker(
-		"renew-loop-cancel-test-"+t.Name(),
-		mock,
-		nil, // dispatcher unused; the handler will be replaced with a no-op below
-		nil, // notifier unused
-		zap.NewNop(),
-		15*time.Millisecond, // leaseTTL — small so renewTTL/3 = 5ms tick
-		1*time.Millisecond,  // pollEvery — unused in the renew loop
-		BackoffConfig{},
-		nil,
-	)
+	w := NewWorker(WorkerDeps{
+		ID:         "renew-loop-cancel-test-" + t.Name(),
+		Repo:       mock,
+		Dispatcher: nil, // dispatcher unused; the handler will be replaced with a no-op below
+		Notifier:   nil, // notifier unused
+		Log:        zap.NewNop(),
+		LeaseTTL:   15 * time.Millisecond, // leaseTTL — small so renewTTL/3 = 5ms tick
+		PollEvery:  1 * time.Millisecond,  // pollEvery — unused in the renew loop
+		Backoff:    BackoffConfig{},
+		Types:      nil,
+	})
 
 	jobCtx, jobCancel := context.WithCancel(context.Background())
 	defer jobCancel()
@@ -220,12 +220,17 @@ func TestRenewLeaseLoopWith_LeaseLost_AbortsLoop(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(
-		"renew-loop-leaselost-test-"+t.Name(),
-		mock,
-		nil, nil, zap.NewNop(),
-		15*time.Millisecond, 1*time.Millisecond, BackoffConfig{}, nil,
-	)
+	w := NewWorker(WorkerDeps{
+		ID:         "renew-loop-leaselost-test-" + t.Name(),
+		Repo:       mock,
+		Dispatcher: nil,
+		Notifier:   nil,
+		Log:        zap.NewNop(),
+		LeaseTTL:   15 * time.Millisecond,
+		PollEvery:  1 * time.Millisecond,
+		Backoff:    BackoffConfig{},
+		Types:      nil,
+	})
 
 	jobCtx, jobCancel := context.WithCancel(context.Background())
 	defer jobCancel()
@@ -270,12 +275,17 @@ func TestRenewLeaseLoopWith_Continue_NoOp(t *testing.T) {
 		},
 	}
 
-	w := NewWorker(
-		"renew-loop-continue-test-"+t.Name(),
-		mock,
-		nil, nil, zap.NewNop(),
-		15*time.Millisecond, 1*time.Millisecond, BackoffConfig{}, nil,
-	)
+	w := NewWorker(WorkerDeps{
+		ID:         "renew-loop-continue-test-" + t.Name(),
+		Repo:       mock,
+		Dispatcher: nil,
+		Notifier:   nil,
+		Log:        zap.NewNop(),
+		LeaseTTL:   15 * time.Millisecond,
+		PollEvery:  1 * time.Millisecond,
+		Backoff:    BackoffConfig{},
+		Types:      nil,
+	})
 
 	jobCtx, jobCancel := context.WithCancel(context.Background())
 	defer jobCancel()
@@ -478,21 +488,21 @@ func TestWorker_CancelsRunningJobOnCancelSignal(t *testing.T) {
 		t.Fatalf("register handler: %v", err)
 	}
 
-	worker := NewWorker(
-		"cancellation-test-worker",
-		broker,
-		dispatcher,
-		nil, // notifier unused in runJob's cancel path
-		zap.NewNop(),
-		60*time.Millisecond, // leaseTTL — small for fast renew tick (60/3 = 20ms)
-		2*time.Second,       // pollEvery
-		BackoffConfig{
+	worker := NewWorker(WorkerDeps{
+		ID:         "cancellation-test-worker",
+		Repo:       broker,
+		Dispatcher: dispatcher,
+		Notifier:   nil, // notifier unused in runJob's cancel path
+		Log:        zap.NewNop(),
+		LeaseTTL:   60 * time.Millisecond, // leaseTTL — small for fast renew tick (60/3 = 20ms)
+		PollEvery:  2 * time.Second,       // pollEvery
+		Backoff: BackoffConfig{
 			MaxBackoff:                30 * time.Second,
 			JitterFraction:            0,
 			ConsecutiveEmptyThreshold: 0,
 		},
-		[]string{TypeScriptGenerate},
-	)
+		Types: []string{TypeScriptGenerate},
+	})
 
 	parentCtx, parentCancel := context.WithCancel(context.Background())
 	defer parentCancel()
@@ -552,21 +562,21 @@ func TestWorker_UsesCurrentRevisionAtFinalization(t *testing.T) {
 		t.Fatalf("register handler: %v", err)
 	}
 
-	worker := NewWorker(
-		"revision-test-worker",
-		broker,
-		dispatcher,
-		nil,
-		zap.NewNop(),
-		5*time.Minute,
-		2*time.Second,
-		BackoffConfig{
+	worker := NewWorker(WorkerDeps{
+		ID:         "revision-test-worker",
+		Repo:       broker,
+		Dispatcher: dispatcher,
+		Notifier:   nil,
+		Log:        zap.NewNop(),
+		LeaseTTL:   5 * time.Minute,
+		PollEvery:  2 * time.Second,
+		Backoff: BackoffConfig{
 			MaxBackoff:                30 * time.Second,
 			JitterFraction:            0,
 			ConsecutiveEmptyThreshold: 0,
 		},
-		[]string{TypeScriptGenerate},
-	)
+		Types: []string{TypeScriptGenerate},
+	})
 
 	parentCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()

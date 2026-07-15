@@ -273,14 +273,13 @@ func NewLifecycleFromDeps(
 		deps.Store = lifecycle.NewRegistryStoreAdapter(deps.Registry)
 	}
 
-	return lifecycle.NewService(
-		deps.Store,
-		deps.Publisher,
-		driveReader,
-		deps.Registry,
-		deps.AssetIndex,
-		deps.Finalizer,
-		lifecycle.DefaultConfig(),
-		log,
-	)
+	return lifecycle.NewService(lifecycle.ServiceDeps{
+		Store:       deps.Store,
+		Publisher:   deps.Publisher,
+		DriveReader: driveReader,
+		Registry:    deps.Registry,
+		AssetIndex:  deps.AssetIndex,
+		Finalizer:   deps.Finalizer,
+		Log:         log,
+	}, lifecycle.DefaultConfig())
 }
