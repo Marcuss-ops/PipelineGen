@@ -1,16 +1,15 @@
 {
-  "generated_at": "2026-07-14T20:04:39Z",
+  "generated_at": "2026-07-15T10:30:49Z",
   "production": {
     "passed": false,
     "summary": {
-      "total_violations": 374,
+      "total_violations": 245,
       "by_reason": {
         "constructor_deps": 9,
         "kernel_split_hint": 1,
         "percheck_api_module_deps_max_8": 2,
         "percheck_asset_committer_event_ssot": 8,
         "percheck_drive_access_ssot": 13,
-        "percheck_input_immutability": 129,
         "percheck_monitor_infra_import": 3,
         "percheck_no_domain_job_compatibility_aliases": 172,
         "percheck_root_override_ban": 2,
@@ -23,21 +22,20 @@
       "by_severity": {
         "error": 36,
         "info": 1,
-        "warn": 337
+        "warn": 208
       }
     }
   },
   "full": {
     "passed": false,
     "summary": {
-      "total_violations": 374,
+      "total_violations": 245,
       "by_reason": {
         "constructor_deps": 9,
         "kernel_split_hint": 1,
         "percheck_api_module_deps_max_8": 2,
         "percheck_asset_committer_event_ssot": 8,
         "percheck_drive_access_ssot": 13,
-        "percheck_input_immutability": 129,
         "percheck_monitor_infra_import": 3,
         "percheck_no_domain_job_compatibility_aliases": 172,
         "percheck_root_override_ban": 2,
@@ -50,7 +48,7 @@
       "by_severity": {
         "error": 36,
         "info": 1,
-        "warn": 337
+        "warn": 208
       }
     }
   }
