@@ -101,17 +101,8 @@ type ChannelMonitor struct {
 }
 
 // TestScanMonitorInfraImport_MarkerMultiLine pins the canonical
-// multi-line import block allowlist pattern:
-//
-//	// ARCH-ALLOWLIST: monitor-infra-import
-//	import (
-//		"path/1"
-//		"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/foo"
-//	)
-//
-// The marker is on line N-1; the import block opening is on
-// line N; the actual import is on line N+1. The scanner MUST
-// recognize the marker+2 offset (N+1 == marker+2) as allowed.
+// multi-line import block allowlist pattern with the marker above
+// the enclosing import declaration.
 func TestScanMonitorInfraImport_MarkerMultiLine(t *testing.T) {
 	root := t.TempDir()
 	src := `package monitor
@@ -132,6 +123,37 @@ type ChannelMonitor struct {
 	ScanMonitorInfraImport(root, &policy.Policy{}, r)
 	if len(r.Violations) != 0 {
 		t.Errorf("multi-line marker should allow the import, got %d violations: %+v", len(r.Violations), r.Violations)
+	}
+}
+
+// TestScanMonitorInfraImport_MarkerInsideMultiLineBlock pins the retained
+// shell Check 54 form used by the monitor SQLite tests: the marker sits
+// directly above the concrete infrastructure import inside import (...).
+func TestScanMonitorInfraImport_MarkerInsideMultiLineBlock(t *testing.T) {
+	root := t.TempDir()
+	src := `package monitor
+
+import (
+	"context"
+
+	_ "github.com/mattn/go-sqlite3"
+
+	// ARCH-ALLOWLIST: monitor-infra-import — owner=@monitor-team; deadline=2026-09-15
+	sqlassets "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+)
+
+type ChannelMonitor struct {
+	_ sqlassets.SomeType
+}
+`
+	writeFileFixture(t, root, "internal/application/assets/monitor/allowed_inside_block_test.go", src)
+	r := &report.Report{}
+	ScanMonitorInfraImport(root, &policy.Policy{}, r)
+	if len(r.Violations) != 0 {
+		t.Fatalf("marker directly above an import spec should allow it, got %d violations: %+v", len(r.Violations), r.Violations)
+	}
+	if len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], "ARCH-ALLOWLIST: monitor-infra-import") {
+		t.Fatalf("marker site should produce one audit warning, got %+v", r.Warnings)
 	}
 }
 
@@ -271,12 +293,9 @@ func TestIsMarkerLine(t *testing.T) {
 	}
 }
 
-// TestIsMarkerAllowedForImportLine pins the canonical
-// import-statement-preamble semantics for the marker check.
-// The function handles BOTH single-line imports (marker on
-// currentLine-1) and multi-line `import (` blocks (marker
-// on the line directly above the `import (` opening line).
-// A marker too far from the import statement is NOT allowed.
+// TestIsMarkerAllowedForImportLine pins the supported marker placements:
+// immediately above a single-line import, immediately above the concrete
+// spec inside import (...), or immediately above the enclosing import (.
 func TestIsMarkerAllowedForImportLine(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -326,6 +345,22 @@ func TestIsMarkerAllowedForImportLine(t *testing.T) {
 			want:        true,
 		},
 		{
+			name:        "multi-line: marker directly above concrete import spec",
+			markerLines: []int{6},
+			lines: []string{
+				"package x",
+				"",
+				"import (",
+				"\t\"context\"",
+				"",
+				"\t// ARCH-ALLOWLIST: monitor-infra-import",
+				"\t\"path\"",
+				")",
+			},
+			currentLine: 7,
+			want:        true,
+		},
+		{
 			name:        "marker too far (single-line): marker on currentLine-2",
 			markerLines: []int{2},
 			lines: []string{
@@ -369,6 +404,20 @@ func TestIsMarkerAllowedForImportLine(t *testing.T) {
 				"var Y = 1",
 			},
 			currentLine: 3,
+			want:        false,
+		},
+		{
+			name:        "closed import block cannot authorize later literal",
+			markerLines: []int{2},
+			lines: []string{
+				"package x",
+				"// ARCH-ALLOWLIST: monitor-infra-import",
+				"import (",
+				"\t\"context\"",
+				")",
+				`var Y = "path"`,
+			},
+			currentLine: 6,
 			want:        false,
 		},
 	}
