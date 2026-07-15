@@ -325,15 +325,23 @@ func buildVoiceoverService(
 	// structurally — compile-time assertion in process_voiceover_item.go
 	// pins the conformance.
 	processItemUseCase := voiceover.NewProcessVoiceoverItemUseCase(voiceover.ProcessVoiceoverItemDeps{
-		TTSProvider:           ttsProvider,
-		DestinationResolver:   destResolverAdapter,
-		AudioPostProcessor:    audioAdapter,
-		Publisher:             publisherAdapter,
-		VoiceoverRepository:   voRepoAdapter,
-		DefaultFolderResolver: defaultFolderResolver,
-		Finalizer:             finalizer,
-		OutputDir:             voDir,
-		Logger:                log,
+		Pipeline: voiceover.ProcessVoiceoverPipelinePorts{
+			TTSProvider:         ttsProvider,
+			DestinationResolver: destResolverAdapter,
+			AudioPostProcessor:  audioAdapter,
+			Publisher:           publisherAdapter,
+			VoiceoverRepository: voRepoAdapter,
+		},
+		Recovery: voiceover.ProcessVoiceoverRecoveryPorts{
+			DefaultFolderResolver: defaultFolderResolver,
+		},
+		Finalize: voiceover.ProcessVoiceoverFinalizePort{
+			Finalizer: finalizer,
+		},
+		Output: voiceover.ProcessVoiceoverOutputConfig{
+			OutputDir: voDir,
+		},
+		Logger: log,
 	})
 	log.Info("voiceover.processVoiceoverItemUseCase wired (Step 8/12 — child pipeline for voiceover.generate_item jobs)")
 

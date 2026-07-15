@@ -223,13 +223,17 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 	}
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		TTSProvider:         tts,
-		DestinationResolver: dest,
-		AudioPostProcessor:  audioPost,
-		Publisher:           pub,
-		VoiceoverRepository: &stubProcessVoRepo{db: db},
-		Finalizer:           finalizer,
-		Logger:              zap.NewNop(),
+		Pipeline: ProcessVoiceoverPipelinePorts{
+			TTSProvider:         tts,
+			DestinationResolver: dest,
+			AudioPostProcessor:  audioPost,
+			Publisher:           pub,
+			VoiceoverRepository: &stubProcessVoRepo{db: db},
+		},
+		Finalize: ProcessVoiceoverFinalizePort{
+			Finalizer: finalizer,
+		},
+		Logger: zap.NewNop(),
 	})
 
 	item := &GenerateVoiceoverItemCommand{
@@ -285,13 +289,17 @@ func TestRemoveSilence_SkipsPostProcessingWhenFalse(t *testing.T) {
 	}
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		TTSProvider:         tts,
-		DestinationResolver: dest,
-		AudioPostProcessor:  audioPost,
-		Publisher:           pub,
-		VoiceoverRepository: &stubProcessVoRepo{db: db},
-		Finalizer:           finalizer,
-		Logger:              zap.NewNop(),
+		Pipeline: ProcessVoiceoverPipelinePorts{
+			TTSProvider:         tts,
+			DestinationResolver: dest,
+			AudioPostProcessor:  audioPost,
+			Publisher:           pub,
+			VoiceoverRepository: &stubProcessVoRepo{db: db},
+		},
+		Finalize: ProcessVoiceoverFinalizePort{
+			Finalizer: finalizer,
+		},
+		Logger: zap.NewNop(),
 	})
 
 	item := &GenerateVoiceoverItemCommand{
@@ -374,14 +382,20 @@ func TestProcessItem_FinalizerFailure_FailsClosed(t *testing.T) {
 	outboxStub := &stubTxOutboxEnqueuer{} // reuse from process_segment_test.go (same package)
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		TTSProvider:         tts,
-		DestinationResolver: dest,
-		AudioPostProcessor:  nil, // RemoveSilence=false so AudioPost is skipped
-		Publisher:           pub,
-		VoiceoverRepository: &stubProcessVoRepo{db: db},
-		Finalizer:           finalizer,
-		TxOutboxEnqueuer:    outboxStub,
-		Logger:              zap.NewNop(),
+		Pipeline: ProcessVoiceoverPipelinePorts{
+			TTSProvider:         tts,
+			DestinationResolver: dest,
+			AudioPostProcessor:  nil, // RemoveSilence=false so AudioPost is skipped
+			Publisher:           pub,
+			VoiceoverRepository: &stubProcessVoRepo{db: db},
+		},
+		Recovery: ProcessVoiceoverRecoveryPorts{
+			TxOutboxEnqueuer: outboxStub,
+		},
+		Finalize: ProcessVoiceoverFinalizePort{
+			Finalizer: finalizer,
+		},
+		Logger: zap.NewNop(),
 	})
 
 	item := &GenerateVoiceoverItemCommand{
@@ -469,14 +483,20 @@ func TestNewProcessVoiceoverItemUseCase_WiresTxOutboxEnqueuer(t *testing.T) {
 	outboxStub := &stubTxOutboxEnqueuer{}
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		TTSProvider:         &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", FileHash: "h"}},
-		DestinationResolver: &stubProcessDestResolver{folderID: "f"},
-		AudioPostProcessor:  nil,
-		Publisher:           &stubProcessPublisher{fileID: "drive-x"},
-		VoiceoverRepository: &stubProcessVoRepo{db: db},
-		Finalizer:           &stubProcessFinalizer{cannedRes: &FinalizeResult{ID: "x"}},
-		TxOutboxEnqueuer:    outboxStub,
-		Logger:              zap.NewNop(),
+		Pipeline: ProcessVoiceoverPipelinePorts{
+			TTSProvider:         &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", FileHash: "h"}},
+			DestinationResolver: &stubProcessDestResolver{folderID: "f"},
+			AudioPostProcessor:  nil,
+			Publisher:           &stubProcessPublisher{fileID: "drive-x"},
+			VoiceoverRepository: &stubProcessVoRepo{db: db},
+		},
+		Recovery: ProcessVoiceoverRecoveryPorts{
+			TxOutboxEnqueuer: outboxStub,
+		},
+		Finalize: ProcessVoiceoverFinalizePort{
+			Finalizer: &stubProcessFinalizer{cannedRes: &FinalizeResult{ID: "x"}},
+		},
+		Logger: zap.NewNop(),
 	})
 
 	// Direct unexported field traversal (white-box test, same package).
@@ -519,14 +539,20 @@ func TestProcessItem_FinalizerFailure_NilTxOutboxEnqueuer_NoPanic(t *testing.T) 
 	}
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		TTSProvider:         tts,
-		DestinationResolver: dest,
-		AudioPostProcessor:  nil, // RemoveSilence=false
-		Publisher:           pub,
-		VoiceoverRepository: &stubProcessVoRepo{db: db},
-		Finalizer:           finalizer,
-		TxOutboxEnqueuer:    nil, // KEY: nil outbox — pre-FASE-4 composition root contract
-		Logger:              zap.NewNop(),
+		Pipeline: ProcessVoiceoverPipelinePorts{
+			TTSProvider:         tts,
+			DestinationResolver: dest,
+			AudioPostProcessor:  nil, // RemoveSilence=false
+			Publisher:           pub,
+			VoiceoverRepository: &stubProcessVoRepo{db: db},
+		},
+		Recovery: ProcessVoiceoverRecoveryPorts{
+			TxOutboxEnqueuer: nil, // KEY: nil outbox — pre-FASE-4 composition root contract
+		},
+		Finalize: ProcessVoiceoverFinalizePort{
+			Finalizer: finalizer,
+		},
+		Logger: zap.NewNop(),
 	})
 
 	item := &GenerateVoiceoverItemCommand{
@@ -591,13 +617,17 @@ func TestRemoveSilence_TTSAlwaysReceivesFalse(t *testing.T) {
 	}
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		TTSProvider:         tts,
-		DestinationResolver: dest,
-		AudioPostProcessor:  nil,
-		Publisher:           pub,
-		VoiceoverRepository: &stubProcessVoRepo{db: db},
-		Finalizer:           finalizer,
-		Logger:              zap.NewNop(),
+		Pipeline: ProcessVoiceoverPipelinePorts{
+			TTSProvider:         tts,
+			DestinationResolver: dest,
+			AudioPostProcessor:  nil,
+			Publisher:           pub,
+			VoiceoverRepository: &stubProcessVoRepo{db: db},
+		},
+		Finalize: ProcessVoiceoverFinalizePort{
+			Finalizer: finalizer,
+		},
+		Logger: zap.NewNop(),
 	})
 
 	// RemoveSilence defaults to false (zero value); AudioPostProcessor is nil.
