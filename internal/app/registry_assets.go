@@ -19,13 +19,13 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 	}
 
 	assetsDeps := &AssetsModuleDeps{
-		Core: newCoreDeps(
-			CoreRepositoryDeps{
+		Core: CoreDeps{
+			Repositories: RepositoryDeps{
 				ClipsRepo:     root.Repos.ClipsRepo,
 				VoiceoverRepo: root.Repos.VoiceoverRepo,
 				ImageRepo:     root.Repos.ImageRepo,
 			},
-			CoreServiceDeps{
+			Services: ServiceDeps{
 				Assets:             root.Repos.Assets,
 				AssetTreeService:   root.Search.AssetTreeService,
 				AssetIndexService:  root.Search.AssetIndexService,
@@ -33,7 +33,7 @@ func registerAssets(registry *module.Registry, log *zap.Logger, cfg *config.Conf
 				CatalogSyncService: root.Sync.CatalogSync,
 				ArtifactService:    root.Domains.ArtifactService,
 			},
-		),
+		},
 		Search: SearchDeps{
 			ClipIndexerService:    root.Process.ClipIndexerService,
 			SearchFanOut:          wiring.searchFanOut,

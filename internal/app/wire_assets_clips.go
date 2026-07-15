@@ -51,7 +51,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	}
 
 	duplicateFinder := duplicates.NewFinder(
-		NewClipsRepoDuplicateSource("local", params.Deps.Core.ClipsRepo),
+		NewClipsRepoDuplicateSource("local", params.Deps.Core.Repositories.ClipsRepo),
 	)
 	enrichUC, err := appclips.NewEnrichUseCase(
 		params.AssetRepo,
@@ -65,7 +65,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 
 	bulkUploadWorker := appclips.NewBulkUploadWorker(
 		params.Deps.Delivery.Publisher,
-		newClipsRepoAdapter(params.Deps.Core.ClipsRepo),
+		newClipsRepoAdapter(params.Deps.Core.Repositories.ClipsRepo),
 		newClipsHashAdapter(),
 		newClipsCfgAdapter(params.Cfg, appjobs.Compose()),
 		mutationsDisp,
@@ -73,11 +73,11 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	)
 
 	uploadUC, err := appupload.NewUseCase(appupload.UseCaseDeps{
-		Artifact:      NewArtifactServiceAdapter(params.Deps.Core.ArtifactService),
+		Artifact:      NewArtifactServiceAdapter(params.Deps.Core.Services.ArtifactService),
 		Publisher:     params.Deps.Delivery.Publisher,
 		Dispatcher:    clipsDispatcherPort,
 		Config:        newClipsCfgAdapter(params.Cfg, appjobs.Compose()),
-		TreeBuilder:   newClipsAssetTreeAdapter(params.Deps.Core.AssetTreeService),
+		TreeBuilder:   newClipsAssetTreeAdapter(params.Deps.Core.Services.AssetTreeService),
 		JobsSvc:       params.Jobs.Facade,
 		ProcessRunner: processRunnerAdapter,
 		Log:           params.Log,
@@ -101,7 +101,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	)
 
 	clipsOpsPorts := buildClipOpsPorts(
-		newClipsRepoAdapter(params.Deps.Core.ClipsRepo),
+		newClipsRepoAdapter(params.Deps.Core.Repositories.ClipsRepo),
 		params.Jobs,
 	)
 	clipOpsSvc := appclips.NewClipOpsService(
@@ -118,16 +118,16 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 	// makes the API package transport-only and gives NonOps/Actions precisely
 	// the operations they execute.
 	bulkTagsUC := appclips.NewBulkTagsUseCase(
-		params.Deps.Core.ClipsRepo,
-		params.Deps.Core.AssetTreeService,
+		params.Deps.Core.Repositories.ClipsRepo,
+		params.Deps.Core.Services.AssetTreeService,
 	)
 	downloadUC := appclips.NewDownloadUseCase(
 		params.AssetRepo,
-		params.Deps.Core.VoiceoverRepo,
+		params.Deps.Core.Repositories.VoiceoverRepo,
 	)
 	reprocessUC := appclips.NewReprocessUseCase(
 		params.AssetRepo,
-		params.Deps.Core.MediaProcessor,
+		params.Deps.Core.Services.MediaProcessor,
 		nil,
 	)
 
@@ -136,23 +136,23 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		if !artifacts.IsClipsSource(source) {
 			return nil
 		}
-		return params.Deps.Core.ClipsRepo
+		return params.Deps.Core.Repositories.ClipsRepo
 	}
 
 	descriptor, err := clipsapi.Build(clipsapi.Dependencies{
 		Handlers: clipsapi.Deps{
 			Search: clipsapi.SearchDeps{
-				ClipsRepo:     params.Deps.Core.ClipsRepo,
+				ClipsRepo:     params.Deps.Core.Repositories.ClipsRepo,
 				AssetRepo:     params.AssetRepo,
-				VoiceoverRepo: params.Deps.Core.VoiceoverRepo,
-				ImagesRepo:    params.Deps.Core.ImageRepo,
+				VoiceoverRepo: params.Deps.Core.Repositories.VoiceoverRepo,
+				ImagesRepo:    params.Deps.Core.Repositories.ImageRepo,
 				SearchSvc:     params.SearchAggregator,
 			},
 			Ingest: clipsapi.IngestDeps{
 				Dispatcher:   clipsDispatcherPort,
-				AssetTreeSvc: params.Deps.Core.AssetTreeService,
+				AssetTreeSvc: params.Deps.Core.Services.AssetTreeService,
 				JobsSvc:      params.Jobs.Facade,
-				ClipsRepo:    params.Deps.Core.ClipsRepo,
+				ClipsRepo:    params.Deps.Core.Repositories.ClipsRepo,
 				EnrichUC:     enrichUC,
 				UploadUC:     uploadUC,
 				Log:          params.Log,
@@ -161,9 +161,9 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 				ClipOpsService: clipOpsSvc,
 				DeletionSvc:    params.DeletionSvc,
 				FolderMemSvc:   params.FolderMemSvc,
-				ClipsRepo:      params.Deps.Core.ClipsRepo,
+				ClipsRepo:      params.Deps.Core.Repositories.ClipsRepo,
 				DriveAdmin:     clipsDrive,
-				AssetTreeSvc:   params.Deps.Core.AssetTreeService,
+				AssetTreeSvc:   params.Deps.Core.Services.AssetTreeService,
 				Log:            params.Log,
 			},
 			NonOps: nonops.Deps{
