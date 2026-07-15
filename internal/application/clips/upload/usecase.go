@@ -19,7 +19,8 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -286,7 +287,7 @@ func (uc *UseCase) Execute(ctx context.Context, cmd UploadClipCommand) (*UploadC
 	indexed := false
 	if uc.jobsSvc != nil {
 		_, err := uc.jobsSvc.Enqueue(ctx, &job.EnqueueRequest{
-			Type: job.TypeMediaEnrich,
+			Type: jobmedia.TypeEnrich,
 			Payload: map[string]any{
 				"asset_id": clip.ID,
 				"source":   cmd.Source,

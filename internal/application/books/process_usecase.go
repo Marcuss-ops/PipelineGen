@@ -25,7 +25,8 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/apiutil"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobbooks "github.com/Marcuss-ops/PipelineGen/internal/domain/books"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // Package constants — single source of truth for the use-case timeouts
@@ -211,7 +212,7 @@ func NewProcessBookUseCase(svc bookProcessor, jobsSvc asyncEnqueuer, log *zap.Lo
 // request-shape-specific timeouts.
 func (uc *ProcessBookUseCase) Handle(ctx context.Context, req ProcessBookRequest) (ProcessBookResponse, error) {
 	if req.Async {
-		return uc.enqueueBookJob(ctx, req, string(jobs.TypeBooksProcess))
+		return uc.enqueueBookJob(ctx, req, string(jobbooks.TypeProcess))
 	}
 	return uc.handleSync(ctx, req)
 }

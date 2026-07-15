@@ -29,7 +29,7 @@ package jobs
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 ) // domainToVoiceoverParentState maps the domain 5-state machine result
 // to the voiceover 4-state result enum for wire-shape back-compat.
 // Succeeded with optional failures maps to partial_success so the

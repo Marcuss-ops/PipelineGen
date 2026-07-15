@@ -30,7 +30,8 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"go.uber.org/zap"
 )
 
@@ -245,7 +246,7 @@ func (u *FanoutVoiceoversUseCase) Execute(ctx context.Context, parentJobID strin
 			parentJobID, idx, itemTextHash, itemSpec.Language, itemSpec.Voice)
 
 		enqueued, err := u.deps.Enqueuer.Enqueue(ctx, &job.EnqueueRequest{
-			Type:          job.TypeVoiceoverGenerateItem,
+			Type:          jobvoiceover.TypeGenerateItem,
 			Payload:       item,
 			CorrelationID: fmt.Sprintf("%s:item:%d", requestID, idx),
 			ActiveKey:     childActiveKey,

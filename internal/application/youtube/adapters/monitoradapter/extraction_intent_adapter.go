@@ -54,7 +54,8 @@ import (
 	channels "github.com/Marcuss-ops/PipelineGen/internal/application/channels"
 	jobtools "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	youtubetypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // JobsEnqueuerSvc is the minimum-surface port from jobs.Service.
@@ -193,7 +194,7 @@ func (a *ExtractionIntentAdapter) EnqueueExtract(ctx context.Context, intent mon
 
 	// ── 4. Emit durable job via the broker ─────────────────────────
 	if _, err := a.jobsSvc.Enqueue(ctx, &job.EnqueueRequest{
-		Type:      job.TypeYouTubeClipExtract,
+		Type:      jobyoutube.TypeClipExtract,
 		VideoName: intent.Title,
 		ActiveKey: activeKey,
 		Payload:   extractReq,

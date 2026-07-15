@@ -33,7 +33,8 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+
+	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 	"go.uber.org/zap"
 )
 
@@ -101,13 +102,13 @@ func (h *GenerateJobHandler) Register(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("GenerateJobHandler.Register: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(job.TypeVoiceoverGenerate, appjobs.HandlerFunc(h.HandleJob)); err != nil {
+	if err := jobsSvc.RegisterHandler(jobvoiceover.TypeGenerate, appjobs.HandlerFunc(h.HandleJob)); err != nil {
 		return fmt.Errorf("GenerateJobHandler.Register: bind %q to dispatcher: %w",
-			job.TypeVoiceoverGenerate, err)
+			jobvoiceover.TypeGenerate, err)
 	}
 	if h.logger != nil {
 		h.logger.Info("registered voiceover.generate handler",
-			zap.String("job_type", job.TypeVoiceoverGenerate))
+			zap.String("job_type", jobvoiceover.TypeGenerate))
 	}
 	return nil
 }
