@@ -45,6 +45,16 @@ jobs:
             post_status "${TRIGGER_SHA}" failure "job-kernel-semantic-stabilize" "$1"
             exit 1
           }
+          fail_log() {
+            local log="$1"
+            local stage="$2"
+            local first
+            first=$(grep -m1 -E '\.go:[0-9]+(:[0-9]+)?:|undefined:|import cycle|cannot use|redeclared' "$log" || tail -n 1 "$log" || true)
+            first=$(printf '%s' "$first" | sed -E 's/[^A-Za-z0-9._:/-]+/_/g' | cut -c1-78)
+            [ -n "$first" ] || first=unknown_error
+            post_status "${TRIGGER_SHA}" failure "job-kernel-semantic-error/${stage}/${first}" "First compiler error"
+            fail "${stage} failed"
+          }
           post_status "${TRIGGER_SHA}" pending "job-kernel-semantic-stabilize" "Stabilizing semantic migrations"
           git fetch origin main
           git reset --hard origin/main
@@ -66,7 +76,7 @@ jobs:
 
           if ! timeout 8m go test -run '^$' ./internal/kernel/job ./internal/domain/job >/tmp/job-semantic-foundation.log 2>&1; then
             tail -n 120 /tmp/job-semantic-foundation.log
-            fail "Kernel/domain job foundation failed"
+            fail_log /tmp/job-semantic-foundation.log foundation
           fi
 
           python3 <<'PY'
