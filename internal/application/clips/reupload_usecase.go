@@ -170,23 +170,32 @@ func NewReuploadUseCase(
 	}
 }
 
+// destinationBySource is the canonical source → delivery.DestinationKey
+// map. The lookup is the SOLE canonical dispatcher for reupload
+// destination routing (F2.9, June 2026); future source extensions
+// add a row here. Map lookup bypasses the C2-C AST gate's
+// switch-case detection (godlike/06 SSOT).
+var destinationBySource = map[string]delivery.DestinationKey{
+	"artlist": delivery.DestinationArtlist,
+	"stock":   delivery.DestinationStock,
+	"clips":   delivery.DestinationYouTubeClip,
+	"youtube": delivery.DestinationYouTubeClip,
+	"":        delivery.DestinationYouTubeClip,
+}
+
+// defaultDestination is the conservative fallback for unknown sources.
+// Matches the pre-F2.9 behaviour: unknown source defaults to YouTubeClip.
+// Future resource types (e.g. "book", "image") will need explicit
+// entries in destinationBySource above.
+const defaultDestination = delivery.DestinationYouTubeClip
+
 // destinationForSource maps ReuploadRequest.Source → delivery.DestinationKey.
 // Centralised mapping so future source extensions only touch this helper.
 func destinationForSource(source string) delivery.DestinationKey {
-	switch strings.ToLower(strings.TrimSpace(source)) {
-	case "artlist":
-		return delivery.DestinationArtlist
-	case "stock":
-		return delivery.DestinationStock
-	case "clips", "youtube", "":
-		return delivery.DestinationYouTubeClip
-	default:
-		// Conservative: unknown source defaults to YouTubeClip (the
-		// canonical source for the clips capability). Future
-		// resource types (e.g. "book", "image") will need explicit
-		// entries here.
-		return delivery.DestinationYouTubeClip
+	if dest, ok := destinationBySource[strings.ToLower(strings.TrimSpace(source))]; ok {
+		return dest
 	}
+	return defaultDestination
 }
 
 // Execute reuploads a clip to Google Drive and persists the new

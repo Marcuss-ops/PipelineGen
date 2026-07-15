@@ -166,6 +166,19 @@ func (a *Aggregator) Search(ctx context.Context, q Query) (*Result, error) {
 
 	eligible := a.backends.Eligible(q)
 	if len(eligible) == 0 {
+		if len(a.backends.All()) == 0 {
+			a.log.Debug("search.Aggregator.Search: no registered backends",
+				"text_len", len(q.Text),
+				"media_types", q.MediaTypes,
+				"mode", q.Mode,
+			)
+			return &Result{
+				Items:          []Candidate{},
+				NextCursor:     "",
+				ProviderErrors: map[string]string{},
+				Partial:        false,
+			}, nil
+		}
 		a.log.Debug("search.Aggregator.Search: no eligible backends",
 			"text_len", len(q.Text),
 			"media_types", q.MediaTypes,

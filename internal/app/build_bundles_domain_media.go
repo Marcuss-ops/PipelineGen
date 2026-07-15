@@ -186,23 +186,47 @@ func buildDomainMediaServices(
 		RequireLanguageCertainty: cfg.Multilingual.RequireLanguageCertainty,
 	}
 
-	processSeg := youtube.NewProcessYouTubeSegmentUseCase(youtube.ProcessSegmentDeps{
-		Cache:              clipCache,
-		VideoPipeline:      videoPipelineAdapter,
-		Hash:               hashAdapter,
-		DriveFolderMgr:     youtubePubAdapter,
-		Writer:             clipWriter, // legacy Stripe for non-localized callers
-		LocalizedWriter:    clipWriter, // Phase 2.b atomic super-tx (clipWriter satisfies both ports — see clip_atomic_writer.go compile-time assertion)
+	// PR-GRUPOC-2 (July 2026): youtube.ProcessSegmentDeps (17 fields) is
+	// RETIRED. The 17 fields are now split into 4 capability-area
+	// sub-bundles (Core/Media/Metadata/Observability) — each ≤7 fields
+	// — to clear percheck_struct_deps ≤8 enforcement. The
+	// composition-root wiring below sources the 17 fields from the
+	// same canonical production dep set the previous ProcessSegmentDeps
+	// literal used; no port is added, dropped, or renamed.
+	// Subtitles / Stager / FFProbe are intentionally left zero (matches
+	// the previous literal's behaviour; those optional ports are not
+	// exercised by the YouTube orchestrator at composition time).
+	processSegCore := youtube.ProcessSegmentCoreDeps{
+		Cache:         clipCache,
+		VideoPipeline: videoPipelineAdapter,
+		Hash:          hashAdapter,
+		Writer:        clipWriter, // legacy writer for non-localized callers
+		SegmentsSvc:   youtube.NewSegmentsService(),
+		SegmentPolicy: youtubetypes.DefaultSegmentPolicy(),
+		Log:           log,
+	}
+	processSegMedia := youtube.ProcessSegmentMediaDeps{
+		DriveFolderMgr:    youtubePubAdapter,
+		TextTrackResolver: textTrackResolver,
+	}
+	processSegMetadata := youtube.ProcessSegmentMetadataDeps{
+		// Phase 2.b atomic super-tx (clipWriter satisfies both ports —
+		// see clip_atomic_writer.go compile-time assertion).
+		LocalizedWriter:    clipWriter,
 		ClipMetadataWriter: clipMetadataWriter,
 		MetadataService:    clipMetadataService,
-		SegmentsSvc:        youtube.NewSegmentsService(),
-		SegmentPolicy:      youtubetypes.DefaultSegmentPolicy(),
-		Step10Metrics:      observability.NewStep10MetricsAdapter(),
-		TextTrackResolver:  textTrackResolver,
+	}
+	processSegObservability := youtube.ProcessSegmentObservabilityDeps{
+		Step10Metrics: observability.NewStep10MetricsAdapter(),
 		// Fase 5: see MultilingualConfig.RequireTranscriptReady.
 		RequireTranscriptReady: cfg.Media.Multilingual.RequireTranscriptReady,
-		Log:                    log,
-	})
+	}
+	processSeg := youtube.NewProcessYouTubeSegmentFromSubBundles(
+		processSegCore,
+		processSegMedia,
+		processSegMetadata,
+		processSegObservability,
+	)
 
 	// PR-GRUPOC-1 (July 2026): youtube.ServiceDeps (20 fields) is RETIRED.
 	// The 20 fields are now split into 5 capability-area sub-bundles

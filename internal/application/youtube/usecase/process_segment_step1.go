@@ -66,8 +66,8 @@ func (u *ProcessYouTubeSegmentUseCase) step1_BuildClipID(
 		policyVer = ProcessSegmentPolicyVersion
 	}
 	// Commit 2/6 #3: SegmentPolicy duration gate.
-	if !u.deps.SegmentPolicy.ValidDuration(duration) {
-		policy := u.deps.SegmentPolicy
+	if !u.core.SegmentPolicy.ValidDuration(duration) {
+		policy := u.core.SegmentPolicy
 		if policy.MinDuration == 0 {
 			policy.MinDuration = youtubetypes.DefaultSegmentPolicy().MinDuration
 		}
@@ -85,7 +85,7 @@ func (u *ProcessYouTubeSegmentUseCase) step1_BuildClipID(
 	out.Item.EndSeconds = endSec
 	out.Item.Duration = duration
 	// Commit 2/6 #4: filename carries the policyVersion.
-	out.Item.Filename = u.deps.SegmentsSvc.BuildClipFilename(
+	out.Item.Filename = u.core.SegmentsSvc.BuildClipFilename(
 		cmd.VideoID, startSec, endSec, out.Item.Name, policyVer,
 	)
 	return startSec, endSec, duration, clipID, policyVer, nil

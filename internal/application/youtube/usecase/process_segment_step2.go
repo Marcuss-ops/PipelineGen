@@ -46,8 +46,8 @@ func (u *ProcessYouTubeSegmentUseCase) step2_CacheLookup(
 	// StrategyReplace bypasses the cache lookup entirely so a
 	// re-extract under the same clipID always re-runs the full
 	// pipeline.
-	if u.deps.Cache != nil && cmd.Strategy != youtubetypes.StrategyReplace {
-		existingItem, exists, cacheErr := u.deps.Cache.GetExisting(ctx, clipID)
+	if u.core.Cache != nil && cmd.Strategy != youtubetypes.StrategyReplace {
+		existingItem, exists, cacheErr := u.core.Cache.GetExisting(ctx, clipID)
 		if cacheErr == nil && exists && existingItem != nil {
 			out.Item.Status = "skipped"
 			out.Item.LocalPath = existingItem.LocalPath
@@ -58,7 +58,7 @@ func (u *ProcessYouTubeSegmentUseCase) step2_CacheLookup(
 			return true, nil
 		}
 		if cacheErr != nil {
-			u.deps.Log.Warn("clip cache lookup failed; falling through to re-process",
+			u.core.Log.Warn("clip cache lookup failed; falling through to re-process",
 				zap.String("clip_id", clipID), zap.Error(cacheErr))
 		}
 	}

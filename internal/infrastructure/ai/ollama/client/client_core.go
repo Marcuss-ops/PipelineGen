@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -156,11 +157,17 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return "", err
+		if errors.Is(err, context.Canceled) {
+			return "", err
+		}
+		return "", &retry.TransientInfrastructureError{Err: err}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
+			return "", &retry.TransientInfrastructureError{Err: fmt.Errorf("ollama chat returned status %d", resp.StatusCode)}
+		}
 		return "", fmt.Errorf("ollama chat returned status %d", resp.StatusCode)
 	}
 
@@ -221,7 +228,10 @@ func (c *Client) vllmChatRequest(ctx context.Context, model string, messages []t
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return "", err
+		if errors.Is(err, context.Canceled) {
+			return "", err
+		}
+		return "", &retry.TransientInfrastructureError{Err: err}
 	}
 	defer resp.Body.Close()
 
@@ -229,6 +239,9 @@ func (c *Client) vllmChatRequest(ctx context.Context, model string, messages []t
 		var errBody []byte
 		if b, errRead := io.ReadAll(resp.Body); errRead == nil {
 			errBody = b
+		}
+		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
+			return "", &retry.TransientInfrastructureError{Err: fmt.Errorf("vllm chat returned status %d: %s", resp.StatusCode, string(errBody))}
 		}
 		return "", fmt.Errorf("vllm chat returned status %d: %s", resp.StatusCode, string(errBody))
 	}
@@ -307,7 +320,10 @@ func (c *Client) nvidiaChatRequest(ctx context.Context, messages []types.Message
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return "", err
+		if errors.Is(err, context.Canceled) {
+			return "", err
+		}
+		return "", &retry.TransientInfrastructureError{Err: err}
 	}
 	defer resp.Body.Close()
 
@@ -315,6 +331,9 @@ func (c *Client) nvidiaChatRequest(ctx context.Context, messages []types.Message
 		var errBody []byte
 		if b, errRead := io.ReadAll(resp.Body); errRead == nil {
 			errBody = b
+		}
+		if resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
+			return "", &retry.TransientInfrastructureError{Err: fmt.Errorf("nvidia nim chat returned status %d: %s", resp.StatusCode, string(errBody))}
 		}
 		return "", fmt.Errorf("nvidia nim chat returned status %d: %s", resp.StatusCode, string(errBody))
 	}

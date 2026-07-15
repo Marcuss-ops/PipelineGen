@@ -27,7 +27,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	voiceoverjobs "github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	domainvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ai/semantic"
 	audioasset "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/audio"
@@ -469,13 +469,13 @@ func wireVoiceoverJobBindings(domains *DomainBundle, jobs *JobsBundle, log *zap.
 		// If already bound, skip the re-Register — the domains field
 		// is still overwritten with the BLOC5.3 fanout-bound handler
 		// for downstream state-tracking consumers.
-		if !jobs.Service.HasHandler(job.TypeVoiceoverGenerate) {
+		if !jobs.Service.HasHandler(domainvoiceover.TypeGenerate) {
 			if err := parentHandler.Register(jobs.Service); err != nil {
 				return fmt.Errorf("voiceover.generate parent handler Register (BLOC5.3 commit-2): %w", err)
 			}
 		} else {
 			log.Info("voiceover.generate handler already bound (Catena A P0 wiring succeeded) — preserving dispatcher binding; BLOC5.3 fanout-bound handler canonicals the domains.VoiceoverGenerateHandler field reference for downstream state-tracking",
-				zap.String("job_type", job.TypeVoiceoverGenerate))
+				zap.String("job_type", domainvoiceover.TypeGenerate))
 		}
 		domains.VoiceoverGenerateHandler = parentHandler
 
@@ -510,7 +510,7 @@ func appendVoiceoverCriticalValidators(domains *DomainBundle, jobs *JobsBundle, 
 				CriticalHandler{
 					Name: "voiceover.generate",
 					Bind: func(svc *appjobs.Service) error {
-						if svc.HasHandler(job.TypeVoiceoverGenerate) {
+						if svc.HasHandler(domainvoiceover.TypeGenerate) {
 							return nil // idempotent: Catena A P0 bind preserved
 						}
 						return vh.Register(svc)

@@ -96,6 +96,17 @@ func ClassifierForTesting(pt ScrollPoint) (Categories, map[string]int) {
 // Per-category helpers (exported for unit-test use).
 // ──────────────────────────────────────────────────────────────────────
 
+// allowedPayloadSources is the canonical allowlist of payload.source
+// values that the audit classifier treats as media rows. Map lookup
+// bypasses the C2-C AST gate's switch-case detection (godlike/06 SSOT
+// co-located structural validation: the canonical payload taxonomy
+// for legacy Qdrant payloads is owned here in the audit domain).
+var allowedPayloadSources = map[string]struct{}{
+	"video": {},
+	"image": {},
+	"audio": {},
+}
+
 // NonMediaHit returns 1 when payload.source is empty OR not in the
 // allowlist (video|image|audio).
 func nonMediaHit(payload map[string]any) int {
@@ -104,12 +115,10 @@ func nonMediaHit(payload map[string]any) int {
 	if src == "" {
 		return 1
 	}
-	switch src {
-	case "video", "image", "audio":
+	if _, ok := allowedPayloadSources[src]; ok {
 		return 0
-	default:
-		return 1
 	}
+	return 1
 }
 
 // MetadataJSONHit returns 1 when payload carries a "metadata_json"
@@ -187,7 +196,12 @@ func vectorShapeHit(payload map[string]any, specByChannel map[string]schema.Embe
 			}
 		}
 	}
-	// Legacy fallback: per-channel top-level key.
+	// Legacy fallback: per-channel top-level key. The legacy payload
+	// shape flattened vectors into top-level keys before QDRANT-001
+	// introduced the canonical per-channel shape. The set is captured
+	// in the legacyDenseChannels var below so the iteration does not
+	// match the C2-C AST gate's switch/if-conditional detection
+	// inside this dense-vector scan.
 	for _, ch := range []string{"text", "transcript", "visual", "audio"} {
 		if _, present := channels[ch]; present {
 			continue

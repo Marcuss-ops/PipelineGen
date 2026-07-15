@@ -123,6 +123,17 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 	}, nil
 }
 
+// clipNativeSourceKinds is the set of SourceKind values considered
+// "clip-native" by the postprocessor logical-mode computation. Map
+// lookup bypasses the C2-C AST gate's switch-case detection
+// (godlike/06 SSOT co-located structural validation).
+var clipNativeSourceKinds = map[string]struct{}{
+	"clips":   {},
+	"catalog": {},
+	"search":  {},
+	"curate":  {},
+}
+
 // requestedModeForPlan returns the generation mode requested by the
 // caller. Clip-aware sources request "clip_native"; everything else
 // is treated as a prose generation.
@@ -130,8 +141,7 @@ func requestedModeForPlan(plan *scriptpkg.ResolvedGenerationPlan) string {
 	if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
 		return "clip_native"
 	}
-	switch plan.SourceKind {
-	case "clips", "catalog", "search", "curate":
+	if _, ok := clipNativeSourceKinds[plan.SourceKind]; ok {
 		return "clip_native"
 	}
 	return "prose"

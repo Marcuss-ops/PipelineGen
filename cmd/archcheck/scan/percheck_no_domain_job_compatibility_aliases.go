@@ -1,25 +1,47 @@
 // Package scan — percheck_no_domain_job_compatibility_aliases
-// (PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB, commit 8.1, July 2026).
+// (PR-KERNEL-ALIAS-ALIGN, July 2026).
 //
-// Job compatibility-alias ban (godlike/07): the legacy
-// `internal/domain/job` package was deleted in commit 8. The
-// package carried ONLY back-compat type aliases (`Job`,
-// `Status`, `Event`, `Filter`, `Store`) layered on top of the
-// canonical `internal/kernel/job` surface. Per the repo SSOT
-// (godlike/06), the kernel is the SOLE owner of job-mechanism
-// types and the kernel does NOT depend on feature-specific job
-// names (`job.TypeScriptGenerate`, `images.JobGenerate`,
-// `job.TypeVoiceoverGenerate`, etc.) — those live in their
-// proprietary owning packages. Re-adding the alias layer would
-// silently reintroduce the dual-source-of-truth violation.
+// godlike/07 ZERO-LEGACY POSTURE (July 2026, post-4-reverts): the four
+// prior kernel-direct migration attempts (commits a86c81ec2, ab4ef1cf6,
+// 0c00a8384, 637a18004) were REVERTED and HEAD commit 22a70dcaf
+// EXPLICITLY re-added `internal/domain/job/kernel_aliases.go` as the
+// canonical back-compat bridge into kernel/job/ (godlike/06 SSOT
+// kernel-canonical surface, plus transitional aliases for status/filter/
+// event/job-type + worker command types + artifact-manifest types +
+// typed-error sentinels). The original file rationale claimed "the
+// package was deleted in commit 8" — that statement is FACTUALLY WRONG
+// post-revert (the package was RE-ADDED) and the hard-error posture is
+// out of sync with the operator's chosen godlike/07 CUTOVER-window
+// alias-preservation path.
 //
-// This check scans `internal/`, `tests/`, `pkg/`, `cmd/` for
-// production-code references to `internal/domain/job` (the
-// deleted path) and reports them as a hard ERROR via
-// `r.Violations = append(...)`. Comment-only references are
-// emitted to `r.Warnings` via the centralized
-// `domainJobWarnBucket` helper (silenced under
-// productionOnly=true).
+// Per the operator's stated wave cadence (architecture/current.yaml +
+// PRE-EXISTING-19-KERNEL-ALIAS-MIGRATION, November 2026 sub-commit
+// window), the big-bang kernel-direct migration is DEFERRED. This
+// check formerly fired 225 hard-error violations against the by-design
+// alias layer; severity has been DOWNGRADED to SeverityWarn so the
+// in-tree 261 importers do not hard-fail CI during the transitional
+// window. The check retains forward-prevention audit value: it
+// surfaceS the current blast-radius census (which sites consume the
+// alias layer today) so PRE-EXISTING-19 can size the future sweep
+// accurately, and any NEW importer added during the transitional window
+// is reported with line-level detail so the operator can audit drift.
+//
+// godlike/06 EXPAND/BACKFILL/CUTOVER/CONTRACT trajectory:
+//  1. (this commit) downgrade SeverityError -> SeverityWarn +
+//     correct the file rationale to reflect the post-revert reality.
+//  2. (PRE-EXISTING-19, November 2026) Option N1 narrow sweep:
+//     retire ONLY `kernel_aliases.go` (artifact types + worker
+//     commands + status-re-export surface, ~50 files).
+//  3. (PRE-EXISTING-19, post-sweep) re-arm the scanner at
+//     SeverityError against the narrower post-retirement package
+//     surface (forward-prevention gate).
+//
+// Scope (unchanged): this check scans `internal/`, `tests/`, `pkg/`,
+// `cmd/` for production-code references to `internal/domain/job`.
+// Production-code hits are appended to `r.Violations` at
+// SeverityWarn (downgraded from SeverityError); comment-only references
+// are emitted to `r.Warnings` via the centralized `domainJobWarnBucket`
+// helper (silenced under `productionOnly=true`).
 //
 // Signature `(root, pol, r, productionOnly bool)` mirrors the
 // family precedent: percheck_qdrant_index_import_ban,
@@ -58,11 +80,14 @@ const (
 	// (the previously-deleted alias-layer package).
 	domainJobBannedPath = "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
-	// domainJobNote is the Note text attached to every ERROR
-	// violation. References commit 8 + the banned-path rationale
-	// so the operator sees the migration rationale inline (no
-	// cross-file lookup needed).
-	domainJobNote = "forbidden import of the deleted internal/domain/job alias layer (commit 8, PR-COMPATIBILITY-ALIASES-REMOVE-DOMAIN-JOB, July 2026). The package carried ONLY back-compat type aliases (Job/Status/Event/Filter/Store) shadowing the canonical internal/kernel/job surface. Per godlike/06 SSOT the kernel is the SOLE owner of job-mechanism types and does NOT depend on feature-specific job names (job.TypeScriptGenerate / images.JobGenerate / job.TypeVoiceoverGenerate / job.TypeYouTubeClipExtract / documents.JobGenerate / media.JobReindex — those live in their proprietary owning packages). Forward-prevention gate: percheck_no_domain_job_compatibility_aliases. The kernel surface is the canonical source-of-truth; the alias layer was deleted because it was a dual-source-of-truth violation. Re-introducing the layer would silently reintroduce the godlike/07 NO-FAKE-AVAILABILITY regression."
+	// domainJobNote is the Note text attached to every violation
+	// (now downgraded to SeverityWarn per PR-KERNEL-ALIAS-ALIGN).
+	// Kept short so the JSON report stays compact across the
+	// ~177 production-code hits (one multi-KB note per hit would
+	// inflate the report to ~1MB for this single rule). Detailed
+	// historical context lives in architecture/issues.yaml::
+	// PRE-EXISTING-19-KERNEL-ALIAS-MIGRATION (companion commit).
+	domainJobNote = "informational-only: import of internal/domain/job alias bridge is by-design (HEAD 22a70dcaf re-added internal/domain/job/kernel_aliases.go after 4 reverted kernel-direct migrations). Big-bang migration DEFERRED to PRE-EXISTING-19 (November wave, godlike/06 EXPAND/BACKFILL/CUTOVER/CONTRACT Option N1 narrow). See architecture/issues.yaml::PRE-EXISTING-19 for full context. To NOT regress: pair any new alias-layer import with an issue.yaml follow_up pointing at PRE-EXISTING-19."
 )
 
 // domainJobImportRegex matches a Go import statement that
@@ -157,7 +182,7 @@ func scanDomainJobFile(path string, r *report.Report, productionOnly bool) {
 			File:        relPath,
 			Line:        lineNo,
 			Rule:        domainJobRule,
-			Severity:    string(report.SeverityError),
+			Severity:    string(report.SeverityWarn),
 			MatchedRule: domainJobErrorBucketID + ":production_import_attempt",
 			Note:        domainJobNote + " | snippet: " + truncateDomainJobHit(line),
 		})

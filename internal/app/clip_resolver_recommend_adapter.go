@@ -31,18 +31,17 @@
 //     `RefTypeExternalProviderID` — that would be a godlike/07
 //     violation (the thinker-with-files-gemini review flagged it).
 //  3. Each `ClipEvidence` from the canonical result is scored
-//     using a field-weighted Jaccard similarity (pkg/similarity)
-//     between the request's text haystack and the asset's metadata
+//     using field-level query coverage against the asset metadata
 //     (Name + Filename + Description + Tags + TranscriptExcerpt).
-//     The 5 field weights are configurable via constants below;
-//     weightedSum/totalWeight normalisation handles missing fields
-//     gracefully (an asset with only Name gets a Name-only score;
-//     an asset with all 5 fields gets a 5-field blend).
+//     Each field contributes a [0,1] coverage ratio based on how
+//     many query tokens appear in that field. The weighted field
+//     contributions are combined with a saturating union so extra
+//     matching fields can raise the score without exceeding 1.0.
 //  4. Results below `MinScore` are filtered out. Remaining results
 //     are sorted descending by `Score` and mapped to the
 //     handler-side `ClipResolverRecommendResult` (ClipID from
-//     AssetID, Score from the Jaccard blend, DriveLink from
-//     `ClipEvidence.DriveLink`).
+//     AssetID, Score from the weighted coverage blend, DriveLink
+//     from `ClipEvidence.DriveLink`).
 //
 // Composition-root ownership (godlike/06 SSOT): this file lives in
 // the composition root because the adapter is a cross-domain glue
@@ -83,18 +82,18 @@ import (
 // misconfiguration.
 var ErrRecommendAdapterNotConfigured = errors.New("clip resolver recommend adapter: canonical resolver not configured (composition root must wire *scripts.ClipResolver before constructing the adapter)")
 
-// Field-weight constants for the Jaccard-based scoring layer.
+// Field-weight constants for the coverage-based scoring layer.
 // The 5 weights sum to 1.0 and reflect the relative signal strength
 // of each metadata field for artlist clip recommendations:
-//   - Name:        0.30 (operator-curated, high signal)
-//   - Filename:    0.10 (machine-derived, low signal — derives from
+//   - Name:        0.60 (operator-curated, high signal)
+//   - Filename:    0.05 (machine-derived, low signal — derives from
 //     drive upload paths, often includes hash +
 //     segment suffix)
-//   - Description: 0.20 (operator-curated, medium signal — narrative
+//   - Description: 0.15 (operator-curated, medium signal — narrative
 //     but often noisy)
-//   - Tags:        0.30 (operator-curated, high signal — explicit
+//   - Tags:        0.15 (operator-curated, high signal — explicit
 //     topical anchors)
-//   - Transcript:  0.10 (auto-generated, low-medium signal — full
+//   - Transcript:  0.05 (auto-generated, low-medium signal — full
 //     content but lexical mismatch dominates
 //     over 500-char excerpt; capped to 500 chars
 //     in the canonical ClipEvidence)
@@ -105,11 +104,11 @@ var ErrRecommendAdapterNotConfigured = errors.New("clip resolver recommend adapt
 // config-driven values with backfill tests pinning the new
 // defaults.
 const (
-	recommendNameWeight        = 0.30
-	recommendFilenameWeight    = 0.10
-	recommendDescriptionWeight = 0.20
-	recommendTagWeight         = 0.30
-	recommendTranscriptWeight  = 0.10
+	recommendNameWeight        = 0.60
+	recommendFilenameWeight    = 0.05
+	recommendDescriptionWeight = 0.15
+	recommendTagWeight         = 0.15
+	recommendTranscriptWeight  = 0.05
 )
 
 // youtubeSegmentIDPattern matches the canonical YouTube
@@ -131,7 +130,7 @@ var youtubeSegmentIDPattern = regexp.MustCompile(`^yt_([A-Za-z0-9_-]{11})_.+$`)
 // clipResolverRecommendAdapter satisfies
 // artlist.ClipResolverPort by translating the Recommend-shaped
 // request into the canonical Resolve-shaped dispatch + a real
-// (field-weighted Jaccard) scoring layer. The adapter is the
+// (field-weighted coverage) scoring layer. The adapter is the
 // single owner of the Recommend -> Resolve translation per
 // godlike/06 SSOT (one canonical owner per fact).
 type clipResolverRecommendAdapter struct {
@@ -370,43 +369,49 @@ func scoreEvidence(queryTokens map[string]struct{}, ev ports.ClipEvidence) float
 	if len(queryTokens) == 0 {
 		return 0
 	}
-	var weightedSum, totalWeight float64
+	score := 0.0
 	if ev.Name != "" {
-		weightedSum += jaccardOnField(queryTokens, ev.Name) * recommendNameWeight
-		totalWeight += recommendNameWeight
+		score = combineWeightedCoverage(score, queryCoverage(queryTokens, ev.Name), recommendNameWeight)
 	}
 	if ev.Filename != "" {
-		weightedSum += jaccardOnField(queryTokens, ev.Filename) * recommendFilenameWeight
-		totalWeight += recommendFilenameWeight
+		score = combineWeightedCoverage(score, queryCoverage(queryTokens, ev.Filename), recommendFilenameWeight)
 	}
 	if ev.Description != "" {
-		weightedSum += jaccardOnField(queryTokens, ev.Description) * recommendDescriptionWeight
-		totalWeight += recommendDescriptionWeight
+		score = combineWeightedCoverage(score, queryCoverage(queryTokens, ev.Description), recommendDescriptionWeight)
 	}
 	if len(ev.Tags) > 0 {
-		weightedSum += jaccardOnField(queryTokens, strings.Join(ev.Tags, " ")) * recommendTagWeight
-		totalWeight += recommendTagWeight
+		score = combineWeightedCoverage(score, queryCoverage(queryTokens, strings.Join(ev.Tags, " ")), recommendTagWeight)
 	}
 	if ev.TranscriptExcerpt != "" {
-		weightedSum += jaccardOnField(queryTokens, ev.TranscriptExcerpt) * recommendTranscriptWeight
-		totalWeight += recommendTranscriptWeight
+		score = combineWeightedCoverage(score, queryCoverage(queryTokens, ev.TranscriptExcerpt), recommendTranscriptWeight)
 	}
-	if totalWeight == 0 {
-		return 0
-	}
-	return clampUnit(weightedSum / totalWeight)
+	return clampUnit(score)
 }
 
-// jaccardOnField is a one-line wrapper that tokenizes the field
-// text and computes Jaccard similarity against the query token
-// set. Empty / stopword-only field text returns 0 (similarity
-// library's documented behavior).
-func jaccardOnField(queryTokens map[string]struct{}, fieldText string) float64 {
+// queryCoverage tokenizes the field text and computes how much of
+// the query token set is covered by that field.
+func queryCoverage(queryTokens map[string]struct{}, fieldText string) float64 {
 	docTokens := similarity.TokenSet(fieldText)
-	if len(docTokens) == 0 {
+	if len(docTokens) == 0 || len(queryTokens) == 0 {
 		return 0
 	}
-	return similarity.Jaccard(queryTokens, docTokens)
+	matches := 0
+	for tok := range queryTokens {
+		if _, ok := docTokens[tok]; ok {
+			matches++
+		}
+	}
+	return float64(matches) / float64(len(queryTokens))
+}
+
+// combineWeightedCoverage applies the field weight as a saturating
+// union contribution.
+func combineWeightedCoverage(current, coverage, weight float64) float64 {
+	if coverage <= 0 || weight <= 0 {
+		return current
+	}
+	addition := weight * coverage
+	return 1 - (1-current)*(1-addition)
 }
 
 // clampUnit constrains a float to [0,1] to defend against

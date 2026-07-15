@@ -88,24 +88,30 @@ func validYouTubeSubBundles() (youtubeapp.ServiceCoreDeps, youtubeapp.ServiceAss
 // Used by composition tests that exercise NewService's
 // construction path without actually invoking the per-segment
 // pipeline. The stubs satisfy the interface signatures so
-// ProcessSegmentDeps.Validate() does not panic.
+// NewProcessYouTubeSegmentFromSubBundles validates the required ports
+// do not panic.
 func stubProcessYouTubeSegmentUseCase(t *testing.T) *youtubeapp.ProcessYouTubeSegmentUseCase {
 	t.Helper()
-	return youtubeapp.NewProcessYouTubeSegmentUseCase(youtubeapp.ProcessSegmentDeps{
-		Cache:         &stubClipCachePort{},
-		VideoPipeline: &stubVideoPipelinePort{},
-		Hash:          &stubHashServicePort{},
-		Writer:        &stubClipAtomicWriterPort{},
-		SegmentsSvc:   youtubeapp.NewSegmentsService(),
-		Log:           zap.NewNop(),
-	})
+	return youtubeapp.NewProcessYouTubeSegmentFromSubBundles(
+		youtubeapp.ProcessSegmentCoreDeps{
+			Cache:         &stubClipCachePort{},
+			VideoPipeline: &stubVideoPipelinePort{},
+			Hash:          &stubHashServicePort{},
+			Writer:        &stubClipAtomicWriterPort{},
+			SegmentsSvc:   youtubeapp.NewSegmentsService(),
+			Log:           zap.NewNop(),
+		},
+		youtubeapp.ProcessSegmentMediaDeps{},
+		youtubeapp.ProcessSegmentMetadataDeps{},
+		youtubeapp.ProcessSegmentObservabilityDeps{},
+	)
 }
 
 // ── ProcessSeg stub ports (PR-GODOBJ-1 composition-test fix) ────
 //
 // Each stub satisfies the EXACT interface signature from
 // internal/application/youtube/ports/ports.go so the compile-time
-// type check at NewProcessYouTubeSegmentUseCase passes.
+// type check at NewProcessYouTubeSegmentFromSubBundles passes.
 
 type stubClipCachePort struct{}
 

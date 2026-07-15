@@ -3,7 +3,6 @@
 10	internal/application/assets/providers/artlist/run_service.go
 10	internal/api/assets/youtube/youtube_search.go
 5	internal/application/workerdoctor/probes_invariant.go
-5	internal/application/assets/deletion/deletion.go
 4	internal/application/jobs/outbox/voiceover_cleanup.go
 4	internal/application/assets/artifacts/service.go
 4	internal/api/jobs/handler_workers.go
@@ -12,7 +11,6 @@
 3	internal/application/jobs/outbox/index_delete.go
 3	internal/application/assets/providers/stock/stockpipeline/run_orchestrator.go
 3	internal/application/assets/processing/orchestrator.go
-3	internal/api/assets/clips/handler.go
 2	internal/infrastructure/database/sqlite/outbox/dispatcher_index.go
 2	internal/application/youtube/usecase/process_segment_step6to9.go
 2	internal/application/youtube/usecase/extraction_service.go
@@ -26,5 +24,7 @@
 2	internal/application/jobs/enqueue_service.go
 2	internal/application/assets/providers/youtube/adapter.go
 2	internal/application/assets/providers/stock/stockpipeline/job_handler.go
-2	internal/application/assets/ingest/service.go
 2	internal/api/middleware/middleware_validation.go
+2	api/assets/youtube/youtube_handlers_test.go
+2	api/assets/document/document_handler_manifest_test.go
+1	internal/infrastructure/database/sqlite/assets/asset_committer.go

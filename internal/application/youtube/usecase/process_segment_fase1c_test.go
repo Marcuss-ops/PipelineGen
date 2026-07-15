@@ -223,10 +223,10 @@ func (a *alwaysHitCache) GetExisting(_ context.Context, _ string) (*youtubetypes
 // has a `Transcriber` field, so Step 10 cannot reach one even
 // if a future maintainer tries to re-introduce a direct call.
 func TestStep10_DoesNotInvokeTranscriber(t *testing.T) {
-	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
-		d := validProcessSegmentDeps()
-		d.MetadataService = nil // no-op path
-		return d
+	uc := NewProcessYouTubeSegmentFromSubBundles(func() (ProcessSegmentCoreDeps, ProcessSegmentMediaDeps, ProcessSegmentMetadataDeps, ProcessSegmentObservabilityDeps) {
+		core, media, metadata, observability := validProcessSegmentDeps()
+		metadata.MetadataService = nil // no-op path
+		return core, media, metadata, observability
 	}())
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "yt_step10_unit",
@@ -268,13 +268,13 @@ func TestExecute_CacheMiss_TranscriberInvokedAtMostOnce(t *testing.T) {
 	// bundle surface is non-empty and Step 10 receives real text.
 	tport := &countingTranscriber{text: "whisper fallback transcript"}
 
-	// Build deps. The test does NOT set deps.Transcriber
+	// Build deps. The test does NOT set metadata.Transcriber
 	// because that field is RETIRED in Fase 1.c. The
 	// transcriber is wired indirectly via the TextTrackResolver
 	// (the canonical owner post-Fase 1.c).
-	deps := validProcessSegmentDeps()
-	deps.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-	deps.Hash = testStubHash{} // non-empty so Step 5 passes
+	core, media, metadata, observability := validProcessSegmentDeps()
+	core.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
+	core.Hash = testStubHash{} // non-empty so Step 5 passes
 
 	// Wire a TextTrackResolver with the counting transcriber.
 	// The resolver's AcquireSegmentText is the priority chain
@@ -282,14 +282,14 @@ func TestExecute_CacheMiss_TranscriberInvokedAtMostOnce(t *testing.T) {
 	// subtitles return no rows. The struct is built via a
 	// struct literal (no NewTextTrackResolver ctor in this
 	// codebase; the field shape is the canonical surface).
-	deps.TextTrackResolver = &TextTrackResolver{
+	media.TextTrackResolver = &TextTrackResolver{
 		Repo:        noRowsRepo{},        // priority 1+2 (DB) → miss
 		Subtitles:   noSubtitleFetcher{}, // priority 3+4 → miss
 		Transcriber: tport,               // priority 5 → fires once
 		Log:         zap.NewNop(),
 	}
 
-	uc := NewProcessYouTubeSegmentUseCase(deps)
+	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "yt_fase1c_e2e",
 		OutDir:  t.TempDir(),
@@ -326,11 +326,11 @@ func TestExecute_CacheMiss_TranscriberInvokedAtMostOnce(t *testing.T) {
 func TestExecute_CacheHit_TranscriberNotInvoked(t *testing.T) {
 	tport := &countingTranscriber{text: "should never be called"}
 
-	deps := validProcessSegmentDeps()
+	core, media, metadata, observability := validProcessSegmentDeps()
 	// Wire a TextTrackResolver with the counting transcriber so
 	// the test would observe any regression that bypasses the
 	// cache short-circuit.
-	deps.TextTrackResolver = &TextTrackResolver{
+	media.TextTrackResolver = &TextTrackResolver{
 		Repo:        noRowsRepo{},
 		Subtitles:   noSubtitleFetcher{},
 		Transcriber: tport,
@@ -338,11 +338,11 @@ func TestExecute_CacheHit_TranscriberNotInvoked(t *testing.T) {
 	}
 	// Wire a cache that ALWAYS hits (so the orchestrator
 	// short-circuits at Step 2 BEFORE the resolver).
-	deps.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
+	core.Cache = &alwaysHitCache{item: &youtubetypes.ExtractItem{
 		Filename: "yt_yt_fase1c_cachehit_0_10_v1.mp4",
 	}}
 
-	uc := NewProcessYouTubeSegmentUseCase(deps)
+	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "yt_fase1c_cachehit",
 		OutDir:  t.TempDir(),

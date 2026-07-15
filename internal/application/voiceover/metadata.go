@@ -82,7 +82,7 @@ func mergeUserMetadata(
 	// typed StyleGroup envelope; the IsEmpty() predicate is the
 	// typed-envelope equivalent of the pre-refactor `!= ""` check.
 	if dest != nil && !dest.StyleGroup.IsEmpty() {
-		meta["style_group"] = dest.StyleGroup
+		meta["style_group"] = string(dest.StyleGroup)
 	}
 
 	// Step 2: userMeta overlay, with collision-drop semantics.

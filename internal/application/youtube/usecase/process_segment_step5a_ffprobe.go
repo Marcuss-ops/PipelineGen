@@ -45,10 +45,10 @@ func (u *ProcessYouTubeSegmentUseCase) step5a_FFProbeValidate(
 	expectedDurationSec int,
 	keepAudio bool,
 ) error {
-	if u.deps.FFProbe == nil {
+	if u.media.FFProbe == nil {
 		return nil
 	}
-	report, probeErr := u.deps.FFProbe.ValidateClip(ctx, localPath, expectedDurationSec, keepAudio)
+	report, probeErr := u.media.FFProbe.ValidateClip(ctx, localPath, expectedDurationSec, keepAudio)
 	if probeErr != nil {
 		typed := NewExtractionError(FailureCodeFFProbeValidationFailed, false,
 			fmt.Sprintf("ffprobe execution failed for %q: %v", localPath, probeErr),
@@ -60,7 +60,7 @@ func (u *ProcessYouTubeSegmentUseCase) step5a_FFProbeValidate(
 	}
 	// Log non-fatal warnings for operator dashboards.
 	for _, w := range report.Warnings {
-		u.deps.Log.Warn("ffprobe: non-fatal warning",
+		u.core.Log.Warn("ffprobe: non-fatal warning",
 			zap.String("clip_id", clipID),
 			zap.String("local_path", localPath),
 			zap.String("warning", w))

@@ -107,37 +107,27 @@
     ]
   },
   "summary": {
-    "total_violations": 374,
+    "total_violations": 356,
     "by_reason": {
       "constructor_deps": 9,
-      "kernel_split_hint": 1,
+      "percheck_api_infrastructure_imports_allowlist_stale": 1,
       "percheck_api_module_deps_max_8": 2,
       "percheck_asset_committer_event_ssot": 8,
-      "percheck_drive_access_ssot": 13,
       "percheck_input_immutability": 129,
       "percheck_monitor_infra_import": 3,
       "percheck_no_domain_job_compatibility_aliases": 172,
-      "percheck_root_override_ban": 2,
       "percheck_search_aggregator_singleton": 1,
       "percheck_sourcestager_transformer": 7,
       "pkg_size": 9,
-      "struct_deps": 14,
-      "unknown_internal_root": 4
+      "struct_deps": 13,
+      "unknown_internal_root": 2
     },
     "by_severity": {
-      "error": 36,
-      "info": 1,
-      "warn": 337
+      "error": 21,
+      "warn": 335
     }
   },
   "violations": [
-    {
-      "directory": "internal/asset",
-      "matched_rule": "kernel_split_hint",
-      "rule": "kernel_split_hint",
-      "severity": "info",
-      "note": "candidate for initial move to internal/kernel/asset"
-    },
     {
       "directory": "internal/youtube",
       "matched_rule": "not_in_legacy_or_target_internal_roots",
@@ -153,18 +143,11 @@
       "note": "first-level internal/ dir is not declared in legacy or target roots"
     },
     {
-      "directory": "internal/recommendation",
-      "matched_rule": "not_in_legacy_or_target_internal_roots",
-      "rule": "unknown_internal_root",
+      "file": "docs/migrations/api-infrastructure-imports-allowlist.txt",
+      "matched_rule": "api_infra_import_allowlist_stale",
+      "rule": "percheck_api_infrastructure_imports_allowlist_stale",
       "severity": "warn",
-      "note": "first-level internal/ dir is not declared in legacy or target roots"
-    },
-    {
-      "directory": "internal/asset",
-      "matched_rule": "not_in_legacy_or_target_internal_roots",
-      "rule": "unknown_internal_root",
-      "severity": "warn",
-      "note": "first-level internal/ dir is not declared in legacy or target roots"
+      "note": "stale allowlist entry; file internal/api/assets/clips/clip_action.go no longer imports github.com/Marcuss-ops/PipelineGen/internal/infrastructure/ — remove from docs/migrations/api-infrastructure-imports-allowlist.txt (godlike/08 zero-baseline rule: allowlist entries must exactly mirror the codebase)"
     },
     {
       "file": "internal/api/assets/clips/bulk_upload_transport.go",
@@ -200,7 +183,7 @@
     },
     {
       "file": "internal/api/assets/clips/handler.go",
-      "line": 43,
+      "line": 53,
       "actual_count": 24,
       "allowed_count": 8,
       "matched_rule": "max_struct_deps",
@@ -209,24 +192,8 @@
       "note": "struct Deps has 24 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
-      "file": "internal/api/assets/clips/handler.go",
-      "line": 47,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: direct drive.Admin type reference — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
-    },
-    {
-      "file": "internal/api/assets/clips/handler.go",
-      "line": 77,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: direct drive.Admin type reference — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
-    },
-    {
       "file": "internal/api/assets/clips/module.go",
-      "line": 70,
+      "line": 69,
       "actual_count": 26,
       "allowed_count": 8,
       "matched_rule": "max_struct_deps",
@@ -235,52 +202,12 @@
       "note": "struct Dependencies has 26 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
-      "file": "internal/api/assets/clips/module.go",
-      "line": 74,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: direct drive.Admin type reference — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
-    },
-    {
       "file": "internal/api/assets/clips/nonops/handler_download.go",
       "line": 64,
       "matched_rule": "input_struct_mutation",
       "rule": "percheck_input_immutability",
       "severity": "warn",
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/api/assets/clips/ops.go",
-      "line": 59,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: direct drive.Admin type reference — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
-    },
-    {
-      "file": "internal/api/assets/clips/ops.go",
-      "line": 72,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: direct drive.Admin type reference — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
-    },
-    {
-      "file": "internal/api/assets/register/handler.go",
-      "line": 274,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: direct drive.Uploader type reference — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
-    },
-    {
-      "file": "internal/api/assets/register/handler.go",
-      "line": 274,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: pointer to concrete drive.Uploader — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
     },
     {
       "file": "internal/api/assets/soundeffect/handler.go",
@@ -508,45 +435,13 @@
     },
     {
       "file": "internal/application/assets/deletion/deletion.go",
-      "line": 142,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: direct drive.Uploader type reference — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
-    },
-    {
-      "file": "internal/application/assets/deletion/deletion.go",
-      "line": 142,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: pointer to concrete drive.Uploader — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
-    },
-    {
-      "file": "internal/application/assets/deletion/deletion.go",
-      "line": 176,
-      "actual_count": 13,
+      "line": 180,
+      "actual_count": 12,
       "allowed_count": 8,
       "matched_rule": "max_constructor_deps",
       "rule": "constructor_deps",
       "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 13 parameters (max 8); split into smaller constructors or use a config struct"
-    },
-    {
-      "file": "internal/application/assets/deletion/deletion.go",
-      "line": 180,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: direct drive.Uploader type reference — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
-    },
-    {
-      "file": "internal/application/assets/deletion/deletion.go",
-      "line": 180,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: pointer to concrete drive.Uploader — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
+      "note": "func New\u003cX\u003e(...) has 12 parameters (max 8); split into smaller constructors or use a config struct"
     },
     {
       "file": "internal/application/assets/delivery/mapper.go",
@@ -765,22 +660,6 @@
       "rule": "struct_deps",
       "severity": "warn",
       "note": "struct ClipIngestPipelineDeps has 9 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
-    },
-    {
-      "file": "internal/application/assets/ingest/service.go",
-      "line": 33,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: direct drive.Admin type reference — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
-    },
-    {
-      "file": "internal/application/assets/ingest/service.go",
-      "line": 54,
-      "matched_rule": "drive_access_ssot",
-      "rule": "percheck_drive_access_ssot",
-      "severity": "error",
-      "note": "forbidden low-level Drive concrete reference: direct drive.Admin type reference — route Drive access through delivery.Publisher (Pattern 0) or, for lifecycle ops, through drive.FileLifecycle wired at composition root (internal/app/)"
     },
     {
       "file": "internal/application/assets/lifecycle/service.go",
@@ -1237,14 +1116,6 @@
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
     },
     {
-      "file": "internal/application/images/storage_ingest_direct.go",
-      "line": 118,
-      "matched_rule": "root_override_forward_prevention_gate",
-      "rule": "percheck_root_override_ban",
-      "severity": "error",
-      "note": "forbidden `RootFolderOverride` in application/api layer; godlike/06 SSOT requires every caller outside internal/infrastructure/ and cmd/admin/ to route through delivery.Publisher.Publish / ResolveFolder with a typed DestinationKey. RootFolderOverride is the infrastructure-layer escape hatch (FASE B1 forward-prevention gate, July 2026). See internal/infrastructure/drive/publisher.go for the canonical Publisher implementation."
-    },
-    {
       "file": "internal/application/jobs/enqueue_service.go",
       "line": 43,
       "matched_rule": "input_struct_mutation",
@@ -1457,14 +1328,6 @@
       "note": "raw source media / transformation reference: literal reference to ffmpeg/yt-dlp/wget binary — route through SourceStager (internal/application/acquisition) or MediaTransformer (internal/domain/asset/transformer) instead"
     },
     {
-      "file": "internal/application/voiceover/ports_publication.go",
-      "line": 97,
-      "matched_rule": "root_override_forward_prevention_gate",
-      "rule": "percheck_root_override_ban",
-      "severity": "error",
-      "note": "forbidden `RootFolderOverride` in application/api layer; godlike/06 SSOT requires every caller outside internal/infrastructure/ and cmd/admin/ to route through delivery.Publisher.Publish / ResolveFolder with a typed DestinationKey. RootFolderOverride is the infrastructure-layer escape hatch (FASE B1 forward-prevention gate, July 2026). See internal/infrastructure/drive/publisher.go for the canonical Publisher implementation."
-    },
-    {
       "file": "internal/application/voiceover/process_voiceover_item.go",
       "line": 59,
       "actual_count": 9,
@@ -1607,16 +1470,6 @@
       "rule": "struct_deps",
       "severity": "warn",
       "note": "struct ProcessSegmentDeps has 15 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
-    },
-    {
-      "file": "internal/application/youtube/usecase/service.go",
-      "line": 40,
-      "actual_count": 21,
-      "allowed_count": 8,
-      "matched_rule": "max_struct_deps",
-      "rule": "struct_deps",
-      "severity": "warn",
-      "note": "struct ServiceDeps has 21 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
       "file": "internal/domain/asset/clip_identity.go",

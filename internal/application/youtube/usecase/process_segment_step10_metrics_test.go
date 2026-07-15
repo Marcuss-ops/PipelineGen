@@ -125,12 +125,12 @@ func TestProcessSegment_Step10Failure_InvokesMetricsRecorder(t *testing.T) {
 	//     EnrichClip (forces the partial-state failure path)
 	//   - Step10Metrics:  the mock recorder under test
 	realPath := mustWriteFakeFile(t, "step10-metrics-probe.mp4")
-	deps := validProcessSegmentDeps()
-	deps.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-	deps.Hash = testStubHash{}
-	deps.MetadataService = newAlwaysFailingMetadataService(t)
-	deps.Step10Metrics = mockMetrics
-	uc := NewProcessYouTubeSegmentUseCase(deps)
+	core, media, metadata, observability := validProcessSegmentDeps()
+	core.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
+	core.Hash = testStubHash{}
+	metadata.MetadataService = newAlwaysFailingMetadataService(t)
+	observability.Step10Metrics = mockMetrics
+	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoURL: "https://www.youtube.com/watch?v=yt_step10_metrics_001",
@@ -172,12 +172,12 @@ func TestProcessSegment_Step10Success_DoesNotInvokeMetricsRecorder(t *testing.T)
 	// Step 10 short-circuits silently (the optional-port pattern).
 	// We wire the recorder so we can verify it is NOT called.
 	realPath := mustWriteFakeFile(t, "step10-success-probe.mp4")
-	deps := validProcessSegmentDeps()
-	deps.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-	deps.Hash = testStubHash{}
-	deps.Step10Metrics = mockMetrics
-	// deps.MetadataService is nil by default — leave as-is.
-	uc := NewProcessYouTubeSegmentUseCase(deps)
+	core, media, metadata, observability := validProcessSegmentDeps()
+	core.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
+	core.Hash = testStubHash{}
+	observability.Step10Metrics = mockMetrics
+	// metadata.MetadataService is nil by default — leave as-is.
+	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoURL: "https://www.youtube.com/watch?v=yt_step10_metrics_002",
@@ -208,12 +208,12 @@ func TestProcessSegment_Step10Failure_NilRecorder_NoPanic(t *testing.T) {
 	// surface the typed ExtractionError; the missing recorder
 	// must not cause a panic.
 	realPath := mustWriteFakeFile(t, "step10-nil-metrics-probe.mp4")
-	deps := validProcessSegmentDeps()
-	deps.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-	deps.Hash = testStubHash{}
-	deps.MetadataService = newAlwaysFailingMetadataService(t)
-	// deps.Step10Metrics is nil by default — do NOT set it.
-	uc := NewProcessYouTubeSegmentUseCase(deps)
+	core, media, metadata, observability := validProcessSegmentDeps()
+	core.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
+	core.Hash = testStubHash{}
+	metadata.MetadataService = newAlwaysFailingMetadataService(t)
+	// observability.Step10Metrics is nil by default — do NOT set it.
+	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoURL: "https://www.youtube.com/watch?v=yt_step10_metrics_003",

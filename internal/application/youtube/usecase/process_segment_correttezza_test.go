@@ -67,10 +67,10 @@ func (s *stubCacheRecorder) GetExisting(_ context.Context, _ string) (*youtubety
 // asserts the call count is 0.
 func TestProcessSegment_StrategyReplaceBypassesCache(t *testing.T) {
 	rec := &stubCacheRecorder{}
-	deps := validProcessSegmentDeps()
-	deps.Cache = rec
+	core, media, metadata, observability := validProcessSegmentDeps()
+	core.Cache = rec
 
-	uc := NewProcessYouTubeSegmentUseCase(deps)
+	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID:  "abc",
 		Segment:  youtubetypes.Segment{Start: "0:10", End: "0:30", Name: "Test"},
@@ -95,7 +95,7 @@ func TestProcessSegment_StrategyReplaceBypassesCache(t *testing.T) {
 // FailureCodeDurationOutOfRange. The use case's Step 1 is the gate
 // (before any expensive download happens).
 func TestProcessSegment_SegmentPolicyEnforced(t *testing.T) {
-	uc := NewProcessYouTubeSegmentUseCase(validProcessSegmentDeps())
+	uc := NewProcessYouTubeSegmentFromSubBundles(validProcessSegmentDeps())
 	// 2-hour segment — well above the 60s default Max.
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "abc",
@@ -115,7 +115,7 @@ func TestProcessSegment_SegmentPolicyEnforced(t *testing.T) {
 // TestProcessSegment_SegmentPolicyTooShort also pin #3: a 1-second
 // segment is below the default 2s Min. The gate is symmetric.
 func TestProcessSegment_SegmentPolicyTooShort(t *testing.T) {
-	uc := NewProcessYouTubeSegmentUseCase(validProcessSegmentDeps())
+	uc := NewProcessYouTubeSegmentFromSubBundles(validProcessSegmentDeps())
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "abc",
 		Segment: youtubetypes.Segment{Start: "0:00", End: "0:01", Name: "TooShort"},
@@ -187,10 +187,10 @@ func (stubVideoPipelineEmptyPath) DownloadAndCutYouTubeVideo(_ context.Context, 
 
 // TestProcessSegment_FailsOnEmptyLocalPath pins #5 case 1.
 func TestProcessSegment_FailsOnEmptyLocalPath(t *testing.T) {
-	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
-		d := validProcessSegmentDeps()
-		d.VideoPipeline = stubVideoPipelineEmptyPath{}
-		return d
+	uc := NewProcessYouTubeSegmentFromSubBundles(func() (ProcessSegmentCoreDeps, ProcessSegmentMediaDeps, ProcessSegmentMetadataDeps, ProcessSegmentObservabilityDeps) {
+		core, media, metadata, observability := validProcessSegmentDeps()
+		core.VideoPipeline = stubVideoPipelineEmptyPath{}
+		return core, media, metadata, observability
 	}())
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "abc",
@@ -221,10 +221,10 @@ func (s stubVideoPipelineZeroSize) DownloadAndCutYouTubeVideo(_ context.Context,
 // TestProcessSegment_FailsOnZeroSizeFile pins #5 case 2.
 func TestProcessSegment_FailsOnZeroSizeFile(t *testing.T) {
 	zeroPath := filepath.Join(t.TempDir(), "zero.mp4")
-	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
-		d := validProcessSegmentDeps()
-		d.VideoPipeline = stubVideoPipelineZeroSize{path: zeroPath}
-		return d
+	uc := NewProcessYouTubeSegmentFromSubBundles(func() (ProcessSegmentCoreDeps, ProcessSegmentMediaDeps, ProcessSegmentMetadataDeps, ProcessSegmentObservabilityDeps) {
+		core, media, metadata, observability := validProcessSegmentDeps()
+		core.VideoPipeline = stubVideoPipelineZeroSize{path: zeroPath}
+		return core, media, metadata, observability
 	}())
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "abc",
@@ -255,11 +255,11 @@ func TestProcessSegment_FailsOnHashError(t *testing.T) {
 	realPath := filepath.Join(t.TempDir(), "real.mp4")
 	_ = os.WriteFile(realPath, []byte("test"), 0o644)
 
-	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
-		d := validProcessSegmentDeps()
-		d.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-		d.Hash = stubHashServiceErr{}
-		return d
+	uc := NewProcessYouTubeSegmentFromSubBundles(func() (ProcessSegmentCoreDeps, ProcessSegmentMediaDeps, ProcessSegmentMetadataDeps, ProcessSegmentObservabilityDeps) {
+		core, media, metadata, observability := validProcessSegmentDeps()
+		core.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
+		core.Hash = stubHashServiceErr{}
+		return core, media, metadata, observability
 	}())
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "abc",
@@ -455,8 +455,8 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog(t *testing.T) {
 	_ = os.WriteFile(realPath, []byte("fake audio bytes"), 0o644)
 
 	// Wire a captured logger so we can assert on the canonical Warn.
-	core, recorded := observer.New(zapcore.WarnLevel)
-	capturedLog := zap.New(core)
+	obsCore, recorded := observer.New(zapcore.WarnLevel)
+	capturedLog := zap.New(obsCore)
 
 	// Construct a real MetadataService with errBuilder so EnrichClip
 	// returns an error (and Step 10's typed-fail path runs).
@@ -468,14 +468,12 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_EmitsWarnLog(t *testing.T) {
 	require.NoError(t, svcErr, "NewMetadataService must succeed with errBuilder + noopWriter")
 	require.NotNil(t, svc)
 
-	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
-		d := validProcessSegmentDeps()
-		d.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-		d.Hash = testStubHash{} // non-empty so Step 5 passes
-		d.Log = capturedLog     // override the zap.NewNop default
-		d.MetadataService = svc // wire the real service that errors
-		return d
-	}())
+	bundleCore, media, metadata, observability := validProcessSegmentDeps()
+	bundleCore.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
+	bundleCore.Hash = testStubHash{} // non-empty so Step 5 passes
+	bundleCore.Log = capturedLog     // override the zap.NewNop default
+	metadata.MetadataService = svc   // wire the real service that errors
+	uc := NewProcessYouTubeSegmentFromSubBundles(bundleCore, media, metadata, observability)
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "abc",
 		Segment: youtubetypes.Segment{Start: "0:00", End: "0:10", Name: "Test"},
@@ -549,8 +547,8 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_PartialState(t *testing.T) {
 	_ = os.WriteFile(realPath, []byte("fake audio bytes"), 0o644)
 
 	// Wire a captured logger AND a recording writer stub.
-	core, recorded := observer.New(zapcore.WarnLevel)
-	capturedLog := zap.New(core)
+	obsCore, recorded := observer.New(zapcore.WarnLevel)
+	capturedLog := zap.New(obsCore)
 	writerRecorder := &stubWriterAssetRecorder{}
 
 	// Construct a real MetadataService with errBuilder so EnrichClip fails.
@@ -565,15 +563,13 @@ func TestProcessSegment_Step10_FailsAfterClipWrite_PartialState(t *testing.T) {
 	// Build deps: the recording writer stub is the key difference from
 	// Test 8. It captures every CommitClipAndIndexEvent call so we can
 	// prove Step 9 ran BEFORE the metadata failure (conditions 2+3).
-	uc := NewProcessYouTubeSegmentUseCase(func() ProcessSegmentDeps {
-		d := validProcessSegmentDeps()
-		d.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
-		d.Hash = testStubHash{}   // non-empty so Step 5 passes
-		d.Writer = writerRecorder // recording stub → proves Step 9 ran
-		d.Log = capturedLog
-		d.MetadataService = svc
-		return d
-	}())
+	bundleCore, media, metadata, observability := validProcessSegmentDeps()
+	bundleCore.VideoPipeline = stubVideoPipelineWithPath{path: realPath}
+	bundleCore.Hash = testStubHash{}   // non-empty so Step 5 passes
+	bundleCore.Writer = writerRecorder // recording stub → proves Step 9 ran
+	bundleCore.Log = capturedLog
+	metadata.MetadataService = svc
+	uc := NewProcessYouTubeSegmentFromSubBundles(bundleCore, media, metadata, observability)
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "abc",
 		Segment: youtubetypes.Segment{Start: "0:00", End: "0:10", Name: "Test"},

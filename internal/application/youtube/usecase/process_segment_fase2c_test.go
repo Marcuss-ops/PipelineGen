@@ -150,9 +150,9 @@ func TestStep10_Fase2c_BundlePlainText_ReachesEnrichClip(t *testing.T) {
 	const bundleLanguageCode = "en"
 
 	metaSvc, builder := newRecordingMetadataService(t)
-	deps := validProcessSegmentDeps()
-	deps.MetadataService = metaSvc
-	uc := NewProcessYouTubeSegmentUseCase(deps)
+	core, media, metadata, observability := validProcessSegmentDeps()
+	metadata.MetadataService = metaSvc
+	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "yt_fase2c_dataflow",
@@ -206,9 +206,9 @@ func TestStep10_Fase2c_BundlePlainText_ReachesEnrichClip(t *testing.T) {
 // regression in a different shape).
 func TestStep10_Fase2c_EmptyTranscript_ReachesEnrichClip(t *testing.T) {
 	metaSvc, builder := newRecordingMetadataService(t)
-	deps := validProcessSegmentDeps()
-	deps.MetadataService = metaSvc
-	uc := NewProcessYouTubeSegmentUseCase(deps)
+	core, media, metadata, observability := validProcessSegmentDeps()
+	metadata.MetadataService = metaSvc
+	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "yt_fase2c_empty",
@@ -256,21 +256,21 @@ func TestStep10_Fase2c_ZeroTranscriberCalls_WithResolverAndMetadataWired(t *test
 	tport := &countingTranscriber{text: "MUST NOT be called from Step 10"}
 	metaSvc, builder := newRecordingMetadataService(t)
 
-	deps := validProcessSegmentDeps()
-	deps.MetadataService = metaSvc
+	core, media, metadata, observability := validProcessSegmentDeps()
+	metadata.MetadataService = metaSvc
 	// Wire the canonical 5-priority chain so the use case's
 	// resolver port is non-nil + WOULD fire Whisper if Step 10
 	// ever reached back. The noRowsRepo + noSubtitleFetcher
 	// force the chain to fall through to priority 5, so ANY
 	// leak from Step 10 to the resolver would surface as a
 	// countingTranscriber.call > 0.
-	deps.TextTrackResolver = &TextTrackResolver{
+	media.TextTrackResolver = &TextTrackResolver{
 		Repo:        noRowsRepo{},
 		Subtitles:   noSubtitleFetcher{},
 		Transcriber: tport,
 		Log:         zap.NewNop(),
 	}
-	uc := NewProcessYouTubeSegmentUseCase(deps)
+	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 
 	cmd := youtubetypes.ProcessSegmentCommand{
 		VideoID: "yt_fase2c_zerocounts",

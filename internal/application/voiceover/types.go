@@ -111,7 +111,7 @@ func (r *BatchRequest) PayloadMap() map[string]any {
 			"create_subfolder": r.Destination.CreateSubfolder,
 		}
 		if r.Destination.StyleGroup != "" {
-			destPayload["style_group"] = r.Destination.StyleGroup
+			destPayload["style_group"] = string(r.Destination.StyleGroup)
 		}
 		payload["destination"] = destPayload
 	}

@@ -78,47 +78,64 @@ func (stubClipCache) GetExisting(_ context.Context, _ string) (*youtubetypes.Ext
 // zero-valued, so tests don't need to set it. The 4s/60s window
 // matches the user-requested clip-duration policy (no effects,
 // no transitions applied by the YouTube extraction endpoint).
-func validProcessSegmentDeps() ProcessSegmentDeps {
-	return ProcessSegmentDeps{
-		Cache:         stubClipCache{},
-		VideoPipeline: stubVideoPipeline{},
-		Hash:          stubHashService{},
-		Writer:        stubAtomicWriter{},
-		SegmentsSvc:   NewSegmentsService(),
-		Log:           zap.NewNop(),
-	}
+//
+// PR-GRUPOC-2 (July 2026): the pre-PR ProcessSegmentDeps struct
+// (17 fields) is RETIRED. The 17 fields are now split into 4
+// capability-area sub-bundles (Core/Media/Metadata/Observability).
+// The helper returns 4 sub-bundles — Core is wired with the 4
+// required ports + SegmentsSvc + Log; Media, Metadata, and
+// Observability are zero-valued (the canonical no-op state —
+// their ports are optional, runtime-gated). Tests that need to
+// override a specific port mutate the relevant sub-bundle after
+// calling this helper.
+func validProcessSegmentDeps() (ProcessSegmentCoreDeps, ProcessSegmentMediaDeps, ProcessSegmentMetadataDeps, ProcessSegmentObservabilityDeps) {
+	return ProcessSegmentCoreDeps{
+			Cache:         stubClipCache{},
+			VideoPipeline: stubVideoPipeline{},
+			Hash:          stubHashService{},
+			Writer:        stubAtomicWriter{},
+			SegmentsSvc:   NewSegmentsService(),
+			Log:           zap.NewNop(),
+		}, ProcessSegmentMediaDeps{},
+		ProcessSegmentMetadataDeps{},
+		ProcessSegmentObservabilityDeps{}
 }
 
 // TestNewProcessYouTubeSegmentUseCase_PanicsOnNilCache pins the
 // fail-fast posture for the Cache port.
+//
+// PR-GRUPOC-2 (July 2026): the mutate pattern now operates on the
+// 4 capability-area sub-bundles returned by validProcessSegmentDeps().
+// The Cache port lives in ProcessSegmentCoreDeps; nil-ing it triggers
+// the same byte-verbatim panic message as the pre-PR implementation.
 func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilCache(t *testing.T) {
-	deps := validProcessSegmentDeps()
-	deps.Cache = nil
+	core, media, metadata, observability := validProcessSegmentDeps()
+	core.Cache = nil
 	require.PanicsWithValue(t,
 		"usecase.NewProcessYouTubeSegmentUseCase: Cache port is required (composition must wire ClipCacheAdapter from internal/infrastructure/database/sqlite/assets/clip_cache_adapter.go)",
-		func() { NewProcessYouTubeSegmentUseCase(deps) },
+		func() { NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability) },
 		"Commit 1 fail-fast: nil Cache MUST panic at ctor (P0 #3 silent-'processed' regression) ")
 }
 
 // TestNewProcessYouTubeSegmentUseCase_PanicsOnNilVideoPipeline pins
 // the fail-fast posture for the VideoPipeline port.
 func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilVideoPipeline(t *testing.T) {
-	deps := validProcessSegmentDeps()
-	deps.VideoPipeline = nil
+	core, media, metadata, observability := validProcessSegmentDeps()
+	core.VideoPipeline = nil
 	require.PanicsWithValue(t,
 		"usecase.NewProcessYouTubeSegmentUseCase: VideoPipeline port is required (composition must wire the YouTube pipeline adapter)",
-		func() { NewProcessYouTubeSegmentUseCase(deps) },
+		func() { NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability) },
 		"Commit 1 fail-fast: nil VideoPipeline MUST panic at ctor")
 }
 
 // TestNewProcessYouTubeSegmentUseCase_PanicsOnNilHash pins the
 // fail-fast posture for the Hash port.
 func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilHash(t *testing.T) {
-	deps := validProcessSegmentDeps()
-	deps.Hash = nil
+	core, media, metadata, observability := validProcessSegmentDeps()
+	core.Hash = nil
 	require.PanicsWithValue(t,
 		"usecase.NewProcessYouTubeSegmentUseCase: Hash port is required (composition must wire hashutil.NewHashAdapter)",
-		func() { NewProcessYouTubeSegmentUseCase(deps) },
+		func() { NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability) },
 		"Commit 1 fail-fast: nil Hash MUST panic at ctor")
 }
 
@@ -127,11 +144,11 @@ func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilHash(t *testing.T) {
 // explicit hard-wiring directive ("Writer assente: salta DB e
 // outbox e termina comunque con out.Item.Status = \"processed\"").
 func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilWriter(t *testing.T) {
-	deps := validProcessSegmentDeps()
-	deps.Writer = nil
+	core, media, metadata, observability := validProcessSegmentDeps()
+	core.Writer = nil
 	require.PanicsWithValue(t,
 		"usecase.NewProcessYouTubeSegmentUseCase: Writer port is required — composition must wire ClipAtomicWriterAdapter (PR-C P0 #3 fail-closed; pre-Commit-1 silently wrote nothing and returned 'processed')",
-		func() { NewProcessYouTubeSegmentUseCase(deps) },
+		func() { NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability) },
 		"Commit 1 fail-fast: nil Writer MUST panic at ctor (P0 #3 silent-success regression) ")
 }
 
@@ -143,11 +160,11 @@ func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilWriter(t *testing.T) {
 // refactor swaps the canonical impl for a stub the test fixtures
 // don't expect.
 func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilSegmentsSvc(t *testing.T) {
-	deps := validProcessSegmentDeps()
-	deps.SegmentsSvc = nil
+	core, media, metadata, observability := validProcessSegmentDeps()
+	core.SegmentsSvc = nil
 	require.PanicsWithValue(t,
 		"usecase.NewProcessYouTubeSegmentUseCase: SegmentsSvc port is required (composition must construct *SegmentsService via youtube.NewSegmentsService())",
-		func() { NewProcessYouTubeSegmentUseCase(deps) },
+		func() { NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability) },
 		"Commit 1 fail-fast (post-review fix): nil SegmentsSvc MUST panic at ctor (user msg spec deviation; pre-fix silently defaulted to NewSegmentsService())")
 }
 
@@ -155,7 +172,8 @@ func TestNewProcessYouTubeSegmentUseCase_PanicsOnNilSegmentsSvc(t *testing.T) {
 // fully-wired ctor — verifies that with all required ports satisfied
 // the ctor returns cleanly (no panic, returns a non-nil use case).
 func TestNewProcessYouTubeSegmentUseCase_HappyPath(t *testing.T) {
-	uc := NewProcessYouTubeSegmentUseCase(validProcessSegmentDeps())
+	core, media, metadata, observability := validProcessSegmentDeps()
+	uc := NewProcessYouTubeSegmentFromSubBundles(core, media, metadata, observability)
 	require.NotNil(t, uc, "with all required ports wired the canonical use case MUST construct (no panic)")
 }
 

@@ -77,15 +77,17 @@ type GenerationFingerprintInput struct {
 	// block (Topic + SourceText + TargetWords) participates in
 	// the hash, and the SLICE ORDER is preserved verbatim
 	// (DoD #9 reverse-mapping: a reorder IS a different identity,
-	// NOT a canonical no-op). The legacy SegmentTopics alias
-	// remains EXCLUDED — see cache_key.go for the rationale.
+	// NOT a canonical no-op). SegmentTopics is preserved too
+	// because changing the segment topic list changes the generated
+	// script shape and must alter replay identity.
 	Segments []ScriptSegment `json:"segments"`
 
 	// PRE-EXISTING-7/8 (FASE 13, July 2026): Topic joined the
-	// canonical fingerprint input. SegmentTopics remains EXCLUDED
-	// because it is a segment-sizing/planner dimension, not part
-	// of the canonical text-identity fingerprint (see cache_key.go).
-	Topic string `json:"topic"`
+	// canonical fingerprint input. SegmentTopics is kept in the
+	// fingerprint for replay stability when the segment topic
+	// schedule changes.
+	Topic         string   `json:"topic"`
+	SegmentTopics []string `json:"segment_topics,omitempty"`
 }
 
 // BuildFingerprint returns the canonical 64-bit hex fingerprint for
@@ -186,6 +188,10 @@ func FingerprintInputFromPlan(plan *ResolvedGenerationPlan) GenerationFingerprin
 	// produce distinct keys.
 	if plan.Topic != "" {
 		input.Topic = plan.Topic
+	}
+
+	if len(plan.SegmentTopics) > 0 {
+		input.SegmentTopics = append([]string(nil), plan.SegmentTopics...)
 	}
 
 	return input
@@ -313,6 +319,9 @@ func cloneFingerprintInput(input GenerationFingerprintInput) GenerationFingerpri
 	// (or future similar transforms) would mutate the caller's slice.
 	if input.Segments != nil {
 		input.Segments = append([]ScriptSegment(nil), input.Segments...)
+	}
+	if input.SegmentTopics != nil {
+		input.SegmentTopics = append([]string(nil), input.SegmentTopics...)
 	}
 	return input
 }

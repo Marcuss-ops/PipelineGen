@@ -104,6 +104,22 @@ internal/api/assets/handler_searchqueries.go
 internal/api/channels/handler.go
 internal/application/assets/providers/artlist/semantic_enricher_enrich.go
 internal/application/assets/reconciliation/voiceover/service.go
+# PR-RESOLVE-ARCH-ERRORS-2026-07-14 (Check A bypass audit reconciliation):
+# AssetMutationDispatcher (internal/application/assets/mutations/dispatcher.go)
+# is canonically scoped to media_assets aggregate-root mutations only; the
+# dispatcher interface owns EnqueueAndIndex/EnqueueAndRestore/EnqueueAndDelete
+# exclusively. asset_locations + asset_renditions (sub-table writers) and
+# VisualSummary (sub-table writer) have distinct narrow repos covered by
+# own canonical finalizer paths (asset_finalizer_locations.go +
+# asset_finalizer_renditions.go). These files are sub-table writers routed
+# through the canonical finalizer surface post-007 migration; the bypass
+# audit's dumb rg regex `\.Upsert\(` falsely flags them as bypass callers.
+# Allowlisted in perpetuity; future media_assets.Upsert in these files MUST
+# migrate to AssetMutationDispatcher.EnqueueAndIndex.
+# owner=@pipelinegen-agent; deadline=2026-09-15; sub-table visual_summary; finals=VisualSummaryRepository
+internal/application/indexing/visual_summary.go
+# owner=@pipelinegen-agent; deadline=2026-09-15; sub-table asset_locations+asset_renditions; finals=AssetFinalizerTx
+internal/application/assets/providers/artlist/run_orchestrator_persist.go
 
 # ── Bucket 4: Production — must use dispatcher (Wave 22 task 2/3) ──────
 # These files still write `media_assets` directly via the legacy

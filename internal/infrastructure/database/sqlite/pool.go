@@ -140,12 +140,26 @@ func NewDualPool(ctx context.Context, fileUri string, numReaders int) (*DualPool
 	reader.SetMaxIdleConns(numReaders)
 	reader.SetConnMaxLifetime(0)
 
+	// Ping context bounds the pragma application and connection
+	// verification work.
+	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer pingCancel()
+
+	if err := applyCanonicalPragmas(pingCtx, writer); err != nil {
+		_ = writer.Close()
+		_ = reader.Close()
+		return nil, fmt.Errorf("sqlite.NewDualPool: apply writer pragmas: %w", err)
+	}
+	if err := applyCanonicalPragmas(pingCtx, reader); err != nil {
+		_ = writer.Close()
+		_ = reader.Close()
+		return nil, fmt.Errorf("sqlite.NewDualPool: apply reader pragmas: %w", err)
+	}
+
 	// Ping verifies the WAL pragma applied at first open. A WAL
 	// pragma failure (e.g. WAL not supported on the journal path
 	// being used) surfaces here, BEFORE the caller routes through
 	// the pool — godlike/07 fail-closed.
-	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
-	defer pingCancel()
 	if err := writer.PingContext(pingCtx); err != nil {
 		_ = writer.Close()
 		_ = reader.Close()
@@ -153,6 +167,20 @@ func NewDualPool(ctx context.Context, fileUri string, numReaders int) (*DualPool
 	}
 
 	return &DualPool{Writer: writer, Reader: reader, sourcePath: walUri}, nil
+}
+
+func applyCanonicalPragmas(ctx context.Context, db *sql.DB) error {
+	var journalMode string
+	if err := db.QueryRowContext(ctx, "PRAGMA journal_mode = WAL").Scan(&journalMode); err != nil {
+		return fmt.Errorf("set journal_mode=WAL: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout = 5000"); err != nil {
+		return fmt.Errorf("set busy_timeout=5000: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, "PRAGMA synchronous = NORMAL"); err != nil {
+		return fmt.Errorf("set synchronous=NORMAL: %w", err)
+	}
+	return nil
 }
 
 // Close releases both writer and reader pool resources. Idempotent

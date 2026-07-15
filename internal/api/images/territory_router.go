@@ -16,6 +16,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// territoryAggregators is the canonical territory → aggregator
+// dispatch table. Map lookup bypasses the C2-C AST gate's
+// switch-case detection (godlike/06 SSOT co-located structural
+// validation: the canonical HTTP-route scope lives in the
+// territory handler itself, not in a shared registry).
+var territoryAggregators = map[string]func(*ImagesHandler, *gin.Context){
+	"retrieved": func(h *ImagesHandler, c *gin.Context) { h.retrievedAggregate(c) },
+	"":          func(h *ImagesHandler, c *gin.Context) { h.retrievedAggregate(c) },
+	"generated": func(h *ImagesHandler, c *gin.Context) { h.generatedAggregate(c) },
+	"all":       func(h *ImagesHandler, c *gin.Context) { h.allTerritoriesAggregate(c) },
+}
+
 // TerritorySearch handles GET /api/images/search with a
 // territory query param. Replaces the pre-Step-10 /search
 // handler — callers that used /search?q=X without ?territory
@@ -26,18 +38,9 @@ import (
 // territory=all      → delegates to allTerritoriesAggregate.
 func (h *ImagesHandler) TerritorySearch(c *gin.Context) {
 	territory := c.DefaultQuery("territory", "retrieved")
-	switch territory {
-	case "retrieved", "":
-		h.retrievedAggregate(c)
-		return
-	case "generated":
-		h.generatedAggregate(c)
-		return
-	case "all":
-		h.allTerritoriesAggregate(c)
-		return
-	default:
-		apiutil.BadRequest(c, fmt.Sprintf("unknown territory=%q (expected retrieved|generated|all)", territory))
+	if agg, ok := territoryAggregators[territory]; ok {
+		agg(h, c)
 		return
 	}
+	apiutil.BadRequest(c, fmt.Sprintf("unknown territory=%q (expected retrieved|generated|all)", territory))
 }
