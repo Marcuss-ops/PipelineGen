@@ -51,8 +51,17 @@ jobs:
             exit 1
           }
 
-          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/verify" "Verifying incremental migration slice"
+          compiler_failure() {
+            local tag="$1" log="$2"
+            local first
+            first=$(grep -m1 -E '\.go:[0-9]+(:[0-9]+)?:|undefined:|cannot use|not enough arguments|too many arguments' "${log}" || tail -n 1 "${log}" || true)
+            first=$(printf '%s' "${first}" | sed -E 's/[^A-Za-z0-9._:/-]+/_/g' | cut -c1-72)
+            [ -n "${first}" ] || first=unknown_compile_error
+            post_status "${TRIGGER_SHA}" failure "job-kernel-error/${tag}/${first}" "First compiler error"
+            fail_stage "compile-${tag}" "${tag} compilation failed"
+          }
 
+          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/verify" "Verifying incremental migration slice"
           git fetch origin main
           git reset --hard origin/main
 
@@ -74,19 +83,20 @@ jobs:
           gofmt -w "${migrated_files[@]}"
           post_status "${TRIGGER_SHA}" success "job-kernel-incremental/format" "Migrated files are gofmt-clean"
 
-          packages=(
-            ./internal/application/assets/providers/artlist
-            ./internal/application/assets/texttracks
-            ./internal/application/assets/providers/stock/stockpipeline
-            ./cmd/archcheck/...
-          )
+          compile_package() {
+            local tag="$1" package="$2" log="/tmp/job-kernel-${tag}.log"
+            post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/compile-${tag}" "Compiling ${tag}"
+            if ! go test -run '^$' "${package}" >"${log}" 2>&1; then
+              tail -n 150 "${log}"
+              compiler_failure "${tag}" "${log}"
+            fi
+            post_status "${TRIGGER_SHA}" success "job-kernel-incremental/compile-${tag}" "${tag} compiles"
+          }
 
-          post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/compile" "Compiling migrated packages"
-          if ! go test -run '^$' "${packages[@]}" >/tmp/job-kernel-compile.log 2>&1; then
-            tail -n 150 /tmp/job-kernel-compile.log
-            fail_stage compile "Incremental package compilation failed"
-          fi
-          post_status "${TRIGGER_SHA}" success "job-kernel-incremental/compile" "Migrated packages compile"
+          compile_package artlist ./internal/application/assets/providers/artlist
+          compile_package texttracks ./internal/application/assets/texttracks
+          compile_package stockpipeline ./internal/application/assets/providers/stock/stockpipeline
+          compile_package archcheck ./cmd/archcheck/...
 
           post_status "${TRIGGER_SHA}" pending "job-kernel-incremental/tests" "Running focused migration tests"
           if ! go test ./cmd/archcheck/scan ./internal/application/assets/providers/artlist ./internal/application/assets/texttracks >/tmp/job-kernel-tests.log 2>&1; then
