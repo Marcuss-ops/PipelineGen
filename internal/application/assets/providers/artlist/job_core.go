@@ -237,14 +237,15 @@ func buildRunRecordFromResponse(jobID string, resp *RunTagResponse) RunRecord {
 		RootFolderID: resp.RootFolderID,
 		TagFolderID:  resp.TagFolderID,
 		RequestedN:   resp.Requested,
-		Found:        resp.Found,
-		Processed:    resp.Processed,
-		Skipped:      resp.Skipped,
-		Failed:       resp.Failed,
+		FoundN:       resp.Found,
+		ProcessedN:   resp.Processed,
+		SkippedN:     resp.Skipped,
+		FailedN:      resp.Failed,
 		Status:       "completed",
 	}
 	if !resp.OK || resp.Error != "" {
 		rec.Status = "failed"
+		rec.ErrorMessage = resp.Error
 	}
 	return rec
 }
