@@ -12,11 +12,6 @@
 //	0 — report printed (--strict off; Phase 0 default).
 //	1 — violations present (--strict on; Phase N mode).
 //	2 — load / walk / marshal error.
-//
-// FASE 1.C (June 2026) is the structural refactor that split the
-// former 996-line god-file into policy/ + report/ + scan/ +
-// runner/ + main (this file). See cmd/archcheck/ARCHITECTURE.md
-// for the post-FASE-1.C target layout.
 package main
 
 import (
@@ -32,14 +27,24 @@ func main() {
 		polstr         = flag.String("policy", "architecture/policy.yaml", "path to policy YAML")
 		strict         = flag.Bool("strict", false, "exit 1 on any violation (Phase N gate)")
 		phase          = flag.String("phase", "0", "phase label (printed in the report header)")
-		productionOnly = flag.Bool("production-only", false, "PR-P12-PERCHECK-BASELINE-ZERO: silences the comment-only warning bucket for percheck_root_override_ban so the operator-facing 'zero production-code hits' claim is auditable via len(r.Violations) == 0 (deadline 2026-08-15)")
+		productionOnly = flag.Bool("production-only", false, "silence comment-only warning buckets for production-only audit mode")
 	)
 	flag.Parse()
+
+	// Debt budget is a fail-closed catalog invariant in strict mode. It runs
+	// before the broad architecture report so changing an issue from open to
+	// in_progress cannot bypass CI without concrete implementation evidence.
+	if *strict {
+		if err := validateDebtBudget(*root, *polstr); err != nil {
+			fmt.Fprintf(os.Stderr, "archcheck: %v\n", err)
+			os.Exit(ExitViolations)
+		}
+	}
 
 	code, err := Run(context.Background(), *root, *polstr, *phase, *strict, *productionOnly)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "archcheck: %v\n", err)
-		os.Exit(2)
+		os.Exit(ExitLoadOrParse)
 	}
 	os.Exit(code)
 }
