@@ -30,7 +30,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"go.uber.org/zap"
 
@@ -217,10 +216,13 @@ func buildQdrantDeps(ctx context.Context, cfg *config.Config, dbs *databases, re
 			return nil, fmt.Errorf("buildQdrantDeps: qdrant.NewRuntime: %w", rerr)
 		}
 
-		// Wire index_languages from config into the PayloadMapper so
-		// youtubeStrategy can filter TextTracks by configured languages.
-		if langs := cfg.Multilingual.IndexLanguages; len(langs) > 0 {
-			runtime.Mapper.SetIndexLanguages(strings.Join(langs, ","))
+		// Wire the canonical language registry into the PayloadMapper so
+		// youtubeStrategy can filter TextTracks by the configured
+		// language capabilities instead of a second slice.
+		if langsCSV, csvErr := buildMultilingualLanguageCSV(activeMultilingualConfig(cfg), nil); csvErr == nil {
+			runtime.Mapper.SetIndexLanguages(langsCSV)
+		} else {
+			return nil, fmt.Errorf("buildQdrantDeps: index languages: %w", csvErr)
 		}
 		// Wire TextTrackRepository so the PayloadMapper can populate
 		// SearchTextInput.TextTracks at search-text construction time.

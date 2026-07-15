@@ -143,30 +143,27 @@ type LessonsConfig struct {
 	MaxParallelChapters int    `yaml:"max_parallel_chapters" default:"5"`
 }
 
-// MultilingualConfig holds settings for multilingual metadata generation.
-// When enabled, the semantic tagger will translate key metadata fields
-// (search_text, tags, subjects, mood) into the configured languages
-// at ingest time via Ollama, storing translations in metadata.json.
+// MultilingualConfig holds settings for multilingual media-language
+// generation. The canonical runtime SSOT is Languages; legacy CSV
+// fields remain only for compatibility with older configs.
 //
-// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): three new fields
-// (MaterializeLanguages, RequireLanguageCertainty, SourceLanguage
-// re-default) shift the YouTube acquisition chain from a hardcoded
-// "en" default to a config-driven, BCP-47-normalized language list.
-// godlike/06 SSOT: this struct is the SINGLE canonical source for the
-// project's "languages we materialize translations for" set. Tests +
-// CLI + admin backfill + TextTrackMaterializer job + YouTube acquisition
-// chain all reference MultilingualConfig.MaterializeLanguages (or the
-// asset.SupportedLanguages whitelist derived from it).
+// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the
+// language policy shifted from hardcoded fallbacks to a config-driven,
+// BCP-47-normalized registry. godlike/06 SSOT: the canonical source
+// for pipeline language capabilities is `Languages`; legacy CSV
+// fields remain only for back-compat and are derived from the same
+// registry in the composition root.
 type MultilingualConfig struct {
 	Enabled            bool     `yaml:"enabled" default:"false"`
 	SourceLanguage     string   `yaml:"source_language" default:"en"`
-	TranslateLanguages []string `yaml:"translate_languages" default:"it, es, fr, de"`
+	TranslateLanguages []string `yaml:"translate_languages" default:"it, pl, ru, de, es, pt-BR, fr, tr, en, id"`
 	// IndexLanguages defines which BCP-47 language codes are included
 	// in the Qdrant search_text for multilingual embedding. The
 	// SearchTextBuilder concatenates transcripts/descriptions from
 	// these languages so the E5 multilingual model can match queries
-	// in any supported language. Defaults to source_language only.
-	IndexLanguages []string `yaml:"index_languages" default:"en"`
+	// in any supported language. Default is the canonical 10-language
+	// registry order.
+	IndexLanguages []string `yaml:"index_languages" default:"it, en, pl, ru, de, es, pt-BR, fr, tr, id"`
 	// Languages is the canonical SSOT for the pipeline's
 	// language capabilities (PR-CATALOG-MULTILINGUA step 3,
 	// July 2026). Loaded from `multilingual.languages:` in the
@@ -198,7 +195,7 @@ type MultilingualConfig struct {
 	// asset.LanguageRegistry. Retained for back-compat with
 	// pre-step-3 YAML configs; will be removed in step 4+
 	// SSOT cutover.
-	MaterializeLanguages []string `yaml:"materialize_languages" default:"it, en, es, pt-BR, fr, de"`
+	MaterializeLanguages []string `yaml:"materialize_languages" default:"it, en, pl, ru, de, es, pt-BR, fr, tr, id"`
 	// RequireLanguageCertainty, when true, makes the YouTube
 	// acquisition chain (TextTrackResolver.AcquireSegmentText) fail
 	// with asset.ErrLanguageUndeterminable PRE-STEP-9 if no chain

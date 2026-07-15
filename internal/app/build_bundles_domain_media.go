@@ -104,18 +104,18 @@ func buildDomainMediaServices(
 	// UseCookies=false: public video segmentation (n-challenge path via monitor).
 	//
 	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.b (July 2026): the
-	// SubtitleFetcherAdapter no longer silently defaults to "en,en-US".
-	// The default-languages list is the config-driven
-	// cfg.Media.Multilingual.MaterializeLanguages (BCP-47 list,
-	// comma-separated), normalized via the canonical asset.Normalize
-	// helper. Empty config collapses to "" (NOT "en") so the
-	// acquisition chain surfaces "und" (BCP-47 undetermined) per
-	// godlike/07 no-fake-availability. The acquisition chain
-	// (TextTrackResolver.AcquireSegmentText) consumes this list as
-	// the PreferredLanguages fan-out order and as the
-	// SubtitleFetcherAdapter --sub-langs CSV (yt-dlp probes them
-	// top-to-bottom).
-	subtitleLanguagesCSV := buildBcp47CSV(cfg.Multilingual.MaterializeLanguages)
+	// SubtitleFetcherAdapter now consumes the canonical language
+	// registry derived from cfg.Media.Multilingual.Languages. The
+	// acquisition chain consumes this list as the PreferredLanguages
+	// fan-out order and as the SubtitleFetcherAdapter --sub-langs CSV
+	// (yt-dlp probes them top-to-bottom).
+	mlCfg := activeMultilingualConfig(cfg)
+	subtitleLanguagesCSV, err := buildMultilingualLanguageCSV(mlCfg, func(spec asset.LanguageSpec) bool {
+		return spec.TranslateClips
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("compose domains: subtitle languages: %w", err)
+	}
 	subtitleFetcherAdapter := ytinfra.NewSubtitleFetcherAdapter(
 		ytinfra.SubtitleCacheConfig{
 			YTDLPPath:    cfg.External.ResolvedYtdlpPath(),
@@ -175,15 +175,13 @@ func buildDomainMediaServices(
 	// subset of the full youtubeports.SubtitleFetcherPort.
 	bundle.SubtitleFetcher = subtitleFetcherAdapter
 	textTrackResolver := &youtube.TextTrackResolver{
-		Repo:      repos.TextTrackRepo,
-		Subtitles: subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)		// Transcriber field RETIRED in PR-PY-CLIPS-CORRETTE-TRADOTTE
-		// Fase 1.c (July 2026). The Whisper fallback is now
-		// exclusively owned by TextTrackResolver (which holds its
-		// own Transcriber reference wired above). Removing the
-		// duplicated direct use in Step 10 eliminates the
-		// double-Whisper regression.
-		Log:                      log,
-		RequireLanguageCertainty: cfg.Multilingual.RequireLanguageCertainty,
+		Repo:        repos.TextTrackRepo,
+		Subtitles:   subtitleFetcherAdapter, // satisfies youtubeports.SubtitleFetcherPort at wire-time (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 1.a)
+		Transcriber: ai.WhisperTranscriber,
+		Log:         log,
+		// The certainty gate stays config-driven; Whisper is the
+		// fallback when subtitles are unavailable or unusable.
+		RequireLanguageCertainty: mlCfg.RequireLanguageCertainty,
 	}
 
 	// PR-GRUPOC-2 (July 2026): youtube.ProcessSegmentDeps (17 fields) is
@@ -219,7 +217,7 @@ func buildDomainMediaServices(
 	processSegObservability := youtube.ProcessSegmentObservabilityDeps{
 		Step10Metrics: observability.NewStep10MetricsAdapter(),
 		// Fase 5: see MultilingualConfig.RequireTranscriptReady.
-		RequireTranscriptReady: cfg.Media.Multilingual.RequireTranscriptReady,
+		RequireTranscriptReady: mlCfg.RequireTranscriptReady,
 	}
 	processSeg := youtube.NewProcessYouTubeSegmentFromSubBundles(
 		processSegCore,

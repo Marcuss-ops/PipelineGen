@@ -1,0 +1,53 @@
+  # ── PRE-EXISTING-20-TARGET-TREE-MIGRATION — godlike/06 SSOT EXPAND/BACKFILL/CUTOVER for the 4 legacy first-level `internal/<x>` dirs flagged as unknown_internal_root by cmd/archcheck ──
+  # PR-WAVE-24-TOPOLOGY-MIGRATION (July 2026, in_progress): the 5-sub-move
+  # envelope raises the wave registration + catalog entry now (per
+  # PR-KERNEL-ALIAS-ALIGN cadence precedent) so future agents can see the
+  # workstream. Sub-move 1 closed 1 unknown_internal_root + 1 kernel_split_hint
+  # via commit 4d2b3568c (2026-07-13). Sub-moves 2-5 close the residual 3
+  # unknown_internal_root entities in their own commits per the user's
+  # "un commit per capability" rule.
+  #
+  # Why an explicit catalog entry: the DEBT BUDGET cap
+  # (`policy.yaml::max_pre_existing_open: 9`) requires a Counterpart CI
+  # gate (`scripts/ci-architectural-checks.sh::Check 64`) to count every
+  # `status: open` PRE-EXISTING-* entry; the operator remains under cap,
+  # but without an entry the workstream would be invisible to the gate.
+  #
+  # Scope (single source-of-truth per godlike/06 SSOT):
+  # - Sub-move 1: internal/asset/{commit,publication} -> DONE
+  #   Commit(s): 4d2b3568c (1 commit; bundled siblings because they
+  #   jointly empty internal/asset/ as one atomic operation; flagged
+  #   for review as ⚠ in code-reviewer-minimax-m3 critique).
+  # - Sub-move 2: internal/recommendation/ -> planned
+  # - Sub-move 3: internal/transcription/ -> planned
+  # - Sub-move 4: internal/youtube/metadata/ -> planned
+  # - Sub-move 5: internal/youtube/acquisition/ -> planned
+  #
+  # Forward-prevention gate: after sub-move 5 ScanUnknownInternalRoots
+  # returns 0 hits; any future new first-level internal/<x> dir fires
+  # because `policy.yaml::legacy_internal_roots ∪ target_internal_roots`
+  # is an explicit allowlist (no implicit auto-accept of new dirs).
+  #
+  # Push-gate blocker (out of scope; reference for the operator):
+  # `make verify-main` (commit 5cf6a563f pre-push hook) currently fails
+  # on 3 PRE-EXISTING build errors that were on the working tree BEFORE
+  # this wave. They belong to a SEPARATE Wave (drive-SSOT / clip-action
+  # / deletion-delivery). WAVE-24 sub-commits DO NOT include fixes for
+  # those errors per AGENTS.md "Atomic commits, no bundling" + godlike/06
+  # one-owner-per-fact.
+  #
+  - id: PRE-EXISTING-20-TARGET-TREE-MIGRATION
+    title: "internal/<x> target-tree migration — godlike/06 SSOT relocate 4 legacy first-level dirs (asset, recommendation, transcription, youtube) under internal/capabilities/<slice>/"
+    status: in_progress
+    severity: p2
+    deadline: "2026-10-31T00:00:00Z"
+    owner_capability: "cmd/archcheck/scan/roots.go (ScanUnknownInternalRoots + ScanKernelSubzoneHints) + internal/app/build_bundles_domain_media.go (sole importer) + the 4 unknown first-level dirs"
+    follow_up:
+      - "Diagnostic (post sub-move 1, commit 4d2b3568c): `go run ./cmd/archcheck` reports `summary.by_reason.unknown_internal_root` 4 -> 3 and `summary.by_reason.kernel_split_hint` 1 -> 0. Total violations 374 -> 372. The matched-rule id is `not_in_legacy_or_target_internal_roots` (ScanUnknownInternalRoots) and the singular `asset` vs kernel_subzones::asset match (ScanKernelSubzoneHints)."
+      - "Resolution path (godlike/06 EXPAND/BACKFILL/CUTOVER): 5 sub-commits in the operator's stated cadence, one-per-capability per AGENTS.md 'un commit per capability' rule. PR-KERNEL-ALIAS-ALIGN + PRE-EXISTING-19 are the canonical SSOT-marker cadence precedent for the wave envelope."
+      - "Forward-prevention: after sub-move 5 ScanUnknownInternalRoots returns 0 hits; future regression gated by policy.yaml::capabilities: allowlist. The singular `asset` is forbidden because it collides with kernel_subzones::asset; the canonical slice is plural `assets` (matches the policy.yaml declared slice)."
+      - "DO NOT touch Wave-22 docs gate (data_ownership_doc_missing + 4 sister gates) as part of this wave — separate workstream per architecture/current.yaml::Wave-22 promotion. DO NOT raise any architecture/policy.yaml knob (max_files_per_package, max_constructor_deps, max_struct_deps) — godlike/08 evolution-track, not target-tree work."
+      - "DO NOT bypass the pre-push hook gate (`make verify-main`) via SKIP_* env flag even when the build errors are pre-existing — that violates AGENTS.md + the wave's no-bypass posture. The 3 pre-existing build errors that currently block push are an OUT-OF-SCOPE Wave and must be addressed by the responsible workstream before push resumes."
+      - "After the 5 sub-moves complete AND the pre-existing build errors are resolved, this entry flips `status: resolved` per godlike/06 ratification-by-doctrine pattern (matches PRE-EXISTING-10/12/15/18/19 precedents). NO separate .md attachment — commit body IS the canonical trace per AGENTS.md Documentation rule."
+    opened_date: "2026-07-13"
+    tracking_issue: "godlike/06 SSOT one-owner-per-fact invariant + godlike/08 zero-legacy + godlike/07 NO-FAKE-AVAILABILITY + AGENTS.md 'no features unless explicitly requested' + AGENTS.md 'Atomic commits, no bundling' + AGENTS.md 'work directly on main, no PRs for routine work' + the cmd/archcheck/scan/roots.go ScanUnknownInternalRoots + ScanKernelSubzoneHints allowlist enforcement on policy.yaml::legacy_internal_roots ∪ target_internal_roots"

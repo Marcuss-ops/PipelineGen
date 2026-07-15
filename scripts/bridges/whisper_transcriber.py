@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/bridges/whisper_transcriber.py — minimal Whisper transcriber
-bridge (PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5, July 2026).
+scripts/bridges/whisper_transcriber.py — Whisper transcriber bridge.
 
 Usage:
     python3 scripts/bridges/whisper_transcriber.py <local_path>
@@ -13,31 +12,73 @@ Output (stdout, JSON):
         "confidence": 0.92
     }
 
-Errors (stderr):
-    {"error": "..."}
-
-This is a MINIMAL stub for Fase 5 wiring. The concrete Whisper
-model integration (calling faster-whisper, openai-whisper, or
-the Ollama whisper API) is a follow-up (Fase 5.c). The current
-implementation:
-  1. Checks the file exists and is readable.
-  2. Returns a placeholder transcript (the file basename as
-     a signal that the bridge was invoked correctly).
-  3. Reports the detected language as "und" (BCP-47
-     undetermined) so the chain can fall through if the
-     operator hasn't configured a real Whisper model.
-
-The Go adapter (internal/infrastructure/youtube/whisper_transcriber.go)
-spawns this script via subprocess, parses the JSON output, and
-returns the typed asset.TranscriptResult. The chain falls
-through gracefully when this script returns an error or an
-empty text field.
+This bridge delegates to the repository's faster-whisper helper
+(`scripts/tools/transcribe_detect_lang.py`) so the Go adapter can
+consume real transcripts instead of a placeholder stub. The helper
+already handles audio extraction for video inputs, language detection,
+and CPU-friendly faster-whisper transcription.
 """
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
+
+
+def _helper_script_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "tools" / "transcribe_detect_lang.py"
+
+
+def _model_name() -> str:
+    return os.environ.get("VELOX_WHISPER_MODEL", "base").strip() or "base"
+
+
+def _run_helper(local_path: str) -> dict:
+    helper = _helper_script_path()
+    if not helper.is_file():
+        return {"error": f"helper script not found: {helper}"}
+
+    cmd = [
+        sys.executable,
+        str(helper),
+        local_path,
+        "--model",
+        _model_name(),
+        "--transcribe",
+        "--json-only",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        stdout = (proc.stdout or "").strip()
+        if stdout:
+            try:
+                payload = json.loads(stdout)
+            except json.JSONDecodeError:
+                payload = None
+            if isinstance(payload, dict) and payload.get("error"):
+                return {"error": str(payload["error"])}
+        if stderr:
+            return {"error": stderr}
+        return {"error": f"whisper helper exited with status {proc.returncode}"}
+
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        return {"error": f"invalid JSON from whisper helper: {exc}"}
+
+    if not isinstance(payload, dict):
+        return {"error": "invalid whisper helper payload"}
+    if payload.get("error"):
+        return {"error": str(payload["error"])}
+
+    transcript = payload.get("transcript_full") or payload.get("text") or ""
+    return {
+        "text": transcript,
+        "detected_language": payload.get("language", "und"),
+        "confidence": payload.get("probability", 0.0),
+    }
 
 
 def main() -> int:
@@ -50,16 +91,11 @@ def main() -> int:
         print(json.dumps({"error": f"file not found: {local_path}"}), file=sys.stderr)
         return 3
 
-    # Minimal stub: return the file basename as a placeholder
-    # transcript. A real implementation would invoke Whisper
-    # here (faster-whisper, openai-whisper, or Ollama's
-    # whisper API) and return the typed result.
-    basename = Path(local_path).stem
-    result = {
-        "text": f"[whisper stub: {basename}]",
-        "detected_language": "und",
-        "confidence": 0.0,
-    }
+    result = _run_helper(local_path)
+    if result.get("error"):
+        print(json.dumps(result), file=sys.stderr)
+        return 1
+
     print(json.dumps(result))
     return 0
 

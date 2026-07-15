@@ -43,8 +43,12 @@ func (s *BackfillService) ListCandidates(
 	}
 
 	filter := asset.Filter{
-		Source:    opts.Source,
-		MediaType: "clip", // exclude folders
+		Source: opts.Source,
+	}
+	if len(opts.AssetIDs) > 0 {
+		filter.IDs = append([]string{}, opts.AssetIDs...)
+	} else {
+		filter.MediaType = "clip" // exclude folders on broad scans
 	}
 	if opts.Limit > 0 {
 		filter.Limit = opts.Limit

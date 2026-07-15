@@ -55,7 +55,7 @@ func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 		embeddingJSON                                          string
 		duration                                               int64
 		urlStr                                                 string
-		mediaType, status, localPath, relativePath             string
+		mediaType, localPath, relativePath                     string
 		driveFileID, driveFolderID, driveLink, downloadLink    string
 		fileHash, metadataStr, visualEmb, transcriptEmb        string
 		createdAtStr, updatedAtStr                             string
@@ -73,7 +73,7 @@ func scanMediaAsset(s mediaAssetScanner) (*Asset, error) {
 	err := s.Scan(
 		&id, &sourceStr, &name, &tags, &tagsNorm,
 		&embeddingJSON, &duration, &urlStr,
-		&mediaType, &status, &localPath, &relativePath,
+		&mediaType, &localPath, &relativePath,
 		&driveFileID, &driveFolderID, &driveLink, &downloadLink,
 		&fileHash, &metadataStr, &visualEmb, &transcriptEmb,
 		&createdAtStr, &updatedAtStr, &width, &height,

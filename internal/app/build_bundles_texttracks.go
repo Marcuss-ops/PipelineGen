@@ -85,17 +85,18 @@ func BuildTextTrackBundle(
 		return nil, fmt.Errorf("compose texttracks: log is required")
 	}
 
-	registry, err := buildLanguageRegistry(cfg.Media.Multilingual)
+	mlCfg := activeMultilingualConfig(cfg)
+	registry, err := buildLanguageRegistry(mlCfg)
 	if err != nil {
 		return nil, fmt.Errorf("compose texttracks: language registry: %w", err)
 	}
 	resolverCfg := texttracks.ResolverConfig{
 		Registry:          registry,
-		SourceLanguage:    cfg.Media.Multilingual.SourceLanguage,
+		SourceLanguage:    mlCfg.SourceLanguage,
 		ModelVersion:      cfg.External.OllamaModel,
 		PromptVersion:     resolveTranslationPromptVersion(cfg),
-		TranslationPolicy: cfg.Media.Multilingual.TranslationPolicy,
-		TranslationModel:  resolveTranslationModel(cfg.Media.Multilingual.TranslationPolicy),
+		TranslationPolicy: mlCfg.TranslationPolicy,
+		TranslationModel:  resolveTranslationModel(mlCfg.TranslationPolicy),
 	}
 
 	materializer, err := texttracks.NewMaterializer(
@@ -259,6 +260,48 @@ func buildLanguageRegistry(ml config.MultilingualConfig) (asset.LanguageRegistry
 		return reg, nil
 	}
 	return asset.EmptyLanguageRegistry(), nil
+}
+
+// buildMultilingualLanguageCSV projects the canonical registry onto a
+// deterministic comma-separated language list. Callers can filter the
+// enabled set when a specific capability is needed (e.g. subtitle
+// probing wants TranslateClips=true targets only).
+func buildMultilingualLanguageCSV(ml config.MultilingualConfig, filter func(asset.LanguageSpec) bool) (string, error) {
+	reg, err := buildLanguageRegistry(ml)
+	if err != nil {
+		return "", err
+	}
+	specs := reg.EnabledLanguages()
+	codes := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		if filter != nil && !filter(spec) {
+			continue
+		}
+		codes = append(codes, spec.Code)
+	}
+	return buildBcp47CSV(codes), nil
+}
+
+// activeMultilingualConfig picks the nested media.multilingual config
+// when present and falls back to the legacy top-level Multilingual
+// block for back-compat tests and old YAMLs.
+func activeMultilingualConfig(cfg *config.Config) config.MultilingualConfig {
+	if cfg == nil {
+		return config.MultilingualConfig{}
+	}
+	nested := cfg.Media.Multilingual
+	if len(nested.Languages) > 0 ||
+		len(nested.MaterializeLanguages) > 0 ||
+		len(nested.TranslateLanguages) > 0 ||
+		len(nested.IndexLanguages) > 0 ||
+		nested.Enabled ||
+		nested.RequireLanguageCertainty ||
+		nested.RequireTranscriptReady ||
+		nested.SourceLanguage != "" ||
+		nested.TranslationPolicy != "" {
+		return nested
+	}
+	return cfg.Multilingual
 }
 
 // resolveTranslationPromptVersion returns the active translation
