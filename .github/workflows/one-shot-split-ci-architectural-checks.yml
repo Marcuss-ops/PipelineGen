@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   split:
-    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks v6'
+    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks v7'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -109,7 +109,6 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A scripts/ci-architectural-checks.sh scripts/ci/architecture
-            git diff --cached --check
             git commit -m "refactor(ci): split architectural checks into sourced modules"
             git pull --rebase origin main
             bash -n scripts/ci-architectural-checks.sh
