@@ -6,12 +6,12 @@
   "deadline": "2026-09-30",
   "compatibility_import": "github.com/Marcuss-ops/PipelineGen/internal/domain/job",
   "canonical_import": "github.com/Marcuss-ops/PipelineGen/internal/kernel/job",
-  "reported_baseline_imports": 170,
+  "reported_baseline_imports": 168,
   "completed_capabilities": [
-    "internal/domain/remote"
+    "internal/domain/remote",
+    "internal/application/jobs"
   ],
   "migration_order": [
-    "internal/application/jobs",
     "internal/application/assets",
     "internal/application/youtube",
     "internal/api",
