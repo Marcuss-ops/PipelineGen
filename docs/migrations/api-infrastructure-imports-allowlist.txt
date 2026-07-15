@@ -156,11 +156,9 @@
 # infrastructure types into api ports). Removed from allowlist at PR4-cleanup.
 
 # Grandfathered clips handlers (PR2) — pending complete extraction
-internal/api/assets/clips/clip_action.go
 internal/api/assets/clips/folder_query_handler.go
 internal/api/assets/clips/handler.go
 internal/api/assets/clips/ingest.go
-internal/api/assets/clips/module.go
 internal/api/assets/clips/ops.go
 internal/api/assets/clips/search.go
 internal/api/assets/clips/nonops/handler.go
