@@ -1,4 +1,0 @@
-# github.com/Marcuss-ops/PipelineGen/internal/application/documents
-internal/application/documents/job_types.go:13:13: undefined: job.CanonicalDocumentGenerate
-# github.com/Marcuss-ops/PipelineGen/internal/application/images
-internal/application/images/job_types.go:13:13: undefined: job.CanonicalImagesGenerate

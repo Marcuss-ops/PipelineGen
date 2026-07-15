@@ -1,6 +1,0 @@
-Phase 0.5 baseline: post Wave 1 (Drive SSOT + RootFolderOverride)
-timestamp: 2026-07-14T20:28:23Z
-frozen baseline: 374 (36 error + 1 info + 337 warn)
-post Wave 1: see summary above
-Wave 1 commit: b110887b50ca52ae2abd18c27e1dc63f28f0409f chore(format): gofmt on 2 files churned by 47ce88bff
-gofmt fix commit: b110887b50ca52ae2abd18c27e1dc63f28f0409f chore(format): gofmt on 2 files churned by 47ce88bff
