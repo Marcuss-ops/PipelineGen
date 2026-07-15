@@ -1,0 +1,81 @@
+name: Job Kernel Migrate One
+
+on:
+  push:
+    paths:
+      - .github/workflows/job-kernel-migrate-one.yml
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Migrate one importer and verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          post_status() {
+            curl -fsS -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPOSITORY}/statuses/$1" \
+              -d "$(python3 -c 'import json,sys; print(json.dumps({"state":sys.argv[1],"context":"job-kernel-migrate-one","description":sys.argv[2]}))' "$2" "$3")" >/dev/null
+          }
+          post_status "${TRIGGER_SHA}" pending "Migrating first internal/domain/job importer"
+          git fetch origin main
+          git reset --hard origin/main
+
+          file='internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go')
+          s = p.read_text()
+          old = 'job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"'
+          new = 'job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected exactly one compatibility import, found {s.count(old)}')
+          p.write_text(s.replace(old, new))
+
+          m = Path('architecture/job_kernel_migration.json')
+          import json
+          data = json.loads(m.read_text())
+          current = int(data['reported_baseline_imports'])
+          if current <= 0:
+              raise SystemExit('reported baseline is already zero')
+          data['reported_baseline_imports'] = current - 1
+          m.write_text(json.dumps(data, indent=2) + '\n')
+          PY
+
+          gofmt -w "${file}"
+          go test -run '^$' ./internal/application/assets/providers/stock/stockpipeline
+          go run ./cmd/archcheck --production-only >/tmp/archcheck.log
+          if grep -q 'current_production_imports=162' /tmp/archcheck.log; then
+            echo 'domain/job census did not decrease' >&2
+            cat /tmp/archcheck.log >&2
+            exit 1
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/job-kernel-migrate-one.yml
+          git add "${file}" architecture/job_kernel_migration.json
+          git commit -m 'refactor(stock): import canonical job kernel'
+          git pull --rebase origin main
+          git push origin HEAD:main
+          final_sha=$(git rev-parse HEAD)
+          post_status "${TRIGGER_SHA}" success "First importer migrated and verified"
+          post_status "${final_sha}" success "Stockpipeline compiles with canonical job kernel"
