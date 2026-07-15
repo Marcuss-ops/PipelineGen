@@ -1,0 +1,35 @@
+package script
+
+// SourceResolutionContext carries item-level traits needed while resolving a
+// SourceSpec. Source-side instructions stay on SourceSpec; operator-side traits
+// stay here.
+type SourceResolutionContext struct {
+	ItemID   string `json:"item_id,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Language string `json:"language,omitempty"`
+	Tone     string `json:"tone,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Style    string `json:"style,omitempty"`
+
+	TargetWords   int             `json:"target_words,omitempty"`
+	NumClips      int             `json:"num_clips,omitempty"`
+	SegmentWords  int             `json:"segment_words,omitempty"`
+	SegmentTopics []string        `json:"segment_topics,omitempty"`
+	Segments      []ScriptSegment `json:"segments,omitempty"`
+
+	RequireDriveLink bool `json:"-"`
+}
+
+// ResolvedSource is the source-agnostic result consumed by the generation
+// engine.
+type ResolvedSource struct {
+	Type            SourceType         `json:"type"`
+	Topic           string             `json:"topic"`
+	Title           string             `json:"title"`
+	SourceText      string             `json:"source_text"`
+	Language        string             `json:"language,omitempty"`
+	ClipEvidence    *ClipEvidence      `json:"clip_evidence,omitempty"`
+	SearchResults   []SearchResultItem `json:"search_results,omitempty"`
+	GroundingPolicy string             `json:"grounding_policy,omitempty"`
+	Fingerprint     string             `json:"fingerprint,omitempty"`
+}
