@@ -26,6 +26,43 @@
       ]
     },
     {
+      "path": "internal/app",
+      "owner": "internal/app composition root",
+      "deadline": "2026-09-30",
+      "baseline_files": 127,
+      "target_packages": [
+        "internal/app/workerruntime",
+        "internal/app/wiring",
+        "internal/app/lifecycle",
+        "internal/app/capabilities"
+      ]
+    },
+    {
+      "path": "internal/application/assets/providers/stock/stockpipeline",
+      "owner": "stock pipeline orchestration",
+      "deadline": "2026-09-30",
+      "baseline_files": 52,
+      "target_packages": [
+        "internal/application/assets/providers/stock/stockpipeline/ingest",
+        "internal/application/assets/providers/stock/stockpipeline/finalize",
+        "internal/application/assets/providers/stock/stockpipeline/publish",
+        "internal/application/assets/providers/stock/stockpipeline/cleanup",
+        "internal/application/assets/providers/stock/stockpipeline/reconcile"
+      ]
+    },
+    {
+      "path": "internal/application/images",
+      "owner": "internal/application/images",
+      "deadline": "2026-10-15",
+      "baseline_files": 55,
+      "target_packages": [
+        "internal/application/images/workflow",
+        "internal/application/images/generation",
+        "internal/application/images/delivery",
+        "internal/application/images/persistence"
+      ]
+    },
+    {
       "path": "internal/application/jobs",
       "owner": "internal/application/jobs",
       "deadline": "2026-09-15",
