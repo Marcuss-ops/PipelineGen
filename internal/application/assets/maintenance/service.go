@@ -15,22 +15,13 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// DriveFileChecker is the minimal interface we need from the Drive uploader
-// for deep_cleanup. Decoupling lets us pass a mock in tests and avoids an
-// import cycle on internal/upload/drive from internal/core.
+// DriveFileChecker is the minimal interface needed by deep_cleanup.
 type DriveFileChecker interface {
 	FileIsNotTrashed(ctx context.Context, fileID string) (bool, error)
 }
 
-// Service coordinates system-wide maintenance tasks.
-//
-// Package layout (split out from a 584-line god object):
-//   - service.go        — Service struct + constructors + HandleJob + RegisterHandler.
-//   - run_cleanup.go    — RunCleanup orchestrator + DB optimisation per pass.
-//   - deep_cleanup.go   — orphan detection (local file existence + Drive Files.Get).
-//   - temp_cleanup.go   — stale temp-file sweep.
-//
-// RunCleanup itself is documented phase-by-phase in run_cleanup.go.
+// Service coordinates system-wide maintenance tasks. Required dependencies are
+// fixed at construction time; optional cleanup tuning remains explicit.
 type Service struct {
 	cfg            *config.Config
 	log            *zap.Logger
@@ -40,12 +31,13 @@ type Service struct {
 	jobsSvc        *appjobs.Service
 	driveFileCheck DriveFileChecker
 	repos          []assets.MaintenanceRepository
+
 	// deepCleanupBatch caps how many rows per pass to keep the maintenance
 	// job from monopolising the DB. Zero means use the default.
 	deepCleanupBatch int
 }
 
-// NewService creates a new maintenance service.
+// NewService creates a maintenance service with all required collaborators.
 func NewService(
 	cfg *config.Config,
 	log *zap.Logger,
@@ -66,13 +58,8 @@ func NewService(
 	}
 }
 
-// SetDeletionService updates the deletion service.
-func (s *Service) SetDeletionService(deletionSvc *deletion.DeletionService) {
-	s.deletionSvc = deletionSvc
-}
-
-// SetDriveFileChecker wires the Drive-side existence check used by
-// deep_cleanup. Optional: leave nil to skip the Drive orphan pass.
+// SetDriveFileChecker wires the optional Drive-side existence check used by
+// deep_cleanup. Leave nil to skip the Drive orphan pass.
 func (s *Service) SetDriveFileChecker(c DriveFileChecker) {
 	s.driveFileCheck = c
 }
