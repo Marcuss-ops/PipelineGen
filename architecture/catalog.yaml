@@ -62,6 +62,15 @@ current:
     target_zero: 0
   cross_refs:
     manifest: architecture/routes.yaml
+- id: WAVE-22-PHASE-N-HARD-GATES
+  status: in_progress
+  owner: architecture-governance
+  deadline: '2026-12-31T00:00:00Z'
+  rationale: Keep the promoted architecture hard gates green after restoring the canonical documents, replacing stale snapshots, and enforcing the API infrastructure-import allowlist contract.
+  cross_refs:
+    policy: architecture/policy.yaml#hard_gates
+    runner: cmd/archcheck/runner.go
+    documents: cmd/archcheck/scan/documents.go
 - id: WAVE-CONFORMANCE-001-id-24-MONITOR-CHANNELS
   status: in_progress
   owner: channels-capability
