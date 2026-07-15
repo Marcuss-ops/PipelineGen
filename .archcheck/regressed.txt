@@ -1,3 +1,0 @@
-warn	internal/api/assets/clips/handler.go	53	struct_deps
-warn	internal/api/assets/clips/module.go	69	struct_deps
-warn	internal/application/assets/deletion/deletion.go	180	constructor_deps
