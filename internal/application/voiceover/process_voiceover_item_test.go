@@ -223,14 +223,14 @@ func TestRemoveSilenceRunsExactlyOnce(t *testing.T) {
 	}
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		Pipeline: ProcessVoiceoverPipelinePorts{
+		Pipeline: ProcessVoiceoverPipelineDeps{
 			TTSProvider:         tts,
 			DestinationResolver: dest,
 			AudioPostProcessor:  audioPost,
 			Publisher:           pub,
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
-		Finalize: ProcessVoiceoverFinalizePort{
+		Finalize: ProcessVoiceoverFinalizeDeps{
 			Finalizer: finalizer,
 		},
 		Logger: zap.NewNop(),
@@ -289,14 +289,14 @@ func TestRemoveSilence_SkipsPostProcessingWhenFalse(t *testing.T) {
 	}
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		Pipeline: ProcessVoiceoverPipelinePorts{
+		Pipeline: ProcessVoiceoverPipelineDeps{
 			TTSProvider:         tts,
 			DestinationResolver: dest,
 			AudioPostProcessor:  audioPost,
 			Publisher:           pub,
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
-		Finalize: ProcessVoiceoverFinalizePort{
+		Finalize: ProcessVoiceoverFinalizeDeps{
 			Finalizer: finalizer,
 		},
 		Logger: zap.NewNop(),
@@ -382,17 +382,17 @@ func TestProcessItem_FinalizerFailure_FailsClosed(t *testing.T) {
 	outboxStub := &stubTxOutboxEnqueuer{} // reuse from process_segment_test.go (same package)
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		Pipeline: ProcessVoiceoverPipelinePorts{
+		Pipeline: ProcessVoiceoverPipelineDeps{
 			TTSProvider:         tts,
 			DestinationResolver: dest,
 			AudioPostProcessor:  nil, // RemoveSilence=false so AudioPost is skipped
 			Publisher:           pub,
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
-		Recovery: ProcessVoiceoverRecoveryPorts{
+		Recovery: ProcessVoiceoverRecoveryDeps{
 			TxOutboxEnqueuer: outboxStub,
 		},
-		Finalize: ProcessVoiceoverFinalizePort{
+		Finalize: ProcessVoiceoverFinalizeDeps{
 			Finalizer: finalizer,
 		},
 		Logger: zap.NewNop(),
@@ -483,17 +483,17 @@ func TestNewProcessVoiceoverItemUseCase_WiresTxOutboxEnqueuer(t *testing.T) {
 	outboxStub := &stubTxOutboxEnqueuer{}
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		Pipeline: ProcessVoiceoverPipelinePorts{
+		Pipeline: ProcessVoiceoverPipelineDeps{
 			TTSProvider:         &stubProcessTTS{cannedOut: TTSOutput{LocalPath: "/tmp/x.mp3", Voice: "v", FileHash: "h"}},
 			DestinationResolver: &stubProcessDestResolver{folderID: "f"},
 			AudioPostProcessor:  nil,
 			Publisher:           &stubProcessPublisher{fileID: "drive-x"},
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
-		Recovery: ProcessVoiceoverRecoveryPorts{
+		Recovery: ProcessVoiceoverRecoveryDeps{
 			TxOutboxEnqueuer: outboxStub,
 		},
-		Finalize: ProcessVoiceoverFinalizePort{
+		Finalize: ProcessVoiceoverFinalizeDeps{
 			Finalizer: &stubProcessFinalizer{cannedRes: &FinalizeResult{ID: "x"}},
 		},
 		Logger: zap.NewNop(),
@@ -539,17 +539,17 @@ func TestProcessItem_FinalizerFailure_NilTxOutboxEnqueuer_NoPanic(t *testing.T) 
 	}
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		Pipeline: ProcessVoiceoverPipelinePorts{
+		Pipeline: ProcessVoiceoverPipelineDeps{
 			TTSProvider:         tts,
 			DestinationResolver: dest,
 			AudioPostProcessor:  nil, // RemoveSilence=false
 			Publisher:           pub,
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
-		Recovery: ProcessVoiceoverRecoveryPorts{
+		Recovery: ProcessVoiceoverRecoveryDeps{
 			TxOutboxEnqueuer: nil, // KEY: nil outbox — pre-FASE-4 composition root contract
 		},
-		Finalize: ProcessVoiceoverFinalizePort{
+		Finalize: ProcessVoiceoverFinalizeDeps{
 			Finalizer: finalizer,
 		},
 		Logger: zap.NewNop(),
@@ -617,14 +617,14 @@ func TestRemoveSilence_TTSAlwaysReceivesFalse(t *testing.T) {
 	}
 
 	uc := NewProcessVoiceoverItemUseCase(ProcessVoiceoverItemDeps{
-		Pipeline: ProcessVoiceoverPipelinePorts{
+		Pipeline: ProcessVoiceoverPipelineDeps{
 			TTSProvider:         tts,
 			DestinationResolver: dest,
 			AudioPostProcessor:  nil,
 			Publisher:           pub,
 			VoiceoverRepository: &stubProcessVoRepo{db: db},
 		},
-		Finalize: ProcessVoiceoverFinalizePort{
+		Finalize: ProcessVoiceoverFinalizeDeps{
 			Finalizer: finalizer,
 		},
 		Logger: zap.NewNop(),

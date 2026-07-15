@@ -86,17 +86,17 @@ import (
 // sub-bundles (or extend the count by adding a new purpose-grouped
 // sub-bundle) so ProcessVoiceoverItemDeps stays ≤8 fields.
 type ProcessVoiceoverItemDeps struct {
-	Pipeline ProcessVoiceoverPipelinePorts
-	Recovery ProcessVoiceoverRecoveryPorts
-	Finalize ProcessVoiceoverFinalizePort
-	Output   ProcessVoiceoverOutputConfig
+	Pipeline ProcessVoiceoverPipelineDeps
+	Recovery ProcessVoiceoverRecoveryDeps
+	Finalize ProcessVoiceoverFinalizeDeps
+	Output   ProcessVoiceoverOutputDeps
 	Logger   *zap.Logger // nil-safe via zap.NewNop()
 }
 
-// ProcessVoiceoverPipelinePorts groups the 5 canonical per-item
+// ProcessVoiceoverPipelineDeps groups the 5 canonical per-item
 // pipeline ports (TTSProvider → DestinationResolver → AudioPostProcessor
 // → Publisher → Finalize). Field count: 5.
-type ProcessVoiceoverPipelinePorts struct {
+type ProcessVoiceoverPipelineDeps struct {
 	TTSProvider         TTSProvider
 	DestinationResolver DestinationResolver
 	AudioPostProcessor  AudioPostProcessor
@@ -104,9 +104,9 @@ type ProcessVoiceoverPipelinePorts struct {
 	VoiceoverRepository persistence.Repository
 }
 
-// ProcessVoiceoverRecoveryPorts groups the 2 nil-tolerant recovery
+// ProcessVoiceoverRecoveryDeps groups the 2 nil-tolerant recovery
 // ports (orphan-cleanup + missing-destination fallback). Field count: 2.
-type ProcessVoiceoverRecoveryPorts struct {
+type ProcessVoiceoverRecoveryDeps struct {
 	// DefaultFolderResolver is OPTIONAL (nil-safe). When item.Destination
 	// is nil, Execute calls DefaultFolderResolver.Resolve(ctx) to obtain
 	// the configured default Voiceover folder. When nil OR the resolver
@@ -130,18 +130,18 @@ type ProcessVoiceoverRecoveryPorts struct {
 	TxOutboxEnqueuer TxOutboxEnqueuer
 }
 
-// ProcessVoiceoverFinalizePort wraps the unified finalization port
+// ProcessVoiceoverFinalizeDeps wraps the unified finalization port
 // (P0.4 Fase 3a, July 2026). MANDATORY — the per-item pipeline
 // delegates all 6 finalization steps (dedupe, delete, insert,
 // media_assets projection, index outbox, cleanup outbox) to the
 // finalizer inside a caller-owned tx. Field count: 1.
-type ProcessVoiceoverFinalizePort struct {
+type ProcessVoiceoverFinalizeDeps struct {
 	Finalizer VoiceoverFinalizer
 }
 
-// ProcessVoiceoverOutputConfig groups the per-item output dir.
+// ProcessVoiceoverOutputDeps groups the per-item output dir.
 // Field count: 1.
-type ProcessVoiceoverOutputConfig struct {
+type ProcessVoiceoverOutputDeps struct {
 	// OutputDir is the base local filesystem directory for TTS output.
 	// When the resolved destination's FolderPath is empty, Execute falls
 	// back to OutputDir. Mirrors the batch path's Service.outputDir (set
