@@ -2766,7 +2766,7 @@ echo "=== Check 35: context.Background / context.WithoutCancel exemption trackin
 
 EXEMPT_FILES=$(rg -oE '`internal/[^` ]+`' AGENTS.md 2>/dev/null \
     | sed 's/^`//' | sed 's/`$//' \
-    | sort -u)
+    | sort -u || true)
 EXEMPT_FILE_COUNT=$(printf '%s\n' "$EXEMPT_FILES" | grep -c . || true)
 
 ALL_HITS=$(rg -nE 'context\.(Background|WithoutCancel)\(' internal/ \

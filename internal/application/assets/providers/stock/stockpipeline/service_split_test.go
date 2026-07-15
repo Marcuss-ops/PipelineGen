@@ -123,8 +123,10 @@ func TestSplit_NewServiceSurfacesTypedSentinelForMissingCfg(t *testing.T) {
 func TestSplit_NewServiceSurfacesTypedSentinelForFirstMissingDep(t *testing.T) {
 	cfg := &config.Config{} // zero-value is fine for this test
 	deps := Deps{
-		Cfg: cfg,
-		Log: zap.NewNop(),
+		Runtime: RuntimeDeps{
+			Cfg: cfg,
+			Log: zap.NewNop(),
+		},
 		// Storage / Media / Jobs omitted → prior checks fire first.
 	}
 	_, err := NewService(deps)
