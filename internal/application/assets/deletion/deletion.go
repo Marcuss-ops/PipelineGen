@@ -80,7 +80,9 @@ type DeletionService struct {
 	log          *zap.Logger
 }
 
-func NewDeletionService(deps Dependencies) *DeletionService {
+// NewService is the canonical production constructor. It accepts one typed
+// capability contract instead of the former positional dependency list.
+func NewService(deps Dependencies) *DeletionService {
 	log := deps.Log
 	if log == nil {
 		log = zap.NewNop()
