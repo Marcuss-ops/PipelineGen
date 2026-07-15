@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   split:
-    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks v5'
+    if: github.event_name != 'issues' || github.event.issue.title == '[automation] split architectural checks v6'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -101,15 +101,22 @@ jobs:
       - name: Commit split directly to main
         shell: bash
         run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A scripts/ci-architectural-checks.sh scripts/ci/architecture .github/workflows/one-shot-split-ci-architectural-checks.yml
-          git diff --cached --check
-          git commit -m "refactor(ci): split architectural checks into sourced modules"
-          git pull --rebase origin main
-          bash -n scripts/ci-architectural-checks.sh
-          git push origin HEAD:main
+          set +e
+          bash -o pipefail -c '
+            set -euo pipefail
+            git checkout -- .github/workflows/one-shot-split-ci-architectural-checks.yml
+            git checkout -- scripts/ci/architecture/split_monolith.py
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A scripts/ci-architectural-checks.sh scripts/ci/architecture
+            git diff --cached --check
+            git commit -m "refactor(ci): split architectural checks into sourced modules"
+            git pull --rebase origin main
+            bash -n scripts/ci-architectural-checks.sh
+            git push origin HEAD:main
+          ' > >(tee /tmp/commit-output.txt) 2>&1
+          rc=$?
+          exit "${rc}"
 
       - name: Report result
         if: always() && github.event_name == 'issues'
@@ -119,11 +126,15 @@ jobs:
             const fs = require('fs');
             const status = '${{ job.status }}';
             const modules = '${{ steps.generate.outputs.module_count }}' || 'unknown';
-            let diagnostic = '';
-            try {
-              diagnostic = fs.readFileSync('/tmp/split-output.txt', 'utf8').trim();
-            } catch (_) {}
-            if (diagnostic.length > 5000) diagnostic = diagnostic.slice(-5000);
+            const parts = [];
+            for (const file of ['/tmp/split-output.txt', '/tmp/commit-output.txt']) {
+              try {
+                const text = fs.readFileSync(file, 'utf8').trim();
+                if (text) parts.push(text);
+              } catch (_) {}
+            }
+            let diagnostic = parts.join('\n\n');
+            if (diagnostic.length > 7000) diagnostic = diagnostic.slice(-7000);
             const suffix = diagnostic ? `\n\nDiagnostic:\n\`\`\`text\n${diagnostic}\n\`\`\`` : '';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
