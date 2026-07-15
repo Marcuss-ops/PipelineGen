@@ -76,6 +76,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -376,13 +377,13 @@ func parseTextTracksBackfillArgs(args []string) (textTracksBackfillDeps, error) 
 		case strings.HasPrefix(a, "--asset-ids="):
 			deps.AssetIDs = strings.TrimPrefix(a, "--asset-ids=")
 		case strings.HasPrefix(a, "--limit="):
-			n, err := parsePositiveFlag(a, "--limit")
+			n, err := cli.ParsePositiveFlag(a, "--limit")
 			if err != nil {
 				return deps, err
 			}
 			deps.Limit = n
 		case strings.HasPrefix(a, "--progress="):
-			n, err := parsePositiveFlag(a, "--progress")
+			n, err := cli.ParsePositiveFlag(a, "--progress")
 			if err != nil {
 				return deps, err
 			}

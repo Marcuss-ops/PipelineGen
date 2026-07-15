@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 	"github.com/Marcuss-ops/PipelineGen/internal/app"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outboxevents"
 )
@@ -18,6 +20,7 @@ func runBackfillMissing(args []string) error {
 	limit := fs.Int("limit", 0, "Max number of assets to index (0 for unlimited)")
 	source := fs.String("source", "", "Filter by asset source (e.g. stock, youtube, artlist)")
 	verbose := fs.Bool("verbose", false, "Print details for each indexed asset")
+	assetIDs := fs.String("asset-ids", "", "Comma-separated asset IDs to force reindex")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -38,11 +41,7 @@ func runBackfillMissing(args []string) error {
 		return fmt.Errorf("database is not initialized or configured")
 	}
 
-	outboxAdapter := &outboxRepairAdapter{
-		db:            root.DB.DB,
-		outboxRepo:    outboxevents.NewRepository(root.DB.DB),
-		schemaVersion: outboxevents.ReindexEnvelopeV1Schema,
-	}
+	outboxAdapter := outbox.NewRepairAdapter(root.DB.DB, outboxevents.NewRepository(root.DB.DB), outboxevents.ReindexEnvelopeV1Schema)
 
 	ctx := cmdContext()
 
@@ -55,14 +54,24 @@ func runBackfillMissing(args []string) error {
 	}
 	fmt.Println()
 
-	// 1. Query all assets that don't have embeddings
+	// 1. Query missing embeddings, or an explicit targeted set for metadata repair.
 	query := `
 		SELECT id, source, name,
 			COALESCE(json_extract(metadata_json, '$.content_hash'), json_extract(metadata_json, '$.file_hash'), file_hash, '') AS content_hash
 		FROM media_assets
-		WHERE (embedding_json IS NULL OR embedding_json = '[]' OR embedding_json = '')
-	`
+		WHERE `
 	var queryArgs []any
+	if strings.TrimSpace(*assetIDs) != "" {
+		ids := splitCSV(*assetIDs)
+		placeholders := make([]string, len(ids))
+		for i, id := range ids {
+			placeholders[i] = "?"
+			queryArgs = append(queryArgs, id)
+		}
+		query += "id IN (" + strings.Join(placeholders, ",") + ")"
+	} else {
+		query += "(embedding_json IS NULL OR embedding_json = '[]' OR embedding_json = '')"
+	}
 	if *source != "" {
 		query += " AND source = ?"
 		queryArgs = append(queryArgs, *source)

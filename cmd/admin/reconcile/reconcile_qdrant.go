@@ -27,12 +27,14 @@
 //	go run ./cmd/admin reconcile-qdrant --collection=media_assets_v3
 //	go run ./cmd/admin reconcile-qdrant --include-lifecycle=ACTIVE,STAGING
 //	go run ./cmd/admin reconcile-qdrant --batch-size=1000
-package main
+package reconcile
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/outbox"
 	"os"
 	"strings"
 
@@ -50,7 +52,7 @@ import (
 
 // (database/sql is required for outboxRepairAdapter.db which is *sql.DB — the OpenSQLiteDB return type)
 
-// reconcileQdrantDeps holds the parsed flags for runReconcileQdrant.
+// reconcileQdrantDeps holds the parsed flags for RunReconcileQdrant.
 type reconcileQdrantDeps struct {
 	Apply            bool
 	DryRun           bool
@@ -93,7 +95,7 @@ func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
 				deps.IncludeLifecycle[i] = strings.TrimSpace(s)
 			}
 		case strings.HasPrefix(a, "--batch-size="):
-			n, err := parsePositiveFlag(a, "--batch-size")
+			n, err := cli.ParsePositiveFlag(a, "--batch-size")
 			if err != nil {
 				return deps, err
 			}
@@ -110,7 +112,7 @@ func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
 	return deps, nil
 }
 
-// runReconcileQdrant is the entry point registered in cmd/admin/main.go.
+// RunReconcileQdrant is the entry point registered in cmd/admin/main.go.
 //
 // Pipeline:
 //  1. Load config; require qdrant.enabled=true.
@@ -120,8 +122,8 @@ func parseReconcileQdrantArgs(args []string) (reconcileQdrantDeps, error) {
 //  5. Wire service ports from the canonical concrete adapters.
 //  6. Run Service.Reconcile.
 //  7. Pretty-print (or JSON-only) the resulting ReconcileReport.
-func runReconcileQdrant(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+func RunReconcileQdrant(args []string) error {
+	cfg, log, cleanup, err := cli.AppLogger()
 	if err != nil {
 		return err
 	}
@@ -138,7 +140,7 @@ func runReconcileQdrant(args []string) error {
 		)
 	}
 
-	ctx := cmdContext()
+	ctx := cli.CmdContext()
 
 	log.Info("reconcile-qdrant starting",
 		zap.Bool("apply", deps.Apply),
@@ -187,11 +189,7 @@ func runReconcileQdrant(args []string) error {
 	qdrantAdapter := &qdrantListerAdapter{client: client}
 	payloadAdapter := &qdrantPayloadAdapter{client: client}
 	outboxEventsRepo := outboxevents.NewRepository(sqliteDB.DB)
-	outboxAdapter := &outboxRepairAdapter{
-		db:            sqliteDB.DB,
-		outboxRepo:    outboxEventsRepo,
-		schemaVersion: schema.Version,
-	}
+	outboxAdapter := outbox.NewRepairAdapter(sqliteDB.DB, outboxEventsRepo, schema.Version)
 	sqliteAdapter := &reconcileReaderAdapter{store: assetStore}
 	pointIDFor := qdrantschema.AssetIDToQdrantPointID
 

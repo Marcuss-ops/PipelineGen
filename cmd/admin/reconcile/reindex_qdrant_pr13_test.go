@@ -17,7 +17,7 @@
 //      was removed in PR 13). The recovery/escape-hatch path lets
 //      operators write into an explicit non-timestamped target.
 
-package main
+package reconcile
 
 import (
 	"strings"

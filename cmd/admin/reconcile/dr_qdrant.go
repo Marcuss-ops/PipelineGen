@@ -26,13 +26,14 @@
 //   - infra / I/O errors         → exit 1 with non-empty stderr line
 //   - verify-gate blocked (DR)   → exit 0, Applied=false printed;
 //     operator inspects VerifyReport.Errors
-package main
+package reconcile
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Marcuss-ops/PipelineGen/cmd/admin/internal/cli"
 	"strconv"
 	"strings"
 
@@ -71,15 +72,15 @@ func parseDrQdrantDispatcher(args []string) (drQdrantDispatcher, error) {
 	}
 }
 
-// runDrQdrant is the cmd/admin/main.go entry point for dr-qdrant.
+// RunDrQdrant is the cmd/admin/main.go entry point for dr-qdrant.
 // The transport.Client is constructed here and shared by all 4 subcommands.
 // SQLite is opened lazily in runDrRestore (the only subcommand that
 // needs the asset store for the verifier).
 //
 // Failure mode for dr-qdrant itself: if qdrant.enabled=false in
-// config, runDrQdrant fails with a clear configuration-error line.
-func runDrQdrant(args []string) error {
-	cfg, log, cleanup, err := appLogger()
+// config, RunDrQdrant fails with a clear configuration-error line.
+func RunDrQdrant(args []string) error {
+	cfg, log, cleanup, err := cli.AppLogger()
 	if err != nil {
 		return err
 	}
@@ -94,7 +95,7 @@ func runDrQdrant(args []string) error {
 		return err
 	}
 
-	ctx := cmdContext()
+	ctx := cli.CmdContext()
 	log.Info("dr-qdrant starting",
 		zap.String("subcommand", deps.Sub),
 		zap.String("qdrant_url", cfg.Qdrant.BaseURL))
@@ -306,7 +307,7 @@ func parseRestoreSnapshotFlags(args []string) (restoreSnapshotFlags, error) {
 //   - infra failure → exit 1 with the error message
 //
 // The cfg parameter is the same shape appLogger returns in this
-// package; runDrQdrant forwards it. Sub-restore needs cfg.Storage
+// package; RunDrQdrant forwards it. Sub-restore needs cfg.Storage
 // to open the SQLite DB for the verifier's asset store.
 func runDrRestoreSnapshot(ctx context.Context, cfg *config.Config, client *transport.Client, schema *qdrantschema.IndexSchema, log *zap.Logger, args []string) error {
 	flags, err := parseRestoreSnapshotFlags(args)

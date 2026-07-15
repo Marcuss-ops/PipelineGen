@@ -6,7 +6,7 @@
 //   - reindex_qdrant.go          (slim orchestrator) — package doc + reindexQdrantDeps + parseReindexQdrantArgs + timestampedTargetCollection + runReindexQdrant (thin dispatch)
 //   - reindex_qdrant_dryrun.go   (this file)         — dryRunQdrant helper
 //   - reindex_qdrant_apply.go    (sibling)            — applyQdrant helper
-package main
+package reconcile
 
 import (
 	"context"
