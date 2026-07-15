@@ -103,11 +103,8 @@ func TestScanUnknownInternalRootsUsesRegisteredMigration(t *testing.T) {
 
 	r := &report.Report{}
 	ScanUnknownInternalRoots(root, &policy.Policy{}, r)
-	if len(r.Violations) != 1 {
-		t.Fatalf("expected one governed migration result, got %#v", r.Violations)
-	}
-	if r.Violations[0].MatchedRule != "not_in_legacy_or_target_internal_roots" || r.Violations[0].Severity != "warn" {
-		t.Fatalf("expected governed legacy-shape warning, got %#v", r.Violations[0])
+	if len(r.Violations) != 0 {
+		t.Fatalf("registered migration root must be governed without unknown-root warnings, got %#v", r.Violations)
 	}
 }
 
