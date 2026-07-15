@@ -252,7 +252,7 @@ func (c *SQLiteAssetCommitter) CommitTx(ctx context.Context, tx persistence.Tran
 			}
 			result.OutboxEventKey = eventKey
 			payloadMap := map[string]any{
-				"schema_version":       "asset.index.requested.v1",
+				"schema_version":       outboxevents.ReindexEnvelopeV1Schema,
 				"event_id":             uuid.NewString(),
 				"asset_id":             req.AssetID,
 				"operation":            "UPSERT",

@@ -165,13 +165,6 @@ func (w *ClipAtomicWriterAdapter) CommitClipAndIndexEvent(
 	if clipID == "" {
 		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: clipID is required")
 	}
-	if event.Type != "" && event.Type != outboxevents.EventAssetIndexRequested {
-		return fmt.Errorf("ClipAtomicWriterAdapter.CommitClipAndIndexEvent: unsupported event.Type %q (only %q supported)",
-			event.Type, outboxevents.EventAssetIndexRequested)
-	}
-	if event.Type == "" {
-		event.Type = outboxevents.EventAssetIndexRequested
-	}
 	if event.AggregateID == "" {
 		event.AggregateID = clipID
 	}

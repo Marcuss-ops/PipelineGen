@@ -265,9 +265,7 @@ func TestCommitClipTextAndIndexEvent_HappyPath(t *testing.T) {
 				},
 			},
 		},
-		IndexEvent: youtubeports.IndexEventPayload{
-			Type: outboxevents.EventAssetIndexRequested,
-		},
+		IndexEvent: youtubeports.IndexEventPayload{},
 	}
 
 	if err := adapter.CommitClipTextAndIndexEvent(context.Background(), cmd); err != nil {
@@ -359,9 +357,7 @@ func TestCommitClipTextAndIndexEvent_RollbackOnBadCue(t *testing.T) {
 				},
 			},
 		},
-		IndexEvent: youtubeports.IndexEventPayload{
-			Type: outboxevents.EventAssetIndexRequested,
-		},
+		IndexEvent: youtubeports.IndexEventPayload{},
 	}
 
 	err := adapter.CommitClipTextAndIndexEvent(context.Background(), cmd)
@@ -410,10 +406,8 @@ func TestCommitClipTextAndIndexEvent_LocaleNotReady(t *testing.T) {
 		TextTracks: []asset.TextTrack{
 			makeTrackForTest(clipID, "en", "Howdy", asset.TextTrackTitle, asset.TextSourceProvided),
 		},
-		TimedTracks: []localized.TimedTextTrack{},
-		IndexEvent: youtubeports.IndexEventPayload{
-			Type: outboxevents.EventAssetIndexRequested,
-		},
+		TimedTracks:            []localized.TimedTextTrack{},
+		IndexEvent:             youtubeports.IndexEventPayload{},
 		RequireTranscriptReady: true,
 	}
 
@@ -468,7 +462,7 @@ func TestCommitClipTextAndIndexEvent_LocaleNotReady_MissingLang(t *testing.T) {
 			makeTrackForTest(clipID, "en", "Hello", asset.TextTrackTranscript, asset.TextSourceProvided),
 		},
 		TimedTracks:                    []localized.TimedTextTrack{},
-		IndexEvent:                     youtubeports.IndexEventPayload{Type: outboxevents.EventAssetIndexRequested},
+		IndexEvent:                     youtubeports.IndexEventPayload{},
 		RequireAllLanguagesBeforeVideo: true,
 		PreferredLanguages:             []string{"en", "it", "es"},
 	}
@@ -520,7 +514,7 @@ func TestCommitClipTextAndIndexEvent_IdempotentOnReplay(t *testing.T) {
 				},
 			},
 		},
-		IndexEvent: youtubeports.IndexEventPayload{Type: outboxevents.EventAssetIndexRequested},
+		IndexEvent: youtubeports.IndexEventPayload{},
 	}
 	ctx := context.Background()
 
@@ -609,7 +603,7 @@ func TestCommitClipTextAndIndexEvent_OrphanTimedTrackRejected(t *testing.T) {
 				},
 			},
 		},
-		IndexEvent: youtubeports.IndexEventPayload{Type: outboxevents.EventAssetIndexRequested},
+		IndexEvent: youtubeports.IndexEventPayload{},
 	}
 
 	err := adapter.CommitClipTextAndIndexEvent(context.Background(), cmd)
@@ -677,7 +671,7 @@ func TestCommitClipTextAndIndexEvent_DifferentFileHashEmitsSecondRow(t *testing.
 					},
 				},
 			},
-			IndexEvent: youtubeports.IndexEventPayload{Type: outboxevents.EventAssetIndexRequested},
+			IndexEvent: youtubeports.IndexEventPayload{},
 		}
 	}
 	ctx := context.Background()

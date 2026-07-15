@@ -332,7 +332,6 @@ func (uc *ExtractImportantClipsUseCase) publishOneSegment(
 		},
 	}
 	event := youtubeports.IndexEventPayload{
-		Type:        "asset.index.requested",
 		AggregateID: clipID,
 		CreatedAt:   time.Now().UTC(),
 	}

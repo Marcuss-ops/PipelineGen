@@ -152,8 +152,8 @@ func TestStep6to9_RequireTranscriptReady_FlowsToWriterCommand(t *testing.T) {
 		// Sanity: the other super-tx fields are populated.
 		assert.NotEmpty(t, writer.last.Clip.ID,
 			"super-tx must carry the clip ID")
-		assert.Equal(t, "asset.index.requested", writer.last.IndexEvent.Type,
-			"super-tx must carry the canonical index event type")
+		assert.Equal(t, writer.last.Clip.ID, writer.last.IndexEvent.AggregateID,
+			"super-tx must carry the committed clip aggregate ID")
 	})
 
 	t.Run("FalseFlag_PropagatesToWriterCommand", func(t *testing.T) {
