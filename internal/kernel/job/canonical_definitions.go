@@ -58,6 +58,9 @@ const (
 	canonicalTypeDocumentGenerate = "document.generate"
 	canonicalTypeAssetsResolve    = "assets.resolve"
 	canonicalTypeClipRegister     = "media.clip"
+
+	TypeVoiceoverGenerate     = "voiceover.generate"
+	TypeVoiceoverGenerateItem = "voiceover.generate.item"
 )
 
 // CanonicalScriptGenerate is the canonical JobDefinition for

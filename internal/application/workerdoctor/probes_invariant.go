@@ -37,10 +37,10 @@ func probeEngine(cfg DoctorConfig, dp DefaultProbes) ProbeReceipt {
 	if lookup == nil {
 		lookup = exec.LookPath
 	}
-	required := []string{"ffmpeg"}
+	required := []string{`ffmpeg`}
 	if cfg != nil {
 		if cfg.YouTubeEnabled() {
-			required = append(required, "yt-dlp")
+			required = append(required, `yt-dlp`)
 		}
 		if cfg.ArtlistEnabled() {
 			required = append(required, "node")
@@ -81,17 +81,17 @@ func resolveFFMpegPath(cfg DoctorConfig) string {
 	if cfg != nil && cfg.FfmpegPath() != "" {
 		return cfg.FfmpegPath()
 	}
-	return "ffmpeg"
+	return `ffmpeg`
 }
 
 // resolveFFprobePath derives ffprobe from ffmpeg, mirroring ffmpeg/probe.go.
 func resolveFFprobePath(cfg DoctorConfig) string {
 	ffmpeg := resolveFFMpegPath(cfg)
-	if ffmpeg == "ffmpeg" {
+	if ffmpeg == `ffmpeg` {
 		return "ffprobe"
 	}
 	dir, name := filepath.Split(ffmpeg)
-	if name == "ffmpeg" || name == "ffmpeg.exe" {
+	if name == `ffmpeg` || name == "ffmpeg.exe" {
 		return filepath.Join(dir, "ffprobe")
 	}
 	return "ffprobe"

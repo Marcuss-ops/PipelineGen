@@ -71,9 +71,9 @@ import (
 // the production column shapes consumed by commitClipTextAndIndexEvent_.
 // FK constraints ON DELETE CASCADE on asset_text_track_segments
 // match the produced migration 144 (the writer itself does not
-// read segments). The UNIQUE(asset_id, language_code, text_kind)
-// constraint on asset_text_tracks mirrors the production index from
-// migration 137.
+// read segments). The partial unique index
+// idx_asset_text_tracks_current (WHERE is_current = 1) matches the
+// canonical schema from internal/infrastructure/database/canonical.go.
 const localizedClipWriterSchema = `
 CREATE TABLE IF NOT EXISTS media_assets (
     id TEXT PRIMARY KEY,
@@ -114,12 +114,18 @@ CREATE TABLE IF NOT EXISTS asset_text_tracks (
     prompt_version TEXT NOT NULL DEFAULT '',
     text_hash TEXT NOT NULL DEFAULT '',
     source_version TEXT NOT NULL DEFAULT '',
+    translation_key TEXT NOT NULL DEFAULT '',
+    is_current INTEGER NOT NULL DEFAULT 1,
+    source_track_id INTEGER REFERENCES asset_text_tracks(id) ON DELETE SET NULL,
+    source_text_hash TEXT NOT NULL DEFAULT '',
     confidence REAL,
-    status TEXT NOT NULL DEFAULT 'pending',
+    status TEXT NOT NULL DEFAULT 'READY',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(asset_id, language_code, text_kind)
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_asset_text_tracks_current
+    ON asset_text_tracks (asset_id, language_code, text_kind)
+    WHERE is_current = 1;
 CREATE TABLE IF NOT EXISTS asset_text_track_segments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     track_id INTEGER NOT NULL,

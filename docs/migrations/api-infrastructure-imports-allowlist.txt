@@ -159,7 +159,7 @@
 internal/api/assets/clips/folder_query_handler.go
 internal/api/assets/clips/handler.go
 internal/api/assets/clips/ingest.go
+internal/api/assets/clips/nonops/handler.go
 internal/api/assets/clips/ops.go
 internal/api/assets/clips/search.go
-internal/api/assets/clips/nonops/handler.go
 internal/api/transport/qdrant_health.go

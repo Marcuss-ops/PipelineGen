@@ -51,9 +51,13 @@ func aggregateFanOutStats(items []youtubetypes.ExtractItem) youtubetypes.Extract
 			stats.Skipped++
 		case "failed":
 			stats.Failed++
+		default:
+			// Unknown or empty status must fail closed. The fan-out
+			// should surface the offending item as failed rather than
+			// inventing a cache-hit skip.
+			stats.Failed++
 		}
 	}
-	stats.Skipped = len(items) - stats.Processed - stats.Failed
 	return stats
 }
 

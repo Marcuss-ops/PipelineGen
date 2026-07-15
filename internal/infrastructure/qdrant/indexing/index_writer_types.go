@@ -60,6 +60,15 @@ type AssetData struct {
 	// Forward-prevention: drive_link belongs ONLY in payload, NEVER in
 	// embedding_text (pinned by payload_builder_test.go).
 	DriveLink string `json:"drive_link,omitempty"`
+	// FolderPath is the canonical Drive folder path / logical folder
+	// label for the asset (e.g. "Manny Pacquiao vs Adrien Broner").
+	// Emitted in the Qdrant payload as `folder_path` for folder-aware
+	// filtering/navigation.
+	FolderPath string `json:"folder_path,omitempty"`
+	// FolderID is the canonical Drive folder ID for the asset's
+	// destination folder. Emitted in the Qdrant payload as `folder_id`
+	// so search and repair flows can recover the exact Drive target.
+	FolderID string `json:"folder_id,omitempty"`
 	// LocalPath is the absolute filesystem path for non-Qdrant
 	// legacy callers. QDRANT-001 (June 2026): intentionally NOT
 	// emitted by payload_mapper.BuildPayload — the canonical search

@@ -46,7 +46,7 @@ type assetRowScanner struct {
 	durationMs                                                                      sql.NullInt64
 	sourceVersionStr                                                                sql.NullString
 	language, category, style, channelID, lic                                       sql.NullString
-	workspaceID, youtubeVideoID, youtubeURL, startTime, endTime                     sql.NullString
+	workspaceID, youtubeVideoID, youtubeURL, startTime, endTime, folderID           sql.NullString
 	createdAt, updatedAt, deletedAt                                                 sql.NullString
 	lifecycleState                                                                  sql.NullString
 	// semanticHash is the resolved semantic fingerprint:
@@ -67,6 +67,8 @@ func (r *assetRowScanner) scanArgs(a *AssetData) []any {
 		&a.SearchText,
 		&a.DriveLink,
 		&a.LocalPath,
+		&a.FolderID,
+		&a.FolderPath,
 		&r.metaJSON,
 		&r.textEmbJSON,
 		&r.transcriptEmbJSON,
@@ -140,6 +142,9 @@ func (r *assetRowScanner) populate(a *AssetData) {
 	if r.youtubeURL.Valid {
 		a.YouTubeURL = r.youtubeURL.String
 	}
+	if r.folderID.Valid {
+		a.FolderID = r.folderID.String
+	}
 	if r.startTime.Valid {
 		a.StartTime = r.startTime.String
 	}
@@ -209,6 +214,8 @@ const canonicalQuery = `
 		COALESCE(search_text, ''),
 		COALESCE(drive_link, ''),
 		COALESCE(local_path, ''),
+		COALESCE(folder_id, ''),
+		COALESCE(folder_path, ''),
 		COALESCE(metadata_json, '{}'),
 		COALESCE(embedding_json, '[]'),
 		COALESCE(transcript_embedding, '[]'),

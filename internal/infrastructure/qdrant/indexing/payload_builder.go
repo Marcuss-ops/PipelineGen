@@ -153,6 +153,12 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 	if doc.Metadata.DrivePath != "" {
 		payload["drive_path"] = doc.Metadata.DrivePath
 	}
+	if doc.Metadata.FolderID != "" {
+		payload["folder_id"] = doc.Metadata.FolderID
+	}
+	if doc.Metadata.FolderPath != "" {
+		payload["folder_path"] = doc.Metadata.FolderPath
+	}
 	if doc.Metadata.IndexingStatus != "" {
 		payload["indexing_status"] = doc.Metadata.IndexingStatus
 	}
