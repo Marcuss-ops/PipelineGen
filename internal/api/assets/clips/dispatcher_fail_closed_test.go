@@ -58,6 +58,7 @@ func TestPR6_CreateClip_NilDispatcher_503(t *testing.T) {
 	r := routerFor(t, h)
 
 	body := `{"id":"pr6-nil-dispatch-001","name":"t"}`
+	body = string(bytes.ReplaceAll([]byte(body), []byte(`\"`), []byte(`"`)))
 	req := httptest.NewRequest("POST", "/api/youtube/clips", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -75,6 +76,7 @@ func TestPR6_CreateClip_DispatcherPresent_OneCall(t *testing.T) {
 	r := routerFor(t, h)
 
 	body := `{"id":"pr6-happy-001","name":"happy"}`
+	body = string(bytes.ReplaceAll([]byte(body), []byte(`\"`), []byte(`"`)))
 	req := httptest.NewRequest("POST", "/api/youtube/clips", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -94,6 +96,7 @@ func TestPR6_CreateClip_DispatcherError_Propagated(t *testing.T) {
 	r := routerFor(t, h)
 
 	body := `{"id":"pr6-err-001","name":"err"}`
+	body = string(bytes.ReplaceAll([]byte(body), []byte(`\"`), []byte(`"`)))
 	req := httptest.NewRequest("POST", "/api/youtube/clips", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
