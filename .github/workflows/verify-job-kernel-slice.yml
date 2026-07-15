@@ -69,18 +69,23 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
 
-          files = [
-              Path("internal/application/assets/texttracks/fanout.go"),
-              Path("internal/application/assets/texttracks/jobs.go"),
-          ]
+          fanout = Path("internal/application/assets/texttracks/fanout.go")
+          jobs = Path("internal/application/assets/texttracks/jobs.go")
           old = "job.TypeAssetTextMaterialize"
           new = "asset.TypeTextMaterialize"
-          for path in files:
+
+          for path in (fanout, jobs):
               text = path.read_text(encoding="utf-8")
               count = text.count(old)
               if count != 1:
                   raise SystemExit(f"{path}: expected one {old} reference, found {count}")
               path.write_text(text.replace(old, new), encoding="utf-8")
+
+          text = jobs.read_text(encoding="utf-8")
+          legacy_import = '\tjob "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"\n'
+          if text.count(legacy_import) != 1:
+              raise SystemExit("texttracks/jobs.go: expected one now-unused kernel/job import")
+          jobs.write_text(text.replace(legacy_import, ""), encoding="utf-8")
           PY
 
           migrated_files=(
