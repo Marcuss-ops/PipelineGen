@@ -122,9 +122,11 @@ func TestMaintenancePruning(t *testing.T) {
 	// REMOVED from the canonical ctor; the test fixture passes the
 	// same 5 leading nils for the 5 repository positions.
 	deletionSvc := deletion.NewDeletionService(deletion.DeletionServiceDeps{
-		AssetTreeSvc:  treeSvc,
-		AssetIndexSvc: idxSvc,
-		Log:           logger,
+		Index: deletion.DeletionIndexDeps{
+			AssetTreeSvc:  treeSvc,
+			AssetIndexSvc: idxSvc,
+		},
+		Log: logger,
 	})
 
 	// 5. Create Maintenance Service with our in-memory DB

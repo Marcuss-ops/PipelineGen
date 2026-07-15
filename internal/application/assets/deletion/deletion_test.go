@@ -236,7 +236,9 @@ func newTestService(t *testing.T, db *sql.DB, dispatcher deletion.DispatcherPort
 	t.Helper()
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
 	return deletion.NewDeletionService(deletion.DeletionServiceDeps{
-		ClipsRepo:  clipsRepo,
+		Repos: deletion.DeletionRepoDeps{
+			ClipsRepo: clipsRepo,
+		},
 		Dispatcher: dispatcher,
 		Log:        zap.NewNop(),
 	})
@@ -257,11 +259,15 @@ func newTestServiceForComplete(
 	t.Helper()
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
 	return deletion.NewDeletionService(deletion.DeletionServiceDeps{
-		ClipsRepo:          clipsRepo,
-		Dispatcher:         dispatcher,
-		DriveGoneChecker:   driveGoneChecker,
-		CompletionTxRunner: completionTx,
-		Log:                zap.NewNop(),
+		Repos: deletion.DeletionRepoDeps{
+			ClipsRepo: clipsRepo,
+		},
+		Dispatcher: dispatcher,
+		Finalize: deletion.DeletionFinalizeDeps{
+			DriveGoneChecker:   driveGoneChecker,
+			CompletionTxRunner: completionTx,
+		},
+		Log: zap.NewNop(),
 	})
 }
 
@@ -342,8 +348,10 @@ func TestDeletionService_DeleteClip_NilDispatcherFailsFast(t *testing.T) {
 	seedClipRow(t, db, "clip-nil-disp", "ACTIVE")
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
 	svc := deletion.NewDeletionService(deletion.DeletionServiceDeps{
-		ClipsRepo: clipsRepo,
-		Log:       zap.NewNop(),
+		Repos: deletion.DeletionRepoDeps{
+			ClipsRepo: clipsRepo,
+		},
+		Log: zap.NewNop(),
 	})
 
 	err := svc.DeleteClip(context.Background(), "artlist", "clip-nil-disp", false)

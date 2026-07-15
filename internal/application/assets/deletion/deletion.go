@@ -157,21 +157,67 @@ type DeletionService struct {
 
 // DeletionServiceDeps bundles the dependencies for DeletionService so
 // the constructor stays under the archcheck 8-parameter cap.
+//
+// PR-NEST-FLAT-DEPS-DELETION (July 2026): the previous flat shape had
+// 10 mandatory fields, tripping the `max_struct_deps=8` archcheck
+// gate. The struct now nests the 10 fields into 5 purpose-grouped
+// sub-bundles (each ≤5 fields, all ≤8):
+//
+//   - Repos       (5): ArtlistRepo, ClipsRepo, StockRepo, VoiceoverRepo,
+//     ImagesRepo — the 5 SQLite-backed repositories.
+//   - Index       (2): AssetTreeSvc, AssetIndexSvc — the tree + index
+//     service dependencies.
+//   - Dispatcher (1): Dispatcher — the outbox dispatcher port.
+//   - Finalize    (2): DriveGoneChecker, CompletionTxRunner — the
+//     CompleteAsset-side ports (PR-WAVE-1-DRIVE-SSOT
+//     July 2026 introduced both; nested here to keep
+//     the same struct_shape-id).
+//   - Log         (1): *zap.Logger.
+//
+// DeletionServiceDeps itself carries 5 sub-bundle fields → 5 fields,
+// well below the 8-field cap. The nesting follows the canonical
+// godlike/06 SSOT pattern established by PR-NEST-FLAT-DEPS-ARLIST
+// (internal/application/assets/providers/artlist/service.go:
+// ServicePorts + ServiceDependencies{Infra, Ports, Domain, Repos,
+// Finalizer}).
+//
+// godlike/06 SSOT: this is the SINGLE canonical Deps surface for
+// DeletionService. New repository / service / port fields MUST land
+// in one of the 5 sub-bundles (or extend the count by adding a new
+// purpose-grouped sub-bundle) so DeletionServiceDeps stays ≤8 fields.
 type DeletionServiceDeps struct {
+	Repos      DeletionRepoDeps
+	Index      DeletionIndexDeps
+	Dispatcher DispatcherPort
+	Finalize   DeletionFinalizeDeps
+	Log        *zap.Logger
+}
+
+// DeletionRepoDeps groups the 5 SQLite-backed repositories the
+// DeletionService indexes / mutates. Field count: 5 (≤8 cap).
+type DeletionRepoDeps struct {
 	ArtlistRepo   *assets.ClipsRepository
 	ClipsRepo     *assets.ClipsRepository
 	StockRepo     *assets.ClipsRepository
 	VoiceoverRepo *assets.VoiceoversRepository
 	ImagesRepo    *assets.ImagesRepository
+}
+
+// DeletionIndexDeps groups the live index / tree services the
+// DeletionService reads. Field count: 2.
+type DeletionIndexDeps struct {
 	AssetTreeSvc  *assettree.Service
 	AssetIndexSvc *assetindex.Service
-	Dispatcher    DispatcherPort
+}
+
+// DeletionFinalizeDeps groups the CompleteAsset-side ports.
+// Field count: 2.
+type DeletionFinalizeDeps struct {
 	// DriveGoneChecker is optional (nil = trust lifecycle_state proof).
 	DriveGoneChecker DriveGoneChecker
 	// CompletionTxRunner is required for CompleteAsset to actually do
 	// cleanup (nil = wiring-error fail-closed).
 	CompletionTxRunner CompletionTxRunner
-	Log                *zap.Logger
 }
 
 // NewDeletionService creates a new deletion service.
@@ -197,16 +243,16 @@ type DeletionServiceDeps struct {
 // PR-DRIVE-CLEANUP).
 func NewDeletionService(deps DeletionServiceDeps) *DeletionService {
 	return &DeletionService{
-		artlistRepo:      deps.ArtlistRepo,
-		clipsRepo:        deps.ClipsRepo,
-		stockRepo:        deps.StockRepo,
-		voiceoverRepo:    deps.VoiceoverRepo,
-		imagesRepo:       deps.ImagesRepo,
-		assetTreeSvc:     deps.AssetTreeSvc,
-		assetIndexSvc:    deps.AssetIndexSvc,
+		artlistRepo:      deps.Repos.ArtlistRepo,
+		clipsRepo:        deps.Repos.ClipsRepo,
+		stockRepo:        deps.Repos.StockRepo,
+		voiceoverRepo:    deps.Repos.VoiceoverRepo,
+		imagesRepo:       deps.Repos.ImagesRepo,
+		assetTreeSvc:     deps.Index.AssetTreeSvc,
+		assetIndexSvc:    deps.Index.AssetIndexSvc,
 		dispatcher:       deps.Dispatcher,
-		driveGoneChecker: deps.DriveGoneChecker,
-		completionTx:     deps.CompletionTxRunner,
+		driveGoneChecker: deps.Finalize.DriveGoneChecker,
+		completionTx:     deps.Finalize.CompletionTxRunner,
 		log:              deps.Log,
 	}
 }
