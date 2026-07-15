@@ -36,17 +36,16 @@ type WorkerDeps struct {
 }
 
 // NewWorkerFromDeps constructs a worker from capability-scoped dependencies.
-// The legacy positional constructor remains temporarily while call sites migrate.
 func NewWorkerFromDeps(deps WorkerDeps) *Worker {
-	return NewWorker(
-		deps.Identity.ID,
-		deps.Runtime.Repo,
-		deps.Runtime.Dispatcher,
-		deps.Runtime.Notifier,
-		deps.Log,
-		deps.Timing.LeaseTTL,
-		deps.Timing.PollEvery,
-		deps.Timing.Backoff,
-		deps.Identity.JobTypes,
-	)
+	return &Worker{
+		id:         deps.Identity.ID,
+		repo:       deps.Runtime.Repo,
+		dispatcher: deps.Runtime.Dispatcher,
+		log:        deps.Log,
+		leaseTTL:   deps.Timing.LeaseTTL,
+		pollEvery:  deps.Timing.PollEvery,
+		backoff:    deps.Timing.Backoff,
+		types:      deps.Identity.JobTypes,
+		notifier:   deps.Runtime.Notifier,
+	}
 }
