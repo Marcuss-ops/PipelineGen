@@ -109,15 +109,14 @@
     ]
   },
   "summary": {
-    "total_violations": 320,
+    "total_violations": 307,
     "by_reason": {
-      "constructor_deps": 9,
       "percheck_input_immutability": 129,
       "percheck_no_domain_job_compatibility_aliases": 172,
-      "struct_deps": 10
+      "struct_deps": 6
     },
     "by_severity": {
-      "warn": 320
+      "warn": 307
     }
   },
   "violations": [
@@ -160,16 +159,6 @@
       "rule": "percheck_input_immutability",
       "severity": "warn",
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/api/assets/soundeffect/handler.go",
-      "line": 73,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_constructor_deps",
-      "rule": "constructor_deps",
-      "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
     },
     {
       "file": "internal/api/assets/youtube/youtube_search.go",
@@ -387,13 +376,13 @@
     },
     {
       "file": "internal/application/assets/deletion/deletion.go",
-      "line": 180,
-      "actual_count": 12,
+      "line": 160,
+      "actual_count": 10,
       "allowed_count": 8,
-      "matched_rule": "max_constructor_deps",
-      "rule": "constructor_deps",
+      "matched_rule": "max_struct_deps",
+      "rule": "struct_deps",
       "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 12 parameters (max 8); split into smaller constructors or use a config struct"
+      "note": "struct DeletionServiceDeps has 10 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
       "file": "internal/application/assets/delivery/mapper.go",
@@ -602,36 +591,6 @@
       "rule": "percheck_input_immutability",
       "severity": "warn",
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/application/assets/ingest/clip_ingest_pipeline.go",
-      "line": 188,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_struct_deps",
-      "rule": "struct_deps",
-      "severity": "warn",
-      "note": "struct ClipIngestPipelineDeps has 9 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
-    },
-    {
-      "file": "internal/application/assets/lifecycle/service.go",
-      "line": 64,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_constructor_deps",
-      "rule": "constructor_deps",
-      "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
-    },
-    {
-      "file": "internal/application/assets/monitor/types.go",
-      "line": 23,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_struct_deps",
-      "rule": "struct_deps",
-      "severity": "warn",
-      "note": "struct CompositionDeps has 9 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
     },
     {
       "file": "internal/application/assets/processing/orchestrator.go",
@@ -866,16 +825,6 @@
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
     },
     {
-      "file": "internal/application/assets/providers/artlist/semantic_enricher.go",
-      "line": 145,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_constructor_deps",
-      "rule": "constructor_deps",
-      "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
-    },
-    {
       "file": "internal/application/assets/providers/artlist/service.go",
       "line": 122,
       "actual_count": 11,
@@ -926,16 +875,6 @@
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
     },
     {
-      "file": "internal/application/assets/providers/stock/stockpipeline/orchestrator_constructor.go",
-      "line": 89,
-      "actual_count": 10,
-      "allowed_count": 8,
-      "matched_rule": "max_constructor_deps",
-      "rule": "constructor_deps",
-      "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 10 parameters (max 8); split into smaller constructors or use a config struct"
-    },
-    {
       "file": "internal/application/assets/providers/stock/stockpipeline/run_orchestrator.go",
       "line": 133,
       "matched_rule": "input_struct_mutation",
@@ -960,16 +899,6 @@
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
     },
     {
-      "file": "internal/application/assets/providers/stock/stockpipeline/service_types.go",
-      "line": 97,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_struct_deps",
-      "rule": "struct_deps",
-      "severity": "warn",
-      "note": "struct Deps has 9 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
-    },
-    {
       "file": "internal/application/assets/providers/youtube/adapter.go",
       "line": 147,
       "matched_rule": "input_struct_mutation",
@@ -992,16 +921,6 @@
       "rule": "percheck_input_immutability",
       "severity": "warn",
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/application/assets/sourcing/youtube/service.go",
-      "line": 69,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_constructor_deps",
-      "rule": "constructor_deps",
-      "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
     },
     {
       "file": "internal/application/clips/enrich.go",
@@ -1132,16 +1051,6 @@
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
     },
     {
-      "file": "internal/application/jobs/outbox/registry.go",
-      "line": 105,
-      "actual_count": 12,
-      "allowed_count": 8,
-      "matched_rule": "max_struct_deps",
-      "rule": "struct_deps",
-      "severity": "warn",
-      "note": "struct Deps has 12 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
-    },
-    {
       "file": "internal/application/jobs/outbox/voiceover_cleanup.go",
       "line": 226,
       "matched_rule": "input_struct_mutation",
@@ -1172,16 +1081,6 @@
       "rule": "percheck_input_immutability",
       "severity": "warn",
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/application/jobs/worker.go",
-      "line": 151,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_constructor_deps",
-      "rule": "constructor_deps",
-      "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
     },
     {
       "file": "internal/application/lessons/service.go",
@@ -1290,16 +1189,6 @@
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
     },
     {
-      "file": "internal/application/youtube/usecase/extract_important_clips.go",
-      "line": 149,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_constructor_deps",
-      "rule": "constructor_deps",
-      "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
-    },
-    {
       "file": "internal/application/youtube/usecase/extraction_destination.go",
       "line": 46,
       "matched_rule": "input_struct_mutation",
@@ -1317,31 +1206,11 @@
     },
     {
       "file": "internal/application/youtube/usecase/extraction_service.go",
-      "line": 38,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_struct_deps",
-      "rule": "struct_deps",
-      "severity": "warn",
-      "note": "struct ExtractionDeps has 9 mandatory-port fields (max 8); split into smaller port bundles (e.g. DeliveryPorts + MediaProcessingPorts). Optional fields (*zap.Logger, primitive config) are excluded."
-    },
-    {
-      "file": "internal/application/youtube/usecase/extraction_service.go",
-      "line": 110,
+      "line": 118,
       "matched_rule": "input_struct_mutation",
       "rule": "percheck_input_immutability",
       "severity": "warn",
       "note": "input parameter mutation detected: input struct field assignment — treat input structs as read-only; return a new value or use a dedicated output type instead"
-    },
-    {
-      "file": "internal/domain/asset/clip_identity.go",
-      "line": 126,
-      "actual_count": 9,
-      "allowed_count": 8,
-      "matched_rule": "max_constructor_deps",
-      "rule": "constructor_deps",
-      "severity": "warn",
-      "note": "func New\u003cX\u003e(...) has 9 parameters (max 8); split into smaller constructors or use a config struct"
     },
     {
       "package": "api/admin/handler_workers_cert.go",

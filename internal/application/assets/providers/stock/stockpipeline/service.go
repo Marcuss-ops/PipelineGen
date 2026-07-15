@@ -147,10 +147,10 @@ type Service struct {
 // PR7 precedent on artlist.WireArtlist); NewService is the second
 // line of defence so accidental misuse from tests still fails loud.
 func NewService(deps Deps) (*Service, error) {
-	if deps.Cfg == nil {
+	if deps.Runtime.Cfg == nil {
 		return nil, ErrStockPipelineNilCfg
 	}
-	if deps.Log == nil {
+	if deps.Runtime.Log == nil {
 		return nil, ErrStockPipelineNilLog
 	}
 	// F2.10: Drive validation dropped — see Deps doc-comment. The
@@ -177,7 +177,7 @@ func NewService(deps Deps) (*Service, error) {
 	// nil-tolerant; the silent nil-passthrough was a regression surface.
 	// Validate like every other required dep so composition-time
 	// pre-rejection catches missing wiring without waiting for the first job.
-	if deps.Jobs == nil {
+	if deps.Execution.Jobs == nil {
 		return nil, ErrStockPipelineNilJobs
 	}
 	// §12-4 (July 2026): SourceStager is REQUIRED. The previous
@@ -187,14 +187,14 @@ func NewService(deps Deps) (*Service, error) {
 	// `*acquisition.FilesystemStager` wrapping a Fetch closure that
 	// invokes yt-dlp subprocess). Missing injection fails loud at
 	// boot — no silent-degrade to the old ytdlp field.
-	if deps.SourceStager == nil {
+	if deps.Execution.SourceStager == nil {
 		return nil, ErrStockPipelineNilSourceStager
 	}
 
-	v := deps.Cfg.Video.WithDefaults()
+	v := deps.Runtime.Cfg.Video.WithDefaults()
 	return &Service{
-		cfg:       deps.Cfg,
-		log:       deps.Log,
+		cfg:       deps.Runtime.Cfg,
+		log:       deps.Runtime.Log,
 		publisher: deps.Publisher,
 		cutter:    deps.Media.Cutter,
 		renderer:  deps.Media.Renderer,
@@ -204,13 +204,13 @@ func NewService(deps Deps) (*Service, error) {
 			EffectInterval: v.EffectInterval,
 			EffectsDir:     DefaultPipelineConfig().EffectsDir,
 		},
-		jobsSvc:       deps.Jobs,
+		jobsSvc:       deps.Execution.Jobs,
 		assetIndex:    deps.Storage.AssetIndex,
 		clipsRepo:     deps.Storage.ClipsRepo,
 		dispatcher:    deps.Storage.Dispatcher,
 		finalizer:     deps.Finalizer,
-		sourceStager:  deps.SourceStager,
-		channelLister: deps.ChannelLister,
-		db:            deps.DB,
+		sourceStager:  deps.Execution.SourceStager,
+		channelLister: deps.Execution.ChannelLister,
+		db:            deps.Runtime.DB,
 	}, nil
 }
