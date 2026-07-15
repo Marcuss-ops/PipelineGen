@@ -10,7 +10,8 @@ import (
 	"time"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	concurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 	"go.uber.org/zap"
 )
@@ -112,8 +113,8 @@ func (s *Service) RegisterJobHandler(jobsSvc *appjobs.Service) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: jobsSvc is nil (composition root must wire jobs.Service before calling Register): %w", appjobs.ErrMissingDeps)
 	}
-	if err := jobsSvc.RegisterHandler(job.TypeMediaReindex, appjobs.HandlerFunc(s.HandleJob)); err != nil {
-		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: bind %q to dispatcher: %w", job.TypeMediaReindex, err)
+	if err := jobsSvc.RegisterHandler(jobmedia.TypeReindex, appjobs.HandlerFunc(s.HandleJob)); err != nil {
+		return fmt.Errorf("clipindexer.Service.RegisterJobHandler: bind %q to dispatcher: %w", jobmedia.TypeReindex, err)
 	}
 	s.log.Info("registered media.reindex job handler")
 	return nil

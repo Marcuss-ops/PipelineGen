@@ -9,10 +9,10 @@ var (
 	ErrTransitionConflict = kerneljob.ErrTransitionConflict
 	ErrJobNotFound        = kerneljob.ErrJobNotFound
 
-	ErrFinalizeAttemptOutcomeInvalid    = kerneljob.ErrFinalizeAttemptOutcomeInvalid
-	ErrFinalizeAttemptResultMissing     = kerneljob.ErrFinalizeAttemptResultMissing
-	ErrFinalizeAttemptErrorMissing      = kerneljob.ErrFinalizeAttemptErrorMissing
-	ErrFinalizeAttemptArtifactStale     = kerneljob.ErrFinalizeAttemptArtifactStale
+	ErrFinalizeAttemptOutcomeInvalid     = kerneljob.ErrFinalizeAttemptOutcomeInvalid
+	ErrFinalizeAttemptResultMissing      = kerneljob.ErrFinalizeAttemptResultMissing
+	ErrFinalizeAttemptErrorMissing       = kerneljob.ErrFinalizeAttemptErrorMissing
+	ErrFinalizeAttemptArtifactStale      = kerneljob.ErrFinalizeAttemptArtifactStale
 	ErrFinalizeAttemptOutboxEventMissing = kerneljob.ErrFinalizeAttemptOutboxEventMissing
-	ErrFinalizeAttemptDLQIncompatible   = kerneljob.ErrFinalizeAttemptDLQIncompatible
+	ErrFinalizeAttemptDLQIncompatible    = kerneljob.ErrFinalizeAttemptDLQIncompatible
 )

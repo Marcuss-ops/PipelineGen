@@ -11,8 +11,8 @@ import (
 	"strings"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainScript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
 
@@ -111,7 +111,7 @@ func EnqueueGenerationJob(
 	}
 
 	enqueueReq := &job.EnqueueRequest{
-		Type:          job.TypeScriptGenerate,
+		Type:          domainScript.TypeGenerate,
 		Payload:       json.RawMessage(payload),
 		Priority:      5,
 		ActiveKey:     activeKey,
@@ -123,9 +123,9 @@ func EnqueueGenerationJob(
 	// pre-Issue-4 hard-coded 3-retries fallback that the JobsService
 	// silently applied when the request's MaxRetries was zero.
 	if enqueueReq.MaxRetries == 0 && registry != nil {
-		enqueueReq.MaxRetries = registry.DefaultMaxRetries(job.TypeScriptGenerate)
+		enqueueReq.MaxRetries = registry.DefaultMaxRetries(domainScript.TypeGenerate)
 		log.Debug("enqueue: MaxRetries sourced from registry",
-			zap.String("job_type", job.TypeScriptGenerate),
+			zap.String("job_type", domainScript.TypeGenerate),
 			zap.Int("max_retries", enqueueReq.MaxRetries),
 		)
 	}

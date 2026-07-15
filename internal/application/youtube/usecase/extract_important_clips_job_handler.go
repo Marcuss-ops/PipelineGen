@@ -22,7 +22,8 @@ import (
 	"fmt"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+
+	jobyoutube "github.com/Marcuss-ops/PipelineGen/internal/domain/youtube"
 	"go.uber.org/zap"
 )
 
@@ -51,7 +52,7 @@ func (h *ExtractImportantClipsJobHandler) Register(jobsSvc *appjobs.Service) err
 	if jobsSvc == nil {
 		return errors.New("ExtractImportantClipsJobHandler.Register: jobsSvc is nil")
 	}
-	return jobsSvc.RegisterHandler(job.TypeYouTubeClipExtractImportant, appjobs.HandlerFunc(h.HandleJob))
+	return jobsSvc.RegisterHandler(jobyoutube.TypeClipExtractImportant, appjobs.HandlerFunc(h.HandleJob))
 }
 
 // HandleJob: canonical broker entry-point.

@@ -32,8 +32,8 @@ import (
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ports "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/ports"
-	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 
+	jobscript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
 )
 
@@ -50,12 +50,12 @@ func (h *GenerateJobHandler) RegisterJobs(jobsSvc ports.Broker) error {
 	if jobsSvc == nil {
 		return fmt.Errorf("generate job handler: jobs broker is required")
 	}
-	if err := jobsSvc.RegisterHandler(scriptpkg.TypeScriptGenerate, appjobs.HandlerFunc(h.Handle)); err != nil {
+	if err := jobsSvc.RegisterHandler(jobscript.TypeGenerate, appjobs.HandlerFunc(h.Handle)); err != nil {
 		return fmt.Errorf("generate job handler: register: %w", err)
 	}
 	if h.log != nil {
 		h.log.Info("registered script.generate job handler",
-			zap.String("job_type", string(scriptpkg.TypeScriptGenerate)),
+			zap.String("job_type", string(jobscript.TypeGenerate)),
 		)
 	}
 	return nil

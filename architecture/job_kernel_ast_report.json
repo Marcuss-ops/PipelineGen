@@ -1,0 +1,93 @@
+{
+  "successful_packages": [
+    "internal/api/assets/voiceover",
+    "internal/api/script",
+    "internal/application/assets/providers/stock/stockpipeline",
+    "internal/application/books",
+    "internal/application/clips/upload",
+    "internal/application/lessons",
+    "internal/application/scripts/jobs",
+    "internal/application/voiceover/jobs",
+    "internal/application/youtube/adapters/monitoradapter",
+    "internal/application/youtube/usecase",
+    "internal/infrastructure/database/sqlite/jobs",
+    "internal/infrastructure/indexing/clipindexer"
+  ],
+  "failed_packages": {
+    "internal/api/assets/artlist": "# github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist\ninternal/application/assets/providers/artlist/job_core.go:261:17: s.RunTag undefined (type *Service has no field or method RunTag)\ninternal/application/assets/providers/artlist/service.go:434:22: s.jobAdapter.HandleJob undefined (type *JobAdapter has no field or method HandleJob)\ninternal/application/assets/providers/artlist/service.go:459:25: s.jobAdapter.RegisterHandler undefined (type *JobAdapter has no field or method RegisterHandler)\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist [build failed]\nFAIL",
+    "internal/api/assets/clips": "# github.com/Marcuss-ops/PipelineGen/internal/application/clips\ninternal/application/clips/clip_ops_cleanup.go:9:2: \"github.com/Marcuss-ops/PipelineGen/internal/kernel/job\" imported and not used\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/api/assets/clips [build failed]\nFAIL",
+    "internal/app": "# github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist\ninternal/application/assets/providers/artlist/job_core.go:261:17: s.RunTag undefined (type *Service has no field or method RunTag)\ninternal/application/assets/providers/artlist/service.go:434:22: s.jobAdapter.HandleJob undefined (type *JobAdapter has no field or method HandleJob)\ninternal/application/assets/providers/artlist/service.go:459:25: s.jobAdapter.RegisterHandler undefined (type *JobAdapter has no field or method RegisterHandler)\n# github.com/Marcuss-ops/PipelineGen/internal/application/clips\ninternal/application/clips/clip_ops_cleanup.go:9:2: \"github.com/Marcuss-ops/PipelineGen/internal/kernel/job\" imported and not used\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/app [build failed]\nFAIL",
+    "internal/application/clips": "# github.com/Marcuss-ops/PipelineGen/internal/application/clips [github.com/Marcuss-ops/PipelineGen/internal/application/clips.test]\ninternal/application/clips/clip_ops_cleanup.go:9:2: \"github.com/Marcuss-ops/PipelineGen/internal/kernel/job\" imported and not used\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/application/clips [build failed]\nFAIL"
+  },
+  "remaining_imports": 17,
+  "remaining_sites": [
+    {
+      "file": "internal/app/clips_adapters_ops.go",
+      "line": 18
+    },
+    {
+      "file": "internal/app/module_jobs.go",
+      "line": 9
+    },
+    {
+      "file": "internal/app/lifecycle_maintenance.go",
+      "line": 33
+    },
+    {
+      "file": "internal/app/wire_script_adapters.go",
+      "line": 75
+    },
+    {
+      "file": "internal/app/assets_register_sourcing.go",
+      "line": 30
+    },
+    {
+      "file": "internal/app/wire_script_usecases.go",
+      "line": 70
+    },
+    {
+      "file": "internal/app/creator_runtime_placeholder_test_only.go",
+      "line": 39
+    },
+    {
+      "file": "internal/app/bundle_types.go",
+      "line": 48
+    },
+    {
+      "file": "internal/api/assets/clips/ingest.go",
+      "line": 36
+    },
+    {
+      "file": "internal/api/assets/clips/ingest_create.go",
+      "line": 11
+    },
+    {
+      "file": "internal/api/assets/clips/module.go",
+      "line": 17
+    },
+    {
+      "file": "internal/api/assets/artlist/artlist_handlers.go",
+      "line": 18
+    },
+    {
+      "file": "internal/api/assets/artlist/module.go",
+      "line": 35
+    },
+    {
+      "file": "internal/application/clips/clip_ops_reconcile.go",
+      "line": 9
+    },
+    {
+      "file": "internal/application/clips/bulk_upload_worker.go",
+      "line": 25
+    },
+    {
+      "file": "internal/application/clips/clip_ops_cleanup.go",
+      "line": 8
+    },
+    {
+      "file": "internal/application/clips/job_types.go",
+      "line": 4
+    }
+  ]
+}

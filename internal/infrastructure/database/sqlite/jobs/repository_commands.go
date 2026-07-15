@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Errors ──────────────────────────────────────────────────────────────

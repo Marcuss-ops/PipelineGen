@@ -50,8 +50,7 @@ import (
 	"encoding/json"
 	"time"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-
+	jobscript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
 )
 
@@ -272,9 +271,9 @@ var _ SiblingDispatcherInterface = (*SiblingDispatcher)(nil)
 func CanonicalTypeStringForKind(k AssetKind) (string, bool) {
 	switch k {
 	case AssetKindVoiceover:
-		return job.TypeScriptVoiceoverSibling, true
+		return jobscript.TypeVoiceoverSibling, true
 	case AssetKindImage:
-		return job.TypeScriptImageSibling, true
+		return jobscript.TypeImageSibling, true
 	default:
 		return "", false
 	}

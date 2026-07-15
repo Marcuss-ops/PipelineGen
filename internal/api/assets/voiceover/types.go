@@ -40,7 +40,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobvoiceover "github.com/Marcuss-ops/PipelineGen/internal/domain/voiceover"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // GenerateVoiceoversRequest is the canonical HTTP wire shape for
@@ -232,7 +233,7 @@ func (r *GenerateVoiceoversRequest) ToCommand() *voiceover.GenerateVoiceoversCom
 // duplicate.
 func (r *GenerateVoiceoversRequest) ToEnqueueRequest() *job.EnqueueRequest {
 	return &job.EnqueueRequest{
-		Type:          job.TypeVoiceoverGenerate,
+		Type:          jobvoiceover.TypeGenerate,
 		Payload:       r.ToCommand(),
 		CorrelationID: r.RequestID,
 		ActiveKey:     r.parentActiveKey(),

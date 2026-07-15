@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	pkgconcurrent "github.com/Marcuss-ops/PipelineGen/pkg/concurrent"
 
+	jobscript "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 	"go.uber.org/zap"
 )
 
@@ -129,9 +129,9 @@ func buildSiblingCommand(parentJobID string, req AssetRequirements) (SiblingComm
 	var jobType string
 	switch req.Kind {
 	case AssetKindVoiceover:
-		jobType = job.TypeScriptVoiceoverSibling
+		jobType = jobscript.TypeVoiceoverSibling
 	case AssetKindImage:
-		jobType = job.TypeScriptImageSibling
+		jobType = jobscript.TypeImageSibling
 	default:
 		return SiblingCommand{}, fmt.Errorf("unknown AssetKind %q (asset_id=%s)", req.Kind, req.AssetID)
 	}

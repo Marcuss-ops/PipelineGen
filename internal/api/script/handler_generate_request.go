@@ -53,7 +53,7 @@ import (
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 )
@@ -260,7 +260,7 @@ func buildGenerateSubmitRequest(
 		IdempotencyKey: idempotencyKey,
 		RequestHash:    requestHash,
 		ForceRefresh:   env.ForceRefresh,
-		JobType:        job.TypeScriptGenerate,
+		JobType:        scriptpkg.TypeGenerate,
 		JobPayload:     payload,
 		JobPriority:    0,
 		JobMaxRetries:  3,
