@@ -28,15 +28,19 @@ func BuildMaintBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 	// method; the canonical async Drive surface is the dispatcher
 	// outbox port per godlike/06 SSOT one-canonical-owner-per-fact).
 	deletionSvc := deletion.NewDeletionService(deletion.DeletionServiceDeps{
-		ArtlistRepo:   repos.ClipsRepo,
-		ClipsRepo:     repos.ClipsRepo,
-		StockRepo:     repos.ClipsRepo,
-		VoiceoverRepo: repos.VoiceoverRepo,
-		ImagesRepo:    repos.ImageRepo,
-		AssetTreeSvc:  search.AssetTreeService,
-		AssetIndexSvc: search.AssetIndexService,
-		Dispatcher:    outboxBundle.Dispatcher,
-		Log:           log,
+		Repos: deletion.DeletionRepoDeps{
+			ArtlistRepo:   repos.ClipsRepo,
+			ClipsRepo:     repos.ClipsRepo,
+			StockRepo:     repos.ClipsRepo,
+			VoiceoverRepo: repos.VoiceoverRepo,
+			ImagesRepo:    repos.ImageRepo,
+		},
+		Index: deletion.DeletionIndexDeps{
+			AssetTreeSvc:  search.AssetTreeService,
+			AssetIndexSvc: search.AssetIndexService,
+		},
+		Dispatcher: outboxBundle.Dispatcher,
+		Log:        log,
 	})
 	maintRepo := sqliteassets.NewMaintenanceRepository(dbs.dualPool.Writer, log)
 	maintenanceSvc := maintenance.NewService(cfg, log,
