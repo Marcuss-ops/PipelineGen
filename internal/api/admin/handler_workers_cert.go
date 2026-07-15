@@ -21,7 +21,7 @@ import (
 	"go.uber.org/zap"
 
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	tlsload "github.com/Marcuss-ops/PipelineGen/pkg/tlsload"
 )

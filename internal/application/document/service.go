@@ -35,7 +35,7 @@ import (
 
 	textutil "github.com/Marcuss-ops/PipelineGen/pkg/textutil"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job/workspace"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job/workspace"
 )
 
 // Service is the canonical document-rendering service. It composes

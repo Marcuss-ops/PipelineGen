@@ -1,8 +1,8 @@
 package scripts
 
 import (
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 const JobGenerate = script.TypeGenerate

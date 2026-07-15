@@ -26,7 +26,7 @@ import (
 	delivery "github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	timeutil "github.com/Marcuss-ops/PipelineGen/pkg/timeutil"
 )
 

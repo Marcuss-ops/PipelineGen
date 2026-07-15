@@ -18,7 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // Handler is the thin HTTP transport for Drive folder sync operations.

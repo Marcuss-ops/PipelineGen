@@ -1,0 +1,357 @@
+{
+  "canonical_workspace_promoted": true,
+  "successful_packages": [
+    "internal/application/youtube",
+    "internal/application/youtube/jobs",
+    "internal/application/document",
+    "internal/application/documents",
+    "internal/application/images",
+    "internal/application/operations",
+    "internal/application/scripts",
+    "internal/application/scripts/adapters",
+    "internal/application/scripts/ports",
+    "internal/application/scripts/usecase",
+    "internal/application/voiceover",
+    "internal/api/admin",
+    "internal/api/assets/storage",
+    "internal/api/assets/youtube",
+    "internal/api/images",
+    "internal/api/middleware",
+    "internal/api/transport",
+    "internal/infrastructure/database/sqlite/assets",
+    "internal/infrastructure/jobs/local",
+    "internal/infrastructure/remote/jobbrokerclient",
+    "pkg/handlerutil"
+  ],
+  "failed_packages": [
+    {
+      "package": "internal/application/assets/providers/stock/stockpipeline",
+      "compile_tail": "go: downloading github.com/beorn7/perks v1.0.1\ngo: downloading github.com/cespare/xxhash/v2 v2.3.0\ngo: downloading github.com/prometheus/common v0.66.1\ngo: downloading github.com/prometheus/procfs v0.16.1\ngo: downloading google.golang.org/protobuf v1.36.11\ngo: downloading github.com/googleapis/gax-go/v2 v2.21.0\ngo: downloading cloud.google.com/go/auth v0.20.0\ngo: downloading google.golang.org/grpc v1.80.0\ngo: downloading github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822\ngo: downloading go.yaml.in/yaml/v2 v2.4.2\ngo: downloading golang.org/x/sys v0.45.0\ngo: downloading cloud.google.com/go/auth/oauth2adapt v0.2.8\ngo: downloading github.com/google/s2a-go v0.1.9\ngo: downloading go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.67.0\ngo: downloading golang.org/x/net v0.54.0\ngo: downloading github.com/googleapis/enterprise-certificate-proxy v0.3.14\ngo: downloading go.opentelemetry.io/otel v1.43.0\ngo: downloading go.opentelemetry.io/otel/metric v1.43.0\ngo: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9\ngo: downloading go.opentelemetry.io/otel/trace v1.43.0\ngo: downloading github.com/felixge/httpsnoop v1.0.4\ngo: downloading github.com/go-logr/logr v1.4.3\ngo: downloading github.com/go-logr/stdr v1.2.2\ngo: downloading go.opentelemetry.io/auto/sdk v1.2.1\ngo: downloading golang.org/x/crypto v0.52.0\n# github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks\ninternal/application/assets/texttracks/fanout.go:192:18: undefined: job.TypeAssetTextMaterialize\ninternal/application/assets/texttracks/jobs.go:50:37: undefined: job.TypeAssetTextMaterialize\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/application/youtube/adapters/monitoradapter",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters/monitoradapter [github.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters/monitoradapter.test]\ninternal/application/youtube/adapters/monitoradapter/extraction_intent_adapter.go:196:18: undefined: job.TypeYouTubeClipExtract\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/application/youtube/adapters/monitoradapter [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/application/youtube/usecase",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase [github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase.test]\ninternal/application/youtube/usecase/extract_important_clips_job_handler.go:54:37: undefined: job.TypeYouTubeClipExtractImportant\ninternal/application/youtube/usecase/job_registration.go:37:41: undefined: jobs.TypeYouTubeClipExtract\ninternal/application/youtube/usecase/job_registration.go:38:88: undefined: jobs.TypeYouTubeClipExtract\ninternal/application/youtube/usecase/job_registration.go:40:84: undefined: jobs.TypeYouTubeClipExtract\ninternal/application/youtube/usecase/job_registration.go:46:42: undefined: jobs.TypeYouTubeRebuildST\ninternal/application/youtube/usecase/job_registration.go:47:89: undefined: jobs.TypeYouTubeRebuildST\ninternal/application/youtube/usecase/job_registration.go:49:92: undefined: jobs.TypeYouTubeRebuildST\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/application/books",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/application/books [github.com/Marcuss-ops/PipelineGen/internal/application/books.test]\ninternal/application/books/process_usecase.go:214:50: undefined: jobs.TypeBooksProcess\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/application/books [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/application/clips",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/application/clips [github.com/Marcuss-ops/PipelineGen/internal/application/clips.test]\ninternal/application/clips/clip_ops_cleanup.go:49:13: undefined: job.TypeSystemCleanup\ninternal/application/clips/clip_ops_reconcile.go:25:13: undefined: job.TypeCatalogSync\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/application/clips [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/application/clips/upload",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload [github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload.test]\ninternal/application/clips/upload/usecase.go:289:14: undefined: job.TypeMediaEnrich\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/application/clips/upload [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/application/lessons",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/application/lessons [github.com/Marcuss-ops/PipelineGen/internal/application/lessons.test]\ninternal/application/lessons/generate_usecase.go:178:52: undefined: jobs.TypeLessonsProcess\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/application/lessons [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/application/scripts/jobs",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs [github.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs.test]\ninternal/application/scripts/jobs/generation_enqueue.go:114:22: undefined: job.TypeScriptGenerate\ninternal/application/scripts/jobs/generation_enqueue.go:126:58: undefined: job.TypeScriptGenerate\ninternal/application/scripts/jobs/generation_enqueue.go:128:31: undefined: job.TypeScriptGenerate\ninternal/application/scripts/jobs/generation_registration.go:53:46: undefined: scriptpkg.TypeScriptGenerate\ninternal/application/scripts/jobs/generation_registration.go:58:44: undefined: scriptpkg.TypeScriptGenerate\ninternal/application/scripts/jobs/script_generation_item_handler.go:90:40: undefined: job.TypeScriptGenerateItem\ninternal/application/scripts/jobs/script_generation_item_handler.go:92:8: undefined: job.TypeScriptGenerateItem\ninternal/application/scripts/jobs/script_generation_item_handler.go:96:31: undefined: job.TypeScriptGenerateItem\ninternal/application/scripts/jobs/sibling_dispatcher.go:275:14: undefined: job.TypeScriptVoiceoverSibling\ninternal/application/scripts/jobs/sibling_dispatcher.go:277:14: undefined: job.TypeScriptImageSibling\ninternal/application/scripts/jobs/sibling_dispatcher.go:277:14: too many errors\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/application/scripts/jobs [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/application/voiceover/jobs",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs [github.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs.test]\ninternal/application/voiceover/jobs/fanout.go:248:23: undefined: job.TypeVoiceoverGenerateItem\ninternal/application/voiceover/jobs/generate_handler.go:104:40: undefined: job.TypeVoiceoverGenerate\ninternal/application/voiceover/jobs/generate_handler.go:106:8: undefined: job.TypeVoiceoverGenerate\ninternal/application/voiceover/jobs/generate_handler.go:110:31: undefined: job.TypeVoiceoverGenerate\ninternal/application/voiceover/jobs/parent_aggregator.go:197:63: undefined: job.TypeVoiceoverGenerate\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/application/voiceover/jobs [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/api/assets/artlist",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks\ninternal/application/assets/texttracks/fanout.go:192:18: undefined: job.TypeAssetTextMaterialize\ninternal/application/assets/texttracks/jobs.go:50:37: undefined: job.TypeAssetTextMaterialize\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/api/assets/artlist [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/api/assets/clips",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips [github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips.test]\ninternal/api/assets/clips/ingest_create.go:116:14: undefined: job.TypeMediaEnrich\ninternal/api/assets/clips/module.go:49:41: undefined: job.TypeBulkUploadYouTubeClips\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/api/assets/clips [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/api/assets/voiceover",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover [github.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover.test]\ninternal/api/assets/voiceover/types.go:235:22: undefined: job.TypeVoiceoverGenerate\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/api/assets/voiceover [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/api/script",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/api/script [github.com/Marcuss-ops/PipelineGen/internal/api/script.test]\ninternal/api/script/handler_generate_request.go:263:23: undefined: job.TypeScriptGenerate\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/api/script [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/app",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks\ninternal/application/assets/texttracks/fanout.go:192:18: undefined: job.TypeAssetTextMaterialize\ninternal/application/assets/texttracks/jobs.go:50:37: undefined: job.TypeAssetTextMaterialize\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/app [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/infrastructure/database/sqlite/jobs",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs [github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs.test]\ninternal/infrastructure/database/sqlite/jobs/finalize_attempt.go:106:48: undefined: domjob.ErrFinalizeAttemptOutcomeInvalid\ninternal/infrastructure/database/sqlite/jobs/finalize_attempt.go:107:48: undefined: domjob.ErrFinalizeAttemptResultMissing\ninternal/infrastructure/database/sqlite/jobs/finalize_attempt.go:108:48: undefined: domjob.ErrFinalizeAttemptErrorMissing\ninternal/infrastructure/database/sqlite/jobs/finalize_attempt.go:109:48: undefined: domjob.ErrFinalizeAttemptArtifactStale\ninternal/infrastructure/database/sqlite/jobs/finalize_attempt.go:110:48: undefined: domjob.ErrFinalizeAttemptOutboxEventMissing\ninternal/infrastructure/database/sqlite/jobs/finalize_attempt.go:111:48: undefined: domjob.ErrFinalizeAttemptDLQIncompatible\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/jobs [build failed]\nFAIL"
+    },
+    {
+      "package": "internal/infrastructure/indexing/clipindexer",
+      "compile_tail": "# github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer [github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer.test]\ninternal/infrastructure/indexing/clipindexer/batch.go:115:40: undefined: job.TypeMediaReindex\ninternal/infrastructure/indexing/clipindexer/batch.go:116:94: undefined: job.TypeMediaReindex\nFAIL\tgithub.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer [build failed]\nFAIL"
+    }
+  ],
+  "remaining_imports": 65,
+  "remaining_sites": [
+    {
+      "file": "internal/api/assets/artlist/artlist_handlers.go",
+      "line": 18
+    },
+    {
+      "file": "internal/api/assets/artlist/module.go",
+      "line": 35
+    },
+    {
+      "file": "internal/api/assets/clips/ingest.go",
+      "line": 36
+    },
+    {
+      "file": "internal/api/assets/clips/ingest_create.go",
+      "line": 11
+    },
+    {
+      "file": "internal/api/assets/clips/module.go",
+      "line": 17
+    },
+    {
+      "file": "internal/api/assets/voiceover/handler.go",
+      "line": 28
+    },
+    {
+      "file": "internal/api/assets/voiceover/module.go",
+      "line": 55
+    },
+    {
+      "file": "internal/api/assets/voiceover/types.go",
+      "line": 43
+    },
+    {
+      "file": "internal/api/script/handler_deps.go",
+      "line": 35
+    },
+    {
+      "file": "internal/api/script/handler_generate_request.go",
+      "line": 56
+    },
+    {
+      "file": "internal/api/script/handler_jobs.go",
+      "line": 28
+    },
+    {
+      "file": "internal/app/assets_register_sourcing.go",
+      "line": 30
+    },
+    {
+      "file": "internal/app/bundle_types.go",
+      "line": 48
+    },
+    {
+      "file": "internal/app/clips_adapters_ops.go",
+      "line": 18
+    },
+    {
+      "file": "internal/app/creator_runtime_placeholder_test_only.go",
+      "line": 39
+    },
+    {
+      "file": "internal/app/lifecycle_maintenance.go",
+      "line": 33
+    },
+    {
+      "file": "internal/app/module_jobs.go",
+      "line": 9
+    },
+    {
+      "file": "internal/app/wire_script_adapters.go",
+      "line": 75
+    },
+    {
+      "file": "internal/app/wire_script_usecases.go",
+      "line": 70
+    },
+    {
+      "file": "internal/application/assets/providers/stock/stockpipeline/orchestrator_run.go",
+      "line": 21
+    },
+    {
+      "file": "internal/application/assets/providers/stock/stockpipeline/run_orchestrator.go",
+      "line": 22
+    },
+    {
+      "file": "internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go",
+      "line": 63
+    },
+    {
+      "file": "internal/application/assets/providers/stock/stockpipeline/upload_orchestration.go",
+      "line": 43
+    },
+    {
+      "file": "internal/application/books/job_handler.go",
+      "line": 15
+    },
+    {
+      "file": "internal/application/books/process_usecase.go",
+      "line": 28
+    },
+    {
+      "file": "internal/application/clips/bulk_upload_worker.go",
+      "line": 25
+    },
+    {
+      "file": "internal/application/clips/clip_ops_cleanup.go",
+      "line": 8
+    },
+    {
+      "file": "internal/application/clips/clip_ops_reconcile.go",
+      "line": 9
+    },
+    {
+      "file": "internal/application/clips/job_types.go",
+      "line": 4
+    },
+    {
+      "file": "internal/application/clips/upload/usecase.go",
+      "line": 22
+    },
+    {
+      "file": "internal/application/lessons/generate_usecase.go",
+      "line": 25
+    },
+    {
+      "file": "internal/application/lessons/job_handler.go",
+      "line": 10
+    },
+    {
+      "file": "internal/application/scripts/jobs/generation_enqueue.go",
+      "line": 14
+    },
+    {
+      "file": "internal/application/scripts/jobs/generation_envelope_merger.go",
+      "line": 37
+    },
+    {
+      "file": "internal/application/scripts/jobs/generation_handler.go",
+      "line": 46
+    },
+    {
+      "file": "internal/application/scripts/jobs/generation_manifest.go",
+      "line": 38
+    },
+    {
+      "file": "internal/application/scripts/jobs/generation_registration.go",
+      "line": 35
+    },
+    {
+      "file": "internal/application/scripts/jobs/parent_aggregator.go",
+      "line": 15
+    },
+    {
+      "file": "internal/application/scripts/jobs/script_generation_item_handler.go",
+      "line": 12
+    },
+    {
+      "file": "internal/application/scripts/jobs/sibling_dispatcher.go",
+      "line": 53
+    },
+    {
+      "file": "internal/application/scripts/jobs/sibling_dispatcher_dispatch.go",
+      "line": 9
+    },
+    {
+      "file": "internal/application/voiceover/jobs/fanout.go",
+      "line": 33
+    },
+    {
+      "file": "internal/application/voiceover/jobs/generate_handler.go",
+      "line": 36
+    },
+    {
+      "file": "internal/application/voiceover/jobs/parent_aggregator.go",
+      "line": 49
+    },
+    {
+      "file": "internal/application/voiceover/jobs/parent_aggregator_aggregate.go",
+      "line": 34
+    },
+    {
+      "file": "internal/application/voiceover/jobs/parent_aggregator_finalize.go",
+      "line": 31
+    },
+    {
+      "file": "internal/application/voiceover/jobs/parent_eligibility.go",
+      "line": 35
+    },
+    {
+      "file": "internal/application/voiceover/jobs/parent_state_machine.go",
+      "line": 32
+    },
+    {
+      "file": "internal/application/youtube/adapters/monitoradapter/extraction_intent_adapter.go",
+      "line": 57
+    },
+    {
+      "file": "internal/application/youtube/usecase/extract_important_clips_job_handler.go",
+      "line": 25
+    },
+    {
+      "file": "internal/application/youtube/usecase/job_registration.go",
+      "line": 17
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/finalize_attempt.go",
+      "line": 73
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/lifecycle_aggregation.go",
+      "line": 9
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/lifecycle_complete.go",
+      "line": 10
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/lifecycle_finalize.go",
+      "line": 10
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/lifecycle_progress.go",
+      "line": 9
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/repository.go",
+      "line": 44
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/repository_claims.go",
+      "line": 11
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/repository_commands.go",
+      "line": 9
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/repository_events.go",
+      "line": 27
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/repository_jobs_crud.go",
+      "line": 27
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/repository_stats.go",
+      "line": 14
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/scan.go",
+      "line": 6
+    },
+    {
+      "file": "internal/infrastructure/database/sqlite/jobs/transition.go",
+      "line": 10
+    },
+    {
+      "file": "internal/infrastructure/indexing/clipindexer/batch.go",
+      "line": 13
+    }
+  ],
+  "migrated_packages": 21,
+  "failed_package_count": 16
+}

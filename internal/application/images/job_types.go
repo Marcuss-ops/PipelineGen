@@ -2,7 +2,7 @@ package images
 
 import (
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/image"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 const JobGenerate = image.TypeImagesGenerate

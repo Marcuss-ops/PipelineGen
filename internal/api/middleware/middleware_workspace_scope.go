@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/job/workspace"
+	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job/workspace"
 	"github.com/gin-gonic/gin"
 )
 

@@ -36,7 +36,7 @@ import (
 	"context"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── 1. SubmissionService ─────────────────────────────────────────────
