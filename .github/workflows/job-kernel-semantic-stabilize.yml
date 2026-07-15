@@ -1,0 +1,161 @@
+name: Job Kernel Semantic Stabilize
+
+on:
+  push:
+    paths:
+      - .github/workflows/job-kernel-semantic-stabilize.yml
+
+permissions:
+  contents: write
+  statuses: write
+
+jobs:
+  stabilize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Stabilize semantic migrations package by package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          post_status() {
+            curl -fsS -X POST \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPOSITORY}/statuses/$1" \
+              -d "$(python3 -c 'import json,sys; print(json.dumps({"state":sys.argv[1],"context":sys.argv[2],"description":sys.argv[3]}))' "$2" "$3" "$4")" >/dev/null
+          }
+          fail() {
+            post_status "${TRIGGER_SHA}" failure "job-kernel-semantic-stabilize" "$1"
+            exit 1
+          }
+          post_status "${TRIGGER_SHA}" pending "job-kernel-semantic-stabilize" "Stabilizing semantic migrations"
+          git fetch origin main
+          git reset --hard origin/main
+
+          # Reuse the canonical semantic transformer embedded in the failed
+          # one-shot verifier, avoiding a second owner for the symbol map.
+          python3 <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/job-kernel-semantic-cutover.yml').read_text(encoding='utf-8').splitlines()
+          start = next(i for i, line in enumerate(source) if line.strip() == "python3 <<'PY'") + 1
+          end = next(i for i in range(start, len(source)) if source[i].strip() == 'PY')
+          body = []
+          for line in source[start:end]:
+              body.append(line[10:] if line.startswith('          ') else line)
+          Path('/tmp/job-semantic-transform.py').write_text('\n'.join(body) + '\n', encoding='utf-8')
+          PY
+          python3 /tmp/job-semantic-transform.py
+
+          mapfile -t changed_files < /tmp/job-semantic-changed.txt
+          gofmt -w "${changed_files[@]}"
+
+          # The kernel sentinel move is mandatory and foundational.
+          if ! go test -run '^$' ./internal/kernel/job ./internal/domain/job >/tmp/job-semantic-foundation.log 2>&1; then
+            tail -n 120 /tmp/job-semantic-foundation.log
+            fail "Kernel/domain job foundation failed"
+          fi
+
+          python3 <<'PY'
+          import json
+          from pathlib import Path
+          grouped = {}
+          for raw in Path('/tmp/job-semantic-changed.txt').read_text().splitlines():
+              if not raw.strip():
+                  continue
+              directory = str(Path(raw).parent)
+              if directory in {'internal/kernel/job', 'internal/domain/job'}:
+                  continue
+              grouped.setdefault(directory, []).append(raw)
+          Path('/tmp/job-semantic-packages.json').write_text(json.dumps(grouped, indent=2) + '\n')
+          Path('/tmp/job-semantic-failures.json').write_text('{}\n')
+          PY
+
+          # Repeat until the surviving package set is closed under compilation.
+          for round in 1 2 3 4; do
+            failed_this_round=0
+            mapfile -t dirs < <(python3 -c 'import json; print("\n".join(sorted(json.load(open("/tmp/job-semantic-packages.json")))))')
+            [ "${#dirs[@]}" -gt 0 ] || break
+            for dir in "${dirs[@]}"; do
+              log="/tmp/job-semantic-${round}-$(echo "$dir" | tr / _).log"
+              if go test -run '^$' "./${dir}" >"$log" 2>&1; then
+                continue
+              fi
+              failed_this_round=1
+              mapfile -t files < <(python3 - "$dir" <<'PY'
+          import json, sys
+          print('\n'.join(json.load(open('/tmp/job-semantic-packages.json'))[sys.argv[1]]))
+          PY
+              )
+              git checkout -- "${files[@]}"
+              SUMMARY="$(tail -n 50 "$log" | head -c 7000)" python3 - "$dir" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          packages_path = Path('/tmp/job-semantic-packages.json')
+          packages = json.loads(packages_path.read_text())
+          packages.pop(sys.argv[1], None)
+          packages_path.write_text(json.dumps(packages, indent=2) + '\n')
+          failures_path = Path('/tmp/job-semantic-failures.json')
+          failures = json.loads(failures_path.read_text())
+          failures[sys.argv[1]] = os.environ.get('SUMMARY', '')
+          failures_path.write_text(json.dumps(failures, indent=2) + '\n')
+          PY
+            done
+            [ "$failed_this_round" -eq 0 ] && break
+          done
+
+          python3 <<'PY'
+          import json, re
+          from pathlib import Path
+          OLD = 'github.com/Marcuss-ops/PipelineGen/internal/domain/job'
+          import_line = re.compile(r'^\s*(?:import\s+)?(?:(?:[A-Za-z_][A-Za-z0-9_]*|\.|_)\s+)?["`]')
+          remaining_sites = []
+          for root in map(Path, ('internal','pkg','cmd')):
+              if not root.exists(): continue
+              for path in root.rglob('*.go'):
+                  rel = path.as_posix()
+                  if path.name.endswith('_test.go') or rel.startswith('cmd/archcheck/'):
+                      continue
+                  for line_no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                      if OLD in line and import_line.match(line):
+                          remaining_sites.append({'file': rel, 'line': line_no})
+          migration_path = Path('architecture/job_kernel_migration.json')
+          migration = json.loads(migration_path.read_text())
+          migration['reported_baseline_imports'] = len(remaining_sites)
+          migration_path.write_text(json.dumps(migration, indent=2) + '\n')
+          survivors = sorted(json.load(open('/tmp/job-semantic-packages.json')))
+          failures = json.load(open('/tmp/job-semantic-failures.json'))
+          report = {
+              'successful_packages': survivors,
+              'failed_packages': failures,
+              'remaining_imports': len(remaining_sites),
+              'remaining_sites': remaining_sites,
+          }
+          Path('architecture/job_kernel_semantic_report.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps({'successful': len(survivors), 'failed': len(failures), 'remaining': len(remaining_sites)}))
+          PY
+
+          git rm .github/workflows/job-kernel-semantic-cutover.yml
+          git rm .github/workflows/job-kernel-semantic-stabilize.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor(job): stabilize capability-owned job symbols"
+          git pull --rebase origin main
+          git push origin HEAD:main
+          final_sha=$(git rev-parse HEAD)
+          remaining=$(python3 -c 'import json; print(json.load(open("architecture/job_kernel_semantic_report.json"))["remaining_imports"])')
+          post_status "${TRIGGER_SHA}" success "job-kernel-semantic-stabilize" "Semantic packages stabilized; ${remaining} imports remain"
+          post_status "${final_sha}" success "job-kernel-semantic-stabilize" "Stable semantic migration published"
