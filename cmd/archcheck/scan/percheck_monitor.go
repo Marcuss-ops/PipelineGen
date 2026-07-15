@@ -8,10 +8,8 @@
 // must flow through composition-root adapters in
 // internal/app/lifecycle.go (Pattern 0 ports). The hatchable
 // surface is the `// ARCH-ALLOWLIST: monitor-infra-import` marker
-// comment on the line preceding the offending import statement
-// (zero scroll-window per godlike/07 minimum-ripple; the
-// canonical Go syntax supports two patterns: marker+1 for
-// single-line imports, marker+2 for `import (...)` blocks).
+// immediately before either the concrete import spec or the enclosing
+// `import (` declaration.
 //
 // *_test.go files are INCLUDED (NOT excluded) per the spec's
 // "_test.go INCLUSION RATIONALE (godlike/06 SSOT)": the test
@@ -57,10 +55,10 @@ const monitorPkgRelPath = "internal/application/assets/monitor"
 const infraImportPath = "github.com/Marcuss-ops/PipelineGen/internal/infrastructure"
 
 // archAllowlistMarker is the canonical magic marker that
-// allows an infra import on the line immediately below
-// (single-line import) or two lines below (multi-line
-// `import (...)` block). Typos in the magic word are
-// corruption-safe by design per godlike/07.
+// allows an infra import when it is immediately above either
+// the concrete import spec or the enclosing `import (` line.
+// Typos in the magic word are corruption-safe by design per
+// godlike/07.
 const archAllowlistMarker = "ARCH-ALLOWLIST: monitor-infra-import"
 
 // ScanMonitorInfraImport walks every .go file under
@@ -70,10 +68,9 @@ const archAllowlistMarker = "ARCH-ALLOWLIST: monitor-infra-import"
 // classifies each hit into one of three buckets:
 //
 //  1. Hard-fail (Violation with SeverityError): production
-//     import not preceded by the ARCH-ALLOWLIST marker in
-//     the 2-line upstream window of the SAME file. This is
-//     the fail-closed surface that the runner --strict
-//     mode promotes to ExitViolations.
+//     import not protected by the ARCH-ALLOWLIST marker in
+//     the SAME file. This is the fail-closed surface that the
+//     runner --strict mode promotes to ExitViolations.
 //  2. Comment-only hit (WARN via r.Warnings): full-line
 //     `//`-prefixed line — descriptive prose, not a real
 //     import. Logged but not added to r.Violations.
@@ -82,16 +79,12 @@ const archAllowlistMarker = "ARCH-ALLOWLIST: monitor-infra-import"
 //     visible in CI output every run (godlike/07
 //     no-fake-availability residue accounting).
 //
-// Marker window semantics: an offending import on line N is
-// allowed iff a marker line is the IMMEDIATE PREAMBLE to the
-// enclosing import statement (single-line `import "..."` on
-// line N, OR multi-line `import (` block opening above line
-// N that contains the offending import). The check is
-// "import-statement preamble-aware" (not a fixed N-line
-// window) so multi-line import blocks of arbitrary depth
-// are covered: a marker 10 lines before the offending import
-// is NOT allowed — the marker must be the immediate preamble
-// to the import statement that contains the import.
+// Marker semantics: an offending import on line N is allowed
+// when a marker is directly above the single-line import, directly
+// above the import spec inside an `import (...)` block, or directly
+// above the enclosing `import (` declaration. The direct-import-spec
+// form matches the retained shell Check 54 and is the form used by the
+// monitor SQLite hermetic tests.
 func ScanMonitorInfraImport(root string, pol *policy.Policy, r *report.Report) {
 	dir := filepath.Join(root, monitorPkgRelPath)
 	// Hard-fail on missing monitor/ package (defensive — the
@@ -138,18 +131,16 @@ func scanMonitorInfraFile(path, relPath string, r *report.Report) {
 	}
 	defer f.Close()
 
-	// Read the entire file into a slice of lines so the
-	// 2-line upstream marker lookup is O(1) per line. This
-	// mirrors the shell awk's per-file marker line
-	// accumulation (`markers[$1] = ...` per line).
+	// Read the entire file into a slice of lines so marker lookup
+	// is O(1) per candidate line. This mirrors the shell awk's
+	// per-file marker accumulation (`markers[$1] = ...` per line).
 	lines, err := readAllLines(f)
 	if err != nil {
 		return
 	}
 
 	// Pre-compute the set of line numbers in this file
-	// that carry the archAllowlistMarker. Used by the
-	// 2-line window check.
+	// that carry the archAllowlistMarker.
 	markerLines := make([]int, 0, len(lines))
 	for i, line := range lines {
 		if isMarkerLine(line) {
@@ -184,9 +175,8 @@ func scanMonitorInfraFile(path, relPath string, r *report.Report) {
 			commentCount++
 			continue
 		}
-		// Bucket 3: production import — check the
-		// immediate-preamble-of-import-statement
-		// window for a marker site.
+		// Bucket 3: production import — check the marker
+		// placement against the containing import statement.
 		currentLine := i + 1 // 1-indexed
 		if isMarkerAllowedForImportLine(markerLines, lines, currentLine) {
 			// Allowed by the marker; do not
@@ -220,7 +210,7 @@ func scanMonitorInfraFile(path, relPath string, r *report.Report) {
 	if allowlistCount > 0 {
 		r.Warnings = append(r.Warnings, "Check 54: "+strconv.Itoa(allowlistCount)+
 			" ARCH-ALLOWLIST: monitor-infra-import site(s) in "+relPath+
-			" (each entry requires explicit owner + deadline per AGENTS.md \u00a77; verify currency at promote-to-zero pass)")
+			" (each entry requires explicit owner + deadline per AGENTS.md §7; verify currency at promote-to-zero pass)")
 	}
 }
 
@@ -249,33 +239,16 @@ func isMarkerLine(line string) bool {
 		strings.Contains(rest, "monitor-infra-import")
 }
 
-// isMarkerAllowedForImportLine reports whether any marker
-// line is positioned as the IMMEDIATE PREAMBLE to the
-// import statement that contains the offending import at
-// currentLine. The function handles BOTH the single-line
-// (`import "..."`) and multi-line (`import (...)` block)
-// Go import syntax patterns.
+// isMarkerAllowedForImportLine reports whether a marker protects
+// the offending import at currentLine. The accepted forms are:
+//   - marker immediately above a single-line import declaration;
+//   - marker immediately above the concrete import spec inside a
+//     multi-line import block (retained shell Check 54 contract);
+//   - marker immediately above the enclosing `import (` declaration.
 //
-// "Immediate preamble" means:
-//   - For single-line: the marker is on currentLine-1 (the
-//     line directly above the offending import statement).
-//   - For multi-line: the marker is on the line directly
-//     above the `import (` opening line that starts the
-//     import block containing the offending import.
-//
-// Implementation:
-//  1. First check single-line case (marker on currentLine-1).
-//  2. If not, scan upward from currentLine-2 to find the
-//     first line whose trimmed content starts with "import (".
-//     If found, check if a marker is on importBlockLine-1
-//     (the line directly above the `import (` opening).
-//
-// Window rationale: per the canonical godlike/06 marker
-// contract, the marker must be the IMMEDIATE preamble to
-// the import statement — not just "near" the import. A
-// marker 10 lines before an import in a 200-line file
-// should NOT allow the import (the marker was likely
-// intended for a different import block).
+// The upward scan stops at a closing parenthesis. This prevents a marker
+// associated with an earlier import block from allowing a later string
+// literal that merely contains infraImportPath.
 func isMarkerAllowedForImportLine(markerLines []int, lines []string, currentLine int) bool {
 	// Defensive bounds check: currentLine is 1-indexed; lines
 	// is 0-indexed. currentLine-1 is the slice position of the
@@ -284,15 +257,9 @@ func isMarkerAllowedForImportLine(markerLines []int, lines []string, currentLine
 	if currentLine < 1 || currentLine > len(lines) {
 		return false
 	}
-	// Case 1: single-line import. The offending line MUST be
-	// an import statement (starts with "import " after trim);
-	// otherwise a non-import line that contains the infra path
-	// as a string literal (e.g. `var Y = ".../infrastructure"`)
-	// would be incorrectly allowed by a marker on the line
-	// above. The defensive check preserves the canonical
-	// godlike/06 contract: markers allow infra IMPORTS, not
-	// arbitrary string literals.
+
 	currentLineContent := strings.TrimSpace(lines[currentLine-1])
+	// Case 1: single-line import declaration.
 	if strings.HasPrefix(currentLineContent, "import ") {
 		for _, m := range markerLines {
 			if m == currentLine-1 {
@@ -300,14 +267,16 @@ func isMarkerAllowedForImportLine(markerLines []int, lines []string, currentLine
 			}
 		}
 	}
-	// Case 2: multi-line import block. Scan upward from
-	// currentLine-2 to find the `import (` opening line.
-	// currentLine is 1-indexed; loop over 0-indexed slice
-	// positions starting at currentLine-2 (the line above
-	// the offending import).
+
+	// Find an enclosing multi-line import block. Stop at a closing
+	// parenthesis so a prior, already-closed import block cannot
+	// accidentally authorize a later string literal.
 	importBlockLine := -1
 	for i := currentLine - 2; i >= 0; i-- {
 		trimmed := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(trimmed, ")") {
+			return false
+		}
 		if strings.HasPrefix(trimmed, "import (") {
 			importBlockLine = i + 1 // 1-indexed
 			break
@@ -316,9 +285,13 @@ func isMarkerAllowedForImportLine(markerLines []int, lines []string, currentLine
 	if importBlockLine < 0 {
 		return false
 	}
-	// Marker must be on the line immediately before the
-	// `import (` opening line.
+
 	for _, m := range markerLines {
+		// Case 2: marker directly above the concrete import spec.
+		if m == currentLine-1 {
+			return true
+		}
+		// Case 3: marker directly above the enclosing import block.
 		if m == importBlockLine-1 {
 			return true
 		}
