@@ -1,6 +1,6 @@
 name: Split Architecture Checks
 
-# bootstrap: update this file once after creation to trigger the one-shot job.
+# trigger: workflow exists in the parent commit and runs exactly once.
 on:
   push:
     paths:
