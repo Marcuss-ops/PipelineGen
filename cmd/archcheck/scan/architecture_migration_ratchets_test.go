@@ -39,6 +39,52 @@ func TestScanPackagesRegisteredHotspotCannotGrow(t *testing.T) {
 	}
 }
 
+func TestScanPackagesProductionRejectsUnregisteredHotspot(t *testing.T) {
+	root := t.TempDir()
+	writeHotspotRegistry(t, root, `{
+  "version": 1,
+  "hotspots": [],
+  "root_migrations": []
+}`)
+	writeTestGoFile(t, root, "internal/application/newcap/a.go", "package newcap\n")
+	writeTestGoFile(t, root, "internal/application/newcap/b.go", "package newcap\n")
+
+	r := &report.Report{}
+	ScanPackagesForMode(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{}, true)
+	if len(r.Violations) != 1 {
+		t.Fatalf("expected one unregistered hotspot violation, got %#v", r.Violations)
+	}
+	if r.Violations[0].MatchedRule != "unregistered_package_hotspot" || r.Violations[0].Severity != "error" {
+		t.Fatalf("expected hard unregistered-hotspot gate, got %#v", r.Violations[0])
+	}
+}
+
+func TestScanPackagesProductionRejectsExpiredHotspot(t *testing.T) {
+	root := t.TempDir()
+	writeHotspotRegistry(t, root, `{
+  "version": 1,
+  "hotspots": [{
+    "path": "internal/application/jobs",
+    "owner": "internal/application/jobs",
+    "deadline": "2000-01-01",
+    "baseline_files": 2,
+    "target_packages": ["internal/application/jobs/queue"]
+  }],
+  "root_migrations": []
+}`)
+	writeTestGoFile(t, root, "internal/application/jobs/a.go", "package jobs\n")
+	writeTestGoFile(t, root, "internal/application/jobs/b.go", "package jobs\n")
+
+	r := &report.Report{}
+	ScanPackagesForMode(root, &policy.Policy{MaxFilesPerPackage: 1, MaxLinesPerFile: 1000}, r, map[string]int{}, true)
+	if len(r.Violations) != 1 {
+		t.Fatalf("expected one expired-hotspot violation, got %#v", r.Violations)
+	}
+	if r.Violations[0].MatchedRule != "package_hotspot_deadline_expired" || r.Violations[0].Severity != "error" {
+		t.Fatalf("expected expired-hotspot hard gate, got %#v", r.Violations[0])
+	}
+}
+
 func TestScanUnknownInternalRootsUsesRegisteredMigration(t *testing.T) {
 	root := t.TempDir()
 	writeHotspotRegistry(t, root, `{
@@ -91,7 +137,7 @@ new file mode 100644
 +import job %q
 +var _ = job.Status("")
 +
-diff --git a/internal/application/jobs/new_test.go b/internal/application/jobs/new_test.go
+ diff --git a/internal/application/jobs/new_test.go b/internal/application/jobs/new_test.go
 new file mode 100644
 --- /dev/null
 +++ b/internal/application/jobs/new_test.go
