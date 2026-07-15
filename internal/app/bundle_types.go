@@ -45,13 +45,13 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	ytService "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/usecase"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	storage "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/assetindex"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/outbox"
 	driveup "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/clipindexer"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	gdrive "google.golang.org/api/drive/v3"
 )
 

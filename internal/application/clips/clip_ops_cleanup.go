@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobsystem "github.com/Marcuss-ops/PipelineGen/internal/domain/system"
 )
 
 // Cleanup orchestrates orphan-record cleanup.
@@ -46,7 +46,7 @@ func (s *ClipOpsService) Cleanup(ctx context.Context, in CleanupInput) (*Cleanup
 	}
 
 	job, err := s.jobs.Enqueue(ctx, JobsEnqueueRequest{
-		Type: job.TypeSystemCleanup,
+		Type: jobsystem.TypeCleanup,
 		Payload: map[string]any{
 			"deep":        deep,
 			"dry_run":     in.DryRun,

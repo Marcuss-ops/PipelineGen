@@ -22,7 +22,7 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/mutations"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // BulkUploadWorker owns the heavy business logic. Typed ports only.

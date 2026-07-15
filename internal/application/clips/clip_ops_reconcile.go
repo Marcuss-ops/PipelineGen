@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	jobcatalog "github.com/Marcuss-ops/PipelineGen/internal/domain/catalog"
 	"go.uber.org/zap"
-
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 )
 
 // Reconcile reconciles database with Drive files via a real
@@ -22,7 +21,7 @@ func (s *ClipOpsService) Reconcile(ctx context.Context, source, folderID string)
 		return nil, ErrReconcileQueueUnavailable
 	}
 	resp, err := s.jobs.Enqueue(ctx, JobsEnqueueRequest{
-		Type: job.TypeCatalogSync,
+		Type: jobcatalog.TypeSync,
 		Payload: map[string]any{
 			"source":     source,
 			"folder_id":  folderID,

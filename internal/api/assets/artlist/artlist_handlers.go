@@ -15,7 +15,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobmedia "github.com/Marcuss-ops/PipelineGen/internal/domain/media"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/pkg/apiutil"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -300,7 +301,7 @@ func (h *ArtlistHandler) JobConsumer(c *gin.Context) {
 	}
 	apiutil.OK(c, gin.H{
 		"active":        active,
-		"consumer_type": job.TypeArtlistRun,
+		"consumer_type": jobmedia.TypeArtlistRun,
 		"detail":        detail,
 		"latency_ms":    time.Since(start).Milliseconds(),
 	})

@@ -72,8 +72,8 @@ import (
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
-	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
@@ -174,8 +174,8 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	//     composition-time registry. The registry is frozen after
 	//     Compose(); this query is branch-free.
 	reg := appjobs.Compose()
-	if !reg.IsRegistered(job.TypeScriptGenerate) {
-		return fmt.Errorf("script.generate wiring (a): registry has no entry for %s; rebuild appjobs.Compose()", job.TypeScriptGenerate)
+	if !reg.IsRegistered(scriptpkg.TypeGenerate) {
+		return fmt.Errorf("script.generate wiring (a): registry has no entry for %s; rebuild appjobs.Compose()", scriptpkg.TypeGenerate)
 	}
 
 	// (b) Broker has the handler. The RegisterJobs success above is
@@ -188,8 +188,8 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	if root == nil || root.Jobs == nil || root.Jobs.Service == nil {
 		return fmt.Errorf("script.generate wiring (b): Jobs service is nil; the gate above should have tripped")
 	}
-	if !root.Jobs.Service.HasHandler(job.TypeScriptGenerate) {
-		return fmt.Errorf("script.generate wiring (b): broker has no handler for %s; RegisterJobs call above should have registered it", job.TypeScriptGenerate)
+	if !root.Jobs.Service.HasHandler(scriptpkg.TypeGenerate) {
+		return fmt.Errorf("script.generate wiring (b): broker has no handler for %s; RegisterJobs call above should have registered it", scriptpkg.TypeGenerate)
 	}
 
 	// (c) At least one worker in the cluster is configured to claim
@@ -199,11 +199,11 @@ func validateScriptGenerateWiring(root *ComposeRoot, log *zap.Logger) error {
 	//     runtime audit.
 	if log != nil {
 		log.Info("validateScriptGenerateWiring: WorkerTypes not exposed yet; (c) check skipped (forward-looking)",
-			zap.String("job_type", job.TypeScriptGenerate))
+			zap.String("job_type", scriptpkg.TypeGenerate))
 	}
 	if log != nil {
 		log.Info("validateScriptGenerateWiring: script.generate wiring complete",
-			zap.String("job_type", job.TypeScriptGenerate))
+			zap.String("job_type", scriptpkg.TypeGenerate))
 	}
 	return nil
 }

@@ -32,7 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/catalogsync"
 	artlistapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
-	jobs "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
+	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
