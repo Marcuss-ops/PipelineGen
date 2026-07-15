@@ -48,7 +48,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_sourcestager_transformer", scan.ScanSourceStagerTransformer},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
 			fileLines := map[string]int{}
-			scan.ScanPackages(root, pol, r, fileLines)
+			scan.ScanPackagesForMode(root, pol, r, fileLines, productionOnly)
 			scan.ScanCommandBinaries(root, pol, r, fileLines)
 		}},
 		{"percheck_asset_state_canonical_14", scan.ScanAssetStateCanonical14},
