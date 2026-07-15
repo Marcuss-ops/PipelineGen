@@ -26,6 +26,19 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Restore monolith as splitter input
+        shell: bash
+        run: |
+          set -euo pipefail
+          monolith="scripts/ci/architecture/checks/all_checks.sh"
+          entrypoint="scripts/ci-architectural-checks.sh"
+          if [ ! -f "${monolith}" ]; then
+            echo "CI: extracted architectural-check monolith is missing: ${monolith}" >&2
+            exit 1
+          fi
+          cp "${monolith}" "${entrypoint}"
+          bash -n "${entrypoint}"
+
       - name: Generate semantic check modules
         shell: bash
         run: |
