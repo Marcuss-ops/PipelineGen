@@ -11,9 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// WireStockPipeline constructs every stock pipeline dependency from the
-// ComposeRoot and routes them through BuildStockBundle. The focused source and
-// finalizer helpers own their respective construction details.
 func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (*StockPipelineWiring, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("wire stock pipeline: cfg is nil")
@@ -25,43 +22,52 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 		return nil, fmt.Errorf("wire stock pipeline: root is nil")
 	}
 	if !cfg.Features.StockPipelineEnabled {
-		log.Info("WireStockPipeline: stock pipeline disabled by cfg flag; returning nil wiring")
+		log.Info("WireStockPipeline: stock pipeline disabled")
 		return nil, nil
 	}
 
-	ffmpegPath := cfg.External.FfmpegPath
 	stockDB := (*sql.DB)(nil)
 	if root.DB != nil {
 		stockDB = root.DB.DB
 	}
-
-	stockCutter := render.NewFFmpegCutter(ffmpegPath, log)
-	stockRenderer := render.NewFFmpegRenderer(ffmpegPath, nil, log)
+	ffmpegPath := cfg.External.FfmpegPath
 	ytdlp := downloader.NewYTDLP(cfg)
-	stockSourceStager := wireStockSourceStager(cfg, log, ytdlp)
-	stockFinalizer := wireStockFinalizer(stockDB, root, log)
+	deliveryPorts := StockDeliveryPorts{
+		Finalizer: wireStockFinalizer(stockDB, root, log),
+	}
+	if root.Drive != nil {
+		deliveryPorts.Publisher = root.Drive.Publisher
+	}
 
-	log.Info("WireStockPipeline: wiring summary",
-		zap.Bool("publisher_wired", root.Drive != nil && root.Drive.Publisher != nil),
-		zap.Bool("finalizer_wired", stockFinalizer != nil),
-		zap.Bool("source_stager_wired", stockSourceStager != nil),
+	deps := StockBundleDeps{
+		Runtime: StockRuntimeDeps{
+			Cfg:     cfg,
+			Log:     log,
+			Jobs:    root.Jobs.Service,
+			Enabled: func() bool { return cfg.Features.StockPipelineEnabled },
+		},
+		Persistence: StockPersistencePorts{
+			DB:           stockDB,
+			SourceStager: wireStockSourceStager(cfg, log, ytdlp),
+			ClipsRepo:    root.Repos.ClipsRepo,
+			AssetIndex:   root.Search.AssetIndexService,
+			Dispatcher:   root.Outbox.Dispatcher,
+		},
+		Media: StockMediaPorts{
+			Cutter:   render.NewFFmpegCutter(ffmpegPath, log),
+			Renderer: render.NewFFmpegRenderer(ffmpegPath, nil, log),
+		},
+		Delivery: deliveryPorts,
+		Enrichment: StockEnrichmentPorts{
+			ChannelLister: ytdlp,
+		},
+	}
+
+	log.Info("WireStockPipeline: capability groups prepared",
+		zap.Bool("publisher_wired", deps.Delivery.Publisher != nil),
+		zap.Bool("finalizer_wired", deps.Delivery.Finalizer != nil),
+		zap.Bool("source_stager_wired", deps.Persistence.SourceStager != nil),
 		zap.String("ffmpeg_path", ffmpegPath),
 	)
-
-	return BuildStockBundle(StockBundleDeps{
-		Cfg:                  cfg,
-		Log:                  log,
-		DB:                   stockDB,
-		Publisher:            root.Drive.Publisher,
-		Finalizer:            stockFinalizer,
-		SourceStager:         stockSourceStager,
-		ClipsRepo:            root.Repos.ClipsRepo,
-		AssetIndex:           root.Search.AssetIndexService,
-		Dispatcher:           root.Outbox.Dispatcher,
-		Cutter:               stockCutter,
-		Renderer:             stockRenderer,
-		Jobs:                 root.Jobs.Service,
-		ChannelLister:        ytdlp,
-		StockPipelineEnabled: func() bool { return cfg.Features.StockPipelineEnabled },
-	})
+	return BuildStockBundle(deps)
 }
