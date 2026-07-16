@@ -15,9 +15,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/api/assets/clips/nonops"
+	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/clips/aistock"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // ── Handler test doubles ───────────────────────────────────────────────
@@ -215,6 +219,90 @@ func TestCreateAIStockClip_HappyPath_200(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.True(t, resp["ok"].(bool))
+	assert.Equal(t, "underwater-sand-jumpscare-01", resp["clip_id"])
+	assert.Equal(t, "1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ", resp["drive_file_id"])
+}
+
+// fakeJobsSvc is a minimal job.Service stub for integration tests.
+type fakeJobsSvc struct{}
+
+func (fakeJobsSvc) Enqueue(_ context.Context, _ *job.EnqueueRequest) (*job.Job, error) {
+	return &job.Job{}, nil
+}
+func (fakeJobsSvc) Get(_ context.Context, _ string) (*job.Job, error)           { return nil, nil }
+func (fakeJobsSvc) Cancel(_ context.Context, _ string) error                    { return nil }
+func (fakeJobsSvc) List(_ context.Context, _ job.Filter) ([]job.Job, error)     { return nil, nil }
+func (fakeJobsSvc) IsTerminal(_ job.Status) bool                                { return true }
+func (fakeJobsSvc) RegisterHandler(_ string, _ any) error                       { return nil }
+func (fakeJobsSvc) ListEvents(_ context.Context, _ string) ([]job.Event, error) { return nil, nil }
+func (fakeJobsSvc) Retry(_ context.Context, _ string) (*job.Job, error)         { return nil, nil }
+
+// TestClipsModule_AIStockClip_Integration exercises the full clips module
+// built via clipsapi.Build and mounted under /api. It sends a complete HTTP
+// request to /api/clips/ingest/ai-stock and verifies the route is reachable
+// and returns 200 OK.
+//
+// Dependencies not exercised by the AI stock path are stubbed with nil-safe
+// zero values: the repository is never queried, EnrichUC/BulkUploadWorker are
+// only required to satisfy the fail-closed composition checks, and the job
+// service is never invoked during this request.
+func TestClipsModule_AIStockClip_Integration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	drive := &handlerFakeDriveReader{
+		meta: &aistock.DriveFileMeta{Name: "underwater.mp4"},
+		body: io.NopCloser(strings.NewReader("fake video bytes")),
+		ct:   "video/mp4",
+	}
+	uc, err := aistock.NewUseCase(aistock.UseCaseDeps{
+		DriveReader: drive,
+		Artifact:    &handlerFakeArtifactService{},
+		Dispatcher:  &handlerFakeDispatcher{},
+		Log:         zap.NewNop(),
+	})
+	require.NoError(t, err)
+
+	mod, err := Build(Dependencies{
+		Handlers: Deps{
+			Search: SearchDeps{
+				ClipsRepo: assets.NewClipsRepository(nil, zap.NewNop()),
+			},
+			Ingest: IngestDeps{
+				Dispatcher: &handlerFakeDispatcher{},
+				AIStockUC:  uc,
+				EnrichUC:   &appclips.EnrichUseCase{},
+				Log:        zap.NewNop(),
+			},
+			NonOps: nonops.Deps{
+				JobsSvc:          fakeJobsSvc{},
+				BulkUploadWorker: appclips.NewBulkUploadWorker(nil, nil, nil, nil, nil, zap.NewNop()),
+				Log:              zap.NewNop(),
+			},
+		},
+		Transport: TransportDeps{
+			EnabledFunc: func() bool { return true },
+			Logger:      zap.NewNop(),
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, mod)
+
+	router := gin.New()
+	mod.RegisterRoutes(router.Group("/api"))
+
+	body, _ := json.Marshal(map[string]any{
+		"document":  json.RawMessage(validAIStockDocument()),
+		"drive_url": "https://drive.google.com/file/d/1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ/view",
+	})
+	req := httptest.NewRequest("POST", "/api/clips/ingest/ai-stock", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "POST /api/clips/ingest/ai-stock should return 200 through the full clips module")
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.True(t, resp["ok"].(bool))
