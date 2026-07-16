@@ -12,8 +12,8 @@ import (
 // PreparedCapabilities contains immutable descriptors and adapters produced by
 // the construction phase. No registry is mutated while this value is built.
 type PreparedCapabilities struct {
-	HTTPModules        []TrackedHTTPModule
-	Providers          []TrackedProviderEntry
+	HTTPModules         []TrackedHTTPModule
+	Providers           []TrackedProviderEntry
 	ProviderDescriptors []module.DescriptorProviders
 }
 
@@ -46,10 +46,10 @@ const (
 
 // registerCapabilities is the only registry mutation phase. The order is
 // explicit and fail-closed:
-//   1. register HTTP modules;
-//   2. register search/fetch adapters and descriptor-owned providers;
-//   3. validate the complete runtime graph;
-//   4. freeze the provider registry.
+//  1. register HTTP modules;
+//  2. register search/fetch adapters and descriptor-owned providers;
+//  3. validate the complete runtime graph;
+//  4. freeze the provider registry.
 //
 // Required dependencies are never completed after this function returns.
 func registerCapabilities(reg *module.Registry, provReg *providers.Registry, deps CapabilityDeps) error {

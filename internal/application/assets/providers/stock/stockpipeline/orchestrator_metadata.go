@@ -33,7 +33,7 @@ type StockRunMetadata struct {
 	Subject  string   `json:"subject,omitempty"`
 	Entities []string `json:"entities,omitempty"`
 
-	IndexingStatus          string `json:"indexing_status"`
+	IndexingStatus           string `json:"indexing_status"`
 	TimestampDriveFolderLink string `json:"timestamp_drive_folder_link,omitempty"`
 	TimestampFolderID        string `json:"timestamp_folder_id,omitempty"`
 }
@@ -42,27 +42,27 @@ const IndexingStatusPending = "INDEXING_PENDING"
 
 // ChunkMetadataEntry is the per-chunk projection embedded in metadata.json.
 type ChunkMetadataEntry struct {
-	Index            int     `json:"index"`
-	ArtifactID       string  `json:"artifact_id"`
-	DriveFileID      string  `json:"drive_file_id"`
-	DriveWebViewLink string  `json:"drive_web_view_link,omitempty"`
-	SourceURL        string  `json:"source_url,omitempty"`
-	SourceProvider   string  `json:"source_provider,omitempty"`
-	SourceVideoID    string  `json:"source_video_id,omitempty"`
-	TotalChunks      int     `json:"total_chunks,omitempty"`
-	StartSec         float64 `json:"start_sec,omitempty"`
-	EndSec           float64 `json:"end_sec,omitempty"`
-	Title            string  `json:"title,omitempty"`
-	Description      string  `json:"description,omitempty"`
-	Round            int      `json:"round,omitempty"`
-	Tags             []string `json:"tags,omitempty"`
-	Category         string   `json:"category,omitempty"`
-	Slug             string   `json:"slug,omitempty"`
-	SHA256           string   `json:"sha256"`
-	SizeBytes        int64    `json:"size_bytes"`
-	LocalPath        string   `json:"local_path,omitempty"`
-	TimestampDriveFolderLink string `json:"timestamp_drive_folder_link,omitempty"`
-	TimestampFolderID        string `json:"timestamp_folder_id,omitempty"`
+	Index                    int      `json:"index"`
+	ArtifactID               string   `json:"artifact_id"`
+	DriveFileID              string   `json:"drive_file_id"`
+	DriveWebViewLink         string   `json:"drive_web_view_link,omitempty"`
+	SourceURL                string   `json:"source_url,omitempty"`
+	SourceProvider           string   `json:"source_provider,omitempty"`
+	SourceVideoID            string   `json:"source_video_id,omitempty"`
+	TotalChunks              int      `json:"total_chunks,omitempty"`
+	StartSec                 float64  `json:"start_sec,omitempty"`
+	EndSec                   float64  `json:"end_sec,omitempty"`
+	Title                    string   `json:"title,omitempty"`
+	Description              string   `json:"description,omitempty"`
+	Round                    int      `json:"round,omitempty"`
+	Tags                     []string `json:"tags,omitempty"`
+	Category                 string   `json:"category,omitempty"`
+	Slug                     string   `json:"slug,omitempty"`
+	SHA256                   string   `json:"sha256"`
+	SizeBytes                int64    `json:"size_bytes"`
+	LocalPath                string   `json:"local_path,omitempty"`
+	TimestampDriveFolderLink string   `json:"timestamp_drive_folder_link,omitempty"`
+	TimestampFolderID        string   `json:"timestamp_folder_id,omitempty"`
 }
 
 func buildStockRunMetadata(in *RunInput, chunks []ChunkState, runFingerprint string) StockRunMetadata {
