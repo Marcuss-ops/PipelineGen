@@ -21,11 +21,11 @@ const (
 )
 
 type debtEntry struct {
-	ID               string
-	Status           string
-	OwnerCapability  string
-	EvidenceFilename string
-	TrackingIssue    string
+	ID                string
+	Status            string
+	OwnerCapability   string
+	EvidenceFilename  string
+	TrackingIssue     string
 	ImplementationRef string
 }
 

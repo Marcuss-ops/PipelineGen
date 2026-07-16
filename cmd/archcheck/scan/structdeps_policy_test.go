@@ -8,7 +8,7 @@ import (
 
 func TestStructDepsThresholdConsumesClipIngestPolicy(t *testing.T) {
 	pol := &policy.Policy{
-		MaxStructDeps:                  8,
+		MaxStructDeps:               8,
 		MaxClipIngestPipelineFields: 9,
 	}
 	if got := structDepsThreshold(pol, clipIngestPipelineDepsRelPath, "ClipIngestPipelineDeps"); got != 9 {
