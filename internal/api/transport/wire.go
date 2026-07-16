@@ -56,13 +56,19 @@ var knownCapabilities = []struct {
 	// prefix string is owned by this list; the assets aggregate
 	// prefix `/media` is owned by wire_assets.go; both lock together.
 	{name: "voiceover", prefix: "/api/media/voiceover"},
-	{name: "youtube", prefix: "/api/youtube"},
+	// youtube (legacy YouTube clip handler) mounts under /api/clips/*
+	// (see internal/api/assets/youtube/youtube_handlers.go).
+	{name: "youtube", prefix: "/api/clips"},
 	{name: "register", prefix: "/api/register"},
 	{name: "storage", prefix: "/api/storage"},
 	{name: "mediasearch", prefix: "/internal/v1/media"},
 	{name: "qdrant_health", prefix: "/qdrant/"},
 	{name: "admin", prefix: "/api/drive"},
-	{name: "clips", prefix: "/api/clips"},
+	// clips (canonical clips capability) mounts under /api/media/clips/*
+	// via the assets module (see internal/app/wire_assets.go and
+	// internal/api/assets/clips/module.go). This includes the new
+	// POST /api/media/clips/ingest/ai-stock endpoint.
+	{name: "clips", prefix: "/api/media/clips"},
 	// script mounts under /api/script/* (ScriptFlow module, prefix
 	// "/script" beneath routes.go's `api := engine.Group("/api")`).
 	{name: "script", prefix: "/api/script"},

@@ -38,6 +38,12 @@ func runGenAPIDocs(args []string) error {
 		Storage: config.StorageConfig{
 			DataDir: "/tmp/test-data",
 		},
+		Multilingual: config.MultilingualConfig{
+			SourceLanguage: "en",
+		},
+		External: config.ExternalConfig{
+			ArtlistScraperServerURL: "http://localhost:0",
+		},
 	}
 
 	appDeps, err := app.WireServices(cfg, log, "test")
@@ -147,6 +153,9 @@ var routeDescriptions = map[string]string{
 	"POST /api/clips/search":     "Search and rank YouTube videos by topic (POST variant)",
 	"GET /api/clips/stats":       "Get clips statistics",
 	"GET /api/clips/diagnostics": "Clips diagnostics",
+
+	// ── Media / Clips ─────────────────────────────────────────
+	"POST /api/media/clips/ingest/ai-stock": "Ingest an AI-generated stock clip from visual analysis + Drive video",
 
 	// ── Images ────────────────────────────────────────────────
 	"GET /api/images/search":              "Search images by territory",
