@@ -11,6 +11,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/deletion"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/duplicates"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clips/aistock"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	search "github.com/Marcuss-ops/PipelineGen/internal/application/search"
@@ -86,6 +87,16 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 		return nil, nil, fmt.Errorf("clips: upload.NewUseCase: %w", err)
 	}
 
+	aiStockUC, err := aistock.NewUseCase(aistock.UseCaseDeps{
+		DriveReader: newAistockDriveReaderAdapter(params.DriveUploader),
+		Artifact:    NewArtifactServiceAdapter(params.Deps.Core.Services.ArtifactService),
+		Dispatcher:  clipsDispatcherPort,
+		Log:         params.Log,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("clips: aistock.NewUseCase: %w", err)
+	}
+
 	reuploadFolderRoots := map[string]appclips.ReuploadFolderRoot{
 		"clips":   {RootID: params.Cfg.Drive.ClipsFolder(), PathMarker: params.Cfg.Storage.YoutubeClipsPath()},
 		"youtube": {RootID: params.Cfg.Drive.ClipsFolder(), PathMarker: params.Cfg.Storage.YoutubeClipsPath()},
@@ -155,6 +166,7 @@ func buildClipsBundle(params buildClipsParams) (*clipsapi.ClipsModule, appclips.
 				ClipsRepo:    params.Deps.Core.Repositories.ClipsRepo,
 				EnrichUC:     enrichUC,
 				UploadUC:     uploadUC,
+				AIStockUC:    aiStockUC,
 				Log:          params.Log,
 			},
 			Operations: clipsapi.OpsDeps{

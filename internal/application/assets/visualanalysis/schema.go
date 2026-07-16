@@ -7,12 +7,11 @@ package visualanalysis
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"path"
-	"regexp"
 	"strings"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/pkg/urlutil"
 )
 
 const SchemaVersion = "ai_stock_visual_analysis.v1"
@@ -21,6 +20,7 @@ type Document struct {
 	SchemaVersion    string          `json:"schema_version"`
 	Asset            AssetInput      `json:"asset"`
 	Visual           VisualInput     `json:"visual_analysis"`
+	SearchText       string          `json:"search_text"`
 	TimedEvents      []EventInput    `json:"timed_events"`
 	RecommendedClips []ClipInput     `json:"recommended_clips"`
 	SoundCues        []SoundCueInput `json:"sound_cues"`
@@ -59,6 +59,8 @@ type EventInput struct {
 	EventType  string   `json:"event_type"`
 	ActionEN   string   `json:"action_en"`
 	ActionIT   string   `json:"action_it"`
+	EventEN    string   `json:"event_en"`
+	EventIT    string   `json:"event_it"`
 	Subjects   []string `json:"subjects"`
 	Confidence float64  `json:"confidence"`
 }
@@ -74,12 +76,15 @@ type ClipInput struct {
 type SoundCueInput struct {
 	EventSequenceNo     int     `json:"event_sequence_no"`
 	TriggerMs           int64   `json:"trigger_ms"`
+	StartMs             int64   `json:"start_ms"`
 	EndMs               int64   `json:"end_ms"`
 	SoundIntent         string  `json:"sound_intent"`
 	SoundType           string  `json:"sound_type"`
 	Intensity           float64 `json:"intensity"`
 	Policy              string  `json:"policy"`
 	PreserveNativeAudio bool    `json:"preserve_native_audio"`
+	SuggestionIT        string  `json:"suggestion_it"`
+	SuggestionEN        string  `json:"suggestion_en"`
 }
 
 func Parse(data []byte) (Document, error) {
@@ -97,7 +102,10 @@ func (d Document) Validate() error {
 	if d.SchemaVersion != SchemaVersion {
 		return fmt.Errorf("visual analysis: unsupported schema_version %q", d.SchemaVersion)
 	}
-	if d.Asset.ProposedAssetID == "" || d.Asset.Source != string(asset.SourceAIGenerated) || d.Asset.AssetRole != asset.AssetRoleStock || d.Asset.MediaType != "video" {
+	if d.Asset.ProposedAssetID == "" {
+		return fmt.Errorf("visual analysis: proposed_asset_id is required")
+	}
+	if d.Asset.Source != string(asset.SourceAIGenerated) || d.Asset.AssetRole != asset.AssetRoleStock || d.Asset.MediaType != "video" {
 		return fmt.Errorf("visual analysis: invalid AI stock identity")
 	}
 	if d.Asset.DurationMs <= 0 || d.Asset.Width <= 0 || d.Asset.Height <= 0 || d.Asset.FPS <= 0 {
@@ -111,8 +119,17 @@ func (d Document) Validate() error {
 	}
 	last := int64(-1)
 	for i, e := range d.TimedEvents {
-		if e.SequenceNo != i || e.StartMs < 0 || e.EndMs <= e.StartMs || e.EndMs > d.Asset.DurationMs || e.StartMs < last || e.ActionEN == "" {
+		actionEN := e.ActionEN
+		if actionEN == "" {
+			actionEN = e.EventEN
+		}
+		if e.StartMs < 0 || e.EndMs <= e.StartMs || e.EndMs > d.Asset.DurationMs || e.StartMs < last || actionEN == "" {
 			return fmt.Errorf("visual analysis: invalid timed_events[%d]", i)
+		}
+		// SequenceNo is optional; if provided it must match the position,
+		// otherwise we allow the implicit ordering from the array.
+		if e.SequenceNo != 0 && e.SequenceNo != i {
+			return fmt.Errorf("visual analysis: invalid timed_events[%d] sequence_no", i)
 		}
 		last = e.EndMs
 	}
@@ -127,7 +144,11 @@ func (d Document) Validate() error {
 func (d Document) VisualAnalysis() asset.VisualAnalysis {
 	events := make([]asset.VisualEvent, len(d.TimedEvents))
 	for i, e := range d.TimedEvents {
-		events[i] = asset.VisualEvent{StartMs: e.StartMs, EndMs: e.EndMs, Text: e.ActionEN}
+		text := e.ActionEN
+		if text == "" {
+			text = e.EventEN
+		}
+		events[i] = asset.VisualEvent{StartMs: e.StartMs, EndMs: e.EndMs, Text: text}
 	}
 	return asset.VisualAnalysis{Summary: d.Visual.SummaryEN, Events: events}
 }
@@ -136,20 +157,15 @@ func (d Document) Metadata() asset.AIStockMetadata {
 	return asset.AIStockMetadata{AssetRole: d.Asset.AssetRole, NormalizedGroup: d.Asset.NormalizedGroup, FolderPath: d.Asset.FolderPath, VisualSummary: d.Visual.SummaryEN, Subjects: d.Visual.Subjects, Actions: d.Visual.Actions, HasDialogue: d.Asset.HasDialogue, HasNativeAudio: d.Asset.HasAudio, AudioProfile: asset.AudioProfile(d.Asset.AudioProfile)}
 }
 
-var driveIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{10,}$`)
-
 func DriveFileID(ref string) (string, error) {
-	u, err := url.Parse(strings.TrimSpace(ref))
+	id, err := urlutil.FileIDFromDriveLink(ref)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("visual analysis: %w", err)
 	}
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	for i := range parts {
-		if parts[i] == "d" && i+1 < len(parts) && driveIDPattern.MatchString(parts[i+1]) {
-			return parts[i+1], nil
-		}
+	if id == "" {
+		return "", fmt.Errorf("visual analysis: no Drive file id in %q", ref)
 	}
-	return "", fmt.Errorf("visual analysis: no Drive file id in %q", ref)
+	return id, nil
 }
 func FolderCategory(folderPath string) string {
 	parts := strings.Split(strings.Trim(path.Clean(folderPath), "/"), "/")
