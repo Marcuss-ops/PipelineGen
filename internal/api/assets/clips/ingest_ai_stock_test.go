@@ -36,9 +36,14 @@ func (f *handlerFakeDriveReader) DownloadFile(_ context.Context, _ string) (io.R
 	return f.body, f.ct, nil
 }
 
-type handlerFakeArtifactService struct{}
+type handlerFakeArtifactService struct {
+	err error
+}
 
 func (f *handlerFakeArtifactService) CreateAndVerify(_ context.Context, in appupload.ArtifactCreateInput) (*appupload.ArtifactRef, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	return &appupload.ArtifactRef{ID: "art-1", SHA256: "sha256-abc", SizeBytes: 1234}, nil
 }
 
@@ -148,6 +153,49 @@ func TestCreateAIStockClip_InvalidBody_400(t *testing.T) {
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreateAIStockClip_ExecutionError_500(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	drive := &handlerFakeDriveReader{
+		meta: &aistock.DriveFileMeta{Name: "underwater.mp4"},
+		body: io.NopCloser(strings.NewReader("fake video bytes")),
+		ct:   "video/mp4",
+	}
+	artifact := &handlerFakeArtifactService{}
+	dispatcher := &handlerFakeDispatcher{}
+	uc, err := aistock.NewUseCase(aistock.UseCaseDeps{
+		DriveReader: drive,
+		Artifact:    artifact,
+		Dispatcher:  dispatcher,
+		Log:         zap.NewNop(),
+	})
+	require.NoError(t, err)
+
+	// Force artifact staging to fail, which propagates as a 500.
+	artifact.err = assert.AnError
+
+	h := NewHandler(Deps{
+		Ingest: IngestDeps{
+			Dispatcher: dispatcher,
+			AIStockUC:  uc,
+			Log:        zap.NewNop(),
+		},
+	}, nil)
+
+	r := gin.New()
+	r.POST("/api/clips/ingest/ai-stock", h.CreateAIStockClip)
+
+	body, _ := json.Marshal(map[string]any{
+		"document":  json.RawMessage(validAIStockDocument()),
+		"drive_url": "https://drive.google.com/file/d/1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ/view",
+	})
+	req := httptest.NewRequest("POST", "/api/clips/ingest/ai-stock", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestCreateAIStockClip_HappyPath_200(t *testing.T) {
