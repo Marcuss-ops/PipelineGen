@@ -32,6 +32,14 @@ func (h *Handler) UploadVideoClip(c *gin.Context) {
 	h.ingest.UploadVideoClip(c)
 }
 
+func (h *Handler) CreateAIStockClip(c *gin.Context) {
+	if h.ingest == nil {
+		apiutil.Error(c, 503, "ingest sub-handler not wired")
+		return
+	}
+	h.ingest.CreateAIStockClip(c)
+}
+
 func (h *Handler) VerifyClip(c *gin.Context) {
 	if h.ops == nil {
 		apiutil.Error(c, 503, "ops sub-handler not wired")

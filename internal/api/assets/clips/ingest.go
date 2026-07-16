@@ -32,6 +32,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/artifacts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
 	appclips "github.com/Marcuss-ops/PipelineGen/internal/application/clips"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/clips/aistock"
 	appupload "github.com/Marcuss-ops/PipelineGen/internal/application/clips/upload"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/assets"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -69,6 +70,7 @@ type IngestDeps struct {
 	ClipsRepo    *assets.ClipsRepository
 	EnrichUC     *appclips.EnrichUseCase
 	UploadUC     *appupload.UseCase
+	AIStockUC    *aistock.UseCase
 	Log          *zap.Logger
 }
 
@@ -84,6 +86,7 @@ type IngestHandler struct {
 	clipsRepo    *assets.ClipsRepository
 	enrichUC     *appclips.EnrichUseCase
 	uploadUC     *appupload.UseCase
+	aiStockUC    *aistock.UseCase
 	log          *zap.Logger
 }
 
@@ -99,6 +102,7 @@ func NewIngestHandler(d IngestDeps) *IngestHandler {
 		clipsRepo:    d.ClipsRepo,
 		enrichUC:     d.EnrichUC,
 		uploadUC:     d.UploadUC,
+		aiStockUC:    d.AIStockUC,
 		log:          d.Log,
 	}
 }
@@ -114,9 +118,7 @@ func (ih *IngestHandler) repoForSource(source string) *assets.ClipsRepository {
 		return nil
 	}
 	return ih.clipsRepo
-}
-
-// RegisterRoutes installs the 3 Ingest routes on the supplied gin
+} // RegisterRoutes installs the ingest routes on the supplied gin
 // router group. All routes are writes (idem-protected per PR8).
 //
 // Route table:
@@ -124,10 +126,13 @@ func (ih *IngestHandler) repoForSource(source string) *assets.ClipsRepository {
 //	POST  /:source/clips           -> CreateClip      (write+idem)
 //	PATCH /:source/clips/:id       -> UpdateClip      (write+idem)
 //	POST  /upload-video            -> UploadVideoClip (write+idem)
+//	POST  /ingest/ai-stock         -> CreateAIStockClip (write+idem)
 func (ih *IngestHandler) RegisterRoutes(r *gin.RouterGroup, idem gin.HandlerFunc) {
+
 	r.POST("/:source/clips", idem, ih.CreateClip)
 	r.PATCH("/:source/clips/:id", idem, ih.UpdateClip)
 	r.POST("/upload-video", idem, ih.UploadVideoClip)
+	r.POST("/ingest/ai-stock", idem, ih.CreateAIStockClip)
 }
 
 // ──────────────────────────────────────────────────────────────────────
