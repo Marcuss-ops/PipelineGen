@@ -217,6 +217,72 @@ func TestNewServerWithHealth_AIStockClipRoutesThroughAssetsModule(t *testing.T) 
 	require.Equal(t, "mock-ai-stock-01", resp["clip_id"])
 }
 
+func TestNewServerWithHealth_AssetsModuleReportsClipsCapabilityMounted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dataDir := t.TempDir()
+	downloadDir := filepath.Join(dataDir, "downloads")
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host:         "127.0.0.1",
+			Port:         0,
+			GinMode:      gin.TestMode,
+			ReadTimeout:  1,
+			WriteTimeout: 1,
+		},
+		Storage: config.StorageConfig{
+			DataDir: dataDir,
+		},
+		Security: config.SecurityConfig{
+			EnableAuth:       false,
+			RateLimitEnabled: false,
+		},
+		GoogleAccounting: config.GoogleAccountingConfig{
+			DownloadDir: downloadDir,
+		},
+	}
+
+	mockClips := api.NewRouteModule(
+		"clips",
+		func() bool { return true },
+		"/clips",
+		&mockAIStockClipsHandler{},
+		zap.NewNop(),
+	)
+
+	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
+		Clips: mockClips,
+	}, zap.NewNop())
+
+	registry := api.NewRegistry()
+	require.NoError(t, registry.Register(api.NewRouteModule(
+		"assets",
+		func() bool { return true },
+		"/media",
+		assetsMod,
+		zap.NewNop(),
+	)))
+
+	server := api.NewServerWithHealth(api.ServerDeps{
+		Config:   cfg,
+		Registry: registry,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/capabilities", nil)
+	rec := httptest.NewRecorder()
+
+	server.GetRouter().ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+
+	caps, ok := resp["capabilities"].(map[string]any)
+	require.True(t, ok, "capabilities must be present in response")
+	require.Equal(t, "MOUNTED", caps["clips"], "clips capability must be reported as MOUNTED")
+}
+
 func TestNewServerWithHealth_YouTubeClipsProcessRoutesThroughRealRouter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
