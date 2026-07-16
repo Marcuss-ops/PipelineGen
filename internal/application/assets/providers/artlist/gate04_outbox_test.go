@@ -164,12 +164,20 @@ func TestGate04_OutboxEventEmittedPerClip(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       stubDisp,
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: stubDisp,
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -320,12 +328,20 @@ func TestGate04_OutboxEventPayloadContainsSourceArtlist(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       stubDisp,
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: stubDisp,
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -425,11 +441,17 @@ func TestGate04_OutboxEventNotEmittedWhenNoClips(t *testing.T) {
 			ScraperSearcher: &emptySearcher{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       stubDisp,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: stubDisp,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)

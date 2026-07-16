@@ -155,7 +155,15 @@ func TestSolarPanelSearch(t *testing.T) {
 			Publisher:     &stubPublisherForArtlist{},
 			RunRepository: &stubRunRepoForArtlist{},
 		},
-		ServiceDependencies: ServiceDependencies{Cfg: cfg, Log: logger, Dispatcher: &stubDispatcherForArtlist{}},
+		ServiceDependencies: ServiceDependencies{
+			Infra: ArtlistInfraDeps{
+				Cfg: cfg,
+				Log: logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: &stubDispatcherForArtlist{},
+			},
+		},
 	})
 	require.NoError(t, err)
 	defer svc.Close()

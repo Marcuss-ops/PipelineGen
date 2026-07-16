@@ -174,12 +174,20 @@ func TestGate02_DriveFieldsPopulated(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -293,12 +301,20 @@ func TestGate09_DriveFailureFailClosed(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -413,12 +429,20 @@ func TestGate09_ArtlistFullRun_PartialDriveFailure(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -559,12 +583,20 @@ func TestGate05_OutboxDispatchContract(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -699,12 +731,20 @@ func TestGate05_OutboxNoDispatchWithoutDriveFields(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)

@@ -115,11 +115,17 @@ func TestGate11_ScraperFailureReturnsClearError(t *testing.T) {
 			ScraperSearcher: &failingSearcher{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -199,11 +205,17 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 				ScraperSearcher: &failingSearcher{},
 			},
 			ServiceDependencies: ServiceDependencies{
-				MainDB:           db,
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-				Cfg:              cfg,
-				Log:              logger,
-				Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+				Infra: ArtlistInfraDeps{
+					MainDB: db,
+					Cfg:    cfg,
+					Log:    logger,
+				},
+				Ports: ArtlistPortDeps{
+					Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+				},
+				Finalizer: ArtlistFinalizerDeps{
+					AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -245,11 +257,17 @@ func TestGate11_ScraperFailureDistinctFromEmptyResults(t *testing.T) {
 				ScraperSearcher: &emptySearcher{},
 			},
 			ServiceDependencies: ServiceDependencies{
-				MainDB:           db,
-				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-				Cfg:              cfg,
-				Log:              logger,
-				Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+				Infra: ArtlistInfraDeps{
+					MainDB: db,
+					Cfg:    cfg,
+					Log:    logger,
+				},
+				Ports: ArtlistPortDeps{
+					Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+				},
+				Finalizer: ArtlistFinalizerDeps{
+					AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -299,11 +317,17 @@ func TestGate11_ScraperFailureNoDispatch(t *testing.T) {
 			ScraperSearcher: &failingSearcher{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)

@@ -133,12 +133,20 @@ func TestGate10_QdrantFailureIndexStateNotIndexed(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       failingDisp,
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: failingDisp,
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -258,12 +266,20 @@ func TestGate10_QdrantFailureProcessedCountUnaffected(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       failingDisp,
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: failingDisp,
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -377,12 +393,20 @@ func TestGate10_QdrantFailureDoesNotPreventArtlistRun(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       failingDisp,
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: failingDisp,
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)

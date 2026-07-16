@@ -125,12 +125,20 @@ func TestGate08_SearchRoundTripSameTerm(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       disp,
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: disp,
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -266,12 +274,20 @@ func TestGate08_SearchRoundTripSourceAndMediaType(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       disp,
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: disp,
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -373,12 +389,20 @@ func TestGate08_SearchRoundTripSearchableAfterPipeline(t *testing.T) {
 			RunRepository: &stubRunRepoForArtlist{},
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       disp,
-			MediaProcessor:   processor,
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: disp,
+			},
+			Domain: ArtlistDomainDeps{
+				MediaProcessor: processor,
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)

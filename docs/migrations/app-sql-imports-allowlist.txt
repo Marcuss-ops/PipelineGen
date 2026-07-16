@@ -33,7 +33,7 @@
 # this entry would require replacing the canonical TxOutboxEnqueuer port
 # shape with a wrapper DTO — a regression of the tx-atomicity contract
 # PR-VO-A2 (June 2026) shipped. Exempt.
-internal/application/voiceover/ports.go  # voiceover TxOutboxEnqueuer typed-port signature (canonical Pattern 0); owner: agent/Codebuff; deadline: never-canonical
+
 
 # ── 2. Tier-A: lowest-risk production migrations (deadline 2026-07-15) ───
 # These files have a narrow SQL surface (one query helper at most) and

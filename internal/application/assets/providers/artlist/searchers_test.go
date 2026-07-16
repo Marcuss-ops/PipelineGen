@@ -97,11 +97,17 @@ func TestService_SearchersAccessor_ReturnsInjectedSearchers(t *testing.T) {
 			PexelsSearcher:  pexelsSearcher,
 		},
 		ServiceDependencies: ServiceDependencies{
-			MainDB:           db,
-			AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
-			Cfg:              cfg,
-			Log:              logger,
-			Dispatcher:       &stubDispatcherForArtlist{repo: artlistRepo},
+			Infra: ArtlistInfraDeps{
+				MainDB: db,
+				Cfg:    cfg,
+				Log:    logger,
+			},
+			Ports: ArtlistPortDeps{
+				Dispatcher: &stubDispatcherForArtlist{repo: artlistRepo},
+			},
+			Finalizer: ArtlistFinalizerDeps{
+				AssetFinalizerTx: assetfinalizer.NewAssetTxFinalizer(logger),
+			},
 		},
 	})
 	require.NoError(t, err)
