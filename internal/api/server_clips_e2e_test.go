@@ -445,6 +445,55 @@ func TestNewServerWithHealth_ReadyWireReportsClipsMounted(t *testing.T) {
 	require.Equal(t, "MOUNTED", wire["clips"], "clips must be reported as MOUNTED in /ready wire")
 }
 
+func TestNewServerWithHealth_NoClipsModuleReportsClipsCapabilityNotMounted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dataDir := t.TempDir()
+	downloadDir := filepath.Join(dataDir, "downloads")
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host:         "127.0.0.1",
+			Port:         0,
+			GinMode:      gin.TestMode,
+			ReadTimeout:  1,
+			WriteTimeout: 1,
+		},
+		Storage: config.StorageConfig{
+			DataDir: dataDir,
+		},
+		Security: config.SecurityConfig{
+			EnableAuth:       false,
+			RateLimitEnabled: false,
+		},
+		GoogleAccounting: config.GoogleAccountingConfig{
+			DownloadDir: downloadDir,
+		},
+	}
+
+	registry := api.NewRegistry()
+
+	server := api.NewServerWithHealth(api.ServerDeps{
+		Config:   cfg,
+		Registry: registry,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/capabilities", nil)
+	rec := httptest.NewRecorder()
+
+	server.GetRouter().ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.True(t, resp["ok"].(bool), "capabilities response must report ok=true")
+
+	caps, ok := resp["capabilities"].(map[string]any)
+	require.True(t, ok, "capabilities must be present in response")
+	require.Equal(t, "NOT_MOUNTED", caps["clips"], "clips capability must be reported as NOT_MOUNTED when no clips module is registered")
+	require.Equal(t, "NOT_MOUNTED", caps["youtube"], "youtube capability must be reported as NOT_MOUNTED when no legacy /api/clips module is registered")
+}
+
 func TestNewServerWithHealth_YouTubeClipsProcessRoutesThroughRealRouter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
