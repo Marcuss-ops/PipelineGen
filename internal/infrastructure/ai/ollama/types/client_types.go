@@ -11,10 +11,15 @@ type Message struct {
 
 // ChatRequest richiesta chat
 type ChatRequest struct {
-	Model    string         `json:"model"`
-	Messages []Message      `json:"messages"`
-	Stream   bool           `json:"stream"`
-	Options  map[string]any `json:"options,omitempty"`
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+	Stream   bool      `json:"stream"`
+	// Think disables Gemma's reasoning channel for production text
+	// generation. Without this explicit false, Gemma can consume the
+	// entire num_predict budget in message.thinking and return an empty
+	// message.content.
+	Think   *bool          `json:"think,omitempty"`
+	Options map[string]any `json:"options,omitempty"`
 	// Format forces Ollama's native JSON-mode at the wire-format
 	// layer (top-level body field, NOT inside Options). P0.2
 	// (June 2026): pass through from TextGenerationRequest.Format

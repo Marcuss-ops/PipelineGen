@@ -311,6 +311,16 @@ func (h *GenerateJobHandler) handleBatchFanout(
 		"total_items":          fanout.TotalItems,
 		"child_job_ids":        fanout.ChildJobIDs,
 		"failed_enqueue_count": fanout.FailedEnqueueCount,
+		// The batch parent owns no local artifact files; its children do.
+		// Emit the canonical empty manifest so the artifact-producing worker
+		// path can complete the waiting parent and let the aggregator finalize
+		// it after all children terminate.
+		job.ManifestKey: &job.ArtifactManifest{
+			SchemaVersion: job.SchemaVersionArtifactManifestV1,
+			WorkflowID:    j.ID,
+			JobID:         j.ID,
+			Artifacts:     []job.Artifact{},
+		},
 	}
 
 	if h.log != nil {

@@ -143,6 +143,8 @@ func (c *Client) doChatRequest(ctx context.Context, model string, messages []typ
 		// ignored (or treated as a model param).
 		Format: format,
 	}
+	think := false
+	req.Think = &think
 
 	body, err := json.Marshal(req)
 	if err != nil {
