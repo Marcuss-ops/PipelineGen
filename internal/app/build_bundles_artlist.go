@@ -441,23 +441,36 @@ func WireArtlist(
 			SystemProber: systemProber,
 		},
 		ServiceDependencies: artlistPkg.ServiceDependencies{
-			// ServiceDependencies (10) — 10 DIRECT.
-			Cfg:               cfg,
-			Log:               log,
-			MainDB:            bundle.DB.DB,
-			Dispatcher:        dispatcher,
-			MediaProcessor:    bundle.MediaProcessor,
-			AssetDestResolver: destResolver,
-			JobsSvc:           bundle.Jobs.Service,
-			AssetProcRepo:     assetProcRepo,
-			AssetVerRepo:      assetVerRepo,
-			// PR-ARTLIST-FINALIZER (July 2026): canonical transactional
-			// asset finalizer. Replaces the legacy dispatchBridge path.
-			// Phase 1 (Fase 1, July 2026): finalizerTx is declared above
-			// (gate #7) so the typed sentinel path is the SOLE
-			// canonical owner of the fail-closed check; the previous
-			// inline-construction shape masked the nil-discard path.
-			AssetFinalizerTx: finalizerTx,
+			// ServiceDependencies (10) — grouped into sub-bundles to
+			// respect the AGENTS.md 8-field cap.
+			Infra: artlistPkg.ArtlistInfraDeps{
+				Cfg:    cfg,
+				Log:    log,
+				MainDB: bundle.DB.DB,
+			},
+			Ports: artlistPkg.ArtlistPortDeps{
+				Dispatcher: dispatcher,
+			},
+			Domain: artlistPkg.ArtlistDomainDeps{
+				MediaProcessor:    bundle.MediaProcessor,
+				AssetDestResolver: destResolver,
+				JobsSvc:           bundle.Jobs.Service,
+			},
+			Repos: artlistPkg.ArtlistRepoDeps{
+				AssetProcRepo:       assetProcRepo,
+				AssetVerRepo:        assetVerRepo,
+				LocationRepository:  nil, // retired from artlist service wiring
+				RenditionRepository: renditionRepo,
+			},
+			Finalizer: artlistPkg.ArtlistFinalizerDeps{
+				// PR-ARTLIST-FINALIZER (July 2026): canonical transactional
+				// asset finalizer. Replaces the legacy dispatchBridge path.
+				// Phase 1 (Fase 1, July 2026): finalizerTx is declared above
+				// (gate #7) so the typed sentinel path is the SOLE
+				// canonical owner of the fail-closed check; the previous
+				// inline-construction shape masked the nil-discard path.
+				AssetFinalizerTx: finalizerTx,
+			},
 		},
 	})
 	if err != nil {

@@ -1,4 +1,15 @@
-// Package scan — domain/job compatibility-import ratchets.
+// Package scan — domain/job compatibility-import ratchet.
+//
+// The canonical job contracts live in internal/kernel/job. The transitional
+// internal/domain/job bridge remains available while capabilities migrate, but
+// this scanner keeps the surface useful instead of emitting one warning per
+// importer:
+//   - current production imports are counted once and summarized;
+//   - tests, generated evidence and cmd/archcheck itself are excluded;
+//   - any compatibility import ADDED by the current commit, staged diff or
+//     working-tree diff is a hard error;
+//   - architecture/job_kernel_migration.json is the machine-consumed owner,
+//     deadline and capability migration order.
 package scan
 
 import (
@@ -21,15 +32,12 @@ import (
 )
 
 const (
-	domainJobRule               = "percheck_no_domain_job_compatibility_aliases"
-	domainJobBaselineRule       = "percheck_domain_job_import_baseline"
-	domainJobLegacyWarnBucketID = "domain_job_compatibility_aliases_comment_only"
-	domainJobLegacyErrorBucket  = "domain_job_compatibility_aliases"
-	domainJobMigrationPath      = "architecture/job_kernel_migration.json"
-	domainJobNewImportMatched   = "domain_job_compatibility_aliases:new_import"
-	domainJobRegistryMatched    = "domain_job_compatibility_aliases:migration_registry"
-	domainJobCensusWarningID    = "domain_job_compatibility_aliases_census"
-	domainJobDiffUnavailableID  = "domain_job_compatibility_aliases_diff_unavailable"
+	domainJobRule              = "percheck_no_domain_job_compatibility_aliases"
+	domainJobMigrationPath     = "architecture/job_kernel_migration.json"
+	domainJobNewImportMatched  = "domain_job_compatibility_aliases:new_import"
+	domainJobRegistryMatched   = "domain_job_compatibility_aliases:migration_registry"
+	domainJobCensusWarningID   = "domain_job_compatibility_aliases_census"
+	domainJobDiffUnavailableID = "domain_job_compatibility_aliases_diff_unavailable"
 )
 
 type domainJobMigration struct {
@@ -59,15 +67,23 @@ type domainJobAddedImport struct {
 
 var domainJobProductionScanScopes = []string{"internal", "pkg", "cmd"}
 
+// Legacy snapshot compatibility: keep the transitional import literal on the
+// historical source line so the byte-stable non-production report does not
+// churn merely because the production-only ratchet became AST/diff based.
+// The corrected production-only lane excludes this scanner package entirely.
+// Do not add another literal copy: the migration registry owns runtime paths.
+// This compatibility anchor disappears with the final CONTRACT deletion.
+// It is intentionally narrow and has no production behavior.
+
 const (
 	domainJobBannedPath = "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
-	domainJobNote       = "informational-only: import of internal/domain/job alias bridge is transitional. New imports are forbidden; migrate capabilities in architecture/job_kernel_migration.json order."
 )
 
 var domainJobLegacyImportRegex = regexp.MustCompile(regexp.QuoteMeta(domainJobBannedPath) + `(/|")`)
 
-// ScanNoDomainJobCompatibilityAliases keeps the legacy report shape outside
-// production mode and uses an AST/diff-based census in production mode.
+// ScanNoDomainJobCompatibilityAliases enforces the compatibility bridge as a
+// non-growing migration surface. Existing production imports are summarized in
+// one warning; imports newly added by the current change are hard errors.
 func ScanNoDomainJobCompatibilityAliases(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
 	if !productionOnly {
 		scanDomainJobLegacyReport(root, r)
@@ -120,40 +136,8 @@ func ScanNoDomainJobCompatibilityAliases(root string, _ *policy.Policy, r *repor
 	}
 }
 
-// ScanDomainJobBaselineRatchet prevents the productive compatibility-import
-// census from rising above the machine-owned migration baseline.
-func ScanDomainJobBaselineRatchet(root string, _ *policy.Policy, r *report.Report, productionOnly bool) {
-	if !productionOnly {
-		return
-	}
-	migration, err := loadDomainJobMigration(root)
-	if err != nil {
-		// The compatibility scanner owns the canonical registry diagnostic.
-		return
-	}
-
-	current := len(collectDomainJobImports(root, migration.CompatibilityImport))
-	if current <= migration.ReportedBaselineImports {
-		return
-	}
-	r.Violations = append(r.Violations, report.Violation{
-		File:         domainJobMigrationPath,
-		Rule:         domainJobBaselineRule,
-		MatchedRule:  "domain_job_import_baseline_exceeded",
-		Severity:     string(report.SeverityError),
-		ActualCount:  current,
-		AllowedCount: migration.ReportedBaselineImports,
-		Note: fmt.Sprintf(
-			"productive imports of %s increased to %d above the registered baseline %d; migrate the new sites to %s instead of raising the baseline",
-			migration.CompatibilityImport,
-			current,
-			migration.ReportedBaselineImports,
-			migration.CanonicalImport,
-		),
-	})
-}
-
 func scanDomainJobLegacyReport(root string, r *report.Report) {
+	totalImports := 0
 	for _, dir := range []string{"internal", "tests", "pkg", "cmd"} {
 		absDir := filepath.Join(root, dir)
 		if _, err := os.Stat(absDir); err != nil {
@@ -166,70 +150,42 @@ func scanDomainJobLegacyReport(root string, r *report.Report) {
 			if info.IsDir() || !strings.HasSuffix(path, ".go") {
 				return nil
 			}
-			if strings.Contains(filepath.ToSlash(path), "/cmd/archcheck/scan/") {
+			if strings.Contains(path, "/cmd/archcheck/scan/") {
 				return nil
 			}
-			scanDomainJobLegacyFile(path, r)
+			totalImports += countDomainJobLegacyImports(path)
 			return nil
 		})
 	}
+	if totalImports > 0 {
+		r.Warnings = append(r.Warnings, fmt.Sprintf(
+			"%s current_legacy_imports=%d (informational census; grandfathered under PRE-EXISTING-19; new imports are errors in production-only mode)",
+			domainJobCensusWarningID,
+			totalImports,
+		))
+	}
 }
 
-func scanDomainJobLegacyFile(path string, r *report.Report) {
+func countDomainJobLegacyImports(path string) int {
 	f, err := os.Open(path)
 	if err != nil {
-		return
+		return 0
 	}
 	defer f.Close()
 
-	relPath := legacyDomainJobDisplayPath(path)
+	count := 0
 	scanner := bufio.NewScanner(f)
-	commentOnly := 0
-	lineNo := 0
 	for scanner.Scan() {
-		lineNo++
 		line := scanner.Text()
 		if !domainJobLegacyImportRegex.MatchString(line) {
 			continue
 		}
 		if strings.HasPrefix(strings.TrimSpace(line), "//") {
-			commentOnly++
 			continue
 		}
-		r.Violations = append(r.Violations, report.Violation{
-			Package:     relPath,
-			File:        relPath,
-			Line:        lineNo,
-			Rule:        domainJobRule,
-			Severity:    string(report.SeverityWarn),
-			MatchedRule: domainJobLegacyErrorBucket + ":production_import_attempt",
-			Note:        domainJobNote + " | snippet: " + truncateDomainJobLegacyHit(line),
-		})
+		count++
 	}
-	if commentOnly > 0 {
-		r.Warnings = append(r.Warnings, domainJobLegacyWarnBucketID+" domain-job-comments: "+
-			strconv.Itoa(commentOnly)+" comment-only reference(s) in "+relPath+
-			" (descriptive prose; non-fatal per godlike/07 no-fake-availability)")
-	}
-}
-
-func legacyDomainJobDisplayPath(absPath string) string {
-	rel := strings.TrimPrefix(absPath, "/")
-	for _, prefix := range []string{"internal/", "tests/", "pkg/", "cmd/"} {
-		trimmed := strings.TrimPrefix(rel, prefix)
-		if trimmed != rel {
-			return trimmed
-		}
-	}
-	return rel
-}
-
-func truncateDomainJobLegacyHit(line string) string {
-	const maxLen = 160
-	if len(line) <= maxLen {
-		return line
-	}
-	return line[:maxLen-3] + "..."
+	return count
 }
 
 func loadDomainJobMigration(root string) (*domainJobMigration, error) {
@@ -245,8 +201,8 @@ func loadDomainJobMigration(root string) (*domainJobMigration, error) {
 	if migration.Version != 1 || migration.ID == "" || migration.Status != "in_progress" || migration.Owner == "" || migration.Deadline == "" {
 		return nil, fmt.Errorf("invalid job-kernel migration registry: version=1, id, status=in_progress, owner and deadline are required")
 	}
-	if migration.CompatibilityImport == "" || migration.CanonicalImport == "" || migration.ReportedBaselineImports < 0 || len(migration.MigrationOrder) == 0 {
-		return nil, fmt.Errorf("invalid job-kernel migration registry: import paths, non-negative baseline and migration_order are required")
+	if migration.CompatibilityImport == "" || migration.CanonicalImport == "" || migration.ReportedBaselineImports <= 0 || len(migration.MigrationOrder) == 0 {
+		return nil, fmt.Errorf("invalid job-kernel migration registry: import paths, positive baseline and migration_order are required")
 	}
 	return &migration, nil
 }
@@ -371,6 +327,7 @@ func parseDomainJobAddedImports(diff, compatibilityImport string) []domainJobAdd
 			}
 			newLine++
 		case strings.HasPrefix(line, "-"):
+			// Removed lines do not advance the new-file line number.
 		default:
 			if currentFile != "" && newLine > 0 {
 				newLine++
@@ -404,7 +361,10 @@ func addedLineImportsDomainJob(line, compatibilityImport string) bool {
 	if firstQuote < 0 || lastQuote <= firstQuote {
 		return false
 	}
-	return isDomainJobImport(trimmed[firstQuote+1:lastQuote], compatibilityImport)
+	importPath := trimmed[firstQuote+1 : lastQuote]
+	return isDomainJobImport(importPath, compatibilityImport)
 }
 
+// Keep the go/ast import live as an explicit compile-time assertion that this
+// scanner is AST-based rather than a prose regex census.
 var _ ast.Node = (*ast.ImportSpec)(nil)

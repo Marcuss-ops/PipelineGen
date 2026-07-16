@@ -38,6 +38,8 @@ func BuildDomainBundle(ctx context.Context, cfg *config.Config, dbs *databases, 
 	if err != nil {
 		return nil, fmt.Errorf("compose domains (media): %w", err)
 	}
+	bundle.CueWriter = clipWriter
+	bundle.FolderPathWriter = clipWriter
 
 	// ── Assets domain: voiceover, books, ingest, images, lessons ──
 	if err := buildDomainAssetServices(buildDomainAssetServicesParams{

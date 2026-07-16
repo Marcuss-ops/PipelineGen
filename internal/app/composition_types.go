@@ -30,6 +30,7 @@ import (
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	voiceoverreconcile "github.com/Marcuss-ops/PipelineGen/internal/application/assets/reconciliation/voiceover"
 	assetsearch "github.com/Marcuss-ops/PipelineGen/internal/application/assets/search"
+	texttracks "github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/images/routing"
@@ -237,6 +238,8 @@ type AIBundle struct {
 
 // DomainBundle is everything media-specific that lives at the application layer.
 type DomainBundle struct {
+	CueWriter          texttracks.TimedCueWriter
+	FolderPathWriter   texttracks.FolderPathWriter
 	YoutubeClipService *youtube.Service
 
 	// SubtitleFetcher is the canonical YouTube subtitle-fetcher
