@@ -152,13 +152,13 @@ func evaluateQualityGate(
 	}
 	// Clip-primary generations may be translated or heavily paraphrased:
 	// lexical overlap is then a weak proxy even when every accepted clip is
-	// bound and the narrative has textual anchors. Keep a small floor so a
-	// completely unrelated script (coverage == 0) still fails closed, while
-	// the structural clip evidence remains the authoritative coverage check.
+	// bound and the narrative has textual anchors. In that case require an
+	// anchor (> 0) but do not impose an arbitrary lexical percentage; the
+	// structural clip evidence remains the authoritative coverage check.
 	if plan.GroundingPolicy == scriptpkg.GroundingPolicyClipsPrimary &&
 		q.ClipEvidenceCoverage >= 1.0 && q.SourceTextCoverage > 0 &&
 		q.SourceTextCoverage < minSourceTextCov {
-		minSourceTextCov = 0.05
+		minSourceTextCov = 0.0
 	}
 
 	var reasons []string
