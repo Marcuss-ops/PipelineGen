@@ -10,6 +10,8 @@ type DriveFileInfo struct {
 	ID             string
 	Name           string
 	MimeType       string
+	Size           int64
+	MD5Checksum    string
 	WebViewLink    string
 	WebContentLink string
 	Parents        []string
@@ -23,7 +25,7 @@ func (u *Uploader) ListFiles(ctx context.Context, parentID string) ([]DriveFileI
 	query := fmt.Sprintf("'%s' in parents and trashed=false", parentID)
 	list, err := u.Service.Files.List().
 		Q(query).
-		Fields("nextPageToken, files(id, name, mimeType, webViewLink, webContentLink, parents)").
+		Fields("nextPageToken, files(id, name, mimeType, size, md5Checksum, webViewLink, webContentLink, parents)").
 		PageSize(1000).
 		Context(ctx).
 		Do()
@@ -48,6 +50,8 @@ func (u *Uploader) ListFiles(ctx context.Context, parentID string) ([]DriveFileI
 			ID:             f.Id,
 			Name:           f.Name,
 			MimeType:       f.MimeType,
+			Size:           f.Size,
+			MD5Checksum:    f.Md5Checksum,
 			WebViewLink:    f.WebViewLink,
 			WebContentLink: f.WebContentLink,
 			Parents:        f.Parents,
@@ -64,7 +68,7 @@ func (u *Uploader) SearchFiles(ctx context.Context, query string) ([]DriveFileIn
 		return nil, fmt.Errorf("drive service not configured")
 	}
 	list, err := u.Service.Files.List().Q(query).
-		Fields("files(id, name, mimeType, webViewLink, webContentLink, parents)").
+		Fields("files(id, name, mimeType, size, md5Checksum, webViewLink, webContentLink, parents)").
 		Context(ctx).Do()
 	if err != nil {
 		return nil, err
@@ -86,6 +90,8 @@ func (u *Uploader) SearchFiles(ctx context.Context, query string) ([]DriveFileIn
 			ID:             f.Id,
 			Name:           f.Name,
 			MimeType:       f.MimeType,
+			Size:           f.Size,
+			MD5Checksum:    f.Md5Checksum,
 			WebViewLink:    f.WebViewLink,
 			WebContentLink: f.WebContentLink,
 			Parents:        f.Parents,

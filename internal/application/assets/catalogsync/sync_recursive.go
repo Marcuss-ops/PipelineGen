@@ -2,6 +2,9 @@ package catalogsync
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"path"
 	"strings"
 	"time"
@@ -164,6 +167,9 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *assets.ClipsRep
 		clip.SetDownloadLink(link)
 		clip.SetExternalURL(link)
 		clip.SetMetadataString("mime_type", child.MimeType)
+		if child.MimeType != folderMimeType {
+			clip.SetFileHash(remoteFileFingerprint(child))
+		}
 
 		if err := s.upsertPreservingExisting(ctx, repo, clip); err != nil {
 			s.log.Warn("failed to upsert clip", zap.String("id", child.ID), zap.Error(err))
@@ -199,6 +205,20 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *assets.ClipsRep
 	}
 
 	return requested, synced, failed, nil
+}
+
+// remoteFileFingerprint supplies the stable source fingerprint required by
+// the canonical supersede gate before a Drive asset is downloaded locally.
+// Google Drive's MD5 is the strongest available value; the metadata fallback
+// remains deterministic across retries and is explicitly not presented as a
+// content hash.
+func remoteFileFingerprint(file uploaddrive.DriveFileInfo) string {
+	if strings.TrimSpace(file.MD5Checksum) != "" {
+		return "drive-md5:" + strings.TrimSpace(file.MD5Checksum)
+	}
+	payload := file.ID + "\x00" + file.Name + "\x00" + file.MimeType + "\x00" + fmt.Sprintf("%d", file.Size)
+	sum := sha256.Sum256([]byte(payload))
+	return "drive-meta-sha256:" + hex.EncodeToString(sum[:])
 }
 
 // listChildren lists the direct children of a Drive folder. Kept in this file
