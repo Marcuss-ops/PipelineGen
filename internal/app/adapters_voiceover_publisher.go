@@ -113,17 +113,13 @@ func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.Voi
 	}
 
 	req := delivery.PublishRequest{
-		Destination: delivery.DestinationVoiceover,
-		LocalPath:   cmd.LocalPath,
-		Filename:    cmd.Filename,
-		AssetID:     cmd.ID,
-		// Canonical semantic routing (PR-VOICEOVER-DRIVE-DRIFT, 2026-08-08):
-		// Project + Language are the ONLY inputs to the Publisher's
-		// VoiceoverPath builder. cmd.FolderID is intentionally NOT
-		// read here — the legacy silent-fallback to
-		// req.RootFolderOverride has been RETIRED.
-		ProjectID: cmd.Project,
-		Language:  cmd.Language,
+		Destination:         delivery.DestinationVoiceover,
+		LocalPath:           cmd.LocalPath,
+		Filename:            cmd.Filename,
+		AssetID:             cmd.ID,
+		ProjectID:           cmd.Project,
+		Language:            cmd.Language,
+		DestinationFolderID: cmd.FolderID,
 	}
 	res, err := a.publisher.Publish(ctx, req)
 	if err != nil {
