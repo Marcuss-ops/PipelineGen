@@ -87,10 +87,31 @@ type ServicePorts struct {
 }
 
 // ServiceDependencies collects the cross-cutting dependencies that are
-// not yet portified, grouped into coherent sub-bundles to respect
-// AGENTS.md's per-struct field cap. Each sub-bundle is a named struct
-// so production wiring and test fixtures can be explicit without
-// exceeding the 8-field limit.
+// not yet portified: tracker/Oracle scopes concrete domain services
+// that pre-date the ports effort. Sized at 11 fields — slightly above
+// AGENTS.md's 10-per-bundle cap. The PR2.7 directive accepts this
+// because Dispatcher is the only remaining concrete integration point
+// (the media_index_outbox dispatcher) and any portification would
+// just rename it; PR2.7 retired DriveClient, the previous concrete
+// transport integration point, by lifting it into ServicePorts as
+// DriveFolderManager.
+//
+// Cfg, MainDB, Log are pure data. Dispatcher is a transport integration
+// point. MediaProcessor, AssetDestResolver, JobsSvc
+// are cross-cutting domain services that already implement interfaces
+// in internal/core but whose concrete instances the application holds
+// directly. AssetProcRepo / AssetVerRepo are the canonical
+// asset-lifecycle repositories from internal/domain/asset.
+//
+// PR-DEADC-ARTLIST-ASSET-LOC-REPO-RETIRE (2026-07-10): AssetLocRepo
+// retired per `architecture/action-plans/2026-07-10-dead-code-p1-p2-cleanup.md#§3-Phase-C`.
+// asset.LocationRepository remains a canonical asset-package type
+// (in case of future need) but the artlist service-layer field is
+// removed (rg-verified zero call sites in service.go or any
+// non-test file).
+//
+// ArtlistDB was removed (PR2.6): after the media.db.sqlite unification,
+// MainDB is the only DB handle in the system.
 //
 // PR2.5+PR2.6+PR2.7 notes:
 //   - No setters; all dependencies are constructor arguments.
@@ -99,47 +120,30 @@ type ServicePorts struct {
 //     explicitly naming ServicePorts / ServiceDependencies at the call
 //     site, which keeps the test fixtures terse.
 type ServiceDependencies struct {
-	Infra     ArtlistInfraDeps
-	Ports     ArtlistPortDeps
-	Domain    ArtlistDomainDeps
-	Repos     ArtlistRepoDeps
-	Finalizer ArtlistFinalizerDeps
-}
-
-// ArtlistInfraDeps groups the infrastructure-like dependencies.
-type ArtlistInfraDeps struct {
-	Cfg    *config.Config
-	Log    *zap.Logger
-	MainDB *sql.DB
-}
-
-// ArtlistPortDeps groups the port-like dependencies.
-type ArtlistPortDeps struct {
-	Dispatcher Dispatcher
-}
-
-// ArtlistDomainDeps groups the cross-cutting domain services.
-type ArtlistDomainDeps struct {
+	Cfg               *config.Config
+	Log               *zap.Logger
+	MainDB            *sql.DB
+	Dispatcher        Dispatcher
 	MediaProcessor    asset.Processor
 	AssetDestResolver asset.Resolver
 	JobsSvc           *appjobs.Service
-}
-
-// ArtlistRepoDeps groups the asset lifecycle repositories.
-type ArtlistRepoDeps struct {
-	AssetProcRepo       asset.ProcessingRepository
-	AssetVerRepo        asset.VersionRepository
-	LocationRepository  asset.LocationRepository
-	RenditionRepository asset.RenditionRepository
-}
-
-// ArtlistFinalizerDeps groups the transactional finalizer dependencies.
-type ArtlistFinalizerDeps struct {
+	AssetProcRepo     asset.ProcessingRepository
+	AssetVerRepo      asset.VersionRepository
 	// AssetFinalizerTx is the canonical transactional asset finalizer
 	// (Wave C / July 2026). Artlist uses it to write media_assets,
 	// asset_versions, asset_locations, and asset_renditions inside a
 	// single transaction, replacing the legacy dispatchBridge path.
 	AssetFinalizerTx finalization.AssetFinalizerTx
+	// LocationRepository persists physical asset locations (Wave C).
+	// Wired from sqlite/assets.AssetStoreSQLite.LocationRepository().
+	// Optional — when nil, stagePersistResults skips recording
+	// rendition locations (godlike/07 graceful degradation).
+	LocationRepository asset.LocationRepository
+	// RenditionRepository persists generated rendition metadata.
+	// Wired from sqlite/assets.NewAssetRenditionRepository.
+	// Optional — when nil, stagePersistResults skips recording
+	// renditions (godlike/07 graceful degradation).
+	RenditionRepository asset.RenditionRepository
 }
 
 // ServiceDeps is the canonical constructor input for artlist.Service.
@@ -319,31 +323,31 @@ func NewService(deps ServiceDeps) (*Service, error) {
 		return nil, ErrRunRepositoryUnavailable
 	}
 	s := &Service{
-		cfg:               deps.Infra.Cfg,
-		log:               deps.Infra.Log,
+		cfg:               deps.Cfg,
+		log:               deps.Log,
 		assetStore:        deps.AssetStore,
 		indexer:           deps.Indexer,
 		metadataWriter:    deps.MetadataWriter,
-		dispatcher:        deps.Ports.Dispatcher,
+		dispatcher:        deps.Dispatcher,
 		publisher:         deps.Publisher,
-		mediaProcessor:    deps.Domain.MediaProcessor,
-		assetDestResolver: deps.Domain.AssetDestResolver,
-		jobsSvc:           deps.Domain.JobsSvc,
+		mediaProcessor:    deps.MediaProcessor,
+		assetDestResolver: deps.AssetDestResolver,
+		jobsSvc:           deps.JobsSvc,
 		scraperSearcher:   deps.ScraperSearcher,
 		pixabaySearcher:   deps.PixabaySearcher,
 		pexelsSearcher:    deps.PexelsSearcher,
 		searchStrategy:    deps.SearchStrategy,
 		liveCache:         newLiveSearchCache(),
-		assetProcessing:   deps.Repos.AssetProcRepo,
-		assetVersions:     deps.Repos.AssetVerRepo,
-		assetFinalizer:    deps.Finalizer.AssetFinalizerTx,
-		mainDB:            deps.Infra.MainDB,
+		assetProcessing:   deps.AssetProcRepo,
+		assetVersions:     deps.AssetVerRepo,
+		assetFinalizer:    deps.AssetFinalizerTx,
+		mainDB:            deps.MainDB,
 		stager:            deps.Stager,
 		isLiveProbe:       deps.IsLiveProbe,
 		runRepo:           deps.RunRepository,
 		systemProber:      deps.SystemProber,
-		locationRepo:      deps.Repos.LocationRepository,
-		renditionRepo:     deps.Repos.RenditionRepository,
+		locationRepo:      deps.LocationRepository,
+		renditionRepo:     deps.RenditionRepository,
 	}
 
 	// Inizializza i componenti delegati
@@ -354,7 +358,7 @@ func NewService(deps ServiceDeps) (*Service, error) {
 	// wrong and we must not start the service with a half-built
 	// SearchService.
 	var err error
-	s.searchService, err = NewSearchService(s, deps.Ports.Dispatcher)
+	s.searchService, err = NewSearchService(s, deps.Dispatcher)
 	if err != nil {
 		return nil, fmt.Errorf("NewSearchService: %w", err)
 	}
