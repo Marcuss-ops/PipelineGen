@@ -136,16 +136,20 @@ type IndexedMetadata struct {
 	// IndexVersion are direct columns from media_assets. Each is
 	// gated by an `if != ""` check in BuildPayload so legacy rows
 	// with NULL columns don't emit empty payload keys.
-	Source         string
-	MediaType      string
-	Language       string
-	Category       string
-	Style          string
-	License        string
-	IndexVersion   string
-	SourceProvider string
-	Origin         string
-	Destination    string
+	Source          string
+	MediaType       string
+	AssetRole       string
+	NormalizedGroup string
+	HasDialogue     *bool
+	AudioProfile    string
+	Language        string
+	Category        string
+	Style           string
+	License         string
+	IndexVersion    string
+	SourceProvider  string
+	Origin          string
+	Destination     string
 
 	// DurationMs is the int64 ms duration for video/audio assets.
 	// Zero → no payload key (the int zero is not a legitimate

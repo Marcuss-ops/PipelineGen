@@ -255,10 +255,11 @@ func NewSourceCatalog(
 	voiceover *assets.VoiceoversRepository,
 	images *assets.ImagesRepository,
 ) *SourceCatalog {
-	reg := &SourceCatalog{byCanonical: make(map[string]SourceRepo, 6)}
+	reg := &SourceCatalog{byCanonical: make(map[string]SourceRepo, 7)}
 	reg.byCanonical["artlist"] = newClipsSourceAdapter(artlist)
 	reg.byCanonical["clips"] = newClipsSourceAdapter(clips)
 	reg.byCanonical["stock"] = newClipsSourceAdapter(stock)
+	reg.byCanonical["ai_generated"] = newClipsSourceAdapter(stock)
 	reg.byCanonical["voiceover"] = newVoiceoverSourceAdapter(voiceover)
 	reg.byCanonical["images"] = newImagesSourceAdapter(images)
 	reg.byCanonical["sound_effect"] = newClipsSourceAdapter(clips)
@@ -351,7 +352,7 @@ var StandardSources = []SourceDefinition{
 	},
 	{
 		Canonical: "stock",
-		Aliases:   []string{"stock"},
+		Aliases:   []string{"stock", "ai_generated"},
 		MediaType: "video",
 	},
 	{

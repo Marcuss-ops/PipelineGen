@@ -14,11 +14,12 @@ import "time"
 type TextTrackKind string
 
 const (
-	TextTrackTranscript  TextTrackKind = "transcript"
-	TextTrackDescription TextTrackKind = "description"
-	TextTrackSummary     TextTrackKind = "summary"
-	TextTrackTitle       TextTrackKind = "title"
-	TextTrackKeywords    TextTrackKind = "keywords"
+	TextTrackTranscript    TextTrackKind = "transcript"
+	TextTrackDescription   TextTrackKind = "description"
+	TextTrackSummary       TextTrackKind = "summary"
+	TextTrackTitle         TextTrackKind = "title"
+	TextTrackKeywords      TextTrackKind = "keywords"
+	TextTrackVisualSummary TextTrackKind = "visual_summary"
 )
 
 // TextTrackSource records the provenance of a text track — how the text
@@ -31,6 +32,7 @@ const (
 	TextSourceWhisper         TextTrackSource = "whisper"
 	TextSourceTranslation     TextTrackSource = "translation"
 	TextSourceManual          TextTrackSource = "manual"
+	TextSourceVisualAnalysis  TextTrackSource = "visual_analysis"
 )
 
 // TextTrackStatus is the tri-state lifecycle of a text track.

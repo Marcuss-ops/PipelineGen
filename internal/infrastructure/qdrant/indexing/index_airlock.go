@@ -213,6 +213,10 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 			Tags:             asset.Tags,
 			Source:           asset.Source,
 			MediaType:        asset.MediaType,
+			AssetRole:        firstNonEmpty(asset.AssetRole, assetpkg.MetadataString(asset.Metadata, "asset_role")),
+			NormalizedGroup:  firstNonEmpty(asset.NormalizedGroup, assetpkg.MetadataString(asset.Metadata, "normalized_group")),
+			HasDialogue:      metadataBoolPtr(asset.Metadata, asset.HasDialogue),
+			AudioProfile:     firstNonEmpty(asset.AudioProfile, assetpkg.MetadataString(asset.Metadata, "audio_profile")),
 			Language:         asset.Language,
 			Category:         asset.Category,
 			Style:            asset.Style,
@@ -455,6 +459,20 @@ func metadataBool(meta map[string]any, key string) bool {
 	}
 	b, ok := v.(bool)
 	return b && ok
+}
+
+func metadataBoolPtr(meta map[string]any, top *bool) *bool {
+	if top != nil {
+		return top
+	}
+	if meta == nil {
+		return nil
+	}
+	v, ok := meta["has_dialogue"].(bool)
+	if !ok {
+		return nil
+	}
+	return &v
 }
 
 // intOrFallback returns the top-level AssetData field if non-zero,

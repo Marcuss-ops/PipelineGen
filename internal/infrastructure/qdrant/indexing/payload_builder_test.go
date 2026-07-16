@@ -29,6 +29,20 @@ func emptyDoc() *IndexDocument {
 	}
 }
 
+func TestBuildPayloadFromDocument_AIStockAudioFields(t *testing.T) {
+	doc := emptyDoc()
+	hasDialogue := false
+	doc.Metadata.Source = "ai_generated"
+	doc.Metadata.AssetRole = "stock"
+	doc.Metadata.NormalizedGroup = "stock"
+	doc.Metadata.HasDialogue = &hasDialogue
+	doc.Metadata.AudioProfile = "ambient_and_effects"
+	p := BuildPayloadFromDocument(doc, nil)
+	if p["source"] != "ai_generated" || p["asset_role"] != "stock" || p["normalized_group"] != "stock" || p["has_dialogue"] != false || p["audio_profile"] != "ambient_and_effects" {
+		t.Fatalf("unexpected AI stock payload: %#v", p)
+	}
+}
+
 // 1. Destination emitted when explicitly set on Metadata.
 func TestBuildPayloadFromDocument_DestinationEmittedWhenSet(t *testing.T) {
 	doc := emptyDoc()
