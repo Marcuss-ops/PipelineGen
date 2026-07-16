@@ -397,9 +397,9 @@ func (p *ScenePlanner) PlanFromClipEvidence(
 			}
 		}
 
-		text := strings.TrimSpace(detail.Transcript)
+		text := cleanClipNarrativeText(detail.Transcript)
 		if text == "" {
-			text = strings.TrimSpace(detail.Description)
+			text = cleanClipNarrativeText(detail.Description)
 		}
 		if text == "" {
 			text = detail.Name
@@ -454,6 +454,19 @@ func (p *ScenePlanner) PlanFromClipEvidence(
 		}
 	}
 	return scenes
+}
+
+// cleanClipNarrativeText keeps the evidence fallback narration-safe. Search
+// metadata can contain a source URL followed by tags; neither belongs in a
+// spoken scene or in a semantic narrative field.
+func cleanClipNarrativeText(text string) string {
+	text = strings.TrimSpace(text)
+	for _, marker := range []string{"https://", "http://", "www."} {
+		if i := strings.Index(text, marker); i >= 0 {
+			text = strings.TrimSpace(text[:i])
+		}
+	}
+	return strings.TrimSpace(text)
 }
 
 // assignKindsByPosition overwrites scene.Kind for >=3-scene

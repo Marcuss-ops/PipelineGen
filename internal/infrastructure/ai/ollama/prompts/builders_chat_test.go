@@ -70,6 +70,44 @@ func TestBuildChatMessages_IncludesGroundingPolicy(t *testing.T) {
 	}
 }
 
+func TestBuildChatMessages_PlainTextMaxCharsDoesNotSelectJSONPrompt(t *testing.T) {
+	req := &types.TextGenerationRequest{
+		Language:   "it",
+		Tone:       "energico",
+		SourceText: "La clip mostra un pugile durante l'allenamento.",
+		Title:      "Test clip",
+		MaxChars:   280,
+		OutputMode: types.OutputModePlainText,
+	}
+
+	messages := BuildChatMessages(req)
+	if len(messages) != 2 {
+		t.Fatalf("expected system and user messages, got %d", len(messages))
+	}
+	user := messages[1].Content
+	if strings.Contains(user, "raw JSON array") {
+		t.Fatalf("plain-text request selected legacy JSON prompt:\n%s", user)
+	}
+	if !strings.Contains(user, "straight continuous prose only") {
+		t.Fatalf("plain-text prose instructions missing from prompt:\n%s", user)
+	}
+}
+
+func TestBuildChatMessages_LegacyScriptV1StillSelectsJSONPrompt(t *testing.T) {
+	req := &types.TextGenerationRequest{
+		Language:   "it",
+		SourceText: "La clip mostra un pugile durante l'allenamento.",
+		Title:      "Test clip",
+		MaxChars:   280,
+		OutputMode: types.OutputModeScriptV1,
+	}
+
+	messages := BuildChatMessages(req)
+	if !strings.Contains(messages[1].Content, "raw JSON array") {
+		t.Fatalf("legacy script_v1 request lost JSON prompt:\n%s", messages[1].Content)
+	}
+}
+
 func TestBuildTextPrompt_IncludesGroundingPolicy(t *testing.T) {
 	req := &types.TextGenerationRequest{
 		Language:        "en",
