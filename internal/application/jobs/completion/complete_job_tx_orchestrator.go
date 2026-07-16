@@ -15,6 +15,7 @@ package completion
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -57,7 +58,7 @@ func (s *Service) completeInTx(ctx context.Context, tx TxContext, req *remote.Co
 	}
 
 	// (3b-bis) FASE 0.1 (July 4, 2026) in-TX typed-error gate.
-	if s.registry != nil && jobRow.Status != job.StatusSucceeded && s.registry.ProducesArtifacts(jobRow.JobType) && len(req.Artifacts.Artifacts) == 0 {
+	if s.registry != nil && jobRow.Status != job.StatusSucceeded && s.registry.ProducesArtifacts(jobRow.JobType) && len(req.Artifacts.Artifacts) == 0 && !isWaitingChildrenResult(req.Result) {
 		return nil, fmt.Errorf("%w: jobType=%q (registry-declared ProducesArtifacts=true; legacy Complete forbidden — use CompleteWithArtifacts)",
 			remote.ErrCompleteJobPathViolation, jobRow.JobType)
 	}
@@ -123,6 +124,19 @@ func (s *Service) completeInTx(ctx context.Context, tx TxContext, req *remote.Co
 		Attempt:        req.Attempt,
 		ResultHash:     req.ResultHash,
 	}, nil
+}
+
+// isWaitingChildrenResult identifies the artifactless hand-off result used
+// by fan-out parents. The parent keeps the artifact-producing job policy for
+// the single-item path, but a batch parent owns no files until its children
+// complete; rejecting it here would prevent the aggregator from running.
+func isWaitingChildrenResult(raw []byte) bool {
+	var result map[string]any
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return false
+	}
+	state, _ := result["parent_state"].(string)
+	return state == "waiting_children"
 }
 
 // lookupInTxCanonicalResponse is the typed accessor for the prior

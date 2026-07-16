@@ -212,7 +212,7 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 	// Decode the typed parent result.
 	var parentResult ScriptParentResult
 	if len(j.Result) > 0 {
-		if err := json.Unmarshal(j.Result, &parentResult); err != nil {
+		if err := decodeScriptParentResult(j.Result, &parentResult); err != nil {
 			a.deps.Logger.Debug("ScriptParentAggregator: cannot unmarshal parent result, skipping",
 				zap.String("parent_job_id", j.ID), zap.Error(err))
 			return nil
@@ -367,6 +367,26 @@ func (a *ScriptParentAggregator) aggregateOne(ctx context.Context, j job.Job) er
 	}
 	a.finalizeParent(ctx, j.ID, aggResult)
 	return nil
+}
+
+// decodeScriptParentResult accepts both the legacy root result shape and the
+// canonical completion envelope shape ({"data":{...}}). The worker stores
+// completed handler results through the typed envelope, while older rows and
+// hermetic tests still use the root map directly.
+func decodeScriptParentResult(raw []byte, out *ScriptParentResult) error {
+	if err := json.Unmarshal(raw, out); err != nil {
+		return err
+	}
+	if out.ParentState != "" || out.ParentJobID != "" || len(out.ChildJobIDs) > 0 {
+		return nil
+	}
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Data) == 0 {
+		return err
+	}
+	return json.Unmarshal(envelope.Data, out)
 }
 
 // finalizeParent builds the result map from the typed aggregate result

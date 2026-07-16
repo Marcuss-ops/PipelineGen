@@ -320,7 +320,10 @@ func (r *SQLiteStore) ListAwaitingAggregation(ctx context.Context, parentType st
 WHERE type = ?
   AND status IN ('WAITING_CHILDREN','RUNNING','FINALIZING','SUCCEEDED')
   AND (parent_state_typed = 'waiting_children'
-       OR (parent_state_typed = '' AND json_extract(result_json,'$.parent_state') = 'waiting_children'))
+       OR (parent_state_typed = '' AND (
+            json_extract(result_json,'$.parent_state') = 'waiting_children'
+            OR json_extract(result_json,'$.data.parent_state') = 'waiting_children'
+       )))
 ORDER BY created_at DESC
 LIMIT ?`
 	rows, err := r.db.QueryContext(ctx, query, parentType, limit)

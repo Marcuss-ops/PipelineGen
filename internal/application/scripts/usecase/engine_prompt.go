@@ -67,8 +67,11 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 		"3. Stay anchored to the clip sequence and its narrative evidence blocks. Do not drift into generic biography unless it directly explains the clip.",
 		"4. If a clip contains multiple beats, narrate those beats in order instead of abstracting them away.",
 		"5. Do not invent events, dialogue, or transitions that are not supported by the clip evidence.",
-		"6. Keep the spoken text natural and clean: do not include URLs, drive links, clip IDs, speaker labels, tag lists, keyword lists, or other technical markers in the narrated text.",
-		"7. Put technical details only in metadata or bindings when the output contract supports them; never print them inside the voiceover text.",
+		"6. Treat every transcript as private reference evidence, not as copy-ready script text.",
+		"7. Rewrite and paraphrase what each clip is about in natural narrative language; do not reproduce transcript sentences verbatim.",
+		"8. Never paste a transcript, subtitle line, or direct quote into the scene text unless the caller explicitly requests a quotation.",
+		"9. Keep the spoken text natural and clean: do not include URLs, drive links, clip IDs, speaker labels, tag lists, keyword lists, or other technical markers in the narrated text.",
+		"10. Put technical details only in metadata or bindings when the output contract supports them; never print them inside the voiceover text.",
 	}
 	lines = append(lines, extra...)
 	return strings.Join(lines, "\n")
@@ -161,4 +164,5 @@ Write ONLY the complete narrative script text. Follow these rules:
 4. DO NOT output schema_version, specscene, or any structured envelope.
 5. DO NOT output metadata fields, clip_ids, drive links, or image URLs.
 6. DO NOT put technical markers such as URLs, speaker labels, tags, keywords, or clip IDs inside the prose.
-7. Write ONLY cohesive narrative prose. The script text itself. Nothing else.`
+7. The clip transcripts are reference evidence only. Paraphrase what each clip says and does; do not copy transcript wording verbatim.
+8. Write ONLY cohesive narrative prose. The script text itself. Nothing else.`
