@@ -77,6 +77,18 @@ func BuildPayloadFromDocument(doc *IndexDocument, schema *schema.IndexSchema) ma
 		"source":          doc.Metadata.Source,
 		"media_type":      doc.Metadata.MediaType,
 	}
+	if doc.Metadata.AssetRole != "" {
+		payload["asset_role"] = doc.Metadata.AssetRole
+	}
+	if doc.Metadata.NormalizedGroup != "" {
+		payload["normalized_group"] = doc.Metadata.NormalizedGroup
+	}
+	if doc.Metadata.HasDialogue != nil {
+		payload["has_dialogue"] = *doc.Metadata.HasDialogue
+	}
+	if doc.Metadata.AudioProfile != "" {
+		payload["audio_profile"] = doc.Metadata.AudioProfile
+	}
 
 	if doc.WorkspaceID != "" {
 		payload["workspace_id"] = doc.WorkspaceID

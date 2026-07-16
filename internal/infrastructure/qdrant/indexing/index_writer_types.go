@@ -34,11 +34,15 @@ type TranscriptTrack struct {
 // AssetData is the canonical asset representation used by PayloadMapper.
 // It mirrors the media_assets table columns needed for Qdrant points.
 type AssetData struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Source    string `json:"source"`
-	MediaType string `json:"media_type"`
-	Status    string `json:"status"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Source          string `json:"source"`
+	MediaType       string `json:"media_type"`
+	AssetRole       string `json:"asset_role,omitempty"`
+	NormalizedGroup string `json:"normalized_group,omitempty"`
+	HasDialogue     *bool  `json:"has_dialogue,omitempty"`
+	AudioProfile    string `json:"audio_profile,omitempty"`
+	Status          string `json:"status"`
 	// LifecycleState is the canonical search-filter payload key. Asset
 	// store populates from media_assets.lifecycle_state when the column
 	// exists; legacy rows fall back to Status-derived values so the
