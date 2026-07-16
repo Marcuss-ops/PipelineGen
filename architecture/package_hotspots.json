@@ -110,20 +110,6 @@
         "internal/infrastructure/database/sqlite/assets/delivery",
         "internal/infrastructure/database/sqlite/assets/maintenance"
       ]
-    },
-    {
-      "path": "internal/app",
-      "owner": "internal/app composition root",
-      "deadline": "2026-10-31",
-      "baseline_files": 119,
-      "target_packages": [
-        "internal/app/media",
-        "internal/app/api",
-        "internal/app/jobs",
-        "internal/app/search",
-        "internal/app/lifecycle",
-        "internal/app/wiring"
-      ]
     }
   ],
   "root_migrations": [
