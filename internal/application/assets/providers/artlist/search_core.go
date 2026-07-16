@@ -14,15 +14,15 @@ import (
 
 // SearchService coordinates Artlist database and live-provider searches.
 type SearchService struct {
-	service          *Service
-	assetRepo        asset.Repository
-	dispatcher       Dispatcher
-	scraperSearcher  Searcher
-	pixabaySearcher  Searcher
-	pexelsSearcher   Searcher
-	searchStrategy   ArtlistSearchStrategy
-	cfg              *config.Config
-	log              *zap.Logger
+	service         *Service
+	assetRepo       asset.Repository
+	dispatcher      Dispatcher
+	scraperSearcher Searcher
+	pixabaySearcher Searcher
+	pexelsSearcher  Searcher
+	searchStrategy  ArtlistSearchStrategy
+	cfg             *config.Config
+	log             *zap.Logger
 }
 
 func (ss *SearchService) SetAssetRepo(r asset.Repository) {

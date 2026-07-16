@@ -19,8 +19,8 @@ import (
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
-	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/files"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 )
 
 // StepRunner is the typed context each step body sees during execution.
@@ -49,14 +49,14 @@ type StepRunner interface {
 
 // runState is the mutable per-call accumulator shared by the ordered steps.
 type runState struct {
-	Plan              []ClipPlan
-	StagedAssets      []*assets.StagedAsset
-	CutPaths          []string
-	ComposedPaths     []string
-	Published         []ChunkState
-	MetadataPublished MetadataState
-	Manifest          *job.ArtifactManifest
-	FinalStatus       job.Status
+	Plan               []ClipPlan
+	StagedAssets       []*assets.StagedAsset
+	CutPaths           []string
+	ComposedPaths      []string
+	Published          []ChunkState
+	MetadataPublished  MetadataState
+	Manifest           *job.ArtifactManifest
+	FinalStatus        job.Status
 	FinalizationResult *finalization.FinalizationResult
 }
 

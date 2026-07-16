@@ -59,6 +59,7 @@ func (s *Service) RegisterHandler(jobsSvc *appjobs.Service) error {
 }
 
 // HandleJob executes one stock job through the resilient orchestrator.
+//
 //nolint:audit-pin:gdl-07-14 stock-cutover-commit4-expanded
 func (s *Service) HandleJob(ctx context.Context, queuedJob *appjobs.Job, tools *appjobs.JobTools) (map[string]any, error) {
 	var payload StockRunPayload
