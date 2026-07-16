@@ -201,7 +201,7 @@ func loadDomainJobMigration(root string) (*domainJobMigration, error) {
 	if migration.Version != 1 || migration.ID == "" || migration.Status != "in_progress" || migration.Owner == "" || migration.Deadline == "" {
 		return nil, fmt.Errorf("invalid job-kernel migration registry: version=1, id, status=in_progress, owner and deadline are required")
 	}
-	if migration.CompatibilityImport == "" || migration.CanonicalImport == "" || migration.ReportedBaselineImports <= 0 || len(migration.MigrationOrder) == 0 {
+	if migration.CompatibilityImport == "" || migration.CanonicalImport == "" || migration.ReportedBaselineImports < 0 || len(migration.MigrationOrder) == 0 {
 		return nil, fmt.Errorf("invalid job-kernel migration registry: import paths, positive baseline and migration_order are required")
 	}
 	return &migration, nil

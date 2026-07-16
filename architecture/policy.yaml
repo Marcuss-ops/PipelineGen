@@ -456,3 +456,4 @@ hard_gates:
   - percheck_api_infrastructure_imports
   - percheck_api_infrastructure_imports_allowlist_missing
 
+lint_gates:
