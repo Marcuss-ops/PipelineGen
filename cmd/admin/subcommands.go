@@ -70,6 +70,7 @@ var availableCommands = []string{
 	"drive-reconcile",
 	"gen-api-docs",
 	"list-drive-folder",
+	"sync-drive-folder",
 	"list-styles",
 	"reindex-qdrant",
 	"reconcile-qdrant",
@@ -122,6 +123,8 @@ func dispatchSubcommand(name string, args []string) error {
 		return runDeleteSpecificFolders(args)
 	case "list-drive-folder":
 		return runListDriveFolder(args)
+	case "sync-drive-folder":
+		return runSyncDriveFolder(args)
 	case "reindex-qdrant":
 		return reconcile.RunReindexQdrant(args)
 	case "qdrant-maintenance":
