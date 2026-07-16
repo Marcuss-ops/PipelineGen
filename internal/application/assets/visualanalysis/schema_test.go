@@ -127,6 +127,23 @@ func TestValidate_AcceptsSoundCuesWithSuggestions(t *testing.T) {
 	require.NoError(t, d.Validate())
 }
 
+func TestFolderCategory(t *testing.T) {
+	tests := []struct {
+		folderPath string
+		want       string
+	}{
+		{"Stock/AI/Ocean/Sharks", "Ocean"},
+		{"Stock/AI/Music", "Music"},
+		{"Stock/AI", "Generico"},
+		{"", "Generico"},
+		{"/Stock/AI/Nature/", "Nature"},
+	}
+	for _, tc := range tests {
+		got := FolderCategory(tc.folderPath)
+		assert.Equal(t, tc.want, got, "FolderCategory(%q)", tc.folderPath)
+	}
+}
+
 func TestDriveFileID(t *testing.T) {
 	got, err := DriveFileID("https://drive.google.com/file/d/1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ/view")
 	if err != nil || got != "1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ" {

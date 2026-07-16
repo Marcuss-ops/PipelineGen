@@ -214,6 +214,20 @@ func TestExecute_InvalidDriveURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid drive reference")
 }
 
+func TestExecute_GetFileMetaFailure(t *testing.T) {
+	drive := &fakeDriveReader{
+		meta:    &DriveFileMeta{Name: "underwater.mp4"},
+		metaErr: assert.AnError,
+	}
+	uc := newUseCase(t, drive, &fakeArtifactService{}, &fakeDispatcher{})
+	_, err := uc.Execute(context.Background(), CreateAIStockCommand{
+		DocumentJSON: validDocumentJSON(),
+		DriveURL:     "https://drive.google.com/file/d/1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ/view",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "get drive file meta")
+}
+
 func TestExecute_DownloadFailure(t *testing.T) {
 	drive := &fakeDriveReader{
 		meta:        &DriveFileMeta{Name: "underwater.mp4"},

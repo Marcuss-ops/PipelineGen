@@ -180,13 +180,17 @@ func (uc *UseCase) buildAsset(doc visualanalysis.Document, filename, fileID, loc
 
 	// Persist the AI stock metadata and visual analysis inside the asset row.
 	aiMeta := doc.Metadata()
-	if aiMetaJSON, err := json.Marshal(aiMeta); err == nil {
-		clip.SetMetadataString("ai_stock_metadata", string(aiMetaJSON))
+	aiMetaJSON, err := json.Marshal(aiMeta)
+	if err != nil {
+		return nil, fmt.Errorf("marshal ai stock metadata: %w", err)
 	}
+	clip.SetMetadataString("ai_stock_metadata", string(aiMetaJSON))
 	visual := doc.VisualAnalysis()
-	if visualJSON, err := json.Marshal(visual); err == nil {
-		clip.SetMetadataString("visual_analysis", string(visualJSON))
+	visualJSON, err := json.Marshal(visual)
+	if err != nil {
+		return nil, fmt.Errorf("marshal visual analysis: %w", err)
 	}
+	clip.SetMetadataString("visual_analysis", string(visualJSON))
 
 	return clip, nil
 }
