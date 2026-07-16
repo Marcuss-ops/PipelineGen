@@ -17,6 +17,10 @@ type DriveConfig struct {
 	// can use the common stock pipeline without mixing storage roots.
 	AIClipsRootFolder string `yaml:"ai_clips_root_folder" env:"VELOX_DRIVE_AI_CLIPS_ROOT" default:""`
 
+	// NormalClipsSourceFolder is the Drive source folder scanned by the
+	// recursive normal-clip indexing job. It is distinct from publish roots.
+	NormalClipsSourceFolder string `yaml:"normal_clips_source_folder" env:"VELOX_DRIVE_NORMAL_CLIPS_SOURCE" default:""`
+
 	// Clips (YouTube/Artlist) root folder
 	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`
 	// Voiceover root folder
