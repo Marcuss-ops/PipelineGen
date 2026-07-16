@@ -15,7 +15,11 @@ func BuildChatMessages(req *types.TextGenerationRequest) []types.Message {
 	if maxChars <= 0 {
 		maxChars = 0 // unlimited
 	}
-	isStructured := maxChars > 0
+	// MaxChars is also used by the canonical plain-text pipeline as a
+	// per-scene character budget. It must not switch the prompt to the
+	// legacy JSON contract: that contract conflicts with the plain-text
+	// instruction appended below and can make Gemma return no content.
+	isStructured := maxChars > 0 && req.OutputMode == types.OutputModeScriptV1
 
 	durationMinutes := req.DurationMinutes
 	if durationMinutes == 0 && req.Duration > 0 {
