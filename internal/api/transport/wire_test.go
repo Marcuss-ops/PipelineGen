@@ -60,7 +60,8 @@ func TestWireRegistry_AllCapabilitiesMounted(t *testing.T) {
 		{Method: "POST", Path: "/api/register/from-youtube"},
 		{Method: "POST", Path: "/api/storage/sync"},
 		{Method: "POST", Path: "/api/drive/admin"},
-		{Method: "POST", Path: "/api/clips/upload"},
+		{Method: "POST", Path: "/api/media/clips/upload"},
+		{Method: "POST", Path: "/api/clips/process"},
 		{Method: "POST", Path: "/internal/v1/media/search"},
 		{Method: "GET", Path: "/qdrant/live"},
 	})
@@ -190,6 +191,34 @@ func TestWireRegistry_PrefixBoundaryExactMatch(t *testing.T) {
 	assert.True(t, reg.IsMounted("artlist"), "exact-prefix route /api/artlist must classify as artlist")
 	assert.True(t, reg.IsMounted("qdrant_health"), "trailing-slash route /qdrant/ must classify as qdrant_health")
 	assert.False(t, reg.IsMounted("voiceover"), "no voiceover route in this test")
+}
+
+// TestWireRegistry_ClipsMountedUnderMedia locks the canonical clips
+// prefix contract. The clips capability mounts under /api/media/clips/*
+// via the assets module (internal/app/wire_assets.go), which includes
+// the AI stock ingestion endpoint /api/media/clips/ingest/ai-stock.
+func TestWireRegistry_ClipsMountedUnderMedia(t *testing.T) {
+	t.Run("happy_path_ai_stock_mounted", func(t *testing.T) {
+		reg := NewWireRegistry([]RouteInfo{
+			{Method: "POST", Path: "/api/media/clips/ingest/ai-stock"},
+		})
+		assert.True(t, reg.IsMounted("clips"),
+			"clips MUST be MOUNTED when /api/media/clips/ingest/ai-stock is registered")
+		all := reg.All()
+		assert.Equal(t, WireMounted, all["clips"])
+		assert.Equal(t, WireNotMounted, all["youtube"],
+			"legacy /api/clips/* routes must NOT classify as clips")
+	})
+
+	t.Run("legacy_youtube_clips_still_tracked", func(t *testing.T) {
+		reg := NewWireRegistry([]RouteInfo{
+			{Method: "POST", Path: "/api/clips/process"},
+		})
+		assert.True(t, reg.IsMounted("youtube"),
+			"youtube MUST be MOUNTED when legacy /api/clips/process is registered")
+		assert.Equal(t, WireNotMounted, reg.All()["clips"],
+			"legacy /api/clips/* routes must NOT classify as clips")
+	})
 }
 
 // TestWireRegistry_VoiceoverMountedUnderMedia locks the canonical

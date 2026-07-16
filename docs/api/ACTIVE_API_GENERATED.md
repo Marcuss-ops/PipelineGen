@@ -10,6 +10,7 @@
 | GET | `/` | API root (redirects or 404) |
 | GET | `/health` | Unified health check (?deep=true for component checks) |
 | GET | `/metrics` | Prometheus metrics endpoint |
+| GET | `/models` | ⚠️ MISSING DESCRIPTION |
 | GET | `/ready` | Readiness probe |
 
 ## /api/artlist
@@ -17,11 +18,20 @@
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/artlist/diagnostics` | Artlist diagnostics |
+| GET | `/api/artlist/job-consumer` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/artlist/runs/:run_id` | Get Artlist pipeline run status |
+| GET | `/api/artlist/search/live` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/artlist/stats` | Get Artlist statistics |
 | POST | `/api/artlist/recommend` | Get Artlist recommendations for a term |
 | POST | `/api/artlist/run` | Start Artlist pipeline for a term |
+| POST | `/api/artlist/search` | Search Artlist catalog (cached) |
 | POST | `/api/artlist/sync-catalogs` | Sync Artlist catalogs to media DB |
+
+## /api/capabilities
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/capabilities` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/clips
 
@@ -30,6 +40,7 @@
 | GET | `/api/clips/diagnostics` | Clips diagnostics |
 | GET | `/api/clips/info` | Get YouTube video metadata |
 | GET | `/api/clips/stats` | Get clips statistics |
+| POST | `/api/clips/extract-important` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/clips/process` | Download and process clips |
 
 ## /api/drive
@@ -37,6 +48,7 @@
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/drive/files` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/drive/canary-upload` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/drive/cleanup` | Clean up empty Drive folders |
 | POST | `/api/drive/folders` | List Drive folders |
 | POST | `/api/drive/move` | Move Drive files |
@@ -48,7 +60,7 @@
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/fullimages/video/generate` | Generate full video images |
+| POST | `/api/fullimages/image/generate` | Generate one image per section (fullimages image-only pipeline) |
 
 ## /api/images
 
@@ -63,6 +75,19 @@
 | POST | `/api/images/generated/generate` | Generate an AI image |
 | POST | `/api/images/sync` | Sync images to Drive |
 | POST | `/api/images/upload` | Upload an image |
+
+## /api/jobs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/jobs` | List jobs |
+| GET | `/api/jobs/:id` | Get job by ID |
+| GET | `/api/jobs/:id/events` | Get job event stream |
+| GET | `/api/jobs/:id/full` | Get full job details |
+| GET | `/api/jobs/stats` | Get job statistics |
+| POST | `/api/jobs` | Enqueue a new job |
+| POST | `/api/jobs/:id/cancel` | Cancel a job |
+| POST | `/api/jobs/:id/retry` | Retry a failed job |
 
 ## /api/media
 
@@ -92,10 +117,12 @@
 | POST | `/api/media/clips/:source/clips/:id/reupload` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/status` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/clips/:id/verify` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/:source/clips/bulk-upload-youtube-clips` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/folders/:id/manifest` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/:source/reconcile` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/enrich` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/clips/enrich/batch` | ⚠️ MISSING DESCRIPTION |
+| POST | `/api/media/clips/ingest/ai-stock` | Ingest an AI-generated stock clip from visual analysis + Drive video |
 | POST | `/api/media/clips/upload-video` | ⚠️ MISSING DESCRIPTION |
 | POST | `/api/media/qdrant/cleanup` | Clean up stale Qdrant points |
 | POST | `/api/media/register-batch` | Batch register assets |
@@ -111,9 +138,6 @@
 |--------|------|-------------|
 | GET | `/api/script/clips/search` | ⚠️ MISSING DESCRIPTION |
 | GET | `/api/script/jobs/:id` | Get script job status |
-| POST | `/api/script/:id/sections/:section_id/regenerate` | Regenerate a script section |
-| POST | `/api/script/cache/evict` | Evict script cache entries |
-| POST | `/api/script/curate` | Curate generated content |
 | POST | `/api/script/generate` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/script-assets
@@ -121,6 +145,12 @@
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/script-assets/catalog` | ⚠️ MISSING DESCRIPTION |
+
+## /api/script-docs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/script-docs/generate` | ⚠️ MISSING DESCRIPTION |
 
 ## /api/scripts
 
@@ -148,3 +178,10 @@
 |--------|------|-------------|
 | GET | `/media/google-accounting/*filepath` | Serve Google Accounting media files |
 | HEAD | `/media/google-accounting/*filepath` | HEAD check for Google Accounting media |
+
+## /vlm/autotag
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/vlm/autotag/analyze-file` | ⚠️ MISSING DESCRIPTION |
+
