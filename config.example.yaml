@@ -90,6 +90,8 @@ drive:
   stock_root_folder: ""
   # Drive folder for source=ai_generated stock clips (Stock/AI/<category>).
   ai_clips_root_folder: ""
+  # Drive source folder for normal YouTube clips to index recursively.
+  normal_clips_source_folder: ""
   clips_root_folder: ""
   voiceover_root_folder: ""
   artlist_root_folder: "1Dj3-BlM9LcJr3dh3I4VxEDuMBbaBwwSE"  # canonical Drive root for Artlist output (FOLLOWUP-ARTLIST-ROOT, July 2026)

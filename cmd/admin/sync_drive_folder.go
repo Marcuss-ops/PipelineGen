@@ -18,7 +18,7 @@ const normalClipsDriveFolderID = "1ll2RlTaAbhnaLkAjEDBg41lAXUyo-zJ2"
 func runSyncDriveFolder(args []string) error {
 	fs := flag.NewFlagSet("sync-drive-folder", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	folder := fs.String("folder", normalClipsDriveFolderID, "Drive folder ID to scan recursively")
+	folder := fs.String("folder", "", "Drive folder ID to scan recursively (defaults to config drive.normal_clips_source_folder)")
 	source := fs.String("source", "youtube", "canonical source label")
 	mediaType := fs.String("media-type", "video", "canonical media type")
 	name := fs.String("name", "normal YouTube clips", "human-readable sync name")
@@ -34,6 +34,12 @@ func runSyncDriveFolder(args []string) error {
 		return err
 	}
 	defer cleanup()
+	if strings.TrimSpace(*folder) == "" {
+		*folder = strings.TrimSpace(cfg.Drive.NormalClipsSourceFolder)
+	}
+	if strings.TrimSpace(*folder) == "" {
+		*folder = normalClipsDriveFolderID
+	}
 	root, _, rootCleanup, err := app.InitComposition(cfg, log)
 	if err != nil {
 		return fmt.Errorf("initialize composition: %w", err)
