@@ -60,6 +60,84 @@ func (s *serverE2EJobsService) ListEvents(context.Context, string) ([]job.Event,
 }
 func (s *serverE2EJobsService) Retry(context.Context, string) (*job.Job, error) { return nil, nil }
 
+// mockAIStockClipsHandler is a minimal stand-in for the clips module that
+// only registers the AI stock ingestion route. It lets the end-to-end
+// router test verify the full path /api/clips/ingest/ai-stock without
+// wiring the real clips module and its heavy dependencies.
+type mockAIStockClipsHandler struct{}
+
+func (m *mockAIStockClipsHandler) RegisterRoutes(rg *gin.RouterGroup) {
+	rg.POST("/ingest/ai-stock", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "clip_id": "mock-ai-stock-01"})
+	})
+}
+
+func TestNewServerWithHealth_AIStockClipRoutesThroughRealRouter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dataDir := t.TempDir()
+	downloadDir := filepath.Join(dataDir, "downloads")
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host:         "127.0.0.1",
+			Port:         0,
+			GinMode:      gin.TestMode,
+			ReadTimeout:  1,
+			WriteTimeout: 1,
+		},
+		Storage: config.StorageConfig{
+			DataDir: dataDir,
+		},
+		Security: config.SecurityConfig{
+			EnableAuth:       false,
+			RateLimitEnabled: false,
+		},
+		GoogleAccounting: config.GoogleAccountingConfig{
+			DownloadDir: downloadDir,
+		},
+	}
+
+	registry := api.NewRegistry()
+	require.NoError(t, registry.Register(api.NewRouteModule(
+		"clips",
+		func() bool { return true },
+		"/clips",
+		&mockAIStockClipsHandler{},
+		zap.NewNop(),
+	)))
+
+	server := api.NewServerWithHealth(api.ServerDeps{
+		Config:   cfg,
+		Registry: registry,
+	})
+
+	body := map[string]any{
+		"document": map[string]any{
+			"asset": map[string]any{
+				"proposed_asset_id": "mock-ai-stock-01",
+				"title":             "Mock AI stock clip",
+			},
+		},
+		"drive_url": "https://drive.google.com/file/d/MOCK123/view",
+	}
+
+	raw, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/clips/ingest/ai-stock", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.GetRouter().ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.True(t, resp["ok"].(bool))
+	require.Equal(t, "mock-ai-stock-01", resp["clip_id"])
+}
+
 func TestNewServerWithHealth_YouTubeClipsProcessRoutesThroughRealRouter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
