@@ -225,6 +225,13 @@ func buildPostprocessorList(out scriptpkg.OutputSpec) []adapters.ProcessorName {
 	// produced exclusively by the 3 canonical downstream jobs
 	// (TypeVoiceoverGenerate / TypeImagesGenerate /
 	// TypeDocumentGenerate in internal/domain/job/job.go).
+	// A caller-provided DriveFolderID is the explicit request for a
+	// Google Doc in the script flow. Keep the downstream cutover for
+	// other artifact types, but do not silently ignore this canonical
+	// document destination.
+	if strings.TrimSpace(out.DriveFolderID) != "" {
+		pp = append(pp, adapters.ProcessorDocument)
+	}
 	if out.SaveToDB {
 		pp = append(pp, adapters.ProcessorPersistence)
 	}

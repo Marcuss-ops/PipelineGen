@@ -245,15 +245,13 @@ func registerScriptDocs(registry *module.Registry, log *zap.Logger, cfg *config.
 				ScriptDir:   scriptDir,
 			})
 			if adapterErr != nil {
-				if adapterErr != nil {
-					log.Warn("script-docs: failed to create ReAct adapter, falling back to nil port",
-						zap.Error(adapterErr))
-				} else {
-					reactPort = adapter
-					log.Info("script-docs: ReAct adapter wired (Python bridge via Ollama)",
-						zap.String("ollama_url", cfg.External.OllamaURL),
-						zap.String("ollama_model", cfg.External.OllamaModel))
-				}
+				log.Warn("script-docs: failed to create ReAct adapter, falling back to nil port",
+					zap.Error(adapterErr))
+			} else {
+				reactPort = adapter
+				log.Info("script-docs: ReAct adapter wired (Python bridge via Ollama)",
+					zap.String("ollama_url", cfg.External.OllamaURL),
+					zap.String("ollama_model", cfg.External.OllamaModel))
 			}
 		}
 	}

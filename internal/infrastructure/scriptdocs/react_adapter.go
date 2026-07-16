@@ -110,8 +110,11 @@ func NewAdapter(cfg AdapterConfig) (*Adapter, error) {
 		runner = defaultProcessRunner{}
 	}
 	return &Adapter{
-		pythonBin:       pythonBin,
-		scriptPath:      filepath.Join(cfg.ScriptDir, "bridges", "react_agent.py"),
+		pythonBin: pythonBin,
+		// ScriptDir is the repository/application root; the bridge is kept
+		// under scripts/bridges so the production composition and the CLI
+		// layout resolve the same executable path.
+		scriptPath:      filepath.Join(cfg.ScriptDir, "scripts", "bridges", "react_agent.py"),
 		ollamaURL:       cfg.OllamaURL,
 		ollamaModel:     model,
 		maxStepsDefault: maxSteps,
