@@ -126,11 +126,9 @@ func (d Document) Validate() error {
 		if e.StartMs < 0 || e.EndMs <= e.StartMs || e.EndMs > d.Asset.DurationMs || e.StartMs < last || actionEN == "" {
 			return fmt.Errorf("visual analysis: invalid timed_events[%d]", i)
 		}
-		// SequenceNo is optional; if provided it must match the position,
-		// otherwise we allow the implicit ordering from the array.
-		if e.SequenceNo != 0 && e.SequenceNo != i {
-			return fmt.Errorf("visual analysis: invalid timed_events[%d] sequence_no", i)
-		}
+		// SequenceNo is optional and informational; the canonical ordering is
+		// derived from the array position, so any non-negative value is
+		// accepted without enforcing a match with the array index.
 		last = e.EndMs
 	}
 	for i, c := range d.RecommendedClips {
