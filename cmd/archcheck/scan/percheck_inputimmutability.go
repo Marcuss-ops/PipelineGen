@@ -58,8 +58,7 @@ const inputImmutabilityCensusID = "input_immutability_census"
 // are counted and emitted as r.Warnings (informational census).
 // productionOnly=true: forward-prevention mode — only mutations
 // introduced by the current git diff are violations (SeverityError).
-func ScanInputImmutability(root string, pol *policy.Policy, r *report.Report, modes ...bool) {
-	productionOnly := len(modes) > 0 && modes[0]
+func ScanInputImmutability(root string, pol *policy.Policy, r *report.Report, productionOnly bool) {
 	skipDirs := map[string]bool{
 		".git": true, "vendor": true, "node_modules": true,
 		"node-scraper": true, "examples": true, "scripts": true,
