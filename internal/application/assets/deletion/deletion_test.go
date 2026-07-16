@@ -235,16 +235,13 @@ func seedClipRowWithDriveFileID(t *testing.T, db *sql.DB, id, lifecycleState, fi
 func newTestService(t *testing.T, db *sql.DB, dispatcher deletion.DispatcherPort) *deletion.DeletionService {
 	t.Helper()
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
-	return deletion.NewDeletionService(
-		clipsRepo, clipsRepo, clipsRepo,
-		nil, nil, // voiceoverRepo, imagesRepo
-		nil, // assetTreeSvc
-		nil, // assetIndexSvc
-		dispatcher,
-		nil, // driveGoneChecker — not wired in DeleteClip tests
-		nil, // completionTxRunner — not wired in DeleteClip tests
-		zap.NewNop(),
-	)
+	return deletion.NewDeletionService(deletion.DeletionServiceDeps{
+		Repos: deletion.DeletionRepoDeps{
+			ClipsRepo: clipsRepo,
+		},
+		Dispatcher: dispatcher,
+		Log:        zap.NewNop(),
+	})
 }
 
 // newTestServiceForComplete wires a DeletionService for the COMPLETED-step
@@ -261,16 +258,17 @@ func newTestServiceForComplete(
 ) *deletion.DeletionService {
 	t.Helper()
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
-	return deletion.NewDeletionService(
-		clipsRepo, clipsRepo, clipsRepo,
-		nil, nil, // voiceoverRepo, imagesRepo
-		nil, // assetTreeSvc
-		nil, // assetIndexSvc
-		dispatcher,
-		driveGoneChecker,
-		completionTx,
-		zap.NewNop(),
-	)
+	return deletion.NewDeletionService(deletion.DeletionServiceDeps{
+		Repos: deletion.DeletionRepoDeps{
+			ClipsRepo: clipsRepo,
+		},
+		Dispatcher: dispatcher,
+		Finalize: deletion.DeletionFinalizeDeps{
+			DriveGoneChecker:   driveGoneChecker,
+			CompletionTxRunner: completionTx,
+		},
+		Log: zap.NewNop(),
+	})
 }
 
 // ── Blocco 3.1 commit 4/3 tests (DeleteClip — pre-existing test pinning) ──
@@ -349,14 +347,12 @@ func TestDeletionService_DeleteClip_NilDispatcherFailsFast(t *testing.T) {
 	minimalMediaAssetsFixture(t, db)
 	seedClipRow(t, db, "clip-nil-disp", "ACTIVE")
 	clipsRepo := assets.NewClipsRepository(db, zap.NewNop())
-	svc := deletion.NewDeletionService(
-		clipsRepo, clipsRepo, clipsRepo,
-		nil, nil, nil, nil, // voiceoverRepo, imagesRepo, assetTreeSvc, assetIndexSvc
-		nil, // dispatcher nil — must fail-fast with a wiring-error
-		nil, // driveGoneChecker — CompleteAsset not exercised here
-		nil, // completionTxRunner — CompleteAsset not exercised here
-		zap.NewNop(),
-	)
+	svc := deletion.NewDeletionService(deletion.DeletionServiceDeps{
+		Repos: deletion.DeletionRepoDeps{
+			ClipsRepo: clipsRepo,
+		},
+		Log: zap.NewNop(),
+	})
 
 	err := svc.DeleteClip(context.Background(), "artlist", "clip-nil-disp", false)
 	if err == nil {
