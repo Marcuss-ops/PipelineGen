@@ -39,12 +39,14 @@ func (f *fakeDriveReader) DownloadFile(_ context.Context, _ string) (io.ReadClos
 }
 
 type fakeArtifactService struct {
-	ref *appupload.ArtifactRef
-	lp  string
-	err error
+	ref   *appupload.ArtifactRef
+	lp    string
+	err   error
+	input *appupload.ArtifactCreateInput
 }
 
-func (f *fakeArtifactService) CreateAndVerify(_ context.Context, _ appupload.ArtifactCreateInput) (*appupload.ArtifactRef, error) {
+func (f *fakeArtifactService) CreateAndVerify(_ context.Context, in appupload.ArtifactCreateInput) (*appupload.ArtifactRef, error) {
+	f.input = &in
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -154,6 +156,10 @@ func TestExecute_HappyPath(t *testing.T) {
 	assert.Equal(t, asset.SourceAIGenerated, dispatcher.clip.Source)
 	assert.Equal(t, "Pesce predatore nascosto sotto la sabbia", dispatcher.clip.SearchText)
 	assert.Equal(t, "sha256-abc", dispatcher.hash)
+	require.NotNil(t, artifact.input)
+	assert.Equal(t, "video", artifact.input.Kind)
+	assert.Equal(t, "underwater-sand-jumpscare-01", artifact.input.ID)
+	assert.Equal(t, "video/mp4", artifact.input.MimeType)
 }
 
 func TestExecute_InvalidDocument(t *testing.T) {
@@ -291,6 +297,31 @@ func TestExecute_FallsBackContentTypeWhenEmpty(t *testing.T) {
 		DriveURL:     "https://drive.google.com/file/d/1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ/view",
 	})
 	require.NoError(t, err)
+	require.NotNil(t, artifact.input)
+	assert.Equal(t, "video/mp4", artifact.input.MimeType)
+}
+
+func TestExecute_SetsCanonicalDriveLinks(t *testing.T) {
+	drive := &fakeDriveReader{
+		meta: &DriveFileMeta{Name: "underwater.mp4"},
+		body: io.NopCloser(strings.NewReader("fake video bytes")),
+		ct:   "video/mp4",
+	}
+	artifact := &fakeArtifactService{
+		ref: &appupload.ArtifactRef{ID: "art-1", SHA256: "sha256-abc", SizeBytes: 1234},
+		lp:  "/tmp/art-1.mp4",
+	}
+	dispatcher := &fakeDispatcher{}
+
+	uc := newUseCase(t, drive, artifact, dispatcher)
+	_, err := uc.Execute(context.Background(), CreateAIStockCommand{
+		DocumentJSON: validDocumentJSON(),
+		DriveURL:     "https://drive.google.com/file/d/1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ/view",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dispatcher.clip)
+	assert.Equal(t, "https://drive.google.com/file/d/1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ/view", dispatcher.clip.DriveLink())
+	assert.Equal(t, "https://drive.google.com/uc?export=download&id=1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ", dispatcher.clip.DownloadLink())
 }
 
 func TestExecute_RejectsNonVideoContentType(t *testing.T) {
@@ -326,6 +357,8 @@ func TestExecute_AcceptsOctetStreamWithVideoExtension(t *testing.T) {
 		DriveURL:     "https://drive.google.com/file/d/1fV3DmrHeqiZBIESZl-srEFn3jkp0PRlQ/view",
 	})
 	require.NoError(t, err)
+	require.NotNil(t, artifact.input)
+	assert.Equal(t, "application/octet-stream", artifact.input.MimeType)
 }
 
 func TestExecute_RejectsOctetStreamWithoutVideoExtension(t *testing.T) {
