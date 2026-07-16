@@ -44,9 +44,7 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_drive_access_ssot", scan.ScanDriveAccessSSOT},
 		{"percheck_metadata_registry", scan.ScanMetadataRegistry},
 		{"percheck_metadata_key_registry", scan.ScanMetadataKeys},
-		{"percheck_input_immutability", func(root string, pol *policy.Policy, r *report.Report) {
-			scan.ScanInputImmutability(root, pol, r, productionOnly)
-		}},
+		{"percheck_input_immutability", scan.ScanInputImmutability},
 		{"percheck_sourcestager_transformer", scan.ScanSourceStagerTransformer},
 		{"file_size_pkg_size_thin_command", func(root string, pol *policy.Policy, r *report.Report) {
 			fileLines := map[string]int{}
