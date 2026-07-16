@@ -73,17 +73,29 @@ func (p *ClipBindingsProcessor) Process(
 	}
 
 	// P0 (July 2026): if the engine produced no scenes (plain-text
-	// output mode), build them deterministically from clip evidence.
-	// This is the canonical clip-native scene construction path.
+	// output mode), build them deterministically.
+	hasSynthesized := false
 	synthesized := false
 	if len(input.SpecScene.Scenes) == 0 {
-		scenes := p.planner.PlanFromClipEvidence(plan)
+		var scenes []scriptpkg.SpecScene
+		if len(input.Text) > 0 {
+			scenePlan := p.planner.Plan(scene.NarrativeDraft{Text: input.Text}, plan)
+			scenes = scenePlan.Scenes
+			hasSynthesized = true
+			if scenePlan.Source == scene.ScenePlanSourceClipEvidence {
+				synthesized = true
+			}
+		} else {
+			scenes = p.planner.PlanFromClipEvidence(plan)
+			hasSynthesized = true
+			synthesized = true
+		}
+
 		if len(scenes) > 0 {
 			input.SpecScene = scriptpkg.SpecSceneOutput{
 				Version: 1,
 				Scenes:  scenes,
 			}
-			synthesized = true
 		}
 	}
 
@@ -144,7 +156,7 @@ func (p *ClipBindingsProcessor) Process(
 	}
 
 	result := &PostProcessResult{Changed: true}
-	if synthesized {
+	if hasSynthesized {
 		result.SynthesizedScenes = input.SpecScene.Scenes
 	}
 	return result, nil
