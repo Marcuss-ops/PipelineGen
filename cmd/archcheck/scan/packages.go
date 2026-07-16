@@ -1,10 +1,8 @@
-// Package scan — archcheck rule-family scanners.
+// Package scan — architecture package-size scanners.
 //
-// scan/packages.go owns the "directory walking + module identification"
-// half of the scan family. Package hotspots are governed by the machine-
-// consumed architecture/package_hotspots.json registry: every package above
-// the global cap must have an owner, a concrete deadline, a non-increasing
-// file-count baseline, and named target packages.
+// Package hotspots are governed by architecture/package_hotspots.json. A
+// registered hotspot is accepted while it remains within its baseline and before
+// its deadline; unmanaged, expired or growing hotspots fail closed.
 package scan
 
 import (
@@ -43,12 +41,17 @@ type internalRootMigration struct {
 	Targets  []string `json:"targets"`
 }
 
-// ScanPackages walks non-test Go files under the root, counts files per
-// package dir, and emits a violation per package exceeding
-// pol.MaxFilesPerPackage. Registered hotspots are allowed to remain above the
-// cap only while their file count does not exceed the recorded baseline.
-// Unregistered hotspots and baseline growth are errors.
+// ScanPackages runs the package-size scan. Registered debt is governed by the
+// same owner/baseline/deadline contract in every mode.
 func ScanPackages(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int) {
+	ScanPackagesForMode(root, pol, r, fileLines, false)
+}
+
+// ScanPackagesForMode walks non-test Go files, records per-file line counts and
+// enforces package hotspot governance. A registered hotspot is not itself a
+// violation while it stays within baseline and before its deadline. Growth,
+// expiry and unregistered production hotspots remain fail-closed.
+func ScanPackagesForMode(root string, pol *policy.Policy, r *report.Report, fileLines map[string]int, productionOnly bool) {
 	pkgCounts := map[string]int{}
 	skipDirs := map[string]bool{
 		".git": true, "vendor": true, "node_modules": true,
@@ -73,19 +76,20 @@ func ScanPackages(root string, pol *policy.Policy, r *report.Report, fileLines m
 		relDir, _ := filepath.Rel(root, dir)
 		pkgCounts[filepath.ToSlash(relDir)]++
 
-		n, lerr := countLines(path)
-		if lerr == nil {
-			fileLines[path] = n
-			if n > pol.MaxLinesPerFile {
-				r.Violations = append(r.Violations, report.Violation{
-					File:        filepath.ToSlash(filepath.Join(relDir, filepath.Base(path))),
-					ActualLines: n,
-					MaxLines:    pol.MaxLinesPerFile,
-					MatchedRule: "max_lines_per_file",
-					Rule:        "file_size",
-					Severity:    "warn",
-				})
-			}
+		n, lineErr := countLines(path)
+		if lineErr != nil {
+			return nil
+		}
+		fileLines[path] = n
+		if n > pol.MaxLinesPerFile {
+			r.Violations = append(r.Violations, report.Violation{
+				File:        filepath.ToSlash(filepath.Join(relDir, filepath.Base(path))),
+				ActualLines: n,
+				MaxLines:    pol.MaxLinesPerFile,
+				MatchedRule: "max_lines_per_file",
+				Rule:        "file_size",
+				Severity:    "warn",
+			})
 		}
 		return nil
 	})
@@ -112,39 +116,84 @@ func ScanPackages(root string, pol *policy.Policy, r *report.Report, fileLines m
 		if count <= pol.MaxFilesPerPackage {
 			continue
 		}
-		h, registered := hotspots[pkg]
-		if registered && count > h.BaselineFiles {
-			r.Violations = append(r.Violations, report.Violation{
-				Package:      pkg,
-				ActualCount:  count,
-				AllowedCount: pol.MaxFilesPerPackage,
-				MatchedRule:  "package_hotspot_growth",
-				Rule:         "pkg_size",
-				Severity:     "error",
-				Note: fmt.Sprintf(
-					"registered hotspot exceeded baseline=%d owner=%q deadline=%s targets=%s",
-					h.BaselineFiles, h.Owner, h.Deadline, strings.Join(h.TargetPackages, ", "),
-				),
-			})
-			continue
-		}
+		appendPackageHotspotResult(r, pkg, count, pol.MaxFilesPerPackage, hotspots, productionOnly, time.Now().UTC())
+	}
+}
 
-		// Registered hotspots that are within their baseline are
-		// grandfathered; do not emit a size violation for acknowledged
-		// debt. The registry itself is the forward ratchet.
-		if registered {
-			continue
+func appendPackageHotspotResult(
+	r *report.Report,
+	pkg string,
+	count int,
+	globalCap int,
+	hotspots map[string]packageHotspot,
+	productionOnly bool,
+	now time.Time,
+) {
+	h, registered := hotspots[pkg]
+	if !registered {
+		severity := "warn"
+		matchedRule := "max_files_per_package"
+		note := ""
+		if productionOnly {
+			severity = "error"
+			matchedRule = "unregistered_package_hotspot"
+			note = "package exceeds the global cap but has no owner, deadline, baseline or target packages in " + packageHotspotRegistryPath
 		}
-
 		r.Violations = append(r.Violations, report.Violation{
 			Package:      pkg,
 			ActualCount:  count,
-			AllowedCount: pol.MaxFilesPerPackage,
-			MatchedRule:  "max_files_per_package",
+			AllowedCount: globalCap,
+			MatchedRule:  matchedRule,
 			Rule:         "pkg_size",
-			Severity:     "warn",
+			Severity:     severity,
+			Note:         note,
+		})
+		return
+	}
+
+	if count > h.BaselineFiles {
+		r.Violations = append(r.Violations, report.Violation{
+			Package:      pkg,
+			ActualCount:  count,
+			AllowedCount: h.BaselineFiles,
+			MatchedRule:  "package_hotspot_growth",
+			Rule:         "pkg_size",
+			Severity:     "error",
+			Note: fmt.Sprintf(
+				"registered hotspot exceeded baseline=%d owner=%q deadline=%s targets=%s",
+				h.BaselineFiles, h.Owner, h.Deadline, strings.Join(h.TargetPackages, ", "),
+			),
+		})
+		return
+	}
+
+	if packageHotspotDeadlineExpired(h.Deadline, now) {
+		severity := "warn"
+		if productionOnly {
+			severity = "error"
+		}
+		r.Violations = append(r.Violations, report.Violation{
+			Package:      pkg,
+			ActualCount:  count,
+			AllowedCount: globalCap,
+			MatchedRule:  "package_hotspot_deadline_expired",
+			Rule:         "pkg_size",
+			Severity:     severity,
+			Note: fmt.Sprintf(
+				"registered hotspot deadline expired owner=%q deadline=%s targets=%s",
+				h.Owner, h.Deadline, strings.Join(h.TargetPackages, ", "),
+			),
 		})
 	}
+}
+
+func packageHotspotDeadlineExpired(deadline string, now time.Time) bool {
+	parsed, err := time.Parse("2006-01-02", deadline)
+	if err != nil {
+		return false // registry validation reports the malformed date separately
+	}
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	return parsed.Before(today)
 }
 
 func loadPackageHotspotRegistry(root string) (*packageHotspotRegistry, error) {
@@ -160,21 +209,29 @@ func loadPackageHotspotRegistry(root string) (*packageHotspotRegistry, error) {
 	if registry.Version != 1 {
 		return nil, fmt.Errorf("unsupported package hotspot registry version %d", registry.Version)
 	}
-	seen := map[string]bool{}
+
+	seenHotspots := map[string]bool{}
 	for _, h := range registry.Hotspots {
 		if err := validatePackageHotspot(h); err != nil {
 			return nil, err
 		}
 		path := filepath.ToSlash(h.Path)
-		if seen[path] {
+		if seenHotspots[path] {
 			return nil, fmt.Errorf("duplicate package hotspot path %q", path)
 		}
-		seen[path] = true
+		seenHotspots[path] = true
 	}
+
+	seenRoots := map[string]bool{}
 	for _, migration := range registry.RootMigrations {
 		if err := validateInternalRootMigration(migration); err != nil {
 			return nil, err
 		}
+		path := filepath.ToSlash(migration.Path)
+		if seenRoots[path] {
+			return nil, fmt.Errorf("duplicate internal root migration path %q", path)
+		}
+		seenRoots[path] = true
 	}
 	return &registry, nil
 }
@@ -211,8 +268,7 @@ func ScanCommandBinaries(root string, pol *policy.Policy, r *report.Report, file
 		if !e.IsDir() {
 			continue
 		}
-		name := e.Name()
-		mainPath := filepath.Join(cmdDir, name, "main.go")
+		mainPath := filepath.Join(cmdDir, e.Name(), "main.go")
 		n, ok := fileLines[mainPath]
 		if !ok {
 			continue
@@ -238,10 +294,10 @@ func countLines(path string) (int, error) {
 		return 0, err
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(f)
 	n := 0
-	for sc.Scan() {
+	for scanner.Scan() {
 		n++
 	}
-	return n, sc.Err()
+	return n, scanner.Err()
 }
