@@ -12,6 +12,11 @@ type DriveConfig struct {
 	// Stock footage root folder
 	StockRootFolder string `yaml:"stock_root_folder" env:"VELOX_DRIVE_STOCK_ROOT" default:""`
 
+	// AIClipsRootFolder is the canonical Drive folder for generated stock
+	// clips. It is intentionally separate from StockRootFolder so AI stock
+	// can use the common stock pipeline without mixing storage roots.
+	AIClipsRootFolder string `yaml:"ai_clips_root_folder" env:"VELOX_DRIVE_AI_CLIPS_ROOT" default:""`
+
 	// Clips (YouTube/Artlist) root folder
 	ClipsRootFolder string `yaml:"clips_root_folder" env:"VELOX_DRIVE_CLIPS_ROOT" default:""`
 	// Voiceover root folder
@@ -89,6 +94,7 @@ func (d DriveConfig) IsUsingMediaRoot(specificRoot string) bool {
 
 // Convenience resolvers — each returns MediaRootFolder if set, else its own root.
 func (d DriveConfig) StockFolder() string     { return d.ResolveFolder(d.StockRootFolder) }
+func (d DriveConfig) AIClipsFolder() string   { return d.ResolveFolder(d.AIClipsRootFolder) }
 func (d DriveConfig) ClipsFolder() string     { return d.ResolveFolder(d.ClipsRootFolder) }
 func (d DriveConfig) VoiceoverFolder() string { return d.ResolveFolder(d.VoiceoverRootFolder) }
 func (d DriveConfig) ArtlistFolder() string   { return d.ResolveFolder(d.ArtlistRootFolder) }

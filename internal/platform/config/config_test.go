@@ -173,6 +173,7 @@ func TestDriveConfigConvenienceMethods(t *testing.T) {
 		specificName string
 	}{
 		{"StockFolder", func(d *DriveConfig, v string) { d.StockRootFolder = v }, func(d DriveConfig) string { return d.StockFolder() }, "stockRoot"},
+		{"AIClipsFolder", func(d *DriveConfig, v string) { d.AIClipsRootFolder = v }, func(d DriveConfig) string { return d.AIClipsFolder() }, "aiClipsRoot"},
 		{"ClipsFolder", func(d *DriveConfig, v string) { d.ClipsRootFolder = v }, func(d DriveConfig) string { return d.ClipsFolder() }, "clipsRoot"},
 		{"VoiceoverFolder", func(d *DriveConfig, v string) { d.VoiceoverRootFolder = v }, func(d DriveConfig) string { return d.VoiceoverFolder() }, "voRoot"},
 		{"ArtlistFolder", func(d *DriveConfig, v string) { d.ArtlistRootFolder = v }, func(d DriveConfig) string { return d.ArtlistFolder() }, "artlistRoot"},
