@@ -13,6 +13,7 @@ import (
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	cliphttp "github.com/Marcuss-ops/PipelineGen/internal/api/assets/youtube"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
+	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
 	yttypes "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
 	ytports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -349,6 +350,99 @@ func TestNewServerWithHealth_LegacyYouTubeModuleReportsYouTubeCapabilityMounted(
 	require.True(t, ok, "capabilities must be present in response")
 	require.Equal(t, "MOUNTED", caps["youtube"], "youtube capability must be reported as MOUNTED")
 	require.Equal(t, "NOT_MOUNTED", caps["clips"], "clips capability must be NOT_MOUNTED when only legacy /api/clips/* routes are registered")
+}
+
+// mockHealthChecker provides trivial passing checks for the /ready E2E test.
+type mockHealthChecker struct{}
+
+func (mockHealthChecker) CheckDB(context.Context) systemhealth.CheckResult {
+	return systemhealth.CheckResult{"ok": true, "duration_ms": int64(1)}
+}
+func (mockHealthChecker) CheckDrive(context.Context) systemhealth.CheckResult {
+	return systemhealth.CheckResult{"ok": true, "applicable": false, "duration_ms": int64(1)}
+}
+func (mockHealthChecker) CheckQdrant(context.Context) systemhealth.CheckResult {
+	return systemhealth.CheckResult{"ok": true, "applicable": false, "duration_ms": int64(1)}
+}
+func (mockHealthChecker) CheckJobs(context.Context) systemhealth.CheckResult {
+	return systemhealth.CheckResult{"ok": true, "duration_ms": int64(1)}
+}
+
+func TestNewServerWithHealth_ReadyWireReportsClipsMounted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dataDir := t.TempDir()
+	downloadDir := filepath.Join(dataDir, "downloads")
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host:         "127.0.0.1",
+			Port:         0,
+			GinMode:      gin.TestMode,
+			ReadTimeout:  1,
+			WriteTimeout: 1,
+		},
+		Storage: config.StorageConfig{
+			DataDir: dataDir,
+		},
+		Security: config.SecurityConfig{
+			EnableAuth:       false,
+			RateLimitEnabled: false,
+		},
+		GoogleAccounting: config.GoogleAccountingConfig{
+			DownloadDir: downloadDir,
+		},
+	}
+
+	mockClips := api.NewRouteModule(
+		"clips",
+		func() bool { return true },
+		"/clips",
+		&mockAIStockClipsHandler{},
+		zap.NewNop(),
+	)
+
+	assetsMod := assetsapi.NewModule(assetsapi.Dependencies{
+		Clips: mockClips,
+	}, zap.NewNop())
+
+	registry := api.NewRegistry()
+	require.NoError(t, registry.Register(api.NewRouteModule(
+		"assets",
+		func() bool { return true },
+		"/media",
+		assetsMod,
+		zap.NewNop(),
+	)))
+
+	healthSvc := systemhealth.NewService(systemhealth.ServiceDeps{
+		DB:     mockHealthChecker{},
+		Drive:  mockHealthChecker{},
+		Qdrant: mockHealthChecker{},
+		Jobs:   mockHealthChecker{},
+	})
+	readyChecker := systemhealth.NewReadyChecker(healthSvc)
+
+	server := api.NewServerWithHealth(api.ServerDeps{
+		Config:   cfg,
+		Registry: registry,
+		Health:   healthSvc,
+		Ready:    readyChecker,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	rec := httptest.NewRecorder()
+
+	server.GetRouter().ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.True(t, resp["ok"].(bool), "ready response must report ok=true")
+
+	wire, ok := resp["wire"].(map[string]any)
+	require.True(t, ok, "wire must be present in response")
+	require.Equal(t, "MOUNTED", wire["clips"], "clips must be reported as MOUNTED in /ready wire")
 }
 
 func TestNewServerWithHealth_YouTubeClipsProcessRoutesThroughRealRouter(t *testing.T) {
