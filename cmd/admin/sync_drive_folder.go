@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -50,9 +51,21 @@ func runSyncDriveFolder(args []string) error {
 	if root.Repos == nil || root.Repos.ClipsRepo == nil {
 		return fmt.Errorf("clips repository is not configured")
 	}
+	if root.Outbox == nil || root.Outbox.EventsPool == nil || root.Outbox.EventsRepo == nil {
+		return fmt.Errorf("outbox events pool is not configured")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	deadLettersBefore, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "dead_letter")
+	if err != nil {
+		return fmt.Errorf("read outbox dead-letter baseline: %w", err)
+	}
+	root.Outbox.EventsPool.Start(ctx, 1)
+	defer func() { _ = root.Outbox.EventsPool.Stop(15 * time.Second) }()
 
 	summary, err := root.Sync.CatalogSync.SyncFolderID(
-		context.Background(), strings.TrimSpace(*folder), strings.TrimSpace(*source),
+		ctx, strings.TrimSpace(*folder), strings.TrimSpace(*source),
 		strings.TrimSpace(*name), strings.TrimSpace(*mediaType), root.Repos.ClipsRepo,
 	)
 	if err != nil {
@@ -60,6 +73,9 @@ func runSyncDriveFolder(args []string) error {
 	}
 	if summary == nil {
 		return fmt.Errorf("sync Drive folder recursively: empty summary")
+	}
+	if err := waitForAssetIndexOutbox(ctx, root, deadLettersBefore); err != nil {
+		return err
 	}
 	log.Info("normal clips Drive sync completed",
 		zap.String("folder_id", *folder), zap.String("source", *source),
@@ -71,4 +87,32 @@ func runSyncDriveFolder(args []string) error {
 		return fmt.Errorf("Drive folder sync completed with %d failed items", summary.Failed)
 	}
 	return nil
+}
+
+func waitForAssetIndexOutbox(ctx context.Context, root *app.ComposeRoot, deadLettersBefore int64) error {
+	for {
+		pending, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "pending")
+		if err != nil {
+			return fmt.Errorf("read pending asset index events: %w", err)
+		}
+		processing, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "processing")
+		if err != nil {
+			return fmt.Errorf("read processing asset index events: %w", err)
+		}
+		deadLetters, err := root.Outbox.EventsRepo.CountByEventTypeAndStatus(ctx, "asset.index.requested", "dead_letter")
+		if err != nil {
+			return fmt.Errorf("read asset index dead letters: %w", err)
+		}
+		if deadLetters > deadLettersBefore {
+			return fmt.Errorf("Qdrant indexing failed: %d asset.index.requested events moved to dead-letter", deadLetters-deadLettersBefore)
+		}
+		if pending == 0 && processing == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for Qdrant indexing: pending=%d processing=%d", pending, processing)
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
