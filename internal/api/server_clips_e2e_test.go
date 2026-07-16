@@ -73,6 +73,18 @@ func (m *mockAIStockClipsHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	})
 }
 
+// mockLegacyYouTubeClipsHandler is a minimal stand-in for the legacy
+// YouTube clip handler that mounts under /api/clips/*. It lets the
+// end-to-end router test verify the capability wire surface without
+// wiring the real YouTube service and its dependencies.
+type mockLegacyYouTubeClipsHandler struct{}
+
+func (m *mockLegacyYouTubeClipsHandler) RegisterRoutes(rg *gin.RouterGroup) {
+	rg.POST("/process", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "job_id": "mock-job-01"})
+	})
+}
+
 func TestNewServerWithHealth_AIStockClipRoutesThroughRealRouter(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -281,6 +293,62 @@ func TestNewServerWithHealth_AssetsModuleReportsClipsCapabilityMounted(t *testin
 	caps, ok := resp["capabilities"].(map[string]any)
 	require.True(t, ok, "capabilities must be present in response")
 	require.Equal(t, "MOUNTED", caps["clips"], "clips capability must be reported as MOUNTED")
+}
+
+func TestNewServerWithHealth_LegacyYouTubeModuleReportsYouTubeCapabilityMounted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	dataDir := t.TempDir()
+	downloadDir := filepath.Join(dataDir, "downloads")
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host:         "127.0.0.1",
+			Port:         0,
+			GinMode:      gin.TestMode,
+			ReadTimeout:  1,
+			WriteTimeout: 1,
+		},
+		Storage: config.StorageConfig{
+			DataDir: dataDir,
+		},
+		Security: config.SecurityConfig{
+			EnableAuth:       false,
+			RateLimitEnabled: false,
+		},
+		GoogleAccounting: config.GoogleAccountingConfig{
+			DownloadDir: downloadDir,
+		},
+	}
+
+	registry := api.NewRegistry()
+	require.NoError(t, registry.Register(api.NewRouteModule(
+		"youtube",
+		func() bool { return true },
+		"/clips",
+		&mockLegacyYouTubeClipsHandler{},
+		zap.NewNop(),
+	)))
+
+	server := api.NewServerWithHealth(api.ServerDeps{
+		Config:   cfg,
+		Registry: registry,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/capabilities", nil)
+	rec := httptest.NewRecorder()
+
+	server.GetRouter().ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.True(t, resp["ok"].(bool), "capabilities response must report ok=true")
+
+	caps, ok := resp["capabilities"].(map[string]any)
+	require.True(t, ok, "capabilities must be present in response")
+	require.Equal(t, "MOUNTED", caps["youtube"], "youtube capability must be reported as MOUNTED")
+	require.Equal(t, "NOT_MOUNTED", caps["clips"], "clips capability must be NOT_MOUNTED when only legacy /api/clips/* routes are registered")
 }
 
 func TestNewServerWithHealth_YouTubeClipsProcessRoutesThroughRealRouter(t *testing.T) {
