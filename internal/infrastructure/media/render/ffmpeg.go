@@ -30,6 +30,7 @@ import (
 
 	stockpipeline "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/process"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // FFmpegRenderer is the canonical concrete implementation of the
@@ -75,6 +76,17 @@ func (r *FFmpegRenderer) Render(ctx context.Context, req stockpipeline.RenderReq
 	if req.OutputPath == "" {
 		return stockpipeline.RenderResult{}, fmt.Errorf("render: empty output path")
 	}
+	// Every rendered clip/chunk uses the same technical profile. Request
+	// fields retain the neutral port shape, but providers cannot introduce
+	// a second codec/resolution/FPS profile at this boundary.
+	canonical := (config.VideoConfig{}).CanonicalClip()
+	req.Width = canonical.Width
+	req.Height = canonical.Height
+	req.FPS = canonical.FPS
+	req.Codec = canonical.Codec
+	req.Preset = canonical.Preset
+	req.CRF = canonical.CRF
+	req.KeyframeInterval = canonical.KeyframeInterval
 	if req.Logger != nil {
 		// Route app-provided logger through the renderer's log field so
 		// RenderRequest.Log wins when provided; otherwise fall back to
@@ -317,6 +329,10 @@ func (r *FFmpegRenderer) encodeArgs(req stockpipeline.RenderRequest) []string {
 		"-c:v", req.Codec,
 		"-preset", req.Preset,
 		"-pix_fmt", "yuv420p",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-ar", "48000",
+		"-ac", "2",
 		"-movflags", "+faststart",
 	}
 	if req.Codec == "h264_nvenc" {

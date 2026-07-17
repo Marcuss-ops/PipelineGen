@@ -20,18 +20,15 @@ import (
 
 // YouTubeCutRequest contains all parameters for downloading and cutting a YouTube clip.
 type YouTubeCutRequest struct {
-	URL             string
-	VideoID         string
-	Start           float64
-	Duration        float64
-	OutputName      string
-	ForceKeyframes  bool
-	KeepAudio       bool
-	Normalize       bool
-	NormalizeWidth  int
-	NormalizeHeight int
-	NormalizeFPS    int
-	Strategy        string // verify (default), skip, replace
+	URL            string
+	VideoID        string
+	Start          float64
+	Duration       float64
+	OutputName     string
+	ForceKeyframes bool
+	KeepAudio      bool
+	Normalize      bool
+	Strategy       string // verify (default), skip, replace
 	// OutputDir is the target directory for the final clip.
 	// When empty, falls back to DataDir/media/clips/general/{videoID}.
 	OutputDir string
@@ -173,31 +170,23 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 
 	// 4. Process the downloaded clip with ffmpeg.
 	//
-	// Normalize=false (raw fetch) → stream-copy only: no re-encoding,
-	// no scaling — the yt-dlp download-sections segment is already the
-	// correct bitstream. This avoids the "Invalid NAL unit size" / exit-69
-	// ffmpeg failure that occurs when CutAndNormalize tries to re-encode
-	// segments from videos like RRJvrDKunyA that have codec quirks.
-	//
-	// Normalize=true (stock/upload pipeline) → full CutAndNormalize
-	// re-encode to the canonical resolution/fps/codec profile.
+	// Every persisted YouTube clip must be materialized through the
+	// canonical profile. Normalize=false remains accepted at the port for
+	// compatibility, but is no longer allowed to select a stream-copy
+	// output.
 	if p.clipProcess == nil {
 		return nil, fmt.Errorf("ffmpeg clip processor not configured")
+	}
+	if !req.Normalize {
+		p.log.Warn("normalization override ignored; canonical clip profile is mandatory",
+			zap.String("video_id", videoID))
+		req.Normalize = true
 	}
 
 	renderTimer := time.Now()
 	var normalizeErr error
 	if req.Normalize {
-		videoCfg := p.cfg.Video.WithDefaults()
-		if req.NormalizeWidth > 0 {
-			videoCfg.Width = req.NormalizeWidth
-		}
-		if req.NormalizeHeight > 0 {
-			videoCfg.Height = req.NormalizeHeight
-		}
-		if req.NormalizeFPS > 0 {
-			videoCfg.FPS = req.NormalizeFPS
-		}
+		videoCfg := p.cfg.Video.CanonicalClip()
 		normalizeErr = p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "", "", pkgffmpeg.CutAndNormalizeOptions{
 			Width:   videoCfg.Width,
 			Height:  videoCfg.Height,

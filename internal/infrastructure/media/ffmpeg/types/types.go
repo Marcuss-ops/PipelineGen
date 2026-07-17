@@ -58,7 +58,7 @@ type WatermarkOptions struct {
 
 // DefaultNormalizeOptions returns defaults from config.
 func DefaultNormalizeOptions(cfg *config.Config) NormalizeOptions {
-	v := cfg.Video.WithDefaults()
+	v := cfg.Video.CanonicalClip()
 	return NormalizeOptions{
 		Duration:         v.Duration,
 		Width:            v.Width,

@@ -234,11 +234,8 @@ func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*provi
 		// Registering a YouTube clip is also the cut boundary. Normalize at
 		// this seam so every persisted/uploaded segment has the canonical
 		// delivery profile, independent of the source video's format.
-		Normalize:       true,
-		NormalizeWidth:  1920,
-		NormalizeHeight: 1080,
-		NormalizeFPS:    24,
-		Strategy:        "replace",
+		Normalize: true,
+		Strategy:  "replace",
 	}
 
 	result, err := a.fetcher.DownloadAndCut(ctx, cutReq)

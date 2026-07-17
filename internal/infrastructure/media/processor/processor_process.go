@@ -16,48 +16,17 @@ import (
 
 // processStep normalizes/processes the video if needed.
 func (p *Processor) processStep(ctx context.Context, input *asset.ProcessInput, rawPath, processedPath string) (string, error) {
-	shouldNormalize := input.Normalize == nil || *input.Normalize
-
-	// If normalization is not requested, just move the file.
-	if !shouldNormalize {
-		p.log.Info("skipping normalization as requested, moving raw to processed path", zap.String("id", input.ID))
-		return p.moveRawToProcessed(rawPath, processedPath)
+	// Materialized clips always use the canonical profile. The legacy
+	// Normalize=false flag is accepted for wire compatibility but cannot
+	// produce a non-canonical persisted clip anymore.
+	if input.Normalize != nil && !*input.Normalize {
+		p.log.Warn("normalization override ignored; canonical clip profile is mandatory", zap.String("id", input.ID))
 	}
 
 	// Nil guard for ffmpeg.
 	if p.ffmpeg == nil {
 		p.log.Warn("ffmpeg is nil, skipping normalization, moving raw to processed path", zap.String("id", input.ID))
 		return p.moveRawToProcessed(rawPath, processedPath)
-	}
-
-	// ZERO-COPY OPTIMIZATION:
-	// Always probe the downloaded file to check if it already matches target specs.
-	// If so, skip the expensive re-encode entirely.
-	info, err := p.ffmpeg.Probe(ctx, rawPath)
-	if err == nil && info != nil {
-		target := p.videoCfg
-		// Check if properties match (with some tolerance for FPS).
-		fpsMatch := info.FPS >= float64(target.FPS)-0.1 && info.FPS <= float64(target.FPS)+0.1
-		resMatch := info.Width == target.Width && info.Height == target.Height
-
-		if resMatch && fpsMatch {
-			p.log.Info("Zero-Copy Optimization: properties match, skipping normalization",
-				zap.String("id", input.ID),
-				zap.Int("width", info.Width),
-				zap.Int("height", info.Height),
-				zap.Float64("fps", info.FPS))
-			return p.moveRawToProcessed(rawPath, processedPath)
-		}
-		p.log.Info("properties do not match target, proceeding with normalization",
-			zap.String("id", input.ID),
-			zap.Int("width", info.Width),
-			zap.Int("height", info.Height),
-			zap.Float64("fps", info.FPS),
-			zap.Int("target_width", target.Width),
-			zap.Int("target_height", target.Height),
-			zap.Int("target_fps", target.FPS))
-	} else if err != nil {
-		p.log.Warn("failed to probe file for zero-copy optimization", zap.Error(err))
 	}
 
 	opts := p.videoCfg

@@ -78,9 +78,6 @@ type VideoCutRequest struct {
 	Normalize      bool
 	// Normalization target for callers that need a profile different from
 	// the global video configuration. Zero values use the configured default.
-	NormalizeWidth    int
-	NormalizeHeight   int
-	NormalizeFPS      int
 	Strategy          string
 	OutputDir         string
 	PreDownloadedPath string
