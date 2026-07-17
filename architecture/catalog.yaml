@@ -90,6 +90,21 @@ current:
   cross_refs:
     details: architecture/job_kernel_migration.json
     canonical_import: github.com/Marcuss-ops/PipelineGen/internal/kernel/job
+- id: LONG-FILES-DECOMPOSITION-CONTINUATION-2026-07-17
+  status: in_progress
+  owner: architecture-governance
+  deadline: '2026-08-31T00:00:00Z'
+  rationale: 'Wave 2 audit-pin for LONG-FILES-DECOMPOSITION-2026-07-06: archive the godlike/07 zero-legacy sister splits (PR-MULTILINGUAL-PERSISTENCE-P1F-ORIGINAL-RM git-rm of internal/application/scripts/usecase/multilingual_persistence_p1f_test.go + PR-ARCHCHECK-THIN-DISPATCHER replacement of scripts/ci/architecture/checks/all_checks.sh with a thin dispatcher) under one umbrella entry so the canonical architecture wave-tracker captures the pattern-5 mechanical-split continuations that complement the original long-file decompositions.'
+  follow_up_tickets:
+  - id: PR-MULTILINGUAL-PERSISTENCE-P1F-ORIGINAL-RM
+    note: 'ship_sha=d325787a887a2150177ca38dbfe48dbcbe0d3cab ship_date=2026-07-17; owner_capability=internal/application/scripts/usecase. git-rm of the P1F test aggregator; sister splits by signal (_1F + _language_group + _persistence_stage + _preflight_check) reproduce the coverage. Closure remediates one carry-forward of PRE-EXISTING-BUILD-ISSUES-2026-07-04 in spirit.'
+  - id: PR-ARCHCHECK-THIN-DISPATCHER
+    note: 'ship_sha=a4f76cec5 ship_date=2026-07-17; owner_capability=scripts/ci/architecture/checks. all_checks.sh reduced to a thin dispatcher sourcing each check_NN_<subject>.sh in ordine per AGENTS.md Pattern 5 mechanical-split discipline.'
+  cross_refs:
+    sister_pr_archcheck_thin_dispatcher: 'a4f76cec5'
+    sister_pr_multilingual_persistence_p1f_original_rm: 'd325787a887a2150177ca38dbfe48dbcbe0d3cab'
+    umbrella_long_files_decomposition: LONG-FILES-DECOMPOSITION-2026-07-06
+    umbrella_pre_existing_build_issues: PRE-EXISTING-BUILD-ISSUES-2026-07-04
 issues:
 - id: PR-LIVE-VERIFY-1
   title: Node scraper is not running, so live verification cannot probe health.
