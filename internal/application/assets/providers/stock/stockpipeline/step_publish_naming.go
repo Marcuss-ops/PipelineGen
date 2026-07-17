@@ -212,6 +212,30 @@ func stockTimestampGroupName(in *RunInput) string {
 	return "metadata"
 }
 
+// stockClipFolderName derives the Drive subfolder for an explicit clip.
+// When the clip carries a round number, all clips from that round share one
+// folder under the run folder. Round zero keeps the human-readable title
+// (typically the introduction/fighter-intros segment). Runs without explicit
+// clip metadata retain the legacy timestamp-group fallback.
+func stockClipFolderName(in *RunInput, plan ClipPlan, fallback string) string {
+	// An explicit subfolder is an operator-selected timestamp path and keeps
+	// the historical single-folder contract. Round-based grouping applies to
+	// runs that leave subfolder empty and provide round metadata on clips.
+	if in != nil && strings.TrimSpace(in.Subfolder) != "" {
+		return fallback
+	}
+	if plan.Round > 0 {
+		return fmt.Sprintf("Round %d", plan.Round)
+	}
+	if title := sanitizedRootName(plan.Title); title != "" {
+		return title
+	}
+	if strings.TrimSpace(fallback) != "" {
+		return fallback
+	}
+	return stockTimestampGroupName(in)
+}
+
 // stockTimestampParentGroupName derives the human-readable leaf for
 // the parent folder that contains all 5-second children of a single
 // explicit timestamp block. Priority cascade:

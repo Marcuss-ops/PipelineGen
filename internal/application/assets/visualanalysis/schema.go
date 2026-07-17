@@ -24,6 +24,7 @@ type Document struct {
 	TimedEvents      []EventInput    `json:"timed_events"`
 	RecommendedClips []ClipInput     `json:"recommended_clips"`
 	SoundCues        []SoundCueInput `json:"sound_cues"`
+	SuggestedSubtitles []SubtitleInput `json:"suggested_subtitles"`
 }
 type AssetInput struct {
 	ProposedAssetID        string  `json:"proposed_asset_id"`
@@ -74,6 +75,10 @@ type ClipInput struct {
 	Recommended bool   `json:"recommended"`
 }
 type SoundCueInput struct {
+	TimestampMs         int64   `json:"timestamp_ms"`
+	SFXName             string  `json:"sfx_name"`
+	Volume              float64 `json:"volume"`
+	AudioFilter         string  `json:"audio_filter"`
 	EventSequenceNo     int     `json:"event_sequence_no"`
 	TriggerMs           int64   `json:"trigger_ms"`
 	StartMs             int64   `json:"start_ms"`
@@ -85,6 +90,11 @@ type SoundCueInput struct {
 	PreserveNativeAudio bool    `json:"preserve_native_audio"`
 	SuggestionIT        string  `json:"suggestion_it"`
 	SuggestionEN        string  `json:"suggestion_en"`
+}
+type SubtitleInput struct {
+	StartMs int64 `json:"start_ms"`
+	EndMs   int64 `json:"end_ms"`
+	Text    string `json:"text"`
 }
 
 func Parse(data []byte) (Document, error) {
@@ -134,6 +144,11 @@ func (d Document) Validate() error {
 	for i, c := range d.RecommendedClips {
 		if c.EndMs <= c.StartMs || c.DurationMs != c.EndMs-c.StartMs || c.EndMs > d.Asset.DurationMs {
 			return fmt.Errorf("visual analysis: invalid recommended_clips[%d]", i)
+		}
+	}
+	for i, s := range d.SuggestedSubtitles {
+		if s.StartMs < 0 || s.EndMs <= s.StartMs || s.EndMs > d.Asset.DurationMs || strings.TrimSpace(s.Text) == "" {
+			return fmt.Errorf("visual analysis: invalid suggested_subtitles[%d]", i)
 		}
 	}
 	return nil

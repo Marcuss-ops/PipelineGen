@@ -44,8 +44,8 @@ func TestStatusConstantValues(t *testing.T) {
 	}{
 		{"StatusStaging", StatusStaging, "STAGING"},
 		{"StatusVerifying", StatusVerifying, "VERIFYING"},
-		{"StatusStaged", StatusStaged, "STAGED"},
-		{"StatusReady", StatusReady, "STAGED"}, // AZIONE 15 BC alias: StatusReady = StatusStaged = "STAGED"
+		{"StatusStaged", StatusStaged, "READY"},
+		{"StatusReady", StatusReady, "READY"},
 		{"StatusFailed", StatusFailed, "FAILED"},
 		{"StatusQuarantined", StatusQuarantined, "QUARANTINED"},
 		{"StatusDeleted", StatusDeleted, "DELETED"},

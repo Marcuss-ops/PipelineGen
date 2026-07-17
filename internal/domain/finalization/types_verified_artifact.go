@@ -63,6 +63,24 @@ type VerifiedArtifact struct {
 	// rather than resolving the registry default.
 	RootFolderOverride string `json:"root_folder_override,omitempty"`
 
+	// RootFolderResolved records whether the upstream Drive folder
+	// resolution gate already verified the Drive folder corresponding
+	// to this artifact's root before VerifyArtifact was constructed.
+	// Stock pipeline sets this from RunInput.DriveFolderResolved at
+	// every VerifiedArtifact construction site
+	// (step_extract_clips, step_publish_chunks_phase,
+	// step_publish_metadata_phase). When true, downstream consumers
+	// can skip the resolution probe and treat the root as resolved;
+	// when false (zero value, or legacy callers that predate this
+	// field), downstream must resolve the folder itself or refuse per
+	// the DriveFolderResolved gate contract.
+	//
+	// This field is a sticky-resolved-state trace, NOT a redirector:
+	// it does not name or alter the folder path. The carrier fields
+	// are RootFolderName (human-readable top-level label) and
+	// RootFolderOverride (explicit provider root folder ID).
+	RootFolderResolved bool `json:"root_folder_resolved,omitempty"`
+
 	// Description is the human-readable English summary for the clip
 	// or artifact. Stock uses it to carry per-timestamp narration into
 	// Drive metadata and Qdrant payloads.

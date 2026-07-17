@@ -285,6 +285,9 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 
 				if artifactPrep != nil {
 					leafName := timestampGroupName
+					if in != nil && len(in.Clips) > 0 {
+						leafName = stockClipFolderName(in, plan, timestampGroupName)
+					}
 					segmentCount := segmentCounts[leafName] + 1
 					segmentCounts[leafName] = segmentCount
 					segmentFilename := fmt.Sprintf("clip_%03d.mp4", segmentCount)
@@ -301,6 +304,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 						Description:        plan.Description,
 						RootFolderName:     rootFolderName,
 						RootFolderOverride: rootFolderOverride,
+						RootFolderResolved: in != nil && in.DriveFolderResolved,
 						PathLeafName:       leafName,
 					}
 					clipPublished, clipPrepErr := artifactPrep.Prepare(ctx, clipVA)
@@ -409,6 +413,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 				IdempotencyKey:     metaIdem,
 				RootFolderName:     rootFolderName,
 				RootFolderOverride: rootFolderOverride,
+				RootFolderResolved: in != nil && in.DriveFolderResolved,
 				PathLeafName:       group.leafName,
 			}
 			if _, metaPrepErr := artifactPrep.Prepare(ctx, metaVA); metaPrepErr != nil {

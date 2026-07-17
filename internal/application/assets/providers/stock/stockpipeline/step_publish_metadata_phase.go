@@ -136,6 +136,7 @@ func publishMetadataPhase(
 		// the actual Drive root selector.
 		RootFolderName:     rootFolderName,
 		RootFolderOverride: rootFolderOverride,
+		RootFolderResolved: in != nil && in.DriveFolderResolved,
 		PathLeafName:       metaLeafName,
 	}
 	metaPublished, metaPrepErr := runner.ArtifactPreparation().Prepare(ctx, metaVA)
