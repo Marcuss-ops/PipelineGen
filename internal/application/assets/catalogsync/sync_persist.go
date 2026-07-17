@@ -37,6 +37,12 @@ func (s *Service) upsertPreservingExisting(ctx context.Context, repo *assets.Cli
 	if s.dispatcher == nil {
 		return fmt.Errorf("upsertPreservingExisting: dispatcher is nil — production wiring required")
 	}
+	// Drive catalog rows use the Drive file ID as their stable asset ID.
+	// Apply this after merging existing metadata so a stale metadata blob
+	// cannot erase the canonical drive_file_id on re-sync.
+	if strings.TrimSpace(clip.ID) != "" {
+		clip.SetDriveFileID(clip.ID)
+	}
 
 	// Canonical PR1 path: atomic upsert + outbox enqueue via dispatcher.
 	// Atomicity is guaranteed by the dispatcher: either both the

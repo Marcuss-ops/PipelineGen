@@ -61,7 +61,10 @@ func runSyncDriveFolder(args []string) error {
 	if err != nil {
 		return fmt.Errorf("read outbox dead-letter baseline: %w", err)
 	}
-	root.Outbox.EventsPool.Start(ctx, 1)
+	// Pool.Start owns the worker lifecycle and blocks until ctx is
+	// cancelled. Run it asynchronously so the folder sync can enqueue
+	// indexing events while the pool processes them.
+	go root.Outbox.EventsPool.Start(ctx, 1)
 	defer func() { _ = root.Outbox.EventsPool.Stop(15 * time.Second) }()
 
 	summary, err := root.Sync.CatalogSync.SyncFolderID(

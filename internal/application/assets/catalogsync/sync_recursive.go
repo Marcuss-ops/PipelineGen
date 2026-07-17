@@ -73,6 +73,7 @@ func (s *Service) syncTarget(ctx context.Context, target Target) (RootSummary, e
 	rootClip.SetDriveLink(rootLink)
 	rootClip.SetDownloadLink(rootLink)
 	rootClip.SetExternalURL(rootLink)
+	rootClip.SetDriveFileID(target.RootFolderID)
 	if err := s.upsertPreservingExisting(ctx, target.Repo, rootClip); err != nil {
 		rootSummary.Failed++
 		return rootSummary, err
@@ -166,6 +167,10 @@ func (s *Service) syncFolderRecursive(ctx context.Context, repo *assets.ClipsRep
 		clip.SetDriveLink(link)
 		clip.SetDownloadLink(link)
 		clip.SetExternalURL(link)
+		// Keep the canonical Drive identity separate from the generated
+		// web/download links. Resolution, deduplication and future Drive
+		// reconciliation use this stable file ID.
+		clip.SetDriveFileID(child.ID)
 		clip.SetMetadataString("mime_type", child.MimeType)
 		if child.MimeType != folderMimeType {
 			clip.SetFileHash(remoteFileFingerprint(child))
