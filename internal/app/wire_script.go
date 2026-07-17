@@ -207,16 +207,22 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if err != nil {
 		return fmt.Errorf("wireScriptFlow: build script submission service: %w", err)
 	}
+	remotionRenderer := &appvideo.HTTPRenderer{
+		BaseURL: remotionBaseURL(),
+		Client:  &http.Client{Timeout: 30 * time.Minute},
+	}
+	if err := (appvideo.NewHandler(remotionRenderer, log)).Register(root.Jobs.Service); err != nil {
+		return fmt.Errorf("wireScriptFlow: register Remotion render handler: %w", err)
+	}
+	remotionProducer := appvideo.NewProducer(root.Jobs.Facade)
 
 	scriptDeps := scriptapi.Dependencies{
 		Generate: scriptapi.GenerateDeps{
-			Submission: submissionSvc,
-			Log:        log,
-			Validator:  usecase.NewPayloadValidator(cfg.Scripts),
-			ShortsRenderer: &appvideo.HTTPRenderer{
-				BaseURL: remotionBaseURL(),
-				Client:  &http.Client{Timeout: 30 * time.Minute},
-			},
+			Submission:     submissionSvc,
+			Log:            log,
+			Validator:      usecase.NewPayloadValidator(cfg.Scripts),
+			ShortsRenderer: remotionRenderer,
+			ShortsProducer: remotionProducer,
 		},
 		// FASE 2 (July 2026): JobsDeps.Registry is RETIRED. The
 		// canonical MaxRetries lookup moved into
