@@ -20,14 +20,14 @@
 import {
   createBrowserPage,
   closeBrowserHandle,
-} from '../src/artlist/browser.js';
+} from '../src/driver/browser.js';
 import { fetchClipDetails } from './detail-fetcher.js';
 import {
   relevanceOverfetch,
   DEFAULT_MAX_FETCH_PAGES,
-} from '../src/artlist/relevance-overfetch.js';
-import { exportCookiesForYtDlp } from '../src/artlist/cookies.js';
-import { extractClipId } from '../src/artlist/url.js';
+} from '../src/scrape/relevance-overfetch.js';
+import { exportCookiesForYtDlp } from '../src/driver/cookies.js';
+import { extractClipId } from '../src/scrape/url.js';
 import {
   setupApiInterception,
   extractClipsFromApiResponses,
@@ -52,7 +52,7 @@ const DEFAULT_DETAIL_CONCURRENCY = 8;
  * Puppeteer, network, or filesystem.
  *
  * Contract (kept in sync with the legacy behavior in
- * src/artlist/search-page.js before this refactor): the FAST PATH
+ * src/scrape/search-page.js before this refactor): the FAST PATH
  * fires only when at least `min(limit, FAST_PATH_MIN_CLIPS)` clips
  * have BOTH a primary_url AND that primary_url differs from their
  * clip_page_url (otherwise the page_url itself is the only URL,

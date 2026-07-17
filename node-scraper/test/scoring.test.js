@@ -17,7 +17,7 @@ import {
   tokenizeQuery,
   scoreClipRelevance,
   isRelevantClip,
-} from '../src/artlist/scoring.js';
+} from '../src/scrape/scoring.js';
 
 describe('normalizeQuery', () => {
   test('lowercases uppercase input', () => {

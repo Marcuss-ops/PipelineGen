@@ -1,9 +1,9 @@
 // Search via Artlist API response interception (FAST PATH).
 //
 // Flat-path facade so consumers can import from `artlist/search-api.js`
-// without reaching into `src/artlist/`. Heuristics, JSON traversal,
+// without reaching into `src/scrape/`. Heuristics, JSON traversal,
 // and the response listener live upstream in
-// `src/artlist/api-interception.js` — kept in one place so the network
+// `src/scrape/api-interception.js` — kept in one place so the network
 // concerns (content-type filtering, depth-limited recursion, dedup by
 // id) are not split across files.
 //
@@ -18,4 +18,4 @@
 export {
   setupApiInterception,
   extractClipsFromApiResponses,
-} from '../src/artlist/api-interception.js';
+} from '../src/scrape/api-interception.js';

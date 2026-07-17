@@ -35,11 +35,11 @@ export {
 
 // Re-export the pure helpers that artlist_search.js historically
 // exposed so legacy callers that imported them directly still work.
-export { extractClipId, normalizeLinks } from './src/artlist/url.js';
+export { extractClipId, normalizeLinks } from './src/scrape/url.js';
 export {
   scoreClipRelevance,
   isRelevantClip,
-} from './src/artlist/scoring.js';
+} from './src/scrape/scoring.js';
 
 // ─── Legacy CLI shim ──────────────────────────────────────────────────────
 // Preserved so legacy invocations `node artlist_search.js --term foo`

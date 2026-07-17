@@ -16,7 +16,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractClipId, normalizeLinks } from '../src/artlist/url.js';
+import { extractClipId, normalizeLinks } from '../src/scrape/url.js';
 
 describe('extractClipId', () => {
   test('extracts numeric id from canonical clip URL', () => {

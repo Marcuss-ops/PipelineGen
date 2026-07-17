@@ -21,8 +21,8 @@ import {
   makeTempBrowserDir,
   closeBrowserHandle,
   evaluateBrowserPreflight,
-} from '../src/artlist/browser.js';
-import { computeHealthVerdict } from '../src/artlist/health.js';
+} from '../src/driver/browser.js';
+import { computeHealthVerdict } from '../src/server/health.js';
 
 // pickChromeExecutable priority 1: explicit CHROME_EXECUTABLE wins.
 test('pickChromeExecutable: explicit CHROME_EXECUTABLE always wins', () => {
@@ -175,7 +175,7 @@ test('browser.js: helper exports remain intact', () => {
 // actual fail-fast in artlist_server.js::runBrowserPreflight does
 // not need to be exercised in unit tests (mocking process.exit is
 // brittle). Each of the 3 cases below pins one branch of the
-// decision tree in src/artlist/browser.js.
+// decision tree in src/driver/browser.js.
 
 // Case A: no WS endpoint AND no local binary → preflight FAIL.
 // The test forces `CHROME_EXECUTABLE` to a path that does NOT exist

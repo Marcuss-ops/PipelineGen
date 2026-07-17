@@ -1,4 +1,4 @@
-// node-scraper/src/artlist/health.js
+// node-scraper/src/server/health.js
 //
 // PR-HEALTHCHECK-FAILFAST (July 2026, P2) — pure-function health
 // verdict helper. The /health handler in artlist_server.js delegates

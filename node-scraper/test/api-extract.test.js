@@ -14,7 +14,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractClipsFromApiResponses } from '../src/artlist/api-interception.js';
+import { extractClipsFromApiResponses } from '../src/scrape/api-interception.js';
 
 const TERM = 'sunrise';
 
