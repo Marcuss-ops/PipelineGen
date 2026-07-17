@@ -222,4 +222,3 @@ func TestMissingTranslation_NormalizeEmptyLanguageToUnd(t *testing.T) {
 	assert.Nil(t, row,
 		"ResolveLanguage with empty targetLang MUST return nil (no silent substitution to \"en\" or any default)")
 }
-

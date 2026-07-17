@@ -33,7 +33,7 @@
 //   - TestValidateDenseVector_MultipleErrors_FirstWins
 //     (5-step ordering: nil → zero-len → dimension → NaN → Inf;
 //
-//	first failure wins)
+//     first failure wins)
 //
 //   - TestClassifyChannel
 //     (text=Required; audio/transcript/visual/future_channel=Optional)
@@ -231,7 +231,7 @@ func TestValidateDenseVector_ValidVector(t *testing.T) {
 // the step 3 dimension-mismatch check, so DimensionMismatch
 // wins. (See also the existing TestValidateDenseVector_DimensionMismatch.)
 func TestValidateDenseVector_MultipleErrors_FirstWins(t *testing.T) {
-	vec := makeFloat32Slice(512) // wrong dimension: step 3 fires first
+	vec := makeFloat32Slice(512)   // wrong dimension: step 3 fires first
 	vec[100] = float32(math.NaN()) // step 4 also would-fire
 
 	err := validateDenseVector("text", vec, 768, "asset-multi")
