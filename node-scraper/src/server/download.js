@@ -12,7 +12,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { extractClipId } from './url.js';
+import { extractClipId } from '../scrape/url.js';
 
 /**
  * Downloads a video from Artlist.

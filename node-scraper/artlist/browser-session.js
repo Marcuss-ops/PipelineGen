@@ -1,8 +1,8 @@
 // Browser session lifecycle: open -> createPage -> close.
 //
 // Flat-path facade so consumers can import the helpers from
-// `artlist/browser-session.js` without reaching into `src/artlist/`.
-// Implementation lives in `src/artlist/browser.js`. The two pure
+// `artlist/browser-session.js` without reaching into `src/driver/`.
+// Implementation lives in `src/driver/browser.js`. The two pure
 // helpers (`makeTempBrowserDir`, `resolveChromeProfile`) are safe to
 // unit-test; the three browser-bound helpers (`openBrowser`,
 // `createBrowserPage`, `closeBrowserHandle`) require Puppeteer.
@@ -21,4 +21,4 @@ export {
   openBrowser,
   createBrowserPage,
   closeBrowserHandle,
-} from '../src/artlist/browser.js';
+} from '../src/driver/browser.js';

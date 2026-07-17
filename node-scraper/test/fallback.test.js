@@ -6,7 +6,7 @@
 // shouldUseFastPath determines whether the API interception has
 // yielded enough clips with primary_url != clip_page_url to
 // SHORT-CIRCUIT the per-tab detail fallback. The expected behavior
-// matches the legacy inline predicate in src/artlist/search-page.js
+// matches the legacy inline predicate in src/scrape/search-page.js
 // from before the modularization:
 //
 //   - intercepted must be a non-empty array

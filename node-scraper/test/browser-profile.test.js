@@ -1,7 +1,7 @@
 // Test 7: Browser-session pure helpers — resolveChromeProfile + makeTempBrowserDir.
 //
 // Covers the user-requested test area "fallback Puppeteer" indirectly:
-// the browsers-keep-alive logic in src/artlist/browser.js is mostly
+// the browsers-keep-alive logic in src/driver/browser.js is mostly
 // puppeteer-bound, but the two pure helpers — makeTempBrowserDir and
 // resolveChromeProfile — are testable without launching Chromium.
 //
@@ -17,7 +17,7 @@ import path from 'node:path';
 import {
   resolveChromeProfile,
   makeTempBrowserDir,
-} from '../src/artlist/browser.js';
+} from '../src/driver/browser.js';
 
 const tmpDirsCreated = [];
 

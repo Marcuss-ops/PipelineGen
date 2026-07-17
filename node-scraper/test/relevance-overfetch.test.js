@@ -7,7 +7,7 @@
 // pagine) e poi restituisci solo i rilevanti."
 //
 // godlike/06 SSOT: tests exercise the canonical pure helper
-// relevanceOverfetch from src/artlist/relevance-overfetch.js.
+// relevanceOverfetch from src/scrape/relevance-overfetch.js.
 // Tests do NOT spin up Puppeteer / Chromium / network — `fetchBatch`
 // is a synchronous Array-returning mock. The orchestrator wiring in
 // artlist/search.js is out of scope for THIS test file (integration
@@ -25,7 +25,7 @@ import {
   relevanceOverfetch,
   DEFAULT_MAX_FETCH_PAGES,
   DEFAULT_BATCH_SIZE,
-} from '../src/artlist/relevance-overfetch.js';
+} from '../src/scrape/relevance-overfetch.js';
 
 /**
  * Build a synthetic clip object whose relevance for term='boxing'
