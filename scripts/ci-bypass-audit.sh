@@ -152,7 +152,15 @@ run_query "Check D: \`.HardDelete(\` non-allowlisted hits" '\.HardDelete\(' \
 # NOT db.ExecContext. The check serves as a regression guard against
 # silent re-introduction of the antipattern (QDRANT-001 closure).
 echo "=== Check E: raw-SQL antipattern regression guard (QDRANT-001) ==="
+# Tests are excluded via `--glob '!**/*_test.go'` (mirrors Checks A-D): the
+# asset_committer_ssot_test.go and similar persistence contract tests do
+# legitimately need raw-SQL fixtures to assert the dispatcher's commit
+# envelope, and the QDRANT-001 closure explicitly carved them out as the
+# canonical allowlisted test-fixture surface. Without this glob the gate
+# becomes a false-positive trip that confuses the lifecycle of the test
+# suite with regressions against the production mutation SSOT.
 raw_sql=$(rg -n --type go 'ExecContext.*media_assets' \
+    --glob '!**/*_test.go' \
     "${REPO_ROOT}/internal/application" "${REPO_ROOT}/internal/api" 2>/dev/null || true)
 if [ -n "${raw_sql}" ]; then
     echo "FAIL: raw-SQL antipattern re-introduced:"
