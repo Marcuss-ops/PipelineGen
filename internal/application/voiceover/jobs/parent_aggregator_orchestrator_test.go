@@ -1,17 +1,39 @@
-// Package jobs — parent_aggregator_test.go (P0.1 false-success gate, July 2026).
+// Package jobs — parent_aggregator_orchestrator_test.go
+// (PR-SPLIT-VO-PARENT-AGG-TESTS, July 2026).
 //
-// Slim orchestrator test surface (post PR-SPLIT-VO-PARENT-AGG-TESTS,
-// July 2026): the 5 orchestrator-level *Test func that drive the full
-// Tick pipeline remain here. The 14 tests targeting sibling production
-// owners (aggregateOne / finalizeParent / state column / state machine
-// mapping / isKnownTypedParentState / §15.2 cache) moved to dedicated
-// sibling test files, and shared test plumbing (stubAggregatorJobsService
-// + flipRecord + 7 factory helpers) moved to
-// parent_aggregator_testhelpers_test.go. All sibling files are in the
-// same `package jobs` so the helpers remain reachable via same-package
-// test visibility. Two pre-existing sibling test files
+// ORCHESTRATOR test surface (mirror of parent_aggregator.go slim
+// orchestrator). Per godlike/06 SSOT (one canonical owner per fact),
+// this file is the SOLE canonical owner of the 5 orchestrator-level
+// Test funcs that drive the full Tick() pipeline end-to-end:
+//
+//   - TestAcceptance_HappyPath_ThreeLanguagesAllSucceeded (§15.1)
+//   - TestAcceptance_TTSTransientFailure_ChildRetryParentStaysOpen
+//     (§15.2 — also pins the §15.2 cache-skip behaviour: retry tick
+//     re-queries only the changed child, skipping already-terminal
+//     siblings via the previouslyTerminal cache)
+//   - TestAcceptance_FanoutParziale_OKFalse_AggregatorHandlesPartialSuccess (§15.4c)
+//   - TestAcceptance_PartialFanout_ExpectedChildrenMatchesEnqueued (§15.4b)
+//   - TestZeroChildren_AggregatorReturnsParentFailed (FASE 4 close-out,
+//     July 2026; zero-children aggregate MUST flip to FAILED, NOT
+//     partial_success — the pre-FASE-4 mapping was a dispatch-failure
+//     false-positive terminal leak)
+//
+// These 5 funcs exercise the END-TO-END Tick() pipeline through the
+// full aggregator. Targeted tests for sibling concerns live in:
+//   - parent_aggregator_aggregate_test.go         (P0.1 false-success gate + §15.4 empty-string filter — 5 funcs)
+//   - parent_aggregator_finalize_test.go         (finalizeParent: FAILED flip + PartialSuccess keep + ErrAlreadyTerminalAggregate replay + VersionCASConflictRecovery — 5 funcs)
+//   - parent_aggregator_state_machine_test.go    (domainToVoiceoverParentState mapping: REQUIRED-fail short-circuit + OPTIONAL-fail tolerance + Required propagation — 3 funcs)
+//   - parent_aggregator_eligibility_test.go       (IsParentAwaitingAggregation gate: waiting_children / succeeded / cancelled — 1 outer + 3 sub-tests)
+//   - parent_aggregator_testhelpers_test.go      (shared stubAggregatorJobsService + 7 factory helpers + flipRecord — 0 funcs)
+//
+// All 5 funcs in this file share the stubAggregatorJobsService +
+// factory helpers from parent_aggregator_testhelpers_test.go via
+// same-package test visibility. Two pre-existing sibling test files
 // (parent_aggregator_read_preference_test.go, finalizer_invariants_test.go)
 // continue to use the stub + factory helpers without modification.
+//
+// godlike/07 minimum-blast-radius: pure code-motion — file rename only.
+// The 5 funcs and their setup/assertions are unchanged.
 package jobs
 
 import (
