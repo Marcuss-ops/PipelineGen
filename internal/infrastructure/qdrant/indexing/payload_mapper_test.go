@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	appsearchtext "github.com/Marcuss-ops/PipelineGen/internal/application/indexing/searchtext"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
@@ -84,14 +83,6 @@ func TestBuildPayload_EmbeddingVersionsByChannel(t *testing.T) {
 	}
 }
 
-// mapKeys is a tiny helper to keep assertion messages readable.
-func mapKeys(m map[string]interface{}) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
-}
 
 // ── PR2 (fix/qdrant-bm25-indexing): sparse vector wire-shape ─────────────
 
@@ -272,55 +263,9 @@ func TestAssetToPoint_TranscriptChannel_PreservedWhenPresent(t *testing.T) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-// fakeAssetStore is a minimal AssetStore for AssetToPoint unit tests.
-// It returns the single seeded asset regardless of which ID is
-// requested (AssetToPoint does not round-trip through FetchAsset).
-type fakeAssetStore struct {
-	asset *AssetData
-	ids   []string
-}
 
-func (f *fakeAssetStore) FetchAsset(ctx context.Context, id string) (*AssetData, error) {
-	if f.asset == nil || f.asset.ID != id {
-		return nil, &ErrAssetNotFound{ID: id}
-	}
-	return f.asset, nil
-}
 
-func (f *fakeAssetStore) ListAllAssetIDs(ctx context.Context) ([]string, error) {
-	return f.ids, nil
-}
 
-func (f *fakeAssetStore) FetchAssetBatch(ctx context.Context, afterID string, limit int) ([]*AssetData, error) {
-	return nil, nil
-}
-
-// makeFloat32Slice creates a []float32 of the given size filled with 1.0.
-func makeFloat32Slice(size int) []float32 {
-	v := make([]float32, size)
-	for i := range v {
-		v[i] = 1.0
-	}
-	return v
-}
-
-func mapKeysVec(m map[string]interface{}) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
-}
-
-func requirePointID(t *testing.T, p *qdrantSchema.Point) {
-	t.Helper()
-	if p == nil {
-		t.Fatal("point is nil")
-	}
-	if p.ID == "" {
-		t.Fatal("point ID is empty (qdrantSchema.AssetIDToQdrantPointID canonicalisation must run)")
-	}
-}
 
 // ══════════════════════════════════════════════════════════════════════════
 // PR 6 (refactor/qdrant-index-document) — provenance + locator-free tests.
@@ -1275,23 +1220,3 @@ func TestResolveSearchText_BackgroundContext_NotReplaced(t *testing.T) {
 	_ = got
 }
 
-// ctxRecordingBuilder is a SearchTextBuilder mock that records the context
-// passed to Build. It returns a marker string so the test can distinguish
-// builder output from asset.SearchText fallback.
-type ctxRecordingBuilder struct {
-	capturedCtx  context.Context
-	capturedText string
-}
-
-func (b *ctxRecordingBuilder) Build(ctx context.Context, input appsearchtext.SearchTextInput) (string, error) {
-	b.capturedCtx = ctx
-	// Return a non-empty string so resolveSearchText takes the builder
-	// path (not the fallback).
-	b.capturedText = "ctx-propagation-verified-by-mock"
-	return b.capturedText, nil
-}
-
-// ErrAssetNotFound is a tiny test-only sentinel to satisfy FetchAsset.
-type ErrAssetNotFound struct{ ID string }
-
-func (e *ErrAssetNotFound) Error() string { return "asset not found: " + e.ID }
