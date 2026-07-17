@@ -39,7 +39,7 @@ import (
 // domain.ParentStateFailedTerminal → voiceover.ParentFailed.
 // ─────────────────────────────────────────────────────────────────
 
-// PermanentVoiceError_RequiredChildFailsParent pins the
+// TestPermanentVoiceError_RequiredChildFailsParent pins the
 // domainToVoiceoverParentState mapping for the REQUIRED-fail
 // short-circuit path. A REQUIRED child whose outcome is permanent
 // failure (status=StatusFailed, Required=true) MUST cascade to
@@ -51,7 +51,7 @@ import (
 // + permanent-error message). sm.Compute() promotes the StateMachine
 // to FailedTerminal. domainToVoiceoverParentState MUST return
 // voiceover.ParentFailed.
-func PermanentVoiceError_RequiredChildFailsParent(t *testing.T) {
+func TestPermanentVoiceError_RequiredChildFailsParent(t *testing.T) {
 	sm := job.NewStateMachine("parent-required-fail", 1)
 	require.NoError(t, sm.TransitionToWaitingChildren([]string{"c-required"}))
 
@@ -85,7 +85,7 @@ func PermanentVoiceError_RequiredChildFailsParent(t *testing.T) {
 // warnings semantics).
 // ─────────────────────────────────────────────────────────────────
 
-// OptionalVoiceError pins the OPTIONAL-fail mapping path. An
+// TestOptionalVoiceError pins the OPTIONAL-fail mapping path. An
 // OPTIONAL child whose outcome is permanent failure MUST NOT
 // cascade to voiceover.ParentFailed. The mapping MUST yield either
 // voiceover.ParentPartialSuccess (mixed: succeeded child + optional-fail
@@ -98,7 +98,7 @@ func PermanentVoiceError_RequiredChildFailsParent(t *testing.T) {
 // voiceover.ParentPartialSuccess per the
 // "Succeeded + ≥1 failure → partial_success" contract documented
 // in parent_state_machine.go.
-func OptionalVoiceError(t *testing.T) {
+func TestOptionalVoiceError(t *testing.T) {
 	sm := job.NewStateMachine("parent-optional-fail", 2)
 	require.NoError(t, sm.TransitionToWaitingChildren([]string{"c-it", "c-en-optional"}))
 
@@ -147,7 +147,7 @@ func OptionalVoiceError(t *testing.T) {
 // MUST yield different parent classifications.
 // ─────────────────────────────────────────────────────────────────
 
-// RequiredFlagPropagatedFromChildPayload pins the REQUIRED-flag
+// TestRequiredFlagPropagatedFromChildPayload pins the REQUIRED-flag
 // propagation contract across the FASE 2 typed-DTO pipeline:
 //   - internal/application/voiceover/jobs/parent_aggregator_aggregate.go
 //     unmarshals child.Payload into VoiceoverChildPayload and reads
@@ -166,7 +166,7 @@ func OptionalVoiceError(t *testing.T) {
 // and asserting that flipping the Required bit on the failed child
 // flips the parent classification from ParentFailed (no siblings)
 // to ParentPartialSuccess (mixed with REQUIRED sibling succeeded).
-func RequiredFlagPropagatedFromChildPayload(t *testing.T) {
+func TestRequiredFlagPropagatedFromChildPayload(t *testing.T) {
 	// Case A: 1 REQUIRED child, broker-FAILED. No siblings.
 	// Expected classification: voiceover.ParentFailed.
 	smA := job.NewStateMachine("parent-A-required-only", 1)
