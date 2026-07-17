@@ -294,5 +294,3 @@ func makeFanoutPartialOkFalseParentResult(childIDs []string) []byte {
 	raw, _ := json.Marshal(m)
 	return raw
 }
-
-
