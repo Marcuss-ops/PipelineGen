@@ -186,7 +186,7 @@ class GenerationRunner:
         failing requests still get a `start` line for forensic
         correlation (Fix B).
         """
-        request_id = req["id"]
+        request_id = req.get("id", "")
         prompt = req["prompt"]
         output_path = req["output"]
         negative_prompt = req.get("negative_prompt", "")

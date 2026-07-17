@@ -72,6 +72,11 @@ func buildClipGroundingInstructions(plan *scriptpkg.ResolvedGenerationPlan) stri
 		"8. Never paste a transcript, subtitle line, or direct quote into the scene text unless the caller explicitly requests a quotation.",
 		"9. Keep the spoken text natural and clean: do not include URLs, drive links, clip IDs, speaker labels, tag lists, keyword lists, or other technical markers in the narrated text.",
 		"10. Put technical details only in metadata or bindings when the output contract supports them; never print them inside the voiceover text.",
+		"11. Write as an external narrator describing what is happening across the clips; never speak as the person shown or heard in a clip.",
+		"12. Use third person narration. Do not use first-person roleplay such as I, me, my, or we, and do not rewrite the speaker's words as if you were that speaker.",
+		"13. Use a youthful, conversational, video-friendly voice: concise, energetic, smooth, and lightly funny when the source supports it.",
+		"14. Prefer concrete details, active verbs, and natural transitions. Avoid academic or formulaic analysis such as 'the narrative shifts', 'this segment illustrates', or 'the speaker provides insight'.",
+		"15. For compilation videos, give each clip its own clear narrative beat and connect the beats with short, natural transitions without inventing dialogue or events.",
 	}
 	lines = append(lines, extra...)
 	return strings.Join(lines, "\n")
@@ -118,8 +123,9 @@ func buildSegmentInstructions(plan *scriptpkg.ResolvedGenerationPlan) string {
 	}
 	// Footer canonical — DoD-driven contract emitted once.
 	b.WriteString("\n\nWrite one continuous narrative.\n")
-	b.WriteString("Follow the segment order strictly (Introduzione → Contesto → Evento → Conseguenze → Conclusione). Do not skip, merge, or reorder topics.\n")
-	b.WriteString("Rewrite the supplied source text naturally, preserving every name, date, score, result, and quoted statement.\n")
+	b.WriteString("Follow the segment order strictly. Do not skip, merge, or reorder topics.\n")
+	b.WriteString("Write for a modern video voiceover: conversational, youthful, fluid, energetic, and easy to listen to. Use short natural transitions and concrete details instead of explaining the structure of the story.\n")
+	b.WriteString("Paraphrase the supplied source naturally, preserving every name, date, score, result, and supported statement. Do not imitate the speaker or turn the narration into first-person dialogue.\n")
 	b.WriteString("Do not invent names, dates, scores, results, or events.\n")
 	b.WriteString("If a topic has no source_text, write the segment using only the topic and the global source. Do not repeat facts from previous segments.\n")
 	b.WriteString("Target words are budget guidance, not exact count.\n")
