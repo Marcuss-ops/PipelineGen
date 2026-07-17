@@ -49,20 +49,35 @@ func (s *BackfillService) tryAcquire(
 	assetItem *asset.Asset,
 	opts BackfillOptions,
 ) (*AcquireResult, error) {
-	localPath := extractLocalPath(assetItem)
-	videoID := extractVideoID(assetItem)
-	if localPath == "" && videoID == "" {
-		return nil, fmt.Errorf("backfill: cannot acquire — no local_path or video_id on asset %s", assetItem.ID)
-	}
-	acqResult, err := s.acquirer.Acquire(ctx, AcquireCommand{
-		AssetID:     assetItem.ID,
-		VideoID:     videoID,
-		LocalPath:   localPath,
-		DriveFileID: extractDriveFileID(assetItem),
-		Language:    opts.SourceLanguage,
-	})
-	if err != nil {
-		return nil, err
+	var acqResult *AcquireResult
+	var err error
+	// A metadata summary is an honest source only for the summary kind. It
+	// keeps an asset searchable when the binary source is unavailable without
+	// mislabelling descriptive text as a transcript.
+	if opts.TextKind == asset.TextTrackSummary && assetItem.GetMetadataString("clip_summary") != "" {
+		acqResult = &AcquireResult{
+			AssetID:      assetItem.ID,
+			PlainText:    assetItem.GetMetadataString("clip_summary"),
+			LanguageCode: opts.SourceLanguage,
+			SourceType:   asset.TextSourceProvided,
+			Priority:     0,
+		}
+	} else {
+		localPath := extractLocalPath(assetItem)
+		videoID := extractVideoID(assetItem)
+		if localPath == "" && videoID == "" {
+			return nil, fmt.Errorf("backfill: cannot acquire — no local_path or video_id on asset %s", assetItem.ID)
+		}
+		acqResult, err = s.acquirer.Acquire(ctx, AcquireCommand{
+			AssetID:     assetItem.ID,
+			VideoID:     videoID,
+			LocalPath:   localPath,
+			DriveFileID: extractDriveFileID(assetItem),
+			Language:    opts.SourceLanguage,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	// Save the acquired text as a READY source track. Uses
 	// the canonical text-hash factory + source-version
