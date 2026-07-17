@@ -84,17 +84,22 @@ type PublisherPort interface {
 // adapter chain into asset.Asset.Metadata → media_assets.metadata_json
 // for Qdrant semantic search enrichment.
 type ExistingClip struct {
-	ID          string
-	Name        string
-	Filename    string
-	Duration    time.Duration
-	Source      string
-	Category    string
-	Tags        []string
-	LocalPath   string
-	DriveLink   string
-	DriveFileID string
-	FileHash    string
+	ID             string
+	Name           string
+	Filename       string
+	Duration       time.Duration
+	Source         string
+	SourceURL      string
+	SourceProvider string
+	SourceVideoID  string
+	StartSec       float64
+	EndSec         float64
+	Category       string
+	Tags           []string
+	LocalPath      string
+	DriveLink      string
+	DriveFileID    string
+	FileHash       string
 
 	// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
 	Summary         string   `json:"summary,omitempty"`

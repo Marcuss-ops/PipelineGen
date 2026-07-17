@@ -26,17 +26,22 @@ import (
 // PersistClipCommand carries every input needed to persist a clip to the
 // canonical media_assets table and emit the asset.index.requested outbox event.
 type PersistClipCommand struct {
-	ClipID      string   // yt_<videoID>_<hash8>
-	Name        string   // resolved display name
-	Filename    string   // Drive filename (e.g. "dQw4w9WgXcQ - title.mp4")
-	Source      string   // e.g. "youtube-manual"
-	Category    string   // user-supplied category
-	Tags        []string // user-supplied tags
-	DurationSec int      // clip duration in whole seconds
-	LocalPath   string   // path to the downloaded .mp4 on disk
-	FileHash    string   // MD5 hex digest (content hash for supersede gate)
-	DriveLink   string   // Google Drive web view link (empty when not published)
-	DriveFileID string   // Google Drive file ID (empty when not published)
+	ClipID         string // yt_<videoID>_<hash8>
+	Name           string // resolved display name
+	Filename       string // Drive filename (e.g. "dQw4w9WgXcQ - title.mp4")
+	Source         string // e.g. "youtube-manual"
+	SourceURL      string
+	SourceProvider string
+	SourceVideoID  string
+	StartSec       float64
+	EndSec         float64
+	Category       string   // user-supplied category
+	Tags           []string // user-supplied tags
+	DurationSec    int      // clip duration in whole seconds
+	LocalPath      string   // path to the downloaded .mp4 on disk
+	FileHash       string   // MD5 hex digest (content hash for supersede gate)
+	DriveLink      string   // Google Drive web view link (empty when not published)
+	DriveFileID    string   // Google Drive file ID (empty when not published)
 
 	// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026).
 	Summary         string
@@ -59,17 +64,22 @@ type ClipIndexer interface {
 // It mirrors sourcing.ExistingClip but is owned by this package so the use
 // case does not import sourcing.
 type ClipRecord struct {
-	ID          string
-	Name        string
-	Filename    string
-	Source      string
-	Category    string
-	Tags        []string
-	Duration    time.Duration
-	LocalPath   string
-	FileHash    string
-	DriveLink   string
-	DriveFileID string
+	ID             string
+	Name           string
+	Filename       string
+	Source         string
+	SourceURL      string
+	SourceProvider string
+	SourceVideoID  string
+	StartSec       float64
+	EndSec         float64
+	Category       string
+	Tags           []string
+	Duration       time.Duration
+	LocalPath      string
+	FileHash       string
+	DriveLink      string
+	DriveFileID    string
 
 	Summary         string
 	Topics          []string
@@ -96,6 +106,11 @@ func PersistClipAndIndex(ctx context.Context, indexer ClipIndexer, cmd PersistCl
 		Name:            cmd.Name,
 		Filename:        cmd.Filename,
 		Source:          cmd.Source,
+		SourceURL:       cmd.SourceURL,
+		SourceProvider:  cmd.SourceProvider,
+		SourceVideoID:   cmd.SourceVideoID,
+		StartSec:        cmd.StartSec,
+		EndSec:          cmd.EndSec,
 		Category:        cmd.Category,
 		Tags:            append([]string(nil), cmd.Tags...),
 		Duration:        time.Duration(cmd.DurationSec) * time.Second,

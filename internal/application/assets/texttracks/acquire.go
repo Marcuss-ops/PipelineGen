@@ -38,6 +38,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,16 +75,23 @@ type WhisperPort interface {
 	TranscribeAudioWithDetection(ctx context.Context, localPath string) (asset.TranscriptResult, error)
 }
 
+// DrivePort is the narrow Drive read surface used only when the registered
+// local artifact is unavailable or unreadable.
+type DrivePort interface {
+	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
+}
+
 // AcquireCommand bundles the inputs the 5-priority chain needs.
 // All fields are mandatory except Language (used for VTT/SRT
 // file-name disambiguation; empty means "any language").
 type AcquireCommand struct {
-	AssetID   string
-	VideoID   string // YouTube video ID (for priorities 3+4)
-	LocalPath string // local clip file path (for priority 2 + 5)
-	StartSec  int    // segment start (for priorities 3+4)
-	EndSec    int    // segment end (for priorities 3+4)
-	Language  string // BCP-47 source language hint (priority 2 disambiguation)
+	AssetID     string
+	VideoID     string // YouTube video ID (for priorities 3+4)
+	LocalPath   string // local clip file path (for priority 2 + 5)
+	StartSec    int    // segment start (for priorities 3+4)
+	EndSec      int    // segment end (for priorities 3+4)
+	DriveFileID string // canonical Drive fallback source
+	Language    string // BCP-47 source language hint (priority 2 disambiguation)
 }
 
 // AcquireResult is the canonical return value. PlainText is the
@@ -108,7 +116,17 @@ type AcquireResult struct {
 type AcquireService struct {
 	subtitles SubtitlesPort
 	whisper   WhisperPort
+	drive     DrivePort
 	log       *zap.Logger
+}
+
+// WithDrive attaches the canonical Drive reader used as a fallback for
+// registered clips whose local copy is missing or corrupt.
+func (s *AcquireService) WithDrive(drive DrivePort) *AcquireService {
+	if s != nil {
+		s.drive = drive
+	}
+	return s
 }
 
 // NewAcquireService constructs the canonical service. The
@@ -141,7 +159,7 @@ func (s *AcquireService) Acquire(ctx context.Context, cmd AcquireCommand) (*Acqu
 	if cmd.AssetID == "" {
 		return nil, fmt.Errorf("texttracks.AcquireService.Acquire: asset_id is required")
 	}
-	if cmd.LocalPath == "" && cmd.VideoID == "" {
+	if cmd.LocalPath == "" && cmd.VideoID == "" && cmd.DriveFileID == "" {
 		return nil, fmt.Errorf("texttracks.AcquireService.Acquire: at least one of local_path or video_id is required")
 	}
 
@@ -165,6 +183,24 @@ func (s *AcquireService) Acquire(ctx context.Context, cmd AcquireCommand) (*Acqu
 				zap.String("asset_id", cmd.AssetID),
 				zap.String("local_path", cmd.LocalPath),
 				zap.Error(err))
+		}
+	}
+
+	// Priority 2.5: recover the canonical clip from Drive before attempting
+	// remote subtitles or a potentially corrupt local source. The temporary
+	// file is removed after Whisper finishes; the DB's Drive identity remains
+	// the durable history and no duplicate asset is created.
+	if cmd.DriveFileID != "" && s.drive != nil && s.whisper != nil {
+		result, err := s.acquireFromDrive(ctx, cmd)
+		if err == nil && result != nil {
+			s.log.Info("acquire: Drive fallback (priority 2.5)",
+				zap.String("asset_id", cmd.AssetID),
+				zap.String("drive_file_id", cmd.DriveFileID),
+				zap.Int("priority", result.Priority))
+			return result, nil
+		}
+		if err != nil {
+			s.log.Warn("acquire: Drive fallback failed; falling through", zap.String("asset_id", cmd.AssetID), zap.Error(err))
 		}
 	}
 

@@ -156,6 +156,7 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	acquirePorts := &AcquirePorts{
 		Subtitles: domains.SubtitleFetcher,
 		Whisper:   ai.WhisperTranscriber,
+		Drive:     driveBundle.Reader,
 	}
 	textTracks, err := BuildTextTrackBundle(cfg, repos, ai, outbox, acquirePorts, log)
 	if err != nil {

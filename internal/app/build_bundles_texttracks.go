@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	youtubeports "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/ports"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	drivepkg "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	"go.uber.org/zap"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
@@ -48,6 +49,7 @@ type TextTrackBundle struct {
 type AcquirePorts struct {
 	Subtitles youtubeports.SubtitleFetcherPort
 	Whisper   youtubeports.WhisperTranscriberPort
+	Drive     drivepkg.Reader
 }
 
 // BuildTextTrackBundle constructs the canonical bundle.
@@ -148,6 +150,9 @@ func BuildTextTrackBundle(
 		acquireService, err = texttracks.NewAcquireService(subsPort, whispPort, log)
 		if err != nil {
 			return nil, fmt.Errorf("compose texttracks: acquire service: %w", err)
+		}
+		if acquirePorts.Drive != nil {
+			acquireService.WithDrive(acquirePorts.Drive)
 		}
 	}
 	if repos.ClipsRepo == nil {
