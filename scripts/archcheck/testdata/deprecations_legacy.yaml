@@ -1,0 +1,55 @@
+deprecations:
+  - id: TEST-DRIVE-A
+    owner_capability: internal/infrastructure/drive/foo
+    exact_symbol: Foo.Bar
+    file: internal/infrastructure/drive/foo.go
+    file_line: "42"
+    replacement: Foo.Baz
+    introduction_date: '2026-01-01'
+    removal_date: '2027-01-01'
+    tracking_issue: DRIVE-1
+    compatibility_test: scripts/tests/drive_test.sh
+    usage_metric: prom_metric_test_drive_a
+    migration_phase: EXPAND
+    status: in_progress
+    notes: synthetic fixture
+  - id: TEST-TRANSLATION-A
+    owner_capability: internal/application/translation/foo
+    exact_symbol: Translate.Foo
+    file: internal/application/translation/foo.go
+    file_line: "10"
+    replacement: Translate.FooNew
+    introduction_date: '2026-01-01'
+    removal_date: '2027-01-01'
+    tracking_issue: TRANSLATION-1
+    compatibility_test: scripts/tests/translation_test.sh
+    usage_metric: prom_metric_test_translation_a
+    migration_phase: BACKFILL
+    status: in_progress
+    notes: synthetic fixture
+  - id: TEST-VOICEOVER-A
+    owner_capability: internal/application/voiceover/bar
+    exact_symbol: Voice.Bar
+    file: internal/application/voiceover/bar.go
+    file_line: "20"
+    replacement: Voice.BarNew
+    introduction_date: '2026-01-01'
+    removal_date: '2027-01-01'
+    tracking_issue: VOICEOVER-1
+    compatibility_test: scripts/tests/voiceover_test.sh
+    usage_metric: prom_metric_test_voiceover_a
+    migration_phase: CUTOVER
+    status: in_progress
+    notes: synthetic fixture
+audit:
+  manifest_version: test-fixture
+  total_records: 3
+  by_status:
+    removed: 0
+    in_progress: 3
+    keep: 0
+  by_migration_phase:
+    EXPAND: 1
+    BACKFILL: 1
+    CUTOVER: 1
+  ci_gate_impact: synthetic

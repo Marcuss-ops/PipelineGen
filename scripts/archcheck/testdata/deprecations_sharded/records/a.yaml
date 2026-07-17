@@ -1,0 +1,15 @@
+deprecations:
+  - id: TEST-DRIVE-A
+    owner_capability: internal/infrastructure/drive/foo
+    exact_symbol: Foo.Bar
+    file: internal/infrastructure/drive/foo.go
+    file_line: "42"
+    replacement: Foo.Baz
+    introduction_date: '2026-01-01'
+    removal_date: '2027-01-01'
+    tracking_issue: DRIVE-1
+    compatibility_test: scripts/tests/drive_test.sh
+    usage_metric: prom_metric_test_drive_a
+    migration_phase: EXPAND
+    status: in_progress
+    notes: synthetic fixture

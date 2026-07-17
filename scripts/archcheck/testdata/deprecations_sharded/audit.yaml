@@ -1,0 +1,12 @@
+audit:
+  manifest_version: test-fixture
+  total_records: 3
+  by_status:
+    removed: 0
+    in_progress: 3
+    keep: 0
+  by_migration_phase:
+    EXPAND: 1
+    BACKFILL: 1
+    CUTOVER: 1
+  ci_gate_impact: synthetic

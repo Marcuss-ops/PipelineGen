@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -10,14 +9,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// deprecationsFile is the on-disk shape of architecture/deprecations.yaml.
 // deprecationRecord is a single entry; the CI validator enforces that every
 // record carries all required fields and that no two records share the same id.
-type deprecationsFile struct {
-	Deprecations []deprecationRecord `yaml:"deprecations"`
-	Audit        auditBlock          `yaml:"audit"`
-}
-
+// Records are loaded via loadDeprecationManifest, which auto-detects whether
+// the canonical source is the legacy single-file form
+// (`architecture/deprecations.yaml`) or the planned sharded directory
+// (`architecture/deprecations/` with `records/*.yaml` shards). See
+// deprecations_loader.go for the layout contract.
 type deprecationRecord struct {
 	ID                string `yaml:"id"`
 	OwnerCapability   string `yaml:"owner_capability"`
@@ -54,57 +52,78 @@ var requiredDeprecationFields = []string{
 	"compatibility_test", "usage_metric", "migration_phase", "status",
 }
 
-// checkDeprecations validates architecture/deprecations.yaml and returns
+// checkDeprecations validates the canonical deprecation registry and returns
 // stats (number of records, violations count) and a list of violations.
 // Violations include:
 //   - duplicate deprecation IDs
 //   - missing required fields
 //   - records whose removal_date is in the past but status != "removed"
 //   - YAML parse errors (including duplicate mapping keys detected by the parser)
+//
+// The registry is loaded via loadDeprecationManifest, which auto-detects
+// whether `architecture/deprecations` is a single file (current production
+// form) or a directory of shards (planned split). Cross-shard duplicate
+// IDs are caught at load time; in-list duplicates are still caught here
+// for belt-and-suspenders safety on the legacy single-file form.
+//
+// This is the production entry point. Tests and tools that need a
+// deterministic source path use checkDeprecationsAt(path).
 func checkDeprecations() (stats map[string]int, violations []string) {
+	return checkDeprecationsAt("architecture/deprecations.yaml")
+}
+
+// checkDeprecationsAt is the testable, parameterized inner worker. The
+// production entry (checkDeprecations) wraps it with the canonical
+// path constant; tests invoke this directly with a fixture path.
+func checkDeprecationsAt(path string) (stats map[string]int, violations []string) {
 	stats = map[string]int{
 		"deprecations_total":      0,
 		"deprecations_violations": 0,
 	}
 
-	const path = "architecture/deprecations.yaml"
-	raw, err := os.ReadFile(path)
+	manifest, dupKeyViolations, err := loadDeprecationManifest(path)
 	if err != nil {
-		return stats, []string{fmt.Sprintf("deprecations: read %s: %v", path, err)}
-	}
-
-	// Parse with yaml.v3. Duplicate YAML mapping keys cause a parse error
-	// (yaml.v3 rejects them in strict-decode mode). We use a two-pass approach:
-	// first validate the YAML structure via yaml.Node to catch duplicate keys,
-	// then unmarshal into the typed struct for field-level validation.
-	if dupViolations := detectDuplicateYAMLKeys(raw, path); len(dupViolations) > 0 {
-		violations = append(violations, dupViolations...)
+		// Preserve per-key duplicate-key violations on the
+		// failure path: in the original validator flow those
+		// came before the parse error, so any dashboard that
+		// matches on order keeps working on malformed input.
+		violations := append([]string{}, dupKeyViolations...)
+		violations = append(violations, err.Error())
 		stats["deprecations_violations"] = len(violations)
 		return stats, violations
 	}
 
-	var file deprecationsFile
-	if err := yaml.Unmarshal(raw, &file); err != nil {
-		return stats, []string{fmt.Sprintf("deprecations: parse %s: %v", path, err)}
+	// Preserve the pre-refactor early-exit on duplicate YAML
+	// keys. When the registry has dup keys, yaml.v3 has silently
+	// overwritten some records during unmarshal, so the only safe
+	// thing is to surface the dup-key violations and bail: the
+	// downstream duplicate-ID / required-field / expiry checks
+	// would otherwise run against a truncated manifest and emit
+	// misleading additional violations.
+	if len(dupKeyViolations) > 0 {
+		violations = append(violations, dupKeyViolations...)
+		stats["deprecations_violations"] = len(violations)
+		return stats, violations
 	}
 
-	stats["deprecations_total"] = len(file.Deprecations)
+	stats["deprecations_total"] = len(manifest.Deprecations)
 
-	// Check for duplicate IDs.
+	// Check for duplicate IDs (in-list duplicate detection;
+	// cross-shard duplicates were already rejected by the loader).
 	seenIDs := make(map[string]int) // id → first occurrence index
-	for i, rec := range file.Deprecations {
+	for i, rec := range manifest.Deprecations {
 		if prevIdx, ok := seenIDs[rec.ID]; ok {
 			violations = append(violations, fmt.Sprintf(
 				"deprecations: duplicate id %q at records %d and %d (file %s and %s)",
 				rec.ID, prevIdx+1, i+1,
-				file.Deprecations[prevIdx].File, rec.File))
+				manifest.Deprecations[prevIdx].File, rec.File))
 		} else {
 			seenIDs[rec.ID] = i
 		}
 	}
 
 	// Check each record for required fields and expiry.
-	for i, rec := range file.Deprecations {
+	for i, rec := range manifest.Deprecations {
 		label := fmt.Sprintf("record #%d (id=%q)", i+1, rec.ID)
 
 		// Required fields.
