@@ -29,6 +29,9 @@ type Request struct {
 	FPS                 int           `json:"fps,omitempty"`
 	Width               int           `json:"width,omitempty"`
 	Height              int           `json:"height,omitempty"`
+	UploadToDrive       bool          `json:"upload_to_drive,omitempty"`
+	DriveFolderID       string        `json:"drive_folder_id,omitempty"`
+	DriveFilename       string        `json:"drive_filename,omitempty"`
 }
 
 // BuildRenderJob converts the deterministic Shorts plan into the one-way
@@ -47,6 +50,12 @@ func BuildRenderJob(req Request, plan Response) (remotionjob.RenderJob, error) {
 	}
 	if fps < 1 || fps > 120 || width < 1 || height < 1 {
 		return remotionjob.RenderJob{}, fmt.Errorf("%w: invalid fps/width/height", ErrInvalidRequest)
+	}
+	if req.UploadToDrive && normalizeDriveFolderID(req.DriveFolderID) == "" {
+		return remotionjob.RenderJob{}, fmt.Errorf("%w: drive_folder_id is required when upload_to_drive=true", ErrInvalidRequest)
+	}
+	if req.UploadToDrive && strings.TrimSpace(req.Language) == "" {
+		return remotionjob.RenderJob{}, fmt.Errorf("%w: language is required when upload_to_drive=true", ErrInvalidRequest)
 	}
 	frames := int((plan.DurationMs*int64(fps) + 999) / 1000)
 	if frames < 1 {
@@ -89,7 +98,29 @@ func BuildRenderJob(req Request, plan Response) (remotionjob.RenderJob, error) {
 			"captions":              captionProps,
 			"soundEffects":          sfxProps,
 		},
+		UploadToDrive: req.UploadToDrive,
+		DriveFolderID: normalizeDriveFolderID(req.DriveFolderID),
+		DriveFilename: driveFilename(req),
+		Language:      plan.Language,
 	}, nil
+}
+
+func normalizeDriveFolderID(value string) string {
+	value = strings.TrimSpace(value)
+	if marker := strings.Index(value, "/folders/"); marker >= 0 {
+		value = value[marker+len("/folders/"):]
+		if end := strings.IndexAny(value, "?/ "); end >= 0 {
+			value = value[:end]
+		}
+	}
+	return strings.TrimSpace(value)
+}
+
+func driveFilename(req Request) string {
+	if name := strings.TrimSpace(req.DriveFilename); name != "" {
+		return name
+	}
+	return strings.TrimSpace(req.ID) + ".mp4"
 }
 
 func assetURL(value string) string {

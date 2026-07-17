@@ -68,6 +68,8 @@ synchronous smoke test, or `POST /api/script/shorts/render/async` for the
 production path. The async route returns `202` with a `job_id`; the
 `render.video` worker calls Remotion at `VELOX_REMOTION_URL` (default
 `http://127.0.0.1:4317`) and stores the output path in the completed job.
+Set `upload_to_drive: true` and pass `drive_folder_id` as either a folder ID
+or a full Google Drive folder URL to upload automatically after rendering.
 
 ## Architecture rules
 

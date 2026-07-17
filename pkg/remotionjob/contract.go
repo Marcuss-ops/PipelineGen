@@ -16,4 +16,8 @@ type RenderJob struct {
 	Width            int            `json:"width"`
 	Height           int            `json:"height"`
 	Props            map[string]any `json:"props"`
+	UploadToDrive    bool           `json:"uploadToDrive,omitempty"`
+	DriveFolderID    string         `json:"driveFolderId,omitempty"`
+	DriveFilename    string         `json:"driveFilename,omitempty"`
+	Language         string         `json:"language,omitempty"`
 }
