@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "remotion.render-job.v1",
+  "id": "top-five-commentary-01",
+  "composition": "TopFiveRankingComposition",
+  "durationInFrames": 450,
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "props": {
+    "title": "TOP 5 MOMENTS",
+    "items": [
+      { "name": "VERDICT", "brollPath": "data/media/clips/Pacquiao vs Broner E2E/yt_vdC5GXxS-qU/yt_vdC5GXxS-qU_60_70_v1_e2e-dod-test-60-70.mp4", "startMs": 0, "durationMs": 3000 },
+      { "name": "IMPACT", "brollPath": "data/media/clips/boxing/yt_vdC5GXxS-qU/yt_vdC5GXxS-qU_146_155_v1_sfuriata-contro-pacquiao.mp4", "startMs": 0, "durationMs": 3000 },
+      { "name": "REVEAL", "brollPath": "data/media/clips/general/yt_T5Pre_TfNcY/yt_T5Pre_TfNcY_232_262_v1_le-prove-dei-messaggi-sulle-birkin-e-i-p.mp4", "startMs": 0, "durationMs": 3000 },
+      { "name": "CHASE", "brollPath": "data/media/e2e-youtube/clip-oceano/oceano.mp4", "startMs": 0, "durationMs": 3000 },
+      { "name": "TWIST", "brollPath": "data/media/e2e-youtube/clip-spazio/spazio.mp4", "startMs": 0, "durationMs": 3000 }
+    ]
+  }
+}
