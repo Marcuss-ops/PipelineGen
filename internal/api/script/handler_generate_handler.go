@@ -54,9 +54,12 @@
 package script
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	shorts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/shorts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 )
 
@@ -105,6 +108,26 @@ func (h *HandlerGenerate) GenerateRoute(r *gin.RouterGroup) {
 		return
 	}
 	r.POST("/generate", h.Generate)
+	r.POST("/shorts/generate", h.GenerateShorts)
+}
+
+// GenerateShorts builds a deterministic Remotion Shorts payload. It is
+// intentionally separate from /generate: no LLM call, script regeneration,
+// asset selection or sound-effect synthesis happens here. The caller sends
+// the approved text, clip references and (optionally) already-indexed SFX.
+// include_sound_effects=false always returns sound_effects: [].
+func (h *HandlerGenerate) GenerateShorts(c *gin.Context) {
+	var req shorts.Request
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid shorts payload: " + err.Error()})
+		return
+	}
+	result, err := shorts.Build(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "shorts": result})
 }
 
 // Generate handles POST /api/script/generate.

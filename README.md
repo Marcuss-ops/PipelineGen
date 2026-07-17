@@ -47,6 +47,22 @@ scripts/                 operational and CI utilities
 tests/                   automated and operational tests
 ```
 
+## Remotion boundary
+
+Remotion is intentionally kept in the sibling repository `../RemotionUpload`.
+PipelineGen owns scripts, asset selection, sound effects, timing, persistence,
+and delivery. It may emit a `remotion.render-job.v1` payload through the
+[`pkg/remotionjob`](pkg/remotionjob) contract.
+
+`RemotionUpload` owns only validation and video rendering. It must not be
+imported by this Go module and must not query PipelineGen's SQLite/Qdrant or
+choose providers.
+
+For Shorts, the dedicated `POST /api/script/shorts/generate` endpoint returns
+`remotion.shorts.v1`. It accepts already-approved text, clip references and
+indexed sound-effect cues; `include_sound_effects` controls whether the cues
+are emitted. It does not regenerate the script or select assets.
+
 ## Architecture rules
 
 - SQLite is the source of truth.
