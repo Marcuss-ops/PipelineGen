@@ -1,0 +1,17 @@
+{
+  "id": "short-ai-jellyfish-01",
+  "text": "Questa creatura sembra arrivare da un altro pianeta",
+  "language": "it-IT",
+  "duration_ms": 10000,
+  "words_per_caption": 4,
+  "include_sound_effects": false,
+  "clips": [
+    {
+      "id": "ai-jellyfish-underwater-10",
+      "path": "data/blobs/sha256/20/2037c408b664d69c637fda2dd01c681a6b550ab181630a22432eb21c847742d2",
+      "start_ms": 0,
+      "end_ms": 10000
+    }
+  ],
+  "sound_effects": []
+}

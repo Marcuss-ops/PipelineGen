@@ -6,7 +6,11 @@ package shorts
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"strings"
+
+	"github.com/Marcuss-ops/PipelineGen/pkg/remotionjob"
 )
 
 const SchemaVersion = "remotion.shorts.v1"
@@ -22,6 +26,82 @@ type Request struct {
 	IncludeSoundEffects bool          `json:"include_sound_effects"`
 	Clips               []Clip        `json:"clips"`
 	SoundEffects        []SoundEffect `json:"sound_effects,omitempty"`
+	FPS                 int           `json:"fps,omitempty"`
+	Width               int           `json:"width,omitempty"`
+	Height              int           `json:"height,omitempty"`
+}
+
+// BuildRenderJob converts the deterministic Shorts plan into the one-way
+// Remotion contract. Asset paths are resolved here, while Remotion only
+// renders the paths and timings it receives.
+func BuildRenderJob(req Request, plan Response) (remotionjob.RenderJob, error) {
+	fps, width, height := req.FPS, req.Width, req.Height
+	if fps == 0 {
+		fps = 30
+	}
+	if width == 0 {
+		width = 1080
+	}
+	if height == 0 {
+		height = 1920
+	}
+	if fps < 1 || fps > 120 || width < 1 || height < 1 {
+		return remotionjob.RenderJob{}, fmt.Errorf("%w: invalid fps/width/height", ErrInvalidRequest)
+	}
+	frames := int((plan.DurationMs*int64(fps) + 999) / 1000)
+	if frames < 1 {
+		frames = 1
+	}
+	if len(plan.Clips) == 0 {
+		return remotionjob.RenderJob{}, fmt.Errorf("%w: at least one clip is required", ErrInvalidRequest)
+	}
+	captionProps := make([]map[string]any, 0, len(plan.Captions))
+	for _, caption := range plan.Captions {
+		captionProps = append(captionProps, map[string]any{
+			"start_ms": caption.StartMs,
+			"end_ms":   caption.EndMs,
+			"text":     caption.Text,
+		})
+	}
+	sfxProps := make([]map[string]any, 0, len(plan.SoundEffects))
+	for _, effect := range plan.SoundEffects {
+		sfxProps = append(sfxProps, map[string]any{
+			"file":   assetURL(effect.File),
+			"atMs":   effect.AtMs,
+			"volume": effect.Volume,
+		})
+	}
+	return remotionjob.RenderJob{
+		SchemaVersion:    remotionjob.SchemaVersion,
+		ID:               plan.ID,
+		Composition:      "YouTubeShortComposition",
+		DurationInFrames: frames,
+		FPS:              fps,
+		Width:            width,
+		Height:           height,
+		Props: map[string]any{
+			"brollPath":             assetURL(plan.Clips[0].Path),
+			"quoteText":             plan.Text,
+			"textColor":             "#FFFFFF",
+			"captionHighlightColor": "#FFD400",
+			"captionBaseColor":      "#FFFFFF",
+			"eventBlendMs":          200,
+			"captions":              captionProps,
+			"soundEffects":          sfxProps,
+		},
+	}, nil
+}
+
+func assetURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.HasPrefix(value, "/assets/") || strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "file://") {
+		return value
+	}
+	abs, err := filepath.Abs(value)
+	if err != nil {
+		return value
+	}
+	return (&url.URL{Scheme: "file", Path: abs}).String()
 }
 
 type Clip struct {

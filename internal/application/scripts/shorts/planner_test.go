@@ -39,3 +39,29 @@ func TestBuildShortsPlanRejectsInvalidSoundEffect(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestBuildRenderJobMapsCaptionsAndSoundEffects(t *testing.T) {
+	req := Request{
+		ID: "short-render-1", Text: "one two three", DurationMs: 3000,
+		Clips:               []Clip{{ID: "clip-a", Path: "data/clip.mp4", EndMs: 3000}},
+		IncludeSoundEffects: true,
+		SoundEffects:        []SoundEffect{{ID: "sfx-a", File: "data/hit.wav", AtMs: 1000, Volume: 0.4}},
+	}
+	plan, err := Build(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := BuildRenderJob(req, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Composition != "YouTubeShortComposition" || job.DurationInFrames != 90 || job.FPS != 30 || job.Width != 1080 || job.Height != 1920 {
+		t.Fatalf("unexpected render job: %+v", job)
+	}
+	if job.Props["brollPath"] == "data/clip.mp4" {
+		t.Fatalf("relative asset path was not resolved: %+v", job.Props["brollPath"])
+	}
+	if len(job.Props["captions"].([]map[string]any)) != 1 || len(job.Props["soundEffects"].([]map[string]any)) != 1 {
+		t.Fatalf("caption/sfx props were not mapped: %+v", job.Props)
+	}
+}

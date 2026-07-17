@@ -61,6 +61,7 @@ import (
 
 	shorts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/shorts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 )
 
 // HandlerGenerate is the narrow HTTP handler for script generation.
@@ -69,9 +70,24 @@ import (
 // ScriptFlowHandler; wired by RegisterRoutes as the handler for
 // POST /api/script/generate.
 type HandlerGenerate struct {
-	submitter generationSubmitter
-	log       *zap.Logger
-	validator *usecase.PayloadValidator
+	submitter      generationSubmitter
+	log            *zap.Logger
+	validator      *usecase.PayloadValidator
+	shortsRenderer appvideo.Renderer
+}
+
+// NewHandlerGenerateWithRenderer is the production constructor for the
+// Shorts render route. The legacy constructor remains available to keep
+// script-generation test fixtures and callers source-compatible.
+func NewHandlerGenerateWithRenderer(
+	submitter generationSubmitter,
+	log *zap.Logger,
+	validator *usecase.PayloadValidator,
+	renderer appvideo.Renderer,
+) *HandlerGenerate {
+	h := NewHandlerGenerate(submitter, log, validator)
+	h.shortsRenderer = renderer
+	return h
 }
 
 // NewHandlerGenerate constructs the handler from the canonical deps.
@@ -109,6 +125,39 @@ func (h *HandlerGenerate) GenerateRoute(r *gin.RouterGroup) {
 	}
 	r.POST("/generate", h.Generate)
 	r.POST("/shorts/generate", h.GenerateShorts)
+	r.POST("/shorts/render", h.RenderShorts)
+}
+
+// RenderShorts builds the Shorts plan and synchronously asks Remotion to
+// render it. The request remains the same as /shorts/generate, with optional
+// fps, width and height fields. The asynchronous job producer remains
+// available for the next worker-based iteration.
+func (h *HandlerGenerate) RenderShorts(c *gin.Context) {
+	var req shorts.Request
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid shorts render payload: " + err.Error()})
+		return
+	}
+	plan, err := shorts.Build(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	if h == nil || h.shortsRenderer == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "Remotion renderer is not configured"})
+		return
+	}
+	renderJob, err := shorts.BuildRenderJob(req, plan)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	rendered, err := h.shortsRenderer.Render(c.Request.Context(), renderJob)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": "Remotion render failed: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "shorts": plan, "render": rendered})
 }
 
 // GenerateShorts builds a deterministic Remotion Shorts payload. It is
