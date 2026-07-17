@@ -37,9 +37,10 @@ type auditBlock struct {
 	ManifestVersion string `yaml:"manifest_version"`
 	TotalRecords    int    `yaml:"total_records"`
 	ByStatus        struct {
-		Removed    int `yaml:"removed"`
-		InProgress int `yaml:"in_progress"`
-		Keep       int `yaml:"keep"`
+		Removed    int `yaml:"removed,omitempty"`
+		InProgress int `yaml:"in_progress,omitempty"`
+		Keep       int `yaml:"keep,omitempty"`
+		Other      int `yaml:"other,omitempty"`
 	} `yaml:"by_status"`
 	ByMigrationPhase map[string]int `yaml:"by_migration_phase"`
 	CIGateImpact     string         `yaml:"ci_gate_impact"`
@@ -68,8 +69,14 @@ var requiredDeprecationFields = []string{
 //
 // This is the production entry point. Tests and tools that need a
 // deterministic source path use checkDeprecationsAt(path).
+//
+// The canonical source-of-truth is the sharded directory
+// architecture/deprecations/ (post the split-material commit; see
+// scripts/archcheck/migrate_deprecations_to_shards.go). The pre-split
+// legacy single-file form is no longer committed; any rollback moves
+// through git history (per AGENTS.md "git history is the archive").
 func checkDeprecations() (stats map[string]int, violations []string) {
-	return checkDeprecationsAt("architecture/deprecations.yaml")
+	return checkDeprecationsAt("architecture/deprecations")
 }
 
 // checkDeprecationsAt is the testable, parameterized inner worker. The

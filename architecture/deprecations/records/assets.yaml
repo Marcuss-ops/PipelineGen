@@ -1,0 +1,250 @@
+deprecations:
+    - id: ASSETS-SOURCESTAGER-LEGACY
+      owner_capability: internal/application/assets (legacy) + internal/application/acquisition (canonical)
+      exact_symbol: |
+        assets.SourceStager interface (StageSource + Cleanup methods) at
+        internal/application/assets/ports.go — the per-call staging port.
+        Concrete implementations: YouTube (infrastructure/youtube/stager_adapter.go),
+        Artlist (providers/artlist/stager_adapter.go), Stock (stockpipeline/
+        stager_adapter.go — dual-implements both ports).
+      file: internal/application/assets/ports.go
+      file_line: ~55 (SourceStager interface definition)
+      replacement: |
+        acquisition.SourceStager (internal/application/acquisition/port.go)
+        — persistent staging with Prepare(ctx, PrepareRequest) +
+        Release(ctx, cleanupToken). Deterministic CleanupToken via
+        SHA-256(URL + Section + PolicyVersion), TTL eviction, cross-call
+        dedupe via filesystem-backed registry. Stock pipeline already wired.
+      introduction_date: 2026-04
+      removal_date: 2026-Q4
+      tracking_issue: §12-4.2 forward-pointer (architecture/current.yaml). Migrate YouTube and Artlist from assets.SourceStager to acquisition.SourceStager.
+      compatibility_test: |
+        Post-migration CUTOVER:
+          (a) rg 'assets\.SourceStager' internal/application/youtube/
+              internal/application/assets/providers/artlist/ returns 0 hits.
+          (b) go build exits 0 on both packages.
+        Post-removal CONTRACT:
+          (c) rg 'assets\.SourceStager' internal/ --include='*.go' returns
+              0 hits in production code.
+          (d) Legacy interface physically removed from assets/ports.go.
+      usage_metric: |
+        Audit baseline (2026-07-04):
+          - assets.SourceStager consumers: YouTube (1), Artlist (1), Stock (1, dual).
+          - acquisition.SourceStager consumers: Stock (1).
+        Post-CUTOVER: assets.SourceStager=0, acquisition.SourceStager=3.
+      migration_phase: EXPAND
+      status: in_progress
+      notes: |
+        Two ports coexist per godlike/07 §"Migration sequence":
+          - EXPAND: canonical acquisition.SourceStager shipped (Stock Cutover
+            §12-4, July 2026). Legacy retained for YouTube/Artlist.
+          - BACKFILL: migrate YouTube from assets → acquisition.
+          - CUTOVER: migrate Artlist from assets → acquisition.
+          - CONTRACT: physical removal of assets.SourceStager from ports.go.
+        Cross-refs: godlike/06 §"One owner per fact", godlike/07 §"No fake
+        availability", AGENTS.md Pattern 0.
+    - id: CATALOGSYNC-DRIVE-PORT-MIGRATION
+      owner_capability: internal/application/assets/catalogsync
+      exact_symbol: |
+        uploaddrive.Uploader fields on catalogsync.Subscriber + the recursive
+        walk that downloads assets via the legacy concrete. Currently routed
+        through the low-level drive package directly.
+      file: internal/application/assets/catalogsync/service.go
+      file_line: Subscriber struct (import alias `uploaddrive`) + recursive-walk helper
+      replacement: |
+        delivery.Publisher for uploads + drive.Reader-port (or its typed successor)
+        for downloads. Composition-root wired. Catalogsync package drops the
+        `uploaddrive` import alias entirely after the migration ships.
+      introduction_date: 2026-07
+      removal_date: 2026-Q3
+      tracking_issue: TODO-CATALOGSYNC-DRIVE-PORT-MIGRATION (forward-pointer from PR-DRIVE-CLEANUP)
+      compatibility_test: |
+        Post-migration:
+          (a) rg 'uploaddrive' internal/application/assets/catalogsync/ returns 0 hits.
+          (b) The scanner's `internal/application/assets/catalogsync/` allowlist prefix is removed
+              from percheck_driveaccess.go (the uploaddrive.Uploader + uploaddrive.Admin patterns
+              revert to FORBID-ANYWHERE).
+          (c) This deprecation record flips migration_phase: EXPAND → CUTOVER → CONTRACT.
+          (d) go test ./cmd/archcheck/scan/... -run TestScanDriveAccessSSOT_UploaddriveAliasInCatalogsyncAllows
+              flips from PASS to FAIL (the catalogsync fixture now triggers a violation because
+              the allowlist is gone).
+      usage_metric: |
+        Today: 1 production callsite (Subscriber struct field) + 0 test cases
+        (the dispatcher_test.go fixture is _test.go exempt).
+        Post-migration: 0 references to uploaddrive.* in production code.
+      migration_phase: EXPAND
+      status: in_progress
+      notes: |
+        Forward-pointer only. The catalogsync Subscriber's uploaddrive.Uploader field is
+        NOT removed in PR-DRIVE-CLEANUP because the typed-port migration (delivery.Publisher
+        + drive.Reader-port) intersects with the sync-target resolution logic + the recursive
+        Sibling-walk that artlist/stock pipelines reuse; the change is non-trivial enough
+        to warrant a dedicated ticket in Q3 2026. The scanner allowlist pin
+        (`internal/application/assets/catalogsync/`) is the load-bearing forward-pointer: it
+        marks the EXACT location where the migration must yield zero surface when it ships.
+        When this ticket lands, this record is amended (migration_phase flips to CUTOVER +
+        CONTRACT) and the catalogsync allowlist entry is removed from percheck_driveaccess.go.
+    - id: MONITOR-YOUTUBE-DIRECT-IMPORT
+      owner_capability: internal/application/assets/monitor
+      exact_symbol: |
+        import ytdomain "github.com/Marcuss-ops/PipelineGen/internal/application/youtube/dto"
+        (the ytdomain import in monitor/ports.go — pins the canonical
+        ExtractionSegment type alias = ytdomain.Segment AND owns the
+        ExtractionIntent.Segments typed surface for monitor.JobEnqueuer;
+        the godlike/06 SSOT one-owner-per-fact contract between
+        canonical youtube/dto Segment semantics and monitor's typed
+        surface).
+      file: internal/application/assets/monitor/ports.go
+      file_line: 31 (ytdomain import statement in monitor/ports.go; ssot-shaped as the canonical alias-declaration pin owner per godlike/06).
+      replacement: |
+        Direct package-to-package import of
+        internal/application/youtube/adapters/monitoradapter
+        (canonical concrete adapter; *monitoradapter.ExtractionIntentAdapter
+        satisfies monitor.JobEnqueuer via compile-time assertion at
+        extraction_intent_adapter.go ~line 265). Pre-Fase-8 dual-import
+        pattern (monitor imports youtubetypes directly + monitoradapter
+        imports youtubetypes locally) collapses to a single canonical
+        home inside monitoradapter; monitor keeps only the load-bearing
+        monitor.JobEnqueuer port surface that monitoradapter satisfies.
+      introduction_date: 2026-07
+      removal_date: 2026-08
+      tracking_issue: Fase-8-monitoradapter-consolidation (architecture/current.yaml#id-28 pending Monday wave-tracker entry; tracks the structural collapse of *ExtractionEnqueuer → *ExtractionIntentAdapter across the monitor↔youtube canonical seam over 3 commits = deprecation-doc → wire+const-move → git-rm).
+      compatibility_test: |
+        Triple-defence mirroring PR-CLIP-RAW-MUTATIONS:
+          (a) `rg 'ytdomain' internal/application/assets/monitor/*.go`
+              returns ONLY the historical alias-declaration pin in ports.go
+              (godlike/06 SSOT lock). Zero live production imports after
+              Commit C of the Fase 8 wire cutover ships to origin/main.
+          (b) `var _ monitor.JobEnqueuer = (*monitoradapter.ExtractionIntentAdapter)(nil)`
+              compile-time assertion at extraction_intent_adapter.go
+              ~line 265; future drift in either surface is a build failure.
+          (c) `internal/application/assets/monitor/extraction_intent_test.go::TestExtractionSegment_FieldParityWithYtdomainSegment`
+              locks field-count + JSON-tag parity of ExtractionSegment
+              (= ytdomain.Segment via type alias) against canonical
+              ytdomain semantics. Failure here means contract drift at
+              the marshal site in *ExtractionIntentAdapter.EnqueueExtract.
+          (d) `rg 'monitor.NewExtractionEnqueuer|monitor\\.ExtractionEnqueuer\\b' internal/`
+              returns zero hits after Commit C lands. Legacy concrete
+              adapter is physically removed; only monitor.JobEnqueuer
+              port surface remains in monitor/.
+      usage_metric: |
+        Pre-cutover audit baseline (HEAD = 4cf5abb1, 2026-07):
+          - `rg 'ytdomain' internal/application/assets/monitor/*.go`  : 7 hits
+            (ports.go line 31 import + line 298/312/320 doc-only fossil
+            comments + line 365 production field decl;
+            extraction_enqueuer_test.go line 8 import; 2 legacy
+            fixtures at extraction_enqueuer.go).
+          - `rg 'monitor.NewExtractionEnqueuer' internal/app/`       : 1 hit
+            (the wire at internal/app/lifecycle.go:264 — collapses to
+            0 after Commit B lands).
+          - `rg 'monitor.ExtractionEnqueuer\\b' internal/`           : 2 hits
+            (lifecycle.go:264 wire + the struct type decl in
+            extraction_enqueuer.go).
+        Post-Cutover (Commit C lands on origin/main, Q3 2026):
+          - ytdomain import in monitor/ports.go                       : 1
+            (godlike/06 alias-declaration SSOT).
+          - monitor.NewExtractionEnqueuer callsites                   : 0.
+          - monitoradapter.NewExtractionIntentAdapter callsites      : 1
+            (wire at internal/app/lifecycle.go:264 after Commit B).
+          - Pinned contract tests at
+            monitoradapter/extraction_intent_adapter_test.go           : 5
+            (CollisionNoOp + HappyPath_TranslationLocksAndCursorOmits +
+            FindActiveByKeyErrorIsConservative + JobsSvcNilGuard +
+            ChannelsSvcNilDegradesOrError).
+      migration_phase: EXPAND
+      status: in_progress
+      notes: |
+        Fase 8 cutover sequenced as 3 commits per the user's
+        "scegli tu in base alla pulizia" choice: Commit A (this entry)
+        + Commit B (wire reroute + ActiveKeyPrefix move from
+        extraction_enqueuer.go to monitor/ports.go) + Commit C
+        (git-rm of extraction_enqueuer.go + extraction_enqueuer_test.go).
+        migration_phase flips EXPAND → CUTOVER once Commit C lands
+        on origin/main; this entry tracks the ytdomain-import surface
+        as the godlike/06 alias-declaration SSOT that survives the
+        git-rm of the legacy concrete adapter (the alias declaration
+        enforces that monitor.ExtractionIntent stays semantically
+        pinned to canonical youtube/dto across future refactors).
+
+        ActiveKeyPrefix is the canonical const co-locating with the
+        canonical port surface: declared in monitor/ports.go after
+        Commit B reshapes the canonical home (from
+        extraction_enqueuer.go ~line 94 to ports.go's `const
+        (Priority*, ...)` block area). The alias-declaration pin +
+        the const share the same canonical ownership boundary (monitor
+        capability, owned by internal/application/assets/monitor).
+
+        Per godlike/07 §"Migration sequence", with canonical surface
+        (*monitoradapter.ExtractionIntentAdapter) already in place AND
+        no production caller of legacy *ExtractionEnqueuer remaining
+        after Commit C, the migration enters CUTOVER at the Commit C
+        landing moment. Recorded as EXPAND/in_progress here because
+        Commit C is part of the same direct-to-main wave but lands as
+        a separate atomic commit per user-specified pulizia preference.
+
+        Cross-refs:
+          - godlike/06 §"One canonical owner per fact" :
+            ExtractionSegment=ytdomain.Segment remains the SSOT lock
+            between canonical youtube/dto semantics and monitor's
+            typed surface; mirror the SSOT ownership boundary by
+            routing the marshal concern through monitoradapter.
+          - godlike/07 §"No fake availability" : Commit C physically
+            removes the legacy extraction_enqueuer.go; no fake
+            "we'll handle it later" without CONTRACT-phase audit-pin
+            on the deprecated ytdomain surface.
+          - godlike/07 §"Migration sequence" : EXPAND with canonical
+            replacement already present + in-flight BACKFILL/CUTOVER
+            unfolds across Commit B (BACKFILL) + Commit C (CUTOVER);
+            the ytdomain alias remains the EXPAND-phase load-bearing
+            surface (godlike/06 SSOT) even through CUTOVER — a future
+            CONTRACT phase will gate the ytdomain surface itself on
+            the alias-parity test in extraction_intent_test.go trended
+            to zero drift.
+    - id: PR-IMAGE-CAPABILITY
+      owner_capability: internal/application/assets/providers
+      exact_symbol: |
+        CapabilityImage (image Capability enum) +
+        ProviderCapabilitySet.Image *ProviderCapabilityDetail (legacy slot;
+        NOW scoped to icons/avatar ONLY via the FASE 5 Step 8 cutover).
+      file: internal/application/assets/providers/types.go + internal/application/assets/providers/registry.go
+      file_line: types.go CapabilityImage decl, registry.go ProviderCapabilitySet.Image field
+      replacement: |
+        Image-generation + retrieval consumption lives in
+        internal/application/images/retrieved/Provider +
+        internal/application/images/generated/Provider (FASE 5 Step 8
+        registries, commit 1eaafd81). The ProviderCapabilitySet.Image
+        field survives ONLY for icon/avatar usage; new image-generated
+        / image-retrieved callers MUST consume the new registries.
+        Companion aliases declared in internal/application/images/retrieved/
+        spec_aliases.go + internal/application/images/generated/spec_aliases.go.
+      introduction_date: 2026-07
+      removal_date: 2026-Q4
+      tracking_issue: FASE 5 Step 8 (1eaafd81) + FASE 6 ImageSearchResolver; the field is marked DEPRECATED in the EXPAND-phase and physically renamed/removed at the Wave 14 mega-package split gate once icon/avatar callers are eligible to migrate.
+      compatibility_test: |
+        Triple-defence mirroring DRIVE-005-FIELDS:
+          (a) var _ retrieved.Provider = (*WikipediaProvider)(nil) +
+              var _ generated.Provider = (*GoogleSlidesProvider)(nil)
+              compile-time assertions pin the new typed-port surface.
+          (b) rg 'Capabilities\.Image' internal/application/images/ returns
+              zero hits post-FASE 6 ImageSearchResolver.
+          (c) scripts/ci-architectural-checks.sh Check 44 (capacity cap)
+              does NOT regress; the field's presence is informational only
+              during EXPAND.
+      usage_metric: |
+        Today (audit baseline, 2026-07, post-Step 8): ProviderCapabilitySet.Image
+        is read by 0 image-gen callers (FASE 5 Step 8 migrated them all to the
+        new registries). Icon/avatar readers: tbd; the EXPAND-phase
+        audit pattern (rg 'Capabilities\.Image' internal/) yields a baseline
+        count that the CONTRACT-phase removal must trend to 0.
+      migration_phase: EXPAND
+      status: in_progress
+      notes: |
+        Field is NOT physically renamed to Icon in this commit because
+        that would break existing struct consumers via go build error.
+        The EXPAND-phase marker is the deprecation record itself; the
+        CONTRACT-phase rename (ProviderCapabilitySet.Image →
+        ProviderCapabilitySet.Icon) gates on the icon/avatar audit and
+        runs at the Wave 14 mega-package split gate (same gate as
+        DRIVE-005-FIELDS removal). Same pattern: keep the field alive
+        during EXPAND so external readsites compile, mark deprecated
+        via this manifest, plan physical rename + removal at the gate.
