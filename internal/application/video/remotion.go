@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 	domainvideo "github.com/Marcuss-ops/PipelineGen/internal/domain/video"
 	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
@@ -81,15 +82,20 @@ func (r *HTTPRenderer) Render(ctx context.Context, renderJob remotionjob.RenderJ
 }
 
 type Handler struct {
-	renderer Renderer
-	log      *zap.Logger
+	renderer  Renderer
+	publisher delivery.Publisher
+	log       *zap.Logger
 }
 
 func NewHandler(renderer Renderer, log *zap.Logger) *Handler {
+	return NewHandlerWithPublisher(renderer, nil, log)
+}
+
+func NewHandlerWithPublisher(renderer Renderer, publisher delivery.Publisher, log *zap.Logger) *Handler {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &Handler{renderer: renderer, log: log}
+	return &Handler{renderer: renderer, publisher: publisher, log: log}
 }
 
 func (h *Handler) Register(svc *appjobs.Service) error {
@@ -115,5 +121,28 @@ func (h *Handler) Handle(ctx context.Context, j *job.Job, _ *appjobs.JobTools) (
 		return nil, err
 	}
 	h.log.Info("Remotion render completed", zap.String("job_id", j.ID), zap.String("output_path", result.OutputPath))
-	return map[string]any{"render_job_id": result.ID, "output_path": result.OutputPath}, nil
+	out := map[string]any{"render_job_id": result.ID, "output_path": result.OutputPath}
+	if payload.UploadToDrive {
+		if h.publisher == nil {
+			return nil, fmt.Errorf("video render handler: Drive publisher is not configured")
+		}
+		receipt, err := h.publisher.Publish(ctx, delivery.PublishRequest{
+			Destination:         delivery.DestinationClipMetadata,
+			LocalPath:           result.OutputPath,
+			Filename:            payload.DriveFilename,
+			Description:         "PipelineGen Shorts render " + payload.ID,
+			AssetID:             payload.ID,
+			ProjectID:           "shorts",
+			Language:            payload.Language,
+			DestinationFolderID: payload.DriveFolderID,
+			ConflictPolicy:      delivery.ConflictOverwrite,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("video render handler: upload to Drive: %w", err)
+		}
+		out["drive_file_id"] = receipt.FileID
+		out["drive_url"] = receipt.WebViewLink
+		out["drive_folder_id"] = receipt.FolderID
+	}
+	return out, nil
 }

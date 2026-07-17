@@ -78,6 +78,7 @@ import (
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
@@ -211,7 +212,11 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		BaseURL: remotionBaseURL(),
 		Client:  &http.Client{Timeout: 30 * time.Minute},
 	}
-	if err := (appvideo.NewHandler(remotionRenderer, log)).Register(root.Jobs.Service); err != nil {
+	var drivePublisher delivery.Publisher
+	if root.Drive != nil {
+		drivePublisher = root.Drive.Publisher
+	}
+	if err := (appvideo.NewHandlerWithPublisher(remotionRenderer, drivePublisher, log)).Register(root.Jobs.Service); err != nil {
 		return fmt.Errorf("wireScriptFlow: register Remotion render handler: %w", err)
 	}
 	remotionProducer := appvideo.NewProducer(root.Jobs.Facade)

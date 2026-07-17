@@ -65,3 +65,18 @@ func TestBuildRenderJobMapsCaptionsAndSoundEffects(t *testing.T) {
 		t.Fatalf("caption/sfx props were not mapped: %+v", job.Props)
 	}
 }
+
+func TestBuildRenderJobNormalizesDriveFolderURL(t *testing.T) {
+	req := Request{ID: "short-drive", Text: "one", Language: "it-IT", DurationMs: 1000, Clips: []Clip{{ID: "clip-a"}}, UploadToDrive: true, DriveFolderID: "https://drive.google.com/drive/u/2/folders/folder-123?usp=sharing"}
+	plan, err := Build(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job, err := BuildRenderJob(req, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.DriveFolderID != "folder-123" || job.Language != "it-IT" || job.DriveFilename != "short-drive.mp4" {
+		t.Fatalf("unexpected Drive render fields: %+v", job)
+	}
+}
