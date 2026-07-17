@@ -11,7 +11,6 @@ package indexing
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"math"
 	"strings"
