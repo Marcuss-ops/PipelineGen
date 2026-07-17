@@ -150,6 +150,20 @@ func BuildTextTrackBundle(
 			return nil, fmt.Errorf("compose texttracks: acquire service: %w", err)
 		}
 	}
+	if repos.ClipsRepo == nil {
+		return nil, fmt.Errorf("compose texttracks: RepoBundle.ClipsRepo is required for automatic transcript acquisition")
+	}
+	backfill, err := texttracks.NewBackfillService(
+		repos.ClipsRepo,
+		repos.TextTrackRepo,
+		materializer,
+		acquireService,
+		log,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("compose texttracks: automatic backfill: %w", err)
+	}
+	handler.WithBackfill(backfill)
 
 	return &TextTrackBundle{
 		Materializer:   materializer,

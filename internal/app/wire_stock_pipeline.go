@@ -182,6 +182,9 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	var stockFinalizer finalization.JobFinalizer
 	if stockDB != nil && root.Outbox != nil && root.Outbox.EventsRepo != nil {
 		assetTx := assetfinalizer.NewAssetTxFinalizer(log)
+		if root.TextTracks != nil {
+			assetTx.WithFanOut(root.TextTracks.FanOut)
+		}
 		stockFinalizer = jobsfinalizer.New(stockDB, root.Outbox.EventsRepo, assetTx, log)
 	} else {
 		log.Warn("WireStockPipeline: Finalizer not constructed (godlike/07: one or more required deps nil — stockDB, root.Outbox, or root.Outbox.EventsRepo). If Publisher is also non-nil, the symmetric gate will fire ErrStockProductionJobFinalizerMissing.",

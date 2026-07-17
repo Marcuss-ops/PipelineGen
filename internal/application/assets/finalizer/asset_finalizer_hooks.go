@@ -18,7 +18,11 @@ func (s *AssetTxFinalizer) FirePostCommitHooks(
 	if s == nil || s.fanout == nil {
 		return
 	}
-	if artifact.SourceTextHash == "" || artifact.SourceLanguage == "" {
+	sourceLanguage := artifact.SourceLanguage
+	if sourceLanguage == "" {
+		sourceLanguage = s.fanout.DefaultSourceLanguage()
+	}
+	if sourceLanguage == "" {
 		return
 	}
 
@@ -27,26 +31,26 @@ func (s *AssetTxFinalizer) FirePostCommitHooks(
 		asset.TextTrackDescription,
 		asset.TextTrackSummary,
 	}
-	if err := s.fanout.EnqueueMaterializeOne(
-		ctx,
-		artifact.ArtifactID,
-		artifact.SourceLanguage,
-		artifact.SourceTextHash,
-		kinds,
-	); err != nil {
+	var err error
+	if artifact.SourceTextHash == "" {
+		err = s.fanout.EnqueueAcquireOne(ctx, artifact.ArtifactID, sourceLanguage, []asset.TextTrackKind{asset.TextTrackTranscript})
+	} else {
+		err = s.fanout.EnqueueMaterializeOne(ctx, artifact.ArtifactID, sourceLanguage, artifact.SourceTextHash, kinds)
+	}
+	if err != nil {
 		if s.log != nil {
 			s.log.Warn("AssetTxFinalizer.FirePostCommitHooks: fan-out enqueue failed (canonical asset row preserved; operator backfill will recover)",
 				zap.String("artifact_id", artifact.ArtifactID),
-				zap.String("source_language", artifact.SourceLanguage),
+				zap.String("source_language", sourceLanguage),
 				zap.String("source_text_hash", artifact.SourceTextHash),
 				zap.Error(err))
 		}
 		return
 	}
 	if s.log != nil {
-		s.log.Info("AssetTxFinalizer.FirePostCommitHooks: asset.text.materialize enqueued",
+		s.log.Info("AssetTxFinalizer.FirePostCommitHooks: automatic transcript/materialization job enqueued",
 			zap.String("artifact_id", artifact.ArtifactID),
-			zap.String("source_language", artifact.SourceLanguage),
+			zap.String("source_language", sourceLanguage),
 			zap.String("source_text_hash", artifact.SourceTextHash),
 			zap.Int("kinds_count", len(kinds)),
 		)

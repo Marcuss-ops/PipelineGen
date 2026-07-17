@@ -80,11 +80,14 @@ import (
 // roll back the terminal job flip — the bus is a derived notification
 // channel, not part of the SQLite canonical state.
 type Finalizer struct {
-	db      *sql.DB
-	outbox  *outboxevents.Repository
-	assetTx finalization.AssetFinalizerTx
-	log     *zap.Logger
-	bus     completion.JobCompletionBus
+	db              *sql.DB
+	outbox          *outboxevents.Repository
+	assetTx         finalization.AssetFinalizerTx
+	log             *zap.Logger
+	bus             completion.JobCompletionBus
+	postCommitHooks interface {
+		FirePostCommitHooks(context.Context, finalization.PublishedArtifact)
+	}
 }
 
 // New creates a Finalizer with the given database, outbox repository,
@@ -95,12 +98,18 @@ func New(db *sql.DB, outbox *outboxevents.Repository, assetTx finalization.Asset
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &Finalizer{
+	f := &Finalizer{
 		db:      db,
 		outbox:  outbox,
 		assetTx: assetTx,
 		log:     log,
 	}
+	if hooks, ok := assetTx.(interface {
+		FirePostCommitHooks(context.Context, finalization.PublishedArtifact)
+	}); ok {
+		f.postCommitHooks = hooks
+	}
+	return f
 }
 
 // WithBus attaches an optional completion.JobCompletionBus to the
@@ -237,6 +246,11 @@ func (f *Finalizer) CompleteWithArtifacts(
 	// 10. Commit.
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("finalizer: commit: %w", err)
+	}
+	if f.postCommitHooks != nil {
+		for _, artifact := range req.Artifacts {
+			f.postCommitHooks.FirePostCommitHooks(ctx, artifact)
+		}
 	}
 
 	f.log.Info("job finalised with artifacts",

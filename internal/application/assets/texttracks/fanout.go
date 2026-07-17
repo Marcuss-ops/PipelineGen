@@ -32,6 +32,7 @@ package texttracks
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -41,6 +42,14 @@ import (
 
 	"go.uber.org/zap"
 )
+
+func mustMarshalMaterializePayload(payload MaterializeJobPayload) []byte {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		panic(fmt.Sprintf("texttracks: marshal materialize payload: %v", err))
+	}
+	return b
+}
 
 // MaterializeEnqueuer is the narrow port surface a fanout
 // producer needs from the broker. Defining this interface
@@ -81,8 +90,22 @@ var errMissingJobs = errors.New("texttracks.NewMaterializeFanOut: jobs is requir
 // zap.NewNop() (test ergonomics — log-on-log panics during
 // hermetic tests).
 type MaterializeFanOut struct {
-	jobs MaterializeEnqueuer
-	log  *zap.Logger
+	jobs                  MaterializeEnqueuer
+	log                   *zap.Logger
+	defaultSourceLanguage string
+}
+
+func (f *MaterializeFanOut) SetDefaultSourceLanguage(language string) {
+	if f != nil {
+		f.defaultSourceLanguage = language
+	}
+}
+
+func (f *MaterializeFanOut) DefaultSourceLanguage() string {
+	if f == nil {
+		return ""
+	}
+	return f.defaultSourceLanguage
 }
 
 // NewMaterializeFanOut constructs the helper. The enqueuer is
@@ -199,6 +222,48 @@ func (f *MaterializeFanOut) EnqueueMaterializeOne(
 			zap.Error(err),
 		)
 		return fmt.Errorf("texttracks.fanout.enqueue: %w", err)
+	}
+	return nil
+}
+
+// EnqueueAcquireOne schedules source-transcript acquisition followed by the
+// configured multilingual materialization. It is used when an artifact has
+// been persisted without a source text hash yet: the worker acquires the
+// original transcript through the canonical subtitle/Whisper chain, saves it,
+// and then translates it into every configured target language.
+func (f *MaterializeFanOut) EnqueueAcquireOne(
+	ctx context.Context,
+	assetID string,
+	sourceLanguage string,
+	kinds []asset.TextTrackKind,
+) error {
+	if assetID == "" {
+		return &ErrInvalidMaterializeRequest{Field: "asset_id", Reason: "asset_id is required"}
+	}
+	if sourceLanguage == "" {
+		return &ErrInvalidMaterializeRequest{Field: "source_language", Reason: "source_language is required"}
+	}
+	if len(kinds) == 0 {
+		return &ErrInvalidMaterializeRequest{Field: "text_kinds", Reason: "text_kinds must contain at least one kind"}
+	}
+
+	payload := MaterializeJobPayload{
+		AssetID:        assetID,
+		SourceLanguage: sourceLanguage,
+		TextKinds:      make([]string, 0, len(kinds)),
+	}
+	for _, kind := range kinds {
+		payload.TextKinds = append(payload.TextKinds, string(kind))
+	}
+
+	_, err := f.jobs.Enqueue(ctx, &job.EnqueueRequest{
+		Type:      asset.TypeTextMaterialize,
+		Payload:   mustMarshalMaterializePayload(payload),
+		Priority:  5,
+		ActiveKey: fmt.Sprintf("asset.text.acquire:%s:%s", assetID, sourceLanguage),
+	})
+	if err != nil {
+		return fmt.Errorf("texttracks.fanout.enqueue_acquire: %w", err)
 	}
 	return nil
 }

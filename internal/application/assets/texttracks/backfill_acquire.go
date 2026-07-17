@@ -27,6 +27,8 @@ package texttracks
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -140,6 +142,16 @@ func extractVideoID(a *asset.Asset) string {
 		if v, ok := a.Metadata["video_id"].(string); ok && v != "" {
 			return v
 		}
+		for _, key := range []string{"source_url", "youtube_url", "url"} {
+			if raw, ok := a.Metadata[key].(string); ok {
+				if id := youtubeVideoID(raw); id != "" {
+					return id
+				}
+			}
+		}
+	}
+	if id := youtubeVideoID(a.SourceURL); id != "" {
+		return id
 	}
 	// Fallback: strip the "yt_" prefix from the asset ID
 	// (canonical clip ID format: yt_<videoID>_<start>_<end>_<policy>).
@@ -150,6 +162,28 @@ func extractVideoID(a *asset.Asset) string {
 				return a.ID[3:i]
 			}
 		}
+	}
+	return ""
+}
+
+func youtubeVideoID(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	if id := strings.TrimSpace(u.Query().Get("v")); id != "" {
+		return id
+	}
+	path := strings.Trim(u.Path, "/")
+	if strings.HasPrefix(path, "shorts/") {
+		return strings.TrimPrefix(path, "shorts/")
+	}
+	if strings.HasPrefix(path, "embed/") {
+		return strings.TrimPrefix(path, "embed/")
 	}
 	return ""
 }

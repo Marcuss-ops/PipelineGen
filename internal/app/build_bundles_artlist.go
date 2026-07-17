@@ -15,6 +15,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providerassets/adapters"
 	artlistPkg "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/artlist"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/texttracks"
 	appjobs "github.com/Marcuss-ops/PipelineGen/internal/application/jobs"
 
 	scripts_usecase "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
@@ -71,6 +72,7 @@ func WireArtlist(
 	lifecycle drivepkg.FileLifecycle,
 	metaWriter semantic.MetadataWriterPort,
 	destResolver asset.Resolver,
+	textTrackFanOut ...*texttracks.MaterializeFanOut,
 ) (*ArtlistWiring, error) {
 	_ = ctx
 
@@ -117,6 +119,9 @@ func WireArtlist(
 	// sentinel pins the invariant; `Field: "finalizerTx"` so the
 	// diagnostic surfaces the source-path beside the well-known Kind.
 	finalizerTx := assetfinalizer.NewAssetTxFinalizer(log)
+	if len(textTrackFanOut) > 0 && textTrackFanOut[0] != nil {
+		finalizerTx.WithFanOut(textTrackFanOut[0])
+	}
 	if finalizerTx == nil {
 		return nil, ErrArtlistDepMissing{Kind: DepKindFinalizer, Field: "finalizerTx"}
 	}
