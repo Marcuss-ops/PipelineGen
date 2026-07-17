@@ -77,7 +77,7 @@ var exceptionList = map[string]bool{
 	"internal/application/assets/providers/stock/enrichment/outbox_emitter.go:60":     true,
 	"internal/application/assets/maintenance/run_cleanup.go:5":                        true,
 	"internal/application/assets/maintenance/service.go:5":                            true,
-	"internal/application/assets/providers/stock/stockpipeline/service_types.go:25":   true,
+	"internal/application/assets/providers/stock/stockpipeline/service_types.go:26":   true,
 	"internal/application/document/usecase.go:17":                                     true,
 	"internal/application/assets/finalizer/tx_adapter.go:9":                           true,
 	"internal/application/assets/lifecycle/service_voiceover.go:11":                   true,
