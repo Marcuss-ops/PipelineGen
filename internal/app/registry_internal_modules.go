@@ -203,6 +203,7 @@ func registerArtlist(ctx context.Context, registry *module.Registry, log *zap.Lo
 		root.Drive.Lifecycle,
 		root.Domains.MetaWriter,
 		root.Drive.DestResolver,
+		root.TextTracks.FanOut,
 	)
 	if err != nil {
 		var depMissing ErrArtlistDepMissing

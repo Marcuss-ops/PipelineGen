@@ -26,6 +26,7 @@ type MaterializeJobPayload struct {
 
 type MaterializeJobHandler struct {
 	materializer *Materializer
+	backfill     *BackfillService
 	log          *zap.Logger
 }
 
@@ -40,6 +41,16 @@ func NewMaterializeJobHandler(
 		panic("texttracks.NewMaterializeJobHandler: log is nil")
 	}
 	return &MaterializeJobHandler{materializer: materializer, log: log}
+}
+
+// WithBackfill attaches the canonical source-acquisition pipeline. When a
+// materialize job has no source hash yet, the handler uses this pipeline to
+// acquire subtitles or Whisper text before fan-out.
+func (h *MaterializeJobHandler) WithBackfill(backfill *BackfillService) *MaterializeJobHandler {
+	if h != nil {
+		h.backfill = backfill
+	}
+	return h
 }
 
 func (h *MaterializeJobHandler) Register(jobsSvc *appjobs.Service) error {
@@ -72,6 +83,40 @@ func (h *MaterializeJobHandler) HandleJob(
 
 	if err := h.validatePayload(&cmd); err != nil {
 		return nil, h.classifyError(fmt.Errorf("texttracks.materialize: payload invalid: %w", err))
+	}
+
+	// Empty SourceTextHash is the automatic-ingest path. The artifact has
+	// already been committed, so acquire the original transcript from the
+	// canonical asset row and continue through the same materializer.
+	if cmd.SourceTextHash == "" {
+		if h.backfill == nil {
+			return nil, h.classifyError(fmt.Errorf("texttracks.materialize: source acquisition is not configured"))
+		}
+		assets, err := h.backfill.clips.List(ctx, asset.Filter{IDs: []string{cmd.AssetID}, Limit: 1})
+		if err != nil {
+			return nil, fmt.Errorf("texttracks.materialize: load asset for acquisition: %w", err)
+		}
+		if len(assets) != 1 || assets[0] == nil {
+			return nil, h.classifyError(fmt.Errorf("texttracks.materialize: asset %q not found for acquisition", cmd.AssetID))
+		}
+		result, err := h.backfill.ProcessAsset(ctx, assets[0], BackfillOptions{
+			Source:          string(assets[0].Source),
+			SourceLanguage:  cmd.SourceLanguage,
+			TargetLanguages: cmd.TargetLanguages,
+			TextKind:        asset.TextTrackTranscript,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{
+			"asset_id":              result.AssetID,
+			"source_language":       result.SourceLanguage,
+			"source_acquired":       result.SourceAcquired,
+			"acquired_from":         result.AcquiredFrom,
+			"created_languages":     result.CreatedLangs,
+			"failed_languages":      result.FailedLangs,
+			"automatic_acquisition": true,
+		}, nil
 	}
 
 	reports := make(map[string]*MaterializationReport, len(cmd.TextKinds))
@@ -138,12 +183,6 @@ func (h *MaterializeJobHandler) validatePayload(cmd *MaterializeJobPayload) erro
 	}
 	if cmd.SourceLanguage == "" {
 		return &ErrInvalidMaterializeRequest{Field: "source_language", Reason: "source_language is required"}
-	}
-	if cmd.SourceTextHash == "" {
-		return &ErrInvalidMaterializeRequest{
-			Field:  "source_text_hash",
-			Reason: "source_text_hash is required (caller pre-computes SHA-256 of the source text)",
-		}
 	}
 	if len(cmd.TextKinds) == 0 {
 		return &ErrInvalidMaterializeRequest{

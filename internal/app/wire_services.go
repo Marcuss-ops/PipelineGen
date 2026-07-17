@@ -151,6 +151,9 @@ func initCompositionMinimalWithContext(ctx context.Context, cfg *config.Config, 
 	// NewComposition already ran BuildProcessBundle which populated it.
 	if root.Outbox != nil && root.Outbox.EventsRepo != nil && root.DB != nil && root.DB.DB != nil {
 		assetTx := assetfinalizer.NewAssetTxFinalizer(log)
+		if root.TextTracks != nil {
+			assetTx.WithFanOut(root.TextTracks.FanOut)
+		}
 		finalizer := jobsfinalizer.New(root.DB.DB, root.Outbox.EventsRepo, assetTx, log)
 		broker.WithFinalizer(finalizer)
 		log.Info("wired JobFinalizer into local broker at construction time (Path B artifact-producing jobs can now complete via CompleteWithArtifacts)")

@@ -211,6 +211,10 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if err := wireTextTrackJobBindings(textTracks, jobs); err != nil {
 		return nil, fmt.Errorf("compose texttracks late-binding: %w", err)
 	}
+	WireTextTracksFanOut(textTracks, jobs.Service, log)
+	if textTracks.FanOut != nil {
+		textTracks.FanOut.SetDefaultSourceLanguage(activeMultilingualConfig(cfg).SourceLanguage)
+	}
 	root := &ComposeRoot{
 		DB:         dbs.main,
 		Drive:      driveBundle,
