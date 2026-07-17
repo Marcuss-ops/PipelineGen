@@ -11,7 +11,7 @@
 # and only caught at the next CI run. With verify-main in place, every
 # commit lands-green-or-not-all.
 
-.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict
+.PHONY: all build test test-unit test-js test-all coverage coverage-check clean lint fmt vet run doctor artlist dev deps tidy-check vuln bench docker-build docker-run docker-build-worker docker-sign docker-digest docker-verify-digest docker-verify-ffmpeg docker-bootstrap-smoke ci rebuild go-version-check go-version-guard preflight node-version-check smoke smoke-script smoke-run-all smoke-dry verify-no-secrets verify-main verify-format test-imports test-qdrant-fixtures test-qdrant-fixtures-down regen-current-yaml regen-routes-yaml archcheck-strict install-hooks
 
 # Version information (can be overridden via environment)
 # Use: make build VERSION=1.2.0
@@ -709,6 +709,36 @@ test-imports:
 	    exit 1; \
 	fi; \
 	echo "✅ all test files goimports-canonical"
+
+# install-hooks — wires the canonical PipelineGen pre-commit hook into
+# the active git hooks path via `git config core.hooksPath`. Idempotent:
+# a re-run is safe; the config set is the same.
+#
+# Per godlike/06 SSOT one-canonical-owner-per-fact: the canonical hook
+# lives at scripts/hooks/pre-commit (version-controlled). We DO NOT
+# copy the hook into .git/hooks/ because that's a git-ignored directory
+# and would be lost on `git clean -fdx` or fresh clones.
+#
+# Scope per AGENTS.md godlike/07 minimum-blast-radius: the hook builds +
+# vets ONLY the TOUCHED packages (git diff --cached derivation), NOT
+# the full project (avoid 30s+ waits on docs-only commits).
+#
+# Companion gate: PIPELINEGEN_SKIP_PRECOMMIT=1 opt-out for emergency
+# land-in (paired with a follow-up fixup! commit + autosquash). The
+# hook asserts this loud-on-stdout so the bypass is never silent.
+install-hooks:
+	@if [ ! -f scripts/hooks/pre-commit ]; then \
+		echo "❌ scripts/hooks/pre-commit not found — cannot install"; \
+		exit 1; \
+	fi
+	@if [ ! -x scripts/hooks/pre-commit ]; then \
+		echo "→ chmod +x scripts/hooks/pre-commit"; \
+		chmod +x scripts/hooks/pre-commit; \
+	fi
+	@git config core.hooksPath scripts/hooks
+	@echo "✅ core.hooksPath = $(shell git config --get core.hooksPath)"
+	@echo "→ Dry-run the hook once to confirm wiring:"
+	@bash scripts/hooks/pre-commit --dry-run | head -10 || true
 
 # ─── Governance regeneration targets (Fase 7, Push 7, July 2026) ──────
 #

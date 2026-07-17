@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# scripts/hooks/pre-commit (godlike/06 SSOT canonical owner of pre-commit gating).
+#
+# FAIL-CLOSED pre-commit hook for the PipelineGen codebase. Blocks the
+# git commit on any of the 4 documented gates:
+#   (a) `go build ./<touched_pkg>/...` failure (catch orphan imports,
+#       redeclarations, syntax errors, type errors — ALL classes that
+#       have surfaced 6+ times in Step 4 voiceover + Step 5 voiceover +
+#       Step 2 qdrant + Step 3 qdrant broken commits).
+#   (b) `go vet ./<touched_pkg>/...` failure (canonical static analysis).
+#   (c) `_test.go` files with top-level `func NAME(t *testing.T)` that
+#       don't start with `Test` (Go testing framework SKIPS these funcs;
+#       they contribute zero coverage while inflating the func count
+#       audit — surfaced in Step 4 voiceover with 3 missing Test prefixes).
+#   (d) `func N(t *testing.T)` (or related) declarations inside a
+#       touched _test.go file that DRIFT in test-prefix discipline
+#       (every `func` declared at top of _test.go file MUST start with
+#       `Test`; any drift indicates the author missed the prefix).
+#
+# SCOPE: scoped to TOUCHED packages only (`git diff --cached` derivation)
+# so a commit touching 1 file costs ~1s of scan, NOT a full project
+# build (godlike/07 minimum-blast-radius + AGENTS.md Git-Lesson).
+#
+# INSTALL: `make install-hooks` (or `git config core.hooksPath scripts/hooks`
+# manually). Idempotent. Re-running is safe.
+#
+# BYPASS: `PIPELINEGEN_SKIP_PRECOMMIT=1 git commit ...` opt-out is
+# available for emergency land-in (a known-broken commit that needs
+# to ship before the fix); MUST be paired with a follow-up
+# `fixup!: <subject>` commit + `git rebase --autosquash` once the fix
+# is on main. Default-off; logged loudly so the bypass is not silent.
+#
+# MODES:
+#   default    blocks commit on any failure (exit non-zero)
+#   --dry-run  prints the would-be checks without blocking (exit 0)
+#
+# HISTORY (godlike/06 SSOT documentation discipline — pinned here so
+# future operators can grep-find the rationale):
+#   - voiceover/jobs Step 4 (commit 831a5e43): 3 funcs without Test
+#     prefix → 0 runnable → silent coverage hole caught only on next
+#     CI run.
+#   - voiceover/jobs Step 5 (commit 7aaf354) + amend
+#     (fix-up): orphan imports left after str_replace → build break
+#     caught only when push attempted.
+#   - qdrant/indexing Step 2 (commit 98e14343): 0 of
+#     payload_mapper_validation_test.go funcs hitting green initially
+#     because go test was not run pre-push.
+#   - qdrant/indexing Step 3 (commit 1f9be3a0):
+#     Python-based trim script removed signatures but left bodies →
+#     file-scope orphan → syntax error caught only when commit
+#     attempted.
+#
+# godlike/07 fail-closed: any non-zero exit code from any gate
+# aborts the commit. No fallbacks, no `|| true`, no skip-without-env.
+
+set -euo pipefail
+
+# ── Parse args + bypass env
+DRY_RUN=0
+if [ "${1:-}" = "--dry-run" ]; then
+    DRY_RUN=1
+fi
+
+if [ "${PIPELINEGEN_SKIP_PRECOMMIT:-0}" = "1" ]; then
+    echo "⚠️  PIPELINEGEN_SKIP_PRECOMMIT=1 — bypassing pre-commit gates."
+    echo "    This MUST be paired with a follow-up fixup! commit + autosquash."
+    exit 0
+fi
+
+# ── Resolve Go binary + working tree root
+# AGENTS.md Git-Lesson: GO is overridable; respect Makefile convention.
+GO="${GO:-go}"
+if ! command -v "$GO" >/dev/null 2>&1; then
+    # Fail-closed: missing Go toolchain breaks a commit; this matches
+    # the existing go-version-check contract in Makefile.
+    echo "❌ PIPELINEGEN PRECOMMIT: Go binary '$GO' not on PATH."
+    echo "   Set GO environment variable or install Go in your shell env."
+    exit 1
+fi
+
+# Move to repo root so `go build ./<pkg>/...` resolves the package path.
+cd "$(git rev-parse --show-toplevel)"
+
+# ── Determine touched packages (staged files only)
+# Use --diff-filter=ACMR (Add / Change / Rename / Modify) so deletions
+# don't trigger a scan against a no-longer-present file.
+# File paths are repo-relative; convert to Go package paths by taking
+# the directory of each file. For files at repo root, skip (build
+# performance: ./... is fine but expensive on full diffs).
+TOUCHED_PKGS="$(git diff --cached --name-only --diff-filter=ACMR \
+    | grep -E '\.go$' \
+    | grep -E '^internal/|^pkg/|^cmd/' \
+    | xargs -I{} dirname {} \
+    | sort -u)"
+
+TOUCHED_TEST_FILES="$(git diff --cached --name-only --diff-filter=ACMR \
+    | grep -E '_test\.go$')"
+
+# ── Exit early if no Go-touching commit (e.g., doc-only commit)
+if [ -z "$TOUCHED_PKGS" ] && [ -z "$TOUCHED_TEST_FILES" ]; then
+    echo "✅ pre-commit: no Go files touched; skipping gate chain."
+    exit 0
+fi
+
+echo "─────────────────────────────────────────────────────────────"
+echo "PipelineGen pre-commit gate chain"
+echo "  Touched packages:"
+echo "$TOUCHED_PKGS" | sed 's/^/    /'
+if [ -n "$TOUCHED_TEST_FILES" ]; then
+    echo "  Touched _test.go files:"
+    echo "$TOUCHED_TEST_FILES" | sed 's/^/    /'
+fi
+echo "─────────────────────────────────────────────────────────────"
+
+if [ "$DRY_RUN" = "1" ]; then
+    echo "(dry-run mode: would run gates, but not blocking)"
+fi
+
+GATE_FAILURES=0
+
+# ── Gate (a)+(b): go build + go vet on touched packages
+for pkg in $TOUCHED_PKGS; do
+    if [ "$DRY_RUN" = "1" ]; then
+        echo "  [dry-run] would run: $GO build ./$pkg/..."
+        echo "  [dry-run] would run: $GO vet ./$pkg/..."
+        continue
+    fi
+    echo "→ go build ./$pkg/..."
+    if ! "$GO" build "./$pkg/..." 2>&1; then
+        echo "❌ GATE (a) FAILED: $GO build ./$pkg/..."
+        GATE_FAILURES=$((GATE_FAILURES + 1))
+    fi
+    echo "→ go vet ./$pkg/..."
+    if ! "$GO" vet "./$pkg/..." 2>&1; then
+        echo "❌ GATE (b) FAILED: $GO vet ./$pkg/..."
+        GATE_FAILURES=$((GATE_FAILURES + 1))
+    fi
+done
+
+# ── Gate (c): test-prefix discipline on touched _test.go files
+# godlike/06 SSOT: every top-level `func NAME(t *testing.T)` in a
+# _test.go file MUST start with `Test`. The grep is intentionally
+# regex-precise: `^func Test` (anchored at line start) matches exactly
+# Go's testing convention.
+for test_file in $TOUCHED_TEST_FILES; do
+    if [ ! -f "$test_file" ]; then
+        # File may have been deleted; skip.
+        continue
+    fi
+    total_funcs=$(grep -cE '^\s*func ' "$test_file" || true)
+    test_funcs=$(grep -cE '^\s*func Test' "$test_file" || true)
+    if [ "$total_funcs" -gt "0" ] && [ "$test_funcs" -lt "$total_funcs" ]; then
+        # Drill in: list the funcs missing Test prefix so the operator
+        # can see which ones to rename.
+        echo "❌ GATE (c) FAILED in $test_file: $test_funcs of $total_funcs funcs have 'Test' prefix"
+        echo "   Funcs missing 'Test' prefix:"
+        grep -nE '^\s*func [^T]' "$test_file" | sed 's/^/     /' || true
+        GATE_FAILURES=$((GATE_FAILURES + 1))
+    fi
+done
+
+# ── Final report
+echo "─────────────────────────────────────────────────────────────"
+if [ "$GATE_FAILURES" -eq 0 ]; then
+    echo "✅ pre-commit: all gates green. Proceeding with commit."
+    exit 0
+else
+    echo "❌ pre-commit: $GATE_FAILURES gate(s) FAILED. Commit blocked."
+    echo "   To bypass for emergency land-in: PIPELINEGEN_SKIP_PRECOMMIT=1 git commit ..."
+    exit 1
+fi
