@@ -10,6 +10,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	finalization "github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
 
 // ── Validate ─────────────────────────────────────────────────────────
@@ -137,11 +139,14 @@ func TestArtifactManifest_Validate_RequiredArtifactEmptyPath(t *testing.T) {
 	if !errors.Is(err, ErrRequiredArtifactMissing) {
 		t.Errorf("error should wrap ErrRequiredArtifactMissing, got %T: %v", err, err)
 	}
-	// The job-package alias for the finalization canonical sentinel
-	// must resolve identically (same pointer per godlike/06 SSOT
-	// re-export contract).
-	if !errors.Is(err, ErrRequiredArtifactMissing) {
-		t.Errorf("error should wrap job.ErrRequiredArtifactMissing alias, got %T: %v", err, err)
+	// Verify the godlike/06 SSOT re-export contract: the alias
+	// chain finalization.ErrRequiredArtifactMissing →
+	// artifact_errors → job.ErrRequiredArtifactMissing MUST hold
+	// pointer-identity (the second errors.Is against the canonical
+	// from a different package would surface any future divergence
+	// in the alias re-export).
+	if !errors.Is(err, finalization.ErrRequiredArtifactMissing) {
+		t.Errorf("error should also satisfy errors.Is against the canonical finalization.ErrRequiredArtifactMissing (godlike/06 SSOT contract), got %T: %v", err, err)
 	}
 }
 
