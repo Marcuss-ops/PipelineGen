@@ -174,4 +174,3 @@ func TestCanonicalCase_PreferredLanguagesFanOut_PicksFirstMatch(t *testing.T) {
 	assert.Equal(t, "español del DB", bundle2.PlainText,
 		"bundle.PlainText MUST be the Spanish DB row's TextContent. got=%q", bundle2.PlainText)
 }
-
