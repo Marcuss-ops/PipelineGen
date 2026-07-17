@@ -1,0 +1,24 @@
+{
+  "id": "short-ai-anaconda-01",
+  "text": "Sotto questo tronco si nasconde un predatore gigantesco",
+  "language": "it-IT",
+  "duration_ms": 7000,
+  "words_per_caption": 4,
+  "include_sound_effects": true,
+  "clips": [
+    {
+      "id": "ai-anaconda-underwater-11",
+      "path": "data/blobs/sha256/05/053a5952573d576c69aea2f880c75f7050708b43ed0e3178e08154ca89380081",
+      "start_ms": 0,
+      "end_ms": 7000
+    }
+  ],
+  "sound_effects": [
+    {
+      "id": "sfx_clock_ticking_urgent_01",
+      "file": "data/media/sound_effects/sfx_clock_ticking_urgent_01.mp3",
+      "at_ms": 3500,
+      "volume": 0.35
+    }
+  ]
+}

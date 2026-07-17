@@ -32,6 +32,7 @@ import (
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 	jobs "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
 
 	"go.uber.org/zap"
@@ -58,6 +59,9 @@ type GenerateDeps struct {
 	Submission generationSubmitter
 	Log        *zap.Logger
 	Validator  *usecase.PayloadValidator
+	// ShortsRenderer is optional for direct/unit construction and required
+	// only when POST /shorts/render should reach a Remotion worker.
+	ShortsRenderer appvideo.Renderer
 }
 
 // JobsDeps groups the canonical constructor inputs for the
@@ -138,7 +142,7 @@ func NewScriptFlowHandler(deps ScriptFlowDeps) *ScriptFlowHandler {
 		// alongside the slim ScriptFlowHandler. POST /generate
 		// delegates to h.gen.Generate(c). PR-COMMIT3: the 4th
 		// `caps` arg is removed alongside the preflight module.
-		gen: NewHandlerGenerate(deps.Generate.Submission, deps.Generate.Log, deps.Generate.Validator),
+		gen: NewHandlerGenerateWithRenderer(deps.Generate.Submission, deps.Generate.Log, deps.Generate.Validator, deps.Generate.ShortsRenderer),
 
 		// PR-SCRIPT-JOBS-EXTRACT (July 2026): construct the 2-field
 		// JobsHandler. GET /api/script/jobs/:id mounts via

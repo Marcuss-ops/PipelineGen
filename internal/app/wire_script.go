@@ -70,18 +70,29 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"os"
 	"strings"
+	"time"
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	scriptapi "github.com/Marcuss-ops/PipelineGen/internal/api/script"
 
 	adapters "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
+	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
 	"go.uber.org/zap"
 )
+
+func remotionBaseURL() string {
+	if value := strings.TrimSpace(os.Getenv("VELOX_REMOTION_URL")); value != "" {
+		return value
+	}
+	return "http://127.0.0.1:4317"
+}
 
 // wireScriptFlow constructs and registers the ScriptFlow module.
 // Returns an error if module registration fails on duplicate-name or
@@ -202,6 +213,10 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 			Submission: submissionSvc,
 			Log:        log,
 			Validator:  usecase.NewPayloadValidator(cfg.Scripts),
+			ShortsRenderer: &appvideo.HTTPRenderer{
+				BaseURL: remotionBaseURL(),
+				Client:  &http.Client{Timeout: 30 * time.Minute},
+			},
 		},
 		// FASE 2 (July 2026): JobsDeps.Registry is RETIRED. The
 		// canonical MaxRetries lookup moved into
