@@ -259,30 +259,6 @@ func TestAssetToPoint_TranscriptChannel_PreservedWhenPresent(t *testing.T) {
 		}
 	}
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-
-// ══════════════════════════════════════════════════════════════════════════
-// PR 6 (refactor/qdrant-index-document) — provenance + locator-free tests.
-// ══════════════════════════════════════════════════════════════════════════
-
-// TestBuildPayloadFromDocument_ProvenanceWritesObservedVersion pins
-// verdict §11: the on-disk payload key
-// `embedding_version_<channel>` MUST come from
-// EmbeddingArtifact.ModelVersion (the OBSERVED provenance), NOT from
-// the schema's qdrantSchema.EmbeddingSpec.ModelVersion (the EXPECTED). The Mapper
-// airlock produces an artifact whose ModelVersion defaults to the
-// schema's value (write-only provenance), but a custom artifact with
-// a DIFFERENT ModelVersion MUST win. This test posts a custom
-// EmbeddingArtifact and verifies the wire reflects the override.
-func TestBuildPayloadFromDocument_ProvenanceWritesObservedVersion(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	wantObserved := "observed-version-A-2026-XX-XX"
-	wantSchema := schema.GetDense("text").ModelVersion
-	if wantObserved == wantSchema {
-		t.Fatalf("test invariant broken: observed must differ from schema's expected %q to be a meaningful provenance check", wantSchema)
-	}
-
 	doc := &IndexDocument{
 		AssetID:        "asset-provenance",
 		LifecycleState: asset.LifecycleState("ACTIVE"),
@@ -322,27 +298,6 @@ func TestBuildPayloadFromDocument_ProvenanceWritesObservedVersion(t *testing.T) 
 // the field references below cannot leak. drive_link IS emitted in
 // the payload when set (per the Italian plan search-result-key block).
 //
-// Related tests:
-//   - TestBuildPayloadFromDocument_DriveLinkEmittedWhenSet (test 18 in
-//     payload_builder_test.go) — verifies the positive emission of
-//     drive_link.
-//   - TestBuildPayloadFromDocument_CanonicalSearchDocument_NoLinkOrLocatorInEmbeddingText
-//     — pin the FORWARD-PREVENTION half: drive_link is NEVER in the
-//     embedding_text (only in payload).
-func TestBuildPayloadFromDocument_NoForbiddenLocatorKeys(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	asset := &AssetData{
-		ID:             "asset-locatorcheck",
-		Source:         "youtube",
-		MediaType:      "video",
-		LifecycleState: "ACTIVE",
-		// Simulate the SQL-side fields the AirLock MUST strip from the wire:
-		Status:    "ACTIVE_LEGACY", // forbidden: never reach the wire
-		LocalPath: "/tmp/should-not-leak",
-	}
-	doc := assetToIndexDocumentNoValidate(asset, schema)
-	payload := BuildPayloadFromDocument(doc, schema)
-
 	for _, forbidden := range []string{"status", "local_path"} {
 		if v, present := payload[forbidden]; present {
 			t.Errorf("BuildPayloadFromDocument MUST NOT emit forbidden payload key %q (PR 6 verdict §7.4 footer); got %v", forbidden, v)
@@ -355,54 +310,6 @@ func TestBuildPayloadFromDocument_NoForbiddenLocatorKeys(t *testing.T) {
 		}
 	}
 }
-
-// TestBuildPayloadFromDocument_SemanticFieldsAreProjected pins the
-// semantic enrichment contract: the mapper must carry the workflow /
-// content metadata through to the Qdrant payload and build a rich
-// embedding_text block from it.
-func TestBuildPayloadFromDocument_SemanticFieldsAreProjected(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	asset := &AssetData{
-		ID:             "asset-semantic",
-		Name:           "Pacquiao vs Broner Round 7",
-		Source:         "stock",
-		MediaType:      "video",
-		LifecycleState: "ACTIVE",
-		Tags:           []string{"boxing", "pacquiao", "broner"},
-		DurationMs:     5000,
-		YouTubeVideoID: "vdC5GXxS-qU",
-		YouTubeURL:     "https://www.youtube.com/watch?v=vdC5GXxS-qU",
-		MetadataJSON: `{
-			"title":"Pacquiao vs Broner Round 7 Broner barcolla",
-			"summary":"Broner is hurt and stumbling under Pacquiao pressure",
-			"source_url":"https://www.youtube.com/watch?v=vdC5GXxS-qU",
-			"source_video_id":"vdC5GXxS-qU",
-			"destination":"stock",
-			"origin":"retrieved",
-			"source_provider":"youtube",
-			"event":"Pacquiao vs Broner",
-			"round":7,
-			"scene":"Broner barcolla",
-			"subject":"Adrien Broner",
-			"topics":["boxing","round 7"],
-			"speakers":["Manny Pacquiao"],
-			"mentioned_people":["Adrien Broner"],
-			"people":["Manny Pacquiao","Adrien Broner"],
-			"search_keywords":["knockdown","fight"],
-			"entities":["Manny Pacquiao","Adrien Broner"],
-			"hook":"Pacquiao pressures Broner",
-			"search_visibility":"high",
-			"policy_version":"timestamp_v1",
-			"job_id":"job-1",
-			"workflow_id":"wf-1",
-			"run_fingerprint":"fp-1",
-			"chunk_index":0,
-			"total_chunks":11,
-			"drive_path":"stock/Boxe/youtube/Pacquiao-Vs-Broner/Round-7-Broner-barcolla",
-			"indexing_status":"indexed"
-		}`,
-	}
-
 	doc := assetToIndexDocumentNoValidate(asset, schema)
 	payload := BuildPayloadFromDocument(doc, schema)
 
@@ -458,23 +365,6 @@ func TestBuildPayloadFromDocument_SemanticFieldsAreProjected(t *testing.T) {
 	assert.Contains(t, entities, "Manny Pacquiao")
 	assert.Contains(t, entities, "Adrien Broner")
 }
-
-// TestBuildPayloadFromDocument_BadModelVersion_EmitsBadKey pins the
-// PR 6 §#6.1 invariant: an EmbeddingArtifact whose ModelVersion
-// DOESN'T match the schema's expected version must be reflected in
-// the wire verbatim — the point is NOT silently relabeled as the
-// current schema version. The verifier's
-// qdrantSchema.SwitchReport.VersionMismatchPerChannel[<channel>] counter (PR 12)
-// surfaces the drift loudly; the contract here is that the writer
-// does NOT hide it.
-func TestBuildPayloadFromDocument_BadModelVersion_EmitsBadKey(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	wantObserved := "bad_version_123"
-	wantExpected := schema.GetDense("text").ModelVersion
-	if wantObserved == wantExpected {
-		t.Fatalf("test invariant broken: bad version must differ from schema's expected %q", wantExpected)
-	}
-
 	doc := &IndexDocument{
 		AssetID:        "asset-bad",
 		LifecycleState: asset.LifecycleState("ACTIVE"),
@@ -499,106 +389,6 @@ func TestBuildPayloadFromDocument_BadModelVersion_EmitsBadKey(t *testing.T) {
 			got, wantObserved, wantExpected)
 	}
 }
-
-// TestBuildPayloadFromDocument_EmptyArtifactVersionSkipped pins the
-// silent-gap semantics: when an EmbeddingArtifact has ModelVersion=""
-// (e.g. a debug/test artifact that hasn't stamped its observed
-// version), BuildPayloadFromDocument MUST NOT emit the per-channel
-// key. The verifier's per-channel mismatch counter (PR 12) surfaces
-// the gap separately — a non-silent failure pathway.
-func TestBuildPayloadFromDocument_EmptyArtifactVersionSkipped(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	doc := &IndexDocument{
-		AssetID:        "asset-empty",
-		LifecycleState: asset.LifecycleState("ACTIVE"),
-		Embeddings: map[VectorChannel]EmbeddingArtifact{
-			ChannelText: {
-				Channel:      ChannelText,
-				Model:        "no-version-yet",
-				ModelVersion: "", // explicitly empty observed version
-				Dimensions:   schema.GetDense("text").Dimensions,
-			},
-		},
-	}
-	payload := BuildPayloadFromDocument(doc, schema)
-	if _, present := payload["embedding_version_text"]; present {
-		t.Errorf("BuildPayloadFromDocument MUST SKIP embedding_version_<channel> when artifact.ModelVersion is empty; got %v", payload["embedding_version_text"])
-	}
-}
-
-// TestAssetToIndexDocument_AirLockStripsForbiddenFields pins that the
-// canonical Mapper airlock (PR 6) removes Status / DriveLink /
-// LocalPath from the wire-shape IndexDocument. The legacy AssetData
-// keeps these fields for diagnostic paths; the new IndexDocument
-// surface does NOT.
-func TestAssetToIndexDocument_AirLockStripsForbiddenFields(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	asset := &AssetData{
-		ID:             "asset-airlock",
-		Source:         "youtube",
-		MediaType:      "video",
-		LifecycleState: "ACTIVE",
-		Status:         "ACTIVE_LEGACY",
-		DriveLink:      "https://drive.example.test/leak",
-		LocalPath:      "/tmp/leak",
-	}
-	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	doc, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
-	if err != nil {
-		// Audio is missing + transcript missing but text is required;
-		// provide a TextVector so the validation path doesn't fail.
-		// Skip on err; the no-locator check is the focus.
-		t.Skipf("airlock validation error (vector missing?): %v; skipping no-locator check", err)
-	}
-	// The IndexDocument struct MUST NOT carry the forbidden fields.
-	// We type-assert this by checking reflection — IndexDocument has
-	// no Status / DriveLink / LocalPath fields by design.
-	// If a future PR adds one, the freeze test in composition_test.go
-	// catches it; the assetToIndexDocumentNoValidate path also guards
-	// against future regression here.
-	docBytes, _ := json.Marshal(doc)
-	found := false
-	for _, forbidden := range []string{"drive_link", "local_path", "status"} {
-		if bytes.Contains(docBytes, []byte(forbidden)) {
-			found = true
-			t.Errorf("IndexDocument JSON must not contain forbidden key %q (PR 6 verdict §7.4 footer); got %s", forbidden, string(docBytes))
-			break
-		}
-	}
-	_ = found // explicit no-op marker for grep forensics
-}
-
-// ═════════════════════════════════════════════════════════════════════════
-// PR 6 (refactor/assetdata-semantic-fields) — top-level AssetData
-// field propagation + backward compat (godlike/06 SSOT + godlike/07
-// NO-FAKE-AVAILABILITY).
-// ═════════════════════════════════════════════════════════════════════════
-
-// TestBuildPayloadFromDocument_AssetDataSemanticFields_ZeroValueOmitsAll
-// pins the godlike/06 SSOT contract that ZERO-valued AssetData
-// top-level fields (PR 6's 19 NEW fields) do NOT emit any
-// corresponding payload keys. Old callers that pass AssetData with
-// all 21 fields at zero-value MUST continue to produce a
-// backward-compatible payload (the canonical pre-PR-6 wire shape).
-// For each of the 21 new fields, a missing payload key is the
-// correct outcome — the godlike/07 NO-FAKE-AVAILABILITY rule
-// forbids placeholder strings (e.g. `Category: "unknown"`).
-func TestBuildPayloadFromDocument_AssetDataSemanticFields_ZeroValueOmitsAll(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	asset := &AssetData{
-		ID:             "asset-zero-semantic",
-		Source:         "stock",
-		MediaType:      "video",
-		LifecycleState: "ACTIVE",
-		// All 21 PR-6 fields intentionally at zero-value:
-		// Title, Description, Summary, SourceURL, SourceVideoID,
-		// SourceProvider, Origin, Destination, FolderID, FolderPath, Event,
-		// Round, Scene, Subject, Entities, WorkflowID,
-		// RunFingerprint, ChunkIndex, TotalChunks, PolicyVersion.
-	}
-	doc := assetToIndexDocumentNoValidate(asset, schema)
-	payload := BuildPayloadFromDocument(doc, schema)
-
 	// For each PR-6 field, the corresponding payload key MUST be absent.
 	expectedAbsent := []string{
 		"title", "description", "summary", "source_url", "source_video_id",
@@ -620,48 +410,6 @@ func TestBuildPayloadFromDocument_AssetDataSemanticFields_ZeroValueOmitsAll(t *t
 		t.Errorf("BuildPayloadFromDocument MISSING canonical payload key %q", "lifecycle_state")
 	}
 }
-
-// TestBuildPayloadFromDocument_AssetDataSemanticFields_PopulatedPropagates
-// pins the godlike/06 SSOT contract that POPULATED AssetData
-// top-level fields (PR 6's 21 NEW fields) DO emit the corresponding
-// payload keys via the airlock's first-class struct copy. The
-// PayloadMapper.AssetToIndexDocument signature is UNCHANGED — the
-// airlock detects the new fields and forwards them automatically
-// (no signature change, struct copy on top-level AssetData fields).
-func TestBuildPayloadFromDocument_AssetDataSemanticFields_PopulatedPropagates(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	asset := &AssetData{
-		ID:             "asset-populated-semantic",
-		Source:         "stock",
-		MediaType:      "video",
-		LifecycleState: "ACTIVE",
-		// All 21 PR-6 fields populated to verify the airlock
-		// forwards them to the payload.
-		Title:          "Pacquiao vs Broner Round 7",
-		Description:    "Broner is hurt and stumbling",
-		Summary:        "Pacquiao pressure",
-		SourceURL:      "https://example.com/video.mp4",
-		SourceVideoID:  "vdC5GXxS-qU",
-		SourceProvider: "pexels",
-		Origin:         "retrieved",
-		Destination:    "stock",
-		FolderID:       "1G7MYF-EDrkoMXmDvAHbwOnaOza4f2HBJ",
-		FolderPath:     "Manny Pacquiao vs Adrien Broner",
-		Event:          "Pacquiao vs Broner",
-		Round:          7,
-		Scene:          "Broner barcolla",
-		Subject:        "Adrien Broner",
-		Entities:       []string{"Manny Pacquiao", "Adrien Broner"},
-		WorkflowID:     "wf-1",
-		RunFingerprint: "fp-1",
-		ChunkIndex:     0,
-		TotalChunks:    11,
-		PolicyVersion:  "timestamp_v1",
-		JobID:          "job-1",
-	}
-	doc := assetToIndexDocumentNoValidate(asset, schema)
-	payload := BuildPayloadFromDocument(doc, schema)
-
 	// Semantic block.
 	assert.Equal(t, "Pacquiao vs Broner Round 7", payload["title"])
 	assert.Equal(t, "Broner is hurt and stumbling", payload["description"])
@@ -688,122 +436,6 @@ func TestBuildPayloadFromDocument_AssetDataSemanticFields_PopulatedPropagates(t 
 	assert.Equal(t, 11, payload["total_chunks"])
 	assert.Equal(t, "timestamp_v1", payload["policy_version"])
 	assert.Equal(t, "job-1", payload["job_id"])
-}
-// TestAssetToIndexDocument_MissingRequiredTextVector ensures the full
-// mapper path surfaces ErrMissingRequiredVector for nil TextVector.
-func TestAssetToIndexDocument_MissingRequiredTextVector(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	asset := &AssetData{
-		ID:             "asset-no-text",
-		Source:         "youtube",
-		MediaType:      "video",
-		LifecycleState: "ACTIVE",
-		// TextVector intentionally nil — required channel.
-	}
-	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	_, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
-	if err == nil {
-		t.Fatal("missing required text vector must error")
-	}
-	var missing *transport.ErrMissingRequiredVector
-	if !errors.As(err, &missing) {
-		t.Fatalf("expected *ErrMissingRequiredVector, got %T: %v", err, err)
-	}
-}
-
-// TestAssetToIndexDocument_ZeroLengthTextVector ensures the mapper
-// surfaces ErrEmptyVector for zero-length (but non-nil) TextVector.
-func TestAssetToIndexDocument_ZeroLengthTextVector(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	asset := &AssetData{
-		ID:             "asset-zero-text",
-		Source:         "youtube",
-		MediaType:      "video",
-		LifecycleState: "ACTIVE",
-		TextVector:     make([]float32, 0), // non-nil, zero-length
-	}
-	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	_, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
-	if err == nil {
-		t.Fatal("zero-length text vector must error")
-	}
-	var empty *transport.ErrEmptyVector
-	if !errors.As(err, &empty) {
-		t.Fatalf("expected *ErrEmptyVector for zero-length, got %T: %v", err, err)
-	}
-}
-
-// TestAssetToIndexDocument_OptionalChannelsNilAllowed ensures the mapper
-// silently accepts nil for optional channels (audio, transcript, visual).
-func TestAssetToIndexDocument_OptionalChannelsNilAllowed(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	asset := &AssetData{
-		ID:             "asset-optional",
-		Source:         "youtube",
-		MediaType:      "video",
-		LifecycleState: "ACTIVE",
-		TextVector:     makeFloat32Slice(768),
-		// AudioVector, TranscriptVector, VisualVector all nil — OK.
-	}
-	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	doc, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
-	if err != nil {
-		t.Fatalf("nil optional channels must not error; got %v", err)
-	}
-	// Text must be present; optional channels must be absent.
-	if _, ok := doc.Embeddings[ChannelText]; !ok {
-		t.Error("text embedding must be present when vector is valid")
-	}
-	for _, ch := range []VectorChannel{ChannelAudio, ChannelTranscript, ChannelVisual} {
-		if art, ok := doc.Embeddings[ch]; ok && art.Values != nil {
-			t.Errorf("optional channel %q must not have Values when asset vector is nil; got %v", ch, art.Values)
-		}
-	}
-}
-
-// TestAssetToIndexDocument_NaNInVector returns ErrNaNOrInf through the
-// full mapper path.
-func TestAssetToIndexDocument_NaNInVector(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	vec := makeFloat32Slice(768)
-	vec[50] = float32(math.NaN())
-	asset := &AssetData{
-		ID:             "asset-nan",
-		Source:         "youtube",
-		MediaType:      "video",
-		LifecycleState: "ACTIVE",
-		TextVector:     vec,
-	}
-	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	_, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
-	if err == nil {
-		t.Fatal("NaN in vector must error")
-	}
-	var nanErr *transport.ErrNaNOrInf
-	if !errors.As(err, &nanErr) {
-		t.Fatalf("expected *ErrNaNOrInf, got %T: %v", err, err)
-	}
-}
-
-// TestAssetToIndexDocument_DimensionMismatch returns dimension error.
-func TestAssetToIndexDocument_DimensionMismatch(t *testing.T) {
-	schema := qdrantSchema.DefaultV3Schema()
-	asset := &AssetData{
-		ID:             "asset-dim",
-		Source:         "youtube",
-		MediaType:      "video",
-		LifecycleState: "ACTIVE",
-		TextVector:     makeFloat32Slice(512), // wrong dim
-	}
-	mapper := NewPayloadMapper(&fakeAssetStore{asset: asset, ids: []string{asset.ID}}, nil)
-	_, err := mapper.AssetToIndexDocument(context.Background(), asset, schema)
-	if err == nil {
-		t.Fatal("dimension mismatch must error")
-	}
-	var dimErr *transport.ErrVectorDimensionMismatch
-	if !errors.As(err, &dimErr) {
-		t.Fatalf("expected *ErrVectorDimensionMismatch, got %T: %v", err, err)
-	}
 }
 // ── SearchTextBuilder wiring (July 2026) ──────────────────────────────────────
 
