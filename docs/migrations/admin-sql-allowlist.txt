@@ -74,7 +74,7 @@ internal/app/clips_adapters_repo.go
 # embraces the outbox path — the operator chose this explicitly when
 # invoking the tool. Allowlisted in perpetuity.
 cmd/admin/db_restore.go
-cmd/admin/dr_qdrant.go
+cmd/admin/reconcile/dr_qdrant.go
 cmd/admin/drive_bootstrap.go
 cmd/admin/drive_reconcile.go
 
@@ -268,5 +268,6 @@ internal/application/assets/searchqueries/usecase_test.go
 internal/application/channels/module_test.go
 internal/application/jobs/assets/service_test.go
 internal/application/assets/providers/artlist/service_test.go
+internal/application/assets/persistence/asset_committer_ssot_test.go
 internal/application/assets/providers/artlist/dispatcher_stub_test.go
 internal/application/qdrant/dr/snapshot_test.go

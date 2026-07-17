@@ -24,10 +24,10 @@ import (
 //
 //  2. Sharded directory (the planned split):
 //     architecture/deprecations/
-//       records/*.yaml        # one or more shards, each with a
-//                             # `deprecations:` list under the
-//                             # file's top-level key
-//       audit.yaml            # optional, contributes `audit:`
+//     records/*.yaml        # one or more shards, each with a
+//     # `deprecations:` list under the
+//     # file's top-level key
+//     audit.yaml            # optional, contributes `audit:`
 //
 // Both shapes normalize into deprecationManifest so downstream
 // validators (deprecations_validator.go) do not branch on layout.
