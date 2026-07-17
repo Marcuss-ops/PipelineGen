@@ -325,8 +325,8 @@ func TestCutReencode_NoAudio_False_AddsAAC(t *testing.T) {
 		"noAudio=false must add -b:a 128k; got argv: %v", argv)
 }
 
-// TestCutReencode_CodecAndPreset verifies that codec, preset, and CRF
-// values are passed through to the ffmpeg arguments.
+// TestCutReencode_CanonicalProfile verifies that caller encoding overrides
+// cannot create a second persisted clip profile.
 func TestCutReencode_CodecAndPreset(t *testing.T) {
 	runner := &captureRunner{}
 	p := &Processor{path: "ffmpeg", runner: runner}
@@ -338,14 +338,13 @@ func TestCutReencode_CodecAndPreset(t *testing.T) {
 	argv := runner.lastArgv
 	assert.True(t, hasArgPair(argv, "-c:v", "libx264"),
 		"codec must be passed as -c:v; got argv: %v", argv)
-	assert.True(t, hasArgPair(argv, "-preset", "medium"),
-		"preset must be passed; got argv: %v", argv)
+	assert.True(t, hasArgPair(argv, "-preset", "veryfast"),
+		"canonical preset must be passed; got argv: %v", argv)
 	assert.True(t, hasArgPair(argv, "-crf", "23"),
 		"crf must be passed; got argv: %v", argv)
 }
 
-// TestCutReencode_DefaultCodec verifies that empty codec defaults to libx264,
-// empty preset defaults to veryfast, and crf=0 defaults to 18.
+// TestCutReencode_DefaultCodec verifies the canonical fallback profile.
 func TestCutReencode_DefaultCodec(t *testing.T) {
 	runner := &captureRunner{}
 	p := &Processor{path: "ffmpeg", runner: runner}
@@ -359,8 +358,8 @@ func TestCutReencode_DefaultCodec(t *testing.T) {
 		"empty codec must default to libx264; got argv: %v", argv)
 	assert.True(t, hasArgPair(argv, "-preset", "veryfast"),
 		"empty preset must default to veryfast; got argv: %v", argv)
-	assert.True(t, hasArgPair(argv, "-crf", "18"),
-		"crf=0 must default to 18; got argv: %v", argv)
+	assert.True(t, hasArgPair(argv, "-crf", "23"),
+		"canonical CRF must be 23; got argv: %v", argv)
 }
 
 // TestCutReencode_ContextCancellation verifies context cancellation propagates.
@@ -644,8 +643,8 @@ func TestNormalize_VideoSettings(t *testing.T) {
 		"codec must be passed; got argv: %v", argv)
 	assert.True(t, hasArgPair(argv, "-preset", "veryfast"),
 		"preset must be passed; got argv: %v", argv)
-	assert.True(t, hasArgPair(argv, "-crf", "18"),
-		"crf must be passed; got argv: %v", argv)
+	assert.True(t, hasArgPair(argv, "-crf", "23"),
+		"canonical CRF must be passed; got argv: %v", argv)
 	assert.True(t, hasArgPair(argv, "-pix_fmt", "yuv420p"),
 		"-pix_fmt yuv420p must be present; got argv: %v", argv)
 	assert.True(t, hasArgPair(argv, "-movflags", "+faststart"),

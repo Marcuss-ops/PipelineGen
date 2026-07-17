@@ -11,6 +11,14 @@ import (
 
 // Normalize processes a video to standard format (scale, crop, fps, codec).
 func (p *Processor) Normalize(ctx context.Context, input, output string, opts NormalizeOptions) error {
+	canonical := canonicalClipProfile()
+	opts.Width = canonical.Width
+	opts.Height = canonical.Height
+	opts.FPS = canonical.FPS
+	opts.Codec = canonical.Codec
+	opts.Preset = canonical.Preset
+	opts.CRF = canonical.CRF
+	opts.KeyframeInterval = canonical.KeyframeInterval
 	args := []string{
 		"-y",
 		"-hide_banner",
@@ -47,7 +55,7 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 	if !opts.KeepAudio {
 		args = append(args, "-an")
 	} else {
-		args = append(args, "-c:a", "aac", "-b:a", "128k")
+		args = append(args, "-c:a", canonical.AudioCodec, "-b:a", canonical.AudioBitrate, "-ar", "48000", "-ac", "2")
 		args = append(args, "-af", "asetpts=PTS-STARTPTS")
 	}
 
@@ -95,15 +103,8 @@ func (p *Processor) Normalize(ctx context.Context, input, output string, opts No
 // When noAudio is true the audio stream is stripped from the output.
 // codec/preset/crf allow using hardware encoders (e.g. h264_nvenc); pass "" for defaults.
 func (p *Processor) CutReencode(ctx context.Context, input, output, start, end string, noAudio bool, codec string, preset string, crf int) error {
-	if codec == "" {
-		codec = "libx264"
-	}
-	if preset == "" {
-		preset = "veryfast"
-	}
-	if crf <= 0 {
-		crf = 18
-	}
+	canonical := canonicalClipProfile()
+	codec, preset, crf = canonical.Codec, canonical.Preset, canonical.CRF
 
 	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
 
@@ -134,7 +135,7 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 	if noAudio {
 		args = append(args, "-an")
 	} else {
-		args = append(args, "-c:a", "aac", "-b:a", "128k")
+		args = append(args, "-c:a", canonical.AudioCodec, "-b:a", canonical.AudioBitrate, "-ar", "48000", "-ac", "2")
 	}
 
 	args = append(args,
@@ -152,6 +153,13 @@ func (p *Processor) CutReencode(ctx context.Context, input, output, start, end s
 // CutAndNormalize cuts a segment and normalizes it in a single ffmpeg pass,
 // avoiding a double re-encode. Combines CutSegment + Normalize.
 func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, end string, opts CutAndNormalizeOptions) error {
+	canonical := canonicalClipProfile()
+	opts.Width = canonical.Width
+	opts.Height = canonical.Height
+	opts.FPS = canonical.FPS
+	opts.Codec = canonical.Codec
+	opts.Preset = canonical.Preset
+	opts.CRF = canonical.CRF
 	args := []string{
 		"-y", "-hide_banner", "-loglevel", "warning",
 	}
@@ -177,7 +185,7 @@ func (p *Processor) CutAndNormalize(ctx context.Context, input, output, start, e
 	if opts.NoAudio {
 		args = append(args, "-an")
 	} else {
-		args = append(args, "-c:a", "aac", "-b:a", "128k", "-af", "asetpts=PTS-STARTPTS")
+		args = append(args, "-c:a", canonical.AudioCodec, "-b:a", canonical.AudioBitrate, "-ar", "48000", "-ac", "2", "-af", "asetpts=PTS-STARTPTS")
 	}
 
 	args = append(args, "-c:v", opts.Codec)
@@ -214,15 +222,8 @@ func (p *Processor) CutReencodeBatch(ctx context.Context, input string, jobs []C
 	if len(jobs) == 0 {
 		return nil
 	}
-	if codec == "" {
-		codec = "libx264"
-	}
-	if preset == "" {
-		preset = "veryfast"
-	}
-	if crf <= 0 {
-		crf = 18
-	}
+	canonical := canonicalClipProfile()
+	codec, preset, crf = canonical.Codec, canonical.Preset, canonical.CRF
 
 	if len(jobs) == 1 {
 		return p.cutReencodeSingle(ctx, input, jobs[0].Output,
@@ -244,6 +245,7 @@ func (p *Processor) cutReencodeSingle(ctx context.Context, input, output, start,
 
 // cutReencodeBatchWithCodec performs the actual batch cut with the given codec.
 func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string, jobs []CutJob, noAudio bool, codec string, preset string, crf int) error {
+	canonical := canonicalClipProfile()
 	args := []string{"-y", "-hide_banner", "-loglevel", "warning"}
 
 	if strings.Contains(codec, "nvenc") {
@@ -282,7 +284,7 @@ func (p *Processor) cutReencodeBatchWithCodec(ctx context.Context, input string,
 		if noAudio {
 			args = append(args, "-an")
 		} else {
-			args = append(args, "-c:a", "aac", "-b:a", "128k")
+			args = append(args, "-c:a", canonical.AudioCodec, "-b:a", canonical.AudioBitrate, "-ar", "48000", "-ac", "2")
 		}
 		args = append(args, j.Output)
 	}

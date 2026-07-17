@@ -48,7 +48,7 @@ func (s *Service) renderChunk(ctx context.Context, clips []string, titles []stri
 		return fmt.Errorf("renderChunk: StockRenderer port is nil — was composition root build correct?")
 	}
 
-	videoCfg := s.cfg.Video.WithDefaults()
+	videoCfg := s.cfg.Video.CanonicalClip()
 
 	req := RenderRequest{
 		OutputPath:       outputPath,

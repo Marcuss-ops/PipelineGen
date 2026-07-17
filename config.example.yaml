@@ -145,14 +145,14 @@ media:
     require_transcript_ready: false
 
 video:
-  width: 1280
-  height: 720
+  width: 1920
+  height: 1080
   fps: 24
   codec: "libx264"
   preset: "veryfast"
-  crf: 26
+  crf: 23
   duration: 7
-  keyframe_interval: 60
+  keyframe_interval: 48
   audio_codec: "aac"
   audio_bitrate: "128k"
   clip_duration: 5

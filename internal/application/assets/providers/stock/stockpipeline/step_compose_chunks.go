@@ -32,6 +32,8 @@ import (
 	"path/filepath"
 
 	"go.uber.org/zap"
+
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // StockComposeChunksStep is the canonical implementation of
@@ -81,6 +83,7 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) error 
 	}
 
 	composed := make([]string, 0, len(cutPaths))
+	canonical := (config.VideoConfig{}).CanonicalClip()
 	for i, cutPath := range cutPaths {
 		outputPath := filepath.Join(os.TempDir(),
 			fmt.Sprintf("stock_composed_%s_%d.mp4", runner.JobID(), i))
@@ -88,13 +91,13 @@ func (StockComposeChunksStep) Run(ctx context.Context, runner StepRunner) error 
 		req := RenderRequest{
 			OutputPath:       outputPath,
 			InputPaths:       []string{cutPath},
-			Width:            1920,
-			Height:           1080,
-			FPS:              30,
-			Codec:            "libx264",
-			Preset:           "medium",
-			CRF:              23,
-			KeyframeInterval: 60,
+			Width:            canonical.Width,
+			Height:           canonical.Height,
+			FPS:              canonical.FPS,
+			Codec:            canonical.Codec,
+			Preset:           canonical.Preset,
+			CRF:              canonical.CRF,
+			KeyframeInterval: canonical.KeyframeInterval,
 			KeepAudio:        !noAudio,
 			NoTransitions:    noTransitions,
 			NoEffects:        noEffects,

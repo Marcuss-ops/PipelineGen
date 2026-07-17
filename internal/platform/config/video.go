@@ -14,12 +14,12 @@ import "github.com/Marcuss-ops/PipelineGen/pkg/defaults"
 type VideoConfig struct {
 	Width              int      `yaml:"width" default:"1920"`
 	Height             int      `yaml:"height" default:"1080"`
-	FPS                int      `yaml:"fps" default:"30"`
-	Codec              string   `yaml:"codec" default:"h264_nvenc"`
-	Preset             string   `yaml:"preset" default:"p1"`
+	FPS                int      `yaml:"fps" default:"24"`
+	Codec              string   `yaml:"codec" default:"libx264"`
+	Preset             string   `yaml:"preset" default:"veryfast"`
 	CRF                int      `yaml:"crf" default:"23"`
 	Duration           int      `yaml:"duration" default:"7"`
-	KeyframeInterval   int      `yaml:"keyframe_interval" default:"60"`
+	KeyframeInterval   int      `yaml:"keyframe_interval" default:"48"`
 	AudioCodec         string   `yaml:"audio_codec" default:"aac"`
 	AudioBitrate       string   `yaml:"audio_bitrate" default:"128k"`
 	ClipDuration       int      `yaml:"clip_duration" default:"5"`
@@ -41,22 +41,22 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 		v.Height = 1080
 	}
 	if v.FPS <= 0 {
-		v.FPS = 30
+		v.FPS = 24
 	}
 	if v.Duration <= 0 {
 		v.Duration = 7
 	}
 	if v.Codec == "" {
-		v.Codec = "h264_nvenc"
+		v.Codec = "libx264"
 	}
 	if v.Preset == "" {
-		v.Preset = "p1"
+		v.Preset = "veryfast"
 	}
 	if v.CRF <= 0 {
 		v.CRF = 23
 	}
 	if v.KeyframeInterval <= 0 {
-		v.KeyframeInterval = 60
+		v.KeyframeInterval = 48
 	}
 	if v.AudioCodec == "" {
 		v.AudioCodec = "aac"
@@ -101,5 +101,24 @@ func (v VideoConfig) WithDefaults() VideoConfig {
 			"squeezeh", "squeezev",
 		}
 	}
+	return v
+}
+
+// CanonicalClip returns the immutable technical profile used for every
+// materialized clip. Duration, planning and UI-related settings remain
+// caller-configurable; codec, geometry and timing do not. Keeping this seam
+// here prevents providers and FFmpeg adapters from inventing their own clip
+// encoding profiles.
+func (v VideoConfig) CanonicalClip() VideoConfig {
+	v = v.WithDefaults()
+	v.Width = 1920
+	v.Height = 1080
+	v.FPS = 24
+	v.Codec = "libx264"
+	v.Preset = "veryfast"
+	v.CRF = 23
+	v.KeyframeInterval = 48
+	v.AudioCodec = "aac"
+	v.AudioBitrate = "128k"
 	return v
 }

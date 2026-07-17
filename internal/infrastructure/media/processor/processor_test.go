@@ -227,7 +227,7 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 		&fakePublisher{},
 	)
 
-	// Case 1: StreamCopy is true and specs match -> Normalize should NOT be called.
+	// Case 1: StreamCopy is true but persisted clips still normalize.
 	result, err := p.Process(ctx, &asset.ProcessInput{
 		ID:         "clip-1",
 		Name:       "test clip",
@@ -238,7 +238,7 @@ func TestProcessorZeroCopyOptimization(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.False(t, ff.normalizeCalled)
+	assert.True(t, ff.normalizeCalled)
 	assert.Equal(t, "processed", result.Status)
 
 	// Case 2: StreamCopy is true but specs don't match -> Normalize SHOULD be called.

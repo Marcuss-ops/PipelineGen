@@ -116,7 +116,7 @@ func (s *Service) processSingleVideo(ctx context.Context, tempDir string, vs Vid
 		)
 	}
 
-	v := s.cfg.Video.WithDefaults()
+	v := s.cfg.Video.CanonicalClip()
 	clipDur := v.ClipDuration
 	if clipDurOverride > 0 {
 		clipDur = clipDurOverride

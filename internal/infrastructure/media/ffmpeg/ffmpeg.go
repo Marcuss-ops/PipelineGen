@@ -18,6 +18,10 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
+func canonicalClipProfile() config.VideoConfig {
+	return (config.VideoConfig{}).CanonicalClip()
+}
+
 // ── ProcessRunner port (Pattern 0) ────────────────────────────────────
 
 // ProcessRunner abstracts subprocess execution for testability.
