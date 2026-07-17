@@ -198,7 +198,7 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		URL:        ref.URL,
 		OutputPath: outputPath,
 		NoPlaylist: true,
-		UseCookies: false,
+		UseCookies: true,
 	}
 	if ref.DownloadSection != "" {
 		dlReq.DownloadSections = []string{ref.DownloadSection}

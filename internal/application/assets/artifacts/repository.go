@@ -162,9 +162,14 @@ func (r *SQLiteRepository) UpdateStatus(ctx context.Context, id string, status S
 	_, err := r.db.ExecContext(ctx, `
 		UPDATE artifacts
 		SET status = ?, sha256 = ?, size_bytes = ?, updated_at = ?,
+			storage_key = CASE
+				WHEN ? = 'READY' AND length(?) = 64
+				THEN 'sha256/' || substr(?, 1, 2) || '/' || ?
+				ELSE storage_key
+			END,
 			verified_at = CASE WHEN ? = 'READY' THEN ? ELSE verified_at END
 		WHERE id = ?
-	`, status, sha256, sizeBytes, now, status, now, id)
+	`, status, sha256, sizeBytes, now, status, sha256, sha256, sha256, status, now, id)
 	if err != nil {
 		return fmt.Errorf("artifacts: update status %s: %w", id, err)
 	}

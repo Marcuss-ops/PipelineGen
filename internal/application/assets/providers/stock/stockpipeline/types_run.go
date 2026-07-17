@@ -66,24 +66,25 @@ type ClipSpec struct {
 // timestamp ranges that bypass the deterministic planner.
 // DriveURLs field holds Google Drive source URLs.
 type RunInput struct {
-	SearchQueries     []string
-	DirectURLs        []string
-	DriveURLs         []string
-	Clips             []ClipSpec
-	TotalMinutes      int
-	MaxVideos         int
-	ChunkDuration     int
-	ClipDuration      int
-	SecondsPerSegment int
-	NoAudio           bool
-	NoEffects         bool
-	NoTransitions     bool
-	Subfolder         string
-	FolderName        string
-	DriveFolderID     string
-	FolderID          string
-	Metadata          *ChunkMetadataInput
-	Progress          func(percent int, message string)
+	SearchQueries       []string
+	DirectURLs          []string
+	DriveURLs           []string
+	Clips               []ClipSpec
+	TotalMinutes        int
+	MaxVideos           int
+	ChunkDuration       int
+	ClipDuration        int
+	SecondsPerSegment   int
+	NoAudio             bool
+	NoEffects           bool
+	NoTransitions       bool
+	Subfolder           string
+	FolderName          string
+	DriveFolderID       string
+	FolderID            string
+	DriveFolderResolved bool
+	Metadata            *ChunkMetadataInput
+	Progress            func(percent int, message string)
 
 	// §12-7 (July 2026).
 	FinalizationLease finalization.Lease // broker lease for StockFinalizeStep spine write

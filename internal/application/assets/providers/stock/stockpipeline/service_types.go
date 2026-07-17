@@ -22,6 +22,7 @@
 package stockpipeline
 
 import (
+	"context"
 	"database/sql"
 
 	"go.uber.org/zap"
@@ -106,6 +107,13 @@ type ExecutionDeps struct {
 	ChannelLister ChannelLister
 }
 
+// StockFolderCreator creates or reuses a Drive folder below a caller-supplied
+// parent. The stock application owns the intent; infrastructure supplies the
+// concrete Drive adapter.
+type StockFolderCreator interface {
+	GetOrCreateFolder(ctx context.Context, name, parentID string) (string, error)
+}
+
 // here the sub-struct names carry semantic meaning rather than the
 // "ports vs dependencies" split at the artlist boundary (the stock
 // pipeline has fewer ports to lift out).
@@ -123,11 +131,12 @@ type Deps struct {
 	// Delete etc.) was retired (override brutal). Folder resolution
 	// inside the pipeline run uses publisher.ResolveFolder
 	// (DestinationStock policy) instead of driveutil.EnsureFolderPath.
-	Runtime   RuntimeDeps
-	Publisher delivery.Publisher
-	Storage   StorageDeps
-	Media     MediaDeps
-	Execution ExecutionDeps
+	Runtime       RuntimeDeps
+	Publisher     delivery.Publisher
+	FolderCreator StockFolderCreator
+	Storage       StorageDeps
+	Media         MediaDeps
+	Execution     ExecutionDeps
 
 	// Finalizer is the Spina Dorsale JobFinalizer (godlike/06
 	// SSOT for SUCCEEDED writes). §12-1 §F.1 (this commit) makes

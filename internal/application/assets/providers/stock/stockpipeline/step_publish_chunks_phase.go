@@ -217,6 +217,7 @@ func publishChunkPhase(
 			// The DestinationRegistry + PathBuilder handle routing.
 			RootFolderName:     rootFolderName,
 			RootFolderOverride: rootFolderOverride,
+			RootFolderResolved: in != nil && in.DriveFolderResolved,
 			PathLeafName:       leafName,
 		}
 		published, prepErr := runner.ArtifactPreparation().Prepare(ctx, va)
@@ -275,6 +276,7 @@ func publishChunkPhase(
 				IdempotencyKey:     clipMetaIdem,
 				RootFolderName:     rootFolderName,
 				RootFolderOverride: rootFolderOverride,
+				RootFolderResolved: in != nil && in.DriveFolderResolved,
 				PathLeafName:       leafName,
 			}
 			if _, clipMetaPrepErr := runner.ArtifactPreparation().Prepare(ctx, clipMetaVA); clipMetaPrepErr != nil {

@@ -11,6 +11,7 @@ package stockpipeline
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -40,6 +41,20 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 	}
 	if input == nil {
 		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: nil *RunInput")
+	}
+	// drive_folder_id is the operator-selected parent. Resolve the readable
+	// folder_name below it once, then publish round subfolders below that
+	// resolved folder. This keeps Drive hierarchy creation inside stock.
+	if strings.TrimSpace(input.DriveFolderID) != "" && strings.TrimSpace(input.FolderName) != "" {
+		if s.folderCreator == nil {
+			return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: folder creator is not wired")
+		}
+		folderID, folderErr := s.folderCreator.GetOrCreateFolder(ctx, strings.TrimSpace(input.FolderName), strings.TrimSpace(input.DriveFolderID))
+		if folderErr != nil {
+			return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: create stock root folder: %w", folderErr)
+		}
+		input.DriveFolderID = folderID
+		input.DriveFolderResolved = true
 	}
 
 	// Resolve text search queries to YouTube URLs before passing to

@@ -85,15 +85,16 @@ import (
 // are REMOVED — dead code or port-abstracted. All infra imports are
 // eliminated from service.go (godlike/06 import-boundary discipline).
 type Service struct {
-	cfg        *config.Config
-	log        *zap.Logger
-	publisher  delivery.Publisher
-	cutter     VideoCutter
-	renderer   StockRenderer
-	pcfg       PipelineConfig
-	jobsSvc    *appjobs.Service
-	assetIndex stockAssetIndexUpserter
-	clipsRepo  stockClipsSearchTermUpdater
+	cfg           *config.Config
+	log           *zap.Logger
+	publisher     delivery.Publisher
+	folderCreator StockFolderCreator
+	cutter        VideoCutter
+	renderer      StockRenderer
+	pcfg          PipelineConfig
+	jobsSvc       *appjobs.Service
+	assetIndex    stockAssetIndexUpserter
+	clipsRepo     stockClipsSearchTermUpdater
 	// dispatcher is the canonical media_index_outbox dispatcher,
 	// required at ctor time per QDRANT-002 PR7. NewService rejects
 	// nil dispatcher with ErrStockPipelineNilDispatcher.
@@ -193,11 +194,12 @@ func NewService(deps Deps) (*Service, error) {
 
 	v := deps.Runtime.Cfg.Video.WithDefaults()
 	return &Service{
-		cfg:       deps.Runtime.Cfg,
-		log:       deps.Runtime.Log,
-		publisher: deps.Publisher,
-		cutter:    deps.Media.Cutter,
-		renderer:  deps.Media.Renderer,
+		cfg:           deps.Runtime.Cfg,
+		log:           deps.Runtime.Log,
+		publisher:     deps.Publisher,
+		folderCreator: deps.FolderCreator,
+		cutter:        deps.Media.Cutter,
+		renderer:      deps.Media.Renderer,
 		pcfg: PipelineConfig{
 			ChunkDuration:  v.ChunkDuration,
 			MaxResults:     v.MaxClipsPerSource,
