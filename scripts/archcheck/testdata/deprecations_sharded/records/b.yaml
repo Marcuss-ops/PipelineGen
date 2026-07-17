@@ -1,0 +1,29 @@
+deprecations:
+  - id: TEST-TRANSLATION-A
+    owner_capability: internal/application/translation/foo
+    exact_symbol: Translate.Foo
+    file: internal/application/translation/foo.go
+    file_line: "10"
+    replacement: Translate.FooNew
+    introduction_date: '2026-01-01'
+    removal_date: '2027-01-01'
+    tracking_issue: TRANSLATION-1
+    compatibility_test: scripts/tests/translation_test.sh
+    usage_metric: prom_metric_test_translation_a
+    migration_phase: BACKFILL
+    status: in_progress
+    notes: synthetic fixture
+  - id: TEST-VOICEOVER-A
+    owner_capability: internal/application/voiceover/bar
+    exact_symbol: Voice.Bar
+    file: internal/application/voiceover/bar.go
+    file_line: "20"
+    replacement: Voice.BarNew
+    introduction_date: '2026-01-01'
+    removal_date: '2027-01-01'
+    tracking_issue: VOICEOVER-1
+    compatibility_test: scripts/tests/voiceover_test.sh
+    usage_metric: prom_metric_test_voiceover_a
+    migration_phase: CUTOVER
+    status: in_progress
+    notes: synthetic fixture
