@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# 50_jobs sub-check (verbatim-extracted section of the original monolithic
+# scripts/ci/architecture/checks/50_jobs.sh — see
+# scripts/ci/architecture/checks/lib/50_jobs_section_map.json for the
+# byte-precise line range, and the lib/50_jobs_profile.sh for the
+# analysis that produced this split). Do NOT hand-edit body to fix
+# checks; edit the original 50_jobs.sh and re-run the splitter (or
+# move body content out-of-line manually here with a corresponding
+# orchestrator update).
+
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+else
+    echo "CI: cannot resolve sub-check directory from BASH_SOURCE[0]=" >&2
+    exit 1
+fi
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/lib/50_jobs_lib.sh"
+
+# ── Verbatim section body extracted from the original monolithic ────────
+# ── Check 35: context.Background / context.WithoutCancel exemption tracking ──
+# Wave 22 task 6 / PR-CONTEXT-NO-CANCEL-CI-GATE (June 2026): promote the
+# documented exemption family from documentation-only status (S3g) to a
+# dedicated CI gate. A site PASSES if EITHER:
+#   (a) the file path is listed in AGENTS.md §Migration Status "Known
+#       intentional exempt sites" table (canonical SSOT), OR
+#   (b) the line preceding the call carries the magic marker
+#       // ARCH-ALLOWLIST: no-cancel  (for context.WithoutCancel)
+#       // ARCH-ALLOWLIST: bg-only    (for context.Background)
+echo "=== Check 35: context.Background / context.WithoutCancel exemption tracking (PR-CONTEXT-NO-CANCEL-CI-GATE / Wave 22 task 6) ==="
+
+EXEMPT_FILES=$(rg -oE '`internal/[^` ]+`' AGENTS.md 2>/dev/null \
+    | sed 's/^`//' | sed 's/`$//' \
+    | sort -u)
+EXEMPT_FILE_COUNT=$(printf '%s\n' "$EXEMPT_FILES" | grep -c . || true)
+
+ALL_HITS=$(rg -nE 'context\.(Background|WithoutCancel)\(' internal/ \
+    --type go --glob '!**/*_test.go' 2>/dev/null || true)
+
+if [ -z "$ALL_HITS" ]; then
+    echo "OK: 0 context.Background / context.WithoutCancel call sites"
+else
+    UNDOCUMENTED_COUNT=0
+    UNDOCUMENTED_OUTPUT=""
+    while IFS= read -r hit; do
+        [ -z "$hit" ] && continue
+        FILE=$(echo "$hit" | cut -d: -f1)
+        LINE=$(echo "$hit" | cut -d: -f2)
+        # (a) AGENTS.md canonical-table exemption
+        if printf '%s\n' "$EXEMPT_FILES" | grep -qxF "$FILE"; then
+            continue
+        fi
+        # (b) ARCH-ALLOWLIST marker within a 25-line window preceding the
+        # call, ONLY inside the godoc / comment block OF THE ENCLOSING
+        # CODE path. (Mirrors Check 5 + Check 8 convention; real-world
+        # godoc spans 2-5 lines.) Hard-stops on the first non-comment,
+        # non-blank line encountered so an unrelated prior function's
+        # marker can't accidentally exempt a NEW call site in the same
+        # file (avoids false-positive exemption via shared-file markers).
+        WALK_OK=0
+        for OFFSET in $(seq 1 25); do
+            PREV=$((LINE - OFFSET))
+            [ "$PREV" -lt 1 ] && break
+            LINE_TEXT=$(sed -n "${PREV}p" "$FILE" 2>/dev/null)
+            if echo "$LINE_TEXT" \
+                | grep -qE 'ARCH-ALLOWLIST:[[:space:]]*(no-cancel|bg-only)'; then
+                WALK_OK=1
+                break
+            fi
+            # Stop walking if we hit non-comment/non-blank line BEFORE
+            # the marker (boundary of the surrounding godoc block).
+            TRIMMED=$(echo "$LINE_TEXT" | sed 's/^[[:space:]]*//')
+            if [ -n "$TRIMMED" ] && ! echo "$TRIMMED" | grep -qE '^//|^/\*'; then
+                break
+            fi
+        done
+        if [ "$WALK_OK" = "1" ]; then
+            continue
+        fi
+        UNDOCUMENTED_OUTPUT="${UNDOCUMENTED_OUTPUT}${hit}
+"
+        UNDOCUMENTED_COUNT=$((UNDOCUMENTED_COUNT + 1))
+    done <<< "$ALL_HITS"
+    if [ "$UNDOCUMENTED_COUNT" -gt 0 ]; then
+        echo "FAIL: ${UNDOCUMENTED_COUNT} context.Background/WithoutCancel sites LACK a tracking entry."
+        echo ""
+        echo "Each site must have BOTH one of the following exemptions:"
+        echo "  (a) The file path appears in AGENTS.md \u00a7Migration Status"
+        echo "      \"Known intentional exempt sites\" table."
+        echo "  (b) Within the 25 lines preceding the call carries the magic marker:"
+        echo "        // ARCH-ALLOWLIST: no-cancel  (for context.WithoutCancel)"
+        echo "        // ARCH-ALLOWLIST: bg-only    (for context.Background)"
+        echo ""
+        echo "PR-CONTEXT-NO-CANCEL-CI-GATE / Wave 22 task 6 (June 2026)."
+        echo ""
+        echo "Sites requiring tracking:"
+        printf '%s\n' "$UNDOCUMENTED_OUTPUT"
+        exit 1
+    fi
+    echo "OK: all context.Background / context.WithoutCancel sites are tracked (${EXEMPT_FILE_COUNT} canonical exempt files)"
+fi
