@@ -54,6 +54,7 @@
 package script
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -62,6 +63,8 @@ import (
 	shorts "github.com/Marcuss-ops/PipelineGen/internal/application/scripts/shorts"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
+	job "github.com/Marcuss-ops/PipelineGen/internal/kernel/job"
+	"github.com/Marcuss-ops/PipelineGen/pkg/remotionjob"
 )
 
 // HandlerGenerate is the narrow HTTP handler for script generation.
@@ -74,6 +77,9 @@ type HandlerGenerate struct {
 	log            *zap.Logger
 	validator      *usecase.PayloadValidator
 	shortsRenderer appvideo.Renderer
+	shortsProducer interface {
+		Enqueue(context.Context, remotionjob.RenderJob) (*job.Job, error)
+	}
 }
 
 // NewHandlerGenerateWithRenderer is the production constructor for the
@@ -84,9 +90,13 @@ func NewHandlerGenerateWithRenderer(
 	log *zap.Logger,
 	validator *usecase.PayloadValidator,
 	renderer appvideo.Renderer,
+	producer interface {
+		Enqueue(context.Context, remotionjob.RenderJob) (*job.Job, error)
+	},
 ) *HandlerGenerate {
 	h := NewHandlerGenerate(submitter, log, validator)
 	h.shortsRenderer = renderer
+	h.shortsProducer = producer
 	return h
 }
 
@@ -126,6 +136,37 @@ func (h *HandlerGenerate) GenerateRoute(r *gin.RouterGroup) {
 	r.POST("/generate", h.Generate)
 	r.POST("/shorts/generate", h.GenerateShorts)
 	r.POST("/shorts/render", h.RenderShorts)
+	r.POST("/shorts/render/async", h.RenderShortsAsync)
+}
+
+// RenderShortsAsync creates a render.video job and returns immediately. The
+// registered video job handler performs the Remotion HTTP call in a worker.
+func (h *HandlerGenerate) RenderShortsAsync(c *gin.Context) {
+	var req shorts.Request
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid shorts render payload: " + err.Error()})
+		return
+	}
+	plan, err := shorts.Build(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	if h == nil || h.shortsProducer == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "Remotion render producer is not configured"})
+		return
+	}
+	renderJob, err := shorts.BuildRenderJob(req, plan)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": err.Error()})
+		return
+	}
+	queued, err := h.shortsProducer.Enqueue(c.Request.Context(), renderJob)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "could not enqueue Remotion render: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"ok": true, "job_id": queued.ID, "status": "QUEUED", "shorts": plan})
 }
 
 // RenderShorts builds the Shorts plan and synchronously asks Remotion to
