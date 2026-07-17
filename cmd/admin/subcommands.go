@@ -68,6 +68,10 @@ var availableCommands = []string{
 	"folder-path-backfill",
 	"drive-doctor",
 	"drive-reconcile",
+	"download-sound-effects",
+	"rename-sound-effects",
+	"update-sound-effect-metadata",
+	"apply-additional-sound-effects",
 	"gen-api-docs",
 	"list-drive-folder",
 	"sync-drive-folder",
@@ -125,6 +129,14 @@ func dispatchSubcommand(name string, args []string) error {
 		return runListDriveFolder(args)
 	case "sync-drive-folder":
 		return runSyncDriveFolder(args)
+	case "download-sound-effects":
+		return runDownloadSoundEffects(args)
+	case "rename-sound-effects":
+		return runRenameSoundEffects(args)
+	case "update-sound-effect-metadata":
+		return runUpdateSoundEffectMetadata(args)
+	case "apply-additional-sound-effects":
+		return runApplyAdditionalSoundEffects(args)
 	case "reindex-qdrant":
 		return reconcile.RunReindexQdrant(args)
 	case "qdrant-maintenance":

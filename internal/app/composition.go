@@ -1,8 +1,8 @@
-// Package app — composition root decomposed into capability bundles.
+// Package app — composition root.
 //
 // Bundle types live in composition_types.go.
 // Bundle constructors live in per-bundle files under
-// `internal/app/build_<bundle>.go` (PG-028, June 2026).
+// `internal/app/build_<bundle>.go`.
 // composition.go retains NewComposition.
 // Lifecycle (lifecycle.go) and Shutdown (shutdown.go) operate on the
 // assembled ComposeRoot.
@@ -20,21 +20,6 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
-// ── Orchestrator: NewComposition ─────────────────────────────────────────
-
-// buildQdrantDeps constructs the pre-phase QdrantDeps bundle for
-// BuildOutboxBundle. Returns ClipIndexerService + QdrantRuntime +
-// QdrantDeleter. Remaining Qdrant adapters (CollectionManager etc.)
-// stay in BuildProcessBundle (they don't depend on outbox.Dispatcher).
-//
-// Wire-time invariant: MUST NOT start goroutines (pinned by
-// composition_test.go NoGoroutinesSpawned test). All constructors
-// here return struct values without spawning.
-//
-// PG-028 (June 2026): each Build*Bundle now lives in its own
-// `build_<bundle>.go` file. composition.go retains the bundle types,
-// ComposeRoot, IOpaqueStartFunc, configOnlyDestinations, and the
-// NewComposition orchestrator.
 // NewComposition assembles all bundles in dependency order and returns
 // the fully-wired ComposeRoot. Cleanup is owned by shutdown.go.
 func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log *zap.Logger) (*ComposeRoot, error) {
@@ -57,9 +42,8 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 	if dbs.jobs != nil {
 		jobsDB = dbs.jobs
 	}
-	// PR-CLIPS-DAPTER-BUNDLE-SLIM (July 2026): 4 cross-domain deps
-	// threaded into JobsBundle pollution so buildClipOpsPorts(clipRepo, jobs)
-	// stays strict 2-arg at the wire_assets_clips.go:187 call site.
+	// Cross-domain dependencies are threaded into JobsBundle here so that
+	// downstream constructors can keep strict, narrow signatures.
 	jobs, err := BuildJobsBundle(jobsDB, log, repos.VoiceoverRepo, repos.ImageRepo, driveBundle.driveUploader, driveBundle.Lifecycle)
 	if err != nil {
 		return nil, fmt.Errorf("compose jobs: %w", err)
@@ -81,37 +65,15 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		voiceoverDriver = driveAdmin
 	}
 
-	// FASE 3 Spina Dorsale (Push 3.1b, July 2026; 3.1c reorder).
-	// BuildStagingBundle now precedes BuildOutboxBundle so the
-	// Publisher handler can register against staging.Store at
-	// canonical wire-time. The bundle has minimal deps (only
-	// dbs.main.DB + cfg + log) so reordering is fail-safe — the
-	// JSON shape returned by BuildStagingBundle is identical to
-	// the previous post-order construction.
+	// StagingBundle must be built before OutboxBundle so the Publisher
+	// handler can register against staging.Store at wire-time.
 	staging, err := BuildStagingBundle(dbs, cfg, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose staging: %w", err)
 	}
 
-	// FASE 3 Spina Dorsale (Push 3.1c, July 2026): thread
-	// staging.Store into BuildOutboxBundle so the Publisher
-	// handler can drain artifact.publish_requested.v1 events
-	// into the canonical artifact_stages table.
-	//
-	// FASE 3 Push 3.1e (July 2026): also thread
-	// staging.Repository (the canonical artifact_stages
-	// single-writer — same concrete the Store uses, vendored
-	// through the StagingBundle.Repository field — godlike/06
-	// SSOT forbids a second DB wrapper) + driveBundle.Publisher
-	// (the canonical delivery.Publisher gateway). Together
-	// these let the DriveUploader handler drain
-	// artifact.staged.v1 events into canonical Drive + spell
-	// the JSON PublishedLocation onto the artifact_stages row.
-	//
-	// Composition ordering invariant: BuildStagingBundle MUST
-	// run before BuildOutboxBundle (StagingBundle is required
-	// by OutboxBundle — see the Push 3.1c reorder that moved
-	// it earlier in NewComposition).
+	// OutboxBundle consumes StagingBundle.Store and Repository, plus the
+	// canonical delivery.Publisher, to drain artifact lifecycle events.
 	outbox, outboxStart, err := BuildOutboxBundle(ctx, cfg, dbs, log, repos, qdrantDeps, jobs, voiceoverDriver, staging.Store, staging.Repository, driveBundle.Publisher)
 	if err != nil {
 		return nil, fmt.Errorf("compose outbox: %w", err)
@@ -139,20 +101,6 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 
 	utility := BuildUtilityBundle(cfg, dbs.main, driveBundle.Reader, driveBundle.Publisher, jobs.Service, ai.OllamaClient, outbox.EventsPool, log)
 
-	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 3 (July 2026): the
-	// texttracks materializer + job handler. Constructed
-	// after OutboxBundle (needs outbox.EventsRepo) and
-	// AIBundle (needs OllamaTranslator).
-	//
-	// PR-PY-CLIPS-CORRETTE-TRADOTTE Fase 5 (July 2026): the
-	// AcquireService (local VTT/SRT → YouTube subs → Whisper
-	// chain) is wired via the SubtitleFetcherPort exposed
-	// on the DomainBundle + the WhisperTranscriber adapter
-	// constructed by BuildAIBundle. The narrow
-	// texttracks.SubtitlesPort / texttracks.WhisperPort
-	// interfaces are STRUCTURAL subsets of the full
-	// youtubeports ports; the type assertion in
-	// BuildTextTrackBundle is a no-op at runtime.
 	acquirePorts := &AcquirePorts{
 		Subtitles: domains.SubtitleFetcher,
 		Whisper:   ai.WhisperTranscriber,
@@ -163,59 +111,21 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		return nil, fmt.Errorf("compose texttracks: %w", err)
 	}
 
-	// FASE 3 Spina Dorsale (Push 3.1d, July 2026): wire the
-	// artifact_finalize.Finalizer service. Placed immediately
-	// AFTER BuildStagingBundle because the Finalizer consumes
-	// the SAME artifact.Repository port that StagingBundle.
-	// Repository exposes (no second DB lookup; the typed port
-	// is the canonical cursor to the same *artifactstages.
-	// Repository concrete — godlike/06 SSOT). The publisher
-	// worker pool integration (Push 3.1c forward-pointer, now
-	// wired) drains the outbox → root.Staging.Store.Stage on
-	// every artifact.publish_requested.v1 emission.
 	finalizer, err := BuildArtifactFinalizeBundle(staging, log)
 	if err != nil {
 		return nil, fmt.Errorf("compose artifact_finalize: %w", err)
 	}
 
-	// Wire the script.generate readiness probe when any script feature is
-	// enabled. It needs the health Service (for db/jobs sub-checks),
-	// Ollama, Drive, document service, and (later, at route-build time)
-	// the /api/script route.
-	if utility.ReadyChecker != nil && utility.HealthService != nil && anyScriptFeatureEnabled(cfg) {
-		scriptChecker := systemhealth.NewScriptGenerateChecker(
-			utility.HealthService,
-			systemhealth.NewOllamaChecker(func(ctx context.Context) bool {
-				return ai.OllamaClient != nil && ai.OllamaClient.CheckHealth(ctx)
-			}),
-			systemhealth.NewDriveFolderChecker(driveBundle.Publisher),
-			cfg.Drive.ScriptsGenFolder(),
-			systemhealth.NewPublisherChecker(driveBundle.Publisher),
-			func() bool { return driveBundle.DocClient != nil },
-			func(jobType string) bool { return jobs.Service != nil && jobs.Service.HasHandler(jobType) },
-		)
-		utility.ReadyChecker.WithScriptGenerateCheck(scriptChecker)
+	wireScriptReadinessProbe(cfg, utility, ai, driveBundle, jobs)
+
+	if err := wireLateBindings(cfg, sync, domains, jobs, process, textTracks, log); err != nil {
+		return nil, err
 	}
 
-	if err := wireYoutubeCatalogJobBindings(sync, domains, jobs); err != nil {
-		return nil, fmt.Errorf("compose catalogsync/youtube late-binding: %w", err)
+	if err := validateCriticalHandlers(jobs, sync, domains, process, log); err != nil {
+		return nil, err
 	}
-	if err := wireVoiceoverJobBindings(domains, jobs, log); err != nil {
-		return nil, fmt.Errorf("compose voiceover late-binding: %w", err)
-	}
-	if err := wireImagesJobBinding(domains, jobs); err != nil {
-		return nil, fmt.Errorf("compose images late-binding: %w", err)
-	}
-	if err := wireClipIndexerJobBinding(process, jobs); err != nil {
-		return nil, fmt.Errorf("compose clipindexer late-binding: %w", err)
-	}
-	if err := wireTextTrackJobBindings(textTracks, jobs); err != nil {
-		return nil, fmt.Errorf("compose texttracks late-binding: %w", err)
-	}
-	WireTextTracksFanOut(textTracks, jobs.Service, log)
-	if textTracks.FanOut != nil {
-		textTracks.FanOut.SetDefaultSourceLanguage(activeMultilingualConfig(cfg).SourceLanguage)
-	}
+
 	root := &ComposeRoot{
 		DB:         dbs.main,
 		Drive:      driveBundle,
@@ -239,14 +149,64 @@ func NewComposition(ctx context.Context, cfg *config.Config, dbs *databases, log
 		Ctx:         ctx,
 	}
 
+	return root, nil
+}
+
+// wireScriptReadinessProbe registers the script.generate readiness probe
+// when any script feature is enabled.
+func wireScriptReadinessProbe(cfg *config.Config, utility *UtilityBundle, ai *AIBundle, driveBundle *DriveBundle, jobs *JobsBundle) {
+	if utility.ReadyChecker == nil || utility.HealthService == nil || !anyScriptFeatureEnabled(cfg) {
+		return
+	}
+	scriptChecker := systemhealth.NewScriptGenerateChecker(
+		utility.HealthService,
+		systemhealth.NewOllamaChecker(func(ctx context.Context) bool {
+			return ai.OllamaClient != nil && ai.OllamaClient.CheckHealth(ctx)
+		}),
+		systemhealth.NewDriveFolderChecker(driveBundle.Publisher),
+		cfg.Drive.ScriptsGenFolder(),
+		systemhealth.NewPublisherChecker(driveBundle.Publisher),
+		func() bool { return driveBundle.DocClient != nil },
+		func(jobType string) bool { return jobs.Service != nil && jobs.Service.HasHandler(jobType) },
+	)
+	utility.ReadyChecker.WithScriptGenerateCheck(scriptChecker)
+}
+
+// wireLateBindings connects circular/lazy job handler registrations after
+// all bundles have been constructed.
+func wireLateBindings(cfg *config.Config, sync *SyncBundle, domains *DomainBundle, jobs *JobsBundle, process *ProcessBundle, textTracks *TextTrackBundle, log *zap.Logger) error {
+	if err := wireYoutubeCatalogJobBindings(sync, domains, jobs); err != nil {
+		return fmt.Errorf("compose catalogsync/youtube late-binding: %w", err)
+	}
+	if err := wireVoiceoverJobBindings(domains, jobs, log); err != nil {
+		return fmt.Errorf("compose voiceover late-binding: %w", err)
+	}
+	if err := wireImagesJobBinding(domains, jobs); err != nil {
+		return fmt.Errorf("compose images late-binding: %w", err)
+	}
+	if err := wireClipIndexerJobBinding(process, jobs); err != nil {
+		return fmt.Errorf("compose clipindexer late-binding: %w", err)
+	}
+	if err := wireTextTrackJobBindings(textTracks, jobs); err != nil {
+		return fmt.Errorf("compose texttracks late-binding: %w", err)
+	}
+	WireTextTracksFanOut(textTracks, jobs.Service, log)
+	if textTracks.FanOut != nil {
+		textTracks.FanOut.SetDefaultSourceLanguage(activeMultilingualConfig(cfg).SourceLanguage)
+	}
+	return nil
+}
+
+// validateCriticalHandlers assembles and runs the critical handler
+// validation suite after all bundles and late bindings are wired.
+func validateCriticalHandlers(jobs *JobsBundle, sync *SyncBundle, domains *DomainBundle, process *ProcessBundle, log *zap.Logger) error {
 	var criticalHandlerValidators []CriticalHandler
 	appendYoutubeCatalogCriticalValidators(sync, domains, jobs, &criticalHandlerValidators)
 	appendImagesCriticalValidator(domains, jobs, &criticalHandlerValidators)
 	appendClipIndexerCriticalValidator(process, jobs, &criticalHandlerValidators)
 	appendVoiceoverCriticalValidators(domains, jobs, &criticalHandlerValidators)
 	if err := ValidateCriticalHandlers(jobs.Service, log, criticalHandlerValidators); err != nil {
-		return nil, fmt.Errorf("compose critical-handler validation (audit-P0.2 cont., PR-VALIDATOR-LITERAL-REGISTER): %w", err)
+		return fmt.Errorf("compose critical-handler validation: %w", err)
 	}
-
-	return root, nil
+	return nil
 }
