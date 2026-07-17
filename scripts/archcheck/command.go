@@ -49,6 +49,18 @@ const (
 	// by `--symbol-refs`. Backed by runSymbolRefsChecks (in
 	// scripts/archcheck/symbol_refs.go).
 	ModeSymbolRefs
+	// ModeMigrate is the one-shot operator split tool: reads the
+	// legacy single-file form (architecture/deprecations.yaml) and
+	// writes the planned sharded directory layout
+	// (architecture/deprecations/{index,records/<bucket>.yaml,
+	// audit.yaml,open_questions.yaml}). Activated by
+	// `--migrate-deprecations`. Backed by
+	// scripts/archcheck/migrate_deprecations_to_shards.go::migrate.
+	// Sibling to ModeSeedBaseline: short-circuits any check dispatch
+	// and exits 0 on success; the actual split is verified by the
+	// validator (whose path was updated to point at the directory
+	// form in the same change-set).
+	ModeMigrate
 )
 
 // String renders Mode for the report.Mode field. Keep these strings
@@ -62,6 +74,8 @@ func (m Mode) String() string {
 		return "seed-baseline"
 	case ModeSymbolRefs:
 		return "symbol-refs"
+	case ModeMigrate:
+		return "migrate-deprecations"
 	default:
 		return "focused"
 	}
@@ -70,7 +84,8 @@ func (m Mode) String() string {
 // Config holds the parsed command-line configuration for one
 // scripts/archcheck invocation.
 type Config struct {
-	// Mode is the gate mode (focused / ratchet / seed-baseline).
+	// Mode is the gate mode (focused / ratchet / seed-baseline /
+	// migrate-deprecations / symbol-refs).
 	Mode Mode
 	// FutureRatchet extends focused/ratchet with Phase 0 baseline-on-
 	// baseline rules (grace cycle before promotion to required).
@@ -93,6 +108,7 @@ func ParseCommandLine(args []string, errSink io.Writer) (*Config, error) {
 	futureRatchet := fs.Bool("future-ratchet", false, "additionally run Phase 0 PR-A baseline-on-baseline rules (grace cycle before promotion to required)")
 	seedBaseline := fs.Bool("seed-baseline", false, "explicitly seed scripts/archcheck/phase0_baseline.json from current actual state and exit 0 (operator-only; intended once per minor cycle at PR-A bootstrapping)")
 	symbolRefs := fs.Bool("symbol-refs", false, "run the architecture-symbol CI gate: walk architecture/*.yaml and emit a Finding per unresolved Go-path reference (action P0-5 slice 4/4 of the cleanup plan)")
+	migrateDeps := fs.Bool("migrate-deprecations", false, "one-shot operator tool: split legacy architecture/deprecations.yaml into architecture/deprecations/{index,records/,audit,open_questions}.yaml and exit 0. See scripts/archcheck/migrate_deprecations_to_shards.go.")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -106,6 +122,8 @@ func ParseCommandLine(args []string, errSink io.Writer) (*Config, error) {
 		cfg.Mode = ModeSeedBaseline
 	case *symbolRefs:
 		cfg.Mode = ModeSymbolRefs
+	case *migrateDeps:
+		cfg.Mode = ModeMigrate
 	case *ratchet:
 		cfg.Mode = ModeRatchet
 	default:

@@ -1,0 +1,30 @@
+schema_version: 1
+source_directory: architecture/deprecations
+total_records: 23
+records:
+    - bucket: assets
+      file: records/assets.yaml
+      count: 4
+    - bucket: drive
+      file: records/drive.yaml
+      count: 1
+    - bucket: misc
+      file: records/misc.yaml
+      count: 8
+    - bucket: qdrant
+      file: records/qdrant.yaml
+      count: 1
+    - bucket: scripts
+      file: records/scripts.yaml
+      count: 5
+    - bucket: search
+      file: records/search.yaml
+      count: 1
+    - bucket: translation
+      file: records/translation.yaml
+      count: 2
+    - bucket: voiceover
+      file: records/voiceover.yaml
+      count: 1
+audit_file: audit.yaml
+open_questions_file: open_questions.yaml

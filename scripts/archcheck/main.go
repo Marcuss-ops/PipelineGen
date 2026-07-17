@@ -63,6 +63,14 @@ func main() {
 		os.Exit(runSymbolRefsChecks())
 	}
 
+	if cfg.Mode == ModeMigrate {
+		if err := migrate(defaultLegacyPath, defaultTargetDir); err != nil {
+			fmt.Fprintf(os.Stderr, "archcheck: --migrate-deprecations: %v\n", err)
+			os.Exit(2)
+		}
+		return
+	}
+
 	var report Report
 	switch cfg.Mode {
 	case ModeRatchet:

@@ -1,0 +1,15 @@
+audit:
+    manifest_version: sharded-migration-v1
+    total_records: 23
+    by_status:
+        removed: 7
+        in_progress: 13
+        keep: 2
+        other: 1
+    by_migration_phase:
+        BACKFILL: 4
+        CONTRACT: 8
+        CUTOVER: 1
+        EXPAND: 8
+        not applicable: 2
+    ci_gate_impact: ""
