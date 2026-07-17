@@ -83,7 +83,6 @@ func TestBuildPayload_EmbeddingVersionsByChannel(t *testing.T) {
 	}
 }
 
-
 // ── PR2 (fix/qdrant-bm25-indexing): sparse vector wire-shape ─────────────
 
 // TestAssetToPoint_SparseVector_HasServerSideShape pins the wire
@@ -262,10 +261,6 @@ func TestAssetToPoint_TranscriptChannel_PreservedWhenPresent(t *testing.T) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
-
-
-
-
 
 // ══════════════════════════════════════════════════════════════════════════
 // PR 6 (refactor/qdrant-index-document) — provenance + locator-free tests.
@@ -1219,4 +1214,3 @@ func TestResolveSearchText_BackgroundContext_NotReplaced(t *testing.T) {
 	}
 	_ = got
 }
-
