@@ -14,12 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/indexing/searchtext"
 	qdrantSchema "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
-	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/transport"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestBuildPayload_LifecycleKeyIsCanonical asserts that BuildPayload
