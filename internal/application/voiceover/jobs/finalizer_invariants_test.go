@@ -1,13 +1,22 @@
 // Package jobs — finalizer_invariants_test.go (PR-VO-COMPLETEPATH-FIX
 // closure mirror tests, July 2026).
 //
-// 4 TDD regression tests that pin the canonical contracts of the
+// 3 TDD regression tests that pin the canonical contracts of the
 // voiceover pipeline after PR-VO-COMPLETEPATH-FIX (commit db2f3b1e,
 // July 4 2026). Each test is a regression guard for the post-fix
 // invariants; if a future change re-introduces ProducesArtifacts=true
 // on the voiceover job types OR breaks the finalizer's atomic-write
-// contract OR bypasses the parent-aggregator awaiting-state gate,
-// the matching test will fail loudly.
+// contract, the matching test will fail loudly.
+//
+// Note: the 4th historical test (TestParentAggregator_TriggeredOnlyAfterWaitingChildren)
+// was moved to parent_aggregator_eligibility_test.go by
+// PR-SPLIT-VO-PARENT-AGG-TESTS (July 2026) to mirror the production
+// split of parent_aggregator.go → parent_eligibility.go. The
+// eligibility-gate test is the canonical owner of
+// IsParentAwaitingAggregation; isolating it in a dedicated sibling
+// honours godlike/06 SSOT (one canonical owner per fact) and avoids
+// fragmenting the finalizer-invariants scope (which is VO-finalizer
+// specific, not aggregator-eligibility specific).
 //
 // Test map (per the original Italian audit action plan):
 //
@@ -44,21 +53,17 @@
 //     write. The asset_locations gap is a forward-pointer
 //     (PR-VO-ASSET-LOCATIONS-CONSUMER-AUDIT) tracked separately.
 //
-//  4. TestParentAggregator_TriggeredOnlyAfterWaitingChildren
-//     Verifies that the background parent aggregator is invoked
-//     ONLY for parents in waiting_children (or partial_success)
-//     state. Parents in terminal states (succeeded, failed,
-//     cancelled) MUST be skipped — re-finalising an already-terminal
-//     parent would cause aggregate-state regression per the
-//     audit-P0 #1 contract.
+//  4. TestParentAggregator_TriggeredOnlyAfterWaitingChildren [MOVED]
+//     Moved to parent_aggregator_eligibility_test.go by
+//     PR-SPLIT-VO-PARENT-AGG-TESTS (Step 5). The eligibility-gate
+//     test is owned by a dedicated sibling file to mirror the
+//     production split (parent_aggregator.go → parent_eligibility.go).
 package jobs
 
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"testing"
-	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -486,126 +491,11 @@ func TestVoiceoverFinalizer_PersistsMediaAssetsInSameTxn(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Test 4: parent_aggregator is triggered ONLY for waiting_children
+// Test 4 (TestParentAggregator_TriggeredOnlyAfterWaitingChildren)
+// MOVED to parent_aggregator_eligibility_test.go by
+// PR-SPLIT-VO-PARENT-AGG-TESTS (Step 5). The file no longer owns
+// the eligibility-gate test. Run `go test -run
+// TestParentEligibility_TriggeredOnlyAfterWaitingChildren ./internal/application/voiceover/jobs/...`
+// for the migrated test (with sub-cases A/B/C covering waiting /
+// succeeded / cancelled parent_state).
 // ─────────────────────────────────────────────────────────────────────
-
-// TestParentAggregator_TriggeredOnlyAfterWaitingChildren pins the
-// IsParentAwaitingAggregation gate of internal/application/voiceover/jobs/
-// parent_aggregator.go::aggregateOne. The background aggregator MUST
-// process only parents in waiting_children (or partial_success) state;
-// parents in terminal states (succeeded, failed, cancelled) MUST be
-// skipped — re-finalising an already-terminal parent would corrupt
-// the canonical aggregate (the audit-P0 #1 closure test
-// TestAcceptance_CancelParent_AggregatorSkips pins the failed-state
-// case; this test extends coverage to the other 2 terminal states).
-//
-// 3 sub-cases (table-driven):
-//
-//	A. parent_state=waiting_children  → aggregator processes (asserts FinalizeAggregateParent called)
-//	B. parent_state=succeeded         → aggregator SKIPS (asserts FinalizeAggregateParent NOT called)
-//	C. parent_state=cancelled         → aggregator SKIPS (asserts FinalizeAggregateParent NOT called)
-func TestParentAggregator_TriggeredOnlyAfterWaitingChildren(t *testing.T) {
-	// Shared child job — all 3 sub-cases use the same SUCCEEDED child
-	// shape. The aggregator's per-child logic is identical across the
-	// sub-cases; what varies is the parent's parent_state.
-	childSucceeded := func(id string) *job.Job {
-		return &job.Job{
-			ID:     id,
-			Type:   job.TypeVoiceoverGenerateItem,
-			Status: job.StatusSucceeded,
-			Result: []byte(`{"ok":true,"status":"completed"}`),
-		}
-	}
-
-	t.Run("A. waiting_children → aggregator processes", func(t *testing.T) {
-		// makeParentResult (defined in parent_aggregator_test.go) sets
-		// parent_state="waiting_children" by default.
-		stub := &stubAggregatorJobsService{
-			parentJob: &job.Job{
-				ID:     "parent-waiting",
-				Type:   job.TypeVoiceoverGenerate,
-				Status: job.StatusSucceeded,
-				Result: makeParentResult([]string{"child-w1"}),
-			},
-			childJobs: map[string]*job.Job{
-				"child-w1": childSucceeded("child-w1"),
-			},
-		}
-		agg := NewParentAggregator(AggregatorDeps{
-			JobsSvc:      stub,
-			Logger:       zap.NewNop(),
-			PollInterval: 30 * time.Second,
-		})
-		agg.Tick(context.Background())
-
-		// Canonical assertion: aggregator's FinalizeAggregateParent
-		// (the typed post-fan-out finalise path) MUST have been invoked.
-		assert.NotEmpty(t, stub.flipped,
-			"Case A: aggregator MUST invoke FinalizeAggregateParent for parents in waiting_children state (per IsParentAwaitingAggregation gate)")
-	})
-
-	t.Run("B. succeeded → aggregator skips", func(t *testing.T) {
-		// Build parent result with parent_state="succeeded" (terminal).
-		terminalResult := map[string]any{
-			"ok":            true,
-			"parent_job_id": "parent-succeeded",
-			"parent_state":  "succeeded",
-			"child_job_ids": []string{"child-s1"},
-		}
-		terminalRaw, _ := json.Marshal(terminalResult)
-		stub := &stubAggregatorJobsService{
-			parentJob: &job.Job{
-				ID:     "parent-succeeded",
-				Type:   job.TypeVoiceoverGenerate,
-				Status: job.StatusSucceeded,
-				Result: terminalRaw,
-			},
-			childJobs: map[string]*job.Job{
-				"child-s1": childSucceeded("child-s1"),
-			},
-		}
-		agg := NewParentAggregator(AggregatorDeps{
-			JobsSvc:      stub,
-			Logger:       zap.NewNop(),
-			PollInterval: 30 * time.Second,
-		})
-		agg.Tick(context.Background())
-
-		assert.Empty(t, stub.flipped,
-			"Case B: aggregator MUST NOT re-finalise parents in terminal 'succeeded' state (would corrupt aggregate per audit-P0 #1 contract)")
-	})
-
-	t.Run("C. cancelled → aggregator skips", func(t *testing.T) {
-		// Build parent result with parent_state="cancelled" (terminal).
-		// Mirrors the audit-P0 #1 closure test
-		// TestAcceptance_CancelParent_AggregatorSkips but uses
-		// "cancelled" instead of "failed" to extend coverage.
-		cancelledResult := map[string]any{
-			"ok":            false,
-			"parent_job_id": "parent-cancelled",
-			"parent_state":  "cancelled",
-			"child_job_ids": []string{"child-c1"},
-		}
-		cancelledRaw, _ := json.Marshal(cancelledResult)
-		stub := &stubAggregatorJobsService{
-			parentJob: &job.Job{
-				ID:     "parent-cancelled",
-				Type:   job.TypeVoiceoverGenerate,
-				Status: job.StatusCancelled,
-				Result: cancelledRaw,
-			},
-			childJobs: map[string]*job.Job{
-				"child-c1": childSucceeded("child-c1"),
-			},
-		}
-		agg := NewParentAggregator(AggregatorDeps{
-			JobsSvc:      stub,
-			Logger:       zap.NewNop(),
-			PollInterval: 30 * time.Second,
-		})
-		agg.Tick(context.Background())
-
-		assert.Empty(t, stub.flipped,
-			"Case C: aggregator MUST NOT re-finalise parents in terminal 'cancelled' state (mirrors the audit-P0 #1 'failed'-state contract)")
-	})
-}
