@@ -1103,14 +1103,21 @@ if rg -q 'legacySpecFromPlan' internal/application/scripts/; then
 fi
 echo "OK: no legacySpecFromPlan bridge anywhere"
 
-# Extracted Check-N dispatcher (dynamic glob, added by atomic-extraction PR series 2026-07-04)
-# godlike/06 SSOT: sourced in numerical natural order (extracted checks) BEFORE the
-# load-bearing 30-40-50-60 iteration loop (per-check topic modules).
-for extracted_check in "${SCRIPT_DIR}/all_checks"/check_*.sh; do
-    [ -e "$extracted_check" ] || continue
-    # shellcheck source=/dev/null
-    source "$extracted_check"
-done
+# Extracted Check-N dispatcher (dynamic glob, numeric-aware sort)
+# godlike/06 SSOT: extracted checks sourced in numerical natural order
+#   (lexicographic glob would misorder check_5 vs check_23 vs check_100).
+# godlike/07 NO-FAKE-AVAILABILITY / empty-glob safety:
+#   compgen -G guards inside; || true on done absorbs read-EOF under set -e.
+# godlike/07 portable: POSIX sort -t_ -k2,2n -k2,2 (NOT GNU -V; macOS BSD lacks -V).
+# godlike/06 ordering invariant: this loop runs BEFORE the load-bearing 30-40-50-60
+#   iteration loop (per-check topic modules).
+if compgen -G "${SCRIPT_DIR}/all_checks/check_*.sh" > /dev/null; then
+    while IFS= read -r extracted_check; do
+        [ -e "$extracted_check" ] || continue
+        # shellcheck source=/dev/null
+        source "$extracted_check"
+    done < <(LC_ALL=C ls -1 "${SCRIPT_DIR}/all_checks"/check_*.sh | LC_ALL=C sort -t'_' -k2,2n -k2,2 2>/dev/null) || true
+fi
 
 # Check groups are sourced in their original canonical order.
 for CHECK_MODULE in \
