@@ -136,6 +136,7 @@ func (s *Service) Register(ctx context.Context, cmd sourcing.RegisterClipCommand
 		&hasherAdapter{},
 		usecase.DownloadAndHashCommand{
 			VideoID:      md.VideoID,
+			FetchAssetID: fmt.Sprintf("%s_%d_%d", md.VideoID, int64(md.StartSec*1000), int64(md.EndSec*1000)),
 			SourceRef:    md.RawURL,
 			SegmentStart: time.Duration(md.StartSec * float64(time.Second)),
 			SegmentEnd:   time.Duration(md.EndSec * float64(time.Second)),

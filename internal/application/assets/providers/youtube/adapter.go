@@ -231,8 +231,14 @@ func (a *Adapter) Fetch(ctx context.Context, req providers.FetchRequest) (*provi
 		Duration:   durationSec,
 		OutputName: safeName,
 		KeepAudio:  !req.NoAudio, // inverted: NoAudio=true → KeepAudio=false → ffmpeg strips audio
-		Normalize:  false,        // raw fetch — caller normalizes downstream
-		Strategy:   "replace",
+		// Registering a YouTube clip is also the cut boundary. Normalize at
+		// this seam so every persisted/uploaded segment has the canonical
+		// delivery profile, independent of the source video's format.
+		Normalize:       true,
+		NormalizeWidth:  1920,
+		NormalizeHeight: 1080,
+		NormalizeFPS:    24,
+		Strategy:        "replace",
 	}
 
 	result, err := a.fetcher.DownloadAndCut(ctx, cutReq)

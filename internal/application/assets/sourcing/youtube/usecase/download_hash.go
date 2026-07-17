@@ -27,6 +27,7 @@ import (
 // passes to the fetcher.
 type DownloadAndHashCommand struct {
 	VideoID      string        // extracted from URL by ResolveClipMetadata
+	FetchAssetID string        // unique per segment; defaults to VideoID when empty
 	SourceRef    string        // canonical YouTube URL
 	SegmentStart time.Duration // start offset in seconds
 	SegmentEnd   time.Duration // end offset in seconds
@@ -101,8 +102,12 @@ func DownloadAndHashClip(ctx context.Context, fetcher Fetcher, hasher FileHasher
 		return nil, fmt.Errorf("usecase.DownloadAndHashClip: fetcher is nil")
 	}
 
+	fetchAssetID := cmd.FetchAssetID
+	if fetchAssetID == "" {
+		fetchAssetID = cmd.VideoID
+	}
 	fetched, err := fetcher.Fetch(ctx, FetchRequest{
-		AssetID:      cmd.VideoID,
+		AssetID:      fetchAssetID,
 		SourceRef:    cmd.SourceRef,
 		SegmentStart: cmd.SegmentStart,
 		SegmentEnd:   cmd.SegmentEnd,

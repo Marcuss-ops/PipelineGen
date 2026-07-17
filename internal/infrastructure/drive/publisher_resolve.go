@@ -77,7 +77,7 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 	folderID := rootFolderID
 	if len(segments) > 0 {
 		pathKey := strings.Join(segments, "/")
-		if strings.TrimSpace(req.RootFolderOverride) == "" {
+		if strings.TrimSpace(req.DestinationFolderID) == "" && strings.TrimSpace(req.RootFolderOverride) == "" {
 			if cachedID := p.lookupCatalogFolder(ctx, req.Destination, pathKey); cachedID != "" {
 				folderID = cachedID
 			} else {

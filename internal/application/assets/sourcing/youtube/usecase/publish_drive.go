@@ -82,6 +82,7 @@ type PublishRequest struct {
 	ProjectID   string // canonical project umbrella (e.g. "boxing-doc-2026")
 	Group       string
 	Subject     string
+	RootFolder  string   // caller-specified root folder override (e.g. from Location resolution)
 	Category    string   // semantic category (e.g. "Boxe")
 	Provider    string   // upstream source (e.g. "youtube")
 	Tags        []string // semantic keywords for Qdrant
@@ -124,15 +125,11 @@ func PublishClipToDrive(ctx context.Context, pub DrivePublisher, cmd PublishClip
 		ProjectID:   cmd.ProjectID,
 		Group:       cmd.Group,
 		Subject:     cmd.Subject,
+		RootFolder:  cmd.RootFolder,
 		Category:    cmd.Category,
 		Provider:    cmd.Provider,
 		Tags:        cmd.Tags,
 		Language:    cmd.Language,
-		// PR-P12-YOUTUBE-LEGACY-RETIRE (July 2026): RootFolderOverride RETIRED.
-		// The canonical Publisher resolves the target folder via
-		// DestinationRegistry + DestinationPolicy.RootFolderID.
-		// cmd.RootFolder (the legacy backward-compat override) is now unused;
-		// callers that need per-call folder targeting pass ProjectID instead.
 	})
 	if err != nil {
 		return &PublishClipResult{Published: false}, fmt.Errorf("usecase.PublishClipToDrive: %w", err)

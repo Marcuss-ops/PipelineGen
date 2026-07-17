@@ -222,7 +222,34 @@ func (s *Service) BatchRegisterFromYouTube(ctx context.Context, commands []Regis
 			Results:       make([]BatchClipResult, len(commands)),
 		}
 	}
-	return s.batch.BatchRegister(ctx, commands)
+
+	// Resolve semantic locations before enqueueing. The async worker calls the
+	// YouTube registrar directly, so resolving only in RegisterFromYouTube
+	// would leave batch jobs with an empty FolderID and route them to the
+	// configured default Drive root. Resolve the complete batch first so a
+	// resolver failure cannot leave a partially-enqueued request.
+	resolved := make([]RegisterClipCommand, len(commands))
+	copy(resolved, commands)
+	for i := range resolved {
+		folderID, err := s.resolveLocationFallback(ctx, resolved[i], delivery.DestinationYouTubeClip)
+		if err != nil {
+			results := make([]BatchClipResult, len(commands))
+			for j := range results {
+				results[j].Name = commands[j].Name
+				results[j].Error = fmt.Sprintf("resolve location for clip %d: %v", i, err)
+			}
+			return &BatchRegisterResult{
+				OK:            false,
+				Total:         len(commands),
+				EnqueueFailed: len(commands),
+				Results:       results,
+			}
+		}
+		if resolved[i].FolderID == "" {
+			resolved[i].FolderID = folderID
+		}
+	}
+	return s.batch.BatchRegister(ctx, resolved)
 }
 
 // SyncDriveFolder delegates to the drivesync sub-package service.
