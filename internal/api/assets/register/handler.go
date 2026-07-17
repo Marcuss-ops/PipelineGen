@@ -290,10 +290,13 @@ func (h *Handler) BatchRegisterFromYouTube(c *gin.Context) {
 		return
 	}
 
-	// Backfill folder_id from the request-level default
+	// Backfill folder_id and location from the request-level defaults
 	for i := range clips {
 		if clips[i].FolderID == "" && req.FolderID != "" {
 			clips[i].FolderID = req.FolderID
+		}
+		if clips[i].Location.IsEmpty() && !req.Location.IsEmpty() {
+			clips[i].Location = req.Location
 		}
 	}
 

@@ -68,14 +68,19 @@ type UploadResultDTO struct {
 // PR5 Phase 3 (June 2026): moved from root youtube package to ports/ so both the
 // extraction capability service and the root orchestrator share the same type.
 type VideoCutRequest struct {
-	URL               string
-	VideoID           string
-	Start             float64
-	Duration          float64
-	OutputName        string
-	ForceKeyframes    bool
-	KeepAudio         bool
-	Normalize         bool
+	URL            string
+	VideoID        string
+	Start          float64
+	Duration       float64
+	OutputName     string
+	ForceKeyframes bool
+	KeepAudio      bool
+	Normalize      bool
+	// Normalization target for callers that need a profile different from
+	// the global video configuration. Zero values use the configured default.
+	NormalizeWidth    int
+	NormalizeHeight   int
+	NormalizeFPS      int
 	Strategy          string
 	OutputDir         string
 	PreDownloadedPath string

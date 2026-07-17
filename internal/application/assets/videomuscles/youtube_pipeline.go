@@ -20,15 +20,18 @@ import (
 
 // YouTubeCutRequest contains all parameters for downloading and cutting a YouTube clip.
 type YouTubeCutRequest struct {
-	URL            string
-	VideoID        string
-	Start          float64
-	Duration       float64
-	OutputName     string
-	ForceKeyframes bool
-	KeepAudio      bool
-	Normalize      bool
-	Strategy       string // verify (default), skip, replace
+	URL             string
+	VideoID         string
+	Start           float64
+	Duration        float64
+	OutputName      string
+	ForceKeyframes  bool
+	KeepAudio       bool
+	Normalize       bool
+	NormalizeWidth  int
+	NormalizeHeight int
+	NormalizeFPS    int
+	Strategy        string // verify (default), skip, replace
 	// OutputDir is the target directory for the final clip.
 	// When empty, falls back to DataDir/media/clips/general/{videoID}.
 	OutputDir string
@@ -186,6 +189,15 @@ func (p *Pipeline) DownloadAndCutYouTubeVideo(ctx context.Context, req YouTubeCu
 	var normalizeErr error
 	if req.Normalize {
 		videoCfg := p.cfg.Video.WithDefaults()
+		if req.NormalizeWidth > 0 {
+			videoCfg.Width = req.NormalizeWidth
+		}
+		if req.NormalizeHeight > 0 {
+			videoCfg.Height = req.NormalizeHeight
+		}
+		if req.NormalizeFPS > 0 {
+			videoCfg.FPS = req.NormalizeFPS
+		}
 		normalizeErr = p.clipProcess.CutAndNormalize(ctx, rawFile, outputPath, "", "", pkgffmpeg.CutAndNormalizeOptions{
 			Width:   videoCfg.Width,
 			Height:  videoCfg.Height,

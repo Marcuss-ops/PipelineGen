@@ -79,25 +79,23 @@ func (a *publisherAdapter) Publish(ctx context.Context, req usecase.PublishReque
 		return nil, fmt.Errorf("usecase.publisherAdapter: inner publisher is nil")
 	}
 
-	// PR-P12-YOUTUBE-LEGACY-RETIRE (July 2026): RootFolderOverride
-	// REMOVED. Callers that previously passed folder_id now populate
-	// ProjectID + Group + Subject + Category for semantic routing via
-	// DestinationRegistry + PathBuilder. The explicit folder override
-	// is the infrastructure-layer escape hatch (delivery.Publisher
-	// internal); application-layer code MUST use typed semantic fields.
+	// The resolved caller folder is an exact destination folder. Keep the
+	// application layer on the canonical DestinationFolderID seam; the
+	// RootFolderOverride escape hatch is reserved for infrastructure/admin.
 	result, err := a.inner.Publish(ctx, delivery.PublishRequest{
-		Destination: delivery.DestinationYouTubeClip,
-		LocalPath:   req.LocalPath,
-		Filename:    req.Filename,
-		Description: req.Description,
-		AssetID:     req.AssetID,
-		ProjectID:   req.ProjectID,
-		Group:       req.Group,
-		Subject:     req.Subject,
-		Category:    req.Category,
-		Provider:    req.Provider,
-		Tags:        req.Tags,
-		Language:    req.Language,
+		Destination:         delivery.DestinationYouTubeClip,
+		LocalPath:           req.LocalPath,
+		Filename:            req.Filename,
+		Description:         req.Description,
+		AssetID:             req.AssetID,
+		ProjectID:           req.ProjectID,
+		Group:               req.Group,
+		Subject:             req.Subject,
+		DestinationFolderID: req.RootFolder,
+		Category:            req.Category,
+		Provider:            req.Provider,
+		Tags:                req.Tags,
+		Language:            req.Language,
 	})
 	if err != nil {
 		return nil, err
