@@ -11,7 +11,6 @@ package indexing
 
 import (
 	"context"
-	"math"
 	"strings"
 	"testing"
 
