@@ -17,13 +17,13 @@ import (
 const SchemaVersion = "ai_stock_visual_analysis.v1"
 
 type Document struct {
-	SchemaVersion    string          `json:"schema_version"`
-	Asset            AssetInput      `json:"asset"`
-	Visual           VisualInput     `json:"visual_analysis"`
-	SearchText       string          `json:"search_text"`
-	TimedEvents      []EventInput    `json:"timed_events"`
-	RecommendedClips []ClipInput     `json:"recommended_clips"`
-	SoundCues        []SoundCueInput `json:"sound_cues"`
+	SchemaVersion      string          `json:"schema_version"`
+	Asset              AssetInput      `json:"asset"`
+	Visual             VisualInput     `json:"visual_analysis"`
+	SearchText         string          `json:"search_text"`
+	TimedEvents        []EventInput    `json:"timed_events"`
+	RecommendedClips   []ClipInput     `json:"recommended_clips"`
+	SoundCues          []SoundCueInput `json:"sound_cues"`
 	SuggestedSubtitles []SubtitleInput `json:"suggested_subtitles"`
 }
 type AssetInput struct {
@@ -92,8 +92,8 @@ type SoundCueInput struct {
 	SuggestionEN        string  `json:"suggestion_en"`
 }
 type SubtitleInput struct {
-	StartMs int64 `json:"start_ms"`
-	EndMs   int64 `json:"end_ms"`
+	StartMs int64  `json:"start_ms"`
+	EndMs   int64  `json:"end_ms"`
 	Text    string `json:"text"`
 }
 

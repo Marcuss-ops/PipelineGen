@@ -24,8 +24,8 @@ import (
 type Status string
 
 const (
-	StatusStaging     Status = "STAGING"
-	StatusVerifying   Status = "VERIFYING"
+	StatusStaging   Status = "STAGING"
+	StatusVerifying Status = "VERIFYING"
 	// The SQLite artifacts table uses READY as the durable state. Keep the
 	// application-facing Staged name while retaining that persisted value for
 	// compatibility with migration 051 and existing resolvers.
