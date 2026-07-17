@@ -10,7 +10,6 @@
 package indexing
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
