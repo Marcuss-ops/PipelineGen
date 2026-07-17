@@ -1,0 +1,182 @@
+[
+  {
+    "id": "Check 50",
+    "title": "forbid void Register* methods that take jobs.Service (P1 #1, July 2026)",
+    "line_start": 1,
+    "line_end": 108,
+    "allowlist_kind": "register-void-allowed",
+    "rg_capture_steps": 1,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 51",
+    "title": "forbid raw-string Enqueue(...) callers + Dispatcher-tied callers (P0 C4, July 2026)",
+    "line_start": 109,
+    "line_end": 194,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 1,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 52",
+    "title": "forbid direct ArtifactUploader wire calls outside canonical Creator adapter (P0 C6, July 2026)",
+    "line_start": 195,
+    "line_end": 256,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 1,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 53",
+    "title": "forbid direct atomic-complete wire calls outside canonical Service (P0 C7, July 2026)",
+    "line_start": 257,
+    "line_end": 313,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 1,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 54",
+    "title": "FASE 3.7 Commit 3 — gate banning infra imports in monitor/",
+    "line_start": 314,
+    "line_end": 485,
+    "allowlist_kind": "monitor-infra-import",
+    "rg_capture_steps": 2,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 55",
+    "title": "forbid legacy Template / TimelineJSON writes outside canonical allowlist (PR-PERSIST-6-CANONICAL-FIX)",
+    "line_start": 486,
+    "line_end": 543,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 1,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 49",
+    "title": "go vet ./internal/... drift gate (FASE 9 post-rename follow-up, June 2026)",
+    "line_start": 544,
+    "line_end": 1104,
+    "allowlist_kind": "vet-warn,clips-ssot-only,clips-ssot-only",
+    "rg_capture_steps": 10,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 19",
+    "title": "forbid infrastructure imports in API layer",
+    "line_start": 1105,
+    "line_end": 1163,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 0,
+    "has_awk_allowlist_filter": false,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 35",
+    "title": "context.Background / context.WithoutCancel exemption tracking",
+    "line_start": 1164,
+    "line_end": 1244,
+    "allowlist_kind": "no-cancel,bg-only,no-cancel,bg-only",
+    "rg_capture_steps": 0,
+    "has_awk_allowlist_filter": false,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 36",
+    "title": "anti-reintro gate for diagnostic / snapshot artefacts (PR-A, June 2026)",
+    "line_start": 1245,
+    "line_end": 1362,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 0,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 41",
+    "title": "forbid recreation of internal/api/common/ (Issue 10, June 2026)",
+    "line_start": 1363,
+    "line_end": 1392,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 0,
+    "has_awk_allowlist_filter": false,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 42",
+    "title": "forbid `database/sql` import in application/api production paths (P1-8, Wave 19)",
+    "line_start": 1393,
+    "line_end": 1581,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 0,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 44",
+    "title": "(P1-2 application size cap + types_aliases.go filename ban)",
+    "line_start": 1582,
+    "line_end": 1591,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 0,
+    "has_awk_allowlist_filter": false,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 45",
+    "title": "Channel-monitor E2E dedup contract test coverage (PR-C-YouTube-Cutover Commit I, June 2026)",
+    "line_start": 1592,
+    "line_end": 1626,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 0,
+    "has_awk_allowlist_filter": false,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 50",
+    "title": "forbid retry-classifier substring-matcher outside pkg/retry (Step 7 closure, June 2026)",
+    "line_start": 1627,
+    "line_end": 1702,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 0,
+    "has_awk_allowlist_filter": false,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 54",
+    "title": "forbid legacy stock pipeline keywords (Stock Cutover Commit 3, July 2026)",
+    "line_start": 1703,
+    "line_end": 1926,
+    "allowlist_kind": "none",
+    "rg_capture_steps": 1,
+    "has_awk_allowlist_filter": false,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 57",
+    "title": "forbid ports.ScriptRecord literal outside canonical allowlist (godlike/06 SSOT, July 2026)",
+    "line_start": 1927,
+    "line_end": 2025,
+    "allowlist_kind": "ports-scriptrecord-allowed",
+    "rg_capture_steps": 1,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  },
+  {
+    "id": "Check 58",
+    "title": "forbid legacy Template/TimelineJSON writes outside canonical allowlist",
+    "line_start": 2026,
+    "line_end": 2144,
+    "allowlist_kind": "template-timeline-legacy,vlm-direct-caller,vlm-direct-caller,vlm-direct-caller",
+    "rg_capture_steps": 1,
+    "has_awk_allowlist_filter": true,
+    "has_hard_fail": true
+  }
+]
