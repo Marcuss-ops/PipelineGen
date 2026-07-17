@@ -115,7 +115,8 @@ AGENTS.md-compliant. The opt-in cost is fewer commits + one
 ## Process-gap tripwires (do NOT repeat)
 
 These patterns caused post-push broken commits in 2026; each is recorded
-in `architecture/deprecations.yaml` + `architecture/issues.yaml`:
+in `architecture/deprecations/` (the sharded records directory per
+`architecture/deprecations/index.yaml`) + `architecture/issues.yaml`:
 
 1. **Python / regex split scripts** — orphan function bodies at the file
    scope. Use a SYMBOL-AWARE tool (`ast-grep v0.44.1+` from npm
@@ -159,16 +160,21 @@ follow-up.
 - **`cmd/archcheck`** — produces the per-run structural report
   (`scripts/archcheck/current_report.json`; gitignored).
 - **`scripts/archcheck/deprecations_validator.go`** — hard-fails on
-  duplicate IDs in `architecture/deprecations.yaml`, expired
-  `removal_date` for non-removed records, missing required keys per
-  record.
+  duplicate IDs across `architecture/deprecations/records/*.yaml`
+  (cross-shard via `architecture/deprecations/index.yaml`; the
+  validator's default path is the sharded directory, not the
+  now-removed single file), expired `removal_date` for non-removed
+  records, missing required keys per record.
 
 For audit-pin migration notes (e.g., test funcs renamed or moved across
-test-split boundaries): `grep -c <old-symbol> architecture/deprecations.yaml`
+test-split boundaries): `grep -c <old-symbol> architecture/deprecations/records/<bucket>.yaml`
 MUST return ≥1 hit so the rename is grep-discoverable. The canonical
 retro-fix pattern appends a `← MIGRATED (PR-STEP-NN, commit <SHA>) →`
 annotation block in the relevant YAML field (see
-`architecture/deprecations.yaml:1631-1647` for the canonical example spanning the
+`architecture/deprecations/records/voiceover.yaml:52-55` — the (d) audit-pin block
+for `TestParentAggregator_TriggeredOnlyAfterWaitingChildren` (parent aggregator
+eligibility gate, 3 sub-cases: waiting_children → process / succeeded → no-op /
+cancelled → no-op) — for the canonical example spanning the
 voiceover/jobs/* Step 5 split migration of `TestAcceptance_CancelParent_AggregatorSkips`
 into `parent_aggregator_eligibility_test.go::TestParentEligibility_TriggeredOnlyAfterWaitingChildren::t.Run("C. cancelled → aggregator skips")`).
 
