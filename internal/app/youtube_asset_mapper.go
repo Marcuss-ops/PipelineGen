@@ -61,6 +61,21 @@ func fromExistingClip(c *sourcing.ExistingClip) *asset.Asset {
 	if c.Hook != "" {
 		out.SetMetadataString("hook", c.Hook)
 	}
+	if c.SourceURL != "" {
+		out.SetMetadataString("source_url", c.SourceURL)
+	}
+	if c.SourceProvider != "" {
+		out.SetMetadataString("source_provider", c.SourceProvider)
+	}
+	if c.SourceVideoID != "" {
+		out.SetMetadataString("source_video_id", c.SourceVideoID)
+	}
+	if c.StartSec != 0 {
+		out.Metadata["start_sec"] = c.StartSec
+	}
+	if c.EndSec != 0 {
+		out.Metadata["end_sec"] = c.EndSec
+	}
 	return out
 }
 
@@ -69,17 +84,22 @@ func toExistingClip(c *asset.Asset) *sourcing.ExistingClip {
 		return nil
 	}
 	return &sourcing.ExistingClip{
-		ID:          c.ID,
-		Name:        c.Name,
-		Filename:    c.Filename,
-		Duration:    c.Duration,
-		Source:      string(c.Source),
-		Category:    c.Category,
-		Tags:        append([]string(nil), c.Tags...),
-		LocalPath:   c.LocalPath(),
-		DriveLink:   c.DriveLink(),
-		DriveFileID: c.DriveFileID(),
-		FileHash:    c.FileHash(),
+		ID:             c.ID,
+		Name:           c.Name,
+		Filename:       c.Filename,
+		Duration:       c.Duration,
+		Source:         string(c.Source),
+		Category:       c.Category,
+		Tags:           append([]string(nil), c.Tags...),
+		LocalPath:      c.LocalPath(),
+		DriveLink:      c.DriveLink(),
+		DriveFileID:    c.DriveFileID(),
+		FileHash:       c.FileHash(),
+		SourceURL:      c.GetMetadataString("source_url"),
+		SourceProvider: c.GetMetadataString("source_provider"),
+		SourceVideoID:  c.GetMetadataString("source_video_id"),
+		StartSec:       asset.MetadataFloat(c.Metadata, "start_sec"),
+		EndSec:         asset.MetadataFloat(c.Metadata, "end_sec"),
 		// Rich metadata fields (RICH-METADATA-QDRANT-VERIFY, July 2026)
 		Summary:         c.GetMetadataString("clip_summary"),
 		Topics:          metadataStringSlice(c, "topics"),

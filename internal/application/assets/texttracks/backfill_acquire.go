@@ -55,10 +55,11 @@ func (s *BackfillService) tryAcquire(
 		return nil, fmt.Errorf("backfill: cannot acquire — no local_path or video_id on asset %s", assetItem.ID)
 	}
 	acqResult, err := s.acquirer.Acquire(ctx, AcquireCommand{
-		AssetID:   assetItem.ID,
-		VideoID:   videoID,
-		LocalPath: localPath,
-		Language:  opts.SourceLanguage,
+		AssetID:     assetItem.ID,
+		VideoID:     videoID,
+		LocalPath:   localPath,
+		DriveFileID: extractDriveFileID(assetItem),
+		Language:    opts.SourceLanguage,
 	})
 	if err != nil {
 		return nil, err
@@ -104,6 +105,13 @@ func (s *BackfillService) tryAcquire(
 		zap.String("source_type", string(acqResult.SourceType)),
 		zap.Int("priority", acqResult.Priority))
 	return acqResult, nil
+}
+
+func extractDriveFileID(a *asset.Asset) string {
+	if a == nil {
+		return ""
+	}
+	return a.DriveFileID()
 }
 
 // extractLocalPath reads the local_path from the asset's

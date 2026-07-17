@@ -39,6 +39,10 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 	tagsJSON, _ := json.Marshal(clip.Tags)
 	searchTermsJSON, _ := json.Marshal(clip.SearchTerms)
 	metadataJSON, _ := json.Marshal(clip.Metadata)
+	sourceProvider := clip.GetMetadataString("source_provider")
+	sourceVideoID := clip.GetMetadataString("source_video_id")
+	startMS := int64(asset.MetadataFloat(clip.Metadata, "start_sec") * 1000)
+	endMS := int64(asset.MetadataFloat(clip.Metadata, "end_sec") * 1000)
 	deletedAtStr := ""
 	if clip.DeletedAt != nil {
 		deletedAtStr = timeutil.FormatRFC3339(*clip.DeletedAt)
@@ -51,8 +55,9 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 			created_at, updated_at, folder_id, parent_folder_id, folder_path,
 			scene_type, phash, last_used_at, quality_score, reuse_count,
 			embedding_json, visual_embedding, transcript_embedding,
-			drive_link, download_link, local_path, drive_file_id, file_hash
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			drive_link, download_link, local_path, drive_file_id, file_hash,
+			source_provider, source_video_id, source_url, start_ms, end_ms
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			source = excluded.source,
 			name = excluded.name,
@@ -86,7 +91,12 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 			download_link = excluded.download_link,
 			local_path = excluded.local_path,
 			drive_file_id = excluded.drive_file_id,
-			file_hash = excluded.file_hash
+			file_hash = excluded.file_hash,
+			source_provider = excluded.source_provider,
+			source_video_id = excluded.source_video_id,
+			source_url = excluded.source_url,
+			start_ms = excluded.start_ms,
+			end_ms = excluded.end_ms
 	`,
 		clip.ID, string(clip.Source), clip.Name, clip.Filename, string(clip.MediaType), clip.Category, clip.Group,
 		clip.SourceURL, clip.ClipPageURL, clip.ThumbnailURL, clip.Duration.Milliseconds(), string(tagsJSON), string(searchTermsJSON),
@@ -95,6 +105,7 @@ func (r *ClipsRepository) UpsertClipTx(ctx context.Context, tx *sql.Tx, clip *as
 		clip.SceneType(), clip.PHash(), clip.LastUsedAt(), clip.QualityScore(), clip.ReuseCount(),
 		clip.EmbeddingJSON(), clip.VisualEmbedding(), clip.TranscriptEmbedding(),
 		clip.DriveLink(), clip.DownloadLink(), clip.LocalPath(), clip.DriveFileID(), clip.FileHash(),
+		sourceProvider, sourceVideoID, clip.GetMetadataString("source_url"), startMS, endMS,
 	)
 	return err
 }
