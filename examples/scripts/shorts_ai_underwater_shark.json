@@ -1,7 +1,7 @@
 {
   "id": "short-ai-shark-01",
-  "text": "Questo squalo emerge dal buio senza lasciare scampo",
-  "language": "it-IT",
+  "text": "This shark emerges from the darkness without warning",
+  "language": "en-US",
   "duration_ms": 10000,
   "words_per_caption": 4,
   "include_sound_effects": true,

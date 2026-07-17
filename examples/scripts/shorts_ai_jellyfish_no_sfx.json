@@ -1,7 +1,7 @@
 {
   "id": "short-ai-jellyfish-01",
-  "text": "Questa creatura sembra arrivare da un altro pianeta",
-  "language": "it-IT",
+  "text": "This creature looks like it came from another planet",
+  "language": "en-US",
   "duration_ms": 10000,
   "words_per_caption": 4,
   "include_sound_effects": false,
