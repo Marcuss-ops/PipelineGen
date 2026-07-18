@@ -20,6 +20,7 @@ import (
 
 	module "github.com/Marcuss-ops/PipelineGen/internal/api"
 	"github.com/Marcuss-ops/PipelineGen/internal/api/admin"
+	adminui "github.com/Marcuss-ops/PipelineGen/internal/api/admin/ui"
 	assetsapi "github.com/Marcuss-ops/PipelineGen/internal/api/assets"
 	channelsapi "github.com/Marcuss-ops/PipelineGen/internal/api/channels"
 	imagesapi "github.com/Marcuss-ops/PipelineGen/internal/api/images"
@@ -36,6 +37,7 @@ import (
 	drive "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/drive"
 	scriptdocsinfra "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/scriptdocs"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	"github.com/Marcuss-ops/PipelineGen/web"
 
 	"go.uber.org/zap"
 )
@@ -303,5 +305,26 @@ func registerAdminModule(registry *module.Registry, log *zap.Logger, cfg *config
 	}
 
 	log.Info("admin module registered (drive canary: /api/admin/drive/canary-upload)")
+	return nil
+}
+
+// registerAdminUIModule wires the /api/admin/ui/* capability via adminui.Build.
+// The static React app is embedded via web.DistFS and served from /admin by routes.go.
+func registerAdminUIModule(registry *module.Registry, log *zap.Logger, cfg *config.Config) error {
+	adminUIDesc, err := adminui.Build(adminui.Dependencies{
+		StaticFS:    web.DistFS(),
+		EnabledFunc: func() bool { return true },
+		ModuleOpts: []module.RouteModuleOption{
+			module.WithMiddleware(middleware.RequireAdminToken(cfg, log)),
+		},
+		Logger: log,
+	})
+	if err != nil {
+		return fmt.Errorf("wire registry: admin-ui: %w", err)
+	}
+	if err := tryRegisterModuleStrict(registry, log, adminUIDesc, WithRegistrationPoint("register.AdminUI")); err != nil {
+		return fmt.Errorf("wire registry: admin-ui: %w", err)
+	}
+	log.Info("admin-ui module registered (/api/admin/ui/*)")
 	return nil
 }

@@ -72,6 +72,24 @@ var availableCommands = []string{
 	"rename-sound-effects",
 	"update-sound-effect-metadata",
 	"apply-additional-sound-effects",
+	"classify-sound-effects",
+	"trim-sound-effects",
+	"organize-sound-effects-drive",
+	"normalize-sound-effects-drive",
+	"organize-foley-drive",
+	"trash-drive-files",
+	"keep-drive-folder-files",
+	"organize-ui-drive",
+	"organize-family-drive",
+	"index-drive-fish-clip",
+	"save-fish-commentary-index",
+	"save-cave-commentary-index",
+	"save-crab-commentary-index",
+	"index-provided-sound-effects",
+	"export-sound-effects-metadata",
+	"rename-indexed-sound-effects",
+	"upload-fish-clip",
+	"render-fish-short",
 	"gen-api-docs",
 	"list-drive-folder",
 	"sync-drive-folder",
@@ -137,6 +155,42 @@ func dispatchSubcommand(name string, args []string) error {
 		return runUpdateSoundEffectMetadata(args)
 	case "apply-additional-sound-effects":
 		return runApplyAdditionalSoundEffects(args)
+	case "classify-sound-effects":
+		return runClassifySoundEffects(args)
+	case "trim-sound-effects":
+		return runTrimSoundEffects(args)
+	case "organize-sound-effects-drive":
+		return runOrganizeSoundEffectsDrive(args)
+	case "normalize-sound-effects-drive":
+		return runNormalizeSoundEffectsDrive(args)
+	case "organize-foley-drive":
+		return runOrganizeFoleyDrive(args)
+	case "trash-drive-files":
+		return runTrashDriveFiles(args)
+	case "keep-drive-folder-files":
+		return runKeepDriveFolderFiles(args)
+	case "organize-ui-drive":
+		return runOrganizeUIDrive(args)
+	case "organize-family-drive":
+		return runOrganizeFamilyDrive(args)
+	case "index-drive-fish-clip":
+		return runIndexDriveFishClip(args)
+	case "save-fish-commentary-index":
+		return runSaveFishCommentaryIndex(args)
+	case "save-cave-commentary-index":
+		return runSaveCaveCommentaryIndex(args)
+	case "save-crab-commentary-index":
+		return runSaveCrabCommentaryIndex(args)
+	case "index-provided-sound-effects":
+		return runIndexProvidedSoundEffects(args)
+	case "export-sound-effects-metadata":
+		return runExportSoundEffectsMetadata(args)
+	case "rename-indexed-sound-effects":
+		return runRenameIndexedSoundEffects(args)
+	case "upload-fish-clip":
+		return runUploadFishClip(args)
+	case "render-fish-short":
+		return runRenderFishShort(args)
 	case "reindex-qdrant":
 		return reconcile.RunReindexQdrant(args)
 	case "qdrant-maintenance":

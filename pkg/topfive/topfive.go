@@ -16,12 +16,12 @@ type Request struct {
 }
 
 type Moment struct {
-	Name       string  `json:"name"`
-	ClipID     string  `json:"clip_id,omitempty"`
-	Path       string  `json:"path"`
-	StartMs    int64   `json:"start_ms"`
-	EndMs      int64   `json:"end_ms"`
-	Score      float64 `json:"score,omitempty"`
+	Name    string  `json:"name"`
+	ClipID  string  `json:"clip_id,omitempty"`
+	Path    string  `json:"path"`
+	StartMs int64   `json:"start_ms"`
+	EndMs   int64   `json:"end_ms"`
+	Score   float64 `json:"score,omitempty"`
 }
 
 type Response struct {
