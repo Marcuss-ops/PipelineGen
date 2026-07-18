@@ -214,6 +214,11 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 		return nil, fmt.Errorf("wire registry: admin: %w", err)
 	}
 
+	// Admin UI module — React/Vite frontend API surface.
+	if err := registerAdminUIModule(registry, log, cfg); err != nil {
+		return nil, fmt.Errorf("wire registry: admin-ui: %w", err)
+	}
+
 	// Step 2 — Internal modules (bundle-driven). MUST run before
 	// registerImages (consumes wiring.MediaIngest.Service) and
 	// registerAssets (consumes wiring.searchFanOut + wiring.searchBackends
@@ -253,6 +258,13 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// DeletionService backfill on the maintenance service.
 	if err := registerAssets(registry, log, cfg, root, wiring); err != nil {
 		return nil, fmt.Errorf("wire registry: assets: %w", err)
+	}
+
+	// Step 5a — Operator Console: admin-facing read-only API for the
+	// operator console binary. Registered after assets (needs asset.Service)
+	// and before late bindings (no cross-step state dependency).
+	if err := registerOperatorConsole(registry, log, cfg, root); err != nil {
+		return nil, fmt.Errorf("wire registry: operator-console: %w", err)
 	}
 
 	// Step 6 — Late bindings: builds the QDRANT-002 outbox handler +

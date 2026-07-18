@@ -2,10 +2,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -17,6 +21,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/api/transport"
 	mwports "github.com/Marcuss-ops/PipelineGen/internal/application/middleware"
 	systemhealth "github.com/Marcuss-ops/PipelineGen/internal/application/system/health"
+	"github.com/Marcuss-ops/PipelineGen/web"
 	"go.uber.org/zap"
 )
 
@@ -235,6 +240,27 @@ func (r *Router) Setup() *gin.Engine {
 		c.Redirect(http.StatusMovedPermanently, "/health")
 	})
 
+	// Serve admin UI static files on /admin (protected by admin token).
+	// The static assets are embedded at build time via web.DistFS().
+	adminUIFS := web.DistFS()
+	adminUIGroup := engine.Group("/admin", middleware.RequireAdminToken(r.cfg.Auth, r.cfg.Log))
+	{
+		adminUIGroup.StaticFS("/", http.FS(adminUIFS))
+	}
+	engine.NoRoute(func(c *gin.Context) {
+		// RouterGroup has no NoRoute hook in Gin. Apply the same auth
+		// middleware manually for SPA fallback requests under /admin.
+		if strings.HasPrefix(c.Request.URL.Path, "/admin/") || c.Request.URL.Path == "/admin" {
+			middleware.RequireAdminToken(r.cfg.Auth, r.cfg.Log)(c)
+			if c.IsAborted() {
+				return
+			}
+			serveAdminUISPA(c, adminUIFS)
+			return
+		}
+		c.Status(http.StatusNotFound)
+	})
+
 	registerVLMRoutes(engine)
 
 	// Only add CORS middleware if origins are configured
@@ -403,6 +429,30 @@ func (r *Router) Setup() *gin.Engine {
 	api.GET("/capabilities", transport.NewCapabilitiesHandler(wireReg, "", "v2").Capabilities)
 
 	return engine
+}
+
+// serveAdminUISPA serves the embedded index.html for SPA fallback.
+func serveAdminUISPA(c *gin.Context, fsys fs.FS) {
+	file, err := fsys.Open("index.html")
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+	stat, err := file.Stat()
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	// http.ServeContent sets Content-Type, handles Range requests,
+	// and respects If-Modified-Since headers. fs.File is not guaranteed
+	// to implement io.ReadSeeker, so serve an in-memory reader.
+	http.ServeContent(c.Writer, c.Request, "index.html", stat.ModTime(), bytes.NewReader(data))
 }
 
 // Stop cleans up resources used by the router (rate limiter goroutines)

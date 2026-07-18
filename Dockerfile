@@ -15,6 +15,16 @@
 # binaries, and the server target does not carry media tools it will
 # never use.
 
+# ─── admin-ui-builder ─────────────────────────────────────────────
+# Build the React/Vite admin UI so the Go server can embed it.
+FROM --platform=$BUILDPLATFORM node:22-bookworm AS admin-ui-builder
+
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json* ./
+RUN npm install --silent
+COPY web/ ./
+RUN npm run build
+
 # ─── builder ─────────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM golang:1.26-bookworm AS builder
 ARG TARGETOS=linux
@@ -37,6 +47,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+
+# Copy the built admin UI into the tree so web/embed.go can embed it.
+COPY --from=admin-ui-builder /src/web/dist ./web/dist
 
 # Compile the three canonical binaries.
 ENV CGO_ENABLED=1
