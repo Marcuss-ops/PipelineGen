@@ -52,10 +52,18 @@ type DriveDownloaderPort interface {
 // assets.SourceStager port. It downloads directly via yt-dlp
 // (YouTube/DirectURLs) and via DriveDownloaderPort (Google Drive
 // URLs), bypassing the acquisition.SourceStager chain.
+//
+// Source cache (July 2026): when a SourceCacheReader + SourceCacheWriter
+// are wired via WithSourceCache, the stager checks the SQLite-backed
+// cache before invoking yt-dlp. Cache hits copy the cached file into
+// the new temp directory (no re-download). Cache misses trigger the
+// normal download path and populate the cache on success.
 type StockStager struct {
 	svc             *Service
 	ytdlp           *downloader.YTDLPDownloader
 	driveDownloader DriveDownloaderPort
+	cacheReader     SourceCacheReader
+	cacheWriter     SourceCacheWriter
 }
 
 // NewStockStager wraps a stockpipeline.Service as an assets.SourceStager.
@@ -86,6 +94,20 @@ func (s *StockStager) WithDriveDownloader(dl DriveDownloaderPort) *StockStager {
 	return s
 }
 
+// WithSourceCache threads a cross-run source download cache into the
+// stager. When both reader and writer are non-nil, StageSource checks
+// the SQLite-backed cache before invoking yt-dlp and populates it
+// after a successful download. Returns the receiver for fluent chaining.
+//
+// Cache key is derived from the canonical URL + download parameters
+// via DeriveSourceCacheKey. The cache is invalidated when the cached
+// file is missing on disk or has a size mismatch.
+func (s *StockStager) WithSourceCache(reader SourceCacheReader, writer SourceCacheWriter) *StockStager {
+	s.cacheReader = reader
+	s.cacheWriter = writer
+	return s
+}
+
 // StageSource implements assets.SourceStager. Downloads the source video
 // directly via yt-dlp (YouTube/DirectURLs) or via DriveDownloaderPort
 // (Google Drive file URLs), bypassing the acquisition.SourceStager chain.
@@ -109,6 +131,45 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 
 	outputPath := filepath.Join(tmpDir, "source.mp4")
 
+	// ── Source cache lookup (cross-run dedup) ────────────────
+	// Before downloading, check the SQLite-backed cache for a
+	// previously downloaded copy of the same source. Cache key
+	// is derived from the canonical URL + download parameters.
+	cacheKey := DeriveSourceCacheKey(ref.URL, ref.DownloadSection, ref.MergeFormat, ref.ForceKeyframes)
+	if s.cacheReader != nil {
+		if cached, cacheErr := s.cacheReader.GetByCacheKey(ctx, cacheKey); cacheErr == nil && cached != nil {
+			if validateErr := validateCacheHit(cached, s.svc.localFS, s.svc.log); validateErr == nil {
+				if s.svc.log != nil {
+					s.svc.log.Info("stock stager: SOURCE_CACHE_HIT",
+						zap.String("cache_key", cacheKey[:16]+"..."),
+						zap.String("source_url", ref.URL),
+						zap.String("cached_path", cached.LocalPath))
+				}
+				// Copy cached file into the new temp directory.
+				if cpErr := copyFileToPath(cached.LocalPath, outputPath, s.svc.localFS); cpErr != nil {
+					if s.svc.log != nil {
+						s.svc.log.Warn("stock stager: cache hit but copy failed, falling through to download",
+							zap.String("cache_key", cacheKey[:16]+"..."),
+							zap.Error(cpErr))
+					}
+				} else {
+					fi, statErr := os.Stat(outputPath)
+					if statErr == nil {
+						return &assets.StagedAsset{
+							LocalPath: outputPath,
+							Bytes:     fi.Size(),
+						}, nil
+					}
+				}
+			} else {
+				// Cache hit but file invalid — invalidate entry.
+				if s.cacheWriter != nil {
+					_ = s.cacheWriter.Invalidate(ctx, cacheKey)
+				}
+			}
+		}
+	}
+
 	// Google Drive URL → download via Drive API.
 	if isDriveURL(ref.URL) {
 		sa, driveErr := s.stageFromDrive(ctx, ref, outputPath)
@@ -116,78 +177,9 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 			os.RemoveAll(tmpDir)
 			return nil, driveErr
 		}
+		// Populate cache for Drive downloads.
+		s.populateCache(ctx, cacheKey, "drive", "", ref, outputPath, sa.Bytes)
 		return sa, nil
-	}
-
-	// Test-only short-circuit for the known Pacquiao/Broner source.
-	// Match on the video ID so both youtube.com and www.youtube.com
-	// variants hit the cache-backed path.
-	if strings.Contains(ref.URL, "RRJvrDKunyA") {
-		candidatePaths := []string{
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_4158724414/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_4111240603/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_3999819491/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_3992248404/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_39537663/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_3473825249/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_3312747004/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_2954752850/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_2800558823/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_2301134530/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_172950714/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_1725992021/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_1435056646/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/tmp/stock_stage_1138967632/source.mp4.mp4",
-			"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/media/clips/general/RRJvrDKunyA/RRJvrDKunyA.mp4",
-		}
-		for _, stagedPath := range candidatePaths {
-			if _, err := os.Stat(stagedPath); err != nil {
-				continue
-			}
-			if fi, err := os.Stat(stagedPath); err == nil {
-				if fi.Size() < 100*1024*1024 {
-					continue
-				}
-			}
-			if s.svc != nil && s.svc.log != nil {
-				s.svc.log.Info("stock stager: RRJvrDKunyA local cache fallback selected",
-					zap.String("source_path", stagedPath),
-					zap.String("dst_path", outputPath))
-			}
-			srcFile, err := os.Open(stagedPath)
-			if err == nil {
-				defer srcFile.Close()
-				dstFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-				if err == nil {
-					defer dstFile.Close()
-					var ioCopyErr error
-					buf := make([]byte, 32*1024)
-					for {
-						n, readErr := srcFile.Read(buf)
-						if n > 0 {
-							_, writeErr := dstFile.Write(buf[:n])
-							if writeErr != nil {
-								ioCopyErr = writeErr
-								break
-							}
-						}
-						if readErr != nil {
-							break
-						}
-					}
-					if ioCopyErr == nil {
-						fi, statErr := os.Stat(outputPath)
-						if statErr == nil {
-							return &assets.StagedAsset{
-								LocalPath: outputPath,
-								Bytes:     fi.Size(),
-							}, nil
-						}
-					}
-				}
-			}
-			// Try the next candidate path if the copy failed.
-		}
 	}
 
 	if s.ytdlp == nil {
@@ -226,10 +218,39 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		return nil, fmt.Errorf("stock stager: stat %q: %w", resolved, statErr)
 	}
 
+	// Populate cache for fresh downloads.
+	s.populateCache(ctx, cacheKey, "youtube", extractVideoIDFromURL(ref.URL), ref, resolved, fi.Size())
+
 	return &assets.StagedAsset{
 		LocalPath: resolved,
 		Bytes:     fi.Size(),
 	}, nil
+}
+
+// populateCache writes a successful download to the source cache.
+// Failures are logged but never surface to the caller (best-effort).
+func (s *StockStager) populateCache(ctx context.Context, cacheKey, provider, externalID string, ref assets.SourceRef, localPath string, fileSize int64) {
+	if s.cacheWriter == nil {
+		return
+	}
+	entry := &SourceCacheEntry{
+		CacheKey:        cacheKey,
+		Provider:        provider,
+		ExternalID:      externalID,
+		SourceURL:       ref.URL,
+		LocalPath:       localPath,
+		FileSize:        fileSize,
+		DownloadSection: ref.DownloadSection,
+		MergeFormat:     ref.MergeFormat,
+		ForceKeyframes:  ref.ForceKeyframes,
+	}
+	if err := s.cacheWriter.Upsert(ctx, entry); err != nil {
+		if s.svc != nil && s.svc.log != nil {
+			s.svc.log.Warn("stock stager: failed to populate source cache (best-effort)",
+				zap.String("cache_key", cacheKey[:16]+"..."),
+				zap.Error(err))
+		}
+	}
 }
 
 // Cleanup removes the staged file's parent temp directory.

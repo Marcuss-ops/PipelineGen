@@ -124,6 +124,21 @@ type StockFolderCreator interface {
 // are constructor arguments on Deps — replaces the late-bind ordering
 // hazard that swapped the canonical ingestion path on every
 // composition-time race in WireStockPipeline.
+
+// SourceCacheDeps groups the cross-run source download cache ports.
+// All fields are OPTIONAL — nil means no cache (every download is
+// fresh). When both Reader and Writer are wired, the StockStager
+// checks the cache before yt-dlp and populates it after a successful
+// download. LocalFS is the Pattern 0 typed port for the file I/O the
+// cache needs (Stat on hit; Open+Create on copy); PR-REFACTOR-P0-IO-BINDER
+// keeps os.* calls out of the application layer.
+// Field count: 3.
+type SourceCacheDeps struct {
+	Reader  SourceCacheReader
+	Writer  SourceCacheWriter
+	LocalFS LocalFSPort
+}
+
 type Deps struct {
 	// F2.10: Drive field dropped — every Drive write routes through
 	// delivery.Publisher (Publisher field below). The legacy
@@ -137,6 +152,7 @@ type Deps struct {
 	Storage       StorageDeps
 	Media         MediaDeps
 	Execution     ExecutionDeps
+	SourceCache   SourceCacheDeps
 
 	// Finalizer is the Spina Dorsale JobFinalizer (godlike/06
 	// SSOT for SUCCEEDED writes). §12-1 §F.1 (this commit) makes

@@ -23,16 +23,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
-	"strings"
 
 	appacq "github.com/Marcuss-ops/PipelineGen/internal/application/acquisition"
 	assetfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/assets/finalizer"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers/stock/stockpipeline"
 	jobsfinalizer "github.com/Marcuss-ops/PipelineGen/internal/application/jobs/finalizer"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/stocksourcecache"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/media/render"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 
@@ -94,53 +94,6 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 	// then resolves the yt-dlp output file and renames it to the
 	// canonical dstPath the FilesystemStager expects.
 	ytdlpFetch := func(ctx context.Context, req appacq.PrepareRequest, dstPath string, onWireSHA256 func(string)) error {
-		// Pacquiao/Broner smoke path: use the cached local source when
-		// the video ID matches. This avoids yt-dlp/login flakiness for
-		// the final end-to-end smoke while still exercising the full
-		// acquisition.FilesystemStager path.
-		if strings.Contains(req.Source.URL, "RRJvrDKunyA") {
-			candidates := []string{
-				filepath.Join("data", "tmp", "stock_stage_4158724414", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_4111240603", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_3999819491", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_3992248404", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_39537663", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_3473825249", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_3312747004", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_2954752850", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_2800558823", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_2301134530", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_172950714", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_1725992021", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_1435056646", "source.mp4.mp4"),
-				filepath.Join("data", "tmp", "stock_stage_1138967632", "source.mp4.mp4"),
-				filepath.Join("data", "media", "clips", "general", "RRJvrDKunyA", "RRJvrDKunyA.mp4"),
-				"/home/pierone/src/go-master/projects/Pyt/VeloxEditing/refactored/data/media/clips/general/RRJvrDKunyA/RRJvrDKunyA.mp4",
-			}
-			for _, srcPath := range candidates {
-				src, openErr := os.Open(srcPath)
-				if openErr != nil {
-					continue
-				}
-				log.Info("WireStockPipeline: RRJvrDKunyA local cache fallback selected",
-					zap.String("source_path", srcPath),
-					zap.String("dst_path", dstPath),
-				)
-				dst, createErr := os.Create(dstPath)
-				if createErr != nil {
-					src.Close()
-					return createErr
-				}
-				_, copyErr := io.Copy(dst, src)
-				closeErr := dst.Close()
-				srcCloseErr := src.Close()
-				if copyErr == nil && closeErr == nil && srcCloseErr == nil {
-					return nil
-				}
-				_ = os.Remove(dstPath)
-			}
-		}
-
 		dlReq := &downloader.DownloadRequest{
 			URL:        req.Source.URL,
 			OutputPath: dstPath + ".%(ext)s",
@@ -206,6 +159,28 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 		zap.String("ffmpeg_path", ffmpegPath),
 	)
 
+	// ── Local FS port (Pattern 0 typed port for the cache) ──
+	// PR-REFACTOR-P0-IO-BINDER: the application layer cannot call
+	// os.* directly. Always inject the LocalAdapter so the cache
+	// copy + validate paths have a port to route through.
+	stockLocalFS := filesystem.NewLocal()
+
+	// ── Source cache (cross-run dedup) ──────────────────────
+	// Construct the SQLite-backed source cache repository when DB
+	// is available. The cache is optional — nil reader/writer means
+	// every download is fresh (no cross-run dedup).
+	var stockCacheReader stockpipeline.SourceCacheReader
+	var stockCacheWriter stockpipeline.SourceCacheWriter
+	if stockDB != nil {
+		cacheRepo := stocksourcecache.NewRepository(stockDB)
+		stockCacheReader = cacheRepo
+		stockCacheWriter = cacheRepo
+		log.Info("WireStockPipeline: source cache wired",
+			zap.Bool("cache_enabled", true))
+	} else {
+		log.Info("WireStockPipeline: source cache disabled (no DB)")
+	}
+
 	return BuildStockBundle(StockBundleDeps{
 		Runtime: StockRuntimeDeps{
 			Cfg: cfg,
@@ -232,6 +207,11 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 		},
 		Feature: StockFeatureGate{
 			StockPipelineEnabled: func() bool { return cfg.Features.StockPipelineEnabled },
+		},
+		SourceCache: StockSourceCacheDeps{
+			Reader:  stockCacheReader,
+			Writer:  stockCacheWriter,
+			LocalFS: stockLocalFS,
 		},
 	})
 }

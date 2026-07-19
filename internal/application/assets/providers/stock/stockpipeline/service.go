@@ -124,6 +124,19 @@ type Service struct {
 	// db is the SQLite handle for the step store (Phase 2, July 2026).
 	// nil-tolerant — when nil, the orchestrator falls back to in-memory.
 	db *sql.DB
+
+	// sourceCacheReader + sourceCacheWriter are the cross-run source
+	// download cache ports. When both are non-nil, the StockStager
+	// checks the SQLite-backed cache before invoking yt-dlp and
+	// populates it after a successful download. OPTIONAL — nil means
+	// no cache (every download is fresh).
+	sourceCacheReader SourceCacheReader
+	sourceCacheWriter SourceCacheWriter
+	// localFS is the Pattern 0 typed port for the local filesystem
+	// I/O the source cache needs (Stat on hit; Open+Create on copy).
+	// PR-REFACTOR-P0-IO-BINDER keeps os.* calls out of this package;
+	// opt nil → fail-closed at the cache copy site.
+	localFS LocalFSPort
 }
 
 // NewService creates a stock pipeline service via the canonical Deps struct
@@ -206,13 +219,16 @@ func NewService(deps Deps) (*Service, error) {
 			EffectInterval: v.EffectInterval,
 			EffectsDir:     DefaultPipelineConfig().EffectsDir,
 		},
-		jobsSvc:       deps.Execution.Jobs,
-		assetIndex:    deps.Storage.AssetIndex,
-		clipsRepo:     deps.Storage.ClipsRepo,
-		dispatcher:    deps.Storage.Dispatcher,
-		finalizer:     deps.Finalizer,
-		sourceStager:  deps.Execution.SourceStager,
-		channelLister: deps.Execution.ChannelLister,
-		db:            deps.Runtime.DB,
+		jobsSvc:           deps.Execution.Jobs,
+		assetIndex:        deps.Storage.AssetIndex,
+		clipsRepo:         deps.Storage.ClipsRepo,
+		dispatcher:        deps.Storage.Dispatcher,
+		finalizer:         deps.Finalizer,
+		sourceStager:      deps.Execution.SourceStager,
+		channelLister:     deps.Execution.ChannelLister,
+		db:                deps.Runtime.DB,
+		sourceCacheReader: deps.SourceCache.Reader,
+		sourceCacheWriter: deps.SourceCache.Writer,
+		localFS:           deps.SourceCache.LocalFS,
 	}, nil
 }
