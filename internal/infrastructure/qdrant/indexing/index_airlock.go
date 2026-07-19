@@ -1,16 +1,71 @@
-// Package indexing — index_airlock.go: AssetData → IndexDocument airlock.
+// Package indexing — index_airlock.go: AssetData → IndexDocument airlock
+// — ACQUIRE phase.
 //
-// Extracted from payload_mapper_document.go (July 2026).
-// Owns: assetToIndexDocumentNoValidate, domainAssetLifecycle, AssetToIndexDocument.
+// Extracted from payload_mapper_document.go (July 2026). Split into 3
+// phase-aligned siblings within the same package `indexing`:
+//
+//   - index_airlock.go          : THIS FILE. ACQUIRE phase — the
+//                                 unguarded AssetData → IndexDocument
+//                                 projection. The function reads the
+//                                 source-of-truth (AssetData fields +
+//                                 metadata_json fallback bag) and
+//                                 materialises the IndexDocument
+//                                 shell with EmbeddingArtifact entries
+//                                 populated per channel (Values=nil at
+//                                 this stage; the commit phase fills
+//                                 them). Plus `domainAssetLifecycle`,
+//                                 the lifecycle-state normalize-on-
+//                                 acquire helper.
+//
+//   - index_airlock_release.go  : RELEASE (canonicalisation
+//                                 auxiliary). The string-polish +
+//                                 metadata-bool helpers used during
+//                                 acquire (parseSourceVideoID,
+//                                 cleanDrivePath, dedupTrimmedStrings,
+//                                 mergeStringSlices, buildSemanticTitle,
+//                                 metadataBool, metadataBoolPtr,
+//                                 intOrFallback). The phase is named
+//                                 `release` because in this code
+//                                 surface it acts as the
+//                                 canonicalisation pass that runs
+//                                 AFTER raw fields are read (acquire)
+//                                 and BEFORE the wire-ready doc is
+//                                 committed (commit). NOT a
+//                                 resource-cleanup release — this
+//                                 airlock owns no scavenging-locks
+//                                 surface.
+//
+//   - index_airlock_commit.go   : COMMIT phase — the production
+//                                 airlock method
+//                                 `(*PayloadMapper).AssetToIndexDocument`
+//                                 routes the acquire-phase doc through
+//                                 validateDenseVector + resampleFloat32
+//                                 Vector + populate EmbeddingArtifact
+//                                 .Values + stamp GeneratedAt. Returns
+//                                 the typed transport errors
+//                                 (ErrEmptyVector /
+//                                 ErrVectorDimensionMismatch /
+//                                 ErrNaNOrInf) that the upstream
+//                                 IndexWriter fail-closed contract
+//                                 relies on.
+//
+// Wire-protocol invariant (PR 6 godlike/06/07 doctrine, July 2026):
+// the IndexDocument shape and the (AssetData → IndexDocument)
+// projection rules are IDENTICAL across the three phases. The split
+// is purely physical (one file per phase) and makes the invariant
+// static — any future drift would be a code-review diff, not a
+// runtime surprise.
+//
+// Cross-file deps (same package, accessed without explicit imports):
+//   - parseMetadataJSON (in payload_mapper_document.go, sibling)
+//   - firstNonEmpty (in payload_builder.go, sibling)
+//   - release-phase helpers (in index_airlock_release.go, sibling)
+//   - commit-phase validateDenseVector / resampleFloat32Vector
+//     (in payload_mapper_document.go + payload_builder.go)
 package indexing
 
 import (
-	"context"
-	"fmt"
-	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	assetpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/qdrant/schema"
@@ -343,223 +398,15 @@ func assetToIndexDocumentNoValidate(asset *AssetData, schema *schema.IndexSchema
 // domainAssetLifecycle converts a media_assets.lifecycle_state string
 // to the canonical asset.LifecycleState. Empty → ACTIVE (legacy rows
 // post-migration 101 fall through to ACTIVE; canonical fallback).
+//
+// Lives in the acquire phase because the lifecycle state is the first
+// acquire-time normalisation: the wire shape MUST carry a non-empty
+// LifecycleState (godlike/07: a missing lifecycle state is treated as
+// an `ACTIVE` row at SQL-fetch time, not omitted at wire time).
 func domainAssetLifecycle(raw string) assetpkg.LifecycleState {
 	const fallback = "ACTIVE"
 	if raw == "" {
 		return assetpkg.LifecycleState(fallback)
 	}
 	return assetpkg.LifecycleState(raw)
-}
-
-func buildSemanticTitle(title, event string, round int, scene, subject string) string {
-	if title != "" {
-		return strings.Join(dedupTrimmedStrings(title), " ")
-	}
-	parts := make([]string, 0, 4)
-	if event != "" && event != title {
-		parts = append(parts, event)
-	}
-	if round > 0 {
-		parts = append(parts, "round "+strconv.Itoa(round))
-	}
-	if scene != "" && scene != title {
-		parts = append(parts, scene)
-	}
-	if subject != "" && subject != title {
-		parts = append(parts, subject)
-	}
-	return strings.Join(dedupTrimmedStrings(parts...), " ")
-}
-
-func dedupTrimmedStrings(values ...string) []string {
-	out := make([]string, 0, len(values))
-	seen := make(map[string]struct{}, len(values))
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
-		}
-		key := strings.ToLower(v)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, v)
-	}
-	return out
-}
-
-func mergeStringSlices(slices ...[]string) []string {
-	out := make([]string, 0)
-	seen := make(map[string]struct{})
-	for _, slice := range slices {
-		for _, v := range slice {
-			v = strings.TrimSpace(v)
-			if v == "" {
-				continue
-			}
-			key := strings.ToLower(v)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
-func parseSourceVideoID(sourceURL, fallback string) string {
-	sourceURL = strings.TrimSpace(sourceURL)
-	if sourceURL == "" {
-		return strings.TrimSpace(fallback)
-	}
-	if strings.Contains(sourceURL, "youtube.com") || strings.Contains(sourceURL, "youtu.be") {
-		if idx := strings.LastIndex(sourceURL, "v="); idx >= 0 {
-			id := sourceURL[idx+2:]
-			if amp := strings.IndexByte(id, '&'); amp >= 0 {
-				id = id[:amp]
-			}
-			id = strings.TrimSpace(id)
-			if id != "" {
-				return id
-			}
-		}
-		if idx := strings.LastIndex(sourceURL, "/"); idx >= 0 && idx < len(sourceURL)-1 {
-			id := sourceURL[idx+1:]
-			if q := strings.IndexByte(id, '?'); q >= 0 {
-				id = id[:q]
-			}
-			id = strings.TrimSpace(id)
-			if id != "" {
-				return id
-			}
-		}
-	}
-	return strings.TrimSpace(fallback)
-}
-
-func cleanDrivePath(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	return filepath.ToSlash(path)
-}
-
-// metadataBool reads a boolean value from the metadata map.
-// Returns false when the key is absent or not a boolean.
-func metadataBool(meta map[string]any, key string) bool {
-	if meta == nil {
-		return false
-	}
-	v, ok := meta[key]
-	if !ok {
-		return false
-	}
-	b, ok := v.(bool)
-	return b && ok
-}
-
-func metadataBoolPtr(meta map[string]any, top *bool) *bool {
-	if top != nil {
-		return top
-	}
-	if meta == nil {
-		return nil
-	}
-	v, ok := meta["has_dialogue"].(bool)
-	if !ok {
-		return nil
-	}
-	return &v
-}
-
-// intOrFallback returns the top-level AssetData field if non-zero,
-// otherwise the MetadataJSON-derived fallback (godlike/06 SSOT
-// airlock precedence contract for int fields). The canonical
-// firstNonEmpty helper (in payload_builder.go) handles the same
-// contract for strings; the int counterpart uses 0 as the "not set"
-// sentinel.
-//
-// Caveat (forward-pointer PR-ASSETDATA-INT-SENTINEL): for int
-// fields where 0 is a legitimate value (e.g. ChunkIndex=0 for the
-// first chunk), a caller that explicitly sets top-level=0 and also
-// has a stale Metadata entry will get the Metadata value. Acceptable
-// for the current state; a future PR can swap to a pointer-based
-// sentinel if the conflict becomes real.
-func intOrFallback(top, fallback int) int {
-	if top != 0 {
-		return top
-	}
-	return fallback
-}
-
-// AssetToIndexDocument is the canonical Mapper airlock (PR 6). Builds
-// an IndexDocument from a SQL-fetch AssetData and validates the
-// per-channel vector dimensions / NaN / Inf before the wire is
-// constructed. Returns the same typed errors as AssetToPoint
-// (transport.ErrEmptyVector / transport.ErrVectorDimensionMismatch / transport.ErrNaNOrInf) so the
-// upstream IndexWriter fail-closed at the type assertion already
-// caught in BuildProcessBundle (`var _ clipindexer.VectorStoreIndexer
-// = (*qdrant.IndexWriter)(nil)`) keeps behaving identically.
-//
-// The airlock strips Status / DriveLink / LocalPath at the
-// IndexDocument boundary; the IndexDocument struct has no such fields,
-// so the wire-shape invariant is enforced statically (frozen test in
-// composition_test.go::TestComposition_FrozenQdrantIndexDocument
-// CanonicalTypes) AND dynamically (wire-shape test in
-// payload_mapper_test.go::TestBuildPayloadFromDocument_NoForbidden
-// LocatorKeys).
-func (m *PayloadMapper) AssetToIndexDocument(ctx context.Context, asset *AssetData, schema *schema.IndexSchema) (*IndexDocument, error) {
-	if asset == nil {
-		return nil, fmt.Errorf("asset is nil")
-	}
-	if asset.ID == "" {
-		return nil, fmt.Errorf("asset ID must not be empty")
-	}
-	doc := assetToIndexDocumentNoValidate(asset, schema)
-	// Route BM25 search-text through the canonical SearchTextBuilder
-	// (registered via SetSearchTextBuilder at composition root). The
-	// helper falls back to asset.SearchText when the builder is nil
-	// or returns empty — the contract preserves the pre-existing DB
-	// pre-build path for legacy rows.
-	doc.SearchText = m.resolveSearchText(ctx, asset)
-	for _, spec := range schema.DenseVectors {
-		channel := VectorChannel(spec.Channel)
-		vec := m.getVectorForChannel(asset, spec.Channel)
-		if spec.Channel == "visual" && len(vec) > 0 && len(vec) != spec.Dimensions {
-			if normalized, err := resampleFloat32Vector(vec, spec.Dimensions); err == nil {
-				vec = normalized
-			}
-		}
-
-		// Task 4 (July 2026): route through the canonical 5-step
-		// validation helper instead of inline ad-hoc checks.
-		// validateDenseVector returns nil for:
-		//   - valid vectors (all checks pass)
-		//   - optional-channel nil vectors (silent skip)
-		// Returns typed error for:
-		//   - required-channel nil → ErrMissingRequiredVector
-		//   - zero-length vector   → ErrEmptyVector
-		//   - dimension mismatch   → ErrVectorDimensionMismatch
-		//   - NaN/Inf             → ErrNaNOrInf
-		if err := validateDenseVector(spec.Channel, vec, spec.Dimensions, asset.ID); err != nil {
-			return nil, err
-		}
-		if vec == nil {
-			continue // optional channel, absent is allowed
-		}
-
-		doc.Embeddings[channel] = EmbeddingArtifact{
-			Channel:       channel,
-			Values:        vec,
-			Model:         spec.Model,
-			ModelVersion:  spec.ModelVersion,
-			PreprocessVer: spec.PreprocessVer,
-			Dimensions:    spec.Dimensions,
-			GeneratedAt:   time.Now(),
-		}
-	}
-	return doc, nil
 }
