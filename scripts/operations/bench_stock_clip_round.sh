@@ -1,6 +1,16 @@
 #!/bin/bash
-# Bench slash stack: POST-fix (1 batch + N probes) vs PRE-fix (N seq cuts + N probes).
-# Wraps ffmpeg/ffprobe for invocation count.  N=30 scaled (351/11.7x).
+# Bench: stock pipeline clip extraction - POST-fix (1 batch + N probes) vs
+# PRE-fix (N sequential cuts + N probes). Wraps ffmpeg/ffprobe via a PATH
+# wrapper directory (/tmp/stock-bench/wrap/) for invocation counting, plus
+# a background sampler tracking peak CPU% + RAM% throughout both scenarios.
+#
+#   N=30 (default, ~75s wall) - the canonical scaling-tier receipt.
+#   N=351 (full verdict round) - CI-only scope; on ffmpeg 4.4.2 single-CLI
+#   graph depth, the post-fix batch may exceed the graph-depth ceiling
+#   (see §12.5.4 in docs/operations/stock-e2e-runbook.md).
+#
+# godlike/06 SSOT: this script is the canonical bench operator-facing
+# artifact; §12.5.3 in the runbook references its exact invocation.
 
 set -uo pipefail
 
@@ -42,7 +52,19 @@ echo "[setup] N=$N SRC_DUR=${SRC_DUR}s CLIP_DUR=${CLIP_DUR}s" >&2
   -f lavfi -i "testsrc=duration=${SRC_DUR}:size=640x480:rate=30" \
   -pix_fmt yuv420p -c:v libx264 -preset ultrafast "$SOURCE" 2>"$SUBDIR/source.err"
 
-# === POST-fix: 1 ffmpeg batch (filter_complex) + N ffprobe validations ===
+# Background CPU/RAM peak sampler - runs throughout both scenarios,
+# samples every 200ms. Output: "cpu_pct ram_pct" per line in PEAK_LOG.
+( while true; do
+    ps -eo pcpu,pmem,comm --no-headers 2>/dev/null \
+      | awk '$3 ~ /^(ffmpeg|ffprobe)$/ {print $1, $2}' \
+      >> "$PEAK_LOG" 2>/dev/null
+    sleep 0.2
+  done ) >/dev/null 2>&1 &
+SAMPLER_PID=$!
+# Cleanup trap guarantees sampler exit even on early error / SIGINT.
+trap 'kill "$SAMPLER_PID" 2>/dev/null || true' EXIT
+
+# === POST-fix scenario: 1 ffmpeg batch (filter_complex) + N ffprobe validations ===
 echo "[post-fix] starting batch..." >&2
 POST_START=$(date +%s.%N)
 FILTER=""
@@ -66,7 +88,7 @@ done
 POST_END=$(date +%s.%N)
 POST_WALL=$(awk -v s="$POST_START" -v e="$POST_END" 'BEGIN{printf "%.4f", e-s}')
 
-# === PRE-fix: N sequential cuts (one ffmpeg each) + N ffprobe validations ===
+# === PRE-fix scenario: N sequential cuts (one ffmpeg each) + N ffprobe validations ===
 echo "[pre-fix] starting sequential..." >&2
 PRE_START=$(date +%s.%N)
 for ((i=0; i<N; i++)); do
@@ -79,17 +101,22 @@ done
 PRE_END=$(date +%s.%N)
 PRE_WALL=$(awk -v s="$PRE_START" -v e="$PRE_END" 'BEGIN{printf "%.4f", e-s}')
 
-# Background sampler would have been killed here; now that we don't fork, just do a single spot-check
-PEAK_CPU=$(awk '{print $1}' "$PEAK_LOG" | sort -nr | head -1)
-PEAK_RAM=$(awk '{print $2}' "$PEAK_LOG" | sort -nr | head -1)
-[ -z "$PEAK_CPU" ] && PEAK_CPU=0 && PEAK_RAM=0
+# Stop the background sampler BEFORE computing peak (cleanup trap will also fire).
+kill "$SAMPLER_PID" 2>/dev/null || true
+trap - EXIT
+
+# Compute peak CPU/RAM from collected samples (max of column 1 / column 2).
+PEAK_CPU=$(awk '$1+0 > m {m=$1+0} END{printf "%.2f", m+0}' "$PEAK_LOG" 2>/dev/null)
+PEAK_RAM=$(awk '$2+0 > m {m=$2+0} END{printf "%.2f", m+0}' "$PEAK_LOG" 2>/dev/null)
+: "${PEAK_CPU:=0.00}"
+: "${PEAK_RAM:=0.00}"
 
 # Hash outputs
 { echo "# BENCH N=$N SRC_DUR=${SRC_DUR}s"; echo "# POST clips ($(ls "$CLIPDIR"/*.mp4 2>/dev/null | wc -l)):"; sha256sum "$CLIPDIR"/*.mp4 2>/dev/null | sort; echo "# PRE clips ($(ls "$PREDIR"/*.mp4 2>/dev/null | wc -l)):"; sha256sum "$PREDIR"/*.mp4 2>/dev/null | sort; } > "$HASHFILE"
 
 # Counts from log
-TOTAL_FFMPEG=$(grep -c ' ffmpeg ' "$LOG")
-TOTAL_FFPROBE=$(grep -c ' ffprobe ' "$LOG")
+TOTAL_FFMPEG=$(grep -c ' ffmpeg ' "$LOG" 2>/dev/null | head -1 || echo 0)
+TOTAL_FFPROBE=$(grep -c ' ffprobe ' "$LOG" 2>/dev/null | head -1 || echo 0)
 POST_FFMPEG=1   # exactly 1 batch call
 POST_FFPROBE=$N
 PRE_FFMPEG=$((TOTAL_FFMPEG - POST_FFMPEG))
