@@ -238,7 +238,7 @@ func TestResolver_Download_AuthorizedByNewDefaults(t *testing.T) {
 	}
 
 	r := NewResolver(cfg, ResolverConfig{
-		// Same plumb-through as build_bundles_artlist.go::WireArtlist:
+		// Same plumb-through as build_bundles_artlist_artlist.go::WireArtlist:
 		AcquisitionMode:    artapp.ArtlistAcquisitionMode(cfg.External.ArtlistAcquisitionMode),
 		AccountID:          cfg.External.ArtlistAccountID,
 		DailyDownloadLimit: cfg.External.ArtlistDailyDownloadLimit,

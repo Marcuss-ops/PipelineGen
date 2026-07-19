@@ -11,7 +11,7 @@
 //     method) and asserts pointer-equality of the returned triplet.
 //
 // Why pointer equality (not semantic): godlike/06 one-canonical-owner-
-// per-fact. The composition root (internal/app/build_bundles_artlist.go
+// per-fact. The composition root (internal/app/build_bundles_artlist_artlist.go
 // ::WireArtlist) is the single construction site for the 3 searchers
 // (scraper.New + fallback.NewPixabay + fallback.NewPexels); the *Service
 // preserves those pointers verbatim so callers (diagnostic surfaces,
@@ -63,7 +63,7 @@ var _ Searcher = (*mockSearcher)(nil)
 
 // TestService_SearchersAccessor_ReturnsInjectedSearchers pins the
 // PR-ARTLIST-SEARCHERS wiring contract: the composition root
-// (build_bundles_artlist.go::WireArtlist) is the single canonical
+// (build_bundles_artlist_artlist.go::WireArtlist) is the single canonical
 // construction site for the 3 searchers; the *Service preserves the
 // 3 pointers in field order (scraper, pixabay, pexels); the
 // Searchers() (Searcher, Searcher, Searcher) accessor returns them
