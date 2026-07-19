@@ -33,14 +33,30 @@ func newTestRouter() *Router {
 	})
 }
 
-func TestAdminUI_RequiresToken(t *testing.T) {
+func TestAdminUI_PublicAssets(t *testing.T) {
 	t.Parallel()
 	gin.SetMode(gin.TestMode)
 
 	router := newTestRouter()
 	engine := router.Setup()
 
+	// The static SPA is intentionally public so the browser can load
+	// the login page; only the API routes require authentication.
 	req := httptest.NewRequest(http.MethodGet, "/admin/", nil)
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestAdminAuthMe_RequiresToken(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	router := newTestRouter()
+	engine := router.Setup()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/auth/me", nil)
 	rec := httptest.NewRecorder()
 	engine.ServeHTTP(rec, req)
 

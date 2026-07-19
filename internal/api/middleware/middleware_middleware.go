@@ -38,13 +38,13 @@ func Auth(sec middleware.AuthSecurityPort, log *zap.Logger) gin.HandlerFunc {
 				zap.Bool("has_credential", token != ""))
 		}
 
-		if sec != nil && compareTokens(token, sec.AdminToken()) {
+		if sec != nil && CompareTokens(token, sec.AdminToken()) {
 			c.Set("is_admin", true)
 			c.Next()
 			return
 		}
 
-		if sec != nil && compareTokens(token, sec.WorkerToken()) {
+		if sec != nil && CompareTokens(token, sec.WorkerToken()) {
 			c.Set("is_worker", true)
 			c.Next()
 			return
@@ -70,22 +70,28 @@ func extractAuthToken(c *gin.Context) string {
 	}
 
 	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
-	if authHeader == "" {
-		return ""
+	if authHeader != "" {
+		const bearerPrefix = "Bearer "
+		if strings.HasPrefix(authHeader, bearerPrefix) {
+			return strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
+		}
+		return authHeader
 	}
 
-	const bearerPrefix = "Bearer "
-	if strings.HasPrefix(authHeader, bearerPrefix) {
-		return strings.TrimSpace(strings.TrimPrefix(authHeader, bearerPrefix))
+	// Session cookie support for the admin SPA. The cookie value is the
+	// admin token itself, so it flows through the same constant-time
+	// comparison as header-based tokens.
+	if cookie, err := c.Cookie("velox_admin_session"); err == nil && strings.TrimSpace(cookie) != "" {
+		return strings.TrimSpace(cookie)
 	}
 
-	return authHeader
+	return ""
 }
 
-// compareTokens returns true iff `provided` and `expected` are
+// CompareTokens returns true iff `provided` and `expected` are
 // non-empty, equal length, and byte-equal — computed in constant time
 // via crypto/subtle.ConstantTimeCompare.
-func compareTokens(provided, expected string) bool {
+func CompareTokens(provided, expected string) bool {
 	// PR 14 (June 2026): trim whitespace on both sides.
 	// Systemd's Environment= directive may carry trailing spaces
 	// or invisible characters that become part of the token value.
@@ -176,7 +182,7 @@ func WorkerAuth(sec middleware.AuthSecurityPort, log *zap.Logger) gin.HandlerFun
 		// becomes cosmetic. This is a load-bearing security
 		// invariant pinned by TestWorkerAuth_RejectsAdminToken;
 		// touching it requires re-validating the threat model.
-		if compareTokens(token, expected) {
+		if CompareTokens(token, expected) {
 			c.Set("is_worker", true)
 			c.Next()
 			return

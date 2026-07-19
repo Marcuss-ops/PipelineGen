@@ -27,7 +27,7 @@ import (
 //     the Authorization channel with worker tokens or future OAuth flows)
 //  2. Authorization: Bearer <token> header (legacy fallback)
 //
-// Comparison goes through compareTokens (crypto/subtle) so the secret
+// Comparison goes through CompareTokens (crypto/subtle) so the secret
 // is not leaked via byte-by-byte network-level timing.
 //
 // Distinct from Auth(): Auth() accepts BOTH admin and worker tokens;
@@ -74,7 +74,7 @@ func RequireAdminToken(sec middleware.AuthSecurityPort, log *zap.Logger) gin.Han
 				zap.Bool("has_credential", provided != ""))
 		}
 
-		if compareTokens(provided, expected) {
+		if CompareTokens(provided, expected) {
 			c.Set("is_admin", true)
 			c.Next()
 			return

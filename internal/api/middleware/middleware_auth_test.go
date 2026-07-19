@@ -197,6 +197,16 @@ func TestExtractAuthToken_AcceptsHeaders(t *testing.T) {
 			t.Fatalf("expected X-Velox-Admin-Token to win precedence, got %q", got)
 		}
 	})
+
+	t.Run("Cookie velox_admin_session", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		req := httptest.NewRequest("GET", "/x", nil)
+		req.Header.Set("Cookie", "velox_admin_session=cookie-secret")
+		c.Request = req
+		if got := extractAuthToken(c); got != "cookie-secret" {
+			t.Fatalf("expected cookie-secret, got %q", got)
+		}
+	})
 }
 
 // TestAuth_RejectsQueryStringToken_EndToEnd drives the full Auth
@@ -247,33 +257,34 @@ func TestAuth_RejectsQueryStringToken_EndToEnd(t *testing.T) {
 // subtest is the closest behavioral proxy for "the implementation
 // actually compared every byte".
 func TestCompareTokens(t *testing.T) {
+
 	t.Run("equal_strings", func(t *testing.T) {
-		if !compareTokens("secret-123", "secret-123") {
+		if !CompareTokens("secret-123", "secret-123") {
 			t.Fatal("expected true for byte-equal strings")
 		}
 	})
 	t.Run("different_strings_same_length", func(t *testing.T) {
-		if compareTokens("secret-123", "secret-456") {
+		if CompareTokens("secret-123", "secret-456") {
 			t.Fatal("expected false for differing strings of same length")
 		}
 	})
 	t.Run("different_lengths", func(t *testing.T) {
-		if compareTokens("short", "much-longer-token") {
+		if CompareTokens("short", "much-longer-token") {
 			t.Fatal("expected false for differing-length strings")
 		}
 	})
 	t.Run("empty_provided", func(t *testing.T) {
-		if compareTokens("", "expected-token") {
+		if CompareTokens("", "expected-token") {
 			t.Fatal("expected false when provided is empty")
 		}
 	})
 	t.Run("empty_expected", func(t *testing.T) {
-		if compareTokens("provided-token", "") {
+		if CompareTokens("provided-token", "") {
 			t.Fatal("expected false when expected is empty")
 		}
 	})
 	t.Run("both_empty", func(t *testing.T) {
-		if compareTokens("", "") {
+		if CompareTokens("", "") {
 			t.Fatal("expected false when both are empty")
 		}
 	})
@@ -283,12 +294,12 @@ func TestCompareTokens(t *testing.T) {
 		// should still return false (correct) but a real timing
 		// measurement would reveal the regression. The unit test
 		// pins the value; timing is left to code review.
-		if compareTokens("aaaaaa", "baaaaa") {
+		if CompareTokens("aaaaaa", "baaaaa") {
 			t.Fatal("expected false for strings differing in first byte only")
 		}
 	})
 	t.Run("single_byte_difference_last_byte", func(t *testing.T) {
-		if compareTokens("aaaaaa", "aaaaab") {
+		if CompareTokens("aaaaaa", "aaaaab") {
 			t.Fatal("expected false for strings differing in last byte only")
 		}
 	})
