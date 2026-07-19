@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
@@ -47,6 +48,28 @@ var _ assets.SourceStager = (*StockStager)(nil)
 // WithDriveDownloader at composition time.
 type DriveDownloaderPort interface {
 	DownloadFile(ctx context.Context, fileID string) (io.ReadCloser, string, error)
+}
+
+// sharedSourceLease carries the reference count + leader path for a
+// single in-flight singleflight download. Mutex-guarded for
+// concurrent acquire/release from many goroutines.
+//
+// PR-STOCK-SOURCE-CACHE-LEASE (July 2026, P0 race fix): each
+// StageSource caller that goes through the singleflight path
+// acquires a ref on the leader's tmpDir; the LAST caller to release
+// physically unlinks it AND evicts this lease from the sharedRefs
+// map so a future acquireSharedLease on the same cacheKey can
+// create a fresh lease without inheriting the sticky released=true
+// state. acquisition is via acquireSharedLease (called from
+// StageSource) and release is via releaseSharedLease (called from
+// Cleanup). Together with the copy-to-own-tmp layer they eliminate
+// the "Job A Cleanup deletes the source while Job B is still
+// reading it" race window identified by the verdict.
+type sharedSourceLease struct {
+	mu       sync.Mutex
+	path     string
+	refCount int
+	released bool
 }
 
 // StockStager adapts a stockpipeline.Service to the shared
@@ -75,6 +98,40 @@ type DriveDownloaderPort interface {
 // canonical DeriveSourceCacheKey hash (download-section sensitive:
 // two ranges on the same source URL hit different keys → two
 // potential downloads, as expected by DoD §7 "Clip A vs Clip B").
+//
+// Source-cache concurrent safety (PR-STOCK-SOURCE-CACHE-LEASE,
+// July 2026): under singleflight, N concurrent StageSource callers
+// collapse to ONE yt-dlp download and each caller initially observes
+// the same leader pointer. Two complementary safety layers guarantee
+// the leader's tmpDir cannot be unlinked out from under other
+// concurrent readers:
+//
+//	(a) Copy-to-own-tmp — after the singleflight callback returns,
+//	    each follower copies the leader's file into its own unique
+//	    tmpDir/source.mp4. Cleanup of a follower removes only its
+//	    own tmpDir, so the leader's file is unaffected. The copy
+//	    step is also robust because it uses an open file
+//	    descriptor; even if the leader's parent directory is
+//	    unlinked mid-copy, the FD keeps the file alive until close.
+//
+//	(b) Reference-counted lease — caller-specific Lease awareness
+//	    binds the StagedAsset.LocalPath returned to each caller to
+//	    an entry in sharedRefs. Cleanup uses isLeaseLeader to detect
+//	    whether the calling staged asset IS the leader (LocalPath
+//	    == lease.path) or a follower (LocalPath != lease.path). For
+//	    the leader, Cleanup defers tmpDir removal entirely to the
+//	    lease (which unlinks only when refCount==0). For followers,
+//	    Cleanup removes the caller's own tmpDir directly AND releases
+//	    one ref on the lease. Sticky `released=true` is avoided by
+//	    deleting the lease from sharedRefs once its refCount
+//	    reaches zero, so a future acquireSharedLease on the same
+//	    cacheKey (cross-round reuse within the StockStager lifetime)
+//	    creates a fresh lease and properly unlinks its leader path.
+//
+// Layer (a) is the primary guarantee (each caller fully isolated).
+// Layer (b) protects the small under-the-hood window where the
+// leader's own Cleanup would otherwise eagerly unlink the leader's
+// tmpDir, defeating the FD-based protection of (a).
 type StockStager struct {
 	svc             *Service
 	downloader      DownloaderPort
@@ -82,6 +139,30 @@ type StockStager struct {
 	cacheReader     SourceCacheReader
 	cacheWriter     SourceCacheWriter
 	sf              singleflight.Group
+
+	// sharedRefs maps each in-flight cacheKey to its reference-counted
+	// lease on the leader's tmpDir file. acquireSharedLease /
+	// releaseSharedLease own the lifecycle. The map is per-StockStager
+	// instance and is in-memory only; it's cleared when the process
+	// exits. The cross-run SQLite cache is the persistent owner of
+	// the source file.
+	sharedRefs sync.Map // map[string]*sharedSourceLease (cacheKey → lease)
+
+	// assetLeases binds each caller's StagedAsset.LocalPath to the
+	// cacheKey of the shared lease that caller acquired. Cleanup
+	// uses this side-map to find and release the lease without
+	// requiring lease plumbing on the assets.SourceStager port
+	// surface. Loaded once per StageSource call (store), then
+	// LoadAndDelete'd on Cleanup.
+	//
+	// IMPORTANT: the key is the FINAL LocalPath returned to the
+	// caller (post-copy), which differs between leader and follower:
+	//   - leader: returns stagedAsset.LocalPath (= resolved path on
+	//     disk, may equal or differ from its raw outputPath)
+	//   - follower: returns outputPath (its own copy)
+	// Mixed-up keys (e.g. always storing outputPath) caused earlier
+	// iterations of this fix to leave the leader's Cleanup un-leased.
+	assetLeases sync.Map // map[string]string (LocalPath → cacheKey)
 }
 
 // NewStockStager wraps a stockpipeline.Service as an assets.SourceStager.
@@ -120,7 +201,8 @@ func (s *StockStager) WithDriveDownloader(dl DriveDownloaderPort) *StockStager {
 // WithSourceCache threads a cross-run source download cache into the
 // stager. When both reader and writer are non-nil, StageSource checks
 // the SQLite-backed cache before invoking yt-dlp and populates it
-// after a successful download. Returns the receiver for fluent chaining.
+// after a successful download. Returns the receiver for fluent
+// chaining.
 //
 // Cache key is derived from the canonical URL + download parameters
 // via DeriveSourceCacheKey. The cache is invalidated when the cached
@@ -139,6 +221,136 @@ func (s *StockStager) WithSourceCache(reader SourceCacheReader, writer SourceCac
 func (s *StockStager) WithDownloader(dl DownloaderPort) *StockStager {
 	s.downloader = dl
 	return s
+}
+
+// acquireSharedLease initializes the per-cacheKey lease on first
+// call (path/leaderPath are stamped; refCount starts at 0 and is
+// bumped to 1 inside this method), or increments refCount of an
+// already-active lease. The side-map assetLeases binds the caller's
+// StagedAsset.LocalPath (the path actually returned) to the
+// cacheKey so Cleanup can find the lease without forcing call sites
+// to thread lease keys through the assets.SourceStager port.
+//
+// godlike/06 SSOT: this lease is owned exclusively by StockStager;
+// no caller code path may mutate refCount directly. refCount is
+// initialized to 0 (NOT 1) before ++ so that:
+//
+//   - a single acquire + single release → refCount 1→0 → unlink
+//   - evict (B2 fix prevents sticky released=true on reuse);
+//   - N acquires and N releases → refCount N→0 → unlink + evict
+//     (no count leak of +1 per acquire).
+func (s *StockStager) acquireSharedLease(cacheKey, leaderPath, callLocalPath string) {
+	// TOCTOU robustness (post-review R2): a concurrent new acquire
+	// may race with releaseSharedLease's Delete. If the new acquire
+	// inherits a `released=true` lease, the matching release()
+	// short-circuits and the new leader's tmpDir is never reclaimed.
+	// Retry on `lease.released` to evict the stale entry and let
+	// LoadOrStore create a fresh lease. Bounded to a small number
+	// of attempts (pathological wheel-spin is bounded by the limit).
+	const maxAttempts = 4
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// R3 cosmetic: don't pre-init `path` here; we set it under the
+		// lock so readers (isLeaseLeader, releaseSharedLease) always
+		// see a fully-stamped lease.
+		leaseI, _ := s.sharedRefs.LoadOrStore(cacheKey, &sharedSourceLease{})
+		lease := leaseI.(*sharedSourceLease)
+		lease.mu.Lock()
+		if lease.released {
+			lease.mu.Unlock()
+			s.sharedRefs.Delete(cacheKey)
+			continue
+		}
+		lease.path = leaderPath
+		lease.refCount++
+		lease.mu.Unlock()
+		s.assetLeases.Store(callLocalPath, cacheKey)
+		return
+	}
+	// Pathological wheel-spin fallback after maxAttempts: best-effort
+	// acquire with a forcibly fresh lease. Worst case (still contended)
+	// is a slight refCount drift, which the next release iterations
+	// absorb via the sticky `released=true` guard.
+	s.sharedRefs.Delete(cacheKey)
+	leaseI, _ := s.sharedRefs.LoadOrStore(cacheKey, &sharedSourceLease{})
+	lease := leaseI.(*sharedSourceLease)
+	lease.mu.Lock()
+	lease.path = leaderPath
+	lease.refCount++
+	lease.mu.Unlock()
+	s.assetLeases.Store(callLocalPath, cacheKey)
+}
+
+// releaseSharedLease decrements the in-flight refcount for cacheKey.
+// When refCount hits 0, the lease unlinks the leader's tmpDir AND
+// evicts the lease from sharedRefs (so a future acquireSharedLease
+// on the same cacheKey creates a fresh lease — prevents the
+// sticky `released=true` leak described in B2). Returns the
+// underlying os.RemoveAll error so callers can log it; never
+// bubbles up because Cleanup is best-effort.
+//
+// Idempotent: a second release on an evicted key returns nil
+// (sync.Map.Load returns ok=false). A second release on a lease
+// still in sharedRefs but already at refCount==0 also returns
+// nil (`released` sticky guard under lock).
+func (s *StockStager) releaseSharedLease(cacheKey string) error {
+	val, ok := s.sharedRefs.Load(cacheKey)
+	if !ok {
+		return nil
+	}
+	lease := val.(*sharedSourceLease)
+	lease.mu.Lock()
+	defer lease.mu.Unlock()
+	if lease.released {
+		return nil
+	}
+	if lease.refCount > 0 {
+		lease.refCount--
+	}
+	if lease.refCount == 0 {
+		lease.released = true
+		var unlinkErr error
+		if lease.path != "" {
+			dir := filepath.Dir(lease.path)
+			if dir != "" && dir != "." && dir != "/" {
+				unlinkErr = os.RemoveAll(dir)
+			}
+		}
+		// Evict BEFORE unlocking so a concurrent new acquireSharedLease
+		// that goes through sync.Map.LoadOrStore after our Delete sees
+		// the key absent and creates a fresh lease (path reset,
+		// refCount init=0, released=false). The previous acquireSharedLease
+		// would have raced into stale-released=true territory without
+		// this Delete; with it, the lease is gracefully recycled on
+		// reuse of the same cacheKey.
+		s.sharedRefs.Delete(cacheKey)
+		return unlinkErr
+	}
+	return nil
+}
+
+// isLeaseLeader reports whether the staged asset identified by
+// localPath was the LEADER caller of the given cacheKey's lease
+// (LocalPath == lease.path AND the lease is still active). Cleanup
+// uses this to decide whether the caller's own tmpDir (== leader's
+// tmpDir) must be deferred to the lease's last-ref unlink, or
+// removed directly (follower case where own tmpDir is independent).
+//
+// godlike/07 honest-limitation: this is best-effort — a race
+// between isLeaseLeader and releaseSharedLease can drop one side by
+// a few microseconds, but since both are mutex-guarded on the same
+// lease.mu and Cleanup is best-effort, the worst case is a stale
+// leader detection that simply performs the wrong branch — the
+// subsequent os.RemoveAll on a missing dir is idempotent and the
+// lease's eviction handles the leader tmpDir correctly anyway.
+func (s *StockStager) isLeaseLeader(leaseKey, localPath string) bool {
+	val, ok := s.sharedRefs.Load(leaseKey)
+	if !ok {
+		return false
+	}
+	lease := val.(*sharedSourceLease)
+	lease.mu.Lock()
+	defer lease.mu.Unlock()
+	return !lease.released && lease.path == localPath
 }
 
 // StageSource implements assets.SourceStager. Downloads the source video
@@ -239,11 +451,16 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 	// followers block until the leader finishes, then receive the
 	// same *assets.StagedAsset pointer.
 	//
-	// The singleflight key is the same DeriveSourceCacheKey hash used
-	// for the cache lookup, so cache hits AND same-key downloads
-	// collapse uniformly. Different download-sections yield different
-	// keys (no false collapse between Clip A and Clip B on the same
-	// source — see DoD §7 in the runbook + source_cache_test.go::T4).
+	// PR-STOCK-SOURCE-CACHE-LEASE (July 2026): every caller that
+	// goes through this branch acquires a ref on a per-cacheKey
+	// lease (sharedSourceLease). The lease guards the leader's
+	// tmpDir: only the LAST outstanding ref physically unlinks
+	// (via releaseSharedLease in Cleanup) AND evicts the lease from
+	// sharedRefs. With the finalLocalPath fix (B3), acquireSharedLease
+	// runs AFTER the copy decision and binds the assetLeases side-map
+	// key to the path actually returned to the caller (leader or
+	// follower's own copy), so Cleanup's leader-detection correctly
+	// defers leader-tmpDir removal to the lease's last-ref unlink.
 	v, sfErr, _ := s.sf.Do(cacheKey, func() (interface{}, error) {
 		if dlErr := s.downloader.Download(ctx, dlReq); dlErr != nil {
 			return nil, fmt.Errorf("stock stager: yt-dlp download %q: %w", ref.URL, dlErr)
@@ -272,20 +489,33 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		return nil, sfErr
 	}
 	stagedAsset := v.(*assets.StagedAsset)
-	// If the staged asset returned points to another caller's temp path,
-	// copy it to our own unique temp folder to avoid concurrency races
-	// (when Job A deletes its directory on cleanup while Job B is still reading).
-	if stagedAsset.LocalPath != outputPath {
-		if cpErr := copyFileToPath(stagedAsset.LocalPath, outputPath, s.svc.localFS); cpErr != nil {
+
+	// Determine the final LocalPath this caller will receive:
+	//   - leader: stagedAsset.LocalPath (= the singleflight's resolved
+	//     file, which already exists inside THIS caller's tmpDir
+	//     since the leader IS the goroutine that downloaded)
+	//   - follower: copy to outputPath, then return outputPath
+	leaderPath := stagedAsset.LocalPath
+	finalLocalPath := leaderPath
+	if leaderPath != outputPath {
+		if cpErr := copyFileToPath(leaderPath, outputPath, s.svc.localFS); cpErr != nil {
 			os.RemoveAll(tmpDir)
-			return nil, fmt.Errorf("stock stager: copy concurrent download from %s to %s: %w", stagedAsset.LocalPath, outputPath, cpErr)
+			return nil, fmt.Errorf("stock stager: copy concurrent download from %s to %s: %w", leaderPath, outputPath, cpErr)
 		}
-		return &assets.StagedAsset{
-			LocalPath: outputPath,
-			Bytes:     stagedAsset.Bytes,
-		}, nil
+		finalLocalPath = outputPath
 	}
-	return stagedAsset, nil
+
+	// Acquire AFTER the copy decision so the assetLeases side-map
+	// key matches the LocalPath the caller will receive, and a copy
+	// failure short-circuits WITHOUT acquiring a lease (avoids
+	// orphan side-map entries — N1 fix auto-resolved by this
+	// ordering).
+	s.acquireSharedLease(cacheKey, leaderPath, finalLocalPath)
+
+	return &assets.StagedAsset{
+		LocalPath: finalLocalPath,
+		Bytes:     stagedAsset.Bytes,
+	}, nil
 }
 
 // populateCache writes a successful download to the source cache.
@@ -314,16 +544,70 @@ func (s *StockStager) populateCache(ctx context.Context, cacheKey, provider, ext
 	}
 }
 
-// Cleanup removes the staged file's parent temp directory.
+// Cleanup removes the staged file's parent temp directory AND
+// releases the shared-lease refcount (if any).
+//
+// Two distinct paths:
+//
+//   - Leader caller (staged.LocalPath == lease.path): do NOT
+//     remove ownDir directly — defer removal to releaseSharedLease
+//     which unlinks ONLY when the LAST outstanding ref is released.
+//     This is the load-bearing invariant that fixes the verdict's
+//     race (B1): a premature Cleanup of one follower cannot unlink
+//     the leader's tmp_dir out from under other concurrent followers
+//     that may still be reading the file. Followers have already
+//     copied-to-own-tmp per layer (a), so they're safe regardless,
+//     but the lease keeps the LEADER's tmpDir alive for the
+//     singleflight callback's own caller if it shares the path.
+//
+//   - Follower caller (staged.LocalPath != lease.path): the
+//     follower's own tmpDir is independent of the leader's, so
+//     remove ownDir directly + release one lease ref. The lease's
+//     final unlink happens when the LAST ref (typically the
+//     leader's) is released.
+//
+// godlike/07 honest-limitation: this is best-effort — a crashed
+// process leaves refs on the lease. The cross-run cache (SQLite
+// SourceCacheReader/Writer) is the persistent owner and re-downloads
+// on next validation failure, so a leaked ref is recoverable via
+// the cache invalidation path on the next pipeline run.
 func (s *StockStager) Cleanup(_ context.Context, staged *assets.StagedAsset) error {
 	if staged == nil || staged.LocalPath == "" {
 		return nil
 	}
-	dir := filepath.Dir(staged.LocalPath)
-	if dir == "" || dir == "." || dir == "/" {
+
+	leaseKeyAny, hasLease := s.assetLeases.LoadAndDelete(staged.LocalPath)
+
+	var ownErr error
+	if hasLease {
+		leaseKey, _ := leaseKeyAny.(string)
+		// Detect "this caller IS the leader" — defer ownDir removal
+		// to the lease so concurrent followers keep their access.
+		if !s.isLeaseLeader(leaseKey, staged.LocalPath) {
+			ownDir := filepath.Dir(staged.LocalPath)
+			if ownDir != "" && ownDir != "." && ownDir != "/" {
+				ownErr = os.RemoveAll(ownDir)
+			}
+		}
+		if rerr := s.releaseSharedLease(leaseKey); rerr != nil {
+			if s.svc != nil && s.svc.log != nil {
+				s.svc.log.Warn("stock stager: release shared lease failed",
+					zap.String("lease_key", leaseKey),
+					zap.Error(rerr))
+			}
+			if ownErr == nil {
+				ownErr = rerr
+			}
+		}
+		return ownErr
+	}
+
+	// No lease (cache-hit or drive path): direct cleanup of ownDir.
+	ownDir := filepath.Dir(staged.LocalPath)
+	if ownDir == "" || ownDir == "." || ownDir == "/" {
 		return nil
 	}
-	return os.RemoveAll(dir)
+	return os.RemoveAll(ownDir)
 }
 
 // ── Drive download helpers ─────────────────────────────────────────────
