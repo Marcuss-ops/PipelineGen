@@ -12,19 +12,19 @@
 // index_airlock_release.go have already polished raw strings). At this
 // stage the airlock:
 //
-//   1. Re-runs assetToIndexDocumentNoValidate (acquire) to materialise
-//      a fresh shell (it's cheap — the bulk is field-mapping).
-//   2. Routes the BM25 search text through the canonical
-//      SearchTextBuilder (fallback to asset.SearchText).
-//   3. For each dense channel spec:
-//        a. Resolves the per-channel vector from AssetData (the
-//           getVectorForChannel receiver method on PayloadMapper).
-//        b. Resamples the `visual` channel if dimension mismatch
-//           (godlike/07 forward-prevention: rolling resample keeps
-//           the airlock running across model-version drift).
-//        c. Runs the canonical 5-step validateDenseVector check.
-//        d. Populates EmbeddingArtifact with .Values + GeneratedAt
-//           (the wire-ready stamp).
+//  1. Re-runs assetToIndexDocumentNoValidate (acquire) to materialise
+//     a fresh shell (it's cheap — the bulk is field-mapping).
+//  2. Routes the BM25 search text through the canonical
+//     SearchTextBuilder (fallback to asset.SearchText).
+//  3. For each dense channel spec:
+//     a. Resolves the per-channel vector from AssetData (the
+//     getVectorForChannel receiver method on PayloadMapper).
+//     b. Resamples the `visual` channel if dimension mismatch
+//     (godlike/07 forward-prevention: rolling resample keeps
+//     the airlock running across model-version drift).
+//     c. Runs the canonical 5-step validateDenseVector check.
+//     d. Populates EmbeddingArtifact with .Values + GeneratedAt
+//     (the wire-ready stamp).
 //
 // Cross-file deps (same package `indexing`, accessed without explicit
 // imports):
