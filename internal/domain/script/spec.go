@@ -9,13 +9,6 @@
 // GenerationSpec remains as a parameter carrier for the post-gen pipeline.
 package script
 
-// (Removed June 2026, Wave 5 PR3) JobTypeGenerateFromClips was a duplicate
-// of job.TypeClipScriptGenerate in internal/domain/job/job.go. The job
-// broker is the canonical owner of job-type strings per
-// architecture/ownership.yaml; route all dispatch through
-//   job.TypeClipScriptGenerate
-// (which holds the value "script.generate_from_clips").
-
 // GenerationSpec is the canonical payload for script generation.
 // It contains every field the worker needs to execute the generation
 // pipeline, from text input through clip selection to output options.
@@ -78,16 +71,4 @@ type GenerationSpec struct {
 	PromptVersion       string `json:"prompt_version,omitempty"`
 	EditorPromptVersion string `json:"editor_prompt_version,omitempty"`
 	QAPromptVersion     string `json:"qa_prompt_version,omitempty"`
-}
-
-// HasClips returns true when the spec requests clip-aware generation
-// (explicit clip IDs or automatic search via NumClips).
-func (s *GenerationSpec) HasClips() bool {
-	return len(s.ClipIDs) > 0 || s.NumClips > 0
-}
-
-// HasText returns true when a text topic or source text is provided
-// for text-only generation.
-func (s *GenerationSpec) HasText() bool {
-	return s.Topic != "" || s.SourceText != ""
 }
