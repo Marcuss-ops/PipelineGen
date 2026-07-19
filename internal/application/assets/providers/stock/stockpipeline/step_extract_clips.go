@@ -231,9 +231,23 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 				sourceID, cutErr)
 		}
 
-		var mu sync.Mutex
-		var wg sync.WaitGroup
-		var uploadErr error
+		// Collect upload tasks sequentially so that segment counts,
+		// filenames, and chunk ordering remain deterministic before
+		// any concurrent work starts.
+		type clipUploadTask struct {
+			clipIdx         int
+			plan            ClipPlan
+			cVA             finalization.VerifiedArtifact
+			segmentFilename string
+			leafName        string
+		}
+		type clipUploadResult struct {
+			chunk    ChunkState
+			leafName string
+			err      error
+		}
+
+		var uploadTasks []clipUploadTask
 
 		// Now process each clip.
 		for clipIdx, plan := range groupPlans {
@@ -249,9 +263,7 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 				continue
 			}
 
-			mu.Lock()
 			cutPaths = append(cutPaths, item.OutputPath)
-			mu.Unlock()
 
 			// Write asset/outbox for this successfully cut clip.
 			// Asset ID uses the planner's OutputLogicalID (stable
@@ -299,10 +311,8 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 					if in != nil && len(in.Clips) > 0 {
 						leafName = stockClipFolderName(in, plan, timestampGroupName)
 					}
-					mu.Lock()
 					segmentCount := segmentCounts[leafName] + 1
 					segmentCounts[leafName] = segmentCount
-					mu.Unlock()
 
 					segmentFilename := fmt.Sprintf("clip_%03d.mp4", segmentCount)
 					clipVA := finalization.VerifiedArtifact{
@@ -322,61 +332,97 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 						PathLeafName:       leafName,
 					}
 
-					wg.Add(1)
-					go func(cVA finalization.VerifiedArtifact, p ClipPlan, sFilename string, cIdx int, lName string) {
-						defer wg.Done()
-						clipPublished, clipPrepErr := artifactPrep.Prepare(ctx, cVA)
+					uploadTasks = append(uploadTasks, clipUploadTask{
+						clipIdx:         clipIdx,
+						plan:            plan,
+						cVA:             clipVA,
+						segmentFilename: segmentFilename,
+						leafName:        leafName,
+					})
+				}
+			}
+		}
+
+		// Upload prepared clips with a bounded worker pool (max 2
+		// concurrent Drive uploads per source group). Results are
+		// written into a pre-allocated slice and aggregated
+		// sequentially afterwards so publishedChunks and
+		// groupBuckets stay ordered by clipIdx.
+		if artifactPrep != nil && len(uploadTasks) > 0 {
+			uploadResults := make([]clipUploadResult, len(uploadTasks))
+
+			taskCh := make(chan int, len(uploadTasks))
+			for i := range uploadTasks {
+				taskCh <- i
+			}
+			close(taskCh)
+
+			numWorkers := 2
+			if len(uploadTasks) < numWorkers {
+				numWorkers = len(uploadTasks)
+			}
+
+			var wg sync.WaitGroup
+			for w := 0; w < numWorkers; w++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for taskIdx := range taskCh {
+						task := uploadTasks[taskIdx]
+						clipPublished, clipPrepErr := artifactPrep.Prepare(ctx, task.cVA)
 						if clipPrepErr != nil {
-							mu.Lock()
-							if uploadErr == nil {
-								uploadErr = fmt.Errorf("%w: clip publish for chunk %d (artifact=%s): %w",
-									ErrStockPublishArtifactFailed, cIdx, p.OutputLogicalID, clipPrepErr)
+							uploadResults[taskIdx] = clipUploadResult{
+								err: fmt.Errorf("%w: clip publish for chunk %d (artifact=%s): %w",
+									ErrStockPublishArtifactFailed, task.clipIdx, task.plan.OutputLogicalID, clipPrepErr),
 							}
-							mu.Unlock()
-							return
+							continue
 						}
 
 						publishedChunk := ChunkState{
-							Index:              cIdx,
-							ArtifactID:         p.OutputLogicalID,
-							Filename:           sFilename,
-							LocalPath:          cVA.LocalPath,
-							SizeBytes:          cVA.SizeBytes,
-							SHA256:             cVA.SHA256,
-							Description:        p.Description,
-							Title:              p.Title,
-							SourceURL:          p.SourceID,
-							SourceProvider:     p.SourceProvider,
-							SourceVideoID:      p.SourceVideoID,
-							StartSec:           p.StartSec,
-							EndSec:             p.EndSec,
-							Round:              p.Round,
-							Tags:               append([]string(nil), p.Tags...),
-							Category:           p.Category,
-							Slug:               p.Slug,
+							Index:              task.clipIdx,
+							ArtifactID:         task.plan.OutputLogicalID,
+							Filename:           task.segmentFilename,
+							LocalPath:          task.cVA.LocalPath,
+							SizeBytes:          task.cVA.SizeBytes,
+							SHA256:             task.cVA.SHA256,
+							Description:        task.plan.Description,
+							Title:              task.plan.Title,
+							SourceURL:          task.plan.SourceID,
+							SourceProvider:     task.plan.SourceProvider,
+							SourceVideoID:      task.plan.SourceVideoID,
+							StartSec:           task.plan.StartSec,
+							EndSec:             task.plan.EndSec,
+							Round:              task.plan.Round,
+							Tags:               append([]string(nil), task.plan.Tags...),
+							Category:           task.plan.Category,
+							Slug:               task.plan.Slug,
 							RemoteFileID:       clipPublished.Location.FileID,
 							RemoteWebViewLink:  clipPublished.Location.WebViewLink,
 							DrivePath:          clipPublished.Location.WebViewLink,
 							RemoteDownloadLink: clipPublished.Location.DownloadLink,
 						}
 
-						mu.Lock()
-						publishedChunks = append(publishedChunks, publishedChunk)
-						bucket := groupBuckets[lName]
-						if bucket == nil {
-							bucket = &timestampGroupBuffer{leafName: lName, firstIndex: cIdx}
-							groupBuckets[lName] = bucket
+						uploadResults[taskIdx] = clipUploadResult{
+							chunk:    publishedChunk,
+							leafName: task.leafName,
 						}
-						bucket.chunks = append(bucket.chunks, publishedChunk)
-						mu.Unlock()
-					}(clipVA, plan, segmentFilename, clipIdx, leafName)
-				}
+					}
+				}()
 			}
-		}
+			wg.Wait()
 
-		wg.Wait()
-		if uploadErr != nil {
-			return uploadErr
+			for _, res := range uploadResults {
+				if res.err != nil {
+					return res.err
+				}
+				publishedChunks = append(publishedChunks, res.chunk)
+				bucket := groupBuckets[res.leafName]
+				if bucket == nil {
+					bucket = &timestampGroupBuffer{leafName: res.leafName, firstIndex: res.chunk.Index}
+					groupBuckets[res.leafName] = bucket
+				}
+				bucket.chunks = append(bucket.chunks, res.chunk)
+			}
 		}
 
 		if runner.Log() != nil {

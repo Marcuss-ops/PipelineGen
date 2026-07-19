@@ -36,10 +36,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"github.com/Marcuss-ops/PipelineGen/internal/domain/finalization"
 )
 
 // recordingWriter captures the asset + fileHash arguments to
@@ -66,12 +69,18 @@ func (w *recordingWriter) WriteAndEnqueue(_ context.Context, clip *asset.Asset, 
 // the embedded state field).
 type extractClipsFakeRunner struct {
 	*fakeStepRunner
-	writer TransactionalAssetWriter
-	cutter VideoCutter
+	writer       TransactionalAssetWriter
+	cutter       VideoCutter
+	artifactPrep finalization.ArtifactPreparationService
 }
 
-func (r *extractClipsFakeRunner) Cutter() VideoCutter              { return r.cutter }
-func (r *extractClipsFakeRunner) Writer() TransactionalAssetWriter { return r.writer }
+func (r *extractClipsFakeRunner) Cutter() VideoCutter { return r.cutter }
+func (r *extractClipsFakeRunner) Writer() TransactionalAssetWriter {
+	return r.writer
+}
+func (r *extractClipsFakeRunner) ArtifactPreparation() finalization.ArtifactPreparationService {
+	return r.artifactPrep
+}
 
 // deterministicRichCutter is a focused VideoCutter stub that
 // returns a single Succeeded item with the configured output path.
@@ -144,6 +153,49 @@ func (b *batchRecordingCutter) Cut(_ context.Context, req CutRequest) (CutBatchR
 	return CutBatchResult{
 		SourcePath: req.SourcePath,
 		Items:      items,
+	}, nil
+}
+
+// concurrencyTrackingArtifactPrep is a fake ArtifactPreparationService
+// that records the maximum number of concurrent Prepare calls. It is
+// used to verify that the stock.extract_clips upload worker pool
+// respects its concurrency limit.
+type concurrencyTrackingArtifactPrep struct {
+	mu            sync.Mutex
+	current       int
+	maxConcurrent int
+	calls         int
+	delay         time.Duration
+}
+
+func (p *concurrencyTrackingArtifactPrep) Prepare(_ context.Context, artifact finalization.VerifiedArtifact) (finalization.PublishedArtifact, error) {
+	p.mu.Lock()
+	p.current++
+	if p.current > p.maxConcurrent {
+		p.maxConcurrent = p.current
+	}
+	p.calls++
+	p.mu.Unlock()
+
+	if p.delay > 0 {
+		time.Sleep(p.delay)
+	}
+
+	p.mu.Lock()
+	p.current--
+	p.mu.Unlock()
+
+	return finalization.PublishedArtifact{
+		ArtifactID: artifact.ArtifactID,
+		Filename:   artifact.Filename,
+		MIMEType:   artifact.MIMEType,
+		SizeBytes:  artifact.SizeBytes,
+		SHA256:     artifact.SHA256,
+		Location: finalization.AssetLocation{
+			Provider:    "drive",
+			FileID:      "file-" + artifact.ArtifactID,
+			WebViewLink: "https://drive.google.com/file/d/file-" + artifact.ArtifactID,
+		},
 	}, nil
 }
 
@@ -686,6 +738,102 @@ func TestStockExtractClipsStep_RichAssetWrite(t *testing.T) {
 	for _, sub := range wantSubstrings {
 		if !strings.Contains(st, sub) {
 			t.Errorf("SearchText missing %q\ngot: %s", sub, st)
+		}
+	}
+}
+
+// TestStockExtractClips_UploadWorkerPoolLimitsConcurrency asserts that
+// artifact uploads are performed by a bounded worker pool (max 2
+// concurrent Prepare calls per source group) and that the resulting
+// chunks remain ordered by clip index with deterministic clip_001.mp4
+// filenames.
+func TestStockExtractClips_UploadWorkerPoolLimitsConcurrency(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sourcePath := filepath.Join(tmpDir, "source.mp4")
+	if err := os.WriteFile(sourcePath, []byte("fake-source-bytes"), 0o644); err != nil {
+		t.Fatalf("seed source file: %v", err)
+	}
+
+	// 5 clips on the same source so the worker pool has work to do.
+	plans := []ClipPlan{
+		{SourceID: "yt-upload-pool", OutputLogicalID: "planner:upload:0", StartSec: 0, EndSec: 5, PolicyVersion: "test-policy-v1"},
+		{SourceID: "yt-upload-pool", OutputLogicalID: "planner:upload:1", StartSec: 5, EndSec: 10, PolicyVersion: "test-policy-v1"},
+		{SourceID: "yt-upload-pool", OutputLogicalID: "planner:upload:2", StartSec: 10, EndSec: 15, PolicyVersion: "test-policy-v1"},
+		{SourceID: "yt-upload-pool", OutputLogicalID: "planner:upload:3", StartSec: 15, EndSec: 20, PolicyVersion: "test-policy-v1"},
+		{SourceID: "yt-upload-pool", OutputLogicalID: "planner:upload:4", StartSec: 20, EndSec: 25, PolicyVersion: "test-policy-v1"},
+	}
+
+	prep := &concurrencyTrackingArtifactPrep{delay: 50 * time.Millisecond}
+	cutter := &batchRecordingCutter{}
+	writer := &recordingWriter{}
+
+	state := &runState{
+		Plan: plans,
+		StagedAssets: []*assets.StagedAsset{
+			{SourceID: "yt-upload-pool", LocalPath: sourcePath, DurationSec: 60},
+		},
+	}
+
+	base := &fakeStepRunner{
+		runInput: &RunInput{
+			Clips: []ClipSpec{
+				{URL: "https://www.youtube.com/watch?v=upload-pool", StartSec: 0, EndSec: 5},
+				{URL: "https://www.youtube.com/watch?v=upload-pool", StartSec: 5, EndSec: 10},
+				{URL: "https://www.youtube.com/watch?v=upload-pool", StartSec: 10, EndSec: 15},
+				{URL: "https://www.youtube.com/watch?v=upload-pool", StartSec: 15, EndSec: 20},
+				{URL: "https://www.youtube.com/watch?v=upload-pool", StartSec: 20, EndSec: 25},
+			},
+			ClipDuration: 5,
+			TotalMinutes: 1,
+		},
+		cfg: OrchestratorConfig{
+			PolicyVersion: "test-policy-v1",
+		},
+		state: state,
+	}
+	runner := &extractClipsFakeRunner{
+		fakeStepRunner: base,
+		writer:         writer,
+		cutter:         cutter,
+		artifactPrep:   prep,
+	}
+
+	step := StockExtractClipsStep{}
+	if err := step.Run(context.Background(), runner); err != nil {
+		t.Fatalf("step.Run: unexpected error: %v", err)
+	}
+
+	// Assert: all clips were uploaded plus one metadata.json for the
+	// single timestamp group (5 clips + 1 metadata = 6 Prepare calls).
+	wantCalls := len(plans) + 1
+	if prep.calls != wantCalls {
+		t.Errorf("Prepare calls = %d, want %d", prep.calls, wantCalls)
+	}
+
+	// Assert: concurrency never exceeded 2 and the pool actually
+	// parallelized work (max concurrent must be exactly 2 when there
+	// are more than 2 clips to upload).
+	if prep.maxConcurrent > 2 {
+		t.Errorf("max concurrent uploads = %d, want <= 2", prep.maxConcurrent)
+	}
+	if prep.maxConcurrent < 2 {
+		t.Errorf("max concurrent uploads = %d, want 2 (pool did not parallelize)", prep.maxConcurrent)
+	}
+
+	// Assert: published chunks are in clip-index order and use the
+	// deterministic clip_001.mp4, clip_002.mp4, ... filenames.
+	published := runner.State().Published
+	if len(published) != len(plans) {
+		t.Fatalf("published chunks = %d, want %d", len(published), len(plans))
+	}
+	for i, chunk := range published {
+		wantFilename := fmt.Sprintf("clip_%03d.mp4", i+1)
+		if chunk.Filename != wantFilename {
+			t.Errorf("published[%d].Filename = %q, want %q", i, chunk.Filename, wantFilename)
+		}
+		if chunk.Index != i {
+			t.Errorf("published[%d].Index = %d, want %d", i, chunk.Index, i)
 		}
 	}
 }
