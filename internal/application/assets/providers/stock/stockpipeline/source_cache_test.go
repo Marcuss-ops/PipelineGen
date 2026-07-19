@@ -667,6 +667,72 @@ func TestStageSource_T7_ConcurrentCollapsesToOneDownload(t *testing.T) {
 	}
 }
 
+// T9: concurrent callers that hit the same singleflight download must
+// each receive an independent LocalPath. Cleanup of one job's temp
+// directory must not remove the file used by another job (DoD §8 race
+// condition guard).
+func TestStageSource_T9_ConcurrentSingleflightReturnsIndependentPaths(t *testing.T) {
+	fd := newFakeDownloader([]byte("fake-mp4-bytes-t9"))
+	fd.delay = 100 * time.Millisecond
+	stager, _, _ := setupTestEnv(t, fd)
+
+	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
+	const N = 5
+	var wg sync.WaitGroup
+	wg.Add(N)
+	barrier := make(chan struct{})
+
+	results := make([]*assets.StagedAsset, N)
+	errs := make([]error, N)
+	for i := 0; i < N; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			<-barrier
+			sa, err := stager.StageSource(context.Background(), ref)
+			results[idx] = sa
+			errs[idx] = err
+		}(i)
+	}
+	close(barrier)
+	wg.Wait()
+
+	if fd.Count() != 1 {
+		t.Errorf("expected 1 download after %d concurrent callers, got %d (singleflight must collapse)", N, fd.Count())
+	}
+
+	paths := make(map[string]struct{})
+	for i, sa := range results {
+		if errs[i] != nil {
+			t.Fatalf("goroutine %d err: %v", i, errs[i])
+		}
+		if sa == nil || sa.LocalPath == "" {
+			t.Fatalf("goroutine %d returned nil/empty staged asset", i)
+		}
+		if _, exists := paths[sa.LocalPath]; exists {
+			t.Errorf("duplicate LocalPath returned: %s", sa.LocalPath)
+		}
+		paths[sa.LocalPath] = struct{}{}
+		if _, err := os.Stat(sa.LocalPath); err != nil {
+			t.Errorf("goroutine %d staged file missing: %v", i, err)
+		}
+	}
+
+	// Simulate cleanup of the first job and verify the others still have
+	// their files on disk.
+	cleanupDir := filepath.Dir(results[0].LocalPath)
+	if err := os.RemoveAll(cleanupDir); err != nil {
+		t.Fatalf("cleanup first job dir: %v", err)
+	}
+	for i, sa := range results {
+		if i == 0 {
+			continue
+		}
+		if _, err := os.Stat(sa.LocalPath); err != nil {
+			t.Errorf("goroutine %d file was removed by another job's cleanup: %v", i, err)
+		}
+	}
+}
+
 // T8: cache.Invalidate removes entry (lookup after Invalidate returns
 // nil). Companion to T5/T6; pins the public-cache contract that the
 // production repository (stocksourcecache.Repository.Invalidate)
