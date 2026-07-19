@@ -34,12 +34,12 @@ mkdir -p "$WRAP" "$CLIPDIR" "$PREDIR"
 cat > "$WRAP/ffmpeg" <<'EOF'
 #!/bin/bash
 echo "$(date +%s%N) ffmpeg $@" >> /tmp/stock-bench/subprocess.log
-${FFMPEG_BIN:-/usr/bin/ffmpeg} "$@" 2>/dev/null
+${FFMPEG_BIN:-"${FFMPEG_BIN:-/usr/bin/ffmpeg}"} "$@" 2>/dev/null
 EOF
 cat > "$WRAP/ffprobe" <<'EOF'
 #!/bin/bash
 echo "$(date +%s%N) ffprobe $@" >> /tmp/stock-bench/subprocess.log
-${FFPROBE_BIN:-/usr/bin/ffprobe} "$@" 2>/dev/null
+${FFPROBE_BIN:-"${FFPROBE_BIN:-/usr/bin/ffprobe}"} "$@" 2>/dev/null
 EOF
 chmod +x "$WRAP/ffmpeg" "$WRAP/ffprobe"
 export PATH="$WRAP:$PATH"
@@ -48,7 +48,7 @@ CLIP_DUR=$(awk -v n="$N" -v d="$SRC_DUR" 'BEGIN{print d/n}')
 echo "[setup] N=$N SRC_DUR=${SRC_DUR}s CLIP_DUR=${CLIP_DUR}s" >&2
 
 # Generate source (no wrapper, just direct)
-/usr/bin/ffmpeg -y -hide_banner -loglevel error \
+"${FFMPEG_BIN:-/usr/bin/ffmpeg}" -y -hide_banner -loglevel error \
   -f lavfi -i "testsrc=duration=${SRC_DUR}:size=640x480:rate=30" \
   -pix_fmt yuv420p -c:v libx264 -preset ultrafast "$SOURCE" 2>"$SUBDIR/source.err"
 
