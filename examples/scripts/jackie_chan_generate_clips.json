@@ -1,7 +1,7 @@
 {
   "version": 2,
   "preset": "custom",
-  "correlation_id": "jackie-chan-generate-clips-e2e-v1",
+  "correlation_id": "jackie-chan-generate-clips-e2e-v2",
   "items": [
     {
       "id": "jackie-chan-doc-voiceover",
@@ -31,6 +31,7 @@
         "use_memory": false
       },
       "output": {
+        "translate_to": "it",
         "extract_entities": false,
         "generate_metadata": false,
         "save_to_db": true,
