@@ -9,25 +9,26 @@
 // Split rationale (resource/handler, mount under the same prefix):
 //
 //   - handler.go               : THIS FILE. Facciata — Handler struct
-//                                + Dependencies + NewHandler +
-//                                RegisterRoutes (delegates to the
-//                                per-resource sub-routers below).
+//
+//   - Dependencies + NewHandler +
+//     RegisterRoutes (delegates to the
+//     per-resource sub-routers below).
 //
 //   - handler_summary.go       : Resource SUMMARY — dashboard
-//                                aggregation. 1 route
-//                                (GET /summary).
+//     aggregation. 1 route
+//     (GET /summary).
 //
 //   - handler_assets.go        : Resource ASSETS — list + get +
-//                                preview. 3 routes
-//                                (GET /assets, /assets/:id,
-//                                /assets/:id/preview).
+//     preview. 3 routes
+//     (GET /assets, /assets/:id,
+//     /assets/:id/preview).
 //
 //   - handler_outbox.go        : Resource OUTBOX — status + events.
-//                                2 routes (GET /outbox/status,
-//                                /outbox/events).
+//     2 routes (GET /outbox/status,
+//     /outbox/events).
 //
 //   - handler_index.go         : Resource INDEX-HEALTH — single status
-//                                endpoint. 1 route (GET /index-health).
+//     endpoint. 1 route (GET /index-health).
 //
 // All sub-routers share the parent *gin.RouterGroup passed to
 // RegisterRoutes: the canonical /api/assets/operator prefix is
