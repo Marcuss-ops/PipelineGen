@@ -24,6 +24,8 @@ package stockpipeline
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -410,4 +412,327 @@ func TestOrchestrator_RunResilient_NewStepFailureMarkFailed(t *testing.T) {
 		"query failedRow lease_until for verify")
 	assert.Equal(t, "", failedLease,
 		"Failed stage clears lease_until per godlike/07 contract")
+}
+
+// TestOrchestrator_RunResilient_RehydratesRunState verifies that
+// pre-completed steps restore their produced runState so later
+// steps see the accumulated state. This is the core crash-resume
+// contract: a prior run persisted Plan in stock.plan's checkpoint,
+// and the resumed run's stock.stage_sources step must observe it.
+func TestOrchestrator_RunResilient_RehydratesRunState(t *testing.T) {
+	db := openOrchestratorResumeTestDB(t)
+	store := steps.NewSQLiteStoreWithDB(db)
+	ctx := context.Background()
+	jobID := "rehydrate-test-1"
+
+	// Simulate a prior run that completed stock.plan and persisted
+	// its produced runState (including the Plan slice).
+	planState := runState{
+		Plan: []ClipPlan{
+			{
+				SourceID:        "https://example.com/video.mp4",
+				OutputLogicalID: "planner:test:0",
+				StartSec:        0,
+				EndSec:          5,
+			},
+		},
+	}
+	planBytes, marshalErr := json.Marshal(planState)
+	require.NoError(t, marshalErr, "marshal planState for pre-completed row")
+
+	planKey := steps.StepKey{
+		JobID:            jobID,
+		StepKey:          "stock.plan",
+		InputFingerprint: stepInputFingerprint(jobID, "stock.plan"),
+	}
+	require.NoError(t, store.MarkStarted(ctx, planKey))
+	require.NoError(t, store.MarkCompleted(ctx, planKey, planBytes, nil))
+
+	// stage_sources step asserts that the Plan was rehydrated.
+	var stageSourcesCalled bool
+	stageSourcesStep := &stateAssertingStep{
+		name: "stock.stage_sources",
+		assertFn: func(state *runState) error {
+			stageSourcesCalled = true
+			if len(state.Plan) != 1 {
+				return fmt.Errorf("expected 1 rehydrated plan entry, got %d", len(state.Plan))
+			}
+			if state.Plan[0].SourceID != "https://example.com/video.mp4" {
+				return fmt.Errorf("expected rehydrated SourceID %q, got %q",
+					"https://example.com/video.mp4", state.Plan[0].SourceID)
+			}
+			return nil
+		},
+	}
+
+	// extract_clips step asserts that state is still present after
+	// the previous rehydration/skip.
+	var extractClipsCalled bool
+	extractClipsStep := &stateAssertingStep{
+		name: "stock.extract_clips",
+		assertFn: func(state *runState) error {
+			extractClipsCalled = true
+			if len(state.Plan) != 1 {
+				return fmt.Errorf("expected plan to survive through stage_sources, got %d", len(state.Plan))
+			}
+			return nil
+		},
+	}
+
+	dispatchSteps := []Step{
+		&stubRecorderStep{name: "stock.plan", count: new(int32)},
+		stageSourcesStep,
+		extractClipsStep,
+		&stubRecorderStep{name: "stock.compose_chunks", count: new(int32)},
+		&stubRecorderStep{name: "stock.publish", count: new(int32)},
+	}
+
+	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o.dispatchSteps = dispatchSteps
+
+	_, err := o.RunResilient(ctx, &RunInput{})
+	require.NoError(t, err)
+
+	require.True(t, stageSourcesCalled, "stock.stage_sources must run and assert rehydrated state")
+	require.True(t, extractClipsCalled, "stock.extract_clips must run with rehydrated state intact")
+
+	// stock.plan was pre-completed and should not have re-run.
+	rows, listErr := store.ListByJob(ctx, jobID)
+	require.NoError(t, listErr)
+	require.Equal(t, 5, len(rows), "one row per dispatch step")
+}
+
+// stateAssertingStep is a test Step that runs an custom assertion
+// against the current runState. It fails the run if the assertion
+// returns an error.
+type stateAssertingStep struct {
+	name     string
+	assertFn func(state *runState) error
+}
+
+func (s *stateAssertingStep) Name() string { return s.name }
+func (s *stateAssertingStep) Run(_ context.Context, runner StepRunner) error {
+	return s.assertFn(runner.State())
+}
+
+// TestOrchestrator_RunResilient_PersistsRunState verifies that
+// MarkCompleted persists the full runState snapshot produced by a
+// step. A step mutates Plan; after RunResilient we read the
+// stock.plan row and assert its result_json contains the mutation.
+func TestOrchestrator_RunResilient_PersistsRunState(t *testing.T) {
+	db := openOrchestratorResumeTestDB(t)
+	store := steps.NewSQLiteStoreWithDB(db)
+	ctx := context.Background()
+	jobID := "persist-state-test-1"
+
+	mutatingStep := &stateMutatingStep{
+		name: "stock.plan",
+		mutateFn: func(state *runState) {
+			state.Plan = []ClipPlan{
+				{SourceID: "https://example.com/video.mp4", OutputLogicalID: "planner:persist:0"},
+			}
+		},
+	}
+
+	dispatchSteps := []Step{
+		mutatingStep,
+		&stubRecorderStep{name: "stock.stage_sources", count: new(int32)},
+		&stubRecorderStep{name: "stock.extract_clips", count: new(int32)},
+		&stubRecorderStep{name: "stock.compose_chunks", count: new(int32)},
+		&stubRecorderStep{name: "stock.publish", count: new(int32)},
+	}
+
+	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o.dispatchSteps = dispatchSteps
+
+	_, err := o.RunResilient(ctx, &RunInput{})
+	require.NoError(t, err)
+
+	rows, listErr := store.ListByJob(ctx, jobID)
+	require.NoError(t, listErr)
+
+	var planRow *steps.StepState
+	for i := range rows {
+		if rows[i].StepKey == "stock.plan" {
+			planRow = &rows[i]
+			break
+		}
+	}
+	require.NotNil(t, planRow, "stock.plan row must exist")
+	require.True(t, len(planRow.Result) > 0, "stock.plan result_json must be non-empty")
+
+	var persisted runState
+	require.NoError(t, json.Unmarshal(planRow.Result, &persisted))
+	require.Equal(t, 1, len(persisted.Plan), "persisted Plan must contain one entry")
+	require.Equal(t, "https://example.com/video.mp4", persisted.Plan[0].SourceID)
+}
+
+// TestOrchestrator_RunResilient_RehydratesMultipleSteps verifies that
+// when several consecutive steps are pre-completed, each step's
+// checkpoint is rehydrated in pipeline order and the surviving state
+// is the one from the latest pre-completed step.
+func TestOrchestrator_RunResilient_RehydratesMultipleSteps(t *testing.T) {
+	db := openOrchestratorResumeTestDB(t)
+	store := steps.NewSQLiteStoreWithDB(db)
+	ctx := context.Background()
+	jobID := "rehydrate-multi-test-1"
+
+	planState := runState{
+		Plan: []ClipPlan{{SourceID: "https://example.com/plan.mp4", OutputLogicalID: "planner:multi:0"}},
+	}
+	stageState := runState{
+		Plan: []ClipPlan{{SourceID: "https://example.com/plan.mp4", OutputLogicalID: "planner:multi:0"}},
+		StagedAssets: []*assets.StagedAsset{
+			{LocalPath: "/tmp/staged_multi.mp4", SourceID: "https://example.com/plan.mp4", Bytes: 1234},
+		},
+	}
+
+	planKey := steps.StepKey{JobID: jobID, StepKey: "stock.plan", InputFingerprint: stepInputFingerprint(jobID, "stock.plan")}
+	stageKey := steps.StepKey{JobID: jobID, StepKey: "stock.stage_sources", InputFingerprint: stepInputFingerprint(jobID, "stock.stage_sources")}
+
+	planBytes, _ := json.Marshal(planState)
+	stageBytes, _ := json.Marshal(stageState)
+
+	require.NoError(t, store.MarkStarted(ctx, planKey))
+	require.NoError(t, store.MarkCompleted(ctx, planKey, planBytes, nil))
+	require.NoError(t, store.MarkStarted(ctx, stageKey))
+	require.NoError(t, store.MarkCompleted(ctx, stageKey, stageBytes, nil))
+
+	var extractCalled bool
+	extractStep := &stateAssertingStep{
+		name: "stock.extract_clips",
+		assertFn: func(state *runState) error {
+			extractCalled = true
+			if len(state.Plan) != 1 {
+				return fmt.Errorf("expected 1 plan entry, got %d", len(state.Plan))
+			}
+			if len(state.StagedAssets) != 1 {
+				return fmt.Errorf("expected 1 staged asset from stock.stage_sources checkpoint, got %d", len(state.StagedAssets))
+			}
+			if state.StagedAssets[0].LocalPath != "/tmp/staged_multi.mp4" {
+				return fmt.Errorf("unexpected staged local path: %s", state.StagedAssets[0].LocalPath)
+			}
+			return nil
+		},
+	}
+
+	planCount := new(int32)
+	stageCount := new(int32)
+	dispatchSteps := []Step{
+		&stubRecorderStep{name: "stock.plan", count: planCount},
+		&stubRecorderStep{name: "stock.stage_sources", count: stageCount},
+		extractStep,
+		&stubRecorderStep{name: "stock.compose_chunks", count: new(int32)},
+		&stubRecorderStep{name: "stock.publish", count: new(int32)},
+	}
+
+	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o.dispatchSteps = dispatchSteps
+
+	_, err := o.RunResilient(ctx, &RunInput{})
+	require.NoError(t, err)
+	require.True(t, extractCalled, "stock.extract_clips must run with rehydrated state")
+	assert.Equal(t, int32(0), atomic.LoadInt32(planCount), "pre-completed stock.plan must not re-run")
+	assert.Equal(t, int32(0), atomic.LoadInt32(stageCount), "pre-completed stock.stage_sources must not re-run")
+}
+
+// stateMutatingStep is a test Step that mutates runState via a
+// callback. Used to verify that MarkCompleted persists the mutated
+// state.
+type stateMutatingStep struct {
+	name     string
+	mutateFn func(state *runState)
+}
+
+func (s *stateMutatingStep) Name() string { return s.name }
+func (s *stateMutatingStep) Run(_ context.Context, runner StepRunner) error {
+	s.mutateFn(runner.State())
+	return nil
+}
+
+// TestOrchestrator_RunResilient_EmptyResultResumesBackwardCompatible
+// verifies that a pre-completed step with an empty checkpoint
+// result does not abort the run. This preserves backward
+// compatibility with rows completed before state persistence was
+// introduced; downstream steps simply see the empty accumulator.
+func TestOrchestrator_RunResilient_EmptyResultResumesBackwardCompatible(t *testing.T) {
+	db := openOrchestratorResumeTestDB(t)
+	store := steps.NewSQLiteStoreWithDB(db)
+	ctx := context.Background()
+	jobID := "empty-result-test-1"
+
+	planKey := steps.StepKey{
+		JobID:            jobID,
+		StepKey:          "stock.plan",
+		InputFingerprint: stepInputFingerprint(jobID, "stock.plan"),
+	}
+	require.NoError(t, store.MarkStarted(ctx, planKey))
+	require.NoError(t, store.MarkCompleted(ctx, planKey, nil, nil))
+
+	var stageSourcesCalled bool
+	stageSourcesStep := &stateAssertingStep{
+		name: "stock.stage_sources",
+		assertFn: func(state *runState) error {
+			stageSourcesCalled = true
+			// State is empty because the legacy checkpoint had no
+			// payload; the important thing is that we got here.
+			if len(state.Plan) != 0 {
+				return fmt.Errorf("expected empty Plan after legacy empty-result resume, got %d entries", len(state.Plan))
+			}
+			return nil
+		},
+	}
+
+	dispatchSteps := []Step{
+		&stubRecorderStep{name: "stock.plan", count: new(int32)},
+		stageSourcesStep,
+		&stubRecorderStep{name: "stock.extract_clips", count: new(int32)},
+		&stubRecorderStep{name: "stock.compose_chunks", count: new(int32)},
+		&stubRecorderStep{name: "stock.publish", count: new(int32)},
+	}
+
+	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o.dispatchSteps = dispatchSteps
+
+	_, err := o.RunResilient(ctx, &RunInput{})
+	require.NoError(t, err)
+	require.True(t, stageSourcesCalled, "stock.stage_sources must run after empty-result resume")
+}
+
+// TestOrchestrator_RunResilient_MalformedResultFailsClosed verifies
+// that a pre-completed step with a non-empty but malformed result
+// aborts the run rather than silently resuming with empty state.
+func TestOrchestrator_RunResilient_MalformedResultFailsClosed(t *testing.T) {
+	db := openOrchestratorResumeTestDB(t)
+	store := steps.NewSQLiteStoreWithDB(db)
+	ctx := context.Background()
+	jobID := "malformed-result-test-1"
+
+	planKey := steps.StepKey{
+		JobID:            jobID,
+		StepKey:          "stock.plan",
+		InputFingerprint: stepInputFingerprint(jobID, "stock.plan"),
+	}
+	require.NoError(t, store.MarkStarted(ctx, planKey))
+	require.NoError(t, store.MarkCompleted(ctx, planKey, []byte("not-json"), nil))
+
+	dispatchSteps := []Step{
+		&stubRecorderStep{name: "stock.plan", count: new(int32)},
+		&stubRecorderStep{name: "stock.stage_sources", count: new(int32)},
+		&stubRecorderStep{name: "stock.extract_clips", count: new(int32)},
+		&stubRecorderStep{name: "stock.compose_chunks", count: new(int32)},
+		&stubRecorderStep{name: "stock.publish", count: new(int32)},
+	}
+
+	cfg := OrchestratorConfig{JobId: jobID, StepStore: store}
+	o := NewOrchestrator(cfg, resumeStubPlanner{}, nil, resumeStubStager{}, fakeSucceedingCutter{}, noopRenderer{})
+	o.dispatchSteps = dispatchSteps
+
+	_, err := o.RunResilient(ctx, &RunInput{})
+	require.Error(t, err, "RunResilient must fail when a completed step has malformed checkpoint data")
+	require.ErrorIs(t, err, ErrStockResumeStateInvalid, "error must wrap ErrStockResumeStateInvalid")
 }
