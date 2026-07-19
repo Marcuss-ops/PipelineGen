@@ -23,7 +23,11 @@ func Build(deps Dependencies, log *zap.Logger) (*OperatorDescriptor, error) {
 func (d *OperatorDescriptor) Name() string  { return d.module.Name() }
 func (d *OperatorDescriptor) Enabled() bool { return d.module.Enabled() }
 func (d *OperatorDescriptor) RegisterRoutes(rg *gin.RouterGroup) {
-	d.module.RegisterRoutes(rg)
+	// Mount all operator admin endpoints under /api/assets/operator so
+	// the React admin UI and any future consumers share a single,
+	// predictable prefix.
+	group := rg.Group("/assets/operator")
+	d.module.RegisterRoutes(group)
 }
 
 // Handler returns the underlying handler for non-HTTP consumers.

@@ -263,8 +263,8 @@ func WireRegistry(ctx context.Context, cfg *config.Config, log *zap.Logger, root
 	// Step 5a — Operator Console: admin-facing read-only API for the
 	// operator console binary. Registered after assets (needs asset.Service)
 	// and before late bindings (no cross-step state dependency).
-	if err := registerOperatorConsole(registry, log, cfg, root); err != nil {
-		return nil, fmt.Errorf("wire registry: operator-console: %w", err)
+	if err := registerOperatorAdminAPI(registry, log, cfg, root); err != nil {
+		return nil, fmt.Errorf("wire registry: operator-admin-api: %w", err)
 	}
 
 	// Step 6 — Late bindings: builds the QDRANT-002 outbox handler +

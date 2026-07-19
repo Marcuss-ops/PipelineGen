@@ -9,15 +9,15 @@ import (
 	"go.uber.org/zap"
 )
 
-// registerOperatorConsole wires and registers the operator console API module.
+// registerOperatorAdminAPI wires and registers the operator admin API module.
 // This module provides admin-facing read-only endpoints consumed by the
-// operator console binary (cmd/operator-console). Routes are under /api/operator/.
-func registerOperatorConsole(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
+// React admin UI under /admin/. Routes are mounted under /api/assets/operator/.
+func registerOperatorAdminAPI(registry *module.Registry, log *zap.Logger, cfg *config.Config, root *ComposeRoot) error {
 	if root.Repos == nil || root.Repos.Assets == nil {
-		return fmt.Errorf("wire registry: operator-console: asset service not available")
+		return fmt.Errorf("wire registry: operator-admin-api: asset service not available")
 	}
 	if root.Jobs == nil || root.Jobs.Facade == nil {
-		return fmt.Errorf("wire registry: operator-console: job service not available")
+		return fmt.Errorf("wire registry: operator-admin-api: job service not available")
 	}
 
 	allowedRoots := []string{}
@@ -32,11 +32,11 @@ func registerOperatorConsole(registry *module.Registry, log *zap.Logger, cfg *co
 		AllowedRoots: allowedRoots,
 	}, log)
 	if err != nil {
-		return fmt.Errorf("wire registry: operator-console build: %w", err)
+		return fmt.Errorf("wire registry: operator-admin-api build: %w", err)
 	}
 
 	if err := tryRegisterModuleStrict(registry, log, desc, WithRegistrationPoint("register.OperatorConsole")); err != nil {
-		return fmt.Errorf("wire registry: operator-console module: %w", err)
+		return fmt.Errorf("wire registry: operator-admin-api module: %w", err)
 	}
 	return nil
 }
