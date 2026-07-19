@@ -1,0 +1,22 @@
+{
+  "direct_urls": ["https://www.youtube.com/watch?v=YOUTUBE_TEST_URL"],
+  "clips": [
+    {"url": "https://www.youtube.com/watch?v=YOUTUBE_TEST_URL", "title": "concurrent clip 4 (10-14)", "start_sec": 10, "end_sec": 14}
+  ],
+  "clip_duration": 4,
+  "folder_name": "e2e_concurrency_clip_4",
+  "subfolder": "e2e_concurrency_clip_4",
+  "async": true,
+  "no_audio": false,
+  "no_effects": false,
+  "no_transitions": false,
+  "metadata": {
+    "title": "e2e_concurrency_clip_4",
+    "category": "boxing",
+    "extra": {
+      "timestamp": "2026-07-19T10:00:03Z",
+      "cohort": "e2e_concurrency",
+      "slot": "4-of-5"
+    }
+  }
+}
