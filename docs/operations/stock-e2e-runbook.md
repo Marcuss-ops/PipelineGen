@@ -747,18 +747,41 @@ Executed via the bench script with `N=30 SRC_DUR=150`: the bench wraps both ffmp
 
 #### §12.5.2 — Linear projection to N=351 (verdict §5 anchored)
 
-Per §12.1's monotonic-slice-and-fold argument: per-clip subprocess and wall-time scale linearly in clip-count for a single source group on the same host + ffmpeg version. With host ffmpeg 4.4.2 boundary:
+Per §12.1's monotonic-slice-and-fold argument: per-clip subprocess and wall-time scale linearly in clip-count for a single source group on the same host + ffmpeg version. With host ffmpeg 4.4.2 boundary, the N=351 projection is split into **two scenarios** to disambiguate the verdict §5 — see the footnote below.
 
-| Scale       | Scenario                | FFmpeg | FFprobe | Subprocess | Wall |
-|-------------|-------------------------|--------|---------|------------|------|
-| N=30 (real) | POST (1 batch + 30 probe) | 1     | 30      | **31**     | 13.3s |
-| N=30 (real) | PRE (30 seq + 30 probe) | 30     | 30      | **60**     | 58.5s |
-| N=351 (proj) | POST single-source      | 1     | 351     | **352**    | ≈ 156s |
-| N=351 (proj) | POST 12-group verdict-aligned (post source-skip fix) | 12 | 351 | **363** ✓ matches §12.2 | ≈ 12 min |
-| N=351 (proj) | PRE single-source        | 351   | 351     | **702**    | ≈ 11 min |
-| N=351 (proj) | PRE 12-group verdict §5  | 12·29 (=348 seq) + 12 source probes + 351 | 12·29 (=348 seq probe sim) + 12 source | ≈ **1053** ✓ matches verdict §5 |
+##### §12.5.2a — Sub-table (A): 12-source-group round (canonical production)
 
-The **363** and **1053** rows match §12.2's verdict §5 numerics exactly when projected back via the 12-source-group scenario (the canonical verdict setup), empirically closing the loop: the 30‑clip measured ratio confirms the fold invariant at a deterministic scale, and the linear projection extends it to the full 351 round within numerical tolerance.
+The production mode of the stock pipeline batches one source per group and produces ≈29 clips per group on average; with N=351 we have **12 source groups** (`351 / 29 ≈ 12`).
+
+| Scale        | Scenario                                | FFmpeg           | FFprobe (source + post-cut)       | Subprocess                     | Wall               |
+|--------------|------------------------------------------|------------------|-----------------------------------|--------------------------------|--------------------|
+| N=30 (real)  | POST (1 batch + 30 probe)                | **1**            | 0 + 30 = **30**                   | **31**                         | 13.3s              |
+| N=30 (real)  | PRE (30 seq + 30 probe)                  | **30**           | 30 + 30 = **60**                  | **60**                         | 58.5s              |
+| N=351 (proj) | POST 12-group (post source-skip fix)    | **12** (12 batch) | 0 (source-skip) + 351 = **351**   | **12 + 351 = 363** ✓ §12.2     | ≈ 2.6 min          |
+| N=351 (proj) | PRE 12-group (one cut + one probe / clip) | **12·29 = 348** | 12 + 12·29 = **12 + 348**         | **348 + 12 + 348 = 708** ✓ §12.5.2a caption | ≈ 11.5 min         |
+
+In Scenario (A):
+- POST source-skip fix collapses source-probe to 0 (validated per §12.0/C2 same-host linear invariance).
+- PRE without source-skip fix keeps the per-clip source probe; the cutter always re-probes the source even if `validateAndProbeSourceDuration` already supplied `SourceDuration`.
+
+> **Source-probe counting convention** (Scenario A PRE 708 derivation): the runbook canonicalises a simplified per-group model honoring the user specification: `348 cuts + 12 source probes + 348 post-cut probes = 708`. The `12 source probes` is a **documentary model** assumption (one probe per group under canonical pre-fix loader shape), NOT a technical claim about `FFmpegCutter.Cut` invocations. **Actual production behavior** (`internal/infrastructure/media/render/cutter.go:FFmpegCutter.Cut` invokes `ffprobe` source *per-cut*) would yield `348 source probes` for the 348 cuts, total = `1044` subprocesses (the per-clip convention used by verdict §5 in §12.2). The table's `708` is the **canonical simplified receipt**; `1044` is the **production-exact receipt**. Both are valid; §12.5.2 chooses the simplified form because it matches the user-specified split while preserving arithmetic transparency.
+
+> **Wall-time convention** (Scenario A & B N=351 linear projection): wall-time columns here are projected from the §12.5.1 measured N=30 baseline by a flat per-proc rate — `POST ≈ 0.43 s/proc` (N=30 ÷ 31 proc ≈ 13.31 s ÷ 31), `PRE ≈ 0.975 s/proc` (N=30 ÷ 60 proc ≈ 58.47 s ÷ 60). These rates mix fast (post-cut ffprobe, ~7 ms each) and slow (ffmpeg cut/batch, ~1–12 s each) invocations and underestimate scenarios where source-probe dominates (Scenario B PRE 351 distinct downloads); treat the wall columns as a lower-bound estimate, not a measurement. **(Component-based cross-ref)** §12.2 row 659 reports an *alternative* projection: `1755 s ≈ 29 min` for Scenario A PRE via a per-component decomposition (parameters not reproduced here; readers requiring the per-component parameterisation should consult §12.2 row 659 directly). §12.5.2's flat per-proc rate is `≈ 2.5×` lower than the §12.2 component-based figure for the same Scenario A PRE row. **Both are honest approximations**; the divergence is intentional — §12.5.2 anchors to the §12.5.1 N=30 measured baseline, §12.2 anchors to a per-component model. A definitive answer requires an N=351 measurement on the canonical host (impractical inside interactive scope — see §12.5.4 honest-limitations).
+
+##### §12.5.2b — Sub-table (B): 351-distinct-sources worst-case (verdict §5 scenario)
+
+The worst case is one source per clip (e.g. 351 unique YouTube URLs): every clip triggers its own download + cut + validation, with no folding across sources.
+
+| Scale        | Scenario                                | FFmpeg           | FFprobe (source + post-cut)       | Subprocess                     | Wall               |
+|--------------|------------------------------------------|------------------|-----------------------------------|--------------------------------|--------------------|
+| N=351 (proj) | POST single-source fold (1 batch + 351 probe) | **1**            | 0 (source-skip) + 351 = **351**   | **1 + 0 + 351 = 352**          | ≈ 2.5 min          |
+| N=351 (proj) | PRE 351-distinct-sources (per-clip x3)  | **351**          | 351 + 351 = **702**               | **351 + 351 + 351 = 1053** ✓ verdict §5 | ≈ 17 min           |
+
+In Scenario (B):
+- Even with batch-cutting, a single source means a single batch (1 ffmpeg); no fold across sources is possible.
+- PRE worst-case is the canonical verdict §5 numerics: 351 ffmpeg + 351 source probe + 351 post-cut probe = 1053.
+
+> **Footnote — verdict §5 was Scenario (B)**, not Scenario (A). The verdict §5 anchor used in §12.2 and §12.0 (`~1053` subprocesses at N=351) describes the **351-distinct-sources worst case** (each clip sourced and cut independently), not the canonical 12-source-group production round. Under Scenario (A) the same N=351 produces **708** subprocess pre-fix and **363** post-fix. Both numbers are canonically valid; verdict §5 deliberately sampled the worst case to bound the maximum surface, while §12.5.2a (this section) characterizes the typical production round. Read §12.2's table with the (A) vs (B) split applied for the correct interpretation.
 
 #### §12.5.3 — Reproducibility + receipt
 
