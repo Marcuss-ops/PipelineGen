@@ -7,15 +7,11 @@
 #   ./failed_job_smoke.sh --dry      # print the would-be probes, exit 0
 #
 # Asserts:
-#   1. POST /api/script/generate-from-clips with an INVALID payload
+#   1. POST /api/script/generate with an INVALID GenerationEnvelopeV2
 #      → HTTP 4xx (the server must NOT silently accept a malformed job)
-#   2. GET  /api/jobs/<nonexistent>/full → HTTP 404 (the loader must
-#      distinguish a missing job from a still-running one)
+#   2. GET /api/jobs/<nonexistent>/full → HTTP 404.
 #
-# Exit codes:
-#   0  both error paths handled correctly
-#   1  one or more error paths behaved unexpectedly
-#   2  setup error
+# Exit codes: 0 success, 1 assertion failure, 2 setup error.
 
 set -euo pipefail
 
@@ -24,20 +20,19 @@ DIR=$(cd "$(dirname "$0")" && pwd)
 source "$DIR/lib/common.sh"
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    sed -n '2,15p' "$0"; exit 0
+    sed -n '2,14p' "$0"; exit 0
 fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
     smoke_echo_safe "DRY RUN — would probe:"
-    printf '  POST http://%s/api/script/generate-from-clips  (invalid payload)\n' "$SMOKE_API_BASE"
+    printf '  POST http://%s/api/script/generate  (invalid V2 payload)\n' "$SMOKE_API_BASE"
     printf '  GET  http://%s/api/jobs/nonexistent-smoke-test-deadbeef/full\n' "$SMOKE_API_BASE"
     exit 0
 fi
 
-# ── Test 1: invalid payload must be rejected with HTTP 4xx ────────────
-smoke_log_section "Invalid payload → 4xx"
-INVALID_PAYLOAD='{"tone":"explanatory"}'  # missing topic, title, model
-HTTP=$(smoke_curl POST "/api/script/generate-from-clips" --data "$INVALID_PAYLOAD")
+smoke_log_section "Invalid canonical payload → 4xx"
+INVALID_PAYLOAD='{"version":2,"preset":"custom","items":[{"source":{"type":"clips","clip_ids":[]}}]}'
+HTTP=$(smoke_curl POST "/api/script/generate" --data "$INVALID_PAYLOAD")
 if [[ ! "$HTTP" =~ ^[4][0-9][0-9]$ ]]; then
     printf '%sFAIL: invalid payload accepted with HTTP %s (expected 4xx)%s\n' \
         "$RED" "$HTTP" "$RESET" >&2
@@ -47,12 +42,7 @@ fi
 printf 'invalid-payload rejected with HTTP %s%s%s (correct)\n' \
     "$YELLOW" "$HTTP" "$RESET"
 
-# ── Test 2: nonexistent job_id must return HTTP 404 ──────────────────
 smoke_log_section "Nonexistent job_id → 404"
-# UUID source is portable across macOS / Linux / sandbox (smoke_gen_uuid
-# falls back through uuidgen → /proc/sys/kernel/random/uuid → python3 →
-# epoch+RANDOM). The "nonexistent-" prefix makes the GHOST_ID obviously
-# synthetic even when echoed in logs.
 GHOST_ID="nonexistent-$(smoke_gen_uuid)"
 HTTP=$(smoke_curl GET "/api/jobs/${GHOST_ID}/full")
 if [[ "$HTTP" != "404" ]]; then
