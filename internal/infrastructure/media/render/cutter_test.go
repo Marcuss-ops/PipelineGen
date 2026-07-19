@@ -24,6 +24,7 @@ package render
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -276,7 +277,14 @@ func (r *batchFailingRunner) Run(_ context.Context, name string, args []string, 
 	for _, a := range args {
 		if strings.Contains(a, "filter_complex") {
 			r.batchCalls++
-			return &process.Result{ExitCode: 1, Stderr: "batch failed"}, nil
+			// Return a non-nil error so CutReencodeBatch surfaces
+			// the failure to the cutter, which then enters the
+			// per-clip fallback path. Without this, ExitCode=1
+			// alone would be silently swallowed and the cutter
+			// would assume batch success, find no files on disk
+			// (because we never wrote them), and report
+			// "all jobs failed" instead of partial-success.
+			return &process.Result{ExitCode: 1, Stderr: "batch failed"}, errors.New("mock runner: batch ffmpeg failed")
 		}
 	}
 
@@ -292,7 +300,7 @@ func (r *batchFailingRunner) Run(_ context.Context, name string, args []string, 
 	}
 
 	if r.failIndividual != nil && r.failIndividual[r.individualCalls] {
-		return &process.Result{ExitCode: 1, Stderr: "individual cut failed"}, nil
+		return &process.Result{ExitCode: 1, Stderr: "individual cut failed"}, errors.New("mock runner: individual ffmpeg failed")
 	}
 
 	if outputPath != "" {
@@ -373,7 +381,13 @@ func TestFFmpegCutter_BatchFallback_PreservesPartialResults(t *testing.T) {
 // validateAndProbeSourceDuration.
 func TestFFmpegCutter_SourceDurationSkipsProbe(t *testing.T) {
 	runner := &cutterCaptureRunner{}
-	cutter := NewFFmpegCutter("ffmpeg", zap.NewNop()).WithRunner(runner)
+	// Use NewFFmpegCutterOnlyCut so the post-cut runProbe pass is
+	// disabled (probeAfterCut=false). The test is about SOURCE
+	// probe-skip behaviour, not output-clip probe validation;
+	// staying on CutItemStatusSucceeded keeps the assertion
+	// crisp and isolates the runProbe axis from the source-probe
+	// axis.
+	cutter := NewFFmpegCutterOnlyCut("ffmpeg", zap.NewNop()).WithRunner(runner)
 
 	// The capture runner does not write output files; pre-create the
 	// expected output so the post-cut os.Stat succeeds.
@@ -433,7 +447,12 @@ func TestFFmpegCutter_SourceDurationSkipsProbe(t *testing.T) {
 // its duration before cutting.
 func TestFFmpegCutter_ZeroSourceDurationProbesSource(t *testing.T) {
 	runner := &cutterCaptureRunner{}
-	cutter := NewFFmpegCutter("ffmpeg", zap.NewNop()).WithRunner(runner)
+	// Use NewFFmpegCutterOnlyCut so the post-cut runProbe pass is
+	// disabled. The test is about the SOURCE probe (one ffprobe
+	// call for the source duration); the per-clip runProbe would
+	// otherwise add a second ffprobe invocations-counting noise
+	// on top of the source probe we're trying to pin.
+	cutter := NewFFmpegCutterOnlyCut("ffmpeg", zap.NewNop()).WithRunner(runner)
 
 	// The capture runner does not write output files; pre-create the
 	// expected output so the post-cut os.Stat succeeds.
