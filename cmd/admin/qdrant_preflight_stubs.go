@@ -144,13 +144,13 @@ func testHybridSearchScore(ctx context.Context, deps *preflightDeps) error {
 	return nil
 }
 
-// The old supersede probe depended on the removed generate-from-clips DTO
+// The supersede probe depended on the retired clips adapter DTO
 // (aggregate_id/source_version plus inline clip bodies). GenerationEnvelopeV2
 // intentionally has no such fields, so pretending to migrate that probe would
 // test a contract that does not exist. Keep the gap explicit until supersede is
 // tested through the canonical media/outbox producer.
 func testSupersedeGate(_ context.Context, _ *preflightDeps) error {
-	return fmt.Errorf("skip: supersede probe removed with generate-from-clips; re-home it on the canonical media/outbox producer")
+	return fmt.Errorf("skip: supersede probe retired; re-home it on the canonical media/outbox producer")
 }
 
 func testDeleteTombstone(_ context.Context, _ *preflightDeps) error {
