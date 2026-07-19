@@ -121,10 +121,25 @@ type cutterCaptureRunner struct {
 	argv [][]string // captured argv per invocation
 }
 
-func (r *cutterCaptureRunner) Run(_ context.Context, _ string, args []string, _ process.Options) (*process.Result, error) {
+func (r *cutterCaptureRunner) Run(_ context.Context, name string, args []string, _ process.Options) (*process.Result, error) {
 	r.mu.Lock()
-	r.argv = append(r.argv, append([]string(nil), args...))
+	// Store the command name followed by its args so tests can
+	// distinguish ffmpeg from ffprobe invocations.
+	argv := append([]string{name}, args...)
+	r.argv = append(r.argv, argv)
 	r.mu.Unlock()
+
+	// When the cutter runs ffprobe against a produced clip, return a
+	// minimal valid JSON response so validation succeeds without a real
+	// ffprobe binary. Source-probe invocations are still observable by
+	// tests through the captured argv.
+	if filepath.Base(name) == "ffprobe" {
+		return &process.Result{
+			ExitCode: 0,
+			Stdout:   `{"streams":[{"codec_type":"video"}],"format":{"duration":"5.000000"}}`,
+		}, nil
+	}
+
 	return &process.Result{ExitCode: 0}, nil
 }
 
@@ -231,6 +246,234 @@ func TestFFmpegCutter_InjectionChain_WithRunnerReturnsSamePointer(t *testing.T) 
 
 	if original != returned {
 		t.Errorf("WithRunner must return the same *FFmpegCutter pointer for fluent chaining; got different pointers")
+	}
+}
+
+// batchFailingRunner is a ProcessRunner that fails the batch cut
+// (identified by the presence of filter_complex in argv) and then
+// succeeds on individual fallback cuts, except for a configurable
+// subset that is forced to fail. Used to verify that FFmpegCutter
+// preserves partial results when the batch fails and the fallback
+// produces only a subset of clips.
+type batchFailingRunner struct {
+	mu              sync.Mutex
+	batchCalls      int
+	individualCalls int
+	failIndividual  map[int]bool
+}
+
+func (r *batchFailingRunner) Run(_ context.Context, name string, args []string, _ process.Options) (*process.Result, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if filepath.Base(name) == "ffprobe" {
+		return &process.Result{
+			ExitCode: 0,
+			Stdout:   `{"streams":[{"codec_type":"video"}],"format":{"duration":"5.000000"}}`,
+		}, nil
+	}
+
+	for _, a := range args {
+		if strings.Contains(a, "filter_complex") {
+			r.batchCalls++
+			return &process.Result{ExitCode: 1, Stderr: "batch failed"}, nil
+		}
+	}
+
+	r.individualCalls++
+
+	// Find output path (last non-flag argument).
+	outputPath := ""
+	for i := len(args) - 1; i >= 0; i-- {
+		if !strings.HasPrefix(args[i], "-") && args[i] != "" {
+			outputPath = args[i]
+			break
+		}
+	}
+
+	if r.failIndividual != nil && r.failIndividual[r.individualCalls] {
+		return &process.Result{ExitCode: 1, Stderr: "individual cut failed"}, nil
+	}
+
+	if outputPath != "" {
+		_ = os.WriteFile(outputPath, []byte("fake-clip"), 0o644)
+	}
+	return &process.Result{ExitCode: 0}, nil
+}
+
+// TestFFmpegCutter_BatchFallback_PreservesPartialResults verifies that
+// when the batch cut fails, FFmpegCutter falls back to per-clip cuts
+// and preserves the successfully-produced clips even when some
+// individual cuts fail.
+func TestFFmpegCutter_BatchFallback_PreservesPartialResults(t *testing.T) {
+	runner := &batchFailingRunner{failIndividual: map[int]bool{2: true}}
+	cutter := NewFFmpegCutterOnlyCut("ffmpeg", zap.NewNop()).WithRunner(runner)
+
+	dir := t.TempDir()
+	jobs := []stockpipeline.CutJob{
+		{StartSec: 0, EndSec: 1, OutputPath: filepath.Join(dir, "clip_0.mp4")},
+		{StartSec: 1, EndSec: 2, OutputPath: filepath.Join(dir, "clip_1.mp4")},
+		{StartSec: 2, EndSec: 3, OutputPath: filepath.Join(dir, "clip_2.mp4")},
+	}
+
+	result, err := cutter.Cut(context.Background(), stockpipeline.CutRequest{
+		SourcePath:     "/tmp/source.mp4",
+		SourceDuration: 10.0,
+		Jobs:           jobs,
+		NoAudio:        true,
+		Codec:          "libx264",
+		Preset:         "ultrafast",
+		CRF:            18,
+		Logger:         zap.NewNop(),
+	})
+
+	// Batch-level error should be nil because at least one clip succeeded.
+	if err != nil {
+		t.Fatalf("expected nil batch-level error when some clips succeed, got %v", err)
+	}
+
+	// Batch was attempted and failed.
+	if runner.batchCalls != 1 {
+		t.Errorf("batch calls = %d, want 1", runner.batchCalls)
+	}
+
+	// Fallback produced individual cuts for all three clips.
+	if runner.individualCalls != 3 {
+		t.Errorf("individual fallback calls = %d, want 3", runner.individualCalls)
+	}
+
+	// len(Items) must equal len(jobs) (mai-nil invariant).
+	if len(result.Items) != len(jobs) {
+		t.Fatalf("len(Items) = %d, want %d", len(result.Items), len(jobs))
+	}
+
+	// Clip 0 and clip 2 succeeded; clip 1 failed.
+	if result.Items[0].Status != stockpipeline.CutItemStatusSucceeded {
+		t.Errorf("item[0].Status = %v, want Succeeded", result.Items[0].Status)
+	}
+	if result.Items[1].Status != stockpipeline.CutItemStatusFailed {
+		t.Errorf("item[1].Status = %v, want Failed", result.Items[1].Status)
+	}
+	if result.Items[2].Status != stockpipeline.CutItemStatusSucceeded {
+		t.Errorf("item[2].Status = %v, want Succeeded", result.Items[2].Status)
+	}
+
+	// SuccessfulItems must contain exactly the two produced clips.
+	produced := result.SuccessfulItems()
+	if len(produced) != 2 {
+		t.Errorf("SuccessfulItems() = %d, want 2", len(produced))
+	}
+}
+
+// TestFFmpegCutter_SourceDurationSkipsProbe verifies that when
+// CutRequest.SourceDuration is positive, the cutter skips the
+// source-duration ffprobe call and proceeds directly to cutting.
+// This eliminates the duplicate probe when the upstream
+// stock.extract_clips step has already probed the source via
+// validateAndProbeSourceDuration.
+func TestFFmpegCutter_SourceDurationSkipsProbe(t *testing.T) {
+	runner := &cutterCaptureRunner{}
+	cutter := NewFFmpegCutter("ffmpeg", zap.NewNop()).WithRunner(runner)
+
+	// The capture runner does not write output files; pre-create the
+	// expected output so the post-cut os.Stat succeeds.
+	outputPath := filepath.Join(t.TempDir(), "out.mp4")
+	if err := os.WriteFile(outputPath, []byte("fake-clip"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+
+	result, err := cutter.Cut(context.Background(), stockpipeline.CutRequest{
+		SourcePath:     "/tmp/source.mp4",
+		SourceDuration: 120.0,
+		Jobs: []stockpipeline.CutJob{
+			{StartSec: 0, EndSec: 5, OutputPath: outputPath},
+		},
+		NoAudio: true,
+		Codec:   "libx264",
+		Preset:  "ultrafast",
+		CRF:     18,
+		Logger:  zap.NewNop(),
+	})
+	if err != nil {
+		t.Fatalf("Cut returned unexpected error: %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("expected 1 result item, got %d", len(result.Items))
+	}
+	if result.Items[0].Status != stockpipeline.CutItemStatusSucceeded {
+		t.Errorf("expected item status Succeeded, got %v", result.Items[0].Status)
+	}
+
+	// No ffprobe invocation should have been issued, but at least one
+	// ffmpeg cut invocation should have occurred.
+	var ffmpegInvocations, ffprobeInvocations int
+	for _, argv := range runner.argv {
+		if len(argv) == 0 {
+			continue
+		}
+		cmd := filepath.Base(argv[0])
+		if cmd == "ffmpeg" {
+			ffmpegInvocations++
+		}
+		if cmd == "ffprobe" {
+			ffprobeInvocations++
+		}
+	}
+	if ffmpegInvocations == 0 {
+		t.Errorf("expected at least one ffmpeg invocation, got %d", ffmpegInvocations)
+	}
+	if ffprobeInvocations != 0 {
+		t.Errorf("expected no ffprobe invocation when SourceDuration is provided, got %d", ffprobeInvocations)
+	}
+}
+
+// TestFFmpegCutter_ZeroSourceDurationProbesSource verifies the
+// inverse of SourceDurationSkipsProbe: when SourceDuration is not
+// provided (0), the cutter must probe the source to determine
+// its duration before cutting.
+func TestFFmpegCutter_ZeroSourceDurationProbesSource(t *testing.T) {
+	runner := &cutterCaptureRunner{}
+	cutter := NewFFmpegCutter("ffmpeg", zap.NewNop()).WithRunner(runner)
+
+	// The capture runner does not write output files; pre-create the
+	// expected output so the post-cut os.Stat succeeds.
+	outputPath := filepath.Join(t.TempDir(), "out.mp4")
+	if err := os.WriteFile(outputPath, []byte("fake-clip"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+
+	result, err := cutter.Cut(context.Background(), stockpipeline.CutRequest{
+		SourcePath: "/tmp/source.mp4",
+		Jobs: []stockpipeline.CutJob{
+			{StartSec: 0, EndSec: 5, OutputPath: outputPath},
+		},
+		NoAudio: true,
+		Codec:   "libx264",
+		Preset:  "ultrafast",
+		CRF:     18,
+		Logger:  zap.NewNop(),
+	})
+	if err != nil {
+		t.Fatalf("Cut returned unexpected error: %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("expected 1 result item, got %d", len(result.Items))
+	}
+	if result.Items[0].Status != stockpipeline.CutItemStatusSucceeded {
+		t.Errorf("expected item status Succeeded, got %v", result.Items[0].Status)
+	}
+
+	var ffprobeInvocations int
+	for _, argv := range runner.argv {
+		if len(argv) == 0 {
+			continue
+		}
+		if filepath.Base(argv[0]) == "ffprobe" {
+			ffprobeInvocations++
+		}
+	}
+	if ffprobeInvocations == 0 {
+		t.Errorf("expected at least one ffprobe invocation when SourceDuration is 0, got %d", ffprobeInvocations)
 	}
 }
 
