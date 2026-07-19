@@ -271,7 +271,21 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		os.RemoveAll(tmpDir)
 		return nil, sfErr
 	}
-	return v.(*assets.StagedAsset), nil
+	stagedAsset := v.(*assets.StagedAsset)
+	// If the staged asset returned points to another caller's temp path,
+	// copy it to our own unique temp folder to avoid concurrency races
+	// (when Job A deletes its directory on cleanup while Job B is still reading).
+	if stagedAsset.LocalPath != outputPath {
+		if cpErr := copyFileToPath(stagedAsset.LocalPath, outputPath, s.svc.localFS); cpErr != nil {
+			os.RemoveAll(tmpDir)
+			return nil, fmt.Errorf("stock stager: copy concurrent download from %s to %s: %w", stagedAsset.LocalPath, outputPath, cpErr)
+		}
+		return &assets.StagedAsset{
+			LocalPath: outputPath,
+			Bytes:     stagedAsset.Bytes,
+		}, nil
+	}
+	return stagedAsset, nil
 }
 
 // populateCache writes a successful download to the source cache.
