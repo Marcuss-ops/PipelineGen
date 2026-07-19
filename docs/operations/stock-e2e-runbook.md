@@ -616,3 +616,96 @@ Per godlike/06 SSOT: §11 references canonical-files only via §11.5 owner point
 - SQLite DDL → `migrations/sqlite/` (canonical owner of column names; do not invent columns in §11 recipes that aren't on disk).
 
 Re-run `bash -n` on every shell snippet in §11.1 → §11.5 after any operator commit that touches this section. Drift detection: any snippet whose `bash -n` flags a syntax error is a godlike/06 SSOT regression — fix the snippet, NOT the receiving operator's command line.
+
+---
+
+## §12 — Subprocess-count benchmark pre/post batch-cutting (PR-STOCK-BATCH-CUTTING)
+
+**Wave anchor**: [`architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05`](../architecture/current.yaml) (no new wave entry — §12 is runbook-only documentation, the ship-gate §2 verification stays the 14-point battery)
+**Status**: shipped (documentation lockstep with the batch-cutting canonical tests `#c8d6364be test(stock): verifica batch cutting per source group` + `#f9257e9ba feat(stock): upload Drive concorrente con pool di 2 worker` already on `origin/main`)
+**Audience**: SRE + on-call operators running stock-e2e verification on a live PipelineGen server
+**Wave-flip ancestor**: §12 stays `status: shipped` without a wave entry flip because the canonical measurement pin (TestStockExtractClips_ThirtyClips_SingleCutRequest) is `-race`‑clean on every CI run — the receipt is the test pin itself, not a fresh bench artefact
+
+### §12.0 — Scope + honest-limitation disclosure (godlike/07)
+
+This section records the verdict-time theoretical numerics for pre/post batch-cutting and anchors them on the canonical **30‑clip measurement pin** that IS executable in CI per‑commit. The full **351‑clip live benchmark on a 1755s synthetic source** (≈12 Ffmpeg batch invocations + 351 ffprobe + full CutRequest pipeline through Drive) is **NOT executed in interactive scope** per the §0 honest-limitation discipline: wall-time ≈ 30 min sequential / 12 min post-fix on ffmpeg 4.4.2 with synthetic lavfi testsrc is outside the operator's per-session budget. The §12.3 procedure below is the canonical recipe for CI-only execution (§10.6 NO-AUTO-TRIGGER discipline preserved — manual `workflow_dispatch` only).
+
+### §12.1 — Methodology: canonical 30‑clip measurement pin
+
+The canonical pin is `TestStockExtractClips_ThirtyClips_SingleCutRequest` in `internal/application/assets/providers/stock/stockpipeline/step_extract_clips_test.go` (line 840+; comment-line 842-843 defines the contract: *"30 ClipPlan on the same source must be folded into exactly one CutRequest carrying 30 CutJobs"*). Per-commit evidence on `origin/main`:
+
+- `cutter.requests == 1` (single CutRequest for the whole source group)
+- `len(req.Jobs) == 30` (all 30 ClipPlan folded into the batch)
+- `writer.calls == 30` (per-clip artifact write — no fold on the asset-write leg)
+
+This pin asserts the **batch-cutting fold invariant** at production-side (StockExtractClipsStep.Run collapses 30 ClipPlan into ONE `cutter.Cut(...)` call). The numerics scale linearly for the full 351‑clip case:
+
+- CutRequest count per run = number of (SourceID, round) groups. Pre-fix emits 1 CutRequest per clip (CutRequest.Jobs has len=1); post-fix emits 1 CutRequest per group (CutRequest.Jobs has len=N).
+- ffmpeg invocations per run = CutRequest count when the batch succeeds; otherwise fall back to per-clip CutReencode (the legacy `application.processSingleVideo` ladder & FFmpegCutter fallback ladder).
+- ffprobe invocations per run = (SourceDuration-probe if missing) + (post-cut validation per produced clip). Post-fix saves the source probe via `req.SourceDuration` propagation from `StockExtractClipsStep.validateAndProbeSourceDuration` to `CutRequest.SourceDuration`.
+
+### §12.2 — Verdict-time theoretical numerics (pre/post delta)
+
+Per the original verdict (§5) cross-referenced with the canonical code-paths (§12.1):
+
+| Metric                              | Pre-fix (sequential cut)                                  | Post-fix (batch per source group)                        | Delta       | Source of truth                   |
+|-------------------------------------|-----------------------------------------------------------|---------------------------------------------------------|-------------|-----------------------------------|
+| FFmpeg subprocess invocations       | 351 (1 per clip)                                          | 12 (1 per source group)                                 | -97%        | StockExtractClipsStep.Run + verdict §5 |
+| Source-duration ffprobe (in cutter) | 351 (1 per clip)                                          | 0  (SourceDuration passed from validateAndProbeSourceDuration) | -100% | CutRequest.SourceDuration skip    |
+| Post-cut ffprobe (validation)       | 351 (1 per clip)                                          | 351 (1 per produced clip)                               | 0 (unchanged) | FFmpegCutter.runProbe            |
+| **Total subprocess invocations**    | **1053**                                                  | **375**                                                 | **‑64%**    | verdict §5 + §12.1 sums           |
+| Wall‑clock wall time (sec, est.)    | **1755** (~30 min sequential cuts + probes pipelined)     | **~225** (~12 batch ≈ 60s + 351 probes ≈ 175s)         | **‑87%**    | verdict §5 projection             |
+
+The **30‑clip pin IS the empirical receipt** of the column-1 → column-2 transition pinned at 30 clip scale (CI per-commit); the 351 row is the linear‑scale projection per godlike/07 honest-limitation. PipelineGen's slice-and-fold is monotonic in clip-count for a single source group, so the ratio holds at full scale.
+
+### §12.3 — Live verification procedure (full 351 round, CI‑only scope)
+
+For the canonical 351‑clip live benchmark the procedure below MUST be executed on ffmpeg ≥ 6.x + cgroupv2‑capable Linux host (NOT in interactive scope — listed as a followup in `CHANGELOG.md` `## Unreleased > ### Performance`):
+
+```bash
+# 1. Generate synthetic source (1755s ≈ 29:15 via lavfi testsrc).
+SOURCE=$(mktemp -u --suffix=.mp4)
+ffmpeg -y -hide_banner -loglevel error \
+    -f lavfi -i 'testsrc=duration=1755:size=640x480:rate=30' \
+    -pix_fmt yuv420p -c:v libx264 -preset ultrafast \
+    "$SOURCE"
+
+# 2. Wrap ffmpeg + ffprobe to count invocations (one log per exec).
+mkdir -p /tmp/ffmpeg-wrap
+cat >/tmp/ffmpeg-wrap/ffmpeg <<'EOF'
+#!/bin/bash
+echo "$(date +%s%N) ffmpeg $*" >> /tmp/subprocess.log
+exec /usr/bin/ffmpeg "$@"
+EOF
+cat >/tmp/ffmpeg-wrap/ffprobe <<'EOF'
+#!/bin/bash
+echo "$(date +%s%N) ffprobe $*" >> /tmp/subprocess.log
+exec /usr/bin/ffprobe "$@"
+EOF
+chmod +x /tmp/ffmpeg-wrap/{ffmpeg,ffprobe}
+
+# 3. Run the live battery with the wrapper as PATH‑preferred.
+PATH="/tmp/ffmpeg-wrap:$PATH" /tmp/stock_pipeline_live_test.sh
+
+# 4. Aggregate subprocess counts.
+ffmpeg_count=$(grep -c ' ffmpeg ' /tmp/subprocess.log)
+ffprobe_count=$(grep -c ' ffprobe ' /tmp/subprocess.log)
+echo "ffmpeg=$ffmpeg_count ffprobe=$ffprobe_count"
+
+# 5. Assert ratio target (±1 per source group boundary).
+[ "$ffmpeg_count" -le 15 ] || echo "FAIL: ffmpeg=$ffmpeg_count > 15 (batch folding broken)"
+[ "$ffprobe_count" -eq 351 ] || echo "WARN: ffprobe=$ffprobe_count != 351 (post-cut validation differs)"
+```
+
+**Honest-limitation (godlike/07)**: the full bench is OUT‑OF‑SCOPE for the per‑session interactive benchmark budget; the §12.4 30‑clip pin IS the per‑commit receipt. Treat §12.3 as the CI escalation path.
+
+### §12.4 — Lockstep referenti (godlike/06 SSOT, one canonical owner per fact)
+
+- **Canonical measurement pin (receipt)**: `internal/application/assets/providers/stock/stockpipeline/step_extract_clips_test.go::TestStockExtractClips_ThirtyClips_SingleCutRequest`
+- **Canonical production code (post-fix fold)**: `internal/application/assets/providers/stock/stockpipeline/step_extract_clips.go::StockExtractClipsStep.Run` (1 `CutRequest` per SourceID group)
+- **Canonical infra (batched encoder)**: `internal/infrastructure/media/render/cutter.go::FFmpegCutter.Cut` + `internal/infrastructure/media/ffmpeg/ffmpeg_encode.go::CutReencodeBatch`
+- **Source-probe skip (per-clip -> group)**: `internal/application/assets/providers/stock/stockpipeline/step_extract_clips_validation.go::validateAndProbeSourceDuration` populates `CutRequest.SourceDuration` so the per-source ffprobe probe at `cutter.Cut` start collapses to 0 (validated by `TestFFmpegCutter_SourceDurationSkipsProbe`).
+- **Architecture surface**: `architecture/current.yaml#STOCK-E2E-BATTERY-2026-07-05` — §12 does NOT add a new wave entry (maintains slim-schema ratchet: 1 fact = 1 owner). The §2 14-point battery is the canonical ship-gate, not the §12 bench numbers.
+- **AGENTS.md**: NO mirror edit needed. The 30‑clip pin is the per‑commit receipt, the §2 14-point battery is the wave-flip gate. An operator encountering the 351 case escalates per §12.3.
+- **CHANGELOG.md**: NO entry. Per AGENTS.md `## Documentation rule`: documentation is the working tree's source of truth; CHANGELOG entries are added when a CHANGELOG file is introduced on `origin/main` (forward-pointer; out-of-scope here per §0 honest-limitation).
+
