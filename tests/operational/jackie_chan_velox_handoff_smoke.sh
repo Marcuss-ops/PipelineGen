@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Jackie Chan generate-from-clips -> Velox remote-render end-to-end smoke.
+# Jackie Chan unified generate -> Velox remote-render end-to-end smoke.
 #
 # Default mode uses the committed, completed SpecScene fixture and tests the
 # deterministic PipelineGen-output -> Velox -> remote-worker handoff.
@@ -49,8 +49,8 @@ for bin in jq curl; do
 done
 
 ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
-REQUEST_FIXTURE="$ROOT_DIR/examples/scripts/jackie_chan_generate_from_clips.json"
-SPECSCENE_FIXTURE="$ROOT_DIR/examples/scripts/jackie_chan_generate_from_clips_specscene.json"
+REQUEST_FIXTURE="$ROOT_DIR/examples/scripts/jackie_chan_generate_clips.json"
+SPECSCENE_FIXTURE="$ROOT_DIR/examples/scripts/jackie_chan_generate_clips_specscene.json"
 
 [[ -f "$REQUEST_FIXTURE" ]] || { echo "missing request fixture: $REQUEST_FIXTURE" >&2; exit 2; }
 [[ -f "$SPECSCENE_FIXTURE" ]] || { echo "missing SpecScene fixture: $SPECSCENE_FIXTURE" >&2; exit 2; }
@@ -183,6 +183,7 @@ jq -n \
   --arg correlation_id "$CORRELATION_ID" \
   --slurpfile spec "$SPEC_FILE" \
   '{
+    source: {type: "clips"},
     video_name: $title,
     script_text: ($spec[0].scenes | map(.text) | join("\n\n")),
     scenes: $spec[0].scenes,
@@ -195,6 +196,7 @@ jq -n \
   }' > "$VELOX_PAYLOAD"
 
 jq -e '
+  .source.type == "clips" and
   (.video_name | length) > 0 and
   (.script_text | length) > 0 and
   (.scenes | length) == 3 and
@@ -203,8 +205,8 @@ jq -e '
 ' "$VELOX_PAYLOAD" >/dev/null
 
 if [[ "$DRY_RUN" == "1" ]]; then
-  echo "DRY RUN: would POST the generated payload to $VELOX_RENDER_BASE/api/v1/script/generate-from-clips"
-  jq '{video_name, correlation_id, scene_count:(.scenes|length), voiceover_count:(.voiceover_paths|length), skip_creator}' "$VELOX_PAYLOAD"
+  echo "DRY RUN: would POST the generated payload to $VELOX_RENDER_BASE/api/v1/script/generate"
+  jq '{source, video_name, correlation_id, scene_count:(.scenes|length), voiceover_count:(.voiceover_paths|length), skip_creator}' "$VELOX_PAYLOAD"
   exit 0
 fi
 
@@ -236,7 +238,7 @@ CAPABLE_WORKERS=$(jq -r '
 echo "Capable remote workers: $CAPABLE_WORKERS"
 
 VELOX_SUBMIT="$WORK_DIR/velox-submit.json"
-code=$(json_http POST "$VELOX_RENDER_BASE/api/v1/script/generate-from-clips" "$VELOX_RENDER_ADMIN_TOKEN" "$VELOX_PAYLOAD" "$VELOX_SUBMIT")
+code=$(json_http POST "$VELOX_RENDER_BASE/api/v1/script/generate" "$VELOX_RENDER_ADMIN_TOKEN" "$VELOX_PAYLOAD" "$VELOX_SUBMIT")
 [[ "$code" == "200" || "$code" == "202" ]] || {
   echo "Velox submit failed: HTTP $code" >&2
   jq . "$VELOX_SUBMIT" >&2 || cat "$VELOX_SUBMIT" >&2
@@ -261,7 +263,7 @@ VELOX_STATUS=$(poll_job "$VELOX_RENDER_BASE" "$VELOX_RENDER_ADMIN_TOKEN" "/api/v
 
 jq -e '(.job_id // .job.job_id // .job.id // .script_id // "") != "" or (.status | length) > 0' "$VELOX_FULL" >/dev/null
 
-printf '\nPASS: PipelineGen SpecScene -> Velox job -> remote worker completed\n'
+printf '\nPASS: PipelineGen SpecScene -> Velox unified generate job -> remote worker completed\n'
 printf 'mode=%s\n' "$MODE"
 [[ -n "${PG_JOB_ID:-}" ]] && printf 'pipelinegen_job_id=%s\n' "$PG_JOB_ID"
 printf 'velox_job_id=%s\n' "$VELOX_JOB_ID"
