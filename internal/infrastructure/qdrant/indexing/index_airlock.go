@@ -5,49 +5,49 @@
 // phase-aligned siblings within the same package `indexing`:
 //
 //   - index_airlock.go          : THIS FILE. ACQUIRE phase — the
-//                                 unguarded AssetData → IndexDocument
-//                                 projection. The function reads the
-//                                 source-of-truth (AssetData fields +
-//                                 metadata_json fallback bag) and
-//                                 materialises the IndexDocument
-//                                 shell with EmbeddingArtifact entries
-//                                 populated per channel (Values=nil at
-//                                 this stage; the commit phase fills
-//                                 them). Plus `domainAssetLifecycle`,
-//                                 the lifecycle-state normalize-on-
-//                                 acquire helper.
+//     unguarded AssetData → IndexDocument
+//     projection. The function reads the
+//     source-of-truth (AssetData fields +
+//     metadata_json fallback bag) and
+//     materialises the IndexDocument
+//     shell with EmbeddingArtifact entries
+//     populated per channel (Values=nil at
+//     this stage; the commit phase fills
+//     them). Plus `domainAssetLifecycle`,
+//     the lifecycle-state normalize-on-
+//     acquire helper.
 //
 //   - index_airlock_release.go  : RELEASE (canonicalisation
-//                                 auxiliary). The string-polish +
-//                                 metadata-bool helpers used during
-//                                 acquire (parseSourceVideoID,
-//                                 cleanDrivePath, dedupTrimmedStrings,
-//                                 mergeStringSlices, buildSemanticTitle,
-//                                 metadataBool, metadataBoolPtr,
-//                                 intOrFallback). The phase is named
-//                                 `release` because in this code
-//                                 surface it acts as the
-//                                 canonicalisation pass that runs
-//                                 AFTER raw fields are read (acquire)
-//                                 and BEFORE the wire-ready doc is
-//                                 committed (commit). NOT a
-//                                 resource-cleanup release — this
-//                                 airlock owns no scavenging-locks
-//                                 surface.
+//     auxiliary). The string-polish +
+//     metadata-bool helpers used during
+//     acquire (parseSourceVideoID,
+//     cleanDrivePath, dedupTrimmedStrings,
+//     mergeStringSlices, buildSemanticTitle,
+//     metadataBool, metadataBoolPtr,
+//     intOrFallback). The phase is named
+//     `release` because in this code
+//     surface it acts as the
+//     canonicalisation pass that runs
+//     AFTER raw fields are read (acquire)
+//     and BEFORE the wire-ready doc is
+//     committed (commit). NOT a
+//     resource-cleanup release — this
+//     airlock owns no scavenging-locks
+//     surface.
 //
 //   - index_airlock_commit.go   : COMMIT phase — the production
-//                                 airlock method
-//                                 `(*PayloadMapper).AssetToIndexDocument`
-//                                 routes the acquire-phase doc through
-//                                 validateDenseVector + resampleFloat32
-//                                 Vector + populate EmbeddingArtifact
-//                                 .Values + stamp GeneratedAt. Returns
-//                                 the typed transport errors
-//                                 (ErrEmptyVector /
-//                                 ErrVectorDimensionMismatch /
-//                                 ErrNaNOrInf) that the upstream
-//                                 IndexWriter fail-closed contract
-//                                 relies on.
+//     airlock method
+//     `(*PayloadMapper).AssetToIndexDocument`
+//     routes the acquire-phase doc through
+//     validateDenseVector + resampleFloat32
+//     Vector + populate EmbeddingArtifact
+//     .Values + stamp GeneratedAt. Returns
+//     the typed transport errors
+//     (ErrEmptyVector /
+//     ErrVectorDimensionMismatch /
+//     ErrNaNOrInf) that the upstream
+//     IndexWriter fail-closed contract
+//     relies on.
 //
 // Wire-protocol invariant (PR 6 godlike/06/07 doctrine, July 2026):
 // the IndexDocument shape and the (AssetData → IndexDocument)
