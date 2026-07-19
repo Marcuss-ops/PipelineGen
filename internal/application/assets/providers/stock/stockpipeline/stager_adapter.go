@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
@@ -58,27 +59,49 @@ type DriveDownloaderPort interface {
 // cache before invoking yt-dlp. Cache hits copy the cached file into
 // the new temp directory (no re-download). Cache misses trigger the
 // normal download path and populate the cache on success.
+//
+// Download concurrency (godlike/06 SSOT, July 2026): the yt-dlp
+// download path is wrapped in a singleflight.Group keyed by cacheKey.
+// Two concurrent StageSource calls on the same URL collapse to ONE
+// yt-dlp download — the second goroutine blocks until the first
+// finishes, then receives the same *assets.StagedAsset. DoD §8
+// ("2 richieste simultanee collassino a 1 download") is enforced
+// here. The singleflight callback's return value is cast back to
+// *assets.StagedAsset at the call site.
+//
+// godlike/06 SSOT (concrete ownership): the singleflight.Group is
+// owned by the StockStager struct (one per stager instance, the same
+// scope as the cache reader/writer). The singleflight key is the
+// canonical DeriveSourceCacheKey hash (download-section sensitive:
+// two ranges on the same source URL hit different keys → two
+// potential downloads, as expected by DoD §7 "Clip A vs Clip B").
 type StockStager struct {
 	svc             *Service
-	ytdlp           *downloader.YTDLPDownloader
+	downloader      DownloaderPort
 	driveDownloader DriveDownloaderPort
 	cacheReader     SourceCacheReader
 	cacheWriter     SourceCacheWriter
+	sf              singleflight.Group
 }
 
 // NewStockStager wraps a stockpipeline.Service as an assets.SourceStager.
 // svc must be non-nil; nil produces a runtime error on StageSource.
-// The yt-dlp downloader is constructed from the service's config.
+// The downloader is constructed from the service's config (the
+// concrete *downloader.YTDLPDownloader satisfies DownloaderPort
+// structurally).
 //
 // Google Drive download support is wired separately via
 // WithDriveDownloader (optional — nil means Drive URLs fall through
-// to yt-dlp, which will fail with a descriptive error).
+// to the downloader, which will fail with a descriptive error).
+//
+// Downloader override is wired separately via WithDownloader
+// (optional — null means use the default constructed from svc.cfg).
 func NewStockStager(svc *Service) *StockStager {
-	var ytdlp *downloader.YTDLPDownloader
+	var dl DownloaderPort
 	if svc != nil && svc.cfg != nil {
-		ytdlp = downloader.NewYTDLP(svc.cfg)
+		dl = downloader.NewYTDLP(svc.cfg)
 	}
-	return &StockStager{svc: svc, ytdlp: ytdlp}
+	return &StockStager{svc: svc, downloader: dl}
 }
 
 // WithDriveDownloader threads a Google Drive downloader into the
@@ -105,6 +128,16 @@ func (s *StockStager) WithDriveDownloader(dl DriveDownloaderPort) *StockStager {
 func (s *StockStager) WithSourceCache(reader SourceCacheReader, writer SourceCacheWriter) *StockStager {
 	s.cacheReader = reader
 	s.cacheWriter = writer
+	return s
+}
+
+// WithDownloader overrides the default downloader. The composition
+// root or test fixture may inject a custom DownloaderPort (e.g. a
+// test fake that counts calls and gates operations). Returns the
+// receiver for fluent chaining. nil is allowed but surfaces a typed
+// error on StageSource's download path (godlike/07 fail-closed).
+func (s *StockStager) WithDownloader(dl DownloaderPort) *StockStager {
+	s.downloader = dl
 	return s
 }
 
@@ -182,8 +215,8 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		return sa, nil
 	}
 
-	if s.ytdlp == nil {
-		return nil, fmt.Errorf("stock stager: yt-dlp downloader not wired (cfg nil)")
+	if s.downloader == nil {
+		return nil, fmt.Errorf("stock stager: downloader not wired (cfg nil or WithDownloader not called)")
 	}
 
 	dlReq := &downloader.DownloadRequest{
@@ -200,31 +233,45 @@ func (s *StockStager) StageSource(ctx context.Context, ref assets.SourceRef) (*a
 		dlReq.MergeFormat = ref.MergeFormat
 	}
 
-	if err := s.ytdlp.Download(ctx, dlReq); err != nil {
+	// ── Concurrent download collapse (godlike/06 SSOT) ─────────────
+	// Two concurrent StageSource calls on the same cacheKey collapse
+	// to ONE yt-dlp download. The leader downloads + populates cache;
+	// followers block until the leader finishes, then receive the
+	// same *assets.StagedAsset pointer.
+	//
+	// The singleflight key is the same DeriveSourceCacheKey hash used
+	// for the cache lookup, so cache hits AND same-key downloads
+	// collapse uniformly. Different download-sections yield different
+	// keys (no false collapse between Clip A and Clip B on the same
+	// source — see DoD §7 in the runbook + source_cache_test.go::T4).
+	v, sfErr, _ := s.sf.Do(cacheKey, func() (interface{}, error) {
+		if dlErr := s.downloader.Download(ctx, dlReq); dlErr != nil {
+			return nil, fmt.Errorf("stock stager: yt-dlp download %q: %w", ref.URL, dlErr)
+		}
+		// Resolve the actual downloaded file path.
+		resolved, resolveErr := downloader.ResolveDownloadedSegmentPath(outputPath + ".%(ext)s")
+		if resolveErr != nil {
+			return nil, fmt.Errorf("stock stager: resolve downloaded file: %w", resolveErr)
+		}
+		fi, statErr := os.Stat(resolved)
+		if statErr != nil {
+			return nil, fmt.Errorf("stock stager: stat %q: %w", resolved, statErr)
+		}
+		// Populate cache for fresh downloads (best-effort, never surfaces).
+		s.populateCache(ctx, cacheKey, "youtube", extractVideoIDFromURL(ref.URL), ref, resolved, fi.Size())
+		return &assets.StagedAsset{
+			LocalPath: resolved,
+			Bytes:     fi.Size(),
+		}, nil
+	})
+	if sfErr != nil {
+		// Cleanup this caller's tmp dir (leader's tmp was different
+		// — followers don't write any file so their tmpDir is empty
+		// and is left in place for Cleanup() downstream).
 		os.RemoveAll(tmpDir)
-		return nil, fmt.Errorf("stock stager: yt-dlp download %q: %w", ref.URL, err)
+		return nil, sfErr
 	}
-
-	// Resolve the actual downloaded file path.
-	resolved, resolveErr := downloader.ResolveDownloadedSegmentPath(outputPath + ".%(ext)s")
-	if resolveErr != nil {
-		os.RemoveAll(tmpDir)
-		return nil, fmt.Errorf("stock stager: resolve downloaded file: %w", resolveErr)
-	}
-
-	fi, statErr := os.Stat(resolved)
-	if statErr != nil {
-		os.RemoveAll(tmpDir)
-		return nil, fmt.Errorf("stock stager: stat %q: %w", resolved, statErr)
-	}
-
-	// Populate cache for fresh downloads.
-	s.populateCache(ctx, cacheKey, "youtube", extractVideoIDFromURL(ref.URL), ref, resolved, fi.Size())
-
-	return &assets.StagedAsset{
-		LocalPath: resolved,
-		Bytes:     fi.Size(),
-	}, nil
+	return v.(*assets.StagedAsset), nil
 }
 
 // populateCache writes a successful download to the source cache.

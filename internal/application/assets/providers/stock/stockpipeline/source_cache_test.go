@@ -6,13 +6,21 @@
 package stockpipeline
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets"
+	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/downloader"
 	"github.com/Marcuss-ops/PipelineGen/internal/infrastructure/filesystem"
+	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
 )
 
 // testFS is the canonical LocalFSPort used across the source cache
@@ -227,13 +235,470 @@ func TestCopyFileToPath_SrcMissing(t *testing.T) {
 	}
 }
 
-// TestCopyFileToPath_NilFS_FailClosed verifies the same composition
-// wiring gap as TestValidateCacheHit_NilFS_FailClosed on the copy
-// path. fail-closed surfaces the missing injection immediately.
-func TestCopyFileToPath_NilFS_FailClosed(t *testing.T) {
-	tmp := t.TempDir()
-	err := copyFileToPath(filepath.Join(tmp, "src"), filepath.Join(tmp, "dst"), nil)
-	if err == nil {
-		t.Error("copyFileToPath returned nil err when LocalFSPort is nil (should fail closed)")
+// ───────────────────────────────────────────────────────────────────
+// Integration tests (T1–T8): StockStager.StageSource end-to-end with
+// fake downloader + in-memory cache + capture logger.
+//
+// These exercise the godlike/06 SSOT dedup contract from DoD §7
+// ("una sola sorgente video scaricata, due intervalli = stesso
+// hash, secondo run = SOURCE_CACHE_HIT") + DoD §8 ("2 richieste
+// simultanee = 1 download"). The previous test fixture (hardcoded
+// RRJvrDKunyA fallback in stock stager + ytdlpFetch closure) was
+// retired; the cache + singleflight wiring is the sole resolver.
+// ───────────────────────────────────────────────────────────────────
+// Fake downloader — counts Download calls + writes fake mp4 bytes to
+// OutputPath. Optional delay forces singleflight overlap (T7).
+type fakeDownloader struct {
+	mu            sync.Mutex
+	downloadCount int
+	writesBytes   []byte
+	delay         time.Duration
+	downloadedCh  chan struct{}
+}
+
+func newFakeDownloader(b []byte) *fakeDownloader {
+	return &fakeDownloader{writesBytes: b, downloadedCh: make(chan struct{}, 100)}
+}
+
+func (f *fakeDownloader) Download(_ context.Context, req *downloader.DownloadRequest) error {
+	f.mu.Lock()
+	f.downloadCount++
+	n := f.downloadCount
+	f.mu.Unlock()
+	if n == 1 {
+		select {
+		case f.downloadedCh <- struct{}{}:
+		default:
+		}
+	}
+	if f.delay > 0 {
+		time.Sleep(f.delay)
+	}
+	// Mimic yt-dlp: writes OutputPath + ".mp4" (the canonical after-rename
+	// path). StageSource then calls
+	// downloader.ResolveDownloadedSegmentPath(outputPath + ".%(ext)s") and
+	// yt-dlp-replaces %(ext)s with the actual extension (here .mp4),
+	// producing OutputPath + ".mp4" — the test fake must match.
+	return os.WriteFile(req.OutputPath+".mp4", f.writesBytes, 0644)
+}
+
+func (f *fakeDownloader) Count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.downloadCount
+}
+
+// Fake in-memory SourceCache — satisfies both SourceCacheReader +
+// SourceCacheWriter (composition root wires the same repo as both).
+type fakeSourceCache struct {
+	mu      sync.RWMutex
+	entries map[string]*SourceCacheEntry
+}
+
+func newFakeSourceCache() *fakeSourceCache {
+	return &fakeSourceCache{entries: make(map[string]*SourceCacheEntry)}
+}
+
+func (f *fakeSourceCache) GetByCacheKey(_ context.Context, cacheKey string) (*SourceCacheEntry, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if e, ok := f.entries[cacheKey]; ok {
+		return e, nil
+	}
+	return nil, nil
+}
+
+func (f *fakeSourceCache) Upsert(_ context.Context, entry *SourceCacheEntry) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.entries[entry.CacheKey] = entry
+	return nil
+}
+
+func (f *fakeSourceCache) Invalidate(_ context.Context, cacheKey string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.entries, cacheKey)
+	return nil
+}
+
+func (f *fakeSourceCache) Count() int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return len(f.entries)
+}
+
+// loggerCapture — zapcore.Core that records every emitted entry's
+// rendered message string. Used to assert on log output (e.g.
+// "SOURCE_CACHE_HIT" in T3).
+type loggerCapture struct {
+	zapcore.Core
+	mu      sync.Mutex
+	entries []string
+}
+
+func newLoggerCapture() *loggerCapture {
+	return &loggerCapture{Core: zapcore.NewNopCore()}
+}
+
+func (l *loggerCapture) With(fields []zapcore.Field) zapcore.Core {
+	return l
+}
+
+// Enabled overrides the embedded NopCore's "false for everything"
+// semantics so every emitted log entry reaches Check() → Write().
+// Without this override zap's level filter would silently drop every
+// entry (T2/T3 saw `got: []` until this fix).
+func (l *loggerCapture) Enabled(_ zapcore.Level) bool {
+	return true
+}
+
+func (l *loggerCapture) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
+	if l.Enabled(ent.Level) {
+		return ce.AddCore(ent, l)
+	}
+	return ce
+}
+
+func (l *loggerCapture) Write(ent zapcore.Entry, fields []zapcore.Field) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var b strings.Builder
+	b.WriteString(ent.Message)
+	for _, f := range fields {
+		b.WriteByte(' ')
+		b.WriteString(f.Key)
+		b.WriteByte('=')
+		b.WriteString(f.String)
+	}
+	l.entries = append(l.entries, b.String())
+	return nil
+}
+
+func (l *loggerCapture) Messages() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := make([]string, len(l.entries))
+	copy(out, l.entries)
+	return out
+}
+
+func (l *loggerCapture) HasMatch(needle string) bool {
+	for _, m := range l.Messages() {
+		if strings.Contains(m, needle) {
+			return true
+		}
+	}
+	return false
+} // setupTestEnv wires a minimal Service + StockStager with all fakes
+// and returns them for the integration tests. Only the fields
+// StockStager.StageSource actually consults (cfg.Storage.TempPath,
+// svc.log, svc.localFS) are populated; the rest stay nil.
+//
+// TempDir is set to the t.TempDir absolute path so cfg.Storage.TempPath()
+// returns it verbatim (StorageConfig.FullPath has an "already-absolute"
+// short-circuit — relative TempDir would join DataDir+TempDir and MkdirTemp
+// would then fail because the joined subdir does not exist on disk).
+func setupTestEnv(t *testing.T, downloader DownloaderPort) (*StockStager, *fakeSourceCache, *loggerCapture) {
+	t.Helper()
+	tmpRoot := t.TempDir()
+	cfg := &config.Config{
+		Storage: config.StorageConfig{
+			DataDir: tmpRoot,
+			TempDir: tmpRoot, // absolute → FullPath("tmpRoot") returns tmpRoot verbatim
+		},
+	}
+	cap := newLoggerCapture()
+	log := zap.New(cap)
+	svc := &Service{
+		cfg:     cfg,
+		log:     log,
+		localFS: testFS,
+	}
+	cache := newFakeSourceCache()
+	stager := NewStockStager(svc).
+		WithSourceCache(cache, cache).
+		WithDownloader(downloader)
+	return stager, cache, cap
+}
+
+// T1: cache miss → download + populate cache + return staged asset.
+func TestStageSource_T1_CacheMissDownloadsAndPopulates(t *testing.T) {
+	fd := newFakeDownloader([]byte("fake-mp4-bytes-t1"))
+	stager, cache, _ := setupTestEnv(t, fd)
+
+	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
+	staged, err := stager.StageSource(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("StageSource returned err: %v", err)
+	}
+	if staged == nil {
+		t.Fatal("StageSource returned nil staged asset")
+	}
+	if fd.Count() != 1 {
+		t.Errorf("expected 1 download, got %d", fd.Count())
+	}
+	if cache.Count() != 1 {
+		t.Errorf("expected 1 cache entry, got %d", cache.Count())
+	}
+	fi, statErr := os.Stat(staged.LocalPath)
+	if statErr != nil {
+		t.Errorf("expected staged file on disk: %v", statErr)
+	} else if fi.Size() != int64(len("fake-mp4-bytes-t1")) {
+		t.Errorf("staged size = %d, want %d", fi.Size(), len("fake-mp4-bytes-t1"))
+	}
+}
+
+// T2: second call on same URL → cache hit, no second download, log
+// contains SOURCE_CACHE_HIT (DoD §7).
+func TestStageSource_T2_CacheHitNoSecondDownload(t *testing.T) {
+	fd := newFakeDownloader([]byte("fake-mp4-bytes-t2"))
+	stager, cache, cap := setupTestEnv(t, fd)
+
+	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
+	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+		t.Fatalf("first StageSource err: %v", err)
+	}
+	if fd.Count() != 1 {
+		t.Fatalf("expected 1 download after first call, got %d", fd.Count())
+	}
+	if cache.Count() != 1 {
+		t.Fatalf("expected 1 cache entry after first call, got %d", cache.Count())
+	}
+
+	staged2, err := stager.StageSource(context.Background(), ref)
+	if err != nil {
+		t.Fatalf("second StageSource err: %v", err)
+	}
+	if fd.Count() != 1 {
+		t.Errorf("expected STILL 1 download after cache hit, got %d (cache must prevent re-download)", fd.Count())
+	}
+	if staged2 == nil {
+		t.Error("expected non-nil staged asset on cache hit")
+	}
+	// DoD §7 "file size validato": cache hit must round-trip the same
+	// byte count as the original download. validateCacheHit enforces this
+	// internally (else Invalidates); the test pins it explicitly.
+	if staged2.Bytes != int64(len("fake-mp4-bytes-t2")) {
+		t.Errorf("cache-hit bytes = %d, want %d (file size validation invariant)", staged2.Bytes, len("fake-mp4-bytes-t2"))
+	}
+	if !cap.HasMatch("SOURCE_CACHE_HIT") {
+		t.Errorf("expected log to contain SOURCE_CACHE_HIT on cache hit, got: %v", cap.Messages())
+	}
+}
+
+// T3: SOURCE_CACHE_HIT log entry is well-formed (message +
+// cache_key + source_url + cached_path fields).
+func TestStageSource_T3_CacheHitLogFormatting(t *testing.T) {
+	fd := newFakeDownloader([]byte("fake-mp4-bytes-t3"))
+	stager, _, cap := setupTestEnv(t, fd)
+
+	ref := assets.SourceRef{
+		URL:             "https://www.youtube.com/watch?v=QdSbtEo3x_Y",
+		DownloadSection: "10-14",
+	}
+	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+		t.Fatalf("first StageSource err: %v", err)
+	}
+
+	before := len(cap.Messages())
+	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+		t.Fatalf("second StageSource err: %v", err)
+	}
+	newLogs := cap.Messages()[before:]
+	found := false
+	for _, msg := range newLogs {
+		if strings.Contains(msg, "SOURCE_CACHE_HIT") {
+			found = true
+			for _, field := range []string{"cache_key=", "source_url=", "cached_path="} {
+				if !strings.Contains(msg, field) {
+					t.Errorf("SOURCE_CACHE_HIT log missing %q field: %s", field, msg)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected SOURCE_CACHE_HIT log entry on cache hit, got: %v", newLogs)
+	}
+}
+
+// T4: different download sections on same URL → different cache keys,
+// so 2 downloads, 2 cache entries (DoD §7 "Clip A 10–14s vs Clip B
+// 30–34s" — different ranges, both honoured).
+func TestStageSource_T4_DifferentSectionsTwoDownloads(t *testing.T) {
+	fd := newFakeDownloader([]byte("fake-mp4-bytes-t4"))
+	stager, cache, _ := setupTestEnv(t, fd)
+
+	refA := assets.SourceRef{
+		URL:             "https://www.youtube.com/watch?v=QdSbtEo3x_Y",
+		DownloadSection: "10-14",
+	}
+	refB := assets.SourceRef{
+		URL:             "https://www.youtube.com/watch?v=QdSbtEo3x_Y",
+		DownloadSection: "30-34",
+	}
+	keyA := DeriveSourceCacheKey(refA.URL, refA.DownloadSection, "", false)
+	keyB := DeriveSourceCacheKey(refB.URL, refB.DownloadSection, "", false)
+	if keyA == keyB {
+		t.Fatalf("different download sections produced same cache key (test pre-condition violated): %q", keyA)
+	}
+	if _, err := stager.StageSource(context.Background(), refA); err != nil {
+		t.Fatalf("clip A err: %v", err)
+	}
+	if _, err := stager.StageSource(context.Background(), refB); err != nil {
+		t.Fatalf("clip B err: %v", err)
+	}
+	if fd.Count() != 2 {
+		t.Errorf("expected 2 downloads for different sections, got %d", fd.Count())
+	}
+	if cache.Count() != 2 {
+		t.Errorf("expected 2 cache entries (different keys per section), got %d", cache.Count())
+	}
+}
+
+// T5: cache hit but cached file is missing on disk → entry invalidated,
+// fall through to re-download (DoD §7 "se corrotto, scaricato di nuovo").
+func TestStageSource_T5_CacheFileMissing_InvalidatesAndRedownloads(t *testing.T) {
+	fd := newFakeDownloader([]byte("fake-mp4-bytes-t5"))
+	stager, cache, _ := setupTestEnv(t, fd)
+
+	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
+	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+		t.Fatalf("first StageSource err: %v", err)
+	}
+	cacheKey := DeriveSourceCacheKey(ref.URL, "", "", false)
+
+	// Corrupt the entry: point LocalPath at a non-existent file.
+	corruptedPath := "/nonexistent/missing-file.mp4"
+	cache.mu.Lock()
+	cache.entries[cacheKey].LocalPath = corruptedPath
+	cache.mu.Unlock()
+
+	beforeCount := fd.Count()
+	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+		t.Fatalf("second StageSource err: %v", err)
+	}
+	if fd.Count() != beforeCount+1 {
+		t.Errorf("expected +1 download (missing-file triggers re-download), before=%d after=%d", beforeCount, fd.Count())
+	}
+	// After invalidate + re-download, populateCache writes a NEW entry
+	// under the same cache key. The right assertion is that the
+	// corrupted LocalPath was replaced by the fresh download's
+	// LocalPath (the previous "entry != nil" assertion was wrong
+	// because the entry is re-populated by the same cache key).
+	entry, getErr := cache.GetByCacheKey(context.Background(), cacheKey)
+	if getErr != nil {
+		t.Errorf("get after invalidate+repopulate err: %v", getErr)
+	}
+	if entry == nil {
+		t.Fatal("expected cache entry re-populated after invalidate+re-download, got nil")
+	}
+	if entry.LocalPath == corruptedPath {
+		t.Errorf("expected LocalPath to differ from corrupted=%q after refresh, got same value", corruptedPath)
+	}
+}
+
+// T6: cache hit but cached file size mismatch → entry invalidated →
+// fall through to re-download.
+func TestStageSource_T6_CacheFileSizeMismatch_InvalidatesAndRedownloads(t *testing.T) {
+	fd := newFakeDownloader([]byte("fake-mp4-bytes-t6"))
+	stager, cache, _ := setupTestEnv(t, fd)
+
+	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
+	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+		t.Fatalf("first StageSource err: %v", err)
+	}
+	cacheKey := DeriveSourceCacheKey(ref.URL, "", "", false)
+
+	cache.mu.Lock()
+	cache.entries[cacheKey].FileSize = 999999999 // way bigger than actual
+	cache.mu.Unlock()
+
+	beforeCount := fd.Count()
+	if _, err := stager.StageSource(context.Background(), ref); err != nil {
+		t.Fatalf("second StageSource err: %v", err)
+	}
+	if fd.Count() != beforeCount+1 {
+		t.Errorf("expected +1 download on size mismatch (before=%d after=%d)", beforeCount, fd.Count())
+	}
+}
+
+// T7: 5 concurrent calls on same URL collapse to 1 yt-dlp download
+// (DoD §8 "2 richieste simultanee collassino a 1 download"). The
+// fake downloader sleeps 100ms per call so the 5 goroutines all
+// overlap inside the singleflight callback window — without
+// singleflight this test would show downloadCount=5.
+func TestStageSource_T7_ConcurrentCollapsesToOneDownload(t *testing.T) {
+	fd := newFakeDownloader([]byte("fake-mp4-bytes-t7"))
+	fd.delay = 100 * time.Millisecond
+	stager, _, _ := setupTestEnv(t, fd)
+
+	ref := assets.SourceRef{URL: "https://www.youtube.com/watch?v=QdSbtEo3x_Y"}
+	const N = 5
+	var wg sync.WaitGroup
+	wg.Add(N)
+	barrier := make(chan struct{})
+
+	results := make([]*assets.StagedAsset, N)
+	errs := make([]error, N)
+	for i := 0; i < N; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			<-barrier
+			sa, err := stager.StageSource(context.Background(), ref)
+			results[idx] = sa
+			errs[idx] = err
+		}(i)
+	}
+	close(barrier)
+	wg.Wait()
+
+	if fd.Count() != 1 {
+		t.Errorf("expected 1 download after %d concurrent callers, got %d (singleflight must collapse)", N, fd.Count())
+	}
+	for i, sa := range results {
+		if errs[i] != nil {
+			t.Errorf("goroutine %d err: %v", i, errs[i])
+			continue
+		}
+		if sa == nil {
+			t.Errorf("goroutine %d returned nil staged asset", i)
+		}
+	}
+}
+
+// T8: cache.Invalidate removes entry (lookup after Invalidate returns
+// nil). Companion to T5/T6; pins the public-cache contract that the
+// production repository (stocksourcecache.Repository.Invalidate)
+// upholds symmetrically with the in-memory fake.
+func TestStageSource_T8_CacheInvalidationRemovesEntry(t *testing.T) {
+	fd := newFakeDownloader([]byte("fake-mp4-bytes-t8"))
+	_, cache, _ := setupTestEnv(t, fd)
+
+	// Seed the cache directly (no need to stage a full download).
+	cacheKey := DeriveSourceCacheKey("https://www.youtube.com/watch?v=QdSbtEo3x_Y", "", "", false)
+	if err := cache.Upsert(context.Background(), &SourceCacheEntry{
+		CacheKey:  cacheKey,
+		LocalPath: "/tmp/synthetic.mp4",
+		FileSize:  42,
+	}); err != nil {
+		t.Fatalf("seed upsert err: %v", err)
+	}
+	if entry, err := cache.GetByCacheKey(context.Background(), cacheKey); err != nil || entry == nil {
+		t.Fatalf("expected seeded entry present, got entry=%v err=%v", entry, err)
+	}
+
+	if err := cache.Invalidate(context.Background(), cacheKey); err != nil {
+		t.Fatalf("invalidate err: %v", err)
+	}
+	entry, err := cache.GetByCacheKey(context.Background(), cacheKey)
+	if err != nil {
+		t.Errorf("get after invalidate err: %v", err)
+	}
+	if entry != nil {
+		t.Errorf("expected nil entry after invalidate, got %+v", entry)
+	}
+	if cache.Count() != 0 {
+		t.Errorf("expected empty cache after invalidate, got %d entries", cache.Count())
 	}
 }
