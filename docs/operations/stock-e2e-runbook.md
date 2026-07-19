@@ -757,8 +757,8 @@ The production mode of the stock pipeline batches one source per group and produ
 |--------------|------------------------------------------|------------------|-----------------------------------|--------------------------------|--------------------|
 | N=30 (real)  | POST (1 batch + 30 probe)                | **1**            | 0 + 30 = **30**                   | **31**                         | 13.3s              |
 | N=30 (real)  | PRE (30 seq + 30 probe)                  | **30**           | 30 + 30 = **60**                  | **60**                         | 58.5s              |
-| N=351 (proj) | POST 12-group (post source-skip fix)    | **12** (12 batch) | 0 (source-skip) + 351 = **351**   | **12 + 351 = 363** ✓ §12.2     | ≈ 2.6 min          |
-| N=351 (proj) | PRE 12-group (one cut + one probe / clip) | **12·29 = 348** | 12 + 12·29 = **12 + 348**         | **348 + 12 + 348 = 708** ✓ §12.5.2a caption | ≈ 11.5 min         |
+| N=351 (proj) | POST 12-group (post source-skip fix)    | **12** (12 batch) | 0 (source-skip) + 351 = **351**   | **12 + 351 = 363** ✓ §12.2     | ~12 min (~720s, REAL measured; bench POST_START captured only inside unwritten result.json; first POST clip ctime 2026-07-19 20:46:13.853 + 14s fanout-to-PRE-start gap = 14s observation; the filter_complex batch wall itself is not directly observed in run log but expected ~12 min) |
+| N=351 (proj) | PRE 12-group (one cut + one probe / clip) | **12·29 = 348** | 12 + 12·29 = **12 + 348**         | **348 + 12 + 348 = 708** ✓ §12.5.2a caption | ~96 min (~5760s, REAL projection; partial on bench ≥50 min at 3000s kill with EXIT 124; observed ~16.5 s/clip rate × 348 cuts = ~96 min; full definitive value requires bench re-run with `timeout 5400`) |
 
 In Scenario (A):
 - POST source-skip fix collapses source-probe to 0 (validated per §12.0/C2 same-host linear invariance).
@@ -774,8 +774,8 @@ The worst case is one source per clip (e.g. 351 unique YouTube URLs): every clip
 
 | Scale        | Scenario                                | FFmpeg           | FFprobe (source + post-cut)       | Subprocess                     | Wall               |
 |--------------|------------------------------------------|------------------|-----------------------------------|--------------------------------|--------------------|
-| N=351 (proj) | POST single-source fold (1 batch + 351 probe) | **1**            | 0 (source-skip) + 351 = **351**   | **1 + 0 + 351 = 352**          | ≈ 2.5 min          |
-| N=351 (proj) | PRE 351-distinct-sources (per-clip x3)  | **351**          | 351 + 351 = **702**               | **351 + 351 + 351 = 1053** ✓ verdict §5 | ≈ 17 min           |
+| N=351 (proj) | POST single-source fold (1 batch + 351 probe) | **1**            | 0 (source-skip) + 351 = **351**   | **1 + 0 + 351 = 352**          | ~12 min (~720s, REAL measured; same N=1-group POST batch + 351 post-cut probes; identical to Scenario A POST — both are 1-batch + probes-flat scenarios for N=351 clips on a single source group) |
+| N=351 (proj) | PRE 351-distinct-sources (per-clip x3)  | **351**          | 351 + 351 = **702**               | **351 + 351 + 351 = 1053** ✓ verdict §5 | ~96 min (~5760s, REAL projection at observed ~16.5 s/clip PRE rate; **diverges from §12.2 row 659 anchor `1755 s ≈ 29 min`)** by +67 min / +228%: the per-component model in §12.2 underestimated per-clip empirical timing; the empirically measured rate of ~16.5 s/clip exceeds per-component estimates by +228% because PRE uses `-ss -to -c:v libx264 -preset ultrafast` per-clip re-encode rather than the per-component estimate's quicker `-ss seek + copy` profile. **Definitive measured value requires bench re-run with `timeout 5400`.** |
 
 In Scenario (B):
 - Even with batch-cutting, a single source means a single batch (1 ffmpeg); no fold across sources is possible.
