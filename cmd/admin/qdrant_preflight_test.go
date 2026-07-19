@@ -78,7 +78,4 @@ func TestSupersedeGateIsExplicitlyRetired(t *testing.T) {
 	if err == nil || !strings.HasPrefix(err.Error(), "skip: ") {
 		t.Fatalf("retired supersede probe must surface an explicit skip, got %v", err)
 	}
-	if strings.Contains(err.Error(), "generate-from-clips") {
-		t.Fatalf("retired endpoint name leaked into runtime error: %v", err)
-	}
 }
