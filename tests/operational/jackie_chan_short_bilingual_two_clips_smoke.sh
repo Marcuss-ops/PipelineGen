@@ -54,7 +54,7 @@ case "$SMOKE_LAST_STATUS" in
     *) echo "job ended with status=$SMOKE_LAST_STATUS" >&2; exit 1 ;;
 esac
 
-ROWS=$(sqlite_q "SELECT language || $'\x1f' || COALESCE(specscene, '') FROM scripts WHERE idempotency_key='$REQ_ID' AND language IN ('en','es') ORDER BY language")
+ROWS=$(sqlite_q "SELECT language || char(31) || COALESCE(specscene, '') FROM scripts WHERE idempotency_key='$REQ_ID' AND language IN ('en','es') ORDER BY language")
 [[ -n "$ROWS" ]] || { echo "no persisted EN/ES script rows for $REQ_ID" >&2; exit 1; }
 
 EN_SCENE=$(printf '%s\n' "$ROWS" | awk -F $'\x1f' '$1=="en" {print $2; exit}')

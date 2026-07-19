@@ -351,8 +351,15 @@ func (uc *GenerateOneUseCase) Execute(
 		})
 	}
 	if qErr != nil {
-		result.Status = "FAILED_QUALITY_GATE"
-		return result, uc.logPhaseError(item, "quality_gate", scriptpkg.ErrQualityGateFailed, qErr, tracker)
+		if item.ScriptParams.SkipQualityGate {
+			tracker.TrackEvent("quality.skipped", "Editorial quality gate failure ignored by request", map[string]any{
+				"item_id": item.ID,
+				"error":   qErr.Error(),
+			})
+		} else {
+			result.Status = "FAILED_QUALITY_GATE"
+			return result, uc.logPhaseError(item, "quality_gate", scriptpkg.ErrQualityGateFailed, qErr, tracker)
+		}
 	}
 
 	timings.TotalMs = time.Since(startAll).Milliseconds()

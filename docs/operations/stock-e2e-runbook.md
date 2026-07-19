@@ -261,7 +261,7 @@ The two are **not duplicates**: §1 covers facts at per-route / per-DB-table lev
 
 See [`stock-e2e-asset-pipeline-debug.md`](stock-e2e-asset-pipeline-debug.md) for the full **canonical paths + env-var contract** table.
 
-> *§-anchor preserved for script grep compatibility (`scripts/ci/architecture/checks/53_check_69.sh`, `54_check_70.sh`, `check_60_governance.sh`).*
+> *§-anchor for script grep compatibility: governance rules per-rule-split to `scripts/ci/architecture/checks/check_<NN>_<rule>.sh`. The dispatcher's canonical-list header at the top of `scripts/ci/architecture/checks/all_checks.sh` is the SSOT for the full 12-rule enumeration (godlike/06 one canonical owner per fact). Of those 12, only **Check 69** (NoAutoTriggerLiveBattery) and **Check 70** (LiveBatteryCopyByteEquivalence) directly gate this runbook's §10.6 + §10.8 surface; the other 10 governance rules gate domain surfaces orthogonal to runbook mechanics and are NOT runtime-preconditions for any stock-e2e phase.*
 
 
 

@@ -216,6 +216,10 @@ type ScriptSpec struct {
 	PlannerVersion string `json:"planner_version,omitempty"`
 	ForceRefresh   bool   `json:"force_refresh,omitempty"`
 	UseMemory      bool   `json:"use_memory,omitempty"`
+	// SkipQualityGate keeps the editorial quality metrics but prevents a
+	// request-scoped gate failure from blocking persistence. It is
+	// intentionally opt-in and never changes the default gate behavior.
+	SkipQualityGate bool `json:"skip_quality_gate,omitempty"`
 }
 
 // ── OutputSpec ─────────────────────────────────────────────────────

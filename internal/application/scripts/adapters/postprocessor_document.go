@@ -65,6 +65,11 @@ type PipelineResult struct {
 	// canonical wire-shape observed downstream.
 	TranslatedText      string                    `json:"translated_text,omitempty"`
 	TranslatedSpecScene scriptpkg.SpecSceneOutput `json:"translated_specscene,omitempty"`
+	// Original* preserve the source-language surface when translation runs
+	// before persistence, allowing the persistence processor to write both
+	// canonical language rows.
+	OriginalText      string                    `json:"original_text,omitempty"`
+	OriginalSpecScene scriptpkg.SpecSceneOutput `json:"original_specscene,omitempty"`
 }
 
 // PostProcessResult carries the output of a single processor.
@@ -113,6 +118,8 @@ type PostProcessResult struct {
 	// translation don't see a serialisation diff.
 	TranslatedText      string                    `json:"translated_text,omitempty"`
 	TranslatedSpecScene scriptpkg.SpecSceneOutput `json:"translated_specscene,omitempty"`
+	OriginalText        string                    `json:"original_text,omitempty"`
+	OriginalSpecScene   scriptpkg.SpecSceneOutput `json:"original_specscene,omitempty"`
 }
 
 // IsEmpty reports whether the result carries no observable work.
@@ -179,13 +186,15 @@ func (r *PostProcessResult) IsEmpty() bool {
 
 // ProcessInput is the typed envelope passed to every postprocessor.
 type ProcessInput struct {
-	Text           string
-	WordCount      int
-	SpecScene      scriptpkg.SpecSceneOutput
-	ModelUsed      string
-	CacheStatus    string
-	SourceTrace    *scriptpkg.ClipEvidence
-	PriorArtifacts map[string]PostProcessResult
+	Text              string
+	WordCount         int
+	SpecScene         scriptpkg.SpecSceneOutput
+	OriginalText      string
+	OriginalSpecScene scriptpkg.SpecSceneOutput
+	ModelUsed         string
+	CacheStatus       string
+	SourceTrace       *scriptpkg.ClipEvidence
+	PriorArtifacts    map[string]PostProcessResult
 
 	// Entities carries the entity-extraction result, populated by
 	// mergePostProcessResult when the entities processor produces

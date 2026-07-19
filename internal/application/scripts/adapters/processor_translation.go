@@ -301,6 +301,8 @@ func (p *TranslationProcessor) Process(
 	// translation see a wire-shape-stable result.
 	var postTranslatedText string
 	var postTranslatedSpecScene scriptpkg.SpecSceneOutput
+	originalText := input.Text
+	originalSpecScene := input.SpecScene
 	if translated != nil {
 		input.SpecScene = translated.SpecScene
 		input.Text = translated.Text
@@ -324,5 +326,7 @@ func (p *TranslationProcessor) Process(
 		Warnings:            tWarnings,
 		TranslatedText:      postTranslatedText,
 		TranslatedSpecScene: postTranslatedSpecScene,
+		OriginalText:        originalText,
+		OriginalSpecScene:   originalSpecScene,
 	}, nil
 }
