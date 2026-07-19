@@ -1,12 +1,17 @@
 # PipelineGen — split ownership section: jobs
-# This file is part of architecture/ownership.yaml.
-# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml.
+# This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
+# Generator: cmd/architecture-aggregate produces architecture/ownership.generated.yaml
+# from these 6 files in canonical order.
+# Edit the source files; the generated view is regenerated deterministically.
 
-# Every handler is owned by exactly one module.
+#   2. Every handler is owned by exactly one module.
 job_handler_map:
-  - job_type: script.generate
-    handler: GenerateJobHandler.Handle
-    owner: internal/application/scripts/jobs
+  - job_type: script.generate_from_clips
+    handler: PipelineUseCase.HandleJob
+    owner: internal/application/scripts
+  - job_type: script.generate_batch
+    handler: BatchJobHandler.Handle
+    owner: internal/application/scripts
   - job_type: script.curate
     handler: CurationJobServiceImpl.HandleCurateJob
     owner: internal/application/scripts
@@ -30,4 +35,4 @@ job_handler_map:
     owner: internal/application/assets/catalogsync
 
 # ── Canonical Service Construction (SSOT) ────────────────────────────────────
-# Each canonical service is constructed exactly once.
+# Each canonical service is constructed EXACTLY ONCE.
