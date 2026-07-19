@@ -89,6 +89,32 @@ const (
 	// and should be wrapped in a separate reference.
 	MaxURLLength = 2048
 
+	// Response-level status strings (godlike/06 SSOT decoupling):
+	// these describe the *endpoint acknowledgement* — not the broker
+	// job state enum (QUEUED / RUNNING / FINALIZING / SUCCEEDED /
+	// INDEX_PENDING, owned by internal/kernel/job.Status).
+	//   - StatusPending = request accepted, work scheduled via the
+	//     jobs broker (async path; useCase.Submit returned a jobID).
+	//     Callers poll /api/jobs/{id}/full or wait for the
+	//     broker-level terminal state to know the actual outcome.
+	//   - StatusCompleted = request processed inline (sync path;
+	//     useCase.Submit returned with empty jobID, e.g. test
+	//     fixture or partial-deploy worker). The job is finished
+	//     by the time the response is serialised; no follow-up
+	//     polling is required.
+	// Keeping these distinct from the broker enum avoids the silent-
+	// confusion class where a "QUEUED" status string at the endpoint
+	// implies "job not yet started" while the broker is in RUNNING.
+	StatusPending   = "pending"
+	StatusCompleted = "completed"
+	// StatusError is the third endpoint-acknowledgement value —
+	// emitted on every 4xx/5xx response (validation rejections, broker
+	// unavailability). The `error_code` field carries the machine-
+	// readable subtype (UNKNOWN_FIELD / INVALID_URL / etc.); `status`
+	// stays at the canonical literal so clients can branch on a single
+	// field with no enum drift.
+	StatusError = "error"
+
 	// Error codes — machine-readable tags for client retry logic.
 	ErrCodeUnknownField   = "UNKNOWN_FIELD"
 	ErrCodeInvalidURL     = "INVALID_URL"
@@ -109,11 +135,32 @@ const (
 //  5. Path-traversal check on folder fields → PATH_TRAVERSAL.
 //  6. clip_duration range check (existing, 3 ≤ d ≤ 30).
 //
-// On success returns 202 with {job_id, run_id, status, deduplicated}:
-//   - status = "QUEUED" when the use case routed through the jobs
-//     broker (async & jobs wired — canonical production path).
-//   - status = "completed" when the use case ran sync (no jobs
-//     service wired — partial deploy / test fixture only).
+// On success returns 200 OK with {job_id, run_id, status, deduplicated}.
+// HTTP 200 (not 202) is intentional: the handler always acknowledges
+// receipt synchronously, and the response carries the canonical
+// endpoint-acknowledgement enum (godlike/06 SSOT, see StatusPending /
+// StatusCompleted above). Status naming is intentionally decoupled
+// from the broker job.State enum (QUEUED / RUNNING / FINALIZING /
+// SUCCEEDED / INDEX_PENDING) — clients that need broker-level status
+// poll /api/jobs/{id}/full separately.
+//
+// Endpoint-acknowledgement enum (godlike/06 SSOT decoupling, see the
+// StatusPending / StatusCompleted / StatusError constants above):
+//   - status = "pending" when the use case routed through the jobs
+//     broker (async path — useCase.Submit returned a non-empty jobID,
+//     canonical production path). job_id + run_id are populated.
+//   - status = "completed" when the use case ran inline (sync path —
+//     useCase.Submit returned no jobID, e.g. partial deploy / test
+//     fixture). job_id + run_id are empty.
+//   - status = "error" on any 4xx/5xx response from the validation
+//     chain or the use case (the `error_code` field carries the
+//     machine-readable subtype).
+//
+// For broker-level state progression (QUEUED → LEASED → RUNNING →
+// WAITING_CHILDREN → FINALIZING → SUCCEEDED | INDEX_PENDING | FAILED
+// | CANCELLED) clients poll /api/jobs/{id}/full — that endpoint is
+// the canonical broker-state surface (see internal/api/jobs/impl.go
+// ::buildJobResponse).
 //
 // deduplicated is always false for the first submission; the
 // idempotency followup flips it to true on a duplicate hash match.
@@ -130,7 +177,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 			code = ErrCodeUnknownField
 		}
 		c.JSON(http.StatusBadRequest, runResponse{
-			Status:    "error",
+			Status:    StatusError,
 			Error:     "invalid JSON payload: " + err.Error(),
 			ErrorCode: code,
 		})
@@ -140,7 +187,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 	// (2) Source-presence check.
 	if len(req.SearchQueries) == 0 && len(req.DirectURLs) == 0 && len(req.DriveURLs) == 0 && len(req.Clips) == 0 {
 		c.JSON(http.StatusBadRequest, runResponse{
-			Status:    "error",
+			Status:    StatusError,
 			Error:     "at least one of search_queries, direct_urls, drive_urls, or clips is required",
 			ErrorCode: ErrCodeInvalidPayload,
 		})
@@ -150,7 +197,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 	// (3) Max-clip cap.
 	if len(req.Clips) > MaxClipsPerRun {
 		c.JSON(http.StatusBadRequest, runResponse{
-			Status:    "error",
+			Status:    StatusError,
 			Error:     fmt.Sprintf("too many clips requested (max %d)", MaxClipsPerRun),
 			ErrorCode: ErrCodeMaxClips,
 		})
@@ -161,7 +208,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 	for _, u := range req.DirectURLs {
 		if !isValidURL(u) {
 			c.JSON(http.StatusBadRequest, runResponse{
-				Status:    "error",
+				Status:    StatusError,
 				Error:     "invalid or insecure direct_url: " + u,
 				ErrorCode: ErrCodeInvalidURL,
 			})
@@ -171,7 +218,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 	for _, u := range req.DriveURLs {
 		if !isValidURL(u) {
 			c.JSON(http.StatusBadRequest, runResponse{
-				Status:    "error",
+				Status:    StatusError,
 				Error:     "invalid or insecure drive_url: " + u,
 				ErrorCode: ErrCodeInvalidURL,
 			})
@@ -185,7 +232,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 	for _, clip := range req.Clips {
 		if clip.URL != "" && !isValidURL(clip.URL) {
 			c.JSON(http.StatusBadRequest, runResponse{
-				Status:    "error",
+				Status:    StatusError,
 				Error:     "invalid or insecure clip url: " + clip.URL,
 				ErrorCode: ErrCodeInvalidURL,
 			})
@@ -196,7 +243,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 	// (5) Path traversal on folder fields.
 	if !isSafePath(req.Subfolder) || !isSafePath(req.FolderName) || !isSafePath(req.DriveFolderID) || !isSafePath(req.FolderID) {
 		c.JSON(http.StatusBadRequest, runResponse{
-			Status:    "error",
+			Status:    StatusError,
 			Error:     "path traversal characters detected in folder configuration",
 			ErrorCode: ErrCodePathTraversal,
 		})
@@ -206,7 +253,7 @@ func (h *StockHandler) Run(c *gin.Context) {
 	// (6) clip_duration range (3 ≤ d ≤ 30).
 	if req.ClipDuration != 0 && (req.ClipDuration < 3 || req.ClipDuration > 30) {
 		c.JSON(http.StatusBadRequest, runResponse{
-			Status:    "error",
+			Status:    StatusError,
 			Error:     "clip_duration must be between 3 and 30 seconds",
 			ErrorCode: ErrCodeInvalidPayload,
 		})
@@ -246,25 +293,26 @@ func (h *StockHandler) Run(c *gin.Context) {
 			status = http.StatusServiceUnavailable
 		}
 		c.JSON(status, runResponse{
-			Status:    "error",
+			Status:    StatusError,
 			Error:     err.Error(),
 			ErrorCode: ErrCodeInvalidPayload,
 		})
 		return
 	}
 
-	resp := runResponse{
-		Status:       "QUEUED",
-		Deduplicated: false,
-	}
+	// Endpoint-acknowledgement status (godlike/06 SSOT, decoupling
+	// from broker job state). Single-write assignment: jobID != '' →
+	// async path → "pending"; else sync path → "completed".
+	resp := runResponse{Deduplicated: false}
 	if jobID != "" {
+		resp.Status = StatusPending
 		resp.JobID = jobID
 		resp.RunID = jobID
 	} else {
-		resp.Status = "completed"
+		resp.Status = StatusCompleted
 	}
 
-	c.JSON(http.StatusAccepted, resp)
+	c.JSON(http.StatusOK, resp)
 }
 
 // isValidURL validates that u is an absolute https URL with a

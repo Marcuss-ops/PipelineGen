@@ -226,7 +226,13 @@ func TestStockHandler_MaxClipsExceeded_Returns400(t *testing.T) {
 //
 // Companion to #7: 100 clips (== MaxClipsPerRun) must NOT be rejected.
 // This catches off-by-one errors at the cap boundary.
-func TestStockHandler_MaxClipsExact_Returns202(t *testing.T) {
+//
+// Per agent feedback (godlike/06 SSOT decoupling): handler now
+// returns HTTP 200 (acknowledgement-of-receipt) with the endpoint-
+// acknowledgement status enum (pending|completed), decoupled from
+// the broker job state enum. Boundary test confirms the cap does
+// not flip the response class.
+func TestStockHandler_MaxClipsExact_Returns200(t *testing.T) {
 	_, router := newStockHandler(nil, "job-1")
 
 	clips := make([]map[string]any, MaxClipsPerRun)
@@ -247,8 +253,8 @@ func TestStockHandler_MaxClipsExact_Returns202(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
@@ -257,6 +263,10 @@ func TestStockHandler_MaxClipsExact_Returns202(t *testing.T) {
 // Definition of Done §2: response MUST always include
 // `deduplicated:false` on first submission. This is the field the
 // idempotency followup flips to true on a hash collision.
+//
+// Per agent feedback (godlike/06 SSOT decoupling): endpoint-
+// acknowledgement status is "pending" on async path — INDEPENDENT
+// of the broker job state enum (which is QUEUED at this moment).
 func TestStockHandler_DeduplicatedFieldAlwaysPresent(t *testing.T) {
 	_, router := newStockHandler(nil, "job-test-123")
 
@@ -266,8 +276,8 @@ func TestStockHandler_DeduplicatedFieldAlwaysPresent(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	// The response body MUST contain the literal key "deduplicated"
 	// (no omitempty on the json tag). Verify by raw byte scan rather
@@ -276,13 +286,14 @@ func TestStockHandler_DeduplicatedFieldAlwaysPresent(t *testing.T) {
 	if !strings.Contains(w.Body.String(), `"deduplicated":false`) {
 		t.Errorf("expected response to contain `\"deduplicated\":false`, got %s", w.Body.String())
 	}
-	// And parse to assert the QUEUED status.
+	// And parse to assert the "pending" endpoint-acknowledgement status
+	// (decoupled from broker state).
 	var resp testRunResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp.Status != "QUEUED" {
-		t.Errorf("expected status=QUEUED on async path, got %q", resp.Status)
+	if resp.Status != StatusPending {
+		t.Errorf("expected status=%s on async path, got %q", StatusPending, resp.Status)
 	}
 	if resp.Deduplicated != false {
 		t.Errorf("expected deduplicated=false on first submission, got %v", resp.Deduplicated)
