@@ -83,7 +83,9 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	appvideo "github.com/Marcuss-ops/PipelineGen/internal/application/video"
 
+	scriptgenrepo "github.com/Marcuss-ops/PipelineGen/internal/infrastructure/database/sqlite/scriptgeneration"
 	"github.com/Marcuss-ops/PipelineGen/internal/platform/config"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
 
 	"go.uber.org/zap"
 )
@@ -131,6 +133,19 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	if root.AI.ScriptEngine == nil {
 		log.Warn("wireScriptFlow: AIBundle services not fully initialized — skipping ScriptFlow")
 		return nil
+	}
+
+	// ── Wire ScriptVoiceoverGenerator (P1 verdetto) ─────────────────────
+	// Constructs the VoiceoverGenerator adapter from the TTS audio processor
+	// when available. Used by the script generation runner's Stage 4
+	// (GENERATING_VOICEOVERS).
+	if root.Domains.AudioProcessor != nil {
+		voPath := cfg.Storage.VoiceoversPath()
+		root.AI.ScriptVoiceoverGenerator = NewScriptVoiceoverGenerator(root.Domains.AudioProcessor, voPath, log)
+		log.Info("wireScriptFlow: ScriptVoiceoverGenerator wired",
+			zap.String("output_dir", voPath))
+	} else {
+		log.Warn("wireScriptFlow: ScriptVoiceoverGenerator NOT wired (no audio processor) — voiceover stage will be skipped")
 	}
 
 	// ── Step 1: Source resolvers (factory in wire_script_resolvers.go) ──
@@ -221,6 +236,20 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 	}
 	remotionProducer := appvideo.NewProducer(root.Jobs.Facade)
 
+	// Build the script-generation run repository when a DB is available.
+	// This repository backs GET /jobs/:id/full and the durable runner.
+	var runRepo scriptgen.RunRepository
+	if root.DB != nil {
+		repo, err := scriptgenrepo.NewSQLiteRunRepository(root.DB.DB, log)
+		if err != nil {
+			return fmt.Errorf("wireScriptFlow: build script generation run repository: %w", err)
+		}
+		runRepo = repo
+		log.Info("wireScriptFlow: script generation run repository wired")
+	} else {
+		log.Warn("wireScriptFlow: root.DB is nil — script generation run repository not wired")
+	}
+
 	scriptDeps := scriptapi.Dependencies{
 		Generate: scriptapi.GenerateDeps{
 			Submission:     submissionSvc,
@@ -234,8 +263,9 @@ func wireScriptFlow(ctx context.Context, cfg *config.Config, log *zap.Logger, ro
 		// GenerationSubmissionService at composition time; JobsHandler
 		// now owns only the GetJobStatus surface.
 		Jobs: scriptapi.JobsDeps{
-			Jobs: root.Jobs.Facade,
-			Log:  log,
+			Jobs:    root.Jobs.Facade,
+			Log:     log,
+			RunRepo: runRepo,
 		},
 		ClipsSearcher: clipsSearcher,
 		AdminToken:    adminToken,
