@@ -630,6 +630,8 @@ Re-run `bash -n` on every shell snippet in §11.1 → §11.5 after any operator 
 
 This section records the verdict-time theoretical numerics for pre/post batch-cutting and anchors them on the canonical **30‑clip measurement pin** that IS executable in CI per‑commit. The full **351‑clip live benchmark on a 1755s synthetic source** (≈12 Ffmpeg batch invocations + 351 ffprobe + full CutRequest pipeline through Drive) is **NOT executed in interactive scope** per the §0 honest-limitation discipline: wall-time ≈ 30 min sequential / 12 min post-fix on ffmpeg 4.4.2 with synthetic lavfi testsrc is outside the operator's per-session budget. The §12.3 procedure below is the canonical recipe for CI-only execution (§10.6 NO-AUTO-TRIGGER discipline preserved — manual `workflow_dispatch` only).
 
+**⚠ Scope disclaimer (godlike/07 honest-limitation)**: the 30‑clip test pin in §12.1 validates the **fold-contract request-shape** (`1 CutRequest`, N `CutJob`, M artifact writes) via mock runners. It DOES NOT measure real-ffmpeg subprocess economics (wall-time / ffmpeg+ffprobe invocation count / CPU peak / RAM peak). The §12.2 row numerics are **theoretical projection from verdict §5 + linear scaling**, not per-commit measured receipts. Subprocess economics require the §12.3 live bench — the CI-only canonical path.
+
 ### §12.1 — Methodology: canonical 30‑clip measurement pin
 
 The canonical pin is `TestStockExtractClips_ThirtyClips_SingleCutRequest` in `internal/application/assets/providers/stock/stockpipeline/step_extract_clips_test.go` (line 840+; comment-line 842-843 defines the contract: *"30 ClipPlan on the same source must be folded into exactly one CutRequest carrying 30 CutJobs"*). Per-commit evidence on `origin/main`:
@@ -648,12 +650,12 @@ This pin asserts the **batch-cutting fold invariant** at production-side (StockE
 
 Per the original verdict (§5) cross-referenced with the canonical code-paths (§12.1):
 
-| Metric                              | Pre-fix (sequential cut)                                  | Post-fix (batch per source group)                        | Delta       | Source of truth                   |
+| Metric                              | Pre-fix (sequential cut)                                  | Post-fix (batch per source group + source-probe skip)  | Delta       | Source of truth                   |
 |-------------------------------------|-----------------------------------------------------------|---------------------------------------------------------|-------------|-----------------------------------|
 | FFmpeg subprocess invocations       | 351 (1 per clip)                                          | 12 (1 per source group)                                 | -97%        | StockExtractClipsStep.Run + verdict §5 |
 | Source-duration ffprobe (in cutter) | 351 (1 per clip)                                          | 0  (SourceDuration passed from validateAndProbeSourceDuration) | -100% | CutRequest.SourceDuration skip    |
 | Post-cut ffprobe (validation)       | 351 (1 per clip)                                          | 351 (1 per produced clip)                               | 0 (unchanged) | FFmpegCutter.runProbe            |
-| **Total subprocess invocations**    | **1053**                                                  | **375**                                                 | **‑64%**    | verdict §5 + §12.1 sums           |
+| **Total subprocess invocations**    | **1053**                                                  | **~363** (12 + 0 + 351; cumulative post both P1 batch-cutting + P2 source-probe-skip) | **‑66%**    | arithmetic sum of the 3 rows above |
 | Wall‑clock wall time (sec, est.)    | **1755** (~30 min sequential cuts + probes pipelined)     | **~225** (~12 batch ≈ 60s + 351 probes ≈ 175s)         | **‑87%**    | verdict §5 projection             |
 
 The **30‑clip pin IS the empirical receipt** of the column-1 → column-2 transition pinned at 30 clip scale (CI per-commit); the 351 row is the linear‑scale projection per godlike/07 honest-limitation. PipelineGen's slice-and-fold is monotonic in clip-count for a single source group, so the ratio holds at full scale.
@@ -663,6 +665,11 @@ The **30‑clip pin IS the empirical receipt** of the column-1 → column-2 tran
 For the canonical 351‑clip live benchmark the procedure below MUST be executed on ffmpeg ≥ 6.x + cgroupv2‑capable Linux host (NOT in interactive scope — listed as a followup in `CHANGELOG.md` `## Unreleased > ### Performance`):
 
 ```bash
+# 0. Anchor at the canonical stock-pipeline live test script root.
+cd "$(git rev-parse --show-toplevel)"
+LIVE_TEST="scripts/stock_pipeline_live_test.sh"
+[ -f "$LIVE_TEST" ] || { echo "MISSING: $LIVE_TEST -- register the canonical live battery before running this bench"; exit 2; }
+
 # 1. Generate synthetic source (1755s ≈ 29:15 via lavfi testsrc).
 SOURCE=$(mktemp -u --suffix=.mp4)
 ffmpeg -y -hide_banner -loglevel error \
@@ -685,7 +692,7 @@ EOF
 chmod +x /tmp/ffmpeg-wrap/{ffmpeg,ffprobe}
 
 # 3. Run the live battery with the wrapper as PATH‑preferred.
-PATH="/tmp/ffmpeg-wrap:$PATH" /tmp/stock_pipeline_live_test.sh
+PATH="/tmp/ffmpeg-wrap:$PATH" "$LIVE_TEST"
 
 # 4. Aggregate subprocess counts.
 ffmpeg_count=$(grep -c ' ffmpeg ' /tmp/subprocess.log)
