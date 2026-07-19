@@ -55,6 +55,16 @@ func (r *Resolver) ListChildren(ctx context.Context, parentID string) ([]Entry, 
 	if err != nil {
 		return nil, fmt.Errorf("list children of %q: %w", parentID, err)
 	}
+	// Existing Drive folder snapshots may have been imported by the
+	// YouTube/catalog synchronizer and therefore carry source="youtube".
+	// Keep drive as the canonical source, but reuse that populated SQLite
+	// projection when no drive-sourced children exist.
+	if len(nodes) == 0 {
+		nodes, err = r.svc.ListChildren(ctx, "youtube", parentID)
+		if err != nil {
+			return nil, fmt.Errorf("list fallback children of %q: %w", parentID, err)
+		}
+	}
 
 	out := make([]Entry, 0, len(nodes))
 	for _, n := range nodes {
@@ -85,20 +95,17 @@ func (r *Resolver) ResolveByName(ctx context.Context, parentID, name string) (En
 		return Entry{}, fmt.Errorf("parentID and name are required")
 	}
 
-	nodes, err := r.svc.ListChildren(ctx, "drive", parentID)
+	nodes, err := r.ListChildren(ctx, parentID)
 	if err != nil {
 		return Entry{}, fmt.Errorf("lookup %q under %q: %w", name, parentID, err)
 	}
 
 	target := strings.ToLower(name)
 	for _, n := range nodes {
-		if n == nil || !n.IsFolder {
-			continue
-		}
 		if strings.ToLower(strings.TrimSpace(n.Name)) == target {
 			return Entry{
 				Name:      n.Name,
-				FolderID:  n.DriveFileID,
+				FolderID:  n.FolderID,
 				DriveLink: n.DriveLink,
 				ParentID:  n.ParentID,
 			}, nil

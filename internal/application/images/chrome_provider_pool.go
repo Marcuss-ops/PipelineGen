@@ -24,6 +24,13 @@ var _ ImageGenerator = (*ChromeImageProviderPool)(nil)
 // NewChromeImageProviderPool constructs a pool of independent Chrome workers.
 // poolSize is clamped to at least 1.
 func NewChromeImageProviderPool(scriptsDir string, poolSize int, log *zap.Logger) *ChromeImageProviderPool {
+	return NewChromeImageProviderPoolFromProfile(scriptsDir, poolSize, 0, log)
+}
+
+// NewChromeImageProviderPoolFromProfile constructs a pool whose first worker
+// uses profileID. This lets operators select an authenticated persistent
+// Google Slides profile while preserving the default 0-based pool behavior.
+func NewChromeImageProviderPoolFromProfile(scriptsDir string, poolSize, profileID int, log *zap.Logger) *ChromeImageProviderPool {
 	if poolSize < 1 {
 		poolSize = 1
 	}
@@ -32,7 +39,7 @@ func NewChromeImageProviderPool(scriptsDir string, poolSize int, log *zap.Logger
 		log:       log,
 	}
 	for i := 0; i < poolSize; i++ {
-		pool.providers = append(pool.providers, NewChromeImageProvider(scriptsDir, i, log))
+		pool.providers = append(pool.providers, NewChromeImageProvider(scriptsDir, profileID+i, log))
 	}
 	return pool
 }

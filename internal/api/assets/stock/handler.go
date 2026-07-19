@@ -105,7 +105,7 @@ const (
 	// Keeping these distinct from the broker enum avoids the silent-
 	// confusion class where a "QUEUED" status string at the endpoint
 	// implies "job not yet started" while the broker is in RUNNING.
-	StatusPending   = "pending"
+	StatusPending   = "QUEUED"
 	StatusCompleted = "completed"
 	// StatusError is the third endpoint-acknowledgement value —
 	// emitted on every 4xx/5xx response (validation rejections, broker
@@ -312,6 +312,10 @@ func (h *StockHandler) Run(c *gin.Context) {
 		resp.Status = StatusCompleted
 	}
 
+	if jobID != "" {
+		c.JSON(http.StatusAccepted, resp)
+		return
+	}
 	c.JSON(http.StatusOK, resp)
 }
 

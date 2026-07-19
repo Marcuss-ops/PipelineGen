@@ -21,6 +21,10 @@ LOG_FILE="${PIPELINEGEN_LOG_FILE:-/tmp/pipelinegen.${PORT}.log}"
 
 export VELOX_HOST="$HOST"
 export VELOX_PORT="$PORT"
+set -a
+source .env
+export VELOX_FEATURE_IMAGES_ENABLED=true
+set +a
 
 # Kill any existing server on this port, preferring the stored PID file.
 if [ -f "$PID_FILE" ]; then

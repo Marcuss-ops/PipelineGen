@@ -1,6 +1,7 @@
 #!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 set -a
-source .env
-export VELOX_FEATURE_IMAGES_ENABLED=false
+source "$DIR/.env"
+export VELOX_FEATURE_IMAGES_ENABLED=true
 set +a
-exec ./bin/pipelinegen --mode all
+exec "$DIR/bin/pipelinegen" --mode all

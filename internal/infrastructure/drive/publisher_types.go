@@ -110,6 +110,14 @@ type CatalogFolderLookup interface {
 	LookupFolder(ctx context.Context, destination, path string) (string, error)
 }
 
+// CatalogFolderWriter records a successfully resolved Drive path in the
+// local catalog. It is deliberately separate from CatalogFolderLookup so
+// read-only publisher tests and deployments can opt into caching without
+// widening the lookup contract.
+type CatalogFolderWriter interface {
+	RecordFolder(ctx context.Context, destination, path, folderID, parentFolderID string) error
+}
+
 // ResolvedDriveDestination is the outcome of the canonical destination
 // resolution pipeline shared by Publish and ResolveFolder.
 //

@@ -191,9 +191,6 @@ routes:
     - method: POST
       source: internal/api/script/handler_flow.go
     - method: POST
-      path: /generate-from-clips
-      source: internal/api/script/handler_flow.go
-    - method: POST
       path: /generate-with-images
       source: internal/api/script/handler_flow.go
     - method: POST

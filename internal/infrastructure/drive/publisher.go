@@ -39,6 +39,7 @@ type Publisher struct {
 	files         FileUploaderPort
 	log           *zap.Logger
 	catalogLookup CatalogFolderLookup // optional — nil when catalog not wired
+	catalogWriter CatalogFolderWriter // optional — records newly ensured paths
 }
 
 // Compile-time assertion: Publisher satisfies delivery.Publisher.
@@ -54,6 +55,16 @@ var _ delivery.Publisher = (*Publisher)(nil)
 // don't have a catalog wired (tests, smoke-env) leave it nil.
 func (p *Publisher) SetCatalogLookup(lookup CatalogFolderLookup) {
 	p.catalogLookup = lookup
+	if writer, ok := lookup.(CatalogFolderWriter); ok {
+		p.catalogWriter = writer
+	}
+}
+
+// SetCatalogWriter wires the local catalog writer. Newly ensured paths are
+// persisted after Drive confirms the folder, making the next publish resolve
+// from SQLite instead of listing Drive again.
+func (p *Publisher) SetCatalogWriter(writer CatalogFolderWriter) {
+	p.catalogWriter = writer
 }
 
 // NewPublisher constructs the canonical Drive publisher. Fails-fast at

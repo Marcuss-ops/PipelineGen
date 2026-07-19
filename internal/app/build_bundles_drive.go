@@ -166,7 +166,11 @@ func BuildDriveBundle(ctx context.Context, cfg *config.Config, dbs *databases, l
 		// the catalog table doesn't exist yet (fresh DB), the adapter
 		// returns nil and SetCatalogLookup becomes a no-op.
 		catalogRepo := sqlitedelivery.NewRepository(dbs.dualPool.Writer)
-		pub.SetCatalogLookup(drive.NewCatalogFolderLookup(catalogRepo))
+		catalog := drive.NewCatalogFolderLookup(catalogRepo)
+		pub.SetCatalogLookup(catalog)
+		if writer, ok := catalog.(drive.CatalogFolderWriter); ok {
+			pub.SetCatalogWriter(writer)
+		}
 	}
 
 	// DEV-STUB (July 2026): when Drive is not configured, inject a stub

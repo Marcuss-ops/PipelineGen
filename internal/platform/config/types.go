@@ -32,6 +32,11 @@ type ConcurrencyConfig struct {
 	// process, so keep this small unless the host has headroom.
 	MaxConcurrentGoogleSlidesGenerations int `yaml:"max_concurrent_google_slides_generations" env:"VELOX_CONCURRENT_GOOGLE_SLIDES_GENERATIONS" default:"2"`
 
+	// GoogleSlidesProfileID selects the first persistent Chrome profile used
+	// by the image-generation pool. Operators can point the pool at an
+	// authenticated profile without changing the application binary.
+	GoogleSlidesProfileID int `yaml:"google_slides_profile_id" env:"VELOX_GOOGLE_SLIDES_PROFILE_ID" default:"0"`
+
 	// MaxConcurrentChannelChecks limits concurrent YouTube channel monitor checks.
 	// Was hardcoded at 3; raised to 20.
 	MaxConcurrentChannelChecks int `yaml:"max_concurrent_channel_checks" env:"VELOX_CONCURRENT_CHANNEL_CHECKS" default:"20"`

@@ -19,22 +19,9 @@
 //     which is what api/assets/stock/module.go::Build expects).
 //   - The API Descriptor lives in api/assets/stock/module.go::StockDescriptor.
 //
-// HTTP HANDLER RETIRED (godlike/07 NO-FAKE-AVAILABILITY, July 2026):
-// the internal/api/assets/stock/ handler files were deleted because the
-// capability is unmounted everywhere (zero /api/stock-pipeline/* route
-// registration). The composition root continues to construct the
-// *stockpipeline.Service + *stockpipeline.StockUseCase (used internally
-// by the enrichment worker); the HTTP projection surface is retired
-// from this bundle's Dependencies.
-//
-// Pre-commit-2 state: WireStockPipeline was retired and the Step 8
-// registerInternalModules stub logged a Warn + nil-wired
-// wiring.StockPipeline. /api/stock-pipeline/* returned 404 in
-// production. This file restores the canonical typed-port composition
-// surface alongside the build_bundles_artlist.go / build_bundles_voiceover.go
-// precedent — WireStockPipeline (or its future re-introduction) MUST
-// funnel through BuildStockBundle so the symmetric gate cannot be
-// bypassed by a future un-wired caller.
+// The HTTP projection is part of this bundle. It is constructed from the
+// same use case as the worker registration so the route cannot advertise a
+// capability backed by a different service graph.
 package app
 
 import (
@@ -163,18 +150,13 @@ type StockMediaDeps struct {
 // query.go's resolveQuery fails-closed at first search. Field
 // count: 2.
 type StockOrchestrationDeps struct {
-	Jobs          *appjobs.Service            // required
-	ChannelLister stockpipeline.ChannelLister // optional
+	Jobs          *appjobs.Service                 // required
+	ChannelLister stockpipeline.ChannelLister      // optional
+	FolderCreator stockpipeline.StockFolderCreator // optional
 }
 
 // StockFeatureGate is the canonical closure that decides whether
-// /api/stock-pipeline/* routes are mounted. MANDATORY for
-// stockapi.Build — nil closes the capability (no route registration)
-// per api/assets/stock/module.go's nil-tolerance. HTTP HANDLER
-// RETIRED (godlike/07, July 2026): the handler side of this closure
-// is a no-op (api.NewRouteModule with nil handler), but keeping
-// the closure lets the capability surface continue to gate
-// /api/stock-pipeline/* off cleanly when the feature flag is false.
+// /api/stock-pipeline/* routes are mounted.
 // Field count: 1.
 type StockFeatureGate struct {
 	StockPipelineEnabled func() bool
@@ -324,7 +306,8 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 			Writer:  deps.SourceCache.Writer,
 			LocalFS: deps.SourceCache.LocalFS,
 		},
-		Finalizer: deps.Delivery.Finalizer,
+		Finalizer:     deps.Delivery.Finalizer,
+		FolderCreator: deps.Orchestration.FolderCreator,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockpipeline.NewService: %w", err)
@@ -443,14 +426,6 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	}
 
 	// ── Gate 4: compose the canonical API Descriptor ─────────────
-	//
-	// godlike/07 fail-closed (July 2026): the HTTP handler was
-	// retired (no route mounting anywhere). stockapi.Build now
-	// reduces to UseCase + EnabledFunc; the resulting Descriptor's
-	// Module carries a nil handler so RouteModule.RegisterRoutes
-	// logs a Warn + skips route registration. The composition root
-	// continues to type-assert the *StockDescriptor below so
-	// downstream registry code is unaffected.
 	sd, err := stockapi.Build(stockapi.Dependencies{
 		UseCase:     useCase,
 		EnabledFunc: deps.Feature.StockPipelineEnabled,

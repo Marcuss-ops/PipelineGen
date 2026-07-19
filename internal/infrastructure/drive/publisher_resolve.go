@@ -85,11 +85,21 @@ func (p *Publisher) resolveDestination(ctx context.Context, req delivery.Publish
 				if err != nil {
 					return nil, fmt.Errorf("delivery: resolve drive path for %q: %w", req.Destination, err)
 				}
+				if p.catalogWriter != nil {
+					if writeErr := p.catalogWriter.RecordFolder(ctx, string(req.Destination), pathKey, folderID, rootFolderID); writeErr != nil {
+						p.log.Warn("delivery: folder resolved but catalog persistence failed", zap.String("destination", string(req.Destination)), zap.String("path", pathKey), zap.Error(writeErr))
+					}
+				}
 			}
 		} else {
 			folderID, err = p.folders.EnsureFolder(ctx, rootFolderID, segments...)
 			if err != nil {
 				return nil, fmt.Errorf("delivery: resolve drive path for %q: %w", req.Destination, err)
+			}
+			if p.catalogWriter != nil {
+				if writeErr := p.catalogWriter.RecordFolder(ctx, string(req.Destination), pathKey, folderID, rootFolderID); writeErr != nil {
+					p.log.Warn("delivery: folder resolved but catalog persistence failed", zap.String("destination", string(req.Destination)), zap.String("path", pathKey), zap.Error(writeErr))
+				}
 			}
 		}
 	}

@@ -19,7 +19,6 @@ module_route_map:
     prefix: /api/script
     owner: internal/app/wire_script.go
     routes:
-      - POST /generate-from-clips
       - POST /generate-with-images
       - POST /generate-from-catalog
       - POST /curate

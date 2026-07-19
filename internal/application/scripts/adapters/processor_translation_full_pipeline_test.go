@@ -219,12 +219,12 @@ func TestPipeline_FullChain_TranslationSpecSceneSurvival(t *testing.T) {
 	if docStub.capturedContent == "" {
 		t.Fatal("DocumentProcessor.CreateDoc was not called (empty content)")
 	}
-	if !strings.Contains(docStub.capturedContent, "<h1>Boxing Story</h1>") {
-		t.Errorf("Document HTML does not contain the expected title; content snippet: %q",
-			textutil.Truncate(docStub.capturedContent, 200))
-	}
 	if !strings.Contains(docStub.capturedContent, "<h2>SpecScene JSON</h2>") {
 		t.Errorf("Document HTML does not contain canonical SpecScene JSON block; content snippet: %q",
+			textutil.Truncate(docStub.capturedContent, 200))
+	}
+	if strings.Contains(docStub.capturedContent, "<h1>Boxing Story</h1>") {
+		t.Errorf("Document HTML unexpectedly contains a title: %q",
 			textutil.Truncate(docStub.capturedContent, 200))
 	}
 	if strings.Contains(docStub.capturedContent, "<h2>Script</h2>") {

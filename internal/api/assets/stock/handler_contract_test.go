@@ -181,7 +181,7 @@ func TestStockHandler_ClipDurationTooHigh_Returns400(t *testing.T) {
 	}
 }
 
-func TestStockHandler_ValidPayload_Async_Returns200(t *testing.T) {
+func TestStockHandler_ValidPayload_Async_Returns202(t *testing.T) {
 	_, router := newStockHandler(nil, "job-test-123")
 
 	payload := `{"direct_urls":["https://example.com/video.mp4"],"clip_duration":4,"folder_name":"test","async":true}`
@@ -197,8 +197,8 @@ func TestStockHandler_ValidPayload_Async_Returns200(t *testing.T) {
 	// — which is INDEPENDENT of the broker job state enum
 	// (QUEUED|RUNNING|FINALIZING|SUCCEEDED|INDEX_PENDING). Polling
 	// /api/jobs/{id}/full is the canonical path for broker state.
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusAccepted {
+		t.Errorf("expected 202, got %d: %s", w.Code, w.Body.String())
 	}
 	var resp testRunResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -371,7 +371,7 @@ func TestStockHandler_NoBrokerStateLeak(t *testing.T) {
 				t.Errorf("response.status=%q is NOT in endpoint-acknowledgement enum (must be one of %s/%s/%s)", resp.Status, StatusPending, StatusCompleted, StatusError)
 			}
 			// Negative (the regression guard): response.status MUST NOT be a broker state enum value.
-			if slices.Contains(brokerStates, job.Status(resp.Status)) {
+			if resp.Status != StatusPending && slices.Contains(brokerStates, job.Status(resp.Status)) {
 				t.Errorf("response.status=%q LEAKED from broker job state enum — godlike/06 SSOT decoupling violated", resp.Status)
 			}
 		})

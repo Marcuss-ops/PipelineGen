@@ -14,6 +14,7 @@ import (
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/delivery"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/generation"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/ingest"
+	assetspersistence "github.com/Marcuss-ops/PipelineGen/internal/application/assets/persistence"
 	providers "github.com/Marcuss-ops/PipelineGen/internal/application/assets/providers"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/books"
 	imgservice "github.com/Marcuss-ops/PipelineGen/internal/application/images"
@@ -274,6 +275,7 @@ type buildImagesParams struct {
 	ImageRepo     *sqassets.ImagesRepository
 	VOMetaWriter  semantic.MetadataWriterPort
 	IngestSvc     *ingest.Service
+	Committer     assetspersistence.AssetCommitter
 	Dispatcher    *outbox.Dispatcher
 }
 
@@ -318,20 +320,15 @@ func buildImagesService(params buildImagesParams) (*imgservice.Service, semantic
 		},
 		GenAI: imgservice.ImagesGenAIDeps{
 			LLMGen: params.ScriptGen, MetaWriter: params.VOMetaWriter, StyleRegistry: params.StyleRegistry,
-			ImageGen: imgservice.NewChromeImageProviderPool(
+			ImageGen: imgservice.NewChromeImageProviderPoolFromProfile(
 				params.Cfg.Paths.PythonScriptsDir,
 				params.Cfg.Concurrency.MaxConcurrentGoogleSlidesGenerations,
+				params.Cfg.Concurrency.GoogleSlidesProfileID,
 				params.Log,
 			),
 		}, External: imgservice.ImagesExternalDeps{
 			IngestSvc: params.IngestSvc,
-			// TODO(production): wire a real NewSQLiteAssetCommitter here.
-			// PR-IMAGES-INGEST-ATOMIC (July 2026) requires the writer DB
-			// + outbox events repo to be threaded through buildImagesParams.
-			// ingestDirect fails closed with a typed error when Committer
-			// is nil so the gap is observable; production must supply a
-			// real committer before the image ingest path is live.
-			Committer: nil,
+			Committer: params.Committer,
 			// PR-SOURCESTAGER-CONSOLIDATE (July 2026): SourceStager
 			// is the canonical port for staging remote URLs into
 			// deterministic local files. downloadAndIngest routes

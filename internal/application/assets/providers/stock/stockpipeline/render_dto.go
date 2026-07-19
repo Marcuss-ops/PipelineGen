@@ -145,6 +145,10 @@ type CutRequest struct {
 	// from (e.g. one yt-dlp download window).
 	SourcePath string
 
+	// SourceDuration is the pre-probed duration in seconds. If positive,
+	// the cutter will skip probe validation and use this value directly.
+	SourceDuration float64
+
 	// Jobs is the per-clip extraction list, in stable order. Caller
 	// must ensure OutputPaths are unique (the adapter will skip
 	// duplicates silently rather than overwrite).

@@ -44,14 +44,11 @@ func TestBuildSpecSceneDocumentHTML_OnlyRendersCanonicalSpecScene(t *testing.T) 
 	html := adapters.BuildSpecSceneDocumentHTML(model, "Canonical Script", prov)
 
 	for _, want := range []string{
-		"<h1>Canonical Script</h1>",
 		"<h2>SpecScene JSON</h2><pre>",
 		"scene-clip-1",
 		"Canonical scene text.",
 		"clip-1",
 		"https://drive.google.com/file/d/clip-1/view",
-		"<!-- PIPELINEGEN-PROVENANCE:",
-		"doc-1",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("expected canonical document HTML to contain %q; HTML=%s", want, html)
@@ -59,11 +56,14 @@ func TestBuildSpecSceneDocumentHTML_OnlyRendersCanonicalSpecScene(t *testing.T) 
 	}
 
 	for _, unwanted := range []string{
+		"<h1>Canonical Script</h1>",
 		"<h2>Script</h2>",
 		"<h2>Scenes</h2>",
 		"<h2>Entities</h2>",
 		"<h2>Video Metadata</h2>",
 		"<h2>Technical Provenance</h2>",
+		"PIPELINEGEN-PROVENANCE",
+		"doc-1",
 		"This prose must not be duplicated in the document.",
 	} {
 		if strings.Contains(html, unwanted) {

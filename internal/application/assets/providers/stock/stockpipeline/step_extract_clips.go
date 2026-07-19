@@ -53,6 +53,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -197,47 +198,60 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 		//      wrapped via fmt.Errorf on the first violation.
 		// No auto-clamp per user spec literal "fallire subito con
 		// errore leggibile".
-		_, _, validationErr := validateAndProbeSourceDuration(ctx, runner, sourceID, sourcePath, staged, groupPlans)
+		sourceDuration, _, validationErr := validateAndProbeSourceDuration(ctx, runner, sourceID, sourcePath, staged, groupPlans)
 		if validationErr != nil {
 			return validationErr
 		}
 
-		// Cut and publish one clip at a time so Drive uploads can
-		// happen progressively as soon as each cut finishes.
+		// Cut all clips of the source group in a single batch.
+		jobs := make([]CutJob, len(groupPlans))
 		for clipIdx, plan := range groupPlans {
 			outputPath := filepath.Join(os.TempDir(),
 				fmt.Sprintf("stock_cut_%s_%d_%d.mp4", runner.JobID(), sourceIdx, clipIdx))
-			req := CutRequest{
-				SourcePath: sourcePath,
-				Jobs: []CutJob{{
-					StartSec:   plan.StartSec,
-					EndSec:     plan.EndSec,
-					OutputPath: outputPath,
-				}},
-				NoAudio:   noAudio,
-				Logger:    runner.Log(),
-				SourceIdx: sourceIdx,
+			jobs[clipIdx] = CutJob{
+				StartSec:   plan.StartSec,
+				EndSec:     plan.EndSec,
+				OutputPath: outputPath,
 			}
+		}
 
-			result, cutErr := cutter.Cut(ctx, req)
-			successful := result.SuccessfulItems()
-			if cutErr != nil && len(successful) == 0 {
-				return fmt.Errorf("orchestrator: stock.extract_clips: VideoCutter.Cut failed for source %s clip %d with zero clips produced: %w",
-					sourceID, clipIdx, cutErr)
-			}
-			if len(successful) == 0 {
+		req := CutRequest{
+			SourcePath:     sourcePath,
+			SourceDuration: sourceDuration,
+			Jobs:           jobs,
+			NoAudio:        noAudio,
+			Logger:         runner.Log(),
+			SourceIdx:      sourceIdx,
+		}
+
+		result, cutErr := cutter.Cut(ctx, req)
+		successful := result.SuccessfulItems()
+		if cutErr != nil && len(successful) == 0 {
+			return fmt.Errorf("orchestrator: stock.extract_clips: VideoCutter.Cut failed for source %s: %w",
+				sourceID, cutErr)
+		}
+
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		var uploadErr error
+
+		// Now process each clip.
+		for clipIdx, plan := range groupPlans {
+			item := result.Items[clipIdx]
+			if item.Status == CutItemStatusFailed || item.OutputPath == "" {
 				if runner.Log() != nil {
 					runner.Log().Warn("orchestrator: stock.extract_clips: no playable clip produced",
 						zap.String("source_id", sourceID),
 						zap.Int("clip_index", clipIdx),
-						zap.String("output_path", outputPath))
+						zap.String("output_path", item.JobID),
+						zap.Error(item.Err))
 				}
 				continue
 			}
 
-			item := successful[0]
-			// CutPaths carries REAL file paths (for compose_chunks).
+			mu.Lock()
 			cutPaths = append(cutPaths, item.OutputPath)
+			mu.Unlock()
 
 			// Write asset/outbox for this successfully cut clip.
 			// Asset ID uses the planner's OutputLogicalID (stable
@@ -285,8 +299,11 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 					if in != nil && len(in.Clips) > 0 {
 						leafName = stockClipFolderName(in, plan, timestampGroupName)
 					}
+					mu.Lock()
 					segmentCount := segmentCounts[leafName] + 1
 					segmentCounts[leafName] = segmentCount
+					mu.Unlock()
+
 					segmentFilename := fmt.Sprintf("clip_%03d.mp4", segmentCount)
 					clipVA := finalization.VerifiedArtifact{
 						ArtifactID:         plan.OutputLogicalID,
@@ -304,44 +321,62 @@ func (StockExtractClipsStep) Run(ctx context.Context, runner StepRunner) error {
 						RootFolderResolved: in != nil && in.DriveFolderResolved,
 						PathLeafName:       leafName,
 					}
-					clipPublished, clipPrepErr := artifactPrep.Prepare(ctx, clipVA)
-					if clipPrepErr != nil {
-						return fmt.Errorf("%w: clip publish for chunk %d (artifact=%s): %w",
-							ErrStockPublishArtifactFailed, clipIdx, plan.OutputLogicalID, clipPrepErr)
-					}
 
-					publishedChunk := ChunkState{
-						Index:              clipIdx,
-						ArtifactID:         plan.OutputLogicalID,
-						Filename:           segmentFilename,
-						LocalPath:          item.OutputPath,
-						SizeBytes:          item.SizeBytes,
-						SHA256:             hash,
-						Description:        plan.Description,
-						Title:              plan.Title,
-						SourceURL:          plan.SourceID,
-						SourceProvider:     plan.SourceProvider,
-						SourceVideoID:      plan.SourceVideoID,
-						StartSec:           plan.StartSec,
-						EndSec:             plan.EndSec,
-						Round:              plan.Round,
-						Tags:               append([]string(nil), plan.Tags...),
-						Category:           plan.Category,
-						Slug:               plan.Slug,
-						RemoteFileID:       clipPublished.Location.FileID,
-						RemoteWebViewLink:  clipPublished.Location.WebViewLink,
-						DrivePath:          clipPublished.Location.WebViewLink,
-						RemoteDownloadLink: clipPublished.Location.DownloadLink,
-					}
-					publishedChunks = append(publishedChunks, publishedChunk)
-					bucket := groupBuckets[leafName]
-					if bucket == nil {
-						bucket = &timestampGroupBuffer{leafName: leafName, firstIndex: clipIdx}
-						groupBuckets[leafName] = bucket
-					}
-					bucket.chunks = append(bucket.chunks, publishedChunk)
+					wg.Add(1)
+					go func(cVA finalization.VerifiedArtifact, p ClipPlan, sFilename string, cIdx int, lName string) {
+						defer wg.Done()
+						clipPublished, clipPrepErr := artifactPrep.Prepare(ctx, cVA)
+						if clipPrepErr != nil {
+							mu.Lock()
+							if uploadErr == nil {
+								uploadErr = fmt.Errorf("%w: clip publish for chunk %d (artifact=%s): %w",
+									ErrStockPublishArtifactFailed, cIdx, p.OutputLogicalID, clipPrepErr)
+							}
+							mu.Unlock()
+							return
+						}
+
+						publishedChunk := ChunkState{
+							Index:              cIdx,
+							ArtifactID:         p.OutputLogicalID,
+							Filename:           sFilename,
+							LocalPath:          cVA.LocalPath,
+							SizeBytes:          cVA.SizeBytes,
+							SHA256:             cVA.SHA256,
+							Description:        p.Description,
+							Title:              p.Title,
+							SourceURL:          p.SourceID,
+							SourceProvider:     p.SourceProvider,
+							SourceVideoID:      p.SourceVideoID,
+							StartSec:           p.StartSec,
+							EndSec:             p.EndSec,
+							Round:              p.Round,
+							Tags:               append([]string(nil), p.Tags...),
+							Category:           p.Category,
+							Slug:               p.Slug,
+							RemoteFileID:       clipPublished.Location.FileID,
+							RemoteWebViewLink:  clipPublished.Location.WebViewLink,
+							DrivePath:          clipPublished.Location.WebViewLink,
+							RemoteDownloadLink: clipPublished.Location.DownloadLink,
+						}
+
+						mu.Lock()
+						publishedChunks = append(publishedChunks, publishedChunk)
+						bucket := groupBuckets[lName]
+						if bucket == nil {
+							bucket = &timestampGroupBuffer{leafName: lName, firstIndex: cIdx}
+							groupBuckets[lName] = bucket
+						}
+						bucket.chunks = append(bucket.chunks, publishedChunk)
+						mu.Unlock()
+					}(clipVA, plan, segmentFilename, clipIdx, leafName)
 				}
 			}
+		}
+
+		wg.Wait()
+		if uploadErr != nil {
+			return uploadErr
 		}
 
 		if runner.Log() != nil {
