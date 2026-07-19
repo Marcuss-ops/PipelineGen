@@ -112,7 +112,6 @@ build: go-version-check
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/pipelinegen      ./cmd/server
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/admin            ./cmd/admin
 	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/worker           ./cmd/worker
-	$(GO) build -ldflags "$(LDFLAGS)" -v -o bin/operator-console  ./cmd/operator-console
 
 # Run Go unit tests (Go is the canonical test surface; tests here run
 # for every `make test` invocation and in CI without requiring Node).
