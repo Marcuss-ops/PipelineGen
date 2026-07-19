@@ -36,11 +36,18 @@ func (s *slowSubmissionService) Submit(ctx context.Context, req opsapp.SubmitReq
 	}
 }
 
-// TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns503 pins the P0 async
+// TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns504 pins the P0 async
 // contract: when the job broker cannot enqueue within the configured
-// timeout, the endpoint must return HTTP 503 with error JOB_ENQUEUE_TIMEOUT
+// timeout, the endpoint must return HTTP 504 with error JOB_ENQUEUE_TIMEOUT
 // instead of hanging.
-func TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns503(t *testing.T) {
+//
+// Status code mapping rationale (P0 verdetto): godlike/07 fail-closed requires
+// a context timeout to surface as 504 (gateway timeout), not 503 (service
+// unavailable). The submitter MAY be congested but it is still a runtime
+// timeout; clients should retry with backoff on 504. The 503 status is
+// reserved for opsapp.ErrSubmitQueueFull / ErrUnavailable (see
+// handler_generate_response.go:45-52,59,63).
+func TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns504(t *testing.T) {
 	// Not parallel: mutates the package-level enqueueTimeout.
 
 	// Use a very short timeout so the test runs quickly.
@@ -50,8 +57,9 @@ func TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns503(t *testing.T) {
 
 	handler := NewHandlerGenerate(
 		&slowSubmissionService{blockDuration: 5 * time.Second},
+		nil, // scriptgenSvc (GenerationRunStarter) — legacy direct-submit fallback path
 		zap.NewNop(),
-		nil,
+		nil, // validator falls back to NewDefaultPayloadValidator() inside NewHandlerGenerate
 	)
 	router := gin.New()
 	rg := router.Group("/api/script")
@@ -64,7 +72,8 @@ func TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns503(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusServiceUnavailable, w.Code, "expected 503 JOB_ENQUEUE_TIMEOUT")
+	require.Equal(t, http.StatusGatewayTimeout, w.Code,
+		"expected 504 JOB_ENQUEUE_TIMEOUT per P0 verdetto (godlike/07 fail-closed; see handler_generate_response.go:45-59)")
 	assert.Contains(t, w.Body.String(), `"ok":false`)
 	assert.Contains(t, w.Body.String(), `"error":"JOB_ENQUEUE_TIMEOUT"`)
 }
