@@ -128,4 +128,12 @@ var (
 	// longer a "test-fixture mode" silent-success skip path.
 	// PR-STOCK-FINALIZER-ABSENT-FAILCLOSED (July 2026).
 	ErrFinalizerAbsent = errors.New("stock.finalize: JobFinalizer absent")
+
+	// ErrStockResumeStateInvalid is raised when the orchestrator
+	// cannot rehydrate the runState snapshot from a pre-completed
+	// step's result_json, or when it cannot marshal the current
+	// runState to persist a checkpoint. This closes the silent-
+	// corruption class where a crash-resume proceeds with a malformed
+	// accumulator or where a checkpoint is silently dropped.
+	ErrStockResumeStateInvalid = errors.New("stock: resume: runState checkpoint invalid")
 )

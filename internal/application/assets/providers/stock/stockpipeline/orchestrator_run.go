@@ -11,6 +11,7 @@ package stockpipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -202,6 +203,17 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 		}
 	}()
 
+	// §12-3 crash-resume: load the durable step history once so
+	// pre-completed steps can rehydrate their produced state.
+	// We build a step-key → completed row map from the latest row
+	// per step (Design A: latest row per (job_id, step_key)).
+	completedRows, loadErr := o.loadCompletedStepRows(ctx, o.cfg.JobId)
+	if loadErr != nil && o.executorLog != nil {
+		o.executorLog.Warn("orchestrator: failed to load completed step rows for resume",
+			zap.String("job_id", o.cfg.JobId),
+			zap.Error(loadErr))
+	}
+
 	for _, step := range o.dispatchSteps {
 		key := steps.StepKey{
 			JobID:            o.cfg.JobId,
@@ -223,6 +235,35 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 						zap.String("step", step.Name()),
 						zap.String("job_id", o.cfg.JobId))
 				}
+				// Rehydrate the accumulated runState produced by
+				// this completed step. The row's result_json holds
+				// the full runState snapshot taken at the step's
+				// MarkCompleted, so resuming here restores exactly
+				// the state the step left behind.
+				if row, ok := completedRows[step.Name()]; ok {
+					if len(row.Result) == 0 {
+						// Backward compatibility: rows completed before
+						// checkpoint persistence stored an empty result.
+						// Continue with the current accumulator; later
+						// steps may fail closed if they need the state.
+						if o.executorLog != nil {
+							o.executorLog.Warn("orchestrator: completed step has empty checkpoint (legacy row); resuming without state",
+								zap.String("step", step.Name()),
+								zap.String("job_id", o.cfg.JobId))
+						}
+					} else {
+						rehydrated, rehydrateErr := o.rehydrateRunState(row.Result)
+						if rehydrateErr != nil {
+							return nil, fmt.Errorf("orchestrator: %s resume: %w: %v", step.Name(), ErrStockResumeStateInvalid, rehydrateErr)
+						}
+						*state = rehydrated
+						if o.executorLog != nil {
+							o.executorLog.Info("orchestrator: rehydrated runState from completed step",
+								zap.String("step", step.Name()),
+								zap.String("job_id", o.cfg.JobId))
+						}
+					}
+				}
 				continue
 			}
 			return nil, fmt.Errorf("orchestrator: %s MarkStarted: %w", step.Name(), err)
@@ -243,7 +284,13 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 			}
 			return nil, runErr
 		}
-		if err := o.stepStore.MarkCompleted(ctx, key, nil, nil); err != nil {
+
+		stateBytes, marshalErr := json.Marshal(state)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("orchestrator: %s checkpoint: %w: %v", step.Name(), ErrStockResumeStateInvalid, marshalErr)
+		}
+
+		if err := o.stepStore.MarkCompleted(ctx, key, stateBytes, nil); err != nil {
 			// ErrStepAlreadyCompleted cannot fire here (we just
 			// MarkStarted the same key); any other error
 			// (ErrStoreNotWired, ErrInvalidStepKey) is a
@@ -329,4 +376,47 @@ func (o *Orchestrator) executorLogOrNop() *zap.Logger {
 		return o.executorLog
 	}
 	return defaultStepRunnerLog()
+}
+
+// loadCompletedStepRows builds a map of the latest Completed row
+// for each step key for the given job. It is used once per
+// RunResilient call so the resume path can rehydrate runState
+// without querying the store inside the dispatch loop.
+func (o *Orchestrator) loadCompletedStepRows(ctx context.Context, jobID string) (map[string]steps.StepState, error) {
+	if o.stepStore == nil {
+		return nil, steps.ErrStoreNotWired
+	}
+	history, err := o.stepStore.ListByJob(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	latest := make(map[string]steps.StepState)
+	for _, row := range history {
+		if row.Status != steps.StatusCompleted {
+			continue
+		}
+		// Design A: latest row per (job_id, step_key) wins.
+		// Select the row with the greatest ID for each step_key
+		// so retries with the same fingerprint do not accidentally
+		// pick an older row.
+		if existing, ok := latest[row.StepKey]; !ok || row.ID > existing.ID {
+			latest[row.StepKey] = row
+		}
+	}
+	return latest, nil
+}
+
+// rehydrateRunState unmarshals a JSON snapshot of runState.
+// Returns a typed error when the snapshot is empty or malformed so
+// the caller can fail the run loudly rather than resuming with an
+// empty accumulator.
+func (o *Orchestrator) rehydrateRunState(result json.RawMessage) (runState, error) {
+	if len(result) == 0 {
+		return runState{}, fmt.Errorf("orchestrator: rehydrateRunState: empty checkpoint result")
+	}
+	var rehydrated runState
+	if err := json.Unmarshal(result, &rehydrated); err != nil {
+		return runState{}, fmt.Errorf("orchestrator: rehydrateRunState: unmarshal: %w", err)
+	}
+	return rehydrated, nil
 }
