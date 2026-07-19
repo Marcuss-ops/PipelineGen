@@ -205,18 +205,17 @@ func (a *ArtifactPublisherAdapter) Publish(
 // so Drive paths remain per-run without recreating a redundant
 // "stock" subfolder under the stock root folder.
 func stockArtifactPathParts(artifact finalization.VerifiedArtifact) (group, subject, provider string) {
-	parts := strings.Split(artifact.ArtifactID, ":")
 	// When the stock orchestrator already resolved the root folder
 	// (run_orchestratorResilient created the folder_name subfolder),
-	// skip the group level so clips land directly in the resolved
-	// folder. Without this, stockRootFolderName returns folder_name
-	// as group AND the root is already folder_name, causing double
-	// nesting (root/folder_name/folder_name/subject).
+	// return empty segments so clips land directly in the resolved
+	// folder. Without this, stockRootFolderName + stockTimestampGroupName
+	// both return folder_name, causing double nesting and extra
+	// subfolders under the already-resolved root.
 	if artifact.RootFolderResolved {
-		group = ""
-	} else {
-		group = stockRunFolderName(artifact.RootFolderName)
+		return "", "", ""
 	}
+	parts := strings.Split(artifact.ArtifactID, ":")
+	group = stockRunFolderName(artifact.RootFolderName)
 	subject = stockFolderLeafName(artifact.PathLeafName)
 	switch {
 	case len(parts) >= 5 && parts[0] == "stock" && parts[2] == "timestamp" && parts[4] == "video":

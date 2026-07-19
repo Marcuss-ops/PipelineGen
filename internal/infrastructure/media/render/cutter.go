@@ -160,7 +160,13 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	// Probe first so we can fail-fast with a clear, actionable error
 	// instead of producing 11 identical empty files.
 	var srcDuration float64
-	if info, probeErr := c.proc.Probe(ctx, req.SourcePath); probeErr == nil && info != nil {
+	if req.SourceDuration > 0 {
+		srcDuration = req.SourceDuration
+		logger.Info("stock extractor: skipping probe, using pre-flight duration",
+			zap.String("source", req.SourcePath),
+			zap.Float64("duration_sec", srcDuration),
+		)
+	} else if info, probeErr := c.proc.Probe(ctx, req.SourcePath); probeErr == nil && info != nil {
 		srcDuration = info.Duration.Seconds()
 		logger.Info("stock extractor: source duration probed",
 			zap.String("source", req.SourcePath),

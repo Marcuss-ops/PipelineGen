@@ -204,6 +204,7 @@ func WireStockPipeline(cfg *config.Config, log *zap.Logger, root *ComposeRoot) (
 		Orchestration: StockOrchestrationDeps{
 			Jobs:          root.Jobs.Service,
 			ChannelLister: stockChannelLister,
+			FolderCreator: root.Drive.Admin,
 		},
 		Feature: StockFeatureGate{
 			StockPipelineEnabled: func() bool { return cfg.Features.StockPipelineEnabled },

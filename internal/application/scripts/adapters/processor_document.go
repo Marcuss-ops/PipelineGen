@@ -106,15 +106,6 @@ func (p *DocumentProcessor) Process(ctx context.Context, plan *scriptpkg.Resolve
 		input.Provenance.RequestedMode = requestedModeForPlan(plan)
 		input.Provenance.UsedMode = usedModeForInput(plan, input)
 		input.Provenance.FallbackUsed = input.Provenance.RequestedMode != input.Provenance.UsedMode
-
-		htmlWithProv := BuildSpecSceneDocumentHTML(model, docTitle, input.Provenance)
-		if err := p.docsSvc.UpdateDoc(ctx, id, docTitle, htmlWithProv); err != nil {
-			return &PostProcessResult{
-				DocLink:  link,
-				DocID:    id,
-				Warnings: []string{fmt.Sprintf("document provenance rewrite failed: %v", err)},
-			}, nil
-		}
 	}
 
 	return &PostProcessResult{

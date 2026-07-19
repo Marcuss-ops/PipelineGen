@@ -19,10 +19,78 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/Marcuss-ops/PipelineGen/internal/application/assets/assettree"
+	destinationapp "github.com/Marcuss-ops/PipelineGen/internal/application/assets/destination"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/voiceover"
 	"github.com/Marcuss-ops/PipelineGen/internal/domain/asset"
+	"go.uber.org/zap"
 )
+
+// assetTreeVoiceoverResolver is the production resolver for voiceover
+// destinations. DriveBundle no longer owns a generic destination resolver;
+// voiceover routing is rooted in the configured voiceover folder and the
+// canonical SQLite-backed asset tree.
+type assetTreeVoiceoverResolver struct {
+	groups *destinationapp.Resolver
+	tree   *assettree.Service
+	rootID string
+	log    *zap.Logger
+}
+
+func newAssetTreeVoiceoverResolver(tree *assettree.Service, rootID string, log *zap.Logger) (asset.Resolver, error) {
+	rootID = strings.TrimSpace(rootID)
+	if tree == nil {
+		return nil, fmt.Errorf("voiceover asset tree service is required")
+	}
+	if rootID == "" {
+		return nil, fmt.Errorf("voiceover root folder ID is required")
+	}
+	groups, err := destinationapp.NewResolver(tree, log)
+	if err != nil {
+		return nil, fmt.Errorf("build voiceover group resolver: %w", err)
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+	return &assetTreeVoiceoverResolver{groups: groups, tree: tree, rootID: rootID, log: log}, nil
+}
+
+func (r *assetTreeVoiceoverResolver) Resolve(ctx context.Context, req *asset.ResolveRequest) (*asset.ResolveResult, error) {
+	if r == nil || r.groups == nil {
+		return nil, fmt.Errorf("voiceover group resolver is not configured")
+	}
+	if req == nil {
+		return nil, fmt.Errorf("voiceover destination request is required")
+	}
+	if folderID := strings.TrimSpace(req.FolderID); folderID != "" {
+		return &asset.ResolveResult{LocationKind: "drive", FolderID: folderID, FolderPath: req.FolderPath}, nil
+	}
+	group := strings.TrimSpace(req.Group)
+	if r.log != nil {
+		r.log.Info("voiceover destination lookup", zap.String("group", group), zap.String("root_id", r.rootID))
+	}
+	if group == "" {
+		return &asset.ResolveResult{}, nil
+	}
+	entry, err := r.groups.ResolveByName(ctx, r.rootID, group)
+	if err != nil {
+		// The asset-tree projection historically contains Drive folders
+		// imported under source="youtube". ResolveByName already knows
+		// that fallback; this second direct lookup is defensive for older
+		// resolver instances and keeps voiceover routing fail-closed only
+		// after both canonical projections were checked.
+		return nil, fmt.Errorf("resolve voiceover group %q: %w", group, err)
+	}
+	if r.log != nil {
+		r.log.Info("voiceover group resolved", zap.String("group", group), zap.String("folder_id", entry.FolderID))
+	}
+	// FolderPath is intentionally empty: in the voiceover use case that
+	// field is the local TTS output directory, not the human-readable
+	// Drive folder name. The Drive folder identity is carried by FolderID.
+	return &asset.ResolveResult{LocationKind: "drive", FolderID: entry.FolderID, DriveLink: entry.DriveLink}, nil
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // DestinationResolver adapter.

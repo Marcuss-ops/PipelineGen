@@ -324,10 +324,18 @@ func (uc *GenerateOneUseCase) Execute(
 	result.Provenance = provenance
 
 	// ── Phase 9: Editorial quality gate ────────────────────────────
-	// Always populate result.Quality. When the gate fails, return
-	// the result alongside the typed error so the failure envelope
-	// can still surface the quality block.
-	quality, qErr := evaluateQualityGate(result, item, plan)
+	// The engine generates the source-language script first. Translation
+	// is a postprocessor and intentionally replaces the response text with
+	// the requested target-language content. Evaluate editorial language,
+	// source coverage, and word budget against the engine output, otherwise
+	// a valid EN→ES translation is incorrectly compared to plan.Language=EN.
+	// The final result still contains the translated text produced by the
+	// translation processor.
+	qualityInput := *result
+	qualityInput.Output = result.Output
+	qualityInput.Output.Text = engineResult.Output.Text
+	qualityInput.Output.WordCount = engineResult.Output.WordCount
+	quality, qErr := evaluateQualityGate(&qualityInput, item, plan)
 	if quality != nil {
 		result.Quality = quality
 	}

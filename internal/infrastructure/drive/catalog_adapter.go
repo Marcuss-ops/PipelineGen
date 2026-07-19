@@ -35,6 +35,24 @@ type catalogFolderLookupAdapter struct {
 	repo *sqlitedelivery.Repository
 }
 
+func (a *catalogFolderLookupAdapter) RecordFolder(ctx context.Context, destination, path, folderID, parentFolderID string) error {
+	if a == nil || a.repo == nil {
+		return nil
+	}
+	_, err := a.repo.Upsert(ctx, nil, &sqlitedelivery.CatalogEntry{
+		Destination:    destination,
+		Namespace:      "voiceovers",
+		Path:           path,
+		FolderID:       folderID,
+		ParentFolderID: parentFolderID,
+		Source:         sqlitedelivery.SourceCreated,
+		Status:         sqlitedelivery.StatusActive,
+	})
+	return err
+}
+
+var _ CatalogFolderWriter = (*catalogFolderLookupAdapter)(nil)
+
 func (a *catalogFolderLookupAdapter) LookupFolder(ctx context.Context, destination, path string) (string, error) {
 	entry, err := a.repo.FindByDestinationAndPath(ctx, destination, path)
 	if err != nil {

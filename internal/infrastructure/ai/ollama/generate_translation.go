@@ -88,7 +88,10 @@ func (g *Generator) TranslateTextWithModel(ctx context.Context, text, targetLang
 
 	var systemPrompt, userPrompt string
 	if cfg := prompts.Get(); cfg != nil {
-		s, u, err := cfg.RenderTranslation(text, targetLanguage)
+		// Use the full language name in the configured prompt as well as
+		// in the fallback prompt. Short codes such as "es" are valid
+		// metadata, but are less explicit to the model than "Spanish".
+		s, u, err := cfg.RenderTranslation(text, langName)
 		if err == nil {
 			systemPrompt, userPrompt = s, u
 		}

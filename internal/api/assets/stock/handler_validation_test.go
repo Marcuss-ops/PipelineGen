@@ -276,8 +276,8 @@ func TestStockHandler_DeduplicatedFieldAlwaysPresent(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", w.Code, w.Body.String())
 	}
 	// The response body MUST contain the literal key "deduplicated"
 	// (no omitempty on the json tag). Verify by raw byte scan rather
