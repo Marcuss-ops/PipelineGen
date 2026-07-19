@@ -309,10 +309,15 @@ func TestWireArtlist_FailClosed_ScraperURLEnabledAndEmptyURL(t *testing.T) {
 func TestWireArtlist_FinalizerGate_SourceLevelContract(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	require.True(t, ok, "runtime.Caller(0) must succeed for this test file")
-	sourcePath := filepath.Join(filepath.Dir(thisFile), "build_bundles_artlist.go")
+	// Composition-root 4-file split (July 2026): WireArtlist moved to
+	// build_bundles_artlist_artlist.go (the file that owns the function
+	// post-split). The Finalizer gate #7 is wired INSIDE the WireArtlist
+	// function body (not as a helper), so this test points at the file
+	// that owns WireArtlist.
+	sourcePath := filepath.Join(filepath.Dir(thisFile), "build_bundles_artlist_artlist.go")
 
 	body, err := os.ReadFile(sourcePath)
-	require.NoError(t, err, "build_bundles_artlist.go must be readable at "+sourcePath)
+	require.NoError(t, err, "build_bundles_artlist_artlist.go must be readable at "+sourcePath)
 	src := string(body)
 
 	require.Contains(t, src, `finalizerTx := assetfinalizer.NewAssetTxFinalizer(log)`,

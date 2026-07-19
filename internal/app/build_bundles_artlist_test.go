@@ -347,7 +347,7 @@ func TestWireArtlist_HappyPath_AllGatesUp_RegistersRoute(t *testing.T) {
 
 	// Real ClipsRepository on the same *sql.DB (satisfies
 	// artlist.AssetStore port directly via Pattern 0 compile-time pin
-	// established in build_bundles_artlist.go).
+	// established in build_bundles_artlist_artlist.go).
 	clipsRepo := assets.NewClipsRepository(sqliteDB.DB, log)
 	require.NotNil(t, clipsRepo, "assets.NewClipsRepository must return a non-nil concrete on a fresh schema")
 

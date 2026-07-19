@@ -48,8 +48,7 @@ features:
 // loader binding for cfg.External.ArtlistScraperServerURL →
 // env VELOX_ARTLIST_SCRAPER_SERVER_URL. Before this PR the loader
 // read the bare ARTLIST_SCRAPER_SERVER_URL (which docker-compose.yml
-// never set: only the VELOX_-prefixed form was exported). Result:
-// fail-closed gate #5 in internal/app/build_bundles_artlist.go fired
+// never set: only the VELOX_-prefixed form was exported). Result:	// fail-closed gate #5 in internal/app/build_bundles_artlist_artlist.go fired
 // in production even though the env value was present via YAML.
 // This test makes the binding contract explicit so any future
 // re-prefix or env rename surfaces here as a test failure.
