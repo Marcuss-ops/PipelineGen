@@ -1,24 +1,5 @@
 #!/usr/bin/env bash
-# Jackie Chan unified generate -> Velox remote-render end-to-end smoke.
-#
-# Default mode uses the committed, completed SpecScene fixture and tests the
-# deterministic PipelineGen-output -> Velox -> remote-worker handoff.
-# Use --generate to start from the canonical PipelineGen V2 request first.
-#
-# Required environment:
-#   PIPELINEGEN_ADMIN_TOKEN   Required with --generate.
-#   VELOX_RENDER_ADMIN_TOKEN Required in every non-dry run.
-#
-# Optional environment:
-#   PIPELINEGEN_BASE         Default: http://127.0.0.1:8080
-#   VELOX_RENDER_BASE        Default: http://127.0.0.1:8000
-#   E2E_POLL_SECONDS         Default: 3
-#   E2E_TIMEOUT_SECONDS      Default: 3600
-#
-# Usage:
-#   tests/operational/jackie_chan_velox_handoff_smoke.sh
-#   tests/operational/jackie_chan_velox_handoff_smoke.sh --generate
-#   tests/operational/jackie_chan_velox_handoff_smoke.sh --dry
+# Jackie Chan: PipelineGen unified clips generate -> Velox remote-render smoke.
 
 set -euo pipefail
 umask 077
@@ -31,27 +12,20 @@ for arg in "$@"; do
     --fixture) MODE="fixture" ;;
     --dry) DRY_RUN=1 ;;
     -h|--help)
-      sed -n '2,24p' "$0"
+      echo "usage: $0 [--generate|--fixture] [--dry]"
       exit 0
       ;;
-    *)
-      printf 'unknown argument: %s\n' "$arg" >&2
-      exit 2
-      ;;
+    *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
 
 for bin in jq curl; do
-  command -v "$bin" >/dev/null 2>&1 || {
-    printf 'missing required binary: %s\n' "$bin" >&2
-    exit 2
-  }
+  command -v "$bin" >/dev/null 2>&1 || { echo "missing required binary: $bin" >&2; exit 2; }
 done
 
 ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 REQUEST_FIXTURE="$ROOT_DIR/examples/scripts/jackie_chan_generate_clips.json"
 SPECSCENE_FIXTURE="$ROOT_DIR/examples/scripts/jackie_chan_generate_clips_specscene.json"
-
 [[ -f "$REQUEST_FIXTURE" ]] || { echo "missing request fixture: $REQUEST_FIXTURE" >&2; exit 2; }
 [[ -f "$SPECSCENE_FIXTURE" ]] || { echo "missing SpecScene fixture: $SPECSCENE_FIXTURE" >&2; exit 2; }
 
@@ -64,38 +38,19 @@ WORK_DIR=$(mktemp -d /tmp/jackie-chan-e2e.XXXXXX)
 trap 'rm -rf "$WORK_DIR"' EXIT INT TERM
 
 json_http() {
-  local method=$1
-  local url=$2
-  local token=$3
-  local body_file=${4:-}
-  local out_file=$5
-  local code
-  local args=(
-    -sS --max-time 60
-    -X "$method"
-    -o "$out_file"
-    -w '%{http_code}'
-    -H "Authorization: Bearer $token"
-    -H 'Content-Type: application/json'
-  )
-  if [[ -n "$body_file" ]]; then
-    args+=(--data-binary "@$body_file")
-  fi
+  local method=$1 url=$2 token=$3 body_file=${4:-} out_file=$5 code
+  local args=(-sS --max-time 60 -X "$method" -o "$out_file" -w '%{http_code}'
+    -H "Authorization: Bearer $token" -H 'Content-Type: application/json')
+  [[ -n "$body_file" ]] && args+=(--data-binary "@$body_file")
   code=$(curl "${args[@]}" "$url")
   printf '%s' "$code"
 }
 
 poll_job() {
-  local base=$1
-  local token=$2
-  local path_template=$3
-  local job_id=$4
-  local out_file=$5
-  local deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
-  local status code path
-
+  local base=$1 token=$2 template=$3 job_id=$4 out_file=$5
+  local deadline=$(( $(date +%s) + TIMEOUT_SECONDS )) status code path
   while (( $(date +%s) < deadline )); do
-    path=${path_template//\{job_id\}/$job_id}
+    path=${template//\{job_id\}/$job_id}
     code=$(json_http GET "$base$path" "$token" "" "$out_file")
     if [[ "$code" == "200" ]]; then
       status=$(jq -r '.status // .job.status // ""' "$out_file" | tr '[:upper:]' '[:lower:]')
@@ -113,7 +68,6 @@ poll_job() {
 }
 
 validate_specscene() {
-  local file=$1
   jq -e '
     .version == 1 and
     (.scenes | length) == 3 and
@@ -122,12 +76,13 @@ validate_specscene() {
     (all(.scenes[]; (.bindings.clip.drive_link | length) > 0)) and
     (all(.scenes[]; .bindings.voiceover.status == "completed")) and
     (all(.scenes[]; (.bindings.voiceover.link | length) > 0))
-  ' "$file" >/dev/null
+  ' "$1" >/dev/null
 }
 
 SPEC_FILE="$WORK_DIR/specscene.json"
 TITLE="Jackie Chan Doc Voiceover"
 CORRELATION_ID="jackie-chan-specscene-fixture-v1"
+AUDIO_LANGUAGE="en"
 
 if [[ "$MODE" == "generate" ]]; then
   if [[ "$DRY_RUN" != "1" && -z "${PIPELINEGEN_ADMIN_TOKEN:-}" ]]; then
@@ -135,6 +90,7 @@ if [[ "$MODE" == "generate" ]]; then
     exit 2
   fi
 
+  AUDIO_LANGUAGE=$(jq -r '.items[0].output.translate_to // .items[0].language // "en"' "$REQUEST_FIXTURE")
   if [[ "$DRY_RUN" == "1" ]]; then
     echo "DRY RUN: would POST $REQUEST_FIXTURE to $PIPELINEGEN_BASE/api/script/generate"
     cp "$SPECSCENE_FIXTURE" "$SPEC_FILE"
@@ -148,7 +104,6 @@ if [[ "$MODE" == "generate" ]]; then
     }
     PG_JOB_ID=$(jq -r '.job_id // ""' "$PG_SUBMIT")
     [[ -n "$PG_JOB_ID" ]] || { echo 'PipelineGen response missing job_id' >&2; exit 1; }
-    echo "PipelineGen job_id=$PG_JOB_ID"
 
     PG_FULL="$WORK_DIR/pipelinegen-full.json"
     PG_STATUS=$(poll_job "$PIPELINEGEN_BASE" "$PIPELINEGEN_ADMIN_TOKEN" "/api/jobs/{job_id}/full" "$PG_JOB_ID" "$PG_FULL") || {
@@ -161,8 +116,10 @@ if [[ "$MODE" == "generate" ]]; then
       exit 1
     }
 
-    jq -e '.result.items[0].result.output.specscene' "$PG_FULL" > "$SPEC_FILE"
-    TITLE=$(jq -r '.result.items[0].result.title // "Jackie Chan Doc Voiceover"' "$PG_FULL")
+    # script.generate returns a direct GenerationResult for one item. Keep the
+    # batch fallback only so the smoke remains diagnostic for multi-item runs.
+    jq -e '(.result.output.specscene // .result.items[0].result.output.specscene)' "$PG_FULL" > "$SPEC_FILE"
+    TITLE=$(jq -r '.result.title // .result.items[0].result.title // "Jackie Chan Doc Voiceover"' "$PG_FULL")
     CORRELATION_ID="pipelinegen-$PG_JOB_ID"
   fi
 else
@@ -175,12 +132,11 @@ validate_specscene "$SPEC_FILE" || {
   exit 1
 }
 
-echo "SpecScene validated: $(jq '.scenes | length' "$SPEC_FILE") scenes"
-
 VELOX_PAYLOAD="$WORK_DIR/velox-render-request.json"
 jq -n \
   --arg title "$TITLE" \
   --arg correlation_id "$CORRELATION_ID" \
+  --arg audio_language "$AUDIO_LANGUAGE" \
   --slurpfile spec "$SPEC_FILE" \
   '{
     source: {type: "clips"},
@@ -190,7 +146,7 @@ jq -n \
     scenes_json: ($spec[0].scenes | tojson),
     voiceover_paths: [$spec[0].scenes[].bindings.voiceover.link],
     correlation_id: $correlation_id,
-    audio_language: "en",
+    audio_language: $audio_language,
     video_mode: "clip",
     skip_creator: true
   }' > "$VELOX_PAYLOAD"
@@ -206,62 +162,31 @@ jq -e '
 
 if [[ "$DRY_RUN" == "1" ]]; then
   echo "DRY RUN: would POST the generated payload to $VELOX_RENDER_BASE/api/v1/script/generate"
-  jq '{source, video_name, correlation_id, scene_count:(.scenes|length), voiceover_count:(.voiceover_paths|length), skip_creator}' "$VELOX_PAYLOAD"
+  jq '{source,video_name,correlation_id,audio_language,scene_count:(.scenes|length),voiceover_count:(.voiceover_paths|length),skip_creator}' "$VELOX_PAYLOAD"
   exit 0
 fi
 
-[[ -n "${VELOX_RENDER_ADMIN_TOKEN:-}" ]] || {
-  echo 'VELOX_RENDER_ADMIN_TOKEN is required' >&2
-  exit 2
-}
+[[ -n "${VELOX_RENDER_ADMIN_TOKEN:-}" ]] || { echo 'VELOX_RENDER_ADMIN_TOKEN is required' >&2; exit 2; }
 
-# Fail before enqueue when no real remote worker can execute scene.composite.v1.
 WORKERS_FILE="$WORK_DIR/velox-workers.json"
 workers_code=$(json_http GET "$VELOX_RENDER_BASE/api/v1/workers" "$VELOX_RENDER_ADMIN_TOKEN" "" "$WORKERS_FILE")
-[[ "$workers_code" == "200" ]] || {
-  echo "Velox worker preflight failed: HTTP $workers_code" >&2
-  jq . "$WORKERS_FILE" >&2 || cat "$WORKERS_FILE" >&2
-  exit 1
-}
-
-CAPABLE_WORKERS=$(jq -r '
-  [.workers[]
-   | select((.status | ascii_upcase) == "CONNECTED")
-   | select(any(.executors[]?; (.id | startswith("scene.composite.v1"))))
-   | .worker_id] | join(",")
-' "$WORKERS_FILE")
-[[ -n "$CAPABLE_WORKERS" ]] || {
-  echo 'No CONNECTED Velox worker advertises scene.composite.v1' >&2
-  jq '{workers:[.workers[] | {worker_id,status,reason,executors,task_slots,active_tasks}]}' "$WORKERS_FILE" >&2
-  exit 1
-}
-echo "Capable remote workers: $CAPABLE_WORKERS"
+[[ "$workers_code" == "200" ]] || { echo "Velox worker preflight failed: HTTP $workers_code" >&2; exit 1; }
+CAPABLE_WORKERS=$(jq -r '[.workers[] | select((.status|ascii_upcase)=="CONNECTED") | select(any(.executors[]?; (.id|startswith("scene.composite.v1")))) | .worker_id] | join(",")' "$WORKERS_FILE")
+[[ -n "$CAPABLE_WORKERS" ]] || { echo 'No CONNECTED Velox worker advertises scene.composite.v1' >&2; exit 1; }
 
 VELOX_SUBMIT="$WORK_DIR/velox-submit.json"
 code=$(json_http POST "$VELOX_RENDER_BASE/api/v1/script/generate" "$VELOX_RENDER_ADMIN_TOKEN" "$VELOX_PAYLOAD" "$VELOX_SUBMIT")
-[[ "$code" == "200" || "$code" == "202" ]] || {
-  echo "Velox submit failed: HTTP $code" >&2
-  jq . "$VELOX_SUBMIT" >&2 || cat "$VELOX_SUBMIT" >&2
-  exit 1
-}
-
+[[ "$code" == "200" || "$code" == "202" ]] || { echo "Velox submit failed: HTTP $code" >&2; exit 1; }
 VELOX_JOB_ID=$(jq -r '.job_id // .enqueue.job_id // ""' "$VELOX_SUBMIT")
 [[ -n "$VELOX_JOB_ID" ]] || { echo 'Velox response missing job_id' >&2; exit 1; }
-echo "Velox job_id=$VELOX_JOB_ID"
 
 VELOX_FULL="$WORK_DIR/velox-full.json"
-VELOX_STATUS=$(poll_job "$VELOX_RENDER_BASE" "$VELOX_RENDER_ADMIN_TOKEN" "/api/v1/script/jobs/{job_id}/full" "$VELOX_JOB_ID" "$VELOX_FULL") || {
-  echo 'Velox polling timed out' >&2
-  exit 124
-}
-
+VELOX_STATUS=$(poll_job "$VELOX_RENDER_BASE" "$VELOX_RENDER_ADMIN_TOKEN" "/api/v1/script/jobs/{job_id}/full" "$VELOX_JOB_ID" "$VELOX_FULL") || exit 124
 [[ "$VELOX_STATUS" == "completed" || "$VELOX_STATUS" == "succeeded" ]] || {
   echo "Velox job ended as $VELOX_STATUS" >&2
   jq . "$VELOX_FULL" >&2 || true
   exit 1
 }
-
-jq -e '(.job_id // .job.job_id // .job.id // .script_id // "") != "" or (.status | length) > 0' "$VELOX_FULL" >/dev/null
 
 printf '\nPASS: PipelineGen SpecScene -> Velox unified generate job -> remote worker completed\n'
 printf 'mode=%s\n' "$MODE"
