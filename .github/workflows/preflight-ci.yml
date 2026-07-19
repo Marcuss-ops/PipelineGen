@@ -1,25 +1,8 @@
 # .github/workflows/preflight-ci.yml — Qdrant preflight CI smoke
 #
-# Triggers: workflow_dispatch only (initial shipping posture).
-# Future PR-QDRANT-FULL-STACK-AUTOMATED-PROMOTE forward-pointer: add
-#   on: push: branches: [main]
-#   ... AFTER: (a) the 5-item pre-existing build issue carry-forward
-#   per architecture/current.yaml#PRE-EXISTING-BUILD-ISSUES-2026-07-04
-#   is fully resolved; (b) PR-QDRANT-FULL-STACK-BRINGUP is green; (c)
-#   PR-QDRANT-PREFLIGHT-DATA-SEED is shipped (per Test 3-11 fill-in).
-# Until then, push-on-main triggers would paint main RED due to the
-# carry-forward, violating CI hygiene -- hence workflow_dispatch only.
-#
-# godlike/07 honest scope-lock: this workflow ships as SCAFFOLDING.
-# Actual green-ability is conditional on:
-#   1. The 5-item PRE-EXISTING-BUILD-ISSUES-2026-07-04 (Fix Dockerfile)
-#   2. VELOX_ADMIN_TOKEN as a CI secret (Settings > Secrets)
-#   3. PR-QDRANT-FULL-STACK-BRINGUP (docker-compose.yml full-stack)
-#   4. PR-QDRANT-PREFLIGHT-DATA-SEED (cmd/admin/seed_test_asset/)
-# Until all 4 are shipped, the preflight binary will FAIL-closed with
-# typed ErrPreflightStackDown + ErrPreflightSeedMissing + per-test
-# ErrPreflightNotImplemented -- exactly the godlike/07 NO-FAKE-AVAILABILITY
-# discipline documented in cmd/admin/qdrant_preflight.go.
+# Triggers: workflow_dispatch only. Promotion to push-on-main remains blocked
+# until the full stack and canonical media/outbox seed producer are green.
+# The retired script clips adapter is not a preflight dependency.
 name: qdrant-preflight
 
 on:
@@ -33,11 +16,6 @@ on:
         description: "Qdrant base URL (default http://127.0.0.1:16333)"
         required: false
         default: "http://127.0.0.1:16333"
-
-# godlike/06 SSOT: only this surface orchestrates qdrant preflight CI.
-# Cross-reference: architecture/current.yaml#PR-QDRANT-FULL-STACK-AUTOMATED
-#                  + CHANGELOG.md ## Unreleased -> ### Added (PR-QDRANT-FULL-STACK-AUTOMATED entry)
-#                  + AGENTS.md ## Recent cross-cutting closures (PR-QDRANT-FULL-STACK-AUTOMATED entry)
 
 jobs:
   preflight:
@@ -60,7 +38,6 @@ jobs:
       - name: start-docker-compose-stack
         run: |
           docker compose up -d qdrant pipelinegen-server
-          # Wait loop on /healthz (max 60s) -- fail-closed if stack stays DOWN
           for i in $(seq 1 60); do
             HTTP=$(curl -sS -m 2 -o /dev/null -w '%{http_code}' http://localhost:8081/healthz 2>/dev/null || echo 000)
             QDRANT=$(curl -sS -m 2 -o /dev/null -w '%{http_code}' http://localhost:16333/healthz 2>/dev/null || echo 000)
@@ -79,18 +56,13 @@ jobs:
       - name: run-preflight
         env:
           VELOX_ADMIN_TOKEN: ${{ secrets.VELOX_ADMIN_TOKEN }}
+          VELOX_WORKER_TOKEN: ${{ secrets.VELOX_WORKER_TOKEN }}
         run: |
           ./bin/admin qdrant-preflight \
             --url=${{ github.event.inputs.url || 'http://127.0.0.1:8081' }} \
             --qdrant-url=${{ github.event.inputs.qdrant_url || 'http://127.0.0.1:16333' }}
-          # Per godlike/07 NO-FAKE-AVAILABILITY:
-          #   exit 0 iff PASS or SKIP-allowed. Any FAIL => exit 1.
-          # The binary's exit code is the canonical CI gate signal.
 
       - name: tear-down-stack
         if: always()
         run: |
-          # --volumes ensures qdrant/pipelinegen-server volume state does
-          # NOT leak across successive workflow_dispatch re-runs (SRE
-          # diagnostic hygiene; godlike/07 run-once-virgin-state contract).
           docker compose down --volumes || true
