@@ -241,6 +241,12 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 			currentInput.SpecScene = src.TranslatedSpecScene
 		}
 	}
+	if strings.TrimSpace(src.OriginalText) != "" && currentInput != nil {
+		if currentInput.OriginalText == "" {
+			currentInput.OriginalText = src.OriginalText
+			currentInput.OriginalSpecScene = src.OriginalSpecScene
+		}
+	}
 }
 
 // cloneSpecSceneSlice returns a shallow copy of the scene slice.

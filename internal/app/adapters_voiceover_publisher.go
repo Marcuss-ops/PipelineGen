@@ -113,13 +113,12 @@ func (a *useCasePublisherAdapter) Publish(ctx context.Context, cmd voiceover.Voi
 	}
 
 	req := delivery.PublishRequest{
-		Destination:         delivery.DestinationVoiceover,
-		LocalPath:           cmd.LocalPath,
-		Filename:            cmd.Filename,
-		AssetID:             cmd.ID,
-		ProjectID:           cmd.Project,
-		Language:            cmd.Language,
-		DestinationFolderID: cmd.FolderID,
+		Destination: delivery.DestinationVoiceover,
+		LocalPath:   cmd.LocalPath,
+		Filename:    cmd.Filename,
+		AssetID:     cmd.ID,
+		ProjectID:   cmd.Project,
+		Language:    cmd.Language,
 	}
 	res, err := a.publisher.Publish(ctx, req)
 	if err != nil {

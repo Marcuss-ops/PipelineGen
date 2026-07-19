@@ -85,12 +85,40 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 		return &PostProcessResult{}, nil
 	}
 
+	// Translation mutates the pipeline input before this processor runs.
+	// When a source surface is available, persist it as the requested
+	// source-language row first; the existing path below then persists the
+	// translated target-language row. Both writes remain owned by this
+	// processor and use independent language-aware idempotency keys.
+	if strings.TrimSpace(input.OriginalText) != "" && strings.TrimSpace(plan.TranslateTo) != "" {
+		originalPlan := *plan
+		originalPlan.TranslateTo = ""
+		// Keep the repaired source row distinct from legacy rows that were
+		// incorrectly persisted under the source language with translated
+		// content.
+		originalPlan.PromptVersion = plan.PromptVersion + "|source-language"
+		originalInput := input
+		originalInput.Text = input.OriginalText
+		originalInput.WordCount = len(strings.Fields(input.OriginalText))
+		originalInput.SpecScene = originalSpecSceneForPersistence(input)
+		if _, err := p.persistSourceLanguageRow(ctx, &originalPlan, originalInput); err != nil {
+			return nil, err
+		}
+	}
+	persistPlan := plan
+	if target := strings.TrimSpace(plan.TranslateTo); target != "" {
+		translatedPlan := *plan
+		translatedPlan.Language = target
+		translatedPlan.TranslateTo = ""
+		persistPlan = &translatedPlan
+	}
+
 	// Compute idempotency key from the reconciliation tuple.
-	idemKey := computeIdempotencyKey(plan)
+	idemKey := computeIdempotencyKey(persistPlan)
 
 	// Look up the existing row first. Found = skip the insert.
 	existing, found, lookupErr := p.repo.FindScriptByIdempotencyKey(ctx,
-		plan.ID, plan.CacheKey, plan.PromptVersion, plan.TargetWords, plan.Language)
+		persistPlan.ID, persistPlan.CacheKey, persistPlan.PromptVersion, persistPlan.TargetWords, persistPlan.Language)
 	if lookupErr != nil {
 		if p.log != nil {
 			p.log.Warn("persistence processor: idempotency lookup failed, falling through to insert",
@@ -115,7 +143,7 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	// runtime result already strips local filesystem paths for API
 	// responses; the scripts table must store the same sanitized
 	// shape so DB readers never observe ephemeral temp paths.
-	specScene := sanitizeSpecSceneOutputForPersistence(input.SpecScene)
+	specScene := sanitizeSpecSceneOutputForPersistence(specSceneWithText(input.SpecScene, input.Text))
 
 	// PR 5 fields: persist the canonical typed output fields on
 	// the script row. PR 5 lives in the same migration window as
@@ -128,15 +156,15 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	}
 
 	rec := &ScriptRecord{
-		Title:          plan.Title,
-		Topic:          plan.Topic,
-		Language:       plan.Language,
-		Tone:           plan.Tone,
-		Model:          plan.Model,
+		Title:          persistPlan.Title,
+		Topic:          persistPlan.Topic,
+		Language:       persistPlan.Language,
+		Tone:           persistPlan.Tone,
+		Model:          persistPlan.Model,
 		ModelUsed:      input.ModelUsed,
-		Mode:           plan.Mode,
+		Mode:           persistPlan.Mode,
 		Status:         "completed",
-		TargetWords:    plan.TargetWords,
+		TargetWords:    persistPlan.TargetWords,
 		FinalWordCount: input.WordCount,
 		OutputText:     input.Text,
 		NarrativeText:  input.Text,
@@ -177,7 +205,7 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	// dispatcher's fan-out). The typed-error contract is
 	// preserved: callers can errors.Is(err, ports.ErrSaveManifestV2NilManifest)
 	// to surface a typed diagnostic at composition time.
-	manifest := buildManifestV2(plan, input)
+	manifest := buildManifestV2(persistPlan, input)
 	manifestBytes, marshalErr := json.Marshal(manifest)
 	if marshalErr != nil {
 		return nil, fmt.Errorf("%w: persistence processor: manifest_v2 marshal failed: %w", scriptpkg.ErrPostprocessFailed, marshalErr)
@@ -198,6 +226,67 @@ func (p *PersistenceProcessor) Process(ctx context.Context, plan *scriptpkg.Reso
 	return &PostProcessResult{
 		ScriptID: scriptID,
 	}, nil
+}
+
+// originalSpecSceneForPersistence keeps the source-language row structurally
+// aligned with the translated row. Translation can run before clip binding,
+// so the original snapshot may have no scenes while the current input already
+// has the authoritative scene IDs and clip bindings.
+func originalSpecSceneForPersistence(input ProcessInput) scriptpkg.SpecSceneOutput {
+	if len(input.OriginalSpecScene.Scenes) > 0 {
+		return input.OriginalSpecScene
+	}
+	out := input.SpecScene
+	if len(out.Scenes) == 0 {
+		return input.OriginalSpecScene
+	}
+	parts := strings.Split(strings.TrimSpace(input.OriginalText), "\n\n")
+	for i := range out.Scenes {
+		if i < len(parts) && strings.TrimSpace(parts[i]) != "" {
+			out.Scenes[i].Text = strings.TrimSpace(parts[i])
+		}
+	}
+	return out
+}
+
+func specSceneWithText(scene scriptpkg.SpecSceneOutput, text string) scriptpkg.SpecSceneOutput {
+	if len(scene.Scenes) == 0 {
+		return scene
+	}
+	parts := strings.Split(strings.TrimSpace(text), "\n\n")
+	for i := range scene.Scenes {
+		if i < len(parts) && strings.TrimSpace(parts[i]) != "" {
+			scene.Scenes[i].Text = strings.TrimSpace(parts[i])
+		}
+	}
+	return scene
+}
+
+// persistSourceLanguageRow writes the original language surface without
+// emitting a second manifest. The translated row remains the canonical
+// manifest owner below.
+func (p *PersistenceProcessor) persistSourceLanguageRow(ctx context.Context, plan *scriptpkg.ResolvedGenerationPlan, input ProcessInput) (int64, error) {
+	if _, found, err := p.repo.FindScriptByIdempotencyKey(ctx, plan.ID, plan.CacheKey, plan.PromptVersion, plan.TargetWords, plan.Language); err == nil && found {
+		return 0, nil
+	}
+	specSceneJSON, err := json.Marshal(sanitizeSpecSceneOutputForPersistence(input.SpecScene))
+	if err != nil {
+		return 0, fmt.Errorf("%w: original persistence: specscene marshal failed: %w", scriptpkg.ErrPostprocessFailed, err)
+	}
+	key := computeIdempotencyKey(plan)
+	rec := &ScriptRecord{
+		Title: plan.Title, Topic: plan.Topic, Language: plan.Language,
+		Tone: plan.Tone, Model: plan.Model, ModelUsed: input.ModelUsed,
+		Mode: plan.Mode, Status: "completed", TargetWords: plan.TargetWords,
+		FinalWordCount: input.WordCount, OutputText: input.Text,
+		NarrativeText: input.Text, FullDocument: input.Text,
+		SpecScene: string(specSceneJSON), IdempotencyKey: key, Version: 1,
+	}
+	id, err := p.repo.SaveScript(ctx, rec, buildSectionsFromScenes(input.SpecScene.Scenes), nil)
+	if err != nil {
+		return 0, fmt.Errorf("%w: original persistence: SaveScript failed: %w", scriptpkg.ErrPostprocessFailed, err)
+	}
+	return id, nil
 }
 
 // computeIdempotencyKey returns the 16-hex-char SHA-256 prefix of

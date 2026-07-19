@@ -162,6 +162,8 @@ func TestPublisherAdapter_ProjectAndLanguage_ForwardedToPublishRequest(t *testin
 	assert.Equal(t, "storia-boxe", got.ProjectID,
 		"req.ProjectID must equal cmd.Project (canonical semantic routing)")
 	assert.Equal(t, "it-IT", got.Language)
+	assert.Empty(t, got.DestinationFolderID,
+		"voiceover semantic routing must resolve Project/Language under the configured voiceover root")
 	assert.Empty(t, got.RootFolderOverride,
 		"req.RootFolderOverride MUST be empty when Project is set (semantic-first precedence)")
 }

@@ -72,3 +72,21 @@ type GenerationSpec struct {
 	EditorPromptVersion string `json:"editor_prompt_version,omitempty"`
 	QAPromptVersion     string `json:"qa_prompt_version,omitempty"`
 }
+
+// HasClips reports whether the spec carries clip-aware parameters,
+// either as an explicit ClipIDs list or via the NumClips scalar.
+// Returned boolean matches the spec_test.go contract (P0 for the
+// post-rebase gate failure on origin/main).
+func (s GenerationSpec) HasClips() bool {
+	return len(s.ClipIDs) > 0 || s.NumClips > 0
+}
+
+// HasText reports whether the spec carries text-generation inputs,
+// either via Topic or SourceText. Guidelines is intentionally NOT
+// counted here — the canonical contract only treats Topic/SourceText
+// as primary text-in surfaces (alignment with the spec_test.go
+// table). Add Guidelines to the boolean when downstream callers
+// start treating it as a generative input (forward-pointer).
+func (s GenerationSpec) HasText() bool {
+	return s.Topic != "" || s.SourceText != ""
+}

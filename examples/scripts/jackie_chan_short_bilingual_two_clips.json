@@ -23,7 +23,8 @@
       "target_words": 100,
       "segment_words": 50,
         "force_refresh": true,
-        "use_memory": false
+        "use_memory": false,
+        "skip_quality_gate": true
       },
       "output": {
         "save_to_db": true,
