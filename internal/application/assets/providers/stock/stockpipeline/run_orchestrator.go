@@ -316,7 +316,7 @@ func (s *Service) stagerForRun() assets.SourceStager {
 	// (the canonical yt-dlp-backed download path) and satisfies
 	// assets.SourceStager via the compile-time assertion at
 	// stager_adapter.go:18.
-	if err := reg.Register(assets.SourceKindExistingCatalog, NewStockStager(s)); err != nil {
+	if err := reg.Register(assets.SourceKindExistingCatalog, NewStockStager(s).WithSourceCache(s.sourceCacheReader, s.sourceCacheWriter)); err != nil {
 		// godlike/07 typed-error path: log+drop for production;
 		// tests assert via the registry's own error sentinels.
 		return nil

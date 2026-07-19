@@ -206,7 +206,17 @@ func (a *ArtifactPublisherAdapter) Publish(
 // "stock" subfolder under the stock root folder.
 func stockArtifactPathParts(artifact finalization.VerifiedArtifact) (group, subject, provider string) {
 	parts := strings.Split(artifact.ArtifactID, ":")
-	group = stockRunFolderName(artifact.RootFolderName)
+	// When the stock orchestrator already resolved the root folder
+	// (run_orchestratorResilient created the folder_name subfolder),
+	// skip the group level so clips land directly in the resolved
+	// folder. Without this, stockRootFolderName returns folder_name
+	// as group AND the root is already folder_name, causing double
+	// nesting (root/folder_name/folder_name/subject).
+	if artifact.RootFolderResolved {
+		group = ""
+	} else {
+		group = stockRunFolderName(artifact.RootFolderName)
+	}
 	subject = stockFolderLeafName(artifact.PathLeafName)
 	switch {
 	case len(parts) >= 5 && parts[0] == "stock" && parts[2] == "timestamp" && parts[4] == "video":

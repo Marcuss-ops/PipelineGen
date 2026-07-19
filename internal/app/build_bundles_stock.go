@@ -109,6 +109,20 @@ type StockBundleDeps struct {
 	Orchestration StockOrchestrationDeps
 	Feature       StockFeatureGate
 	Enrichment    StockEnrichmentDeps
+	SourceCache   StockSourceCacheDeps
+}
+
+// StockSourceCacheDeps groups the cross-run source download cache
+// ports. Reader and Writer are OPTIONAL — nil means no cache
+// (every download is fresh). LocalFS is the Pattern 0 typed port
+// (PR-REFACTOR-P0-IO-BINDER) the application layer uses to read,
+// write, and stat cached files; it is injected at composition time
+// so the application layer never calls os.* directly.
+// Field count: 3.
+type StockSourceCacheDeps struct {
+	Reader  stockpipeline.SourceCacheReader
+	Writer  stockpipeline.SourceCacheWriter
+	LocalFS stockpipeline.LocalFSPort
 }
 
 // StockRuntimeDeps groups the runtime environment the stock bundle
@@ -305,6 +319,11 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 			SourceStager:  deps.Acquisition.SourceStager,
 			ChannelLister: deps.Orchestration.ChannelLister,
 		},
+		SourceCache: stockpipeline.SourceCacheDeps{
+			Reader:  deps.SourceCache.Reader,
+			Writer:  deps.SourceCache.Writer,
+			LocalFS: deps.SourceCache.LocalFS,
+		},
 		Finalizer: deps.Delivery.Finalizer,
 	})
 	if err != nil {
@@ -435,6 +454,7 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 	sd, err := stockapi.Build(stockapi.Dependencies{
 		UseCase:     useCase,
 		EnabledFunc: deps.Feature.StockPipelineEnabled,
+		Logger:      deps.Runtime.Log,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("stock.BuildStockBundle: stockapi.Build: %w", err)
