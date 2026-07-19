@@ -34,12 +34,12 @@ mkdir -p "$WRAP" "$CLIPDIR" "$PREDIR"
 cat > "$WRAP/ffmpeg" <<'EOF'
 #!/bin/bash
 echo "$(date +%s%N) ffmpeg $@" >> /tmp/stock-bench/subprocess.log
-/usr/bin/ffmpeg "$@" 2>/dev/null
+${FFMPEG_BIN:-/usr/bin/ffmpeg} "$@" 2>/dev/null
 EOF
 cat > "$WRAP/ffprobe" <<'EOF'
 #!/bin/bash
 echo "$(date +%s%N) ffprobe $@" >> /tmp/stock-bench/subprocess.log
-/usr/bin/ffprobe "$@" 2>/dev/null
+${FFPROBE_BIN:-/usr/bin/ffprobe} "$@" 2>/dev/null
 EOF
 chmod +x "$WRAP/ffmpeg" "$WRAP/ffprobe"
 export PATH="$WRAP:$PATH"
