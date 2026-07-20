@@ -41,15 +41,16 @@
 #    19. check_71_asset_committer_ssot_wave5.sh
 #    20. check_72_qdrant_upsert_ssot_wave5.sh
 #    21. check_73_search_aggregator_uniqueness_wave5.sh
+#    22. check_74_forbid_legacy_generate_from_clips.sh
 #
 # SLA (July 2026): contract test p95 ≤ 180s in CI (well under standard CI gates).
 # The check_50_jobs.sh sub-orchestrator alone is ~30-60s (sources 18 sub-checks
-# with full rg/go runs in subshells); the remaining 20 rule files are ~3-10s each.
+# with full rg/go runs in subshells); the remaining 21 rule files are ~3-10s each.
 # Extend cautiously; runtime scales linearly with rule-file count + sub-orchestrator cost.
-# Of the 20 rule files, 9 are RECOVERY STUBS pending full rule body restoration
+# Of the 21 rule files, 9 are RECOVERY STUBS pending full rule body restoration
 # (data loss from a previous verification basher's trap cleanup).
 #
-# Total: 21 entries (20 rule files + 1 delegated sub-orchestrator).
+# Total: 22 entries (21 rule files + 1 delegated sub-orchestrator).
 #
 # ── CONTRACT TEST (July 2026, fail-closed pre-CI gate) ───────────
 # The dispatcher exposes a `--contract-check` flag that runs 3
@@ -62,8 +63,8 @@
 #       which is legitimate exit-1),
 #   (3) sort-key uniqueness (no two files share field-2 sort key,
 #       else dispatcher order becomes tie-broken non-deterministic).
-# The contract test adds ~30s overhead (subshell sources of 21
-# rule files); invoked explicitly, NOT on every dispatch. Pattern:
+# The contract test adds ~30s overhead (subshell sources of 22
+# entries); invoked explicitly, NOT on every dispatch. Pattern:
 #   bash scripts/ci/architecture/checks/all_checks.sh --contract-check
 # Thin CI wrapper at scripts/ci/architecture/checks/all_checks_contract_test.sh
 # exposes the same flag for invocation from external CI pipelines.

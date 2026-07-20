@@ -234,6 +234,21 @@ type AIBundle struct {
 	// nil when Whisper is not configured (the chain silently
 	// skips priority 5).
 	WhisperTranscriber youtubeports.WhisperTranscriberPort
+
+	// SceneTextGenerator is the canonical TextGenerator adapter
+	// that implements scriptgeneration.TextGenerator by wrapping
+	// ScriptEngine. Produces AI-generated scene text (scene-by-scene)
+	// separate from the Translator, per the P1 verdetto.
+	// nil when ScriptEngine is not available (pre-wiring guard).
+	SceneTextGenerator *SceneTextGenerator
+
+	// ScriptVoiceoverGenerator is the canonical VoiceoverGenerator
+	// adapter that implements scriptgeneration.VoiceoverGenerator by
+	// wrapping the TTS audio processor. Produces real audio assets from
+	// scene text (not just copying existing voiceover_paths), per the
+	// P1 verdetto.
+	// nil when audio processor is not available (pre-wiring guard).
+	ScriptVoiceoverGenerator *ScriptVoiceoverGenerator
 }
 
 // DomainBundle is everything media-specific that lives at the application layer.

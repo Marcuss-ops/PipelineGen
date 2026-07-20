@@ -73,6 +73,33 @@ type RenderReference struct {
 	Status string `json:"status"`
 }
 
+// ── DocumentsConfig ──────────────────────────────────────────────────
+
+// DocumentsConfig is the explicit contract for Google Doc publishing.
+// Per the verdetto, document creation MUST NOT be implicit based on
+// whether drive_output_folder happens to be present — it must be
+// explicitly requested via this config.
+//
+// One document per language is created (e.g. "script_en", "script_es").
+// The identity is deterministic: (generation_run_id + language) drive
+// properties. On retry, UpsertDocument updates the same document.
+type DocumentsConfig struct {
+	// Enabled explicitly requests Google Doc publishing.
+	// When false, no documents are created even if Languages or
+	// FolderID are populated. Default false (opt-in).
+	Enabled bool `json:"enabled"`
+
+	// Languages lists the languages for which a document should be
+	// published. Each language gets its own document (one per language,
+	// NOT one bilingual document). Must be non-empty when Enabled is
+	// true.
+	Languages []Language `json:"languages,omitempty"`
+
+	// FolderID is the target Google Drive folder ID for documents.
+	// When empty, documents are created in the default Drive location.
+	FolderID string `json:"folder_id,omitempty"`
+}
+
 // ── Domain aggregates ───────────────────────────────────────────────
 
 // GenerateRequest is the pure-domain input for a script generation.
@@ -101,10 +128,18 @@ type GenerateRequest struct {
 	// RenderVideo triggers the render enqueue step at the end.
 	RenderVideo bool `json:"render_video"`
 
-	// DocsEnabled enables Google Doc publishing.
-	DocsEnabled bool `json:"docs_enabled"`
+	// Docs is the explicit document publishing config.
+	// Verdetto: document creation MUST be explicit (docs.enabled),
+	// NOT implicit based on whether drive_output_folder is present.
+	// One document per language is created, not one bilingual doc.
+	Docs DocumentsConfig `json:"docs"`
 
-	// DriveFolderID is the target Google Drive folder for documents.
+	// DEPRECATED: use Docs.Enabled instead. Kept for backward compat.
+	// Remove after all callers migrate to the Docs config struct.
+	DocsEnabled bool `json:"docs_enabled,omitempty"`
+
+	// DEPRECATED: use Docs.FolderID instead. Kept for backward compat.
+	// Remove after all callers migrate to the Docs config struct.
 	DriveFolderID string `json:"drive_folder_id,omitempty"`
 
 	// Title is the output title (mirrors the caller's title).
@@ -156,6 +191,11 @@ type GenerationRun struct {
 	// ID is the canonical run identifier (pipeline_run.id).
 	ID string `json:"id"`
 
+	// JobID is the canonical worker-assigned job identifier, set
+	// after the submission service returns. Used by GET /full to
+	// correlate the job with its generation run.
+	JobID string `json:"job_id,omitempty"`
+
 	// Request is the original generation request.
 	Request GenerateRequest `json:"request"`
 
@@ -168,9 +208,10 @@ type GenerationRun struct {
 	// Result is populated when the run reaches a terminal state.
 	Result *GenerateResult `json:"result,omitempty"`
 
-	// ErrorCode and FailedStage capture the failure reason.
-	ErrorCode   string `json:"error_code,omitempty"`
-	FailedStage Stage  `json:"failed_stage,omitempty"`
+	// ErrorCode, ErrorMessage, and FailedStage capture the failure reason.
+	ErrorCode    string `json:"error_code,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+	FailedStage  Stage  `json:"failed_stage,omitempty"`
 
 	// RetryCount tracks how many times this run has been retried.
 	AttemptCount int `json:"attempt_count"`
@@ -209,6 +250,33 @@ const (
 	StageCompleted             Stage = "COMPLETED"
 	StageFailed                Stage = "FAILED"
 )
+
+// ── Document config helper ──────────────────────────────────────────
+
+// ResolveDocsConfig resolves the effective document publishing config
+// from a GenerateRequest, applying backward-compat fallback from the
+// deprecated flat fields (DocsEnabled, DriveFolderID) to the canonical
+// DocumentsConfig struct (Docs).
+//
+// Returns (enabled, languages, folderID):
+//   - enabled: true when Docs.Enabled || DocsEnabled
+//   - languages: Docs.Languages, falling back to top-level Languages
+//   - folderID: Docs.FolderID, falling back to DriveFolderID
+//
+// Once all callers migrate to the Docs struct, this helper can be
+// removed and callers can read req.Docs directly.
+func (req GenerateRequest) ResolveDocsConfig() (enabled bool, languages []Language, folderID string) {
+	enabled = req.Docs.Enabled || req.DocsEnabled
+	languages = req.Docs.Languages
+	if len(languages) == 0 && enabled {
+		languages = req.Languages
+	}
+	folderID = req.Docs.FolderID
+	if folderID == "" {
+		folderID = req.DriveFolderID
+	}
+	return
+}
 
 // IsTerminal returns true when the stage signals a terminal state.
 func (s Stage) IsTerminal() bool {
@@ -259,4 +327,91 @@ func IsRunCompletable(result *GenerateResult, wantedLanguages []Language, render
 	}
 
 	return true
+}
+
+// ── Retry helpers ───────────────────────────────────────────────────
+
+// MaxRetries is the maximum number of retry attempts per run.
+const MaxRetries = 3
+
+// RetryDelay computes the exponential backoff delay for the given
+// attempt number. Base delay is 5 seconds, doubling each retry
+// up to a max of 120 seconds.
+func RetryDelay(attempt int) time.Duration {
+	d := time.Duration(5<<uint(attempt)) * time.Second
+	if d > 120*time.Second {
+		d = 120 * time.Second
+	}
+	return d
+}
+
+// ShouldRetry checks whether a failed run should be retried based on
+// the attempt count and current retry schedule.
+func ShouldRetry(run *GenerationRun) bool {
+	if run == nil {
+		return false
+	}
+	if run.Status != RunStatusFailed && run.Status != RunStatusRunning {
+		return false
+	}
+	if run.AttemptCount >= MaxRetries {
+		return false
+	}
+	if run.NextRetryAt != nil && run.NextRetryAt.After(time.Now()) {
+		return false
+	}
+	return true
+}
+
+// stageOrder defines the canonical stage execution order for
+// resume-from-checkpoint logic. Each stage maps to its index
+// in the ordered list.
+var stageOrder = []Stage{
+	StageNormalizing,
+	StageGeneratingSceneText,
+	StageTranslatingScenes,
+	StageGeneratingVoiceovers,
+	StagePublishingDocuments,
+	StageBuildingRenderPayload,
+	StageEnqueuingRender,
+}
+
+// StageIndex returns the zero-based index of a stage in the
+// canonical execution order, or -1 if the stage is not in the
+// order (e.g. terminal stages like COMPLETED/FAILED).
+func StageIndex(s Stage) int {
+	for i, st := range stageOrder {
+		if st == s {
+			return i
+		}
+	}
+	return -1
+}
+
+// ResumeFrom returns the first non-terminal stage that should be
+// executed. If the run is COMPLETED, returns StageCompleted.
+// If the run failed at a specific stage, returns that stage.
+// Otherwise returns StageNormalizing.
+func ResumeFrom(run *GenerationRun) Stage {
+	if run == nil {
+		return StageNormalizing
+	}
+	switch run.Status {
+	case RunStatusCompleted:
+		return StageCompleted
+	case RunStatusFailed:
+		// Resume from the failed stage (will retry).
+		if run.FailedStage != "" && StageIndex(run.FailedStage) >= 0 {
+			return run.FailedStage
+		}
+		return StageNormalizing
+	case RunStatusRunning:
+		// Already running — resume from current stage.
+		if run.CurrentStage != "" && StageIndex(run.CurrentStage) >= 0 {
+			return run.CurrentStage
+		}
+		return StageNormalizing
+	default:
+		return StageNormalizing
+	}
 }

@@ -8,7 +8,10 @@
 // domain types from this package or standard library types.
 package scriptgeneration
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ── TextGenerator ───────────────────────────────────────────────────
 
@@ -97,6 +100,35 @@ type RenderEnqueuer interface {
 	Enqueue(ctx context.Context, result GenerateResult) (RenderReference, error)
 }
 
+// ── FailRunInput ────────────────────────────────────────────────────
+
+// FailRunInput carries the structured failure metadata that the runner
+// persists when a stage fails. All fields except RunID and FailedStage
+// are optional; implementations persist whatever non-zero fields the
+// runner provides.
+type FailRunInput struct {
+	// RunID is the canonical run identifier (required).
+	RunID string
+
+	// FailedStage identifies which stage failed (required).
+	FailedStage Stage
+
+	// ErrorCode is a stable machine-readable error code
+	// (e.g. "TEXT_GENERATION_FAILED", "TRANSLATION_FAILED",
+	// "PROVIDER_TIMEOUT").
+	ErrorCode string
+
+	// ErrorMessage is a human-readable description of the failure.
+	ErrorMessage string
+
+	// AttemptCount is the current retry attempt number (0-based).
+	AttemptCount int
+
+	// NextRetryAt is the earliest time a retry should be attempted.
+	// Nil means no retry is scheduled.
+	NextRetryAt *time.Time
+}
+
 // ── RunRepository ───────────────────────────────────────────────────
 
 // RunRepository persists and retrieves GenerationRun aggregates.
@@ -108,10 +140,21 @@ type RunRepository interface {
 	// Get retrieves a GenerationRun by ID.
 	Get(ctx context.Context, runID string) (*GenerationRun, error)
 
+	// GetByJobID retrieves a GenerationRun associated with the given
+	// worker-assigned job ID. Returns nil, nil when no run is found.
+	GetByJobID(ctx context.Context, jobID string) (*GenerationRun, error)
+
 	// UpdateStage persists the current stage and status atomically.
 	// Implementations should only UPDATE the stage-relevant columns
 	// (current_stage, status, updated_at) — not the full run.
 	UpdateStage(ctx context.Context, runID string, status RunStatus, stage Stage) error
+
+	// FailRun persists failure metadata for a run atomically.
+	// Sets status=FAILED, updates failed_stage, error_code,
+	// error_message, attempt_count, and next_retry_at.
+	// Implementations persist whatever non-zero fields the input
+	// carries; zero-valued optional fields are left unchanged.
+	FailRun(ctx context.Context, input FailRunInput) error
 
 	// SavePartialResult persists intermediate result data (e.g. after
 	// each translated scene) so a retry can resume from the checkpoint.

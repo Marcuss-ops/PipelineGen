@@ -82,7 +82,7 @@ import (
 // name references in production code compile unchanged. New code MUST
 // prefer the JobPolicy name when declaring entries.
 type RegistryEntry struct {
-	// Type is the canonical job type string (e.g. "script.generate_from_clips").
+	// Type is the canonical job type string (e.g. "script.generate").
 	Type string
 	// Description is a human-readable description for operators.
 	Description string

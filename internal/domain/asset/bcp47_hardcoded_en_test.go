@@ -38,7 +38,7 @@ import (
 //   - ports.go (infrastructure)   — WhisperTranscriber + SubtitleFetcher concrete
 //   - subtitles.go (infrastructure) — SubtitleFetcherAdapter (DefaultLangs site)
 //   - text_track_repository.go (domain port) — interface contract
-//   - text_track_repository.go (concrete)     — Find / FindReady impls
+//   - text_track_repository_*.go (concrete)   — schema, queries, lookup, mapping
 //   - localized/port.go           — CommitLocalizedClipCommand + ErrClipLocaleNotReady
 //   - build_bundles_domain_media.go — composition-root wire-up site;
 //     this is where SubtitleFetcherAdapter.DefaultLangs is plumbed
@@ -64,7 +64,10 @@ var hardcodedENScopeFiles = []string{
 	"internal/infrastructure/youtube/subtitles.go",
 	"internal/infrastructure/youtube/ports.go",
 	"internal/domain/asset/text_track_repository.go",
-	"internal/infrastructure/database/sqlite/assets/text_track_repository.go",
+	"internal/infrastructure/database/sqlite/assets/text_track_repository_schema.go",
+	"internal/infrastructure/database/sqlite/assets/text_track_repository_queries.go",
+	"internal/infrastructure/database/sqlite/assets/text_track_repository_lookup.go",
+	"internal/infrastructure/database/sqlite/assets/text_track_repository_mapping.go",
 	"internal/application/assets/localized/port.go",
 	"internal/app/build_bundles_domain_media.go",
 }

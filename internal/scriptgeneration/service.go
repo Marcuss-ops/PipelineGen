@@ -104,8 +104,12 @@ func (s *Service) Start(ctx context.Context, req GenerateRequest) (*StartResult,
 	if req.RenderVideo && s.runner.renderEnqueuer == nil {
 		return nil, fmt.Errorf("scriptgeneration: render_video requires a RenderEnqueuer, but none is configured")
 	}
-	if req.DocsEnabled && len(req.Languages) == 0 {
-		return nil, fmt.Errorf("scriptgeneration: docs_enabled requires at least one language")
+
+	// Validate document publishing config.
+	// Uses ResolveDocsConfig for backward-compat with deprecated flat fields.
+	docsEnabled, docsLangs, _ := req.ResolveDocsConfig()
+	if docsEnabled && len(docsLangs) == 0 {
+		return nil, fmt.Errorf("scriptgeneration: docs.enabled requires at least one language")
 	}
 
 	// Create the run BEFORE any external I/O.

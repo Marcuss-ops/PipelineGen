@@ -803,6 +803,10 @@ wc -l /tmp/stock-bench/subprocess.log
 
 Per godlike/07 NO-FAKE-AVAILABILITY: every bench execution MUST be self-evident via the result JSON + subprocess log + hashes file left on disk. Operators reviewing this section for godlike/06 SSOT lockstep validate the script path (`scripts/operations/bench_stock_clip_round.sh`) + the wrap directory (`/tmp/stock-bench/wrap`) are the canonical measurement surfaces.
 
+#### §12.5.4 — Honest-limitation: bench mismatched ffmpeg 7.0.2 + ffprobe 4.4.2
+
+The N=351 bench emitted ffmeg via `/tmp/ffmpeg-static/ffmpeg` (7.0.2-static, johnvansickle) but `ffprobe` fell through the wrapper's `${FFPROBE_BIN:-/usr/bin/ffprobe}` fallback to the Ubuntu system package `ffprobe 4.4.2-0ubuntu0.22.04.1` — `internal/infrastructure/media/ffmpeg.Processor`'s JSON parser contract is empirically validated ONLY for 4.4.2's shape. Operators porting to fully-static (or any 7.x ffprobe migration) MUST re-bench with `FFPROBE_BIN=/tmp/ffmpeg-static/ffprobe N=351 SRC_DUR=1755 timeout 5400` to restore end-to-end 7.x ffprobe parser parity before claiming bench → production equivalence at the JSON schema level.
+
 ### §12.6 — Lockstep referenti (§12.5 bench canonical surface)
 
 - **Bench script (canonical)**: [`scripts/operations/bench_stock_clip_round.sh`](../scripts/operations/bench_stock_clip_round.sh) (just-committed in this wave)

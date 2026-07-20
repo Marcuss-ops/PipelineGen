@@ -13,9 +13,9 @@
 //
 //   - plan_resolution.go — GenerateOneUseCase struct + ctor + SetVoiceoverRouting +
 //     buildResolutionContext
-//   - engine_invoke.go   — logPhaseError + preConstructError + generateOnePreConstructError
-//   - postprocessing.go  — reserved for future postprocess-phase extraction
-//   - persistence.go     — buildGenerationResult
+//   - engine_invoke.go          — logPhaseError + preConstructError + generateOnePreConstructError
+//   - generation_postprocess.go — GenerationPostprocessor + ProcessedGeneration
+//   - persistence.go            — buildGenerationResult
 //   - generate_one_usecase.go (this file) — Execute orchestrator
 //
 // Dependencies:
@@ -33,10 +33,8 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"maps"
 	"time"
 
-	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/adapters"
 	scriptpkg "github.com/Marcuss-ops/PipelineGen/internal/domain/script"
 
 	"go.uber.org/zap"
@@ -63,7 +61,7 @@ func (uc *GenerateOneUseCase) Execute(
 	if uc == nil {
 		return nil, generateOnePreConstructError(nil, "uc_nil", scriptpkg.ErrGenerationFailed, fmt.Errorf("use case not constructed"))
 	}
-	if uc.engine == nil {
+	if uc.engineRunner == nil {
 		return nil, uc.preConstructError("engine_nil", scriptpkg.ErrGenerationFailed, fmt.Errorf("engine not configured"))
 	}
 
@@ -82,74 +80,21 @@ func (uc *GenerateOneUseCase) Execute(
 	timings.PlanBuildMs = prepared.PlanBuildMs
 
 	// ── Phase 5: Generate script ────────────────────────────────────
-	tracker.PhaseGenerateStart()
-	engineStart := time.Now()
-	engineResult, engineErr := uc.engine.Generate(ctx, &plan)
-	if engineErr != nil {
-		genErr := &scriptpkg.GenerationError{
-			ItemID: item.ID,
-			Phase:  "engine",
-			Inner:  fmt.Errorf("ollama generation failed: %w", engineErr),
-		}
-		return nil, uc.logPhaseError(item, "engine", scriptpkg.ErrGenerationFailed, genErr, tracker)
+	draft, err := uc.engineRunner.Generate(ctx, item, plan, tracker)
+	if err != nil {
+		return nil, uc.logPhaseError(item, "engine", scriptpkg.ErrGenerationFailed, err, tracker)
 	}
-	timings.EngineMs = time.Since(engineStart).Milliseconds()
-	tracker.PhaseGenerateDone()
-	tracker.TrackEvent("script.generated", "Script text generated", map[string]any{
-		"item_id":      item.ID,
-		"word_count":   engineResult.WordCount,
-		"model":        engineResult.Model,
-		"cache_status": engineResult.CacheStatus,
-	})
-	if len(engineResult.Output.SpecScene.Scenes) > 0 {
-		tracker.TrackEvent("scenes.created", "Scenes created from generated script", map[string]any{
-			"item_id":     item.ID,
-			"scene_count": len(engineResult.Output.SpecScene.Scenes),
-		})
-	}
+	engineResult := draft.EngineResult
+	timings.EngineMs = draft.EngineMs
 
 	// ── Phase 6: Postprocess ────────────────────────────────────────
-	timings.PostprocessMs = make(map[string]int64)
-	var postResult *adapters.PipelineResult
-	// Provenance block (without doc_id/doc_link) is built before
-	// postprocessing so the document processor can embed it and fill
-	// the document identifiers after creating/updating the Google Doc.
-	modeInfo := provisionalModeInfo(plan, engineResult)
-	provenance := buildProvenance(plan, engineResult, modeInfo)
-
-	if uc.ppReg != nil {
-		for _, pp := range plan.Postprocessors {
-			tracker.PhasePostprocess(pp)
-		}
-		procInput := adapters.ProcessInput{
-			Text:        engineResult.Output.Text,
-			WordCount:   engineResult.WordCount,
-			SpecScene:   engineResult.Output.SpecScene,
-			ModelUsed:   engineResult.Model,
-			CacheStatus: engineResult.CacheStatus,
-			SourceTrace: engineResult.ClipEvidence,
-			Provenance:  provenance,
-		}
-		var ppErr error
-		postResult, ppErr = uc.ppReg.Run(ctx, &plan, procInput)
-		if ppErr != nil {
-			ppErrStruct := &scriptpkg.PostprocessError{
-				ItemID:    item.ID,
-				Processor: "registry",
-				Inner:     ppErr,
-			}
-			return nil, uc.logPhaseError(item, "postprocess", scriptpkg.ErrPostprocessFailed, ppErrStruct, tracker)
-		}
-		if postResult != nil && len(postResult.StageDurations) > 0 {
-			timings.PostprocessMs = maps.Clone(postResult.StageDurations)
-		}
-		if plan.ClipEvidence != nil && len(plan.ClipEvidence.AcceptedClipIDs) > 0 {
-			tracker.TrackEvent("clips.bound", "Clip bindings applied", map[string]any{
-				"item_id":    item.ID,
-				"clip_count": len(plan.ClipEvidence.AcceptedClipIDs),
-			})
-		}
+	processed, err := uc.postprocessor.Process(ctx, item, plan, engineResult, tracker)
+	if err != nil {
+		return nil, uc.logPhaseError(item, "postprocess", scriptpkg.ErrPostprocessFailed, err, tracker)
 	}
+	postResult := processed.PostResult
+	timings.PostprocessMs = processed.PostprocessMs
+	provenance := processed.Provenance
 
 	// ── Phase 7: Build result ───────────────────────────────────────
 	result := buildGenerationResult(item, plan, engineResult, postResult, timings)

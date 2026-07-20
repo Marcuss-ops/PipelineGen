@@ -35,26 +35,36 @@ import (
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
+	scriptgen "github.com/Marcuss-ops/PipelineGen/internal/scriptgeneration"
 )
 
 // writeGenerateSubmitError maps an opsapp.Submit error to the canonical
 // HTTP response shape.
 //
-// Mapping (must remain byte-for-byte identical to the pre-split handler):
-//   - context.DeadlineExceeded | context.Canceled → 503 {"ok":false,"error":"JOB_ENQUEUE_TIMEOUT"}
+// P0 verdetto error classification (July 2026):
+//   - context.DeadlineExceeded | context.Canceled → 504 {"ok":false,"error":"JOB_ENQUEUE_TIMEOUT"}
 //   - domainops.ErrIdempotencyConflict            → 409 {"ok":false,"error":"Idempotency-Key reused with different payload","code":"IDEMPOTENCY_KEY_CONFLICT"}
-//   - any other error                              → mapErrorToHTTP(err) with
-//     {"ok":false,"error":"operations submission failed"}
+//   - opsapp.ErrSubmitQueueFull / ErrUnavailable  → 503 via mapErrorToHTTP
+//   - any other error                              → mapErrorToHTTP(err) which
+//     returns 400/422/502/504/500 per the typed error contract
 //
-// godlike/07 fail-closed: the submitter's failure is treated as a
-// retryable 503 ONLY when the request context expired (the broker is
-// congested); conflict is a deterministic client fault (409); any other
-// error propagates through the canonical mapErrorToHTTP table.
+// godlike/07 fail-closed: a context timeout is a gateway timeout (504),
+// not a service-unavailable (503). The submitter may be congested but
+// infrastructure-level retry logic (enqueue retry loop in the submitter)
+// has already exhausted local retries; the caller should retry with
+// backoff on 504. Idempotency conflict is a deterministic client fault
+// (409). All other errors propagate through the canonical mapErrorToHTTP
+// table which understands the full P0 classification.
 func writeGenerateSubmitError(c *gin.Context, err error) {
+	// 504 — provider timeout (changed from 503 per P0 verdetto).
+	// Canceled is treated as timeout because the request context was
+	// cancelled by the WithTimeout deadline, which is a timeout condition.
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "JOB_ENQUEUE_TIMEOUT"})
+		c.JSON(http.StatusGatewayTimeout, gin.H{"ok": false, "error": "JOB_ENQUEUE_TIMEOUT"})
 		return
 	}
+
+	// 409 — idempotency conflict.
 	if errors.Is(err, domainops.ErrIdempotencyConflict) {
 		c.JSON(http.StatusConflict, gin.H{
 			"ok":    false,
@@ -63,6 +73,11 @@ func writeGenerateSubmitError(c *gin.Context, err error) {
 		})
 		return
 	}
+
+	// All other errors: map through the canonical typed-error table
+	// (400 for invalid payload, 422 for unprocessable, 502 for provider
+	// bad response, 503 for unavailable, 504 for timeout, 500 for
+	// unexpected).
 	status := mapErrorToHTTP(err)
 	c.JSON(status, gin.H{
 		"ok":    false,
@@ -97,6 +112,32 @@ func writeGenerateSubmitSuccess(c *gin.Context, res *opsapp.SubmitResult) {
 
 	resp := GenerateResponse{}
 	resp.async(jobID, status, "/api/jobs/"+jobID+"/full", "")
+	c.JSON(http.StatusAccepted, resp)
+}
+
+// writeGenerationRunSuccess writes the canonical 202 Accepted response
+// that includes the GenerationRun's current_stage. The GenerationRun
+// is created BEFORE the submission (verdetto invariant) so the client
+// immediately knows the pipeline phase.
+//
+// Wire shape:
+//   - When isReplay is true → set header X-Idempotency-Replay: true
+//   - When jobID is empty   → fail-closed 500
+//   - Otherwise             → 202 with GenerateResponse.asyncWithStage
+//
+// The run's CurrentStage reflects the initial pipeline phase
+// (NORMALIZING → GENERATING_SCENE_TEXT → ... → WORKER_QUEUED).
+func writeGenerationRunSuccess(c *gin.Context, run *scriptgen.GenerationRun, jobID string, isReplay bool) {
+	if isReplay {
+		c.Writer.Header().Set("X-Idempotency-Replay", "true")
+	}
+	if jobID == "" {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "submission returned empty job_id"})
+		return
+	}
+
+	resp := GenerateResponse{}
+	resp.asyncWithStage(jobID, "PENDING", "/api/jobs/"+jobID+"/full", "", string(run.CurrentStage))
 	c.JSON(http.StatusAccepted, resp)
 }
 

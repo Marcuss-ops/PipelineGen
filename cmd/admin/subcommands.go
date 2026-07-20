@@ -82,6 +82,7 @@ var availableCommands = []string{
 	"organize-ui-drive",
 	"organize-family-drive",
 	"index-drive-fish-clip",
+	"index-beluga-clip",
 	"save-fish-commentary-index",
 	"save-cave-commentary-index",
 	"save-crab-commentary-index",
@@ -90,6 +91,9 @@ var availableCommands = []string{
 	"rename-indexed-sound-effects",
 	"upload-fish-clip",
 	"render-fish-short",
+	"render-beluga-short",
+	"list-folder-debug",
+	"reorganize-cartoon",
 	"gen-api-docs",
 	"list-drive-folder",
 	"sync-drive-folder",
@@ -175,6 +179,8 @@ func dispatchSubcommand(name string, args []string) error {
 		return runOrganizeFamilyDrive(args)
 	case "index-drive-fish-clip":
 		return runIndexDriveFishClip(args)
+	case "index-beluga-clip":
+		return runIndexBelugaClip(args)
 	case "save-fish-commentary-index":
 		return runSaveFishCommentaryIndex(args)
 	case "save-cave-commentary-index":
@@ -191,6 +197,12 @@ func dispatchSubcommand(name string, args []string) error {
 		return runUploadFishClip(args)
 	case "render-fish-short":
 		return runRenderFishShort(args)
+	case "render-beluga-short":
+		return runRenderBelugaShort(args)
+	case "list-folder-debug":
+		return runListFolderDebug(args)
+	case "reorganize-cartoon":
+		return runReorganizeCartoon(args)
 	case "reindex-qdrant":
 		return reconcile.RunReindexQdrant(args)
 	case "qdrant-maintenance":
