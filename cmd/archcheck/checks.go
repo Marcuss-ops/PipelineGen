@@ -67,6 +67,9 @@ func DefaultChecks(productionOnly bool) []CheckSpec {
 		{"percheck_pipeline_map_carrier_ban", func(root string, pol *policy.Policy, r *report.Report) {
 			scan.ScanPipelineMapCarrierBan(root, pol, r, productionOnly)
 		}},
+		{"percheck_no_pipeline_mapstr", func(root string, pol *policy.Policy, r *report.Report) {
+			scan.ScanNoPipelineMapStr(root, pol, r, productionOnly)
+		}},
 		{"percheck_indexed_state_writer_ssot", scan.ScanIndexedStateWriterSSOT},
 		{"percheck_mediatransformer_no_infra_fields", scan.ScanMediaTransformerNoInfraFields},
 		{"percheck_no_domain_job_compatibility_aliases", func(root string, pol *policy.Policy, r *report.Report) {
