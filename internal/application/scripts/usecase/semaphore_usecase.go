@@ -2,7 +2,7 @@
 // concurrent-script-generation slot manager.
 //
 // Wave 14 problem #4 (June 2026): previously this logic lived inline
-// in api/script/handler_jobs.go::ScriptFlowHandler.HandleClipScriptGenerateJob
+// in api/script/handler_generate_handler.go::HandlerGenerate.Generate
 // as:
 //
 //	select {

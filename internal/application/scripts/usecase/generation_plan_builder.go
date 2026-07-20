@@ -99,7 +99,8 @@ func modeForSource(st scriptpkg.SourceType) string {
 // buildPostprocessorListForItem is the source-aware post-processing resolver.
 // Explicit clips are a complete generate job: translation (when requested),
 // clip binding, voiceover, Google Doc creation and persistence all execute in
-// this job. No script.generate_from_clips job or downstream endpoint is used.
+// this job. The unified POST /api/v1/script/generate endpoint with
+// source.type: clips is the SOLE entry point for clip-based generation.
 func buildPostprocessorListForItem(item scriptpkg.GenerationItemV2) []adapters.ProcessorName {
 	processors := buildPostprocessorList(item.Output)
 	if item.Source.Type != scriptpkg.SourceClips {
