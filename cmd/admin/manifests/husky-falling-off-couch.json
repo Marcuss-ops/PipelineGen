@@ -1,0 +1,27 @@
+{
+  "drive_file_id": "1qkf9WYFHXkKf_MBO3bZGZYkIH_oZ41WX",
+  "name": "Husky Falling off Couch — Clumsy Pet Moment",
+  "description": "A husky dog is playing on a leather couch next to its owner, who is distracted by her phone. The dog accidentally rolls off the couch and falls into the gap between the sofa and the wall, startling the owner.",
+  "tags": [
+    "husky",
+    "dog falling",
+    "couch slip",
+    "distracted owner",
+    "clumsy pet",
+    "funny dog reaction",
+    "living room"
+  ],
+  "source": "clip_drive",
+  "category": "viral_videos",
+  "group": "funny_pets",
+  "local_subdir": "viral_videos",
+  "default_filename": "husky_falling_off_couch.mp4",
+  "duration_fallback_seconds": 6,
+  "metadata": {
+    "content_type": "viral video",
+    "subject": "husky dog / couch slip / distracted owner",
+    "visual_summary": "A husky dog rolls off a leather couch into the gap next to the wall while the distracted owner jumps up in panic.",
+    "timeline_json": "[{\"start\":\"00:00\",\"end\":\"00:01\",\"visual\":\"The husky is lying upside down on the leather couch, wriggling playfully right next to its owner, who is completely focused on her phone.\",\"sfx_family\":\"background_music/sneaky_snitch\"},{\"start\":\"00:02\",\"end\":\"00:03\",\"visual\":\"The husky slips off the edge and disappears behind the couch. The owner immediately panics, drops her phone on the cushions, and jumps up to check on the dog.\",\"sfx_family\":\"impact_sfx/spiderman_meme\"},{\"start\":\"00:04\",\"end\":\"00:06\",\"visual\":\"The owner looks over the side and helps the husky pull itself up, comforting the slightly startled but uninjured dog.\",\"sfx_family\":\"comedy_outro/awww\"}]",
+    "hook": "Watch this clumsy husky lose the battle with gravity! 🐕🛋️"
+  }
+}
