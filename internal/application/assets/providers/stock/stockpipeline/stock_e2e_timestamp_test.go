@@ -45,6 +45,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -336,6 +337,7 @@ func probeDuration(t *testing.T, ffprobePath, sourcePath string) float64 {
 // step_publish deletes the file on return (the canonical
 // production path moves it to Drive, but our test stub doesn't).
 type recordingArtifactAndResult struct {
+	mu              sync.Mutex
 	inputs          []finalization.VerifiedArtifact
 	results         []finalization.PublishedArtifact
 	metadataContent []byte // captured at Prepare-time for the metadata artifact
@@ -345,7 +347,9 @@ type recordingArtifactAndResult struct {
 var _ finalization.ArtifactPreparationService = (*recordingArtifactAndResult)(nil)
 
 func (r *recordingArtifactAndResult) Prepare(_ context.Context, artifact finalization.VerifiedArtifact) (finalization.PublishedArtifact, error) {
+	r.mu.Lock()
 	r.location++
+	loc := r.location
 	// Each chunk's Drive URL is derived from the ArtifactID + a
 	// monotonic location counter so the 8 chunks get 8 distinct
 	// WebViewLink + FileID values (the DoD 8 "8 distinct Drive
@@ -354,9 +358,10 @@ func (r *recordingArtifactAndResult) Prepare(_ context.Context, artifact finaliz
 	// appends a per-chunk segment so 8 chunks produce 8 unique
 	// values rather than 1.
 	chunkID := artifact.ArtifactID
-	url := fmt.Sprintf("https://drive.google.com/file/d/%s/view?loc=%d", chunkID, r.location)
-	fileID := fmt.Sprintf("fileid-%s-loc%d", chunkID, r.location)
-	downloadLink := fmt.Sprintf("https://drive.google.com/uc?id=%s&loc=%d", chunkID, r.location)
+	url := fmt.Sprintf("https://drive.google.com/file/d/%s/view?loc=%d", chunkID, loc)
+	fileID := fmt.Sprintf("fileid-%s-loc%d", chunkID, loc)
+	downloadLink := fmt.Sprintf("https://drive.google.com/uc?id=%s&loc=%d", chunkID, loc)
+	r.mu.Unlock()
 	result := finalization.PublishedArtifact{
 		ArtifactID:     chunkID,
 		SourceVersion:  artifact.SourceVersion,
@@ -372,7 +377,9 @@ func (r *recordingArtifactAndResult) Prepare(_ context.Context, artifact finaliz
 			FolderPath:   "Pacquiao_Vs_Broner",
 		},
 	}
+	r.mu.Lock()
 	r.inputs = append(r.inputs, artifact)
+
 	r.results = append(r.results, result)
 
 	// Capture the metadata file's raw bytes at Prepare-time. This
@@ -391,6 +398,7 @@ func (r *recordingArtifactAndResult) Prepare(_ context.Context, artifact finaliz
 			r.metadataContent = raw
 		}
 	}
+	r.mu.Unlock()
 	return result, nil
 }
 
