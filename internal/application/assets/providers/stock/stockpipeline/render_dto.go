@@ -274,6 +274,11 @@ type CutItemResult struct {
 	// determined), or Status == CutItemStatusFailed.
 	DurationSec float64
 
+	// SHA256Hex is the hex-encoded SHA-256 digest of the
+	// produced clip; empty when Status == Failed (no valid file
+	// on disk to hash).
+	SHA256Hex string
+
 	// Err is the per-job failure reason; nil on success
 	// (Succeeded / Validated). Non-nil for ProbeFailed (wrapped
 	// probe error) and Failed (per-clip cut error).

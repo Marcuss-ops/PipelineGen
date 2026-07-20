@@ -187,7 +187,10 @@ func (o *Orchestrator) RunResilient(ctx context.Context, input *RunInput) (summa
 	// §Known Issues context.Background() allowlist pattern.
 	defer func() {
 		stager := o.stager
-		if stager == nil {
+		// Keep staged sources and extracted artifacts available across
+		// retryable failures. A retry must resume from the workspace,
+		// not download and cut the source again.
+		if stager == nil || err != nil {
 			return
 		}
 		cleanupCtx := context.WithoutCancel(ctx)

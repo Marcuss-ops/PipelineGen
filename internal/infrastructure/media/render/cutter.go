@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -149,6 +150,64 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 		return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, nil
 	}
 
+	// Resume interrupted stock jobs without recreating clips that are
+	// already present at their deterministic output paths. The original
+	// item ordering is preserved; only missing files reach FFmpeg.
+	pendingJobs := make([]stockpipeline.CutJob, 0, len(req.Jobs))
+	pendingToOrig := make([]int, 0, len(req.Jobs))
+	for origIdx, j := range req.Jobs {
+		info, statErr := os.Stat(j.OutputPath)
+		if statErr == nil && info.Size() > 0 && strings.Contains(j.OutputPath, "/data/stock/jobs/") &&
+			strings.Contains(j.OutputPath, "/extracted/stock_cut_") {
+			items[origIdx].OutputPath = j.OutputPath
+			items[origIdx].SizeBytes = info.Size()
+			items[origIdx].Status = stockpipeline.CutItemStatusSucceeded
+			continue
+		}
+		pendingJobs = append(pendingJobs, j)
+		pendingToOrig = append(pendingToOrig, origIdx)
+	}
+
+	if len(pendingJobs) == 0 {
+		return stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}, nil
+	}
+
+	// Bound FFmpeg filter graphs. Hundreds of trim/map/output branches in
+	// one process are disproportionately slow and can exhaust resources.
+	if len(pendingJobs) > 15 {
+		var lastErr error
+		produced := 0
+		for start := 0; start < len(pendingJobs); start += 15 {
+			end := start + 15
+			if end > len(pendingJobs) {
+				end = len(pendingJobs)
+			}
+			subReq := req
+			subReq.Jobs = pendingJobs[start:end]
+			sub, cutErr := c.Cut(ctx, subReq)
+			if cutErr != nil {
+				lastErr = cutErr
+			}
+			for i, subItem := range sub.Items {
+				origIdx := pendingToOrig[start+i]
+				items[origIdx] = subItem
+				if subItem.Status == stockpipeline.CutItemStatusSucceeded ||
+					subItem.Status == stockpipeline.CutItemStatusValidated ||
+					subItem.Status == stockpipeline.CutItemStatusProbeFailed {
+					produced++
+				}
+			}
+		}
+		result := stockpipeline.CutBatchResult{SourcePath: req.SourcePath, Items: items}
+		if produced < len(pendingJobs) {
+			if lastErr == nil {
+				lastErr = fmt.Errorf("cutter: %d of %d micro-batch clips failed", len(pendingJobs)-produced, len(pendingJobs))
+			}
+			return result, lastErr
+		}
+		return result, nil
+	}
+
 	logger := c.log
 	if req.Logger != nil {
 		logger = req.Logger
@@ -192,7 +251,8 @@ func (c *FFmpegCutter) Cut(ctx context.Context, req stockpipeline.CutRequest) (s
 	validJobs := make([]stockpipeline.CutJob, 0, len(req.Jobs))
 	validToOrig := make([]int, 0, len(req.Jobs))
 	skipped := 0
-	for origIdx, j := range req.Jobs {
+	for pendingIdx, j := range pendingJobs {
+		origIdx := pendingToOrig[pendingIdx]
 		if srcDuration > 0 && j.StartSec >= srcDuration {
 			skipped++
 			logger.Warn("stock extractor: clip skipped — start timestamp beyond source duration",

@@ -18,10 +18,10 @@
 // The handler-side wire shape is preserved 1:1 by:
 //   - ready/not-ready strings  → Status field
 //   - per-check gin.H blocks   → Checks map (alias / collection /
-//                                 schema / canary)
+//     schema / canary)
 //   - nil-configured branches  → Error field (handler renders the
-//                                 legacy flat shape verbatim instead
-//                                 of wrapping under Checks)
+//     legacy flat shape verbatim instead
+//     of wrapping under Checks)
 //
 // The 4-check deep-readiness logic + 30s canary cache state
 // (canaryMu/canaryCachedAt/canaryOK/canaryDetail) moved verbatim
