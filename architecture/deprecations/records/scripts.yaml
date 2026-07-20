@@ -6,14 +6,14 @@ deprecations:
       file_line: "110"
       replacement: Google Doc metadata is now returned by the document.generate downstream job result, not by the script.generate envelope.
       introduction_date: "2026-07-01"
-      removal_date: 2026-Q3
-      tracking_issue: Spina Dorsale Fase 2 — Piano d'Azione § Fase 2
+      removal_date: "2026-07-20"
+      tracking_issue: Sprint 1.0 — Spina Dorsale Fase 2 § DocumentArtifact retirement
       compatibility_test: |
-        rg 'ArtifactResult.*Document|Artifacts\.Document' internal/domain/script/ returns the deprecated field declaration + the deprecation comment only.
-      usage_metric: 'Pre-removal: field populated by DocumentProcessor within script.generate postprocessor chain. Post-Fase 2: field always nil when served by the new pipeline.'
-      migration_phase: EXPAND
-      status: in_progress
-      notes: Field retained for backward compatibility. Always nil when served by the new pipeline.
+        PHYSICALLY REMOVED (Sprint 1.0, July 2026): the struct declaration is gone from internal/domain/script/generation_result.go; the field declaration is gone from ArtifactResult; the postResult.DocLink mapping in persistence.go is gone; the document.created event in generate_one_usecase.go is gone; the inline DocumentProcessor + DocumentsService + wire_script_postprocess_document.go are physically deleted; the document-pdf artifact slot in artifacts_persistence.go is gone; the ProcessorDocument constant + registrations + plan/manifest builder branches are removed. The canonical document.generate pipeline (internal/application/document/usecase.go + internal/api/assets/document/document_handler.go + internal/kernel/job/canonical_definitions.go::canonicalTypeDocumentGenerate) is the SOLE owner of Google Doc creation post-retirement.
+      usage_metric: 'Pre-removal: field populated by DocumentProcessor within script.generate postprocessor chain. Post-Sprint 1.0: field declaration gone; DocumentArtifact type gone; result.Artifacts.Document reference gone. The canonical document.generate downstream job owns doc_id/doc_link persistence via the typed GenerationResult envelope (internal/application/document/types.go).'
+      migration_phase: CONTRACT
+      status: removed
+      notes: 'Sprint 1.0 (July 2026): the field declaration is physically REMOVED from ArtifactResult; the DocumentArtifact struct is deleted; the 5 surfaces (DocumentArtifact, postResult.DocLink mapping, document.created event, inline processor, compat branch) are all retired. Matches the OUTPUT_SPEC_DOCUMENT_FLAG retirement pattern (PR-COMMIT3, July 2026). The architecture/deprecations.yaml record is retained with status: removed + migration_phase: CONTRACT per the canonical godlike/07 lifecycle audit-pin. Future periodic catalog sweeps can physically delete the YAML entry per the godlike/07 "resolved entries should be removed from the active catalog after closure" rule.'
     - id: DL-SCRIPT-BRANCH-B-001
       owner_capability: internal/application/scripts/usecase/buildClipGroundingInstructions+SegmentTopics
       exact_symbol: buildClipGroundingInstructions SegmentTopics block (internal/application/scripts/usecase/engine_prompt.go)

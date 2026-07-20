@@ -51,7 +51,6 @@
 //     implement).
 //   - internal/infrastructure/drive: *drive.Uploader +
 //     drive.DocClient (the concrete services the adapters wrap).
-//   - internal/application/scripts/usecase: NewDocumentsService
 //     (the service-side collaborator used by docCreatorImpl.CreateDoc).
 //   - internal/application/jobs: appjobs.Compose() (the typed
 //     job-type registry queried by validateScriptGenerateWiring).
@@ -105,7 +104,7 @@ func (a *driveFolderAdapterImpl) GetOrCreateFolder(ctx context.Context, name, pa
 }
 
 // docCreatorImpl wraps delivery.DocPublisher as scriptapi.DocumentCreator.
-// Composition-time build of DocumentsService is deferred to CreateDoc
+// Composition-time build of NewDocumentsService was retired (Sprint 1.0)
 // (the service constructor reads the canonical Drive folder at call
 // time, which lets the folder ID propagate from cfg.Drive.ScriptsGenFolder()
 // without binding at struct-init time).

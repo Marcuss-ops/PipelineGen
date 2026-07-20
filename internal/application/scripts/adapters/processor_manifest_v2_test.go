@@ -132,7 +132,7 @@ func TestBuildManifestV2_VoiceoverOnly(t *testing.T) {
 // Step 11B dispatcher's per-kind routing.
 func TestBuildManifestV2_AllCapabilities(t *testing.T) {
 	t.Parallel()
-	plan := planWithPostprocessors(basePlanForIdem(), ProcessorVoiceover, ProcessorImages, ProcessorDocument)
+	plan := planWithPostprocessors(basePlanForIdem(), ProcessorVoiceover, ProcessorImages)
 	m := buildManifestV2(plan, baseProcessInput())
 	require.NotNil(t, m)
 	require.Len(t, m.Items, 3, "all-capabilities plan must emit exactly 3 DownstreamRequests")

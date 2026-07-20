@@ -93,7 +93,6 @@ const (
 // still request them do not trigger a hard preflight failure.
 var defaultPolicyByName = map[ProcessorName]ProcessorPolicy{
 	ProcessorPersistence:      ProcessorRequired,
-	ProcessorDocument:         ProcessorBestEffort, // Fase 2: downgraded (→ document.generate job)
 	ProcessorImages:           ProcessorBestEffort, // Fase 2: downgraded (→ images.generate job)
 	ProcessorVoiceover:        ProcessorBestEffort, // Fase 2: downgraded (→ voiceover.generate job)
 	ProcessorEntities:         ProcessorRequired,

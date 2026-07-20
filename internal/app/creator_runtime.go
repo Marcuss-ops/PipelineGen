@@ -216,7 +216,7 @@ func BuildCreatorRuntime(cfg *config.Config, log *zap.Logger) (*CreatorRuntime, 
 
 	// Postprocessor registry ────────────────────────
 	// Creator postprocessors write outputs as files in the workspace.
-	// Forbidden: PersistenceProcessor (SQLite), DocumentProcessor
+	// Forbidden: PersistenceProcessor (SQLite)
 	// (Google Drive), StockAssociation (Qdrant). See package doc.
 	ppReg := registerCreatorPostProcessors(log)
 

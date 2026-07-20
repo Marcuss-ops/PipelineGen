@@ -19,7 +19,6 @@
 //	plan.HasPostprocessor(string(ProcessorImages))    → emit a
 //	    DownstreamRequest{Kind: DownstreamImages, ...} entry
 //	    with canonical ImagesRequirements (Count=1, defaults).
-//	plan.HasPostprocessor(string(ProcessorDocument))  → emit a
 //	    DownstreamRequest{Kind: DownstreamDocument, ...} entry.
 //
 // When the plan has NO postprocessors, the returned manifest is
@@ -87,10 +86,13 @@ func canonicalDefaultVoiceID(language string) string {
 //   - this function is the SOLE owner of the Items slice assembly
 //     (no other code path builds the manifest).
 //   - canonical postprocessor identifiers come from
-//     processor_names.go (ProcessorVoiceover, ProcessorImages,
-//     ProcessorDocument). The HasPostprocessor check is the
-//     plan-level "this processor is registered" predicate
-//     (one canonical helper in the domain layer).
+//     processor_names.go (ProcessorVoiceover, ProcessorImages).
+//     The HasPostprocessor check is the plan-level
+//     "this processor is registered" predicate (one canonical
+//     helper in the domain layer). The document.generate
+//     downstream job is owned by the canonical
+//     internal/application/document/usecase.go pipeline
+//     (Sprint 1.0 retirement — script path no longer emits it).
 //
 // Per godlike/07 fail-closed:
 //   - nil plan → canonical empty NEW-mode manifest (NOT a panic).
@@ -141,22 +143,6 @@ func buildManifestV2(plan *scriptpkg.ResolvedGenerationPlan, _ ProcessInput) *sc
 			true,                                   // Required: fail-closed at Step 11B
 			scriptpkg.NewImagesRequirements(1, ""), // Count=1 + default style preset
 			scriptpkg.OutputDestination{},
-		))
-	}
-
-	// Document sibling: emit a per-item DownstreamRequest envelope
-	// for the Google Doc producer (PR-1 of SCRIPT-DOWNSTREAM-CUTOVER
-	// wave first-classes the per-item Doc envelope; pre-PR-1, the
-	// Document processor was script-scope rather than per-item).
-	if plan.HasPostprocessor(string(ProcessorDocument)) {
-		m.Items = append(m.Items, *scriptpkg.NewDownstreamRequestDocument(
-			plan.ID,
-			true, // Required: fail-closed at Step 11B
-			scriptpkg.OutputDestination{
-				Kind:          "google_doc",
-				FolderID:      "", // forward-pointer: LocationResolver
-				DocumentTitle: "", // forward-pointer: configurable per-item title
-			},
 		))
 	}
 

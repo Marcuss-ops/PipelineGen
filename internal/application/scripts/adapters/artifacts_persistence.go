@@ -114,48 +114,7 @@ func PersistGeneratedArtifacts(
 		Required:  true,
 	})
 
-	// ── 2. document-pdf (REQUIRED when Document.DocLink set) ──────────
-	// PR-OUTBOX-SOURCE-VERSION: compute SHA256 + SizeBytes for the
-	// document-pdf artifact so the FinalizeAsset outbox event gets a
-	// non-empty source_version. Without this, the supersede gate in
-	// IndexingHandler dead-letters the event (terminal: "source_version
-	// is required for the supersede gate"). When the PDF file does not
-	// exist yet (the document pipeline generates it later), skip the
-	// artifact entry — the PDF will be handled by the document pipeline
-	// directly (CompleteWithArtifacts with its own SHA256).
-	if result.Artifacts.Document != nil && strings.TrimSpace(result.Artifacts.Document.DocLink) != "" {
-		pdfPath := filepath.Join(outDir, "document.pdf")
-		if pdfInfo, statErr := os.Stat(pdfPath); statErr == nil {
-			pdfSHA, pdfSHAErr := job.ComputeSHA256(pdfPath)
-			if pdfSHAErr != nil {
-				return nil, fmt.Errorf("artifacts_persistence: sha256 document.pdf: %w", pdfSHAErr)
-			}
-			artifacts = append(artifacts, job.Artifact{
-				ID:        jobID + ":pdf",
-				Kind:      job.ArtifactKindPDF,
-				Path:      pdfPath,
-				Filename:  "document.pdf",
-				MIMEType:  "application/pdf",
-				SizeBytes: pdfInfo.Size(),
-				SHA256:    pdfSHA,
-				Required:  true,
-			})
-		} else {
-			log.Warn("artifacts_persistence: document-pdf file not on disk — skipping artifact (source_version will be absent if document pipeline emits separately)",
-				zap.String("job_id", jobID),
-				zap.String("pdf_path", pdfPath),
-				zap.Error(statErr))
-		}
-	}
-
-	// ── 3. document-markdown (OPTIONAL, slot reserved) ─────────────────
-	// §8.4 lists document-markdown as OPTIONAL. The kind constant
-	// (job.ArtifactKindMarkdown) is reserved here so a future
-	// emission pipeline can drop output without a wire-format
-	// extension. C12 gates emission on a future markdown-twin
-	// pipeline (out of scope for the C12 + PR-GODOBJ-4 closure).
-
-	// ── 4. scenes (OPTIONAL when generated) ────────────────────────────
+	// ── 2. scenes (OPTIONAL when generated) ────────────────────────────
 	if len(result.Output.SpecScene.Scenes) > 0 {
 		scenesJSONPath := filepath.Join(outDir, "scenes.json")
 		scenesData, marErr := json.MarshalIndent(result.Output.SpecScene, "", "  ")

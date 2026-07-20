@@ -236,12 +236,6 @@ type CacheResult struct {
 
 // ArtifactResult holds all postprocessor outputs in one typed bundle.
 type ArtifactResult struct {
-	// Deprecated: Document is no longer populated by the script
-	// postprocessor chain. Fase 2 Spina Dorsale (July 2026): Google
-	// Doc creation is now a separate document.generate downstream
-	// job. This field is kept for backward compatibility; it will
-	// always be nil when served by the new pipeline.
-	Document *DocumentArtifact `json:"document,omitempty"`
 	// Metadata holds YouTube-style metadata.
 	Metadata []VideoMetadata `json:"metadata,omitempty"`
 	// Entities is the canonical typed V1 entity output (PR 3).
@@ -259,13 +253,6 @@ type ArtifactResult struct {
 	// campo Raw". Persists only as a courtesy round-trip
 	// marshalling of Entities.
 	EntitiesJSON string `json:"entities_json,omitempty"`
-}
-
-// DocumentArtifact holds the output of the document postprocessor.
-type DocumentArtifact struct {
-	DocLink string `json:"doc_link,omitempty"`
-	DocID   string `json:"doc_id,omitempty"`
-	Status  string `json:"status,omitempty"` // "completed", "failed"
 }
 
 // VideoMetadata holds YouTube-style metadata for a script result.

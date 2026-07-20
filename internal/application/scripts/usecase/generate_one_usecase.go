@@ -122,13 +122,6 @@ func (uc *GenerateOneUseCase) Execute(
 
 	timings.TotalMs = time.Since(startAll).Milliseconds()
 	result.Timings = timings
-	if result.Artifacts.Document != nil && (result.Artifacts.Document.DocID != "" || result.Artifacts.Document.DocLink != "") {
-		tracker.TrackEvent("document.created", "Output document created", map[string]any{
-			"item_id":  item.ID,
-			"doc_id":   result.Artifacts.Document.DocID,
-			"doc_link": result.Artifacts.Document.DocLink,
-		})
-	}
 
 	if resolved != nil && len(resolved.SearchResults) > 0 {
 		result.Source.SearchResults = resolved.SearchResults

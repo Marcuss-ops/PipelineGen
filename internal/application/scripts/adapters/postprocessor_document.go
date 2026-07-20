@@ -19,8 +19,6 @@ type PipelineResult struct {
 	VideoMetadata    []scriptpkg.VideoMetadata
 	Voiceovers       []SceneVoiceover
 	Scenes           []SceneImage
-	DocLink          string
-	DocID            string
 	ScriptID         int64
 	AlreadyPersisted bool
 	// StageDurations maps processor name → wall-clock milliseconds
@@ -78,8 +76,6 @@ type PostProcessResult struct {
 	Metadata         []scriptpkg.VideoMetadata
 	Voiceovers       []SceneVoiceover
 	SceneImages      []SceneImage
-	DocLink          string
-	DocID            string
 	ScriptID         int64
 	AlreadyPersisted bool
 	// Changed is set by mutative processors (e.g. ClipBindingsProcessor)
@@ -146,9 +142,6 @@ func (r *PostProcessResult) IsEmpty() bool {
 		return false
 	}
 	if len(r.SceneImages) > 0 {
-		return false
-	}
-	if r.DocLink != "" || r.DocID != "" {
 		return false
 	}
 	if r.ScriptID > 0 || r.AlreadyPersisted {

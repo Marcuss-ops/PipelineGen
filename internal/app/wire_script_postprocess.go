@@ -18,7 +18,6 @@
 //   - internal/app/wire_script.go: the caller (wireScriptFlow
 //     invokes registerScriptPostProcessors immediately after ppReg
 //     construction).
-//   - internal/app/wire_script_postprocess_document.go: registerDocumentProcessor
 //   - internal/app/wire_script_postprocess_ai.go: registerAIBackedProcessors
 //   - internal/app/wire_script_adapters.go: composition-time
 //     validators that operate on the post-freeze ppReg.
@@ -97,12 +96,9 @@ func registerScriptPostProcessors(
 		}
 	}
 
-	// Google Doc creation inline registration (preserved: post-Persistence).
-	if root.Drive != nil && root.Drive.DocClient != nil {
-		if err := registerDocumentProcessor(ppReg, root, cfg, log); err != nil {
-			return err
-		}
-	}
+	// Sprint 1.0: the inline Google Doc postprocessor was retired.
+	// Document creation is now produced by the canonical downstream
+	// document.generate job (internal/application/document/usecase.go).
 
 	// Inline Image generation processor (temporarily restored).
 	if root.Domains != nil && root.Domains.ImageService != nil {

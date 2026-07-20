@@ -6,7 +6,7 @@
 //
 //   - FolderResolver: drive-folder ID resolution with fallback; used by
 //     voiceover/document pipelines (see `voiceover/usecase.go`,
-//     `documents_usecase.go`).
+//     (was: `documents_usecase.go`; Sprint 1.0 retired that file).
 //   - SceneVoiceover / SceneImage: per-scene postprocessor output rows.
 //
 // `dto.PipelineResult` was REMOVED (PR-DTO-PIPELINERESULT-DEDUPE, 2026-07-09;

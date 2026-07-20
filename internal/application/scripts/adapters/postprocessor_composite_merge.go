@@ -134,10 +134,6 @@ func mergePostProcessResult(dst *PipelineResult, src *PostProcessResult, current
 			}
 		}
 	}
-	if src.DocLink != "" {
-		dst.DocLink = src.DocLink
-		dst.DocID = src.DocID
-	}
 	if src.ScriptID > 0 {
 		dst.ScriptID = src.ScriptID
 		dst.AlreadyPersisted = src.AlreadyPersisted

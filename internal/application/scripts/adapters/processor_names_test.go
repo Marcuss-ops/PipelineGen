@@ -54,7 +54,6 @@ func TestCanonicalProcessorNames_ClosedSet(t *testing.T) {
 		adapterspkg.ProcessorStockAssociation,
 		adapterspkg.ProcessorVoiceover,
 		adapterspkg.ProcessorImages,
-		adapterspkg.ProcessorDocument,
 		adapterspkg.ProcessorPersistence,
 	}
 	for i, name := range expected {

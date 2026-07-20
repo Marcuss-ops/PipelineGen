@@ -22,9 +22,7 @@ var prohibitedPatterns = []gate.Prohibition{
 	{Name: "RegisterJobHandlers in API", Pattern: "RegisterJobHandlers"},
 	{Name: "unsafe goroutines (go func)", Pattern: "go func"},
 	{Name: "unsafe goroutines (SafeGo)", Pattern: "SafeGo"},
-	{Name: "NewScenesService in API", Pattern: "NewScenesService"},
-	{Name: "NewDocumentsService in API", Pattern: "NewDocumentsService"},
-}
+	{Name: "NewScenesService in API", Pattern: "NewScenesService"}}
 
 // TestStaticGate_NoConcreteInfrastructureInTransport enforces the
 // script-package architectural contract via the shared

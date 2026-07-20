@@ -213,14 +213,6 @@ func toScriptItemResultMap(itemID, childJobID, parentJobID string, ok bool, errS
 	if errStr != "" {
 		m["error"] = errStr
 	}
-	if res != nil && res.Artifacts.Document != nil {
-		if res.Artifacts.Document.DocLink != "" {
-			m["doc_link"] = res.Artifacts.Document.DocLink
-		}
-		if res.Artifacts.Document.DocID != "" {
-			m["doc_id"] = res.Artifacts.Document.DocID
-		}
-	}
 	return m
 }
 

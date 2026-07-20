@@ -27,7 +27,7 @@
 // godlike/07 minimum-blast-radius (test-only): the test is in the
 // external `adapters_test` package (NOT `package adapters`) so it
 // can import `usecase/` without creating a cycle. `adapters/`
-// already imports `usecase/` transitively via documents_usecase.go
+// Sprint 1.0: documents_usecase.go retired; usecase no longer pulled transitively via that path.
 // (adapters → usecase is OK; usecase → adapters is the forbidden
 // edge). The external test package is a SEPARATE compilation unit
 // that can import any package the test cares about without

@@ -24,7 +24,7 @@
 // `TranslateScriptSpec` + `ClassifyReason` functions live in
 // `usecase/` (to keep the pure-function + ValidateAndEnrichSpecScene
 // co-location). The adapters package cannot import usecase
-// (cycle: usecase → adapters via documents_usecase.go). The
+// Sprint 1.0: documents_usecase.go retired; the cycle is broken. The
 // composition root — which already imports both — wires thin struct
 // adapters (ports.NewScriptTranslatorFromFunc +
 // usecase.NewTranslationUseCaseAdapter +

@@ -189,13 +189,6 @@ func buildGenerationResult(
 			}
 		}
 
-		if postResult.DocLink != "" {
-			result.Artifacts.Document = &scriptpkg.DocumentArtifact{
-				DocLink: postResult.DocLink,
-				DocID:   postResult.DocID,
-				Status:  "completed",
-			}
-		}
 	}
 
 	if postResult != nil && len(postResult.Warnings) > 0 {
