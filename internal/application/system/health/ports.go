@@ -46,3 +46,37 @@ type ErrUnknownCheck struct {
 func (e *ErrUnknownCheck) Error() string {
 	return "unknown health check: " + e.Name
 }
+
+// QdrantEndpointPort provides deep-readiness semantics for the dedicated
+// /qdrant/live + /qdrant/ready transport endpoints. Distinct from
+// QdrantChecker (which is the shallow liveness ping for the GENERIC
+// /ready aggregator): this port owns the 4-check deep readiness
+// contract (alias present, collection populated, schema ok, semantic
+// canary).
+//
+// Sprint 3.4 step1 (godlike/06 SSOT — single canonical owner per fact):
+// owns the transport-side Qdrant health concern. Adapter lives in
+// internal/app/ (the only composition-root site allowed to wire
+// infrastructure types into api ports per AGENTS.md).
+type QdrantEndpointPort interface {
+	// Live returns nil if Qdrant responds (fast liveness path).
+	Live(ctx context.Context) error
+	// Ready produces a deep-readiness report with 4 named sub-checks.
+	// The handler maps report.OK → HTTP status (200 / 503).
+	Ready(ctx context.Context) QdrantReadyReport
+}
+
+// QdrantReadyReport is the JSON-ready deep-readiness report produced
+// by QdrantEndpointPort.Ready. Checks mirrors the previous handler's
+// gin.H-shaped output 1:1 so /qdrant/ready is wire-stable across the
+// refactor. Error is set ONLY for the not-configured (niledep) short-
+// circuit so the handler can render the legacy flat shape verbatim
+// ({ok:false, status:"not ready", error:"…"}); the four normal
+// checks (alias/collection/schema/canary) always carry detail via
+// the Checks map and leave Error empty.
+type QdrantReadyReport struct {
+	OK     bool           `json:"ok"`
+	Status string         `json:"status"`
+	Error  string         `json:"error,omitempty"`
+	Checks map[string]any `json:"checks,omitempty"`
+}

@@ -1,0 +1,123 @@
+{
+  "run_ts": "20260720-133621",
+  "qdrant_url": "http://127.0.0.1:6333",
+  "qdrant_unreachable": false,
+  "qdrant_health": "healthz check passed",
+  "db": {
+    "path": "data/media/media.db.sqlite",
+    "total_assets": 1680,
+    "fully_indexed": 0,
+    "any_missing": 1680,
+    "missing_text": 276,
+    "missing_transcript": 1674,
+    "missing_visual": 1675,
+    "missing_audio": 1680
+  },
+  "outbox": [
+    {
+      "status": "completed",
+      "n": 3307
+    },
+    {
+      "status": "dead_letter",
+      "n": 632
+    },
+    {
+      "status": "superseded",
+      "n": 120
+    }
+  ],
+  "qdrant": {
+    "active_alias": "media_assets_current",
+    "active_alias_points": 0,
+    "total_points_across_collections": 0,
+    "aliases": [
+      {
+        "alias_name": "media_assets_current",
+        "collection_name": "media_assets_v3_e5_768_siglip_768_20260708_191230_088708824"
+      }
+    ],
+    "collections": [
+      {
+        "name": "media_assets",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260703_072340_000000000",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260707_071741_434014983",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260707_071918_621647675",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260707_072839_592523470",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260707_073018_197701940",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260707_073237_138425006",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260707_073822_173086376",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260708_184302_221236794",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260708_191230_088708824",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260710_070038_068754177",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260710_074405_707982938",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260710_165234_826600636",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "media_assets_v3_e5_768_siglip_768_20260720_133122_150746793",
+        "points_count": 0,
+        "status": "unknown"
+      },
+      {
+        "name": "synthetic_assets_test_v3",
+        "points_count": 0,
+        "status": "unknown"
+      }
+    ]
+  }
+}

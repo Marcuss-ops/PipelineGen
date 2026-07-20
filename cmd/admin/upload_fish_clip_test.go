@@ -16,7 +16,6 @@
 package main
 
 import (
-	"errors"
 	"os"
 	"strings"
 	"testing"
