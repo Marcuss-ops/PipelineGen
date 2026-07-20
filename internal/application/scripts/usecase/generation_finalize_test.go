@@ -119,8 +119,8 @@ func TestGenerationFinalizer_Finalize_QualityGateFails(t *testing.T) {
 	if result == nil {
 		t.Fatal("expected result to be returned on quality gate failure")
 	}
-	if result.Status != "FAILED_QUALITY_GATE" {
-		t.Errorf("expected status FAILED_QUALITY_GATE, got %q", result.Status)
+	if result.Status != scriptpkg.ItemStatusFailed {
+		t.Errorf("expected status %s, got %q", scriptpkg.ItemStatusFailed, result.Status)
 	}
 }
 

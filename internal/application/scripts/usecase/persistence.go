@@ -61,7 +61,13 @@ func buildGenerationResult(
 		Title:    plan.Title,
 		Language: plan.Language,
 		Model:    engineResult.Model,
-		Status:   "SUCCEEDED",
+		// Sprint 1.3 (godlike/08): Status is the canonical per-item
+		// outcome enum. It is NOT set here — the orchestrator's
+		// classify phase (ClassifyGenerationStatus in status_classifier.go)
+		// is the SOLE writer in the success path. Leaving Status empty
+		// here keeps the build-phase a pure data-construction step and
+		// lets the classifier apply the canonical
+		// build → enforce → quality → warnings → classify → emit order.
 		Output: scriptpkg.ScriptOutput{
 			Text:      outputText,
 			WordCount: engineResult.WordCount,
