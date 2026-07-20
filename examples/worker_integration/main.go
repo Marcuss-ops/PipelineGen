@@ -4,15 +4,17 @@
 //  1. builds a deterministic X-Request-ID from the inputs (so a crashed
 //     retry lands on the same server-side job via the
 //     (type, correlation_id) UNIQUE constraint),
-//  2. submits the job to /api/script/generate-with-images,
+//  2. submits the job to /api/script/generate with GenerationEnvelopeV2
+//     (source.type="text" + items[] with script_params + output flags),
 //  3. polls until the job reaches a terminal state,
 //  4. pretty-prints the result on stdout (or stderr on failure).
 //
 // Run it with:
 //
-//	go run ./examples/worker_integration \//  -url "http://127.0.0.1:8080" \
-//	  -token "$(cat ~/.config/pipelinegen/worker_token)" \
-//	  -topic "the great barrier reef" \
+//	go run ./examples/worker_integration \//
+//	  -url "http://127.0.0.1:8080" \\\
+//	  -token "$(cat ~/.config/pipelinegen/worker_token)" \\\
+//	  -topic "the great barrier reef" \\\
 //	  -video-name reef-documentary -language en
 //
 // Or set VELOX_WORKER_TOKEN and PIPELINEGEN_URL env vars. Use -dry-run to
@@ -24,6 +26,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -35,15 +38,23 @@ import (
 	veloxclient "github.com/Marcuss-ops/PipelineGen/pkg/veloxclient"
 )
 
+// scriptGenerateEndpoint is the canonical submission route for all
+// script-generation requests (text, clips, catalog, search sources).
+// The legacy per-source endpoints (`/api/script/generate-with-images`,
+// `/api/script/generate-from-clips`, `/api/script/generate-from-catalog`,
+// `/api/script/curate`) are retired; clients flow through this single
+// canonical endpoint with the GenerationEnvelopeV2 shape and select
+// the source via `items[].source.type`. See architecture/current.yaml
+// for the deprecation ticket.
+const scriptGenerateEndpoint = "/api/script/generate"
+
 func main() {
 	var (
 		baseURL   = flag.String("url", envDefault("PIPELINEGEN_URL", envDefault("VELOX_MASTER_URL", "http://127.0.0.1:8000")), "pipelinegen base URL (or env PIPELINEGEN_URL / VELOX_MASTER_URL)")
 		token     = flag.String("token", os.Getenv("VELOX_WORKER_TOKEN"), "bearer token (or env VELOX_WORKER_TOKEN)")
-		topic     = flag.String("topic", "the great barrier reef", "script topic")
-		videoName = flag.String("video-name", "reef-documentary", "video name used to namespace the script")
-		language  = flag.String("language", "en", "script output language")
-		sentences = flag.Int("sentences-per-image", 8, "sentences per scene image (default 8 matches /api/script/generate-with-images)")
-		endpoint  = flag.String("endpoint", "/api/script/generate-with-images", "pipelinegen endpoint path")
+		topic     = flag.String("topic", "the great barrier reef", "script topic (becomes items[].source.topic)")
+		videoName = flag.String("video-name", "reef-documentary", "video name — used as items[].id (idempotency key) + items[].title")
+		language  = flag.String("language", "en", "script output language (items[].language)")
 		pollEvery = flag.Duration("poll-every", 5*time.Second, "status poll interval")
 		maxWait   = flag.Duration("max-wait", 30*time.Minute, "max wall-time before giving up on the job")
 		dryRun    = flag.Bool("dry-run", false, "print the payload + reqID without calling the server")
@@ -55,20 +66,37 @@ func main() {
 		log.Fatal("-token (or VELOX_WORKER_TOKEN env var) is required")
 	}
 
-	// Payload — minimal shape that /api/script/generate-with-images accepts.
-	// The endpoint forces generate_scene_images=true and now defaults
-	// generate_document=true so the Google Doc artifact is created as well.
-	// The only fields the handler actually reads from this payload are the
-	// documented request fields below; any extra worker-only keys are ignored.
-	// Note: the handler expects `topic` (singular string) — NOT `topics`
-	// (array, which the legacy clip-extraction path accepted). Use the
-	// singular form; the handler rejects `topics` with HTTP 400.
+	// Payload — GenerationEnvelopeV2 canonical shape (version: 2).
+	// Source.type = "text" with the user's topic; output flags (generate_document,
+	// generate_scene_images, extract_entities) declare what the engine emits.
+	// The legacy `sentences_per_image` integer density is NOT a first-class
+	// field in V2: per-image density is owned by the scene-synthesis
+	// postprocessor and tuned post-submit; `script_params.target_words`
+	// controls narrative length instead. See architecture/capability_inventory
+	// for the postprocessor chain that fills the per-scene role.
+	itemID := fmt.Sprintf("integrate-%s", *videoName)
 	payload := map[string]any{
-		"project":             "integration-demo",
-		"video_name":          *videoName,
-		"topic":               *topic,
-		"language":            *language,
-		"sentences_per_image": *sentences,
+		"version": 2,
+		"preset":  "custom",
+		"items": []map[string]any{
+			{
+				"id":       itemID,
+				"title":    *videoName,
+				"language": *language,
+				"source": map[string]any{
+					"type":  "text",
+					"topic": *topic,
+				},
+				"script_params": map[string]any{
+					"target_words": 1500,
+				},
+				"output": map[string]any{
+					"generate_document":     true,
+					"generate_scene_images": true,
+					"extract_entities":      true,
+				},
+			},
+		},
 	}
 
 	// Deterministic reqID: same inputs => same job_id on the server, so a
@@ -77,14 +105,14 @@ func main() {
 	// not a security boundary (token check is); server's request-id
 	// middleware accepts up to 64 alphanumeric chars and 32 hex fits
 	// comfortably with room for human prefixes.
-	reqID := buildStableReqID(*topic, *videoName, *language)
+	reqID := buildStableReqID(itemID, *language)
 
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	log.Printf("worker starting endpoint=%s url=%s", *endpoint, *baseURL)
+	log.Printf("worker starting endpoint=%s url=%s", scriptGenerateEndpoint, *baseURL)
 
 	if *dryRun {
 		out := map[string]any{
-			"url":          strings.TrimRight(*baseURL, "/") + "/" + strings.TrimLeft(*endpoint, "/"),
+			"url":          strings.TrimRight(*baseURL, "/") + scriptGenerateEndpoint,
 			"x_request_id": reqID,
 			"payload":      payload,
 		}
@@ -101,13 +129,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Default 30s submit/poll timeout is fine — /api/script/generate-with-images
+	// Default 30s submit/poll timeout is fine — /api/script/generate
 	// typically returns within a few hundred ms even on the idempotency-hit
 	// branch (existing job rows read fast).
 	cli := veloxclient.New(*baseURL, *token)
 
 	log.Printf("submitting job (reqID=%s)", reqID)
-	resp, err := cli.SubmitAsync(ctx, *endpoint, payload, reqID)
+	resp, err := cli.SubmitAsync(ctx, scriptGenerateEndpoint, payload, reqID)
 	if err != nil {
 		// SubmitAsync already wraps ErrUnauthorized/ErrBadRequest/ErrServer
 		// with credential-redacted bodies — surface directly to operator.
