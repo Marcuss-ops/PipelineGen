@@ -25,17 +25,11 @@
 // the dead construction is dropped from the factory return
 // tuple.
 //
-// SectionRegenerator was ENTIRELY eliminated in this push:
-//   - usecase file internal/application/scripts/usecase/section_regen.go
-//   - SectionRegenerationService port in script_runtime_ports.go
-//   - api-side ScriptRuntime bundle in internal/api/script/runtime.go
-//   - service entry in architecture/ownership/application.yaml
-//
-// See the deprecation note in script_runtime_ports.go.
-//
-// CacheEvictionUseCase + cache_eviction_usecase.go remain on disk
-// as forward-pointer for the next-phase cleanup (file deletion
-// + service entry + wire deconstruction).
+// Both retired stubs are now FULLY REMOVED from the project
+// (SectionRegenerator in the previous push, CacheEvictionUseCase
+// in this push). See the deprecation note in
+// script_runtime_ports.go for SectionRegenerator; see
+// engine.go’s memoryGateChecker doc for CacheEvictionUseCase.
 //
 // Package boundary: same `package app` as wire_script.go. The
 // factory is a pure-builder; P04 audit wiring + broker adapter
@@ -93,11 +87,8 @@ import (
 // also returned SectionRegenerator + CacheEvictionUseCase; those
 // were RETIRED because the corresponding HTTP routes
 // (RegenerateSection + EvictCache) were always 503 — the
-// ScriptFlowHandler never assigned the fields.
-//
-// SectionRegenerator has been ENTIRELY removed in this push.
-// CacheEvictionUseCase remains on disk as forward-pointer for
-// the next-phase cleanup.
+// ScriptFlowHandler never assigned the fields. Both retired stubs
+// have now been fully removed (file + service entry + port/bundle).
 func buildScriptUseCases(
 	cfg *config.Config,
 	root *ComposeRoot,

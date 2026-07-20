@@ -104,12 +104,14 @@ func BuildAIBundle(ctx context.Context, cfg *config.Config, dbs *databases, log 
 	ollamaTranslator := translation.NewOllamaTranslator(scriptGen, log)
 	log.Info("Fase 9 step 2: OllamaTranslator wired (translation.TranslationPort + 3 legacy port surfaces)")
 
-	// Commit H Phase 2 (June 2026): gemmamemory gemmamemory gate service + the
-	// MemoryCacheAdapter wrapper are gone. The canonical engine no
-	// longer consumes the gemmamemory cross-package type — the in-package
-	// memoryCache interface (defined in cache_eviction_usecase.go) is
-	// satisfied by nil here so the engine's `memoryGateChecker` type
-	// assertion returns false at runtime and the cache path is skipped.
+	// Commit H Phase 2 (June 2026): the gemmamemory gate service +
+	// MemoryCacheAdapter wrapper were removed from the cross-package
+	// surface. The canonical engine no longer consumes the gemmamemory
+	// cross-package type — the second NewEngine argument is nil because
+	// the canonical gemmamemory adapter (with `CheckGate`) is not yet
+	// wired. The runtime `useMemory && !skipMemory && e.memorySvc != nil`
+	// check short-circuits the cache path entirely when nil is supplied,
+	// so script generation falls through to the fresh ollama call.
 	// MemoryRepo (Repository struct, still in gemmamemory.go) is retained
 	// because root.AI.MemoryRepo is consumed by startBackgroundJobs's
 	// gemma-memory-sweeper (internal/app/lifecycle.go:393).
