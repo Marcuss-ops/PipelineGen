@@ -130,12 +130,13 @@ type StockDeliveryDeps struct {
 
 // StockAcquisitionDeps groups the storage + dispatch layer the stock
 // pipeline reads from (SourceStager, ClipsRepo, AssetIndex,
-// Dispatcher). Field count: 4.
+// Dispatcher, BatchRepository). Field count: 5.
 type StockAcquisitionDeps struct {
-	SourceStager acquisition.SourceStager  // required
-	ClipsRepo    *sqassets.ClipsRepository // required
-	AssetIndex   *assetindex.Service       // required
-	Dispatcher   *outbox.Dispatcher        // required
+	SourceStager    acquisition.SourceStager           // required
+	ClipsRepo       *sqassets.ClipsRepository          // required
+	AssetIndex      *assetindex.Service                // required
+	Dispatcher      *outbox.Dispatcher                 // required
+	BatchRepository stockpipeline.StockBatchRepository // optional; required in production via DB gate
 }
 
 // StockMediaDeps groups the ffmpeg-mediated media processing layer
@@ -228,6 +229,7 @@ func validateStockSymmetricGate(publisher delivery.Publisher, finalizer finaliza
 // BuildStockBundle assembles the stock video pipeline composition root:
 //
 //  1. validateStockSymmetricGate (godlike/07 fail-fast at composition time).
+//     1b. SQLite mandatory in production (Fase 2).
 //  2. stockpipeline.NewService (Deps{Publisher, Finalizer} both threaded).
 //  3. stockpipeline.NewStockUseCase (ServiceRunner + narrowed jobsEnqueuer).
 //  4. stockapi.Build (API Descriptor with EnabledFunc closure).
@@ -279,6 +281,18 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 		return nil, err
 	}
 
+	// ── Gate 1b: Fase 2 — SQLite + BatchRepository mandatory in production ───────
+	// Production mode is defined by the presence of either Publisher or
+	// Finalizer (the pair must be symmetric after Gate 1). Without a DB,
+	// batch/group/artifact persistence is impossible — fail closed.
+	isProduction := deps.Delivery.Publisher != nil || deps.Delivery.Finalizer != nil
+	if isProduction && deps.Runtime.DB == nil {
+		return nil, stockpipeline.ErrStockProductionDBMissing
+	}
+	if isProduction && deps.Acquisition.BatchRepository == nil {
+		return nil, stockpipeline.ErrStockProductionBatchRepositoryMissing
+	}
+
 	// ── Gate 2: construct the canonical *stockpipeline.Service ───
 	svc, err := stockpipeline.NewService(stockpipeline.Deps{
 		Runtime: stockpipeline.RuntimeDeps{
@@ -288,9 +302,10 @@ func BuildStockBundle(deps StockBundleDeps) (*StockPipelineWiring, error) {
 		},
 		Publisher: deps.Delivery.Publisher,
 		Storage: stockpipeline.StorageDeps{
-			ClipsRepo:  deps.Acquisition.ClipsRepo,
-			AssetIndex: deps.Acquisition.AssetIndex,
-			Dispatcher: deps.Acquisition.Dispatcher,
+			ClipsRepo:       deps.Acquisition.ClipsRepo,
+			AssetIndex:      deps.Acquisition.AssetIndex,
+			Dispatcher:      deps.Acquisition.Dispatcher,
+			BatchRepository: deps.Acquisition.BatchRepository,
 		},
 		Media: stockpipeline.MediaDeps{
 			Cutter:   deps.Media.Cutter,

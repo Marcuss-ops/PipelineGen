@@ -38,6 +38,7 @@ type StepRunner interface {
 	Writer() TransactionalAssetWriter
 	Projection() ProjectionPort
 	SourceDurationProbe() SourceDurationProbe
+	BatchRepository() StockBatchRepository
 
 	ArtifactPreparation() finalization.ArtifactPreparationService
 	JobFinalizer() finalization.JobFinalizer
@@ -70,6 +71,15 @@ type orchestratorRunner struct {
 	jobFinalizer        finalization.JobFinalizer
 	fingerprintOnce     sync.Once
 	cachedFingerprint   string
+}
+
+// BatchRepository returns the durable stock batch repository
+// wired by the composition root. nil means test/backcompat mode.
+func (a *orchestratorRunner) BatchRepository() StockBatchRepository {
+	if a == nil || a.orch == nil {
+		return nil
+	}
+	return a.orch.batchRepository
 }
 
 var _ StepRunner = (*orchestratorRunner)(nil)

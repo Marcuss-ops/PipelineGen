@@ -62,6 +62,7 @@ func (f *publishFakeRunner) JobFinalizer() finalization.JobFinalizer { return ni
 func (f *publishFakeRunner) RunFingerprint() string                  { return "run-fingerprint-123" }
 func (f *publishFakeRunner) Log() *zap.Logger                        { return zap.NewNop() }
 func (f *publishFakeRunner) State() *runState                        { return f.state }
+func (f *publishFakeRunner) BatchRepository() StockBatchRepository   { return nil }
 
 var _ StepRunner = (*publishFakeRunner)(nil)
 

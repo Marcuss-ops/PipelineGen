@@ -57,10 +57,15 @@ func DefaultPipelineConfig() PipelineConfig {
 // internal/infrastructure imports. Concrete types (*assets.ClipsRepository,
 // *assetindex.Service, *outbox.Dispatcher) satisfy these interfaces
 // structurally at the composition root.
+//
+// Fase 2 (July 2026): BatchRepository is OPTIONAL — when nil the stock
+// pipeline keeps the in-memory/test path. Production wiring MUST supply
+// the SQLite-backed adapter; BuildStockBundle enforces DB presence.
 type StorageDeps struct {
-	ClipsRepo  stockClipsSearchTermUpdater
-	AssetIndex stockAssetIndexUpserter
-	Dispatcher stockChunkDispatcher
+	ClipsRepo       stockClipsSearchTermUpdater
+	AssetIndex      stockAssetIndexUpserter
+	Dispatcher      stockChunkDispatcher
+	BatchRepository StockBatchRepository
 }
 
 // MediaDeps groups the PR6 ports. P8 (July 2026): ClipIndexer + MetaWriter

@@ -192,4 +192,11 @@ type Orchestrator struct {
 	// concrete via orchestrator.WithSourceProbe(probe); see
 	// forward-pointer PR-STOCK-SOURCE-DURATION-WIRE.
 	sourceProbe SourceDurationProbe
+
+	// batchRepository (Fase 2, July 2026) is the durable
+	// stock batch/group/artifact repository. nil means the
+	// orchestrator runs in-memory/test mode. Production wiring
+	// injects the SQLite-backed adapter via
+	// WithBatchRepository(...).
+	batchRepository StockBatchRepository
 }

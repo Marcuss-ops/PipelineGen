@@ -102,6 +102,10 @@ func (s *Service) runOrchestratorResilient(ctx context.Context, input *RunInput,
 			drive.NewArtifactPublisherAdapter(s.publisher, s.log), s.log))
 	}
 	o.WithJobFinalizer(s.finalizer)
+	// Fase 2: wire durable batch state (nil-safe for tests/backcompat).
+	if s.batchRepo != nil {
+		o.WithBatchRepository(s.batchRepo)
+	}
 	summary, err := o.RunResilient(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("stockpipeline.Service.runOrchestratorResilient: orchestrator.RunResilient: %w", err)
