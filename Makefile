@@ -760,17 +760,41 @@ regen-current-yaml:
 	fi
 
 # regen-routes-yaml — convenience target that calls the AST pre-step
-# binary scripts/admin/generate_routes_yaml.go (the canonical capture
-# surface that cmd/admin/regen-current-yaml reads). If the binary is
-# not present yet (future PR), this target surfaces the canonical error.
+# analyzer at scripts/admin/ (the canonical capture surface that
+# cmd/admin/regen-current-yaml reads). The Go invocation MUST target
+# the directory `./scripts/admin`, NOT the single-file path
+# `./scripts/admin/generate_routes_yaml.go` — main.go references 6
+# symbols (discoverAPIFiles, manifestRoute, relSlashed, inspectAPIFile,
+# dedupeManifest, manifestDocument) defined in the 4 split siblings
+# types/discovery/ast/dedup. When invoked with a single-file path,
+# `go run` only compiles that file and emits 6 undefined-symbol errors
+# (Push 7(a) was split into 4 sibling files by LONG-FILES-DECOMPOSITION
+# — Wave 2). The whole-dir invocation composes the package.
+#
+# Fail-closed (godlike/07 NO-FAKE-AVAILABILITY): the analyzer's stdout
+# is staged in a mktemp sibling; on any failure (compile / parse /
+# zero-routes sentinel / Marshal / WriteFile), the existing
+# architecture/routes.yaml is left intact and stderr surfaces to the
+# operator. This blocks the pre-existing bug where the recipe's literal
+# `> architecture/routes.yaml` redirect truncated the canonical manifest
+# on a partial failure, leaving the C2-E gate with an empty file and
+# no error signal.
 regen-routes-yaml:
-	@if [ -f scripts/admin/generate_routes_yaml.go ]; then \
-	    $(GO) run ./scripts/admin/generate_routes_yaml.go > architecture/routes.yaml; \
-	    echo "✅ regen-routes-yaml wrote architecture/routes.yaml"; \
-	else \
+	@TMP=$$(mktemp architecture/routes.yaml.tmp.XXXXXX) || { echo "❌ regen-routes-yaml: mktemp failed (architecture/ missing or read-only?)" >&2; exit 1; }; \
+	if [ ! -f scripts/admin/generate_routes_yaml.go ]; then \
+	    rm -f "$$TMP"; \
 	    echo "❌ scripts/admin/generate_routes_yaml.go not present — current hand-routes.yaml is authoritative until Push 7(a) lands." >&2; \
 	    exit 1; \
-	fi
+	fi; \
+	if ! $(GO) run ./scripts/admin --output="$$TMP" 2>"$$TMP.stderr"; then \
+	    echo "❌ regen-routes-yaml: AST analyzer failed; architecture/routes.yaml untouched." >&2; \
+	    cat "$$TMP.stderr" >&2; \
+	    rm -f "$$TMP" "$$TMP.stderr"; \
+	    exit 1; \
+	fi; \
+	rm -f "$$TMP.stderr"; \
+	mv "$$TMP" architecture/routes.yaml; \
+	echo "✅ regen-routes-yaml wrote architecture/routes.yaml"
 
 # archcheck-strict — invokes go run ./cmd/archcheck --strict which is
 # the gate-promoted Phase-0 governance check. Used by CI + locally as
