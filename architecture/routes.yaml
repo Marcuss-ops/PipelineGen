@@ -1,19 +1,19 @@
 routes:
     - method: DELETE
       path: /:id
-      source: internal/api/assets/handler_searchqueries.go
+      source: internal/api/channels/handler.go
     - method: DELETE
       path: /:source/clips/:id
-      source: internal/api/assets/clips/ops.go
+      source: internal/api/assets/clips/sub_handler_wrappers.go
     - method: DELETE
       path: /:source/folders/:id
-      source: internal/api/assets/clips/ops.go
+      source: internal/api/assets/clips/sub_handler_wrappers.go
     - method: GET
       path: /
       source: internal/api/routes.go
     - method: GET
       path: /:id
-      source: internal/api/assets/handler_searchqueries.go
+      source: internal/api/script/helpers.go
     - method: GET
       path: /:id/events
       source: internal/api/jobs/impl.go
@@ -25,7 +25,7 @@ routes:
       source: internal/api/assets/handler_searchqueries.go
     - method: GET
       path: /:source/breadcrumb
-      source: internal/api/assets/clips/ops.go
+      source: internal/api/assets/clips/sub_handler_wrappers.go
     - method: GET
       path: /:source/clips
       source: internal/api/assets/clips/search.go
@@ -34,10 +34,10 @@ routes:
       source: internal/api/assets/clips/search.go
     - method: GET
       path: /:source/folders
-      source: internal/api/assets/clips/ops.go
+      source: internal/api/assets/clips/sub_handler_wrappers.go
     - method: GET
       path: /:source/folders/:id
-      source: internal/api/assets/clips/ops.go
+      source: internal/api/assets/clips/catalog/module.go
     - method: GET
       path: /:source/folders/:id/children
       source: internal/api/assets/clips/ops.go
@@ -48,11 +48,29 @@ routes:
       path: /active
       source: internal/api/assets/handler_searchqueries.go
     - method: GET
+      path: /admin/auth/me
+      source: internal/api/routes.go
+    - method: GET
+      path: /api/capabilities
+      source: internal/api/routes.go
+    - method: GET
+      path: /assets
+      source: internal/api/assets/operator/handler_assets.go
+    - method: GET
+      path: /assets/:id
+      source: internal/api/assets/operator/handler_assets.go
+    - method: GET
+      path: /assets/:id/preview
+      source: internal/api/assets/operator/handler_assets.go
+    - method: GET
+      path: /categories
+      source: internal/api/channels/handler.go
+    - method: GET
       path: /clips/search
       source: internal/api/script/handler_flow.go
     - method: GET
       path: /diagnostics
-      source: internal/api/assets/diagnostics/handler.go
+      source: internal/api/assets/artlist/artlist_handlers.go
     - method: GET
       path: /events
       source: internal/api/outbox/handler.go
@@ -60,11 +78,17 @@ routes:
       path: /files
       source: internal/api/system/handler_drive.go
     - method: GET
+      path: /generated/search
+      source: internal/api/images/handler.go
+    - method: GET
+      path: /generated/styles
+      source: internal/api/images/handler.go
+    - method: GET
       path: /health
-      source: internal/api/routes.go
+      source: internal/api/admin/ui/handler.go
     - method: GET
       path: /index-health
-      source: internal/api/assets/diagnostics/handler.go
+      source: internal/api/assets/operator/handler_index.go
     - method: GET
       path: /info
       source: internal/api/assets/youtube/youtube_handlers.go
@@ -72,29 +96,62 @@ routes:
       path: /internal/slug
       source: internal/api/module_core_modules.go
     - method: GET
+      path: /job-consumer
+      source: internal/api/assets/artlist/artlist_handlers.go
+    - method: GET
       path: /jobs/:id
-      source: internal/api/script/handler_flow.go
+      source: internal/api/script/handler_jobs.go
     - method: GET
       path: /jobs/:id/cancelled
       source: internal/api/jobs/handler_workers.go
     - method: GET
+      path: /jobs/:id/full
+      source: internal/api/script/handler_jobs.go
+    - method: GET
       path: /metrics
+      source: internal/api/routes.go
+    - method: GET
+      path: /models
+      source: internal/api/routes.go
+    - method: GET
+      path: /operations/errors
+      source: internal/api/assets/operator/handler_operations.go
+    - method: GET
+      path: /outbox/events
+      source: internal/api/assets/operator/handler_outbox.go
+    - method: GET
+      path: /outbox/status
+      source: internal/api/assets/operator/handler_outbox.go
+    - method: GET
+      path: /qdrant/live
+      source: internal/api/routes.go
+    - method: GET
+      path: /qdrant/ready
       source: internal/api/routes.go
     - method: GET
       path: /ready
       source: internal/api/routes.go
     - method: GET
+      path: /retrieved/search
+      source: internal/api/images/handler.go
+    - method: GET
       path: /runs/:run_id
       source: internal/api/assets/artlist/artlist_handlers.go
     - method: GET
       path: /search
-      source: internal/api/images/impl.go
+      source: internal/api/images/handler.go
+    - method: GET
+      path: /search/live
+      source: internal/api/assets/artlist/artlist_handlers.go
     - method: GET
       path: /stats
-      source: internal/api/assets/artlist/artlist_handlers.go
+      source: internal/api/jobs/impl.go
     - method: GET
       path: /status
       source: internal/api/outbox/handler.go
+    - method: GET
+      path: /summary
+      source: internal/api/assets/operator/handler_summary.go
     - method: GET
       path: /system/doctor
       source: internal/api/system/module.go
@@ -106,7 +163,7 @@ routes:
       source: internal/api/admin/handler_workers_cert.go
     - method: GET
       path: Content-Type
-      source: internal/api/middleware/idempotency.go
+      source: internal/api/assets/clips/ingest_upload.go
     - method: PATCH
       path: /:source/clips/:id
       source: internal/api/assets/clips/ingest.go
@@ -117,35 +174,32 @@ routes:
       path: /:id/retry
       source: internal/api/jobs/impl.go
     - method: POST
-      path: /:id/sections/:section_id/regenerate
-      source: internal/api/script/handler_flow.go
-    - method: POST
       path: /:source/bulk/tags/add
-      source: internal/api/assets/clips/handler.go
+      source: internal/api/assets/clips/operations/module.go
     - method: POST
       path: /:source/bulk/tags/remove
-      source: internal/api/assets/clips/handler.go
+      source: internal/api/assets/clips/operations/module.go
     - method: POST
       path: /:source/cleanup
-      source: internal/api/assets/clips/ops.go
+      source: internal/api/assets/clips/operations/module.go
     - method: POST
       path: /:source/clips
       source: internal/api/assets/clips/ingest.go
     - method: POST
       path: /:source/clips/:id/download
-      source: internal/api/assets/clips/handler.go
+      source: internal/api/assets/clips/publication/module.go
     - method: POST
       path: /:source/clips/:id/duplicates
-      source: internal/api/assets/clips/handler.go
+      source: internal/api/assets/clips/sub_handler_wrappers.go
     - method: POST
       path: /:source/clips/:id/fix-hash
-      source: internal/api/assets/clips/ops.go
+      source: internal/api/assets/clips/sub_handler_wrappers.go
     - method: POST
       path: /:source/clips/:id/reindex
-      source: internal/api/assets/clips/handler.go
+      source: internal/api/assets/clips/nonops/handler.go
     - method: POST
       path: /:source/clips/:id/reprocess
-      source: internal/api/assets/clips/handler.go
+      source: internal/api/assets/clips/nonops/handler.go
     - method: POST
       path: /:source/clips/:id/reupload
       source: internal/api/assets/clips/handler.go
@@ -154,50 +208,69 @@ routes:
       source: internal/api/assets/clips/search.go
     - method: POST
       path: /:source/clips/:id/verify
-      source: internal/api/assets/clips/ops.go
+      source: internal/api/assets/clips/sub_handler_wrappers.go
     - method: POST
       path: /:source/clips/bulk-upload-youtube-clips
       source: internal/api/assets/clips/bulk_upload_transport.go
     - method: POST
       path: /:source/folders/:id/manifest
-      source: internal/api/assets/clips/ops.go
+      source: internal/api/assets/clips/sub_handler_wrappers.go
     - method: POST
       path: /:source/reconcile
-      source: internal/api/assets/clips/ops.go
+      source: internal/api/assets/clips/sub_handler_wrappers.go
     - method: POST
-      path: /animate
-      source: internal/api/images/impl.go
+      path: /admin/auth/login
+      source: internal/api/routes.go
     - method: POST
-      path: /cache/evict
-      source: internal/api/script/handler_flow.go
+      path: /admin/auth/logout
+      source: internal/api/routes.go
+    - method: POST
+      path: /batch-generate
+      source: internal/api/images/handler.go
+    - method: POST
+      path: /bulk-upsert
+      source: internal/api/channels/handler.go
+    - method: POST
+      path: /canary-upload
+      source: internal/api/admin/handler_drive_canary.go
     - method: POST
       path: /cleanup
       source: internal/api/system/handler_drive.go
     - method: POST
-      path: /curate
-      source: internal/api/script/handler_flow.go
+      path: /document/generate
+      source: internal/api/assets/document/document_handler.go
     - method: POST
       path: /enrich
-      source: internal/api/assets/clips/handler.go
+      source: internal/api/assets/clips/nonops/handler.go
     - method: POST
       path: /enrich/batch
-      source: internal/api/assets/clips/handler.go
+      source: internal/api/assets/clips/nonops/handler.go
+    - method: POST
+      path: /extract-important
+      source: internal/api/assets/youtube/youtube_handlers.go
     - method: POST
       path: /folders
       source: internal/api/system/handler_drive.go
     - method: POST
       path: /generate
-      source: internal/api/script/handler_flow.go
+      source: internal/api/script/handler_generate_handler.go
     - method: POST
-      source: internal/api/script/handler_flow.go
+      path: /generated/generate
+      source: internal/api/images/handler.go
     - method: POST
-      path: /generate-with-images
-      source: internal/api/script/handler_flow.go
+      path: /image/generate
+      source: internal/api/fullimages/handler.go
     - method: POST
       path: /import
       source: internal/api/assets/handler_mediaingest.go
     - method: POST
+      path: /ingest/ai-stock
+      source: internal/api/assets/clips/ingest.go
+    - method: POST
       path: /jobs/:id/complete
+      source: internal/api/jobs/handler_workers.go
+    - method: POST
+      path: /jobs/:id/complete-with-artifacts
       source: internal/api/jobs/handler_workers.go
     - method: POST
       path: /jobs/:id/fail
@@ -249,10 +322,16 @@ routes:
       source: internal/api/assets/stock/handler.go
     - method: POST
       path: /search
-      source: internal/api/assets/search/handler.go
+      source: internal/api/assets/artlist/artlist_handlers.go
     - method: POST
-      path: /search-and-run
-      source: internal/api/assets/stock/handler.go
+      path: /shorts/generate
+      source: internal/api/script/handler_shorts.go
+    - method: POST
+      path: /shorts/render
+      source: internal/api/script/handler_shorts.go
+    - method: POST
+      path: /shorts/render/async
+      source: internal/api/script/handler_shorts.go
     - method: POST
       path: /sync
       source: internal/api/assets/storage/handler.go
@@ -261,16 +340,13 @@ routes:
       source: internal/api/assets/artlist/artlist_handlers.go
     - method: POST
       path: /upload
-      source: internal/api/images/impl.go
+      source: internal/api/images/handler.go
     - method: POST
       path: /upload-video
       source: internal/api/assets/clips/ingest.go
     - method: POST
-      path: /video/generate
-      source: internal/api/images/handler_full.go
-    - method: POST
-      path: /webhook/remote
-      source: internal/api/images/impl.go
+      path: /vlm/autotag/analyze-file
+      source: internal/api/vlm.go
     - method: POST
       path: /worker-assets/uploads/:asset_id/content
       source: internal/api/jobs/handler_workers.go
