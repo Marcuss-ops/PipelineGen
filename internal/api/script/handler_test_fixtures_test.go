@@ -24,6 +24,7 @@ import (
 	"go.uber.org/zap"
 
 	opsapp "github.com/Marcuss-ops/PipelineGen/internal/application/operations"
+	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/submission"
 	"github.com/Marcuss-ops/PipelineGen/internal/application/scripts/usecase"
 	job "github.com/Marcuss-ops/PipelineGen/internal/domain/job"
 	domainops "github.com/Marcuss-ops/PipelineGen/internal/domain/operations"
@@ -243,6 +244,9 @@ func newMinimalScriptFlowDepsForTest(jobs job.Service) (ScriptFlowDeps, *fakeSub
 		Generate: GenerateDeps{
 			Submission: submitter,
 			Log:        zap.NewNop(),
+			// PR-SUBMISSION-FACTORY (July 2026): the factory builds the
+			// SubmitRequest from the bound command.
+			Factory: submission.NewSubmitRequestFactory(),
 			// PR-COMMIT3 (July 2026): the legacy `Caps PreflightCaps`
 			// field is physically removed alongside the preflight
 			// module. Tests now exercise the canonical envelope path

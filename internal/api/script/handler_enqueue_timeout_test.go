@@ -58,6 +58,7 @@ func TestEnqueueEnvelopeFn_JobEnqueueTimeout_Returns504(t *testing.T) {
 	handler := NewHandlerGenerate(
 		&slowSubmissionService{blockDuration: 5 * time.Second},
 		nil, // scriptgenSvc (GenerationRunStarter) — legacy direct-submit fallback path
+		nil, // factory — NewHandlerGenerate defaults to NewSubmitRequestFactory()
 		zap.NewNop(),
 		nil, // validator falls back to NewDefaultPayloadValidator() inside NewHandlerGenerate
 	)
