@@ -156,3 +156,47 @@ export function getAssetPreviewUrl(id: string): string {
 export function getSummary(): Promise<Record<string, unknown>> {
   return request<Record<string, unknown>>('/assets/operator/summary')
 }
+
+export interface OutboxStatusResponse {
+  ok: boolean
+  counts: Record<string, number>
+}
+
+export interface OutboxEventsResponse {
+  ok: boolean
+  events: any[]
+  count: number
+}
+
+export function getOutboxStatus(): Promise<OutboxStatusResponse> {
+  return request<OutboxStatusResponse>('/assets/operator/outbox/status')
+}
+
+export function getOutboxEvents(status?: string): Promise<OutboxEventsResponse> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : ''
+  return request<OutboxEventsResponse>(`/assets/operator/outbox/events${query}`)
+}
+
+export function getOperationsErrors(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/assets/operator/operations/errors')
+}
+
+export function getHealth(deep = false): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>(`/health${deep ? '?deep=true' : ''}`)
+}
+
+export function getReady(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/ready')
+}
+
+export function getModels(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/models')
+}
+
+export function getQdrantReady(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/qdrant/ready')
+}
+
+export function getMediaIndexHealth(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>('/media/index-health')
+}

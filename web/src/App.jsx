@@ -5,7 +5,7 @@ import Overview from './pages/Overview'
 import ContentLibrary from './pages/ContentLibrary'
 import AssetInspector from './pages/AssetInspector'
 import Jobs from './pages/Jobs'
-import Indexing from './pages/Indexing'
+import Operations from './pages/Operations'
 import Login from './pages/Login'
 
 function ProtectedRoutes() {
@@ -72,7 +72,7 @@ function AppRoutes() {
         <Route path="/content" element={<ContentLibrary />} />
         <Route path="/content/:id" element={<AssetInspector />} />
         <Route path="/jobs" element={<Jobs />} />
-        <Route path="/indexing" element={<Indexing />} />
+        <Route path="/operations" element={<Operations />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

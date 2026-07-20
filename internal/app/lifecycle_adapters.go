@@ -80,26 +80,45 @@ func (a *outboxMonitorAdapter) ListPending(ctx context.Context) ([]outbox.EventD
 	}
 	dtos := make([]outbox.EventDTO, len(events))
 	for i, e := range events {
-		dtos[i] = outbox.EventDTO{
-			ID:            e.ID,
-			EventType:     e.EventType,
-			AggregateID:   e.AggregateID,
-			AggregateType: e.AggregateType,
-			PayloadJSON:   e.PayloadJSON,
-			Status:        e.Status,
-			AttemptCount:  e.AttemptCount,
-			MaxAttempts:   e.MaxAttempts,
-			LastError:     e.LastError,
-			EventKey:      e.EventKey,
-			WorkerID:      e.WorkerID,
-			LeaseID:       e.LeaseID,
-			LeaseExpiry:   e.LeaseExpiry,
-			CompletedAt:   e.CompletedAt,
-			CreatedAt:     e.CreatedAt,
-			UpdatedAt:     e.UpdatedAt,
-		}
+		dtos[i] = eventToDTO(e)
 	}
 	return dtos, nil
+}
+
+func (a *outboxMonitorAdapter) ListByStatus(ctx context.Context, status string) ([]outbox.EventDTO, error) {
+	if a == nil || a.repo == nil {
+		return nil, nil
+	}
+	events, err := a.repo.ListByStatus(ctx, status)
+	if err != nil {
+		return nil, err
+	}
+	dtos := make([]outbox.EventDTO, len(events))
+	for i, e := range events {
+		dtos[i] = eventToDTO(e)
+	}
+	return dtos, nil
+}
+
+func eventToDTO(e outboxevents.Event) outbox.EventDTO {
+	return outbox.EventDTO{
+		ID:            e.ID,
+		EventType:     e.EventType,
+		AggregateID:   e.AggregateID,
+		AggregateType: e.AggregateType,
+		PayloadJSON:   e.PayloadJSON,
+		Status:        e.Status,
+		AttemptCount:  e.AttemptCount,
+		MaxAttempts:   e.MaxAttempts,
+		LastError:     e.LastError,
+		EventKey:      e.EventKey,
+		WorkerID:      e.WorkerID,
+		LeaseID:       e.LeaseID,
+		LeaseExpiry:   e.LeaseExpiry,
+		CompletedAt:   e.CompletedAt,
+		CreatedAt:     e.CreatedAt,
+		UpdatedAt:     e.UpdatedAt,
+	}
 }
 
 // ── monitorYtdlpAdapter ───────────────────────────────────────
