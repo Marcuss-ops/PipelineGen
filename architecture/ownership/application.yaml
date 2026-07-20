@@ -268,24 +268,6 @@ domain_asset:
 # ── Application (use cases) ──────────────────────────────────────────────────application_jobs:
   owner: internal/application/jobs
   rationale: Job registry + worker execution + claims + lease + payloads + codec + outbox dispatcher.
-  # Sub-fragment of Wave 5 PR3, closed June 2026:
-  #   - The broader PR3 (Store / StartJob / RequeueResult aliases in
-  #     internal/application/jobs/types.go) had already been collapsed
-  #     upstream at commit 21269fbf.
-  #   - This repo's commit e49c8a43 certifies the
-  #     script.generate_from_clips sub-fragment under that parent gate.
-  #
-  # State after the script.generate_from_clips closure:
-  #   1. internal/domain/job/job.go::77 (TypeClipScriptGenerate) is the SOLE
-  #      canonical declaration of the job-type identity.
-  #   2. Legacy duplicates at
-  #        internal/domain/script/spec.go::JobTypeGenerateFromClips
-  #        internal/application/jobs/registry.go::TypeClipScriptGenerate
-  #      were deleted outright (no back-compat aliases were kept).
-  #   3. The timeout-map literal at internal/application/jobs/worker.go was
-  #      re-keyed through the typed constant job.TypeClipScriptGenerate.
-  #
-  # See architecture/migration.yaml::5_PR3 for the parent ratchet entry.
   target_subdirs:
     - jobs/assets         # worker asset ops (renamed from old application/workerassets)
     - jobs/outbox         # outbox dispatcher (migrated from internal/outboxhandlers in Wave 5)

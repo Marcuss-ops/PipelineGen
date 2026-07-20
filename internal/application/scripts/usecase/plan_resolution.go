@@ -18,7 +18,7 @@ import (
 // the public surface.
 type GenerateOneUseCase struct {
 	cfg             adapters.NormalizationConfig
-	registry        *adapters.SourceRegistry
+	preparer        *GenerationPreparer
 	engine          *Engine
 	ppReg           *adapters.PostProcessorRegistry
 	log             *zap.Logger
@@ -39,9 +39,10 @@ func NewGenerateOneUseCase(
 	ppReg *adapters.PostProcessorRegistry,
 	log *zap.Logger,
 ) *GenerateOneUseCase {
+	preparer := NewGenerationPreparer(cfg, registry, ppReg, log)
 	return &GenerateOneUseCase{
 		cfg:      cfg,
-		registry: registry,
+		preparer: preparer,
 		engine:   engine,
 		ppReg:    ppReg,
 		log:      log,
@@ -65,6 +66,7 @@ func (uc *GenerateOneUseCase) SetVoiceoverRouting(resolver scriptports.Voiceover
 	}
 	uc.voGroupResolver = resolver
 	uc.voRootID = parentID
+	uc.preparer.SetVoiceoverRouting(resolver, parentID)
 }
 
 // ── Plan-phase helpers ────────────────────────────────────────────────

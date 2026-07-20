@@ -137,9 +137,6 @@ module_route_map:
 
 #   2. Every handler is owned by exactly one module.
 job_handler_map:
-  - job_type: script.generate_from_clips
-    handler: PipelineUseCase.HandleJob
-    owner: internal/application/scripts
   - job_type: script.generate_batch
     handler: BatchJobHandler.Handle
     owner: internal/application/scripts
@@ -166,7 +163,7 @@ job_handler_map:
     owner: internal/application/assets/catalogsync
 
 # ── Canonical Service Construction (SSOT) ────────────────────────────────────
-# Each canonical service is constructed EXACTLY ONCE. The CI gate enforces
+# Each canonical service is constructed EXACTLY ONCE.
 
 # PipelineGen — split ownership section: services
 # This file is part of architecture/ownership.yaml (split, June 2026, Step 5 Commit A).
@@ -444,24 +441,6 @@ domain_asset:
 # ── Application (use cases) ──────────────────────────────────────────────────application_jobs:
   owner: internal/application/jobs
   rationale: Job registry + worker execution + claims + lease + payloads + codec + outbox dispatcher.
-  # Sub-fragment of Wave 5 PR3, closed June 2026:
-  #   - The broader PR3 (Store / StartJob / RequeueResult aliases in
-  #     internal/application/jobs/types.go) had already been collapsed
-  #     upstream at commit 21269fbf.
-  #   - This repo's commit e49c8a43 certifies the
-  #     script.generate_from_clips sub-fragment under that parent gate.
-  #
-  # State after the script.generate_from_clips closure:
-  #   1. internal/domain/job/job.go::77 (TypeClipScriptGenerate) is the SOLE
-  #      canonical declaration of the job-type identity.
-  #   2. Legacy duplicates at
-  #        internal/domain/script/spec.go::JobTypeGenerateFromClips
-  #        internal/application/jobs/registry.go::TypeClipScriptGenerate
-  #      were deleted outright (no back-compat aliases were kept).
-  #   3. The timeout-map literal at internal/application/jobs/worker.go was
-  #      re-keyed through the typed constant job.TypeClipScriptGenerate.
-  #
-  # See architecture/migration.yaml::5_PR3 for the parent ratchet entry.
   target_subdirs:
     - jobs/assets         # worker asset ops (renamed from old application/workerassets)
     - jobs/outbox         # outbox dispatcher (migrated from internal/outboxhandlers in Wave 5)

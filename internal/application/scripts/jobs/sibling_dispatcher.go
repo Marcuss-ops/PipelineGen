@@ -2,7 +2,7 @@
 //
 // SiblingDispatcher routes the canonical "1 parent script job → N
 // voiceover sibling jobs + M image sibling jobs" fan-out surfaced by
-// HandleClipScriptGenerateJob (the parent handler at the API surface
+// the script.generate handler (the parent handler at the API surface
 // for /api/script/generate). Per the user spec for Step 11B:
 //
 //   - N voiceover siblings of type TypeScriptVoiceoverSibling

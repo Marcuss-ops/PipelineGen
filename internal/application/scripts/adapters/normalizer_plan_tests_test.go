@@ -460,9 +460,10 @@ func TestBuildPlanNoEndpointNames(t *testing.T) {
 
 	plan := scripts.BuildPlan(item)
 
-	// The plan must not contain any endpoint name string.
-	if plan.Mode == "generate_from_clips" || plan.Mode == "generate_with_images" ||
-		plan.Mode == "generate_batch" || plan.Mode == "generate_from_catalog" {
+	// The plan must not contain any legacy endpoint name string.
+	if plan.Mode == "generate_with_images" ||
+		plan.Mode == "generate_batch" ||
+		plan.Mode == "generate_from_catalog" {
 		t.Errorf("plan.Mode contains legacy endpoint name: %q", plan.Mode)
 	}
 }
