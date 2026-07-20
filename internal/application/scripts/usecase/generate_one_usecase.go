@@ -15,6 +15,7 @@
 //     buildResolutionContext
 //   - engine_invoke.go          — logPhaseError + preConstructError + generateOnePreConstructError
 //   - generation_postprocess.go — GenerationPostprocessor + ProcessedGeneration
+//   - generation_finalize.go    — GenerationFinalizer + FinalizeInputs
 //   - persistence.go            — buildGenerationResult
 //   - generate_one_usecase.go (this file) — Execute orchestrator
 //
@@ -32,6 +33,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -96,60 +98,25 @@ func (uc *GenerateOneUseCase) Execute(
 	timings.PostprocessMs = processed.PostprocessMs
 	provenance := processed.Provenance
 
-	// ── Phase 7: Build result ───────────────────────────────────────
-	result := buildGenerationResult(item, plan, engineResult, postResult, timings)
-
-	// ── Phase 7b: Enforce clip-native contract ─────────────────────
-	// Strict clip-native sources must produce exactly one scene per
-	// accepted clip and bind every accepted clip. Explicit fallback
-	// mode reports SUCCEEDED_WITH_WARNINGS instead of failing.
-	if err := enforceClipNativeContract(result, item, plan, engineResult, postResult); err != nil {
-		return nil, uc.logPhaseError(item, "clip_native", scriptpkg.ErrClipNativePlanningFailed, err, tracker)
-	}
-
-	// ── Phase 8: Surface provenance ─────────────────────────────────
-	// The provenance pointer was populated by the document processor
-	// with doc_id/doc_link (and possibly refined mode fields). Surface
-	// it on the result before the quality gate so a failing gate still
-	// returns the provenance block.
-	result.Provenance = provenance
-
-	// ── Phase 9: Editorial quality gate ────────────────────────────
-	// The engine generates the source-language script first. Translation
-	// is a postprocessor and intentionally replaces the response text with
-	// the requested target-language content. Evaluate editorial language,
-	// source coverage, and word budget against the engine output, otherwise
-	// a valid EN→ES translation is incorrectly compared to plan.Language=EN.
-	// The final result still contains the translated text produced by the
-	// translation processor.
-	qualityInput := *result
-	qualityInput.Output = result.Output
-	qualityInput.Output.Text = engineResult.Output.Text
-	qualityInput.Output.WordCount = engineResult.Output.WordCount
-	quality, qErr := evaluateQualityGate(&qualityInput, item, plan)
-	if quality != nil {
-		result.Quality = quality
-	}
-	if quality != nil {
-		tracker.TrackEvent("quality.checked", "Editorial quality gate checked", map[string]any{
-			"item_id":                item.ID,
-			"passed":                 quality.Passed,
-			"source_text_coverage":   quality.SourceTextCoverage,
-			"clip_evidence_coverage": quality.ClipEvidenceCoverage,
-			"unsupported_claims":     quality.UnsupportedClaims,
-			"actual_words":           quality.ActualWords,
-			"target_words":           quality.TargetWords,
-		})
-	}
-	if qErr != nil {
-		if item.ScriptParams.SkipQualityGate {
-			tracker.TrackEvent("quality.skipped", "Editorial quality gate failure ignored by request", map[string]any{
-				"item_id": item.ID,
-				"error":   qErr.Error(),
-			})
-		} else {
-			result.Status = "FAILED_QUALITY_GATE"
-			return result, uc.logPhaseError(item, "quality_gate", scriptpkg.ErrQualityGateFailed, qErr, tracker)
+	// ── Phase 7-9: Finalize ────────────────────────────────────────
+	result, err := uc.finalizer.Finalize(ctx, FinalizeInputs{
+		Item:         item,
+		Plan:         plan,
+		EngineResult: engineResult,
+		PostResult:   postResult,
+		Provenance:   provenance,
+		Timings:      timings,
+	}, tracker)
+	if err != nil {
+		var qErr *scriptpkg.QualityGateError
+		var clipErr *scriptpkg.ClipNativePlanningError
+		switch {
+		case errors.As(err, &qErr):
+			return result, uc.logPhaseError(item, "quality_gate", scriptpkg.ErrQualityGateFailed, err, tracker)
+		case errors.As(err, &clipErr):
+			return nil, uc.logPhaseError(item, "clip_native", scriptpkg.ErrClipNativePlanningFailed, err, tracker)
+		default:
+			return nil, uc.logPhaseError(item, "finalize", scriptpkg.ErrGenerationFailed, err, tracker)
 		}
 	}
 

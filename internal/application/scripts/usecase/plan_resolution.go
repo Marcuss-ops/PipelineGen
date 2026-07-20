@@ -19,6 +19,7 @@ type GenerateOneUseCase struct {
 	preparer        *GenerationPreparer
 	engineRunner    *GenerationEngineRunner
 	postprocessor   *GenerationPostprocessor
+	finalizer       *GenerationFinalizer
 	log             *zap.Logger
 	voGroupResolver scriptports.VoiceoverGroupResolver
 	voRootID        string
@@ -40,11 +41,13 @@ func NewGenerateOneUseCase(
 	preparer := NewGenerationPreparer(cfg, registry, ppReg, log)
 	engineRunner := NewGenerationEngineRunner(engine)
 	postprocessor := NewGenerationPostprocessor(ppReg)
+	finalizer := NewGenerationFinalizer()
 	return &GenerateOneUseCase{
 		cfg:           cfg,
 		preparer:      preparer,
 		engineRunner:  engineRunner,
 		postprocessor: postprocessor,
+		finalizer:     finalizer,
 		log:           log,
 	}
 }
