@@ -81,8 +81,7 @@ var availableCommands = []string{
 	"keep-drive-folder-files",
 	"organize-ui-drive",
 	"organize-family-drive",
-	"index-drive-fish-clip",
-	"index-beluga-clip",
+	"index-drive-clip",
 	"save-fish-commentary-index",
 	"save-cave-commentary-index",
 	"save-crab-commentary-index",
@@ -186,10 +185,8 @@ func dispatchSubcommand(name string, args []string) error {
 		return runOrganizeUIDrive(args)
 	case "organize-family-drive":
 		return runOrganizeFamilyDrive(args)
-	case "index-drive-fish-clip":
-		return runIndexDriveFishClip(args)
-	case "index-beluga-clip":
-		return runIndexBelugaClip(args)
+	case "index-drive-clip":
+		return runIndexDriveClip(args)
 	case "save-fish-commentary-index":
 		return runSaveFishCommentaryIndex(args)
 	case "save-cave-commentary-index":
